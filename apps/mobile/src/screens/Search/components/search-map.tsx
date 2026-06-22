@@ -261,7 +261,7 @@ const renderSearchMapLabelLayers = ({
       <MapboxGL.SymbolLayer
         key={layerId}
         id={layerId}
-        slot={undefined}
+        slot="top"
         sourceID={sourceId}
         belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
         style={labelCandidateStyles[candidate]}
@@ -319,7 +319,7 @@ const SearchMapMarkerScene = React.memo(
           >
             <MapboxGL.SymbolLayer
               id={DOT_LAYER_ID}
-              slot={undefined}
+              slot="top"
               belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
               style={dotLayerStyle}
               sourceID={DOT_SOURCE_ID}
@@ -340,7 +340,7 @@ const SearchMapMarkerScene = React.memo(
             <MapboxGL.SymbolLayer
               key="restaurant-pin-shadow-shared"
               id={PIN_SHARED_SHADOW_LAYER_ID}
-              slot={undefined}
+              slot="top"
               belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
               style={stylePinSharedShadowStyle}
               sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
@@ -355,7 +355,7 @@ const SearchMapMarkerScene = React.memo(
             <MapboxGL.SymbolLayer
               key="restaurant-pin-single-symbol"
               id={PIN_SINGLE_SYMBOL_LAYER_ID}
-              slot={undefined}
+              slot="top"
               belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
               style={stylePinSingleSymbolStyle}
               sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
@@ -383,7 +383,7 @@ const SearchMapMarkerScene = React.memo(
           <MapboxGL.SymbolLayer
             key={restaurantLabelPinCollisionLayerKey}
             id={restaurantLabelPinCollisionLayerId}
-            slot={undefined}
+            slot="top"
             sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={restaurantLabelPinCollisionStyles.center}
@@ -391,7 +391,7 @@ const SearchMapMarkerScene = React.memo(
           <MapboxGL.SymbolLayer
             key={`${restaurantLabelPinCollisionLayerKey}-left`}
             id={restaurantLabelPinCollisionLayerIdSideLeft}
-            slot={undefined}
+            slot="top"
             sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={restaurantLabelPinCollisionStyles.left}
@@ -399,7 +399,7 @@ const SearchMapMarkerScene = React.memo(
           <MapboxGL.SymbolLayer
             key={`${restaurantLabelPinCollisionLayerKey}-right`}
             id={restaurantLabelPinCollisionLayerIdSideRight}
-            slot={undefined}
+            slot="top"
             sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={restaurantLabelPinCollisionStyles.right}
@@ -544,7 +544,7 @@ const ScaleProbeLayer: React.FC = () => {
       <MapboxGL.SymbolLayer
         key="scale-probe-shadow"
         id={SCALE_PROBE_SHADOW_LAYER_ID}
-        slot={undefined}
+        slot="top"
         sourceID={SCALE_PROBE_SOURCE_ID}
         style={SCALE_PROBE_SHADOW_STYLE}
       />
@@ -554,7 +554,7 @@ const ScaleProbeLayer: React.FC = () => {
     <MapboxGL.SymbolLayer
       key="scale-probe-pin"
       id={SCALE_PROBE_LAYER_ID}
-      slot={undefined}
+      slot="top"
       sourceID={SCALE_PROBE_SOURCE_ID}
       style={collide ? SCALE_PROBE_LAYER_STYLE_COLLIDE : SCALE_PROBE_LAYER_STYLE}
     />
@@ -668,29 +668,20 @@ const SearchMapViewScene = React.memo(
           >
             <MapboxGL.SymbolLayer
               id={OVERLAY_Z_ANCHOR_LAYER_ID}
-              // ABOVE ALL BASEMAP LABELS. Our entire overlay stack (this top anchor + everything
-              // chained below it via belowLayerID: pins, pin-labels, collision obstacles, dots, user
-              // location) must sit ABOVE every native label so OUR markers win all collisions and
-              // are culled only by each other. slot="top" was the bug: that slot is defined as
-              // "behind Place and Transit labels", so transit/neighborhood labels (above the slot)
-              // reserved collision space first and culled our dots. Dropping the slot + anchoring
-              // this top anchor above `continent-label` (the topmost layer in the expanded custom
-              // style) lifts the whole stack above all basemap labels. Internal order (pins >
-              // pin-labels > dots) is preserved by the existing belowLayerID anchor chain.
-              aboveLayerID={ABOVE_ALL_MAP_LABELS_LAYER_ID}
+              slot="top"
               sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
               style={OVERLAY_Z_ANCHOR_STYLE}
             />
             <MapboxGL.SymbolLayer
               id={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-              slot={undefined}
+              slot="top"
               sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
               style={OVERLAY_Z_ANCHOR_STYLE}
               belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             />
             <MapboxGL.SymbolLayer
               id={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
-              slot={undefined}
+              slot="top"
               sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
               style={OVERLAY_Z_ANCHOR_STYLE}
               belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
@@ -945,7 +936,7 @@ const UserLocationLayers = React.memo(
                 dot stays crisp on top. Scales with zoom (real Polygon), unlike the pixel puck. */}
             <MapboxGL.FillLayer
               id={USER_LOCATION_ACCURACY_FILL_LAYER_ID}
-              slot={undefined}
+              slot="top"
               sourceID={USER_LOCATION_ACCURACY_SOURCE_ID}
               belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
               style={{
@@ -955,7 +946,7 @@ const UserLocationLayers = React.memo(
             />
             <MapboxGL.LineLayer
               id={USER_LOCATION_ACCURACY_LINE_LAYER_ID}
-              slot={undefined}
+              slot="top"
               sourceID={USER_LOCATION_ACCURACY_SOURCE_ID}
               belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
               style={{
@@ -969,7 +960,7 @@ const UserLocationLayers = React.memo(
         <MapboxGL.ShapeSource id={USER_LOCATION_SOURCE_ID} shape={userLocationFeatureCollection}>
           <MapboxGL.CircleLayer
             id={USER_LOCATION_SHADOW_LAYER_ID}
-            slot={undefined}
+            slot="top"
             sourceID={USER_LOCATION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={{
@@ -984,7 +975,7 @@ const UserLocationLayers = React.memo(
           />
           <MapboxGL.CircleLayer
             id={USER_LOCATION_RING_LAYER_ID}
-            slot={undefined}
+            slot="top"
             sourceID={USER_LOCATION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={{
@@ -996,7 +987,7 @@ const UserLocationLayers = React.memo(
           />
           <MapboxGL.CircleLayer
             id={USER_LOCATION_DOT_LAYER_ID}
-            slot={undefined}
+            slot="top"
             sourceID={USER_LOCATION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={{
@@ -1026,11 +1017,6 @@ const OVERLAY_Z_ANCHOR_SOURCE_ID = 'search-overlay-z-anchor-source';
 const OVERLAY_Z_ANCHOR_LAYER_ID = 'search-overlay-z-anchor-layer';
 const SEARCH_LABELS_Z_ANCHOR_LAYER_ID = 'search-labels-z-anchor-layer';
 const SEARCH_PINS_Z_ANCHOR_LAYER_ID = 'search-pins-z-anchor-layer';
-// Topmost layer in the "Crave Standard Base" custom style (171 expanded layers; verified via the
-// Styles API). Anchoring our overlay stack ABOVE it puts our markers above EVERY native basemap
-// label. If the style is republished and this id changes, our top anchor falls back to default-top
-// placement (also above everything), so this stays correct; update the id to keep it explicit.
-const ABOVE_ALL_MAP_LABELS_LAYER_ID = 'continent-label';
 const EMPTY_POINT_FEATURES: FeatureCollection<Point, RestaurantFeatureProperties> = {
   type: 'FeatureCollection',
   features: [],
@@ -2608,7 +2594,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       <MapboxGL.CircleLayer
         key={PIN_INTERACTION_LAYER_ID}
         id={PIN_INTERACTION_LAYER_ID}
-        slot={undefined}
+        slot="top"
         belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
         sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
         style={PIN_INTERACTION_LAYER_STYLE}
