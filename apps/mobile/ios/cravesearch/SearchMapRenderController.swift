@@ -264,6 +264,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     var styleLoadedCancelable: AnyCancelable?
     var cameraChangedCancelable: AnyCancelable?
     var mapIdleCancelable: AnyCancelable?
+    // enter_mounted_hidden: fires after a COMPLETED render+placement frame. Used to commit the label
+    // placement observation off a real settled placement pass (under cover, opacity ~0) instead of a
+    // blind delayMs:0 poll that races placement and deadlocks the reveal.
+    var renderFrameFinishedCancelable: AnyCancelable?
     var nativePressGestureRecognizer: NativePressLifecycleGestureRecognizer?
     var nativePressSession: NativePressSession?
     var nativePressSequence: Int = 0
@@ -287,6 +291,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       cameraChangedCancelable = nil
       mapIdleCancelable?.cancel()
       mapIdleCancelable = nil
+      renderFrameFinishedCancelable?.cancel()
+      renderFrameFinishedCancelable = nil
       if let nativePressGestureRecognizer {
         mapView.removeGestureRecognizer(nativePressGestureRecognizer)
       }
@@ -10778,6 +10784,22 @@ final class SearchMapRenderController: RCTEventEmitter {
         }
       }
     }
+    // enter_mounted_hidden: drive the under-cover label-placement commit off a COMPLETED render frame.
+    // onRenderFrameFinished fires AFTER Mapbox's render+placement pass, so when we re-query placed labels
+    // here they reliably exist — replacing the blind delayMs:0 poll that raced placement and deadlocked
+    // the reveal. Scoped tightly to .preparingReveal with the gate not yet open (no per-frame cost once
+    // settled). See handleRenderFrameFinishedForHiddenPlacement.
+    if handle.renderFrameFinishedCancelable == nil {
+      handle.renderFrameFinishedCancelable = handle.mapView.mapboxMap.onRenderFrameFinished.observe {
+        [weak self, weak handle] _ in
+        guard let self, let handle else {
+          return
+        }
+        DispatchQueue.main.async {
+          self.handleRenderFrameFinishedForHiddenPlacement(mapTag: mapTag, handle: handle)
+        }
+      }
+    }
     if handle.nativePressGestureRecognizer == nil {
       let recognizer = NativePressLifecycleGestureRecognizer()
       recognizer.onPressBegan = { [weak self, weak handle] point in
@@ -10851,6 +10873,34 @@ final class SearchMapRenderController: RCTEventEmitter {
     resolvedMapHandles[key]?.cancelSubscriptions()
     resolvedMapHandles.removeValue(forKey: key)
   }
+
+    // enter_mounted_hidden — the deterministic "placement settled under cover" signal. Fires after each
+    // completed render+placement frame. During the reveal PREROLL the markers are mounted and the
+    // pin-labels are forced to per-feature placement opacity (sourceFeatureOpacityForPlacementPreroll)
+    // while the whole tree is at presentation opacity ~0 — so Mapbox places them (invisibly) at their
+    // FINAL anchor. This handler catches the frame AFTER that placement pass ran and re-runs the label
+    // observation, which then queries the now-placed labels and COMMITS — opening
+    // isActiveFrameLabelPlacementReady deterministically, before the visible fade starts, regardless of
+    // where the label layers are anchored (incl. above all basemap labels). Replaces the old blind
+    // delayMs:0 poll that raced placement and caused reveal_start_deadlock_placement_uncommitted.
+    // Guards keep it inert once the gate is open or outside .preparingReveal (no per-frame cost), and
+    // the existing isRefreshInFlight coalescing de-dupes overlapping requests.
+    private func handleRenderFrameFinishedForHiddenPlacement(mapTag: NSNumber, handle: ResolvedMapHandle) {
+      for instanceId in Array(instances.keys) {
+        guard let state = instances[instanceId], state.mapTag == mapTag else {
+          continue
+        }
+        guard state.visualSourceLifecycleState == .preparingReveal else {
+          continue
+        }
+        let observation = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
+          .labelObservation
+        guard observation.observationEnabled, !Self.isActiveFrameLabelPlacementReady(state: state) else {
+          continue
+        }
+        scheduleLabelObservationRefresh(instanceId: instanceId, delayMs: 0)
+      }
+    }
 
     private func handleSourceDataLoaded(mapTag: NSNumber, event: SourceDataLoaded) {
       let sourceId = event.sourceId
