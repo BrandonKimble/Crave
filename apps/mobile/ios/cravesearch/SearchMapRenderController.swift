@@ -11174,7 +11174,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   // installMapSubscriptions via mapView.debugOptions = [.collision]). NOTE: this is MAP-WIDE — Mapbox
   // has no per-layer scoping, so it also draws boxes for every basemap label/POI (clutter). Turned OFF;
   // for an OUR-MARKERS-ONLY view we render a scoped dot collision-box ring in JS instead.
-  static let collisionDebugEnabled = false
+  static let collisionDebugEnabled = true
   static func harnessLog(_ json: String) {
     NSLog("[lodev] %@", json)
   }
