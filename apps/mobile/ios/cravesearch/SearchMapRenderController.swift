@@ -4399,8 +4399,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       recordAttribution: makeScopedAttributionRecorder("promotedSlots")
     )
     // Labels → their OWN render source, wrapped with nativeSlotFeatureKind=="label" (the layer
-    // filter). NOT resident (retainResidentDemotes:false) — promote-gated add/remove, but isolated
-    // from the pin source so it never wiggles the pins.
+    // filter). Isolated from the pin source so it never wiggles the pins.
+    // CHOPPY FIX (2026-06-22): this was retainResidentDemotes:false (always rebuild on promote/demote).
+    // Attributed the pan/zoom jank to driveNativeLod's reconcile spiking to 30-53ms (cwork driveMs) on
+    // role flips — NOT the pin bundle (retained) or the dot output (feature-state only), but this label
+    // RENDER source rebuilding. Pass the same retainResidentDemotesFlag so demoted-marker labels stay
+    // resident (opacity-faded, never removed) while the viewport is moving — no per-flip source rebuild
+    // → no re-tile → smooth pan/zoom. The reveal preroll (not moving) is unaffected: the flag is false
+    // there, so the placement-gate observation still sees normal add/remove.
     var labelRenderRecordsByMarkerKey: [String: [ParsedTransportFeatureRecord]] = [:]
     for markerKey in directOrderedAffectedMarkerKeys {
       let labels = directLabelRecordsByMarkerKey[markerKey] ?? []
@@ -4415,7 +4421,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       recordsByMarkerKey: labelRenderRecordsByMarkerKey,
       affectedMarkerKeys: affectedMarkerKeys,
       state: &state,
-      retainResidentDemotes: false,
+      retainResidentDemotes: retainResidentDemotes,
       recordAttribution: makeScopedAttributionRecorder("labelRender")
     )
     var plans: [ParsedCollectionApplyPlan] = []
@@ -5138,6 +5144,18 @@ final class SearchMapRenderController: RCTEventEmitter {
       state,
       allowNewTransitions: allowNewTransitions
     )
+    // RETAIN ⇄ AWAIT COUPLING (2026-06-22): retaining demoted bundles (no source mutation) and
+    // suppressing the promote transition's source-commit await MUST move together. If we retain
+    // (no mutation → no commit will ever land) but a promote transition still awaits a commit, that
+    // transition sticks forever (harness: activePin>0, moving:false, renderP frozen below roleP —
+    // promoted-but-invisible pins). Compute the retain decision ONCE and use it for both. (Before,
+    // only native_lod suppressed the await; the wiggle fix added currentViewportIsMoving to the
+    // retain but not the suppress, so mid-zoom re-promotes stuck invisible.)
+    let retainResidentDemotesFlag =
+      reason == "native_lod"
+      || reason == "dot_transition_complete"
+      || reason == "pin_transition_complete"
+      || state.currentViewportIsMoving
     let pinTransitionStartedAt = CACurrentMediaTime() * 1000
     updateLivePinTransitions(
       state: &state,
@@ -5146,7 +5164,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       desiredPayloads: desiredMarkerFamilyPayloads,
       nowMs: nowMs,
       allowNewTransitions: shouldAnimateIncrementalTransitions,
-      suppressSourceCommitAwait: reason == "native_lod"
+      suppressSourceCommitAwait: retainResidentDemotesFlag
     )
     recordNativeApply(
       section: "live_role.update_pin_transitions",
@@ -5225,9 +5243,16 @@ final class SearchMapRenderController: RCTEventEmitter {
       // instead of removing their bundle from the source (the source-churn jank + demote snap).
       // transition-complete reasons must ALSO retain: removing a just-finished crossfade's bundle
       // re-tiles the whole pin layer (Mapbox re-runs symbol placement) → every pin re-snaps = the wiggle.
-      retainResidentDemotes: reason == "native_lod"
-        || reason == "dot_transition_complete"
-        || reason == "pin_transition_complete"
+      //
+      // WIGGLE FIX (2026-06-22): the `live_marker_role_frame` path (JS-pushed role-only frame on
+      // already-resident markers) was NOT retaining, so a role frame that landed mid-zoom removed the
+      // demoted markers' bundles (harness: {reason:live_marker_role_frame, moving:true, bundle:[0,0,13]})
+      // → re-tile → the zoom wiggle. The DESIGN RULE (see the mut harness comment below) forbids ANY
+      // source add/update/remove during camera motion. Enforce it directly: retain demoted bundles for
+      // ANY reason while the viewport is moving. Removes still happen on settle (moving:false) for the
+      // non-resident reasons, so stale bundles are reclaimed once motion stops. MUST match
+      // suppressSourceCommitAwait above (retainResidentDemotesFlag) or promotes stick invisible.
+      retainResidentDemotes: retainResidentDemotesFlag
     )
     recordNativeApply(
       section: "live_role.prepare_pin_label_output",
@@ -5276,9 +5301,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       let bundle = mut(state.pinBundleSourceId), pinI = mut(state.pinInteractionSourceId)
       let d = mut(state.dotSourceId), lc = mut(state.labelCollisionSourceId)
       let total = mutationSummaryBySourceId.values.reduce(0) { $0 + $1.addCount + $1.updateCount + $1.removeCount }
+      // CHOPPY ATTRIBUTION (driveMs breakdown): which reconcile section spikes on a role flip? The
+      // started* are monotonic timestamps; the deltas approximate each section's wall-time.
+      let txMs = pinOutputStartedAt - pinTransitionStartedAt
+      let pinLabelMs = dotOutputStartedAt - pinOutputStartedAt
+      let dotMs = batchStartedAt - dotOutputStartedAt
+      let batchMs = CACurrentMediaTime() * 1000 - batchStartedAt
       Self.harnessLog(
         "{\"ev\":\"mut\",\"t\":\(Int(Self.nowMs())),\"reason\":\"\(reason)\","
           + "\"moving\":\(state.currentViewportIsMoving),\"affected\":\(affectedMarkerKeys.count),\"total\":\(total),"
+          + "\"txMs\":\(String(format: "%.1f", txMs)),\"pinLabelMs\":\(String(format: "%.1f", pinLabelMs)),"
+          + "\"dotMs\":\(String(format: "%.1f", dotMs)),\"batchMs\":\(String(format: "%.1f", batchMs)),"
           + "\"bundle\":[\(bundle.0),\(bundle.1),\(bundle.2)],\"pinInteraction\":[\(pinI.0),\(pinI.1),\(pinI.2)],"
           + "\"dot\":[\(d.0),\(d.1),\(d.2)],\"labelCollision\":[\(lc.0),\(lc.1),\(lc.2)]}"
       )
@@ -9237,11 +9270,20 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
       return Set(signature.components(separatedBy: "|"))
     }()
+    // DISMISS DOT-FADE FIX (2026-06-22): the on-screen optimization only fades markers in the
+    // candidateCatalog projection (the rankable ~20-on-screen). The COVERAGE dots (the majority of
+    // the ~500 painted) are NOT in that projection, so a targeted fade misses them — on dismiss the
+    // pins faded but the coverage dots STAYED (user report). The reveal happens to fade them in only
+    // because onScreenMarkerKeys is still empty at reveal-start (→ the full-sweep fallback below). Make
+    // dismiss consistent: full-catalog sweep while .dismissing so EVERY resident dot fades out. (Cost
+    // is bounded — a few hundred dots over the ~300ms dismiss, not a per-gesture-frame cost.)
+    let useFullCatalogSweep =
+      onScreenMarkerKeys.isEmpty || mutableState.visualSourceLifecycleState == .dismissing
     let targets: [(sourceId: String, featureId: String)]
-    if onScreenMarkerKeys.isEmpty {
+    if useFullCatalogSweep {
       // SAFETY FALLBACK: no projected on-screen set yet (e.g. not yet camera-projected,
       // or an instant/non-gesture state) — fall back to the full catalog sweep so the
-      // reveal/dismiss never silently fails to fade.
+      // reveal/dismiss never silently fails to fade. ALSO the dismiss path (see above).
       targets = visualSourceIds(for: state).flatMap { sourceId -> [(sourceId: String, featureId: String)] in
         let familyState = Self.derivedFamilyState(sourceId: sourceId, state: mutableState)
         return familyState.collection.idsInOrder.map { featureId in
@@ -11654,6 +11696,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       String(Int((cameraState.bearing * 100).rounded())),
       String(Int((cameraState.pitch * 100).rounded())),
     ].joined(separator: "|")
+    // ENTRY ATTRIBUTION (2026-06-22): does the camera-change handler fire at all, and is the surface
+    // .visible (the gate driveNativeLod requires to re-evaluate LOD)? life≠visible ⇒ LOD frozen.
+    if Self.lodHarnessEnabled {
+      let life = instances.first(where: { $0.value.mapTag == mapTag })
+        .map { String(describing: $0.value.visualSourceLifecycleState) } ?? "none"
+      Self.harnessLog(
+        "{\"ev\":\"camentry\",\"t\":\(Int(Self.nowMs())),\"moving\":\(isMoving),"
+          + "\"zoom\":\(String(format: "%.2f", cameraState.zoom)),\"life\":\"\(life)\","
+          + "\"instances\":\(instances.count)}"
+      )
+    }
     if isMoving && handle.lastNativeCameraDiagSignature == signature {
       return
     }

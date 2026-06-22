@@ -1276,14 +1276,26 @@ class AppRouteSceneStackLayerStateController {
           `sceneStack:${source}:header`
         );
       }
-      if (hasPollBodyContentLane) {
+      // DISMISS DEADLOCK FIX (2026-06-22): the body/host readiness gates required
+      // `hasPollBodyContentLane` = hasPollBody && shouldRunDataLane && shouldSubscribeDataLane. But
+      // shouldSubscribeDataLane (and shouldRunDataLane, which mirrors it) = `currentSnap !== 'hidden'`
+      // — false while the persistent-polls sheet is still hidden UNDER the closing results sheet. So
+      // the gate could never open: the handoff that un-hides the polls sheet (→ subscribes the data
+      // lane) was itself gated on the data lane already being subscribed. Result: pollBody/pollHost
+      // never marked ready → completeDismissHandoff never fires → leftover "Best restaurants" sheet
+      // and you can't start another search (attributed via [DISMISS-HOSTGATE] Metro logs:
+      // isMounted/hasMountedPollHeader true, hasPollBody true, but hasPollBodyContentLane stuck false).
+      // The body-fix comment above already intended "treat a RENDERED list body as ready"; honor it by
+      // gating on hasPollBody (the list body is mounted/rendered) — the data lane subscribes a beat
+      // later once the handoff un-hides the sheet (brief poll-feed loading state, never a deadlock).
+      if (hasPollBody) {
         searchSurfaceRuntime.markPollPagePartReady(
           'body',
           dismissTransaction.id,
           `sceneStack:${source}:body`
         );
       }
-      if (presentationSnapshot.isMounted && hasMountedPollHeader && hasPollBodyContentLane) {
+      if (presentationSnapshot.isMounted && hasMountedPollHeader && hasPollBody) {
         searchSurfaceRuntime.markPollPagePartReady(
           'host',
           dismissTransaction.id,
