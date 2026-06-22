@@ -261,7 +261,7 @@ const renderSearchMapLabelLayers = ({
       <MapboxGL.SymbolLayer
         key={layerId}
         id={layerId}
-        slot="top"
+        slot={undefined}
         sourceID={sourceId}
         belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
         style={labelCandidateStyles[candidate]}
@@ -319,7 +319,7 @@ const SearchMapMarkerScene = React.memo(
           >
             <MapboxGL.SymbolLayer
               id={DOT_LAYER_ID}
-              slot="top"
+              slot={undefined}
               belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
               style={dotLayerStyle}
               sourceID={DOT_SOURCE_ID}
@@ -340,7 +340,7 @@ const SearchMapMarkerScene = React.memo(
             <MapboxGL.SymbolLayer
               key="restaurant-pin-shadow-shared"
               id={PIN_SHARED_SHADOW_LAYER_ID}
-              slot="top"
+              slot={undefined}
               belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
               style={stylePinSharedShadowStyle}
               sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
@@ -355,7 +355,7 @@ const SearchMapMarkerScene = React.memo(
             <MapboxGL.SymbolLayer
               key="restaurant-pin-single-symbol"
               id={PIN_SINGLE_SYMBOL_LAYER_ID}
-              slot="top"
+              slot={undefined}
               belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
               style={stylePinSingleSymbolStyle}
               sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
@@ -383,7 +383,7 @@ const SearchMapMarkerScene = React.memo(
           <MapboxGL.SymbolLayer
             key={restaurantLabelPinCollisionLayerKey}
             id={restaurantLabelPinCollisionLayerId}
-            slot="top"
+            slot={undefined}
             sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={restaurantLabelPinCollisionStyles.center}
@@ -391,7 +391,7 @@ const SearchMapMarkerScene = React.memo(
           <MapboxGL.SymbolLayer
             key={`${restaurantLabelPinCollisionLayerKey}-left`}
             id={restaurantLabelPinCollisionLayerIdSideLeft}
-            slot="top"
+            slot={undefined}
             sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={restaurantLabelPinCollisionStyles.left}
@@ -399,7 +399,7 @@ const SearchMapMarkerScene = React.memo(
           <MapboxGL.SymbolLayer
             key={`${restaurantLabelPinCollisionLayerKey}-right`}
             id={restaurantLabelPinCollisionLayerIdSideRight}
-            slot="top"
+            slot={undefined}
             sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={restaurantLabelPinCollisionStyles.right}
@@ -544,7 +544,7 @@ const ScaleProbeLayer: React.FC = () => {
       <MapboxGL.SymbolLayer
         key="scale-probe-shadow"
         id={SCALE_PROBE_SHADOW_LAYER_ID}
-        slot="top"
+        slot={undefined}
         sourceID={SCALE_PROBE_SOURCE_ID}
         style={SCALE_PROBE_SHADOW_STYLE}
       />
@@ -554,7 +554,7 @@ const ScaleProbeLayer: React.FC = () => {
     <MapboxGL.SymbolLayer
       key="scale-probe-pin"
       id={SCALE_PROBE_LAYER_ID}
-      slot="top"
+      slot={undefined}
       sourceID={SCALE_PROBE_SOURCE_ID}
       style={collide ? SCALE_PROBE_LAYER_STYLE_COLLIDE : SCALE_PROBE_LAYER_STYLE}
     />
@@ -668,20 +668,21 @@ const SearchMapViewScene = React.memo(
           >
             <MapboxGL.SymbolLayer
               id={OVERLAY_Z_ANCHOR_LAYER_ID}
-              slot="top"
               sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
               style={OVERLAY_Z_ANCHOR_STYLE}
             />
+            {/* ATTR: no slot, no anchor = default-top placement (above everything) — avoids the
+                  fragile aboveLayerID="continent-label" target-missing failure proven via gate0 */}
             <MapboxGL.SymbolLayer
               id={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-              slot="top"
+              slot={undefined}
               sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
               style={OVERLAY_Z_ANCHOR_STYLE}
               belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             />
             <MapboxGL.SymbolLayer
               id={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
-              slot="top"
+              slot={undefined}
               sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
               style={OVERLAY_Z_ANCHOR_STYLE}
               belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
@@ -936,7 +937,7 @@ const UserLocationLayers = React.memo(
                 dot stays crisp on top. Scales with zoom (real Polygon), unlike the pixel puck. */}
             <MapboxGL.FillLayer
               id={USER_LOCATION_ACCURACY_FILL_LAYER_ID}
-              slot="top"
+              slot={undefined}
               sourceID={USER_LOCATION_ACCURACY_SOURCE_ID}
               belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
               style={{
@@ -946,7 +947,7 @@ const UserLocationLayers = React.memo(
             />
             <MapboxGL.LineLayer
               id={USER_LOCATION_ACCURACY_LINE_LAYER_ID}
-              slot="top"
+              slot={undefined}
               sourceID={USER_LOCATION_ACCURACY_SOURCE_ID}
               belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
               style={{
@@ -960,7 +961,7 @@ const UserLocationLayers = React.memo(
         <MapboxGL.ShapeSource id={USER_LOCATION_SOURCE_ID} shape={userLocationFeatureCollection}>
           <MapboxGL.CircleLayer
             id={USER_LOCATION_SHADOW_LAYER_ID}
-            slot="top"
+            slot={undefined}
             sourceID={USER_LOCATION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={{
@@ -975,7 +976,7 @@ const UserLocationLayers = React.memo(
           />
           <MapboxGL.CircleLayer
             id={USER_LOCATION_RING_LAYER_ID}
-            slot="top"
+            slot={undefined}
             sourceID={USER_LOCATION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={{
@@ -987,7 +988,7 @@ const UserLocationLayers = React.memo(
           />
           <MapboxGL.CircleLayer
             id={USER_LOCATION_DOT_LAYER_ID}
-            slot="top"
+            slot={undefined}
             sourceID={USER_LOCATION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
             style={{
@@ -2333,6 +2334,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // requires lifting the whole stack above the labels, which needs the enter_mounted_hidden gate
       // redesign first (moving the pin-labels deadlocks the reveal; moving only the dot layer makes dots
       // cull the pin-labels and ALSO deadlocks). Until then, allowOverlap:true keeps dots visible.
+      // allowOverlap:true keeps dots VISIBLE until step (3) lands (reposition our stack above the
+      // fully-loaded basemap via onStyleLoaded); then flip to false so dots collide + suppress basemap.
       iconAllowOverlap: true,
       iconIgnorePlacement: false,
       // iconPadding 0 = the collision box is just the icon's own bounds (no extra gap). The box was
@@ -2605,7 +2608,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       <MapboxGL.CircleLayer
         key={PIN_INTERACTION_LAYER_ID}
         id={PIN_INTERACTION_LAYER_ID}
-        slot="top"
+        slot={undefined}
         belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
         sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
         style={PIN_INTERACTION_LAYER_STYLE}

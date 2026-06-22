@@ -9726,6 +9726,28 @@ final class SearchMapRenderController: RCTEventEmitter {
           self.completeLabelObservationRefresh(instanceId: instanceId)
           self.retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 16)
         case .success(let features):
+          // ATTRIBUTION [gate0]: the gate query returned ZERO placed pin-labels during preroll (this is
+          // the deadlock). Log the real layer-stack positions to find WHY: does each pin-label layer
+          // EXIST (idx>=0) or is it missing (-2)? Where is it vs the dot layers and vs continent-label
+          // (allLayerIdentifiers is bottom→top; higher idx = placed FIRST = wins collision). If a
+          // pin-label idx < a dot idx, the dots win and cull the labels → they never place → deadlock.
+          if Self.lodHarnessEnabled, features.isEmpty,
+            latestState.visualSourceLifecycleState == .preparingReveal
+          {
+            let allIds = handle.mapView.mapboxMap.allLayerIdentifiers.map { $0.id }
+            func idx(_ id: String) -> Int { allIds.firstIndex(of: id) ?? -1 }
+            let labelInfo = resolvedLayerIds
+              .map { "\($0)=\(handle.mapView.mapboxMap.layerExists(withId: $0) ? idx($0) : -2)" }
+              .joined(separator: ",")
+            let dotInfo = latestState.nativePressTargetConfig.dotLayerIds
+              .map { "\($0)=\(idx($0))" }
+              .joined(separator: ",")
+            Self.harnessLog(
+              "{\"ev\":\"gate0\",\"t\":\(Int(Self.nowMs())),"
+                + "\"labels\":\"\(labelInfo)\",\"dots\":\"\(dotInfo)\","
+                + "\"continentIdx\":\(idx("continent-label")),\"totalLayers\":\(allIds.count)}"
+            )
+          }
           let primaryObservation = Self.buildRenderedLabelObservation(
             from: features,
             allowedSourceIds: [latestState.labelRenderSourceId]
@@ -11224,7 +11246,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   // installMapSubscriptions via mapView.debugOptions = [.collision]). NOTE: this is MAP-WIDE — Mapbox
   // has no per-layer scoping, so it also draws boxes for every basemap label/POI (clutter). Turned OFF;
   // for an OUR-MARKERS-ONLY view we render a scoped dot collision-box ring in JS instead.
-  static let collisionDebugEnabled = true
+  static let collisionDebugEnabled = false
   static func harnessLog(_ json: String) {
     NSLog("[lodev] %@", json)
   }
