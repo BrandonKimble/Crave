@@ -249,8 +249,8 @@ export const useBottomSheetSharedRuntime = ({
   const initialSheetY = shouldAnimateOnMount
     ? hiddenOrCollapsed
     : visible
-    ? initialSnapValue
-    : hiddenOrCollapsed;
+      ? initialSnapValue
+      : hiddenOrCollapsed;
   const sheetY = sheetYValue ?? useSharedValue(initialSheetY);
   const currentSnapKeyRef = React.useRef<BottomSheetSnap>(
     visible ? initialSnapPoint : hiddenSnap !== undefined ? 'hidden' : 'collapsed'
@@ -398,6 +398,7 @@ export const useBottomSheetSharedRuntime = ({
     shouldEnableScroll,
     preventSwipeDismiss,
     expandedSnap,
+    middleSnap,
     collapsedSnap,
     hiddenSnap,
     headerHeight: publicationRuntime.headerHeight,

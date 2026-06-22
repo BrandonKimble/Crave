@@ -32,6 +32,7 @@ type UseBottomSheetSharedGestureRuntimeArgs = {
   shouldEnableScroll: boolean;
   preventSwipeDismiss: boolean;
   expandedSnap: number;
+  middleSnap: number;
   collapsedSnap: number;
   hiddenSnap?: number;
   headerHeight: SharedValue<number>;
@@ -81,6 +82,7 @@ export const useBottomSheetSharedGestureRuntime = ({
   shouldEnableScroll,
   preventSwipeDismiss,
   expandedSnap,
+  middleSnap,
   collapsedSnap,
   hiddenSnap,
   headerHeight,
@@ -133,6 +135,7 @@ export const useBottomSheetSharedGestureRuntime = ({
     const resolveRuntimeSnapValues = () => {
       'worklet';
       const runtimeExpandedSnap = runtimeConfigValues?.expandedSnap.value ?? expandedSnap;
+      const runtimeMiddleSnap = runtimeConfigValues?.middleSnap.value ?? middleSnap;
       const runtimeCollapsedSnap = runtimeConfigValues?.collapsedSnap.value ?? collapsedSnap;
       const runtimeHiddenSnap = runtimeConfigValues
         ? runtimeConfigValues.hasHiddenSnap.value
@@ -143,6 +146,7 @@ export const useBottomSheetSharedGestureRuntime = ({
         runtimeConfigValues?.preventSwipeDismiss.value ?? preventSwipeDismiss;
       return {
         expanded: runtimeExpandedSnap,
+        middle: runtimeMiddleSnap,
         collapsed: runtimeCollapsedSnap,
         hidden: runtimeHiddenSnap,
         upperBound: runtimePreventSwipeDismiss
@@ -461,6 +465,30 @@ export const useBottomSheetSharedGestureRuntime = ({
         syncDragging();
       });
 
+    // Global affordance: tapping a sheet that's resting at its docked (lowest)
+    // snap springs it up to the middle snap — so a docked lane opens on a tap, not
+    // only a swipe. Only fires on a clean no-move tap in the header, so it never
+    // competes with the pan/scroll handoff; cancelsTouchesInView(false) leaves
+    // header controls (e.g. the polls "+") fully tappable.
+    const tapToMiddleGesture = Gesture.Tap()
+      .maxDuration(500)
+      .maxDistance(12)
+      .cancelsTouchesInView(false)
+      .onEnd((event, success) => {
+        'worklet';
+        if (!success || gestureEnabledValue.value !== 1) {
+          return;
+        }
+        const runtimeSnapValues = resolveRuntimeSnapValues();
+        const atDocked = sheetY.value >= runtimeSnapValues.collapsed - DRAG_EPSILON;
+        const touchInHeader = event.absoluteY - sheetY.value <= headerHeight.value;
+        const hasMiddleAbove =
+          runtimeSnapValues.middle < runtimeSnapValues.collapsed - DRAG_EPSILON;
+        if (atDocked && touchInHeader && hasMiddleAbove) {
+          startSpring(runtimeSnapValues.middle, 0, false, 'gesture');
+        }
+      });
+
     const nativeScrollGesture = Gesture.Native()
       .enabled(shouldEnableScroll)
       .requireExternalGestureToFail(expandPanGesture)
@@ -471,7 +499,7 @@ export const useBottomSheetSharedGestureRuntime = ({
     collapsePanGesture.simultaneousWithExternalGesture(nativeScrollGesture);
 
     return {
-      sheet: Gesture.Simultaneous(expandPanGesture, collapsePanGesture),
+      sheet: Gesture.Simultaneous(expandPanGesture, collapsePanGesture, tapToMiddleGesture),
       scroll: nativeScrollGesture,
     };
   }, [
@@ -506,6 +534,7 @@ export const useBottomSheetSharedGestureRuntime = ({
     isDragging,
     isInMomentum,
     isSettling,
+    middleSnap,
     preventSwipeDismiss,
     resolveDestination,
     runtimeConfigValues,
