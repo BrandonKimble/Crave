@@ -6,6 +6,27 @@ import QuartzCore
 import React
 import Turf
 import UIKit
+import os
+
+// MARK: - GATE-PREMISE frame-gap probe (TEMPORARY — remove after the on-device ES2-vs-ES3 read)
+// `onRenderFrameFinished` only fires when Mapbox actually repaints, so the gap between consecutive fires is
+// the under-load GL render cadence = the source of the fade "staircase". ~17ms ⇒ ES3+wall-clock suffices;
+// ~50ms ⇒ snapping is unfixable on GL, go ES2. Filter the unified log with: subsystem == "crave.lod"
+// (or eventMessage CONTAINS "[framegap]"). File-scope on purpose: one call site, no class-body churn.
+private let framegapProbeEnabled = true
+private let framegapLog = OSLog(subsystem: "crave.lod", category: "framegap")
+private var framegapLastMs: Double = 0
+private var framegapSeq: Int = 0
+private func recordRenderFrameGap() {
+  guard framegapProbeEnabled else { return }
+  let now = CACurrentMediaTime() * 1000
+  let last = framegapLastMs
+  framegapLastMs = now
+  guard last > 0 else { return }
+  framegapSeq &+= 1
+  os_log("[framegap] seq=%{public}d gapMs=%{public}d", log: framegapLog, type: .default,
+         framegapSeq, Int((now - last).rounded()))
+}
 
 private final class PresentationOpacityAnimator {
   weak var owner: SearchMapRenderController?
@@ -811,9 +832,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var labelObservationRefreshWorkItems: [String: DispatchWorkItem] = [:]
   private var presentationOpacityAnimators: [String: PresentationOpacityAnimator] = [:]
   private var livePinTransitionAnimators: [String: CADisplayLink] = [:]
-  // Map-LOD v5 (plans/lod-v5-architecture.md): per-instance wall-clock of the last engine.step tick, so
-  // CONVERGE gets a real frame delta (dtSeconds). Only used when SearchMapRenderController.lodV5Enabled.
-  private var lastV5StepMsByInstance: [String: Double] = [:]
   private var lastVisualDiagByInstance: [String: String] = [:]
   private var slowActionWindowsByInstanceAndScope: [String: SlowActionWindowState] = [:]
   private var nativeApplyAttributionEnabled = false
@@ -1315,9 +1333,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       self?.labelObservationRefreshWorkItems[instanceId] = nil
       self?.cancelPresentationOpacityAnimation(instanceId: instanceId)
       self?.cancelLivePinTransitionAnimation(instanceId: instanceId)
-      // Map-LOD v5: drop the per-instance step/re-assert timing so a reused instanceId can't read a stale
-      // lastV5StepMs (which would collapse a fresh fade into a near-instant jump on the first tick).
-      self?.lastV5StepMsByInstance[instanceId] = nil
       let mapTag = self?.instances[instanceId]?.mapTag
       self?.instances.removeValue(forKey: instanceId)
       self?.slowActionWindowsByInstanceAndScope = self?.slowActionWindowsByInstanceAndScope.filter {
@@ -7669,15 +7684,11 @@ final class SearchMapRenderController: RCTEventEmitter {
   // This is the ONLY feature-state writer when lodV5Enabled (v4's stepper + driveNativeLod are gated off).
   private func applyV5StepFeatureStates(for instanceId: String, state: inout InstanceState) throws {
     guard var engine = state.lodV5Engine else { return }
-    let nowMs = Self.nowMs()
-    let lastMs = lastV5StepMsByInstance[instanceId]
-    lastV5StepMsByInstance[instanceId] = nowMs
-    // First tick after idle uses a nominal 60fps delta; clamp to ≤100ms so a stalled link can't jump a fade.
-    let dtSeconds = lastMs.map { max(0, min(0.1, (nowMs - $0) / 1000.0)) } ?? (1.0 / 60.0)
-    let writes = engine.step(dtSeconds: dtSeconds)
+    // Wall-clock fade: hand the engine the absolute now; it projects each in-flight crossfade off this
+    // clock, so a starved display link lands on the SAME curve as a 60fps one (no dt-rate staircase).
+    let writes = engine.step(nowMs: Self.nowMs())
     state.lodV5Engine = engine
     guard !writes.isEmpty else { return }
-    NSLog("[LODDBG] step writes=\(writes.count)")
     _ = try applyV5OpacityWrites(for: instanceId, state: &state, writes: writes)
   }
 
@@ -9853,6 +9864,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         guard let self, let handle else {
           return
         }
+        recordRenderFrameGap()
         DispatchQueue.main.async {
           self.handleRenderFrameFinishedForHiddenPlacement(mapTag: mapTag, handle: handle)
         }
