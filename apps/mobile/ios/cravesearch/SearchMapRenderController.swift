@@ -8905,6 +8905,19 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
     }
 
+    // [slabel] TEMPORARY Phase-1 baseline — NAMELESS promoted pins (a role=="pin" marker with no placed
+    // label = the obstacle-blanket symptom). Measured against the role table's ACTUAL promoted set, so
+    // Phase-2 residency cannot inflate it (the JS pin source can). REMOVE after GATE-STACKED. Read via
+    // `log stream --predicate 'subsystem == "crave.lod"'` and grep slabel.
+    if !promotedMarkerKeys.isEmpty {
+      let namelessPromoted = promotedMarkerKeys.filter { visibleLabelCountsByMarkerKey[$0] == nil }.count
+      os_log(
+        "[slabel] promoted=%{public}d named=%{public}d nameless=%{public}d rate=%{public}d%%",
+        log: framegapLog, type: .default,
+        promotedMarkerKeys.count, promotedMarkerKeys.count - namelessPromoted, namelessPromoted,
+        Int((Double(namelessPromoted) / Double(promotedMarkerKeys.count) * 100).rounded()))
+    }
+
     let promotedPinCollisionObstacleCount = roleTable.pinnedMarkerKeysInOrder.reduce(0) { count, markerKey in
       guard let row = roleTable.rowByMarkerKey[markerKey],
             row.role == "pin",
