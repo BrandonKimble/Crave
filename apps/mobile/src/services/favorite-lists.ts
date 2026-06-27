@@ -1,5 +1,5 @@
 import api from './api';
-import type { FoodResult, RestaurantResult } from '../types';
+import type { Coordinate, FoodResult, RestaurantResult, SearchResponse } from '../types';
 
 export type FavoriteListType = 'restaurant' | 'dish';
 export type FavoriteListVisibility = 'public' | 'private';
@@ -53,6 +53,28 @@ export const favoriteListsService = {
   },
   async get(listId: string): Promise<FavoriteListDetail> {
     const response = await api.get<FavoriteListDetail>(`/favorites/lists/${listId}`);
+    return response.data;
+  },
+  // Hydrate a favorites list into a FULL SearchResponse (same shape a real
+  // /search returns) so the mobile results surface can render it through the
+  // EXISTING search response lifecycle. The favorites launch is "a natural
+  // search whose data SOURCE is the favorites endpoint instead of /search".
+  // No bounds field by design (v1 fits the map to the list extent).
+  async getListResults(
+    listId: string,
+    opts?: {
+      openNow?: boolean;
+      userLocation?: Coordinate;
+      pagination?: { page?: number; pageSize?: number };
+    }
+  ): Promise<SearchResponse> {
+    const response = await api.post<SearchResponse>(`/favorites/lists/${listId}/results`, {
+      openNow: opts?.openNow,
+      userLocation: opts?.userLocation
+        ? { lat: opts.userLocation.lat, lng: opts.userLocation.lng }
+        : undefined,
+      pagination: opts?.pagination,
+    });
     return response.data;
   },
   async getShared(shareSlug: string): Promise<FavoriteListDetail> {

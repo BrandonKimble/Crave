@@ -147,7 +147,9 @@ export const createAppOverlayRouteCommandRuntime = ({
           ),
           sheetTransitionKind: 'openChild',
           sheetOpenerSource: 'pollAction',
-          sheetMotion: { kind: 'snapTo', snap: 'expanded' },
+          // Instant cover (matches pollDetail): full-screen child snaps over the partial feed
+          // immediately, no rise that reveals the search-surface home above.
+          sheetMotion: { kind: 'snapTo', snap: 'expanded', mode: 'instant' },
         });
         return;
       }
@@ -160,17 +162,26 @@ export const createAppOverlayRouteCommandRuntime = ({
           ),
           sheetTransitionKind: 'openChild',
           sheetOpenerSource: 'pollAction',
-          sheetMotion: { kind: 'snapTo', snap: 'expanded' },
+          // Instant snap to full so the sheet COVERS immediately (no rise that reveals the
+          // search-surface home above it); the leaf crossfade then swaps feed→pollDetail at
+          // full height. The feed is a partial sheet (~42%), pollDetail is full-screen.
+          sheetMotion: { kind: 'snapTo', snap: 'expanded', mode: 'instant' },
         });
         return;
       }
-      if (overlay === 'favoriteListDetail' || overlay === 'saveList' || overlay === 'restaurant') {
+      if (overlay === 'saveList' || overlay === 'restaurant') {
         requestRouteSceneSwitch({
           targetSceneKey: overlay,
           routeAction: 'push',
           routeParams: params,
           sheetTransitionKind: 'openChild',
           sheetOpenerSource: 'routeCommand',
+          // Keep restaurant/saveList on the PRE-ENGINE instant swap (their default before the engine
+          // was activated). Their leaf crossfade is unverified, and restaurant's outgoing is the
+          // route-level 'search' surface (NOT relabeled to the docked feed), so a content crossfade
+          // risks fading the bare home. Opt them out explicitly until verified; poll-lane children
+          // (pollDetail/pollCreation) keep the instant cover above.
+          contentHandoff: 'swapImmediately',
         });
         return;
       }

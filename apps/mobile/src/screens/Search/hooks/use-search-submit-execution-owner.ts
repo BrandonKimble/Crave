@@ -1,8 +1,13 @@
 import React from 'react';
 
 import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
-import type { MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
+import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { SearchRequestCacheStatus, StructuredSearchRequest } from '../../../services/search';
+import {
+  favoriteListsService,
+  type FavoriteListType,
+} from '../../../services/favorite-lists';
+import { createFavoritesResponseReceivedPayload } from '../runtime/adapters/favorites-adapter';
 import { logPerfScenarioSearchRequestLifecycle } from '../../../perf/perf-scenario-attribution';
 import {
   getPerfScenarioWorkNow,
@@ -143,6 +148,23 @@ type ExecuteNaturalSearchAttemptOptions = {
     response: SearchResponse,
     cacheStatus: SearchRequestCacheStatus | null
   ) => boolean;
+};
+
+type StartFavoritesResponseLifecycleOptions = {
+  response: SearchResponse;
+  requestId: number;
+  runtimeTuple: SearchSubmitActiveOperationTuple;
+  targetTab: SegmentValue;
+  submittedLabel: string;
+};
+
+type ExecuteFavoritesHydrateAttemptOptions = {
+  listId: string;
+  listType: FavoriteListType;
+  requestId: number;
+  openNow?: boolean;
+  userLocation?: Coordinate | null;
+  startLifecycle: (response: SearchResponse) => boolean;
 };
 
 type UseSearchSubmitExecutionOwnerArgs = {
@@ -432,6 +454,141 @@ export const useSearchSubmitExecutionOwner = ({
     [startShortcutStructuredResponseLifecycle]
   );
 
+  const startFavoritesResponseLifecycle = React.useCallback(
+    ({
+      response,
+      requestId,
+      runtimeTuple,
+      targetTab,
+      submittedLabel,
+    }: StartFavoritesResponseLifecycleOptions) =>
+      // A favorites launch is a natural search whose data SOURCE is the
+      // favorites endpoint. Route the SearchResponse through the SAME structured
+      // response lifecycle the natural/shortcut paths use so the marker pipeline,
+      // staged reveal lanes, and readiness gates fire identically — no parallel
+      // surface, no re-implemented reveal.
+      startStructuredResponseLifecycle({
+        response,
+        requestId,
+        runtimeTuple,
+        append: false,
+        targetPage: 1,
+        initialUiState: {
+          mode: 'natural',
+          targetTab,
+        },
+        submittedLabel,
+        pushToHistory: false,
+        // No bounds: v1 fits the map to the list's own extent (the backend omits
+        // bounds and returns the full list), matching the favorites contract.
+        requestBounds: null,
+        replaceResultsInPlace: false,
+        responseLogLabel: 'Favorites list results response',
+        responseReceivedPayload: createFavoritesResponseReceivedPayload(response),
+      }),
+    [startStructuredResponseLifecycle]
+  );
+
+  const executeFavoritesHydrateAttempt = React.useCallback(
+    async ({
+      listId,
+      // listType is part of the attempt contract (telemetry + a future
+      // single-axis fetch optimization) but the response lifecycle derives the
+      // active tab itself, so it is intentionally not read here.
+      listType: _listType,
+      requestId,
+      openNow,
+      userLocation,
+      startLifecycle,
+    }: ExecuteFavoritesHydrateAttemptOptions) => {
+      if (requestId !== activeSearchRequestRef.current) {
+        logSearchResponseLifecycle({
+          phase: 'response_lifecycle_skipped',
+          reason: 'stale_before_run_search',
+          kind: 'favorites',
+          requestId,
+          activeRequestId: activeSearchRequestRef.current,
+          payloadSearchRequestId: listId,
+        });
+        return false;
+      }
+      logSearchResponseLifecycle({
+        phase: 'run_search_enter',
+        kind: 'favorites',
+        requestId,
+        timingLabel: 'runSearch:favorites',
+        payloadSearchRequestId: listId,
+      });
+      const response = await favoriteListsService.getListResults(listId, {
+        openNow,
+        userLocation: userLocation ?? undefined,
+      });
+      if (!response) {
+        logSearchResponseLifecycle({
+          phase: 'response_lifecycle_skipped',
+          reason: 'null_response',
+          kind: 'favorites',
+          requestId,
+          activeRequestId: activeSearchRequestRef.current,
+          payloadSearchRequestId: listId,
+        });
+        return false;
+      }
+      logSearchResponseLifecycle({
+        phase: 'run_search_resolved',
+        kind: 'favorites',
+        requestId,
+        activeRequestId: activeSearchRequestRef.current,
+        payloadSearchRequestId: listId,
+        ...getResponseSummary(response),
+      });
+      if (requestId !== activeSearchRequestRef.current) {
+        logSearchResponseLifecycle({
+          phase: 'response_lifecycle_skipped',
+          reason: 'stale_after_response',
+          kind: 'favorites',
+          requestId,
+          activeRequestId: activeSearchRequestRef.current,
+          payloadSearchRequestId: listId,
+          ...getResponseSummary(response),
+        });
+        return false;
+      }
+      useSystemStatusStore.getState().clearServiceIssue('search');
+      logSearchResponseLifecycle({
+        phase: 'response_lifecycle_start_requested',
+        kind: 'favorites',
+        requestId,
+        payloadSearchRequestId: listId,
+        ...getResponseSummary(response),
+      });
+      const lifecycleStartedAtMs = getPerfScenarioWorkNow();
+      const didStartLifecycle = startLifecycle(response);
+      logPerfScenarioWorkSpan({
+        owner: 'search_submit_execution_start_response_lifecycle',
+        path: 'favorites',
+        startedAtMs: lifecycleStartedAtMs,
+        details: {
+          requestId,
+          activeRequestId: activeSearchRequestRef.current,
+          didStartLifecycle,
+          ...getResponseSummary(response),
+        },
+      });
+      logSearchResponseLifecycle({
+        phase: didStartLifecycle ? 'response_lifecycle_started' : 'response_lifecycle_skipped',
+        reason: didStartLifecycle ? null : 'start_lifecycle_returned_false',
+        kind: 'favorites',
+        requestId,
+        activeRequestId: activeSearchRequestRef.current,
+        payloadSearchRequestId: listId,
+        ...getResponseSummary(response),
+      });
+      return didStartLifecycle;
+    },
+    [activeSearchRequestRef]
+  );
+
   const executeStructuredSearchRequest = React.useCallback(
     async (params: {
       payload: StructuredSearchRequest;
@@ -718,15 +875,19 @@ export const useSearchSubmitExecutionOwner = ({
       startEntityStructuredResponseLifecycle,
       startShortcutInitialResponseLifecycle,
       startShortcutAppendResponseLifecycle,
+      startFavoritesResponseLifecycle,
       executeEntityStructuredSearchAttempt,
       executeShortcutStructuredSearchAttempt,
       executeNaturalSearchAttempt,
+      executeFavoritesHydrateAttempt,
     }),
     [
       executeEntityStructuredSearchAttempt,
+      executeFavoritesHydrateAttempt,
       executeNaturalSearchAttempt,
       executeShortcutStructuredSearchAttempt,
       startEntityStructuredResponseLifecycle,
+      startFavoritesResponseLifecycle,
       startNaturalResponseLifecycle,
       startShortcutAppendResponseLifecycle,
       startShortcutInitialResponseLifecycle,

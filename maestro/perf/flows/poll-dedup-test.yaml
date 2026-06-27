@@ -1,0 +1,20 @@
+appId: com.brandonkimble.cravesearch
+---
+# reset: close any leftover creation/detail sheet, get back to search
+- tapOn: { text: 'Close poll creation', optional: true }
+- tapOn: { text: 'Close poll', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 60000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera_and_resolve_market&lat=40.7550&lng=-73.9800&zoom=13.2'
+- waitForAnimationToEnd: { timeout: 2500 }
+- tapOn: 'Polls in New York'
+- waitForAnimationToEnd: { timeout: 2500 }
+- tapOn: { text: 'Create or close polls' }
+- waitForAnimationToEnd: { timeout: 6000 }
+- tapOn: { id: 'poll-subject-input' }
+- inputText: 'Best spot for a date night in NYC'
+- waitForAnimationToEnd: { timeout: 1500 }
+- hideKeyboard
+- tapOn: { text: 'Publish poll' }
+- waitForAnimationToEnd: { timeout: 6000 }
+- takeScreenshot: /tmp/dedup-test

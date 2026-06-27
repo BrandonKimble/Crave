@@ -27,6 +27,7 @@ export type AppRouteSceneMotionRuntime = {
   registerChromeMotionTarget: (target: AppRouteSceneChromeMotionTarget) => () => void;
   requestBootstrapSharedSheetTransition: (request: OverlaySheetSnapRequest) => void;
   completeFromSheetSettle: (settleToken: number) => void;
+  completeFromContentSettle: (settleToken: number) => void;
   dispose: () => void;
 };
 
@@ -128,6 +129,12 @@ export class AppRouteSceneMotionController implements AppRouteSceneMotionRuntime
   public completeFromSheetSettle(settleToken: number): void {
     withSearchNavSwitchRuntimeAttribution('sceneMotion', 'completeFromSheetSettle', () => {
       this.executor.completeFromSheetSettle(settleToken);
+    });
+  }
+
+  public completeFromContentSettle(settleToken: number): void {
+    withSearchNavSwitchRuntimeAttribution('sceneMotion', 'completeFromContentSettle', () => {
+      this.executor.completeFromContentSettle(settleToken);
     });
   }
 

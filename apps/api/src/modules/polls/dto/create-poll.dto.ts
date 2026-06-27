@@ -59,6 +59,12 @@ export class CreatePollDto {
   @MaxLength(500)
   description?: string;
 
+  // User-chosen close window in days (§5). Clamped server-side to [3,14] (default 7);
+  // app/seeded polls omit it and use the global window.
+  @IsOptional()
+  @IsNumber()
+  closeWindowDays?: number;
+
   @IsOptional()
   @IsUUID()
   targetDishId?: string;

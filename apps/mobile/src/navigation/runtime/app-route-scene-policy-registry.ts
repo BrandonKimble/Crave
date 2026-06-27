@@ -40,7 +40,12 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     defaultFirstEntrySnap: 'collapsed',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
-    canSwipeDismiss: true,
+    // Non-dismissable by swipe (like every other route sheet): a downward drag rubber-bands at
+    // the docked bar (collapsed) instead of swiping the lane to hidden. The docked bar is a
+    // permanent fixture; the programmatic dismiss path (`requestReturnToSearchFromPolls` →
+    // `dismissDockedPolls`) still works since explicit snap targets aren't bounded by the
+    // gesture upperBound.
+    canSwipeDismiss: false,
     snapPersistence: 'shared',
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
@@ -92,15 +97,6 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
   restaurant: {
     sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
     defaultFirstEntrySnap: 'middle',
-    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
-    requiresExpandedPresentation: false,
-    canSwipeDismiss: false,
-    snapPersistence: 'none',
-    chromePolicy: { kind: 'preserve' },
-  },
-  favoriteListDetail: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
-    defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
     canSwipeDismiss: false,

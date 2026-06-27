@@ -4,7 +4,12 @@ import { PollState } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { PollGraduationService } from './poll-graduation.service';
-import { MS_PER_DAY, resolvePollAutoCloseDays } from './poll-timing';
+import {
+  MS_PER_DAY,
+  isActivePollDueToClose,
+  resolveMinPossibleCloseWindowDays,
+  resolvePollAutoCloseDays,
+} from './poll-timing';
 
 @Injectable()
 export class PollLifecycleService {
@@ -33,23 +38,41 @@ export class PollLifecycleService {
       return;
     }
 
-    const threshold = new Date(Date.now() - this.autoCloseDays * MS_PER_DAY);
-    const pending = await this.prisma.poll.findMany({
+    // Coarse pre-filter: nothing can close before the smallest possible window, so
+    // skip active polls younger than that. Each remaining active poll's EXACT due-ness
+    // is then decided per-poll below (honoring its stored §5 window, else the global).
+    const coarseThreshold = new Date(
+      Date.now() - resolveMinPossibleCloseWindowDays() * MS_PER_DAY,
+    );
+    const candidates = await this.prisma.poll.findMany({
       where: {
         graduatedAt: null,
         OR: [
-          { state: PollState.active, launchedAt: { lte: threshold } },
+          { state: PollState.active, launchedAt: { lte: coarseThreshold } },
           { state: PollState.closed },
         ],
       },
-      select: { pollId: true },
+      select: {
+        pollId: true,
+        state: true,
+        launchedAt: true,
+        metadata: true,
+      },
     });
-    if (!pending.length) {
+    const nowMs = Date.now();
+    const due = candidates.filter(
+      (poll) =>
+        // already-closed-but-not-graduated → retry graduation (idempotent)
+        poll.state === PollState.closed ||
+        // active → close once its per-poll window has elapsed
+        isActivePollDueToClose(poll.launchedAt, poll.metadata, nowMs),
+    );
+    if (!due.length) {
       return;
     }
 
     let graduated = 0;
-    for (const { pollId } of pending) {
+    for (const { pollId } of due) {
       try {
         await this.graduation.closeAndGraduate(pollId);
         graduated += 1;
@@ -62,9 +85,9 @@ export class PollLifecycleService {
     }
 
     this.logger.info('Closed + graduated expired polls', {
-      attempted: pending.length,
+      attempted: due.length,
       graduated,
-      autoCloseDays: this.autoCloseDays,
+      globalAutoCloseDays: this.autoCloseDays,
     });
   }
 }

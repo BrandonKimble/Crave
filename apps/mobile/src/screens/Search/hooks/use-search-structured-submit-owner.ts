@@ -1,9 +1,11 @@
 import React from 'react';
 
-import type { NaturalSearchRequest, SearchResponse } from '../../../types';
+import type { Coordinate, NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { SearchRequestCacheStatus, StructuredSearchRequest } from '../../../services/search';
+import type { FavoriteListType } from '../../../services/favorite-lists';
 import { logger } from '../../../utils';
 import type { SegmentValue } from '../constants/search';
+import { createFavoritesSubmitIntentPayload } from '../runtime/adapters/favorites-adapter';
 import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
 import { resolveLoadMoreRequestErrorMessage } from './search-submit-runtime-utils';
 import type {
@@ -49,6 +51,8 @@ type UseSearchStructuredSubmitOwnerArgs = {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   logSearchPhase?: (label: string, options?: { reset?: boolean }) => void;
   resetMapMoveFlag: () => void;
+  openNow: boolean;
+  userLocationRef: React.MutableRefObject<Coordinate | null>;
   createRestaurantEntityInitialAttemptConfig: (params: {
     restaurantId: string;
     restaurantName: string;
@@ -119,6 +123,21 @@ type UseSearchStructuredSubmitOwnerArgs = {
     submissionContext?: NaturalSearchRequest['submissionContext'];
     requestBounds: import('../../../types').MapBounds | null;
   }) => boolean;
+  executeFavoritesHydrateAttempt: (params: {
+    listId: string;
+    listType: FavoriteListType;
+    requestId: number;
+    openNow?: boolean;
+    userLocation?: Coordinate | null;
+    startLifecycle: (response: SearchResponse) => boolean;
+  }) => Promise<boolean>;
+  startFavoritesResponseLifecycle: (params: {
+    response: SearchResponse;
+    requestId: number;
+    runtimeTuple: SearchSubmitActiveOperationTuple;
+    targetTab: SegmentValue;
+    submittedLabel: string;
+  }) => boolean;
   startShortcutInitialResponseLifecycle: (params: {
     response: SearchResponse;
     requestId: number;
@@ -155,6 +174,8 @@ export const useSearchStructuredSubmitOwner = ({
   setError,
   logSearchPhase = () => {},
   resetMapMoveFlag,
+  openNow,
+  userLocationRef,
   createRestaurantEntityInitialAttemptConfig,
   createShortcutStructuredInitialAttemptConfig,
   createShortcutStructuredAppendAttemptConfig,
@@ -169,6 +190,8 @@ export const useSearchStructuredSubmitOwner = ({
   startEntityStructuredResponseLifecycle,
   startShortcutInitialResponseLifecycle,
   startShortcutAppendResponseLifecycle,
+  executeFavoritesHydrateAttempt,
+  startFavoritesResponseLifecycle,
 }: UseSearchStructuredSubmitOwnerArgs) => {
   const executeRestaurantEntityInitialAttempt = React.useCallback(
     async ({
@@ -517,12 +540,97 @@ export const useSearchStructuredSubmitOwner = ({
     submittedQuery,
   ]);
 
+  // A favorites launch is "a natural search whose data SOURCE is the favorites
+  // endpoint instead of /search". It runs through the SAME managed request +
+  // structured response lifecycle as the shortcut/natural paths (marker pipeline,
+  // staged reveal lanes, readiness gates all fire identically) — it just fetches
+  // the SearchResponse from favoriteListsService.getListResults rather than runSearch.
+  const launchFavoritesListResults = React.useCallback(
+    async (params: { listId: string; listType: FavoriteListType; submittedLabel: string }) => {
+      logSearchPhase('launchFavorites:start', { reset: true });
+      const targetTab: SegmentValue =
+        params.listType === 'dish' ? 'dishes' : 'restaurants';
+      resetMapMoveFlag();
+      await runManagedRequestAttempt({
+        mode: 'favorites',
+        submitPayload: createFavoritesSubmitIntentPayload({
+          listId: params.listId,
+          listType: params.listType,
+          submittedLabel: params.submittedLabel,
+        }),
+        finalizeReason: 'favorites_finalized_without_response_lifecycle',
+        shouldAbortPresentationIntent: true,
+        abortPresentationIntent: onPresentationIntentAbort,
+        setError,
+        onError: (err) => {
+          logger.error('Favorites list results request failed', {
+            message: err instanceof Error ? err.message : 'unknown error',
+            listId: params.listId,
+          });
+        },
+        resolveFailure: () => ({
+          idleStatePatch: {
+            isMapActivationDeferred: false,
+          },
+          uiErrorMessage: null,
+        }),
+        executeAttempt: async ({ requestId, tuple }) => {
+          prepareSearchRequestForegroundUi({
+            kind: 'initial_search',
+            mode: 'natural',
+            preserveSheetState: false,
+            transitionFromDockedPolls: false,
+            targetTab,
+            submittedLabel: params.submittedLabel,
+            shouldResetPagination: true,
+            logLabel: 'launchFavorites',
+            entrySurface: 'home',
+          });
+          logSearchPhase('launchFavorites:runRequest');
+          return executeFavoritesHydrateAttempt({
+            listId: params.listId,
+            listType: params.listType,
+            requestId,
+            openNow,
+            userLocation: userLocationRef.current,
+            startLifecycle: (response) =>
+              startFavoritesResponseLifecycle({
+                response,
+                requestId,
+                runtimeTuple: tuple,
+                targetTab,
+                submittedLabel: params.submittedLabel,
+              }),
+          });
+        },
+      });
+    },
+    [
+      executeFavoritesHydrateAttempt,
+      logSearchPhase,
+      onPresentationIntentAbort,
+      openNow,
+      prepareSearchRequestForegroundUi,
+      resetMapMoveFlag,
+      runManagedRequestAttempt,
+      setError,
+      startFavoritesResponseLifecycle,
+      userLocationRef,
+    ]
+  );
+
   return React.useMemo(
     () => ({
       runRestaurantEntitySearch,
       submitViewportShortcut,
       loadMoreShortcutResults,
+      launchFavoritesListResults,
     }),
-    [loadMoreShortcutResults, submitViewportShortcut, runRestaurantEntitySearch]
+    [
+      launchFavoritesListResults,
+      loadMoreShortcutResults,
+      submitViewportShortcut,
+      runRestaurantEntitySearch,
+    ]
   );
 };

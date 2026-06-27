@@ -1,6 +1,12 @@
 import React from 'react';
 import { View } from 'react-native';
-import Animated from 'react-native-reanimated';
+import Animated, {
+  type SharedValue,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { SceneStackBodyContentLayer, SceneStackBodyFrame } from './BottomSheetSceneStackBodyLayer';
 import { SceneStackDecorLayer, SceneStackHeaderLayer } from './BottomSheetSceneStackDecorLayers';
@@ -39,10 +45,40 @@ import { useSearchSurfaceRuntimeSelector } from '../screens/Search/runtime/surfa
 
 const PERSISTENT_ROUTE_SCENE_STACK_KEYS: readonly OverlayKey[] = APP_ROUTE_SCENE_INPUT_KEYS;
 
-const resolveSceneStackStaticVisibility = (
+// ── Overlap crossfade ────────────────────────────────────────────────────────
+// Every scene is a co-mounted absolute-fill sibling toggled by opacity (not
+// display:none). The overlap engine drives a shared `transitionProgress` (0 =
+// outgoing fully shown, 1 = incoming fully shown) and arbitrates each scene
+// FRAME's opacity by its role. Because the frame wraps the scene's body AND its
+// chrome, animating the frame opacity crossfades the whole page in one ramp.
+type SceneStackLegRole = 'incoming' | 'outgoing' | 'idle';
+
+type SceneStackTransitionDisplayValue = {
+  transitionProgress: SharedValue<number>;
+  effectiveOutgoing: OverlayKey | null;
+  effectiveIncoming: OverlayKey | null;
+};
+
+const SceneStackTransitionDisplayContext =
+  React.createContext<SceneStackTransitionDisplayValue | null>(null);
+
+const resolveSceneStackLegRole = (
   sceneKey: OverlayKey,
-  displayedSceneKey: OverlayKey | null
-): boolean => sceneKey === (displayedSceneKey ?? 'search');
+  ctx: SceneStackTransitionDisplayValue | null
+): SceneStackLegRole => {
+  if (ctx == null) {
+    return 'idle';
+  }
+  // A same-scene re-entry (outgoing === incoming) resolves to 'incoming' at full
+  // opacity — no out-and-back self-flicker (regression hole #1, render side).
+  if (sceneKey === ctx.effectiveIncoming) {
+    return 'incoming';
+  }
+  if (sceneKey === ctx.effectiveOutgoing) {
+    return 'outgoing';
+  }
+  return 'idle';
+};
 
 const areChromeSurfaceEntriesEqual = (
   left: BottomSheetSceneStackChromeEntry | null,
@@ -244,6 +280,10 @@ export const BottomSheetSceneStackHost = ({
   onScrollHeaderLayout,
   scrollHeaderSyncStyle,
   displayedSceneKey,
+  outgoingSceneKey,
+  incomingSceneKey,
+  contentTransitionToken,
+  onContentSettleComplete,
   bodyRuntimeAuthority,
   sheetYValue,
 }: BottomSheetSceneStackHostProps) => {
@@ -261,6 +301,10 @@ export const BottomSheetSceneStackHost = ({
       onScrollHeaderLayout={onScrollHeaderLayout}
       scrollHeaderSyncStyle={scrollHeaderSyncStyle}
       displayedSceneKey={displayedSceneKey}
+      outgoingSceneKey={outgoingSceneKey}
+      incomingSceneKey={incomingSceneKey}
+      contentTransitionToken={contentTransitionToken}
+      onContentSettleComplete={onContentSettleComplete}
       bodyRuntimeAuthority={bodyRuntimeAuthority}
       sheetYValue={sheetYValue}
     />
@@ -342,6 +386,7 @@ const SceneStackBodyFrameHost = React.memo(
     sceneKey,
     displayedSceneKey,
     onHeaderLayout,
+    headerDividerScrollOffset,
     children,
   }: Pick<
     SceneStackBodyLayerHostProps,
@@ -351,15 +396,41 @@ const SceneStackBodyFrameHost = React.memo(
     | 'displayedSceneKey'
   > &
     Pick<BottomSheetSceneStackHostProps, 'onHeaderLayout'> & {
+      headerDividerScrollOffset?: SharedValue<number>;
       children: React.ReactNode;
     }) => {
     useSearchNavSwitchCommitAttribution(`SceneStackBodyFrameHost:${sceneKey}`);
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
     const onProfilerRender = useSearchOverlayProfilerRender();
-    const isVisible = resolveSceneStackStaticVisibility(sceneKey, displayedSceneKey);
-    const sceneVisibilityStyle = isVisible
-      ? styles.sceneStackBodyLayerVisible
-      : styles.sceneStackBodyLayerHidden;
+    const transitionDisplay = React.useContext(SceneStackTransitionDisplayContext);
+    const legRole = resolveSceneStackLegRole(sceneKey, transitionDisplay);
+    const transitionProgress = transitionDisplay?.transitionProgress ?? null;
+    const animatedLegOpacityStyle = useAnimatedStyle(() => {
+      'worklet';
+      if (transitionProgress == null) {
+        return { opacity: legRole === 'idle' ? 0 : 1 };
+      }
+      const p = transitionProgress.value;
+      return {
+        opacity: legRole === 'incoming' ? p : legRole === 'outgoing' ? 1 - p : 0,
+      };
+    }, [legRole, transitionProgress]);
+    const sceneVisibilityStyle = React.useMemo(
+      () => [
+        legRole === 'idle'
+          ? styles.sceneStackBodyLayerHidden
+          : styles.sceneStackBodyLayerVisible,
+        animatedLegOpacityStyle,
+      ],
+      [legRole, animatedLegOpacityStyle]
+    );
+    // Touch arbitration: ONLY the 'incoming' leg (the destination / settled displayed scene)
+    // receives touches. Both crossfade legs render at the same zIndex:2 absolute-fill, so a
+    // fully-transparent 'outgoing' leg whose DOM index is HIGHER than the incoming (e.g. a
+    // high-index pollDetail/profile fading out over a low-index restaurant/search) would paint
+    // ON TOP and swallow taps for the whole ramp. Gate pointerEvents off JS legRole (it cannot
+    // be animated in a worklet) so the leaving/hidden legs never intercept.
+    const legPointerEvents: 'auto' | 'none' = legRole === 'incoming' ? 'auto' : 'none';
     const pageBody =
       sceneKey === 'search' ? (
         children
@@ -403,11 +474,16 @@ const SceneStackBodyFrameHost = React.memo(
             />
           }
           onHeaderLayout={onHeaderLayout}
+          headerDividerScrollOffset={headerDividerScrollOffset}
         />
       );
 
     const frameHost = (
-      <SceneStackBodyFrame sceneKey={sceneKey} visibilityStyle={sceneVisibilityStyle}>
+      <SceneStackBodyFrame
+        sceneKey={sceneKey}
+        visibilityStyle={sceneVisibilityStyle}
+        pointerEvents={legPointerEvents}
+      >
         {pageBody}
       </SceneStackBodyFrame>
     );
@@ -433,6 +509,7 @@ const SceneStackBodyFrameHost = React.memo(
     previousProps.sceneKey === nextProps.sceneKey &&
     previousProps.displayedSceneKey === nextProps.displayedSceneKey &&
     previousProps.onHeaderLayout === nextProps.onHeaderLayout &&
+    previousProps.headerDividerScrollOffset === nextProps.headerDividerScrollOffset &&
     previousProps.children === nextProps.children
 );
 
@@ -603,6 +680,27 @@ const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps)
   useSearchNavSwitchCommitAttribution(`SceneStackBodyLayerHost:${props.sceneKey}`);
   const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
   const onProfilerRender = useSearchOverlayProfilerRender();
+  // Parity with the result sheet (SearchResultsPageBundleHost): feed the body's scroll
+  // offset to the generic page frame so it renders the same scroll-fade header divider.
+  // The offset is a stable SharedValue, so re-selecting it here adds no render churn.
+  const sceneBodyRuntimeAuthority = props.bodyRuntimeAuthority.getSceneBodyRuntimeAuthority(
+    props.sceneKey
+  );
+  const headerDividerScrollOffset = useRouteAuthoritySelector({
+    subscribe: React.useCallback(
+      (listener: () => void) => sceneBodyRuntimeAuthority.subscribe(listener),
+      [sceneBodyRuntimeAuthority]
+    ),
+    getSnapshot: sceneBodyRuntimeAuthority.getSnapshot,
+    selector: React.useCallback(
+      (snapshot: BottomSheetSceneStackBodyRuntimeSnapshot) =>
+        snapshot.bodyScrollRuntime?.scrollOffset ?? null,
+      []
+    ),
+    isEqual: (a: SharedValue<number> | null, b: SharedValue<number> | null) => a === b,
+    attributionOwner: 'SceneStackBodyLayerHost',
+    attributionOperation: `dividerScrollOffset:${props.sceneKey}`,
+  });
   const contentLayer = React.useMemo(
     () => (
       <SceneStackBodyContentLayerHost
@@ -621,6 +719,7 @@ const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps)
       sceneStackSurfaceAuthority={props.sceneStackSurfaceAuthority}
       displayedSceneKey={props.displayedSceneKey}
       onHeaderLayout={props.onHeaderLayout}
+      headerDividerScrollOffset={headerDividerScrollOffset ?? undefined}
     >
       {contentLayer}
     </SceneStackBodyFrameHost>
@@ -653,7 +752,6 @@ type SceneStackChromeLayerHostProps = Pick<
 
 const SceneStackChromeLayerHost = React.memo(
   ({
-    displayedSceneKey,
     sceneStackSurfaceAuthority,
     sceneKey,
     surface,
@@ -663,7 +761,11 @@ const SceneStackChromeLayerHost = React.memo(
     const onProfilerRender = useSearchOverlayProfilerRender();
     const scenePresentationAuthority =
       sceneStackSurfaceAuthority.getScenePresentationAuthority(sceneKey);
-    const isVisible = resolveSceneStackStaticVisibility(sceneKey, displayedSceneKey);
+    // Keep the chrome rendered for BOTH crossfade legs (outgoing + incoming) so
+    // the scene frame's opacity ramp drives the chrome crossfade too; only fully
+    // hide it for idle scenes. (The frame wraps body + chrome — one ramp.)
+    const transitionDisplay = React.useContext(SceneStackTransitionDisplayContext);
+    const isVisible = resolveSceneStackLegRole(sceneKey, transitionDisplay) !== 'idle';
     const chromePresentation = useRouteAuthoritySelector({
       subscribe: React.useCallback(
         (listener: () => void) => scenePresentationAuthority.subscribe(listener),
@@ -729,6 +831,10 @@ const ActiveSceneStackSurfaceHost = React.memo(
   ({
     bodyRuntimeAuthority,
     displayedSceneKey,
+    outgoingSceneKey,
+    incomingSceneKey,
+    contentTransitionToken,
+    onContentSettleComplete,
     onHeaderLayout,
     onScrollHeaderLayout,
     routeSceneDisplayTargetRegistry,
@@ -762,7 +868,62 @@ const ActiveSceneStackSurfaceHost = React.memo(
     const effectiveDisplayedSceneKey: OverlayKey | null = shouldDisplaySearchSurface
       ? 'search'
       : displayedSceneKey;
+    const isTransitioning = outgoingSceneKey != null && outgoingSceneKey !== incomingSceneKey;
+    // Per-leg search-surface override: ONLY the outgoing (frozen-results) leg may be
+    // relabeled to 'search'; the incoming leg keeps its real key so it crossfades in.
+    const effectiveOutgoing: OverlayKey | null =
+      outgoingSceneKey == null
+        ? null
+        : searchSurfaceOwnsVisibleSheet &&
+            (outgoingSceneKey === 'search' || outgoingSceneKey === 'polls')
+          ? 'search'
+          : outgoingSceneKey;
+    const effectiveIncoming: OverlayKey | null = isTransitioning
+      ? incomingSceneKey
+      : effectiveDisplayedSceneKey;
+    const transitionProgress = useSharedValue(1);
+    // Stable, ref-backed bridge so the ramp's onFinish never re-fires the layout effect
+    // (and thus never re-ramps / wiggles) when the callback identity moves. The callback
+    // IS stable today (bound once in the provider), but the ref keeps that guarantee local.
+    const onContentSettleCompleteRef = React.useRef(onContentSettleComplete);
+    onContentSettleCompleteRef.current = onContentSettleComplete;
+    const runContentSettleComplete = React.useCallback((token: number) => {
+      onContentSettleCompleteRef.current(token);
+    }, []);
+    React.useLayoutEffect(() => {
+      // Clock-only ramp keyed to the content-transition token. Reset-then-ramp in a
+      // layout effect (pre-paint) so the first frame shows the outgoing at full
+      // opacity, never a one-frame snap to the incoming. On ramp-end (finished), settle the
+      // overlap 'content' plane via runOnJS so interactivity is restored when the incoming
+      // page reveals — the controller CONTENT_SETTLE_TIMEOUT is now a true fallback guard.
+      if (contentTransitionToken == null) {
+        // Token not yet armed. If a transition is PENDING (outgoing differs from incoming — e.g.
+        // the forward-open PRE-PUBLISH hold, where the target shell hasn't landed and the feed is
+        // held as the outgoing), hold at 0 so the OUTGOING leg stays FULL opacity (1-0=1) and the
+        // held feed body doesn't blink to 0 before the ramp arms. Otherwise (idle/settled, lone
+        // displayed leg) hold at 1.
+        transitionProgress.value =
+          effectiveOutgoing != null && effectiveOutgoing !== effectiveIncoming ? 0 : 1;
+        return;
+      }
+      const settleToken = contentTransitionToken;
+      transitionProgress.value = 0;
+      transitionProgress.value = withTiming(1, { duration: 250 }, (finished) => {
+        'worklet';
+        // Only a ramp that ran to completion settles the plane. A token change mid-ramp
+        // resets transitionProgress to 0 (cancelling this animation → finished=false), so the
+        // superseded leg is skipped and only the live token's ramp-end completes the plane.
+        if (finished) {
+          runOnJS(runContentSettleComplete)(settleToken);
+        }
+      });
+    }, [contentTransitionToken, transitionProgress, runContentSettleComplete, effectiveOutgoing, effectiveIncoming]);
+    const transitionDisplayValue = React.useMemo<SceneStackTransitionDisplayValue>(
+      () => ({ transitionProgress, effectiveOutgoing, effectiveIncoming }),
+      [transitionProgress, effectiveOutgoing, effectiveIncoming]
+    );
     const surfaceHost = (
+      <SceneStackTransitionDisplayContext.Provider value={transitionDisplayValue}>
       <View pointerEvents="box-none" style={shadowShellStyle}>
         <Animated.View pointerEvents="box-none" style={[styles.sceneStackSurface, surfaceStyle]}>
           <View style={styles.contentHost}>
@@ -800,6 +961,7 @@ const ActiveSceneStackSurfaceHost = React.memo(
           </View>
         </Animated.View>
       </View>
+      </SceneStackTransitionDisplayContext.Provider>
     );
 
     const profiledSurfaceHost = onProfilerRender ? (
@@ -821,6 +983,10 @@ const ActiveSceneStackSurfaceHost = React.memo(
   (previousProps, nextProps) =>
     previousProps.bodyRuntimeAuthority === nextProps.bodyRuntimeAuthority &&
     previousProps.displayedSceneKey === nextProps.displayedSceneKey &&
+    previousProps.outgoingSceneKey === nextProps.outgoingSceneKey &&
+    previousProps.incomingSceneKey === nextProps.incomingSceneKey &&
+    previousProps.contentTransitionToken === nextProps.contentTransitionToken &&
+    previousProps.onContentSettleComplete === nextProps.onContentSettleComplete &&
     previousProps.onHeaderLayout === nextProps.onHeaderLayout &&
     previousProps.onScrollHeaderLayout === nextProps.onScrollHeaderLayout &&
     previousProps.sheetYValue === nextProps.sheetYValue &&
@@ -842,6 +1008,10 @@ const ActiveSceneStackHostLayers = ({
   onScrollHeaderLayout,
   scrollHeaderSyncStyle,
   displayedSceneKey,
+  outgoingSceneKey,
+  incomingSceneKey,
+  contentTransitionToken,
+  onContentSettleComplete,
   bodyRuntimeAuthority,
   sheetYValue,
 }: BottomSheetSceneStackHostProps) => {
@@ -860,6 +1030,10 @@ const ActiveSceneStackHostLayers = ({
       scrollHeaderComponent={scrollHeaderComponent}
       scrollHeaderSyncStyle={scrollHeaderSyncStyle}
       displayedSceneKey={displayedSceneKey}
+      outgoingSceneKey={outgoingSceneKey}
+      incomingSceneKey={incomingSceneKey}
+      contentTransitionToken={contentTransitionToken}
+      onContentSettleComplete={onContentSettleComplete}
       sheetYValue={sheetYValue}
     />
   );

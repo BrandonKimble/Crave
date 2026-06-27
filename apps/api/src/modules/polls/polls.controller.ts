@@ -20,6 +20,7 @@ import {
 } from './dto/create-comment.dto';
 import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
+import { CheckPollDuplicateDto } from './dto/check-poll-duplicate.dto';
 import { EndorsePollSubjectDto } from './dto/endorse-poll-subject.dto';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { OptionalClerkAuthGuard } from '../identity/auth/optional-clerk-auth.guard';
@@ -50,6 +51,13 @@ export class PollsController {
   @UseGuards(ClerkAuthGuard)
   createPoll(@Body() dto: CreatePollDto, @CurrentUser() user: User) {
     return this.pollsService.createPoll(dto, user.userId);
+  }
+
+  // Stage-1 creation dedup — fast text-similarity check before any LLM resolution.
+  @Post('check-duplicate')
+  @UseGuards(OptionalClerkAuthGuard)
+  checkDuplicate(@Body() dto: CheckPollDuplicateDto) {
+    return this.pollsService.checkDuplicate(dto);
   }
 
   @Get('me')

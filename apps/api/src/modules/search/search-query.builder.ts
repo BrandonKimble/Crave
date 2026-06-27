@@ -80,6 +80,7 @@ interface MinimumVotesPayload extends Record<string, unknown> {
 
 interface ParsedFilters {
   restaurantIds: string[];
+  connectionIds: string[];
   restaurantAttributeIds: string[];
   foodIds: string[];
   foodTextExpansionIds: string[];
@@ -259,6 +260,7 @@ ranked_restaurants AS (
     fr.price_level,
     fr.price_level_updated_at,
     prs.display_score AS crave_score,
+    prs.percentile_rank AS crave_score_exact,
     prs.score_delta_7d,
     prs.score_info,
     'restaurant'::text AS score_subject_type,
@@ -301,7 +303,7 @@ ranked_restaurants AS (
   SELECT fr.entity_id AS restaurant_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
          ${activeMarketKey ? `'${activeMarketKey}'` : 'NULL'}::varchar(255) AS market_key, fr.restaurant_metadata,
          fr.price_level, fr.price_level_updated_at,
-         prs.display_score AS crave_score, prs.score_delta_7d, prs.score_info,
+         prs.display_score AS crave_score, prs.percentile_rank AS crave_score_exact, prs.score_delta_7d, prs.score_info,
          'restaurant'::text AS score_subject_type, fr.entity_id AS score_subject_id,
          COALESCE(rvt.total_upvotes, 0) AS total_upvotes, COALESCE(rvt.total_mentions, 0) AS total_mentions,
          sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.region, sl.country, sl.postal_code, sl.phone_number, sl.website_url, sl.hours, sl.utc_offset_minutes, sl.time_zone, sl.is_primary, sl.last_polled_at, sl.created_at AS location_created_at, sl.updated_at AS location_updated_at,
@@ -567,6 +569,7 @@ filtered_connections AS (
     c.total_upvotes,
     c.last_mentioned_at,
     pcs.display_score AS connection_crave_score,
+    pcs.percentile_rank AS connection_crave_score_exact,
     pcs.score_delta_7d AS connection_score_delta_7d,
     pcs.score_info AS connection_score_info,
     'connection'::text AS score_subject_type,
@@ -579,6 +582,7 @@ filtered_connections AS (
     fr.name AS restaurant_name,
     fr.aliases AS restaurant_aliases,
     prs.display_score AS restaurant_crave_score,
+    prs.percentile_rank AS restaurant_crave_score_exact,
     prs.score_delta_7d AS restaurant_score_delta_7d,
     prs.score_info AS restaurant_score_info,
     fr.price_level AS restaurant_price_level,
@@ -608,13 +612,13 @@ filtered_connections AS (
     const filteredConnectionsCtePreview = `
 filtered_connections AS (
   SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.last_mentioned_at,
-         pcs.display_score AS connection_crave_score, pcs.score_delta_7d AS connection_score_delta_7d, pcs.score_info AS connection_score_info,
+         pcs.display_score AS connection_crave_score, pcs.percentile_rank AS connection_crave_score_exact, pcs.score_delta_7d AS connection_score_delta_7d, pcs.score_info AS connection_score_info,
          'connection'::text AS score_subject_type, c.connection_id AS score_subject_id,
          f.name AS food_name, f.aliases AS food_aliases, ${
            activeMarketKey ? `'${activeMarketKey}'` : 'NULL'
          }::varchar(255) AS market_key,
          fr.entity_id AS restaurant_entity_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
-         prs.display_score AS restaurant_crave_score, prs.score_delta_7d AS restaurant_score_delta_7d, prs.score_info AS restaurant_score_info,
+         prs.display_score AS restaurant_crave_score, prs.percentile_rank AS restaurant_crave_score_exact, prs.score_delta_7d AS restaurant_score_delta_7d, prs.score_info AS restaurant_score_info,
          fr.price_level AS restaurant_price_level, fr.price_level_updated_at AS restaurant_price_level_updated_at,
          sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.hours, sl.utc_offset_minutes, sl.time_zone
   FROM core_restaurant_items c
@@ -710,6 +714,10 @@ LIMIT ${pagination.take};`.trim();
       restaurantIds: this.collectEntityIds(
         plan.restaurantFilters,
         EntityScope.RESTAURANT,
+      ),
+      connectionIds: this.collectEntityIds(
+        connectionFilters,
+        EntityScope.CONNECTION,
       ),
       restaurantAttributeIds: this.collectEntityIds(
         plan.restaurantFilters,
@@ -919,6 +927,17 @@ LIMIT ${pagination.take};`.trim();
     const conditions: Prisma.Sql[] = [];
     const conditionPreview: string[] = [];
     let minimumVotesApplied = false;
+
+    // First-class inbound connection filter (favorites dish lists hydrate exact
+    // connection IDs). Mirrors the excludeConnectionIds column + ANY style.
+    if (filters.connectionIds.length) {
+      conditions.push(
+        this.buildInClause('c.connection_id', filters.connectionIds),
+      );
+      conditionPreview.push(
+        `c.connection_id = ANY(${this.formatUuidArray(filters.connectionIds)})`,
+      );
+    }
 
     const shouldOrPrimaryFoodAttributeEvidence =
       filters.foodAttributePrimary &&
@@ -1399,6 +1418,7 @@ public_restaurant_scores AS (
   SELECT
     subject_id,
     display_score,
+    percentile_rank,
     score_delta_7d,
     jsonb_build_object(
       'confidenceLabel',
@@ -1415,7 +1435,7 @@ public_restaurant_scores AS (
 
     const preview = `
 public_restaurant_scores AS (
-  SELECT subject_id, display_score, score_delta_7d,
+  SELECT subject_id, display_score, percentile_rank, score_delta_7d,
          jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on community evidence.') AS score_info
   FROM core_public_entity_scores
   WHERE subject_type = 'restaurant'
@@ -1433,6 +1453,7 @@ public_connection_scores AS (
   SELECT
     subject_id,
     display_score,
+    percentile_rank,
     score_delta_7d,
     jsonb_build_object(
       'confidenceLabel',
@@ -1449,7 +1470,7 @@ public_connection_scores AS (
 
     const preview = `
 public_connection_scores AS (
-  SELECT subject_id, display_score, score_delta_7d,
+  SELECT subject_id, display_score, percentile_rank, score_delta_7d,
          jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on community evidence.') AS score_info
   FROM core_public_entity_scores
   WHERE subject_type = 'connection'
@@ -1556,19 +1577,23 @@ location_aggregates AS (
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     if (normalized.includes('rising')) {
       return {
-        sql: Prisma.sql`fc.connection_score_delta_7d DESC NULLS LAST, fc.connection_crave_score ${Prisma.raw(
+        sql: Prisma.sql`fc.connection_score_delta_7d DESC NULLS LAST, fc.connection_crave_score_exact ${Prisma.raw(
+          direction,
+        )}, fc.connection_crave_score ${Prisma.raw(
           direction,
         )}, fc.total_upvotes ${Prisma.raw(
           direction,
         )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`,
-        preview: `fc.connection_score_delta_7d DESC NULLS LAST, fc.connection_crave_score ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
+        preview: `fc.connection_score_delta_7d DESC NULLS LAST, fc.connection_crave_score_exact ${direction}, fc.connection_crave_score ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
       };
     }
     return {
-      sql: Prisma.sql`fc.connection_crave_score ${Prisma.raw(direction)}, fc.total_upvotes ${Prisma.raw(
+      // HIGH-PRECISION: connection_crave_score_exact (percentile_rank) leads so map pins order by the true
+      // score, not the rounded display value; display score + upvotes + mention + id are stable tiebreaks.
+      sql: Prisma.sql`fc.connection_crave_score_exact ${Prisma.raw(direction)}, fc.connection_crave_score ${Prisma.raw(direction)}, fc.total_upvotes ${Prisma.raw(
         direction,
       )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`,
-      preview: `fc.connection_crave_score ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
+      preview: `fc.connection_crave_score_exact ${direction}, fc.connection_crave_score ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
     };
   }
 
@@ -1581,17 +1606,22 @@ location_aggregates AS (
     if (normalized.includes('rising')) {
       return {
         sql: Prisma.sql`prs.score_delta_7d DESC NULLS LAST,
+      prs.percentile_rank ${Prisma.raw(direction)},
       prs.display_score ${Prisma.raw(direction)},
       COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
       fr.entity_id ASC`,
-        preview: `prs.score_delta_7d DESC NULLS LAST, prs.display_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
+        preview: `prs.score_delta_7d DESC NULLS LAST, prs.percentile_rank ${direction}, prs.display_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
       };
     }
     return {
-      sql: Prisma.sql`prs.display_score ${Prisma.raw(direction)},
+      // HIGH-PRECISION CRAVE ORDER: percentile_rank (Decimal(6,5)) is the primary key so near-ties that round
+      // to the same display_score (Decimal(5,1)) order deterministically by their true score; display_score is
+      // a harmless secondary, then a stable id. This is what makes the map badge == the results-list position.
+      sql: Prisma.sql`prs.percentile_rank ${Prisma.raw(direction)},
+      prs.display_score ${Prisma.raw(direction)},
       COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
       fr.entity_id ASC`,
-      preview: `prs.display_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
+      preview: `prs.percentile_rank ${direction}, prs.display_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
     };
   }
 

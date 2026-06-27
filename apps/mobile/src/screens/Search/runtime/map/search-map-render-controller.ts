@@ -270,6 +270,10 @@ export type SearchMapRenderControllerEvent =
       instanceId: string;
       markerKeys: string[];
       markerCount: number;
+      // The native LIVE promoted set (top-N by rank of the on-screen subset). Used to bake the label-
+      // collision obstacle from CURRENT promotion (not publish-time) so labels yield to pins promoted
+      // mid-zoom (#16) — native emits it; previously the TS type dropped it.
+      nativePromotedKeys: string[];
       catalogCount: number;
       zoom: number;
       bearing: number;
@@ -654,6 +658,12 @@ const MODULE_NAME = 'SearchMapRenderController';
 const nativeModule = NativeModules[MODULE_NAME] as
   | SearchMapRenderControllerNativeModule
   | undefined;
+
+// Map-LOD v5: the native engine owns pin opacity via feature-state, so the JS source builder must NOT bake
+// nativeLodOpacity=1 (the reveal seed) — a baked 1 paints a pin FULL before the engine value applies, causing
+// the reveal twitch + the zoom-out group-snap-at-full. Read the native constant synchronously at load.
+export const LOD_V5_ENABLED: boolean =
+  (nativeModule as { lodV5Enabled?: boolean } | undefined)?.lodV5Enabled === true;
 
 const nativeEmitter =
   nativeModule != null ? new NativeEventEmitter(nativeModule as never) : undefined;

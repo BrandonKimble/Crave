@@ -314,11 +314,6 @@ const SearchMountedResultsListTarget = React.memo(
       bodyDefaults.resolvedKeyboardShouldPersistTaps;
     const sceneKeyboardDismissMode =
       sceneBodyTransport.keyboardDismissMode ?? bodyDefaults.resolvedKeyboardDismissMode;
-    const sceneBounces = sceneBodyTransport.bounces ?? bodyDefaults.resolvedBounces;
-    const sceneAlwaysBounceVertical =
-      sceneBodyTransport.alwaysBounceVertical ?? bodyDefaults.resolvedAlwaysBounceVertical;
-    const sceneOverScrollMode =
-      sceneBodyTransport.overScrollMode ?? bodyDefaults.resolvedOverScrollMode;
     const sceneContentContainerStyle = React.useMemo(
       () =>
         sanitizeContentContainerStyle(
@@ -473,9 +468,6 @@ const SearchMountedResultsListTarget = React.memo(
           onEndReachedThreshold={sceneBodyContent.onEndReachedThreshold}
           showsVerticalScrollIndicator={bodyDefaults.effectiveShowsVerticalScrollIndicator}
           keyboardDismissMode={sceneKeyboardDismissMode}
-          bounces={sceneBounces}
-          alwaysBounceVertical={sceneAlwaysBounceVertical}
-          overScrollMode={sceneOverScrollMode}
           testID={
             activeListTransport?.testID ?? sceneBodyTransport.testID ?? bodyDefaults.resolvedTestID
           }

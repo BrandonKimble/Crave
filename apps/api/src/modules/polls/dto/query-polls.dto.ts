@@ -7,7 +7,12 @@ import {
   IsString,
   ValidateNested,
 } from 'class-validator';
-import { PollListState } from './list-polls.dto';
+import {
+  PollListSort,
+  PollListState,
+  PollListTime,
+  PollListType,
+} from './list-polls.dto';
 
 class CoordinateDto {
   @IsNumber()
@@ -47,4 +52,16 @@ export class QueryPollsDto {
   @IsOptional()
   @IsEnum(PollListState)
   state?: PollListState;
+
+  @IsOptional()
+  @IsEnum(PollListSort)
+  sort?: PollListSort;
+
+  @IsOptional()
+  @IsEnum(PollListType)
+  type?: PollListType;
+
+  @IsOptional()
+  @IsEnum(PollListTime)
+  time?: PollListTime;
 }

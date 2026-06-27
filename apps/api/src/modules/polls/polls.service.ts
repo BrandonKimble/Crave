@@ -20,7 +20,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { ModerationService } from '../moderation/moderation.service';
 import { PollsGateway } from './polls.gateway';
-import { ListPollsQueryDto } from './dto/list-polls.dto';
+import {
+  ListPollsQueryDto,
+  PollListSort,
+  PollListTime,
+  PollListType,
+} from './dto/list-polls.dto';
 import { ListUserPollsDto, UserPollActivity } from './dto/list-user-polls.dto';
 import { CreateCommentDto, EditCommentDto } from './dto/create-comment.dto';
 import {
@@ -30,6 +35,7 @@ import {
 import { MarketRegistryService } from '../markets/market-registry.service';
 import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
+import { CheckPollDuplicateDto } from './dto/check-poll-duplicate.dto';
 import { UserEventService } from '../identity/user-event.service';
 import { UserStatsService } from '../identity/user-stats.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
@@ -38,7 +44,50 @@ import {
   EntityTextSearchService,
   type EntitySpan,
 } from '../entity-text-search/entity-text-search.service';
-import { resolvePollClosesAt } from './poll-timing';
+import {
+  DEFAULT_USER_POLL_WINDOW_DAYS,
+  MS_PER_DAY,
+  clampUserPollWindowDays,
+  extractCloseWindowDays,
+  resolvePollClosesAt,
+} from './poll-timing';
+
+// Stage-1 dedup threshold: high (precision-favoring) so only obvious duplicate
+// questions are surfaced — "best tacos" vs "best taco truck" should NOT collide;
+// the precise entity-level dedup runs post-resolution (stage 3).
+const POLL_DUPLICATE_SIMILARITY_THRESHOLD = 0.6;
+
+// Per-user soft cap (§5): a creator may start at most this many polls per market in a
+// rolling window. Comments/discussion are never capped. App/seeded polls don't count
+// (they have no `createdByUserId`).
+const POLL_USER_WEEKLY_CAP = 2;
+const POLL_USER_WEEKLY_CAP_WINDOW_DAYS = 7;
+
+// Trending = decayed distinct-user engagement velocity (votes + comments), the same
+// half-life "heat" model used elsewhere for trending. Each distinct engager counts
+// once at their most-recent engagement (spam-resistant), weighted e^(−ln2/halfLife·age).
+const POLL_TRENDING_HALF_LIFE_DAYS = 3;
+
+/** Map the §6 Type filter to a `PollMode` where-filter (null = All = no filter). */
+function resolvePollModeFilter(type: PollListType | undefined): PollMode | null {
+  switch (type) {
+    case PollListType.polls:
+      return PollMode.ranked;
+    case PollListType.discussions:
+      return PollMode.discussion;
+    default:
+      return null;
+  }
+}
+
+const POLL_THIS_WEEK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Map the §6 Time filter to a `launchedAt >=` cutoff (null = All Time = no filter). */
+function resolvePollTimeCutoff(time: PollListTime | undefined): Date | null {
+  return time === PollListTime.this_week
+    ? new Date(Date.now() - POLL_THIS_WEEK_WINDOW_MS)
+    : null;
+}
 
 @Injectable()
 export class PollsService {
@@ -64,6 +113,25 @@ export class PollsService {
     const targetState =
       (query.state as PollState | undefined) ?? PollState.active;
     const targetMarketKey = query.marketKey ?? null;
+    const sort = query.sort ?? PollListSort.new;
+    // Type filter (§6): All = no mode filter; Polls = ranked; Discussions = discussion.
+    const targetMode = resolvePollModeFilter(query.type);
+    // Time filter (§6): This Week = launched within 7d; All Time = no cutoff.
+    const launchedAfter = resolvePollTimeCutoff(query.time);
+
+    // Top/Trending are engagement-ordered (computed in SQL); New keeps the simple
+    // chronological orderBy. For the engagement sorts we resolve the ordered poll ids
+    // first, then hydrate them preserving that order.
+    const orderedPollIds =
+      sort === PollListSort.new
+        ? null
+        : await this.resolveEngagementOrderedPollIds(
+            targetState,
+            targetMarketKey,
+            sort,
+            targetMode,
+            launchedAfter,
+          );
 
     const polls = await this.prisma.poll.findMany({
       where: {
@@ -71,8 +139,13 @@ export class PollsService {
           ? { equals: targetMarketKey, mode: 'insensitive' }
           : undefined,
         state: targetState,
+        ...(targetMode ? { mode: targetMode } : {}),
+        ...(launchedAfter ? { launchedAt: { gte: launchedAfter } } : {}),
+        ...(orderedPollIds ? { pollId: { in: orderedPollIds } } : {}),
       },
-      orderBy: [{ launchedAt: 'desc' }, { scheduledFor: 'desc' }],
+      orderBy: orderedPollIds
+        ? undefined
+        : [{ launchedAt: 'desc' }, { scheduledFor: 'desc' }],
       include: {
         topic: {
           select: {
@@ -91,8 +164,69 @@ export class PollsService {
       take: 25,
     });
 
-    const enriched = await this.attachMarketLabels(polls, targetMarketKey);
+    const ordered = orderedPollIds
+      ? orderedPollIds
+          .map((id) => polls.find((poll) => poll.pollId === id))
+          .filter((poll): poll is (typeof polls)[number] => poll != null)
+      : polls;
+
+    const enriched = await this.attachMarketLabels(ordered, targetMarketKey);
     return this.attachPollStats(enriched, viewerUserId);
+  }
+
+  /**
+   * Engagement-ordered poll ids for the Top/Trending sorts. Both build on distinct-
+   * user engagement (a vote OR comment), counted once per user at their most-recent
+   * action — so one user can't inflate a poll. Top = total distinct engagers;
+   * Trending = the same engagers weighted by recency ("heat", half-life
+   * POLL_TRENDING_HALF_LIFE_DAYS) so recent momentum dominates. Polls with no
+   * engagement fall to the bottom (heat/engagers = 0).
+   */
+  private async resolveEngagementOrderedPollIds(
+    state: PollState,
+    marketKey: string | null,
+    sort: PollListSort,
+    mode: PollMode | null,
+    launchedAfter: Date | null,
+  ): Promise<string[]> {
+    const orderExpr =
+      sort === PollListSort.trending
+        ? Prisma.sql`heat DESC, p.launched_at DESC NULLS LAST`
+        : Prisma.sql`engagers DESC, p.launched_at DESC NULLS LAST`;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ poll_id: string }>
+    >(Prisma.sql`
+      WITH engagement AS (
+        SELECT poll_id, user_id, MAX(ts) AS last_ts
+        FROM (
+          SELECT poll_id, user_id, created_at AS ts FROM poll_endorsements
+          UNION ALL
+          SELECT poll_id, user_id, logged_at AS ts FROM poll_comments WHERE deleted_at IS NULL
+        ) events
+        GROUP BY poll_id, user_id
+      )
+      SELECT p.poll_id,
+             COALESCE(
+               SUM(
+                 EXP(
+                   -LN(2) / ${POLL_TRENDING_HALF_LIFE_DAYS}::float8
+                   * (EXTRACT(EPOCH FROM (NOW() - en.last_ts)) / 86400.0)
+                 )
+               ),
+               0
+             ) AS heat,
+             COUNT(en.user_id) AS engagers
+      FROM polls p
+      LEFT JOIN engagement en ON en.poll_id = p.poll_id
+      WHERE p.state::text = ${state}
+        AND (${marketKey}::text IS NULL OR p.market_key ILIKE ${marketKey})
+        AND (${mode}::text IS NULL OR p.mode::text = ${mode}::text)
+        AND (${launchedAfter}::timestamptz IS NULL OR p.launched_at >= ${launchedAfter}::timestamptz)
+      GROUP BY p.poll_id, p.launched_at
+      ORDER BY ${orderExpr}
+      LIMIT 25
+    `);
+    return rows.map((row) => row.poll_id);
   }
 
   async queryPolls(query: QueryPollsDto, viewerUserId?: string | null) {
@@ -149,6 +283,9 @@ export class PollsService {
       {
         marketKey: marketKey ?? undefined,
         state: query.state,
+        sort: query.sort,
+        type: query.type,
+        time: query.time,
       },
       viewerUserId,
     );
@@ -177,7 +314,76 @@ export class PollsService {
     };
   }
 
+  /**
+   * Stage-1 creation dedup (the volume valve): a fast `word_similarity` match of the
+   * free-text question against ACTIVE polls in the same market — no LLM. Precision-
+   * favoring (high threshold) so only obvious duplicates surface; the precise
+   * entity-level dedup happens post-resolution inside createPoll (stage 3).
+   */
+  async checkDuplicate(
+    dto: CheckPollDuplicateDto,
+  ): Promise<{
+    matches: Array<{ pollId: string; question: string; similarity: number }>;
+  }> {
+    const question = dto.question.trim();
+    const marketKey = dto.marketKey?.trim() ?? null;
+    if (!marketKey || question.length < 3) {
+      return { matches: [] };
+    }
+    const rows = await this.prisma.$queryRaw<
+      Array<{ poll_id: string; question: string; sim: number }>
+    >(Prisma.sql`
+      SELECT poll_id, question,
+             word_similarity(${question}, question) AS sim
+      FROM polls
+      WHERE state::text = 'active'
+        AND market_key = ${marketKey}
+        AND word_similarity(${question}, question) >= ${POLL_DUPLICATE_SIMILARITY_THRESHOLD}
+      ORDER BY sim DESC, launched_at DESC NULLS LAST
+      LIMIT 3
+    `);
+    return {
+      matches: rows.map((row) => ({
+        pollId: row.poll_id,
+        question: row.question,
+        similarity: Number((Number(row.sim) || 0).toFixed(2)),
+      })),
+    };
+  }
+
+  /**
+   * Per-user soft cap (§5): block a creator who has already started
+   * `POLL_USER_WEEKLY_CAP` polls in this market within the rolling window. Scoped by
+   * market; skipped when no market is provided (can't scope the cap). Throws a clear
+   * BadRequest so the client can show the "you've used your polls this week" message.
+   */
+  private async enforceWeeklyPollCap(
+    userId: string,
+    marketKey: string | null,
+  ): Promise<void> {
+    if (!marketKey) {
+      return;
+    }
+    const windowStart = new Date(
+      Date.now() - POLL_USER_WEEKLY_CAP_WINDOW_DAYS * MS_PER_DAY,
+    );
+    const recentCount = await this.prisma.poll.count({
+      where: {
+        createdByUserId: userId,
+        marketKey: { equals: marketKey, mode: 'insensitive' },
+        launchedAt: { gte: windowStart },
+      },
+    });
+    if (recentCount >= POLL_USER_WEEKLY_CAP) {
+      throw new BadRequestException(
+        `You've used your ${POLL_USER_WEEKLY_CAP} polls this week in this market. ` +
+          `Try again in a few days, or jump into an existing discussion.`,
+      );
+    }
+  }
+
   async createPoll(dto: CreatePollDto, userId: string) {
+    await this.enforceWeeklyPollCap(userId, dto.marketKey?.trim() ?? null);
     if (dto.question?.trim()) {
       return this.createPollFromQuestion(dto.question.trim(), dto, userId);
     }
@@ -339,6 +545,10 @@ export class PollsService {
           metadata: {
             source: 'user',
             createdBy: userId,
+            // §5: the creator's self-scheduled close window (clamped 3–14, default 7).
+            closeWindowDays:
+              clampUserPollWindowDays(dto.closeWindowDays) ??
+              DEFAULT_USER_POLL_WINDOW_DAYS,
           },
         },
       });
@@ -529,6 +739,14 @@ export class PollsService {
         scheduledFor: now,
         launchedAt: now,
         createdByUserId: userId,
+        metadata: {
+          source: 'user',
+          createdBy: userId,
+          // §5: the creator's self-scheduled close window (clamped 3–14, default 7).
+          closeWindowDays:
+            clampUserPollWindowDays(dto.closeWindowDays) ??
+            DEFAULT_USER_POLL_WINDOW_DAYS,
+        },
       },
       include: {
         topic: {
@@ -1677,7 +1895,12 @@ export class PollsService {
         endorserCount: stats.endorserCount,
         closesAt:
           poll.state === PollState.active
-            ? resolvePollClosesAt(poll.launchedAt)
+            ? resolvePollClosesAt(
+                poll.launchedAt,
+                extractCloseWindowDays(
+                  (poll as { metadata?: unknown }).metadata,
+                ),
+              )
             : null,
         topCandidates: candidatesByPoll.get(poll.pollId) ?? [],
         creator: {

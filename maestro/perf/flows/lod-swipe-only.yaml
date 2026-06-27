@@ -1,0 +1,35 @@
+appId: com.brandonkimble.cravesearch
+---
+# Swipe-only storm — assumes a search is ALREADY loaded (do not close/re-search).
+# Big multi-direction finger swipes to repro "invisible after lots of panning" (#11)
+# and dot-under-pin (#13). No launchApp, no close: attaches to current state.
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_start&label=lod_swipe_only'
+- repeat:
+    times: 8
+    commands:
+      - swipe:
+          start: 30%, 35%
+          end: 72%, 28%
+          duration: 450
+      - swipe:
+          start: 72%, 28%
+          end: 28%, 40%
+          duration: 450
+      - swipe:
+          start: 50%, 45%
+          end: 52%, 18%
+          duration: 420
+      - swipe:
+          start: 52%, 18%
+          end: 48%, 46%
+          duration: 420
+      - swipe:
+          start: 34%, 22%
+          end: 68%, 42%
+          duration: 450
+      - swipe:
+          start: 68%, 42%
+          end: 32%, 20%
+          duration: 450
+- openLink: 'crave://perf-scenario-mark?phase=measured_repeat_loop_end&label=lod_swipe_only'
+- waitForAnimationToEnd: { timeout: 5000 }

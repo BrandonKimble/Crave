@@ -24,6 +24,13 @@ export type SearchForegroundSubmitRuntime = Pick<
   'submitSearch' | 'runRestaurantEntitySearch' | 'submitViewportShortcut' | 'rerunActiveSearch'
 >;
 
+// The favorites launch is driven from the launch-intent runtime (not the
+// command/submit runtimes), so it is typed separately rather than added to the
+// shared submit-runtime Pick above.
+export type SearchForegroundLaunchFavoritesListResults = ReturnType<
+  typeof useSearchSubmitOwner
+>['launchFavoritesListResults'];
+
 export type SearchForegroundHistoryRuntime = Pick<
   ReturnType<typeof useSearchHistory>,
   'updateLocalRecentSearches'
@@ -66,6 +73,8 @@ export type SearchForegroundLaunchIntentRuntimeArgs = {
   activeMainIntent: LaunchIntent;
   consumeActiveMainIntent: () => void;
   openRestaurantProfilePreview: SearchForegroundOpenRestaurantProfilePreview;
+  launchFavoritesListResults: SearchForegroundLaunchFavoritesListResults;
+  prepareSearchSessionEntry: (options?: { captureOrigin?: boolean }) => void;
   currentMarketKey?: string | null;
 };
 

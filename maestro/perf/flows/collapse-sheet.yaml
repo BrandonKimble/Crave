@@ -1,0 +1,8 @@
+appId: com.brandonkimble.cravesearch
+---
+# Collapse the results sheet to expose the map for visual inspection.
+- swipe:
+    start: 50%, 16%
+    end: 50%, 92%
+    duration: 500
+- waitForAnimationToEnd: { timeout: 2500 }

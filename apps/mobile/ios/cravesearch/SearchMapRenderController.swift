@@ -380,16 +380,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       set { dotRuntime.lastDesiredCollection = newValue }
     }
 
-    var livePinTransitionsByMarkerKey: [String: LivePinTransition] {
-      get { pinRuntime.liveTransitionsByMarkerKey }
-      set { pinRuntime.liveTransitionsByMarkerKey = newValue }
-    }
-
-    var liveDotTransitionsByMarkerKey: [String: LiveDotTransition] {
-      get { dotRuntime.liveTransitionsByMarkerKey }
-      set { dotRuntime.liveTransitionsByMarkerKey = newValue }
-    }
-
     var markerRenderStateByMarkerKey: [String: MarkerFamilyRenderState] {
       get { pinRuntime.markerRenderStateByMarkerKey }
       set { pinRuntime.markerRenderStateByMarkerKey = newValue }
@@ -405,12 +395,10 @@ final class SearchMapRenderController: RCTEventEmitter {
   private struct PinFamilyRuntimeState {
     var lastDesiredSnapshot: DesiredPinSnapshotState = DesiredPinSnapshotState()
     var markerRenderStateByMarkerKey: [String: MarkerFamilyRenderState] = [:]
-    var liveTransitionsByMarkerKey: [String: LivePinTransition] = [:]
   }
 
   private struct DotFamilyRuntimeState {
     var lastDesiredCollection: ParsedFeatureCollection
-    var liveTransitionsByMarkerKey: [String: LiveDotTransition] = [:]
   }
 
   private struct LabelFamilyObservationState {
@@ -504,30 +492,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     var isDesiredPresent: Bool
     var currentOpacity: Double
     var targetOpacity: Double
-  }
-
-  private struct LivePinTransition {
-    var startOpacity: Double
-    var targetOpacity: Double
-    var startedAtMs: Double
-    var durationMs: Double
-    var isAwaitingSourceCommit: Bool
-    var awaitingSourceDataId: String?
-    var hasAppliedTargetState: Bool
-    var lodZ: Int
-    var orderHint: Int
-  }
-
-  private struct LiveDotTransition {
-    var startOpacity: Double
-    var targetOpacity: Double
-    var startedAtMs: Double
-    var durationMs: Double
-    var isAwaitingSourceCommit: Bool
-    var awaitingSourceDataId: String?
-    var hasAppliedTargetState: Bool
-    var dotFeature: Feature
-    var orderHint: Int
   }
 
   private struct LabelTapHitboxConfig {
@@ -685,6 +649,27 @@ final class SearchMapRenderController: RCTEventEmitter {
     // it and reuse on the native_lod path; any data-change reconcile (non-native_lod) refreshes it.
     var cachedDesiredDotCollection: ParsedFeatureCollection?
     var cachedDesiredDotResidentCount: Int = -1
+    // Same cache for the pin/label FAMILY PAYLOADS: the resident features (pin art, interaction box,
+    // name labels, label-collision box) don't change on an LOD promote/demote (that's feature-state
+    // opacity only) — yet makeDesiredMarkerFamilyPayloads rebuilt all ~500 every native_lod frame
+    // (driveMs ~35ms/frame = the choppy starvation). Cache + reuse on native_lod; any data-change
+    // reconcile refreshes it. Guarded by the resident count so a membership change always rebuilds.
+    var cachedDesiredMarkerFamilyPayloads: DesiredMarkerFamilyPayloads?
+    var cachedDesiredFamilyResidentCount: Int = -1
+    // And the pin SNAPSHOT — its O(~500) revision loop + per-member label sub-hashes is the dominant
+    // driveMs/choppy cost (buildMs~27ms/frame), yet on native_lod the membership + feature revisions are
+    // stable (only the promoted SET changes). The reconcile's snapshot is consumed only by
+    // updateLivePinTransitions (needs pinIdsInOrder/promotedMarkerKeys/pinLodZ) — so reuse the cached
+    // membership snapshot and just refresh promotedMarkerKeys. Count-guarded; data-change reconcile rebuilds.
+    var cachedDesiredPinSnapshot: DesiredPinSnapshotState?
+    var cachedDesiredPinSnapshotResidentCount: Int = -1
+    // Map-LOD v5 single-authority engine (only used when SearchMapRenderController.lodV5Enabled). Fed the
+    // ranked catalog on setCandidateCatalog; decided on camera frames; stepped on the display link.
+    var lodV5Engine: LodEngine?
+    // Map-LOD v5 FM#3: promote∪demote delta from the last decide() that changed promotion membership. The
+    // camera handler drains it to reseed the invisible label-collision obstacle (so labels yield to the LIVE
+    // promoted pins). Carried on state because decide() runs with `state` inout; applied after commit.
+    var lodV5ObstacleReseedKeys: Set<String> = []
   }
 
   private struct SlowActionWindowState {
@@ -826,10 +811,10 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var labelObservationRefreshWorkItems: [String: DispatchWorkItem] = [:]
   private var presentationOpacityAnimators: [String: PresentationOpacityAnimator] = [:]
   private var livePinTransitionAnimators: [String: CADisplayLink] = [:]
+  // Map-LOD v5 (plans/lod-v5-architecture.md): per-instance wall-clock of the last engine.step tick, so
+  // CONVERGE gets a real frame delta (dtSeconds). Only used when SearchMapRenderController.lodV5Enabled.
+  private var lastV5StepMsByInstance: [String: Double] = [:]
   private var lastVisualDiagByInstance: [String: String] = [:]
-  // Harness: last [lodev] step emit time, for the per-frame render-cadence (jank) delta.
-  private var lastHarnessStepMs: Double = 0
-  private var lastHarnessRenderQueryMs: Double = 0
   private var slowActionWindowsByInstanceAndScope: [String: SlowActionWindowState] = [:]
   private var nativeApplyAttributionEnabled = false
   private var nativeApplyAttributionStartedAtMs: Double?
@@ -862,12 +847,18 @@ final class SearchMapRenderController: RCTEventEmitter {
   private let deferredDismissSourceCleanupDelayMs = 760
   private let revealPrerollPlacementOpacity = 0.001
   private static let searchLabelsZAnchorLayerId = "search-labels-z-anchor-layer"
-  // Keep native LOD enter/exit fades aligned with the shared pin fade contract in search-map.tsx.
-  private let livePinTransitionDurationMs = 300.0
 
   @objc
   override static func requiresMainQueueSetup() -> Bool {
     true
+  }
+
+  // Expose the v5 flag to JS (read synchronously via NativeModules at load) so the JS source builder bakes
+  // nativeLodOpacity=0 for ALL pins under v5 — the engine owns opacity via feature-state, and a baked 1 (the
+  // JS reveal-seed) is what made revealed/re-entering pins flash FULL before the engine value applied (the
+  // reveal twitch + the zoom-out group-snap-at-full). Under v4 the baked role is still needed, so it stays 1.
+  override func constantsToExport() -> [AnyHashable: Any]! {
+    ["lodV5Enabled": Self.lodV5Enabled]
   }
 
   override func supportedEvents() -> [String]! {
@@ -1324,6 +1315,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       self?.labelObservationRefreshWorkItems[instanceId] = nil
       self?.cancelPresentationOpacityAnimation(instanceId: instanceId)
       self?.cancelLivePinTransitionAnimation(instanceId: instanceId)
+      // Map-LOD v5: drop the per-instance step/re-assert timing so a reused instanceId can't read a stale
+      // lastV5StepMs (which would collapse a fresh fade into a near-instant jump on the first tick).
+      self?.lastV5StepMsByInstance[instanceId] = nil
       let mapTag = self?.instances[instanceId]?.mapTag
       self?.instances.removeValue(forKey: instanceId)
       self?.slowActionWindowsByInstanceAndScope = self?.slowActionWindowsByInstanceAndScope.filter {
@@ -1384,6 +1378,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.candidateCatalog = catalog
       // Force the next camera tick to re-emit the on-screen set against the new catalog.
       state.lastVisibleMarkerSetSignature = nil
+      // v5: feed the single-authority engine the ranked catalog (atomic full rebuild). The ranking must be
+      // ascending by rank so prefix(budget) == the true top-N. (When the JS catalog is unified to sort by
+      // Crave score, that rank == the badge — the one-rank decision; until then this verifies the mechanism.)
+      if Self.lodV5Enabled {
+        let ranked = catalog
+          .sorted { $0.rank < $1.rank }
+          .map { LodEngine.Anchor(markerKey: $0.markerKey, coordinate: $0.coordinate, rank: $0.rank) }
+        var engine = state.lodV5Engine ?? LodEngine()
+        engine.setRanking(ranked)
+        state.lodV5Engine = engine
+      }
       self.instances[instanceId] = state
       resolve(["catalogCount": catalog.count])
     }
@@ -2900,6 +2905,22 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.highlightedRestaurantId = nextHighlightedRestaurantId
     instances[instanceId] = state
     try applyHighlightedMarkerState(for: state, instanceId: instanceId)
+    // TAP-TO-PROMOTE: a tapped marker is a forced key the engine promotes regardless of rank, appended AFTER
+    // the budget set (decide()'s forcedKeys) — so a tapped dot becomes pin #(budget+1): no re-rank, no
+    // displacement, budget untouched (exactly the intended model). BUT decide() only runs when the on-screen
+    // SET changes, so a tap alone never fired it — the promotion waited for the next camera move. Re-run the
+    // projection NOW: clear the signature so the decide guard passes (mirrors the catalog path @1432), then
+    // kick the CONVERGE link + obstacle reseed like the camera handler, so a tapped dot fades up to a pin
+    // immediately. (A tapped pin is already promoted → decide is a no-op for it; only its color changes.) v5.
+    if Self.lodV5Enabled, var nextState = instances[instanceId],
+       let handle = currentResolvedMapHandle(for: nextState.mapTag) {
+      nextState.lastVisibleMarkerSetSignature = nil
+      _ = projectAndEmitOnScreenMarkers(
+        instanceId: instanceId, state: &nextState, handle: handle, reason: "highlight_change", isMoving: false)
+      instances[instanceId] = nextState
+      updateLivePinTransitionAnimation(instanceId: instanceId, state: nextState)
+      applyV5ObstacleReseed(for: instanceId)
+    }
   }
 
   private func applyInteractionModePayload(
@@ -3568,14 +3589,24 @@ final class SearchMapRenderController: RCTEventEmitter {
 
     let markerTraversalStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
     for (markerKey, renderState) in orderedMarkerStates {
-      let placementPrerollOpacity = Self.sourceFeatureOpacityForPlacementPreroll(
-        renderState: renderState,
-        state: state
-      )
+      // v5 (single authority): bake the source `['get']` opacity FALLBACK to 0 — the v5 baseline — so the
+      // LodEngine's feature-state fade-from-0 is the SOLE opacity authority. v4 re-baked the preroll/settled
+      // opacity (=1 for a promoted pin) into the source, clobbering the JS reveal-seed's bake-0, so a NEW
+      // promotion painted FULL via the `['get']` fallback for ~1 frame before the engine faded it in — a
+      // group-snap on every data-change publish. Resident markers are unaffected (their engine feature-state
+      // overrides the bake); only brand-new features use the fallback, and 0 = "start as a dot, engine fades".
+      let placementPrerollOpacity = Self.lodV5Enabled
+        ? 0
+        : Self.sourceFeatureOpacityForPlacementPreroll(
+            renderState: renderState,
+            state: state
+          )
       nextPinFeatureIdsByGroup[markerKey] = [markerKey]
       if dirtyPinMarkerKeys.contains(markerKey) {
         let rewriteStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
-        let settledPinOpacity = Self.clamp(renderState.targetOpacity, min: 0, max: 1)
+        // v5: bake 0 (see the placementPrerollOpacity note above) — the engine owns the fade-in from 0; the
+        // v4 settled target (=1 for a promoted pin) clobbered the reveal-seed bake-0 → snap-to-full on publish.
+        let settledPinOpacity = Self.lodV5Enabled ? 0 : Self.clamp(renderState.targetOpacity, min: 0, max: 1)
         let renderFeature = Self.featureBySettingNumericProperties(
           renderState.pinFeature,
           numericProperties: [
@@ -3595,7 +3626,10 @@ final class SearchMapRenderController: RCTEventEmitter {
         var featureState: [String: Any] = [:]
         if let transientFeatureState = pinFamilyState.transientFeatureStateById[markerKey] {
           featureState = Self.mergedFeatureState(featureState, with: transientFeatureState)
-        } else if abs(renderState.currentOpacity - renderState.targetOpacity) >= 0.001 {
+        } else if !Self.lodV5Enabled && abs(renderState.currentOpacity - renderState.targetOpacity) >= 0.001 {
+          // v4 only: seed the in-flight opacity for a NEW marker the engine hasn't stepped yet. Under v5 the
+          // engine is the sole writer — leave featureState empty; the source bake-0 (B2) paints it as a dot
+          // until the engine fades it in. (Writing v4 currentOpacity here clobbered the engine = snap/stuck.)
           featureState = Self.mergedFeatureState(
             featureState,
             with: Self.livePinFeatureState(opacity: renderState.currentOpacity)
@@ -3911,41 +3945,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     mutationSummaryBySourceId: [String: MutationSummary],
     state: inout InstanceState
   ) {
-    var shouldStartMountedHiddenPinTransitions = false
-    for pinSourceId in prepared.pinSourceIds {
-      let pinMutationSummary = mutationSummaryBySourceId[pinSourceId] ?? MutationSummary(
-        addCount: 0,
-        updateCount: 0,
-        removeCount: 0,
-        dataId: nil,
-        addedFeatureIds: []
-      )
-      if pinMutationSummary.dataId == nil && !pinMutationSummary.addedFeatureIds.isEmpty {
-        shouldStartMountedHiddenPinTransitions = true
-      }
-      guard let dataId = pinMutationSummary.dataId, !pinMutationSummary.addedFeatureIds.isEmpty else {
-        continue
-      }
-      var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
-      for featureId in pinMutationSummary.addedFeatureIds {
-        guard var transition = pinFamilyState.livePinTransitionsByMarkerKey[featureId],
-              transition.isAwaitingSourceCommit
-        else {
-          continue
-        }
-        transition.awaitingSourceDataId = dataId
-        pinFamilyState.livePinTransitionsByMarkerKey[featureId] = transition
-      }
-      Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
-    }
-    if shouldStartMountedHiddenPinTransitions {
-      startAwaitingLivePinTransitions(
-        instanceId: instanceId,
-        dataId: nil,
-        reason: "baseline_source_replace",
-        state: &state
-      )
-    }
+    // v5: the engine owns pin opacity/crossfades. The v4 source-commit "await" plumbing
+    // (matching added features to in-flight transitions) is gone; nothing to do post-batch.
   }
 
   private static func nextScopedGroupOrder(
@@ -4018,6 +4019,15 @@ final class SearchMapRenderController: RCTEventEmitter {
           !(familyState.collection.groupedFeatureIdsByGroup[$0]?.isEmpty ?? true)
         }
       : []
+    // CHOPPY FAST-PATH (2026-06-22): when retaining and EVERY affected marker is already resident (a
+    // pure role/opacity flip during motion — no first-promote add, no remove), the source DATA is
+    // identical; only feature-state opacity changes, which the CADisplayLink stepper owns separately.
+    // The rest of this function would rebuild the whole desired collection (O(groupOrder), thousands of
+    // feature-id copies) only to discover it's unchanged — that is the per-role-flip driveMs spike that
+    // made pan/zoom choppy. Skip it: an empty plan list means "no source mutation," exactly correct.
+    if retainResidentDemotes && retainedDemoteKeys.count == affectedMarkerKeys.count {
+      return []
+    }
     var desiredGroupOrder = familyState.collection.groupOrder.filter {
       !affectedMarkerKeys.contains($0) || retainedDemoteKeys.contains($0)
     }
@@ -4244,6 +4254,14 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
     let directLabelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
     let directRenderStates = directPinFamilyState.markerRenderStateByMarkerKey
+    // #16 LABEL-OVER-PIN FIX: the pin collision OBSTACLE (which makes name-labels yield to pins) filters on
+    // the BAKED `nativeLodOpacity` property (Mapbox filters can't read feature-state), which JS only bakes at
+    // PUBLISH. Native LOD promotes via feature-state during zoom WITHOUT republishing, so a pin promoted
+    // mid-zoom kept baked nativeLodOpacity=0 → no obstacle → labels overlapped it. Here, where we rebuild the
+    // collision feature per affected marker, stamp the LIVE promoted role onto nativeLodOpacity so the obstacle
+    // tracks native-LOD promotion. The collision source is invisible + separate from the pin BUNDLE source, so
+    // re-tiling it doesn't wiggle visible pins — it only re-runs label collision (the intended effect).
+    let livePinnedSetForCollision = Set(state.markerRoleTable.pinnedMarkerKeysInOrder)
     let shouldAttributeScopedPrep = nativeApplyAttributionEnabled
     let scopedPrepPhase = state.lastPresentationBatchPhase
     let makeScopedAttributionRecorder: (String) -> ((_ section: String, _ durationMs: Double, _ operationCount: Int) -> Void)? = { source in
@@ -4275,10 +4293,18 @@ final class SearchMapRenderController: RCTEventEmitter {
       guard let renderState = directRenderStates[markerKey] else {
         continue
       }
-      let placementPrerollOpacity = Self.sourceFeatureOpacityForPlacementPreroll(
-        renderState: renderState,
-        state: state
-      )
+      // v5 (single authority): bake the source `['get']` opacity FALLBACK to 0 — the v5 baseline — so the
+      // LodEngine's feature-state fade-from-0 is the SOLE opacity authority. v4 re-baked the preroll/settled
+      // opacity (=1 for a promoted pin) into the source, clobbering the JS reveal-seed's bake-0, so a NEW
+      // promotion painted FULL via the `['get']` fallback for ~1 frame before the engine faded it in — a
+      // group-snap on every data-change publish. Resident markers are unaffected (their engine feature-state
+      // overrides the bake); only brand-new features use the fallback, and 0 = "start as a dot, engine fades".
+      let placementPrerollOpacity = Self.lodV5Enabled
+        ? 0
+        : Self.sourceFeatureOpacityForPlacementPreroll(
+            renderState: renderState,
+            state: state
+          )
       let pinSourceOpacity = Self.clamp(placementPrerollOpacity, min: 0, max: 1)
       let pinFeature = Self.featureBySettingNumericProperties(
         renderState.pinFeature,
@@ -4300,7 +4326,10 @@ final class SearchMapRenderController: RCTEventEmitter {
         exitingPinSourceOpacityRiskCount += 1
       }
       var pinFeatureState = directPinFamilyState.transientFeatureStateById[markerKey] ?? [:]
+      // v4 only (see prepareDerived note): under v5 the engine is the sole opacity writer — don't seed a v4
+      // currentOpacity for new markers (it clobbered the engine's mid-fade → snap/stuck). Bake-0 covers it.
       if pinFeatureState.isEmpty &&
+        !Self.lodV5Enabled &&
         abs(renderState.currentOpacity - renderState.targetOpacity) >= 0.001
       {
         pinFeatureState = Self.livePinFeatureState(opacity: renderState.currentOpacity)
@@ -4369,6 +4398,9 @@ final class SearchMapRenderController: RCTEventEmitter {
           numericProperties: [
             "nativePresentationOpacity": 1,
             "nativeLodZ": Double(renderState.lodZ),
+            // #16: live promoted role → the obstacle filter (`['get','nativeLodOpacity'] > 0.5`) now tracks
+            // native-LOD promotion, not the stale publish-time seed, so labels yield to pins promoted mid-zoom.
+            "nativeLodOpacity": livePinnedSetForCollision.contains(markerKey) ? 1 : 0,
           ]
         )
         directLabelCollisionRecordsByMarkerKey[markerKey] = ParsedTransportFeatureRecord(
@@ -4546,21 +4578,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     return renderState.currentOpacity
   }
 
-  private static func sourceFeatureOpacityForPlacementPreroll(
-    desiredFeatureIsPresent: Bool,
-    transition: LiveDotTransition?,
-    currentOpacity: Double,
-    state: InstanceState
-  ) -> Double {
-    if state.visualSourceLifecycleState == .preparingReveal &&
-      desiredFeatureIsPresent &&
-      transition?.targetOpacity == 1 &&
-      currentOpacity <= 0.001 {
-      return 1
-    }
-    return currentOpacity
-  }
-
   private static func shouldRenderPinInteraction(
     renderState: MarkerFamilyRenderState,
     state: InstanceState
@@ -4686,40 +4703,20 @@ final class SearchMapRenderController: RCTEventEmitter {
       allowNewTransitions: allowNewTransitions
     )
     let pinTransitionsStartedAt = CACurrentMediaTime() * 1000
-    updateLivePinTransitions(
+    updateMarkerRenderState(
       state: &state,
-      previousPinSnapshot: previousDesiredPinSnapshot,
       desiredPinSnapshot: desiredPinSnapshot,
-      desiredPayloads: desiredMarkerFamilyPayloads,
-      nowMs: nowMs,
-      allowNewTransitions: shouldAnimateIncrementalTransitions
+      desiredPayloads: desiredMarkerFamilyPayloads
     )
     self.recordNativeApply(
       section: "reconcile.update_live_pin_transitions",
       phase: state.lastPresentationBatchPhase,
       durationMs: CACurrentMediaTime() * 1000 - pinTransitionsStartedAt
     )
-    let dotTransitionsStartedAt = CACurrentMediaTime() * 1000
-    updateLiveDotTransitions(
-      state: &state,
-      desiredDots: desiredDots,
-      visibleDotMarkerKeys: Self.visibleDotMarkerKeys(from: desiredDots),
-      nowMs: nowMs,
-      allowNewTransitions: shouldAnimateIncrementalTransitions
-    )
-    self.recordNativeApply(
-      section: "reconcile.update_live_dot_transitions",
-      phase: state.lastPresentationBatchPhase,
-      durationMs: CACurrentMediaTime() * 1000 - dotTransitionsStartedAt
-    )
     // SNAP DETECTOR (full-frame path). viewport_lod LOD changes land here, not the
     // role path. Emits the diagnostic needed to pin the suppression: did the snapshot
     // get reused (opacity flip with unchanged sourceRevision), did any promoted-set
-    // flip happen, and did flips produce transitions or snap.
-    let cfActivePinTransitionKeys =
-      Set(Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).livePinTransitionsByMarkerKey.keys)
-    let cfActiveDotTransitionKeys =
-      Set(Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).liveDotTransitionsByMarkerKey.keys)
+    // flip happen.
     let cfPreviousPromoted = Set(previousDesiredPinSnapshot.pinIdsInOrder)
     let cfNextPromoted = Set(desiredPinSnapshot.pinIdsInOrder)
     let cfFlipKeys = cfPreviousPromoted.symmetricDifference(cfNextPromoted)
@@ -4732,10 +4729,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         "desiredPinCount": desiredPins.idsInOrder.count,
         "promotedPinCount": cfNextPromoted.count,
         "roleFlipCount": cfFlipKeys.count,
-        "silentPinFlipCount": cfFlipKeys.subtracting(cfActivePinTransitionKeys).count,
-        "silentDotFlipCount": cfFlipKeys.subtracting(cfActiveDotTransitionKeys).count,
-        "pinTransitionCreatedCount": cfActivePinTransitionKeys.count,
-        "dotTransitionCreatedCount": cfActiveDotTransitionKeys.count,
         "allowNewTransitions": shouldAnimateIncrementalTransitions,
         "emittedAtMs": Self.nowMs(),
       ])
@@ -4873,14 +4866,11 @@ final class SearchMapRenderController: RCTEventEmitter {
   ) throws -> PreparedDerivedDotOutput {
     var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
     let desiredDotFeatureByMarkerKey = desiredDots.featureById
-    let dotMarkerKeys = Set(desiredDotFeatureByMarkerKey.keys).union(
-      dotFamilyState.liveDotTransitionsByMarkerKey.keys
-    )
-    let orderedDotMarkerKeys = dotMarkerKeys.sorted()
+    // v5: the engine owns dot opacity; there are no live dot transitions, so the desired set IS the dot set.
+    let orderedDotMarkerKeys = Set(desiredDotFeatureByMarkerKey.keys).sorted()
     let dirtyDotMarkerKeys = Set(desiredDots.dirtyGroupIds)
       .union(desiredDots.orderChangedGroupIds)
       .union(desiredDots.removedGroupIds)
-      .union(dotFamilyState.liveDotTransitionsByMarkerKey.keys)
     let reuseDots = dirtyDotMarkerKeys.isEmpty
     let previousDotSourceState = dotFamilyState.sourceState
     let nextDots: ParsedFeatureCollection
@@ -4893,14 +4883,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       var nextDotMarkerKeyByFeatureId = dotFamilyState.collection.markerKeyByFeatureId
       var nextDotIdSet = Set<String>()
       for markerKey in orderedDotMarkerKeys {
-        let transition = dotFamilyState.liveDotTransitionsByMarkerKey[markerKey]
-        let desiredDotFeature = desiredDotFeatureByMarkerKey[markerKey]
-        let transitionDotFeature = transition?.dotFeature
-        let dotOpacity = transition.map { Self.liveDotTransitionOpacity($0, atMs: nowMs) } ?? 1
-        let shouldRenderDot =
-          desiredDotFeature != nil ||
-          (transitionDotFeature != nil && dotOpacity > 0.001)
-        guard shouldRenderDot, let feature = desiredDotFeature ?? transitionDotFeature else {
+        guard let feature = desiredDotFeatureByMarkerKey[markerKey] else {
           continue
         }
         nextDotIdsInOrder.append(markerKey)
@@ -5048,34 +5031,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     mutationSummaryBySourceId: [String: MutationSummary],
     state: inout InstanceState
   ) {
-    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
-    let dotMutationSummary = mutationSummaryBySourceId[prepared.dotSourceId] ?? MutationSummary(
-      addCount: 0,
-      updateCount: 0,
-      removeCount: 0,
-      dataId: nil,
-      addedFeatureIds: []
-    )
-    if dotMutationSummary.dataId == nil && !dotMutationSummary.addedFeatureIds.isEmpty {
-      startAwaitingLiveDotTransitions(
-        instanceId: instanceId,
-        dataId: nil,
-        reason: "baseline_source_replace",
-        state: &state
-      )
-    }
-    if let dataId = dotMutationSummary.dataId, !dotMutationSummary.addedFeatureIds.isEmpty {
-      for featureId in dotMutationSummary.addedFeatureIds {
-        guard var transition = dotFamilyState.liveDotTransitionsByMarkerKey[featureId],
-              transition.isAwaitingSourceCommit
-        else {
-          continue
-        }
-        transition.awaitingSourceDataId = dataId
-        dotFamilyState.liveDotTransitionsByMarkerKey[featureId] = transition
-      }
-      Self.setDerivedFamilyState(dotFamilyState, sourceId: state.dotSourceId, state: &state)
-    }
+    // v5: the engine owns dot opacity (1 - pin). The v4 source-commit "await" plumbing is gone.
   }
 
   private func reconcileAndApplyLiveMarkerRoleOutputs(
@@ -5130,15 +5086,45 @@ final class SearchMapRenderController: RCTEventEmitter {
     // promote/demote is opacity-only (no mutation, no wiggle). The reveal/data-change path keeps the
     // promoted-only membership so the reveal renders exactly as before (no regression).
     let residentMode = reason == "native_lod"
-    let desiredPinSnapshot = Self.makeDesiredPinSnapshotState(
-      roleTable: roleTable,
-      residentMode: residentMode,
-      previousSnapshot: previousDesiredPinSnapshot
-    )
-    let desiredMarkerFamilyPayloads = Self.makeDesiredMarkerFamilyPayloads(
-      roleTable: roleTable,
-      residentMode: residentMode
-    )
+    // CHOPPY FIX: reuse the cached snapshot on native_lod when membership is stable — its consumer
+    // (updateLivePinTransitions) needs only pinIdsInOrder/pinLodZByMarkerKey (membership, stable) +
+    // promotedMarkerKeys (refresh below). Skips the O(~500) revision loop + label sub-hashes (the
+    // dominant buildMs cost). Count-guarded; any data-change reconcile rebuilds. inputRevision is left at
+    // the last full build (the source-apply path computes its own from the derived collection at ~4667;
+    // baked opacity is overridden by the stepper feature-state for rendering).
+    let desiredPinSnapshot: DesiredPinSnapshotState
+    if reason == "native_lod",
+       let cachedSnapshot = state.cachedDesiredPinSnapshot,
+       state.cachedDesiredPinSnapshotResidentCount == residentDotCount {
+      var reused = cachedSnapshot
+      reused.promotedMarkerKeys = Set(roleTable.pinnedMarkerKeysInOrder)
+      desiredPinSnapshot = reused
+    } else {
+      desiredPinSnapshot = Self.makeDesiredPinSnapshotState(
+        roleTable: roleTable,
+        residentMode: residentMode,
+        previousSnapshot: previousDesiredPinSnapshot
+      )
+      state.cachedDesiredPinSnapshot = desiredPinSnapshot
+      state.cachedDesiredPinSnapshotResidentCount = residentDotCount
+    }
+    // Reuse the cached family payloads on the native_lod (gesture) path — the resident FEATURES are
+    // unchanged by an LOD flip (promotion is opacity-only feature-state), so rebuilding all ~500 each
+    // frame was pure waste (the dominant driveMs/choppy cost). Count-guarded; any data-change reconcile
+    // rebuilds + refreshes the cache so it can never go stale across a content change.
+    let desiredMarkerFamilyPayloads: DesiredMarkerFamilyPayloads
+    if reason == "native_lod",
+       let cachedPayloads = state.cachedDesiredMarkerFamilyPayloads,
+       state.cachedDesiredFamilyResidentCount == residentDotCount {
+      desiredMarkerFamilyPayloads = cachedPayloads
+    } else {
+      desiredMarkerFamilyPayloads = Self.makeDesiredMarkerFamilyPayloads(
+        roleTable: roleTable,
+        residentMode: residentMode
+      )
+      state.cachedDesiredMarkerFamilyPayloads = desiredMarkerFamilyPayloads
+      state.cachedDesiredFamilyResidentCount = residentDotCount
+    }
     let nowMs = Self.nowMs()
     let shouldAnimateIncrementalTransitions = Self.allowsIncrementalMarkerTransitions(
       state,
@@ -5157,33 +5143,15 @@ final class SearchMapRenderController: RCTEventEmitter {
       || reason == "pin_transition_complete"
       || state.currentViewportIsMoving
     let pinTransitionStartedAt = CACurrentMediaTime() * 1000
-    updateLivePinTransitions(
+    updateMarkerRenderState(
       state: &state,
-      previousPinSnapshot: previousDesiredPinSnapshot,
       desiredPinSnapshot: desiredPinSnapshot,
-      desiredPayloads: desiredMarkerFamilyPayloads,
-      nowMs: nowMs,
-      allowNewTransitions: shouldAnimateIncrementalTransitions,
-      suppressSourceCommitAwait: retainResidentDemotesFlag
+      desiredPayloads: desiredMarkerFamilyPayloads
     )
     recordNativeApply(
       section: "live_role.update_pin_transitions",
       phase: state.lastPresentationBatchPhase,
       durationMs: CACurrentMediaTime() * 1000 - pinTransitionStartedAt,
-      operationCount: affectedMarkerKeys.count
-    )
-    let dotTransitionStartedAt = CACurrentMediaTime() * 1000
-    updateLiveDotTransitions(
-      state: &state,
-      desiredDots: desiredDots,
-      visibleDotMarkerKeys: Set(roleTable.dotMarkerKeysInOrder),
-      nowMs: nowMs,
-      allowNewTransitions: shouldAnimateIncrementalTransitions
-    )
-    recordNativeApply(
-      section: "live_role.update_dot_transitions",
-      phase: state.lastPresentationBatchPhase,
-      durationMs: CACurrentMediaTime() * 1000 - dotTransitionStartedAt,
       operationCount: affectedMarkerKeys.count
     )
 
@@ -5198,37 +5166,25 @@ final class SearchMapRenderController: RCTEventEmitter {
       return
     }
 
-    let activePinTransitionKeys =
-      Set(Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).livePinTransitionsByMarkerKey.keys)
-    let activeDotTransitionKeys =
-      Set(Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).liveDotTransitionsByMarkerKey.keys)
-    let scopedPinKeys = affectedMarkerKeys.union(activePinTransitionKeys.intersection(affectedMarkerKeys))
-    let scopedDotKeys = affectedMarkerKeys.union(activeDotTransitionKeys.intersection(affectedMarkerKeys))
+    // v5: the engine owns opacity; live transition key sets no longer exist. Scope the
+    // prepared output to the affected markers directly.
+    let scopedPinKeys = affectedMarkerKeys
+    let scopedDotKeys = affectedMarkerKeys
 
-    // SNAP DETECTOR (lod_snap_contract): catches the demotion flash that the
-    // transition-only contract (live_lod_transition_contract) is blind to. A marker
-    // whose promoted/demoted role FLIPPED this reconcile but for which NO live
-    // transition exists afterward changed its opacity with no crossfade — it snapped.
-    // Fires regardless of transition count (the transition contract only emits when
-    // transitions exist, so it reads 0 precisely when the bug is worst). After the
-    // fix every role flip yields a transition → silent*FlipCount == 0.
+    // SNAP DETECTOR (lod_snap_contract): catches the demotion flash. A marker whose
+    // promoted/demoted role FLIPPED this reconcile changed its opacity — the engine now
+    // crossfades it. Emits the role-flip scope for diagnostics.
     let previousPromotedKeys = Set(previousDesiredPinSnapshot.pinIdsInOrder)
     let nextPromotedKeys = Set(desiredPinSnapshot.pinIdsInOrder)
     let roleFlipKeys = previousPromotedKeys
       .symmetricDifference(nextPromotedKeys)
       .intersection(affectedMarkerKeys)
     if !roleFlipKeys.isEmpty {
-      let silentPinFlipKeys = roleFlipKeys.subtracting(activePinTransitionKeys)
-      let silentDotFlipKeys = roleFlipKeys.subtracting(activeDotTransitionKeys)
       emit([
         "type": "lod_snap_contract",
         "instanceId": instanceId,
         "reason": reason,
         "roleFlipCount": roleFlipKeys.count,
-        "silentPinFlipCount": silentPinFlipKeys.count,
-        "silentDotFlipCount": silentDotFlipKeys.count,
-        "pinTransitionCreatedCount": roleFlipKeys.intersection(activePinTransitionKeys).count,
-        "dotTransitionCreatedCount": roleFlipKeys.intersection(activeDotTransitionKeys).count,
         "allowNewTransitions": shouldAnimateIncrementalTransitions,
         "emittedAtMs": Self.nowMs(),
       ])
@@ -5286,36 +5242,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       durationMs: CACurrentMediaTime() * 1000 - batchStartedAt,
       operationCount: preparedPinAndLabelOutput.plans.count + preparedDotOutput.plans.count
     )
-    // HARNESS [lodev] mut event: SOURCE MUTATIONS produced by this reconcile. The design forbids
-    // ANY source add/update/remove during camera motion (LOD must be feature-state-only); only the
-    // CADisplayLink stepper writing opacity feature-state is allowed. If reason==native_lod shows
-    // add/update/remove > 0 while moving, THAT is the jank: each marks the source dirty → Mapbox
-    // re-tiles/re-renders the whole ~220-marker scene off our timing. Broken out per source family.
-    if Self.lodHarnessEnabled {
-      func mut(_ id: String) -> (Int, Int, Int) {
-        let s = mutationSummaryBySourceId[id]
-        return (s?.addCount ?? 0, s?.updateCount ?? 0, s?.removeCount ?? 0)
-      }
-      // pinBundle = where promoted pins+labels+interaction actually RENDER (the "promoted slot"
-      // source). It churns add/remove per promote/demote — the prime source-mutation suspect.
-      let bundle = mut(state.pinBundleSourceId), pinI = mut(state.pinInteractionSourceId)
-      let d = mut(state.dotSourceId), lc = mut(state.labelCollisionSourceId)
-      let total = mutationSummaryBySourceId.values.reduce(0) { $0 + $1.addCount + $1.updateCount + $1.removeCount }
-      // CHOPPY ATTRIBUTION (driveMs breakdown): which reconcile section spikes on a role flip? The
-      // started* are monotonic timestamps; the deltas approximate each section's wall-time.
-      let txMs = pinOutputStartedAt - pinTransitionStartedAt
-      let pinLabelMs = dotOutputStartedAt - pinOutputStartedAt
-      let dotMs = batchStartedAt - dotOutputStartedAt
-      let batchMs = CACurrentMediaTime() * 1000 - batchStartedAt
-      Self.harnessLog(
-        "{\"ev\":\"mut\",\"t\":\(Int(Self.nowMs())),\"reason\":\"\(reason)\","
-          + "\"moving\":\(state.currentViewportIsMoving),\"affected\":\(affectedMarkerKeys.count),\"total\":\(total),"
-          + "\"txMs\":\(String(format: "%.1f", txMs)),\"pinLabelMs\":\(String(format: "%.1f", pinLabelMs)),"
-          + "\"dotMs\":\(String(format: "%.1f", dotMs)),\"batchMs\":\(String(format: "%.1f", batchMs)),"
-          + "\"bundle\":[\(bundle.0),\(bundle.1),\(bundle.2)],\"pinInteraction\":[\(pinI.0),\(pinI.1),\(pinI.2)],"
-          + "\"dot\":[\(d.0),\(d.1),\(d.2)],\"labelCollision\":[\(lc.0),\(lc.1),\(lc.2)]}"
-      )
-    }
     finalizePreparedPinAndLabelOutput(
       instanceId: instanceId,
       prepared: preparedPinAndLabelOutput,
@@ -5879,12 +5805,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         "attempts": attempt - 1,
         "emittedAtMs": Self.nowMs(),
       ])
-      if Self.lodHarnessEnabled {
-        Self.harnessLog(
-          "{\"ev\":\"revealforce\",\"t\":\(Int(Self.nowMs())),\"attempts\":\(attempt - 1),"
-            + "\"labelCount\":\(state.lastLabelCount),\"pinCount\":\(state.lastPinCount)}"
-        )
-      }
       // Start the reveal now that the gate is forced open for this request. Pull a fresh inout copy
       // (the start path mutates state and persists it itself).
       var startState = state
@@ -5977,7 +5897,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.enterLane.entering = mountedHiddenExecutionBatch
     state.currentPresentationRenderPhase = "entering"
     state.visualSourceLifecycleState = .revealing
-    restartLiveEnterTransitionsForRevealStart(instanceId: instanceId, state: &state)
     instances[instanceId] = state
     updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
     state = instances[instanceId] ?? state
@@ -6072,18 +5991,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       instanceId: instanceId,
       message:
         "execution_batch_mounted_hidden phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil") \(Self.phaseSummary(for: state))"
-    )
-    startAwaitingLivePinTransitions(
-      instanceId: instanceId,
-      dataId: nil,
-      reason: "mounted_hidden",
-      state: &state
-    )
-    startAwaitingLiveDotTransitions(
-      instanceId: instanceId,
-      dataId: nil,
-      reason: "mounted_hidden",
-      state: &state
     )
     maybeEmitExecutionBatchArmed(instanceId: instanceId, state: &state)
   }
@@ -6304,10 +6211,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.visualSourceLifecycleState = .visible
     state.keepSourcesHiddenUntilEnter = false
     instances[instanceId] = state
-    // REVEAL PROMOTION (one-shot): projectAndEmitOnScreenMarkers + driveNativeLod normally run
-    // ONLY from handleNativeCameraChanged, which early-returns on an unchanged camera signature.
-    // At reveal the camera is static, so nothing promotes until the user's first touch — pins
-    // appeared late ("only after I touch the map"). Now that the surface is .visible, kick one
+    // REVEAL PROMOTION (one-shot): projectAndEmitOnScreenMarkers (which runs the v5 engine decide)
+    // normally runs ONLY from handleNativeCameraChanged, which early-returns on an unchanged camera
+    // signature. At reveal the camera is static, so nothing promotes until the user's first touch —
+    // pins appeared late ("only after I touch the map"). Now that the surface is .visible, kick one
     // projection+promotion pass here so rank pins promote AT reveal, matching the result cards.
     if let revealHandle = currentResolvedMapHandle(for: state.mapTag) {
       _ = projectAndEmitOnScreenMarkers(
@@ -6318,9 +6225,9 @@ final class SearchMapRenderController: RCTEventEmitter {
         isMoving: false
       )
       instances[instanceId] = state
-      driveNativeLod(instanceId: instanceId)
-      // driveNativeLod mutates instances[instanceId]; refresh the local copy so the settled
-      // diag/emit below reports post-promotion role counts.
+      // (v5: decide() ran inside projectAndEmitOnScreenMarkers above; the camera-change handler
+      // kicks the converge link + obstacle reseed. driveNativeLod was a no-op under v5 and is gone.)
+      // refresh the local copy so the settled diag/emit below reports post-promotion role counts.
       if let promoted = instances[instanceId] {
         state = promoted
       }
@@ -6870,351 +6777,57 @@ final class SearchMapRenderController: RCTEventEmitter {
     ].joined(separator: " ")
   }
 
-  private func updateLivePinTransitions(
+  // Map-LOD v5: produce the per-marker RENDER STATE (the pin + label features the opacity writer paints) from
+  // the desired snapshot. The engine owns opacity; this only carries WHICH features exist. A marker keeps its
+  // render state while it is present OR still fading out (engine opacity > 0) so its name-label fades with it.
+  private func updateMarkerRenderState(
     state: inout InstanceState,
-    previousPinSnapshot: DesiredPinSnapshotState,
     desiredPinSnapshot: DesiredPinSnapshotState,
-    desiredPayloads: DesiredMarkerFamilyPayloads,
-    nowMs: Double,
-    allowNewTransitions: Bool,
-    // SNAP FIX: when the LOD change is native-driven on a RESIDENT source (driveNativeLod —
-    // opacity-only, the pin feature is already present), a promoting pin must NOT wait for a
-    // source commit (there is none during a pan). Awaiting deferred every fade-in to the next
-    // source commit at settle = "pins snap in after the gesture." Suppress the await here.
-    suppressSourceCommitAwait: Bool = false
+    desiredPayloads: DesiredMarkerFamilyPayloads
   ) {
     var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
-    let previousSnapshot = previousPinSnapshot
-    let previousPinIds = Set(previousSnapshot.pinIdsInOrder)
+    var next = pinFamilyState.markerRenderStateByMarkerKey
     let nextPinIds = Set(desiredPinSnapshot.pinIdsInOrder)
-    var nextTransitions = pinFamilyState.livePinTransitionsByMarkerKey
-    var nextMarkerRenderStateByMarkerKey = pinFamilyState.markerRenderStateByMarkerKey
-    let previousOrderByMarkerKey = Dictionary(
-      uniqueKeysWithValues: previousSnapshot.pinIdsInOrder.enumerated().map { ($1, $0) }
+    let orderByMarkerKey = Dictionary(
+      uniqueKeysWithValues: desiredPinSnapshot.pinIdsInOrder.enumerated().map { ($1, $0) }
     )
-    let markerKeys = previousPinIds
-      .union(nextPinIds)
-      .union(nextTransitions.keys)
-      .union(nextMarkerRenderStateByMarkerKey.keys)
-
-    for markerKey in markerKeys {
-      let existing = nextTransitions[markerKey]
-      let existingRenderState = nextMarkerRenderStateByMarkerKey[markerKey]
-      let previousPresent = previousPinIds.contains(markerKey)
+    let keys = nextPinIds.union(next.keys)
+    for markerKey in keys {
+      let existing = next[markerKey]
       let nextPresent = nextPinIds.contains(markerKey)
-      // OPACITY = promoted, MEMBERSHIP = present. In residentMode present==resident (a promote is a
-      // pure opacity flip on a resident marker, no membership change); in non-resident mode
-      // present==promoted so isPromoted==nextPresent (identical to the old behavior). currentOpacity
-      // falls back to the settled feature-state (so a resident-demoted marker promotes from 0, not 1).
       let isPromoted = desiredPinSnapshot.promotedMarkerKeys.contains(markerKey)
-      // currentOpacity must be the pin's ACTUAL painted opacity, read the SAME way the style
-      // coalesces it: feature-state nativeLodOpacity → baked property nativeLodOpacity. Both read
-      // the real value the GPU will paint, so they're flash-safe. The TERMINAL fallback is 0 (NOT
-      // the old `isPromoted ? 1 : 0` guess): a marker we know nothing about is assumed invisible and
-      // always fades TOWARD its target. The old guess asserted a freshly-promoted pin was already at
-      // 1 == targetOpacity → no fade, no feature-state write → it stayed at the baked 0 = invisible
-      // (the dots-only bug). Terminal 0 can never hide a promoted pin; worst case is a harmless 0→1
-      // fade-up, which is exactly what an appearing pin should do.
-      let settledOpacity =
-        Self.numberValue(from: pinFamilyState.sourceState.featureStateById[markerKey]?["nativeLodOpacity"]) ??
-        Self.numberValue(
-          from: (pinFamilyState.collection.featureById[markerKey]?.properties?.turfRawValue as? [String: Any])?["nativeLodOpacity"]
-        ) ??
-        0
-      let currentOpacity =
-        existing.map { Self.livePinTransitionOpacity($0, atMs: nowMs) } ??
-        settledOpacity
-      let targetOpacity = isPromoted ? 1.0 : 0.0
-
-      let pinFeature =
-        desiredPayloads.pinFeatureByMarkerKey[markerKey] ??
-        existingRenderState?.pinFeature
-      let pinFeatureDiffKey =
-        desiredPayloads.pinFeatureDiffKeyByMarkerKey[markerKey] ??
-        existingRenderState?.pinFeatureDiffKey ??
-        markerKey
-      let payloadPinInteraction =
-        desiredPayloads.pinInteractionFeatureByMarkerKey[markerKey] ??
-        existingRenderState?.pinInteractionFeature
-      let payloadPinInteractionDiffKey =
-        desiredPayloads.pinInteractionFeatureDiffKeyByMarkerKey[markerKey] ??
-        existingRenderState?.pinInteractionFeatureDiffKey
-      let payloadLabelFeatures =
-        desiredPayloads.labelFeaturesByMarkerKey[markerKey] ??
-        existingRenderState?.labelFeatures ??
-        []
-      let payloadLabelCollision =
-        desiredPayloads.labelCollisionFeatureByMarkerKey[markerKey] ??
-        existingRenderState?.labelCollisionFeature
-      let payloadLabelCollisionDiffKey =
-        desiredPayloads.labelCollisionFeatureDiffKeyByMarkerKey[markerKey] ??
-        existingRenderState?.labelCollisionFeatureDiffKey
-      let lodZ =
-        desiredPinSnapshot.pinLodZByMarkerKey[markerKey] ??
-        existingRenderState?.lodZ ??
-        existing?.lodZ ??
-        0
-      let orderHint =
-        previousOrderByMarkerKey[markerKey] ??
-        desiredPinSnapshot.pinIdsInOrder.firstIndex(of: markerKey) ??
-        existingRenderState?.orderHint ??
-        existing?.orderHint ??
-        .max
-      let shouldRenderMarker =
-        pinFeature != nil &&
-        (
-          nextPresent ||
-          currentOpacity > 0.001
-        )
-
-      if shouldRenderMarker, let pinFeature {
-        nextMarkerRenderStateByMarkerKey[markerKey] = MarkerFamilyRenderState(
+      let opacity = state.lodV5Engine?.pinOpacity(markerKey) ?? 0
+      let pinFeature = desiredPayloads.pinFeatureByMarkerKey[markerKey] ?? existing?.pinFeature
+      let pinFeatureDiffKey = desiredPayloads.pinFeatureDiffKeyByMarkerKey[markerKey] ?? existing?.pinFeatureDiffKey ?? markerKey
+      let pinInteraction = desiredPayloads.pinInteractionFeatureByMarkerKey[markerKey] ?? existing?.pinInteractionFeature
+      let pinInteractionDiffKey = desiredPayloads.pinInteractionFeatureDiffKeyByMarkerKey[markerKey] ?? existing?.pinInteractionFeatureDiffKey
+      let labelFeatures = desiredPayloads.labelFeaturesByMarkerKey[markerKey] ?? existing?.labelFeatures ?? []
+      let labelCollision = desiredPayloads.labelCollisionFeatureByMarkerKey[markerKey] ?? existing?.labelCollisionFeature
+      let labelCollisionDiffKey = desiredPayloads.labelCollisionFeatureDiffKeyByMarkerKey[markerKey] ?? existing?.labelCollisionFeatureDiffKey
+      let lodZ = desiredPinSnapshot.pinLodZByMarkerKey[markerKey] ?? existing?.lodZ ?? 0
+      let orderHint = orderByMarkerKey[markerKey] ?? existing?.orderHint ?? .max
+      let shouldRender = pinFeature != nil && (nextPresent || opacity > 0.001)
+      if shouldRender, let pinFeature {
+        next[markerKey] = MarkerFamilyRenderState(
           pinFeature: pinFeature,
           pinFeatureDiffKey: pinFeatureDiffKey,
-          pinInteractionFeature: payloadPinInteraction,
-          pinInteractionFeatureDiffKey: payloadPinInteractionDiffKey,
-          labelFeatures: payloadLabelFeatures,
-          labelCollisionFeature: payloadLabelCollision,
-          labelCollisionFeatureDiffKey: payloadLabelCollisionDiffKey,
+          pinInteractionFeature: pinInteraction,
+          pinInteractionFeatureDiffKey: pinInteractionDiffKey,
+          labelFeatures: labelFeatures,
+          labelCollisionFeature: labelCollision,
+          labelCollisionFeatureDiffKey: labelCollisionDiffKey,
           lodZ: lodZ,
           orderHint: orderHint,
           isDesiredPresent: nextPresent,
-          currentOpacity: currentOpacity,
-          targetOpacity: targetOpacity
+          currentOpacity: opacity,
+          targetOpacity: isPromoted ? 1 : 0
         )
       } else {
-        nextMarkerRenderStateByMarkerKey.removeValue(forKey: markerKey)
+        next.removeValue(forKey: markerKey)
       }
-
-      guard shouldRenderMarker else {
-        nextTransitions.removeValue(forKey: markerKey)
-        continue
-      }
-
-      guard allowNewTransitions || existing != nil else {
-        continue
-      }
-
-      if let existing {
-        if abs(currentOpacity - targetOpacity) < 0.001 {
-          nextTransitions.removeValue(forKey: markerKey)
-          continue
-        }
-        if existing.targetOpacity != targetOpacity {
-          // CROSSFADE COMMIT INVARIANT: a fade in flight runs to its committed target
-          // before honoring a reversed target. The LOD promote/demote decision reshuffles
-          // every ~90ms eval (still-visible in-region markers displaced from the top-N as
-          // the on-screen set grows during a zoom); without this guard each flip restarts
-          // the 300ms crossfade from the current mid-opacity with a fresh clock, so opacity
-          // never reaches 0 or 1 and the marker is stuck shimmering mid-range (the flash).
-          // Deferring the reversal until the current fade completes makes a started fade
-          // "impossible to snap back in": opacity settles at an endpoint, and only a
-          // genuinely-settled opposite decision then starts a clean fade from that endpoint.
-          let existingFadeComplete = abs(currentOpacity - existing.targetOpacity) < 0.001
-          if !existingFadeComplete {
-            var updated = existing
-            updated.lodZ = lodZ
-            updated.orderHint = orderHint
-            nextTransitions[markerKey] = updated
-            continue
-          }
-          let shouldAwaitSourceCommit =
-            targetOpacity == 1 && !previousPresent && currentOpacity <= 0.001
-            && !suppressSourceCommitAwait
-          nextTransitions[markerKey] = LivePinTransition(
-            startOpacity: currentOpacity,
-            targetOpacity: targetOpacity,
-            startedAtMs: nowMs,
-            durationMs: livePinTransitionDurationMs,
-            isAwaitingSourceCommit: shouldAwaitSourceCommit,
-            awaitingSourceDataId: shouldAwaitSourceCommit ? existing.awaitingSourceDataId : nil,
-            hasAppliedTargetState: false,
-            lodZ: lodZ,
-            orderHint: orderHint
-          )
-          continue
-        }
-        var updated = existing
-        updated.lodZ = lodZ
-        updated.orderHint = orderHint
-        nextTransitions[markerKey] = updated
-        continue
-      }
-
-      // Create a fade on any OPACITY change (promote/demote), not a membership change — a resident
-      // marker promoting goes opacity 0→1 with unchanged membership.
-      guard abs(currentOpacity - targetOpacity) >= 0.001 else {
-        continue
-      }
-      nextTransitions[markerKey] = LivePinTransition(
-        startOpacity: currentOpacity,
-        targetOpacity: targetOpacity,
-        startedAtMs: nowMs,
-        durationMs: livePinTransitionDurationMs,
-        isAwaitingSourceCommit: targetOpacity == 1 && !suppressSourceCommitAwait,
-        awaitingSourceDataId: nil,
-        hasAppliedTargetState: false,
-        lodZ: lodZ,
-        orderHint: orderHint
-      )
     }
-
-    pinFamilyState.markerRenderStateByMarkerKey = nextMarkerRenderStateByMarkerKey
-    pinFamilyState.livePinTransitionsByMarkerKey = nextTransitions
+    pinFamilyState.markerRenderStateByMarkerKey = next
     Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
-    // AUDIT (pin-invisible): localize where promote→opacity breaks. snapPromoted = promoted set
-    // the snapshot handed us; promotedSeen = how many of those were in this loop's key set;
-    // txAfter = transitions live after this pass. snapPromoted 0 ⇒ snapshot lost the promoted set;
-    // snapPromoted N but txAfter 0 ⇒ no fade created despite promote (the opacity is never written).
-    if Self.lodHarnessEnabled {
-      let promotedSeen = desiredPinSnapshot.promotedMarkerKeys.intersection(markerKeys).count
-      Self.harnessLog(
-        "{\"ev\":\"pinapply\",\"snapPromoted\":\(desiredPinSnapshot.promotedMarkerKeys.count),"
-          + "\"nextPins\":\(nextPinIds.count),\"processed\":\(markerKeys.count),"
-          + "\"promotedSeen\":\(promotedSeen),\"txAfter\":\(nextTransitions.count),"
-          + "\"allowNew\":\(allowNewTransitions)}"
-      )
-    }
-  }
-
-  private func updateLiveDotTransitions(
-    state: inout InstanceState,
-    desiredDots: ParsedFeatureCollection,
-    visibleDotMarkerKeys: Set<String>,
-    nowMs: Double,
-    allowNewTransitions: Bool
-  ) {
-    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
-    // The pin transition is the crossfade PARTNER for each marker. A marker that is
-    // promoting (pin entering) must fade its dot OUT; a marker that is demoting (pin
-    // exiting) must fade its dot IN — in lockstep. We couple to the pin transitions
-    // so the dot transition is ALWAYS created paired with the pin (even when the dot
-    // desired-collection diff or the movement gate would otherwise skip it), and so
-    // a promote's dot-exit AWAITS THE SAME pin source commit the pin-enter waits on
-    // (held visible until the pin is ready), eliminating the "dot snaps out before
-    // the pin shows" gap. A demote's dot-enter is immediate (the dot source is
-    // resident, so the feature is already present).
-    let pinTransitionsByMarkerKey =
-      Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).livePinTransitionsByMarkerKey
-    // A marker that is currently PINNED (promoted) must keep its dot hidden — the
-    // pin IS its visual. Without this, a promoted marker whose dot remained in the
-    // visible role set (no active transition) painted its dot under the pin (the
-    // "all pins show their dots simultaneously" bug).
-    let pinnedMarkerKeys = Set(state.markerRoleTable.pinnedMarkerKeysInOrder)
-    let previousDotsByMarkerKey = dotFamilyState.lastDesiredCollection.featureById
-    let nextDotsByMarkerKey = desiredDots.featureById
-    let previousDotIds = Set(previousDotsByMarkerKey.keys)
-    let nextDotIds = Set(nextDotsByMarkerKey.keys)
-    var nextTransitions = dotFamilyState.liveDotTransitionsByMarkerKey
-    let previousOrderByMarkerKey = Dictionary(
-      uniqueKeysWithValues: dotFamilyState.lastDesiredCollection.idsInOrder.enumerated().map { ($1, $0) }
-    )
-    let nextOrderByMarkerKey = Dictionary(
-      uniqueKeysWithValues: desiredDots.idsInOrder.enumerated().map { ($1, $0) }
-    )
-    let markerKeys = previousDotIds
-      .union(nextDotIds)
-      .union(nextTransitions.keys)
-      .union(pinTransitionsByMarkerKey.keys)
-
-    for markerKey in markerKeys {
-      let existing = nextTransitions[markerKey]
-      let previousPresent = previousDotIds.contains(markerKey)
-      let nextPresent = nextDotIds.contains(markerKey)
-      let settledDotOpacity =
-        Self.numberValue(from: dotFamilyState.sourceState.featureStateById[markerKey]?["nativeDotOpacity"]) ??
-        (previousPresent ? 1 : 0)
-      let previousVisible = previousPresent && settledDotOpacity > 0.001
-      let nextVisible = nextPresent && visibleDotMarkerKeys.contains(markerKey)
-      let currentOpacity =
-        existing.map { Self.liveDotTransitionOpacity($0, atMs: nowMs) } ??
-        settledDotOpacity
-      // Crossfade coupling: complementary to the pin transition when one exists.
-      let pinTransition = pinTransitionsByMarkerKey[markerKey]
-      let pinIsDemoting = pinTransition.map { $0.targetOpacity < 0.001 } ?? false
-      let pinIsPromoting = pinTransition.map { $0.targetOpacity >= 0.999 } ?? false
-      let pinPromotingAwaitingCommit =
-        pinIsPromoting && (pinTransition?.isAwaitingSourceCommit ?? false)
-      // Pinned (and not actively demoting) → dot stays hidden. Demoting → dot fades
-      // in. Promoting → dot fades out. Otherwise follow the visible role set.
-      let isPinnedNow = pinnedMarkerKeys.contains(markerKey) && !pinIsDemoting
-      let targetOpacity: Double =
-        pinIsDemoting
-          ? 1.0
-          : (pinIsPromoting || isPinnedNow ? 0.0 : (nextVisible ? 1.0 : 0.0))
-      // A promote's dot-exit holds the dot visible until the pin's source commit
-      // lands — it is un-awaited together with the pin-enter in
-      // startAwaitingLivePinTransitions. A demote's dot-enter is immediate.
-      let dotAwaitsCommit = targetOpacity < 0.001 && pinPromotingAwaitingCommit
-      let dotFeature =
-        nextDotsByMarkerKey[markerKey] ??
-        previousDotsByMarkerKey[markerKey] ??
-        existing?.dotFeature
-      guard let dotFeature else {
-        nextTransitions.removeValue(forKey: markerKey)
-        continue
-      }
-      let orderHint =
-        previousOrderByMarkerKey[markerKey] ??
-        nextOrderByMarkerKey[markerKey] ??
-        existing?.orderHint ??
-        .max
-
-      // A paired crossfade (pinTransition != nil) is always created, bypassing the
-      // movement gate and the visibility-delta gate that would otherwise drop it.
-      guard allowNewTransitions || existing != nil || pinTransition != nil else {
-        continue
-      }
-
-      if let existing {
-        if abs(currentOpacity - targetOpacity) < 0.001 {
-          if (targetOpacity == 1 && nextPresent) || (targetOpacity == 0 && !nextPresent) {
-            nextTransitions.removeValue(forKey: markerKey)
-          }
-          continue
-        }
-        if existing.targetOpacity != targetOpacity {
-          nextTransitions[markerKey] = LiveDotTransition(
-            startOpacity: currentOpacity,
-            targetOpacity: targetOpacity,
-            startedAtMs: nowMs,
-            durationMs: livePinTransitionDurationMs,
-            isAwaitingSourceCommit: dotAwaitsCommit,
-            awaitingSourceDataId: nil,
-            hasAppliedTargetState: false,
-            dotFeature: dotFeature,
-            orderHint: orderHint
-          )
-          continue
-        }
-        var updated = existing
-        updated.dotFeature = dotFeature
-        updated.orderHint = orderHint
-        nextTransitions[markerKey] = updated
-        continue
-      }
-
-      guard
-        abs(currentOpacity - targetOpacity) >= 0.001,
-        pinTransition != nil || previousVisible != nextVisible
-      else {
-        continue
-      }
-      nextTransitions[markerKey] = LiveDotTransition(
-        startOpacity: currentOpacity,
-        targetOpacity: targetOpacity,
-        startedAtMs: nowMs,
-        durationMs: livePinTransitionDurationMs,
-        isAwaitingSourceCommit: dotAwaitsCommit,
-        awaitingSourceDataId: nil,
-        hasAppliedTargetState: false,
-        dotFeature: dotFeature,
-        orderHint: orderHint
-      )
-    }
-
-    dotFamilyState.liveDotTransitionsByMarkerKey = nextTransitions
-    Self.setDerivedFamilyState(dotFamilyState, sourceId: state.dotSourceId, state: &state)
   }
 
   private static func groupFeaturesByMarkerKey(
@@ -7907,53 +7520,19 @@ final class SearchMapRenderController: RCTEventEmitter {
     ]
   }
 
-  private static func livePinTransitionOpacity(
-    _ transition: LivePinTransition,
-    atMs nowMs: Double
-  ) -> Double {
-    if transition.isAwaitingSourceCommit {
-      return transition.startOpacity
-    }
-    let elapsedMs = max(0, nowMs - transition.startedAtMs)
-    let progress = transition.durationMs <= 0 ? 1 : min(1, elapsedMs / transition.durationMs)
-    let easedProgress = progress * progress * (3 - 2 * progress)
-    return transition.startOpacity + (transition.targetOpacity - transition.startOpacity) * easedProgress
-  }
-
-  private static func liveDotTransitionOpacity(
-    _ transition: LiveDotTransition,
-    atMs nowMs: Double
-  ) -> Double {
-    if transition.isAwaitingSourceCommit {
-      return transition.startOpacity
-    }
-    let elapsedMs = max(0, nowMs - transition.startedAtMs)
-    let progress = transition.durationMs <= 0 ? 1 : min(1, elapsedMs / transition.durationMs)
-    let easedProgress = progress * progress * (3 - 2 * progress)
-    return transition.startOpacity + (transition.targetOpacity - transition.startOpacity) * easedProgress
-  }
-
   private func updateLivePinTransitionAnimation(instanceId: String, state: InstanceState) {
     let latestState = instances[instanceId] ?? state
     let canRunVisualTransition =
       latestState.lastPresentationBatchPhase == "live" ||
       latestState.lastPresentationBatchPhase == "entering"
-    let hasPinTransitions =
-      !Self.derivedFamilyState(
-        sourceId: latestState.pinSourceId,
-        state: latestState
-      ).livePinTransitionsByMarkerKey.isEmpty
-    let hasDotTransitions =
-      !Self.derivedFamilyState(
-        sourceId: latestState.dotSourceId,
-        state: latestState
-      ).liveDotTransitionsByMarkerKey.isEmpty
-    if
-      Self.isVisualSourceInactiveOrDismissing(latestState) ||
-      Self.isSourceRecoveryActive(latestState) ||
-      (!hasPinTransitions && !hasDotTransitions) ||
-      !canRunVisualTransition
-    {
+    // Map-LOD v5: the display link is the CONVERGE clock — run it CONTINUOUSLY while the surface is
+    // runnable (not gated on v4 transitions, which never exist under v5). Each tick early-returns when the
+    // engine is idle, so a still map costs ~nothing; a camera-frame promotion starts the fades on the next
+    // tick with no special reveal path.
+    let runnable = canRunVisualTransition
+      && !Self.isVisualSourceInactiveOrDismissing(latestState)
+      && !Self.isSourceRecoveryActive(latestState)
+    if !runnable {
       cancelLivePinTransitionAnimation(instanceId: instanceId)
       return
     }
@@ -7985,8 +7564,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     var dotSourceState = dotFamilyState.sourceState
     var labelSourceState = labelFamilyState.sourceState
 
-    let pinTransitionCount = pinFamilyState.livePinTransitionsByMarkerKey.count
-    let dotTransitionCount = dotFamilyState.liveDotTransitionsByMarkerKey.count
     let pinTransientIds = Array(pinFamilyState.transientFeatureStateById.keys)
     let dotTransientIds = Array(dotFamilyState.transientFeatureStateById.keys)
     let labelTransientIds = Array(labelFamilyState.transientFeatureStateById.keys)
@@ -8013,10 +7590,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
     }
 
-    pinFamilyState.livePinTransitionsByMarkerKey.removeAll()
     pinFamilyState.markerRenderStateByMarkerKey.removeAll()
     pinFamilyState.lastDesiredPinSnapshot = DesiredPinSnapshotState()
-    dotFamilyState.liveDotTransitionsByMarkerKey.removeAll()
     dotFamilyState.lastDesiredCollection = Self.emptyParsedFeatureCollection()
     labelFamilyState.labelObservation.hasCommittedObservationForConfiguredRequest = false
     labelFamilyState.labelObservation.lastVisibleLabelFeatureIds = []
@@ -8049,7 +7624,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     emitVisualDiag(
       instanceId: instanceId,
       message:
-        "live_reveal_state_reset reason=\(reason) pinLodAnimations=\(pinTransitionCount) dotLodAnimations=\(dotTransitionCount) pinFeatureStateOverrides=\(pinTransientIds.count) dotFeatureStateOverrides=\(dotTransientIds.count) labelFeatureStateOverrides=\(labelTransientIds.count)"
+        "live_reveal_state_reset reason=\(reason) pinFeatureStateOverrides=\(pinTransientIds.count) dotFeatureStateOverrides=\(dotTransientIds.count) labelFeatureStateOverrides=\(labelTransientIds.count)"
     )
   }
 
@@ -8087,223 +7662,183 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
   }
 
-  private func startAwaitingLivePinTransitions(
-    instanceId: String,
-    dataId: String?,
-    reason: String,
-    state: inout InstanceState
-  ) {
-    guard !Self.isVisualSourceInactiveOrDismissing(state) else {
-      return
-    }
+  // Map-LOD v5 CONVERGE (plans/lod-v5-architecture.md). One display-link tick: integrate every in-motion
+  // anchor's pin opacity toward want?1:0 (eased, ε-snap) and write the THREE derived feature-states off
+  // that single scalar — pin = p, dot = 1 − p, label = p — so a marker can never be a visible pin AND a
+  // visible dot (FM#2), and a 30-way budget crossing is 30 independent fades, not a batch snap (FM#4).
+  // This is the ONLY feature-state writer when lodV5Enabled (v4's stepper + driveNativeLod are gated off).
+  private func applyV5StepFeatureStates(for instanceId: String, state: inout InstanceState) throws {
+    guard var engine = state.lodV5Engine else { return }
     let nowMs = Self.nowMs()
-    var didStartTransition = false
-    var awaitingTransitionCount = 0
-    var startedTransitionCount = 0
+    let lastMs = lastV5StepMsByInstance[instanceId]
+    lastV5StepMsByInstance[instanceId] = nowMs
+    // First tick after idle uses a nominal 60fps delta; clamp to ≤100ms so a stalled link can't jump a fade.
+    let dtSeconds = lastMs.map { max(0, min(0.1, (nowMs - $0) / 1000.0)) } ?? (1.0 / 60.0)
+    let writes = engine.step(dtSeconds: dtSeconds)
+    state.lodV5Engine = engine
+    guard !writes.isEmpty else { return }
+    NSLog("[LODDBG] step writes=\(writes.count)")
+    _ = try applyV5OpacityWrites(for: instanceId, state: &state, writes: writes)
+  }
+
+  // Map-LOD v5: write the THREE derived feature-states (pin=p, dot=1−p, label=p) for a list of
+  // (markerKey, pinOpacity) to the live map + the in-memory family state. Shared by CONVERGE (engine.step)
+  // and the promotion SEED below, so a just-promoted marker's FIRST paint reflects the engine's current
+  // opacity (0 at reveal ⇒ a dot) instead of the baked source value (1 for a JS reveal-seed) — that baked
+  // value is what made revealed pins flash full then dim before fading. Returns (appliedCount, midFadeCount).
+  @discardableResult
+  private func applyV5OpacityWrites(
+    for instanceId: String,
+    state: inout InstanceState,
+    writes: [(markerKey: String, pinOpacity: Double)],
+    reason: String = "step"
+  ) throws -> (applied: Int, midFade: Int) {
+    guard !writes.isEmpty else { return (0, 0) }
     var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
-    var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
-    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
     var pinSourceState = pinFamilyState.sourceState
+    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
+    var dotSourceState = dotFamilyState.sourceState
+    var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
     var labelSourceState = labelFamilyState.sourceState
-    // Markers whose pin-enter we start on this commit — used to un-await their
-    // coupled dot-exit so the dot fades out exactly as the pin fades in.
-    var startedPinEnterMarkerKeys = Set<String>()
-    for markerKey in pinFamilyState.livePinTransitionsByMarkerKey.keys.sorted() {
-      if pinFamilyState.livePinTransitionsByMarkerKey[markerKey]?.isAwaitingSourceCommit == true {
-        awaitingTransitionCount += 1
-      }
-      guard var transition = pinFamilyState.livePinTransitionsByMarkerKey[markerKey],
-            transition.isAwaitingSourceCommit
-      else {
-        continue
-      }
-      let transitionSourceId = state.pinBundleSourceId
-      guard Self.shouldStartAwaitingTransition(
-        awaitingSourceDataId: transition.awaitingSourceDataId,
-        sourceId: transitionSourceId,
-        acknowledgedDataId: dataId
-      ) else {
-        continue
-      }
-      transition.isAwaitingSourceCommit = false
-      transition.awaitingSourceDataId = nil
-      transition.startedAtMs = nowMs
-      transition.startOpacity = 0
-      transition.hasAppliedTargetState = false
-      pinFamilyState.livePinTransitionsByMarkerKey[markerKey] = transition
-      startedTransitionCount += 1
+    let pinPhysicalSourceId = state.pinBundleSourceId
+    let labelPhysicalSourceId = state.labelRenderSourceId
+
+    var pinApply: [(featureId: String, state: [String: Any])] = []
+    var dotApply: [(featureId: String, state: [String: Any])] = []
+    var labelApply: [(featureId: String, state: [String: Any])] = []
+    var pinChanged = false
+    var dotChanged = false
+    var labelChanged = false
+    var midFadeCount = 0
+
+    for (markerKey, pinOpacity) in writes {
+      let p = Self.clamp(pinOpacity, min: 0, max: 1)
+      if p > 0.001 && p < 0.999 { midFadeCount += 1 }
+      var localPin: [(featureId: String, state: [String: Any])] = []
       Self.applyTransientFeatureState(
         sourceState: &pinSourceState,
         familyState: &pinFamilyState,
         featureId: markerKey,
-        transientState: Self.livePinFeatureState(opacity: 0)
+        transientState: Self.livePinFeatureState(opacity: p),
+        applyList: &localPin,
+        sourceStateChanged: &pinChanged
       )
-      for labelFeature in pinFamilyState.markerRenderStateByMarkerKey[markerKey]?.labelFeatures ?? [] {
-        Self.applyTransientFeatureState(
-          sourceState: &labelSourceState,
-          familyState: &labelFamilyState,
-          featureId: labelFeature.id,
-          transientState: Self.liveLabelFeatureState(opacity: 0)
-        )
-      }
-      didStartTransition = true
-      startedPinEnterMarkerKeys.insert(markerKey)
-    }
-    // Coupled dot-exit: each marker whose pin just started fading in had its dot held
-    // visible (awaiting). Un-await those dot-exits now so the dot fades out in lockstep
-    // with the pin fading in — no "dot snaps out before the pin shows" gap.
-    for markerKey in startedPinEnterMarkerKeys {
-      guard var dotTransition = dotFamilyState.liveDotTransitionsByMarkerKey[markerKey],
-            dotTransition.isAwaitingSourceCommit
-      else {
-        continue
-      }
-      dotTransition.isAwaitingSourceCommit = false
-      dotTransition.awaitingSourceDataId = nil
-      dotTransition.startedAtMs = nowMs
-      dotTransition.hasAppliedTargetState = false
-      dotFamilyState.liveDotTransitionsByMarkerKey[markerKey] = dotTransition
-      didStartTransition = true
-    }
-    // Persist the coupled dot-exit un-awaits (transition-map change only).
-    Self.setDerivedFamilyState(dotFamilyState, sourceId: state.dotSourceId, state: &state)
-    if didStartTransition {
-      Self.refreshFeatureStateRevision(&pinSourceState)
-      Self.refreshFeatureStateRevision(&labelSourceState)
-      Self.syncMountedSourceState(
-        pinSourceState,
-        sourceId: state.pinSourceId,
-        familyState: &pinFamilyState,
-        state: &state
-      )
-      Self.syncMountedSourceState(
-        labelSourceState,
-        sourceId: state.labelSourceId,
-        familyState: &labelFamilyState,
-        state: &state
-      )
-      instances[instanceId] = state
-      emitVisualDiag(
-        instanceId: instanceId,
-        message:
-          "live_pin_transition_started reason=\(reason) dataId=\(dataId ?? "mounted_hidden") awaiting=\(awaitingTransitionCount) started=\(startedTransitionCount)"
-      )
-      updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
-    }
-  }
+      for e in localPin { pinApply.append((e.featureId, e.state)) }
 
-  private func startAwaitingLiveDotTransitions(
-    instanceId: String,
-    dataId: String?,
-    reason: String,
-    state: inout InstanceState
-  ) {
-    guard !Self.isVisualSourceInactiveOrDismissing(state) else {
-      return
-    }
-    let nowMs = Self.nowMs()
-    var didStartTransition = false
-    var awaitingTransitionCount = 0
-    var startedTransitionCount = 0
-    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
-    var dotSourceState = dotFamilyState.sourceState
-    for markerKey in dotFamilyState.liveDotTransitionsByMarkerKey.keys.sorted() {
-      if dotFamilyState.liveDotTransitionsByMarkerKey[markerKey]?.isAwaitingSourceCommit == true {
-        awaitingTransitionCount += 1
-      }
-      guard var transition = dotFamilyState.liveDotTransitionsByMarkerKey[markerKey],
-            transition.isAwaitingSourceCommit,
-            Self.shouldStartAwaitingTransition(
-              awaitingSourceDataId: transition.awaitingSourceDataId,
-              sourceId: state.dotSourceId,
-              acknowledgedDataId: dataId
-            )
-      else {
-        continue
-      }
-      transition.isAwaitingSourceCommit = false
-      transition.awaitingSourceDataId = nil
-      transition.startedAtMs = nowMs
-      transition.startOpacity = 0
-      transition.hasAppliedTargetState = false
-      dotFamilyState.liveDotTransitionsByMarkerKey[markerKey] = transition
-      startedTransitionCount += 1
+      var localDot: [(featureId: String, state: [String: Any])] = []
       Self.applyTransientFeatureState(
         sourceState: &dotSourceState,
         familyState: &dotFamilyState,
         featureId: markerKey,
-        transientState: Self.liveDotFeatureState(opacity: 0)
+        transientState: Self.liveDotFeatureState(opacity: 1 - p),
+        applyList: &localDot,
+        sourceStateChanged: &dotChanged
       )
-      didStartTransition = true
+      for e in localDot { dotApply.append((e.featureId, e.state)) }
+
+      for labelFeature in pinFamilyState.markerRenderStateByMarkerKey[markerKey]?.labelFeatures ?? [] {
+        var localLabel: [(featureId: String, state: [String: Any])] = []
+        Self.applyTransientFeatureState(
+          sourceState: &labelSourceState,
+          familyState: &labelFamilyState,
+          featureId: labelFeature.id,
+          transientState: Self.liveLabelFeatureState(opacity: p),
+          applyList: &localLabel,
+          sourceStateChanged: &labelChanged
+        )
+        for e in localLabel { labelApply.append((e.featureId, e.state)) }
+      }
     }
-    if didStartTransition {
-      Self.refreshFeatureStateRevision(&dotSourceState)
-      Self.syncMountedSourceState(
-        dotSourceState,
-        sourceId: state.dotSourceId,
-        familyState: &dotFamilyState,
-        state: &state
-      )
-      instances[instanceId] = state
-      emitVisualDiag(
-        instanceId: instanceId,
-        message:
-          "live_dot_transition_started reason=\(reason) dataId=\(dataId ?? "mounted_hidden") awaiting=\(awaitingTransitionCount) started=\(startedTransitionCount)"
-      )
-      updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
+
+    try withMapboxMap(for: state.mapTag) { mapboxMap in
+      for e in pinApply {
+        mapboxMap.setFeatureState(sourceId: pinPhysicalSourceId, featureId: e.featureId, state: e.state) { _ in }
+      }
+      for e in dotApply {
+        mapboxMap.setFeatureState(sourceId: state.dotSourceId, featureId: e.featureId, state: e.state) { _ in }
+      }
+      for e in labelApply {
+        mapboxMap.setFeatureState(sourceId: labelPhysicalSourceId, featureId: e.featureId, state: e.state) { _ in }
+      }
     }
+
+    if pinChanged { Self.refreshFeatureStateRevision(&pinSourceState) }
+    if dotChanged { Self.refreshFeatureStateRevision(&dotSourceState) }
+    if labelChanged { Self.refreshFeatureStateRevision(&labelSourceState) }
+    Self.syncMountedSourceState(pinSourceState, sourceId: state.pinSourceId, familyState: &pinFamilyState, state: &state)
+    Self.syncMountedSourceState(dotSourceState, sourceId: state.dotSourceId, familyState: &dotFamilyState, state: &state)
+    Self.syncMountedSourceState(labelSourceState, sourceId: state.labelSourceId, familyState: &labelFamilyState, state: &state)
+    return (pinApply.count, midFadeCount)
   }
 
-  private func restartLiveEnterTransitionsForRevealStart(
-    instanceId: String,
-    state: inout InstanceState
-  ) {
-    let nowMs = Self.nowMs()
-    var restartedPinCount = 0
-    var restartedDotCount = 0
-    var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
-    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
-
-    for markerKey in pinFamilyState.livePinTransitionsByMarkerKey.keys.sorted() {
-      guard var transition = pinFamilyState.livePinTransitionsByMarkerKey[markerKey],
-            !transition.isAwaitingSourceCommit,
-            transition.targetOpacity >= 0.999
-      else {
-        continue
-      }
-      transition.startOpacity = 0
-      transition.startedAtMs = nowMs
-      transition.hasAppliedTargetState = false
-      pinFamilyState.livePinTransitionsByMarkerKey[markerKey] = transition
-      restartedPinCount += 1
-    }
-
-    for markerKey in dotFamilyState.liveDotTransitionsByMarkerKey.keys.sorted() {
-      guard var transition = dotFamilyState.liveDotTransitionsByMarkerKey[markerKey],
-            !transition.isAwaitingSourceCommit,
-            transition.targetOpacity >= 0.999
-      else {
-        continue
-      }
-      transition.startOpacity = 0
-      transition.startedAtMs = nowMs
-      transition.hasAppliedTargetState = false
-      dotFamilyState.liveDotTransitionsByMarkerKey[markerKey] = transition
-      restartedDotCount += 1
-    }
-
-    guard restartedPinCount > 0 || restartedDotCount > 0 else {
+  // Map-LOD v5 FM#3: reseed the INVISIBLE label-collision obstacle so name-labels yield to the LIVE promoted
+  // pins (not the stale JS publish-time seed). v4 re-baked this inside the gated reconcile; under v5 we rebuild
+  // ONLY the collision feature for the changed markers and apply ONLY the collision plan — isolated to the
+  // invisible obstacle source, so the visible pin bundle never re-tiles (no wiggle). Driven by the camera
+  // handler from the promote∪demote delta decide() stashed on membershipChanged. Best-effort: a reseed failure
+  // must never break the frame.
+  private func applyV5ObstacleReseed(for instanceId: String) {
+    guard var state = instances[instanceId] else { return }
+    let affectedMarkerKeys = state.lodV5ObstacleReseedKeys.filter { !$0.isEmpty }
+    state.lodV5ObstacleReseedKeys = []
+    guard !affectedMarkerKeys.isEmpty else { instances[instanceId] = state; return }
+    guard !Self.isVisualSourceInactiveOrDismissing(state), !Self.isSourceRecoveryActive(state) else {
+      instances[instanceId] = state
       return
     }
-
-    Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
-    Self.setDerivedFamilyState(dotFamilyState, sourceId: state.dotSourceId, state: &state)
+    // SINGLE AUTHORITY: read the promoted set straight from the engine (the sole promotion truth), NOT the
+    // markerRoleTable mirror — the JS role-frame can clobber that mirror to empty under v5, which would build
+    // the wrong obstacles. The engine's lastPromotedInOrder is the decision the visible pins are fading toward.
+    let livePinned = Set(state.lodV5Engine?.lastPromotedInOrder ?? [])
+    // Build the obstacle DIRECTLY from the catalog coordinate (always available) — NOT from
+    // markerRenderStateByMarkerKey, which the native prepare path only populates for a subset, so a third of
+    // reseeds hit noRenderState and got no obstacle. The collision layer uses a FIXED icon/size (search-map.tsx
+    // LABEL_PIN_COLLISION_STYLE), so the obstacle feature needs only a point at the marker's coordinate + the
+    // `nativeLodOpacity` the `>0.5` filter reads — no render-state geometry needed.
+    var coordByKey: [String: CLLocationCoordinate2D] = [:]
+    for entry in state.candidateCatalog { coordByKey[entry.markerKey] = entry.coordinate }
+    let orderedAffected = affectedMarkerKeys.sorted()
+    var collisionRecords: [String: ParsedTransportFeatureRecord] = [:]
+    for markerKey in orderedAffected {
+      guard let coord = coordByKey[markerKey] else { continue }
+      let promoted = livePinned.contains(markerKey)
+      var feature = Feature(geometry: Point(coord))
+      feature.identifier = .string(markerKey)
+      feature.properties = Self.transportJSONObject(from: [
+        "markerKey": markerKey,
+        // promoted → obstacle (passes the >0.5 collision filter); demoted → not.
+        "nativeLodOpacity": promoted ? 1 : 0,
+        "nativePresentationOpacity": 1,
+      ])
+      collisionRecords[markerKey] = ParsedTransportFeatureRecord(
+        id: markerKey,
+        feature: feature,
+        // diffKey MUST reflect the obstacle role so a flip is detected (else the patch writes nothing).
+        diffKey: "\(markerKey)::obst:\(promoted ? 1 : 0)",
+        featureState: [:],
+        markerKey: markerKey
+      )
+    }
+    guard !collisionRecords.isEmpty else {
+      instances[instanceId] = state
+      return
+    }
+    do {
+      if let plan = try Self.buildScopedSingleFeatureFamilyApplyPlan(
+        sourceId: state.labelCollisionSourceId,
+        affectedMarkerKeys: Set(collisionRecords.keys),
+        orderedAffectedMarkerKeys: orderedAffected,
+        recordsByMarkerKey: collisionRecords,
+        state: &state
+      ) {
+        try withMapboxMap(for: state.mapTag) { mapboxMap in
+          _ = try applyParsedCollectionBatch(instanceId: instanceId, plans: [plan], state: &state, mapboxMap: mapboxMap)
+        }
+      }
+    } catch {
+      emitVisualDiag(instanceId: instanceId, message: "v5_obstacle_reseed_failed: \(error.localizedDescription)")
+    }
     instances[instanceId] = state
-    emitVisualDiag(
-      instanceId: instanceId,
-      message:
-        "live_enter_transition_restarted pinCount=\(restartedPinCount) dotCount=\(restartedDotCount)"
-    )
   }
 
   private func applyLivePinTransitionFeatureStates(for instanceId: String) throws {
@@ -8332,423 +7867,13 @@ final class SearchMapRenderController: RCTEventEmitter {
       instances[instanceId] = state
       return
     }
-    var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
-    var pinSourceState = pinFamilyState.sourceState
-    var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
-    var dotSourceState = dotFamilyState.sourceState
-    var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
-    var labelSourceState = labelFamilyState.sourceState
-
-    var featureStatesToApply: [(sourceId: String, featureId: String, state: [String: Any])] = []
-    var dotFeatureStatesToApply: [(featureId: String, state: [String: Any])] = []
-    var labelFeatureStatesToApply: [(sourceId: String, featureId: String, state: [String: Any])] = []
-    var pinSourceFeatureStateChanged = false
-    var dotSourceFeatureStateChanged = false
-    var labelSourceFeatureStateChanged = false
-    let nowMs = Self.nowMs()
-    var pinEnterTransitionCount = 0
-    var pinExitTransitionCount = 0
-    var dotEnterTransitionCount = 0
-    var dotExitTransitionCount = 0
-    var pinIntermediateOpacityCount = 0
-    var labelIntermediateOpacityCount = 0
-    var dotIntermediateOpacityCount = 0
-    // #2/#3 detectors. flashReversalCount: a pin transition whose startOpacity is
-    // mid-range began from a mid-fade — i.e. the marker reversed promote/demote
-    // mid-animation (the "fade out -> flash full -> out"). pinExitMidFade /
-    // dotEnter let us flag a demotion with no synchronized dot fade-in (the
-    // crossfade gap: dot snaps in late instead of fading with the pin).
-    var flashReversalCount = 0
-    var pinExitMidFadeMarkerKeys = Set<String>()
-    var dotEnterMarkerKeys = Set<String>()
-    var completedEnterMarkerKeys: [String] = []
-    var completedExitMarkerKeys: [String] = []
-    var completedDotEnterMarkerKeys: [String] = []
-    var completedDotExitMarkerKeys: [String] = []
-    // Per-marker trajectory trace (diagnostic): start/target/current opacity per
-    // transitioning pin & dot, so we can see flash reversals (start mid-range) and
-    // crossfade desync (pin exiting with no matching dot enter for the same key)
-    // frame by frame across multiple promote/demote cycles.
-    var lodTransitionTrace: [[String: Any]] = []
-    let pinTransitionTargetByKey = pinFamilyState.livePinTransitionsByMarkerKey
-      .mapValues { $0.targetOpacity }
-    let dotTransitionTargetByKey = dotFamilyState.liveDotTransitionsByMarkerKey
-      .mapValues { $0.targetOpacity }
-
-    for markerKey in pinFamilyState.livePinTransitionsByMarkerKey.keys.sorted() {
-      guard let transition = pinFamilyState.livePinTransitionsByMarkerKey[markerKey],
-            !transition.isAwaitingSourceCommit
-      else {
-        continue
-      }
-      let opacity = Self.clamp(Self.livePinTransitionOpacity(transition, atMs: nowMs), min: 0, max: 1)
-      if opacity > 0.001 && opacity < 0.999 {
-        pinIntermediateOpacityCount += 1
-      }
-      if transition.startOpacity > 0.05 && transition.startOpacity < 0.95 {
-        flashReversalCount += 1
-      }
-      if transition.targetOpacity >= 0.999 {
-        pinEnterTransitionCount += 1
-      } else {
-        pinExitTransitionCount += 1
-        if opacity > 0.05 && opacity < 0.95 {
-          pinExitMidFadeMarkerKeys.insert(markerKey)
-        }
-      }
-      if lodTransitionTrace.count < 24 {
-        lodTransitionTrace.append([
-          "k": markerKey,
-          "f": "pin",
-          "s": Self.roundTo3(transition.startOpacity),
-          "t": Self.roundTo3(transition.targetOpacity),
-          "c": Self.roundTo3(opacity),
-          // Does this marker have a matching dot transition heading the opposite
-          // way (the synchronized crossfade partner)? If a pin is exiting and there
-          // is no dot entering for the same key, the crossfade is broken.
-          "dotTarget": dotTransitionTargetByKey[markerKey].map { Self.roundTo3($0) } ?? -1,
-          "awaitingCommit": transition.isAwaitingSourceCommit,
-        ])
-      }
-      let renderState = pinFamilyState.markerRenderStateByMarkerKey[markerKey]
-      // Single bundle source: pin art and label features for a marker both live
-      // in state.pinSourceId; the slot only selects the LAYER (via nativeLodZ).
-      _ = renderState
-      let pinPhysicalSourceId = state.pinBundleSourceId
-      let labelPhysicalSourceId = state.labelRenderSourceId
-      var localPinFeatureStatesToApply: [(featureId: String, state: [String: Any])] = []
-      Self.applyTransientFeatureState(
-        sourceState: &pinSourceState,
-        familyState: &pinFamilyState,
-        featureId: markerKey,
-        transientState: Self.livePinFeatureState(opacity: opacity),
-        applyList: &localPinFeatureStatesToApply,
-        sourceStateChanged: &pinSourceFeatureStateChanged
-      )
-      for entry in localPinFeatureStatesToApply {
-        featureStatesToApply.append((pinPhysicalSourceId, entry.featureId, entry.state))
-      }
-      for labelFeature in renderState?.labelFeatures ?? [] {
-        if opacity > 0.001 && opacity < 0.999 {
-          labelIntermediateOpacityCount += 1
-        }
-        var localLabelFeatureStatesToApply: [(featureId: String, state: [String: Any])] = []
-        Self.applyTransientFeatureState(
-          sourceState: &labelSourceState,
-          familyState: &labelFamilyState,
-          featureId: labelFeature.id,
-          transientState: Self.liveLabelFeatureState(opacity: opacity),
-          applyList: &localLabelFeatureStatesToApply,
-          sourceStateChanged: &labelSourceFeatureStateChanged
-        )
-        for entry in localLabelFeatureStatesToApply {
-          labelFeatureStatesToApply.append((labelPhysicalSourceId, entry.featureId, entry.state))
-        }
-      }
-      if abs(opacity - transition.targetOpacity) < 0.001 {
-        if transition.targetOpacity >= 0.999 {
-          completedEnterMarkerKeys.append(markerKey)
-        } else {
-          completedExitMarkerKeys.append(markerKey)
-        }
-      }
-    }
-
-    for markerKey in dotFamilyState.liveDotTransitionsByMarkerKey.keys.sorted() {
-      guard let transition = dotFamilyState.liveDotTransitionsByMarkerKey[markerKey],
-            !transition.isAwaitingSourceCommit
-      else {
-        continue
-      }
-      let opacity = Self.clamp(Self.liveDotTransitionOpacity(transition, atMs: nowMs), min: 0, max: 1)
-      if opacity > 0.001 && opacity < 0.999 {
-        dotIntermediateOpacityCount += 1
-      }
-      if transition.targetOpacity >= 0.999 {
-        dotEnterTransitionCount += 1
-        dotEnterMarkerKeys.insert(markerKey)
-      } else {
-        dotExitTransitionCount += 1
-      }
-      if lodTransitionTrace.count < 48 {
-        lodTransitionTrace.append([
-          "k": markerKey,
-          "f": "dot",
-          "s": Self.roundTo3(transition.startOpacity),
-          "t": Self.roundTo3(transition.targetOpacity),
-          "c": Self.roundTo3(opacity),
-          "pinTarget": pinTransitionTargetByKey[markerKey].map { Self.roundTo3($0) } ?? -1,
-          "awaitingCommit": transition.isAwaitingSourceCommit,
-        ])
-      }
-      Self.applyTransientFeatureState(
-        sourceState: &dotSourceState,
-        familyState: &dotFamilyState,
-        featureId: markerKey,
-        transientState: Self.liveDotFeatureState(opacity: opacity),
-        applyList: &dotFeatureStatesToApply,
-        sourceStateChanged: &dotSourceFeatureStateChanged
-      )
-      if abs(opacity - transition.targetOpacity) < 0.001 {
-        if transition.targetOpacity >= 0.999 {
-          completedDotEnterMarkerKeys.append(markerKey)
-        } else {
-          completedDotExitMarkerKeys.append(markerKey)
-        }
-      }
-    }
-    if pinSourceFeatureStateChanged {
-      Self.refreshFeatureStateRevision(&pinSourceState)
-    }
-    if labelSourceFeatureStateChanged {
-      Self.refreshFeatureStateRevision(&labelSourceState)
-    }
-    if dotSourceFeatureStateChanged {
-      Self.refreshFeatureStateRevision(&dotSourceState)
-    }
-
-    let mapboxApplyStartedAt = CACurrentMediaTime() * 1000
-    if !featureStatesToApply.isEmpty {
-      try withMapboxMap(for: state.mapTag) { mapboxMap in
-        for entry in featureStatesToApply {
-          mapboxMap.setFeatureState(
-            sourceId: entry.sourceId,
-            featureId: entry.featureId,
-            state: entry.state
-          ) { _ in }
-        }
-      }
-    }
-    if !dotFeatureStatesToApply.isEmpty {
-      try withMapboxMap(for: state.mapTag) { mapboxMap in
-        for entry in dotFeatureStatesToApply {
-          mapboxMap.setFeatureState(
-            sourceId: state.dotSourceId,
-            featureId: entry.featureId,
-            state: entry.state
-          ) { _ in }
-        }
-      }
-    }
-    if !labelFeatureStatesToApply.isEmpty {
-      try withMapboxMap(for: state.mapTag) { mapboxMap in
-        for entry in labelFeatureStatesToApply {
-          mapboxMap.setFeatureState(
-            sourceId: entry.sourceId,
-            featureId: entry.featureId,
-            state: entry.state
-          ) { _ in }
-        }
-      }
-    }
-    recordNativeApply(
-      section: "live_lod_transition.apply_feature_states",
-      phase: state.lastPresentationBatchPhase,
-      durationMs: CACurrentMediaTime() * 1000 - mapboxApplyStartedAt,
-      operationCount: featureStatesToApply.count + dotFeatureStatesToApply.count + labelFeatureStatesToApply.count
-    )
-    let pinTransitionCount = pinEnterTransitionCount + pinExitTransitionCount
-    let dotTransitionCount = dotEnterTransitionCount + dotExitTransitionCount
-    // Crossfade gap: a marker DEMOTING IN PLACE (pin fading out, and the role
-    // table says it should now be a visible in-view dot) whose dot is NOT fading
-    // in alongside it. We intersect with the dot role set so that a pin fading out
-    // because the marker PANNED OFF the viewport (not in the dot role set — no dot
-    // should appear off-screen) is NOT miscounted as a broken crossfade.
-    let visibleDotRoleMarkerKeys = Set(state.markerRoleTable.dotMarkerKeysInOrder)
-    let crossfadeGapCount = pinExitMidFadeMarkerKeys
-      .intersection(visibleDotRoleMarkerKeys)
-      .subtracting(dotEnterMarkerKeys)
-      .count
-    if pinTransitionCount > 0 || dotTransitionCount > 0 {
-      emit([
-        "type": "live_lod_transition_contract",
-        "instanceId": instanceId,
-        "flashReversalCount": flashReversalCount,
-        "crossfadeGapCount": crossfadeGapCount,
-        "pinExitMidFadeCount": pinExitMidFadeMarkerKeys.count,
-        "pinTransitionCount": pinTransitionCount,
-        "pinEnterTransitionCount": pinEnterTransitionCount,
-        "pinExitTransitionCount": pinExitTransitionCount,
-        "dotTransitionCount": dotTransitionCount,
-        "dotEnterTransitionCount": dotEnterTransitionCount,
-        "dotExitTransitionCount": dotExitTransitionCount,
-        "pinFeatureStateApplyCount": featureStatesToApply.count,
-        "labelFeatureStateApplyCount": labelFeatureStatesToApply.count,
-        "dotFeatureStateApplyCount": dotFeatureStatesToApply.count,
-        "pinLabelFadeSynchronized": pinTransitionCount == 0 || labelFeatureStatesToApply.count >= pinTransitionCount * 4,
-        "transitionDurationMs": livePinTransitionDurationMs,
-        "usesStyleTransition": false,
-        "usesNativeFrameStepper": true,
-        "hasIntermediateOpacity": pinIntermediateOpacityCount > 0 || labelIntermediateOpacityCount > 0 || dotIntermediateOpacityCount > 0,
-        "pinIntermediateOpacityCount": pinIntermediateOpacityCount,
-        "labelIntermediateOpacityCount": labelIntermediateOpacityCount,
-        "dotIntermediateOpacityCount": dotIntermediateOpacityCount,
-        "lodTransitionTrace": lodTransitionTrace,
-        "emittedAtMs": Self.nowMs(),
-      ])
-    }
-
-    // HARNESS [lodev] step event: the per-frame opacity stepper.
-    //  - pinMidFade / dotMidFade: pins / dots actively crossfading THIS frame.
-    //  - xfadeGap: a pin demoting-in-place whose dot is NOT fading in alongside it (the dot
-    //    snaps in LATE after the pin fully faded out) — the demotion-crossfade bug.
-    //  - dtMs: ms since the last stepper frame = render cadence (jank/choppiness detector).
-    if Self.lodHarnessEnabled {
-      let nowStepMs = Self.nowMs()
-      let dtMs = lastHarnessStepMs > 0 ? Int(nowStepMs - lastHarnessStepMs) : 0
-      lastHarnessStepMs = nowStepMs
-      // RENDERED vs ROLE truth (the "are the top-N actually SHOWING?" check). The role table
-      // says how many markers SHOULD be pins (promoted); renderedPin counts how many are actually
-      // painted as a pin RIGHT NOW (effective opacity > 0.5) — a settled promotion has no
-      // transition (opacity from the feature state), a mid-crossfade uses the live opacity. A gap
-      // (roleVsRendered) = promoted markers not yet visibly pins (the crossfade lag the user sees).
-      let pinnedRoleKeys = state.markerRoleTable.pinnedMarkerKeysInOrder
-      // RANK CROSS-REFERENCE (step): the ranks of pins ACTUALLY painted (opacity > 0.5). Compare to
-      // the frame event's promotedRanks — paintedRanks should equal promotedRanks once settled, and
-      // both should be the contiguous top-N. A skipped low rank here = the promoted set itself skips.
-      let rankByKeyStep = Dictionary(
-        state.candidateCatalog.map { ($0.markerKey, $0.rank) }, uniquingKeysWith: { first, _ in first }
-      )
-      var renderedPinCount = 0
-      var paintedRanks: [Int] = []
-      for key in pinnedRoleKeys {
-        let op: Double
-        if let tx = pinFamilyState.livePinTransitionsByMarkerKey[key], !tx.isAwaitingSourceCommit {
-          op = Self.livePinTransitionOpacity(tx, atMs: nowStepMs)
-        } else {
-          // Settled pin opacity = the SAME coalesce the style uses to paint it:
-          // feature-state nativeLodOpacity (the stepper's promote/demote flip) → baked
-          // property nativeLodOpacity (JS bakes every pin DEMOTED=0) → 1. The previous read
-          // used "nativePinOpacity" — a key NOTHING writes, so it was always nil ?? 1, making
-          // renderP a fake echo of roleP (roleGap permanently 0). Read the real key.
-          op = Self.numberValue(from: pinSourceState.featureStateById[key]?["nativeLodOpacity"])
-            ?? Self.numberValue(
-              from: (pinFamilyState.collection.featureById[key]?.properties?.turfRawValue as? [String: Any])?["nativeLodOpacity"]
-            )
-            ?? 1
-        }
-        if op > 0.5 {
-          renderedPinCount += 1
-          if let paintedRank = rankByKeyStep[key] { paintedRanks.append(paintedRank) }
-        }
-      }
-      let roleVsRendered = pinnedRoleKeys.count - renderedPinCount
-      let paintedRanksStr = paintedRanks.sorted().prefix(45).map(String.init).joined(separator: ",")
-      // PIN-INVISIBLE ATTRIBUTION (audit): for each PROMOTED pin, is its companion DOT actually
-      // clearing? A promoted marker must fade its dot to ~0 so the pin shows; if the dot stays
-      // opaque and z-orders above the (same-anchor) pin, the user sees a dot, not the pin. Read
-      // dot opacity the SAME way the style paints it (feature-state nativeDotOpacity → baked
-      // property → 1). promDotOpaque ≈ roleP ⇒ dots are covering the promoted pins.
-      var promotedDotOpaqueCount = 0
-      for key in pinnedRoleKeys {
-        let dotOp = Self.numberValue(from: dotSourceState.featureStateById[key]?["nativeDotOpacity"])
-          ?? Self.numberValue(
-            from: (dotFamilyState.collection.featureById[key]?.properties?.turfRawValue as? [String: Any])?["nativeDotOpacity"]
-          )
-          ?? 1
-        if dotOp > 0.5 { promotedDotOpaqueCount += 1 }
-      }
-      // LABEL ATTRIBUTION (audit): promoted pins should carry a name label. Separate the failure modes:
-      //  promLabelFeat = promoted markers that HAVE label features built (renderState.labelFeatures).
-      //  promLabelVis  = promoted markers with >=1 label whose transient nativeLabelOpacity > 0.5.
-      // promLabelFeat≈0 ⇒ labels never built (upstream payload). promLabelFeat high but promLabelVis≈0
-      // ⇒ labels built but never faded in (stuck at preroll 0). Both high but nothing on screen ⇒
-      // collision-culled or the label render layer is hidden.
-      var promotedLabelFeatCount = 0
-      var promotedLabelVisCount = 0
-      // PRESENTATION-FACTOR ATTRIBUTION (2026-06-22): rendered text-opacity = nativePresentationOpacity
-      //  × nativeLabelOpacity. promLabelVis only checks the nativeLabelOpacity factor; if labels are
-      //  PLACED (renderedLabels>0) but invisible, the OTHER factor (presentation) is the zero. Read both
-      //  via the SAME coalesce the style uses (feature-state ?? baked ?? 1) and also the effective product.
-      //  promLabelPres≈0 while promLabelVis high ⇒ the reveal fade never drove presentationOpacity→1 on the
-      //  label features (e.g. groupedFeatureIdsByGroup miss). promLabelEff is ground truth for "painted".
-      var promotedLabelPresCount = 0
-      var promotedLabelEffCount = 0
-      for key in pinnedRoleKeys {
-        let labels = pinFamilyState.markerRenderStateByMarkerKey[key]?.labelFeatures ?? []
-        if labels.isEmpty { continue }
-        promotedLabelFeatCount += 1
-        let anyVisible = labels.contains { labelFeature in
-          (Self.numberValue(from: labelSourceState.featureStateById[labelFeature.id]?["nativeLabelOpacity"]) ?? 0) > 0.5
-        }
-        if anyVisible { promotedLabelVisCount += 1 }
-        let anyPres = labels.contains { labelFeature in
-          let pres = Self.numberValue(from: labelSourceState.featureStateById[labelFeature.id]?["nativePresentationOpacity"])
-            ?? Self.numberValue(from: (labelFamilyState.collection.featureById[labelFeature.id]?.properties?.turfRawValue as? [String: Any])?["nativePresentationOpacity"])
-            ?? 1
-          return pres > 0.5
-        }
-        if anyPres { promotedLabelPresCount += 1 }
-        let anyEff = labels.contains { labelFeature in
-          let lbl = Self.numberValue(from: labelSourceState.featureStateById[labelFeature.id]?["nativeLabelOpacity"])
-            ?? Self.numberValue(from: (labelFamilyState.collection.featureById[labelFeature.id]?.properties?.turfRawValue as? [String: Any])?["nativeLabelOpacity"])
-            ?? 1
-          let pres = Self.numberValue(from: labelSourceState.featureStateById[labelFeature.id]?["nativePresentationOpacity"])
-            ?? Self.numberValue(from: (labelFamilyState.collection.featureById[labelFeature.id]?.properties?.turfRawValue as? [String: Any])?["nativePresentationOpacity"])
-            ?? 1
-          return (lbl * pres) > 0.5
-        }
-        if anyEff { promotedLabelEffCount += 1 }
-      }
-      // workMs: compute time of THIS stepper frame (the two transition loops). If dtMs is high
-      // (jank) but workMs is low, the stepper is being STARVED by other main-thread work (the
-      // per-camera-frame reconcile in cwork); if workMs is itself high, the stepper apply is heavy.
-      let workMs = Int(nowStepMs - nowMs)
-      Self.harnessLog(
-        "{\"ev\":\"step\",\"t\":\(Int(nowStepMs)),\"moving\":\(state.currentViewportIsMoving),"
-          + "\"activePin\":\(pinFamilyState.livePinTransitionsByMarkerKey.count),"
-          + "\"activeDot\":\(dotFamilyState.liveDotTransitionsByMarkerKey.count),"
-          + "\"pinMidFade\":\(pinIntermediateOpacityCount),\"dotMidFade\":\(dotIntermediateOpacityCount),"
-          + "\"xfadeGap\":\(crossfadeGapCount),\"applied\":\(featureStatesToApply.count),"
-          + "\"roleP\":\(pinnedRoleKeys.count),\"renderP\":\(renderedPinCount),\"roleGap\":\(roleVsRendered),"
-          + "\"promDotOpaque\":\(promotedDotOpaqueCount),"
-          + "\"promLabelFeat\":\(promotedLabelFeatCount),\"promLabelVis\":\(promotedLabelVisCount),"
-          + "\"promLabelPres\":\(promotedLabelPresCount),\"promLabelEff\":\(promotedLabelEffCount),"
-          + "\"paintedRanks\":\"\(paintedRanksStr)\","
-          + "\"workMs\":\(workMs),\"dtMs\":\(dtMs)}"
-      )
-    }
-    Self.syncMountedSourceState(
-      pinSourceState,
-      sourceId: state.pinSourceId,
-      familyState: &pinFamilyState,
-      state: &state
-    )
-    Self.syncMountedSourceState(
-      dotSourceState,
-      sourceId: state.dotSourceId,
-      familyState: &dotFamilyState,
-      state: &state
-    )
-    Self.syncMountedSourceState(
-      labelSourceState,
-      sourceId: state.labelSourceId,
-      familyState: &labelFamilyState,
-      state: &state
-    )
-    instances[instanceId] = state
-
-    if !completedEnterMarkerKeys.isEmpty || !completedExitMarkerKeys.isEmpty {
-      try finalizeCompletedLivePinTransitions(
-        instanceId: instanceId,
-        enteredMarkerKeys: completedEnterMarkerKeys,
-        exitedMarkerKeys: completedExitMarkerKeys
-      )
-    }
-
-    if !completedDotEnterMarkerKeys.isEmpty || !completedDotExitMarkerKeys.isEmpty {
-      try finalizeCompletedLiveDotTransitions(
-        instanceId: instanceId,
-        enteredMarkerKeys: completedDotEnterMarkerKeys,
-        exitedMarkerKeys: completedDotExitMarkerKeys
-      )
-    }
-
-    guard let latestState = instances[instanceId] else {
-      cancelLivePinTransitionAnimation(instanceId: instanceId)
+    // Map-LOD v5 CONVERGE: when v5 owns LOD, the LodEngine is the single feature-state authority — step
+    // it one display-link tick and write the derived opacities, bypassing all v4 transition machinery.
+    if Self.lodV5Enabled {
+      try applyV5StepFeatureStates(for: instanceId, state: &state)
+      instances[instanceId] = state
       return
     }
-    updateLivePinTransitionAnimation(instanceId: instanceId, state: latestState)
   }
 
   @objc
@@ -8766,187 +7891,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       ])
       cancelLivePinTransitionAnimation(instanceId: instanceId)
     }
-  }
-
-  private func finalizeCompletedLivePinTransitions(
-    instanceId: String,
-    enteredMarkerKeys: [String],
-    exitedMarkerKeys: [String]
-  ) throws {
-    guard var state = instances[instanceId] else {
-      return
-    }
-    let enteredMarkerKeySet = Set(enteredMarkerKeys)
-    let exitedMarkerKeySet = Set(exitedMarkerKeys)
-    let completedMarkerKeys = Array(enteredMarkerKeySet.union(exitedMarkerKeySet)).sorted()
-    guard !completedMarkerKeys.isEmpty else {
-      return
-    }
-
-    var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
-    var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
-    for markerKey in completedMarkerKeys {
-      pinFamilyState.livePinTransitionsByMarkerKey.removeValue(forKey: markerKey)
-
-      if enteredMarkerKeySet.contains(markerKey) {
-        var pinSourceState = pinFamilyState.sourceState
-        if !pinSourceState.sourceRevision.isEmpty || !pinSourceState.featureIds.isEmpty || !pinFamilyState.collection.idsInOrder.isEmpty {
-          Self.applyTransientFeatureState(
-            sourceState: &pinSourceState,
-            familyState: &pinFamilyState,
-            featureId: markerKey,
-            transientState: Self.livePinFeatureState(opacity: 1)
-          )
-          Self.syncMountedSourceState(
-            pinSourceState,
-            sourceId: state.pinSourceId,
-            familyState: &pinFamilyState,
-            state: &state
-          )
-        }
-      } else {
-        var pinSourceState = pinFamilyState.sourceState
-        if !pinSourceState.sourceRevision.isEmpty || !pinSourceState.featureIds.isEmpty || !pinFamilyState.collection.idsInOrder.isEmpty {
-          Self.applyTransientFeatureState(
-            sourceState: &pinSourceState,
-            familyState: &pinFamilyState,
-            featureId: markerKey,
-            transientState: Self.livePinFeatureState(opacity: 0)
-          )
-          Self.syncMountedSourceState(
-            pinSourceState,
-            sourceId: state.pinSourceId,
-            familyState: &pinFamilyState,
-            state: &state
-          )
-        }
-      }
-      var labelSourceState = labelFamilyState.sourceState
-      let labelFeatures = pinFamilyState.markerRenderStateByMarkerKey[markerKey]?.labelFeatures ?? []
-      if !enteredMarkerKeySet.contains(markerKey) {
-        pinFamilyState.markerRenderStateByMarkerKey.removeValue(forKey: markerKey)
-      }
-      if !labelFeatures.isEmpty &&
-        (!labelSourceState.sourceRevision.isEmpty || !labelSourceState.featureIds.isEmpty || !labelFamilyState.collection.idsInOrder.isEmpty) {
-        for labelFeature in labelFeatures {
-          if enteredMarkerKeySet.contains(markerKey) {
-            Self.applyTransientFeatureState(
-              sourceState: &labelSourceState,
-              familyState: &labelFamilyState,
-              featureId: labelFeature.id,
-              transientState: Self.liveLabelFeatureState(opacity: 1)
-            )
-          } else {
-            Self.applyTransientFeatureState(
-              sourceState: &labelSourceState,
-              familyState: &labelFamilyState,
-              featureId: labelFeature.id,
-              transientState: Self.liveLabelFeatureState(opacity: 0)
-            )
-          }
-        }
-        Self.syncMountedSourceState(
-          labelSourceState,
-          sourceId: state.labelSourceId,
-          familyState: &labelFamilyState,
-          state: &state
-        )
-      }
-    }
-
-    var pinSourceState = pinFamilyState.sourceState
-    if !pinSourceState.sourceRevision.isEmpty || !pinSourceState.featureIds.isEmpty || !pinFamilyState.collection.idsInOrder.isEmpty {
-      Self.refreshFeatureStateRevision(&pinSourceState)
-      Self.syncMountedSourceState(
-        pinSourceState,
-        sourceId: state.pinSourceId,
-        familyState: &pinFamilyState,
-        state: &state
-      )
-    }
-    var labelSourceState = labelFamilyState.sourceState
-    if !labelSourceState.sourceRevision.isEmpty || !labelSourceState.featureIds.isEmpty || !labelFamilyState.collection.idsInOrder.isEmpty {
-      Self.refreshFeatureStateRevision(&labelSourceState)
-      Self.syncMountedSourceState(
-        labelSourceState,
-        sourceId: state.labelSourceId,
-        familyState: &labelFamilyState,
-        state: &state
-      )
-    }
-
-    instances[instanceId] = state
-    try reconcileAndApplyLiveMarkerRoleOutputs(
-      for: instanceId,
-      affectedMarkerKeys: Set(completedMarkerKeys),
-      allowNewTransitions: false,
-      reason: "pin_transition_complete"
-    )
-  }
-
-  private func finalizeCompletedLiveDotTransitions(
-    instanceId: String,
-    enteredMarkerKeys: [String],
-    exitedMarkerKeys: [String]
-  ) throws {
-    guard var state = instances[instanceId] else {
-      return
-    }
-    let enteredMarkerKeySet = Set(enteredMarkerKeys)
-    let exitedMarkerKeySet = Set(exitedMarkerKeys)
-    let completedMarkerKeys = Array(enteredMarkerKeySet.union(exitedMarkerKeySet)).sorted()
-    guard !completedMarkerKeys.isEmpty else {
-      return
-    }
-
-    for markerKey in completedMarkerKeys {
-      var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
-      dotFamilyState.liveDotTransitionsByMarkerKey.removeValue(forKey: markerKey)
-      var dotSourceState = dotFamilyState.sourceState
-      if !dotSourceState.sourceRevision.isEmpty || !dotSourceState.featureIds.isEmpty || !dotFamilyState.collection.idsInOrder.isEmpty {
-        if enteredMarkerKeySet.contains(markerKey) {
-          Self.applyTransientFeatureState(
-            sourceState: &dotSourceState,
-            familyState: &dotFamilyState,
-            featureId: markerKey,
-            transientState: Self.liveDotFeatureState(opacity: 1)
-          )
-        } else {
-          Self.applyTransientFeatureState(
-            sourceState: &dotSourceState,
-            familyState: &dotFamilyState,
-            featureId: markerKey,
-            transientState: Self.liveDotFeatureState(opacity: 0)
-          )
-        }
-        Self.syncMountedSourceState(
-          dotSourceState,
-          sourceId: state.dotSourceId,
-          familyState: &dotFamilyState,
-          state: &state
-        )
-      }
-    }
-
-    var dotSourceState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).sourceState
-    if !dotSourceState.sourceRevision.isEmpty || !dotSourceState.featureIds.isEmpty || !Self.derivedFamilyState(sourceId: state.dotSourceId, state: state).collection.idsInOrder.isEmpty {
-      Self.refreshFeatureStateRevision(&dotSourceState)
-      var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
-      Self.syncMountedSourceState(
-        dotSourceState,
-        sourceId: state.dotSourceId,
-        familyState: &dotFamilyState,
-        state: &state
-      )
-    }
-
-    instances[instanceId] = state
-    try reconcileAndApplyLiveMarkerRoleOutputs(
-      for: instanceId,
-      affectedMarkerKeys: Set(completedMarkerKeys),
-      allowNewTransitions: false,
-      reason: "dot_transition_complete"
-    )
   }
 
   private func applyInteractionSuppression(
@@ -9346,8 +8290,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       "pinFeatureStateOverrides=\(pinFamilyState.transientFeatureStateById.count)",
       "dotFeatureStateOverrides=\(dotFamilyState.transientFeatureStateById.count)",
       "labelFeatureStateOverrides=\(labelFamilyState.transientFeatureStateById.count)",
-      "pinLodAnimations=\(pinFamilyState.livePinTransitionsByMarkerKey.count)",
-      "dotLodAnimations=\(dotFamilyState.liveDotTransitionsByMarkerKey.count)",
     ].joined(separator: " ")
   }
 
@@ -9846,28 +8788,6 @@ final class SearchMapRenderController: RCTEventEmitter {
           self.completeLabelObservationRefresh(instanceId: instanceId)
           self.retryLabelObservationRefreshIfPlacementPending(instanceId: instanceId, delayMs: 16)
         case .success(let features):
-          // ATTRIBUTION [gate0]: the gate query returned ZERO placed pin-labels during preroll (this is
-          // the deadlock). Log the real layer-stack positions to find WHY: does each pin-label layer
-          // EXIST (idx>=0) or is it missing (-2)? Where is it vs the dot layers and vs continent-label
-          // (allLayerIdentifiers is bottom→top; higher idx = placed FIRST = wins collision). If a
-          // pin-label idx < a dot idx, the dots win and cull the labels → they never place → deadlock.
-          if Self.lodHarnessEnabled, features.isEmpty,
-            latestState.visualSourceLifecycleState == .preparingReveal
-          {
-            let allIds = handle.mapView.mapboxMap.allLayerIdentifiers.map { $0.id }
-            func idx(_ id: String) -> Int { allIds.firstIndex(of: id) ?? -1 }
-            let labelInfo = resolvedLayerIds
-              .map { "\($0)=\(handle.mapView.mapboxMap.layerExists(withId: $0) ? idx($0) : -2)" }
-              .joined(separator: ",")
-            let dotInfo = latestState.nativePressTargetConfig.dotLayerIds
-              .map { "\($0)=\(idx($0))" }
-              .joined(separator: ",")
-            Self.harnessLog(
-              "{\"ev\":\"gate0\",\"t\":\(Int(Self.nowMs())),"
-                + "\"labels\":\"\(labelInfo)\",\"dots\":\"\(dotInfo)\","
-                + "\"continentIdx\":\(idx("continent-label")),\"totalLayers\":\(allIds.count)}"
-            )
-          }
           let primaryObservation = Self.buildRenderedLabelObservation(
             from: features,
             allowedSourceIds: [latestState.labelRenderSourceId]
@@ -10687,18 +9607,7 @@ final class SearchMapRenderController: RCTEventEmitter {
           }
           return
         }
-        if let pausedAtMs = state.sourceRecoveryPausedAtMs {
-          let deltaMs = max(0, Self.nowMs() - pausedAtMs)
-          if deltaMs > 0 {
-            var pinFamilyState = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state)
-            for markerKey in pinFamilyState.livePinTransitionsByMarkerKey.keys {
-              if pinFamilyState.livePinTransitionsByMarkerKey[markerKey]?.isAwaitingSourceCommit == false {
-                pinFamilyState.livePinTransitionsByMarkerKey[markerKey]?.startedAtMs += deltaMs
-              }
-            }
-            Self.setDerivedFamilyState(pinFamilyState, sourceId: state.pinSourceId, state: &state)
-          }
-        }
+        // v5: the engine owns pin opacity (no live transitions to time-shift after a recovery pause).
         state.isAwaitingSourceRecovery = false
         state.isReplayingSourceRecovery = true
         self.instances[instanceId] = state
@@ -11094,13 +10003,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         message:
           "reveal_placement_gate_forced_timeout request=\(revealRequestKey) waitedMs=\(Int(now - firstPendingAt)) \(Self.labelPlacementReadinessSummary(state: state))"
       )
-      if Self.lodHarnessEnabled {
-        Self.harnessLog(
-          "{\"ev\":\"revealforce\",\"t\":\(Int(now)),\"reason\":\"timeout\","
-            + "\"waitedMs\":\(Int(now - firstPendingAt)),\"labelCount\":\(state.lastLabelCount),"
-            + "\"pinCount\":\(state.lastPinCount)}"
-        )
-      }
       var startState = state
       startEnterPresentationIfReady(instanceId: instanceId, state: &startState)
       return true
@@ -11151,22 +10053,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         acknowledgedDataId: dataId,
         fenceBySourceId: &state.blockedPresentationCommitFenceBySourceId
       )
-      if sourceId == state.pinSourceId || sourceId == state.pinBundleSourceId {
-        startAwaitingLivePinTransitions(
-          instanceId: instanceId,
-          dataId: dataId,
-          reason: "source_commit_ack",
-          state: &state
-        )
-      }
-      if sourceId == state.dotSourceId {
-        startAwaitingLiveDotTransitions(
-          instanceId: instanceId,
-          dataId: dataId,
-          reason: "source_commit_ack",
-          state: &state
-        )
-      }
       if sourceId == state.labelSourceId {
         let labelObservation = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state).labelObservation
         let refreshDelayMs = state.currentViewportIsMoving
@@ -11182,21 +10068,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
 
       private func handleStyleLoaded(mapTag: NSNumber) {
-      // ATTR [stylelayers]: dump the layer stack when the basemap style loads, so we can see the REAL
-      // order — total layer count (is the 171-layer basemap present?) and the TOP of the stack (are our
-      // restaurant-*/search-* overlay layers above or below the topmost basemap labels like
-      // continent-label/road-label?). Tells us whether/where to reposition our stack above the basemap.
-      if Self.lodHarnessEnabled, let handle = currentResolvedMapHandle(for: mapTag) {
-        let allIds = handle.mapView.mapboxMap.allLayerIdentifiers.map { $0.id }
-        let oursTop = allIds.suffix(30).map { id -> String in
-          (id.hasPrefix("restaurant-") || id.hasPrefix("search-") || id.hasPrefix("user-location"))
-            ? "*\(id)" : id
-        }.joined(separator: "|")
-        Self.harnessLog(
-          "{\"ev\":\"stylelayers\",\"t\":\(Int(Self.nowMs())),\"total\":\(allIds.count),"
-            + "\"top30\":\"\(oursTop)\"}"
-        )
-      }
       for instanceId in Array(instances.keys) {
       guard var state = instances[instanceId], state.mapTag == mapTag else {
         continue
@@ -11434,81 +10305,28 @@ final class SearchMapRenderController: RCTEventEmitter {
   // marker keys never contain "|") to feed the spatial enter/exit hysteresis.
   // `reason` distinguishes camera ticks from data-arrival projections in diagnostics.
   // Returns true when a (possibly empty) set was projected and the signature updated.
-  // LOD OBSERVABILITY HARNESS: emit a structured [lodev] JSON event stream (one object per
-  // line) covering everything about LOD + map objects, captured via `simctl log stream`. See
-  // plans/lod-observability-harness.md + scripts/lod-harness.sh. Enabled by default for now;
-  // make JS-controllable later so it is free in prod.
-  static let lodHarnessEnabled = true
+  // Map-LOD v5 (plans/lod-v5-architecture.md): the per-instance MapLodKit.LodEngine owns promote/demote
+  // (decide on camera frame, step on the display link); the v4 driveNativeLod path is gated off. Now DEFAULT
+  // ON — v5 is the keeper (V4-vs-V5 head-to-head 2026-06-23: -46% main-thread LOD work, no settled deadlock,
+  // cleaner reveal). NOTE: do NOT flip false mid-session — it split-brains the role table vs nativeLodOpacity
+  // between v4's stepper and v5's engine. Remove the flag + delete the v4 SCRAP only after soak.
+  static let lodV5Enabled = true
+  // The LOD promotion budget: at most this many pins on screen (matches LodEngine's default budget and the
+  // JS maxFullPins). Used by the v5 engine and the independent badge-rank oracle.
+  static let nativeLodBudget = 30
+  // The pin badge sprite only renders ranks 1..99; rank > this shows the shared "overflow" sprite (JS
+  // MAX_PIN_RANK_BADGE in utils/quality-color.ts). The oracle must account for this cap, else EVERY
+  // rank>99 marker reads as a badge≠catalog mismatch (a false positive — the rank IS unified, the sprite
+  // just can't show it). Badges 1..30 (the only promotable ranks) are always exact, so this never hides a
+  // real promotion divergence.
+  static let MAX_PIN_RANK_BADGE = 99
+  // Badge sprite "...-overflow" (rank > 99) parses to this sentinel rank in the oracle.
+  static let MAX_PIN_RANK_BADGE_OVERFLOW = 100
   // DEV collision-box visualizer: green outlines of every symbol's REAL Mapbox collision box (set in
   // installMapSubscriptions via mapView.debugOptions = [.collision]). NOTE: this is MAP-WIDE — Mapbox
   // has no per-layer scoping, so it also draws boxes for every basemap label/POI (clutter). Turned OFF;
   // for an OUR-MARKERS-ONLY view we render a scoped dot collision-box ring in JS instead.
   static let collisionDebugEnabled = false
-  static func harnessLog(_ json: String) {
-    NSLog("[lodev] %@", json)
-  }
-
-  // GRANULAR LOD (native-owned, Phase 2). Apply the native promotion decision
-  // (nativePromotedKeysInOrder, computed by projectAndEmitOnScreenMarkers from the on-screen
-  // set) to the role table and drive the per-pin pin↔dot crossfade for ONLY the markers whose
-  // role changed this frame. No JS round-trip, no whole-frame republish — reconcile scopes its
-  // work to affectedMarkerKeys.
-  private func driveNativeLod(instanceId: String) {
-    guard var state = instances[instanceId] else {
-      return
-    }
-    // Only when fully VISIBLE: during the reveal preroll the presentation lane owns the fade
-    // and JS seeds the initial roles; taking over there risks reveal interference. Native owns
-    // per-frame LOD once the surface is visible (normal pan/zoom).
-    guard state.visualSourceLifecycleState == .visible else {
-      return
-    }
-    let rows = state.markerRoleTable.rowByMarkerKey
-    // Only promote markers that have a resident row (a pin feature to show).
-    let basePinned = state.nativePromotedKeysInOrder.filter { rows[$0] != nil }
-    // FORCE-PROMOTE the selected/tapped marker(s) regardless of rank or visibility, so a
-    // tapped pin stays a pin when you pan (mirrors JS collectSelectedEntries).
-    let basePinnedSet = Set(basePinned)
-    let forcedPromote = state.highlightedMarkerKeys.filter { rows[$0] != nil && !basePinnedSet.contains($0) }
-    let nextPinned = basePinned + forcedPromote
-    let nextPinnedSet = Set(nextPinned)
-    let prevPinnedSet = Set(state.markerRoleTable.pinnedMarkerKeysInOrder)
-    let affected = prevPinnedSet.symmetricDifference(nextPinnedSet)
-    guard !affected.isEmpty else {
-      return
-    }
-    // HARNESS [lodev] lod event: the role flips this frame. promote/demote counts + whether
-    // we're mid-gesture + whether the apply will actually animate (allowNew). If affected>0 &&
-    // moving && allowNew but the pins still snap on settle, the deferral is DOWNSTREAM of here.
-    if Self.lodHarnessEnabled {
-      let promoteKeys = nextPinnedSet.subtracting(prevPinnedSet)
-      let demoteKeys = prevPinnedSet.subtracting(nextPinnedSet)
-      let allowNew = Self.allowsIncrementalMarkerTransitions(state, allowNewTransitions: true)
-      let promoteRanks = promoteKeys.compactMap { k in state.candidateCatalog.first { $0.markerKey == k }?.rank }.sorted()
-      Self.harnessLog(
-        "{\"ev\":\"lod\",\"t\":\(Int(Self.nowMs())),\"moving\":\(state.currentViewportIsMoving),"
-          + "\"affected\":\(affected.count),\"promote\":\(promoteKeys.count),\"demote\":\(demoteKeys.count),"
-          + "\"allowNew\":\(allowNew),\"promoteRanks\":\"\(promoteRanks.prefix(45).map(String.init).joined(separator: ","))\"}"
-      )
-    }
-    let residentDots = state.markerRoleTable.residentDotMarkerKeysInOrder.isEmpty
-      ? Array(rows.keys)
-      : state.markerRoleTable.residentDotMarkerKeysInOrder
-    state.markerRoleTable.pinnedMarkerKeysInOrder = nextPinned
-    // A marker is a visible DOT iff it is resident and NOT promoted (the crossfade partner).
-    state.markerRoleTable.dotMarkerKeysInOrder = residentDots.filter { !nextPinnedSet.contains($0) }
-    instances[instanceId] = state
-    do {
-      try reconcileAndApplyLiveMarkerRoleOutputs(
-        for: instanceId,
-        affectedMarkerKeys: affected,
-        allowNewTransitions: true,
-        reason: "native_lod"
-      )
-    } catch {
-      NSLog("[mapdiag] native_lod reconcile failed: %@", error.localizedDescription)
-    }
-  }
 
   @discardableResult
   private func projectAndEmitOnScreenMarkers(
@@ -11520,6 +10338,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   ) -> Bool {
     // Respect the existing hidden/dismissing gating — never project a stale frame for a
     // source that is not on screen (mirrors handleNativeCameraChanged's per-instance guard).
+    NSLog("[LODDBG] projEnter reason=\(reason) inactive=\(Self.isVisualSourceInactiveOrDismissing(state)) catalogEmpty=\(state.candidateCatalog.isEmpty)")
     guard !Self.isVisualSourceInactiveOrDismissing(state) else {
       return false
     }
@@ -11536,6 +10355,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       previouslyVisible: previouslyVisible
     )
     let visibleSignature = onScreenKeys.sorted().joined(separator: "|")
+    NSLog("[LODDBG] proj reason=\(reason) onScreen=\(onScreenKeys.count) sigChanged=\(visibleSignature != (state.lastVisibleMarkerSetSignature ?? "")) forced=\(state.highlightedMarkerKeys.count)")
     guard visibleSignature != state.lastVisibleMarkerSetSignature else {
       return false
     }
@@ -11548,40 +10368,44 @@ final class SearchMapRenderController: RCTEventEmitter {
     let rankByKey = Dictionary(
       state.candidateCatalog.map { ($0.markerKey, $0.rank) }, uniquingKeysWith: { first, _ in first }
     )
-    let nativePromotedKeys = Array(
-      onScreenKeys
-        .sorted { (rankByKey[$0] ?? Int.max) < (rankByKey[$1] ?? Int.max) }
-        .prefix(shadowLodMaxFullPins)
-    )
-    state.nativePromotedKeysInOrder = nativePromotedKeys
-    // HARNESS [lodev] frame event: on-screen membership, promoted count, and per-frame
-    // enter/leave deltas (group-enter detector), with camera + motion.
-    if Self.lodHarnessEnabled {
-      let onScreenSet = Set(onScreenKeys)
-      let enterCount = onScreenSet.subtracting(previouslyVisible).count
-      let leaveCount = previouslyVisible.subtracting(onScreenSet).count
-      let cam = handle.mapView.mapboxMap.cameraState
-      // RANK CROSS-REFERENCE: promotion is top-N by rank AMONG the on-screen set, so a skipped low
-      // rank (e.g. 3,5,6 missing while 44,52,65 promote) means the ON-SCREEN set itself is missing
-      // those low ranks (not a promotion bug). onScreenRanks = sorted ranks the projection put on
-      // screen; promotedRanks = the top-N it picked; catalogTopRanks = the lowest ranks that EXIST
-      // in the catalog (to tell "rank 3 is off-screen" from "rank 3 doesn't exist / dedup gap").
-      let onScreenRanksStr = onScreenKeys.compactMap { rankByKey[$0] }.sorted().prefix(60)
-        .map(String.init).joined(separator: ",")
-      let promotedRanksStr = nativePromotedKeys.compactMap { rankByKey[$0] }.sorted()
-        .map(String.init).joined(separator: ",")
-      let catalogTopRanksStr = state.candidateCatalog.map { $0.rank }.sorted().prefix(45)
-        .map(String.init).joined(separator: ",")
-      Self.harnessLog(
-        "{\"ev\":\"frame\",\"t\":\(Int(Self.nowMs())),\"e\":\(Int(Date().timeIntervalSince1970 * 1000)),"
-          + "\"reason\":\"\(reason)\",\"moving\":\(isMoving),"
-          + "\"visible\":\(onScreenKeys.count),\"promoted\":\(nativePromotedKeys.count),"
-          + "\"enter\":\(enterCount),\"leave\":\(leaveCount),"
-          + "\"onScreenRanks\":\"\(onScreenRanksStr)\",\"promotedRanks\":\"\(promotedRanksStr)\","
-          + "\"catalogTopRanks\":\"\(catalogTopRanksStr)\","
-          + "\"pitch\":\(String(format: "%.1f", cam.pitch)),\"zoom\":\(String(format: "%.2f", cam.zoom))}"
+    let nativePromotedKeys: [String]
+    if Self.lodV5Enabled, var engine = state.lodV5Engine {
+      // Map-LOD v5 DECIDE: the LodEngine recomputes `want` from scratch over the on-screen set and
+      // returns the top-budget promoted set in rank order. This REPLACES the v4 rank-prefix above as the
+      // single promotion authority. We mirror it into nativePromotedKeysInOrder + the role table so the
+      // existing [lodev] harness (frame/render/step events read the role table) reflects the engine's
+      // decision. CONVERGE (engine.step) runs on the display link and is the only feature-state writer.
+      // Capture the PREVIOUS promoted set (role table) BEFORE mirroring, for the promote/demote delta.
+      let prevPromotedSet = Set(state.markerRoleTable.pinnedMarkerKeysInOrder)
+      // Force-promote the selected/tapped marker(s) regardless of rank or on-screen status, so a tapped pin
+      // stays a pin when you pan (mirrors v4 driveNativeLod's forcedPromote off highlightedMarkerKeys).
+      let forcedKeys = state.highlightedMarkerKeys
+      let (promoted, membershipChanged) = engine.decide(onScreenKeys: Set(onScreenKeys), forcedKeys: forcedKeys)
+      state.lodV5Engine = engine
+      NSLog("[LODDBG] decide onScreen=\(onScreenKeys.count) promoted=\(promoted.count) changed=\(membershipChanged) forced=\(forcedKeys.count)")
+      nativePromotedKeys = promoted
+      // FM#3 obstacle reseed on `membershipChanged` is a follow-up; the crossfade core is validated first.
+      state.markerRoleTable.pinnedMarkerKeysInOrder = promoted
+      let residentDots = state.markerRoleTable.residentDotMarkerKeysInOrder.isEmpty
+        ? Array(rankByKey.keys)
+        : state.markerRoleTable.residentDotMarkerKeysInOrder
+      let promotedSet = Set(promoted)
+      state.markerRoleTable.dotMarkerKeysInOrder = residentDots.filter { !promotedSet.contains($0) }
+      if membershipChanged {
+        let promoteKeys = promotedSet.subtracting(prevPromotedSet)
+        let demoteKeys = prevPromotedSet.subtracting(promotedSet)
+        // FM#3: stash the promote∪demote delta for the camera handler to reseed the collision obstacle.
+        state.lodV5ObstacleReseedKeys.formUnion(promoteKeys)
+        state.lodV5ObstacleReseedKeys.formUnion(demoteKeys)
+      }
+    } else {
+      nativePromotedKeys = Array(
+        onScreenKeys
+          .sorted { (rankByKey[$0] ?? Int.max) < (rankByKey[$1] ?? Int.max) }
+          .prefix(shadowLodMaxFullPins)
       )
     }
+    state.nativePromotedKeysInOrder = nativePromotedKeys
     let cameraState = handle.mapView.mapboxMap.cameraState
     emit([
       "type": "map_native_visible_markers",
@@ -11600,87 +10424,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     return true
   }
 
-  // HARNESS GROUND TRUTH: queries the ACTUAL rendered pin layer (queryRenderedFeatures) and emits a
-  // `render` event comparing what is REALLY on screen as a pin vs what SHOULD be promoted (top-N by
-  // rank among the on-screen set). This is the only source of truth for "of what should be a pin,
-  // what is actually showing" — unlike the opacity-based renderP, it reflects mapbox COLLISION
-  // CULLING and missing-feature gaps. shouldPromote = nativePromotedKeysInOrder; missing = should
-  // but not rendered (collision-culled or no feature); extra = rendered but not in the should set.
-  private func emitHarnessRenderTruth(instanceId: String, state: InstanceState, handle: ResolvedMapHandle, isMoving: Bool) {
-    let pinLayerIds = state.nativePressTargetConfig.pinLayerIds
-    guard Self.lodHarnessEnabled, !pinLayerIds.isEmpty else {
-      return
-    }
-    // Throttle during motion (queryRenderedFeatures hits the render thread); always allow on settle.
-    let now = Self.nowMs()
-    if isMoving {
-      guard now - lastHarnessRenderQueryMs >= 200 else { return }
-    }
-    lastHarnessRenderQueryMs = now
-    // ATTR [layerorder]: the SETTLED layer stack. total = is the 171-layer basemap loaded? topmostBasemap
-    // = the highest non-ours symbol/label layer; ourLowest/ourHighest = where our restaurant-*/search-*
-    // layers sit by index. If ourLowest < topmostBasemap, our markers are BELOW basemap labels → culled.
-    let allLayerIds = handle.mapView.mapboxMap.allLayerIdentifiers.map { $0.id }
-    func isOurs(_ id: String) -> Bool {
-      id.hasPrefix("restaurant-") || id.hasPrefix("search-") || id.hasPrefix("user-location")
-    }
-    let ourIdxs = allLayerIds.enumerated().filter { isOurs($0.element) }.map { $0.offset }
-    let basemapSymbolTop = allLayerIds.lastIndex { !isOurs($0) } ?? -1
-    // The basemap is a Standard IMPORT (its layers aren't in allLayerIdentifiers) — log the import IDs
-    // so we can target setStyleImportConfigProperty(for: importId, config: "showPlaceLabels", ...) etc.
-    let importIds = handle.mapView.mapboxMap.styleImports.map { $0.id }.joined(separator: ",")
-    Self.harnessLog(
-      "{\"ev\":\"layerorder\",\"t\":\(Int(Self.nowMs())),\"total\":\(allLayerIds.count),"
-        + "\"ourLowest\":\(ourIdxs.min() ?? -1),\"ourHighest\":\(ourIdxs.max() ?? -1),"
-        + "\"topmostNonOurs\":\(basemapSymbolTop),\"imports\":\"\(importIds)\"}"
-    )
-    let shouldPromote = Set(state.nativePromotedKeysInOrder)
-    let onScreenCount = state.lastVisibleMarkerSetSignature.map {
-      $0.isEmpty ? 0 : $0.components(separatedBy: "|").count
-    } ?? 0
-    let cam = handle.mapView.mapboxMap.cameraState
-    let rect = handle.mapView.bounds
-    let dotLayerIds = state.nativePressTargetConfig.dotLayerIds
-    let labelLayerIds = state.nativePressTargetConfig.labelLayerIds
-    // Collision-aware ground truth: queryRenderedFeatures returns only features that PASSED mapbox
-    // placement/collision and are in-rect — the screen truth that opacity-based renderP/promDotOpaque/
-    // promLabelVis are blind to. renderedDots≈0 ⇒ dots collision-culled off the map (the "no dots"
-    // bug); renderedLabels ⇒ how many name-labels actually survive collision (vs promLabelVis intent).
-    func renderedKeys(_ result: Result<[QueriedRenderedFeature], Error>) -> Set<String> {
-      guard case .success(let queried) = result else { return [] }
-      var keys = Set<String>()
-      for q in queried {
-        if case let .string(markerKey)? = q.queriedFeature.feature.properties?["markerKey"] {
-          keys.insert(markerKey)
-        }
-      }
-      return keys
-    }
-    handle.mapView.mapboxMap.queryRenderedFeatures(with: rect, options: RenderedQueryOptions(layerIds: pinLayerIds, filter: nil)) { pinResult in
-      let pinKeys = renderedKeys(pinResult)
-      let dotQueryLayers = dotLayerIds.isEmpty ? pinLayerIds : dotLayerIds
-      handle.mapView.mapboxMap.queryRenderedFeatures(with: rect, options: RenderedQueryOptions(layerIds: dotQueryLayers, filter: nil)) { dotResult in
-        let dotKeys = dotLayerIds.isEmpty ? Set<String>() : renderedKeys(dotResult)
-        let labelQueryLayers = labelLayerIds.isEmpty ? pinLayerIds : labelLayerIds
-        handle.mapView.mapboxMap.queryRenderedFeatures(with: rect, options: RenderedQueryOptions(layerIds: labelQueryLayers, filter: nil)) { labelResult in
-          let labelKeys = labelLayerIds.isEmpty ? Set<String>() : renderedKeys(labelResult)
-          DispatchQueue.main.async {
-            let missing = shouldPromote.subtracting(pinKeys)   // should be a pin but isn't on screen
-            let extra = pinKeys.subtracting(shouldPromote)     // rendered but not in the should-set
-            Self.harnessLog(
-              "{\"ev\":\"render\",\"t\":\(Int(Self.nowMs())),\"moving\":\(isMoving),"
-                + "\"onScreen\":\(onScreenCount),\"shouldPromote\":\(shouldPromote.count),"
-                + "\"renderedPins\":\(pinKeys.count),\"renderedDots\":\(dotKeys.count),"
-                + "\"renderedLabels\":\(labelKeys.count),"
-                + "\"missing\":\(missing.count),\"extra\":\(extra.count),"
-                + "\"zoom\":\(String(format: "%.2f", cam.zoom))}"
-            )
-          }
-        }
-      }
-    }
-  }
-
   private func handleNativeCameraChanged(
     mapTag: NSNumber,
     handle: ResolvedMapHandle,
@@ -11696,17 +10439,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       String(Int((cameraState.bearing * 100).rounded())),
       String(Int((cameraState.pitch * 100).rounded())),
     ].joined(separator: "|")
-    // ENTRY ATTRIBUTION (2026-06-22): does the camera-change handler fire at all, and is the surface
-    // .visible (the gate driveNativeLod requires to re-evaluate LOD)? life≠visible ⇒ LOD frozen.
-    if Self.lodHarnessEnabled {
-      let life = instances.first(where: { $0.value.mapTag == mapTag })
-        .map { String(describing: $0.value.visualSourceLifecycleState) } ?? "none"
-      Self.harnessLog(
-        "{\"ev\":\"camentry\",\"t\":\(Int(Self.nowMs())),\"moving\":\(isMoving),"
-          + "\"zoom\":\(String(format: "%.2f", cameraState.zoom)),\"life\":\"\(life)\","
-          + "\"instances\":\(instances.count)}"
-      )
-    }
     if isMoving && handle.lastNativeCameraDiagSignature == signature {
       return
     }
@@ -11716,12 +10448,15 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     handle.lastNativeCameraDiagAtMs = now
     handle.lastNativeCameraDiagSignature = signature
+    NSLog("[LODDBG] camGo moving=\(isMoving) zoom=\(Int((cameraState.zoom * 100).rounded())) instances=\(instances.count)")
     for (instanceId, state) in instances where state.mapTag == mapTag {
       guard !Self.isVisualSourceInactiveOrDismissing(state) else {
+        NSLog("[LODDBG] camInst \(instanceId) SKIP inactive/dismissing")
         labelObservationRefreshWorkItems[instanceId]?.cancel()
         labelObservationRefreshWorkItems[instanceId] = nil
         continue
       }
+      NSLog("[LODDBG] camInst \(instanceId) PASS")
       var nextState = state
       nextState.currentViewportIsMoving = isMoving
       // Pin z-order is native (viewport-y) — no per-slot moveLayer pass on camera move.
@@ -11755,40 +10490,21 @@ final class SearchMapRenderController: RCTEventEmitter {
       // changes (on camera move/idle), so JS can drive promotion/demotion off true
       // projected visibility instead of a padded lat/lng AABB. Throttled to
       // set-change to bound bridge traffic during gestures.
-      // cwork: total main-thread cost of the per-camera-frame LOD work (projection + bridge
-      // emits + driveNativeLod's reconcile). This runs SYNCHRONOUSLY on the main thread on every
-      // camera change during a gesture, competing with the CADisplayLink stepper. If cwork is
-      // regularly >16ms, THIS is the jank source (the stepper gets starved -> high step dtMs).
-      let cworkStartMs = Self.nowMs()
-      let didProject = projectAndEmitOnScreenMarkers(
+      _ = projectAndEmitOnScreenMarkers(
         instanceId: instanceId,
         state: &nextState,
         handle: handle,
         reason: isMoving ? "camera_moving" : "camera_idle",
         isMoving: isMoving
       )
-      let afterProjectMs = Self.nowMs()
       instances[instanceId] = nextState
-      // GRANULAR LOD (native-owned, Phase 2): apply the just-computed promotion decision to
-      // the role table and crossfade ONLY the markers whose role changed — per-pin, native,
-      // no JS round-trip / whole-frame republish.
-      driveNativeLod(instanceId: instanceId)
-      if Self.lodHarnessEnabled {
-        let afterDriveMs = Self.nowMs()
-        // Split cwork: projectMs = computeOnScreenMarkerKeys (project ~220 markers) + the bridge
-        // emit; driveMs = driveNativeLod reconcile (full-collection rebuild when roles flip). Tells
-        // us WHICH half to optimize before refactoring.
-        let projectMs = afterProjectMs - cworkStartMs
-        let driveMs = afterDriveMs - afterProjectMs
-        Self.harnessLog(
-          "{\"ev\":\"cwork\",\"t\":\(Int(afterDriveMs)),\"moving\":\(isMoving),"
-            + "\"projected\":\(didProject),\"ms\":\(String(format: "%.1f", afterDriveMs - cworkStartMs)),"
-            + "\"projectMs\":\(String(format: "%.1f", projectMs)),\"driveMs\":\(String(format: "%.1f", driveMs))}"
-        )
-        // GROUND TRUTH: query the actual rendered pin layer vs the should-promote set (post-drive).
-        if let driven = instances[instanceId] {
-          emitHarnessRenderTruth(instanceId: instanceId, state: driven, handle: handle, isMoving: isMoving)
-        }
+      // Map-LOD v5: decide() ran inside projectAndEmitOnScreenMarkers; make sure the CONVERGE display
+      // link is alive so the just-promoted/demoted anchors fade (it self-cancels when not runnable).
+      if Self.lodV5Enabled {
+        updateLivePinTransitionAnimation(instanceId: instanceId, state: nextState)
+        // FM#3: reseed the invisible collision obstacle for the promote/demote delta so labels yield to
+        // the live promoted pins (isolated to the obstacle source — no pin re-tile). Drains the stashed set.
+        applyV5ObstacleReseed(for: instanceId)
       }
       let labelObservation = Self.derivedFamilyState(sourceId: nextState.labelSourceId, state: nextState).labelObservation
       if labelObservation.observationEnabled {

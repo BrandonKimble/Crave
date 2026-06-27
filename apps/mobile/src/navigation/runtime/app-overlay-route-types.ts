@@ -110,18 +110,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     chromePolicy: 'preserve',
     headerActionPolicy: 'fixed-close',
   },
-  favoriteListDetail: {
-    role: 'child',
-    productSceneKey: null,
-    parentSceneKeys: ['bookmarks', 'profile'],
-    requiresOwnerSceneKey: true,
-    sceneSwitch: true,
-    sceneInput: true,
-    staticSceneInput: false,
-    sheetPolicy: 'sharedPhysicalSheet',
-    chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
-  },
   saveList: {
     role: 'child',
     productSceneKey: null,
@@ -189,7 +177,6 @@ export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
   'polls',
   'bookmarks',
   'profile',
-  'favoriteListDetail',
   'saveList',
   'pollCreation',
   'pollDetail',
@@ -208,7 +195,6 @@ export const APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS = [
   'polls',
   'pollCreation',
   'pollDetail',
-  'favoriteListDetail',
   ...APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS,
 ] as const satisfies readonly OverlayKey[];
 
@@ -346,13 +332,6 @@ export type OverlayRouteParamsMap = {
     openerRouteKey?: OverlayKey | null;
     routeInstanceId?: string | null;
     sessionToken?: number | null;
-  };
-  favoriteListDetail?: {
-    listId: string;
-    parentSceneKey: AppOverlayTopLevelProductRouteKey;
-    ownerSceneKey: AppOverlayTopLevelProductRouteKey;
-    openerRouteKey?: OverlayKey | null;
-    routeInstanceId: string;
   };
   saveList?: {
     listType: AppOverlaySaveListType;

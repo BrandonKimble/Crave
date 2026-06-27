@@ -42,7 +42,7 @@ type UseSearchNaturalSubmitOwnerArgs = {
   }) => void;
   prepareNaturalSearchAttemptPayload: (options: {
     tuple: {
-      mode: 'entity' | 'natural' | 'shortcut';
+      mode: 'entity' | 'natural' | 'shortcut' | 'favorites';
       sessionId: string;
       operationId: string;
       requestId: number;
@@ -75,7 +75,7 @@ type UseSearchNaturalSubmitOwnerArgs = {
     response: SearchResponse;
     requestId: number;
     runtimeTuple: {
-      mode: 'entity' | 'natural' | 'shortcut';
+      mode: 'entity' | 'natural' | 'shortcut' | 'favorites';
       sessionId: string;
       operationId: string;
       requestId: number;

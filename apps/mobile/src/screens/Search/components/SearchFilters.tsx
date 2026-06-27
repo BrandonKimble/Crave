@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
   type LayoutChangeEvent,
@@ -26,13 +25,11 @@ import {
 import { SEGMENT_OPTIONS } from '../constants/search';
 
 import { Text } from '../../../components';
-import MaskedHoleOverlay, { type MaskedHole } from '../../../components/MaskedHoleOverlay';
-import { FrostedGlassBackground } from '../../../components/FrostedGlassBackground';
+import { type MaskedHole } from '../../../components/MaskedHoleOverlay';
 import {
-  isPerfScenarioAttributionActive,
-  logPerfScenarioAttributionEvent,
-} from '../../../perf/perf-scenario-attribution';
-import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
+  FrostedFilterStrip,
+  type FrostedFilterStripMeasuredLayout,
+} from '../../../components/FrostedFilterStrip';
 
 const TOGGLE_HEIGHT = CONTROL_HEIGHT;
 const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
@@ -53,22 +50,6 @@ const resolveSegmentTravelDurationMs = (from: number, to: number): number => {
 };
 const getNextSegmentValue = (value: SegmentValue): SegmentValue =>
   value === 'restaurants' ? 'dishes' : 'restaurants';
-
-const HOLE_RADIUS_BOOST = 1;
-
-const areHolesEqual = (prev: MaskedHole | undefined, next: MaskedHole): boolean => {
-  if (!prev) {
-    return false;
-  }
-  const closeEnough = (a: number, b: number) => Math.abs(a - b) < 0.5;
-  return (
-    closeEnough(prev.x, next.x) &&
-    closeEnough(prev.y, next.y) &&
-    closeEnough(prev.width, next.width) &&
-    closeEnough(prev.height, next.height) &&
-    (prev.borderRadius ?? 0) === (next.borderRadius ?? 0)
-  );
-};
 
 const areLayoutsEqual = (prev: LayoutRectangle | undefined, next: LayoutRectangle): boolean => {
   if (!prev) {
@@ -170,19 +151,25 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   disableBlur = false,
   initialLayoutCache,
   onLayoutCacheChange,
-  telemetryHostLayer = 'SearchMountedSceneBody',
-  telemetryInSheetBody = true,
+  // telemetryHostLayer / telemetryInSheetBody are still accepted (consumers pass them) but
+  // the perf-readiness telemetry moved out with the shell extraction — intentionally unused.
 }) => {
-  const [rowHeight, setRowHeight] = React.useState(
-    initialLayoutCache?.rowHeight ?? TOGGLE_MIN_HEIGHT
+  // The frosted cutout shell (mask geometry, per-control hole registration, horizontal
+  // scroll) is now the SHARED `FrostedFilterStrip` — search renders its controls through it
+  // so the result-sheet strip can't drift from the polls/favorites strips. We keep only the
+  // measured layout the shell reports back, for the warm-restore cache.
+  const [shellLayout, setShellLayout] = React.useState<FrostedFilterStripMeasuredLayout | null>(
+    initialLayoutCache
+      ? {
+          holeMap: initialLayoutCache.holeMap,
+          viewportWidth: initialLayoutCache.viewportWidth,
+          rowHeight: initialLayoutCache.rowHeight,
+        }
+      : null
   );
-  const [viewportWidth, setViewportWidth] = React.useState(initialLayoutCache?.viewportWidth ?? 0);
-  const [stripContentWidth, setStripContentWidth] = React.useState(
-    initialLayoutCache?.viewportWidth ?? 0
-  );
-  const [holeMap, setHoleMap] = React.useState<Record<string, MaskedHole>>(
-    initialLayoutCache?.holeMap ?? {}
-  );
+  const handleShellLayout = React.useCallback((layout: FrostedFilterStripMeasuredLayout) => {
+    setShellLayout(layout);
+  }, []);
   const segmentLayoutsRef = React.useRef<Partial<Record<SegmentValue, LayoutRectangle>>>(
     initialLayoutCache?.segmentLayouts ? { ...initialLayoutCache.segmentLayouts } : {}
   );
@@ -197,7 +184,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       initialDishesLayout?.width &&
       initialDishesLayout.width > 0
   );
-  const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
 
   const inset = contentHorizontalPadding;
   const segmentSelectionProgress = useSharedValue(activeTab === 'restaurants' ? 0 : 1);
@@ -262,50 +248,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     ]
   );
 
-  const registerHole = React.useCallback(
-    (key: string, borderRadius: number = TOGGLE_BORDER_RADIUS) =>
-      (event: LayoutChangeEvent) => {
-        const { x, y, width, height } = event.nativeEvent.layout;
-        const next: MaskedHole = {
-          x,
-          y,
-          width,
-          height,
-          borderRadius,
-        };
-        setHoleMap((prev) => {
-          const prevHole = prev[key];
-          if (prevHole && areHolesEqual(prevHole, next)) {
-            return prev;
-          }
-          return { ...prev, [key]: next };
-        });
-      },
-    []
-  );
-
-  const holes = React.useMemo(() => Object.values(holeMap), [holeMap]);
-  const maxHoleExtent = React.useMemo(() => {
-    if (!holes.length) {
-      return 0;
-    }
-    return Math.max(...holes.map((hole) => hole.x + hole.width));
-  }, [holes]);
-  const overscrollMargin = Math.max(inset, viewportWidth);
-  const maskWidth = Math.max(viewportWidth, maxHoleExtent + overscrollMargin * 2);
-  const maskHeight = rowHeight > 0 ? rowHeight + TOGGLE_STACK_GAP + 1 : 0;
-  const maskTopOffset = rowHeight > 0 ? -1 : 0;
-  const maskedHoles = React.useMemo(
-    () =>
-      holes.map((hole) => ({
-        x: hole.x + overscrollMargin,
-        y: hole.y + 1,
-        width: hole.width,
-        height: hole.height,
-        borderRadius: (hole.borderRadius ?? TOGGLE_BORDER_RADIUS) + HOLE_RADIUS_BOOST,
-      })),
-    [holes, overscrollMargin]
-  );
   const highlightAnimatedStyle = useAnimatedStyle(() => ({
     opacity: segmentLayoutReady.value,
     transform: [
@@ -386,19 +328,20 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     [scheduleSegmentToggleCommit, segmentSelectionProgress, segmentTargetProgress]
   );
 
+  // Warm-restore cache = the shell's measured layout (hole map + viewport + row height)
+  // joined with our own segment layouts (the pill positions, which live in the controls).
   React.useEffect(() => {
-    if (!onLayoutCacheChange) {
+    if (!onLayoutCacheChange || !shellLayout) {
       return;
     }
-    const nextViewportWidth = viewportWidth || initialLayoutCache?.viewportWidth || 0;
-    if (nextViewportWidth <= 0 || rowHeight <= 0) {
+    if (shellLayout.viewportWidth <= 0 || shellLayout.rowHeight <= 0) {
       return;
     }
     onLayoutCacheChange({
-      viewportWidth: nextViewportWidth,
-      rowHeight,
+      viewportWidth: shellLayout.viewportWidth,
+      rowHeight: shellLayout.rowHeight,
       holeMap: Object.fromEntries(
-        Object.entries(holeMap).map(([key, hole]) => [key, cloneMaskedHole(hole)])
+        Object.entries(shellLayout.holeMap).map(([key, hole]) => [key, cloneMaskedHole(hole)])
       ),
       segmentLayouts: Object.fromEntries(
         Object.entries(segmentLayoutsRef.current).map(([key, layout]) => [
@@ -407,293 +350,185 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         ])
       ),
     });
-  }, [
-    holeMap,
-    initialLayoutCache?.viewportWidth,
-    onLayoutCacheChange,
-    rowHeight,
-    segmentLayoutsVersion,
-    viewportWidth,
-  ]);
-
-  React.useEffect(() => {
-    if (!isPerfScenarioAttributionActive(activeScenarioConfig)) {
-      return;
-    }
-    const requiredHoleKeys = [
-      'segment-group',
-      'toggle-open-now',
-      'toggle-price',
-      'toggle-votes',
-      'toggle-rising',
-    ];
-    const hasRequiredCutouts = requiredHoleKeys.every((key) => {
-      const hole = holeMap[key];
-      return hole != null && hole.width > 0 && hole.height > 0;
-    });
-    const hasSegmentLayouts =
-      (segmentLayoutsRef.current.restaurants?.width ?? 0) > 0 &&
-      (segmentLayoutsRef.current.dishes?.width ?? 0) > 0;
-    if (!hasRequiredCutouts || !hasSegmentLayouts || rowHeight <= 0 || viewportWidth <= 0) {
-      return;
-    }
-    logPerfScenarioAttributionEvent('VisualReadiness', activeScenarioConfig, {
-      event: 'search_results_toggle_bar_contract',
-      activeTab,
-      cutoutCount: Object.keys(holeMap).length,
-      hasCutoutMask: true,
-      hasDishesSegment: true,
-      hasOpenNowToggle: true,
-      hasPriceToggle: true,
-      hasRestaurantsSegment: true,
-      hasVotesToggle: true,
-      hostLayer: telemetryHostLayer,
-      inSheetBody: telemetryInSheetBody,
-      rowHeight,
-      viewportWidth,
-    });
-  }, [
-    activeScenarioConfig,
-    activeTab,
-    holeMap,
-    rowHeight,
-    segmentLayoutsVersion,
-    telemetryHostLayer,
-    telemetryInSheetBody,
-    viewportWidth,
-  ]);
+  }, [onLayoutCacheChange, segmentLayoutsVersion, shellLayout]);
 
   return (
-    <View style={styles.resultFiltersWrapper}>
-      {!disableBlur ? <FrostedGlassBackground /> : null}
-      <View
-        style={styles.paddedWrapper}
-        onLayout={(event) => {
-          const nextWidth = event.nativeEvent.layout.width;
-          setViewportWidth((previous) =>
-            Math.abs(previous - nextWidth) < 0.5 ? previous : nextWidth
-          );
-        }}
-      >
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          directionalLockEnabled
-          alwaysBounceHorizontal
-          contentContainerStyle={[styles.filterButtonsContent, { paddingHorizontal: inset }]}
-          style={styles.filterButtonsScroll}
+    <FrostedFilterStrip
+      disableBlur={disableBlur}
+      surfaceColor="#ffffff"
+      contentInset={inset}
+      holeBorderRadius={TOGGLE_BORDER_RADIUS}
+      initialHoleLayout={
+        initialLayoutCache
+          ? {
+              holeMap: initialLayoutCache.holeMap,
+              viewportWidth: initialLayoutCache.viewportWidth,
+              rowHeight: initialLayoutCache.rowHeight,
+            }
+          : null
+      }
+      onMeasuredLayoutChange={handleShellLayout}
+    >
+      <GestureDetector gesture={segmentToggleTapGesture}>
+        <View
+          style={styles.segmentedControl}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Toggle results between restaurants and dishes"
+          accessibilityHint="Tap to switch result type"
+          onAccessibilityTap={handleSegmentToggleAccessibility}
         >
-          <View
-            style={styles.cutoutStrip}
-            onLayout={(event) => {
-              const { width, height } = event.nativeEvent.layout;
-              setStripContentWidth((previous) =>
-                Math.abs(previous - width) < 0.5 ? previous : width
-              );
-              setRowHeight((previous) => (Math.abs(previous - height) < 0.5 ? previous : height));
-            }}
-          >
-            <View style={styles.toggleRow}>
-              {stripContentWidth > 0 && rowHeight > 0 && maskedHoles.length > 0 ? (
-                <MaskedHoleOverlay
-                  pointerEvents="none"
-                  holes={maskedHoles}
-                  backgroundColor="#ffffff"
-                  style={[
-                    styles.maskOverlay,
-                    {
-                      width: maskWidth,
-                      height: maskHeight,
-                      top: maskTopOffset,
-                      left: -overscrollMargin,
-                    },
-                  ]}
-                />
-              ) : null}
-              <View style={styles.toggleRowContent}>
-                <GestureDetector gesture={segmentToggleTapGesture}>
-                  <View
-                    style={styles.segmentedControl}
-                    onLayout={registerHole('segment-group', TOGGLE_BORDER_RADIUS)}
-                    accessible
-                    accessibilityRole="button"
-                    accessibilityLabel="Toggle results between restaurants and dishes"
-                    accessibilityHint="Tap to switch result type"
-                    onAccessibilityTap={handleSegmentToggleAccessibility}
-                  >
-                    <Reanimated.View
-                      pointerEvents="none"
-                      style={[
-                        styles.segmentedHighlight,
-                        { backgroundColor: accentColor },
-                        highlightAnimatedStyle,
-                      ]}
-                    />
-                    {SEGMENT_OPTIONS.map((option) => {
-                      const lightLabelStyle =
-                        option.value === 'restaurants'
-                          ? restaurantsLabelLightStyle
-                          : dishesLabelLightStyle;
-                      const darkLabelStyle =
-                        option.value === 'restaurants'
-                          ? restaurantsLabelDarkStyle
-                          : dishesLabelDarkStyle;
-                      return (
-                        <View
-                          key={option.value}
-                          onLayout={registerSegmentLayout(option.value)}
-                          style={styles.segmentedOption}
-                        >
-                          <View style={styles.segmentedLabelStack}>
-                            <Text
-                              numberOfLines={1}
-                              variant="caption"
-                              weight="semibold"
-                              style={[styles.segmentedLabel, styles.segmentedLabelMeasure]}
-                            >
-                              {option.label}
-                            </Text>
-                            <Reanimated.View
-                              pointerEvents="none"
-                              style={[styles.segmentedLabelLayer, darkLabelStyle]}
-                            >
-                              <Text
-                                numberOfLines={1}
-                                variant="caption"
-                                weight="semibold"
-                                style={styles.segmentedLabel}
-                              >
-                                {option.label}
-                              </Text>
-                            </Reanimated.View>
-                            <Reanimated.View
-                              pointerEvents="none"
-                              style={[styles.segmentedLabelLayer, lightLabelStyle]}
-                            >
-                              <Text
-                                numberOfLines={1}
-                                variant="caption"
-                                weight="semibold"
-                                style={[styles.segmentedLabel, styles.segmentedLabelActive]}
-                              >
-                                {option.label}
-                              </Text>
-                            </Reanimated.View>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                </GestureDetector>
-                <Pressable
-                  onLayout={registerHole('toggle-open-now')}
-                  onPress={onToggleOpenNow}
-                  accessibilityRole="button"
-                  accessibilityLabel="Toggle open now results"
-                  accessibilityState={{ selected: openNow }}
-                  style={[
-                    styles.openNowButton,
-                    openNow && [styles.openNowButtonActive, { backgroundColor: accentColor }],
-                  ]}
-                >
+          <Reanimated.View
+            pointerEvents="none"
+            style={[
+              styles.segmentedHighlight,
+              { backgroundColor: accentColor },
+              highlightAnimatedStyle,
+            ]}
+          />
+          {SEGMENT_OPTIONS.map((option) => {
+            const lightLabelStyle =
+              option.value === 'restaurants' ? restaurantsLabelLightStyle : dishesLabelLightStyle;
+            const darkLabelStyle =
+              option.value === 'restaurants' ? restaurantsLabelDarkStyle : dishesLabelDarkStyle;
+            return (
+              <View
+                key={option.value}
+                onLayout={registerSegmentLayout(option.value)}
+                style={styles.segmentedOption}
+              >
+                <View style={styles.segmentedLabelStack}>
                   <Text
+                    numberOfLines={1}
                     variant="caption"
                     weight="semibold"
-                    style={[styles.openNowText, openNow && styles.openNowTextActive]}
+                    style={[styles.segmentedLabel, styles.segmentedLabelMeasure]}
                   >
-                    Open now
+                    {option.label}
                   </Text>
-                </Pressable>
-                <Pressable
-                  onLayout={registerHole('toggle-price')}
-                  onPress={onTogglePriceSelector}
-                  accessibilityRole="button"
-                  accessibilityLabel="Select price filters"
-                  accessibilityState={{
-                    expanded: isPriceSelectorVisible,
-                    selected: priceButtonActive,
-                  }}
-                  style={[
-                    styles.priceButton,
-                    priceButtonActive && [
-                      styles.priceButtonActive,
-                      { backgroundColor: accentColor },
-                    ],
-                  ]}
-                >
-                  <Text
-                    variant="caption"
-                    weight="semibold"
-                    style={[
-                      styles.priceButtonLabel,
-                      priceButtonActive && styles.priceButtonLabelActive,
-                    ]}
+                  <Reanimated.View
+                    pointerEvents="none"
+                    style={[styles.segmentedLabelLayer, darkLabelStyle]}
                   >
-                    {priceButtonLabel}
-                  </Text>
-                  {isPriceSelectorVisible ? (
-                    <ChevronUp
-                      size={16}
-                      strokeWidth={3}
-                      color={priceButtonActive ? '#ffffff' : '#111827'}
-                      style={styles.priceButtonChevron}
-                    />
-                  ) : (
-                    <ChevronDown
-                      size={16}
-                      strokeWidth={3}
-                      color={priceButtonActive ? '#ffffff' : '#111827'}
-                      style={styles.priceButtonChevron}
-                    />
-                  )}
-                </Pressable>
-                <Pressable
-                  onLayout={registerHole('toggle-votes')}
-                  onPress={onToggleVotesFilter}
-                  accessibilityRole="button"
-                  accessibilityLabel="Toggle 100 plus votes filter"
-                  accessibilityState={{ selected: votesFilterActive }}
-                  style={[
-                    styles.votesButton,
-                    votesFilterActive && [
-                      styles.votesButtonActive,
-                      { backgroundColor: accentColor },
-                    ],
-                  ]}
-                >
-                  <Text
-                    variant="caption"
-                    weight="semibold"
-                    style={[styles.votesText, votesFilterActive && styles.votesTextActive]}
+                    <Text
+                      numberOfLines={1}
+                      variant="caption"
+                      weight="semibold"
+                      style={styles.segmentedLabel}
+                    >
+                      {option.label}
+                    </Text>
+                  </Reanimated.View>
+                  <Reanimated.View
+                    pointerEvents="none"
+                    style={[styles.segmentedLabelLayer, lightLabelStyle]}
                   >
-                    100+ votes
-                  </Text>
-                </Pressable>
-                <Pressable
-                  onLayout={registerHole('toggle-rising')}
-                  onPress={onToggleRising}
-                  accessibilityRole="button"
-                  accessibilityLabel="Toggle rising momentum filter"
-                  accessibilityState={{ selected: risingActive }}
-                  style={[
-                    styles.risingButton,
-                    risingActive && [styles.risingButtonActive, { backgroundColor: accentColor }],
-                  ]}
-                >
-                  <Text
-                    variant="caption"
-                    weight="semibold"
-                    style={[styles.risingText, risingActive && styles.risingTextActive]}
-                  >
-                    Rising
-                  </Text>
-                </Pressable>
+                    <Text
+                      numberOfLines={1}
+                      variant="caption"
+                      weight="semibold"
+                      style={[styles.segmentedLabel, styles.segmentedLabelActive]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Reanimated.View>
+                </View>
               </View>
-            </View>
-          </View>
-        </ScrollView>
-      </View>
-    </View>
+            );
+          })}
+        </View>
+      </GestureDetector>
+      <Pressable
+        onPress={onToggleOpenNow}
+        accessibilityRole="button"
+        accessibilityLabel="Toggle open now results"
+        accessibilityState={{ selected: openNow }}
+        style={[
+          styles.openNowButton,
+          openNow && [styles.openNowButtonActive, { backgroundColor: accentColor }],
+        ]}
+      >
+        <Text
+          variant="caption"
+          weight="semibold"
+          style={[styles.openNowText, openNow && styles.openNowTextActive]}
+        >
+          Open now
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={onTogglePriceSelector}
+        accessibilityRole="button"
+        accessibilityLabel="Select price filters"
+        accessibilityState={{
+          expanded: isPriceSelectorVisible,
+          selected: priceButtonActive,
+        }}
+        style={[
+          styles.priceButton,
+          priceButtonActive && [styles.priceButtonActive, { backgroundColor: accentColor }],
+        ]}
+      >
+        <Text
+          variant="caption"
+          weight="semibold"
+          style={[styles.priceButtonLabel, priceButtonActive && styles.priceButtonLabelActive]}
+        >
+          {priceButtonLabel}
+        </Text>
+        {isPriceSelectorVisible ? (
+          <ChevronUp
+            size={16}
+            strokeWidth={3}
+            color={priceButtonActive ? '#ffffff' : '#111827'}
+            style={styles.priceButtonChevron}
+          />
+        ) : (
+          <ChevronDown
+            size={16}
+            strokeWidth={3}
+            color={priceButtonActive ? '#ffffff' : '#111827'}
+            style={styles.priceButtonChevron}
+          />
+        )}
+      </Pressable>
+      <Pressable
+        onPress={onToggleVotesFilter}
+        accessibilityRole="button"
+        accessibilityLabel="Toggle 100 plus votes filter"
+        accessibilityState={{ selected: votesFilterActive }}
+        style={[
+          styles.votesButton,
+          votesFilterActive && [styles.votesButtonActive, { backgroundColor: accentColor }],
+        ]}
+      >
+        <Text
+          variant="caption"
+          weight="semibold"
+          style={[styles.votesText, votesFilterActive && styles.votesTextActive]}
+        >
+          100+ votes
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={onToggleRising}
+        accessibilityRole="button"
+        accessibilityLabel="Toggle rising momentum filter"
+        accessibilityState={{ selected: risingActive }}
+        style={[
+          styles.risingButton,
+          risingActive && [styles.risingButtonActive, { backgroundColor: accentColor }],
+        ]}
+      >
+        <Text
+          variant="caption"
+          weight="semibold"
+          style={[styles.risingText, risingActive && styles.risingTextActive]}
+        >
+          Rising
+        </Text>
+      </Pressable>
+    </FrostedFilterStrip>
   );
 };
 

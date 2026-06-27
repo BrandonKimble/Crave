@@ -84,7 +84,7 @@ const resolveStateUpdate = <TValue>(current: TValue, next: React.SetStateAction<
 // user-drag persists as the *shared* sheet snap (carried across scenes). This is
 // a product decision, not a structural property — it deliberately includes the
 // poll children (pollCreation/pollDetail) and restaurant-under-search but EXCLUDES
-// saveList/favoriteListDetail (which open at their own snap and don't write it
+// saveList (which opens at its own snap and doesn't write it
 // back) and search (own snap model). It does not align with `role`, `sheetPolicy`,
 // or `snapPersistence`, so it can't be derived without changing snap behavior.
 // Degrades gracefully: a forgotten scene simply won't persist its snap. When you

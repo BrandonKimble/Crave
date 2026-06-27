@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, type LayoutChangeEvent } from 'react-native';
+import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -7,6 +7,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { OVERLAY_TAB_HEADER_HEIGHT } from './overlaySheetStyles';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 
@@ -24,6 +25,14 @@ type BottomSheetSceneStackPageFrameProps = {
   headerDividerScrollOffset?: SharedValue<number>;
 };
 
+// The header/content seam is a SINGLE boundary at `headerHeight` — it is simultaneously the
+// header plate's bottom (clipped via overflow:hidden) AND the body-lane / scroll-strip top. The
+// divider marks that boundary and must sit FLUSH with it: anchor the divider by its BOTTOM edge
+// (top = boundary − thickness) so header, divider, and content meet edge-to-edge — no white sliver
+// below it, no overlap into the content. `DIVIDER_THICKNESS` ties the offset to the line's own
+// height so the bottom always lands exactly on the boundary regardless of the device hairline.
+const DIVIDER_THICKNESS = StyleSheet.hairlineWidth;
+
 const HeaderScrollDivider = React.memo(
   ({ headerHeight, scrollOffset }: { headerHeight: number; scrollOffset: SharedValue<number> }) => {
     const dividerStyle = useAnimatedStyle(
@@ -38,7 +47,7 @@ const HeaderScrollDivider = React.memo(
         pointerEvents="none"
         style={[
           styles.sceneStackPageHeaderScrollDivider,
-          { top: Math.max(0, headerHeight) - 1 },
+          { top: Math.max(0, headerHeight) - DIVIDER_THICKNESS },
           dividerStyle,
         ]}
       />
@@ -92,8 +101,11 @@ export const BottomSheetSceneStackPageFrame = React.memo(
         <View pointerEvents="none" style={styles.sceneStackPageUnderlayLayer}>
           {underlayComponent}
         </View>
-        {/* Page-owned material is continuous; header/body/overlay lanes stay content-only. */}
+        {/* SHARED FROST FOUNDATION: every sheet is frosty by default — one blur plane for the
+            whole app, below all content. White layers (header plate, body surfaces) sit on top
+            and punch cutouts to reveal this frost. Scenes no longer render their own frost. */}
         <View pointerEvents="none" style={styles.sceneStackPageBackgroundLayer}>
+          <FrostedGlassBackground />
           {backgroundComponent}
         </View>
         <View

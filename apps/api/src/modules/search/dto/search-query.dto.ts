@@ -255,6 +255,7 @@ export const EntityScope = {
   FOOD: 'food',
   FOOD_ATTRIBUTE: 'food_attribute',
   RESTAURANT_ATTRIBUTE: 'restaurant_attribute',
+  CONNECTION: 'connection',
 } as const satisfies Record<string, SharedFilterClause['entityType']>;
 
 export type EntityScope = (typeof EntityScope)[keyof typeof EntityScope];

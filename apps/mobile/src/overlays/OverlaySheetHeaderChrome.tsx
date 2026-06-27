@@ -51,7 +51,11 @@ const DEFAULT_HOLE_Y_OFFSET = 0;
 const DEFAULT_BADGE_PADDING = 0;
 const DEFAULT_BADGE_Y_OFFSET = 0;
 const DEFAULT_CUTOUT_FILL = '#ffffff';
-const HEADER_FOREGROUND_PLATE_OVERLAP_PX = 3;
+// The white cutout plate used to overhang the header bottom by this much to "cover the seam"
+// with the content below. The header is now clipped to its box (`overflow:'hidden'` on
+// `overlaySheetStyles.header`) and the scroll divider is bottom-flush on the boundary, so the
+// overhang is obsolete — the plate ends exactly at the header bottom. Kept at 0 for clarity.
+const HEADER_FOREGROUND_PLATE_OVERLAP_PX = 0;
 
 const circlePath = (cx: number, cy: number, radius: number) =>
   `M ${cx} ${cy} m -${radius},0 a ${radius},${radius} 0 1,0 ${

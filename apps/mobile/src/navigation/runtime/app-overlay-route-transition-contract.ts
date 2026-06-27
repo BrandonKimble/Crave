@@ -26,7 +26,7 @@ export type RouteSceneSwitchChromeVisibilityTarget = {
   searchChrome: 'visible' | 'hidden' | 'preserve';
 };
 
-export type RouteSceneSwitchMotionPlane = 'sheet' | 'camera' | 'chrome';
+export type RouteSceneSwitchMotionPlane = 'sheet' | 'camera' | 'chrome' | 'content';
 
 export type RouteSceneSwitchSheetVisibilityTarget = 'visible' | 'hidden' | 'preserve';
 

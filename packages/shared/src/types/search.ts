@@ -1,4 +1,9 @@
-export type EntityScope = 'restaurant' | 'food' | 'food_attribute' | 'restaurant_attribute';
+export type EntityScope =
+  | 'restaurant'
+  | 'food'
+  | 'food_attribute'
+  | 'restaurant_attribute'
+  | 'connection';
 
 export type QueryFormat = 'dual_list' | 'single_list';
 
@@ -45,6 +50,10 @@ export interface FoodResult {
   scoreSubjectType: 'connection';
   scoreSubjectId: string;
   craveScore: number;
+  // High-precision Crave score (percentile_rank, Decimal(6,5), 0..1, higher = better). `craveScore` is the
+  // DISPLAY score rounded to 1 decimal — ordering by it ties ~99.9 restaurants and the map vs list break ties
+  // differently. Order/rank by this; never display it. Additive/optional for backward-compat.
+  craveScoreExact?: number;
   scoreDelta7d?: number | null;
   scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
@@ -115,6 +124,10 @@ export interface RestaurantResult {
   scoreSubjectType: 'restaurant';
   scoreSubjectId: string;
   craveScore: number;
+  // High-precision Crave score (percentile_rank, Decimal(6,5), 0..1, higher = better) — see FoodResult. The
+  // map ranks pins and the results list orders rows by THIS so the badge number == the list position; the
+  // rounded `craveScore` is display-only. Additive/optional.
+  craveScoreExact?: number;
   scoreDelta7d?: number | null;
   scoreInfo?: ScoreInfoSummary;
   marketKey?: string;

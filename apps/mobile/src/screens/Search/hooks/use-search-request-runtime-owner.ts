@@ -18,6 +18,10 @@ import {
   createShortcutShadowEvent,
   getShortcutShadowOperationId,
 } from '../runtime/adapters/shortcut-adapter';
+import {
+  createFavoritesShadowEvent,
+  getFavoritesShadowOperationId,
+} from '../runtime/adapters/favorites-adapter';
 import type {
   SearchRuntimeBus,
   SearchRuntimeBusState,
@@ -29,7 +33,7 @@ type RuntimeMechanismEmitter = (
   payload?: Record<string, unknown>
 ) => void;
 
-type SearchRequestRuntimeMode = 'natural' | 'entity' | 'shortcut';
+type SearchRequestRuntimeMode = 'natural' | 'entity' | 'shortcut' | 'favorites';
 
 type SearchSessionShadowTransition = {
   mode: SearchRequestRuntimeMode;
@@ -199,6 +203,9 @@ export const useSearchRequestRuntimeOwner = ({
       if (mode === 'entity') {
         return getEntityShadowOperationId(requestId);
       }
+      if (mode === 'favorites') {
+        return getFavoritesShadowOperationId(requestId);
+      }
       return getShortcutShadowOperationId(requestId);
     },
     []
@@ -255,14 +262,23 @@ export const useSearchRequestRuntimeOwner = ({
                 type: eventType,
                 payload,
               })
-            : createShortcutShadowEvent({
-                sessionId: tuple.sessionId,
-                requestId: tuple.requestId,
-                seq: nextSeq,
-                atMs,
-                type: eventType,
-                payload,
-              });
+            : tuple.mode === 'favorites'
+              ? createFavoritesShadowEvent({
+                  sessionId: tuple.sessionId,
+                  requestId: tuple.requestId,
+                  seq: nextSeq,
+                  atMs,
+                  type: eventType,
+                  payload,
+                })
+              : createShortcutShadowEvent({
+                  sessionId: tuple.sessionId,
+                  requestId: tuple.requestId,
+                  seq: nextSeq,
+                  atMs,
+                  type: eventType,
+                  payload,
+                });
       const result = runtimeSessionController.dispatch(event);
       onRuntimeMechanismEvent?.('runtime_write_span', {
         domain: 'search_session_shadow',

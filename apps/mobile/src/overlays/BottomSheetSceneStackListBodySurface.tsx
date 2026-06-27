@@ -153,11 +153,6 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
       bodyDefaults.resolvedKeyboardShouldPersistTaps;
     const sceneKeyboardDismissMode =
       sceneBodyTransportSpec.keyboardDismissMode ?? bodyDefaults.resolvedKeyboardDismissMode;
-    const sceneBounces = sceneBodyTransportSpec.bounces ?? bodyDefaults.resolvedBounces;
-    const sceneAlwaysBounceVertical =
-      sceneBodyTransportSpec.alwaysBounceVertical ?? bodyDefaults.resolvedAlwaysBounceVertical;
-    const sceneOverScrollMode =
-      sceneBodyTransportSpec.overScrollMode ?? bodyDefaults.resolvedOverScrollMode;
     const sceneScrollIndicatorInsets =
       listDataAuthoritySnapshot.scrollIndicatorInsets ??
       sceneBodyTransportSpec.scrollIndicatorInsets ??
@@ -417,9 +412,6 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
               bodyDefaults.effectiveShowsVerticalScrollIndicator && primaryOwnsScroll
             }
             keyboardDismissMode={sceneKeyboardDismissMode}
-            bounces={sceneBounces}
-            alwaysBounceVertical={sceneAlwaysBounceVertical}
-            overScrollMode={sceneOverScrollMode}
             testID={sceneBodyTransportSpec.testID ?? bodyDefaults.resolvedTestID}
             extraData={scenePrimaryExtraData}
             scrollIndicatorInsets={sceneScrollIndicatorInsets}
@@ -500,9 +492,6 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
                 bodyDefaults.effectiveShowsVerticalScrollIndicator && secondaryOwnsScroll
               }
               keyboardDismissMode={sceneKeyboardDismissMode}
-              bounces={sceneBounces}
-              alwaysBounceVertical={sceneAlwaysBounceVertical}
-              overScrollMode={sceneOverScrollMode}
               testID={
                 sceneSecondaryListTransport?.testID ??
                 sceneBodyTransportSpec.testID ??

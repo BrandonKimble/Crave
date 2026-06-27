@@ -1,0 +1,24 @@
+appId: com.brandonkimble.cravesearch
+# TEMP: observe the dismiss flow. Reveal a search, screenshot the revealed state,
+# tap Close results (dismiss), screenshot the dismissed state, then check whether
+# a second search can be started (the polls-sheet handoff + can-search-again).
+---
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 45000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=13.2&label=dismiss_seed'
+- waitForAnimationToEnd: { timeout: 1600 }
+- tapOn: { point: '25%, 17%' }
+- extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 3500 }
+- takeScreenshot: /tmp/dismiss-revealed
+# DISMISS:
+- tapOn: { text: 'Close results' }
+- waitForAnimationToEnd: { timeout: 2500 }
+- takeScreenshot: /tmp/dismiss-after
+- waitForAnimationToEnd: { timeout: 1500 }
+- takeScreenshot: /tmp/dismiss-settled
+# Can we search again? try the chip again:
+- tapOn: { point: '25%, 17%' }
+- waitForAnimationToEnd: { timeout: 2500 }
+- takeScreenshot: /tmp/dismiss-research

@@ -15,10 +15,14 @@ import {
   type RestaurantLocation,
 } from '@prisma/client';
 import type {
+  FilterClause,
   FoodResult,
+  QueryPlan,
   RestaurantFoodSnippet,
   RestaurantLocationResult,
   RestaurantResult,
+  SearchResponse,
+  SearchResponseMetadata,
 } from '@crave-search/shared';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -29,6 +33,9 @@ import { UpdateFavoriteListDto } from './dto/update-favorite-list.dto';
 import { AddFavoriteListItemDto } from './dto/add-favorite-list-item.dto';
 import { ShareFavoriteListDto } from './dto/share-favorite-list.dto';
 import { ListFavoriteListsDto } from './dto/list-favorite-lists.dto';
+import { FavoriteListResultsDto } from './dto/favorite-list-results.dto';
+import { SearchQueryExecutor } from '../search/search-query.executor';
+import type { SearchQueryRequestDto } from '../search/dto/search-query.dto';
 
 type FavoriteListSummary = {
   listId: string;
@@ -51,7 +58,7 @@ type FavoriteListSummary = {
 
 type FavoritePublicScore = Pick<
   PublicEntityScore,
-  'subjectId' | 'displayScore' | 'scoreDelta7d'
+  'subjectId' | 'displayScore' | 'percentileRank' | 'scoreDelta7d'
 >;
 
 type FavoriteListItemDetail = Prisma.FavoriteListItemGetPayload<{
@@ -106,6 +113,7 @@ export class FavoriteListsService {
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
     private readonly userStats: UserStatsService,
+    private readonly searchQueryExecutor: SearchQueryExecutor,
   ) {
     this.logger = loggerService.setContext('FavoriteListsService');
   }
@@ -191,6 +199,292 @@ export class FavoriteListsService {
     }
 
     return this.buildListDetail(list);
+  }
+
+  /**
+   * Hydrate a favorites list into a FULL SearchResponse with byte-level parity
+   * to a real query-search (rank, craveScore order, operatingStatus, price,
+   * distance, lat/lng, locations, topFood, pins). We deliberately route through
+   * the SEARCH EXECUTOR rather than the hand-rolled mapRestaurantResults/
+   * mapFoodResults (which hardcode rank/price/operatingStatus/distance to null).
+   *
+   * Restaurant lists filter the restaurant axis by r.entity_id = ANY(...);
+   * dish lists filter the connection axis by the new c.connection_id = ANY(...)
+   * builder clause. The executor INNER-JOINs scores/locations, so score-less or
+   * un-geocoded favorites are silently dropped — surfaced via droppedItemCount.
+   */
+  async getListResults(
+    userId: string,
+    listId: string,
+    dto: FavoriteListResultsDto,
+  ): Promise<SearchResponse> {
+    const list = await this.prisma.favoriteList.findFirst({
+      where: { listId, ownerUserId: userId },
+      include: {
+        items: {
+          orderBy: { position: 'asc' },
+          include: {
+            restaurant: {
+              include: { primaryLocation: true },
+            },
+            connection: {
+              include: {
+                food: true,
+                restaurant: {
+                  include: { primaryLocation: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!list) {
+      throw new NotFoundException('Favorite list not found');
+    }
+
+    const isRestaurantAxis = list.listType === FavoriteListType.restaurant;
+
+    const restaurantIds = isRestaurantAxis
+      ? Array.from(
+          new Set(
+            list.items
+              .map((item) => item.restaurantId)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        )
+      : [];
+    const connectionIds = isRestaurantAxis
+      ? []
+      : Array.from(
+          new Set(
+            list.items
+              .map((item) => item.connectionId)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        );
+
+    // For a DISH list the map PINS + restaurant cards come from response.restaurants,
+    // and each favorited dish lives at its restaurant's location. Scope the restaurant
+    // axis to the DISTINCT restaurants of the favorited connections so it does not flood
+    // with the global universe. The connections were loaded with connection.restaurant,
+    // so connection.restaurantId is available here.
+    const dishListRestaurantIds = isRestaurantAxis
+      ? []
+      : Array.from(
+          new Set(
+            list.items
+              .map((item) => item.connection?.restaurantId)
+              .filter((id): id is string => Boolean(id)),
+          ),
+        );
+
+    const requestedIds = isRestaurantAxis ? restaurantIds : connectionIds;
+
+    // Empty-axis guard: the search builder OMITS the `entity_id = ANY(...)` clause when an id
+    // array is empty, which would flood the un-scoped axis with the entire global universe. A
+    // favorites list with no items (or a dish list whose connections yield no restaurant ids)
+    // must return an EMPTY result set, never the whole DB — short-circuit before executeDual.
+    if (
+      requestedIds.length === 0 ||
+      (!isRestaurantAxis && dishListRestaurantIds.length === 0)
+    ) {
+      return {
+        format: 'dual_list',
+        plan: {
+          format: 'dual_list',
+          restaurantFilters: [],
+          connectionFilters: [],
+          ranking: {
+            foodOrder: 'crave_score DESC',
+            restaurantOrder: 'crave_score DESC',
+          },
+          diagnostics: {
+            missingEntities: [],
+            notes: [`favorites:${list.listType}:empty`],
+          },
+        },
+        dishes: [],
+        restaurants: [],
+        sqlPreview: null,
+        metadata: {
+          totalFoodResults: 0,
+          totalRestaurantResults: 0,
+          queryExecutionTimeMs: 0,
+          searchRequestId: `favorites:${listId}:${(
+            list.updatedAt ?? new Date()
+          ).valueOf()}`,
+          boundsApplied: false,
+          openNowApplied: false,
+          openNowSupportedRestaurants: 0,
+          openNowUnsupportedRestaurants: 0,
+          openNowFilteredOut: 0,
+          priceFilterApplied: false,
+          minimumVotesApplied: false,
+          page: 1,
+          pageSize: 1,
+          perRestaurantLimit: 0,
+          resultCoverageStatus: 'full',
+          analysisMetadata: {
+            favorites: {
+              listId,
+              listType: list.listType,
+              requestedItemCount: requestedIds.length,
+              returnedItemCount: 0,
+              droppedItemCount: requestedIds.length,
+            },
+          },
+        },
+      };
+    }
+
+    // Scope the axis we run. Restaurant list: restaurantFilters = favorited
+    // restaurants; connectionFilters stay empty and the dish axis is never
+    // executed (executeSingle below). Dish list: connectionFilters = favorited
+    // connections AND restaurantFilters = those connections' distinct
+    // restaurants (the restaurant axis feeds the map pins).
+    const restaurantFilters: FilterClause[] = isRestaurantAxis
+      ? [
+          {
+            scope: 'restaurant',
+            description: 'Match favorited restaurant entities',
+            entityType: 'restaurant',
+            entityIds: restaurantIds,
+          },
+        ]
+      : [
+          {
+            scope: 'restaurant',
+            description: "Match favorited connections' restaurants",
+            entityType: 'restaurant',
+            entityIds: dishListRestaurantIds,
+          },
+        ];
+    const connectionFilters: FilterClause[] = isRestaurantAxis
+      ? []
+      : [
+          {
+            scope: 'connection',
+            description: 'Match favorited connections',
+            entityType: 'connection',
+            entityIds: connectionIds,
+          },
+        ];
+
+    const plan: QueryPlan = {
+      format: 'dual_list',
+      restaurantFilters,
+      connectionFilters,
+      ranking: {
+        foodOrder: 'crave_score DESC',
+        restaurantOrder: 'crave_score DESC',
+      },
+      diagnostics: {
+        missingEntities: [],
+        notes: [`favorites:${list.listType}`],
+      },
+    };
+
+    const page =
+      dto.pagination?.page && dto.pagination.page > 0 ? dto.pagination.page : 1;
+    const pageSize =
+      dto.pagination?.pageSize && dto.pagination.pageSize > 0
+        ? dto.pagination.pageSize
+        : Math.max(requestedIds.length, 1);
+    const skip = (page - 1) * pageSize;
+
+    // Build a minimal SearchQueryRequestDto for the executor. No bounds/polygon:
+    // v1 fits the map to the list extent. entities are empty — all matching is
+    // driven by the hand-built plan filters above.
+    const request: SearchQueryRequestDto = {
+      entities: {},
+      openNow: dto.openNow,
+      userLocation: dto.userLocation,
+    };
+
+    const pagination = { skip, take: pageSize };
+
+    // NO bounds directives passed (directives omitted entirely).
+    //
+    // A RESTAURANT list only consumes the restaurant axis (dishes are discarded
+    // below), so run a single-axis query and skip the throwaway dish SQL. A DISH
+    // list, by contrast, consumes BOTH axes — `exec.dishes` for the list AND
+    // `exec.restaurants` for the map pins/restaurant cards (the restaurant axis
+    // is scoped to the favorited connections' restaurants above) — so it keeps
+    // the dual path.
+    const exec = isRestaurantAxis
+      ? await this.searchQueryExecutor.executeSingle({
+          axis: 'restaurant',
+          plan,
+          request,
+          pagination,
+        })
+      : await this.searchQueryExecutor.executeDual({
+          plan,
+          request,
+          pagination,
+        });
+
+    const returnedIds = isRestaurantAxis
+      ? exec.restaurants
+          .map((r) => r.restaurantId)
+          .filter((id): id is string => typeof id === 'string')
+      : exec.dishes
+          .map((d) => d.connectionId)
+          .filter((id): id is string => typeof id === 'string');
+    const droppedItemCount = Math.max(
+      requestedIds.length - new Set(returnedIds).size,
+      0,
+    );
+
+    // A restaurant list never runs the dish axis (executeSingle above), so
+    // exec.dishes is already [] and exec.totalDishCount is 0 for that path; the
+    // explicit zeroes below keep the response shape unambiguous regardless.
+    const dishes = isRestaurantAxis ? [] : exec.dishes;
+    const totalFoodResults = isRestaurantAxis ? 0 : exec.totalDishCount;
+
+    const searchRequestId = `favorites:${listId}:${(
+      list.updatedAt ?? new Date()
+    ).valueOf()}`;
+
+    const metadata: SearchResponseMetadata = {
+      totalFoodResults,
+      totalRestaurantResults: exec.totalRestaurantCount,
+      queryExecutionTimeMs: 0,
+      searchRequestId,
+      boundsApplied: false,
+      openNowApplied: exec.metadata.openNowApplied,
+      openNowSupportedRestaurants: exec.metadata.openNowSupportedRestaurants,
+      openNowUnsupportedRestaurants: exec.metadata.openNowUnsupportedRestaurants,
+      openNowUnsupportedRestaurantIds:
+        exec.metadata.openNowUnsupportedRestaurantIds,
+      openNowFilteredOut: exec.metadata.openNowFilteredOut,
+      priceFilterApplied: exec.metadata.priceFilterApplied,
+      minimumVotesApplied: exec.metadata.minimumVotesApplied,
+      page,
+      pageSize,
+      perRestaurantLimit: 0,
+      resultCoverageStatus: 'full',
+      analysisMetadata: {
+        favorites: {
+          listId,
+          listType: list.listType,
+          requestedItemCount: requestedIds.length,
+          returnedItemCount: new Set(returnedIds).size,
+          droppedItemCount,
+        },
+      },
+    };
+
+    return {
+      format: plan.format,
+      plan,
+      dishes,
+      restaurants: exec.restaurants,
+      sqlPreview: null,
+      metadata,
+    };
   }
 
   async getSharedList(shareSlug: string) {
@@ -630,6 +924,7 @@ export class FavoriteListsService {
       select: {
         subjectId: true,
         displayScore: true,
+        percentileRank: true,
         scoreDelta7d: true,
       },
     });
@@ -647,6 +942,14 @@ export class FavoriteListsService {
       );
     }
     return Number(score.displayScore);
+  }
+
+  // High-precision percentile_rank for tie-proof map/list ordering; undefined if missing (client falls back).
+  private toPublicScoreExact(score: FavoritePublicScore | undefined): number | undefined {
+    if (!score || score.percentileRank == null) {
+      return undefined;
+    }
+    return Number(score.percentileRank);
   }
 
   private toPublicScoreDelta(
@@ -733,6 +1036,7 @@ export class FavoriteListsService {
           CraveScoreSubjectType.restaurant,
           restaurant.entityId,
         ),
+        craveScoreExact: this.toPublicScoreExact(restaurantScore),
         scoreDelta7d: this.toPublicScoreDelta(restaurantScore),
         marketKey: undefined,
         mentionCount: undefined,
@@ -803,6 +1107,7 @@ export class FavoriteListsService {
           CraveScoreSubjectType.connection,
           connection.connectionId,
         ),
+        craveScoreExact: this.toPublicScoreExact(connectionScore),
         scoreDelta7d: this.toPublicScoreDelta(connectionScore),
         marketKey: undefined,
         mentionCount: connection.mentionCount ?? 0,

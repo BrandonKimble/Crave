@@ -3,6 +3,7 @@ import React from 'react';
 import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
 import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { RecentSearch, StructuredSearchRequest } from '../../../services/search';
+import type { FavoriteListType } from '../../../services/favorite-lists';
 import type { SegmentValue } from '../constants/search';
 import type { MapboxMapRef } from '../components/search-map';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
@@ -148,6 +149,11 @@ type SearchSubmitOwner = {
     presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
   }) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
+  launchFavoritesListResults: (params: {
+    listId: string;
+    listType: FavoriteListType;
+    submittedLabel: string;
+  }) => Promise<void>;
 };
 
 const useSearchSubmitOwner = ({
@@ -308,9 +314,11 @@ const useSearchSubmitOwner = ({
     startEntityStructuredResponseLifecycle,
     startShortcutInitialResponseLifecycle,
     startShortcutAppendResponseLifecycle,
+    startFavoritesResponseLifecycle,
     executeEntityStructuredSearchAttempt,
     executeShortcutStructuredSearchAttempt,
     executeNaturalSearchAttempt,
+    executeFavoritesHydrateAttempt,
   } = useSearchSubmitExecutionOwner({
     runSearch,
     activeSearchRequestRef,
@@ -318,8 +326,12 @@ const useSearchSubmitOwner = ({
     handleSearchResponse,
     publishShortcutCoverageForResponse,
   });
-  const { runRestaurantEntitySearch, submitViewportShortcut, loadMoreShortcutResults } =
-    useSearchStructuredSubmitOwner({
+  const {
+    runRestaurantEntitySearch,
+    submitViewportShortcut,
+    loadMoreShortcutResults,
+    launchFavoritesListResults,
+  } = useSearchStructuredSubmitOwner({
       currentPage,
       canLoadMore,
       hasResults,
@@ -332,6 +344,8 @@ const useSearchSubmitOwner = ({
       onPresentationIntentAbort,
       setError,
       resetMapMoveFlag,
+      openNow,
+      userLocationRef,
       createRestaurantEntityInitialAttemptConfig,
       createShortcutStructuredInitialAttemptConfig,
       createShortcutStructuredAppendAttemptConfig,
@@ -346,6 +360,8 @@ const useSearchSubmitOwner = ({
       startEntityStructuredResponseLifecycle,
       startShortcutInitialResponseLifecycle,
       startShortcutAppendResponseLifecycle,
+      executeFavoritesHydrateAttempt,
+      startFavoritesResponseLifecycle,
     });
   const { submitSearch } = useSearchNaturalSubmitOwner({
     prepareNaturalSearchEntry,
@@ -379,6 +395,7 @@ const useSearchSubmitOwner = ({
     submitViewportShortcut,
     rerunActiveSearch,
     loadMoreResults,
+    launchFavoritesListResults,
   };
 };
 

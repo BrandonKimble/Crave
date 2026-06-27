@@ -1,0 +1,27 @@
+appId: com.brandonkimble.cravesearch
+---
+# Pan storm confined to the CLEAR MAP ZONE (y 18-42%, below the search bar, above the
+# results sheet at ~y48%). Many small fast swipes → continuous map pan + rapid
+# promote/demote edge flips (the invisibility orphan) WITHOUT grabbing the sheet.
+- openLink: 'crave://perf-scenario-mark?phase=center_storm_start&label=lod_center'
+- repeat:
+    times: 12
+    commands:
+      - swipe:
+          start: 35%, 30%
+          end: 65%, 26%
+          duration: 320
+      - swipe:
+          start: 65%, 26%
+          end: 35%, 34%
+          duration: 320
+      - swipe:
+          start: 40%, 34%
+          end: 60%, 24%
+          duration: 300
+      - swipe:
+          start: 60%, 24%
+          end: 40%, 32%
+          duration: 300
+- openLink: 'crave://perf-scenario-mark?phase=center_storm_end&label=lod_center'
+- waitForAnimationToEnd: { timeout: 5000 }

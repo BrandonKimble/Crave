@@ -1,7 +1,7 @@
 import React from 'react';
-import { Alert, Image, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { Text } from '../../components';
+import { showAppModal, Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import {
   togglePollEndorsement,
@@ -21,13 +21,27 @@ import { createProfileQueryOptions } from './profileSceneQueryOptions';
  */
 
 const TRACK_COLOR = '#f1f3f5';
-const FILL_COLOR = '#ffd6e0'; // soft pink — solid black text stays legible on it
 const TEXT_COLOR = '#000000';
 const ACCENT = themeColors.primary;
 const BAR_HEIGHT = 36;
 const BAR_RADIUS = 11;
 const BAR_GAP = 7;
 const MIN_VISIBLE_FRACTION = 0.03; // a sliver of fill for any non-zero candidate
+
+// Graduated fill: rank 1 is the most saturated light-pink (a strong tint of the brand
+// primary), and each lower-ranked option fades to a paler tint down the list — while
+// staying light enough to keep the solid-black text legible on every bar.
+const PRIMARY_RGB = { r: 255, g: 51, b: 104 }; // brand primary (matches theme primary)
+const STRONGEST_TINT = 0.3; // rank 1 tint strength (primary mixed over white)
+const FAINTEST_TINT = 0.08; // last-ranked option
+const tintOfPrimary = (strength: number): string => {
+  const mix = (channel: number): number => Math.round(255 * (1 - strength) + channel * strength);
+  return `rgb(${mix(PRIMARY_RGB.r)}, ${mix(PRIMARY_RGB.g)}, ${mix(PRIMARY_RGB.b)})`;
+};
+const resolveFillColor = (index: number, total: number): string => {
+  const t = total <= 1 ? 0 : Math.min(index, total - 1) / (total - 1);
+  return tintOfPrimary(STRONGEST_TINT + (FAINTEST_TINT - STRONGEST_TINT) * t);
+};
 
 type Candidate = Pick<
   PollCandidate,
@@ -46,13 +60,14 @@ const toCandidate = (entry: PollLeaderboardEntry): Candidate => ({
 type PollCandidateBarRowProps = {
   candidate: Candidate;
   fraction: number; // share of total endorsements (0..1)
+  fillColor: string; // graduated primary tint by rank
   viewerAvatarUrl: string | null;
   disabled: boolean;
   onToggle: (candidate: Candidate) => void;
 };
 
 const PollCandidateBarRow = React.memo(
-  ({ candidate, fraction, viewerAvatarUrl, disabled, onToggle }: PollCandidateBarRowProps) => {
+  ({ candidate, fraction, fillColor, viewerAvatarUrl, disabled, onToggle }: PollCandidateBarRowProps) => {
     const endorsed = candidate.currentUserEndorsed;
     const label = candidate.name ?? 'Unknown';
     const pctLabel = `${Math.round(fraction * 100)}%`;
@@ -69,7 +84,12 @@ const PollCandidateBarRow = React.memo(
         accessibilityLabel={`${label}, ${pctLabel}${endorsed ? ', your pick' : ''}`}
       >
         <View style={styles.barTrack} />
-        <View style={[styles.barFill, { width: `${fillFraction * 100}%` as `${number}%` }]} />
+        <View
+          style={[
+            styles.barFill,
+            { width: `${fillFraction * 100}%` as `${number}%`, backgroundColor: fillColor },
+          ]}
+        />
         <View style={styles.barContent} pointerEvents="none">
           <Text variant="caption" weight="semibold" numberOfLines={1} style={styles.barName}>
             {label}
@@ -138,7 +158,10 @@ export const PollCandidateBars = React.memo(
       async (candidate: Candidate) => {
         if (!interactive || inFlight.current) return;
         if (!isSignedIn) {
-          Alert.alert('Sign in to endorse', 'Join the discussion to weigh in on this poll.');
+          showAppModal({
+            title: 'Sign in to endorse',
+            message: 'Join the discussion to weigh in on this poll.',
+          });
           return;
         }
         inFlight.current = true;
@@ -182,11 +205,12 @@ export const PollCandidateBars = React.memo(
 
     return (
       <View style={styles.container}>
-        {fullRows.map((candidate) => (
+        {fullRows.map((candidate, index) => (
           <PollCandidateBarRow
             key={candidate.subjectId}
             candidate={candidate}
             fraction={fractionOf(candidate)}
+            fillColor={resolveFillColor(index, rows.length)}
             viewerAvatarUrl={viewerAvatarUrl}
             disabled={!interactive}
             onToggle={handleToggle}
@@ -198,6 +222,7 @@ export const PollCandidateBars = React.memo(
             <PollCandidateBarRow
               candidate={peekRow}
               fraction={fractionOf(peekRow)}
+              fillColor={resolveFillColor(previewRows as number, rows.length)}
               viewerAvatarUrl={viewerAvatarUrl}
               disabled
               onToggle={handleToggle}
@@ -236,7 +261,6 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: FILL_COLOR,
     borderRadius: BAR_RADIUS,
   },
   barContent: {

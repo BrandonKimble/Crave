@@ -37,11 +37,6 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     bodyDefaults.resolvedKeyboardShouldPersistTaps;
   const sceneKeyboardDismissMode =
     sceneBodyTransportSpec.keyboardDismissMode ?? bodyDefaults.resolvedKeyboardDismissMode;
-  const sceneBounces = sceneBodyTransportSpec.bounces ?? bodyDefaults.resolvedBounces;
-  const sceneAlwaysBounceVertical =
-    sceneBodyTransportSpec.alwaysBounceVertical ?? bodyDefaults.resolvedAlwaysBounceVertical;
-  const sceneOverScrollMode =
-    sceneBodyTransportSpec.overScrollMode ?? bodyDefaults.resolvedOverScrollMode;
   const sceneScrollIndicatorInsets =
     sceneBodyTransportSpec.scrollIndicatorInsets ?? bodyDefaults.resolvedScrollIndicatorInsets;
   const sceneContentScrollMode =
@@ -146,9 +141,6 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
           onMomentumScrollEnd={handleContentMomentumEnd}
           showsVerticalScrollIndicator={bodyDefaults.effectiveShowsVerticalScrollIndicator}
           keyboardDismissMode={sceneKeyboardDismissMode}
-          bounces={sceneBounces}
-          alwaysBounceVertical={sceneAlwaysBounceVertical}
-          overScrollMode={sceneOverScrollMode}
           testID={sceneBodyTransportSpec.testID ?? bodyDefaults.resolvedTestID}
           scrollIndicatorInsets={sceneScrollIndicatorInsets}
         >
@@ -174,8 +166,6 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     handleContentMomentumEnd,
     handleContentScrollBeginDrag,
     handleContentScrollEndDrag,
-    sceneAlwaysBounceVertical,
-    sceneBounces,
     sceneBodyContentSpec,
     sceneBodyTransportSpec,
     sceneContentComponent,
@@ -184,7 +174,6 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     sceneKeyboardShouldPersistTaps,
     sceneKey,
     sceneListContentContainerStyle,
-    sceneOverScrollMode,
     sceneScrollIndicatorInsets,
     sceneStaticContentBody,
     sceneTransparentSurfaceStyle,

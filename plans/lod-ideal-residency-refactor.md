@@ -63,6 +63,32 @@ small churn (4 feats × 1-2 markers per granular change) is isolated and never r
 Order rationale: 1 fixes wiggle+jank but needs 3 (un-bundle) for the wiggle to fully clear; do 1+3
 together-ish, then 2 (pan), then the deletions 4+5. Each verified by harness before the next.
 
+## UN-BUNDLE DONE ✓ (commit 6f1c547f) + residency REGRESSION found & reverted (2026-06-19)
+
+UN-BUNDLE LANDED & VERIFIED: labels render from their own derived source (labelRenderSourceId =
+"${pinSourceId}-label-render"), pins render, reveal works, pinBundle adds 570→206. Pins still add on
+promote so they still wiggle a bit (residency needed for the full kill).
+
+PIN RESIDENCY ATTEMPTED → REGRESSION → reverted (un-bundle kept). The membership/opacity separation
+(pinIdsInOrder=resident, promotedMarkerKeys drives opacity, currentOpacity fallback=settled, guard=
+opacity-change) BUILT and WORKED during gestures (render-truth: shouldPromote≈renderedPins, no flash
+flags, pin re-promotes stopped adding) — BUT broke INITIAL-LOAD promotion: at reveal/pre-first-camera-
+move, NO pins promote (map shows only dots); after ANY camera move (native_lod runs), pins promote
+correctly (verified: pan screenshot showed 59/49/83/62/74/90 + labels). So the regression is
+specifically: residency made opacity depend on promotedMarkerKeys = Set(pinnedMarkerKeysInOrder), and
+at initial load (before driveNativeLod's first projection — it's camera-gated) that set is empty/stale,
+so the scoped reconcile renders every resident marker at opacity 0 (dots). The reveal's pins
+(baked/full-replace) get demoted to 0 by the residency scoped pass.
+FIX DIRECTION (next focused pass — needs instrumented diagnosis, log pinnedMarkerKeysInOrder + reconcile
+reason at initial load): EITHER (a) ensure native computes an initial promoted set on data-arrival/
+reveal (pre-warm projectAndEmitOnScreenMarkers before .visible so pinnedMarkerKeysInOrder is populated
+at reveal), OR (b) reason-gate residency: apply membership=resident only on reason=="native_lod";
+keep membership=promoted on the data-change/reveal reconcile (reveal renders promoted as today). (b)'s
+cost: the first native_lod seeds the resident set into the bundle (one add burst → one wiggle on the
+first gesture), then smooth — acceptable, and reveal-safe. Recommend (a) if the pre-warm is clean,
+else (b). The residency transition-logic edits themselves were correct (gestures worked); only the
+initial-promotion source needs fixing.
+
 ## CONFIRMED: steps 1 and 3 are INSEPARABLE (verified by attempting step 1)
 
 makeDesiredPinSnapshotState drives BOTH the pin AND label revisions (labels are in the pin bundle).

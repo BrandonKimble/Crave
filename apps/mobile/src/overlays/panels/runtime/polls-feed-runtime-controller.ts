@@ -11,6 +11,9 @@ import {
   writePollBootstrapSnapshot,
   type Poll,
   type PollBootstrapSnapshot,
+  type PollFeedSort,
+  type PollFeedTime,
+  type PollFeedType,
 } from '../../../services/polls';
 import type { Coordinate, MapBounds } from '../../../types';
 import { logger } from '../../../utils';
@@ -30,6 +33,14 @@ type UsePollsFeedRuntimeControllerArgs = {
   userLocation?: Coordinate | null;
   marketOverride?: string | null;
   pollFeedRequiresFreshNetwork: boolean;
+  /** Live (`active`) vs Results (`closed`) feed split (§4/§6). */
+  feedState: 'active' | 'closed';
+  /** Selected sort, or null for the silent demand-ranked default. */
+  feedSort: PollFeedSort | null;
+  /** Type filter: all (no filter) | polls (ranked) | discussions (§6). */
+  feedType: PollFeedType;
+  /** Time filter: all_time (no filter) | this_week (§6). */
+  feedTime: PollFeedTime;
   setPolls: React.Dispatch<React.SetStateAction<Poll[]>>;
   setMarketKey: React.Dispatch<React.SetStateAction<string | null>>;
   setMarketName: React.Dispatch<React.SetStateAction<string | null>>;
@@ -59,6 +70,10 @@ export const usePollsFeedRuntimeController = ({
   userLocation,
   marketOverride,
   pollFeedRequiresFreshNetwork,
+  feedState,
+  feedSort,
+  feedType,
+  feedTime,
   setPolls,
   setMarketKey,
   setMarketName,
@@ -77,6 +92,16 @@ export const usePollsFeedRuntimeController = ({
   const socketRef = React.useRef<Socket | null>(null);
   const lastResolvedMarketKeyRef = React.useRef<string | null>(null);
   const refreshSeqRef = React.useRef(0);
+  // Read inside refreshPollFeed so every fetch uses the live toggle values without
+  // re-creating the callback (which would re-trigger the market/bounds effects).
+  const feedStateRef = React.useRef(feedState);
+  feedStateRef.current = feedState;
+  const feedSortRef = React.useRef(feedSort);
+  feedSortRef.current = feedSort;
+  const feedTypeRef = React.useRef(feedType);
+  feedTypeRef.current = feedType;
+  const feedTimeRef = React.useRef(feedTime);
+  feedTimeRef.current = feedTime;
   const bootstrapMarketKey =
     typeof bootstrapSnapshot?.marketKey === 'string' && bootstrapSnapshot.marketKey.trim()
       ? bootstrapSnapshot.marketKey.trim().toLowerCase()
@@ -149,12 +174,19 @@ export const usePollsFeedRuntimeController = ({
       }
 
       const resolvedMarketKey = marketKeyOverride ?? marketOverride ?? null;
+      const feedQuery = {
+        state: feedStateRef.current,
+        ...(feedSortRef.current ? { sort: feedSortRef.current } : {}),
+        ...(feedTypeRef.current !== 'all' ? { type: feedTypeRef.current } : {}),
+        ...(feedTimeRef.current !== 'all_time' ? { time: feedTimeRef.current } : {}),
+      };
       const payload = resolvedMarketKey
-        ? { marketKey: resolvedMarketKey }
+        ? { marketKey: resolvedMarketKey, ...feedQuery }
         : bounds
           ? {
               bounds,
               ...(userLocation ? { userLocation } : {}),
+              ...feedQuery,
             }
           : null;
 
@@ -175,7 +207,9 @@ export const usePollsFeedRuntimeController = ({
         }
         const snapshot = createNetworkPollBootstrapSnapshot(response);
         applyPollSnapshot(snapshot, marketNameFallback);
-        if (snapshot.marketKey) {
+        // Only the Live feed seeds the bootstrap cache; Results (closed) must not
+        // overwrite the Live snapshot read on next launch.
+        if (snapshot.marketKey && feedStateRef.current === 'active') {
           void writePollBootstrapSnapshot(snapshot);
         }
       } catch (error) {
@@ -203,6 +237,32 @@ export const usePollsFeedRuntimeController = ({
       userLocation,
     ]
   );
+
+  // Refetch when the Live/Results split or sort changes — but not on the initial
+  // mount (the market/bounds effects below own the first load). `refreshPollFeed`
+  // reads the toggle values via refs, so its identity stays stable here.
+  const feedQueryHydratedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!feedQueryHydratedRef.current) {
+      feedQueryHydratedRef.current = true;
+      return;
+    }
+    if (!visible || isSystemUnavailable) {
+      return;
+    }
+    // Quiet background refresh: never empty the list (which would collapse the
+    // FlashList and scroll the filter strip out of view); the toggle/sort just
+    // swaps the rows in place when the new query resolves.
+    void refreshPollFeed({ skipSpinner: true });
+  }, [
+    feedState,
+    feedSort,
+    feedType,
+    feedTime,
+    visible,
+    isSystemUnavailable,
+    refreshPollFeed,
+  ]);
 
   React.useEffect(() => {
     if (!bootstrapMarketKey) {

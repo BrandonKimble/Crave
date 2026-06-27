@@ -49,7 +49,7 @@ import {
 import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
 
 export type SearchSubmitActiveOperationTuple = {
-  mode: 'natural' | 'entity' | 'shortcut';
+  mode: 'natural' | 'entity' | 'shortcut' | 'favorites';
   sessionId: string;
   operationId: string;
   requestId: number;
@@ -487,6 +487,27 @@ const resolveResponseActiveTab = (params: {
   if (runtimeMode === 'shortcut' || runtimeMode === 'entity') {
     return initialTargetTab as ResultsActiveTab;
   }
+  if (runtimeMode === 'favorites') {
+    // A favorites launch carries its axis through initialTargetTab (derived from
+    // the list's type at the execute attempt). Honor it when the matching array
+    // is populated; otherwise fall back to whichever array actually has results
+    // so the tab never auto-selects an empty list.
+    const hasFoodResults = (response.dishes?.length ?? 0) > 0;
+    const hasRestaurantsResults = (response.restaurants?.length ?? 0) > 0;
+    if (initialTargetTab === 'dishes' && hasFoodResults) {
+      return 'dishes';
+    }
+    if (initialTargetTab === 'restaurants' && hasRestaurantsResults) {
+      return 'restaurants';
+    }
+    if (hasFoodResults) {
+      return 'dishes';
+    }
+    if (hasRestaurantsResults) {
+      return 'restaurants';
+    }
+    return initialTargetTab as ResultsActiveTab;
+  }
   if (runtimeMode === 'natural') {
     return resolveNaturalResponseActiveTab({
       response,
@@ -700,7 +721,18 @@ const deriveSearchResponseLifecycleContext = (params: {
   });
 
   return {
-    singleRestaurantCandidate: resolveSingleRestaurantCandidate(params.normalizedResponse),
+    // A favorites launch must ALWAYS show the list+toggle surface and honor the
+    // listType-derived tab. The backend always emits restaurantFilters, so a
+    // 1-restaurant list (or a dish list collapsing to one restaurant) would
+    // otherwise trip the single-restaurant short-circuit (hide-sheet +
+    // resolveResponseActiveTab early-return), collapsing into a single-restaurant
+    // presentation. Suppress the candidate for favorites mode so neither fires.
+    // (The profile auto-open path is suppressed separately, off the favorites
+    // response marker — see profile-auto-open-action-runtime.)
+    singleRestaurantCandidate:
+      params.runtimeMode === 'favorites'
+        ? null
+        : resolveSingleRestaurantCandidate(params.normalizedResponse),
     previousFoodCountSnapshot: params.baseResponse?.dishes?.length ?? 0,
     previousRestaurantCountSnapshot: params.baseResponse?.restaurants?.length ?? 0,
     mergedFoodCount: responseCommitProjection.mergedFoodCount,

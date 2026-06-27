@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   favoriteListsService,
-  type FavoriteListDetail,
   type FavoriteListSummary,
   type FavoriteListType,
   type FavoriteListVisibility,
@@ -40,16 +39,3 @@ export const useFavoriteLists = (params: {
     subscribed,
   });
 };
-
-export const useFavoriteListDetail = (listId: string | null, enabled = true) =>
-  useQuery<FavoriteListDetail>({
-    queryKey: listId ? favoriteListKeys.detail(listId) : ['favorite-list', 'none'],
-    queryFn: () => {
-      if (!listId) {
-        throw new Error('Missing listId');
-      }
-      return favoriteListsService.get(listId);
-    },
-    enabled: Boolean(listId) && enabled,
-    staleTime: 1000 * 10,
-  });

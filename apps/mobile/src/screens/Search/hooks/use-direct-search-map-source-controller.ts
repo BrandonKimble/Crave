@@ -28,7 +28,8 @@ import {
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import { resolveOverlapRegion } from '../utils/overlap-region';
 import { requestOverlapAutoZoom } from '../runtime/map/overlap-auto-zoom-bridge';
-import { dotBucketImageId, rankBadgeImageId } from '../../../utils/quality-color';
+import { LOD_V5_ENABLED } from '../runtime/map/search-map-render-controller';
+import { activeRankBadgeImageId, dotBucketImageId, rankBadgeImageId } from '../../../utils/quality-color';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { ResultsPresentationAuthority } from '../runtime/shared/results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
@@ -372,16 +373,33 @@ const collectSearchMapVisualCandidates = ({
   });
 
   return Array.from(candidatesByVisualIdentity.values()).sort((left, right) => {
-    const sourcePriorityDiff =
-      VISUAL_SOURCE_PRIORITY[right.sourceKind] - VISUAL_SOURCE_PRIORITY[left.sourceKind];
-    if (sourcePriorityDiff !== 0) {
-      return sourcePriorityDiff;
+    // RANK by the HIGH-PRECISION craveScoreExact (percentile_rank) DESC — NOT VISUAL_SOURCE_PRIORITY (that is
+    // DEDUP-only; see shouldReplaceVisualCandidate) and NOT the rounded display craveScore. This makes the pin
+    // badge == the results-list position (the list follows the API's percentile_rank order = the same key) and
+    // stops a tapped ('selected') marker from renumbering to rank 1. Missing exact sorts last. Tie-breaks:
+    // display craveScore DESC, then a stable restaurantId, then markerKey — so map + list never disagree.
+    const leftExact =
+      typeof left.feature.properties.craveScoreExact === 'number'
+        ? left.feature.properties.craveScoreExact
+        : -Infinity;
+    const rightExact =
+      typeof right.feature.properties.craveScoreExact === 'number'
+        ? right.feature.properties.craveScoreExact
+        : -Infinity;
+    if (leftExact !== rightExact) {
+      return rightExact - leftExact;
     }
-    const rankDiff = left.feature.properties.rank - right.feature.properties.rank;
-    if (rankDiff !== 0) {
-      return rankDiff;
+    const leftDisplay =
+      typeof left.feature.properties.craveScore === 'number' ? left.feature.properties.craveScore : -Infinity;
+    const rightDisplay =
+      typeof right.feature.properties.craveScore === 'number' ? right.feature.properties.craveScore : -Infinity;
+    if (leftDisplay !== rightDisplay) {
+      return rightDisplay - leftDisplay;
     }
-    return left.order - right.order || left.markerKey.localeCompare(right.markerKey);
+    return (
+      left.feature.properties.restaurantId.localeCompare(right.feature.properties.restaurantId) ||
+      left.markerKey.localeCompare(right.markerKey)
+    );
   });
 };
 
@@ -693,14 +711,21 @@ const buildPinSemanticRevision = ({
   baseDiffKey,
   markerKey,
   nativeLodZ,
+  badgeImageId,
 }: {
   baseDiffKey: string;
   markerKey: string;
   nativeLodZ: number | null | undefined;
+  // The baked badge sprite (encodes the unified rank). MUST be in the diffKey so a rank/badge change
+  // republishes the resident pin feature — otherwise the incremental builder (keyed on baseDiffKey +
+  // markerKey + lodZ) skips it and the OLD badge number persists on screen (the stale-badge divergence
+  // the harness caught as badgeNeqCat>0). Badge is stable per marker within a search, so this adds no
+  // per-frame churn — it only republishes when the number genuinely changes.
+  badgeImageId: string | null | undefined;
 }): string =>
   `${baseDiffKey}|pin|marker:${markerKey}|lodZ:${
     typeof nativeLodZ === 'number' && Number.isFinite(nativeLodZ) ? nativeLodZ : ''
-  }`;
+  }|badge:${badgeImageId ?? ''}`;
 
 const buildDotSemanticRevision = ({
   baseDiffKey,
@@ -811,7 +836,12 @@ const buildStableLabelBaseFeature = (
 
 const buildStableCollisionFeature = (
   feature: Feature<Point, RestaurantFeatureProperties>,
-  markerKey: string
+  markerKey: string,
+  // The promotion seed (1 = promoted pin → obstacle, 0 = demoted dot → no obstacle) that the obstacle
+  // layer filters on. Passed in from the LIVE native promoted set so a pin promoted mid-zoom gets its
+  // obstacle (labels yield) instead of the stale publish-time seed (#16). Falls back to the feature's
+  // baked value when native hasn't reported a promoted set yet.
+  promotedNativeLodOpacity: number
 ): Feature<Point, RestaurantFeatureProperties> =>
   ({
     type: 'Feature',
@@ -822,12 +852,7 @@ const buildStableCollisionFeature = (
       restaurantId: feature.properties.restaurantId,
       nativeLodZ: feature.properties.nativeLodZ,
       lodZ: feature.properties.lodZ,
-      // Carry the baked promotion seed (1 = promoted pin, 0 = demoted dot) so the pin-collision
-      // obstacle layer can filter to ONLY promoted pins. Without this the obstacle is emitted for
-      // EVERY on-screen marker — a full pin-silhouette obstacle at every dot location too — which
-      // floods the map and collision-culls all name-labels. Only actual pins should reserve space;
-      // demoted dots are lower-priority and yield to labels.
-      nativeLodOpacity: feature.properties.nativeLodOpacity,
+      nativeLodOpacity: promotedNativeLodOpacity,
     } as RestaurantFeatureProperties,
   }) satisfies Feature<Point, RestaurantFeatureProperties>;
 
@@ -836,6 +861,7 @@ const buildDirectLabelStores = ({
   previousLabelSourceStore,
   previousLabelCollisionSourceStore,
   onScreenMarkerKeys,
+  promotedMarkerKeys,
 }: {
   pinSourceStore: SearchMapSourceStore;
   previousLabelSourceStore: SearchMapSourceStore;
@@ -843,6 +869,10 @@ const buildDirectLabelStores = ({
   // Native's on-screen marker set (getNativeVisibleMarkerKeys), or null when native has not
   // reported yet. Labels are built only for these keys (the set native promotes its top-N from).
   onScreenMarkerKeys: ReadonlySet<string> | null;
+  // Native's LIVE promoted set — the collision obstacle is baked from THIS (not the publish-time pin
+  // seed) so a pin promoted mid-zoom gets its label-yielding obstacle (#16). Null pre-projection → fall
+  // back to each feature's baked seed.
+  promotedMarkerKeys: ReadonlySet<string> | null;
 }): {
   labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
@@ -895,7 +925,18 @@ const buildDirectLabelStores = ({
         }),
       });
     });
-    const collisionFeature = buildStableCollisionFeature(feature, markerKey);
+    // COLLISION obstacle: ON-SCREEN-GATED, same set as the labels above (keeps the structural invariant
+    // labelCount == labelCollisionCount × LABEL_CANDIDATES). The v5 obstacle for markers promoted at
+    // zoomed/panned viewports is reseeded NATIVELY from the catalog coordinate (applyV5ObstacleReseed), so JS
+    // collision residency does NOT need to cover off-screen candidates — building it for all of them only
+    // broke this invariant (labelCount 1868 vs expected 1888) without helping FM#3.
+    const promotedNativeLodOpacity =
+      promotedMarkerKeys != null
+        ? promotedMarkerKeys.has(markerKey)
+          ? 1
+          : 0
+        : (feature.properties.nativeLodOpacity ?? 0);
+    const collisionFeature = buildStableCollisionFeature(feature, markerKey, promotedNativeLodOpacity);
     const collisionRevision = buildLabelSourceFeatureDiffKey(collisionFeature);
     collisionBuilder.appendFeature(collisionFeature, {
       featureId: markerKey,
@@ -1333,6 +1374,13 @@ export const useDirectSearchMapSourceController = ({
             getCraveScoreColorFromScore: args.getCraveScoreColorFromScore,
           });
     const markerCatalogEntries = markerCatalogReadModel.catalog;
+    // #16: include the LIVE native promoted set in the reuse key so a promotion change (native LOD during
+    // a zoom) MISSES the prepared-frame cache on the next publish (the settle republish) and does a full
+    // rebuild — which re-bakes the label-collision obstacle from the current promoted set so labels yield
+    // to mid-zoom-promoted pins. Without this the cache replays the stale obstacle (settle covered spikes).
+    const nativePromotedReuseKey = buildStableKeyFingerprint(
+      [...(sourceFramePort.getNativeVisibleMarkerKeys()?.nativePromotedKeys ?? [])].sort()
+    );
     const preparedFrameFingerprint = buildSourceFrameDataReuseKey({
       activeTab,
       bounds: currentBounds,
@@ -1340,6 +1388,7 @@ export const useDirectSearchMapSourceController = ({
         markerCatalogReadModel.primaryCount.toString(36),
         coverageResource?.requestKey ?? 'coverage:none',
         coverageResource?.status ?? 'coverage:idle',
+        nativePromotedReuseKey,
       ].join(':'),
       markersRenderKey: buildStableKeyFingerprint(
         markerCatalogEntries.map((entry) => buildMarkerKey(entry.feature))
@@ -1445,23 +1494,21 @@ export const useDirectSearchMapSourceController = ({
     // (projectAndEmitOnScreenMarkers computes the on-screen top-N; driveNativeLod / the reveal
     // collections snapshot flip those to full pins), so only on-screen markers ever promote.
     markerCandidatesRef.current = markerCatalogEntries.map((entry) => entry.feature);
-    // IDEAL SHAPE (viewport-bounded): TWO roles, cleanly separated.
-    //  - RANK pool (pins) = main_results ONLY: the viewport-bounded /search/run ranked list (= the
-    //    cards). Top-N by rank promote → pins MATCH the cards, ranks contiguous 1..N. Coverage is
-    //    deliberately KEPT OUT of the rank pool — feeding the (formerly market-wide) coverage set into
-    //    ranking is what promoted off-view ranks 44/52/65 over on-view 3/5/6.
-    //  - DOT pool = coverage (every restaurant in the viewport) + main_results: every in-view anchor
-    //    gets a dot (residency), so any of them can crossfade to a pin on zoom. Coverage is the
-    //    "show every restaurant" layer (its original Feb purpose); it must be VIEWPORT-BOUNDED
-    //    (SearchCoverageService) so the dots are in-view only, not the whole market.
+    // IDEAL SHAPE (viewport-bounded): the RANK pool and the DOT pool are the SAME set — every
+    // in-view restaurant is both a dot (resident) and a promotion candidate, so any of them can
+    // crossfade to a pin. The pool = shortcut_coverage (every in-viewport restaurant for this
+    // shortcut, RANKED — the coverage features carry `rank`/`craveScore`) + main_results (the cards,
+    // higher dedup precedence only for identity). This DECOUPLES pins from card pagination: the map
+    // promotes the on-screen top-`maxFullPins`(30) by rank regardless of how many card pages are
+    // loaded. (Sourcing the rank pool from main_results ONLY — one page = DEFAULT_PAGE_SIZE=20 —
+    // hard-capped pins at 20; that was wrong.) The old off-view-rank bug (promoting off-view 44/52/65
+    // over on-view 3/5/6) does NOT recur: coverage is VIEWPORT-BOUNDED (ST_Covers by the submitted
+    // viewportPolygon, not market-wide) AND native owns promotion via on-screen gating
+    // (projectAndEmitOnScreenMarkers promotes the top-N of the ON-SCREEN subset only, so an off-view
+    // rank can never promote). shortcut_coverage has higher VISUAL_SOURCE_PRIORITY than main_results,
+    // so the dedup keeps the coverage rank; the merged list is re-ranked 1..N by sorted position below.
     const shortcutResultFeatures = searchMode === 'shortcut' ? markerCandidatesRef.current : [];
-    const rankedCandidateSources: SearchMapVisualCandidateSource[] = [
-      {
-        sourceKind: searchMode === 'shortcut' ? 'main_results' : 'viewport',
-        features: markerCandidatesRef.current,
-      },
-    ];
-    const dotCandidateSources: SearchMapVisualCandidateSource[] =
+    const shortcutCoverageCandidateSources: SearchMapVisualCandidateSource[] =
       searchMode === 'shortcut'
         ? [
             {
@@ -1471,6 +1518,8 @@ export const useDirectSearchMapSourceController = ({
             { sourceKind: 'main_results', features: shortcutResultFeatures },
           ]
         : [{ sourceKind: 'viewport', features: markerCandidatesRef.current }];
+    const rankedCandidateSources: SearchMapVisualCandidateSource[] = shortcutCoverageCandidateSources;
+    const dotCandidateSources: SearchMapVisualCandidateSource[] = shortcutCoverageCandidateSources;
     const projectedInitialCandidates = projectSearchMapVisualFrame({
       rankedSources: rankedCandidateSources,
       dotSources: dotCandidateSources,
@@ -1632,6 +1681,25 @@ export const useDirectSearchMapSourceController = ({
       restaurantOnlyId: effectiveRestaurantOnlyId,
       buildMarkerKey,
     });
+    // ONE-RANK UNIFICATION (2026-06-23): the SAME sorted-position re-rank applied to the catalog above
+    // (projectedInitialCandidates → rank=index+1) MUST also drive the pin BADGE sprite and the JS reveal
+    // seed — otherwise the badge shows the raw, COLLIDING per-source rank (the "multiple rank-10s" merge
+    // bug) while native promotes by the clean position rank, so badge ≠ promotion. The harness proved this:
+    // badgeNeqCat≈328 and, during pan/zoom, inv up to 28 + badgeMax 100 (rank-100 pins promoted while
+    // lower-rank markers stay dots). projectedVisualFrame is the SAME projection as projectedInitialCandidates
+    // (identical args → identical order), so re-ranking it by index+1 here yields the IDENTICAL rank the
+    // catalog/engine uses → badge number == promotion rank everywhere. (Whether that position == Crave-score
+    // order is governed by projectSearchMapVisualFrame's sort, separate from this badge/promotion agreement.)
+    const rerankedVisualCandidates = projectedVisualFrame.rankedCandidates.map((feature, index) => ({
+      ...feature,
+      properties: { ...feature.properties, rank: index + 1 },
+    }));
+    // markerKey → unified position rank. renderedLodCandidates is built mostly from the DOT pass (which
+    // carries every candidate but NOT this re-rank), so the badge build below must look the unified rank up
+    // by key rather than trust the feature's own (possibly raw, colliding) rank.
+    const unifiedRankByKey = new Map<string, number>(
+      rerankedVisualCandidates.map((feature) => [buildMarkerKey(feature), feature.properties.rank as number])
+    );
     // Dots = every demoted marker. They render always-draw (allowOverlap:true), so no
     // JS cap is needed: Mapbox only draws the ones inside the current viewport (the
     // off-screen rest are tile-culled, not collision-culled), and on-screen dots all
@@ -1672,7 +1740,7 @@ export const useDirectSearchMapSourceController = ({
     const nativeVisibleSeedSet =
       nativeVisibleSeed != null ? new Set(nativeVisibleSeed.markerKeys) : null;
     const promotedSeedKeys = new Set<string>(
-      [...projectedVisualFrame.rankedCandidates]
+      [...rerankedVisualCandidates]
         .filter(
           (feature) =>
             nativeVisibleSeedSet == null || nativeVisibleSeedSet.has(buildMarkerKey(feature))
@@ -1682,7 +1750,14 @@ export const useDirectSearchMapSourceController = ({
             (typeof a.properties.rank === 'number' ? a.properties.rank : Number.POSITIVE_INFINITY) -
             (typeof b.properties.rank === 'number' ? b.properties.rank : Number.POSITIVE_INFINITY)
         )
-        .slice(0, maxFullPins)
+        // v5 owns reveal + EVERY promotion via the engine (v5 plan: "reveal = first decide; no special
+        // reveal seed"). Empty seed under v5 → every brand-new marker bakes as a plain dot (pin 0 / dot 1)
+        // and the engine's first decide fades the top-N in from 0 per-pin, in lockstep with their dots.
+        // This closes the residual group-snap: the pin bake was already v5-gated to 0 (~L1839) but the dot
+        // bake (~L1879, nativeDotOpacity: isPromoted ? 0 : 1) was NOT, so the seed still hid seeded dots at
+        // publish → groups snapped. Empty-under-v5 makes isPromoted false everywhere → both bakes correct.
+        // v4 keeps the bulk group seed (its two-machine role/opacity needs the synchronized reveal).
+        .slice(0, LOD_V5_ENABLED ? 0 : maxFullPins)
         .map((feature) => buildMarkerKey(feature))
     );
     visibleDotRestaurantMarkerFeatures.forEach((feature) => {
@@ -1699,7 +1774,7 @@ export const useDirectSearchMapSourceController = ({
     // panned-to outside the initial viewport slice (no source add → no wiggle), and native has pin
     // data to promote-render any candidate. Off-screen resident pins are tile-culled (~free) +
     // ignorePlacement (no collision cost). Name-labels stay promote-gated (built below).
-    projectedVisualFrame.rankedCandidates.forEach((feature) => {
+    rerankedVisualCandidates.forEach((feature) => {
       const key = buildMarkerKey(feature);
       if (seenRenderedLodKeys.has(key)) {
         return;
@@ -1719,17 +1794,25 @@ export const useDirectSearchMapSourceController = ({
           : feature.properties.lodZ;
       const craveScore =
         typeof feature.properties.craveScore === 'number' ? feature.properties.craveScore : null;
+      // ONE-RANK: the unified position rank (== the catalog/engine rank), looked up by key so the badge
+      // matches native promotion no matter which pass first added this feature. Falls back to the raw rank
+      // only if the key is somehow absent from the reranked set.
       const rank =
-        typeof feature.properties.rank === 'number' ? feature.properties.rank : index + 1;
+        unifiedRankByKey.get(markerKey) ??
+        (typeof feature.properties.rank === 'number' ? feature.properties.rank : index + 1);
       // VIEWPORT-BOUNDED SHORTCUT (migration): the catalog is now ONLY in-viewport results (ranked
       // 1..N), so every pin is in-region → every badge is a RANK badge. The out-of-region SCORE badge
       // existed only for the city-wide coverage pins, which are gone. inOverlapRegion is pinned true.
       const inOverlapRegion = true;
       const badgeImageId = rankBadgeImageId(craveScore, rank);
+      // Active-color variant (same rank number) — the pin layer swaps to this on nativeHighlighted so a
+      // tapped pin recolors to the active color while keeping its rank (B / press-up active color).
+      const activeBadgeImageId = activeRankBadgeImageId(rank);
       const semanticRevision = buildPinSemanticRevision({
         baseDiffKey: getSearchMapSourceTransportFeature(feature).diffKey,
         markerKey,
         nativeLodZ,
+        badgeImageId,
       });
       const nextFeature = {
         ...feature,
@@ -1737,8 +1820,12 @@ export const useDirectSearchMapSourceController = ({
         properties: {
           ...feature.properties,
           markerKey,
+          // Stamp the unified rank onto the baked feature so feature.properties.rank (read natively for
+          // z-order and the harness) agrees with the badge sprite and native promotion — one rank end to end.
+          rank,
           labelOrder: index + 1,
           badgeImageId,
+          activeBadgeImageId,
           inOverlapRegion,
           nativeLodZ,
           // RESIDENT role: promoted pin visible (1), demoted pin resident-invisible (0).
@@ -1753,7 +1840,10 @@ export const useDirectSearchMapSourceController = ({
           // settled role (SearchMapRenderController prepareScopedPinAndLabelOutput /
           // reconcileLiveMarkerRoleOutputs) and/or writes the stepper feature-state — without any
           // JS-originated source write. The coalesce default can never go stale relative to role.
-          nativeLodOpacity: isPromoted ? 1 : 0,
+          // v5: bake 0 (a dot) for EVERY pin — the engine owns opacity via feature-state and fades the
+          // top-N in from 0; a baked 1 would paint the reveal-seed pins FULL before the engine value applies
+          // (the reveal twitch + the zoom-out group-snap-at-full). v4 still needs the baked role, so keep 1.
+          nativeLodOpacity: isPromoted && !LOD_V5_ENABLED ? 1 : 0,
           nativeLodRankOpacity: 1,
           nativePresentationOpacity: 1,
         },
@@ -1943,12 +2033,18 @@ export const useDirectSearchMapSourceController = ({
     const nativeVisibleForLabels = sourceFramePort.getNativeVisibleMarkerKeys();
     const onScreenMarkerKeysForLabels =
       nativeVisibleForLabels != null ? new Set(nativeVisibleForLabels.markerKeys) : null;
+    // The LIVE promoted set drives the collision obstacle baking (#16): on a settle-republish (this runs
+    // when isMapMoving flips false) the obstacle re-bakes to match the pins native promoted during the
+    // gesture, so labels yield to them instead of the stale publish-time set.
+    const promotedMarkerKeysForLabels =
+      nativeVisibleForLabels != null ? new Set(nativeVisibleForLabels.nativePromotedKeys) : null;
     const { labelSourceStore, labelCollisionSourceStore, labelDerivedSourceIdentityKey } =
       buildDirectLabelStores({
         pinSourceStore,
         previousLabelSourceStore: previousLabelSourceStoreRef.current,
         previousLabelCollisionSourceStore: previousLabelCollisionSourceStoreRef.current,
         onScreenMarkerKeys: onScreenMarkerKeysForLabels,
+        promotedMarkerKeys: promotedMarkerKeysForLabels,
       });
     assertProjectedVisualFrameInvariants({
       pinSourceStore,
@@ -2609,6 +2705,14 @@ export const useDirectSearchMapSourceController = ({
             if (craveScore === null) {
               return null;
             }
+            // High-precision percentile_rank from the coverage API — MUST be carried through (the candidate
+            // dedup keeps the higher-priority coverage feature over main_results, so without this a restaurant
+            // in both ends up with craveScoreExact undefined and sorts last instead of by its true score).
+            const craveScoreExact =
+              typeof properties.craveScoreExact === 'number' &&
+              Number.isFinite(properties.craveScoreExact)
+                ? (properties.craveScoreExact as number)
+                : null;
             const restaurantCraveScore =
               typeof properties.restaurantCraveScore === 'number' &&
               Number.isFinite(properties.restaurantCraveScore)
@@ -2634,6 +2738,7 @@ export const useDirectSearchMapSourceController = ({
                 restaurantId,
                 restaurantName,
                 craveScore,
+                craveScoreExact,
                 scoreDelta7d:
                   typeof properties.scoreDelta7d === 'number'
                     ? (properties.scoreDelta7d as number)

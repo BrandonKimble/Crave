@@ -66,6 +66,7 @@ import { SearchEntityExpansionService } from './search-entity-expansion.service'
     SearchQuerySuggestionService,
     SearchPopularityService,
     RestaurantStatusService,
+    SearchQueryExecutor,
   ],
 })
 export class SearchModule {}

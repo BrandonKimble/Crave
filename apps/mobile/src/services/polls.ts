@@ -130,11 +130,18 @@ export type PollQueryResponse = {
   polls: Poll[];
 };
 
+export type PollFeedSort = 'new' | 'top' | 'trending';
+export type PollFeedType = 'all' | 'polls' | 'discussions';
+export type PollFeedTime = 'all_time' | 'this_week';
+
 export type PollQueryPayload = {
   marketKey?: string;
   bounds?: MapBounds | null;
   userLocation?: Coordinate | null;
   state?: string;
+  sort?: PollFeedSort;
+  type?: PollFeedType;
+  time?: PollFeedTime;
 };
 
 export type PollFeedSource = 'cache' | 'network';
@@ -171,10 +178,14 @@ type PersistedPollBootstrapCache = {
 };
 
 export type CreatePollPayload = {
-  topicType: PollTopicType;
+  // Free-text question — the LLM infers mode + axis (the default, type-less creation
+  // path). When present, the backend ignores topicType/target fields.
+  question?: string;
+  topicType?: PollTopicType;
   description?: string;
   marketKey?: string;
   bounds?: MapBounds | null;
+  closeWindowDays?: number;
   targetDishId?: string;
   targetRestaurantId?: string;
   targetFoodAttributeId?: string;
@@ -449,6 +460,24 @@ export const createPoll = async (body: CreatePollPayload): Promise<Poll> => {
   const response = await api.post('/polls', body);
   const normalized = normalizePoll(response.data);
   return normalized ?? response.data;
+};
+
+export type PollDuplicateMatch = {
+  pollId: string;
+  question: string;
+  similarity: number;
+};
+
+// Stage-1 creation dedup: fast text-similarity check against active polls in the
+// market, before the LLM resolves the poll. A non-empty result → route the creator to
+// the existing poll instead of spinning up a duplicate (§3).
+export const checkPollDuplicate = async (body: {
+  question: string;
+  marketKey?: string;
+}): Promise<{ matches: PollDuplicateMatch[] }> => {
+  const response = await api.post('/polls/check-duplicate', body);
+  const data = (response.data ?? {}) as { matches?: PollDuplicateMatch[] };
+  return { matches: Array.isArray(data.matches) ? data.matches : [] };
 };
 
 // ─── Live model: comments, likes, leaderboard ────────────────────────────────

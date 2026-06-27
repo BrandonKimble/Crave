@@ -26,18 +26,142 @@ decision (buildMarkerRenderModel requireVisibility). Flaws:
    Natural-search residency (#3 of red-team, commit 6c02810f) made the decision lean 100% on this
    gate (full catalog), so it WORSENED symptoms 1+2.
 
-### 1. [ ] FIX visible-set: live + authoritative (fixes ranks-40s + collapse)
+### 1. [DECIDED: KEEP FALLBACK] fallback removal closed as won't-fix (2026-06-19, user's call)
 
-- [ ] Compute an immediate projection on catalog arrival (don't defer to next camera tick) so a
-      fresh search has a real on-screen set before the first decision.
-- [ ] Make a visible-set update TRIGGER a re-decision (publishNativeVisibleMarkerKeys -> notify ->
-      re-publish), so the corrected set actually re-runs buildMarkerRenderModel.
-- [ ] On the bootstrap/seed frame, do not promote against the padded lat/lng AABB fallback when the
-      native set is null — wait for the real projection (or project synchronously).
-- [ ] Validate: fresh "best restaurants" shows ranks ~1-30 visible-in-region (not 40s/50s); no full
-      collapse on catalog swap. Use the contract gate + a new promote-vs-viewport cross-ref.
-      Evidence: map-render-model.ts:258-314; use-direct-search-map-source-controller.ts:1592,1648-1738;
-      SearchMapRenderController.swift:1301-1303,10176-10195,10635-10663; search-map-source-frame-port.ts:261.
+DECISION: keep the padded-AABB fallback. It is only a one-frame SEED bootstrap before the native
+projection answers (one async hop); native is already the sole visibility truth for every steady-state
+frame the user sees, so keeping the fallback does NOT compromise "native is the gold source" in any
+user-visible way. Removing it requires teaching the reveal to absorb a mid-flight marker population
+(see A.4) — real surgery in the fragile reveal handshake, not worth the regression risk for an invisible
+benefit. The two-group GEOGRAPHIC model (B) is also KEPT per the user (rank badge = inside search area).
+Full root cause + the scoped real-fix are preserved below if ever revisited. Do NOT re-attempt blindly.
+
+### 1-history. [REVERTED] visible-set fix attempt backed out — it reversed the fresh-search reveal
+
+ATTEMPT (project-on-arrival + JS subscribe-re-publish + inRegionVisibilityNotReady bootstrap guard)
+REVERSED THE REVEAL: on submit the shared pins+dots+labels opacity ramped in, then the guard preserved
+the EMPTY initial in-region set (starved promotion) while the subscriber churned viewport_lod
+re-publishes → dots flashed then faded back out, pins/labels never showed. User chose "rip out today's
+#1 only". Reverted in b8b85f52 (surgical — kept residency arch + motion-pressure cutover d1607742 +
+dormancy-revert/no-hang 3b72da20). Validated in-sim: pins+dots+labels fade in and HOLD on a fresh
+"best restaurants" search. Trade-back: ranks-40s returns (the thing #1 tried to fix).
+
+### DIAGNOSTIC SESSION FINDINGS (2026-06-18, NSLog-instrumented native builds) — TWO conclusions:
+
+**A. The native projection CAN be made reliable, but it is NOT the only job the fallback does.**
+NSLog in projectAndEmitOnScreenMarkers proved the lifecycle on a fresh search:
+  catalog_arrival     state=hidden        → GATED (isVisualSourceInactiveOrDismissing blocks .hidden)
+  source_frame_arrival state=hidden        → GATED
+  source_frame_arrival state=preparingReveal → EMIT keys=206   (only here does the set first appear)
+So on a fresh search the catalog arrives while `.hidden`; the projection is blocked; the set is null
+until `.preparingReveal`. Adding `forceDespiteHidden:true` to the catalog_arrival call (the projection
+is pure geometry — camera+coords, independent of paint) made it EMIT keys=206 during `.hidden` — set
+ready at frame 1, stable (all later projections coalesce to NOCHANGE), no loop. NATIVE PART SOLVED.
+BUT removing the padded-AABB fallback (map-render-model isVisible → native-only) STILL HANGS the reveal
+(lifecycle stuck at preparingReveal, list spins forever). Cause: the fallback is ALSO load-bearing for
+the REVEAL LABEL-GATE's first frame — the early native emit isn't consumed by JS into a non-empty
+promotion before the gate checks, so the first promotion is momentarily empty → no labels → the
+labels-before-pins gate never opens → whole sheet+map reveal hangs. The fallback bridged this by always
+giving a non-empty first promotion. ⇒ To remove the fallback, the REVEAL LABEL-GATE must tolerate a
+momentarily-empty first promotion (open once the subscriber re-decide promotes pins), OR the first
+decision must be guaranteed non-empty synchronously (native set + resolved overlap region both ready).
+The forceDespiteHidden native change is correct and reusable but was REVERTED with the rest (working
+tree restored to HEAD) since it hangs without the gate fix. Build is fallback-present working state.
+
+**A.2 — PINNED the exact stall + why both simple fixes fail (2026-06-18, second NSLog session).**
+Instrumented startEnterPresentationIfReady's else-branch to log which guard holds the reveal with the
+fallback removed (+ forceDespiteHidden + the JS subscriber). STEADY-STATE stuck line:
+  reveal_blocked state=preparingReveal status=pending_mount phase=enter_requested
+    mountedHidden=false hasStartToken=false labelReady=false
+    | labels=2124 observationEnabled=true hasCommittedObservation=TRUE
+      effectiveRendered=0 visibleLabels=0 layerRendered=0
+So the reveal NEVER reaches the "entering" phase — it sits at JS status `pending_mount`/`enter_requested`.
+Persistently-false guards (530/530 lines): mountedHidden, hasStartToken (both follow from not-entering),
+and labelReady. labelReady=false because the label observation COMMITTED on the empty seed frame
+(hasCommittedObservation=true) with effectiveRendered=0, and never re-measured once labels populated.
+NB the gate returns TRUE for labelCount==0 (line ~6497) — so "empty → hang" was the WRONG mechanism;
+the real one is "reveal MOUNTS/observes on the empty FIRST marker frame and latches there."
+TWO simple fixes were tried and BOTH fail (do not retry either):
+  (1) HOLD the publish: early-return from publishSources when nativeVisibleMarkerKeys==null &&
+      rankedCandidates.length>0 (wait for the catalog_arrival emit → subscriber → re-publish populated).
+      RESULT: breaks the RESULT SHEET — publishSources also publishes the whole source-frame snapshot
+      (mapSearchSurfaceResultsSourcesReady, label/coverage sources) that drives the sheet reveal, so a
+      blanket early-return leaves the sheet spinning forever (no data shown). PROVEN by an A/B: reverting
+      ONLY the JS to HEAD (same native binary, same clean metro) → search loads instantly; the hold-fix
+      JS → endless spinner.
+  (2) PRESERVE in-region pins but still publish (the old inRegionVisibilityNotReady guard) → the
+      fade-out reversal (documented above in §1 REVERTED).
+⇒ REAL FIX must keep publishing the source frame (sheet needs it) AND make the reveal not latch on the
+empty seed: re-arm the label observation when the promoted marker set first goes empty→populated
+(reset hasCommittedObservationForConfiguredRequest + re-schedule the placement observation for the same
+reveal request), so labelReady re-evaluates once the native-set-driven labels actually render. ALSO
+verify what advances JS status pending_mount→entering (it may itself wait on the map's first healthy
+frame); if so, that healthy-frame signal must fire on the populated re-publish, not the empty seed.
+Metro hygiene: a pile of stale `expo start` (8081+8082) + `tail -F` perf processes accumulate and serve
+stale bundles → false "data hangs"/Refreshing. Kill them (pkill -f "expo start") and run ONE metro.
+
+**A.3 — the re-arm-observation fix is INSUFFICIENT; the stall is the native MOUNT ELECTION, before the
+label gate.** Reading the mount path: the reveal sits at status `pending_mount` because
+maybeElectMountedHiddenExecutionBatch never advances enter_pending_mount → enter_mounted_hidden
+(mountedHidden stayed false 530/530). That election runs BEFORE the label gate matters, so re-arming the
+label observation alone cannot help — the reveal never reaches the gate. The election has ~9 guards, each
+emitting `enter_mount_not_elected reason=...` via emitVisualDiag → emit() (JS bridge, gated on
+enableVisualDiagnostics, deduped) — NOT NSLog, so the prior captures missed it. NEXT DIAGNOSTIC: add an
+NSLog at the top of emitVisualDiag (before the enable/dedup guards), re-apply
+no-fallback+forceDespiteHidden+subscriber, capture the `enter_mount_not_elected reason=` for the empty
+seed frame — that names the exact mount guard. Likely the JS↔native enter handshake (presentation
+machine executionStage / execution-batch election / source-ready) assumes a non-empty first frame.
+CONCLUSION: removing the fallback is a multi-component reveal-handshake change (mount election +
+presentation machine + label observation), ALL of which assume the first frame has content — NOT a
+single re-arm. Cost/benefit to revisit: the fallback only fills the sub-second SEED window before the
+native set arrives; native is already the sole truth for every steady-state frame. So keeping the
+fallback does not compromise "native is the truth" in any user-visible way — it is a one-frame bootstrap.
+
+**A.4 — DEFINITIVE characterization (emitVisualDiag→NSLog builds, diag3/diag4).** Mirrored emitVisualDiag
+to NSLog and ran two no-fallback variants:
+  - diag3 (no-fallback ONLY, native NEVER projects → markers stay 0 forever): reveal COMPLETES fine —
+    frame_begin reaches phase=live opacity=1.0, reveal_apply_result frame:3 phase=entering renderPhase=
+    live with all marker counts 0. The labelCount==0 gate path opens; an all-empty reveal is healthy.
+  - diag4 (no-fallback + source_frame project + subscriber, but NO forceDespiteHidden): native emits too
+    late/gated → markers also stay 0 → reveal COMPLETES empty again.
+  - diag2 (no-fallback + forceDespiteHidden + catalog_arrival project + subscriber): native emits 206
+    keys DURING `.hidden`, so labels populate 0→2124 WHILE the reveal preroll is in flight → HANGS at
+    pending_mount (mountedHidden=false 530/530).
+⇒ ROOT, definitively: the hang is NOT emptiness and NOT populated-steady-state (both reveal fine). It is
+the empty→populated TRANSITION *mid-reveal* — markers arriving while the reveal preroll is in flight.
+The mid-flight population spawns a new frame generation the in-flight reveal can't absorb; the transient
+mount reason seen is `enter_mount_blocked_source_not_ready` (likely persistent for that new generation —
+its source admission/markFrameSourceAdmission isn't synthesized for the subscriber-driven re-publish
+during preroll). This is inherent to "native answers one async hop late": the answer lands mid-reveal.
+REAL FIX (Option 3, now scoped): make the reveal ABSORB a mid-flight marker population — i.e. ensure the
+subscriber-driven populated re-publish during reveal preroll marks its frame-generation source ready so
+the mount can (re-)elect on it, and re-arms the label observation for that generation. Targeted at the
+source-admission/mount path, not a full rewrite — but still in the fragile reveal handshake.
+
+**B. ranks-40s is NOT a projection/timing bug — it is the GEOGRAPHIC in/out-region split (= complaint #1).**
+NSLog of the on-screen markers' RANKS on a fresh "best restaurants": ranks(min24) =
+6,7,8,10,11,13,15,17,19,23,28,29,30,34,36,37,40,41,43,44,45,46,47,49 (ranks 1-5 are OFF-screen). Yet the
+in-region RANK-badge pins shown were 10,11,13,15,23,28,29,30,36,37,44,45,47,56,60,62,64 — i.e. the
+on-screen top ranks (6,7,8) are NOT shown as rank pins, while 56/60/64 ARE. Reason: in-region vs
+out-region is split by GEOGRAPHY (isWithinOverlapRegion — the frozen submitted-viewport/radius), NOT by
+rank. Top-ranked results that fall outside the overlap radius become OUT-region (crave-SCORE badge), so
+the in-region RANK badges only ever show whatever ranks happen to sit inside the overlap region — which
+skews high/mid. So "rank badges ≠ top ranks" BY DESIGN. This validates the user's complaint #1 (is the
+two-group split even right?). Fixing ranks-40s = rethinking what earns a rank badge: e.g. the globally
+top-N (1..maxFullPins) should get rank badges regardless of overlap region, OR the overlap region must
+encompass the top results, OR collapse the two-group model. Decide the model before coding.
+
+NEXT (sequenced):
+- [ ] (Prereq for fallback removal) Make the reveal label-gate not hang on a momentarily-empty first
+      promotion — open it once pins ARE promoted (subscriber re-decide), never latch closed on the
+      empty seed frame. Then re-apply forceDespiteHidden (project-on-arrival, catalog bypasses .hidden)
+      + the JS subscriber + delete the padded-AABB fallback (map-render-model native-only). Validate:
+      fresh search HOLDS the reveal with native-only (lifecycle reaches `visible`, no spin).
+- [ ] (ranks-40s) Decide the two-group model: should rank badges be the global top-N (rank-filtered)
+      rather than geography-filtered? Then implement. The native set + ranks are already correct inputs.
+      Evidence: in/out split = use-direct-search-map-source-controller.ts isInRegionFeature /
+      isWithinOverlapRegion (~1663-1665); overlap region resolve (~1619-1646); diagnostic NSLog data in
+      /tmp/mapdiag2.txt (with-fallback) + /tmp/mapdiag3.txt (no-fallback, hung at preparingReveal).
 
 ## 3. [x] FIX label-gate reveal deadlock (REGRESSION from dormancy rewrite cec34d26)
 

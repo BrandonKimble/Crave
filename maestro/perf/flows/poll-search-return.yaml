@@ -1,0 +1,25 @@
+appId: com.brandonkimble.cravesearch
+---
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 60000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera_and_resolve_market&lat=40.7550&lng=-73.9800&zoom=13.2'
+- waitForAnimationToEnd: { timeout: 2500 }
+- tapOn: 'Polls in New York'
+- waitForAnimationToEnd: { timeout: 2500 }
+- tapOn: { text: 'Create or close polls' }
+- waitForAnimationToEnd: { timeout: 6000 }
+# slide the creation sheet down to a low snap so the search bar is reachable
+- swipe: { start: '50%,14%', end: '50%,78%' }
+- waitForAnimationToEnd: { timeout: 3000 }
+- takeScreenshot: /tmp/kspike-1-creation-docked
+# run a search while pollCreation is the active route
+- tapOn: 'What are you craving?'
+- waitForAnimationToEnd: { timeout: 2000 }
+- inputText: 'tacos'
+- waitForAnimationToEnd: { timeout: 2000 }
+- pressKey: Enter
+- waitForAnimationToEnd: { timeout: 7000 }
+- takeScreenshot: /tmp/kspike-2-search
+# close the search — should return to the docked creation sheet, not the lane/bottom
+- tapOn: { text: 'Close results', optional: true }
+- waitForAnimationToEnd: { timeout: 6000 }
+- takeScreenshot: /tmp/kspike-3-afterclose

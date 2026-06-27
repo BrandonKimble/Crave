@@ -1,5 +1,6 @@
 # Memory Index
 
+- [Map LOD v4 state](map-lod-v4-state.md) — CURRENT map LOD state (READ FIRST for map work): v4 model, what's fixed (flash, out-region), what's parked (pin jitter = Mapbox renderer), next = reveal/dismiss lane separation; frame-analysis tooling
 - [Map LOD / pin architecture](map-lod-pin-architecture.md) — how pin/dot LOD, 4 label candidates, z-order stacking, and per-pin slot source groups work (JS + native iOS)
 - [Map LOD demotion root cause](map-lod-demotion-root-cause.md) — why pins jitter/demote when panning/twisting without zoom
 - [Map LOD target plan](map-lod-target-plan.md) — agreed target architecture + staged cutover + LATEST STATE / progress / per-issue status / autonomous loop (READ FIRST for map work)
@@ -72,3 +73,28 @@ Google-style ladder in MainLaunchCoordinator chooseBestSnapshot: override(7) > c
   + out-of-viewport pins allowOverlap:false (collision-culled, scored) in ONE source; the
   out-of-view set can be tens of thousands. See tasks: out-of-viewport culling split +
   natural-search viewport bounding (no margin).
+
+### #8 Resident pin+dot LOD cutover — DONE (2026-06-08, branch map-overhaul-overlap-resident)
+
+- **Goal achieved**: pin+dot resident for every rendered candidate (union emitted into BOTH
+  sources); LOD role = opacity feature-state ONLY (promoted pin1/dot0, demoted pin0/dot1).
+  Role flip = opacity only, NO source membership churn → no commit/await → crossfade clean
+  by construction. Eliminated the dot-snaps-before-pin residual AND the dual-write class.
+- **The role model had to flip from membership-driven to opacity-driven everywhere**:
+  (1) JS emission (use-direct-search-map-source-controller.ts): renderedLodCandidates = union
+  of promoted + dots; pin nativeLodOpacity=isPromoted?1:0, dot nativeDotOpacity=isPromoted?0:1.
+  (2) Native markerRoleTableFromDerivedCollections: pinnedMarkerKeys opacity-filtered; role-row
+  `role` = opacity-driven (was "pin-wins-if-present"), row carries BOTH features; dots loop
+  attaches dotFeature to any existing row. (3) Native makeDesiredPinSnapshotState: pinIdsInOrder
+  (drives targetOpacity "presence") filtered to opacity>0. (4) JS buildMarkerRoleRow: role by
+  pin nativeLodOpacity>0. (5) collectResidentPinnedSourceStoreState: filter to opacity>0 — THIS
+  was the aggressive-twist flash (fed all ~500 resident pins into next-frame stable-membership
+  → oscillation). 
+- **Pin layer opacity expr** already coalesces feature-state→PROPERTY→1, so demoted pins
+  (JS property 0) hide even without a native render state.
+- **Validated** (LOD pan/zoom/twist, iPhone 17 Pro): builds clean, 0 redbox/role-row/base-
+  mismatch, correct visibility (no all-pins mess), flashReversalCount:0 + crossfadeGapCount:0
+  across ALL windows. The LiveDotTransition machinery stays as the opacity-easing engine (no
+  longer fights membership churn). Bug-hunt loop took ~4 native rebuilds (resident1..5).
+- **NOT done**: slot-source purge (pinSlotSourceIds dead scaffolding, Stage D) + #7 dead block
+  removal — cleanup, batch a rebuild. Stage C (dot collision) needs re-eval post-resident.

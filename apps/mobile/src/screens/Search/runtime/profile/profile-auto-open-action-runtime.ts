@@ -74,8 +74,16 @@ export const resolveProfileAutoOpenAction = ({
     };
   }
 
+  // Favorites-sourced results must always present the list+toggle surface, never
+  // auto-open a single restaurant profile. A 1-item restaurant list (or a dish
+  // list collapsing to one restaurant) resolves to a single candidate here and
+  // would otherwise be hijacked into the restaurant profile. The response itself
+  // declares favorites provenance, so the suppression stays source-driven and
+  // needs no mode plumbing through the profile runtime.
+  const isFavoritesSourcedResults = Boolean(results.metadata?.analysisMetadata?.favorites);
+
   const targetRestaurant = resolveSingleRestaurantCandidate(results);
-  if (!targetRestaurant || !currentQueryKey) {
+  if (!targetRestaurant || !currentQueryKey || isFavoritesSourcedResults) {
     return { kind: 'none' };
   }
   const nextAutoOpenKey = `${currentQueryKey.toLowerCase()}::${targetRestaurant.restaurantId}`;

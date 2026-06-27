@@ -1,0 +1,14 @@
+appId: com.brandonkimble.cravesearch
+---
+# Deliberate dismiss -> re-search test. Close results, wait for FULL dismiss back
+# to home, then re-submit a shortcut. Checks whether "search again" hangs.
+- tapOn: { text: 'Close results', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 3000 }
+- openLink: 'crave://perf-scenario-mark?phase=research_dismissed&label=research_test'
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7300&lng=-73.9900&zoom=13.6&animation=none'
+- waitForAnimationToEnd: { timeout: 1500 }
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 18000 }
+- waitForAnimationToEnd: { timeout: 4000 }
+- openLink: 'crave://perf-scenario-mark?phase=research_loaded&label=research_test'

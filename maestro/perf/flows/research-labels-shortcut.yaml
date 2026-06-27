@@ -1,0 +1,25 @@
+appId: com.brandonkimble.cravesearch
+---
+# Full deep-link shortcut cycle: first search -> dismiss (full) -> re-search.
+# Proper dismiss waits avoid the close+resubmit race. Verifies labels rebuild
+# after the re-search (the labelFeat=1 bug).
+- tapOn: { text: 'Close results', optional: true }
+- tapOn: { text: 'Close polls', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 30000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=13.4&label=seed'
+- waitForAnimationToEnd: { timeout: 1500 }
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 22000 }
+- waitForAnimationToEnd: { timeout: 4500 }
+- openLink: 'crave://perf-scenario-mark?phase=first_loaded&label=research_labels_shortcut'
+- waitForAnimationToEnd: { timeout: 2500 }
+- tapOn: { text: 'Close results' }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 3500 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7300&lng=-73.9900&zoom=13.6&label=reseed'
+- waitForAnimationToEnd: { timeout: 1500 }
+- openLink: 'crave://perf-scenario-mark?phase=research_begin&label=research_labels_shortcut'
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 22000 }
+- waitForAnimationToEnd: { timeout: 5500 }
+- openLink: 'crave://perf-scenario-mark?phase=research_loaded&label=research_labels_shortcut'

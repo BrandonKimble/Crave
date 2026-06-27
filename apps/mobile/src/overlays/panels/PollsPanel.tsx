@@ -1,9 +1,21 @@
 import React from 'react';
-import { Alert, View, Pressable, StyleSheet, Image } from 'react-native';
+import { View, Pressable, StyleSheet, Image } from 'react-native';
 import { Sparkles, MessageCircle, Users, Clock } from 'lucide-react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
-import { Text } from '../../components';
-import type { Poll, PollCreator } from '../../services/polls';
+import {
+  FilterChip,
+  FrostedFilterStrip,
+  SegmentedToggle,
+  showAppModal,
+  Text,
+} from '../../components';
+import type {
+  Poll,
+  PollCreator,
+  PollFeedSort,
+  PollFeedTime,
+  PollFeedType,
+} from '../../services/polls';
 import { colors as themeColors } from '../../constants/theme';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import {
@@ -15,7 +27,6 @@ import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-au
 import {
   OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
   OVERLAY_HORIZONTAL_PADDING,
-  overlaySheetStyles,
 } from '../overlaySheetStyles';
 import type {
   AppRouteSceneBodyContentSpec,
@@ -37,6 +48,42 @@ const LIVE_BADGE_HEIGHT = OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
 const ACCENT = themeColors.primary;
 const BORDER = themeColors.border;
 const SURFACE = themeColors.surface;
+
+// Feed primary split (§4/§6): Live (open polls) ⇄ Results (closed/graduated).
+const FEED_STATE_OPTIONS = [
+  { label: 'Live', value: 'active' as const },
+  { label: 'Results', value: 'closed' as const },
+] as const;
+
+// Type filter (§6): exclusive, always one active (default All).
+const TYPE_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedType }> = [
+  { label: 'All', value: 'all' },
+  { label: 'Polls', value: 'polls' },
+  { label: 'Discussions', value: 'discussions' },
+];
+
+// Sort overrides (§4/§6). No active chip = the silent demand-ranked default; tapping
+// the active chip clears back to it.
+const SORT_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedSort }> = [
+  { label: 'New', value: 'new' },
+  { label: 'Top', value: 'top' },
+  { label: 'Trending', value: 'trending' },
+];
+
+// Time filter (§6): exclusive, always one active (default All Time).
+const TIME_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedTime }> = [
+  { label: 'All time', value: 'all_time' },
+  { label: 'This week', value: 'this_week' },
+];
+
+// The polls feed is RE-SORTABLE. FlashList's maintain-visible-content-position
+// (chat-style, on by default) anchors the old top row when the Live/Results split or
+// sort re-orders the rows, scrolling the filter strip off-screen. A re-sortable feed
+// wants the opposite — stay at the top and show the new #1 — so MVCP is disabled here
+// (per-scene via the transport's flashListProps; search/restaurant keep the default).
+const POLLS_FEED_FLASH_LIST_PROPS = {
+  maintainVisibleContentPosition: { disabled: true },
+} as const;
 
 type PollCardProps = {
   poll: Poll;
@@ -118,7 +165,12 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
           </Text>
         )}
       </View>
-      <Text variant="subtitle" weight="semibold" style={styles.pollQuestion}>
+      <Text
+        variant="subtitle"
+        weight="semibold"
+        style={styles.pollQuestion}
+        testID={`poll-card-title-${poll.pollId}`}
+      >
         {poll.question}
       </Text>
       {poll.topCandidates && poll.topCandidates.length > 0 ? (
@@ -260,7 +312,10 @@ const usePollsMountedSceneHeaderActionRuntime = (): PollsMountedSceneHeaderActio
     const marketKey = headerModel?.marketKey ?? params?.marketKey?.trim() ?? null;
 
     if (!sceneState.bounds && !marketKey && !marketOverride) {
-      Alert.alert('Pick a market', 'Move the map to a local market before creating a poll.');
+      showAppModal({
+        title: 'Pick a market',
+        message: 'Move the map to a local market before creating a poll.',
+      });
       return;
     }
 
@@ -434,7 +489,6 @@ export const usePollsPanelListSceneParts = (): {
   const {
     contentBottomPadding,
     loading,
-    isPollFeedRefreshing,
     isSystemUnavailable,
     polls,
     visiblePolls,
@@ -444,6 +498,14 @@ export const usePollsPanelListSceneParts = (): {
     marketStatus,
     candidateLocalityName,
     marketName,
+    feedState,
+    setFeedState,
+    feedSort,
+    setFeedSort,
+    feedType,
+    setFeedType,
+    feedTime,
+    setFeedTime,
   } = pollsPanelFeedRuntime;
 
   const shouldShowCollapsedSpinner = loading || (isSystemUnavailable && polls.length === 0);
@@ -461,24 +523,75 @@ export const usePollsPanelListSceneParts = (): {
       ? visiblePolls
       : EMPTY_POLL_LIST;
 
-  // Quiet refresh indicator above an existing list while the live feed updates.
+  // Feed toggle strip (Live ⇄ Results + Sort) — rendered through the shared
+  // FrostedFilterStrip foundation (frosted cutout + horizontal overflow, the same
+  // treatment as the search results filter row). Always shown on the expanded
+  // surface, even when the list is empty, so an empty Results feed can still switch
+  // back to Live.
   const ListHeaderComponent = React.useMemo(() => {
-    if (
-      !isExpandedSurface ||
-      listData.length === 0 ||
-      !(loading || isPollFeedRefreshing) ||
-      polls.length === 0
-    ) {
+    if (!isExpandedSurface) {
       return null;
     }
     return (
-      <View style={styles.listHeader}>
-        <View style={styles.loader}>
-          <SquircleSpinner size={18} color={ACCENT} />
-        </View>
-      </View>
+      <FrostedFilterStrip testID="poll-feed-strip" style={styles.feedStrip}>
+        <SegmentedToggle
+          options={FEED_STATE_OPTIONS}
+          value={feedState}
+          onChange={setFeedState}
+          accentColor={ACCENT}
+          accessibilityLabel="Toggle between live and results polls"
+          testID="poll-feed-state-toggle"
+        />
+        {TYPE_OPTIONS.map((option) => (
+          <FilterChip
+            key={option.value}
+            label={option.label}
+            active={feedType === option.value}
+            accentColor={ACCENT}
+            onPress={() => setFeedType(option.value)}
+            accessibilityLabel={`Show ${option.label}`}
+            testID={`poll-feed-type-${option.value}`}
+          />
+        ))}
+        {SORT_OPTIONS.map((option) => {
+          const active = feedSort === option.value;
+          return (
+            <FilterChip
+              key={option.value}
+              label={option.label}
+              active={active}
+              accentColor={ACCENT}
+              // Tapping the active sort clears back to the default demand order.
+              onPress={() => setFeedSort(active ? null : option.value)}
+              accessibilityLabel={`Sort by ${option.label}`}
+              testID={`poll-feed-sort-${option.value}`}
+            />
+          );
+        })}
+        {TIME_OPTIONS.map((option) => (
+          <FilterChip
+            key={option.value}
+            label={option.label}
+            active={feedTime === option.value}
+            accentColor={ACCENT}
+            onPress={() => setFeedTime(option.value)}
+            accessibilityLabel={option.label}
+            testID={`poll-feed-time-${option.value}`}
+          />
+        ))}
+      </FrostedFilterStrip>
     );
-  }, [isExpandedSurface, isPollFeedRefreshing, listData.length, loading, polls.length]);
+  }, [
+    feedSort,
+    feedState,
+    feedType,
+    feedTime,
+    isExpandedSurface,
+    setFeedSort,
+    setFeedState,
+    setFeedType,
+    setFeedTime,
+  ]);
 
   const ListEmptyComponent = React.useMemo(() => {
     if (shouldHoldFreshLiveContent) {
@@ -536,14 +649,19 @@ export const usePollsPanelListSceneParts = (): {
     () => ({
       contentContainerStyle: {
         paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-        paddingTop: 2,
+        // 0 like the result sheet (was 2): the 2px pushed the toggle strip's top edge out from
+        // under the header plate's 3px overlap (HEADER_FOREGROUND_PLATE_OVERLAP_PX), exposing the
+        // strip's -1px mask bleed as a clipped top seam. At 0 the plate covers the strip top.
+        paddingTop: 0,
         paddingBottom: contentBottomPadding,
       },
       keyboardShouldPersistTaps: 'handled',
-      bounces: false,
-      alwaysBounceVertical: false,
-      overScrollMode: 'never',
-      contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
+      // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (see
+      // SHEET_BODY_NO_OVERSCROLL) so the continuous down-handoff works — no per-scene config.
+      // No opaque surface — the mounted-scene FrostedGlassBackground shows through so
+      // the feed sheet reads frosted like the search results sheet (and the strip's
+      // masked-hole cutouts reveal the blur).
+      flashListProps: POLLS_FEED_FLASH_LIST_PROPS,
     }),
     [contentBottomPadding]
   );
@@ -554,6 +672,12 @@ export const usePollsPanelListSceneParts = (): {
 export const POLLS_SCENE_LIST_BODY_ADMISSION_POLICY = POLLS_LIST_BODY_ADMISSION_POLICY;
 
 const styles = StyleSheet.create({
+  // The list content is inset by OVERLAY_HORIZONTAL_PADDING; the strip must be FULL-BLEED
+  // (white edge-to-edge, like the search results strip) so cancel that inset with a
+  // negative margin. The controls stay indented via the strip's own internal contentInset.
+  feedStrip: {
+    marginHorizontal: -OVERLAY_HORIZONTAL_PADDING,
+  },
   headerRow: {
     justifyContent: 'flex-start',
     gap: 10,

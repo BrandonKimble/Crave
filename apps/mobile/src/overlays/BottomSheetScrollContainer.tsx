@@ -4,6 +4,8 @@ import { ScrollView, StyleSheet } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 
+import { SHEET_BODY_NO_OVERSCROLL } from './sheetBodyScrollDefaults';
+
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 const AnimatedNativeScrollView = AnimatedScrollView as unknown as React.ComponentType<
   ScrollViewProps & {
@@ -22,6 +24,15 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       <AnimatedNativeScrollView
         {...props}
         ref={ref}
+        // STRUCTURAL: the bottom-sheet scroll container NEVER over-scrolls. Every sheet body's
+        // native scroll renders through here, and the scroll↔sheet handoff (both directions)
+        // requires the list to PIN at its boundaries — if it rubber-bands at the top, a continuous
+        // down-swipe makes the list slide past the header instead of the sheet grabbing (see
+        // SHEET_BODY_NO_OVERSCROLL). Applied AFTER the spread so no per-scene prop can silently
+        // re-enable bounce and break the handoff. This is THE single source of truth for it.
+        bounces={SHEET_BODY_NO_OVERSCROLL.bounces}
+        alwaysBounceVertical={SHEET_BODY_NO_OVERSCROLL.alwaysBounceVertical}
+        overScrollMode={SHEET_BODY_NO_OVERSCROLL.overScrollMode}
         style={[style, transparent ? styles.transparentScrollView : null]}
         contentContainerStyle={[
           contentContainerStyle,

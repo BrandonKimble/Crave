@@ -24,6 +24,7 @@ import { UpdateFavoriteListPositionDto } from './dto/update-favorite-list-positi
 import { UpdateFavoriteListItemDto } from './dto/update-favorite-list-item.dto';
 import { ShareFavoriteListDto } from './dto/share-favorite-list.dto';
 import { ListFavoriteListsDto } from './dto/list-favorite-lists.dto';
+import { FavoriteListResultsDto } from './dto/favorite-list-results.dto';
 
 @Controller('favorites')
 @UseGuards(ClerkAuthGuard)
@@ -54,6 +55,15 @@ export class FavoritesController {
     @Param('listId', ParseUUIDPipe) listId: string,
   ) {
     return this.favoriteListsService.getListForUser(user.userId, listId);
+  }
+
+  @Post('lists/:listId/results')
+  getListResults(
+    @CurrentUser() user: User,
+    @Param('listId', ParseUUIDPipe) listId: string,
+    @Body() dto: FavoriteListResultsDto,
+  ) {
+    return this.favoriteListsService.getListResults(user.userId, listId, dto);
   }
 
   @Patch('lists/:listId')

@@ -12,7 +12,6 @@ export type OverlayKey =
   | 'polls'
   | 'bookmarks'
   | 'profile'
-  | 'favoriteListDetail'
   | 'restaurant'
   | 'saveList'
   | 'price'

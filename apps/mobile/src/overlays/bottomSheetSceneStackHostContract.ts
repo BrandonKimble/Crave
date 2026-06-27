@@ -24,9 +24,6 @@ export type BottomSheetSceneStackBodyDefaults = {
   effectiveShowsVerticalScrollIndicator: boolean;
   resolvedKeyboardShouldPersistTaps: ScrollViewProps['keyboardShouldPersistTaps'];
   resolvedKeyboardDismissMode: ScrollViewProps['keyboardDismissMode'];
-  resolvedBounces: ScrollViewProps['bounces'];
-  resolvedAlwaysBounceVertical: ScrollViewProps['alwaysBounceVertical'];
-  resolvedOverScrollMode: ScrollViewProps['overScrollMode'];
   resolvedScrollIndicatorInsets: ScrollViewProps['scrollIndicatorInsets'];
   resolvedTestID?: string;
   resolvedContentContainerStyle?: ScrollViewProps['contentContainerStyle'];
@@ -72,6 +69,17 @@ export type BottomSheetSceneStackHostProps = {
   onScrollHeaderLayout: (event: LayoutChangeEvent) => void;
   scrollHeaderSyncStyle: StyleProp<ViewStyle>;
   displayedSceneKey: OverlayKey | null;
+  // Overlap crossfade descriptor (incoming = the new scene, outgoing = the held
+  // source scene; contentTransitionToken keys the ramp). Threaded from the
+  // surface-body snapshot down to ActiveSceneStackSurfaceHost.
+  outgoingSceneKey: OverlayKey | null;
+  incomingSceneKey: OverlayKey | null;
+  contentTransitionToken: number | null;
+  // Render-side completer for the overlap 'content' settle plane. The crossfade ramp keyed on
+  // contentTransitionToken calls this (via runOnJS) with that same token at ramp-end, so the
+  // 'content' plane settles when the incoming page reveals rather than at the controller's
+  // CONTENT_SETTLE_TIMEOUT. Token-guarded downstream, so a stale/duplicate call is a safe no-op.
+  onContentSettleComplete: (token: number) => void;
   bodyRuntimeAuthority: BottomSheetSceneStackBodyRuntimeAuthority;
   sheetYValue?: SharedValue<number>;
 };

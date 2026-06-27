@@ -357,7 +357,7 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
         surfaceVisualPolicy.phase !== 'results_dismissing') ||
       isSurfacePersistentPollCommitted;
     // A child scene pushed over the lane (pollDetail / pollCreation / restaurant /
-    // saveList / favoriteListDetail) must take the sheet — the persistent-poll-lane
+    // saveList) must take the sheet — the persistent-poll-lane
     // 'polls' forcing only applies while a TOP-LEVEL scene is presented. Gating the
     // single shared definition here keeps every consumer consistent: the display +
     // scene-stack snapshots, the navigation snapshot, AND the sheet-host snap/shell
@@ -369,8 +369,18 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     const isChildSceneDisplayed =
       resolvedTargetSceneKey != null &&
       getAppOverlayRouteMetadata(resolvedTargetSceneKey).role === 'child';
+    // The persistent-poll lane docks polls UNDER the search scene only. It must
+    // never force 'polls' over another top-level scene (Favorites/Profile). The
+    // `rootOverlayKey === 'search'` gate alone is insufficient: rootOverlayKey is
+    // a separately-snapshotted authority that lags `resolvedTargetSceneKey` during
+    // a tab switch, so a switch to bookmarks/profile can land with a stale-'search'
+    // root and force polls over the new scene (the favorite↔poll nav swap). Gate on
+    // the FRESH resolved target scene so the swap can't occur in either direction.
+    const isNonSearchTopLevelTarget =
+      resolvedTargetSceneKey === 'bookmarks' || resolvedTargetSceneKey === 'profile';
     return (
       !isChildSceneDisplayed &&
+      !isNonSearchTopLevelTarget &&
       routeState.rootOverlayKey === 'search' &&
       isPersistentPollLaneEligible &&
       (!sheetSessionSnapshot.isDockedPollsDismissed ||

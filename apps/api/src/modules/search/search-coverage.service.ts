@@ -15,10 +15,12 @@ type CoverageRestaurantRow = {
   longitude: unknown;
   latitude: unknown;
   crave_score: unknown;
+  crave_score_exact?: unknown;
   score_delta_7d: unknown;
   top_connection_id?: unknown;
   top_food_name?: unknown;
   top_food_crave_score?: unknown;
+  top_food_crave_score_exact?: unknown;
   top_food_score_delta_7d?: unknown;
 };
 
@@ -172,11 +174,13 @@ export class SearchCoverageService {
         td.connection_id AS top_connection_id,
         td.food_name AS top_food_name,
         td.crave_score AS top_food_crave_score,
+        td.crave_score_exact AS top_food_crave_score_exact,
         td.score_delta_7d AS top_food_score_delta_7d`
       : Prisma.sql``;
+    // HIGH-PRECISION coverage order: percentile_rank leads so the dots/markers match the pin+list order.
     const coverageOrderSql = includeTopDish
-      ? Prisma.sql`td.crave_score DESC, e.entity_id ASC`
-      : Prisma.sql`prs.display_score DESC, e.entity_id ASC`;
+      ? Prisma.sql`td.crave_score_exact DESC, td.crave_score DESC, e.entity_id ASC`
+      : Prisma.sql`prs.percentile_rank DESC, prs.display_score DESC, e.entity_id ASC`;
     const marketLocationFilterSql = activeMarketKey
       ? Prisma.sql`
           AND EXISTS (
@@ -242,12 +246,12 @@ export class SearchCoverageService {
         FROM candidate_locations
       ),
       public_restaurant_scores AS (
-        SELECT subject_id, display_score, score_delta_7d
+        SELECT subject_id, display_score, percentile_rank, score_delta_7d
         FROM core_public_entity_scores
         WHERE subject_type = 'restaurant'
       ),
       public_connection_scores AS (
-        SELECT subject_id, display_score, score_delta_7d
+        SELECT subject_id, display_score, percentile_rank, score_delta_7d
         FROM core_public_entity_scores
         WHERE subject_type = 'connection'
       )
@@ -257,6 +261,7 @@ export class SearchCoverageService {
         pl.longitude AS longitude,
         pl.latitude AS latitude,
         prs.display_score AS crave_score,
+        prs.percentile_rank AS crave_score_exact,
         prs.score_delta_7d AS score_delta_7d
         ${topDishSelectSql}
       FROM core_entities e
@@ -287,6 +292,7 @@ export class SearchCoverageService {
             row.crave_score,
             `restaurant:${row.restaurant_id}`,
           );
+          const craveScoreExact = this.optionalNumber(row.crave_score_exact);
           const scoreDelta7d = this.optionalNumber(row.score_delta_7d);
           const topConnectionId =
             typeof row.top_connection_id === 'string'
@@ -301,12 +307,18 @@ export class SearchCoverageService {
           const topFoodScoreDelta7d = includeTopDish
             ? this.optionalNumber(row.top_food_score_delta_7d)
             : null;
+          const topFoodCraveScoreExact = includeTopDish
+            ? this.optionalNumber(row.top_food_crave_score_exact)
+            : null;
           if (includeTopDish && !topConnectionId) {
             throw new InternalServerErrorException(
               `Missing scored top dish for restaurant:${row.restaurant_id}`,
             );
           }
           const publicScore = includeTopDish ? topFoodCraveScore : craveScore;
+          const publicScoreExact = includeTopDish
+            ? topFoodCraveScoreExact
+            : craveScoreExact;
           return {
             type: 'Feature',
             id: row.restaurant_id,
@@ -315,6 +327,7 @@ export class SearchCoverageService {
               restaurantId: row.restaurant_id,
               restaurantName: row.restaurant_name,
               craveScore: publicScore,
+              craveScoreExact: publicScoreExact ?? undefined,
               scoreSubjectType: includeTopDish ? 'connection' : 'restaurant',
               scoreSubjectId: includeTopDish
                 ? topConnectionId
@@ -359,7 +372,7 @@ export class SearchCoverageService {
         )}]::uuid[]`,
       );
     }
-    const orderSql = Prisma.sql`COALESCE(pcs.display_score, -1) DESC, c.connection_id ASC`;
+    const orderSql = Prisma.sql`COALESCE(pcs.percentile_rank, -1) DESC, COALESCE(pcs.display_score, -1) DESC, c.connection_id ASC`;
 
     return Prisma.sql`
       JOIN LATERAL (
@@ -367,6 +380,7 @@ export class SearchCoverageService {
           c.connection_id,
           f.name AS food_name,
           pcs.display_score AS crave_score,
+          pcs.percentile_rank AS crave_score_exact,
           pcs.score_delta_7d AS score_delta_7d
         FROM core_restaurant_items c
         JOIN core_entities f ON f.entity_id = c.food_id

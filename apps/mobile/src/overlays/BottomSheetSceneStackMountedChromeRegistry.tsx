@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import type { SearchRouteMountedSceneChromeKey } from './searchOverlayRouteHostContract';
 import { BookmarksMountedSceneHeader } from './panels/BookmarksPanel';
 import { PollsMountedSceneHeader } from './panels/PollsPanel';
@@ -20,10 +19,8 @@ type BottomSheetSceneStackMountedChromeProps = {
 
 export const BottomSheetSceneStackMountedChrome = React.memo(
   ({ mountedChromeKey, surface }: BottomSheetSceneStackMountedChromeProps) => {
-    if (surface === 'background') {
-      return <FrostedGlassBackground />;
-    }
-
+    // Frost is now the shared page-frame foundation (every sheet is frosty by default), so the
+    // mounted scenes no longer render their own background frost.
     if (surface !== 'header') {
       return null;
     }

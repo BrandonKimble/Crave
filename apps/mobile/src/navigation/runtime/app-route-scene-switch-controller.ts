@@ -533,6 +533,31 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     }
   >();
 
+  // Fallback guard for the overlap 'content' settle plane. The PRIMARY completer is render-side:
+  // the scene-stack crossfade ramp's withTiming onFinish calls completeFromContentSettle at
+  // ramp-end (~250ms), so a forward-open settles when the incoming page reveals. This timeout
+  // only fires if that onFinish is missed/interrupted (React Animated onFinish is not
+  // worklet-guaranteed) — degrading to a slightly-late settle, never a hung overlay. completeMotionPlane
+  // is token-guarded, so whichever path fires first wins and the other is a safe no-op.
+  private static readonly CONTENT_SETTLE_TIMEOUT_MS = 320;
+  private readonly contentPlaneTimeoutByToken = new Map<
+    number,
+    ReturnType<typeof setTimeout>
+  >();
+
+  private clearContentPlaneTimeout(settleToken: number): void {
+    const handle = this.contentPlaneTimeoutByToken.get(settleToken);
+    if (handle != null) {
+      clearTimeout(handle);
+      this.contentPlaneTimeoutByToken.delete(settleToken);
+    }
+  }
+
+  private clearAllContentPlaneTimeouts(): void {
+    this.contentPlaneTimeoutByToken.forEach((handle) => clearTimeout(handle));
+    this.contentPlaneTimeoutByToken.clear();
+  }
+
   constructor(
     private readonly sheetMotionTargetRegistry: AppRouteSceneSheetMotionTargetRegistry,
     private readonly routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime
@@ -541,6 +566,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   public dispose(): void {
     this.listeners.clear();
     this.settleCallbacksByTransitionToken.clear();
+    this.clearAllContentPlaneTimeouts();
     this.motionDispatchTarget = null;
     this.sceneStackTransitionDispatchTarget = null;
     this.nativeOverlayTransitionDispatchTarget = null;
@@ -729,6 +755,9 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       return;
     }
     settleState.pendingPlanes.delete(plane);
+    if (plane === 'content') {
+      this.clearContentPlaneTimeout(settleToken);
+    }
     if (settleState.pendingPlanes.size > 0) {
       return;
     }
@@ -1048,11 +1077,25 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       'commitRouteSceneSwitchTransition:syncSettlePlanes',
       () => {
         this.activeSettlePlanesByToken.delete(settleToken);
+        this.clearContentPlaneTimeout(settleToken);
         if (transitionPlan.motionPlanes.length > 0) {
           this.activeSettlePlanesByToken.set(settleToken, {
             transitionToken: nextToken,
             pendingPlanes: new Set(transitionPlan.motionPlanes),
           });
+          if (transitionPlan.motionPlanes.includes('content')) {
+            this.contentPlaneTimeoutByToken.set(
+              settleToken,
+              setTimeout(() => {
+                // Drop our own (now-fired) entry FIRST. completeRouteSceneSwitchMotionPlane
+                // early-returns when this transition was already superseded (a newer settleToken
+                // is active) and would NOT clear it — leaving a dead handle in the map until the
+                // next idle sweep. Deleting here keeps the map bounded on rapid supersede.
+                this.contentPlaneTimeoutByToken.delete(settleToken);
+                this.completeRouteSceneSwitchMotionPlane(settleToken, 'content');
+              }, AppRouteSceneSwitchController.CONTENT_SETTLE_TIMEOUT_MS)
+            );
+          }
         }
       }
     );
@@ -1108,6 +1151,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       'commitRouteSceneSwitchIdleState:clearSettlePlanes',
       () => {
         this.activeSettlePlanesByToken.clear();
+        this.clearAllContentPlaneTimeouts();
       }
     );
     withSearchNavSwitchRuntimeAttribution(
@@ -1152,6 +1196,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       () => {
         if (completedSettleToken != null) {
           this.activeSettlePlanesByToken.delete(completedSettleToken);
+          this.clearContentPlaneTimeout(completedSettleToken);
         }
       }
     );

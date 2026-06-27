@@ -1,24 +1,35 @@
 import React from 'react';
 import {
-  Alert,
   Dimensions,
   Image,
   InteractionManager,
+  Keyboard,
+  type LayoutChangeEvent,
   Pressable,
   StyleSheet,
   TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Reanimated, {
+  useAnimatedKeyboard,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { io } from 'socket.io-client';
-import { Heart, MessageCircle, Sparkles, X as LucideX } from 'lucide-react-native';
+import { Heart, MessageCircle, Reply as ReplyIcon, Sparkles, X as LucideX } from 'lucide-react-native';
 
-import { Text } from '../../components';
-import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
+import { showAppModal, Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
-import { OVERLAY_HORIZONTAL_PADDING, overlaySheetStyles } from '../overlaySheetStyles';
+import {
+  OVERLAY_HORIZONTAL_PADDING,
+  OVERLAY_TAB_HEADER_HEIGHT,
+  overlaySheetStyles,
+} from '../overlaySheetStyles';
 import { resolveExpandedTop } from '../sheetUtils';
+import { useNavHideIntent } from '../../navigation/runtime/nav-hide-intent-store';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import type { SnapPoints } from '../bottomSheetMotionTypes';
 import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
@@ -42,6 +53,13 @@ import {
   type PollLeaderboardEntry,
 } from '../../services/polls';
 import { PollCandidateBars } from './PollCandidateBars';
+import {
+  MAX_THREAD_INDENT,
+  THREAD_INDENT_STEP,
+  buildThreadTree,
+  type ThreadItem,
+  type ThreadNode,
+} from './pollThreadModel';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
 import { API_BASE_URL } from '../../services/api';
 import { useRestaurantRouteProducer } from '../useRestaurantRouteProducer';
@@ -108,16 +126,22 @@ const buildBodySegments = (body: string, spans: EntitySpan[] | null): BodySegmen
 
 type CommentBodyProps = {
   comment: PollComment;
+  // When the reply was flattened past the indent cap, prepend an @mention of the parent's
+  // author so the reply target stays legible despite losing the visual nesting.
+  mentionUser: PollCommentUser | null;
   onEntityPress: (entity: EntitySpan) => void;
 };
 
-const CommentBody = React.memo(({ comment, onEntityPress }: CommentBodyProps) => {
+const CommentBody = React.memo(({ comment, mentionUser, onEntityPress }: CommentBodyProps) => {
   const segments = React.useMemo(
     () => buildBodySegments(comment.body, comment.entitySpans),
     [comment.body, comment.entitySpans]
   );
   return (
     <Text variant="body" style={styles.commentBody}>
+      {mentionUser ? (
+        <Text style={styles.mentionPrefix}>{`@${resolveUserName(mentionUser)} `}</Text>
+      ) : null}
       {segments.map((segment, index) => {
         if (!segment.entity) return segment.text;
         // Restaurant highlights are tappable → that restaurant's profile; food /
@@ -155,45 +179,8 @@ const CommentAvatar = ({ user }: { user: PollCommentUser }) => {
 
 // ─── Thread tree ─────────────────────────────────────────────────────────────
 
-const MAX_THREAD_INDENT = 4; // cap visual nesting so deep chains don't run off-screen
-const THREAD_INDENT_STEP = 18;
-
-type ThreadItem = { comment: PollComment; depth: number };
-
-// Flatten the backend's flat comment list into render order: top-level comments
-// keep the server's sort, replies nest under their parent (oldest-first for
-// readability). Replies whose parent was deleted (and so isn't present) are
-// promoted to top-level rather than dropped.
-const buildThreadItems = (comments: PollComment[]): ThreadItem[] => {
-  const present = new Set(comments.map((c) => c.commentId));
-  const childrenByParent = new Map<string | null, PollComment[]>();
-  for (const comment of comments) {
-    const parent =
-      comment.parentCommentId && present.has(comment.parentCommentId)
-        ? comment.parentCommentId
-        : null;
-    const bucket = childrenByParent.get(parent);
-    if (bucket) bucket.push(comment);
-    else childrenByParent.set(parent, [comment]);
-  }
-  const items: ThreadItem[] = [];
-  const walk = (parentId: string | null, depth: number): void => {
-    const children = childrenByParent.get(parentId);
-    if (!children) return;
-    const ordered =
-      depth === 0
-        ? children
-        : [...children].sort(
-            (a, b) => new Date(a.loggedAt).getTime() - new Date(b.loggedAt).getTime()
-          );
-    for (const child of ordered) {
-      items.push({ comment: child, depth });
-      walk(child.commentId, depth + 1);
-    }
-  };
-  walk(null, 0);
-  return items;
-};
+// Thread flattening + collapse logic lives in ./pollThreadModel (pure, unit-tested
+// in pollThreadModel.spec.ts).
 
 // ─── Inline composer (reply / edit) ──────────────────────────────────────────
 // Holds its own draft so keystrokes don't re-render the whole thread.
@@ -263,10 +250,10 @@ type PollCommentRowProps = {
   onStartReply: (comment: PollComment) => void;
   onStartEdit: (comment: PollComment) => void;
   onDelete: (comment: PollComment) => void;
-  onSubmitReply: (text: string) => void;
   onSubmitEdit: (text: string) => void;
   onCancelCompose: () => void;
   onEntityPress: (entity: EntitySpan) => void;
+  onToggleCollapse: (commentId: string) => void;
 };
 
 const PollCommentRow = React.memo(
@@ -281,21 +268,45 @@ const PollCommentRow = React.memo(
     onStartReply,
     onStartEdit,
     onDelete,
-    onSubmitReply,
     onSubmitEdit,
     onCancelCompose,
     onEntityPress,
+    onToggleCollapse,
   }: PollCommentRowProps) => {
-    const { comment, depth } = item;
+    const { comment, depth, isCollapsed, hiddenCount, mentionUser } = item;
     const liked = comment.currentUserLiked;
-    const indent = Math.min(depth, MAX_THREAD_INDENT) * THREAD_INDENT_STEP;
+    const indentLevels = Math.min(depth, MAX_THREAD_INDENT);
     return (
       <View
-        style={[styles.commentRow, depth > 0 && styles.commentRowNested, { marginLeft: indent }]}
+        style={[
+          styles.commentRow,
+          depth > 0 && styles.commentRowNested,
+          isReplying && styles.commentRowReplying,
+        ]}
       >
+        {indentLevels > 0 ? (
+          <View style={styles.threadRails} pointerEvents="none">
+            {Array.from({ length: indentLevels }).map((_, railIndex) => (
+              <View key={railIndex} style={styles.threadRail} />
+            ))}
+          </View>
+        ) : null}
         <CommentAvatar user={comment.user} />
         <View style={styles.commentContent}>
-          <View style={styles.commentMetaRow}>
+          <Pressable
+            testID={hiddenCount > 0 ? 'poll-comment-meta-collapsible' : undefined}
+            onPress={hiddenCount > 0 ? () => onToggleCollapse(comment.commentId) : undefined}
+            disabled={hiddenCount === 0}
+            style={styles.commentMetaRow}
+            accessibilityRole={hiddenCount > 0 ? 'button' : undefined}
+            accessibilityLabel={
+              hiddenCount > 0
+                ? isCollapsed
+                  ? `Show ${hiddenCount} ${hiddenCount === 1 ? 'reply' : 'replies'}`
+                  : `Hide ${hiddenCount} ${hiddenCount === 1 ? 'reply' : 'replies'}`
+                : undefined
+            }
+          >
             <Text
               variant="caption"
               weight="semibold"
@@ -308,7 +319,15 @@ const PollCommentRow = React.memo(
               {formatRelativeTime(comment.loggedAt)}
               {comment.editedAt ? ' · edited' : ''}
             </Text>
-          </View>
+            {isCollapsed && hiddenCount > 0 ? (
+              <Text variant="caption" weight="semibold" style={styles.collapsedHint}>
+                +{hiddenCount} {hiddenCount === 1 ? 'reply' : 'replies'}
+              </Text>
+            ) : null}
+          </Pressable>
+          {/* The comment body always stays mounted; collapsing animates the REPLY subtree
+              (rendered by the parent PollThreadNode), not this comment. */}
+          <>
           {isEditing ? (
             <InlineComposer
               placeholder="Edit your comment…"
@@ -319,7 +338,7 @@ const PollCommentRow = React.memo(
               onCancel={onCancelCompose}
             />
           ) : (
-            <CommentBody comment={comment} onEntityPress={onEntityPress} />
+            <CommentBody comment={comment} mentionUser={mentionUser} onEntityPress={onEntityPress} />
           )}
           {!isEditing ? (
             <View style={styles.commentActions}>
@@ -348,11 +367,11 @@ const PollCommentRow = React.memo(
                 <Pressable
                   onPress={() => onStartReply(comment)}
                   hitSlop={8}
+                  style={styles.replyButton}
                   accessibilityRole="button"
+                  accessibilityLabel={`Reply to ${resolveUserName(comment.user)}`}
                 >
-                  <Text variant="caption" weight="semibold" style={styles.commentAction}>
-                    Reply
-                  </Text>
+                  <ReplyIcon size={14} color={themeColors.textMuted} strokeWidth={2} />
                 </Pressable>
               ) : null}
               {isOwn ? (
@@ -375,21 +394,123 @@ const PollCommentRow = React.memo(
               ) : null}
             </View>
           ) : null}
-          {isReplying ? (
-            <InlineComposer
-              placeholder={`Reply to ${resolveUserName(comment.user)}…`}
-              submitLabel="Reply"
-              submitting={submitting}
-              onSubmit={onSubmitReply}
-              onCancel={onCancelCompose}
-            />
-          ) : null}
+            </>
         </View>
       </View>
     );
   }
 );
 PollCommentRow.displayName = 'PollCommentRow';
+
+const THREAD_COLLAPSE_DURATION_MS = 200;
+
+// Keep-mounted accordion: the reply subtree stays in the tree and animates its measured
+// height + opacity closed (NOT a layout-animation primitive — those jitter on nested
+// remeasure). overflow:hidden clips the content as height shrinks; the inner View reports
+// its natural height via onLayout so re-expand always lands on the right size.
+const CollapsibleSubtree: React.FC<{ collapsed: boolean; children: React.ReactNode }> = ({
+  collapsed,
+  children,
+}) => {
+  const measuredHeight = useSharedValue(0);
+  const measuredReady = useSharedValue(false);
+  const progress = useSharedValue(collapsed ? 0 : 1); // 1 = fully open
+
+  React.useEffect(() => {
+    progress.value = withTiming(collapsed ? 0 : 1, { duration: THREAD_COLLAPSE_DURATION_MS });
+  }, [collapsed, progress]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const p = progress.value;
+    if (!measuredReady.value) {
+      // Before the first measure: natural height when open (no clip flash); fully closed
+      // when initially collapsed. Threads load expanded, so the open path is the common one.
+      return p > 0.001 ? { opacity: p } : { height: 0, opacity: 0 };
+    }
+    return { height: measuredHeight.value * p, opacity: p };
+  });
+
+  const handleContentLayout = React.useCallback(
+    (event: LayoutChangeEvent) => {
+      const next = event.nativeEvent.layout.height;
+      if (next <= 0) return;
+      measuredHeight.value = next;
+      measuredReady.value = true;
+    },
+    [measuredHeight, measuredReady]
+  );
+
+  return (
+    <Reanimated.View style={[styles.collapsibleSubtree, animatedStyle]}>
+      <View onLayout={handleContentLayout}>{children}</View>
+    </Reanimated.View>
+  );
+};
+
+type PollThreadNodeProps = {
+  node: ThreadNode;
+  collapsedComments: ReadonlySet<string>;
+  viewerUserId: string | null;
+  canReply: boolean;
+  replyTarget: string | null;
+  editTarget: string | null;
+  submitting: boolean;
+  onLike: (comment: PollComment) => void;
+  onStartReply: (comment: PollComment) => void;
+  onStartEdit: (comment: PollComment) => void;
+  onDelete: (comment: PollComment) => void;
+  onSubmitEdit: (text: string) => void;
+  onCancelCompose: () => void;
+  onEntityPress: (entity: EntitySpan) => void;
+  onToggleCollapse: (commentId: string) => void;
+};
+
+// One top-level comment + its whole subtree = one self-contained accordion item the
+// FlashList virtualizes. Recurses into replies; each level's collapse animates its own
+// children, so nested collapse state is preserved while hidden.
+const PollThreadNode = React.memo((props: PollThreadNodeProps) => {
+  const { node, collapsedComments } = props;
+  const { comment } = node;
+  const isCollapsed = collapsedComments.has(comment.commentId);
+  const rowItem = React.useMemo<ThreadItem>(
+    () => ({
+      comment,
+      depth: node.depth,
+      isCollapsed,
+      hiddenCount: node.descendantCount,
+      mentionUser: node.mentionUser,
+    }),
+    [comment, isCollapsed, node.depth, node.descendantCount, node.mentionUser]
+  );
+  return (
+    <View>
+      <PollCommentRow
+        item={rowItem}
+        isOwn={props.viewerUserId != null && comment.user.userId === props.viewerUserId}
+        canReply={props.canReply}
+        isReplying={props.replyTarget === comment.commentId}
+        isEditing={props.editTarget === comment.commentId}
+        submitting={props.submitting}
+        onLike={props.onLike}
+        onStartReply={props.onStartReply}
+        onStartEdit={props.onStartEdit}
+        onDelete={props.onDelete}
+        onSubmitEdit={props.onSubmitEdit}
+        onCancelCompose={props.onCancelCompose}
+        onEntityPress={props.onEntityPress}
+        onToggleCollapse={props.onToggleCollapse}
+      />
+      {node.children.length > 0 ? (
+        <CollapsibleSubtree collapsed={isCollapsed}>
+          {node.children.map((child) => (
+            <PollThreadNode key={child.comment.commentId} {...props} node={child} />
+          ))}
+        </CollapsibleSubtree>
+      ) : null}
+    </View>
+  );
+});
+PollThreadNode.displayName = 'PollThreadNode';
 
 // ─── Panel spec ──────────────────────────────────────────────────────────────
 
@@ -402,6 +523,9 @@ export const usePollDetailPanelSpec = ({
   onClose,
 }: UsePollDetailPanelSpecOptions): SearchRoutePublishedSceneParts => {
   const insets = useSafeAreaInsets();
+  // Push the bottom tab bar down (the search-submit transition) while the poll thread
+  // is open, so the thread reads as a focused full-bleed detail view (§D).
+  useNavHideIntent('pollDetail', visible);
   const { isSignedIn } = useAuthController();
   const { data: viewerProfile } = useQuery({
     ...createProfileQueryOptions(),
@@ -421,6 +545,22 @@ export const usePollDetailPanelSpec = ({
   const [replyTarget, setReplyTarget] = React.useState<string | null>(null);
   const [editTarget, setEditTarget] = React.useState<string | null>(null);
   const [mutatingComment, setMutatingComment] = React.useState(false);
+  // Accordion collapse: tapping a comment's header animates its REPLY subtree closed
+  // (the comment body stays). Kept-mounted so nested collapse state survives + no remount.
+  const [collapsedComments, setCollapsedComments] = React.useState<ReadonlySet<string>>(
+    () => new Set()
+  );
+  const handleToggleCollapse = React.useCallback((commentId: string) => {
+    setCollapsedComments((prev) => {
+      const next = new Set(prev);
+      if (next.has(commentId)) {
+        next.delete(commentId);
+      } else {
+        next.add(commentId);
+      }
+      return next;
+    });
+  }, []);
 
   // Seed the header instantly from the feed card's snapshot.
   React.useEffect(() => {
@@ -436,6 +576,7 @@ export const usePollDetailPanelSpec = ({
       setSort('top');
       setReplyTarget(null);
       setEditTarget(null);
+      setCollapsedComments(new Set());
     }
   }, [visible]);
 
@@ -510,25 +651,36 @@ export const usePollDetailPanelSpec = ({
     const body = draft.trim();
     if (!body || posting || !pollId) return;
     if (!isSignedIn) {
-      Alert.alert('Sign in to comment', 'Join the discussion to weigh in on this poll.');
+      showAppModal({
+        title: 'Sign in to comment',
+        message: 'Join the discussion to weigh in on this poll.',
+      });
       return;
     }
     setPosting(true);
     try {
-      await postPollComment(pollId, { body });
+      // The chin doubles as the reply composer: when a reply target is pinned, post under it.
+      await postPollComment(pollId, { body, parentCommentId: replyTarget ?? undefined });
       setDraft('');
+      setReplyTarget(null);
       await refresh();
     } catch (error) {
-      Alert.alert('Unable to post', error instanceof Error ? error.message : 'Please try again.');
+      showAppModal({
+        title: 'Unable to post',
+        message: error instanceof Error ? error.message : 'Please try again.',
+      });
     } finally {
       setPosting(false);
     }
-  }, [draft, isSignedIn, pollId, posting, refresh]);
+  }, [draft, isSignedIn, pollId, posting, refresh, replyTarget]);
 
   const handleLike = React.useCallback(
     async (comment: PollComment) => {
       if (!isSignedIn) {
-        Alert.alert('Sign in to endorse', 'Join the discussion to weigh in on this poll.');
+        showAppModal({
+          title: 'Sign in to endorse',
+          message: 'Join the discussion to weigh in on this poll.',
+        });
         return;
       }
       const willLike = !comment.currentUserLiked;
@@ -593,13 +745,19 @@ export const usePollDetailPanelSpec = ({
     });
   }, []);
 
-  const threadItems = React.useMemo(() => buildThreadItems(comments), [comments]);
+  // Collapse-independent tree: only rebuilds when the comment data changes. Collapse state
+  // lives in `collapsedComments` and is applied at render time by each PollThreadNode, so
+  // toggling collapse never re-tiles the FlashList data (no scroll jump from data churn).
+  const threadTree = React.useMemo(() => buildThreadTree(comments), [comments]);
   const canReply = isActive && isSignedIn;
 
   const handleStartReply = React.useCallback(
     (comment: PollComment) => {
       if (!isSignedIn) {
-        Alert.alert('Sign in to reply', 'Join the discussion to weigh in on this poll.');
+        showAppModal({
+          title: 'Sign in to reply',
+          message: 'Join the discussion to weigh in on this poll.',
+        });
         return;
       }
       setEditTarget(null);
@@ -618,27 +776,6 @@ export const usePollDetailPanelSpec = ({
     setEditTarget(null);
   }, []);
 
-  const handleSubmitReply = React.useCallback(
-    async (text: string) => {
-      const parentCommentId = replyTarget;
-      if (!pollId || !parentCommentId || mutatingComment) return;
-      setMutatingComment(true);
-      try {
-        await postPollComment(pollId, { body: text, parentCommentId });
-        setReplyTarget(null);
-        await refresh();
-      } catch (error) {
-        Alert.alert(
-          'Unable to reply',
-          error instanceof Error ? error.message : 'Please try again.'
-        );
-      } finally {
-        setMutatingComment(false);
-      }
-    },
-    [mutatingComment, pollId, refresh, replyTarget]
-  );
-
   const handleSubmitEdit = React.useCallback(
     async (text: string) => {
       const commentId = editTarget;
@@ -649,7 +786,10 @@ export const usePollDetailPanelSpec = ({
         setEditTarget(null);
         await refresh();
       } catch (error) {
-        Alert.alert('Unable to save', error instanceof Error ? error.message : 'Please try again.');
+        showAppModal({
+          title: 'Unable to save',
+          message: error instanceof Error ? error.message : 'Please try again.',
+        });
       } finally {
         setMutatingComment(false);
       }
@@ -677,50 +817,56 @@ export const usePollDetailPanelSpec = ({
 
   const handleDelete = React.useCallback(
     (comment: PollComment) => {
-      Alert.alert('Delete comment?', 'This removes your comment from the discussion.', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            setMutatingComment(true);
-            deletePollComment(comment.commentId)
-              .then(() => refresh())
-              .catch((error) =>
-                Alert.alert(
-                  'Unable to delete',
-                  error instanceof Error ? error.message : 'Please try again.'
+      showAppModal({
+        title: 'Delete comment?',
+        message: 'This removes your comment from the discussion.',
+        actions: [
+          { label: 'Cancel', style: 'cancel' },
+          {
+            label: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              setMutatingComment(true);
+              deletePollComment(comment.commentId)
+                .then(() => refresh())
+                .catch((error) =>
+                  showAppModal({
+                    title: 'Unable to delete',
+                    message: error instanceof Error ? error.message : 'Please try again.',
+                  })
                 )
-              )
-              .finally(() => setMutatingComment(false));
+                .finally(() => setMutatingComment(false));
+            },
           },
-        },
-      ]);
+        ],
+      });
     },
     [refresh]
   );
 
   const renderItem = React.useCallback(
-    ({ item }: { item: ThreadItem }) => (
-      <PollCommentRow
-        item={item}
-        isOwn={viewerUserId != null && item.comment.user.userId === viewerUserId}
+    ({ item }: { item: ThreadNode }) => (
+      <PollThreadNode
+        node={item}
+        collapsedComments={collapsedComments}
+        viewerUserId={viewerUserId}
         canReply={canReply}
-        isReplying={replyTarget === item.comment.commentId}
-        isEditing={editTarget === item.comment.commentId}
+        replyTarget={replyTarget}
+        editTarget={editTarget}
         submitting={mutatingComment}
         onLike={handleLike}
         onStartReply={handleStartReply}
         onStartEdit={handleStartEdit}
         onDelete={handleDelete}
-        onSubmitReply={handleSubmitReply}
         onSubmitEdit={handleSubmitEdit}
         onCancelCompose={handleCancelCompose}
         onEntityPress={handleEntityPress}
+        onToggleCollapse={handleToggleCollapse}
       />
     ),
     [
       canReply,
+      collapsedComments,
       editTarget,
       handleCancelCompose,
       handleDelete,
@@ -729,13 +875,13 @@ export const usePollDetailPanelSpec = ({
       handleStartEdit,
       handleStartReply,
       handleSubmitEdit,
-      handleSubmitReply,
+      handleToggleCollapse,
       mutatingComment,
       replyTarget,
       viewerUserId,
     ]
   );
-  const keyExtractor = React.useCallback((item: ThreadItem) => item.comment.commentId, []);
+  const keyExtractor = React.useCallback((item: ThreadNode) => item.comment.commentId, []);
 
   const headerTitle = poll?.question ?? 'Poll';
 
@@ -841,15 +987,100 @@ export const usePollDetailPanelSpec = ({
           </Pressable>
         </View>
       </View>
+    </View>
+  );
 
+  // §D: the composer is a "chin" pinned to the BOTTOM of the sheet body frame (chat/
+  // Reddit style) — rendered as ListChromeComponent so it rides WITH the sheet (pinned
+  // while expanded, moves down on drag-to-dismiss; the body frame translates with the
+  // sheet) rather than the full-screen overlay layer. The tab bar is pushed down
+  // (useNavHideIntent above), freeing the bottom. `useAnimatedKeyboard` raises it above
+  // the keyboard when focused.
+  const keyboard = useAnimatedKeyboard();
+  // The body frame fills the full sheet height (= screen height) but the sheet is translated
+  // DOWN by the expanded snap offset, so the frame's bottom sits `expanded` BELOW the visible
+  // screen bottom. Pin the chin `expanded + insets.bottom` up from the frame bottom and it
+  // rests just above the home indicator at the visible bottom — and because it lives in the
+  // body frame it rides down WITH the sheet on a drag-to-dismiss (the Instagram chin).
+  const expandedSnapTop = resolveExpandedTop(searchBarTop, insets.top);
+  const composeChinAnimatedStyle = useAnimatedStyle(() => ({
+    // useAnimatedKeyboard.height is measured from the screen bottom (it spans the home
+    // indicator inset the chin already clears), so lift by height − inset to sit flush on
+    // the keyboard instead of leaving an inset-sized gap above it.
+    transform: [{ translateY: -Math.max(0, keyboard.height.value - insets.bottom) }],
+  }));
+  // §D.3 reply-target float: tapping Reply pins a COPY of the target comment directly above
+  // the chin input (no virtualized-row animation) and raises the keyboard, so the chin itself
+  // becomes the reply composer (handlePost posts under replyTarget).
+  const replyTargetComment = React.useMemo(
+    () => (replyTarget ? (comments.find((c) => c.commentId === replyTarget) ?? null) : null),
+    [comments, replyTarget]
+  );
+  const composeInputRef = React.useRef<TextInput>(null);
+  React.useEffect(() => {
+    if (replyTarget) {
+      composeInputRef.current?.focus();
+    }
+  }, [replyTarget]);
+  // Active reply composer = modal: a touch/swipe outside it (which dismisses the keyboard —
+  // via keyboardShouldPersistTaps on tap, keyboardDismissMode on drag) returns the chin to
+  // its inactive state by unpinning the reply target. The draft text is kept. Only armed
+  // while a reply is pinned, so it never fights an ordinary keyboard dismissal.
+  React.useEffect(() => {
+    if (!replyTarget) {
+      return;
+    }
+    const subscription = Keyboard.addListener('keyboardDidHide', () => setReplyTarget(null));
+    return () => subscription.remove();
+  }, [replyTarget]);
+  const composeChin = (
+    <Reanimated.View
+      style={[
+        styles.composeChin,
+        { bottom: expandedSnapTop + insets.bottom },
+        composeChinAnimatedStyle,
+      ]}
+    >
+      {replyTargetComment ? (
+        <View style={styles.replyPinned}>
+          <View style={styles.replyPinnedText}>
+            <Text
+              variant="caption"
+              weight="semibold"
+              style={styles.replyPinnedLabel}
+              numberOfLines={1}
+            >
+              Replying to {resolveUserName(replyTargetComment.user)}
+            </Text>
+            <Text variant="caption" style={styles.replyPinnedBody} numberOfLines={1}>
+              {replyTargetComment.body}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setReplyTarget(null)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel reply"
+            style={styles.replyPinnedCancel}
+          >
+            <Text style={styles.replyPinnedCancelText}>✕</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <View style={styles.composeRow}>
         <TextInput
+          ref={composeInputRef}
           value={draft}
           onChangeText={setDraft}
-          placeholder="Add to the discussion…"
+          placeholder={
+            replyTargetComment
+              ? `Reply to ${resolveUserName(replyTargetComment.user)}…`
+              : 'Add to the discussion…'
+          }
           placeholderTextColor={themeColors.textMuted}
           style={styles.composeInput}
           multiline
+          testID="poll-detail-composer-input"
         />
         <Pressable
           onPress={() => void handlePost()}
@@ -866,7 +1097,7 @@ export const usePollDetailPanelSpec = ({
           </Text>
         </Pressable>
       </View>
-    </View>
+    </Reanimated.View>
   );
 
   const emptyComponent = loading ? null : (
@@ -878,8 +1109,11 @@ export const usePollDetailPanelSpec = ({
     </View>
   );
 
-  const contentBottomPadding = Math.max(insets.bottom + 48, 72);
-  const expanded = resolveExpandedTop(searchBarTop, insets.top);
+  // Reserve room for the pinned compose chin so the last comment clears it. The list
+  // content ends at the body-frame bottom (which overhangs the screen by `expanded`), so
+  // the padding must cover that overhang + the home-indicator inset + the chin's height.
+  const contentBottomPadding = expandedSnapTop + insets.bottom + 64;
+  const expanded = expandedSnapTop;
   const hidden = SCREEN_HEIGHT + 80;
   const snapPoints = React.useMemo(
     () =>
@@ -900,18 +1134,22 @@ export const usePollDetailPanelSpec = ({
     }),
     sceneChrome: {
       underlayComponent: null,
-      backgroundComponent: <FrostedGlassBackground />,
+      // White, full-bleed sheet (no frosted glass) for the poll-detail scene.
+      backgroundComponent: <View style={styles.sheetSurface} />,
       headerComponent,
       overlayComponent: null,
     },
     sceneBodyContent: {
       surfaceKind: 'list',
-      data: threadItems,
+      data: threadTree,
+      // Collapse state lives outside `data`, so the list re-renders rows when it changes.
+      extraData: collapsedComments,
       renderItem,
       keyExtractor,
       estimatedItemSize: 96,
       ListHeaderComponent: listHeaderComponent,
       ListEmptyComponent: emptyComponent,
+      ListChromeComponent: composeChin,
     },
     sceneBodyTransport: {
       contentContainerStyle: {
@@ -920,13 +1158,29 @@ export const usePollDetailPanelSpec = ({
         paddingBottom: contentBottomPadding,
       },
       keyboardShouldPersistTaps: 'handled',
-      bounces: true,
-      alwaysBounceVertical: false,
+      // Swiping the thread dismisses the keyboard, which (with the keyboardDidHide effect)
+      // returns the active reply composer to the inactive chin — the "touch/swipe outside
+      // the composer dismisses it" behaviour, without a scroll-blocking overlay.
+      keyboardDismissMode: 'on-drag',
+      // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer so the thread
+      // pins at its top and the continuous down-swipe hands off cleanly to the sheet-collapse. (An
+      // old per-scene `bounces:true` here was exactly the bug that motivated making it structural.)
     },
   };
 };
 
 const styles = StyleSheet.create({
+  // The white body layer sits BELOW the header band so the header plate's grab-handle + close
+  // cutouts see through to the shared frosty foundation (not white). The header plate's 3px
+  // overlap covers the seam at the top. (Frost foundation → this white layer → thread content.)
+  sheetSurface: {
+    position: 'absolute',
+    top: OVERLAY_TAB_HEADER_HEIGHT,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#ffffff',
+  },
   sheetTitle: {
     color: themeColors.text,
     flex: 1,
@@ -1025,11 +1279,58 @@ const styles = StyleSheet.create({
   sortDivider: {
     color: themeColors.textMuted,
   },
+  composeChin: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: '#ffffff',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: BORDER,
+  },
+  replyPinned: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingBottom: 8,
+    marginBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: BORDER,
+  },
+  replyPinnedText: {
+    flex: 1,
+    minWidth: 0,
+    borderLeftWidth: 2,
+    borderLeftColor: ACCENT,
+    paddingLeft: 8,
+  },
+  replyPinnedLabel: {
+    color: ACCENT,
+  },
+  replyPinnedBody: {
+    color: themeColors.textMuted,
+    marginTop: 1,
+  },
+  replyPinnedCancel: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(17, 24, 39, 0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  replyPinnedCancelText: {
+    color: themeColors.textMuted,
+    fontSize: 13,
+    lineHeight: 16,
+  },
   composeRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 8,
-    marginBottom: 20,
   },
   composeInput: {
     flex: 1,
@@ -1066,6 +1367,22 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: BORDER,
+  },
+  collapsibleSubtree: {
+    // Clip the reply subtree as it animates its height closed (accordion).
+    overflow: 'hidden',
+  },
+  threadRails: {
+    flexDirection: 'row',
+  },
+  threadRail: {
+    width: THREAD_INDENT_STEP,
+    borderLeftWidth: 1.5,
+    borderLeftColor: BORDER,
+  },
+  collapsedHint: {
+    color: ACCENT,
+    marginLeft: 2,
   },
   commentAvatar: {
     width: 28,
@@ -1106,6 +1423,10 @@ const styles = StyleSheet.create({
     color: themeColors.textPrimary,
     lineHeight: 20,
   },
+  mentionPrefix: {
+    color: ACCENT,
+    fontWeight: '600',
+  },
   entitySpan: {
     color: ACCENT,
     fontWeight: '600',
@@ -1117,6 +1438,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 0,
     paddingTop: 8,
     paddingVertical: 8,
+  },
+  // Highlight the comment being replied to while its copy is pinned above the chin.
+  commentRowReplying: {
+    backgroundColor: 'rgba(255, 51, 104, 0.06)',
+    marginHorizontal: -OVERLAY_HORIZONTAL_PADDING,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },
   commentActions: {
     flexDirection: 'row',
@@ -1139,6 +1466,10 @@ const styles = StyleSheet.create({
   },
   commentAction: {
     color: themeColors.textMuted,
+  },
+  replyButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   commentActionDestructive: {
     color: themeColors.textMuted,

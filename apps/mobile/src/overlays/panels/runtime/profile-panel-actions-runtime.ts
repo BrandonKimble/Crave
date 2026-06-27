@@ -2,7 +2,8 @@ import React from 'react';
 import { Alert } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import { useAppRouteSceneRuntime } from '../../../navigation/runtime/AppRouteSceneRuntimeProvider';
-import { useFavoriteListDetailRouteActions } from '../../../navigation/runtime/use-favorite-list-detail-route-actions';
+import { useAppRouteCoordinator } from '../../../navigation/runtime/AppRouteCoordinator';
+import type { FavoriteListSummary } from '../../../services/favorite-lists';
 import { notificationsService } from '../../../services/notifications';
 import type { Poll } from '../../../services/polls';
 import { useNotificationStore } from '../../../store/notificationStore';
@@ -14,7 +15,7 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
   const resetOnboarding = useOnboardingStore((state) => state.__forceOnboarding);
   const { signOut, isSignedIn } = useAuth();
   const routeSceneRuntime = useAppRouteSceneRuntime();
-  const { openFavoriteListDetailRoute } = useFavoriteListDetailRouteActions();
+  const { dispatchLaunchIntent } = useAppRouteCoordinator();
   const pushToken = useNotificationStore((state) => state.pushToken);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
 
@@ -92,15 +93,20 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
   );
 
   const handleListPress = React.useCallback(
-    (listId: string) => {
-      openFavoriteListDetailRoute({
-        listId,
-        parentSceneKey: 'profile',
-        ownerSceneKey: 'profile',
-        openerRouteKey: 'profile',
+    (list: FavoriteListSummary) => {
+      // Launch the favorites list as a search-sourced results surface (same list
+      // + toggle strip + map pins + staged reveal as a real search). The
+      // launch-intent runtime captures the profile origin so the search dismisses
+      // back here. (Replaced the standalone favoriteListDetail route, now
+      // deleted.)
+      dispatchLaunchIntent({
+        type: 'favorites',
+        listId: list.listId,
+        listType: list.listType,
+        submittedLabel: list.name,
       });
     },
-    [openFavoriteListDetailRoute]
+    [dispatchLaunchIntent]
   );
 
   return React.useMemo(

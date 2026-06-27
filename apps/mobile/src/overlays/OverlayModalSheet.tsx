@@ -2,16 +2,17 @@ import React from 'react';
 import {
   Animated,
   Dimensions,
-  Pressable,
   StyleSheet,
   View,
   type StyleProp,
   type ViewStyle,
   Easing as RNEasing,
 } from 'react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OVERLAY_CORNER_RADIUS, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import { OVERLAY_TIMING_CONFIG } from './sheetUtils';
+import { useArmedOutsideDismiss } from './useArmedOutsideDismiss';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -108,6 +109,14 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
       startExit();
     }, [mounted, progress, startExit, visible]);
 
+    // Standardized "armed-outside" dismiss: the backdrop only receives touches outside the
+    // sheet (the sheet is a sibling painted on top), so a touch there dismisses on first
+    // move or on lift — never on touch-down.
+    const backdropDismissGesture = useArmedOutsideDismiss({
+      enabled: visible,
+      onDismiss: requestClose,
+    });
+
     const translateY = progress.interpolate({
       inputRange: [0, 1],
       outputRange: [SCREEN_HEIGHT, 0],
@@ -124,17 +133,16 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
 
     return (
       <View style={[styles.overlay, { zIndex, elevation: zIndex }]} pointerEvents="box-none">
-        <Animated.View
-          style={[styles.backdrop, { backgroundColor: backdropColor, opacity: backdropOpacity }]}
-          pointerEvents={visible ? 'auto' : 'none'}
-        >
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={requestClose}
+        <GestureDetector gesture={backdropDismissGesture}>
+          <Animated.View
+            style={[styles.backdrop, { backgroundColor: backdropColor, opacity: backdropOpacity }]}
+            pointerEvents={visible ? 'auto' : 'none'}
+            accessible={visible}
             accessibilityRole="button"
             accessibilityLabel="Close sheet"
+            onAccessibilityTap={requestClose}
           />
-        </Animated.View>
+        </GestureDetector>
         <Animated.View
           style={[
             styles.sheet,

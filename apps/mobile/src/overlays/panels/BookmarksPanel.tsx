@@ -14,7 +14,7 @@ import { useSharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
-import { useFavoriteListDetailRouteActions } from '../../navigation/runtime/use-favorite-list-detail-route-actions';
+import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import {
@@ -92,13 +92,13 @@ BookmarkPreviewRow.displayName = 'BookmarkPreviewRow';
 
 type BookmarksListTileProps = {
   item: FavoriteListSummary;
-  onPress: (listId: string) => void;
+  onPress: (list: FavoriteListSummary) => void;
   onOpenMenu: (list: FavoriteListSummary) => void;
 };
 
 const BookmarksListTile = React.memo(({ item, onPress, onOpenMenu }: BookmarksListTileProps) => (
   <Pressable
-    onPress={() => onPress(item.listId)}
+    onPress={() => onPress(item)}
     style={({ pressed }) => [styles.tileWrapper, pressed && styles.tilePressed]}
   >
     <View style={styles.tile}>
@@ -312,7 +312,7 @@ type BookmarksSceneBodyProps = {
   onDescriptionChange: (value: string) => void;
   onVisibilityChange: (value: FavoriteListVisibility) => void;
   onSave: () => void;
-  onListPress: (listId: string) => void;
+  onListPress: (list: FavoriteListSummary) => void;
   onOpenMenu: (list: FavoriteListSummary) => void;
 };
 
@@ -418,7 +418,7 @@ type BookmarksDataSurfaceProps = {
 const BookmarksDataSurface = React.memo(
   ({ shouldSubscribeDataLane, sceneReady }: BookmarksDataSurfaceProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
-    const { openFavoriteListDetailRoute } = useFavoriteListDetailRouteActions();
+    const { dispatchLaunchIntent } = useAppRouteCoordinator();
     const queryClient = useQueryClient();
     const isOffline = useSystemStatusStore((state) => state.isOffline);
     const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
@@ -520,15 +520,20 @@ const BookmarksDataSurface = React.memo(
     }, [formState, listType, queryClient, resetForm]);
 
     const handleListPress = React.useCallback(
-      (listId: string) => {
-        openFavoriteListDetailRoute({
-          listId,
-          parentSceneKey: 'bookmarks',
-          ownerSceneKey: 'bookmarks',
-          openerRouteKey: 'bookmarks',
+      (list: FavoriteListSummary) => {
+        // Launch the favorites list as a search-sourced results surface (same
+        // list + toggle strip + map pins + staged reveal as a real search). The
+        // launch-intent runtime captures the bookmarks origin so the search
+        // dismisses back here. (Replaced the standalone favoriteListDetail
+        // route, now deleted.)
+        dispatchLaunchIntent({
+          type: 'favorites',
+          listId: list.listId,
+          listType: list.listType,
+          submittedLabel: list.name,
         });
       },
-      [openFavoriteListDetailRoute]
+      [dispatchLaunchIntent]
     );
 
     const handleShare = React.useCallback(async (list: FavoriteListSummary) => {

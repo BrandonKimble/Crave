@@ -109,6 +109,12 @@ const markRouteSheetHostRuntimePropDiffs = (
     left.routeHostVisualRuntimeAuthority,
     right.routeHostVisualRuntimeAuthority
   );
+  markRouteSheetHostRuntimePropDiff(
+    owner,
+    'onContentSettleComplete',
+    left.onContentSettleComplete,
+    right.onContentSettleComplete
+  );
 };
 
 const SearchOverlayRouteSheetFrameSurfaceHost = React.memo(
@@ -125,6 +131,7 @@ const SearchOverlayRouteSheetFrameSurfaceHost = React.memo(
           routeSceneDisplayTargetRegistry={routeSheetHostRuntime.routeSceneDisplayTargetRegistry}
           routeSheetSurfaceBodyAuthority={routeSheetHostRuntime.routeSheetSurfaceBodyAuthority}
           routeSheetRuntimeConfigAuthority={routeSheetHostRuntime.routeSheetRuntimeConfigAuthority}
+          onContentSettleComplete={routeSheetHostRuntime.onContentSettleComplete}
         />
       </SearchRouteSheetFrameHost>
     );

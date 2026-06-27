@@ -9,6 +9,11 @@ export type LaunchIntent =
   | { type: 'polls'; marketKey?: string | null; pollId?: string | null }
   | { type: 'search'; searchIntent: MainSearchIntent }
   | { type: 'saved_place'; placeId: string }
+  // In-app launch of a favorites list as a search-sourced results surface. The
+  // list is hydrated into a SearchResponse via the favorites endpoint and routed
+  // through the SAME search response lifecycle a real search uses; listType picks
+  // the auto-selected results tab. submittedLabel is the list name (sheet title).
+  | { type: 'favorites'; listId: string; listType: 'restaurant' | 'dish'; submittedLabel: string }
   | { type: 'external'; rawUrl: string };
 
 export type AuthStatus = 'loading' | 'signed_out' | 'signed_in';

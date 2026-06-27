@@ -1,0 +1,16 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    text: 'Close results'
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 1000
+- tapOn:
+    point: '25%, 19%'
+    waitToSettleTimeoutMs: 0
+- extendedWaitUntil:
+    visible: 'Close results'
+    timeout: 15000
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: /tmp/toggle3-middle

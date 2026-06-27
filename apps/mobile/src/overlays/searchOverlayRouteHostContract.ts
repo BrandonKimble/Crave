@@ -127,9 +127,8 @@ export type SearchRouteSceneBodyTransportSpec = {
   onMomentumEndJS?: BottomSheetWithFlashListBaseProps<any>['onMomentumEndJS'];
   showsVerticalScrollIndicator?: boolean;
   keyboardDismissMode?: ScrollViewProps['keyboardDismissMode'];
-  bounces?: ScrollViewProps['bounces'];
-  alwaysBounceVertical?: ScrollViewProps['alwaysBounceVertical'];
-  overScrollMode?: ScrollViewProps['overScrollMode'];
+  // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (the handoff
+  // requires it); not configurable per scene. See SHEET_BODY_NO_OVERSCROLL.
   testID?: string;
   activeList?: DualListSelection;
   flashListProps?: BottomSheetWithFlashListBaseProps<any>['flashListProps'];
@@ -252,9 +251,6 @@ export const areSearchRouteSceneBodyTransportSpecsEqual = (
     left.onMomentumEndJS === right.onMomentumEndJS &&
     left.showsVerticalScrollIndicator === right.showsVerticalScrollIndicator &&
     left.keyboardDismissMode === right.keyboardDismissMode &&
-    left.bounces === right.bounces &&
-    left.alwaysBounceVertical === right.alwaysBounceVertical &&
-    left.overScrollMode === right.overScrollMode &&
     left.testID === right.testID &&
     left.activeList === right.activeList &&
     left.flashListProps === right.flashListProps &&

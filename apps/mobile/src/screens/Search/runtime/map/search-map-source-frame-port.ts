@@ -70,6 +70,9 @@ export type SearchMapCandidateCatalog = {
 // read by the JS selection policy to replace the padded lat/lng AABB visibility test.
 export type SearchMapNativeVisibleMarkers = {
   markerKeys: ReadonlyArray<string>;
+  // Native's LIVE promoted set (top-N by rank of the on-screen subset) — used to bake the label-
+  // collision obstacle from CURRENT promotion so labels yield to mid-zoom-promoted pins (#16).
+  nativePromotedKeys: ReadonlyArray<string>;
   catalogCount: number;
 };
 

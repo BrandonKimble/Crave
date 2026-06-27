@@ -45,6 +45,9 @@ export type SceneStackBodyContentActivity = Pick<
 export type SceneStackBodyFrameProps = {
   sceneKey: string;
   visibilityStyle: StyleProp<ViewStyle>;
+  // 'none' for the leaving/hidden legs so a transparent crossfade leg never intercepts touches
+  // over the incoming scene; 'auto' for the incoming/displayed leg.
+  pointerEvents: 'auto' | 'none';
   children: React.ReactNode;
 };
 

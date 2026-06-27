@@ -158,9 +158,9 @@ export type AppRouteSceneBodyTransportSpec = {
   onMomentumEndJS?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onMomentumEndJS'];
   showsVerticalScrollIndicator?: boolean;
   keyboardDismissMode?: ScrollViewProps['keyboardDismissMode'];
-  bounces?: ScrollViewProps['bounces'];
-  alwaysBounceVertical?: ScrollViewProps['alwaysBounceVertical'];
-  overScrollMode?: ScrollViewProps['overScrollMode'];
+  // NB: over-scroll (bounces / alwaysBounceVertical / overScrollMode) is NOT configurable per scene.
+  // It is enforced no-bounce structurally by BottomSheetScrollContainer because the scroll↔sheet
+  // handoff requires it (see SHEET_BODY_NO_OVERSCROLL). Don't re-add these here.
   testID?: string;
   activeList?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['activeList'];
   flashListProps?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['flashListProps'];
@@ -338,9 +338,6 @@ export const areAppRouteSceneBodyTransportSpecsEqual = (
     left.onMomentumEndJS === right.onMomentumEndJS &&
     left.showsVerticalScrollIndicator === right.showsVerticalScrollIndicator &&
     left.keyboardDismissMode === right.keyboardDismissMode &&
-    left.bounces === right.bounces &&
-    left.alwaysBounceVertical === right.alwaysBounceVertical &&
-    left.overScrollMode === right.overScrollMode &&
     left.testID === right.testID &&
     left.activeList === right.activeList &&
     left.flashListProps === right.flashListProps &&

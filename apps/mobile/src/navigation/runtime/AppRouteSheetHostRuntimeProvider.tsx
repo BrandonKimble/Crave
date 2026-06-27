@@ -91,6 +91,17 @@ export const AppRouteSheetHostRuntimeProvider = ({
     [routeSheetHostAuthorityRuntime]
   );
 
+  // Stable render-side completer for the overlap 'content' settle plane. Bound here (where the
+  // motion runtime is available) and threaded down to the scene-stack crossfade ramp so the
+  // 'content' plane settles at ramp-end instead of waiting on the controller fallback timeout.
+  const routeSceneMotionRuntime = routeSceneRuntime.routeSceneMotionRuntime;
+  const handleContentSettleComplete = React.useCallback(
+    (token: number) => {
+      routeSceneMotionRuntime.completeFromContentSettle(token);
+    },
+    [routeSceneMotionRuntime]
+  );
+
   const runtimeOwner = React.useMemo<AppRouteSheetHostRuntimeOwner>(
     () => ({
       routeSheetSurfaceAuthority: routeSheetHostAuthorityRuntime.routeSheetSurfaceAuthority,
@@ -104,6 +115,7 @@ export const AppRouteSheetHostRuntimeProvider = ({
       sceneStackSurfaceAuthority: routeSceneRuntime.sceneStackSurfaceAuthority,
       routeSceneDisplayTargetRegistry: routeSceneRuntime.routeSceneDisplayTargetRegistry,
       routeHostVisualRuntimeAuthority: routeSceneRuntime.routeHostVisualRuntimeAuthority,
+      onContentSettleComplete: handleContentSettleComplete,
     }),
     [
       routeSceneRuntime.routeSceneDisplayTargetRegistry,
@@ -114,6 +126,7 @@ export const AppRouteSheetHostRuntimeProvider = ({
       routeSheetHostAuthorityRuntime.routeSheetSurfaceFrameAuthority,
       routeSheetHostAuthorityRuntime.routeSheetRuntimeConfigAuthority,
       routeSheetHostAuthorityRuntime.routeSheetSurfaceAuthority,
+      handleContentSettleComplete,
     ]
   );
 

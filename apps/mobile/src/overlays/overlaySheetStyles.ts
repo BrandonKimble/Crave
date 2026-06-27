@@ -62,6 +62,9 @@ export const overlaySheetStyles = StyleSheet.create({
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
     paddingBottom: OVERLAY_HEADER_PADDING_BOTTOM,
     position: 'relative',
+    // Clip the white cutout plate to the header box (canonical: the result header does this via
+    // `resultsHeaderSurface`) so its bottom overhang can't extend past the header / scroll divider.
+    overflow: 'hidden',
   },
   tabHeader: {
     height: OVERLAY_TAB_HEADER_HEIGHT,

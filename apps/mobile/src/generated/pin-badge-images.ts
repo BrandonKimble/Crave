@@ -851,6 +851,106 @@ import pin_score_b7_97 from '../assets/pins/pin-score-b7-97.png';
 import pin_score_b7_98 from '../assets/pins/pin-score-b7-98.png';
 import pin_score_b7_99 from '../assets/pins/pin-score-b7-99.png';
 import pin_score_b7_100 from '../assets/pins/pin-score-b7-100.png';
+import pin_rank_active_1 from '../assets/pins/pin-rank-active-1.png';
+import pin_rank_active_2 from '../assets/pins/pin-rank-active-2.png';
+import pin_rank_active_3 from '../assets/pins/pin-rank-active-3.png';
+import pin_rank_active_4 from '../assets/pins/pin-rank-active-4.png';
+import pin_rank_active_5 from '../assets/pins/pin-rank-active-5.png';
+import pin_rank_active_6 from '../assets/pins/pin-rank-active-6.png';
+import pin_rank_active_7 from '../assets/pins/pin-rank-active-7.png';
+import pin_rank_active_8 from '../assets/pins/pin-rank-active-8.png';
+import pin_rank_active_9 from '../assets/pins/pin-rank-active-9.png';
+import pin_rank_active_10 from '../assets/pins/pin-rank-active-10.png';
+import pin_rank_active_11 from '../assets/pins/pin-rank-active-11.png';
+import pin_rank_active_12 from '../assets/pins/pin-rank-active-12.png';
+import pin_rank_active_13 from '../assets/pins/pin-rank-active-13.png';
+import pin_rank_active_14 from '../assets/pins/pin-rank-active-14.png';
+import pin_rank_active_15 from '../assets/pins/pin-rank-active-15.png';
+import pin_rank_active_16 from '../assets/pins/pin-rank-active-16.png';
+import pin_rank_active_17 from '../assets/pins/pin-rank-active-17.png';
+import pin_rank_active_18 from '../assets/pins/pin-rank-active-18.png';
+import pin_rank_active_19 from '../assets/pins/pin-rank-active-19.png';
+import pin_rank_active_20 from '../assets/pins/pin-rank-active-20.png';
+import pin_rank_active_21 from '../assets/pins/pin-rank-active-21.png';
+import pin_rank_active_22 from '../assets/pins/pin-rank-active-22.png';
+import pin_rank_active_23 from '../assets/pins/pin-rank-active-23.png';
+import pin_rank_active_24 from '../assets/pins/pin-rank-active-24.png';
+import pin_rank_active_25 from '../assets/pins/pin-rank-active-25.png';
+import pin_rank_active_26 from '../assets/pins/pin-rank-active-26.png';
+import pin_rank_active_27 from '../assets/pins/pin-rank-active-27.png';
+import pin_rank_active_28 from '../assets/pins/pin-rank-active-28.png';
+import pin_rank_active_29 from '../assets/pins/pin-rank-active-29.png';
+import pin_rank_active_30 from '../assets/pins/pin-rank-active-30.png';
+import pin_rank_active_31 from '../assets/pins/pin-rank-active-31.png';
+import pin_rank_active_32 from '../assets/pins/pin-rank-active-32.png';
+import pin_rank_active_33 from '../assets/pins/pin-rank-active-33.png';
+import pin_rank_active_34 from '../assets/pins/pin-rank-active-34.png';
+import pin_rank_active_35 from '../assets/pins/pin-rank-active-35.png';
+import pin_rank_active_36 from '../assets/pins/pin-rank-active-36.png';
+import pin_rank_active_37 from '../assets/pins/pin-rank-active-37.png';
+import pin_rank_active_38 from '../assets/pins/pin-rank-active-38.png';
+import pin_rank_active_39 from '../assets/pins/pin-rank-active-39.png';
+import pin_rank_active_40 from '../assets/pins/pin-rank-active-40.png';
+import pin_rank_active_41 from '../assets/pins/pin-rank-active-41.png';
+import pin_rank_active_42 from '../assets/pins/pin-rank-active-42.png';
+import pin_rank_active_43 from '../assets/pins/pin-rank-active-43.png';
+import pin_rank_active_44 from '../assets/pins/pin-rank-active-44.png';
+import pin_rank_active_45 from '../assets/pins/pin-rank-active-45.png';
+import pin_rank_active_46 from '../assets/pins/pin-rank-active-46.png';
+import pin_rank_active_47 from '../assets/pins/pin-rank-active-47.png';
+import pin_rank_active_48 from '../assets/pins/pin-rank-active-48.png';
+import pin_rank_active_49 from '../assets/pins/pin-rank-active-49.png';
+import pin_rank_active_50 from '../assets/pins/pin-rank-active-50.png';
+import pin_rank_active_51 from '../assets/pins/pin-rank-active-51.png';
+import pin_rank_active_52 from '../assets/pins/pin-rank-active-52.png';
+import pin_rank_active_53 from '../assets/pins/pin-rank-active-53.png';
+import pin_rank_active_54 from '../assets/pins/pin-rank-active-54.png';
+import pin_rank_active_55 from '../assets/pins/pin-rank-active-55.png';
+import pin_rank_active_56 from '../assets/pins/pin-rank-active-56.png';
+import pin_rank_active_57 from '../assets/pins/pin-rank-active-57.png';
+import pin_rank_active_58 from '../assets/pins/pin-rank-active-58.png';
+import pin_rank_active_59 from '../assets/pins/pin-rank-active-59.png';
+import pin_rank_active_60 from '../assets/pins/pin-rank-active-60.png';
+import pin_rank_active_61 from '../assets/pins/pin-rank-active-61.png';
+import pin_rank_active_62 from '../assets/pins/pin-rank-active-62.png';
+import pin_rank_active_63 from '../assets/pins/pin-rank-active-63.png';
+import pin_rank_active_64 from '../assets/pins/pin-rank-active-64.png';
+import pin_rank_active_65 from '../assets/pins/pin-rank-active-65.png';
+import pin_rank_active_66 from '../assets/pins/pin-rank-active-66.png';
+import pin_rank_active_67 from '../assets/pins/pin-rank-active-67.png';
+import pin_rank_active_68 from '../assets/pins/pin-rank-active-68.png';
+import pin_rank_active_69 from '../assets/pins/pin-rank-active-69.png';
+import pin_rank_active_70 from '../assets/pins/pin-rank-active-70.png';
+import pin_rank_active_71 from '../assets/pins/pin-rank-active-71.png';
+import pin_rank_active_72 from '../assets/pins/pin-rank-active-72.png';
+import pin_rank_active_73 from '../assets/pins/pin-rank-active-73.png';
+import pin_rank_active_74 from '../assets/pins/pin-rank-active-74.png';
+import pin_rank_active_75 from '../assets/pins/pin-rank-active-75.png';
+import pin_rank_active_76 from '../assets/pins/pin-rank-active-76.png';
+import pin_rank_active_77 from '../assets/pins/pin-rank-active-77.png';
+import pin_rank_active_78 from '../assets/pins/pin-rank-active-78.png';
+import pin_rank_active_79 from '../assets/pins/pin-rank-active-79.png';
+import pin_rank_active_80 from '../assets/pins/pin-rank-active-80.png';
+import pin_rank_active_81 from '../assets/pins/pin-rank-active-81.png';
+import pin_rank_active_82 from '../assets/pins/pin-rank-active-82.png';
+import pin_rank_active_83 from '../assets/pins/pin-rank-active-83.png';
+import pin_rank_active_84 from '../assets/pins/pin-rank-active-84.png';
+import pin_rank_active_85 from '../assets/pins/pin-rank-active-85.png';
+import pin_rank_active_86 from '../assets/pins/pin-rank-active-86.png';
+import pin_rank_active_87 from '../assets/pins/pin-rank-active-87.png';
+import pin_rank_active_88 from '../assets/pins/pin-rank-active-88.png';
+import pin_rank_active_89 from '../assets/pins/pin-rank-active-89.png';
+import pin_rank_active_90 from '../assets/pins/pin-rank-active-90.png';
+import pin_rank_active_91 from '../assets/pins/pin-rank-active-91.png';
+import pin_rank_active_92 from '../assets/pins/pin-rank-active-92.png';
+import pin_rank_active_93 from '../assets/pins/pin-rank-active-93.png';
+import pin_rank_active_94 from '../assets/pins/pin-rank-active-94.png';
+import pin_rank_active_95 from '../assets/pins/pin-rank-active-95.png';
+import pin_rank_active_96 from '../assets/pins/pin-rank-active-96.png';
+import pin_rank_active_97 from '../assets/pins/pin-rank-active-97.png';
+import pin_rank_active_98 from '../assets/pins/pin-rank-active-98.png';
+import pin_rank_active_99 from '../assets/pins/pin-rank-active-99.png';
+import pin_rank_active_overflow from '../assets/pins/pin-rank-active-overflow.png';
 
 export const PIN_BADGE_SPRITE_SCALE = 3;
 
@@ -1704,4 +1804,104 @@ export const PIN_BADGE_IMAGES: Record<string, ImageSourcePropType> = {
   'pin-score-b7-98': pin_score_b7_98,
   'pin-score-b7-99': pin_score_b7_99,
   'pin-score-b7-100': pin_score_b7_100,
+  'pin-rank-active-1': pin_rank_active_1,
+  'pin-rank-active-2': pin_rank_active_2,
+  'pin-rank-active-3': pin_rank_active_3,
+  'pin-rank-active-4': pin_rank_active_4,
+  'pin-rank-active-5': pin_rank_active_5,
+  'pin-rank-active-6': pin_rank_active_6,
+  'pin-rank-active-7': pin_rank_active_7,
+  'pin-rank-active-8': pin_rank_active_8,
+  'pin-rank-active-9': pin_rank_active_9,
+  'pin-rank-active-10': pin_rank_active_10,
+  'pin-rank-active-11': pin_rank_active_11,
+  'pin-rank-active-12': pin_rank_active_12,
+  'pin-rank-active-13': pin_rank_active_13,
+  'pin-rank-active-14': pin_rank_active_14,
+  'pin-rank-active-15': pin_rank_active_15,
+  'pin-rank-active-16': pin_rank_active_16,
+  'pin-rank-active-17': pin_rank_active_17,
+  'pin-rank-active-18': pin_rank_active_18,
+  'pin-rank-active-19': pin_rank_active_19,
+  'pin-rank-active-20': pin_rank_active_20,
+  'pin-rank-active-21': pin_rank_active_21,
+  'pin-rank-active-22': pin_rank_active_22,
+  'pin-rank-active-23': pin_rank_active_23,
+  'pin-rank-active-24': pin_rank_active_24,
+  'pin-rank-active-25': pin_rank_active_25,
+  'pin-rank-active-26': pin_rank_active_26,
+  'pin-rank-active-27': pin_rank_active_27,
+  'pin-rank-active-28': pin_rank_active_28,
+  'pin-rank-active-29': pin_rank_active_29,
+  'pin-rank-active-30': pin_rank_active_30,
+  'pin-rank-active-31': pin_rank_active_31,
+  'pin-rank-active-32': pin_rank_active_32,
+  'pin-rank-active-33': pin_rank_active_33,
+  'pin-rank-active-34': pin_rank_active_34,
+  'pin-rank-active-35': pin_rank_active_35,
+  'pin-rank-active-36': pin_rank_active_36,
+  'pin-rank-active-37': pin_rank_active_37,
+  'pin-rank-active-38': pin_rank_active_38,
+  'pin-rank-active-39': pin_rank_active_39,
+  'pin-rank-active-40': pin_rank_active_40,
+  'pin-rank-active-41': pin_rank_active_41,
+  'pin-rank-active-42': pin_rank_active_42,
+  'pin-rank-active-43': pin_rank_active_43,
+  'pin-rank-active-44': pin_rank_active_44,
+  'pin-rank-active-45': pin_rank_active_45,
+  'pin-rank-active-46': pin_rank_active_46,
+  'pin-rank-active-47': pin_rank_active_47,
+  'pin-rank-active-48': pin_rank_active_48,
+  'pin-rank-active-49': pin_rank_active_49,
+  'pin-rank-active-50': pin_rank_active_50,
+  'pin-rank-active-51': pin_rank_active_51,
+  'pin-rank-active-52': pin_rank_active_52,
+  'pin-rank-active-53': pin_rank_active_53,
+  'pin-rank-active-54': pin_rank_active_54,
+  'pin-rank-active-55': pin_rank_active_55,
+  'pin-rank-active-56': pin_rank_active_56,
+  'pin-rank-active-57': pin_rank_active_57,
+  'pin-rank-active-58': pin_rank_active_58,
+  'pin-rank-active-59': pin_rank_active_59,
+  'pin-rank-active-60': pin_rank_active_60,
+  'pin-rank-active-61': pin_rank_active_61,
+  'pin-rank-active-62': pin_rank_active_62,
+  'pin-rank-active-63': pin_rank_active_63,
+  'pin-rank-active-64': pin_rank_active_64,
+  'pin-rank-active-65': pin_rank_active_65,
+  'pin-rank-active-66': pin_rank_active_66,
+  'pin-rank-active-67': pin_rank_active_67,
+  'pin-rank-active-68': pin_rank_active_68,
+  'pin-rank-active-69': pin_rank_active_69,
+  'pin-rank-active-70': pin_rank_active_70,
+  'pin-rank-active-71': pin_rank_active_71,
+  'pin-rank-active-72': pin_rank_active_72,
+  'pin-rank-active-73': pin_rank_active_73,
+  'pin-rank-active-74': pin_rank_active_74,
+  'pin-rank-active-75': pin_rank_active_75,
+  'pin-rank-active-76': pin_rank_active_76,
+  'pin-rank-active-77': pin_rank_active_77,
+  'pin-rank-active-78': pin_rank_active_78,
+  'pin-rank-active-79': pin_rank_active_79,
+  'pin-rank-active-80': pin_rank_active_80,
+  'pin-rank-active-81': pin_rank_active_81,
+  'pin-rank-active-82': pin_rank_active_82,
+  'pin-rank-active-83': pin_rank_active_83,
+  'pin-rank-active-84': pin_rank_active_84,
+  'pin-rank-active-85': pin_rank_active_85,
+  'pin-rank-active-86': pin_rank_active_86,
+  'pin-rank-active-87': pin_rank_active_87,
+  'pin-rank-active-88': pin_rank_active_88,
+  'pin-rank-active-89': pin_rank_active_89,
+  'pin-rank-active-90': pin_rank_active_90,
+  'pin-rank-active-91': pin_rank_active_91,
+  'pin-rank-active-92': pin_rank_active_92,
+  'pin-rank-active-93': pin_rank_active_93,
+  'pin-rank-active-94': pin_rank_active_94,
+  'pin-rank-active-95': pin_rank_active_95,
+  'pin-rank-active-96': pin_rank_active_96,
+  'pin-rank-active-97': pin_rank_active_97,
+  'pin-rank-active-98': pin_rank_active_98,
+  'pin-rank-active-99': pin_rank_active_99,
+  'pin-rank-active-overflow': pin_rank_active_overflow,
 };

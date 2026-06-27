@@ -1,0 +1,17 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn: { text: 'Close poll', optional: true }
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 60000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera_and_resolve_market&lat=40.7550&lng=-73.9800&zoom=13.2'
+- waitForAnimationToEnd: { timeout: 2500 }
+- tapOn: 'Polls in New York'
+- waitForAnimationToEnd: { timeout: 2500 }
+- tapOn: { id: 'poll-card-title-3a57786d-ee01-4585-b5f5-9ca668c7ab47' }
+- waitForAnimationToEnd: { timeout: 8000 }
+- takeScreenshot: /tmp/nav-open
+# close — the nav should slide back up in lockstep with the sheet (no map flash)
+- tapOn: { text: 'Close poll' }
+- waitForAnimationToEnd: { timeout: 8000 }
+- takeScreenshot: /tmp/nav-closed

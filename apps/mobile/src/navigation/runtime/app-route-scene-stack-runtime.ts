@@ -850,7 +850,7 @@ const resolveSheetPresentationSceneKey = ({
 }): OverlayKey | null => {
   // The persistent-poll-lane 'polls' forcing only applies while a TOP-LEVEL scene
   // is presented — a child pushed over the lane (pollDetail / pollCreation /
-  // restaurant / saveList / favoriteListDetail) must take the sheet. This mirrors
+  // restaurant / saveList) must take the sheet. This mirrors
   // the same child-scene escape in resolveDisplaySnapshot
   // (app-route-native-overlay-target-authorities.ts); without it the body re-forced
   // to 'polls' even though the child was the active route.
@@ -1967,8 +1967,12 @@ class AppRouteSceneStackLayerStateController {
       isMounted: true,
       isActive,
       isInteractive: canInteract,
-      shouldRenderListBody: isActive || shouldRetainSceneListBody(bodyAdmissionPolicy),
-      shouldAttachMountedContent: canInteract || shouldRetainMountedBody,
+      // OR in isTransitionParticipant so BOTH the incoming (active) AND the
+      // outgoing (handoff) scene paint their body during the overlap window —
+      // else the crossfade's outgoing leg (opacity 1→0) would fade a blank.
+      shouldRenderListBody:
+        isActive || isTransitionParticipant || shouldRetainSceneListBody(bodyAdmissionPolicy),
+      shouldAttachMountedContent: canInteract || isTransitionParticipant || shouldRetainMountedBody,
       isTransitionParticipant,
       activationPhase,
       shouldRunDataLane,

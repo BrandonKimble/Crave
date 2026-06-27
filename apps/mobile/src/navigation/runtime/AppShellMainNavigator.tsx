@@ -2,7 +2,6 @@ import React from 'react';
 import { createStackNavigator, type StackNavigationOptions } from '@react-navigation/stack';
 
 import {
-  ProfileScreen,
   RecentSearchesScreen,
   RecentlyViewedScreen,
   SearchScreen,
@@ -31,10 +30,6 @@ const MAIN_STACK_SCENE_DEFINITIONS: MainStackSceneDefinition[] = [
   {
     routeName: 'Main',
     component: SearchScreen as React.ComponentType<object>,
-  },
-  {
-    routeName: 'Profile',
-    component: ProfileScreen as React.ComponentType<object>,
   },
   {
     routeName: 'RecentSearches',

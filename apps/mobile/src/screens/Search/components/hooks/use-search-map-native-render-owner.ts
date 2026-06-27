@@ -2265,6 +2265,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
               // lat/lng AABB cannot capture).
               sourceFramePortRef.current?.publishNativeVisibleMarkerKeys({
                 markerKeys: event.markerKeys,
+                nativePromotedKeys: event.nativePromotedKeys ?? [],
                 catalogCount: event.catalogCount,
               });
               const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
@@ -3570,6 +3571,11 @@ const useSearchMapNativeRenderOwnerSync = ({
           (visualFrameTransactionKind === 'live_update'
             ? transportState.lastDesiredSnapshot
             : null);
+        // NOTE: the markerRoleFrame is entangled with source ADMISSION + presentation mount/ack (native
+        // sources_applied_visible depends on markerRoleFrame != nil), NOT purely LOD — gating it off in JS
+        // here drops the instance to life:hidden (proven via the harness). Under v5 the frame must keep
+        // flowing for the lifecycle; the two-authority cut happens NATIVE-side (skip v4 opacity writes when
+        // lodV5Enabled) so the engine stays the sole opacity authority while admission still works.
         const shouldUseNativeRoleFrame =
           hasSerializableSourceSnapshot &&
           visualFrameTransactionKind === 'live_update' &&

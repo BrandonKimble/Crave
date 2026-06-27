@@ -36,20 +36,16 @@ const staticSceneStyles = StyleSheet.create({
   },
 });
 
+// Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (the shared sheet
+// scroll container) so the scroll↔sheet handoff works — no per-scene over-scroll config needed.
 const BOOKMARKS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 72 }],
-  bounces: false,
-  alwaysBounceVertical: false,
-  overScrollMode: 'never',
   contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
 };
 
 const PROFILE_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 160 }],
   keyboardShouldPersistTaps: 'handled',
-  bounces: false,
-  alwaysBounceVertical: false,
-  overScrollMode: 'never',
   contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
 };
 

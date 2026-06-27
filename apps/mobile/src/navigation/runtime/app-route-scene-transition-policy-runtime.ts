@@ -98,7 +98,7 @@ const TOP_LEVEL_SHARED_SHEET_SCENES = new Set<OverlayKey>([
 
 // Derived from the central metadata (role 'child' on the shared physical sheet)
 // — adding such a scene needs only its metadata entry, with no hand-edit here.
-// Today: { restaurant, favoriteListDetail, saveList, pollCreation, pollDetail }.
+// Today: { restaurant, saveList, pollCreation, pollDetail }.
 const CHILD_SHARED_SHEET_SCENES = new Set<OverlayKey>(
   selectOverlayRouteKeysWhere(
     (metadata) => metadata.role === 'child' && metadata.sheetPolicy === 'sharedPhysicalSheet'
@@ -258,10 +258,21 @@ const resolveContentHandoff = ({
   if (contentHandoff != null) {
     return contentHandoff;
   }
+  // DISMISS byte-identity, DECLARED (not emergent from "preserveLiveY emits no motion planes"):
+  // closeChild / modalClose are back-nav dismisses with no sheet slide — keep them on the instant
+  // swap so a future dismiss that happens to carry a `snapTo` can never silently arm the leaf
+  // crossfade. (terminalDismiss DOES preserve — for its sheet SLIDE; its leaf crossfade is
+  // separately gated out via isForwardOpenCrossfade's `!== 'terminalDismiss'` check.)
+  if (transitionKind === 'closeChild' || transitionKind === 'modalClose') {
+    return 'swapImmediately';
+  }
   if (transitionKind === 'terminalDismiss') {
     return 'preserveOutgoingUntilSettle';
   }
-  return 'swapImmediately';
+  // Overlap engine: hold the outgoing in-flight so the leaf content crossfades. The sheet
+  // shell/snap is decoupled to follow the TARGET (navPush), so the sheet rises to the
+  // incoming's snap instead of descending to the held search surface's collapsed snap.
+  return 'preserveOutgoingUntilSettle';
 };
 
 const resolveSnapPersistence = ({
@@ -287,10 +298,18 @@ const resolveMotionPlanes = ({
   sheetIntent,
   cameraIntent,
   chromeVisibilityTarget,
+  sourceSceneKey,
+  targetSceneKey,
+  sheetVisibilityTarget,
+  transitionKind,
 }: Pick<
   AppRouteSceneTransitionPlan,
-  'sheetIntent' | 'cameraIntent' | 'chromeVisibilityTarget'
->): readonly RouteSceneSwitchMotionPlane[] => {
+  'sheetIntent' | 'cameraIntent' | 'chromeVisibilityTarget' | 'sheetVisibilityTarget'
+> & {
+  sourceSceneKey: OverlayKey;
+  targetSceneKey: OverlayKey;
+  transitionKind: RouteSceneSwitchSheetTransitionKind;
+}): readonly RouteSceneSwitchMotionPlane[] => {
   const motionPlanes: RouteSceneSwitchMotionPlane[] = [];
   if (sheetIntent != null) {
     motionPlanes.push('sheet');
@@ -300,6 +319,21 @@ const resolveMotionPlanes = ({
   }
   if (!isPreserveChromeTarget(chromeVisibilityTarget)) {
     motionPlanes.push('chrome');
+  }
+  // The 'content' plane holds the transition in-flight for the overlap crossfade window.
+  // Open it ONLY for a genuine FORWARD OPEN — a real scene change (same-scene re-entry opens
+  // none) that RISES to a visible snap and is NOT a dismiss. This is the same predicate the
+  // sheet-host controller arms the leaf crossfade on (isForwardOpenCrossfade). Gating it here
+  // keeps every DISMISS byte-identical: a `closeChild`/preserveLiveY dismiss has no sheet/
+  // camera/chrome plane and now no 'content' plane → motionPlanes is [] → it commits to idle
+  // SYNCHRONOUSLY (its onSettle callbacks fire immediately, not gated behind the 320ms content
+  // timeout); a collapse-snap `terminalDismiss` keeps only its 'sheet' plane.
+  if (
+    sourceSceneKey !== targetSceneKey &&
+    sheetVisibilityTarget === 'visible' &&
+    transitionKind !== 'terminalDismiss'
+  ) {
+    motionPlanes.push('content');
   }
   return motionPlanes;
 };
@@ -446,6 +480,12 @@ export const resolveAppRouteSceneTransitionPlan = ({
       sheetIntent: resolvedSheetIntent,
       cameraIntent,
       chromeVisibilityTarget: resolvedChromeVisibilityTarget,
+      sourceSceneKey,
+      targetSceneKey,
+      sheetVisibilityTarget: resolveAppRouteSceneSheetVisibilityTarget({
+        snapTarget: sheetSnapTarget,
+      }),
+      transitionKind: resolvedTransitionKind,
     }),
     pollsParams: targetSceneKey === 'polls' ? (pollsParams ?? null) : null,
     dockedPollsRestoreSnap: resolveDockedPollsRestoreSnap({

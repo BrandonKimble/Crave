@@ -1,7 +1,7 @@
 import React from 'react';
 
 type SearchSessionShadowTransition = {
-  mode: 'natural' | 'entity' | 'shortcut';
+  mode: 'natural' | 'entity' | 'shortcut' | 'favorites';
   operationId: string;
   seq: number;
   eventType:

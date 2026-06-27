@@ -11,10 +11,27 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   activeMainIntent,
   consumeActiveMainIntent,
   openRestaurantProfilePreview,
+  launchFavoritesListResults,
+  prepareSearchSessionEntry,
   currentMarketKey,
 }: SearchForegroundLaunchIntentRuntimeArgs): void => {
   React.useEffect(() => {
     if (activeMainIntent.type === 'none') {
+      return;
+    }
+
+    if (activeMainIntent.type === 'favorites') {
+      // Capture the launch ORIGIN (the bookmarks/profile root) BEFORE entering
+      // the search session so the existing SearchSessionOriginContext dismisses
+      // back to favorites. Then run the favorites attempt through the same
+      // search response lifecycle a natural search uses.
+      prepareSearchSessionEntry({ captureOrigin: true });
+      void launchFavoritesListResults({
+        listId: activeMainIntent.listId,
+        listType: activeMainIntent.listType,
+        submittedLabel: activeMainIntent.submittedLabel,
+      });
+      consumeActiveMainIntent();
       return;
     }
 
@@ -76,8 +93,10 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     activeMainIntent,
     consumeActiveMainIntent,
     currentMarketKey,
+    launchFavoritesListResults,
     navigation,
     openRestaurantProfilePreview,
+    prepareSearchSessionEntry,
     routeSearchCommandActions,
   ]);
 };

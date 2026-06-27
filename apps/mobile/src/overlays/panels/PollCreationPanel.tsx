@@ -1,31 +1,27 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Alert,
-  Dimensions,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Dimensions, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 
-import { HandPlatter, Sparkles, Store, Utensils, X as LucideX } from 'lucide-react-native';
+import { X as LucideX } from 'lucide-react-native';
 
-import { Text } from '../../components';
-import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
-import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
+import { showAppModal, Text } from '../../components';
 import {
+  checkPollDuplicate,
   createPoll,
   type CreatePollPayload,
   type Poll,
-  type PollTopicType,
 } from '../../services/polls';
+import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { colors as themeColors } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
-import { OVERLAY_HORIZONTAL_PADDING, overlaySheetStyles } from '../overlaySheetStyles';
+import {
+  OVERLAY_HORIZONTAL_PADDING,
+  OVERLAY_TAB_HEADER_HEIGHT,
+  overlaySheetStyles,
+} from '../overlaySheetStyles';
 import { resolveExpandedTop } from '../sheetUtils';
+import { useNavHideIntent } from '../../navigation/runtime/nav-hide-intent-store';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import type { SnapPoints } from '../bottomSheetMotionTypes';
 import type { MapBounds } from '../../types';
@@ -38,6 +34,14 @@ const ACCENT = themeColors.primary;
 const BORDER = themeColors.border;
 const SURFACE = themeColors.surface;
 
+// §5: user polls self-schedule their close window (3–14 days, default 1 week).
+const DEFAULT_CLOSE_WINDOW_DAYS = 7;
+const CLOSE_WINDOW_OPTIONS: ReadonlyArray<{ label: string; value: number }> = [
+  { label: '3 days', value: 3 },
+  { label: '1 week', value: 7 },
+  { label: '2 weeks', value: 14 },
+];
+
 type UsePollCreationPanelSpecOptions = {
   visible: boolean;
   marketKey: string | null;
@@ -47,131 +51,6 @@ type UsePollCreationPanelSpecOptions = {
   snapPoints?: SnapPoints;
   onClose: () => void;
   onCreated: (poll: Poll) => void;
-};
-
-type TemplateOption = {
-  type: PollTopicType;
-  title: string;
-  description: string;
-  Icon: typeof HandPlatter;
-};
-
-const TEMPLATE_OPTIONS: TemplateOption[] = [
-  {
-    type: 'best_dish',
-    title: 'Best dish',
-    description: 'Find the spot that nails a specific dish.',
-    Icon: HandPlatter,
-  },
-  {
-    type: 'what_to_order',
-    title: 'What to order',
-    description: 'Collect must-order dishes at a restaurant.',
-    Icon: Utensils,
-  },
-  {
-    type: 'best_dish_attribute',
-    title: 'Best dish attribute',
-    description: 'Rank dishes by a trait like spicy, crispy, or vegan.',
-    Icon: Sparkles,
-  },
-  {
-    type: 'best_restaurant_attribute',
-    title: 'Best restaurant attribute',
-    description: 'Highlight restaurants for patios, vibes, or service.',
-    Icon: Store,
-  },
-];
-
-const MIN_AUTOCOMPLETE_CHARS = 2;
-
-type AutocompleteField = {
-  query: string;
-  selection: AutocompleteMatch | null;
-  suggestions: AutocompleteMatch[];
-  loading: boolean;
-  showSuggestions: boolean;
-  setQuery: (value: string) => void;
-  setSelection: (value: AutocompleteMatch | null) => void;
-  setShowSuggestions: (value: boolean) => void;
-  reset: () => void;
-};
-
-const useAutocompleteField = (entityType: string, enabled: boolean): AutocompleteField => {
-  const [query, setQuery] = useState('');
-  const [selection, setSelection] = useState<AutocompleteMatch | null>(null);
-  const [suggestions, setSuggestions] = useState<AutocompleteMatch[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-
-  useEffect(() => {
-    if (!enabled) {
-      setSuggestions([]);
-      setLoading(false);
-      setShowSuggestions(false);
-      return;
-    }
-    const trimmed = query.trim();
-    if (trimmed.length < MIN_AUTOCOMPLETE_CHARS) {
-      setSuggestions([]);
-      setLoading(false);
-      setShowSuggestions(false);
-      return;
-    }
-
-    let isActive = true;
-    setLoading(true);
-    const handle = setTimeout(() => {
-      autocompleteService
-        .fetchEntities(trimmed, { entityType })
-        .then((response) => {
-          if (!isActive) {
-            return;
-          }
-          const matches = response.matches.filter((match) => match.entityType === entityType);
-          setSuggestions(matches);
-          setShowSuggestions(matches.length > 0);
-        })
-        .catch(() => {
-          if (!isActive) {
-            return;
-          }
-          setSuggestions([]);
-          setShowSuggestions(false);
-        })
-        .finally(() => {
-          if (!isActive) {
-            return;
-          }
-          setLoading(false);
-        });
-    }, 250);
-
-    return () => {
-      isActive = false;
-      clearTimeout(handle);
-    };
-  }, [enabled, entityType, query]);
-
-  const reset = useCallback(() => {
-    setQuery('');
-    setSelection(null);
-    setSuggestions([]);
-    setShowSuggestions(false);
-    setLoading(false);
-  }, []);
-
-  return {
-    query,
-    selection,
-    suggestions,
-    loading,
-    showSuggestions,
-    setQuery,
-    setSelection,
-    setShowSuggestions,
-    reset,
-  };
 };
 
 export const usePollCreationPanelSpec = ({
@@ -185,169 +64,96 @@ export const usePollCreationPanelSpec = ({
   onCreated,
 }: UsePollCreationPanelSpecOptions): SearchRoutePublishedSceneParts => {
   const insets = useSafeAreaInsets();
-  const [selectedType, setSelectedType] = useState<PollTopicType | null>(null);
+  // §J: push the bottom tab bar down while creating (like pollDetail) so the pinned Publish chin
+  // has the bottom band to itself and isn't covered by the nav.
+  useNavHideIntent('pollCreation', visible);
+  const { pushRoute } = useAppOverlayRouteController();
+  // Subject-first: the free-text question the LLM resolves into a poll (type + axis
+  // are inferred server-side — no manual poll-type picker). The description is the
+  // creator's organic seed; its entity mentions seed the live leaderboard.
+  const [question, setQuestion] = useState('');
   const [description, setDescription] = useState('');
+  // §5: the creator self-schedules the close window (default 1 week).
+  const [closeWindowDays, setCloseWindowDays] = useState(DEFAULT_CLOSE_WINDOW_DAYS);
   const [submitting, setSubmitting] = useState(false);
-
-  const dishField = useAutocompleteField('food', visible && selectedType === 'best_dish');
-  const restaurantField = useAutocompleteField(
-    'restaurant',
-    visible && selectedType === 'what_to_order'
-  );
-  const foodAttributeField = useAutocompleteField(
-    'food_attribute',
-    visible && selectedType === 'best_dish_attribute'
-  );
-  const restaurantAttributeField = useAutocompleteField(
-    'restaurant_attribute',
-    visible && selectedType === 'best_restaurant_attribute'
-  );
-
-  const selectedTemplate = useMemo(
-    () => TEMPLATE_OPTIONS.find((option) => option.type === selectedType) ?? null,
-    [selectedType]
-  );
-
-  const resetFields = useCallback(() => {
-    dishField.reset();
-    restaurantField.reset();
-    foodAttributeField.reset();
-    restaurantAttributeField.reset();
-  }, [
-    dishField.reset,
-    restaurantField.reset,
-    foodAttributeField.reset,
-    restaurantAttributeField.reset,
-  ]);
 
   useEffect(() => {
     if (!visible) {
-      setSelectedType(null);
+      setQuestion('');
       setDescription('');
-      resetFields();
+      setCloseWindowDays(DEFAULT_CLOSE_WINDOW_DAYS);
     }
-  }, [resetFields, visible]);
+  }, [visible]);
 
-  const renderSuggestions = (
-    field: AutocompleteField,
-    emptyText: string,
-    onSelect: (match: AutocompleteMatch) => void
-  ) => {
-    if (!field.showSuggestions && !field.loading) {
-      return null;
-    }
-    return (
-      <View style={styles.autocompleteBox}>
-        {field.loading ? (
-          <View style={styles.autocompleteLoadingRow}>
-            <Text variant="body" style={styles.autocompleteLoadingText}>
-              Searching…
-            </Text>
-          </View>
-        ) : field.suggestions.length === 0 ? (
-          <Text variant="body" style={styles.autocompleteEmptyText}>
-            {emptyText}
-          </Text>
-        ) : (
-          <ScrollView keyboardShouldPersistTaps="handled">
-            {field.suggestions.map((match) => (
-              <TouchableOpacity
-                key={match.entityId}
-                style={styles.autocompleteItem}
-                onPress={() => onSelect(match)}
-              >
-                <Text variant="subtitle" weight="semibold" style={styles.autocompletePrimary}>
-                  {match.name}
-                </Text>
-                <Text variant="body" style={styles.autocompleteSecondary}>
-                  {match.entityType.replace(/_/g, ' ')}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-      </View>
-    );
-  };
+  // §J keyboard choreography: subject-first creation autofocuses the subject so the keyboard
+  // rises WITH the sheet on open. `autoFocus` (on the TextInput below) fires when the input itself
+  // MOUNTS — robust against the body surface mounting the header AFTER this hook's effects (a
+  // ref+effect.focus() raced the mount and found a null ref). The sheet instant-covers to the top
+  // snap in ~1 frame, so the keyboard rising right after reads as "keyboard-up on open".
 
   const handleSubmit = useCallback(async () => {
     if (!marketKey && !bounds) {
-      Alert.alert('Pick a market', 'Move the map to a local market before creating a poll.');
+      showAppModal({
+        title: 'Pick a market',
+        message: 'Move the map to a local market before creating a poll.',
+      });
       return;
     }
-    if (!selectedType) {
-      Alert.alert('Select a poll type', 'Choose a template to continue.');
-      return;
-    }
-
-    const payload: CreatePollPayload = {
-      topicType: selectedType,
-      marketKey: marketKey ?? undefined,
-      bounds,
-      description: description.trim() || undefined,
-    };
-
-    if (selectedType === 'best_dish') {
-      payload.targetDishId = dishField.selection?.entityId;
-      payload.targetDishName = dishField.selection?.name ?? dishField.query.trim();
-    } else if (selectedType === 'what_to_order') {
-      payload.targetRestaurantId = restaurantField.selection?.entityId;
-      payload.targetRestaurantName =
-        restaurantField.selection?.name ?? restaurantField.query.trim();
-    } else if (selectedType === 'best_dish_attribute') {
-      payload.targetFoodAttributeId = foodAttributeField.selection?.entityId;
-      payload.targetFoodAttributeName =
-        foodAttributeField.selection?.name ?? foodAttributeField.query.trim();
-    } else if (selectedType === 'best_restaurant_attribute') {
-      payload.targetRestaurantAttributeId = restaurantAttributeField.selection?.entityId;
-      payload.targetRestaurantAttributeName =
-        restaurantAttributeField.selection?.name ?? restaurantAttributeField.query.trim();
-    }
-
-    const topicName =
-      payload.targetDishName ??
-      payload.targetRestaurantName ??
-      payload.targetFoodAttributeName ??
-      payload.targetRestaurantAttributeName ??
-      '';
-    if (!topicName.trim()) {
-      Alert.alert('Add a topic', 'Pick an item from suggestions or type a value.');
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion) {
+      showAppModal({
+        title: 'Add a subject',
+        message: 'Type what you want the community to weigh in on.',
+      });
       return;
     }
 
     try {
       setSubmitting(true);
+
+      // Stage 1 — fast text dedup (no LLM): route obvious duplicates to the existing
+      // poll instead of spinning up another. Precision-favoring threshold server-side.
+      if (marketKey) {
+        const { matches } = await checkPollDuplicate({ question: trimmedQuestion, marketKey });
+        const match = matches[0];
+        if (match) {
+          setSubmitting(false);
+          showAppModal({
+            title: 'This poll already exists',
+            message: `"${match.question}" is already live here. Jump into that discussion instead?`,
+            actions: [
+              { label: 'Cancel', style: 'cancel' },
+              {
+                label: 'View poll',
+                onPress: () => {
+                  onClose();
+                  pushRoute('pollDetail', { pollId: match.pollId });
+                },
+              },
+            ],
+          });
+          return;
+        }
+      }
+
+      const payload: CreatePollPayload = {
+        question: trimmedQuestion,
+        marketKey: marketKey ?? undefined,
+        bounds,
+        description: description.trim() || undefined,
+        closeWindowDays,
+      };
       const poll = await createPoll(payload);
       onCreated(poll);
     } catch (error) {
-      Alert.alert(
-        'Unable to create poll',
-        error instanceof Error ? error.message : 'Please try again.'
-      );
+      showAppModal({
+        title: 'Unable to create poll',
+        message: error instanceof Error ? error.message : 'Please try again.',
+      });
     } finally {
       setSubmitting(false);
     }
-  }, [
-    bounds,
-    description,
-    dishField,
-    foodAttributeField,
-    marketKey,
-    onCreated,
-    restaurantAttributeField,
-    restaurantField,
-    selectedType,
-  ]);
-
-  const handleTemplateSelect = useCallback((option: TemplateOption) => {
-    setSelectedType(option.type);
-  }, []);
-
-  const handleSuggestionSelect = (field: AutocompleteField) => (match: AutocompleteMatch) => {
-    field.setSelection(match);
-    field.setQuery(match.name);
-    field.setShowSuggestions(false);
-  };
+  }, [bounds, closeWindowDays, description, marketKey, onClose, onCreated, pushRoute, question]);
 
   const headerTitle = marketName?.trim()
     ? `Add a poll in ${marketName.trim()}`
@@ -355,8 +161,11 @@ export const usePollCreationPanelSpec = ({
       ? 'Add a poll'
       : 'Add a poll near here';
 
-  const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const expanded = resolveExpandedTop(searchBarTop, insets.top);
+  // The list body frame fills the full sheet height but the sheet is translated DOWN by `expanded`,
+  // so its bottom overhangs the visible screen by `expanded`. Reserve that overhang + the home
+  // inset + the pinned Publish chin's height so the last field (Description) clears the chin.
+  const contentBottomPadding = expanded + insets.bottom + 88;
   const hidden = SCREEN_HEIGHT + 80;
   const snapPoints = useMemo(
     () =>
@@ -367,6 +176,35 @@ export const usePollCreationPanelSpec = ({
         hidden,
       },
     [expanded, hidden, snapPointsOverride]
+  );
+
+  const canSubmit = question.trim().length > 0 && !submitting;
+
+  // §J: the Publish CTA is pinned as a keyboard-aware chin at the sheet bottom (mirrors the
+  // PollDetailPanel composer) so it rides ABOVE the keyboard instead of being buried under it
+  // while the subject/description fields are focused. `useAnimatedKeyboard.height` is measured
+  // from the screen bottom (it spans the home-indicator inset the chin already clears), so lift
+  // by height − inset to sit flush on the keyboard.
+  const keyboard = useAnimatedKeyboard();
+  const publishChinAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: -Math.max(0, keyboard.height.value - insets.bottom) }],
+  }));
+  const publishChin = (
+    <Reanimated.View
+      style={[styles.publishChin, { bottom: expanded + insets.bottom }, publishChinAnimatedStyle]}
+    >
+      <Pressable
+        onPress={() => void handleSubmit()}
+        style={[styles.submitButton, !canSubmit && styles.submitButtonDisabled]}
+        disabled={!canSubmit}
+        accessibilityRole="button"
+        testID="poll-create-publish"
+      >
+        <Text variant="body" weight="semibold" style={styles.submitButtonText}>
+          {submitting ? 'Publishing…' : 'Publish poll'}
+        </Text>
+      </Pressable>
+    </Reanimated.View>
   );
 
   const headerComponent = (
@@ -396,166 +234,76 @@ export const usePollCreationPanelSpec = ({
     <View>
       <View style={styles.section}>
         <Text variant="body" weight="semibold" style={styles.sectionLabel}>
-          Poll type
+          Subject
         </Text>
-        {selectedTemplate ? (
-          <Pressable
-            onPress={() => setSelectedType(null)}
-            style={[styles.templateCard, styles.templateSelected]}
-          >
-            <View style={styles.templateIconWrap}>
-              <selectedTemplate.Icon size={18} color={ACCENT} strokeWidth={2.2} />
-            </View>
-            <View style={styles.templateTextGroup}>
-              <Text variant="body" weight="semibold" style={styles.templateTitle}>
-                {selectedTemplate.title}
-              </Text>
-              <Text variant="caption" style={styles.templateSubtitle}>
-                Tap to change
-              </Text>
-            </View>
-          </Pressable>
-        ) : (
-          <View style={styles.templateList}>
-            {TEMPLATE_OPTIONS.map((option) => (
-              <Pressable
-                key={option.type}
-                style={styles.templateCard}
-                onPress={() => handleTemplateSelect(option)}
-              >
-                <View style={styles.templateIconWrap}>
-                  <option.Icon size={18} color={ACCENT} strokeWidth={2.2} />
-                </View>
-                <View style={styles.templateTextGroup}>
-                  <Text variant="body" weight="semibold" style={styles.templateTitle}>
-                    {option.title}
-                  </Text>
-                  <Text variant="caption" style={styles.templateSubtitle}>
-                    {option.description}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
-          </View>
-        )}
+        <TextInput
+          autoFocus={visible}
+          value={question}
+          onChangeText={setQuestion}
+          placeholder="What should people weigh in on? e.g. best tacos in NYC"
+          placeholderTextColor={themeColors.textMuted}
+          style={[styles.input, styles.subjectInput]}
+          multiline
+          autoCorrect={false}
+          accessibilityLabel="Poll subject"
+          testID="poll-subject-input"
+        />
       </View>
 
-      {selectedType === 'best_dish' ? (
-        <View style={styles.section}>
-          <Text variant="body" weight="semibold" style={styles.sectionLabel}>
-            Dish
-          </Text>
-          <TextInput
-            value={dishField.query}
-            onChangeText={(text) => {
-              dishField.setQuery(text);
-              dishField.setSelection(null);
-            }}
-            placeholder="Search for a dish"
-            style={styles.input}
-            autoCapitalize="none"
-          />
-          {renderSuggestions(
-            dishField,
-            'Keep typing to add a dish',
-            handleSuggestionSelect(dishField)
-          )}
-        </View>
-      ) : null}
-
-      {selectedType === 'what_to_order' ? (
-        <View style={styles.section}>
-          <Text variant="body" weight="semibold" style={styles.sectionLabel}>
-            Restaurant
-          </Text>
-          <TextInput
-            value={restaurantField.query}
-            onChangeText={(text) => {
-              restaurantField.setQuery(text);
-              restaurantField.setSelection(null);
-            }}
-            placeholder="Search for a restaurant"
-            style={styles.input}
-            autoCapitalize="none"
-          />
-          {renderSuggestions(
-            restaurantField,
-            'Keep typing to add a restaurant',
-            handleSuggestionSelect(restaurantField)
-          )}
-        </View>
-      ) : null}
-
-      {selectedType === 'best_dish_attribute' ? (
-        <View style={styles.section}>
-          <Text variant="body" weight="semibold" style={styles.sectionLabel}>
-            Dish attribute
-          </Text>
-          <TextInput
-            value={foodAttributeField.query}
-            onChangeText={(text) => {
-              foodAttributeField.setQuery(text);
-              foodAttributeField.setSelection(null);
-            }}
-            placeholder="Spicy, crispy, vegan"
-            style={styles.input}
-            autoCapitalize="none"
-          />
-          {renderSuggestions(
-            foodAttributeField,
-            'Keep typing to add an attribute',
-            handleSuggestionSelect(foodAttributeField)
-          )}
-        </View>
-      ) : null}
-
-      {selectedType === 'best_restaurant_attribute' ? (
-        <View style={styles.section}>
-          <Text variant="body" weight="semibold" style={styles.sectionLabel}>
-            Restaurant attribute
-          </Text>
-          <TextInput
-            value={restaurantAttributeField.query}
-            onChangeText={(text) => {
-              restaurantAttributeField.setQuery(text);
-              restaurantAttributeField.setSelection(null);
-            }}
-            placeholder="Patio, vibes, service"
-            style={styles.input}
-            autoCapitalize="none"
-          />
-          {renderSuggestions(
-            restaurantAttributeField,
-            'Keep typing to add an attribute',
-            handleSuggestionSelect(restaurantAttributeField)
-          )}
-        </View>
-      ) : null}
-
-      {selectedType ? (
-        <View style={styles.section}>
-          <Text variant="body" weight="semibold" style={styles.sectionLabel}>
-            Description
-          </Text>
-          <TextInput
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Add context or a short story for this poll"
-            style={[styles.input, styles.descriptionInput]}
-            multiline
-          />
-        </View>
-      ) : null}
-
-      <TouchableOpacity
-        onPress={() => void handleSubmit()}
-        style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
-        disabled={submitting}
-      >
-        <Text variant="body" weight="semibold" style={styles.submitButtonText}>
-          {submitting ? 'Publishing…' : 'Publish poll'}
+      {/* Options form from the discussion — they are never hand-seeded. */}
+      <View style={styles.section}>
+        <Text variant="body" weight="semibold" style={styles.sectionLabel}>
+          Options
         </Text>
-      </TouchableOpacity>
+        <View style={styles.optionsPlaceholder} pointerEvents="none">
+          <Text variant="body" style={styles.optionsPlaceholderText}>
+            Your ranking forms from the discussion — no need to add options.
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text variant="body" weight="semibold" style={styles.sectionLabel}>
+          Description
+        </Text>
+        <TextInput
+          value={description}
+          onChangeText={setDescription}
+          placeholder="Add context or your own take to kick off the discussion"
+          placeholderTextColor={themeColors.textMuted}
+          style={[styles.input, styles.descriptionInput]}
+          multiline
+        />
+      </View>
+
+      <View style={styles.section}>
+        <Text variant="body" weight="semibold" style={styles.sectionLabel}>
+          Closes in
+        </Text>
+        <View style={styles.windowRow}>
+          {CLOSE_WINDOW_OPTIONS.map((option) => {
+            const active = closeWindowDays === option.value;
+            return (
+              <Pressable
+                key={option.value}
+                onPress={() => setCloseWindowDays(option.value)}
+                style={[styles.windowChip, active && styles.windowChipActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={`Close in ${option.label}`}
+              >
+                <Text
+                  variant="caption"
+                  weight="semibold"
+                  style={[styles.windowChipText, active && styles.windowChipTextActive]}
+                >
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
     </View>
   );
 
@@ -567,7 +315,8 @@ export const usePollCreationPanelSpec = ({
     }),
     sceneChrome: {
       underlayComponent: null,
-      backgroundComponent: <FrostedGlassBackground />,
+      // White, full-bleed sheet (no frosted glass) for the poll-creation scene.
+      backgroundComponent: <View style={styles.sheetSurface} />,
       headerComponent,
       overlayComponent: null,
     },
@@ -577,22 +326,35 @@ export const usePollCreationPanelSpec = ({
       renderItem: () => null,
       estimatedItemSize: 880,
       ListHeaderComponent: listHeaderComponent,
+      // §J: the Publish CTA rides with the sheet (pinned chin), keyboard-aware.
+      ListChromeComponent: publishChin,
     },
     sceneBodyTransport: {
       contentContainerStyle: {
         paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
         paddingTop: 16,
+        // Clear the pinned Publish chin so the last field isn't hidden behind it.
         paddingBottom: contentBottomPadding,
       },
       keyboardShouldPersistTaps: 'handled',
-      bounces: false,
-      alwaysBounceVertical: false,
-      overScrollMode: 'never',
+      // §J: dragging the form dismisses the keyboard (matches PollDetailPanel); a tap on any field
+      // re-raises it. Over-scroll enforced no-bounce structurally by BottomSheetScrollContainer.
+      keyboardDismissMode: 'on-drag',
     },
   };
 };
 
 const styles = StyleSheet.create({
+  // White body layer scoped BELOW the header so the header plate's cutouts see through to the
+  // shared frosty foundation (matches the result sheet). Frost → this white layer → form content.
+  sheetSurface: {
+    position: 'absolute',
+    top: OVERLAY_TAB_HEADER_HEIGHT,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#ffffff',
+  },
   sheetTitle: {
     color: themeColors.text,
     flex: 1,
@@ -606,43 +368,6 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     marginBottom: 8,
   },
-  templateList: {
-    gap: 10,
-  },
-  templateCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: '#ffffff',
-  },
-  templateSelected: {
-    borderColor: ACCENT,
-    backgroundColor: 'rgba(167, 139, 250, 0.08)',
-  },
-  templateIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: 'rgba(167, 139, 250, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  templateTextGroup: {
-    flex: 1,
-  },
-  templateTitle: {
-    color: '#0f172a',
-  },
-  templateSubtitle: {
-    color: themeColors.textBody,
-    marginTop: 4,
-    fontSize: FONT_SIZES.caption,
-    lineHeight: LINE_HEIGHTS.caption,
-  },
   input: {
     borderWidth: 1,
     borderColor: BORDER,
@@ -652,10 +377,63 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.subtitle,
     lineHeight: LINE_HEIGHTS.subtitle,
     backgroundColor: SURFACE,
+    color: themeColors.textPrimary,
+  },
+  subjectInput: {
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  optionsPlaceholder: {
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: BORDER,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 16,
+    backgroundColor: '#f8fafc',
+  },
+  optionsPlaceholderText: {
+    color: themeColors.textBody,
+    lineHeight: 20,
   },
   descriptionInput: {
     minHeight: 100,
     textAlignVertical: 'top',
+  },
+  windowRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  windowChip: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    alignItems: 'center',
+  },
+  windowChipActive: {
+    borderColor: ACCENT,
+    backgroundColor: 'rgba(255, 51, 104, 0.08)',
+  },
+  windowChipText: {
+    color: themeColors.textBody,
+  },
+  windowChipTextActive: {
+    color: ACCENT,
+  },
+  // §J: pinned, keyboard-aware Publish chin at the sheet bottom (mirrors the PollDetailPanel composer).
+  publishChin: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: '#ffffff',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: BORDER,
   },
   submitButton: {
     backgroundColor: ACCENT,
@@ -665,44 +443,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   submitButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   submitButtonText: {
     color: '#ffffff',
-  },
-  autocompleteBox: {
-    marginTop: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-    maxHeight: 200,
-    overflow: 'hidden',
-  },
-  autocompleteLoadingRow: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  autocompleteLoadingText: {
-    color: themeColors.textBody,
-  },
-  autocompleteEmptyText: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: themeColors.textBody,
-  },
-  autocompleteItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: BORDER,
-  },
-  autocompletePrimary: {
-    color: '#111827',
-  },
-  autocompleteSecondary: {
-    color: themeColors.textBody,
-    marginTop: 2,
-    textTransform: 'capitalize',
   },
 });

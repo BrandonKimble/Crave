@@ -2,7 +2,12 @@ import React from 'react';
 import { Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type { Poll } from '../../../services/polls';
+import type {
+  Poll,
+  PollFeedSort,
+  PollFeedTime,
+  PollFeedType,
+} from '../../../services/polls';
 import { useCityStore } from '../../../store/cityStore';
 import { useSystemStatusStore } from '../../../store/systemStatusStore';
 import {
@@ -60,6 +65,14 @@ export type PollsPanelFeedRuntime = {
   shouldHoldFreshLiveContent: boolean;
   snapPoints: SnapPoints;
   visiblePolls: Poll[];
+  feedState: 'active' | 'closed';
+  setFeedState: React.Dispatch<React.SetStateAction<'active' | 'closed'>>;
+  feedSort: PollFeedSort | null;
+  setFeedSort: React.Dispatch<React.SetStateAction<PollFeedSort | null>>;
+  feedType: PollFeedType;
+  setFeedType: React.Dispatch<React.SetStateAction<PollFeedType>>;
+  feedTime: PollFeedTime;
+  setFeedTime: React.Dispatch<React.SetStateAction<PollFeedTime>>;
 };
 
 export const usePollsPanelFeedRuntime = ({
@@ -119,6 +132,14 @@ export const usePollsPanelFeedRuntime = ({
   );
   const [pollFeedFreshnessError, setPollFeedFreshnessError] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  // Live (active) vs Results (closed) split + sort (§4/§6). Sort null = silent
+  // demand-ranked default.
+  const [feedState, setFeedState] = React.useState<'active' | 'closed'>('active');
+  const [feedSort, setFeedSort] = React.useState<PollFeedSort | null>(null);
+  // Type filter (§6): all (default) | polls | discussions.
+  const [feedType, setFeedType] = React.useState<PollFeedType>('all');
+  // Time filter (§6): all_time (default) | this_week.
+  const [feedTime, setFeedTime] = React.useState<PollFeedTime>('all_time');
 
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(
@@ -171,6 +192,10 @@ export const usePollsPanelFeedRuntime = ({
     userLocation,
     marketOverride,
     pollFeedRequiresFreshNetwork,
+    feedState,
+    feedSort,
+    feedType,
+    feedTime,
     setPolls,
     setMarketKey,
     setMarketName,
@@ -238,6 +263,14 @@ export const usePollsPanelFeedRuntime = ({
       shouldHoldFreshLiveContent,
       snapPoints,
       visiblePolls,
+      feedState,
+      setFeedState,
+      feedSort,
+      setFeedSort,
+      feedType,
+      setFeedType,
+      feedTime,
+      setFeedTime,
     }),
     [
       candidateLocalityName,
@@ -260,6 +293,10 @@ export const usePollsPanelFeedRuntime = ({
       shouldHoldFreshLiveContent,
       snapPoints,
       visiblePolls,
+      feedState,
+      feedSort,
+      feedType,
+      feedTime,
     ]
   );
 };

@@ -2,7 +2,6 @@ import React from 'react';
 import type { LayoutChangeEvent } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 
-import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { OVERLAY_TAB_HEADER_HEIGHT } from './overlaySheetStyles';
 import { getPerfScenarioWorkNow, logPerfScenarioWorkSpan } from '../perf/perf-scenario-work-span';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
@@ -376,12 +375,9 @@ export const SearchResultsPageBundleHost = React.memo(
       onHeaderLayout(event);
     };
 
-    const backgroundComponent = (
-      <>
-        <FrostedGlassBackground />
-        {pageBundle.backgroundComponent}
-      </>
-    );
+    // Frost now comes from the shared page-frame foundation (BottomSheetSceneStackPageFrame);
+    // the result sheet just contributes its own background material on top of it.
+    const backgroundComponent = pageBundle.backgroundComponent;
 
     return (
       <BottomSheetSceneStackPageFrame

@@ -69,10 +69,13 @@ export const bottomSheetSceneStackHostStyles = StyleSheet.create({
     position: 'relative',
   },
   listChromeOverlay: {
+    // Fills the body frame (box-none) so list chrome can anchor to top OR bottom and
+    // ride with the sheet — e.g. the poll-detail compose chin pinned to the bottom.
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
     zIndex: 2,
   },
   dualListLayer: {

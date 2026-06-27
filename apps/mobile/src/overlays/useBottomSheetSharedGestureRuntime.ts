@@ -330,9 +330,18 @@ export const useBottomSheetSharedGestureRuntime = ({
         const runtimeSnapValues = resolveRuntimeSnapValues();
         const rawNext = expandStartSheetY.value + (event.absoluteY - expandStartTouchY.value);
         const allowTopElastic = expandAllowTopElastic.value && !expandHandoffLocked.value;
+        // BOTH boundaries rubber-band instead of hard-clamping (the old `Math.min(upperBound, …)`
+        // felt restrictive). The top stays HARD when we're not allowing top-elastic — that path
+        // hands the drag off to the list scroll, so `Math.max(expanded, …)` pins it at expanded
+        // while `applyElasticBounds` still lets the BOTTOM (collapsed/hidden) over-drag + spring
+        // back. For a dismissable sheet (upperBound = hidden) the bottom elastic only engages past
+        // hidden — off-screen — so drag-to-dismiss is unaffected.
         const next = allowTopElastic
           ? applyElasticBounds(rawNext, runtimeSnapValues.expanded, runtimeSnapValues.upperBound)
-          : Math.max(runtimeSnapValues.expanded, Math.min(runtimeSnapValues.upperBound, rawNext));
+          : Math.max(
+              runtimeSnapValues.expanded,
+              applyElasticBounds(rawNext, runtimeSnapValues.expanded, runtimeSnapValues.upperBound)
+            );
         sheetY.value = next;
       })
       .onEnd((event, success) => {

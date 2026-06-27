@@ -127,6 +127,7 @@ interface RestaurantQueryRow {
   price_level?: Prisma.Decimal | number | string | null;
   price_level_updated_at?: Date | null;
   crave_score?: Prisma.Decimal | number | string | null;
+  crave_score_exact?: Prisma.Decimal | number | string | null;
   score_delta_7d?: Prisma.Decimal | number | string | null;
   score_info?: Prisma.JsonValue | null;
   score_subject_type?: string | null;
@@ -173,6 +174,7 @@ interface DishQueryRow {
   total_upvotes: number;
   last_mentioned_at: Date | null;
   connection_crave_score?: Prisma.Decimal | number | string | null;
+  connection_crave_score_exact?: Prisma.Decimal | number | string | null;
   connection_score_delta_7d?: Prisma.Decimal | number | string | null;
   connection_score_info?: Prisma.JsonValue | null;
   score_subject_type?: string | null;
@@ -185,6 +187,7 @@ interface DishQueryRow {
   restaurant_name: string;
   restaurant_aliases: string[];
   restaurant_crave_score?: Prisma.Decimal | number | string | null;
+  restaurant_crave_score_exact?: Prisma.Decimal | number | string | null;
   restaurant_score_delta_7d?: Prisma.Decimal | number | string | null;
   restaurant_score_info?: Prisma.JsonValue | null;
   restaurant_price_level?: Prisma.Decimal | number | string | null;
@@ -253,6 +256,17 @@ interface ExecuteDualParams {
   excludeRestaurantIds?: string[];
   excludeConnectionIds?: string[];
   directives?: SearchExecutionDirectives;
+  /**
+   * Restrict execution to a subset of axes. Defaults to running BOTH. When an
+   * axis is omitted/false its SQL is skipped entirely (no DB round-trip) and it
+   * comes back empty (restaurants:[] / dishes:[], count 0). Prefer the
+   * {@link SearchQueryExecutor.executeSingle} wrapper for the single-axis case.
+   */
+  axes?: { restaurant?: boolean; dish?: boolean };
+}
+
+interface ExecuteSingleParams extends Omit<ExecuteDualParams, 'axes'> {
+  axis: 'restaurant' | 'dish';
 }
 
 interface ExecuteDualResult {
@@ -451,6 +465,23 @@ export class SearchQueryExecutor {
   }
 
   /**
+   * Execute a SINGLE axis (restaurant OR dish) and return the same
+   * ExecuteDualResult shape with the other axis empty. Use this when the caller
+   * only consumes one side so we don't pay for a query whose results are thrown
+   * away — e.g. a favorites RESTAURANT list never reads the dish axis.
+   */
+  async executeSingle(params: ExecuteSingleParams): Promise<ExecuteDualResult> {
+    const { axis, ...rest } = params;
+    return this.executeDual({
+      ...rest,
+      axes:
+        axis === 'restaurant'
+          ? { restaurant: true, dish: false }
+          : { restaurant: false, dish: true },
+    });
+  }
+
+  /**
    * Execute dual parallel queries - one for restaurants, one for dishes
    * This returns independent lists that don't share the same limit.
    */
@@ -466,7 +497,11 @@ export class SearchQueryExecutor {
       excludeRestaurantIds,
       excludeConnectionIds,
       directives,
+      axes,
     } = params;
+
+    const runRestaurant = axes?.restaurant ?? true;
+    const runDish = axes?.dish ?? true;
 
     const executeStart = performance.now();
     const searchCenter = this.resolveSearchCenter(request);
@@ -474,46 +509,66 @@ export class SearchQueryExecutor {
     const effectiveRestaurantPagination = restaurantPagination ?? pagination;
     const effectiveDishPagination = dishPagination ?? pagination;
 
-    // Build both queries in parallel
+    // Build the enabled queries in parallel. A skipped axis stays null and its
+    // SQL is never issued (see the conditional DB execution below).
     const buildStart = performance.now();
-    const restaurantQuery = this.queryBuilder.buildRestaurantQuery({
-      plan,
-      pagination: effectiveRestaurantPagination,
-      searchCenter,
-      topDishesLimit,
-      excludeRestaurantIds,
-      directives,
-    });
-    const dishQuery = this.queryBuilder.buildDishQuery({
-      plan,
-      pagination: effectiveDishPagination,
-      searchCenter,
-      excludeConnectionIds,
-      directives,
-    });
+    const restaurantQuery = runRestaurant
+      ? this.queryBuilder.buildRestaurantQuery({
+          plan,
+          pagination: effectiveRestaurantPagination,
+          searchCenter,
+          topDishesLimit,
+          excludeRestaurantIds,
+          directives,
+        })
+      : null;
+    const dishQuery = runDish
+      ? this.queryBuilder.buildDishQuery({
+          plan,
+          pagination: effectiveDishPagination,
+          searchCenter,
+          excludeConnectionIds,
+          directives,
+        })
+      : null;
     const buildSqlMs = performance.now() - buildStart;
 
     const referenceDate = new Date();
     const userLocation = this.normalizeUserLocation(request.userLocation);
 
-    // Execute both queries in parallel
+    // Execute the enabled queries in parallel. A skipped axis resolves to empty
+    // rows + an empty count without touching the DB, so all downstream mapping
+    // (contexts, open-now filter, map*) flows through unchanged and returns [].
     const dbStart = performance.now();
     const [
       [restaurantRows, restaurantCountResult],
       [dishRows, dishCountResult],
     ] = await Promise.all([
-      Promise.all([
-        this.prisma.$queryRaw<RestaurantQueryRow[]>(restaurantQuery.dataSql),
-        this.prisma.$queryRaw<Array<{ total_restaurants: bigint }>>(
-          restaurantQuery.countSql,
-        ),
-      ]),
-      Promise.all([
-        this.prisma.$queryRaw<DishQueryRow[]>(dishQuery.dataSql),
-        this.prisma.$queryRaw<
-          Array<{ total_connections: bigint; total_restaurants: bigint }>
-        >(dishQuery.countSql),
-      ]),
+      restaurantQuery
+        ? Promise.all([
+            this.prisma.$queryRaw<RestaurantQueryRow[]>(
+              restaurantQuery.dataSql,
+            ),
+            this.prisma.$queryRaw<Array<{ total_restaurants: bigint }>>(
+              restaurantQuery.countSql,
+            ),
+          ])
+        : Promise.resolve<
+            [RestaurantQueryRow[], Array<{ total_restaurants: bigint }>]
+          >([[], []]),
+      dishQuery
+        ? Promise.all([
+            this.prisma.$queryRaw<DishQueryRow[]>(dishQuery.dataSql),
+            this.prisma.$queryRaw<
+              Array<{ total_connections: bigint; total_restaurants: bigint }>
+            >(dishQuery.countSql),
+          ])
+        : Promise.resolve<
+            [
+              DishQueryRow[],
+              Array<{ total_connections: bigint; total_restaurants: bigint }>,
+            ]
+          >([[], []]),
     ]);
     const dbQueryMs = performance.now() - dbStart;
 
@@ -630,9 +685,16 @@ export class SearchQueryExecutor {
     );
     const totalDishCount = Number(dishCountResult[0]?.total_connections ?? 0);
 
-    // Combine SQL previews if requested
+    // Combine SQL previews if requested (only for the axes that actually ran)
     const sqlPreview = includeSqlPreview
-      ? `-- Restaurant Query:\n${restaurantQuery.preview}\n\n-- Dish Query:\n${dishQuery.preview}`
+      ? [
+          restaurantQuery
+            ? `-- Restaurant Query:\n${restaurantQuery.preview}`
+            : null,
+          dishQuery ? `-- Dish Query:\n${dishQuery.preview}` : null,
+        ]
+          .filter((part): part is string => part !== null)
+          .join('\n\n')
       : null;
 
     return {
@@ -642,19 +704,19 @@ export class SearchQueryExecutor {
       totalDishCount,
       metadata: {
         boundsApplied:
-          restaurantQuery.metadata.boundsApplied ||
-          dishQuery.metadata.boundsApplied,
+          (restaurantQuery?.metadata.boundsApplied ?? false) ||
+          (dishQuery?.metadata.boundsApplied ?? false),
         openNowApplied,
         openNowSupportedRestaurants: openNowSupportedCount,
         openNowUnsupportedRestaurants: openNowUnsupportedCount,
         openNowUnsupportedRestaurantIds: openNowUnsupportedIds,
         openNowFilteredOut,
         priceFilterApplied:
-          restaurantQuery.metadata.priceFilterApplied ||
-          dishQuery.metadata.priceFilterApplied,
+          (restaurantQuery?.metadata.priceFilterApplied ?? false) ||
+          (dishQuery?.metadata.priceFilterApplied ?? false),
         minimumVotesApplied:
-          restaurantQuery.metadata.minimumVotesApplied ||
-          dishQuery.metadata.minimumVotesApplied,
+          (restaurantQuery?.metadata.minimumVotesApplied ?? false) ||
+          (dishQuery?.metadata.minimumVotesApplied ?? false),
       },
       sqlPreview,
       timings,
@@ -2396,6 +2458,9 @@ export class SearchQueryExecutor {
           row.crave_score,
           `restaurant:${row.restaurant_id}`,
         ),
+        // High-precision percentile_rank for tie-proof ordering (map badge == list position). Optional:
+        // older score rows / paths without the column fall back to craveScore ordering on the client.
+        craveScoreExact: this.toOptionalNumber(row.crave_score_exact) ?? undefined,
         scoreDelta7d: this.toOptionalNumber(row.score_delta_7d),
         scoreInfo: this.parseScoreInfo(row.score_info),
         marketKey: row.market_key ?? undefined,
@@ -2472,6 +2537,8 @@ export class SearchQueryExecutor {
           row.connection_crave_score,
           `connection:${row.connection_id}`,
         ),
+        // High-precision percentile_rank — the map ranks pins by this so the badge == the results-list position.
+        craveScoreExact: this.toOptionalNumber(row.connection_crave_score_exact) ?? undefined,
         scoreDelta7d: this.toOptionalNumber(row.connection_score_delta_7d),
         scoreInfo: this.parseScoreInfo(row.connection_score_info),
         marketKey: row.market_key ?? undefined,

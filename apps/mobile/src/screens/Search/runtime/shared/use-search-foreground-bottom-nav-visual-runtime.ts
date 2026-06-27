@@ -11,6 +11,7 @@ import {
 } from 'react-native-reanimated';
 
 import {
+  APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE,
   resolveAppRouteNavSilhouetteClipSample,
   resolveRoundedAppRouteNavSilhouetteClipSample,
   resolveAppRouteNavSilhouetteSheetExclusionModeValue,
@@ -31,6 +32,7 @@ import {
   logPerfScenarioWorkSpan,
 } from '../../../../perf/perf-scenario-work-span';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
+import { useHasNavHideIntent } from '../../../../navigation/runtime/nav-hide-intent-store';
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
@@ -123,8 +125,27 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     !isPersistentPollHandoffCommitted;
   const shouldStartBottomNavHiddenForResultsMotion = shouldHideBottomNavForSearchResultsMotion;
   const shouldHideBottomNavForSuggestionSurface = isSuggestionPanelActive;
+  // Any scene can request the nav-push transition via the shareable intent registry
+  // (e.g. the poll-detail thread). Reuses this exact motion + sheet-grow.
+  const hasExternalNavHideIntent = useHasNavHideIntent();
   const shouldHideBottomNavForMotion =
-    shouldHideBottomNavForSearchResultsMotion || shouldHideBottomNavForSuggestionSurface;
+    shouldHideBottomNavForSearchResultsMotion ||
+    shouldHideBottomNavForSuggestionSurface ||
+    hasExternalNavHideIntent;
+  // A scene riding the shareable nav-push intent (e.g. poll detail) must hold the
+  // animatedSearchTransition clip not just while the intent is live but THROUGH the
+  // close animation — until the nav has fully slid back home. If we reverted the clip
+  // the instant the intent drops, the dockedPersistentPoll hard clip would snap back to
+  // the nav top while the nav is still mid-slide, flashing the map below. We latch on
+  // when the intent arrives and clear it (below) once the nav settles. Scoped to the
+  // intent so suggestion-surface nav hides never trip it.
+  const [isExternalNavPushTransitionActive, setIsExternalNavPushTransitionActive] =
+    React.useState(false);
+  React.useEffect(() => {
+    if (hasExternalNavHideIntent) {
+      setIsExternalNavPushTransitionActive(true);
+    }
+  }, [hasExternalNavHideIntent]);
   const shouldHideBottomNavForRender = shouldHideBottomNavForSuggestionSurface;
   const navBarTop = navBarTopForSnaps;
   const navBarHeight = fallbackNavBarHeight;
@@ -205,16 +226,42 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     return bottomNavHideProgress.value;
   }, [bottomNavHideProgress]);
 
-  const navSilhouetteSheetExclusionModeValue = useDerivedValue(
-    () => resolveAppRouteNavSilhouetteSheetExclusionModeValue(surfaceVisualPolicy.sheetClipMode),
-    [surfaceVisualPolicy.sheetClipMode]
-  );
+  const navSilhouetteSheetExclusionModeValue = useDerivedValue(() => {
+    const baseModeValue = resolveAppRouteNavSilhouetteSheetExclusionModeValue(
+      surfaceVisualPolicy.sheetClipMode
+    );
+    // While a scene holds the shareable nav-push intent, ride the exact clip the
+    // search-results sheet uses (animatedSearchTransition): the sheet grows full-screen
+    // and the dockedPersistentPoll hard clip at the nav top lifts (no hard edge / no map
+    // peeking below). Only override the docked-poll base — search/results already supply
+    // animatedSearchTransition, and other modes (none/static) aren't poll-surface clips.
+    if (
+      isExternalNavPushTransitionActive &&
+      baseModeValue === APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.dockedPersistentPoll
+    ) {
+      return APP_ROUTE_NAV_SILHOUETTE_SHEET_EXCLUSION_MODE_VALUE.animatedSearchTransition;
+    }
+    return baseModeValue;
+  }, [surfaceVisualPolicy.sheetClipMode, isExternalNavPushTransitionActive]);
   const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
   const navSilhouetteMotionRuntime = useAppRouteNavSilhouetteMotionRuntime({
     bottomNavHideProgress: bottomNavVisualProgress,
     navBarCutoutIsHidingValue,
     bottomNavHiddenTranslateY,
   });
+  // Release the nav-push clip latch once the intent has dropped AND the nav has slid
+  // fully home (navTranslateY back to 0). This is what makes the close lockstep: the
+  // sheet stays full-screen, covering the map, until the nav is in place underneath it,
+  // then the docked-poll hard clip resumes with nothing to flash.
+  useAnimatedReaction(
+    () => hasExternalNavHideIntent || navSilhouetteMotionRuntime.navTranslateY.value > 0.5,
+    (stillActive, previous) => {
+      if (!stillActive && stillActive !== previous) {
+        runOnJS(setIsExternalNavPushTransitionActive)(false);
+      }
+    },
+    [hasExternalNavHideIntent]
+  );
   const bottomNavMotionRuntime = React.useMemo(
     () => ({
       navOpacity: bottomNavOpacity,

@@ -297,9 +297,8 @@ export const useSearchRouteSearchSceneModelOwner = ({
             .handleResultsListMomentumEnd,
         showsVerticalScrollIndicator: true,
         keyboardDismissMode: 'on-drag',
-        bounces: false,
-        alwaysBounceVertical: false,
-        overScrollMode: 'never',
+        // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (the shared
+        // sheet scroll container) so the scroll↔sheet handoff works — no per-scene config needed.
         testID: 'search-results-flatlist',
         activeList: routeSearchSceneRenderRuntime.activeList,
         flashListProps:

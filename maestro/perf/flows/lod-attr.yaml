@@ -1,0 +1,22 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 45000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=12.6&label=attr_seed'
+- waitForAnimationToEnd: { timeout: 1500 }
+- tapOn: { point: '25%, 17%' }
+- extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 3500 }
+- openLink: 'crave://perf-scenario-mark?phase=REVEAL_DONE&label=attr'
+- waitForAnimationToEnd: { timeout: 800 }
+# instant zoom jumps (LOD re-eval test):
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=15.0&label=JUMP_IN'
+- waitForAnimationToEnd: { timeout: 2000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=11.2&label=JUMP_OUT'
+- waitForAnimationToEnd: { timeout: 2000 }
+# real pan gesture (changes on-screen set, fires onCameraChanged isMoving=true):
+- swipe: { start: '50%, 22%', end: '70%, 30%', duration: 900 }
+- waitForAnimationToEnd: { timeout: 1500 }
+- swipe: { start: '70%, 30%', end: '50%, 22%', duration: 900 }
+- waitForAnimationToEnd: { timeout: 1500 }

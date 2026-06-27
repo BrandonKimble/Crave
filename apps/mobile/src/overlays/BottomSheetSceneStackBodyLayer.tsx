@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 import type {
   SceneStackBodyContentLayerProps,
@@ -20,6 +20,7 @@ const shouldSkipSceneStackBodyFrameUpdate = (
 ): boolean =>
   previousProps.sceneKey === nextProps.sceneKey &&
   previousProps.visibilityStyle === nextProps.visibilityStyle &&
+  previousProps.pointerEvents === nextProps.pointerEvents &&
   previousProps.children === nextProps.children;
 
 const shouldPublishSceneBodyDataActivity = (sceneKey: string): boolean =>
@@ -110,12 +111,16 @@ const SceneStackBodyContentHost = React.memo(
 );
 
 export const SceneStackBodyFrame = React.memo(
-  ({ sceneKey, visibilityStyle, children }: SceneStackBodyFrameProps) => {
+  ({ sceneKey, visibilityStyle, pointerEvents, children }: SceneStackBodyFrameProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
     const bodyFrame = (
-      <View key={`scene-${sceneKey}`} style={[styles.sceneStackBodyLayer, visibilityStyle]}>
+      <Animated.View
+        key={`scene-${sceneKey}`}
+        pointerEvents={pointerEvents}
+        style={[styles.sceneStackBodyLayer, visibilityStyle]}
+      >
         {children}
-      </View>
+      </Animated.View>
     );
 
     if (!onProfilerRender) {

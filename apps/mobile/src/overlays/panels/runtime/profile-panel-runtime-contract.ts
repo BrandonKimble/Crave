@@ -44,5 +44,5 @@ export type ProfilePanelActionsRuntime = {
   isSignedIn: boolean;
   handleOpenSettings: () => void;
   handlePollPress: (poll: Poll) => void;
-  handleListPress: (listId: string) => void;
+  handleListPress: (list: FavoriteListSummary) => void;
 };

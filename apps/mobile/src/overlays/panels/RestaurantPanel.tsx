@@ -26,7 +26,6 @@ import {
   OVERLAY_TAB_HEADER_HEIGHT,
 } from '../overlaySheetStyles';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
-import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import SquircleSpinner from '../../components/SquircleSpinner';
 import { getPriceRangeLabel } from '../../constants/pricing';
 import { calculateSnapPoints } from '../sheetUtils';
@@ -508,7 +507,9 @@ export const useRestaurantPanelSpec = ({
     );
   }, [emptyAreaMinHeight, isLoading]);
 
-  const backgroundComponent = React.useMemo(() => <FrostedGlassBackground />, []);
+  // Frost is the shared page-frame foundation now; the restaurant body is frost-through (dish
+  // cards paint their own white), so it contributes no extra background material.
+  const backgroundComponent = null;
 
   if (!data) {
     return null;

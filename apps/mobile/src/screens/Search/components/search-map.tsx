@@ -164,8 +164,20 @@ const PIN_COLLISION_OBSTACLE_GEOMETRY: 'outline' | 'fill' | 'off' = 'fill' as
 // disabling this obstacle alone restored them; mutex-off did not). 0.6 was the value prior "missing
 // labels" debugging settled on: obstacle covers the pin core so own-labels clear it, while other pins'
 // labels still yield to the pin. Keep ≤ ~1.0; do not re-bump without re-checking labels actually paint.
-const PIN_COLLISION_OBSTACLE_SCALE = 0.6;
-const PIN_COLLISION_SIDE_PAD_PX = 3;
+// 2026-06-23: the accurate `lopreal` probe (queryRenderedFeatures of label layers over each pin's body)
+// proved the 0.6 compromise FAILS — 18/30 promoted pins have a foreign label rendered on their body at
+// settle. Trying full body (1.0) so OTHER labels yield to the whole pin; verified empirically via
+// lopreal.covered (must drop) vs renderedLabels/labelEff (own labels must survive — own label sits below
+// the bottom-anchored body, so an above-anchor body obstacle should reposition not cull). Revert if labels drop.
+const PIN_COLLISION_OBSTACLE_SCALE = 1.0;
+// DOT-only collision obstacle scale. The 0.6 label obstacle above is a forced compromise: it must be
+// big enough that OTHER restaurants' labels yield to the pin, but small enough that the pin's OWN
+// min-gapped name-label clears it (1.1 swallowed the own label — see the comment above). That core-sized
+// obstacle UNDER-covers the pin body, so a neighbour restaurant's coverage DOT that lands inside the pin
+// body but outside the 0.6 core is not culled → it paints over the pin body (#9). Fix = a SEPARATE,
+// full-pin-body obstacle that ONLY DOTS yield to (placed BELOW the labels in the layer stack, so labels
+// never yield to it — no own-label regression — but ABOVE the dots, so dots yield to the whole body).
+const PIN_DOT_COLLISION_OBSTACLE_SCALE = 1.0;
 // Move the shared per-restaurant collision point used to enforce "one candidate label" placement.
 // This avoids the mutex being blocked by another pin's collision obstacle when pins stack.
 const LABEL_MUTEX_POINT: 'below-pin' | 'above-pin' = 'above-pin';
@@ -202,10 +214,6 @@ const PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX =
   PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_OUTLINE_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 const PIN_COLLISION_FILL_OFFSET_IMAGE_PX =
   PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
-const PIN_COLLISION_OUTLINE_SIDE_PAD_IMAGE_PX =
-  PIN_COLLISION_SIDE_PAD_PX / (STYLE_PINS_OUTLINE_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
-const PIN_COLLISION_FILL_SIDE_PAD_IMAGE_PX =
-  PIN_COLLISION_SIDE_PAD_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 // Pin fade timing lives natively now: the CADisplayLink steppers own ALL pin opacity
 // animation (LOD promote/demote + presentation reveal/dismiss). There is no JS/Mapbox
 // style transition for pin opacity — the stepper writes the feature-state per frame, so
@@ -307,13 +315,7 @@ type SearchMapMarkerSceneProps = {
   labelCandidateStyles: Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
   restaurantLabelPinCollisionLayerKey: string;
   restaurantLabelPinCollisionLayerId: string;
-  restaurantLabelPinCollisionLayerIdSideLeft: string;
-  restaurantLabelPinCollisionLayerIdSideRight: string;
-  restaurantLabelPinCollisionStyles: {
-    center: MapboxGL.SymbolLayerStyle;
-    left: MapboxGL.SymbolLayerStyle;
-    right: MapboxGL.SymbolLayerStyle;
-  };
+  restaurantLabelPinCollisionStyle: MapboxGL.SymbolLayerStyle;
 };
 
 const SearchMapMarkerScene = React.memo(
@@ -328,9 +330,7 @@ const SearchMapMarkerScene = React.memo(
     labelCandidateStyles,
     restaurantLabelPinCollisionLayerKey,
     restaurantLabelPinCollisionLayerId,
-    restaurantLabelPinCollisionLayerIdSideLeft,
-    restaurantLabelPinCollisionLayerIdSideRight,
-    restaurantLabelPinCollisionStyles,
+    restaurantLabelPinCollisionStyle,
   }: SearchMapMarkerSceneProps) => {
     return (
       <React.Fragment>
@@ -408,25 +408,19 @@ const SearchMapMarkerScene = React.memo(
             slot={undefined}
             sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
             belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            style={restaurantLabelPinCollisionStyles.center}
+            style={restaurantLabelPinCollisionStyle}
             filter={promotedPinCollisionObstacleFilter}
           />
+          {/* DOT-only full-body obstacle (#9): below the labels (so labels never yield to it) but above
+              the dots (so neighbouring restaurants' dots yield to the WHOLE pin body, not just the 0.6
+              label core). belowLayerID = the pins z-anchor → it places below the labels, above the dots. */}
           <MapboxGL.SymbolLayer
-            key={`${restaurantLabelPinCollisionLayerKey}-left`}
-            id={restaurantLabelPinCollisionLayerIdSideLeft}
+            key={`${restaurantLabelPinCollisionLayerKey}-dotbody`}
+            id={RESTAURANT_PIN_DOT_COLLISION_LAYER_ID}
             slot={undefined}
             sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
-            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            style={restaurantLabelPinCollisionStyles.left}
-            filter={promotedPinCollisionObstacleFilter}
-          />
-          <MapboxGL.SymbolLayer
-            key={`${restaurantLabelPinCollisionLayerKey}-right`}
-            id={restaurantLabelPinCollisionLayerIdSideRight}
-            slot={undefined}
-            sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
-            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-            style={restaurantLabelPinCollisionStyles.right}
+            belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+            style={DOT_PIN_COLLISION_STYLE}
             filter={promotedPinCollisionObstacleFilter}
           />
         </MapboxGL.ShapeSource>
@@ -446,11 +440,7 @@ const SearchMapMarkerScene = React.memo(
       nextProps.restaurantLabelPinCollisionLayerKey &&
     previousProps.restaurantLabelPinCollisionLayerId ===
       nextProps.restaurantLabelPinCollisionLayerId &&
-    previousProps.restaurantLabelPinCollisionLayerIdSideLeft ===
-      nextProps.restaurantLabelPinCollisionLayerIdSideLeft &&
-    previousProps.restaurantLabelPinCollisionLayerIdSideRight ===
-      nextProps.restaurantLabelPinCollisionLayerIdSideRight &&
-    previousProps.restaurantLabelPinCollisionStyles === nextProps.restaurantLabelPinCollisionStyles
+    previousProps.restaurantLabelPinCollisionStyle === nextProps.restaurantLabelPinCollisionStyle
 );
 
 type SearchMapViewSceneProps = {
@@ -755,6 +745,9 @@ export type RestaurantFeatureProperties = {
   restaurantId: string;
   restaurantName: string;
   craveScore: number;
+  // High-precision Crave score (percentile_rank, 0..1) — the map RANKS by this so the badge == the
+  // results-list position; craveScore (display, rounded to 1 decimal) is for the number/color only.
+  craveScoreExact?: number | null;
   scoreDelta7d?: number | null;
   markerKey?: string;
   nativeLodZ?: number;
@@ -767,6 +760,9 @@ export type RestaurantFeatureProperties = {
   // Pre-baked pin badge sprite id (rank in-viewport / score out-of-viewport),
   // chosen in the source builder and consumed by the pin layer's icon-image.
   badgeImageId?: string;
+  // Active-color variant of the badge (same rank number) — the pin layer swaps to this when the marker is
+  // highlighted (selected/pressed) so a tapped pin recolors to the active color while keeping its rank.
+  activeBadgeImageId?: string;
   // Pre-baked circle-dot sprite id for this marker's score bucket (dot-b0..dot-b7),
   // chosen in the source builder and consumed by the dot layer's icon-image.
   dotImageId?: string;
@@ -1054,6 +1050,8 @@ const OVERLAY_Z_ANCHOR_STYLE: MapboxGL.SymbolLayerStyle = {
 } as MapboxGL.SymbolLayerStyle;
 export const RESTAURANT_LABEL_SOURCE_ID = 'restaurant-source';
 const RESTAURANT_LABEL_COLLISION_SOURCE_ID = 'restaurant-label-collision-source';
+// Full-pin-body obstacle layer that ONLY dots yield to (placed below the labels). See DOT_PIN_COLLISION_STYLE.
+const RESTAURANT_PIN_DOT_COLLISION_LAYER_ID = 'restaurant-pin-dot-collision-layer';
 export type LabelCandidate = 'bottom' | 'right' | 'top' | 'left';
 const LABEL_CANDIDATES_IN_ORDER: ReadonlyArray<LabelCandidate> = ['bottom', 'right', 'top', 'left'];
 
@@ -1089,10 +1087,6 @@ const LABEL_LAYER_SPECS: ReadonlyArray<LabelLayerSpec> = buildLabelLayerSpecs({
 });
 
 const RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID = 'restaurant-labels-pin-collision';
-const RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID_SIDE_LEFT =
-  'restaurant-labels-pin-collision-side-left';
-const RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID_SIDE_RIGHT =
-  'restaurant-labels-pin-collision-side-right';
 
 // Minimum spacing to keep label candidates from being blocked by the pin's collision silhouette
 // once we shift the ring upward to align with the pin fill centerline.
@@ -1238,16 +1232,6 @@ const LABEL_PIN_COLLISION_STYLE: MapboxGL.SymbolLayerStyle = {
   iconOpacity: 0.001,
 } as MapboxGL.SymbolLayerStyle;
 
-const LABEL_PIN_COLLISION_STYLE_SIDE_LEFT: MapboxGL.SymbolLayerStyle = {
-  ...LABEL_PIN_COLLISION_STYLE,
-  iconOffset: [-PIN_COLLISION_OUTLINE_SIDE_PAD_IMAGE_PX, PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX],
-} as MapboxGL.SymbolLayerStyle;
-
-const LABEL_PIN_COLLISION_STYLE_SIDE_RIGHT: MapboxGL.SymbolLayerStyle = {
-  ...LABEL_PIN_COLLISION_STYLE,
-  iconOffset: [PIN_COLLISION_OUTLINE_SIDE_PAD_IMAGE_PX, PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX],
-} as MapboxGL.SymbolLayerStyle;
-
 const LABEL_PIN_COLLISION_STYLE_FILL: MapboxGL.SymbolLayerStyle = {
   iconImage: STYLE_PIN_FILL_IMAGE_ID,
   iconSize: STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE,
@@ -1263,20 +1247,20 @@ const LABEL_PIN_COLLISION_STYLE_FILL: MapboxGL.SymbolLayerStyle = {
   iconOpacity: 0.001,
 } as MapboxGL.SymbolLayerStyle;
 
-const LABEL_PIN_COLLISION_STYLE_FILL_SIDE_LEFT: MapboxGL.SymbolLayerStyle = {
-  ...LABEL_PIN_COLLISION_STYLE_FILL,
-  iconOffset: [
-    -PIN_COLLISION_FILL_SIDE_PAD_IMAGE_PX,
-    STYLE_PINS_FILL_OFFSET_IMAGE_PX + PIN_COLLISION_FILL_OFFSET_IMAGE_PX,
-  ],
-} as MapboxGL.SymbolLayerStyle;
-
-const LABEL_PIN_COLLISION_STYLE_FILL_SIDE_RIGHT: MapboxGL.SymbolLayerStyle = {
-  ...LABEL_PIN_COLLISION_STYLE_FILL,
-  iconOffset: [
-    PIN_COLLISION_FILL_SIDE_PAD_IMAGE_PX,
-    STYLE_PINS_FILL_OFFSET_IMAGE_PX + PIN_COLLISION_FILL_OFFSET_IMAGE_PX,
-  ],
+// DOT-only collision obstacle: the FULL pin silhouette (outline sprite at scale 1.0, anchored at the pin
+// coordinate), invisible + always-placed. Its layer sits BELOW the name-labels in the stack, so only the
+// (lower-priority) coverage dots yield to it — the labels, placed first, never do. A neighbouring
+// restaurant's dot that overlaps any part of the pin body is therefore collision-culled (#9), with zero
+// effect on label placement. No up-offset / no side pads: cover the whole pin from tip to crown.
+const DOT_PIN_COLLISION_STYLE: MapboxGL.SymbolLayerStyle = {
+  iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
+  iconSize: STYLE_PINS_OUTLINE_ICON_SIZE * PIN_DOT_COLLISION_OBSTACLE_SCALE,
+  iconAnchor: 'bottom',
+  symbolZOrder: 'source',
+  iconAllowOverlap: true,
+  iconIgnorePlacement: false,
+  iconPadding: 0,
+  iconOpacity: 0.001,
 } as MapboxGL.SymbolLayerStyle;
 
 const getNowMs = () =>
@@ -2055,11 +2039,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
     [labelLayerSpecs]
   );
   const labelCollisionLayerIds = React.useMemo(
-    () => [
-      RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID,
-      RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID_SIDE_LEFT,
-      RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID_SIDE_RIGHT,
-    ],
+    // Both invisible collision-obstacle layers must dorm/wake together on dismiss/reveal — the native
+    // setLabelCollisionObstacleLayersVisible loop toggles only the ids in this list, so omitting the
+    // dot-body obstacle left it permanently in Mapbox's placement pipeline while the surface is hidden.
+    () => [RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID, RESTAURANT_PIN_DOT_COLLISION_LAYER_ID],
     []
   );
   const {
@@ -2310,7 +2293,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
     // bake site (use-direct-search-map-source-controller.ts) and the source-store diffKey
     // exclusion (TRANSIENT_VISUAL_PROPERTY_KEYS) for the full trace.
     () =>
-      ['coalesce', ['feature-state', 'nativeLodOpacity'], ['get', 'nativeLodOpacity'], 1] as const,
+      // FINAL DEFAULT 0 (plan RISK#2 / KEEP): a marker with NEITHER a stepper feature-state NOR a baked
+      // property must read as a DOT, never a phantom pin. (Baked get=1 for promoted seeds still wins; this
+      // 3rd arg only fires when both are absent — the phantom-pin "loaded gun" the plan warned about.)
+      ['coalesce', ['feature-state', 'nativeLodOpacity'], ['get', 'nativeLodOpacity'], 0] as const,
     []
   );
   const nativeLabelOpacityExpression = React.useMemo(
@@ -2319,7 +2305,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
         'coalesce',
         ['feature-state', 'nativeLabelOpacity'],
         ['get', 'nativeLabelOpacity'],
-        1,
+        // 0 default: no feature-state + no baked property ⇒ no label (never a phantom label on a dot).
+        0,
       ] as const,
     []
   );
@@ -2509,24 +2496,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
   ]);
 
   const restaurantLabelPinCollisionLayerId = RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID;
-  const restaurantLabelPinCollisionLayerIdSideLeft =
-    RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID_SIDE_LEFT;
-  const restaurantLabelPinCollisionLayerIdSideRight =
-    RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID_SIDE_RIGHT;
   const restaurantLabelPinCollisionLayerKey = `${restaurantLabelPinCollisionLayerId}-${PIN_COLLISION_OBSTACLE_GEOMETRY}`;
-  const restaurantLabelPinCollisionStyles = React.useMemo(
+  const restaurantLabelPinCollisionStyle = React.useMemo(
     () =>
       PIN_COLLISION_OBSTACLE_GEOMETRY === 'fill'
-        ? {
-            center: LABEL_PIN_COLLISION_STYLE_FILL,
-            left: LABEL_PIN_COLLISION_STYLE_FILL_SIDE_LEFT,
-            right: LABEL_PIN_COLLISION_STYLE_FILL_SIDE_RIGHT,
-          }
-        : {
-            center: LABEL_PIN_COLLISION_STYLE,
-            left: LABEL_PIN_COLLISION_STYLE_SIDE_LEFT,
-            right: LABEL_PIN_COLLISION_STYLE_SIDE_RIGHT,
-          },
+        ? LABEL_PIN_COLLISION_STYLE_FILL
+        : LABEL_PIN_COLLISION_STYLE,
     []
   );
 
@@ -2570,11 +2545,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
         // cause; the wobble is Mapbox's own per-frame symbol placement during slow
         // motion. Keep the stacking; chase the wobble elsewhere.)
         symbolZOrder: 'viewport-y',
-        // Data-driven icon by the feature's badgeImageId string. The source builder
-        // always sets badgeImageId, but coalesce to a plain-bucket pin by score as a
-        // safety net (thresholds match scoreToBucket()).
+        // Data-driven icon by the feature's badgeImageId string. The source builder always sets
+        // badgeImageId; when the marker is HIGHLIGHTED (selected/pressed) swap to its active-color variant
+        // (same rank number) so a tapped pin recolors immediately (B). Coalesce to a plain-bucket pin by
+        // score as a safety net (thresholds match scoreToBucket()).
         iconImage: [
           'coalesce',
+          ['case', nativeHighlightedExpression, ['get', 'activeBadgeImageId'], ['get', 'badgeImageId']],
           ['get', 'badgeImageId'],
           [
             'step',
@@ -2610,7 +2587,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         // write forced these ignorePlacement pins back through the placement/pixel-snap
         // pass each frame, which is the pin jitter. The stepper is now the sole animator.
       }) as unknown as MapboxGL.SymbolLayerStyle,
-    [nativeLodOpacityExpression, nativePresentationOpacityExpression]
+    [nativeLodOpacityExpression, nativePresentationOpacityExpression, nativeHighlightedExpression]
   );
 
   // Out-of-overlap-region pin style: same icon, but collision ON (allowOverlap:false +
@@ -2854,9 +2831,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
             labelCandidateStyles,
             restaurantLabelPinCollisionLayerKey,
             restaurantLabelPinCollisionLayerId,
-            restaurantLabelPinCollisionLayerIdSideLeft,
-            restaurantLabelPinCollisionLayerIdSideRight,
-            restaurantLabelPinCollisionStyles,
+            restaurantLabelPinCollisionStyle,
           }
         : null,
     [
@@ -2867,10 +2842,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
       pinInteractionLayer,
       profilerCallback,
       restaurantLabelPinCollisionLayerId,
-      restaurantLabelPinCollisionLayerIdSideLeft,
-      restaurantLabelPinCollisionLayerIdSideRight,
       restaurantLabelPinCollisionLayerKey,
-      restaurantLabelPinCollisionStyles,
+      restaurantLabelPinCollisionStyle,
       shouldMountSearchMarkerLayers,
       stylePinSingleSymbolStyle,
       stylePinSharedShadowStyle,

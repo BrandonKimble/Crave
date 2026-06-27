@@ -12,6 +12,15 @@ import type { SearchRouteSceneStackChromeVisualState } from '../../overlays/sear
 export type AppRouteSheetHostSurfaceBodySnapshot = {
   activeSceneKey: OverlayKey | null;
   displayedSceneKey: OverlayKey | null;
+  // Overlap crossfade descriptor. `displayedSceneKey` is the INCOMING leg; the
+  // OUTGOING leg is the pre-flip source frame (the frozen/source scene), present
+  // only while a forward-open scene-change transition holds. `contentTransitionToken`
+  // is the settleToken of the active 'content'-plane transition (else null) — it keys
+  // the crossfade ramp, whose onFinish completes the 'content' plane at ramp-end via
+  // completeFromContentSettle (the controller-side CONTENT_SETTLE_TIMEOUT is the fallback guard).
+  outgoingSceneKey: OverlayKey | null;
+  incomingSceneKey: OverlayKey | null;
+  contentTransitionToken: number | null;
   hasRenderableSheetSurface: boolean;
   chromeEntry: SearchRouteSheetChromeTransportSnapshot['chromeEntry'] | null;
   scrollSharedRuntimeEntry:
@@ -58,6 +67,9 @@ export const EMPTY_APP_ROUTE_SHEET_HOST_SURFACE_BODY_SNAPSHOT: AppRouteSheetHost
   {
     activeSceneKey: null,
     displayedSceneKey: null,
+    outgoingSceneKey: null,
+    incomingSceneKey: null,
+    contentTransitionToken: null,
     hasRenderableSheetSurface: false,
     chromeEntry: null,
     scrollSharedRuntimeEntry: null,
@@ -76,14 +88,17 @@ export const areAppRouteSheetHostSurfaceBodySnapshotsEqual = (
   right: AppRouteSheetHostSurfaceBodySnapshot
 ): boolean => {
   // `displayedSceneKey` IS load-bearing for the React body surface: it drives the
-  // per-scene visibility in BottomSheetSceneStackHost (resolveSceneStackStaticVisibility),
-  // so a change here must wake the body to flip which scene's frame is visible. Without
+  // per-scene leg role in BottomSheetSceneStackHost (resolveSceneStackLegRole), so a change
+  // here must wake the body to flip which scene's frame is visible. Without
   // it, a poll-lane -> pollDetail switch (where every other field is identical) keeps the
   // stale 'polls' frame visible and the child scene never paints. Other runtime-only
   // fields stay excluded — those propagate through the native display authorities and
   // need not wake the React surface.
   return (
     left.displayedSceneKey === right.displayedSceneKey &&
+    left.outgoingSceneKey === right.outgoingSceneKey &&
+    left.incomingSceneKey === right.incomingSceneKey &&
+    left.contentTransitionToken === right.contentTransitionToken &&
     left.hasRenderableSheetSurface === right.hasRenderableSheetSurface &&
     left.chromeEntry?.headerComponent === right.chromeEntry?.headerComponent &&
     left.chromeEntry?.backgroundComponent === right.chromeEntry?.backgroundComponent &&
@@ -108,11 +123,6 @@ export const areAppRouteSheetHostSurfaceBodySnapshotsEqual = (
       right.scrollBodyDefaultsEntry?.scrollIndicatorInsets &&
     left.scrollBodyDefaultsEntry?.keyboardDismissMode ===
       right.scrollBodyDefaultsEntry?.keyboardDismissMode &&
-    left.scrollBodyDefaultsEntry?.bounces === right.scrollBodyDefaultsEntry?.bounces &&
-    left.scrollBodyDefaultsEntry?.alwaysBounceVertical ===
-      right.scrollBodyDefaultsEntry?.alwaysBounceVertical &&
-    left.scrollBodyDefaultsEntry?.overScrollMode ===
-      right.scrollBodyDefaultsEntry?.overScrollMode &&
     left.scrollBodyDefaultsEntry?.testID === right.scrollBodyDefaultsEntry?.testID &&
     left.scrollBodyDefaultsEntry?.flashListProps ===
       right.scrollBodyDefaultsEntry?.flashListProps &&

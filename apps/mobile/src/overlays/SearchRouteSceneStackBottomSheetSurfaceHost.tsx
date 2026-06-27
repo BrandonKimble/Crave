@@ -29,6 +29,7 @@ type SearchRouteSceneStackBottomSheetSurfaceHostProps = {
   routeSceneDisplayTargetRegistry: AppRouteSceneDisplayTargetRegistry;
   routeSheetRuntimeConfigAuthority: AppRouteSheetHostRuntimeConfigAuthority;
   routeSheetSurfaceBodyAuthority: AppRouteSheetHostSurfaceBodyAuthority;
+  onContentSettleComplete: (token: number) => void;
 };
 
 type RenderableAppRouteSheetHostSurfaceBodySnapshot = AppRouteSheetHostSurfaceBodySnapshot & {
@@ -158,6 +159,7 @@ const SearchRouteSceneStackBottomSheetRuntimeSurface = React.memo(
     routeSceneDisplayTargetRegistry,
     routeSheetRuntimeConfigAuthority,
     surfaceBodySnapshot,
+    onContentSettleComplete,
   }: SearchRouteSceneStackBottomSheetRuntimeSurfaceProps) => {
     useSearchNavSwitchCommitAttribution('SearchRouteSceneStackBottomSheetRuntimeSurface');
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
@@ -183,6 +185,10 @@ const SearchRouteSceneStackBottomSheetRuntimeSurface = React.memo(
             onScrollHeaderLayout={runtimeAssembly.onScrollHeaderLayout}
             scrollHeaderSyncStyle={runtimeAssembly.scrollHeaderSyncStyle}
             displayedSceneKey={surfaceBodySnapshot.displayedSceneKey}
+            outgoingSceneKey={surfaceBodySnapshot.outgoingSceneKey}
+            incomingSceneKey={surfaceBodySnapshot.incomingSceneKey}
+            contentTransitionToken={surfaceBodySnapshot.contentTransitionToken}
+            onContentSettleComplete={onContentSettleComplete}
             bodyRuntimeAuthority={runtimeAssembly.bodyRuntimeAuthority}
             sheetYValue={runtimeAssembly.sheetYValue}
           />
@@ -224,6 +230,7 @@ export const SearchRouteSceneStackBottomSheetSurfaceHost = React.memo(
     routeSceneDisplayTargetRegistry,
     routeSheetRuntimeConfigAuthority,
     routeSheetSurfaceBodyAuthority,
+    onContentSettleComplete,
   }: SearchRouteSceneStackBottomSheetSurfaceHostProps) => {
     useSearchNavSwitchCommitAttribution('SearchRouteSceneStackBottomSheetSurfaceHost');
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
@@ -257,6 +264,7 @@ export const SearchRouteSceneStackBottomSheetSurfaceHost = React.memo(
         routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
         routeSheetRuntimeConfigAuthority={routeSheetRuntimeConfigAuthority}
         surfaceBodySnapshot={surfaceBodySnapshot}
+        onContentSettleComplete={onContentSettleComplete}
       />
     );
 

@@ -229,6 +229,10 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     currentMarketKey,
     openRestaurantProfilePreview:
       profileControlRuntime.profileOwner.profileActions.openRestaurantProfilePreview,
+    launchFavoritesListResults: submitRuntimeResult.launchFavoritesListResults,
+    prepareSearchSessionEntry:
+      overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.routeOverlaySessionActions
+        .prepareSearchSessionEntry,
   });
 
   return {

@@ -124,6 +124,17 @@ export const rankBadgeImageId = (score: number | null | undefined, rank: number)
   return `pin-rank-${bucket}-${Math.max(1, r)}`;
 };
 
+// ACTIVE (selected/pressed) rank badge: the SAME number baked in the active color (#ff3368), bucket-
+// independent — the pin layer swaps to this on nativeHighlighted so a tapped pin recolors while keeping its
+// rank. Matches the `pin-rank-active-<rank>` sprites from scripts/generate-pin-bucket-sprites.js.
+export const activeRankBadgeImageId = (rank: number): string => {
+  const r = Math.round(rank);
+  if (r > MAX_PIN_RANK_BADGE) {
+    return `pin-rank-active-${RANK_OVERFLOW_SUFFIX}`;
+  }
+  return `pin-rank-active-${Math.max(1, r)}`;
+};
+
 // Out-of-viewport score badge id (score is the 0–100 display score; baked per
 // bucket within that bucket's own range, so this always resolves to a real file).
 export const scoreBadgeImageId = (score: number | null | undefined): string => {

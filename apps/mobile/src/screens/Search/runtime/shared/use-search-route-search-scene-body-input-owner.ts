@@ -299,8 +299,6 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       flashListProps: stableFlashListProps,
     }),
     [
-      rawSceneBodyTransport.alwaysBounceVertical,
-      rawSceneBodyTransport.bounces,
       rawSceneBodyTransport.contentSurfaceStyle,
       rawSceneBodyTransport.keyboardDismissMode,
       rawSceneBodyTransport.keyboardShouldPersistTaps,
@@ -310,7 +308,6 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       rawSceneBodyTransport.onScrollBeginDrag == null,
       rawSceneBodyTransport.onScrollEndDrag == null,
       rawSceneBodyTransport.onScrollOffsetChange == null,
-      rawSceneBodyTransport.overScrollMode,
       rawSceneBodyTransport.showsVerticalScrollIndicator,
       rawSceneBodyTransport.testID,
       stableFlashListProps,

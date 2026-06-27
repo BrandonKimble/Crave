@@ -20,6 +20,7 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import { RootNavigator } from './src/navigation';
+import { AppModalHost } from './src/components/AppModalHost';
 import { AuthProvider } from './src/providers/AuthProvider';
 import { AppRouteCoordinator } from './src/navigation/runtime/AppRouteCoordinator';
 import { AppRouteSceneRuntimeProvider } from './src/navigation/runtime/AppRouteSceneRuntimeProvider';
@@ -97,6 +98,7 @@ export default function App() {
                 </MainLaunchCoordinator>
               </AppRouteCoordinator>
             </AuthProvider>
+            <AppModalHost />
             <StatusBar style={isBannerVisible ? 'light' : 'auto'} />
           </SafeAreaProvider>
         </View>

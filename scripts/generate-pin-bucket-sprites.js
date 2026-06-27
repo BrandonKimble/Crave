@@ -169,7 +169,13 @@ async function main() {
     rankMaxRank: MAX_PIN_RANK,
     rankBadges: [],
     scoreBadges: [],
+    // ACTIVE (selected/pressed) rank badges: the SAME numbered pin baked in the active color (one color,
+    // not per-bucket), so a tapped pin recolors to active while KEEPING its rank number. The pin layer
+    // swaps to `pin-rank-active-<rank>` on nativeHighlighted (search-map.tsx). ~MAX+1 sprites total.
+    activeRankBadges: [],
   };
+  // Active-color "bucket" (PRIMARY_COLOR #ff3368, matches dot-highlighted in generate-dot-sprites.js).
+  const ACTIVE_BUCKET = { name: 'active', color: [255, 51, 104] };
 
   for (const bucket of BUCKETS) {
     const color = bucketColor(bucket);
@@ -209,6 +215,21 @@ async function main() {
     );
   }
 
+  // ACTIVE-color rank badges (one color across all ranks — the selected/pressed pin).
+  for (let rank = 1; rank <= MAX_PIN_RANK; rank++) {
+    const buf = await composeBadge(ACTIVE_BUCKET, String(rank), SCALE);
+    const id = `rank-active-${rank}`;
+    fs.writeFileSync(path.join(OUT, `pin-${id}.png`), buf);
+    manifest.activeRankBadges.push(id);
+  }
+  {
+    const buf = await composeBadge(ACTIVE_BUCKET, RANK_OVERFLOW_TEXT, SCALE);
+    const id = `rank-active-${RANK_OVERFLOW_SUFFIX}`;
+    fs.writeFileSync(path.join(OUT, `pin-${id}.png`), buf);
+    manifest.activeRankBadges.push(id);
+  }
+  console.log(`active: rank 1-${MAX_PIN_RANK} + "${RANK_OVERFLOW_TEXT}" in active color`);
+
   fs.writeFileSync(path.join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
   // Generate a TS module that statically imports every badge sprite and maps the
@@ -218,6 +239,7 @@ async function main() {
     ...manifest.buckets.map((b) => `pin-${b.name}`),
     ...manifest.rankBadges.map((id) => `pin-${id}`),
     ...manifest.scoreBadges.map((id) => `pin-${id}`),
+    ...manifest.activeRankBadges.map((id) => `pin-${id}`),
   ];
   const varName = (fileId) => fileId.replace(/[^a-zA-Z0-9]/g, '_');
   const lines = [

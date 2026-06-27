@@ -7,9 +7,10 @@ import { FavoritesShareController } from './favorites.share.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { SharedModule } from '../../shared/shared.module';
 import { IdentityModule } from '../identity/identity.module';
+import { SearchModule } from '../search/search.module';
 
 @Module({
-  imports: [PrismaModule, SharedModule, IdentityModule],
+  imports: [PrismaModule, SharedModule, IdentityModule, SearchModule],
   controllers: [
     FavoritesController,
     FavoritesPublicController,

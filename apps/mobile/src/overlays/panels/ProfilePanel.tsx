@@ -51,11 +51,11 @@ ProfilePreviewRow.displayName = 'ProfilePreviewRow';
 
 type ProfileFavoriteListTileProps = {
   list: FavoriteListSummary;
-  onPress: (listId: string) => void;
+  onPress: (list: FavoriteListSummary) => void;
 };
 
 const ProfileFavoriteListTile = React.memo(({ list, onPress }: ProfileFavoriteListTileProps) => (
-  <Pressable onPress={() => onPress(list.listId)} style={styles.listTileWrapper}>
+  <Pressable onPress={() => onPress(list)} style={styles.listTileWrapper}>
     <View style={styles.listTile}>
       {list.previewItems.length ? (
         list.previewItems.map((item) => <ProfilePreviewRow key={item.itemId} item={item} />)
@@ -239,7 +239,7 @@ type ProfileFavoriteListsSectionRowProps = {
   lists: readonly FavoriteListSummary[];
   loading: boolean;
   emptyMessage: string;
-  onListPress: (listId: string) => void;
+  onListPress: (list: FavoriteListSummary) => void;
 };
 
 const ProfileFavoriteListsSectionRow = React.memo(
@@ -328,7 +328,7 @@ type ProfileSceneBodyProps = {
   rows: readonly ProfileSceneRow[];
   sceneReady: boolean;
   onPollPress: (poll: Poll) => void;
-  onListPress: (listId: string) => void;
+  onListPress: (list: FavoriteListSummary) => void;
 };
 
 const ProfileSceneBody = React.memo(
