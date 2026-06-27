@@ -5152,11 +5152,14 @@ final class SearchMapRenderController: RCTEventEmitter {
     // promoted-but-invisible pins). Compute the retain decision ONCE and use it for both. (Before,
     // only native_lod suppressed the await; the wiggle fix added currentViewportIsMoving to the
     // retain but not the suppress, so mid-zoom re-promotes stuck invisible.)
-    let retainResidentDemotesFlag =
-      reason == "native_lod"
-      || reason == "dot_transition_complete"
-      || reason == "pin_transition_complete"
-      || state.currentViewportIsMoving
+    // Map-LOD v6 Phase 2 — UNCONDITIONAL residency: demoted markers stay resident in the pin source at
+    // opacity 0 rather than being removed, so EVERY gesture-time promote/demote is a pure opacity flip,
+    // never a removeGeoJSONSourceFeatures re-tile that re-snaps the whole pin layer (the WIGGLE). Was a
+    // 4-condition gate (native_lod / dot|pin_transition_complete / currentViewportIsMoving) that still left
+    // re-tile gaps at the movement→idle seam; always-true subsumes all four and keeps the retain⇄
+    // suppress-await coupling above trivially satisfied. (Source stays bounded by the current result set:
+    // setRanking rebuilds it per search, so residency accumulates within one result set, not unbounded.)
+    let retainResidentDemotesFlag = true
     let pinTransitionStartedAt = CACurrentMediaTime() * 1000
     updateMarkerRenderState(
       state: &state,
