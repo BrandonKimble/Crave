@@ -750,6 +750,11 @@ export type RestaurantFeatureProperties = {
   craveScoreExact?: number | null;
   scoreDelta7d?: number | null;
   markerKey?: string;
+  // Option A — index of this restaurant within its world-coordinate stack (0 = first / lone). Baked once
+  // from the fixed result coords so it's pan-invariant; the label mutex's data-driven iconOffset spreads
+  // stacked restaurants' (sub-pixel) mutex collision boxes apart by this rank so pixel-coincident pins
+  // stop cross-suppressing each other's labels (each picks a distinct free side).
+  stackRank?: number;
   nativeLodZ?: number;
   nativeLodOpacity?: number;
   nativeLodRankOpacity?: number;
@@ -1101,6 +1106,26 @@ const TRANSPARENT_PIXEL_IMAGE = {
 const LABEL_MUTEX_ICON_RENDER_SIZE_PX = 0.8;
 const LABEL_MUTEX_ICON_SIZE = LABEL_MUTEX_ICON_RENDER_SIZE_PX;
 const LABEL_MUTEX_TRANSLATE_Y_PX = -(PIN_MARKER_RENDER_SIZE + 12);
+// Option A — the mutex is a sub-pixel (0.8px) collision box, so it ONLY cross-suppresses PIXEL-COINCIDENT
+// restaurants. Spread stacked restaurants' mutex boxes apart horizontally by `stackRank` so each keeps its
+// own dedup point (and thus its own label, on a distinct free side). iconOffset is LAYOUT (it moves the
+// collision box) — unlike the old iconTranslate (paint, which left the boxes coincident; that was the bug).
+// iconOffset is in icon-size units: final_px = value × iconSize, so divide px by LABEL_MUTEX_ICON_SIZE.
+const LABEL_MUTEX_STACK_STEP_PX = 3; // horizontal px between adjacent stacked mutex boxes (> the 0.8px box)
+const LABEL_MUTEX_STACK_STEP_UNIT = LABEL_MUTEX_STACK_STEP_PX / LABEL_MUTEX_ICON_SIZE;
+const LABEL_MUTEX_BASE_OFFSET_Y_UNIT =
+  (LABEL_MUTEX_POINT === 'above-pin' ? LABEL_MUTEX_TRANSLATE_Y_PX : 0) / LABEL_MUTEX_ICON_SIZE;
+const LABEL_MUTEX_MAX_STACK_RANK = 7;
+// match stackRank → a constant [x, y] iconOffset (Mapbox expressions can't build arrays with computed
+// elements, so each rank maps to a precomputed literal). Default arm (rank 0 / >max) is the base point.
+const LABEL_MUTEX_ICON_OFFSET_EXPRESSION = [
+  'match',
+  ['coalesce', ['get', 'stackRank'], 0],
+  ...Array.from({ length: LABEL_MUTEX_MAX_STACK_RANK }, (_unused, index) => index + 1).flatMap(
+    (rank) => [rank, ['literal', [rank * LABEL_MUTEX_STACK_STEP_UNIT, LABEL_MUTEX_BASE_OFFSET_Y_UNIT]]]
+  ),
+  ['literal', [0, LABEL_MUTEX_BASE_OFFSET_Y_UNIT]],
+] as unknown as MapboxGL.SymbolLayerStyle['iconOffset'];
 const INTERACTION_LAYER_HIDDEN_OPACITY = 0.001;
 const SHOW_INTERACTION_LAYER_DEBUG_COLORS =
   __DEV__ && process.env.EXPO_PUBLIC_SEARCH_MAP_INTERACTION_DEBUG === '1';
@@ -2453,8 +2478,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
       iconImage: LABEL_MUTEX_IMAGE_ID,
       iconSize: LABEL_MUTEX_ICON_SIZE,
       iconAnchor: 'bottom',
-      iconTranslate: [0, LABEL_MUTEX_POINT === 'above-pin' ? LABEL_MUTEX_TRANSLATE_Y_PX : 0],
-      iconTranslateAnchor: 'viewport',
+      // Option A: data-driven iconOffset (LAYOUT) = base above-pin point + per-stackRank horizontal spread,
+      // so pixel-coincident restaurants' mutex collision boxes separate (replaces the old paint iconTranslate
+      // that left them coincident). Lone/rank-0 pins resolve to the base point ⇒ unchanged behavior.
+      iconOffset: LABEL_MUTEX_ICON_OFFSET_EXPRESSION,
       iconAllowOverlap: false,
       iconIgnorePlacement: false,
       iconOpacity: 0.001,

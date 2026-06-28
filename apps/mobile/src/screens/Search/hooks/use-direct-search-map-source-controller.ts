@@ -36,6 +36,7 @@ import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/resu
 import { getSearchSurfaceRuntime } from '../runtime/surface/search-surface-runtime';
 import {
   getSearchMountedResultsDataSnapshot,
+  getSeededMarkerRestaurants,
   subscribeSearchMountedResultsDataSnapshot,
 } from '../runtime/shared/search-mounted-results-data-store';
 import type { ResolvedRestaurantMapLocation } from '../runtime/map/restaurant-location-selection';
@@ -881,6 +882,30 @@ const buildDirectLabelStores = ({
   const labelBuilder = createSearchMapSourceStoreBuilder(previousLabelSourceStore);
   const collisionBuilder = createSearchMapSourceStoreBuilder(previousLabelCollisionSourceStore);
   const labelIdentityParts: string[] = [];
+  // Option A — bake a pan-invariant stackRank per restaurant: group ALL source markers by world-coord
+  // bucket (~1m), then assign a stable index (sorted by markerKey) within any bucket holding 2+ pins.
+  // Computed over the FULL source (not the on-screen subset) so a marker's rank doesn't shift as you pan;
+  // lone pins are absent ⇒ rank 0. The label mutex's iconOffset reads `stackRank` to separate stacks.
+  const stackRankByMarkerKey = new Map<string, number>();
+  const stackBucketMembers = new Map<string, string[]>();
+  pinSourceStore.idsInOrder.forEach((markerKey) => {
+    const coords = pinSourceStore.featureById.get(markerKey)?.geometry.coordinates;
+    if (coords == null) {
+      return;
+    }
+    const bucketKey = `${coords[0].toFixed(5)},${coords[1].toFixed(5)}`;
+    const members = stackBucketMembers.get(bucketKey) ?? [];
+    members.push(markerKey);
+    stackBucketMembers.set(bucketKey, members);
+  });
+  stackBucketMembers.forEach((members) => {
+    if (members.length < 2) {
+      return;
+    }
+    [...members].sort().forEach((markerKey, index) => {
+      stackRankByMarkerKey.set(markerKey, index);
+    });
+  });
   pinSourceStore.idsInOrder.forEach((markerKey) => {
     const feature = pinSourceStore.featureById.get(markerKey);
     if (!feature) {
@@ -911,6 +936,7 @@ const buildDirectLabelStores = ({
           ...stableBaseFeature.properties,
           markerKey,
           labelCandidate: candidate,
+          stackRank: stackRankByMarkerKey.get(markerKey) ?? 0,
           nativeLabelOpacity: 1,
           nativePresentationOpacity: 1,
         },
@@ -1169,15 +1195,30 @@ export const useDirectSearchMapSourceController = ({
     const selectedRestaurantId = args.highlightedRestaurantId;
     const hasCommittedResultState =
       state.searchMode != null && mountedResultsSnapshot.resultsRequestKey != null;
+    // Seeded marker source: when a profile opens without committed results (e.g. an autocomplete
+    // suggestion tap), the hydrated restaurant publishes itself here so the map can place its pin.
+    // It is only consulted when there are no committed restaurants — committed results always win.
+    const seededMarkerRestaurants = getSeededMarkerRestaurants();
     const shouldProjectResultSources =
-      hasCommittedResultState || args.restaurantOnlyId != null || selectedRestaurantId != null;
+      hasCommittedResultState ||
+      args.restaurantOnlyId != null ||
+      selectedRestaurantId != null ||
+      seededMarkerRestaurants != null;
     const mountedResults = mountedResultsSnapshot.results;
+    // Pure-seed case has no committed metadata, so `searchRequestId` resolves to null and the
+    // precomputed-catalog branch stays skipped — `buildMarkerCatalogReadModel` runs on the seed.
     const searchRequestId = shouldProjectResultSources
       ? (mountedResults?.metadata?.searchRequestId ?? null)
       : null;
-    const restaurants = shouldProjectResultSources
+    const committedRestaurants = shouldProjectResultSources
       ? (mountedResults?.restaurants ?? EMPTY_RESTAURANTS)
       : EMPTY_RESTAURANTS;
+    // A pure seed (a profile opened with no committed results) is always a single RESTAURANT pin —
+    // project it on the restaurant axis regardless of the stale results tab (which defaults to dishes
+    // and would otherwise route the catalog down the empty-dishes branch, yielding zero pins).
+    const isSeededRestaurantProjection =
+      committedRestaurants.length === 0 && seededMarkerRestaurants != null;
+    const restaurants = isSeededRestaurantProjection ? seededMarkerRestaurants : committedRestaurants;
     const dishes = shouldProjectResultSources
       ? (mountedResults?.dishes ?? EMPTY_DISHES)
       : EMPTY_DISHES;
@@ -1362,7 +1403,7 @@ export const useDirectSearchMapSourceController = ({
             primaryCount: mountedResultsSnapshot.precomputedMarkerPrimaryCount,
           }
         : buildMarkerCatalogReadModel({
-            activeTab,
+            activeTab: isSeededRestaurantProjection ? 'restaurants' : activeTab,
             dishes,
             markerRestaurants: restaurants,
             restaurantOnlyId: effectiveRestaurantOnlyId,
