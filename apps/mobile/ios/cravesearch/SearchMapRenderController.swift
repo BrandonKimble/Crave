@@ -10586,16 +10586,15 @@ final class SearchMapRenderController: RCTEventEmitter {
       // link is alive so the just-promoted/demoted anchors fade (it self-cancels when not runnable).
       if Self.lodV5Enabled {
         updateLivePinTransitionAnimation(instanceId: instanceId, state: nextState)
-        // FIX B (wiggle): reseed the invisible collision obstacle ONLY at idle. It mutates the collision
-        // GeoJSON source (add/updateGeoJSONSourceFeatures), and that layer is iconIgnorePlacement:false →
-        // a mid-motion mutation re-runs Mapbox's global placement pass, which pixel-snaps EVERY symbol incl.
-        // the ignorePlacement pins → per-pin position re-snap = the zoom-out wiggle (label untouched, separate
-        // layer). The delta keys are accumulated via formUnion in projectAndEmitOnScreenMarkers, so deferring
-        // to the idle pass (this same handler fires with isMoving:false) loses nothing — labels re-yield to the
-        // settled promoted set when the camera stops. Honors the rule "no source add/update/remove during motion".
-        if !isMoving {
-          applyV5ObstacleReseed(for: instanceId)
-        }
+        // FM#3: reseed the invisible collision obstacle for the promote/demote delta so labels yield to the
+        // LIVE promoted pins (isolated to the obstacle source — no pin re-tile). Drains the stashed set.
+        // NOTE: runs DURING motion on purpose — gating it to idle (once tried as a wiggle fix) froze label
+        // collision mid-gesture (labels overlapped until release) AND did not fix the wiggle, so it was
+        // reverted. ATTRIBUTION (2026-06-28, intervention-proven): the wiggle is NOT this reseed — it's the
+        // PIN GeoJSON source re-tiling/re-quantizing below the maxZoom cap on zoom-out (maxZoom=13 wiggles,
+        // =9 frozen-tile is clean). The ideal universal fix is to render the ≤30 pins as ViewAnnotations
+        // (non-tiled), leaving this obstacle reseed + dots/labels as GL — see map-lod-render-substrate-decision.
+        applyV5ObstacleReseed(for: instanceId)
       }
       let labelObservation = Self.derivedFamilyState(sourceId: nextState.labelSourceId, state: nextState).labelObservation
       if labelObservation.observationEnabled {
