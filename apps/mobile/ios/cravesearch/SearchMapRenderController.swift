@@ -8,26 +8,6 @@ import Turf
 import UIKit
 import os
 
-// MARK: - GATE-PREMISE frame-gap probe (TEMPORARY — remove after the on-device ES2-vs-ES3 read)
-// `onRenderFrameFinished` only fires when Mapbox actually repaints, so the gap between consecutive fires is
-// the under-load GL render cadence = the source of the fade "staircase". ~17ms ⇒ ES3+wall-clock suffices;
-// ~50ms ⇒ snapping is unfixable on GL, go ES2. Filter the unified log with: subsystem == "crave.lod"
-// (or eventMessage CONTAINS "[framegap]"). File-scope on purpose: one call site, no class-body churn.
-private let framegapProbeEnabled = true
-private let framegapLog = OSLog(subsystem: "crave.lod", category: "framegap")
-private var framegapLastMs: Double = 0
-private var framegapSeq: Int = 0
-private func recordRenderFrameGap() {
-  guard framegapProbeEnabled else { return }
-  let now = CACurrentMediaTime() * 1000
-  let last = framegapLastMs
-  framegapLastMs = now
-  guard last > 0 else { return }
-  framegapSeq &+= 1
-  os_log("[framegap] seq=%{public}d gapMs=%{public}d", log: framegapLog, type: .default,
-         framegapSeq, Int((now - last).rounded()))
-}
-
 private final class PresentationOpacityAnimator {
   weak var owner: SearchMapRenderController?
   let instanceId: String
@@ -7690,7 +7670,20 @@ final class SearchMapRenderController: RCTEventEmitter {
     // Wall-clock fade: hand the engine the absolute now; it projects each in-flight crossfade off this
     // clock, so a starved display link lands on the SAME curve as a 60fps one (no dt-rate staircase).
     let writes = engine.step(nowMs: Self.nowMs())
+    // FIX A (flicker): swap the reparse-immune membership literal HERE, on the step clock, lagging it to
+    // the engine's CURRENT >0.5 role (not the decide TARGET). This lands the sync setLayerProperty swap in
+    // the SAME display-link tick as the async setFeatureState writes below, both reflecting this tick's
+    // opacity — so the coalesce fallback always equals what feature-state is painting and the async commit
+    // order can no longer produce a target-flash. Fires only when the >0.5 role actually changes (a fade
+    // crossing 0.5), i.e. rarely; the literal swap is placement-neutral (paint property, no re-tile).
+    let roleChange = engine.takeSettledRoleChangeIfAny()
     state.lodV5Engine = engine
+    if let roleKeys = roleChange {
+      try? withMapboxMap(for: state.mapTag) { mapboxMap in
+        updateLeaMembershipLiterals(
+          promoted: roleKeys, labelLayerIds: state.labelLayerIds, mapboxMap: mapboxMap)
+      }
+    }
     guard !writes.isEmpty else { return }
     _ = try applyV5OpacityWrites(for: instanceId, state: &state, writes: writes)
   }
@@ -7783,6 +7776,70 @@ final class SearchMapRenderController: RCTEventEmitter {
     Self.syncMountedSourceState(dotSourceState, sourceId: state.dotSourceId, familyState: &dotFamilyState, state: &state)
     Self.syncMountedSourceState(labelSourceState, sourceId: state.labelSourceId, familyState: &labelFamilyState, state: &state)
     return (pinApply.count, midFadeCount)
+  }
+
+  // === REFINED LEA: reparse-immune membership-literal swap =================================
+  // The pin/dot/label opacity expressions (search-map.tsx) coalesce feature-state (the smooth
+  // crossfade stepper) with a MEMBERSHIP fallback `['case', ['in', ['get','markerKey'],
+  // ['literal', SET]], A, B]`. On a geojson-vt tile reparse, feature-state clears and the layer
+  // paints from SET instead of snapping to 0 (the old group-flash). Native owns SET: on every
+  // promotion-membership change we read each layer's opacity expression, swap the ['literal', …]
+  // in place, and write it back. This is a layer-style op (no source mutation / re-tile) and —
+  // verified empirically — never flickers pins whose membership is unchanged. Best-effort: a
+  // failure must never break the frame. Generic (reads JS's own expression back, swaps only the
+  // literal) so it carries no copy of the JS constants/structure.
+  private static var leaMemLoggedOnce = false
+  private func updateLeaMembershipLiterals(
+    promoted: [String], labelLayerIds: [String], mapboxMap: MapboxMap
+  ) {
+    var updated = 0
+    for layerId in [
+      "restaurant-pin-single-symbol-layer",
+      "restaurant-pin-shared-shadow-layer",
+      "restaurant-dot-layer",
+    ] where Self.swapLeaLiteral(layerId: layerId, property: "icon-opacity", keys: promoted, mapboxMap: mapboxMap) {
+      updated += 1
+    }
+    for layerId in labelLayerIds
+    where Self.swapLeaLiteral(layerId: layerId, property: "text-opacity", keys: promoted, mapboxMap: mapboxMap) {
+      updated += 1
+    }
+    if !Self.leaMemLoggedOnce {
+      Self.leaMemLoggedOnce = true
+      Self.lodLog("[leamem] first membership write: layersUpdated=\(updated) promoted=\(promoted.count)")
+    }
+  }
+
+  @discardableResult
+  private static func swapLeaLiteral(
+    layerId: String, property: String, keys: [String], mapboxMap: MapboxMap
+  ) -> Bool {
+    let current = mapboxMap.layerPropertyValue(for: layerId, property: property)
+    let (updated, found) = replaceMembershipLiteral(current, keys: keys)
+    guard found else { return false }
+    do {
+      try mapboxMap.setLayerProperty(for: layerId, property: property, value: updated)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // Rewrite the (single) ['literal', <array>] node inside an opacity expression to `keys`.
+  // The opacity expressions contain exactly one literal (the membership set), so a content-agnostic
+  // match is robust to any structural normalization Mapbox does on the surrounding expression.
+  private static func replaceMembershipLiteral(_ node: Any, keys: [String]) -> (Any, Bool) {
+    guard let arr = node as? [Any] else { return (node, false) }
+    if arr.count == 2, (arr[0] as? String) == "literal", arr[1] is [Any] {
+      return (["literal", keys], true)
+    }
+    var found = false
+    let mapped: [Any] = arr.map { child in
+      let (c, f) = replaceMembershipLiteral(child, keys: keys)
+      if f { found = true }
+      return c
+    }
+    return (mapped, found)
   }
 
   // Map-LOD v5 FM#3: reseed the INVISIBLE label-collision obstacle so name-labels yield to the LIVE promoted
@@ -8905,19 +8962,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
     }
 
-    // [slabel] TEMPORARY Phase-1 baseline — NAMELESS promoted pins (a role=="pin" marker with no placed
-    // label = the obstacle-blanket symptom). Measured against the role table's ACTUAL promoted set, so
-    // Phase-2 residency cannot inflate it (the JS pin source can). REMOVE after GATE-STACKED. Read via
-    // `log stream --predicate 'subsystem == "crave.lod"'` and grep slabel.
-    if !promotedMarkerKeys.isEmpty {
-      let namelessPromoted = promotedMarkerKeys.filter { visibleLabelCountsByMarkerKey[$0] == nil }.count
-      os_log(
-        "[slabel] promoted=%{public}d named=%{public}d nameless=%{public}d rate=%{public}d%%",
-        log: framegapLog, type: .default,
-        promotedMarkerKeys.count, promotedMarkerKeys.count - namelessPromoted, namelessPromoted,
-        Int((Double(namelessPromoted) / Double(promotedMarkerKeys.count) * 100).rounded()))
-    }
-
     let promotedPinCollisionObstacleCount = roleTable.pinnedMarkerKeysInOrder.reduce(0) { count, markerKey in
       guard let row = roleTable.rowByMarkerKey[markerKey],
             row.role == "pin",
@@ -9880,7 +9924,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         guard let self, let handle else {
           return
         }
-        recordRenderFrameGap()
         DispatchQueue.main.async {
           self.handleRenderFrameFinishedForHiddenPlacement(mapTag: mapTag, handle: handle)
         }
@@ -10354,7 +10397,14 @@ final class SearchMapRenderController: RCTEventEmitter {
   // installMapSubscriptions via mapView.debugOptions = [.collision]). NOTE: this is MAP-WIDE — Mapbox
   // has no per-layer scoping, so it also draws boxes for every basemap label/POI (clutter). Turned OFF;
   // for an OUR-MARKERS-ONLY view we render a scoped dot collision-box ring in JS instead.
-  static let collisionDebugEnabled = false
+  static let collisionDebugEnabled = false // DEV toggle: visualize Mapbox collision boxes (map-wide). Default OFF.
+
+  // DEV toggle: per-frame [LODDBG]/[leamem] LOD trace (camera/decide/projection/membership). Default OFF;
+  // flip true to re-enable the attribution logging used while building the LOD render substrate.
+  static let lodDebugLoggingEnabled = false
+  @inline(__always) private static func lodLog(_ message: @autoclosure () -> String) {
+    if lodDebugLoggingEnabled { NSLog("%@", message()) }
+  }
 
   @discardableResult
   private func projectAndEmitOnScreenMarkers(
@@ -10366,7 +10416,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   ) -> Bool {
     // Respect the existing hidden/dismissing gating — never project a stale frame for a
     // source that is not on screen (mirrors handleNativeCameraChanged's per-instance guard).
-    NSLog("[LODDBG] projEnter reason=\(reason) inactive=\(Self.isVisualSourceInactiveOrDismissing(state)) catalogEmpty=\(state.candidateCatalog.isEmpty)")
+    Self.lodLog("[LODDBG] projEnter reason=\(reason) inactive=\(Self.isVisualSourceInactiveOrDismissing(state)) catalogEmpty=\(state.candidateCatalog.isEmpty)")
     guard !Self.isVisualSourceInactiveOrDismissing(state) else {
       return false
     }
@@ -10383,7 +10433,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       previouslyVisible: previouslyVisible
     )
     let visibleSignature = onScreenKeys.sorted().joined(separator: "|")
-    NSLog("[LODDBG] proj reason=\(reason) onScreen=\(onScreenKeys.count) sigChanged=\(visibleSignature != (state.lastVisibleMarkerSetSignature ?? "")) forced=\(state.highlightedMarkerKeys.count)")
+    Self.lodLog("[LODDBG] proj reason=\(reason) onScreen=\(onScreenKeys.count) sigChanged=\(visibleSignature != (state.lastVisibleMarkerSetSignature ?? "")) forced=\(state.highlightedMarkerKeys.count)")
     guard visibleSignature != state.lastVisibleMarkerSetSignature else {
       return false
     }
@@ -10410,7 +10460,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       let forcedKeys = state.highlightedMarkerKeys
       let (promoted, membershipChanged) = engine.decide(onScreenKeys: Set(onScreenKeys), forcedKeys: forcedKeys)
       state.lodV5Engine = engine
-      NSLog("[LODDBG] decide onScreen=\(onScreenKeys.count) promoted=\(promoted.count) changed=\(membershipChanged) forced=\(forcedKeys.count)")
+      Self.lodLog("[LODDBG] decide onScreen=\(onScreenKeys.count) promoted=\(promoted.count) changed=\(membershipChanged) forced=\(forcedKeys.count)")
       nativePromotedKeys = promoted
       // FM#3 obstacle reseed on `membershipChanged` is a follow-up; the crossfade core is validated first.
       state.markerRoleTable.pinnedMarkerKeysInOrder = promoted
@@ -10422,9 +10472,15 @@ final class SearchMapRenderController: RCTEventEmitter {
       if membershipChanged {
         let promoteKeys = promotedSet.subtracting(prevPromotedSet)
         let demoteKeys = prevPromotedSet.subtracting(promotedSet)
-        // FM#3: stash the promote∪demote delta for the camera handler to reseed the collision obstacle.
+        // FM#3: stash the promote∪demote delta; the obstacle reseed drains it AT IDLE (Fix B).
         state.lodV5ObstacleReseedKeys.formUnion(promoteKeys)
         state.lodV5ObstacleReseedKeys.formUnion(demoteKeys)
+        // FIX A (flicker): the membership literal is NO LONGER swapped here on the decide clock to the
+        // decide TARGET (which led the async feature-state by ≥1 frame → the coalesce painted the target
+        // for a frame = the promote/demote flash). It is now swapped on the STEP clock by
+        // applyV5StepFeatureStates → engine.takeSettledRoleChangeIfAny(), lagging to the CURRENT >0.5
+        // role so the fallback always equals what feature-state is painting. The reparse group-flash fix
+        // is preserved: the literal still holds the current role at rest, just authored from the other clock.
       }
     } else {
       nativePromotedKeys = Array(
@@ -10476,15 +10532,15 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     handle.lastNativeCameraDiagAtMs = now
     handle.lastNativeCameraDiagSignature = signature
-    NSLog("[LODDBG] camGo moving=\(isMoving) zoom=\(Int((cameraState.zoom * 100).rounded())) instances=\(instances.count)")
+    Self.lodLog("[LODDBG] camGo moving=\(isMoving) zoom=\(Int((cameraState.zoom * 100).rounded())) instances=\(instances.count)")
     for (instanceId, state) in instances where state.mapTag == mapTag {
       guard !Self.isVisualSourceInactiveOrDismissing(state) else {
-        NSLog("[LODDBG] camInst \(instanceId) SKIP inactive/dismissing")
+        Self.lodLog("[LODDBG] camInst \(instanceId) SKIP inactive/dismissing")
         labelObservationRefreshWorkItems[instanceId]?.cancel()
         labelObservationRefreshWorkItems[instanceId] = nil
         continue
       }
-      NSLog("[LODDBG] camInst \(instanceId) PASS")
+      Self.lodLog("[LODDBG] camInst \(instanceId) PASS")
       var nextState = state
       nextState.currentViewportIsMoving = isMoving
       // Pin z-order is native (viewport-y) — no per-slot moveLayer pass on camera move.
@@ -10530,9 +10586,16 @@ final class SearchMapRenderController: RCTEventEmitter {
       // link is alive so the just-promoted/demoted anchors fade (it self-cancels when not runnable).
       if Self.lodV5Enabled {
         updateLivePinTransitionAnimation(instanceId: instanceId, state: nextState)
-        // FM#3: reseed the invisible collision obstacle for the promote/demote delta so labels yield to
-        // the live promoted pins (isolated to the obstacle source — no pin re-tile). Drains the stashed set.
-        applyV5ObstacleReseed(for: instanceId)
+        // FIX B (wiggle): reseed the invisible collision obstacle ONLY at idle. It mutates the collision
+        // GeoJSON source (add/updateGeoJSONSourceFeatures), and that layer is iconIgnorePlacement:false →
+        // a mid-motion mutation re-runs Mapbox's global placement pass, which pixel-snaps EVERY symbol incl.
+        // the ignorePlacement pins → per-pin position re-snap = the zoom-out wiggle (label untouched, separate
+        // layer). The delta keys are accumulated via formUnion in projectAndEmitOnScreenMarkers, so deferring
+        // to the idle pass (this same handler fires with isMoving:false) loses nothing — labels re-yield to the
+        // settled promoted set when the camera stops. Honors the rule "no source add/update/remove during motion".
+        if !isMoving {
+          applyV5ObstacleReseed(for: instanceId)
+        }
       }
       let labelObservation = Self.derivedFamilyState(sourceId: nextState.labelSourceId, state: nextState).labelObservation
       if labelObservation.observationEnabled {

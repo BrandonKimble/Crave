@@ -194,4 +194,24 @@ public struct LodEngine {
   }
   public var isIdle: Bool { motion.isEmpty }
   public func wants(_ key: String) -> Bool { want[key] ?? false }
+
+  // MARK: - LEA lagging-literal authority (Fix A: flicker)
+
+  /// The CURRENT-by-opacity pin role (the >0.5 set) the controller last wrote into the membership
+  /// literal. Distinct from `lastPromotedInOrder` (the decide TARGET): this lags behind a transition
+  /// so the literal never leads to a role the opacity hasn't reached yet.
+  private var lastReportedPinRole: Set<String> = []
+
+  /// If the >0.5 pin role changed since the last call, return it (in rank order, deterministic) and
+  /// record it; else nil. Call on the STEP clock right after `step(nowMs:)` so it reflects this tick's
+  /// opacities (`visiblePinKeys` reads `lastSetNowMs`, set at the top of `step`). The controller swaps
+  /// the reparse-immune membership literal to this lagging role — so during a fade the literal holds
+  /// the PRE-transition role (= the fade-start the just-written feature-state will paint), making the
+  /// async setFeatureState-vs-sync-setLayerProperty commit order irrelevant to flash.
+  public mutating func takeSettledRoleChangeIfAny() -> [String]? {
+    let now = Set(visiblePinKeys)
+    guard now != lastReportedPinRole else { return nil }
+    lastReportedPinRole = now
+    return ranking.compactMap { now.contains($0.markerKey) ? $0.markerKey : nil }
+  }
 }

@@ -153,7 +153,12 @@ const STABILIZE_LABEL_ORDER = true;
 // - `outline`: uses the full pin sprite bounding box (conservative).
 // - `fill`: uses the fill sprite bounding box (tighter).
 // - `off`: disables pin collision obstacles entirely (labels may overlap pins).
-const PIN_COLLISION_OBSTACLE_GEOMETRY: 'outline' | 'fill' | 'off' = 'fill' as
+// [box1-match-pin TEST 2026-06-27] 'fill' (smaller, up-shifted into crown) → 'outline'
+// (full pin silhouette, tip-aligned, no up-shift — see iconOffset:[0,0] below) so the
+// label obstacle (BOX 1) matches the pin's OWN footprint exactly. Goal: stop the obstacle
+// poking above the crown, which culls a label sitting above the pin. Flip back to 'fill'
+// for the A/B before measurement.
+const PIN_COLLISION_OBSTACLE_GEOMETRY: 'outline' | 'fill' | 'off' = 'outline' as
   | 'outline'
   | 'fill'
   | 'off';
@@ -337,6 +342,7 @@ const SearchMapMarkerScene = React.memo(
         <React.Profiler id="SearchMapDots" onRender={profilerCallback}>
           <MapboxGL.ShapeSource
             id={DOT_SOURCE_ID}
+            maxZoomLevel={13}
             shape={EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>}
           >
             <MapboxGL.SymbolLayer
@@ -350,6 +356,7 @@ const SearchMapMarkerScene = React.memo(
         </React.Profiler>
         <MapboxGL.ShapeSource
           id={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
+          maxZoomLevel={13}
           shape={EMPTY_POINT_FEATURES}
           {...(handlePressTarget ? { onPress: handlePressTarget } : {})}
         >
@@ -391,7 +398,11 @@ const SearchMapMarkerScene = React.memo(
         </MapboxGL.ShapeSource>
         {/* UN-BUNDLED name-label render source: the label candidate layers read from here, not the
             pin bundle, so their promote/demote churn never re-snaps the resident pins. */}
-        <MapboxGL.ShapeSource id={RESTAURANT_LABEL_RENDER_SOURCE_ID} shape={EMPTY_POINT_FEATURES}>
+        <MapboxGL.ShapeSource
+          id={RESTAURANT_LABEL_RENDER_SOURCE_ID}
+          maxZoomLevel={13}
+          shape={EMPTY_POINT_FEATURES}
+        >
           {renderSearchMapLabelLayers({
             sourceId: RESTAURANT_LABEL_RENDER_SOURCE_ID,
             labelLayerSpecs,
@@ -400,6 +411,7 @@ const SearchMapMarkerScene = React.memo(
         </MapboxGL.ShapeSource>
         <MapboxGL.ShapeSource
           id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
+          maxZoomLevel={13}
           shape={EMPTY_POINT_FEATURES}
         >
           <MapboxGL.SymbolLayer
@@ -748,7 +760,7 @@ export type RestaurantFeatureProperties = {
   // High-precision Crave score (percentile_rank, 0..1) — the map RANKS by this so the badge == the
   // results-list position; craveScore (display, rounded to 1 decimal) is for the number/color only.
   craveScoreExact?: number | null;
-  scoreDelta7d?: number | null;
+  rising?: number | null;
   markerKey?: string;
   // Option A — index of this restaurant within its world-coordinate stack (0 = first / lone). Baked once
   // from the fixed result coords so it's pan-invariant; the label mutex's data-driven iconOffset spreads
@@ -1105,7 +1117,14 @@ const TRANSPARENT_PIXEL_IMAGE = {
 
 const LABEL_MUTEX_ICON_RENDER_SIZE_PX = 0.8;
 const LABEL_MUTEX_ICON_SIZE = LABEL_MUTEX_ICON_RENDER_SIZE_PX;
-const LABEL_MUTEX_TRANSLATE_Y_PX = -(PIN_MARKER_RENDER_SIZE + 12);
+// [side-pocket TEST 2026-06-27] Relocate the mutex BESIDE the pin body — into the radial gap between
+// the pin edge (~half-width) and where the side label starts (LABEL_MIN_HORIZONTAL_GAP_PX = 20px from
+// center). Keeps the dedup token tucked inside the pin's own footprint (≈zero reach into neighbor label
+// space, unlike the -60 "above the text" placement) while staying clear of the obstacle.
+// Prior probes: -40 (in top-text band) & -30 (gap below text) both culled the top label; -60 (above
+// text) freed it but floats into neighbors. Side pocket = closest practical realization of "in the pin".
+const LABEL_MUTEX_TRANSLATE_X_PX = 15; // beside the body, in the gap before the side label (~20px)
+const LABEL_MUTEX_TRANSLATE_Y_PX = -15; // mid-body height (fill center ≈ -15)
 // Option A — the mutex is a sub-pixel (0.8px) collision box, so it ONLY cross-suppresses PIXEL-COINCIDENT
 // restaurants. Spread stacked restaurants' mutex boxes apart horizontally by `stackRank` so each keeps its
 // own dedup point (and thus its own label, on a distinct free side). iconOffset is LAYOUT (it moves the
@@ -1113,6 +1132,7 @@ const LABEL_MUTEX_TRANSLATE_Y_PX = -(PIN_MARKER_RENDER_SIZE + 12);
 // iconOffset is in icon-size units: final_px = value × iconSize, so divide px by LABEL_MUTEX_ICON_SIZE.
 const LABEL_MUTEX_STACK_STEP_PX = 3; // horizontal px between adjacent stacked mutex boxes (> the 0.8px box)
 const LABEL_MUTEX_STACK_STEP_UNIT = LABEL_MUTEX_STACK_STEP_PX / LABEL_MUTEX_ICON_SIZE;
+const LABEL_MUTEX_BASE_OFFSET_X_UNIT = LABEL_MUTEX_TRANSLATE_X_PX / LABEL_MUTEX_ICON_SIZE;
 const LABEL_MUTEX_BASE_OFFSET_Y_UNIT =
   (LABEL_MUTEX_POINT === 'above-pin' ? LABEL_MUTEX_TRANSLATE_Y_PX : 0) / LABEL_MUTEX_ICON_SIZE;
 const LABEL_MUTEX_MAX_STACK_RANK = 7;
@@ -1121,10 +1141,21 @@ const LABEL_MUTEX_MAX_STACK_RANK = 7;
 const LABEL_MUTEX_ICON_OFFSET_EXPRESSION = [
   'match',
   ['coalesce', ['get', 'stackRank'], 0],
+  // [side-pocket TEST] x = constant pocket X; spread stacked ranks VERTICALLY (up the pocket) instead of
+  // the old horizontal row, so the dots stay tucked beside the body, not smeared across a label band.
   ...Array.from({ length: LABEL_MUTEX_MAX_STACK_RANK }, (_unused, index) => index + 1).flatMap(
-    (rank) => [rank, ['literal', [rank * LABEL_MUTEX_STACK_STEP_UNIT, LABEL_MUTEX_BASE_OFFSET_Y_UNIT]]]
+    (rank) => [
+      rank,
+      [
+        'literal',
+        [
+          LABEL_MUTEX_BASE_OFFSET_X_UNIT,
+          LABEL_MUTEX_BASE_OFFSET_Y_UNIT - rank * LABEL_MUTEX_STACK_STEP_UNIT,
+        ],
+      ],
+    ]
   ),
-  ['literal', [0, LABEL_MUTEX_BASE_OFFSET_Y_UNIT]],
+  ['literal', [LABEL_MUTEX_BASE_OFFSET_X_UNIT, LABEL_MUTEX_BASE_OFFSET_Y_UNIT]],
 ] as unknown as MapboxGL.SymbolLayerStyle['iconOffset'];
 const INTERACTION_LAYER_HIDDEN_OPACITY = 0.001;
 const SHOW_INTERACTION_LAYER_DEBUG_COLORS =
@@ -1246,7 +1277,10 @@ const LABEL_PIN_COLLISION_STYLE: MapboxGL.SymbolLayerStyle = {
   iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
   iconSize: STYLE_PINS_OUTLINE_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE,
   iconAnchor: 'bottom',
-  iconOffset: [0, PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX],
+  // [box1-match-pin TEST 2026-06-27] no up-shift (was [0, PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX]).
+  // Tip-aligned full silhouette ⇒ BOX 1 == the pin's own footprint (BOX 2). Restore the offset
+  // const if labels regress (own-label cull). See PIN_COLLISION_OBSTACLE_GEOMETRY note above.
+  iconOffset: [0, 0],
   symbolZOrder: 'source',
   // Always place the obstacle, even when pins overlap each other.
   iconAllowOverlap: true,
@@ -2311,33 +2345,47 @@ const SearchMap: React.FC<SearchMapProps> = ({
     []
   );
   const nativeLodOpacityExpression = React.useMemo(
-    // STALE-BAKED-ROLE SAFETY: feature-state (native CADisplayLink stepper) wins; the baked
-    // `['get', 'nativeLodOpacity']` is the pre-stepper first-paint fallback. It can never go
-    // stale relative to role: any promote↔demote produces a markerRoleFrame and native re-bakes
-    // this `['get']` property to the settled role (no source republish — v4 invariant 2). See the
-    // bake site (use-direct-search-map-source-controller.ts) and the source-store diffKey
-    // exclusion (TRANSIENT_VISUAL_PROPERTY_KEYS) for the full trace.
+    // REFINED LEA (Layer-Expression Authority — reparse-immune membership fallback).
+    // feature-state (the native wall-clock stepper) drives the SMOOTH pin↔dot crossfade and wins the
+    // coalesce at rest and mid-fade. When feature-state is CLEARED — which a geojson-vt tile reparse on
+    // zoom does on every integer zoom step — the coalesce falls through to the MEMBERSHIP literal: a
+    // marker in the promoted set reads 1 (stays a pin), else 0 (stays a dot). Native swaps the literal
+    // via setLayerProperty on each membership change (updateLeaMembershipLiterals), so it is always the
+    // current promoted set and is itself reparse-immune (it lives in the layer's paint expression, which
+    // a reparse re-evaluates unchanged — verified: an expression-literal swap never flickers stable pins).
+    // This REPLACES the old baked `['get','nativeLodOpacity']`/0 fallback, which (baked 0 under v5) made a
+    // promoted pin snap to 0 = INVISIBLE on every reparse — the group-flash. Literal starts empty; native
+    // populates it on the first decide. (The baked `nativeLodOpacity` PROPERTY still exists on features for
+    // the engine's role detection — only its use in THIS opacity coalesce is removed.)
     () =>
-      // FINAL DEFAULT 0 (plan RISK#2 / KEEP): a marker with NEITHER a stepper feature-state NOR a baked
-      // property must read as a DOT, never a phantom pin. (Baked get=1 for promoted seeds still wins; this
-      // 3rd arg only fires when both are absent — the phantom-pin "loaded gun" the plan warned about.)
-      ['coalesce', ['feature-state', 'nativeLodOpacity'], ['get', 'nativeLodOpacity'], 0] as const,
+      [
+        'coalesce',
+        ['feature-state', 'nativeLodOpacity'],
+        ['case', ['in', ['get', 'markerKey'], ['literal', []]], 1, 0],
+      ] as const,
     []
   );
   const nativeLabelOpacityExpression = React.useMemo(
+    // REFINED LEA fallback (see nativeLodOpacityExpression). On reparse the label falls through to the
+    // membership literal: promoted → 1 (label shows), else → 0 (no label). Native swaps the literal.
     () =>
       [
         'coalesce',
         ['feature-state', 'nativeLabelOpacity'],
-        ['get', 'nativeLabelOpacity'],
-        // 0 default: no feature-state + no baked property ⇒ no label (never a phantom label on a dot).
-        0,
+        ['case', ['in', ['get', 'markerKey'], ['literal', []]], 1, 0],
       ] as const,
     []
   );
   const nativeDotOpacityExpression = React.useMemo(
+    // REFINED LEA fallback (see nativeLodOpacityExpression), INVERSE of the pin: on reparse the dot falls
+    // through to the membership literal: promoted → 0 (no dot under the pin), else → 1 (dot shows). So a
+    // reparse can never paint a pin AND its dot at once. Native swaps the literal.
     () =>
-      ['coalesce', ['feature-state', 'nativeDotOpacity'], ['get', 'nativeDotOpacity'], 1] as const,
+      [
+        'coalesce',
+        ['feature-state', 'nativeDotOpacity'],
+        ['case', ['in', ['get', 'markerKey'], ['literal', []]], 0, 1],
+      ] as const,
     []
   );
   const nativeHighlightedExpression = React.useMemo(
@@ -2578,26 +2626,35 @@ const SearchMap: React.FC<SearchMapProps> = ({
         // score as a safety net (thresholds match scoreToBucket()).
         iconImage: [
           'coalesce',
-          ['case', nativeHighlightedExpression, ['get', 'activeBadgeImageId'], ['get', 'badgeImageId']],
+          [
+            'case',
+            nativeHighlightedExpression,
+            ['get', 'activeBadgeImageId'],
+            ['get', 'badgeImageId'],
+          ],
           ['get', 'badgeImageId'],
           [
             'step',
-            ['coalesce', ['get', 'craveScore'], 60],
+            ['coalesce', ['get', 'craveScore'], 0],
             plainBucketImageId(0),
-            65,
+            1,
             plainBucketImageId(1),
-            70,
+            2,
             plainBucketImageId(2),
-            75,
+            3,
             plainBucketImageId(3),
-            80,
+            4,
             plainBucketImageId(4),
-            85,
+            5,
             plainBucketImageId(5),
-            90,
+            6,
             plainBucketImageId(6),
-            95,
+            7,
             plainBucketImageId(7),
+            8,
+            plainBucketImageId(8),
+            9,
+            plainBucketImageId(9),
           ],
         ],
         iconSize: 1,
