@@ -29,7 +29,11 @@ import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-
 import { resolveOverlapRegion } from '../utils/overlap-region';
 import { requestOverlapAutoZoom } from '../runtime/map/overlap-auto-zoom-bridge';
 import { LOD_V5_ENABLED } from '../runtime/map/search-map-render-controller';
-import { activeRankBadgeImageId, dotBucketImageId, rankBadgeImageId } from '../../../utils/quality-color';
+import {
+  activeRankBadgeImageId,
+  dotBucketImageId,
+  rankBadgeImageId,
+} from '../../../utils/quality-color';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { ResultsPresentationAuthority } from '../runtime/shared/results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
@@ -391,9 +395,13 @@ const collectSearchMapVisualCandidates = ({
       return rightExact - leftExact;
     }
     const leftDisplay =
-      typeof left.feature.properties.craveScore === 'number' ? left.feature.properties.craveScore : -Infinity;
+      typeof left.feature.properties.craveScore === 'number'
+        ? left.feature.properties.craveScore
+        : -Infinity;
     const rightDisplay =
-      typeof right.feature.properties.craveScore === 'number' ? right.feature.properties.craveScore : -Infinity;
+      typeof right.feature.properties.craveScore === 'number'
+        ? right.feature.properties.craveScore
+        : -Infinity;
     if (leftDisplay !== rightDisplay) {
       return rightDisplay - leftDisplay;
     }
@@ -962,7 +970,11 @@ const buildDirectLabelStores = ({
           ? 1
           : 0
         : (feature.properties.nativeLodOpacity ?? 0);
-    const collisionFeature = buildStableCollisionFeature(feature, markerKey, promotedNativeLodOpacity);
+    const collisionFeature = buildStableCollisionFeature(
+      feature,
+      markerKey,
+      promotedNativeLodOpacity
+    );
     const collisionRevision = buildLabelSourceFeatureDiffKey(collisionFeature);
     collisionBuilder.appendFeature(collisionFeature, {
       featureId: markerKey,
@@ -1218,7 +1230,9 @@ export const useDirectSearchMapSourceController = ({
     // and would otherwise route the catalog down the empty-dishes branch, yielding zero pins).
     const isSeededRestaurantProjection =
       committedRestaurants.length === 0 && seededMarkerRestaurants != null;
-    const restaurants = isSeededRestaurantProjection ? seededMarkerRestaurants : committedRestaurants;
+    const restaurants = isSeededRestaurantProjection
+      ? seededMarkerRestaurants
+      : committedRestaurants;
     const dishes = shouldProjectResultSources
       ? (mountedResults?.dishes ?? EMPTY_DISHES)
       : EMPTY_DISHES;
@@ -1559,7 +1573,8 @@ export const useDirectSearchMapSourceController = ({
             { sourceKind: 'main_results', features: shortcutResultFeatures },
           ]
         : [{ sourceKind: 'viewport', features: markerCandidatesRef.current }];
-    const rankedCandidateSources: SearchMapVisualCandidateSource[] = shortcutCoverageCandidateSources;
+    const rankedCandidateSources: SearchMapVisualCandidateSource[] =
+      shortcutCoverageCandidateSources;
     const dotCandidateSources: SearchMapVisualCandidateSource[] = shortcutCoverageCandidateSources;
     const projectedInitialCandidates = projectSearchMapVisualFrame({
       rankedSources: rankedCandidateSources,
@@ -1597,11 +1612,21 @@ export const useDirectSearchMapSourceController = ({
           ) {
             return;
           }
+          const catalogRank = feature.properties.rank ?? index;
+          const catalogCraveScore =
+            typeof feature.properties.craveScore === 'number'
+              ? feature.properties.craveScore
+              : null;
           catalogEntries.push({
             markerKey: buildMarkerKey(feature),
             lng: coordinates[0],
             lat: coordinates[1],
-            rank: feature.properties.rank ?? index,
+            rank: catalogRank,
+            // Pin OVERLAY substrate: carry the resolved sprite ids so native renders the exact GL sprite,
+            // and the restaurant id so the overlay's tap hit-test emits the same press target.
+            badgeImageId: rankBadgeImageId(catalogCraveScore, catalogRank),
+            activeBadgeImageId: activeRankBadgeImageId(catalogRank),
+            restaurantId: feature.properties.restaurantId,
           });
         });
         sourceFramePort.publishCandidateCatalog({
@@ -1731,15 +1756,20 @@ export const useDirectSearchMapSourceController = ({
     // (identical args → identical order), so re-ranking it by index+1 here yields the IDENTICAL rank the
     // catalog/engine uses → badge number == promotion rank everywhere. (Whether that position == Crave-score
     // order is governed by projectSearchMapVisualFrame's sort, separate from this badge/promotion agreement.)
-    const rerankedVisualCandidates = projectedVisualFrame.rankedCandidates.map((feature, index) => ({
-      ...feature,
-      properties: { ...feature.properties, rank: index + 1 },
-    }));
+    const rerankedVisualCandidates = projectedVisualFrame.rankedCandidates.map(
+      (feature, index) => ({
+        ...feature,
+        properties: { ...feature.properties, rank: index + 1 },
+      })
+    );
     // markerKey → unified position rank. renderedLodCandidates is built mostly from the DOT pass (which
     // carries every candidate but NOT this re-rank), so the badge build below must look the unified rank up
     // by key rather than trust the feature's own (possibly raw, colliding) rank.
     const unifiedRankByKey = new Map<string, number>(
-      rerankedVisualCandidates.map((feature) => [buildMarkerKey(feature), feature.properties.rank as number])
+      rerankedVisualCandidates.map((feature) => [
+        buildMarkerKey(feature),
+        feature.properties.rank as number,
+      ])
     );
     // Dots = every demoted marker. They render always-draw (allowOverlap:true), so no
     // JS cap is needed: Mapbox only draws the ones inside the current viewport (the
@@ -2780,10 +2810,8 @@ export const useDirectSearchMapSourceController = ({
                 restaurantName,
                 craveScore,
                 craveScoreExact,
-                scoreDelta7d:
-                  typeof properties.scoreDelta7d === 'number'
-                    ? (properties.scoreDelta7d as number)
-                    : null,
+                rising:
+                  typeof properties.rising === 'number' ? (properties.rising as number) : null,
                 rank,
                 restaurantCraveScore,
                 pinColor: latestArgsRef.current.getCraveScoreColorFromScore(
@@ -2976,9 +3004,34 @@ export const useDirectSearchMapSourceController = ({
     viewportBoundsService,
   ]);
 
+  // Re-publish sources when the highlight / restaurantOnly intent changes (or map-move state
+  // flips) so the catalog rebuilds against the new selection.
   React.useEffect(() => {
     publishSourcesRef.current();
   }, [isMapMoving, highlightedRestaurantId, restaurantOnlyId]);
+
+  // PIN-AT-REVEAL race fix. On a cold committed reveal (poll comment-span / restaurant deep
+  // link) the highlight / restaurantOnly intent is set BEFORE the committed search results go
+  // live, so the catalog rebuild that fires at highlight-set time runs against an EMPTY
+  // projection → zero pins at the reveal frame (committedCount=0 at highlight-set → catalog
+  // pins=0, then a later rebuild after committed-results-live yields pins=1). The
+  // result-card path never hits this because its committed results are already mounted when the
+  // highlight is set. The shared deferred mounted-results subscriber recovers eventually, but
+  // its rAF-coalesced timing is fragile on the no-preview comment-span lane (the highlight can
+  // be set in a later commit than the one the deferred publish already serviced, so the rebuild
+  // that lands the pin never re-runs until an unrelated refresh). While a reveal intent is
+  // active, subscribe SYNCHRONOUSLY to the mounted-results store and re-publish the moment the
+  // committed projection changes — guaranteeing the highlighted-restaurant catalog rebuilds
+  // against the now-live projection at the reveal frame. Gated to reveal intents, so it adds no
+  // work and cannot regress the result-card / idle paths.
+  React.useEffect(() => {
+    if (highlightedRestaurantId == null && restaurantOnlyId == null) {
+      return undefined;
+    }
+    return subscribeSearchMountedResultsDataSnapshot(() => {
+      publishSourcesRef.current();
+    });
+  }, [highlightedRestaurantId, restaurantOnlyId]);
 
   const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
     const secondaryTextSize = LABEL_TEXT_SIZE * 0.85;

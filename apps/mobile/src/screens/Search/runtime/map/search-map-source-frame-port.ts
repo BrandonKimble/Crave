@@ -58,6 +58,12 @@ export type SearchMapCandidateCatalogEntry = {
   lng: number;
   lat: number;
   rank: number;
+  // The resolved pin sprite ids (rank badge + active/highlighted variant), so the native pin OVERLAY
+  // can render the exact same sprite the GL pin layer used to, pulled from the Mapbox style by id.
+  badgeImageId?: string;
+  activeBadgeImageId?: string;
+  // The restaurant id, so the overlay's tap hit-test can emit the same press target the GL pin did.
+  restaurantId?: string;
 };
 
 export type SearchMapCandidateCatalog = {

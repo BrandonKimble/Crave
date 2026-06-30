@@ -126,20 +126,18 @@ const PIN_BADGE_IMAGE_ENTRIES: Record<string, { image: unknown; scale: number }>
 const DOT_IMAGE_ENTRIES: Record<string, { image: unknown; scale: number }> = Object.fromEntries(
   Object.entries(DOT_IMAGES).map(([id, image]) => [id, { image, scale: DOT_SPRITE_SCALE }])
 );
-// Fallback image id when a feature has no badge (plain bucket pin, no number).
-const plainBucketImageId = (bucketIndex: number): string => `pin-b${bucketIndex}`;
 // Feature-count degradation harness (#21): a dedicated resident source+layer that
 // mounts N synthetic pins (allow-overlap + ignore-placement → no collision culling,
 // so every feature is drawn) to isolate the pure feature-count cost in one layer.
 const SCALE_PROBE_SOURCE_ID = 'perf-scale-probe-source';
 const SCALE_PROBE_LAYER_ID = 'perf-scale-probe-layer';
 const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
-// The single RENDERED bundle source: holds every promoted marker's pin art,
-// interaction, and label features (distinguished by `nativeSlotFeatureKind`),
-// z-ordered into slot layer-groups by the feature's `nativeLodZ`. Kept distinct
-// from STYLE_PINS_SOURCE_ID, which native uses as the in-memory pin *staging*
-// family (marker render state / transitions) and never renders. Derivation must
-// match native: `"\(pinSourceId)-bundle"`.
+// The pin bundle source. It no longer renders anything on iOS — pins are drawn + tapped by the
+// native CA overlay (PinOverlayView/overlayHitTest), and its GL pin/shadow/interaction layers were
+// removed. It stays mounted as the target for the native pin-LOD setFeatureState writes + the
+// engine's viewport-y group ordering. Kept distinct from STYLE_PINS_SOURCE_ID, which native uses as
+// the in-memory pin *staging* family (marker render state / transitions). Derivation must match
+// native: `"\(pinSourceId)-bundle"`.
 const RESTAURANT_PIN_BUNDLE_SOURCE_ID = `${STYLE_PINS_SOURCE_ID}-bundle`;
 // UN-BUNDLED name-label render source. Derivation must match native
 // `"\(pinSourceId)-label-render"`. Holds the native-wrapped, promote-gated labels so label churn
@@ -188,10 +186,6 @@ const PIN_DOT_COLLISION_OBSTACLE_SCALE = 1.0;
 const LABEL_MUTEX_POINT: 'below-pin' | 'above-pin' = 'above-pin';
 // Approximate the MarkerView drop-shadow using the historical soft-edged sprite.
 const STYLE_PINS_SHADOW_OPACITY = 0.65;
-const STYLE_PINS_SHADOW_TRANSLATE: [number, number] = [
-  0,
-  1.25 + 18 * (PIN_MARKER_RENDER_SIZE / 98),
-];
 const PIN_OUTLINE_LOGICAL_HEIGHT_PX = 480;
 const PIN_FILL_LOGICAL_HEIGHT_PX = 360;
 const STYLE_PINS_OUTLINE_ICON_SIZE = PIN_MARKER_RENDER_SIZE / PIN_OUTLINE_LOGICAL_HEIGHT_PX;
@@ -215,8 +209,6 @@ const STYLE_PINS_FILL_OFFSET_IMAGE_PX =
 // culled the bottom label candidate. Restore the 0.25 factor: shift the pin obstacle UP so other
 // restaurants' labels still collide with the pin body, but a pin's OWN below-pin label clears it.
 const PIN_COLLISION_OFFSET_Y_PX = -Math.round(PIN_MARKER_RENDER_SIZE * 0.25);
-const PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX =
-  PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_OUTLINE_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 const PIN_COLLISION_FILL_OFFSET_IMAGE_PX =
   PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 // Pin fade timing lives natively now: the CADisplayLink steppers own ALL pin opacity
@@ -224,29 +216,10 @@ const PIN_COLLISION_FILL_OFFSET_IMAGE_PX =
 // style transition for pin opacity — the stepper writes the feature-state per frame, so
 // it is the sole animator (this is what removed the per-frame placement-pass pin jitter).
 
-const withIconOpacity = (
-  baseStyle: MapboxGL.SymbolLayerStyle,
-  iconOpacity: unknown
-): MapboxGL.SymbolLayerStyle =>
-  ({
-    ...baseStyle,
-    iconOpacity,
-  }) as MapboxGL.SymbolLayerStyle;
-
 type LabelPlacementFilter = NonNullable<
   React.ComponentProps<typeof MapboxGL.SymbolLayer>['filter']
 >;
 
-const promotedPinFeatureFilter = [
-  '==',
-  ['get', 'nativeSlotFeatureKind'],
-  'pin',
-] as LabelPlacementFilter;
-const promotedPinInteractionFeatureFilter = [
-  '==',
-  ['get', 'nativeSlotFeatureKind'],
-  'pinInteraction',
-] as LabelPlacementFilter;
 // The invisible pin-collision obstacle (which makes name-labels yield to pins) must exist ONLY at
 // actual promoted pins — never at demoted-dot markers, or its full pin-silhouette boxes flood the
 // map and collision-cull every label. The collision source bakes `nativeLodOpacity` = 1 for the
@@ -309,9 +282,6 @@ const renderSearchMapLabelLayers = ({
 type SearchMapMarkerSceneProps = {
   dotLayerStyle: MapboxGL.SymbolLayerStyle;
   handlePressTarget?: (event: SearchMapPressEvent) => void;
-  stylePinSingleSymbolStyle: MapboxGL.SymbolLayerStyle;
-  stylePinSharedShadowStyle: MapboxGL.SymbolLayerStyle;
-  pinInteractionLayer: React.ReactElement;
   profilerCallback: React.ProfilerOnRenderCallback;
   labelLayerSpecs: ReadonlyArray<{
     candidate: LabelCandidate;
@@ -327,9 +297,6 @@ const SearchMapMarkerScene = React.memo(
   ({
     dotLayerStyle,
     handlePressTarget,
-    stylePinSingleSymbolStyle,
-    stylePinSharedShadowStyle,
-    pinInteractionLayer,
     profilerCallback,
     labelLayerSpecs,
     labelCandidateStyles,
@@ -354,48 +321,19 @@ const SearchMapMarkerScene = React.memo(
             />
           </MapboxGL.ShapeSource>
         </React.Profiler>
+        {/* Pins render + tap via the self-owned CA overlay (PinOverlayView in
+            SearchMapRenderController.swift) — non-tiled, so they don't re-quantize on zoom-out
+            (the wiggle fix) and overlayHitTest owns all pin taps. This bundle source has NO
+            render/interaction layer of its own anymore; it stays mounted only as the target for
+            the native pin LOD feature-state writes + the engine's viewport-y group ordering.
+            Name-labels are UN-BUNDLED into their own source below so their promote/demote churn
+            never re-snaps the resident pins. */}
         <MapboxGL.ShapeSource
           id={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
           maxZoomLevel={13}
           shape={EMPTY_POINT_FEATURES}
           {...(handlePressTarget ? { onPress: handlePressTarget } : {})}
-        >
-          <React.Fragment>
-            {/*
-              Shared shadow layer: ONE layer beneath ALL promoted pins (rank- AND
-              score-badged alike). Shadow opacity tracks each pin's per-feature LOD
-              opacity, so it crossfades per-pin with its pin.
-            */}
-            <MapboxGL.SymbolLayer
-              key="restaurant-pin-shadow-shared"
-              id={PIN_SHARED_SHADOW_LAYER_ID}
-              slot={undefined}
-              belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-              style={stylePinSharedShadowStyle}
-              sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-              filter={promotedPinFeatureFilter}
-            />
-            {/*
-              ALL promoted pins: ONE layer, allowOverlap:true (every promoted pin shown),
-              stacked by symbol-z-order:'viewport-y'. The rank-vs-score badge is a
-              per-feature sprite (badgeImageId) — NOT a layer split. One layer keeps
-              viewport-y z-ordering authoritative across all pins (no cross-group seam).
-            */}
-            <MapboxGL.SymbolLayer
-              key="restaurant-pin-single-symbol"
-              id={PIN_SINGLE_SYMBOL_LAYER_ID}
-              slot={undefined}
-              belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
-              style={stylePinSingleSymbolStyle}
-              sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-              filter={promotedPinFeatureFilter}
-            />
-            {/* Resident interaction (1 layer). Name-labels are UN-BUNDLED into their own
-                source below — label add/remove on promote/demote re-layouts only labels, never
-                the resident pins (which is the zoom wiggle). */}
-            {pinInteractionLayer}
-          </React.Fragment>
-        </MapboxGL.ShapeSource>
+        />
         {/* UN-BUNDLED name-label render source: the label candidate layers read from here, not the
             pin bundle, so their promote/demote churn never re-snaps the resident pins. */}
         <MapboxGL.ShapeSource
@@ -442,9 +380,6 @@ const SearchMapMarkerScene = React.memo(
   (previousProps, nextProps) =>
     previousProps.dotLayerStyle === nextProps.dotLayerStyle &&
     previousProps.handlePressTarget === nextProps.handlePressTarget &&
-    previousProps.stylePinSingleSymbolStyle === nextProps.stylePinSingleSymbolStyle &&
-    previousProps.stylePinSharedShadowStyle === nextProps.stylePinSharedShadowStyle &&
-    previousProps.pinInteractionLayer === nextProps.pinInteractionLayer &&
     previousProps.profilerCallback === nextProps.profilerCallback &&
     previousProps.labelLayerSpecs === nextProps.labelLayerSpecs &&
     previousProps.labelCandidateStyles === nextProps.labelCandidateStyles &&
@@ -530,9 +465,9 @@ const SCALE_PROBE_LAYER_STYLE_COLLIDE: MapboxGL.SymbolLayerStyle = {
   symbolZOrder: 'viewport-y',
 } as unknown as MapboxGL.SymbolLayerStyle;
 
-// Faithful per-pin shadow: real promoted pins draw a SECOND symbol (shared shadow
-// sprite) in a separate layer beneath the pin. Mirror it here so the probe measures
-// the true per-pin cost (pin symbol + shadow symbol), not a single-symbol lower bound.
+// Perf scale-probe shadow. Real pins now render via the native CA overlay (no GL pin/shadow symbols),
+// but this standalone probe keeps a shadow symbol so it can measure raw GL symbol-layer cost — it
+// historically modeled the old GL pin's 2-symbol cost (pin + shared shadow).
 const SCALE_PROBE_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
   iconImage: STYLE_PIN_SHADOW_IMAGE_ID,
   iconSize: STYLE_PINS_SHADOW_ICON_SIZE,
@@ -825,8 +760,6 @@ type CameraPadding = {
 const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
-const PIN_SINGLE_SYMBOL_LAYER_ID = 'restaurant-pin-single-symbol-layer';
-const PIN_SHARED_SHADOW_LAYER_ID = 'restaurant-pin-shared-shadow-layer';
 
 // Restored custom user-location marker (the "purple pulsing dot" from commit 07e8db25): a static
 // shadow + static white ring + an INNER purple dot that pulses (scales 1.4→1.8→1.4). NOT the native
@@ -1047,9 +980,6 @@ const UserLocationLayers = React.memo(
     prev.shouldAnimatePulse === next.shouldAnimatePulse
 );
 const DOT_TEXT_SIZE = 17;
-// Single resident interaction layer id (slot-elimination): one tap-target layer
-// for all promoted pins (was 30 per-slot `restaurant-pin-interaction-slot-N`).
-const PIN_INTERACTION_LAYER_ID = 'restaurant-pin-interaction';
 // Use stable "anchor" layers to guarantee pins/dots/labels remain ordered correctly even if React
 // remounts layers (e.g. live LOD changes, style reloads).
 const OVERLAY_Z_ANCHOR_SOURCE_ID = 'search-overlay-z-anchor-source';
@@ -1157,13 +1087,6 @@ const LABEL_MUTEX_ICON_OFFSET_EXPRESSION = [
   ),
   ['literal', [LABEL_MUTEX_BASE_OFFSET_X_UNIT, LABEL_MUTEX_BASE_OFFSET_Y_UNIT]],
 ] as unknown as MapboxGL.SymbolLayerStyle['iconOffset'];
-const INTERACTION_LAYER_HIDDEN_OPACITY = 0.001;
-const SHOW_INTERACTION_LAYER_DEBUG_COLORS =
-  __DEV__ && process.env.EXPO_PUBLIC_SEARCH_MAP_INTERACTION_DEBUG === '1';
-// Feature coordinates are anchored at the pin tip, while the visible pin glyph is translated
-// downward. Keep the interaction mirror centered on the historical rendered pin-body center.
-const PIN_INTERACTION_CENTER_SHIFT_Y_PX = PIN_MARKER_RENDER_SIZE * 0.38 + 4.25;
-const PIN_TAP_INTENT_RADIUS_PX = PIN_MARKER_RENDER_SIZE / 2;
 // Dot glyphs render notably smaller than `DOT_TEXT_SIZE` due to font metrics/line-height.
 // Keep the interaction target tight so it feels intentionally dot-sized (about ~2x visible dot).
 const DOT_TAP_INTENT_RADIUS_PX = Math.max(7, DOT_TEXT_SIZE * 0.42);
@@ -1172,17 +1095,6 @@ const LABEL_TAP_LINE_HEIGHT_FACTOR = 1.18;
 const LABEL_TAP_PADDING_PX = 4;
 const LABEL_TAP_MIN_WIDTH_PX = 34;
 const LABEL_TAP_MAX_WIDTH_PX = 220;
-const PIN_INTERACTION_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
-  circleRadius: PIN_TAP_INTENT_RADIUS_PX,
-  circleColor: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? '#ff6a3d' : '#000000',
-  circleOpacity: SHOW_INTERACTION_LAYER_DEBUG_COLORS ? 0.34 : INTERACTION_LAYER_HIDDEN_OPACITY,
-  circleStrokeColor: '#000000',
-  circleStrokeWidth: 0,
-  circleStrokeOpacity: 0,
-  circleSortKey: ['coalesce', ['get', 'nativeLodZ'], -1],
-  circleTranslate: [0, -PIN_INTERACTION_CENTER_SHIFT_Y_PX],
-  circleTranslateAnchor: 'viewport',
-} as MapboxGL.CircleLayerStyle;
 
 export const buildLabelCandidateFeatureId = (markerKey: string, candidate: LabelCandidate) =>
   `${markerKey}::label::${candidate}`;
@@ -1251,19 +1163,6 @@ const getPointFromMapPressFeature = (
   }
   return { x, y };
 };
-
-const STYLE_PINS_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
-  iconImage: STYLE_PIN_SHADOW_IMAGE_ID,
-  iconSize: STYLE_PINS_SHADOW_ICON_SIZE,
-  iconAnchor: 'bottom',
-  symbolZOrder: 'source',
-  iconAllowOverlap: true,
-  // Shadow should never affect placement/collision decisions for labels.
-  iconIgnorePlacement: true,
-  iconOpacity: STYLE_PINS_SHADOW_OPACITY,
-  iconTranslate: STYLE_PINS_SHADOW_TRANSLATE,
-  iconTranslateAnchor: 'viewport',
-} as MapboxGL.SymbolLayerStyle;
 
 // Invisible collision obstacle used to make label placement respect pin bases.
 //
@@ -1344,18 +1243,6 @@ type SearchMapRenderedPressTarget = {
   restaurantId: string;
   coordinate: Coordinate | null;
   targetKind: 'pin' | 'label' | 'dot';
-};
-
-const getCoordinateFromFeature = (feature: GeoJSON.Feature): Coordinate | null => {
-  const geometry = feature.geometry;
-  if (geometry?.type !== 'Point') {
-    return null;
-  }
-  const coordinates = geometry.coordinates;
-  if (!isLngLatTuple(coordinates)) {
-    return null;
-  }
-  return { lng: coordinates[0], lat: coordinates[1] };
 };
 
 const getCoordinateFromMapPressEvent = (event: SearchMapPressEvent): Coordinate | null => {
@@ -1484,7 +1371,6 @@ const useSearchMapInteractionRuntime = ({
   onMarkerPress,
   onBlankMapPress,
   visibleDotLayerId,
-  pinInteractionLayerIds,
   labelLayerIds,
   labelTapHitbox,
   dotTapIntentRadiusPx,
@@ -1494,7 +1380,6 @@ const useSearchMapInteractionRuntime = ({
   onMarkerPress?: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
   onBlankMapPress: () => void;
   visibleDotLayerId: string;
-  pinInteractionLayerIds: string[];
   labelLayerIds: string[];
   labelTapHitbox: {
     textSize: number;
@@ -1530,19 +1415,12 @@ const useSearchMapInteractionRuntime = ({
       searchMapRenderController.queryRenderedPressTarget({
         instanceId: nativeRenderOwnerInstanceId,
         point,
-        pinLayerIds: pinInteractionLayerIds,
         labelLayerIds,
         labelTapHitbox,
         ...(dotQueryBox ? { dotLayerIds: [visibleDotLayerId], dotQueryBox } : {}),
         ...(tapCoordinate ? { tapCoordinate } : {}),
       }),
-    [
-      visibleDotLayerId,
-      labelLayerIds,
-      labelTapHitbox,
-      nativeRenderOwnerInstanceId,
-      pinInteractionLayerIds,
-    ]
+    [visibleDotLayerId, labelLayerIds, labelTapHitbox, nativeRenderOwnerInstanceId]
   );
 
   const pinPressResolutionSeqRef = React.useRef(0);
@@ -1582,7 +1460,6 @@ const useSearchMapInteractionRuntime = ({
       .configureNativePressTargeting({
         instanceId: nativeRenderOwnerInstanceId,
         enabled: true,
-        pinLayerIds: pinInteractionLayerIds,
         labelLayerIds,
         labelTapHitbox,
         dotLayerIds: [visibleDotLayerId],
@@ -1612,7 +1489,6 @@ const useSearchMapInteractionRuntime = ({
     labelTapHitbox,
     nativePressOwnerEnabled,
     nativeRenderOwnerInstanceId,
-    pinInteractionLayerIds,
   ]);
 
   React.useEffect(() => {
@@ -1677,7 +1553,6 @@ const useSearchMapInteractionRuntime = ({
       labelLayerIds,
       labelTapHitbox,
       nativeRenderOwnerInstanceId,
-      pinInteractionLayerIds,
     ]
   );
 
@@ -1866,7 +1741,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   React.useEffect(() => {
     onMapFullyRenderedRef.current = onMapFullyRendered;
   }, [onMapFullyRendered]);
-  const effectiveMapStyleReady = isLocalMapStyleReady && isStyleManagedContentReady;
   const shouldMountSearchMarkerLayers = !shouldDisableMarkers;
   const directPinSourceCount = directSourceFrameStores.pinSourceStore.idsInOrder.length;
   const directDotSourceCount = directSourceFrameStores.dotSourceStore.idsInOrder.length;
@@ -2344,30 +2218,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
       ] as const,
     []
   );
-  const nativeLodOpacityExpression = React.useMemo(
-    // REFINED LEA (Layer-Expression Authority — reparse-immune membership fallback).
-    // feature-state (the native wall-clock stepper) drives the SMOOTH pin↔dot crossfade and wins the
-    // coalesce at rest and mid-fade. When feature-state is CLEARED — which a geojson-vt tile reparse on
-    // zoom does on every integer zoom step — the coalesce falls through to the MEMBERSHIP literal: a
-    // marker in the promoted set reads 1 (stays a pin), else 0 (stays a dot). Native swaps the literal
-    // via setLayerProperty on each membership change (updateLeaMembershipLiterals), so it is always the
-    // current promoted set and is itself reparse-immune (it lives in the layer's paint expression, which
-    // a reparse re-evaluates unchanged — verified: an expression-literal swap never flickers stable pins).
-    // This REPLACES the old baked `['get','nativeLodOpacity']`/0 fallback, which (baked 0 under v5) made a
-    // promoted pin snap to 0 = INVISIBLE on every reparse — the group-flash. Literal starts empty; native
-    // populates it on the first decide. (The baked `nativeLodOpacity` PROPERTY still exists on features for
-    // the engine's role detection — only its use in THIS opacity coalesce is removed.)
-    () =>
-      [
-        'coalesce',
-        ['feature-state', 'nativeLodOpacity'],
-        ['case', ['in', ['get', 'markerKey'], ['literal', []]], 1, 0],
-      ] as const,
-    []
-  );
+  // REFINED LEA (Layer-Expression Authority — reparse-immune membership fallback) — the shared pattern
+  // for the dot + label opacity expressions below. feature-state (the native wall-clock stepper) drives
+  // the SMOOTH crossfade and wins the coalesce at rest and mid-fade. When feature-state is CLEARED —
+  // which a geojson-vt tile reparse on every integer zoom step does — the coalesce falls through to the
+  // MEMBERSHIP literal: native swaps it via setLayerProperty on each membership change
+  // (updateLeaMembershipLiterals), so it is always the current promoted set and is itself reparse-immune
+  // (it lives in the layer's paint expression, which a reparse re-evaluates unchanged). Literal starts
+  // empty; native populates it on the first decide. (Pins are no longer GL-rendered — they're drawn by
+  // the native CA overlay — so there is no pin opacity expression here; only dots + labels use LEA.)
   const nativeLabelOpacityExpression = React.useMemo(
-    // REFINED LEA fallback (see nativeLodOpacityExpression). On reparse the label falls through to the
-    // membership literal: promoted → 1 (label shows), else → 0 (no label). Native swaps the literal.
+    // For labels: on reparse promoted → 1 (label shows), else → 0 (no label).
     () =>
       [
         'coalesce',
@@ -2377,9 +2238,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
     []
   );
   const nativeDotOpacityExpression = React.useMemo(
-    // REFINED LEA fallback (see nativeLodOpacityExpression), INVERSE of the pin: on reparse the dot falls
-    // through to the membership literal: promoted → 0 (no dot under the pin), else → 1 (dot shows). So a
-    // reparse can never paint a pin AND its dot at once. Native swaps the literal.
+    // REFINED LEA fallback (see nativeLabelOpacityExpression), INVERSE of the pin: on reparse the dot
+    // falls through to the membership literal: promoted → 0 (no dot under the pin), else → 1 (dot shows).
+    // So a reparse can never paint a pin AND its dot at once. Native swaps the literal.
     () =>
       [
         'coalesce',
@@ -2580,126 +2441,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
     []
   );
 
-  // Shared shadow layer style: reuses the custom soft-shadow sprite, opacity
-  // crossfading via the same feature-state as the pin. One layer for all pins.
-  const stylePinSharedShadowStyle = React.useMemo(
-    () =>
-      ({
-        ...withIconOpacity(STYLE_PINS_SHADOW_STYLE, [
-          '*',
-          nativePresentationOpacityExpression,
-          nativeLodOpacityExpression,
-          STYLE_PINS_SHADOW_OPACITY,
-        ]),
-        // viewport-y: lower-on-screen pins (and their shadows) draw on top — the
-        // required natural front-occludes-back stacking. (A jitter bisect to 'source'
-        // did NOT reduce the sub-pixel motion wobble, so viewport-y is not the jitter
-        // cause; keep the stacking.)
-        symbolZOrder: 'viewport-y',
-        // No iconOpacityTransition — shadow opacity tracks its pin and is animated by the
-        // native stepper feature-state writes (see the pin layer note). The Mapbox
-        // transition was the redundant second writer.
-      }) as MapboxGL.SymbolLayerStyle,
-    [nativeLodOpacityExpression, nativePresentationOpacityExpression]
-  );
-
-  // Single-symbol pin: ONE layer carries the whole pin — body, tinted fill, AND the
-  // baked number — as a pre-composited icon. `icon-image` is data-driven on the
-  // feature's `badgeImageId` (rank in-viewport / score out, chosen in the source
-  // builder), with a plain-bucket fallback by score if absent. Because the number
-  // is part of the icon, symbol-z-order:'viewport-y' stacks pin+number as ONE unit
-  // (lower-on-screen draws on top) with NO cross-pass text bleed. Opacity is
-  // feature-state nativeLodOpacity → pure crossfade, no source mutation.
-  const stylePinSingleSymbolStyle = React.useMemo(
-    () =>
-      ({
-        // viewport-y: lower-on-screen pins draw on top — the required natural
-        // front-occludes-back stacking. The number is baked into the icon, so pin+number
-        // stack as one unit with no cross-pass text bleed. (A jitter bisect to 'source'
-        // did NOT reduce the sub-pixel motion wobble, so viewport-y is not the jitter
-        // cause; the wobble is Mapbox's own per-frame symbol placement during slow
-        // motion. Keep the stacking; chase the wobble elsewhere.)
-        symbolZOrder: 'viewport-y',
-        // Data-driven icon by the feature's badgeImageId string. The source builder always sets
-        // badgeImageId; when the marker is HIGHLIGHTED (selected/pressed) swap to its active-color variant
-        // (same rank number) so a tapped pin recolors immediately (B). Coalesce to a plain-bucket pin by
-        // score as a safety net (thresholds match scoreToBucket()).
-        iconImage: [
-          'coalesce',
-          [
-            'case',
-            nativeHighlightedExpression,
-            ['get', 'activeBadgeImageId'],
-            ['get', 'badgeImageId'],
-          ],
-          ['get', 'badgeImageId'],
-          [
-            'step',
-            ['coalesce', ['get', 'craveScore'], 0],
-            plainBucketImageId(0),
-            1,
-            plainBucketImageId(1),
-            2,
-            plainBucketImageId(2),
-            3,
-            plainBucketImageId(3),
-            4,
-            plainBucketImageId(4),
-            5,
-            plainBucketImageId(5),
-            6,
-            plainBucketImageId(6),
-            7,
-            plainBucketImageId(7),
-            8,
-            plainBucketImageId(8),
-            9,
-            plainBucketImageId(9),
-          ],
-        ],
-        iconSize: 1,
-        iconAnchor: 'bottom',
-        iconAllowOverlap: true,
-        iconIgnorePlacement: true,
-        iconOpacity: ['*', nativePresentationOpacityExpression, nativeLodOpacityExpression],
-        // No iconOpacityTransition. The native CADisplayLink steppers already write BOTH
-        // opacity inputs per-frame: the LOD crossfade stepper writes nativeLodOpacity
-        // (updateLivePinTransitions) and the presentation stepper writes
-        // nativePresentationOpacity (stepPresentationOpacityAnimation, eased,
-        // transitionDurationMs:0). A Mapbox style transition is therefore a REDUNDANT
-        // second opacity writer — and its 300ms smoothing of every per-frame feature-state
-        // write forced these ignorePlacement pins back through the placement/pixel-snap
-        // pass each frame, which is the pin jitter. The stepper is now the sole animator.
-      }) as unknown as MapboxGL.SymbolLayerStyle,
-    [nativeLodOpacityExpression, nativePresentationOpacityExpression, nativeHighlightedExpression]
-  );
-
-  // Out-of-overlap-region pin style: same icon, but collision ON (allowOverlap:false +
-  // ignorePlacement:false) so the world-wide shortcut tail collapses to a sparse,
-  // non-overlapping subset that fades in/out as you pan/zoom (the Google-style "wave").
-  // Same opacity transition drives that fade. ALL promoted pins (rank- and score-badged)
-  // render through this ONE layer, always-draw (allowOverlap:true), bounded by the single
-  // viewport-gated budget (maxFullPins) — the rank-vs-score distinction is purely the
-  // per-feature badge sprite (badgeImageId), never a layer/style split.
-
-  // RESIDENT interaction layer (slot-elimination): ONE circle layer for all pin
-  // tap targets, reading the resident bundle source filtered by feature kind —
-  // replaces the 30 per-slot interaction layers. No nativeLodZ scoping.
-  const pinInteractionLayer = React.useMemo(
-    () => (
-      <MapboxGL.CircleLayer
-        key={PIN_INTERACTION_LAYER_ID}
-        id={PIN_INTERACTION_LAYER_ID}
-        slot={undefined}
-        belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-        sourceID={RESTAURANT_PIN_BUNDLE_SOURCE_ID}
-        style={PIN_INTERACTION_LAYER_STYLE}
-        filter={promotedPinInteractionFeatureFilter}
-      />
-    ),
-    []
-  );
-  const pinInteractionLayerIds = React.useMemo(() => [PIN_INTERACTION_LAYER_ID], []);
+  // Pin body/number/shadow rendering AND tap targeting moved to the self-owned CA overlay
+  // (PinOverlayView/overlayHitTest in SearchMapRenderController.swift). The overlay skins each pin
+  // tile from the style sprite by `badgeImageId`/`activeBadgeImageId` and bakes the silhouette shadow
+  // itself, so the GL pin SymbolLayer, shadow SymbolLayer, and tap-interaction CircleLayer were all
+  // removed — no pin render or interaction layer remains in JS.
 
   const { mountedSourceCounts } = resolveMapPresentedLabelScene({
     shouldMountSearchMarkerLayers,
@@ -2762,7 +2508,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     onMarkerPress,
     onBlankMapPress: onPress,
     visibleDotLayerId: DOT_LAYER_ID,
-    pinInteractionLayerIds,
     labelLayerIds: labelVisualLayerIds,
     labelTapHitbox,
     dotTapIntentRadiusPx: DOT_TAP_INTENT_RADIUS_PX,
@@ -2907,9 +2652,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ? {
             dotLayerStyle,
             handlePressTarget: handleMarkerScenePressTarget,
-            stylePinSingleSymbolStyle,
-            stylePinSharedShadowStyle,
-            pinInteractionLayer,
             profilerCallback,
             labelLayerSpecs,
             labelCandidateStyles,
@@ -2923,14 +2665,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
       handleMarkerScenePressTarget,
       labelCandidateStyles,
       labelLayerSpecs,
-      pinInteractionLayer,
       profilerCallback,
       restaurantLabelPinCollisionLayerId,
       restaurantLabelPinCollisionLayerKey,
       restaurantLabelPinCollisionStyle,
       shouldMountSearchMarkerLayers,
-      stylePinSingleSymbolStyle,
-      stylePinSharedShadowStyle,
     ]
   );
 

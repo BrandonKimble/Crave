@@ -59,7 +59,6 @@ type SearchMapRenderControllerNativeModule = {
   configureNativePressTargeting: (payload: {
     instanceId: string;
     enabled: boolean;
-    pinLayerIds?: string[];
     labelLayerIds?: string[];
     labelTapHitbox?: {
       textSize: number;
@@ -82,7 +81,6 @@ type SearchMapRenderControllerNativeModule = {
       x: number;
       y: number;
     };
-    pinLayerIds?: string[];
     labelLayerIds?: string[];
     labelQueryBox?: [number, number, number, number] | null;
     labelTapHitbox?: {
@@ -889,7 +887,15 @@ export const searchMapRenderController = {
   // previous catalog in place until the next results change.
   async setCandidateCatalog(payload: {
     instanceId: string;
-    entries: ReadonlyArray<{ markerKey: string; lng: number; lat: number; rank: number }>;
+    entries: ReadonlyArray<{
+      markerKey: string;
+      lng: number;
+      lat: number;
+      rank: number;
+      badgeImageId?: string;
+      activeBadgeImageId?: string;
+      restaurantId?: string;
+    }>;
   }): Promise<void> {
     if (!nativeModule?.setCandidateCatalog) {
       return;
@@ -1054,7 +1060,6 @@ export const searchMapRenderController = {
       x: number;
       y: number;
     };
-    pinLayerIds?: string[];
     labelLayerIds?: string[];
     labelQueryBox?: [number, number, number, number] | null;
     labelTapHitbox?: {
@@ -1096,7 +1101,6 @@ export const searchMapRenderController = {
   async configureNativePressTargeting(payload: {
     instanceId: string;
     enabled: boolean;
-    pinLayerIds?: string[];
     labelLayerIds?: string[];
     labelTapHitbox?: {
       textSize: number;

@@ -1,4 +1,5 @@
 import Foundation
+import CoreImage
 import CoreLocation
 import MapLodKit
 import MapboxMaps
@@ -55,6 +56,45 @@ private final class PresentationOpacityAnimator {
       timestampMs: displayLink.timestamp * 1000
     )
   }
+}
+
+// ============================================================================================
+// PIN OVERLAY (self-owned ViewAnnotation-style substrate) — plans/map-lod-va-pin-architecture.md
+// A passthrough UIView sibling above the MapView hosting pooled per-pin CALayer tiles, positioned
+// by per-frame `mapboxMap.point(for:)` projection (NOT geojson-vt tiled → no re-quantization → no
+// zoom-out wiggle). hitTest mirrors Mapbox's ViewAnnotationsContainer: returns nil for empty areas
+// so map pan/zoom pass through; returns a tile only where one is hit.
+private final class PinOverlayView: UIView {
+  override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    let hit = super.hitTest(point, with: event)
+    return hit === self ? nil : hit
+  }
+}
+
+// One pooled per-pin tile: a container CALayer (anchored bottom-center on the projected coordinate) holding
+// a shadow sublayer (below) and a body sublayer (the rank badge, above). The container's opacity is the
+// engine crossfade (× presentation); the shadow keeps its own constant 0.65 so it composites at p×0.65.
+// bodyLayer.contents swaps body↔active for the highlight (Step 5). Anchored at the BODY's bottom-center so
+// the pin tip lands exactly on the coordinate (matches GL iconAnchor:'bottom').
+private final class PinTileLayer: CALayer {
+  let bodyLayer = CALayer()
+  let shadowLayer = CALayer()
+  override init() {
+    super.init()
+    anchorPoint = CGPoint(x: 0.5, y: 1.0)
+    // NOTE: allowsEdgeAntialiasing is deliberately OFF. With a sub-pixel layer position it re-antialiases the
+    // sprite's already-antialiased white-ring edge, doubling it into a thin dark seam GL never showed.
+    shadowLayer.opacity = 0.35   // live overall shadow strength (lightened)
+    // The 39pt shadow sprite is downscaled to ~11pt; trilinear (mipmapped) minification keeps the soft
+    // edge soft (the default linear filter hardens it into a grey smudge — heavier than the GL GPU sampling).
+    shadowLayer.minificationFilter = .trilinear
+    // The body renders ~1:1 — do NOT use trilinear here: at a sub-pixel position CA would sample the body's
+    // MIPMAPS, where white-on-transparent averages to grey → a grey fringe around the white ring. Keep linear.
+    addSublayer(shadowLayer)     // below
+    addSublayer(bodyLayer)       // above
+  }
+  override init(layer: Any) { super.init(layer: layer) }   // required for CA presentation copies
+  required init?(coder: NSCoder) { fatalError("PinTileLayer is code-only") }
 }
 
 @objc(SearchMapRenderController)
@@ -510,7 +550,6 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private struct NativePressTargetConfig {
     var enabled: Bool = false
-    var pinLayerIds: [String] = []
     var labelLayerIds: [String] = []
     var labelTapHitbox: LabelTapHitboxConfig? = nil
     var dotLayerIds: [String] = []
@@ -551,6 +590,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     let markerKey: String
     let coordinate: CLLocationCoordinate2D
     let rank: Int
+    // Pin OVERLAY sprite ids (resolved in JS, registered in the Mapbox style). The overlay pulls the
+    // UIImage from the style by id (mapboxMap.image(withId:)) — the exact sprite the GL pin used.
+    let badgeImageId: String?
+    let activeBadgeImageId: String?
+    let restaurantId: String?
   }
 
   private struct InstanceState {
@@ -890,6 +934,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     for instanceId in Array(livePinTransitionAnimators.keys) {
       cancelLivePinTransitionAnimation(instanceId: instanceId)
+    }
+    for instanceId in Array(overlayInstances.keys) {
+      teardownOverlay(instanceId: instanceId)
     }
     for instanceId in Array(labelObservationRefreshWorkItems.keys) {
       labelObservationRefreshWorkItems[instanceId]?.cancel()
@@ -1313,6 +1360,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       self?.labelObservationRefreshWorkItems[instanceId] = nil
       self?.cancelPresentationOpacityAnimation(instanceId: instanceId)
       self?.cancelLivePinTransitionAnimation(instanceId: instanceId)
+      self?.teardownOverlay(instanceId: instanceId)
       let mapTag = self?.instances[instanceId]?.mapTag
       self?.instances.removeValue(forKey: instanceId)
       self?.slowActionWindowsByInstanceAndScope = self?.slowActionWindowsByInstanceAndScope.filter {
@@ -1367,7 +1415,10 @@ final class SearchMapRenderController: RCTEventEmitter {
         catalog.append(CandidateCatalogEntry(
           markerKey: markerKey,
           coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
-          rank: rank
+          rank: rank,
+          badgeImageId: raw["badgeImageId"] as? String,
+          activeBadgeImageId: raw["activeBadgeImageId"] as? String,
+          restaurantId: raw["restaurantId"] as? String
         ))
       }
       state.candidateCatalog = catalog
@@ -1620,8 +1671,8 @@ final class SearchMapRenderController: RCTEventEmitter {
           phase: attributionPhase,
           durationMs: CACurrentMediaTime() * 1000 - highlightedStartedAt
         )
-        // Pin z-order is now native (single-symbol pin layer, symbol-z-order:
-        // 'viewport-y') — no per-slot moveLayer pass needed.
+        // Pin z-order is owned by the CA overlay (per-tile zPosition by screen-y) —
+        // no per-slot moveLayer pass needed.
         if didSyncResidentFrame, var state = self.instances[instanceId] {
           let emitStartedAt = CACurrentMediaTime() * 1000
           let mountedSourceRevisions = self.currentMountedSourceRevisions(state: state)
@@ -3095,7 +3146,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
       state.nativePressTargetConfig = NativePressTargetConfig(
         enabled: enabled,
-        pinLayerIds: Self.parseStringArray(payload["pinLayerIds"]),
         labelLayerIds: Self.parseStringArray(payload["labelLayerIds"]),
         labelTapHitbox: Self.parseLabelTapHitboxConfig(payload["labelTapHitbox"]),
         dotLayerIds: Self.parseStringArray(payload["dotLayerIds"]),
@@ -3153,7 +3203,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
         return
       }
-      let pinLayerIds = Self.parseStringArray(payload["pinLayerIds"])
       let labelLayerIds = Self.parseStringArray(payload["labelLayerIds"])
       let labelQueryBoxValues = Self.parseNumberArray(payload["labelQueryBox"])
       let labelTapHitbox = Self.parseLabelTapHitboxConfig(payload["labelTapHitbox"])
@@ -3175,7 +3224,6 @@ final class SearchMapRenderController: RCTEventEmitter {
             state: state,
             handle: handle,
             point: CGPoint(x: x, y: y),
-            pinLayerIds: pinLayerIds,
             labelLayerIds: labelLayerIds,
             labelTapHitbox: labelTapHitbox,
             dotLayerIds: dotLayerIds,
@@ -3210,7 +3258,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     state: InstanceState,
     handle: ResolvedMapHandle,
     point: CGPoint,
-    pinLayerIds: [String],
     labelLayerIds: [String],
     labelTapHitbox: LabelTapHitboxConfig?,
     dotLayerIds: [String],
@@ -3220,7 +3267,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     completion: @escaping (Result<[String: Any]?, Error>) -> Void
   ) {
     let labelSourceIds: Set<String> = [state.labelRenderSourceId]
-    let pinInteractionSourceIds: Set<String> = [state.pinBundleSourceId]
     let queryDotTarget = {
       guard !dotLayerIds.isEmpty, dotQueryRect.width > 0, dotQueryRect.height > 0 else {
         completion(.success(nil))
@@ -3277,35 +3323,13 @@ final class SearchMapRenderController: RCTEventEmitter {
         }
       }
     }
-    guard !pinLayerIds.isEmpty || !labelLayerIds.isEmpty || !dotLayerIds.isEmpty else {
-      completion(.success(nil))
+    // Pins render + tap via the self-owned CA overlay (the visible non-tiled pins). Pin > label > dot
+    // priority: a pin hit completes; a miss falls through to the GL label/dot queries.
+    if let overlayTarget = overlayHitTest(instanceId: instanceId, point: point) {
+      completion(.success(overlayTarget))
       return
     }
-    if pinLayerIds.isEmpty {
-      queryLabelTarget()
-      return
-    }
-    let queryRect = CGRect(x: point.x - 0.5, y: point.y - 0.5, width: 1, height: 1)
-    handle.mapView.mapboxMap.queryRenderedFeatures(
-      with: queryRect,
-      options: RenderedQueryOptions(layerIds: pinLayerIds, filter: nil)
-    ) { pinResult in
-      DispatchQueue.main.async {
-        switch pinResult {
-        case .failure(let error):
-          completion(.failure(error))
-        case .success(let pinFeatures):
-          if let pinTarget = Self.buildRenderedPinPressTarget(
-            from: pinFeatures,
-            requiredSourceIds: pinInteractionSourceIds
-          ) {
-            completion(.success(pinTarget))
-          } else {
-            queryLabelTarget()
-          }
-        }
-      }
-    }
+    queryLabelTarget()
   }
 
   @objc
@@ -7660,6 +7684,392 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
   }
 
+  // ============================================================================================
+  // PIN OVERLAY SUBSYSTEM (plans/map-lod-va-pin-architecture.md) — the self-owned, non-tiled pin
+  // substrate that replaces the GL pin SymbolLayer to kill the zoom-out wiggle. Per-instance: a
+  // passthrough PinOverlayView above the MapView holding pooled per-pin CALayer tiles, repositioned
+  // every display tick by `mapboxMap.point(for:)`. The LodEngine stays the single opacity authority
+  // (overlay tile opacity = engine.pinOpacity × presentationOpacity); only the WRITE TARGET changes.
+  //
+  // STEP 1 (current): overlay paints a small debug marker at each promoted coordinate while the GL
+  // pins STILL paint underneath, so we can prove on-device the overlay markers do NOT wiggle on
+  // zoom-out (projected, non-tiled) while the GL pins do. No GL deletion, no opacity-authority flip.
+  private final class PinOverlayInstance {
+    let overlayView: PinOverlayView
+    weak var mapView: MapView?
+    var tiles: [String: PinTileLayer] = [:]
+    var freePool: [PinTileLayer] = []
+    var coordByKey: [String: CLLocationCoordinate2D] = [:]
+    var badgeIdByKey: [String: String] = [:]
+    var activeBadgeIdByKey: [String: String] = [:]
+    var restaurantIdByKey: [String: String] = [:]
+    // Highlighted (selected/tapped) marker keys — tiles in this set show the ACTIVE-color badge sprite.
+    var highlightedKeys: Set<String> = []
+    // Which sprite each live tile currently shows — so a rank change (badge id change) re-skins it.
+    var tileBadgeId: [String: String] = [:]
+    // Resolved sprite CGImages, pulled lazily from the Mapbox style by id (≤~34 in-roster at a time).
+    var cgImageCache: [String: CGImage] = [:]
+    var cgImageScaleCache: [String: CGFloat] = [:]
+    var cgImageSizeCache: [String: CGSize] = [:]
+    init(overlayView: PinOverlayView) { self.overlayView = overlayView }
+  }
+  private var overlayInstances: [String: PinOverlayInstance] = [:]
+  private var overlayDisplayLinks: [String: CADisplayLink] = [:]
+  // The self-owned CA overlay is the sole pin render + tap substrate on iOS (non-tiled → no zoom
+  // wiggle). Proven 2026-06-29: the overlay position is a smooth continuous fn of zoom with zero
+  // re-quantization spike at any tile boundary. (Android still renders pins via the GL layers — the
+  // overlay is iOS-only; porting it to Android is tracked separately.)
+
+  // === PIN SHADOW (baked once, pin-SILHOUETTE shape) ==========================================
+  // A soft, blurred copy of the pin's OWN silhouette (the body alpha), tinted dark, generated ONCE via
+  // CGContext.setShadow and cached as a single CGImage shared by every tile (the outer silhouette is the
+  // same across all ranks/colors). Set as shadowLayer.contents; the body occludes the in-place silhouette
+  // so only the soft CAST shows. All knobs below are consumed at the one-time bake (change one → re-bake the
+  // shared image); shadowLayer.opacity (0.65) stays the live overall-strength dial. Zero per-frame cost.
+  static let pinShadowBlur: CGFloat = 1.2             // Gaussian blur radius (pt) — edge softness (tighter throw)
+  static let pinShadowFootprintScale: CGFloat = 1.0   // silhouette size vs the body (1.0 = exact pin size; only blur feathers past)
+  static let pinShadowLiftUp: CGFloat = -1.0         // shift the (clean, centered) shadow vertically via the frame: + = UP (lift), − = down
+  static let pinShadowTint = UIColor.black            // shadow color (any UIColor — warm/cool tint possible)
+  static let pinShadowAlpha: CGFloat = 0.9            // darkness of the silhouette before blur (× the live layer opacity)
+  // Reused CIContext for the one-time blur (sRGB working/output space; black shadow → no grey-edge risk).
+  private static let pinShadowCIContext = CIContext(options: [
+    .workingColorSpace: CGColorSpace(name: CGColorSpace.sRGB) as Any,
+    .outputColorSpace: CGColorSpace(name: CGColorSpace.sRGB) as Any,
+  ])
+
+  private func makeOverlayTileLayer() -> PinTileLayer {
+    let layer = PinTileLayer()
+    layer.contentsScale = UIScreen.main.scale
+    layer.opacity = 0
+    return layer
+  }
+
+  // Resolve a sprite id to its CGImage (+ point size + scale) from the Mapbox style, cached per instance.
+  private func resolveOverlaySprite(
+    overlay: PinOverlayInstance, imageId: String, mapboxMap: MapboxMap
+  ) -> (cg: CGImage, size: CGSize, scale: CGFloat)? {
+    if let cg = overlay.cgImageCache[imageId],
+       let size = overlay.cgImageSizeCache[imageId],
+       let scale = overlay.cgImageScaleCache[imageId] {
+      return (cg, size, scale)
+    }
+    guard let img = mapboxMap.image(withId: imageId), let raw = img.cgImage else { return nil }
+    // mapboxMap.image(withId:) returns PREMULTIPLIED pixel data but mislabels it kCGImageAlphaLast (straight)
+    // — verified by dumping the bytes: the white-ring edge pixels are (10,10,10,10)/(219,219,219,219), i.e.
+    // RGB==alpha (the premultiplied-white signature). Rendered as "straight", CA reads those alpha-darkened
+    // RGBs as grey → a dark seam around the white ring. Re-wrap the SAME bytes with the correct
+    // premultipliedLast label so CA interprets the edge correctly (matches GL's GPU upload). No re-draw.
+    let cg = Self.fixMislabeledPremultipliedAlpha(raw) ?? raw
+    overlay.cgImageCache[imageId] = cg
+    overlay.cgImageSizeCache[imageId] = img.size
+    overlay.cgImageScaleCache[imageId] = img.scale
+    return (cg, img.size, img.scale)
+  }
+
+  private static func fixMislabeledPremultipliedAlpha(_ cg: CGImage) -> CGImage? {
+    let alpha = cg.alphaInfo
+    guard alpha == .last || alpha == .first, let provider = cg.dataProvider else { return nil }
+    let fixed: CGImageAlphaInfo = (alpha == .first) ? .premultipliedFirst : .premultipliedLast
+    let byteOrder = cg.bitmapInfo.rawValue & CGBitmapInfo.byteOrderMask.rawValue
+    let info = CGBitmapInfo(rawValue: byteOrder | fixed.rawValue)
+    return CGImage(
+      width: cg.width, height: cg.height, bitsPerComponent: cg.bitsPerComponent,
+      bitsPerPixel: cg.bitsPerPixel, bytesPerRow: cg.bytesPerRow,
+      space: cg.colorSpace ?? CGColorSpaceCreateDeviceRGB(), bitmapInfo: info,
+      provider: provider, decode: nil, shouldInterpolate: cg.shouldInterpolate, intent: cg.renderingIntent)
+  }
+
+  // The single, shared, pre-blurred silhouette shadow image (baked once; same outer outline for every rank).
+  private var cachedPinShadow: (cg: CGImage, sizePt: CGSize)?
+
+  // Bake the pin-silhouette drop shadow ONCE: tint the body alpha to the shadow color (a sharp dark pin
+  // shape), then Gaussian-blur the WHOLE thing into a CLEAN soft pin silhouette — no fill/knockout, so there
+  // is no hard inner edge (the old "line"). It is centered and symmetric; the lifted OFFSET is applied later
+  // to the layer frame, not baked in. Black shadow → the blur has zero grey-edge risk.
+  private func makePinShadowImage(bodyCG: CGImage, bodyPt: CGSize, deviceScale: CGFloat) -> (cg: CGImage, sizePt: CGSize)? {
+    let scaled = CGSize(width: bodyPt.width * Self.pinShadowFootprintScale,
+                        height: bodyPt.height * Self.pinShadowFootprintScale)
+    let pad = ceil(Self.pinShadowBlur) * 3 + 2   // room for the blur tail to fade to transparent (no clip)
+    let sizePt = CGSize(width: scaled.width + pad * 2, height: scaled.height + pad * 2)
+    let shapeRect = CGRect(x: (sizePt.width - scaled.width) / 2,
+                           y: (sizePt.height - scaled.height) / 2,
+                           width: scaled.width, height: scaled.height)
+    let tint = Self.pinShadowTint.withAlphaComponent(Self.pinShadowAlpha)
+    let silhouette = UIImage(cgImage: bodyCG, scale: deviceScale, orientation: .up)
+      .withTintColor(tint, renderingMode: .alwaysOriginal)
+    let fmt = UIGraphicsImageRendererFormat.default()
+    fmt.scale = deviceScale
+    fmt.opaque = false
+    // 1. sharp dark silhouette, centered in a padded transparent canvas.
+    let sharp = UIGraphicsImageRenderer(size: sizePt, format: fmt).image { _ in
+      silhouette.draw(in: shapeRect)
+    }
+    guard let sharpCG = sharp.cgImage else { return nil }
+    // 2. Gaussian-blur it → a clean soft pin silhouette (sigma in pixels = blur-pt × scale).
+    let blurred = CIImage(cgImage: sharpCG)
+      .applyingGaussianBlur(sigma: Double(Self.pinShadowBlur * deviceScale))
+    let cropPx = CGRect(x: 0, y: 0, width: CGFloat(sharpCG.width), height: CGFloat(sharpCG.height))
+    guard let cg = Self.pinShadowCIContext.createCGImage(blurred, from: cropPx) else { return nil }
+    return (cg, sizePt)
+  }
+
+  // Skin a tile's BODY to the given sprite id and lay out the (shared) shadow beneath it. GL pin uses
+  // icon-size 1 → on-screen point size == image.size; iconAnchor:'bottom' → body bottom-center on the coord.
+  private func configureTileSprite(
+    overlay: PinOverlayInstance, tile: PinTileLayer, key: String, imageId: String, mapboxMap: MapboxMap
+  ) {
+    guard overlay.tileBadgeId[key] != imageId else { return }   // already showing this sprite
+    guard let body = resolveOverlaySprite(overlay: overlay, imageId: imageId, mapboxMap: mapboxMap) else {
+      return
+    }
+    CATransaction.begin(); CATransaction.setDisableActions(true)
+    let bodyRect = CGRect(origin: .zero, size: body.size)
+    tile.bounds = bodyRect
+    tile.bodyLayer.frame = bodyRect
+    tile.bodyLayer.contents = body.cg
+    tile.bodyLayer.contentsScale = body.scale
+    // Shadow: a baked-once, pin-silhouette soft cast shared by all tiles. Bake lazily on the first skin
+    // (sub-ms; the outer silhouette is identical across ranks). Position so the silhouette TIP aligns with
+    // the body tip — the body occludes the in-place silhouette, leaving the soft cast (offset up) showing
+    // past the top and tight at the bottom.
+    let deviceScale = UIScreen.main.scale
+    if cachedPinShadow == nil {
+      cachedPinShadow = makePinShadowImage(bodyCG: body.cg, bodyPt: body.size, deviceScale: deviceScale)
+    }
+    if let sh = cachedPinShadow {
+      let scaledH = body.size.height * Self.pinShadowFootprintScale
+      let silhouetteTipYInImage = (sh.sizePt.height + scaledH) / 2.0   // bottom of the centered silhouette
+      tile.shadowLayer.contents = sh.cg
+      tile.shadowLayer.contentsScale = deviceScale
+      // Align the shadow silhouette with the body, then shift the whole image by liftUp (+ = up, − = down).
+      // Applied to the layer position, NOT baked into the image — so it never reintroduces an edge.
+      tile.shadowLayer.frame = CGRect(
+        x: body.size.width / 2.0 - sh.sizePt.width / 2.0,
+        y: body.size.height - silhouetteTipYInImage - Self.pinShadowLiftUp,
+        width: sh.sizePt.width, height: sh.sizePt.height)
+    }
+    CATransaction.commit()
+    overlay.tileBadgeId[key] = imageId
+  }
+
+  // Reconcile the overlay tile roster to the engine's promoted set (∪ still-fading demoting slots).
+  // Called right after engine.decide (camera frame) — NOT per render frame. Creates/recycles tiles
+  // and refreshes the coordinate lookup. Tears the overlay down when the source is inactive/dismissing.
+  private func syncOverlayRoster(instanceId: String, handle: ResolvedMapHandle) {
+    guard let state = instances[instanceId], let engine = state.lodV5Engine else { return }
+    if Self.isVisualSourceInactiveOrDismissing(state) {
+      teardownOverlay(instanceId: instanceId)
+      return
+    }
+    // Lazily create the per-instance overlay, mounted as a passthrough sibling above the MapView.
+    let overlay: PinOverlayInstance
+    if let existing = overlayInstances[instanceId] {
+      overlay = existing
+    } else {
+      let view = PinOverlayView(frame: handle.mapView.bounds)
+      view.backgroundColor = .clear
+      view.isUserInteractionEnabled = true
+      view.clipsToBounds = false
+      view.layer.masksToBounds = false
+      view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+      handle.mapView.addSubview(view)
+      overlay = PinOverlayInstance(overlayView: view)
+      overlayInstances[instanceId] = overlay
+    }
+    overlay.mapView = handle.mapView
+    overlay.overlayView.frame = handle.mapView.bounds
+    handle.mapView.bringSubviewToFront(overlay.overlayView)
+
+    // Coordinate + sprite-id + restaurant-id lookup from the catalog (≤~500 entries; rebuilt on decide).
+    var coordByKey: [String: CLLocationCoordinate2D] = [:]
+    var badgeIdByKey: [String: String] = [:]
+    var activeBadgeIdByKey: [String: String] = [:]
+    var restaurantIdByKey: [String: String] = [:]
+    coordByKey.reserveCapacity(state.candidateCatalog.count)
+    for entry in state.candidateCatalog {
+      coordByKey[entry.markerKey] = entry.coordinate
+      if let b = entry.badgeImageId { badgeIdByKey[entry.markerKey] = b }
+      if let a = entry.activeBadgeImageId { activeBadgeIdByKey[entry.markerKey] = a }
+      if let r = entry.restaurantId { restaurantIdByKey[entry.markerKey] = r }
+    }
+    overlay.coordByKey = coordByKey
+    overlay.badgeIdByKey = badgeIdByKey
+    overlay.activeBadgeIdByKey = activeBadgeIdByKey
+    overlay.restaurantIdByKey = restaurantIdByKey
+    // Highlight set = explicit highlighted keys ∪ any key whose restaurant is the highlighted restaurant.
+    overlay.highlightedKeys = Self.resolveOverlayHighlightedKeys(state: state, restaurantIdByKey: restaurantIdByKey)
+
+    let mapboxMap = handle.mapView.mapboxMap
+
+    // Desired roster = promoted set ∪ existing slots that are still fading down (>0.001 opacity).
+    var desired = Set(engine.lastPromotedInOrder)
+    for key in overlay.tiles.keys where !desired.contains(key) {
+      if engine.pinOpacity(key) > 0.001 { desired.insert(key) }
+    }
+
+    // Create missing tiles (opacity 0 → fades up; no add-flash) and skin them with the rank sprite.
+    for key in desired where overlay.tiles[key] == nil {
+      guard coordByKey[key] != nil else { continue }
+      let tile = overlay.freePool.popLast() ?? makeOverlayTileLayer()
+      tile.opacity = 0
+      overlay.tileBadgeId[key] = nil   // force a fresh skin for the recycled/new tile
+      CATransaction.begin(); CATransaction.setDisableActions(true)
+      overlay.overlayView.layer.addSublayer(tile)
+      CATransaction.commit()
+      overlay.tiles[key] = tile
+      if let mapboxMap, let badgeId = overlayEffectiveBadgeId(overlay: overlay, key: key) {
+        configureTileSprite(overlay: overlay, tile: tile, key: key, imageId: badgeId, mapboxMap: mapboxMap)
+      }
+    }
+    // Re-skin live tiles whose effective badge id changed (rank shift OR highlight toggle).
+    if let mapboxMap {
+      for (key, tile) in overlay.tiles {
+        if let badgeId = overlayEffectiveBadgeId(overlay: overlay, key: key), overlay.tileBadgeId[key] != badgeId {
+          configureTileSprite(overlay: overlay, tile: tile, key: key, imageId: badgeId, mapboxMap: mapboxMap)
+        }
+      }
+    }
+    // Recycle vanished tiles.
+    for key in Array(overlay.tiles.keys) where !desired.contains(key) {
+      if let tile = overlay.tiles.removeValue(forKey: key) {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        tile.removeFromSuperlayer()
+        CATransaction.commit()
+        tile.opacity = 0
+        overlay.tileBadgeId[key] = nil
+        overlay.freePool.append(tile)
+      }
+    }
+
+    if overlay.tiles.isEmpty {
+      cancelOverlayDisplayLink(instanceId: instanceId)
+    } else {
+      ensureOverlayDisplayLink(instanceId: instanceId)
+    }
+    Self.lodLog("[pinov] roster promoted=\(engine.lastPromotedInOrder.count) desired=\(desired.count) tiles=\(overlay.tiles.count)")
+    // Position immediately so a freshly-promoted tile paints at the right spot this frame.
+    refreshOverlayFrame(instanceId: instanceId)
+  }
+
+  // The unconditional per-frame pass: project every resident tile to screen space, set its position,
+  // z-order (screen-y → CALayer.zPosition), and opacity (engine.pinOpacity × presentation). Runs on a
+  // dedicated display link while tiles are resident — pins track the camera every refresh, no tiling.
+  private func refreshOverlayFrame(instanceId: String) {
+    guard let overlay = overlayInstances[instanceId], !overlay.tiles.isEmpty else { return }
+    guard let mapView = overlay.mapView, let mapboxMap = mapView.mapboxMap,
+          let state = instances[instanceId], let engine = state.lodV5Engine
+    else { return }
+    let presentation = Float(Self.clamp(state.currentPresentationOpacityValue, min: 0, max: 1))
+    CATransaction.begin(); CATransaction.setDisableActions(true)
+    for (key, tile) in overlay.tiles {
+      guard let coord = overlay.coordByKey[key] else { tile.isHidden = true; continue }
+      let pt = mapboxMap.point(for: coord)
+      guard pt.x.isFinite, pt.y.isFinite else { tile.isHidden = true; continue }
+      tile.isHidden = false
+      // Smooth sub-pixel position (matches GL). The white-ring edge stays clean because the sprite is
+      // re-wrapped with the correct premultipliedLast alpha (see resolveOverlaySprite) — no pixel snapping needed.
+      tile.position = pt
+      tile.zPosition = pt.y
+      tile.opacity = Float(engine.pinOpacity(key)) * presentation
+    }
+    CATransaction.commit()
+  }
+
+  private func ensureOverlayDisplayLink(instanceId: String) {
+    guard overlayDisplayLinks[instanceId] == nil else { return }
+    let link = CADisplayLink(target: self, selector: #selector(handleOverlayDisplayLink(_:)))
+    Self.configureDisplayLink(link)
+    link.add(to: .main, forMode: .common)
+    overlayDisplayLinks[instanceId] = link
+  }
+
+  private func cancelOverlayDisplayLink(instanceId: String) {
+    overlayDisplayLinks[instanceId]?.invalidate()
+    overlayDisplayLinks.removeValue(forKey: instanceId)
+  }
+
+  @objc
+  private func handleOverlayDisplayLink(_ displayLink: CADisplayLink) {
+    guard let instanceId = overlayDisplayLinks.first(where: { $0.value === displayLink })?.key else {
+      return
+    }
+    refreshOverlayFrame(instanceId: instanceId)
+  }
+
+  // GL pin tap hitbox (search-map.tsx): a circle of radius PIN_TAP_INTENT_RADIUS_PX centered
+  // PIN_INTERACTION_CENTER_SHIFT_Y_PX above the projected coordinate (the tip), so the hot zone sits on the body.
+  static let pinTapIntentRadiusPx: CGFloat = 28.0 / 2.0
+  static let pinInteractionCenterShiftYPx: CGFloat = 28.0 * 0.38 + 4.25
+
+  // The badge a tile should show: the ACTIVE (highlighted) variant when selected, else the rank badge.
+  private func overlayEffectiveBadgeId(overlay: PinOverlayInstance, key: String) -> String? {
+    if overlay.highlightedKeys.contains(key), let active = overlay.activeBadgeIdByKey[key] { return active }
+    return overlay.badgeIdByKey[key]
+  }
+
+  private static func resolveOverlayHighlightedKeys(
+    state: InstanceState, restaurantIdByKey: [String: String]
+  ) -> Set<String> {
+    var keys = state.highlightedMarkerKeys
+    if let hk = state.highlightedMarkerKey { keys.insert(hk) }
+    if let rid = state.highlightedRestaurantId, !rid.isEmpty {
+      for (k, r) in restaurantIdByKey where r == rid { keys.insert(k) }
+    }
+    return keys
+  }
+
+  // Recompute the highlight set and re-skin tiles (body↔active sprite) — called when the highlight changes
+  // outside a camera/decide frame (a tap). Mirrors the GL nativeHighlighted badge swap.
+  private func applyOverlayHighlight(instanceId: String, state: InstanceState) {
+    guard let overlay = overlayInstances[instanceId],
+          let mapboxMap = overlay.mapView?.mapboxMap else { return }
+    overlay.highlightedKeys = Self.resolveOverlayHighlightedKeys(
+      state: state, restaurantIdByKey: overlay.restaurantIdByKey)
+    for (key, tile) in overlay.tiles {
+      if let badgeId = overlayEffectiveBadgeId(overlay: overlay, key: key), overlay.tileBadgeId[key] != badgeId {
+        configureTileSprite(overlay: overlay, tile: tile, key: key, imageId: badgeId, mapboxMap: mapboxMap)
+      }
+    }
+  }
+
+  // Synchronous tap hit-test over the overlay tiles, replicating the GL pin interaction circle hitbox.
+  // Front-to-back (largest screenY first = topmost); ignores fading ghosts (opacity ≤ 0.5). Returns the
+  // same press-target dict the GL pin path produced ({restaurantId, coordinate, targetKind:"pin"}).
+  private func overlayHitTest(instanceId: String, point: CGPoint) -> [String: Any]? {
+    guard let overlay = overlayInstances[instanceId],
+          let mapView = overlay.mapView, let mapboxMap = mapView.mapboxMap else { return nil }
+    let radius = Self.pinTapIntentRadiusPx
+    let shiftY = Self.pinInteractionCenterShiftYPx
+    var best: (key: String, screenY: CGFloat)? = nil
+    for (key, tile) in overlay.tiles {
+      guard tile.opacity > 0.5, let coord = overlay.coordByKey[key] else { continue }
+      let pt = mapboxMap.point(for: coord)
+      guard pt.x.isFinite, pt.y.isFinite else { continue }
+      let cx = pt.x, cy = pt.y - shiftY
+      let dx = point.x - cx, dy = point.y - cy
+      if dx * dx + dy * dy <= radius * radius {
+        if best == nil || pt.y > best!.screenY { best = (key, pt.y) }
+      }
+    }
+    guard let hit = best, let rid = overlay.restaurantIdByKey[hit.key], !rid.isEmpty,
+          let coord = overlay.coordByKey[hit.key] else { return nil }
+    Self.lodLog("[pinov] tap HIT rid=\(rid)")
+    return [
+      "restaurantId": rid,
+      "coordinate": ["lng": coord.longitude, "lat": coord.latitude],
+      "targetKind": "pin",
+    ]
+  }
+
+  private func teardownOverlay(instanceId: String) {
+    cancelOverlayDisplayLink(instanceId: instanceId)
+    guard let overlay = overlayInstances.removeValue(forKey: instanceId) else { return }
+    CATransaction.begin(); CATransaction.setDisableActions(true)
+    for (_, tile) in overlay.tiles { tile.removeFromSuperlayer() }
+    overlay.overlayView.removeFromSuperview()
+    CATransaction.commit()
+  }
+
   // Map-LOD v5 CONVERGE (plans/lod-v5-architecture.md). One display-link tick: integrate every in-motion
   // anchor's pin opacity toward want?1:0 (eased, ε-snap) and write the THREE derived feature-states off
   // that single scalar — pin = p, dot = 1 − p, label = p — so a marker can never be a visible pin AND a
@@ -7793,11 +8203,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     promoted: [String], labelLayerIds: [String], mapboxMap: MapboxMap
   ) {
     var updated = 0
-    for layerId in [
-      "restaurant-pin-single-symbol-layer",
-      "restaurant-pin-shared-shadow-layer",
-      "restaurant-dot-layer",
-    ] where Self.swapLeaLiteral(layerId: layerId, property: "icon-opacity", keys: promoted, mapboxMap: mapboxMap) {
+    // Pins now render via the self-owned CA overlay (no GL pin/shadow layers), so the reparse-immune LEA
+    // crossfade only applies to the still-GL dot layer. Pins fade via the overlay's CA opacity.
+    let leaIconLayers = ["restaurant-dot-layer"]
+    for layerId in leaIconLayers
+    where Self.swapLeaLiteral(layerId: layerId, property: "icon-opacity", keys: promoted, mapboxMap: mapboxMap) {
       updated += 1
     }
     for layerId in labelLayerIds
@@ -8037,6 +8447,8 @@ final class SearchMapRenderController: RCTEventEmitter {
         }
       }
     }
+    // PIN OVERLAY: swap the highlighted tiles to the active-color badge (mirrors the GL nativeHighlighted swap).
+    applyOverlayHighlight(instanceId: instanceId, state: mutableState)
   }
 
   private static func restaurantId(fromFeature feature: Feature) -> String? {
@@ -9131,85 +9543,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
   }
 
-  private static func buildRenderedPinPressTarget(
-    from features: [QueriedRenderedFeature],
-    requiredSourceIds: Set<String>
-  ) -> [String: Any]? {
-    var candidates: [(
-      restaurantId: String,
-      coordinate: [String: Any]?,
-      lodZ: Double,
-      rank: Double,
-      featureIndex: Int
-    )] = []
-
-    for (featureIndex, feature) in features.enumerated() {
-      guard requiredSourceIds.contains(feature.queriedFeature.source),
-            let parsed = Self.parseRenderedPinPressFeature(feature)
-      else {
-        continue
-      }
-
-      candidates.append((
-        restaurantId: parsed.restaurantId,
-        coordinate: parsed.coordinate,
-        lodZ: parsed.lodZ,
-        rank: parsed.rank,
-        featureIndex: featureIndex
-      ))
-    }
-
-    guard !candidates.isEmpty else {
-      return nil
-    }
-    candidates.sort { left, right in
-      if left.rank != right.rank {
-        return left.rank < right.rank
-      }
-      return left.featureIndex < right.featureIndex
-    }
-    let bestTarget = candidates[0]
-    return [
-      "restaurantId": bestTarget.restaurantId,
-      "coordinate": bestTarget.coordinate ?? NSNull(),
-      "targetKind": "pin",
-    ]
-  }
-
-  private static func parseRenderedPinPressFeature(
-    _ feature: QueriedRenderedFeature
-  ) -> (
-    restaurantId: String,
-    coordinate: [String: Any]?,
-    lodZ: Double,
-    rank: Double
-  )? {
-    let rawFeature = feature.queriedFeature.feature
-    let properties = rawFeature.properties?.turfRawValue as? [String: Any]
-    guard let restaurantId = properties?["restaurantId"] as? String, !restaurantId.isEmpty else {
-      return nil
-    }
-    let lodZ =
-      (properties?["nativeLodZ"] as? NSNumber)?.doubleValue ??
-      (properties?["lodZ"] as? NSNumber)?.doubleValue ??
-      -Double.greatestFiniteMagnitude
-    let rank = (properties?["rank"] as? NSNumber)?.doubleValue ?? .greatestFiniteMagnitude
-    var coordinatePayload: [String: Any]? = nil
-    if let geometry = rawFeature.geometry,
-       case let .point(point) = geometry {
-      coordinatePayload = [
-        "lng": point.coordinates.longitude,
-        "lat": point.coordinates.latitude,
-      ]
-    }
-    return (
-      restaurantId: restaurantId,
-      coordinate: coordinatePayload,
-      lodZ: lodZ,
-      rank: rank
-    )
-  }
-
   private static func buildRenderedLabelPressTarget(
     from features: [QueriedRenderedFeature],
     requiredSourceIds: Set<String>,
@@ -10139,6 +10472,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
 
       private func handleStyleLoaded(mapTag: NSNumber) {
+      cachedPinShadow = nil   // re-bake the silhouette shadow (contentsScale may have changed)
       for instanceId in Array(instances.keys) {
       guard var state = instances[instanceId], state.mapTag == mapTag else {
         continue
@@ -10185,7 +10519,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       state: pressContext.state,
       handle: handle,
       point: point,
-      pinLayerIds: pressContext.config.pinLayerIds,
       labelLayerIds: pressContext.config.labelLayerIds,
       labelTapHitbox: pressContext.config.labelTapHitbox,
       dotLayerIds: pressContext.config.dotLayerIds,
@@ -10595,6 +10928,9 @@ final class SearchMapRenderController: RCTEventEmitter {
         // =9 frozen-tile is clean). The ideal universal fix is to render the ≤30 pins as ViewAnnotations
         // (non-tiled), leaving this obstacle reseed + dots/labels as GL — see map-lod-render-substrate-decision.
         applyV5ObstacleReseed(for: instanceId)
+        // PIN OVERLAY: reconcile the non-tiled overlay tile roster to the engine's promoted set
+        // (decide just ran). The overlay's own display link repositions every frame thereafter.
+        syncOverlayRoster(instanceId: instanceId, handle: handle)
       }
       let labelObservation = Self.derivedFamilyState(sourceId: nextState.labelSourceId, state: nextState).labelObservation
       if labelObservation.observationEnabled {
