@@ -1,12 +1,9 @@
 import React from 'react';
 import { View } from 'react-native';
 
-import SquircleSpinner from '../../../../components/SquircleSpinner';
 import EmptyState from '../../components/empty-state';
-import { ACTIVE_TAB_COLOR } from '../../constants/search';
+import { SceneLoadingSurface } from '../../../../components/skeletons';
 import styles from '../../styles';
-
-const RESULTS_LOADING_SPINNER_OFFSET = 96;
 
 export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
   resolvedResults,
@@ -19,13 +16,17 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
 }) => {
   const resultsMetadata = (resolvedResults?.metadata ?? {}) as { emptyQueryMessage?: string };
 
+  // Hard-swap reveal cover: while surfaceMode='initial_loading', paint a structure-matched
+  // results skeleton (dish or restaurant rows) instead of a bare spinner so the search→results
+  // reveal lands on structure the moment it crosses over.
+  //
+  // frostBacking: the skeleton renders inside the results LOADING COVER (resultsLoadingCoverSurface,
+  // an opaque white layer at zIndex 20 that hides the OUTGOING feed during the reveal). The holes
+  // therefore can't frost-through to the hoisted map (they'd hit the cover / the feed it hides), so
+  // a self-contained frost gives the holes their frosted-window contrast.
   const loadingContent = React.useMemo(
-    () => (
-      <View style={{ paddingTop: RESULTS_LOADING_SPINNER_OFFSET }}>
-        <SquircleSpinner size={22} color={ACTIVE_TAB_COLOR} />
-      </View>
-    ),
-    []
+    () => <SceneLoadingSurface rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'} frostBacking />,
+    [activeTab]
   );
 
   const emptyContent = React.useMemo(() => {

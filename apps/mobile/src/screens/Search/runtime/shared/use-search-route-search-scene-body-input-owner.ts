@@ -19,6 +19,14 @@ import {
   publishSearchMountedResultsBodyLayoutSnapshot,
   syncSearchMountedResultsListDecorationsSnapshot,
 } from './search-mounted-results-data-store';
+import { SceneLoadingSurface } from '../../../../components/skeletons';
+
+// Stable element (reference-equal across renders so the body-content equality check holds): the
+// post-cover empty-frame skeleton for the results list. Catches the brief window between the
+// initial_loading cover lifting and the first results row paint so the reveal never flashes blank.
+const RESULTS_LOADING_EMPTY_COMPONENT = React.createElement(SceneLoadingSurface, {
+  rowType: 'restaurant',
+});
 
 type SearchMountedListBodyContentSpec = Extract<
   AppRouteSceneBodyContentSpec,
@@ -263,7 +271,7 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       ListChromeComponent: null,
       ListHeaderComponent: null,
       ListFooterComponent: null,
-      ListEmptyComponent: null,
+      ListEmptyComponent: RESULTS_LOADING_EMPTY_COMPONENT,
       ItemSeparatorComponent: stablePrimaryItemSeparatorComponent,
       onEndReached: stablePrimaryOnEndReached,
       secondaryList: stableSecondaryListContent,

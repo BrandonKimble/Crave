@@ -1657,6 +1657,11 @@ class AppRouteSceneStackLayerStateController {
       contentEntry: bodySnapshot.contentEntry,
       transportEntry: bodySnapshot.transportEntry,
       contentActivity: {
+        // P3 return-to-origin: surface isActive so the mounted-scroll body can detect when its
+        // RETAINED (never-unmounted) scene becomes the active scene again on a dismiss-return,
+        // the trigger for applying a pending scroll restore (a cold re-mount never happens for
+        // the retained static tabs).
+        isActive: activitySnapshot.isActive,
         shouldRenderListBody:
           bodySurfaceKind === 'list' ? activitySnapshot.shouldRenderListBody : false,
         shouldAttachMountedContent: isMountedBodySurface
@@ -1793,8 +1798,9 @@ class AppRouteSceneStackLayerStateController {
       const isEqual =
         areEntriesEqual &&
         (sceneKey === 'search' ||
-          (left.contentActivity.shouldRenderListBody ===
-            right.contentActivity.shouldRenderListBody &&
+          (left.contentActivity.isActive === right.contentActivity.isActive &&
+            left.contentActivity.shouldRenderListBody ===
+              right.contentActivity.shouldRenderListBody &&
             left.contentActivity.shouldAttachMountedContent ===
               right.contentActivity.shouldAttachMountedContent &&
             (!shouldCompareDataLane ||
@@ -1817,6 +1823,7 @@ class AppRouteSceneStackLayerStateController {
     const isEqual =
       left.contentEntry === right.contentEntry &&
       left.transportEntry === right.transportEntry &&
+      left.contentActivity.isActive === right.contentActivity.isActive &&
       left.contentActivity.shouldRenderListBody === right.contentActivity.shouldRenderListBody &&
       left.contentActivity.shouldAttachMountedContent ===
         right.contentActivity.shouldAttachMountedContent &&

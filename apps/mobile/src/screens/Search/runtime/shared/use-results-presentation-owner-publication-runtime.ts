@@ -11,6 +11,7 @@ import type { ResultsPresentationOwnerStateRuntime } from './use-results-present
 
 type UseResultsPresentationOwnerPublicationRuntimeArgs = {
   clearTypedQuery: SearchClearOwner['clearTypedQuery'];
+  clearSearchState: SearchClearOwner['clearSearchState'];
   submittedQuery: string;
   isSearchSessionActive: boolean;
   hasResults: boolean;
@@ -34,6 +35,7 @@ type UseResultsPresentationOwnerPublicationRuntimeArgs = {
 
 export const useResultsPresentationOwnerPublicationRuntime = ({
   clearTypedQuery,
+  clearSearchState,
   submittedQuery,
   isSearchSessionActive,
   hasResults,
@@ -52,6 +54,7 @@ export const useResultsPresentationOwnerPublicationRuntime = ({
 
   const presentationActions = useResultsPresentationOwnerPresentationActionsRuntime({
     clearTypedQuery,
+    clearSearchState,
     submittedQuery,
     isSearchSessionActive,
     hasResults,

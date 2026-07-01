@@ -15,6 +15,11 @@ import { IDLE_TOGGLE_INTERACTION_STATE } from './results-toggle-interaction-cont
 import type { SearchRuntimeBus, SearchRuntimeBusState } from './search-runtime-bus';
 
 const TOGGLE_INTENT_PREFIX = 'toggle-intent:';
+// Restored from 2ca844dd: a single RESTARTING quiet-window debounce is the SOLE commit
+// clock. Rapid taps keep re-arming it, so the heavy consequence (the runner) fires exactly
+// once, ~300ms after the LAST tap — never mid-burst. The pill switches optimistically on
+// press-up, so the toggle still feels instant; only the map update waits for the pause.
+const DEFAULT_TOGGLE_SETTLE_MS = 300;
 
 type ToggleCommitRunner = Parameters<ScheduleToggleCommit>[0];
 type ToggleCommitOptions = Parameters<ScheduleToggleCommit>[1];
@@ -25,6 +30,7 @@ export type ResultsPresentationToggleStateRuntime = {
   activeIntentIdRef: React.MutableRefObject<string | null>;
   activeRunnerRef: React.MutableRefObject<ToggleCommitRunner | null>;
   awaitingVisualSyncRef: React.MutableRefObject<boolean>;
+  commitActiveInteractionRef: React.MutableRefObject<((intentId: string) => void) | null>;
   finalizeInteraction: (seq: number, awaitedVisualSync: boolean) => boolean;
   cancelToggleInteraction: () => void;
   beginToggleInteraction: (
@@ -49,12 +55,24 @@ export const useResultsPresentationToggleStateRuntime = ({
   const activeIntentIdRef = React.useRef<string | null>(null);
   const activeRunnerRef = React.useRef<ToggleCommitRunner | null>(null);
   const awaitingVisualSyncRef = React.useRef(false);
+  const settleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Populated by the commit runtime (mirrors notifyIntentCompleteRef) so the debounce timer,
+  // which lives here, can fire the commit without a circular hook dependency.
+  const commitActiveInteractionRef = React.useRef<((intentId: string) => void) | null>(null);
+
+  const clearSettleTimeout = React.useCallback(() => {
+    if (settleTimeoutRef.current) {
+      clearTimeout(settleTimeoutRef.current);
+      settleTimeoutRef.current = null;
+    }
+  }, []);
 
   const finalizeInteraction = React.useCallback(
     (seq: number, awaitedVisualSync: boolean) => {
       if (interactionSeqRef.current !== seq) {
         return false;
       }
+      clearSettleTimeout();
 
       const intentId = activeIntentIdRef.current;
       const kind = activeInteractionKindRef.current;
@@ -78,13 +96,14 @@ export const useResultsPresentationToggleStateRuntime = ({
 
       return true;
     },
-    [handleToggleInteractionLifecycle, searchRuntimeBus]
+    [clearSettleTimeout, handleToggleInteractionLifecycle, searchRuntimeBus]
   );
 
   const cancelToggleInteraction = React.useCallback(() => {
     const intentId = activeIntentIdRef.current;
     const kind = activeInteractionKindRef.current;
     interactionSeqRef.current += 1;
+    clearSettleTimeout();
     activeInteractionKindRef.current = null;
     activeIntentIdRef.current = null;
     activeRunnerRef.current = null;
@@ -100,7 +119,7 @@ export const useResultsPresentationToggleStateRuntime = ({
         kind,
       });
     }
-  }, [handleToggleInteractionLifecycle, searchRuntimeBus]);
+  }, [clearSettleTimeout, handleToggleInteractionLifecycle, searchRuntimeBus]);
 
   const beginToggleInteraction = React.useCallback(
     (
@@ -116,6 +135,7 @@ export const useResultsPresentationToggleStateRuntime = ({
       activeIntentIdRef.current = intentId;
       activeRunnerRef.current = runner;
       awaitingVisualSyncRef.current = false;
+      logger.info('[TGLDBG-v2] begin', { seq, intentId, kind: interactionKind });
       handleToggleInteractionLifecycle({
         type: 'started',
         intentId,
@@ -142,8 +162,27 @@ export const useResultsPresentationToggleStateRuntime = ({
           },
         });
       });
+
+      // RESTARTING quiet-window debounce: each tap re-arms the timer, so the heavy commit
+      // fires exactly once after the user pauses ~300ms. The seq guard drops a stale timer
+      // if a newer tap superseded this one before it fired.
+      clearSettleTimeout();
+      settleTimeoutRef.current = setTimeout(() => {
+        settleTimeoutRef.current = null;
+        const superseded = interactionSeqRef.current !== seq;
+        logger.info('[TGLDBG-v2] settle:fire', {
+          intentId,
+          seq,
+          currentSeq: interactionSeqRef.current,
+          superseded,
+        });
+        if (superseded) {
+          return;
+        }
+        commitActiveInteractionRef.current?.(intentId);
+      }, DEFAULT_TOGGLE_SETTLE_MS);
     },
-    [handleToggleInteractionLifecycle, searchRuntimeBus]
+    [clearSettleTimeout, handleToggleInteractionLifecycle, searchRuntimeBus]
   );
 
   const scheduleToggleCommit = React.useCallback(
@@ -153,6 +192,8 @@ export const useResultsPresentationToggleStateRuntime = ({
     [beginToggleInteraction]
   );
 
+  React.useEffect(() => clearSettleTimeout, [clearSettleTimeout]);
+
   return React.useMemo(
     () => ({
       interactionSeqRef,
@@ -160,6 +201,7 @@ export const useResultsPresentationToggleStateRuntime = ({
       activeIntentIdRef,
       activeRunnerRef,
       awaitingVisualSyncRef,
+      commitActiveInteractionRef,
       finalizeInteraction,
       cancelToggleInteraction,
       beginToggleInteraction,

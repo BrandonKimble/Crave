@@ -11,6 +11,8 @@ import dot_b4 from '../assets/dots/dot-b4.png';
 import dot_b5 from '../assets/dots/dot-b5.png';
 import dot_b6 from '../assets/dots/dot-b6.png';
 import dot_b7 from '../assets/dots/dot-b7.png';
+import dot_b8 from '../assets/dots/dot-b8.png';
+import dot_b9 from '../assets/dots/dot-b9.png';
 import dot_highlighted from '../assets/dots/dot-highlighted.png';
 
 export const DOT_SPRITE_SCALE = 3;
@@ -24,5 +26,7 @@ export const DOT_IMAGES: Record<string, ImageSourcePropType> = {
   'dot-b5': dot_b5,
   'dot-b6': dot_b6,
   'dot-b7': dot_b7,
+  'dot-b8': dot_b8,
+  'dot-b9': dot_b9,
   'dot-highlighted': dot_highlighted,
 };

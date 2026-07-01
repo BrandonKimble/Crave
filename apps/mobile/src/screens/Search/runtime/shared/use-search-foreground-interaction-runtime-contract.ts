@@ -11,6 +11,7 @@ import type {
 import type { SearchResponse } from '../../../../types';
 import type { RootStackParamList, MainSearchIntent } from '../../../../types/navigation';
 import type { LaunchIntent } from '../../../../navigation/runtime/app-route-types';
+import type { AppRouteSearchSessionEntryOptions } from '../../../../navigation/runtime/app-route-overlay-session-contract';
 import type { OverlayKey, OverlaySheetSnap } from '../../../../overlays/types';
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type useSearchHistory from '../../hooks/use-search-history';
@@ -30,6 +31,13 @@ export type SearchForegroundSubmitRuntime = Pick<
 export type SearchForegroundLaunchFavoritesListResults = ReturnType<
   typeof useSearchSubmitOwner
 >['launchFavoritesListResults'];
+
+// The skip-LLM entity reveal launched from a poll-discussion comment span is also
+// driven from the launch-intent runtime, so it is typed separately alongside the
+// favorites launch rather than added to the shared submit-runtime Pick above.
+export type SearchForegroundLaunchEntitySearchResults = ReturnType<
+  typeof useSearchSubmitOwner
+>['launchEntitySearchResults'];
 
 export type SearchForegroundHistoryRuntime = Pick<
   ReturnType<typeof useSearchHistory>,
@@ -67,6 +75,14 @@ export type SearchForegroundTransientCleanupActions = {
   blurInput: () => void;
 };
 
+// Phase 4 — the committed restaurant-scoped search the restaurant-from-comment / deep-link
+// reveal routes through (replacing the cold profile-preview lane). Same lane the
+// recently-viewed-restaurant tap uses: a committed `mode:'entity'` search that returns the
+// single restaurant, with the pending-selection ref priming the warm-profile auto-open.
+export type SearchForegroundRunRestaurantEntitySearch = ReturnType<
+  typeof useSearchSubmitOwner
+>['runRestaurantEntitySearch'];
+
 export type SearchForegroundLaunchIntentRuntimeArgs = {
   routeSearchCommandActions: AppSearchRouteCommandActions;
   navigation: StackNavigationProp<RootStackParamList>;
@@ -74,7 +90,11 @@ export type SearchForegroundLaunchIntentRuntimeArgs = {
   consumeActiveMainIntent: () => void;
   openRestaurantProfilePreview: SearchForegroundOpenRestaurantProfilePreview;
   launchFavoritesListResults: SearchForegroundLaunchFavoritesListResults;
-  prepareSearchSessionEntry: (options?: { captureOrigin?: boolean }) => void;
+  launchEntitySearchResults: SearchForegroundLaunchEntitySearchResults;
+  runRestaurantEntitySearch: SearchForegroundRunRestaurantEntitySearch;
+  setRestaurantOnlyIntent: (restaurantId: string | null) => void;
+  pendingRestaurantSelectionRef: React.MutableRefObject<{ restaurantId: string } | null>;
+  prepareSearchSessionEntry: (options?: AppRouteSearchSessionEntryOptions) => void;
   currentMarketKey?: string | null;
 };
 
@@ -90,7 +110,7 @@ export type SearchForegroundSubmitRuntimeArgs = {
   isSearchSessionActive: boolean;
   isSuggestionPanelActive: boolean;
   shouldShowDockedPollsRef: React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
-  prepareSearchSessionEntry: (options?: { captureOrigin?: boolean }) => void;
+  prepareSearchSessionEntry: (options?: AppRouteSearchSessionEntryOptions) => void;
   suppressAutocompleteResults: () => void;
   cancelAutocomplete: () => void;
   dismissSearchKeyboard: () => void;

@@ -45,6 +45,8 @@ export type AppRouteSceneTransitionPolicyInput = {
   dockedPollsRestoreSnap?: RouteSceneSwitchDockedPollsRestoreIntent['snap'] | null;
   routeAction?: RouteSceneSwitchRouteAction;
   routeParams?: RouteSceneSwitchRouteParams;
+  // Phase 2 — see RouteSceneSwitchRequestInput.contentReadinessTransactionId.
+  contentReadinessTransactionId?: string | null;
   currentRootRouteKey: OverlayKey;
   resolveCurrentSheetSnapTarget: (sceneKey: OverlayKey) => BottomSheetSnap | null;
 };
@@ -69,6 +71,10 @@ export type AppRouteSceneTransitionPlan = {
   motionPlanes: readonly RouteSceneSwitchMotionPlane[];
   pollsParams: RouteSceneSwitchPollsParams | null;
   dockedPollsRestoreSnap: RouteSceneSwitchDockedPollsRestoreIntent['snap'] | null;
+  // Phase 2 — passed through so the controller's content-plane arm can link the
+  // redraw transactionId (gate marks) to the minted settleToken. null for every
+  // non-search-family switch.
+  contentReadinessTransactionId: string | null;
 };
 
 const isPreserveCameraIntent = (cameraIntent: RouteSceneSwitchCameraIntent): boolean =>
@@ -106,6 +112,53 @@ const CHILD_SHARED_SHEET_SCENES = new Set<OverlayKey>(
 );
 
 const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
+
+// SEEDED forward-open scenes (the descriptor table's `seeded` axis). A seeded scene can
+// paint its OWN shell immediately from route params (e.g. pollDetail's seeded header +
+// comment skeleton, profile's transition shell, the form shells of pollCreation/saveList),
+// so a forward open into it should NOT hold the outgoing surface visible — it swaps to the
+// incoming seed in the same frame (no stale-feed window). This central set replaces the
+// per-call-site swapImmediately opt-outs. Covers the openChild targets (saveList/
+// pollCreation/pollDetail/restaurant) and the profile topLevelSwitch target — see
+// resolveContentHandoff's seeded branch.
+//
+// Hard-swap + skeleton (canonical-transition-finish-plan): `restaurant` is now SEEDED. A
+// restaurant reveal hard-swaps to its frame-1 render — the RestaurantPanel paints a
+// dish-skeleton seed shell at once (warm-seeded header NAME + dish-list skeleton) while
+// the committed single-restaurant search (`runRestaurantEntitySearch` + pending-selection
+// warm-profile auto-open) resolves and fills the content in. The header name is real at
+// frame 1 because the launch-intent runtime calls openRestaurantProfilePreview(id, name)
+// SYNCHRONOUSLY (seedRestaurantProfile) before the committed search — same warm-seed the
+// recently-viewed-restaurant tap uses. Holding the outgoing surface visible during that load
+// would only show a stale feed, so it swaps immediately like the other seeded scenes. Sheet
+// motion is unaffected — the natural openChild `{promoteAtLeast,middle}` snap
+// (resolveDefaultSheetMotionPlan) still applies; only the CONTENT handoff flips from
+// held-outgoing crossfade to skeleton-first swapImmediately.
+//
+// Return-to-origin foundation (cover-orphan blank fix): `bookmarks` is now SEEDED. A
+// topLevelSwitch into bookmarks — a plain bookmarks forward-open OR a favorites-as-search
+// dismiss that re-roots to the captured bookmarks origin — has NO usable content-readiness
+// gate: bookmarks is absent from SCENE_READINESS_CONTRACT_BY_TARGET (→ EMPTY contract,
+// requiredContentGates:[]), so the arm site mints contentReadinessTransactionId=null and
+// NEVER links the 'content' plane to any readiness signal. Left on the default
+// `preserveOutgoingUntilSettle`, such a switch armed a content plane that could only complete
+// via the 600ms SCENE_READINESS_LIVENESS_MS watchdog — and resolveTransitionSheetPresentation-
+// SceneKey kept presenting the HELD outgoing handoff (the dismissing search surface) for that
+// whole window, so the incoming bookmarks body got no render gate → BLANK. Like the other
+// seeded scenes, BookmarksPanel paints its OWN shell on frame 1 (SceneLoadingSurface
+// rowType="tile" while `!sceneReady || isListsLoading`), so it must hard-swap to that skeleton:
+// swapImmediately → no held outgoing → no 'content' plane → skeleton-first, fills when data
+// lands. Mirrors `profile` (also a seeded topLevelSwitch target with an empty content
+// contract). SEARCH/POLLS are intentionally NOT here — they keep their reveal join and the
+// degenerate {polls,search}@collapsed home seam stays byte-identical.
+const SEEDED_FORWARD_OPEN_SCENES = new Set<OverlayKey>([
+  'pollDetail',
+  'pollCreation',
+  'saveList',
+  'profile',
+  'restaurant',
+  'bookmarks',
+]);
 
 const isSharedSheetChildScene = (sceneKey: OverlayKey): boolean =>
   CHILD_SHARED_SHEET_SCENES.has(sceneKey);
@@ -250,9 +303,11 @@ const resolveSnapTargetFromSheetMotion = ({
 
 const resolveContentHandoff = ({
   transitionKind,
+  targetSceneKey,
   contentHandoff,
 }: {
   transitionKind: RouteSceneSwitchSheetTransitionKind;
+  targetSceneKey: OverlayKey;
   contentHandoff?: RouteSceneSwitchSheetContentHandoff;
 }): RouteSceneSwitchSheetContentHandoff => {
   if (contentHandoff != null) {
@@ -268,6 +323,15 @@ const resolveContentHandoff = ({
   }
   if (transitionKind === 'terminalDismiss') {
     return 'preserveOutgoingUntilSettle';
+  }
+  // SEEDED forward open (descriptor `seeded` axis): the incoming scene paints its OWN shell
+  // immediately from route params (seeded header + skeleton), so HOLDING the outgoing surface
+  // visible only shows a stale feed while the incoming's data loads. Swap to the seed at once.
+  if (
+    (transitionKind === 'openChild' || transitionKind === 'topLevelSwitch') &&
+    SEEDED_FORWARD_OPEN_SCENES.has(targetSceneKey)
+  ) {
+    return 'swapImmediately';
   }
   // Overlap engine: hold the outgoing in-flight so the leaf content crossfades. The sheet
   // shell/snap is decoupled to follow the TARGET (navPush), so the sheet rises to the
@@ -302,6 +366,7 @@ const resolveMotionPlanes = ({
   targetSceneKey,
   sheetVisibilityTarget,
   transitionKind,
+  contentHandoff,
 }: Pick<
   AppRouteSceneTransitionPlan,
   'sheetIntent' | 'cameraIntent' | 'chromeVisibilityTarget' | 'sheetVisibilityTarget'
@@ -309,6 +374,7 @@ const resolveMotionPlanes = ({
   sourceSceneKey: OverlayKey;
   targetSceneKey: OverlayKey;
   transitionKind: RouteSceneSwitchSheetTransitionKind;
+  contentHandoff: RouteSceneSwitchSheetContentHandoff;
 }): readonly RouteSceneSwitchMotionPlane[] => {
   const motionPlanes: RouteSceneSwitchMotionPlane[] = [];
   if (sheetIntent != null) {
@@ -326,13 +392,23 @@ const resolveMotionPlanes = ({
   // sheet-host controller arms the leaf crossfade on (isForwardOpenCrossfade). Gating it here
   // keeps every DISMISS byte-identical: a `closeChild`/preserveLiveY dismiss has no sheet/
   // camera/chrome plane and now no 'content' plane → motionPlanes is [] → it commits to idle
-  // SYNCHRONOUSLY (its onSettle callbacks fire immediately, not gated behind the 320ms content
-  // timeout); a collapse-snap `terminalDismiss` keeps only its 'sheet' plane.
-  if (
+  // SYNCHRONOUSLY (its onSettle callbacks fire immediately, not gated behind the
+  // SCENE_READINESS_LIVENESS_MS=600ms content watchdog); a collapse-snap `terminalDismiss`
+  // keeps only its 'sheet' plane.
+  //
+  // Invariant 5 (canonical-sheet-transition-master-plan §6): the content plane arms IFF a
+  // crossfade will actually run — i.e. iff the resolved handoff held the outgoing leg in flight
+  // (`preserveOutgoingUntilSettle`). SEEDED forward opens resolve to `swapImmediately` (they paint
+  // their own seed in one frame, no outgoing leg held, no crossfade), so they must arm NO content
+  // plane — otherwise they mint a settleToken nothing closes and fall to the
+  // SCENE_READINESS_LIVENESS_MS=600ms watchdog. Gating
+  // on the handoff (the canonical signal both resolvers share) makes the two resolvers agree by
+  // construction.
+  const isForwardOpenCandidate =
     sourceSceneKey !== targetSceneKey &&
     sheetVisibilityTarget === 'visible' &&
-    transitionKind !== 'terminalDismiss'
-  ) {
+    transitionKind !== 'terminalDismiss';
+  if (isForwardOpenCandidate && contentHandoff === 'preserveOutgoingUntilSettle') {
     motionPlanes.push('content');
   }
   return motionPlanes;
@@ -391,6 +467,7 @@ export const resolveAppRouteSceneTransitionPlan = ({
   dockedPollsRestoreSnap,
   routeAction = 'setRoot',
   routeParams,
+  contentReadinessTransactionId,
   currentRootRouteKey,
   resolveCurrentSheetSnapTarget,
 }: AppRouteSceneTransitionPolicyInput): AppRouteSceneTransitionPlan => {
@@ -436,6 +513,14 @@ export const resolveAppRouteSceneTransitionPlan = ({
   const sheetHostSceneKey =
     resolvedSheetIntent?.sceneKey ?? resolveAppRouteSceneSheetHostSceneKey(targetSceneKey);
   const sheetSnapTarget = resolvedSheetIntent?.snapTarget ?? resolvedSheetSnapTarget;
+  // Resolve the content handoff ONCE so the transition plan and resolveMotionPlanes share the
+  // exact same canonical signal — Invariant 5's content-plane gate keys on this value, so the
+  // two resolvers can never disagree about whether a crossfade will run.
+  const resolvedContentHandoff = resolveContentHandoff({
+    transitionKind: resolvedTransitionKind,
+    targetSceneKey,
+    contentHandoff,
+  });
   const resolvedSheetTransitionPlan: RouteSceneSwitchSheetTransitionPlan = {
     transitionKind: resolvedTransitionKind,
     sourceSceneKey,
@@ -443,10 +528,7 @@ export const resolveAppRouteSceneTransitionPlan = ({
     openerSceneKey: sourceSceneKey,
     openerSource: sheetOpenerSource ?? 'unknown',
     motion: resolvedSheetMotion,
-    contentHandoff: resolveContentHandoff({
-      transitionKind: resolvedTransitionKind,
-      contentHandoff,
-    }),
+    contentHandoff: resolvedContentHandoff,
     snapPersistence: resolveSnapPersistence({
       transitionKind: resolvedTransitionKind,
       snapPersistence,
@@ -486,6 +568,7 @@ export const resolveAppRouteSceneTransitionPlan = ({
         snapTarget: sheetSnapTarget,
       }),
       transitionKind: resolvedTransitionKind,
+      contentHandoff: resolvedContentHandoff,
     }),
     pollsParams: targetSceneKey === 'polls' ? (pollsParams ?? null) : null,
     dockedPollsRestoreSnap: resolveDockedPollsRestoreSnap({
@@ -493,5 +576,6 @@ export const resolveAppRouteSceneTransitionPlan = ({
       snapTarget: resolvedSheetSnapTarget,
       dockedPollsRestoreSnap,
     }),
+    contentReadinessTransactionId: contentReadinessTransactionId ?? null,
   };
 };

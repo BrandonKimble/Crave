@@ -277,7 +277,10 @@ export const useBottomSheetSharedRuntime = ({
   const collapseLastTouchX = useSharedValue(0);
   const collapseLastTouchY = useSharedValue(0);
   const collapseAxisLock = useSharedValue(0);
-  const scrollOffset = scrollOffsetValue ?? useSharedValue(0);
+  // Call useSharedValue unconditionally (hooks must never be conditional) then coalesce — the
+  // fallback shared value is used only when no external scrollOffsetValue was provided.
+  const fallbackScrollOffset = useSharedValue(0);
+  const scrollOffset = scrollOffsetValue ?? fallbackScrollOffset;
   const scrollTopOffset = useSharedValue(0);
   const primaryScrollOffset = useSharedValue(0);
   const secondaryScrollOffset = useSharedValue(0);

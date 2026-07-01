@@ -82,10 +82,10 @@ interface QueryResultRow {
   restaurant_aliases: string[];
   restaurant_market_key?: string | null;
   restaurant_crave_score?: Prisma.Decimal | number | string | null;
-  restaurant_score_delta_7d?: Prisma.Decimal | number | string | null;
+  restaurant_rising?: Prisma.Decimal | number | string | null;
   restaurant_score_info?: Prisma.JsonValue | null;
   connection_crave_score?: Prisma.Decimal | number | string | null;
-  connection_score_delta_7d?: Prisma.Decimal | number | string | null;
+  connection_rising?: Prisma.Decimal | number | string | null;
   connection_score_info?: Prisma.JsonValue | null;
   restaurant_metadata?: Prisma.JsonValue | null;
   restaurant_price_level?: Prisma.Decimal | number | string | null;
@@ -128,7 +128,7 @@ interface RestaurantQueryRow {
   price_level_updated_at?: Date | null;
   crave_score?: Prisma.Decimal | number | string | null;
   crave_score_exact?: Prisma.Decimal | number | string | null;
-  score_delta_7d?: Prisma.Decimal | number | string | null;
+  rising?: Prisma.Decimal | number | string | null;
   score_info?: Prisma.JsonValue | null;
   score_subject_type?: string | null;
   score_subject_id?: string | null;
@@ -175,7 +175,7 @@ interface DishQueryRow {
   last_mentioned_at: Date | null;
   connection_crave_score?: Prisma.Decimal | number | string | null;
   connection_crave_score_exact?: Prisma.Decimal | number | string | null;
-  connection_score_delta_7d?: Prisma.Decimal | number | string | null;
+  connection_rising?: Prisma.Decimal | number | string | null;
   connection_score_info?: Prisma.JsonValue | null;
   score_subject_type?: string | null;
   score_subject_id?: string | null;
@@ -188,7 +188,7 @@ interface DishQueryRow {
   restaurant_aliases: string[];
   restaurant_crave_score?: Prisma.Decimal | number | string | null;
   restaurant_crave_score_exact?: Prisma.Decimal | number | string | null;
-  restaurant_score_delta_7d?: Prisma.Decimal | number | string | null;
+  restaurant_rising?: Prisma.Decimal | number | string | null;
   restaurant_score_info?: Prisma.JsonValue | null;
   restaurant_price_level?: Prisma.Decimal | number | string | null;
   restaurant_price_level_updated_at?: Date | null;
@@ -1107,8 +1107,8 @@ export class SearchQueryExecutor {
         scoreSubjectType: 'connection',
         scoreSubjectId: connection.connection_id,
         craveScore,
-        scoreDelta7d: this.toOptionalNumber(
-          connection.connection_score_delta_7d,
+        rising: this.toOptionalNumber(
+          connection.connection_rising,
         ),
         scoreInfo: this.parseScoreInfo(connection.connection_score_info),
         marketKey: connection.restaurant_market_key ?? undefined,
@@ -1149,7 +1149,7 @@ export class SearchQueryExecutor {
         name: string;
         aliases: string[];
         restaurantCraveScore: number;
-        restaurantScoreDelta7d: number | null;
+        restaurantRising: number | null;
         restaurantScoreInfo?: ScoreInfoSummary;
         marketKey?: string | null;
         latitude?: Prisma.Decimal | number | string | null;
@@ -1194,8 +1194,8 @@ export class SearchQueryExecutor {
           connection.connection_crave_score,
           `connection:${connection.connection_id}`,
         ),
-        scoreDelta7d: this.toOptionalNumber(
-          connection.connection_score_delta_7d,
+        rising: this.toOptionalNumber(
+          connection.connection_rising,
         ),
         scoreInfo: this.parseScoreInfo(connection.connection_score_info),
       };
@@ -1281,8 +1281,8 @@ export class SearchQueryExecutor {
             connection.restaurant_crave_score,
             `restaurant:${connection.restaurant_id}`,
           ),
-          restaurantScoreDelta7d: this.toOptionalNumber(
-            connection.restaurant_score_delta_7d,
+          restaurantRising: this.toOptionalNumber(
+            connection.restaurant_rising,
           ),
           restaurantScoreInfo: this.parseScoreInfo(
             connection.restaurant_score_info,
@@ -1332,7 +1332,7 @@ export class SearchQueryExecutor {
           name,
           aliases,
           restaurantCraveScore,
-          restaurantScoreDelta7d,
+          restaurantRising,
           restaurantScoreInfo,
           marketKey,
           latitude,
@@ -1436,7 +1436,7 @@ export class SearchQueryExecutor {
             scoreSubjectType: 'restaurant' as const,
             scoreSubjectId: restaurantId,
             craveScore: restaurantCraveScore,
-            scoreDelta7d: restaurantScoreDelta7d,
+            rising: restaurantRising,
             scoreInfo: restaurantScoreInfo,
             marketKey: marketKey ?? undefined,
             mentionCount:
@@ -2155,12 +2155,6 @@ export class SearchQueryExecutor {
       return undefined;
     }
     const record = value as Record<string, unknown>;
-    const confidenceLabel =
-      record.confidenceLabel === 'strong' ||
-      record.confidenceLabel === 'solid' ||
-      record.confidenceLabel === 'early'
-        ? record.confidenceLabel
-        : 'early';
     const pollCount = this.toOptionalNumber(
       record.pollCount as Prisma.Decimal | number | string | null,
     );
@@ -2168,7 +2162,6 @@ export class SearchQueryExecutor {
       record.voteCount as Prisma.Decimal | number | string | null,
     );
     return {
-      confidenceLabel,
       evidenceCopy:
         typeof record.evidenceCopy === 'string' &&
         record.evidenceCopy.trim().length
@@ -2461,7 +2454,7 @@ export class SearchQueryExecutor {
         // High-precision percentile_rank for tie-proof ordering (map badge == list position). Optional:
         // older score rows / paths without the column fall back to craveScore ordering on the client.
         craveScoreExact: this.toOptionalNumber(row.crave_score_exact) ?? undefined,
-        scoreDelta7d: this.toOptionalNumber(row.score_delta_7d),
+        rising: this.toOptionalNumber(row.rising),
         scoreInfo: this.parseScoreInfo(row.score_info),
         marketKey: row.market_key ?? undefined,
         marketName: null,
@@ -2539,7 +2532,7 @@ export class SearchQueryExecutor {
         ),
         // High-precision percentile_rank — the map ranks pins by this so the badge == the results-list position.
         craveScoreExact: this.toOptionalNumber(row.connection_crave_score_exact) ?? undefined,
-        scoreDelta7d: this.toOptionalNumber(row.connection_score_delta_7d),
+        rising: this.toOptionalNumber(row.connection_rising),
         scoreInfo: this.parseScoreInfo(row.connection_score_info),
         marketKey: row.market_key ?? undefined,
         marketName: null,
@@ -2591,8 +2584,8 @@ export class SearchQueryExecutor {
           record.craveScore as Prisma.Decimal | number | string | null,
           `connection:${connectionId}`,
         ),
-        scoreDelta7d: this.toOptionalNumber(
-          record.scoreDelta7d as Prisma.Decimal | number | string | null,
+        rising: this.toOptionalNumber(
+          record.rising as Prisma.Decimal | number | string | null,
         ),
         scoreInfo: this.parseScoreInfo(
           record.scoreInfo as Prisma.JsonValue | null,

@@ -27,32 +27,43 @@ export const resolveProfileCameraSnapshot = ({
   };
 };
 
+// Centers the focus pin in the visible band between the search-bar bottom edge and the sheet's TOP
+// edge at the MIDDLE snap — the area the sheet does not cover at the middle snap. Mapbox centers a
+// coordinate in the region left unpadded, so:
+//   paddingTop    = searchBarBottom  (searchBarTop + searchBarHeight)
+//   paddingBottom = screenHeight - middleSnapPoint  (the area the middle-snap sheet covers)
+// → the unpadded vertical region IS the band, and the focus coordinate lands at its center. This is
+// the SHARED fix → every restaurant-profile reveal (comment/entity reveal AND the result-card tap)
+// inherits the same band centering.
 export const resolveProfileCameraPadding = ({
   screenHeight,
   searchBarTop,
   searchBarHeight,
   insetsTop,
-  navBarTop,
-  expandedSnapPoint,
-  profilePinTargetCenterRatio,
+  middleSnapPoint,
   profilePinMinVisibleHeight,
 }: {
   screenHeight: number;
   searchBarTop: number;
   searchBarHeight: number;
   insetsTop: number;
-  navBarTop: number;
-  expandedSnapPoint: number;
-  profilePinTargetCenterRatio: number;
+  middleSnapPoint: number;
   profilePinMinVisibleHeight: number;
 }): CameraSnapshot['padding'] => {
-  const topInset = Math.max(insetsTop, navBarTop);
-  const expandedTop = Number.isFinite(expandedSnapPoint) ? expandedSnapPoint : topInset;
-  const topPadding = Math.max(searchBarTop + searchBarHeight, expandedTop);
-  const desiredCenter = screenHeight * profilePinTargetCenterRatio;
-  const minCenter = topPadding + profilePinMinVisibleHeight / 2;
-  const targetCenter = Math.max(desiredCenter, minCenter);
-  const bottomPadding = Math.max(screenHeight + topPadding - 2 * targetCenter, 0);
+  // Band top = the search-bar bottom edge. The search bar already sits below the safe-area inset, so
+  // the safe-area `insetsTop` is only a defensive floor for the (unmeasured) zero-height case — NOT
+  // the bottom-nav silhouette snap top (`navBarTop`, a near-screen-bottom value that must never floor
+  // the TOP padding).
+  const searchBarBottom = Math.max(searchBarTop + searchBarHeight, insetsTop);
+  const topPadding = searchBarBottom;
+  // The middle-snap sheet top is the band's lower edge. Guard against a degenerate / unmeasured snap
+  // by ensuring the band is at least `profilePinMinVisibleHeight` tall below the search bar.
+  const minBandBottom = topPadding + profilePinMinVisibleHeight;
+  const bandBottom =
+    Number.isFinite(middleSnapPoint) && middleSnapPoint > minBandBottom
+      ? middleSnapPoint
+      : minBandBottom;
+  const bottomPadding = Math.max(screenHeight - bandBottom, 0);
   return {
     paddingTop: topPadding,
     paddingBottom: bottomPadding,

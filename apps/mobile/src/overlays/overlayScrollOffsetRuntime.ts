@@ -14,3 +14,28 @@ export const setOverlayScrollOffset = (
 
 export const getOverlayScrollOffset = (overlayIdentity: string): number =>
   overlayScrollOffsets.get(overlayIdentity) ?? 0;
+
+// Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Restore / P3).
+//
+// A scene's stored scroll offset above persists for the session, but P3 scroll RESTORE must be
+// a one-shot dismiss-return — NOT general scroll-persistence on every organic tab re-open. So
+// the restore path stages a PENDING restore for the lane (offset + a consume-once flag); the
+// scene's cold re-mount consumes the flag exactly once, gated on its first non-skeleton commit,
+// and scrolls to the offset as the sole writer that frame. A later organic re-open finds no
+// pending flag and starts at the top — no surprise scroll jump.
+const overlayScrollRestorePending = new Map<string, number>();
+
+export const stageOverlayScrollRestore = (overlayIdentity: string, offset: number): void => {
+  const nextOffset = Math.max(0, offset);
+  setOverlayScrollOffset(overlayIdentity, nextOffset);
+  overlayScrollRestorePending.set(overlayIdentity, nextOffset);
+};
+
+export const consumePendingOverlayScrollRestore = (overlayIdentity: string): number | null => {
+  const pending = overlayScrollRestorePending.get(overlayIdentity);
+  if (pending == null) {
+    return null;
+  }
+  overlayScrollRestorePending.delete(overlayIdentity);
+  return pending;
+};

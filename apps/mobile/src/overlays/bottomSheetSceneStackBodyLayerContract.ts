@@ -24,6 +24,7 @@ export type StaticContentSurfaceProps = {
 
 export type SceneStackBodyContentProps = {
   sceneKey: string;
+  isActive: boolean;
   shouldRenderListBody: boolean;
   shouldAttachMountedContent: boolean;
   bodyDefaults: BottomSheetSceneStackBodyDefaults;
@@ -34,6 +35,7 @@ export type SceneStackBodyContentProps = {
 
 export type SceneStackBodyContentActivity = Pick<
   AppRouteSceneStackSceneActivitySnapshot,
+  | 'isActive'
   | 'shouldRenderListBody'
   | 'shouldAttachMountedContent'
   | 'shouldRunDataLane'

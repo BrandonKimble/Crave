@@ -67,7 +67,7 @@ export type SearchResultsPanelEnvironment = {
     type: 'dish' | 'restaurant';
     title: string;
     score: number | null | undefined;
-    scoreDelta7d: number | null | undefined;
+    rising: number | null | undefined;
     votes: number | null | undefined;
     polls: number | null | undefined;
   }) => void;

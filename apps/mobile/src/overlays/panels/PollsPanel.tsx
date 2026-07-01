@@ -33,6 +33,7 @@ import type {
   AppRouteSceneBodyTransportSpec,
 } from '../../navigation/runtime/app-route-scene-descriptor-contract';
 import SquircleSpinner from '../../components/SquircleSpinner';
+import { SceneLoadingSurface } from '../../components/skeletons';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
@@ -605,6 +606,12 @@ export const usePollsPanelListSceneParts = (): {
       );
     }
     if (shouldShowCollapsedSpinner) {
+      // Expanded surface: paint the structure-matched skeleton (poll cards ≈ restaurant rows)
+      // so the loading frame reads as content, not a bare spinner. Collapsed: keep the compact
+      // spinner — a full skeleton list would overflow the small collapsed sheet.
+      if (isExpandedSurface) {
+        return <SceneLoadingSurface rowType="restaurant" />;
+      }
       return (
         <View style={styles.loaderCentered}>
           <SquircleSpinner size={22} color={ACCENT} />

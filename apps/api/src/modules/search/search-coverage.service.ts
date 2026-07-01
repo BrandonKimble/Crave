@@ -16,12 +16,12 @@ type CoverageRestaurantRow = {
   latitude: unknown;
   crave_score: unknown;
   crave_score_exact?: unknown;
-  score_delta_7d: unknown;
+  rising: unknown;
   top_connection_id?: unknown;
   top_food_name?: unknown;
   top_food_crave_score?: unknown;
   top_food_crave_score_exact?: unknown;
-  top_food_score_delta_7d?: unknown;
+  top_food_rising?: unknown;
 };
 
 @Injectable()
@@ -175,7 +175,7 @@ export class SearchCoverageService {
         td.food_name AS top_food_name,
         td.crave_score AS top_food_crave_score,
         td.crave_score_exact AS top_food_crave_score_exact,
-        td.score_delta_7d AS top_food_score_delta_7d`
+        td.rising AS top_food_rising`
       : Prisma.sql``;
     // HIGH-PRECISION coverage order: percentile_rank leads so the dots/markers match the pin+list order.
     const coverageOrderSql = includeTopDish
@@ -246,12 +246,12 @@ export class SearchCoverageService {
         FROM candidate_locations
       ),
       public_restaurant_scores AS (
-        SELECT subject_id, display_score, percentile_rank, score_delta_7d
+        SELECT subject_id, display_score, percentile_rank, rising
         FROM core_public_entity_scores
         WHERE subject_type = 'restaurant'
       ),
       public_connection_scores AS (
-        SELECT subject_id, display_score, percentile_rank, score_delta_7d
+        SELECT subject_id, display_score, percentile_rank, rising
         FROM core_public_entity_scores
         WHERE subject_type = 'connection'
       )
@@ -262,7 +262,7 @@ export class SearchCoverageService {
         pl.latitude AS latitude,
         prs.display_score AS crave_score,
         prs.percentile_rank AS crave_score_exact,
-        prs.score_delta_7d AS score_delta_7d
+        prs.rising AS rising
         ${topDishSelectSql}
       FROM core_entities e
       JOIN selected_locations pl ON pl.restaurant_id = e.entity_id
@@ -293,7 +293,7 @@ export class SearchCoverageService {
             `restaurant:${row.restaurant_id}`,
           );
           const craveScoreExact = this.optionalNumber(row.crave_score_exact);
-          const scoreDelta7d = this.optionalNumber(row.score_delta_7d);
+          const rising = this.optionalNumber(row.rising);
           const topConnectionId =
             typeof row.top_connection_id === 'string'
               ? row.top_connection_id
@@ -304,8 +304,8 @@ export class SearchCoverageService {
                 `connection:${topConnectionId ?? 'missing'}`,
               )
             : null;
-          const topFoodScoreDelta7d = includeTopDish
-            ? this.optionalNumber(row.top_food_score_delta_7d)
+          const topFoodRising = includeTopDish
+            ? this.optionalNumber(row.top_food_rising)
             : null;
           const topFoodCraveScoreExact = includeTopDish
             ? this.optionalNumber(row.top_food_crave_score_exact)
@@ -332,7 +332,7 @@ export class SearchCoverageService {
               scoreSubjectId: includeTopDish
                 ? topConnectionId
                 : row.restaurant_id,
-              scoreDelta7d: includeTopDish ? topFoodScoreDelta7d : scoreDelta7d,
+              rising: includeTopDish ? topFoodRising : rising,
               rank: index + 1,
               restaurantCraveScore: craveScore,
               isDishPin: includeTopDish ? true : undefined,
@@ -381,7 +381,7 @@ export class SearchCoverageService {
           f.name AS food_name,
           pcs.display_score AS crave_score,
           pcs.percentile_rank AS crave_score_exact,
-          pcs.score_delta_7d AS score_delta_7d
+          pcs.rising AS rising
         FROM core_restaurant_items c
         JOIN core_entities f ON f.entity_id = c.food_id
         JOIN public_connection_scores pcs

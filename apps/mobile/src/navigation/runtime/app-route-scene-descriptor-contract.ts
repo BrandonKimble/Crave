@@ -80,6 +80,33 @@ export type AppRouteSceneBodyAdmissionPolicy = {
   keepDataSubscribedAfterActivation?: boolean;
 };
 
+/**
+ * Phase 1 (canonical-transition-finish-plan.md) — the universal per-scene
+ * readiness spine. ADDITIVE / OBSERVE-ONLY for now: a scene declares which
+ * rendered-evidence gates must close before its overlap 'content' plane is
+ * truly settled. A LATER phase will settle the 'content' plane on
+ * ALL-gates-satisfied (replacing the 320ms fallback timer); in THIS phase the
+ * transaction-keyed collector only OBSERVES (logs) and the existing completer
+ * (crossfade ramp onFinish + 320ms fallback) still drives completion unchanged.
+ *
+ * Generalizes the proven search reveal join {cards, nativeMarkerFrame, sheet}.
+ */
+export type SceneReadinessGate =
+  | 'cards'
+  | 'nativeMarkerFrame'
+  | 'sheet'
+  | 'header'
+  | 'thread'
+  | 'form'
+  | 'profileShell'
+  | 'dishes';
+
+export type SceneReadinessContract = {
+  requiredContentGates: readonly SceneReadinessGate[];
+  loadingGates?: readonly SceneReadinessGate[];
+  requiredRestoreGates?: readonly SceneReadinessGate[];
+};
+
 const isInlineAppRouteSceneChromePublication = (
   publication: AppRouteSceneChromePublication
 ): publication is AppRouteInlineSceneChromePublication =>

@@ -1,0 +1,9 @@
+appId: com.brandonkimble.cravesearch
+---
+- extendedWaitUntil: { visible: 'Where is the best pizza in NYC?', timeout: 15000 }
+- waitForAnimationToEnd: { timeout: 1500 }
+
+# (ii) polls -> pollDetail : tap the poll card by its title text
+- tapOn: { text: 'Where is the best pizza in NYC?' }
+- waitForAnimationToEnd: { timeout: 6000 }
+- takeScreenshot: /tmp/p4b-poll-detail

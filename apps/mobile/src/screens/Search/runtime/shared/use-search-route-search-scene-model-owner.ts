@@ -30,6 +30,14 @@ import { useSearchRootSearchScenePanelSurfaceRenderRuntime } from './use-search-
 import { useSearchRootSearchSceneShellSpecPublicationRuntime } from './use-search-root-search-scene-shell-spec-publication-runtime';
 import { useSearchRootSearchSceneSurfacePanelStateRuntime } from './use-search-root-search-scene-surface-panel-state-runtime';
 import type { SearchRouteResultsPolicyReadModelWriterFacets } from './search-route-results-policy-domain-contract';
+import { SceneLoadingSurface } from '../../../../components/skeletons';
+
+// Stable element (reference-equal across renders so the snapshot equality check holds): the
+// results-list skeleton shown when the list is empty during a hard-swap reveal, before the first
+// results row paints. Same surface the body-input-owner uses — coalesced via ?? at the consumer.
+const RESULTS_LOADING_EMPTY_COMPONENT = React.createElement(SceneLoadingSurface, {
+  rowType: 'restaurant',
+});
 
 type SearchRouteSearchSceneModelOwnerParams = {
   sessionAssemblyRuntime: ReturnType<
@@ -232,7 +240,7 @@ export const useSearchRouteSearchSceneModelOwner = ({
         routeSearchSceneRenderRuntime.resultsToggleStripForRender as React.ReactElement | null,
       ListFooterComponent: routeSearchSceneReadModelRuntime
         .routeSearchSceneResultsReadModelSelectors.listFooterComponent as React.ReactElement | null,
-      ListEmptyComponent: null,
+      ListEmptyComponent: RESULTS_LOADING_EMPTY_COMPONENT,
       ItemSeparatorComponent:
         routeSearchSceneSheetTransportRuntime.routeSearchScenePanelListTransportRuntime
           .itemSeparatorComponent,

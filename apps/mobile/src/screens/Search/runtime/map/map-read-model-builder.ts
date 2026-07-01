@@ -93,7 +93,7 @@ export const buildMarkerCatalogReadModel = (
           restaurantName: dish.restaurantName,
           craveScore,
           craveScoreExact: dish.craveScoreExact ?? null,
-          scoreDelta7d: dish.scoreDelta7d ?? null,
+          rising: dish.rising ?? null,
           rank,
           pinColor,
           isDishPin: true,
@@ -113,7 +113,21 @@ export const buildMarkerCatalogReadModel = (
       if (restaurantOnlyId && restaurant.restaurantId !== restaurantOnlyId) {
         return;
       }
-      const rank = canonicalRestaurantRankById.get(restaurant.restaurantId);
+      const canonicalRank = canonicalRestaurantRankById.get(restaurant.restaurantId);
+      // The marker catalog drops any restaurant without a numeric rank (rank is a search-ranking
+      // concept). A committed restaurant/entity reveal (poll comment-span / restaurant deep link)
+      // returns a SINGLE rankless restaurant — so its only pin would be dropped here and the map
+      // would render no pin at the reveal frame (the "pin pops in only on refresh" bug). When this
+      // restaurant IS the explicitly-revealed target (selectedRestaurantId / restaurantOnlyId),
+      // fall back to rank 1 so the reveal always yields a pin — mirroring the seeded-marker path
+      // (publishHydratedRestaurantMarkerSource gives a rankless hydrated restaurant rank 1). Ranked
+      // search results are unaffected: they always carry a canonical rank, so the fallback is inert
+      // for the result-card path.
+      const isRevealedRestaurant =
+        (selectedRestaurantId !== null && restaurant.restaurantId === selectedRestaurantId) ||
+        (restaurantOnlyId !== null && restaurant.restaurantId === restaurantOnlyId);
+      const rank =
+        typeof canonicalRank === 'number' ? canonicalRank : isRevealedRestaurant ? 1 : undefined;
       if (typeof rank !== 'number') {
         return;
       }
@@ -146,7 +160,7 @@ export const buildMarkerCatalogReadModel = (
             restaurantName: restaurant.restaurantName,
             craveScore,
             craveScoreExact: restaurant.craveScoreExact ?? null,
-            scoreDelta7d: restaurant.scoreDelta7d ?? null,
+            rising: restaurant.rising ?? null,
             rank,
             pinColor,
           },

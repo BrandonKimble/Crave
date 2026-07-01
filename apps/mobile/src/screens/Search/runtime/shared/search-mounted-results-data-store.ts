@@ -207,6 +207,37 @@ const listeners = new Set<() => void>();
 let snapshot = EMPTY_SEARCH_MOUNTED_RESULTS_DATA_SNAPSHOT;
 const exactMatchController = createSearchResultsExactMatchOwnerController();
 
+// Seeded marker source: a single restaurant whose geometry should populate the map markers
+// independently of any committed results (e.g. a profile opened from an autocomplete suggestion
+// tap, where there is no committed search response). Kept separate from `snapshot.results` so the
+// results/rows pipeline is never polluted; the map source controller reads it via
+// `getSeededMarkerRestaurants()` and uses it only when there are no committed restaurants.
+let seededMarkerRestaurants: RestaurantResult[] | null = null;
+
+export const getSeededMarkerRestaurants = (): RestaurantResult[] | null => seededMarkerRestaurants;
+
+export const publishMapMarkerSource = (restaurants: RestaurantResult[] | null): void => {
+  const nextSeededMarkerRestaurants =
+    restaurants != null && restaurants.length > 0 ? restaurants : null;
+  if (seededMarkerRestaurants === nextSeededMarkerRestaurants) {
+    return;
+  }
+  if (
+    seededMarkerRestaurants != null &&
+    nextSeededMarkerRestaurants != null &&
+    seededMarkerRestaurants.length === nextSeededMarkerRestaurants.length &&
+    seededMarkerRestaurants.every(
+      (restaurant, index) => restaurant === nextSeededMarkerRestaurants[index]
+    )
+  ) {
+    return;
+  }
+  seededMarkerRestaurants = nextSeededMarkerRestaurants;
+  listeners.forEach((listener) => {
+    listener();
+  });
+};
+
 const EMPTY_SEARCH_MOUNTED_RESULTS_ROWS: {
   dishes: ResultsListItem[];
   restaurants: ResultsListItem[];

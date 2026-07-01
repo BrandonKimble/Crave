@@ -157,4 +157,13 @@ export type RouteSceneSwitchRequestInput = {
   dockedPollsRestoreSnap?: Exclude<BottomSheetSnap, 'hidden'> | null;
   routeAction?: RouteSceneSwitchRouteAction;
   routeParams?: RouteSceneSwitchRouteParams;
+  // Phase 2 (canonical-sheet-transition-master-plan.md §6) — the redraw
+  // transactionId the readiness collector keys on (e.g.
+  // "search-surface-results-transaction:3"). Threaded from the search→results
+  // reveal so the controller can LINK the redraw txn (which the gate marks carry)
+  // to the settleToken (which the 'content' motion plane carries) at content-plane
+  // arm time. Without this link the two are independent counters. Only the
+  // search-family reveal supplies it; every other switch leaves it undefined and
+  // the collector stays observe-only for that token.
+  contentReadinessTransactionId?: string | null;
 };

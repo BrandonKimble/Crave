@@ -91,7 +91,8 @@ export class PollSchedulerService {
         14,
       ),
       minDemandScore: this.resolveNumberEnv('POLL_CITY_MIN_DEMAND_SCORE', 1),
-      releaseDayOfWeek: this.resolveWeekdayEnv('POLL_RELEASE_DAY_OF_WEEK', 1),
+      // §B.5: app/Crave poll cadence publishes SUNDAY (0). Env-overridable.
+      releaseDayOfWeek: this.resolveWeekdayEnv('POLL_RELEASE_DAY_OF_WEEK', 0),
       releaseHour: this.resolveHourEnv('POLL_RELEASE_HOUR', 9),
     };
   }

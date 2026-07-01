@@ -50,7 +50,7 @@ export type UseResultsPresentationOwnerCompositionRuntimeArgs<Suggestion> = {
   commitSearchCloseRestore: () => boolean;
   cancelSearchCloseRestore: () => void;
   flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: (options?: { mode?: 'full' | 'chrome-only' }) => void;
+  requestDefaultPostSearchRestore: () => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
@@ -171,6 +171,7 @@ export const useResultsPresentationOwnerCompositionRuntime = <Suggestion>({
 
   return useResultsPresentationOwnerPublicationRuntime({
     clearTypedQuery,
+    clearSearchState,
     submittedQuery,
     isSearchSessionActive,
     hasResults,

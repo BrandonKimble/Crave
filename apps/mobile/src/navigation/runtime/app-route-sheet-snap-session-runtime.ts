@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { SearchSessionOriginContext } from '../../overlays/searchRouteSessionTypes';
+import type { OriginSnapshot } from '../../overlays/searchRouteSessionTypes';
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
 import type { SearchRouteSceneSnapMeta } from '../../overlays/searchRouteSceneShellMotionContract';
 
@@ -13,8 +13,8 @@ export const ROUTE_SHARED_SNAP_PERSISTENCE_KEY = 'search-route-shared-snap';
 export type AppRouteSheetSnapSessionSnapshot = Readonly<{
   isDockedPollsDismissed: boolean;
   isNavRestorePending: boolean;
-  capturedOriginContext: SearchSessionOriginContext | null;
-  pendingOriginRestoreContext: SearchSessionOriginContext | null;
+  capturedOriginContext: OriginSnapshot | null;
+  pendingOriginRestoreContext: OriginSnapshot | null;
   isSearchOriginRestorePending: boolean;
   sceneSheetSnaps: Readonly<Partial<Record<OverlayKey, OverlaySheetSnap>>>;
   hasUserSharedSnap: boolean;
@@ -31,8 +31,8 @@ export type AppRouteSheetSnapSessionActions = {
   setIsDockedPollsDismissed: (next: React.SetStateAction<boolean>) => void;
   dismissDockedPolls: () => void;
   setNavRestorePending: (next: boolean) => void;
-  setCapturedOriginContext: (next: SearchSessionOriginContext | null) => void;
-  setPendingOriginRestoreContext: (next: SearchSessionOriginContext | null) => void;
+  setCapturedOriginContext: (next: OriginSnapshot | null) => void;
+  setPendingOriginRestoreContext: (next: OriginSnapshot | null) => void;
   setIsSearchOriginRestorePending: (next: boolean) => void;
   recordRouteSceneSheetSettle: (args: { sceneKey: OverlayKey; snap: OverlaySheetSnap }) => void;
   settleRouteSceneTabSnap: (args: {
@@ -296,6 +296,10 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     activeOverlayKey: OverlayKey;
     snap: OverlaySheetSnap;
   }): void {
+    // recordUserSnap persists only USER (gesture-sourced) snaps — the sole call site gates on
+    // meta.source==='gesture' (app-route-sheet-host-authority-controller.ts). A programmatic
+    // origin-restore morph emits a single snapTo to the CAPTURED detent and never reaches here, so
+    // it can't pollute the persisted shared snap; no restore-transaction guard is needed.
     if (!isSharedOverlaySnapOwner({ rootOverlay, activeOverlayKey })) {
       return;
     }

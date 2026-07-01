@@ -31,6 +31,13 @@ The dish list ("Menu highlights," ranked by dish score) is the differentiated, e
 - **Dish row evidence** — each dish shows Poll count + Total votes (cheap, free); a top community quote / "raved about X times" inline is part of the paid "why."
 - **Never lock the restaurant answer** — gate dish DEPTH only. Hiding the best results of an objective ranking is the #1 "feels like a scam" trigger, so the top-N restaurants are never paywalled.
 
+## Friend signals
+
+When people you follow have ranked or saved this place, their take surfaces here as the shared **FriendCluster** — stacked overlapping friend avatars + "Saved by {name} and others" (named friend = highest-affinity; tap to expand). An explicit, visually-distinct overlay that never alters the objective Crave Score (full design in `profile.md`).
+
+- **Restaurant-level (free):** the cluster near the header / "Known for."
+- **Dish-level (rides with the dish layer):** on a dish card, "Saved by Sarah and others" (and "Sarah ranks this #2 on her Tacos list" on expand). Since dish detail is the Crave+ layer, dish-level signals travel with it; restaurant-level signals stay free.
+
 ## Discussion section (FREE)
 
 The bottom-most section of the profile — **called "Discussion," not "Reviews."** It aggregates *every comment/mention linkable to this restaurant or its dishes* across polls and threads into one place: our reviews surface, but real sourced discussion (the same graduation/collection linkage that feeds the Crave Score), not star reviews.

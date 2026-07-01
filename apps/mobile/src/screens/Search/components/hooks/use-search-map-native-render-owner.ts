@@ -82,6 +82,14 @@ type SearchMapNativeRenderOwnerStatusArgs = {
     labelCount?: number;
     settledAtMs: number;
   }) => void;
+  // UNIFIED-FADE TOGGLE (map-LOD-v6): deterministic toggle cover-lift signal (latest-wins).
+  onToggleSettled?: (payload: {
+    requestKey: string | null;
+    overlayTileCount: number;
+    promotedCount: number;
+    degraded: boolean;
+    settledAtMs: number;
+  }) => void;
   onMarkerExitStarted?: (payload: {
     requestKey: string;
     pinCount?: number;
@@ -1917,6 +1925,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
   onExecutionBatchMountedHidden,
   onMarkerEnterStarted,
   onMarkerEnterSettled,
+  onToggleSettled,
   onMarkerExitStarted,
   onMarkerExitSettled,
   onRecoveredAfterStyleReload,
@@ -2576,6 +2585,19 @@ const useSearchMapNativeRenderOwnerStatus = ({
               });
               return;
             }
+            if (event.type === 'presentation_toggle_settled') {
+              // UNIFIED-FADE TOGGLE: deterministic cover-lift signal (latest-wins, supersession-immune).
+              withNativePresentationEventInnerSpan(event, 'lifecycle_callback', () => {
+                onToggleSettled?.({
+                  requestKey: event.requestKey,
+                  overlayTileCount: event.overlayTileCount,
+                  promotedCount: event.promotedCount,
+                  degraded: event.degraded,
+                  settledAtMs: event.settledAtMs,
+                });
+              });
+              return;
+            }
             if (event.type === 'presentation_exit_started') {
               const sourceCounts = withNativePresentationEventInnerSpan(
                 event,
@@ -2692,6 +2714,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
     onMarkerExitStarted,
     onMarkerEnterStarted,
     onMarkerEnterSettled,
+    onToggleSettled,
     onViewportChanged,
     onLabelObservationUpdated,
     onRecoveredAfterStyleReload,

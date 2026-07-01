@@ -82,9 +82,7 @@ export const createProfilePresentationModelRuntime = ({
     searchBarTop,
     searchBarHeight,
     insetsTop,
-    navBarTop,
     screenHeight,
-    profilePinTargetCenterRatio,
     profilePinMinVisibleHeight,
     fallbackCenter,
     fallbackZoom,
@@ -97,9 +95,7 @@ export const createProfilePresentationModelRuntime = ({
       searchBarTop,
       searchBarHeight,
       insetsTop,
-      navBarTop,
-      expandedSnapPoint: snapPoints.expanded,
-      profilePinTargetCenterRatio,
+      middleSnapPoint: snapPoints.middle,
       profilePinMinVisibleHeight,
     });
 

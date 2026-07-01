@@ -100,6 +100,10 @@ export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
             routeSceneRuntime.routeSearchCommandActions.openAppSearchRouteResults({
               snap: targetSnap,
               mode: entryMotion === 'instant_behind_search_mode' ? 'instant' : undefined,
+              // Phase 2 — link the redraw transactionId (which the readiness gate
+              // marks carry) to the settleToken minted by this switch, so the
+              // collector can drive the 'content' plane to completion on real paint.
+              contentReadinessTransactionId: snapshot.transactionId,
             });
           },
           `enter:${snapshot.mutationKind}`

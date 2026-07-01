@@ -23,6 +23,7 @@ export const useAppRoutePollDetailSceneInputWriterRuntime = ({
     sceneLayout,
     pollDetailPollId: pollDetailSceneStateRuntime.pollDetailPollId,
     pollDetailPoll: pollDetailSceneStateRuntime.pollDetailPoll,
+    pollDetailCommentAnchorId: pollDetailSceneStateRuntime.pollDetailCommentAnchorId,
     shouldShowPollDetailPanel: pollDetailSceneStateRuntime.shouldShowPollDetailPanel,
   });
 

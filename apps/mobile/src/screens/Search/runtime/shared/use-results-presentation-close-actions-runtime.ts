@@ -12,6 +12,7 @@ import type { OverlayKey } from '../../../../overlays/types';
 
 type UseResultsPresentationCloseActionsRuntimeArgs = {
   clearTypedQuery: SearchClearOwner['clearTypedQuery'];
+  clearSearchState: SearchClearOwner['clearSearchState'];
   submittedQuery: string;
   isSearchSessionActive: boolean;
   hasResults: boolean;
@@ -60,6 +61,7 @@ export const useResultsPresentationCloseActionsRuntime = ({
   matchesPendingCloseIntentId,
   beginCloseTransition,
   cancelSearchSheetCloseTransition,
+  clearSearchState,
 }: UseResultsPresentationCloseActionsRuntimeArgs): ResultsPresentationCloseActionsRuntime => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const searchSurfaceResultsExitTransactionSeqRef = React.useRef(0);
@@ -132,6 +134,44 @@ export const useResultsPresentationCloseActionsRuntime = ({
       return;
     }
 
+    // Return-to-origin foundation — TOP-LEVEL-RICH dismiss seam (the LAST gap). If the CAPTURED
+    // origin is a top-level-rich SEEDED origin (favorites-as-search launched from bookmarks /
+    // profile), dismiss it as a SINGLE swapImmediately re-root DIRECTLY to the captured origin —
+    // bypassing the `terminalDismiss→polls` collapse choreography entirely. That intermediate is
+    // what used to BLANK this dismiss: it preserved the dismissing search handoff for its sheet
+    // slide, then the boundary restore re-rooted `polls→bookmarks` swapImmediately and SUPERSEDED
+    // it before it settled, latching the native presentation on a torn-down outgoing handoff. With
+    // no intermediate there is nothing to supersede. `dismissRestoreToTopLevelRichOrigin` does the
+    // SINGLE re-root (and returns true) ONLY for that origin shape; a degenerate home / restaurant-
+    // profile / comment→pollDetail child origin returns false and falls through to the UNCHANGED
+    // terminalDismiss path below (the home seam stays byte-identical). We tear down the search
+    // SURFACE first with skipPostSearchRestore (it does NOT arm/flush, so the captured origin
+    // survives), THEN emit the single re-root — mirroring the finalize CLEAR→RESTORE order.
+    if (routeSceneRuntime.routeOverlaySessionActions.isTopLevelRichSeededOriginCaptured()) {
+      ignoreNextSearchBlurRef.current = true;
+      unstable_batchedUpdates(() => {
+        clearSearchState({
+          skipPostSearchRestore: true,
+          skipProfileDismissClear: true,
+        });
+        resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
+        setPendingCloseIntentId(null);
+        routeSceneRuntime.routeOverlaySessionActions.dismissRestoreToTopLevelRichOrigin();
+      });
+      return;
+    }
+
+    // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Restore / P2).
+    // TWO dismiss mechanisms, both richness-gated on the captured OriginSnapshot (never on a
+    // call-site anchor-scene `if`): the top-level-rich seam ABOVE handles bookmarks/profile in a
+    // single synchronous swapImmediately re-root; EVERYTHING ELSE (home + comment→pollDetail child)
+    // runs the SAME terminalDismiss surface-exit choreography BELOW, which ARMS the snapshot
+    // (armSearchCloseRestore) and, on the collapse boundary, flushes the ONE richness-gated restore
+    // (flushPendingSearchOriginRestore → restorePendingOrigin). The snapshot's SHAPE decides the
+    // motion — a DEGENERATE home origin short-circuits to the byte-identical {polls,search}@collapsed
+    // home switch; a RICH child origin (a poll-discussion COMMENT, anchor.sceneKey==='pollDetail')
+    // re-roots the origin home BENEATH the child and re-pushes the exact child scene that rises to
+    // the captured detent. The branch is read from the snapshot inside restorePendingOrigin.
     ignoreNextSearchBlurRef.current = true;
     unstable_batchedUpdates(() => {
       clearTypedQuery();
@@ -158,6 +198,7 @@ export const useResultsPresentationCloseActionsRuntime = ({
       setPendingCloseIntentId(closeIntentId);
     });
   }, [
+    clearSearchState,
     clearTypedQuery,
     hasResults,
     ignoreNextSearchBlurRef,

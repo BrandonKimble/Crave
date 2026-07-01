@@ -8,7 +8,7 @@
 
 ---
 
-Favorites is the user's personal save layer: restaurant and dish lists, public/private visibility with shareable slugs, the save flow, and the list-detail view (which reuses the Search Results renderer). It is the primary "this is mine" surface in Crave. The Crave Score is objective and global — never personalized to taste — so lists carry no algorithmic personalization, just the user's own curation. Taste enters Crave only two ways: what the user searches, and what they save here.
+Favorites is the user's personal save layer: restaurant and dish lists, public/private visibility with shareable slugs, the save flow, and the list-detail view (which reuses the Search Results renderer). It is the primary "this is mine" surface in Crave. The Crave Score is objective and global — never personalized to taste — so lists carry no algorithmic personalization, just the user's own curation. Taste enters Crave three ways, all user-authored (never algorithmically inferred, so the objective Score stays pure): what the user searches, what they save here, and how they rank what they save (custom sort).
 
 ## The two-sided list model
 
@@ -23,9 +23,9 @@ The save flow is locked to content type: a restaurant card saves only into resta
 
 The Favorites screen is all-white, a 2-column grid of cutout tiles. Each tile is a list-name heading plus 3–5 preview rows, and each preview row carries a Crave Score dot colored by the shared continuous score curve (restaurant lists color by restaurant score, dish lists by connection/dish score) — never a 3-tier threshold or local rank.
 
-Tapping a list opens a detail screen that reuses the Search Results renderer (same rows, meta lines, frost background). List detail runs the list's items through the search query executor, so it inherits open-now and price filtering plumbing for free, and produces map-ready entities.
+Tapping a list opens a detail screen that reuses the Search Results renderer (same rows, meta lines, frost background). List detail runs the list's items through the search query executor, so it inherits open-now and price filtering plumbing for free, and produces map-ready entities. Item rows carry the shared **FriendCluster** (stacked avatars + "Saved by {name} and others") when people you follow have also saved that spot/dish — same overlay as the result sheet (see `profile.md`).
 
-Lists, items, reordering, sharing, and list detail are built; the high-value frontier is the auto-"All" list, cross-list intelligence, and the Crave+ power filter/sort layer.
+Lists, items, reordering, sharing, and list detail are built; the high-value frontier is the auto-"All" list, cross-list intelligence, custom ranking, and the Crave+ filter layer (sort, including custom ranking, stays free).
 
 ## Save flow & list management
 
@@ -35,6 +35,16 @@ Lists, items, reordering, sharing, and list detail are built; the high-value fro
 - **Search within a list / across all saved** — find a spot inside a long list or across everything saved.
 - **Quick actions on list rows** — order link, maps link, share — mirroring the result Quick Actions, so a list is actionable, not just a memory.
 - **"Also worth trying" inside a list** — adjacency suggestions off saved items, kept objective and non-personalized (e.g. higher-scored nearby alternatives), never taste-modeled.
+
+## Home controls (the list of lists)
+
+The home favorites page is built on the shared toggle-strip primitive (the same frost/cutout/scroll strip as the result sheet), with three orthogonal controls:
+
+- **Restaurants | Dishes** — the structural parent toggle; switches which kind of lists you see.
+- **Sort** — a dropdown: **Recently updated** (default) and **Custom** (your hand-dragged order).
+- **All / Mine / Shared** — a one-tap, mutually-exclusive *filter* over who made the list. Shared lists from friends land in your favorites, so this separates yours from theirs. It hides to a subset (a filter), which is why it's its own control and not a sort.
+
+**Custom (drag) ordering works on the home too**, identical to within a list — you drag your lists into the order you want, and that becomes the **sticky default** once set, so the home stops reshuffling. "Recently updated" is just the churn-y starting default for someone who hasn't ordered yet: a list jumps to the top each time you save into it, so the home reshuffles under you until you impose a custom order.
 
 ## The "All" list + cross-list intelligence
 
@@ -46,23 +56,31 @@ These are the prominent directions on top of the core.
 - **Compare lists** — side-by-side or overlay comparison of two lists (e.g. "Date Night" vs "Business Lunch") by score, overlap, neighborhood.
 - **Map all saved at once** — plot every saved restaurant (across all lists, or the All view) on the map in one pass. This is the personal food map, grounded in real lists. Since list detail already produces map-ready entities, this is mostly aggregation.
 
-## The per-list filter strip (Crave+ power layer)
+## Per-list controls: sort (free) vs filters (Crave+)
 
-Every list gets a filter/sort strip. The plain list stays free; the *power* of slicing and ranking a saved set is the Crave+ gate:
+Every list has a **sort dropdown** (a dropdown toggle, like the result-sheet price control) plus **filter toggles**. The line is: **sort your list however you want, free; filter/slice it, paid.**
 
-- **Sort by rank** (default)
-- **Sort by rising** — the continuous heat-surge momentum axis: mentions arriving faster lately than a place's own baseline. ("Rising" is the working word; open to a better one.) This floats "what I saved that's heating up right now" to the top.
+**Sort — free.** Reordering the same set is free, partly because one of the options is the user's own shareable ranking.
+- **Best** (default) — Crave Score order.
+- **Rising** — the continuous heat-surge axis: mentions arriving faster lately than a place's own baseline. ("Rising" is the working word; open to a better one.)
+- **Recently added** — by save date.
+- **Custom** — the user's hand-ranking (see *Custom ranking* below).
+
+**Filters — Crave+.** Slicing the set down is the paid power layer:
 - **Open now**
 - **Price**
 - **Cuisine** — a maybe; leaning against it.
+- Best-near-me-now over a saved set lives here too.
 
-Best-near-me-now over a saved set lives here too. Restaurant lists stay broadly free; dish-list depth (dish-level momentum sort, dish score evidence inside list detail) leans paid, since dishes are the paid hero.
+Filtering a *saved set* is gated even though open-now and price are free on the main search — that's intentional: we match Google on search (free), and the part Google can't do (filter your saved lists) is the Crave+ layer. Dish-list depth (dish-level scores/evidence inside a list) is also Crave+, since dishes are the paid hero. A plain saved list — its creation, sorting, and sharing — stays free.
 
-**Gating principle:** gate what Google/Yelp/Beli structurally can't do — cross-list intelligence, momentum sort over a personal set, dish-level depth. Keep free what they already do: a plain saved list, its creation, and its sharing.
+**Custom ranking (the reorder).** Picking *Custom* turns on an edit mode that orders items into the user's own order, persisted (the `position` column already backs it). Reorder is **drag-and-drop**, made safe against the movable sheet by the mode itself: entering edit **locks the sheet to full height** (its pan is disabled) and a drag *handle* is the sole activator, so the sheet and list-scroll yield to the drag. The home's 2-column grid **linearizes to a single column in edit mode**, so it's the same simple 1-D drag as a list. The identical mechanism powers both within-a-list (rank your spots/dishes) and the home (order your lists). A non-drag path (move up/down · move-to-top) ships alongside — an accessibility requirement (WCAG 2.2 §2.5.7), not optional. Custom stays free — it's the personalization/shareability engine (below), not a power filter.
 
 ## Sharing, virality & social
 
 Lists are a primary growth surface. A public list with a slug is a shareable artifact that pulls new users in — the acquisition hook in a no-ad-budget freemium model. List creation and sharing stay free forever to protect this loop.
+
+**Custom ranking is the social/personalization axis.** The Crave Score is crowd consensus; a user's *custom-ranked* list is their personal opinion laid over it — the second axis the app otherwise lacks, and the seed of the friend graph. A ranked "my top 10 tacos in Austin" is a far more shareable artifact than an unordered save pile, and following a friend means browsing their ranked lists for trusted, taste-curated picks rather than only the crowd. When viewing anyone's custom-ranked list, the *order* is their opinion while each row still shows the objective Crave Score dot — "their take vs. the canonical truth," side by side — and personal rank is always visually distinct from the Crave Score so the two never blur. (Friend-graph features — following, friends' picks on a place, your-circle's-consensus — live in `profile.md`.)
 
 - **Public / private visibility** — public lists show on the owner's profile "Lists" tab and are reachable by share slug; private lists are owner-only. Lists are the user's curatorial identity.
 - **Shareable via slug** — a short URL-safe slug per list with a share toggle and rotate/revoke. App deep link plus universal link; if the app isn't installed, a web landing with a CTA.
@@ -84,7 +102,7 @@ The area is "Favorites," not "Bookmarks." Screen title leans on the list framing
 
 - Is there a free cap on number of lists (with unlimited as a Crave+ unlock), or are lists uncapped for everyone?
 - What is the default filter set for the auto-"All" list on open (e.g. open-now off, all source lists included, sorted by Crave Score desc)?
-- Exactly which filter/sort controls are free vs Crave+ on a list — e.g. is open-now free since list detail already supports it, while rising/momentum sort is paid?
+- Final wording for the recency sorts ("Recently added" for items, "Recently updated" for lists) — working labels, not locked.
 - Should sharing a private list auto-flip it to public, prompt, or block?
 - For dish-list items saved without an existing connection: create a connection or block the save?
 - Do per-item notes get shared when a public list is shared?

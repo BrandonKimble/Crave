@@ -61,7 +61,7 @@ type RestaurantDishRow = {
   total_upvotes: number;
   last_mentioned_at: Date | null;
   crave_score: unknown;
-  score_delta_7d: unknown;
+  rising: unknown;
   restaurant_crave_score: unknown;
   restaurant_name: string;
   restaurant_aliases: string[];
@@ -1184,7 +1184,7 @@ export class SearchService {
         c.total_upvotes AS total_upvotes,
         c.last_mentioned_at AS last_mentioned_at,
 	        pcs.display_score AS crave_score,
-	        pcs.score_delta_7d AS score_delta_7d,
+	        pcs.rising AS rising,
 	        prs.display_score AS restaurant_crave_score,
 	        r.name AS restaurant_name,
         r.aliases AS restaurant_aliases,
@@ -1234,7 +1234,7 @@ export class SearchService {
         scoreSubjectType: 'connection',
         scoreSubjectId: row.connection_id,
         craveScore,
-        scoreDelta7d: toNumber(row.score_delta_7d),
+        rising: toNumber(row.rising),
         marketKey: row.market_key ?? undefined,
         marketName: null,
         mentionCount: row.mention_count ?? 0,
@@ -1501,7 +1501,7 @@ export class SearchService {
       scoreSubjectType: 'connection' as const,
       scoreSubjectId: dish.connectionId,
       craveScore: dish.craveScore,
-      scoreDelta7d: dish.scoreDelta7d ?? null,
+      rising: dish.rising ?? null,
     }));
     const totalDishCount =
       typeof aggregate._count?._all === 'number'
@@ -1520,7 +1520,7 @@ export class SearchService {
           publicScore?.craveScore,
           `restaurant:${restaurant.entityId}`,
         ),
-        scoreDelta7d: publicScore?.scoreDelta7d ?? null,
+        rising: publicScore?.rising ?? null,
         marketKey: normalizedActiveMarketKey ?? undefined,
         marketName: null,
         mentionCount: aggregate._sum.mentionCount ?? 0,
@@ -1601,7 +1601,7 @@ export class SearchService {
 
   private async getPublicRestaurantScore(restaurantId: string): Promise<{
     craveScore: number;
-    scoreDelta7d: number | null;
+    rising: number | null;
   } | null> {
     const toOptionalNumber = (value: unknown): number | null => {
       if (typeof value === 'number' && Number.isFinite(value)) {
@@ -1626,11 +1626,11 @@ export class SearchService {
     };
 
     const rows = await this.prisma.$queryRaw<
-      Array<{ craveScore: unknown; scoreDelta7d: unknown }>
+      Array<{ craveScore: unknown; rising: unknown }>
     >(Prisma.sql`
       SELECT
         display_score AS "craveScore",
-        score_delta_7d AS "scoreDelta7d"
+        rising AS "rising"
       FROM core_public_entity_scores
       WHERE subject_type = 'restaurant'
         AND subject_id = ${restaurantId}::uuid
@@ -1647,7 +1647,7 @@ export class SearchService {
         row.craveScore,
         `restaurant:${restaurantId}`,
       ),
-      scoreDelta7d: toOptionalNumber(row.scoreDelta7d),
+      rising: toOptionalNumber(row.rising),
     };
   }
 

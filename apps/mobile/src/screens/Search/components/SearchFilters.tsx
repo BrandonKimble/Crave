@@ -371,6 +371,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     >
       <GestureDetector gesture={segmentToggleTapGesture}>
         <View
+          testID="search-segment-toggle"
           style={styles.segmentedControl}
           accessible
           accessibilityRole="button"

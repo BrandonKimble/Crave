@@ -1,0 +1,29 @@
+appId: com.brandonkimble.cravesearch
+# P1 byte-identity probe (polls root). Open the polls home (tap the docked polls sheet),
+# expanding the polls root, then a TYPED-search reveal FROM polls → "Close results" dismiss.
+# The captured origin is the degenerate polls@<detent> home snapshot → the dismiss must emit
+# the polls-root home restore (resolvedRoot='search', topLevelSwitch → search snapTo:collapsed
+# planes=[sheet,chrome,content]). Read [DISMISS-SEAM].
+---
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- tapOn: { text: 'Close polls', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 60000 }
+- waitForAnimationToEnd: { timeout: 1500 }
+# Open polls root from the docked polls sheet.
+- tapOn: { text: 'Polls in New York' }
+- waitForAnimationToEnd: { timeout: 1500 }
+- openLink: 'crave://perf-scenario-mark?phase=P1_POLLSROOT_REVEAL'
+# Typed-search reveal from the polls root.
+- tapOn: { text: 'What are you craving?' }
+- waitForAnimationToEnd: { timeout: 800 }
+- inputText: 'pizza'
+- waitForAnimationToEnd: { timeout: 800 }
+- pressKey: Enter
+- extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 1500 }
+- openLink: 'crave://perf-scenario-mark?phase=P1_POLLSROOT_DISMISS'
+- tapOn: { text: 'Close results' }
+- waitForAnimationToEnd: { timeout: 2000 }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 20000 }
+- takeScreenshot: /tmp/p1-byteid-pollsroot-final

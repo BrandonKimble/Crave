@@ -154,6 +154,11 @@ type SearchSubmitOwner = {
     listType: FavoriteListType;
     submittedLabel: string;
   }) => Promise<void>;
+  launchEntitySearchResults: (params: {
+    entityId: string;
+    entityType: 'food' | 'food_attribute' | 'restaurant_attribute';
+    submittedLabel: string;
+  }) => Promise<void>;
 };
 
 const useSearchSubmitOwner = ({
@@ -375,6 +380,34 @@ const useSearchSubmitOwner = ({
     setError,
   });
 
+  // Skip-LLM entity reveal: a natural-search submission whose context carries a
+  // selected entity, which the BE routes through buildSelectedEntitySearchRequest
+  // (no LLM cost). Mirrors the autocomplete entity-selection path in
+  // handleSuggestionPress; the query is the span's display label.
+  const launchEntitySearchResults = React.useCallback(
+    async (params: {
+      entityId: string;
+      entityType: 'food' | 'food_attribute' | 'restaurant_attribute';
+      submittedLabel: string;
+    }): Promise<void> => {
+      await submitSearch(
+        {
+          entrySurface: 'search_mode',
+          submission: {
+            source: 'autocomplete',
+            context: {
+              selectedEntityId: params.entityId,
+              selectedEntityType: params.entityType,
+              matchType: 'entity',
+            },
+          },
+        },
+        params.submittedLabel
+      );
+    },
+    [submitSearch]
+  );
+
   const { loadMoreResults, rerunActiveSearch } = useSearchSubmitActionOwner({
     query,
     submittedQuery,
@@ -396,6 +429,7 @@ const useSearchSubmitOwner = ({
     rerunActiveSearch,
     loadMoreResults,
     launchFavoritesListResults,
+    launchEntitySearchResults,
   };
 };
 

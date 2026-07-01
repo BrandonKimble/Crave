@@ -3,7 +3,7 @@ import { Dimensions } from 'react-native';
 import { colors } from '../constants/theme';
 import { PIN_FILL_RENDER_HEIGHT, PIN_FILL_RENDER_WIDTH } from '../screens/Search/constants/search';
 import { SPLASH_STUDIO_CONFIG } from '../splash-studio/config';
-import { getCraveScoreColorFromScore } from '../utils/quality-color';
+import { getCraveScoreColorFromScore, SCORE_BUCKET_DISPLAY_MAX } from '../utils/quality-color';
 
 type BackdropDotProperties = {
   color: string;
@@ -47,7 +47,9 @@ const sampleBackdropDotColor = (random: () => number): string => {
     return colors.primary;
   }
   const warmT = sampleLinearWarmT(random);
-  const score = (1 - warmT) * 100;
+  // 0–10 native scale: warmT∈[0,1] maps to a score across the full band so the backdrop
+  // spreads across all 10 discrete bucket colors (getCraveScoreColorFromScore is now bucket-based).
+  const score = (1 - warmT) * SCORE_BUCKET_DISPLAY_MAX;
   return getCraveScoreColorFromScore(score);
 };
 

@@ -20,11 +20,12 @@ export type AppRouteSheetHostRuntimeBase = {
   sceneStackSurfaceAuthority: AppRouteSceneStackSurfaceAuthority;
   routeSceneDisplayTargetRegistry: AppRouteSceneDisplayTargetRegistry;
   routeHostVisualRuntimeAuthority: RouteHostVisualRuntimeAuthority;
-  // Render-side completer for the overlap 'content' settle plane: the scene-stack
+  // Render-side co-completer for the overlap 'content' settle plane: the scene-stack
   // crossfade ramp (BottomSheetSceneStackHost) calls this with the contentTransitionToken
   // (= the transition's settleToken) at ramp-end so the 'content' plane settles when the
-  // incoming page is actually revealed, demoting the controller CONTENT_SETTLE_TIMEOUT to a
-  // true fallback guard. Token-guarded in the controller, so a stale/duplicate call is safe.
+  // incoming page is actually revealed. Phase 2: the readiness collector is the other
+  // co-completer and the controller SCENE_READINESS_LIVENESS_MS timer is a never-hit watchdog.
+  // Token-guarded in the controller, so a stale/duplicate call is safe.
   onContentSettleComplete: (token: number) => void;
 };
 

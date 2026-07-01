@@ -3,9 +3,29 @@ import { isPerfScenarioUrl } from '../../perf/perf-scenario-deep-link';
 
 export type AppRouteDestination = 'onboarding' | 'sign_in' | 'main';
 
+// The EXACT comment a cross-surface reveal was launched from. Carried on the restaurant + entity
+// launch intents, threaded into the captured OriginSnapshot.anchor, and READ on dismiss by
+// resolveChildOriginRePush to return to that exact comment (re-push pollDetail with the comment
+// anchor → scroll-to + flash). sceneKey is the originating child scene (the only span-tap origin
+// today is the poll-discussion thread → 'pollDetail').
+export type LaunchIntentChildAnchor = {
+  sceneKey: 'pollDetail';
+  pollId: string;
+  commentId: string;
+};
+
 export type LaunchIntent =
   | { type: 'none' }
-  | { type: 'restaurant'; restaurantId: string }
+  // restaurantName (optional): the display name when the launch ORIGIN already knows it (a
+  // comment-span tap carries the span text). Threaded into the committed-search seed so the
+  // hard-swapped restaurant panel paints its header title at frame 1 instead of an empty-title
+  // flash. Absent for raw deep links (crave://restaurant/<id>), where the name is fetched.
+  | {
+      type: 'restaurant';
+      restaurantId: string;
+      restaurantName?: string;
+      childAnchor?: LaunchIntentChildAnchor | null;
+    }
   | { type: 'polls'; marketKey?: string | null; pollId?: string | null }
   | { type: 'search'; searchIntent: MainSearchIntent }
   | { type: 'saved_place'; placeId: string }
@@ -14,6 +34,18 @@ export type LaunchIntent =
   // through the SAME search response lifecycle a real search uses; listType picks
   // the auto-selected results tab. submittedLabel is the list name (sheet title).
   | { type: 'favorites'; listId: string; listType: 'restaurant' | 'dish'; submittedLabel: string }
+  // Skip-LLM entity reveal launched from a poll-discussion comment span (food /
+  // food_attribute / restaurant_attribute). Routes through the SAME search response
+  // lifecycle a natural search uses, but the BE skips the LLM whenever an
+  // entityType is supplied (buildSelectedEntitySearchRequest). submittedLabel is the
+  // span's display text (sheet title + query).
+  | {
+      type: 'entity';
+      entityId: string;
+      entityType: 'food' | 'food_attribute' | 'restaurant_attribute';
+      submittedLabel: string;
+      childAnchor?: LaunchIntentChildAnchor | null;
+    }
   | { type: 'external'; rawUrl: string };
 
 export type AuthStatus = 'loading' | 'signed_out' | 'signed_in';

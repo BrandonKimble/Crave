@@ -1,0 +1,11 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn: { text: 'Close results', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 20000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=13.2'
+- waitForAnimationToEnd: { timeout: 1200 }
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 25000 }
+- waitForAnimationToEnd: { timeout: 2000 }
+- tapOn: { id: 'search-segment-toggle' }
+- takeScreenshot: /tmp/fade-during

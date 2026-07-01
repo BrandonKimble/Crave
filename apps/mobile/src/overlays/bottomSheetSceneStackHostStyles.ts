@@ -89,7 +89,28 @@ export const bottomSheetSceneStackHostStyles = StyleSheet.create({
   },
   sceneStackSurface: {
     ...overlaySheetStyles.surface,
-    backgroundColor: 'transparent',
+    // LAYERING CORRECTION (sheet-frost-architecture): the surface must NOT be an opaque-white
+    // window — that would (a) make the frost blur white instead of the map and (b) block the
+    // toggle-strip + close-button CUTOUTS from seeing through to the frosted-map. The CONSTANT
+    // backing is the FROST ALONE (sceneStackSurfaceHoistedBacking = FrostedGlassBackground, which
+    // blurs the MAP behind the sheet → the frosted-map). Frosted-glass is opaque-ENOUGH to stop
+    // the SHARP-map see-through while still showing the blurred map through the cutouts. The
+    // per-scene WHITE PLATES WITH CUTOUTS (backgroundComponent, zIndex 1) own the solid-white areas
+    // ABOVE the frost; their holes reveal the constant frosted-map. So the surface stays transparent
+    // (inherits overlaySheetStyles.surface 'transparent') — no white fill here.
+  },
+  // The ONE hoisted CONSTANT backing — the FROST ALONE (a single FrostedGlassBackground blurring the
+  // map behind the sheet), mounted once below all content at constant opacity 1.0, NO white fill and
+  // NO animated/engine handle. NOTE: removing the prior backgroundColor:'#ffffff' is the layering
+  // fix — an opaque white here made the frost blur white and blocked the cutouts from revealing the
+  // frosted-map. The frosted blur+tint is the opaque-ENOUGH constant that prevents the sharp-map
+  // see-through in the SOLID areas (belt: the per-scene white plates also cover those), while the
+  // toggle-strip/close-button cutouts (holes in those plates) keep revealing the blurred map through
+  // to here. Absolute-fill; clipped to the sheet's rounded corners by the surface overflow:hidden.
+  sceneStackSurfaceHoistedBacking: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+    elevation: 0,
   },
   sceneHeaderActive: {},
   sceneHeaderHidden: {

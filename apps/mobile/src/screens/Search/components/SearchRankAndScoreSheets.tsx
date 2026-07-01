@@ -15,7 +15,7 @@ export type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
   title: string;
   score: number | null | undefined;
-  scoreDelta7d: number | null | undefined;
+  rising: number | null | undefined;
   votes: number | null | undefined;
   polls: number | null | undefined;
 };
@@ -45,7 +45,7 @@ const SearchRankAndScoreSheets = ({
   onProfilerRender,
 }: SearchRankAndScoreSheetsProps) => {
   const scoreMovementDetail = scoreInfo
-    ? formatCraveScoreMovementDetail(scoreInfo.scoreDelta7d)
+    ? formatCraveScoreMovementDetail(scoreInfo.rising)
     : null;
   const sheet = (
     <MemoOverlayModalSheet
@@ -122,7 +122,7 @@ const SearchRankAndScoreSheets = ({
                   {scoreMovementDetail}
                 </Text>
                 <Text variant="body" style={styles.scoreInfoMetricLabel}>
-                  This week
+                  Trending
                 </Text>
               </View>
             ) : null}

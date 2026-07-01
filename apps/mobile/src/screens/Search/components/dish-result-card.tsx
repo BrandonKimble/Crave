@@ -16,6 +16,7 @@ import { renderMetaDetailLine } from './render-meta-detail-line';
 import { resolveMarketDisplayLabel } from '../utils/format';
 import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
 import CraveScoreText from './CraveScoreText';
+import { formatCraveScoreMovement } from '../utils/quality';
 import { searchService } from '../../../services/search';
 import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 
@@ -42,7 +43,7 @@ type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
   title: string;
   score: number | null | undefined;
-  scoreDelta7d: number | null | undefined;
+  rising: number | null | undefined;
   votes: number | null | undefined;
   polls: number | null | undefined;
 };
@@ -156,11 +157,11 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
       type: 'dish',
       title: item.foodName,
       score: craveScoreValue,
-      scoreDelta7d: item.scoreDelta7d ?? null,
+      rising: item.rising ?? null,
       votes: item.scoreInfo?.voteCount ?? null,
       polls: item.scoreInfo?.pollCount ?? null,
     });
-  }, [craveScoreValue, item.foodName, item.scoreDelta7d, item.scoreInfo, openScoreInfo]);
+  }, [craveScoreValue, item.foodName, item.rising, item.scoreInfo, openScoreInfo]);
 
   return (
     <View
@@ -207,6 +208,15 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                     weight="semibold"
                     style={styles.metricValue}
                   />
+                  {formatCraveScoreMovement(item.rising ?? null) ? (
+                    <Text
+                      variant="body"
+                      weight="medium"
+                      style={{ marginLeft: 4, color: themeColors.textBody }}
+                    >
+                      {formatCraveScoreMovement(item.rising ?? null)}
+                    </Text>
+                  ) : null}
                   <TouchableOpacity
                     onPress={handleDishInfoPress}
                     style={styles.scoreInfoIconButton}

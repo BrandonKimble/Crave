@@ -1,0 +1,9 @@
+appId: com.brandonkimble.cravesearch
+---
+# Tap the X to clear search field / close results
+- tapOn: { point: '91%, 18%' }
+- waitForAnimationToEnd: { timeout: 3000 }
+- takeScreenshot: /tmp/p4-reset1
+- tapOn: { point: '91%, 18%', optional: true }
+- waitForAnimationToEnd: { timeout: 2000 }
+- takeScreenshot: /tmp/p4-reset2

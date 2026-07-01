@@ -1,0 +1,22 @@
+appId: com.brandonkimble.cravesearch
+# TEMP (DISMISS-SEAM byte-identity): drive the home dismiss repeatedly. Open the polls home
+# sheet (from the docked-search shortcut), dismiss it back to docked search via a swipe-down
+# collapse, ~20x. This dismiss has NO childAnchor → must take the UNCHANGED terminalDismiss path
+# and NEVER fire the child lane ([DISMISS-SEAM] child-origin lane must be absent). App must stay
+# reactive (the shortcut keeps reappearing) with no deadlock.
+---
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 60000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera_and_resolve_market&lat=40.7550&lng=-73.9800&zoom=13.2'
+- waitForAnimationToEnd: { timeout: 2500 }
+- repeat:
+    times: 20
+    commands:
+      - tapOn: { text: 'Polls in New York', optional: true }
+      - waitForAnimationToEnd: { timeout: 1200 }
+      # Collapse-dismiss the polls sheet back to docked search (swipe down).
+      - swipe: { start: '50%, 25%', end: '50%, 90%', duration: 300 }
+      - waitForAnimationToEnd: { timeout: 1200 }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 20000 }
+- takeScreenshot: /tmp/dismiss-seam-byteid-final

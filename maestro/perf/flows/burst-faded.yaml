@@ -1,0 +1,8 @@
+appId: com.brandonkimble.cravesearch
+---
+- extendedWaitUntil: { visible: 'Restaurants', timeout: 8000 }
+- repeat:
+    times: 8
+    commands:
+      - tapOn: { id: 'search-segment-toggle' }
+- takeScreenshot: /tmp/burst-faded

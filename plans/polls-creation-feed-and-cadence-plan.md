@@ -464,11 +464,14 @@ These ground every decision below; verify before building on them.
   `PollTopic`; weekly `publishWeeklyPolls()` (default Mon 9am, cap 3/city) creates
   `origin:seeded` polls. Demand scoring is multi-consumer (`poll_topic`,
   `keyword_collection`, `on_demand`), keyed `(marketKey, entity)`.
-- **Score delta / trending infra is built.** `core_public_entity_score_history`
-  (daily snapshots) + persisted `score_delta_7d`/`score_delta_28d`/`movement_state`
-  on `core_public_entity_scores` (`schema.prisma:184-186,221-241`). **Search already
-  ships `score_delta_7d DESC` as the "Rising" sort** end-to-end (`risingActive` →
-  `search-query.builder.ts` → "Rising" chip `SearchFilters.tsx:677-686`). Polls feed
+- **Score delta / trending infra is built.**
+  > ⚠️ SUPERSEDED (2026-06-28) by the rising/heat redesign (`plans/crave-score-rising-heat-redesign.md`).
+  > `core_public_entity_score_history` and `score_delta_7d/28d`/`movement_state` are GONE (dropped in the
+  > contract migration). Entity trending is now the single **`rising`** column on `core_public_entity_scores`
+  > — a continuous recent-vs-baseline display-point surge (the score recomputed at a fast half-life minus
+  > the all-time score), no snapshots. Anywhere below that proposes a "trending heat" as a decayed-sum over
+  > `core_public_entity_score_history`, use `rising` instead (it already encodes the decay). **Search ships
+  > `rising DESC` as the "Rising" sort** end-to-end (`risingActive` → `search-query.builder.ts`). Polls feed
   orders only by `launchedAt DESC` (`polls.service.ts:63-96`) — no sort param.
 - **No generic toggle/segmented/chip component exists** in mobile; the search
   restaurant⇄dish toggle is bespoke + entangled with the search runtime

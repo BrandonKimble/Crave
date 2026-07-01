@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Clock, HandPlatter, View as ViewIcon } from 'lucide-react-native';
 import { useAuth } from '@clerk/clerk-expo';
@@ -24,6 +24,7 @@ import type {
 import type { RootStackParamList } from '../../types/navigation';
 import type { Coordinate } from '../../types';
 import useSearchHistory from './hooks/use-search-history';
+import { SceneLoadingSurface } from '../../components/skeletons';
 import { CONTENT_HORIZONTAL_PADDING } from './constants/search';
 import { filterRecentlyViewedByRecentSearches } from './utils/history';
 import { renderMetaDetailLine } from './components/render-meta-detail-line';
@@ -417,8 +418,16 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
         scrollEventThrottle={16}
       >
         {isLoading && !hasSections ? (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color={themeColors.textBody} />
+          // Skeleton-first reveal (canonical-transition-finish-plan): paint a row placeholder
+          // that MATCHES the real ~60px single-line history row (icon + one text line) — the
+          // 'history' rowType, NOT 'restaurant' (a full result card), which over-renders and
+          // reflows on the skeleton→content swap. The history rows self-pad by
+          // CONTENT_HORIZONTAL_PADDING; cancel the ScrollView's own horizontal pad so the
+          // skeleton rows align with the real history rows (single inset, not double).
+          <View style={styles.loadingSkeleton}>
+            {/* frostBacking: the recent-history list sits over the opaque white search screen, not
+                the map, so a self-contained frost gives the holes their frosted-window contrast. */}
+            <SceneLoadingSurface rowType="history" count={5} frostBacking />
           </View>
         ) : !hasSections ? (
           <Text style={styles.emptyText}>{emptyLabel}</Text>
@@ -481,9 +490,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     paddingTop: 16,
   },
-  loadingRow: {
-    paddingVertical: 24,
-    alignItems: 'center',
+  loadingSkeleton: {
+    marginHorizontal: -CONTENT_HORIZONTAL_PADDING,
+    paddingTop: 4,
   },
   emptyText: {
     paddingVertical: 12,

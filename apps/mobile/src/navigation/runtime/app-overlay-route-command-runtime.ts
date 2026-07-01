@@ -33,9 +33,19 @@ export type AppOverlayRouteCommandRuntime = {
   getRouteState: () => RouteSceneSwitchRouteStateSnapshot;
   setRootRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   updateRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
+  // Phase 3b (canonical-sheet-transition-master-plan §2 Layer 3 / §6 Phase 3) — the
+  // ONE canonical reveal verb: PUSH a scene onto the OverlayRouteStack so dismiss has a
+  // real origin to pop back to (Invariant 6). Every reveal (poll-open, restaurant,
+  // saveList, pollCreation, pollDetail) flows through this; `pushRoute` is the legacy
+  // alias kept so existing call sites need no churn.
+  revealRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   pushRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   restoreDockedPolls: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   collapseActiveSheet: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
+  // Phase 3b — the ONE canonical dismiss verb: POP-to-restore from the OverlayRouteStack
+  // (return to the exact origin entry beneath the reveal). `closeActiveRoute` is the
+  // legacy alias.
+  dismissActiveRoute: () => void;
   closeActiveRoute: () => void;
   closeActiveRouteAfterSettle: (onSettle: RouteSceneSwitchSettleCallback) => void;
   popToRootRoute: () => void;
@@ -54,6 +64,15 @@ export const createAppOverlayRouteCommandRuntime = ({
       ? routeSceneSwitchRuntime.requestOverlaySwitchWithSettleCallback(input, onSettle)
       : routeSceneSwitchRuntime.requestOverlaySwitch(input);
 
+  // Phase 3b/5 — the canonical POP-to-restore dismiss. When a real previous entry sits
+  // beneath the active reveal, pop to it (closeChild / preserveLiveY → motionPlanes=[] →
+  // synchronous idle: this is the byte-identical {polls,search}@collapsed deadlock seam).
+  // The restaurant→`setRoot polls` hardcode that used to fire when a restaurant reveal had
+  // NO previous entry (a flattened stack) is DELETED (Phase 5, master plan §4 Failure 4):
+  // the restaurant reveal now rides the committed search lane whose dismiss restores the
+  // captured CHILD origin (pollDetail @ snap + comment) via restorePendingOrigin, so a
+  // restaurant left with no previous entry just pops the stack like any other child rather
+  // than stranding the user on polls HOME.
   const closeActiveRoute = (onSettle?: RouteSceneSwitchSettleCallback): void => {
     const routeState = routeSceneSwitchRuntime.getRouteState();
     const { activeOverlayRoute } = routeState;
@@ -74,23 +93,69 @@ export const createAppOverlayRouteCommandRuntime = ({
       );
       return;
     }
-    if (activeOverlayRoute.key === 'restaurant') {
-      requestRouteSceneSwitch(
-        {
-          targetSceneKey: 'polls',
-          routeAction: 'setRoot',
-          sheetTransitionKind: 'terminalDismiss',
-          sheetOpenerSource: 'systemDismiss',
-          sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
-          contentHandoff: 'preserveOutgoingUntilSettle',
-          dockedPollsRestoreSnap: 'collapsed',
-        },
-        onSettle
-      );
-      return;
-    }
     routeSceneSwitchRuntime.closeActiveRouteState();
     onSettle?.();
+  };
+
+  // Phase 3b — the canonical PUSH reveal, extracted so both `revealRoute` and the legacy
+  // `pushRoute` alias share one body.
+  const revealRoute = <K extends OverlayKey>(
+    overlay: K,
+    params?: OverlayRouteParamsMap[K]
+  ): void => {
+    if (overlay === 'pollCreation') {
+      requestRouteSceneSwitch({
+        targetSceneKey: overlay,
+        routeAction: 'push',
+        routeParams: createPollCreationChildRouteParams(
+          params as OverlayRouteParamsMap['pollCreation']
+        ),
+        sheetTransitionKind: 'openChild',
+        sheetOpenerSource: 'pollAction',
+        // Instant cover (matches pollDetail): full-screen child snaps over the partial feed
+        // immediately, no rise that reveals the search-surface home above.
+        sheetMotion: { kind: 'snapTo', snap: 'expanded', mode: 'instant' },
+      });
+      return;
+    }
+    if (overlay === 'pollDetail') {
+      requestRouteSceneSwitch({
+        targetSceneKey: overlay,
+        routeAction: 'push',
+        routeParams: createPollDetailChildRouteParams(
+          params as OverlayRouteParamsMap['pollDetail']
+        ),
+        sheetTransitionKind: 'openChild',
+        sheetOpenerSource: 'pollAction',
+        // SPRING the sheet Y from the feed's live snap (middle ~42%) up to expanded so the
+        // open SLIDES naturally instead of jumping. The content is already correct from frame 1:
+        // pollDetail is SEEDED (SEEDED_FORWARD_OPEN_SCENES) → contentHandoff 'swapImmediately',
+        // so the seeded header + comment skeleton paint immediately under the rising sheet — the
+        // gradual rise reveals only the map above (no stale feed, no held search-home, since the
+        // seeded path holds no outgoing leg). Omitting `mode` defaults the motion command to
+        // 'spring' (vs the prior 'instant' that set sheetY directly → the snap). The
+        // snap-persistence guard is unaffected: pollDetail's snapPersistence is 'none', so the
+        // spring-settle snap fact never writes the shared docked-feed key.
+        sheetMotion: { kind: 'snapTo', snap: 'expanded' },
+      });
+      return;
+    }
+    if (overlay === 'saveList' || overlay === 'restaurant') {
+      requestRouteSceneSwitch({
+        targetSceneKey: overlay,
+        routeAction: 'push',
+        routeParams: params,
+        sheetTransitionKind: 'openChild',
+        sheetOpenerSource: 'routeCommand',
+        // contentHandoff intentionally omitted: restaurant and saveList are both now in
+        // SEEDED_FORWARD_OPEN_SCENES, so the central descriptor resolves swapImmediately for
+        // this forward open — each paints its own seeded shell at once (saveList's form shell,
+        // restaurant's dish-skeleton seed) while its data loads, so holding the outgoing surface
+        // would only show a stale feed. Central descriptor decision, no per-call-site opt-out.
+      });
+      return;
+    }
+    routeSceneSwitchRuntime.pushRouteState(overlay, params);
   };
 
   return {
@@ -137,55 +202,14 @@ export const createAppOverlayRouteCommandRuntime = ({
         snapPersistence: 'sharedOnly',
       });
     },
-    pushRoute: (overlay, params) => {
-      if (overlay === 'pollCreation') {
-        requestRouteSceneSwitch({
-          targetSceneKey: overlay,
-          routeAction: 'push',
-          routeParams: createPollCreationChildRouteParams(
-            params as OverlayRouteParamsMap['pollCreation']
-          ),
-          sheetTransitionKind: 'openChild',
-          sheetOpenerSource: 'pollAction',
-          // Instant cover (matches pollDetail): full-screen child snaps over the partial feed
-          // immediately, no rise that reveals the search-surface home above.
-          sheetMotion: { kind: 'snapTo', snap: 'expanded', mode: 'instant' },
-        });
-        return;
-      }
-      if (overlay === 'pollDetail') {
-        requestRouteSceneSwitch({
-          targetSceneKey: overlay,
-          routeAction: 'push',
-          routeParams: createPollDetailChildRouteParams(
-            params as OverlayRouteParamsMap['pollDetail']
-          ),
-          sheetTransitionKind: 'openChild',
-          sheetOpenerSource: 'pollAction',
-          // Instant snap to full so the sheet COVERS immediately (no rise that reveals the
-          // search-surface home above it); the leaf crossfade then swaps feed→pollDetail at
-          // full height. The feed is a partial sheet (~42%), pollDetail is full-screen.
-          sheetMotion: { kind: 'snapTo', snap: 'expanded', mode: 'instant' },
-        });
-        return;
-      }
-      if (overlay === 'saveList' || overlay === 'restaurant') {
-        requestRouteSceneSwitch({
-          targetSceneKey: overlay,
-          routeAction: 'push',
-          routeParams: params,
-          sheetTransitionKind: 'openChild',
-          sheetOpenerSource: 'routeCommand',
-          // Keep restaurant/saveList on the PRE-ENGINE instant swap (their default before the engine
-          // was activated). Their leaf crossfade is unverified, and restaurant's outgoing is the
-          // route-level 'search' surface (NOT relabeled to the docked feed), so a content crossfade
-          // risks fading the bare home. Opt them out explicitly until verified; poll-lane children
-          // (pollDetail/pollCreation) keep the instant cover above.
-          contentHandoff: 'swapImmediately',
-        });
-        return;
-      }
-      routeSceneSwitchRuntime.pushRouteState(overlay, params);
+    // Phase 3b — the canonical PUSH reveal verb; `pushRoute` aliases it so existing call
+    // sites keep working. Every reveal lands a NEW stack entry above the origin
+    // (Invariant 6), giving the canonical dismiss a real entry to pop back to.
+    revealRoute,
+    pushRoute: revealRoute,
+    // Phase 3b — the canonical POP-to-restore dismiss verb; `closeActiveRoute` aliases it.
+    dismissActiveRoute: () => {
+      closeActiveRoute();
     },
     closeActiveRoute: () => {
       closeActiveRoute();

@@ -1,0 +1,17 @@
+{
+  "note": "Canonical Crave Score color tiers for the 0-10 display scale. Ten deciles: tier i covers rating [i, i+1). `default` is the V3 ramp DARKENED 5%: the V3 ramp is a perceptually OKLab-spaced gradient anchored to three colors the owner sampled from macOS system surfaces with Digital Color Meter in DISPLAY-NATIVE (Display-P3) mode (red, gold, Apple system green #35C759), converted P3->sRGB; at the owner's request every tier is then scaled to 95% HSV value (brightness down 5%, hue + saturation held EXACTLY constant -- deeper, not muted), so each tier is a slightly darker version of the originally-picked color (e.g. the green anchor #35C759 -> #32BD55). The vivid-looking hex values are sRGB encodings; on a wide-gamut (P3) screen they render softer. To re-darken/re-lighten, re-scale the ORIGINAL V3 ramp's HSV value, not these already-darkened values. `colorblind` is a viridis ramp for the future accessibility toggle. quality-color.ts and the scripts/generate-*-sprites.js generators BOTH read this file so pin sprites, dots, and rank pills stay in lockstep. Do not hand-edit colors anywhere else.",
+  "scaleMin": 0,
+  "scaleMax": 10,
+  "default": [
+    "#F2575B", "#F27156", "#F2864E", "#F19A42", "#F1AC26",
+    "#ECBE0F", "#CAC009", "#A2C12F", "#75C044", "#32BD55"
+  ],
+  "defaultRgb": [
+    [242, 87, 91], [242, 113, 86], [242, 134, 78], [241, 154, 66], [241, 172, 38],
+    [236, 190, 15], [202, 192, 9], [162, 193, 47], [117, 192, 68], [50, 189, 85]
+  ],
+  "colorblind": [
+    "#440154", "#482878", "#3E4A89", "#31688E", "#26828E",
+    "#1F9E89", "#35B779", "#6DCD59", "#B4DE2C", "#FDE725"
+  ]
+}

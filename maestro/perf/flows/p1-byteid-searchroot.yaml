@@ -1,0 +1,23 @@
+appId: com.brandonkimble.cravesearch
+# P1 byte-identity probe (search root). Reset to docked search home @collapsed, then a
+# TYPED-search reveal → "Close results" terminal dismiss. The captured origin is the
+# degenerate search@collapsed home snapshot → the dismiss must emit the search-root home
+# restore (terminalDismiss → polls snapTo:collapsed planes=[sheet,chrome]). Read [DISMISS-SEAM].
+---
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- tapOn: { text: 'Close polls', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 60000 }
+- waitForAnimationToEnd: { timeout: 1500 }
+- tapOn: { text: 'What are you craving?' }
+- waitForAnimationToEnd: { timeout: 800 }
+- inputText: 'pizza'
+- waitForAnimationToEnd: { timeout: 800 }
+- pressKey: Enter
+- extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 1500 }
+- openLink: 'crave://perf-scenario-mark?phase=P1_SEARCHROOT_DISMISS'
+- tapOn: { text: 'Close results' }
+- waitForAnimationToEnd: { timeout: 2000 }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 20000 }
+- takeScreenshot: /tmp/p1-byteid-searchroot-final

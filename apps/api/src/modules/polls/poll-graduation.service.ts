@@ -64,6 +64,12 @@ export class PollGraduationService {
         createdAt: true,
         graduatedAt: true,
         metadata: true,
+        // §2 Option A: the creator's description is an extractable creator-authored
+        // unit at graduation (today only `question` is sent, as non-extracted
+        // framing). Attribute it to the creator so closure counts it like Reddit
+        // collection counts a post body.
+        createdByUserId: true,
+        topic: { select: { description: true } },
       },
     });
     if (!poll) {
@@ -104,7 +110,30 @@ export class PollGraduationService {
       },
     });
 
-    if (!comments.length) {
+    // §2 Option A: the creator's description is an extractable creator-authored
+    // unit (the post body in Reddit terms). The poll question is non-extracted
+    // framing (`extract_from_post: false`), so we carry the description as the
+    // first comment-shaped unit instead — attributed to the creator, oldest so it
+    // leads the flattened thread like a post body.
+    const description = poll.topic?.description?.trim();
+    let descriptionUnit: LLMComment | null = null;
+    if (description && poll.createdByUserId) {
+      const creator = await this.prisma.user.findUnique({
+        where: { userId: poll.createdByUserId },
+        select: { userId: true, username: true },
+      });
+      descriptionUnit = {
+        id: `poll-${pollId}-description`,
+        content: description,
+        author: creator?.username ?? poll.createdByUserId,
+        score: 0,
+        created_at: (poll.launchedAt ?? poll.createdAt).toISOString(),
+        parent_id: null,
+        url: `crave://poll/${pollId}`,
+      };
+    }
+
+    if (!comments.length && !descriptionUnit) {
       // Nothing to extract — mark graduated so the cron stops revisiting it.
       await this.markGraduated(pollId, poll.metadata, {
         commentsProcessed: 0,
@@ -116,15 +145,18 @@ export class PollGraduationService {
     //    The poll question is context only (`extract_from_post: false`) — it frames
     //    the discussion but is a prompt, not an endorsement.
     const marketKey = poll.marketKey ?? 'global';
-    const llmComments: LLMComment[] = comments.map((comment) => ({
-      id: comment.commentId,
-      content: comment.body,
-      author: comment.user.username ?? comment.user.userId,
-      score: comment.score,
-      created_at: comment.loggedAt.toISOString(),
-      parent_id: comment.parentCommentId ?? null,
-      url: `crave://poll/${pollId}/comment/${comment.commentId}`,
-    }));
+    const llmComments: LLMComment[] = [
+      ...(descriptionUnit ? [descriptionUnit] : []),
+      ...comments.map((comment) => ({
+        id: comment.commentId,
+        content: comment.body,
+        author: comment.user.username ?? comment.user.userId,
+        score: comment.score,
+        created_at: comment.loggedAt.toISOString(),
+        parent_id: comment.parentCommentId ?? null,
+        url: `crave://poll/${pollId}/comment/${comment.commentId}`,
+      })),
+    ];
     const llmPost: LLMPost = {
       id: `poll-${pollId}`,
       title: poll.question,

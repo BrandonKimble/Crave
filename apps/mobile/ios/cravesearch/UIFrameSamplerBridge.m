@@ -20,6 +20,9 @@ RCT_EXTERN_METHOD(setRenderFrame:(NSDictionary *)payload
 RCT_EXTERN_METHOD(setCandidateCatalog:(NSDictionary *)payload
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(beginInteractionFadeOut:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(resetNativeApplyAttribution:(NSDictionary *)payload
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)

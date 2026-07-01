@@ -39,6 +39,7 @@ const areProfileSceneRowsEqual = (
           previousRow.title !== nextRow.title ||
           previousRow.lists !== nextRow.lists ||
           previousRow.loading !== nextRow.loading ||
+          previousRow.error !== nextRow.error ||
           previousRow.emptyMessage !== nextRow.emptyMessage
         ) {
           return false;
@@ -73,6 +74,7 @@ export const useProfilePanelSegmentRowsRuntime = ({
           title: 'Restaurant lists',
           lists: dataRuntime.restaurantLists,
           loading: dataRuntime.restaurantListsIsLoading,
+          error: dataRuntime.restaurantListsIsError,
           emptyMessage: 'No public restaurant lists yet.',
         },
         {
@@ -81,6 +83,7 @@ export const useProfilePanelSegmentRowsRuntime = ({
           title: 'Dish lists',
           lists: dataRuntime.dishLists,
           loading: dataRuntime.dishListsIsLoading,
+          error: dataRuntime.dishListsIsError,
           emptyMessage: 'No public dish lists yet.',
         },
       ];
@@ -120,9 +123,11 @@ export const useProfilePanelSegmentRowsRuntime = ({
     dataRuntime.createdPolls,
     dataRuntime.createdPollsIsLoading,
     dataRuntime.dishLists,
+    dataRuntime.dishListsIsError,
     dataRuntime.dishListsIsLoading,
     dataRuntime.profileIsLoading,
     dataRuntime.restaurantLists,
+    dataRuntime.restaurantListsIsError,
     dataRuntime.restaurantListsIsLoading,
     shouldRenderExpandedContent,
   ]);

@@ -75,10 +75,11 @@ export type BottomSheetSceneStackHostProps = {
   outgoingSceneKey: OverlayKey | null;
   incomingSceneKey: OverlayKey | null;
   contentTransitionToken: number | null;
-  // Render-side completer for the overlap 'content' settle plane. The crossfade ramp keyed on
+  // Render-side co-completer for the overlap 'content' settle plane. The crossfade ramp keyed on
   // contentTransitionToken calls this (via runOnJS) with that same token at ramp-end, so the
   // 'content' plane settles when the incoming page reveals rather than at the controller's
-  // CONTENT_SETTLE_TIMEOUT. Token-guarded downstream, so a stale/duplicate call is a safe no-op.
+  // SCENE_READINESS_LIVENESS_MS watchdog (Phase 2: the readiness collector is the other
+  // co-completer). Token-guarded downstream, so a stale/duplicate call is a safe no-op.
   onContentSettleComplete: (token: number) => void;
   bodyRuntimeAuthority: BottomSheetSceneStackBodyRuntimeAuthority;
   sheetYValue?: SharedValue<number>;

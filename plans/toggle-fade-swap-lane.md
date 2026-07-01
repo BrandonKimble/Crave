@@ -116,7 +116,59 @@ reveal/dismiss fade choreography. The fade-swap MUST reuse their committed
 If they rework the fade engine, this lane rides on top. Keep the lane additive + behind the
 new `fade_swap` kind so it can't regress reveal/dismiss.
 
-## Refinements (2026-06-21) — dot collision + dependency relaxation
+## SUPERSEDED FRAMING (2026-06-29, post map-LOD-v6 reassessment + fade-sync trace)
+
+The two-tier (Tier-1 surgical / Tier-2 trough) framing below is REPLACED. After the v6 reassessment
+(12-agent) + the fade-sync trace (7-agent), the model is:
+
+**UNIFIED FADE — "be dismiss, both directions."** A toggle is a single global presentation-opacity
+fade, NOT a surgical per-marker re-decide. On press: fade all three families out together instantly
+(no gate); under cover (opacity 0) apply new data + let the engine re-decide + settle labels; on
+settle: fade all three in together. Owner-confirmed (2026-06-29): the surgical/selective approach is
+the engine's NATIVE *panning* behavior and should stay there; a deliberate toggle wants the clean
+unified fade that stays in lockstep with the sheet cover/card reveal. Instant fade-out (decoupled
+from data) gives responsiveness; rapid-tap = stay faded out until settle (trivial, like the cover).
+
+**WHY reveal is desynced (so the toggle must NOT copy reveal):** reveal composes opacity from TWO
+overlapping curves (300ms smoothstep presentation ramp × 180ms linear engine crossfade) across THREE
+clocks on TWO substrates (CA-overlay pin = synchronous; GL dot/label = async setFeatureState),
+behind a reveal-only placement gate. DISMISS is synced because it FREEZES the engine (live-pin
+animators self-cancel) → one scalar (presentationOpacity 1→0), one clock, no placement gate.
+
+**THE TOGGLE SYNC CONTRACT (non-negotiable):** pin + dot + label all derive from the SAME toggle
+scalar, on the SAME clock, written the SAME tick, engine FROZEN, placement OUT of the fade path,
+both directions. Specifics:
+1. One clock (the presentation/toggle animator) owns all three — its tick writes GL dot+label
+   feature-state AND the overlay pin tile.opacity in the same callback (have
+   `stepPresentationOpacityAnimation` also call `refreshOverlayFrame`); the overlay's own link does
+   POSITION only.
+2. Engine per-marker fade does NOT run during the toggle (freeze like dismiss); snap any in-flight
+   role crossfade to target first. One curve, never two.
+3. Fade-out instant on press, gated by nothing; DEFER overlay teardown until the scalar reaches 0
+   (else pins SNAP instead of fade — the dismiss hazard via syncOverlayRoster on a camera frame).
+4. Fade-in NOT gated by placement once started (placement may gate the START only); obstacle-reseed
+   must not move labels mid-ramp. CAVEAT: a toggle firing right after a data refresh inherits the
+   full placement-readiness saga; a re-show of already-placed markers is trivial.
+5. Keep GL dot/label opacity-transitions at 0ms (no `*OpacityTransition`) — a refactor must preserve
+   this or it silently stacks Mapbox's 300ms default ease.
+6. The ≤1-frame CA-vs-GL async skew is the irreducible floor; symmetric → not a desync. Do NOT
+   "fix" it with a fixed one-frame CA delay (GL upload latency varies with frame load).
+
+**Also corrected by the reassessment:** the prior "re-rank toggles hang because the catalog
+fingerprint ignores rank" premise is FALSE — `buildStableKeyFingerprint` is rank-ordered, so a
+re-rank DOES re-push the catalog + re-rank the engine. The real static-camera gap is that the
+catalog re-push nils the projection signature + re-ranks but fires NO projection until a camera tick
+(shipping precedent to copy: the tap-promote path, SearchMapRenderController.swift ~2962-2970:
+signature=nil → projectAndEmitOnScreenMarkers(isMoving:false) → reseed; PLUS the new requirement to
+call syncOverlayRoster, which today only runs from the camera handler). AND the "toggle hangs"
+evidence is STALE (pre-reveal-deadlock-fix 467b14c5) — must re-reproduce on the current binary.
+
+Full reports: workflow ws7nuoj65 (system reassessment) + w7rvnbhmy (fade-sync). The two-tier text
+below is retained only as history.
+
+---
+
+## Refinements (2026-06-21) — dot collision + dependency relaxation [HISTORY — see SUPERSEDED above]
 
 SDK facts (confirmed): `allow-overlap`/`ignore-placement` are LAYOUT props (flipping them
 re-runs placement = a flicker); feature-state feeds only PAINT expressions, never layout/

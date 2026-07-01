@@ -8,6 +8,7 @@ import type {
   CameraSnapshot,
   RestaurantPanelSnapshot,
 } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
+import { publishMapMarkerSource } from '../shared/search-mounted-results-data-store';
 
 export type ProfileShellStatePublisher = {
   publishProfileShellState: (
@@ -92,6 +93,12 @@ export const useProfileShellStatePublisher = ({
     ProfileShellStatePublisher['setMapHighlightedRestaurantId']
   >(
     (restaurantId) => {
+      // The seeded map marker source is bound to the profile highlight: it is published when a
+      // profile hydrates with geometry and must clear exactly when the highlight clears. This is the
+      // single funnel every clear path (close, search dismiss, runtime-state-owner) routes through.
+      if (restaurantId == null) {
+        publishMapMarkerSource(null);
+      }
       publishProfileShellState({
         mapHighlightedRestaurantId: restaurantId,
       });

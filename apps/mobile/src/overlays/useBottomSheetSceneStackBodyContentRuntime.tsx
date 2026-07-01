@@ -12,6 +12,8 @@ import {
 } from './bottomSheetSurfaceStyleUtils';
 import { BottomSheetSceneStackMountedBody } from './BottomSheetSceneStackMountedBodyRegistry';
 import { BottomSheetSceneStackListBodySurface } from './BottomSheetSceneStackListBodySurface';
+import { useMountedSceneScrollRestore } from './useMountedSceneScrollRestore';
+import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneStackBodyActivityContext';
 
 const StaticContentSurface = React.memo(
   ({ content, containerStyle, surfaceStyle }: StaticContentSurfaceProps) => (
@@ -23,6 +25,7 @@ const StaticContentSurface = React.memo(
 
 export const useBottomSheetSceneStackBodyContentRuntime = ({
   sceneKey,
+  isActive,
   shouldRenderListBody,
   shouldAttachMountedContent,
   bodyDefaults,
@@ -30,6 +33,22 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
   sceneBodyContentEntry,
   sceneBodyTransportEntry,
 }: SceneStackBodyContentProps): React.ReactNode => {
+  // P3 return-to-origin scroll RESTORE for the mounted-scroll path (bookmarks). Gate on
+  // isActive && hasActivatedExpandedContent:
+  //   • isActive — the static tab bodies are RETAINED (never unmounted once bootstrapped), so a
+  //     dismiss-return is NOT a cold re-mount; the only signal that flips on the return is the
+  //     scene becoming ACTIVE again. (Gating on a mount/skeleton transition would fire once,
+  //     ever, on first bootstrap — dead for every subsequent return.)
+  //   • hasActivatedExpandedContent — the first NON-SKELETON commit; the real content's full
+  //     extent must exist or a deep scrollTo clamps to 0 (the jump-to-top failure).
+  // On that combined signal, apply any one-shot pending scroll restore staged by the dismiss
+  // path, as the sole writer that frame. For the list path / static / non-mounted scenes the
+  // render-activity provider is absent → hasActivatedExpandedContent defaults false → inert.
+  const { hasActivatedExpandedContent } = useBottomSheetSceneStackBodyRenderActivity();
+  const mountedScrollRestoreRef = useMountedSceneScrollRestore({
+    sceneKey,
+    contentReady: isActive && hasActivatedExpandedContent,
+  });
   const sceneBodyContentSpec = sceneBodyContentEntry.bodyContentSpec;
   const sceneBodyTransportSpec = sceneBodyTransportEntry.bodyTransportSpec;
   const sceneKeyboardShouldPersistTaps =
@@ -129,6 +148,7 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
         sceneStaticContentBody
       ) : (
         <bodyScrollRuntime.ScrollComponent
+          ref={mountedScrollRestoreRef}
           style={sceneTransparentSurfaceStyle}
           contentContainerStyle={sceneListContentContainerStyle}
           keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
@@ -166,6 +186,7 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     handleContentMomentumEnd,
     handleContentScrollBeginDrag,
     handleContentScrollEndDrag,
+    mountedScrollRestoreRef,
     sceneBodyContentSpec,
     sceneBodyTransportSpec,
     sceneContentComponent,

@@ -16,6 +16,7 @@ import { SECONDARY_METRIC_ICON_SIZE, TOP_FOOD_RENDER_LIMIT } from '../constants/
 import { formatDistanceMiles, resolveMarketDisplayLabel } from '../utils/format';
 import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
 import CraveScoreText from './CraveScoreText';
+import { formatCraveScoreMovement } from '../utils/quality';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 import {
@@ -55,7 +56,7 @@ type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
   title: string;
   score: number | null | undefined;
-  scoreDelta7d: number | null | undefined;
+  rising: number | null | undefined;
   votes: number | null | undefined;
   polls: number | null | undefined;
 };
@@ -312,7 +313,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       type: 'restaurant',
       title: restaurant.restaurantName,
       score: craveScoreValue,
-      scoreDelta7d: restaurant.scoreDelta7d ?? null,
+      rising: restaurant.rising ?? null,
       votes: restaurant.scoreInfo?.voteCount ?? null,
       polls: restaurant.scoreInfo?.pollCount ?? null,
     });
@@ -320,7 +321,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     craveScoreValue,
     openScoreInfo,
     restaurant.restaurantName,
-    restaurant.scoreDelta7d,
+    restaurant.rising,
     restaurant.scoreInfo,
   ]);
 
@@ -368,6 +369,15 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         weight="semibold"
                         style={styles.metricValue}
                       />
+                      {formatCraveScoreMovement(restaurant.rising ?? null) ? (
+                        <Text
+                          variant="body"
+                          weight="medium"
+                          style={{ marginLeft: 4, color: themeColors.textBody }}
+                        >
+                          {formatCraveScoreMovement(restaurant.rising ?? null)}
+                        </Text>
+                      ) : null}
                       <TouchableOpacity
                         onPress={handleRestaurantInfoPress}
                         style={styles.scoreInfoIconButton}

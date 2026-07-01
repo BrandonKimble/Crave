@@ -1,5 +1,11 @@
 import React from 'react';
-import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -7,7 +13,6 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { OVERLAY_TAB_HEADER_HEIGHT } from './overlaySheetStyles';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 
@@ -23,6 +28,17 @@ type BottomSheetSceneStackPageFrameProps = {
   reserveHeaderLane?: boolean;
   reservedHeaderHeight?: number;
   headerDividerScrollOffset?: SharedValue<number>;
+  // Four-lane split (sheet-frost-architecture). The host-owned player drives per-region opacities
+  // applied HERE, at the page-frame's own z-layers:
+  //   • chromeOpacityStyle → the CHROME regions (underlay / plate / header / overlay): an INSTANT
+  //     swap (resolveHeaderSwap, paint-ack-gated) so the header NEVER fades and its cutouts always
+  //     reveal the constant frosted-map; the white plate HARD-swaps (stays opaque, no map leak).
+  //   • bodyOpacityStyle → the BODY region ONLY: the cross-dissolve (resolveContentLaneOpacities).
+  // When omitted (search scene / no transition) the layers render at their static opacity, as before.
+  // onBodyFirstPaint → the BODY's first onLayout = the paint-ack producer (the incoming body painted).
+  chromeOpacityStyle?: StyleProp<ViewStyle>;
+  bodyOpacityStyle?: StyleProp<ViewStyle>;
+  onBodyFirstPaint?: (event: LayoutChangeEvent) => void;
 };
 
 // The header/content seam is a SINGLE boundary at `headerHeight` — it is simultaneously the
@@ -70,8 +86,20 @@ export const BottomSheetSceneStackPageFrame = React.memo(
     reserveHeaderLane = false,
     reservedHeaderHeight,
     headerDividerScrollOffset,
+    chromeOpacityStyle,
+    bodyOpacityStyle,
+    onBodyFirstPaint,
   }: BottomSheetSceneStackPageFrameProps) => {
     const [headerHeight, setHeaderHeight] = React.useState(OVERLAY_TAB_HEADER_HEIGHT);
+    // The body's onLayout fans out to the existing viewport-layout consumer AND the paint-ack
+    // producer (onBodyFirstPaint) — both fire on the body's first real measured frame.
+    const handleBodyLayout = React.useCallback(
+      (event: LayoutChangeEvent) => {
+        onBodyViewportLayout?.(event);
+        onBodyFirstPaint?.(event);
+      },
+      [onBodyViewportLayout, onBodyFirstPaint]
+    );
     const effectiveHeaderHeight =
       headerComponent == null && reservedHeaderHeight != null ? reservedHeaderHeight : headerHeight;
     const handleHeaderLayout = React.useCallback(
@@ -98,32 +126,46 @@ export const BottomSheetSceneStackPageFrame = React.memo(
 
     return (
       <View pointerEvents="box-none" style={styles.sceneStackPageBundle}>
-        <View pointerEvents="none" style={styles.sceneStackPageUnderlayLayer}>
+        {/* CHROME regions (underlay / plate / header / overlay) carry the INSTANT-swap opacity
+            (chromeOpacityStyle = resolveHeaderSwap): they never fade — the header swaps in one frame
+            on the paint-ack so its cutouts always reveal the constant frosted-map, and the white
+            plate hard-swaps (stays opaque). The BODY layer carries the cross-dissolve opacity
+            (bodyOpacityStyle = resolveContentLaneOpacities) — the only thing that dissolves. */}
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.sceneStackPageUnderlayLayer, chromeOpacityStyle]}
+        >
           {underlayComponent}
-        </View>
-        {/* SHARED FROST FOUNDATION: every sheet is frosty by default — one blur plane for the
-            whole app, below all content. White layers (header plate, body surfaces) sit on top
-            and punch cutouts to reveal this frost. Scenes no longer render their own frost. */}
-        <View pointerEvents="none" style={styles.sceneStackPageBackgroundLayer}>
-          <FrostedGlassBackground />
+        </Animated.View>
+        {/* Phase 0 (opaque-backing hoist): the SHARED FROST FOUNDATION (one blur+white plate for
+            the whole sheet) has been HOISTED to the surface host (ActiveSceneStackSurfaceHost),
+            mounted ONCE below all content layers at a CONSTANT opacity 1.0. It is no longer
+            painted inside this per-scene leg frame, so the player can never fade the backing toward
+            transparent — the map is structurally unrepresentable inside the sheet. Per-scene white
+            plates + cutouts (backgroundComponent) STAY here (above the shared hoisted plate) and
+            HARD-swap (chromeOpacityStyle, never a fade) so the solid areas never see-through. */}
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.sceneStackPageBackgroundLayer, chromeOpacityStyle]}
+        >
           {backgroundComponent}
-        </View>
-        <View
+        </Animated.View>
+        <Animated.View
           ref={bodyViewportRef}
           pointerEvents="box-none"
-          onLayout={onBodyViewportLayout}
-          style={bodyLayerStyle}
+          onLayout={handleBodyLayout}
+          style={[bodyLayerStyle, bodyOpacityStyle]}
         >
           {bodyComponent}
-        </View>
+        </Animated.View>
         {headerComponent == null ? null : (
-          <View
+          <Animated.View
             pointerEvents="box-none"
             onLayout={handleHeaderLayout}
-            style={styles.sceneStackPageHeaderLayer}
+            style={[styles.sceneStackPageHeaderLayer, chromeOpacityStyle]}
           >
             {headerComponent}
-          </View>
+          </Animated.View>
         )}
         {headerDividerScrollOffset == null ? null : (
           <HeaderScrollDivider
@@ -131,9 +173,12 @@ export const BottomSheetSceneStackPageFrame = React.memo(
             scrollOffset={headerDividerScrollOffset}
           />
         )}
-        <View pointerEvents="box-none" style={styles.sceneStackPageOverlayLayer}>
+        <Animated.View
+          pointerEvents="box-none"
+          style={[styles.sceneStackPageOverlayLayer, chromeOpacityStyle]}
+        >
           {overlayComponent}
-        </View>
+        </Animated.View>
       </View>
     );
   }

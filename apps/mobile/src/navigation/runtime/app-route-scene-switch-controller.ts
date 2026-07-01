@@ -1,5 +1,6 @@
 import { unstable_batchedUpdates } from 'react-native';
 
+import { logger } from '../../utils';
 import type { OverlayKey } from '../../overlays/types';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import type { OverlayRouteEntry, OverlayRouteParamsMap } from './app-overlay-route-types';
@@ -13,6 +14,10 @@ import type {
   RouteSceneSwitchTransitionContract,
   RouteSceneSwitchTransitionPhase,
 } from './app-overlay-route-transition-contract';
+import type {
+  SceneReadinessContract,
+  SceneReadinessGate,
+} from './app-route-scene-descriptor-contract';
 import type { AppRouteSceneSheetMotionTargetRegistry } from './app-route-scene-sheet-motion-target-registry';
 import {
   resolveAppRouteSceneTransitionPlan,
@@ -110,6 +115,11 @@ export type RouteSceneSwitchTransitionActions = {
   completeRouteSceneSwitchMotionPlane: (
     settleToken: number,
     plane: RouteSceneSwitchMotionPlane
+  ) => void;
+  // Phase 2 (content-plane DRIVER) — see AppRouteSceneSwitchController.markSceneContentGate.
+  markSceneContentGate: (
+    gate: SceneReadinessGate,
+    transactionId: string | null | undefined
   ) => void;
   clearDockedPollsRestoreIntent: (
     token?: number,
@@ -228,16 +238,20 @@ const pushRouteState = (
   params?: RouteSceneSwitchRouteParams
 ): RouteSceneSwitchRouteStateSnapshot => {
   const nextRoute = createRouteEntry(overlay, params);
-  const currentTop =
-    currentRouteState.overlayRouteStack[currentRouteState.overlayRouteStack.length - 1];
+  const currentStack = currentRouteState.overlayRouteStack;
+  const currentTop = currentStack[currentStack.length - 1];
   const overlayRouteStack =
     currentTop?.key === overlay
-      ? [...currentRouteState.overlayRouteStack.slice(0, -1), nextRoute]
-      : [...currentRouteState.overlayRouteStack, nextRoute];
+      ? [...currentStack.slice(0, -1), nextRoute]
+      : [...currentStack.slice(0, -1), currentTop, nextRoute].filter(
+          (entry): entry is OverlayRouteEntry => entry != null
+        );
   const previousOverlayRoute =
     currentRouteState.activeOverlayRoute.key === overlay
       ? currentRouteState.previousOverlayRoute
-      : currentRouteState.activeOverlayRoute;
+      : currentTop?.key === currentRouteState.activeOverlayRoute.key
+        ? currentTop
+        : currentRouteState.activeOverlayRoute;
   return createRouteStateSnapshot({
     activeOverlayRoute: nextRoute,
     previousOverlayRoute,
@@ -312,33 +326,36 @@ const applyTransitionPlanToRouteState = (
   currentRouteState: RouteSceneSwitchRouteStateSnapshot,
   transitionPlan: AppRouteSceneTransitionPlan
 ): RouteSceneSwitchRouteStateSnapshot => {
-  switch (transitionPlan.committedRouteAction) {
-    case 'preserve':
-      return currentRouteState;
-    case 'push':
-      return pushRouteState(
-        currentRouteState,
-        transitionPlan.committedRootRouteKey,
-        transitionPlan.committedRouteParams
-      );
-    case 'updateActive':
-      return updateRouteState(
-        currentRouteState,
-        currentRouteState.activeOverlayRoute.key,
-        transitionPlan.committedRouteParams
-      );
-    case 'closeActive':
-      return closeActiveRouteState(currentRouteState);
-    case 'popToRoot':
-      return popToRootRouteState(currentRouteState);
-    case 'setRoot':
-    default:
-      return setRootRouteState(
-        currentRouteState,
-        transitionPlan.committedRootRouteKey,
-        transitionPlan.committedRouteParams
-      );
-  }
+  const next = ((): RouteSceneSwitchRouteStateSnapshot => {
+    switch (transitionPlan.committedRouteAction) {
+      case 'preserve':
+        return currentRouteState;
+      case 'push':
+        return pushRouteState(
+          currentRouteState,
+          transitionPlan.committedRootRouteKey,
+          transitionPlan.committedRouteParams
+        );
+      case 'updateActive':
+        return updateRouteState(
+          currentRouteState,
+          currentRouteState.activeOverlayRoute.key,
+          transitionPlan.committedRouteParams
+        );
+      case 'closeActive':
+        return closeActiveRouteState(currentRouteState);
+      case 'popToRoot':
+        return popToRootRouteState(currentRouteState);
+      case 'setRoot':
+      default:
+        return setRootRouteState(
+          currentRouteState,
+          transitionPlan.committedRootRouteKey,
+          transitionPlan.committedRouteParams
+        );
+    }
+  })();
+  return next;
 };
 
 const INITIAL_ROUTE_SCENE_SWITCH_TRANSITION_STATE: RouteSceneSwitchTransitionState = {
@@ -484,6 +501,53 @@ const createTransitionContract = ({
   isInteractive: false,
 });
 
+// Phase 0/2 (canonical-sheet-transition-master-plan.md §6) — per-scene readiness
+// lookup. A row declares which rendered-evidence gates a scene's overlap 'content'
+// plane must wait on; as of Phase 2 the collector DRIVES that plane to completion
+// when all of a linked txn's requiredContentGates close (it logs [READYGATE] AND
+// calls completeRouteSceneSwitchMotionPlane). The crossfade ramp onFinish is now a
+// token-guarded co-completer, and SCENE_READINESS_LIVENESS_MS is a never-hit
+// watchdog. This table does not itself touch resolveMotionPlanes/resolveContentHandoff.
+//
+// Rows:
+// - search / searchRoute carry the proven reveal join {cards, nativeMarkerFrame,
+//   sheet}. A search→results forward open targets the 'search' overlay key
+//   (results is a sub-state of the search scene), so the contract is keyed on
+//   'search' (and 'searchRoute' for the route-driven entry).
+// - pollDetail is SEEDED / swapImmediately on the forward open — it arms no
+//   'content' plane, so requiredContentGates is EMPTY. Its requiredRestoreGates
+//   mirror the poll-readiness weld used at DISMISS today (search-surface-runtime
+//   pollHeaderReady/pollBodyReady/pollHostReady → header/thread/sheet): the poll
+//   header, the poll body (a comment thread), and the sheet host.
+// - pollCreation / saveList / profile are SEEDED (swapImmediately), arm no content
+//   plane, and need no restore gates yet → empty contract.
+//
+// A LATER phase may populate restore-side loadingGates; the content-completer flip
+// has landed (Phase 2 — the collector now drives the 'content' plane).
+const EMPTY_SCENE_READINESS_CONTRACT: SceneReadinessContract = {
+  requiredContentGates: [],
+};
+
+const SCENE_READINESS_CONTRACT_BY_TARGET: Partial<
+  Record<OverlayKey, SceneReadinessContract>
+> = {
+  search: { requiredContentGates: ['cards', 'nativeMarkerFrame', 'sheet'] },
+  searchRoute: { requiredContentGates: ['cards', 'nativeMarkerFrame', 'sheet'] },
+  pollDetail: {
+    requiredContentGates: [],
+    requiredRestoreGates: ['header', 'thread', 'sheet'],
+  },
+  pollCreation: { requiredContentGates: [] },
+  saveList: { requiredContentGates: [] },
+  profile: { requiredContentGates: [] },
+};
+
+const resolveSceneReadinessContract = (
+  targetSceneKey: OverlayKey | null | undefined
+): SceneReadinessContract =>
+  (targetSceneKey != null ? SCENE_READINESS_CONTRACT_BY_TARGET[targetSceneKey] : undefined) ??
+  EMPTY_SCENE_READINESS_CONTRACT;
+
 export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime {
   private transitionState: RouteSceneSwitchTransitionState =
     INITIAL_ROUTE_SCENE_SWITCH_TRANSITION_STATE;
@@ -533,17 +597,74 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     }
   >();
 
-  // Fallback guard for the overlap 'content' settle plane. The PRIMARY completer is render-side:
-  // the scene-stack crossfade ramp's withTiming onFinish calls completeFromContentSettle at
-  // ramp-end (~250ms), so a forward-open settles when the incoming page reveals. This timeout
-  // only fires if that onFinish is missed/interrupted (React Animated onFinish is not
-  // worklet-guaranteed) — degrading to a slightly-late settle, never a hung overlay. completeMotionPlane
-  // is token-guarded, so whichever path fires first wins and the other is a safe no-op.
-  private static readonly CONTENT_SETTLE_TIMEOUT_MS = 320;
+  // Phase 2 — transaction-keyed readiness collector (content-plane DRIVER). Records
+  // which SceneReadinessGates have closed, keyed by the REDRAW transactionId the marks
+  // already carry (e.g. "search-surface-results-transaction:3"). This accumulates
+  // from submit-time so it captures gates that fire BEFORE the overlay switch goes
+  // in-flight (cards + nativeMarkerFrame during data-load) AND the one that fires
+  // DURING the switch (sheet) — the settle token misses the pre-switch gates.
+  // When the search content gates are ALL satisfied it logs [READYGATE] content-ready
+  // AND — if the txn has been LINKED to a content-plane settleToken at arm time —
+  // calls completeRouteSceneSwitchMotionPlane(settleToken, 'content') to drive that
+  // plane to completion on real paint. The crossfade ramp onFinish is now a
+  // token-guarded CO-COMPLETER (whichever of {collector, ramp} fires first wins; the
+  // SCENE_READINESS_LIVENESS_MS watchdog is a never-hit safety net).
+  private static readonly READINESS_COLLECTOR_MAX_ENTRIES = 16;
+  private readonly satisfiedReadinessGatesByTransaction = new Map<
+    string,
+    {
+      satisfiedGates: Set<SceneReadinessGate>;
+      contentReadyLogged: boolean;
+    }
+  >();
+
+  // Phase 2 (canonical-sheet-transition-master-plan.md §5/§6) — NEVER-HIT liveness
+  // WATCHDOG for the overlap 'content' settle plane. Two co-completers drive the plane
+  // on real evidence, whichever fires first (the other token-guard no-ops):
+  //   (1) the readiness COLLECTOR — markSceneContentGate completes the linked settleToken
+  //       once all requiredContentGates close (real card/marker/sheet paint), and
+  //   (2) the scene-stack crossfade ramp's withTiming onFinish (~250ms, render-side).
+  // This timer is a pure safety net for the pathological case where BOTH miss (a dropped
+  // Reanimated onFinish AND a gate that never reports). A FIRE IS AN ERROR CONDITION, not a
+  // path — raised well past the ramp so it cannot beat a healthy completer. completeMotionPlane
+  // is token-guarded, so a late fire on an already-settled token is a safe no-op.
+  private static readonly SCENE_READINESS_LIVENESS_MS = 600;
   private readonly contentPlaneTimeoutByToken = new Map<
     number,
     ReturnType<typeof setTimeout>
   >();
+
+  // Phase 2 — THE LINK. The collector keys gates by the redraw transactionId; the
+  // 'content' motion plane keys by the settleToken — independent counters. At
+  // content-plane arm we record the association {settleToken → (transactionId,
+  // requiredContentGates)}. The driver flip reads this both ways:
+  //  • markSceneContentGate (txn-keyed) → finds the linked settleToken to complete.
+  //  • arm-time check-on-arm → tests the linked txn's already-satisfied gates.
+  // Keyed by settleToken (one in-flight forward open at a time), cleared on settle/
+  // supersede/idle/dispose alongside the timeout + settle-plane maps.
+  private readonly contentReadinessLinkBySettleToken = new Map<
+    number,
+    {
+      transactionId: string;
+      requiredContentGates: readonly SceneReadinessGate[];
+    }
+  >();
+
+  // Phase 2 — the CURRENT search redraw transactionId. A search→results reveal is a
+  // MULTI-SWITCH dance: `openAppSearchRouteResults` fires the txn-carrying switch, but a
+  // docked-polls reveal then fires polls→search restore switches that SUPERSEDE it, and the
+  // FINAL search switch (the one whose content plane actually survives + crossfades) carries
+  // NO txn (it is an internal restore, not the reveal call). Attributed on-device 2026-06-28:
+  // the resolve-time switch sequence is inputTxn=:N(search) → NULL(polls) → NULL(search→ARMED).
+  // So we stamp the most-recent reveal txn here at plan-resolve time (the one chokepoint every switch passes
+  // through) and the arm site reads it when its own switch carried none. Cleared when the
+  // collector resolves the linked plane and on idle/dispose, so a stale reveal txn can't leak
+  // into an unrelated later switch.
+  private lastRevealContentReadinessTransactionId: string | null = null;
+
+  private clearContentReadinessLink(settleToken: number): void {
+    this.contentReadinessLinkBySettleToken.delete(settleToken);
+  }
 
   private clearContentPlaneTimeout(settleToken: number): void {
     const handle = this.contentPlaneTimeoutByToken.get(settleToken);
@@ -556,6 +677,11 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   private clearAllContentPlaneTimeouts(): void {
     this.contentPlaneTimeoutByToken.forEach((handle) => clearTimeout(handle));
     this.contentPlaneTimeoutByToken.clear();
+    // Phase 2 — the readiness link + the stamped reveal txn share the content-plane
+    // lifecycle (armed with the timeout, cleared on settle/supersede/idle/dispose), so
+    // clear them on the same sweeps.
+    this.contentReadinessLinkBySettleToken.clear();
+    this.lastRevealContentReadinessTransactionId = null;
   }
 
   constructor(
@@ -564,8 +690,12 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   ) {}
 
   public dispose(): void {
+    if (activeAppRouteSceneSwitchController === this) {
+      activeAppRouteSceneSwitchController = null;
+    }
     this.listeners.clear();
     this.settleCallbacksByTransitionToken.clear();
+    this.satisfiedReadinessGatesByTransaction.clear();
     this.clearAllContentPlaneTimeouts();
     this.motionDispatchTarget = null;
     this.sceneStackTransitionDispatchTarget = null;
@@ -757,11 +887,120 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     settleState.pendingPlanes.delete(plane);
     if (plane === 'content') {
       this.clearContentPlaneTimeout(settleToken);
+      // Phase 2 — the content plane is now resolved (by collector, ramp, or watchdog);
+      // drop its readiness link so a late gate mark can't re-resolve a settled token.
+      this.clearContentReadinessLink(settleToken);
     }
     if (settleState.pendingPlanes.size > 0) {
       return;
     }
     this.completeRouteSceneSwitchTransition(state.transitionToken);
+  }
+
+  /**
+   * Phase 2 (canonical-sheet-transition-master-plan.md §6 / Layer 1) —
+   * transaction-keyed readiness collector, now a DRIVER for search-family content
+   * planes. Records the gate against the REDRAW transactionId the marks carry (NOT
+   * the settle token), so it captures the gates that fire BEFORE the overlay switch
+   * goes in-flight (cards + nativeMarkerFrame during data-load) as well as the one
+   * that fires DURING the switch (sheet). When all of the scene's
+   * requiredContentGates close it logs `[READYGATE] content-ready` AND — if this
+   * txn has been LINKED to a content-plane settleToken at arm time — completes that
+   * plane via completeRouteSceneSwitchMotionPlane(settleToken, 'content'). The
+   * crossfade ramp onFinish remains a TOKEN-GUARDED CO-COMPLETER: whichever of
+   * {collector, ramp} fires first wins and the other no-ops (completeMotionPlane is
+   * idempotent on a superseded/already-resolved token). No-ops cleanly when there is
+   * no transactionId to key on. Until a txn is linked (the gate-before-arm window)
+   * the search reveal join {cards, nativeMarkerFrame, sheet} drives the
+   * content-ready log; once linked the linked contract's gates govern.
+   */
+  public markSceneContentGate(
+    gate: SceneReadinessGate,
+    transactionId: string | null | undefined
+  ): void {
+    if (transactionId == null) {
+      return;
+    }
+    logger.info(`[READYGATE] gate=${gate} txn=${transactionId}`);
+
+    let collectorState = this.satisfiedReadinessGatesByTransaction.get(transactionId);
+    if (!collectorState) {
+      collectorState = {
+        satisfiedGates: new Set<SceneReadinessGate>(),
+        contentReadyLogged: false,
+      };
+      this.satisfiedReadinessGatesByTransaction.set(transactionId, collectorState);
+      // Bound the map: evict the oldest (insertion-order) entry so a long-lived
+      // session can't grow it unbounded. The idle/dispose clears also reset it.
+      while (
+        this.satisfiedReadinessGatesByTransaction.size >
+        AppRouteSceneSwitchController.READINESS_COLLECTOR_MAX_ENTRIES
+      ) {
+        const oldestKey = this.satisfiedReadinessGatesByTransaction.keys().next().value;
+        if (oldestKey === undefined) {
+          break;
+        }
+        this.satisfiedReadinessGatesByTransaction.delete(oldestKey);
+      }
+    }
+    collectorState.satisfiedGates.add(gate);
+
+    this.evaluateContentReadinessForTransaction(transactionId, collectorState);
+  }
+
+  /**
+   * Phase 2 — shared all-gates-satisfied evaluation, invoked from BOTH the collector
+   * (gate arrives) and the arm site (CHECK-ON-ARM, gates may have closed before the
+   * switch went in-flight). Logs `[READYGATE] content-ready` once, and if a
+   * content-plane settleToken is linked to this txn, completes that plane.
+   *
+   * The gate contract: when the txn is LINKED (a content plane is in flight for it),
+   * use the linked contract's requiredContentGates; otherwise fall back to the search
+   * reveal join via SCENE_READINESS_CONTRACT_BY_TARGET['search'] so the content-ready
+   * log still fires in the gate-before-arm window (where only the search surface
+   * reports gates today). Either way only the search-family scenes ever carry a
+   * non-empty content contract (Phase 1 invariant), so this stays scoped to them.
+   */
+  private evaluateContentReadinessForTransaction(
+    transactionId: string,
+    collectorState: { satisfiedGates: Set<SceneReadinessGate>; contentReadyLogged: boolean }
+  ): void {
+    const linkedSettleToken = this.findLinkedSettleTokenForTransaction(transactionId);
+    const requiredContentGates =
+      linkedSettleToken != null
+        ? (this.contentReadinessLinkBySettleToken.get(linkedSettleToken)?.requiredContentGates ??
+          [])
+        : resolveSceneReadinessContract('search').requiredContentGates;
+    if (requiredContentGates.length === 0) {
+      return;
+    }
+    const allSatisfied = requiredContentGates.every((requiredGate) =>
+      collectorState.satisfiedGates.has(requiredGate)
+    );
+    if (!allSatisfied) {
+      return;
+    }
+    if (!collectorState.contentReadyLogged) {
+      collectorState.contentReadyLogged = true;
+      logger.info(
+        `[READYGATE] content-ready txn=${transactionId} gates=${requiredContentGates.join(',')}`
+      );
+    }
+    // DRIVER: complete the linked content plane on real paint. completeRouteSceneSwitchMotionPlane
+    // token-guards (no-ops a superseded/already-completed token) so the ramp onFinish co-completer
+    // and this driver are mutually idempotent — whichever fires first wins.
+    if (linkedSettleToken != null) {
+      this.completeRouteSceneSwitchMotionPlane(linkedSettleToken, 'content');
+    }
+  }
+
+  private findLinkedSettleTokenForTransaction(transactionId: string): number | null {
+    for (const [settleToken, link] of this.contentReadinessLinkBySettleToken) {
+      if (link.transactionId === transactionId) {
+        return settleToken;
+      }
+    }
+    return null;
   }
 
   public clearDockedPollsRestoreIntent(
@@ -1023,6 +1262,12 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   private resolveTransitionPlan(
     input: RouteSceneSwitchRequestInput & { sourceSceneKey: OverlayKey }
   ): AppRouteSceneTransitionPlan {
+    // Phase 2 — stamp the most-recent search reveal txn so the arm site can link the
+    // SURVIVING content plane even though the txn-carrying reveal switch is superseded by
+    // the internal polls→search restore switches that follow it (see the field comment).
+    if (input.contentReadinessTransactionId != null) {
+      this.lastRevealContentReadinessTransactionId = input.contentReadinessTransactionId;
+    }
     return withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'resolveTransitionPlan',
@@ -1070,20 +1315,51 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     const routeState = withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchTransition:applyRouteState',
-      () => applyTransitionPlanToRouteState(currentState.routeState, transitionPlan)
+      () =>
+        applyTransitionPlanToRouteState(currentState.routeState, transitionPlan)
     );
     withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchTransition:syncSettlePlanes',
       () => {
         this.activeSettlePlanesByToken.delete(settleToken);
+        // satisfiedReadinessGatesByTransaction is keyed by redraw transactionId, not
+        // the settle token — its size cap + idle/dispose clears handle cleanup, so no
+        // per-settle-token delete here.
         this.clearContentPlaneTimeout(settleToken);
+        this.clearContentReadinessLink(settleToken);
         if (transitionPlan.motionPlanes.length > 0) {
           this.activeSettlePlanesByToken.set(settleToken, {
             transitionToken: nextToken,
             pendingPlanes: new Set(transitionPlan.motionPlanes),
           });
           if (transitionPlan.motionPlanes.includes('content')) {
+            // Phase 2 — THE LINK: associate the redraw transactionId (which the
+            // readiness gate marks carry) with this settleToken (which the content
+            // plane carries), so the collector can drive the plane to completion.
+            // Prefer the txn this switch carried; fall back to the most-recent reveal
+            // txn for the SURVIVING content plane of a multi-switch reveal whose
+            // txn-carrying switch was superseded (see lastRevealContentReadinessTransactionId).
+            // Only matters for search-family targets — they are the only scenes with a
+            // non-empty content contract (Phase 1 invariant) AND the only producers of
+            // gate marks, so a non-search target gets requiredContentGates=[] and no link.
+            const { requiredContentGates } = resolveSceneReadinessContract(
+              transitionPlan.targetSceneKey
+            );
+            const contentReadinessTransactionId =
+              requiredContentGates.length > 0
+                ? (transitionPlan.contentReadinessTransactionId ??
+                  this.lastRevealContentReadinessTransactionId)
+                : null;
+            if (contentReadinessTransactionId != null) {
+              this.contentReadinessLinkBySettleToken.set(settleToken, {
+                transactionId: contentReadinessTransactionId,
+                requiredContentGates,
+              });
+            }
+            // Phase 2 — NEVER-HIT liveness WATCHDOG (renamed from the old 320ms
+            // completer). The collector (real paint) + the ramp onFinish are the
+            // co-completers; a fire here is an ERROR CONDITION, not a path.
             this.contentPlaneTimeoutByToken.set(
               settleToken,
               setTimeout(() => {
@@ -1093,7 +1369,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
                 // next idle sweep. Deleting here keeps the map bounded on rapid supersede.
                 this.contentPlaneTimeoutByToken.delete(settleToken);
                 this.completeRouteSceneSwitchMotionPlane(settleToken, 'content');
-              }, AppRouteSceneSwitchController.CONTENT_SETTLE_TIMEOUT_MS)
+              }, AppRouteSceneSwitchController.SCENE_READINESS_LIVENESS_MS)
             );
           }
         }
@@ -1128,6 +1404,24 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
         );
       }
     );
+    // Phase 2 — CHECK-ON-ARM. The search content gates (cards + nativeMarkerFrame)
+    // can close DURING data-load, BEFORE this switch goes in-flight — and the sheet
+    // gate is reported by the reveal path itself. The collector accumulates those
+    // from submit-time keyed by the redraw transactionId, so by the time we arm the
+    // plane the link's gates may already ALL be satisfied. Test immediately and
+    // complete synchronously if so, rather than waiting for a future gate mark that
+    // will never come. Runs AFTER setTransitionState so the switch is in-flight and
+    // completeRouteSceneSwitchMotionPlane's guards pass. Idempotent with the ramp. Reads the
+    // txn off the LINK we just recorded (which already applied the lastReveal fallback), not
+    // off the plan — the surviving reveal switch carries no txn of its own.
+    const linkedTransactionId =
+      this.contentReadinessLinkBySettleToken.get(settleToken)?.transactionId ?? null;
+    if (linkedTransactionId != null) {
+      const collectorState = this.satisfiedReadinessGatesByTransaction.get(linkedTransactionId);
+      if (collectorState) {
+        this.evaluateContentReadinessForTransaction(linkedTransactionId, collectorState);
+      }
+    }
     return nextToken;
   }
 
@@ -1144,13 +1438,15 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     const routeState = withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchIdleState:applyRouteState',
-      () => applyTransitionPlanToRouteState(currentState.routeState, transitionPlan)
+      () =>
+        applyTransitionPlanToRouteState(currentState.routeState, transitionPlan)
     );
     withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchIdleState:clearSettlePlanes',
       () => {
         this.activeSettlePlanesByToken.clear();
+        this.satisfiedReadinessGatesByTransaction.clear();
         this.clearAllContentPlaneTimeouts();
       }
     );
@@ -1196,7 +1492,10 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       () => {
         if (completedSettleToken != null) {
           this.activeSettlePlanesByToken.delete(completedSettleToken);
+          // satisfiedReadinessGatesByTransaction is transactionId-keyed, not settle-token
+          // keyed — its size cap + idle/dispose clears handle cleanup (no delete here).
           this.clearContentPlaneTimeout(completedSettleToken);
+          this.clearContentReadinessLink(completedSettleToken);
         }
       }
     );
@@ -1252,14 +1551,41 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     ) => RouteSceneSwitchRouteStateSnapshot
   ): void {
     this.setTransitionState(
-      (currentState) => ({
-        routeState: resolveNextRouteState(currentState.routeState),
-      }),
+      (currentState) => {
+        const next = resolveNextRouteState(currentState.routeState);
+        return { routeState: next };
+      },
       'applyRouteStateMutation'
     );
     this.flushRuntimeDispatchTargets();
   }
 }
+
+// Phase 1 (canonical-transition-finish-plan.md) — module-level hook so the search
+// surface runtime (a module singleton with no controller reference) can dual-report
+// its readiness marks into the transaction-keyed collector WITHOUT changing the
+// existing reveal join. The route runtime READS the search surface snapshot today;
+// there is no surface→controller port, so we register the live controller instance
+// here and expose a free delegating function. Phase 2 — markSceneContentGate now
+// DRIVES content-plane completion (it logs [READYGATE] content-ready AND completes
+// the linked content settleToken once all requiredContentGates close); see
+// AppRouteSceneSwitchController.markSceneContentGate. Holding a single active instance
+// is correct — createAppRouteSceneRuntime constructs exactly one scene-switch runtime
+// for the app.
+let activeAppRouteSceneSwitchController: AppRouteSceneSwitchController | null = null;
+
+/**
+ * Phase 2 — route a search-surface readiness mark into the active controller's
+ * collector, which DRIVES the linked content plane to completion once all gates
+ * close. No-ops cleanly when no controller is mounted or the mark carries no
+ * transactionId to key on.
+ */
+export const markActiveSceneContentGate = (
+  gate: SceneReadinessGate,
+  transactionId: string | null | undefined
+): void => {
+  activeAppRouteSceneSwitchController?.markSceneContentGate(gate, transactionId);
+};
 
 export const createAppRouteSceneSwitchRuntime = ({
   sheetMotionTargetRegistry,
@@ -1267,5 +1593,11 @@ export const createAppRouteSceneSwitchRuntime = ({
 }: {
   sheetMotionTargetRegistry: AppRouteSceneSheetMotionTargetRegistry;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
-}): AppRouteSceneSwitchRuntime =>
-  new AppRouteSceneSwitchController(sheetMotionTargetRegistry, routeSceneVisibilityPolicyRuntime);
+}): AppRouteSceneSwitchRuntime => {
+  const controller = new AppRouteSceneSwitchController(
+    sheetMotionTargetRegistry,
+    routeSceneVisibilityPolicyRuntime
+  );
+  activeAppRouteSceneSwitchController = controller;
+  return controller;
+};

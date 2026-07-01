@@ -37,7 +37,7 @@ type UseResultsPresentationCloseTransitionStateRuntimeArgs = {
   commitSearchCloseRestore: () => boolean;
   cancelSearchCloseRestore: () => void;
   flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: (options?: { mode?: 'full' | 'chrome-only' }) => void;
+  requestDefaultPostSearchRestore: () => void;
   shellLocalState: ResultsPresentationShellLocalState;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
 };

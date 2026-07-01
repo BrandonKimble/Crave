@@ -4,6 +4,15 @@
 
 Execution-ready target plan. This supersedes `plans/contextual-score-cutover-plan.md`.
 
+> **⚠️ Display band + scoring math superseded.** The `60.0–99.9` display range, the
+> `60 + 39.9·sigmoid(…)` curve, and the soft target bands (`60.0-68.0` … `96.0-99.5`) below are
+> DEAD. The score model is now `crave-score-v3` (`plans/crave-score-v3-endorsement-redesign-plan.md`)
+> and the public display is the native `0–10` scale (`plans/crave-score-1to10-scale-migration.md`):
+> `display_score = 10·global_percentile`, stored at 2 decimals, 1dp on cards / 2dp in the
+> score-info sheet, delta in rating points (no `/10`). `confidenceLabel` (the `'early'|'solid'|
+> 'strong'` field in `ScoreInfoSummary` below) is also DELETED everywhere. Read this plan for its
+> non-scoring product framing (rank-vs-score separation, coverage contract, fixture invariants) only.
+
 > **⚠️ Poll-evidence sections superseded (2026-06-18).** Every "poll performance / distinct
 > poll voters / poll_signal" idea below (notably the `poll_performance`/`poll_confidence`/
 > `poll_signal` formulas, the `poll_options`/`poll_votes`/`poll_metrics` derivations, and poll

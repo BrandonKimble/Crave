@@ -1,10 +1,5 @@
 import React from 'react';
-import Reanimated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Reanimated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 const INTERACTION_FROST_FADE_MS = 90;
 
@@ -21,38 +16,28 @@ export const useSearchRootSearchSceneInteractionFrostRuntime = ({
   pendingPresentationIntentId,
   shouldShowInteractionLoadingState,
 }: UseSearchRootSearchSceneInteractionFrostRuntimeArgs) => {
+  // The commit is now driven by the toggle debounce, not by this fade completing, so the
+  // frost no longer signals readiness. Kept in the args for wiring parity.
+  void notifyToggleInteractionFrostReady;
+
   const interactionFrostOpacity = useSharedValue(0);
-  const lastArmedFrostIntentIdRef = React.useRef<string | null>(null);
+  const isCoveredRef = React.useRef(false);
+
+  // BOOLEAN-driven cover: fade IN once when the interaction starts and HOLD opaque across
+  // the entire rapid-tap + debounce window — the old per-intentId reset-to-0 made the cover
+  // flicker on every rapid tap (part of the "glitched out" look). Fade OUT only when the
+  // interaction clears at commit, handing the cover to the redraw transaction's own fade.
+  const shouldCover = shouldShowInteractionLoadingState && pendingPresentationIntentId != null;
 
   React.useEffect(() => {
-    const intentId = shouldShowInteractionLoadingState ? pendingPresentationIntentId : null;
-    if (!intentId) {
-      lastArmedFrostIntentIdRef.current = null;
-      interactionFrostOpacity.value = withTiming(0, {
-        duration: INTERACTION_FROST_FADE_MS,
-      });
+    if (shouldCover === isCoveredRef.current) {
       return;
     }
-    if (lastArmedFrostIntentIdRef.current === intentId) {
-      return;
-    }
-    lastArmedFrostIntentIdRef.current = intentId;
-    interactionFrostOpacity.value = 0;
-    interactionFrostOpacity.value = withTiming(
-      1,
-      { duration: INTERACTION_FROST_FADE_MS },
-      (finished) => {
-        if (finished) {
-          runOnJS(notifyToggleInteractionFrostReady)(intentId);
-        }
-      }
-    );
-  }, [
-    interactionFrostOpacity,
-    notifyToggleInteractionFrostReady,
-    pendingPresentationIntentId,
-    shouldShowInteractionLoadingState,
-  ]);
+    isCoveredRef.current = shouldCover;
+    interactionFrostOpacity.value = withTiming(shouldCover ? 1 : 0, {
+      duration: INTERACTION_FROST_FADE_MS,
+    });
+  }, [interactionFrostOpacity, shouldCover]);
 
   const interactionFrostAnimatedStyle = useAnimatedStyle(() => ({
     opacity: interactionFrostOpacity.value,

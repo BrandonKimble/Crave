@@ -74,6 +74,7 @@ type SceneStackBodyContentHostProps = Pick<
   SceneStackBodyContentLayerProps,
   'contentEntry' | 'transportEntry' | 'bodyDefaults' | 'bodyScrollRuntime'
 > & {
+  isActive: boolean;
   shouldRenderListBody: boolean;
   shouldAttachMountedContent: boolean;
 };
@@ -86,6 +87,7 @@ const shouldSkipSceneStackBodyContentUpdate = (
   previousProps.transportEntry === nextProps.transportEntry &&
   previousProps.bodyDefaults === nextProps.bodyDefaults &&
   previousProps.bodyScrollRuntime === nextProps.bodyScrollRuntime &&
+  previousProps.isActive === nextProps.isActive &&
   previousProps.shouldRenderListBody === nextProps.shouldRenderListBody &&
   previousProps.shouldAttachMountedContent === nextProps.shouldAttachMountedContent;
 
@@ -95,11 +97,13 @@ const SceneStackBodyContentHost = React.memo(
     transportEntry,
     bodyDefaults,
     bodyScrollRuntime,
+    isActive,
     shouldRenderListBody,
     shouldAttachMountedContent,
   }: SceneStackBodyContentHostProps) =>
     useBottomSheetSceneStackBodyContentRuntime({
       sceneKey: contentEntry.sceneKey,
+      isActive,
       shouldRenderListBody,
       shouldAttachMountedContent,
       bodyDefaults,
@@ -175,12 +179,14 @@ export const SceneStackBodyContentLayer = React.memo(
         shouldSubscribeDataLane: contentActivity.shouldSubscribeDataLane,
         shouldRenderExpandedContent: contentActivity.shouldRenderExpandedContent,
         hasActivatedExpandedContent: contentActivity.hasActivatedExpandedContent,
+        isActive: contentActivity.isActive,
       }),
       [
         contentEntry.sceneKey,
         contentActivity.hasActivatedExpandedContent,
         contentActivity.shouldRenderExpandedContent,
         contentActivity.shouldSubscribeDataLane,
+        contentActivity.isActive,
         shouldAttachMountedContent,
       ]
     );
@@ -190,6 +196,7 @@ export const SceneStackBodyContentLayer = React.memo(
         transportEntry={transportEntry}
         bodyDefaults={bodyDefaults}
         bodyScrollRuntime={bodyScrollRuntime}
+        isActive={contentActivity.isActive}
         shouldRenderListBody={shouldRenderListBody}
         shouldAttachMountedContent={shouldAttachMountedContent}
       />

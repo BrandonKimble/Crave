@@ -609,6 +609,10 @@ export class PollsService {
       },
     });
     await this.userStats.applyDelta(userId, { pollsCreatedCount: 1 });
+    // §2 Option A: seed the leaderboard from the creator's description immediately,
+    // so a ranked poll ranks the creator's organic suggestion from frame one.
+    // (No-op for discussion polls — rebuildPollLeaderboard early-returns.)
+    await this.rebuildPollLeaderboard(poll.pollId);
     const [enriched] = await this.attachMarketLabels([poll], marketKey);
     return enriched;
   }
@@ -825,7 +829,12 @@ export class PollsService {
   ): Promise<Prisma.InputJsonValue> {
     const spans = await this.entityTextSearch.scanForKnownEntities(
       body,
-      [EntityType.restaurant, EntityType.food],
+      [
+        EntityType.restaurant,
+        EntityType.food,
+        EntityType.food_attribute,
+        EntityType.restaurant_attribute,
+      ],
       { marketKey },
     );
     return spans as unknown as Prisma.InputJsonValue;
@@ -1134,11 +1143,15 @@ export class PollsService {
       where: { pollId },
       select: {
         mode: true,
+        createdByUserId: true,
+        marketKey: true,
         topic: {
           select: {
             topicType: true,
             targetRestaurantId: true,
             targetDishId: true,
+            // Creator's organic seed (Option A): scanned in place, no DB column.
+            description: true,
           },
         },
       },
@@ -1193,6 +1206,27 @@ export class PollsService {
     // composite (see encodeConnectionSubjectId).
     const endorsers = new Map<string, Set<string>>();
 
+    // §2 Option A: the creator's `description` is their organic seed — treated like
+    // a comment, attributed to the creator's userId. Re-scanned in place (stateless;
+    // the description is short and always-fresh is cleaner than a stored column).
+    // The same Set<userId> dedup as comments means a creator who repeats the same
+    // entity in a later comment still counts once.
+    const description = poll.topic?.description?.trim();
+    const createdByUserId = poll.createdByUserId;
+    const descSpans: EntitySpan[] =
+      description && createdByUserId
+        ? await this.entityTextSearch.scanForKnownEntities(
+            description,
+            [
+              EntityType.restaurant,
+              EntityType.food,
+              EntityType.food_attribute,
+              EntityType.restaurant_attribute,
+            ],
+            { marketKey: poll.marketKey },
+          )
+        : [];
+
     if (useConnections) {
       // Dish-axis: the subject identity is a poll-local (restaurant, dish)
       // composite — we deliberately do NOT write rows into the shared Connection
@@ -1229,6 +1263,28 @@ export class PollsService {
           for (const u of endorsingUsers) set.add(u);
         }
       }
+      // Fold the creator's description seed in — mirrors the comment logic exactly,
+      // keyed by createdByUserId (guarded above: only runs when both exist).
+      if (descSpans.length && createdByUserId) {
+        const pairs = this.resolveConnectionPairs(
+          topicType,
+          targets,
+          entityIdsOfType(descSpans, EntityType.restaurant),
+          entityIdsOfType(descSpans, EntityType.food),
+        );
+        for (const pair of pairs) {
+          const subjectId = this.encodeConnectionSubjectId(
+            pair.restaurantId,
+            pair.foodId,
+          );
+          let set = endorsers.get(subjectId);
+          if (!set) {
+            set = new Set();
+            endorsers.set(subjectId, set);
+          }
+          set.add(createdByUserId);
+        }
+      }
     } else {
       // Restaurant-axis (best_restaurant_attribute): bare restaurant entity subjects.
       for (const comment of comments) {
@@ -1248,6 +1304,19 @@ export class PollsService {
             endorsers.set(subjectId, set);
           }
           for (const u of endorsingUsers) set.add(u);
+        }
+      }
+      // Fold the creator's description seed in — mirrors the comment logic exactly,
+      // keyed by createdByUserId (guarded above: only runs when both exist).
+      if (descSpans.length && createdByUserId) {
+        const subjectIds = entityIdsOfType(descSpans, EntityType.restaurant);
+        for (const subjectId of subjectIds) {
+          let set = endorsers.get(subjectId);
+          if (!set) {
+            set = new Set();
+            endorsers.set(subjectId, set);
+          }
+          set.add(createdByUserId);
         }
       }
     }

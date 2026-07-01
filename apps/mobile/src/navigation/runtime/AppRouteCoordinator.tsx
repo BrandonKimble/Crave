@@ -374,7 +374,6 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     if (!routeState) {
       return;
     }
-
     if (routeState.destination === 'main') {
       if (isMeaningfulIntent(queuedLaunchIntent)) {
         setActiveMainIntent(queuedLaunchIntent);

@@ -42,6 +42,7 @@ export type AppRouteSceneStackSceneActivitySnapshot = {
 export type AppRouteSceneStackBodySurfaceSnapshot = AppRouteSceneStackBodySnapshot & {
   contentActivity: Pick<
     AppRouteSceneStackSceneActivitySnapshot,
+    | 'isActive'
     | 'shouldRenderListBody'
     | 'shouldAttachMountedContent'
     | 'shouldRunDataLane'
@@ -165,6 +166,7 @@ export const EMPTY_APP_ROUTE_SCENE_STACK_BODY_SURFACE_SNAPSHOT: AppRouteSceneSta
     contentEntry: null,
     transportEntry: null,
     contentActivity: {
+      isActive: false,
       shouldRenderListBody: false,
       shouldAttachMountedContent: false,
       shouldRunDataLane: false,

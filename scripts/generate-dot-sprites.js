@@ -7,14 +7,19 @@
  * scales fuzzy. A pre-baked PNG per bucket color, rendered 1:1 at @3x with icon-size 1, is
  * crisp (no upscale) and its collision box is a tight SQUARE ≈ the dot — uniform spacing.
  *
- * Colors MUST match apps/mobile/src/utils/quality-color.ts SCORE_BUCKET_COLOR_TUPLES so dots
- * match their pins exactly. Output: apps/mobile/src/assets/dots/dot-b<0..7>.png + dot-highlighted.png.
+ * Colors come from apps/mobile/src/constants/score-bucket-palette.json (defaultRgb, ten deciles)
+ * so dots match their pins exactly. Output: apps/mobile/src/assets/dots/dot-b<0..9>.png + dot-highlighted.png.
  *
  * Run: node scripts/generate-dot-sprites.js
  */
 const path = require('path');
 const fs = require('fs');
 const sharp = require('sharp');
+
+// Canonical Crave Score color tiers (0-10 scale, ten deciles) — same file the pin
+// generator and quality-color.ts read, so dots match their pins exactly. Do not
+// hardcode tier colors here.
+const palette = require('../apps/mobile/src/constants/score-bucket-palette.json');
 
 const OUT_DIR = path.join(__dirname, '..', 'apps', 'mobile', 'src', 'assets', 'dots');
 
@@ -26,17 +31,9 @@ const PX = DOT_DIAMETER_PT * DENSITY; // 24px sprite
 // 1px AA inset so the circle edge isn't clipped by the canvas bounds.
 const RADIUS = PX / 2 - 1;
 
-// Mirror SCORE_BUCKET_COLOR_TUPLES (quality-color.ts) + the highlighted PRIMARY_COLOR.
-const BUCKET_RGB = {
-  0: [239, 83, 68],
-  1: [245, 124, 56],
-  2: [247, 158, 52],
-  3: [242, 196, 70],
-  4: [203, 199, 74],
-  5: [146, 198, 84],
-  6: [78, 188, 110],
-  7: [40, 178, 123],
-};
+// TEN decile colors straight from score-bucket-palette.json (defaultRgb) + the
+// highlighted PRIMARY_COLOR. Bucket i = palette.defaultRgb[i], one dot per tier.
+const BUCKET_RGB = Object.fromEntries(palette.defaultRgb.map((rgb, i) => [i, rgb]));
 const HIGHLIGHTED_RGB = [255, 51, 104]; // PRIMARY_COLOR #ff3368
 
 const circleSvg = ([r, g, b]) =>

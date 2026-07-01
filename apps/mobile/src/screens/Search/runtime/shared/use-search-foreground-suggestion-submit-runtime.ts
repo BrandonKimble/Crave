@@ -93,6 +93,18 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
         setShowSuggestions(false);
         setSuggestions([]);
       }
+      // Restaurant fast-path: we already know the exact entity, so open the profile DIRECTLY and
+      // skip the results search entirely. Profile content comes from hydration; the map pin comes
+      // from the seeded marker source published on hydration. No results sheet ever mounts — the
+      // "never a results-list-first" guarantee is structural, not a race.
+      if (match.entityType === 'restaurant' && match.entityId) {
+        pendingRestaurantSelectionRef.current = null;
+        setRestaurantOnlyIntent(null);
+        openRestaurantProfilePreview(match.entityId, match.name);
+        return;
+      }
+      pendingRestaurantSelectionRef.current = null;
+      setRestaurantOnlyIntent(null);
       const matchType =
         match.matchType === 'query' || match.entityType === 'query' ? 'query' : 'entity';
       const submissionContext: Record<string, unknown> = {
@@ -103,17 +115,6 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
         submissionContext.selectedEntityId = match.entityId;
         submissionContext.selectedEntityType = match.entityType;
       }
-      if (match.entityType === 'restaurant' && match.entityId) {
-        pendingRestaurantSelectionRef.current = {
-          restaurantId: match.entityId,
-        };
-        openRestaurantProfilePreview(match.entityId, match.name);
-      } else {
-        pendingRestaurantSelectionRef.current = null;
-      }
-      setRestaurantOnlyIntent(
-        match.entityType === 'restaurant' && match.entityId ? match.entityId : null
-      );
       void submitSearch(
         {
           entrySurface: 'search_mode',

@@ -6,6 +6,7 @@ import {
 } from '../../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import { logger } from '../../../../utils';
+import { markActiveSceneContentGate } from '../../../../navigation/runtime/app-route-scene-switch-controller';
 import type {
   SearchRouteSceneBodyContentSpec,
   SearchRouteSceneBodyTransportSpec,
@@ -458,6 +459,19 @@ export class SearchSurfaceRuntime {
 
   private transactionSeq = 0;
 
+  // UNIFIED-FADE TOGGLE (map-LOD-v6): deterministic cover-lift watchdog. The nativeMarkerFrame gate is fed
+  // by a native event that can be silently dropped under rapid-tap supersession (the in-flight batch's
+  // requestKey no longer matches `lastEnterRequestKey`), leaving the cover stuck forever. This timer is the
+  // guarantee that the cover ALWAYS lifts: reset on each redraw arm (latest-wins), cleared on commit; if it
+  // fires, it force-resolves ONLY the nativeMarkerFrame gate (NOT cards — so genuinely-loading cards still
+  // wait) and logs LOUDLY so a silently-degraded lane is visible, not hidden.
+  private redrawCoverWatchdog: ReturnType<typeof setTimeout> | null = null;
+  // Faster than a stuck-forever cover but well past the ~300ms fade-in ramp; safe to keep tight because the
+  // watchdog force-resolves ONLY nativeMarkerFrame (cards still gate, so genuinely-loading data never
+  // uncovers early). The deterministic presentation_toggle_settled event usually resolves it before this.
+  private static readonly REDRAW_COVER_WATCHDOG_MS = 800;
+  private static readonly REDRAW_COVER_WATCHDOG_TIER2_MS = 1200;
+
   private latestResultsBodyBundle: SearchSurfaceResultsBodyBundle | null = null;
 
   private pendingDismissMotionArm: {
@@ -595,10 +609,74 @@ export class SearchSurfaceRuntime {
       completedRedrawTransaction: null,
       dismissTransaction: null,
     });
+    this.armRedrawCoverWatchdog(id);
+  }
+
+  // Reset the deterministic cover-lift watchdog to THIS (latest) transaction. See the field doc above.
+  // Scoped to TOGGLE redraws — the rapid-tap supersession drop is toggle-specific; reveal/submit keep their
+  // existing (working) gating untouched.
+  private armRedrawCoverWatchdog(id: string): void {
+    if (this.redrawCoverWatchdog != null) {
+      clearTimeout(this.redrawCoverWatchdog);
+      this.redrawCoverWatchdog = null;
+    }
+    if (this.snapshot.redrawTransaction?.reason !== 'toggle') {
+      return;
+    }
+    // TIER 1 (REDRAW_COVER_WATCHDOG_MS): the common rapid-tap failure is the nativeMarkerFrame gate being
+    // dropped (native mounted_hidden silently discarded for a superseded intent). Force JUST that gate so
+    // genuinely-loading cards still gate (no premature uncover).
+    this.redrawCoverWatchdog = setTimeout(() => {
+      const active = this.snapshot.redrawTransaction;
+      if (active == null || active.id !== id || active.committedAtMs != null) {
+        this.redrawCoverWatchdog = null;
+        return; // superseded or already committed — nothing to rescue.
+      }
+      if (!active.readiness.nativeMarkerFrameReady) {
+        logger.warn(
+          '[PRESENTATION-WATCHDOG] tier-1 force-resolving nativeMarkerFrame (rapid-tap supersession drop)',
+          { transactionId: id, cardsReady: active.readiness.cardsReady, sheetReady: active.readiness.sheetReady }
+        );
+        this.patchActiveRedrawTransaction(id, { nativeMarkerFrameReady: true });
+      }
+      // TIER 2 (+REDRAW_COVER_WATCHDOG_TIER2_MS): if STILL uncommitted (e.g. the cards gate also hung), force
+      // ALL gates — the ULTIMATE "never permanently stuck" guarantee. The data is present (markers rendered),
+      // only a gate failed to mark, so this reveals what's loaded. Loud so a silently-degraded lane is visible.
+      this.redrawCoverWatchdog = setTimeout(() => {
+        this.redrawCoverWatchdog = null;
+        const active2 = this.snapshot.redrawTransaction;
+        if (active2 == null || active2.id !== id || active2.committedAtMs != null) {
+          return;
+        }
+        logger.warn(
+          '[PRESENTATION-WATCHDOG] tier-2 FORCE-COMMIT all gates (ultimate safety net) — cover hung past budget',
+          {
+            transactionId: id,
+            cardsReady: active2.readiness.cardsReady,
+            nativeMarkerFrameReady: active2.readiness.nativeMarkerFrameReady,
+            sheetReady: active2.readiness.sheetReady,
+          }
+        );
+        this.commitActiveRedrawTransactionWithoutRouteFanout({
+          ...active2,
+          readiness: {
+            ...active2.readiness,
+            cardsReady: true,
+            nativeMarkerFrameReady: true,
+            sheetReady: true,
+          },
+          committedAtMs: active2.committedAtMs ?? nowMs(),
+        });
+      }, SearchSurfaceRuntime.REDRAW_COVER_WATCHDOG_TIER2_MS);
+    }, SearchSurfaceRuntime.REDRAW_COVER_WATCHDOG_MS);
   }
 
   public markRedrawCardsReady = (transactionId: string | null | undefined): void => {
     this.patchActiveRedrawTransaction(transactionId, { cardsReady: true });
+    // Phase 1 (canonical-transition-finish-plan.md) — dual-report into the
+    // transaction-keyed readiness collector. OBSERVE-ONLY: this only logs/records
+    // and does NOT change the existing reveal join above (still the sole driver).
+    markActiveSceneContentGate('cards', transactionId);
   };
 
   public markRedrawNativeMarkerFrameReady = (
@@ -609,10 +687,37 @@ export class SearchSurfaceRuntime {
       nativeMarkerFrameReady: true,
       nativeMarkerFrameBatch,
     });
+    // Phase 1 — dual-report (observe-only). See markRedrawCardsReady above.
+    markActiveSceneContentGate('nativeMarkerFrame', transactionId);
   };
 
   public markRedrawSheetReady = (transactionId: string | null | undefined): void => {
     this.patchActiveRedrawTransaction(transactionId, { sheetReady: true });
+    // Phase 1 — dual-report (observe-only). See markRedrawCardsReady above.
+    markActiveSceneContentGate('sheet', transactionId);
+  };
+
+  // UNIFIED-FADE TOGGLE (map-LOD-v6): the DETERMINISTIC resolver for the `nativeMarkerFrameReady` gate.
+  // Driven by the native `presentation_toggle_settled` event, which fires on the fade-IN ramp completion
+  // keyed to the LATEST request (`lastEnterRequestKey`) — so it ALWAYS lands on the active transaction
+  // (latest-wins) or is dropped by the match guard if superseded (the active one fires its own). This
+  // REPLACES the racy per-execution-batch `mounted_hidden` gate that silently dropped superseded rapid-tap
+  // intents, leaving the cover stuck forever. For a non-superseded single toggle the mounted_hidden path
+  // still resolves the gate FIRST (at markers-mount, before the fade-in) so its fast choreography is
+  // unchanged; this only matters when that path was dropped. `degraded` (roster failed) still lifts — never
+  // hang on a roster failure; we only log it. `patchActiveRedrawTransaction` does the latest-wins match +
+  // the 3-gate commit, so cards/sheet are still required (we never uncover before the cards data lands).
+  public markRedrawSettled = (
+    transactionId: string | null | undefined,
+    degraded: boolean = false
+  ): void => {
+    if (degraded) {
+      logger.warn('[PRESENTATION-WATCHDOG] toggle settled DEGRADED (roster failed) — cover lifts anyway', {
+        requestedTransactionId: transactionId ?? null,
+        activeRedrawTransactionId: this.snapshot.redrawTransaction?.id ?? null,
+      });
+    }
+    this.patchActiveRedrawTransaction(transactionId, { nativeMarkerFrameReady: true });
   };
 
   public syncResultsPageBodyBundle = (bodyBundle: SearchSurfaceResultsBodyBundle | null): void => {
@@ -910,6 +1015,10 @@ export class SearchSurfaceRuntime {
   private commitActiveRedrawTransactionWithoutRouteFanout(
     redrawTransaction: SearchSurfaceRedrawTransaction
   ): void {
+    if (this.redrawCoverWatchdog != null) {
+      clearTimeout(this.redrawCoverWatchdog);
+      this.redrawCoverWatchdog = null;
+    }
     const activeBundle = this.snapshot.activeBundle;
     this.publish({
       ...this.snapshot,

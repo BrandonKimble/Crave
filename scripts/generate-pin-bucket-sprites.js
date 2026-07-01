@@ -17,6 +17,11 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
+// Canonical Crave Score color tiers (0-10 scale, ten deciles). Single source of
+// truth — quality-color.ts and the dot generator read the SAME file so pins, dots
+// and rank pills stay in lockstep. NEVER hardcode tier colors here.
+const palette = require('../apps/mobile/src/constants/score-bucket-palette.json');
+
 const ASSETS = path.join(__dirname, '..', 'apps/mobile/src/assets');
 const OUT = path.join(ASSETS, 'pins');
 
@@ -49,21 +54,16 @@ const SHADOW_TRANSLATE_Y_LOGICAL =
 // center it horizontally under the base and align near the bottom. Kept minimal —
 // the dominant shadow look comes from the sprite itself.
 
-// --- Buckets: EIGHT 5-point buckets across the 60-100 display range. ---
-// CANONICAL COLORS: these tuples MUST stay identical to SCORE_BUCKET_COLOR_TUPLES
-// in apps/mobile/src/utils/quality-color.ts (single source of truth). A runtime
-// assertion in that module's spec / a manual check keeps them in sync. Bucket
-// index 0 = lowest (60-64, orange-red) … 7 = best (95+, vivid green).
-const BUCKETS = [
-  { name: 'b0', lo: 60, hi: 64, color: [239, 83, 68] },
-  { name: 'b1', lo: 65, hi: 69, color: [245, 124, 56] },
-  { name: 'b2', lo: 70, hi: 74, color: [247, 158, 52] },
-  { name: 'b3', lo: 75, hi: 79, color: [242, 196, 70] },
-  { name: 'b4', lo: 80, hi: 84, color: [203, 199, 74] },
-  { name: 'b5', lo: 85, hi: 89, color: [146, 198, 84] },
-  { name: 'b6', lo: 90, hi: 94, color: [78, 188, 110] },
-  { name: 'b7', lo: 95, hi: 100, color: [40, 178, 123] },
-];
+// --- Buckets: TEN deciles on the native 0-10 display scale. ---
+// CANONICAL COLORS: pulled straight from score-bucket-palette.json (defaultRgb).
+// Tier i covers rating [i, i+1); the top bucket caps its hi at 10. Bucket index
+// 0 = lowest (0-1, soft red) … 9 = best (9-10, green). NEVER hardcode tiers here.
+const BUCKETS = Array.from({ length: 10 }, (_, i) => ({
+  name: `b${i}`,
+  lo: i,
+  hi: i === 9 ? 10 : i + 1,
+  color: palette.defaultRgb[i],
+}));
 function bucketColor(b) {
   return b.color;
 }
@@ -200,18 +200,24 @@ async function main() {
       manifest.rankBadges.push(id);
     }
 
-    // SCORE badges (out-of-viewport pins): a bucket only ever shows scores WITHIN
-    // its own display range, so we only bake those (e.g. b7 = 9.5..10.0). Score is
-    // displayed out of 10 with one decimal: e.g. 87 -> "8.7", 100 -> "10".
-    for (let s = bucket.lo; s <= bucket.hi; s++) {
-      const text = s >= 100 ? '10' : (s / 10).toFixed(1); // "8.7", "10"
+    // SCORE badges (out-of-viewport pins): the score is now native 0-10, displayed
+    // with one decimal. A bucket only ever shows scores WITHIN its own decile, so we
+    // bake every 1-decimal value in [lo, hi) at 0.1 resolution (e.g. b8 = 8.0..8.9).
+    // The "perfect 10" rule: only the top bucket bakes a literal "10" at score 10.0.
+    // Badge id keys off tenths (score×10) so it stays a stable, filesystem-safe int.
+    const tenthsLo = Math.round(bucket.lo * 10);
+    const tenthsHi = Math.round(bucket.hi * 10); // exclusive for non-top, inclusive 10.0 for top
+    const tenthsEnd = bucket.hi >= 10 ? tenthsHi : tenthsHi - 1;
+    for (let tenths = tenthsLo; tenths <= tenthsEnd; tenths++) {
+      const s = tenths / 10;
+      const text = s >= 10 ? '10' : s.toFixed(1); // "8.7", "10"
       const buf = await composeBadge(bucket, text, SCALE);
-      const id = `score-${bucket.name}-${s}`;
+      const id = `score-${bucket.name}-${tenths}`;
       fs.writeFileSync(path.join(OUT, `pin-${id}.png`), buf);
       manifest.scoreBadges.push(id);
     }
     console.log(
-      `bucket ${bucket.name}: rank 1-${MAX_PIN_RANK} + "${RANK_OVERFLOW_TEXT}" + score ${bucket.lo}-${bucket.hi}`
+      `bucket ${bucket.name}: rank 1-${MAX_PIN_RANK} + "${RANK_OVERFLOW_TEXT}" + score ${bucket.lo.toFixed(1)}-${bucket.hi.toFixed(1)}`
     );
   }
 

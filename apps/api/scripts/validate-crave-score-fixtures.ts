@@ -78,31 +78,14 @@ function round(value: number, digits = 2): number {
   return Number(value.toFixed(digits));
 }
 
-const NO_PRIORS = new Map<
-  string,
-  { score7d: number | null; score28d: number | null }
->();
-
 function score(candidates: CraveScoreCandidates): ScoredCraveSubject[] {
-  return scorer.scoreCandidates(candidates, NO_PRIORS, config);
+  return scorer.scoreCandidates(candidates, config);
 }
 
+// Ten color tiers = deciles aligned to the integer rating on the 0-10 scale:
+// tier = clamp(floor(displayScore), 0, 9). Mirrors the palette decile buckets.
 function bucket(displayScore: number): number {
-  return displayScore < 65
-    ? 0
-    : displayScore < 70
-      ? 1
-      : displayScore < 75
-        ? 2
-        : displayScore < 80
-          ? 3
-          : displayScore < 85
-            ? 4
-            : displayScore < 90
-              ? 5
-              : displayScore < 95
-                ? 6
-                : 7;
+  return Math.min(9, Math.max(0, Math.floor(displayScore)));
 }
 
 function bucketsCovered(displayScores: number[]): number {
@@ -181,11 +164,30 @@ function runInMemoryChecks(): void {
   addRestaurant('dishlessWeak', 1, 2);
   addRestaurant('empty', 0, 0); // no dishes, no praise → must be excluded
 
+  // Reorder-regime cases — exercise the pooled model (upvote = mention = 1 vote),
+  // the regime the extreme-separation fixtures above never hit.
+  addRestaurant('upvoteHeavyHost', 0, 0);
+  addDish('upvoteHeavyHost', 'd1', 1, 50); // 1 mention + 50 upvotes → 51 pooled
+  addRestaurant('mentionHeavyHost', 0, 0);
+  addDish('mentionHeavyHost', 'd1', 10, 10); // 10 + 10 → 20 pooled
+  // Calibration-only (no hard assert — the "right" order is a real-data call): a
+  // single wildly-upvoted dish vs a broad-but-modest menu with some by-name praise.
+  addRestaurant('viralOneDish', 0, 0);
+  addDish('viralOneDish', 'd1', 2, 500);
+  addRestaurant('broadModest', 8, 12);
+  addDish('broadModest', 'd1', 5, 10);
+  addDish('broadModest', 'd2', 5, 10);
+  addDish('broadModest', 'd3', 5, 10);
+  addDish('broadModest', 'd4', 5, 10);
+
   const scored = score({ dishes, restaurants });
   const restaurantScored = scored.filter((r) => r.subjectType === 'restaurant');
   const dishScored = scored.filter((r) => r.subjectType === 'connection');
   const byId = new Map(restaurantScored.map((r) => [r.subjectId, r]));
   const display = (id: string): number => byId.get(id)?.displayScore ?? -1;
+  const dishById = new Map(dishScored.map((d) => [d.subjectId, d]));
+  const dishDisplay = (id: string): number =>
+    dishById.get(id)?.displayScore ?? -1;
 
   const restDisplays = restaurantScored.map((r) => r.displayScore);
   const dishDisplays = dishScored.map((r) => r.displayScore);
@@ -205,6 +207,12 @@ function runInMemoryChecks(): void {
       peakWeak: display('peakWeak'),
       dishlessStrong: display('dishlessStrong'),
       dishlessWeak: display('dishlessWeak'),
+    },
+    reorderRegime: {
+      upvoteHeavyDish: dishDisplay('upvoteHeavyHost-d1'),
+      mentionHeavyDish: dishDisplay('mentionHeavyHost-d1'),
+      viralOneDish: display('viralOneDish'),
+      broadModest: display('broadModest'),
     },
   };
 
@@ -256,11 +264,21 @@ function runInMemoryChecks(): void {
   );
 
   expectCheck(
+    'upvotes count as full votes: an upvote-heavy dish beats a mention-heavy one with fewer total endorsers',
+    dishDisplay('upvoteHeavyHost-d1') > dishDisplay('mentionHeavyHost-d1'),
+    'upvoteHeavy (51 pooled endorsers) > mentionHeavy (20 pooled)',
+    {
+      upvoteHeavy: dishDisplay('upvoteHeavyHost-d1'),
+      mentionHeavy: dishDisplay('mentionHeavyHost-d1'),
+    },
+  );
+
+  expectCheck(
     'restaurant scores spread across the full color range',
-    bucketsCovered(restDisplays) >= 6 &&
-      Math.min(...restDisplays) < 70 &&
-      Math.max(...restDisplays) > 95,
-    'covers >=6 of 8 buckets, min<70, max>95',
+    bucketsCovered(restDisplays) >= 7 &&
+      Math.min(...restDisplays) < 2.5 &&
+      Math.max(...restDisplays) > 9,
+    'covers >=7 of 10 buckets, min<2.5, max>9',
     {
       buckets: bucketsCovered(restDisplays),
       min: round(Math.min(...restDisplays)),
@@ -270,8 +288,8 @@ function runInMemoryChecks(): void {
 
   expectCheck(
     'dish scores spread across the full color range',
-    bucketsCovered(dishDisplays) >= 6,
-    'covers >=6 of 8 buckets',
+    bucketsCovered(dishDisplays) >= 7,
+    'covers >=7 of 10 buckets',
     { buckets: bucketsCovered(dishDisplays) },
   );
 
@@ -352,8 +370,8 @@ async function runDbSmokeCheck(): Promise<void> {
 
   expectCheck(
     'DB restaurant scores spread across the full color range',
-    bucketsCovered(restaurants) >= 6,
-    'covers >=6 of 8 buckets',
+    bucketsCovered(restaurants) >= 7,
+    'covers >=7 of 10 buckets',
     { buckets: bucketsCovered(restaurants) },
   );
 

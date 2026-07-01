@@ -28,6 +28,7 @@ what we want it to be — not a backlog, log, or history.
 | [restaurant-profile.md](restaurant-profile.md) | Restaurant detail page (dish list gate, discussion, score evidence) |
 | [search-and-dishes.md](search-and-dishes.md) | Search, dish ranking + dish-level search, result sheet, filters |
 | [map.md](map.md) | Map surface (LOD, markers, map-based UX ideas) |
+| [scoring/](scoring/) | The Crave Score — what it means + how to tune the ranking when real data exists |
 
 ## Anchoring decisions (true across every area)
 

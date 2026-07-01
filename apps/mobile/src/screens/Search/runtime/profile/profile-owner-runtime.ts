@@ -12,6 +12,7 @@ import { useProfileOwnerRefreshSelectionPortsRuntime } from './profile-owner-ref
 import { useProfileOwnerRuntimeStateOwner } from './profile-owner-runtime-state-owner';
 import { useProfileOwnerRuntimeStateRuntime } from './profile-owner-runtime-state-runtime';
 import { useProfileOwnerSelectionActionContextRuntime } from './profile-owner-selection-action-context-runtime';
+import { registerSeededMarkerCameraFocusHandler } from './profile-seeded-camera-focus-handler';
 
 export type {
   CloseRestaurantProfileOptions,
@@ -156,6 +157,16 @@ export const useProfileOwner = ({
     autoOpenActionExecutionPorts,
     profileActions,
   });
+
+  // Bridge the seeded map marker (published at hydration) to camera-focus: a profile opened without a
+  // coordinate (autocomplete/comment fast-path) centers the map on its restaurant once geometry lands.
+  const focusRestaurantProfileCamera = profileActions.focusRestaurantProfileCamera;
+  React.useEffect(() => {
+    registerSeededMarkerCameraFocusHandler(focusRestaurantProfileCamera);
+    return () => {
+      registerSeededMarkerCameraFocusHandler(null);
+    };
+  }, [focusRestaurantProfileCamera]);
 
   return React.useMemo(
     () => ({

@@ -29,6 +29,7 @@ import NetworkStatusListener from './src/providers/NetworkStatusListener';
 import PollNotificationListener from './src/providers/PollNotificationListener';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
 import { PerfScenarioCoordinator } from './src/perf/PerfScenarioCoordinator';
+import { CutoutSkeletonDevPreview } from './src/components/skeletons/CutoutSkeletonDevPreview';
 import { useSystemStatusStore } from './src/store/systemStatusStore';
 import { OVERLAY_CORNER_RADIUS } from './src/overlays/overlaySheetStyles';
 import { colors } from './src/constants/theme';
@@ -99,6 +100,7 @@ export default function App() {
               </AppRouteCoordinator>
             </AuthProvider>
             <AppModalHost />
+            {__DEV__ ? <CutoutSkeletonDevPreview /> : null}
             <StatusBar style={isBannerVisible ? 'light' : 'auto'} />
           </SafeAreaProvider>
         </View>

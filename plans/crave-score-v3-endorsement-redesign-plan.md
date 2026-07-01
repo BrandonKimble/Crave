@@ -2,12 +2,27 @@
 
 ## Status
 
-Ground-up redesign of the public Crave Score. Design agreed 2026-06-19; **not yet implemented.**
-Supersedes the scoring math in `plans/crave-score-cutover-plan.md` (which is kept for its
-non-scoring product framing). Replaces `crave-score-v2`.
+Ground-up redesign of the public Crave Score. Design agreed 2026-06-19; **IMPLEMENTED & SHIPPED**
+(`scoreVersion 'crave-score-v3'` is the live default). Supersedes the scoring math in
+`plans/crave-score-cutover-plan.md` (kept for its non-scoring product framing). Replaces
+`crave-score-v2`.
 
 This is a cleanup-first cutover, per project ethos: no compatibility aliases, no parallel
 scoring systems left standing, no faked signals — just the correct flow.
+
+> **⚠️ Superseded during implementation — read before trusting the math below.** The endorsement
+> RANKING in §4 shipped as described, but three pieces changed and are now canonical elsewhere:
+> - **Endorsement pooling (§4.1, §4.2, §8).** The `w_m / w_u = 0.7 / 0.3` mention/upvote *split* was
+>   replaced by a single pooled term `log1p(mentions + upvoteWeight·upvotes)` with
+>   **`upvoteWeight = 0.7`** (a gentle writer premium, NOT a 0.7/0.3 split). See
+>   `crave-score-rising-heat-redesign.md` + `product/scoring/composite-tuning.md`.
+> - **Momentum / Rising (§7, §9, §11 Phase 4).** The `score_delta_7d` / `score_delta_28d` /
+>   `movement_state` snapshot-delta mechanism was replaced by the **dual-pass `rising`** column
+>   (fast-half-life minus stable-half-life display). The live DB column is `rising`; `score_delta_7d`
+>   is gone. See `crave-score-rising-heat-redesign.md`.
+> - **Display curve (§4.3).** The "uniform percentile, optional smoothstep" note became a
+>   **truncated-normal bell** (`bellK`, default 3.0, `displayCurveVersion 'crave-score-display-v6'`);
+>   see `plans/crave-score-1to10-scale-migration.md`.
 
 ---
 
@@ -109,7 +124,7 @@ E_dish(d) = w_m · log1p(mentions_d)  +  w_u · log1p(upvotes_d)
 // for age-weighted sums over the event ledger when the archive corpus lands.
 ```
 
-- `displayDish(d) = globalPercentile_over_dishes(E_dish) → [60, 99.9]`.
+- `displayDish(d) = globalPercentile_over_dishes(E_dish) → [0, 10]` (`10·percentile`).
 - Drives the **dish-side** results ranking and the dish-map-toggle color.
 - Replaces `foodQualityScore` for search ordering (§9 retires `quality-score.service`).
 
@@ -126,7 +141,7 @@ acclaim(r)  = Σ_i  discount(i) · dishes[i]          // discount(i) diminishing
 praise(r)   = w_m · log1p(praiseMentions_r)  +  w_u · log1p(praiseUpvotes_r)
             // from core_restaurant_events; RAW now, decay-on-read per §13 later
 E_rest(r)   = w_dish · acclaim(r)  +  w_praise · praise(r)
-displayRest = globalPercentile_over_restaurants(E_rest) → [60, 99.9]
+displayRest = globalPercentile_over_restaurants(E_rest) → [0, 10]   // 10·percentile
 ```
 
 What this single mechanism buys:
@@ -155,15 +170,16 @@ Geometric `discount(i) = ρ^i`, ρ∈(0,1):
 ### 4.3 Normalization — global percentile
 
 - Normalize each subject type **globally** (restaurants among restaurants, dishes among
-  dishes): rank → `[60, 99.9]`. One stable meaning everywhere (a "72" means the same in
-  Austin and NYC). Austin still spreads locally; NYC honestly runs greener.
-- Proven on real data: global percentile over the endorsed set → ~13% of restaurants in
-  **every** one of the 8 map color buckets, full 60–100 range.
+  dishes): rank → native `[0, 10]` (`10·percentile`). One stable meaning everywhere (a "7.2"
+  means the same in Austin and NYC). Austin still spreads locally; NYC honestly runs greener.
+  Band/format spec: `plans/crave-score-1to10-scale-migration.md`.
+- Proven on real data: global percentile over the endorsed set → ~10% of restaurants in
+  **every** one of the 10 map color deciles, full 0–10 range.
 - Default mapping is uniform percentile; an optional mild S-curve (smoothstep) to fatten the
   middle or tails is a tunable, decided by eyeballing the map (§10).
 - **Color = score, everywhere.** No relative/percentile-per-viewport coloring, no hybrid —
-  rejected as "two color meanings on one screen." (`apps/mobile/src/utils/quality-color.ts`
-  buckets stay as-is.)
+  rejected as "two color meanings on one screen." Color is 10 deciles (`tier = clamp(floor(score),
+  0, 9)`) from `apps/mobile/src/constants/score-bucket-palette.json`.
 
 ---
 

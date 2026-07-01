@@ -17,7 +17,8 @@ export type AppRouteSheetHostSurfaceBodySnapshot = {
   // only while a forward-open scene-change transition holds. `contentTransitionToken`
   // is the settleToken of the active 'content'-plane transition (else null) — it keys
   // the crossfade ramp, whose onFinish completes the 'content' plane at ramp-end via
-  // completeFromContentSettle (the controller-side CONTENT_SETTLE_TIMEOUT is the fallback guard).
+  // completeFromContentSettle (a co-completer with the Phase-2 readiness collector; the
+  // controller-side SCENE_READINESS_LIVENESS_MS timer is a never-hit watchdog).
   outgoingSceneKey: OverlayKey | null;
   incomingSceneKey: OverlayKey | null;
   contentTransitionToken: number | null;

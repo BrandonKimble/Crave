@@ -34,6 +34,7 @@ Two sub-frames that resolve the hard cases:
 | Profile / following (when shipped) | ✅ | | Network/virality layer. |
 | **Dish ranking + scores + dish list (on restaurant profile)** | | ✅ | **Hero.** Locked-but-visible teaser on the profile. |
 | **Dish-level search** ("best birria in the city," ranked across restaurants) | | ✅ | **Hero.** The single most differentiated thing; Google can't rank a city by a dish. |
+| **"Best dish" shortcut button** (one-tap shortcut into best-dishes) | | ✅ | A one-tap entry into dish discovery — part of the dish layer, so Crave+. |
 | **Rising / momentum sort + any "trending" list** | | ✅ | Google has no trending. |
 | **Power filter/sort on your own favorites lists** (incl. the "All" list filters, cross-list intelligence, sort-by-trending, map-all-saved) | | ✅ | Google's saved lists are dumb buckets. |
 | Dish-level score evidence / receipts | | ✅ | Part of the paid dish layer (distinct from free restaurant-level transparency). |
@@ -58,9 +59,12 @@ gates (lower urgency); don't expect them to convert on their own. Dishes carry c
   paid feature — it's not how the product works.)
 - **Favorites is two-sided: restaurant lists free, dish lists paid.** A parent toggle splits the
   restaurant side (free — normal saved lists) from the dish side (Crave+ — dishes saved as
-  restaurant+dish pairings). No mixed lists. Per-list power filters (rank / rising / open-now / price,
-  cuisine TBD) are the Crave+ layer; the **"All" meta-list** is the only list with an include/exclude
-  toggle. (founder, 2026-06-27 — see `../product/favorites.md`)
+  restaurant+dish pairings). No mixed lists.
+- **On a list, sort is free / filters are paid.** Free sort: Best / Rising / Recently added / **Custom**
+  (custom ranking is the free shareable + personalization + friend-graph hook — never gate it). Crave+
+  filters: open-now / price / cuisine — gated *even though* open-now/price are free on the main search,
+  because filtering your *saved set* is the Google-can't-do-this part. The **"All" meta-list** is the
+  only list with an include/exclude toggle. (see `../product/favorites.md`)
 
 ## The one open card-preview decision (A/B at launch)
 

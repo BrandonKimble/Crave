@@ -10,6 +10,11 @@ type UseSearchRoutePollDetailSceneStateRuntimeArgs = {
 export type SearchRoutePollDetailSceneStateRuntime = {
   pollDetailPollId: string | null;
   pollDetailPoll: Poll | null;
+  // Return-to-origin foundation P4 (design §Restore step 5 / §New sources). The comment a
+  // cross-surface reveal launched from — set ONLY when the pop-to-restore dismiss re-pushes
+  // this poll (resolveChildOriginRePush carries anchor.commentId into the route params). The
+  // panel reads it post-fetch to scroll the thread to + flash-highlight that exact comment.
+  pollDetailCommentAnchorId: string | null;
   shouldShowPollDetailPanel: boolean;
 };
 
@@ -42,6 +47,9 @@ export const useSearchRoutePollDetailSceneStateRuntime = ({
         : null,
       pollDetailPoll: shouldShowPollDetailPanel
         ? (activePollDetailRoute.params?.poll ?? null)
+        : null,
+      pollDetailCommentAnchorId: shouldShowPollDetailPanel
+        ? (activePollDetailRoute.params?.commentAnchorId ?? null)
         : null,
       shouldShowPollDetailPanel,
     };

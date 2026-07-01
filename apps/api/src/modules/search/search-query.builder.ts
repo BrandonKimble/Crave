@@ -261,7 +261,7 @@ ranked_restaurants AS (
     fr.price_level_updated_at,
     prs.display_score AS crave_score,
     prs.percentile_rank AS crave_score_exact,
-    prs.score_delta_7d,
+    prs.rising,
     prs.score_info,
     'restaurant'::text AS score_subject_type,
     fr.entity_id AS score_subject_id,
@@ -303,7 +303,7 @@ ranked_restaurants AS (
   SELECT fr.entity_id AS restaurant_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
          ${activeMarketKey ? `'${activeMarketKey}'` : 'NULL'}::varchar(255) AS market_key, fr.restaurant_metadata,
          fr.price_level, fr.price_level_updated_at,
-         prs.display_score AS crave_score, prs.percentile_rank AS crave_score_exact, prs.score_delta_7d, prs.score_info,
+         prs.display_score AS crave_score, prs.percentile_rank AS crave_score_exact, prs.rising, prs.score_info,
          'restaurant'::text AS score_subject_type, fr.entity_id AS score_subject_id,
          COALESCE(rvt.total_upvotes, 0) AS total_upvotes, COALESCE(rvt.total_mentions, 0) AS total_mentions,
          sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.region, sl.country, sl.postal_code, sl.phone_number, sl.website_url, sl.hours, sl.utc_offset_minutes, sl.time_zone, sl.is_primary, sl.last_polled_at, sl.created_at AS location_created_at, sl.updated_at AS location_updated_at,
@@ -371,7 +371,7 @@ LEFT JOIN LATERAL (
 	        'craveScore', sub.crave_score,
 	        'scoreSubjectType', 'connection',
 	        'scoreSubjectId', sub.connection_id,
-	        'scoreDelta7d', sub.score_delta_7d,
+	        'rising', sub.rising,
 	        'scoreInfo', sub.score_info
 	      )
       ORDER BY ${restaurantTopDishOrder.sql}, sub.connection_id ASC
@@ -385,7 +385,7 @@ LEFT JOIN LATERAL (
 		      c.total_upvotes,
 	      c.mention_count,
 		      pcs.display_score AS crave_score,
-		      pcs.score_delta_7d,
+		      pcs.rising,
 		      pcs.score_info,
 		      ROW_NUMBER() OVER (ORDER BY ${restaurantTopDishRankOrder.sql}) AS rn
 	    FROM core_restaurant_items c
@@ -570,7 +570,7 @@ filtered_connections AS (
     c.last_mentioned_at,
     pcs.display_score AS connection_crave_score,
     pcs.percentile_rank AS connection_crave_score_exact,
-    pcs.score_delta_7d AS connection_score_delta_7d,
+    pcs.rising AS connection_rising,
     pcs.score_info AS connection_score_info,
     'connection'::text AS score_subject_type,
     c.connection_id AS score_subject_id,
@@ -583,7 +583,7 @@ filtered_connections AS (
     fr.aliases AS restaurant_aliases,
     prs.display_score AS restaurant_crave_score,
     prs.percentile_rank AS restaurant_crave_score_exact,
-    prs.score_delta_7d AS restaurant_score_delta_7d,
+    prs.rising AS restaurant_rising,
     prs.score_info AS restaurant_score_info,
     fr.price_level AS restaurant_price_level,
     fr.price_level_updated_at AS restaurant_price_level_updated_at,
@@ -612,13 +612,13 @@ filtered_connections AS (
     const filteredConnectionsCtePreview = `
 filtered_connections AS (
   SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.last_mentioned_at,
-         pcs.display_score AS connection_crave_score, pcs.percentile_rank AS connection_crave_score_exact, pcs.score_delta_7d AS connection_score_delta_7d, pcs.score_info AS connection_score_info,
+         pcs.display_score AS connection_crave_score, pcs.percentile_rank AS connection_crave_score_exact, pcs.rising AS connection_rising, pcs.score_info AS connection_score_info,
          'connection'::text AS score_subject_type, c.connection_id AS score_subject_id,
          f.name AS food_name, f.aliases AS food_aliases, ${
            activeMarketKey ? `'${activeMarketKey}'` : 'NULL'
          }::varchar(255) AS market_key,
          fr.entity_id AS restaurant_entity_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
-         prs.display_score AS restaurant_crave_score, prs.percentile_rank AS restaurant_crave_score_exact, prs.score_delta_7d AS restaurant_score_delta_7d, prs.score_info AS restaurant_score_info,
+         prs.display_score AS restaurant_crave_score, prs.percentile_rank AS restaurant_crave_score_exact, prs.rising AS restaurant_rising, prs.score_info AS restaurant_score_info,
          fr.price_level AS restaurant_price_level, fr.price_level_updated_at AS restaurant_price_level_updated_at,
          sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.hours, sl.utc_offset_minutes, sl.time_zone
   FROM core_restaurant_items c
@@ -1419,14 +1419,8 @@ public_restaurant_scores AS (
     subject_id,
     display_score,
     percentile_rank,
-    score_delta_7d,
+    rising,
     jsonb_build_object(
-      'confidenceLabel',
-        CASE
-          WHEN display_score >= 90 THEN 'strong'
-          WHEN display_score >= 78 THEN 'solid'
-          ELSE 'early'
-        END,
       'evidenceCopy', 'Based on community evidence.'
     ) AS score_info
   FROM core_public_entity_scores
@@ -1435,8 +1429,8 @@ public_restaurant_scores AS (
 
     const preview = `
 public_restaurant_scores AS (
-  SELECT subject_id, display_score, percentile_rank, score_delta_7d,
-         jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on community evidence.') AS score_info
+  SELECT subject_id, display_score, percentile_rank, rising,
+         jsonb_build_object('evidenceCopy', 'Based on community evidence.') AS score_info
   FROM core_public_entity_scores
   WHERE subject_type = 'restaurant'
 )`.trim();
@@ -1454,14 +1448,8 @@ public_connection_scores AS (
     subject_id,
     display_score,
     percentile_rank,
-    score_delta_7d,
+    rising,
     jsonb_build_object(
-      'confidenceLabel',
-        CASE
-          WHEN display_score >= 90 THEN 'strong'
-          WHEN display_score >= 78 THEN 'solid'
-          ELSE 'early'
-        END,
       'evidenceCopy', 'Based on community evidence.'
     ) AS score_info
   FROM core_public_entity_scores
@@ -1470,8 +1458,8 @@ public_connection_scores AS (
 
     const preview = `
 public_connection_scores AS (
-  SELECT subject_id, display_score, percentile_rank, score_delta_7d,
-         jsonb_build_object('confidenceLabel', 'computed', 'evidenceCopy', 'Based on community evidence.') AS score_info
+  SELECT subject_id, display_score, percentile_rank, rising,
+         jsonb_build_object('evidenceCopy', 'Based on community evidence.') AS score_info
   FROM core_public_entity_scores
   WHERE subject_type = 'connection'
 )`.trim();
@@ -1577,14 +1565,14 @@ location_aggregates AS (
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     if (normalized.includes('rising')) {
       return {
-        sql: Prisma.sql`fc.connection_score_delta_7d DESC NULLS LAST, fc.connection_crave_score_exact ${Prisma.raw(
+        sql: Prisma.sql`fc.connection_rising DESC NULLS LAST, fc.connection_crave_score_exact ${Prisma.raw(
           direction,
         )}, fc.connection_crave_score ${Prisma.raw(
           direction,
         )}, fc.total_upvotes ${Prisma.raw(
           direction,
         )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`,
-        preview: `fc.connection_score_delta_7d DESC NULLS LAST, fc.connection_crave_score_exact ${direction}, fc.connection_crave_score ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
+        preview: `fc.connection_rising DESC NULLS LAST, fc.connection_crave_score_exact ${direction}, fc.connection_crave_score ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
       };
     }
     return {
@@ -1605,17 +1593,17 @@ location_aggregates AS (
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     if (normalized.includes('rising')) {
       return {
-        sql: Prisma.sql`prs.score_delta_7d DESC NULLS LAST,
+        sql: Prisma.sql`prs.rising DESC NULLS LAST,
       prs.percentile_rank ${Prisma.raw(direction)},
       prs.display_score ${Prisma.raw(direction)},
       COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
       fr.entity_id ASC`,
-        preview: `prs.score_delta_7d DESC NULLS LAST, prs.percentile_rank ${direction}, prs.display_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
+        preview: `prs.rising DESC NULLS LAST, prs.percentile_rank ${direction}, prs.display_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
       };
     }
     return {
       // HIGH-PRECISION CRAVE ORDER: percentile_rank (Decimal(6,5)) is the primary key so near-ties that round
-      // to the same display_score (Decimal(5,1)) order deterministically by their true score; display_score is
+      // to the same display_score (Decimal(4,2)) order deterministically by their true score; display_score is
       // a harmless secondary, then a stable id. This is what makes the map badge == the results-list position.
       sql: Prisma.sql`prs.percentile_rank ${Prisma.raw(direction)},
       prs.display_score ${Prisma.raw(direction)},
@@ -1633,10 +1621,10 @@ location_aggregates AS (
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     if (normalized.includes('rising')) {
       return {
-        sql: Prisma.sql`sub.score_delta_7d DESC NULLS LAST, sub.crave_score ${Prisma.raw(
+        sql: Prisma.sql`sub.rising DESC NULLS LAST, sub.crave_score ${Prisma.raw(
           direction,
         )}`,
-        preview: `sub.score_delta_7d DESC NULLS LAST, sub.crave_score ${direction}`,
+        preview: `sub.rising DESC NULLS LAST, sub.crave_score ${direction}`,
       };
     }
     return {
@@ -1653,10 +1641,10 @@ location_aggregates AS (
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     if (normalized.includes('rising')) {
       return {
-        sql: Prisma.sql`pcs.score_delta_7d DESC NULLS LAST, pcs.display_score ${Prisma.raw(
+        sql: Prisma.sql`pcs.rising DESC NULLS LAST, pcs.display_score ${Prisma.raw(
           direction,
         )}, c.total_upvotes ${Prisma.raw(direction)}, c.connection_id ASC`,
-        preview: `pcs.score_delta_7d DESC NULLS LAST, pcs.display_score ${direction}, c.total_upvotes ${direction}, c.connection_id ASC`,
+        preview: `pcs.rising DESC NULLS LAST, pcs.display_score ${direction}, c.total_upvotes ${direction}, c.connection_id ASC`,
       };
     }
     return {

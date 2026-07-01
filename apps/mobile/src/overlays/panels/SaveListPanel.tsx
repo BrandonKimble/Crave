@@ -19,6 +19,7 @@ import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneR
 import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-authority-selector';
 import type { AppRouteOverlayCommandSnapshot } from '../../navigation/runtime/app-route-overlay-command-controller';
 import { useDeferredSceneDataLane } from './useDeferredSceneDataLane';
+import { SceneLoadingSurface } from '../../components/skeletons';
 import { getCraveScoreColorFromScore } from '../../utils/quality-color';
 
 const ACTIVE_TAB_COLOR = themeColors.primary;
@@ -173,6 +174,14 @@ export const SaveListMountedSceneBody = React.memo(() => {
   });
   const lists = listsQuery.data ?? [];
   const listRows = React.useMemo(() => chunkFavoriteLists(lists), [lists]);
+  // Hard-swap + skeleton: while the ~350ms data-lane defer holds the query off (queryEnabled
+  // false) or the favorites fetch is in flight (isLoading), paint a tile-grid skeleton instead
+  // of the 'No lists yet' empty state. 'No lists yet' is only correct once the query RESOLVES
+  // empty — never during the load window.
+  const isListsLoading = !queryEnabled || (listsQuery.isLoading && lists.length === 0);
+  // A fetch error that resolves empty must NOT fall through to 'No lists yet' (that would claim
+  // the user has no lists when the query actually failed).
+  const isListsError = listsQuery.isError && lists.length === 0;
 
   const onClose = React.useCallback(() => {
     handleCloseSaveSheet();
@@ -304,7 +313,13 @@ export const SaveListMountedSceneBody = React.memo(() => {
           </View>
         </View>
       )}
-      {lists.length ? (
+      {isListsLoading ? (
+        // The real tile grid (gridList) inherits its 20px horizontal inset from the body
+        // transport's contentContainer (SAVE_LIST_BODY_TRANSPORT scrollContent), so the
+        // skeleton holes must NOT add their own 20px — otherwise they double-pad (40px) and the
+        // skeleton tiles render narrower than the real tiles, jumping on swap.
+        <SceneLoadingSurface rowType="tile" insetX={0} />
+      ) : lists.length ? (
         <View style={styles.gridList}>
           {listRows.map((row, rowIndex) => (
             <View key={`row-${rowIndex}`} style={styles.gridRow}>
@@ -316,6 +331,12 @@ export const SaveListMountedSceneBody = React.memo(() => {
               {row.length === 1 ? <View style={styles.gridCell} /> : null}
             </View>
           ))}
+        </View>
+      ) : isListsError ? (
+        <View style={styles.emptyState}>
+          <Text variant="body" style={styles.emptyText}>
+            Couldn&apos;t load your lists
+          </Text>
         </View>
       ) : (
         <View style={styles.emptyState}>

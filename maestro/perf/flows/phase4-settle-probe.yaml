@@ -1,0 +1,37 @@
+appId: com.brandonkimble.cravesearch
+---
+# Reset to search home
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- tapOn: { text: 'Close polls', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 60000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera_and_resolve_market&lat=40.7550&lng=-73.9800&zoom=13.2'
+- waitForAnimationToEnd: { timeout: 2500 }
+
+# (i) search -> results : tap "Show best restaurants here" shortcut pill
+- tapOn: { text: 'Show best restaurants here' }
+- extendedWaitUntil: { visible: 'Close results', timeout: 15000 }
+- waitForAnimationToEnd: { timeout: 2000 }
+- takeScreenshot: /tmp/p4-results-open
+- tapOn: { text: 'Close results' }
+- waitForAnimationToEnd: { timeout: 2000 }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 15000 }
+
+# (ii) polls -> pollDetail : open poll band then tap a poll card
+- tapOn: 'Polls in New York'
+- waitForAnimationToEnd: { timeout: 2500 }
+- takeScreenshot: /tmp/p4-poll-feed
+- tapOn: { id: 'poll-card-title-3a57786d-ee01-4585-b5f5-9ca668c7ab47', optional: true }
+- waitForAnimationToEnd: { timeout: 6000 }
+- takeScreenshot: /tmp/p4-poll-detail
+- tapOn: { text: 'Close poll', optional: true }
+- tapOn: { text: 'Close polls', optional: true }
+- waitForAnimationToEnd: { timeout: 2000 }
+
+# (iii) top-level tab switch : Profile then back to Search
+- tapOn: { text: 'Profile' }
+- waitForAnimationToEnd: { timeout: 3000 }
+- takeScreenshot: /tmp/p4-profile
+- tapOn: { text: 'Search' }
+- waitForAnimationToEnd: { timeout: 3000 }
+- takeScreenshot: /tmp/p4-back-to-search

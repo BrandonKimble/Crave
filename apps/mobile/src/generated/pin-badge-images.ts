@@ -10,6 +10,8 @@ import pin_b4 from '../assets/pins/pin-b4.png';
 import pin_b5 from '../assets/pins/pin-b5.png';
 import pin_b6 from '../assets/pins/pin-b6.png';
 import pin_b7 from '../assets/pins/pin-b7.png';
+import pin_b8 from '../assets/pins/pin-b8.png';
+import pin_b9 from '../assets/pins/pin-b9.png';
 import pin_rank_b0_1 from '../assets/pins/pin-rank-b0-1.png';
 import pin_rank_b0_2 from '../assets/pins/pin-rank-b0-2.png';
 import pin_rank_b0_3 from '../assets/pins/pin-rank-b0-3.png';
@@ -810,47 +812,307 @@ import pin_rank_b7_97 from '../assets/pins/pin-rank-b7-97.png';
 import pin_rank_b7_98 from '../assets/pins/pin-rank-b7-98.png';
 import pin_rank_b7_99 from '../assets/pins/pin-rank-b7-99.png';
 import pin_rank_b7_overflow from '../assets/pins/pin-rank-b7-overflow.png';
-import pin_score_b0_60 from '../assets/pins/pin-score-b0-60.png';
-import pin_score_b0_61 from '../assets/pins/pin-score-b0-61.png';
-import pin_score_b0_62 from '../assets/pins/pin-score-b0-62.png';
-import pin_score_b0_63 from '../assets/pins/pin-score-b0-63.png';
-import pin_score_b0_64 from '../assets/pins/pin-score-b0-64.png';
-import pin_score_b1_65 from '../assets/pins/pin-score-b1-65.png';
-import pin_score_b1_66 from '../assets/pins/pin-score-b1-66.png';
-import pin_score_b1_67 from '../assets/pins/pin-score-b1-67.png';
-import pin_score_b1_68 from '../assets/pins/pin-score-b1-68.png';
-import pin_score_b1_69 from '../assets/pins/pin-score-b1-69.png';
-import pin_score_b2_70 from '../assets/pins/pin-score-b2-70.png';
-import pin_score_b2_71 from '../assets/pins/pin-score-b2-71.png';
-import pin_score_b2_72 from '../assets/pins/pin-score-b2-72.png';
-import pin_score_b2_73 from '../assets/pins/pin-score-b2-73.png';
-import pin_score_b2_74 from '../assets/pins/pin-score-b2-74.png';
-import pin_score_b3_75 from '../assets/pins/pin-score-b3-75.png';
-import pin_score_b3_76 from '../assets/pins/pin-score-b3-76.png';
-import pin_score_b3_77 from '../assets/pins/pin-score-b3-77.png';
-import pin_score_b3_78 from '../assets/pins/pin-score-b3-78.png';
-import pin_score_b3_79 from '../assets/pins/pin-score-b3-79.png';
-import pin_score_b4_80 from '../assets/pins/pin-score-b4-80.png';
-import pin_score_b4_81 from '../assets/pins/pin-score-b4-81.png';
-import pin_score_b4_82 from '../assets/pins/pin-score-b4-82.png';
-import pin_score_b4_83 from '../assets/pins/pin-score-b4-83.png';
-import pin_score_b4_84 from '../assets/pins/pin-score-b4-84.png';
-import pin_score_b5_85 from '../assets/pins/pin-score-b5-85.png';
-import pin_score_b5_86 from '../assets/pins/pin-score-b5-86.png';
-import pin_score_b5_87 from '../assets/pins/pin-score-b5-87.png';
-import pin_score_b5_88 from '../assets/pins/pin-score-b5-88.png';
-import pin_score_b5_89 from '../assets/pins/pin-score-b5-89.png';
-import pin_score_b6_90 from '../assets/pins/pin-score-b6-90.png';
-import pin_score_b6_91 from '../assets/pins/pin-score-b6-91.png';
-import pin_score_b6_92 from '../assets/pins/pin-score-b6-92.png';
-import pin_score_b6_93 from '../assets/pins/pin-score-b6-93.png';
-import pin_score_b6_94 from '../assets/pins/pin-score-b6-94.png';
-import pin_score_b7_95 from '../assets/pins/pin-score-b7-95.png';
-import pin_score_b7_96 from '../assets/pins/pin-score-b7-96.png';
-import pin_score_b7_97 from '../assets/pins/pin-score-b7-97.png';
-import pin_score_b7_98 from '../assets/pins/pin-score-b7-98.png';
-import pin_score_b7_99 from '../assets/pins/pin-score-b7-99.png';
-import pin_score_b7_100 from '../assets/pins/pin-score-b7-100.png';
+import pin_rank_b8_1 from '../assets/pins/pin-rank-b8-1.png';
+import pin_rank_b8_2 from '../assets/pins/pin-rank-b8-2.png';
+import pin_rank_b8_3 from '../assets/pins/pin-rank-b8-3.png';
+import pin_rank_b8_4 from '../assets/pins/pin-rank-b8-4.png';
+import pin_rank_b8_5 from '../assets/pins/pin-rank-b8-5.png';
+import pin_rank_b8_6 from '../assets/pins/pin-rank-b8-6.png';
+import pin_rank_b8_7 from '../assets/pins/pin-rank-b8-7.png';
+import pin_rank_b8_8 from '../assets/pins/pin-rank-b8-8.png';
+import pin_rank_b8_9 from '../assets/pins/pin-rank-b8-9.png';
+import pin_rank_b8_10 from '../assets/pins/pin-rank-b8-10.png';
+import pin_rank_b8_11 from '../assets/pins/pin-rank-b8-11.png';
+import pin_rank_b8_12 from '../assets/pins/pin-rank-b8-12.png';
+import pin_rank_b8_13 from '../assets/pins/pin-rank-b8-13.png';
+import pin_rank_b8_14 from '../assets/pins/pin-rank-b8-14.png';
+import pin_rank_b8_15 from '../assets/pins/pin-rank-b8-15.png';
+import pin_rank_b8_16 from '../assets/pins/pin-rank-b8-16.png';
+import pin_rank_b8_17 from '../assets/pins/pin-rank-b8-17.png';
+import pin_rank_b8_18 from '../assets/pins/pin-rank-b8-18.png';
+import pin_rank_b8_19 from '../assets/pins/pin-rank-b8-19.png';
+import pin_rank_b8_20 from '../assets/pins/pin-rank-b8-20.png';
+import pin_rank_b8_21 from '../assets/pins/pin-rank-b8-21.png';
+import pin_rank_b8_22 from '../assets/pins/pin-rank-b8-22.png';
+import pin_rank_b8_23 from '../assets/pins/pin-rank-b8-23.png';
+import pin_rank_b8_24 from '../assets/pins/pin-rank-b8-24.png';
+import pin_rank_b8_25 from '../assets/pins/pin-rank-b8-25.png';
+import pin_rank_b8_26 from '../assets/pins/pin-rank-b8-26.png';
+import pin_rank_b8_27 from '../assets/pins/pin-rank-b8-27.png';
+import pin_rank_b8_28 from '../assets/pins/pin-rank-b8-28.png';
+import pin_rank_b8_29 from '../assets/pins/pin-rank-b8-29.png';
+import pin_rank_b8_30 from '../assets/pins/pin-rank-b8-30.png';
+import pin_rank_b8_31 from '../assets/pins/pin-rank-b8-31.png';
+import pin_rank_b8_32 from '../assets/pins/pin-rank-b8-32.png';
+import pin_rank_b8_33 from '../assets/pins/pin-rank-b8-33.png';
+import pin_rank_b8_34 from '../assets/pins/pin-rank-b8-34.png';
+import pin_rank_b8_35 from '../assets/pins/pin-rank-b8-35.png';
+import pin_rank_b8_36 from '../assets/pins/pin-rank-b8-36.png';
+import pin_rank_b8_37 from '../assets/pins/pin-rank-b8-37.png';
+import pin_rank_b8_38 from '../assets/pins/pin-rank-b8-38.png';
+import pin_rank_b8_39 from '../assets/pins/pin-rank-b8-39.png';
+import pin_rank_b8_40 from '../assets/pins/pin-rank-b8-40.png';
+import pin_rank_b8_41 from '../assets/pins/pin-rank-b8-41.png';
+import pin_rank_b8_42 from '../assets/pins/pin-rank-b8-42.png';
+import pin_rank_b8_43 from '../assets/pins/pin-rank-b8-43.png';
+import pin_rank_b8_44 from '../assets/pins/pin-rank-b8-44.png';
+import pin_rank_b8_45 from '../assets/pins/pin-rank-b8-45.png';
+import pin_rank_b8_46 from '../assets/pins/pin-rank-b8-46.png';
+import pin_rank_b8_47 from '../assets/pins/pin-rank-b8-47.png';
+import pin_rank_b8_48 from '../assets/pins/pin-rank-b8-48.png';
+import pin_rank_b8_49 from '../assets/pins/pin-rank-b8-49.png';
+import pin_rank_b8_50 from '../assets/pins/pin-rank-b8-50.png';
+import pin_rank_b8_51 from '../assets/pins/pin-rank-b8-51.png';
+import pin_rank_b8_52 from '../assets/pins/pin-rank-b8-52.png';
+import pin_rank_b8_53 from '../assets/pins/pin-rank-b8-53.png';
+import pin_rank_b8_54 from '../assets/pins/pin-rank-b8-54.png';
+import pin_rank_b8_55 from '../assets/pins/pin-rank-b8-55.png';
+import pin_rank_b8_56 from '../assets/pins/pin-rank-b8-56.png';
+import pin_rank_b8_57 from '../assets/pins/pin-rank-b8-57.png';
+import pin_rank_b8_58 from '../assets/pins/pin-rank-b8-58.png';
+import pin_rank_b8_59 from '../assets/pins/pin-rank-b8-59.png';
+import pin_rank_b8_60 from '../assets/pins/pin-rank-b8-60.png';
+import pin_rank_b8_61 from '../assets/pins/pin-rank-b8-61.png';
+import pin_rank_b8_62 from '../assets/pins/pin-rank-b8-62.png';
+import pin_rank_b8_63 from '../assets/pins/pin-rank-b8-63.png';
+import pin_rank_b8_64 from '../assets/pins/pin-rank-b8-64.png';
+import pin_rank_b8_65 from '../assets/pins/pin-rank-b8-65.png';
+import pin_rank_b8_66 from '../assets/pins/pin-rank-b8-66.png';
+import pin_rank_b8_67 from '../assets/pins/pin-rank-b8-67.png';
+import pin_rank_b8_68 from '../assets/pins/pin-rank-b8-68.png';
+import pin_rank_b8_69 from '../assets/pins/pin-rank-b8-69.png';
+import pin_rank_b8_70 from '../assets/pins/pin-rank-b8-70.png';
+import pin_rank_b8_71 from '../assets/pins/pin-rank-b8-71.png';
+import pin_rank_b8_72 from '../assets/pins/pin-rank-b8-72.png';
+import pin_rank_b8_73 from '../assets/pins/pin-rank-b8-73.png';
+import pin_rank_b8_74 from '../assets/pins/pin-rank-b8-74.png';
+import pin_rank_b8_75 from '../assets/pins/pin-rank-b8-75.png';
+import pin_rank_b8_76 from '../assets/pins/pin-rank-b8-76.png';
+import pin_rank_b8_77 from '../assets/pins/pin-rank-b8-77.png';
+import pin_rank_b8_78 from '../assets/pins/pin-rank-b8-78.png';
+import pin_rank_b8_79 from '../assets/pins/pin-rank-b8-79.png';
+import pin_rank_b8_80 from '../assets/pins/pin-rank-b8-80.png';
+import pin_rank_b8_81 from '../assets/pins/pin-rank-b8-81.png';
+import pin_rank_b8_82 from '../assets/pins/pin-rank-b8-82.png';
+import pin_rank_b8_83 from '../assets/pins/pin-rank-b8-83.png';
+import pin_rank_b8_84 from '../assets/pins/pin-rank-b8-84.png';
+import pin_rank_b8_85 from '../assets/pins/pin-rank-b8-85.png';
+import pin_rank_b8_86 from '../assets/pins/pin-rank-b8-86.png';
+import pin_rank_b8_87 from '../assets/pins/pin-rank-b8-87.png';
+import pin_rank_b8_88 from '../assets/pins/pin-rank-b8-88.png';
+import pin_rank_b8_89 from '../assets/pins/pin-rank-b8-89.png';
+import pin_rank_b8_90 from '../assets/pins/pin-rank-b8-90.png';
+import pin_rank_b8_91 from '../assets/pins/pin-rank-b8-91.png';
+import pin_rank_b8_92 from '../assets/pins/pin-rank-b8-92.png';
+import pin_rank_b8_93 from '../assets/pins/pin-rank-b8-93.png';
+import pin_rank_b8_94 from '../assets/pins/pin-rank-b8-94.png';
+import pin_rank_b8_95 from '../assets/pins/pin-rank-b8-95.png';
+import pin_rank_b8_96 from '../assets/pins/pin-rank-b8-96.png';
+import pin_rank_b8_97 from '../assets/pins/pin-rank-b8-97.png';
+import pin_rank_b8_98 from '../assets/pins/pin-rank-b8-98.png';
+import pin_rank_b8_99 from '../assets/pins/pin-rank-b8-99.png';
+import pin_rank_b8_overflow from '../assets/pins/pin-rank-b8-overflow.png';
+import pin_rank_b9_1 from '../assets/pins/pin-rank-b9-1.png';
+import pin_rank_b9_2 from '../assets/pins/pin-rank-b9-2.png';
+import pin_rank_b9_3 from '../assets/pins/pin-rank-b9-3.png';
+import pin_rank_b9_4 from '../assets/pins/pin-rank-b9-4.png';
+import pin_rank_b9_5 from '../assets/pins/pin-rank-b9-5.png';
+import pin_rank_b9_6 from '../assets/pins/pin-rank-b9-6.png';
+import pin_rank_b9_7 from '../assets/pins/pin-rank-b9-7.png';
+import pin_rank_b9_8 from '../assets/pins/pin-rank-b9-8.png';
+import pin_rank_b9_9 from '../assets/pins/pin-rank-b9-9.png';
+import pin_rank_b9_10 from '../assets/pins/pin-rank-b9-10.png';
+import pin_rank_b9_11 from '../assets/pins/pin-rank-b9-11.png';
+import pin_rank_b9_12 from '../assets/pins/pin-rank-b9-12.png';
+import pin_rank_b9_13 from '../assets/pins/pin-rank-b9-13.png';
+import pin_rank_b9_14 from '../assets/pins/pin-rank-b9-14.png';
+import pin_rank_b9_15 from '../assets/pins/pin-rank-b9-15.png';
+import pin_rank_b9_16 from '../assets/pins/pin-rank-b9-16.png';
+import pin_rank_b9_17 from '../assets/pins/pin-rank-b9-17.png';
+import pin_rank_b9_18 from '../assets/pins/pin-rank-b9-18.png';
+import pin_rank_b9_19 from '../assets/pins/pin-rank-b9-19.png';
+import pin_rank_b9_20 from '../assets/pins/pin-rank-b9-20.png';
+import pin_rank_b9_21 from '../assets/pins/pin-rank-b9-21.png';
+import pin_rank_b9_22 from '../assets/pins/pin-rank-b9-22.png';
+import pin_rank_b9_23 from '../assets/pins/pin-rank-b9-23.png';
+import pin_rank_b9_24 from '../assets/pins/pin-rank-b9-24.png';
+import pin_rank_b9_25 from '../assets/pins/pin-rank-b9-25.png';
+import pin_rank_b9_26 from '../assets/pins/pin-rank-b9-26.png';
+import pin_rank_b9_27 from '../assets/pins/pin-rank-b9-27.png';
+import pin_rank_b9_28 from '../assets/pins/pin-rank-b9-28.png';
+import pin_rank_b9_29 from '../assets/pins/pin-rank-b9-29.png';
+import pin_rank_b9_30 from '../assets/pins/pin-rank-b9-30.png';
+import pin_rank_b9_31 from '../assets/pins/pin-rank-b9-31.png';
+import pin_rank_b9_32 from '../assets/pins/pin-rank-b9-32.png';
+import pin_rank_b9_33 from '../assets/pins/pin-rank-b9-33.png';
+import pin_rank_b9_34 from '../assets/pins/pin-rank-b9-34.png';
+import pin_rank_b9_35 from '../assets/pins/pin-rank-b9-35.png';
+import pin_rank_b9_36 from '../assets/pins/pin-rank-b9-36.png';
+import pin_rank_b9_37 from '../assets/pins/pin-rank-b9-37.png';
+import pin_rank_b9_38 from '../assets/pins/pin-rank-b9-38.png';
+import pin_rank_b9_39 from '../assets/pins/pin-rank-b9-39.png';
+import pin_rank_b9_40 from '../assets/pins/pin-rank-b9-40.png';
+import pin_rank_b9_41 from '../assets/pins/pin-rank-b9-41.png';
+import pin_rank_b9_42 from '../assets/pins/pin-rank-b9-42.png';
+import pin_rank_b9_43 from '../assets/pins/pin-rank-b9-43.png';
+import pin_rank_b9_44 from '../assets/pins/pin-rank-b9-44.png';
+import pin_rank_b9_45 from '../assets/pins/pin-rank-b9-45.png';
+import pin_rank_b9_46 from '../assets/pins/pin-rank-b9-46.png';
+import pin_rank_b9_47 from '../assets/pins/pin-rank-b9-47.png';
+import pin_rank_b9_48 from '../assets/pins/pin-rank-b9-48.png';
+import pin_rank_b9_49 from '../assets/pins/pin-rank-b9-49.png';
+import pin_rank_b9_50 from '../assets/pins/pin-rank-b9-50.png';
+import pin_rank_b9_51 from '../assets/pins/pin-rank-b9-51.png';
+import pin_rank_b9_52 from '../assets/pins/pin-rank-b9-52.png';
+import pin_rank_b9_53 from '../assets/pins/pin-rank-b9-53.png';
+import pin_rank_b9_54 from '../assets/pins/pin-rank-b9-54.png';
+import pin_rank_b9_55 from '../assets/pins/pin-rank-b9-55.png';
+import pin_rank_b9_56 from '../assets/pins/pin-rank-b9-56.png';
+import pin_rank_b9_57 from '../assets/pins/pin-rank-b9-57.png';
+import pin_rank_b9_58 from '../assets/pins/pin-rank-b9-58.png';
+import pin_rank_b9_59 from '../assets/pins/pin-rank-b9-59.png';
+import pin_rank_b9_60 from '../assets/pins/pin-rank-b9-60.png';
+import pin_rank_b9_61 from '../assets/pins/pin-rank-b9-61.png';
+import pin_rank_b9_62 from '../assets/pins/pin-rank-b9-62.png';
+import pin_rank_b9_63 from '../assets/pins/pin-rank-b9-63.png';
+import pin_rank_b9_64 from '../assets/pins/pin-rank-b9-64.png';
+import pin_rank_b9_65 from '../assets/pins/pin-rank-b9-65.png';
+import pin_rank_b9_66 from '../assets/pins/pin-rank-b9-66.png';
+import pin_rank_b9_67 from '../assets/pins/pin-rank-b9-67.png';
+import pin_rank_b9_68 from '../assets/pins/pin-rank-b9-68.png';
+import pin_rank_b9_69 from '../assets/pins/pin-rank-b9-69.png';
+import pin_rank_b9_70 from '../assets/pins/pin-rank-b9-70.png';
+import pin_rank_b9_71 from '../assets/pins/pin-rank-b9-71.png';
+import pin_rank_b9_72 from '../assets/pins/pin-rank-b9-72.png';
+import pin_rank_b9_73 from '../assets/pins/pin-rank-b9-73.png';
+import pin_rank_b9_74 from '../assets/pins/pin-rank-b9-74.png';
+import pin_rank_b9_75 from '../assets/pins/pin-rank-b9-75.png';
+import pin_rank_b9_76 from '../assets/pins/pin-rank-b9-76.png';
+import pin_rank_b9_77 from '../assets/pins/pin-rank-b9-77.png';
+import pin_rank_b9_78 from '../assets/pins/pin-rank-b9-78.png';
+import pin_rank_b9_79 from '../assets/pins/pin-rank-b9-79.png';
+import pin_rank_b9_80 from '../assets/pins/pin-rank-b9-80.png';
+import pin_rank_b9_81 from '../assets/pins/pin-rank-b9-81.png';
+import pin_rank_b9_82 from '../assets/pins/pin-rank-b9-82.png';
+import pin_rank_b9_83 from '../assets/pins/pin-rank-b9-83.png';
+import pin_rank_b9_84 from '../assets/pins/pin-rank-b9-84.png';
+import pin_rank_b9_85 from '../assets/pins/pin-rank-b9-85.png';
+import pin_rank_b9_86 from '../assets/pins/pin-rank-b9-86.png';
+import pin_rank_b9_87 from '../assets/pins/pin-rank-b9-87.png';
+import pin_rank_b9_88 from '../assets/pins/pin-rank-b9-88.png';
+import pin_rank_b9_89 from '../assets/pins/pin-rank-b9-89.png';
+import pin_rank_b9_90 from '../assets/pins/pin-rank-b9-90.png';
+import pin_rank_b9_91 from '../assets/pins/pin-rank-b9-91.png';
+import pin_rank_b9_92 from '../assets/pins/pin-rank-b9-92.png';
+import pin_rank_b9_93 from '../assets/pins/pin-rank-b9-93.png';
+import pin_rank_b9_94 from '../assets/pins/pin-rank-b9-94.png';
+import pin_rank_b9_95 from '../assets/pins/pin-rank-b9-95.png';
+import pin_rank_b9_96 from '../assets/pins/pin-rank-b9-96.png';
+import pin_rank_b9_97 from '../assets/pins/pin-rank-b9-97.png';
+import pin_rank_b9_98 from '../assets/pins/pin-rank-b9-98.png';
+import pin_rank_b9_99 from '../assets/pins/pin-rank-b9-99.png';
+import pin_rank_b9_overflow from '../assets/pins/pin-rank-b9-overflow.png';
+import pin_score_b0_0 from '../assets/pins/pin-score-b0-0.png';
+import pin_score_b0_1 from '../assets/pins/pin-score-b0-1.png';
+import pin_score_b0_2 from '../assets/pins/pin-score-b0-2.png';
+import pin_score_b0_3 from '../assets/pins/pin-score-b0-3.png';
+import pin_score_b0_4 from '../assets/pins/pin-score-b0-4.png';
+import pin_score_b0_5 from '../assets/pins/pin-score-b0-5.png';
+import pin_score_b0_6 from '../assets/pins/pin-score-b0-6.png';
+import pin_score_b0_7 from '../assets/pins/pin-score-b0-7.png';
+import pin_score_b0_8 from '../assets/pins/pin-score-b0-8.png';
+import pin_score_b0_9 from '../assets/pins/pin-score-b0-9.png';
+import pin_score_b1_10 from '../assets/pins/pin-score-b1-10.png';
+import pin_score_b1_11 from '../assets/pins/pin-score-b1-11.png';
+import pin_score_b1_12 from '../assets/pins/pin-score-b1-12.png';
+import pin_score_b1_13 from '../assets/pins/pin-score-b1-13.png';
+import pin_score_b1_14 from '../assets/pins/pin-score-b1-14.png';
+import pin_score_b1_15 from '../assets/pins/pin-score-b1-15.png';
+import pin_score_b1_16 from '../assets/pins/pin-score-b1-16.png';
+import pin_score_b1_17 from '../assets/pins/pin-score-b1-17.png';
+import pin_score_b1_18 from '../assets/pins/pin-score-b1-18.png';
+import pin_score_b1_19 from '../assets/pins/pin-score-b1-19.png';
+import pin_score_b2_20 from '../assets/pins/pin-score-b2-20.png';
+import pin_score_b2_21 from '../assets/pins/pin-score-b2-21.png';
+import pin_score_b2_22 from '../assets/pins/pin-score-b2-22.png';
+import pin_score_b2_23 from '../assets/pins/pin-score-b2-23.png';
+import pin_score_b2_24 from '../assets/pins/pin-score-b2-24.png';
+import pin_score_b2_25 from '../assets/pins/pin-score-b2-25.png';
+import pin_score_b2_26 from '../assets/pins/pin-score-b2-26.png';
+import pin_score_b2_27 from '../assets/pins/pin-score-b2-27.png';
+import pin_score_b2_28 from '../assets/pins/pin-score-b2-28.png';
+import pin_score_b2_29 from '../assets/pins/pin-score-b2-29.png';
+import pin_score_b3_30 from '../assets/pins/pin-score-b3-30.png';
+import pin_score_b3_31 from '../assets/pins/pin-score-b3-31.png';
+import pin_score_b3_32 from '../assets/pins/pin-score-b3-32.png';
+import pin_score_b3_33 from '../assets/pins/pin-score-b3-33.png';
+import pin_score_b3_34 from '../assets/pins/pin-score-b3-34.png';
+import pin_score_b3_35 from '../assets/pins/pin-score-b3-35.png';
+import pin_score_b3_36 from '../assets/pins/pin-score-b3-36.png';
+import pin_score_b3_37 from '../assets/pins/pin-score-b3-37.png';
+import pin_score_b3_38 from '../assets/pins/pin-score-b3-38.png';
+import pin_score_b3_39 from '../assets/pins/pin-score-b3-39.png';
+import pin_score_b4_40 from '../assets/pins/pin-score-b4-40.png';
+import pin_score_b4_41 from '../assets/pins/pin-score-b4-41.png';
+import pin_score_b4_42 from '../assets/pins/pin-score-b4-42.png';
+import pin_score_b4_43 from '../assets/pins/pin-score-b4-43.png';
+import pin_score_b4_44 from '../assets/pins/pin-score-b4-44.png';
+import pin_score_b4_45 from '../assets/pins/pin-score-b4-45.png';
+import pin_score_b4_46 from '../assets/pins/pin-score-b4-46.png';
+import pin_score_b4_47 from '../assets/pins/pin-score-b4-47.png';
+import pin_score_b4_48 from '../assets/pins/pin-score-b4-48.png';
+import pin_score_b4_49 from '../assets/pins/pin-score-b4-49.png';
+import pin_score_b5_50 from '../assets/pins/pin-score-b5-50.png';
+import pin_score_b5_51 from '../assets/pins/pin-score-b5-51.png';
+import pin_score_b5_52 from '../assets/pins/pin-score-b5-52.png';
+import pin_score_b5_53 from '../assets/pins/pin-score-b5-53.png';
+import pin_score_b5_54 from '../assets/pins/pin-score-b5-54.png';
+import pin_score_b5_55 from '../assets/pins/pin-score-b5-55.png';
+import pin_score_b5_56 from '../assets/pins/pin-score-b5-56.png';
+import pin_score_b5_57 from '../assets/pins/pin-score-b5-57.png';
+import pin_score_b5_58 from '../assets/pins/pin-score-b5-58.png';
+import pin_score_b5_59 from '../assets/pins/pin-score-b5-59.png';
+import pin_score_b6_60 from '../assets/pins/pin-score-b6-60.png';
+import pin_score_b6_61 from '../assets/pins/pin-score-b6-61.png';
+import pin_score_b6_62 from '../assets/pins/pin-score-b6-62.png';
+import pin_score_b6_63 from '../assets/pins/pin-score-b6-63.png';
+import pin_score_b6_64 from '../assets/pins/pin-score-b6-64.png';
+import pin_score_b6_65 from '../assets/pins/pin-score-b6-65.png';
+import pin_score_b6_66 from '../assets/pins/pin-score-b6-66.png';
+import pin_score_b6_67 from '../assets/pins/pin-score-b6-67.png';
+import pin_score_b6_68 from '../assets/pins/pin-score-b6-68.png';
+import pin_score_b6_69 from '../assets/pins/pin-score-b6-69.png';
+import pin_score_b7_70 from '../assets/pins/pin-score-b7-70.png';
+import pin_score_b7_71 from '../assets/pins/pin-score-b7-71.png';
+import pin_score_b7_72 from '../assets/pins/pin-score-b7-72.png';
+import pin_score_b7_73 from '../assets/pins/pin-score-b7-73.png';
+import pin_score_b7_74 from '../assets/pins/pin-score-b7-74.png';
+import pin_score_b7_75 from '../assets/pins/pin-score-b7-75.png';
+import pin_score_b7_76 from '../assets/pins/pin-score-b7-76.png';
+import pin_score_b7_77 from '../assets/pins/pin-score-b7-77.png';
+import pin_score_b7_78 from '../assets/pins/pin-score-b7-78.png';
+import pin_score_b7_79 from '../assets/pins/pin-score-b7-79.png';
+import pin_score_b8_80 from '../assets/pins/pin-score-b8-80.png';
+import pin_score_b8_81 from '../assets/pins/pin-score-b8-81.png';
+import pin_score_b8_82 from '../assets/pins/pin-score-b8-82.png';
+import pin_score_b8_83 from '../assets/pins/pin-score-b8-83.png';
+import pin_score_b8_84 from '../assets/pins/pin-score-b8-84.png';
+import pin_score_b8_85 from '../assets/pins/pin-score-b8-85.png';
+import pin_score_b8_86 from '../assets/pins/pin-score-b8-86.png';
+import pin_score_b8_87 from '../assets/pins/pin-score-b8-87.png';
+import pin_score_b8_88 from '../assets/pins/pin-score-b8-88.png';
+import pin_score_b8_89 from '../assets/pins/pin-score-b8-89.png';
+import pin_score_b9_90 from '../assets/pins/pin-score-b9-90.png';
+import pin_score_b9_91 from '../assets/pins/pin-score-b9-91.png';
+import pin_score_b9_92 from '../assets/pins/pin-score-b9-92.png';
+import pin_score_b9_93 from '../assets/pins/pin-score-b9-93.png';
+import pin_score_b9_94 from '../assets/pins/pin-score-b9-94.png';
+import pin_score_b9_95 from '../assets/pins/pin-score-b9-95.png';
+import pin_score_b9_96 from '../assets/pins/pin-score-b9-96.png';
+import pin_score_b9_97 from '../assets/pins/pin-score-b9-97.png';
+import pin_score_b9_98 from '../assets/pins/pin-score-b9-98.png';
+import pin_score_b9_99 from '../assets/pins/pin-score-b9-99.png';
+import pin_score_b9_100 from '../assets/pins/pin-score-b9-100.png';
 import pin_rank_active_1 from '../assets/pins/pin-rank-active-1.png';
 import pin_rank_active_2 from '../assets/pins/pin-rank-active-2.png';
 import pin_rank_active_3 from '../assets/pins/pin-rank-active-3.png';
@@ -963,6 +1225,8 @@ export const PIN_BADGE_IMAGES: Record<string, ImageSourcePropType> = {
   'pin-b5': pin_b5,
   'pin-b6': pin_b6,
   'pin-b7': pin_b7,
+  'pin-b8': pin_b8,
+  'pin-b9': pin_b9,
   'pin-rank-b0-1': pin_rank_b0_1,
   'pin-rank-b0-2': pin_rank_b0_2,
   'pin-rank-b0-3': pin_rank_b0_3,
@@ -1763,47 +2027,307 @@ export const PIN_BADGE_IMAGES: Record<string, ImageSourcePropType> = {
   'pin-rank-b7-98': pin_rank_b7_98,
   'pin-rank-b7-99': pin_rank_b7_99,
   'pin-rank-b7-overflow': pin_rank_b7_overflow,
-  'pin-score-b0-60': pin_score_b0_60,
-  'pin-score-b0-61': pin_score_b0_61,
-  'pin-score-b0-62': pin_score_b0_62,
-  'pin-score-b0-63': pin_score_b0_63,
-  'pin-score-b0-64': pin_score_b0_64,
-  'pin-score-b1-65': pin_score_b1_65,
-  'pin-score-b1-66': pin_score_b1_66,
-  'pin-score-b1-67': pin_score_b1_67,
-  'pin-score-b1-68': pin_score_b1_68,
-  'pin-score-b1-69': pin_score_b1_69,
-  'pin-score-b2-70': pin_score_b2_70,
-  'pin-score-b2-71': pin_score_b2_71,
-  'pin-score-b2-72': pin_score_b2_72,
-  'pin-score-b2-73': pin_score_b2_73,
-  'pin-score-b2-74': pin_score_b2_74,
-  'pin-score-b3-75': pin_score_b3_75,
-  'pin-score-b3-76': pin_score_b3_76,
-  'pin-score-b3-77': pin_score_b3_77,
-  'pin-score-b3-78': pin_score_b3_78,
-  'pin-score-b3-79': pin_score_b3_79,
-  'pin-score-b4-80': pin_score_b4_80,
-  'pin-score-b4-81': pin_score_b4_81,
-  'pin-score-b4-82': pin_score_b4_82,
-  'pin-score-b4-83': pin_score_b4_83,
-  'pin-score-b4-84': pin_score_b4_84,
-  'pin-score-b5-85': pin_score_b5_85,
-  'pin-score-b5-86': pin_score_b5_86,
-  'pin-score-b5-87': pin_score_b5_87,
-  'pin-score-b5-88': pin_score_b5_88,
-  'pin-score-b5-89': pin_score_b5_89,
-  'pin-score-b6-90': pin_score_b6_90,
-  'pin-score-b6-91': pin_score_b6_91,
-  'pin-score-b6-92': pin_score_b6_92,
-  'pin-score-b6-93': pin_score_b6_93,
-  'pin-score-b6-94': pin_score_b6_94,
-  'pin-score-b7-95': pin_score_b7_95,
-  'pin-score-b7-96': pin_score_b7_96,
-  'pin-score-b7-97': pin_score_b7_97,
-  'pin-score-b7-98': pin_score_b7_98,
-  'pin-score-b7-99': pin_score_b7_99,
-  'pin-score-b7-100': pin_score_b7_100,
+  'pin-rank-b8-1': pin_rank_b8_1,
+  'pin-rank-b8-2': pin_rank_b8_2,
+  'pin-rank-b8-3': pin_rank_b8_3,
+  'pin-rank-b8-4': pin_rank_b8_4,
+  'pin-rank-b8-5': pin_rank_b8_5,
+  'pin-rank-b8-6': pin_rank_b8_6,
+  'pin-rank-b8-7': pin_rank_b8_7,
+  'pin-rank-b8-8': pin_rank_b8_8,
+  'pin-rank-b8-9': pin_rank_b8_9,
+  'pin-rank-b8-10': pin_rank_b8_10,
+  'pin-rank-b8-11': pin_rank_b8_11,
+  'pin-rank-b8-12': pin_rank_b8_12,
+  'pin-rank-b8-13': pin_rank_b8_13,
+  'pin-rank-b8-14': pin_rank_b8_14,
+  'pin-rank-b8-15': pin_rank_b8_15,
+  'pin-rank-b8-16': pin_rank_b8_16,
+  'pin-rank-b8-17': pin_rank_b8_17,
+  'pin-rank-b8-18': pin_rank_b8_18,
+  'pin-rank-b8-19': pin_rank_b8_19,
+  'pin-rank-b8-20': pin_rank_b8_20,
+  'pin-rank-b8-21': pin_rank_b8_21,
+  'pin-rank-b8-22': pin_rank_b8_22,
+  'pin-rank-b8-23': pin_rank_b8_23,
+  'pin-rank-b8-24': pin_rank_b8_24,
+  'pin-rank-b8-25': pin_rank_b8_25,
+  'pin-rank-b8-26': pin_rank_b8_26,
+  'pin-rank-b8-27': pin_rank_b8_27,
+  'pin-rank-b8-28': pin_rank_b8_28,
+  'pin-rank-b8-29': pin_rank_b8_29,
+  'pin-rank-b8-30': pin_rank_b8_30,
+  'pin-rank-b8-31': pin_rank_b8_31,
+  'pin-rank-b8-32': pin_rank_b8_32,
+  'pin-rank-b8-33': pin_rank_b8_33,
+  'pin-rank-b8-34': pin_rank_b8_34,
+  'pin-rank-b8-35': pin_rank_b8_35,
+  'pin-rank-b8-36': pin_rank_b8_36,
+  'pin-rank-b8-37': pin_rank_b8_37,
+  'pin-rank-b8-38': pin_rank_b8_38,
+  'pin-rank-b8-39': pin_rank_b8_39,
+  'pin-rank-b8-40': pin_rank_b8_40,
+  'pin-rank-b8-41': pin_rank_b8_41,
+  'pin-rank-b8-42': pin_rank_b8_42,
+  'pin-rank-b8-43': pin_rank_b8_43,
+  'pin-rank-b8-44': pin_rank_b8_44,
+  'pin-rank-b8-45': pin_rank_b8_45,
+  'pin-rank-b8-46': pin_rank_b8_46,
+  'pin-rank-b8-47': pin_rank_b8_47,
+  'pin-rank-b8-48': pin_rank_b8_48,
+  'pin-rank-b8-49': pin_rank_b8_49,
+  'pin-rank-b8-50': pin_rank_b8_50,
+  'pin-rank-b8-51': pin_rank_b8_51,
+  'pin-rank-b8-52': pin_rank_b8_52,
+  'pin-rank-b8-53': pin_rank_b8_53,
+  'pin-rank-b8-54': pin_rank_b8_54,
+  'pin-rank-b8-55': pin_rank_b8_55,
+  'pin-rank-b8-56': pin_rank_b8_56,
+  'pin-rank-b8-57': pin_rank_b8_57,
+  'pin-rank-b8-58': pin_rank_b8_58,
+  'pin-rank-b8-59': pin_rank_b8_59,
+  'pin-rank-b8-60': pin_rank_b8_60,
+  'pin-rank-b8-61': pin_rank_b8_61,
+  'pin-rank-b8-62': pin_rank_b8_62,
+  'pin-rank-b8-63': pin_rank_b8_63,
+  'pin-rank-b8-64': pin_rank_b8_64,
+  'pin-rank-b8-65': pin_rank_b8_65,
+  'pin-rank-b8-66': pin_rank_b8_66,
+  'pin-rank-b8-67': pin_rank_b8_67,
+  'pin-rank-b8-68': pin_rank_b8_68,
+  'pin-rank-b8-69': pin_rank_b8_69,
+  'pin-rank-b8-70': pin_rank_b8_70,
+  'pin-rank-b8-71': pin_rank_b8_71,
+  'pin-rank-b8-72': pin_rank_b8_72,
+  'pin-rank-b8-73': pin_rank_b8_73,
+  'pin-rank-b8-74': pin_rank_b8_74,
+  'pin-rank-b8-75': pin_rank_b8_75,
+  'pin-rank-b8-76': pin_rank_b8_76,
+  'pin-rank-b8-77': pin_rank_b8_77,
+  'pin-rank-b8-78': pin_rank_b8_78,
+  'pin-rank-b8-79': pin_rank_b8_79,
+  'pin-rank-b8-80': pin_rank_b8_80,
+  'pin-rank-b8-81': pin_rank_b8_81,
+  'pin-rank-b8-82': pin_rank_b8_82,
+  'pin-rank-b8-83': pin_rank_b8_83,
+  'pin-rank-b8-84': pin_rank_b8_84,
+  'pin-rank-b8-85': pin_rank_b8_85,
+  'pin-rank-b8-86': pin_rank_b8_86,
+  'pin-rank-b8-87': pin_rank_b8_87,
+  'pin-rank-b8-88': pin_rank_b8_88,
+  'pin-rank-b8-89': pin_rank_b8_89,
+  'pin-rank-b8-90': pin_rank_b8_90,
+  'pin-rank-b8-91': pin_rank_b8_91,
+  'pin-rank-b8-92': pin_rank_b8_92,
+  'pin-rank-b8-93': pin_rank_b8_93,
+  'pin-rank-b8-94': pin_rank_b8_94,
+  'pin-rank-b8-95': pin_rank_b8_95,
+  'pin-rank-b8-96': pin_rank_b8_96,
+  'pin-rank-b8-97': pin_rank_b8_97,
+  'pin-rank-b8-98': pin_rank_b8_98,
+  'pin-rank-b8-99': pin_rank_b8_99,
+  'pin-rank-b8-overflow': pin_rank_b8_overflow,
+  'pin-rank-b9-1': pin_rank_b9_1,
+  'pin-rank-b9-2': pin_rank_b9_2,
+  'pin-rank-b9-3': pin_rank_b9_3,
+  'pin-rank-b9-4': pin_rank_b9_4,
+  'pin-rank-b9-5': pin_rank_b9_5,
+  'pin-rank-b9-6': pin_rank_b9_6,
+  'pin-rank-b9-7': pin_rank_b9_7,
+  'pin-rank-b9-8': pin_rank_b9_8,
+  'pin-rank-b9-9': pin_rank_b9_9,
+  'pin-rank-b9-10': pin_rank_b9_10,
+  'pin-rank-b9-11': pin_rank_b9_11,
+  'pin-rank-b9-12': pin_rank_b9_12,
+  'pin-rank-b9-13': pin_rank_b9_13,
+  'pin-rank-b9-14': pin_rank_b9_14,
+  'pin-rank-b9-15': pin_rank_b9_15,
+  'pin-rank-b9-16': pin_rank_b9_16,
+  'pin-rank-b9-17': pin_rank_b9_17,
+  'pin-rank-b9-18': pin_rank_b9_18,
+  'pin-rank-b9-19': pin_rank_b9_19,
+  'pin-rank-b9-20': pin_rank_b9_20,
+  'pin-rank-b9-21': pin_rank_b9_21,
+  'pin-rank-b9-22': pin_rank_b9_22,
+  'pin-rank-b9-23': pin_rank_b9_23,
+  'pin-rank-b9-24': pin_rank_b9_24,
+  'pin-rank-b9-25': pin_rank_b9_25,
+  'pin-rank-b9-26': pin_rank_b9_26,
+  'pin-rank-b9-27': pin_rank_b9_27,
+  'pin-rank-b9-28': pin_rank_b9_28,
+  'pin-rank-b9-29': pin_rank_b9_29,
+  'pin-rank-b9-30': pin_rank_b9_30,
+  'pin-rank-b9-31': pin_rank_b9_31,
+  'pin-rank-b9-32': pin_rank_b9_32,
+  'pin-rank-b9-33': pin_rank_b9_33,
+  'pin-rank-b9-34': pin_rank_b9_34,
+  'pin-rank-b9-35': pin_rank_b9_35,
+  'pin-rank-b9-36': pin_rank_b9_36,
+  'pin-rank-b9-37': pin_rank_b9_37,
+  'pin-rank-b9-38': pin_rank_b9_38,
+  'pin-rank-b9-39': pin_rank_b9_39,
+  'pin-rank-b9-40': pin_rank_b9_40,
+  'pin-rank-b9-41': pin_rank_b9_41,
+  'pin-rank-b9-42': pin_rank_b9_42,
+  'pin-rank-b9-43': pin_rank_b9_43,
+  'pin-rank-b9-44': pin_rank_b9_44,
+  'pin-rank-b9-45': pin_rank_b9_45,
+  'pin-rank-b9-46': pin_rank_b9_46,
+  'pin-rank-b9-47': pin_rank_b9_47,
+  'pin-rank-b9-48': pin_rank_b9_48,
+  'pin-rank-b9-49': pin_rank_b9_49,
+  'pin-rank-b9-50': pin_rank_b9_50,
+  'pin-rank-b9-51': pin_rank_b9_51,
+  'pin-rank-b9-52': pin_rank_b9_52,
+  'pin-rank-b9-53': pin_rank_b9_53,
+  'pin-rank-b9-54': pin_rank_b9_54,
+  'pin-rank-b9-55': pin_rank_b9_55,
+  'pin-rank-b9-56': pin_rank_b9_56,
+  'pin-rank-b9-57': pin_rank_b9_57,
+  'pin-rank-b9-58': pin_rank_b9_58,
+  'pin-rank-b9-59': pin_rank_b9_59,
+  'pin-rank-b9-60': pin_rank_b9_60,
+  'pin-rank-b9-61': pin_rank_b9_61,
+  'pin-rank-b9-62': pin_rank_b9_62,
+  'pin-rank-b9-63': pin_rank_b9_63,
+  'pin-rank-b9-64': pin_rank_b9_64,
+  'pin-rank-b9-65': pin_rank_b9_65,
+  'pin-rank-b9-66': pin_rank_b9_66,
+  'pin-rank-b9-67': pin_rank_b9_67,
+  'pin-rank-b9-68': pin_rank_b9_68,
+  'pin-rank-b9-69': pin_rank_b9_69,
+  'pin-rank-b9-70': pin_rank_b9_70,
+  'pin-rank-b9-71': pin_rank_b9_71,
+  'pin-rank-b9-72': pin_rank_b9_72,
+  'pin-rank-b9-73': pin_rank_b9_73,
+  'pin-rank-b9-74': pin_rank_b9_74,
+  'pin-rank-b9-75': pin_rank_b9_75,
+  'pin-rank-b9-76': pin_rank_b9_76,
+  'pin-rank-b9-77': pin_rank_b9_77,
+  'pin-rank-b9-78': pin_rank_b9_78,
+  'pin-rank-b9-79': pin_rank_b9_79,
+  'pin-rank-b9-80': pin_rank_b9_80,
+  'pin-rank-b9-81': pin_rank_b9_81,
+  'pin-rank-b9-82': pin_rank_b9_82,
+  'pin-rank-b9-83': pin_rank_b9_83,
+  'pin-rank-b9-84': pin_rank_b9_84,
+  'pin-rank-b9-85': pin_rank_b9_85,
+  'pin-rank-b9-86': pin_rank_b9_86,
+  'pin-rank-b9-87': pin_rank_b9_87,
+  'pin-rank-b9-88': pin_rank_b9_88,
+  'pin-rank-b9-89': pin_rank_b9_89,
+  'pin-rank-b9-90': pin_rank_b9_90,
+  'pin-rank-b9-91': pin_rank_b9_91,
+  'pin-rank-b9-92': pin_rank_b9_92,
+  'pin-rank-b9-93': pin_rank_b9_93,
+  'pin-rank-b9-94': pin_rank_b9_94,
+  'pin-rank-b9-95': pin_rank_b9_95,
+  'pin-rank-b9-96': pin_rank_b9_96,
+  'pin-rank-b9-97': pin_rank_b9_97,
+  'pin-rank-b9-98': pin_rank_b9_98,
+  'pin-rank-b9-99': pin_rank_b9_99,
+  'pin-rank-b9-overflow': pin_rank_b9_overflow,
+  'pin-score-b0-0': pin_score_b0_0,
+  'pin-score-b0-1': pin_score_b0_1,
+  'pin-score-b0-2': pin_score_b0_2,
+  'pin-score-b0-3': pin_score_b0_3,
+  'pin-score-b0-4': pin_score_b0_4,
+  'pin-score-b0-5': pin_score_b0_5,
+  'pin-score-b0-6': pin_score_b0_6,
+  'pin-score-b0-7': pin_score_b0_7,
+  'pin-score-b0-8': pin_score_b0_8,
+  'pin-score-b0-9': pin_score_b0_9,
+  'pin-score-b1-10': pin_score_b1_10,
+  'pin-score-b1-11': pin_score_b1_11,
+  'pin-score-b1-12': pin_score_b1_12,
+  'pin-score-b1-13': pin_score_b1_13,
+  'pin-score-b1-14': pin_score_b1_14,
+  'pin-score-b1-15': pin_score_b1_15,
+  'pin-score-b1-16': pin_score_b1_16,
+  'pin-score-b1-17': pin_score_b1_17,
+  'pin-score-b1-18': pin_score_b1_18,
+  'pin-score-b1-19': pin_score_b1_19,
+  'pin-score-b2-20': pin_score_b2_20,
+  'pin-score-b2-21': pin_score_b2_21,
+  'pin-score-b2-22': pin_score_b2_22,
+  'pin-score-b2-23': pin_score_b2_23,
+  'pin-score-b2-24': pin_score_b2_24,
+  'pin-score-b2-25': pin_score_b2_25,
+  'pin-score-b2-26': pin_score_b2_26,
+  'pin-score-b2-27': pin_score_b2_27,
+  'pin-score-b2-28': pin_score_b2_28,
+  'pin-score-b2-29': pin_score_b2_29,
+  'pin-score-b3-30': pin_score_b3_30,
+  'pin-score-b3-31': pin_score_b3_31,
+  'pin-score-b3-32': pin_score_b3_32,
+  'pin-score-b3-33': pin_score_b3_33,
+  'pin-score-b3-34': pin_score_b3_34,
+  'pin-score-b3-35': pin_score_b3_35,
+  'pin-score-b3-36': pin_score_b3_36,
+  'pin-score-b3-37': pin_score_b3_37,
+  'pin-score-b3-38': pin_score_b3_38,
+  'pin-score-b3-39': pin_score_b3_39,
+  'pin-score-b4-40': pin_score_b4_40,
+  'pin-score-b4-41': pin_score_b4_41,
+  'pin-score-b4-42': pin_score_b4_42,
+  'pin-score-b4-43': pin_score_b4_43,
+  'pin-score-b4-44': pin_score_b4_44,
+  'pin-score-b4-45': pin_score_b4_45,
+  'pin-score-b4-46': pin_score_b4_46,
+  'pin-score-b4-47': pin_score_b4_47,
+  'pin-score-b4-48': pin_score_b4_48,
+  'pin-score-b4-49': pin_score_b4_49,
+  'pin-score-b5-50': pin_score_b5_50,
+  'pin-score-b5-51': pin_score_b5_51,
+  'pin-score-b5-52': pin_score_b5_52,
+  'pin-score-b5-53': pin_score_b5_53,
+  'pin-score-b5-54': pin_score_b5_54,
+  'pin-score-b5-55': pin_score_b5_55,
+  'pin-score-b5-56': pin_score_b5_56,
+  'pin-score-b5-57': pin_score_b5_57,
+  'pin-score-b5-58': pin_score_b5_58,
+  'pin-score-b5-59': pin_score_b5_59,
+  'pin-score-b6-60': pin_score_b6_60,
+  'pin-score-b6-61': pin_score_b6_61,
+  'pin-score-b6-62': pin_score_b6_62,
+  'pin-score-b6-63': pin_score_b6_63,
+  'pin-score-b6-64': pin_score_b6_64,
+  'pin-score-b6-65': pin_score_b6_65,
+  'pin-score-b6-66': pin_score_b6_66,
+  'pin-score-b6-67': pin_score_b6_67,
+  'pin-score-b6-68': pin_score_b6_68,
+  'pin-score-b6-69': pin_score_b6_69,
+  'pin-score-b7-70': pin_score_b7_70,
+  'pin-score-b7-71': pin_score_b7_71,
+  'pin-score-b7-72': pin_score_b7_72,
+  'pin-score-b7-73': pin_score_b7_73,
+  'pin-score-b7-74': pin_score_b7_74,
+  'pin-score-b7-75': pin_score_b7_75,
+  'pin-score-b7-76': pin_score_b7_76,
+  'pin-score-b7-77': pin_score_b7_77,
+  'pin-score-b7-78': pin_score_b7_78,
+  'pin-score-b7-79': pin_score_b7_79,
+  'pin-score-b8-80': pin_score_b8_80,
+  'pin-score-b8-81': pin_score_b8_81,
+  'pin-score-b8-82': pin_score_b8_82,
+  'pin-score-b8-83': pin_score_b8_83,
+  'pin-score-b8-84': pin_score_b8_84,
+  'pin-score-b8-85': pin_score_b8_85,
+  'pin-score-b8-86': pin_score_b8_86,
+  'pin-score-b8-87': pin_score_b8_87,
+  'pin-score-b8-88': pin_score_b8_88,
+  'pin-score-b8-89': pin_score_b8_89,
+  'pin-score-b9-90': pin_score_b9_90,
+  'pin-score-b9-91': pin_score_b9_91,
+  'pin-score-b9-92': pin_score_b9_92,
+  'pin-score-b9-93': pin_score_b9_93,
+  'pin-score-b9-94': pin_score_b9_94,
+  'pin-score-b9-95': pin_score_b9_95,
+  'pin-score-b9-96': pin_score_b9_96,
+  'pin-score-b9-97': pin_score_b9_97,
+  'pin-score-b9-98': pin_score_b9_98,
+  'pin-score-b9-99': pin_score_b9_99,
+  'pin-score-b9-100': pin_score_b9_100,
   'pin-rank-active-1': pin_rank_active_1,
   'pin-rank-active-2': pin_rank_active_2,
   'pin-rank-active-3': pin_rank_active_3,

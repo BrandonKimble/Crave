@@ -58,7 +58,7 @@ type FavoriteListSummary = {
 
 type FavoritePublicScore = Pick<
   PublicEntityScore,
-  'subjectId' | 'displayScore' | 'percentileRank' | 'scoreDelta7d'
+  'subjectId' | 'displayScore' | 'percentileRank' | 'rising'
 >;
 
 type FavoriteListItemDetail = Prisma.FavoriteListItemGetPayload<{
@@ -925,7 +925,7 @@ export class FavoriteListsService {
         subjectId: true,
         displayScore: true,
         percentileRank: true,
-        scoreDelta7d: true,
+        rising: true,
       },
     });
     return new Map(scores.map((score) => [score.subjectId, score]));
@@ -955,7 +955,7 @@ export class FavoriteListsService {
   private toPublicScoreDelta(
     score: FavoritePublicScore | undefined,
   ): number | null {
-    return score?.scoreDelta7d == null ? null : Number(score.scoreDelta7d);
+    return score?.rising == null ? null : Number(score.rising);
   }
 
   private async mapRestaurantResults(
@@ -996,7 +996,7 @@ export class FavoriteListsService {
             CraveScoreSubjectType.connection,
             food.connectionId,
           ),
-          scoreDelta7d: this.toPublicScoreDelta(
+          rising: this.toPublicScoreDelta(
             topFoodScores.get(food.connectionId),
           ),
           totalUpvotes: food.totalUpvotes ?? 0,
@@ -1016,7 +1016,7 @@ export class FavoriteListsService {
           scoreSubjectType: food.scoreSubjectType,
           scoreSubjectId: food.scoreSubjectId,
           craveScore: food.craveScore,
-          scoreDelta7d: food.scoreDelta7d,
+          rising: food.rising,
         }));
 
       const primaryLocation = restaurant.primaryLocation;
@@ -1037,7 +1037,7 @@ export class FavoriteListsService {
           restaurant.entityId,
         ),
         craveScoreExact: this.toPublicScoreExact(restaurantScore),
-        scoreDelta7d: this.toPublicScoreDelta(restaurantScore),
+        rising: this.toPublicScoreDelta(restaurantScore),
         marketKey: undefined,
         mentionCount: undefined,
         totalUpvotes: restaurant.generalPraiseUpvotes ?? undefined,
@@ -1108,7 +1108,7 @@ export class FavoriteListsService {
           connection.connectionId,
         ),
         craveScoreExact: this.toPublicScoreExact(connectionScore),
-        scoreDelta7d: this.toPublicScoreDelta(connectionScore),
+        rising: this.toPublicScoreDelta(connectionScore),
         marketKey: undefined,
         mentionCount: connection.mentionCount ?? 0,
         totalUpvotes: connection.totalUpvotes ?? 0,

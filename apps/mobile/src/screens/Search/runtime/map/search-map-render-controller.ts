@@ -39,6 +39,7 @@ type SearchMapRenderControllerNativeModule = {
     instanceId: string;
     entries: ReadonlyArray<{ markerKey: string; lng: number; lat: number; rank: number }>;
   }) => Promise<{ catalogCount: number } | null | void>;
+  beginInteractionFadeOut?: (payload: { instanceId?: string }) => Promise<void>;
   resetNativeApplyAttribution?: (payload: { reason?: string; runId?: string }) => Promise<void>;
   flushNativeApplyAttribution?: (payload: {
     reason?: string;
@@ -191,6 +192,22 @@ export type SearchMapRenderControllerEvent =
       pinCount?: number;
       dotCount?: number;
       labelCount?: number;
+      settledAtMs: number;
+    }
+  | {
+      // UNIFIED-FADE TOGGLE (map-LOD-v6): deterministic cover-lift signal emitted on a fade-IN ramp
+      // completion, keyed to the LATEST request (immune to rapid-tap supersession). Replaces the racy
+      // per-batch mounted_hidden gate for toggle cover-lift. `degraded` = the roster failed to build
+      // (promoted>0 but overlayTileCount==0) — JS lifts the cover anyway rather than hang.
+      type: 'presentation_toggle_settled';
+      instanceId: string;
+      requestKey: string | null;
+      pinCount?: number;
+      dotCount?: number;
+      labelCount?: number;
+      overlayTileCount: number;
+      promotedCount: number;
+      degraded: boolean;
       settledAtMs: number;
     }
   | {
@@ -901,6 +918,20 @@ export const searchMapRenderController = {
       return;
     }
     await nativeModule.setCandidateCatalog(payload);
+  },
+
+  // Press-up marker fade-out: ramps the native presentation scalar 1→0 + snapSettled immediately, decoupled from
+  // the debounced data commit (so markers fade out on press, co-triggered with the JS frost). Idempotent.
+  async beginInteractionFadeOut(instanceId?: string): Promise<void> {
+    // eslint-disable-next-line no-console
+    console.log('[FADEDBG] beginInteractionFadeOut called', {
+      hasNative: !!nativeModule?.beginInteractionFadeOut,
+      instanceId,
+    });
+    if (!nativeModule?.beginInteractionFadeOut) {
+      return;
+    }
+    await nativeModule.beginInteractionFadeOut(instanceId != null ? { instanceId } : {});
   },
 
   async setRenderFrame(payload: {

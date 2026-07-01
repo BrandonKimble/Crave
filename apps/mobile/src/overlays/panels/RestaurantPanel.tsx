@@ -26,7 +26,7 @@ import {
   OVERLAY_TAB_HEADER_HEIGHT,
 } from '../overlaySheetStyles';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
-import SquircleSpinner from '../../components/SquircleSpinner';
+import { CutoutSkeletonTitle, SceneLoadingSurface } from '../../components/skeletons';
 import { getPriceRangeLabel } from '../../constants/pricing';
 import { calculateSnapPoints } from '../sheetUtils';
 import type { OverlayContentSpec } from '../types';
@@ -60,7 +60,7 @@ const PHONE_FALLBACK_SEARCH = 'phone';
 const WEBSITE_FALLBACK_SEARCH = 'website';
 
 const CARD_GAP = 4;
-const LOADING_SPINNER_OFFSET = 96;
+const EMPTY_RESTAURANT_DISHES: FoodResult[] = [];
 const DAY_LABELS: Array<{ key: string; label: string }> = [
   { key: 'sunday', label: 'Sun' },
   { key: 'monday', label: 'Mon' },
@@ -262,9 +262,15 @@ export const useRestaurantPanelSpec = ({
         grabHandleAccessibilityLabel="Close restaurant"
         rowStyle={styles.headerRow}
         title={
-          <Text style={styles.restaurantName} numberOfLines={1} ellipsizeMode="tail">
-            {restaurantName}
-          </Text>
+          restaurantName ? (
+            <Text style={styles.restaurantName} numberOfLines={1} ellipsizeMode="tail">
+              {restaurantName}
+            </Text>
+          ) : (
+            // Title not yet resolved (e.g. a deep-link open with no seeded name) — skeletonize
+            // ONLY the title; the grab handle + close button stay live for cancel.
+            <CutoutSkeletonTitle width={150} height={18} />
+          )
         }
         actionButton={
           <View style={styles.headerActions}>
@@ -488,15 +494,11 @@ export const useRestaurantPanelSpec = ({
 
   const listEmptyComponent = React.useCallback(() => {
     if (isLoading) {
+      // Hard-swap skeleton: while the committed single-restaurant search resolves, paint a
+      // structure-matched dish-card skeleton (mirrors the dish list) instead of a bare spinner.
       return (
-        <View
-          style={[
-            styles.emptyState,
-            styles.loadingEmptyState,
-            { minHeight: emptyAreaMinHeight, paddingTop: LOADING_SPINNER_OFFSET },
-          ]}
-        >
-          <SquircleSpinner size={22} color={themeColors.primary} />
+        <View style={[styles.loadingEmptyState, { minHeight: emptyAreaMinHeight }]}>
+          <SceneLoadingSurface rowType="dish" />
         </View>
       );
     }
@@ -507,12 +509,52 @@ export const useRestaurantPanelSpec = ({
     );
   }, [emptyAreaMinHeight, isLoading]);
 
+  // Seed-frame skeleton (used by the `!data` hard-swap seed spec): always paints the dish
+  // skeleton over the empty list so the first frame is structure, not a blank or empty-state text.
+  const renderSeedSkeleton = React.useCallback(
+    () => (
+      <View style={[styles.loadingEmptyState, { minHeight: emptyAreaMinHeight }]}>
+        <SceneLoadingSurface rowType="dish" />
+      </View>
+    ),
+    [emptyAreaMinHeight]
+  );
+
   // Frost is the shared page-frame foundation now; the restaurant body is frost-through (dish
   // cards paint their own white), so it contributes no extra background material.
   const backgroundComponent = null;
 
   if (!data) {
-    return null;
+    // Hard-swap seed frame: restaurant is now swapImmediately, so the panel paints its FIRST
+    // frame the moment the route opens — before `data` resolves. Render a skeleton seed shell
+    // (seeded header + dish-card skeleton) instead of a TRUE BLANK so the hard swap lands on
+    // structure, never an empty map see-through. The committed search fills the content in.
+    return {
+      overlayKey: 'restaurant',
+      semanticOverlayKey: 'restaurant',
+      sceneIdentityKey: 'restaurant',
+      surfaceKind: 'list',
+      snapPoints,
+      animateOnMount: false,
+      data: EMPTY_RESTAURANT_DISHES,
+      renderItem: renderDish,
+      keyExtractor,
+      estimatedItemSize: 136,
+      ItemSeparatorComponent: renderSeparator,
+      contentContainerStyle: {
+        paddingBottom: contentBottomPadding,
+      },
+      ListHeaderComponent: null,
+      ListEmptyComponent: renderSeedSkeleton,
+      keyboardShouldPersistTaps: 'handled',
+      backgroundComponent: backgroundComponent,
+      headerComponent: headerComponent,
+      style: [overlaySheetStyles.container, containerStyle as ViewStyle],
+      onHidden: onDismiss,
+      dismissThreshold,
+      preventSwipeDismiss: true,
+      interactionEnabled,
+    };
   }
 
   return {

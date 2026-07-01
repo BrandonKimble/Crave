@@ -30,6 +30,10 @@ export const useProfilePanelIdentityRuntime = ({
     return cleaned[0].toUpperCase();
   }, [profile?.displayName, profile?.email, profile?.username]);
   const stats = profile?.stats;
+  // Distinguish "still loading" (profile === undefined → render skeletons) from a genuinely
+  // resolved profile (use the text fallbacks). The text fallbacks above stay correct for a
+  // resolved-but-sparse profile (e.g. a user with no displayName/username).
+  const identityResolved = profile != null;
 
   return React.useMemo(
     () => ({
@@ -41,6 +45,7 @@ export const useProfilePanelIdentityRuntime = ({
       pollsContributedCount: stats?.pollsContributedCount ?? 0,
       followersCount: stats?.followersCount ?? 0,
       followingCount: stats?.followingCount ?? 0,
+      identityResolved,
       activeSegment,
       onOpenSettings,
       onSelectSegment,
@@ -48,6 +53,7 @@ export const useProfilePanelIdentityRuntime = ({
     [
       activeSegment,
       displayName,
+      identityResolved,
       initials,
       onOpenSettings,
       onSelectSegment,

@@ -1,0 +1,8 @@
+appId: com.brandonkimble.cravesearch
+---
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 20000 }
+- tapOn: 'Best restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 25000 }
+- waitForAnimationToEnd: { timeout: 2500 }
+- tapOn: { id: 'search-segment-toggle' }
+- waitForAnimationToEnd: { timeout: 4000 }

@@ -51,10 +51,10 @@ export interface FoodResult {
   scoreSubjectId: string;
   craveScore: number;
   // High-precision Crave score (percentile_rank, Decimal(6,5), 0..1, higher = better). `craveScore` is the
-  // DISPLAY score rounded to 1 decimal — ordering by it ties ~99.9 restaurants and the map vs list break ties
-  // differently. Order/rank by this; never display it. Additive/optional for backward-compat.
+  // DISPLAY score (0-10 scale) rounded for display — ordering by it ties top restaurants and the map vs list
+  // break ties differently. Order/rank by this; never display it. Additive/optional for backward-compat.
   craveScoreExact?: number;
-  scoreDelta7d?: number | null;
+  rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
   marketName?: string | null;
@@ -79,7 +79,7 @@ export interface RestaurantFoodSnippet {
   scoreSubjectType: 'connection';
   scoreSubjectId: string;
   craveScore: number;
-  scoreDelta7d?: number | null;
+  rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
 }
 
@@ -128,7 +128,7 @@ export interface RestaurantResult {
   // map ranks pins and the results list orders rows by THIS so the badge number == the list position; the
   // rounded `craveScore` is display-only. Additive/optional.
   craveScoreExact?: number;
-  scoreDelta7d?: number | null;
+  rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
   marketName?: string | null;
@@ -156,14 +156,14 @@ export interface RestaurantResult {
 
 export type RestaurantResultScorePreview = Omit<
   RestaurantResult,
-  'craveScore' | 'scoreDelta7d' | 'scoreInfo'
+  'craveScore' | 'rising' | 'scoreInfo'
 > & {
   /**
    * Profile-open shell only. Public search/favorite/coverage payloads must use
    * `RestaurantResult` and carry a computed numeric Crave Score.
    */
   craveScore: null;
-  scoreDelta7d?: null;
+  rising?: null;
   scoreInfo?: undefined;
 };
 
@@ -200,7 +200,7 @@ export interface DishResult {
   scoreSubjectType: 'connection';
   scoreSubjectId: string;
   craveScore: number;
-  scoreDelta7d?: number | null;
+  rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
   marketName?: string | null;
@@ -213,7 +213,6 @@ export interface DishResult {
 }
 
 export interface ScoreInfoSummary {
-  confidenceLabel: 'early' | 'solid' | 'strong';
   evidenceCopy: string;
   pollCount?: number | null;
   voteCount?: number | null;

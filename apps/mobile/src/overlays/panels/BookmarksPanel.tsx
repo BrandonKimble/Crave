@@ -16,7 +16,6 @@ import { colors as themeColors } from '../../constants/theme';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
-import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import {
   favoriteListsService,
   type FavoriteListSummary,
@@ -28,6 +27,8 @@ import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
+import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
+import { SceneLoadingSurface } from '../../components/skeletons';
 import { getCraveScoreColorFromScore } from '../../utils/quality-color';
 
 const ACTIVE_TAB_COLOR = themeColors.primary;
@@ -305,6 +306,8 @@ type BookmarksSceneBodyProps = {
   listType: FavoriteListType;
   formState: ListFormState;
   lists: readonly FavoriteListSummary[];
+  isListsLoading: boolean;
+  isListsError: boolean;
   onSelectListType: (value: FavoriteListType) => void;
   onOpenCreateForm: () => void;
   onResetForm: () => void;
@@ -322,6 +325,8 @@ const BookmarksSceneBody = React.memo(
     listType,
     formState,
     lists,
+    isListsLoading,
+    isListsError,
     onSelectListType,
     onOpenCreateForm,
     onResetForm,
@@ -355,8 +360,12 @@ const BookmarksSceneBody = React.memo(
     ) : (
       listHeader
     );
-    const listContent = sceneReady ? (
-      lists.length ? (
+    const listContent =
+      !sceneReady || isListsLoading ? (
+        // The real grid inherits its 20px horizontal inset from the body transport's
+        // contentContainer, so the skeleton holes must NOT re-inset (insetX={0}).
+        <SceneLoadingSurface rowType="tile" insetX={0} />
+      ) : lists.length ? (
         <View style={styles.gridList}>
           {listRows.map((row, rowIndex) => (
             <View key={`row-${rowIndex}`} style={styles.gridRow}>
@@ -369,18 +378,20 @@ const BookmarksSceneBody = React.memo(
             </View>
           ))}
         </View>
+      ) : isListsError ? (
+        // A fetch error resolved to empty — don't claim 'No lists yet'; surface the failure.
+        <View style={styles.emptyState}>
+          <Text variant="body" style={styles.emptyText}>
+            Couldn&apos;t load your lists
+          </Text>
+        </View>
       ) : (
         <View style={styles.emptyState}>
           <Text variant="body" style={styles.emptyText}>
             No lists yet
           </Text>
         </View>
-      )
-    ) : (
-      <View style={styles.loadingState}>
-        <ActivityIndicator color={ACTIVE_TAB_COLOR} size="small" />
-      </View>
-    );
+      );
     const profiledListContent = onProfilerRender ? (
       <React.Profiler id="BookmarksSceneBody:list" onRender={onProfilerRender}>
         {listContent}
@@ -402,9 +413,10 @@ BookmarksSceneBody.displayName = 'BookmarksSceneBody';
 
 const BookmarksTransitionShell = React.memo(() => (
   <View style={styles.sceneBody}>
-    <View style={styles.loadingState}>
-      <ActivityIndicator color={ACTIVE_TAB_COLOR} size="small" />
-    </View>
+    {/* Bookmarks content is always a 2-up tile grid — match it so the shell→body loading transition
+        doesn't reflow restaurant rows into tiles. Full-width here (sceneBody, no transport inset),
+        so the default insetX=20 aligns these holes with the inset body-loading tiles. */}
+    <SceneLoadingSurface rowType="tile" />
   </View>
 ));
 
@@ -449,6 +461,13 @@ const BookmarksDataSurface = React.memo(
         retainedListsRef.current[listType] = listsQuery.data;
       }
     }, [listType, listsQuery.data]);
+    // Hard-swap + skeleton (mirror of SaveListPanel's gate): while the data lane is held off
+    // (queryEnabled false) or the favorites fetch is in flight with no data to show yet, paint
+    // the tile-grid skeleton — NOT the 'No lists yet' empty state, which is only correct once
+    // the query RESOLVES empty. A fetch error with no data is reported separately so an errored
+    // query does not falsely claim the user has no lists.
+    const isListsLoading = !queryEnabled || (listsQuery.isLoading && lists.length === 0);
+    const isListsError = listsQuery.isError && lists.length === 0;
 
     const resetForm = React.useCallback(() => {
       setFormState({
@@ -600,6 +619,8 @@ const BookmarksDataSurface = React.memo(
         listType={listType}
         formState={formState}
         lists={lists}
+        isListsLoading={isListsLoading}
+        isListsError={isListsError}
         onSelectListType={handleListTypeChange}
         onOpenCreateForm={openCreateForm}
         onResetForm={resetForm}
@@ -626,6 +647,9 @@ BookmarksDataSurface.displayName = 'BookmarksDataSurface';
 
 export const BookmarksMountedSceneBody = React.memo(() => {
   const onProfilerRender = useSearchOverlayProfilerRender();
+  // P3 return-to-origin: publish the bookmarks scene's live scroll lane so a favorites-from-
+  // bookmarks reveal captures the scroll offset to return to on dismiss.
+  useOriginSceneScrollPublication('bookmarks');
   const { shouldSubscribeDataLane, hasActivatedExpandedContent } =
     useBottomSheetSceneStackBodyRenderActivity();
 
@@ -695,9 +719,6 @@ export const BookmarksMountedSceneHeader = React.memo(() => {
 BookmarksMountedSceneHeader.displayName = 'BookmarksMountedSceneHeader';
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-  },
   sceneBody: {
     paddingTop: 12,
   },

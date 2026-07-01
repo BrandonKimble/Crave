@@ -846,6 +846,11 @@ final class SearchMapRenderController: RCTEventEmitter {
   // laid out and placed (a preroll QRF-observation race, not unplaced labels) — the reveal is
   // force-started so it can never hang. Cleared the instant the gate opens or we leave preparingReveal.
   private var prerollGateFirstPendingAtMsByInstance: [String: Double] = [:]
+  // One-label selector state. Per instance: the chosen winning candidate per markerKey. The winner is
+  // STICKY — it only changes when it stops being placed (a genuine collapse), never on transient motion
+  // churn (which caused loser flashing). The winners are revealed via the reparse-immune
+  // `__lea_revealed__` paint literal, not feature-state. See applyLabelOneOfFourSelector.
+  private var labelWinnerByInstance: [String: [String: String]] = [:]
   // Per-instance count of placement re-attempts the watchdog has spent on the current reveal.
   // Reset when a reveal is armed (`armRevealStartDeadlockFallback`) and when the reveal starts
   // or is dismissed. Bounds the watchdog so it cannot spin forever.
@@ -856,6 +861,9 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var labelObservationRefreshWorkItems: [String: DispatchWorkItem] = [:]
   private var presentationOpacityAnimators: [String: PresentationOpacityAnimator] = [:]
   private var livePinTransitionAnimators: [String: CADisplayLink] = [:]
+  // UNIFIED-FADE TOGGLE (map-LOD-v6): instanceIds whose catalog was swapped but not yet re-projected on the
+  // static camera. Fired the next time presentation is UNDER COVER (≈0) — see reprojectCatalogUnderCoverIfReady.
+  private var pendingUnderCoverReproject: Set<String> = []
   private var lastVisualDiagByInstance: [String: String] = [:]
   private var slowActionWindowsByInstanceAndScope: [String: SlowActionWindowState] = [:]
   private var nativeApplyAttributionEnabled = false
@@ -1436,8 +1444,108 @@ final class SearchMapRenderController: RCTEventEmitter {
         state.lodV5Engine = engine
       }
       self.instances[instanceId] = state
+      // UNIFIED-FADE TOGGLE (map-LOD-v6): the new catalog must re-project + re-decide UNDER COVER. The catalog
+      // is typically swapped while the old set is still VISIBLE (presentation≈1), then the cover fades the map
+      // to 0; so we mark it pending and fire the re-decide the next time presentation is under cover (≈0) —
+      // unless it is ALREADY covered, in which case fire immediately.
+      self.pendingUnderCoverReproject.insert(instanceId)
+      self.reprojectCatalogUnderCoverIfReady(instanceId: instanceId)
       resolve(["catalogCount": catalog.count])
     }
+  }
+
+  /// Press-up marker fade-out (map-LOD-v6): ramp the SINGLE presentation scalar 1→0 immediately + snapSettled so
+  /// the markers fade out the instant the toggle is PRESSED — co-triggered with the JS frost, decoupled from the
+  /// debounced data commit. Idempotent (re-targeting 0 across a rapid-tap burst is a no-op). The engine freeze
+  /// makes the scalar the only moving curve. NO catalog change here; the under-cover re-decide + fade-IN still
+  /// run on the commit (reprojectCatalogUnderCoverIfReady fires immediately there since opacity is already ~0).
+  @objc
+  func beginInteractionFadeOut(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      // Fade the explicitly-named instance, or — when the caller (the toggle press) has no native
+      // instance id — every visual-active instance (there is one active search map).
+      let targetIds: [String] =
+        (payload["instanceId"] as? String).map { [$0] } ?? Array(self.instances.keys)
+      for instanceId in targetIds {
+        self.applyInteractionFadeOut(instanceId: instanceId)
+      }
+      resolve(nil)
+    }
+  }
+
+  private func applyInteractionFadeOut(instanceId: String) {
+    guard var state = instances[instanceId] else {
+      Self.lodLog("[FADEDBG] applyInteractionFadeOut SKIP no-instance \(instanceId)")
+      return
+    }
+    let inactive = Self.isVisualSourceInactiveOrDismissing(state)
+    Self.lodLog(
+      "[FADEDBG] applyInteractionFadeOut \(instanceId) from=\(Self.round3(state.currentPresentationOpacityValue)) inactive=\(inactive)")
+    guard !inactive,
+          state.currentPresentationOpacityValue > 0.001
+    else { return } // inactive/dismissing or already faded — idempotent no-op
+    if var engine = state.lodV5Engine {
+      engine.snapSettled(nowMs: Self.nowMs())
+      state.lodV5Engine = engine
+      instances[instanceId] = state
+    }
+    do {
+      try animatePresentationOpacity(
+        to: 0,
+        for: &state,
+        instanceId: instanceId,
+        reason: "interaction_fade_out"
+      )
+    } catch {
+      emitVisualDiag(
+        instanceId: instanceId,
+        message: "interaction_fade_out_failed: \(error.localizedDescription)"
+      )
+    }
+  }
+
+  /// The unified-fade TOGGLE re-decide, fired UNDER COVER. On a catalog swap the new ranked set must
+  /// re-project + re-decide on a STATIC camera — `setCandidateCatalog` otherwise only nils the signature and
+  /// waits for a camera tick that never comes on a static toggle, so it decides promoted=N but renders ZERO
+  /// pins, AND `engine.setRanking` leaves `lastPromotedInOrder` stale so `syncOverlayRoster` builds the overlay
+  /// from DEAD keys (the measured bug). Runs only when presentation is ≈0 (invisible) so the roster swap is
+  /// hidden; the subsequent fade-in then shows the correct set. Recipe = the shipping tap-promote path
+  /// (signature=nil → projectAndEmitOnScreenMarkers(isMoving:false), which runs engine.decide) PLUS
+  /// `snapSettled` (FREEZE: the new pins settle at opacity 1 / dots at 0 so the engine contributes a CONSTANT
+  /// per-marker opacity and the presentation scalar is the only moving curve) PLUS `syncOverlayRoster` (the
+  /// overlay consumer the tap-promote recipe predates). Called from setCandidateCatalog (fires if already
+  /// covered) and from the presentation tick (fires at the fade-in's first under-cover tick).
+  private static let underCoverReprojectThreshold = 0.05
+  private func reprojectCatalogUnderCoverIfReady(instanceId: String) {
+    guard pendingUnderCoverReproject.contains(instanceId) else { return }
+    guard Self.lodV5Enabled, var state = instances[instanceId] else { return }
+    guard state.currentPresentationOpacityValue <= Self.underCoverReprojectThreshold else { return }
+    guard !Self.isVisualSourceInactiveOrDismissing(state) else { return }
+    guard let handle = currentResolvedMapHandle(for: state.mapTag) else { return }
+    pendingUnderCoverReproject.remove(instanceId)
+    state.lastVisibleMarkerSetSignature = nil
+    _ = projectAndEmitOnScreenMarkers(
+      instanceId: instanceId, state: &state, handle: handle, reason: "toggle_redecide", isMoving: false)
+    // FREEZE: snap the newly-decided set to its settled roles (after the decide set `want`). Drains engine
+    // motion so no 180ms role crossfade races the presentation ramp.
+    if var engine = state.lodV5Engine {
+      engine.snapSettled(nowMs: Self.nowMs())
+      state.lodV5Engine = engine
+    }
+    instances[instanceId] = state
+    applyV5ObstacleReseed(for: instanceId)
+    // Rebuild the overlay roster from the now-fresh lastPromotedInOrder (creates/skins the new pin tiles,
+    // recycles vanished ones — invisible at presentation ≈ 0).
+    syncOverlayRoster(instanceId: instanceId, handle: handle)
+    Self.lodLog("[LODDBG] toggleRedecide done promoted=\(state.lodV5Engine?.lastPromotedInOrder.count ?? -1) presOpac=\(Self.round3(state.currentPresentationOpacityValue))")
   }
 
   @objc
@@ -7947,30 +8055,48 @@ final class SearchMapRenderController: RCTEventEmitter {
       ensureOverlayDisplayLink(instanceId: instanceId)
     }
     Self.lodLog("[pinov] roster promoted=\(engine.lastPromotedInOrder.count) desired=\(desired.count) tiles=\(overlay.tiles.count)")
-    // Position immediately so a freshly-promoted tile paints at the right spot this frame.
-    refreshOverlayFrame(instanceId: instanceId)
+    // Position immediately so a freshly-promoted tile paints at the right spot this frame. forceProject
+    // so a static-camera roster change (the toggle re-decide) still positions new tiles — the STEP 5
+    // static gate in refreshOverlayFrame would otherwise skip them and strand them at the origin.
+    refreshOverlayFrame(instanceId: instanceId, forceProject: true)
   }
 
   // The unconditional per-frame pass: project every resident tile to screen space, set its position,
   // z-order (screen-y → CALayer.zPosition), and opacity (engine.pinOpacity × presentation). Runs on a
   // dedicated display link while tiles are resident — pins track the camera every refresh, no tiling.
-  private func refreshOverlayFrame(instanceId: String) {
+  // `writeOpacity`: ONE-WRITER discipline (map-LOD-v6). During a presentation fade the presentation animator
+  // tick is the SOLE opacity authority — it calls this with writeOpacity:true on the SAME tick it writes the
+  // GL feature-state, so pin (CA) and dot/label (GL) move from the same scalar with no cross-clock skew. The
+  // overlay's OWN display link then runs POSITION-only (writeOpacity:false) so it can never write a lagged
+  // opacity. When no fade is active the overlay link owns opacity (writeOpacity:true) so the engine's panning
+  // crossfade still shows. pin opacity = engine.pinOpacity(key) × presentation either way.
+  private func refreshOverlayFrame(instanceId: String, writeOpacity: Bool = true, forceProject: Bool = false) {
     guard let overlay = overlayInstances[instanceId], !overlay.tiles.isEmpty else { return }
     guard let mapView = overlay.mapView, let mapboxMap = mapView.mapboxMap,
           let state = instances[instanceId], let engine = state.lodV5Engine
     else { return }
     let presentation = Float(Self.clamp(state.currentPresentationOpacityValue, min: 0, max: 1))
+    // STEP 5 (map-LOD-v6): on a STATIC camera the projected screen positions cannot change
+    // frame-to-frame, so skip the per-tile point(for:) projection — it is the costly Mapbox
+    // main-thread round-trip that contends with the toggle pill's compositor animation. Positions
+    // are still refreshed WHILE THE CAMERA MOVES (the zoom-out wiggle fix depends on it) and once on
+    // roster change (forceProject — so a freshly-promoted tile is never stranded at the origin).
+    let projectPositions = forceProject || state.currentViewportIsMoving
     CATransaction.begin(); CATransaction.setDisableActions(true)
     for (key, tile) in overlay.tiles {
-      guard let coord = overlay.coordByKey[key] else { tile.isHidden = true; continue }
-      let pt = mapboxMap.point(for: coord)
-      guard pt.x.isFinite, pt.y.isFinite else { tile.isHidden = true; continue }
-      tile.isHidden = false
-      // Smooth sub-pixel position (matches GL). The white-ring edge stays clean because the sprite is
-      // re-wrapped with the correct premultipliedLast alpha (see resolveOverlaySprite) — no pixel snapping needed.
-      tile.position = pt
-      tile.zPosition = pt.y
-      tile.opacity = Float(engine.pinOpacity(key)) * presentation
+      if projectPositions {
+        guard let coord = overlay.coordByKey[key] else { tile.isHidden = true; continue }
+        let pt = mapboxMap.point(for: coord)
+        guard pt.x.isFinite, pt.y.isFinite else { tile.isHidden = true; continue }
+        tile.isHidden = false
+        // Smooth sub-pixel position (matches GL). The white-ring edge stays clean because the sprite is
+        // re-wrapped with the correct premultipliedLast alpha (see resolveOverlaySprite) — no pixel snapping needed.
+        tile.position = pt
+        tile.zPosition = pt.y
+      }
+      if writeOpacity {
+        tile.opacity = Float(engine.pinOpacity(key)) * presentation
+      }
     }
     CATransaction.commit()
   }
@@ -7993,7 +8119,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard let instanceId = overlayDisplayLinks.first(where: { $0.value === displayLink })?.key else {
       return
     }
-    refreshOverlayFrame(instanceId: instanceId)
+    // POSITION-only while a presentation fade is in flight — the presentation animator tick owns opacity
+    // (one-writer). When idle, this link owns opacity so the engine's panning crossfade still shows.
+    refreshOverlayFrame(instanceId: instanceId, writeOpacity: presentationOpacityAnimators[instanceId] == nil)
   }
 
   // GL pin tap hitbox (search-map.tsx): a circle of radius PIN_TAP_INTENT_RADIUS_PX centered
@@ -8207,11 +8335,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     // crossfade only applies to the still-GL dot layer. Pins fade via the overlay's CA opacity.
     let leaIconLayers = ["restaurant-dot-layer"]
     for layerId in leaIconLayers
-    where Self.swapLeaLiteral(layerId: layerId, property: "icon-opacity", keys: promoted, mapboxMap: mapboxMap) {
+    where Self.swapLeaLiteral(layerId: layerId, property: "icon-opacity", sentinel: Self.leaLodSentinel, keys: promoted, mapboxMap: mapboxMap) {
       updated += 1
     }
     for layerId in labelLayerIds
-    where Self.swapLeaLiteral(layerId: layerId, property: "text-opacity", keys: promoted, mapboxMap: mapboxMap) {
+    where Self.swapLeaLiteral(layerId: layerId, property: "text-opacity", sentinel: Self.leaLodSentinel, keys: promoted, mapboxMap: mapboxMap) {
       updated += 1
     }
     if !Self.leaMemLoggedOnce {
@@ -8220,12 +8348,19 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
+  // Sentinel heads tag each reparse-immune LEA literal so multiple literals can coexist in ONE paint
+  // expression and be swapped independently. `text-opacity` now holds TWO: `__lea_lod__` (the
+  // promoted/LOD crossfade set) and `__lea_revealed__` (the one-label-per-restaurant winner set).
+  // The sentinel is element [0] of the literal array; the membership keys follow it.
+  static let leaLodSentinel = "__lea_lod__"
+  static let leaRevealedSentinel = "__lea_revealed__"
+
   @discardableResult
   private static func swapLeaLiteral(
-    layerId: String, property: String, keys: [String], mapboxMap: MapboxMap
+    layerId: String, property: String, sentinel: String, keys: [String], mapboxMap: MapboxMap
   ) -> Bool {
     let current = mapboxMap.layerPropertyValue(for: layerId, property: property)
-    let (updated, found) = replaceMembershipLiteral(current, keys: keys)
+    let (updated, found) = replaceSentinelLiteral(current, sentinel: sentinel, keys: keys)
     guard found else { return false }
     do {
       try mapboxMap.setLayerProperty(for: layerId, property: property, value: updated)
@@ -8235,17 +8370,21 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
-  // Rewrite the (single) ['literal', <array>] node inside an opacity expression to `keys`.
-  // The opacity expressions contain exactly one literal (the membership set), so a content-agnostic
-  // match is robust to any structural normalization Mapbox does on the surrounding expression.
-  private static func replaceMembershipLiteral(_ node: Any, keys: [String]) -> (Any, Bool) {
+  // Rewrite the ['literal', [<sentinel>, …]] node whose head element == `sentinel` to
+  // ['literal', [<sentinel>] + keys], preserving the sentinel head so the node stays routable on the
+  // next swap. Matching by head (not by structure) lets two sentineled literals coexist in the same
+  // expression without one swap clobbering the other.
+  private static func replaceSentinelLiteral(
+    _ node: Any, sentinel: String, keys: [String]
+  ) -> (Any, Bool) {
     guard let arr = node as? [Any] else { return (node, false) }
-    if arr.count == 2, (arr[0] as? String) == "literal", arr[1] is [Any] {
-      return (["literal", keys], true)
+    if arr.count == 2, (arr[0] as? String) == "literal",
+       let inner = arr[1] as? [Any], (inner.first as? String) == sentinel {
+      return (["literal", [sentinel] + keys], true)
     }
     var found = false
     let mapped: [Any] = arr.map { child in
-      let (c, f) = replaceMembershipLiteral(child, keys: keys)
+      let (c, f) = replaceSentinelLiteral(child, sentinel: sentinel, keys: keys)
       if f { found = true }
       return c
     }
@@ -8611,6 +8750,19 @@ final class SearchMapRenderController: RCTEventEmitter {
         transitionDurationMs: 0,
         emitDiagnostic: false
       )
+      // ONE-WRITER (map-LOD-v6): drive the CA pin overlay from the SAME tick that just wrote the GL
+      // dot/label feature-state, off the SAME currentPresentationOpacityValue — collapses the two-clock
+      // CA-vs-GL skew that desyncs the fade. Position-only during a fade unless the camera is moving (STEP 5).
+      refreshOverlayFrame(instanceId: instanceId)
+      state = instances[instanceId] ?? state
+      // STEP 6 REVERTED (2026-06-30): the under-cover re-decide runs AFTER applyPresentationOpacity (its
+      // original, on-device-verified position). Running it BEFORE (Step 6) repopulated
+      // lastVisibleMarkerSetSignature so frame-1's applyPresentationOpacity stopped sweeping the full catalog
+      // via setFeatureState — but that narrowing dropped DOTS from the reveal fade-in (demoted markers never
+      // got nativeDotOpacity written, and reveal dots lean on that write). The frame-1 sweep is cheap at our
+      // scale (~600 markers, run post-pause/under-cover, never competing with the pill animation), so
+      // restoring the original order writes every dot and fixes the reveal dot no-show.
+      reprojectCatalogUnderCoverIfReady(instanceId: instanceId)
       state = instances[instanceId] ?? state
       if progress >= 1 {
         cancelPresentationOpacityAnimation(instanceId: instanceId)
@@ -8627,6 +8779,32 @@ final class SearchMapRenderController: RCTEventEmitter {
           message:
             "presentation_opacity_animation_complete reason=\(animator.reason) target=\(Self.round3(animator.targetOpacity))"
         )
+        // UNIFIED-FADE TOGGLE settled signal (map-LOD-v6). On a fade-IN ramp completion emit a DETERMINISTIC
+        // settled event keyed to the LATEST request (`lastEnterRequestKey` — every rapid tap re-stamps it at
+        // :2681 and the single in-flight animator completes under the newest key). This REPLACES the racy
+        // per-execution-batch `mounted_hidden` gate that silently drops superseded rapid-tap intents at the
+        // `lastEnterRequestKey == batch.requestKey` guard (:6046) → the stuck-cover bug. JS gates the toggle
+        // cover-lift on THIS (latest-wins): N rapid taps → one ramp completion → one settled → one lift.
+        // overlayTileCount + degraded let JS lift-but-flag a roster failure instead of hanging; an empty
+        // result (promoted=0) lifts normally. Guarded off fade-IN + not-dismissing (cross-lane dismiss safety).
+        if animator.targetOpacity >= 0.999, !Self.isVisualSourceInactiveOrDismissing(state) {
+          let overlayTileCount = overlayInstances[instanceId]?.tiles.count ?? 0
+          let promotedCount = state.lodV5Engine?.lastPromotedInOrder.count ?? 0
+          let degraded = promotedCount > 0 && overlayTileCount == 0
+          emit([
+            "type": "presentation_toggle_settled",
+            "instanceId": instanceId,
+            "requestKey": state.lastEnterRequestKey as Any,
+            "pinCount": state.lastPinCount,
+            "dotCount": state.lastDotCount,
+            "labelCount": state.lastLabelCount,
+            "overlayTileCount": overlayTileCount,
+            "promotedCount": promotedCount,
+            "degraded": degraded,
+            "settledAtMs": Self.nowMs(),
+          ])
+          Self.lodLog("[LODDBG] toggleSettled requestKey=\(state.lastEnterRequestKey ?? "nil") reason=\(animator.reason) promoted=\(promotedCount) tiles=\(overlayTileCount) degraded=\(degraded)")
+        }
       }
     } catch {
       emit([
@@ -9275,6 +9453,17 @@ final class SearchMapRenderController: RCTEventEmitter {
             from: features,
             allowedSourceIds: [latestState.labelRenderSourceId]
           )
+          // One-label selector: keep the source-priority winner among each restaurant's placed
+          // candidates and reveal ONLY that one via the reparse-immune `__lea_revealed__` paint literal.
+          if let labelSelectorMap =
+            self.currentResolvedMapHandle(for: latestState.mapTag)?.mapView.mapboxMap {
+            self.applyLabelOneOfFourSelector(
+              instanceId: instanceId,
+              visibleLabelFeatureIds: primaryObservation,
+              labelLayerIds: latestState.labelLayerIds,
+              mapboxMap: labelSelectorMap
+            )
+          }
           let snapshot = self.commitRenderedLabelObservation(
             instanceId: instanceId,
             visibleLabelFeatureIds: primaryObservation,
@@ -9415,6 +9604,75 @@ final class SearchMapRenderController: RCTEventEmitter {
       visibleLabelFeatureIds.insert(featureId)
     }
     return Array(visibleLabelFeatureIds).sorted()
+  }
+
+  // Source-emission priority of a label candidate (LABEL_CANDIDATES_IN_ORDER on the JS side):
+  // bottom > right > top > left. Lower = higher priority (preferred side; emitted first).
+  private static func labelCandidatePriority(_ candidate: String) -> Int {
+    switch candidate {
+    case "bottom": return 0
+    case "right": return 1
+    case "top": return 2
+    case "left": return 3
+    default: return Int.max
+    }
+  }
+
+  // ONE-LABEL SELECTOR (single-layer collapse): a restaurant's 4 per-side candidate labels can all
+  // clear collision (opposite sides don't mutually collide), so multiple would show. Keep exactly one —
+  // a STICKY winner per restaurant — and reveal ONLY that one via the reparse-immune `__lea_revealed__`
+  // membership literal: the winner's composite key `markerKey::candidate` is a member → text-opacity 1;
+  // every other candidate defaults to 0 (the JS expression is default-hidden).
+  //
+  // STICKINESS is the whole point: during a pan, candidates flicker in and out of placement every frame.
+  // We must NOT drop the winner just because it's momentarily unplaced this pass (that flashed labels). So
+  // we keep the chosen winner per marker and only change it when the winner stops being placed (a genuine
+  // collapse) — transient loser churn never moves it. The winner is paint-revealed only, so it never
+  // re-triggers placement, and a hidden opacity-0 candidate stays placed AND queryable (the reveal gate
+  // relies on this) → the observed candidate set is complete each pass.
+  //
+  // WHY a paint LITERAL, not feature-state: the label ShapeSource is geojson-vt TILED, so a tile reparse
+  // during motion CLEARS feature-state → candidates would default visible → flash. The literal lives in the
+  // PAINT expression, which reparse preserves — the same reparse-immune channel the LOD crossfade uses.
+  private func applyLabelOneOfFourSelector(
+    instanceId: String,
+    visibleLabelFeatureIds: [String],
+    labelLayerIds: [String],
+    mapboxMap: MapboxMap
+  ) {
+    // Placed candidates this pass, grouped by marker, sorted by source priority (bottom<right<top<left).
+    var observedByMarker: [String: [(candidate: String, priority: Int)]] = [:]
+    for featureId in visibleLabelFeatureIds {
+      guard let parsed = Self.parseRenderedLabelCandidateFeatureId(featureId) else { continue }
+      observedByMarker[parsed.markerKey, default: []].append(
+        (parsed.candidate, Self.labelCandidatePriority(parsed.candidate))
+      )
+    }
+    var winners = labelWinnerByInstance[instanceId] ?? [:]
+    // Forget winners whose marker has no placed candidate this pass (marker left the scene) so the revealed
+    // set never pins a stale key. A marker merely churning keeps its winner (re-resolved just below).
+    for markerKey in winners.keys where observedByMarker[markerKey] == nil {
+      winners.removeValue(forKey: markerKey)
+    }
+    for (markerKey, candidatesUnsorted) in observedByMarker {
+      let candidates = candidatesUnsorted.sorted { $0.priority < $1.priority }
+      // Keep the current winner if it is still placed; otherwise promote the highest-priority placed
+      // candidate. (Only a genuine winner-collapse changes the winner — transient loser churn doesn't.)
+      let prevWinner = winners[markerKey]
+      winners[markerKey] =
+        (prevWinner != nil && candidates.contains { $0.candidate == prevWinner }) ? prevWinner!
+          : candidates[0].candidate
+    }
+    labelWinnerByInstance[instanceId] = winners
+    // Reveal exactly the winners: swap the set of composite keys (markerKey::candidate) into the layer's
+    // reparse-immune `__lea_revealed__` literal. Matches the JS expression's ['concat', markerKey,'::',cand].
+    let revealedKeys = winners.map { "\($0.key)::\($0.value)" }
+    for layerId in labelLayerIds {
+      Self.swapLeaLiteral(
+        layerId: layerId, property: "text-opacity",
+        sentinel: Self.leaRevealedSentinel, keys: revealedKeys, mapboxMap: mapboxMap
+      )
+    }
   }
 
   // Rendered-dot observation: of the markers that SHOULD show as visible dots

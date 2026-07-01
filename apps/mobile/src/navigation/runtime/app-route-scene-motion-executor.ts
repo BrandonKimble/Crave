@@ -151,12 +151,13 @@ export class AppRouteSceneMotionExecutor {
     this.completeMotionPlane(settleToken, 'sheet');
   }
 
-  // Completes the overlap 'content' settle plane. Render-side completer: the scene-stack
+  // Completes the overlap 'content' settle plane. Render-side CO-completer: the scene-stack
   // crossfade ramp's withTiming onFinish calls this (via runOnJS, threaded from
   // AppRouteSheetHostRuntimeProvider → BottomSheetSceneStackHost) with the contentTransitionToken
-  // once the incoming page reveals, so the plane settles at ramp-end. The controller-side
-  // CONTENT_SETTLE_TIMEOUT is now a true fallback guard. completeMotionPlane is token-guarded, so
-  // a stale/duplicate call (e.g. a superseded ramp, or the timeout firing first) is a safe no-op.
+  // once the incoming page reveals, so the plane settles at ramp-end. Phase 2: the readiness
+  // collector is the other co-completer (settles on real gate paint), and the controller-side
+  // SCENE_READINESS_LIVENESS_MS timer is a never-hit watchdog. completeMotionPlane is token-guarded,
+  // so a stale/duplicate call (e.g. a superseded ramp, the collector, or the watchdog) is a safe no-op.
   public completeFromContentSettle(settleToken: number): void {
     this.completeMotionPlane(settleToken, 'content');
   }

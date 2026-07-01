@@ -37,10 +37,9 @@ const MaskedHoleOverlay = React.forwardRef<View, MaskedHoleOverlayProps>(
     },
     ref
   ) => {
-    const maskId = React.useMemo(
-      () => `masked-hole-overlay-mask-${Math.random().toString(36).slice(2, 8)}`,
-      []
-    );
+    // Collision-free per-instance id (Math.random's 6 base-36 chars were birthday-bounded — two
+    // concurrent surfaces could share an id and one plate would render the other's holes).
+    const maskId = `masked-hole-overlay-mask-${React.useId().replace(/:/g, '')}`;
 
     const containerStyle = style
       ? [overlayStyles.absoluteTopLeft, style]

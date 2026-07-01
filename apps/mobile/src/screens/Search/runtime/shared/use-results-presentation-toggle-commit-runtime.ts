@@ -80,12 +80,11 @@ export const useResultsPresentationToggleCommitRuntime = ({
     [handleToggleInteractionLifecycle, searchRuntimeBus, toggleStateRuntime]
   );
 
-  const notifyFrostReady = React.useCallback(
-    (intentId: string) => {
-      commitActiveInteraction(intentId);
-    },
-    [commitActiveInteraction]
-  );
+  // The commit is now driven SOLELY by the restarting quiet-window debounce in the toggle
+  // state runtime (via commitActiveInteractionRef). The 90ms frost is pure visual cover and
+  // must NOT advance the commit clock — otherwise the toggle settles a frost-fade after the
+  // first tap (90ms) instead of after the user pauses (300ms). Kept for interface parity.
+  const notifyFrostReady = React.useCallback((_intentId: string) => {}, []);
 
   const notifyIntentComplete = React.useCallback(
     (intentId: string) => {
@@ -99,6 +98,9 @@ export const useResultsPresentationToggleCommitRuntime = ({
   );
 
   notifyIntentCompleteRef.current = notifyIntentComplete;
+  // Hand the commit function to the state runtime's debounce timer (mirrors the
+  // notifyIntentCompleteRef pattern; avoids a circular hook dependency).
+  toggleStateRuntime.commitActiveInteractionRef.current = commitActiveInteraction;
 
   return React.useMemo(
     () => ({

@@ -33,7 +33,7 @@
 }
 ```
 
-> When `risingActive` is `true`, the ranking switches from score to recent momentum: restaurants and dishes are ordered by the Crave Score 7-day delta (`score_delta_7d DESC NULLS LAST`) with the score-based ordering kept as the tiebreak. The plan's `ranking` then reports `{"foodOrder": "rising DESC", "restaurantOrder": "rising DESC"}`.
+> When `risingActive` is `true`, the ranking switches from score to recent momentum: restaurants and dishes are ordered by the Crave Score **rising** surge (`rising DESC NULLS LAST`) with the score-based ordering kept as the tiebreak. `rising` is the recent-vs-baseline display-point delta (the score recomputed on a fast decay half-life minus the all-time score), not a fixed-window snapshot delta. The plan's `ranking` then reports `{"foodOrder": "rising DESC", "restaurantOrder": "rising DESC"}`.
 
 ### Response Shape
 
@@ -50,8 +50,8 @@
       "restaurantName": "Ramen Tatsu-Ya",
       "scoreSubjectType": "connection",
       "scoreSubjectId": "uuid-conn",
-      "craveScore": 87.5,
-      "scoreDelta7d": 0.6,
+      "craveScore": 8.75,
+      "rising": 0.6,
       "mentionCount": 12,
       "totalUpvotes": 145,
       "lastMentionedAt": "2025-10-24T18:02:00.000Z",
@@ -65,8 +65,8 @@
       "restaurantName": "Ramen Tatsu-Ya",
       "scoreSubjectType": "restaurant",
       "scoreSubjectId": "uuid-restaurant",
-      "craveScore": 85.2,
-      "scoreDelta7d": -0.4,
+      "craveScore": 8.52,
+      "rising": -0.4,
       "matchEvidenceType": "mixed",
       "hasMenuItems": true,
       "matchedTags": [
@@ -87,8 +87,8 @@
           "foodName": "Tonkotsu Ramen",
           "scoreSubjectType": "connection",
           "scoreSubjectId": "uuid-conn",
-          "craveScore": 87.5,
-          "scoreDelta7d": 0.6
+          "craveScore": 8.75,
+          "rising": 0.6
         }
       ]
     }

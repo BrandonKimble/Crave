@@ -1,0 +1,12 @@
+appId: com.brandonkimble.cravesearch
+---
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 1500 }
+
+# transition (iii) tab switch: Profile (83% x, 94% y) then back to Search (16% x)
+- tapOn: { point: '83%, 94%' }
+- waitForAnimationToEnd: { timeout: 3500 }
+- takeScreenshot: /tmp/p4-iso-profile
+- tapOn: { point: '16%, 94%' }
+- waitForAnimationToEnd: { timeout: 3500 }
+- takeScreenshot: /tmp/p4-iso-search-back

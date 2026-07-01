@@ -180,10 +180,10 @@ model PublicEntityScore {
   scoringMarketKey    String?                 @map("scoring_market_key") @db.VarChar(255)
   endorsementRaw      Decimal                 @map("endorsement_raw") @db.Decimal(18, 6)
   percentileRank      Decimal                 @map("percentile_rank") @db.Decimal(6, 5)
-  displayScore        Decimal                 @map("display_score") @db.Decimal(5, 1)
-  scoreDelta7d        Decimal?                @map("score_delta_7d") @db.Decimal(5, 1)
-  scoreDelta28d       Decimal?                @map("score_delta_28d") @db.Decimal(5, 1)
-  movementState       CraveScoreMovementState @map("movement_state")
+  displayScore        Decimal                 @map("display_score") @db.Decimal(4, 2)
+  // Recent-vs-baseline point surge (rawDisplayFast − rawDisplayStable); powers the
+  // "↑X pts" arrow + the Rising sort. 0.001 precision so the sort tail isn't mushy.
+  rising              Decimal?                @map("rising") @db.Decimal(5, 3)
   scoreVersion        String                  @map("score_version") @db.VarChar(64)
   displayCurveVersion String                  @map("display_curve_version") @db.VarChar(64)
   factorTrace         Json?                   @default("{}") @map("factor_trace")
@@ -193,6 +193,7 @@ model PublicEntityScore {
   @@id([subjectType, subjectId])
   @@index([subjectType, displayScore(sort: Desc)], map: "idx_public_entity_scores_subject_display")
   @@index([scoringMarketKey, subjectType, displayScore(sort: Desc)], map: "idx_public_entity_scores_market_subject_display")
+  @@index([subjectType, rising(sort: Desc)], map: "idx_public_entity_scores_subject_rising")
   @@index([scoreRunId], map: "idx_public_entity_scores_run")
   @@map("core_public_entity_scores")
 }
@@ -201,8 +202,8 @@ model CraveScoreRun {
   scoreRunId           String                     @id @default(dbgenerated("gen_random_uuid()")) @map("score_run_id") @db.Uuid
   scoreVersion         String                     @map("score_version") @db.VarChar(64)
   displayCurveVersion  String                     @map("display_curve_version") @db.VarChar(64)
-  displayMin           Decimal                    @map("display_min") @db.Decimal(5, 1)
-  displayMax           Decimal                    @map("display_max") @db.Decimal(5, 1)
+  displayMin           Decimal                    @map("display_min") @db.Decimal(4, 2)
+  displayMax           Decimal                    @map("display_max") @db.Decimal(4, 2)
   status               CraveScoreRunStatus        @default(running)
   recencyReferenceDate DateTime                   @map("recency_reference_date") @db.Date
   startedAt            DateTime                   @default(now()) @map("started_at") @db.Timestamptz(6)
@@ -211,33 +212,10 @@ model CraveScoreRun {
   configSnapshot       Json?                      @default("{}") @map("config_snapshot")
   errorMessage         String?                    @map("error_message")
   scores               PublicEntityScore[]
-  history              PublicEntityScoreHistory[]
 
   @@index([scoreVersion, startedAt(sort: Desc)], map: "idx_crave_score_runs_version_started")
   @@index([status, startedAt(sort: Desc)], map: "idx_crave_score_runs_status_started")
   @@map("core_crave_score_runs")
-}
-
-model PublicEntityScoreHistory {
-  scoreRunId          String                  @map("score_run_id") @db.Uuid
-  snapshotDate        DateTime                @map("snapshot_date") @db.Date
-  subjectType         CraveScoreSubjectType   @map("subject_type")
-  subjectId           String                  @map("subject_id") @db.Uuid
-  scoringMarketKey    String?                 @map("scoring_market_key") @db.VarChar(255)
-  scoreVersion        String                  @map("score_version") @db.VarChar(64)
-  displayCurveVersion String                  @map("display_curve_version") @db.VarChar(64)
-  displayScore        Decimal                 @map("display_score") @db.Decimal(5, 1)
-  endorsementRaw      Decimal                 @map("endorsement_raw") @db.Decimal(18, 6)
-  percentileRank      Decimal                 @map("percentile_rank") @db.Decimal(6, 5)
-  movementState       CraveScoreMovementState @map("movement_state")
-  factorTrace         Json?                   @default("{}") @map("factor_trace")
-  computedAt          DateTime                @default(now()) @map("computed_at") @db.Timestamptz(6)
-  scoreRun            CraveScoreRun           @relation(fields: [scoreRunId], references: [scoreRunId], onDelete: Cascade)
-
-  @@id([snapshotDate, subjectType, subjectId, scoreVersion])
-  @@index([subjectType, subjectId, snapshotDate(sort: Desc)], map: "idx_public_entity_score_history_subject_date")
-  @@index([scoreRunId], map: "idx_public_entity_score_history_run")
-  @@map("core_public_entity_score_history")
 }
 
 model ProcessedSource {
@@ -1405,15 +1383,6 @@ enum CraveScoreRunStatus {
   failed
 
   @@map("crave_score_run_status")
-}
-
-enum CraveScoreMovementState {
-  rising
-  cooling
-  stable
-  insufficient_history
-
-  @@map("crave_score_movement_state")
 }
 
 enum FavoriteListType {

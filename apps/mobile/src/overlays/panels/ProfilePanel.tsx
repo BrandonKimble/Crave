@@ -12,6 +12,7 @@ import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
+import { SceneLoadingSurface, SkeletonBox } from '../../components/skeletons';
 import type { ProfileSegment } from './profileSceneQueryOptions';
 import { useProfilePanelBodyModelRuntime } from './runtime/profile-panel-body-model-runtime';
 import { getCraveScoreColorFromScore } from '../../utils/quality-color';
@@ -116,8 +117,11 @@ type ProfileIdentityChromeProps = {
   pollsContributedCount: number;
   followersCount: number;
   followingCount: number;
+  identityResolved: boolean;
   onOpenSettings: () => void;
 };
+
+const PROFILE_STAT_LABELS = ['Polls created', 'Polls contributed', 'Followers', 'Following'];
 
 const ProfileIdentityChrome = React.memo(
   ({
@@ -129,75 +133,79 @@ const ProfileIdentityChrome = React.memo(
     pollsContributedCount,
     followersCount,
     followingCount,
+    identityResolved,
     onOpenSettings,
-  }: ProfileIdentityChromeProps) => (
-    <>
-      <View style={styles.header}>
-        <View style={styles.avatarWrapper}>
-          {avatarUrl ? (
-            <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
-          ) : (
-            <View style={styles.avatarFallback}>
-              <Text variant="title" weight="bold" style={styles.avatarInitials}>
-                {initials}
+  }: ProfileIdentityChromeProps) => {
+    const statValues = [
+      pollsCreatedCount,
+      pollsContributedCount,
+      followersCount,
+      followingCount,
+    ];
+    return (
+      <>
+        <View style={styles.header}>
+          <View style={styles.avatarWrapper}>
+            {!identityResolved ? (
+              // Profile still loading — pulse a circle so the seeded header doesn't flash the
+              // 'C' initials fallback before the real avatar/initials resolve.
+              <SkeletonBox width="100%" height={64} borderRadius={32} />
+            ) : avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text variant="title" weight="bold" style={styles.avatarInitials}>
+                  {initials}
+                </Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.headerText}>
+            {!identityResolved ? (
+              <>
+                <SkeletonBox width={160} height={20} style={styles.identitySkeletonName} />
+                <SkeletonBox width={100} height={12} style={styles.identitySkeletonUsername} />
+              </>
+            ) : (
+              <>
+                <Text variant="title" weight="bold" style={styles.displayName}>
+                  {displayName}
+                </Text>
+                <Text variant="caption" style={styles.username}>
+                  {usernameLabel}
+                </Text>
+              </>
+            )}
+          </View>
+          <Pressable
+            style={styles.settingsButton}
+            onPress={onOpenSettings}
+            accessibilityRole="button"
+            accessibilityLabel="Profile settings"
+          >
+            <Feather name="settings" size={20} color={themeColors.primary} />
+          </Pressable>
+        </View>
+
+        <View style={styles.statsRow}>
+          {PROFILE_STAT_LABELS.map((label, index) => (
+            <View key={label} style={styles.statBlock}>
+              {!identityResolved ? (
+                <SkeletonBox width={28} height={18} style={styles.identitySkeletonStat} />
+              ) : (
+                <Text variant="subtitle" weight="bold" style={styles.statValue}>
+                  {statValues[index]}
+                </Text>
+              )}
+              <Text variant="caption" style={styles.statLabel}>
+                {label}
               </Text>
             </View>
-          )}
+          ))}
         </View>
-        <View style={styles.headerText}>
-          <Text variant="title" weight="bold" style={styles.displayName}>
-            {displayName}
-          </Text>
-          <Text variant="caption" style={styles.username}>
-            {usernameLabel}
-          </Text>
-        </View>
-        <Pressable
-          style={styles.settingsButton}
-          onPress={onOpenSettings}
-          accessibilityRole="button"
-          accessibilityLabel="Profile settings"
-        >
-          <Feather name="settings" size={20} color={themeColors.primary} />
-        </Pressable>
-      </View>
-
-      <View style={styles.statsRow}>
-        <View style={styles.statBlock}>
-          <Text variant="subtitle" weight="bold" style={styles.statValue}>
-            {pollsCreatedCount}
-          </Text>
-          <Text variant="caption" style={styles.statLabel}>
-            Polls created
-          </Text>
-        </View>
-        <View style={styles.statBlock}>
-          <Text variant="subtitle" weight="bold" style={styles.statValue}>
-            {pollsContributedCount}
-          </Text>
-          <Text variant="caption" style={styles.statLabel}>
-            Polls contributed
-          </Text>
-        </View>
-        <View style={styles.statBlock}>
-          <Text variant="subtitle" weight="bold" style={styles.statValue}>
-            {followersCount}
-          </Text>
-          <Text variant="caption" style={styles.statLabel}>
-            Followers
-          </Text>
-        </View>
-        <View style={styles.statBlock}>
-          <Text variant="subtitle" weight="bold" style={styles.statValue}>
-            {followingCount}
-          </Text>
-          <Text variant="caption" style={styles.statLabel}>
-            Following
-          </Text>
-        </View>
-      </View>
-    </>
-  )
+      </>
+    );
+  }
 );
 
 ProfileIdentityChrome.displayName = 'ProfileIdentityChrome';
@@ -238,12 +246,20 @@ type ProfileFavoriteListsSectionRowProps = {
   title: string;
   lists: readonly FavoriteListSummary[];
   loading: boolean;
+  error: boolean;
   emptyMessage: string;
   onListPress: (list: FavoriteListSummary) => void;
 };
 
 const ProfileFavoriteListsSectionRow = React.memo(
-  ({ title, lists, loading, emptyMessage, onListPress }: ProfileFavoriteListsSectionRowProps) => (
+  ({
+    title,
+    lists,
+    loading,
+    error,
+    emptyMessage,
+    onListPress,
+  }: ProfileFavoriteListsSectionRowProps) => (
     <View style={styles.section}>
       <Text variant="subtitle" weight="semibold" style={styles.sectionTitle}>
         {title}
@@ -256,6 +272,11 @@ const ProfileFavoriteListsSectionRow = React.memo(
             <ProfileFavoriteListTile key={list.listId} list={list} onPress={onListPress} />
           ))}
         </View>
+      ) : error ? (
+        // A failed fetch must not claim the user has no public lists.
+        <Text variant="caption" style={styles.emptyText}>
+          Couldn&apos;t load lists
+        </Text>
       ) : (
         <Text variant="caption" style={styles.emptyText}>
           {emptyMessage}
@@ -299,6 +320,7 @@ const ProfileSceneListHeader = React.memo(
     pollsContributedCount,
     followersCount,
     followingCount,
+    identityResolved,
     activeSegment,
     onOpenSettings,
     onSelectSegment,
@@ -313,6 +335,7 @@ const ProfileSceneListHeader = React.memo(
         pollsContributedCount={pollsContributedCount}
         followersCount={followersCount}
         followingCount={followingCount}
+        identityResolved={identityResolved}
         onOpenSettings={onOpenSettings}
       />
 
@@ -364,6 +387,7 @@ const ProfileSceneBody = React.memo(
                   title={row.title}
                   lists={row.lists}
                   loading={row.loading}
+                  error={row.error}
                   emptyMessage={row.emptyMessage}
                   onListPress={onListPress}
                 />
@@ -380,9 +404,7 @@ const ProfileSceneBody = React.memo(
         }
       })
     ) : (
-      <View style={styles.loadingState}>
-        <ActivityIndicator color={themeColors.primary} style={styles.sectionSpinner} />
-      </View>
+      <SceneLoadingSurface rowType="restaurant" />
     );
     const profiledRows = onProfilerRender ? (
       <React.Profiler id="ProfileSceneBody:rows" onRender={onProfilerRender}>
@@ -405,9 +427,7 @@ ProfileSceneBody.displayName = 'ProfileSceneBody';
 
 const ProfileTransitionShell = React.memo(() => (
   <View style={styles.contentContainer}>
-    <View style={styles.loadingState}>
-      <ActivityIndicator color={themeColors.primary} style={styles.sectionSpinner} />
-    </View>
+    <SceneLoadingSurface rowType="restaurant" />
   </View>
 ));
 
@@ -416,14 +436,16 @@ ProfileTransitionShell.displayName = 'ProfileTransitionShell';
 type ProfileDataSurfaceProps = {
   shouldSubscribeDataLane: boolean;
   sceneReady: boolean;
+  isActive: boolean;
 };
 
 const ProfileDataSurface = React.memo(
-  ({ shouldSubscribeDataLane, sceneReady }: ProfileDataSurfaceProps) => {
+  ({ shouldSubscribeDataLane, sceneReady, isActive }: ProfileDataSurfaceProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
     const profilePanelBodyModelRuntime = useProfilePanelBodyModelRuntime({
       shouldRunDataLane: shouldSubscribeDataLane,
       shouldRenderExpandedContent: sceneReady,
+      isActive,
     });
 
     const dataSurface = (
@@ -450,7 +472,7 @@ ProfileDataSurface.displayName = 'ProfileDataSurface';
 
 export const ProfileMountedSceneBody = React.memo(() => {
   const onProfilerRender = useSearchOverlayProfilerRender();
-  const { shouldSubscribeDataLane, hasActivatedExpandedContent } =
+  const { shouldSubscribeDataLane, hasActivatedExpandedContent, isActive } =
     useBottomSheetSceneStackBodyRenderActivity();
 
   const mountedBody = (
@@ -460,6 +482,7 @@ export const ProfileMountedSceneBody = React.memo(() => {
         <ProfileDataSurface
           shouldSubscribeDataLane={shouldSubscribeDataLane}
           sceneReady={hasActivatedExpandedContent}
+          isActive={isActive}
         />
       </View>
     </>
@@ -569,6 +592,15 @@ const styles = StyleSheet.create({
   username: {
     color: themeColors.textBody,
     marginTop: 4,
+  },
+  identitySkeletonName: {
+    marginTop: 4,
+  },
+  identitySkeletonUsername: {
+    marginTop: 10,
+  },
+  identitySkeletonStat: {
+    marginBottom: 2,
   },
   settingsButton: {
     width: 36,

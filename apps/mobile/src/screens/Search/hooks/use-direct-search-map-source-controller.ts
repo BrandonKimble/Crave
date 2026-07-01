@@ -2150,6 +2150,26 @@ export const useDirectSearchMapSourceController = ({
       shortcutCoverageReadyForPreparedEnter &&
       pinInteractionSourcesComplete &&
       (!expectsPreparedVisualSources || hasVisualSources);
+    if (readinessKey != null && String(readinessKey).includes('toggle')) {
+      logger.info('[TGLDBG-v2] srcGate', {
+        activeTab,
+        rk: readinessKey,
+        sri: searchRequestId,
+        rest: restaurants.length,
+        dish: dishes.length,
+        cat: markerCatalogEntries.length,
+        pins: pinSourceStore.idsInOrder.length,
+        dots: dotSourceStore.idsInOrder.length,
+        labels: labelSourceStore.idsInOrder.length,
+        committedData: hasCommittedDataForPreparedEnter,
+        cov: shortcutCoverageReadyForPreparedEnter,
+        pinInter: pinInteractionSourcesComplete,
+        shouldProj: shouldProjectResultSources,
+        expectsVis: expectsPreparedVisualSources,
+        hasVis: hasVisualSources,
+        ready: mapSearchSurfaceResultsSourcesReady,
+      });
+    }
     const coverageCounters = shortcutCoverageCountersRef.current;
     const shortcutCoverageInFlightCount = coverageResource?.status === 'loading' ? 1 : 0;
     const shortcutCoverageTerminal =

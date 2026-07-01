@@ -323,7 +323,14 @@ export type OverlayRouteParamsMap = {
     pollId?: string | null;
     pinnedMarket?: boolean | null;
   };
-  profile?: undefined;
+  // Return-to-origin foundation (P5) — the profile identity axis. Own profile leaves
+  // profileUserId undefined/null (self-default re-root, byte-identical to today's param-less
+  // profile); the FOREIGN-profile source sets a non-null profileUserId so restore re-roots the
+  // right person's profile. Optional + nullable so the existing param-less profile push and
+  // every current consumer (none read profile params today) are unaffected.
+  profile?: {
+    profileUserId?: string | null;
+  };
   restaurant?: {
     restaurantId: string | null;
     source?: 'search';
@@ -358,6 +365,11 @@ export type OverlayRouteParamsMap = {
     parentSceneKey?: 'polls' | null;
     ownerSceneKey?: 'polls' | null;
     routeInstanceId?: string | null;
+    // The comment a cross-surface reveal launched from. Set only when the route is RE-PUSHED by the
+    // return-to-origin dismiss (resolveChildOriginRePush) so the panel scrolls-to + flashes that
+    // comment. The routing layer guarantees the right poll re-mounts; the scroll-to + flash is a
+    // panel-layer concern (PollDetailPanel's anchor restore effect).
+    commentAnchorId?: string | null;
   };
 };
 

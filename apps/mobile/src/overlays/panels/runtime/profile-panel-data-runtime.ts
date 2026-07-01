@@ -23,8 +23,10 @@ export type ProfilePanelDataRuntime = {
   contributedPollsIsLoading: boolean;
   restaurantLists: readonly FavoriteListSummary[];
   restaurantListsIsLoading: boolean;
+  restaurantListsIsError: boolean;
   dishLists: readonly FavoriteListSummary[];
   dishListsIsLoading: boolean;
+  dishListsIsError: boolean;
 };
 
 export const useProfilePanelDataRuntime = ({
@@ -92,6 +94,9 @@ export const useProfilePanelDataRuntime = ({
     [contributedPollsSource, userId]
   );
 
+  const restaurantLists = restaurantListsQuery.data ?? EMPTY_FAVORITE_LISTS;
+  const dishLists = dishListsQuery.data ?? EMPTY_FAVORITE_LISTS;
+
   return {
     profile,
     profileIsLoading: profileQuery.isLoading,
@@ -99,9 +104,18 @@ export const useProfilePanelDataRuntime = ({
     createdPollsIsLoading: createdPollsQuery.isLoading,
     contributedPolls,
     contributedPollsIsLoading: contributedPollsQuery.isLoading,
-    restaurantLists: restaurantListsQuery.data ?? EMPTY_FAVORITE_LISTS,
-    restaurantListsIsLoading: restaurantListsQuery.isLoading,
-    dishLists: dishListsQuery.data ?? EMPTY_FAVORITE_LISTS,
-    dishListsIsLoading: dishListsQuery.isLoading,
+    restaurantLists,
+    // While the favorites query is gated off (favoriteListsQueryEnabled false → React Query
+    // reports isLoading=false even though no fetch has run yet) or the fetch is in flight with
+    // no data, treat the section as LOADING so it shows the spinner instead of flashing the
+    // 'No public … lists yet' empty message. The empty message is only correct once the query
+    // RESOLVES empty. Mirrors SaveListPanel's isListsLoading gate.
+    restaurantListsIsLoading:
+      !favoriteListsQueryEnabled || (restaurantListsQuery.isLoading && restaurantLists.length === 0),
+    restaurantListsIsError: restaurantListsQuery.isError && restaurantLists.length === 0,
+    dishLists,
+    dishListsIsLoading:
+      !favoriteListsQueryEnabled || (dishListsQuery.isLoading && dishLists.length === 0),
+    dishListsIsError: dishListsQuery.isError && dishLists.length === 0,
   };
 };

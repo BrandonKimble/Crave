@@ -665,34 +665,50 @@ export class EntityTextSearchService {
       ) AS v(term, prefix_pattern, term_index)
       CROSS JOIN LATERAL (
         SELECT
-          e.entity_id AS "entityId",
-          e.name AS "name",
-          e.type AS "type",
-          CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END AS "exactHit",
-          CASE
-            WHEN lower(e.name) = v.term THEN 1
-            WHEN length(v.term) <= 2 THEN 0.9
-            ELSE 0.94
-          END AS "nameSimilarity",
-          0 AS "aliasSimilarity",
-          0 AS "ftsRank",
-          CASE WHEN lower(e.name) LIKE v.prefix_pattern THEN 1 ELSE 0 END AS "prefixHit",
-          0 AS "nameFtsHit",
-          0 AS "aliasTrgmHit",
-          0 AS "phoneticMatch",
-          (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "publicCraveScore",
-          e.general_praise_upvotes AS "generalPraiseUpvotes"
-        FROM core_entities e
-        WHERE e.type = ANY(${entityTypeArray})
-          AND e.status = 'active'::entity_status
-          ${marketFilter}
-          AND lower(e.name) LIKE v.prefix_pattern
+          scored."entityId",
+          scored."name",
+          scored."type",
+          scored."exactHit",
+          scored."nameSimilarity",
+          scored."aliasSimilarity",
+          scored."ftsRank",
+          scored."prefixHit",
+          scored."nameFtsHit",
+          scored."aliasTrgmHit",
+          scored."phoneticMatch",
+          scored."publicCraveScore",
+          scored."generalPraiseUpvotes"
+        FROM (
+          SELECT
+            e.entity_id AS "entityId",
+            e.name AS "name",
+            e.type AS "type",
+            CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END AS "exactHit",
+            CASE
+              WHEN lower(e.name) = v.term THEN 1
+              WHEN length(v.term) <= 2 THEN 0.9
+              ELSE 0.94
+            END AS "nameSimilarity",
+            0 AS "aliasSimilarity",
+            0 AS "ftsRank",
+            CASE WHEN lower(e.name) LIKE v.prefix_pattern THEN 1 ELSE 0 END AS "prefixHit",
+            0 AS "nameFtsHit",
+            0 AS "aliasTrgmHit",
+            0 AS "phoneticMatch",
+            (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "publicCraveScore",
+            e.general_praise_upvotes AS "generalPraiseUpvotes"
+          FROM core_entities e
+          WHERE e.type = ANY(${entityTypeArray})
+            AND e.status = 'active'::entity_status
+            ${marketFilter}
+            AND lower(e.name) LIKE v.prefix_pattern
+        ) scored
         ORDER BY
-          CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END DESC,
-          CASE WHEN lower(e.name) LIKE v.prefix_pattern THEN 1 ELSE 0 END DESC,
-          COALESCE("publicCraveScore", 0) DESC,
-          COALESCE(e.general_praise_upvotes, 0) DESC,
-          e.name ASC
+          scored."exactHit" DESC,
+          scored."prefixHit" DESC,
+          COALESCE(scored."publicCraveScore", 0) DESC,
+          COALESCE(scored."generalPraiseUpvotes", 0) DESC,
+          scored."name" ASC
         LIMIT ${options.perTermLimit}
       ) r
       ORDER BY v.term_index ASC;
@@ -904,30 +920,46 @@ export class EntityTextSearchService {
       ) AS v(term, phonetic_term, excluded_ids, remaining_limit, term_index)
       CROSS JOIN LATERAL (
         SELECT
-          e.entity_id AS "entityId",
-          e.name AS "name",
-          e.type AS "type",
-          CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END AS "exactHit",
-          similarity(lower(e.name), v.term) AS "nameSimilarity",
-          0 AS "aliasSimilarity",
-          0 AS "ftsRank",
-          0 AS "prefixHit",
-          0 AS "nameFtsHit",
-          0 AS "aliasTrgmHit",
-          1 AS "phoneticMatch",
-          (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "publicCraveScore",
-          e.general_praise_upvotes AS "generalPraiseUpvotes"
-        FROM core_entities e
-        WHERE e.type = ANY(${entityTypeArray})
-          AND e.status = 'active'::entity_status
-          ${marketFilter}
-          AND (array_length(v.excluded_ids, 1) IS NULL OR e.entity_id <> ALL(v.excluded_ids))
-          AND dmetaphone(regexp_replace(lower(e.name), '[^a-z0-9 ]', '', 'g')) =
-            dmetaphone(v.phonetic_term)
+          scored."entityId",
+          scored."name",
+          scored."type",
+          scored."exactHit",
+          scored."nameSimilarity",
+          scored."aliasSimilarity",
+          scored."ftsRank",
+          scored."prefixHit",
+          scored."nameFtsHit",
+          scored."aliasTrgmHit",
+          scored."phoneticMatch",
+          scored."publicCraveScore",
+          scored."generalPraiseUpvotes"
+        FROM (
+          SELECT
+            e.entity_id AS "entityId",
+            e.name AS "name",
+            e.type AS "type",
+            CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END AS "exactHit",
+            similarity(lower(e.name), v.term) AS "nameSimilarity",
+            0 AS "aliasSimilarity",
+            0 AS "ftsRank",
+            0 AS "prefixHit",
+            0 AS "nameFtsHit",
+            0 AS "aliasTrgmHit",
+            1 AS "phoneticMatch",
+            (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "publicCraveScore",
+            e.general_praise_upvotes AS "generalPraiseUpvotes"
+          FROM core_entities e
+          WHERE e.type = ANY(${entityTypeArray})
+            AND e.status = 'active'::entity_status
+            ${marketFilter}
+            AND (array_length(v.excluded_ids, 1) IS NULL OR e.entity_id <> ALL(v.excluded_ids))
+            AND dmetaphone(regexp_replace(lower(e.name), '[^a-z0-9 ]', '', 'g')) =
+              dmetaphone(v.phonetic_term)
+        ) scored
         ORDER BY
-          COALESCE("publicCraveScore", 0) DESC,
-          COALESCE(e.general_praise_upvotes, 0) DESC,
-          e.name ASC
+          COALESCE(scored."publicCraveScore", 0) DESC,
+          COALESCE(scored."generalPraiseUpvotes", 0) DESC,
+          scored."name" ASC
         LIMIT v.remaining_limit
       ) r
       ORDER BY v.term_index ASC;

@@ -230,6 +230,15 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     openRestaurantProfilePreview:
       profileControlRuntime.profileOwner.profileActions.openRestaurantProfilePreview,
     launchFavoritesListResults: submitRuntimeResult.launchFavoritesListResults,
+    launchEntitySearchResults: submitRuntimeResult.launchEntitySearchResults,
+    // Phase 4 — the committed restaurant reveal lane (replaces the cold preview lane).
+    runRestaurantEntitySearch: submitRuntimeResult.runRestaurantEntitySearch,
+    setRestaurantOnlyIntent:
+      stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState
+        .setRestaurantOnlyIntent,
+    pendingRestaurantSelectionRef:
+      stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState
+        .pendingRestaurantSelectionRef,
     prepareSearchSessionEntry:
       overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.routeOverlaySessionActions
         .prepareSearchSessionEntry,

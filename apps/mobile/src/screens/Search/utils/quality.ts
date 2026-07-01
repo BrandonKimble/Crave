@@ -7,7 +7,7 @@ export {
   type ScoreBucket,
 } from '../../../utils/quality-color';
 
-const CRAVE_RATING_SCALE = 10;
+const MAX_RATING = 10;
 const COMPACT_SCORE_FRACTION_DIGITS = 1;
 const DETAIL_SCORE_FRACTION_DIGITS = 2;
 
@@ -16,13 +16,11 @@ const roundTo = (value: number, fractionDigits: number): number => {
   return Math.round((value + Number.EPSILON) * multiplier) / multiplier;
 };
 
-const toRatingValue = (score: number): number => score / CRAVE_RATING_SCALE;
-
 const capNonPerfectRating = (rating: number, score: number, fractionDigits: number): number => {
-  if (score >= 100) {
-    return Math.min(rating, CRAVE_RATING_SCALE);
+  if (score >= MAX_RATING) {
+    return Math.min(rating, MAX_RATING);
   }
-  const maxNonPerfect = CRAVE_RATING_SCALE - 1 / 10 ** fractionDigits;
+  const maxNonPerfect = MAX_RATING - 1 / 10 ** fractionDigits;
   return Math.min(rating, maxNonPerfect);
 };
 
@@ -47,7 +45,7 @@ const formatCraveScorePartsForPrecision = (
       accessibilityLabel: 'Rating unavailable',
     };
   }
-  const rounded = roundTo(toRatingValue(score), fractionDigits);
+  const rounded = roundTo(score, fractionDigits);
   const rating = capNonPerfectRating(rounded, score, fractionDigits);
   const value = formatNumber(rating, fractionDigits, trimTrailingZero);
   return {
@@ -62,23 +60,29 @@ export const formatCraveScoreParts = (score?: number | null): FormattedCraveScor
 export const formatCraveScoreDetailParts = (score?: number | null): FormattedCraveScoreParts =>
   formatCraveScorePartsForPrecision(score, DETAIL_SCORE_FRACTION_DIGITS, false);
 
-export const formatCraveScore = (score?: number | null): string => {
-  const parts = formatCraveScoreParts(score);
-  return parts.value;
-};
-
-export const formatCraveScoreDetail = (score?: number | null): string => {
-  const parts = formatCraveScoreDetailParts(score);
-  return parts.value;
-};
-
-export const formatCraveScoreMovementDetail = (delta?: number | null): string | null => {
+const formatCraveScoreMovementForPrecision = (
+  delta: number | null | undefined,
+  fractionDigits: number,
+  trimTrailingZero: boolean
+): string | null => {
   if (typeof delta !== 'number' || !Number.isFinite(delta)) {
     return null;
   }
-  const rounded = roundTo(delta / CRAVE_RATING_SCALE, DETAIL_SCORE_FRACTION_DIGITS);
+  // The delta is already in 0–10 rating points, the same scale as the rating shown next to
+  // it (e.g. a +0.1 move next to a 9.4 rating renders ↑0.1) — no conversion needed.
+  const rounded = roundTo(delta, fractionDigits);
   if (rounded === 0) {
     return null;
   }
-  return `${rounded > 0 ? '↑' : '↓'}${Math.abs(rounded).toFixed(DETAIL_SCORE_FRACTION_DIGITS)} pts`;
+  return `${rounded > 0 ? '↑' : '↓'}${formatNumber(Math.abs(rounded), fractionDigits, trimTrailingZero)} pts`;
 };
+
+// Compact: one decimal, matching the rating shown on result cards (e.g. 9.4). Because it
+// rounds to the rating's own precision, sub-0.05-point moves round to 0 and render
+// nothing — so the card delta is a notable-movement-only badge.
+export const formatCraveScoreMovement = (delta?: number | null): string | null =>
+  formatCraveScoreMovementForPrecision(delta, COMPACT_SCORE_FRACTION_DIGITS, true);
+
+// Detail: two decimals, matching the 2-decimal score shown in the score-info sheet.
+export const formatCraveScoreMovementDetail = (delta?: number | null): string | null =>
+  formatCraveScoreMovementForPrecision(delta, DETAIL_SCORE_FRACTION_DIGITS, false);

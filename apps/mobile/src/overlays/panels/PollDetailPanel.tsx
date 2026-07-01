@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import type { FlashListRef } from '@shopify/flash-list';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Reanimated, {
   useAnimatedKeyboard,
@@ -21,6 +22,7 @@ import { io } from 'socket.io-client';
 import { Heart, MessageCircle, Reply as ReplyIcon, Sparkles, X as LucideX } from 'lucide-react-native';
 
 import { showAppModal, Text } from '../../components';
+import { SceneLoadingSurface } from '../../components/skeletons';
 import { colors as themeColors } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import {
@@ -62,8 +64,7 @@ import {
 } from './pollThreadModel';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
 import { API_BASE_URL } from '../../services/api';
-import { useRestaurantRouteProducer } from '../useRestaurantRouteProducer';
-import { createRestaurantRoutePanelDraft } from '../restaurantRoutePanelContract';
+import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACCENT = themeColors.primary;
@@ -74,9 +75,31 @@ type UsePollDetailPanelSpecOptions = {
   visible: boolean;
   pollId: string | null;
   poll?: Poll | null;
+  // Return-to-origin foundation P4 (design §Restore step 5). The comment a cross-surface reveal
+  // launched from, carried back into the route params ONLY when the pop-to-restore dismiss
+  // re-pushes this poll. The panel resolves it to its row POST-fetch and scrolls there + flashes
+  // it. Undefined/null on an organic open (top-of-thread, no anchor).
+  commentAnchorId?: string | null;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
   onClose: () => void;
+};
+
+// Resolve a comment anchor id → the index of the TOP-LEVEL thread node whose subtree contains
+// it. The FlashList `data` is the array of top-level ThreadNodes (each renders its whole reply
+// subtree), so a nested reply anchor must scroll to the ROOT of its subtree — that brings the
+// thread containing the comment into view; the per-row flash then pinpoints the exact comment.
+// Returns -1 when the comment is absent (deleted / reordered out / never present) so the caller
+// can DEGRADE to top-of-thread. Walks each subtree depth-first — threads are shallow (indent
+// capped at MAX_THREAD_INDENT) so this stays cheap.
+const resolveAnchorNodeIndex = (tree: ThreadNode[], commentId: string): number => {
+  const subtreeContains = (node: ThreadNode): boolean => {
+    if (node.comment.commentId === commentId) {
+      return true;
+    }
+    return node.children.some(subtreeContains);
+  };
+  return tree.findIndex(subtreeContains);
 };
 
 const formatRelativeTime = (iso: string | null | undefined): string => {
@@ -129,7 +152,10 @@ type CommentBodyProps = {
   // When the reply was flattened past the indent cap, prepend an @mention of the parent's
   // author so the reply target stays legible despite losing the visual nesting.
   mentionUser: PollCommentUser | null;
-  onEntityPress: (entity: EntitySpan) => void;
+  // commentId is threaded alongside the entity so a cross-surface reveal can carry the
+  // exact-comment childAnchor into the captured origin context (read back on dismiss to
+  // return to this comment).
+  onEntityPress: (entity: EntitySpan, commentId: string) => void;
 };
 
 const CommentBody = React.memo(({ comment, mentionUser, onEntityPress }: CommentBodyProps) => {
@@ -144,14 +170,15 @@ const CommentBody = React.memo(({ comment, mentionUser, onEntityPress }: Comment
       ) : null}
       {segments.map((segment, index) => {
         if (!segment.entity) return segment.text;
-        // Restaurant highlights are tappable → that restaurant's profile; food /
-        // attribute highlights are styled but not navigable (no single subject).
-        const tappable = segment.entity.type === 'restaurant' && Boolean(segment.entity.entityId);
+        // Every gazetteer-resolved span is tappable → the entity-driven reveal
+        // (restaurant → profile fast-path; food / attribute → skip-LLM results
+        // search). The only requirement is a resolved entityId.
+        const tappable = Boolean(segment.entity.entityId);
         return (
           <Text
             key={index}
             style={[styles.entitySpan, tappable && styles.entitySpanLink]}
-            onPress={tappable ? () => onEntityPress(segment.entity!) : undefined}
+            onPress={tappable ? () => onEntityPress(segment.entity!, comment.commentId) : undefined}
             suppressHighlighting={!tappable}
           >
             {segment.text}
@@ -245,6 +272,9 @@ type PollCommentRowProps = {
   canReply: boolean;
   isReplying: boolean;
   isEditing: boolean;
+  // P4 return-to-origin anchor flash — true for the exact comment a pop-to-restore dismiss
+  // returned us to, for the brief flash window after the scroll-to lands.
+  isAnchorHighlighted: boolean;
   submitting: boolean;
   onLike: (comment: PollComment) => void;
   onStartReply: (comment: PollComment) => void;
@@ -252,7 +282,7 @@ type PollCommentRowProps = {
   onDelete: (comment: PollComment) => void;
   onSubmitEdit: (text: string) => void;
   onCancelCompose: () => void;
-  onEntityPress: (entity: EntitySpan) => void;
+  onEntityPress: (entity: EntitySpan, commentId: string) => void;
   onToggleCollapse: (commentId: string) => void;
 };
 
@@ -263,6 +293,7 @@ const PollCommentRow = React.memo(
     canReply,
     isReplying,
     isEditing,
+    isAnchorHighlighted,
     submitting,
     onLike,
     onStartReply,
@@ -282,6 +313,7 @@ const PollCommentRow = React.memo(
           styles.commentRow,
           depth > 0 && styles.commentRowNested,
           isReplying && styles.commentRowReplying,
+          isAnchorHighlighted && styles.commentRowAnchorHighlight,
         ]}
       >
         {indentLevels > 0 ? (
@@ -454,6 +486,8 @@ type PollThreadNodeProps = {
   canReply: boolean;
   replyTarget: string | null;
   editTarget: string | null;
+  // P4 return-to-origin anchor flash — the exact comment the dismiss returned us to (or null).
+  highlightedCommentId: string | null;
   submitting: boolean;
   onLike: (comment: PollComment) => void;
   onStartReply: (comment: PollComment) => void;
@@ -461,7 +495,7 @@ type PollThreadNodeProps = {
   onDelete: (comment: PollComment) => void;
   onSubmitEdit: (text: string) => void;
   onCancelCompose: () => void;
-  onEntityPress: (entity: EntitySpan) => void;
+  onEntityPress: (entity: EntitySpan, commentId: string) => void;
   onToggleCollapse: (commentId: string) => void;
 };
 
@@ -490,6 +524,7 @@ const PollThreadNode = React.memo((props: PollThreadNodeProps) => {
         canReply={props.canReply}
         isReplying={props.replyTarget === comment.commentId}
         isEditing={props.editTarget === comment.commentId}
+        isAnchorHighlighted={props.highlightedCommentId === comment.commentId}
         submitting={props.submitting}
         onLike={props.onLike}
         onStartReply={props.onStartReply}
@@ -518,6 +553,7 @@ export const usePollDetailPanelSpec = ({
   visible,
   pollId,
   poll: pollSeed,
+  commentAnchorId = null,
   searchBarTop = 0,
   snapPoints: snapPointsOverride,
   onClose,
@@ -532,7 +568,7 @@ export const usePollDetailPanelSpec = ({
     enabled: isSignedIn,
   });
   const viewerUserId = viewerProfile?.userId ?? null;
-  const { openRestaurantRoute } = useRestaurantRouteProducer();
+  const { dispatchLaunchIntent } = useAppRouteCoordinator();
 
   const [poll, setPoll] = React.useState<Poll | null>(pollSeed ?? null);
   const [comments, setComments] = React.useState<PollComment[]>([]);
@@ -562,6 +598,19 @@ export const usePollDetailPanelSpec = ({
     });
   }, []);
 
+  // ─── P4 return-to-origin: scroll-to + flash-highlight the anchor comment ─────
+  // The FlashList ref drives the post-fetch scrollToIndex; the panel owns it so it stays the
+  // SOLE scroll writer for that frame (no MVCP fighting it — MVCP is disabled on the thread via
+  // flashListProps below, per the documented MVCP-wrong-row failure class). highlightedCommentId
+  // = the comment we flashed, cleared after a brief window so the flash is a one-shot pulse.
+  const threadListRef = React.useRef<FlashListRef<ThreadNode> | null>(null);
+  const [highlightedCommentId, setHighlightedCommentId] = React.useState<string | null>(null);
+  // One-shot guard: resolve+scroll+flash exactly once per (open + anchor), never re-firing on a
+  // later organic refetch/socket update (which would yank the user back to the anchor mid-read).
+  const consumedAnchorRef = React.useRef<string | null>(null);
+  const highlightTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const anchorRetryRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Seed the header instantly from the feed card's snapshot.
   React.useEffect(() => {
     if (pollSeed) setPoll(pollSeed);
@@ -577,6 +626,10 @@ export const usePollDetailPanelSpec = ({
       setReplyTarget(null);
       setEditTarget(null);
       setCollapsedComments(new Set());
+      // P4 — clear the anchor flash + re-arm the one-shot guard so the NEXT open (which may carry
+      // a fresh anchor, or none) resolves cleanly. Timers are torn down by their own effect.
+      setHighlightedCommentId(null);
+      consumedAnchorRef.current = null;
     }
   }, [visible]);
 
@@ -749,6 +802,93 @@ export const usePollDetailPanelSpec = ({
   // lives in `collapsedComments` and is applied at render time by each PollThreadNode, so
   // toggling collapse never re-tiles the FlashList data (no scroll jump from data churn).
   const threadTree = React.useMemo(() => buildThreadTree(comments), [comments]);
+
+  // ─── P4 return-to-origin: anchor resolve → scroll-to-index → flash (POST-FETCH) ─────────────
+  // Gated on the panel's own content-readiness signal — visible AND the thread fetch has SETTLED
+  // (`!loading`) AND the built tree has rows. This is the post-fetch equivalent of P3's
+  // "first non-skeleton commit" gate: we MUST run against the CURRENT comments (so the index is
+  // real) and NEVER on the bare re-mount frame (the #1 jump-to-top cause — a deep scrollToIndex
+  // before the list has extent clamps to 0).
+  //
+  // TWO deliberately-split effects:
+  //   • LAUNCH (this effect) re-runs as the thread loads (threadTree dep) but burns the one-shot
+  //     guard (consumedAnchorRef) ONLY on a real resolve (index >= 0). A partial/paginated load
+  //     that doesn't yet contain the anchor retries on the next load instead of burning the
+  //     guard; once resolved, every later run (incl. live `poll:update` thread churn) is a
+  //     guarded no-op. It has NO cleanup.
+  //   • TEARDOWN (the effect just below) owns the in-flight scroll/flash timers and is keyed ONLY
+  //     on the anchor + visibility — NOT the thread. So a `poll:update` landing inside the 1.6s
+  //     flash window can never tear the restore down (which previously stranded the highlight
+  //     forever: the threadTree-keyed cleanup cancelled the pending clear, then the guarded
+  //     re-run never re-armed it).
+  //
+  // Degrade-gracefully contract: a missing/reordered/deleted anchor (resolveAnchorNodeIndex → -1)
+  // does NOTHING (the thread stays at top), never throws. Generalizes to a list-card anchor for
+  // bookmarks/profile — same shape: resolve a stable domain id → index against the CURRENT data,
+  // scrollToIndex(viewPosition), flash. Only the id→index resolver differs.
+  const contentReady = visible && !loading && threadTree.length > 0;
+  React.useEffect(() => {
+    if (!contentReady || commentAnchorId == null) {
+      return;
+    }
+    if (consumedAnchorRef.current === commentAnchorId) {
+      return; // already resolved this anchor for this open
+    }
+    const index = resolveAnchorNodeIndex(threadTree, commentAnchorId);
+    if (index < 0) {
+      // Anchor not in the CURRENT thread (deleted/reordered out, or not yet loaded for a future
+      // paginated thread). Do NOT burn the guard — a later thread load re-runs this and retries.
+      return;
+    }
+    consumedAnchorRef.current = commentAnchorId; // burn the one-shot guard only on a real resolve
+
+    // scrollToIndex with a small RETRY BUDGET. FlashList 2.x's scrollToIndex resolves once the
+    // scroll completes and self-handles not-yet-measured rows, but the row's measured offset can
+    // still be provisional on the very first post-fetch frame (header + bars + dynamic comment
+    // heights settle over a frame or two). So we re-issue on a bounded schedule (mirrors P3's
+    // belt-and-suspenders rAF re-pin) so the target lands at viewPosition once heights are final.
+    const MAX_ATTEMPTS = 5;
+    const RETRY_SPACING_MS = 80;
+    let attempt = 0;
+    const scrollToAnchor = (): void => {
+      const list = threadListRef.current;
+      if (!list?.scrollToIndex) {
+        return;
+      }
+      // viewPosition ~0.3 → the anchor row sits ~a third down the viewport (context above + the
+      // comment + its replies below it visible). Not animated: this is a restore, not a gesture.
+      void list.scrollToIndex({ index, viewPosition: 0.3, animated: false });
+      attempt += 1;
+      if (attempt < MAX_ATTEMPTS) {
+        anchorRetryRef.current = setTimeout(scrollToAnchor, RETRY_SPACING_MS);
+      }
+    };
+    // Defer the first attempt off the commit so the list has laid out its initial draw batch.
+    anchorRetryRef.current = setTimeout(scrollToAnchor, 0);
+
+    // FLASH-HIGHLIGHT the exact comment (default tasteful pulse, tunable later like the cutout).
+    setHighlightedCommentId(commentAnchorId);
+    highlightTimerRef.current = setTimeout(() => setHighlightedCommentId(null), 1600);
+    // No cleanup here on purpose — the timers are owned by the teardown effect below so live
+    // thread churn (threadTree dep) never tears down an in-flight restore.
+  }, [commentAnchorId, contentReady, threadTree]);
+
+  // Teardown for the anchor restore's timers — keyed ONLY on the anchor + visibility (NOT the
+  // thread), so it fires on anchor-change / dismiss / unmount but is immune to `poll:update`
+  // thread churn. This is the half that makes the LAUNCH effect's one-shot guarantee real.
+  React.useEffect(() => {
+    return () => {
+      if (anchorRetryRef.current) {
+        clearTimeout(anchorRetryRef.current);
+        anchorRetryRef.current = null;
+      }
+      if (highlightTimerRef.current) {
+        clearTimeout(highlightTimerRef.current);
+        highlightTimerRef.current = null;
+      }
+    };
+  }, [commentAnchorId, visible]);
+
   const canReply = isActive && isSignedIn;
 
   const handleStartReply = React.useCallback(
@@ -797,22 +937,51 @@ export const usePollDetailPanelSpec = ({
     [editTarget, mutatingComment, refresh]
   );
 
-  // Tapping a restaurant highlight opens that restaurant's profile. The restaurant
-  // route is now a valid child of the polls lane, so open it with the owner/opener
-  // resolved naturally from the active route (pollDetail) — closing it returns to
-  // this poll. It self-hydrates from restaurantId.
+  // Tapping a comment entity span routes it through the entity-driven reveal. A
+  // RESTAURANT span takes the map-aware restaurant fast-path (opens the profile +
+  // seeds the map pin + centers the camera). A FOOD / FOOD_ATTRIBUTE /
+  // RESTAURANT_ATTRIBUTE span takes a skip-LLM results reveal (a search on that
+  // entity — the BE skips the LLM whenever an entityType is supplied). Both go
+  // through the cross-surface launch-intent dispatch; dismiss returns to the polls
+  // root captured on entry.
   const handleEntityPress = React.useCallback(
-    (entity: EntitySpan) => {
-      if (entity.type !== 'restaurant' || !entity.entityId) return;
-      openRestaurantRoute({
-        restaurantId: entity.entityId,
-        panel: createRestaurantRoutePanelDraft({
-          data: null,
-          onToggleFavorite: () => undefined,
-        }),
-      });
+    (entity: EntitySpan, commentId: string) => {
+      if (!entity.entityId) return;
+      // Capture the EXACT comment this reveal launched from so it rides the LaunchIntent into the
+      // captured origin context; the dismiss restore reads it back to return to this comment
+      // (scroll-to + flash). Null pollId (shouldn't happen on a mounted thread) drops the anchor
+      // rather than carrying a malformed one.
+      const childAnchor =
+        pollId != null
+          ? ({ sceneKey: 'pollDetail', pollId, commentId } as const)
+          : null;
+      if (entity.type === 'restaurant') {
+        // Thread the span's display text as the restaurant name so the hard-swapped restaurant
+        // panel paints its header title immediately (no empty-title flash while the committed
+        // single-restaurant search resolves).
+        dispatchLaunchIntent({
+          type: 'restaurant',
+          restaurantId: entity.entityId,
+          restaurantName: entity.name,
+          childAnchor,
+        });
+        return;
+      }
+      if (
+        entity.type === 'food' ||
+        entity.type === 'food_attribute' ||
+        entity.type === 'restaurant_attribute'
+      ) {
+        dispatchLaunchIntent({
+          type: 'entity',
+          entityId: entity.entityId,
+          entityType: entity.type,
+          submittedLabel: entity.name,
+          childAnchor,
+        });
+      }
     },
-    [openRestaurantRoute]
+    [dispatchLaunchIntent, pollId]
   );
 
   const handleDelete = React.useCallback(
@@ -853,6 +1022,7 @@ export const usePollDetailPanelSpec = ({
         canReply={canReply}
         replyTarget={replyTarget}
         editTarget={editTarget}
+        highlightedCommentId={highlightedCommentId}
         submitting={mutatingComment}
         onLike={handleLike}
         onStartReply={handleStartReply}
@@ -876,6 +1046,7 @@ export const usePollDetailPanelSpec = ({
       handleStartReply,
       handleSubmitEdit,
       handleToggleCollapse,
+      highlightedCommentId,
       mutatingComment,
       replyTarget,
       viewerUserId,
@@ -1100,7 +1271,14 @@ export const usePollDetailPanelSpec = ({
     </Reanimated.View>
   );
 
-  const emptyComponent = loading ? null : (
+  const emptyComponent = loading ? (
+    // PollDetail keeps an opaque white sheetSurface plate under the body (for poll-header
+    // readability), so the comment skeleton can't frost-through to the hoisted map here — give it
+    // a self-contained frosted backing so its holes still read as frosted windows. insetX={0}: the
+    // list's contentContainerStyle already insets the body by OVERLAY_HORIZONTAL_PADDING, so the
+    // holes must NOT re-inset (else they double-pad).
+    <SceneLoadingSurface rowType="comment" frostBacking insetX={0} />
+  ) : (
     <View style={styles.emptyComments}>
       <MessageCircle size={20} color={themeColors.textMuted} strokeWidth={1.8} />
       <Text variant="caption" style={styles.emptyCommentsText}>
@@ -1126,6 +1304,24 @@ export const usePollDetailPanelSpec = ({
     [expanded, hidden, snapPointsOverride]
   );
 
+  // P4 — extraData must change identity when EITHER collapse state OR the anchor flash toggles,
+  // so FlashList re-renders the affected rows (collapse hint + the flashed background).
+  const listExtraData = React.useMemo(
+    () => ({ collapsedComments, highlightedCommentId }),
+    [collapsedComments, highlightedCommentId]
+  );
+
+  // P4 — DISABLE FlashList's maintainVisibleContentPosition on this thread. MVCP is ON by
+  // default in FlashList 2.x (chat-style anchoring) and on a list whose data arrives async +
+  // gets a programmatic scrollToIndex it FIGHTS the restore — anchoring an old/placeholder row
+  // and landing the scroll on the wrong row (the documented MVCP-wrong-row failure class in
+  // CLAUDE.md). The anchor restore (above) is the sole scroll writer for that frame; MVCP must
+  // not contend. (The poll-detail thread is not an append/chat feed, so nothing else wants MVCP.)
+  const threadFlashListProps = React.useMemo(
+    () => ({ maintainVisibleContentPosition: { disabled: true } }),
+    []
+  );
+
   return {
     shellSpec: normalizeSearchRouteSceneStackShellSpec({
       overlayKey: 'pollDetail',
@@ -1142,8 +1338,9 @@ export const usePollDetailPanelSpec = ({
     sceneBodyContent: {
       surfaceKind: 'list',
       data: threadTree,
-      // Collapse state lives outside `data`, so the list re-renders rows when it changes.
-      extraData: collapsedComments,
+      // Collapse state + the P4 anchor flash live outside `data`, so the list re-renders rows
+      // when either changes (combined into listExtraData so its identity flips on a flash).
+      extraData: listExtraData,
       renderItem,
       keyExtractor,
       estimatedItemSize: 96,
@@ -1152,6 +1349,11 @@ export const usePollDetailPanelSpec = ({
       ListChromeComponent: composeChin,
     },
     sceneBodyTransport: {
+      // P4 — hand the thread's FlashList ref to the panel so the post-fetch anchor restore can
+      // scrollToIndex on it as the sole scroll writer for that frame.
+      listRef: threadListRef,
+      // P4 — disable MVCP so the anchor scrollToIndex isn't fought by chat-style anchoring.
+      flashListProps: threadFlashListProps,
       contentContainerStyle: {
         paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
         paddingTop: 12,
@@ -1442,6 +1644,15 @@ const styles = StyleSheet.create({
   // Highlight the comment being replied to while its copy is pinned above the chin.
   commentRowReplying: {
     backgroundColor: 'rgba(255, 51, 104, 0.06)',
+    marginHorizontal: -OVERLAY_HORIZONTAL_PADDING,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+  },
+  // P4 return-to-origin: a brief, tasteful accent flash on the comment a pop-to-restore dismiss
+  // returned us to — slightly stronger than the reply tint so it reads as "here it is". Default
+  // treatment, tunable later (owner tunes the highlight like the cutout). The bleed-to-edge
+  // matches commentRowReplying so the flash spans the full row width.
+  commentRowAnchorHighlight: {
+    backgroundColor: 'rgba(255, 51, 104, 0.12)',
     marginHorizontal: -OVERLAY_HORIZONTAL_PADDING,
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },

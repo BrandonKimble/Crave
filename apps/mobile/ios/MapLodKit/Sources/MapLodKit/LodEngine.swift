@@ -185,6 +185,24 @@ public struct LodEngine {
     return writes.map { (markerKey: $0.0, pinOpacity: $0.1) }
   }
 
+  /// SNAP-SETTLED — collapse every in-flight crossfade to its want-target INSTANTLY (0-duration fade) and
+  /// drain `motion`. Used by the unified-fade TOGGLE lane: a toggle is one global presentation-opacity
+  /// fade, so the engine must contribute a CONSTANT per-marker opacity (pin=1 / dot=0 at its settled role)
+  /// for the fade's duration — otherwise a residual 180ms role crossfade races the presentation ramp (the
+  /// desync). After this, `pinOpacity(key)` projects the target forever (the Fade is settled), so the only
+  /// moving curve is the presentation scalar. Call AFTER the new `decide` (so `want` is the new set's
+  /// targets) to seed incoming pins at opacity 1 / dots at 0 under cover, before the fade-in ramp.
+  public mutating func snapSettled(nowMs: Double) {
+    lastSetNowMs = nowMs
+    for (key, w) in want {
+      let target: Double = w ? 1 : 0
+      if fades[key]?.target != target || fades[key]?.fadeMs != 0 {
+        fades[key] = Fade(from: target, target: target, startMs: nowMs, fadeMs: 0)
+      }
+    }
+    motion.removeAll()
+  }
+
   // MARK: - Read accessors (for the harness / tests; never a control authority)
 
   public func pinOpacity(_ key: String) -> Double { fades[key]?.opacity(nowMs: lastSetNowMs) ?? 0 }

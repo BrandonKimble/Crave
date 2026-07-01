@@ -100,8 +100,9 @@ export const generateScaleProbeFeatures = (
     const jitterLat = (hash01(i * 2 + 2) - 0.5) * step;
     const lng = centerLng + (-half + col * step + jitterLng) * lngScale;
     const lat = centerLat + (-half + row * step + jitterLat);
-    // Cycle the full displayed score range so icon-image variety matches prod.
-    const score = 60 + ((i * 7) % 40);
+    // Cycle the full displayed 0–10 score range so icon-image variety matches prod
+    // (exercises all 10 tiers: integer decile from i, plus a sub-tier fractional spread).
+    const score = (i % 10) + ((i * 0.137) % 1);
     features.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [lng, lat] },
