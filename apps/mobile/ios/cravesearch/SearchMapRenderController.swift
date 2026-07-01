@@ -1540,6 +1540,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       engine.snapSettled(nowMs: Self.nowMs())
       state.lodV5Engine = engine
     }
+    // UNIFIED-MERGE FIX: with motion drained + FS cleared, the LEA literals are the SOLE settled authority.
+    // Commit dot+label __lea_lod__ (via engine role bookkeeping) and label __lea_revealed__ (from the winner
+    // map) SYNCHRONOUSLY here, before the ramp crosses ~0.05, so the drained set has a live opacity source.
+    // Reuse `handle`'s already-resolved map (no fresh withMapboxMap lock).
+    commitSettledLeaAuthorityUnderCover(
+      instanceId: instanceId, state: &state, mapboxMap: handle.mapView.mapboxMap)
     instances[instanceId] = state
     applyV5ObstacleReseed(for: instanceId)
     // Rebuild the overlay roster from the now-fresh lastPromotedInOrder (creates/skins the new pin tiles,
@@ -6354,6 +6360,16 @@ final class SearchMapRenderController: RCTEventEmitter {
         reason: "reveal_promote",
         isMoving: false
       )
+      // UNIFIED-MERGE FIX: reveal_promote is a SEPARATE re-decide entry point from
+      // reprojectCatalogUnderCoverIfReady. Its decide can re-admit keys to motion and leave the __lea_lod__
+      // literal governed by the lagged converge clock (a separate CADisplayLink) — re-opening the reveal
+      // no-show window. Commit the reparse-immune settled authority synchronously here too. NOTE: no
+      // snapSettled here (unlike the under-cover reproject) — enter_settled may run with presentation already
+      // up, so we must NOT drain motion/snap roles visibly; the swap-only path routes through
+      // takeSettledRoleChangeIfAny, which commits the lagged-correct role if it changed and is a no-op
+      // otherwise (never a visible snap). If verified under cover, the toggle session may add snapSettled.
+      commitSettledLeaAuthorityUnderCover(
+        instanceId: instanceId, state: &state, mapboxMap: revealHandle.mapView.mapboxMap)
       instances[instanceId] = state
       // (v5: decide() ran inside projectAndEmitOnScreenMarkers above; the camera-change handler
       // kicks the converge link + obstacle reseed. driveNativeLod was a no-op under v5 and is gone.)
@@ -8348,6 +8364,56 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
+  /// UNIFIED-MERGE FIX (dot+label reveal no-show): commit ALL reparse-immune SETTLED authority for the
+  /// current engine roster SYNCHRONOUSLY, at a re-decide entry point (toggle `reprojectCatalogUnderCoverIfReady`
+  /// AND cold-search `reveal_promote`), while presentation is still under cover. AFTER `snapSettled` drains
+  /// `engine.motion`, the converge tick writes NOTHING for the settled set AND the live-pin-transition display
+  /// link stops — so these LEA literals are the SOLE steady-state authority. If they are not committed to the
+  /// FRESH set here (before the presentation ramp crosses ~0.05 visibility), a newly-DEMOTED dot paints
+  /// `in OLD_promoted -> 0` = invisible, and a re-decided label paints an old/empty winner set, for the first
+  /// visible frames. Relying on the incidental converge-tick swap (a separate CADisplayLink) or the DEFERRED
+  /// async label selector loses that race (the intermittent reveal no-show).
+  ///  - __lea_lod__ (dot icon-opacity + label text-opacity): swapped THROUGH `engine.takeSettledRoleChangeIfAny()`
+  ///    so `lastReportedPinRole` stays consistent. A DIRECT `updateLeaMembershipLiterals(lastPromotedInOrder)`
+  ///    would desync the baseline: a later B->A round-trip decide would find `visiblePinKeys(A)==lastReportedPinRole(A)`,
+  ///    return nil, and SKIP the required A-swap while the literal still holds B = a reparse-during-motion flash
+  ///    (the exact thing FIX-A killed). Post-snap `visiblePinKeys == the promoted set`, so the routed call
+  ///    commits the fresh set AND records the baseline; a nil return means the literal is already correct.
+  ///  - __lea_revealed__ (label one-of-four winner): re-committed SYNCHRONOUSLY from the PERSISTED
+  ///    `labelWinnerByInstance` map (survives the tab swap), pruned to the promoted set — QRF-INDEPENDENT
+  ///    (`scheduleLabelObservationRefresh` is async/deferred and CANNOT commit under cover; it stays a later
+  ///    refiner only). May be slightly stale but is never wrong-tab; the default-hidden ~1-frame lateness is
+  ///    the owner-accepted forced ideal. Do NOT reintroduce feature-state for the winner (reparse-clearable).
+  private func commitSettledLeaAuthorityUnderCover(
+    instanceId: String, state: inout InstanceState, mapboxMap: MapboxMap
+  ) {
+    guard Self.lodV5Enabled else { return }
+    let labelLayerIds = state.labelLayerIds
+    // (1) __lea_lod__ (dots + labels) via the engine's own role bookkeeping (desync-safe).
+    if var engine = state.lodV5Engine {
+      if let roleKeys = engine.takeSettledRoleChangeIfAny() {
+        updateLeaMembershipLiterals(
+          promoted: roleKeys, labelLayerIds: labelLayerIds, mapboxMap: mapboxMap)
+      }
+      state.lodV5Engine = engine
+    }
+    // (2) __lea_revealed__ (label winners) synchronously from the persisted winner map, pruned to promoted.
+    guard !labelLayerIds.isEmpty else { return }
+    let promotedSet = Set(state.lodV5Engine?.lastPromotedInOrder ?? [])
+    var winners = labelWinnerByInstance[instanceId] ?? [:]
+    for markerKey in winners.keys where !promotedSet.contains(markerKey) {
+      winners.removeValue(forKey: markerKey)
+    }
+    labelWinnerByInstance[instanceId] = winners
+    let revealedKeys = winners.map { "\($0.key)::\($0.value)" }
+    for layerId in labelLayerIds {
+      Self.swapLeaLiteral(
+        layerId: layerId, property: "text-opacity",
+        sentinel: Self.leaRevealedSentinel, keys: revealedKeys, mapboxMap: mapboxMap)
+    }
+    Self.lodLog("[leamem] underCover settled commit: promoted=\(promotedSet.count) revealed=\(revealedKeys.count)")
+  }
+
   // Sentinel heads tag each reparse-immune LEA literal so multiple literals can coexist in ONE paint
   // expression and be swapped independently. `text-opacity` now holds TWO: `__lea_lod__` (the
   // promoted/LOD crossfade set) and `__lea_revealed__` (the one-label-per-restaurant winner set).
@@ -8364,10 +8430,29 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard found else { return false }
     do {
       try mapboxMap.setLayerProperty(for: layerId, property: property, value: updated)
+      // SENTINEL-INTEGRITY GUARD (debug-gated, KEEP): the label text-opacity product holds TWO reparse-immune
+      // literals (__lea_lod__ + __lea_revealed__); each swap must touch ONLY its own sentinel-headed node and
+      // leave the sibling byte-identical (a clobber silently re-breaks the shipped LOD anti-flash). Re-read
+      // and log every sentinel head present so a vanished/renamed sibling is immediately visible.
+      if lodDebugLoggingEnabled {
+        let heads = sentinelLiteralHeads(mapboxMap.layerPropertyValue(for: layerId, property: property))
+        lodLog("[swapdbg] layer=\(layerId) prop=\(property) swapped=\(sentinel) keys=\(keys.count) heads=\(heads)")
+      }
       return true
     } catch {
       return false
     }
+  }
+
+  // Debug integrity helper: collect the head element of every ['literal', [head, …]] node in an expression.
+  // Used to assert two sentinel-headed literals coexist unclobbered in one paint product (see swapLeaLiteral).
+  private static func sentinelLiteralHeads(_ node: Any) -> [String] {
+    guard let arr = node as? [Any] else { return [] }
+    if arr.count == 2, (arr[0] as? String) == "literal",
+       let inner = arr[1] as? [Any], let head = inner.first as? String {
+      return [head]
+    }
+    return arr.flatMap { sentinelLiteralHeads($0) }
   }
 
   // Rewrite the ['literal', [<sentinel>, …]] node whose head element == `sentinel` to
@@ -8755,13 +8840,16 @@ final class SearchMapRenderController: RCTEventEmitter {
       // CA-vs-GL skew that desyncs the fade. Position-only during a fade unless the camera is moving (STEP 5).
       refreshOverlayFrame(instanceId: instanceId)
       state = instances[instanceId] ?? state
-      // STEP 6 REVERTED (2026-06-30): the under-cover re-decide runs AFTER applyPresentationOpacity (its
-      // original, on-device-verified position). Running it BEFORE (Step 6) repopulated
-      // lastVisibleMarkerSetSignature so frame-1's applyPresentationOpacity stopped sweeping the full catalog
-      // via setFeatureState — but that narrowing dropped DOTS from the reveal fade-in (demoted markers never
-      // got nativeDotOpacity written, and reveal dots lean on that write). The frame-1 sweep is cheap at our
-      // scale (~600 markers, run post-pause/under-cover, never competing with the pill animation), so
-      // restoring the original order writes every dot and fixes the reveal dot no-show.
+      // REVEAL/TOGGLE re-decide runs AFTER applyPresentationOpacity — but this ordering is a FRAME-PACING
+      // choice ONLY, NOT a dot/label-visibility mechanism. The earlier "Step 6" theory (either order) was
+      // mechanically WRONG: applyPresentationOpacity writes ONLY the `nativePresentationOpacity` feature-state
+      // (never `nativeDotOpacity`), and the baked `nativePresentationOpacity` fallback is already 1, so the
+      // breadth of its frame-1 sweep cannot starve dots. The reveal dot/label no-show was a STALE reparse-
+      // immune LEA literal (dot/label __lea_lod__ + label __lea_revealed__ still holding the OLD set when the
+      // ramp crosses visibility). That is now fixed at the SOURCE: reprojectCatalogUnderCoverIfReady (and the
+      // reveal_promote entry point) commit both literals SYNCHRONOUSLY under cover
+      // (commitSettledLeaAuthorityUnderCover). Once those land, BEFORE/AFTER order is free — keep AFTER as the
+      // default frame-pacing choice.
       reprojectCatalogUnderCoverIfReady(instanceId: instanceId)
       state = instances[instanceId] ?? state
       if progress >= 1 {
