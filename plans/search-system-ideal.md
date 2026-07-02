@@ -17,6 +17,7 @@ red-team-proven failure modes that every design tripped at least once.
 ## The shape: three stages, one of each core concept (confidence, decision, location)
 
 ### Stage 1 — INTERPRET (keep verbatim)
+
 LLM (Gemini `analyzeSearchQuery`) segments free text and buckets each term into the four flat arrays;
 **the array IS the type** (`llm.types.ts:278-282`, born `3f95aae4` Oct-2025, correct). This is the one
 place a real LLM call belongs. The autocomplete-tap / single-entity bypass
@@ -26,6 +27,7 @@ switches (orchestration:333, interpretation:730, search.service.ts:2249) into ON
 a silent wrong-table-empty-query surface.
 
 ### Stage 2 — RESOLVE-OR-LEARN
+
 One shared recall core (`retrieveCandidates`, `entity-text-search.service.ts:153-244`) stays: RRF-fused
 sparse+dense, **recall-only**, carrying raw per-lane features. **KEEP recall TYPE-SCOPED** (line 305,
 `retrieveCandidates(term, [llmType])`) — do NOT broaden recall to all four types. The LLM's type is
@@ -35,6 +37,7 @@ term to a same-named restaurant at confidence=1 → wrong SQL lane.)
 
 Replace the 15-line 0.82-reduce-to-max (interpretation.service.ts:334-347) with ONE confidence-tiered,
 margin-based decision layer that CONSUMES the carried features (not re-derives):
+
 - **EXACT**: `count(normalized-name-equal candidates) == 1` AND that candidate.type == the LLM bucket
   → LINK conf=1. (count==1 + type gates are NEW — close the same-type-duplicate "wrong Winson" hole.)
 - **CONFIDENT-FUZZY**: top score ≥ θ (length-scaled, reuse `resolveSimilarityThreshold`, not one flat
@@ -72,6 +75,7 @@ single budget-parameterized policy wrapper (exact→margin-gate→LLM-tail) that
 "the linker calls `matchEntity` for its ambiguous tail."
 
 ### Stage 3 — REVEAL-AND-RANK
+
 Each RESOLVED id fans out to EVERY SQL lane its type legitimately touches (**type = join-target
 selector, NOT recall filter**), via per-lane INDEXABLE UNION subqueries (never a single OR — seq-scans:
 EXPLAIN 0.09ms indexed vs 0.35ms seq). This is where "search everything and rank" lives, safe because
@@ -81,6 +85,7 @@ the id was already type-verified upstream. Two independent lists (restaurants + 
 Ordering: global-percentile Crave Score stays the PRIMARY, index-orderable, precomputed backbone
 (builder.ts:1593,1620). Two SUBORDINATE tiebreaks so the backbone still streams from the score CTE and
 badge==position holds:
+
 - (a) a BOUNDED relevance/match-quality tiebreak WITHIN score bands — the fix for the dominant red-team
   risk: broadening recall with a query-agnostic sort buries the relevant-but-modest-score match below
   the marginally-relevant-high-score one. Relevance nudges within bands, never dominates. **Non-optional.**
@@ -100,12 +105,29 @@ LINK to food rows — but the fix is at **fan-out**, not recall: once resolved, 
 its type touches (the food lane already ORs food_id+categories; the restaurant query already ORs the
 food-signal graph → "burger" surfaces 55 restaurants via signals + 28 dishes, ordered identically).
 
-**"Just search everything and rank"?** YES for recall/inclusiveness — but as **search-every-lane-a-
-resolved-id-touches** (indexable UNION), NOT type-blind recall, and with two mandatory guardrails
-(relevance-band tiebreak; UNION-at-scale EXPLAIN discipline). The bare thesis without those trades away
-exactly the reachability it was meant to deliver ("shown at position 340" = exclusion for a 3-row
-scroller). Note: two attribute lanes are EMPTY in live data (food_attributes 0/1178) — "search
-everything" is partly a no-op for attributes until on-demand fills them (data-maturity gap).
+**"Just search everything and rank"?** OWNER DECISION (2026-07-01): **DON'T broaden.** The four
+type-scoped queries stay as-is — they already fan a resolved food id to the restaurant side via the
+signal graph (see below), which delivers most of the inclusiveness with zero risk to the sacred
+pure-score ranking. Broadening would force a relevance tiebreak (dirties score-ordering) + a UNION
+rework, for marginal gain. So: no query broadening, no relevance tiebreak, no UNION-at-scale rework.
+The one place "broaden" still legitimately lives is UPSTREAM in the linker (how eagerly typed text
+resolves), not in the SQL. (Superseded: the earlier "search-every-lane" recommendation.)
+
+FOOD→RESTAURANT FAN-OUT ALREADY EXISTS (verified wf whlgg1gfd 2026-07-01): a food search returns a
+restaurant if it serves a matching dish OR is linked to that food in `core_restaurant_entity_signals`
+(an `OR` of two EXISTS branches in `buildRestaurantQuery`, always on when a food filter is present; it
+even reports `match_evidence_type` = connection/tag_signal/mixed). Restaurant-attribute searches fan
+out the same way.
+
+ATTRIBUTE DATA — CORRECTED (verified wf whlgg1gfd 2026-07-01): NOT "empty." Attribute VOCABULARY exists
+(107 restaurant_attribute + 88 food_attribute entities) and RESTAURANT tags exist (502/1801 tagged →
+restaurant-attribute search WORKS today). Only the DISH-level `c.food_attributes` column is genuinely
+0/1178 — and not for a structural reason: the evidence exists (461 food-attribute events) but is
+stranded on INACTIVE extraction runs, so the projection correctly wrote nothing. Fix = a fresh active
+extraction run + re-run the projection. Attribute DEDUP is handled (better than restaurants/dishes) by
+a dedicated path: new attributes are created `pending`/quarantined, then an async attribute-ontology
+worker (LLM `placeAttribute`) folds/promotes/rejects them and cross-checks new canonicals — which is
+WHY `matchEntity.kind` is restaurant|food only (attributes don't need it).
 
 **The 15-line Stage-2 (exact + 0.82) — redundant double-check of the matcher?** The CHECK is NOT
 redundant — the matcher is recall-only by explicit design (docstring:41-45,144-152: RRF "orders the
@@ -122,6 +144,7 @@ above — which is exactly the "consume the matcher's features, don't re-derive 
 filter (`buildRestaurantMarketFilter`, entity-text-search.service.ts:1051-1071) with ZERO proximity
 ranking; raw coords are discarded (autocomplete.service.ts:1415). This is the OPPOSITE of Google
 (hard-scope, no rank) and the most exclusionary mechanism in the system. Ideal (bounded Google-parity):
+
 - (1) BOUNDED fuzzy/dense recall as a MARKET-SET membership (viewport market + adjacent markets via
   core_markets polygon GiST adjacency, ST_Touches/ST_DWithin — indexable) → cross-metro without
   globalizing.
@@ -130,11 +153,11 @@ ranking; raw coords are discarded (autocomplete.service.ts:1415). This is the OP
   by match quality: exact = global-and-cheap; fuzzy = bounded.
 - (3) Proximity as a SUBORDINATE ORDER-BY tiebreak (never multiplied into the score — that dynamizes the
   sort key), d0 a FIXED metro-scale constant (NOT the viewport half-diagonal — zoom-coupled pathology).
-Do NOT relax the hard EXISTS into a pure per-row global rerank (what all four designs first proposed) —
-the market EXISTS is the ONLY thing bounding recall cardinality; restaurant POINTs have no spatial
-index, and the dense lane is a pre-filtered HNSW (removing the filter makes ANN pick top-k with zero
-geo-awareness; a post-hoc rerank can't recover a candidate the ANN never returned). Distance never gates
-result EXISTENCE — only ORDER. Delivers your "Winson → NYC, Oklahoma, UK, Malaysia."
+  Do NOT relax the hard EXISTS into a pure per-row global rerank (what all four designs first proposed) —
+  the market EXISTS is the ONLY thing bounding recall cardinality; restaurant POINTs have no spatial
+  index, and the dense lane is a pre-filtered HNSW (removing the filter makes ANN pick top-k with zero
+  geo-awareness; a post-hoc rerank can't recover a candidate the ANN never returned). Distance never gates
+  result EXISTENCE — only ORDER. Delivers your "Winson → NYC, Oklahoma, UK, Malaysia."
 
 **Profile vs cards (Google-like, confidence-gated).** Open the PROFILE iff (server-side, over the
 untruncated candidate set): (1) top.type == restaurant; (2) evidence ∈ {exact, **aliasExact**};
@@ -199,7 +222,93 @@ three link invariants; LLM segmentation on the hot path.
 - **STEP 8 (final delete):** fold plan-expansion onto `retrieveCandidates`.
 
 Steps 0-2 = immediate, no gate. 3-7 each behind a shadow/A-B/EXPLAIN gate. All thresholds config-swept,
-never inherited.
+never inherited. NOTE (2026-07-01): the former "Step 4 on-demand prerequisite" is REMOVED (hole
+disproven) and the broadening/relevance-tiebreak/UNION-at-scale steps are DROPPED (owner chose not to
+broaden). The remaining real speed work is in Performance below.
+
+## Performance — where search time actually goes (verified wf whlgg1gfd, 2026-07-01)
+
+SQL is NOT the bottleneck (statements run in tens of ms; Crave Score ordering is precomputed; all hot
+columns are indexed). Real costs, in order:
+
+1. **The LLM interpret step (~4.4s) dominates every search** — a hard serial prefix. Wins: (a) cache
+   interpretations by normalized query (the two-tier cache EXISTS but is OFF — `queryResultCacheTtlSeconds
+= 0`, `llm.service.ts:153`; flipping it >0 is a FREE win, zero code/recall risk — enable locally only
+   if no Redis dep, else at prod); (b) faster/smaller extraction model; (c) CLEANEST — don't call the LLM
+   when the entity is already known (the tap-bypass + Step-1 promoter; audit any path where a known
+   entity still hits `interpret`). This is the owner's real "search is slow" complaint.
+2. **The dual query runs 2–4 SQL STAGES serially** (strict → expansion → page → relaxation), ~12–16
+   sequential statements; the two axes within a stage are parallel but stages are serial. Collapsing/
+   parallelizing this chain is the main SQL-side win.
+3. **ONE legit OR→UNION win:** the restaurant WHERE's cross-table `EXISTS(connections) OR EXISTS(signals)`
+   — two arms hit different tables so the OR defeats a single-index plan; UNION it. Do NOT UNION the
+   intra-table value ORs (`food_id = ANY OR categories && …` — Postgres already BitmapOrs those).
+4. `restaurant_vote_totals` aggregates votes for ALL filtered restaurants before the LIMIT — defer/narrow.
+
+## Routing & entry-point policy + exact-match promoter (merged from search-routing-redesign.md)
+
+CONTEXT: the ~4.4s LLM interpret has been a BLOCKING first op since the service was born (`3f95aae4`) —
+day-1 debt, not a regression. P1.4 (`3c3e2c96`/`70f09738`) only changed the POST-LLM linking (added
+`linkViaHybridRecall`, deleted the legacy Sørensen-Dice `resolveBatch`) — it IMPROVED + consolidated the
+matcher. The one genuine regression: `interpret()` now THROWS `LLMUnavailableError` on outage
+(search-query-interpretation.service.ts:104) with no fallback — restore a non-LLM degradation path.
+
+OWNER-CHOSEN ROUTING SHAPE — SIMPLE + LISTLESS (no non-exhaustive lists / content guards, EVER):
+
+1. Shortcut CHIP (entry point, not content) → structured search, no LLM.
+2. Autocomplete TAP → resolved identity (carries `entityId+type`), no LLM.
+3. Typed text == exactly ONE known entity, TYPE-UNAMBIGUOUS → exact-match promoter (below), no LLM.
+4. Everything else (multi-word, entity+extra, ambiguous, generic, unknown) → LLM.
+   The ONLY guard is the data-driven TYPE-CONFLICT check at rule 3 ("does this exact string match >1
+   entity/type in our data?" → escalate). Type is load-bearing (it routes SQL across two tables; a
+   wrong-type id → silent empty query), and the client promoter lacks the LLM's bucketing, so this guard
+   is the client-side stand-in for it. Ambiguity at query time is otherwise handled by REVEAL-ALL (link
+   every near-tied candidate → let the score rank), never by an LLM pick — the judge only matters when you
+   must commit to one (ingestion), not when showing a list.
+
+THE EXACT-MATCH PROMOTER (Step 1 — the day-1 EXACT-TOKEN fix, ZERO new server routing):
+
+- Build it on the AUTOCOMPLETE SUGGESTIONS the client already holds — each carries the resolved
+  `entityId+entityType` (what an exact matcher call would return); no new endpoint, no second hop.
+- Reuse the EXISTING bypass: send `submissionContext = {matchType:'entity', selectedEntityId,
+selectedEntityType}` → `buildSelectedEntitySearchRequest` (search-orchestration.service.ts:314-366)
+  short-circuits BEFORE `interpret` → runQuery, no LLM. The TAP path already builds this exact payload.
+- THE ONE SERVER FIX (~2 lines): the suggestion carries identity but the server DROPS the exactness
+  `evidence` at the DTO map (autocomplete.service.ts:306-313, computed at entity-search.service.ts:58).
+  Forward `evidence` (or a derived `isExactMatch`) so the client can trust "exact". (This is also
+  Step 0 for the profile-jump gate + coherent confidence.)
+- GATES: promote only on evidence-exact/real-alias AND normalized name-equality AND a SINGLE unambiguous
+  entity row (type-conflict → LLM) AND freshness (compare RAW typed text to `response.query`). Drop
+  query/poll rows.
+- PRODUCT DECISION (open): typed restaurant name + Return → results search, or profile preview? (Tap a
+  restaurant already opens the profile preview.) Confirm before building; safe default = the profile
+  gate from the profile-vs-search rule above.
+
+MAXIMALIST REFERENCE (de-scoped): the full RESOLVE-OR-ESCALATE 10-leaf ladder (gazetteer multi-span,
+generic-only detection, partial-coverage, cuisine guard, confident-recall margin) lived in
+search-routing-redesign.md §2-3. The owner rejected it as over-built + list-dependent; the 4-rule shape
+above supersedes it. Kept here only as a pointer in case the single-term bulk proves insufficient.
+
+## Hardcoded cutoffs — verified inventory + cleanup (wf a0b40d4, 2026-07-01)
+
+Owner is HALF right: ~20 distinct cutoffs, but most gate genuinely different decisions and are
+justified; many `0.xx` literals are assigned SCORES (exact=1.0, alias=0.95) or blend WEIGHTS, not gates
+(count overstates the problem). LEGIT (keep): length-tiered recall thresholds (0.7/0.55/0.45/0.35 by
+term length — a real precision curve since pg_trgm similarity scales inversely with length;
+entity-text-search.service.ts:505-510); RRF `K=60` (industry-standard, entity-text-search.service.ts:206);
+phonetic/prefix/poll structural bounds; attribute-lane confidence×support matrix (0.95/0.88/0.08/0.22/
+0.42/0.65, autocomplete.service.ts:37-47 — justified but UNVALIDATED guesses). THREE REAL PROBLEMS:
+(1) **`0.82` copy-pasted across 3 files** with no shared constant — `search-query-interpretation.service.ts:61`
+(named), `entity-text-search.service.ts:535` + `autocomplete.service.ts:991` (bare) — all mean "confident
+lexical link," each tuned in isolation; (2) **dead file `autocomplete-rerank.ts`** (`rerankForAutocomplete`
+exported, imported nowhere — a never-wired learned-ranker slot); (3) **antiquated Sørensen-Dice/Levenshtein**
+in the resolver (`entity-resolution.service.ts:798,811,1591`) — pre-shared-matcher (P1.4) remnant, now demoted
+from threshold to tiebreaker; the whole `string-similarity` dep could be retired. CLEANUP (folds into
+Step 0/2): consolidate `0.82` into one shared named constant + fold the redundant `?? 0.35` fallback
+(entity-text-search.service.ts:728); DELETE `autocomplete-rerank.ts`; retire the Sørensen-Dice/Levenshtein
+tiebreak in favor of pg_trgm ordering; PROMOTE-to-swept-config the length-tiers + the six attribute gates
+(the genuine dials — sweep on selection telemetry, don't leave as magic numbers). Leave K=60, structural
+bounds, and all assigned-scores/weights alone.
 
 ## Honest unresolved risks (do NOT paper over)
 
