@@ -218,4 +218,103 @@ final class LodEngineTests: XCTestCase {
     nowMs += Self.frameMs
     XCTAssertEqual(e.step(nowMs: nowMs).count, 0, "a settled engine writes nothing (no idle churn)")
   }
+
+  // MARK: RETARGET — the LEA membership seam keys to the STABLE decide target, NOT the >0.5 role
+  // (takeSettledRoleChangeIfAny: emit the rank-ordered promoted set once per TARGET change, else nil)
+
+  func testSeamEmitsNewRankOrderedTargetOnceThenNil() {
+    var e = LodEngine(budget: 3)
+    e.setRanking(ranking(10))
+    e.decide(onScreenKeys: keys([9, 2, 5]))
+    // Immediately after the decide — no step has moved any opacity off 0, so an opacity-keyed seam
+    // would report nothing here. The RETARGET reports the DECIDE TARGET, rank-ordered.
+    XCTAssertEqual(
+      e.takeSettledRoleChangeIfAny(), ["r2", "r5", "r9"],
+      "a decide that changes the promoted target emits exactly the new set, in rank order")
+    XCTAssertNil(e.takeSettledRoleChangeIfAny(), "consumed — an immediately repeated call is nil")
+  }
+
+  func testSeamEmitsOnEachTargetChangeAcrossDecides() {
+    var e = LodEngine(budget: 2)
+    e.setRanking(ranking(10))
+    e.decide(onScreenKeys: keys([1, 2, 3]))
+    XCTAssertEqual(e.takeSettledRoleChangeIfAny(), ["r1", "r2"])
+    e.decide(onScreenKeys: keys([2, 3, 4]))   // r1 left the viewport → target is now r2,r3
+    XCTAssertEqual(
+      e.takeSettledRoleChangeIfAny(), ["r2", "r3"],
+      "a later decide that moves the target emits the new rank-ordered set")
+    XCTAssertNil(e.takeSettledRoleChangeIfAny(), "and is consumed by the read")
+  }
+
+  func testSeamIsSilentWhenDecideYieldsTheSamePromotedSet() {
+    var e = LodEngine(budget: 2)
+    e.setRanking(ranking(10))
+    e.decide(onScreenKeys: keys([1, 2, 3]))
+    XCTAssertEqual(e.takeSettledRoleChangeIfAny(), ["r1", "r2"])
+    e.decide(onScreenKeys: keys([1, 2, 3]))   // identical decide
+    XCTAssertNil(e.takeSettledRoleChangeIfAny(), "same promoted set ⇒ no spurious emission")
+    e.decide(onScreenKeys: keys([1, 2]))      // r3 leaves, but it was never promoted (budget 2)
+    XCTAssertNil(e.takeSettledRoleChangeIfAny(), "on-screen churn below the budget line is not a role change")
+  }
+
+  func testSeamHoldsSteadyMidCrossfadeDipRange() {
+    // ANTI-OSCILLATION: opacities traverse the 0.3–0.7 dip range (where the >0.5 role flips) while the
+    // decide target holds — the seam must stay silent for the whole fade (it keys to lastPromotedInOrder,
+    // not live opacity). An opacity-keyed seam fires as the fades cross 0.5 = the measured dot flash.
+    var e = LodEngine(budget: 3, fadeSeconds: 0.18)
+    e.setRanking(ranking(10))
+    e.decide(onScreenKeys: keys([1, 2, 3]))
+    XCTAssertEqual(e.takeSettledRoleChangeIfAny(), ["r1", "r2", "r3"])
+    e.step(nowMs: 0)   // fades start at t=0 (opacity 0)
+    for frac in [0.3, 0.4, 0.5, 0.6, 0.7] {   // opacity == frac of a 180ms fade
+      e.step(nowMs: frac * 180.0)
+      XCTAssertNil(
+        e.takeSettledRoleChangeIfAny(),
+        "no emission mid-crossfade at opacity \(frac) — the target never moved")
+    }
+  }
+
+  func testSeamDoesNotOscillateWhenTheLiveRoleChurnsMidFade() {
+    // The measured 30→26→31 oscillation axis: a churn decide (r1 demotes, r4 promotes) is emitted ONCE;
+    // then mid-fade the LIVE >0.5 role visibly changes hands (r1 falls out, r4 climbs in) while the
+    // target holds — the seam must not re-fire on any of it, nor on settle.
+    var e = LodEngine(budget: 3, fadeSeconds: 0.18)
+    e.setRanking(ranking(10))
+    var nowMs = 0.0
+    e.decide(onScreenKeys: keys([1, 2, 3])); settle(&e, &nowMs)
+    XCTAssertEqual(e.takeSettledRoleChangeIfAny(), ["r1", "r2", "r3"])
+    e.decide(onScreenKeys: keys([2, 3, 4]))   // churn: r1 demotes, r4 promotes
+    XCTAssertEqual(
+      e.takeSettledRoleChangeIfAny(), ["r2", "r3", "r4"],
+      "the churn emits the new stable target exactly once, at the decide")
+    nowMs += Self.frameMs
+    e.step(nowMs: nowMs)                      // both fades (re)start at this instant
+    let fadeStart = nowMs
+    for frac in [0.3, 0.4, 0.5, 0.6, 0.7] {
+      nowMs = fadeStart + frac * 180.0
+      e.step(nowMs: nowMs)
+      XCTAssertNil(e.takeSettledRoleChangeIfAny(), "silent mid-fade (fraction \(frac))")
+    }
+    // Prove the scenario exercised the oscillation axis: the live >0.5 role DID change hands mid-fade
+    // (r1 at 0.3, r4 at 0.7 here) — exactly what the superseded opacity-keyed seam would have emitted.
+    XCTAssertEqual(Set(e.visiblePinKeys), keys([2, 3, 4]), "the >0.5 role really did flip during the window")
+    settle(&e, &nowMs)
+    XCTAssertNil(e.takeSettledRoleChangeIfAny(), "settling onto the already-reported target emits nothing")
+  }
+
+  func testSetRankingAloneDoesNotChangeWhatTheSeamReports() {
+    // THE INVARIANT: only `decide` updates lastPromotedInOrder — a data refresh (setRanking) with no
+    // decide must not move the seam, even when the refresh introduces a better-ranked newcomer.
+    var e = LodEngine(budget: 2)
+    e.setRanking(ranking(5))
+    e.decide(onScreenKeys: keys([1, 2, 3]))
+    XCTAssertEqual(e.takeSettledRoleChangeIfAny(), ["r1", "r2"])
+    var refreshed = ranking(6)
+    refreshed.insert(anchor("r99", rank: 0), at: 0)   // rank-0 newcomer, still sorted ascending
+    e.setRanking(refreshed)
+    XCTAssertNil(e.takeSettledRoleChangeIfAny(), "setRanking alone must not change what the seam reports")
+    XCTAssertEqual(e.lastPromotedInOrder, ["r1", "r2"], "the decide target is untouched by setRanking")
+    e.decide(onScreenKeys: keys([1, 2, 3]))   // r99 is off-screen → the fresh decide keeps the same target
+    XCTAssertNil(e.takeSettledRoleChangeIfAny(), "and the follow-up same-target decide stays silent")
+  }
 }

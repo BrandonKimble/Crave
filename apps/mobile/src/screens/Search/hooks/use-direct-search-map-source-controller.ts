@@ -17,6 +17,10 @@ import {
   type SearchMapVisualIdentityKey,
 } from '../utils/search-map-visual-identity';
 import { buildMarkerCatalogReadModel } from '../runtime/map/map-read-model-builder';
+import {
+  resolveCoverageCacheDecision,
+  type CoverageRequestStatus,
+} from '../runtime/map/coverage-cache-policy';
 import { type MapMotionPressureController } from '../runtime/map/map-motion-pressure';
 import {
   createSearchMapSourceTransportFeature,
@@ -105,14 +109,9 @@ const isMapMotionPressureMoving = (
   return phase === 'gesture' || phase === 'inertia';
 };
 
-type ShortcutCoverageRequestStatus =
-  | 'idle'
-  | 'loading'
-  | 'completed'
-  | 'empty'
-  | 'failed'
-  | 'aborted'
-  | 'superseded';
+// Owned by the coverage-cache policy module (the pure decision core the cache-hit paths in
+// maybeFetchShortcutCoverage route through) — one source of truth for the status vocabulary.
+type ShortcutCoverageRequestStatus = CoverageRequestStatus;
 
 type ShortcutCoverageRequestCounters = {
   started: number;
@@ -2669,21 +2668,26 @@ export const useDirectSearchMapSourceController = ({
           boundsKey,
         });
         const activeResource = shortcutCoverageResourceRef.current;
-        if (activeResource?.requestKey === requestKey && activeResource.status !== 'loading') {
-          return;
-        }
         const cachedTerminalResource =
           shortcutCoverageTerminalByRequestKeyRef.current.get(requestKey);
-        if (cachedTerminalResource) {
+        // canRefetch: false — no bounds means no query, so 'refetch' here means "fall through to
+        // the synthetic no-bounds 'failed' terminal below" (this branch's stand-in for a fetch).
+        const cacheDecision = resolveCoverageCacheDecision({
+          requestKeyMatchesActive: activeResource?.requestKey === requestKey,
+          activeStatus: activeResource?.status ?? null,
+          cachedTerminalStatus: cachedTerminalResource?.status ?? null,
+          canRefetch: false,
+        });
+        if (cacheDecision.action === 'alreadySettled') {
+          return;
+        }
+        if (cacheDecision.action === 'restoreFromCache' && cachedTerminalResource) {
           shortcutCoverageResourceRef.current = cachedTerminalResource;
           shortcutCoverageLoadingRef.current = false;
           // [tclur FIX / red-team M1] Restore features ONLY for a SUCCESS terminal — mirror the main
           // cache-hit path so the two read paths can never diverge (a non-success terminal never surfaces
           // stale features). An 'aborted'/'failed' terminal → null (clear coverage).
-          const cachedIsSuccess =
-            cachedTerminalResource.status === 'completed' ||
-            cachedTerminalResource.status === 'empty';
-          shortcutCoverageDotFeaturesRef.current = cachedIsSuccess
+          shortcutCoverageDotFeaturesRef.current = cacheDecision.restoreFeatures
             ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey) ?? null)
             : null;
           publishSourcesRef.current();
@@ -2778,51 +2782,58 @@ export const useDirectSearchMapSourceController = ({
       boundsKey,
     });
     const activeResource = shortcutCoverageResourceRef.current;
-    const activeMatchesKey = activeResource?.requestKey === requestKey;
-    if (activeMatchesKey && activeResource?.status === 'loading') {
-      // A fetch for THIS exact tab/bounds is already in flight — let it land.
-      return;
-    }
     // [tclur FIX] Short-circuit ONLY on a SUCCESS terminal ('completed'/'empty') — a definitive coverage
     // result for this requestKey. A cancelled/errored terminal ('aborted'/'superseded'/'failed') is NOT a
     // result: rapid toggling supersedes in-flight coverage fetches (line ~2820 + the catch at ~3060 cache an
     // 'aborted' terminal), and the OLD code early-returned on ANY cached terminal → that tab could never
     // re-fetch and stayed empty (promoted=0, the "pins vanished and never came back"). We now fall through
     // to re-fetch those. The success terminal may come from the active resource or the per-key terminal cache.
+    // The decision itself is PURE and spec-locked in coverage-cache-policy.ts.
     const cachedTerminalResource = shortcutCoverageTerminalByRequestKeyRef.current.get(requestKey);
-    const isSuccessStatus = (
-      status: ShortcutCoverageRequestResource['status'] | undefined
-    ): boolean => status === 'completed' || status === 'empty';
-    const successTerminal =
-      activeMatchesKey && isSuccessStatus(activeResource?.status)
-        ? activeResource
-        : cachedTerminalResource && isSuccessStatus(cachedTerminalResource.status)
-          ? cachedTerminalResource
+    const cacheDecision = resolveCoverageCacheDecision({
+      requestKeyMatchesActive: activeResource?.requestKey === requestKey,
+      activeStatus: activeResource?.status ?? null,
+      cachedTerminalStatus: cachedTerminalResource?.status ?? null,
+      canRefetch: true,
+    });
+    if (cacheDecision.action === 'waitForInFlight') {
+      // A fetch for THIS exact tab/bounds is already in flight — let it land.
+      return;
+    }
+    if (cacheDecision.action === 'restoreFromCache') {
+      const successTerminal =
+        cacheDecision.restoreSource === 'activeResource' ? activeResource : cachedTerminalResource;
+      if (successTerminal) {
+        // [tclur] COV-CACHE-HIT probe: the terminal-resource cache HITS and restores the RESOURCE — and now
+        // ALSO the features ref from the sibling features cache (previously the features ref stayed on the
+        // prior tab's coverage → the confirmed stale-236-on-restaurants root).
+        // eslint-disable-next-line no-console
+        console.log('[tclur] COV-CACHE-HIT', {
+          reqTab: activeTab,
+          resTab: successTerminal.activeTab,
+          resStatus: successTerminal.status,
+          resFeat: successTerminal.acceptedFeatureCount,
+          refFeat: shortcutCoverageDotFeaturesRef.current?.features.length ?? -1,
+        });
+        shortcutCoverageResourceRef.current = successTerminal;
+        shortcutCoverageLoadingRef.current = false;
+        // Restore THIS tab's features from the features cache so the map switches immediately. An 'empty'
+        // terminal legitimately cached no features → null clears the coverage.
+        shortcutCoverageDotFeaturesRef.current = cacheDecision.restoreFeatures
+          ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey) ?? null)
           : null;
-    if (successTerminal) {
-      // [tclur] COV-CACHE-HIT probe: the terminal-resource cache HITS and restores the RESOURCE — and now
-      // ALSO the features ref from the sibling features cache (previously the features ref stayed on the
-      // prior tab's coverage → the confirmed stale-236-on-restaurants root).
-      // eslint-disable-next-line no-console
-      console.log('[tclur] COV-CACHE-HIT', {
-        reqTab: activeTab,
-        resTab: successTerminal.activeTab,
-        resStatus: successTerminal.status,
-        resFeat: successTerminal.acceptedFeatureCount,
-        refFeat: shortcutCoverageDotFeaturesRef.current?.features.length ?? -1,
-      });
-      shortcutCoverageResourceRef.current = successTerminal;
-      shortcutCoverageLoadingRef.current = false;
-      // Restore THIS tab's features from the features cache so the map switches immediately. An 'empty'
-      // terminal legitimately cached no features → null clears the coverage.
-      shortcutCoverageDotFeaturesRef.current =
-        shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey) ?? null;
-      publishSourcesRef.current();
+        publishSourcesRef.current();
+      }
       return;
     }
     // No success terminal for this key (none, or a cancelled/errored one) → drop any stale non-success
-    // terminal so it can't block, and fall through to a fresh fetch.
-    if (cachedTerminalResource) {
+    // terminal so it can't block, and fall through to a fresh fetch. The terminal AND features cache
+    // entries are deleted in LOCKSTEP (the policy's deleteStaleCacheEntries contract).
+    if (
+      cacheDecision.action === 'refetch' &&
+      cacheDecision.deleteStaleCacheEntries &&
+      cachedTerminalResource
+    ) {
       // eslint-disable-next-line no-console
       console.log('[tclur] COV-REFETCH', {
         reqTab: activeTab,

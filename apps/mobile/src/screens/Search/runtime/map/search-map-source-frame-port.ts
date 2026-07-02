@@ -131,7 +131,10 @@ const areSourceStoreFramesEqual = (
         left.semanticRevisionById.get(id) === right.semanticRevisionById.get(id)
     ));
 
-const areSearchMapSourceFrameSnapshotsEqual = (
+// Exported for the field-sensitivity spec (search-map-source-frame-port.spec.ts): every keyed
+// field must independently flip equality — the "snapshot-equality omits a load-bearing field"
+// bug class means a field the render reads but this fn skips silently blocks republish.
+export const areSearchMapSourceFrameSnapshotsEqual = (
   left: SearchMapSourceFrameSnapshot,
   right: SearchMapSourceFrameSnapshot
 ): boolean =>

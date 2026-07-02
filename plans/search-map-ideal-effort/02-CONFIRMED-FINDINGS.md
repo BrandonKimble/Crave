@@ -65,3 +65,70 @@ INSTRUMENTED the real data flow (probes `[tclur] COV-SET/COV-CACHE-HIT/COV-REFET
 
 Red-team (4 adversaries + lead, wq5nxfzq1) verdict = GO-WITH-FIXES. MUST-FIX M1 (applied): the two coverage cache-hit READ paths were inconsistent — the main path was success-gated, but the bounds-unavailable path (~2677) restored features for ANY terminal, and the error `.catch` (~3077) + the bounds-unavailable-fail (~2714) overwrote a terminal to 'aborted'/'failed' WITHOUT deleting the features entry (orphan risk). FIX: delete the features entry in lockstep at every non-success terminal write; gate the bounds-unavailable read on success too. Aborted-refetch path CONFIRMED sound by the red-team (no loop: subscription-driven not per-frame; stale in-flight rejected by fetchSeq guard). Plus the TRANSIENT fix: `publishAndFetch` now restores coverage (`maybeFetchShortcutCoverage`) BEFORE projecting (`publishSourcesRef`), so a single toggle reads the current tab's coverage — no 1-frame wrong-count flash.
 FINAL on-device validation: single toggle to dishes → `t4dbg dishes count:236` DIRECTLY (no 647 flash); toggle-back → `count:647` (T4 fixed); cards+map AGREE in settled states; rapid multi-tap settles correct (never stuck), residual brief burst-transients are masked by `beginInteractionFadeOut`. tsc clean. **STATUS: toggle cluster DONE (T4 + pin-disappear + transient), UNCOMMITTED, probes still in (cleanup last).**
+
+---
+
+# STEP-2 CONSOLIDATED RE-VERIFICATION DRIVE (2026-07-01 ~20:45-21:08, roadmap Step 2)
+
+**Environment (important):** the MAIN tree was being live-edited by the page-switch session (its half-written
+`presentationFrame` modules broke the main Metro bundle mid-drive). The drive was therefore run on an
+ISOLATED RIG: APFS clone of the repo pinned at checkpoint `80eb10a0`, its own Metro :8083
+(`/tmp/crave-metro-8083.log`), SECOND sim (7B0DD874, iPhone 17 Pro), the 02:12 native binary (has L1+R1
+Swift fixes). All results below are from the pinned checkpoint — the exact committed state.
+
+## VERDICTS (each with the trace evidence)
+
+- **R2 (reveal double-fade): CLOSED — does not reproduce.** 10 consecutive search reveals: every presramp
+  ramp strictly monotonic 0.001→1.000, exactly ONE ramp per reveal, zero opacity regressions. The old
+  snap-out/snap-in signature is gone (subsumed by the L1 + R1-clock fixes as hypothesized).
+- **Dis1 (dismiss protect): PASS.** 11/11 dismiss ramps strictly monotonic 1→0 (~300ms); map visually clean
+  of our markers after dismiss (Gate B).
+- **Dis3 (dismiss label snap): NOT REPRODUCED in 10 dismisses.** No SELECTOR churn in dismiss windows (the
+  only non-empty DROPPED/ADDED events are once-per-cycle cold-start re-picks with identical sets, during
+  reveals). Consistent with "was the L1 two-writer conflict". Intermittent by nature — harness stays in.
+- **R1 residual: REPRODUCED + REFINED.** 6/10 reveals show exactly ONE >32ms inter-tick gap (102-123ms) —
+  the known stall; 4/10 are fully clean (max gap 21-22ms). Also NEW: ramp durations cluster at ~185ms
+  (clean) vs ~310ms (stalled) — actual animation time is ~190ms in both cases (the stall inflates
+  wall-clock). Step-3's mid-fade re-anchor turns the stall into a pause; Step-4 attributes the ~110ms block.
+- **POST-DISMISS BASEMAP SUPPRESSION: DEFECT CONFIRMED (the review's #2 find, now W5-certified).**
+  Baseline home map: dozens of street names/neighborhoods/POIs. After search→dismiss: a GHOST TOWN (only a
+  road shield + one label). Resident collision-bearing labels/dots at opacity 0 cull the basemap
+  indefinitely. CONTRAST PROOF: after the EMPTY typed search ("tacos", 0 results → empty catalog published →
+  sources actually cleared) the SAME region shows full basemap labels — resident-at-opacity-0 vs
+  actually-cleared is the mechanism, confirmed end-to-end. FIX (Step 5.iii): dormant/clear label+dot render
+  layers at dismiss-complete (`setLabelRenderLayersVisible(false)` exists ~:6764; re-wake on reveal — the
+  reveal-deadlock watchdog :5958 covers the wake-failure risk).
+- **T2 (toggle double-fade) + T3 (cutout white-strip flash): NOT REPRODUCED.** 6-tap toggle burst captured
+  on video (380 frames, VFR): frame-by-frame analysis of the strip band + map band found ZERO
+  frame-to-frame discontinuities (no transparency flash, no luminance double-fade). Pill motion smooth
+  except ONE single-frame re-target across the whole burst (rapid re-targeting, not the old at-click drop).
+- **T1/TR1 (at-click drop / pill pacing): SUBSTANTIALLY CLOSED on sim.** The armed perf scenario's frame
+  samplers ran through the typed-search + toggle drives: 103/108 windows stallCount=0 (4×1, 1×2),
+  97/108 droppedFrameRatio=0 (worst 0.4 in one window). No catastrophic at-click stall anywhere. Final
+  verdict on REAL DEVICE at Step 10 (Instruments hitches during pill animation).
+- **TYPED-QUERY (non-shortcut) TOGGLE-BACK: PASS.** "pizza" (respD:12/respR:20, natural path, no coverage):
+  toggle to restaurants → `t4dbg {restaurants, count:20, changed:true, published:true}`; back to dishes →
+  `{dishes, count:11, changed:true, published:true}`; stable dedup after. No T4-class staleness off the
+  shortcut path. BONUS: the EMPTY-result edge ("tacos" 0/0) handles cleanly — both tabs settle at 0:empty,
+  no stuck state, clean empty-state UI.
+- **CROSS-SEARCH `__lea_revealed__` UNION LEAK: REFUTED.** After the Best-restaurants cycles union=64; the
+  next different search's commits show union=37 (reset + re-grown from the new search's winners, not 64+new).
+  The literal does NOT leak across searches. (Completeness finding #11 closed.)
+- **BOUNDS-CHANGE COVERAGE (search-this-area class): PASS.** Re-searching from a panned viewport fetched a
+  NEW coverage (COV-SET feats:1141 vs the prior 647), published `changed:true`, and subsequent cache-hits
+  agree (refFeat=resFeat=1141). New bounds → new requestKey → fresh fetch; no stale cross-bounds restore.
+- **D1 (zoom-extreme dots): STATIC PASS; transient check deferred to device.** Programmatic camera jumps
+  z9↔z17↔z12 with results up: markers return correctly at every level (dots round, labels crisp, no
+  double-ink/misplacement in stills); pin overlay roster stable (promoted=30 tiles=30 ×13) throughout.
+  CAVEAT: the armed perf scenario's arming RESET the search session once (`catalogEmpty=true` noise) — arm
+  BEFORE searching. Transient wiggle/flash class needs the 240fps device slo-mo (Step 10).
+- **Load-more:** not driven (map effect = a catalog append re-publish, the dedup path already exercised);
+  folded into map-accept.sh / Step 10.
+
+## Incidental finds
+
+- The empty-search state ("No dishes found") correctly CLEARS the map sources — and thereby proves the
+  suppression-defect mechanism by contrast.
+- Maestro coordinate taps are DEVICE-LAYOUT-SENSITIVE (the dismiss X is 92%,8% on the Pro Max sim but
+  88%,11% on the Pro) — map-accept.sh should prefer id-based taps or per-device coordinates.
+- `set_map_camera` deep links REQUIRE an armed perf scenario; arming mid-session resets the search session.
