@@ -392,3 +392,47 @@ coordinated flow via deferredApply.)
 form targeted hypotheses by running the implementation mentally and hunting smells; instrument only to
 CONFIRM those hypotheses. Owner wants ME (the context-holder) doing this directly; delegate only
 context-independent pieces.
+
+---
+
+# P1 MENTAL MODEL (code-dive, 2026-07-02): the warm-reveal snap has THREE stacked mechanisms
+
+1. **Native short-circuit:** `animatePresentationOpacity` no-ops when |current − target| < 0.001 — any
+   "reveal" requested while presentation already sits at 1 applies instantly, zero ramp. Correct for true
+   no-ops; a SNAP AMPLIFIER whenever an upstream path fails to drop presentation first.
+2. **The `live_update` lane (the big one):** the set_frame pipeline has exactly FOUR fade entry points
+   (interaction_fade_out, dismiss_start, presentation_preroll, reveal_start). A frame arriving with
+   transaction kind `live_update` (also `bootstrap`/`hidden_preload` when ready) calls
+   applyPresentation()+applySnapshot() DIRECTLY — sources swap at whatever presentation currently is. If a
+   WARM re-search (from results state, search-this-area, or any flow where JS doesn't arm an enter/redraw
+   transaction) lands as live_update at presentation=1, the ENTIRE marker set snap-swaps. No native guard
+   exists against a full-catalog swap on the live lane.
+3. **Sim-1 aggravation:** the page-switch WIP's ownership failures can break the JS enter/redraw ARMING,
+   downgrading what should be enter transactions into live-lane swaps (and its searchOwns:false family also
+   explains the dead close buttons / grabber-dismiss cluster the owner hit).
+
+**FIX DIRECTION (design-level, = the owner's "one canonical fade" want):** a full-catalog swap must NEVER
+ride the live lane bare. Every catalog-replacing trigger (re-search, search-this-area, filter apply,
+toggle) routes through the SAME coordinated shape the toggle uses: fade-out (or cover) → swap → canonical
+fade-in. Implement as (a) JS: all catalog-replacing flows arm a redraw/enter transaction (this IS the TR5
+coordinated flow, generalized — one more reason to build TR5 for ALL toggles + triggers now, per the owner);
+(b) native GUARD: if a non-incremental snapshot swap arrives on the live lane while visible at
+presentation>0.5, run the interaction-fade shape around it (belt-and-braces so no future JS path can
+reintroduce the snap).
+
+# DIVE STATE (what's modeled vs owed)
+
+- P1: modeled (above) — next: confirm via one instrumented warm re-search (which lane the frame takes), then
+  build the JS arming + native guard.
+- P4: modeled (the snap-batch = settled-grace machinery + possibly my L1 drops-only-demoted stickiness
+  flushing at settle; recorded in Rulings Round 2). The collision-twin design likely dissolves the class.
+- P3 (label double-fade): dive OWED — trace the 4-factor label opacity product on a real reveal (which
+  factor dips: nativeLabelOpacity stepper vs **lea_revealed** churn vs Mapbox placement fade).
+- P8 (toggle fade ≠ canonical): dive OWED — audit beginInteractionFadeOut/applyInteractionFadeOut duration +
+  curve + trigger timing vs the canonical ramp; unify to ONE fade (the fade-out on press-up should be the
+  same 300ms Hermite the dismiss uses).
+- P5/P9/P11 (freezes, no-pin toggles, sparse dots): dives owed after P1/P8 (P5 likely JS-thread; P11 verify
+  whether the culled-count actually accounts for the sparse-area gaps — QRF the dot layer over a sparse
+  region and compare against the source's features there).
+- R-5 collision-twin: dive owed — today's labelLayerIds vs labelCollisionLayerIds roles, what the selector
+  QRF observes, and the exact overlap/ignorePlacement flags per layer, then the twin-flip design doc.
