@@ -535,3 +535,38 @@ exactly ONE label per restaurant renders (the literal is the sole visibility aut
 render), suppression intact mid-search, toggles publish both ways, post-dismiss basemap restored, app
 stable. OWNER-EYES GATES remaining: (b) snap-on-pan feel, (f) label taps, P14 residue QRF probe + the L1/L3
 re-feel — all on sim-2, pure main.
+
+---
+
+# COORDINATED-SWAP GUARD + P1 ATTRIBUTION CORRECTED (2026-07-02)
+
+**P1 CORRECTED (census-proven):** on PURE MAIN, warm re-searches already fade correctly — the chip re-search
+arms a full enter whose `presentation_preroll` ramp fades the old catalog out (0.966→0), swaps under cover,
+and `reveal_start` fades in. The owner's snap was SIM-1's page-switch WIP breaking the enter arming
+(downgraded frames), plus filter frames arriving as kind=enter on an already-visible surface at pres=1.0.
+ALSO census-proven: filter frames can be `mode=replace` with IDENTICAL membership (531→531, zero tear-out —
+property updates, no snap possible), and `sourceDataKey` misses the filter dimension entirely
+(dataKeyChanged=false while properties changed) — **keys cannot be trusted for swap decisions; the DELTA
+SHAPE can** (disappearing residents = nextFeatureIdsInOrder vs resident ids per source).
+
+**THE GUARD (landed):** kind-agnostic — ANY data-bearing frame at lifecycle .visible + presentation >0.5
+whose deltas tear out ≥12 resident features gets stashed (latest-wins), the canonical fade-out runs, the
+stash re-dispatches under cover on ANY fade-out completion (folds into the toggle's press-up fade if one is
+running), and the canonical guarded reveal fades back — DEFERRING to a real enter machinery if one took over
+(.preparingReveal/.revealing). Cleared on dismiss/enter/detach. VALIDATED SILENT on every healthy path
+(cold search, warm chip re-search via preroll, filter property-updates, toggles); the fire path is
+code-complete + shares the toggle's completion hook, live-fire owed a synthetic bare swap (only broken
+arming produces one on main — the guard is insurance for exactly that class).
+
+**[framecensus] probe added** (debug-gated): every data-bearing frame logs lane/keys/lifecycle/presentation
+
+- per-delta membership shape — future bare swaps self-identify.
+
+**CLEANUP (owner-directed, opportunistic):** the labelkit knob DELETED end-to-end (deep-link action, parser
+fields, coordinator handler, TS bridge, native @objc + policy + style-load re-apply, .m extern) — the
+collision-twin IS the standardized label policy, no configs remain. The twin fallback DELETED (the twin is
+a required contract; no silent labelLayerIds fallback).
+
+**NEW DEFECT filed: the sourceDataKey fingerprint omits the filter dimension** (dataKeyChanged=false across
+a filter change) — dedup false-hit risk anywhere keys gate publishes. Fix in the JS fingerprint builder
+(include the filter/openNow/price inputs); guard-independent.

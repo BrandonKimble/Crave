@@ -251,32 +251,6 @@ export const PerfScenarioCoordinator: React.FC = () => {
   );
 
   const executeCommandEvent = React.useCallback((event: PerfScenarioCommandEvent) => {
-    // L4/R3 look-and-pick kit (dev): registry-free AND scenario-free — the whole point is flipping label
-    // fade configs live while BROWSING (an armed MapLod scenario suppresses UI-driven reveals), so this
-    // action runs above the no-active-scenario gate.
-    if (event.action === 'set_label_transition') {
-      void searchMapRenderController
-        .setBasemapSymbolFadePolicy({
-          transitionDurationMs: event.transitionDurationMs ?? null,
-          enablePlacementTransitions: event.placement == null ? null : event.placement !== 'off',
-        })
-        .then(() =>
-          logScenarioEvent({
-            event: 'perf_scenario_command_executed',
-            action: event.action,
-            transitionDurationMs: event.transitionDurationMs,
-            placement: event.placement,
-          })
-        )
-        .catch((error) =>
-          logScenarioEvent({
-            event: 'perf_scenario_command_failed',
-            action: event.action,
-            message: error instanceof Error ? error.message : String(error),
-          })
-        );
-      return;
-    }
     const currentConfig = activeConfigRef.current;
     if (!currentConfig) {
       logScenarioEvent({

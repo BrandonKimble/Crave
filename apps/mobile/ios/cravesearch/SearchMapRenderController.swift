@@ -861,9 +861,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var hasListeners = false
   private var instances: [String: InstanceState] = [:]
   private var resolvedMapHandles: [String: ResolvedMapHandle] = [:]
-  // L4/R3 look-and-pick kit (dev): remembered style-global symbol fade policy (nil = Mapbox default).
-  private var basemapSymbolFadeDurationMs: Double? = nil
-  private var basemapSymbolPlacementTransitionsEnabled: Bool? = nil
   private var enterSettleWorkItems: [String: DispatchWorkItem] = [:]
   private var dismissSettleWorkItems: [String: DispatchWorkItem] = [:]
   private var deferredDismissSourceCleanupWorkItems: [String: DispatchWorkItem] = [:]
@@ -897,6 +894,12 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var nextOwnerEpoch: Int = 1
   private var labelObservationRefreshWorkItems: [String: DispatchWorkItem] = [:]
   private var presentationOpacityAnimators: [String: PresentationOpacityAnimator] = [:]
+  // COORDINATED-SWAP GUARD (P1): a full-catalog live-lane swap while VISIBLE must ride the fade shape.
+  // Latest-wins stash of the swap frame while the canonical fade-out runs; re-dispatched at ~0 and revealed
+  // with the canonical fade-in. The map can never bare-swap a visible catalog again, regardless of which JS
+  // path produced the frame.
+  private var pendingGuardedSwapPayloadByInstanceId: [String: NSDictionary] = [:]
+  private var guardedSwapAwaitingRevealByInstanceId: Set<String> = []
   private var livePinTransitionAnimators: [String: CADisplayLink] = [:]
   // UNIFIED-FADE TOGGLE (map-LOD-v6): instanceIds whose catalog was swapped but not yet re-projected on the
   // static camera. Fired the next time presentation is UNDER COVER (≈0) — see reprojectCatalogUnderCoverIfReady.
@@ -1210,58 +1213,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
-  // L4/R3 LOOK-AND-PICK KIT (dev): the style-global symbol fade / placement-transition knob
-  // (MapboxMaps `TransitionOptions` — the ONLY snap lever the SDK exposes; style-global, so it moves OUR
-  // labels AND the basemap's together). nil fields = leave that dimension at the Mapbox default. The policy
-  // is remembered and RE-APPLIED on every style load (the transition resets with the style). Drive it via
-  // crave://perf-scenario-command?action=set_label_transition&transitionDurationMs=100&placement=on
-  // Configs: A = 300/on (default), C = ~80-120/on (shortened fade), placement=off = the eliminated
-  // config B (labels snap; basemap snaps too), kept drivable for on-device comparison.
-  @objc
-  func setBasemapSymbolFadePolicy(
-    _ payload: NSDictionary,
-    resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else {
-        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
-        return
-      }
-      if let durationMs = payload["transitionDurationMs"] as? Double {
-        self.basemapSymbolFadeDurationMs = durationMs
-      } else {
-        self.basemapSymbolFadeDurationMs = nil
-      }
-      if let placementEnabled = payload["enablePlacementTransitions"] as? Bool {
-        self.basemapSymbolPlacementTransitionsEnabled = placementEnabled
-      } else {
-        self.basemapSymbolPlacementTransitionsEnabled = nil
-      }
-      for (tagKey, handle) in self.resolvedMapHandles {
-        self.applyBasemapSymbolFadePolicy(to: handle.mapView.mapboxMap, tagKey: tagKey)
-      }
-      Self.lodLog(
-        "[labelkit] fade policy set durationMs=\(self.basemapSymbolFadeDurationMs.map { "\($0)" } ?? "default") placement=\(self.basemapSymbolPlacementTransitionsEnabled.map { "\($0)" } ?? "default")"
-      )
-      resolve(nil)
-    }
-  }
-
-  private func applyBasemapSymbolFadePolicy(to mapboxMap: MapboxMap, tagKey: String) {
-    guard basemapSymbolFadeDurationMs != nil || basemapSymbolPlacementTransitionsEnabled != nil else {
-      return
-    }
-    let durationSeconds = (basemapSymbolFadeDurationMs ?? 300) / 1000
-    mapboxMap.styleTransition = TransitionOptions(
-      duration: durationSeconds,
-      delay: 0,
-      enablePlacementTransitions: basemapSymbolPlacementTransitionsEnabled ?? true
-    )
-    Self.lodLog(
-      "[labelkit] fade policy applied mapTag=\(tagKey) durationS=\(durationSeconds) placement=\(basemapSymbolPlacementTransitionsEnabled ?? true)"
-    )
-  }
 
   @objc
   func flushNativeApplyAttribution(
@@ -1430,6 +1381,8 @@ final class SearchMapRenderController: RCTEventEmitter {
           ])
           resolve(nil)
         case .failure(let error):
+          self.pendingGuardedSwapPayloadByInstanceId[instanceId] = nil
+          self.guardedSwapAwaitingRevealByInstanceId.remove(instanceId)
           self.instances.removeValue(forKey: instanceId)
           self.slowActionWindowsByInstanceAndScope = self.slowActionWindowsByInstanceAndScope.filter {
             !$0.key.hasPrefix("\(instanceId)::")
@@ -1469,6 +1422,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       self?.cancelLivePinTransitionAnimation(instanceId: instanceId)
       self?.teardownOverlay(instanceId: instanceId)
       let mapTag = self?.instances[instanceId]?.mapTag
+      self?.pendingGuardedSwapPayloadByInstanceId[instanceId] = nil
+      self?.guardedSwapAwaitingRevealByInstanceId.remove(instanceId)
       self?.instances.removeValue(forKey: instanceId)
       self?.slowActionWindowsByInstanceAndScope = self?.slowActionWindowsByInstanceAndScope.filter {
         !$0.key.hasPrefix("\(instanceId)::")
@@ -1723,6 +1678,77 @@ final class SearchMapRenderController: RCTEventEmitter {
             sourceFrameIsReady &&
             visualFrameTransaction.kind != "dismiss" &&
             visualFrameTransaction.kind != "clear_hidden"
+          // STEP-4-style frame census (debug): every data-bearing frame's lane + guard inputs, so any
+          // future bare swap self-identifies. Strip/promote at cleanup.
+          // Replacement metric: residents that DISAPPEAR. removeIds is often empty on swaps — the
+          // authoritative membership is nextFeatureIdsInOrder; residents absent from it are being torn out.
+          var guardRemoveCount = 0
+          var guardAddCount = 0
+          for delta in sourceDeltas ?? [] {
+            guard let deltaSourceId = delta["sourceId"] as? String else { continue }
+            let residentIds = Set(
+              Self.derivedFamilyState(sourceId: deltaSourceId, state: attachedState).collection.idsInOrder)
+            guard !residentIds.isEmpty else { continue }
+            let nextIds = Set(delta["nextFeatureIdsInOrder"] as? [String] ?? [])
+            guard !nextIds.isEmpty || (delta["mode"] as? String) == "replace" else { continue }
+            guardRemoveCount += residentIds.subtracting(nextIds).count
+            guardAddCount += nextIds.subtracting(residentIds).count
+          }
+          if shouldApplySourcePayload {
+            let censusResidentKey = attachedState.residentSourceDataKey ?? "<nil>"
+            let censusChanged = visualFrameTransaction.sourceDataKey != censusResidentKey
+            Self.lodLog(
+              "[framecensus] kind=\(visualFrameTransaction.kind) dataKeyChanged=\(censusChanged) roleOnly=\(markerRoleFrame != nil) lifecycle=\(attachedState.visualSourceLifecycleState) pres=\(Self.round3(attachedState.currentPresentationOpacityValue)) removes=\(guardRemoveCount) adds=\(guardAddCount)"
+            )
+            for delta in sourceDeltas ?? [] {
+              let dSrc = (delta["sourceId"] as? String) ?? "?"
+              let dMode = (delta["mode"] as? String) ?? "patch"
+              let dNext = (delta["nextFeatureIdsInOrder"] as? [String])?.count ?? -1
+              let dUpsert = (delta["upsertFeatures"] as? [[String: Any]])?.count ?? -1
+              let dRemove = (delta["removeIds"] as? [String])?.count ?? -1
+              let dResident = Self.derivedFamilyState(sourceId: dSrc, state: attachedState).collection.idsInOrder.count
+              let dDesired = Self.derivedFamilyState(sourceId: dSrc, state: attachedState).desiredCollection.idsInOrder.count
+              Self.lodLog(
+                "[framecensus]   delta src=\(dSrc) mode=\(dMode) next=\(dNext) upsert=\(dUpsert) remove=\(dRemove) residentColl=\(dResident) residentDesired=\(dDesired)")
+            }
+          }
+          // COORDINATED-SWAP GUARD (P1, the warm-reveal snap): ANY frame that REPLACES a meaningful part
+          // of the visible catalog while the surface sits at high presentation must ride the fade shape —
+          // regardless of lane. Census-proven offenders: filter changes arrive as kind=enter on an
+          // already-visible surface (no preroll ran -> the enter lane would bare-apply at presentation 1),
+          // and sourceDataKey misses the filter dimension entirely (dataKeyChanged=false while the features
+          // changed) so KEYS CANNOT BE TRUSTED for this decision. The replacement test is the DELTA SHAPE:
+          // real removals mean visible markers are being torn out (a swap); adds-only frames (pagination /
+          // load-more appends) apply in place and fade per-marker via the LOD machinery instead.
+          // Stash latest-wins, ensure the canonical fade-out, re-dispatch under cover on its completion
+          // (the toggle's press-up fade-out shares the same completion hook, so a stash raised mid-toggle
+          // folds into the toggle's own shape).
+          if shouldApplySourcePayload,
+            markerRoleFrame == nil,
+            visualFrameTransaction.kind != "dismiss",
+            visualFrameTransaction.kind != "clear_hidden",
+            attachedState.visualSourceLifecycleState == .visible,
+            attachedState.currentPresentationOpacityValue > 0.5,
+            guardRemoveCount >= 12 {
+            self.pendingGuardedSwapPayloadByInstanceId[instanceId] = payload
+            let runningAnimator = self.presentationOpacityAnimators[instanceId]
+            if runningAnimator == nil || runningAnimator!.targetOpacity > 0.5 {
+              if var guardState = self.instances[instanceId] {
+                try? self.animatePresentationOpacity(
+                  to: 0,
+                  for: &guardState,
+                  instanceId: instanceId,
+                  reason: "guarded_swap_fade_out"
+                )
+                self.instances[instanceId] = guardState
+              }
+            }
+            Self.lodLog(
+              "[swapguard] stash+fadeout kind=\(visualFrameTransaction.kind) removes=\(guardRemoveCount) from=\(Self.round3(attachedState.currentPresentationOpacityValue))"
+            )
+            resolve(nil)
+            return
+          }
           let previousAttributionContext = self.nativeApplyAttributionCurrentContext
           self.nativeApplyAttributionCurrentContext = self.nativeApplyFrameContext(
             visualFrameTransaction: visualFrameTransaction,
@@ -1792,6 +1818,9 @@ final class SearchMapRenderController: RCTEventEmitter {
           }
           switch visualFrameTransaction.kind {
           case "dismiss":
+            // A dismiss supersedes any stashed guarded swap — the user is leaving; drop it.
+            self.pendingGuardedSwapPayloadByInstanceId[instanceId] = nil
+            self.guardedSwapAwaitingRevealByInstanceId.remove(instanceId)
             try markFrameSourceAdmission(sourceReady: true)
             try applyPresentation()
             didSyncResidentFrame = true
@@ -1813,6 +1842,9 @@ final class SearchMapRenderController: RCTEventEmitter {
             didSyncResidentFrame = true
             sourceAdmissionOutcome = hasSourcePayload ? "sources_cleared_hidden" : "presentation_only_clear_hidden"
           case "enter":
+            // The enter machinery owns presentation from here — a stashed guarded swap is superseded.
+            self.pendingGuardedSwapPayloadByInstanceId[instanceId] = nil
+            self.guardedSwapAwaitingRevealByInstanceId.remove(instanceId)
             try markFrameSourceAdmission(sourceReady: false)
             try applyPresentation()
             if sourceFrameIsReady && shouldApplySourcePayload {
@@ -1860,6 +1892,27 @@ final class SearchMapRenderController: RCTEventEmitter {
               userInfo: [NSLocalizedDescriptionKey: "unsupported visual frame transaction kind: \(visualFrameTransaction.kind)"]
             )
           }
+        // COORDINATED-SWAP GUARD: the re-dispatched swap just applied under cover — run the canonical
+        // guarded reveal (the same 300ms Hermite everything else uses).
+        if self.guardedSwapAwaitingRevealByInstanceId.contains(instanceId),
+          sourceFrameIsReady,
+          var guardedRevealState = self.instances[instanceId] {
+          self.guardedSwapAwaitingRevealByInstanceId.remove(instanceId)
+          // If a REAL enter lifecycle took over meanwhile (.preparingReveal/.revealing), IT owns the ramp —
+          // the guarded reveal only drives the machinery-less case (lifecycle still .visible).
+          if guardedRevealState.visualSourceLifecycleState == .visible {
+            Self.lodLog("[swapguard] applied under cover -> guarded reveal")
+            try self.animatePresentationOpacity(
+              to: 1,
+              for: &guardedRevealState,
+              instanceId: instanceId,
+              reason: "guarded_swap_reveal"
+            )
+            self.instances[instanceId] = guardedRevealState
+          } else {
+            Self.lodLog("[swapguard] enter machinery active -> defer reveal to it")
+          }
+        }
         let interactionStartedAt = CACurrentMediaTime() * 1000
         try self.applyInteractionModePayload(
           instanceId: instanceId,
@@ -9151,6 +9204,19 @@ final class SearchMapRenderController: RCTEventEmitter {
             evaluateEnterSettleGate(instanceId: instanceId, requestKey: enterKey)
           }
         }
+        // COORDINATED-SWAP GUARD: a fade-OUT just completed (any reason — the guard's own, the toggle's
+        // press-up, any future trigger). If a catalog swap is stashed, re-dispatch it NOW, under cover.
+        // The re-dispatch passes the guard (presentation ~0), applies, and the post-apply hook below
+        // runs the canonical guarded reveal. Latest-wins by construction (the stash holds one frame).
+        if animator.targetOpacity <= 0.001,
+          let stashedSwapPayload = pendingGuardedSwapPayloadByInstanceId[instanceId] {
+          pendingGuardedSwapPayloadByInstanceId[instanceId] = nil
+          guardedSwapAwaitingRevealByInstanceId.insert(instanceId)
+          Self.lodLog("[swapguard] fadeout complete -> redispatch stashed swap")
+          DispatchQueue.main.async { [weak self] in
+            self?.setRenderFrame(stashedSwapPayload, resolver: { _ in }, rejecter: { _, _, _ in })
+          }
+        }
       }
     } catch {
       emit([
@@ -9716,9 +9782,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     Self.setDerivedFamilyState(labelFamilyState, sourceId: state.labelSourceId, state: &state)
     instances[instanceId] = state
     // COLLISION-TWIN: placement outcomes live on the twin (the render layer is allowOverlap and would
-    // report literal-hidden losers as rendered). Fallback preserves pre-twin behavior.
-    let resolvedLayerIds =
-      state.labelPlacementQueryLayerIds.isEmpty ? state.labelLayerIds : state.labelPlacementQueryLayerIds
+    // report literal-hidden losers as rendered). No fallback — the twin is a required part of the contract.
+    let resolvedLayerIds = state.labelPlacementQueryLayerIds
     guard !resolvedLayerIds.isEmpty else {
       let snapshot = currentRenderedLabelObservationSnapshot(instanceId: instanceId)
       emit(
@@ -11093,10 +11158,6 @@ final class SearchMapRenderController: RCTEventEmitter {
 
       private func handleStyleLoaded(mapTag: NSNumber) {
       cachedPinShadow = nil   // re-bake the silhouette shadow (contentsScale may have changed)
-      // L4/R3 kit: the style transition resets with the style — RE-APPLY the remembered fade policy.
-      if let handle = resolvedMapHandles[mapTag.stringValue] {
-        applyBasemapSymbolFadePolicy(to: handle.mapView.mapboxMap, tagKey: mapTag.stringValue)
-      }
       for instanceId in Array(instances.keys) {
       guard var state = instances[instanceId], state.mapTag == mapTag else {
         continue
