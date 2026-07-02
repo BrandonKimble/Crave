@@ -223,3 +223,21 @@ consumers the review thought were phantoms:
   (b) coordinator extraction with the kind variants; (c) the coverage contract test; (d) the dropdown-apply
   variant wired to the existing filter chips. Behavioral gate unchanged (identical finalize-event sequences,
   647/236 recovery, burst safety); polls pill must NOT gain a debounce (kind=instant).
+
+---
+
+## WORKSPACE TOPOLOGY (owner-directed, 2026-07-02 — the anti-fighting agreement)
+
+**`main` is the integration line.** `fix/map-lod-wiggle-dismiss` was fast-forwarded into main at `8f6c14c0`
+(17 commits, zero behind). Both sessions commit SMALL and OFTEN to main (or short-lived branches merged
+promptly) and `git pull` to pick up each other's landed work. Uncommitted WIP never crosses workspaces.
+
+- **`/Users/brandonkimble/Crave`** (the original tree) = the PAGE-SWITCH session's workspace. Metro :8082,
+  sim-1 (iPhone 17 Pro Max). The map session does NOT edit here anymore.
+- **`/Users/brandonkimble/Crave-map`** (durable APFS clone) = the MAP session's workspace, tracking main.
+  Metro :8083 (`/tmp/crave-metro-8083.log`), sim-2 (iPhone 17 Pro, udid 7B0DD874-…). Native builds install
+  to sim-2 from here.
+- The shared BACKEND (:3000) serves both; it runs harness-managed from the map session (restart rule: kill
+  the whole nest tree on EADDRINUSE; never nohup from a tool shell).
+- OWNER FINGER-TESTS for map work happen on SIM-2 (pure main; no foreign WIP). Sim-1 reflects main + the
+  page-switch WIP.
