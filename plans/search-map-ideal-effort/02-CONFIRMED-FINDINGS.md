@@ -132,3 +132,39 @@ Swift fixes). All results below are from the pinned checkpoint — the exact com
 - Maestro coordinate taps are DEVICE-LAYOUT-SENSITIVE (the dismiss X is 92%,8% on the Pro Max sim but
   88%,11% on the Pro) — map-accept.sh should prefer id-based taps or per-device coordinates.
 - `set_map_camera` deep links REQUIRE an armed perf scenario; arming mid-session resets the search session.
+
+---
+
+# STEP-3 IMPLEMENTED + VALIDATED (2026-07-01 late; the two universal fade fixes)
+
+**Fix (i) — MID-FADE RE-ANCHOR (SearchMapRenderController.swift, animator + step fn):** any inter-tick gap
+
+> 20ms shifts the fade clock forward by (gap − one nominal frame), budget-capped at 500ms — a main-thread
+> stall now reads as a PAUSE, never a jump, in all three flows. VALIDATED: 53 re-anchor events across two
+> drives; at the real 100-171ms reveal stalls the opacity delta is now 0.009-0.025 (was 0.3-0.5 = the visible
+> snap); worst delta anywhere after the 20ms threshold = 0.083 < the 0.1 gate (the first build used 25ms and
+> leaked 0.113 via sub-threshold 24ms gaps — the 20ms threshold closes that hole by construction:
+> 19.9/300×1.5 ≈ 0.0995). Ramps under stall now run ~430-467ms wall-clock (300ms fade + paused stall) as
+> designed.
+
+**Fix (ii) — SETTLE-OFF-RAMP-COMPLETION:** the enter settle gate (guards → commit-fence → armNativeEnterSettle)
+is extracted to `evaluateEnterSettleGate` and now fires from the presentation ramp's completion tick
+(deterministically AFTER the fade); the old wall-clock timer is demoted to a bounded fallback at
+enterSettleDelayMs+700ms. Kills the LEA-commit-mid-visible-fade window (the promote-dip class) by
+construction. VALIDATED: 12/12 `[leamem] underCover` commits landed at opacity ≤0.001 (under cover) or
+post-completion; ZERO mid-fade commits. Dis1 stayed monotonic throughout.
+
+**NEW DEFECT (probe-grade, found the hard way): POISONED PERSISTED SESSION FREEZES PRESENTATION ACROSS
+RELAUNCHES.** During the validation the backend died mid-drive (twice: a wedged nest tree, then a reaped
+nohup). The app session persisted a mid-toggle presentation snapshot from that era, and EVERY subsequent
+boot restored it: `contentVis: "frozen"`, pvck stuck on an old toggle-intent, native visual source
+permanently `inactive/dismissing` — searches open at the JS level but the map NEVER reveals, across full
+terminate+relaunch cycles. UNSTICK: arming a perf scenario (`crave://perf-scenario?...`) resets the search
+session and restores normal reveals. This is a session-restore robustness gap (the restore should validate/
+drop mid-transition snapshots); filed for Step 5/8 hardening. Rig note: sim-2's app data is still poisoned —
+unstick before future drives or wipe app data (uninstall requires re-auth).
+
+**Rig/process gotchas recorded:** backend must run harness-managed (a `nohup &` from a tool shell gets
+reaped ~20s later = the graceful-shutdown mystery); a wedged nest child can hold :3000 answering /health
+while failing real requests (EADDRINUSE for the new instance — kill the whole tree); install-over-running-app
+can produce a bad boot (terminate first).

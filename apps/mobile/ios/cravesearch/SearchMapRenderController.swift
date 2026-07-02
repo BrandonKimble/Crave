@@ -23,6 +23,15 @@ private final class PresentationOpacityAnimator {
   // the full-duration fade begin from startOpacity on the first frame it can actually render.
   var startedAtMs: Double
   var clockStartedOnFirstTick = false
+  // STEP-3 FIX (mid-fade re-anchor): a main-thread stall between ticks used to get charged against the
+  // fade clock — the first post-stall tick computed elapsed += stall and the opacity JUMPED (the visible
+  // snap). Now any inter-tick gap beyond a stall threshold shifts the clock forward by the excess, so a
+  // stall reads as a PAUSE (the fade resumes from where it was +~1 frame), never a jump — for all three
+  // flows (reveal/dismiss/toggle) forever. `reAnchorBudgetMs` bounds the total shift so a pathological
+  // stall storm can't stretch a 300ms fade indefinitely; when the budget is spent the clock runs free
+  // (bounded catch-up, degraded but terminating).
+  var lastTickAtMs: Double?
+  var reAnchorBudgetMs: Double = 500
   private var displayLink: CADisplayLink?
 
   init(
@@ -110,6 +119,17 @@ final class SearchMapRenderController: RCTEventEmitter {
   private let enableVisualDiagnostics = false
   private let dismissSettleDelayMs = 300
   private let enterSettleDelayMs = 300
+  // STEP-3 (mid-fade re-anchor): an inter-tick gap above this counts as a stall (healthy 60Hz cadence is
+  // ~16.7ms; 120Hz ~8.3ms — both below). The clock shifts by (gap - one nominal frame) so the fade advances
+  // ~1 frame across a stall tick. 20ms (not 25) because an UNcompensated gap is charged in full and the
+  // Hermite midpoint slope is 1.5×: the worst uncompensated delta is 19.9/300*1.5 ≈ 0.0995, just under the
+  // 0.1 smoothness gate (measured: a 24.x ms gap under a 25ms threshold produced a 0.113 delta).
+  fileprivate static let presentationStallTickGapMs: Double = 20
+  fileprivate static let presentationNominalFrameMs: Double = 16.7
+  // STEP-3 (settle-off-ramp-completion): extra wall-clock grace on the enter-settle FALLBACK timer beyond
+  // the fade duration — the primary settle trigger is the ramp-completion tick; the fallback only exists
+  // for ramps that never complete (canceled/backgrounded/dead link). Covers the re-anchor budget.
+  private let enterSettleRampFallbackGraceMs = 700
   private let lodVisibleDelayMs = 16
   private let mapResolveTimeoutMs = 10_000.0
   private let nativeViewportEventThrottleMs = 16.0
@@ -6079,40 +6099,56 @@ final class SearchMapRenderController: RCTEventEmitter {
       settleEnterAfterRenderedFrame(instanceId: instanceId, requestKey: requestKey)
       return
     }
+    // STEP-3 FIX (settle-off-ramp-completion): the enter settle used to fire on a WALL-CLOCK timer
+    // (enterSettleDelayMs after arm). The R1 first-tick clock anchor + the mid-fade re-anchor decouple the
+    // VISIBLE fade from wall clock (a stalled fade finishes later than arm+300ms), so a timer-driven settle
+    // could run its LEA commit while the fade is still visibly ramping — exactly the promote-dip window the
+    // settle's own under-cover comment warns about. The settle gate is now evaluated from the presentation
+    // ramp's completion tick (stepPresentationOpacityAnimation, progress >= 1) — deterministically AFTER the
+    // fade — and this timer is demoted to a BOUNDED FALLBACK (ramp canceled/never ticked: backgrounded app,
+    // dismissed mid-enter, dead display link) at a later deadline. The gate's guards make double-invocation
+    // a no-op (settled key stamped in settleEnterAfterRenderedFrame).
     let workItem = DispatchWorkItem { [weak self] in
       guard let self else { return }
       self.enterSettleWorkItems[instanceId] = nil
-      guard var latestState = self.instances[instanceId] else { return }
-      guard latestState.lastEnterRequestKey == requestKey else { return }
-      guard latestState.lastEnterStartedRequestKey == requestKey else { return }
-      guard latestState.lastEnterSettledRequestKey != requestKey else { return }
-      guard latestState.lastDismissRequestKey == nil else { return }
-      let commitFence = self.capturePendingVisualSourceCommitFence(state: latestState)
-      if self.hasPendingCommitFence(commitFence) {
-        latestState.blockedPresentationSettleRequestKey = requestKey
-        latestState.blockedPresentationSettleKind = "enter"
-        latestState.blockedPresentationCommitFenceStartedAtMs = Self.nowMs()
-        latestState.blockedPresentationCommitFenceBySourceId = commitFence
-        latestState.currentPresentationRenderPhase = "enter_wait_commit"
-        self.emitVisualDiag(
-          instanceId: instanceId,
-          message:
-            "enter_commit_fence_blocked pending=\(self.describeCommitFence(commitFence)) \(self.commitFenceWaitSummary(state: latestState))"
-        )
-      } else {
-        latestState.blockedPresentationCommitFenceStartedAtMs = nil
-        latestState.currentPresentationRenderPhase = "enter_settling"
-        latestState.pendingPresentationSettleRequestKey = requestKey
-        latestState.pendingPresentationSettleKind = "enter"
-        self.armNativeEnterSettle(instanceId: instanceId, requestKey: requestKey)
-      }
-      self.instances[instanceId] = latestState
+      self.evaluateEnterSettleGate(instanceId: instanceId, requestKey: requestKey)
     }
     enterSettleWorkItems[instanceId] = workItem
     DispatchQueue.main.asyncAfter(
-      deadline: .now() + .milliseconds(enterSettleDelayMs),
+      deadline: .now() + .milliseconds(enterSettleDelayMs + enterSettleRampFallbackGraceMs),
       execute: workItem
     )
+  }
+
+  /// The enter-settle gate: guards → commit-fence check → arm the native settle. Extracted from the old
+  /// timer body so it can run from BOTH the ramp-completion tick (primary, STEP-3) and the bounded fallback
+  /// timer. Idempotent via the lastEnterSettledRequestKey guard.
+  private func evaluateEnterSettleGate(instanceId: String, requestKey: String) {
+    guard var latestState = instances[instanceId] else { return }
+    guard latestState.lastEnterRequestKey == requestKey else { return }
+    guard latestState.lastEnterStartedRequestKey == requestKey else { return }
+    guard latestState.lastEnterSettledRequestKey != requestKey else { return }
+    guard latestState.lastDismissRequestKey == nil else { return }
+    let commitFence = capturePendingVisualSourceCommitFence(state: latestState)
+    if hasPendingCommitFence(commitFence) {
+      latestState.blockedPresentationSettleRequestKey = requestKey
+      latestState.blockedPresentationSettleKind = "enter"
+      latestState.blockedPresentationCommitFenceStartedAtMs = Self.nowMs()
+      latestState.blockedPresentationCommitFenceBySourceId = commitFence
+      latestState.currentPresentationRenderPhase = "enter_wait_commit"
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "enter_commit_fence_blocked pending=\(describeCommitFence(commitFence)) \(commitFenceWaitSummary(state: latestState))"
+      )
+    } else {
+      latestState.blockedPresentationCommitFenceStartedAtMs = nil
+      latestState.currentPresentationRenderPhase = "enter_settling"
+      latestState.pendingPresentationSettleRequestKey = requestKey
+      latestState.pendingPresentationSettleKind = "enter"
+      armNativeEnterSettle(instanceId: instanceId, requestKey: requestKey)
+    }
+    instances[instanceId] = latestState
   }
 
   private func emitExecutionBatchMountedHidden(
@@ -8908,7 +8944,24 @@ final class SearchMapRenderController: RCTEventEmitter {
     if !animator.clockStartedOnFirstTick {
       animator.clockStartedOnFirstTick = true
       animator.startedAtMs = timestampMs
+    } else if let lastTickAtMs = animator.lastTickAtMs {
+      // STEP-3 FIX (mid-fade re-anchor): the same principle applied MID-fade. A stalled main thread
+      // (measured 102-123ms on reveal, 6/10 reveals) means no ticks ran; charging that time to the clock
+      // makes the first post-stall tick jump the opacity. Shift the clock forward by the gap beyond one
+      // nominal frame, so the post-stall tick advances the fade by ~1 frame's worth (max eased delta
+      // ≈0.08 at the Hermite midpoint — under the 0.1 smoothness gate). Budget-capped; ~16ms jitter on a
+      // healthy 60Hz cadence stays below the stall threshold and never nibbles the budget.
+      let tickGapMs = timestampMs - lastTickAtMs
+      if tickGapMs > Self.presentationStallTickGapMs, animator.reAnchorBudgetMs > 0 {
+        let shift = min(tickGapMs - Self.presentationNominalFrameMs, animator.reAnchorBudgetMs)
+        animator.startedAtMs += shift
+        animator.reAnchorBudgetMs -= shift
+        Self.lodLog(
+          "[presramp] reanchor gapMs=\(Int(tickGapMs)) shiftMs=\(Int(shift)) budgetLeftMs=\(Int(animator.reAnchorBudgetMs)) reason=\(animator.reason)"
+        )
+      }
     }
+    animator.lastTickAtMs = timestampMs
     let elapsedMs = max(0, timestampMs - animator.startedAtMs)
     let progress = animator.durationMs <= 0 ? 1 : min(1, elapsedMs / animator.durationMs)
     let easedProgress = progress * progress * (3 - 2 * progress)
@@ -8997,6 +9050,18 @@ final class SearchMapRenderController: RCTEventEmitter {
             "settledAtMs": Self.nowMs(),
           ])
           Self.lodLog("[LODDBG] toggleSettled requestKey=\(state.lastEnterRequestKey ?? "nil") reason=\(animator.reason) promoted=\(promotedCount) tiles=\(overlayTileCount) degraded=\(degraded)")
+          // STEP-3 FIX (settle-off-ramp-completion): the fade-IN just completed — this is the deterministic
+          // "after the fade" moment. If the current enter is started-but-not-settled, run the settle gate NOW
+          // (and cancel the bounded fallback timer). The old wall-clock timer could fire mid-visible-fade once
+          // the tick-anchored/re-anchored clock stretched past arm+300ms — the LEA-commit promote-dip window.
+          // Latest-wins by construction: guards inside the gate match the workItem's old guards exactly.
+          if let enterKey = state.lastEnterRequestKey,
+            state.lastEnterStartedRequestKey == enterKey,
+            state.lastEnterSettledRequestKey != enterKey {
+            enterSettleWorkItems[instanceId]?.cancel()
+            enterSettleWorkItems[instanceId] = nil
+            evaluateEnterSettleGate(instanceId: instanceId, requestKey: enterKey)
+          }
         }
       }
     } catch {
