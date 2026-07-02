@@ -151,3 +151,40 @@ wants it; design + decide before building.
   harness artifact, not the owner's bug, but it exposed the same delivery gap.
 - Maestro chip taps do NOT fire the toggle `onPress` (coordinate AND text) — the documented gotcha. Add a
   `testID` to the Restaurants/Dishes/filter chips to drive the toggle reliably for validation.
+
+---
+
+## CHANNEL LOCKSTEP — LANDED + DEVICE-VALIDATED + COMMITTED (cb97686f, 2026-07-02)
+
+Catalog now rides `SearchMapSourceFrameSnapshot.candidateCatalog` (dedup on `.key`, atomic with dots/labels,
+carried by the cached-frame spread). Manhattan real-data drive: initial reveal settled `promoted=30 tiles=30
+degraded=false` — pins + dots + labels all painted, NO camera nudge (before: `catalogEmpty=true promoted=0`
+until a nudge). Deleted the standalone `publishCandidateCatalog` channel + `lastPublished*` dedup + `[t4dbg]`.
+
+## REMAINING (ready to build; each needs toggle-drive validation the owner will do)
+
+- **Both-tab precompute (task 4)**: `use-search-submit-response-owner.ts:710` computes ONE tab's projection;
+  make it BOTH → `precomputedMarkerCatalogByTab` in the store; reuse gate reads `[activeTab]`. Fixes the
+  stale/empty target-tab catalog on toggle (`rawD:0`). + recommit-on-settle in the tab hook.
+- **Coverage tab-agnostic prefetch (task 4)**: prefetch both `includeTopDish` variants at commit → zero-network toggle.
+- **PresentationSwapCoordinator (tasks 2/5)**: unify tab + chips + deferredApply; delete the duplicated
+  `scheduleToggleCommit` / tab-hook fade+stage logic.
+- **Label z-order (task 6)**: pins are a `bringSubviewToFront` UIView overlay above ALL GL incl. labels →
+  labels behind pins. Owner wants labels in front. Move label render to the overlay (collision stays on GL twin).
+
+## TOGGLE-DRIVE BLOCKER (for self-validation)
+
+Maestro cannot tap the tab toggle: it's a `GestureDetector`(`Gesture.Tap`)-wrapped `View testID=
+"search-segment-toggle"` (SearchFilters.tsx:372) — coordinate, text, AND id taps all fail/miss the gesture.
+The filter chips are `Pressable onPress` (may tap by coord). To self-validate the toggle, either drive the GH
+gesture another way or the owner drives it. The channel-lockstep fix is expected to fix the toggle
+pin-desync (catalog rides the cached frame) — OWNER RETEST confirms.
+
+## [lblsnap] FINDING (label flicker instrumentation, owner-deferred)
+
+On a STATIC camera the selector fires every idle projEnter tick with `demote=42 cull=0 sideswitch=0 promote=0`
+while `revealed=66` stays constant — 42 label winners are dropped (not in the 30-pin promotedSet) then
+silently re-added the same pass, so the `__lea_revealed__` literal nets to zero (no visual flip). Continuous
+churn though, and the 66-labels-vs-30-promoted-pins gap wants explaining. Pre-existing (the probe is new, the
+demote logic isn't). This is the label-shape investigation the owner deferred to hysteresis-time — probe is
+now in place for it.
