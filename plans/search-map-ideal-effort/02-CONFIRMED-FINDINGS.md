@@ -570,3 +570,24 @@ a required contract; no silent labelLayerIds fallback).
 **NEW DEFECT filed: the sourceDataKey fingerprint omits the filter dimension** (dataKeyChanged=false across
 a filter change) — dedup false-hit risk anywhere keys gate publishes. Fix in the JS fingerprint builder
 (include the filter/openNow/price inputs); guard-independent.
+
+---
+
+# DEFECT RETRACTED + DESIGN FACT (2026-07-02, code-verified)
+
+**RETRACTED: "sourceDataKey omits the filter dimension".** The shortcut-coverage API
+(`searchService.shortcutCoverage`) takes ONLY entities/bounds/viewportPolygon/includeTopDish/marketKey — no
+openNow/priceLevels/minimumVotes exist in its contract. **Coverage is filter-agnostic BY DESIGN**: the map's
+dot coverage always shows every in-viewport restaurant for the shortcut; the CARDS do the filtering. Ergo:
+(a) the coverage requestKey correctly omits filters (no features-cache collision — my earlier worry is
+unfounded); (b) `sourceDataKey` staying unchanged across a filter tap is CORRECT (coverage identical, marker
+membership identical — the census's mode=replace/531→531 frame was a rank/badge property refresh); (c) the
+"dataKeyChanged=false" census line was the system being RIGHT, not a fingerprint bug. Keys still must not
+gate the SWAP-GUARD decision (the delta-shape test stands — property-refresh frames must not fade the map),
+but the fingerprint itself needs no fix.
+
+Punch-list state after this arc: P1 CLOSED (preroll works on healthy main + the guard covers broken-arming),
+L4 CLOSED (twin), P8-overlap CLOSED (twin), fingerprint defect RETRACTED. REMAINING: P3 (re-feel post-twin,
+then 4-factor trace if it persists), P4-residual (re-feel post-twin), P5 (JS-thread freeze attribution at
+owner hand-speed), P6 chips active-state + deferredApply UX (TR5 JS layer), P9/P11 (verify post-guard),
+P14 (residue QRF at the acceptance battery), plus the roadmap's Steps 6-10.
