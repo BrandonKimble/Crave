@@ -623,3 +623,41 @@ deferredApply): that is the TR5 JS build, next up.
 
 **SIM ANSWER: the map rig = iPhone 17 Pro (sim-2, pure main). The Pro Max (sim-1) carries the page-switch
 session's live WIP — map drives there conflate both efforts.**
+
+---
+
+# OWNER DRIVE ROUND 3 + THE CANONICAL-SWAP REFACTOR (2026-07-02 — the plan of record)
+
+**ROOT CAUSE OF THE BROKEN TOGGLE (mine): the swap guard.** Its early-return skips
+`markFrameSourceAdmission` for stashed frames (their generationIds are never admitted) and latest-wins DROPS
+intermediate generations — the JS per-generation readiness gates then wait forever → "settle on dishes,
+nothing shows"; later frames land partially (labels/dots via observation paths, pins never — the roster
+rebuild rides the dropped frame) → the owner's exact symptoms. The guard also explains "fade-out super
+slowly": a stashed toggle frame turns the 300ms press-up fade + 300ms debounce + redispatch + guard-reveal
+into a ~1s mush. THE GUARD'S BEHAVIOR IS DELETED (the census stays as a LOUD assert-log: any bare swap
+self-identifies); the invariant moves to where it belongs — every catalog swap rides the enter machinery.
+
+**THE OWNER'S ARCHITECTURE RULING (the refactor):** ONE canonical flow for EVERY catalog-replacing trigger
+(initial search, tab toggle, filter change, re-search, search-this-area):
+
+1. PRESS-UP → the canonical fade-out, same speed/curve as everything (ONE shared duration constant;
+   the reveal currently runs ~185ms while dismiss/toggle run 300ms — unify).
+2. SETTLE (toggles: the 300ms restarting debounce; instant triggers skip).
+3. DATA: in-memory when bounds+params unchanged — the search response ALREADY carries BOTH tabs' ranked
+   arrays; coverage is per-tab in the features cache; ADD: prefetch the OTHER tab's coverage at search
+   commit so the first toggle is also zero-network. A new API call happens ONLY when a search parameter
+   actually changed (map moved). Toggles are LIGHT.
+4. ARM A FULL ENTER (the proven preroll→swap-under-cover→placement-gate→reveal machinery — the warm
+   chip-search traces prove it's beautiful). The preroll no-ops when already faded out (press-up did it) —
+   enter is idempotent to prior fade-out BY CONSTRUCTION.
+5. REVEAL ramp + the settled emit = the card-sync point (TR3 — verify cards mount against it).
+   DELETE with prejudice: the toggle's bespoke redraw/live-lane publishing for catalog swaps, the swap guard's
+   behavior, any second fade duration. The TR5 coordinator = press-up hook + settle→arm-enter + kinds
+   (instant | coordinated | deferredApply) on top of THIS one flow.
+
+**Also from the drive:** (a) labels are now BEHIND pins — owner wants labels IN FRONT (z-order item; likely
+the CA-overlay vs GL compositor relationship — investigate, small); (b) brief label-overlap ≈ the 2-pass
+enforcement grace (32-64ms by design — revisit only if it reads as a bug on redrive); (c) label flicker
+instrumentation wanted: a [lblsnap] probe classifying every literal change (side-switch | cull-out |
+demote | promote | re-add) so the residual flicker's source is data, not guess; the "double flicker on the
+way OUT" gets attributed there; (d) pin hysteresis stays deferred (owner).
