@@ -346,3 +346,49 @@ The owner drove the landed state and reports. THE SCREEN OVERRULES THE TRACES. I
   (SDK-verified, style-global knob): the BASEMAP's street labels also snap on collision changes during
   panning. The owner should drive config B knowing that's the trade; if basemap snapping offends,
   config C at ~80ms is the closest non-global-snap compromise. There is NO per-layer placement knob.
+
+---
+
+# OWNER RULINGS ROUND 2 + CORRECTED MODELS (2026-07-02)
+
+**R-5 LABEL POLICY, FINAL FORM:** config B's behavior for OUR labels (collision-driven changes SNAP) but
+basemap street names MUST keEP their native fade. The global knob can't split — but the ARCHITECTURE can:
+**the collision-twin design.** Our label RENDER layers become `allowOverlap+ignorePlacement` (never
+placement-culled, never placement-faded → their visibility is 100% our literal = SNAP always, and our
+LOD/presentation fades keep working — they're our own opacity factors). The invisible label COLLISION twin
+layers (a `labelCollisionSourceId` already exists in the state!) carry the obstacle role: allowOverlap=false
+(they compete + get culled → QRF-observable so the selector still learns outcomes) + ignorePlacement=false
+(they still SUPPRESS basemap names under our labels — preserving the June-27 W5 ruling). Basemap keeps
+placement transitions ON (native fade). DELIVERS EVERYTHING: ours-snap / basemap-fades / suppression intact /
+LOD fades intact. DEEP-DIVE REQUIRED before building: what labelLayerIds vs labelCollisionLayerIds do TODAY
+(the twin may be partial), what the selector QRF actually observes (must observe the TWINS after the flip),
+and the history of why ignorePlacement was "forbidden" (that ruling was about flipping collision on the
+tiled sources MID-FLOW — a static twin split is a different thing; verify).
+
+**P4 CORRECTED (owner): the batch is a batch of SNAPS, not fades** — groups of labels snap in TOGETHER at
+settle after being culled during motion. Owner's hypothesis: labels wait for "the free side to be free long
+enough" then all commit at once when the settle criterion is met. MENTAL-MODEL SUSPECTS (trace in code, in
+order): (1) the settled-visible machinery (`settledVisibleLabelMissingGraceStreak` + commitVisibleLabelHits)
+— grace-streak thresholds convert into WALL-CLOCK latency that expires en masse at settle; (2) **MY L1 FIX
+ITSELF** — the selector now "drops only DEMOTED winners," so a promoted label colliding on its current side
+KEEPS its stale side (Mapbox culls the render → the perceived fade-out) until an observation pass commits a
+new winner — re-picks may be gated during motion and flush together at settle; (3) `commitVisibleLabelHits`
+gating during motion. The L1 stability fix and L3 liveness may be IN TENSION — resolve by design, not
+tuning (the collision-twin flip may dissolve this whole class: with renders never placement-culled, the
+"wait for free side" dance becomes purely selector-driven and immediate).
+
+**P12 ANSWERED: the owner drove SIM-1 (iPhone 17 Pro Max) = the MAIN TREE** = my committed work + the
+page-switch session's LIVE half-built WIP + MISSING the uncommitted cutout-skeleton work. Therefore: P2
+(dead close buttons), P10 (grabber dismisses results), P6-cover (white cover instead of skeletons) are
+STRONGLY suspected page-switch-tree contamination — re-verify on the pinned rig before treating as map
+regressions. P1/P3/P4/P5/P8/P9/P11 remain real map-effort signals.
+
+**TR5 SCOPE PULLED FORWARD (owner):** design the toggle system for ALL toggles + the dropdown variants NOW
+— the restaurant/dish-first framing shouldn't gate generalization. (= the ratified R-4 expanded scope:
+content-width pill + instant|coordinated|deferredApply kinds; the filter chips get active-state + the
+coordinated flow via deferredApply.)
+
+**METHOD DIRECTIVE (owner):** MENTAL-MODEL DEEP DIVE against the actual code FIRST for every punch item —
+form targeted hypotheses by running the implementation mentally and hunting smells; instrument only to
+CONFIRM those hypotheses. Owner wants ME (the context-holder) doing this directly; delegate only
+context-independent pieces.
