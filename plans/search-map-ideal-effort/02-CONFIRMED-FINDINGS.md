@@ -490,3 +490,31 @@ lingering-family tick; (b) the pin OBSTACLE layer keyed to lastPromotedInOrder u
 re-decide, not lazily; (c) during the covered swap window, old collision features don't briefly suppress
 the new tab's first placement pass. Verify during the collision-twin build (the twin makes label collision
 explicit + directly QRF-checkable).
+
+## COLLISION-TWIN IMPLEMENTATION PLAN (concrete, wiring-verified)
+
+JS (search-map.tsx + the render-owner hook):
+
+1. `RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID = 'restaurant-labels-collision-twin'` — a SymbolLayer on the
+   SAME label source, style = `{...restaurantLabelStyle}` with textOpacity: 0 (constant — no presentation/
+   literal factors; SOURCE MEMBERSHIP already scopes competition to promoted markers' candidates),
+   textAllowOverlap:false, textIgnorePlacement:false (today's collider flags). Geometry props (field/size/
+   font/offset/anchor incl. the mutex icon parts) MUST match the render exactly — collision boxes = render
+   geometry.
+2. FLIP the render layer: textAllowOverlap:true, textIgnorePlacement:true (+ icon\* equivalents if the
+   mutex icon participates). The render keeps the full opacity product (presentation × **lea_lod** ×
+   **lea_revealed** × base) — that's now the ONLY visibility authority for label pixels.
+3. `labelCollisionLayerIds` += twin id (joins the obstacle dorm/wake lifecycle — the preroll wake at
+   setLabelCollisionObstacleLayersVisible(true) covers it).
+4. configureNativeLayerGroups payload += `labelPlacementQueryLayerIds: [twin]` (new key).
+5. configureNativePressTargeting payload: labelLayerIds → [twin] (CRITICAL: with allowOverlap the render
+   draws every candidate; QRF on it would return literal-hidden losers → ghost taps. The twin's placed set
+   = today's render placed set).
+
+Native (SearchMapRenderController.swift): 6. Parse + store `labelPlacementQueryLayerIds` (fallback = labelLayerIds for back-compat). 7. The observation QRF (`resolvedLayerIds = state.labelLayerIds`, ~:9711) → labelPlacementQueryLayerIds. 8. The reveal placement gate's QRF (isActiveFrameLabelPlacementReady / the hidden-placement flow) → same. 9. Dismiss dormancy: labelCollisionLayerIds loop now covers the twin (via 3); the Step-5 render dorm stays
+(draw-cost saving; suppression ownership moves to the twin). 10. The presentation text-opacity RMW (setLayerPresentationOpacity) KEEPS targeting labelLayerIds (render).
+
+VALIDATION GATES: (a) pan/twist → our labels SNAP on cull/side-switch, basemap keeps native fades;
+(b) suppression intact (no basemap names under our labels mid-search); (c) reveal gate opens (10 reveals,
+zero deadlock fires); (d) post-dismiss basemap restored (twin dorms); (e) label taps still hit (press → twin);
+(f) L1 stability trace unchanged; (g) P14: after toggle, QRF the twin — ZERO old-tab candidates placed.
