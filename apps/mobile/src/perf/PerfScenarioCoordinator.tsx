@@ -550,6 +550,27 @@ export const PerfScenarioCoordinator: React.FC = () => {
       return;
     }
 
+    if (event.action === 'toggle_tab') {
+      const tab = event.routeParam === 'dishes' ? 'dishes' : 'restaurants';
+      if (!registry.toggleTab) {
+        logPayload({
+          event: 'perf_scenario_command_failed',
+          action: event.action,
+          reason: 'toggle_command_not_registered',
+          routeParam: event.routeParam,
+        });
+        return;
+      }
+      registry.toggleTab({ tab });
+      logPayload({
+        event: 'perf_scenario_command_executed',
+        action: event.action,
+        step: 'toggle_tab',
+        routeParam: tab,
+      });
+      return;
+    }
+
     if (event.action === 'submit_shortcut_restaurants') {
       if (!registry.submitShortcutRestaurants) {
         logPayload({

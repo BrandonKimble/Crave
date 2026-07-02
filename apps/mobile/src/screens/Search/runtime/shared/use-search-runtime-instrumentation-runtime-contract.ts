@@ -64,6 +64,10 @@ export type SubmitShortcutScenarioCommandRef = React.MutableRefObject<
 
 export type CloseSearchScenarioCommandRef = React.MutableRefObject<() => void>;
 
+export type TabToggleScenarioCommandRef = React.MutableRefObject<
+  (next: 'dishes' | 'restaurants') => void
+>;
+
 export type UseSearchRuntimeInstrumentationRuntimeArgs = {
   getPerfNow: () => number;
   searchMode: 'natural' | 'shortcut' | null;
@@ -103,6 +107,7 @@ export type UseSearchRuntimeInstrumentationRuntimeResult = {
   emitRuntimeMechanismEvent: (event: string, payload?: Record<string, unknown>) => void;
   submitShortcutScenarioCommandRef: SubmitShortcutScenarioCommandRef;
   closeSearchScenarioCommandRef: CloseSearchScenarioCommandRef;
+  tabToggleScenarioCommandRef: TabToggleScenarioCommandRef;
   handleProfilerRender: React.ProfilerOnRenderCallback | null;
   shouldLogSearchComputes: boolean;
   logSearchCompute: (label: string, duration: number) => void;

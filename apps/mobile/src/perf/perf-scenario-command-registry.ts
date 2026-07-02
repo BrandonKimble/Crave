@@ -25,6 +25,10 @@ type PerfScenarioCommandRegistrySnapshot = {
     | ((input: { lat: number; lng: number; zoom: number; label?: string | null }) => boolean)
     | null;
   submitShortcutRestaurants: (() => Promise<void>) | null;
+  // Verification harness: drive the restaurant<->dish tab toggle through its REAL flow
+  // (scheduleTabToggleCommit) so a deep link can validate the canonical-swap toggle without the
+  // GestureDetector that Maestro can't tap.
+  toggleTab: ((input: { tab: 'dishes' | 'restaurants' }) => void) | null;
   setScaleProbeMarkers:
     | ((input: {
         count: number;
@@ -49,6 +53,7 @@ const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
   animateMapCamera: null,
   moveMapForSearchThisArea: null,
   submitShortcutRestaurants: null,
+  toggleTab: null,
   setScaleProbeMarkers: null,
   openOverlayScene: null,
 };
@@ -79,6 +84,7 @@ export type PerfScenarioCommandRegistration = {
     label?: string | null;
   }) => boolean;
   submitShortcutRestaurants?: () => Promise<void>;
+  toggleTab?: (input: { tab: 'dishes' | 'restaurants' }) => void;
   setScaleProbeMarkers?: (input: {
     count: number;
     lat: number;
@@ -98,6 +104,7 @@ export const registerPerfScenarioCommands = ({
   animateMapCamera,
   moveMapForSearchThisArea,
   submitShortcutRestaurants,
+  toggleTab,
   setScaleProbeMarkers,
   openOverlayScene,
 }: PerfScenarioCommandRegistration): (() => void) => {
@@ -115,6 +122,9 @@ export const registerPerfScenarioCommands = ({
   }
   if (submitShortcutRestaurants) {
     commandRegistry.submitShortcutRestaurants = submitShortcutRestaurants;
+  }
+  if (toggleTab) {
+    commandRegistry.toggleTab = toggleTab;
   }
   if (setScaleProbeMarkers) {
     commandRegistry.setScaleProbeMarkers = setScaleProbeMarkers;
@@ -145,6 +155,9 @@ export const registerPerfScenarioCommands = ({
     ) {
       commandRegistry.submitShortcutRestaurants = null;
     }
+    if (toggleTab && commandRegistry.toggleTab === toggleTab) {
+      commandRegistry.toggleTab = null;
+    }
     if (setScaleProbeMarkers && commandRegistry.setScaleProbeMarkers === setScaleProbeMarkers) {
       commandRegistry.setScaleProbeMarkers = null;
     }
@@ -160,6 +173,7 @@ export const readPerfScenarioCommandRegistry = (): PerfScenarioCommandRegistrySn
   animateMapCamera: commandRegistry.animateMapCamera,
   moveMapForSearchThisArea: commandRegistry.moveMapForSearchThisArea,
   submitShortcutRestaurants: commandRegistry.submitShortcutRestaurants,
+  toggleTab: commandRegistry.toggleTab,
   setScaleProbeMarkers: commandRegistry.setScaleProbeMarkers,
   openOverlayScene: commandRegistry.openOverlayScene,
 });

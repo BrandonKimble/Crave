@@ -188,3 +188,30 @@ silently re-added the same pass, so the `__lea_revealed__` literal nets to zero 
 churn though, and the 66-labels-vs-30-promoted-pins gap wants explaining. Pre-existing (the probe is new, the
 demote logic isn't). This is the label-shape investigation the owner deferred to hysteresis-time — probe is
 now in place for it.
+
+---
+
+## TOGGLE DEVICE-DRIVEN ATTRIBUTION (2026-07-02, sim-2 Manhattan, via the new perf toggle_tab command)
+
+Added a `toggle_tab` perf deep-link (`crave://perf-scenario-command?action=toggle_tab&routeParam=dishes`) that
+routes through the REAL `scheduleTabToggleCommit` (Maestro can't tap the GestureDetector). Drove restaurant→dish
+→restaurant on real data. FINDINGS:
+
+- **The channel-lockstep fix WORKS on the toggle**: dish tab reveals pins + dots + labels TOGETHER
+  (`toggleSettled promoted=30 tiles=30 degraded=false`, screenshot shows dish pins 11/39/21/32 + dish labels).
+  The old "dots+labels but no pins" desync is GONE.
+- **THE REMAINING BUG = a ~12s BLANK on toggle-to-dishes** = an uncached COVERAGE NETWORK FETCH. Trace:
+  `[SRCPROJ] early=shortcut-covNotReady {cov:loading}` repeats for ~12s → `[tclur] COV-SET {feats:101,
+fetchTab:dishes}` lands → reveal proceeds. Coverage is keyed by activeTab (includeTopDish), so the dish
+  variant was never fetched at search time. CONFIRMED by asymmetry: toggle-BACK to restaurants (coverage
+  cached from the search) reveals INSTANTLY (`cacheReveal pins:277`, no covNotReady). This is the owner's
+  "settles on dishes, nothing shows" — it's not never, it's a 12s coverage wait.
+  → FIX = both-tab coverage prefetch at search commit (fetch BOTH includeTopDish variants, cache tab-agnostic).
+  Source: the coverage fetch at use-direct-search-map-source-controller.ts ~2758 (`includeTopDish =
+activeTab==='dishes'`, requestKey includes activeTab). Delicate/spec-locked (coverage-cache-policy.ts) — do
+  it carefully as its own step + validate via toggle_tab.
+- **Secondary: a bare-swap FLASH** — `[framecensus] kind=enter pres=1.0 removes=65 adds=0` fires at the START
+  of the toggle (65 markers torn out while fully visible, before the fade covers). The press-up fade-out
+  hadn't dropped presentation yet. Fix in the canonical-flow ordering (fade to cover BEFORE the swap frame applies).
+- Also observed: reuse gate MISSES on toggle (`[tclur] CATALOG branch=live` for dishes) → live rebuild (works,
+  data present, outLen 16) but confirms the single-tab precompute defect (both-tab precompute still wanted).

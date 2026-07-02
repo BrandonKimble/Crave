@@ -101,6 +101,9 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     (input: SubmitShortcutScenarioCommandInput) => Promise<void>
   >(async () => undefined);
   const closeSearchScenarioCommandRef = React.useRef<() => void>(() => undefined);
+  const tabToggleScenarioCommandRef = React.useRef<(next: 'dishes' | 'restaurants') => void>(
+    () => undefined
+  );
   const getActiveScenarioRunNumber = React.useCallback((): number | null => {
     const scenarioConfig = activeScenarioConfigRef.current;
     return isPerfScenarioAttributionActive(scenarioConfig) ? 1 : null;
@@ -134,6 +137,9 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       }),
     []
   );
+  const toggleTabPerfCommand = React.useCallback(({ tab }: { tab: 'dishes' | 'restaurants' }) => {
+    tabToggleScenarioCommandRef.current(tab);
+  }, []);
   const setMapCameraPerfCommand = React.useCallback(
     ({
       lat,
@@ -330,6 +336,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
         animateMapCamera: animateMapCameraPerfCommand,
         moveMapForSearchThisArea: moveMapForSearchThisAreaPerfCommand,
         submitShortcutRestaurants: submitShortcutRestaurantsPerfCommand,
+        toggleTab: toggleTabPerfCommand,
         setScaleProbeMarkers: setScaleProbeMarkersPerfCommand,
       }),
     [
@@ -338,6 +345,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       moveMapForSearchThisAreaPerfCommand,
       setMapCameraPerfCommand,
       submitShortcutRestaurantsPerfCommand,
+      toggleTabPerfCommand,
       setScaleProbeMarkersPerfCommand,
     ]
   );
@@ -429,6 +437,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
     emitRuntimeMechanismEvent,
     submitShortcutScenarioCommandRef,
     closeSearchScenarioCommandRef,
+    tabToggleScenarioCommandRef,
     handleProfilerRender,
     shouldLogSearchComputes: SHOULD_LOG_SEARCH_COMPUTES,
     logSearchCompute,

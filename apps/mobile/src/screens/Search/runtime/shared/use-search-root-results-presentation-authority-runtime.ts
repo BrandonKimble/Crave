@@ -166,6 +166,10 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
     resultsPresentationOwner.presentationActions.beginCloseSearch();
   };
 
+  // Verification harness: route the perf `toggle_tab` deep link through the REAL toggle flow.
+  rootInstrumentationRuntime.tabToggleScenarioCommandRef.current =
+    resultsPresentationOwner.interactionModel.scheduleTabToggleCommit;
+
   React.useEffect(() => {
     profileBridgeAuthorityRuntime.profileBridge.cancelToggleInteractionRef.current =
       resultsPresentationOwner.cancelToggleInteraction;
