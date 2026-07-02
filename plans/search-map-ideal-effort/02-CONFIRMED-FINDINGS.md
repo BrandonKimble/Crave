@@ -268,3 +268,28 @@ clock changes slower than 32ms — observing faster re-reads identical results. 
 owning placement (forbidden by the collision constraints) or Mapbox exposing placement events. This is the
 data for the owner's L3 residual decision (roadmap Step 6): the observation-gated architecture is now AT
 its ceiling.
+
+---
+
+# STEP-5 L4/R3 LOOK-AND-PICK KIT — LANDED + LIVE-VALIDATED (2026-07-02, `062254f4`+`66ac374e`)
+
+The dev knob for the owner's Step-6 label-edge sitting, working end-to-end (unarmed, while browsing):
+
+    crave://perf-scenario-command?action=set_label_transition&transitionDurationMs=100&placement=on
+
+- **Config A** (status quo / Google-authentic): `transitionDurationMs=300&placement=on` (or never fire it).
+- **Config C** (shortened fade): `transitionDurationMs=80..120&placement=on`.
+- **Config B comparison** (eliminated by ruling; drivable for the on-device look): `placement=off`
+  (labels SNAP — style-global, basemap snaps too).
+- **Config D** (ours-snap share): NO new code — from one browse drive's logs, SELECTOR ADDED/DROPPED lines
+  = our literal snaps; live-observation deltas without a selector change = Mapbox fades. The share =
+  selector-changes / total-visibility-changes.
+
+Mechanics: MapboxMaps style-global `TransitionOptions` (the only snap lever the SDK exposes), remembered
+natively + re-applied on every style load. Dispatches ABOVE the perf-command arming gate (discovered live:
+`executeCommandEvent` ignores everything unarmed — which also retroactively explains the D1-era
+set_map_camera mystery).
+
+**STEP 5 IS COMPLETE** (suppression defect, R1-latency reconcile-skip, L3 free wins, the kit).
+Next: Step 6 (the owner sitting), Step 7 (TR5 expanded), Step 8 (hardening), Step 9 (cleanup+harness),
+Step 10 (device battery).
