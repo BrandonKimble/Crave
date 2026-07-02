@@ -246,3 +246,25 @@ ownership to search (`[pageswitch] host {in:"search", out:"polls", searchOwns:fa
 committed WIP bug-family (0ef2d26d), ~50% of boots on this tree, NOT map-effort code and NOT persisted
 state. Workaround: relaunch until healthy (verify with a probe search → presramp>0). Their in-flight
 redesign owns the real fix.
+
+---
+
+# STEP-5 L3 FREE WINS — LANDED + VALIDATED (2026-07-02)
+
+1. **Telemetry-only dot QRF gated** (was ~half the per-observation-pass cost): the rendered-dot observation
+   (an extra queryRenderedFeatures over the dot layers + a bridge emit EVERY pass) is consumed ONLY by the
+   perf-attribution channel, which JS drops unless a scenario is armed. Now gated on
+   `nativeApplyAttributionEnabled` (set exactly by the scenarios that consume it).
+2. **The back-off wrong-signal fixed**: with hit-commits ON, the moving noop-streak compared the STICKY
+   SETTLED set across passes (slow-changing by design) → the ladder maxed to 96ms during motion →
+   observations 6× sparser → grace streaks took 6× longer wall-clock → side-picks batched harder (the
+   compounding L3 feedback loop). The streak now ALSO reads the LIVE per-pass QRF delta (sorted, stable),
+   and tier-1 requires TWO consecutive quiet passes (single quiet passes between Mapbox placement updates
+   are normal during motion).
+
+MEASURED (sustained pan drives): deep tiers (64/96ms) ELIMINATED during motion; base-16ms share tripled
+(13% → 39% of passes); remainder at 32ms. **The residual IS the genuine ceiling:** Mapbox's own placement
+clock changes slower than 32ms — observing faster re-reads identical results. Further liveness requires
+owning placement (forbidden by the collision constraints) or Mapbox exposing placement events. This is the
+data for the owner's L3 residual decision (roadmap Step 6): the observation-gated architecture is now AT
+its ceiling.

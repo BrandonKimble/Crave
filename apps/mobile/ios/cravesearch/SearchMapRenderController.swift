@@ -479,6 +479,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     var configuredResetRequestKey: String? = nil
     var hasCommittedObservationForConfiguredRequest: Bool = false
     var lastVisibleLabelFeatureIds: [String] = []
+    // STEP-5 (L3): the LIVE per-pass QRF result (sorted), tracked separately from the committed/settled
+    // set so the moving back-off ladder reads an honest "is the world changing" signal.
+    var lastLiveVisibleLabelFeatureIds: [String] = []
     var lastLayerRenderedFeatureCount: Int = 0
     var lastEffectiveRenderedFeatureCount: Int = 0
     var lastResetRequestKey: String? = nil
@@ -9326,9 +9329,20 @@ final class SearchMapRenderController: RCTEventEmitter {
       committedVisibleLabelFeatureIds.count
     )
     labelFamilyState.labelObservation.hasCommittedObservationForConfiguredRequest = true
+    // STEP-5 FIX (L3 free win — the back-off wrong-signal): with hit-commits ON, the committed set is the
+    // STICKY settled set (grace-streaked, slow-changing by design), so comparing committed-vs-previous read
+    // "no change" on almost every mid-motion pass → the ladder maxed to 96ms → observations 6× sparser →
+    // the grace streak took 6× longer wall-clock to expire → side-picks batched even harder (a compounding
+    // feedback loop = the L3 percept). The honest "is the world changing" signal is the LIVE per-pass QRF
+    // delta — OR it in, so a genuinely changing scene holds the base cadence while a genuinely static one
+    // still backs off (the perf protection stays).
+    let liveObservationChanged =
+      labelFamilyState.labelObservation.lastLiveVisibleLabelFeatureIds != visibleLabelFeatureIds
+    labelFamilyState.labelObservation.lastLiveVisibleLabelFeatureIds = visibleLabelFeatureIds
     let didProduceMeaningfulChange =
       didClearSettledVisibleLabelHits ||
-      previousVisibleLabelFeatureIds != committedVisibleLabelFeatureIds
+      previousVisibleLabelFeatureIds != committedVisibleLabelFeatureIds ||
+      liveObservationChanged
     if mutableState.currentViewportIsMoving {
       if didProduceMeaningfulChange {
         labelFamilyState.labelObservation.movingNoopRefreshStreak = 0
@@ -9475,13 +9489,17 @@ final class SearchMapRenderController: RCTEventEmitter {
     noopRefreshStreak: Int
   ) -> Double {
     let clampedBaseRefreshMs = max(baseRefreshMs, 16)
-    if noopRefreshStreak >= 6 {
+    if noopRefreshStreak >= 8 {
       return min(clampedBaseRefreshMs * 6, 96)
     }
-    if noopRefreshStreak >= 3 {
+    if noopRefreshStreak >= 4 {
       return min(clampedBaseRefreshMs * 3, 64)
     }
-    if noopRefreshStreak >= 1 {
+    // STEP-5 (L3): tier-1 needs TWO consecutive quiet passes (was one). During motion, single quiet
+    // passes between Mapbox placement updates are NORMAL (placement changes slower than the 16ms
+    // observation clock), and a one-noop back-off made the cadence ping-pong at 32ms — delaying the
+    // side-pick reaction the owner wants live. Two quiet passes = the scene is actually quiet.
+    if noopRefreshStreak >= 2 {
       return min(clampedBaseRefreshMs * 2, 32)
     }
     return clampedBaseRefreshMs
@@ -9647,8 +9665,13 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     // Rendered-dot observation (parallel to the label observation): how many of
     // the demoted markers' dots actually painted vs how many should be visible.
+    // STEP-5 FIX (L3 free win): TELEMETRY-ONLY — its sole consumer is the perf-attribution channel,
+    // which the JS side drops unless a perf scenario is armed (isPerfScenarioAttributionActive). It was
+    // running an extra queryRenderedFeatures over the dot layers + a bridge emit on EVERY observation
+    // pass (~half the per-pass cost) for output that was discarded 99.9% of the time. Gate it on the
+    // native attribution arm (set exactly by the scenarios that consume it).
     let dotLayerIds = state.nativePressTargetConfig.dotLayerIds
-    if !dotLayerIds.isEmpty {
+    if nativeApplyAttributionEnabled, !dotLayerIds.isEmpty {
       let dotSourceId = state.dotSourceId
       let demotedMarkerKeys = Set(state.markerRoleTable.dotMarkerKeysInOrder)
       handle.mapView.mapboxMap.queryRenderedFeatures(
