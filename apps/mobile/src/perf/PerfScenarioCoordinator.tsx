@@ -284,6 +284,35 @@ export const PerfScenarioCoordinator: React.FC = () => {
       zoom: event.zoom,
     });
 
+    // L4/R3 look-and-pick kit (dev): registry-free — drives the native style-global symbol
+    // fade/placement-transition knob directly, so the owner can flip configs live while browsing:
+    //   crave://perf-scenario-command?action=set_label_transition&transitionDurationMs=100&placement=on
+    // (config A = 300/on Mapbox default; config C = ~80-120/on; placement=off = the eliminated config B,
+    // kept drivable for the on-device comparison.)
+    if (event.action === 'set_label_transition') {
+      void searchMapRenderController
+        .setBasemapSymbolFadePolicy({
+          transitionDurationMs: event.transitionDurationMs ?? null,
+          enablePlacementTransitions: event.placement == null ? null : event.placement !== 'off',
+        })
+        .then(() =>
+          logPayload({
+            event: 'perf_scenario_command_executed',
+            action: event.action,
+            transitionDurationMs: event.transitionDurationMs,
+            placement: event.placement,
+          })
+        )
+        .catch((error) =>
+          logPayload({
+            event: 'perf_scenario_command_failed',
+            action: event.action,
+            message: error instanceof Error ? error.message : String(error),
+          })
+        );
+      return;
+    }
+
     const registry = readPerfScenarioCommandRegistry();
 
     if (event.action === 'set_map_camera') {

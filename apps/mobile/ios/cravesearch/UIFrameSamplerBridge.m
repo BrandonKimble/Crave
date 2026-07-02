@@ -26,6 +26,9 @@ RCT_EXTERN_METHOD(beginInteractionFadeOut:(NSDictionary *)payload
 RCT_EXTERN_METHOD(resetNativeApplyAttribution:(NSDictionary *)payload
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(setBasemapSymbolFadePolicy:(NSDictionary *)payload
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(flushNativeApplyAttribution:(NSDictionary *)payload
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)

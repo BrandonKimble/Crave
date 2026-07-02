@@ -27,6 +27,8 @@ type PerfScenarioDeepLinkEvent =
       zoom: number | null;
       scene: string | null;
       routeParam: string | null;
+      transitionDurationMs: number | null;
+      placement: string | null;
     };
 
 const parseBoolean = (value: string | null, fallback: boolean): boolean => {
@@ -198,6 +200,12 @@ export const parsePerfScenarioDeepLinkEvent = (
         zoom: parseNumber(parsed.searchParams.get('zoom'), 0, 24),
         scene: parsed.searchParams.get('scene')?.trim() || null,
         routeParam: parsed.searchParams.get('routeParam')?.trim() || null,
+        // L4/R3 look-and-pick kit (dev): action=set_label_transition — the style-global symbol
+        // fade/placement-transition knob. transitionDurationMs 0..2000 (fade length; ~80-120 = config C;
+        // 300 = Mapbox default = config A), placement=on|off (off = labels SNAP — style-global, so basemap
+        // snaps too; config B, eliminated by the owner ruling but kept drivable for on-device comparison).
+        transitionDurationMs: parseNumber(parsed.searchParams.get('transitionDurationMs'), 0, 2000),
+        placement: parsed.searchParams.get('placement')?.trim() || null,
       };
     }
     if (!isPerfScenarioStartTarget(parsed)) {

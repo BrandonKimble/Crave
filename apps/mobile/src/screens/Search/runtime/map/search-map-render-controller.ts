@@ -41,6 +41,10 @@ type SearchMapRenderControllerNativeModule = {
   }) => Promise<{ catalogCount: number } | null | void>;
   beginInteractionFadeOut?: (payload: { instanceId?: string }) => Promise<void>;
   resetNativeApplyAttribution?: (payload: { reason?: string; runId?: string }) => Promise<void>;
+  setBasemapSymbolFadePolicy?: (payload: {
+    transitionDurationMs?: number | null;
+    enablePlacementTransitions?: boolean | null;
+  }) => Promise<void>;
   flushNativeApplyAttribution?: (payload: {
     reason?: string;
     reset?: boolean;
@@ -1071,6 +1075,19 @@ export const searchMapRenderController = {
       return;
     }
     await nativeModule.resetNativeApplyAttribution(payload);
+  },
+
+  // L4/R3 look-and-pick kit (dev): the style-global symbol fade/placement-transition knob.
+  async setBasemapSymbolFadePolicy(
+    payload: {
+      transitionDurationMs?: number | null;
+      enablePlacementTransitions?: boolean | null;
+    } = {}
+  ): Promise<void> {
+    if (!nativeModule?.setBasemapSymbolFadePolicy) {
+      return;
+    }
+    await nativeModule.setBasemapSymbolFadePolicy(payload);
   },
 
   async flushNativeApplyAttribution(

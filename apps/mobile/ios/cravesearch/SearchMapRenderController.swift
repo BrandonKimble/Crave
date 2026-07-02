@@ -858,6 +858,9 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var hasListeners = false
   private var instances: [String: InstanceState] = [:]
   private var resolvedMapHandles: [String: ResolvedMapHandle] = [:]
+  // L4/R3 look-and-pick kit (dev): remembered style-global symbol fade policy (nil = Mapbox default).
+  private var basemapSymbolFadeDurationMs: Double? = nil
+  private var basemapSymbolPlacementTransitionsEnabled: Bool? = nil
   private var enterSettleWorkItems: [String: DispatchWorkItem] = [:]
   private var dismissSettleWorkItems: [String: DispatchWorkItem] = [:]
   private var deferredDismissSourceCleanupWorkItems: [String: DispatchWorkItem] = [:]
@@ -1202,6 +1205,59 @@ final class SearchMapRenderController: RCTEventEmitter {
       self.nativeApplyAttributionCurrentContext = nil
       resolve(nil)
     }
+  }
+
+  // L4/R3 LOOK-AND-PICK KIT (dev): the style-global symbol fade / placement-transition knob
+  // (MapboxMaps `TransitionOptions` — the ONLY snap lever the SDK exposes; style-global, so it moves OUR
+  // labels AND the basemap's together). nil fields = leave that dimension at the Mapbox default. The policy
+  // is remembered and RE-APPLIED on every style load (the transition resets with the style). Drive it via
+  // crave://perf-scenario-command?action=set_label_transition&transitionDurationMs=100&placement=on
+  // Configs: A = 300/on (default), C = ~80-120/on (shortened fade), placement=off = the eliminated
+  // config B (labels snap; basemap snaps too), kept drivable for on-device comparison.
+  @objc
+  func setBasemapSymbolFadePolicy(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      if let durationMs = payload["transitionDurationMs"] as? Double {
+        self.basemapSymbolFadeDurationMs = durationMs
+      } else {
+        self.basemapSymbolFadeDurationMs = nil
+      }
+      if let placementEnabled = payload["enablePlacementTransitions"] as? Bool {
+        self.basemapSymbolPlacementTransitionsEnabled = placementEnabled
+      } else {
+        self.basemapSymbolPlacementTransitionsEnabled = nil
+      }
+      for (tagKey, handle) in self.resolvedMapHandles {
+        self.applyBasemapSymbolFadePolicy(to: handle.mapView.mapboxMap, tagKey: tagKey)
+      }
+      Self.lodLog(
+        "[labelkit] fade policy set durationMs=\(self.basemapSymbolFadeDurationMs.map { "\($0)" } ?? "default") placement=\(self.basemapSymbolPlacementTransitionsEnabled.map { "\($0)" } ?? "default")"
+      )
+      resolve(nil)
+    }
+  }
+
+  private func applyBasemapSymbolFadePolicy(to mapboxMap: MapboxMap, tagKey: String) {
+    guard basemapSymbolFadeDurationMs != nil || basemapSymbolPlacementTransitionsEnabled != nil else {
+      return
+    }
+    let durationSeconds = (basemapSymbolFadeDurationMs ?? 300) / 1000
+    mapboxMap.styleTransition = TransitionOptions(
+      duration: durationSeconds,
+      delay: 0,
+      enablePlacementTransitions: basemapSymbolPlacementTransitionsEnabled ?? true
+    )
+    Self.lodLog(
+      "[labelkit] fade policy applied mapTag=\(tagKey) durationS=\(durationSeconds) placement=\(basemapSymbolPlacementTransitionsEnabled ?? true)"
+    )
   }
 
   @objc
@@ -11027,6 +11083,10 @@ final class SearchMapRenderController: RCTEventEmitter {
 
       private func handleStyleLoaded(mapTag: NSNumber) {
       cachedPinShadow = nil   // re-bake the silhouette shadow (contentsScale may have changed)
+      // L4/R3 kit: the style transition resets with the style — RE-APPLY the remembered fade policy.
+      if let handle = resolvedMapHandles[mapTag.stringValue] {
+        applyBasemapSymbolFadePolicy(to: handle.mapView.mapboxMap, tagKey: mapTag.stringValue)
+      }
       for instanceId in Array(instances.keys) {
       guard var state = instances[instanceId], state.mapTag == mapTag else {
         continue
