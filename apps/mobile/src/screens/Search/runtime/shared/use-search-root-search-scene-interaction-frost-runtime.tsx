@@ -1,7 +1,17 @@
 import React from 'react';
-import Reanimated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Reanimated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 
 const INTERACTION_FROST_FADE_MS = 90;
+// Hold the interaction frost opaque this long AFTER the interaction clears, before fading it out, so the
+// reveal's own cover / presentation fade is visibly on-ramp before the frost reaches 0 — closes the ~1-frame
+// gap where the frost dropped before the reveal cover was up (the white-cutout flash mid-fetch after a
+// toggle). Fade-IN stays immediate so the toggle still feels instant.
+const FROST_HANDOFF_FLOOR_MS = 50;
 
 type UseSearchRootSearchSceneInteractionFrostRuntimeArgs = {
   notifyToggleInteractionFrostReady: (intentId: string) => void;
@@ -34,9 +44,9 @@ export const useSearchRootSearchSceneInteractionFrostRuntime = ({
       return;
     }
     isCoveredRef.current = shouldCover;
-    interactionFrostOpacity.value = withTiming(shouldCover ? 1 : 0, {
-      duration: INTERACTION_FROST_FADE_MS,
-    });
+    interactionFrostOpacity.value = shouldCover
+      ? withTiming(1, { duration: INTERACTION_FROST_FADE_MS })
+      : withDelay(FROST_HANDOFF_FLOOR_MS, withTiming(0, { duration: INTERACTION_FROST_FADE_MS }));
   }, [interactionFrostOpacity, shouldCover]);
 
   const interactionFrostAnimatedStyle = useAnimatedStyle(() => ({

@@ -1,0 +1,21 @@
+appId: com.brandonkimble.cravesearch
+---
+- tapOn: { text: 'Close restaurant', optional: true }
+- tapOn: { text: 'Close results', optional: true }
+- tapOn: { text: 'Close polls', optional: true }
+- extendedWaitUntil: { visible: 'What are you craving?', timeout: 30000 }
+- openLink: 'crave://perf-scenario-command?action=set_map_camera&lat=40.7550&lng=-73.9800&zoom=13.2&label=seed'
+- waitForAnimationToEnd: { timeout: 1500 }
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 3500 }
+- takeScreenshot: /tmp/rw-1-reveal
+- tapOn: { id: 'search-segment-toggle' }
+- waitForAnimationToEnd: { timeout: 4000 }
+- takeScreenshot: /tmp/rw-2-toggle-dishes
+- tapOn: { id: 'search-segment-toggle' }
+- waitForAnimationToEnd: { timeout: 4000 }
+- takeScreenshot: /tmp/rw-3-toggle-back
+- tapOn: { text: 'Close results' }
+- waitForAnimationToEnd: { timeout: 3000 }
+- takeScreenshot: /tmp/rw-4-dismiss

@@ -363,6 +363,19 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
         coverState: snapshot.coverState,
       });
       runtimeMachineRef.current!.applyStagingCoverState(snapshot.coverState);
+      // "SECOND SETTLE HANGS" FIX (map-LOD-v6): reset the source-ready flag to pending BEFORE
+      // re-keying the transaction below. The transaction-key publish synchronously re-triggers the
+      // map source projection (source controller subscribes to searchSurfaceResultsTransactionKey),
+      // which for a RESIDENT/cache-replay reveal — a re-toggle onto already-projected data — nested-
+      // synchronously republishes ready:true for this key. In the old order the ready:false reset ran
+      // AFTER that nested republish and clobbered it, so the reveal hung forever on
+      // map_sources_not_ready (reproduced: toggle-intent:10 stuck 25s+ across every steady-state
+      // rapid toggle). Ordering the reset FIRST makes the source's ready:true the final word; a
+      // genuine tab SWITCH still re-projects and (re)sets false-until-frame-ready exactly as before.
+      searchMapSourceFramePort.publishVisualState({
+        mapSearchSurfaceResultsSourcesReady: false,
+        mapSearchSurfaceResultsSourcesReadyKey: snapshot.transactionId,
+      });
       resultsPresentationSurfaceAuthority.publish(
         {
           searchSurfaceResultsTransactionKey: snapshot.transactionId,
@@ -370,10 +383,6 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
         'search_surface_results_transaction_press_up_pending'
       );
       commitSearchMountedResultsSearchSurfaceResultsTransactionKey(snapshot.transactionId);
-      searchMapSourceFramePort.publishVisualState({
-        mapSearchSurfaceResultsSourcesReady: false,
-        mapSearchSurfaceResultsSourcesReadyKey: snapshot.transactionId,
-      });
     },
     [resultsPresentationSurfaceAuthority, runtimeMachineRef, searchMapSourceFramePort]
   );

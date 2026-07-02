@@ -1361,6 +1361,17 @@ export const useSearchSubmitResponseOwner = ({
       const resultsDataKey = responseContext.resultsPatch.resultsHydrationCandidateKey ?? null;
       searchRuntimeBus.batch(() => {
         const mountedDataPublishStartedAtMs = getPerfScenarioWorkNow();
+        // [tclur] MOUNT-PUBLISH probe: when (and whether) a target-tab response actually re-commits into
+        // mountedResults. On a rapid toggle-BACK, if this never fires with targetTab=restaurants the map
+        // keeps the stale dish response. dataReadyFrom=cache|network|in_flight, stale=response-apply-staleness.
+        // eslint-disable-next-line no-console
+        console.log('[tclur] MOUNT-PUBLISH', {
+          targetTab: initialUiState.targetTab,
+          respR: responseContext.committedResponse.restaurants?.length ?? 0,
+          respD: responseContext.committedResponse.dishes?.length ?? 0,
+          dataReadyFrom,
+          stale: isResponseApplyStale,
+        });
         publishSearchMountedResultsDataSnapshot(responseContext.committedResponse, {
           activeTab: initialUiState.targetTab,
           markerProjection: responseContext.markerProjection,

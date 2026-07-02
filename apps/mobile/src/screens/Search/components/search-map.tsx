@@ -2168,16 +2168,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
     hasReportedFirstFullyRenderedFrameRef.current = true;
     onMapFullyRenderedRef.current?.();
   }, []);
-  const nativePresentationOpacityExpression = React.useMemo(
-    () =>
-      [
-        'coalesce',
-        ['feature-state', 'nativePresentationOpacity'],
-        ['get', 'nativePresentationOpacity'],
-        1,
-      ] as const,
-    []
-  );
+  // LAYER-LEVEL O(1) PRESENTATION (map-LOD-v6 rework): presentation opacity is no longer read per-feature
+  // here — it is element [1] of the icon/text-opacity product below, a plain layer-level scalar (init 1)
+  // that native swaps every fade-tick via setLayerPresentationOpacity (one setLayerProperty, NOT an O(N)
+  // setFeatureState sweep). The uniform layer multiplier fades every dot + label together (pins fade in
+  // lockstep via the CA overlay off the same presentation scalar). The nativePresentationOpacity
+  // feature-state is fully retired.
   // REFINED LEA (Layer-Expression Authority — reparse-immune membership fallback) — the shared pattern
   // for the dot + label opacity expressions below. feature-state (the native wall-clock stepper) drives
   // the SMOOTH crossfade and wins the coalesce at rest and mid-fade. When feature-state is CLEARED —
@@ -2272,14 +2268,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // can't go SMALLER than the icon bounds — if it's still bigger than the visible circle at 0, the
       // sprite has transparent border to crop (tighten generate-dot-sprites.js), not a padding issue.
       iconPadding: 0,
-      iconOpacity: ['*', nativePresentationOpacityExpression, nativeDotOpacityExpression],
+      // element [1] is the layer-level presentation scalar (init 1); native owns it via setLayerPresentationOpacity.
+      iconOpacity: ['*', 1, nativeDotOpacityExpression],
       // No *OpacityTransition — the native stepper is the SOLE opacity animator (see the pin layer).
     } as unknown as MapboxGL.SymbolLayerStyle;
-  }, [
-    nativeHighlightedExpression,
-    nativeDotOpacityExpression,
-    nativePresentationOpacityExpression,
-  ]);
+  }, [nativeHighlightedExpression, nativeDotOpacityExpression]);
   const labelObservationEnabled =
     requestedNativeLabelObservationEnabled && isNativeOwnedMarkerRuntimeReady;
   const visibleLabelFeatureIdListRef = React.useRef<string[]>([]);
@@ -2375,8 +2368,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
     return {
       ...restaurantLabelStyleWithStableOrder,
       textOpacity: [
+        // element [1] is the layer-level presentation scalar (init 1); native owns it via setLayerPresentationOpacity.
         '*',
-        nativePresentationOpacityExpression,
+        1,
         nativeLabelOpacityExpression,
         nativeLabelSelectedExpression,
         baseTextOpacity,
@@ -2417,7 +2411,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelUpShiftEm,
     nativeLabelOpacityExpression,
     nativeLabelSelectedExpression,
-    nativePresentationOpacityExpression,
     restaurantLabelStyleWithStableOrder,
   ]);
 

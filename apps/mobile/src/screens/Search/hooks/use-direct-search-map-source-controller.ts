@@ -1127,6 +1127,15 @@ export const useDirectSearchMapSourceController = ({
   const shortcutCoverageTerminalByRequestKeyRef = React.useRef<
     Map<string, ShortcutCoverageRequestResource>
   >(new Map());
+  // Coverage FEATURES cache — the sibling of shortcutCoverageTerminalByRequestKeyRef, keyed identically by
+  // requestKey (which includes activeTab). The terminal cache stored ONLY resource metadata (counts/status);
+  // the actual dot FeatureCollection lived solely in shortcutCoverageDotFeaturesRef, written only on a fresh
+  // network fetch. So a cache-hit toggle-back restored the resource but left the features ref on the PRIOR
+  // tab's coverage — the confirmed stale-236-on-restaurants (and null → promoted=0 pin-disappear) root.
+  // Caching the features here lets a cache-hit fully restore the coverage in-memory: instant, correct toggle-back.
+  const shortcutCoverageFeaturesByRequestKeyRef = React.useRef<
+    Map<string, FeatureCollection<Point, RestaurantFeatureProperties>>
+  >(new Map());
   const shortcutCoverageCountersRef = React.useRef<ShortcutCoverageRequestCounters>({
     started: 0,
     superseded: 0,
@@ -1273,6 +1282,18 @@ export const useDirectSearchMapSourceController = ({
         isPreparedResultsEnterActive ||
         effectiveRestaurantOnlyId != null ||
         selectedRestaurantId != null);
+    if (preparedVisualCycleKey != null && String(preparedVisualCycleKey).includes('toggle')) {
+      logger.info('[SRCPROJ] entry', {
+        pvck: preparedVisualCycleKey,
+        contentVis: resultsPresentationSnapshot.resultsPresentation.contentVisibility,
+        exit: isResultsExitActive,
+        enter: isPreparedResultsEnterActive,
+        live: isSearchVisualProjectionLive,
+        mode: searchMode,
+        proj: shouldProjectResultSources,
+        sri: searchRequestId,
+      });
+    }
     if (!isSearchVisualProjectionLive) {
       markerCandidatesRef.current = [];
       // RESIDENT-DATA + DORMANT-LAYERS end state: keep the resident source frame across the
@@ -1351,6 +1372,12 @@ export const useDirectSearchMapSourceController = ({
       selectedRestaurantId == null &&
       searchRequestId == null
     ) {
+      if (String(readinessKey).includes('toggle')) {
+        logger.info('[SRCPROJ] early=shortcut-noSri', {
+          rk: readinessKey,
+          pvck: preparedVisualCycleKey,
+        });
+      }
       sourceFramePort.publishVisualState({
         visibleSortedRestaurantMarkersCount:
           previousSourceFrameSnapshot.pinSourceStore.idsInOrder.length,
@@ -1375,6 +1402,12 @@ export const useDirectSearchMapSourceController = ({
       hasShortcutCoverageInput &&
       !shortcutCoverageReadyForPreparedEnter
     ) {
+      if (String(readinessKey).includes('toggle')) {
+        logger.info('[SRCPROJ] early=shortcut-covNotReady', {
+          rk: readinessKey,
+          cov: coverageResource?.status ?? 'loading',
+        });
+      }
       sourceFramePort.publishVisualState({
         visibleSortedRestaurantMarkersCount:
           previousSourceFrameSnapshot.pinSourceStore.idsInOrder.length,
@@ -1429,6 +1462,30 @@ export const useDirectSearchMapSourceController = ({
             getCraveScoreColorFromScore: args.getCraveScoreColorFromScore,
           });
     const markerCatalogEntries = markerCatalogReadModel.catalog;
+    // [tclur] CATALOG branch probe: proves WHY the restaurant tab can emit the DISH catalog (236). Either the
+    // precomputed catalog is REUSED under a mismatched/mislabeled preTab (branch=precomp, preTab shows what
+    // it was baked for), OR a live build ran with the wrong activeTab. outLen is what actually reached the map.
+    {
+      const _preUsable = !!(
+        mountedResultsSnapshot.precomputedMarkerCatalog &&
+        mountedResultsSnapshot.precomputedMarkerResultsKey === searchRequestId &&
+        mountedResultsSnapshot.precomputedMarkerActiveTab === activeTab &&
+        effectiveRestaurantOnlyId == null &&
+        selectedRestaurantId == null
+      );
+      // eslint-disable-next-line no-console
+      console.log('[tclur] CATALOG', {
+        activeTab,
+        branch: _preUsable ? 'precomp' : 'live',
+        preTab: mountedResultsSnapshot.precomputedMarkerActiveTab,
+        preKeyMatch: mountedResultsSnapshot.precomputedMarkerResultsKey === searchRequestId,
+        preLen: mountedResultsSnapshot.precomputedMarkerCatalog?.length ?? -1,
+        outLen: markerCatalogEntries.length,
+        rawR: restaurants.length,
+        rawD: dishes.length,
+        reqId: String(searchRequestId ?? '').slice(-8),
+      });
+    }
     // #16: include the LIVE native promoted set in the reuse key so a promotion change (native LOD during
     // a zoom) MISSES the prepared-frame cache on the next publish (the settle republish) and does a full
     // rebuild — which re-bakes the label-collision obstacle from the current promoted set so labels yield
@@ -1484,6 +1541,31 @@ export const useDirectSearchMapSourceController = ({
         mapSearchSurfaceResultsSourcesReadyKey: readinessKey,
       };
       const didPublishSourceFrame = commitResidentSourceFrameSnapshot(nextCachedSnapshot);
+      // REVEAL RE-KEY FIX (map-LOD-v6, "second settle hangs"): commitResidentSourceFrameSnapshot →
+      // publishSnapshot DEDUPS on the source DATA (pins/dots/labels). A toggle reveal that lands on
+      // UNCHANGED data — a net-zero rapid burst, or toggling back to an already-cached tab — is a
+      // no-op for publishSnapshot, so the NEW transaction's readiness key never reaches the source
+      // frame port. The reveal gate then blocks forever on `map_sources_not_ready` for a key that
+      // was never published (reproduced: toggle-intent:10 stuck 80s+). publishVisualState is keyed on
+      // the readiness fields, NOT the source data, so it always re-publishes ready:true for the
+      // CURRENT readinessKey regardless of the data-level dedup — unblocking the reveal.
+      sourceFramePort.publishVisualState({
+        mapSearchSurfaceResultsSourcesReady: pinInteractionSourcesComplete,
+        mapSearchSurfaceResultsSourcesReadyKey: readinessKey,
+      });
+      if (String(readinessKey).includes('toggle')) {
+        const portAfter = sourceFramePort.getSnapshot();
+        logger.info('[SRCPROJ] cacheReveal', {
+          rk: readinessKey,
+          tab: activeTab,
+          pins: nextCachedSnapshot.pinSourceStore.idsInOrder.length,
+          dots: nextCachedSnapshot.dotSourceStore.idsInOrder.length,
+          didPublishFrame: didPublishSourceFrame,
+          fp: preparedFrameFingerprint.slice(-24),
+          pinInterComplete: pinInteractionSourcesComplete,
+          portReady: portAfter.mapSearchSurfaceResultsSourcesReady,
+        });
+      }
       if (isPerfScenarioAttributionActive(scenarioConfig)) {
         logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
           event: 'map_source_frame_data_reuse_contract',
@@ -1493,7 +1575,7 @@ export const useDirectSearchMapSourceController = ({
           sourceFrameDataRecomputed: false,
           didPublishSourceFrame,
           cachedPreparedSourceFrameReplay: true,
-          didPublishReadinessState: false,
+          didPublishReadinessState: true,
           pinCount: nextCachedSnapshot.pinSourceStore.idsInOrder.length,
           dotCount: nextCachedSnapshot.dotSourceStore.idsInOrder.length,
           labelCount: nextCachedSnapshot.labelSourceStore.idsInOrder.length,
@@ -1601,6 +1683,24 @@ export const useDirectSearchMapSourceController = ({
       const candidateCatalogKey = buildStableKeyFingerprint(
         rankedCandidates.map((feature) => buildMarkerKey(feature))
       );
+      // [t4dbg] PROBE (T4 toggle-back staleness): the native candidate catalog is re-published to the map ONLY
+      // when this markerKey-fingerprint CHANGES. If dish and restaurant tabs yield the same markerKey set, the
+      // key matches → publish SKIPPED → native map keeps the old tab's markers. Log changed vs skipped per tab.
+      const _t4changed = candidateCatalogKey !== lastPublishedCandidateCatalogKeyRef.current;
+      // eslint-disable-next-line no-console
+      console.log('[t4dbg] catalogPublish', {
+        activeTab,
+        count: rankedCandidates.length,
+        // [tclur] raw mounted arrays the projection SEES — if activeTab=restaurants but rawR=236,
+        // mountedResults is the stale DISH response (dish-associated restaurants), never re-committed.
+        rawR: restaurants.length,
+        rawD: dishes.length,
+        reqId: String(searchRequestId ?? '').slice(-8),
+        hydra: String(mountedResultsSnapshot.resultsHydrationKey ?? '').slice(-10),
+        changed: _t4changed,
+        published: _t4changed,
+        keyHead: String(candidateCatalogKey).slice(0, 12),
+      });
       if (candidateCatalogKey !== lastPublishedCandidateCatalogKeyRef.current) {
         const catalogEntries: SearchMapCandidateCatalogEntry[] = [];
         rankedCandidates.forEach((feature, index) => {
@@ -2522,6 +2622,7 @@ export const useDirectSearchMapSourceController = ({
     shortcutCoverageDotFeaturesRef.current = null;
     shortcutCoverageResourceRef.current = null;
     shortcutCoverageTerminalByRequestKeyRef.current.clear();
+    shortcutCoverageFeaturesByRequestKeyRef.current.clear();
     shortcutCoverageFetchSeqRef.current += 1;
     shortcutCoverageLoadingRef.current = false;
     publishSourcesRef.current();
@@ -2576,6 +2677,15 @@ export const useDirectSearchMapSourceController = ({
         if (cachedTerminalResource) {
           shortcutCoverageResourceRef.current = cachedTerminalResource;
           shortcutCoverageLoadingRef.current = false;
+          // [tclur FIX / red-team M1] Restore features ONLY for a SUCCESS terminal — mirror the main
+          // cache-hit path so the two read paths can never diverge (a non-success terminal never surfaces
+          // stale features). An 'aborted'/'failed' terminal → null (clear coverage).
+          const cachedIsSuccess =
+            cachedTerminalResource.status === 'completed' ||
+            cachedTerminalResource.status === 'empty';
+          shortcutCoverageDotFeaturesRef.current = cachedIsSuccess
+            ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey) ?? null)
+            : null;
           publishSourcesRef.current();
           return;
         }
@@ -2608,6 +2718,8 @@ export const useDirectSearchMapSourceController = ({
         };
         shortcutCoverageResourceRef.current = terminalResource;
         shortcutCoverageTerminalByRequestKeyRef.current.set(requestKey, terminalResource);
+        // [tclur FIX / red-team M1] features cache in lockstep with this non-success ('failed') terminal.
+        shortcutCoverageFeaturesByRequestKeyRef.current.delete(requestKey);
         shortcutCoverageLoadingRef.current = false;
         shortcutCoverageDotFeaturesRef.current = null;
         shortcutCoverageCountersRef.current.completed += 1;
@@ -2666,25 +2778,58 @@ export const useDirectSearchMapSourceController = ({
       boundsKey,
     });
     const activeResource = shortcutCoverageResourceRef.current;
-    if (activeResource?.requestKey === requestKey && activeResource.status === 'loading') {
+    const activeMatchesKey = activeResource?.requestKey === requestKey;
+    if (activeMatchesKey && activeResource?.status === 'loading') {
+      // A fetch for THIS exact tab/bounds is already in flight — let it land.
       return;
     }
-    if (
-      activeResource?.requestKey === requestKey &&
-      activeResource.status !== 'idle' &&
-      activeResource.status !== 'loading'
-    ) {
-      return;
-    }
+    // [tclur FIX] Short-circuit ONLY on a SUCCESS terminal ('completed'/'empty') — a definitive coverage
+    // result for this requestKey. A cancelled/errored terminal ('aborted'/'superseded'/'failed') is NOT a
+    // result: rapid toggling supersedes in-flight coverage fetches (line ~2820 + the catch at ~3060 cache an
+    // 'aborted' terminal), and the OLD code early-returned on ANY cached terminal → that tab could never
+    // re-fetch and stayed empty (promoted=0, the "pins vanished and never came back"). We now fall through
+    // to re-fetch those. The success terminal may come from the active resource or the per-key terminal cache.
     const cachedTerminalResource = shortcutCoverageTerminalByRequestKeyRef.current.get(requestKey);
-    if (cachedTerminalResource) {
-      shortcutCoverageResourceRef.current = cachedTerminalResource;
+    const isSuccessStatus = (
+      status: ShortcutCoverageRequestResource['status'] | undefined
+    ): boolean => status === 'completed' || status === 'empty';
+    const successTerminal =
+      activeMatchesKey && isSuccessStatus(activeResource?.status)
+        ? activeResource
+        : cachedTerminalResource && isSuccessStatus(cachedTerminalResource.status)
+          ? cachedTerminalResource
+          : null;
+    if (successTerminal) {
+      // [tclur] COV-CACHE-HIT probe: the terminal-resource cache HITS and restores the RESOURCE — and now
+      // ALSO the features ref from the sibling features cache (previously the features ref stayed on the
+      // prior tab's coverage → the confirmed stale-236-on-restaurants root).
+      // eslint-disable-next-line no-console
+      console.log('[tclur] COV-CACHE-HIT', {
+        reqTab: activeTab,
+        resTab: successTerminal.activeTab,
+        resStatus: successTerminal.status,
+        resFeat: successTerminal.acceptedFeatureCount,
+        refFeat: shortcutCoverageDotFeaturesRef.current?.features.length ?? -1,
+      });
+      shortcutCoverageResourceRef.current = successTerminal;
       shortcutCoverageLoadingRef.current = false;
-      publishTelemetry(
-        sourceFramePort.getSnapshot().pinSourceStore.idsInOrder.length,
-        sourceFramePort.getSnapshot().dotSourceStore.idsInOrder.length
-      );
+      // Restore THIS tab's features from the features cache so the map switches immediately. An 'empty'
+      // terminal legitimately cached no features → null clears the coverage.
+      shortcutCoverageDotFeaturesRef.current =
+        shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey) ?? null;
+      publishSourcesRef.current();
       return;
+    }
+    // No success terminal for this key (none, or a cancelled/errored one) → drop any stale non-success
+    // terminal so it can't block, and fall through to a fresh fetch.
+    if (cachedTerminalResource) {
+      // eslint-disable-next-line no-console
+      console.log('[tclur] COV-REFETCH', {
+        reqTab: activeTab,
+        staleStatus: cachedTerminalResource.status,
+      });
+      shortcutCoverageTerminalByRequestKeyRef.current.delete(requestKey);
+      shortcutCoverageFeaturesByRequestKeyRef.current.delete(requestKey);
     }
     if (activeResource?.status === 'loading') {
       activeResource.status = 'superseded';
@@ -2875,10 +3020,18 @@ export const useDirectSearchMapSourceController = ({
         // restaurant_id in the coverage query). The old ranked-coverage build
         // (buildAnchoredShortcutCoverage → buildRankedShortcutCoverageFeatures → shortcutCoverageRankedRef)
         // fed coverage into the RANK pool; that's gone (coverage no longer ranks), so it's removed.
-        shortcutCoverageDotFeaturesRef.current = {
+        const coverageFeatureCollection: FeatureCollection<Point, RestaurantFeatureProperties> = {
           type: 'FeatureCollection',
           features,
         };
+        shortcutCoverageDotFeaturesRef.current = coverageFeatureCollection;
+        // [tclur FIX] Cache the features by requestKey so a later cache-hit (toggle-back to this tab) can
+        // restore them without a re-fetch. Without this, the cache-hit path restored only the resource and
+        // left the features ref on the other tab's coverage (stale-236 / promoted=0).
+        shortcutCoverageFeaturesByRequestKeyRef.current.set(requestKey, coverageFeatureCollection);
+        // [tclur] COV-SET probe: the fresh-NETWORK-fetch write of the coverage features ref + cache.
+        // eslint-disable-next-line no-console
+        console.log('[tclur] COV-SET', { fetchTab: activeTab, feats: features.length });
         publishSourcesRef.current();
         const latestSourceFrame = sourceFramePort.getSnapshot();
         const latestScenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
@@ -2931,6 +3084,11 @@ export const useDirectSearchMapSourceController = ({
         };
         shortcutCoverageResourceRef.current = terminalResource;
         shortcutCoverageTerminalByRequestKeyRef.current.set(requestKey, terminalResource);
+        // [tclur FIX / red-team M1] Keep the features cache in LOCKSTEP with the terminal cache: this
+        // requestKey now holds a non-success ('aborted'/'failed') terminal, so drop any features entry a
+        // prior success left here. Otherwise a stale features entry could be paired with a non-success
+        // terminal and surfaced (the exact "state-correct-but-screen-wrong" class this change set kills).
+        shortcutCoverageFeaturesByRequestKeyRef.current.delete(requestKey);
         if (aborted) {
           shortcutCoverageCountersRef.current.aborted += 1;
         } else {
@@ -2976,8 +3134,14 @@ export const useDirectSearchMapSourceController = ({
 
   React.useEffect(() => {
     const publishAndFetch = () => {
-      publishSourcesRef.current();
+      // [tclur FIX] Restore THIS tab's coverage (a cache-hit synchronously restores the features ref +
+      // re-projects) BEFORE the trailing projection — so the projection reads the CURRENT tab's coverage,
+      // not the prior tab's for one frame (the rapid-toggle 1-frame wrong-count flash, e.g. dishes showing
+      // 647 for a frame). On a cache-MISS this only arms a fetch (no synchronous publish), and the trailing
+      // publish still projects the loading state as before. Order swap is behavior-neutral on miss, and
+      // eliminates the flash on hit.
       maybeFetchShortcutCoverage();
+      publishSourcesRef.current();
     };
     publishAndFetch();
     const unsubscribeBus = searchRuntimeBus.subscribe(

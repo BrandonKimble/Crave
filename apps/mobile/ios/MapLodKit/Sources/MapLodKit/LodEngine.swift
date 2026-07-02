@@ -213,23 +213,52 @@ public struct LodEngine {
   public var isIdle: Bool { motion.isEmpty }
   public func wants(_ key: String) -> Bool { want[key] ?? false }
 
-  // MARK: - LEA lagging-literal authority (Fix A: flicker)
+  /// PROBE (perceptibility measurement, not a control authority): at a tile reparse the GL dot's
+  /// feature-state clears and the dot momentarily paints the DISCRETE literal floor instead of the
+  /// continuous 1-p. For every in-flight marker (0<p<1), the flash magnitude = |literalFloor - (1-p)|,
+  /// where literalFloor = 0 if promoted (in the decide target) else 1. Returns how many dots are exposed
+  /// and the worst magnitude — the quantitative answer to "is the residual bloom perceptible?".
+  public func inFlightReparseExposure() -> (count: Int, maxMag: Double) {
+    let promoted = Set(lastPromotedInOrder)
+    var count = 0
+    var maxMag = 0.0
+    for (key, fade) in fades {
+      let p = fade.opacity(nowMs: lastSetNowMs)
+      guard p > 0.02, p < 0.98 else { continue }
+      count += 1
+      let literalFloor = promoted.contains(key) ? 0.0 : 1.0
+      maxMag = Swift.max(maxMag, abs(literalFloor - (1.0 - p)))
+    }
+    return (count, maxMag)
+  }
 
-  /// The CURRENT-by-opacity pin role (the >0.5 set) the controller last wrote into the membership
-  /// literal. Distinct from `lastPromotedInOrder` (the decide TARGET): this lags behind a transition
-  /// so the literal never leads to a role the opacity hasn't reached yet.
-  private var lastReportedPinRole: Set<String> = []
+  // MARK: - LEA membership authority (keyed to the STABLE decide target)
 
-  /// If the >0.5 pin role changed since the last call, return it (in rank order, deterministic) and
-  /// record it; else nil. Call on the STEP clock right after `step(nowMs:)` so it reflects this tick's
-  /// opacities (`visiblePinKeys` reads `lastSetNowMs`, set at the top of `step`). The controller swaps
-  /// the reparse-immune membership literal to this lagging role — so during a fade the literal holds
-  /// the PRE-transition role (= the fade-start the just-written feature-state will paint), making the
-  /// async setFeatureState-vs-sync-setLayerProperty commit order irrelevant to flash.
+  /// The promoted set the controller last wrote into the reparse-immune membership literal.
+  private var lastReportedPromotedRole: Set<String> = []
+
+  /// If the DECIDE-PROMOTED set changed since the last call, return it (rank-ordered) and record it; else nil.
+  ///
+  /// RETARGET (supersedes FIX-A's lagged >0.5-opacity role): keyed to `lastPromotedInOrder` — the decide
+  /// TARGET, a pure function of (ranking, on-screen, budget), NOT of per-marker opacity. This is the set the
+  /// CA pin overlay renders pins for, so the dot/label literal is its exact complement and cannot churn
+  /// mid-crossfade. Why FIX-A's lagged `visiblePinKeys` (>0.5 role) was WRONG post-CA: pin opacity moved to
+  /// the reparse-immune CA overlay while the dot stayed GL (feature-state clears on reparse -> falls to this
+  /// literal). The >0.5 role oscillates as pins dip below 0.5 mid-fade (measured 30->26->31 while the target
+  /// held 30), so on a reparse a still-promoted marker fell out of the set and its dot painted 1 = the motion
+  /// flash; and at a reveal (fades from ~0) `visiblePinKeys` is empty/partial so the swap fired nil or wrong,
+  /// leaving a stale literal = the intermittent reveal dot no-show. The stable target fixes both.
+  ///
+  /// Still called on the STEP clock (the continuously-running converge tick covers all 4 decide paths:
+  /// camera/toggle/reveal/tap-promote) AND synchronously at the reveal/toggle re-decide entry points
+  /// (commitSettledLeaAuthorityUnderCover) to beat the presentation ramp. Because the returned set == the
+  /// swapped set == `lastPromotedInOrder`, the baseline can never desync a direct commit.
+  /// INVARIANT: `lastPromotedInOrder` is only updated by `decide` (NOT `setRanking`), so this must only be
+  /// consumed AFTER a fresh decide — every current caller runs decide first.
   public mutating func takeSettledRoleChangeIfAny() -> [String]? {
-    let now = Set(visiblePinKeys)
-    guard now != lastReportedPinRole else { return nil }
-    lastReportedPinRole = now
-    return ranking.compactMap { now.contains($0.markerKey) ? $0.markerKey : nil }
+    let now = Set(lastPromotedInOrder)
+    guard now != lastReportedPromotedRole else { return nil }
+    lastReportedPromotedRole = now
+    return lastPromotedInOrder
   }
 }

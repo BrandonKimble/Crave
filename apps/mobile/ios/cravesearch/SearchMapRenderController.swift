@@ -16,7 +16,13 @@ private final class PresentationOpacityAnimator {
   let startOpacity: Double
   let targetOpacity: Double
   let durationMs: Double
-  let startedAtMs: Double
+  // R1 FIX (reveal snap-in): the clock starts on the FIRST display-link tick, not at arm time. Under cover the
+  // reveal does heavy main-thread work (decide + under-cover LEA commit + first QRF) that can block the link
+  // ~150-200ms AFTER arming; with an arm-time clock the first VISIBLE tick lands at progress=elapsed/duration
+  // ≈0.65 → the map appears at ~65% opacity in one frame (the snap). Starting the clock on the first tick makes
+  // the full-duration fade begin from startOpacity on the first frame it can actually render.
+  var startedAtMs: Double
+  var clockStartedOnFirstTick = false
   private var displayLink: CADisplayLink?
 
   init(
@@ -125,7 +131,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     "nativeLabelOpacity",
     "nativeLodOpacity",
     "nativeLodRankOpacity",
-    "nativePresentationOpacity",
+    // nativePresentationOpacity RETIRED (map-LOD-v6 layer-level rework): presentation is now a layer-level
+    // scalar (element [1] of the icon/text-opacity product), not a per-feature feature-state — nothing
+    // writes this key anymore, so leaving it here would only be a latent reparse trap.
   ]
   private static let addGestureDelegateSelector = NSSelectorFromString("addGestureDelegate:")
   private static let removeGestureDelegateSelector = NSSelectorFromString("removeGestureDelegate:")
@@ -6361,13 +6369,21 @@ final class SearchMapRenderController: RCTEventEmitter {
         isMoving: false
       )
       // UNIFIED-MERGE FIX: reveal_promote is a SEPARATE re-decide entry point from
-      // reprojectCatalogUnderCoverIfReady. Its decide can re-admit keys to motion and leave the __lea_lod__
-      // literal governed by the lagged converge clock (a separate CADisplayLink) — re-opening the reveal
-      // no-show window. Commit the reparse-immune settled authority synchronously here too. NOTE: no
-      // snapSettled here (unlike the under-cover reproject) — enter_settled may run with presentation already
-      // up, so we must NOT drain motion/snap roles visibly; the swap-only path routes through
-      // takeSettledRoleChangeIfAny, which commits the lagged-correct role if it changed and is a no-op
-      // otherwise (never a visible snap). If verified under cover, the toggle session may add snapSettled.
+      // reprojectCatalogUnderCoverIfReady. Commit the reparse-immune settled authority synchronously here too
+      // so the fresh decide-promoted set governs the literals before the presentation ramp reveals them.
+      // RETARGET MITIGATION: the LEA literal is now keyed to lastPromotedInOrder (the decide target), so this
+      // commit forces dot=0 for the FULL fresh promoted set immediately — including markers whose CA pins are
+      // still fading up from ~0. If we let that land while presentation is under cover, a promoting marker
+      // would show neither dot (literal 0) nor pin (pinOpacity ~0) for the first visible frames (a promote-dip
+      // / no-show). So UNDER COVER, snapSettled FIRST: it settles the engine roles to target (pins -> 1) at a
+      // 0ms fade, invisible at presentation ~0, and the pins then fade in via the presentation ramp (the one
+      // moving curve). When NOT under cover (a late enter_settled with presentation already up) the fades are
+      // effectively settled already, so we skip the snap to avoid a visible role-snap and just commit.
+      if state.currentPresentationOpacityValue <= Self.underCoverReprojectThreshold,
+        var engine = state.lodV5Engine {
+        engine.snapSettled(nowMs: Self.nowMs())
+        state.lodV5Engine = engine
+      }
       commitSettledLeaAuthorityUnderCover(
         instanceId: instanceId, state: &state, mapboxMap: revealHandle.mapView.mapboxMap)
       instances[instanceId] = state
@@ -8219,19 +8235,30 @@ final class SearchMapRenderController: RCTEventEmitter {
   // that single scalar — pin = p, dot = 1 − p, label = p — so a marker can never be a visible pin AND a
   // visible dot (FM#2), and a 30-way budget crossing is 30 independent fades, not a batch snap (FM#4).
   // This is the ONLY feature-state writer when lodV5Enabled (v4's stepper + driveNativeLod are gated off).
+  private static var lastLoggedExpoCount = -1
   private func applyV5StepFeatureStates(for instanceId: String, state: inout InstanceState) throws {
     guard var engine = state.lodV5Engine else { return }
     // Wall-clock fade: hand the engine the absolute now; it projects each in-flight crossfade off this
     // clock, so a starved display link lands on the SAME curve as a 60fps one (no dt-rate staircase).
     let writes = engine.step(nowMs: Self.nowMs())
-    // FIX A (flicker): swap the reparse-immune membership literal HERE, on the step clock, lagging it to
-    // the engine's CURRENT >0.5 role (not the decide TARGET). This lands the sync setLayerProperty swap in
-    // the SAME display-link tick as the async setFeatureState writes below, both reflecting this tick's
-    // opacity — so the coalesce fallback always equals what feature-state is painting and the async commit
-    // order can no longer produce a target-flash. Fires only when the >0.5 role actually changes (a fade
-    // crossing 0.5), i.e. rarely; the literal swap is placement-neutral (paint property, no re-tile).
+    // RETARGET (supersedes FIX-A): swap the reparse-immune membership literal HERE, on the step clock, keyed
+    // to the STABLE decide target (`lastPromotedInOrder`), NOT the lagged >0.5 opacity role. Keeping it on the
+    // continuously-running step clock is what covers all 4 decide paths (camera/toggle/reveal/tap-promote); the
+    // key change is the argument. Because the target does not churn as pins dip below 0.5 mid-crossfade, a
+    // reparse can never drop a still-promoted marker from the set (the motion flash) and the reveal commit
+    // never sees an empty/partial set (the reveal no-show). Fires only when the decide-promoted set actually
+    // changes, i.e. rarely (fewer swaps than the >0.5 keying); the swap is placement-neutral (no re-tile).
     let roleChange = engine.takeSettledRoleChangeIfAny()
     state.lodV5Engine = engine
+    // PROBE: continuous in-flight EXPOSURE (the flash surface area). `writes.count` = dots mid-crossfade this
+    // tick; on ANY reparse in this window, up to that many dots momentarily paint the discrete {0,1} floor
+    // instead of 1-p. maxFlashMag = the worst |floor-(1-p)|. Logged when the count changes, only while moving —
+    // the empirical answer to "is the residual bloom perceptible?" (surface area x reparse frequency).
+    if Self.lodDebugLoggingEnabled, state.currentViewportIsMoving, writes.count != Self.lastLoggedExpoCount {
+      Self.lastLoggedExpoCount = writes.count
+      let exp = engine.inFlightReparseExposure()
+      Self.lodLog("[expodbg] inFlight=\(writes.count) maxFlashMag=\(Self.round3(exp.maxMag))")
+    }
     if let roleKeys = roleChange {
       try? withMapboxMap(for: state.mapTag) { mapboxMap in
         updateLeaMembershipLiterals(
@@ -8373,12 +8400,12 @@ final class SearchMapRenderController: RCTEventEmitter {
   /// `in OLD_promoted -> 0` = invisible, and a re-decided label paints an old/empty winner set, for the first
   /// visible frames. Relying on the incidental converge-tick swap (a separate CADisplayLink) or the DEFERRED
   /// async label selector loses that race (the intermittent reveal no-show).
-  ///  - __lea_lod__ (dot icon-opacity + label text-opacity): swapped THROUGH `engine.takeSettledRoleChangeIfAny()`
-  ///    so `lastReportedPinRole` stays consistent. A DIRECT `updateLeaMembershipLiterals(lastPromotedInOrder)`
-  ///    would desync the baseline: a later B->A round-trip decide would find `visiblePinKeys(A)==lastReportedPinRole(A)`,
-  ///    return nil, and SKIP the required A-swap while the literal still holds B = a reparse-during-motion flash
-  ///    (the exact thing FIX-A killed). Post-snap `visiblePinKeys == the promoted set`, so the routed call
-  ///    commits the fresh set AND records the baseline; a nil return means the literal is already correct.
+  ///  - __lea_lod__ (dot icon-opacity + label text-opacity): swapped via `engine.takeSettledRoleChangeIfAny()`,
+  ///    which is now keyed to the STABLE decide target `lastPromotedInOrder` (not the lagged >0.5 opacity role).
+  ///    So the returned set == the swapped set == `lastPromotedInOrder` and the baseline can never desync. It
+  ///    fires reliably on the fresh decide regardless of fade opacity — which is exactly why the earlier
+  ///    >0.5-role keying failed at reveal (fades from ~0 -> empty/partial -> nil-or-wrong swap -> stale literal
+  ///    -> demoted dots stayed hidden). A nil return means the literal already holds the current promoted set.
   ///  - __lea_revealed__ (label one-of-four winner): re-committed SYNCHRONOUSLY from the PERSISTED
   ///    `labelWinnerByInstance` map (survives the tab swap), pruned to the promoted set — QRF-INDEPENDENT
   ///    (`scheduleLabelObservationRefresh` is async/deferred and CANNOT commit under cover; it stays a later
@@ -8405,13 +8432,28 @@ final class SearchMapRenderController: RCTEventEmitter {
       winners.removeValue(forKey: markerKey)
     }
     labelWinnerByInstance[instanceId] = winners
-    let revealedKeys = winners.map { "\($0.key)::\($0.value)" }
+    let commitKeys = winners.map { "\($0.key)::\($0.value)" }
+    // L1 FIX (label reveal flash): the under-cover commit is an ADDITIVE bridge — it UNIONS its persisted
+    // winners into the current revealed set, it NEVER shrinks it. The observation selector
+    // (applyLabelOneOfFourSelector) remains the SOLE authority that can REMOVE a winner. This kills the
+    // two-writer stomp (commit's stale/small set overwriting the selector's live set → the ~500ms dropout,
+    // measured SELECTOR revealed=10 → REVEALCOMMIT revealed=2 → SELECTOR revealed=71). Stale keys from a prior
+    // search that survive the union are inert (their composite key matches no current feature) and are pruned
+    // the next time the selector does a full replace.
+    var unionCount = commitKeys.count
     for layerId in labelLayerIds {
+      let existing = Self.readSentinelLiteralKeys(
+        layerId: layerId, property: "text-opacity", sentinel: Self.leaRevealedSentinel, mapboxMap: mapboxMap)
+      let union = Array(Set(existing).union(commitKeys))
+      unionCount = union.count
       Self.swapLeaLiteral(
         layerId: layerId, property: "text-opacity",
-        sentinel: Self.leaRevealedSentinel, keys: revealedKeys, mapboxMap: mapboxMap)
+        sentinel: Self.leaRevealedSentinel, keys: union, mapboxMap: mapboxMap)
     }
-    Self.lodLog("[leamem] underCover settled commit: promoted=\(promotedSet.count) revealed=\(revealedKeys.count)")
+    Self.lodLog("[leamem] underCover settled commit: promoted=\(promotedSet.count) commit=\(commitKeys.count) union=\(unionCount)")
+    if Self.lodDebugLoggingEnabled {
+      Self.lodLog("[lbldbg] REVEALCOMMIT promoted=\(promotedSet.count) commit=\(commitKeys.count) union=\(unionCount)")
+    }
   }
 
   // Sentinel heads tag each reparse-immune LEA literal so multiple literals can coexist in ONE paint
@@ -8474,6 +8516,51 @@ final class SearchMapRenderController: RCTEventEmitter {
       return c
     }
     return (mapped, found)
+  }
+
+  // Read the CURRENT keys of the sentinel-headed literal (minus the sentinel head). Used to make a commit
+  // ADDITIVE (union) so the under-cover reveal-commit never SHRINKS a set the observation selector already
+  // authored — the L1 label-flash stomp (commit's stale small set wiped the selector's live set).
+  private static func readSentinelLiteralKeys(
+    layerId: String, property: String, sentinel: String, mapboxMap: MapboxMap
+  ) -> [String] {
+    firstSentinelLiteralKeys(mapboxMap.layerPropertyValue(for: layerId, property: property), sentinel: sentinel)
+  }
+  private static func firstSentinelLiteralKeys(_ node: Any, sentinel: String) -> [String] {
+    guard let arr = node as? [Any] else { return [] }
+    if arr.count == 2, (arr[0] as? String) == "literal",
+       let inner = arr[1] as? [Any], (inner.first as? String) == sentinel {
+      return inner.dropFirst().compactMap { $0 as? String }
+    }
+    for child in arr {
+      let found = firstSentinelLiteralKeys(child, sentinel: sentinel)
+      if !found.isEmpty { return found }
+    }
+    return []
+  }
+
+  // LAYER-LEVEL O(1) PRESENTATION (map-LOD-v6 rework): the presentation opacity is a UNIFORM global fade, so
+  // it belongs at the LAYER level, not per-feature. It is element [1] of the icon-opacity/text-opacity product
+  // `['*', <presentation>, <lea…>]`. This read-modify-writes ONLY element [1], preserving the LEA membership
+  // literals in elements [2+] — so it coexists with swapLeaLiteral (which preserves element [1]) on the same
+  // property; both run on the main thread so there is no true race. Replaces the O(N≈800) per-feature
+  // setFeatureState(nativePresentationOpacity) sweep with O(layers) setLayerProperty → a uniform FULL-CATALOG
+  // synchronized fade of every dot + label at compositor-pure cost.
+  @discardableResult
+  private static func setLayerPresentationOpacity(
+    layerIds: [String], property: String, value: Double, mapboxMap: MapboxMap
+  ) -> Bool {
+    var wroteAny = false
+    for layerId in layerIds {
+      let current = mapboxMap.layerPropertyValue(for: layerId, property: property)
+      guard var arr = current as? [Any], arr.count >= 2, (arr[0] as? String) == "*" else { continue }
+      arr[1] = value
+      do {
+        try mapboxMap.setLayerProperty(for: layerId, property: property, value: arr)
+        wroteAny = true
+      } catch {}
+    }
+    return wroteAny
   }
 
   // Map-LOD v5 FM#3: reseed the INVISIBLE label-collision obstacle so name-labels yield to the LIVE promoted
@@ -8816,6 +8903,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       cancelPresentationOpacityAnimation(instanceId: instanceId)
       return
     }
+    // R1 FIX: anchor the fade clock to the FIRST tick so blocked-thread time between arming and the first
+    // renderable frame doesn't get charged against the fade (which produced the 0.001→~0.65 snap-in).
+    if !animator.clockStartedOnFirstTick {
+      animator.clockStartedOnFirstTick = true
+      animator.startedAtMs = timestampMs
+    }
     let elapsedMs = max(0, timestampMs - animator.startedAtMs)
     let progress = animator.durationMs <= 0 ? 1 : min(1, elapsedMs / animator.durationMs)
     let easedProgress = progress * progress * (3 - 2 * progress)
@@ -8826,7 +8919,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
     state.currentPresentationOpacityValue = opacity
     instances[instanceId] = state
+    // TEMP CAPTURE: the presentation ramp value each tick, to time when the fade crosses ~0.05 visibility
+    // relative to the under-cover LEA-literal commit ([leamem] underCover). Strip after capture.
+    Self.lodLog("[presramp] t=\(Int(Self.nowMs())) opacity=\(Self.round3(opacity)) reason=\(animator.reason)")
     do {
+      let fcT0 = CACurrentMediaTime() * 1000
       try applyPresentationOpacity(
         opacity,
         for: state,
@@ -8840,6 +8937,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       // CA-vs-GL skew that desyncs the fade. Position-only during a fade unless the camera is moving (STEP 5).
       refreshOverlayFrame(instanceId: instanceId)
       state = instances[instanceId] ?? state
+      // FRAME-COST GATE (step 7): per-frame fade cost = applyPresentationOpacity setFeatureState sweep +
+      // refreshOverlayFrame tile walk, on the VISIBLE ramp with the pill animating. Want p95 < ~2ms, zero
+      // > 16ms. Excludes the one-shot under-cover reproject below (it fires at presentation~0, not visible).
+      let fcFrameMs = CACurrentMediaTime() * 1000 - fcT0
+      if animator.reason == "interaction_fade_out" || fcFrameMs > 4 {
+        Self.lodLog(
+          "[FCGATE] reason=\(animator.reason) frameMs=\(Self.round3(fcFrameMs)) p=\(Self.round3(progress))")
+      }
       // REVEAL/TOGGLE re-decide runs AFTER applyPresentationOpacity — but this ordering is a FRAME-PACING
       // choice ONLY, NOT a dot/label-visibility mechanism. The earlier "Step 6" theory (either order) was
       // mechanically WRONG: applyPresentationOpacity writes ONLY the `nativePresentationOpacity` feature-state
@@ -8944,62 +9049,25 @@ final class SearchMapRenderController: RCTEventEmitter {
       return
     }
     let startedAt = CACurrentMediaTime() * 1000
-    // nativePresentationOpacity is a UNIFORM global fade value (identical for every
-    // feature), so it only needs to be written to features that are actually painted —
-    // i.e. the on-screen marker set. With the residency model `collection.idsInOrder`
-    // is the FULL resident catalog (thousands of off-screen, demoted markers), and this
-    // runs every CADisplayLink frame (~18x per reveal/dismiss), so sweeping the whole
-    // catalog is pure waste. The camera does NOT move during an opacity fade, so the
-    // on-screen set is stable for the whole transition — restrict the sweep to it.
-    //
-    // Authoritative on-screen set: `lastVisibleMarkerSetSignature`, maintained in
-    // handleNativeCameraChanged as the sorted on-screen markerKeys joined with "|".
-    // Decode it back into a Set the same way the camera handler does (marker keys
-    // never contain "|"). markerKey -> featureIds mapping is collection.groupedFeatureIdsByGroup
-    // (built by buildGroupedFeatureIdsByGroup, keyed by markerKey).
-    let onScreenMarkerKeys: Set<String> = {
-      guard let signature = mutableState.lastVisibleMarkerSetSignature, !signature.isEmpty else {
-        return []
-      }
-      return Set(signature.components(separatedBy: "|"))
-    }()
-    // DISMISS DOT-FADE FIX (2026-06-22): the on-screen optimization only fades markers in the
-    // candidateCatalog projection (the rankable ~20-on-screen). The COVERAGE dots (the majority of
-    // the ~500 painted) are NOT in that projection, so a targeted fade misses them — on dismiss the
-    // pins faded but the coverage dots STAYED (user report). The reveal happens to fade them in only
-    // because onScreenMarkerKeys is still empty at reveal-start (→ the full-sweep fallback below). Make
-    // dismiss consistent: full-catalog sweep while .dismissing so EVERY resident dot fades out. (Cost
-    // is bounded — a few hundred dots over the ~300ms dismiss, not a per-gesture-frame cost.)
-    let useFullCatalogSweep =
-      onScreenMarkerKeys.isEmpty || mutableState.visualSourceLifecycleState == .dismissing
-    let targets: [(sourceId: String, featureId: String)]
-    if useFullCatalogSweep {
-      // SAFETY FALLBACK: no projected on-screen set yet (e.g. not yet camera-projected,
-      // or an instant/non-gesture state) — fall back to the full catalog sweep so the
-      // reveal/dismiss never silently fails to fade. ALSO the dismiss path (see above).
-      targets = visualSourceIds(for: state).flatMap { sourceId -> [(sourceId: String, featureId: String)] in
-        let familyState = Self.derivedFamilyState(sourceId: sourceId, state: mutableState)
-        return familyState.collection.idsInOrder.map { featureId in
-          (sourceId: sourceId, featureId: featureId)
-        }
-      }
-    } else {
-      targets = visualSourceIds(for: state).flatMap { sourceId -> [(sourceId: String, featureId: String)] in
-        let familyState = Self.derivedFamilyState(sourceId: sourceId, state: mutableState)
-        return onScreenMarkerKeys.flatMap { markerKey -> [(sourceId: String, featureId: String)] in
-          (familyState.collection.groupedFeatureIdsByGroup[markerKey] ?? []).map { featureId in
-            (sourceId: sourceId, featureId: featureId)
-          }
-        }
-      }
-    }
+    // LAYER-LEVEL O(1) PRESENTATION (map-LOD-v6 rework): the presentation opacity is a UNIFORM global fade
+    // (identical for every feature), so instead of an O(N≈800) per-feature setFeatureState sweep it is
+    // written ONCE per layer as element [1] of the icon-opacity/text-opacity product `['*', <presentation>,
+    // <lea…>]` (setLayerPresentationOpacity). This is INHERENTLY full-catalog — a layer multiplier scales
+    // EVERY painted feature incl. the coverage dots, so it supersedes the old `.dismissing` full-catalog
+    // special-case — and it is synchronized across dots + labels; the pins fade in lockstep via the CA
+    // overlay off the same `currentPresentationOpacityValue` (refreshOverlayFrame, same tick). Measured
+    // ~50× cheaper (8.6ms → 0.17ms/tick), so the visible fade never starves the compositor-pure toggle pill.
+    var layersWritten = 0
     try withMapboxMap(for: state.mapTag) { mapboxMap in
-      for target in targets {
-        mapboxMap.setFeatureState(
-          sourceId: target.sourceId,
-          featureId: target.featureId,
-          state: ["nativePresentationOpacity": opacity]
-        ) { _ in }
+      if Self.setLayerPresentationOpacity(
+        layerIds: ["restaurant-dot-layer"], property: "icon-opacity", value: opacity, mapboxMap: mapboxMap)
+      {
+        layersWritten += 1
+      }
+      if Self.setLayerPresentationOpacity(
+        layerIds: mutableState.labelLayerIds, property: "text-opacity", value: opacity, mapboxMap: mapboxMap)
+      {
+        layersWritten += 1
       }
       let durationMs = CACurrentMediaTime() * 1000 - startedAt
       self.recordNativeApply(
@@ -9007,14 +9075,14 @@ final class SearchMapRenderController: RCTEventEmitter {
         phase: state.lastPresentationBatchPhase,
         source: reason,
         durationMs: durationMs,
-        operationCount: targets.count
+        operationCount: layersWritten
       )
-      if emitDiagnostic && ((!targets.isEmpty && opacity > 0) || durationMs >= self.slowActionThresholdMs) {
+      if emitDiagnostic && ((layersWritten > 0 && opacity > 0) || durationMs >= self.slowActionThresholdMs) {
         self.emit([
           "type": "error",
           "instanceId": "__native_diag__",
           "message":
-            "presentation_opacity_apply reason=\(reason) opacity=\(opacity) transitionDurationMs=\(transitionDurationMs) phase=\(state.lastPresentationBatchPhase) featureStateCount=\(targets.count) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount) durationMs=\(Int(durationMs.rounded()))",
+            "presentation_opacity_apply reason=\(reason) opacity=\(opacity) transitionDurationMs=\(transitionDurationMs) phase=\(state.lastPresentationBatchPhase) layersWritten=\(layersWritten) pins=\(state.lastPinCount) dots=\(state.lastDotCount) labels=\(state.lastLabelCount) durationMs=\(Int(durationMs.rounded()))",
         ])
       }
     }
@@ -9359,6 +9427,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       normalizedDelayMs = max(delayMs, adaptiveDelayMs)
     } else {
       normalizedDelayMs = delayMs
+    }
+    // [l3dbg] PROBE (L3 batch-side-pick on twist): does the observation refresh cadence LENGTHEN during motion
+    // (moving-adaptive stretch) so labels batch a side-pick on settle instead of picking live? Log the requested
+    // vs normalized (stretched) delay + the adaptive value + whether a refresh is already in flight (coalesced).
+    if Self.lodDebugLoggingEnabled, state.currentViewportIsMoving {
+      Self.lodLog("[l3dbg] moving delayReq=\(delayMs) adaptiveMs=\(labelFamilyState.labelObservation.movingAdaptiveRefreshMs) refreshMoving=\(labelFamilyState.labelObservation.refreshMsMoving) normalized=\(normalizedDelayMs) inFlight=\(labelFamilyState.labelObservation.isRefreshInFlight)")
     }
     if labelFamilyState.labelObservation.isRefreshInFlight {
       let currentQueuedDelayMs = labelFamilyState.labelObservation.queuedRefreshDelayMs
@@ -9736,10 +9810,18 @@ final class SearchMapRenderController: RCTEventEmitter {
         (parsed.candidate, Self.labelCandidatePriority(parsed.candidate))
       )
     }
+    // L1/L3 FIX: a no-observation pass (QRF returned nothing — an early reveal frame, or a churn/latency frame
+    // during pan/twist) must NOT wipe the revealed set (that self-stomp = the reveal flash + the mid-motion
+    // label blink-out). Bail without touching the set; the next real observation refines it.
+    guard !observedByMarker.isEmpty else { return }
+    // A winner is dropped ONLY when its marker DEMOTES (leaves the promoted set), NEVER because it was merely
+    // unobserved THIS pass (transient collision / QRF latency). This keeps promoted labels stable across motion
+    // (a temporarily-collided label's candidate is culled by Mapbox anyway, and re-shows when it re-places) and
+    // prunes genuinely-stale keys (a prior search's markers are not in the promoted set → dropped).
+    let promotedSet = Set(instances[instanceId]?.lodV5Engine?.lastPromotedInOrder ?? [])
     var winners = labelWinnerByInstance[instanceId] ?? [:]
-    // Forget winners whose marker has no placed candidate this pass (marker left the scene) so the revealed
-    // set never pins a stale key. A marker merely churning keeps its winner (re-resolved just below).
-    for markerKey in winners.keys where observedByMarker[markerKey] == nil {
+    let lblPrevKeys = Set(winners.keys)
+    for markerKey in winners.keys where !promotedSet.contains(markerKey) {
       winners.removeValue(forKey: markerKey)
     }
     for (markerKey, candidatesUnsorted) in observedByMarker {
@@ -9760,6 +9842,12 @@ final class SearchMapRenderController: RCTEventEmitter {
         layerId: layerId, property: "text-opacity",
         sentinel: Self.leaRevealedSentinel, keys: revealedKeys, mapboxMap: mapboxMap
       )
+    }
+    if Self.lodDebugLoggingEnabled {
+      let nowKeys = Set(winners.keys)
+      let dropped = lblPrevKeys.subtracting(nowKeys).sorted().prefix(6).joined(separator: ",")
+      let added = nowKeys.subtracting(lblPrevKeys).sorted().prefix(6).joined(separator: ",")
+      Self.lodLog("[lbldbg] SELECTOR observedMarkers=\(observedByMarker.count) revealed=\(revealedKeys.count) DROPPED=[\(dropped)] ADDED=[\(added)]")
     }
   }
 
@@ -10760,6 +10848,7 @@ final class SearchMapRenderController: RCTEventEmitter {
 
     private func handleSourceDataLoaded(mapTag: NSNumber, event: SourceDataLoaded) {
       let sourceId = event.sourceId
+      if Self.lodDebugLoggingEnabled { Self.lodLog("[srcdbg] src=\(sourceId) loaded=\(event.loaded) dataId=\(event.dataId ?? "nil")") }
       guard let dataId = event.dataId else {
         return
       }
@@ -10772,6 +10861,15 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
       guard !Self.isVisualSourceInactiveOrDismissing(state) else {
         continue
+      }
+      // PROBE: quantify the residual dot bloom. A dot-source reparse clears in-flight dots' feature-state,
+      // so any mid-crossfade dot momentarily paints the discrete literal floor. Log how many dots are
+      // exposed + the worst flash magnitude, to answer "is the ≤1-frame residual perceptible?" empirically.
+      if Self.lodDebugLoggingEnabled, sourceId == state.dotSourceId, let engine = state.lodV5Engine {
+        let exp = engine.inFlightReparseExposure()
+        if exp.count > 0 {
+          Self.lodLog("[reparsedbg] dotReparse moving=\(state.currentViewportIsMoving) inFlight=\(exp.count) maxFlashMag=\(Self.round3(exp.maxMag))")
+        }
       }
       guard var pendingDataIds = state.pendingSourceCommitDataIdsBySourceId[sourceId] else {
         continue
@@ -11080,7 +11178,7 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   // DEV toggle: per-frame [LODDBG]/[leamem] LOD trace (camera/decide/projection/membership). Default OFF;
   // flip true to re-enable the attribution logging used while building the LOD render substrate.
-  static let lodDebugLoggingEnabled = false
+  static let lodDebugLoggingEnabled = true
   @inline(__always) private static func lodLog(_ message: @autoclosure () -> String) {
     if lodDebugLoggingEnabled { NSLog("%@", message()) }
   }
@@ -11154,12 +11252,11 @@ final class SearchMapRenderController: RCTEventEmitter {
         // FM#3: stash the promote∪demote delta; the obstacle reseed drains it AT IDLE (Fix B).
         state.lodV5ObstacleReseedKeys.formUnion(promoteKeys)
         state.lodV5ObstacleReseedKeys.formUnion(demoteKeys)
-        // FIX A (flicker): the membership literal is NO LONGER swapped here on the decide clock to the
-        // decide TARGET (which led the async feature-state by ≥1 frame → the coalesce painted the target
-        // for a frame = the promote/demote flash). It is now swapped on the STEP clock by
-        // applyV5StepFeatureStates → engine.takeSettledRoleChangeIfAny(), lagging to the CURRENT >0.5
-        // role so the fallback always equals what feature-state is painting. The reparse group-flash fix
-        // is preserved: the literal still holds the current role at rest, just authored from the other clock.
+        // The membership literal is not swapped here on the decide clock; it is swapped on the STEP clock by
+        // applyV5StepFeatureStates → engine.takeSettledRoleChangeIfAny() (now keyed to the STABLE decide target
+        // lastPromotedInOrder — see the RETARGET note there), and synchronously at the reveal/toggle re-decide
+        // entry points (commitSettledLeaAuthorityUnderCover). Keeping it off this per-decide site avoids a
+        // redundant swap; the step clock + the entry points cover all 4 decide paths.
       }
     } else {
       nativePromotedKeys = Array(
@@ -11212,6 +11309,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     handle.lastNativeCameraDiagAtMs = now
     handle.lastNativeCameraDiagSignature = signature
     Self.lodLog("[LODDBG] camGo moving=\(isMoving) zoom=\(Int((cameraState.zoom * 100).rounded())) instances=\(instances.count)")
+    // TEMP CAPTURE (record/replay): full camera keyframe for correlating a flash to the trajectory AND for
+    // deterministic replay of the exact motion. Strip with the rest of the capture instrumentation.
+    Self.lodLog("[camtraj] t=\(Int(now)) lat=\(center.latitude) lng=\(center.longitude) zoom=\(cameraState.zoom) bearing=\(cameraState.bearing) pitch=\(cameraState.pitch) moving=\(isMoving)")
     for (instanceId, state) in instances where state.mapTag == mapTag {
       guard !Self.isVisualSourceInactiveOrDismissing(state) else {
         Self.lodLog("[LODDBG] camInst \(instanceId) SKIP inactive/dismissing")
