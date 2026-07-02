@@ -293,3 +293,56 @@ set_map_camera mystery).
 **STEP 5 IS COMPLETE** (suppression defect, R1-latency reconcile-skip, L3 free wins, the kit).
 Next: Step 6 (the owner sitting), Step 7 (TR5 expanded), Step 8 (hardening), Step 9 (cleanup+harness),
 Step 10 (device battery).
+
+---
+
+# OWNER FINGER-TEST PUNCH LIST (2026-07-02 — supersedes my trace-level "closed" verdicts where they conflict)
+
+The owner drove the landed state and reports. THE SCREEN OVERRULES THE TRACES. Itemized (P = punch):
+
+- **P1 REVEAL SNAP (after heavy pan/zoom + search):** pins/labels/dots SNAPPED in, no fade. My R1/R2
+  validations used clean COLD cycle reveals; the owner's flow hits the WARM/instant path — which I
+  OBSERVED on the rig ("searches took the instant path, only dismiss ramps, presentation reaches 1 with no
+  animator") and WRONGLY wrote off as session-state weirdness. It is a REAL path real usage hits: the
+  cache-replay / warm re-search reveal sets presentation directly instead of arming the canonical ramp.
+  PRIME SUSPECT + first attribution target.
+- **P2 CLOSE BUTTONS DEAD (intermittent, after search + heavy pan/zoom):** both X buttons no-op. Cluster
+  with P8/P9 — smells like the searchOwns/ownership family (the page-switch WIP) OR an enter that never
+  settled (if the instant path skips the ramp, my settle-off-completion relies on the +1000ms fallback —
+  verify the fallback actually fires on the instant path).
+- **P3 LABEL DOUBLE FADE-IN (still):** my R2 "closed" was PRESENTATION-level (presramp) — label opacity is
+  a 4-factor product (presentation × nativeLabelOpacity × **lea_revealed** × base); the double-fade can
+  live in the label factors I did not measure. Needs a label-factor trace on a real reveal.
+- **P4 L3 BATCH SIDE-PICK after BIG twists (still, sometimes):** beyond cadence — the settle-batch on large
+  twists persists. Cadence is at the ceiling; the batch likely = QRF-async + placement-clock alignment at
+  settle. Needs the deeper look (or the owner's snap policy P13 makes it moot: snapping culls removes the
+  visible batch-fade).
+- **P5 RAPID-TOGGLE APP FREEZE:** "the whole app freezes for a moment; map and results disconnected from
+  the toggle." My TR1 sampler windows were clean on MY drives — measure on the OWNER's flow shape (rapid
+  hand-speed toggling, warm state). JS-thread stall suspect (the samplers measured UI thread mostly?).
+- **P6 FILTER TOGGLES (Open now etc.): no active-color change + results reload behind a WHITE COVER
+  instead of the skeleton sheet.** Scope note: filter chips were never wired to the fade flow (they are the
+  deferredApply consumers-to-be). The white-cover-vs-skeleton question may be TREE contamination (the
+  cutout-skeleton work lives UNCOMMITTED in another session's tree — if the owner drove the rig, the
+  skeletons simply aren't in this branch). VERIFY which tree the owner drove.
+- **P7 MARKERS DON'T FADE OUT on filter toggles** (only on restaurant/dish): known scope gap → TR5.
+- **P8 TOGGLE FADE-OUT ≠ CANONICAL:** slower than the canonical fade, not-on-press-up feel, "some
+  overridden fade-out still around." Owner wants ONE fade everywhere (TR4/X2). Audit
+  beginInteractionFadeOut/applyInteractionFadeOut duration + trigger timing vs the canonical 300ms ramp.
+- **P9 TOGGLES INTERMITTENT/UNRELIABLE; sometimes NO PINS just labels:** pin-disappear-like recurrence
+  under real toggling. Also "UI change lands after the fact." Cluster with P2/P5.
+- **P10 GRABBER DISMISSES RESULTS:** tapping the sheet header grabber closes the whole search like a
+  dismiss. Should never happen. (Sheet/page-switch territory — verify tree.)
+- **P11 DOTS MISSING IN SPARSE AREAS:** dots absent where plenty exist and culling should not explain it.
+  Owner explicitly asks to CONFIRM whether culling alone accounts for it (it should not, in sparse areas).
+- **P12 (verify) which sim/tree the owner drove** — sim-2 rig (pinned to this branch only) vs sim-1 (main
+  tree incl. the page-switch WIP). Forks the triage of P2/P6/P10.
+- **P13 OWNER LABEL-POLICY RULING (NEW, supersedes the A/C look-and-pick):** "labels only SNAP when
+  changing position or being culled (collision-driven), and only FADE during promote/demote with the
+  pins/dots (LOD-driven). Standardize on that and remove any other option, if viable."
+  VIABILITY: YES — this is exactly `placement transitions OFF` (config B: all collision-driven
+  appear/move/disappear SNAP) while our LOD promote/demote + presentation fades are OUR OWN feature-state/
+  literal opacity writes, UNAFFECTED by the placement-transition knob (they keep fading). The ONE caveat
+  (SDK-verified, style-global knob): the BASEMAP's street labels also snap on collision changes during
+  panning. The owner should drive config B knowing that's the trade; if basemap snapping offends,
+  config C at ~80ms is the closest non-global-snap compromise. There is NO per-layer placement knob.
