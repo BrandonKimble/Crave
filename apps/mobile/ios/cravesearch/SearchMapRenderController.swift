@@ -6708,14 +6708,22 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
       state.labelCollisionObstacleLayersVisible = false
     }
-    // NOTE: the label RENDER layers are intentionally NOT dormed to visibility:none here.
-    // Doing so deadlocked the reveal: the reveal-start gate (isActiveFrameLabelPlacementReady)
-    // queries queryRenderedFeatures over labelLayerIds, which returns 0 on a hidden / just-woken
-    // layer — so the gate never opened and the whole reveal (pins+dots+labels share one opacity
-    // animation) hung at ~0 opacity until a camera move. The label layers stay laid-out/queryable
-    // (opacity-gated to 0 when hidden via nativeLabelOpacity), so placement always commits and the
-    // gate opens reliably. Idle label-collision cost is the tradeoff; reclaim it later by placing
-    // labels under cover (enter_mounted_hidden) BEFORE the visible reveal, not via layer dormancy.
+    // STEP-5 FIX (post-dismiss basemap suppression — W5-certified DEFECT): dorm the label RENDER
+    // layers to visibility:none at dismiss-complete. Resident collision-bearing label symbols at
+    // opacity 0 kept CULLING the basemap street names indefinitely after a dismissed search
+    // (confirmed: ghost-town basemap vs the empty-search contrast where sources actually clear).
+    // The deadlock that previously blocked this (queryRenderedFeatures returns 0 on a just-woken
+    // layer → the placement gate never opened → the reveal hung) is now covered end-to-end:
+    // the reveal preroll wakes the layers BEFORE the observation re-arm (its comment was already
+    // written for this dormancy), the refresh path self-retries at 16ms to absorb the
+    // query-after-wake layout delay, and the reveal-deadlock watchdog force-opens the gate
+    // (revealPlacementGateForcedRequestKey) as the bounded backstop if placement still stalls.
+    setLabelRenderLayersVisible(
+      false,
+      for: state,
+      instanceId: instanceId,
+      reason: reason
+    )
     Self.clearDismissedHighlightState(&state)
     recordNativeApply(
       section: "presentation.hidden_marker_layer_dormancy",

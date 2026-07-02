@@ -204,3 +204,18 @@ only safe pattern), and (ii) a stale app-container state cleared by the reinstal
 bootstrap-cache removal. The freeze itself (boot → contentVis frozen → map never reveals) remains
 probe-grade for the hardening step: the app container UUID rotates on reinstall, and the exact poison
 vector was destroyed in the fixing — needs a controlled repro if it recurs.
+
+---
+
+# STEP-5(iii) POST-DISMISS BASEMAP SUPPRESSION: FIXED + VALIDATED (2026-07-02)
+
+The label RENDER layers are now dormed to `visibility:none` at dismiss-complete
+(completeDismissVisualLifecycle) — the one-edit fix the architecture was already built for: the reveal
+preroll's wake call + its deadlock-guard comments were written expecting this dormancy ("dormant via
+visibility:none while hidden"); only the dismiss side had been backed out (its old NOTE cited a reveal-gate
+deadlock that the placement-gate watchdog + the 16ms query-after-wake self-retry now cover).
+
+VALIDATED on-device: post-dismiss the basemap is FULLY RESTORED (all street names/neighborhoods/POIs — vs
+the certified ghost town on the identical flow yesterday); polls sheet intact; the re-search reveal ramps
+cleanly to 1.0. STRESS: 10 search↔dismiss cycles = 13 reveal ramps completing at 1.0, ZERO
+deadlock_placement_forced fires across every dormancy→wake transition.
