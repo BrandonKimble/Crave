@@ -49,6 +49,7 @@ import {
 } from '../runtime/shared/search-mounted-results-data-store';
 import type { ResolvedRestaurantMapLocation } from '../runtime/map/restaurant-location-selection';
 import {
+  type SearchMapCandidateCatalog,
   type SearchMapCandidateCatalogEntry,
   type SearchMapSourceFramePort,
   type SearchMapSourceFrameSnapshot,
@@ -1111,7 +1112,10 @@ export const useDirectSearchMapSourceController = ({
   // Stage B (B1): last candidate-catalog fingerprint pushed to the source frame
   // port. Rebuilt + republished only when the full ranked candidate set changes
   // (results change), NOT on every viewport tick.
-  const lastPublishedCandidateCatalogKeyRef = React.useRef<string | null>(null);
+  // Memoizes the built candidate catalog by key so an unchanged catalog keeps a STABLE object reference
+  // across projections (no rebuild, no reference churn) — the catalog now rides the source-frame snapshot
+  // and is deduped there on `.key`, so this is a pure build cache, not a publish gate.
+  const lastCandidateCatalogRef = React.useRef<SearchMapCandidateCatalog | null>(null);
   const shortcutCoverageSnapshotByRequestIdRef = React.useRef<
     Map<string, { bounds: MapBounds; entities: StructuredSearchRequest['entities'] }>
   >(new Map());
@@ -1674,66 +1678,43 @@ export const useDirectSearchMapSourceController = ({
       ...feature,
       properties: { ...feature.properties, rank: index + 1 },
     }));
-    // Stage B (B1): publish the full ranked candidate catalog (every showable
-    // marker, NOT viewport-filtered) to the source frame port so native can
-    // project it to screen space each camera tick and decide on-screen membership.
-    // rankedCandidates is already rank-ordered, so the array index IS the rank.
-    {
-      const candidateCatalogKey = buildStableKeyFingerprint(
-        rankedCandidates.map((feature) => buildMarkerKey(feature))
-      );
-      // [t4dbg] PROBE (T4 toggle-back staleness): the native candidate catalog is re-published to the map ONLY
-      // when this markerKey-fingerprint CHANGES. If dish and restaurant tabs yield the same markerKey set, the
-      // key matches → publish SKIPPED → native map keeps the old tab's markers. Log changed vs skipped per tab.
-      const _t4changed = candidateCatalogKey !== lastPublishedCandidateCatalogKeyRef.current;
-      // eslint-disable-next-line no-console
-      console.log('[t4dbg] catalogPublish', {
-        activeTab,
-        count: rankedCandidates.length,
-        // [tclur] raw mounted arrays the projection SEES — if activeTab=restaurants but rawR=236,
-        // mountedResults is the stale DISH response (dish-associated restaurants), never re-committed.
-        rawR: restaurants.length,
-        rawD: dishes.length,
-        reqId: String(searchRequestId ?? '').slice(-8),
-        hydra: String(mountedResultsSnapshot.resultsHydrationKey ?? '').slice(-10),
-        changed: _t4changed,
-        published: _t4changed,
-        keyHead: String(candidateCatalogKey).slice(0, 12),
+    // The full ranked candidate catalog (every showable marker, NOT viewport-filtered) that native projects
+    // to screen space to decide on-screen LOD membership. It rides the source-frame snapshot assembled below
+    // (attached at `candidateCatalog:`), so the pins it drives are committed ATOMICALLY with the dots/labels
+    // and can never desync — including on a cached-frame replay. rankedCandidates is rank-ordered (index=rank).
+    // Memoized by key: rebuild only when the marker set changes; the snapshot dedups on `.key`.
+    const candidateCatalogKey = buildStableKeyFingerprint(
+      rankedCandidates.map((feature) => buildMarkerKey(feature))
+    );
+    let candidateCatalog = lastCandidateCatalogRef.current;
+    if (candidateCatalog?.key !== candidateCatalogKey) {
+      const catalogEntries: SearchMapCandidateCatalogEntry[] = [];
+      rankedCandidates.forEach((feature, index) => {
+        const coordinates = feature.geometry?.coordinates;
+        if (
+          !Array.isArray(coordinates) ||
+          typeof coordinates[0] !== 'number' ||
+          typeof coordinates[1] !== 'number'
+        ) {
+          return;
+        }
+        const catalogRank = feature.properties.rank ?? index;
+        const catalogCraveScore =
+          typeof feature.properties.craveScore === 'number' ? feature.properties.craveScore : null;
+        catalogEntries.push({
+          markerKey: buildMarkerKey(feature),
+          lng: coordinates[0],
+          lat: coordinates[1],
+          rank: catalogRank,
+          // Pin OVERLAY substrate: carry the resolved sprite ids so native renders the exact GL sprite,
+          // and the restaurant id so the overlay's tap hit-test emits the same press target.
+          badgeImageId: rankBadgeImageId(catalogCraveScore, catalogRank),
+          activeBadgeImageId: activeRankBadgeImageId(catalogRank),
+          restaurantId: feature.properties.restaurantId,
+        });
       });
-      if (candidateCatalogKey !== lastPublishedCandidateCatalogKeyRef.current) {
-        const catalogEntries: SearchMapCandidateCatalogEntry[] = [];
-        rankedCandidates.forEach((feature, index) => {
-          const coordinates = feature.geometry?.coordinates;
-          if (
-            !Array.isArray(coordinates) ||
-            typeof coordinates[0] !== 'number' ||
-            typeof coordinates[1] !== 'number'
-          ) {
-            return;
-          }
-          const catalogRank = feature.properties.rank ?? index;
-          const catalogCraveScore =
-            typeof feature.properties.craveScore === 'number'
-              ? feature.properties.craveScore
-              : null;
-          catalogEntries.push({
-            markerKey: buildMarkerKey(feature),
-            lng: coordinates[0],
-            lat: coordinates[1],
-            rank: catalogRank,
-            // Pin OVERLAY substrate: carry the resolved sprite ids so native renders the exact GL sprite,
-            // and the restaurant id so the overlay's tap hit-test emits the same press target.
-            badgeImageId: rankBadgeImageId(catalogCraveScore, catalogRank),
-            activeBadgeImageId: activeRankBadgeImageId(catalogRank),
-            restaurantId: feature.properties.restaurantId,
-          });
-        });
-        sourceFramePort.publishCandidateCatalog({
-          key: candidateCatalogKey,
-          entries: catalogEntries,
-        });
-        lastPublishedCandidateCatalogKeyRef.current = candidateCatalogKey;
-      }
+      candidateCatalog = { key: candidateCatalogKey, entries: catalogEntries };
+      lastCandidateCatalogRef.current = candidateCatalog;
     }
     // Stage B (B3): consume the native screen-space on-screen marker set purely for the
     // attribution probe below. JS no longer uses it to gate promotion (native is the sole LOD
@@ -2293,6 +2274,10 @@ export const useDirectSearchMapSourceController = ({
       shortcutCoverageReadinessReason: coverageResource?.terminalReason ?? null,
       mapSearchSurfaceResultsSourcesReady,
       mapSearchSurfaceResultsSourcesReadyKey: readinessKey,
+      // Pins ride the SAME snapshot as dots/labels: one commit, one dedup, atomic delivery to native — and
+      // the cached-frame replay (which spreads this snapshot) carries the catalog with it, so a toggle-back
+      // never publishes dots/labels without their pins.
+      candidateCatalog,
     };
     const activePresentationTransport =
       args.resultsPresentationAuthority.getSnapshot().resultsPresentationTransport;

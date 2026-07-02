@@ -118,7 +118,9 @@ final class SearchMapRenderController: RCTEventEmitter {
   private let eventName = "searchMapRenderControllerEvent"
   private let enableVisualDiagnostics = false
   private let dismissSettleDelayMs = 300
-  private let enterSettleDelayMs = 300
+  // THE canonical presentation fade length — every reveal/dismiss/toggle/preroll ramp and the
+  // settle-fallback deadline derive from this one number. There is no other fade duration.
+  private let canonicalPresentationFadeDurationMs = 300
   // STEP-3 (mid-fade re-anchor): an inter-tick gap above this counts as a stall (healthy 60Hz cadence is
   // ~16.7ms; 120Hz ~8.3ms — both below). The clock shifts by (gap - one nominal frame) so the fade advances
   // ~1 frame across a stall tick. 20ms (not 25) because an UNcompensated gap is charged in full and the
@@ -904,8 +906,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   // Latest-wins stash of the swap frame while the canonical fade-out runs; re-dispatched at ~0 and revealed
   // with the canonical fade-in. The map can never bare-swap a visible catalog again, regardless of which JS
   // path produced the frame.
-  private var pendingGuardedSwapPayloadByInstanceId: [String: NSDictionary] = [:]
-  private var guardedSwapAwaitingRevealByInstanceId: Set<String> = []
   private var livePinTransitionAnimators: [String: CADisplayLink] = [:]
   // UNIFIED-FADE TOGGLE (map-LOD-v6): instanceIds whose catalog was swapped but not yet re-projected on the
   // static camera. Fired the next time presentation is UNDER COVER (≈0) — see reprojectCatalogUnderCoverIfReady.
@@ -1387,8 +1387,6 @@ final class SearchMapRenderController: RCTEventEmitter {
           ])
           resolve(nil)
         case .failure(let error):
-          self.pendingGuardedSwapPayloadByInstanceId[instanceId] = nil
-          self.guardedSwapAwaitingRevealByInstanceId.remove(instanceId)
           self.instances.removeValue(forKey: instanceId)
           self.slowActionWindowsByInstanceAndScope = self.slowActionWindowsByInstanceAndScope.filter {
             !$0.key.hasPrefix("\(instanceId)::")
@@ -1428,8 +1426,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       self?.cancelLivePinTransitionAnimation(instanceId: instanceId)
       self?.teardownOverlay(instanceId: instanceId)
       let mapTag = self?.instances[instanceId]?.mapTag
-      self?.pendingGuardedSwapPayloadByInstanceId[instanceId] = nil
-      self?.guardedSwapAwaitingRevealByInstanceId.remove(instanceId)
       self?.instances.removeValue(forKey: instanceId)
       self?.slowActionWindowsByInstanceAndScope = self?.slowActionWindowsByInstanceAndScope.filter {
         !$0.key.hasPrefix("\(instanceId)::")
@@ -1718,42 +1714,22 @@ final class SearchMapRenderController: RCTEventEmitter {
                 "[framecensus]   delta src=\(dSrc) mode=\(dMode) next=\(dNext) upsert=\(dUpsert) remove=\(dRemove) residentColl=\(dResident) residentDesired=\(dDesired)")
             }
           }
-          // COORDINATED-SWAP GUARD (P1, the warm-reveal snap): ANY frame that REPLACES a meaningful part
-          // of the visible catalog while the surface sits at high presentation must ride the fade shape —
-          // regardless of lane. Census-proven offenders: filter changes arrive as kind=enter on an
-          // already-visible surface (no preroll ran -> the enter lane would bare-apply at presentation 1),
-          // and sourceDataKey misses the filter dimension entirely (dataKeyChanged=false while the features
-          // changed) so KEYS CANNOT BE TRUSTED for this decision. The replacement test is the DELTA SHAPE:
-          // real removals mean visible markers are being torn out (a swap); adds-only frames (pagination /
-          // load-more appends) apply in place and fade per-marker via the LOD machinery instead.
-          // Stash latest-wins, ensure the canonical fade-out, re-dispatch under cover on its completion
-          // (the toggle's press-up fade-out shares the same completion hook, so a stash raised mid-toggle
-          // folds into the toggle's own shape).
+          // BARE-SWAP ASSERT (log-only): every catalog swap must ride the canonical enter flow
+          // (press-up/preroll fade-out -> swap under cover -> reveal). A data-bearing frame that tears
+          // out a meaningful slice of the visible catalog at high presentation is a CONTRACT VIOLATION
+          // by its PUBLISHER — fix the publisher. Nothing here may stash, fade, or early-return: a
+          // native detour skips frame admission and orphans the JS readiness generations (the toggle
+          // deadlock this replaced, 2026-07-02). The replacement test is the DELTA SHAPE because keys
+          // cannot be trusted (sourceDataKey misses dimensions like filters); adds-only frames
+          // (pagination appends) are legal in place.
           if shouldApplySourcePayload,
             markerRoleFrame == nil,
-            visualFrameTransaction.kind != "dismiss",
-            visualFrameTransaction.kind != "clear_hidden",
             attachedState.visualSourceLifecycleState == .visible,
             attachedState.currentPresentationOpacityValue > 0.5,
             guardRemoveCount >= 12 {
-            self.pendingGuardedSwapPayloadByInstanceId[instanceId] = payload
-            let runningAnimator = self.presentationOpacityAnimators[instanceId]
-            if runningAnimator == nil || runningAnimator!.targetOpacity > 0.5 {
-              if var guardState = self.instances[instanceId] {
-                try? self.animatePresentationOpacity(
-                  to: 0,
-                  for: &guardState,
-                  instanceId: instanceId,
-                  reason: "guarded_swap_fade_out"
-                )
-                self.instances[instanceId] = guardState
-              }
-            }
             Self.lodLog(
-              "[swapguard] stash+fadeout kind=\(visualFrameTransaction.kind) removes=\(guardRemoveCount) from=\(Self.round3(attachedState.currentPresentationOpacityValue))"
+              "[framecensus] BARE-SWAP VIOLATION kind=\(visualFrameTransaction.kind) removes=\(guardRemoveCount) pres=\(Self.round3(attachedState.currentPresentationOpacityValue)) — the publisher must arm the canonical enter flow"
             )
-            resolve(nil)
-            return
           }
           let previousAttributionContext = self.nativeApplyAttributionCurrentContext
           self.nativeApplyAttributionCurrentContext = self.nativeApplyFrameContext(
@@ -1824,9 +1800,6 @@ final class SearchMapRenderController: RCTEventEmitter {
           }
           switch visualFrameTransaction.kind {
           case "dismiss":
-            // A dismiss supersedes any stashed guarded swap — the user is leaving; drop it.
-            self.pendingGuardedSwapPayloadByInstanceId[instanceId] = nil
-            self.guardedSwapAwaitingRevealByInstanceId.remove(instanceId)
             try markFrameSourceAdmission(sourceReady: true)
             try applyPresentation()
             didSyncResidentFrame = true
@@ -1848,9 +1821,6 @@ final class SearchMapRenderController: RCTEventEmitter {
             didSyncResidentFrame = true
             sourceAdmissionOutcome = hasSourcePayload ? "sources_cleared_hidden" : "presentation_only_clear_hidden"
           case "enter":
-            // The enter machinery owns presentation from here — a stashed guarded swap is superseded.
-            self.pendingGuardedSwapPayloadByInstanceId[instanceId] = nil
-            self.guardedSwapAwaitingRevealByInstanceId.remove(instanceId)
             try markFrameSourceAdmission(sourceReady: false)
             try applyPresentation()
             if sourceFrameIsReady && shouldApplySourcePayload {
@@ -1898,27 +1868,6 @@ final class SearchMapRenderController: RCTEventEmitter {
               userInfo: [NSLocalizedDescriptionKey: "unsupported visual frame transaction kind: \(visualFrameTransaction.kind)"]
             )
           }
-        // COORDINATED-SWAP GUARD: the re-dispatched swap just applied under cover — run the canonical
-        // guarded reveal (the same 300ms Hermite everything else uses).
-        if self.guardedSwapAwaitingRevealByInstanceId.contains(instanceId),
-          sourceFrameIsReady,
-          var guardedRevealState = self.instances[instanceId] {
-          self.guardedSwapAwaitingRevealByInstanceId.remove(instanceId)
-          // If a REAL enter lifecycle took over meanwhile (.preparingReveal/.revealing), IT owns the ramp —
-          // the guarded reveal only drives the machinery-less case (lifecycle still .visible).
-          if guardedRevealState.visualSourceLifecycleState == .visible {
-            Self.lodLog("[swapguard] applied under cover -> guarded reveal")
-            try self.animatePresentationOpacity(
-              to: 1,
-              for: &guardedRevealState,
-              instanceId: instanceId,
-              reason: "guarded_swap_reveal"
-            )
-            self.instances[instanceId] = guardedRevealState
-          } else {
-            Self.lodLog("[swapguard] enter machinery active -> defer reveal to it")
-          }
-        }
         let interactionStartedAt = CACurrentMediaTime() * 1000
         try self.applyInteractionModePayload(
           instanceId: instanceId,
@@ -6239,7 +6188,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       return
     }
     // STEP-3 FIX (settle-off-ramp-completion): the enter settle used to fire on a WALL-CLOCK timer
-    // (enterSettleDelayMs after arm). The R1 first-tick clock anchor + the mid-fade re-anchor decouple the
+    // (canonicalPresentationFadeDurationMs after arm). The R1 first-tick clock anchor + the mid-fade re-anchor decouple the
     // VISIBLE fade from wall clock (a stalled fade finishes later than arm+300ms), so a timer-driven settle
     // could run its LEA commit while the fade is still visibly ramping — exactly the promote-dip window the
     // settle's own under-cover comment warns about. The settle gate is now evaluated from the presentation
@@ -6254,7 +6203,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     enterSettleWorkItems[instanceId] = workItem
     DispatchQueue.main.asyncAfter(
-      deadline: .now() + .milliseconds(enterSettleDelayMs + enterSettleRampFallbackGraceMs),
+      deadline: .now() + .milliseconds(canonicalPresentationFadeDurationMs + enterSettleRampFallbackGraceMs),
       execute: workItem
     )
   }
@@ -9017,7 +8966,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     for state: inout InstanceState,
     instanceId: String,
     reason: String,
-    durationMs: Int? = nil,
     allowDuringRecovery: Bool = false
   ) throws {
     cancelPresentationOpacityAnimation(instanceId: instanceId)
@@ -9045,7 +8993,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       return
     }
 
-    let resolvedDurationMs = durationMs ?? enterSettleDelayMs
+    let resolvedDurationMs = canonicalPresentationFadeDurationMs
     emitVisualDiag(
       instanceId: instanceId,
       message:
@@ -9208,19 +9156,6 @@ final class SearchMapRenderController: RCTEventEmitter {
             enterSettleWorkItems[instanceId]?.cancel()
             enterSettleWorkItems[instanceId] = nil
             evaluateEnterSettleGate(instanceId: instanceId, requestKey: enterKey)
-          }
-        }
-        // COORDINATED-SWAP GUARD: a fade-OUT just completed (any reason — the guard's own, the toggle's
-        // press-up, any future trigger). If a catalog swap is stashed, re-dispatch it NOW, under cover.
-        // The re-dispatch passes the guard (presentation ~0), applies, and the post-apply hook below
-        // runs the canonical guarded reveal. Latest-wins by construction (the stash holds one frame).
-        if animator.targetOpacity <= 0.001,
-          let stashedSwapPayload = pendingGuardedSwapPayloadByInstanceId[instanceId] {
-          pendingGuardedSwapPayloadByInstanceId[instanceId] = nil
-          guardedSwapAwaitingRevealByInstanceId.insert(instanceId)
-          Self.lodLog("[swapguard] fadeout complete -> redispatch stashed swap")
-          DispatchQueue.main.async { [weak self] in
-            self?.setRenderFrame(stashedSwapPayload, resolver: { _ in }, rejecter: { _, _, _ in })
           }
         }
       }
@@ -10067,8 +10002,16 @@ final class SearchMapRenderController: RCTEventEmitter {
     let promotedSet = Set(instances[instanceId]?.lodV5Engine?.lastPromotedInOrder ?? [])
     var winners = labelWinnerByInstance[instanceId] ?? [:]
     let lblPrevKeys = Set(winners.keys)
+    // [lblsnap] attribution: classify every label visibility change by CAUSE so the residual flicker can be
+    // attributed to a shape (demote/cull FADE-or-SNAP) vs a side-switch (snap, deferred to hysteresis). Each
+    // cause maps to the owner's R-5 policy: demote/promote should FADE (LOD crossfade), collision-cull +
+    // side-switch should SNAP. A demote that co-occurs with a re-add next pass = the "double flicker on the way out".
+    let prevWinnerByMarker = winners
+    var demoteDrops: [String] = []
+    var cullDrops: [String] = []
     for markerKey in winners.keys where !promotedSet.contains(markerKey) {
       winners.removeValue(forKey: markerKey)
+      demoteDrops.append(markerKey)
     }
     // COLLISION-TWIN ENFORCEMENT: pre-twin, a winner whose candidate lost placement was hidden BY MAPBOX
     // (the render layer competed), so keeping it in the literal was harmless. Post-twin the render layer is
@@ -10086,20 +10029,29 @@ final class SearchMapRenderController: RCTEventEmitter {
       if streak >= Self.labelWinnerMissingDropStreak {
         winners.removeValue(forKey: markerKey)
         missingStreaks.removeValue(forKey: markerKey)
+        cullDrops.append(markerKey)
       } else {
         missingStreaks[markerKey] = streak
       }
     }
     missingStreaks = missingStreaks.filter { winners[$0.key] != nil }
     labelWinnerMissingStreakByInstance[instanceId] = missingStreaks
+    var sideSwitches: [String] = []
+    var promoteAdds: [String] = []
     for (markerKey, candidatesUnsorted) in observedByMarker {
       let candidates = candidatesUnsorted.sorted { $0.priority < $1.priority }
       // Keep the current winner if it is still placed; otherwise promote the highest-priority placed
       // candidate. (Only a genuine winner-collapse changes the winner — transient loser churn doesn't.)
       let prevWinner = winners[markerKey]
-      winners[markerKey] =
+      let nextWinner =
         (prevWinner != nil && candidates.contains { $0.candidate == prevWinner }) ? prevWinner!
           : candidates[0].candidate
+      winners[markerKey] = nextWinner
+      if prevWinnerByMarker[markerKey] == nil {
+        promoteAdds.append(markerKey)
+      } else if prevWinner != nil && prevWinner != nextWinner {
+        sideSwitches.append(markerKey)
+      }
     }
     labelWinnerByInstance[instanceId] = winners
     // Reveal exactly the winners: swap the set of composite keys (markerKey::candidate) into the layer's
@@ -10112,10 +10064,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
     }
     if Self.lodDebugLoggingEnabled {
-      let nowKeys = Set(winners.keys)
-      let dropped = lblPrevKeys.subtracting(nowKeys).sorted().prefix(6).joined(separator: ",")
-      let added = nowKeys.subtracting(lblPrevKeys).sorted().prefix(6).joined(separator: ",")
-      Self.lodLog("[lbldbg] SELECTOR observedMarkers=\(observedByMarker.count) revealed=\(revealedKeys.count) DROPPED=[\(dropped)] ADDED=[\(added)]")
+      // [lblsnap] one line per pass, classified by CAUSE. demote+promote = LOD (should fade); cull+sideswitch
+      // = collision (snap). A demote here whose markerKey reappears in promoteAdds a pass or two later is the
+      // "double flicker on the way out". Sample up to 4 keys per class for correlating a specific label.
+      let s4: ([String]) -> String = { $0.sorted().prefix(4).joined(separator: ",") }
+      Self.lodLog(
+        "[lblsnap] observed=\(observedByMarker.count) revealed=\(revealedKeys.count) "
+          + "demote=\(demoteDrops.count)[\(s4(demoteDrops))] cull=\(cullDrops.count)[\(s4(cullDrops))] "
+          + "sideswitch=\(sideSwitches.count)[\(s4(sideSwitches))] promote=\(promoteAdds.count)[\(s4(promoteAdds))]")
     }
   }
 

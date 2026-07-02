@@ -31,6 +31,11 @@ export type SearchMapSourceFrameSnapshot = {
   shortcutCoverageReadinessReason: string | null;
   mapSearchSurfaceResultsSourcesReady: boolean;
   mapSearchSurfaceResultsSourcesReadyKey: string | null;
+  // The full ranked candidate catalog (pins via native LOD promotion) rides the SAME snapshot as the
+  // dots/labels sources so the two channels can never desync: one publish + one dedup governs both, and a
+  // cached-frame replay carries the catalog with it. Deduped on `.key` (changes only on a data change), so
+  // it never churns per camera tick. The render owner forwards it to native setCandidateCatalog on submit.
+  candidateCatalog: SearchMapCandidateCatalog | null;
 };
 
 export type SearchMapSourceFrameSnapshotKey = keyof SearchMapSourceFrameSnapshot;
@@ -86,7 +91,9 @@ export type SearchMapSourceFramePort = {
   getSnapshot: () => SearchMapSourceFrameSnapshot;
   publishSnapshot: (snapshot: SearchMapSourceFrameSnapshot) => boolean;
   publishVisualState: (patch: Partial<SearchMapSourceFrameVisualStatePatch>) => boolean;
-  publishCandidateCatalog: (catalog: SearchMapCandidateCatalog) => void;
+  // The candidate catalog now rides the frame snapshot (see SearchMapSourceFrameSnapshot.candidateCatalog);
+  // this getter reads it from the committed snapshot so the render owner forwards the SAME catalog that was
+  // committed atomically with the dots/labels — no separate publish channel that could arrive out of order.
   getCandidateCatalog: () => SearchMapCandidateCatalog | null;
   publishNativeVisibleMarkerKeys: (visible: SearchMapNativeVisibleMarkers) => void;
   getNativeVisibleMarkerKeys: () => SearchMapNativeVisibleMarkers | null;
@@ -116,6 +123,7 @@ export const EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT: SearchMapSourceFrameSnapsho
   shortcutCoverageReadinessReason: null,
   mapSearchSurfaceResultsSourcesReady: true,
   mapSearchSurfaceResultsSourcesReadyKey: null,
+  candidateCatalog: null,
 };
 
 const areSourceStoreFramesEqual = (
@@ -146,7 +154,11 @@ export const areSearchMapSourceFrameSnapshotsEqual = (
   areSourceStoreFramesEqual(left.labelSourceStore, right.labelSourceStore) &&
   areSourceStoreFramesEqual(left.labelCollisionSourceStore, right.labelCollisionSourceStore) &&
   left.labelDerivedSourceIdentityKey === right.labelDerivedSourceIdentityKey &&
-  left.markersRenderKey === right.markersRenderKey;
+  left.markersRenderKey === right.markersRenderKey &&
+  // Catalog is deduped on its KEY only (a data-change fingerprint), so a camera-tick republish with an
+  // unchanged catalog stays equal (no per-tick churn) while a real catalog change forces a republish that
+  // carries the fresh pins in lockstep with the dots/labels.
+  (left.candidateCatalog?.key ?? null) === (right.candidateCatalog?.key ?? null);
 
 const SOURCE_FRAME_KEYS: readonly SearchMapSourceFrameSnapshotKey[] = [
   'visualCycleKey',
@@ -167,7 +179,6 @@ type SearchMapSourceFrameListenerRecord = {
 
 export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
   let snapshot = EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT;
-  let candidateCatalog: SearchMapCandidateCatalog | null = null;
   let nativeVisibleMarkers: SearchMapNativeVisibleMarkers | null = null;
   const listeners = new Map<() => void, SearchMapSourceFrameListenerRecord>();
 
@@ -238,6 +249,13 @@ export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
       ) {
         changedKeys.add('mapSearchSurfaceResultsSourcesReadyKey');
       }
+      // Catalog by KEY, not reference: a fresh snapshot object each projection would churn on Object.is,
+      // but the catalog only meaningfully changed when its data-fingerprint key changed.
+      if (
+        (snapshot.candidateCatalog?.key ?? null) !== (nextSnapshot.candidateCatalog?.key ?? null)
+      ) {
+        changedKeys.add('candidateCatalog');
+      }
       if (changedKeys.size === 0) {
         return false;
       }
@@ -266,17 +284,13 @@ export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
       notify(changedKeys);
       return true;
     },
-    publishCandidateCatalog: (catalog) => {
-      candidateCatalog = catalog;
-    },
-    getCandidateCatalog: () => candidateCatalog,
+    getCandidateCatalog: () => snapshot.candidateCatalog,
     publishNativeVisibleMarkerKeys: (visible) => {
       nativeVisibleMarkers = visible;
     },
     getNativeVisibleMarkerKeys: () => nativeVisibleMarkers,
     reset: () => {
       snapshot = EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT;
-      candidateCatalog = null;
       nativeVisibleMarkers = null;
       notify(new Set(Object.keys(snapshot) as SearchMapSourceFrameSnapshotKey[]));
     },
