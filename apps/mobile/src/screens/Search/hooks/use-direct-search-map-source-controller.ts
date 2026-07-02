@@ -198,6 +198,86 @@ const buildShortcutCoverageRequestKey = ({
 }): string =>
   `entities:${entitiesKey}|tab:${activeTab ?? 'none'}|market:${marketKey}|bounds:${boundsKey}`;
 
+// Shared coverage-feature mapping — the ONE place that turns a raw shortcut-coverage FeatureCollection into
+// the validated dot features. Used by BOTH the active-tab fetch and the sibling-tab prefetch, so the two tabs'
+// coverage is built identically (zero-network toggle relies on the prefetched sibling being byte-identical to
+// what a live fetch would have produced).
+const mapShortcutCoverageFeatures = (
+  collection: FeatureCollection<Point> | null | undefined,
+  includeTopDish: boolean,
+  getPinColor: (score: number | null | undefined) => string
+): Array<Feature<Point, RestaurantFeatureProperties>> =>
+  (collection?.features ?? [])
+    .map((feature) => {
+      const properties =
+        feature?.properties && typeof feature.properties === 'object'
+          ? (feature.properties as Record<string, unknown>)
+          : {};
+      const restaurantId = (properties.restaurantId as string) ?? '';
+      const restaurantName = (properties.restaurantName as string) ?? '';
+      const rank = properties.rank;
+      if (!restaurantId || !restaurantName || typeof rank !== 'number') {
+        return null;
+      }
+      const craveScore =
+        typeof properties.craveScore === 'number' && Number.isFinite(properties.craveScore)
+          ? (properties.craveScore as number)
+          : null;
+      if (craveScore === null) {
+        return null;
+      }
+      // High-precision percentile_rank from the coverage API — MUST be carried through (the candidate dedup
+      // keeps the higher-priority coverage feature over main_results, so without this a restaurant in both
+      // ends up with craveScoreExact undefined and sorts last instead of by its true score).
+      const craveScoreExact =
+        typeof properties.craveScoreExact === 'number' &&
+        Number.isFinite(properties.craveScoreExact)
+          ? (properties.craveScoreExact as number)
+          : null;
+      const restaurantCraveScore =
+        typeof properties.restaurantCraveScore === 'number' &&
+        Number.isFinite(properties.restaurantCraveScore)
+          ? (properties.restaurantCraveScore as number)
+          : null;
+      const topDishCraveScore =
+        includeTopDish &&
+        typeof properties.topDishCraveScore === 'number' &&
+        Number.isFinite(properties.topDishCraveScore)
+          ? (properties.topDishCraveScore as number)
+          : null;
+      const connectionId =
+        typeof properties.connectionId === 'string' ? (properties.connectionId as string) : null;
+      if (includeTopDish && (topDishCraveScore === null || !connectionId)) {
+        return null;
+      }
+      return {
+        ...feature,
+        id: feature.id ?? restaurantId,
+        properties: {
+          restaurantId,
+          restaurantName,
+          craveScore,
+          craveScoreExact,
+          rising: typeof properties.rising === 'number' ? (properties.rising as number) : null,
+          rank,
+          restaurantCraveScore,
+          pinColor: getPinColor(includeTopDish ? topDishCraveScore : craveScore),
+          ...(includeTopDish
+            ? {
+                isDishPin: true,
+                dishName:
+                  typeof properties.dishName === 'string'
+                    ? (properties.dishName as string)
+                    : undefined,
+                connectionId,
+                topDishCraveScore,
+              }
+            : null),
+        },
+      } as Feature<Point, RestaurantFeatureProperties>;
+    })
+    .filter(Boolean) as Array<Feature<Point, RestaurantFeatureProperties>>;
+
 const buildSourceFrameDataReuseKey = ({
   activeTab,
   bounds,
@@ -1149,6 +1229,9 @@ export const useDirectSearchMapSourceController = ({
     Map<string, DirectMapPreparedSourceFrame>
   >(new Map());
   const shortcutCoverageFetchSeqRef = React.useRef(0);
+  // Zero-network toggle: the sibling tab's coverage is prefetched at search commit and cached by requestKey.
+  // This set holds sibling requestKeys currently in-flight so we never double-fire the prefetch.
+  const siblingCoveragePrefetchInFlightRef = React.useRef<Set<string>>(new Set());
   const shortcutCoverageLoadingRef = React.useRef(false);
   const restaurantsByIdRef = React.useRef<Map<string, RestaurantResult>>(new Map());
   const restaurantsRef = React.useRef<RestaurantResult[]>([]);
@@ -2630,6 +2713,89 @@ export const useDirectSearchMapSourceController = ({
     []
   );
 
+  // Zero-network toggle: prefetch the OTHER tab's coverage at search-commit time so a toggle is a guaranteed
+  // cache hit (no covNotReady blank). Populates ONLY the by-requestKey caches (terminal + features) that
+  // maybeFetchShortcutCoverage's restoreFromCache path reads — never the active resource/features refs, which
+  // stay owned by the active tab. Best-effort + idempotent (guarded by the in-flight set + a cache check).
+  const prefetchSiblingTabCoverage = React.useCallback(
+    (params: {
+      snapshot: { bounds: MapBounds; entities: StructuredSearchRequest['entities'] };
+      searchRequestId: string;
+      marketKey: string;
+      entitiesKey: string;
+      boundsKey: string;
+      currentActiveTab: string | null;
+      viewportPolygon: Array<[number, number]> | undefined;
+    }) => {
+      const siblingTab = params.currentActiveTab === 'dishes' ? 'restaurants' : 'dishes';
+      const includeTopDish = siblingTab === 'dishes';
+      const requestKey = buildShortcutCoverageRequestKey({
+        entitiesKey: params.entitiesKey,
+        activeTab: siblingTab,
+        marketKey: params.marketKey,
+        boundsKey: params.boundsKey,
+      });
+      const cachedTerminal = shortcutCoverageTerminalByRequestKeyRef.current.get(requestKey);
+      if (
+        (cachedTerminal &&
+          (cachedTerminal.status === 'completed' || cachedTerminal.status === 'empty')) ||
+        siblingCoveragePrefetchInFlightRef.current.has(requestKey)
+      ) {
+        return;
+      }
+      siblingCoveragePrefetchInFlightRef.current.add(requestKey);
+      void searchService
+        .shortcutCoverage(
+          {
+            entities: params.snapshot.entities,
+            bounds: params.snapshot.bounds,
+            viewportPolygon: params.viewportPolygon,
+            includeTopDish,
+            marketKey: params.marketKey,
+          },
+          {}
+        )
+        .then((collection) => {
+          const features = mapShortcutCoverageFeatures(
+            collection,
+            includeTopDish,
+            latestArgsRef.current.getCraveScoreColorFromScore
+          );
+          const acceptedFeatureCount = features.length;
+          shortcutCoverageTerminalByRequestKeyRef.current.set(requestKey, {
+            requestKey,
+            searchRequestId: params.searchRequestId,
+            boundsKey: params.boundsKey,
+            activeTab: siblingTab,
+            marketKey: params.marketKey,
+            entitiesKey: params.entitiesKey,
+            readinessKey: null,
+            fetchReason: 'initial',
+            status: acceptedFeatureCount > 0 ? 'completed' : 'empty',
+            seq: 0,
+            abortController: null,
+            returnedFeatureCount: collection?.features?.length ?? 0,
+            acceptedFeatureCount,
+            terminalReason:
+              acceptedFeatureCount > 0 ? 'accepted_features' : 'validated_empty_coverage',
+          });
+          shortcutCoverageFeaturesByRequestKeyRef.current.set(requestKey, {
+            type: 'FeatureCollection',
+            features,
+          });
+          // eslint-disable-next-line no-console
+          console.log('[tclur] COV-PREFETCH', { siblingTab, feats: acceptedFeatureCount });
+        })
+        .catch(() => {
+          // Best-effort: on failure leave the caches empty so a real toggle does a normal fetch.
+        })
+        .finally(() => {
+          siblingCoveragePrefetchInFlightRef.current.delete(requestKey);
+        });
+    },
+    [searchRuntimeBus]
+  );
+
   const maybeFetchShortcutCoverage = React.useCallback(() => {
     const state = searchRuntimeBus.getState();
     const mountedResults = getSearchMountedResultsDataSnapshot().results;
@@ -2765,6 +2931,20 @@ export const useDirectSearchMapSourceController = ({
       activeTab,
       marketKey,
       boundsKey,
+    });
+    // Fire the sibling-tab coverage prefetch in parallel with the active-tab work, so the FIRST toggle to the
+    // other tab is a zero-network cache hit (kills the ~12s covNotReady blank). Idempotent + best-effort.
+    prefetchSiblingTabCoverage({
+      snapshot,
+      searchRequestId,
+      marketKey,
+      entitiesKey,
+      boundsKey,
+      currentActiveTab: activeTab,
+      viewportPolygon:
+        viewportBoundsService
+          .getSubmittedPolygon()
+          ?.map(([lng, lat]) => [lng, lat] as [number, number]) ?? undefined,
     });
     const activeResource = shortcutCoverageResourceRef.current;
     // [tclur FIX] Short-circuit ONLY on a SUCCESS terminal ('completed'/'empty') — a definitive coverage
@@ -2918,82 +3098,11 @@ export const useDirectSearchMapSourceController = ({
         }
         shortcutCoverageLoadingRef.current = false;
         const returnedFeatureCount = collection?.features?.length ?? 0;
-        const features = (collection?.features ?? [])
-          .map((feature) => {
-            const properties =
-              feature?.properties && typeof feature.properties === 'object'
-                ? (feature.properties as Record<string, unknown>)
-                : {};
-            const restaurantId = (properties.restaurantId as string) ?? '';
-            const restaurantName = (properties.restaurantName as string) ?? '';
-            const rank = properties.rank;
-            if (!restaurantId || !restaurantName || typeof rank !== 'number') {
-              return null;
-            }
-            const craveScore =
-              typeof properties.craveScore === 'number' && Number.isFinite(properties.craveScore)
-                ? (properties.craveScore as number)
-                : null;
-            if (craveScore === null) {
-              return null;
-            }
-            // High-precision percentile_rank from the coverage API — MUST be carried through (the candidate
-            // dedup keeps the higher-priority coverage feature over main_results, so without this a restaurant
-            // in both ends up with craveScoreExact undefined and sorts last instead of by its true score).
-            const craveScoreExact =
-              typeof properties.craveScoreExact === 'number' &&
-              Number.isFinite(properties.craveScoreExact)
-                ? (properties.craveScoreExact as number)
-                : null;
-            const restaurantCraveScore =
-              typeof properties.restaurantCraveScore === 'number' &&
-              Number.isFinite(properties.restaurantCraveScore)
-                ? (properties.restaurantCraveScore as number)
-                : null;
-            const topDishCraveScore =
-              includeTopDish &&
-              typeof properties.topDishCraveScore === 'number' &&
-              Number.isFinite(properties.topDishCraveScore)
-                ? (properties.topDishCraveScore as number)
-                : null;
-            const connectionId =
-              typeof properties.connectionId === 'string'
-                ? (properties.connectionId as string)
-                : null;
-            if (includeTopDish && (topDishCraveScore === null || !connectionId)) {
-              return null;
-            }
-            const featureResult = {
-              ...feature,
-              id: feature.id ?? restaurantId,
-              properties: {
-                restaurantId,
-                restaurantName,
-                craveScore,
-                craveScoreExact,
-                rising:
-                  typeof properties.rising === 'number' ? (properties.rising as number) : null,
-                rank,
-                restaurantCraveScore,
-                pinColor: latestArgsRef.current.getCraveScoreColorFromScore(
-                  includeTopDish ? topDishCraveScore : craveScore
-                ),
-                ...(includeTopDish
-                  ? {
-                      isDishPin: true,
-                      dishName:
-                        typeof properties.dishName === 'string'
-                          ? (properties.dishName as string)
-                          : undefined,
-                      connectionId,
-                      topDishCraveScore,
-                    }
-                  : null),
-              },
-            } as Feature<Point, RestaurantFeatureProperties>;
-            return featureResult;
-          })
-          .filter(Boolean) as Array<Feature<Point, RestaurantFeatureProperties>>;
+        const features = mapShortcutCoverageFeatures(
+          collection,
+          includeTopDish,
+          latestArgsRef.current.getCraveScoreColorFromScore
+        );
         const acceptedFeatureCount = features.length;
         const terminalReason =
           acceptedFeatureCount > 0
@@ -3126,7 +3235,13 @@ export const useDirectSearchMapSourceController = ({
           });
         }
       });
-  }, [publishTelemetry, searchRuntimeBus, sourceFramePort, viewportBoundsService]);
+  }, [
+    prefetchSiblingTabCoverage,
+    publishTelemetry,
+    searchRuntimeBus,
+    sourceFramePort,
+    viewportBoundsService,
+  ]);
 
   React.useEffect(() => {
     const publishAndFetch = () => {
