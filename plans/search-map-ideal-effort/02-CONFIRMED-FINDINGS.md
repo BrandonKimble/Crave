@@ -219,3 +219,30 @@ VALIDATED on-device: post-dismiss the basemap is FULLY RESTORED (all street name
 the certified ghost town on the identical flow yesterday); polls sheet intact; the re-search reveal ramps
 cleanly to 1.0. STRESS: 10 search↔dismiss cycles = 13 reveal ramps completing at 1.0, ZERO
 deadlock_placement_forced fires across every dormancy→wake transition.
+
+---
+
+# STEP-5 R1-LATENCY FIX: interaction-mode reconcile skip — LANDED + VALIDATED (2026-07-02)
+
+The suppressed→enabled interaction-mode flip no longer runs the full pin/label reconcile. Redundancy proven
+by the code's own invariants before cutting: suppression "only disables query resolution" (mutates no
+rendered state), data frames reconcile fully while suppressed (the snapshot reconcile is not mode-gated),
+and marker transitions are gated by lifecycle state, not interaction mode. The two things the flip CAN
+affect (highlight resolution, presentation opacity) are still re-applied directly.
+
+MEASURED (10-cycle drive): `set_frame.apply_interaction_mode` dropped **~100ms → ~31ms**; the mid-fade
+reveal stall census dropped from 100-171ms to **24-66ms max**; every remaining >30ms section sits in the
+under-cover phases (invisible by the first-tick anchor); 7 reveals completed at 1.0, zero deadlocks. The
+remaining ~31ms (highlight+presentation re-applies) is sub-2-frames and invisibly absorbed by the Step-3
+re-anchor — a future micro-win at best.
+
+**FALSE ALARM RESOLVED (worth keeping):** a post-stress screenshot appeared to show returning basemap
+suppression — it was the SEARCH CAMERA-FIT kept after dismiss (wider zoom → naturally fewer street labels).
+Proven by: fresh-boot pre-search at the tight camera = full labels; zoom-in on the post-dismiss wide camera
+= fully alive basemap (streets + POIs everywhere). The dormancy fix holds under multi-cycle stress.
+
+**BOOT-FREEZE ATTRIBUTION SHARPENED:** the recurring frozen boots are the PAGE-SWITCH host refusing to hand
+ownership to search (`[pageswitch] host {in:"search", out:"polls", searchOwns:false}`) — the other session's
+committed WIP bug-family (0ef2d26d), ~50% of boots on this tree, NOT map-effort code and NOT persisted
+state. Workaround: relaunch until healthy (verify with a probe search → presramp>0). Their in-flight
+redesign owns the real fix.

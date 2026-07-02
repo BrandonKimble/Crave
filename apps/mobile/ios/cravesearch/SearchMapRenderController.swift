@@ -3148,7 +3148,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       try applyInteractionSuppression(for: &updatedState, instanceId: instanceId)
       instances[instanceId] = updatedState
     } else {
-      try reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
+      // STEP-5 FIX (R1 latency): the suppressed→enabled flip no longer runs the FULL pin/label
+      // reconcile. It was ~75-100ms of main-thread work on the reveal's critical path (the
+      // [applyslow]-attributed mid-fade stall: `set_frame.apply_interaction_mode|entering ms=100`)
+      // and is redundant by the code's own invariants: suppression "only disables query resolution"
+      // (applyInteractionSuppression mutates NO rendered state), data frames reconcile fully while
+      // suppressed (applySnapshot's reconcile is not mode-gated), and marker transitions are gated
+      // by lifecycle state, not interaction mode. The two things the mode flip CAN affect —
+      // highlight resolution and presentation opacity — are re-applied directly below, as before.
       if var updatedState = instances[instanceId] {
         try applyHighlightedMarkerState(for: updatedState, instanceId: instanceId)
         try applyCurrentPresentationOpacity(
