@@ -649,6 +649,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     var labelSourceId: String
     var labelCollisionSourceId: String
     var labelLayerIds: [String]
+    // COLLISION-TWIN: placement outcomes (observation QRF / reveal gate) are read from these layers
+    // (the invisible collider twins). Empty -> fall back to labelLayerIds (pre-twin behavior).
+    var labelPlacementQueryLayerIds: [String] = []
     var labelCollisionLayerIds: [String]
     var lastPinVisualGroupOrderSlots: [Int]
     var lastPinVisualGroupOrderSignature: String?
@@ -1323,6 +1326,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         return
       }
       let labelLayerIds = Self.parseStringArray(payload["labelLayerIds"])
+      let labelPlacementQueryLayerIds = Self.parseStringArray(payload["labelPlacementQueryLayerIds"])
       let labelCollisionLayerIds = Self.parseStringArray(payload["labelCollisionLayerIds"])
       guard
         !labelLayerIds.isEmpty,
@@ -1343,6 +1347,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         labelSourceId: labelSourceId,
         labelCollisionSourceId: labelCollisionSourceId,
         labelLayerIds: labelLayerIds,
+        labelPlacementQueryLayerIds: labelPlacementQueryLayerIds,
         labelCollisionLayerIds: labelCollisionLayerIds,
         lastPinVisualGroupOrderSlots: [],
         lastPinVisualGroupOrderSignature: nil,
@@ -3299,6 +3304,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         return
       }
       let labelLayerIds = Self.parseStringArray(payload["labelLayerIds"])
+      let labelPlacementQueryLayerIds = Self.parseStringArray(payload["labelPlacementQueryLayerIds"])
       let labelCollisionLayerIds = Self.parseStringArray(payload["labelCollisionLayerIds"])
       guard
         !labelLayerIds.isEmpty,
@@ -3312,6 +3318,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         return
       }
       state.labelLayerIds = labelLayerIds
+      state.labelPlacementQueryLayerIds = labelPlacementQueryLayerIds
       state.labelCollisionLayerIds = labelCollisionLayerIds
       state.lastPinVisualGroupOrderSlots = []
       state.lastPinVisualGroupOrderSignature = nil
@@ -9708,7 +9715,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     labelFamilyState.labelObservation.isRefreshInFlight = true
     Self.setDerivedFamilyState(labelFamilyState, sourceId: state.labelSourceId, state: &state)
     instances[instanceId] = state
-    let resolvedLayerIds = state.labelLayerIds
+    // COLLISION-TWIN: placement outcomes live on the twin (the render layer is allowOverlap and would
+    // report literal-hidden losers as rendered). Fallback preserves pre-twin behavior.
+    let resolvedLayerIds =
+      state.labelPlacementQueryLayerIds.isEmpty ? state.labelLayerIds : state.labelPlacementQueryLayerIds
     guard !resolvedLayerIds.isEmpty else {
       let snapshot = currentRenderedLabelObservationSnapshot(instanceId: instanceId)
       emit(

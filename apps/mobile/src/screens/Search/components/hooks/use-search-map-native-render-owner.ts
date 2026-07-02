@@ -54,6 +54,7 @@ type SearchMapNativeRenderOwnerStatusArgs = {
   labelSourceId: string;
   labelCollisionSourceId: string;
   labelLayerIds: string[];
+  labelPlacementQueryLayerIds: string[];
   labelCollisionLayerIds: string[];
   sourceFramePort?: SearchMapSourceFramePort | null;
   labelObservationEnabled: boolean;
@@ -164,6 +165,7 @@ type SearchMapNativeRenderOwnerStatusResult = {
 
 type SearchMapNativeLayerGroupConfig = {
   labelLayerIds: string[];
+  labelPlacementQueryLayerIds: string[];
   labelCollisionLayerIds: string[];
 };
 
@@ -1918,6 +1920,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
   labelSourceId,
   labelCollisionSourceId,
   labelLayerIds,
+  labelPlacementQueryLayerIds,
   labelCollisionLayerIds,
   sourceFramePort = null,
   labelObservationEnabled,
@@ -1972,15 +1975,17 @@ const useSearchMapNativeRenderOwnerStatus = ({
   const isNativeAvailable = searchMapRenderController.isAvailable();
   const nativeLayerGroupConfigRef = React.useRef<SearchMapNativeLayerGroupConfig>({
     labelLayerIds,
+    labelPlacementQueryLayerIds,
     labelCollisionLayerIds,
   });
 
   React.useEffect(() => {
     nativeLayerGroupConfigRef.current = {
       labelLayerIds,
+      labelPlacementQueryLayerIds,
       labelCollisionLayerIds,
     };
-  }, [labelCollisionLayerIds, labelLayerIds]);
+  }, [labelCollisionLayerIds, labelLayerIds, labelPlacementQueryLayerIds]);
 
   React.useEffect(() => {
     setAttachRetryNonce(0);
@@ -2146,6 +2151,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
           labelSourceId,
           labelCollisionSourceId,
           labelLayerIds: nativeLayerGroupConfig.labelLayerIds,
+          labelPlacementQueryLayerIds: nativeLayerGroupConfig.labelPlacementQueryLayerIds,
           labelCollisionLayerIds: nativeLayerGroupConfig.labelCollisionLayerIds,
         })
         .then(() => {
@@ -2212,6 +2218,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
       .configureNativeLayerGroups({
         instanceId,
         labelLayerIds,
+        labelPlacementQueryLayerIds,
         labelCollisionLayerIds,
       })
       .catch((error: unknown) => {

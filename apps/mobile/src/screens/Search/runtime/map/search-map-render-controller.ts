@@ -18,6 +18,7 @@ type SearchMapRenderControllerNativeModule = {
     labelSourceId: string;
     labelCollisionSourceId: string;
     labelLayerIds: string[];
+    labelPlacementQueryLayerIds?: string[];
     labelCollisionLayerIds: string[];
   }) => Promise<void>;
   detach: (instanceId: string) => Promise<void>;
@@ -59,6 +60,7 @@ type SearchMapRenderControllerNativeModule = {
   configureNativeLayerGroups: (payload: {
     instanceId: string;
     labelLayerIds: string[];
+    labelPlacementQueryLayerIds?: string[];
     labelCollisionLayerIds: string[];
   }) => Promise<void>;
   configureNativePressTargeting: (payload: {
@@ -861,6 +863,7 @@ export const searchMapRenderController = {
     labelSourceId: string;
     labelCollisionSourceId: string;
     labelLayerIds: string[];
+    labelPlacementQueryLayerIds?: string[];
     labelCollisionLayerIds: string[];
   }): Promise<void> {
     if (!nativeModule) {
@@ -873,6 +876,7 @@ export const searchMapRenderController = {
   async configureNativeLayerGroups(payload: {
     instanceId: string;
     labelLayerIds: string[];
+    labelPlacementQueryLayerIds?: string[];
     labelCollisionLayerIds: string[];
   }): Promise<void> {
     if (!nativeModule?.configureNativeLayerGroups) {

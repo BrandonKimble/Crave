@@ -518,3 +518,20 @@ VALIDATION GATES: (a) pan/twist → our labels SNAP on cull/side-switch, basemap
 (b) suppression intact (no basemap names under our labels mid-search); (c) reveal gate opens (10 reveals,
 zero deadlock fires); (d) post-dismiss basemap restored (twin dorms); (e) label taps still hit (press → twin);
 (f) L1 stability trace unchanged; (g) P14: after toggle, QRF the twin — ZERO old-tab candidates placed.
+
+---
+
+# COLLISION-TWIN: BUILT + CORE-VALIDATED (2026-07-02)
+
+Implemented per the 10-step plan: the invisible collider twin (`restaurant-labels-collision-twin`, same
+geometry, constant opacity-0, collision flags ON) + the render layer flipped to allowOverlap+ignorePlacement
+(visibility = purely our opacity product) + observation/press QRFs re-pointed at the twin
+(labelPlacementQueryLayerIds threaded JS→bridge→native) + the twin joins the obstacle dorm/wake set.
+GOTCHA for posterity: returning the two layers as a FRAGMENT crashed Fabric mounting (EXC_BAD_ACCESS,
+poisoned ShadowNode — rnmapbox introspects React.Children and a fragment hides the layers); a KEYED ARRAY is
+the safe shape.
+CORE GATES PASSED on-device: reveal completes (zero placement-gate deadlocks — the twin QRF feeds the gate),
+exactly ONE label per restaurant renders (the literal is the sole visibility authority on the overlap
+render), suppression intact mid-search, toggles publish both ways, post-dismiss basemap restored, app
+stable. OWNER-EYES GATES remaining: (b) snap-on-pan feel, (f) label taps, P14 residue QRF probe + the L1/L3
+re-feel — all on sim-2, pure main.

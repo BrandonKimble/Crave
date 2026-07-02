@@ -253,17 +253,43 @@ const renderSearchMapLabelLayers = ({
 }: {
   sourceId: string;
   labelLayerStyle: MapboxGL.SymbolLayerStyle;
-}) => (
+}) => [
+  /* COLLISION-TWIN: same geometry (field/size/offset/anchor via the same style), constant-invisible,
+     collision flags ON — the sole label collider + basemap suppressor. Placement outcomes are observed
+     here (the one-of-four selector + reveal gate + press targeting QRF this layer).
+     NOTE: a keyed ARRAY, not a Fragment — rnmapbox introspects React.Children, and a Fragment hides the
+     layers from that traversal (crashed Fabric mounting with a poisoned ShadowNode family). */
+  <MapboxGL.SymbolLayer
+    key={RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID}
+    id={RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID}
+    slot={undefined}
+    sourceID={sourceId}
+    belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+    style={{
+      ...labelLayerStyle,
+      textOpacity: 0,
+      textAllowOverlap: false,
+      textIgnorePlacement: false,
+    }}
+    filter={LABEL_FEATURE_FILTER}
+  />,
+  /* RENDER layer: OUT of the placement system — never culled, never placement-faded. Visibility is
+     purely our opacity product (presentation x __lea_lod__ x __lea_revealed__ x base) = SNAP on
+     collision changes, FADE only via LOD/presentation (the owner's standardized label policy). */
   <MapboxGL.SymbolLayer
     key={RESTAURANT_LABEL_LAYER_ID}
     id={RESTAURANT_LABEL_LAYER_ID}
     slot={undefined}
     sourceID={sourceId}
     belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-    style={labelLayerStyle}
+    style={{
+      ...labelLayerStyle,
+      textAllowOverlap: true,
+      textIgnorePlacement: true,
+    }}
     filter={LABEL_FEATURE_FILTER}
-  />
-);
+  />,
+];
 
 type SearchMapMarkerSceneProps = {
   dotLayerStyle: MapboxGL.SymbolLayerStyle;
@@ -989,6 +1015,14 @@ const LABEL_CANDIDATES_IN_ORDER: ReadonlyArray<LabelCandidate> = ['bottom', 'rig
 // hardcoded native-side), so this is any stable string. The 4 candidate features per restaurant
 // render through this one layer; per-side placement comes from labelLayerStyle's data-driven match.
 const RESTAURANT_LABEL_LAYER_ID = 'restaurant-labels-layer';
+// COLLISION-TWIN (R-5, owner label policy): the invisible collider. It carries the label text geometry
+// through Mapbox placement (competes, gets culled, SUPPRESSES basemap under our labels) while the render
+// layer above leaves the placement system entirely (allowOverlap+ignorePlacement) — so our visible labels
+// SNAP on every collision-driven change (visibility = purely the __lea_revealed__/__lea_lod__ literals +
+// the presentation ramp) and only ever FADE via our own LOD/presentation machinery. Basemap keeps its
+// native placement fades. Opacity-0 symbols still place + collide + suppress (proven by the post-dismiss
+// suppression defect), so the twin is a constant-invisible, always-competing stand-in.
+const RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID = 'restaurant-labels-collision-twin';
 
 const RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID = 'restaurant-labels-pin-collision';
 
@@ -1923,11 +1957,22 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const highlightedMarkerKey = highlightedMarkerKeys[0] ?? null;
   // Single resident label layer id. Native press-targeting / label-observation query this list.
   const labelVisualLayerIds = React.useMemo(() => [RESTAURANT_LABEL_LAYER_ID], []);
+  // Placement outcomes (observation QRF, reveal gate, press targeting) are read from the TWIN — the render
+  // layer is allowOverlap and would return literal-hidden losers.
+  const labelPlacementQueryLayerIds = React.useMemo(
+    () => [RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID],
+    []
+  );
   const labelCollisionLayerIds = React.useMemo(
     // Both invisible collision-obstacle layers must dorm/wake together on dismiss/reveal — the native
     // setLabelCollisionObstacleLayersVisible loop toggles only the ids in this list, so omitting the
     // dot-body obstacle left it permanently in Mapbox's placement pipeline while the surface is hidden.
-    () => [RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID, RESTAURANT_PIN_DOT_COLLISION_LAYER_ID],
+    () => [
+      RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID,
+      RESTAURANT_PIN_DOT_COLLISION_LAYER_ID,
+      // The label collision-twin dorms/wakes with the obstacles (it IS the label obstacle now).
+      RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID,
+    ],
     []
   );
   const {
@@ -1950,6 +1995,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelSourceId: RESTAURANT_LABEL_SOURCE_ID,
     labelCollisionSourceId: RESTAURANT_LABEL_COLLISION_SOURCE_ID,
     labelLayerIds: labelVisualLayerIds,
+    labelPlacementQueryLayerIds,
     labelCollisionLayerIds,
     labelObservationEnabled: requestedNativeLabelObservationEnabled,
     labelObservationConfig,
@@ -2491,7 +2537,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     onMarkerPress,
     onBlankMapPress: onPress,
     visibleDotLayerId: DOT_LAYER_ID,
-    labelLayerIds: labelVisualLayerIds,
+    labelLayerIds: labelPlacementQueryLayerIds,
     labelTapHitbox,
     dotTapIntentRadiusPx: DOT_TAP_INTENT_RADIUS_PX,
     isNativePressTargetingReady: isNativeOwnedMarkerRuntimeReady,
