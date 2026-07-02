@@ -476,3 +476,17 @@ likely part of P3 (one fewer fade source during reveal).
 letting basemap show through when OUR layer stopped competing — the twin design keeps a competing,
 suppressing layer at all times (the twin never flips), so neither objection applies. Verify the comment's
 exact wording once more before the flip.
+
+---
+
+# P14 (owner, 2026-07-02): TOGGLE RESIDUE MUST NOT COMPETE
+
+On tab toggle, the previous tab's map objects (labels, pin obstacles, dots) must be fully OUT of the
+collision system, not merely invisible — invisible-but-colliding residue would suppress the new tab's
+labels and the basemap (the same resident-at-opacity-0 class as the post-dismiss defect). Model: the toggle
+publish REPLACES source feature collections (a true swap), so residue should not persist — but VERIFY: (a)
+all five families swap atomically (labels + label-collision + pin obstacles + dots + pins) with no
+lingering-family tick; (b) the pin OBSTACLE layer keyed to lastPromotedInOrder updates on the toggle
+re-decide, not lazily; (c) during the covered swap window, old collision features don't briefly suppress
+the new tab's first placement pass. Verify during the collision-twin build (the twin makes label collision
+explicit + directly QRF-checkable).
