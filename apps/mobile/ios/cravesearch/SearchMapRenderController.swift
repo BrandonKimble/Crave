@@ -1010,6 +1010,13 @@ final class SearchMapRenderController: RCTEventEmitter {
     durationMs: Double,
     operationCount: Int = 0
   ) {
+    // STEP-4 ATTRIBUTION PROBE (debug-gated, scenario-independent): surface any instrumented section that
+    // blocks the main thread long enough to be the R1 stall (~30ms+), regardless of the perf-scenario
+    // attribution arm (whose quiet measured loop interferes with UI-driven reveals). Strip at cleanup.
+    if durationMs > 30 {
+      Self.lodLog(
+        "[applyslow] \(section)|\(phase)|\(source) ms=\(Self.round3(durationMs)) ops=\(operationCount)")
+    }
     guard nativeApplyAttributionEnabled else {
       return
     }

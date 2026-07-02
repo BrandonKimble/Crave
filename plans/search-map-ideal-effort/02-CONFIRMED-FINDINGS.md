@@ -168,3 +168,39 @@ unstick before future drives or wipe app data (uninstall requires re-auth).
 reaped ~20s later = the graceful-shutdown mystery); a wedged nest child can hold :3000 answering /health
 while failing real requests (EADDRINUSE for the new instance — kill the whole tree); install-over-running-app
 can produce a bad boot (terminate first).
+
+---
+
+# STEP-4 ATTRIBUTION: the R1 mid-fade stall is IDENTIFIED (2026-07-02, `[applyslow]` probe)
+
+Probe: `recordNativeApply` now lodLogs any instrumented section >30ms, scenario-independent (the armed
+perf scenario's quiet measured loop INTERFERES with UI-driven reveals — that was the "poisoned rig"
+mystery's second half; arming for attribution is self-defeating; the probe replaces it).
+
+**The full reveal timeline (timestamped, one clean reveal):**
+
+1. UNDER COVER, before the first fade tick: `set_frame.total|enter_requested ms=437` — the big block:
+   `snapshot.parse_source_deltas ms=96` (the parseFeatureCollectionData double-parse) +
+   `reconcile ms=80` + `presentation.apply ms=181`. All PRE-tick → absorbed by the R1 first-tick anchor,
+   invisible. NOT the mid-fade stall.
+2. First tick (opacity 0.001).
+3. **THE MID-FADE STALL: a SECOND JS set_frame lands ~100ms into the fade — `set_frame.apply_interaction_mode|entering ms=100`,
+   containing a FULL `reconcile.prepare_pin_label_output ms=41` + `reconcile.total ms=74` — for what is
+   semantically an interaction-MODE-only change.** It blocks the main thread → the 142ms tick gap → which
+   the STEP-3 RE-ANCHOR now converts to a 0.009 opacity step (pause-not-jump VISIBLY working in this trace),
+   then a flawless 60fps ramp to 1.0.
+4. Post-completion (live phase): another ~80ms set_frame — after the fade, invisible.
+
+**Consequence:** the R1 SMOOTHNESS issue is fully resolved (Step 3); what remains is ~100-140ms of reveal
+LATENCY (the fade pauses while the interaction-mode frame reconciles). THE FIX (specced, next session):
+an interaction-mode-only set_frame should NOT re-run the full pin/label reconcile — either (b) native
+skips `reconcile.prepare_pin_label_output` when the marker-bearing inputs are fingerprint-unchanged
+(preferred; the snapshot-equality fingerprints exist), or (c) JS defers the interaction-mode frame to the
+ramp-completion settle. Do NOT queue whole frames mid-fade (new mechanism, riskier).
+
+**Rig resolution (the "poisoned session" saga closes):** the frozen boots were a compound: (i) an armed
+MapLod scenario's quiet measured loop suppresses UI-driven reveals while active (arm-then-expire is the
+only safe pattern), and (ii) a stale app-container state cleared by the reinstall-rotation + polls
+bootstrap-cache removal. The freeze itself (boot → contentVis frozen → map never reveals) remains
+probe-grade for the hardening step: the app container UUID rotates on reinstall, and the exact poison
+vector was destroyed in the fixing — needs a controlled repro if it recurs.
