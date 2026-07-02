@@ -436,3 +436,43 @@ reintroduce the snap).
   region and compare against the source's features there).
 - R-5 collision-twin: dive owed — today's labelLayerIds vs labelCollisionLayerIds roles, what the selector
   QRF observes, and the exact overlap/ignorePlacement flags per layer, then the twin-flip design doc.
+
+---
+
+# R-5 COLLISION-TWIN AUDIT + BUILD SPEC (2026-07-02 code-dive)
+
+**Today's shape (audited):** ONE render label layer (`restaurant-labels-layer`) that is ITSELF
+collision-participating (textAllowOverlap:false, textIgnorePlacement:false, textOptional:false — asserted by
+the labelCollisionConfigured contract, search-map.tsx:2130-2132). Mapbox's placement fade therefore applies
+DIRECTLY to our label text = the fade-on-cull half of the hybrid + the second fade system overlapping our
+ramp during swaps (P8's "overridden fade" feel). The existing invisible collision layers are PIN/DOT
+obstacles (`restaurant-labels-pin-collision`, `restaurant-pin-dot-collision`) — there is NO label-text twin.
+
+**THE BUILD (medium, JS layer defs + native id switches):**
+
+1. NEW `restaurant-labels-collision-layer`: same source + same data-driven per-side text
+   field/size/offset (collision boxes must match render geometry exactly); textAllowOverlap:false,
+   textIgnorePlacement:false; text opacity 0 (opacity-0 symbols still place + collide + suppress — PROVEN by
+   the post-dismiss suppression saga).
+2. FLIP the render layer to textAllowOverlap:true + textIgnorePlacement:true — never culled, never
+   placement-faded; its visibility = purely our opacity product (presentation × stepper × **lea_revealed**)
+   = SNAP on every collision-driven change, FADE on LOD/reveal (the owner's exact policy).
+3. Switch the OBSERVATION (the one-of-four selector's QRF resolvedLayerIds) to the twin — placement
+   outcomes live there now.
+4. Switch the reveal placement gate (isActiveFrameLabelPlacementReady QRFs) to the twin.
+5. Dormancy: the twin joins the dismiss dorm/wake set (it is the basemap-suppressor now); render dorm
+   stays harmless.
+6. Suppression parity: placed-but-literal-hidden loser candidates behave the same as today (placed
+   opacity-0 candidates already collide/suppress).
+7. Then DELETE the global-knob configs (the owner standardizes on this; the labelkit knob stays as a dev
+   toy or gets stripped at cleanup).
+
+**EXPECTED TO DISSOLVE:** L4 (hybrid gone — ours always snap), P8's overlap feel (one fade system left),
+most of P4 (visibility stops negotiating with Mapbox's placement clock; the selector snaps winners live),
+likely part of P3 (one fewer fade source during reveal).
+
+**HISTORY CHECK (owed 1 grep before building):** the old "ignorePlacement forbidden" ruling
+(search-map.tsx ~2254 comment) was about flipping collision on tiled sources MID-FLOW (the wiggle class) +
+letting basemap show through when OUR layer stopped competing — the twin design keeps a competing,
+suppressing layer at all times (the twin never flips), so neither objection applies. Verify the comment's
+exact wording once more before the flip.
