@@ -119,8 +119,9 @@ final class SearchMapRenderController: RCTEventEmitter {
   private let enableVisualDiagnostics = false
   private let dismissSettleDelayMs = 300
   // THE canonical presentation fade length — every reveal/dismiss/toggle/preroll ramp and the
-  // settle-fallback deadline derive from this one number. There is no other fade duration.
-  private let canonicalPresentationFadeDurationMs = 300
+  // settle-fallback deadline derive from this one number. There is no other fade duration. Fast + natural
+  // (the search-reveal speed the owner liked); the press-up toggle fade-out and the reveal now share it.
+  private let canonicalPresentationFadeDurationMs = 160
   // STEP-3 (mid-fade re-anchor): an inter-tick gap above this counts as a stall (healthy 60Hz cadence is
   // ~16.7ms; 120Hz ~8.3ms — both below). The clock shifts by (gap - one nominal frame) so the fade advances
   // ~1 frame across a stall tick. 20ms (not 25) because an UNcompensated gap is charged in full and the
