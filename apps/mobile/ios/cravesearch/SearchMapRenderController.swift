@@ -126,6 +126,8 @@ final class SearchMapRenderController: RCTEventEmitter {
   // 0.1 smoothness gate (measured: a 24.x ms gap under a 25ms threshold produced a 0.113 delta).
   fileprivate static let presentationStallTickGapMs: Double = 20
   fileprivate static let presentationNominalFrameMs: Double = 16.7
+  // COLLISION-TWIN ENFORCEMENT: passes a promoted winner may go unplaced before snapping out (~2 = 32-64ms).
+  private static let labelWinnerMissingDropStreak = 2
   // STEP-3 (settle-off-ramp-completion): extra wall-clock grace on the enter-settle FALLBACK timer beyond
   // the fade duration — the primary settle trigger is the ramp-completion tick; the fallback only exists
   // for ramps that never complete (canceled/backgrounded/dead link). Covers the re-anchor budget.
@@ -885,6 +887,10 @@ final class SearchMapRenderController: RCTEventEmitter {
   // churn (which caused loser flashing). The winners are revealed via the reparse-immune
   // `__lea_revealed__` paint literal, not feature-state. See applyLabelOneOfFourSelector.
   private var labelWinnerByInstance: [String: [String: String]] = [:]
+  // COLLISION-TWIN ENFORCEMENT: consecutive observation passes in which a promoted winner had NO placed
+  // twin candidate. At the drop streak the winner snaps out — the selector is the sole collision authority
+  // now (the render layer is allowOverlap; Mapbox no longer hides collided winners for us).
+  private var labelWinnerMissingStreakByInstance: [String: [String: Int]] = [:]
   // Per-instance count of placement re-attempts the watchdog has spent on the current reveal.
   // Reset when a reveal is armed (`armRevealStartDeadlockFallback`) and when the reveal starts
   // or is dismissed. Bounds the watchdog so it cannot spin forever.
@@ -10055,16 +10061,37 @@ final class SearchMapRenderController: RCTEventEmitter {
     // during pan/twist) must NOT wipe the revealed set (that self-stomp = the reveal flash + the mid-motion
     // label blink-out). Bail without touching the set; the next real observation refines it.
     guard !observedByMarker.isEmpty else { return }
-    // A winner is dropped ONLY when its marker DEMOTES (leaves the promoted set), NEVER because it was merely
-    // unobserved THIS pass (transient collision / QRF latency). This keeps promoted labels stable across motion
-    // (a temporarily-collided label's candidate is culled by Mapbox anyway, and re-shows when it re-places) and
-    // prunes genuinely-stale keys (a prior search's markers are not in the promoted set → dropped).
+    // Winners drop on DEMOTION immediately, and on sustained collision via the twin-enforcement streak
+    // below (2 passes) — never on a single unobserved pass (QRF latency / churn). NOTE: the old "Mapbox
+    // culls it anyway" assumption is DEAD post-collision-twin; the selector is the collision authority.
     let promotedSet = Set(instances[instanceId]?.lodV5Engine?.lastPromotedInOrder ?? [])
     var winners = labelWinnerByInstance[instanceId] ?? [:]
     let lblPrevKeys = Set(winners.keys)
     for markerKey in winners.keys where !promotedSet.contains(markerKey) {
       winners.removeValue(forKey: markerKey)
     }
+    // COLLISION-TWIN ENFORCEMENT: pre-twin, a winner whose candidate lost placement was hidden BY MAPBOX
+    // (the render layer competed), so keeping it in the literal was harmless. Post-twin the render layer is
+    // allowOverlap — the literal alone decides pixels — so an unplaced winner kept revealed DRAWS OVER pins
+    // and other labels (the owner-reported regression). Enforce here: a promoted winner with NO placed twin
+    // candidate for labelWinnerMissingDropStreak consecutive passes snaps out (grace absorbs QRF latency /
+    // single-pass churn; an observed marker resets its streak; a re-placed side re-picks = the snap-in).
+    var missingStreaks = labelWinnerMissingStreakByInstance[instanceId] ?? [:]
+    for markerKey in winners.keys {
+      if observedByMarker[markerKey] != nil {
+        missingStreaks.removeValue(forKey: markerKey)
+        continue
+      }
+      let streak = (missingStreaks[markerKey] ?? 0) + 1
+      if streak >= Self.labelWinnerMissingDropStreak {
+        winners.removeValue(forKey: markerKey)
+        missingStreaks.removeValue(forKey: markerKey)
+      } else {
+        missingStreaks[markerKey] = streak
+      }
+    }
+    missingStreaks = missingStreaks.filter { winners[$0.key] != nil }
+    labelWinnerMissingStreakByInstance[instanceId] = missingStreaks
     for (markerKey, candidatesUnsorted) in observedByMarker {
       let candidates = candidatesUnsorted.sorted { $0.priority < $1.priority }
       // Keep the current winner if it is still placed; otherwise promote the highest-priority placed

@@ -591,3 +591,35 @@ L4 CLOSED (twin), P8-overlap CLOSED (twin), fingerprint defect RETRACTED. REMAIN
 then 4-factor trace if it persists), P4-residual (re-feel post-twin), P5 (JS-thread freeze attribution at
 owner hand-speed), P6 chips active-state + deferredApply UX (TR5 JS layer), P9/P11 (verify post-guard),
 P14 (residue QRF at the acceptance battery), plus the roadmap's Steps 6-10.
+
+---
+
+# OWNER DRIVE ROUND 2 (2026-07-02) + THE TWIN'S MISSING ENFORCEMENT PIECE
+
+**REGRESSION (owner): labels stopped colliding with pins/other labels.** Mechanism confirmed in code: the
+selector's own comment said unplaced winners are harmless because "Mapbox culls them anyway" — DEAD
+post-twin (the render layer is allowOverlap; the literal alone decides pixels), so sticky winners DREW OVER
+everything. **FIX LANDED: twin enforcement in the selector** — a promoted winner with NO placed twin
+candidate for 2 consecutive observation passes (32-64ms grace vs QRF latency) snaps out; observed markers
+reset their streak; re-placed sides re-pick (snap-in). The selector is now the collision authority it must
+be. Build green + logic verified; LIVE VALIDATION = first item next session (rig went boot-flaky at the end:
+cold-API latency post restart + a Hermes JS OOM crash — see below).
+
+**Owner observations recorded:** (1) the residual label flicker is now "double flicker on the way OUT" only
+— possibly a distinct demote-path issue vs position-jumping; investigate as its own item. (2) Pin
+"second-guessing" on demote wants HYSTERESIS — owner defers unless an ideal shape exists; the ideal is
+asymmetric promote/demote thresholds in decide (a deliberate engine-semantics change → future, owner-gated).
+(3) The owner's toggle "nothing changed" run coincided with a NETWORK ERROR — the backend had died with the
+prior session's teardown (harness task stopped); restarted. (4) **Hermes JS OOM crash** during a pan drive
+(GCBase::oom in HadesGC evacuation) — long-lived dev instance, but ALSO a candidate mechanism for P5's
+rapid-toggle freezes (GC pressure pauses). Watch heap growth during the P5 attribution.
+
+**TOGGLE-FLOW HONEST STATUS (owner asked point-blank):** fade-out = the canonical ramp (same
+animatePresentationOpacity, verified) ✓; press-up fires it synchronously via the bridge (latency only if the
+JS thread is busy = P5) ✓-ish; **card↔map reveal sync (TR3) NOT yet verified** — the settled emit gates the
+JS cover-lift but the exact "cards reveal when the map starts fading in" timing needs a dedicated check;
+**ONLY restaurant/dish has the flow — the filter chips do NOT** (no active-state, no press-up fade, no
+deferredApply): that is the TR5 JS build, next up.
+
+**SIM ANSWER: the map rig = iPhone 17 Pro (sim-2, pure main). The Pro Max (sim-1) carries the page-switch
+session's live WIP — map drives there conflate both efforts.**
