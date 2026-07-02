@@ -24,10 +24,7 @@ import {
   type AppRoutePollsSceneHeaderModel,
 } from '../../navigation/runtime/app-route-polls-scene-runtime';
 import { useRouteAuthoritySelector } from '../../navigation/runtime/use-route-authority-selector';
-import {
-  OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
-  OVERLAY_HORIZONTAL_PADDING,
-} from '../overlaySheetStyles';
+import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import type {
   AppRouteSceneBodyContentSpec,
   AppRouteSceneBodyTransportSpec,
@@ -40,11 +37,9 @@ import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { PollCandidateBars } from './PollCandidateBars';
 import { usePollsPanelFeedRuntime } from './runtime/polls-panel-feed-runtime';
 import { usePollsPanelHeaderModelPublication } from './runtime/polls-panel-header-model-runtime';
-import { PollsHeaderBadge, PollsHeaderTitleText } from './pollsHeaderVisuals';
+import { PollsHeaderTitleText } from './pollsHeaderVisuals';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 import { logPerfScenarioSearchRequestLifecycle } from '../../perf/perf-scenario-attribution';
-
-const LIVE_BADGE_HEIGHT = OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
 
 const ACCENT = themeColors.primary;
 const BORDER = themeColors.border;
@@ -369,17 +364,12 @@ const PollsSceneHeader = React.memo(
     handleHeaderActionPress,
   }: PollsSceneHeaderProps) => {
     const headerTitle = headerModel?.title ?? 'Polls';
-    const badgeCount = headerModel?.badgeCount ?? '0';
-    const badgeLabel = headerModel?.badgeLabel ?? 'live';
-    const isBadgeMuted = headerModel?.isBadgeMuted ?? true;
 
     React.useEffect(() => {
       logPerfScenarioSearchRequestLifecycle({
         source: 'polls.mountedHeader',
         phase: 'poll_header_rendered',
         renderedPollHeaderAction: headerModel?.headerAction ?? null,
-        renderedPollHeaderBadgeCount: badgeCount,
-        renderedPollHeaderBadgeLabel: badgeLabel,
         renderedPollHeaderCandidateLocalityName: headerModel?.candidateLocalityName ?? null,
         renderedPollHeaderMarketKey: headerModel?.marketKey ?? null,
         renderedPollHeaderMarketName: headerModel?.marketName ?? null,
@@ -387,8 +377,6 @@ const PollsSceneHeader = React.memo(
         renderedPollHeaderTitle: headerTitle,
       });
     }, [
-      badgeCount,
-      badgeLabel,
       headerModel?.candidateLocalityName,
       headerModel?.headerAction,
       headerModel?.marketKey,
@@ -403,8 +391,6 @@ const PollsSceneHeader = React.memo(
         grabHandleAccessibilityLabel="Close polls"
         rowStyle={styles.headerRow}
         title={<PollsHeaderTitleText title={headerTitle} />}
-        badge={<PollsHeaderBadge count={badgeCount} label={badgeLabel} muted={isBadgeMuted} />}
-        badgeRadius={LIVE_BADGE_HEIGHT / 2}
         actionButton={
           <OverlayHeaderActionButton
             progress={headerActionProgress}

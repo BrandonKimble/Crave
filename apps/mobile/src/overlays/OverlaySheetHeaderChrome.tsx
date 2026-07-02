@@ -5,7 +5,6 @@ import {
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
-  type LayoutRectangle,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
@@ -24,9 +23,11 @@ import {
   OVERLAY_TAB_HEADER_HEIGHT,
 } from './overlaySheetStyles';
 
+// THE standardized sheet header — identical on every page: a white cutout plate with a grab-handle
+// cutout (top-center) + a close-button circle cutout (right), and the title on the left. There is no
+// per-scene special case (the poll-count badge cutout was removed 2026-07-01, page-switch-master-plan.md).
 type OverlaySheetHeaderChromeProps = {
   title: React.ReactNode;
-  badge?: React.ReactNode;
   actionButton: React.ReactNode;
   onGrabHandlePress?: () => void;
   grabHandleAccessibilityLabel?: string;
@@ -40,16 +41,11 @@ type OverlaySheetHeaderChromeProps = {
   rowStyle?: StyleProp<ViewStyle>;
   style?: StyleProp<ViewStyle>;
   onLayout?: (event: LayoutChangeEvent) => void;
-  badgePadding?: number;
-  badgeRadius?: number;
-  badgeYOffset?: number;
 };
 
 const DEFAULT_MASK_PADDING = 2;
 const DEFAULT_HOLE_PADDING = 0;
 const DEFAULT_HOLE_Y_OFFSET = 0;
-const DEFAULT_BADGE_PADDING = 0;
-const DEFAULT_BADGE_Y_OFFSET = 0;
 const DEFAULT_CUTOUT_FILL = '#ffffff';
 // The white cutout plate used to overhang the header bottom by this much to "cover the seam"
 // with the content below. The header is now clipped to its box (`overflow:'hidden'` on
@@ -82,7 +78,6 @@ const roundedRectPath = (x: number, y: number, width: number, height: number, ra
 
 const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
   title,
-  badge,
   actionButton,
   onGrabHandlePress,
   grabHandleAccessibilityLabel = 'Close sheet',
@@ -96,17 +91,13 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
   rowStyle,
   style,
   onLayout,
-  badgePadding = DEFAULT_BADGE_PADDING,
-  badgeRadius,
-  badgeYOffset = DEFAULT_BADGE_Y_OFFSET,
 }) => {
   const { width: windowWidth } = useWindowDimensions();
   const [measuredHeight, setMeasuredHeight] = React.useState<number | null>(null);
-  const [badgeLayout, setBadgeLayout] = React.useState<LayoutRectangle | null>(null);
 
   const headerHeight = fixedHeight
     ? OVERLAY_TAB_HEADER_HEIGHT
-    : measuredHeight ?? OVERLAY_TAB_HEADER_HEIGHT;
+    : (measuredHeight ?? OVERLAY_TAB_HEADER_HEIGHT);
   const maskPadding = DEFAULT_MASK_PADDING;
   const holePadding = DEFAULT_HOLE_PADDING;
   const holeYOffset = DEFAULT_HOLE_Y_OFFSET;
@@ -123,21 +114,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
     },
     [fixedHeight, onLayout]
   );
-
-  const handleBadgeLayout = React.useCallback(({ nativeEvent: { layout } }: LayoutChangeEvent) => {
-    setBadgeLayout((prev) => {
-      if (
-        prev &&
-        Math.abs(prev.x - layout.x) < 0.5 &&
-        Math.abs(prev.y - layout.y) < 0.5 &&
-        Math.abs(prev.width - layout.width) < 0.5 &&
-        Math.abs(prev.height - layout.height) < 0.5
-      ) {
-        return prev;
-      }
-      return layout;
-    });
-  }, []);
 
   const cutoutBackground = React.useMemo(() => {
     const maskHeight = headerHeight + maskPadding * 2 + HEADER_FOREGROUND_PLATE_OVERLAP_PX;
@@ -171,24 +147,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
       cutoutPaths.push(handlePath);
     }
 
-    if (badge && badgeLayout && badgeLayout.width > 0 && badgeLayout.height > 0) {
-      const rect = {
-        x: paddingHorizontal + badgeLayout.x - badgePadding,
-        y: headerRowY + badgeLayout.y - badgePadding + badgeYOffset + maskPadding,
-        width: badgeLayout.width + badgePadding * 2,
-        height: badgeLayout.height + badgePadding * 2,
-      };
-      const resolvedRadius = badgeRadius ?? rect.height / 2;
-      const badgePath = roundedRectPath(
-        rect.x,
-        rect.y,
-        rect.width,
-        rect.height,
-        Math.min(resolvedRadius, rect.height / 2, rect.width / 2)
-      );
-      cutoutPaths.push(badgePath);
-    }
-
     const outerRect = `M 0 0 H ${windowWidth} V ${maskHeight} H 0 Z`;
     const d = `${outerRect} ${cutoutPaths.join(' ')}`;
 
@@ -210,14 +168,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
       </Svg>
     );
   }, [
-    badge,
-    badgeLayout?.height,
-    badgeLayout?.width,
-    badgeLayout?.x,
-    badgeLayout?.y,
-    badgePadding,
-    badgeRadius,
-    badgeYOffset,
     closeButtonSize,
     headerHeight,
     holeRadius,
@@ -275,11 +225,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
         collapsable={false}
       >
         {title}
-        {badge ? (
-          <View onLayout={handleBadgeLayout} collapsable={false}>
-            {badge}
-          </View>
-        ) : null}
         {actionButton}
       </View>
       {afterRow ?? null}

@@ -24,9 +24,6 @@ export type AppRoutePollsSceneBodySnapshot = Pick<
 
 export type AppRoutePollsSceneHeaderModel = {
   title: string;
-  badgeCount: string;
-  badgeLabel: string;
-  isBadgeMuted: boolean;
   headerAction: PollsPanelFeedRuntime['headerAction'];
   marketKey: string | null;
   marketName: string | null;
@@ -96,9 +93,6 @@ export const arePollsSceneHeaderModelsEqual = (
   }
   return (
     left.title === right.title &&
-    left.badgeCount === right.badgeCount &&
-    left.badgeLabel === right.badgeLabel &&
-    left.isBadgeMuted === right.isBadgeMuted &&
     left.headerAction === right.headerAction &&
     left.marketKey === right.marketKey &&
     left.marketName === right.marketName &&
@@ -119,9 +113,6 @@ const arePollsSceneHeaderContentModelsEqual = (
   }
   return (
     left.title === right.title &&
-    left.badgeCount === right.badgeCount &&
-    left.badgeLabel === right.badgeLabel &&
-    left.isBadgeMuted === right.isBadgeMuted &&
     left.marketKey === right.marketKey &&
     left.marketName === right.marketName &&
     left.candidateLocalityName === right.candidateLocalityName &&

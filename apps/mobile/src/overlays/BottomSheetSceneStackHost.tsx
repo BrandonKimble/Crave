@@ -1,9 +1,6 @@
 import React from 'react';
 import { View, type LayoutChangeEvent } from 'react-native';
-import Animated, {
-  type SharedValue,
-  useAnimatedStyle,
-} from 'react-native-reanimated';
+import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 
 import {
   type TransitionLanePlayer,
@@ -121,6 +118,18 @@ const resolveSceneStackLegRole = (
     return 'outgoing';
   }
   return 'idle';
+};
+
+// [pageswitch] P1 attribution probe (page-switch-master-plan.md §3). Emits per-commit JSONL to Metro
+// so the 3-way "which scene is presented" race is readable: the HOST line (which legs paint, via
+// effectiveIncoming/Outgoing) vs the per-LEG body line (which leg actually has a body). The bug
+// signatures: a painting leg (role!=='idle') with bodyNull=true → blank frost (S2); the painting
+// leg's key !== the pressed tab → wrong page (S1). __DEV__-only; removed after P2 lands the fix.
+const logPageSwitch = (tag: string, data: Record<string, unknown>): void => {
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.log(`[pageswitch] ${tag} ${JSON.stringify(data)}`);
+  }
 };
 
 const areChromeSurfaceEntriesEqual = (
@@ -486,9 +495,7 @@ const SceneStackBodyFrameHost = React.memo(
     // itself carries the BODY dissolve, since there is no inner split to apply it to.
     const sceneVisibilityStyle = React.useMemo(
       () => [
-        legRole === 'idle'
-          ? styles.sceneStackBodyLayerHidden
-          : styles.sceneStackBodyLayerVisible,
+        legRole === 'idle' ? styles.sceneStackBodyLayerHidden : styles.sceneStackBodyLayerVisible,
         isSearchLeg ? bodyDissolveStyle : null,
       ],
       [legRole, isSearchLeg, bodyDissolveStyle]
@@ -529,51 +536,51 @@ const SceneStackBodyFrameHost = React.memo(
         {children}
       </View>
     ) : (
-        <BottomSheetSceneStackPageFrame
-          underlayComponent={
-            <SceneStackChromeLayerHost
-              displayedSceneKey={displayedSceneKey}
-              routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-              sceneKey={sceneKey}
-              sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-              surface="underlay"
-            />
-          }
-          backgroundComponent={
-            <SceneStackChromeLayerHost
-              displayedSceneKey={displayedSceneKey}
-              routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-              sceneKey={sceneKey}
-              sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-              surface="background"
-            />
-          }
-          bodyComponent={children}
-          headerComponent={
-            <SceneStackChromeLayerHost
-              displayedSceneKey={displayedSceneKey}
-              routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-              sceneKey={sceneKey}
-              sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-              surface="header"
-            />
-          }
-          overlayComponent={
-            <SceneStackChromeLayerHost
-              displayedSceneKey={displayedSceneKey}
-              routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-              sceneKey={sceneKey}
-              sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-              surface="overlay"
-            />
-          }
-          onHeaderLayout={onHeaderLayout}
-          headerDividerScrollOffset={headerDividerScrollOffset}
-          chromeOpacityStyle={splitChromeOpacityStyle}
-          bodyOpacityStyle={splitBodyOpacityStyle}
-          onBodyFirstPaint={handleBodyFirstPaint}
-        />
-      );
+      <BottomSheetSceneStackPageFrame
+        underlayComponent={
+          <SceneStackChromeLayerHost
+            displayedSceneKey={displayedSceneKey}
+            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+            sceneKey={sceneKey}
+            sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+            surface="underlay"
+          />
+        }
+        backgroundComponent={
+          <SceneStackChromeLayerHost
+            displayedSceneKey={displayedSceneKey}
+            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+            sceneKey={sceneKey}
+            sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+            surface="background"
+          />
+        }
+        bodyComponent={children}
+        headerComponent={
+          <SceneStackChromeLayerHost
+            displayedSceneKey={displayedSceneKey}
+            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+            sceneKey={sceneKey}
+            sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+            surface="header"
+          />
+        }
+        overlayComponent={
+          <SceneStackChromeLayerHost
+            displayedSceneKey={displayedSceneKey}
+            routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+            sceneKey={sceneKey}
+            sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+            surface="overlay"
+          />
+        }
+        onHeaderLayout={onHeaderLayout}
+        headerDividerScrollOffset={headerDividerScrollOffset}
+        chromeOpacityStyle={splitChromeOpacityStyle}
+        bodyOpacityStyle={splitBodyOpacityStyle}
+        onBodyFirstPaint={handleBodyFirstPaint}
+      />
+    );
 
     const frameHost = (
       <SceneStackBodyFrame
@@ -651,6 +658,16 @@ const SceneStackBodyContentLayerHost = React.memo(
       attributionOperation: `bodyRuntimeSelector:${sceneKey}`,
     });
 
+    const bodyIsNull =
+      sceneBodySurfaceSelection.contentEntry == null ||
+      sceneBodySurfaceSelection.transportEntry == null;
+
+    // [pageswitch] per-leg BODY side of the race: does this leg have a body this commit?
+    React.useEffect(() => {
+      logPageSwitch('body', { scene: sceneKey, bodyNull: bodyIsNull });
+    }, [sceneKey, bodyIsNull]);
+
+    // Inline null-check kept (not `if (bodyIsNull)`) so TS narrows contentEntry/transportEntry below.
     if (
       sceneBodySurfaceSelection.contentEntry == null ||
       sceneBodySurfaceSelection.transportEntry == null
@@ -848,11 +865,7 @@ type SceneStackChromeLayerHostProps = Pick<
 };
 
 const SceneStackChromeLayerHost = React.memo(
-  ({
-    sceneStackSurfaceAuthority,
-    sceneKey,
-    surface,
-  }: SceneStackChromeLayerHostProps) => {
+  ({ sceneStackSurfaceAuthority, sceneKey, surface }: SceneStackChromeLayerHostProps) => {
     useSearchNavSwitchCommitAttribution(`SceneStackChromeLayerHost:${surface}:${sceneKey}`);
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
     const onProfilerRender = useSearchOverlayProfilerRender();
@@ -978,6 +991,28 @@ const ActiveSceneStackSurfaceHost = React.memo(
     const effectiveIncoming: OverlayKey | null = isTransitioning
       ? incomingSceneKey
       : effectiveDisplayedSceneKey;
+
+    // [pageswitch] HOST side of the race: which leg(s) the host makes PAINT (effectiveIncoming/
+    // Outgoing) + the raw sheet-host displayedSceneKey + the search override, per commit. Correlate
+    // with the per-leg [pageswitch] body lines to catch a painting leg with a null body (blank) or
+    // the wrong leg painting (wrong page).
+    React.useEffect(() => {
+      logPageSwitch('host', {
+        displayed: displayedSceneKey,
+        effective: effectiveDisplayedSceneKey,
+        in: effectiveIncoming,
+        out: effectiveOutgoing,
+        searchOwns: searchSurfaceOwnsVisibleSheet,
+        transitioning: isTransitioning,
+      });
+    }, [
+      displayedSceneKey,
+      effectiveDisplayedSceneKey,
+      effectiveIncoming,
+      effectiveOutgoing,
+      searchSurfaceOwnsVisibleSheet,
+      isTransitioning,
+    ]);
     // ── HOST-OWNED FOUR-LANE PLAYER ─────────────────────────────────────────────────────────────
     // The host owns the player (ONE progress + ONE paintAck). It is TOKEN-triggered:
     // `player.start(descriptor, 0, onSettle)` fires on the content-transition token bump. velocity =
@@ -1044,11 +1079,7 @@ const ActiveSceneStackSurfaceHost = React.memo(
         return;
       }
       const settleToken = contentTransitionToken;
-      const descriptor = deriveHostTokenDescriptor(
-        effectiveOutgoing,
-        effectiveIncoming,
-        'middle'
-      );
+      const descriptor = deriveHostTokenDescriptor(effectiveOutgoing, effectiveIncoming, 'middle');
       // velocity 0 — programmatic tap. onSettle runs once on the spring's ramp-end (a superseded
       // start cancels the prior animation → finished=false → no stale settle).
       player.start(descriptor, 0, () => runContentSettleComplete(settleToken));
@@ -1079,10 +1110,10 @@ const ActiveSceneStackSurfaceHost = React.memo(
     );
     const surfaceHost = (
       <SceneStackTransitionDisplayContext.Provider value={transitionDisplayValue}>
-      <View pointerEvents="box-none" style={shadowShellStyle}>
-        <Animated.View pointerEvents="box-none" style={[styles.sceneStackSurface, surfaceStyle]}>
-          <View style={styles.contentHost}>
-            {/* CONSTANT FROST BACKING (sheet-frost-architecture, layering-corrected): ONE shared
+        <View pointerEvents="box-none" style={shadowShellStyle}>
+          <Animated.View pointerEvents="box-none" style={[styles.sceneStackSurface, surfaceStyle]}>
+            <View style={styles.contentHost}>
+              {/* CONSTANT FROST BACKING (sheet-frost-architecture, layering-corrected): ONE shared
                 FrostedGlassBackground — the FROST ALONE, NO opaque-white fill — mounted ONCE here,
                 BELOW every content layer, at a CONSTANT opacity 1.0. It carries NO animated style
                 and NO engine handle; the engine's only animating opacities are the per-scene content
@@ -1094,43 +1125,43 @@ const ActiveSceneStackSurfaceHost = React.memo(
                 (backgroundComponent, zIndex 1) sit ABOVE this and own the solid-white areas; their
                 holes reveal this constant frosted-map. Sized absolute-fill (gorhom surface
                 decoupling), clipped to the sheet's rounded corners by the surface overflow:hidden. */}
-            <View pointerEvents="none" style={styles.sceneStackSurfaceHoistedBacking}>
-              <FrostedGlassBackground />
+              <View pointerEvents="none" style={styles.sceneStackSurfaceHoistedBacking}>
+                <FrostedGlassBackground />
+              </View>
+              {scrollHeaderComponent ? (
+                <Animated.View
+                  onLayout={onScrollHeaderLayout}
+                  style={[styles.scrollHeaderOverlay, scrollHeaderSyncStyle]}
+                >
+                  {scrollHeaderComponent}
+                </Animated.View>
+              ) : null}
+              {PERSISTENT_ROUTE_SCENE_STACK_KEYS.map((sceneKey) =>
+                sceneKey === 'search' ? (
+                  <SearchSceneStackBodyDisplayTarget
+                    key="scene-search"
+                    routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+                    sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+                    displayedSceneKey={effectiveDisplayedSceneKey}
+                    bodyRuntimeAuthority={bodyRuntimeAuthority}
+                    onHeaderLayout={onHeaderLayout}
+                    sheetYValue={sheetYValue}
+                  />
+                ) : (
+                  <SceneStackBodyLayerHost
+                    key={`scene-${sceneKey}`}
+                    sceneKey={sceneKey}
+                    displayedSceneKey={effectiveDisplayedSceneKey}
+                    sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
+                    routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
+                    bodyRuntimeAuthority={bodyRuntimeAuthority}
+                    onHeaderLayout={onHeaderLayout}
+                  />
+                )
+              )}
             </View>
-            {scrollHeaderComponent ? (
-              <Animated.View
-                onLayout={onScrollHeaderLayout}
-                style={[styles.scrollHeaderOverlay, scrollHeaderSyncStyle]}
-              >
-                {scrollHeaderComponent}
-              </Animated.View>
-            ) : null}
-            {PERSISTENT_ROUTE_SCENE_STACK_KEYS.map((sceneKey) =>
-              sceneKey === 'search' ? (
-                <SearchSceneStackBodyDisplayTarget
-                  key="scene-search"
-                  routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-                  sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-                  displayedSceneKey={effectiveDisplayedSceneKey}
-                  bodyRuntimeAuthority={bodyRuntimeAuthority}
-                  onHeaderLayout={onHeaderLayout}
-                  sheetYValue={sheetYValue}
-                />
-              ) : (
-                <SceneStackBodyLayerHost
-                  key={`scene-${sceneKey}`}
-                  sceneKey={sceneKey}
-                  displayedSceneKey={effectiveDisplayedSceneKey}
-                  sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
-                  routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
-                  bodyRuntimeAuthority={bodyRuntimeAuthority}
-                  onHeaderLayout={onHeaderLayout}
-                />
-              )
-            )}
-          </View>
-        </Animated.View>
-      </View>
+          </Animated.View>
+        </View>
       </SceneStackTransitionDisplayContext.Provider>
     );
 

@@ -21,9 +21,6 @@ export const usePollsPanelHeaderModelPublication = ({
   React.useEffect(() => {
     const headerModel = {
       title: pollsPanelFeedRuntime.headerVisualModel.title,
-      badgeCount: pollsPanelFeedRuntime.headerVisualModel.badgeCount,
-      badgeLabel: pollsPanelFeedRuntime.headerVisualModel.badgeLabel,
-      isBadgeMuted: pollsPanelFeedRuntime.headerVisualModel.isBadgeMuted,
       headerAction: pollsPanelFeedRuntime.headerAction,
       marketKey: pollsPanelFeedRuntime.marketKey,
       marketName: pollsPanelFeedRuntime.marketName,
@@ -35,8 +32,6 @@ export const usePollsPanelHeaderModelPublication = ({
       source: 'polls.headerModel',
       phase: 'poll_header_model',
       pollHeaderTitle: headerModel.title,
-      pollHeaderBadgeCount: headerModel.badgeCount,
-      pollHeaderBadgeLabel: headerModel.badgeLabel,
       pollHeaderMarketKey: headerModel.marketKey,
       pollHeaderMarketName: headerModel.marketName,
       pollHeaderCandidateLocalityName: headerModel.candidateLocalityName,
@@ -46,9 +41,6 @@ export const usePollsPanelHeaderModelPublication = ({
   }, [
     pollsPanelFeedRuntime.candidateLocalityName,
     pollsPanelFeedRuntime.headerAction,
-    pollsPanelFeedRuntime.headerVisualModel.badgeCount,
-    pollsPanelFeedRuntime.headerVisualModel.badgeLabel,
-    pollsPanelFeedRuntime.headerVisualModel.isBadgeMuted,
     pollsPanelFeedRuntime.headerVisualModel.title,
     pollsPanelFeedRuntime.marketKey,
     pollsPanelFeedRuntime.marketName,
