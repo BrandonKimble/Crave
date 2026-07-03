@@ -7,6 +7,7 @@ import {
   setActivePerfScenarioSearchThisAreaSubmitId,
 } from '../../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
+import { searchMapRenderController } from '../map/search-map-render-controller';
 import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundSubmitRuntimeArgs,
@@ -90,6 +91,10 @@ export const useSearchForegroundSearchAreaSubmitRuntime = ({
     }
     resetFocusedMapState();
     setRestaurantOnlyIntent(null);
+    // Press-up map fade-out — same shared motion as the tab toggle / filter chips, so search-this-area also
+    // dismisses the map objects immediately and reveals the new results, instead of a hard swap. The rerun
+    // below drives the reveal via the enter machinery. Fire-and-forget + idempotent (native guards inactive).
+    void searchMapRenderController.beginInteractionFadeOut();
     const finalizeSearchThisAreaRerun = () => {
       resetMapMoveFlag();
       clearActivePerfScenarioSearchThisAreaSubmitId(searchThisAreaSubmitId);

@@ -1506,6 +1506,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       // to 0; so we mark it pending and fire the re-decide the next time presentation is under cover (≈0) —
       // unless it is ALREADY covered, in which case fire immediately.
       self.pendingUnderCoverReproject.insert(instanceId)
+      Self.lodLog(
+        "[reprojdbg] setCatalog count=\(catalog.count) opac=\(Self.round3(state.currentPresentationOpacityValue))")
       self.reprojectCatalogUnderCoverIfReady(instanceId: instanceId)
       resolve(["catalogCount": catalog.count])
     }
@@ -1581,10 +1583,33 @@ final class SearchMapRenderController: RCTEventEmitter {
   /// overlay consumer the tap-promote recipe predates). Called from setCandidateCatalog (fires if already
   /// covered) and from the presentation tick (fires at the fade-in's first under-cover tick).
   private static let underCoverReprojectThreshold = 0.05
-  private func reprojectCatalogUnderCoverIfReady(instanceId: String) {
+  private func reprojectCatalogUnderCoverIfReady(instanceId: String, force: Bool = false) {
     guard pendingUnderCoverReproject.contains(instanceId) else { return }
     guard Self.lodV5Enabled, var state = instances[instanceId] else { return }
-    guard state.currentPresentationOpacityValue <= Self.underCoverReprojectThreshold else { return }
+    // Normally the re-decide waits for presentation to be under cover (opacity≈0) so the marker swap is
+    // hidden. But a fresh catalog can arrive DURING a reveal ramp-up (rapid toggling at the debounce
+    // boundary): opacity is already rising, so the reproject would DEFER and, with no subsequent fade-out,
+    // stay STRANDED — the reveal then settles on the stale/empty promoted set (the "pins drop on rapid
+    // toggle"). `force` overrides the gate so the stranded catalog is decided at reveal completion; the
+    // resulting swap is a visible correction that occurs ONLY in the race (a normal toggle is already ≈0).
+    if !force && state.currentPresentationOpacityValue > Self.underCoverReprojectThreshold {
+      // Defer ONLY while a fade animation is actively running — its under-cover tick (opacity crossing ≤0.05)
+      // or the reveal-completion force will decide the catalog. But if presentation is STABLE at high opacity
+      // (no animator — a catalog arriving just AFTER a reveal completed in the rapid-toggle race), deferring
+      // would strand it forever (no upcoming tick/completion): fall through and decide it NOW. The swap is
+      // visible but it is the CURRENT tab's correct set replacing a stale one, and it happens only in the race.
+      if presentationOpacityAnimators[instanceId] != nil {
+        Self.lodLog(
+          "[reprojdbg] DEFER opac=\(Self.round3(state.currentPresentationOpacityValue)) (animator active; decides at under-cover tick / completion)")
+        return
+      }
+      Self.lodLog(
+        "[reprojdbg] STABLE-DECIDE opac=\(Self.round3(state.currentPresentationOpacityValue)) (no animator; deciding a stranded catalog now)")
+    }
+    if force {
+      Self.lodLog(
+        "[reprojdbg] FORCE opac=\(Self.round3(state.currentPresentationOpacityValue)) (decoding a stranded catalog at reveal completion)")
+    }
     guard !Self.isVisualSourceInactiveOrDismissing(state) else { return }
     guard let handle = currentResolvedMapHandle(for: state.mapTag) else { return }
     pendingUnderCoverReproject.remove(instanceId)
@@ -9130,6 +9155,11 @@ final class SearchMapRenderController: RCTEventEmitter {
         // overlayTileCount + degraded let JS lift-but-flag a roster failure instead of hanging; an empty
         // result (promoted=0) lifts normally. Guarded off fade-IN + not-dismissing (cross-lane dismiss safety).
         if animator.targetOpacity >= 0.999, !Self.isVisualSourceInactiveOrDismissing(state) {
+          // A reveal is completing. If a fresh catalog arrived during the ramp-up (rapid-toggle race) its
+          // under-cover reproject was stranded — decide it NOW so the reveal settles on the CURRENT catalog's
+          // promoted set instead of a stale/empty one (the "pins drop on rapid toggle"). No-op unless pending.
+          reprojectCatalogUnderCoverIfReady(instanceId: instanceId, force: true)
+          state = instances[instanceId] ?? state
           let overlayTileCount = overlayInstances[instanceId]?.tiles.count ?? 0
           let promotedCount = state.lodV5Engine?.lastPromotedInOrder.count ?? 0
           let degraded = promotedCount > 0 && overlayTileCount == 0

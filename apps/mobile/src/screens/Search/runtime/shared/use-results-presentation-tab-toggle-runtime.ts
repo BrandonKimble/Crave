@@ -6,7 +6,6 @@ import type { ResultsPresentationRuntimeOwner } from './results-presentation-run
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { useResultsPresentationToggleLifecycleRuntime } from './use-results-presentation-toggle-lifecycle-runtime';
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
-import { searchMapRenderController } from '../map/search-map-render-controller';
 
 type UseResultsPresentationTabToggleRuntimeArgs = {
   activeTab: 'dishes' | 'restaurants';
@@ -63,12 +62,8 @@ export const useResultsPresentationTabToggleRuntime = ({
         return;
       }
 
-      // Press-up marker fade-out (panel-validated): fade the map markers (pins + dots + labels) out the
-      // instant the toggle is pressed — co-triggered with the JS frost, decoupled from the debounced data
-      // commit. Idempotent + fire-and-forget (the native scalar just ramps toward 0). The settle's redraw,
-      // always armed below while the session is active, fades them back in — including net-zero rapid bursts.
-      void searchMapRenderController.beginInteractionFadeOut();
-
+      // The press-up map fade-out is now owned by the shared coordinator (beginToggleInteraction), so every
+      // trigger — tab toggle, filter chips, dropdowns — fades identically. No per-trigger fade call here.
       toggleLifecycleRuntime.beginToggleInteraction(
         ({ intentId }) => {
           const shouldSwitchTab = activeTabRef.current !== next;

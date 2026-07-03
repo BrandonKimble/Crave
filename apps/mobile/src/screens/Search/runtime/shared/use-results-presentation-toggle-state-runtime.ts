@@ -13,6 +13,7 @@ import type {
 } from './results-toggle-interaction-contract';
 import { IDLE_TOGGLE_INTERACTION_STATE } from './results-toggle-interaction-contract';
 import type { SearchRuntimeBus, SearchRuntimeBusState } from './search-runtime-bus';
+import { searchMapRenderController } from '../map/search-map-render-controller';
 
 const TOGGLE_INTENT_PREFIX = 'toggle-intent:';
 // Restored from 2ca844dd: a single RESTARTING quiet-window debounce is the SOLE commit
@@ -127,6 +128,12 @@ export const useResultsPresentationToggleStateRuntime = ({
       options: ToggleCommitOptions,
       startPatch?: Partial<SearchRuntimeBusState>
     ) => {
+      // Press-up map fade-out — SHARED by every trigger that runs through the coordinator (tab toggle,
+      // filter chips, deferredApply dropdowns). Fires the instant the control is pressed, decoupled from the
+      // debounced commit, so pins/dots/labels fade out together immediately; the settle re-reveals them.
+      // Idempotent + fire-and-forget (native guards inactive/already-faded). Previously only the tab toggle
+      // armed this, so filter chips swapped the map with no fade — this makes ALL toggles behave identically.
+      void searchMapRenderController.beginInteractionFadeOut();
       const seq = interactionSeqRef.current + 1;
       interactionSeqRef.current = seq;
       const interactionKind = options.kind;
