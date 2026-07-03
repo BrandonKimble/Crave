@@ -73,19 +73,6 @@ export const useResultsPresentationTabToggleRuntime = ({
           // the current tab's data (a cheap, rare re-reveal); on a real switch it swaps as before.
           const shouldAwaitVisualSync = isSearchSessionActiveRef.current;
 
-          // [tclur] TOGGLE-CB probe: the debounced settle fires ONCE per burst with the final tab. On a rapid
-          // toggle-BACK, if shouldSwitchTab=false (net-zero — activeTab never left the start tab mid-burst),
-          // commitTabChange is skipped and only a re-reveal of the CURRENT tab runs. If true, it commits +
-          // stages a 'cache' transaction whose resolution must re-publish mountedResults before the map projects.
-          // eslint-disable-next-line no-console
-          console.log('[tclur] TOGGLE-CB', {
-            next,
-            cur: activeTabRef.current,
-            shouldSwitchTab,
-            shouldAwaitVisualSync,
-            intentId,
-          });
-
           // The consequence (data swap + native redraw arm) runs SYNCHRONOUSLY and promptly:
           // it arms the redraw cover + the reveal gate, so deferring it (e.g. startTransition)
           // would delay the reveal by seconds when commits stack up. The debounce already runs

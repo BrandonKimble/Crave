@@ -1500,8 +1500,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       // to 0; so we mark it pending and fire the re-decide the next time presentation is under cover (≈0) —
       // unless it is ALREADY covered, in which case fire immediately.
       self.pendingUnderCoverReproject.insert(instanceId)
-      Self.lodLog(
-        "[reprojdbg] setCatalog count=\(catalog.count) opac=\(Self.round3(state.currentPresentationOpacityValue))")
       self.reprojectCatalogUnderCoverIfReady(instanceId: instanceId)
       resolve(["catalogCount": catalog.count])
     }
@@ -1593,16 +1591,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       // would strand it forever (no upcoming tick/completion): fall through and decide it NOW. The swap is
       // visible but it is the CURRENT tab's correct set replacing a stale one, and it happens only in the race.
       if presentationOpacityAnimators[instanceId] != nil {
-        Self.lodLog(
-          "[reprojdbg] DEFER opac=\(Self.round3(state.currentPresentationOpacityValue)) (animator active; decides at under-cover tick / completion)")
         return
       }
-      Self.lodLog(
-        "[reprojdbg] STABLE-DECIDE opac=\(Self.round3(state.currentPresentationOpacityValue)) (no animator; deciding a stranded catalog now)")
-    }
-    if force {
-      Self.lodLog(
-        "[reprojdbg] FORCE opac=\(Self.round3(state.currentPresentationOpacityValue)) (decoding a stranded catalog at reveal completion)")
     }
     guard !Self.isVisualSourceInactiveOrDismissing(state) else { return }
     guard let handle = currentResolvedMapHandle(for: state.mapTag) else { return }
@@ -1700,12 +1690,9 @@ final class SearchMapRenderController: RCTEventEmitter {
             sourceFrameIsReady &&
             visualFrameTransaction.kind != "dismiss" &&
             visualFrameTransaction.kind != "clear_hidden"
-          // STEP-4-style frame census (debug): every data-bearing frame's lane + guard inputs, so any
-          // future bare swap self-identifies. Strip/promote at cleanup.
-          // Replacement metric: residents that DISAPPEAR. removeIds is often empty on swaps — the
-          // authoritative membership is nextFeatureIdsInOrder; residents absent from it are being torn out.
+          // BARE-SWAP metric: residents that DISAPPEAR. removeIds is often empty on swaps — the authoritative
+          // membership is nextFeatureIdsInOrder; residents absent from it are being torn out.
           var guardRemoveCount = 0
-          var guardAddCount = 0
           for delta in sourceDeltas ?? [] {
             guard let deltaSourceId = delta["sourceId"] as? String else { continue }
             let residentIds = Set(
@@ -1714,25 +1701,6 @@ final class SearchMapRenderController: RCTEventEmitter {
             let nextIds = Set(delta["nextFeatureIdsInOrder"] as? [String] ?? [])
             guard !nextIds.isEmpty || (delta["mode"] as? String) == "replace" else { continue }
             guardRemoveCount += residentIds.subtracting(nextIds).count
-            guardAddCount += nextIds.subtracting(residentIds).count
-          }
-          if shouldApplySourcePayload {
-            let censusResidentKey = attachedState.residentSourceDataKey ?? "<nil>"
-            let censusChanged = visualFrameTransaction.sourceDataKey != censusResidentKey
-            Self.lodLog(
-              "[framecensus] kind=\(visualFrameTransaction.kind) dataKeyChanged=\(censusChanged) roleOnly=\(markerRoleFrame != nil) lifecycle=\(attachedState.visualSourceLifecycleState) pres=\(Self.round3(attachedState.currentPresentationOpacityValue)) removes=\(guardRemoveCount) adds=\(guardAddCount)"
-            )
-            for delta in sourceDeltas ?? [] {
-              let dSrc = (delta["sourceId"] as? String) ?? "?"
-              let dMode = (delta["mode"] as? String) ?? "patch"
-              let dNext = (delta["nextFeatureIdsInOrder"] as? [String])?.count ?? -1
-              let dUpsert = (delta["upsertFeatures"] as? [[String: Any]])?.count ?? -1
-              let dRemove = (delta["removeIds"] as? [String])?.count ?? -1
-              let dResident = Self.derivedFamilyState(sourceId: dSrc, state: attachedState).collection.idsInOrder.count
-              let dDesired = Self.derivedFamilyState(sourceId: dSrc, state: attachedState).desiredCollection.idsInOrder.count
-              Self.lodLog(
-                "[framecensus]   delta src=\(dSrc) mode=\(dMode) next=\(dNext) upsert=\(dUpsert) remove=\(dRemove) residentColl=\(dResident) residentDesired=\(dDesired)")
-            }
           }
           // BARE-SWAP ASSERT (log-only): every catalog swap must ride the canonical enter flow
           // (press-up/preroll fade-out -> swap under cover -> reveal). A data-bearing frame that tears
@@ -10027,17 +9995,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     // collision authority, and it culls with NO grace — labels yield to pins instantly, as they did pre-twin.
     let promotedSet = Set(instances[instanceId]?.lodV5Engine?.lastPromotedInOrder ?? [])
     var winners = labelWinnerByInstance[instanceId] ?? [:]
-    let lblPrevKeys = Set(winners.keys)
-    // [lblsnap] attribution: classify every label visibility change by CAUSE so the residual flicker can be
-    // attributed to a shape (demote/cull FADE-or-SNAP) vs a side-switch (snap, deferred to hysteresis). Each
-    // cause maps to the owner's R-5 policy: demote/promote should FADE (LOD crossfade), collision-cull +
-    // side-switch should SNAP. A demote that co-occurs with a re-add next pass = the "double flicker on the way out".
-    let prevWinnerByMarker = winners
-    var demoteDrops: [String] = []
-    var cullDrops: [String] = []
+    // A demoted marker (no longer a promoted pin) drops its label.
     for markerKey in winners.keys where !promotedSet.contains(markerKey) {
       winners.removeValue(forKey: markerKey)
-      demoteDrops.append(markerKey)
     }
     // COLLISION-TWIN ENFORCEMENT: post-twin the render layer is allowOverlap, so the `__lea_revealed__`
     // literal alone decides pixels — a winner whose twin candidate is no longer PLACED (culled by a pin
@@ -10049,24 +10009,15 @@ final class SearchMapRenderController: RCTEventEmitter {
     // placed) still holds — the re-pick loop only moves the winner when its current side collapses.
     for markerKey in winners.keys where observedByMarker[markerKey] == nil {
       winners.removeValue(forKey: markerKey)
-      cullDrops.append(markerKey)
     }
-    var sideSwitches: [String] = []
-    var promoteAdds: [String] = []
     for (markerKey, candidatesUnsorted) in observedByMarker {
       let candidates = candidatesUnsorted.sorted { $0.priority < $1.priority }
       // Keep the current winner if it is still placed; otherwise promote the highest-priority placed
       // candidate. (Only a genuine winner-collapse changes the winner — transient loser churn doesn't.)
       let prevWinner = winners[markerKey]
-      let nextWinner =
+      winners[markerKey] =
         (prevWinner != nil && candidates.contains { $0.candidate == prevWinner }) ? prevWinner!
           : candidates[0].candidate
-      winners[markerKey] = nextWinner
-      if prevWinnerByMarker[markerKey] == nil {
-        promoteAdds.append(markerKey)
-      } else if prevWinner != nil && prevWinner != nextWinner {
-        sideSwitches.append(markerKey)
-      }
     }
     labelWinnerByInstance[instanceId] = winners
     // Reveal exactly the winners: swap the set of composite keys (markerKey::candidate) into the layer's
@@ -10077,16 +10028,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         layerId: layerId, property: "text-opacity",
         sentinel: Self.leaRevealedSentinel, keys: revealedKeys, mapboxMap: mapboxMap
       )
-    }
-    if Self.lodDebugLoggingEnabled {
-      // [lblsnap] one line per pass, classified by CAUSE. demote+promote = LOD (should fade); cull+sideswitch
-      // = collision (snap). A demote here whose markerKey reappears in promoteAdds a pass or two later is the
-      // "double flicker on the way out". Sample up to 4 keys per class for correlating a specific label.
-      let s4: ([String]) -> String = { $0.sorted().prefix(4).joined(separator: ",") }
-      Self.lodLog(
-        "[lblsnap] observed=\(observedByMarker.count) revealed=\(revealedKeys.count) "
-          + "demote=\(demoteDrops.count)[\(s4(demoteDrops))] cull=\(cullDrops.count)[\(s4(cullDrops))] "
-          + "sideswitch=\(sideSwitches.count)[\(s4(sideSwitches))] promote=\(promoteAdds.count)[\(s4(promoteAdds))]")
     }
   }
 

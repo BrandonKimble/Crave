@@ -1548,30 +1548,6 @@ export const useDirectSearchMapSourceController = ({
             getCraveScoreColorFromScore: args.getCraveScoreColorFromScore,
           });
     const markerCatalogEntries = markerCatalogReadModel.catalog;
-    // [tclur] CATALOG branch probe: proves WHY the restaurant tab can emit the DISH catalog (236). Either the
-    // precomputed catalog is REUSED under a mismatched/mislabeled preTab (branch=precomp, preTab shows what
-    // it was baked for), OR a live build ran with the wrong activeTab. outLen is what actually reached the map.
-    {
-      const _preUsable = !!(
-        mountedResultsSnapshot.precomputedMarkerCatalog &&
-        mountedResultsSnapshot.precomputedMarkerResultsKey === searchRequestId &&
-        mountedResultsSnapshot.precomputedMarkerActiveTab === activeTab &&
-        effectiveRestaurantOnlyId == null &&
-        selectedRestaurantId == null
-      );
-      // eslint-disable-next-line no-console
-      console.log('[tclur] CATALOG', {
-        activeTab,
-        branch: _preUsable ? 'precomp' : 'live',
-        preTab: mountedResultsSnapshot.precomputedMarkerActiveTab,
-        preKeyMatch: mountedResultsSnapshot.precomputedMarkerResultsKey === searchRequestId,
-        preLen: mountedResultsSnapshot.precomputedMarkerCatalog?.length ?? -1,
-        outLen: markerCatalogEntries.length,
-        rawR: restaurants.length,
-        rawD: dishes.length,
-        reqId: String(searchRequestId ?? '').slice(-8),
-      });
-    }
     // #16: include the LIVE native promoted set in the reuse key so a promotion change (native LOD during
     // a zoom) MISSES the prepared-frame cache on the next publish (the settle republish) and does a full
     // rebuild — which re-bakes the label-collision obstacle from the current promoted set so labels yield
@@ -2783,8 +2759,6 @@ export const useDirectSearchMapSourceController = ({
             type: 'FeatureCollection',
             features,
           });
-          // eslint-disable-next-line no-console
-          console.log('[tclur] COV-PREFETCH', { siblingTab, feats: acceptedFeatureCount });
         })
         .catch(() => {
           // Best-effort: on failure leave the caches empty so a real toggle does a normal fetch.
@@ -2969,17 +2943,8 @@ export const useDirectSearchMapSourceController = ({
       const successTerminal =
         cacheDecision.restoreSource === 'activeResource' ? activeResource : cachedTerminalResource;
       if (successTerminal) {
-        // [tclur] COV-CACHE-HIT probe: the terminal-resource cache HITS and restores the RESOURCE — and now
-        // ALSO the features ref from the sibling features cache (previously the features ref stayed on the
-        // prior tab's coverage → the confirmed stale-236-on-restaurants root).
-        // eslint-disable-next-line no-console
-        console.log('[tclur] COV-CACHE-HIT', {
-          reqTab: activeTab,
-          resTab: successTerminal.activeTab,
-          resStatus: successTerminal.status,
-          resFeat: successTerminal.acceptedFeatureCount,
-          refFeat: shortcutCoverageDotFeaturesRef.current?.features.length ?? -1,
-        });
+        // The terminal-resource cache HITS and restores the RESOURCE + the features ref from the sibling
+        // features cache (keyed identically), so the map switches to this tab's coverage immediately.
         shortcutCoverageResourceRef.current = successTerminal;
         shortcutCoverageLoadingRef.current = false;
         // Restore THIS tab's features from the features cache so the map switches immediately. An 'empty'
@@ -2999,11 +2964,6 @@ export const useDirectSearchMapSourceController = ({
       cacheDecision.deleteStaleCacheEntries &&
       cachedTerminalResource
     ) {
-      // eslint-disable-next-line no-console
-      console.log('[tclur] COV-REFETCH', {
-        reqTab: activeTab,
-        staleStatus: cachedTerminalResource.status,
-      });
       shortcutCoverageTerminalByRequestKeyRef.current.delete(requestKey);
       shortcutCoverageFeaturesByRequestKeyRef.current.delete(requestKey);
     }
@@ -3134,9 +3094,6 @@ export const useDirectSearchMapSourceController = ({
         // restore them without a re-fetch. Without this, the cache-hit path restored only the resource and
         // left the features ref on the other tab's coverage (stale-236 / promoted=0).
         shortcutCoverageFeaturesByRequestKeyRef.current.set(requestKey, coverageFeatureCollection);
-        // [tclur] COV-SET probe: the fresh-NETWORK-fetch write of the coverage features ref + cache.
-        // eslint-disable-next-line no-console
-        console.log('[tclur] COV-SET', { fetchTab: activeTab, feats: features.length });
         publishSourcesRef.current();
         const latestSourceFrame = sourceFramePort.getSnapshot();
         const latestScenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
