@@ -129,8 +129,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   // 0.1 smoothness gate (measured: a 24.x ms gap under a 25ms threshold produced a 0.113 delta).
   fileprivate static let presentationStallTickGapMs: Double = 20
   fileprivate static let presentationNominalFrameMs: Double = 16.7
-  // COLLISION-TWIN ENFORCEMENT: passes a promoted winner may go unplaced before snapping out (~2 = 32-64ms).
-  private static let labelWinnerMissingDropStreak = 2
   // STEP-3 (settle-off-ramp-completion): extra wall-clock grace on the enter-settle FALLBACK timer beyond
   // the fade duration — the primary settle trigger is the ramp-completion tick; the fallback only exists
   // for ramps that never complete (canceled/backgrounded/dead link). Covers the re-anchor budget.
@@ -890,10 +888,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   // churn (which caused loser flashing). The winners are revealed via the reparse-immune
   // `__lea_revealed__` paint literal, not feature-state. See applyLabelOneOfFourSelector.
   private var labelWinnerByInstance: [String: [String: String]] = [:]
-  // COLLISION-TWIN ENFORCEMENT: consecutive observation passes in which a promoted winner had NO placed
-  // twin candidate. At the drop streak the winner snaps out — the selector is the sole collision authority
-  // now (the render layer is allowOverlap; Mapbox no longer hides collided winners for us).
-  private var labelWinnerMissingStreakByInstance: [String: [String: Int]] = [:]
   // Per-instance count of placement re-attempts the watchdog has spent on the current reveal.
   // Reset when a reveal is armed (`armRevealStartDeadlockFallback`) and when the reveal starts
   // or is dismissed. Bounds the watchdog so it cannot spin forever.
@@ -10027,9 +10021,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     // during pan/twist) must NOT wipe the revealed set (that self-stomp = the reveal flash + the mid-motion
     // label blink-out). Bail without touching the set; the next real observation refines it.
     guard !observedByMarker.isEmpty else { return }
-    // Winners drop on DEMOTION immediately, and on sustained collision via the twin-enforcement streak
-    // below (2 passes) — never on a single unobserved pass (QRF latency / churn). NOTE: the old "Mapbox
-    // culls it anyway" assumption is DEAD post-collision-twin; the selector is the collision authority.
+    // Winners drop on DEMOTION immediately, and the instant their twin candidate loses placement (collision
+    // cull, below). A full-empty QRF pass is bailed above, so a partial pass here reflects real placement.
+    // NOTE: the old "Mapbox culls it anyway" assumption is DEAD post-collision-twin; the selector is the
+    // collision authority, and it culls with NO grace — labels yield to pins instantly, as they did pre-twin.
     let promotedSet = Set(instances[instanceId]?.lodV5Engine?.lastPromotedInOrder ?? [])
     var winners = labelWinnerByInstance[instanceId] ?? [:]
     let lblPrevKeys = Set(winners.keys)
@@ -10044,29 +10039,18 @@ final class SearchMapRenderController: RCTEventEmitter {
       winners.removeValue(forKey: markerKey)
       demoteDrops.append(markerKey)
     }
-    // COLLISION-TWIN ENFORCEMENT: pre-twin, a winner whose candidate lost placement was hidden BY MAPBOX
-    // (the render layer competed), so keeping it in the literal was harmless. Post-twin the render layer is
-    // allowOverlap — the literal alone decides pixels — so an unplaced winner kept revealed DRAWS OVER pins
-    // and other labels (the owner-reported regression). Enforce here: a promoted winner with NO placed twin
-    // candidate for labelWinnerMissingDropStreak consecutive passes snaps out (grace absorbs QRF latency /
-    // single-pass churn; an observed marker resets its streak; a re-placed side re-picks = the snap-in).
-    var missingStreaks = labelWinnerMissingStreakByInstance[instanceId] ?? [:]
-    for markerKey in winners.keys {
-      if observedByMarker[markerKey] != nil {
-        missingStreaks.removeValue(forKey: markerKey)
-        continue
-      }
-      let streak = (missingStreaks[markerKey] ?? 0) + 1
-      if streak >= Self.labelWinnerMissingDropStreak {
-        winners.removeValue(forKey: markerKey)
-        missingStreaks.removeValue(forKey: markerKey)
-        cullDrops.append(markerKey)
-      } else {
-        missingStreaks[markerKey] = streak
-      }
+    // COLLISION-TWIN ENFORCEMENT: post-twin the render layer is allowOverlap, so the `__lea_revealed__`
+    // literal alone decides pixels — a winner whose twin candidate is no longer PLACED (culled by a pin
+    // obstacle or another label) must snap out THIS pass, or it draws over the pin (the brief overlap). No
+    // grace: the twin's placement IS the collision authority and it culls instantly, exactly like Mapbox did
+    // pre-twin. A full-empty QRF pass already bailed at the guard above (so this never wipes on a churn
+    // frame); an unobserved winner here means its candidate genuinely lost placement → yield immediately. A
+    // re-placed side re-picks below (the snap-in). NOTE: stickiness (keep the SAME candidate while it stays
+    // placed) still holds — the re-pick loop only moves the winner when its current side collapses.
+    for markerKey in winners.keys where observedByMarker[markerKey] == nil {
+      winners.removeValue(forKey: markerKey)
+      cullDrops.append(markerKey)
     }
-    missingStreaks = missingStreaks.filter { winners[$0.key] != nil }
-    labelWinnerMissingStreakByInstance[instanceId] = missingStreaks
     var sideSwitches: [String] = []
     var promoteAdds: [String] = []
     for (markerKey, candidatesUnsorted) in observedByMarker {
