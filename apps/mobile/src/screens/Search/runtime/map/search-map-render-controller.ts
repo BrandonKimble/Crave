@@ -1048,7 +1048,10 @@ export const searchMapRenderController = {
       commitVisibleLabelHits: boolean;
     } & SearchMapLabelObservationConfig
   ): Promise<void> {
-    if (!nativeModule) {
+    // The GL label observation was removed (labels render as ViewAnnotations, placed synchronously — no
+    // rendered-GL-label placement to observe). The native RPC no longer exists; no-op if it is absent so a
+    // lingering caller can't throw. The JS caller (applyLabelObservationConfig) is removed separately.
+    if (typeof nativeModule?.configureLabelObservation !== 'function') {
       return;
     }
     try {
