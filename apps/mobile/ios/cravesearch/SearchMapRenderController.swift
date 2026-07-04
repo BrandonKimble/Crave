@@ -639,9 +639,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     var labelSourceId: String
     var labelCollisionSourceId: String
     var labelLayerIds: [String]
-    // COLLISION-TWIN: placement outcomes (observation QRF / reveal gate) are read from these layers
-    // (the invisible collider twins). Empty -> fall back to labelLayerIds (pre-twin behavior).
-    var labelPlacementQueryLayerIds: [String] = []
     var labelCollisionLayerIds: [String]
     var lastPinVisualGroupOrderSlots: [Int]
     var lastPinVisualGroupOrderSignature: String?
@@ -1209,7 +1206,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         return
       }
       let labelLayerIds = Self.parseStringArray(payload["labelLayerIds"])
-      let labelPlacementQueryLayerIds = Self.parseStringArray(payload["labelPlacementQueryLayerIds"])
       let labelCollisionLayerIds = Self.parseStringArray(payload["labelCollisionLayerIds"])
       guard
         !labelLayerIds.isEmpty,
@@ -1230,7 +1226,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         labelSourceId: labelSourceId,
         labelCollisionSourceId: labelCollisionSourceId,
         labelLayerIds: labelLayerIds,
-        labelPlacementQueryLayerIds: labelPlacementQueryLayerIds,
         labelCollisionLayerIds: labelCollisionLayerIds,
         lastPinVisualGroupOrderSlots: [],
         lastPinVisualGroupOrderSignature: nil,
@@ -3183,7 +3178,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         return
       }
       let labelLayerIds = Self.parseStringArray(payload["labelLayerIds"])
-      let labelPlacementQueryLayerIds = Self.parseStringArray(payload["labelPlacementQueryLayerIds"])
       let labelCollisionLayerIds = Self.parseStringArray(payload["labelCollisionLayerIds"])
       guard
         !labelLayerIds.isEmpty,
@@ -3197,7 +3191,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         return
       }
       state.labelLayerIds = labelLayerIds
-      state.labelPlacementQueryLayerIds = labelPlacementQueryLayerIds
       state.labelCollisionLayerIds = labelCollisionLayerIds
       state.lastPinVisualGroupOrderSlots = []
       state.lastPinVisualGroupOrderSignature = nil

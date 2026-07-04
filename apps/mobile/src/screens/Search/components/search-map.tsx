@@ -1768,14 +1768,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
     presentedPinSourceStore,
   ]);
   const highlightedMarkerKey = highlightedMarkerKeys[0] ?? null;
-  // Single resident label layer id. Native press-targeting / label-observation query this list.
+  // Single resident label RENDER layer id — kept only so native can force-hide it (labels render as
+  // ViewAnnotations; the render layer never paints, but the collision-twin on the same source stays live).
   const labelVisualLayerIds = React.useMemo(() => [RESTAURANT_LABEL_LAYER_ID], []);
-  // Placement outcomes (observation QRF, reveal gate, press targeting) are read from the TWIN — the render
-  // layer is allowOverlap and would return literal-hidden losers.
-  const labelPlacementQueryLayerIds = React.useMemo(
-    () => [RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID],
-    []
-  );
   const labelCollisionLayerIds = React.useMemo(
     // Both invisible collision-obstacle layers must dorm/wake together on dismiss/reveal — the native
     // setLabelCollisionObstacleLayersVisible loop toggles only the ids in this list, so omitting the
@@ -1808,7 +1803,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelSourceId: RESTAURANT_LABEL_SOURCE_ID,
     labelCollisionSourceId: RESTAURANT_LABEL_COLLISION_SOURCE_ID,
     labelLayerIds: labelVisualLayerIds,
-    labelPlacementQueryLayerIds,
     labelCollisionLayerIds,
     pins: nativeDesiredPinFeatures,
     pinInteractions: nativeDesiredPinInteractionFeatures,

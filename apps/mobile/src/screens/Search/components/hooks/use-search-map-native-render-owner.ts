@@ -54,7 +54,6 @@ type SearchMapNativeRenderOwnerStatusArgs = {
   labelSourceId: string;
   labelCollisionSourceId: string;
   labelLayerIds: string[];
-  labelPlacementQueryLayerIds: string[];
   labelCollisionLayerIds: string[];
   sourceFramePort?: SearchMapSourceFramePort | null;
   onExecutionBatchMountedHidden?: (payload: {
@@ -131,7 +130,6 @@ type SearchMapNativeRenderOwnerStatusResult = {
 
 type SearchMapNativeLayerGroupConfig = {
   labelLayerIds: string[];
-  labelPlacementQueryLayerIds: string[];
   labelCollisionLayerIds: string[];
 };
 
@@ -1835,7 +1833,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
   labelSourceId,
   labelCollisionSourceId,
   labelLayerIds,
-  labelPlacementQueryLayerIds,
   labelCollisionLayerIds,
   sourceFramePort = null,
   onExecutionBatchMountedHidden,
@@ -1868,12 +1865,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
       })
     ).isPresentationActive
   );
-  // Cluster 7 (sticky-label reapply queue): true while a label-observation config
-  // change is being HELD because the presentation phase forbids structural apply
-  // (the visible reveal/dismiss hot window). It is cleared the moment the phase
-  // returns to allowed and the held config is flushed. Only used for diagnostics /
-  // to force the flush eval to run (it deliberately does NOT store a backlog — the
-  // next allowed eval recomputes the LATEST config and coalesces to it).
   const sourceFramePortRef = React.useRef(sourceFramePort);
   const selectedRestaurantIdRef = React.useRef(selectedRestaurantId);
   if (instanceIdRef.current == null) {
@@ -1883,17 +1874,15 @@ const useSearchMapNativeRenderOwnerStatus = ({
   const isNativeAvailable = searchMapRenderController.isAvailable();
   const nativeLayerGroupConfigRef = React.useRef<SearchMapNativeLayerGroupConfig>({
     labelLayerIds,
-    labelPlacementQueryLayerIds,
     labelCollisionLayerIds,
   });
 
   React.useEffect(() => {
     nativeLayerGroupConfigRef.current = {
       labelLayerIds,
-      labelPlacementQueryLayerIds,
       labelCollisionLayerIds,
     };
-  }, [labelCollisionLayerIds, labelLayerIds, labelPlacementQueryLayerIds]);
+  }, [labelCollisionLayerIds, labelLayerIds]);
 
   React.useEffect(() => {
     setAttachRetryNonce(0);
@@ -2059,7 +2048,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
           labelSourceId,
           labelCollisionSourceId,
           labelLayerIds: nativeLayerGroupConfig.labelLayerIds,
-          labelPlacementQueryLayerIds: nativeLayerGroupConfig.labelPlacementQueryLayerIds,
           labelCollisionLayerIds: nativeLayerGroupConfig.labelCollisionLayerIds,
         })
         .then(() => {
@@ -2125,7 +2113,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
       .configureNativeLayerGroups({
         instanceId,
         labelLayerIds,
-        labelPlacementQueryLayerIds,
         labelCollisionLayerIds,
       })
       .catch((error: unknown) => {
