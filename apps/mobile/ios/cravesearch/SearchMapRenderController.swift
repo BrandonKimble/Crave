@@ -7495,12 +7495,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     ]
   }
 
-  private static func liveLabelFeatureState(opacity: Double) -> [String: Any] {
-    [
-      "nativeLabelOpacity": opacity,
-    ]
-  }
-
   private static func liveDotFeatureState(opacity: Double) -> [String: Any] {
     [
       "nativeDotOpacity": opacity,
@@ -8042,8 +8036,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     if let roleKeys = roleChange {
       try? withMapboxMap(for: state.mapTag) { mapboxMap in
-        updateLeaMembershipLiterals(
-          promoted: roleKeys, labelLayerIds: state.labelLayerIds, mapboxMap: mapboxMap)
+        updateLeaMembershipLiterals(promoted: roleKeys, mapboxMap: mapboxMap)
       }
     }
     guard !writes.isEmpty else { return }
@@ -8067,17 +8060,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     var pinSourceState = pinFamilyState.sourceState
     var dotFamilyState = Self.derivedFamilyState(sourceId: state.dotSourceId, state: state)
     var dotSourceState = dotFamilyState.sourceState
-    var labelFamilyState = Self.derivedFamilyState(sourceId: state.labelSourceId, state: state)
-    var labelSourceState = labelFamilyState.sourceState
     let pinPhysicalSourceId = state.pinBundleSourceId
-    let labelPhysicalSourceId = state.labelRenderSourceId
 
     var pinApply: [(featureId: String, state: [String: Any])] = []
     var dotApply: [(featureId: String, state: [String: Any])] = []
-    var labelApply: [(featureId: String, state: [String: Any])] = []
     var pinChanged = false
     var dotChanged = false
-    var labelChanged = false
     var midFadeCount = 0
 
     for (markerKey, pinOpacity) in writes {
@@ -8104,19 +8092,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         sourceStateChanged: &dotChanged
       )
       for e in localDot { dotApply.append((e.featureId, e.state)) }
-
-      for labelFeature in pinFamilyState.markerRenderStateByMarkerKey[markerKey]?.labelFeatures ?? [] {
-        var localLabel: [(featureId: String, state: [String: Any])] = []
-        Self.applyTransientFeatureState(
-          sourceState: &labelSourceState,
-          familyState: &labelFamilyState,
-          featureId: labelFeature.id,
-          transientState: Self.liveLabelFeatureState(opacity: p),
-          applyList: &localLabel,
-          sourceStateChanged: &labelChanged
-        )
-        for e in localLabel { labelApply.append((e.featureId, e.state)) }
-      }
     }
 
     try withMapboxMap(for: state.mapTag) { mapboxMap in
@@ -8126,17 +8101,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       for e in dotApply {
         mapboxMap.setFeatureState(sourceId: state.dotSourceId, featureId: e.featureId, state: e.state) { _ in }
       }
-      for e in labelApply {
-        mapboxMap.setFeatureState(sourceId: labelPhysicalSourceId, featureId: e.featureId, state: e.state) { _ in }
-      }
     }
 
     if pinChanged { Self.refreshFeatureStateRevision(&pinSourceState) }
     if dotChanged { Self.refreshFeatureStateRevision(&dotSourceState) }
-    if labelChanged { Self.refreshFeatureStateRevision(&labelSourceState) }
     Self.syncMountedSourceState(pinSourceState, sourceId: state.pinSourceId, familyState: &pinFamilyState, state: &state)
     Self.syncMountedSourceState(dotSourceState, sourceId: state.dotSourceId, familyState: &dotFamilyState, state: &state)
-    Self.syncMountedSourceState(labelSourceState, sourceId: state.labelSourceId, familyState: &labelFamilyState, state: &state)
     return (pinApply.count, midFadeCount)
   }
 
@@ -8152,18 +8122,15 @@ final class SearchMapRenderController: RCTEventEmitter {
   // literal) so it carries no copy of the JS constants/structure.
   private static var leaMemLoggedOnce = false
   private func updateLeaMembershipLiterals(
-    promoted: [String], labelLayerIds: [String], mapboxMap: MapboxMap
+    promoted: [String], mapboxMap: MapboxMap
   ) {
     var updated = 0
     // Pins now render via the self-owned CA overlay (no GL pin/shadow layers), so the reparse-immune LEA
     // crossfade only applies to the still-GL dot layer. Pins fade via the overlay's CA opacity.
+    // (Labels are ViewAnnotations now — their alpha is app-owned via refreshLabelVAAlpha, no GL text-opacity.)
     let leaIconLayers = ["restaurant-dot-layer"]
     for layerId in leaIconLayers
     where Self.swapLeaLiteral(layerId: layerId, property: "icon-opacity", sentinel: Self.leaLodSentinel, keys: promoted, mapboxMap: mapboxMap) {
-      updated += 1
-    }
-    for layerId in labelLayerIds
-    where Self.swapLeaLiteral(layerId: layerId, property: "text-opacity", sentinel: Self.leaLodSentinel, keys: promoted, mapboxMap: mapboxMap) {
       updated += 1
     }
     if !Self.leaMemLoggedOnce {
@@ -8196,12 +8163,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     instanceId: String, state: inout InstanceState, mapboxMap: MapboxMap
   ) {
     guard Self.lodV5Enabled else { return }
-    let labelLayerIds = state.labelLayerIds
-    // (1) __lea_lod__ (dots + labels) via the engine's own role bookkeeping (desync-safe).
+    // (1) __lea_lod__ (dots) via the engine's own role bookkeeping (desync-safe).
     if var engine = state.lodV5Engine {
       if let roleKeys = engine.takeSettledRoleChangeIfAny() {
-        updateLeaMembershipLiterals(
-          promoted: roleKeys, labelLayerIds: labelLayerIds, mapboxMap: mapboxMap)
+        updateLeaMembershipLiterals(promoted: roleKeys, mapboxMap: mapboxMap)
       }
       state.lodV5Engine = engine
     }
@@ -8822,11 +8787,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     try withMapboxMap(for: state.mapTag) { mapboxMap in
       if Self.setLayerPresentationOpacity(
         layerIds: ["restaurant-dot-layer"], property: "icon-opacity", value: opacity, mapboxMap: mapboxMap)
-      {
-        layersWritten += 1
-      }
-      if Self.setLayerPresentationOpacity(
-        layerIds: mutableState.labelLayerIds, property: "text-opacity", value: opacity, mapboxMap: mapboxMap)
       {
         layersWritten += 1
       }
