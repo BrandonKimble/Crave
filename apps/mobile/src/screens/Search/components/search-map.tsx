@@ -1239,16 +1239,6 @@ const resolveMapPresentedMarkerScene = ({
   presentedDotSourceStore: dotSourceStore ?? EMPTY_SEARCH_MAP_SOURCE_STORE,
 });
 
-const resolveMapLabelObservationPolicy = ({
-  isPresentationLive,
-}: {
-  isPresentationLive: boolean;
-}): {
-  publishVisibleLabelFeatureIds: boolean;
-} => ({
-  publishVisibleLabelFeatureIds: isPresentationLive,
-});
-
 const resolveMapPresentedLabelScene = ({
   shouldMountSearchMarkerLayers,
   shouldProjectSearchMarkerFamilies: _shouldProjectSearchMarkerFamilies,
@@ -1687,58 +1677,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const shouldRenderLabels = shouldPrepareLabelLayers;
   const isResultsExitActive =
     presentationAuthoritySnapshot.resultsPresentationTransport.snapshotKind === 'results_exit';
-  const { publishVisibleLabelFeatureIds } = resolveMapLabelObservationPolicy({
-    isPresentationLive:
-      presentationAuthoritySnapshot.resultsPresentation.contentVisibility === 'visible' &&
-      !isResultsExitActive,
-  });
-  const labelObservationConfig = React.useMemo(
-    () => ({
-      refreshMsIdle: LABEL_OBSERVATION_REFRESH_MS_IDLE,
-      refreshMsMoving: LABEL_OBSERVATION_REFRESH_MS_MOVING,
-      labelResetRequestKey: visualReadyRequestKey,
-    }),
-    [visualReadyRequestKey]
-  );
-  const nativeManagedLabelObservation =
-    searchMapRenderController.platform === 'ios' ||
-    searchMapRenderController.platform === 'android';
-  const requestedNativeLabelObservationEnabled =
-    nativeManagedLabelObservation && !shouldDisableMarkers;
-  React.useEffect(() => {
-    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-    if (!isPerfScenarioAttributionActive(scenarioConfig)) {
-      return;
-    }
-    logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-      event: 'map_pin_label_observation_config_contract',
-      directLabelSourceCount,
-      directPinSourceCount,
-      directDotSourceCount,
-      isResultsExitActive,
-      isNativeManaged: nativeManagedLabelObservation,
-      labelSourceCount: activeLabelSourceStore.idsInOrder.length,
-      pinSourceCount: presentedPinSourceStore.idsInOrder.length,
-      presentationTelemetryPhase,
-      publishVisibleLabelFeatureIds,
-      requestedNativeLabelObservationEnabled,
-      shouldDisableMarkers,
-      shouldRenderLabels,
-    });
-  }, [
-    directDotSourceCount,
-    directLabelSourceCount,
-    directPinSourceCount,
-    isResultsExitActive,
-    activeLabelSourceStore.idsInOrder.length,
-    nativeManagedLabelObservation,
-    presentedPinSourceStore.idsInOrder.length,
-    presentationTelemetryPhase,
-    publishVisibleLabelFeatureIds,
-    requestedNativeLabelObservationEnabled,
-    shouldDisableMarkers,
-    shouldRenderLabels,
-  ]);
   const userLocationPuckProps = React.useMemo<{
     featureCollection: FeatureCollection<Point>;
     accuracyRingFeatureCollection: FeatureCollection<Polygon> | null;
@@ -1941,8 +1879,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelLayerIds: labelVisualLayerIds,
     labelPlacementQueryLayerIds,
     labelCollisionLayerIds,
-    labelObservationEnabled: requestedNativeLabelObservationEnabled,
-    labelObservationConfig,
     pins: nativeDesiredPinFeatures,
     pinInteractions: nativeDesiredPinInteractionFeatures,
     dots: nativeDesiredDotFeatures,
@@ -1982,148 +1918,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     onMarkerExitStarted: presentationLifecyclePort?.handleMarkerExitStarted,
     onMarkerExitSettled: presentationLifecyclePort?.handleMarkerExitSettled,
     onViewportChanged: handleNativeViewportChangedFromOwner,
-    onLabelObservationUpdated: ({
-      visibleLabelFeatureIds,
-      layerRenderedFeatureCount,
-      effectiveRenderedFeatureCount,
-      nativeVisibleLabelsWithoutPromotedPinCount,
-      nativeVisibleLabelsForDemotedMarkerCount,
-      nativeMultipleVisibleLabelCandidateMarkerCount,
-      nativeVisibleLabelsWithoutPromotedPinMarkerKeys,
-      nativeVisibleLabelsForDemotedMarkerKeys,
-      nativeExpectedPromotedPinCount,
-      nativeExpectedDemotedDotCount,
-      nativePromotedPinCollisionObstacleCount,
-      nativePromotedPinCollisionObstacleCountMatchesPins,
-    }) => {
-      const nextVisibleLabelFeatureIds = [...visibleLabelFeatureIds].sort();
-      const previousVisibleLabelFeatureIds = visibleLabelFeatureIdListRef.current;
-      const shouldLogFirstContract = !didLogLabelVisibilityContractRef.current;
-      if (
-        !shouldLogFirstContract &&
-        areStringArraysEqual(previousVisibleLabelFeatureIds, nextVisibleLabelFeatureIds)
-      ) {
-        return;
-      }
-      visibleLabelFeatureIdListRef.current = nextVisibleLabelFeatureIds;
-      didLogLabelVisibilityContractRef.current = true;
-      const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-      if (isPerfScenarioAttributionActive(scenarioConfig)) {
-        const sourceFrameSnapshot = sourceFramePort?.getSnapshot() ?? null;
-        const visibleLabelCandidateCounts = nextVisibleLabelFeatureIds.reduce<
-          Record<LabelCandidate, number>
-        >(
-          (counts, featureId) => {
-            const candidate = getLabelCandidateFromFeatureId(featureId);
-            if (candidate != null) {
-              counts[candidate] += 1;
-            }
-            return counts;
-          },
-          { bottom: 0, right: 0, top: 0, left: 0 }
-        );
-        const expectedPinSourceStore =
-          sourceFrameSnapshot?.pinSourceStore ?? presentedPinSourceStore;
-        const expectedDotSourceStore =
-          sourceFrameSnapshot?.dotSourceStore ?? presentedDotSourceStore;
-        const expectedLabelCollisionSourceStore =
-          sourceFrameSnapshot?.labelCollisionSourceStore ?? activeLabelCollisionSourceStore;
-        const expectedPromotedMarkerKeys = new Set(expectedPinSourceStore.idsInOrder);
-        const expectedDemotedMarkerKeys = new Set(expectedDotSourceStore.idsInOrder);
-        const visibleLabelCountsByMarkerKey = new Map<string, number>();
-        const visibleLabelsWithoutPromotedPinMarkerKeys: string[] = [];
-        const visibleLabelsForDemotedMarkerKeys: string[] = [];
-        let visibleLabelsWithoutPromotedPinCount = 0;
-        let visibleLabelsForDemotedMarkerCount = 0;
-        nextVisibleLabelFeatureIds.forEach((featureId) => {
-          const markerKey = getMarkerKeyFromLabelFeatureId(featureId);
-          if (markerKey == null) {
-            visibleLabelsWithoutPromotedPinCount += 1;
-            return;
-          }
-          visibleLabelCountsByMarkerKey.set(
-            markerKey,
-            (visibleLabelCountsByMarkerKey.get(markerKey) ?? 0) + 1
-          );
-          if (!expectedPromotedMarkerKeys.has(markerKey)) {
-            visibleLabelsWithoutPromotedPinCount += 1;
-            visibleLabelsWithoutPromotedPinMarkerKeys.push(markerKey);
-          }
-          if (expectedDemotedMarkerKeys.has(markerKey)) {
-            visibleLabelsForDemotedMarkerCount += 1;
-            visibleLabelsForDemotedMarkerKeys.push(markerKey);
-          }
-        });
-        const multipleVisibleLabelCandidateMarkerCount = [
-          ...visibleLabelCountsByMarkerKey.values(),
-        ].filter((count) => count > 1).length;
-        const promotedPinCollisionObstacleCount =
-          expectedLabelCollisionSourceStore.idsInOrder.length;
-        const contractUsesNativeRoleTable =
-          typeof nativeExpectedPromotedPinCount === 'number' &&
-          typeof nativeExpectedDemotedDotCount === 'number';
-        const contractMultipleVisibleLabelCandidateMarkerCount =
-          nativeMultipleVisibleLabelCandidateMarkerCount ??
-          multipleVisibleLabelCandidateMarkerCount;
-        const contractVisibleLabelsWithoutPromotedPinCount =
-          nativeVisibleLabelsWithoutPromotedPinCount ?? visibleLabelsWithoutPromotedPinCount;
-        const contractVisibleLabelsForDemotedMarkerCount =
-          nativeVisibleLabelsForDemotedMarkerCount ?? visibleLabelsForDemotedMarkerCount;
-        const contractPromotedPinCollisionObstacleCount =
-          nativePromotedPinCollisionObstacleCount ?? promotedPinCollisionObstacleCount;
-        const contractExpectedPromotedPinCount =
-          nativeExpectedPromotedPinCount ?? expectedPromotedMarkerKeys.size;
-        const contractExpectedDemotedDotCount =
-          nativeExpectedDemotedDotCount ?? expectedDemotedMarkerKeys.size;
-        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-          event: 'map_pin_label_visibility_contract',
-          visibleLabelCount: nextVisibleLabelFeatureIds.length,
-          visibleLabelCandidateCounts,
-          layerRenderedFeatureCount,
-          effectiveRenderedFeatureCount,
-          expectedPinLabelSourceCount:
-            activeLabelSourceStore.idsInOrder.length ||
-            sourceFrameSnapshot?.labelSourceStore.idsInOrder.length ||
-            0,
-          expectedPinCount:
-            presentedPinSourceStore.idsInOrder.length ||
-            sourceFrameSnapshot?.pinSourceStore.idsInOrder.length ||
-            0,
-          hasVisiblePinLabels: nextVisibleLabelFeatureIds.length > 0,
-        });
-        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-          event: 'map_rendered_label_collision_contract',
-          visibleLabelCount: nextVisibleLabelFeatureIds.length,
-          visibleLabelMarkerCount: visibleLabelCountsByMarkerKey.size,
-          multipleVisibleLabelCandidateMarkerCount:
-            contractMultipleVisibleLabelCandidateMarkerCount,
-          visibleLabelsWithoutPromotedPinCount: contractVisibleLabelsWithoutPromotedPinCount,
-          visibleLabelsForDemotedMarkerCount: contractVisibleLabelsForDemotedMarkerCount,
-          visibleLabelsWithoutPromotedPinMarkerKeys: [
-            ...new Set(
-              nativeVisibleLabelsWithoutPromotedPinMarkerKeys ??
-                visibleLabelsWithoutPromotedPinMarkerKeys
-            ),
-          ].slice(0, 8),
-          visibleLabelsForDemotedMarkerKeys: [
-            ...new Set(
-              nativeVisibleLabelsForDemotedMarkerKeys ?? visibleLabelsForDemotedMarkerKeys
-            ),
-          ].slice(0, 8),
-          expectedPromotedPinCount: contractExpectedPromotedPinCount,
-          expectedDemotedDotCount: contractExpectedDemotedDotCount,
-          promotedPinCollisionObstacleCount: contractPromotedPinCollisionObstacleCount,
-          promotedPinCollisionObstacleCountMatchesPins:
-            nativePromotedPinCollisionObstacleCountMatchesPins ??
-            contractPromotedPinCollisionObstacleCount === contractExpectedPromotedPinCount,
-          labelCollisionConfigured:
-            restaurantLabelStyle.textAllowOverlap === false &&
-            restaurantLabelStyle.textIgnorePlacement === false &&
-            restaurantLabelStyle.textOptional === false,
-          contractUsesNativeRoleTable,
-        });
-      }
-    },
   });
   const nativeRenderOwnerInstanceId = resolvedNativeRenderOwnerInstanceId;
   const isNativeRenderOwnerAvailable = resolvedIsNativeRenderOwnerAvailable;
@@ -2263,24 +2057,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // No *OpacityTransition — the native stepper is the SOLE opacity animator (see the pin layer).
     } as unknown as MapboxGL.SymbolLayerStyle;
   }, [nativeHighlightedExpression, nativeDotOpacityExpression]);
-  const labelObservationEnabled =
-    requestedNativeLabelObservationEnabled && isNativeOwnedMarkerRuntimeReady;
-  const visibleLabelFeatureIdListRef = React.useRef<string[]>([]);
-  const didLogLabelVisibilityContractRef = React.useRef(false);
-  const clearLabelObservationSnapshotRefs = React.useCallback(() => {
-    visibleLabelFeatureIdListRef.current = [];
-    didLogLabelVisibilityContractRef.current = false;
-  }, []);
-  React.useEffect(() => {
-    if (labelObservationEnabled) {
-      return;
-    }
-    clearLabelObservationSnapshotRefs();
-  }, [clearLabelObservationSnapshotRefs, labelObservationEnabled]);
-  React.useEffect(
-    () => () => clearLabelObservationSnapshotRefs(),
-    [clearLabelObservationSnapshotRefs]
-  );
   const restaurantLabelStyleWithStableOrder = React.useMemo(() => {
     if (!STABILIZE_LABEL_ORDER) {
       return restaurantLabelStyle;

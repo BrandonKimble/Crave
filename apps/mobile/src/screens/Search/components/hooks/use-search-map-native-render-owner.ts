@@ -57,8 +57,6 @@ type SearchMapNativeRenderOwnerStatusArgs = {
   labelPlacementQueryLayerIds: string[];
   labelCollisionLayerIds: string[];
   sourceFramePort?: SearchMapSourceFramePort | null;
-  labelObservationEnabled: boolean;
-  labelObservationConfig: SearchMapLabelObservationConfig;
   onExecutionBatchMountedHidden?: (payload: {
     requestKey: string;
     frameGenerationId: string | null;
@@ -118,39 +116,7 @@ type SearchMapNativeRenderOwnerStatusArgs = {
     isGestureActive: boolean;
     isMoving: boolean;
   }) => void;
-  onLabelObservationUpdated?: (payload: {
-    visibleLabelFeatureIds: string[];
-    layerRenderedFeatureCount: number;
-    effectiveRenderedFeatureCount: number;
-    nativeVisibleLabelsWithoutPromotedPinCount?: number;
-    nativeVisibleLabelsForDemotedMarkerCount?: number;
-    nativeMultipleVisibleLabelCandidateMarkerCount?: number;
-    nativeVisibleLabelsWithoutPromotedPinMarkerKeys?: string[];
-    nativeVisibleLabelsForDemotedMarkerKeys?: string[];
-    nativeExpectedPromotedPinCount?: number;
-    nativeExpectedDemotedDotCount?: number;
-    nativePromotedPinCollisionObstacleCount?: number;
-    nativePromotedPinCollisionObstacleCountMatchesPins?: boolean;
-  }) => void;
 };
-
-type SearchMapLabelObservationConfig = {
-  refreshMsIdle: number;
-  refreshMsMoving: number;
-  labelResetRequestKey: string | null;
-};
-
-type SearchMapNativeLabelObservationApplyStatus =
-  | 'skipped'
-  | 'requested'
-  | 'applied'
-  | 'failed'
-  // Cluster 7 (sticky-label reapply queue): a config push (typically the
-  // observation DISABLE / clear-visible-hits push as the phase flips into the
-  // visible reveal/dismiss hot window) was discovered while the presentation
-  // phase forbids structural apply. It is held — not sent — and the LATEST held
-  // value is flushed when the phase returns to an allowed state.
-  | 'deferred';
 
 type SearchMapNativeRenderOwnerStatusResult = {
   instanceId: string;
@@ -273,7 +239,6 @@ const shouldMeasureNativeRenderOwnerEventDelivery = (
     case 'presentation_exit_started':
     case 'presentation_visual_sources_collision_released':
     case 'presentation_exit_settled':
-    case 'label_observation_updated':
       return true;
     default:
       return false;
@@ -1883,31 +1848,6 @@ const acknowledgeSnapshotSourceRevisions = (
   snapshot.labelCollisions.acknowledgeTransportRevision(sourceRevisions.labelCollisions);
 };
 
-const buildLabelObservationConfigKey = ({
-  activeTransactionKey,
-  commitVisibleLabelHits,
-  config,
-  instanceId,
-  observationEnabled,
-  ownerEpoch,
-}: {
-  activeTransactionKey: string | null;
-  commitVisibleLabelHits: boolean;
-  config: SearchMapLabelObservationConfig;
-  instanceId: string;
-  observationEnabled: boolean;
-  ownerEpoch: number | null;
-}): string =>
-  [
-    instanceId,
-    `epoch:${ownerEpoch ?? 'null'}`,
-    `transaction:${activeTransactionKey ?? 'null'}`,
-    `enabled:${observationEnabled ? 1 : 0}`,
-    `commit:${commitVisibleLabelHits ? 1 : 0}`,
-    `idle:${config.refreshMsIdle}`,
-    `moving:${config.refreshMsMoving}`,
-  ].join('|');
-
 const useSearchMapNativeRenderOwnerStatus = ({
   mapComponentInstanceId,
   resolvedMapTag,
@@ -1923,8 +1863,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
   labelPlacementQueryLayerIds,
   labelCollisionLayerIds,
   sourceFramePort = null,
-  labelObservationEnabled,
-  labelObservationConfig,
   onExecutionBatchMountedHidden,
   onMarkerEnterStarted,
   onMarkerEnterSettled,
@@ -1933,7 +1871,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
   onMarkerExitSettled,
   onRecoveredAfterStyleReload,
   onViewportChanged,
-  onLabelObservationUpdated,
 }: SearchMapNativeRenderOwnerStatusArgs): SearchMapNativeRenderOwnerStatusResult => {
   const instanceIdRef = React.useRef<string | null>(null);
   const [isAttached, setIsAttached] = React.useState(false);
@@ -1957,15 +1894,12 @@ const useSearchMapNativeRenderOwnerStatus = ({
       })
     ).isPresentationActive
   );
-  const lastSubmittedLabelObservationConfigKeyRef = React.useRef<string | null>(null);
   // Cluster 7 (sticky-label reapply queue): true while a label-observation config
   // change is being HELD because the presentation phase forbids structural apply
   // (the visible reveal/dismiss hot window). It is cleared the moment the phase
   // returns to allowed and the held config is flushed. Only used for diagnostics /
   // to force the flush eval to run (it deliberately does NOT store a backlog — the
   // next allowed eval recomputes the LATEST config and coalesces to it).
-  const hasDeferredLabelObservationConfigRef = React.useRef(false);
-  const activeLabelObservationTransactionKeyRef = React.useRef<string | null>(null);
   const sourceFramePortRef = React.useRef(sourceFramePort);
   const selectedRestaurantIdRef = React.useRef(selectedRestaurantId);
   if (instanceIdRef.current == null) {
@@ -2298,32 +2232,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
               }
               return;
             }
-            if (event.type === 'label_observation_updated') {
-              withNativePresentationEventInnerSpan(event, 'label_observation_callback', () => {
-                onLabelObservationUpdated?.({
-                  visibleLabelFeatureIds: event.visibleLabelFeatureIds,
-                  layerRenderedFeatureCount: event.layerRenderedFeatureCount,
-                  effectiveRenderedFeatureCount: event.effectiveRenderedFeatureCount,
-                  nativeVisibleLabelsWithoutPromotedPinCount:
-                    event.nativeVisibleLabelsWithoutPromotedPinCount,
-                  nativeVisibleLabelsForDemotedMarkerCount:
-                    event.nativeVisibleLabelsForDemotedMarkerCount,
-                  nativeMultipleVisibleLabelCandidateMarkerCount:
-                    event.nativeMultipleVisibleLabelCandidateMarkerCount,
-                  nativeVisibleLabelsWithoutPromotedPinMarkerKeys:
-                    event.nativeVisibleLabelsWithoutPromotedPinMarkerKeys,
-                  nativeVisibleLabelsForDemotedMarkerKeys:
-                    event.nativeVisibleLabelsForDemotedMarkerKeys,
-                  nativeExpectedPromotedPinCount: event.nativeExpectedPromotedPinCount,
-                  nativeExpectedDemotedDotCount: event.nativeExpectedDemotedDotCount,
-                  nativePromotedPinCollisionObstacleCount:
-                    event.nativePromotedPinCollisionObstacleCount,
-                  nativePromotedPinCollisionObstacleCountMatchesPins:
-                    event.nativePromotedPinCollisionObstacleCountMatchesPins,
-                });
-              });
-              return;
-            }
             if (event.type === 'map_rendered_dot_observation') {
               const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
               if (isPerfScenarioAttributionActive(scenarioConfig)) {
@@ -2459,8 +2367,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
               setIsAttached(true);
               setAttachState('attached');
               setOwnerEpoch(event.ownerEpoch);
-              lastSubmittedLabelObservationConfigKeyRef.current = null;
-              activeLabelObservationTransactionKeyRef.current = null;
               if (!shouldPreserveReadyState) {
                 setHasSyncedInitialFrame(true);
               }
@@ -2472,14 +2378,10 @@ const useSearchMapNativeRenderOwnerStatus = ({
               setAttachState('idle');
               setOwnerEpoch(null);
               setHasSyncedInitialFrame(false);
-              lastSubmittedLabelObservationConfigKeyRef.current = null;
-              activeLabelObservationTransactionKeyRef.current = null;
               return;
             }
             if (event.type === 'render_owner_invalidated') {
               setOwnerEpoch(event.ownerEpoch);
-              lastSubmittedLabelObservationConfigKeyRef.current = null;
-              activeLabelObservationTransactionKeyRef.current = null;
               const shouldPreserveReadyState = deriveOwnerReadyStatePreservation({
                 eventType: 'invalidated',
                 wasAttached: isAttachedStateRef.current,
@@ -2723,233 +2625,9 @@ const useSearchMapNativeRenderOwnerStatus = ({
     onMarkerEnterSettled,
     onToggleSettled,
     onViewportChanged,
-    onLabelObservationUpdated,
     onRecoveredAfterStyleReload,
     pinSourceId,
   ]);
-
-  const applyLabelObservationConfig = React.useCallback(() => {
-    const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-    const authoritySnapshot = resultsPresentationAuthority.getSnapshot();
-    const isResultsExitActive =
-      authoritySnapshot.resultsPresentationTransport.snapshotKind === 'results_exit';
-    const sourceFrameSnapshot = sourceFramePortRef.current?.getSnapshot() ?? null;
-    const isPresentationLive =
-      authoritySnapshot.resultsPresentation.contentVisibility === 'visible' && !isResultsExitActive;
-    const presentationExecutionStage =
-      authoritySnapshot.resultsPresentationTransport.executionStage;
-    const labelSourceCount = sourceFrameSnapshot?.labelSourceStore.idsInOrder.length ?? 0;
-    const sourceFrameVisualCycleKey = sourceFrameSnapshot?.visualCycleKey ?? null;
-    const isPreparingEnterPlacement =
-      !isResultsExitActive &&
-      (presentationExecutionStage === 'enter_pending_mount' ||
-        presentationExecutionStage === 'enter_mounted_hidden') &&
-      authoritySnapshot.resultsPresentationTransport.transactionId != null;
-    // Gate A (observation lane): rendered-label observation runs only when the policy
-    // allows it — i.e. SETTLED (live), NOT during the visible reveal `enter_executing`
-    // (where isPresentationLive is also true). Observation during the reveal window was a
-    // lane leak: queryRenderedFeatures + sticky refresh stealing time from the animation.
-    // It resumes the instant the reveal settles. (preparing-enter placement under cover is
-    // kept as a separate documented exception until Cluster 5.)
-    const lanePolicy = resolvePresentationLanePolicy(presentationExecutionStage);
-    const shouldObserveLiveLabels =
-      labelObservationEnabled &&
-      isPresentationLive &&
-      lanePolicy.allowObservation &&
-      labelSourceCount > 0;
-    const shouldObservePreparingEnterLabels =
-      labelObservationEnabled && isPreparingEnterPlacement && labelSourceCount > 0;
-    const effectiveObservationEnabled =
-      shouldObserveLiveLabels || shouldObservePreparingEnterLabels;
-    const effectiveCommitVisibleLabelHits = isPresentationLive;
-    const presentationTransactionId =
-      authoritySnapshot.resultsPresentationTransport.transactionId ?? null;
-    const presentationExecutionBatch =
-      authoritySnapshot.resultsPresentationTransport.executionBatch;
-    if (effectiveObservationEnabled) {
-      activeLabelObservationTransactionKeyRef.current =
-        presentationTransactionId ?? activeLabelObservationTransactionKeyRef.current;
-    } else {
-      activeLabelObservationTransactionKeyRef.current = null;
-    }
-    const activeObservationTransactionKey = effectiveObservationEnabled
-      ? activeLabelObservationTransactionKeyRef.current
-      : null;
-    const observationRequestKey = effectiveObservationEnabled
-      ? (presentationTransactionId ??
-        activeObservationTransactionKey ??
-        sourceFrameSnapshot?.mapSearchSurfaceResultsSourcesReadyKey ??
-        labelObservationConfig.labelResetRequestKey)
-      : null;
-    const effectiveLabelObservationConfig = {
-      ...labelObservationConfig,
-      labelResetRequestKey: observationRequestKey,
-    };
-    const logLabelObservationConfig = (
-      status: SearchMapNativeLabelObservationApplyStatus,
-      errorMessage: string | null = null
-    ) => {
-      if (!isPerfScenarioAttributionActive(scenarioConfig)) {
-        return;
-      }
-      logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-        event: 'native_label_observation_config_apply_contract',
-        commitVisibleLabelHits: effectiveCommitVisibleLabelHits,
-        errorMessage,
-        instanceId,
-        isAttached,
-        isNativeAvailable,
-        isResultsExitActive,
-        isPreparingEnterPlacement,
-        labelSourceCount,
-        observationEnabled: effectiveObservationEnabled,
-        observationRequestKey,
-        presentationExecutionStage,
-        sourceFrameVisualCycleKey,
-        status,
-      });
-    };
-    if (!isNativeAvailable || !isAttached) {
-      lastSubmittedLabelObservationConfigKeyRef.current = null;
-      activeLabelObservationTransactionKeyRef.current = null;
-      hasDeferredLabelObservationConfigRef.current = false;
-      logLabelObservationConfig('skipped');
-      return;
-    }
-    // Cluster 7 (sticky-label reapply QUEUE). INVARIANT: the sticky/label
-    // ENABLE-and-reapply push (the one that runs queryRenderedFeatures + re-resolves
-    // sticky label sides on native) can ONLY be emitted when the phase already
-    // ALLOWS it. `effectiveObservationEnabled` requires `lanePolicy.allowObservation`
-    // (settled/live) or the documented preparing-enter exception — both are allowed
-    // phases. So a sticky reapply is DEFERRED-BY-CONSTRUCTION: it is impossible to
-    // fire during the visible reveal/dismiss hot window (`enter_executing` /
-    // `exit_requested` / `exit_executing`), where `effectiveObservationEnabled` is
-    // forced false. The observation gate IS the queue: any sticky change discovered
-    // while the phase forbids it is not applied; the next allowed eval (driven by the
-    // presentation-authority subscription below) recomputes the LATEST sticky/lock
-    // state and applies it once — coalesce-to-latest, no backlog replay, so sticky
-    // labels keep their collision-driven side.
-    //
-    // The ONLY push that can reach native during a forbidden phase is the
-    // observation DISABLE (`observationEnabled: false`). That is intentional and must
-    // NOT be queued: it is what QUIETS the hot window (it stops native's refresh
-    // scheduler from re-resolving labels mid-animation). Native's own refresh guard
-    // only suppresses the dismissing/hidden lifecycle, so this JS disable is the
-    // authority that keeps the visible reveal clean. We therefore let the disable
-    // through and only assert/diagnose the enable-side invariant here.
-    if (!lanePolicy.allowStructuralApply && effectiveObservationEnabled) {
-      // Unreachable by construction (see invariant above). If it ever trips, a sticky
-      // reapply leaked into the hot window: hold it and let the next allowed eval
-      // flush the latest, rather than applying during the forbidden phase.
-      hasDeferredLabelObservationConfigRef.current = true;
-      logLabelObservationConfig('deferred');
-      return;
-    }
-    // Draining the queue: if a reapply was held during a forbidden phase, this is the
-    // first allowed eval. Flush the LATEST config unconditionally (bypass dedup) so a
-    // held sticky/lock update can never be coalesced away by a stale dedup key.
-    const isFlushingDeferredReapply = hasDeferredLabelObservationConfigRef.current;
-    hasDeferredLabelObservationConfigRef.current = false;
-    const nextConfigKey = buildLabelObservationConfigKey({
-      activeTransactionKey: activeObservationTransactionKey,
-      commitVisibleLabelHits: effectiveCommitVisibleLabelHits,
-      config: effectiveLabelObservationConfig,
-      instanceId,
-      observationEnabled: effectiveObservationEnabled,
-      ownerEpoch,
-    });
-    if (
-      !isFlushingDeferredReapply &&
-      lastSubmittedLabelObservationConfigKeyRef.current === nextConfigKey
-    ) {
-      return;
-    }
-    lastSubmittedLabelObservationConfigKeyRef.current = nextConfigKey;
-    logLabelObservationConfig('requested');
-    if (
-      effectiveCommitVisibleLabelHits &&
-      scenarioConfig != null &&
-      isPerfScenarioAttributionActive(scenarioConfig) &&
-      presentationTransactionId != null &&
-      presentationExecutionBatch != null &&
-      authoritySnapshot.resultsPresentationTransport.executionStage === 'enter_executing'
-    ) {
-      const markerEnterKey = [
-        presentationTransactionId,
-        presentationExecutionBatch.generationId,
-        presentationExecutionBatch.batchId,
-        authoritySnapshot.resultsPresentationTransport.startToken ?? 'start:null',
-      ].join('|');
-      if (lastCommandedMarkerEnterKeyRef.current !== markerEnterKey) {
-        lastCommandedMarkerEnterKeyRef.current = markerEnterKey;
-        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-          event: 'native_marker_enter_started',
-          requestKey: presentationTransactionId,
-          frameGenerationId: presentationExecutionBatch.generationId,
-          executionBatchId: presentationExecutionBatch.batchId,
-          pinCount: sourceFrameSnapshot?.pinSourceStore.idsInOrder.length ?? 0,
-          dotCount: sourceFrameSnapshot?.dotSourceStore.idsInOrder.length ?? 0,
-          labelCount: sourceFrameSnapshot?.labelSourceStore.idsInOrder.length ?? 0,
-          pinsLabelsDotsFadeTogether:
-            (sourceFrameSnapshot?.pinSourceStore.idsInOrder.length ?? 0) > 0 &&
-            (sourceFrameSnapshot?.dotSourceStore.idsInOrder.length ?? 0) > 0 &&
-            (sourceFrameSnapshot?.labelSourceStore.idsInOrder.length ?? 0) >=
-              (sourceFrameSnapshot?.pinSourceStore.idsInOrder.length ?? 0),
-          startedAtMs:
-            authoritySnapshot.resultsPresentationTransport.startToken ??
-            globalThis.performance?.now?.() ??
-            Date.now(),
-        });
-      }
-    }
-    void searchMapRenderController
-      .configureLabelObservation({
-        instanceId,
-        observationEnabled: effectiveObservationEnabled,
-        commitVisibleLabelHits: effectiveCommitVisibleLabelHits,
-        ...effectiveLabelObservationConfig,
-      })
-      .then(() => {
-        logLabelObservationConfig('applied');
-      })
-      .catch((error: unknown) => {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        if (lastSubmittedLabelObservationConfigKeyRef.current === nextConfigKey) {
-          lastSubmittedLabelObservationConfigKeyRef.current = null;
-        }
-        logLabelObservationConfig('failed', errorMessage);
-      });
-  }, [
-    instanceId,
-    isAttached,
-    isNativeAvailable,
-    labelObservationConfig,
-    labelObservationEnabled,
-    ownerEpoch,
-    resultsPresentationAuthority,
-  ]);
-
-  React.useEffect(() => {
-    applyLabelObservationConfig();
-  }, [applyLabelObservationConfig]);
-
-  React.useEffect(() => {
-    const unsubscribePresentation = resultsPresentationAuthority.subscribe(
-      applyLabelObservationConfig,
-      ['resultsPresentation', 'resultsPresentationTransport'] as const,
-      'search_map_native_render_owner_label_observation_presentation'
-    );
-    const unsubscribeSourceFrame =
-      sourceFramePort?.subscribe(
-        applyLabelObservationConfig,
-        ['labelSourceStore'] as const,
-        'search_map_native_render_owner_label_observation_sources'
-      ) ?? (() => undefined);
-    return () => {
-      unsubscribePresentation();
-      unsubscribeSourceFrame();
-    };
-  }, [applyLabelObservationConfig, resultsPresentationAuthority, sourceFramePort]);
 
   const isNativeOwnerReady = isAttached && ownerEpoch != null && hasSyncedInitialFrame;
 

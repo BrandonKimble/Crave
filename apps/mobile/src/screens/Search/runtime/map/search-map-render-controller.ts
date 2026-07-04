@@ -46,13 +46,6 @@ type SearchMapRenderControllerNativeModule = {
     reason?: string;
     reset?: boolean;
   }) => Promise<SearchMapNativeApplyAttributionSummary>;
-  configureLabelObservation: (
-    payload: {
-      instanceId: string;
-      observationEnabled: boolean;
-      commitVisibleLabelHits: boolean;
-    } & SearchMapLabelObservationConfig
-  ) => Promise<void>;
   configureNativeLayerGroups: (payload: {
     instanceId: string;
     labelLayerIds: string[];
@@ -125,12 +118,6 @@ type SearchMapRenderControllerAttachPayload = {
   labelCollisionSourceId: string;
   labelLayerIds: string[];
   labelCollisionLayerIds: string[];
-};
-
-type SearchMapLabelObservationConfig = {
-  refreshMsIdle: number;
-  refreshMsMoving: number;
-  labelResetRequestKey: string | null;
 };
 
 export type SearchMapRenderControllerEvent =
@@ -296,22 +283,6 @@ export type SearchMapRenderControllerEvent =
       bearing: number;
       pitch: number;
       isMoving: boolean;
-    }
-  | {
-      type: 'label_observation_updated';
-      instanceId: string;
-      visibleLabelFeatureIds: string[];
-      layerRenderedFeatureCount: number;
-      effectiveRenderedFeatureCount: number;
-      nativeVisibleLabelsWithoutPromotedPinCount?: number;
-      nativeVisibleLabelsForDemotedMarkerCount?: number;
-      nativeMultipleVisibleLabelCandidateMarkerCount?: number;
-      nativeVisibleLabelsWithoutPromotedPinMarkerKeys?: string[];
-      nativeVisibleLabelsForDemotedMarkerKeys?: string[];
-      nativeExpectedPromotedPinCount?: number;
-      nativeExpectedDemotedDotCount?: number;
-      nativePromotedPinCollisionObstacleCount?: number;
-      nativePromotedPinCollisionObstacleCountMatchesPins?: boolean;
     }
   | {
       type: 'map_rendered_dot_observation';
@@ -1039,33 +1010,6 @@ export const searchMapRenderController = {
       .catch((error: unknown) => {
         onError(error instanceof Error ? error : new Error(String(error)));
       });
-  },
-
-  async configureLabelObservation(
-    payload: {
-      instanceId: string;
-      observationEnabled: boolean;
-      commitVisibleLabelHits: boolean;
-    } & SearchMapLabelObservationConfig
-  ): Promise<void> {
-    // The GL label observation was removed (labels render as ViewAnnotations, placed synchronously — no
-    // rendered-GL-label placement to observe). The native RPC no longer exists; no-op if it is absent so a
-    // lingering caller can't throw. The JS caller (applyLabelObservationConfig) is removed separately.
-    if (typeof nativeModule?.configureLabelObservation !== 'function') {
-      return;
-    }
-    try {
-      await nativeModule.configureLabelObservation(payload);
-    } catch (error) {
-      const recoveredError = await recoverNativeRenderFrameSubmissionError(
-        payload.instanceId,
-        error
-      );
-      if (recoveredError.message !== 'stale owner epoch') {
-        throw recoveredError;
-      }
-      await nativeModule.configureLabelObservation(payload);
-    }
   },
 
   async resetNativeApplyAttribution(
