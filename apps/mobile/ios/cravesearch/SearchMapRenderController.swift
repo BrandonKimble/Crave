@@ -570,23 +570,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     var targetOpacity: Double
   }
 
-  private struct LabelTapHitboxConfig {
-    let textSize: CGFloat
-    let radialXEm: CGFloat
-    let radialYEm: CGFloat
-    let radialTopEm: CGFloat
-    let upShiftEm: CGFloat
-    let charWidthFactor: CGFloat
-    let lineHeightFactor: CGFloat
-    let paddingPx: CGFloat
-    let minWidthPx: CGFloat
-    let maxWidthPx: CGFloat
-  }
-
   private struct NativePressTargetConfig {
     var enabled: Bool = false
-    var labelLayerIds: [String] = []
-    var labelTapHitbox: LabelTapHitboxConfig? = nil
     var dotLayerIds: [String] = []
     var dotTapIntentRadiusPx: CGFloat = 0
   }
@@ -3262,8 +3247,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
       state.nativePressTargetConfig = NativePressTargetConfig(
         enabled: enabled,
-        labelLayerIds: Self.parseStringArray(payload["labelLayerIds"]),
-        labelTapHitbox: Self.parseLabelTapHitboxConfig(payload["labelTapHitbox"]),
         dotLayerIds: Self.parseStringArray(payload["dotLayerIds"]),
         dotTapIntentRadiusPx: CGFloat(
           (payload["dotTapIntentRadiusPx"] as? NSNumber)?.doubleValue ?? 0
@@ -3319,9 +3302,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
         return
       }
-      let labelLayerIds = Self.parseStringArray(payload["labelLayerIds"])
-      let labelQueryBoxValues = Self.parseNumberArray(payload["labelQueryBox"])
-      let labelTapHitbox = Self.parseLabelTapHitboxConfig(payload["labelTapHitbox"])
       let dotLayerIds = Self.parseStringArray(payload["dotLayerIds"])
       let dotQueryBoxValues = Self.parseNumberArray(payload["dotQueryBox"])
       let tapCoordinatePayload = payload["tapCoordinate"] as? [String: Any]
@@ -3340,11 +3320,8 @@ final class SearchMapRenderController: RCTEventEmitter {
             state: state,
             handle: handle,
             point: CGPoint(x: x, y: y),
-            labelLayerIds: labelLayerIds,
-            labelTapHitbox: labelTapHitbox,
             dotLayerIds: dotLayerIds,
             dotQueryRect: Self.rect(from: dotQueryBoxValues, fallback: queryRect),
-            labelQueryRect: Self.rect(from: labelQueryBoxValues, fallback: queryRect),
             tapCoordinate: tapCoordinate
           ) { result in
             switch result {
@@ -3374,15 +3351,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     state: InstanceState,
     handle: ResolvedMapHandle,
     point: CGPoint,
-    labelLayerIds: [String],
-    labelTapHitbox: LabelTapHitboxConfig?,
     dotLayerIds: [String],
     dotQueryRect: CGRect,
-    labelQueryRect: CGRect,
     tapCoordinate: (lng: Double, lat: Double)?,
     completion: @escaping (Result<[String: Any]?, Error>) -> Void
   ) {
-    let labelSourceIds: Set<String> = [state.labelRenderSourceId]
     let queryDotTarget = {
       guard !dotLayerIds.isEmpty, dotQueryRect.width > 0, dotQueryRect.height > 0 else {
         completion(.success(nil))
@@ -3405,35 +3378,6 @@ final class SearchMapRenderController: RCTEventEmitter {
               completion(.success(dotTarget))
             } else {
               completion(.success(nil))
-            }
-          }
-        }
-      }
-    }
-    let queryLabelTarget = {
-      guard !labelLayerIds.isEmpty else {
-        queryDotTarget()
-        return
-      }
-      handle.mapView.mapboxMap.queryRenderedFeatures(
-        with: labelQueryRect,
-        options: RenderedQueryOptions(layerIds: labelLayerIds, filter: nil)
-      ) { labelResult in
-        DispatchQueue.main.async {
-          switch labelResult {
-          case .failure(let error):
-            completion(.failure(error))
-          case .success(let labelFeatures):
-            if let labelTarget = Self.buildRenderedLabelPressTarget(
-              from: labelFeatures,
-              requiredSourceIds: labelSourceIds,
-              tapPoint: point,
-              mapboxMap: handle.mapView.mapboxMap,
-              hitbox: labelTapHitbox
-            ) {
-              completion(.success(labelTarget))
-            } else {
-              queryDotTarget()
             }
           }
         }
@@ -9049,64 +8993,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
   }
 
-  private static func buildRenderedLabelPressTarget(
-    from features: [QueriedRenderedFeature],
-    requiredSourceIds: Set<String>,
-    tapPoint: CGPoint,
-    mapboxMap: MapboxMap,
-    hitbox: LabelTapHitboxConfig?
-  ) -> [String: Any]? {
-    for feature in features {
-      guard requiredSourceIds.contains(feature.queriedFeature.source),
-            let parsed = Self.parseRenderedLabelPressFeature(feature)
-      else {
-        continue
-      }
-      guard Self.isRenderedLabelPressFeatureIntentional(
-        feature,
-        tapPoint: tapPoint,
-        mapboxMap: mapboxMap,
-        hitbox: hitbox
-      ) else {
-        continue
-      }
-      return parsed
-    }
-    return nil
-  }
-
-  private static func parseLabelTapHitboxConfig(_ payload: Any?) -> LabelTapHitboxConfig? {
-    guard let payload = payload as? [String: Any] else {
-      return nil
-    }
-    guard
-      let textSize = (payload["textSize"] as? NSNumber)?.doubleValue,
-      let radialXEm = (payload["radialXEm"] as? NSNumber)?.doubleValue,
-      let radialYEm = (payload["radialYEm"] as? NSNumber)?.doubleValue,
-      let radialTopEm = (payload["radialTopEm"] as? NSNumber)?.doubleValue,
-      let upShiftEm = (payload["upShiftEm"] as? NSNumber)?.doubleValue,
-      let charWidthFactor = (payload["charWidthFactor"] as? NSNumber)?.doubleValue,
-      let lineHeightFactor = (payload["lineHeightFactor"] as? NSNumber)?.doubleValue,
-      let paddingPx = (payload["paddingPx"] as? NSNumber)?.doubleValue,
-      let minWidthPx = (payload["minWidthPx"] as? NSNumber)?.doubleValue,
-      let maxWidthPx = (payload["maxWidthPx"] as? NSNumber)?.doubleValue
-    else {
-      return nil
-    }
-    return LabelTapHitboxConfig(
-      textSize: CGFloat(textSize),
-      radialXEm: CGFloat(radialXEm),
-      radialYEm: CGFloat(radialYEm),
-      radialTopEm: CGFloat(radialTopEm),
-      upShiftEm: CGFloat(upShiftEm),
-      charWidthFactor: CGFloat(charWidthFactor),
-      lineHeightFactor: CGFloat(lineHeightFactor),
-      paddingPx: CGFloat(paddingPx),
-      minWidthPx: CGFloat(minWidthPx),
-      maxWidthPx: CGFloat(maxWidthPx)
-    )
-  }
-
   private static func parseStringArray(_ payload: Any?) -> [String] {
     if let values = payload as? [String] {
       return values
@@ -9135,158 +9021,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       width: abs(x2 - x1),
       height: abs(y2 - y1)
     )
-  }
-
-  private static func isRenderedLabelPressFeatureIntentional(
-    _ feature: QueriedRenderedFeature,
-    tapPoint: CGPoint,
-    mapboxMap: MapboxMap,
-    hitbox: LabelTapHitboxConfig?
-  ) -> Bool {
-    guard let hitbox else {
-      return false
-    }
-    let rawFeature = feature.queriedFeature.feature
-    guard case let .point(pointGeometry) = rawFeature.geometry else {
-      return false
-    }
-    let properties = rawFeature.properties?.turfRawValue as? [String: Any]
-    let featureId = rawFeature.identifier.flatMap(Self.featureIdentifierString)
-    let parsedFeatureId = featureId.flatMap(Self.parseRenderedLabelCandidateFeatureId)
-    let candidate =
-      Self.labelCandidateString(from: properties?["labelCandidate"]) ??
-      parsedFeatureId?.candidate
-    guard let candidate else {
-      return false
-    }
-    let labelText = properties?["restaurantName"] as? String
-    guard let labelText, !labelText.isEmpty else {
-      return false
-    }
-
-    let lines = labelText.split(separator: "\n", omittingEmptySubsequences: false)
-    let longestLineLength = lines.reduce(0) { max($0, $1.count) }
-    let estimatedWidth = min(
-      max(CGFloat(longestLineLength) * hitbox.textSize * hitbox.charWidthFactor + 10, hitbox.minWidthPx),
-      hitbox.maxWidthPx
-    )
-    let estimatedHeight =
-      max(CGFloat(lines.count), 1) * hitbox.textSize * hitbox.lineHeightFactor + 4
-
-    var offsetXPx: CGFloat = 0
-    var offsetYPx: CGFloat = 0
-    switch candidate {
-    case "bottom":
-      offsetYPx = (hitbox.radialYEm - hitbox.upShiftEm) * hitbox.textSize
-    case "right":
-      offsetXPx = hitbox.radialXEm * hitbox.textSize
-      offsetYPx = -hitbox.upShiftEm * hitbox.textSize
-    case "top":
-      offsetYPx = -(hitbox.radialTopEm + hitbox.upShiftEm) * hitbox.textSize
-    case "left":
-      offsetXPx = -hitbox.radialXEm * hitbox.textSize
-      offsetYPx = -hitbox.upShiftEm * hitbox.textSize
-    default:
-      return false
-    }
-
-    let anchorCoordinate = CLLocationCoordinate2D(
-      latitude: pointGeometry.coordinates.latitude,
-      longitude: pointGeometry.coordinates.longitude
-    )
-    let anchorPoint = mapboxMap.point(for: anchorCoordinate)
-    let anchorX = anchorPoint.x + offsetXPx
-    let anchorY = anchorPoint.y + offsetYPx
-
-    var left = anchorX - estimatedWidth / 2
-    var right = anchorX + estimatedWidth / 2
-    var top = anchorY - estimatedHeight / 2
-    var bottom = anchorY + estimatedHeight / 2
-
-    switch candidate {
-    case "bottom":
-      top = anchorY
-      bottom = anchorY + estimatedHeight
-    case "top":
-      top = anchorY - estimatedHeight
-      bottom = anchorY
-    case "left":
-      left = anchorX - estimatedWidth
-      right = anchorX
-    case "right":
-      left = anchorX
-      right = anchorX + estimatedWidth
-    default:
-      break
-    }
-
-    return tapPoint.x >= left - hitbox.paddingPx &&
-      tapPoint.x <= right + hitbox.paddingPx &&
-      tapPoint.y >= top - hitbox.paddingPx &&
-      tapPoint.y <= bottom + hitbox.paddingPx
-  }
-
-  private static func parseRenderedLabelPressFeature(
-    _ feature: QueriedRenderedFeature
-  ) -> [String: Any]? {
-    let rawFeature = feature.queriedFeature.feature
-    let properties = rawFeature.properties?.turfRawValue as? [String: Any]
-    guard let restaurantId = properties?["restaurantId"] as? String, !restaurantId.isEmpty else {
-      return nil
-    }
-    var coordinatePayload: [String: Any]? = nil
-    if let geometry = rawFeature.geometry,
-       case let .point(point) = geometry {
-      coordinatePayload = [
-        "lng": point.coordinates.longitude,
-        "lat": point.coordinates.latitude,
-      ]
-    }
-    return [
-      "restaurantId": restaurantId,
-      "coordinate": coordinatePayload ?? NSNull(),
-      "targetKind": "label",
-    ]
-  }
-
-  private static func parseRenderedLabelCandidateFeatureId(
-    _ featureId: String
-  ) -> (
-    markerKey: String,
-    candidate: String
-  )? {
-    let delimiter = "::label::"
-    guard let range = featureId.range(of: delimiter, options: .backwards) else {
-      return nil
-    }
-    let markerKey = String(featureId[..<range.lowerBound])
-    let candidate = String(featureId[range.upperBound...])
-    guard !markerKey.isEmpty, let normalizedCandidate = labelCandidateString(from: candidate) else {
-      return nil
-    }
-    return (
-      markerKey: markerKey,
-      candidate: normalizedCandidate
-    )
-  }
-
-  private static func buildRenderedLabelCandidateFeatureId(
-    markerKey: String,
-    candidate: String
-  ) -> String {
-    "\(markerKey)::label::\(candidate)"
-  }
-
-  private static func labelCandidateString(from value: Any?) -> String? {
-    guard let candidate = value as? String else {
-      return nil
-    }
-    switch candidate {
-    case "bottom", "right", "top", "left":
-      return candidate
-    default:
-      return nil
-    }
   }
 
   private func managedSourceIds(for state: InstanceState) -> [String] {
@@ -9953,11 +9687,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       state: pressContext.state,
       handle: handle,
       point: point,
-      labelLayerIds: pressContext.config.labelLayerIds,
-      labelTapHitbox: pressContext.config.labelTapHitbox,
       dotLayerIds: pressContext.config.dotLayerIds,
       dotQueryRect: dotQueryRect,
-      labelQueryRect: CGRect(x: point.x - 0.5, y: point.y - 0.5, width: 1, height: 1),
       tapCoordinate: (lng: coordinate.longitude, lat: coordinate.latitude)
     ) { [weak self, weak handle] result in
       guard let self, let handle else { return }

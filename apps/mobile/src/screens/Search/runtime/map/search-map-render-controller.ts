@@ -55,19 +55,6 @@ type SearchMapRenderControllerNativeModule = {
   configureNativePressTargeting: (payload: {
     instanceId: string;
     enabled: boolean;
-    labelLayerIds?: string[];
-    labelTapHitbox?: {
-      textSize: number;
-      radialXEm: number;
-      radialYEm: number;
-      radialTopEm: number;
-      upShiftEm: number;
-      charWidthFactor: number;
-      lineHeightFactor: number;
-      paddingPx: number;
-      minWidthPx: number;
-      maxWidthPx: number;
-    };
     dotLayerIds?: string[];
     dotTapIntentRadiusPx?: number;
   }) => Promise<void>;
@@ -76,20 +63,6 @@ type SearchMapRenderControllerNativeModule = {
     point: {
       x: number;
       y: number;
-    };
-    labelLayerIds?: string[];
-    labelQueryBox?: [number, number, number, number] | null;
-    labelTapHitbox?: {
-      textSize: number;
-      radialXEm: number;
-      radialYEm: number;
-      radialTopEm: number;
-      upShiftEm: number;
-      charWidthFactor: number;
-      lineHeightFactor: number;
-      paddingPx: number;
-      minWidthPx: number;
-      maxWidthPx: number;
     };
     dotLayerIds?: string[];
     dotQueryBox?: [number, number, number, number] | null;
@@ -1042,20 +1015,6 @@ export const searchMapRenderController = {
       x: number;
       y: number;
     };
-    labelLayerIds?: string[];
-    labelQueryBox?: [number, number, number, number] | null;
-    labelTapHitbox?: {
-      textSize: number;
-      radialXEm: number;
-      radialYEm: number;
-      radialTopEm: number;
-      upShiftEm: number;
-      charWidthFactor: number;
-      lineHeightFactor: number;
-      paddingPx: number;
-      minWidthPx: number;
-      maxWidthPx: number;
-    };
     dotLayerIds?: string[];
     dotQueryBox?: [number, number, number, number] | null;
     tapCoordinate?: {
@@ -1083,19 +1042,6 @@ export const searchMapRenderController = {
   async configureNativePressTargeting(payload: {
     instanceId: string;
     enabled: boolean;
-    labelLayerIds?: string[];
-    labelTapHitbox?: {
-      textSize: number;
-      radialXEm: number;
-      radialYEm: number;
-      radialTopEm: number;
-      upShiftEm: number;
-      charWidthFactor: number;
-      lineHeightFactor: number;
-      paddingPx: number;
-      minWidthPx: number;
-      maxWidthPx: number;
-    };
     dotLayerIds?: string[];
     dotTapIntentRadiusPx?: number;
   }): Promise<void> {

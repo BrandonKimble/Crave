@@ -1025,11 +1025,6 @@ const LABEL_MIN_HORIZONTAL_GAP_PX = Math.ceil(PIN_MARKER_RENDER_SIZE / 2) + 6;
 // Dot glyphs render notably smaller than `DOT_TEXT_SIZE` due to font metrics/line-height.
 // Keep the interaction target tight so it feels intentionally dot-sized (about ~2x visible dot).
 const DOT_TAP_INTENT_RADIUS_PX = Math.max(7, DOT_TEXT_SIZE * 0.42);
-const LABEL_TAP_CHAR_WIDTH_FACTOR = 0.56;
-const LABEL_TAP_LINE_HEIGHT_FACTOR = 1.18;
-const LABEL_TAP_PADDING_PX = 4;
-const LABEL_TAP_MIN_WIDTH_PX = 34;
-const LABEL_TAP_MAX_WIDTH_PX = 220;
 
 export const buildLabelCandidateFeatureId = (markerKey: string, candidate: LabelCandidate) =>
   `${markerKey}::label::${candidate}`;
@@ -1296,8 +1291,6 @@ const useSearchMapInteractionRuntime = ({
   onMarkerPress,
   onBlankMapPress,
   visibleDotLayerId,
-  labelLayerIds,
-  labelTapHitbox,
   dotTapIntentRadiusPx,
   isNativePressTargetingReady,
 }: {
@@ -1305,19 +1298,6 @@ const useSearchMapInteractionRuntime = ({
   onMarkerPress?: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
   onBlankMapPress: () => void;
   visibleDotLayerId: string;
-  labelLayerIds: string[];
-  labelTapHitbox: {
-    textSize: number;
-    radialXEm: number;
-    radialYEm: number;
-    radialTopEm: number;
-    upShiftEm: number;
-    charWidthFactor: number;
-    lineHeightFactor: number;
-    paddingPx: number;
-    minWidthPx: number;
-    maxWidthPx: number;
-  };
   dotTapIntentRadiusPx: number;
   isNativePressTargetingReady: boolean;
 }): SearchMapInteractionRuntime => {
@@ -1340,12 +1320,10 @@ const useSearchMapInteractionRuntime = ({
       searchMapRenderController.queryRenderedPressTarget({
         instanceId: nativeRenderOwnerInstanceId,
         point,
-        labelLayerIds,
-        labelTapHitbox,
         ...(dotQueryBox ? { dotLayerIds: [visibleDotLayerId], dotQueryBox } : {}),
         ...(tapCoordinate ? { tapCoordinate } : {}),
       }),
-    [visibleDotLayerId, labelLayerIds, labelTapHitbox, nativeRenderOwnerInstanceId]
+    [visibleDotLayerId, nativeRenderOwnerInstanceId]
   );
 
   const pinPressResolutionSeqRef = React.useRef(0);
@@ -1385,8 +1363,6 @@ const useSearchMapInteractionRuntime = ({
       .configureNativePressTargeting({
         instanceId: nativeRenderOwnerInstanceId,
         enabled: true,
-        labelLayerIds,
-        labelTapHitbox,
         dotLayerIds: [visibleDotLayerId],
         dotTapIntentRadiusPx,
       })
@@ -1410,8 +1386,6 @@ const useSearchMapInteractionRuntime = ({
     visibleDotLayerId,
     dotTapIntentRadiusPx,
     isNativePressTargetingReady,
-    labelLayerIds,
-    labelTapHitbox,
     nativePressOwnerEnabled,
     nativeRenderOwnerInstanceId,
   ]);
@@ -1472,13 +1446,7 @@ const useSearchMapInteractionRuntime = ({
           // Native exact hit testing is authoritative for map press resolution.
         });
     },
-    [
-      dotTapIntentRadiusPx,
-      commitRestaurantPressTarget,
-      labelLayerIds,
-      labelTapHitbox,
-      nativeRenderOwnerInstanceId,
-    ]
+    [dotTapIntentRadiusPx, commitRestaurantPressTarget, nativeRenderOwnerInstanceId]
   );
 
   if (nativePressTargetingErrorMessage != null) {
@@ -2237,28 +2205,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
     onNativeMountedSourceCountsChanged?.(mountedSourceCounts);
   }, [mountedSourceCounts, onNativeMountedSourceCountsChanged, sourceFramePort]);
 
-  const labelTapHitbox = React.useMemo(
-    () => ({
-      textSize: labelTextSize,
-      radialXEm: labelRadialXEm,
-      radialYEm: labelRadialYEm,
-      radialTopEm: labelRadialTopEm,
-      upShiftEm: labelUpShiftEm,
-      charWidthFactor: LABEL_TAP_CHAR_WIDTH_FACTOR,
-      lineHeightFactor: LABEL_TAP_LINE_HEIGHT_FACTOR,
-      paddingPx: LABEL_TAP_PADDING_PX,
-      minWidthPx: LABEL_TAP_MIN_WIDTH_PX,
-      maxWidthPx: LABEL_TAP_MAX_WIDTH_PX,
-    }),
-    [labelRadialTopEm, labelRadialXEm, labelRadialYEm, labelTextSize, labelUpShiftEm]
-  );
   const { handleMapPress, nativePressOwnerEnabled } = useSearchMapInteractionRuntime({
     nativeRenderOwnerInstanceId,
     onMarkerPress,
     onBlankMapPress: onPress,
     visibleDotLayerId: DOT_LAYER_ID,
-    labelLayerIds: labelPlacementQueryLayerIds,
-    labelTapHitbox,
     dotTapIntentRadiusPx: DOT_TAP_INTENT_RADIUS_PX,
     isNativePressTargetingReady: isNativeOwnedMarkerRuntimeReady,
   });
