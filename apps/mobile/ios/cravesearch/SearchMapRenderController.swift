@@ -6799,20 +6799,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
   }
 
-  private static func visibleDismissLabelFeatureIds(
-    _ labelFamilyState: DerivedFamilyState
-  ) -> [String] {
-    let lastVisibleFeatureIds = labelFamilyState.labelObservation.lastVisibleLabelFeatureIds
-    if !lastVisibleFeatureIds.isEmpty {
-      return lastVisibleFeatureIds.filter { labelFamilyState.collection.featureById[$0] != nil }
-    }
-    let settledVisibleFeatureIds = labelFamilyState.settledVisibleFeatureIds
-    guard !settledVisibleFeatureIds.isEmpty else {
-      return []
-    }
-    return labelFamilyState.collection.idsInOrder.filter { settledVisibleFeatureIds.contains($0) }
-  }
-
   private func setLabelCollisionObstacleLayersVisible(
     _ isVisible: Bool,
     for state: InstanceState,
@@ -8562,12 +8548,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
-  // Sentinel heads tag each reparse-immune LEA literal so multiple literals can coexist in ONE paint
-  // expression and be swapped independently. `text-opacity` now holds TWO: `__lea_lod__` (the
-  // promoted/LOD crossfade set) and `__lea_revealed__` (the one-label-per-restaurant winner set).
-  // The sentinel is element [0] of the literal array; the membership keys follow it.
+  // The reparse-immune LEA literal is tagged with a sentinel head (element [0]) so it survives a tile
+  // reparse in the paint expression; the membership keys follow it. `__lea_lod__` carries the promoted/LOD
+  // crossfade set on the dot icon-opacity + label text-opacity.
   static let leaLodSentinel = "__lea_lod__"
-  static let leaRevealedSentinel = "__lea_revealed__"
 
   @discardableResult
   private static func swapLeaLiteral(
@@ -8622,27 +8606,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       return c
     }
     return (mapped, found)
-  }
-
-  // Read the CURRENT keys of the sentinel-headed literal (minus the sentinel head). Used to make a commit
-  // ADDITIVE (union) so the under-cover reveal-commit never SHRINKS a set the observation selector already
-  // authored — the L1 label-flash stomp (commit's stale small set wiped the selector's live set).
-  private static func readSentinelLiteralKeys(
-    layerId: String, property: String, sentinel: String, mapboxMap: MapboxMap
-  ) -> [String] {
-    firstSentinelLiteralKeys(mapboxMap.layerPropertyValue(for: layerId, property: property), sentinel: sentinel)
-  }
-  private static func firstSentinelLiteralKeys(_ node: Any, sentinel: String) -> [String] {
-    guard let arr = node as? [Any] else { return [] }
-    if arr.count == 2, (arr[0] as? String) == "literal",
-       let inner = arr[1] as? [Any], (inner.first as? String) == sentinel {
-      return inner.dropFirst().compactMap { $0 as? String }
-    }
-    for child in arr {
-      let found = firstSentinelLiteralKeys(child, sentinel: sentinel)
-      if !found.isEmpty { return found }
-    }
-    return []
   }
 
   // LAYER-LEVEL O(1) PRESENTATION (map-LOD-v6 rework): the presentation opacity is a UNIFORM global fade, so
