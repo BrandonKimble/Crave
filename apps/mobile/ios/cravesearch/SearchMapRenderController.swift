@@ -469,7 +469,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     var transientFeatureStateById: [String: [String: Any]]
     var pinRuntime: PinFamilyRuntimeState
     var dotRuntime: DotFamilyRuntimeState
-    var labelObservation: LabelFamilyObservationState
 
     var lastDesiredPinSnapshot: DesiredPinSnapshotState {
       get { pinRuntime.lastDesiredSnapshot }
@@ -486,11 +485,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       set { pinRuntime.markerRenderStateByMarkerKey = newValue }
     }
 
-    var settledVisibleFeatureIds: Set<String> {
-      get { labelObservation.settledVisibleFeatureIds }
-      set { labelObservation.settledVisibleFeatureIds = newValue }
-    }
-
   }
 
   private struct PinFamilyRuntimeState {
@@ -500,28 +494,6 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private struct DotFamilyRuntimeState {
     var lastDesiredCollection: ParsedFeatureCollection
-  }
-
-  private struct LabelFamilyObservationState {
-    var settledVisibleFeatureIds: Set<String> = []
-    var observationEnabled: Bool = false
-    var commitVisibleLabelHits: Bool = false
-    var refreshMsIdle: Double = 0
-    var refreshMsMoving: Double = 0
-    var configuredResetRequestKey: String? = nil
-    var hasCommittedObservationForConfiguredRequest: Bool = false
-    var lastVisibleLabelFeatureIds: [String] = []
-    // STEP-5 (L3): the LIVE per-pass QRF result (sorted), tracked separately from the committed/settled
-    // set so the moving back-off ladder reads an honest "is the world changing" signal.
-    var lastLiveVisibleLabelFeatureIds: [String] = []
-    var lastLayerRenderedFeatureCount: Int = 0
-    var lastEffectiveRenderedFeatureCount: Int = 0
-    var lastResetRequestKey: String? = nil
-    var settledVisibleMissingStreakByFeatureId: [String: Int] = [:]
-    var isRefreshInFlight: Bool = false
-    var queuedRefreshDelayMs: Double? = nil
-    var movingNoopRefreshStreak: Int = 0
-    var movingAdaptiveRefreshMs: Double = 0
   }
 
   private struct DesiredPinSnapshotState {
@@ -697,13 +669,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     var lastEnterStartToken: Double?
     var lastEnterStartedRequestKey: String?
     var lastEnterSettledRequestKey: String?
-    // REVEAL ROBUSTNESS (2026-06-22): when the label-placement watchdog exhausts its re-attempts
-    // (placement observation never committed within ~1.15s even though the labels are laid out — a
-    // preroll QRF-timing race, NOT genuinely unplaced labels), it sets this to the reveal's request
-    // key to force the placement gate open for that one reveal so it can never hang. Cleared the
-    // moment a reveal starts or a dismiss/reset supersedes it. Keyed by request so it can never leak
-    // into the next reveal. See isActiveFrameLabelPlacementReady + reattemptLabelPlacementIfRevealStalled.
-    var revealPlacementGateForcedRequestKey: String?
     var lastDismissRequestKey: String?
     var currentPresentationRenderPhase: String
     var visualSourceLifecycleState: VisualSourceLifecycleState
@@ -5868,8 +5833,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.lastEnterStartedRequestKey != revealRequestKey,
       state.blockedEnterStartRequestKey == nil,
       Self.isActiveFrameSourceReady(state: state),
-      !hasPendingCommitFence(capturePendingVisualSourceCommitFence(state: state)),
-      Self.isActiveFrameLabelPlacementReady(state: state)
+      !hasPendingCommitFence(capturePendingVisualSourceCommitFence(state: state))
     else {
       return
     }
@@ -5928,19 +5892,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard Self.isActiveFrameSourceReady(state: state) else {
       return
     }
-    // The label-placement gate is INTENTIONAL: on reveal the labels must be placed/locked
-    // BEFORE pins/dots fade in. It is never bypassed — the reveal only starts once a real
-    // observation has committed. The deadlock guard makes placement reliably COMMIT (it
-    // re-attempts placement), it does not relax this gate.
-    guard Self.isActiveFrameLabelPlacementReady(state: state) else {
-      return
-    }
     state.blockedEnterStartRequestKey = nil
     state.blockedEnterStartCommitFenceStartedAtMs = nil
     state.blockedEnterStartCommitFenceBySourceId.removeAll()
-    // The forced-gate flag (if the watchdog set it) has done its job now that the reveal is starting;
-    // clear it so the gate reverts to the real placement check for any subsequent re-evaluation.
-    state.revealPlacementGateForcedRequestKey = nil
     state.lastEnterStartToken = revealStartToken
     state.enterLane.entering = mountedHiddenExecutionBatch
     state.currentPresentationRenderPhase = "entering"
@@ -6104,14 +6058,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
       return
     }
-    guard Self.isActiveFrameLabelPlacementReady(state: state) else {
-      emitVisualDiag(
-        instanceId: instanceId,
-        message:
-          "enter_armed_blocked_label_placement phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil") \(Self.labelPlacementReadinessSummary(state: state))"
-      )
-      return
-    }
     state.enterLane.armed = executionBatch
     instances[instanceId] = state
     emitVisualDiag(
@@ -6210,14 +6156,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         instanceId: instanceId,
         message:
           "enter_mount_blocked_source_not_ready phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil") sourceReadyFrame=\(state.sourceReadyFrameGenerationId ?? "nil") \(Self.phaseSummary(for: state))"
-      )
-      return
-    }
-    guard Self.isActiveFrameLabelPlacementReady(state: state) else {
-      emitVisualDiag(
-        instanceId: instanceId,
-        message:
-          "enter_mount_blocked_label_placement phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil") \(Self.labelPlacementReadinessSummary(state: state))"
       )
       return
     }
@@ -6753,34 +6691,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     return state.sourceReadyFrameGenerationId == activeFrameGenerationId &&
       state.sourceReadyExecutionBatchId == activeExecutionBatchId
-  }
-
-  private static func isActiveFrameLabelPlacementReady(state: InstanceState) -> Bool {
-    // Labels render as Mapbox ViewAnnotations (SDK-positioned, synchronous placement) — there is no async
-    // GL label placement to observe/wait for, so the reveal is never gated on label placement. The old
-    // observation-driven gate (query rendered GL labels → require a committed observation) is obsolete;
-    // the reveal opacity fade starts as soon as the sources are ready. Always ready.
-    return true
-  }
-
-  private static func labelPlacementReadinessSummary(state: InstanceState) -> String {
-    let labelFamilyState = derivedFamilyState(sourceId: state.labelSourceId, state: state)
-    let observation = labelFamilyState.labelObservation
-    let labelCount = max(
-      state.lastLabelCount,
-      labelFamilyState.desiredCollection.idsInOrder.count,
-      labelFamilyState.collection.idsInOrder.count
-    )
-    return [
-      "labels=\(labelCount)",
-      "observationEnabled=\(observation.observationEnabled)",
-      "hasCommittedObservation=\(observation.hasCommittedObservationForConfiguredRequest)",
-      "configuredResetRequest=\(observation.configuredResetRequestKey ?? "nil")",
-      "visibleLabels=\(observation.lastVisibleLabelFeatureIds.count)",
-      "settledVisibleLabels=\(labelFamilyState.settledVisibleFeatureIds.count)",
-      "layerRendered=\(observation.lastLayerRenderedFeatureCount)",
-      "effectiveRendered=\(observation.lastEffectiveRenderedFeatureCount)",
-    ].joined(separator: " ")
   }
 
   // Map-LOD v5: produce the per-marker RENDER STATE (the pin + label features the opacity writer paints) from
@@ -7599,11 +7509,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     pinFamilyState.markerRenderStateByMarkerKey.removeAll()
     pinFamilyState.lastDesiredPinSnapshot = DesiredPinSnapshotState()
     dotFamilyState.lastDesiredCollection = Self.emptyParsedFeatureCollection()
-    labelFamilyState.labelObservation.hasCommittedObservationForConfiguredRequest = false
-    labelFamilyState.labelObservation.lastVisibleLabelFeatureIds = []
-    labelFamilyState.labelObservation.lastLayerRenderedFeatureCount = 0
-    labelFamilyState.labelObservation.lastEffectiveRenderedFeatureCount = 0
-    labelFamilyState.labelObservation.settledVisibleMissingStreakByFeatureId.removeAll()
 
     Self.refreshFeatureStateRevision(&pinSourceState)
     Self.refreshFeatureStateRevision(&dotSourceState)
@@ -11455,8 +11360,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       sourceState: sourceStateFromCollection(collection),
       transientFeatureStateById: [:],
       pinRuntime: PinFamilyRuntimeState(),
-      dotRuntime: DotFamilyRuntimeState(lastDesiredCollection: collection),
-      labelObservation: LabelFamilyObservationState()
+      dotRuntime: DotFamilyRuntimeState(lastDesiredCollection: collection)
     )
   }
 
