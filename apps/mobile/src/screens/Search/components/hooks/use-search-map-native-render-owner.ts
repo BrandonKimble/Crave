@@ -3241,9 +3241,8 @@ const useSearchMapNativeRenderOwnerSync = ({
             : null);
         // NOTE: the markerRoleFrame is entangled with source ADMISSION + presentation mount/ack (native
         // sources_applied_visible depends on markerRoleFrame != nil), NOT purely LOD — gating it off in JS
-        // here drops the instance to life:hidden (proven via the harness). Under v5 the frame must keep
-        // flowing for the lifecycle; the two-authority cut happens NATIVE-side (skip v4 opacity writes when
-        // lodV5Enabled) so the engine stays the sole opacity authority while admission still works.
+        // here drops the instance to life:hidden (proven via the harness). The frame must keep flowing for
+        // the lifecycle; the engine is the sole opacity authority NATIVE-side while admission still works.
         const shouldUseNativeRoleFrame =
           hasSerializableSourceSnapshot &&
           visualFrameTransactionKind === 'live_update' &&

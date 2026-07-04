@@ -722,8 +722,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     // membership snapshot and just refresh promotedMarkerKeys. Count-guarded; data-change reconcile rebuilds.
     var cachedDesiredPinSnapshot: DesiredPinSnapshotState?
     var cachedDesiredPinSnapshotResidentCount: Int = -1
-    // Map-LOD v5 single-authority engine (only used when SearchMapRenderController.lodV5Enabled). Fed the
-    // ranked catalog on setCandidateCatalog; decided on camera frames; stepped on the display link.
+    // Map-LOD single-authority engine. Fed the ranked catalog on setCandidateCatalog; decided on camera
+    // frames; stepped on the display link.
     var lodV5Engine: LodEngine?
     // Map-LOD v5 FM#3: promote∪demote delta from the last decide() that changed promotion membership. The
     // camera handler drains it to reseed the invisible label-collision obstacle (so labels yield to the LIVE
@@ -881,7 +881,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   // JS reveal-seed) is what made revealed/re-entering pins flash FULL before the engine value applied (the
   // reveal twitch + the zoom-out group-snap-at-full). Under v4 the baked role is still needed, so it stays 1.
   override func constantsToExport() -> [AnyHashable: Any]! {
-    ["lodV5Enabled": Self.lodV5Enabled]
+    [:]
   }
 
   override func supportedEvents() -> [String]! {
@@ -1405,17 +1405,15 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.candidateCatalog = catalog
       // Force the next camera tick to re-emit the on-screen set against the new catalog.
       state.lastVisibleMarkerSetSignature = nil
-      // v5: feed the single-authority engine the ranked catalog (atomic full rebuild). The ranking must be
+      // Feed the single-authority engine the ranked catalog (atomic full rebuild). The ranking must be
       // ascending by rank so prefix(budget) == the true top-N. (When the JS catalog is unified to sort by
       // Crave score, that rank == the badge — the one-rank decision; until then this verifies the mechanism.)
-      if Self.lodV5Enabled {
-        let ranked = catalog
-          .sorted { $0.rank < $1.rank }
-          .map { LodEngine.Anchor(markerKey: $0.markerKey, coordinate: $0.coordinate, rank: $0.rank) }
-        var engine = state.lodV5Engine ?? LodEngine()
-        engine.setRanking(ranked)
-        state.lodV5Engine = engine
-      }
+      let ranked = catalog
+        .sorted { $0.rank < $1.rank }
+        .map { LodEngine.Anchor(markerKey: $0.markerKey, coordinate: $0.coordinate, rank: $0.rank) }
+      var engine = state.lodV5Engine ?? LodEngine()
+      engine.setRanking(ranked)
+      state.lodV5Engine = engine
       self.instances[instanceId] = state
       // UNIFIED-FADE TOGGLE (map-LOD-v6): the new catalog must re-project + re-decide UNDER COVER. The catalog
       // is typically swapped while the old set is still VISIBLE (presentation≈1), then the cover fades the map
@@ -1499,7 +1497,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   private static let underCoverReprojectThreshold = 0.05
   private func reprojectCatalogUnderCoverIfReady(instanceId: String, force: Bool = false) {
     guard pendingUnderCoverReproject.contains(instanceId) else { return }
-    guard Self.lodV5Enabled, var state = instances[instanceId] else { return }
+    guard var state = instances[instanceId] else { return }
     // Normally the re-decide waits for presentation to be under cover (opacity≈0) so the marker swap is
     // hidden. But a fresh catalog can arrive DURING a reveal ramp-up (rapid toggling at the debounce
     // boundary): opacity is already rising, so the reproject would DEFER and, with no subsequent fade-out,
@@ -3089,7 +3087,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     // projection NOW: clear the signature so the decide guard passes (mirrors the catalog path @1432), then
     // kick the CONVERGE link + obstacle reseed like the camera handler, so a tapped dot fades up to a pin
     // immediately. (A tapped pin is already promoted → decide is a no-op for it; only its color changes.) v5.
-    if Self.lodV5Enabled, var nextState = instances[instanceId],
+    if var nextState = instances[instanceId],
        let handle = currentResolvedMapHandle(for: nextState.mapTag) {
       nextState.lastVisibleMarkerSetSignature = nil
       _ = projectAndEmitOnScreenMarkers(
@@ -3667,18 +3665,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       // promotion painted FULL via the `['get']` fallback for ~1 frame before the engine faded it in — a
       // group-snap on every data-change publish. Resident markers are unaffected (their engine feature-state
       // overrides the bake); only brand-new features use the fallback, and 0 = "start as a dot, engine fades".
-      let placementPrerollOpacity = Self.lodV5Enabled
-        ? 0
-        : Self.sourceFeatureOpacityForPlacementPreroll(
-            renderState: renderState,
-            state: state
-          )
+      // The engine owns the fade-in from 0 (no per-feature placement-preroll opacity under the single-authority engine).
+      let placementPrerollOpacity = 0.0
       nextPinFeatureIdsByGroup[markerKey] = [markerKey]
       if dirtyPinMarkerKeys.contains(markerKey) {
         let rewriteStartedAt = shouldAttributeLabelPrep ? CACurrentMediaTime() * 1000 : 0
-        // v5: bake 0 (see the placementPrerollOpacity note above) — the engine owns the fade-in from 0; the
-        // v4 settled target (=1 for a promoted pin) clobbered the reveal-seed bake-0 → snap-to-full on publish.
-        let settledPinOpacity = Self.lodV5Enabled ? 0 : Self.clamp(renderState.targetOpacity, min: 0, max: 1)
+        // Bake 0 — the engine owns the fade-in from 0; a settled target (=1 for a promoted pin) would clobber
+        // the reveal-seed bake-0 → snap-to-full on publish.
+        let settledPinOpacity = 0.0
         let renderFeature = Self.featureBySettingNumericProperties(
           renderState.pinFeature,
           numericProperties: [
@@ -3698,15 +3692,9 @@ final class SearchMapRenderController: RCTEventEmitter {
         var featureState: [String: Any] = [:]
         if let transientFeatureState = pinFamilyState.transientFeatureStateById[markerKey] {
           featureState = Self.mergedFeatureState(featureState, with: transientFeatureState)
-        } else if !Self.lodV5Enabled && abs(renderState.currentOpacity - renderState.targetOpacity) >= 0.001 {
-          // v4 only: seed the in-flight opacity for a NEW marker the engine hasn't stepped yet. Under v5 the
-          // engine is the sole writer — leave featureState empty; the source bake-0 (B2) paints it as a dot
-          // until the engine fades it in. (Writing v4 currentOpacity here clobbered the engine = snap/stuck.)
-          featureState = Self.mergedFeatureState(
-            featureState,
-            with: Self.livePinFeatureState(opacity: renderState.currentOpacity)
-          )
         }
+        // (No source-seed of in-flight opacity: the engine is the sole writer — leave featureState empty
+        // and the source bake-0 paints a NEW marker as a dot until the engine fades it in.)
         if !featureState.isEmpty {
           nextPinFeatureStateById[markerKey] = featureState
         }
@@ -4371,12 +4359,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       // promotion painted FULL via the `['get']` fallback for ~1 frame before the engine faded it in — a
       // group-snap on every data-change publish. Resident markers are unaffected (their engine feature-state
       // overrides the bake); only brand-new features use the fallback, and 0 = "start as a dot, engine fades".
-      let placementPrerollOpacity = Self.lodV5Enabled
-        ? 0
-        : Self.sourceFeatureOpacityForPlacementPreroll(
-            renderState: renderState,
-            state: state
-          )
+      let placementPrerollOpacity = 0.0
       let pinSourceOpacity = Self.clamp(placementPrerollOpacity, min: 0, max: 1)
       let pinFeature = Self.featureBySettingNumericProperties(
         renderState.pinFeature,
@@ -4397,15 +4380,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       {
         exitingPinSourceOpacityRiskCount += 1
       }
-      var pinFeatureState = directPinFamilyState.transientFeatureStateById[markerKey] ?? [:]
-      // v4 only (see prepareDerived note): under v5 the engine is the sole opacity writer — don't seed a v4
-      // currentOpacity for new markers (it clobbered the engine's mid-fade → snap/stuck). Bake-0 covers it.
-      if pinFeatureState.isEmpty &&
-        !Self.lodV5Enabled &&
-        abs(renderState.currentOpacity - renderState.targetOpacity) >= 0.001
-      {
-        pinFeatureState = Self.livePinFeatureState(opacity: renderState.currentOpacity)
-      }
+      let pinFeatureState = directPinFamilyState.transientFeatureStateById[markerKey] ?? [:]
+      // (No source-seed of in-flight opacity: the engine is the sole opacity writer; bake-0 paints a NEW
+      // marker as a dot until the engine fades it in.)
       directPinRecordsByMarkerKey[markerKey] = [
           ParsedTransportFeatureRecord(
             id: markerKey,
@@ -4635,19 +4612,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
     }
     return recordsByMarkerKey
-  }
-
-  private static func sourceFeatureOpacityForPlacementPreroll(
-    renderState: MarkerFamilyRenderState,
-    state: InstanceState
-  ) -> Double {
-    if state.visualSourceLifecycleState == .preparingReveal &&
-      renderState.isDesiredPresent &&
-      renderState.targetOpacity >= 0.999 &&
-      renderState.currentOpacity <= 0.001 {
-      return 1
-    }
-    return renderState.currentOpacity
   }
 
   private static func shouldRenderPinInteraction(
@@ -7981,7 +7945,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   // anchor's pin opacity toward want?1:0 (eased, ε-snap) and write the THREE derived feature-states off
   // that single scalar — pin = p, dot = 1 − p, label = p — so a marker can never be a visible pin AND a
   // visible dot (FM#2), and a 30-way budget crossing is 30 independent fades, not a batch snap (FM#4).
-  // This is the ONLY feature-state writer when lodV5Enabled (v4's stepper + driveNativeLod are gated off).
+  // This is the ONLY LOD feature-state writer (the engine is the single opacity authority).
   private func applyV5StepFeatureStates(for instanceId: String, state: inout InstanceState) throws {
     guard var engine = state.lodV5Engine else { return }
     // Wall-clock fade: hand the engine the absolute now; it projects each in-flight crossfade off this
@@ -8124,7 +8088,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   private func commitSettledLeaAuthorityUnderCover(
     instanceId: String, state: inout InstanceState, mapboxMap: MapboxMap
   ) {
-    guard Self.lodV5Enabled else { return }
     // (1) __lea_lod__ (dots) via the engine's own role bookkeeping (desync-safe).
     if var engine = state.lodV5Engine {
       if let roleKeys = engine.takeSettledRoleChangeIfAny() {
@@ -8314,13 +8277,10 @@ final class SearchMapRenderController: RCTEventEmitter {
       instances[instanceId] = state
       return
     }
-    // Map-LOD v5 CONVERGE: when v5 owns LOD, the LodEngine is the single feature-state authority — step
-    // it one display-link tick and write the derived opacities, bypassing all v4 transition machinery.
-    if Self.lodV5Enabled {
-      try applyV5StepFeatureStates(for: instanceId, state: &state)
-      instances[instanceId] = state
-      return
-    }
+    // CONVERGE: the LodEngine is the single feature-state authority — step it one display-link tick and
+    // write the derived opacities.
+    try applyV5StepFeatureStates(for: instanceId, state: &state)
+    instances[instanceId] = state
   }
 
   @objc
@@ -9476,25 +9436,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     resolvedMapHandles.removeValue(forKey: key)
   }
 
-    // enter_mounted_hidden — the deterministic "placement settled under cover" signal. Fires after each
-    // completed render+placement frame. During the reveal PREROLL the markers are mounted and the
-    // pin-labels are forced to per-feature placement opacity (sourceFeatureOpacityForPlacementPreroll)
-    // while the whole tree is at presentation opacity ~0 — so Mapbox places them (invisibly) at their
-    // FINAL anchor. This handler catches the frame AFTER that placement pass ran and re-runs the label
-    // observation, which then queries the now-placed labels and COMMITS — opening
-    // isActiveFrameLabelPlacementReady deterministically, before the visible fade starts, regardless of
-    // where the label layers are anchored (incl. above all basemap labels). Replaces the old blind
-    // delayMs:0 poll that raced placement and caused reveal_start_deadlock_placement_uncommitted.
-    // Guards keep it inert once the gate is open or outside .preparingReveal (no per-frame cost), and
-    // the existing isRefreshInFlight coalescing de-dupes overlapping requests.
-
-    // TIME-BASED reveal-deadlock safety net. Returns true if it force-started the reveal this call.
-    // Called from BOTH the render-frame placement path (dormant during a static preroll) AND the
-    // 16ms observation self-retry loop (which runs reliably while the gate is pending — it is the
-    // one that actually drives this in the QRF-empty-during-preroll case). Idempotent and cheap when
-    // the gate is not stalled.
-    @discardableResult
-
     private func handleSourceDataLoaded(mapTag: NSNumber, event: SourceDataLoaded) {
       let sourceId = event.sourceId
       if Self.lodDebugLoggingEnabled { Self.lodLog("[srcdbg] src=\(sourceId) loaded=\(event.loaded) dataId=\(event.dataId ?? "nil")") }
@@ -9781,12 +9722,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   // marker keys never contain "|") to feed the spatial enter/exit hysteresis.
   // `reason` distinguishes camera ticks from data-arrival projections in diagnostics.
   // Returns true when a (possibly empty) set was projected and the signature updated.
-  // Map-LOD v5 (plans/lod-v5-architecture.md): the per-instance MapLodKit.LodEngine owns promote/demote
-  // (decide on camera frame, step on the display link); the v4 driveNativeLod path is gated off. Now DEFAULT
-  // ON — v5 is the keeper (V4-vs-V5 head-to-head 2026-06-23: -46% main-thread LOD work, no settled deadlock,
-  // cleaner reveal). NOTE: do NOT flip false mid-session — it split-brains the role table vs nativeLodOpacity
-  // between v4's stepper and v5's engine. Remove the flag + delete the v4 SCRAP only after soak.
-  static let lodV5Enabled = true
   // The LOD promotion budget: at most this many pins on screen (matches LodEngine's default budget and the
   // JS maxFullPins). Used by the v5 engine and the independent badge-rank oracle.
   static let nativeLodBudget = 30
@@ -9852,7 +9787,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.candidateCatalog.map { ($0.markerKey, $0.rank) }, uniquingKeysWith: { first, _ in first }
     )
     let nativePromotedKeys: [String]
-    if Self.lodV5Enabled, var engine = state.lodV5Engine {
+    if var engine = state.lodV5Engine {
       // Map-LOD v5 DECIDE: the LodEngine recomputes `want` from scratch over the on-screen set and
       // returns the top-budget promoted set in rank order. This REPLACES the v4 rank-prefix above as the
       // single promotion authority. We mirror it into nativePromotedKeysInOrder + the role table so the
@@ -9984,23 +9919,21 @@ final class SearchMapRenderController: RCTEventEmitter {
         isMoving: isMoving
       )
       instances[instanceId] = nextState
-      // Map-LOD v5: decide() ran inside projectAndEmitOnScreenMarkers; make sure the CONVERGE display
-      // link is alive so the just-promoted/demoted anchors fade (it self-cancels when not runnable).
-      if Self.lodV5Enabled {
-        updateLivePinTransitionAnimation(instanceId: instanceId, state: nextState)
-        // FM#3: reseed the invisible collision obstacle for the promote/demote delta so labels yield to the
-        // LIVE promoted pins (isolated to the obstacle source — no pin re-tile). Drains the stashed set.
-        // NOTE: runs DURING motion on purpose — gating it to idle (once tried as a wiggle fix) froze label
-        // collision mid-gesture (labels overlapped until release) AND did not fix the wiggle, so it was
-        // reverted. ATTRIBUTION (2026-06-28, intervention-proven): the wiggle is NOT this reseed — it's the
-        // PIN GeoJSON source re-tiling/re-quantizing below the maxZoom cap on zoom-out (maxZoom=13 wiggles,
-        // =9 frozen-tile is clean). The ideal universal fix is to render the ≤30 pins as ViewAnnotations
-        // (non-tiled), leaving this obstacle reseed + dots/labels as GL — see map-lod-render-substrate-decision.
-        applyV5ObstacleReseed(for: instanceId)
-        // PIN OVERLAY: reconcile the non-tiled overlay tile roster to the engine's promoted set
-        // (decide just ran). The overlay's own display link repositions every frame thereafter.
-        syncOverlayRoster(instanceId: instanceId, handle: handle)
-      }
+      // decide() ran inside projectAndEmitOnScreenMarkers; make sure the CONVERGE display link is alive so
+      // the just-promoted/demoted anchors fade (it self-cancels when not runnable).
+      updateLivePinTransitionAnimation(instanceId: instanceId, state: nextState)
+      // FM#3: reseed the invisible collision obstacle for the promote/demote delta so labels yield to the
+      // LIVE promoted pins (isolated to the obstacle source — no pin re-tile). Drains the stashed set.
+      // NOTE: runs DURING motion on purpose — gating it to idle (once tried as a wiggle fix) froze label
+      // collision mid-gesture (labels overlapped until release) AND did not fix the wiggle, so it was
+      // reverted. ATTRIBUTION (2026-06-28, intervention-proven): the wiggle is NOT this reseed — it's the
+      // PIN GeoJSON source re-tiling/re-quantizing below the maxZoom cap on zoom-out (maxZoom=13 wiggles,
+      // =9 frozen-tile is clean). The ideal universal fix is to render the ≤30 pins as ViewAnnotations
+      // (non-tiled), leaving this obstacle reseed + dots/labels as GL — see map-lod-render-substrate-decision.
+      applyV5ObstacleReseed(for: instanceId)
+      // PIN OVERLAY: reconcile the non-tiled overlay tile roster to the engine's promoted set
+      // (decide just ran). The overlay's own display link repositions every frame thereafter.
+      syncOverlayRoster(instanceId: instanceId, handle: handle)
       emit([
         "type": "camera_changed",
         "instanceId": instanceId,

@@ -618,12 +618,6 @@ const nativeModule = NativeModules[MODULE_NAME] as
   | SearchMapRenderControllerNativeModule
   | undefined;
 
-// Map-LOD v5: the native engine owns pin opacity via feature-state, so the JS source builder must NOT bake
-// nativeLodOpacity=1 (the reveal seed) — a baked 1 paints a pin FULL before the engine value applies, causing
-// the reveal twitch + the zoom-out group-snap-at-full. Read the native constant synchronously at load.
-export const LOD_V5_ENABLED: boolean =
-  (nativeModule as { lodV5Enabled?: boolean } | undefined)?.lodV5Enabled === true;
-
 const nativeEmitter =
   nativeModule != null ? new NativeEventEmitter(nativeModule as never) : undefined;
 

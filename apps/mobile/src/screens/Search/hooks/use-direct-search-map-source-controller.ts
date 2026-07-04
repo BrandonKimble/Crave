@@ -32,7 +32,6 @@ import {
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import { resolveOverlapRegion } from '../utils/overlap-region';
 import { requestOverlapAutoZoom } from '../runtime/map/overlap-auto-zoom-bridge';
-import { LOD_V5_ENABLED } from '../runtime/map/search-map-render-controller';
 import {
   activeRankBadgeImageId,
   dotBucketImageId,
@@ -1937,14 +1936,11 @@ export const useDirectSearchMapSourceController = ({
             (typeof a.properties.rank === 'number' ? a.properties.rank : Number.POSITIVE_INFINITY) -
             (typeof b.properties.rank === 'number' ? b.properties.rank : Number.POSITIVE_INFINITY)
         )
-        // v5 owns reveal + EVERY promotion via the engine (v5 plan: "reveal = first decide; no special
-        // reveal seed"). Empty seed under v5 → every brand-new marker bakes as a plain dot (pin 0 / dot 1)
-        // and the engine's first decide fades the top-N in from 0 per-pin, in lockstep with their dots.
-        // This closes the residual group-snap: the pin bake was already v5-gated to 0 (~L1839) but the dot
-        // bake (~L1879, nativeDotOpacity: isPromoted ? 0 : 1) was NOT, so the seed still hid seeded dots at
-        // publish → groups snapped. Empty-under-v5 makes isPromoted false everywhere → both bakes correct.
-        // v4 keeps the bulk group seed (its two-machine role/opacity needs the synchronized reveal).
-        .slice(0, LOD_V5_ENABLED ? 0 : maxFullPins)
+        // The engine owns reveal + EVERY promotion ("reveal = first decide; no special reveal seed"). Empty
+        // seed → every brand-new marker bakes as a plain dot (pin 0 / dot 1) and the engine's first decide
+        // fades the top-N in from 0 per-pin, in lockstep with their dots. This closes the residual group-snap:
+        // an empty seed makes isPromoted false everywhere → both the pin bake (0) and the dot bake correct.
+        .slice(0, 0)
         .map((feature) => buildMarkerKey(feature))
     );
     visibleDotRestaurantMarkerFeatures.forEach((feature) => {
@@ -2027,10 +2023,10 @@ export const useDirectSearchMapSourceController = ({
           // settled role (SearchMapRenderController prepareScopedPinAndLabelOutput /
           // reconcileLiveMarkerRoleOutputs) and/or writes the stepper feature-state — without any
           // JS-originated source write. The coalesce default can never go stale relative to role.
-          // v5: bake 0 (a dot) for EVERY pin — the engine owns opacity via feature-state and fades the
-          // top-N in from 0; a baked 1 would paint the reveal-seed pins FULL before the engine value applies
-          // (the reveal twitch + the zoom-out group-snap-at-full). v4 still needs the baked role, so keep 1.
-          nativeLodOpacity: isPromoted && !LOD_V5_ENABLED ? 1 : 0,
+          // Bake 0 (a dot) for EVERY pin — the engine owns opacity via feature-state and fades the top-N in
+          // from 0; a baked 1 would paint the reveal-seed pins FULL before the engine value applies (the
+          // reveal twitch + the zoom-out group-snap-at-full).
+          nativeLodOpacity: 0,
           nativeLodRankOpacity: 1,
           nativePresentationOpacity: 1,
         },
