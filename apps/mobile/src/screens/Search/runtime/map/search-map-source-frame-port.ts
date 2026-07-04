@@ -69,6 +69,9 @@ export type SearchMapCandidateCatalogEntry = {
   activeBadgeImageId?: string;
   // The restaurant id, so the overlay's tap hit-test can emit the same press target the GL pin did.
   restaurantId?: string;
+  // The restaurant display name, carried atomically so the native label ViewAnnotation roster has the
+  // text without a second lookup (labels → ViewAnnotation, Mapbox 11.26).
+  restaurantName?: string;
 };
 
 export type SearchMapCandidateCatalog = {

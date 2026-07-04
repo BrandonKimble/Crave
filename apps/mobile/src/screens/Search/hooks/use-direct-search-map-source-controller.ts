@@ -970,30 +970,6 @@ const buildDirectLabelStores = ({
   const labelBuilder = createSearchMapSourceStoreBuilder(previousLabelSourceStore);
   const collisionBuilder = createSearchMapSourceStoreBuilder(previousLabelCollisionSourceStore);
   const labelIdentityParts: string[] = [];
-  // Option A — bake a pan-invariant stackRank per restaurant: group ALL source markers by world-coord
-  // bucket (~1m), then assign a stable index (sorted by markerKey) within any bucket holding 2+ pins.
-  // Computed over the FULL source (not the on-screen subset) so a marker's rank doesn't shift as you pan;
-  // lone pins are absent ⇒ rank 0. The label mutex's iconOffset reads `stackRank` to separate stacks.
-  const stackRankByMarkerKey = new Map<string, number>();
-  const stackBucketMembers = new Map<string, string[]>();
-  pinSourceStore.idsInOrder.forEach((markerKey) => {
-    const coords = pinSourceStore.featureById.get(markerKey)?.geometry.coordinates;
-    if (coords == null) {
-      return;
-    }
-    const bucketKey = `${coords[0].toFixed(5)},${coords[1].toFixed(5)}`;
-    const members = stackBucketMembers.get(bucketKey) ?? [];
-    members.push(markerKey);
-    stackBucketMembers.set(bucketKey, members);
-  });
-  stackBucketMembers.forEach((members) => {
-    if (members.length < 2) {
-      return;
-    }
-    [...members].sort().forEach((markerKey, index) => {
-      stackRankByMarkerKey.set(markerKey, index);
-    });
-  });
   pinSourceStore.idsInOrder.forEach((markerKey) => {
     const feature = pinSourceStore.featureById.get(markerKey);
     if (!feature) {
@@ -1024,7 +1000,6 @@ const buildDirectLabelStores = ({
           ...stableBaseFeature.properties,
           markerKey,
           labelCandidate: candidate,
-          stackRank: stackRankByMarkerKey.get(markerKey) ?? 0,
           nativeLabelOpacity: 1,
           nativePresentationOpacity: 1,
         },

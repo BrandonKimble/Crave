@@ -109,7 +109,6 @@ const LABEL_OBSERVATION_REFRESH_MS_MOVING = 16;
 const STYLE_PIN_OUTLINE_IMAGE_ID = 'restaurant-pin-outline';
 const STYLE_PIN_SHADOW_IMAGE_ID = 'restaurant-pin-shadow';
 const STYLE_PIN_FILL_IMAGE_ID = 'restaurant-pin-fill';
-const LABEL_MUTEX_IMAGE_ID = 'restaurant-label-mutex';
 // Single-symbol pin: one pre-baked sprite per (bucket × badge). The whole pin —
 // body, tinted fill, AND the baked number (rank in-viewport / score out) — is the
 // icon. `icon-image` is data-driven on the feature's `badgeImageId` property (set
@@ -182,9 +181,6 @@ const PIN_COLLISION_OBSTACLE_SCALE = 1.0;
 // full-pin-body obstacle that ONLY DOTS yield to (placed BELOW the labels in the layer stack, so labels
 // never yield to it — no own-label regression — but ABOVE the dots, so dots yield to the whole body).
 const PIN_DOT_COLLISION_OBSTACLE_SCALE = 1.0;
-// Move the shared per-restaurant collision point used to enforce "one candidate label" placement.
-// This avoids the mutex being blocked by another pin's collision obstacle when pins stack.
-const LABEL_MUTEX_POINT: 'below-pin' | 'above-pin' = 'above-pin';
 // Approximate the MarkerView drop-shadow using the historical soft-edged sprite.
 const STYLE_PINS_SHADOW_OPACITY = 0.65;
 const PIN_OUTLINE_LOGICAL_HEIGHT_PX = 480;
@@ -584,7 +580,6 @@ const SearchMapViewScene = React.memo(
             [STYLE_PIN_OUTLINE_IMAGE_ID]: pinAsset,
             [STYLE_PIN_SHADOW_IMAGE_ID]: pinShadowAsset,
             [STYLE_PIN_FILL_IMAGE_ID]: { image: pinFillAsset, sdf: true },
-            [LABEL_MUTEX_IMAGE_ID]: TRANSPARENT_PIXEL_IMAGE,
             // All pre-baked pin badge sprites (bucket × rank|score), each a
             // single 84px (3x) file → scale:3 renders at ~28pt with icon-size:1.
             ...PIN_BADGE_IMAGE_ENTRIES,
@@ -702,11 +697,6 @@ export type RestaurantFeatureProperties = {
   craveScoreExact?: number | null;
   rising?: number | null;
   markerKey?: string;
-  // Option A — index of this restaurant within its world-coordinate stack (0 = first / lone). Baked once
-  // from the fixed result coords so it's pan-invariant; the label mutex's data-driven iconOffset spreads
-  // stacked restaurants' (sub-pixel) mutex collision boxes apart by this rank so pixel-coincident pins
-  // stop cross-suppressing each other's labels (each picks a distinct free side).
-  stackRank?: number;
   nativeLodZ?: number;
   nativeLodOpacity?: number;
   nativeLodRankOpacity?: number;
@@ -1032,52 +1022,6 @@ const LABEL_MIN_BOTTOM_GAP_PX = 3.5;
 const LABEL_MIN_TOP_GAP_PX = 4;
 const LABEL_MIN_HORIZONTAL_GAP_PX = Math.ceil(PIN_MARKER_RENDER_SIZE / 2) + 6;
 
-const TRANSPARENT_PIXEL_IMAGE = {
-  uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAEklEQVR42mP8z/C/HwAFAAL/GMurNwAAAABJRU5ErkJggg==',
-} as const;
-
-const LABEL_MUTEX_ICON_RENDER_SIZE_PX = 0.8;
-const LABEL_MUTEX_ICON_SIZE = LABEL_MUTEX_ICON_RENDER_SIZE_PX;
-// [side-pocket TEST 2026-06-27] Relocate the mutex BESIDE the pin body — into the radial gap between
-// the pin edge (~half-width) and where the side label starts (LABEL_MIN_HORIZONTAL_GAP_PX = 20px from
-// center). Keeps the dedup token tucked inside the pin's own footprint (≈zero reach into neighbor label
-// space, unlike the -60 "above the text" placement) while staying clear of the obstacle.
-// Prior probes: -40 (in top-text band) & -30 (gap below text) both culled the top label; -60 (above
-// text) freed it but floats into neighbors. Side pocket = closest practical realization of "in the pin".
-const LABEL_MUTEX_TRANSLATE_X_PX = 15; // beside the body, in the gap before the side label (~20px)
-const LABEL_MUTEX_TRANSLATE_Y_PX = -15; // mid-body height (fill center ≈ -15)
-// Option A — the mutex is a sub-pixel (0.8px) collision box, so it ONLY cross-suppresses PIXEL-COINCIDENT
-// restaurants. Spread stacked restaurants' mutex boxes apart horizontally by `stackRank` so each keeps its
-// own dedup point (and thus its own label, on a distinct free side). iconOffset is LAYOUT (it moves the
-// collision box) — unlike the old iconTranslate (paint, which left the boxes coincident; that was the bug).
-// iconOffset is in icon-size units: final_px = value × iconSize, so divide px by LABEL_MUTEX_ICON_SIZE.
-const LABEL_MUTEX_STACK_STEP_PX = 3; // horizontal px between adjacent stacked mutex boxes (> the 0.8px box)
-const LABEL_MUTEX_STACK_STEP_UNIT = LABEL_MUTEX_STACK_STEP_PX / LABEL_MUTEX_ICON_SIZE;
-const LABEL_MUTEX_BASE_OFFSET_X_UNIT = LABEL_MUTEX_TRANSLATE_X_PX / LABEL_MUTEX_ICON_SIZE;
-const LABEL_MUTEX_BASE_OFFSET_Y_UNIT =
-  (LABEL_MUTEX_POINT === 'above-pin' ? LABEL_MUTEX_TRANSLATE_Y_PX : 0) / LABEL_MUTEX_ICON_SIZE;
-const LABEL_MUTEX_MAX_STACK_RANK = 7;
-// match stackRank → a constant [x, y] iconOffset (Mapbox expressions can't build arrays with computed
-// elements, so each rank maps to a precomputed literal). Default arm (rank 0 / >max) is the base point.
-const LABEL_MUTEX_ICON_OFFSET_EXPRESSION = [
-  'match',
-  ['coalesce', ['get', 'stackRank'], 0],
-  // [side-pocket TEST] x = constant pocket X; spread stacked ranks VERTICALLY (up the pocket) instead of
-  // the old horizontal row, so the dots stay tucked beside the body, not smeared across a label band.
-  ...Array.from({ length: LABEL_MUTEX_MAX_STACK_RANK }, (_unused, index) => index + 1).flatMap(
-    (rank) => [
-      rank,
-      [
-        'literal',
-        [
-          LABEL_MUTEX_BASE_OFFSET_X_UNIT,
-          LABEL_MUTEX_BASE_OFFSET_Y_UNIT - rank * LABEL_MUTEX_STACK_STEP_UNIT,
-        ],
-      ],
-    ]
-  ),
-  ['literal', [LABEL_MUTEX_BASE_OFFSET_X_UNIT, LABEL_MUTEX_BASE_OFFSET_Y_UNIT]],
-] as unknown as MapboxGL.SymbolLayerStyle['iconOffset'];
 // Dot glyphs render notably smaller than `DOT_TEXT_SIZE` due to font metrics/line-height.
 // Keep the interaction target tight so it feels intentionally dot-sized (about ~2x visible dot).
 const DOT_TAP_INTENT_RADIUS_PX = Math.max(7, DOT_TEXT_SIZE * 0.42);
