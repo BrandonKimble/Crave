@@ -1770,6 +1770,8 @@ export const useDirectSearchMapSourceController = ({
           badgeImageId: rankBadgeImageId(catalogCraveScore, catalogRank),
           activeBadgeImageId: activeRankBadgeImageId(catalogRank),
           restaurantId: feature.properties.restaurantId,
+          // Label VA substrate: carry the name so native renders the label text (atomic with the coord).
+          restaurantName: feature.properties.restaurantName,
         });
       });
       candidateCatalog = { key: candidateCatalogKey, entries: catalogEntries };

@@ -347,13 +347,13 @@ PODS:
   - hermes-engine (0.81.5):
     - hermes-engine/Pre-built (= 0.81.5)
   - hermes-engine/Pre-built (0.81.5)
-  - MapboxCommon (24.16.6):
+  - MapboxCommon (24.26.0-rc.1):
     - Turf (= 4.0.0)
-  - MapboxCoreMaps (11.16.6):
-    - MapboxCommon (= 24.16.6)
-  - MapboxMaps (11.16.6):
-    - MapboxCommon (= 24.16.6)
-    - MapboxCoreMaps (= 11.16.6)
+  - MapboxCoreMaps (11.26.0-rc.1):
+    - MapboxCommon (= 24.26.0-rc.1)
+  - MapboxMaps (11.26.0-rc.1):
+    - MapboxCommon (= 24.26.0-rc.1)
+    - MapboxCoreMaps (= 11.26.0-rc.1)
     - Turf (= 4.0.0)
   - MapLodKit (0.1.0)
   - RCT-Folly (2024.11.18.00):
@@ -2803,19 +2803,19 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - rnmapbox-maps (10.2.9):
-    - MapboxMaps (~> 11.16.2)
+  - rnmapbox-maps (10.3.1):
+    - MapboxMaps (= 11.26.0-rc.1)
     - React
     - React-Core
-    - rnmapbox-maps/DynamicLibrary (= 10.2.9)
+    - rnmapbox-maps/DynamicLibrary (= 10.3.1)
     - Turf
-  - rnmapbox-maps/DynamicLibrary (10.2.9):
+  - rnmapbox-maps/DynamicLibrary (10.3.1):
     - boost
     - DoubleConversion
     - fast_float
     - fmt
     - hermes-engine
-    - MapboxMaps (~> 11.16.2)
+    - MapboxMaps (= 11.26.0-rc.1)
     - RCT-Folly
     - RCT-Folly/Fabric
     - RCTRequired
@@ -3517,9 +3517,9 @@ SPEC CHECKSUMS:
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
   hermes-engine: 9f4dfe93326146a1c99eb535b1cb0b857a3cd172
-  MapboxCommon: 10cbf74edb23c9abcfe2424899d804f288a47334
-  MapboxCoreMaps: f19680d20681797067268284b2292349de861730
-  MapboxMaps: 04c7bf46d66265ad0f4b98484a251777a926c423
+  MapboxCommon: 4ad9b67e6d94a9e46cd5dacc7eaaf02143070af8
+  MapboxCoreMaps: 59bc3a48c7d3358a29501def0733b39937ebe758
+  MapboxMaps: 86fad54f0585d3742fcc1248b5be5fa88eab84a8
   MapLodKit: 3e6ca60796a4d68d2b231a0598e64bc6f79caa1a
   RCT-Folly: 59ec0ac1f2f39672a0c6e6cecdd39383b764646f
   RCTDeprecation: 5eb1d2eeff5fb91151e8a8eef45b6c7658b6c897
@@ -3591,7 +3591,7 @@ SPEC CHECKSUMS:
   RNCAsyncStorage: 302f2fac014fd450046c120567ca364632da682b
   RNCMaskedView: 63268de1986a098b5f4d1fb5b1bc1e97fade0aee
   RNGestureHandler: 4f7cc97a71d4fe0fcba38c94acdd969f5f17c91c
-  rnmapbox-maps: 8b0d11c96b1b0e66363a418f6efa94c807422951
+  rnmapbox-maps: 19db98a41e3322201858d12f62f2f4338eea97c6
   RNReanimated: 54af6ce6873a6e905c10f66490cdebef2d842e82
   RNScreens: 74985ca8e102294a60cec7513fa84c936fa0b20b
   RNSVG: 8d87cff016edf1b6ca409ed39804101836d75e90
@@ -3600,6 +3600,6 @@ SPEC CHECKSUMS:
   Turf: c9eb11a65d96af58cac523460fd40fec5061b081
   Yoga: 728df40394d49f3f471688747cf558158b3a3bd1
 
-PODFILE CHECKSUM: ac7b2bed243370087ed25ab3c5f67602fbd04ab5
+PODFILE CHECKSUM: b48412372c6e8fdfc1905b95f7be6ce5beb1c1fd
 
 COCOAPODS: 1.16.2

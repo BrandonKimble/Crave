@@ -2,7 +2,7 @@ import Foundation
 import CoreImage
 import CoreLocation
 import MapLodKit
-import MapboxMaps
+@_spi(Experimental) import MapboxMaps   // Experimental unlocks ViewAnnotation.enableSymbolLayerCollision (label VA wins over basemap); superset of the plain import
 import QuartzCore
 import React
 import Turf
@@ -110,6 +110,77 @@ private final class PinTileLayer: CALayer {
   }
   override init(layer: Any) { super.init(layer: layer) }   // required for CA presentation copies
   required init?(coder: NSCoder) { fatalError("PinTileLayer is code-only") }
+}
+
+// Phase-1 (pins → ViewAnnotation A/B): the per-pin view HOSTED BY a Mapbox ViewAnnotation. Same visual as
+// PinTileLayer (soft silhouette shadow below, rank badge above) but the VA is SDK-positioned + SDK-z-ordered
+// (via `priority`), so there is no per-frame `point(for:)` projection and no tile re-quantization. The VA is
+// bottom-anchored so the body's bottom-center (the pin tip) lands exactly on the coordinate. clipsToBounds is
+// OFF so the shadow (padded past the body) shows.
+private final class PinVAView: UIView {
+  let shadowImageView = UIImageView()
+  let bodyImageView = UIImageView()
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    isUserInteractionEnabled = false          // taps resolve via the synchronous circle hit-test (like CA)
+    clipsToBounds = false
+    layer.masksToBounds = false
+    shadowImageView.alpha = 0.35              // matches PinTileLayer.shadowLayer.opacity
+    shadowImageView.layer.minificationFilter = .trilinear
+    addSubview(shadowImageView)               // below
+    addSubview(bodyImageView)                 // above
+  }
+  required init?(coder: NSCoder) { fatalError("PinVAView is code-only") }
+}
+
+// Phase-2 (labels → ViewAnnotation): the per-restaurant NAME label hosted by a self-colliding VA
+// (enableSymbolLayerCollision → wins over basemap; variableAnchors → the SDK picks the first open side).
+// A plain multi-line UILabel; alpha rides the pin's opacity scalar (fades in lockstep). A white text
+// shadow approximates the GL label's halo for readability over the map.
+// A UILabel that strokes a crisp white halo around every glyph — draw the text in STROKE mode (white,
+// rounded joins) then FILL mode (the text color) on top. Matches the Mapbox SDF text-halo the GL labels had
+// (text-halo-color white, text-halo-width ~1.2px), which a soft drop-shadow can't reproduce.
+private final class HaloLabel: UILabel {
+  var haloColor: UIColor = .white
+  var haloWidth: CGFloat = 2.6
+  override func drawText(in rect: CGRect) {
+    guard let ctx = UIGraphicsGetCurrentContext() else { super.drawText(in: rect); return }
+    let fill = textColor
+    ctx.setLineWidth(haloWidth)
+    ctx.setLineJoin(.round)
+    ctx.setTextDrawingMode(.stroke)
+    textColor = haloColor
+    super.drawText(in: rect)          // 1. white outline
+    ctx.setTextDrawingMode(.fill)
+    textColor = fill
+    super.drawText(in: rect)          // 2. dark fill on top
+  }
+}
+
+private final class LabelVAView: UIView {
+  private let label = HaloLabel()
+  static let defaultColor = UIColor(red: 0x37 / 255.0, green: 0x41 / 255.0, blue: 0x51 / 255.0, alpha: 1)   // #374151
+  static let highlightColor = UIColor(red: 0xff / 255.0, green: 0x33 / 255.0, blue: 0x68 / 255.0, alpha: 1)  // #ff3368
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    isUserInteractionEnabled = false
+    clipsToBounds = false
+    label.numberOfLines = 0
+    label.lineBreakMode = .byWordWrapping
+    label.textAlignment = .center
+    label.font = UIFont(name: "OpenSans-Semibold", size: 13) ?? .systemFont(ofSize: 13, weight: .semibold)
+    label.textColor = Self.defaultColor
+    addSubview(label)
+  }
+  required init?(coder: NSCoder) { fatalError("LabelVAView is code-only") }
+  func setText(_ text: String) {
+    label.text = text
+    label.sizeToFit()
+    let size = label.bounds.insetBy(dx: -2, dy: -2).size   // symmetric halo margin (2pt each side; compensated in the anchor offsets)
+    label.frame = CGRect(origin: .zero, size: size)
+    bounds = label.frame                                   // VA anchors on the view bounds
+  }
+  func setHighlighted(_ on: Bool) { label.textColor = on ? Self.highlightColor : Self.defaultColor }
 }
 
 @objc(SearchMapRenderController)
@@ -629,6 +700,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     let badgeImageId: String?
     let activeBadgeImageId: String?
     let restaurantId: String?
+    let labelText: String?   // restaurant name for the label VA (Phase 2); atomic with the coordinate
   }
 
   private struct InstanceState {
@@ -1477,7 +1549,8 @@ final class SearchMapRenderController: RCTEventEmitter {
           rank: rank,
           badgeImageId: raw["badgeImageId"] as? String,
           activeBadgeImageId: raw["activeBadgeImageId"] as? String,
-          restaurantId: raw["restaurantId"] as? String
+          restaurantId: raw["restaurantId"] as? String,
+          labelText: raw["restaurantName"] as? String
         ))
       }
       state.candidateCatalog = catalog
@@ -6887,6 +6960,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     instanceId: String,
     reason: String
   ) {
+    // Phase-2 A/B chokepoint: when labels render as ViewAnnotations, keep the GL label render layers HIDDEN
+    // so they don't double-render or contend with the VA's enableSymbolLayerCollision for basemap suppression.
+    let isVisible = labelsUseViewAnnotation ? false : isVisible
     do {
       try withMapboxMap(for: state.mapTag) { mapboxMap in
         for layerId in state.labelLayerIds {
@@ -7975,6 +8051,47 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
   private var overlayInstances: [String: PinOverlayInstance] = [:]
   private var overlayDisplayLinks: [String: CADisplayLink] = [:]
+
+  // === Phase-1 pins → ViewAnnotation (A/B, abort-safe) =========================================
+  // When ON, pins render as Mapbox ViewAnnotations instead of the CA overlay: SDK-positioned (no
+  // per-frame point(for:) projection → same non-tiled no-wiggle immunity), allowOverlap:true (never
+  // culled = must-WIN survives), priority=f(latitude) for viewport-y z-order, and view.alpha =
+  // engine.pinOpacity × presentation for the LOD fade (the SAME scalar the CA tile used). The CA path
+  // stays byte-intact — each overlay fn early-returns to its VA sibling when this is true; flip to
+  // false + rebuild = pure CA overlay (abort-safe). Reuses overlayDisplayLinks + the one-writer tick.
+  private var pinsUseViewAnnotation = true
+  private final class PinVAInstance {
+    weak var mapView: MapView?
+    var vaByKey: [String: ViewAnnotation] = [:]
+    var viewByKey: [String: PinVAView] = [:]
+    var coordByKey: [String: CLLocationCoordinate2D] = [:]
+    var badgeIdByKey: [String: String] = [:]
+    var activeBadgeIdByKey: [String: String] = [:]
+    var restaurantIdByKey: [String: String] = [:]
+    var highlightedKeys: Set<String> = []
+    var viewBadgeId: [String: String] = [:]
+    var uiImageCache: [String: (img: UIImage, size: CGSize)] = [:]
+  }
+  private var pinVAInstances: [String: PinVAInstance] = [:]
+
+  // === Phase-2 labels → ViewAnnotation (A/B) ===================================================
+  // ONE self-colliding label VA per promoted restaurant: enableSymbolLayerCollision → WINS over basemap
+  // (the capability the 11.26 upgrade bought); variableAnchors [bottom>right>top>left] → the SDK picks the
+  // first open side synchronously (no async selector, no dup/vanish/flicker); alpha = engine.pinOpacity ×
+  // presentation → fades with the pin. When ON, the GL label render layer is force-hidden at the
+  // setLabelRenderLayersVisible chokepoint. Mirrors the pin VA roster; reuses the overlay display link.
+  // Flip to false + rebuild = pure GL labels (abort-safe).
+  private var labelsUseViewAnnotation = true
+  private final class LabelVAInstance {
+    weak var mapView: MapView?
+    var vaByKey: [String: ViewAnnotation] = [:]
+    var viewByKey: [String: LabelVAView] = [:]
+    var coordByKey: [String: CLLocationCoordinate2D] = [:]
+    var textByKey: [String: String] = [:]
+    var restaurantIdByKey: [String: String] = [:]
+    var highlightedKeys: Set<String> = []
+  }
+  private var labelVAInstances: [String: LabelVAInstance] = [:]
   // The self-owned CA overlay is the sole pin render + tap substrate on iOS (non-tiled → no zoom
   // wiggle). Proven 2026-06-29: the overlay position is a smooth continuous fn of zoom with zero
   // re-quantization spike at any tile boundary. (Android still renders pins via the GL layers — the
@@ -8116,6 +8233,8 @@ final class SearchMapRenderController: RCTEventEmitter {
   // Called right after engine.decide (camera frame) — NOT per render frame. Creates/recycles tiles
   // and refreshes the coordinate lookup. Tears the overlay down when the source is inactive/dismissing.
   private func syncOverlayRoster(instanceId: String, handle: ResolvedMapHandle) {
+    if labelsUseViewAnnotation { syncLabelVARoster(instanceId: instanceId, handle: handle) }
+    if pinsUseViewAnnotation { syncPinVARoster(instanceId: instanceId, handle: handle); return }
     guard let state = instances[instanceId], let engine = state.lodV5Engine else { return }
     if Self.isVisualSourceInactiveOrDismissing(state) {
       teardownOverlay(instanceId: instanceId)
@@ -8223,6 +8342,8 @@ final class SearchMapRenderController: RCTEventEmitter {
   // opacity. When no fade is active the overlay link owns opacity (writeOpacity:true) so the engine's panning
   // crossfade still shows. pin opacity = engine.pinOpacity(key) × presentation either way.
   private func refreshOverlayFrame(instanceId: String, writeOpacity: Bool = true, forceProject: Bool = false) {
+    if labelsUseViewAnnotation { refreshLabelVAAlpha(instanceId: instanceId, writeOpacity: writeOpacity) }
+    if pinsUseViewAnnotation { refreshPinVAAlpha(instanceId: instanceId, writeOpacity: writeOpacity); return }
     guard let overlay = overlayInstances[instanceId], !overlay.tiles.isEmpty else { return }
     guard let mapView = overlay.mapView, let mapboxMap = mapView.mapboxMap,
           let state = instances[instanceId], let engine = state.lodV5Engine
@@ -8301,6 +8422,8 @@ final class SearchMapRenderController: RCTEventEmitter {
   // Recompute the highlight set and re-skin tiles (body↔active sprite) — called when the highlight changes
   // outside a camera/decide frame (a tap). Mirrors the GL nativeHighlighted badge swap.
   private func applyOverlayHighlight(instanceId: String, state: InstanceState) {
+    if labelsUseViewAnnotation { applyLabelVAHighlight(instanceId: instanceId, state: state) }
+    if pinsUseViewAnnotation { applyPinVAHighlight(instanceId: instanceId, state: state); return }
     guard let overlay = overlayInstances[instanceId],
           let mapboxMap = overlay.mapView?.mapboxMap else { return }
     overlay.highlightedKeys = Self.resolveOverlayHighlightedKeys(
@@ -8316,6 +8439,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   // Front-to-back (largest screenY first = topmost); ignores fading ghosts (opacity ≤ 0.5). Returns the
   // same press-target dict the GL pin path produced ({restaurantId, coordinate, targetKind:"pin"}).
   private func overlayHitTest(instanceId: String, point: CGPoint) -> [String: Any]? {
+    if pinsUseViewAnnotation { return pinVAHitTest(instanceId: instanceId, point: point) }
     guard let overlay = overlayInstances[instanceId],
           let mapView = overlay.mapView, let mapboxMap = mapView.mapboxMap else { return nil }
     let radius = Self.pinTapIntentRadiusPx
@@ -8342,12 +8466,296 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private func teardownOverlay(instanceId: String) {
+    if labelsUseViewAnnotation { teardownLabelVA(instanceId: instanceId) }
+    if pinsUseViewAnnotation { teardownPinVA(instanceId: instanceId); return }
     cancelOverlayDisplayLink(instanceId: instanceId)
     guard let overlay = overlayInstances.removeValue(forKey: instanceId) else { return }
     CATransaction.begin(); CATransaction.setDisableActions(true)
     for (_, tile) in overlay.tiles { tile.removeFromSuperlayer() }
     overlay.overlayView.removeFromSuperview()
     CATransaction.commit()
+  }
+
+  // ============================================================================================
+  // PIN → VIEW ANNOTATION (Phase 1 A/B). Sibling of the CA overlay: same roster/opacity/tap/highlight
+  // discipline, but each pin is a Mapbox ViewAnnotation (SDK-positioned, allowOverlap:true = never
+  // culled, priority = viewport-y z-order). Reuses the overlay display link + one-writer alpha tick.
+  // ============================================================================================
+
+  // LIVE viewport-y z-order: rank `priority` by projected screen-Y so a twist re-stacks live, exactly like
+  // the CA overlay's per-frame `zPosition = screenY`. Runs on roster + every frame WHILE MOVING (at rest the
+  // last ranking holds). "higher priority drawn first" — direction verified on-device; flip the sign if front/back is inverted.
+  private func updatePinVAPriorities(inst: PinVAInstance, mapboxMap: MapboxMap) {
+    for (key, va) in inst.vaByKey {
+      guard let coord = inst.coordByKey[key] else { continue }
+      let pt = mapboxMap.point(for: coord)
+      if pt.y.isFinite { va.priority = Int(pt.y * 10) }
+    }
+  }
+
+  private func pinVAEffectiveBadgeId(inst: PinVAInstance, key: String) -> String? {
+    if inst.highlightedKeys.contains(key), let active = inst.activeBadgeIdByKey[key] { return active }
+    return inst.badgeIdByKey[key]
+  }
+
+  // Resolve a sprite id → UIImage (+ point size) from the Mapbox style, with the same premultiplied-alpha
+  // re-wrap the CA path uses (mapboxMap.image mislabels premultiplied bytes as straight → grey ring seam).
+  private func resolvePinVASprite(inst: PinVAInstance, imageId: String, mapboxMap: MapboxMap) -> (img: UIImage, size: CGSize)? {
+    if let cached = inst.uiImageCache[imageId] { return cached }
+    guard let img = mapboxMap.image(withId: imageId), let raw = img.cgImage else { return nil }
+    let cg = Self.fixMislabeledPremultipliedAlpha(raw) ?? raw
+    let result = (UIImage(cgImage: cg, scale: img.scale, orientation: .up), img.size)
+    inst.uiImageCache[imageId] = result
+    return result
+  }
+
+  // Skin a PinVAView: body = rank sprite (view bounds = body size so .bottom anchor puts the tip on the
+  // coord); shadow = the shared baked silhouette (cachedPinShadow), positioned relative to the body exactly
+  // as configureTileSprite does for the CA tile.
+  private func applyPinVASprite(view: PinVAView, sprite: (img: UIImage, size: CGSize)) {
+    let bodyRect = CGRect(origin: .zero, size: sprite.size)
+    view.bounds = bodyRect
+    view.bodyImageView.frame = bodyRect
+    view.bodyImageView.image = sprite.img
+    let deviceScale = UIScreen.main.scale
+    if cachedPinShadow == nil, let cg = sprite.img.cgImage {
+      cachedPinShadow = makePinShadowImage(bodyCG: cg, bodyPt: sprite.size, deviceScale: deviceScale)
+    }
+    if let sh = cachedPinShadow {
+      let scaledH = sprite.size.height * Self.pinShadowFootprintScale
+      let silhouetteTipYInImage = (sh.sizePt.height + scaledH) / 2.0
+      view.shadowImageView.image = UIImage(cgImage: sh.cg, scale: deviceScale, orientation: .up)
+      view.shadowImageView.frame = CGRect(
+        x: sprite.size.width / 2.0 - sh.sizePt.width / 2.0,
+        y: sprite.size.height - silhouetteTipYInImage - Self.pinShadowLiftUp,
+        width: sh.sizePt.width, height: sh.sizePt.height)
+    }
+  }
+
+  // Reconcile the VA pin roster to the engine's promoted set (∪ still-fading). Sibling of syncOverlayRoster.
+  private func syncPinVARoster(instanceId: String, handle: ResolvedMapHandle) {
+    guard let state = instances[instanceId], let engine = state.lodV5Engine else { return }
+    if Self.isVisualSourceInactiveOrDismissing(state) { teardownPinVA(instanceId: instanceId); return }
+    let inst = pinVAInstances[instanceId] ?? { let i = PinVAInstance(); pinVAInstances[instanceId] = i; return i }()
+    inst.mapView = handle.mapView
+    guard let manager = handle.mapView.viewAnnotations,
+          let mapboxMap = handle.mapView.mapboxMap else { return }
+
+    var coordByKey: [String: CLLocationCoordinate2D] = [:]
+    var badgeIdByKey: [String: String] = [:]
+    var activeBadgeIdByKey: [String: String] = [:]
+    var restaurantIdByKey: [String: String] = [:]
+    coordByKey.reserveCapacity(state.candidateCatalog.count)
+    for entry in state.candidateCatalog {
+      coordByKey[entry.markerKey] = entry.coordinate
+      if let b = entry.badgeImageId { badgeIdByKey[entry.markerKey] = b }
+      if let a = entry.activeBadgeImageId { activeBadgeIdByKey[entry.markerKey] = a }
+      if let r = entry.restaurantId { restaurantIdByKey[entry.markerKey] = r }
+    }
+    inst.coordByKey = coordByKey
+    inst.badgeIdByKey = badgeIdByKey
+    inst.activeBadgeIdByKey = activeBadgeIdByKey
+    inst.restaurantIdByKey = restaurantIdByKey
+    inst.highlightedKeys = Self.resolveOverlayHighlightedKeys(state: state, restaurantIdByKey: restaurantIdByKey)
+
+    var desired = Set(engine.lastPromotedInOrder)
+    for key in inst.viewByKey.keys where !desired.contains(key) {
+      if engine.pinOpacity(key) > 0.001 { desired.insert(key) }
+    }
+
+    // Create missing VAs (alpha 0 → fades up; no add-flash).
+    for key in desired where inst.vaByKey[key] == nil {
+      guard let coord = coordByKey[key],
+            let badgeId = pinVAEffectiveBadgeId(inst: inst, key: key),
+            let sprite = resolvePinVASprite(inst: inst, imageId: badgeId, mapboxMap: mapboxMap) else { continue }
+      let view = PinVAView(frame: CGRect(origin: .zero, size: sprite.size))
+      applyPinVASprite(view: view, sprite: sprite)
+      view.alpha = 0
+      let va = ViewAnnotation(coordinate: coord, view: view)
+      va.allowOverlap = true                                                    // never culled = must-WIN
+      va.enableSymbolLayerCollision = true                                      // join the label collision pass → labels YIELD to pins; pins also win over basemap
+      va.variableAnchors = [ViewAnnotationAnchorConfig(anchor: .bottom)]        // pin tip on the coord
+      va.ignoreCameraPadding = true                                            // edge pins still show (match CA)
+      manager.add(va)
+      inst.vaByKey[key] = va
+      inst.viewByKey[key] = view
+      inst.viewBadgeId[key] = badgeId
+    }
+    // Re-skin live views whose effective badge changed (rank shift OR highlight toggle).
+    for (key, view) in inst.viewByKey {
+      if let badgeId = pinVAEffectiveBadgeId(inst: inst, key: key), inst.viewBadgeId[key] != badgeId,
+         let sprite = resolvePinVASprite(inst: inst, imageId: badgeId, mapboxMap: mapboxMap) {
+        applyPinVASprite(view: view, sprite: sprite)
+        inst.viewBadgeId[key] = badgeId
+      }
+    }
+    // Remove vanished VAs.
+    for key in Array(inst.vaByKey.keys) where !desired.contains(key) {
+      inst.vaByKey.removeValue(forKey: key)?.remove()
+      inst.viewByKey.removeValue(forKey: key)
+      inst.viewBadgeId.removeValue(forKey: key)
+    }
+
+    updatePinVAPriorities(inst: inst, mapboxMap: mapboxMap)   // initial z-order (forceProject equivalent)
+    if inst.viewByKey.isEmpty { cancelOverlayDisplayLink(instanceId: instanceId) }
+    else { ensureOverlayDisplayLink(instanceId: instanceId) }
+    Self.lodLog("[pinva] roster promoted=\(engine.lastPromotedInOrder.count) desired=\(desired.count) vas=\(inst.vaByKey.count)")
+    refreshPinVAAlpha(instanceId: instanceId, writeOpacity: true)
+  }
+
+  // One-writer alpha tick (sibling of refreshOverlayFrame). Position + z-order are SDK-owned, so this only
+  // writes view.alpha = engine.pinOpacity × presentation — the SAME scalar the CA tile used.
+  private func refreshPinVAAlpha(instanceId: String, writeOpacity: Bool) {
+    guard let inst = pinVAInstances[instanceId], !inst.viewByKey.isEmpty,
+          let state = instances[instanceId], let engine = state.lodV5Engine else { return }
+    // Live z-order: re-rank by screen-Y WHILE MOVING so a twist re-stacks (at rest the last ranking holds).
+    // Runs regardless of the one-writer opacity gate — z-order and alpha are independent factors.
+    if state.currentViewportIsMoving, let mapboxMap = inst.mapView?.mapboxMap {
+      updatePinVAPriorities(inst: inst, mapboxMap: mapboxMap)
+    }
+    guard writeOpacity else { return }
+    let presentation = Float(Self.clamp(state.currentPresentationOpacityValue, min: 0, max: 1))
+    for (key, view) in inst.viewByKey {
+      view.alpha = CGFloat(Float(engine.pinOpacity(key)) * presentation)
+    }
+  }
+
+  // Synchronous tap hit-test over the VA pin views — same circle hitbox + payload as overlayHitTest.
+  private func pinVAHitTest(instanceId: String, point: CGPoint) -> [String: Any]? {
+    guard let inst = pinVAInstances[instanceId], let mapView = inst.mapView,
+          let mapboxMap = mapView.mapboxMap else { return nil }
+    Self.lodLog("[pinva] hitTest CALLED n=\(inst.viewByKey.count) pt=\(point)")   // DIAGNOSTIC: gesture reaches us?
+    let radius = Self.pinTapIntentRadiusPx
+    let shiftY = Self.pinInteractionCenterShiftYPx
+    var best: (key: String, screenY: CGFloat)? = nil
+    for (key, view) in inst.viewByKey {
+      guard view.alpha > 0.5, let coord = inst.coordByKey[key] else { continue }
+      let pt = mapboxMap.point(for: coord)
+      guard pt.x.isFinite, pt.y.isFinite else { continue }
+      let cx = pt.x, cy = pt.y - shiftY
+      let dx = point.x - cx, dy = point.y - cy
+      if dx * dx + dy * dy <= radius * radius {
+        if best == nil || pt.y > best!.screenY { best = (key, pt.y) }
+      }
+    }
+    guard let hit = best, let rid = inst.restaurantIdByKey[hit.key], !rid.isEmpty,
+          let coord = inst.coordByKey[hit.key] else { return nil }
+    Self.lodLog("[pinva] tap HIT rid=\(rid)")
+    return [
+      "restaurantId": rid,
+      "coordinate": ["lng": coord.longitude, "lat": coord.latitude],
+      "targetKind": "pin",
+    ]
+  }
+
+  // Recompute the highlight set + re-skin (body↔active) outside a decide frame (a tap). Sibling of applyOverlayHighlight.
+  private func applyPinVAHighlight(instanceId: String, state: InstanceState) {
+    guard let inst = pinVAInstances[instanceId], let mapboxMap = inst.mapView?.mapboxMap else { return }
+    inst.highlightedKeys = Self.resolveOverlayHighlightedKeys(state: state, restaurantIdByKey: inst.restaurantIdByKey)
+    for (key, view) in inst.viewByKey {
+      if let badgeId = pinVAEffectiveBadgeId(inst: inst, key: key), inst.viewBadgeId[key] != badgeId,
+         let sprite = resolvePinVASprite(inst: inst, imageId: badgeId, mapboxMap: mapboxMap) {
+        applyPinVASprite(view: view, sprite: sprite)
+        inst.viewBadgeId[key] = badgeId
+      }
+    }
+  }
+
+  private func teardownPinVA(instanceId: String) {
+    cancelOverlayDisplayLink(instanceId: instanceId)
+    guard let inst = pinVAInstances.removeValue(forKey: instanceId) else { return }
+    for (_, va) in inst.vaByKey { va.remove() }
+  }
+
+  // ============================================================================================
+  // LABELS → VIEW ANNOTATION (Phase 2). One self-colliding VA per promoted restaurant. enableSymbolLayerCollision
+  // wins over basemap; variableAnchors [bottom>right>top>left] pick the first open side; alpha rides the pin scalar.
+  // ============================================================================================
+
+  // Per-side anchors in placement priority (bottom>right>top>left) with the resolved per-side offsets in pt.
+  // SDK: anchor names the side of the LABEL pinned to the point (label sits opposite); +offsetY = UP.
+  // GL/historical target (px, relative to pin coord = tip; fill-center up-shift = 28-12.83 = 15.17) MINUS the
+  // 2pt symmetric halo padding (view edge sits 2pt outside the text box on each side → subtract 2 from the outward axis).
+  private static let labelVAAnchors: [ViewAnnotationAnchorConfig] = [
+    ViewAnnotationAnchorConfig(anchor: .top,    offsetX: 0,     offsetY: -1.5),    // BOTTOM: -3.5 down +2 pad = -1.5
+    ViewAnnotationAnchorConfig(anchor: .left,   offsetX: 18.0,  offsetY: 15.17),   // RIGHT: 20 right -2 pad = 18; up 15.17
+    ViewAnnotationAnchorConfig(anchor: .bottom, offsetX: 0,     offsetY: 30.07),   // TOP: 32.07 up -2 pad = 30.07
+    ViewAnnotationAnchorConfig(anchor: .right,  offsetX: -18.0, offsetY: 15.17),   // LEFT: -20 left +2 pad = -18; up 15.17
+  ]
+
+  private func syncLabelVARoster(instanceId: String, handle: ResolvedMapHandle) {
+    guard let state = instances[instanceId], let engine = state.lodV5Engine else { return }
+    if Self.isVisualSourceInactiveOrDismissing(state) { teardownLabelVA(instanceId: instanceId); return }
+    let inst = labelVAInstances[instanceId] ?? { let i = LabelVAInstance(); labelVAInstances[instanceId] = i; return i }()
+    inst.mapView = handle.mapView
+    guard let manager = handle.mapView.viewAnnotations else { return }
+
+    var coordByKey: [String: CLLocationCoordinate2D] = [:]
+    var textByKey: [String: String] = [:]
+    var restaurantIdByKey: [String: String] = [:]
+    coordByKey.reserveCapacity(state.candidateCatalog.count)
+    for entry in state.candidateCatalog {
+      coordByKey[entry.markerKey] = entry.coordinate
+      if let t = entry.labelText, !t.isEmpty { textByKey[entry.markerKey] = t }
+      if let r = entry.restaurantId { restaurantIdByKey[entry.markerKey] = r }
+    }
+    inst.coordByKey = coordByKey
+    inst.textByKey = textByKey
+    inst.restaurantIdByKey = restaurantIdByKey
+    inst.highlightedKeys = Self.resolveOverlayHighlightedKeys(state: state, restaurantIdByKey: restaurantIdByKey)
+
+    var desired = Set(engine.lastPromotedInOrder)
+    for key in inst.viewByKey.keys where !desired.contains(key) {
+      if engine.pinOpacity(key) > 0.001 { desired.insert(key) }
+    }
+
+    // Create missing label VAs in RANK order (mint order = allowOverlap thinning priority once flipped false).
+    for key in engine.lastPromotedInOrder where desired.contains(key) && inst.vaByKey[key] == nil {
+      guard let coord = coordByKey[key], let text = textByKey[key] else { continue }
+      let view = LabelVAView(frame: .zero)
+      view.setText(text)
+      view.setHighlighted(inst.highlightedKeys.contains(key))
+      view.alpha = 0
+      let va = ViewAnnotation(coordinate: coord, view: view)
+      va.enableSymbolLayerCollision = true                 // @_spi — WINS over basemap symbols
+      va.allowOverlap = false                              // thin among label VAs (SDK culls the lower-priority overlapper)
+      va.variableAnchors = Self.labelVAAnchors
+      va.ignoreCameraPadding = true
+      manager.add(va)
+      inst.vaByKey[key] = va
+      inst.viewByKey[key] = view
+    }
+    // Recolor highlight changes on live labels.
+    for (key, view) in inst.viewByKey { view.setHighlighted(inst.highlightedKeys.contains(key)) }
+    // Remove vanished.
+    for key in Array(inst.vaByKey.keys) where !desired.contains(key) {
+      inst.vaByKey.removeValue(forKey: key)?.remove()
+      inst.viewByKey.removeValue(forKey: key)
+    }
+
+    if !inst.viewByKey.isEmpty { ensureOverlayDisplayLink(instanceId: instanceId) }
+    Self.lodLog("[labelva] roster promoted=\(engine.lastPromotedInOrder.count) desired=\(desired.count) vas=\(inst.vaByKey.count)")
+    refreshLabelVAAlpha(instanceId: instanceId, writeOpacity: true)
+  }
+
+  private func refreshLabelVAAlpha(instanceId: String, writeOpacity: Bool) {
+    guard writeOpacity, let inst = labelVAInstances[instanceId], !inst.viewByKey.isEmpty,
+          let state = instances[instanceId], let engine = state.lodV5Engine else { return }
+    let presentation = Float(Self.clamp(state.currentPresentationOpacityValue, min: 0, max: 1))
+    for (key, view) in inst.viewByKey {
+      view.alpha = CGFloat(Float(engine.pinOpacity(key)) * presentation)
+    }
+  }
+
+  private func applyLabelVAHighlight(instanceId: String, state: InstanceState) {
+    guard let inst = labelVAInstances[instanceId] else { return }
+    inst.highlightedKeys = Self.resolveOverlayHighlightedKeys(state: state, restaurantIdByKey: inst.restaurantIdByKey)
+    for (key, view) in inst.viewByKey { view.setHighlighted(inst.highlightedKeys.contains(key)) }
+  }
+
+  private func teardownLabelVA(instanceId: String) {
+    guard let inst = labelVAInstances.removeValue(forKey: instanceId) else { return }
+    for (_, va) in inst.vaByKey { va.remove() }
   }
 
   // Map-LOD v5 CONVERGE (plans/lod-v5-architecture.md). One display-link tick: integrate every in-motion
