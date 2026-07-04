@@ -422,14 +422,6 @@ type SearchMapRenderSnapshot = {
   labelCollisions: SearchMapSourceStore;
 };
 
-const EMPTY_SEARCH_MAP_RENDER_SNAPSHOT: SearchMapRenderSnapshot = {
-  pins: EMPTY_SEARCH_MAP_SOURCE_STORE,
-  pinInteractions: EMPTY_SEARCH_MAP_SOURCE_STORE,
-  dots: EMPTY_SEARCH_MAP_SOURCE_STORE,
-  labels: EMPTY_SEARCH_MAP_SOURCE_STORE,
-  labelCollisions: EMPTY_SEARCH_MAP_SOURCE_STORE,
-};
-
 const PRESENTATION_ONLY_SEARCH_MAP_RENDER_SOURCE_TRANSPORT: SearchMapRenderSourceTransportPayload =
   Object.freeze({
     effectiveChangedSourceIds: [],
@@ -533,16 +525,6 @@ const getSearchMapNativeFrameVisualSourceCounts = ({
     }
   }
   return null;
-};
-
-const parseSearchMapNativeSourceRevisionCount = (revision: string | null | undefined): number => {
-  if (!revision) {
-    return 0;
-  }
-  const separatorIndex = revision.indexOf(':');
-  const rawCount = separatorIndex >= 0 ? revision.slice(0, separatorIndex) : revision;
-  const parsed = Number.parseInt(rawCount, 10);
-  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 const isSearchMapRenderVisualSnapshotEmpty = (snapshot: SearchMapRenderSnapshot): boolean =>
@@ -1491,15 +1473,8 @@ const buildSearchMapMarkerRoleFrame = ({
   const nextPinnedMarkerKeysInOrder = nextSnapshot.pins.idsInOrder.filter(
     (markerKey) => markerTargetOpacity(nextSnapshot.pins, markerKey, 'nativeLodOpacity') > 0.001
   );
-  const pinnedMarkerKeys = new Set(nextPinnedMarkerKeysInOrder);
   const nextVisibleDotMarkerKeysInOrder = nextSnapshot.dots.idsInOrder.filter(
     (markerKey) => markerTargetOpacity(nextSnapshot.dots, markerKey, 'nativeDotOpacity') > 0.001
-  );
-  const previousPinnedMarkerKeys = new Set(
-    previousSnapshot?.pins.idsInOrder.filter(
-      (markerKey) =>
-        markerTargetOpacity(previousSnapshot.pins, markerKey, 'nativeLodOpacity') > 0.001
-    ) ?? []
   );
   const previousVisibleDotMarkerKeysInOrder =
     previousSnapshot?.dots.idsInOrder.filter(
@@ -1884,7 +1859,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
   const isAttachedStateRef = React.useRef(isAttached);
   const ownerEpochStateRef = React.useRef(ownerEpoch);
   const hasSyncedInitialFrameRef = React.useRef(hasSyncedInitialFrame);
-  const lastCommandedMarkerEnterKeyRef = React.useRef<string | null>(null);
   const isPresentationActiveRef = React.useRef(
     deriveSearchMapRenderPresentationStatusState(
       deriveSearchMapNativePresentationState({
@@ -2031,7 +2005,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let attachTimer: ReturnType<typeof setTimeout> | null = null;
     const attachAttempt = attachRetryNonce;
-    const scheduleRecoverableRetry = (reason: string) => {
+    const scheduleRecoverableRetry = () => {
       if (attachAttempt >= MAX_RECOVERABLE_MAP_HANDLE_ATTACH_RETRIES) {
         return false;
       }
@@ -2058,7 +2032,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
     if (typeof mapTag !== 'number' || mapTag <= 0) {
       const message = 'SearchMap native render owner attach failed: missing native map tag';
       setAttachState('idle');
-      const retryScheduled = scheduleRecoverableRetry('missing_map_tag');
+      const retryScheduled = scheduleRecoverableRetry();
       if (isPresentationActiveRef.current && !retryScheduled) {
         setAttachState('failed');
         setNativeFatalErrorMessage(message);
@@ -2100,8 +2074,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
           }
           const message = error instanceof Error ? error.message : String(error);
           const isRecoverableAttachError = isRecoverableMapHandleAttachError(message);
-          const retryScheduled =
-            isRecoverableAttachError && scheduleRecoverableRetry('map_handle_lookup_failed');
+          const retryScheduled = isRecoverableAttachError && scheduleRecoverableRetry();
           setIsAttached(false);
           setOwnerEpoch(null);
           setHasSyncedInitialFrame(false);

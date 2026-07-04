@@ -1,4 +1,4 @@
-import type { Feature, FeatureCollection, Point } from 'geojson';
+import type { Feature, Point } from 'geojson';
 
 import type { RestaurantFeatureProperties } from '../../components/search-map';
 
@@ -655,21 +655,6 @@ export const createSearchMapSourceStoreBuilder = (
     },
   };
 };
-
-export const materializeSearchMapSourceStoreCollection = (
-  store: SearchMapSourceStore
-): FeatureCollection<Point, RestaurantFeatureProperties> => ({
-  type: 'FeatureCollection',
-  features: store.idsInOrder.map((featureId) => {
-    const feature = store.featureById.get(featureId);
-    if (!feature) {
-      throw new Error(
-        `[SearchMapSourceStore] Missing feature "${featureId}" while materializing source store collection`
-      );
-    }
-    return feature;
-  }),
-});
 
 const appendStableDiffValue = (
   parts: string[],

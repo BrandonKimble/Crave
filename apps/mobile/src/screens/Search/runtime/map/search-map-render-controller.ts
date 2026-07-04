@@ -871,11 +871,6 @@ export const searchMapRenderController = {
   // Press-up marker fade-out: ramps the native presentation scalar 1→0 + snapSettled immediately, decoupled from
   // the debounced data commit (so markers fade out on press, co-triggered with the JS frost). Idempotent.
   async beginInteractionFadeOut(instanceId?: string): Promise<void> {
-    // eslint-disable-next-line no-console
-    console.log('[FADEDBG] beginInteractionFadeOut called', {
-      hasNative: !!nativeModule?.beginInteractionFadeOut,
-      instanceId,
-    });
     if (!nativeModule?.beginInteractionFadeOut) {
       return;
     }

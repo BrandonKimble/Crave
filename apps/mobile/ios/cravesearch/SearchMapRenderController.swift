@@ -4687,15 +4687,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.lastDismissRequestKey == nil
   }
 
-  private static func shouldAllowObservationDrivenMarkerTransitions(
-    _ state: InstanceState
-  ) -> Bool {
-    (state.visualSourceLifecycleState == .visible ||
-      state.visualSourceLifecycleState == .preparingReveal ||
-      state.visualSourceLifecycleState == .revealing) &&
-      state.lastDismissRequestKey == nil
-  }
-
   private func reconcileAndApplyCurrentFrameSnapshots(
     for instanceId: String,
     allowNewTransitions: Bool = true,
@@ -6336,8 +6327,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       reason: "reveal_preroll"
     )
     state.labelCollisionObstacleLayersVisible = true
-    // Wake the resident label render layers (dormant via visibility:none while hidden). This
-    // happens at reveal preroll while presentation opacity is still ~0, so it is flash-free.
+    // Re-assert that the GL label render layers stay hidden (labels render as ViewAnnotations; only the
+    // invisible collision-twin participates in placement). Runs at reveal preroll while presentation
+    // opacity is still ~0, so it is flash-free.
     setLabelRenderLayersVisible(true, for: state, instanceId: instanceId, reason: "reveal_preroll")
     recordNativeApply(
       section: "presentation.reveal_preroll_collision_restore",
@@ -6350,19 +6342,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.currentPresentationRenderPhase = "reveal_preroll"
     state.currentPresentationOpacityTarget = revealPrerollPlacementOpacity
     state.currentPresentationOpacityValue = revealPrerollPlacementOpacity
-    // REVEAL-START DEADLOCK GUARD (primary): the observation-enable bridge call
-    // (`configureLabelObservation`) can arrive while we are still `.hidden` — before this
-    // transition flips us to `.preparingReveal` and wakes the dormant label render layers.
-    // In that case the enable hit the `!canRefreshRenderedLabels` branch, cancelled the
-    // refresh work item, and scheduled nothing, so the placement gate
-    // (`isActiveFrameLabelPlacementReady`) could never open and the SINGLE presentation
-    // opacity animation (shared by pins/dots/labels) stayed at preroll (~0). The label
-    // observation config (observationEnabled / commitVisibleLabelHits / refresh cadence /
-    // reset key) survives the dismiss/reset above, so now that the state can refresh and
-    // the render layers were woken (`setLabelRenderLayersVisible(true)` ran a few lines up,
-    // BEFORE this), re-arm the refresh from that last-known config. The self-retry
-    // (`retryLabelObservationRefreshIfPlacementPending`, delayMs:16) inside the refresh path
-    // then absorbs the query-after-wake layout delay (returns 0 until layout completes).
   }
 
   private func beginDismissVisualLifecycle(
@@ -6510,9 +6489,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     instanceId: String,
     reason: String
   ) {
-    // Phase-2 A/B chokepoint: when labels render as ViewAnnotations, keep the GL label render layers HIDDEN
-    // so they don't double-render or contend with the VA's enableSymbolLayerCollision for basemap suppression.
-    let isVisible = labelsUseViewAnnotation ? false : isVisible
+    // Labels render as ViewAnnotations, so the GL label render layers ALWAYS stay HIDDEN — they don't
+    // double-render or contend with the VA's enableSymbolLayerCollision for basemap suppression. (The
+    // `isVisible` parameter is vestigial from the pre-VA A/B and is intentionally ignored.)
+    let isVisible = false
     do {
       try withMapboxMap(for: state.mapTag) { mapboxMap in
         for layerId in state.labelLayerIds {
@@ -7546,10 +7526,9 @@ final class SearchMapRenderController: RCTEventEmitter {
   // ONE self-colliding label VA per promoted restaurant: enableSymbolLayerCollision → WINS over basemap
   // (the capability the 11.26 upgrade bought); variableAnchors [bottom>right>top>left] → the SDK picks the
   // first open side synchronously (no async selector, no dup/vanish/flicker); alpha = engine.pinOpacity ×
-  // presentation → fades with the pin. When ON, the GL label render layer is force-hidden at the
-  // setLabelRenderLayersVisible chokepoint. Mirrors the pin VA roster; reuses the overlay display link.
-  // Flip to false + rebuild = pure GL labels (abort-safe).
-  private var labelsUseViewAnnotation = true
+  // presentation → fades with the pin. The GL label render layer is force-hidden at the
+  // setLabelRenderLayersVisible chokepoint (its collision-twin stays live for basemap suppression).
+  // Mirrors the pin VA roster; reuses the overlay display link.
   private final class LabelVAInstance {
     weak var mapView: MapView?
     var vaByKey: [String: ViewAnnotation] = [:]
@@ -8010,7 +7989,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   // that single scalar — pin = p, dot = 1 − p, label = p — so a marker can never be a visible pin AND a
   // visible dot (FM#2), and a 30-way budget crossing is 30 independent fades, not a batch snap (FM#4).
   // This is the ONLY feature-state writer when lodV5Enabled (v4's stepper + driveNativeLod are gated off).
-  private static var lastLoggedExpoCount = -1
   private func applyV5StepFeatureStates(for instanceId: String, state: inout InstanceState) throws {
     guard var engine = state.lodV5Engine else { return }
     // Wall-clock fade: hand the engine the absolute now; it projects each in-flight crossfade off this
@@ -8025,15 +8003,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     // changes, i.e. rarely (fewer swaps than the >0.5 keying); the swap is placement-neutral (no re-tile).
     let roleChange = engine.takeSettledRoleChangeIfAny()
     state.lodV5Engine = engine
-    // PROBE: continuous in-flight EXPOSURE (the flash surface area). `writes.count` = dots mid-crossfade this
-    // tick; on ANY reparse in this window, up to that many dots momentarily paint the discrete {0,1} floor
-    // instead of 1-p. maxFlashMag = the worst |floor-(1-p)|. Logged when the count changes, only while moving —
-    // the empirical answer to "is the residual bloom perceptible?" (surface area x reparse frequency).
-    if Self.lodDebugLoggingEnabled, state.currentViewportIsMoving, writes.count != Self.lastLoggedExpoCount {
-      Self.lastLoggedExpoCount = writes.count
-      let exp = engine.inFlightReparseExposure()
-      Self.lodLog("[expodbg] inFlight=\(writes.count) maxFlashMag=\(Self.round3(exp.maxMag))")
-    }
     if let roleKeys = roleChange {
       try? withMapboxMap(for: state.mapTag) { mapboxMap in
         updateLeaMembershipLiterals(promoted: roleKeys, mapboxMap: mapboxMap)
@@ -8612,9 +8581,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         let shift = min(tickGapMs - Self.presentationNominalFrameMs, animator.reAnchorBudgetMs)
         animator.startedAtMs += shift
         animator.reAnchorBudgetMs -= shift
-        Self.lodLog(
-          "[presramp] reanchor gapMs=\(Int(tickGapMs)) shiftMs=\(Int(shift)) budgetLeftMs=\(Int(animator.reAnchorBudgetMs)) reason=\(animator.reason)"
-        )
       }
     }
     animator.lastTickAtMs = timestampMs
@@ -8628,9 +8594,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
     state.currentPresentationOpacityValue = opacity
     instances[instanceId] = state
-    // TEMP CAPTURE: the presentation ramp value each tick, to time when the fade crosses ~0.05 visibility
-    // relative to the under-cover LEA-literal commit ([leamem] underCover). Strip after capture.
-    Self.lodLog("[presramp] t=\(Int(Self.nowMs())) opacity=\(Self.round3(opacity)) reason=\(animator.reason)")
     do {
       let fcT0 = CACurrentMediaTime() * 1000
       try applyPresentationOpacity(
@@ -9555,15 +9518,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       guard !Self.isVisualSourceInactiveOrDismissing(state) else {
         continue
       }
-      // PROBE: quantify the residual dot bloom. A dot-source reparse clears in-flight dots' feature-state,
-      // so any mid-crossfade dot momentarily paints the discrete literal floor. Log how many dots are
-      // exposed + the worst flash magnitude, to answer "is the ≤1-frame residual perceptible?" empirically.
-      if Self.lodDebugLoggingEnabled, sourceId == state.dotSourceId, let engine = state.lodV5Engine {
-        let exp = engine.inFlightReparseExposure()
-        if exp.count > 0 {
-          Self.lodLog("[reparsedbg] dotReparse moving=\(state.currentViewportIsMoving) inFlight=\(exp.count) maxFlashMag=\(Self.round3(exp.maxMag))")
-        }
-      }
       guard var pendingDataIds = state.pendingSourceCommitDataIdsBySourceId[sourceId] else {
         continue
       }
@@ -9859,7 +9813,7 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   // DEV toggle: per-frame [LODDBG]/[leamem] LOD trace (camera/decide/projection/membership). Default OFF;
   // flip true to re-enable the attribution logging used while building the LOD render substrate.
-  static let lodDebugLoggingEnabled = true
+  static let lodDebugLoggingEnabled = false
   @inline(__always) private static func lodLog(_ message: @autoclosure () -> String) {
     if lodDebugLoggingEnabled { NSLog("%@", message()) }
   }
@@ -9990,9 +9944,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     handle.lastNativeCameraDiagAtMs = now
     handle.lastNativeCameraDiagSignature = signature
     Self.lodLog("[LODDBG] camGo moving=\(isMoving) zoom=\(Int((cameraState.zoom * 100).rounded())) instances=\(instances.count)")
-    // TEMP CAPTURE (record/replay): full camera keyframe for correlating a flash to the trajectory AND for
-    // deterministic replay of the exact motion. Strip with the rest of the capture instrumentation.
-    Self.lodLog("[camtraj] t=\(Int(now)) lat=\(center.latitude) lng=\(center.longitude) zoom=\(cameraState.zoom) bearing=\(cameraState.bearing) pitch=\(cameraState.pitch) moving=\(isMoving)")
     for (instanceId, state) in instances where state.mapTag == mapTag {
       guard !Self.isVisualSourceInactiveOrDismissing(state) else {
         Self.lodLog("[LODDBG] camInst \(instanceId) SKIP inactive/dismissing")

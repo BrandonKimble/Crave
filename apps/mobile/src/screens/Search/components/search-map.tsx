@@ -75,9 +75,6 @@ const nextSearchMapComponentInstanceId = (): string => {
   return `${SEARCH_MAP_COMPONENT_INSTANCE_ID_PREFIX}:${searchMapComponentInstanceSeq}`;
 };
 
-const areStringArraysEqual = (left: string[], right: string[]) =>
-  left.length === right.length && left.every((value, index) => value === right[index]);
-
 type DirectSourceFrameStores = {
   pinSourceStore: SearchMapSourceStore;
   dotSourceStore: SearchMapSourceStore;
@@ -104,8 +101,6 @@ const areDirectSourceFrameStoresEqual = (
   left.labelSourceStore === right.labelSourceStore &&
   left.labelCollisionSourceStore === right.labelCollisionSourceStore;
 
-const LABEL_OBSERVATION_REFRESH_MS_IDLE = 140;
-const LABEL_OBSERVATION_REFRESH_MS_MOVING = 16;
 const STYLE_PIN_OUTLINE_IMAGE_ID = 'restaurant-pin-outline';
 const STYLE_PIN_SHADOW_IMAGE_ID = 'restaurant-pin-shadow';
 const STYLE_PIN_FILL_IMAGE_ID = 'restaurant-pin-fill';
@@ -145,8 +140,6 @@ const RESTAURANT_PIN_BUNDLE_SOURCE_ID = `${STYLE_PINS_SOURCE_ID}-bundle`;
 const RESTAURANT_LABEL_RENDER_SOURCE_ID = `${STYLE_PINS_SOURCE_ID}-label-render`;
 const PIN_INTERACTION_SOURCE_ID = 'restaurant-pin-interaction-source';
 
-// Stabilize intra-layer ordering so placement priority doesn't vary with viewport y.
-const STABILIZE_LABEL_ORDER = true;
 // Pin collision obstacle geometry.
 // - `outline`: uses the full pin sprite bounding box (conservative).
 // - `fill`: uses the fill sprite bounding box (tighter).
@@ -995,7 +988,6 @@ const RESTAURANT_LABEL_COLLISION_SOURCE_ID = 'restaurant-label-collision-source'
 // Full-pin-body obstacle layer that ONLY dots yield to (placed below the labels). See DOT_PIN_COLLISION_STYLE.
 const RESTAURANT_PIN_DOT_COLLISION_LAYER_ID = 'restaurant-pin-dot-collision-layer';
 export type LabelCandidate = 'bottom' | 'right' | 'top' | 'left';
-const LABEL_CANDIDATES_IN_ORDER: ReadonlyArray<LabelCandidate> = ['bottom', 'right', 'top', 'left'];
 
 // Layer emission order = Mapbox collision priority (earlier-added layers place first).
 // This preserves the exact order the old preferred=bottom family rendered in: the priority
@@ -1028,23 +1020,6 @@ const DOT_TAP_INTENT_RADIUS_PX = Math.max(7, DOT_TEXT_SIZE * 0.42);
 
 export const buildLabelCandidateFeatureId = (markerKey: string, candidate: LabelCandidate) =>
   `${markerKey}::label::${candidate}`;
-
-const getLabelCandidateFromFeatureId = (featureId: string): LabelCandidate | null => {
-  for (const candidate of LABEL_CANDIDATES_IN_ORDER) {
-    if (featureId.endsWith(`::label::${candidate}`)) {
-      return candidate;
-    }
-  }
-  return null;
-};
-
-const getMarkerKeyFromLabelFeatureId = (featureId: string): string | null => {
-  const separatorIndex = featureId.indexOf('::label::');
-  if (separatorIndex <= 0) {
-    return null;
-  }
-  return featureId.slice(0, separatorIndex);
-};
 
 type SearchMapPressEvent = {
   type?: GeoJSON.Feature['type'];
@@ -1562,11 +1537,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }
   const searchMapComponentInstanceId = searchMapComponentInstanceIdRef.current;
   const shouldDisableMarkers = disableMarkers === true;
-  const presentationAuthoritySnapshot = resultsPresentationAuthority.getSnapshot();
-  const presentationTelemetryPhase =
-    presentationAuthoritySnapshot.resultsPresentationTransport.executionStage;
-  const visualReadyRequestKey =
-    presentationAuthoritySnapshot.resultsPresentationTransport.transactionId;
   const {
     selectedRestaurantId,
     pinSourceStore,
@@ -1638,13 +1608,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const directPinSourceCount = directSourceFrameStores.pinSourceStore.idsInOrder.length;
   const directDotSourceCount = directSourceFrameStores.dotSourceStore.idsInOrder.length;
   const directLabelSourceCount = directSourceFrameStores.labelSourceStore.idsInOrder.length;
-  const shouldPrepareLabelLayers =
-    shouldProjectSearchMarkerFamilies &&
-    (presentedPinSourceStore.idsInOrder.length > 0 || directPinSourceCount > 0) &&
-    (activeLabelSourceStore.idsInOrder.length > 0 || directLabelSourceCount > 0);
-  const shouldRenderLabels = shouldPrepareLabelLayers;
-  const isResultsExitActive =
-    presentationAuthoritySnapshot.resultsPresentationTransport.snapshotKind === 'results_exit';
   const userLocationPuckProps = React.useMemo<{
     featureCollection: FeatureCollection<Point>;
     accuracyRingFeatureCollection: FeatureCollection<Polygon> | null;
@@ -2026,10 +1989,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     } as unknown as MapboxGL.SymbolLayerStyle;
   }, [nativeHighlightedExpression, nativeDotOpacityExpression]);
   const restaurantLabelStyleWithStableOrder = React.useMemo(() => {
-    if (!STABILIZE_LABEL_ORDER) {
-      return restaurantLabelStyle;
-    }
-
     return {
       ...restaurantLabelStyle,
       symbolZOrder: 'source',
