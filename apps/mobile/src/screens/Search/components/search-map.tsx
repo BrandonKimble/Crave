@@ -127,9 +127,9 @@ const DOT_IMAGE_ENTRIES: Record<string, { image: unknown; scale: number }> = Obj
 const SCALE_PROBE_SOURCE_ID = 'perf-scale-probe-source';
 const SCALE_PROBE_LAYER_ID = 'perf-scale-probe-layer';
 const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
-// The pin bundle source. It no longer renders anything on iOS — pins are drawn + tapped by the
-// native CA overlay (PinOverlayView/overlayHitTest), and its GL pin/shadow/interaction layers were
-// removed. It stays mounted as the target for the native pin-LOD setFeatureState writes + the
+// The pin bundle source. It no longer renders anything on iOS — pins are drawn as native
+// ViewAnnotations (PinVAView) and tapped via overlayHitTest, and its GL pin/shadow/interaction
+// layers were removed. It stays mounted as the target for the native pin-LOD setFeatureState writes + the
 // engine's viewport-y group ordering. Kept distinct from STYLE_PINS_SOURCE_ID, which native uses as
 // the in-memory pin *staging* family (marker render state / transitions). Derivation must match
 // native: `"\(pinSourceId)-bundle"`.
@@ -201,10 +201,11 @@ const STYLE_PINS_FILL_OFFSET_IMAGE_PX =
 const PIN_COLLISION_OFFSET_Y_PX = -Math.round(PIN_MARKER_RENDER_SIZE * 0.25);
 const PIN_COLLISION_FILL_OFFSET_IMAGE_PX =
   PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
-// Pin fade timing lives natively now: the CADisplayLink steppers own ALL pin opacity
+// Pin fade timing lives natively now: the display-link tick owns ALL pin opacity
 // animation (LOD promote/demote + presentation reveal/dismiss). There is no JS/Mapbox
-// style transition for pin opacity — the stepper writes the feature-state per frame, so
-// it is the sole animator (this is what removed the per-frame placement-pass pin jitter).
+// style transition for pin opacity — pins are ViewAnnotations (PinVAView) whose alpha the
+// tick writes per frame (refreshPinVAAlpha), so it is the sole animator (this is what
+// removed the per-frame placement-pass pin jitter).
 
 type LabelPlacementFilter = NonNullable<
   React.ComponentProps<typeof MapboxGL.SymbolLayer>['filter']
@@ -245,7 +246,8 @@ const renderSearchMapLabelLayers = ({
 }) => [
   /* COLLISION-TWIN: same geometry (field/size/offset/anchor via the same style), constant-invisible,
      collision flags ON — the sole label collider + basemap suppressor. Placement outcomes are observed
-     here (the one-of-four selector + reveal gate + press targeting QRF this layer).
+     here (the label collider + basemap suppressor). Press targeting is a native VA hit-test
+     (labelVAHitTest), not a QRF of this layer.
      NOTE: a keyed ARRAY, not a Fragment — rnmapbox introspects React.Children, and a Fragment hides the
      layers from that traversal (crashed Fabric mounting with a poisoned ShadowNode family). */
   <MapboxGL.SymbolLayer
@@ -317,9 +319,9 @@ const SearchMapMarkerScene = React.memo(
             />
           </MapboxGL.ShapeSource>
         </React.Profiler>
-        {/* Pins render + tap via the self-owned CA overlay (PinOverlayView in
-            SearchMapRenderController.swift) — non-tiled, so they don't re-quantize on zoom-out
-            (the wiggle fix) and overlayHitTest owns all pin taps. This bundle source has NO
+        {/* Pins render + tap as native ViewAnnotations (PinVAView in
+            SearchMapRenderController.swift) — SDK-positioned, so they don't re-quantize on zoom-out
+            (the wiggle fix) and the native VA hit-test owns all pin taps. This bundle source has NO
             render/interaction layer of its own anymore; it stays mounted only as the target for
             the native pin LOD feature-state writes + the engine's viewport-y group ordering.
             Name-labels are UN-BUNDLED into their own source below so their promote/demote churn
@@ -459,7 +461,7 @@ const SCALE_PROBE_LAYER_STYLE_COLLIDE: MapboxGL.SymbolLayerStyle = {
   symbolZOrder: 'viewport-y',
 } as unknown as MapboxGL.SymbolLayerStyle;
 
-// Perf scale-probe shadow. Real pins now render via the native CA overlay (no GL pin/shadow symbols),
+// Perf scale-probe shadow. Real pins now render as native ViewAnnotations (no GL pin/shadow symbols),
 // but this standalone probe keeps a shadow symbol so it can measure raw GL symbol-layer cost — it
 // historically modeled the old GL pin's 2-symbol cost (pin + shared shadow).
 const SCALE_PROBE_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
@@ -993,8 +995,8 @@ export type LabelCandidate = 'bottom' | 'right' | 'top' | 'left';
 // This preserves the exact order the old preferred=bottom family rendered in: the priority
 // list ['bottom','right','top','left'] reversed → ['left','top','right','bottom'].
 // Single resident label layer id (collapsed from 4 per-candidate layers + shared mutex). Native
-// press-targeting / label-observation query whatever ids JS sends in labelLayerIds (no id is
-// hardcoded native-side), so this is any stable string. The 4 candidate features per restaurant
+// press-targeting is a VA hit-test (labelVAHitTest); the label-observation stack is gone. The id
+// is not hardcoded native-side (JS sends it in labelLayerIds), so this is any stable string. The 4 candidate features per restaurant
 // render through this one layer; per-side placement comes from labelLayerStyle's data-driven match.
 const RESTAURANT_LABEL_LAYER_ID = 'restaurant-labels-layer';
 // COLLISION-TWIN (R-5, owner label policy): the invisible collider. It carries the label text geometry
@@ -1881,7 +1883,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   // here — it is element [1] of the icon/text-opacity product below, a plain layer-level scalar (init 1)
   // that native swaps every fade-tick via setLayerPresentationOpacity (one setLayerProperty, NOT an O(N)
   // setFeatureState sweep). The uniform layer multiplier fades every dot + label together (pins fade in
-  // lockstep via the CA overlay off the same presentation scalar). The nativePresentationOpacity
+  // lockstep via the pin ViewAnnotation alpha off the same presentation scalar). The nativePresentationOpacity
   // feature-state is fully retired.
   // REFINED LEA (Layer-Expression Authority — reparse-immune membership fallback) — the shared pattern
   // for the dot + label opacity expressions below. feature-state (the native wall-clock stepper) drives
@@ -1890,8 +1892,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
   // MEMBERSHIP literal: native swaps it via setLayerProperty on each membership change
   // (updateLeaMembershipLiterals), so it is always the current promoted set and is itself reparse-immune
   // (it lives in the layer's paint expression, which a reparse re-evaluates unchanged). Literal starts
-  // empty; native populates it on the first decide. (Pins are no longer GL-rendered — they're drawn by
-  // the native CA overlay — so there is no pin opacity expression here; only dots + labels use LEA.)
+  // empty; native populates it on the first decide. (Pins are no longer GL-rendered — they're drawn as
+  // native ViewAnnotations (PinVAView) — so there is no pin opacity expression here; only dots + labels use LEA.)
   const nativeLabelOpacityExpression = React.useMemo(
     // For labels: on reparse promoted → 1 (label shows), else → 0 (no label). The membership literal is
     // sentinel-headed (`__lea_lod__`) so the native swapper can target THIS literal (the LOD set) and not
@@ -1905,10 +1907,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
       ] as const,
     []
   );
-  // ONE-LABEL SELECTOR — REPARSE-IMMUNE (no feature-state). The native selector (applyLabelOneOfFourSelector)
-  // decides the single winning side per restaurant and maintains the `__lea_revealed__` membership literal —
-  // the set of WINNER composite keys `markerKey::labelCandidate` — by swapping it into THIS paint expression
-  // via setLayerProperty (same channel as the LOD/dot literals). DEFAULT HIDDEN: a candidate is visible (1)
+  // ONE-LABEL SELECTOR — REPARSE-IMMUNE (no feature-state). NOTE: the native writer that maintained the
+  // `__lea_revealed__` membership literal (the label one-of-four selector) is DELETED — labels are
+  // ViewAnnotations now, so the sentinel is frozen (never re-swapped). This literal reference stays LIVE
+  // only on the collision-twin's text-opacity below; the composite keys `markerKey::labelCandidate` it once
+  // carried are the WINNER set. DEFAULT HIDDEN: a candidate is visible (1)
   // ONLY if its composite key is in the revealed set, else 0. Because the literal lives in the paint
   // expression it SURVIVES a geojson-vt tile reparse (feature-state does NOT) → losers stay hidden through
   // reparses during motion = NO FLASH. Default-hidden also means a freshly-entering candidate can only ever
@@ -2111,10 +2114,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
     []
   );
 
-  // Pin body/number/shadow rendering AND tap targeting moved to the self-owned CA overlay
-  // (PinOverlayView/overlayHitTest in SearchMapRenderController.swift). The overlay skins each pin
-  // tile from the style sprite by `badgeImageId`/`activeBadgeImageId` and bakes the silhouette shadow
-  // itself, so the GL pin SymbolLayer, shadow SymbolLayer, and tap-interaction CircleLayer were all
+  // Pin body/number/shadow rendering AND tap targeting moved to native ViewAnnotations
+  // (PinVAView, tapped via overlayHitTest, in SearchMapRenderController.swift). The VA skins each pin
+  // from the style sprite by `badgeImageId`/`activeBadgeImageId` (applyPinVASprite) and bakes the silhouette
+  // shadow itself, so the GL pin SymbolLayer, shadow SymbolLayer, and tap-interaction CircleLayer were all
   // removed — no pin render or interaction layer remains in JS.
 
   const { mountedSourceCounts } = resolveMapPresentedLabelScene({

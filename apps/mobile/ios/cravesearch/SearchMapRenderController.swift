@@ -75,8 +75,8 @@ private final class PresentationOpacityAnimator {
 
 // ============================================================================================
 // PIN OVERLAY (self-owned ViewAnnotation-style substrate) — plans/map-lod-va-pin-architecture.md
-// The per-pin view HOSTED BY a Mapbox ViewAnnotation. Same visual as
-// PinTileLayer (soft silhouette shadow below, rank badge above) but the VA is SDK-positioned + SDK-z-ordered
+// The per-pin view HOSTED BY a Mapbox ViewAnnotation. Soft silhouette shadow
+// below, rank badge above; the VA is SDK-positioned + SDK-z-ordered
 // (via `priority`), so there is no per-frame `point(for:)` projection and no tile re-quantization. The VA is
 // bottom-anchored so the body's bottom-center (the pin tip) lands exactly on the coordinate. clipsToBounds is
 // OFF so the shadow (padded past the body) shows.
@@ -85,10 +85,10 @@ private final class PinVAView: UIView {
   let bodyImageView = UIImageView()
   override init(frame: CGRect) {
     super.init(frame: frame)
-    isUserInteractionEnabled = false          // taps resolve via the synchronous circle hit-test (like CA)
+    isUserInteractionEnabled = false          // taps resolve via the synchronous circle hit-test (pinVAHitTest)
     clipsToBounds = false
     layer.masksToBounds = false
-    shadowImageView.alpha = 0.35              // matches PinTileLayer.shadowLayer.opacity
+    shadowImageView.alpha = 0.35              // pin-silhouette cast-shadow strength
     shadowImageView.layer.minificationFilter = .trilinear
     addSubview(shadowImageView)               // below
     addSubview(bodyImageView)                 // above
@@ -610,8 +610,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     let markerKey: String
     let coordinate: CLLocationCoordinate2D
     let rank: Int
-    // Pin OVERLAY sprite ids (resolved in JS, registered in the Mapbox style). The overlay pulls the
-    // UIImage from the style by id (mapboxMap.image(withId:)) — the exact sprite the GL pin used.
+    // Pin VIEW-ANNOTATION sprite ids (resolved in JS, registered in the Mapbox style). The pin VA pulls the
+    // UIImage from the style by id (mapboxMap.image(withId:)) — the sprite skinned onto the ViewAnnotation body.
     let badgeImageId: String?
     let activeBadgeImageId: String?
     let restaurantId: String?
@@ -697,7 +697,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     // on-screen set actually changes (avoids redundant per-tick bridge traffic).
     var lastVisibleMarkerSetSignature: String?
     // GRANULAR LOD (native-owned, Phase 2): the promoted set the native projector decided
-    // this frame (top-maxFullPins by rank among the on-screen set). driveNativeLod applies it
+    // this frame (top-maxFullPins by rank among the on-screen set). The v5 LOD engine applies it
     // to the role table per camera frame so promote/demote happens per-pin natively, with no
     // JS round-trip / whole-frame republish.
     var nativePromotedKeysInOrder: [String] = []
@@ -1527,8 +1527,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.lodV5Engine = engine
     }
     // UNIFIED-MERGE FIX: with motion drained + FS cleared, the LEA literals are the SOLE settled authority.
-    // Commit dot+label __lea_lod__ (via engine role bookkeeping) and label __lea_revealed__ (from the winner
-    // map) SYNCHRONOUSLY here, before the ramp crosses ~0.05, so the drained set has a live opacity source.
+    // Commit the dot __lea_lod__ (via engine role bookkeeping) SYNCHRONOUSLY here, before the ramp crosses
+    // ~0.05, so the drained set has a live opacity source. (The label __lea_revealed__ winner map is deleted —
+    // its literal is now a frozen reference on the collision-twin's text-opacity, no longer committed here.)
     // Reuse `handle`'s already-resolved map (no fresh withMapboxMap lock).
     commitSettledLeaAuthorityUnderCover(
       instanceId: instanceId, state: &state, mapboxMap: handle.mapView.mapboxMap)
@@ -1800,8 +1801,8 @@ final class SearchMapRenderController: RCTEventEmitter {
           phase: attributionPhase,
           durationMs: CACurrentMediaTime() * 1000 - highlightedStartedAt
         )
-        // Pin z-order is owned by the CA overlay (per-tile zPosition by screen-y) —
-        // no per-slot moveLayer pass needed.
+        // Pin z-order is owned by each pin ViewAnnotation's `priority` (rank by projected screen-y,
+        // updatePinVAPriorities) — no per-slot moveLayer pass needed.
         if didSyncResidentFrame, var state = self.instances[instanceId] {
           let emitStartedAt = CACurrentMediaTime() * 1000
           let mountedSourceRevisions = self.currentMountedSourceRevisions(state: state)
@@ -4482,12 +4483,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     // Labels → their OWN render source, wrapped with nativeSlotFeatureKind=="label" (the layer
     // filter). Isolated from the pin source so it never wiggles the pins.
     // CHOPPY FIX (2026-06-22): this was retainResidentDemotes:false (always rebuild on promote/demote).
-    // Attributed the pan/zoom jank to driveNativeLod's reconcile spiking to 30-53ms (cwork driveMs) on
-    // role flips — NOT the pin bundle (retained) or the dot output (feature-state only), but this label
-    // RENDER source rebuilding. Pass the same retainResidentDemotesFlag so demoted-marker labels stay
-    // resident (opacity-faded, never removed) while the viewport is moving — no per-flip source rebuild
-    // → no re-tile → smooth pan/zoom. The reveal preroll (not moving) is unaffected: the flag is false
-    // there, so the placement-gate observation still sees normal add/remove.
+    // Attributed the pan/zoom jank to the v4 driveNativeLod reconcile (since deleted) spiking to 30-53ms
+    // (cwork driveMs) on role flips — NOT the pin bundle (retained) or the dot output (feature-state only),
+    // but this label RENDER source rebuilding. Pass the same retainResidentDemotesFlag so demoted-marker
+    // labels stay resident (opacity-faded, never removed) while the viewport is moving — no per-flip source
+    // rebuild → no re-tile → smooth pan/zoom. The reveal preroll (not moving) is unaffected: the flag is
+    // false there, so the label render source still sees normal add/remove.
     var labelRenderRecordsByMarkerKey: [String: [ParsedTransportFeatureRecord]] = [:]
     for markerKey in directOrderedAffectedMarkerKeys {
       let labels = directLabelRecordsByMarkerKey[markerKey] ?? []
@@ -6126,7 +6127,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       // reprojectCatalogUnderCoverIfReady. Commit the reparse-immune settled authority synchronously here too
       // so the fresh decide-promoted set governs the literals before the presentation ramp reveals them.
       // RETARGET MITIGATION: the LEA literal is now keyed to lastPromotedInOrder (the decide target), so this
-      // commit forces dot=0 for the FULL fresh promoted set immediately — including markers whose CA pins are
+      // commit forces dot=0 for the FULL fresh promoted set immediately — including markers whose pin VAs are
       // still fading up from ~0. If we let that land while presentation is under cover, a promoting marker
       // would show neither dot (literal 0) nor pin (pinOpacity ~0) for the first visible frames (a promote-dip
       // / no-show). So UNDER COVER, snapSettled FIRST: it settles the engine roles to target (pins -> 1) at a
@@ -6354,12 +6355,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     // layers to visibility:none at dismiss-complete. Resident collision-bearing label symbols at
     // opacity 0 kept CULLING the basemap street names indefinitely after a dismissed search
     // (confirmed: ghost-town basemap vs the empty-search contrast where sources actually clear).
-    // The deadlock that previously blocked this (queryRenderedFeatures returns 0 on a just-woken
-    // layer → the placement gate never opened → the reveal hung) is now covered end-to-end:
-    // the reveal preroll wakes the layers BEFORE the observation re-arm (its comment was already
-    // written for this dormancy), the refresh path self-retries at 16ms to absorb the
-    // query-after-wake layout delay, and the reveal-deadlock watchdog force-opens the gate
-    // (revealPlacementGateForcedRequestKey) as the bounded backstop if placement still stalls.
+    // (The queryRenderedFeatures placement gate, the label-observation re-arm, and the
+    // reveal-deadlock watchdog that previously guarded this wake are all deleted — labels are
+    // ViewAnnotations now and place synchronously, so there is no gate to open or stall on.)
     setLabelRenderLayersVisible(
       false,
       for: state,
@@ -7496,10 +7494,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     var highlightedKeys: Set<String> = []
   }
   private var labelVAInstances: [String: LabelVAInstance] = [:]
-  // The self-owned CA overlay is the sole pin render + tap substrate on iOS (non-tiled → no zoom
-  // wiggle). Proven 2026-06-29: the overlay position is a smooth continuous fn of zoom with zero
+  // Pins render + tap as Mapbox ViewAnnotations on iOS (SDK-positioned, non-tiled → no zoom
+  // wiggle). Proven 2026-06-29: the VA position is a smooth continuous fn of zoom with zero
   // re-quantization spike at any tile boundary. (Android still renders pins via the GL layers — the
-  // overlay is iOS-only; porting it to Android is tracked separately.)
+  // VA pin substrate is iOS-only; porting it to Android is tracked separately.)
 
   // === PIN SHADOW (baked once, pin-SILHOUETTE shape) ==========================================
   // A soft, blurred copy of the pin's OWN silhouette (the body alpha), tinted dark, generated ONCE via
@@ -7602,7 +7600,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     refreshOverlayFrame(instanceId: instanceId, writeOpacity: presentationOpacityAnimators[instanceId] == nil)
   }
 
-  // GL pin tap hitbox (search-map.tsx): a circle of radius PIN_TAP_INTENT_RADIUS_PX centered
+  // Pin tap hitbox (matches search-map.tsx PIN_TAP_INTENT_RADIUS_PX): a circle of radius PIN_TAP_INTENT_RADIUS_PX centered
   // PIN_INTERACTION_CENTER_SHIFT_Y_PX above the projected coordinate (the tip), so the hot zone sits on the body.
   static let pinTapIntentRadiusPx: CGFloat = 28.0 / 2.0
   static let pinInteractionCenterShiftYPx: CGFloat = 28.0 * 0.38 + 4.25
@@ -7619,7 +7617,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   // Recompute the highlight set + re-skin — called when the highlight changes outside a camera/decide
-  // frame (a tap). Mirrors the GL nativeHighlighted badge swap.
+  // frame (a tap). Re-skins the active badge on the pin VA + recolors the label VA.
   private func applyOverlayHighlight(instanceId: String, state: InstanceState) {
     applyLabelVAHighlight(instanceId: instanceId, state: state)
     applyPinVAHighlight(instanceId: instanceId, state: state)
@@ -7636,13 +7634,13 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   // ============================================================================================
-  // PIN → VIEW ANNOTATION (Phase 1 A/B). Sibling of the CA overlay: same roster/opacity/tap/highlight
-  // discipline, but each pin is a Mapbox ViewAnnotation (SDK-positioned, allowOverlap:true = never
-  // culled, priority = viewport-y z-order). Reuses the overlay display link + one-writer alpha tick.
+  // PIN → VIEW ANNOTATION. Each pin is a Mapbox ViewAnnotation (SDK-positioned, allowOverlap:true =
+  // never culled, priority = viewport-y z-order), driven with the roster/opacity/tap/highlight
+  // discipline of the VA substrate. Rides the shared display link + one-writer alpha tick.
   // ============================================================================================
 
-  // LIVE viewport-y z-order: rank `priority` by projected screen-Y so a twist re-stacks live, exactly like
-  // the CA overlay's per-frame `zPosition = screenY`. Runs on roster + every frame WHILE MOVING (at rest the
+  // LIVE viewport-y z-order: rank the VA `priority` by projected screen-Y so a twist re-stacks live.
+  // Runs on roster + every frame WHILE MOVING (at rest the
   // last ranking holds). "higher priority drawn first" — direction verified on-device; flip the sign if front/back is inverted.
   private func updatePinVAPriorities(inst: PinVAInstance, mapboxMap: MapboxMap) {
     for (key, va) in inst.vaByKey {
@@ -8051,8 +8049,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     promoted: [String], mapboxMap: MapboxMap
   ) {
     var updated = 0
-    // Pins now render via the self-owned CA overlay (no GL pin/shadow layers), so the reparse-immune LEA
-    // crossfade only applies to the still-GL dot layer. Pins fade via the overlay's CA opacity.
+    // Pins now render as native ViewAnnotations (no GL pin/shadow layers, no CA overlay), so the
+    // reparse-immune LEA crossfade only applies to the still-GL dot layer. Pins fade via the VA alpha tick.
     // (Labels are ViewAnnotations now — their alpha is app-owned via refreshLabelVAAlpha, no GL text-opacity.)
     let leaIconLayers = ["restaurant-dot-layer"]
     for layerId in leaIconLayers
@@ -8074,17 +8072,17 @@ final class SearchMapRenderController: RCTEventEmitter {
   /// `in OLD_promoted -> 0` = invisible, and a re-decided label paints an old/empty winner set, for the first
   /// visible frames. Relying on the incidental converge-tick swap (a separate CADisplayLink) or the DEFERRED
   /// async label selector loses that race (the intermittent reveal no-show).
-  ///  - __lea_lod__ (dot icon-opacity + label text-opacity): swapped via `engine.takeSettledRoleChangeIfAny()`,
+  ///  - __lea_lod__ (dot icon-opacity): swapped via `engine.takeSettledRoleChangeIfAny()`,
   ///    which is now keyed to the STABLE decide target `lastPromotedInOrder` (not the lagged >0.5 opacity role).
   ///    So the returned set == the swapped set == `lastPromotedInOrder` and the baseline can never desync. It
   ///    fires reliably on the fresh decide regardless of fade opacity — which is exactly why the earlier
   ///    >0.5-role keying failed at reveal (fades from ~0 -> empty/partial -> nil-or-wrong swap -> stale literal
   ///    -> demoted dots stayed hidden). A nil return means the literal already holds the current promoted set.
-  ///  - __lea_revealed__ (label one-of-four winner): re-committed SYNCHRONOUSLY from the PERSISTED
-  ///    `labelWinnerByInstance` map (survives the tab swap), pruned to the promoted set — QRF-INDEPENDENT
-  ///    (`scheduleLabelObservationRefresh` is async/deferred and CANNOT commit under cover; it stays a later
-  ///    refiner only). May be slightly stale but is never wrong-tab; the default-hidden ~1-frame lateness is
-  ///    the owner-accepted forced ideal. Do NOT reintroduce feature-state for the winner (reparse-clearable).
+  ///  - __lea_revealed__ (label winner): its WRITER (the label one-of-four selector / labelWinnerByInstance
+  ///    map / scheduleLabelObservationRefresh) is DELETED, so this function no longer commits it. The
+  ///    __lea_revealed__ literal is now a FROZEN reference living only on the collision-twin's text-opacity
+  ///    product in search-map.tsx; nothing re-swaps it. Do NOT reintroduce feature-state for the winner
+  ///    (reparse-clearable).
   private func commitSettledLeaAuthorityUnderCover(
     instanceId: String, state: inout InstanceState, mapboxMap: MapboxMap
   ) {
@@ -8099,7 +8097,7 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   // The reparse-immune LEA literal is tagged with a sentinel head (element [0]) so it survives a tile
   // reparse in the paint expression; the membership keys follow it. `__lea_lod__` carries the promoted/LOD
-  // crossfade set on the dot icon-opacity + label text-opacity.
+  // crossfade set on the dot icon-opacity (labels are ViewAnnotations — app-owned alpha, no GL text-opacity).
   static let leaLodSentinel = "__lea_lod__"
 
   @discardableResult
@@ -8575,11 +8573,11 @@ final class SearchMapRenderController: RCTEventEmitter {
       // mechanically WRONG: applyPresentationOpacity writes ONLY the `nativePresentationOpacity` feature-state
       // (never `nativeDotOpacity`), and the baked `nativePresentationOpacity` fallback is already 1, so the
       // breadth of its frame-1 sweep cannot starve dots. The reveal dot/label no-show was a STALE reparse-
-      // immune LEA literal (dot/label __lea_lod__ + label __lea_revealed__ still holding the OLD set when the
-      // ramp crosses visibility). That is now fixed at the SOURCE: reprojectCatalogUnderCoverIfReady (and the
-      // reveal_promote entry point) commit both literals SYNCHRONOUSLY under cover
-      // (commitSettledLeaAuthorityUnderCover). Once those land, BEFORE/AFTER order is free — keep AFTER as the
-      // default frame-pacing choice.
+      // immune LEA literal (the dot __lea_lod__ still holding the OLD set when the ramp crosses visibility).
+      // That is now fixed at the SOURCE: reprojectCatalogUnderCoverIfReady (and the reveal_promote entry
+      // point) commit the dot literal SYNCHRONOUSLY under cover (commitSettledLeaAuthorityUnderCover). Once
+      // it lands, BEFORE/AFTER order is free — keep AFTER as the default frame-pacing choice. (The label
+      // __lea_revealed__ winner is deleted; its literal is a frozen reference on the collision-twin.)
       reprojectCatalogUnderCoverIfReady(instanceId: instanceId)
       state = instances[instanceId] ?? state
       if progress >= 1 {
@@ -9796,7 +9794,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       // Capture the PREVIOUS promoted set (role table) BEFORE mirroring, for the promote/demote delta.
       let prevPromotedSet = Set(state.markerRoleTable.pinnedMarkerKeysInOrder)
       // Force-promote the selected/tapped marker(s) regardless of rank or on-screen status, so a tapped pin
-      // stays a pin when you pan (mirrors v4 driveNativeLod's forcedPromote off highlightedMarkerKeys).
+      // stays a pin when you pan (force-promote off highlightedMarkerKeys).
       let forcedKeys = state.highlightedMarkerKeys
       let (promoted, membershipChanged) = engine.decide(onScreenKeys: Set(onScreenKeys), forcedKeys: forcedKeys)
       state.lodV5Engine = engine

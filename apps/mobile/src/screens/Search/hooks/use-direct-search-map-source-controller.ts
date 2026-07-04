@@ -1664,8 +1664,8 @@ export const useDirectSearchMapSourceController = ({
     // here means source membership changes only on data changes (new search / new page),
     // never on camera, so markers crossfade in/out via LOD opacity instead of being
     // ejected from the source on pan. Promotion is viewport-gated downstream by NATIVE
-    // (projectAndEmitOnScreenMarkers computes the on-screen top-N; driveNativeLod / the reveal
-    // collections snapshot flip those to full pins), so only on-screen markers ever promote.
+    // (projectAndEmitOnScreenMarkers computes the on-screen top-N and — via the v5 engine decide it
+    // runs — flips those to full pins), so only on-screen markers ever promote.
     markerCandidatesRef.current = markerCatalogEntries.map((entry) => entry.feature);
     // IDEAL SHAPE (viewport-bounded): the RANK pool and the DOT pool are the SAME set — every
     // in-view restaurant is both a dot (resident) and a promotion candidate, so any of them can
@@ -1848,13 +1848,13 @@ export const useDirectSearchMapSourceController = ({
     // NATIVE-OWNED LOD with a STATIC INITIAL SEED. JS publishes the FULL resident catalog and SEEDS
     // the initial promotion — the top-N-by-rank ranked results baked as pins (see the IDEAL-REVEAL
     // SEED below) — so the reveal is a single synchronized fade. Native
-    // (projectAndEmitOnScreenMarkers → driveNativeLod) remains the SOLE LOD decider for all pan/zoom:
-    // it recomputes the promoted top-N per camera frame and flips roles via feature-state. The seed
+    // (projectAndEmitOnScreenMarkers, running the v5 engine decide) remains the SOLE LOD decider for all
+    // pan/zoom: it recomputes the promoted top-N per camera frame and flips roles via feature-state. The seed
     // and native's computation agree at reveal (viewport-bounded catalog → all ranked on-screen →
     // same top-N), so native's first tick no-ops rather than re-deciding. The old JS
     // buildMarkerRenderModel (viewport-gated top-N + stable-membership retention) and its
     // lod_target_change attribution are deleted. The selected (tapped) restaurant is force-promoted
-    // natively (driveNativeLod's forcedPromote off highlightedMarkerKeys).
+    // natively (the v5 engine's forcedPromote off highlightedMarkerKeys).
     const projectedVisualFrame = projectSearchMapVisualFrame({
       rankedSources: rankedCandidateSources,
       dotSources: dotCandidateSources,
@@ -1910,8 +1910,8 @@ export const useDirectSearchMapSourceController = ({
     // roles + placed labels from the FIRST painted frame, eliminating the 3-phase stagger (dots fade
     // in alone → top-N crossfade into pins at camera-idle → labels pop in last) that all-demoted
     // produced. It does NOT reintroduce two-decider oscillation: top-N-by-rank among the on-screen set
-    // == native's projected top-N (same maxFullPins), so native's first driveNativeLod tick finds
-    // `affected` empty and no-ops — native STILL solely owns LOD on pan/zoom; JS only seeds the static
+    // == native's projected top-N (same maxFullPins), so native's first projectAndEmitOnScreenMarkers tick
+    // finds `affected` empty and no-ops — native STILL solely owns LOD on pan/zoom; JS only seeds the static
     // frame. The seed is applied in BOTH passes below: a ranked key is usually first seen (and deduped)
     // in the dot pass, since dots carry every candidate resident at opacity 0.
     //
@@ -3208,8 +3208,8 @@ export const useDirectSearchMapSourceController = ({
     // LOD — that path is gone. JS publishes the resident sources only on DATA changes; native
     // owns promote/demote during pan/zoom.
     const unsubscribeViewport = viewportBoundsService.subscribe(() => {
-      // LOD promote/demote is native-owned now (driveNativeLod) — JS does NOT publish sources
-      // on camera ticks. The viewport tick only drives shortcut-coverage fetching (a data
+      // LOD promote/demote is native-owned now (projectAndEmitOnScreenMarkers → v5 engine decide) — JS
+      // does NOT publish sources on camera ticks. The viewport tick only drives shortcut-coverage fetching (a data
       // concern, not LOD). (The motion-pressure admission / projection-token machinery that
       // used to gate the LOD publish is now dead and removed in Phase 3.)
       maybeFetchShortcutCoverage();
