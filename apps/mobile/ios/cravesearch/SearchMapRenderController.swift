@@ -3439,13 +3439,18 @@ final class SearchMapRenderController: RCTEventEmitter {
         }
       }
     }
-    // Pins render + tap via the self-owned CA overlay (the visible non-tiled pins). Pin > label > dot
-    // priority: a pin hit completes; a miss falls through to the GL label/dot queries.
-    if let overlayTarget = overlayHitTest(instanceId: instanceId, point: point) {
-      completion(.success(overlayTarget))
+    // Pin > LABEL > dot priority. Pins + labels are ViewAnnotations → synchronous native geometry hit-test;
+    // dots are still GL → async queryRenderedFeatures. A pin hit completes; else a label hit completes; else
+    // fall through to the GL dot query. (The old GL label query is gone — VA labels resolve natively above.)
+    if let pinTarget = overlayHitTest(instanceId: instanceId, point: point) {
+      completion(.success(pinTarget))
       return
     }
-    queryLabelTarget()
+    if let labelTarget = labelVAHitTest(instanceId: instanceId, point: point) {
+      completion(.success(labelTarget))
+      return
+    }
+    queryDotTarget()
   }
 
   @objc
@@ -7922,6 +7927,34 @@ final class SearchMapRenderController: RCTEventEmitter {
       "restaurantId": rid,
       "coordinate": ["lng": coord.longitude, "lat": coord.latitude],
       "targetKind": "pin",
+    ]
+  }
+
+  // Synchronous tap hit-test over the VA LABEL views (pin > LABEL > dot priority; the caller enforces order).
+  // Labels are SDK-positioned (variableAnchors place them beside the pin), so — unlike pins, which project a
+  // coordinate + circle hitbox — we hit-test the label view's ACTUAL on-screen frame, converted into the map
+  // view's coordinate space (the VA view IS exactly where the visible label is). This replaces the old GL
+  // queryRenderedFeatures(labelLayerIds) tap path, which broke when labels moved to ViewAnnotations (the GL
+  // collision-twin's placement no longer coincides with the SDK-placed label). Returns targetKind:"label".
+  private func labelVAHitTest(instanceId: String, point: CGPoint) -> [String: Any]? {
+    guard let inst = labelVAInstances[instanceId], let mapView = inst.mapView else { return nil }
+    var best: (key: String, area: CGFloat)? = nil
+    for (key, view) in inst.viewByKey {
+      guard view.alpha > 0.5 else { continue }
+      let rect = mapView.convert(view.bounds, from: view)
+      guard rect.width.isFinite, rect.height.isFinite, rect.width > 0, rect.height > 0 else { continue }
+      // Small tap tolerance around the text box; smallest box wins overlap ties (topmost-ish).
+      if rect.insetBy(dx: -4, dy: -4).contains(point) {
+        let area = rect.width * rect.height
+        if best == nil || area < best!.area { best = (key, area) }
+      }
+    }
+    guard let hit = best, let rid = inst.restaurantIdByKey[hit.key], !rid.isEmpty,
+          let coord = inst.coordByKey[hit.key] else { return nil }
+    return [
+      "restaurantId": rid,
+      "coordinate": ["lng": coord.longitude, "lat": coord.latitude],
+      "targetKind": "label",
     ]
   }
 
