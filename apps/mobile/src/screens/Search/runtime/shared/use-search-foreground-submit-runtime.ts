@@ -12,6 +12,7 @@ import { useSearchForegroundSubmitPreparationRuntime } from './use-search-foregr
 export const useSearchForegroundSubmitRuntime = ({
   submitRuntime,
   query,
+  suggestions,
   submittedQuery,
   searchMode,
   activeTab,
@@ -64,6 +65,7 @@ export const useSearchForegroundSubmitRuntime = ({
   const directSubmitRuntime = useSearchForegroundDirectSubmitRuntime({
     submitRuntime,
     query,
+    suggestions,
     submittedQuery,
     searchMode,
     activeTab,

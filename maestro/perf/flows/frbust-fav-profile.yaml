@@ -1,0 +1,12 @@
+# Favorites <-> Profile only (never touches polls/search-home). Any polls-leg re-render here is
+# a spurious memo bust — [frbust] names the field.
+appId: com.brandonkimble.cravesearch
+---
+- tapOn: { point: 50%, 95% }
+- waitForAnimationToEnd: { timeout: 1800 }
+- tapOn: { point: 83%, 95% }
+- waitForAnimationToEnd: { timeout: 1800 }
+- tapOn: { point: 50%, 95% }
+- waitForAnimationToEnd: { timeout: 1800 }
+- tapOn: { point: 83%, 95% }
+- waitForAnimationToEnd: { timeout: 1800 }

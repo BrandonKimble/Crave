@@ -164,5 +164,12 @@ export const useTransitionLanePlayer = (): TransitionLanePlayer => {
     cancelAnimation(settleRamp);
   }, [settleRamp]);
 
-  return { settleRamp, paintAck, start, markPaintAck, seize };
+  // STABLE identity (2026-07-02 zero-JS-switch): all fields are already stable (SVs + useCallbacks),
+  // but the container object was re-created every render — and when this player rides a React
+  // context (the scene-stack ports), a fresh object identity re-minted the context every switch and
+  // re-rendered every context consumer. Memoize the container so its identity survives a re-render.
+  return React.useMemo(
+    () => ({ settleRamp, paintAck, start, markPaintAck, seize }),
+    [settleRamp, paintAck, start, markPaintAck, seize]
+  );
 };

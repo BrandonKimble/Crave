@@ -1,8 +1,5 @@
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
-import {
-  getAppOverlayRouteMetadata,
-  type OverlayRouteParamsMap,
-} from './app-overlay-route-types';
+import { getAppOverlayRouteMetadata, type OverlayRouteParamsMap } from './app-overlay-route-types';
 import type { AppRouteSceneSwitchAuthority } from './app-route-scene-switch-authority';
 import type { RouteSceneSwitchTransitionActions } from './app-route-scene-switch-controller';
 import type { AppRouteSheetSnapSessionActions } from './app-route-sheet-snap-session-runtime';
@@ -77,7 +74,6 @@ export const createAppSearchRouteCommandActions = ({
       sheetTransitionKind: 'topLevelSwitch',
       sheetOpenerSource: 'routeCommand',
       sheetMotion: { kind: 'snapTo', snap, mode },
-      snapPersistence: 'sharedOnly',
       contentReadinessTransactionId: contentReadinessTransactionId ?? null,
     });
   };
@@ -99,7 +95,6 @@ export const createAppSearchRouteCommandActions = ({
       sheetOpenerSource: 'systemDismiss',
       sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
       contentHandoff: 'preserveOutgoingUntilSettle',
-      snapPersistence: 'sharedOnly',
       routeAction: 'setRoot',
       dockedPollsRestoreSnap: 'collapsed',
     });

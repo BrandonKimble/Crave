@@ -18,9 +18,6 @@ export const useSearchRootRouteSearchSceneRuntimeSignalsRuntime = ({
     routeSearchSceneOnRuntimeMechanismEvent:
       overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootInstrumentationRuntime
         .emitRuntimeMechanismEvent,
-    routeSearchSceneHeaderDividerAnimatedStyle:
-      overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.appRouteSharedSheetRuntimeOwner
-        .headerDividerAnimatedStyle,
     routeSearchSceneMapQueryBudget:
       sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.mapQueryBudget,
     routeSearchScenePhaseBMaterializerRef:

@@ -14,6 +14,10 @@ inhibit_all_warnings!
 
 prepare_react_native_project!
 
+# Map-platform upgrade (Phase 0): pin the Mapbox iOS SDK to 11.26.0-rc.1 to unlock
+# ViewAnnotation.enableSymbolLayerCollision + variableAnchors (our labels win over
+# basemap). rnmapbox 10.3.x reads this override (the 10.2.x ~> 11.16.2 hardcode is gone).
+$RNMapboxMapsVersion = '= 11.26.0-rc.1'
 
 target 'cravesearch' do
   use_expo_modules!

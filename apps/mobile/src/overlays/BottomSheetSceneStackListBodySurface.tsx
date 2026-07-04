@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import type { FlashListProps } from '@shopify/flash-list';
 import { FlashList } from '@shopify/flash-list';
-import Animated from 'react-native-reanimated';
+import Animated, { useAnimatedProps } from 'react-native-reanimated';
 
 import type {
   BottomSheetSceneStackBodyContentEntry,
@@ -36,7 +36,14 @@ const INACTIVE_SECONDARY_DRAW_DISTANCE = 0;
 const INACTIVE_SECONDARY_INITIAL_DRAW_BATCH_SIZE = 1;
 const AnimatedFlashList = Animated.createAnimatedComponent(
   FlashList as React.ComponentType<object>
-) as typeof FlashList;
+) as unknown as React.ComponentType<
+  FlashListProps<unknown> & {
+    ref?: React.Ref<unknown>;
+    // Reanimated createAnimatedComponent adds animatedProps; the `as typeof FlashList` cast used to
+    // strip it. Frame-drop fix drives scrollEnabled through here.
+    animatedProps?: { scrollEnabled?: boolean };
+  }
+>;
 
 type ListBodyContentSpec = Extract<
   BottomSheetSceneStackBodyContentEntry['bodyContentSpec'],
@@ -218,6 +225,24 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
     const primaryOwnsScroll = !sceneShouldRenderDualLists || sceneResolvedActiveList === 'primary';
     const secondaryOwnsScroll =
       sceneShouldRenderDualLists && sceneResolvedActiveList === 'secondary';
+    // Frame-drop fix (2026-07-02): drive scrollEnabled off the UI-thread SharedValue mirror instead
+    // of the JS `bodyScrollRuntime.shouldEnableScroll` boolean. The JS boolean toggling on a page
+    // switch (transient interactionEnabled) re-minted the shared bodyScrollRuntime object and
+    // re-rendered this heavy list body (~45ms, the biggest per-switch cost). Reading the SV via
+    // useAnimatedProps keeps scrollEnabled reactive on the UI thread with NO render. ownsScroll is a
+    // stable JS value (always true for single-list scenes like polls) captured in the worklet deps.
+    const primaryScrollEnabledAnimatedProps = useAnimatedProps(() => {
+      'worklet';
+      return {
+        scrollEnabled: bodyScrollRuntime.shouldEnableScrollShared.value && primaryOwnsScroll,
+      };
+    }, [bodyScrollRuntime.shouldEnableScrollShared, primaryOwnsScroll]);
+    const secondaryScrollEnabledAnimatedProps = useAnimatedProps(() => {
+      'worklet';
+      return {
+        scrollEnabled: bodyScrollRuntime.shouldEnableScrollShared.value && secondaryOwnsScroll,
+      };
+    }, [bodyScrollRuntime.shouldEnableScrollShared, secondaryOwnsScroll]);
     const [deferredSecondaryListContent, setDeferredSecondaryListContent] = React.useState<
       typeof sceneSecondaryList | null
     >(null);
@@ -243,60 +268,99 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
       sceneShouldRenderDualLists &&
       sceneSecondaryList != null &&
       (secondaryOwnsScroll || deferredSecondaryListContent === sceneSecondaryList);
-    const sceneResolvedFlashListProps = {
-      drawDistance: DEFAULT_DRAW_DISTANCE,
-      removeClippedSubviews: false,
-      estimatedItemSize: sceneBodyContentSpec.estimatedItemSize,
-      ...sceneFlashListProps,
-      overrideProps: {
-        initialDrawBatchSize: DEFAULT_INITIAL_DRAW_BATCH_SIZE,
-        ...(sceneFlashListProps?.overrideProps ?? {}),
-      },
-    };
-    const sceneSecondaryInputFlashListProps = {
-      ...sceneFlashListProps,
-      ...(sceneSecondaryListTransport?.flashListProps ?? {}),
-    };
-    const sceneSecondaryFlashListProps = {
-      removeClippedSubviews: false,
-      estimatedItemSize:
-        sceneSecondaryList?.estimatedItemSize ?? sceneBodyContentSpec.estimatedItemSize,
-      ...sceneSecondaryInputFlashListProps,
-      drawDistance: secondaryOwnsScroll
-        ? (sceneSecondaryInputFlashListProps.drawDistance ?? DEFAULT_DRAW_DISTANCE)
-        : INACTIVE_SECONDARY_DRAW_DISTANCE,
-      overrideProps: {
-        initialDrawBatchSize: secondaryOwnsScroll
-          ? DEFAULT_INITIAL_DRAW_BATCH_SIZE
-          : INACTIVE_SECONDARY_INITIAL_DRAW_BATCH_SIZE,
-        ...(sceneSecondaryInputFlashListProps.overrideProps ?? {}),
-        ...(!secondaryOwnsScroll
-          ? {
-              initialDrawBatchSize: INACTIVE_SECONDARY_INITIAL_DRAW_BATCH_SIZE,
-            }
-          : null),
-      },
-    };
-    const sceneFlashListSurfaceStyle =
-      StyleSheet.flatten([
+    // Frame-drop fix (2026-07-02): these FlashList prop objects were rebuilt as fresh literals on
+    // EVERY render, so a warm re-render (e.g. the activation commit) handed AnimatedFlashList new
+    // prop identities and forced a native container reconcile. Memoized against their real inputs
+    // so a re-render with unchanged inputs reuses stable identities and pays no container commit.
+    const sceneResolvedFlashListProps = React.useMemo(
+      () => ({
+        drawDistance: DEFAULT_DRAW_DISTANCE,
+        removeClippedSubviews: false,
+        estimatedItemSize: sceneBodyContentSpec.estimatedItemSize,
+        ...sceneFlashListProps,
+        overrideProps: {
+          initialDrawBatchSize: DEFAULT_INITIAL_DRAW_BATCH_SIZE,
+          ...(sceneFlashListProps?.overrideProps ?? {}),
+        },
+      }),
+      [sceneBodyContentSpec.estimatedItemSize, sceneFlashListProps]
+    );
+    const sceneSecondaryInputFlashListProps = React.useMemo(
+      () => ({
+        ...sceneFlashListProps,
+        ...(sceneSecondaryListTransport?.flashListProps ?? {}),
+      }),
+      [sceneFlashListProps, sceneSecondaryListTransport?.flashListProps]
+    );
+    const sceneSecondaryFlashListProps = React.useMemo(
+      () => ({
+        removeClippedSubviews: false,
+        estimatedItemSize:
+          sceneSecondaryList?.estimatedItemSize ?? sceneBodyContentSpec.estimatedItemSize,
+        ...sceneSecondaryInputFlashListProps,
+        drawDistance: secondaryOwnsScroll
+          ? (sceneSecondaryInputFlashListProps.drawDistance ?? DEFAULT_DRAW_DISTANCE)
+          : INACTIVE_SECONDARY_DRAW_DISTANCE,
+        overrideProps: {
+          initialDrawBatchSize: secondaryOwnsScroll
+            ? DEFAULT_INITIAL_DRAW_BATCH_SIZE
+            : INACTIVE_SECONDARY_INITIAL_DRAW_BATCH_SIZE,
+          ...(sceneSecondaryInputFlashListProps.overrideProps ?? {}),
+          ...(!secondaryOwnsScroll
+            ? {
+                initialDrawBatchSize: INACTIVE_SECONDARY_INITIAL_DRAW_BATCH_SIZE,
+              }
+            : null),
+        },
+      }),
+      [
+        sceneSecondaryList?.estimatedItemSize,
+        sceneBodyContentSpec.estimatedItemSize,
+        sceneSecondaryInputFlashListProps,
+        secondaryOwnsScroll,
+      ]
+    );
+    const sceneFlashListSurfaceStyle = React.useMemo(
+      () =>
+        StyleSheet.flatten([
+          sceneFlashListProps?.style,
+          bodyDefaults.scrollHeaderComponent ? styles.transparentFlashListSurface : null,
+        ]) ?? undefined,
+      [sceneFlashListProps?.style, bodyDefaults.scrollHeaderComponent]
+    );
+    const sceneSecondaryFlashListSurfaceStyle = React.useMemo(
+      () =>
+        StyleSheet.flatten([
+          sceneSecondaryListTransport?.flashListProps?.style ?? sceneFlashListProps?.style,
+          bodyDefaults.scrollHeaderComponent ? styles.transparentFlashListSurface : null,
+        ]) ?? undefined,
+      [
+        sceneSecondaryListTransport?.flashListProps?.style,
         sceneFlashListProps?.style,
-        bodyDefaults.scrollHeaderComponent ? styles.transparentFlashListSurface : null,
-      ]) ?? undefined;
-    const sceneSecondaryFlashListSurfaceStyle =
-      StyleSheet.flatten([
-        sceneSecondaryListTransport?.flashListProps?.style ?? sceneFlashListProps?.style,
-        bodyDefaults.scrollHeaderComponent ? styles.transparentFlashListSurface : null,
-      ]) ?? undefined;
-    const sceneSecondaryContentContainerStyle = resolveListContentContainerStyle({
-      baseStyle: sanitizeContentContainerStyle(
-        sceneSecondaryListTransport?.contentContainerStyle ??
-          listDataAuthoritySnapshot.contentContainerStyle ??
-          sceneBodyTransportSpec.contentContainerStyle ??
-          bodyDefaults.resolvedContentContainerStyle
-      ),
-      hasScrollHeaderOverlay: bodyDefaults.scrollHeaderComponent != null,
-      scrollHeaderHeight: bodyDefaults.scrollHeaderHeight,
-    });
+        bodyDefaults.scrollHeaderComponent,
+      ]
+    );
+    const sceneSecondaryContentContainerStyle = React.useMemo(
+      () =>
+        resolveListContentContainerStyle({
+          baseStyle: sanitizeContentContainerStyle(
+            sceneSecondaryListTransport?.contentContainerStyle ??
+              listDataAuthoritySnapshot.contentContainerStyle ??
+              sceneBodyTransportSpec.contentContainerStyle ??
+              bodyDefaults.resolvedContentContainerStyle
+          ),
+          hasScrollHeaderOverlay: bodyDefaults.scrollHeaderComponent != null,
+          scrollHeaderHeight: bodyDefaults.scrollHeaderHeight,
+        }),
+      [
+        sceneSecondaryListTransport?.contentContainerStyle,
+        listDataAuthoritySnapshot.contentContainerStyle,
+        sceneBodyTransportSpec.contentContainerStyle,
+        bodyDefaults.resolvedContentContainerStyle,
+        bodyDefaults.scrollHeaderComponent,
+        bodyDefaults.scrollHeaderHeight,
+      ]
+    );
     const previousIdentityProbeRef = React.useRef<ActiveSheetListSurfaceIdentityProbe | null>(null);
     const nextIdentityProbe = React.useMemo<ActiveSheetListSurfaceIdentityProbe>(
       () => ({
@@ -400,7 +464,7 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
             ListEmptyComponent={primaryOwnsScroll ? sceneBodyContentSpec.ListEmptyComponent : null}
             ItemSeparatorComponent={sceneBodyContentSpec.ItemSeparatorComponent}
             keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
-            scrollEnabled={bodyScrollRuntime.shouldEnableScroll && primaryOwnsScroll}
+            animatedProps={primaryScrollEnabledAnimatedProps}
             renderScrollComponent={primaryOwnsScroll ? renderSceneScrollComponent : undefined}
             onScroll={primaryOwnsScroll ? bodyScrollRuntime.primaryListOnScroll : undefined}
             scrollEventThrottle={primaryOwnsScroll ? 16 : undefined}
@@ -459,7 +523,7 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
                 sceneBodyContentSpec.ItemSeparatorComponent
               }
               keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
-              scrollEnabled={bodyScrollRuntime.shouldEnableScroll && secondaryOwnsScroll}
+              animatedProps={secondaryScrollEnabledAnimatedProps}
               renderScrollComponent={secondaryOwnsScroll ? renderSceneScrollComponent : undefined}
               onScroll={secondaryOwnsScroll ? bodyScrollRuntime.secondaryListOnScroll : undefined}
               scrollEventThrottle={secondaryOwnsScroll ? 16 : undefined}

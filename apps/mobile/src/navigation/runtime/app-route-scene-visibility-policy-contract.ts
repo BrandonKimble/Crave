@@ -11,7 +11,6 @@ export type RouteSceneTransitionVisibilitySnapshot = {
   isCloseTransitionActive: boolean;
   foregroundActivity: AppRouteSceneForegroundActivity;
   chromeSurfaceTarget: AppRouteChromeSurfaceTarget;
-  isPersistentPollLaneEligible: boolean;
   closeHandoffFreezeClassification: SearchFreezeClassification;
 };
 
@@ -60,7 +59,6 @@ export const EMPTY_ROUTE_SCENE_TRANSITION_VISIBILITY_SNAPSHOT: RouteSceneTransit
     isCloseTransitionActive: false,
     foregroundActivity: 'idle',
     chromeSurfaceTarget: 'polls',
-    isPersistentPollLaneEligible: false,
     closeHandoffFreezeClassification: 'none',
   };
 
@@ -90,7 +88,6 @@ export const areRouteSceneTransitionVisibilitySnapshotsEqual = (
   left.inputMode === right.inputMode &&
   left.isCloseTransitionActive === right.isCloseTransitionActive &&
   left.chromeSurfaceTarget === right.chromeSurfaceTarget &&
-  left.isPersistentPollLaneEligible === right.isPersistentPollLaneEligible &&
   left.closeHandoffFreezeClassification === right.closeHandoffFreezeClassification;
 
 export const areRouteSceneSheetPolicyVisibilitySnapshotsEqual = (
@@ -115,7 +112,6 @@ export const createRouteSceneVisibilityPolicySnapshotFromRouteScenePolicy = (
     isCloseTransitionActive: snapshot.foregroundState.isCloseTransitionActive,
     foregroundActivity: snapshot.foregroundActivity,
     chromeSurfaceTarget: snapshot.chromeSurfaceTarget,
-    isPersistentPollLaneEligible: snapshot.isPersistentPollLaneEligible,
     closeHandoffFreezeClassification: snapshot.closeHandoffFreezeClassification,
   },
   sheetPolicyVisibility: {

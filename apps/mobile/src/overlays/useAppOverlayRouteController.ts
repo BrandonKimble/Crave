@@ -1,12 +1,14 @@
 import React from 'react';
 
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
-import type { OverlayKey, OverlayRouteParamsMap } from '../navigation/runtime/app-overlay-route-types';
+import type {
+  OverlayKey,
+  OverlayRouteParamsMap,
+} from '../navigation/runtime/app-overlay-route-types';
 
 export const useAppOverlayRouteController = () => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
-  const appOverlayRouteController =
-    routeSceneRuntime.routeOverlayRouteCommandRuntime;
+  const appOverlayRouteController = routeSceneRuntime.routeOverlayRouteCommandRuntime;
   const setRootRoute = React.useCallback(
     <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => {
       appOverlayRouteController.setRootRoute(overlay, params);
@@ -36,6 +38,10 @@ export const useAppOverlayRouteController = () => {
     appOverlayRouteController.collapseActiveSheet();
   }, [appOverlayRouteController]);
 
+  const promoteActiveSheet = React.useCallback(() => {
+    appOverlayRouteController.promoteActiveSheet();
+  }, [appOverlayRouteController]);
+
   const popToRootRoute = React.useCallback(() => {
     appOverlayRouteController.popToRootRoute();
   }, [appOverlayRouteController]);
@@ -46,9 +52,18 @@ export const useAppOverlayRouteController = () => {
       updateRoute,
       pushRoute,
       collapseActiveSheet,
+      promoteActiveSheet,
       closeActiveRoute,
       popToRootRoute,
     }),
-    [collapseActiveSheet, closeActiveRoute, popToRootRoute, pushRoute, setRootRoute, updateRoute]
+    [
+      collapseActiveSheet,
+      promoteActiveSheet,
+      closeActiveRoute,
+      popToRootRoute,
+      pushRoute,
+      setRootRoute,
+      updateRoute,
+    ]
   );
 };

@@ -459,6 +459,11 @@ export const useBottomSheetSharedRuntime = ({
     scrollRuntime: {
       ScrollComponent: scrollContainerRuntime.ScrollComponent,
       shouldEnableScroll,
+      // UI-thread mirror of shouldEnableScroll (kept in sync above). Frame-drop fix: sinks drive
+      // the FlashList/ScrollView scrollEnabled off THIS SharedValue via useAnimatedProps, so a
+      // transient interactionEnabled toggle during a page switch no longer re-mints bodyScrollRuntime
+      // and re-renders the (heavy) list body. The JS `shouldEnableScroll` stays for legacy readers.
+      shouldEnableScrollShared: runtimeConfigValues.shouldEnableScroll,
       effectiveShowsVerticalScrollIndicator:
         publicationRuntime.effectiveShowsVerticalScrollIndicator,
       scrollHeaderHeight: publicationRuntime.scrollHeaderHeight,

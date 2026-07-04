@@ -19,7 +19,13 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import { io } from 'socket.io-client';
-import { Heart, MessageCircle, Reply as ReplyIcon, Sparkles, X as LucideX } from 'lucide-react-native';
+import {
+  Heart,
+  MessageCircle,
+  Reply as ReplyIcon,
+  Sparkles,
+  X as LucideX,
+} from 'lucide-react-native';
 
 import { showAppModal, Text } from '../../components';
 import { SceneLoadingSurface } from '../../components/skeletons';
@@ -32,7 +38,8 @@ import {
 } from '../overlaySheetStyles';
 import { resolveExpandedTop } from '../sheetUtils';
 import { useNavHideIntent } from '../../navigation/runtime/nav-hide-intent-store';
-import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
+import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
+import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import type { SnapPoints } from '../bottomSheetMotionTypes';
 import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
 import { normalizeSearchRouteSceneStackShellSpec } from '../searchOverlayRouteHostContract';
@@ -82,7 +89,6 @@ type UsePollDetailPanelSpecOptions = {
   commentAnchorId?: string | null;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
-  onClose: () => void;
 };
 
 // Resolve a comment anchor id → the index of the TOP-LEVEL thread node whose subtree contains
@@ -360,73 +366,85 @@ const PollCommentRow = React.memo(
           {/* The comment body always stays mounted; collapsing animates the REPLY subtree
               (rendered by the parent PollThreadNode), not this comment. */}
           <>
-          {isEditing ? (
-            <InlineComposer
-              placeholder="Edit your comment…"
-              initialValue={comment.body}
-              submitLabel="Save"
-              submitting={submitting}
-              onSubmit={onSubmitEdit}
-              onCancel={onCancelCompose}
-            />
-          ) : (
-            <CommentBody comment={comment} mentionUser={mentionUser} onEntityPress={onEntityPress} />
-          )}
-          {!isEditing ? (
-            <View style={styles.commentActions}>
-              <Pressable
-                onPress={() => onLike(comment)}
-                style={styles.likeButton}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={liked ? 'Remove endorsement' : 'Endorse comment'}
-              >
-                <Heart
-                  size={14}
-                  color={liked ? ACCENT : themeColors.textMuted}
-                  fill={liked ? ACCENT : 'transparent'}
-                  strokeWidth={2}
-                />
-                <Text
-                  variant="caption"
-                  weight={liked ? 'semibold' : 'regular'}
-                  style={[styles.likeCount, liked && styles.likeCountActive]}
-                >
-                  {comment.score}
-                </Text>
-              </Pressable>
-              {canReply ? (
+            {isEditing ? (
+              <InlineComposer
+                placeholder="Edit your comment…"
+                initialValue={comment.body}
+                submitLabel="Save"
+                submitting={submitting}
+                onSubmit={onSubmitEdit}
+                onCancel={onCancelCompose}
+              />
+            ) : (
+              <CommentBody
+                comment={comment}
+                mentionUser={mentionUser}
+                onEntityPress={onEntityPress}
+              />
+            )}
+            {!isEditing ? (
+              <View style={styles.commentActions}>
                 <Pressable
-                  onPress={() => onStartReply(comment)}
-                  hitSlop={8}
-                  style={styles.replyButton}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Reply to ${resolveUserName(comment.user)}`}
-                >
-                  <ReplyIcon size={14} color={themeColors.textMuted} strokeWidth={2} />
-                </Pressable>
-              ) : null}
-              {isOwn ? (
-                <Pressable
-                  onPress={() => onStartEdit(comment)}
+                  onPress={() => onLike(comment)}
+                  style={styles.likeButton}
                   hitSlop={8}
                   accessibilityRole="button"
+                  accessibilityLabel={liked ? 'Remove endorsement' : 'Endorse comment'}
                 >
-                  <Text variant="caption" weight="semibold" style={styles.commentAction}>
-                    Edit
+                  <Heart
+                    size={14}
+                    color={liked ? ACCENT : themeColors.textMuted}
+                    fill={liked ? ACCENT : 'transparent'}
+                    strokeWidth={2}
+                  />
+                  <Text
+                    variant="caption"
+                    weight={liked ? 'semibold' : 'regular'}
+                    style={[styles.likeCount, liked && styles.likeCountActive]}
+                  >
+                    {comment.score}
                   </Text>
                 </Pressable>
-              ) : null}
-              {isOwn ? (
-                <Pressable onPress={() => onDelete(comment)} hitSlop={8} accessibilityRole="button">
-                  <Text variant="caption" weight="semibold" style={styles.commentActionDestructive}>
-                    Delete
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
-            </>
+                {canReply ? (
+                  <Pressable
+                    onPress={() => onStartReply(comment)}
+                    hitSlop={8}
+                    style={styles.replyButton}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Reply to ${resolveUserName(comment.user)}`}
+                  >
+                    <ReplyIcon size={14} color={themeColors.textMuted} strokeWidth={2} />
+                  </Pressable>
+                ) : null}
+                {isOwn ? (
+                  <Pressable
+                    onPress={() => onStartEdit(comment)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                  >
+                    <Text variant="caption" weight="semibold" style={styles.commentAction}>
+                      Edit
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {isOwn ? (
+                  <Pressable
+                    onPress={() => onDelete(comment)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                  >
+                    <Text
+                      variant="caption"
+                      weight="semibold"
+                      style={styles.commentActionDestructive}
+                    >
+                      Delete
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+          </>
         </View>
       </View>
     );
@@ -549,6 +567,9 @@ PollThreadNode.displayName = 'PollThreadNode';
 
 // ─── Panel spec ──────────────────────────────────────────────────────────────
 
+// The header (static 'Poll' title + close action) no longer rides this spec — it is extracted to
+// the persistent-header descriptor below (P3). The descriptor's close re-sources the same
+// closeActiveRoute via the route controller.
 export const usePollDetailPanelSpec = ({
   visible,
   pollId,
@@ -556,7 +577,6 @@ export const usePollDetailPanelSpec = ({
   commentAnchorId = null,
   searchBarTop = 0,
   snapPoints: snapPointsOverride,
-  onClose,
 }: UsePollDetailPanelSpecOptions): SearchRoutePublishedSceneParts => {
   const insets = useSafeAreaInsets();
   // Push the bottom tab bar down (the search-submit transition) while the poll thread
@@ -952,9 +972,7 @@ export const usePollDetailPanelSpec = ({
       // (scroll-to + flash). Null pollId (shouldn't happen on a mounted thread) drops the anchor
       // rather than carrying a malformed one.
       const childAnchor =
-        pollId != null
-          ? ({ sceneKey: 'pollDetail', pollId, commentId } as const)
-          : null;
+        pollId != null ? ({ sceneKey: 'pollDetail', pollId, commentId } as const) : null;
       if (entity.type === 'restaurant') {
         // Thread the span's display text as the restaurant name so the hard-swapped restaurant
         // panel paints its header title immediately (no empty-title flash while the committed
@@ -1055,29 +1073,6 @@ export const usePollDetailPanelSpec = ({
   const keyExtractor = React.useCallback((item: ThreadNode) => item.comment.commentId, []);
 
   const headerTitle = poll?.question ?? 'Poll';
-
-  const headerComponent = (
-    <OverlaySheetHeaderChrome
-      title={
-        <Text variant="title" weight="semibold" style={styles.sheetTitle} numberOfLines={1}>
-          Poll
-        </Text>
-      }
-      actionButton={
-        <Pressable
-          onPressIn={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close poll"
-          style={overlaySheetStyles.closeButton}
-          hitSlop={8}
-        >
-          <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
-            <LucideX size={20} color="#000000" strokeWidth={2.5} />
-          </View>
-        </Pressable>
-      }
-    />
-  );
 
   const listHeaderComponent = (
     <View>
@@ -1332,7 +1327,9 @@ export const usePollDetailPanelSpec = ({
       underlayComponent: null,
       // White, full-bleed sheet (no frosted glass) for the poll-detail scene.
       backgroundComponent: <View style={styles.sheetSurface} />,
-      headerComponent,
+      // P3: the poll-detail header is the persistent-header descriptor (registered below) — the
+      // per-scene header lane stays NULL (shape-preserving; other chrome surfaces stay).
+      headerComponent: null,
       overlayComponent: null,
     },
     sceneBodyContent: {
@@ -1370,6 +1367,43 @@ export const usePollDetailPanelSpec = ({
     },
   };
 };
+
+// ─── Persistent header descriptor (P3, page-switch-master-plan.md §6-P3) ────────────────────
+// The poll-detail header is extracted OUT of the panel spec into the hoisted persistent chrome
+// (PersistentSheetHeaderHost): the static 'Poll' title + the close button. Close re-sources the
+// exact action the inline header used — routeOverlayRouteCommandRuntime.closeActiveRoute — via
+// the app-wide route controller hook. The grab-handle tap is the shared promote-to-middle handler
+// (PersistentSheetHeaderHost) — not per-scene; dismiss is the close (X) button here only.
+
+const PollDetailPersistentHeaderTitle = React.memo(() => (
+  <Text variant="title" weight="semibold" style={styles.sheetTitle} numberOfLines={1}>
+    Poll
+  </Text>
+));
+PollDetailPersistentHeaderTitle.displayName = 'PollDetailPersistentHeaderTitle';
+
+const PollDetailPersistentHeaderAction = React.memo(() => {
+  const { closeActiveRoute } = useAppOverlayRouteController();
+  return (
+    <Pressable
+      onPress={closeActiveRoute}
+      accessibilityRole="button"
+      accessibilityLabel="Close poll"
+      style={overlaySheetStyles.closeButton}
+      hitSlop={8}
+    >
+      <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
+        <LucideX size={20} color="#000000" strokeWidth={2.5} />
+      </View>
+    </Pressable>
+  );
+});
+PollDetailPersistentHeaderAction.displayName = 'PollDetailPersistentHeaderAction';
+
+registerPersistentHeaderDescriptor('pollDetail', {
+  Title: PollDetailPersistentHeaderTitle,
+  Action: PollDetailPersistentHeaderAction,
+});
 
 const styles = StyleSheet.create({
   // The white body layer sits BELOW the header band so the header plate's grab-handle + close

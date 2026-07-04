@@ -5,11 +5,8 @@ import * as Location from 'expo-location';
 import { AppState, Dimensions } from 'react-native';
 import type { Coordinate, MapBounds } from '../../types';
 import {
-  createNetworkPollBootstrapSnapshot,
-  fetchPolls,
   normalizePollMarketKey,
   readPollBootstrapSnapshotForMarket,
-  writePollBootstrapSnapshot,
   type PollBootstrapSnapshot,
 } from '../../services/polls';
 import { searchService } from '../../services/search';
@@ -28,9 +25,18 @@ const BOOT_LOCATION_STORAGE_KEY = 'boot:lastKnownLocation';
 // Cold GPS fixes routinely take 1-3s; only block startup briefly, then paint the
 // best immediate source (last-known/cached) and EASE to the fresh fix when it lands.
 const STARTUP_LOCATION_MAX_WAIT_MS = 1_500;
-const STARTUP_POLLS_GRACE_MS = 350;
 const MAX_STORED_LOCATION_AGE_MS = 6 * 60 * 60 * 1000;
 const MAIN_LAUNCH_READY_TIMEOUT_MS = 10_000;
+
+// [pageswitch] P1-addendum bootstrap-lifecycle probe (page-switch-master-plan.md §9.4). Same JSONL
+// family as the BottomSheetSceneStackHost probe so the startup-polls bootstrap lifecycle is
+// greppable in /tmp/crave-metro.log. __DEV__-only.
+const logBootstrap = (data: Record<string, unknown>): void => {
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.log(`[pageswitch] bootstrap ${JSON.stringify(data)}`);
+  }
+};
 
 export type StartupLocationSnapshot = {
   coordinate: Coordinate | null;
@@ -411,7 +417,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
 
   const [isMainLaunchReady, setIsMainLaunchReady] = React.useState(false);
   const [isStartupResolved, setIsStartupResolved] = React.useState(false);
-  const [isStartupPollsResolved, setIsStartupPollsResolved] = React.useState(false);
   const [startupCamera, setStartupCamera] = React.useState<StartupCameraSpec | null>(null);
   const [startupLocationSnapshot, setStartupLocationSnapshot] =
     React.useState<StartupLocationSnapshot | null>(null);
@@ -422,6 +427,9 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     React.useState<UserLocationState>('unavailable');
   const [locationPermissionDenied, setLocationPermissionDenied] = React.useState(false);
   const [mainLaunchFailure, setMainLaunchFailure] = React.useState<Error | null>(null);
+  // §9.4 escape hatch, ROUTE-READINESS axis: forced true only by the route-readiness timeout
+  // below. False on every happy-path boot, so the reveal predicate is byte-identical there.
+  const [isLaunchRouteEscapeForced, setIsLaunchRouteEscapeForced] = React.useState(false);
 
   const userLocationRef = React.useRef<Coordinate | null>(null);
   const latestLocationSnapshotRef =
@@ -438,6 +446,24 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     () => deriveBoundsFromCamera(startupCamera),
     [startupCamera]
   );
+
+  // Live mirror of every reveal-gate bit for the escape-hatch dumps: the timeout callbacks below
+  // must report the bits AS OF FIRE TIME (not their arming closure), so a wedge self-attributes
+  // precisely. Render-phase ref write (same pattern as the feed*Refs in the polls controller).
+  const launchGateBitsRef = React.useRef({
+    isRouteReady,
+    hasRouteState: routeState != null,
+    destination: routeDestination,
+    isStartupResolved,
+    isMainLaunchReady,
+  });
+  launchGateBitsRef.current = {
+    isRouteReady,
+    hasRouteState: routeState != null,
+    destination: routeDestination,
+    isStartupResolved,
+    isMainLaunchReady,
+  };
 
   const publishMainMapReadinessSignal = React.useCallback((publish: () => boolean) => {
     if (!publish()) {
@@ -563,21 +589,18 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
 
     if (routeDestination !== 'main') {
       setIsStartupResolved(true);
-      setIsStartupPollsResolved(true);
       setIsMainLaunchReady(true);
       return;
     }
 
     if (isSplashStudioEnabled) {
       setIsStartupResolved(true);
-      setIsStartupPollsResolved(true);
       setIsMainLaunchReady(true);
       return;
     }
 
     if (hasCompletedInitialMainLaunchRef.current) {
       setIsStartupResolved(true);
-      setIsStartupPollsResolved(true);
       setIsMainLaunchReady(true);
       return;
     }
@@ -585,7 +608,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     setMainLaunchFailure(null);
     publishMainMapReadinessSignal(() => mainMapReadinessAuthorityRef.current.reset());
     setIsStartupResolved(false);
-    setIsStartupPollsResolved(false);
     setIsMainLaunchReady(false);
     setStartupPollsSnapshot(null);
     lastStartupPollBootstrapKeyRef.current = null;
@@ -730,108 +752,71 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     startLocationWatch,
   ]);
 
+  // §9.4: dep on the DERIVED market-key STRING, never launchIntent object identity — a routeState
+  // republish carrying an identical intent must not re-run (and cancel) the bootstrap effect.
+  const routeLaunchIntent = routeState?.launchIntent ?? null;
+  const launchIntentMarketKey =
+    routeLaunchIntent?.type === 'polls' && typeof routeLaunchIntent.marketKey === 'string'
+      ? routeLaunchIntent.marketKey.trim().toLowerCase()
+      : null;
+  const startupIpMarketKey = startupLocationSnapshot?.ipMarketKey ?? null;
+
+  // STARTUP-POLLS CACHE SEED (page-switch-master-plan.md §9.4). This effect ONLY seeds the docked
+  // feed's bootstrap snapshot from the LOCAL cache (instant content for launch-intent / IP-market
+  // launches). All NETWORK fetching + retry for startup polls is owned by the polls feed runtime
+  // (polls-feed-runtime-controller — single writer). A failed or slow polls load can NEVER hold
+  // the splash: home reveals on map readiness and the docked feed shows its own skeleton until
+  // polls resolve.
   React.useEffect(() => {
-    if (
-      !isRouteReady ||
-      routeState?.destination !== 'main' ||
-      !isStartupResolved ||
-      !startupCamera
-    ) {
+    if (!isRouteReady || routeDestination !== 'main' || !isStartupResolved) {
       return;
     }
-
-    const launchIntent = routeState.launchIntent;
-    const launchIntentMarketKey =
-      launchIntent?.type === 'polls' && typeof launchIntent.marketKey === 'string'
-        ? launchIntent.marketKey.trim().toLowerCase()
-        : null;
     const startupCacheMarketKey =
       launchIntentMarketKey ??
-      (startupLocationSnapshot?.ipMarketKey
-        ? normalizePollMarketKey(startupLocationSnapshot.ipMarketKey)
-        : null);
-    const bootstrapKey = JSON.stringify({
-      launchIntentMarketKey,
-      center: startupCamera.center.map((value) => Math.round(value * 1e5) / 1e5),
-      zoom: Math.round(startupCamera.zoom * 100) / 100,
-    });
-    if (!launchIntentMarketKey && !startupPollBounds) {
-      setIsStartupPollsResolved(true);
+      (startupIpMarketKey ? normalizePollMarketKey(startupIpMarketKey) : null);
+    logBootstrap({ phase: 'entry', marketKey: startupCacheMarketKey });
+    if (!startupCacheMarketKey) {
       return;
     }
-
-    if (lastStartupPollBootstrapKeyRef.current === bootstrapKey) {
+    // §9.4: latch-return ONLY once a COMPLETED read committed this key — never while the work is
+    // still unresolved. (The old latch-before-work is what wedged the splash: a dep-identity
+    // re-run's cleanup cancelled the in-flight load and the latch swallowed every later attempt.)
+    if (lastStartupPollBootstrapKeyRef.current === startupCacheMarketKey) {
+      logBootstrap({ phase: 'latch-return', marketKey: startupCacheMarketKey });
       return;
     }
-    lastStartupPollBootstrapKeyRef.current = bootstrapKey;
 
     const seq = ++startupPollBootstrapSeqRef.current;
     let cancelled = false;
-    let pollsResolved = false;
-    let pollsGraceTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    const resolveStartupPolls = () => {
-      if (pollsResolved || cancelled || seq !== startupPollBootstrapSeqRef.current) {
-        return;
-      }
-      pollsResolved = true;
-      setIsStartupPollsResolved(true);
-    };
 
     void (async () => {
-      try {
-        const cachedSnapshot = startupCacheMarketKey
-          ? await readPollBootstrapSnapshotForMarket(startupCacheMarketKey)
-          : null;
-        if (cachedSnapshot && !cancelled && seq === startupPollBootstrapSeqRef.current) {
-          setStartupPollsSnapshot(cachedSnapshot);
-          resolveStartupPolls();
-        } else {
-          pollsGraceTimeout = setTimeout(resolveStartupPolls, STARTUP_POLLS_GRACE_MS);
-        }
-
-        const startupUserLocation = resolveSemanticUserLocation(latestLocationSnapshotRef.current);
-        const response = await fetchPolls(
-          launchIntentMarketKey
-            ? { marketKey: launchIntentMarketKey }
-            : startupPollBounds
-              ? {
-                  bounds: startupPollBounds,
-                  ...(startupUserLocation ? { userLocation: startupUserLocation } : {}),
-                }
-              : {}
-        );
-        if (cancelled || seq !== startupPollBootstrapSeqRef.current) {
-          return;
-        }
-        const snapshot = createNetworkPollBootstrapSnapshot(response);
-        setStartupPollsSnapshot(snapshot);
-        await writePollBootstrapSnapshot(snapshot);
-        resolveStartupPolls();
-      } catch (error) {
-        logger.warn('Failed to bootstrap startup polls', error);
-        resolveStartupPolls();
-      } finally {
-        if (pollsGraceTimeout) {
-          clearTimeout(pollsGraceTimeout);
-          pollsGraceTimeout = null;
-        }
+      const cachedSnapshot = await readPollBootstrapSnapshotForMarket(startupCacheMarketKey).catch(
+        () => null
+      );
+      if (cancelled || seq !== startupPollBootstrapSeqRef.current) {
+        return;
       }
+      lastStartupPollBootstrapKeyRef.current = startupCacheMarketKey;
+      if (cachedSnapshot) {
+        setStartupPollsSnapshot(cachedSnapshot);
+      }
+      logBootstrap({
+        phase: 'resolve',
+        marketKey: startupCacheMarketKey,
+        cached: Boolean(cachedSnapshot),
+      });
     })();
 
     return () => {
       cancelled = true;
-      if (pollsGraceTimeout) {
-        clearTimeout(pollsGraceTimeout);
-      }
+      logBootstrap({ phase: 'cleanup', marketKey: startupCacheMarketKey });
     };
   }, [
     isRouteReady,
     isStartupResolved,
-    routeState?.launchIntent,
-    routeState?.destination,
-    startupCamera,
-    startupPollBounds,
+    launchIntentMarketKey,
+    routeDestination,
+    startupIpMarketKey,
   ]);
 
   React.useEffect(() => {
@@ -964,6 +949,8 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     publishMainMapReadinessSignal(() => mainMapReadinessAuthorityRef.current.markCameraApplied());
   }, [isRouteReady, publishMainMapReadinessSignal, routeState?.destination, startupCamera]);
 
+  // §9.4: startup-polls readiness is NOT part of the launch-ready predicate — the app reveals
+  // home when the map is ready; the docked polls feed shows its own skeleton until polls resolve.
   React.useEffect(() => {
     if (
       !isRouteReady ||
@@ -971,7 +958,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       isSplashStudioEnabled ||
       hasCompletedInitialMainLaunchRef.current ||
       !isStartupResolved ||
-      !isStartupPollsResolved ||
       isMainLaunchReady
     ) {
       return;
@@ -983,12 +969,14 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
   }, [
     isMainLaunchReady,
     isRouteReady,
-    isStartupPollsResolved,
     isStartupResolved,
     mainMapReadinessRevision,
     routeState?.destination,
   ]);
 
+  // §9.4: the escape hatch must force the FULL reveal predicate (every bit isReadyToRender
+  // checks). The old version set only isMainLaunchReady while the gate also required the
+  // startup-polls bit, so it re-armed and fired forever — the observed never-lifting splash.
   React.useEffect(() => {
     if (
       !isRouteReady ||
@@ -996,28 +984,47 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       routeState.destination !== 'main' ||
       isSplashStudioEnabled ||
       hasCompletedInitialMainLaunchRef.current ||
-      (isStartupResolved && isStartupPollsResolved && isMainLaunchReady)
+      (isStartupResolved && isMainLaunchReady)
     ) {
       return;
     }
     const timeout = setTimeout(() => {
+      // Dump EVERY reveal-gate bit (route + startup + mainLaunchReady + map-readiness snapshot)
+      // at fire time so any wedge — including the KNOWN-OPEN dev-client-reload signature at the
+      // reveal gate below — self-attributes from the log alone.
       logger.error('Main launch readiness timeout', {
-        destination: routeDestination,
-        isStartupResolved,
-        isStartupPollsResolved,
-        isMainLaunchReady,
+        ...launchGateBitsRef.current,
         mainMapReadiness: mainMapReadinessAuthorityRef.current.getSnapshot(),
       });
+      setIsStartupResolved(true);
       setIsMainLaunchReady(true);
     }, MAIN_LAUNCH_READY_TIMEOUT_MS);
     return () => clearTimeout(timeout);
-  }, [
-    isMainLaunchReady,
-    isRouteReady,
-    isStartupPollsResolved,
-    isStartupResolved,
-    routeDestination,
-  ]);
+  }, [isMainLaunchReady, isRouteReady, isStartupResolved, routeDestination]);
+
+  // §9.4 escape hatch, ROUTE-READINESS axis: the effect above cannot arm while the ROUTE bits
+  // themselves are wedged — it early-returns until isRouteReady && routeState resolve, so a route
+  // coordinator that never publishes would frost forever with NO escape. This timer arms at the
+  // earliest lifecycle point (isRouteResolved is false at mount) and, if the route bits never
+  // resolve within the same bounded window, force-reveals through the same full reveal predicate
+  // (the forced bit is OR-ed into isReadyToRender/shouldHideSplash below — no side-channel
+  // splash hide) and logger.error-dumps every gate bit so any future occurrence self-attributes.
+  // Happy path: the route bits resolve first, the cleanup clears the timer, the forced bit stays
+  // false forever → reveal timing is byte-identical.
+  const isRouteResolved = isRouteReady && routeState != null;
+  React.useEffect(() => {
+    if (isRouteResolved || isLaunchRouteEscapeForced) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      logger.error('Main launch route readiness timeout', {
+        ...launchGateBitsRef.current,
+        mainMapReadiness: mainMapReadinessAuthorityRef.current.getSnapshot(),
+      });
+      setIsLaunchRouteEscapeForced(true);
+    }, MAIN_LAUNCH_READY_TIMEOUT_MS);
+    return () => clearTimeout(timeout);
+  }, [isLaunchRouteEscapeForced, isRouteResolved]);
 
   React.useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -1040,16 +1047,25 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [startLocationWatch]);
 
+  // §9.4: the reveal gate never waits on startup polls — a failed/slow polls load must NEVER
+  // hold the splash. The docked polls scene skeletons until the feed runtime resolves polls.
+  //
+  // KNOWN-OPEN (observed once, UNATTRIBUTED — don't chase without a repro): a dev-client-RELOAD
+  // boot frosted with the map-readiness signals never re-firing on a reused native map view
+  // (markMainMapLoaded/markMainMapReady silent → isMainLaunchReady never latches). Any recurrence
+  // now self-attributes: the 10s escapes above fire and dump every gate bit + the map-readiness
+  // snapshot. isLaunchRouteEscapeForced is the route-axis escape — false on every happy-path
+  // boot, so `escape || (…)` evaluates identically to the bare predicate there.
   const isReadyToRender =
-    isRouteReady &&
-    routeState != null &&
-    (routeDestination === 'main'
-      ? isStartupResolved && isStartupPollsResolved && isMainLaunchReady
-      : true);
+    isLaunchRouteEscapeForced ||
+    (isRouteReady &&
+      routeState != null &&
+      (routeDestination === 'main' ? isStartupResolved && isMainLaunchReady : true));
   const shouldHideSplash =
-    isRouteReady &&
-    routeState != null &&
-    (routeDestination === 'main' ? (isSplashStudioEnabled ? true : isReadyToRender) : true);
+    isLaunchRouteEscapeForced ||
+    (isRouteReady &&
+      routeState != null &&
+      (routeDestination === 'main' ? (isSplashStudioEnabled ? true : isReadyToRender) : true));
 
   React.useEffect(() => {
     if (!shouldHideSplash || splashHiddenRef.current) {

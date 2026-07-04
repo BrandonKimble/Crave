@@ -30,21 +30,14 @@ import { SearchDemandAggregationService } from '../analytics/search-demand-aggre
 
 const DEFAULT_LIMIT = 8;
 const MIN_QUERY_LENGTH = 1;
-const ENTITY_LANE_RESERVED_SLOTS = 3;
 const PERSONAL_QUERY_RESERVED_SLOTS = 2;
 const GLOBAL_QUERY_RESERVED_SLOTS = 1;
 const ATTRIBUTE_RESERVED_SLOTS = 1;
-const ATTRIBUTE_STRONG_CONFIDENCE = 0.95;
-const ATTRIBUTE_SUPPORTED_CONFIDENCE = 0.88;
 const ATTRIBUTE_SUPPORT_WINDOW_DAYS = 90;
 const ATTRIBUTE_TYPED_SEARCH_WEIGHT = 0.6;
 const ATTRIBUTE_SELECTION_WEIGHT = 0.3;
 const ATTRIBUTE_CORPUS_WEIGHT = 0.1;
 const ATTRIBUTE_GLOBAL_SUPPORT_BACKSTOP_WEIGHT = 0.25;
-const ATTRIBUTE_EXACT_SUPPORT_FLOOR = 0.08;
-const ATTRIBUTE_SUPPORTED_MATCH_FLOOR = 0.22;
-const ATTRIBUTE_LOOSE_MATCH_FLOOR = 0.42;
-const ATTRIBUTE_SINGLE_CHARACTER_SUPPORT_FLOOR = 0.65;
 const ATTRIBUTE_LANE_RUNTIME_READY = true;
 // Poll lane (§8.1): polls compete in the OVERFLOW pool — zero reserved slots, so
 // they surface only when they out-score leftover entity/query candidates. Gated to
@@ -310,6 +303,7 @@ export class AutocompleteService {
           confidence: Number(result.similarity.toFixed(2)),
           aliases: [],
           matchType: 'entity',
+          evidenceTier: result.evidence,
         }));
 
       if (
@@ -340,6 +334,7 @@ export class AutocompleteService {
           confidence: Number(result.similarity.toFixed(2)),
           aliases: [],
           matchType: 'entity',
+          evidenceTier: result.evidence,
         }),
       );
 
@@ -696,7 +691,6 @@ export class AutocompleteService {
         !this.isStrongAttributeCandidate({
           match,
           normalizedQuery,
-          support: attributeSupportScore ?? this.emptyAttributeSupport(),
         })
       ) {
         return [];
@@ -782,7 +776,13 @@ export class AutocompleteService {
     const globalQueryCandidates = acceptedQueryCandidates
       .filter(({ match }) => match.querySuggestionSource === 'global')
       .sort(compareQueryLaneOrder);
-    const queryCandidates = [
+    // The query-suggestion STRIP (a separate UI surface from the main list) is the
+    // ONLY consumer of the reserved-slot ordering: seat the user's own recent
+    // queries first, then popular global ones, capped at querySuggestionMax. This
+    // shaping stays local to the strip — the main-list blend below receives the
+    // FULL, unshaped query lane (personal/globalQueryCandidates) so every suggestion
+    // competes purely on score, never truncated by the strip's presentation cap.
+    const querySuggestionStrip = [
       ...personalQueryCandidates.slice(
         0,
         Math.max(1, PERSONAL_QUERY_RESERVED_SLOTS),
@@ -806,17 +806,13 @@ export class AutocompleteService {
       attributeCandidates: scoredEntities
         .filter(({ match }) => this.isAttributeType(match.entityType))
         .sort((a, b) => b.score - a.score),
-      personalQueryCandidates: queryCandidates.filter(
-        ({ match }) => match.querySuggestionSource === 'personal',
-      ),
-      globalQueryCandidates: queryCandidates.filter(
-        ({ match }) => match.querySuggestionSource === 'global',
-      ),
+      personalQueryCandidates,
+      globalQueryCandidates,
       pollCandidates,
       limit,
     });
 
-    const querySuggestionTexts = queryCandidates.map(
+    const querySuggestionTexts = querySuggestionStrip.map(
       (candidate) => candidate.match.name,
     );
 
@@ -837,71 +833,33 @@ export class AutocompleteService {
     pollCandidates: Array<{ match: AutocompleteMatchDto; score: number }>;
     limit: number;
   }): AutocompleteMatchDto[] {
+    // FLOOR, NOT MANDATE (owner directive): every lane's candidates compete in ONE
+    // global score sort. A lane's suggestion appears only if it out-scores the
+    // others — we never seat a weak lane-top ahead of a stronger candidate from
+    // another lane, and never force a slot just to fill a bucket.
+    // Every lane — including the FULL query lane (not the strip-truncated subset) —
+    // enters this sort unshaped; the reserved-slot constants shape only the separate
+    // query-suggestion strip upstream, never this cross-lane blend.
     const finalMatches: AutocompleteMatchDto[] = [];
     const seen = new Set<string>();
-    const push = (candidate: {
-      match: AutocompleteMatchDto;
-      score: number;
-    }) => {
+    const ranked = [
+      ...params.entityCandidates,
+      ...params.attributeCandidates,
+      ...params.personalQueryCandidates,
+      ...params.globalQueryCandidates,
+      ...params.pollCandidates,
+    ].sort((a, b) => b.score - a.score);
+    for (const candidate of ranked) {
       if (finalMatches.length >= params.limit) {
-        return;
+        break;
       }
       const key = `${candidate.match.entityType}:${candidate.match.entityId}`;
       if (seen.has(key)) {
-        return;
+        continue;
       }
       seen.add(key);
       finalMatches.push(candidate.match);
-    };
-
-    const reserveTotal =
-      ENTITY_LANE_RESERVED_SLOTS +
-      PERSONAL_QUERY_RESERVED_SLOTS +
-      GLOBAL_QUERY_RESERVED_SLOTS +
-      ATTRIBUTE_RESERVED_SLOTS;
-    let entityOverflowStart = ENTITY_LANE_RESERVED_SLOTS;
-    let personalOverflowStart = PERSONAL_QUERY_RESERVED_SLOTS;
-    let globalOverflowStart = GLOBAL_QUERY_RESERVED_SLOTS;
-    if (params.limit < reserveTotal) {
-      entityOverflowStart = 1;
-      personalOverflowStart = 1;
-      globalOverflowStart = 1;
-      [
-        params.entityCandidates[0],
-        params.personalQueryCandidates[0],
-        params.globalQueryCandidates[0],
-        params.attributeCandidates[0],
-      ]
-        .filter(
-          (
-            candidate,
-          ): candidate is { match: AutocompleteMatchDto; score: number } =>
-            Boolean(candidate),
-        )
-        .forEach(push);
-    } else {
-      params.entityCandidates
-        .slice(0, ENTITY_LANE_RESERVED_SLOTS)
-        .forEach(push);
-      params.personalQueryCandidates
-        .slice(0, PERSONAL_QUERY_RESERVED_SLOTS)
-        .forEach(push);
-      params.globalQueryCandidates
-        .slice(0, GLOBAL_QUERY_RESERVED_SLOTS)
-        .forEach(push);
-      params.attributeCandidates
-        .slice(0, ATTRIBUTE_RESERVED_SLOTS)
-        .forEach(push);
     }
-
-    const overflow = [
-      ...params.entityCandidates.slice(entityOverflowStart),
-      ...params.personalQueryCandidates.slice(personalOverflowStart),
-      ...params.globalQueryCandidates.slice(globalOverflowStart),
-      ...params.pollCandidates, // zero reserved — polls earn a slot purely by score
-    ].sort((a, b) => b.score - a.score);
-
-    overflow.forEach(push);
     return finalMatches;
   }
 
@@ -967,29 +925,22 @@ export class AutocompleteService {
   private isStrongAttributeCandidate(params: {
     match: AutocompleteMatchDto;
     normalizedQuery: string;
-    support: AttributeSupportScore;
   }): boolean {
     if (!this.isAttributeType(params.match.entityType)) {
       return true;
     }
-    const confidence = clamp01(params.match.confidence);
-    const queryLength = params.normalizedQuery.trim().length;
-    const support = params.support.rankSupport;
-
-    if (queryLength <= 1) {
-      return (
-        confidence >= ATTRIBUTE_SUPPORTED_CONFIDENCE &&
-        support >= ATTRIBUTE_SINGLE_CHARACTER_SUPPORT_FLOOR
-      );
+    // Structural show/hide rule (replaces the dead confidence×support matrix,
+    // whose rankSupport capped at 0.096 against 0.22/0.42/0.65 floors — so a user
+    // typing "vegan" verbatim got NOTHING). Now: exact or prefix evidence ⇒ always
+    // show (you essentially typed it); fuzzier evidence needs a query of ≥4 chars
+    // so a 1-3 char fragment doesn't surface loosely-matched attributes. Demand/
+    // corpus support is a RANKING signal only (calculateAttributeScore) — it never
+    // decides whether an attribute appears.
+    const evidence = params.match.evidenceTier;
+    if (evidence === 'exact' || evidence === 'prefix') {
+      return true;
     }
-    if (confidence >= ATTRIBUTE_STRONG_CONFIDENCE) {
-      return support >= ATTRIBUTE_EXACT_SUPPORT_FLOOR;
-    }
-    return (
-      (confidence >= ATTRIBUTE_SUPPORTED_CONFIDENCE &&
-        support >= ATTRIBUTE_SUPPORTED_MATCH_FLOOR) ||
-      (confidence >= 0.82 && support >= ATTRIBUTE_LOOSE_MATCH_FLOOR)
-    );
+    return params.normalizedQuery.trim().length >= 4;
   }
 
   private calculateAttributeScore(params: {

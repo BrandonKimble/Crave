@@ -3,10 +3,7 @@ import type {
   SearchOverlaySheetSnap,
   TabOverlaySnap,
 } from '../../overlays/searchRouteSessionTypes';
-import {
-  getOriginCaptureProvider,
-  registerOriginCaptureProvider,
-} from './origin-capture-registry';
+import { getOriginCaptureProvider, registerOriginCaptureProvider } from './origin-capture-registry';
 import { getOriginSceneLiveState } from './origin-scene-live-state-registry';
 import { stageOverlayScrollRestore } from '../../overlays/overlayScrollOffsetRuntime';
 import { stageOriginSceneSegmentRestore } from '../../overlays/originSceneSegmentRuntime';
@@ -30,10 +27,6 @@ import type {
   AppRouteSheetSnapSessionAuthority,
 } from './app-route-sheet-snap-session-runtime';
 import type { RouteScenePolicySnapshot } from './app-route-scene-policy-contract';
-import type {
-  RouteSceneVisibilityPolicyRuntime,
-  RouteSceneVisibilityPolicySnapshot,
-} from './app-route-scene-visibility-policy-contract';
 import { resolveSearchLaunchOriginSnap } from './app-route-session-utils';
 import type { RouteOverlayIdentitySnapshot } from './route-overlay-navigation-snapshot-contract';
 import type { RouteOverlayRootSnapshot } from './route-overlay-display-snapshot-contract';
@@ -60,7 +53,6 @@ type AppRouteOverlaySessionStateControllerArgs = {
   routeOverlayIdentityAuthority: SnapshotSource<RouteOverlayIdentitySnapshot>;
   routeOverlayRootAuthority: RootSnapshotTargetAuthority;
   routeScenePolicyAuthority: OutputAuthority<RouteScenePolicySnapshot>;
-  routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
   routeSceneSwitchActions: RouteSceneSwitchTransitionActions;
   routeSearchCommandActions: AppSearchRouteCommandActions;
   routeSheetSnapSessionAuthority: AppRouteSheetSnapSessionAuthority;
@@ -254,10 +246,6 @@ const areAppRouteOverlaySessionSnapshotsEqual = (
 export class AppRouteOverlaySessionStateController {
   private readonly routeOverlayIdentityAuthority: SnapshotSource<RouteOverlayIdentitySnapshot>;
 
-  private readonly routeScenePolicyAuthority: OutputAuthority<RouteScenePolicySnapshot>;
-
-  private readonly routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
-
   private readonly routeSceneSwitchActions: RouteSceneSwitchTransitionActions;
 
   private readonly routeSearchCommandActions: AppSearchRouteCommandActions;
@@ -289,15 +277,12 @@ export class AppRouteOverlaySessionStateController {
     routeOverlayIdentityAuthority,
     routeOverlayRootAuthority,
     routeScenePolicyAuthority,
-    routeSceneVisibilityPolicyRuntime,
     routeSceneSwitchActions,
     routeSearchCommandActions,
     routeSheetSnapSessionAuthority,
     routeSheetSnapSessionActions,
   }: AppRouteOverlaySessionStateControllerArgs) {
     this.routeOverlayIdentityAuthority = routeOverlayIdentityAuthority;
-    this.routeScenePolicyAuthority = routeScenePolicyAuthority;
-    this.routeSceneVisibilityPolicyRuntime = routeSceneVisibilityPolicyRuntime;
     this.routeSceneSwitchActions = routeSceneSwitchActions;
     this.routeSearchCommandActions = routeSearchCommandActions;
     this.routeSheetSnapSessionAuthority = routeSheetSnapSessionAuthority;
@@ -314,8 +299,7 @@ export class AppRouteOverlaySessionStateController {
       prepareSearchSessionEntry: this.prepareSearchSessionEntry.bind(this),
       flushPendingSearchOriginRestore: this.flushPendingSearchOriginRestore.bind(this),
       requestDefaultPostSearchRestore: this.requestDefaultPostSearchRestore.bind(this),
-      isTopLevelRichSeededOriginCaptured:
-        this.isTopLevelRichSeededOriginCaptured.bind(this),
+      isTopLevelRichSeededOriginCaptured: this.isTopLevelRichSeededOriginCaptured.bind(this),
       dismissRestoreToTopLevelRichOrigin: this.dismissRestoreToTopLevelRichOrigin.bind(this),
     };
     this.unsubscribers.push(
@@ -332,6 +316,14 @@ export class AppRouteOverlaySessionStateController {
       }),
       routeSheetSnapSessionAuthority.subscribe(() => {
         this.handleNavRestorePending();
+        this.recompute(true);
+      }),
+      // computeSnapshot PULL-reads getPresentationFrame().laneKind (the docked-polls formula),
+      // so this controller must also recompute on frame PUBLICATIONS — a results_dismissing
+      // re-mint changes laneKind without touching the other subscribed authorities, which
+      // otherwise left shouldShowDockedPolls* stale until an unrelated poke. Disposal rides
+      // the shared unsubscribers sweep.
+      routeSceneSwitchActions.subscribePresentationFrame(() => {
         this.recompute(true);
       })
     );
@@ -386,10 +378,6 @@ export class AppRouteOverlaySessionStateController {
 
   private getSnapshot(): AppRouteOverlaySessionSnapshot {
     return this.snapshot;
-  }
-
-  public getRouteSceneVisibilityPolicySnapshot(): RouteSceneVisibilityPolicySnapshot {
-    return this.routeSceneVisibilityPolicyRuntime.getSnapshot();
   }
 
   private recompute(notify: boolean): void {
@@ -475,8 +463,7 @@ export class AppRouteOverlaySessionStateController {
   // still round-trips its anchor — byte-identical to before.
   private buildCurrentOriginSnapshot(childAnchor?: LaunchIntentChildAnchor | null): OriginSnapshot {
     const { sceneKey, detent } = this.resolveLiveOriginIdentity();
-    const captured =
-      getOriginCaptureProvider(sceneKey)?.() ?? degenerateSnapshot(sceneKey, detent);
+    const captured = getOriginCaptureProvider(sceneKey)?.() ?? degenerateSnapshot(sceneKey, detent);
     return {
       ...captured,
       anchor: childAnchor ?? captured.anchor ?? null,
@@ -631,9 +618,7 @@ export class AppRouteOverlaySessionStateController {
       targetSceneKey: resolvedRootOverlay,
       sheetTransitionKind: 'topLevelSwitch',
       sheetOpenerSource: 'routeCommand',
-      sheetMotion: childRePush
-        ? { kind: 'none' }
-        : { kind: 'snapTo', snap: snapshot.detent },
+      sheetMotion: childRePush ? { kind: 'none' } : { kind: 'snapTo', snap: snapshot.detent },
       ...(useSwapImmediately ? { contentHandoff: 'swapImmediately' as const } : {}),
       ...(restoreRouteParams != null ? { routeParams: restoreRouteParams } : {}),
       dockedPollsRestoreSnap: shouldRestoreDockedPolls ? snapshot.detent : null,
@@ -805,12 +790,14 @@ export class AppRouteOverlaySessionStateController {
   }
 
   private computeSnapshot(): AppRouteOverlaySessionSnapshot {
-    const routeOverlayIdentitySnapshot = this.routeOverlayIdentityAuthority.getSnapshot();
-    const routeScenePolicySnapshot = this.routeScenePolicyAuthority.getSnapshot();
     const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
+    // The docked-polls decision reads the committed PresentationFrame (page-switch-master-plan.md
+    // §9.2 site 5) — the old independent rootOverlayKey/chromeSurfaceTarget formula was the 5th
+    // parallel derivation of "which scene is presented". laneKind already encodes the search
+    // root + lane eligibility + dismissed/restore-intent gates; this controller's own session
+    // flags stay layered on top exactly as before.
     const shouldShowDockedPollsTarget =
-      routeOverlayIdentitySnapshot.rootOverlayKey === 'search' &&
-      routeScenePolicySnapshot.chromeSurfaceTarget === 'polls' &&
+      this.routeSceneSwitchActions.getPresentationFrame().laneKind === 'docked-polls' &&
       !sessionSnapshot.isSearchOriginRestorePending &&
       !sessionSnapshot.isDockedPollsDismissed;
 

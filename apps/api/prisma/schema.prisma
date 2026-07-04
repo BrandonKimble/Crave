@@ -18,6 +18,7 @@ model Entity {
   canonicalDomain                     String?                  @map("canonical_domain") @db.VarChar(255)
   aliases                             String[]                 @default([])
   nameEmbedding                       Unsupported("vector(768)")? @map("name_embedding")
+  nameEmbeddingStale                  Boolean                  @default(false) @map("name_embedding_stale")
   restaurantAttributes                String[]                 @default([]) @map("restaurant_attributes") @db.Uuid
   latitude                            Decimal?                 @db.Decimal(10, 8)
   longitude                           Decimal?                 @db.Decimal(11, 8)

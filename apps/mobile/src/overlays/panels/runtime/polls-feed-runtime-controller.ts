@@ -20,10 +20,28 @@ import { logger } from '../../../utils';
 
 type InteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
 
+// §9.4 (page-switch-master-plan.md) startup-polls retry policy: this controller is the SINGLE
+// owner of poll fetching (the startup coordinator only seeds a cached snapshot — it never
+// fetches). On a failed load, retry quietly with backoff, then give up to the skeleton /
+// manual-refresh state. Any explicit refresh (pull, toggle, socket, market change) supersedes a
+// pending retry and resets the ladder.
+const POLL_FEED_RETRY_BACKOFF_MS = [2_000, 5_000, 10_000] as const;
+
+// [pageswitch] P1-addendum bootstrap probe — same JSONL family as the coordinator's bootstrap
+// lifecycle probe so the startup-polls fetch/retry story is greppable in /tmp/crave-metro.log.
+const logBootstrap = (data: Record<string, unknown>): void => {
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.log(`[pageswitch] bootstrap ${JSON.stringify(data)}`);
+  }
+};
+
 type RefreshPollFeedOptions = {
   skipSpinner?: boolean;
   marketKeyOverride?: string | null;
   marketNameFallback?: string | null;
+  /** Internal (retry ladder only): which backoff attempt this call is. External callers omit it. */
+  retryAttempt?: number;
 };
 
 type UsePollsFeedRuntimeControllerArgs = {
@@ -92,6 +110,18 @@ export const usePollsFeedRuntimeController = ({
   const socketRef = React.useRef<Socket | null>(null);
   const lastResolvedMarketKeyRef = React.useRef<string | null>(null);
   const refreshSeqRef = React.useRef(0);
+  // §9.4 retry ladder: the pending backoff timer + a live ref to the latest refresh callback so
+  // a scheduled retry always runs with fresh bounds/market inputs.
+  const retryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshPollFeedRef = React.useRef<
+    ((options?: RefreshPollFeedOptions) => Promise<void>) | null
+  >(null);
+  const clearScheduledPollFeedRetry = React.useCallback(() => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+  }, []);
   // Read inside refreshPollFeed so every fetch uses the live toggle values without
   // re-creating the callback (which would re-trigger the market/bounds effects).
   const feedStateRef = React.useRef(feedState);
@@ -166,6 +196,31 @@ export const usePollsFeedRuntimeController = ({
       const skipSpinner = options?.skipSpinner ?? false;
       const marketKeyOverride = options?.marketKeyOverride ?? null;
       const marketNameFallback = options?.marketNameFallback ?? null;
+      const retryAttempt = options?.retryAttempt ?? 0;
+      let retryScheduled = false;
+      const scheduleRetry = (nextAttempt: number, reason: string) => {
+        // One pending retry at a time: REPLACE any pending handle before assigning, never
+        // overwrite it — an overwritten (orphaned) timer outlives the unmount cleanup.
+        clearScheduledPollFeedRetry();
+        retryScheduled = true;
+        logBootstrap({
+          phase: 'feed-retry-scheduled',
+          attempt: nextAttempt,
+          maxAttempts: POLL_FEED_RETRY_BACKOFF_MS.length,
+          delayMs: POLL_FEED_RETRY_BACKOFF_MS[nextAttempt - 1],
+          reason,
+        });
+        retryTimeoutRef.current = setTimeout(
+          () => {
+            retryTimeoutRef.current = null;
+            void refreshPollFeedRef.current?.({
+              ...(options ?? {}),
+              retryAttempt: nextAttempt,
+            });
+          },
+          POLL_FEED_RETRY_BACKOFF_MS[nextAttempt - 1]
+        );
+      };
 
       setPollFeedFreshnessError(false);
       setPollFeedRefreshing(true);
@@ -191,14 +246,29 @@ export const usePollsFeedRuntimeController = ({
           : null;
 
       if (!payload) {
-        if (refreshSeq === refreshSeqRef.current) {
-          setPollFeedRefreshing(false);
+        // §9.4: a call that CANNOT fetch must never silently kill a live recovery ladder (this
+        // exact silent-cancel killed attempt 2 on-device: bounds flapped null during startup
+        // churn, the no-payload call entered, and the pending timer died with no log). If this
+        // call IS the ladder, keep it alive; any pending timer from another caller is untouched
+        // because a refresh only clears it when it actually fetches (below) — scheduleRetry
+        // clears too, but only to REPLACE the handle with the rung it schedules in the same call.
+        logBootstrap({ phase: 'feed-refresh-no-payload', retryAttempt });
+        if (retryAttempt > 0 && retryAttempt < POLL_FEED_RETRY_BACKOFF_MS.length) {
+          scheduleRetry(retryAttempt + 1, 'no-payload');
         }
-        if (!skipSpinner) {
-          setLoading(false);
+        if (!retryScheduled) {
+          if (refreshSeq === refreshSeqRef.current) {
+            setPollFeedRefreshing(false);
+          }
+          if (!skipSpinner) {
+            setLoading(false);
+          }
         }
         return;
       }
+
+      // Only a refresh that ACTUALLY fetches supersedes a pending backoff retry.
+      clearScheduledPollFeedRetry();
 
       try {
         const response = await fetchPolls(payload);
@@ -207,28 +277,45 @@ export const usePollsFeedRuntimeController = ({
         }
         const snapshot = createNetworkPollBootstrapSnapshot(response);
         applyPollSnapshot(snapshot, marketNameFallback);
+        if (retryAttempt > 0) {
+          logBootstrap({ phase: 'feed-retry-recovered', attempt: retryAttempt });
+        }
         // Only the Live feed seeds the bootstrap cache; Results (closed) must not
         // overwrite the Live snapshot read on next launch.
         if (snapshot.marketKey && feedStateRef.current === 'active') {
           void writePollBootstrapSnapshot(snapshot);
         }
       } catch (error) {
-        if (pollFeedRequiresFreshNetwork) {
-          setPollFeedFreshnessError(true);
+        // §9.4 retry ladder: only the LATEST refresh may schedule a retry; a superseded
+        // request's failure is stale. While a retry is pending, hold the loading/refreshing
+        // state (the skeleton stays up) and defer the freshness error to the final give-up.
+        const isLatestRefresh = refreshSeq === refreshSeqRef.current;
+        if (isLatestRefresh && retryAttempt < POLL_FEED_RETRY_BACKOFF_MS.length) {
+          scheduleRetry(retryAttempt + 1, 'fetch-failed');
+        } else {
+          if (isLatestRefresh && retryAttempt >= POLL_FEED_RETRY_BACKOFF_MS.length) {
+            logBootstrap({ phase: 'feed-retry-give-up', attempts: retryAttempt });
+          }
+          if (pollFeedRequiresFreshNetwork) {
+            setPollFeedFreshnessError(true);
+          }
         }
         logger.error('Failed to load polls', error);
       } finally {
-        if (refreshSeq === refreshSeqRef.current) {
-          setPollFeedRefreshing(false);
-        }
-        if (!skipSpinner) {
-          setLoading(false);
+        if (!retryScheduled) {
+          if (refreshSeq === refreshSeqRef.current) {
+            setPollFeedRefreshing(false);
+          }
+          if (!skipSpinner) {
+            setLoading(false);
+          }
         }
       }
     },
     [
       applyPollSnapshot,
       bounds,
+      clearScheduledPollFeedRetry,
       marketOverride,
       pollFeedRequiresFreshNetwork,
       setLoading,
@@ -237,6 +324,10 @@ export const usePollsFeedRuntimeController = ({
       userLocation,
     ]
   );
+  refreshPollFeedRef.current = refreshPollFeed;
+
+  // Never let a scheduled retry outlive the controller.
+  React.useEffect(() => clearScheduledPollFeedRetry, [clearScheduledPollFeedRetry]);
 
   // Refetch when the Live/Results split or sort changes — but not on the initial
   // mount (the market/bounds effects below own the first load). `refreshPollFeed`
@@ -254,15 +345,7 @@ export const usePollsFeedRuntimeController = ({
     // FlashList and scroll the filter strip out of view); the toggle/sort just
     // swaps the rows in place when the new query resolves.
     void refreshPollFeed({ skipSpinner: true });
-  }, [
-    feedState,
-    feedSort,
-    feedType,
-    feedTime,
-    visible,
-    isSystemUnavailable,
-    refreshPollFeed,
-  ]);
+  }, [feedState, feedSort, feedType, feedTime, visible, isSystemUnavailable, refreshPollFeed]);
 
   React.useEffect(() => {
     if (!bootstrapMarketKey) {

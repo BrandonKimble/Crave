@@ -20,18 +20,20 @@ type BottomSheetSceneStackPageFrameProps = {
   underlayComponent?: React.ReactNode;
   backgroundComponent?: React.ReactNode;
   bodyComponent: React.ReactNode;
-  headerComponent?: React.ReactNode;
   overlayComponent?: React.ReactNode;
   bodyViewportRef?: React.Ref<View>;
   onBodyViewportLayout?: (event: LayoutChangeEvent) => void;
-  onHeaderLayout?: (event: LayoutChangeEvent) => void;
+  // P3/P5 (page-switch-master-plan.md §6): the per-leg header lane is GONE — every page's header
+  // (scene-stack legs AND the search results bundle) rides the ONE hoisted persistent header
+  // (PersistentSheetHeaderHost). The frame only RESERVES the header lane: the body top-inset comes
+  // from the hoisted header's measured height (reservedHeaderHeight; OVERLAY_TAB_HEADER_HEIGHT
+  // fallback pre-measure).
   reserveHeaderLane?: boolean;
   reservedHeaderHeight?: number;
-  headerDividerScrollOffset?: SharedValue<number>;
   // Four-lane split (sheet-frost-architecture). The host-owned player drives per-region opacities
   // applied HERE, at the page-frame's own z-layers:
-  //   • chromeOpacityStyle → the CHROME regions (underlay / plate / header / overlay): an INSTANT
-  //     swap (resolveHeaderSwap, paint-ack-gated) so the header NEVER fades and its cutouts always
+  //   • chromeOpacityStyle → the CHROME regions (underlay / plate / overlay): an INSTANT
+  //     swap (resolveHeaderSwap, paint-ack-gated) so the chrome NEVER fades and its cutouts always
   //     reveal the constant frosted-map; the white plate HARD-swaps (stays opaque, no map leak).
   //   • bodyOpacityStyle → the BODY region ONLY: the cross-dissolve (resolveContentLaneOpacities).
   // When omitted (search scene / no transition) the layers render at their static opacity, as before.
@@ -49,7 +51,11 @@ type BottomSheetSceneStackPageFrameProps = {
 // height so the bottom always lands exactly on the boundary regardless of the device hairline.
 const DIVIDER_THICKNESS = StyleSheet.hairlineWidth;
 
-const HeaderScrollDivider = React.memo(
+// Rendered ONCE above the hoisted persistent header (PersistentHeaderScrollDividerHost in
+// BottomSheetSceneStackHost), keyed off the measured persistent-header height and the PRESENTED
+// scene's scroll offset. Exported for that host — the frame itself no longer renders a divider
+// (the per-leg header lane is gone).
+export const HeaderScrollDivider = React.memo(
   ({ headerHeight, scrollOffset }: { headerHeight: number; scrollOffset: SharedValue<number> }) => {
     const dividerStyle = useAnimatedStyle(
       () => ({
@@ -78,19 +84,15 @@ export const BottomSheetSceneStackPageFrame = React.memo(
     underlayComponent,
     backgroundComponent,
     bodyComponent,
-    headerComponent,
     overlayComponent,
     bodyViewportRef,
     onBodyViewportLayout,
-    onHeaderLayout,
     reserveHeaderLane = false,
     reservedHeaderHeight,
-    headerDividerScrollOffset,
     chromeOpacityStyle,
     bodyOpacityStyle,
     onBodyFirstPaint,
   }: BottomSheetSceneStackPageFrameProps) => {
-    const [headerHeight, setHeaderHeight] = React.useState(OVERLAY_TAB_HEADER_HEIGHT);
     // The body's onLayout fans out to the existing viewport-layout consumer AND the paint-ack
     // producer (onBodyFirstPaint) — both fire on the body's first real measured frame.
     const handleBodyLayout = React.useCallback(
@@ -100,37 +102,23 @@ export const BottomSheetSceneStackPageFrame = React.memo(
       },
       [onBodyViewportLayout, onBodyFirstPaint]
     );
-    const effectiveHeaderHeight =
-      headerComponent == null && reservedHeaderHeight != null ? reservedHeaderHeight : headerHeight;
-    const handleHeaderLayout = React.useCallback(
-      (event: LayoutChangeEvent) => {
-        onHeaderLayout?.(event);
-        const nextHeight = event.nativeEvent.layout.height;
-        if (nextHeight <= 0) {
-          return;
-        }
-        setHeaderHeight((previousHeight) =>
-          Math.abs(previousHeight - nextHeight) < 0.5 ? previousHeight : nextHeight
-        );
-      },
-      [onHeaderLayout]
-    );
-    const shouldReserveHeaderLane = reserveHeaderLane || headerComponent != null;
+    const effectiveHeaderHeight = reservedHeaderHeight ?? OVERLAY_TAB_HEADER_HEIGHT;
     const bodyLayerStyle = React.useMemo(
       () => [
         styles.sceneStackPageBodyLayer,
-        shouldReserveHeaderLane ? { top: Math.max(0, effectiveHeaderHeight) } : null,
+        reserveHeaderLane ? { top: Math.max(0, effectiveHeaderHeight) } : null,
       ],
-      [effectiveHeaderHeight, shouldReserveHeaderLane]
+      [effectiveHeaderHeight, reserveHeaderLane]
     );
 
     return (
       <View pointerEvents="box-none" style={styles.sceneStackPageBundle}>
-        {/* CHROME regions (underlay / plate / header / overlay) carry the INSTANT-swap opacity
-            (chromeOpacityStyle = resolveHeaderSwap): they never fade — the header swaps in one frame
-            on the paint-ack so its cutouts always reveal the constant frosted-map, and the white
-            plate hard-swaps (stays opaque). The BODY layer carries the cross-dissolve opacity
-            (bodyOpacityStyle = resolveContentLaneOpacities) — the only thing that dissolves. */}
+        {/* CHROME regions (underlay / plate / overlay) carry the INSTANT-swap opacity
+            (chromeOpacityStyle = resolveHeaderSwap): they never fade — the chrome swaps in one
+            frame on the paint-ack so its cutouts always reveal the constant frosted-map, and the
+            white plate hard-swaps (stays opaque). The BODY layer carries the cross-dissolve
+            opacity (bodyOpacityStyle = resolveContentLaneOpacities) — the only thing that
+            dissolves. */}
         <Animated.View
           pointerEvents="none"
           style={[styles.sceneStackPageUnderlayLayer, chromeOpacityStyle]}
@@ -158,21 +146,6 @@ export const BottomSheetSceneStackPageFrame = React.memo(
         >
           {bodyComponent}
         </Animated.View>
-        {headerComponent == null ? null : (
-          <Animated.View
-            pointerEvents="box-none"
-            onLayout={handleHeaderLayout}
-            style={[styles.sceneStackPageHeaderLayer, chromeOpacityStyle]}
-          >
-            {headerComponent}
-          </Animated.View>
-        )}
-        {headerDividerScrollOffset == null ? null : (
-          <HeaderScrollDivider
-            headerHeight={effectiveHeaderHeight}
-            scrollOffset={headerDividerScrollOffset}
-          />
-        )}
         <Animated.View
           pointerEvents="box-none"
           style={[styles.sceneStackPageOverlayLayer, chromeOpacityStyle]}

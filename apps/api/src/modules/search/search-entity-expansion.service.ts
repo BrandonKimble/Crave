@@ -1,16 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { EntityType } from '@prisma/client';
 import { LoggerService } from '../../shared';
-import { EntityTextSearchService } from '../entity-text-search/entity-text-search.service';
+import {
+  EntityTextSearchService,
+  type TextMatchEvidence,
+} from '../entity-text-search/entity-text-search.service';
 
-export type EntityExpansionEvidence =
-  | 'exact'
-  | 'prefix'
-  | 'name'
-  | 'alias'
-  | 'fuzzy'
-  | 'phonetic'
-  | 'embedding';
+// Single canonical evidence union.
+export type EntityExpansionEvidence = TextMatchEvidence;
 
 export interface ExpandedEntityMatch {
   entityId: string;

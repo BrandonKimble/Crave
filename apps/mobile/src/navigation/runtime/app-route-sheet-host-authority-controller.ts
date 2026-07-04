@@ -45,7 +45,14 @@ import type {
   AppRouteSceneTransitionAuthority,
 } from './app-route-scene-switch-authority';
 import type { AppRouteSceneMotionRuntime } from './app-route-scene-motion-controller';
-import type { RouteSceneSwitchTransitionActions } from './app-route-scene-switch-controller';
+import type {
+  AppRouteSceneSwitchRuntime,
+  RouteSceneSwitchTransitionActions,
+} from './app-route-scene-switch-controller';
+import {
+  EMPTY_PRESENTATION_FRAME,
+  type PresentationFrame,
+} from './app-route-presentation-frame-contract';
 import type { AppRouteSharedSheetPresentationRuntime } from './app-route-shared-sheet-presentation-controller';
 import {
   EMPTY_APP_ROUTE_SHEET_HOST_FRAME_SNAPSHOT,
@@ -107,9 +114,11 @@ type AppRouteSheetHostNativeRuntimeInput = {
   routeSheetFrameHostAuthority: AppRouteSheetHostSurfaceFrameAuthority;
 };
 
+// P2: the nav `isPersistentPollLane` scalar is gone from this selector — the lane decision is
+// PF.laneKind (read in getResolvedSurfaceInput); lane changes wake this controller via the
+// PresentationFrame re-mint subscription, not the lagging nav mirror.
 type SheetHostNavigationSelectorSnapshot = {
   activeOverlayRouteKey: OverlayKey;
-  isPersistentPollLane: boolean;
   overlayRouteStackLength: number;
   rootOverlayKey: OverlayKey;
 };
@@ -186,17 +195,34 @@ type AppRouteSheetHostInteractionPolicy = {
   preventSwipeDismiss: boolean;
 };
 
-const resolvePreservedOutgoingSheetSceneKey = (
-  snapshot: ReturnType<AppRouteSceneSwitchAuthority['getSnapshot']>
-): OverlayKey | null => {
-  const transitionContract = snapshot.transitionContract;
+// ─── PresentationFrame source (page-switch-master-plan.md §9 / P2) ──────────────────────────
+// The sheet host reads every "which scene is presented" decision from the ONE committed
+// PresentationFrame instead of re-deriving it from its own subscriptions (the deleted §9.2
+// site-1 cascade). Access path: `routeSceneSwitchActions` IS the full scene-switch runtime
+// object (app-route-scene-runtime.ts wires `routeOverlayTransitionActions: routeSceneSwitchRuntime`);
+// it is merely TYPED as the narrow actions surface at the provider seam. Narrow it back with a
+// construction-time guard so a future wiring change fails loudly here, not as a silent
+// empty-frame sheet.
+type AppRouteSheetHostPresentationFrameSource = Pick<
+  AppRouteSceneSwitchRuntime,
+  'getPresentationFrame' | 'subscribePresentationFrame'
+>;
+
+const resolvePresentationFrameSource = (
+  routeSceneSwitchActions: RouteSceneSwitchTransitionActions
+): AppRouteSheetHostPresentationFrameSource => {
+  const candidate = routeSceneSwitchActions as RouteSceneSwitchTransitionActions &
+    Partial<AppRouteSheetHostPresentationFrameSource>;
   if (
-    snapshot.transitionPhase === 'idle' ||
-    transitionContract?.sheetTransitionPlan.contentHandoff !== 'preserveOutgoingUntilSettle'
+    typeof candidate.getPresentationFrame !== 'function' ||
+    typeof candidate.subscribePresentationFrame !== 'function'
   ) {
-    return null;
+    throw new Error(
+      'AppRouteSheetHostAuthorityController requires the scene-switch RUNTIME as ' +
+        'routeSceneSwitchActions — it is the PresentationFrame source (page-switch P2).'
+    );
   }
-  return transitionContract.sourceSceneKey ?? snapshot.handoffSceneKey;
+  return candidate as AppRouteSheetHostPresentationFrameSource;
 };
 
 export type AppRouteSheetHostAuthorityControllerRuntime = {
@@ -219,6 +245,10 @@ const EMPTY_ROUTE_SHEET_SHELL_SPEC: NonNullable<SearchRouteSceneStackFrameEntry[
   snapPoints: EMPTY_SEARCH_ROUTE_VISUAL_STATE.snapPoints,
 };
 
+// P2 NOTE: no longer the fallback for the (deleted) racing activeSceneFrameEntry read — it is
+// now ONLY the pre-first-commit / unpublished-shell entry: used when PF.presentedSceneKey is
+// null (nothing committed yet; the native splash still covers) or the presented scene's shell
+// has not been published (renders the empty non-surface shell, never another scene's shell).
 const EMPTY_ACTIVE_SCENE_FRAME_ENTRY: SearchRouteSceneStackFrameEntry = {
   sceneKey: 'searchRoute',
   shellSpec: EMPTY_ROUTE_SHEET_SHELL_SPEC,
@@ -428,7 +458,6 @@ const areSheetHostNavigationSelectorSnapshotsEqual = (
   right: SheetHostNavigationSelectorSnapshot
 ): boolean =>
   left.activeOverlayRouteKey === right.activeOverlayRouteKey &&
-  left.isPersistentPollLane === right.isPersistentPollLane &&
   left.overlayRouteStackLength === right.overlayRouteStackLength &&
   left.rootOverlayKey === right.rootOverlayKey;
 
@@ -590,6 +619,16 @@ class AppRouteSheetHostAuthorityController {
 
   private readonly unsubscribers: Array<() => void> = [];
 
+  // ─── PresentationFrame plumbing (P2). ONE read cadence: every recompute pulls the frame
+  // synchronously via getPresentationFrame() (the PF flush runs FIRST in the controller's
+  // dispatch-flush block, so a recompute triggered by any transition-state dispatch sees the
+  // fresh frame). The PF subscription below exists ONLY for the RE-MINT case (§9.1 R1: a
+  // lane-input change without a switch — same switchId, bumped revision), which fires no other
+  // dispatch this controller listens to. ───
+  private readonly presentationFrameSource: AppRouteSheetHostPresentationFrameSource;
+
+  private lastConsumedPresentationFrame: PresentationFrame = EMPTY_PRESENTATION_FRAME;
+
   private readonly motionCallbacksEntry: AppRouteSheetHostSurfaceBodySnapshot['motionCallbacksEntry'];
 
   public readonly nativeAdapterAuthority: AppRouteSheetHostAuthorityControllerRuntime['nativeAdapterAuthority'];
@@ -605,6 +644,8 @@ class AppRouteSheetHostAuthorityController {
   public readonly routeSheetSurfaceAuthority: AppRouteSheetHostSurfaceAuthority;
 
   constructor(private readonly input: AppRouteSheetHostAuthorityControllerInput) {
+    // Must resolve before the initial snapshot creation below — getResolvedSurfaceInput reads it.
+    this.presentationFrameSource = resolvePresentationFrameSource(input.routeSceneSwitchActions);
     this.motionCallbacksEntry = {
       onSnapStart: this.handleSheetSnapStart,
       onSnapChange: this.recordSharedSheetSnap,
@@ -682,7 +723,6 @@ class AppRouteSheetHostAuthorityController {
       input.routeOverlayNavigationAuthority.registerTarget({
         selector: (snapshot): SheetHostNavigationSelectorSnapshot => ({
           activeOverlayRouteKey: snapshot.activeOverlayRouteKey,
-          isPersistentPollLane: snapshot.isPersistentPollLane,
           overlayRouteStackLength: snapshot.overlayRouteStackLength,
           rootOverlayKey: snapshot.rootOverlayKey,
         }),
@@ -704,6 +744,24 @@ class AppRouteSheetHostAuthorityController {
       input.routeSceneSwitchAuthority.subscribe(() => {
         this.recomputeAll(true, 'routeSceneSwitchAuthority');
       }, 'AppRouteSheetHostRouteSwitch'),
+      // RE-MINT cadence only (§9.1 R1): a frame minted BY a switch is always followed by the
+      // scene-authorities dispatch (the routeSceneSwitchAuthority listener above) with the
+      // fan-out snapshots already synced — recomputing on that path HERE would mix a fresh
+      // frame with the fan-out's not-yet-synced snapshots (the exact cross-cadence race P2
+      // deletes). Only a re-mint (same switchId, bumped revision — a lane-input change without
+      // a switch, e.g. the docked-polls gesture dismiss or the results_dismissing release)
+      // fires no other dispatch, so it alone recomputes here. A switch-mint always bumps
+      // switchId (new transitionToken ⇒ fan-out switch snapshot inequality ⇒ the listener
+      // above fires), and a same-switch in-flight mint keeps revision constant, so this
+      // predicate selects re-mints exactly.
+      this.presentationFrameSource.subscribePresentationFrame((frame) => {
+        if (
+          frame.switchId === this.lastConsumedPresentationFrame.switchId &&
+          frame.revision !== this.lastConsumedPresentationFrame.revision
+        ) {
+          this.recomputeAll(true, 'presentationFrame:remint');
+        }
+      }),
       getSearchSurfaceRuntime().subscribeSelector(
         selectSearchSurfaceRouteGraphPolicy,
         () => {
@@ -913,7 +971,6 @@ class AppRouteSheetHostAuthorityController {
   }
 
   private getResolvedSurfaceInput(): AppRouteSheetHostResolvedSurfaceInput {
-    const routeSceneFrameSnapshot = this.input.routeSceneFrameAuthority.getSnapshot();
     const routeOverlayNavigationSnapshot = this.input.routeOverlayNavigationAuthority.getSnapshot();
     const routeSceneSwitchSnapshot = this.input.routeSceneSwitchAuthority.getSnapshot();
     const routeOverlaySheetPolicySnapshot =
@@ -922,8 +979,6 @@ class AppRouteSheetHostAuthorityController {
     const surfaceVisualPolicy = selectSearchSurfaceVisualPolicy(
       getSearchSurfaceRuntime().getSnapshot()
     );
-    const activeSceneFrameEntry =
-      routeSceneFrameSnapshot.activeSceneFrameEntry ?? EMPTY_ACTIVE_SCENE_FRAME_ENTRY;
     const overlayRouteScope: SearchRouteOverlayRouteScope = {
       activeOverlayRouteKey: routeOverlayNavigationSnapshot.activeOverlayRouteKey,
       rootOverlayKey: routeOverlayNavigationSnapshot.rootOverlayKey,
@@ -936,133 +991,79 @@ class AppRouteSheetHostAuthorityController {
     const chromeVisualState =
       routeSheetVisualSnapshot.chromeVisualState ??
       EMPTY_SEARCH_ROUTE_SHEET_RESOLVED_VISUAL_SELECTION_SNAPSHOT.resolvedChromeVisualState;
-    const isPersistentPollLane = routeOverlayNavigationSnapshot.isPersistentPollLane;
     const activeOverlayRouteKey = overlayRouteScope.activeOverlayRouteKey;
     const rootOverlayKey = overlayRouteScope.rootOverlayKey;
-    const routeSwitchPreservedOutgoingSheetSceneKey =
-      resolvePreservedOutgoingSheetSceneKey(routeSceneSwitchSnapshot);
-    const searchDismissPreservedOutgoingSheetSceneKey =
+    // ─── PresentationFrame-derived presentation (page-switch-master-plan.md §9 / P2) ─────────
+    // The ~190-line cascade that used to live here (outgoing relabel, forward-open shell-hold,
+    // boundary force, searchHost gate, deny-list band-aid, sheetPresentationSceneKey coalesce)
+    // is REPLACED by reads from the ONE committed frame. Mapping (old → f(frame)):
+    //   • displayedSceneKey        := frame.presentedSceneKey, except the R3 shell hold below.
+    //   • incomingSceneKey         := frame.presentedSceneKey (the leg that paints; 'polls'
+    //     under laneKind==='docked-polls' — the deleted searchHost/boundary/poll-lane forcings
+    //     are structural in the frame's laneKind formula now).
+    //   • outgoingSceneKey         := frame.outgoingSceneKey (the R2 supersede-correct held leg;
+    //     replaces resolvePreservedOutgoingSheetSceneKey AND the 'polls' relabel — a forward
+    //     open from the docked feed holds outgoing='polls' because the PREVIOUS frame already
+    //     presented 'polls').
+    //   • isPersistentPollLane     := frame.laneKind === 'docked-polls' (replaces the
+    //     boundary-committed force + the stale-nav deny-list band-aid; a bookmarks/profile or
+    //     child target IS 'top-level'/'child' in the frame, structurally).
+    //   • activeSemanticOverlayKey := the semantic key OF the frame-selected shell (presented,
+    //     or the held outgoing under the R3 shell rule) — 'polls' in the docked lane.
+    const presentationFrame = this.presentationFrameSource.getPresentationFrame();
+    this.lastConsumedPresentationFrame = presentationFrame;
+    const transitionContract = routeSceneSwitchSnapshot.transitionContract;
+    const presentedSceneKey = presentationFrame.presentedSceneKey;
+    const heldOutgoingSceneKey = presentationFrame.outgoingSceneKey;
+    const effectiveIsPersistentPollLane = presentationFrame.laneKind === 'docked-polls';
+    // R3 SHELL RULE (§9.1): the sheet SHELL follows the OUTGOING frame on a dismiss transition
+    // and the TARGET on a forward open. `isForwardOpenIntent` = a held outgoing whose switch
+    // RISES the sheet (visible, not terminalDismiss) — every dismiss stays byte-identical:
+    //  • a collapse-snap terminal dismiss is 'visible' but is a dismiss, not a rise; the shell
+    //    follows the held outgoing for the whole hold (the deadlock seam).
+    //  (closeChild/swapImmediately never reaches here: frame.outgoingSceneKey is null for a
+    //   non-preserving switch — §9.1 R2.)
+    const isForwardOpenIntent =
+      heldOutgoingSceneKey != null &&
+      transitionContract?.sheetVisibilityTarget === 'visible' &&
+      transitionContract?.sheetTransitionPlan.transitionKind !== 'terminalDismiss';
+    // The forward-open crossfade (shell→target + leaf ramp) only ENGAGES once the TARGET shell
+    // is published — pollDetail's shellSpec lands via a post-commit effect; forwarding the
+    // shell to it before then snaps to the empty/startup frame (a flicker). Until it lands,
+    // HOLD the outgoing shell (frame.outgoingSceneKey — already the VISIBLE feed, e.g. 'polls',
+    // per the frame's lane-aware presented history).
+    const presentedFrameEntry =
+      this.input.routeSceneFrameAuthority.getSceneFrameEntry(presentedSceneKey);
+    const isTargetShellPublished = presentedFrameEntry?.shellSpec != null;
+    const isForwardOpenCrossfade = isForwardOpenIntent && isTargetShellPublished;
+    // Search-results dismissing is a QUERY-flow hold, not a route switch — the frame cannot
+    // carry it (route state stays 'search'; there is no transition contract). Pre-boundary the
+    // shell keeps the frozen outgoing sheet scene ('search' results / 'restaurant' for a
+    // profile-origin dismiss) exactly as before; at the boundary the lane inputs flip the
+    // frame's laneKind to 'docked-polls' and presented takes over. Explicitly NOT part of the
+    // deleted route-switch cascade (search query flows are out of P2 scope).
+    const searchDismissHeldSceneKey =
       surfaceVisualPolicy.phase === 'results_dismissing' &&
       !surfaceVisualPolicy.canReleasePersistentPolls
         ? surfaceVisualPolicy.outgoingSheetSceneKey
         : null;
-    const preservedOutgoingSheetSceneKey =
-      routeSwitchPreservedOutgoingSheetSceneKey ?? searchDismissPreservedOutgoingSheetSceneKey;
-    const preservedOutgoingFrameEntry =
-      preservedOutgoingSheetSceneKey == null
-        ? null
-        : this.input.routeSceneFrameAuthority.getSceneFrameEntry(preservedOutgoingSheetSceneKey);
-    const preservedOutgoingRenderableFrameEntry =
-      preservedOutgoingFrameEntry?.shellSpec != null ? preservedOutgoingFrameEntry : null;
-    const preservedOutgoingFrameSceneKey = preservedOutgoingRenderableFrameEntry?.sceneKey ?? null;
-    const shouldPreserveOutgoingSheetContent = preservedOutgoingFrameSceneKey != null;
-    // The STABLE target scene being switched to. activeSceneFrameEntry oscillates to
-    // 'search'/'searchRoute' mid-switch (the search-surface frame lifecycle); for a forward
-    // open crossfade that oscillation must NOT reach the sheet shell/snap, or the sheet drops
-    // to search's collapsed (the bare-map descent). The contract target holds steady
-    // (e.g. 'pollDetail') for the whole in-flight window — use it for the shell + frame entry.
-    const incomingSceneKey: OverlayKey =
-      routeSceneSwitchSnapshot.transitionContract?.targetSceneKey ?? activeSceneFrameEntry.sceneKey;
-    const incomingPublishedFrameEntry =
-      this.input.routeSceneFrameAuthority.getSceneFrameEntry(incomingSceneKey);
-    // The crossfade OUTGOING = the scene the user was actually looking at. The route contract's
-    // source is always the route-level 'search' surface, but when the docked poll feed owns the
-    // bottom band and we're opening a poll-lane CHILD, the VISIBLE outgoing was the 'polls' feed
-    // ('search' resets to its bare home mid-switch). Relabel to 'polls' so BOTH the leaf crossfade
-    // AND the pre-publish shell-hold below show the feed, never the bare 'search' home. 'polls' is
-    // a real persistent scene-stack body, so it renders. GATED to poll-lane-child targets: on the
-    // Search home the docked polls are COLLAPSED, so a tab switch (→ favorites/profile) keeps the
-    // 'search' leg.
-    const isOpeningPollLaneChild =
-      incomingSceneKey === 'pollDetail' || incomingSceneKey === 'pollCreation';
-    const visibleOutgoingSceneKey =
-      preservedOutgoingFrameSceneKey === 'search' &&
-      surfaceVisualPolicy.bottomBandOwner === 'persistent_polls' &&
-      isOpeningPollLaneChild
-        ? 'polls'
-        : preservedOutgoingFrameSceneKey;
-    const visibleOutgoingHeldFrameEntry =
-      visibleOutgoingSceneKey === preservedOutgoingFrameSceneKey
-        ? preservedOutgoingRenderableFrameEntry
-        : visibleOutgoingSceneKey == null
-          ? null
-          : (this.input.routeSceneFrameAuthority.getSceneFrameEntry(visibleOutgoingSceneKey) ?? null);
-    const visibleOutgoingRenderableFrameEntry =
-      visibleOutgoingHeldFrameEntry?.shellSpec != null ? visibleOutgoingHeldFrameEntry : null;
-    // navPush decoupling: for a FORWARD OPEN the SHEET shell/snap follows the TARGET (rise to
-    // expanded), NOT the route-level preserved outgoing's snap (a held 'search' surface's
-    // 'collapsed', which drops to the bare map). `isForwardOpenIntent` gates the engine to genuine
-    // forward opens — keeping every dismiss byte-identical:
-    //  • NOT terminalDismiss — a collapse-snap terminal dismiss is 'visible' but is a dismiss,
-    //    not a rise; let the shell follow the preserved outgoing as before (the deadlock seam).
-    //  (closeChild/preserveLiveY never reaches here: with no 'content' motion plane it commits to
-    //   idle synchronously, so routeSwitchPreservedOutgoingSheetSceneKey is null.)
-    const isForwardOpenIntent =
-      routeSwitchPreservedOutgoingSheetSceneKey != null &&
-      routeSceneSwitchSnapshot.transitionContract?.sheetVisibilityTarget === 'visible' &&
-      routeSceneSwitchSnapshot.transitionContract?.sheetTransitionPlan.transitionKind !==
-        'terminalDismiss';
-    // The crossfade (shell→target + leaf ramp) only ENGAGES once the TARGET shell is published —
-    // pollDetail's shellSpec lands via a post-commit effect; forwarding the shell to it before
-    // then snaps to the empty/startup frame (a flicker). Until it lands, HOLD the VISIBLE feed
-    // (visibleOutgoingSceneKey, expanded), not the route-level 'search' home — so the sheet shows
-    // the feed for the 1-3 pre-publish frames, then crossfades. Falls back to the preserved
-    // outgoing only if the feed frame is somehow unrenderable.
-    const isTargetShellPublished = incomingPublishedFrameEntry?.shellSpec != null;
-    const isForwardOpenCrossfade = isForwardOpenIntent && isTargetShellPublished;
-    const sheetShellPreservedFrameSceneKey = isForwardOpenCrossfade
-      ? null
-      : isForwardOpenIntent && visibleOutgoingRenderableFrameEntry != null
-        ? visibleOutgoingSceneKey
-        : preservedOutgoingFrameSceneKey;
-    const sheetShellPreservedRenderableFrameEntry = isForwardOpenCrossfade
-      ? null
-      : isForwardOpenIntent && visibleOutgoingRenderableFrameEntry != null
-        ? visibleOutgoingRenderableFrameEntry
-        : preservedOutgoingRenderableFrameEntry;
-    const isSearchDismissPollBoundaryCommitted =
-      !shouldPreserveOutgoingSheetContent &&
-      surfaceVisualPolicy.phase === 'results_dismissing' &&
-      surfaceVisualPolicy.canReleasePersistentPolls;
-    const shouldUseSearchSheetHostForSearchSurface =
-      !shouldPreserveOutgoingSheetContent &&
-      !isSearchDismissPollBoundaryCommitted &&
-      activeOverlayRouteKey === 'search' &&
-      surfaceVisualPolicy.bottomBandOwner === 'results_header';
-    // Never force the docked-poll lane over a Favorites/Profile frame. `isPersistentPollLane`
-    // comes from routeOverlayNavigationSnapshot, a separate subscription that lags the scene
-    // frame; during a switch to bookmarks/profile it can stay stale-true while the frame entry
-    // has already advanced, painting polls over the new scene (the favorite↔poll nav swap).
-    // `activeSceneFrameEntry.sceneKey` is the fresh signal for what this sheet actually presents.
-    const isNonSearchTopLevelFrame =
-      activeSceneFrameEntry.sceneKey === 'bookmarks' || activeSceneFrameEntry.sceneKey === 'profile';
-    const effectiveIsPersistentPollLane =
-      isSearchDismissPollBoundaryCommitted ||
-      (isPersistentPollLane && !shouldUseSearchSheetHostForSearchSurface && !isNonSearchTopLevelFrame);
-    const isPersistentPollSheetHostActive =
-      isSearchDismissPollBoundaryCommitted ||
-      (isPersistentPollLane && !shouldUseSearchSheetHostForSearchSurface && !isNonSearchTopLevelFrame);
-    const sheetPresentationSceneKey =
-      sheetShellPreservedFrameSceneKey ??
-      (isSearchDismissPollBoundaryCommitted
-        ? 'polls'
-        : shouldUseSearchSheetHostForSearchSurface
-          ? 'search'
-          : isPersistentPollSheetHostActive
-            ? 'polls'
-            : isForwardOpenCrossfade
-              ? incomingSceneKey
-              : activeSceneFrameEntry.sceneKey);
+    // Shell hold = the route-switch held leg (dismiss: whole hold; forward open: only the
+    // pre-publish frames) ?? the query-flow dismiss hold — renderability-gated as before (an
+    // unrenderable held shell falls through to the presented shell, never another scene's).
+    const shellHoldCandidateSceneKey = heldOutgoingSceneKey ?? searchDismissHeldSceneKey;
+    const shellHoldCandidateFrameEntry = this.input.routeSceneFrameAuthority.getSceneFrameEntry(
+      shellHoldCandidateSceneKey
+    );
+    const sheetShellHeldFrameEntry =
+      !isForwardOpenCrossfade && shellHoldCandidateFrameEntry?.shellSpec != null
+        ? shellHoldCandidateFrameEntry
+        : null;
+    const sheetShellHeldSceneKey = sheetShellHeldFrameEntry?.sceneKey ?? null;
+    // The shell frame entry: held shell → presented scene's shell → the empty pre-commit /
+    // unpublished-shell entry (renders the non-surface shell; NEVER a stale other-scene shell —
+    // the old `?? activeSceneFrameEntry` fallback was the wrong-page hazard).
     const sheetPresentationFrameEntry =
-      sheetShellPreservedRenderableFrameEntry != null
-        ? sheetShellPreservedRenderableFrameEntry
-        : isSearchDismissPollBoundaryCommitted ||
-            shouldUseSearchSheetHostForSearchSurface ||
-            isPersistentPollSheetHostActive ||
-            isForwardOpenCrossfade
-          ? (this.input.routeSceneFrameAuthority.getSceneFrameEntry(sheetPresentationSceneKey) ??
-            activeSceneFrameEntry)
-          : activeSceneFrameEntry;
+      sheetShellHeldFrameEntry ?? presentedFrameEntry ?? EMPTY_ACTIVE_SCENE_FRAME_ENTRY;
     const sheetPresentationShellSpec =
       sheetPresentationFrameEntry.shellSpec ?? EMPTY_ROUTE_SHEET_SHELL_SPEC;
     const isRenderable =
@@ -1094,38 +1095,39 @@ class AppRouteSheetHostAuthorityController {
       flashListProps: sheetPresentationShellSpec.flashListProps,
     });
     const resolvedRuntimeModel = canRenderSurface ? this.sharedRuntimeModel : null;
-    // The INCOMING leg = the new scene the switch is heading to (the displayedSceneKey
-    // coalesce WITHOUT the preserve branch). The OUTGOING leg = the preserved source
-    // frame (the pre-flip scene), held in-flight by the 'content' settle plane for the
-    // crossfade. displayedSceneKey stays its prior value (= preservedOutgoing ?? incoming)
-    // for every existing reader; the crossfade uses the explicit two-leg descriptor.
-    // The STABLE target scene being switched to. activeSceneFrameEntry oscillates to
-    // 'search'/'searchRoute' mid-switch (the search-surface frame lifecycle) — which
-    // momentarily flips displayedSceneKey to the idle search home (the ~80ms "gap"
-    // flash on openChild) AND collapses the crossfade incoming==outgoing. The contract
-    // target holds steady (e.g. 'pollDetail') for the whole in-flight window, so use it
-    // as the fall-through for BOTH the displayed scene and the crossfade incoming.
-    const incomingDisplaySceneKey: OverlayKey = isSearchDismissPollBoundaryCommitted
-      ? 'polls'
-      : shouldUseSearchSheetHostForSearchSurface
-        ? 'search'
-        : isPersistentPollSheetHostActive
-          ? 'polls'
-          : incomingSceneKey;
-    // Crossfade OUTGOING leaf = the scene the user was actually looking at = the same relabel
-    // resolved above for the shell-hold (the 'polls' feed, not the bare 'search' home).
-    const outgoingSceneKey = visibleOutgoingSceneKey;
-    // Shell/display follows the target for a forward crossfade (sheet rises); the leaf
-    // outgoingSceneKey above still carries the preserved outgoing for the content fade.
-    const displayedSceneKey = sheetShellPreservedFrameSceneKey ?? incomingDisplaySceneKey;
-    // The leaf opacity crossfade runs ONLY for a forward open. Gating on isForwardOpenCrossfade
-    // (not merely "a preserved outgoing differs from incoming") keeps every dismiss free of a
-    // content ramp: a terminalDismiss still PRESERVES its outgoing for the sheet slide, but must
-    // not also fade the leaf — without this gate it would crossfade restaurant→polls on dismiss.
-    const contentTransitionToken =
-      isForwardOpenCrossfade && outgoingSceneKey != null && outgoingSceneKey !== incomingSceneKey
-        ? (routeSceneSwitchSnapshot.transitionContract?.settleToken ?? null)
-        : null;
+    // Crossfade legs — straight frame reads. INCOMING := frame.presentedSceneKey (the leg that
+    // paints — the frame holds the STABLE target for the whole in-flight window, so the old
+    // mid-switch 'search'/'searchRoute' oscillation can no longer reach the display). OUTGOING
+    // := frame.outgoingSceneKey (the held pre-flip leg, present only during a
+    // preserveOutgoingUntilSettle window — §9.1 R2; null for every swapImmediately dismiss).
+    const incomingSceneKey = presentedSceneKey;
+    const outgoingSceneKey = heldOutgoingSceneKey;
+    // Shell/display follows the target for a forward crossfade (sheet rises); during a dismiss
+    // hold (or the forward pre-publish frames / the query-flow results-dismiss hold) it stays
+    // the held shell's scene.
+    const displayedSceneKey = sheetShellHeldSceneKey ?? presentedSceneKey;
+    // P4 UNIVERSAL PAINT-ACK ARMING (page-switch-master-plan.md §6-P4): the token arms for
+    // EVERY cross-scene switch with a REAL presentation change — a held outgoing that differs
+    // from the presented leg — not just the forward-open crossfade. Every held pair now runs
+    // the SAME ack-gated hard-swap player path (BottomSheetSceneStackHost start effect): a
+    // WARM incoming reveals instantly on the synthetic painted-evidence ack; a COLD incoming
+    // holds the outgoing until its skeleton/body paints the real ack. Dismiss semantics:
+    //  • swapImmediately dismisses (closeChild / modalClose) hold NO outgoing —
+    //    frame.outgoingSceneKey is null (§9.1 R2) — so they can never arm: byte-identical.
+    //  • a terminalDismiss that preserves its outgoing for the sheet slide now hard-swaps the
+    //    leaf on the incoming's paint-ack instead of raw-flipping at settle — the ONE
+    //    sanctioned dismiss delta (the ack-gated swap replacing the raw flip). The incoming is
+    //    HARD mode (host-token-transition-adapter), so there is still no see-through fade.
+    //  • the search-results→home QUERY-flow dismiss is untouched: its hold is
+    //    searchDismissHeldSceneKey (no route contract, frame outgoing null) until finalize.
+    // P5: the R4 search-family arming exception is GONE — the search leg is never-null now
+    // (SearchResultsPageBundleHost renders its results-skeleton page pre-bundle), so universal
+    // arming includes switches presenting search exactly like every other scene.
+    const hasRealPresentationChange =
+      heldOutgoingSceneKey != null && heldOutgoingSceneKey !== presentedSceneKey;
+    const contentTransitionToken = hasRealPresentationChange
+      ? (transitionContract?.settleToken ?? null)
+      : null;
     return {
       activeSceneKey: sheetPresentationFrameEntry.sceneKey,
       activeShellSpec: sheetPresentationShellSpec,
@@ -1921,10 +1923,7 @@ class AppRouteSheetHostAuthorityController {
     this.input.routeSceneMotionRuntime.completeFromSheetSettle(settleToken);
   };
 
-  private readonly handleSheetSnapStart = (
-    snap: OverlaySheetSnap,
-    meta?: { source: 'gesture' | 'programmatic' }
-  ): void => {
+  private readonly handleSheetSnapStart = (snap: OverlaySheetSnap): void => {
     const resolvedSurfaceInput = this.getResolvedSurfaceInput();
     if (snap !== 'hidden') {
       this.markSearchSurfaceSheetReadyForVisibleSnap(resolvedSurfaceInput);

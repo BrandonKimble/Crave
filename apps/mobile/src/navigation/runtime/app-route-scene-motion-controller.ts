@@ -1,4 +1,4 @@
-import type { OverlayKey, OverlaySheetSnapRequest } from '../../overlays/types';
+import type { OverlaySheetSnapRequest } from '../../overlays/types';
 import { PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET } from './app-overlay-route-transition-contract';
 import {
   AppRouteSceneMotionExecutor,
@@ -101,29 +101,32 @@ export class AppRouteSceneMotionController implements AppRouteSceneMotionRuntime
   }
 
   public requestBootstrapSharedSheetTransition(request: OverlaySheetSnapRequest): void {
-    withSearchNavSwitchRuntimeAttribution('sceneMotion', 'requestBootstrapSharedSheetTransition', () => {
-      const transitionState = this.routeSceneSwitchRuntime.getTransitionState();
-      if (transitionState.isOverlaySwitchInFlight) {
-        return;
+    withSearchNavSwitchRuntimeAttribution(
+      'sceneMotion',
+      'requestBootstrapSharedSheetTransition',
+      () => {
+        const transitionState = this.routeSceneSwitchRuntime.getTransitionState();
+        if (transitionState.isOverlaySwitchInFlight) {
+          return;
+        }
+        const targetSceneKey =
+          transitionState.activeSceneKey ?? transitionState.routeState.activeOverlayRoute.key;
+        this.routeSceneSwitchRuntime.requestOverlaySwitch({
+          sourceSceneKey: targetSceneKey,
+          targetSceneKey,
+          settleToken: request.settleToken ?? null,
+          sheetTransitionKind: 'bootstrap',
+          sheetOpenerSource: 'routeCommand',
+          sheetMotion:
+            request.snap === 'hidden'
+              ? { kind: 'hide', mode: request.mode }
+              : { kind: 'snapTo', snap: request.snap, mode: request.mode },
+          contentHandoff: 'swapImmediately',
+          chromeVisibilityTarget: PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET,
+          routeAction: 'preserve',
+        });
       }
-      const targetSceneKey =
-        transitionState.activeSceneKey ?? transitionState.routeState.activeOverlayRoute.key;
-      this.routeSceneSwitchRuntime.requestOverlaySwitch({
-        sourceSceneKey: targetSceneKey,
-        targetSceneKey,
-        settleToken: request.settleToken ?? null,
-        sheetTransitionKind: 'bootstrap',
-        sheetOpenerSource: 'routeCommand',
-        sheetMotion:
-          request.snap === 'hidden'
-            ? { kind: 'hide', mode: request.mode }
-            : { kind: 'snapTo', snap: request.snap, mode: request.mode },
-        contentHandoff: 'swapImmediately',
-        snapPersistence: 'sharedOnly',
-        chromeVisibilityTarget: PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET,
-        routeAction: 'preserve',
-      });
-    });
+    );
   }
 
   public completeFromSheetSettle(settleToken: number): void {

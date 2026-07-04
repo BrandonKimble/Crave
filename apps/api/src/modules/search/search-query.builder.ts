@@ -1183,15 +1183,30 @@ LIMIT ${pagination.take};`.trim();
       );
     }
 
+    if (branches.length === 1) {
+      return { sql: branches[0], preview: branchPreviews[0] };
+    }
+    // Step 8: both a connection MATCH and a signal MATCH are present. An
+    // `EXISTS(items) OR EXISTS(signals)` across two different tables can force a
+    // sequential scan of restaurants — Postgres can't serve the cross-table OR
+    // from a single index. An `IN (... UNION ...)` lets each arm hit its own
+    // index (c.restaurant_id / res.restaurant_id), then the outer query filters
+    // restaurants by membership. This is a provable identity — the UNION selects
+    // exactly the restaurants that have a matching item OR a matching signal, and
+    // each arm's match SQL is self-contained to its own table (no outer `r`
+    // reference) — so the returned restaurant SET is unchanged; only the query
+    // plan (and speed at scale) differs.
     return {
-      sql:
-        branches.length === 1
-          ? branches[0]
-          : Prisma.sql`(${Prisma.join(branches, ' OR ')})`,
-      preview:
-        branchPreviews.length === 1
-          ? branchPreviews[0]
-          : `(${branchPreviews.join(' OR ')})`,
+      sql: Prisma.sql`r.entity_id IN (
+        SELECT c.restaurant_id
+        FROM core_restaurant_items c
+        WHERE ${connectionMatch.sql}
+        UNION
+        SELECT res.restaurant_id
+        FROM core_restaurant_entity_signals res
+        WHERE ${signalMatch.sql}
+      )`,
+      preview: `r.entity_id IN (SELECT c.restaurant_id FROM core_restaurant_items c WHERE ${connectionMatch.preview} UNION SELECT res.restaurant_id FROM core_restaurant_entity_signals res WHERE ${signalMatch.preview})`,
     };
   }
 

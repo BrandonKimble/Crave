@@ -16,7 +16,10 @@ import {
   type RouteOverlaySheetPolicySnapshot,
 } from './route-overlay-sheet-policy-snapshot-contract';
 import type { RouteSceneSwitchSnapshot } from './route-scene-switch-snapshot-contract';
-import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
+import type {
+  PresentationFrame,
+  PresentationLaneInputs,
+} from './app-route-presentation-frame-contract';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import type { OverlayHeaderActionMode } from '../../overlays/useOverlayHeaderActionController';
 import type { AppRouteOverlayCommandAuthority } from './app-route-overlay-command-controller';
@@ -86,8 +89,6 @@ type PollsVisibilityTarget = {
 type DisplaySharedValueTarget = {
   values: RouteOverlayDisplaySharedValueTargets;
   activeTabIndex: number | null;
-  displayedSceneKey: RouteOverlayDisplaySnapshot['displayedSceneKey'] | null;
-  prewarmedSceneKey: RouteOverlayDisplaySnapshot['prewarmedSceneKey'] | null;
 };
 
 type IdentityTarget = {
@@ -149,6 +150,12 @@ type NativeOverlayTargetSourceSnapshot = {
   routeScenePolicySnapshot: RouteScenePolicySnapshot;
   commandSnapshot: AppRouteOverlayCommandSnapshot;
   sheetSessionSnapshot: RouteSceneSheetSessionSnapshot;
+  /**
+   * The committed PresentationFrame (page-switch-master-plan.md §1/§9) — the ONE
+   * "what's on screen" value, minted by AppRouteSceneSwitchController. The docked-polls
+   * lane + the displayed scene are read from here, never re-derived (§9.2 site 4).
+   */
+  presentationFrame: PresentationFrame;
 };
 
 type NativeOverlayOutputKey =
@@ -186,6 +193,19 @@ const POLICY_NATIVE_OVERLAY_TARGET_LANES: readonly NativeOverlayTargetLaneKey[] 
 ];
 
 const COMMAND_NATIVE_OVERLAY_TARGET_LANES: readonly NativeOverlayTargetLaneKey[] = ['sheetPolicy'];
+
+// The lanes whose outputs read the PresentationFrame (laneKind / presentedSceneKey). Recomputed
+// on every frame publish so a re-mint that reaches no other subscription (§9.1 R1 — lane-input
+// changes without a switch; a switch the native dispatch selector dedupes) still lands here.
+// Frame reads are ordering-safe regardless: the controller COMMITS the frame in the same atomic
+// setTransitionState before any listener runs, and flushes the PF dispatch FIRST (§9.1 R7).
+const PRESENTATION_FRAME_NATIVE_OVERLAY_TARGET_LANES: readonly NativeOverlayTargetLaneKey[] = [
+  'navigation',
+  'display',
+  'pollsVisibility',
+  'sheetPolicy',
+  'visibility',
+];
 
 const SHEET_SESSION_NATIVE_OVERLAY_TARGET_LANES: readonly NativeOverlayTargetLaneKey[] = [
   'navigation',
@@ -253,7 +273,6 @@ const areDisplaySnapshotsEqual = (
   left.rootOverlayKey === right.rootOverlayKey &&
   left.displayedRootOverlayKey === right.displayedRootOverlayKey &&
   left.displayedSceneKey === right.displayedSceneKey &&
-  left.prewarmedSceneKey === right.prewarmedSceneKey &&
   left.isSearchOverlay === right.isSearchOverlay &&
   left.isPersistentPollLane === right.isPersistentPollLane;
 
@@ -340,54 +359,57 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     routeScenePolicySnapshot: routeScenePolicyAuthority.getSnapshot(),
     commandSnapshot: routeOverlayCommandAuthority.getSnapshot(),
     sheetSessionSnapshot: routeSheetSnapSessionAuthority.getSnapshot(),
+    presentationFrame: routeSceneSwitchRuntime.getPresentationFrame(),
   });
 
-  const resolveIsPersistentPollLane = ({
-    routeSceneSwitchSnapshot,
-    surfaceVisualPolicy,
-    routeScenePolicySnapshot,
-    sheetSessionSnapshot,
-  }: NativeOverlayTargetSourceSnapshot): boolean => {
-    const routeState = routeSceneSwitchSnapshot.routeState;
-    const isSurfacePersistentPollCommitted =
-      surfaceVisualPolicy.phase === 'results_dismissing' &&
-      surfaceVisualPolicy.canReleasePersistentPolls;
-    const isPersistentPollLaneEligible =
-      (routeScenePolicySnapshot.isPersistentPollLaneEligible &&
-        surfaceVisualPolicy.phase !== 'results_dismissing') ||
-      isSurfacePersistentPollCommitted;
-    // A child scene pushed over the lane (pollDetail / pollCreation / restaurant /
-    // saveList) must take the sheet — the persistent-poll-lane
-    // 'polls' forcing only applies while a TOP-LEVEL scene is presented. Gating the
-    // single shared definition here keeps every consumer consistent: the display +
-    // scene-stack snapshots, the navigation snapshot, AND the sheet-host snap/shell
-    // (which previously read this raw and forced 'polls'/collapsed over the child).
-    const resolvedTargetSceneKey =
-      routeSceneSwitchSnapshot.transitionContract?.targetSceneKey ??
-      routeSceneSwitchSnapshot.pendingSceneKey ??
-      routeSceneSwitchSnapshot.routeActiveSceneKey;
-    const isChildSceneDisplayed =
-      resolvedTargetSceneKey != null &&
-      getAppOverlayRouteMetadata(resolvedTargetSceneKey).role === 'child';
-    // The persistent-poll lane docks polls UNDER the search scene only. It must
-    // never force 'polls' over another top-level scene (Favorites/Profile). The
-    // `rootOverlayKey === 'search'` gate alone is insufficient: rootOverlayKey is
-    // a separately-snapshotted authority that lags `resolvedTargetSceneKey` during
-    // a tab switch, so a switch to bookmarks/profile can land with a stale-'search'
-    // root and force polls over the new scene (the favorite↔poll nav swap). Gate on
-    // the FRESH resolved target scene so the swap can't occur in either direction.
-    const isNonSearchTopLevelTarget =
-      resolvedTargetSceneKey === 'bookmarks' || resolvedTargetSceneKey === 'profile';
-    return (
-      !isChildSceneDisplayed &&
-      !isNonSearchTopLevelTarget &&
-      routeState.rootOverlayKey === 'search' &&
-      isPersistentPollLaneEligible &&
-      (!sheetSessionSnapshot.isDockedPollsDismissed ||
-        routeSceneSwitchSnapshot.activeDockedPollsRestoreIntent != null ||
-        isSurfacePersistentPollCommitted)
+  // THE single carrier-producer of the docked-polls decision for every native-overlay output
+  // (navigation / display / pollsVisibility / visibility / sheetPolicy snapshots). The old
+  // formula (eligibility × results_dismissing × fresh-target child/bookmarks/profile deny-list
+  // × search root × dismissed/restore-intent) now lives VERBATIM in resolvePresentationLaneKind
+  // (app-route-presentation-frame-contract.ts), computed ONCE by AppRouteSceneSwitchController;
+  // this reads the committed frame so every downstream contract field stays in lockstep with
+  // the one writer (page-switch-master-plan.md §9.2 site 4, §9.3).
+  const resolveIsPersistentPollLane = (
+    sourceSnapshot: NativeOverlayTargetSourceSnapshot
+  ): boolean => sourceSnapshot.presentationFrame.laneKind === 'docked-polls';
+
+  // §9.1 R1 — LANE-INPUT WIRING. This factory already owns all three docked-polls lane-input
+  // sources (route-scene policy eligibility, the search-surface visual policy, the sheet snap
+  // session), so it registers the live provider + change subscription with the scene-switch
+  // controller; the controller re-mints the PresentationFrame on change — still the one writer,
+  // never a consumer-side re-derivation. Registered BEFORE the initial snapshots below so the
+  // first frame they read is minted from live inputs, not the all-false boot default.
+  const resolvePresentationLaneInputs = (): PresentationLaneInputs => {
+    const surfaceVisualPolicy = selectSearchSurfaceVisualPolicy(
+      getSearchSurfaceRuntime().getSnapshot()
     );
+    return {
+      isPersistentPollLaneEligible:
+        routeScenePolicyAuthority.getSnapshot().isPersistentPollLaneEligible,
+      isResultsDismissing: surfaceVisualPolicy.phase === 'results_dismissing',
+      canReleasePersistentPolls: surfaceVisualPolicy.canReleasePersistentPolls,
+      isDockedPollsDismissed: routeSheetSnapSessionAuthority.getSnapshot().isDockedPollsDismissed,
+    };
   };
+  const unregisterPresentationLaneInputs = routeSceneSwitchRuntime.registerPresentationLaneInputs(
+    resolvePresentationLaneInputs,
+    (onChange) => {
+      const laneInputUnsubscribers = [
+        routeScenePolicyAuthority.subscribe(onChange),
+        routeSheetSnapSessionAuthority.subscribe(onChange),
+        getSearchSurfaceRuntime().subscribeSelector(
+          selectSearchSurfaceRouteGraphPolicy,
+          onChange,
+          areSearchSurfaceVisualPoliciesEqual
+        ),
+      ];
+      return () => {
+        laneInputUnsubscribers.forEach((unsubscribe) => {
+          unsubscribe();
+        });
+      };
+    }
+  );
 
   const shouldRenderRouteSheetSurfaceForRouteState = (
     routeState: RouteSceneSwitchTransitionState['routeState']
@@ -440,9 +462,9 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     return [
       routeState.rootOverlayKey,
       transitionContract?.committedRootRouteKey ?? null,
-      transitionContract?.targetSceneKey ?? null,
-      routeSceneSwitchSnapshot.pendingSceneKey,
-      routeSceneSwitchSnapshot.routeActiveSceneKey,
+      // The frame fields the display snapshot renders — keyed directly (not their upstream
+      // transition-state inputs) so a frame publish can never be masked by an equal signature.
+      sourceSnapshot.presentationFrame?.presentedSceneKey ?? null,
       resolveIsPersistentPollLane(sourceSnapshot),
     ];
   };
@@ -473,7 +495,11 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     routeScenePolicySnapshot,
     commandSnapshot,
     sheetSessionSnapshot,
+    presentationFrame,
   }: NativeOverlayTargetSourceSnapshot): NativeOverlayOutputSignature => [
+    // The sheet-policy snapshot reads the frame's docked-polls lane (header scene + suppression
+    // + the empty-policy gate) — key it directly so a frame publish always re-resolves.
+    presentationFrame.laneKind === 'docked-polls',
     routeSceneSwitchSnapshot.routeActiveSceneKey,
     routeSceneSwitchSnapshot.transitionContract?.headerActionModeTarget ?? null,
     routeSceneSwitchSnapshot.routeState.rootOverlayKey,
@@ -538,29 +564,20 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   const resolveDisplaySnapshot = (
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): RouteOverlayDisplaySnapshot => {
-    const { routeSceneSwitchSnapshot } = sourceSnapshot;
+    const { routeSceneSwitchSnapshot, presentationFrame } = sourceSnapshot;
     const routeState = routeSceneSwitchSnapshot.routeState;
-    const isPersistentPollLane = resolveIsPersistentPollLane(sourceSnapshot);
-    const resolvedTargetSceneKey =
-      routeSceneSwitchSnapshot.transitionContract?.targetSceneKey ??
-      routeSceneSwitchSnapshot.pendingSceneKey ??
-      routeSceneSwitchSnapshot.routeActiveSceneKey;
-    // A child scene explicitly opened over the docked poll lane (pollDetail,
-    // pollCreation, restaurant, …) must take the sheet — the persistent-poll-lane
-    // 'polls' forcing only applies while a top-level scene is displayed.
-    const isChildSceneDisplayed =
-      resolvedTargetSceneKey != null &&
-      getAppOverlayRouteMetadata(resolvedTargetSceneKey).role === 'child';
     return {
       rootOverlayKey: routeState.rootOverlayKey,
       displayedRootOverlayKey:
         routeSceneSwitchSnapshot.transitionContract?.committedRootRouteKey ??
         routeState.rootOverlayKey,
-      displayedSceneKey:
-        isPersistentPollLane && !isChildSceneDisplayed ? 'polls' : resolvedTargetSceneKey,
-      prewarmedSceneKey: null,
+      // The leg that PAINTS — read straight off the committed frame. The old local 'polls'
+      // forcing (+ its child-scene exception) is structural in presentedSceneKey: a child
+      // target resolves laneKind 'child', so only the one legal steady divergence
+      // (docked-polls under the search root) presents 'polls' (§9.2 site 4).
+      displayedSceneKey: presentationFrame.presentedSceneKey,
       isSearchOverlay: routeState.rootOverlayKey === 'search',
-      isPersistentPollLane,
+      isPersistentPollLane: resolveIsPersistentPollLane(sourceSnapshot),
     };
   };
 
@@ -763,25 +780,15 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     }
     const activeTabIndex = resolveRouteOverlayBottomNavIndex(snapshot.displayedRootOverlayKey);
     const targetsToSync = [...displaySharedValueTargets].filter(
-      (target) =>
-        target.activeTabIndex !== activeTabIndex ||
-        target.displayedSceneKey !== snapshot.displayedSceneKey ||
-        target.prewarmedSceneKey !== snapshot.prewarmedSceneKey
+      (target) => target.activeTabIndex !== activeTabIndex
     );
     if (targetsToSync.length === 0) {
       return;
     }
     withSearchNavSwitchRuntimeAttribution('nativeOverlayTargets', operation, () => {
       targetsToSync.forEach((target) => {
-        syncRouteOverlayDisplaySharedValues(
-          target.values,
-          snapshot,
-          target.displayedSceneKey ?? null,
-          target.prewarmedSceneKey ?? null
-        );
+        syncRouteOverlayDisplaySharedValues(target.values, snapshot);
         target.activeTabIndex = activeTabIndex;
-        target.displayedSceneKey = snapshot.displayedSceneKey;
-        target.prewarmedSceneKey = snapshot.prewarmedSceneKey;
       });
     });
   };
@@ -1106,9 +1113,13 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   };
 
   const unsubscribers = [
+    unregisterPresentationLaneInputs,
     routeSceneSwitchRuntime.setRouteNativeOverlayTransitionDispatchTarget((transitionState) => {
       recomputeLanes(ROUTE_SWITCH_NATIVE_OVERLAY_TARGET_LANES, 'routeSwitch', transitionState);
     }),
+    routeSceneSwitchRuntime.subscribePresentationFrame(() =>
+      recomputeLanes(PRESENTATION_FRAME_NATIVE_OVERLAY_TARGET_LANES, 'presentationFrame')
+    ),
     routeScenePolicyAuthority.subscribe(() =>
       recomputeLanes(POLICY_NATIVE_OVERLAY_TARGET_LANES, 'policy')
     ),
@@ -1170,8 +1181,6 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
         const target: DisplaySharedValueTarget = {
           values,
           activeTabIndex: null,
-          displayedSceneKey: null,
-          prewarmedSceneKey: null,
         };
         displaySharedValueTargets.add(target);
         syncDisplaySharedValueTargets(displaySnapshot, 'syncDisplaySharedValues:register');

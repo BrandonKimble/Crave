@@ -1,6 +1,6 @@
 # Search, Dishes & Result Sheet
 
-> **Rolling canonical vision — not a changelog.** Keep this file thin and *current*: it describes
+> **Rolling canonical vision — not a changelog.** Keep this file thin and _current_: it describes
 > only what we want this area of the app to be **today**. When something changes, edit or delete the
 > old text in place — never append "superseded"/"old"/"previously" notes, history, or pointers to
 > past ideas. If you follow this file, you know exactly what we want. Execution detail + migrations
@@ -93,7 +93,7 @@ Results that people you follow have saved or ranked carry the shared **FriendClu
 
 It is an **explicit overlay, never a re-rank.** The ordering stays the pure objective Crave Score; the cluster only annotates rows. Consensus truth and your circle's taste stay visibly separate, the same way a custom-ranked list shows its own order beside each row's objective Score dot.
 
-A **Friends lens** (an opt-in toggle that filters results to *only* friend-saved picks) is **still under discussion** — the ambient cluster above may already cover the "what do my friends like for [cuisine]?" need, so the lens is a maybe to validate, not a committed feature.
+A **Friends lens** (an opt-in toggle that filters results to _only_ friend-saved picks) is **still under discussion** — the ambient cluster above may already cover the "what do my friends like for [cuisine]?" need, so the lens is a maybe to validate, not a committed feature.
 
 ## On-demand collection
 
@@ -115,7 +115,8 @@ A **Friends lens** (an opt-in toggle that filters results to *only* friend-saved
 
 ## Still to decide
 
-- Where the Crave+ paywall sits on the dish side of the result sheet — is the whole dish list hidden/blurred, or shown ranked with only detail/score gated? Hiding the best results of an objective ranking is the #1 "feels like a scam" trigger, so dish-list *visibility* vs dish-*detail* gating needs an explicit call.
+- Where the Crave+ paywall sits on the dish side of the result sheet — is the whole dish list hidden/blurred, or shown ranked with only detail/score gated? Hiding the best results of an objective ranking is the #1 "feels like a scam" trigger, so dish-list _visibility_ vs dish-_detail_ gating needs an explicit call.
 - The locked value of N for restaurant detail's free "top-N dishes" floor.
 - Whether NL/semantic search is metered as soft-degrade (a few free per day) or fully Crave+-only.
-- Whether the Friends *lens* (filter-to-only-friends) is worth building at all, given the ambient FriendCluster may already cover the need — and if so, free or a Crave+ lever.
+- Whether the Friends _lens_ (filter-to-only-friends) is worth building at all, given the ambient FriendCluster may already cover the need — and if so, free or a Crave+ lever.
+- **Optional "relevancy sort" as a dense-co-inclusion backstop.** Dense entity-to-entity co-inclusion broadens the candidate set with related dishes (a "ramen" search also surfaces its noodle family: miso ramen, lo mein, kimchi noodles). Today's principle is _score-ranked, never a relevance sort_ (see Core search architecture) — relevance lives in candidate generation, not a separate ordering. If co-inclusion succeeds _too_ well and the most-relevant results get buried under pure score-ranking, we may need an optional relevance ordering — ideally a **grouped** one: cluster co-included dishes by dense-score band (the winner's own family first, then the next-closest family…) and sort by crave-score _within_ each band, so the best-and-most-relevant surfaces at the very top and relevance decays down the list while quality still wins locally. Behind the scenes it stays "smart" (still favors higher-ranked places within a band). Build only if we actually observe the burying — not a launch dependency, and the stated ideal is to get the co-inclusion _pick_ good enough that no relevance sort is ever needed.

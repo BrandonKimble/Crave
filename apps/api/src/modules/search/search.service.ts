@@ -795,15 +795,27 @@ export class SearchService {
         Object.assign(phaseTimings, relaxed.exec.timings);
       }
 
+      // PURE CRAVE-SCORE RANKING (owner decision): the strict (exact) matches and
+      // the relaxed (modifier-dropped) fallback are pooled and ordered by Crave
+      // Score ALONE. A genuinely-relevant but low-score match can fall below a
+      // higher-score looser match, and we accept that.
+      // FUTURE (see product/scoring.md — "relevant top section"): we may pin a
+      // small, deliberate section of the top ~3 MOST-RELEVANT results above the
+      // main rank, with the main Crave-Score rank excluding those pinned rows.
+      // That is a separate presentation layer, not a change to the score itself.
       const dishes = needsDishRelaxation
         ? pagination.page === 1
-          ? [...strictProbe.exec.dishes, ...relaxed.exec.dishes]
+          ? [...strictProbe.exec.dishes, ...relaxed.exec.dishes].sort(
+              (a, b) => b.craveScore - a.craveScore,
+            )
           : relaxed.exec.dishes
         : strictPage.exec.dishes;
 
       const restaurants = needsRestaurantRelaxation
         ? pagination.page === 1
-          ? [...strictProbe.exec.restaurants, ...relaxed.exec.restaurants]
+          ? [...strictProbe.exec.restaurants, ...relaxed.exec.restaurants].sort(
+              (a, b) => b.craveScore - a.craveScore,
+            )
           : relaxed.exec.restaurants
         : strictPage.exec.restaurants;
 

@@ -42,6 +42,12 @@ export type AppOverlayRouteCommandRuntime = {
   pushRoute: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   restoreDockedPolls: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   collapseActiveSheet: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
+  // The shared HEADER-TAP / grab-handle press (owner req 2026-07-02): tapping the persistent
+  // header PROMOTES the sheet up to at least middle when it sits below middle, and is a no-op
+  // at/above middle. It NEVER collapses or dismisses — pages dismiss ONLY via the close (X)
+  // button. `promoteAtLeast` reuses the existing spring machinery (resolvePromotedSnapTarget),
+  // so an already-middle/expanded sheet resolves to null motion (structurally cannot demote).
+  promoteActiveSheet: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
   // Phase 3b — the ONE canonical dismiss verb: POP-to-restore from the OverlayRouteStack
   // (return to the exact origin entry beneath the reveal). `closeActiveRoute` is the
   // legacy alias.
@@ -87,7 +93,10 @@ export const createAppOverlayRouteCommandRuntime = ({
           routeAction: 'closeActive',
           sheetTransitionKind: 'closeChild',
           sheetOpenerSource: 'routeCommand',
-          sheetMotion: { kind: 'preserveLiveY' },
+          // sheetMotion intentionally omitted (P6 req 2d): the closeChild dismiss motion is a
+          // descriptor-table decision (app-route-sheet-motion-descriptor-table.ts — today
+          // preserveLiveY via the pollDetail dismiss row / the catch-all). Tuning a child's
+          // dismiss pattern is a row edit, not a call-site edit.
         },
         onSettle
       );
@@ -112,9 +121,10 @@ export const createAppOverlayRouteCommandRuntime = ({
         ),
         sheetTransitionKind: 'openChild',
         sheetOpenerSource: 'pollAction',
-        // Instant cover (matches pollDetail): full-screen child snaps over the partial feed
-        // immediately, no rise that reveals the search-surface home above.
-        sheetMotion: { kind: 'snapTo', snap: 'expanded', mode: 'instant' },
+        // sheetMotion intentionally omitted (P6 req 2d): the pollCreation open motion — the
+        // INSTANT expanded cover (full-screen child snaps over the partial feed immediately, no
+        // rise that reveals the search-surface home above) — is the descriptor-table row
+        // ('*','pollCreation','openChild'). Tune it there.
       });
       return;
     }
@@ -127,16 +137,15 @@ export const createAppOverlayRouteCommandRuntime = ({
         ),
         sheetTransitionKind: 'openChild',
         sheetOpenerSource: 'pollAction',
-        // SPRING the sheet Y from the feed's live snap (middle ~42%) up to expanded so the
-        // open SLIDES naturally instead of jumping. The content is already correct from frame 1:
-        // pollDetail is SEEDED (SEEDED_FORWARD_OPEN_SCENES) → contentHandoff 'swapImmediately',
-        // so the seeded header + comment skeleton paint immediately under the rising sheet — the
-        // gradual rise reveals only the map above (no stale feed, no held search-home, since the
-        // seeded path holds no outgoing leg). Omitting `mode` defaults the motion command to
-        // 'spring' (vs the prior 'instant' that set sheetY directly → the snap). The
-        // snap-persistence guard is unaffected: pollDetail's snapPersistence is 'none', so the
-        // spring-settle snap fact never writes the shared docked-feed key.
-        sheetMotion: { kind: 'snapTo', snap: 'expanded' },
+        // sheetMotion intentionally omitted (P6 req 2d): the pollDetail open motion — SPRING the
+        // sheet Y from the feed's live snap up to expanded so the open SLIDES naturally — is the
+        // descriptor-table row ('*','pollDetail','openChild'). The content is already correct from
+        // frame 1: pollDetail is SEEDED (SEEDED_FORWARD_OPEN_SCENES) → contentHandoff
+        // 'swapImmediately', so the seeded header + comment skeleton paint immediately under the
+        // rising sheet. The snap-persistence guard is unaffected: pollDetail's snapPersistence is
+        // 'none', so the spring-settle snap fact never writes the shared docked-feed key. Owner
+        // req 2d: changing this movement pattern (or its dismiss) is a table row edit, not a
+        // call-site edit.
       });
       return;
     }
@@ -199,7 +208,22 @@ export const createAppOverlayRouteCommandRuntime = ({
         sheetTransitionKind: 'gesture',
         sheetOpenerSource: 'routeCommand',
         sheetMotion: { kind: 'snapTo', snap },
-        snapPersistence: 'sharedOnly',
+      });
+    },
+    promoteActiveSheet: ({ snap = 'middle' } = {}) => {
+      const { activeOverlayRoute } = routeSceneSwitchRuntime.getRouteState();
+      if (!isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
+        return;
+      }
+      // promoteAtLeast (NOT snapTo): only rises when below `snap`; at/above it resolves to null
+      // motion. This is what makes the header tap incapable of collapsing or dismissing.
+      requestRouteSceneSwitch({
+        targetSceneKey: activeOverlayRoute.key,
+        routeAction: 'updateActive',
+        routeParams: activeOverlayRoute.params as RouteSceneSwitchRouteParams,
+        sheetTransitionKind: 'gesture',
+        sheetOpenerSource: 'routeCommand',
+        sheetMotion: { kind: 'promoteAtLeast', snap },
       });
     },
     // Phase 3b — the canonical PUSH reveal verb; `pushRoute` aliases it so existing call
@@ -226,7 +250,8 @@ export const createAppOverlayRouteCommandRuntime = ({
           routeAction: 'popToRoot',
           sheetTransitionKind: 'closeChild',
           sheetOpenerSource: 'routeCommand',
-          sheetMotion: { kind: 'preserveLiveY' },
+          // sheetMotion intentionally omitted — descriptor-table closeChild decision (see
+          // closeActiveRoute above).
         });
         return;
       }

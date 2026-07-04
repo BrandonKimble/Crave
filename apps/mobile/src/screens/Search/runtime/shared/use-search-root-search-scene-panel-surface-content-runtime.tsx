@@ -16,16 +16,17 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
 }) => {
   const resultsMetadata = (resolvedResults?.metadata ?? {}) as { emptyQueryMessage?: string };
 
-  // Hard-swap reveal cover: while surfaceMode='initial_loading', paint a structure-matched
-  // results skeleton (dish or restaurant rows) instead of a bare spinner so the search→results
-  // reveal lands on structure the moment it crosses over.
+  // P5: the INITIAL-load reveal cover is gone (the search leg's own skeleton page/list is the
+  // loading visual now). This skeleton only renders inside the INTERACTION (toggle-reload) cover
+  // (resultsLoadingCoverSurface, an opaque white layer at zIndex 20 that hides the STALE rows
+  // below the toggle strip during a refetch — a query-flow surface, TR5 scope).
   //
-  // frostBacking: the skeleton renders inside the results LOADING COVER (resultsLoadingCoverSurface,
-  // an opaque white layer at zIndex 20 that hides the OUTGOING feed during the reveal). The holes
-  // therefore can't frost-through to the hoisted map (they'd hit the cover / the feed it hides), so
-  // a self-contained frost gives the holes their frosted-window contrast.
+  // frostBacking: the holes can't frost-through to the hoisted map (they'd hit the opaque cover /
+  // the rows it hides), so a self-contained frost gives the holes their frosted-window contrast.
   const loadingContent = React.useMemo(
-    () => <SceneLoadingSurface rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'} frostBacking />,
+    () => (
+      <SceneLoadingSurface rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'} frostBacking />
+    ),
     [activeTab]
   );
 

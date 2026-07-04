@@ -1,0 +1,15 @@
+# P4 cold-tab EARLY tap variant: tap Favorites while the startup reveal is still in flight,
+# then WAIT (no further taps) and screenshot the settled state. Bug signature: the reveal
+# lands with header 'Favorites' but a pure-frost body.
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: /tmp/earlyfav-t0
+- extendedWaitUntil:
+    visible: 'Favorites'
+    timeout: 15000
+    optional: true
+- takeScreenshot: /tmp/earlyfav-t15

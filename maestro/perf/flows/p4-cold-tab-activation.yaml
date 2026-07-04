@@ -1,0 +1,16 @@
+# P4 cold-tab activation repro (page-switch defect #1): fresh session, serial cold taps —
+# Favorites then Profile — screenshot each settled state. Bug signature: header correct,
+# bodyNull:false, but the body paints pure frost (no content, no skeleton, no empty state).
+# Nav bar: Search 17%,95% · Favorites 50%,95% · Profile 83%,95% (integer percentages only).
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: /tmp/coldfav
+- tapOn:
+    point: 83%,95%
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: /tmp/coldprofile

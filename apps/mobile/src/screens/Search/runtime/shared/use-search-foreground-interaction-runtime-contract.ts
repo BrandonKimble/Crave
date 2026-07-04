@@ -101,6 +101,9 @@ export type SearchForegroundLaunchIntentRuntimeArgs = {
 export type SearchForegroundSubmitRuntimeArgs = {
   submitRuntime: SearchForegroundSubmitRuntime;
   query: string;
+  // Live autocomplete suggestion list under the input — consumed by the typed-
+  // Return promoter to jump to a uniquely + exactly matched restaurant profile.
+  suggestions: AutocompleteMatch[];
   submittedQuery: string;
   searchMode: 'natural' | 'shortcut' | null;
   activeTab: 'dishes' | 'restaurants';

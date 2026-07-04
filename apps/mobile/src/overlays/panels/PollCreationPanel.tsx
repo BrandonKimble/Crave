@@ -22,7 +22,9 @@ import {
 } from '../overlaySheetStyles';
 import { resolveExpandedTop } from '../sheetUtils';
 import { useNavHideIntent } from '../../navigation/runtime/nav-hide-intent-store';
-import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
+import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
+import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
+import type { OverlayRouteEntry } from '../../navigation/runtime/app-overlay-route-types';
 import type { SnapPoints } from '../bottomSheetMotionTypes';
 import type { MapBounds } from '../../types';
 import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
@@ -53,10 +55,13 @@ type UsePollCreationPanelSpecOptions = {
   onCreated: (poll: Poll) => void;
 };
 
+// The header (market-aware title + close action) no longer rides this spec — it is extracted to
+// the persistent-header descriptor below (P3), which re-sources the market from the pollCreation
+// route params. `marketName` stays on the options contract for the callers; the spec itself only
+// consumes what the BODY (submit flow) needs.
 export const usePollCreationPanelSpec = ({
   visible,
   marketKey,
-  marketName,
   bounds,
   searchBarTop = 0,
   snapPoints: snapPointsOverride,
@@ -155,12 +160,6 @@ export const usePollCreationPanelSpec = ({
     }
   }, [bounds, closeWindowDays, description, marketKey, onClose, onCreated, pushRoute, question]);
 
-  const headerTitle = marketName?.trim()
-    ? `Add a poll in ${marketName.trim()}`
-    : marketKey
-      ? 'Add a poll'
-      : 'Add a poll near here';
-
   const expanded = resolveExpandedTop(searchBarTop, insets.top);
   // The list body frame fills the full sheet height but the sheet is translated DOWN by `expanded`,
   // so its bottom overhangs the visible screen by `expanded`. Reserve that overhang + the home
@@ -205,29 +204,6 @@ export const usePollCreationPanelSpec = ({
         </Text>
       </Pressable>
     </Reanimated.View>
-  );
-
-  const headerComponent = (
-    <OverlaySheetHeaderChrome
-      title={
-        <Text variant="title" weight="semibold" style={styles.sheetTitle} numberOfLines={1}>
-          {headerTitle}
-        </Text>
-      }
-      actionButton={
-        <Pressable
-          onPressIn={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close poll creation"
-          style={overlaySheetStyles.closeButton}
-          hitSlop={8}
-        >
-          <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
-            <LucideX size={20} color="#000000" strokeWidth={2.5} />
-          </View>
-        </Pressable>
-      }
-    />
   );
 
   const listHeaderComponent = (
@@ -317,7 +293,9 @@ export const usePollCreationPanelSpec = ({
       underlayComponent: null,
       // White, full-bleed sheet (no frosted glass) for the poll-creation scene.
       backgroundComponent: <View style={styles.sheetSurface} />,
-      headerComponent,
+      // P3: the poll-creation header is the persistent-header descriptor (registered below) —
+      // the per-scene header lane stays NULL (shape-preserving; other chrome surfaces stay).
+      headerComponent: null,
       overlayComponent: null,
     },
     sceneBodyContent: {
@@ -343,6 +321,119 @@ export const usePollCreationPanelSpec = ({
     },
   };
 };
+
+// ─── Persistent header descriptor (P3, page-switch-master-plan.md §6-P3) ────────────────────
+// The poll-creation header is extracted OUT of the panel spec into the hoisted persistent chrome
+// (PersistentSheetHeaderHost). The market-aware title re-sources marketKey/marketName from the
+// SAME place the panel spec got them — the active pollCreation route's params (the exact
+// polls-parent guard useSearchRoutePollCreationSceneStateRuntime applies) — read live from the
+// route-overlay navigation authority. The last resolved market is LATCHED while the header
+// outlives the route for a dismiss frame, so the title never flickers to the fallback mid-close.
+
+type PollCreationHeaderMarket = {
+  marketKey: string | null;
+  marketName: string | null;
+};
+
+const EMPTY_POLL_CREATION_HEADER_MARKET: PollCreationHeaderMarket = {
+  marketKey: null,
+  marketName: null,
+};
+
+const resolvePollCreationHeaderMarket = (
+  route: OverlayRouteEntry
+): PollCreationHeaderMarket | null => {
+  if (route.key !== 'pollCreation') {
+    return null;
+  }
+  const params = route.params as OverlayRouteEntry<'pollCreation'>['params'];
+  if (params?.parentSceneKey !== 'polls' || params?.ownerSceneKey !== 'polls') {
+    return null;
+  }
+  return {
+    marketKey: params?.marketKey ?? null,
+    marketName: params?.marketName ?? null,
+  };
+};
+
+const arePollCreationHeaderMarketsEqual = (
+  left: PollCreationHeaderMarket | null,
+  right: PollCreationHeaderMarket | null
+): boolean =>
+  left === right ||
+  (left != null &&
+    right != null &&
+    left.marketKey === right.marketKey &&
+    left.marketName === right.marketName);
+
+const usePollCreationHeaderMarket = (): PollCreationHeaderMarket => {
+  const { routeOverlayNavigationAuthority } = useAppRouteSceneRuntime();
+  const [market, setMarket] = React.useState<PollCreationHeaderMarket>(
+    () =>
+      resolvePollCreationHeaderMarket(
+        routeOverlayNavigationAuthority.getSnapshot().activeOverlayRoute
+      ) ?? EMPTY_POLL_CREATION_HEADER_MARKET
+  );
+  React.useEffect(
+    () =>
+      routeOverlayNavigationAuthority.registerTarget({
+        selector: (snapshot) => resolvePollCreationHeaderMarket(snapshot.activeOverlayRoute),
+        syncNavigationSnapshot: (_snapshot, resolved) => {
+          // LATCH: null (another route is active) keeps the last pollCreation market so the title
+          // holds steady on dismiss frames; a fresh pollCreation route always overwrites it.
+          if (resolved != null) {
+            setMarket((previous) =>
+              arePollCreationHeaderMarketsEqual(previous, resolved) ? previous : resolved
+            );
+          }
+        },
+        isEqual: arePollCreationHeaderMarketsEqual,
+        attributionLabel: 'PollCreationPersistentHeaderTitle',
+      }),
+    [routeOverlayNavigationAuthority]
+  );
+  return market;
+};
+
+const PollCreationPersistentHeaderTitle = React.memo(() => {
+  const { marketKey, marketName } = usePollCreationHeaderMarket();
+  const headerTitle = marketName?.trim()
+    ? `Add a poll in ${marketName.trim()}`
+    : marketKey
+      ? 'Add a poll'
+      : 'Add a poll near here';
+  return (
+    <Text variant="title" weight="semibold" style={styles.sheetTitle} numberOfLines={1}>
+      {headerTitle}
+    </Text>
+  );
+});
+PollCreationPersistentHeaderTitle.displayName = 'PollCreationPersistentHeaderTitle';
+
+const PollCreationPersistentHeaderAction = React.memo(() => {
+  // Close re-sources the exact action the inline header used —
+  // routeOverlayRouteCommandRuntime.closeActiveRoute — via the app-wide route controller hook.
+  const { closeActiveRoute } = useAppOverlayRouteController();
+  return (
+    <Pressable
+      onPress={closeActiveRoute}
+      accessibilityRole="button"
+      accessibilityLabel="Close poll creation"
+      style={overlaySheetStyles.closeButton}
+      hitSlop={8}
+    >
+      <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
+        <LucideX size={20} color="#000000" strokeWidth={2.5} />
+      </View>
+    </Pressable>
+  );
+});
+PollCreationPersistentHeaderAction.displayName = 'PollCreationPersistentHeaderAction';
+
+registerPersistentHeaderDescriptor('pollCreation', {
+  Title: PollCreationPersistentHeaderTitle,
+  Action: PollCreationPersistentHeaderAction,
+});
 
 const styles = StyleSheet.create({
   // White body layer scoped BELOW the header so the header plate's cutouts see through to the

@@ -2,12 +2,27 @@ import api from './api';
 import type { RestaurantStatusPreview } from './search';
 import type { Coordinate, MapBounds } from '../types';
 
+// The recall arm that produced a match, forwarded by the backend autocomplete
+// (search master plan §Step 2). Drives the typed-Return promoter gate: only an
+// 'exact' tier is eligible to jump straight to a profile on typed submit.
+export type AutocompleteEvidenceTier =
+  | 'exact'
+  | 'prefix'
+  | 'name'
+  | 'alias'
+  | 'fuzzy'
+  | 'phonetic'
+  | 'embedding';
+
 export type AutocompleteMatch = {
   entityId: string;
   entityType: string;
   name: string;
   aliases: string[];
   confidence: number;
+  // Forwarded by the backend; optional because older API builds omit it. Typed
+  // as a string-widened union so an unrecognized future tier still parses.
+  evidenceTier?: AutocompleteEvidenceTier | string;
   // 'poll' matches surface active community polls in the §8.1 autocomplete lane;
   // their `entityId` is the pollId and `name` is the poll question.
   matchType?: 'entity' | 'query' | 'poll';

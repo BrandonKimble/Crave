@@ -24,7 +24,7 @@ import {
 } from '../../services/favorite-lists';
 import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lists';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
-import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
+import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
 import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
@@ -676,9 +676,28 @@ export const BookmarksMountedSceneBody = React.memo(() => {
 
 BookmarksMountedSceneBody.displayName = 'BookmarksMountedSceneBody';
 
-export const BookmarksMountedSceneHeader = React.memo(() => {
+// P3 persistent header (page-switch-master-plan.md §6-P3): the bookmarks header CONTENT mounts
+// inside the hoisted PersistentSheetHeaderHost, NOT inside this panel — the close (X) semantics
+// come from the overlay route controller (reachable anywhere under the app providers). The
+// grab-handle tap is the shared promote handler.
+const BookmarksPersistentHeaderTitle = React.memo(() => (
+  <View style={styles.headerTextGroup}>
+    <Text
+      variant="title"
+      weight="semibold"
+      style={styles.headerTitle}
+      numberOfLines={1}
+      ellipsizeMode="tail"
+    >
+      Favorites
+    </Text>
+  </View>
+));
+
+BookmarksPersistentHeaderTitle.displayName = 'BookmarksPersistentHeaderTitle';
+
+const BookmarksPersistentHeaderAction = React.memo(() => {
   const { setRootRoute } = useAppOverlayRouteController();
-  const headerPaddingTop = 0;
   const localHeaderActionProgress = useSharedValue(0);
 
   const handleClose = React.useCallback(() => {
@@ -686,37 +705,23 @@ export const BookmarksMountedSceneHeader = React.memo(() => {
   }, [setRootRoute]);
 
   return (
-    <OverlaySheetHeaderChrome
-      onGrabHandlePress={handleClose}
-      grabHandleAccessibilityLabel="Close favorites"
-      paddingTop={headerPaddingTop}
-      title={
-        <View style={styles.headerTextGroup}>
-          <Text
-            variant="title"
-            weight="semibold"
-            style={styles.headerTitle}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            Favorites
-          </Text>
-        </View>
-      }
-      actionButton={
-        <OverlayHeaderActionButton
-          progress={localHeaderActionProgress}
-          onPress={handleClose}
-          accessibilityLabel="Close favorites"
-          accentColor={ACTIVE_TAB_COLOR}
-          closeColor="#000000"
-        />
-      }
+    <OverlayHeaderActionButton
+      progress={localHeaderActionProgress}
+      onPress={handleClose}
+      accessibilityLabel="Close favorites"
+      accentColor={ACTIVE_TAB_COLOR}
+      closeColor="#000000"
     />
   );
 });
 
-BookmarksMountedSceneHeader.displayName = 'BookmarksMountedSceneHeader';
+BookmarksPersistentHeaderAction.displayName = 'BookmarksPersistentHeaderAction';
+
+// Module-scope registration (house pattern — origin-capture-registry).
+registerPersistentHeaderDescriptor('bookmarks', {
+  Title: BookmarksPersistentHeaderTitle,
+  Action: BookmarksPersistentHeaderAction,
+});
 
 const styles = StyleSheet.create({
   sceneBody: {

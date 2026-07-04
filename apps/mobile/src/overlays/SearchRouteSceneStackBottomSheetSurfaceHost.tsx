@@ -190,7 +190,6 @@ const SearchRouteSceneStackBottomSheetRuntimeSurface = React.memo(
             contentTransitionToken={surfaceBodySnapshot.contentTransitionToken}
             onContentSettleComplete={onContentSettleComplete}
             bodyRuntimeAuthority={runtimeAssembly.bodyRuntimeAuthority}
-            sheetYValue={runtimeAssembly.sheetYValue}
           />
         </GestureDetector>
       </SearchRouteSceneStackBottomSheetInteractionGate>

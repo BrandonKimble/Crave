@@ -5,6 +5,7 @@ import type {
   StyleProp,
   ViewStyle,
 } from 'react-native';
+import type { useAnimatedProps } from 'react-native-reanimated';
 
 import type {
   BottomSheetSceneStackBodyContentEntry,
@@ -47,9 +48,15 @@ export type SceneStackBodyContentActivity = Pick<
 export type SceneStackBodyFrameProps = {
   sceneKey: string;
   visibilityStyle: StyleProp<ViewStyle>;
-  // 'none' for the leaving/hidden legs so a transparent crossfade leg never intercepts touches
-  // over the incoming scene; 'auto' for the incoming/displayed leg.
-  pointerEvents: 'auto' | 'none';
+  // Touch routing is UI-THREAD driven (the swap-lane, BottomSheetSceneStackHost): pointerEvents
+  // rides `useAnimatedProps` off the SAME live-role SharedValue as the leg's opacity, so 'auto'
+  // (incoming/displayed) vs 'none' (leaving/idle) flips in LOCKSTEP with visibility. A JS
+  // render-derived pointerEvents lagged the SV by the full flush→commit window (33-146ms), so a
+  // warm early-flip left the invisible outgoing leg still swallowing taps over the visible
+  // incoming leg. Applied to the leg's absolute-fill wrapper Animated.View.
+  pointerEventsAnimatedProps: ReturnType<
+    typeof useAnimatedProps<{ pointerEvents: 'auto' | 'none' }>
+  >;
   children: React.ReactNode;
 };
 

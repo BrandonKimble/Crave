@@ -2,6 +2,7 @@ import React from 'react';
 
 import type { OverlayContentSpec } from './types';
 import { useRestaurantPanelSpec } from './panels/RestaurantPanel';
+import type { RestaurantHeaderLiveState } from './restaurant-header-live-state';
 import type {
   RestaurantRoutePanelContract,
   RestaurantRoutePanelHostConfig,
@@ -16,6 +17,10 @@ type UseRestaurantRouteContentSpecRuntimeArgs = {
 
 export type RestaurantRouteContentSpecRuntime = {
   spec: OverlayContentSpec<unknown> | null;
+  // P3 persistent header: the SAME freeze-retained data + handlers the (now header-less) spec is
+  // built from, exposed so RestaurantRouteSceneInputHost can publish the winning entry's header
+  // inputs to the restaurant-header-live-state store for the hoisted persistent header.
+  headerState: RestaurantHeaderLiveState | null;
 };
 
 export const useRestaurantRouteContentSpecRuntime = ({
@@ -37,23 +42,34 @@ export const useRestaurantRouteContentSpecRuntime = ({
   }
 
   const restaurantData = hostConfig?.shouldFreezeContent
-    ? visibleDataRef.current ?? panel?.data ?? null
-    : panel?.data ?? null;
+    ? (visibleDataRef.current ?? panel?.data ?? null)
+    : (panel?.data ?? null);
   const spec = useRestaurantPanelSpec({
     data: restaurantData,
     onDismiss: panel?.onRequestClose ?? (() => undefined),
-    onRequestClose: panel?.onRequestClose ?? (() => undefined),
-    onToggleFavorite: panel?.onToggleFavorite ?? (() => undefined),
     navBarTop,
     searchBarTop,
     interactionEnabled: hostConfig?.interactionEnabled,
     containerStyle: hostConfig?.containerStyle,
   });
 
+  const headerState = React.useMemo<RestaurantHeaderLiveState | null>(
+    () =>
+      panel == null
+        ? null
+        : {
+            data: restaurantData,
+            onToggleFavorite: panel.onToggleFavorite,
+            onRequestClose: panel.onRequestClose,
+          },
+    [panel, restaurantData]
+  );
+
   return React.useMemo(
     () => ({
       spec: spec as OverlayContentSpec<unknown> | null,
+      headerState,
     }),
-    [spec]
+    [headerState, spec]
   );
 };

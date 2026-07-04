@@ -44,7 +44,7 @@ import {
   type AppRouteSceneStackSurfaceAuthority,
 } from './app-route-scene-stack-surface-contract';
 import type { OverlayKey } from '../../overlays/types';
-import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
+import type { PresentationFrame } from './app-route-presentation-frame-contract';
 import {
   markSearchNavSwitchRuntimeAttribution,
   withSearchNavSwitchRuntimeAttribution,
@@ -55,16 +55,12 @@ import {
   selectSearchSurfaceRouteGraphPolicy,
   selectSearchSurfaceVisualPolicy,
 } from '../../screens/Search/runtime/surface/search-surface-runtime';
-import type {
-  RouteSceneSwitchSheetContentHandoff,
-  RouteSceneSwitchTransitionPhase,
-} from './app-overlay-route-transition-contract';
+import type { RouteSceneSwitchTransitionPhase } from './app-overlay-route-transition-contract';
 import type {
   AppRouteSceneSwitchRuntime,
   RouteSceneSwitchSceneStackDispatchSnapshot,
 } from './app-route-scene-switch-controller';
 import { resolveRouteSceneSwitchSceneStackDispatchSnapshot } from './app-route-scene-switch-controller';
-import type { RouteOverlayDisplaySnapshot } from './route-overlay-display-snapshot-contract';
 import {
   isPerfScenarioAttributionActive,
   logPerfScenarioAttributionEvent,
@@ -72,10 +68,6 @@ import {
 import { usePerfScenarioRuntimeStore } from '../../perf/perf-scenario-runtime-store';
 
 type Listener = () => void;
-
-type SnapshotAuthority<TSnapshot> = {
-  getSnapshot: () => TSnapshot;
-};
 
 type AppRouteStaticSceneMountState = {
   bookmarksBootstrapped: boolean;
@@ -841,51 +833,10 @@ const resolveMountedSceneKeys = ({
   return mountedSceneKeys;
 };
 
-const resolveSheetPresentationSceneKey = ({
-  routeActiveSceneKey,
-  routeOverlayDisplaySnapshot,
-}: {
-  routeActiveSceneKey: OverlayKey | null;
-  routeOverlayDisplaySnapshot: RouteOverlayDisplaySnapshot;
-}): OverlayKey | null => {
-  // The persistent-poll-lane 'polls' forcing only applies while a TOP-LEVEL scene
-  // is presented — a child pushed over the lane (pollDetail / pollCreation /
-  // restaurant / saveList) must take the sheet. This mirrors
-  // the same child-scene escape in resolveDisplaySnapshot
-  // (app-route-native-overlay-target-authorities.ts); without it the body re-forced
-  // to 'polls' even though the child was the active route.
-  const isChildSceneDisplayed =
-    routeActiveSceneKey != null && getAppOverlayRouteMetadata(routeActiveSceneKey).role === 'child';
-  return routeOverlayDisplaySnapshot.isPersistentPollLane && !isChildSceneDisplayed
-    ? 'polls'
-    : routeActiveSceneKey;
-};
-
-const resolveTransitionSheetPresentationSceneKey = ({
-  routeActiveSceneKey,
-  routeOverlayDisplaySnapshot,
-  handoffSceneKey,
-  sheetContentHandoff,
-  transitionPhase,
-}: {
-  routeActiveSceneKey: OverlayKey | null;
-  routeOverlayDisplaySnapshot: RouteOverlayDisplaySnapshot;
-  handoffSceneKey: OverlayKey | null;
-  sheetContentHandoff: RouteSceneSwitchSheetContentHandoff;
-  transitionPhase: RouteSceneSwitchTransitionPhase;
-}): OverlayKey | null => {
-  if (
-    transitionPhase !== 'idle' &&
-    sheetContentHandoff === 'preserveOutgoingUntilSettle' &&
-    handoffSceneKey != null
-  ) {
-    return handoffSceneKey;
-  }
-  return resolveSheetPresentationSceneKey({
-    routeActiveSceneKey,
-    routeOverlayDisplaySnapshot,
-  });
-};
+// PF REWIRE (page-switch-master-plan.md §9.2 site 2): the old resolveSheetPresentationSceneKey /
+// resolveTransitionSheetPresentationSceneKey re-derivations are DELETED. The presented scene is
+// frame.presentedSceneKey and the held leg during a switch is frame.outgoingSceneKey — both read
+// from the controller-minted PresentationFrame (the single writer), never re-derived here.
 
 const resolveSceneEntryByKey = ({
   mountedSceneKeys,
@@ -1009,11 +960,9 @@ class AppRouteSceneStackLayerStateController {
   constructor({
     sceneInputAuthority,
     routeSceneSwitchRuntime,
-    routeOverlayDisplayAuthority,
   }: {
     sceneInputAuthority: AppRouteSceneInputAuthority;
     routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime;
-    routeOverlayDisplayAuthority: SnapshotAuthority<RouteOverlayDisplaySnapshot>;
   }) {
     this.sceneStackSurfaceAuthority = {
       mountedScenesAuthority: {
@@ -1041,7 +990,6 @@ class AppRouteSceneStackLayerStateController {
       this.recomputeTransitionSlice({
         sceneInputAuthority,
         routeSceneSwitchRuntime,
-        routeOverlayDisplayAuthority,
         source,
         routeSceneSwitchSnapshot,
       });
@@ -1052,7 +1000,7 @@ class AppRouteSceneStackLayerStateController {
         (routeSceneSwitchSnapshot) => {
           if (
             this.applyRouteSwitchPresentationUpdate({
-              routeOverlayDisplayAuthority,
+              routeSceneSwitchRuntime,
               routeSceneSwitchSnapshot,
             })
           ) {
@@ -1061,6 +1009,24 @@ class AppRouteSceneStackLayerStateController {
           recomputeTransitionSlice('routeSceneSwitchDispatchTarget', routeSceneSwitchSnapshot);
         }
       ),
+      // PF re-mint coverage (§9.1 R1): laneKind's inputs can change WITHOUT a transition-state
+      // dispatch (docked-polls gesture dismiss; the results_dismissing release) — the controller
+      // re-mints the frame and flushes it on the SAME dispatch-flush cadence (PF flushes first),
+      // so this is the one delivery lane for frame changes the stack dispatch doesn't carry.
+      routeSceneSwitchRuntime.subscribePresentationFrame(() => {
+        const routeSceneSwitchSnapshot = resolveRouteSceneSwitchSceneStackDispatchSnapshot(
+          routeSceneSwitchRuntime.getTransitionState()
+        );
+        if (
+          this.applyRouteSwitchPresentationUpdate({
+            routeSceneSwitchRuntime,
+            routeSceneSwitchSnapshot,
+          })
+        ) {
+          return;
+        }
+        recomputeTransitionSlice('presentationFrame', routeSceneSwitchSnapshot);
+      }),
       ...APP_ROUTE_STATIC_SCENE_INPUT_KEYS.map((sceneKey) =>
         sceneInputAuthority.subscribeSceneShell(sceneKey, () => {
           recomputeTransitionSlice(`sceneShell:${sceneKey}`);
@@ -1928,6 +1894,21 @@ class AppRouteSceneStackLayerStateController {
     const hasActivatedExpandedContent =
       shouldRetainMountedBody && this.retainedExpandedContentSceneKeys.has(sceneKey);
     const canAdmitInteractiveDataLane = canInteract && activationPhase === 'interactive';
+    // P4 PRESENTED-ACTIVATION (page-switch-master-plan.md §6-P4 / §9.1 — the cold-tab blank fix):
+    // a PRESENTED retained tab activates from PF presented-ness ALONE — `isActive` here derives
+    // from frame.presentedSceneKey (the activity scene key the callers pass) — never from the
+    // legacy transition-settle edge (phase idle + isInteractive + interactive-key match + the
+    // 350ms quiet timer) that hard-swap/instant commits reach late or, when a settle plane's
+    // completer is missed, never. Scoped by the descriptor's prewarmRetainedMountedBody flag
+    // (the static tabs' always-warm signature: bookmarks/profile), so polls keeps its
+    // transition-window data-lane pause and non-retained scenes keep today's timing. Idle legs
+    // are untouched (isActive false ⇒ inert); activation stays STICKY via
+    // retainedExpandedContentSceneKeys, so the warm Fav→Profile→Fav round-trip is unchanged.
+    const canActivatePresentedRetainedMountedBody =
+      shouldRetainMountedBody &&
+      shouldPrewarmRetainedMountedSceneBody(bodyAdmissionPolicy) &&
+      isActive &&
+      isMounted;
     const canPrewarmRetainedMountedBody =
       shouldRetainMountedBody &&
       shouldPrewarmRetainedMountedSceneBody(bodyAdmissionPolicy) &&
@@ -1944,13 +1925,19 @@ class AppRouteSceneStackLayerStateController {
       });
     const canAdmitDataLane =
       canAdmitInteractiveDataLane ||
+      canActivatePresentedRetainedMountedBody ||
       canPrewarmRetainedMountedBody ||
       canPrewarmSearchDismissPollData;
     const isDataLaneReady = this.isSceneDataLaneReady({
       sceneKey,
       canAdmitDataLane,
+      // "Immediate admission" lane (no quiet timer): the prewarm paths AND the P4
+      // presented-activation path — a presented tab's data lane must start at press-up,
+      // not after settle + 350ms.
       allowInactiveDataLaneAdmission:
-        canPrewarmRetainedMountedBody || canPrewarmSearchDismissPollData,
+        canActivatePresentedRetainedMountedBody ||
+        canPrewarmRetainedMountedBody ||
+        canPrewarmSearchDismissPollData,
       retainMountedBody: shouldRetainMountedBody,
       delayFirstDataAdmission: shouldDelaySceneDataLane(bodyAdmissionPolicy),
       delayDataAdmissionOnActivation: shouldDelaySceneDataLaneOnActivation(bodyAdmissionPolicy),
@@ -2038,6 +2025,35 @@ class AppRouteSceneStackLayerStateController {
       previousSnapshot.hasActivatedExpandedContent === nextSnapshot.hasActivatedExpandedContent
     ) {
       return false;
+    }
+    if (__DEV__) {
+      // [pageswitch] ACTIVITY producer probe (P4 blank-body attribution): per-scene activation
+      // flags whenever the snapshot CHANGES, plus the producer inputs that decided them — pins
+      // which flag is stuck and which input failed to flip on a cold presented leg.
+      // eslint-disable-next-line no-console
+      console.log(
+        `[pageswitch] activity ${JSON.stringify({
+          scene: sceneKey,
+          attach: nextSnapshot.shouldAttachMountedContent,
+          expand: nextSnapshot.shouldRenderExpandedContent,
+          activated: nextSnapshot.hasActivatedExpandedContent,
+          runData: nextSnapshot.shouldRunDataLane,
+          subData: nextSnapshot.shouldSubscribeDataLane,
+          active: nextSnapshot.isActive,
+          canInteract: nextSnapshot.isInteractive,
+          actPhase: nextSnapshot.activationPhase,
+          in: {
+            act: activeSceneKey,
+            inter: interactiveSceneKey,
+            handoff: handoffSceneKey,
+            phase: transitionPhase,
+            interactive: isInteractive,
+            mounted: isMounted,
+            entry: sceneEntry != null,
+            retain: sceneEntry?.bodyAdmissionPolicy?.retainMountedBodyDuringTransition === true,
+          },
+        })}`
+      );
     }
     if (nextSnapshot === EMPTY_APP_ROUTE_SCENE_STACK_SCENE_ACTIVITY_SNAPSHOT) {
       this.sceneActivitySnapshots.delete(sceneKey);
@@ -2439,28 +2455,22 @@ class AppRouteSceneStackLayerStateController {
   }
 
   private canApplyRouteSwitchPresentationUpdate({
-    routeOverlayDisplaySnapshot,
+    presentationFrame,
     routeSceneSwitchSnapshot,
   }: {
-    routeOverlayDisplaySnapshot: RouteOverlayDisplaySnapshot;
+    presentationFrame: PresentationFrame;
     routeSceneSwitchSnapshot: RouteSceneSwitchSceneStackDispatchSnapshot;
   }): boolean {
     const activeSceneKey = routeSceneSwitchSnapshot.routeActiveSceneKey;
-    const sheetPresentationSceneKey = resolveSheetPresentationSceneKey({
-      routeActiveSceneKey: activeSceneKey,
-      routeOverlayDisplaySnapshot,
-    });
+    // PF REWIRE (§9.3): the mount-defer gate keys on the frame's presented leg; the held leg is
+    // frame.outgoingSceneKey. The frame is pulled LIVE per attempt (not queued at dispatch time),
+    // so a superseding switch re-evaluates the defer against the NEWEST frame only (last-wins
+    // collapses the defer queue — §9.1). Null presented = pre-first-commit; route truth stands in.
+    const sheetPresentationSceneKey = presentationFrame.presentedSceneKey ?? activeSceneKey;
     const handoffSceneKey =
       routeSceneSwitchSnapshot.transitionPhase === 'idle'
         ? null
         : routeSceneSwitchSnapshot.handoffSceneKey;
-    const transitionSheetPresentationSceneKey = resolveTransitionSheetPresentationSceneKey({
-      routeActiveSceneKey: activeSceneKey,
-      routeOverlayDisplaySnapshot,
-      handoffSceneKey,
-      sheetContentHandoff: routeSceneSwitchSnapshot.sheetContentHandoff,
-      transitionPhase: routeSceneSwitchSnapshot.transitionPhase,
-    });
 
     if (
       routeSceneSwitchSnapshot.transitionPhase === 'idle' &&
@@ -2486,21 +2496,24 @@ class AppRouteSceneStackLayerStateController {
       this.hasMountedSceneEntry(activeSceneKey) &&
       this.hasMountedSceneEntry(routeSceneSwitchSnapshot.pendingSceneKey) &&
       this.hasMountedSceneEntry(handoffSceneKey) &&
-      this.hasMountedSceneEntry(transitionSheetPresentationSceneKey)
+      this.hasMountedSceneEntry(sheetPresentationSceneKey) &&
+      this.hasMountedSceneEntry(presentationFrame.outgoingSceneKey)
     );
   }
 
   private applyRouteSwitchPresentationUpdate({
-    routeOverlayDisplayAuthority,
+    routeSceneSwitchRuntime,
     routeSceneSwitchSnapshot,
   }: {
-    routeOverlayDisplayAuthority: SnapshotAuthority<RouteOverlayDisplaySnapshot>;
+    routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime;
     routeSceneSwitchSnapshot: RouteSceneSwitchSceneStackDispatchSnapshot;
   }): boolean {
-    const routeOverlayDisplaySnapshot = routeOverlayDisplayAuthority.getSnapshot();
+    // The LIVE committed frame — the PF flush runs FIRST in the controller's dispatch-flush
+    // block, so this is fresh for whichever dispatch triggered us (§9.1 R7).
+    const presentationFrame = routeSceneSwitchRuntime.getPresentationFrame();
     if (
       !this.canApplyRouteSwitchPresentationUpdate({
-        routeOverlayDisplaySnapshot,
+        presentationFrame,
         routeSceneSwitchSnapshot,
       })
     ) {
@@ -2514,17 +2527,17 @@ class AppRouteSceneStackLayerStateController {
         routeSceneSwitchSnapshot.transitionPhase === 'idle'
           ? null
           : routeSceneSwitchSnapshot.handoffSceneKey;
-      const sheetPresentationSceneKey = resolveTransitionSheetPresentationSceneKey({
-        routeActiveSceneKey: activeSceneKey,
-        routeOverlayDisplaySnapshot,
-        handoffSceneKey,
-        sheetContentHandoff: routeSceneSwitchSnapshot.sheetContentHandoff,
-        transitionPhase: routeSceneSwitchSnapshot.transitionPhase,
-      });
+      // PF REWIRE (§9.2 site 2 / §9.3): the presented scene IS frame.presentedSceneKey — the old
+      // outgoing-hold preserve branch is subsumed by frame.outgoingSceneKey, never re-derived.
+      const sheetPresentationSceneKey = presentationFrame.presentedSceneKey;
       const activitySceneKey = sheetPresentationSceneKey ?? activeSceneKey;
-      const activityInteractiveSceneKey = routeOverlayDisplaySnapshot.isPersistentPollLane
-        ? sheetPresentationSceneKey
-        : interactiveSceneKey;
+      // INTERACTIVE RULE (§9.1): the interactive scene is the presented leg ('polls' is already
+      // the presented key under laneKind==='docked-polls'); the input-owner is the OUTGOING leg
+      // while a held window is open. Null presented = pre-first-commit; route truth stands in.
+      const activityInteractiveSceneKey =
+        sheetPresentationSceneKey == null
+          ? interactiveSceneKey
+          : (presentationFrame.outgoingSceneKey ?? sheetPresentationSceneKey);
       const mountedSceneKeys = this.snapshot.mountedSceneKeys;
       const sceneEntryByKey = this.snapshot.sceneEntryByKey;
       const activeSceneEntry =
@@ -2635,13 +2648,11 @@ class AppRouteSceneStackLayerStateController {
   private recomputeTransitionSlice({
     sceneInputAuthority,
     routeSceneSwitchRuntime,
-    routeOverlayDisplayAuthority,
     source,
     routeSceneSwitchSnapshot,
   }: {
     sceneInputAuthority: AppRouteSceneInputAuthority;
     routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime;
-    routeOverlayDisplayAuthority: SnapshotAuthority<RouteOverlayDisplaySnapshot>;
     source: string;
     routeSceneSwitchSnapshot?: RouteSceneSwitchSceneStackDispatchSnapshot;
   }): void {
@@ -2656,23 +2667,25 @@ class AppRouteSceneStackLayerStateController {
           );
         const activeSceneKey = resolvedRouteSceneSwitchSnapshot.routeActiveSceneKey;
         const interactiveSceneKey = resolvedRouteSceneSwitchSnapshot.interactiveSceneKey;
-        const routeOverlayDisplaySnapshot = routeOverlayDisplayAuthority.getSnapshot();
+        // PF REWIRE (§9.2 site 2 / §9.3): the presented scene IS frame.presentedSceneKey — the
+        // old outgoing-hold preserve branch is subsumed by frame.outgoingSceneKey, never
+        // re-derived. The frame is pulled LIVE (the PF flush runs first on every cadence that
+        // reaches here), so a superseded recompute lands on the NEWEST frame (last-wins — §9.1).
+        const presentationFrame = routeSceneSwitchRuntime.getPresentationFrame();
         const areStaticTabScenesReady = areStaticTabSceneInputsReady(sceneInputAuthority);
         const handoffSceneKey =
           resolvedRouteSceneSwitchSnapshot.transitionPhase === 'idle'
             ? null
             : resolvedRouteSceneSwitchSnapshot.handoffSceneKey;
-        const sheetPresentationSceneKey = resolveTransitionSheetPresentationSceneKey({
-          routeActiveSceneKey: activeSceneKey,
-          routeOverlayDisplaySnapshot,
-          handoffSceneKey,
-          sheetContentHandoff: resolvedRouteSceneSwitchSnapshot.sheetContentHandoff,
-          transitionPhase: resolvedRouteSceneSwitchSnapshot.transitionPhase,
-        });
+        const sheetPresentationSceneKey = presentationFrame.presentedSceneKey;
         const activitySceneKey = sheetPresentationSceneKey ?? activeSceneKey;
-        const activityInteractiveSceneKey = routeOverlayDisplaySnapshot.isPersistentPollLane
-          ? sheetPresentationSceneKey
-          : interactiveSceneKey;
+        // INTERACTIVE RULE (§9.1): the interactive scene is the presented leg ('polls' is
+        // already the presented key under laneKind==='docked-polls'); the input-owner is the
+        // OUTGOING leg while a held window is open. Null presented = pre-first-commit.
+        const activityInteractiveSceneKey =
+          sheetPresentationSceneKey == null
+            ? interactiveSceneKey
+            : (presentationFrame.outgoingSceneKey ?? sheetPresentationSceneKey);
         const previousMountedSceneKeys = this.snapshot.mountedSceneKeys;
         const { state: staticSceneMountState, snapshot: staticSceneMountSnapshot } =
           withSearchNavSwitchRuntimeAttribution(
@@ -2981,19 +2994,18 @@ class AppRouteSceneStackLayerStateController {
   }
 }
 
+// NOTE: the PF rewire (§9.2 site 2) deleted this runtime's display-snapshot reads (presentation
+// now comes from the frame), so the runtime takes no routeOverlayDisplayAuthority anymore.
 export const createAppRouteSceneStackRuntime = ({
   sceneInputAuthority,
   routeSceneSwitchRuntime,
-  routeOverlayDisplayAuthority,
 }: {
   sceneInputAuthority: AppRouteSceneInputAuthority;
   routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime;
-  routeOverlayDisplayAuthority: SnapshotAuthority<RouteOverlayDisplaySnapshot>;
 }): AppRouteSceneStackRuntime => {
   const stackController = new AppRouteSceneStackLayerStateController({
     sceneInputAuthority,
     routeSceneSwitchRuntime,
-    routeOverlayDisplayAuthority,
   });
 
   return {

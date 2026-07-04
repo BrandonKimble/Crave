@@ -9,7 +9,7 @@ import type { Poll } from '../../services/polls';
 import type { FavoriteListSummary } from '../../services/favorite-lists';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
-import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
+import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
 import { SceneLoadingSurface, SkeletonBox } from '../../components/skeletons';
@@ -136,12 +136,7 @@ const ProfileIdentityChrome = React.memo(
     identityResolved,
     onOpenSettings,
   }: ProfileIdentityChromeProps) => {
-    const statValues = [
-      pollsCreatedCount,
-      pollsContributedCount,
-      followersCount,
-      followingCount,
-    ];
+    const statValues = [pollsCreatedCount, pollsContributedCount, followersCount, followingCount];
     return (
       <>
         <View style={styles.header}>
@@ -499,7 +494,19 @@ export const ProfileMountedSceneBody = React.memo(() => {
 
 ProfileMountedSceneBody.displayName = 'ProfileMountedSceneBody';
 
-export const ProfileMountedSceneHeader = React.memo(() => {
+// P3 persistent header (page-switch-master-plan.md §6-P3): the profile header CONTENT mounts
+// inside the hoisted PersistentSheetHeaderHost, NOT inside this panel — the close (X) semantics
+// come from the overlay route controller (reachable anywhere under the app providers). The
+// grab-handle tap is the shared promote handler.
+const ProfilePersistentHeaderTitle = React.memo(() => (
+  <Text variant="title" weight="semibold" style={styles.sheetTitle}>
+    Profile
+  </Text>
+));
+
+ProfilePersistentHeaderTitle.displayName = 'ProfilePersistentHeaderTitle';
+
+const ProfilePersistentHeaderAction = React.memo(() => {
   const { setRootRoute } = useAppOverlayRouteController();
   const localHeaderActionProgress = useSharedValue(0);
 
@@ -508,28 +515,23 @@ export const ProfileMountedSceneHeader = React.memo(() => {
   }, [setRootRoute]);
 
   return (
-    <OverlaySheetHeaderChrome
-      onGrabHandlePress={handleClose}
-      grabHandleAccessibilityLabel="Close profile"
-      title={
-        <Text variant="title" weight="semibold" style={styles.sheetTitle}>
-          Profile
-        </Text>
-      }
-      actionButton={
-        <OverlayHeaderActionButton
-          progress={localHeaderActionProgress}
-          onPress={handleClose}
-          accessibilityLabel="Close profile"
-          accentColor={themeColors.primary}
-          closeColor="#000000"
-        />
-      }
+    <OverlayHeaderActionButton
+      progress={localHeaderActionProgress}
+      onPress={handleClose}
+      accessibilityLabel="Close profile"
+      accentColor={themeColors.primary}
+      closeColor="#000000"
     />
   );
 });
 
-ProfileMountedSceneHeader.displayName = 'ProfileMountedSceneHeader';
+ProfilePersistentHeaderAction.displayName = 'ProfilePersistentHeaderAction';
+
+// Module-scope registration (house pattern — origin-capture-registry).
+registerPersistentHeaderDescriptor('profile', {
+  Title: ProfilePersistentHeaderTitle,
+  Action: ProfilePersistentHeaderAction,
+});
 
 const styles = StyleSheet.create({
   scrollContent: {

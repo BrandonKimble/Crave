@@ -2,7 +2,6 @@ import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { EntityType, Entity, Prisma } from '@prisma/client';
-import * as stringSimilarity from 'string-similarity';
 import { createHash } from 'crypto';
 import { Redis } from 'ioredis';
 import { Counter } from 'prom-client';
@@ -764,7 +763,6 @@ export class EntityResolutionService implements OnModuleInit {
       candidateNameContainsSearch: boolean;
       bestNameSimilarity: number;
       bestAliasSimilarity: number;
-      bestNameEditDistance: number;
     } | null = null;
 
     for (const candidate of candidateEntities) {
@@ -792,23 +790,18 @@ export class EntityResolutionService implements OnModuleInit {
 
       let bestNameSimilarity = 0;
       let bestAliasSimilarity = 0;
-      let bestNameEditDistance = Number.MAX_SAFE_INTEGER;
 
       for (const searchTerm of normalizedSearchTerms) {
-        const nameSimilarity = stringSimilarity.compareTwoStrings(
+        const nameSimilarity = this.trigramSimilarity(
           searchTerm,
           normalizedCandidateName,
         );
         bestNameSimilarity = Math.max(bestNameSimilarity, nameSimilarity);
-        bestNameEditDistance = Math.min(
-          bestNameEditDistance,
-          this.calculateEditDistance(searchTerm, normalizedCandidateName),
-        );
 
         for (const candidateAlias of normalizedCandidateAliases) {
           bestAliasSimilarity = Math.max(
             bestAliasSimilarity,
-            stringSimilarity.compareTwoStrings(searchTerm, candidateAlias),
+            this.trigramSimilarity(searchTerm, candidateAlias),
           );
         }
       }
@@ -819,7 +812,6 @@ export class EntityResolutionService implements OnModuleInit {
         candidateNameContainsSearch,
         bestNameSimilarity,
         bestAliasSimilarity,
-        bestNameEditDistance,
       };
 
       if (!bestCandidate) {
@@ -841,7 +833,6 @@ export class EntityResolutionService implements OnModuleInit {
       candidateNameContainsSearch: boolean;
       bestNameSimilarity: number;
       bestAliasSimilarity: number;
-      bestNameEditDistance: number;
       entity: { name: string };
     },
     right: {
@@ -849,7 +840,6 @@ export class EntityResolutionService implements OnModuleInit {
       candidateNameContainsSearch: boolean;
       bestNameSimilarity: number;
       bestAliasSimilarity: number;
-      bestNameEditDistance: number;
       entity: { name: string };
     },
   ): number {
@@ -866,9 +856,6 @@ export class EntityResolutionService implements OnModuleInit {
     }
     if (left.bestAliasSimilarity !== right.bestAliasSimilarity) {
       return left.bestAliasSimilarity > right.bestAliasSimilarity ? 1 : -1;
-    }
-    if (left.bestNameEditDistance !== right.bestNameEditDistance) {
-      return left.bestNameEditDistance < right.bestNameEditDistance ? 1 : -1;
     }
 
     return right.entity.name.length - left.entity.name.length;
@@ -1551,6 +1538,9 @@ export class EntityResolutionService implements OnModuleInit {
         data: {
           aliases: mergeResult.mergedAliases,
           lastUpdated: new Date(),
+          // Merged aliases change the entity doc → mark the dense vector stale for
+          // the reconciler to re-embed.
+          nameEmbeddingStale: true,
         },
       });
 
@@ -1586,27 +1576,29 @@ export class EntityResolutionService implements OnModuleInit {
   }
 
   /**
-   * Simple edit distance calculation (Levenshtein distance)
+   * Jaccard similarity over character trigrams — the same trigram vocabulary the
+   * shared matcher's pg_trgm `similarity()` speaks (see EntityTextSearchService's
+   * `similarity(lower(e.name), v.term)`). Used only to ORDER alias candidates that
+   * have already passed the hard `hasAliasOverlap` accept gate; it never gates a
+   * match.
    */
-  private calculateEditDistance(str1: string, str2: string): number {
-    const matrix: number[][] = Array(str2.length + 1)
-      .fill(null)
-      .map(() => Array(str1.length + 1).fill(0) as number[]);
-
-    for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
-    for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
-
-    for (let j = 1; j <= str2.length; j++) {
-      for (let i = 1; i <= str1.length; i++) {
-        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
-        matrix[j][i] = Math.min(
-          matrix[j][i - 1] + 1, // deletion
-          matrix[j - 1][i] + 1, // insertion
-          matrix[j - 1][i - 1] + indicator, // substitution
-        );
+  private trigramSimilarity(a: string, b: string): number {
+    const grams = (s: string): Set<string> => {
+      const padded = `  ${s
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim()}  `;
+      const set = new Set<string>();
+      for (let i = 0; i < padded.length - 2; i++) {
+        set.add(padded.slice(i, i + 3));
       }
-    }
-
-    return matrix[str2.length][str1.length];
+      return set;
+    };
+    const A = grams(a);
+    const B = grams(b);
+    if (A.size === 0 || B.size === 0) return 0;
+    let inter = 0;
+    for (const t of A) if (B.has(t)) inter++;
+    return inter / (A.size + B.size - inter);
   }
 }

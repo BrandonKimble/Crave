@@ -52,9 +52,13 @@ REPLACES the `isPersistentPollLane` scalar that was re-read (and re-derived) by 
 - **S1 (wrong-page):** at most one leg is non-idle besides `PF.outgoingSceneKey` during a token-bounded held
   crossfade, and it === `PF.presentedSceneKey`. (docked-polls is encoded via `laneKind`, not naive equality.)
 - **S2 (blank):** every visible leg is `bodyReady` OR rendering its OWN non-null skeleton — never visible+empty.
-- **H1 (header-vanish):** the header node identity is stable across all switches; `title === HeaderModel(PF.activeSceneKey)`.
+- **H1 (header-vanish):** the header node identity is stable across all switches;
+  `title === HeaderModel(PF.presentedSceneKey ?? PF.activeSceneKey)` — PRESENTED-first (amended §9.5-b:
+  the header titles what the sheet PAINTS; under docked-polls that is the polls feed on the search root).
 - **SR1 (search-blank):** the 'search' leg never renders null while presented.
-- **T1 (descriptor completeness):** every switch resolves to exactly one descriptor row; `dismiss.to === origin.snap`.
+- **T1 (descriptor completeness):** every switch resolves to exactly one descriptor row; `dismiss.to === origin.snap`
+  (the dismiss clause is superseded by §9.5-a's P6 re-scope — pending owner sign-off; the row-completeness half stands
+  and is spec-pinned in `app-route-sheet-motion-descriptor-table.spec.ts`).
 
 ## 3. THE HARNESS (P1 — built BEFORE any resolution edit; the regression gate for every phase)
 
@@ -336,3 +340,85 @@ while unresolved :763-766; dep = derived launchIntentMarketKey string not launch
 the missing startupLocationSnapshot?.ipMarketKey dep :750-752); move fetch+retry ownership to
 polls-feed-runtime-controller (single writer). P1 addendum: add a bootstrap-lifecycle probe (effect
 entry/latch-return/resolve/cleanup) for runtime proof before P4 touches it.
+
+### 9.5 POST-BUILD AMENDMENTS + POST-SOAK CLEANUP LEDGER (2026-07-02, final red-team pass)
+
+**(a) P6 SHEET-Y LANE — FORMAL NO-GO AMENDMENT — ✅ OWNER-APPROVED 2026-07-02.** The §6-P6
+"REAL sheet-Y lane + dismiss=inverse(descriptor)" scope did NOT ship and is re-scoped as follows.
+OWNER RULING: blessed the re-scope (detent-tunable via the table now; motion curve stays with the
+one kept snap spring; origin-restore via the return-to-origin foundation) — NOT re-opening a second
+sheet-Y driver. [Separately, TRUE per-page detent memory was wired + verified this session — that is
+the descriptor `rememberedDetent` rule, a DIFFERENT topic from this sheet-Y no-go.]
+
+- **What req 2d now means (shipped):** the DETENT TARGET of every switch is tunable via the
+  descriptor table (`app-route-sheet-motion-descriptor-table.ts`) — one row edit per
+  `(from, to, transitionKind)`, mandate tier for modals, `rememberedDetent` for bookmarks/profile,
+  parity-pinned by the frozen-oracle spec. The motion CURVE stays with the KEPT snap spring
+  (single writer, no player sheet-Y lane, no three-fighting-springs handoff problem).
+- **Removed from the PF contract:** `PF.originRef` and `PF.snapIntent` (the descriptor-driven
+  sheet-Y interpolation inputs) — never populated, deleted rather than carried dead.
+- **T1's `dismiss.to === origin.snap` clause is SUPERSEDED:** dismiss detents are now the table's
+  own dismiss rows (`closeChild → preserveLiveY`, `terminalDismiss → hide`), and true
+  return-to-origin (page+scroll+snap+anchor restore) belongs to the return-to-origin foundation's
+  capture/restore machinery — NOT to a descriptor inverse. The row-completeness half of T1 stands
+  (catch-all row + spec + `__DEV__` init assert).
+- **Owner decision requested:** bless this re-scope (detent-tunable now, curve/origin-restore via
+  the kept spring + return-to-origin foundation), or re-open the full sheet-Y lane as new work.
+
+**(b) H1 AMENDED — PRESENTED-FIRST (applied to §2).** The invariant is
+`title === HeaderModel(PF.presentedSceneKey ?? PF.activeSceneKey)`. The header titles what the
+sheet PAINTS; the one legal steady divergence (docked-polls: route='search', sheet presents the
+polls feed) is exactly the case presented-first gets right. `PersistentSheetHeaderHost` implements
+this; a `__DEV__` warn now fires if a presented scene has no registered header descriptor, and the
+registry warns on duplicate registration.
+
+**(c) POST-SOAK CLEANUP LEDGER** (nothing here blocks soak; execute after the owner drive-through):
+
+1. **Probe teardown inventory** (ALL deliberately still in; delete as one sweep post-soak):
+   `[pageswitch] frame` (app-route-scene-switch-controller.ts:1526),
+   `[pageswitch] watchdog` (:1746 — keep the WATCHDOG MECHANISM, delete only the log),
+   `[pageswitch] controller replaced` (:2004),
+   `[pageswitch] host` (BottomSheetSceneStackHost.tsx:1195 via logPageSwitch:142),
+   `[pageswitch] body` (BottomSheetSceneStackHost.tsx:725),
+   `[pageswitch] bodyActivity` (BottomSheetSceneStackBodyLayer.tsx:163),
+   `[pageswitch] activity` (app-route-scene-stack-runtime.ts:2035),
+   `[pageswitch] bootstrap` (MainLaunchCoordinator.tsx:37 + polls-feed-runtime-controller.ts:35),
+   `[DISMISS-SEAM]` ×2 (app-route-overlay-session-state-controller.ts:772 +
+   app-search-route-command-runtime.ts:195).
+   **DELETION LANDMINE:** the host effect at BottomSheetSceneStackHost.tsx:~723-728 carries BOTH
+   the `body` probe AND the FUNCTIONAL `recordSceneBodyAttached` call (synthetic-ack evidence) —
+   delete only the logPageSwitch line, never the effect.
+   (The `[pageswitch]` descriptor-table console.error lines are `__DEV__` INVARIANT asserts, not
+   probes — permanent.)
+2. **§9.3 Group-A carrier shrink** — the rewired-to-PF carriers still transport fields consumers
+   no longer read; shrink the contracts (route-overlay-navigation-snapshot-contract.ts,
+   app-route-dynamic-scene-inputs-contract.ts, and the mounted-chrome `mountedChromeKey` /
+   `excludedSurfaces` fields whose only remaining consumers are equality functions).
+3. **SearchSceneStackBodyDisplayTarget fold-in** (deferred residual): the search leg still renders
+   through its bespoke bundle host (`SearchResultsPageBundleHost`) inside the uniform frame host;
+   folding it into the uniform `SceneStackBodyContentLayerHost` deletes the parts-slot
+   indirection. Includes the dead `sheetYValue` thread: `SearchResultsPageBundleHostProps.sheetYValue`
+   is typed but never destructured (SearchMountedScenePageBundleAuthority.tsx) while the host still
+   passes it (BottomSheetSceneStackHost.tsx:~846) — delete both sides together.
+4. **rememberedDetent semantics question (owner):** with ONE physical shared sheet, "the detent the
+   page was last left at" is implemented as "the LIVE shared-sheet detent at switch time" — i.e.
+   bookmarks inherits the detent profile left behind, not its own last detent. If the owner wants
+   TRUE per-page memory, the rule needs a per-scene detent store (snap-session memory exists as a
+   candidate source).
+5. **Dead `getRouteSceneVisibilityPolicySnapshot`** — zero call sites on BOTH controllers
+   (app-route-scene-switch-controller.ts:907 + app-route-overlay-session-state-controller.ts:391,
+   plus the type slot at scene-switch :148); delete both (deferred: files owned by the parallel
+   P2/P5 agents this round).
+6. **Host stale comments** (same parallel-owned file): the 'until P5' claims at
+   BottomSheetSceneStackHost.tsx:1028, :1171, :1390, :1400 (P5 landed — search's header/divider are
+   hoisted and the page frame no longer has an in-frame header/divider lane at all), and the
+   :137-138 probe-lifecycle claim "removed after P2 lands the fix" (P2 landed; probes stay until
+   post-soak — reword to point at this ledger).
+7. **Idle-leg skeleton parity note:** scene-stack legs skip the skeleton when `legRole==='idle'`
+   (host :743); the search leg's pre-bundle skeleton page (SearchResultsPageBundleHost) renders
+   even while the search leg is idle-hidden (SR1 keeps it never-null; the idle leg is display-hidden
+   so this is only wasted work). Revisit with item 3's fold-in.
+8. **CONTENT_MODE_BY_INCOMING_SCENE is all-HARD** (host-token-transition-adapter.ts): every row and
+   the fallback resolve HARD; the table survives as the documented extension point. If no non-HARD
+   mode exists by cleanup time, collapse to a constant and drop the dead `held-dissolve` ContentMode
+   variant from the descriptor contract + player.

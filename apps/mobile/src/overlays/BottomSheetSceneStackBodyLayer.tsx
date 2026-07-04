@@ -20,7 +20,7 @@ const shouldSkipSceneStackBodyFrameUpdate = (
 ): boolean =>
   previousProps.sceneKey === nextProps.sceneKey &&
   previousProps.visibilityStyle === nextProps.visibilityStyle &&
-  previousProps.pointerEvents === nextProps.pointerEvents &&
+  previousProps.pointerEventsAnimatedProps === nextProps.pointerEventsAnimatedProps &&
   previousProps.children === nextProps.children;
 
 const shouldPublishSceneBodyDataActivity = (sceneKey: string): boolean =>
@@ -115,12 +115,17 @@ const SceneStackBodyContentHost = React.memo(
 );
 
 export const SceneStackBodyFrame = React.memo(
-  ({ sceneKey, visibilityStyle, pointerEvents, children }: SceneStackBodyFrameProps) => {
+  ({
+    sceneKey,
+    visibilityStyle,
+    pointerEventsAnimatedProps,
+    children,
+  }: SceneStackBodyFrameProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
     const bodyFrame = (
       <Animated.View
         key={`scene-${sceneKey}`}
-        pointerEvents={pointerEvents}
+        animatedProps={pointerEventsAnimatedProps}
         style={[styles.sceneStackBodyLayer, visibilityStyle]}
       >
         {children}
@@ -154,6 +159,32 @@ export const SceneStackBodyContentLayer = React.memo(
       bodySurfaceKind === 'list' ? contentActivity.shouldRenderListBody : false;
     const shouldAttachMountedContent =
       bodySurfaceKind === 'mounted' && contentActivity.shouldAttachMountedContent;
+    // [pageswitch] CONSUMER-side activity probe (P4 blank-body attribution): what the leg's body
+    // layer actually received this commit — correlate with the producer-side `activity` lines.
+    React.useEffect(() => {
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[pageswitch] bodyActivity ${JSON.stringify({
+            scene: contentEntry.sceneKey,
+            kind: bodySurfaceKind,
+            attach: shouldAttachMountedContent,
+            expand: contentActivity.shouldRenderExpandedContent,
+            activated: contentActivity.hasActivatedExpandedContent,
+            runData: contentActivity.shouldRunDataLane,
+            active: contentActivity.isActive,
+          })}`
+        );
+      }
+    }, [
+      contentEntry.sceneKey,
+      bodySurfaceKind,
+      shouldAttachMountedContent,
+      contentActivity.shouldRenderExpandedContent,
+      contentActivity.hasActivatedExpandedContent,
+      contentActivity.shouldRunDataLane,
+      contentActivity.isActive,
+    ]);
     const bodyDataActivity = React.useMemo(
       () => ({
         sceneKey: contentEntry.sceneKey,

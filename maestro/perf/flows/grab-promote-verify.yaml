@@ -1,0 +1,11 @@
+# Grab-handle promote verification (owner req 2026-07-02): tapping the persistent header's grab
+# pill at the LOW (collapsed) snap must PROMOTE the sheet to middle — never dismiss/collapse.
+appId: com.brandonkimble.cravesearch
+---
+- takeScreenshot: /tmp/grab-before
+# grab pill: top-center of the persistent header, which at collapsed home sits ~84% down.
+- tapOn:
+    point: 50%,84%
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: /tmp/grab-after-promote

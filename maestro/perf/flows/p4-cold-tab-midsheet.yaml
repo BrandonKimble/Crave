@@ -1,0 +1,25 @@
+# P4 cold-tab variant B: raise the home sheet OFF collapsed first (preserveLiveY → idle-commit
+# lane, motionPlanes=[]) then cold-tap Favorites / Profile. Integer percentages only.
+appId: com.brandonkimble.cravesearch
+---
+- swipe:
+    start: 50%,80%
+    end: 50%,30%
+    duration: 400
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: /tmp/midfav
+- tapOn:
+    point: 83%,95%
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: /tmp/midprofile
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: /tmp/midfav2

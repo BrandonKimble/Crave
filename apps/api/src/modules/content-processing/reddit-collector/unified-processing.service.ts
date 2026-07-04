@@ -1422,6 +1422,9 @@ export class UnifiedProcessingService implements OnModuleInit {
                     data: {
                       aliases: mergedAliases,
                       lastUpdated: new Date(),
+                      // Aliases feed the entity doc → the dense vector is now stale;
+                      // the reconciler re-embeds it out-of-band.
+                      nameEmbeddingStale: true,
                     },
                   });
                 }

@@ -165,11 +165,15 @@ export type AppRouteSceneRuntime = {
 export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
   const routeSceneSheetMotionTargetRegistry = createAppRouteSceneSheetMotionTargetRegistry();
   const routeSceneVisibilityPolicyRuntime = createRouteSceneVisibilityPolicyController();
+  // Created BEFORE the switch runtime: the snap-session's per-scene detent ledger feeds the
+  // descriptor table's 'rememberedDetent' rule (true per-page memory) through the controller.
+  const routeSheetSnapSessionRuntime = createAppRouteSheetSnapSessionRuntime();
   const routeSceneSwitchRuntime = createAppRouteSceneSwitchRuntime({
     sheetMotionTargetRegistry: routeSceneSheetMotionTargetRegistry,
     routeSceneVisibilityPolicyRuntime,
+    resolveSceneRememberedSnap: (sceneKey) =>
+      routeSheetSnapSessionRuntime.actions.getRouteSceneSwitchSceneSnap(sceneKey),
   });
-  const routeSheetSnapSessionRuntime = createAppRouteSheetSnapSessionRuntime();
   const routeOverlayRouteCommandRuntime = createAppOverlayRouteCommandRuntime({
     routeSceneSwitchRuntime,
   });
@@ -216,7 +220,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
   const routeSceneStackRuntime = createAppRouteSceneStackRuntime({
     sceneInputAuthority: routeSceneFoundationRuntime.sceneInputAuthority,
     routeSceneSwitchRuntime,
-    routeOverlayDisplayAuthority: routeSceneFoundationRuntime.routeOverlayDisplayAuthority,
   });
   const routeVisualRuntime = createRouteVisualRuntime({
     routeOverlayVisibilityAuthority: routeSceneFoundationRuntime.routeOverlayVisibilityAuthority,
@@ -232,7 +235,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     routeOverlayIdentityAuthority: routeSceneFoundationRuntime.routeOverlayIdentityAuthority,
     routeOverlayRootAuthority: routeSceneFoundationRuntime.routeOverlayRootAuthority,
     routeScenePolicyAuthority: routeSceneFoundationRuntime.routeScenePolicyAuthority,
-    routeSceneVisibilityPolicyRuntime,
     routeSceneSwitchActions: routeSceneSwitchRuntime,
     routeSearchCommandActions,
     routeSheetSnapSessionAuthority: routeSheetSnapSessionRuntime.authority,

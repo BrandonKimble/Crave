@@ -1,5 +1,3 @@
-import React from 'react';
-
 import type { SearchResponse } from '../../../../types';
 import { useSearchResultsReadModelSelectors } from '../read-models/read-model-selectors';
 import type { SearchRouteResultsPolicyReadModelWriterFacets } from './search-route-results-policy-domain-contract';
@@ -9,10 +7,6 @@ import type {
   SearchRootRuntimeRouteSearchSceneReadModelRuntime,
   SearchRootRuntimeRouteSearchSceneSelectorResultsRuntime,
 } from './route-search-scene-runtime-contract';
-import {
-  selectSearchSurfaceVisualPolicy,
-  useSearchSurfaceRuntimeSelector,
-} from '../surface/search-surface-runtime';
 
 export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
   visualAssemblyRuntime,
@@ -24,13 +18,6 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
   routeSearchSceneCardRenderRuntime: SearchRootRuntimeRouteSearchSceneReadModelRuntime['routeSearchSceneCardRenderRuntime'];
   readModelPolicyWriters: SearchRouteResultsPolicyReadModelWriterFacets;
 }): SearchRootRuntimeRouteSearchSceneSelectorResultsRuntime => {
-  const shouldHoldResultsHeader = useSearchSurfaceRuntimeSelector(
-    React.useCallback(
-      (surfaceSnapshot) => selectSearchSurfaceVisualPolicy(surfaceSnapshot).shouldHoldResultsHeader,
-      []
-    ),
-    Object.is
-  );
   const routeSearchSceneResultsReadModelSelectors = useSearchResultsReadModelSelectors({
     activeTab: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.activeTab,
     dishes: routeSearchSceneDataRuntime.routeSearchSceneResolvedResultsRuntime.dishes,
@@ -61,14 +48,6 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
     isLoadingMore: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.isLoadingMore,
     onDemandNotice: routeSearchSceneDataRuntime.routeSearchSceneOnDemandNotice,
     activeTabColor: routeSearchSceneDataRuntime.routeSearchSceneFiltersHeaderRuntime.accentColor,
-    shouldDisableResultsHeader:
-      (!shouldHoldResultsHeader &&
-        routeSearchSceneDataRuntime.routeSearchSceneSearchSheetContentLane.kind ===
-          'persistent_poll') ||
-      (!shouldHoldResultsHeader &&
-        routeSearchSceneDataRuntime.routeSearchSceneChromeFreezeRuntime.submittedQueryForReadModel.trim()
-          .length === 0),
-    shouldUseResultsHeaderBlur: true,
     submittedQuery:
       routeSearchSceneDataRuntime.routeSearchSceneChromeFreezeRuntime.submittedQueryForReadModel,
     handleCloseResults: routeSearchSceneDataRuntime.routeSearchSceneHandleCloseResults,
@@ -76,8 +55,6 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
       routeSearchSceneDataRuntime.routeSearchSceneHeaderLayoutRuntime.handleResultsHeaderLayout,
     overlayHeaderActionProgress:
       visualAssemblyRuntime.sceneVisualRuntime.overlayHeaderActionProgress,
-    headerDividerAnimatedStyle:
-      routeSearchSceneDataRuntime.routeSearchSceneHeaderDividerAnimatedStyle,
     shouldLogResultsViewability:
       routeSearchSceneDataRuntime.routeSearchSceneShouldLogResultsViewability,
     searchInteractionRef: routeSearchSceneDataRuntime.routeSearchSceneSearchInteractionRef,
@@ -91,8 +68,6 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
     setHydratedResultsKeySync:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime.setHydratedResultsKeySync,
     phaseBMaterializerRef: routeSearchSceneDataRuntime.routeSearchScenePhaseBMaterializerRef,
-    contentHorizontalPadding:
-      routeSearchSceneDataRuntime.routeSearchSceneFiltersHeaderRuntime.contentHorizontalPadding,
     renderDishCard: ((item, index) =>
       routeSearchSceneCardRenderRuntime.renderDishCard(item, index)) as Parameters<
       typeof useSearchResultsReadModelSelectors

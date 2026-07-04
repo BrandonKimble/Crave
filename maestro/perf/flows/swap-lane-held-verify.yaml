@@ -1,0 +1,32 @@
+# UI-thread swap-lane verification for the HELD transition path (search submit → results,
+# then results dismiss). The nav-switch flows only exercise swapImmediately; this covers the
+# preserveOutgoingUntilSettle pair the early-hold write touches.
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    text: 'Close poll'
+    optional: true
+- tapOn:
+    text: 'Close restaurant'
+    optional: true
+- tapOn:
+    text: 'Close results'
+    optional: true
+- tapOn:
+    point: 17%,95%
+- waitForAnimationToEnd:
+    timeout: 2000
+- extendedWaitUntil:
+    visible: 'What are you craving?'
+    timeout: 15000
+# coord tap — tapOn:text does not match the custom chip Text (known gotcha)
+- tapOn:
+    point: 23%,16%
+- waitForAnimationToEnd:
+    timeout: 8000
+- takeScreenshot: /tmp/swaplane-results
+- tapOn:
+    text: 'Close results'
+- waitForAnimationToEnd:
+    timeout: 4000
+- takeScreenshot: /tmp/swaplane-dismissed

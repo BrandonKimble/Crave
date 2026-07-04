@@ -1,0 +1,36 @@
+# Per-page remembered detent (owner decision 2026-07-02): Favorites settled at MIDDLE must return
+# to middle after visiting an expanded Profile — NOT land expanded (the old live-shared behavior).
+# Uses the confirmed grab-promote (collapsed->middle) to settle bookmarks at middle deterministically.
+appId: com.brandonkimble.cravesearch
+---
+# Favorites — first visit opens expanded (fallback, no memory yet).
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 2000
+# Collapse it hard (drag the header down past middle to the collapsed detent).
+- swipe:
+    start: 50%,14%
+    end: 50%,72%
+    duration: 300
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: /tmp/detent-fav-collapsed
+# Grab-promote it to MIDDLE (deterministic) — this settles bookmarks=middle.
+- tapOn:
+    point: 50%,84%
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: /tmp/detent-fav-middle
+# Profile — first visit opens expanded.
+- tapOn:
+    point: 83%,95%
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: /tmp/detent-profile-expanded
+# Back to Favorites — must RETURN to middle (per-page memory), not expanded.
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: /tmp/detent-fav-return

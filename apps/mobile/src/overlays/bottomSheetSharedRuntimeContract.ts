@@ -101,6 +101,9 @@ export type BottomSheetSharedGestureRuntime = {
 export type BottomSheetSharedScrollRuntime = {
   ScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
   shouldEnableScroll: boolean;
+  // UI-thread mirror of shouldEnableScroll (frame-drop fix): sinks drive scrollEnabled off this SV
+  // via useAnimatedProps so a transient activation toggle doesn't re-render the heavy list body.
+  shouldEnableScrollShared: SharedValue<boolean>;
   effectiveShowsVerticalScrollIndicator: boolean;
   scrollHeaderHeight: number;
   scrollOffset: SharedValue<number>;

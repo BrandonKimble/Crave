@@ -1,9 +1,6 @@
 import { useSearchRootMapViewportIntentRuntime } from './use-search-root-map-viewport-intent-runtime';
 import { useSearchRootOverlayFoundationRuntime } from './use-search-root-overlay-foundation-runtime';
-import type {
-  RouteOverlayPollsVisibilityAuthority,
-  RouteOverlayVisibilityAuthority,
-} from './route-authority-contract';
+import type { RouteOverlayVisibilityAuthority } from './route-authority-contract';
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
 import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 import type { useSearchRootRuntimeSessionAssemblyRuntime } from './use-search-root-runtime-session-assembly-runtime';
@@ -25,7 +22,6 @@ export const useSearchRootRuntimeOverlayFoundationAssemblyRuntime = ({
   stateAssemblyRuntime,
   routeSceneRuntime,
   routeOverlayIdentityAuthority,
-  routeOverlayPollsVisibilityAuthority,
   routeOverlayVisibilityAuthority,
   searchChromeScalarSurfaceRuntime,
 }: {
@@ -34,7 +30,6 @@ export const useSearchRootRuntimeOverlayFoundationAssemblyRuntime = ({
   stateAssemblyRuntime: SearchRootRuntimeStateAssembly;
   routeSceneRuntime: AppRouteSceneRuntime;
   routeOverlayIdentityAuthority: AppRouteSceneRuntime['routeOverlayIdentityAuthority'];
-  routeOverlayPollsVisibilityAuthority: RouteOverlayPollsVisibilityAuthority;
   routeOverlayVisibilityAuthority: RouteOverlayVisibilityAuthority;
   searchChromeScalarSurfaceRuntime?: SearchChromeScalarSurfaceRuntime;
 }) => {
@@ -44,7 +39,6 @@ export const useSearchRootRuntimeOverlayFoundationAssemblyRuntime = ({
     sessionCoreLane: sessionAssemblyRuntime.sessionRuntime.sessionCoreLane,
     routeSceneRuntime,
     routeOverlayIdentityAuthority,
-    routeOverlayPollsVisibilityAuthority,
     routeOverlayVisibilityAuthority,
     stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
     searchChromeScalarSurfaceRuntime,

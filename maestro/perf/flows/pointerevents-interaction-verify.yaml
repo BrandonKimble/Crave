@@ -1,0 +1,31 @@
+# Verify the useAnimatedProps-driven pointerEvents on the leg wrapper actually routes touches:
+# switch to Favorites (expanded), tap the Dishes toggle — a registered tap (tab switches to Dishes)
+# proves the incoming leg's pointerEvents='auto' is applied by the worklet. Then a nav round-trip
+# re-confirms interaction survives a warm switch.
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: /tmp/pe-fav-restaurants
+# Dishes toggle: right half of the Restaurants|Dishes pill, ~72% wide, ~18% down at expanded.
+- tapOn:
+    point: 72%,18%
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: /tmp/pe-fav-dishes
+# Warm round-trip: to search-home and back, then tap Restaurants toggle to confirm interaction survives.
+- tapOn:
+    point: 17%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 27%,18%
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: /tmp/pe-fav-restaurants-again

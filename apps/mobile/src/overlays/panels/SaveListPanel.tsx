@@ -7,7 +7,7 @@ import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
-import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
+import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import {
   favoriteListsService,
   type FavoriteListSummary,
@@ -46,15 +46,40 @@ const selectSaveSheetListType = (snapshot: AppRouteOverlayCommandSnapshot) =>
 
 const selectSaveSheetState = (snapshot: AppRouteOverlayCommandSnapshot) => snapshot.saveSheetState;
 
-export const SaveListMountedSceneHeader = React.memo(() => {
+// P3 persistent header (page-switch-master-plan.md §6-P3): the save-list header CONTENT mounts
+// inside the hoisted PersistentSheetHeaderHost, NOT inside this panel — the title reads the
+// overlay-command authority and the close semantics come from the overlay-command actions (both
+// reachable anywhere under the app providers). The title renders synchronously (listType always
+// has a value in the command snapshot). The grab-handle tap is the shared promote handler; the
+// close (X) semantics come from the overlay-command actions in the Action slot.
+
+const SaveListPersistentHeaderTitle = React.memo(() => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const listType = useRouteAuthoritySelector({
     subscribe: routeSceneRuntime.routeOverlayCommandAuthority.subscribe,
     getSnapshot: routeSceneRuntime.routeOverlayCommandAuthority.getSnapshot,
     selector: selectSaveSheetListType,
   });
+  return (
+    <View style={styles.headerTextGroup}>
+      <Text
+        variant="title"
+        weight="semibold"
+        style={styles.headerTitle}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
+        Save to {listType === 'restaurant' ? 'Restaurants' : 'Dishes'}
+      </Text>
+    </View>
+  );
+});
+
+SaveListPersistentHeaderTitle.displayName = 'SaveListPersistentHeaderTitle';
+
+const SaveListPersistentHeaderAction = React.memo(() => {
+  const routeSceneRuntime = useAppRouteSceneRuntime();
   const { handleCloseSaveSheet } = routeSceneRuntime.routeOverlayCommandActions;
-  const headerPaddingTop = 0;
   const headerActionProgress = useSharedValue(0);
 
   const onClose = React.useCallback(() => {
@@ -62,37 +87,23 @@ export const SaveListMountedSceneHeader = React.memo(() => {
   }, [handleCloseSaveSheet]);
 
   return (
-    <OverlaySheetHeaderChrome
-      onGrabHandlePress={onClose}
-      grabHandleAccessibilityLabel="Close save sheet"
-      paddingTop={headerPaddingTop}
-      title={
-        <View style={styles.headerTextGroup}>
-          <Text
-            variant="title"
-            weight="semibold"
-            style={styles.headerTitle}
-            numberOfLines={1}
-            ellipsizeMode="tail"
-          >
-            Save to {listType === 'restaurant' ? 'Restaurants' : 'Dishes'}
-          </Text>
-        </View>
-      }
-      actionButton={
-        <OverlayHeaderActionButton
-          progress={headerActionProgress}
-          onPress={onClose}
-          accessibilityLabel="Close save sheet"
-          accentColor={ACTIVE_TAB_COLOR}
-          closeColor="#000000"
-        />
-      }
+    <OverlayHeaderActionButton
+      progress={headerActionProgress}
+      onPress={onClose}
+      accessibilityLabel="Close save sheet"
+      accentColor={ACTIVE_TAB_COLOR}
+      closeColor="#000000"
     />
   );
 });
 
-SaveListMountedSceneHeader.displayName = 'SaveListMountedSceneHeader';
+SaveListPersistentHeaderAction.displayName = 'SaveListPersistentHeaderAction';
+
+// Module-scope registration (house pattern — origin-capture-registry).
+registerPersistentHeaderDescriptor('saveList', {
+  Title: SaveListPersistentHeaderTitle,
+  Action: SaveListPersistentHeaderAction,
+});
 
 const chunkFavoriteLists = (
   lists: readonly FavoriteListSummary[]

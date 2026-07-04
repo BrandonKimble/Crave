@@ -1,0 +1,18 @@
+# De-risk: does the polls FlashList scroll with animated scrollEnabled? Expand the polls sheet fully,
+# then scroll the feed. If /tmp/ss-after differs from /tmp/ss-before, scroll works.
+appId: com.brandonkimble.cravesearch
+---
+# expand the docked polls sheet to full-screen (swipe the header up)
+- swipe:
+    start: 50%,88%
+    end: 50%,18%
+    duration: 500
+- waitForAnimationToEnd: { timeout: 2500 }
+- takeScreenshot: ss-before
+# now scroll the feed content up (sheet already expanded, so this scrolls the list)
+- swipe:
+    start: 50%,75%
+    end: 50%,30%
+    duration: 400
+- waitForAnimationToEnd: { timeout: 1500 }
+- takeScreenshot: ss-after

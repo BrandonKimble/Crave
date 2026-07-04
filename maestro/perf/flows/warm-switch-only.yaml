@@ -1,0 +1,23 @@
+# WARM-only partition diagnostic: warm both, then switch favorites<->search 10x. Both bodies stay
+# mounted => zero incoming-attach => the stall is PURELY re-render/commit machinery.
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 17%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- repeat:
+    times: 5
+    commands:
+      - tapOn:
+          point: 50%,95%
+      - waitForAnimationToEnd:
+          timeout: 1200
+      - tapOn:
+          point: 17%,95%
+      - waitForAnimationToEnd:
+          timeout: 1200

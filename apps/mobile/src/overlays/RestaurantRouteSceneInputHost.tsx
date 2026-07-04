@@ -22,6 +22,7 @@ import {
   selectSearchSurfaceVisualPolicy,
   useSearchSurfaceRuntimeSelector,
 } from '../screens/Search/runtime/surface/search-surface-runtime';
+import { publishRestaurantHeaderLiveState } from './restaurant-header-live-state';
 import { createRestaurantRoutePanelHostConfig } from './restaurantRoutePanelContract';
 import { normalizeSearchRouteSceneStackShellSpec } from './searchOverlayRouteHostContract';
 import { isOverlayListContentSpec, type OverlayContentSpec } from './types';
@@ -333,6 +334,26 @@ const RestaurantRouteSceneInputHost = ({
   const activeRestaurantSceneDescriptor =
     parentRestaurantSceneDescriptor ?? searchRestaurantSceneDescriptor;
   const didPublishSceneInputRef = React.useRef(false);
+
+  // P3 persistent header: publish the WINNING entry's header inputs (freeze-retained data +
+  // favorite/close handlers) to the restaurant-header-live-state store — the exact `parent ??
+  // search` resolution the scene descriptor above uses, so the hoisted persistent header always
+  // shows the same restaurant the leg body does (incl. the entity-tap seeded name at frame 1 and
+  // the results_dismissing preserve window).
+  const activeRestaurantHeaderState =
+    (isActiveParentRestaurant ? parentRestaurantContentSpecRuntime.headerState : null) ??
+    (shouldUseSearchRestaurant ? searchRestaurantContentSpecRuntime.headerState : null);
+
+  React.useLayoutEffect(() => {
+    publishRestaurantHeaderLiveState(activeRestaurantHeaderState);
+  }, [activeRestaurantHeaderState]);
+
+  React.useEffect(
+    () => () => {
+      publishRestaurantHeaderLiveState(null);
+    },
+    []
+  );
 
   React.useLayoutEffect(() => {
     if (activeRestaurantSceneDescriptor == null) {

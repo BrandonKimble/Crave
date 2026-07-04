@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Pressable, StyleSheet, Image } from 'react-native';
 import { Sparkles, MessageCircle, Users, Clock } from 'lucide-react-native';
-import { useSharedValue, type SharedValue } from 'react-native-reanimated';
+import { useSharedValue } from 'react-native-reanimated';
 import {
   FilterChip,
   FrostedFilterStrip,
@@ -32,7 +32,7 @@ import type {
 import SquircleSpinner from '../../components/SquircleSpinner';
 import { SceneLoadingSurface } from '../../components/skeletons';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
-import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
+import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { PollCandidateBars } from './PollCandidateBars';
 import { usePollsPanelFeedRuntime } from './runtime/polls-panel-feed-runtime';
@@ -274,27 +274,53 @@ const usePollsSceneHeaderModel = (): AppRoutePollsSceneHeaderModel => {
   });
 };
 
-type PollsMountedSceneHeaderActionRuntime = {
-  headerActionProgress: SharedValue<number>;
-  handleClose: () => void;
-  handleHeaderActionPress: () => void;
-};
+// P3 persistent header (page-switch-master-plan.md §6-P3): the polls header CONTENT mounts inside
+// the hoisted PersistentSheetHeaderHost, NOT inside this panel — the title comes from the
+// header-model authority and the close action from the overlay route controller (both reachable
+// anywhere under the app providers). The grab-handle tap is the shared promote handler.
 
-const usePollsMountedSceneHeaderActionRuntime = (): PollsMountedSceneHeaderActionRuntime => {
+const PollsPersistentHeaderTitle = React.memo(() => {
+  const headerModel = usePollsSceneHeaderModel();
+  // Title renders SYNCHRONOUSLY — 'Polls' seeds the first frame when the header model is late.
+  const headerTitle = headerModel?.title ?? 'Polls';
+
+  // Perf-contract attribution: scripts/perf-scenario-market-demand-contracts.js matches
+  // source 'polls.mountedHeader' + phase 'poll_header_rendered' — keep the strings stable.
+  React.useEffect(() => {
+    logPerfScenarioSearchRequestLifecycle({
+      source: 'polls.mountedHeader',
+      phase: 'poll_header_rendered',
+      renderedPollHeaderAction: headerModel?.headerAction ?? null,
+      renderedPollHeaderCandidateLocalityName: headerModel?.candidateLocalityName ?? null,
+      renderedPollHeaderMarketKey: headerModel?.marketKey ?? null,
+      renderedPollHeaderMarketName: headerModel?.marketName ?? null,
+      renderedPollHeaderMarketOverride: headerModel?.marketOverride ?? null,
+      renderedPollHeaderTitle: headerTitle,
+    });
+  }, [
+    headerModel?.candidateLocalityName,
+    headerModel?.headerAction,
+    headerModel?.marketKey,
+    headerModel?.marketName,
+    headerModel?.marketOverride,
+    headerTitle,
+  ]);
+
+  return (
+    <View style={styles.persistentHeaderTitleGroup}>
+      <PollsHeaderTitleText title={headerTitle} />
+    </View>
+  );
+});
+
+PollsPersistentHeaderTitle.displayName = 'PollsPersistentHeaderTitle';
+
+const PollsPersistentHeaderAction = React.memo(() => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
-  const { collapseActiveSheet, pushRoute } = useAppOverlayRouteController();
+  const { pushRoute } = useAppOverlayRouteController();
   // The poll header action is ALWAYS the "+" create button (progress pinned to 1),
   // regardless of sheet height — no dynamic close↔plus morph.
   const headerActionProgress = useSharedValue(1);
-
-  const handleClose = React.useCallback(() => {
-    const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();
-    if ((sceneState.mode ?? 'docked') === 'overlay') {
-      sceneState.onRequestReturnToSearch?.();
-      return;
-    }
-    collapseActiveSheet();
-  }, [collapseActiveSheet, routeSceneRuntime]);
 
   const handleHeaderActionPress = React.useCallback(() => {
     const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();
@@ -322,90 +348,27 @@ const usePollsMountedSceneHeaderActionRuntime = (): PollsMountedSceneHeaderActio
         headerModel?.marketName ?? params?.marketName ?? headerModel?.candidateLocalityName ?? null,
       bounds: sceneState.bounds ?? null,
     });
-  }, [handleClose, pushRoute, routeSceneRuntime]);
+  }, [pushRoute, routeSceneRuntime]);
 
-  return React.useMemo(
-    () => ({
-      headerActionProgress,
-      handleClose,
-      handleHeaderActionPress,
-    }),
-    [handleClose, handleHeaderActionPress, headerActionProgress]
-  );
-};
-
-export const PollsMountedSceneHeader = React.memo(() => {
-  const headerModel = usePollsSceneHeaderModel();
-  const pollsHeaderActionRuntime = usePollsMountedSceneHeaderActionRuntime();
   return (
-    <PollsSceneHeader
-      headerModel={headerModel}
-      headerActionProgress={pollsHeaderActionRuntime.headerActionProgress}
-      handleClose={pollsHeaderActionRuntime.handleClose}
-      handleHeaderActionPress={pollsHeaderActionRuntime.handleHeaderActionPress}
+    <OverlayHeaderActionButton
+      progress={headerActionProgress}
+      onPress={handleHeaderActionPress}
+      accessibilityLabel="Create or close polls"
+      accentColor={ACCENT}
+      closeColor="#000000"
     />
   );
 });
 
-PollsMountedSceneHeader.displayName = 'PollsMountedSceneHeader';
+PollsPersistentHeaderAction.displayName = 'PollsPersistentHeaderAction';
 
-type PollsSceneHeaderProps = {
-  headerModel: AppRoutePollsSceneHeaderModel;
-  headerActionProgress: SharedValue<number>;
-  handleClose: () => void;
-  handleHeaderActionPress: () => void;
-};
-
-const PollsSceneHeader = React.memo(
-  ({
-    headerModel,
-    headerActionProgress,
-    handleClose,
-    handleHeaderActionPress,
-  }: PollsSceneHeaderProps) => {
-    const headerTitle = headerModel?.title ?? 'Polls';
-
-    React.useEffect(() => {
-      logPerfScenarioSearchRequestLifecycle({
-        source: 'polls.mountedHeader',
-        phase: 'poll_header_rendered',
-        renderedPollHeaderAction: headerModel?.headerAction ?? null,
-        renderedPollHeaderCandidateLocalityName: headerModel?.candidateLocalityName ?? null,
-        renderedPollHeaderMarketKey: headerModel?.marketKey ?? null,
-        renderedPollHeaderMarketName: headerModel?.marketName ?? null,
-        renderedPollHeaderMarketOverride: headerModel?.marketOverride ?? null,
-        renderedPollHeaderTitle: headerTitle,
-      });
-    }, [
-      headerModel?.candidateLocalityName,
-      headerModel?.headerAction,
-      headerModel?.marketKey,
-      headerModel?.marketName,
-      headerModel?.marketOverride,
-      headerTitle,
-    ]);
-
-    return (
-      <OverlaySheetHeaderChrome
-        onGrabHandlePress={handleClose}
-        grabHandleAccessibilityLabel="Close polls"
-        rowStyle={styles.headerRow}
-        title={<PollsHeaderTitleText title={headerTitle} />}
-        actionButton={
-          <OverlayHeaderActionButton
-            progress={headerActionProgress}
-            onPress={handleHeaderActionPress}
-            accessibilityLabel="Create or close polls"
-            accentColor={ACCENT}
-            closeColor="#000000"
-          />
-        }
-      />
-    );
-  }
-);
-
-PollsSceneHeader.displayName = 'PollsSceneHeader';
+// Module-scope registration (house pattern — origin-capture-registry). The docked lane presents
+// 'polls' on the search root, so this one registration covers the polls page AND search-home.
+registerPersistentHeaderDescriptor('polls', {
+  Title: PollsPersistentHeaderTitle,
+  Action: PollsPersistentHeaderAction,
+});
 
 const POLLS_LIST_ESTIMATED_ITEM_SIZE = 190;
 const EMPTY_POLL_LIST: readonly Poll[] = [];
@@ -671,9 +634,13 @@ const styles = StyleSheet.create({
   feedStrip: {
     marginHorizontal: -OVERLAY_HORIZONTAL_PADDING,
   },
-  headerRow: {
-    justifyContent: 'flex-start',
-    gap: 10,
+  // Parity shim for the pre-hoist polls header rowStyle ({ gap: 10 } between title and action):
+  // the persistent chrome owns the row now, so the 10px lives as paddingRight on the title group
+  // (12px title marginRight + 10px = the same 22px title→button spacing as before).
+  persistentHeaderTitleGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingRight: 10,
   },
   listHeader: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,

@@ -12,7 +12,6 @@ import type {
   RouteSceneSwitchSheetContentHandoff,
   RouteSceneSwitchSheetMotionPlan,
   RouteSceneSwitchSheetOpenerSource,
-  RouteSceneSwitchSheetSnapPersistence,
   RouteSceneSwitchSheetIntent,
   RouteSceneSwitchSheetTransitionKind,
   RouteSceneSwitchSheetTransitionPlan,
@@ -26,6 +25,11 @@ import {
   resolveAppRouteSceneSheetVisibilityTarget,
 } from './app-route-scene-policy-registry';
 import { selectOverlayRouteKeysWhere } from './app-overlay-route-types';
+import {
+  lookupDefaultSheetMotionDescriptorRow,
+  lookupMandateSheetMotionDescriptorRow,
+  materializeSheetMotionDescriptorRule,
+} from './app-route-sheet-motion-descriptor-table';
 import type { SearchFreezeClassification } from '../../screens/Search/runtime/shared/search-freeze-classification-runtime';
 
 export type AppRouteSceneTransitionPolicyInput = {
@@ -38,7 +42,6 @@ export type AppRouteSceneTransitionPolicyInput = {
   sheetOpenerSource?: RouteSceneSwitchSheetOpenerSource;
   sheetMotion?: RouteSceneSwitchSheetMotionPlan;
   contentHandoff?: RouteSceneSwitchSheetContentHandoff;
-  snapPersistence?: RouteSceneSwitchSheetSnapPersistence;
   cameraIntent?: RouteSceneSwitchCameraIntent;
   chromeVisibilityTarget?: RouteSceneSwitchChromeVisibilityTarget;
   pollsParams?: RouteSceneSwitchPollsParams | null;
@@ -49,6 +52,11 @@ export type AppRouteSceneTransitionPolicyInput = {
   contentReadinessTransactionId?: string | null;
   currentRootRouteKey: OverlayKey;
   resolveCurrentSheetSnapTarget: (sceneKey: OverlayKey) => BottomSheetSnap | null;
+  /**
+   * The per-scene remembered detent (the snap-session's sceneSheetSnaps ledger) — feeds the
+   * descriptor table's 'rememberedDetent' rule (TRUE per-page memory, owner decision 2026-07-02).
+   */
+  resolveSceneRememberedSnap: (sceneKey: OverlayKey) => BottomSheetSnap | null;
 };
 
 export type AppRouteSceneTransitionPlan = {
@@ -149,8 +157,32 @@ const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
 // rowType="tile" while `!sceneReady || isListsLoading`), so it must hard-swap to that skeleton:
 // swapImmediately → no held outgoing → no 'content' plane → skeleton-first, fills when data
 // lands. Mirrors `profile` (also a seeded topLevelSwitch target with an empty content
-// contract). SEARCH/POLLS are intentionally NOT here — they keep their reveal join and the
-// degenerate {polls,search}@collapsed home seam stays byte-identical.
+// contract).
+//
+// P4 instant switch (page-switch-master-plan.md §6-P4): `polls` is now SEEDED for nav-switch
+// targets. The polls leg is ALWAYS-MOUNTED with a live body from boot (the docked-polls home),
+// so a topLevelSwitch into it (nav-tab press from bookmarks/profile/search) has nothing to
+// crossfade toward — holding the outgoing feed only delays the press-up→content flip; the
+// skeleton fallback covers any cold gap. swapImmediately → the switch hard-swaps in the same
+// frame, exactly like the other nav pages. This branch only ever sees polls via
+// openChild/topLevelSwitch, so every dismiss stays byte-identical: closeChild/modalClose/
+// terminalDismiss are resolved ABOVE this branch, and the results→home dismiss
+// (dismissAppSearchRouteResultsToPolls) passes an EXPLICIT
+// contentHandoff:'preserveOutgoingUntilSettle' which short-circuits before any set lookup.
+// The degenerate polls@collapsed home seam is same-scene ('gesture'), never this branch.
+//
+// P5 (page-switch-master-plan.md §6-P5 / owner req 2e): `search` is now SEEDED. The search leg
+// is NEVER-NULL (SearchResultsPageBundleHost renders a real results-skeleton page when the
+// bundle hasn't published), so a forward open into search hard-swaps to that skeleton in the
+// same frame — no held-outgoing crossfade, no 'content' plane, and therefore NO
+// SCENE_READINESS_LIVENESS watchdog lane for scene:'search' (the old ~615ms anomaly). The
+// reveal JOIN is untouched: the {cards, nativeMarkerFrame, sheet} readiness collector still
+// fires at the same time — it now completes the skeleton→results swap inside the leg and
+// commits the search switch's PresentationFrame paint-ack (controller
+// evaluateContentReadinessForTransaction) instead of releasing a self-frost cover. The
+// results→home dismiss stays byte-identical: dismissAppSearchRouteResultsToPolls targets
+// 'polls' with an EXPLICIT contentHandoff:'preserveOutgoingUntilSettle' that short-circuits
+// before this set is consulted.
 const SEEDED_FORWARD_OPEN_SCENES = new Set<OverlayKey>([
   'pollDetail',
   'pollCreation',
@@ -158,6 +190,8 @@ const SEEDED_FORWARD_OPEN_SCENES = new Set<OverlayKey>([
   'profile',
   'restaurant',
   'bookmarks',
+  'polls',
+  'search',
 ]);
 
 const isSharedSheetChildScene = (sceneKey: OverlayKey): boolean =>
@@ -217,64 +251,48 @@ const resolvePromotedSnapTarget = ({
   return promoteAtLeastSnap;
 };
 
-const resolveDefaultSheetMotionPlan = ({
+// P6 step 1 (page-switch-master-plan.md §6-P6, owner req 2d): the default snap DECISION lives in
+// the sheet-motion descriptor table (app-route-sheet-motion-descriptor-table.ts) — one declarative
+// row per (fromScene, toScene, transitionKind), most-specific wins. This resolver only sequences
+// the documented precedence: mandate rows → call-site explicit snapTarget → default rows. The
+// KEPT snap spring still executes whatever plan the row materializes to; behavior is
+// byte-identical to the old inline switch (pinned by app-route-sheet-motion-descriptor-table.spec.ts).
+export const resolveDefaultSheetMotionPlan = ({
+  sourceSceneKey,
   targetSceneKey,
   transitionKind,
   explicitSnapTarget,
-  resolveCurrentSheetSnapTarget,
+  resolveSceneRememberedSnap,
 }: {
+  sourceSceneKey: OverlayKey;
   targetSceneKey: OverlayKey;
   transitionKind: RouteSceneSwitchSheetTransitionKind;
   explicitSnapTarget: BottomSheetSnap | null;
-  resolveCurrentSheetSnapTarget: AppRouteSceneTransitionPolicyInput['resolveCurrentSheetSnapTarget'];
+  resolveSceneRememberedSnap: AppRouteSceneTransitionPolicyInput['resolveSceneRememberedSnap'];
 }): RouteSceneSwitchSheetMotionPlan => {
-  if (MODAL_SCENES.has(targetSceneKey)) {
-    return { kind: 'none' };
+  const descriptorQuery = {
+    fromSceneKey: sourceSceneKey,
+    toSceneKey: targetSceneKey,
+    transitionKind,
+  };
+  const mandateRow = lookupMandateSheetMotionDescriptorRow(descriptorQuery);
+  if (mandateRow != null) {
+    return materializeSheetMotionDescriptorRule({
+      rule: mandateRow.motion,
+      toSceneKey: targetSceneKey,
+      resolveSceneRememberedSnap,
+    });
   }
   if (explicitSnapTarget != null) {
     return explicitSnapTarget === 'hidden'
       ? { kind: 'hide' }
       : { kind: 'snapTo', snap: explicitSnapTarget };
   }
-  switch (transitionKind) {
-    case 'terminalDismiss':
-      return { kind: 'hide' };
-    case 'openChild':
-      // Per-scene open snap (curated, not metadata-derived: the values are
-      // distinct motion plans — snapTo vs promoteAtLeast vs the preserveLiveY
-      // fall-through — so they don't reduce to one field). Forgetting a new child
-      // here degrades gracefully to preserveLiveY rather than breaking. Full-page
-      // children (saveList / pollCreation / pollDetail) open expanded:
-      if (
-        targetSceneKey === 'saveList' ||
-        targetSceneKey === 'pollCreation' ||
-        targetSceneKey === 'pollDetail'
-      ) {
-        return { kind: 'snapTo', snap: 'expanded' };
-      }
-      if (targetSceneKey === 'restaurant') {
-        return { kind: 'promoteAtLeast', snap: 'middle' };
-      }
-      return { kind: 'preserveLiveY' };
-    case 'closeChild':
-      return { kind: 'preserveLiveY' };
-    case 'topLevelSwitch':
-      if (targetSceneKey === 'search' || targetSceneKey === 'polls') {
-        return { kind: 'snapTo', snap: 'collapsed' };
-      }
-      if (targetSceneKey === 'bookmarks' || targetSceneKey === 'profile') {
-        const currentSnap = resolveCurrentSharedSheetSnap(resolveCurrentSheetSnapTarget);
-        return currentSnap != null && currentSnap !== 'hidden' && currentSnap !== 'collapsed'
-          ? { kind: 'preserveLiveY' }
-          : { kind: 'snapTo', snap: 'expanded' };
-      }
-      return { kind: 'preserveLiveY' };
-    case 'gesture':
-    case 'modalClose':
-    case 'bootstrap':
-    default:
-      return { kind: 'preserveLiveY' };
-  }
+  return materializeSheetMotionDescriptorRule({
+    rule: lookupDefaultSheetMotionDescriptorRow(descriptorQuery).motion,
+    toSceneKey: targetSceneKey,
+    resolveSceneRememberedSnap,
+  });
 };
 
 const resolveSnapTargetFromSheetMotion = ({
@@ -321,6 +339,13 @@ const resolveContentHandoff = ({
   if (transitionKind === 'closeChild' || transitionKind === 'modalClose') {
     return 'swapImmediately';
   }
+  // modalOpen renders ABOVE the sheet (no leg swap) — pin it off the held-outgoing default so a
+  // content plane can never arm for a non-leg scene (today it's only unreachable EMERGENTLY, via
+  // snapTarget:null → sheetVisibilityTarget:'preserve'); protects the "the 600ms
+  // SCENE_READINESS_LIVENESS watchdog never fires" claim if modal snap resolution ever changes.
+  if (transitionKind === 'modalOpen') {
+    return 'swapImmediately';
+  }
   if (transitionKind === 'terminalDismiss') {
     return 'preserveOutgoingUntilSettle';
   }
@@ -337,25 +362,6 @@ const resolveContentHandoff = ({
   // shell/snap is decoupled to follow the TARGET (navPush), so the sheet rises to the
   // incoming's snap instead of descending to the held search surface's collapsed snap.
   return 'preserveOutgoingUntilSettle';
-};
-
-const resolveSnapPersistence = ({
-  transitionKind,
-  snapPersistence,
-}: {
-  transitionKind: RouteSceneSwitchSheetTransitionKind;
-  snapPersistence?: RouteSceneSwitchSheetSnapPersistence;
-}): RouteSceneSwitchSheetSnapPersistence => {
-  if (snapPersistence != null) {
-    return snapPersistence;
-  }
-  if (transitionKind === 'gesture') {
-    return 'writeSceneMemory';
-  }
-  if (transitionKind === 'topLevelSwitch') {
-    return 'readSceneMemory';
-  }
-  return 'sharedOnly';
 };
 
 const resolveMotionPlanes = ({
@@ -460,7 +466,6 @@ export const resolveAppRouteSceneTransitionPlan = ({
   sheetOpenerSource,
   sheetMotion,
   contentHandoff,
-  snapPersistence,
   cameraIntent = PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT,
   chromeVisibilityTarget,
   pollsParams,
@@ -470,6 +475,7 @@ export const resolveAppRouteSceneTransitionPlan = ({
   contentReadinessTransactionId,
   currentRootRouteKey,
   resolveCurrentSheetSnapTarget,
+  resolveSceneRememberedSnap,
 }: AppRouteSceneTransitionPolicyInput): AppRouteSceneTransitionPlan => {
   const resolvedSnapTarget = resolveRouteSceneSwitchSnapTarget({
     snapTarget,
@@ -485,10 +491,11 @@ export const resolveAppRouteSceneTransitionPlan = ({
   const resolvedSheetMotion =
     sheetMotion ??
     resolveDefaultSheetMotionPlan({
+      sourceSceneKey,
       targetSceneKey,
       transitionKind: resolvedTransitionKind,
       explicitSnapTarget: resolvedSnapTarget,
-      resolveCurrentSheetSnapTarget,
+      resolveSceneRememberedSnap,
     });
   const resolvedSheetSnapTarget = resolveSnapTargetFromSheetMotion({
     motion: resolvedSheetMotion,
@@ -529,10 +536,6 @@ export const resolveAppRouteSceneTransitionPlan = ({
     openerSource: sheetOpenerSource ?? 'unknown',
     motion: resolvedSheetMotion,
     contentHandoff: resolvedContentHandoff,
-    snapPersistence: resolveSnapPersistence({
-      transitionKind: resolvedTransitionKind,
-      snapPersistence,
-    }),
   };
 
   return {

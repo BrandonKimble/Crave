@@ -1,5 +1,5 @@
 import React from 'react';
-import type { LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
+import type { LayoutChangeEvent } from 'react-native';
 import type { FlashListProps } from '@shopify/flash-list';
 import type { SharedValue } from 'react-native-reanimated';
 
@@ -54,13 +54,10 @@ type UseSearchResultsReadModelSelectorsArgs = {
   isLoadingMore: boolean;
   onDemandNotice: React.ReactNode;
   activeTabColor: string;
-  shouldDisableResultsHeader: boolean;
-  shouldUseResultsHeaderBlur: boolean;
   submittedQuery: string;
   handleCloseResults: () => void;
   handleResultsHeaderLayout: (event: LayoutChangeEvent) => void;
   overlayHeaderActionProgress: SharedValue<number>;
-  headerDividerAnimatedStyle: StyleProp<ViewStyle>;
   shouldLogResultsViewability: boolean;
   searchInteractionRef: React.MutableRefObject<{
     isResultsListScrolling: boolean;
@@ -83,7 +80,6 @@ type UseSearchResultsReadModelSelectorsArgs = {
   activeOverlayKey: string;
   setHydratedResultsKeySync: (nextHydrationKey: string | null) => void;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;
-  contentHorizontalPadding: number;
   exactMatchWriter?: SearchRouteResultsPolicyExactMatchWriterFacet;
   readModelProjection?: SearchRouteResultsPolicyReadModelProjectionFacet;
   shouldRetainCommittedResultsForPolicy: boolean;
@@ -111,7 +107,6 @@ type SearchResultsReadModelSelectors = {
     restaurants: ResultsListItem[];
   };
   renderListItem: NonNullable<FlashListProps<ResultsListItem>['renderItem']>;
-  resultsPageHeaderComponent: React.ReactNode;
   listFooterComponent: React.ReactNode;
   preMeasureOverlay: React.ReactNode;
   flashListRuntimeProps: ResultsFlashListRuntimeProps;
@@ -137,13 +132,10 @@ export const useSearchResultsReadModelSelectors = (
     isLoadingMore,
     onDemandNotice,
     activeTabColor,
-    shouldDisableResultsHeader,
-    shouldUseResultsHeaderBlur,
     submittedQuery,
     handleCloseResults,
     handleResultsHeaderLayout,
     overlayHeaderActionProgress,
-    headerDividerAnimatedStyle,
     shouldLogResultsViewability,
     searchInteractionRef,
     renderDishCard,
@@ -155,7 +147,6 @@ export const useSearchResultsReadModelSelectors = (
     activeOverlayKey,
     setHydratedResultsKeySync,
     phaseBMaterializerRef,
-    contentHorizontalPadding,
     exactMatchWriter,
     readModelProjection,
     shouldRetainCommittedResultsForPolicy,
@@ -312,14 +303,14 @@ export const useSearchResultsReadModelSelectors = (
   const listHeaderTitle = useSearchResultsListHeaderTitleRuntime({
     submittedQuery,
   });
-  const resultsPageHeaderComponent = useSearchResultsPageHeaderRuntime({
+  // Publishes the results header model to the persistent-header live-state store (P5) — no
+  // component comes back; the hoisted chrome renders it.
+  useSearchResultsPageHeaderRuntime({
     activeTabColor,
     handleCloseResults,
     overlayHeaderActionProgress,
-    shouldDisableResultsHeader,
     headerTitle: listHeaderTitle,
     handleResultsHeaderLayout,
-    contentHorizontalPadding,
   });
   const listFooterComponent = useSearchResultsListFooterRuntime({
     activeSafeResultsCount: resultsProjectionRuntime.activeSafeResultsData.length,
@@ -351,7 +342,6 @@ export const useSearchResultsReadModelSelectors = (
     isResultsHydrationSettled: hydrationSettleStateRuntime.isResultsHydrationSettled,
     rowsByTab: resultsProjectionRuntime.rowsByTab,
     renderListItem,
-    resultsPageHeaderComponent,
     listFooterComponent,
     preMeasureOverlay,
     flashListRuntimeProps,

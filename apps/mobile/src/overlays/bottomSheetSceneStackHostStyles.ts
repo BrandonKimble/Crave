@@ -32,14 +32,6 @@ export const bottomSheetSceneStackHostStyles = StyleSheet.create({
     zIndex: 2,
     elevation: 2,
   },
-  sceneStackPageHeaderLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    zIndex: 40,
-    elevation: 40,
-  },
   sceneStackPageHeaderScrollDivider: {
     position: 'absolute',
     left: 0,
@@ -112,25 +104,13 @@ export const bottomSheetSceneStackHostStyles = StyleSheet.create({
     zIndex: 0,
     elevation: 0,
   },
-  sceneHeaderActive: {},
-  sceneHeaderHidden: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0,
-  },
-  sceneHeaderLayer: {},
   sceneStackBodyLayer: {
     ...StyleSheet.absoluteFillObject,
   },
-  sceneStackBodyLayerVisible: {
-    elevation: 2,
-    opacity: 1,
-    zIndex: 2,
-  },
-  sceneStackBodyLayerHidden: {
-    elevation: 0,
-    opacity: 0,
-    zIndex: 0,
-  },
+  // Note: the leg wrapper's opacity AND zIndex/elevation both ride the legVisibilityStyle WORKLET
+  // (the UI-thread swap lane in BottomSheetSceneStackHost). Static role-keyed stacking styles used
+  // to live here; they were deleted (2026-07-02) so a switch mutates zero zIndex props in the
+  // Fabric commit — a static style would also race the SharedValue-driven flip.
   transparentFlashListSurface: {
     backgroundColor: 'transparent',
   },

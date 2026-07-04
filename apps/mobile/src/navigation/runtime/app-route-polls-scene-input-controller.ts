@@ -310,6 +310,11 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       searchBarTop: pollsSceneStateRuntime.searchBarTop,
       snapPoints: pollsSceneStateRuntime.snapPoints,
       onRequestPollCreationExpand: undefined,
+      // CURRENTLY UNWIRED (2026-07-02): the polls grab-handle used to invoke this in overlay mode,
+      // but the grab-handle tap is now the shared promote-to-middle (owner req: dismiss ONLY from
+      // the close X, and polls-as-home has no close). The programmatic path is KEPT intact pending
+      // the owner's dismiss-model decision — if overlay-mode polls should regain a return-to-map
+      // affordance, wire this to a control; the handler + dismissDockedPolls path still work.
       onRequestReturnToSearch: this.requestReturnToSearchFromPolls,
       interactionRef: pollsSceneStateRuntime.interactionRef,
     };

@@ -1,6 +1,7 @@
 import { unstable_batchedUpdates } from 'react-native';
 
 import { logger } from '../../utils';
+import type { BottomSheetSnap } from '../../overlays/bottomSheetMotionTypes';
 import type { OverlayKey } from '../../overlays/types';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import type { OverlayRouteEntry, OverlayRouteParamsMap } from './app-overlay-route-types';
@@ -23,10 +24,16 @@ import {
   resolveAppRouteSceneTransitionPlan,
   type AppRouteSceneTransitionPlan,
 } from './app-route-scene-transition-policy-runtime';
-import type {
-  RouteSceneVisibilityPolicyRuntime,
-  RouteSceneVisibilityPolicySnapshot,
-} from './app-route-scene-visibility-policy-contract';
+import type { RouteSceneVisibilityPolicyRuntime } from './app-route-scene-visibility-policy-contract';
+import {
+  arePresentationFramesEqual,
+  EMPTY_PRESENTATION_FRAME,
+  resolvePresentationLaneKind,
+  resolvePresentedSceneKey,
+  resolveSupersededOutgoingSceneKey,
+  type PresentationFrame,
+  type PresentationLaneInputs,
+} from './app-route-presentation-frame-contract';
 
 export type RouteSceneSwitchTransitionState = {
   activeSceneKey: OverlayKey | null;
@@ -125,11 +132,25 @@ export type RouteSceneSwitchTransitionActions = {
     token?: number,
     snap?: RouteSceneSwitchDockedPollsRestoreIntent['snap']
   ) => void;
+  /**
+   * PresentationFrame read (page-switch-master-plan.md §1/§9). Lives on the ACTIONS slice so
+   * controllers wired with only the actions (e.g. the overlay-session-state controller's
+   * docked-lane adapter, §9.2 site 5) can read the committed frame without a second derivation.
+   * Every provider of this type is the one AppRouteSceneSwitchController runtime.
+   */
+  getPresentationFrame: () => PresentationFrame;
+  /**
+   * Frame-publication subscription, on the ACTIONS slice for the same reason as
+   * getPresentationFrame: an actions-only consumer that PULL-reads the frame in its snapshot
+   * (the overlay-session-state controller's docked-lane formula) must also be able to
+   * RECOMPUTE when the frame is re-minted without a switch (a results_dismissing lane
+   * re-mint), or its derived state goes stale until an unrelated poke.
+   */
+  subscribePresentationFrame: (listener: (frame: PresentationFrame) => void) => () => void;
 };
 
 export type AppRouteSceneSwitchRuntime = RouteSceneSwitchTransitionActions & {
   getTransitionState: () => RouteSceneSwitchTransitionState;
-  getRouteSceneVisibilityPolicySnapshot: () => RouteSceneVisibilityPolicySnapshot;
   getRouteState: () => RouteSceneSwitchRouteStateSnapshot;
   getPreviousRouteKey: () => OverlayKey | null;
   getRootRouteKey: () => OverlayKey | null;
@@ -160,6 +181,22 @@ export type AppRouteSceneSwitchRuntime = RouteSceneSwitchTransitionActions & {
   setRouteSceneAuthoritiesDispatchTarget: (
     target: RouteSceneSwitchAuthoritiesDispatchTarget | null
   ) => () => void;
+  // ─── PresentationFrame (page-switch-master-plan.md §1/§9) — the single committed
+  // "what's on screen" value. Minted ONLY here (the one writer); consumers subscribe on the
+  // dispatch-flush cadence (§9.1 R7) and read every presentation decision as f(frame).
+  // (getPresentationFrame + subscribePresentationFrame are declared on
+  // RouteSceneSwitchTransitionActions above — actions-only consumers need both.)
+  /** Paint-ack sink, switchId-keyed (§9.1 R2): a late ack from a superseded switch is ignored. */
+  commitPresentationPaintAck: (switchId: number) => void;
+  /**
+   * The docked-polls lane inputs mutate WITHOUT a switch (gesture dismiss; results_dismissing
+   * release), so the wiring layer registers a live provider + change subscription and the
+   * controller RE-MINTS the frame on change (§9.1 R1) — still the one writer.
+   */
+  registerPresentationLaneInputs: (
+    provider: () => PresentationLaneInputs,
+    subscribe: (onChange: () => void) => () => void
+  ) => () => void;
   dispose: () => void;
 };
 
@@ -167,6 +204,19 @@ const SEARCH_ROUTE: OverlayRouteEntry<'search'> = {
   key: 'search',
   params: undefined,
 };
+
+// Pre-wiring lane inputs (the runtime provider registers the live feed at boot). All-false resolves
+// laneKind 'top-level' — inert until the docked-polls inputs are wired (same atomic phase).
+const DEFAULT_PRESENTATION_LANE_INPUTS: PresentationLaneInputs = {
+  isPersistentPollLaneEligible: false,
+  isResultsDismissing: false,
+  canReleasePersistentPolls: false,
+  isDockedPollsDismissed: false,
+};
+
+// Ack records older than this many switches are pruned — supersede only ever consults the
+// immediately-previous frame's switchId.
+const PRESENTATION_ACK_RETENTION = 8;
 
 const createRouteEntry = (
   key: OverlayKey,
@@ -528,9 +578,7 @@ const EMPTY_SCENE_READINESS_CONTRACT: SceneReadinessContract = {
   requiredContentGates: [],
 };
 
-const SCENE_READINESS_CONTRACT_BY_TARGET: Partial<
-  Record<OverlayKey, SceneReadinessContract>
-> = {
+const SCENE_READINESS_CONTRACT_BY_TARGET: Partial<Record<OverlayKey, SceneReadinessContract>> = {
   search: { requiredContentGates: ['cards', 'nativeMarkerFrame', 'sheet'] },
   searchRoute: { requiredContentGates: ['cards', 'nativeMarkerFrame', 'sheet'] },
   pollDetail: {
@@ -582,6 +630,27 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   private pendingSceneStackDispatchSnapshot: RouteSceneSwitchSceneStackDispatchSnapshot | null =
     null;
 
+  // ─── PresentationFrame state (§9.1). The frame itself, its one-cadence listener set, the
+  // switchId-keyed ack record (R2's supersede input), and the live lane-input feed (R1). ───
+  private presentationFrame: PresentationFrame = EMPTY_PRESENTATION_FRAME;
+
+  private hasPendingPresentationFrameFlush = false;
+
+  // Flush-transaction depth (stranded-PF-flush guard). The transaction wrappers
+  // (runRouteSceneSwitchTransaction / completeRouteSceneSwitchTransition /
+  // applyRouteStateMutation) defer ALL dispatch delivery to their explicit flush calls;
+  // setTransitionState's stranded-flush guard auto-delivers the PF only when NO wrapper is in
+  // flight (depth 0) — i.e. only for naked public entry points.
+  private dispatchFlushDepth = 0;
+
+  private readonly presentationFrameListeners = new Set<(frame: PresentationFrame) => void>();
+
+  private readonly presentationAckSwitchIds = new Set<number>();
+
+  private presentationLaneInputsProvider: (() => PresentationLaneInputs) | null = null;
+
+  private presentationLaneInputsUnsubscribe: (() => void) | null = null;
+
   private readonly listeners = new Set<RouteSceneSwitchTransitionListenerEntry>();
 
   private readonly settleCallbacksByTransitionToken = new Map<
@@ -628,11 +697,12 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   // Reanimated onFinish AND a gate that never reports). A FIRE IS AN ERROR CONDITION, not a
   // path — raised well past the ramp so it cannot beat a healthy completer. completeMotionPlane
   // is token-guarded, so a late fire on an already-settled token is a safe no-op.
+  // P4 — with universal paint-ack arming (sheet-host token gate) + the synthetic warm-leg ack
+  // (host player start effect) + the seeded/swapImmediately nav targets (which arm no content
+  // plane at all), this can never be the ordinary completer. A live fire logs a __DEV__
+  // `[pageswitch] watchdog` anomaly line at the arm site below. Duration deliberately kept.
   private static readonly SCENE_READINESS_LIVENESS_MS = 600;
-  private readonly contentPlaneTimeoutByToken = new Map<
-    number,
-    ReturnType<typeof setTimeout>
-  >();
+  private readonly contentPlaneTimeoutByToken = new Map<number, ReturnType<typeof setTimeout>>();
 
   // Phase 2 — THE LINK. The collector keys gates by the redraw transactionId; the
   // 'content' motion plane keys by the settleToken — independent counters. At
@@ -662,6 +732,37 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   // into an unrelated later switch.
   private lastRevealContentReadinessTransactionId: string | null = null;
 
+  // REVEAL-ACK ↔ SWITCH CORRELATION (final red-team mustFix). The readiness collector may
+  // re-evaluate a STALE fully-satisfied txn (the LRU keeps up to 16; a late gate re-mark
+  // re-runs the evaluation) while a NEW search switch is still on its skeleton — the
+  // presented==='search' check alone would then paint-ack a switch that never painted (the R2
+  // never-painted-hold failure class, reveal side). So each committed switch records WHICH
+  // redraw txn is its OWN reveal txn (the same plan-txn ?? lastReveal coalesce the
+  // content-plane link applies), keyed by switchId; the evaluator only acks when the evaluated
+  // txn is the LIVE switch's linked (settleToken-correlated) or recorded txn. Single-slot on
+  // purpose: only the live switch may ever be acked (commitPresentationPaintAck self-guards),
+  // so a superseded record is inert and needs no history.
+  private revealAckLinkBySwitchId: { switchId: number; transactionId: string } | null = null;
+
+  private recordRevealAckLink(switchId: number, transitionPlan: AppRouteSceneTransitionPlan): void {
+    const isSearchFamilyTarget =
+      transitionPlan.targetSceneKey === 'search' || transitionPlan.targetSceneKey === 'searchRoute';
+    const transactionId = isSearchFamilyTarget
+      ? (transitionPlan.contentReadinessTransactionId ??
+        this.lastRevealContentReadinessTransactionId)
+      : null;
+    this.revealAckLinkBySwitchId = transactionId != null ? { switchId, transactionId } : null;
+  }
+
+  private withDeferredDispatchFlush<T>(run: () => T): T {
+    this.dispatchFlushDepth += 1;
+    try {
+      return run();
+    } finally {
+      this.dispatchFlushDepth -= 1;
+    }
+  }
+
   private clearContentReadinessLink(settleToken: number): void {
     this.contentReadinessLinkBySettleToken.delete(settleToken);
   }
@@ -686,7 +787,10 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
 
   constructor(
     private readonly sheetMotionTargetRegistry: AppRouteSceneSheetMotionTargetRegistry,
-    private readonly routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime
+    private readonly routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime,
+    // The per-scene remembered detent (the snap-session ledger) — feeds the descriptor table's
+    // 'rememberedDetent' rule via resolveTransitionPlan (true per-page memory, owner 2026-07-02).
+    private readonly resolveSceneRememberedSnap: (sceneKey: OverlayKey) => BottomSheetSnap | null
   ) {}
 
   public dispose(): void {
@@ -695,8 +799,10 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     }
     this.listeners.clear();
     this.settleCallbacksByTransitionToken.clear();
+    this.activeSettlePlanesByToken.clear();
     this.satisfiedReadinessGatesByTransaction.clear();
     this.clearAllContentPlaneTimeouts();
+    this.revealAckLinkBySwitchId = null;
     this.motionDispatchTarget = null;
     this.sceneStackTransitionDispatchTarget = null;
     this.nativeOverlayTransitionDispatchTarget = null;
@@ -705,14 +811,148 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     this.pendingNativeOverlayDispatchState = null;
     this.pendingMotionDispatchSnapshot = null;
     this.pendingSceneStackDispatchSnapshot = null;
+    this.presentationFrameListeners.clear();
+    this.presentationAckSwitchIds.clear();
+    this.presentationLaneInputsUnsubscribe?.();
+    this.presentationLaneInputsUnsubscribe = null;
+    this.presentationLaneInputsProvider = null;
+    this.hasPendingPresentationFrameFlush = false;
   }
 
   public getTransitionState(): RouteSceneSwitchTransitionState {
     return this.transitionState;
   }
 
-  public getRouteSceneVisibilityPolicySnapshot(): RouteSceneVisibilityPolicySnapshot {
-    return this.routeSceneVisibilityPolicyRuntime.getSnapshot();
+  public getPresentationFrame(): PresentationFrame {
+    return this.presentationFrame;
+  }
+
+  public subscribePresentationFrame(listener: (frame: PresentationFrame) => void): () => void {
+    this.presentationFrameListeners.add(listener);
+    return () => {
+      this.presentationFrameListeners.delete(listener);
+    };
+  }
+
+  public commitPresentationPaintAck(switchId: number): void {
+    // A late ack from a SUPERSEDED switch must never mark the live one (R2) — key strictly.
+    if (switchId !== this.presentationFrame.switchId) {
+      return;
+    }
+    this.presentationAckSwitchIds.add(switchId);
+  }
+
+  public registerPresentationLaneInputs(
+    provider: () => PresentationLaneInputs,
+    subscribe: (onChange: () => void) => () => void
+  ): () => void {
+    this.presentationLaneInputsUnsubscribe?.();
+    this.presentationLaneInputsProvider = provider;
+    this.presentationLaneInputsUnsubscribe = subscribe(() => {
+      this.remintPresentationFrame();
+    });
+    // Fold the live inputs into the current frame, but DEFER delivery: registration happens
+    // mid-construction of the wiring layer (before its initial snapshots exist), so a synchronous
+    // listener notification here can poke a half-constructed consumer (boot crash: reading
+    // presentationFrame off not-yet-initialized state). The frame value is updated immediately —
+    // anyone pulling getPresentationFrame() sees it — and the next dispatch flush notifies.
+    this.remintPresentationFrame({ deferFlush: true });
+    return () => {
+      if (this.presentationLaneInputsProvider === provider) {
+        this.presentationLaneInputsUnsubscribe?.();
+        this.presentationLaneInputsUnsubscribe = null;
+        this.presentationLaneInputsProvider = null;
+      }
+    };
+  }
+
+  // Re-mint on a lane-input change WITHOUT a switch (gesture docked-polls dismiss; the
+  // results_dismissing release) — §9.1 R1. Same single writer; identity fields stay
+  // switch-static, `revision` bumps. Delivery is immediate for runtime input changes (no batch is
+  // in flight for a gesture) but DEFERRED at registration time (see registerPresentationLaneInputs).
+  private remintPresentationFrame(options?: { deferFlush?: boolean }): void {
+    this.commitPresentationFrame(this.transitionState);
+    // Flush whenever a frame is pending — including one stranded by an earlier deferFlush
+    // registration — unless this remint itself is the deferred (mid-construction) one.
+    if (this.hasPendingPresentationFrameFlush && !options?.deferFlush) {
+      this.flushPresentationFrameDispatch();
+    }
+  }
+
+  // The whole frame derives from ONE transition-state snapshot + the live lane inputs — every
+  // consumer decision (leg opacity, body attach, header, snap, touch) is then f(frame).
+  private resolveNextPresentationFrame(
+    nextState: RouteSceneSwitchTransitionState
+  ): PresentationFrame {
+    const previousFrame = this.presentationFrame;
+    const contract = nextState.transitionContract;
+    // The FRESH resolved target — the exact coalesce the old deny-list trusted
+    // (contract.targetSceneKey ?? pendingSceneKey ?? routeActiveSceneKey).
+    const resolvedTargetSceneKey =
+      contract?.targetSceneKey ??
+      (nextState.isOverlaySwitchInFlight ? nextState.pendingTargetSceneKey : null) ??
+      nextState.activeSceneKey;
+    const laneKind = resolvePresentationLaneKind({
+      resolvedTargetSceneKey,
+      rootOverlayKey: nextState.routeState.rootOverlayKey,
+      hasActiveDockedPollsRestoreIntent: nextState.activeDockedPollsRestoreIntent != null,
+      laneInputs: this.presentationLaneInputsProvider?.() ?? DEFAULT_PRESENTATION_LANE_INPUTS,
+    });
+    const presentedSceneKey = resolvePresentedSceneKey(laneKind, resolvedTargetSceneKey);
+    const isNewSwitch = nextState.transitionToken !== previousFrame.switchId;
+    let outgoingSceneKey: OverlayKey | null;
+    if (!nextState.isOverlaySwitchInFlight || contract == null) {
+      // Idle-committed or settled — no held leg.
+      outgoingSceneKey = null;
+    } else if (isNewSwitch) {
+      outgoingSceneKey = resolveSupersededOutgoingSceneKey({
+        previousFrame,
+        previousAckCommitted: this.presentationAckSwitchIds.has(previousFrame.switchId),
+        preservesOutgoing:
+          contract.sheetTransitionPlan.contentHandoff === 'preserveOutgoingUntilSettle',
+      });
+      if (outgoingSceneKey === presentedSceneKey) {
+        // Same-scene re-entry: the leg resolves 'incoming' at full opacity; keep the frame canonical.
+        outgoingSceneKey = null;
+      }
+    } else {
+      // An in-flight update on the SAME switch (phase/interactive bookkeeping) keeps its hold.
+      outgoingSceneKey = previousFrame.outgoingSceneKey;
+    }
+    return {
+      switchId: nextState.transitionToken,
+      revision: isNewSwitch ? 0 : previousFrame.revision,
+      activeSceneKey: resolvedTargetSceneKey,
+      presentedSceneKey,
+      outgoingSceneKey,
+      laneKind,
+    };
+  }
+
+  // REVISION CONTRACT (final red-team shouldFix) — the ONE mint chokepoint. Resolves the next
+  // frame from a transition-state snapshot and commits it iff it changed; ANY same-switchId
+  // inequality bumps `revision` REGARDLESS of mint path (switch commit or lane re-mint), so
+  // (switchId, revision) is a COMPLETE change key for consumers — a same-switch mutation (e.g.
+  // the settle commit nulling outgoingSceneKey) can no longer publish new fields under an
+  // unchanged revision. A new switch resets revision to 0 (resolver-side).
+  private commitPresentationFrame(nextState: RouteSceneSwitchTransitionState): void {
+    const next = this.resolveNextPresentationFrame(nextState);
+    if (arePresentationFramesEqual(this.presentationFrame, next)) {
+      return;
+    }
+    this.presentationFrame =
+      next.switchId === this.presentationFrame.switchId
+        ? { ...next, revision: this.presentationFrame.revision + 1 }
+        : next;
+    this.hasPendingPresentationFrameFlush = true;
+  }
+
+  private prunePresentationAcks(currentSwitchId: number): void {
+    this.presentationAckSwitchIds.forEach((switchId) => {
+      if (switchId < currentSwitchId - PRESENTATION_ACK_RETENTION) {
+        this.presentationAckSwitchIds.delete(switchId);
+      }
+    });
   }
 
   public getRouteState(): RouteSceneSwitchRouteStateSnapshot {
@@ -921,7 +1161,10 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     if (transactionId == null) {
       return;
     }
-    logger.info(`[READYGATE] gate=${gate} txn=${transactionId}`);
+    if (__DEV__) {
+      // Dev-only: rides EVERY reveal gate mark — release builds should not pay for it.
+      logger.info(`[READYGATE] gate=${gate} txn=${transactionId}`);
+    }
 
     let collectorState = this.satisfiedReadinessGatesByTransaction.get(transactionId);
     if (!collectorState) {
@@ -982,9 +1225,41 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     }
     if (!collectorState.contentReadyLogged) {
       collectorState.contentReadyLogged = true;
-      logger.info(
-        `[READYGATE] content-ready txn=${transactionId} gates=${requiredContentGates.join(',')}`
-      );
+      if (__DEV__) {
+        // Dev-only: rides every reveal's content-ready join — release builds skip it.
+        logger.info(
+          `[READYGATE] content-ready txn=${transactionId} gates=${requiredContentGates.join(',')}`
+        );
+      }
+    }
+    // P5 (§9.1 R3-AMENDED, reveal side): the reveal join IS the search switch's paint-ack. With
+    // 'search' SEEDED (swapImmediately → no held outgoing → no 'content' plane), the join no
+    // longer releases a cover — it completes the search leg's skeleton→results swap, and HERE it
+    // records the switchId-keyed PresentationFrame ack for the switch presenting the search leg,
+    // so the reveal rides the standard page-switch machinery (a later supersede resolves its
+    // outgoing to the revealed results leg — R2). Timing unchanged: same gates, same collector.
+    // commitPresentationPaintAck self-guards against a stale switchId.
+    //
+    // TXN↔SWITCH CORRELATION (final red-team mustFix): only the CURRENT switch's OWN txn may
+    // ack the current switch — either the live switch's armed content plane is LINKED to this
+    // txn (settleToken correlation), or the switch recorded this txn as its reveal txn at
+    // commit (a seeded/swapImmediately search switch arms no content plane, so it has no
+    // link). A stale fully-satisfied txn re-marked late fails both branches and can no longer
+    // bless a NEW search switch still on its skeleton.
+    const presentedSceneKey = this.presentationFrame.presentedSceneKey;
+    if (presentedSceneKey === 'search' || presentedSceneKey === 'searchRoute') {
+      const liveSettleToken =
+        this.transitionState.transitionContract?.settleToken ??
+        this.transitionState.transitionToken;
+      const isLiveLinkedTransaction =
+        linkedSettleToken != null && linkedSettleToken === liveSettleToken;
+      const isLiveRecordedRevealTransaction =
+        this.revealAckLinkBySwitchId != null &&
+        this.revealAckLinkBySwitchId.switchId === this.presentationFrame.switchId &&
+        this.revealAckLinkBySwitchId.transactionId === transactionId;
+      if (isLiveLinkedTransaction || isLiveRecordedRevealTransaction) {
+        this.commitPresentationPaintAck(this.presentationFrame.switchId);
+      }
     }
     // DRIVER: complete the linked content plane on real paint. completeRouteSceneSwitchMotionPlane
     // token-guards (no-ops a superseded/already-completed token) so the ramp onFinish co-completer
@@ -1087,6 +1362,18 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       return;
     }
     this.transitionState = nextState;
+    // ─── PresentationFrame mint (§9.1) — the ONE place "what's on screen" is decided, in the
+    // same atomic commit as the transition state. Delivered on the dispatch-flush cadence.
+    // Routed through commitPresentationFrame so a same-switch inequality bumps `revision`
+    // here exactly like the lane re-mint path (revision contract, final red-team). ───
+    this.commitPresentationFrame(nextState);
+    if (!nextState.isOverlaySwitchInFlight) {
+      // Idle-committed or settled: the presented leg is what the opacity shows (a watchdog-forced
+      // settle still forces the swap), so record the switch as landed — a LATER supersede then
+      // resolves its outgoing to this frame's presented leg (R2 ack-conditional).
+      this.presentationAckSwitchIds.add(nextState.transitionToken);
+      this.prunePresentationAcks(nextState.transitionToken);
+    }
     const nextMotionDispatchSnapshot = resolveRouteSceneSwitchMotionDispatchSnapshot(nextState);
     const shouldDispatchMotion =
       nextMotionDispatchSnapshot.transitionContract != null &&
@@ -1149,6 +1436,16 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     if (shouldDispatchSceneStackTransition) {
       this.pendingSceneStackDispatchSnapshot = nextSceneStackDispatchSnapshot;
     }
+    // NO STRANDED PF FLUSH (final red-team shouldFix): public entry points that commit OUTSIDE
+    // the transaction wrappers (clearDockedPollsRestoreIntent today) used to mint the frame,
+    // mark the pending flush, and notify NO ONE until an unrelated later flush — a
+    // restore-intent clear could leave laneKind subscribers stale for a whole gesture. When no
+    // wrapper is in flight (depth 0), deliver the PF here on the same cadence position it
+    // occupies in flushRuntimeDispatchTargets (PF first). Wrapped paths (depth > 0) keep their
+    // exact explicit-flush ordering.
+    if (this.hasPendingPresentationFrameFlush && this.dispatchFlushDepth === 0) {
+      this.flushPresentationFrameDispatch();
+    }
   }
 
   private flushSceneAuthoritiesDispatchTarget(): void {
@@ -1190,9 +1487,41 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   }
 
   private flushRuntimeDispatchTargets(): void {
+    // PF first: authorities recomputing on the other dispatches pull the fresh frame (§9.1 R7).
+    this.flushPresentationFrameDispatch();
     this.flushSceneAuthoritiesDispatchTarget();
     this.flushNativeOverlayTransitionDispatchTarget();
     this.flushMotionDispatchTarget();
+  }
+
+  private flushPresentationFrameDispatch(): void {
+    if (!this.hasPendingPresentationFrameFlush) {
+      return;
+    }
+    this.hasPendingPresentationFrameFlush = false;
+    const frame = this.presentationFrame;
+    if (__DEV__) {
+      // [pageswitch] PF flush probe (P4 blank-body attribution): the exact frame every consumer
+      // reads, plus the transition-state fields the activity chain keys on.
+      // eslint-disable-next-line no-console
+      console.log(
+        `[pageswitch] frame ${JSON.stringify({
+          t: Math.round(performance.now()),
+          switchId: frame.switchId,
+          rev: frame.revision,
+          active: frame.activeSceneKey,
+          presented: frame.presentedSceneKey,
+          out: frame.outgoingSceneKey,
+          lane: frame.laneKind,
+          phase: this.transitionState.transitionPhase,
+          interactive: this.transitionState.isInteractive,
+          interKey: this.transitionState.interactiveSceneKey,
+        })}`
+      );
+    }
+    this.presentationFrameListeners.forEach((listener) => {
+      listener(frame);
+    });
   }
 
   private flushSceneStackTransitionDispatchTarget(): void {
@@ -1217,34 +1546,36 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   ): number {
     const transitionPlan = this.resolveTransitionPlan(input);
     let transitionToken = 0;
-    withSearchNavSwitchRuntimeAttribution(
-      'routeSceneSwitchController',
-      'batchedSwitchCommit',
-      () => {
-        unstable_batchedUpdates(() => {
-          const hasMotionPlanes = transitionPlan.motionPlanes.length > 0;
-          transitionToken = withSearchNavSwitchRuntimeAttribution(
-            'routeSceneSwitchController',
-            hasMotionPlanes
-              ? 'batchedSwitchCommit:commitTransition'
-              : 'batchedSwitchCommit:commitIdleSwitch',
-            () =>
-              hasMotionPlanes
-                ? this.commitRouteSceneSwitchTransition(transitionPlan)
-                : this.commitRouteSceneSwitchIdleState(transitionPlan)
-          );
-          if (onSettle) {
-            withSearchNavSwitchRuntimeAttribution(
+    this.withDeferredDispatchFlush(() => {
+      withSearchNavSwitchRuntimeAttribution(
+        'routeSceneSwitchController',
+        'batchedSwitchCommit',
+        () => {
+          unstable_batchedUpdates(() => {
+            const hasMotionPlanes = transitionPlan.motionPlanes.length > 0;
+            transitionToken = withSearchNavSwitchRuntimeAttribution(
               'routeSceneSwitchController',
-              'batchedSwitchCommit:registerSettleCallback',
-              () => {
-                this.registerSettleCallback(transitionToken, onSettle);
-              }
+              hasMotionPlanes
+                ? 'batchedSwitchCommit:commitTransition'
+                : 'batchedSwitchCommit:commitIdleSwitch',
+              () =>
+                hasMotionPlanes
+                  ? this.commitRouteSceneSwitchTransition(transitionPlan)
+                  : this.commitRouteSceneSwitchIdleState(transitionPlan)
             );
-          }
-        });
-      }
-    );
+            if (onSettle) {
+              withSearchNavSwitchRuntimeAttribution(
+                'routeSceneSwitchController',
+                'batchedSwitchCommit:registerSettleCallback',
+                () => {
+                  this.registerSettleCallback(transitionToken, onSettle);
+                }
+              );
+            }
+          });
+        }
+      );
+    });
     this.flushRuntimeDispatchTargets();
     this.flushSceneStackTransitionDispatchTarget();
     if (!transitionPlan.motionPlanes.length) {
@@ -1277,6 +1608,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
           currentRootRouteKey: this.transitionState.routeState.rootOverlayKey,
           resolveCurrentSheetSnapTarget: (sceneKey: OverlayKey) =>
             this.sheetMotionTargetRegistry.resolveCurrentSnapTarget(sceneKey),
+          resolveSceneRememberedSnap: this.resolveSceneRememberedSnap,
         })
     );
   }
@@ -1315,8 +1647,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     const routeState = withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchTransition:applyRouteState',
-      () =>
-        applyTransitionPlanToRouteState(currentState.routeState, transitionPlan)
+      () => applyTransitionPlanToRouteState(currentState.routeState, transitionPlan)
     );
     withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
@@ -1360,6 +1691,14 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
             // Phase 2 — NEVER-HIT liveness WATCHDOG (renamed from the old 320ms
             // completer). The collector (real paint) + the ramp onFinish are the
             // co-completers; a fire here is an ERROR CONDITION, not a path.
+            // P4 (page-switch-master-plan.md §6-P4) — demoted to a PURE SAFETY NET.
+            // With universal paint-ack arming + the synthetic warm-leg ack every armed
+            // 'content' plane has a real completer, so on the happy path this timer
+            // NEVER completes anything. When it does fire AS THE LIVE COMPLETER it
+            // emits a __DEV__ `[pageswitch] watchdog` anomaly line (scene, switchId,
+            // elapsed) — any sighting is a bug to attribute and fix, never a mechanism
+            // to rely on. Mechanism + duration intentionally unchanged.
+            const watchdogArmedAtMs = Date.now();
             this.contentPlaneTimeoutByToken.set(
               settleToken,
               setTimeout(() => {
@@ -1368,6 +1707,32 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
                 // is active) and would NOT clear it — leaving a dead handle in the map until the
                 // next idle sweep. Deleting here keeps the map bounded on rapid supersede.
                 this.contentPlaneTimeoutByToken.delete(settleToken);
+                if (__DEV__) {
+                  // Log ONLY when this fire will actually complete a still-pending live
+                  // 'content' plane (the anomaly). A late fire on a superseded/settled
+                  // token is an EXPECTED no-op under rapid taps — logging it would bury
+                  // the real signal. Mirrors completeRouteSceneSwitchMotionPlane's guards.
+                  const watchdogState = this.transitionState;
+                  const watchdogActiveSettleToken =
+                    watchdogState.transitionContract?.settleToken ?? watchdogState.transitionToken;
+                  const watchdogSettleState = this.activeSettlePlanesByToken.get(settleToken);
+                  const isLiveContentCompleter =
+                    watchdogState.isOverlaySwitchInFlight &&
+                    watchdogActiveSettleToken === settleToken &&
+                    watchdogSettleState != null &&
+                    watchdogSettleState.transitionToken === watchdogState.transitionToken &&
+                    watchdogSettleState.pendingPlanes.has('content');
+                  if (isLiveContentCompleter) {
+                    // eslint-disable-next-line no-console
+                    console.log(
+                      `[pageswitch] watchdog ${JSON.stringify({
+                        scene: watchdogState.transitionContract?.targetSceneKey ?? null,
+                        switchId: watchdogState.transitionToken,
+                        elapsedMs: Date.now() - watchdogArmedAtMs,
+                      })}`
+                    );
+                  }
+                }
                 this.completeRouteSceneSwitchMotionPlane(settleToken, 'content');
               }, AppRouteSceneSwitchController.SCENE_READINESS_LIVENESS_MS)
             );
@@ -1375,6 +1740,10 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
         }
       }
     );
+    // Reveal-ack correlation (final red-team mustFix): stamp WHICH txn is THIS switch's own
+    // reveal txn before the frame mints, so the collector's evaluator can refuse to ack the
+    // live switch off a stale txn (see recordRevealAckLink).
+    this.recordRevealAckLink(nextToken, transitionPlan);
     withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchTransition:setTransitionState',
@@ -1438,8 +1807,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     const routeState = withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchIdleState:applyRouteState',
-      () =>
-        applyTransitionPlanToRouteState(currentState.routeState, transitionPlan)
+      () => applyTransitionPlanToRouteState(currentState.routeState, transitionPlan)
     );
     withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
@@ -1450,6 +1818,11 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
         this.clearAllContentPlaneTimeouts();
       }
     );
+    // Reveal-ack correlation — recorded AFTER the clearAllContentPlaneTimeouts sweep above
+    // (which nulls lastRevealContentReadinessTransactionId), so an idle-committed switch only
+    // records a txn its own plan carried. Idle switches self-ack in setTransitionState anyway;
+    // this keeps the single slot from pointing at a superseded switch's txn.
+    this.recordRevealAckLink(nextToken, transitionPlan);
     withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchIdleState:setTransitionState',
@@ -1499,30 +1872,32 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
         }
       }
     );
-    withSearchNavSwitchRuntimeAttribution(
-      'routeSceneSwitchController',
-      'completeRouteSceneSwitchTransition:setTransitionState',
-      () => {
-        this.setTransitionState(
-          {
-            activeSceneKey: state.transitionContract?.targetSceneKey ?? state.activeSceneKey,
-            interactiveSceneKey: state.transitionContract?.targetSceneKey ?? state.activeSceneKey,
-            sourceSceneKey: null,
-            handoffSceneKey: null,
-            transitionPhase: 'idle',
-            isInteractive: true,
-            isOverlaySwitchInFlight: false,
-            pendingTargetSceneKey: null,
-            activePollsParams: state.pendingPollsParams,
-            pendingPollsParams: null,
-            activeDockedPollsRestoreIntent: null,
-            pendingDockedPollsRestoreIntent: null,
-            transitionContract: null,
-          },
-          'completeRouteSceneSwitchTransition'
-        );
-      }
-    );
+    this.withDeferredDispatchFlush(() => {
+      withSearchNavSwitchRuntimeAttribution(
+        'routeSceneSwitchController',
+        'completeRouteSceneSwitchTransition:setTransitionState',
+        () => {
+          this.setTransitionState(
+            {
+              activeSceneKey: state.transitionContract?.targetSceneKey ?? state.activeSceneKey,
+              interactiveSceneKey: state.transitionContract?.targetSceneKey ?? state.activeSceneKey,
+              sourceSceneKey: null,
+              handoffSceneKey: null,
+              transitionPhase: 'idle',
+              isInteractive: true,
+              isOverlaySwitchInFlight: false,
+              pendingTargetSceneKey: null,
+              activePollsParams: state.pendingPollsParams,
+              pendingPollsParams: null,
+              activeDockedPollsRestoreIntent: null,
+              pendingDockedPollsRestoreIntent: null,
+              transitionContract: null,
+            },
+            'completeRouteSceneSwitchTransition'
+          );
+        }
+      );
+    });
     this.flushRuntimeDispatchTargets();
     withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
@@ -1550,13 +1925,12 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       currentRouteState: RouteSceneSwitchRouteStateSnapshot
     ) => RouteSceneSwitchRouteStateSnapshot
   ): void {
-    this.setTransitionState(
-      (currentState) => {
+    this.withDeferredDispatchFlush(() => {
+      this.setTransitionState((currentState) => {
         const next = resolveNextRouteState(currentState.routeState);
         return { routeState: next };
-      },
-      'applyRouteStateMutation'
-    );
+      }, 'applyRouteStateMutation');
+    });
     this.flushRuntimeDispatchTargets();
   }
 }
@@ -1590,14 +1964,29 @@ export const markActiveSceneContentGate = (
 export const createAppRouteSceneSwitchRuntime = ({
   sheetMotionTargetRegistry,
   routeSceneVisibilityPolicyRuntime,
+  resolveSceneRememberedSnap,
 }: {
   sheetMotionTargetRegistry: AppRouteSceneSheetMotionTargetRegistry;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
+  resolveSceneRememberedSnap: (sceneKey: OverlayKey) => BottomSheetSnap | null;
 }): AppRouteSceneSwitchRuntime => {
   const controller = new AppRouteSceneSwitchController(
     sheetMotionTargetRegistry,
-    routeSceneVisibilityPolicyRuntime
+    routeSceneVisibilityPolicyRuntime,
+    resolveSceneRememberedSnap
   );
+  if (__DEV__ && activeAppRouteSceneSwitchController != null) {
+    // [pageswitch] watch item: a REPLACED module-global controller means two scene-switch
+    // runtimes were constructed in one JS session (a re-created runtime tree / a leaked old
+    // one). Gate marks + acks route to the NEW instance from here on; if the old one is still
+    // mounted somewhere, that split-brain is the bug to chase.
+    // eslint-disable-next-line no-console
+    console.log(
+      `[pageswitch] controller replaced (prev switchId=${
+        activeAppRouteSceneSwitchController.getPresentationFrame().switchId
+      })`
+    );
+  }
   activeAppRouteSceneSwitchController = controller;
   return controller;
 };

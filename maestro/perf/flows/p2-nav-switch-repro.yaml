@@ -1,0 +1,54 @@
+# P2 nav-switch repro (page-switch-master-plan.md §3) — replays the owner's exact bug sequence
+# against the [pageswitch] probes. Nav bar: Search 17%,95% · Favorites 50%,95% · Profile 83%,95%
+# (integer percentages only — Maestro NumberFormatException gotcha). Two passes:
+# settled taps (the original repro), then a rapid burst (the supersede/last-wins test).
+appId: com.brandonkimble.cravesearch
+---
+# ── settled pass (owner repro order) ──
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 17%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 17%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 83%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 83%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn:
+    point: 17%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+# ── rapid burst (last-wins supersede; the taps race in-flight transitions) ──
+- tapOn:
+    point: 50%,95%
+- tapOn:
+    point: 17%,95%
+- tapOn:
+    point: 83%,95%
+- tapOn:
+    point: 17%,95%
+- waitForAnimationToEnd:
+    timeout: 2500

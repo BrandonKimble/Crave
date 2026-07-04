@@ -1,21 +1,21 @@
 # Scoring & Ranking
 
-> **Rolling canonical reference — not a changelog.** This folder describes how the Crave Score *works
-> and what it means*, and how to *assess and tune* it once we have enough real data. Keep it current;
+> **Rolling canonical reference — not a changelog.** This folder describes how the Crave Score _works
+> and what it means_, and how to _assess and tune_ it once we have enough real data. Keep it current;
 > edit in place. Execution detail + migrations live in `plans/` (`crave-score-rising-heat-redesign.md`,
 > `crave-score-v3-endorsement-redesign-plan.md`); free/paid gating lives in `business/`.
 
 The Crave Score is the heart of the app — the objective ranking everything else hangs off. This folder
-is where we keep the *model* (what the number means) and the *calibration playbook* (which dial to turn
+is where we keep the _model_ (what the number means) and the _calibration playbook_ (which dial to turn
 when a ranking looks wrong). Don't tune blind: come back here when there's enough real data to compare
 against your gut.
 
 ## What the score IS (the north star you're tuning toward)
 
 - **Objective & global. Never personalized.** The same for every user; no taste-based re-ranking, ever.
-  Taste enters Crave only via what a user *searches* and what they *save* — never the Score.
+  Taste enters Crave only via what a user _searches_ and what they _save_ — never the Score.
 - **Atomic unit = one decayed person-endorsement.** A Reddit comment naming a place = `1 (author) +
-  its upvotes`; a poll like = 1; a poll's distinct likers = that many. **Upvotes, mentions, and likes
+its upvotes`; a poll like = 1; a poll's distinct likers = that many. **Upvotes, mentions, and likes
   all count 1:1** — we trust Reddit (app-agnostic historical data, one-vote-per-user). The endorsement
   value is `log1p(mentions + upvotes)`; the log is kept because it's load-bearing for the restaurant
   composite (see [composite-tuning.md](composite-tuning.md)).
@@ -26,16 +26,33 @@ against your gut.
   the score-info sheet; only a literal `10.0` shows "10", everything else caps at `9.9`/`9.99`.
 - **It leans volume / "most endorsed & beloved"** — by design, not exposure-normalized "quality." A
   famous place with 10,000 endorsements outranks a gem with 200; that's an accepted meaning for a
-  discovery app. Exposure-normalization is a *future dial*, recorded but not pursued.
+  discovery app. Exposure-normalization is a _future dial_, recorded but not pursued.
 - **Sentiment is a binary net-positive gate** (in the LLM collection prompt). No 1–10 intensity
   weighting: self-selection already encodes sentiment, and intensity rewards expressiveness over genuine
   strength (a hype-bias) while adding model noise. If ever revisited, use 2–3 claim-based tiers, not a
   continuous score.
 
+## How the score orders SEARCH RESULTS
+
+- **Pure Crave Score, no relevance re-ranking.** Search results (dishes + restaurants) are ordered by
+  the Crave Score **alone** — the same objective global number. We do **not** boost a result for being
+  a closer text/semantic match to the query. A genuinely-relevant but low-score match _can_ fall below
+  a higher-score looser match, and that is an **accepted behaviour**, not a bug. (Taste/relevance still
+  enters via _what_ the user searched — the entity filter — never via the ordering.)
+- **Strict + relaxed are pooled, not staged.** When results are thin we relax the _modifier_ constraints
+  ("spicy ramen" → "ramen") to fill the page, but those looser rows are **mixed into the same
+  Crave-Score order**, not appended below the exact ones. (Code: `search.service.ts`, the strict/relaxed
+  combine.)
+- **FUTURE — the "relevant top section" (parked, not built).** We may later pin a **small, deliberate
+  section** — e.g. the top ~3 _most-relevant_ results — **above** the main rank, in its own section, with
+  the main Crave-Score rank **excluding** those pinned rows (they're already shown up top). This is a
+  **presentation layer on top of the score**, not a change to the score or a relevance multiplier inside
+  the rank. Recorded here so the pure-score default stays intentional and the option isn't lost.
+
 ## Files
 
-| File | What it holds |
-|---|---|
+| File                                       | What it holds                                                                                                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [composite-tuning.md](composite-tuning.md) | The restaurant composite's dials (ρ, dish-vs-praise, operand curve), the mental model, recommended defaults, a symptom→dial diagnostic table, and the calibration methodology to run once real data exists. |
 
 ## When to come back here

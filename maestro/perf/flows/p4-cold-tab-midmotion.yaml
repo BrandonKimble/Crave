@@ -1,0 +1,31 @@
+# P4 cold-tab variant C: tap Favorites/Profile WHILE the sheet is still settling from a swipe
+# (no waitForAnimationToEnd between move and tap) — probes the sheet-shell hold/release seam.
+appId: com.brandonkimble.cravesearch
+---
+- swipe:
+    start: 50%,80%
+    end: 50%,30%
+    duration: 300
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: /tmp/motionfav
+- swipe:
+    start: 50%,40%
+    end: 50%,85%
+    duration: 300
+- tapOn:
+    point: 83%,95%
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: /tmp/motionprofile
+- swipe:
+    start: 50%,40%
+    end: 50%,85%
+    duration: 300
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: /tmp/motionfav2

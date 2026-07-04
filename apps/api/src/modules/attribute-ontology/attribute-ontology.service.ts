@@ -590,7 +590,8 @@ export class AttributeOntologyService {
                SET aliases = (
                  SELECT array_agg(DISTINCT a)
                  FROM unnest(y.aliases || ARRAY[x.name] || x.aliases) a
-               )
+               ),
+               name_embedding_stale = true
                FROM core_entities x
                WHERE y.entity_id = $1::uuid AND x.entity_id = $2::uuid`,
               merge.canonicalEntityId,
@@ -629,7 +630,8 @@ export class AttributeOntologyService {
                    aliases = (
                      SELECT array_agg(DISTINCT a)
                      FROM unnest(array_remove(aliases || ARRAY[$3]::varchar[], $2)) a
-                   )
+                   ),
+                   name_embedding_stale = true
                WHERE entity_id = $1::uuid`,
               rename.entityId,
               rename.to,

@@ -75,12 +75,6 @@ export type RouteSceneSwitchSheetContentHandoff =
   | 'swapAfterCollapse'
   | 'preserveOutgoingUntilSettle';
 
-export type RouteSceneSwitchSheetSnapPersistence =
-  | 'none'
-  | 'readSceneMemory'
-  | 'writeSceneMemory'
-  | 'sharedOnly';
-
 export type RouteSceneSwitchSheetTransitionPlan = {
   transitionKind: RouteSceneSwitchSheetTransitionKind;
   sourceSceneKey: OverlayKey | null;
@@ -89,7 +83,6 @@ export type RouteSceneSwitchSheetTransitionPlan = {
   openerSource: RouteSceneSwitchSheetOpenerSource;
   motion: RouteSceneSwitchSheetMotionPlan;
   contentHandoff: RouteSceneSwitchSheetContentHandoff;
-  snapPersistence: RouteSceneSwitchSheetSnapPersistence;
 };
 
 export type RouteSceneSwitchRouteAction =
@@ -151,7 +144,6 @@ export type RouteSceneSwitchRequestInput = {
   sheetOpenerSource?: RouteSceneSwitchSheetOpenerSource;
   sheetMotion?: RouteSceneSwitchSheetMotionPlan;
   contentHandoff?: RouteSceneSwitchSheetContentHandoff;
-  snapPersistence?: RouteSceneSwitchSheetSnapPersistence;
   cameraIntent?: RouteSceneSwitchCameraIntent;
   chromeVisibilityTarget?: RouteSceneSwitchChromeVisibilityTarget;
   dockedPollsRestoreSnap?: Exclude<BottomSheetSnap, 'hidden'> | null;

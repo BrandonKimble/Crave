@@ -4,7 +4,6 @@ import { EntityType, OnDemandReason } from '@prisma/client';
 import { v4 as uuid } from 'uuid';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LLMSearchQueryAnalysis } from '../external-integrations/llm/llm.types';
-import { LLMUnavailableError } from '../external-integrations/llm/llm.exceptions';
 import {
   EntityResolutionInput,
   EntityResolutionResult,
@@ -101,10 +100,16 @@ export class SearchQueryInterpretationService {
         },
       });
 
-      throw new LLMUnavailableError(
-        'Search is temporarily unavailable. Please try again.',
-        originalMessage,
-      );
+      // LLM outage must DEGRADE search, not kill it: fall back to a browse — an
+      // empty analysis means no entity filters, so downstream returns all results
+      // ranked by Crave Score instead of throwing. A dead LLM should never take
+      // search down.
+      analysis = {
+        restaurants: [],
+        foods: [],
+        foodAttributes: [],
+        restaurantAttributes: [],
+      };
     }
     llmMs = performance.now() - llmStart;
 
@@ -136,7 +141,10 @@ export class SearchQueryInterpretationService {
     const resolutionStart = performance.now();
     const resolutionResultList: EntityResolutionResult[] =
       resolutionInputs.length
-        ? await this.linkViaHybridRecall(resolutionInputs)
+        ? await this.linkViaHybridRecall(
+            resolutionInputs,
+            resolvedMarket.collectableMarketKeys,
+          )
         : [];
     entityResolutionMs = performance.now() - resolutionStart;
 
@@ -285,6 +293,7 @@ export class SearchQueryInterpretationService {
    */
   private async linkViaHybridRecall(
     inputs: EntityResolutionInput[],
+    collectableMarketKeys: string[] = [],
   ): Promise<EntityResolutionResult[]> {
     return this.mapLimit(
       inputs,
@@ -306,20 +315,29 @@ export class SearchQueryInterpretationService {
           HYBRID_LINK_SHORTLIST_K,
           {
             marketKey: input.marketKey,
-            // Dense improves ordering; the lexical rule gates the link, so dense
-            // only needs to run when lexical under-recalls. Keeps query-time
-            // embedding cost off the common case (up to 100 terms per query).
-            denseMode: 'fallback',
+            // Step 9: recall spans the viewport-overlapping markets (falls back to
+            // the single market when the set is empty) so a restaurant across a
+            // market line is still linkable.
+            marketKeys: collectableMarketKeys.length
+              ? collectableMarketKeys
+              : undefined,
+            // Dense OFF: the link decider reads only sparseSimilarity, so dense
+            // candidates are never selectable here — the dense call was measured
+            // pure dead cost. Re-enable when a decider can consume dense evidence.
+            denseMode: 'none',
           },
         );
         if (candidates.length === 0) return unmatched;
 
         const normalizedTerm = term.toLowerCase();
+
+        // LIVE decision (the current exact-name + 0.82 rule — behavior unchanged).
+        let live: EntityResolutionResult;
         const exact = candidates.find(
           (c) => c.name.trim().toLowerCase() === normalizedTerm,
         );
         if (exact) {
-          return {
+          live = {
             tempId: input.tempId,
             entityId: exact.entityId,
             confidence: 1,
@@ -327,26 +345,27 @@ export class SearchQueryInterpretationService {
             matchedName: exact.name,
             originalInput: input,
           };
+        } else {
+          // Best LEXICAL candidate (dense-only neighbours have no sparse score and
+          // are intentionally ineligible to link).
+          const best = candidates.reduce((a, b) =>
+            (b.sparseSimilarity ?? 0) > (a.sparseSimilarity ?? 0) ? b : a,
+          );
+          const sim = best.sparseSimilarity ?? 0;
+          live =
+            sim >= HYBRID_LINK_SIMILARITY_THRESHOLD
+              ? {
+                  tempId: input.tempId,
+                  entityId: best.entityId,
+                  confidence: sim,
+                  resolutionTier: 'fuzzy',
+                  matchedName: best.name,
+                  originalInput: input,
+                }
+              : unmatched;
         }
 
-        // Best LEXICAL candidate (dense-only neighbours have no sparse score and
-        // are intentionally ineligible to link).
-        const best = candidates.reduce((a, b) =>
-          (b.sparseSimilarity ?? 0) > (a.sparseSimilarity ?? 0) ? b : a,
-        );
-        const sim = best.sparseSimilarity ?? 0;
-        if (sim >= HYBRID_LINK_SIMILARITY_THRESHOLD) {
-          return {
-            tempId: input.tempId,
-            entityId: best.entityId,
-            confidence: sim,
-            resolutionTier: 'fuzzy',
-            matchedName: best.name,
-            originalInput: input,
-          };
-        }
-
-        return unmatched;
+        return live;
       },
     );
   }

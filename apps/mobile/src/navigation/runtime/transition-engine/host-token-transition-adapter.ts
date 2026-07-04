@@ -15,11 +15,9 @@
 // mode) and (for the lane styles) the leg roles. sheet.from/to are set equal (the player's sheet-Y
 // lane is NOT mounted), and map/chrome are 'preserve' so the player never moves them.
 //
-// The content mode is the owner's default (relayed): HARD (immediate swap, paint-ack-gated) for the
-// sliding/seeded reveals (the slide masks it) — pollDetail / profile / restaurant; HELD-DISSOLVE for
-// the non-seedable results scene (search) — hold the outgoing opaque until the incoming paints, then
-// dissolve. This is the per-INCOMING-scene mode map; it matches the §4 permutation table's "mode"
-// column for the 5 key reveals routed in this phase.
+// The content mode is the owner's default (relayed): HARD (immediate swap, paint-ack-gated) for
+// every seeded reveal — pollDetail / profile / restaurant, and as of P5 also 'search' (its
+// never-null results-skeleton page is the frame-1 seed, so the old search HELD-DISSOLVE is gone).
 
 import {
   PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT,
@@ -33,16 +31,16 @@ import type {
   TransitionDetent,
 } from './transition-descriptor-contract';
 
-const HELD_DISSOLVE: ContentMode = { mode: 'held-dissolve', threshold: [0, 1] };
 const HARD: ContentMode = { mode: 'hard' };
 
-// Per-INCOMING-scene content mode. The non-seedable RESULTS scene ('search' — the results list, which
-// cannot seed believable rows) holds-dissolves; every seedable destination (profile / restaurant /
-// pollDetail) hard-swaps on paint-ack (the slide masks the swap, owner default). Any scene not listed
-// falls back to HARD (immediate, paint-ack-gated) — the safe default (never a see-through fade,
-// always gated on the incoming actually painting).
+// Per-INCOMING-scene content mode. P5 (page-switch-master-plan.md §6-P5): 'search' is now SEEDED
+// — its never-null results-skeleton page is the frame-1 seed — so it hard-swaps like every other
+// destination; this adapter has NO held-dissolve row (and no HELD_DISSOLVE constant) anymore. The
+// `held-dissolve` VARIANT survives only in the ContentMode contract, where the player treats it
+// as a degenerate hard-swap. Every scene here resolves HARD (immediate, paint-ack-gated) — the
+// safe default (never a see-through fade, always gated on the incoming actually painting); the
+// explicit rows double as the extension point if a scene ever needs a non-HARD mode.
 const CONTENT_MODE_BY_INCOMING_SCENE: Partial<Record<OverlayKey, ContentMode>> = {
-  search: HELD_DISSOLVE, // results list (non-seedable) — hold outgoing, paint-gate, dissolve
   profile: HARD, // restaurant/dish profile (direct-seed) — immediate, gated
   restaurant: HARD,
   pollDetail: HARD, // poll-open / autocomplete-poll (skeleton frame-1) — immediate, gated

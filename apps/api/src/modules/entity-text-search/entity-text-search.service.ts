@@ -28,7 +28,8 @@ export type TextMatchEvidence =
   | 'alias'
   | 'fuzzy'
   | 'phonetic'
-  | 'embedding';
+  | 'embedding'
+  | 'weak';
 
 export interface TextSearchMatch {
   entityId: string;
@@ -99,7 +100,7 @@ export class EntityTextSearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { marketKey?: string | null } = {},
+    options: { marketKey?: string | null; marketKeys?: string[] } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = term?.trim();
     if (!normalizedTerm || entityTypes.length === 0) return [];
@@ -116,7 +117,10 @@ export class EntityTextSearchService {
       typeof options.marketKey === 'string'
         ? options.marketKey.trim().toLowerCase()
         : null;
-    const marketFilter = this.buildRestaurantMarketFilter('e', marketKey);
+    const marketFilter = this.buildRestaurantMarketFilter(
+      'e',
+      options.marketKeys ?? marketKey,
+    );
 
     const rows = await this.prisma.$queryRaw<
       { entityId: string; name: string; type: EntityType; cosine: number }[]
@@ -156,6 +160,10 @@ export class EntityTextSearchService {
     limit: number,
     options: {
       marketKey?: string | null;
+      // Step 9: viewport-overlapping market set. When present, restaurant recall
+      // spans all of them (not just the single resolved market) so a restaurant
+      // across a market line stays findable. Falls back to [marketKey] when absent.
+      marketKeys?: string[];
       poolSize?: number;
       allowPhonetic?: boolean;
       /**
@@ -163,8 +171,11 @@ export class EntityTextSearchService {
        * gazetteer). 'fallback' — run dense only when the lexical lane under-recalls
        * (< `denseFallbackBelow` hits), so latency-critical autocomplete pays the
        * per-query embedding cost ONLY for the semantic-gap queries that need it.
+       * 'none' — skip the dense lane entirely. The query-time linker's decider reads
+       * only sparseSimilarity, so dense candidates are never selectable there and the
+       * dense call is pure dead cost until a decider can consume dense evidence.
        */
-      denseMode?: 'always' | 'fallback';
+      denseMode?: 'always' | 'fallback' | 'none';
       denseFallbackBelow?: number;
     } = {},
   ): Promise<RecallCandidate[]> {
@@ -174,13 +185,26 @@ export class EntityTextSearchService {
     const pool = Math.max(limit, options.poolSize ?? 50);
     const sparseOpts = {
       marketKey: options.marketKey,
+      marketKeys: options.marketKeys,
       allowPhonetic: options.allowPhonetic ?? true,
     };
-    const denseOpts = { marketKey: options.marketKey };
+    const denseOpts = {
+      marketKey: options.marketKey,
+      marketKeys: options.marketKeys,
+    };
 
+    const denseMode = options.denseMode ?? 'always';
     let sparse: TextSearchMatch[];
     let dense: TextSearchMatch[];
-    if ((options.denseMode ?? 'always') === 'fallback') {
+    if (denseMode === 'none') {
+      sparse = await this.searchEntities(
+        normalizedTerm,
+        entityTypes,
+        pool,
+        sparseOpts,
+      );
+      dense = [];
+    } else if (denseMode === 'fallback') {
       sparse = await this.searchEntities(
         normalizedTerm,
         entityTypes,
@@ -247,7 +271,11 @@ export class EntityTextSearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
-    options: { marketKey?: string | null; allowPhonetic?: boolean } = {},
+    options: {
+      marketKey?: string | null;
+      marketKeys?: string[];
+      allowPhonetic?: boolean;
+    } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = this.normalizeTerm(term);
     if (
@@ -270,6 +298,7 @@ export class EntityTextSearchService {
       safeLimit,
       {
         marketKey: normalizedMarketKey,
+        marketKeys: options.marketKeys,
         allowPhonetic:
           options.allowPhonetic !== undefined ? options.allowPhonetic : true,
       },
@@ -322,7 +351,11 @@ export class EntityTextSearchService {
     terms: string[],
     entityTypes: EntityType[],
     perTermLimit: number,
-    options: { marketKey?: string | null; allowPhonetic?: boolean } = {},
+    options: {
+      marketKey?: string | null;
+      marketKeys?: string[];
+      allowPhonetic?: boolean;
+    } = {},
   ): Promise<Map<string, TextSearchMatch[]>> {
     const normalizedTerms = terms
       .map((term) => this.normalizeTerm(term))
@@ -387,6 +420,7 @@ export class EntityTextSearchService {
           entityTypes,
           perTermLimit: safePerTermLimit,
           marketKey: normalizedMarketKey,
+          marketKeys: options.marketKeys,
         });
         rows.forEach((row) => {
           const term = row.term ?? '';
@@ -402,6 +436,7 @@ export class EntityTextSearchService {
           entityTypes,
           perTermLimit: safePerTermLimit,
           marketKey: normalizedMarketKey,
+          marketKeys: options.marketKeys,
           thresholdsByTerm,
         });
         rows.forEach((row) => {
@@ -445,6 +480,7 @@ export class EntityTextSearchService {
           terms: phoneticTerms,
           entityTypes,
           marketKey: normalizedMarketKey,
+          marketKeys: options.marketKeys,
         });
         phoneticRows.forEach((row) => {
           const term = row.term ?? '';
@@ -552,13 +588,25 @@ export class EntityTextSearchService {
     similarityThreshold: number;
   }): TextMatchEvidence {
     const { row, similarityThreshold } = options;
+    // exactHit already folds in alias-exact (see fetchFtsTrgmRowsForTerms), so an
+    // exact alias match is correctly tiered 'exact' here.
     if ((row.exactHit ?? 0) === 1) return 'exact';
     if (row.prefixHit === 1) return 'prefix';
     if ((row.nameFtsHit ?? 0) === 1) return 'name';
     if (row.phoneticMatch === 1) return 'phonetic';
     const nameSimilarity = Number(row.nameSimilarity ?? 0);
     if (nameSimilarity >= similarityThreshold) return 'fuzzy';
-    return 'alias';
+    // Genuine alias evidence (matched via an alias, below the name-fuzzy tier).
+    const aliasSimilarity = Number(row.aliasSimilarity ?? 0);
+    if (
+      aliasSimilarity >= similarityThreshold ||
+      (row.aliasTrgmHit ?? 0) === 1
+    ) {
+      return 'alias';
+    }
+    // Cleared recall on a weak signal we don't tier — honest 'weak', not a lie
+    // that says 'alias'.
+    return 'weak';
   }
 
   private buildCacheKey(options: {
@@ -629,6 +677,7 @@ export class EntityTextSearchService {
     entityTypes: EntityType[];
     perTermLimit: number;
     marketKey: string | null;
+    marketKeys?: string[];
   }): Promise<EntitySearchRow[]> {
     const values = Prisma.join(
       options.terms.map((term, idx) => {
@@ -641,7 +690,7 @@ export class EntityTextSearchService {
     )}]`;
     const marketFilter = this.buildRestaurantMarketFilter(
       'e',
-      options.marketKey,
+      options.marketKeys ?? options.marketKey,
     );
 
     return this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
@@ -720,13 +769,17 @@ export class EntityTextSearchService {
     entityTypes: EntityType[];
     perTermLimit: number;
     marketKey: string | null;
+    marketKeys?: string[];
     thresholdsByTerm: Map<string, number>;
   }): Promise<EntitySearchRow[]> {
     const values = Prisma.join(
       options.terms.map((term, idx) => {
         const prefixPattern = `${term}%`;
         const similarityThreshold = options.thresholdsByTerm.get(term) ?? 0.35;
-        return Prisma.sql`(${term}, ${prefixPattern}, ${similarityThreshold}, ${idx})`;
+        // Step 6: length-banded edit budget (ES-AUTO(3,6) seed; swept later) —
+        // 0 edits for very short terms, 1 for mid, 2 for long.
+        const editBudget = term.length <= 2 ? 0 : term.length <= 5 ? 1 : 2;
+        return Prisma.sql`(${term}, ${prefixPattern}, ${similarityThreshold}, ${editBudget}, ${idx})`;
       }),
     );
     const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
@@ -734,7 +787,7 @@ export class EntityTextSearchService {
     )}]`;
     const marketFilter = this.buildRestaurantMarketFilter(
       'e',
-      options.marketKey,
+      options.marketKeys ?? options.marketKey,
     );
 
     return this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
@@ -755,7 +808,7 @@ export class EntityTextSearchService {
         r."generalPraiseUpvotes"
       FROM (
         VALUES ${values}
-      ) AS v(term, prefix_pattern, similarity_threshold, term_index)
+      ) AS v(term, prefix_pattern, similarity_threshold, edit_budget, term_index)
       CROSS JOIN LATERAL (
         SELECT
           scored."entityId",
@@ -789,7 +842,13 @@ export class EntityTextSearchService {
             CASE
               WHEN lower(e.name) = v.term THEN 1
               WHEN lower(e.name) LIKE v.prefix_pattern THEN 0.94
-              ELSE similarity(lower(e.name), v.term)
+              -- Step 6: score by the BEST matching word, not the diluted whole
+              -- string. word_similarity('frankln','franklin barbecue')=0.75 where
+              -- whole-string similarity is far lower — the typo'd/partial-word fix.
+              ELSE GREATEST(
+                similarity(lower(e.name), v.term),
+                word_similarity(v.term, lower(e.name))
+              )
             END AS "nameSimilarity",
             CASE
               WHEN EXISTS (
@@ -804,7 +863,10 @@ export class EntityTextSearchService {
                 WHERE lower(alias_value) LIKE v.prefix_pattern
               )
                 THEN 0.94
-              ELSE similarity(crave_aliases_haystack_lower(e.aliases), v.term)
+              ELSE GREATEST(
+                similarity(crave_aliases_haystack_lower(e.aliases), v.term),
+                word_similarity(v.term, crave_aliases_haystack_lower(e.aliases))
+              )
             END AS "aliasSimilarity",
             ts_rank_cd(
               crave_entity_search_tsv(e.name::text, e.aliases),
@@ -851,6 +913,20 @@ export class EntityTextSearchService {
                 crave_aliases_haystack_lower(e.aliases) % v.term
                 AND similarity(crave_aliases_haystack_lower(e.aliases), v.term) >= v.similarity_threshold
               )
+              -- Step 6: word-level fuzzy admission (best matching word, not the
+              -- diluted whole string) — recovers typo'd/partial first words.
+              OR word_similarity(v.term, lower(e.name)) >= v.similarity_threshold
+              OR word_similarity(v.term, crave_aliases_haystack_lower(e.aliases)) >= v.similarity_threshold
+              -- Step 6: bounded per-token edit distance — the short-typo class
+              -- trigram misses ("frankln"→"franklin"). Length-windowed so a word
+              -- too different in length can't match; budget is length-banded.
+              OR EXISTS (
+                SELECT 1
+                FROM unnest(string_to_array(lower(e.name), ' ')) AS w
+                WHERE length(w) > 0
+                  AND abs(length(w) - length(v.term)) <= v.edit_budget
+                  AND levenshtein(w, v.term) <= v.edit_budget
+              )
             )
         ) scored
         ORDER BY
@@ -879,6 +955,7 @@ export class EntityTextSearchService {
     }[];
     entityTypes: EntityType[];
     marketKey: string | null;
+    marketKeys?: string[];
   }): Promise<EntitySearchRow[]> {
     const values = Prisma.join(
       options.terms.map((entry, idx) => {
@@ -896,7 +973,7 @@ export class EntityTextSearchService {
     )}]`;
     const marketFilter = this.buildRestaurantMarketFilter(
       'e',
-      options.marketKey,
+      options.marketKeys ?? options.marketKey,
     );
 
     return this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
@@ -1082,9 +1159,22 @@ export class EntityTextSearchService {
 
   private buildRestaurantMarketFilter(
     entityAlias: string,
-    marketKey: string | null,
+    // Step 9: accepts a single market OR the viewport-overlapping market SET, so a
+    // restaurant just across a market line stays findable. Single-key callers are
+    // unchanged (a string is treated as a one-element set); in single-market dev the
+    // set is [currentMarket] → byte-identical to the old single-key filter.
+    marketKeyOrKeys: string | string[] | null,
   ): Prisma.Sql {
-    if (!marketKey) {
+    const keys = (
+      Array.isArray(marketKeyOrKeys)
+        ? marketKeyOrKeys
+        : marketKeyOrKeys
+          ? [marketKeyOrKeys]
+          : []
+    )
+      .map((k) => k?.trim().toLowerCase())
+      .filter((k): k is string => !!k);
+    if (keys.length === 0) {
       return Prisma.empty;
     }
 
@@ -1096,7 +1186,7 @@ export class EntityTextSearchService {
           SELECT 1
           FROM core_entity_market_presence emp
           WHERE emp.entity_id = ${entityReference}.entity_id
-            AND LOWER(emp.market_key) = LOWER(${marketKey})
+            AND LOWER(emp.market_key) = ANY(${keys})
         )
       )
     `;

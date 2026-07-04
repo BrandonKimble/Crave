@@ -6,6 +6,18 @@ import styles from '../../styles';
 import type { useSearchRootSearchSceneInteractionFrostRuntime } from './use-search-root-search-scene-interaction-frost-runtime';
 import type { useSearchRootSearchScenePanelSurfaceContentRuntime } from './use-search-root-search-scene-panel-surface-content-runtime';
 
+// P5 (page-switch-master-plan.md §6-P5 / owner req 2e): the INITIAL-load self-frost cover is
+// DELETED. The search leg is a first-class page now — during an initial load the leg itself
+// paints the results skeleton (the never-null skeleton page pre-bundle, then the list's
+// ListEmptyComponent skeleton), frost-through to the map like every other scene-stack leg, and
+// the reveal join completes the skeleton→results swap as the switch's paint-ack. The cover's old
+// job (hiding the outgoing feed during the reveal crossfade) is structural now: 'search' is a
+// SEEDED hard-swap target, so there IS no outgoing feed under the presented leg.
+//
+// The INTERACTION (toggle-reload) cover below is a QUERY-flow surface and stays byte-identical —
+// it hides the STALE rows of the current results while a toggle refetch runs, pushed below the
+// toggle strip so the strip stays visible + tappable. Its ideal shape belongs to the
+// toggle-strip effort (TR5), not the page-switch work.
 export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   resolvedResultsHeaderHeightForRender,
   filtersHeaderHeight,
@@ -26,19 +38,17 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   surfaceContentRuntime: ReturnType<typeof useSearchRootSearchScenePanelSurfaceContentRuntime>;
 }) => {
   const headerTopValue = useSharedValue(resolvedResultsHeaderHeightForRender);
-  // The toggle-strip (filters) height. The loading cover's `top` is the SEARCH
-  // header line; the strip sits just below it as the list header. On an INTERACTION
-  // (toggle) reload we push the loading surfaces DOWN past the strip so the strip
-  // stays visible + tappable and the loading state animates under it. INITIAL loads
-  // (no results yet) keep the cover at the search-header line.
+  // The toggle-strip (filters) height. On an INTERACTION (toggle) reload the loading surface sits
+  // just below the strip so the strip stays visible + tappable and the loading state animates
+  // under it.
   const filtersHeaderHeightValue = useSharedValue(filtersHeaderHeight);
   const useInteractionSurfaceValue = useSharedValue(shouldUseInteractionSurface ? 1 : 0);
   const surfaceActiveValue = useSharedValue(surfaceActive ? 1 : 0);
-  const initialLoadingModeValue = useSharedValue(surfaceMode === 'initial_loading' ? 1 : 0);
   const interactionLoadingModeValue = useSharedValue(surfaceMode === 'interaction_loading' ? 1 : 0);
   const emptyModeValue = useSharedValue(surfaceMode === 'empty' ? 1 : 0);
-  const shouldExposeLoadingCover =
-    surfaceMode === 'initial_loading' || surfaceMode === 'interaction_loading';
+  // P5: only the interaction (toggle) reload exposes the loading cover; the initial load renders
+  // NOTHING here — the leg's own skeleton page/list is the loading visual.
+  const shouldExposeLoadingCover = surfaceMode === 'interaction_loading';
 
   React.useEffect(() => {
     headerTopValue.value = resolvedResultsHeaderHeightForRender;
@@ -53,21 +63,17 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
     surfaceActiveValue.value = surfaceActive ? 1 : 0;
   }, [surfaceActive, surfaceActiveValue]);
   React.useEffect(() => {
-    initialLoadingModeValue.value = surfaceMode === 'initial_loading' ? 1 : 0;
     interactionLoadingModeValue.value = surfaceMode === 'interaction_loading' ? 1 : 0;
     emptyModeValue.value = surfaceMode === 'empty' ? 1 : 0;
-  }, [emptyModeValue, initialLoadingModeValue, interactionLoadingModeValue, surfaceMode]);
+  }, [emptyModeValue, interactionLoadingModeValue, surfaceMode]);
   const normalSurfaceAnimatedStyle = useAnimatedStyle(() => ({
     opacity:
       surfaceActiveValue.value * (1 - useInteractionSurfaceValue.value) * emptyModeValue.value,
     top: headerTopValue.value,
   }));
   const loadingSurfaceAnimatedStyle = useAnimatedStyle(() => ({
-    opacity:
-      surfaceActiveValue.value *
-      Math.max(initialLoadingModeValue.value, interactionLoadingModeValue.value),
+    opacity: surfaceActiveValue.value * interactionLoadingModeValue.value,
     // Interaction reload: start below the toggle strip so it stays uncovered.
-    // Initial load: no offset (cover sits at the search-header line).
     top: headerTopValue.value + interactionLoadingModeValue.value * filtersHeaderHeightValue.value,
   }));
   const interactionSurfaceAnimatedStyle = useAnimatedStyle(() => ({
@@ -78,7 +84,7 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
     top: headerTopValue.value + interactionLoadingModeValue.value * filtersHeaderHeightValue.value,
   }));
   const loadingContentAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: Math.max(initialLoadingModeValue.value, interactionLoadingModeValue.value),
+    opacity: interactionLoadingModeValue.value,
   }));
   const emptyContentAnimatedStyle = useAnimatedStyle(() => ({
     opacity: emptyModeValue.value,
@@ -95,14 +101,12 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
             {surfaceContentRuntime.emptyContent}
           </Reanimated.View>
         </Reanimated.View>
-        <Reanimated.View
-          pointerEvents="none"
-          style={[styles.resultsLoadingCoverSurface, loadingSurfaceAnimatedStyle]}
-        >
-          {shouldExposeLoadingCover ? (
+        {shouldExposeLoadingCover ? (
+          <Reanimated.View
+            pointerEvents="none"
+            style={[styles.resultsLoadingCoverSurface, loadingSurfaceAnimatedStyle]}
+          >
             <View pointerEvents="none" style={styles.resultsLoadingCoverFill} />
-          ) : null}
-          {shouldExposeLoadingCover ? (
             <View
               accessible
               accessibilityLabel="Results loading cover"
@@ -111,11 +115,11 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
               style={styles.resultsLoadingCoverAccessibilityTarget}
               testID="results-loading-cover"
             />
-          ) : null}
-          <Reanimated.View pointerEvents="none" style={loadingContentAnimatedStyle}>
-            {surfaceContentRuntime.loadingContent}
+            <Reanimated.View pointerEvents="none" style={loadingContentAnimatedStyle}>
+              {surfaceContentRuntime.loadingContent}
+            </Reanimated.View>
           </Reanimated.View>
-        </Reanimated.View>
+        ) : null}
         <Reanimated.View
           pointerEvents="none"
           style={[
@@ -133,9 +137,7 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
       loadingSurfaceAnimatedStyle,
       loadingContentAnimatedStyle,
       normalSurfaceAnimatedStyle,
-      headerTopValue,
       shouldExposeLoadingCover,
-      surfaceActiveValue,
       surfaceContentRuntime.emptyContent,
       surfaceContentRuntime.loadingContent,
     ]

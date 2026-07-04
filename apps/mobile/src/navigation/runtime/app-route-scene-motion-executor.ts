@@ -238,10 +238,7 @@ export class AppRouteSceneMotionExecutor {
       `requestTransitionSheetMotion:${sheetSceneKey}`,
       () => {
         const request = this.resolveTransitionSheetRequest(transitionState, sheetSceneKey, target);
-        this.requestSheetMotion(
-          target,
-          request
-        );
+        this.requestSheetMotion(target, request);
       }
     );
   }
@@ -273,6 +270,19 @@ export class AppRouteSceneMotionExecutor {
       settleToken: request.settleToken ?? null,
       mode: request.mode,
     };
+    if (__DEV__) {
+      // [pageswitch] content-lag attribution: the sheet-motion dispatch instant (the JS write the
+      // UI-thread spring picks up next frame) — compared against the host's paintAck instant.
+      // eslint-disable-next-line no-console
+      console.log(
+        `[pageswitch] motion ${JSON.stringify({
+          t: Math.round(performance.now()),
+          scene: target.sceneKey,
+          snapTo: request.snap,
+          mode: request.mode,
+        })}`
+      );
+    }
   }
 
   private completeMotionPlane(settleToken: number, plane: RouteSceneSwitchMotionPlane): void {

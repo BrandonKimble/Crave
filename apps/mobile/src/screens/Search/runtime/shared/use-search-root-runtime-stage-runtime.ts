@@ -82,7 +82,6 @@ export const useSearchRootRuntimeStageRuntime = ({
     stateAssemblyRuntime,
     routeSceneRuntime,
     routeOverlayIdentityAuthority: routeSceneRuntime.routeOverlayIdentityAuthority,
-    routeOverlayPollsVisibilityAuthority: routeSceneRuntime.routeOverlayPollsVisibilityAuthority,
     routeOverlayVisibilityAuthority,
     searchChromeScalarSurfaceRuntime,
   });

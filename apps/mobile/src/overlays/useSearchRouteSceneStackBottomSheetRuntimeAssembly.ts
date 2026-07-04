@@ -1,6 +1,5 @@
 import React from 'react';
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from 'react-native';
-import type { SharedValue } from 'react-native-reanimated';
 import { Platform } from 'react-native';
 
 import type {
@@ -26,7 +25,6 @@ export type SearchRouteSceneStackBottomSheetRuntimeAssembly = {
   shadowShellStyle: StyleProp<ViewStyle>;
   surfaceStyle: StyleProp<ViewStyle>;
   sheetViewStyle: StyleProp<ViewStyle>;
-  sheetYValue: SharedValue<number>;
   scrollHeaderSyncStyle: StyleProp<ViewStyle>;
   onHeaderLayout: (event: LayoutChangeEvent) => void;
   onScrollHeaderLayout: (event: LayoutChangeEvent) => void;
@@ -193,6 +191,9 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
   const bodyScrollRuntime = React.useMemo<BottomSheetSceneStackBodyScrollRuntime>(
     () => ({
       shouldEnableScroll: scrollRuntime.shouldEnableScroll,
+      // Stable-identity UI-thread mirror (SharedValue ref never changes). Sinks read scrollEnabled
+      // off THIS via useAnimatedProps (frame-drop fix — see useBottomSheetSharedRuntime).
+      shouldEnableScrollShared: scrollRuntime.shouldEnableScrollShared,
       ScrollComponent: scrollRuntime.ScrollComponent,
       primaryScrollViewOnScroll: scrollRuntime.primaryScrollViewOnScroll,
       primaryListOnScroll: scrollRuntime.primaryListOnScroll,
@@ -206,6 +207,7 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
       scrollRuntime.scrollOffset,
       scrollRuntime.secondaryListOnScroll,
       scrollRuntime.shouldEnableScroll,
+      scrollRuntime.shouldEnableScrollShared,
     ]
   );
 
@@ -231,7 +233,6 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
     shadowShellStyle,
     surfaceStyle,
     sheetViewStyle,
-    sheetYValue: motionStateEntry.sheetYValue,
     scrollHeaderSyncStyle: surfaceRuntime.scrollHeaderSyncStyle,
     onHeaderLayout: scrollRuntime.onHeaderLayout,
     onScrollHeaderLayout: scrollRuntime.onScrollHeaderLayout,

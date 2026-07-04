@@ -1,9 +1,6 @@
 import React from 'react';
 
-import type {
-  RouteOverlayPollsVisibilityAuthority,
-  RouteOverlayVisibilityAuthority,
-} from './route-authority-contract';
+import type { RouteOverlayVisibilityAuthority } from './route-authority-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import { useAppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/AppRouteSharedSheetRuntimeProvider';
 import type { AppRouteOverlaySessionSnapshot } from '../../../../navigation/runtime/app-route-overlay-session-contract';
@@ -19,28 +16,34 @@ import type {
   SearchRootEnvironment,
 } from './search-root-environment-contract';
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
-import type { RouteOverlayPollsVisibilitySnapshot } from '../../../../navigation/runtime/route-overlay-display-snapshot-contract';
+import type { PresentationFrame } from '../../../../navigation/runtime/app-route-presentation-frame-contract';
 import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
 
-const selectRouteOverlaySessionSnapshot = ({
-  isSearchOverlay,
-  isPersistentPollLane,
-}: RouteOverlayPollsVisibilitySnapshot): AppRouteOverlaySessionSnapshot => ({
-  isSearchOriginRestorePending: false,
-  shouldShowDockedPollsTarget: isSearchOverlay && isPersistentPollLane,
-  shouldShowDockedPolls: isSearchOverlay && isPersistentPollLane,
-  shouldShowPollsSheet: isSearchOverlay && isPersistentPollLane,
-});
+// Thin adapter over the committed PresentationFrame (page-switch-master-plan.md §9.2 site 5):
+// the docked-polls decision is read from the frame's laneKind — the old parallel
+// `isSearchOverlay && isPersistentPollLane` re-derivation off the polls-visibility snapshot is
+// the same formula (laneKind==='docked-polls' already requires the search root), now sourced
+// from the one writer. Consumers of the session-snapshot shape are unchanged.
+const selectRouteOverlaySessionSnapshot = (
+  frame: PresentationFrame
+): AppRouteOverlaySessionSnapshot => {
+  const isDockedPollsLane = frame.laneKind === 'docked-polls';
+  return {
+    isSearchOriginRestorePending: false,
+    shouldShowDockedPollsTarget: isDockedPollsLane,
+    shouldShowDockedPolls: isDockedPollsLane,
+    shouldShowPollsSheet: isDockedPollsLane,
+  };
+};
 
 const createRouteOverlaySessionSnapshotRef = (
-  routeOverlayPollsVisibilityAuthority: RouteOverlayPollsVisibilityAuthority
+  routeSceneSwitchRuntime: AppRouteSceneRuntime['routeSceneSwitchRuntime']
 ): React.MutableRefObject<AppRouteOverlaySessionSnapshot> => {
   const ref = {} as React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
   Object.defineProperty(ref, 'current', {
     configurable: false,
     enumerable: true,
-    get: () =>
-      selectRouteOverlaySessionSnapshot(routeOverlayPollsVisibilityAuthority.getSnapshot()),
+    get: () => selectRouteOverlaySessionSnapshot(routeSceneSwitchRuntime.getPresentationFrame()),
     set: () => {},
   });
   return ref;
@@ -51,7 +54,6 @@ type UseSearchRootOverlayFoundationRuntimeArgs = Pick<SearchRootEnvironment, 'in
     sessionCoreLane: SearchRootSessionCoreLane;
     routeSceneRuntime: AppRouteSceneRuntime;
     routeOverlayIdentityAuthority: AppRouteSceneRuntime['routeOverlayIdentityAuthority'];
-    routeOverlayPollsVisibilityAuthority: RouteOverlayPollsVisibilityAuthority;
     routeOverlayVisibilityAuthority: RouteOverlayVisibilityAuthority;
     stateFoundationLane: SearchRootStateFoundationLane;
     searchChromeScalarSurfaceRuntime?: SearchChromeScalarSurfaceRuntime;
@@ -63,7 +65,6 @@ export const useSearchRootOverlayFoundationRuntime = ({
   sessionCoreLane,
   routeSceneRuntime,
   routeOverlayIdentityAuthority,
-  routeOverlayPollsVisibilityAuthority,
   routeOverlayVisibilityAuthority,
   stateFoundationLane,
   searchChromeScalarSurfaceRuntime,
@@ -71,8 +72,8 @@ export const useSearchRootOverlayFoundationRuntime = ({
   const { rootPrimitivesRuntime, rootDataPlaneRuntime, sessionPrimitivesLane } =
     stateFoundationLane;
   const routeOverlaySessionSnapshotRef = React.useMemo(
-    () => createRouteOverlaySessionSnapshotRef(routeOverlayPollsVisibilityAuthority),
-    [routeOverlayPollsVisibilityAuthority]
+    () => createRouteOverlaySessionSnapshotRef(routeSceneRuntime.routeSceneSwitchRuntime),
+    [routeSceneRuntime.routeSceneSwitchRuntime]
   );
   const routeOverlayCommandSnapshotRef = React.useRef<AppRouteOverlayCommandSnapshot>(
     routeSceneRuntime.routeOverlayCommandAuthority.getSnapshot()

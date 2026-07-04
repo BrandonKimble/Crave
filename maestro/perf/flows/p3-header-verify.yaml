@@ -1,0 +1,28 @@
+# P3 persistent-header verification: switch pages, screenshot each settled state — the header
+# title must match the page (Favorites / Profile / polls home), close+grab visible on all.
+appId: com.brandonkimble.cravesearch
+---
+- tapOn:
+    point: 50%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: /tmp/p3-favorites
+- tapOn:
+    point: 83%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: /tmp/p3-profile
+- tapOn:
+    point: 17%,95%
+- waitForAnimationToEnd:
+    timeout: 1500
+- takeScreenshot: /tmp/p3-search-home
+- tapOn:
+    point: 50%,95%
+- tapOn:
+    point: 83%,95%
+- tapOn:
+    point: 17%,95%
+- waitForAnimationToEnd:
+    timeout: 2500
+- takeScreenshot: /tmp/p3-after-burst

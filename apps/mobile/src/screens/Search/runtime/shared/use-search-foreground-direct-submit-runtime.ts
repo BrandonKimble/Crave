@@ -14,6 +14,7 @@ type UseSearchForegroundDirectSubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,
   | 'submitRuntime'
   | 'query'
+  | 'suggestions'
   | 'submittedQuery'
   | 'searchMode'
   | 'activeTab'
@@ -58,6 +59,7 @@ type SearchForegroundDirectSubmitRuntime = Pick<
 export const useSearchForegroundDirectSubmitRuntime = ({
   submitRuntime,
   query,
+  suggestions,
   submittedQuery,
   searchMode,
   activeTab,
@@ -88,11 +90,36 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   openPollDetail,
   submitPreparationRuntime,
 }: UseSearchForegroundDirectSubmitRuntimeArgs): SearchForegroundDirectSubmitRuntime => {
+  // Created before the query runtime because the typed-Return promoter replays
+  // this runtime's tap handler (handleSuggestionPress) to open the profile.
+  const suggestionSubmitRuntime = useSearchForegroundSuggestionSubmitRuntime({
+    submitRuntime,
+    query,
+    prepareSearchSessionEntry,
+    suppressAutocompleteResults,
+    cancelAutocomplete,
+    dismissSearchKeyboard,
+    beginSubmitTransition,
+    setIsSearchFocused,
+    setIsSuggestionPanelActive,
+    setShowSuggestions,
+    setSuggestions,
+    setQuery,
+    setRestaurantOnlyIntent,
+    pendingRestaurantSelectionRef,
+    isSearchEditingRef,
+    allowSearchBlurExitRef,
+    ignoreNextSearchBlurRef,
+    openRestaurantProfilePreview,
+    openPollDetail,
+  });
   const querySubmitRuntime = useSearchForegroundQuerySubmitRuntime({
     submitRuntime,
     query,
     isSuggestionPanelActive,
     shouldShowDockedPollsRef,
+    suggestions,
+    handleSuggestionPress: suggestionSubmitRuntime.handleSuggestionPress,
     submitPreparationRuntime,
   });
   const viewportShortcutRuntime = useSearchForegroundViewportShortcutRuntime({
@@ -115,27 +142,6 @@ export const useSearchForegroundDirectSubmitRuntime = ({
     resetFocusedMapState,
     resetMapMoveFlag,
     setRestaurantOnlyIntent,
-  });
-  const suggestionSubmitRuntime = useSearchForegroundSuggestionSubmitRuntime({
-    submitRuntime,
-    query,
-    prepareSearchSessionEntry,
-    suppressAutocompleteResults,
-    cancelAutocomplete,
-    dismissSearchKeyboard,
-    beginSubmitTransition,
-    setIsSearchFocused,
-    setIsSuggestionPanelActive,
-    setShowSuggestions,
-    setSuggestions,
-    setQuery,
-    setRestaurantOnlyIntent,
-    pendingRestaurantSelectionRef,
-    isSearchEditingRef,
-    allowSearchBlurExitRef,
-    ignoreNextSearchBlurRef,
-    openRestaurantProfilePreview,
-    openPollDetail,
   });
 
   return React.useMemo(

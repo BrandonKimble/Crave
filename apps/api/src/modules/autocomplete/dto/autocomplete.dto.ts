@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import { CoordinateDto, MapBoundsDto } from '../../search/dto/search-query.dto';
 import type { RestaurantStatusPreviewDto } from '../../search/dto/restaurant-status-preview.dto';
+import type { TextMatchEvidence } from '../../entity-text-search/entity-text-search.service';
 
 export class AutocompleteRequestDto {
   @IsString()
@@ -62,6 +63,11 @@ export class AutocompleteMatchDto {
   confidence!: number;
   aliases!: string[];
   matchType?: 'entity' | 'query' | 'poll';
+  // How this entity matched (exact / prefix / name / alias / fuzzy / phonetic /
+  // embedding). Forwarded from the recall core so the client can distinguish an
+  // exact hit from a weak guess — the signal the profile-jump gate needs. Absent
+  // for non-entity rows (query suggestions, polls) and injected personal lanes.
+  evidenceTier?: TextMatchEvidence;
   badges?: {
     favorite?: boolean;
     viewed?: boolean;

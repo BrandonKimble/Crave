@@ -2,20 +2,12 @@ import React from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import type { BottomSheetSceneStackChromeEntry } from './bottomSheetSceneStackHostContract';
-import { BottomSheetSceneStackMountedChrome } from './BottomSheetSceneStackMountedChromeRegistry';
-import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 
 type SceneStackDecorLayerKind = 'underlay' | 'background' | 'overlay';
 
 type SceneStackDecorLayerProps = {
   entry: BottomSheetSceneStackChromeEntry;
   kind: SceneStackDecorLayerKind;
-  promotedZIndex?: number;
-  isVisible: boolean;
-};
-
-type SceneStackHeaderLayerProps = {
-  entry: BottomSheetSceneStackChromeEntry;
   promotedZIndex?: number;
   isVisible: boolean;
 };
@@ -32,19 +24,17 @@ export const SceneStackDecorLayer = React.memo(
         elevation: isVisible ? resolvedZIndex : 0,
       };
     }, [isVisible, kind, promotedZIndex]);
+    // Mounted-chrome entries (surfaceKind 'mounted') render NOTHING per-leg — frost lives in the
+    // shared page-frame foundation and headers in the hoisted persistent header
+    // (app-route-persistent-header-registry). createChromeEntry builds them with all component
+    // fields null, so they fall through to the null return below (the old
+    // BottomSheetSceneStackMountedChrome registry shell is deleted).
     const component =
-      entry.surfaceKind === 'mounted' && entry.mountedChromeKey != null ? (
-        <BottomSheetSceneStackMountedChrome
-          mountedChromeKey={entry.mountedChromeKey}
-          surface={kind}
-        />
-      ) : kind === 'underlay' ? (
-        entry.underlayComponent
-      ) : kind === 'background' ? (
-        entry.backgroundComponent
-      ) : (
-        entry.overlayComponent
-      );
+      kind === 'underlay'
+        ? entry.underlayComponent
+        : kind === 'background'
+          ? entry.backgroundComponent
+          : entry.overlayComponent;
     if (!component) {
       return null;
     }
@@ -68,42 +58,7 @@ export const SceneStackDecorLayer = React.memo(
     previousProps.isVisible === nextProps.isVisible
 );
 
-export const SceneStackHeaderLayer = React.memo(
-  ({ entry, promotedZIndex, isVisible }: SceneStackHeaderLayerProps) => {
-    const visibilityStyle = React.useMemo<StyleProp<ViewStyle>>(() => {
-      const resolvedZIndex = promotedZIndex ?? 40;
-      return {
-        display: isVisible ? 'flex' : 'none',
-        opacity: isVisible ? 1 : 0,
-        zIndex: isVisible ? resolvedZIndex : 0,
-        elevation: isVisible ? resolvedZIndex : 0,
-      };
-    }, [isVisible, promotedZIndex]);
-    const headerComponent =
-      entry.surfaceKind === 'mounted' && entry.mountedChromeKey != null ? (
-        <BottomSheetSceneStackMountedChrome
-          mountedChromeKey={entry.mountedChromeKey}
-          surface="header"
-        />
-      ) : (
-        entry.headerComponent
-      );
-    if (!headerComponent) {
-      return null;
-    }
-
-    return (
-      <View
-        key={`header-${entry.sceneKey}`}
-        pointerEvents="auto"
-        style={[styles.sceneHeaderLayer, visibilityStyle]}
-      >
-        {headerComponent}
-      </View>
-    );
-  },
-  (previousProps, nextProps) =>
-    previousProps.entry === nextProps.entry &&
-    previousProps.promotedZIndex === nextProps.promotedZIndex &&
-    previousProps.isVisible === nextProps.isVisible
-);
+// P3 (page-switch-master-plan.md §6-P3): SceneStackHeaderLayer is DELETED. The per-leg header
+// render lane is gone — the ONE persistent header (PersistentSheetHeaderHost, hoisted above the
+// legs in ActiveSceneStackSurfaceHost) renders every scene-stack scene's header chrome from the
+// persistent-header registry. Decor (underlay / white plate / overlay) stays per-leg above.

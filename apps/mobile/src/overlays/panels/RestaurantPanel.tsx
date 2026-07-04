@@ -30,7 +30,8 @@ import { CutoutSkeletonTitle, SceneLoadingSurface } from '../../components/skele
 import { getPriceRangeLabel } from '../../constants/pricing';
 import { calculateSnapPoints } from '../sheetUtils';
 import type { OverlayContentSpec } from '../types';
-import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
+import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
+import { useRestaurantHeaderLiveState } from '../restaurant-header-live-state';
 import CraveScoreText from '../../screens/Search/components/CraveScoreText';
 
 export type RestaurantOverlayData = {
@@ -47,8 +48,6 @@ type RestaurantPanelLocation = NonNullable<NonNullable<RestaurantProfileSeed['lo
 type UseRestaurantPanelSpecOptions = {
   data: RestaurantOverlayData | null;
   onDismiss: () => void;
-  onRequestClose: () => void;
-  onToggleFavorite: (id: string) => void;
   navBarTop?: number;
   searchBarTop?: number;
   interactionEnabled?: boolean;
@@ -71,11 +70,12 @@ const DAY_LABELS: Array<{ key: string; label: string }> = [
   { key: 'saturday', label: 'Sat' },
 ];
 
+// The header (title / heart-share-close actions / grab press) no longer rides this spec — it is
+// extracted to the persistent-header descriptor below (P3), fed by the restaurant-header
+// live-state store. The spec itself only consumes what the BODY needs.
 export const useRestaurantPanelSpec = ({
   data,
   onDismiss,
-  onRequestClose,
-  onToggleFavorite,
   navBarTop = 0,
   searchBarTop = 0,
   interactionEnabled = true,
@@ -95,11 +95,9 @@ export const useRestaurantPanelSpec = ({
   const restaurant = data?.restaurant ?? null;
   const dishes = data?.dishes ?? [];
   const queryLabel = data?.queryLabel ?? '';
-  const isFavorite = data?.isFavorite ?? false;
   const isLoading = data?.isLoading ?? false;
   const restaurantName = restaurant?.restaurantName ?? '';
   const restaurantId = restaurant?.restaurantId ?? '';
-  const closeButtonProgress = useSharedValue(0);
 
   React.useEffect(() => {
     setExpandedLocations({});
@@ -159,12 +157,6 @@ export const useRestaurantPanelSpec = ({
   const shouldShowPerLocationWebsite = uniqueWebsiteUrls.length > 1;
   const primaryPhone =
     restaurant?.displayLocation?.phoneNumber ?? locationCandidates[0]?.phoneNumber ?? null;
-  const addressFallback = isLoading ? 'Loading details...' : 'Address unavailable';
-  const primaryAddress =
-    restaurant?.displayLocation?.address ??
-    restaurant?.address ??
-    locationCandidates[0]?.address ??
-    addressFallback;
 
   const formatOperatingStatus = React.useCallback((status?: OperatingStatus | null) => {
     if (!status) {
@@ -233,88 +225,10 @@ export const useRestaurantPanelSpec = ({
     void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
   }, [primaryPhone, restaurantName]);
 
-  const handleShare = React.useCallback(async () => {
-    try {
-      await Share.share({
-        message: `${restaurantName} · ${primaryAddress}`,
-      });
-    } catch (error) {
-      // no-op
-    }
-  }, [primaryAddress, restaurantName]);
-
   const hoursSummary =
     formatOperatingStatus(restaurant?.displayLocation?.operatingStatus) ?? 'Hours unavailable';
   const locationsLabel =
     locationCandidates.length === 1 ? '1 location' : `${locationCandidates.length} locations`;
-
-  const handleToggleFavorite = React.useCallback(() => {
-    if (!restaurantId) {
-      return;
-    }
-    onToggleFavorite(restaurantId);
-  }, [onToggleFavorite, restaurantId]);
-
-  const headerComponent = React.useMemo(
-    () => (
-      <OverlaySheetHeaderChrome
-        onGrabHandlePress={onRequestClose}
-        grabHandleAccessibilityLabel="Close restaurant"
-        rowStyle={styles.headerRow}
-        title={
-          restaurantName ? (
-            <Text style={styles.restaurantName} numberOfLines={1} ellipsizeMode="tail">
-              {restaurantName}
-            </Text>
-          ) : (
-            // Title not yet resolved (e.g. a deep-link open with no seeded name) — skeletonize
-            // ONLY the title; the grab handle + close button stay live for cancel.
-            <CutoutSkeletonTitle width={150} height={18} />
-          )
-        }
-        actionButton={
-          <View style={styles.headerActions}>
-            <Pressable
-              onPress={handleToggleFavorite}
-              style={styles.headerIconButton}
-              accessibilityLabel={isFavorite ? 'Unsave restaurant' : 'Save restaurant'}
-            >
-              <Feather
-                name="heart"
-                size={20}
-                color={isFavorite ? '#ef4444' : '#1f2937'}
-                {...(isFavorite ? { fill: '#ef4444' } : {})}
-              />
-            </Pressable>
-            <Pressable
-              onPress={() => void handleShare()}
-              style={styles.headerIconButton}
-              accessibilityLabel="Share"
-            >
-              <Feather name="share-2" size={18} color="#1f2937" />
-            </Pressable>
-            <OverlayHeaderActionButton
-              progress={closeButtonProgress}
-              onPress={onRequestClose}
-              accessibilityLabel="Close restaurant"
-              accentColor={themeColors.primary}
-              closeColor="#1f2937"
-              style={styles.headerCloseButton}
-            />
-          </View>
-        }
-        showDivider={false}
-      />
-    ),
-    [
-      handleShare,
-      handleToggleFavorite,
-      isFavorite,
-      closeButtonProgress,
-      onRequestClose,
-      restaurantName,
-    ]
-  );
 
   const listHeaderComponent = React.useMemo(() => {
     if (!restaurant || isLoading) {
@@ -527,8 +441,9 @@ export const useRestaurantPanelSpec = ({
   if (!data) {
     // Hard-swap seed frame: restaurant is now swapImmediately, so the panel paints its FIRST
     // frame the moment the route opens — before `data` resolves. Render a skeleton seed shell
-    // (seeded header + dish-card skeleton) instead of a TRUE BLANK so the hard swap lands on
-    // structure, never an empty map see-through. The committed search fills the content in.
+    // (dish-card skeleton; the seeded header rides the persistent-header descriptor) instead of
+    // a TRUE BLANK so the hard swap lands on structure, never an empty map see-through. The
+    // committed search fills the content in.
     return {
       overlayKey: 'restaurant',
       semanticOverlayKey: 'restaurant',
@@ -548,7 +463,9 @@ export const useRestaurantPanelSpec = ({
       ListEmptyComponent: renderSeedSkeleton,
       keyboardShouldPersistTaps: 'handled',
       backgroundComponent: backgroundComponent,
-      headerComponent: headerComponent,
+      // P3: the restaurant header is the persistent-header descriptor (registered below) — the
+      // per-scene header lane stays NULL (shape-preserving; other chrome surfaces stay).
+      headerComponent: null,
       style: [overlaySheetStyles.container, containerStyle as ViewStyle],
       onHidden: onDismiss,
       dismissThreshold,
@@ -576,7 +493,9 @@ export const useRestaurantPanelSpec = ({
     ListEmptyComponent: listEmptyComponent,
     keyboardShouldPersistTaps: 'handled',
     backgroundComponent: backgroundComponent,
-    headerComponent: headerComponent,
+    // P3: the restaurant header is the persistent-header descriptor (registered below) — the
+    // per-scene header lane stays NULL (shape-preserving; other chrome surfaces stay).
+    headerComponent: null,
     style: [overlaySheetStyles.container, containerStyle as ViewStyle],
     onHidden: onDismiss,
     dismissThreshold,
@@ -585,10 +504,125 @@ export const useRestaurantPanelSpec = ({
   };
 };
 
+// ─── Persistent header descriptor (P3, page-switch-master-plan.md §6-P3) ────────────────────
+// The restaurant header is extracted OUT of the panel spec into the hoisted persistent chrome
+// (PersistentSheetHeaderHost). Title/Action/grab read the restaurant-header live-state store —
+// the winning presentation's freeze-retained data + handlers, published by
+// RestaurantRouteSceneInputHost from the same `parent ?? search` authority resolution that
+// feeds the leg body — so the entity-tap seeded name still paints at frame 1 and the heart
+// reflects the same favorite state/handler as before.
+
+const RestaurantPersistentHeaderTitle = React.memo(() => {
+  const headerState = useRestaurantHeaderLiveState();
+  const restaurantName = headerState?.data?.restaurant?.restaurantName ?? '';
+  if (!restaurantName) {
+    // Title not yet resolved (e.g. a deep-link open with no seeded name) — skeletonize
+    // ONLY the title; the grab handle + close button stay live for cancel.
+    return <CutoutSkeletonTitle width={150} height={18} />;
+  }
+  return (
+    <Text style={styles.restaurantName} numberOfLines={1} ellipsizeMode="tail">
+      {restaurantName}
+    </Text>
+  );
+});
+RestaurantPersistentHeaderTitle.displayName = 'RestaurantPersistentHeaderTitle';
+
+const RestaurantPersistentHeaderAction = React.memo(() => {
+  const headerState = useRestaurantHeaderLiveState();
+  const closeButtonProgress = useSharedValue(0);
+  const data = headerState?.data ?? null;
+  const restaurant = data?.restaurant ?? null;
+  const isFavorite = data?.isFavorite ?? false;
+  const isLoading = data?.isLoading ?? false;
+  const restaurantName = restaurant?.restaurantName ?? '';
+  const restaurantId = restaurant?.restaurantId ?? '';
+  const onToggleFavorite = headerState?.onToggleFavorite;
+  const onRequestClose = headerState?.onRequestClose;
+
+  const handleToggleFavorite = React.useCallback(() => {
+    if (!restaurantId) {
+      return;
+    }
+    onToggleFavorite?.(restaurantId);
+  }, [onToggleFavorite, restaurantId]);
+
+  // Same primary-address coalesce the inline header shared with the panel body: displayLocation
+  // → seed address → first location candidate (dedupe keeps order, so [0] is source[0]) → the
+  // loading-aware fallback.
+  const firstLocationCandidate = React.useMemo<RestaurantPanelLocation | null>(() => {
+    if (!restaurant) {
+      return null;
+    }
+    const source: RestaurantPanelLocation[] =
+      Array.isArray(restaurant.locations) && restaurant.locations.length > 0
+        ? restaurant.locations
+        : restaurant.displayLocation
+          ? [restaurant.displayLocation]
+          : [];
+    return source[0] ?? null;
+  }, [restaurant]);
+  const addressFallback = isLoading ? 'Loading details...' : 'Address unavailable';
+  const primaryAddress =
+    restaurant?.displayLocation?.address ??
+    restaurant?.address ??
+    firstLocationCandidate?.address ??
+    addressFallback;
+
+  const handleShare = React.useCallback(async () => {
+    try {
+      await Share.share({
+        message: `${restaurantName} · ${primaryAddress}`,
+      });
+    } catch (error) {
+      // no-op
+    }
+  }, [primaryAddress, restaurantName]);
+
+  const handleRequestClose = React.useCallback(() => {
+    onRequestClose?.();
+  }, [onRequestClose]);
+
+  return (
+    <View style={styles.headerActions}>
+      <Pressable
+        onPress={handleToggleFavorite}
+        style={styles.headerIconButton}
+        accessibilityLabel={isFavorite ? 'Unsave restaurant' : 'Save restaurant'}
+      >
+        <Feather
+          name="heart"
+          size={20}
+          color={isFavorite ? '#ef4444' : '#1f2937'}
+          {...(isFavorite ? { fill: '#ef4444' } : {})}
+        />
+      </Pressable>
+      <Pressable
+        onPress={() => void handleShare()}
+        style={styles.headerIconButton}
+        accessibilityLabel="Share"
+      >
+        <Feather name="share-2" size={18} color="#1f2937" />
+      </Pressable>
+      <OverlayHeaderActionButton
+        progress={closeButtonProgress}
+        onPress={handleRequestClose}
+        accessibilityLabel="Close restaurant"
+        accentColor={themeColors.primary}
+        closeColor="#1f2937"
+        style={styles.headerCloseButton}
+      />
+    </View>
+  );
+});
+RestaurantPersistentHeaderAction.displayName = 'RestaurantPersistentHeaderAction';
+
+registerPersistentHeaderDescriptor('restaurant', {
+  Title: RestaurantPersistentHeaderTitle,
+  Action: RestaurantPersistentHeaderAction,
+});
+
 const styles = StyleSheet.create({
-  headerRow: {
-    justifyContent: 'flex-start',
-  },
   headerCloseButton: {
     marginLeft: 2,
   },

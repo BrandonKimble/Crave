@@ -28,7 +28,4 @@ export const useSearchRoutePollDetailPanelSpec = ({
     commentAnchorId: pollDetailCommentAnchorId,
     searchBarTop: sceneLayout.searchBarTop,
     snapPoints: sceneLayout.snapPoints,
-    onClose: () => {
-      routeSceneRuntime.routeOverlayRouteCommandRuntime.closeActiveRoute();
-    },
   });

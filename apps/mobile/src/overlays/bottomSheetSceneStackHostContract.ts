@@ -32,6 +32,10 @@ export type BottomSheetSceneStackBodyDefaults = {
 
 export type BottomSheetSceneStackBodyScrollRuntime = {
   shouldEnableScroll: boolean;
+  // Stable-identity UI-thread mirror of shouldEnableScroll. Sinks drive the FlashList/ScrollView
+  // scrollEnabled off this via useAnimatedProps so a transient activation toggle doesn't re-render
+  // the heavy list body (frame-drop fix, 2026-07-02).
+  shouldEnableScrollShared: SharedValue<boolean>;
   ScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
   primaryScrollViewOnScroll: ScrollViewProps['onScroll'];
   primaryListOnScroll: FlashListProps<unknown>['onScroll'];
@@ -82,5 +86,4 @@ export type BottomSheetSceneStackHostProps = {
   // co-completer). Token-guarded downstream, so a stale/duplicate call is a safe no-op.
   onContentSettleComplete: (token: number) => void;
   bodyRuntimeAuthority: BottomSheetSceneStackBodyRuntimeAuthority;
-  sheetYValue?: SharedValue<number>;
 };
