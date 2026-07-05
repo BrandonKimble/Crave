@@ -1,6 +1,6 @@
 # Map
 
-> **Rolling canonical vision — not a changelog.** Keep this file thin and *current*: it describes
+> **Rolling canonical vision — not a changelog.** Keep this file thin and _current_: it describes
 > only what we want this area of the app to be **today**. When something changes, edit or delete the
 > old text in place — never append "superseded"/"old"/"previously" notes, history, or pointers to
 > past ideas. If you follow this file, you know exactly what we want. Execution detail + migrations
@@ -31,7 +31,7 @@ Smooth pin/dot transitions across pan and zoom are the difference between a prem
 - **No jitter, no wiggle, no mid-flight reversal.** No source add/remove during camera motion (which would re-tile the layer and re-snap every pin), and a fade in flight never reverses.
 - **Map runtime as an island.** The map render model does not rebuild on overlay/tab switches; map and overlay communicate only through a narrow stable protocol — camera/marker state in, profile-open and selection-clear and marker-lifecycle telemetry out.
 
-A dev-only JSONL telemetry harness is the source of truth for what the map is actually doing — promote/demote counts, pins actually painted, wiggle, frame jank, label-over-pin — with an independent oracle that computes the expected top-30 by Crave rank rather than validating the renderer against itself. A contract gate fails the build on any flash-reversal or any pin/dot add/remove during camera motion.
+Verification follows the app-wide testing methodology (see `memory` / CLAUDE.md): instrument the composited output — pins actually painted, wiggle, frame jank, label-over-pin — never model state, with an independent oracle that computes the expected top-30 by Crave rank rather than validating the renderer against itself, and contract gates that can provably go RED (e.g. fail on any flash-reversal or any pin/dot add/remove during camera motion).
 
 ## Map-based filtering & viewport
 
@@ -47,6 +47,7 @@ A dev-only JSONL telemetry harness is the source of truth for what the map is ac
 - **"Near me" entry.** A "best near me" launch state centers the map on the user's current location.
 - **Personal Food Maps.** A geographic visualization of a user's saved/discovered spots — curation of the user's own list, not ranking personalization.
 - **Quick actions from a marker.** Tapping a pin opens the restaurant profile; quick actions can extend to directions, order link, save to list, and share.
+- **Offline maps (future).** Download a map region for offline use, paired with offline lists (see `favorites.md`) — the travel use case: your saved lists and their map work without connectivity.
 
 Two directions are Crave+ gating candidates because they surface dish-level or trending signal: a **dish-level map mode** (markers/heat for the best DISH near you, not just the best restaurant) and a **trending/rising overlay** (🔥 surging and 🕐 active spots on the map). These follow the same free-vs-paid split as everywhere else — dish and trending intelligence are paid.
 

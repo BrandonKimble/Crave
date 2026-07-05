@@ -1,6 +1,6 @@
 # Favorites & Lists
 
-> **Rolling canonical vision — not a changelog.** Keep this file thin and *current*: it describes
+> **Rolling canonical vision — not a changelog.** Keep this file thin and _current_: it describes
 > only what we want this area of the app to be **today**. When something changes, edit or delete the
 > old text in place — never append "superseded"/"old"/"previously" notes, history, or pointers to
 > past ideas. If you follow this file, you know exactly what we want. Execution detail + migrations
@@ -30,6 +30,9 @@ Lists, items, reordering, sharing, and list detail are built; the high-value fro
 ## Save flow & list management
 
 - **Save Sheet** — a bottom sheet showing a list grid plus a "New list" placeholder tile that expands into a name / description / public-private / create panel. The same panel is reused for editing a list from the per-list ellipsis menu (Edit, Share, Make Private/Public, Delete).
+- **List configuration (the ⋯ ellipsis, Spotify-playlist-like)** — inside a list, an ellipsis opens the list's configuration surface: make public/private, edit name/details, share, and (future) download for offline. Modeled on Spotify's playlist config, including possibly its two distinct knobs: _private_ (only you and invitees can see it) vs _remove from profile_ (public by link but not displayed on your profile) — whether we keep that distinction or collapse to one toggle is still to decide. Expect this cluster to grow; the list page is the app's most involved surface.
+- **Add places from inside a list** — an "add places" button opens search mode in **pick mode**: selecting a result adds it to the list and returns you to the list — no search flow, no page switch. Same search UI, different selection consequence.
+- **Offline lists (future)** — download a list (and its map region — see `map.md`) for offline use, e.g. travel.
 - **Reordering** — both lists and items within a list are manually reorderable by position.
 - **Per-item personal notes** — users can attach a note to a saved dish or restaurant ("get the spicy version", "great for groups").
 - **Search within a list / across all saved** — find a spot inside a long list or across everything saved.
@@ -42,7 +45,7 @@ The home favorites page is built on the shared toggle-strip primitive (the same 
 
 - **Restaurants | Dishes** — the structural parent toggle; switches which kind of lists you see.
 - **Sort** — a dropdown: **Recently updated** (default) and **Custom** (your hand-dragged order).
-- **All / Mine / Shared** — a one-tap, mutually-exclusive *filter* over who made the list. Shared lists from friends land in your favorites, so this separates yours from theirs. It hides to a subset (a filter), which is why it's its own control and not a sort.
+- **All / Mine / Shared** — a one-tap, mutually-exclusive _filter_ over who made the list. Shared lists from friends land in your favorites, so this separates yours from theirs. It hides to a subset (a filter), which is why it's its own control and not a sort.
 
 **Custom (drag) ordering works on the home too**, identical to within a list — you drag your lists into the order you want, and that becomes the **sticky default** once set, so the home stops reshuffling. "Recently updated" is just the churn-y starting default for someone who hasn't ordered yet: a list jumps to the top each time you save into it, so the home reshuffles under you until you impose a custom order.
 
@@ -51,7 +54,7 @@ The home favorites page is built on the shared toggle-strip primitive (the same 
 These are the prominent directions on top of the core.
 
 - **Auto-"All" list pinned to the top** — a synthetic union view, always first on the Favorites page, that combines every list on the current axis (All-Restaurants and All-Dishes, following the Restaurants/Dishes toggle). It isn't a stored list; it's a union over the user's items.
-- **Include/exclude (which-lists) toggle** — the "All" list is the *only* list with this toggle, because it's a meta-list (a list of lists). Opening it exposes a toggle to include/exclude specific source lists, with a sensible default set applied on open. Every other list gets the filter strip below but not this toggle.
+- **Include/exclude (which-lists) toggle** — the "All" list is the _only_ list with this toggle, because it's a meta-list (a list of lists). Opening it exposes a toggle to include/exclude specific source lists, with a sensible default set applied on open. Every other list gets the filter strip below but not this toggle.
 - **Your best saved spot** — surface the single highest-Crave-Score saved restaurant (and top dish) spanning every list.
 - **Compare lists** — side-by-side or overlay comparison of two lists (e.g. "Date Night" vs "Business Lunch") by score, overlap, neighborhood.
 - **Map all saved at once** — plot every saved restaurant (across all lists, or the All view) on the map in one pass. This is the personal food map, grounded in real lists. Since list detail already produces map-ready entities, this is mostly aggregation.
@@ -61,26 +64,28 @@ These are the prominent directions on top of the core.
 Every list has a **sort dropdown** (a dropdown toggle, like the result-sheet price control) plus **filter toggles**. The line is: **sort your list however you want, free; filter/slice it, paid.**
 
 **Sort — free.** Reordering the same set is free, partly because one of the options is the user's own shareable ranking.
+
 - **Best** (default) — Crave Score order.
 - **Rising** — the continuous heat-surge axis: mentions arriving faster lately than a place's own baseline. ("Rising" is the working word; open to a better one.)
 - **Recently added** — by save date.
-- **Custom** — the user's hand-ranking (see *Custom ranking* below).
+- **Custom** — the user's hand-ranking (see _Custom ranking_ below).
 
 **Filters — Crave+.** Slicing the set down is the paid power layer:
+
 - **Open now**
 - **Price**
 - **Cuisine** — a maybe; leaning against it.
 - Best-near-me-now over a saved set lives here too.
 
-Filtering a *saved set* is gated even though open-now and price are free on the main search — that's intentional: we match Google on search (free), and the part Google can't do (filter your saved lists) is the Crave+ layer. Dish-list depth (dish-level scores/evidence inside a list) is also Crave+, since dishes are the paid hero. A plain saved list — its creation, sorting, and sharing — stays free.
+Filtering a _saved set_ is gated even though open-now and price are free on the main search — that's intentional: we match Google on search (free), and the part Google can't do (filter your saved lists) is the Crave+ layer. Dish-list depth (dish-level scores/evidence inside a list) is also Crave+, since dishes are the paid hero. A plain saved list — its creation, sorting, and sharing — stays free.
 
-**Custom ranking (the reorder).** Picking *Custom* turns on an edit mode that orders items into the user's own order, persisted (the `position` column already backs it). Reorder is **drag-and-drop**, made safe against the movable sheet by the mode itself: entering edit **locks the sheet to full height** (its pan is disabled) and a drag *handle* is the sole activator, so the sheet and list-scroll yield to the drag. The home's 2-column grid **linearizes to a single column in edit mode**, so it's the same simple 1-D drag as a list. The identical mechanism powers both within-a-list (rank your spots/dishes) and the home (order your lists). A non-drag path (move up/down · move-to-top) ships alongside — an accessibility requirement (WCAG 2.2 §2.5.7), not optional. Custom stays free — it's the personalization/shareability engine (below), not a power filter.
+**Custom ranking (the reorder).** Picking _Custom_ turns on an edit mode that orders items into the user's own order, persisted (the `position` column already backs it). Reorder is **drag-and-drop**, made safe against the movable sheet by the mode itself: entering edit **locks the sheet to full height** (its pan is disabled) and a drag _handle_ is the sole activator, so the sheet and list-scroll yield to the drag. The home's 2-column grid **linearizes to a single column in edit mode**, so it's the same simple 1-D drag as a list. The identical mechanism powers both within-a-list (rank your spots/dishes) and the home (order your lists). A non-drag path (move up/down · move-to-top) ships alongside — an accessibility requirement (WCAG 2.2 §2.5.7), not optional. Custom stays free — it's the personalization/shareability engine (below), not a power filter.
 
 ## Sharing, virality & social
 
 Lists are a primary growth surface. A public list with a slug is a shareable artifact that pulls new users in — the acquisition hook in a no-ad-budget freemium model. List creation and sharing stay free forever to protect this loop.
 
-**Custom ranking is the social/personalization axis.** The Crave Score is crowd consensus; a user's *custom-ranked* list is their personal opinion laid over it — the second axis the app otherwise lacks, and the seed of the friend graph. A ranked "my top 10 tacos in Austin" is a far more shareable artifact than an unordered save pile, and following a friend means browsing their ranked lists for trusted, taste-curated picks rather than only the crowd. When viewing anyone's custom-ranked list, the *order* is their opinion while each row still shows the objective Crave Score dot — "their take vs. the canonical truth," side by side — and personal rank is always visually distinct from the Crave Score so the two never blur. (Friend-graph features — following, friends' picks on a place, your-circle's-consensus — live in `profile.md`.)
+**Custom ranking is the social/personalization axis.** The Crave Score is crowd consensus; a user's _custom-ranked_ list is their personal opinion laid over it — the second axis the app otherwise lacks, and the seed of the friend graph. A ranked "my top 10 tacos in Austin" is a far more shareable artifact than an unordered save pile, and following a friend means browsing their ranked lists for trusted, taste-curated picks rather than only the crowd. When viewing anyone's custom-ranked list, the _order_ is their opinion while each row still shows the objective Crave Score dot — "their take vs. the canonical truth," side by side — and personal rank is always visually distinct from the Crave Score so the two never blur. (Friend-graph features — following, friends' picks on a place, your-circle's-consensus — live in `profile.md`.)
 
 - **Public / private visibility** — public lists show on the owner's profile "Lists" tab and are reachable by share slug; private lists are owner-only. Lists are the user's curatorial identity.
 - **Shareable via slug** — a short URL-safe slug per list with a share toggle and rotate/revoke. App deep link plus universal link; if the app isn't installed, a web landing with a CTA.
@@ -108,3 +113,5 @@ The area is "Favorites," not "Bookmarks." Screen title leans on the list framing
 - Do per-item notes get shared when a public list is shared?
 - Are collaborative/multi-contributor lists in scope, and what's the invite/permission model?
 - Is "map all saved" its own entry point or a mode of the All list?
+- List privacy semantics: keep Spotify's _private_ vs _remove-from-profile_ as two separate knobs, or collapse to one public/private toggle?
+- The "post to profile" analog: how do lists (the poll-posting analog) land on the profile — auto via public visibility (the Spotify model, current lean) or an explicit publish step?
