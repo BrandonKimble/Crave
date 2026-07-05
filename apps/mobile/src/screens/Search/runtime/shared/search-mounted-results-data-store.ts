@@ -846,6 +846,13 @@ export const publishSearchMountedResultsDataSnapshot = (
     resultsHydrationKey?: string | null;
   }
 ): boolean => {
+  if (__DEV__ && results == null && snapshot.results != null) {
+    // [SRINULL] attribution: WHO clears the mounted-results data store (the map projection's
+    // source) while the results surface may still be live? Top stack frames name the caller.
+    console.log(
+      `[SRINULL] data-store CLEARED (had rrk=${snapshot.resultsRequestKey}) by:\n${new Error().stack?.split('\n').slice(1, 5).join('\n')}`
+    );
+  }
   const nextResultsRequestKey = results?.metadata?.searchRequestId ?? null;
   const nextResultsHydrationKey = options?.resultsHydrationKey ?? null;
   const nextActiveTab = options?.activeTab ?? null;

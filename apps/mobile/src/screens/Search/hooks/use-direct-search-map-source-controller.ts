@@ -1436,6 +1436,13 @@ export const useDirectSearchMapSourceController = ({
         logger.info('[SRCPROJ] early=shortcut-noSri', {
           rk: readinessKey,
           pvck: preparedVisualCycleKey,
+          // [SRINULL] attribution: which link is null? (metadata vs committed-state vs mode)
+          mode: state.searchMode,
+          rrk: mountedResultsSnapshot.resultsRequestKey,
+          committed: hasCommittedResultState,
+          restCount: mountedResults?.restaurants?.length ?? -1,
+          metaSri: mountedResults?.metadata?.searchRequestId ?? 'nil',
+          shouldProject: shouldProjectResultSources,
         });
       }
       sourceFramePort.publishVisualState({
