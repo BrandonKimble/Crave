@@ -52,6 +52,27 @@ unconditionally when the reveal request reaches native — so map and cards desy
 
 ### D1 — The synchronized reveal joint (G1): START-sync, both-ready, JS owns the gate
 
+> **⚠️ PHASE-1 SCOPE CORRECTION (2026-07-05, pre-build ground pass):** the ENTER lane
+> already HAS this joint — do NOT rebuild it. In
+> `use-results-presentation-marker-enter-runtime.ts:46-93`: `nativeMarkerFrameReady` is
+> marked at native **mounted-hidden** (ready-to-START, not ramp-complete — the mapper's
+> "settled" reading was the toggle lane's naming), the native start request is **gated on
+> `canAdmitResultsBody`** (the 3-way joint) with a pending-flush on surface change
+> (:115-122), and `markEnterNativeStartRequested` flips `coverState:'hidden'` in the SAME
+> transition (enter-completion-transport.ts:21-30) — cover lift and ramp start are already
+> atomic. Native holds the ramp until the JS-published `enterStartToken`
+> (`SearchMapRenderController.swift:5721-5731` `startEnterPresentationIfReady`).
+> **Phase 1 therefore starts with ATTRIBUTION, not code:** timestamp-probe the real lanes
+> (fresh search enter · favorites-entry · toggle redraw · search-this-area rerun) —
+> native `presentation_enter_started.startedAtMs` vs the JS cover-hide/cards-admit tick —
+> and fix the lane(s) that actually diverge (suspects: the toggle/rerun lanes, which ride
+> `beginInteractionFadeOut`/`reprojectCatalogUnderCoverIfReady` OUTSIDE this machine, and
+> any gap between `coverState:'hidden'` and painted pixels). The D1 mechanism below remains
+> the TARGET SHAPE for whichever lane lacks it.
+> Probe recipe: arm scenario → `trigger` via `submit_shortcut_restaurants` / favorites
+> `open_overlay_scene`+list tap / `toggle_tab` → grep `presentation_enter_started`,
+> `markEnterNativeStartRequested`, `[pageswitch]` cover events; compare timestamps.
+
 Owner's words are explicit: cards reveal when map items **start** their fade-in, gated on
 both ready. So:
 
