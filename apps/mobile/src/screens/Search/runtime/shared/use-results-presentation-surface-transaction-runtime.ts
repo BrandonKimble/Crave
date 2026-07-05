@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportSearchFlowContractViolation } from './search-flow-contracts';
 
 import {
   getActivePerfScenarioSearchThisAreaSubmitId,
@@ -394,6 +395,13 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
       getSearchSurfaceRuntime().beginRedrawTransaction({
         reason: 'search_this_area',
         transactionId,
+        coverState: 'interaction_loading',
+      });
+    } else {
+      // R0 loud-contracts (§D6): a search-this-area pending WITHOUT an active operation id
+      // proceeds with NO redraw transaction — readiness signals then arrive against
+      // transactionId:null and are ignored (the rerun lane's watchdog-warning class).
+      reportSearchFlowContractViolation('search_this_area_pending_without_transaction', {
         coverState: 'interaction_loading',
       });
     }

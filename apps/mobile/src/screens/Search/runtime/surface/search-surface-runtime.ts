@@ -1,4 +1,5 @@
 import React, { useSyncExternalStore } from 'react';
+import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
 
 import {
   isPerfScenarioAttributionActive,
@@ -635,7 +636,11 @@ export class SearchSurfaceRuntime {
       if (!active.readiness.nativeMarkerFrameReady) {
         logger.warn(
           '[PRESENTATION-WATCHDOG] tier-1 force-resolving nativeMarkerFrame (rapid-tap supersession drop)',
-          { transactionId: id, cardsReady: active.readiness.cardsReady, sheetReady: active.readiness.sheetReady }
+          {
+            transactionId: id,
+            cardsReady: active.readiness.cardsReady,
+            sheetReady: active.readiness.sheetReady,
+          }
         );
         this.patchActiveRedrawTransaction(id, { nativeMarkerFrameReady: true });
       }
@@ -712,10 +717,13 @@ export class SearchSurfaceRuntime {
     degraded: boolean = false
   ): void => {
     if (degraded) {
-      logger.warn('[PRESENTATION-WATCHDOG] toggle settled DEGRADED (roster failed) — cover lifts anyway', {
-        requestedTransactionId: transactionId ?? null,
-        activeRedrawTransactionId: this.snapshot.redrawTransaction?.id ?? null,
-      });
+      logger.warn(
+        '[PRESENTATION-WATCHDOG] toggle settled DEGRADED (roster failed) — cover lifts anyway',
+        {
+          requestedTransactionId: transactionId ?? null,
+          activeRedrawTransactionId: this.snapshot.redrawTransaction?.id ?? null,
+        }
+      );
     }
     this.patchActiveRedrawTransaction(transactionId, { nativeMarkerFrameReady: true });
   };
@@ -873,12 +881,37 @@ export class SearchSurfaceRuntime {
     });
   };
 
+  // R0 loud-contracts (§D6): a dismiss-lifecycle marker arriving with a non-null id that
+  // MISMATCHES a LIVE dismiss transaction means two lifecycles disagree about which dismiss
+  // is running — the suspicious case the audit found silently swallowed. (No live
+  // transaction, or an intentionally-null id, remains a legitimate no-op.)
+  private reportDismissMarkerMismatch(
+    marker: string,
+    liveId: string,
+    transactionId?: string | null
+  ): void {
+    if (transactionId != null && liveId !== transactionId) {
+      reportSearchFlowContractViolation('dismiss_marker_transaction_mismatch', {
+        marker,
+        liveId,
+        transactionId,
+      });
+    }
+  }
+
   public markBottomBoundaryReached = (transactionId?: string | null): void => {
     const dismissTransaction = this.snapshot.dismissTransaction;
     if (
       dismissTransaction == null ||
       !this.matchesTransaction(dismissTransaction.id, transactionId)
     ) {
+      if (dismissTransaction != null) {
+        this.reportDismissMarkerMismatch(
+          'bottomBoundaryReached',
+          dismissTransaction.id,
+          transactionId
+        );
+      }
       return;
     }
     this.publishDismissTransaction({
@@ -894,6 +927,13 @@ export class SearchSurfaceRuntime {
       !this.matchesTransaction(dismissTransaction.id, transactionId) ||
       dismissTransaction.bottomNavReturnReady
     ) {
+      if (dismissTransaction != null && !dismissTransaction.bottomNavReturnReady) {
+        this.reportDismissMarkerMismatch(
+          'bottomNavReturnReady',
+          dismissTransaction.id,
+          transactionId
+        );
+      }
       return;
     }
     this.publishDismissTransaction({
@@ -908,6 +948,13 @@ export class SearchSurfaceRuntime {
       dismissTransaction == null ||
       !this.matchesTransaction(dismissTransaction.id, transactionId)
     ) {
+      if (dismissTransaction != null) {
+        this.reportDismissMarkerMismatch(
+          'completeDismissHandoff',
+          dismissTransaction.id,
+          transactionId
+        );
+      }
       return;
     }
     const canCompleteDismissHandoff =

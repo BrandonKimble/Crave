@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportSearchFlowContractViolation } from './search-flow-contracts';
 
 import type { RestaurantResult, SearchResponse } from '../../../../types';
 import type { MarkerCatalogEntry } from '../map/map-viewport-query';
@@ -780,6 +781,14 @@ export const commitSearchMountedResultsPreparedRowsTarget = ({
   }
   const preparedRows = getResultsPresentationSurfaceAuthority().getSnapshot().preparedRows;
   if (preparedRows.targetReadinessKey !== readinessKey || preparedRows.activeRowCount <= 0) {
+    // R0 loud-contracts (§D6): a commit attempt against a DIFFERENT staged target (or a
+    // zero-row staging) can strand cardsReady=false forever — the audit's "stuck staging"
+    // silent zone. Same-key-but-empty and stale-key cases are both suspicious here.
+    reportSearchFlowContractViolation('prepared_rows_commit_target_mismatch', {
+      readinessKey,
+      targetReadinessKey: preparedRows.targetReadinessKey,
+      activeRowCount: preparedRows.activeRowCount,
+    });
     return;
   }
   markSearchMountedResultsPreparedRowsCommitted({

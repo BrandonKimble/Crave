@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportSearchFlowContractViolation } from './search-flow-contracts';
 
 import type { ExecutionBatchPayload } from './results-presentation-runtime-owner-contract';
 import type { ResultsPresentationRuntimeMachine } from './results-presentation-runtime-machine';
@@ -14,6 +15,15 @@ import {
 
 const toExecutionBatchRef = (payload: ExecutionBatchPayload) => {
   if (payload.executionBatchId == null || payload.frameGenerationId == null) {
+    // R0 loud-contracts (§D6): BOTH ids null = a non-batch event (legitimate). Exactly ONE
+    // null = partial identity — a malformed native payload the audit found silently dropped,
+    // which strands the enter (no cardsAdmit/rampStart pairing).
+    if ((payload.executionBatchId == null) !== (payload.frameGenerationId == null)) {
+      reportSearchFlowContractViolation('marker_enter_partial_batch_identity', {
+        executionBatchId: payload.executionBatchId ?? null,
+        frameGenerationId: payload.frameGenerationId ?? null,
+      });
+    }
     return null;
   }
 
