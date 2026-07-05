@@ -2,6 +2,11 @@ import { Logger } from '@nestjs/common';
 import { EntityType } from '@prisma/client';
 import { EntityTextSearchService } from '../../src/modules/entity-text-search/entity-text-search.service';
 import {
+  LINKER_TIER_FLOORS,
+  LINKER_MARGIN,
+  LINKER_MIN_FLOOR,
+} from '../../src/modules/search/linker-calibration.generated';
+import {
   bootstrap,
   loadFixture,
   out,
@@ -86,8 +91,22 @@ async function linkDecision(
       sim: 0,
     };
 
-  const norm = t.toLowerCase();
-  const exact = candidates.find((c) => c.name.trim().toLowerCase() === norm);
+  // MARGIN decider (mirrors the service): exact by evidence class; else link on
+  // the 0.82 floor OR a dominant margin over the runner-up (near-miss recovery),
+  // over link-eligible lexical evidence only.
+  // Mirrors the service: per-tier floors from the GENERATED calibration table
+  // (importing the same artifact the service reads kills replica drift).
+  const ELIGIBLE = new Set<string>([
+    'exact',
+    'prefix',
+    'name',
+    'alias',
+    'fuzzy',
+    'contains',
+    'edit',
+  ]);
+  const FALLBACK = { absolute: 0.82, singleton: 0.65 };
+  const exact = candidates.find((c) => c.sparseEvidence === 'exact');
   if (exact) {
     return {
       linkedEntityId: exact.entityId,
@@ -96,23 +115,33 @@ async function linkDecision(
       sim: 1,
     };
   }
-  const best = candidates.reduce((a, c) =>
-    (c.sparseSimilarity ?? 0) > (a.sparseSimilarity ?? 0) ? c : a,
-  );
-  const sim = best.sparseSimilarity ?? 0;
-  if (sim >= LINK_THRESHOLD_0_82) {
+  const eligible = candidates
+    .filter((c) => c.sparseEvidence != null && ELIGIBLE.has(c.sparseEvidence))
+    .sort((a, c) => (c.sparseSimilarity ?? 0) - (a.sparseSimilarity ?? 0));
+  const top = eligible[0];
+  const topSim = top?.sparseSimilarity ?? 0;
+  const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
+  const floors =
+    (top?.sparseEvidence && LINKER_TIER_FLOORS[top.sparseEvidence]) || FALLBACK;
+  const linkable =
+    top != null &&
+    topSim >= LINKER_MIN_FLOOR &&
+    (topSim >= floors.absolute ||
+      (eligible.length === 1 && topSim >= floors.singleton) ||
+      (runnerSim > 0 && topSim >= LINKER_MARGIN * runnerSim));
+  if (linkable) {
     return {
-      linkedEntityId: best.entityId,
+      linkedEntityId: top.entityId,
       tier: 'fuzzy',
-      matchedName: best.name,
-      sim,
+      matchedName: top.name,
+      sim: topSim,
     };
   }
   return {
     linkedEntityId: null,
     tier: 'unmatched',
     matchedName: null,
-    sim,
+    sim: topSim,
   };
 }
 

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -39,7 +39,9 @@ function toVectorLiteral(v: number[]): string {
  * is harmless — no doc-hash/skip bookkeeping needed (an embed costs ~1 microdollar).
  */
 @Injectable()
-export class EntityEmbeddingReconcilerService {
+export class EntityEmbeddingReconcilerService
+  implements OnApplicationBootstrap
+{
   private readonly logger: LoggerService;
   private reconcileInFlight = false;
 
@@ -49,6 +51,31 @@ export class EntityEmbeddingReconcilerService {
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('EntityEmbeddingReconcilerService');
+  }
+
+  /**
+   * Self-heal the HNSW ANN index on `name_embedding` at boot. Prisma cannot model
+   * an HNSW index in schema.prisma, so any `prisma migrate dev` diffs it as drift
+   * and generates a DROP (exactly how it silently vanished once — see migration
+   * 20260705003434). `CREATE INDEX IF NOT EXISTS` is a fast no-op when the index
+   * exists; when it was dropped, this rebuilds it (~seconds at current scale) so
+   * every dense query stays index-backed. A migration-scan spec is the second
+   * guard (fails CI if a migration's net effect drops the index).
+   */
+  async onApplicationBootstrap(): Promise<void> {
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `CREATE INDEX IF NOT EXISTS "idx_entities_name_embedding_hnsw"
+         ON "core_entities" USING hnsw ("name_embedding" vector_cosine_ops)`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to ensure name_embedding HNSW index', {
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+    }
   }
 
   /**

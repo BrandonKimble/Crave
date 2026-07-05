@@ -271,7 +271,7 @@ export class AutocompleteService {
                   normalizedQuery,
                   entityTypes,
                   Math.min(limit * entityTypes.length, limit * 3),
-                  { marketKey, allowPhonetic: false },
+                  { marketKey },
                 ),
               (seconds) => {
                 totalDbDurationSeconds += seconds;
@@ -919,7 +919,18 @@ export class AutocompleteService {
   }): number {
     const confidence = clamp01(params.confidence);
     const boost = Number.isFinite(params.boost) ? Math.max(0, params.boost) : 0;
-    return confidence * (1 + Math.min(boost, 0.35));
+    const boosted = confidence * (1 + Math.min(boost, 0.35));
+    // STRUCTURAL tier invariant: popularity/affinity boosts rank WITHIN an
+    // evidence band, never across one — the boosted score is clamped just below
+    // the next band's floor (pre-clamp, prefix 0.9 × 1.35 = 1.215 could outrank
+    // an exact 1.0, silently violating evidence-first ranking whenever an
+    // operator widened a boost weight env var). Bands mirror the entity-search
+    // EVIDENCE_CONFIDENCE table; cross-lane blend calibration is untouched.
+    const bands = [0.35, 0.4, 0.55, 0.6, 0.9, 1.0];
+    const nextBand = bands.find((b) => b > confidence + 1e-9);
+    return nextBand !== undefined
+      ? Math.min(boosted, nextBand - 0.001)
+      : boosted;
   }
 
   private isStrongAttributeCandidate(params: {

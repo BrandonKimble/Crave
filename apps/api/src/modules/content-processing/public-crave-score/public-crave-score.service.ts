@@ -106,7 +106,10 @@ export class PublicCraveScoreService {
 
       const fastDisplayByKey = new Map<string, number>();
       for (const row of fastScored) {
-        fastDisplayByKey.set(`${row.subjectType}:${row.subjectId}`, row.rawDisplay);
+        fastDisplayByKey.set(
+          `${row.subjectType}:${row.subjectId}`,
+          row.rawDisplay,
+        );
       }
       const scored = stableScored.map((row) => {
         const fastRaw = fastDisplayByKey.get(
@@ -114,7 +117,8 @@ export class PublicCraveScoreService {
         );
         return {
           ...row,
-          rising: fastRaw != null ? this.round(fastRaw - row.rawDisplay, 3) : null,
+          rising:
+            fastRaw != null ? this.round(fastRaw - row.rawDisplay, 3) : null,
         };
       });
 
@@ -333,8 +337,7 @@ export class PublicCraveScoreService {
     const t = 1 / (1 + 0.3275911 * ax);
     const y =
       1 -
-      ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t -
-        0.284496736) *
+      ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) *
         t +
         0.254829592) *
         t *

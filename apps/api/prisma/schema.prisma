@@ -162,6 +162,45 @@ model Connection {
   @@map("core_restaurant_items")
 }
 
+/// Derived, full-replace table: each active food's nearest dense neighbors
+/// (DOC↔DOC over `core_entities.name_embedding`), precomputed offline by
+/// EntitySiblingEdgeBuilderService so runtime co-inclusion is one indexed read.
+/// Stores a SUPERSET (top ~30 per anchor, raw stats); the production cut
+/// (cosine floor ∧ forward-rank K ∧ MUTUAL-rank R) is applied at read time from
+/// env knobs so retuning needs no rebuild. `mutualRank` = the anchor's rank in
+/// the SIBLING's own neighborhood (NULL = outside its top-FETCH_N ⇒ fails R).
+/// No FKs by design (derived data, atomic delete+insert rebuild).
+model EntitySiblingEdge {
+  anchorEntityId  String   @map("anchor_entity_id") @db.Uuid
+  siblingEntityId String   @map("sibling_entity_id") @db.Uuid
+  cosine          Float
+  forwardRank     Int      @map("forward_rank")
+  mutualRank      Int?     @map("mutual_rank")
+  builtAt         DateTime @default(now()) @map("built_at")
+
+  @@id([anchorEntityId, siblingEntityId])
+  @@map("derived_entity_sibling_edges")
+}
+
+/// Canonical per-FOOD category membership (directed is-a: food -> category),
+/// derived by reconciling the per-connection `categories` arrays across ALL of a
+/// food's connections (union, self-edges excluded, support recorded). Fixes the
+/// per-mention noise where identical dishes disagreed on categories (50.5% of
+/// multi-connection foods) — search resolves members from HERE (deterministic per
+/// food), never from the per-connection arrays. Rebuilt full-replace after
+/// projection rebuilds; support counts allow a read-time threshold if ever needed.
+model FoodCategoryEdge {
+  foodId      String   @map("food_id") @db.Uuid
+  categoryId  String   @map("category_id") @db.Uuid
+  connSupport Int      @map("conn_support")
+  foodConns   Int      @map("food_conns")
+  builtAt     DateTime @default(now()) @map("built_at")
+
+  @@id([foodId, categoryId])
+  @@index([categoryId], map: "idx_food_category_edges_category")
+  @@map("derived_food_category_edges")
+}
+
 model RestaurantItemMention {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   connectionId  String     @map("connection_id") @db.Uuid
@@ -1263,7 +1302,7 @@ model OnDemandRequest {
   requestUsers          OnDemandRequestUser[]
   askEvents             OnDemandAskEvent[]
 
-  @@unique([term, entityType, reason, marketKey, entityIdentityKey], map: "uq_on_demand_request_state_entity_lane")
+  @@unique([term, entityType, marketKey, entityIdentityKey], map: "uq_on_demand_request_identity")
   @@index([reason], map: "idx_on_demand_requests_reason")
   @@index([entityIdentityKey], map: "idx_on_demand_requests_entity_identity")
   @@index([lastSeenAt(sort: Desc)], map: "idx_on_demand_requests_last_seen_at")
@@ -1299,6 +1338,9 @@ model OnDemandAskEvent {
   resultRestaurantCount Int?             @map("result_restaurant_count")
   resultFoodCount       Int?             @map("result_food_count")
   askedAt               DateTime         @default(now()) @map("asked_at") @db.Timestamptz(6)
+  /// One search request can signal on-demand from TWO sites (interpretation-time
+  /// unresolved + search-time low-result); this id dedupes ask events per request.
+  searchRequestId       String?          @map("search_request_id") @db.Uuid
   metadata              Json?            @default("{}")
   entity                Entity?          @relation(fields: [entityId], references: [entityId], onDelete: SetNull)
   request               OnDemandRequest? @relation(fields: [requestId], references: [requestId], onDelete: SetNull)
@@ -1367,6 +1409,7 @@ enum EntityType {
 enum EntityStatus {
   active
   pending
+  archived
 
   @@map("entity_status")
 }

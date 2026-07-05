@@ -63,7 +63,7 @@ export class SearchEntityExpansionService {
         uniqueTerms,
         entityTypes,
         perTermLimit,
-        { marketKey: normalizedMarketKey, allowPhonetic: true },
+        { marketKey: normalizedMarketKey },
       );
 
       for (const term of uniqueTerms) {

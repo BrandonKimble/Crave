@@ -8,6 +8,7 @@ type PrismaTransaction = Prisma.TransactionClient;
 type ActiveRestaurantEvent = {
   extractionRunId: string;
   restaurantId: string;
+  sourceDocumentId: string;
   mentionKey: string;
   evidenceType: string;
   mentionedAt: Date;
@@ -138,6 +139,13 @@ export class ProjectionRebuildService implements OnModuleInit {
       itemProjections,
     );
 
+    // Keep the canonical per-food category edges (derived_food_category_edges —
+    // what SEARCH reads for category membership) consistent with the just-
+    // rebuilt connection arrays: recompute edges for every food these
+    // restaurants touch, across ALL of that food's connections (per-food
+    // reconciliation, self-edges excluded). Incremental + tx-consistent.
+    await this.refreshFoodCategoryEdgesForRestaurants(tx, restaurantIds);
+
     this.logger.debug('Rebuilt restaurant projections from active evidence', {
       restaurantCount: restaurantIds.length,
       restaurantEventCount: restaurantEvents.length,
@@ -147,6 +155,34 @@ export class ProjectionRebuildService implements OnModuleInit {
     });
 
     return connectionIds;
+  }
+
+  private async refreshFoodCategoryEdgesForRestaurants(
+    tx: PrismaTransaction,
+    restaurantIds: string[],
+  ): Promise<void> {
+    if (!restaurantIds.length) return;
+    await tx.$executeRawUnsafe(
+      `DELETE FROM derived_food_category_edges
+       WHERE food_id IN (
+         SELECT DISTINCT food_id FROM core_restaurant_items
+         WHERE restaurant_id = ANY($1::uuid[])
+       )`,
+      restaurantIds,
+    );
+    await tx.$executeRawUnsafe(
+      `INSERT INTO derived_food_category_edges (food_id, category_id, conn_support, food_conns)
+       SELECT c.food_id, cat_id, count(*),
+              (SELECT count(*) FROM core_restaurant_items c2 WHERE c2.food_id = c.food_id)
+       FROM core_restaurant_items c, unnest(c.categories) AS cat_id
+       WHERE cat_id <> c.food_id
+         AND c.food_id IN (
+           SELECT DISTINCT food_id FROM core_restaurant_items
+           WHERE restaurant_id = ANY($1::uuid[])
+         )
+       GROUP BY c.food_id, cat_id`,
+      restaurantIds,
+    );
   }
 
   private async loadActiveRestaurantEvents(
@@ -160,6 +196,7 @@ export class ProjectionRebuildService implements OnModuleInit {
       select: {
         extractionRunId: true,
         restaurantId: true,
+        sourceDocumentId: true,
         mentionKey: true,
         evidenceType: true,
         mentionedAt: true,
@@ -457,10 +494,20 @@ export class ProjectionRebuildService implements OnModuleInit {
     restaurantEvents: ActiveRestaurantEvent[],
   ): Promise<void> {
     const praiseTotals = new Map<string, number>();
+    // `general_praise` is a RESTAURANT-level fact riding a dish-scoped mention key,
+    // so one source that praises a restaurant across N dishes emits N events. It's
+    // still one endorsement — dedupe per (sourceDocument, restaurant) before summing
+    // so the source's upvotes count once, not N times (undoes the fan-out inflation).
+    const countedSourcePraise = new Set<string>();
 
     restaurantEvents
       .filter((event) => event.evidenceType === 'general_praise')
       .forEach((event) => {
+        const sourceKey = `${event.restaurantId}:${event.sourceDocumentId}`;
+        if (countedSourcePraise.has(sourceKey)) {
+          return;
+        }
+        countedSourcePraise.add(sourceKey);
         praiseTotals.set(
           event.restaurantId,
           (praiseTotals.get(event.restaurantId) ?? 0) +

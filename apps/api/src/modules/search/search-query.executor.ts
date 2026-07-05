@@ -217,34 +217,6 @@ interface RestaurantContext {
   distanceMiles: number | null;
 }
 
-interface ExecuteParams {
-  plan: QueryPlan;
-  request: SearchQueryRequestDto;
-  pagination: { skip: number; take: number };
-  perRestaurantLimit: number;
-  includeSqlPreview?: boolean;
-  dbPagination?: { skip: number; take: number };
-}
-
-interface ExecuteResult {
-  foodResults: FoodResultDto[];
-  restaurantResults: RestaurantResultDto[];
-  totalFoodCount: number;
-  totalRestaurantCount: number;
-  metadata: {
-    boundsApplied: boolean;
-    openNowApplied: boolean;
-    openNowSupportedRestaurants: number;
-    openNowUnsupportedRestaurants: number;
-    openNowUnsupportedRestaurantIds?: string[];
-    openNowFilteredOut: number;
-    priceFilterApplied: boolean;
-    minimumVotesApplied: boolean;
-  };
-  sqlPreview?: string | null;
-  timings?: Record<string, number>;
-}
-
 interface ExecuteDualParams {
   plan: QueryPlan;
   request: SearchQueryRequestDto;
@@ -304,164 +276,6 @@ export class SearchQueryExecutor {
       (process.env.SEARCH_VERBOSE_DIAGNOSTICS || '').toLowerCase() === 'true';
     this.includePhaseTimings =
       (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
-  }
-
-  async execute(params: ExecuteParams): Promise<ExecuteResult> {
-    const {
-      plan,
-      request,
-      pagination,
-      perRestaurantLimit,
-      includeSqlPreview,
-      dbPagination,
-    } = params;
-
-    const executeStart = performance.now();
-    const effectivePagination = dbPagination ?? pagination;
-    const buildStart = performance.now();
-    const query = this.queryBuilder.build({
-      plan,
-      pagination: effectivePagination,
-      searchCenter: this.resolveSearchCenter(request),
-    });
-    const buildSqlMs = performance.now() - buildStart;
-
-    const referenceDate = new Date();
-    const userLocation = this.normalizeUserLocation(request.userLocation);
-    const dbStart = performance.now();
-    const [connections, totalResult] = await Promise.all([
-      this.prisma.$queryRaw<QueryResultRow[]>(query.dataSql),
-      this.prisma.$queryRaw<
-        Array<{ total_connections: bigint; total_restaurants: bigint }>
-      >(query.countSql),
-    ]);
-    const dbQueryMs = performance.now() - dbStart;
-
-    const postProcessStart = performance.now();
-    const totalBeforeFiltering = Number(totalResult[0]?.total_connections ?? 0);
-    const restaurantContexts = this.buildRestaurantContexts(
-      connections,
-      referenceDate,
-      userLocation,
-    );
-    const totalRestaurantCountDb = Number(
-      totalResult[0]?.total_restaurants ?? 0,
-    );
-    const needsOpenFilter = Boolean(request.openNow);
-
-    let openNowFilterMs = 0;
-    const openFilter = needsOpenFilter
-      ? (() => {
-          const openFilterStart = performance.now();
-          const filtered = this.filterByOpenNow(
-            connections,
-            restaurantContexts,
-          );
-          openNowFilterMs = performance.now() - openFilterStart;
-          return filtered;
-        })()
-      : {
-          connections,
-          applied: false,
-          supportedCount: 0,
-          unsupportedCount: 0,
-          unsupportedIds: [],
-        };
-
-    const filteredConnections = openFilter.connections;
-    const totalFoodCount = needsOpenFilter
-      ? filteredConnections.length
-      : totalBeforeFiltering;
-
-    const openNowFilteredOut = needsOpenFilter
-      ? connections.length - filteredConnections.length
-      : 0;
-
-    const paginatedConnections = needsOpenFilter
-      ? this.applyManualPagination(filteredConnections, pagination)
-      : connections;
-
-    const limitedConnections =
-      perRestaurantLimit > 0
-        ? this.applyPerRestaurantLimit(paginatedConnections, perRestaurantLimit)
-        : paginatedConnections;
-
-    const minimumVotes =
-      typeof request.minimumVotes === 'number' ? request.minimumVotes : null;
-
-    const mapFoodStart = performance.now();
-    const foodResults = this.mapFoodResults(
-      limitedConnections,
-      restaurantContexts,
-      referenceDate,
-      minimumVotes,
-    );
-    const mapFoodMs = performance.now() - mapFoodStart;
-    const totalRestaurantCount = needsOpenFilter
-      ? this.countDistinctRestaurants(filteredConnections)
-      : totalRestaurantCountDb;
-    const mapRestaurantStart = performance.now();
-    const restaurantResults = this.mapRestaurantResults(
-      limitedConnections,
-      plan.ranking.restaurantOrder,
-      minimumVotes,
-      restaurantContexts,
-      referenceDate,
-    );
-    const mapRestaurantMs = performance.now() - mapRestaurantStart;
-
-    await this.attachMarketNames({
-      restaurants: restaurantResults,
-      dishes: foodResults,
-    });
-
-    const postProcessMs = performance.now() - postProcessStart;
-    const executeMs = performance.now() - executeStart;
-
-    const timings = {
-      buildSqlMs: Math.round(buildSqlMs),
-      dbQueryMs: Math.round(dbQueryMs),
-      openNowFilterMs: Math.round(openNowFilterMs),
-      mapFoodMs: Math.round(mapFoodMs),
-      mapRestaurantMs: Math.round(mapRestaurantMs),
-      postProcessMs: Math.round(postProcessMs),
-      executeMs: Math.round(executeMs),
-    };
-
-    if (this.includePhaseTimings) {
-      this.logger.debug('Search executor timings', { timings });
-    }
-
-    if (this.diagnosticLogging) {
-      this.logger.debug('Search executor diagnostics', {
-        planFormat: plan.format,
-        totalFetchedConnections: connections.length,
-        limitedConnectionCount: limitedConnections.length,
-        openNowApplied: openFilter.applied,
-        openNowSupported: openFilter.supportedCount,
-        openNowUnsupported: openFilter.unsupportedCount,
-        openNowFilteredOut,
-      });
-    }
-
-    return {
-      foodResults,
-      restaurantResults,
-      totalFoodCount,
-      totalRestaurantCount,
-      metadata: {
-        boundsApplied: query.metadata.boundsApplied,
-        openNowApplied: openFilter.applied,
-        openNowSupportedRestaurants: openFilter.supportedCount,
-        openNowUnsupportedRestaurants: openFilter.unsupportedCount,
-        openNowUnsupportedRestaurantIds: openFilter.unsupportedIds,
-        openNowFilteredOut,
-        priceFilterApplied: query.metadata.priceFilterApplied,
-        minimumVotesApplied: query.metadata.minimumVotesApplied,
-      },
-      sqlPreview: includeSqlPreview ? query.preview : null,
-      timings,
-    };
   }
 
   /**
@@ -721,16 +535,6 @@ export class SearchQueryExecutor {
       sqlPreview,
       timings,
     };
-  }
-
-  private countDistinctRestaurants(connections: QueryResultRow[]): number {
-    const ids = new Set<string>();
-    for (const connection of connections) {
-      if (connection.restaurant_id) {
-        ids.add(connection.restaurant_id);
-      }
-    }
-    return ids.size;
   }
 
   private resolveMarketName(row: {
@@ -1018,53 +822,6 @@ export class SearchQueryExecutor {
     };
   }
 
-  private applyManualPagination(
-    connections: QueryResultRow[],
-    pagination: { skip: number; take: number },
-  ): QueryResultRow[] {
-    if (pagination.take <= 0) {
-      return [];
-    }
-
-    if (pagination.skip <= 0 && connections.length <= pagination.take) {
-      return connections.slice(0, pagination.take);
-    }
-
-    return connections.slice(
-      pagination.skip,
-      pagination.skip + pagination.take,
-    );
-  }
-
-  private applyPerRestaurantLimit(
-    connections: QueryResultRow[],
-    perRestaurantLimit: number,
-  ): QueryResultRow[] {
-    if (perRestaurantLimit <= 0) {
-      return connections;
-    }
-
-    const counts = new Map<string, number>();
-    const limited: QueryResultRow[] = [];
-
-    for (const connection of connections) {
-      const restaurantId = connection.restaurant_id;
-      if (!restaurantId) {
-        continue;
-      }
-
-      const current = counts.get(restaurantId) ?? 0;
-      if (current >= perRestaurantLimit) {
-        continue;
-      }
-
-      counts.set(restaurantId, current + 1);
-      limited.push(connection);
-    }
-
-    return limited;
-  }
-
   private mapFoodResults(
     connections: QueryResultRow[],
     restaurantContexts: Map<string, RestaurantContext>,
@@ -1107,9 +864,7 @@ export class SearchQueryExecutor {
         scoreSubjectType: 'connection',
         scoreSubjectId: connection.connection_id,
         craveScore,
-        rising: this.toOptionalNumber(
-          connection.connection_rising,
-        ),
+        rising: this.toOptionalNumber(connection.connection_rising),
         scoreInfo: this.parseScoreInfo(connection.connection_score_info),
         marketKey: connection.restaurant_market_key ?? undefined,
         mentionCount: connection.mention_count,
@@ -1194,9 +949,7 @@ export class SearchQueryExecutor {
           connection.connection_crave_score,
           `connection:${connection.connection_id}`,
         ),
-        rising: this.toOptionalNumber(
-          connection.connection_rising,
-        ),
+        rising: this.toOptionalNumber(connection.connection_rising),
         scoreInfo: this.parseScoreInfo(connection.connection_score_info),
       };
 
@@ -1281,9 +1034,7 @@ export class SearchQueryExecutor {
             connection.restaurant_crave_score,
             `restaurant:${connection.restaurant_id}`,
           ),
-          restaurantRising: this.toOptionalNumber(
-            connection.restaurant_rising,
-          ),
+          restaurantRising: this.toOptionalNumber(connection.restaurant_rising),
           restaurantScoreInfo: this.parseScoreInfo(
             connection.restaurant_score_info,
           ),
@@ -2453,7 +2204,8 @@ export class SearchQueryExecutor {
         ),
         // High-precision percentile_rank for tie-proof ordering (map badge == list position). Optional:
         // older score rows / paths without the column fall back to craveScore ordering on the client.
-        craveScoreExact: this.toOptionalNumber(row.crave_score_exact) ?? undefined,
+        craveScoreExact:
+          this.toOptionalNumber(row.crave_score_exact) ?? undefined,
         rising: this.toOptionalNumber(row.rising),
         scoreInfo: this.parseScoreInfo(row.score_info),
         marketKey: row.market_key ?? undefined,
@@ -2531,7 +2283,8 @@ export class SearchQueryExecutor {
           `connection:${row.connection_id}`,
         ),
         // High-precision percentile_rank — the map ranks pins by this so the badge == the results-list position.
-        craveScoreExact: this.toOptionalNumber(row.connection_crave_score_exact) ?? undefined,
+        craveScoreExact:
+          this.toOptionalNumber(row.connection_crave_score_exact) ?? undefined,
         rising: this.toOptionalNumber(row.connection_rising),
         scoreInfo: this.parseScoreInfo(row.connection_score_info),
         marketKey: row.market_key ?? undefined,

@@ -261,6 +261,10 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
             'Hierarchical decomposition: parent categories, ingredient categories, related food terms',
           ),
+          food_aliases: withDescription(
+            { ...NULLABLE_STRING_ARRAY_SCHEMA },
+            'ESTABLISHED shorthand for exactly this dish only (bec, bbq); empty for most dishes; never invented, shortened, or translated',
+          ),
           food_attributes: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
             'Food attributes: dietary filters, preparation styles, textures, flavors, or other descriptors applied to the dish',
@@ -285,6 +289,7 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
           'restaurant_attributes',
           'food',
           'food_categories',
+          'food_aliases',
           'is_menu_item',
           'food_attributes',
           'general_praise',
@@ -294,4 +299,41 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
     },
   },
   required: ['mentions'],
+} as const;
+
+export const CUISINE_HUB_CLASSIFY_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    verdicts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          isCuisineHub: { type: 'boolean' },
+        },
+        required: ['name', 'isCuisineHub'],
+      },
+    },
+  },
+  required: ['verdicts'],
+} as const;
+
+export const ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          index: { type: 'integer' },
+          decision: { type: 'string', enum: ['match', 'new'] },
+          candidateId: { type: ['integer', 'null'] },
+        },
+        required: ['index', 'decision', 'candidateId'],
+      },
+    },
+  },
+  required: ['items'],
 } as const;

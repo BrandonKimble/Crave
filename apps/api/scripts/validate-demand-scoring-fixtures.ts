@@ -3785,12 +3785,7 @@ async function runAutocompleteExecutionContractFixture(
     capturedPhoneticOption = options?.allowPhonetic;
     return new Map(terms.map((term) => [term, []]));
   }) as EntityTextSearchService['searchEntitiesForTerms'];
-  await textSearch.searchEntities(
-    'fixture phonetic off',
-    [EntityType.food],
-    5,
-    { allowPhonetic: false },
-  );
+  await textSearch.searchEntities('fixture phonetic off', [EntityType.food], 5);
   textSearch.searchEntitiesForTerms = originalSearchEntitiesForTerms;
   const prefixTerm = selectedAttribute.name.slice(0, 3).toLowerCase();
   const prefixMatches = await textSearch.searchAttributeAutocompleteEntities(

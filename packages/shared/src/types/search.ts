@@ -232,7 +232,6 @@ export interface SearchResponseMetadata {
   minimumVotesApplied?: boolean;
   page: number;
   pageSize: number;
-  perRestaurantLimit: number;
   /**
    * When the API expands the query beyond the strict intent, page 1 can include
    * both “exact” and “broader” sections. These fields describe how many of the

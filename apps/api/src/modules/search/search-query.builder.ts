@@ -953,34 +953,24 @@ LIMIT ${pagination.take};`.trim();
         'c.food_id',
         filters.foodTextExpansionIds,
       );
-      const categoryClause = this.buildArrayOverlapClause(
-        'c.categories',
-        filters.foodTextExpansionIds,
-      );
-      conditions.push(
-        Prisma.sql`((${attributeClause}) OR (${foodIdClause} OR ${categoryClause}))`,
-      );
+      conditions.push(Prisma.sql`((${attributeClause}) OR (${foodIdClause}))`);
       conditionPreview.push(
         `((c.food_attributes && ${this.formatUuidArray(
           filters.foodAttributeIds,
         )}) OR (c.food_id = ANY(${this.formatUuidArray(
           filters.foodTextExpansionIds,
-        )}) OR c.categories && ${this.formatUuidArray(
-          filters.foodTextExpansionIds,
-        )}))`,
+        )})))`,
       );
     } else {
       if (filters.foodIds.length) {
+        // Category membership is resolved at PLAN time from the canonical
+        // per-food edge table (derived_food_category_edges) and arrives here as
+        // extra food ids — the per-connection `c.categories &&` arm is gone
+        // (per-mention arrays made membership a coin flip per connection).
         const foodIdClause = this.buildInClause('c.food_id', filters.foodIds);
-        const categoryClause = this.buildArrayOverlapClause(
-          'c.categories',
-          filters.foodIds,
-        );
-        conditions.push(Prisma.sql`(${foodIdClause} OR ${categoryClause})`);
+        conditions.push(Prisma.sql`(${foodIdClause})`);
         conditionPreview.push(
-          `(c.food_id = ANY(${this.formatUuidArray(
-            filters.foodIds,
-          )}) OR c.categories && ${this.formatUuidArray(filters.foodIds)})`,
+          `(c.food_id = ANY(${this.formatUuidArray(filters.foodIds)}))`,
         );
       }
 
@@ -1034,34 +1024,24 @@ LIMIT ${pagination.take};`.trim();
         'c.food_id',
         filters.foodTextExpansionIds,
       );
-      const categoryClause = this.buildArrayOverlapClause(
-        'c.categories',
-        filters.foodTextExpansionIds,
-      );
-      conditions.push(
-        Prisma.sql`((${attributeClause}) OR (${foodIdClause} OR ${categoryClause}))`,
-      );
+      conditions.push(Prisma.sql`((${attributeClause}) OR (${foodIdClause}))`);
       conditionPreview.push(
         `((c.food_attributes && ${this.formatUuidArray(
           filters.foodAttributeIds,
         )}) OR (c.food_id = ANY(${this.formatUuidArray(
           filters.foodTextExpansionIds,
-        )}) OR c.categories && ${this.formatUuidArray(
-          filters.foodTextExpansionIds,
-        )}))`,
+        )})))`,
       );
     } else {
       if (filters.foodIds.length) {
+        // Category membership is resolved at PLAN time from the canonical
+        // per-food edge table (derived_food_category_edges) and arrives here as
+        // extra food ids — the per-connection `c.categories &&` arm is gone
+        // (per-mention arrays made membership a coin flip per connection).
         const foodIdClause = this.buildInClause('c.food_id', filters.foodIds);
-        const categoryClause = this.buildArrayOverlapClause(
-          'c.categories',
-          filters.foodIds,
-        );
-        conditions.push(Prisma.sql`(${foodIdClause} OR ${categoryClause})`);
+        conditions.push(Prisma.sql`(${foodIdClause})`);
         conditionPreview.push(
-          `(c.food_id = ANY(${this.formatUuidArray(
-            filters.foodIds,
-          )}) OR c.categories && ${this.formatUuidArray(filters.foodIds)})`,
+          `(c.food_id = ANY(${this.formatUuidArray(filters.foodIds)}))`,
         );
       }
 

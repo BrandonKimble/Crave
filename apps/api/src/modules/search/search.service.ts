@@ -29,6 +29,10 @@ import {
 import { SearchQueryExecutor } from './search-query.executor';
 import { SearchQueryBuilder } from './search-query.builder';
 import { SearchEntityExpansionService } from './search-entity-expansion.service';
+import {
+  SearchSiblingExpansionService,
+  type SiblingCutOptions,
+} from './search-sibling-expansion.service';
 import type { SearchExecutionDirectives } from './search-execution-directives';
 import type { SearchConstraints, RelaxationStage } from './search-constraints';
 import { compileQueryPlanFromConstraints } from './search-constraints.compiler';
@@ -93,11 +97,27 @@ interface EntityPresenceSummary {
   restaurantAttributes: number;
 }
 
+/** How dense sibling co-inclusion participates in the food filter.
+ *  'off' — never; 'expansion' — only inside the thin-results plan expansion;
+ *  'always' — seeded before the FIRST strict probe, so every stage (probe,
+ *  re-probe, relaxed, counts) sees the widened set. */
+type DenseSiblingsMode = 'off' | 'expansion' | 'always';
+
 interface PlanExpansionState {
   foodIds: string[];
   foodAttributeIds: string[];
   restaurantAttributeIds: string[];
   foodIdsFromPrimaryFoodAttributeText: string[];
+  // Dense sibling co-inclusion (precomputed mutual-rank edges — see
+  // SearchSiblingExpansionService). Kept as its OWN field, not folded into
+  // foodIds: attribution stays clean in metadata/debug, lexical expansion can
+  // dedupe against it, and a future relevancy sort needs exact-vs-sibling ids
+  // distinguishable.
+  denseSiblingFoodIds: string[];
+  // Canonical category members of the EXACT query foods (one-hop; see
+  // getCategoryMemberFoodIds). Replaces the per-connection `c.categories &&`
+  // SQL arm — membership is resolved at plan time from the per-food edge table.
+  categoryMemberFoodIds: string[];
 }
 
 type RelaxationCapabilities = {
@@ -175,7 +195,6 @@ export class SearchService {
   private readonly resultLimit: number;
   private readonly defaultPageSize: number;
   private readonly maxPageSize: number;
-  private readonly perRestaurantLimit: number;
   private readonly isDevEnvironment: boolean;
   private readonly alwaysIncludeSqlPreview: boolean;
   private readonly onDemandMinResults: number;
@@ -188,12 +207,16 @@ export class SearchService {
   private readonly expansionFoodCap: number;
   private readonly expansionAttributeCap: number;
   private readonly expansionMaxTermsPerType: number;
+  private readonly denseSiblingsMode: DenseSiblingsMode;
+  private readonly denseSiblingsCut: SiblingCutOptions;
+  private readonly expansionBudgetMs: number;
 
   constructor(
     loggerService: LoggerService,
     private readonly queryExecutor: SearchQueryExecutor,
     private readonly queryBuilder: SearchQueryBuilder,
     private readonly entityExpansion: SearchEntityExpansionService,
+    private readonly siblingExpansion: SearchSiblingExpansionService,
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly searchMetrics: SearchMetricsService,
     private readonly textSanitizer: TextSanitizerService,
@@ -205,7 +228,6 @@ export class SearchService {
     this.resultLimit = this.resolveResultLimit();
     this.defaultPageSize = this.resolveDefaultPageSize();
     this.maxPageSize = this.resolveMaxPageSize();
-    this.perRestaurantLimit = this.resolvePerRestaurantLimit();
     this.isDevEnvironment = this.resolveIsDevEnvironment();
     this.alwaysIncludeSqlPreview = this.resolveAlwaysIncludeSqlPreview();
     this.onDemandMinResults = this.resolveOnDemandMinResults();
@@ -219,6 +241,9 @@ export class SearchService {
     this.expansionFoodCap = this.resolveExpansionFoodCap();
     this.expansionAttributeCap = this.resolveExpansionAttributeCap();
     this.expansionMaxTermsPerType = this.resolveExpansionMaxTermsPerType();
+    this.denseSiblingsMode = this.resolveDenseSiblingsMode();
+    this.denseSiblingsCut = this.resolveDenseSiblingsCut();
+    this.expansionBudgetMs = this.resolveExpansionBudgetMs();
   }
 
   buildQueryPlan(request: SearchQueryRequestDto): QueryPlan {
@@ -271,7 +296,6 @@ export class SearchService {
 
     const { plan, sqlPreview } = this.buildPlanResponse(request);
     const pagination = this.resolvePagination(request.pagination);
-    const perRestaurantLimit = this.perRestaurantLimit;
 
     const primaryFoodTermRaw =
       request.entities.food?.[0]?.originalText ??
@@ -302,7 +326,6 @@ export class SearchService {
           typeof request.minimumVotes === 'number' && request.minimumVotes > 0,
         page: pagination.page,
         pageSize: pagination.pageSize,
-        perRestaurantLimit,
         resultCoverageStatus: 'unresolved',
         primaryFoodTerm: primaryFoodTerm || undefined,
         emptyQueryMessage: options.emptyQueryMessage,
@@ -325,7 +348,6 @@ export class SearchService {
     try {
       const pagination = this.resolvePagination(request.pagination);
       const includeSqlPreview = this.shouldIncludeSqlPreview(request);
-      const perRestaurantLimit = this.perRestaurantLimit;
 
       if (this.debugMode !== 'off') {
         this.logger.info('Search debug: runQuery start', {
@@ -359,6 +381,52 @@ export class SearchService {
       let planExpansion: PlanExpansionState | null = null;
       let expansionAnalysisMetadata: Record<string, unknown> | null = null;
 
+      // Dense sibling co-inclusion, 'always' mode: seed the precomputed sibling
+      // set BEFORE the first strict probe so EVERY stage (probe, expansion
+      // re-probe, relaxed stages, counts) sees the widened food filter — and the
+      // <10 relaxation decision is therefore made AFTER dense widening (siblings
+      // that still satisfy the attributes surface before any attribute is
+      // dropped). ONE fetch per request; buildSearchConstraints stays sync.
+      // Known interactions (accepted): siblings count toward the relaxation
+      // trigger, and the widened coverage can suppress the lexical-expansion
+      // trigger below.
+      {
+        const anchorFoodIds = this.collectEntityIds(request.entities.food);
+        if (anchorFoodIds.length) {
+          const [categoryMemberFoodIds, denseSiblingFoodIds] =
+            await Promise.all([
+              // Category members apply on EVERY search (they replace the old
+              // per-connection `c.categories &&` SQL arm) — one-hop: resolved
+              // from the exact query foods only.
+              this.siblingExpansion.getCategoryMemberFoodIds(anchorFoodIds),
+              this.denseSiblingsMode === 'always'
+                ? this.siblingExpansion.getSiblingFoodIds(
+                    anchorFoodIds,
+                    this.denseSiblingsCut,
+                  )
+                : Promise.resolve([] as string[]),
+            ]);
+          if (categoryMemberFoodIds.length || denseSiblingFoodIds.length) {
+            planExpansion = {
+              foodIds: [],
+              foodAttributeIds: [],
+              restaurantAttributeIds: [],
+              foodIdsFromPrimaryFoodAttributeText: [],
+              denseSiblingFoodIds,
+              categoryMemberFoodIds,
+            };
+            if (this.debugMode !== 'off') {
+              this.logger.info('Search debug: pre-probe food widening seeded', {
+                searchRequestId,
+                anchors: anchorFoodIds.length,
+                categoryMembers: categoryMemberFoodIds.length,
+                siblings: denseSiblingFoodIds.length,
+              });
+            }
+          }
+        }
+      }
+
       const executeStage = async (params: {
         stage: RelaxationStage;
         restaurantPagination: { skip: number; take: number };
@@ -383,8 +451,14 @@ export class SearchService {
       };
 
       // Strict probe (page 1 uses full pagination; later pages probe first).
+      // The probe take is CLAMPED to the relaxation threshold: with a client
+      // pageSize below RELAX_STRICT_THRESHOLD the probe would otherwise see fewer
+      // rows than the trigger compares against — silently disabling relaxation and
+      // leaving the strict exclusion set incomplete (duplicate rows across the
+      // strict/relaxed pages). take ≥ threshold guarantees that WHENEVER relaxation
+      // can fire (strict count < threshold) the probe holds the COMPLETE strict set.
       const strictProbePagination =
-        pagination.page === 1
+        pagination.page === 1 && pagination.take >= RELAX_STRICT_THRESHOLD
           ? pagination
           : { skip: 0, take: Math.max(RELAX_STRICT_THRESHOLD, 10) };
 
@@ -424,13 +498,68 @@ export class SearchService {
           hasUnresolvedTerms)
       ) {
         const expansionStart = performance.now();
-        const expansion = await this.buildPlanExpansionForRequest(
-          request,
-          strictProbe.stagePlan,
-        );
+        // Expansion is a strictly-ADDITIVE enrichment: a slow or failing expansion
+        // must never block or fail the search. Budgeted + fail-open — on timeout or
+        // error, proceed with the unexpanded strict results and record the miss.
+        const budgetMs = this.expansionBudgetMs;
+        const expansionAttempt: Promise<{
+          result: PlanExpansionState | null;
+          degraded: 'error' | null;
+        }> = this.buildPlanExpansionForRequest(request, strictProbe.stagePlan)
+          .then((result) => ({ result, degraded: null }))
+          .catch((error: unknown) => {
+            this.logger.warn('Plan expansion failed (failing open)', {
+              searchRequestId,
+              error:
+                error instanceof Error
+                  ? { message: error.message, stack: error.stack }
+                  : { message: String(error) },
+            });
+            return { result: null, degraded: 'error' as const };
+          });
+        let expansionTimer: NodeJS.Timeout | undefined;
+        const raced = await Promise.race([
+          expansionAttempt,
+          new Promise<{ result: null; degraded: 'timeout' }>((resolve) => {
+            expansionTimer = setTimeout(
+              () => resolve({ result: null, degraded: 'timeout' }),
+              budgetMs,
+            );
+          }),
+        ]).finally(() => clearTimeout(expansionTimer));
+        if (raced.degraded) {
+          this.logger.warn('Plan expansion degraded', {
+            searchRequestId,
+            reason: raced.degraded,
+            budgetMs,
+          });
+          expansionAnalysisMetadata = {
+            idExpansion: { degraded: raced.degraded, budgetMs },
+          };
+        }
+        const expansionResult = raced.result;
         const expansionMs = Math.round(performance.now() - expansionStart);
-        if (expansion && this.hasPlanExpansion(expansion)) {
-          planExpansion = expansion;
+        if (expansionResult && this.hasPlanExpansion(expansionResult)) {
+          // Preserve an 'always'-mode sibling seed: the expansion object owns the
+          // lexical adds; the seeded dense siblings ride along (union, deduped).
+          const seededSiblings = planExpansion?.denseSiblingFoodIds ?? [];
+          const seededCategoryMembers =
+            planExpansion?.categoryMemberFoodIds ?? [];
+          planExpansion = {
+            ...expansionResult,
+            denseSiblingFoodIds: Array.from(
+              new Set([
+                ...seededSiblings,
+                ...expansionResult.denseSiblingFoodIds,
+              ]),
+            ),
+            categoryMemberFoodIds: Array.from(
+              new Set([
+                ...seededCategoryMembers,
+                ...expansionResult.categoryMemberFoodIds,
+              ]),
+            ),
+          };
           expansionAnalysisMetadata = this.buildExpansionMetadata(
             strictCoverageCount,
             planExpansion,
@@ -457,6 +586,7 @@ export class SearchService {
                   planExpansion.restaurantAttributeIds.length,
                 foodsFromPrimaryFoodAttributeText:
                   planExpansion.foodIdsFromPrimaryFoodAttributeText.length,
+                denseSiblingFoods: planExpansion.denseSiblingFoodIds.length,
               },
               samples:
                 this.debugMode === 'verbose'
@@ -489,17 +619,6 @@ export class SearchService {
       plan = strictProbe.stagePlan;
       phaseTimings.queryPlanMs = Math.round(strictProbe.timings.planMs);
 
-      // Strict execution for the requested page (needed for lists that do not relax).
-      const strictPage =
-        pagination.page === 1
-          ? strictProbe
-          : await executeStage({
-              stage: 'strict',
-              restaurantPagination: pagination,
-              dishPagination: pagination,
-              includeSqlPreview,
-            });
-
       const strictRestaurantExactCount = strictProbe.exec.restaurants.length;
       const strictDishExactCount = strictProbe.exec.dishes.length;
 
@@ -507,6 +626,25 @@ export class SearchService {
         canRelax && strictRestaurantExactCount < RELAX_STRICT_THRESHOLD;
       const needsDishRelaxation =
         canRelax && strictDishExactCount < RELAX_STRICT_THRESHOLD;
+
+      // Strict execution for the requested page. Lazy on purpose: (a) the probe IS
+      // the page when page 1 ran with real pagination; (b) when BOTH axes relax,
+      // strictPage's rows are never read (the relax path pools from strictProbe),
+      // so executing a full strict page there was pure wasted work — alias the
+      // probe instead; (c) otherwise (an axis stays strict, or a sub-threshold
+      // page-1 take) execute the real page.
+      const probeServesAsPage =
+        pagination.page === 1 && pagination.take >= RELAX_STRICT_THRESHOLD;
+      const strictPage = probeServesAsPage
+        ? strictProbe
+        : !needsRestaurantRelaxation || !needsDishRelaxation
+          ? await executeStage({
+              stage: 'strict',
+              restaurantPagination: pagination,
+              dishPagination: pagination,
+              includeSqlPreview,
+            })
+          : strictProbe;
 
       const primaryFoodTermRaw =
         request.entities.food?.[0]?.originalText ??
@@ -581,7 +719,6 @@ export class SearchService {
           minimumVotesApplied: strictPage.exec.metadata.minimumVotesApplied,
           page: pagination.page,
           pageSize: pagination.pageSize,
-          perRestaurantLimit,
           resultCoverageStatus,
           primaryFoodTerm: primaryFoodTerm || undefined,
           marketKey: resolvedMarket.marketKey,
@@ -803,19 +940,22 @@ export class SearchService {
       // small, deliberate section of the top ~3 MOST-RELEVANT results above the
       // main rank, with the main Crave-Score rank excluding those pinned rows.
       // That is a separate presentation layer, not a change to the score itself.
+      // Pooled page-1 lists are sliced to the requested take: with the probe take
+      // clamped to the relaxation threshold, the strict pool can exceed a
+      // sub-threshold pageSize (idempotent when already within the page).
       const dishes = needsDishRelaxation
         ? pagination.page === 1
-          ? [...strictProbe.exec.dishes, ...relaxed.exec.dishes].sort(
-              (a, b) => b.craveScore - a.craveScore,
-            )
+          ? [...strictProbe.exec.dishes, ...relaxed.exec.dishes]
+              .sort((a, b) => b.craveScore - a.craveScore)
+              .slice(0, pagination.take)
           : relaxed.exec.dishes
         : strictPage.exec.dishes;
 
       const restaurants = needsRestaurantRelaxation
         ? pagination.page === 1
-          ? [...strictProbe.exec.restaurants, ...relaxed.exec.restaurants].sort(
-              (a, b) => b.craveScore - a.craveScore,
-            )
+          ? [...strictProbe.exec.restaurants, ...relaxed.exec.restaurants]
+              .sort((a, b) => b.craveScore - a.craveScore)
+              .slice(0, pagination.take)
           : relaxed.exec.restaurants
         : strictPage.exec.restaurants;
 
@@ -909,7 +1049,6 @@ export class SearchService {
           relaxed.exec.metadata.minimumVotesApplied,
         page: pagination.page,
         pageSize: pagination.pageSize,
-        perRestaurantLimit,
         resultCoverageStatus,
         primaryFoodTerm: primaryFoodTerm || undefined,
         marketKey: resolvedMarket.marketKey,
@@ -1809,7 +1948,14 @@ export class SearchService {
       primaryFoodAttributeQuery,
       ids: {
         restaurantIds: baseRestaurantIds,
-        foodIds: mergeIfBase(baseFoodIds, planExpansion?.foodIds ?? []),
+        foodIds: mergeIfBase(baseFoodIds, [
+          ...(planExpansion?.foodIds ?? []),
+          // Dense siblings + canonical category members — kept distinguishable
+          // upstream (own fields) so a future relevancy sort can rank
+          // exact-first; merged here on every stage like lexical expansion.
+          ...(planExpansion?.denseSiblingFoodIds ?? []),
+          ...(planExpansion?.categoryMemberFoodIds ?? []),
+        ]),
         foodAttributeIds: mergeIfBase(
           foodAttributeIds,
           planExpansion?.foodAttributeIds ?? [],
@@ -2087,6 +2233,7 @@ export class SearchService {
 
       const context: Record<string, unknown> = {
         source: 'low_result',
+        searchRequestId: params.request.searchRequestId,
         restaurantCount: params.restaurantCount,
         foodCount: params.dishCount,
         planFormat: params.planFormat,
@@ -3124,10 +3271,6 @@ export class SearchService {
     return MAX_PAGE_SIZE;
   }
 
-  private resolvePerRestaurantLimit(): number {
-    return 0;
-  }
-
   private resolveResultLimit(): number {
     const raw = process.env.SEARCH_MAX_RESULTS;
     if (raw) {
@@ -3248,6 +3391,57 @@ export class SearchService {
     return 3;
   }
 
+  /** Wall-clock budget for the plan-expansion block (lexical + dense sibling
+   *  fetches). Expansion is additive-only, so on budget exhaustion the search
+   *  proceeds unexpanded (fail-open) rather than blocking the hot path. */
+  private resolveExpansionBudgetMs(): number {
+    const raw = Number(process.env.SEARCH_EXPANSION_BUDGET_MS);
+    if (Number.isFinite(raw) && raw >= 50) {
+      return Math.min(Math.floor(raw), 5_000);
+    }
+    return 1_500;
+  }
+
+  /** Dense sibling co-inclusion mode — see DenseSiblingsMode. Default
+   *  'expansion' (siblings only widen thin searches); 'always' is the
+   *  main-search experiment flag, 'off' the kill switch. */
+  private resolveDenseSiblingsMode(): DenseSiblingsMode {
+    const raw = process.env.SEARCH_DENSE_SIBLINGS_MODE?.trim().toLowerCase();
+    if (raw === 'off' || raw === 'expansion' || raw === 'always') {
+      return raw;
+    }
+    if (raw) {
+      this.logger.warn('Invalid SEARCH_DENSE_SIBLINGS_MODE; using default', {
+        raw,
+      });
+    }
+    return 'expansion';
+  }
+
+  /** The production sibling cut, env-tunable without an edge rebuild (the table
+   *  stores a superset). K is clamped to the persisted depth (30) and R to the
+   *  builder's FETCH_N (60) — beyond those the data cannot answer. */
+  private resolveDenseSiblingsCut(): SiblingCutOptions {
+    const int = (name: string, dflt: number, min: number, max: number) => {
+      const parsed = Number(process.env[name]);
+      return Number.isFinite(parsed) && parsed > 0
+        ? Math.min(Math.max(min, Math.floor(parsed)), max)
+        : dflt;
+    };
+    const float = (name: string, dflt: number, min: number, max: number) => {
+      const parsed = Number(process.env[name]);
+      return Number.isFinite(parsed)
+        ? Math.min(Math.max(min, parsed), max)
+        : dflt;
+    };
+    return {
+      forwardK: int('SEARCH_DENSE_SIBLINGS_FORWARD_K', 25, 1, 30),
+      mutualR: int('SEARCH_DENSE_SIBLINGS_MUTUAL_R', 20, 1, 60),
+      minCosine: float('SEARCH_DENSE_SIBLINGS_COSINE_FLOOR', 0.75, 0.5, 0.95),
+      maxAnchors: int('SEARCH_DENSE_SIBLINGS_MAX_ANCHORS', 3, 1, 8),
+    };
+  }
+
   private hasEntityTargets(request: SearchQueryRequestDto): boolean {
     return Boolean(
       request.entities.food?.length ||
@@ -3272,7 +3466,9 @@ export class SearchService {
       expansion.foodIds.length ||
         expansion.foodAttributeIds.length ||
         expansion.restaurantAttributeIds.length ||
-        expansion.foodIdsFromPrimaryFoodAttributeText.length,
+        expansion.foodIdsFromPrimaryFoodAttributeText.length ||
+        expansion.denseSiblingFoodIds.length ||
+        expansion.categoryMemberFoodIds.length,
     );
   }
 
@@ -3291,6 +3487,9 @@ export class SearchService {
         restaurantAttributesAdded: expansion.restaurantAttributeIds.length,
         foodsFromPrimaryFoodAttributeTextAdded:
           expansion.foodIdsFromPrimaryFoodAttributeText.length,
+        denseSiblingFoodsAdded: expansion.denseSiblingFoodIds.length,
+        categoryMemberFoodsAdded: expansion.categoryMemberFoodIds.length,
+        denseSiblingsMode: this.denseSiblingsMode,
       },
     };
   }
@@ -3425,13 +3624,44 @@ export class SearchService {
         : Promise.resolve(emptyMatches),
     ]);
 
+    // Expansion widens the ACTUAL result set, so it must admit only strong
+    // lexical evidence. `weak` (levenshtein-only — the ham/rum class) and
+    // `phonetic` (dmetaphone) collisions otherwise leak wrong entities into
+    // results on equal footing with exact matches; `fuzzy` must clear a
+    // similarity floor. (Precision gate; the co-inclusion/dense recall path is
+    // separate.)
+    // 'contains' is STRONG for expansion: the same-token menu-variant class
+    // ("al pastor taco" for "taco") measured 94% wanted. 'edit' needs a floor
+    // (≈1 edit on a 4+ letter word) — looser edits are typo junk.
+    const EXPANSION_STRONG_EVIDENCE = new Set([
+      'exact',
+      'prefix',
+      'name',
+      'alias',
+      'contains',
+    ]);
+    const EXPANSION_FUZZY_FLOOR = 0.5;
+    const EXPANSION_EDIT_FLOOR = 0.75;
+    const passesExpansionEvidence = (match: {
+      evidence: string;
+      similarity?: number;
+    }): boolean =>
+      EXPANSION_STRONG_EVIDENCE.has(match.evidence) ||
+      (match.evidence === 'fuzzy' &&
+        (match.similarity ?? 0) >= EXPANSION_FUZZY_FLOOR) ||
+      (match.evidence === 'edit' &&
+        (match.similarity ?? 0) >= EXPANSION_EDIT_FLOOR);
+
     const foodIds = foods
+      .filter(passesExpansionEvidence)
       .map((match) => match.entityId)
       .filter((id) => !existingFoodIds.has(id));
     const foodAttributeIds = foodAttributes
+      .filter(passesExpansionEvidence)
       .map((match) => match.entityId)
       .filter((id) => !existingFoodAttributeIds.has(id));
     const restaurantAttributeIds = restaurantAttributes
+      .filter(passesExpansionEvidence)
       .map((match) => match.entityId)
       .filter((id) => !existingRestaurantAttributeIds.has(id));
 
@@ -3447,8 +3677,33 @@ export class SearchService {
       });
       const seenFood = new Set([...existingFoodIds, ...foodIds]);
       foodIdsFromPrimaryFoodAttributeText = attrFoodMatches
+        .filter(passesExpansionEvidence)
         .map((match) => match.entityId)
         .filter((id) => !seenFood.has(id));
+    }
+
+    // Dense sibling co-inclusion, 'expansion' mode: this method already runs only
+    // under the thin/unresolved trigger, so siblings here widen ONLY thin
+    // searches. Anchors are the RESOLVED winner ids (unresolved terms have no
+    // vector to anchor on — expansion for those stays lexical). Deduped against
+    // the winners and every lexical food id already headed into the filter.
+    // ('always' mode fetches earlier, before the first strict probe.)
+    let denseSiblingFoodIds: string[] = [];
+    if (this.denseSiblingsMode === 'expansion') {
+      const anchorFoodIds = this.collectEntityIds(request.entities.food);
+      if (anchorFoodIds.length) {
+        const seen = new Set<string>([
+          ...existingFoodIds,
+          ...foodIds,
+          ...foodIdsFromPrimaryFoodAttributeText,
+        ]);
+        denseSiblingFoodIds = (
+          await this.siblingExpansion.getSiblingFoodIds(
+            anchorFoodIds,
+            this.denseSiblingsCut,
+          )
+        ).filter((id) => !seen.has(id));
+      }
     }
 
     const expansion: PlanExpansionState = {
@@ -3456,6 +3711,10 @@ export class SearchService {
       foodAttributeIds,
       restaurantAttributeIds,
       foodIdsFromPrimaryFoodAttributeText,
+      denseSiblingFoodIds,
+      // Seeded pre-probe (every search), not here — the union at the caller
+      // preserves it across this object.
+      categoryMemberFoodIds: [],
     };
 
     if (this.debugMode !== 'off') {
@@ -3492,6 +3751,7 @@ export class SearchService {
           foodIds: foodIds.length,
           foodAttributeIds: foodAttributeIds.length,
           restaurantAttributeIds: restaurantAttributeIds.length,
+          denseSiblingFoodIds: denseSiblingFoodIds.length,
         },
         samples:
           this.debugMode === 'verbose'

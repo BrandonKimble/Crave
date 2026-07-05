@@ -69,7 +69,9 @@ const POLL_USER_WEEKLY_CAP_WINDOW_DAYS = 7;
 const POLL_TRENDING_HALF_LIFE_DAYS = 3;
 
 /** Map the §6 Type filter to a `PollMode` where-filter (null = All = no filter). */
-function resolvePollModeFilter(type: PollListType | undefined): PollMode | null {
+function resolvePollModeFilter(
+  type: PollListType | undefined,
+): PollMode | null {
   switch (type) {
     case PollListType.polls:
       return PollMode.ranked;
@@ -320,9 +322,7 @@ export class PollsService {
    * favoring (high threshold) so only obvious duplicates surface; the precise
    * entity-level dedup happens post-resolution inside createPoll (stage 3).
    */
-  async checkDuplicate(
-    dto: CheckPollDuplicateDto,
-  ): Promise<{
+  async checkDuplicate(dto: CheckPollDuplicateDto): Promise<{
     matches: Array<{ pollId: string; question: string; similarity: number }>;
   }> {
     const question = dto.question.trim();

@@ -51,6 +51,8 @@ import {
 import { buildRestaurantPlaceChooserPrompt } from './prompts/restaurant-place-chooser.prompt';
 import {
   ATTRIBUTE_NAME_RESPONSE_JSON_SCHEMA,
+  CUISINE_HUB_CLASSIFY_RESPONSE_JSON_SCHEMA,
+  ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
   ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
   ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
   POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
@@ -1345,6 +1347,113 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    * candidate. Fail-closed: an unparseable or invalid-id response is treated as
    * `new` (a recoverable spurious entity, never a destructive merge of two reals).
    */
+  /**
+   * BATCHED same-entity judge: N (term, shortlist) items per request instead of
+   * one thinking-enabled call per entity — request count (the scarce resource
+   * under the reservation-based rate budget during archive loads) drops ~10x and
+   * the system prompt + thinking overhead amortizes across items. Candidates
+   * carry their ALIASES (the single-call judge saw bare names — the exact signal
+   * that distinguishes "BEC" ↔ "bacon egg and cheese" was thrown away at the
+   * decision boundary). Items are delimited per-index and each item fails closed
+   * to 'new' independently (absent/invalid index in the response = new).
+   */
+  async matchEntitiesBatch(input: {
+    kind: 'restaurant' | 'food';
+    items: {
+      term: string;
+      candidates: { id: number; name: string; aliases?: string[] }[];
+    }[];
+  }): Promise<{ decision: 'match' | 'new'; candidateId: number | null }[]> {
+    const failClosed = input.items.map(() => ({
+      decision: 'new' as const,
+      candidateId: null,
+    }));
+    if (!input.items.length) return [];
+
+    const model = 'gemini-3-flash-preview';
+    const generationConfig: GeminiGenerationConfig = {
+      temperature: 0,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      maxOutputTokens: 4096,
+      responseMimeType: 'application/json',
+      responseJsonSchema: ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
+    };
+    const systemInstruction =
+      `You judge entity identity for a food-discovery database. For EACH item i, ` +
+      `decide independently whether item i's "term" names the SAME real-world ` +
+      `${input.kind === 'restaurant' ? 'restaurant' : 'dish'} as one of item i's own ` +
+      `candidates (spelling/plural/abbreviation/alias variants of ONE thing = match; ` +
+      `related-but-different things = new). NEVER compare a term against another ` +
+      `item's candidates. Uncertain = new. Return JSON ` +
+      `{"items":[{"index","decision","candidateId"}]} covering every input index; ` +
+      `candidateId is the matched candidate's id or null.`;
+
+    try {
+      const payload = input.items.map((item, index) => ({
+        index,
+        term: item.term,
+        candidates: item.candidates.map((c) => ({
+          id: c.id,
+          name: c.name,
+          ...(c.aliases?.length ? { aliases: c.aliases.slice(0, 6) } : {}),
+        })),
+      }));
+      const response = await this.callLLMApi(
+        JSON.stringify({ items: payload }),
+        {
+          generationConfig,
+          systemInstruction,
+          model,
+          maxRetries: 1,
+          thinkingContext: 'query',
+        },
+      );
+      const content = this.extractTextContent(response, 'match_entities_batch');
+      const start = content.indexOf('{');
+      const parsed = JSON.parse(
+        start >= 0 ? content.slice(start) : content,
+      ) as {
+        items?: {
+          index?: unknown;
+          decision?: unknown;
+          candidateId?: unknown;
+        }[];
+      };
+      const results = failClosed.map(
+        (r) =>
+          ({ ...r }) as {
+            decision: 'match' | 'new';
+            candidateId: number | null;
+          },
+      );
+      for (const item of parsed.items ?? []) {
+        const idx = typeof item.index === 'number' ? item.index : -1;
+        if (idx < 0 || idx >= results.length) continue;
+        const cid =
+          typeof item.candidateId === 'number' ? item.candidateId : null;
+        const valid =
+          item.decision === 'match' &&
+          cid !== null &&
+          input.items[idx].candidates.some((c) => c.id === cid);
+        results[idx] = valid
+          ? { decision: 'match', candidateId: cid }
+          : { decision: 'new', candidateId: null };
+      }
+      return results;
+    } catch (error) {
+      this.logger.warn('matchEntitiesBatch failed; failing closed to new', {
+        items: input.items.length,
+        error:
+          error instanceof Error
+            ? { message: error.message }
+            : { message: String(error) },
+      });
+      return failClosed;
+    }
+  }
+
   async matchEntity(input: LLMEntityMatchInput): Promise<LLMEntityMatchResult> {
     const term = input.term?.trim() ?? '';
     if (!term) {
@@ -1629,6 +1738,71 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       });
       return names[0];
     }
+  }
+
+  /**
+   * One-shot MIGRATION classifier (not a runtime path): for each candidate food
+   * name of the `{X} food/meal/dish` shape, decide whether it is a CUISINE HUB —
+   * the remainder after stripping the filler noun is a cuisine/nationality/
+   * regional adjective ("vietnamese food", "indian meal") — versus a legitimate
+   * orderable category where the remainder is a style, meal period, format,
+   * ingredient, or descriptor ("comfort food", "breakfast food", "street food",
+   * "egg dish", "side dish", "family meal"). Same essence test as the collection
+   * prompt's Step 4.2 empty-set gate, applied to already-persisted names.
+   */
+  async classifyCuisineHubs(
+    names: string[],
+  ): Promise<{ name: string; isCuisineHub: boolean }[]> {
+    const cleaned = names.map((n) => n?.trim()).filter(Boolean);
+    if (!cleaned.length) return [];
+
+    const model = 'gemini-3.1-flash-lite-preview';
+    const generationConfig: GeminiGenerationConfig = {
+      temperature: 0,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      maxOutputTokens: 4096,
+      responseMimeType: 'application/json',
+      responseJsonSchema: CUISINE_HUB_CLASSIFY_RESPONSE_JSON_SCHEMA,
+    };
+    const systemInstruction =
+      'You classify food-entity names in a dish database. Each name has the shape ' +
+      '"{X} food/meal/dish(es)". Decide per name: after removing the filler noun, is X a ' +
+      'CUISINE, NATIONALITY, or REGIONAL-CUISINE adjective (then isCuisineHub=true — e.g. ' +
+      '"vietnamese food", "indian meal", "sichuanese food")? Or is X a style, meal period, ' +
+      'dining format, ingredient, or descriptor that makes the WHOLE name an orderable ' +
+      'category a diner could ask for (then isCuisineHub=false — e.g. "comfort food", ' +
+      '"breakfast food", "street food", "soul food", "egg dish", "side dish", "family meal", ' +
+      '"8 course meal", "prepared food")? Return JSON {"verdicts":[{"name","isCuisineHub"}]} ' +
+      'covering EVERY input name verbatim.';
+
+    const response = await this.callLLMApi(JSON.stringify({ names: cleaned }), {
+      generationConfig,
+      systemInstruction,
+      model,
+      maxRetries: 1,
+      thinkingContext: 'query',
+    });
+    const content = this.extractTextContent(response, 'classify_cuisine_hubs');
+    const start = content.indexOf('{');
+    const parsed = JSON.parse(start >= 0 ? content.slice(start) : content) as {
+      verdicts?: { name?: unknown; isCuisineHub?: unknown }[];
+    };
+    const byName = new Map(
+      (parsed.verdicts ?? [])
+        .filter((v) => typeof v.name === 'string')
+        .map((v) => [
+          (v.name as string).trim().toLowerCase(),
+          v.isCuisineHub === true,
+        ]),
+    );
+    // Fail-closed per name: absent from the response => NOT a hub (never archive
+    // on missing evidence).
+    return cleaned.map((name) => ({
+      name,
+      isCuisineHub: byName.get(name.toLowerCase()) ?? false,
+    }));
   }
 
   async chooseRestaurantPlaceCandidate(

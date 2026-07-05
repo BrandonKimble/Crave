@@ -26,6 +26,11 @@ export interface EntityResolutionInput {
 export interface EntityResolutionResult {
   tempId: string;
   entityId: string | null;
+  /** Tie plurality (query-time linker only): when several same-tier candidates
+   *  are indistinguishable within epsilon, ALL of them — the caller reveals the
+   *  set (one OR-filter group) instead of trusting a silent argmax. entityId
+   *  stays the first for single-id consumers. */
+  entityIds?: string[];
   confidence: number;
   resolutionTier: 'exact' | 'alias' | 'fuzzy' | 'new' | 'unmatched';
   matchedName?: string;

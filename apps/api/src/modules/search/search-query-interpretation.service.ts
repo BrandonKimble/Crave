@@ -18,6 +18,11 @@ import {
   SearchQueryRequestDto,
   MapBoundsDto,
 } from './dto/search-query.dto';
+import {
+  LINKER_TIER_FLOORS,
+  LINKER_MARGIN,
+  LINKER_MIN_FLOOR,
+} from './linker-calibration.generated';
 import { OnDemandRequestService } from './on-demand-request.service';
 import { MarketRegistryService } from '../markets/market-registry.service';
 
@@ -57,7 +62,33 @@ type SearchInterpretationMarketContext = {
 // avoiding semantic-neighbour mislinks like "ramen" → "pho"). A miss simply
 // stays unresolved and flows to on-demand collection, which is far cheaper than
 // a wrong link (wrong search results).
-const HYBRID_LINK_SIMILARITY_THRESHOLD = 0.82;
+// PER-TIER floors, SWEEP-DERIVED (see linker-calibration.generated.ts + the
+// sweep script's provenance header). The old hand-set 0.82 was a category error
+// twice over: one float for every evidence tier, and "validated" on a corpus
+// where 1176/1178 pairs never reached it. The margin decider (dominance over the
+// runner-up; self-normalizing; on sparseSimilarity, NEVER rrf — rrf's rank gap
+// is a fixed constant) and the singleton branch (an absent runner-up = infinite
+// margin, gated by the tier's higher singleton floor) both read the table.
+// Tiers absent from the table use this conservative fallback:
+const LINKER_FALLBACK_FLOORS = { absolute: 0.82, singleton: 0.65 };
+// Ties within this sim-epsilon of the top ARE the decision: reveal ALL of them
+// (cardinality is the answer — "joes" → Joe's Pizza + Trader Joe's) instead of
+// silently argmax-picking whichever row came back first.
+const LINKER_TIE_EPSILON = 0.001;
+// Only genuine lexical evidence is link-eligible — never a weak/phonetic/dense-only
+// collision (the ham/rum class); those must not nominate a link.
+const LINK_ELIGIBLE_EVIDENCE = new Set<string>([
+  'exact',
+  'prefix',
+  'name',
+  'alias',
+  'fuzzy',
+  // Honest-score tiers (P2): containment carries COVERAGE (term/name ratio, no
+  // more fake word_similarity 1.0 ties) and edit carries 1 − lev/len — both flow
+  // through the same floors/margins as genuine graded evidence.
+  'contains',
+  'edit',
+]);
 const HYBRID_LINK_SHORTLIST_K = 5;
 const HYBRID_LINK_CONCURRENCY = 8;
 
@@ -151,6 +182,11 @@ export class SearchQueryInterpretationService {
     const groupedEntities = this.groupResolvedEntities(resolutionResultList);
 
     const structuredRequest = this.buildSearchRequest(request, groupedEntities);
+    // Mint the searchRequestId HERE (runQuery reuses a present id) so the two
+    // on-demand signal sites — interpretation-time 'unresolved' below and
+    // search-time 'low_result' inside runQuery — share one id and their ask
+    // events dedupe per request instead of double-counting.
+    structuredRequest.searchRequestId ??= uuid();
 
     const unresolved = this.collectUnresolvedTerms(
       resolutionResultList,
@@ -183,6 +219,7 @@ export class SearchQueryInterpretationService {
         : [];
       const onDemandContext: Record<string, unknown> = {
         query: request.query,
+        searchRequestId: structuredRequest.searchRequestId,
       };
       if (request.bounds) {
         onDemandContext.bounds = request.bounds;
@@ -329,13 +366,13 @@ export class SearchQueryInterpretationService {
         );
         if (candidates.length === 0) return unmatched;
 
-        const normalizedTerm = term.toLowerCase();
-
         // LIVE decision (the current exact-name + 0.82 rule — behavior unchanged).
         let live: EntityResolutionResult;
-        const exact = candidates.find(
-          (c) => c.name.trim().toLowerCase() === normalizedTerm,
-        );
+        // Exact by EVIDENCE CLASS, not raw name-string equality: the matcher's
+        // 'exact' tier already folds in normalized-name and alias exacts, so an
+        // apostrophe/alias case ("joes pizza" → canonical "joe's pizza") links as
+        // a true exact instead of being mislabeled 'fuzzy' by a literal compare.
+        const exact = candidates.find((c) => c.sparseEvidence === 'exact');
         if (exact) {
           live = {
             tempId: input.tempId,
@@ -346,23 +383,58 @@ export class SearchQueryInterpretationService {
             originalInput: input,
           };
         } else {
-          // Best LEXICAL candidate (dense-only neighbours have no sparse score and
-          // are intentionally ineligible to link).
-          const best = candidates.reduce((a, b) =>
-            (b.sparseSimilarity ?? 0) > (a.sparseSimilarity ?? 0) ? b : a,
-          );
-          const sim = best.sparseSimilarity ?? 0;
-          live =
-            sim >= HYBRID_LINK_SIMILARITY_THRESHOLD
-              ? {
-                  tempId: input.tempId,
-                  entityId: best.entityId,
-                  confidence: sim,
-                  resolutionTier: 'fuzzy',
-                  matchedName: best.name,
-                  originalInput: input,
-                }
-              : unmatched;
+          // Link-eligible lexical candidates only (drop weak/dense-only), ranked
+          // by sparseSimilarity — every tier now carries an HONEST score
+          // (containment=coverage, edit=1−lev/len), so one sort is meaningful.
+          const eligible = candidates
+            .filter(
+              (c) =>
+                c.sparseEvidence != null &&
+                LINK_ELIGIBLE_EVIDENCE.has(c.sparseEvidence),
+            )
+            .sort(
+              (a, b) => (b.sparseSimilarity ?? 0) - (a.sparseSimilarity ?? 0),
+            );
+          const top = eligible[0];
+          const topSim = top?.sparseSimilarity ?? 0;
+          const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
+          const floors =
+            (top?.sparseEvidence && LINKER_TIER_FLOORS[top.sparseEvidence]) ||
+            LINKER_FALLBACK_FLOORS;
+          // Link when the winner clears its TIER's absolute floor, OR is an
+          // uncontested singleton above the tier's singleton floor, OR is
+          // dominant over the runner-up by the margin. Below the min floor,
+          // never link.
+          const linkable =
+            top != null &&
+            topSim >= LINKER_MIN_FLOOR &&
+            (topSim >= floors.absolute ||
+              (eligible.length === 1 && topSim >= floors.singleton) ||
+              (runnerSim > 0 && topSim >= LINKER_MARGIN * runnerSim));
+          if (linkable && top) {
+            // TIE PLURALITY: same-tier candidates within epsilon of the top are
+            // indistinguishable by evidence — reveal ALL of them (the ids array
+            // feeds one OR-filter group; results show every plausible read)
+            // instead of stamping a coin flip with confidence.
+            const tiedIds = eligible
+              .filter(
+                (c) =>
+                  c.sparseEvidence === top.sparseEvidence &&
+                  topSim - (c.sparseSimilarity ?? 0) <= LINKER_TIE_EPSILON,
+              )
+              .map((c) => c.entityId);
+            live = {
+              tempId: input.tempId,
+              entityId: top.entityId,
+              entityIds: tiedIds.length > 1 ? tiedIds : undefined,
+              confidence: tiedIds.length > 1 ? topSim / tiedIds.length : topSim,
+              resolutionTier: 'fuzzy',
+              matchedName: top.name,
+              originalInput: input,
+            };
+          } else {
+            live = unmatched;
+          }
         }
 
         return live;
@@ -449,7 +521,11 @@ export class SearchQueryInterpretationService {
 
       collection.push({
         normalizedName: result.originalInput.normalizedName,
-        entityIds: [result.entityId],
+        // Tie plurality: an ambiguous link carries ALL indistinguishable ids —
+        // one OR-filter group, results reveal every plausible read.
+        entityIds: result.entityIds?.length
+          ? result.entityIds
+          : [result.entityId],
         originalText: result.originalInput.originalText,
       });
     };

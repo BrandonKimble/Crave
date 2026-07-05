@@ -10,7 +10,9 @@ import { SmartLLMProcessor } from './rate-limiting/smart-llm-processor.service';
 /**
  * Processing result for a single chunk
  */
-export interface ChunkProcessingResult<TInput extends LLMModelInput = LLMModelInput> {
+export interface ChunkProcessingResult<
+  TInput extends LLMModelInput = LLMModelInput,
+> {
   success: boolean;
   result?: LLMOutputStructure;
   error?: unknown;
@@ -24,7 +26,9 @@ export interface ChunkProcessingResult<TInput extends LLMModelInput = LLMModelIn
 /**
  * Overall processing result for all chunks
  */
-export interface ProcessingResult<TInput extends LLMModelInput = LLMModelInput> {
+export interface ProcessingResult<
+  TInput extends LLMModelInput = LLMModelInput,
+> {
   results: LLMOutputStructure[];
   chunkResults: ChunkProcessingResult<TInput>[];
   failures: ChunkProcessingResult<TInput>[];

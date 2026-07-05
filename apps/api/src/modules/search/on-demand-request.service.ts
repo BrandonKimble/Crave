@@ -68,6 +68,14 @@ export class OnDemandRequestService {
       queueable.map((request) => this.composeQueueTargetKey(request)),
     );
 
+    // One search request can signal on-demand from TWO sites (interpretation-time
+    // 'unresolved' + search-time 'low_result'); the shared searchRequestId dedupes
+    // ask events across them (the request row itself is idempotent by identity).
+    const searchRequestId =
+      typeof context.searchRequestId === 'string' && context.searchRequestId
+        ? context.searchRequestId
+        : null;
+
     await this.prisma.$transaction(async (tx) => {
       for (const request of capped) {
         const resultRestaurantCount = this.extractInteger(
@@ -134,12 +142,15 @@ export class OnDemandRequestService {
             updateData.resultFoodCount = resultFoodCount;
           }
 
+          // Demand identity excludes `reason` — the same demand arriving as
+          // 'unresolved' and later 'low_result' is ONE row; reason is a
+          // last-writer-wins attribute on it.
+          updateData.reason = request.reason;
           const record = await tx.onDemandRequest.upsert({
             where: {
-              term_entityType_reason_marketKey_entityIdentityKey: {
+              term_entityType_marketKey_entityIdentityKey: {
                 term: request.term,
                 entityType: request.entityType,
-                reason: request.reason,
                 marketKey: queueTarget.collectableMarketKey,
                 entityIdentityKey: queueTarget.entityIdentityKey,
               },
@@ -193,6 +204,21 @@ export class OnDemandRequestService {
             : [null];
 
         for (const collectableMarketKey of askEventCollectableMarketKeys) {
+          if (searchRequestId) {
+            // Request-scoped idempotency: if THIS search request already logged
+            // an ask for this demand lane (the other signal site fired first),
+            // don't double-count the ask.
+            const existing = await tx.onDemandAskEvent.findFirst({
+              where: {
+                searchRequestId,
+                term: request.term,
+                entityType: request.entityType,
+                collectableMarketKey,
+              },
+              select: { askEventId: true },
+            });
+            if (existing) continue;
+          }
           await tx.onDemandAskEvent.create({
             data: {
               requestId: collectableMarketKey
@@ -209,6 +235,7 @@ export class OnDemandRequestService {
               resultRestaurantCount,
               resultFoodCount,
               askedAt: seenAt,
+              searchRequestId,
               metadata,
             },
           });

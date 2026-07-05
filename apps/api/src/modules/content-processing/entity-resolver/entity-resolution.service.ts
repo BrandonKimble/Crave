@@ -10,7 +10,10 @@ import { EntityRepository } from '../../../repositories/entity.repository';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { MetricsService } from '../../metrics/metrics.service';
 import { LLMService } from '../../external-integrations/llm/llm.service';
-import { EntityTextSearchService } from '../../entity-text-search/entity-text-search.service';
+import {
+  EntityTextSearchService,
+  type RecallCandidate,
+} from '../../entity-text-search/entity-text-search.service';
 import { AliasManagementService } from './alias-management.service';
 import {
   EntityResolutionInput,
@@ -441,7 +444,7 @@ export class EntityResolutionService implements OnModuleInit {
     // Mark unmatched entities for transaction-based creation (PRD approach)
     const primaryNewEntityMap = globalNewEntityMap;
     const newEntityResults = config.allowEntityCreation
-      ? this.markEntitiesForCreation(
+      ? await this.markEntitiesForCreation(
           unmatchedAfterFuzzy,
           entityType,
           {
@@ -666,55 +669,121 @@ export class EntityResolutionService implements OnModuleInit {
 
     const kind: 'restaurant' | 'food' =
       entityType === 'restaurant' ? 'restaurant' : 'food';
+    const unmatchedFor = (
+      entity: EntityResolutionInput,
+    ): EntityResolutionResult => ({
+      tempId: entity.tempId,
+      entityId: null,
+      confidence: 0.0,
+      resolutionTier: 'unmatched',
+      originalInput: entity,
+    });
 
-    return this.mapLimit(
+    // Recall for every term first (shared lexical+dense core, type+market
+    // scoped) — recall stays per-term concurrent; only the JUDGE is batched.
+    const recalls = await this.mapLimit(
       entities,
       EntityResolutionService.LLM_MATCHER_CONCURRENCY,
-      async (entity): Promise<EntityResolutionResult> => {
+      async (entity) => {
         const term = entity.normalizedName?.trim() ?? '';
-        const unmatched: EntityResolutionResult = {
-          tempId: entity.tempId,
-          entityId: null,
-          confidence: 0.0,
-          resolutionTier: 'unmatched',
-          originalInput: entity,
-        };
-        if (!term) return unmatched;
-
-        // Recall: shared lexical+dense core, scoped to this type + market.
+        if (!term) return { entity, term, candidates: [] as RecallCandidate[] };
         const candidates = await this.entityTextSearch.retrieveCandidates(
           term,
           [entityType],
           EntityResolutionService.LLM_MATCHER_SHORTLIST_K,
           { marketKey, denseMode: 'always' },
         );
-        if (candidates.length === 0) return unmatched;
-
-        // Precision: LLM judges sameness against the recalled shortlist.
-        const decision = await this.llmService.matchEntity({
-          term,
-          kind,
-          candidates: candidates.map((c, i) => ({ id: i, name: c.name })),
-        });
-        if (
-          decision.decision !== 'match' ||
-          decision.candidateId === null ||
-          !candidates[decision.candidateId]
-        ) {
-          return unmatched;
-        }
-
-        const matched = candidates[decision.candidateId];
-        return {
-          tempId: entity.tempId,
-          entityId: matched.entityId,
-          confidence: 1.0,
-          resolutionTier: 'fuzzy',
-          matchedName: matched.name,
-          originalInput: entity,
-        };
+        return { entity, term, candidates };
       },
     );
+
+    // Candidate ALIASES in one round-trip — the judge needs them ("BEC" ↔
+    // "bacon egg and cheese" is decided BY the alias, which bare names dropped).
+    const candidateIds = Array.from(
+      new Set(recalls.flatMap((r) => r.candidates.map((c) => c.entityId))),
+    );
+    const aliasRows = candidateIds.length
+      ? await this.prisma.entity.findMany({
+          where: { entityId: { in: candidateIds } },
+          select: { entityId: true, aliases: true },
+        })
+      : [];
+    const aliasesById = new Map(aliasRows.map((r) => [r.entityId, r.aliases]));
+
+    // Batched judge: ~10 (term, shortlist) items per request, items delimited
+    // per-index, each failing closed to 'new' independently. Cuts request count
+    // ~10x under the reservation-based rate budget (archive-load critical).
+    const judgeable = recalls.filter((r) => r.candidates.length > 0);
+    const BATCH = 10;
+    const chunks: (typeof judgeable)[] = [];
+    for (let i = 0; i < judgeable.length; i += BATCH) {
+      chunks.push(judgeable.slice(i, i + BATCH));
+    }
+    const verdictByTempId = new Map<
+      string,
+      { decision: 'match' | 'new'; candidateId: number | null }
+    >();
+    await this.mapLimit(chunks, 4, async (chunk) => {
+      const verdicts = await this.llmService.matchEntitiesBatch({
+        kind,
+        items: chunk.map((r) => ({
+          term: r.term,
+          candidates: r.candidates.map((c, i) => ({
+            id: i,
+            name: c.name,
+            aliases: aliasesById.get(c.entityId) ?? undefined,
+          })),
+        })),
+      });
+      chunk.forEach((r, i) =>
+        verdictByTempId.set(r.entity.tempId, verdicts[i]),
+      );
+    });
+
+    return recalls.map(({ entity, candidates }) => {
+      const verdict = verdictByTempId.get(entity.tempId);
+      if (
+        !verdict ||
+        verdict.decision !== 'match' ||
+        verdict.candidateId === null ||
+        !candidates[verdict.candidateId]
+      ) {
+        return unmatchedFor(entity);
+      }
+      const matched = candidates[verdict.candidateId];
+      return {
+        tempId: entity.tempId,
+        entityId: matched.entityId,
+        confidence: 1.0,
+        resolutionTier: 'fuzzy',
+        matchedName: matched.name,
+        originalInput: entity,
+      };
+    });
+  }
+
+  /** Damerau-free bounded Levenshtein: returns the distance if ≤ budget, else
+   *  null (early-exits per row). Deterministic math — the overlay's CANDIDATE
+   *  gate only; the LLM judge makes the sameness decision. */
+  private boundedEditDistance(
+    a: string,
+    b: string,
+    budget: number,
+  ): number | null {
+    if (Math.abs(a.length - b.length) > budget) return null;
+    let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      const curr = [i];
+      let rowMin = i;
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+        rowMin = Math.min(rowMin, curr[j]);
+      }
+      if (rowMin > budget) return null;
+      prev = curr;
+    }
+    return prev[b.length] <= budget ? prev[b.length] : null;
   }
 
   /** Run `fn` over `items` with at most `concurrency` in flight, preserving order. */
@@ -869,7 +938,7 @@ export class EntityResolutionService implements OnModuleInit {
    * Mark entities for transaction-based creation (PRD approach)
    * Return null entity IDs to allow database auto-generation
    */
-  private markEntitiesForCreation(
+  private async markEntitiesForCreation(
     entities: EntityResolutionInput[],
     entityType: EntityType,
     context: {
@@ -878,7 +947,7 @@ export class EntityResolutionService implements OnModuleInit {
       fuzzyMatches: EntityResolutionResult[];
     },
     primaryNewEntityMap: Map<string, EntityResolutionResult>,
-  ): EntityResolutionResult[] {
+  ): Promise<EntityResolutionResult[]> {
     const results: EntityResolutionResult[] = [];
 
     for (const entity of entities) {
@@ -942,6 +1011,80 @@ export class EntityResolutionService implements OnModuleInit {
           });
 
           continue;
+        }
+
+        // INTRA-BATCH NEAR-DUPLICATE GUARD (the chicken-patty/patties class):
+        // the recall matcher only sees PERSISTED entities, so two new dishes
+        // born in the same run were invisible to each other and both created.
+        // Before minting a fresh primary, screen the batch OVERLAY (this run's
+        // already-decided new entities of the same type/market lane) with cheap
+        // deterministic signals — bounded edit distance or containment, never a
+        // lemmatizer or list — and let the SAME strict matchEntity judge decide
+        // sameness (correct polarity here: "patty"↔"patties" IS one entity).
+        // Fail-closed: judge says new → separate entity, exactly as today.
+        const lanePrefix =
+          entityType === 'restaurant'
+            ? `${entityType}:${this.normalizeMarketKey(entity.marketKey)}:`
+            : `${entityType}:`;
+        const overlayCandidates = [...primaryNewEntityMap.entries()]
+          .filter(([key]) => key.startsWith(lanePrefix))
+          .map(([, primary]) => primary)
+          .filter((primary) => {
+            const other = (primary.normalizedName ?? '').toLowerCase().trim();
+            if (!other || other === normalizedName) return false;
+            return (
+              other.includes(normalizedName) ||
+              normalizedName.includes(other) ||
+              this.boundedEditDistance(other, normalizedName, 3) !== null
+            );
+          })
+          .slice(0, 8);
+        if (overlayCandidates.length) {
+          const verdict = await this.llmService.matchEntity({
+            term: entity.normalizedName,
+            kind: entityType === 'restaurant' ? 'restaurant' : 'food',
+            candidates: overlayCandidates.map((c, i) => ({
+              id: i,
+              name: c.normalizedName ?? '',
+            })),
+          });
+          const judged =
+            verdict.decision === 'match' && verdict.candidateId !== null
+              ? overlayCandidates[verdict.candidateId]
+              : null;
+          if (judged) {
+            // Reuse the pending primary; BANK the loser's surface as an alias
+            // on it (this is how the near-dead alias column starts earning —
+            // every collapse contributes a real variant for free).
+            judged.validatedAliases = Array.from(
+              new Set([
+                ...(judged.validatedAliases ?? []),
+                entity.normalizedName,
+                ...(entity.originalText ? [entity.originalText] : []),
+              ]),
+            );
+            results.push({
+              tempId: entity.tempId,
+              entityId: judged.entityId ?? null,
+              confidence: 1.0,
+              resolutionTier: 'new',
+              matchedName: judged.normalizedName ?? entity.normalizedName,
+              originalInput: entity,
+              isNewEntity: false,
+              entityType: entityType,
+              normalizedName: judged.normalizedName ?? entity.normalizedName,
+              validatedAliases: scopeValidation.validAliases,
+              primaryTempId: judged.tempId,
+            });
+            // Collapse counter — the archive load MEASURES how common this
+            // class is (grep: intra_batch_near_duplicate_collapsed).
+            this.logger.info('intra_batch_near_duplicate_collapsed', {
+              entityType,
+              kept: judged.normalizedName,
+              collapsed: entity.normalizedName,
+            });
+            continue;
+          }
         }
 
         const primaryResult: EntityResolutionResult = {

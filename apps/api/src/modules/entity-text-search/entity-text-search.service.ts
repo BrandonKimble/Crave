@@ -16,7 +16,9 @@ interface EntitySearchRow {
   prefixHit: number;
   nameFtsHit?: number;
   aliasTrgmHit?: number;
-  phoneticMatch: number;
+  containsHit?: number;
+  containsCoverage?: number | null;
+  editScore?: number | null;
   publicCraveScore: Prisma.Decimal | null;
   generalPraiseUpvotes: number | null;
 }
@@ -27,7 +29,13 @@ export type TextMatchEvidence =
   | 'name'
   | 'alias'
   | 'fuzzy'
-  | 'phonetic'
+  /** Whole-word CONTAINMENT ("omakase" ⊂ "Omakase Room"): its own tier with an
+   *  honest coverage score (term/name length ratio) — word_similarity returns a
+   *  fake 1.0 for this class, which used to masquerade as a perfect score. */
+  | 'contains'
+  /** Bounded per-token edit distance ("piza"→"pizza"): its own tier scored
+   *  1 − lev/len — previously admitted then thrown away as 'weak'. */
+  | 'edit'
   | 'embedding'
   | 'weak';
 
@@ -73,8 +81,6 @@ export class EntityTextSearchService {
   private readonly maxLimit = 50;
   private readonly cacheTtlMs = 30_000;
   private readonly maxCacheEntries = 2_000;
-  private readonly phoneticMinTermLength = 4;
-  private readonly phoneticLowResultThreshold = 5;
   private readonly cache = new Map<
     string,
     { expiresAt: number; limit: number; results: TextSearchMatch[] }
@@ -165,7 +171,6 @@ export class EntityTextSearchService {
       // across a market line stays findable. Falls back to [marketKey] when absent.
       marketKeys?: string[];
       poolSize?: number;
-      allowPhonetic?: boolean;
       /**
        * 'always' (default) — run the dense lane every time (batch heads: resolution,
        * gazetteer). 'fallback' — run dense only when the lexical lane under-recalls
@@ -186,7 +191,6 @@ export class EntityTextSearchService {
     const sparseOpts = {
       marketKey: options.marketKey,
       marketKeys: options.marketKeys,
-      allowPhonetic: options.allowPhonetic ?? true,
     };
     const denseOpts = {
       marketKey: options.marketKey,
@@ -274,7 +278,6 @@ export class EntityTextSearchService {
     options: {
       marketKey?: string | null;
       marketKeys?: string[];
-      allowPhonetic?: boolean;
     } = {},
   ): Promise<TextSearchMatch[]> {
     const normalizedTerm = this.normalizeTerm(term);
@@ -299,8 +302,6 @@ export class EntityTextSearchService {
       {
         marketKey: normalizedMarketKey,
         marketKeys: options.marketKeys,
-        allowPhonetic:
-          options.allowPhonetic !== undefined ? options.allowPhonetic : true,
       },
     );
     return resultsByTerm.get(normalizedTerm) ?? [];
@@ -337,7 +338,7 @@ export class EntityTextSearchService {
       [normalizedTerm],
       attributeTypes,
       Math.min(safeLimit * 4, this.maxLimit),
-      { marketKey: normalizedMarketKey, allowPhonetic: false },
+      { marketKey: normalizedMarketKey },
     );
 
     return (resultsByTerm.get(normalizedTerm) ?? [])
@@ -354,7 +355,6 @@ export class EntityTextSearchService {
     options: {
       marketKey?: string | null;
       marketKeys?: string[];
-      allowPhonetic?: boolean;
     } = {},
   ): Promise<Map<string, TextSearchMatch[]>> {
     const normalizedTerms = terms
@@ -382,8 +382,6 @@ export class EntityTextSearchService {
       typeof options.marketKey === 'string'
         ? options.marketKey.trim().toLowerCase()
         : null;
-    const allowPhonetic =
-      options.allowPhonetic !== undefined ? options.allowPhonetic : true;
 
     const missingTerms: string[] = [];
     uniqueTerms.forEach((term) => {
@@ -391,7 +389,6 @@ export class EntityTextSearchService {
         term,
         entityTypes,
         marketKey: normalizedMarketKey,
-        allowPhonetic,
         limit: safePerTermLimit,
       });
       if (cached) {
@@ -447,49 +444,6 @@ export class EntityTextSearchService {
         });
       }
 
-      const phoneticTerms: {
-        term: string;
-        phonetic: string;
-        excludedIds: string[];
-        remaining: number;
-      }[] = [];
-      if (allowPhonetic) {
-        missingTerms.forEach((term) => {
-          if (term.length < this.phoneticMinTermLength) return;
-          if (term.includes(' ')) return;
-          const currentRows = fetchedRowsByTerm.get(term) ?? [];
-          if (
-            currentRows.length >= safePerTermLimit ||
-            currentRows.length >= this.phoneticLowResultThreshold
-          ) {
-            return;
-          }
-          const remaining = Math.max(0, safePerTermLimit - currentRows.length);
-          if (remaining === 0) return;
-          phoneticTerms.push({
-            term,
-            phonetic: term.replace(/[^a-z0-9 ]+/g, ' '),
-            excludedIds: currentRows.map((row) => row.entityId),
-            remaining,
-          });
-        });
-      }
-
-      if (phoneticTerms.length > 0) {
-        const phoneticRows = await this.fetchPhoneticRowsForTerms({
-          terms: phoneticTerms,
-          entityTypes,
-          marketKey: normalizedMarketKey,
-          marketKeys: options.marketKeys,
-        });
-        phoneticRows.forEach((row) => {
-          const term = row.term ?? '';
-          const bucket = fetchedRowsByTerm.get(term) ?? [];
-          bucket.push(row);
-          fetchedRowsByTerm.set(term, bucket);
-        });
-      }
-
       missingTerms.forEach((term) => {
         const threshold = thresholdsByTerm.get(term) ?? 0;
         const rows = fetchedRowsByTerm.get(term) ?? [];
@@ -498,11 +452,19 @@ export class EntityTextSearchService {
           .map((row) => {
             const nameSimilarity = Number(row.nameSimilarity ?? 0);
             const aliasSimilarity = Number(row.aliasSimilarity ?? 0);
-            const similarity = Math.max(nameSimilarity, aliasSimilarity);
             const evidence = this.resolveEvidence({
               row,
               similarityThreshold: threshold,
             });
+            // Honest per-tier scores: containment carries its COVERAGE (the fake
+            // word_similarity 1.0 must not survive into consumer decisions) and
+            // edit carries 1 − lev/len.
+            const similarity =
+              evidence === 'contains'
+                ? Number(row.containsCoverage ?? 0)
+                : evidence === 'edit'
+                  ? Number(row.editScore ?? 0)
+                  : Math.max(nameSimilarity, aliasSimilarity);
             return {
               entityId: row.entityId,
               name: row.name,
@@ -517,7 +479,6 @@ export class EntityTextSearchService {
           term,
           entityTypes,
           marketKey: normalizedMarketKey,
-          allowPhonetic,
           limit: safePerTermLimit,
           results: matches,
         });
@@ -550,9 +511,6 @@ export class EntityTextSearchService {
     match: TextSearchMatch,
   ): boolean {
     if (!this.isAttributeType(match.type)) {
-      return false;
-    }
-    if (match.evidence === 'phonetic') {
       return false;
     }
     if (match.evidence === 'exact') {
@@ -592,8 +550,11 @@ export class EntityTextSearchService {
     // exact alias match is correctly tiered 'exact' here.
     if ((row.exactHit ?? 0) === 1) return 'exact';
     if (row.prefixHit === 1) return 'prefix';
+    // Containment BEFORE 'name': a contained term also FTS-matches, and letting
+    // it claim the 'name' tier (with word_similarity's fake 1.0) is exactly how
+    // "omakase" produced five indistinguishable perfect-score ties.
+    if ((row.containsHit ?? 0) === 1) return 'contains';
     if ((row.nameFtsHit ?? 0) === 1) return 'name';
-    if (row.phoneticMatch === 1) return 'phonetic';
     const nameSimilarity = Number(row.nameSimilarity ?? 0);
     if (nameSimilarity >= similarityThreshold) return 'fuzzy';
     // Genuine alias evidence (matched via an alias, below the name-fuzzy tier).
@@ -604,8 +565,18 @@ export class EntityTextSearchService {
     ) {
       return 'alias';
     }
-    // Cleared recall on a weak signal we don't tier — honest 'weak', not a lie
-    // that says 'alias'.
+    // Bounded edit-distance admission gets its own honest tier + score (it used
+    // to fall through to 'weak' and feed nothing but junk RRF mass).
+    if (row.editScore != null) return 'edit';
+    // Below every tier: admitted to recall by a loose lane (levenshtein / word-sim)
+    // but under the fuzzy-similarity cut. This 'weak' label is NOT dead — do not
+    // remove it or fold it into null. It is load-bearing in three places: (1) the
+    // exclusion sentinel the linker/expansion evidence-gates drop; (2) the row stays
+    // in the sparse lane so it still contributes its 1/(K+rank) term to RRF fusion —
+    // the collection LLM-matcher shortlist ranks by RRF with no evidence gate, so
+    // dropping the row would silently reshuffle that shortlist; (3) autocomplete keys
+    // on the 'weak' label to DROP the row from type-ahead (EVIDENCE_CONFIDENCE has no
+    // 'weak' entry). Keep the honest 'weak' rather than a lie that says 'alias'.
     return 'weak';
   }
 
@@ -613,27 +584,19 @@ export class EntityTextSearchService {
     term: string;
     entityTypes: EntityType[];
     marketKey?: string | null;
-    allowPhonetic: boolean;
   }): string {
     const normalizedMarketKey =
       typeof options.marketKey === 'string'
         ? options.marketKey.trim().toLowerCase()
         : '';
     const entityTypesKey = [...options.entityTypes].sort().join(',');
-    const phoneticKey = options.allowPhonetic ? 'phonetic:on' : 'phonetic:off';
-    return [
-      normalizedMarketKey,
-      entityTypesKey,
-      phoneticKey,
-      options.term,
-    ].join('::');
+    return [normalizedMarketKey, entityTypesKey, options.term].join('::');
   }
 
   private getCachedTermResults(options: {
     term: string;
     entityTypes: EntityType[];
     marketKey?: string | null;
-    allowPhonetic: boolean;
     limit: number;
   }): TextSearchMatch[] | null {
     const key = this.buildCacheKey(options);
@@ -653,7 +616,6 @@ export class EntityTextSearchService {
     term: string;
     entityTypes: EntityType[];
     marketKey?: string | null;
-    allowPhonetic: boolean;
     limit: number;
     results: TextSearchMatch[];
   }): void {
@@ -706,7 +668,9 @@ export class EntityTextSearchService {
         r."prefixHit",
         r."nameFtsHit",
         r."aliasTrgmHit",
-        r."phoneticMatch",
+        r."containsHit",
+        r."containsCoverage",
+        r."editScore",
         r."publicCraveScore",
         r."generalPraiseUpvotes"
       FROM (
@@ -724,7 +688,9 @@ export class EntityTextSearchService {
           scored."prefixHit",
           scored."nameFtsHit",
           scored."aliasTrgmHit",
-          scored."phoneticMatch",
+          scored."containsHit",
+          scored."containsCoverage",
+          scored."editScore",
           scored."publicCraveScore",
           scored."generalPraiseUpvotes"
         FROM (
@@ -743,7 +709,9 @@ export class EntityTextSearchService {
             CASE WHEN lower(e.name) LIKE v.prefix_pattern THEN 1 ELSE 0 END AS "prefixHit",
             0 AS "nameFtsHit",
             0 AS "aliasTrgmHit",
-            0 AS "phoneticMatch",
+            0 AS "containsHit",
+            0::real AS "containsCoverage",
+            NULL::real AS "editScore",
             (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "publicCraveScore",
             e.general_praise_upvotes AS "generalPraiseUpvotes"
           FROM core_entities e
@@ -803,7 +771,9 @@ export class EntityTextSearchService {
         r."prefixHit",
         r."nameFtsHit",
         r."aliasTrgmHit",
-        r."phoneticMatch",
+        r."containsHit",
+        r."containsCoverage",
+        r."editScore",
         r."publicCraveScore",
         r."generalPraiseUpvotes"
       FROM (
@@ -821,7 +791,9 @@ export class EntityTextSearchService {
           scored."prefixHit",
           scored."nameFtsHit",
           scored."aliasTrgmHit",
-          scored."phoneticMatch",
+          scored."containsHit",
+          scored."containsCoverage",
+          scored."editScore",
           scored."publicCraveScore",
           scored."generalPraiseUpvotes"
         FROM (
@@ -889,7 +861,41 @@ export class EntityTextSearchService {
               ELSE 0
             END AS "nameFtsHit",
             CASE WHEN crave_aliases_haystack_lower(e.aliases) % v.term THEN 1 ELSE 0 END AS "aliasTrgmHit",
-            0 AS "phoneticMatch",
+            -- Whole-word containment (word_similarity = 1 exactly when the term
+            -- appears as a whole word inside the longer string), excluding true
+            -- exacts — those keep the 'exact' tier.
+            CASE
+              WHEN lower(e.name) <> v.term
+                AND NOT EXISTS (
+                  SELECT 1 FROM unnest(e.aliases) AS alias_value
+                  WHERE lower(alias_value) = v.term
+                )
+                AND (
+                  word_similarity(v.term, lower(e.name)) = 1
+                  OR word_similarity(v.term, crave_aliases_haystack_lower(e.aliases)) = 1
+                )
+                THEN 1
+              ELSE 0
+            END AS "containsHit",
+            -- Honest coverage for containment: how much of the containing string
+            -- the term accounts for (1.0 would be an exact match).
+            GREATEST(
+              CASE WHEN word_similarity(v.term, lower(e.name)) = 1
+                THEN length(v.term)::real / NULLIF(length(e.name), 0)
+                ELSE 0 END,
+              CASE WHEN word_similarity(v.term, crave_aliases_haystack_lower(e.aliases)) = 1
+                THEN length(v.term)::real / NULLIF(length(crave_aliases_haystack_lower(e.aliases)), 0)
+                ELSE 0 END
+            ) AS "containsCoverage",
+            -- Best per-word edit score within budget ("piza"→"pizza" = 0.8);
+            -- NULL when no word qualifies.
+            (
+              SELECT MAX(1.0 - levenshtein(w, v.term)::real / GREATEST(length(w), length(v.term)))
+              FROM unnest(string_to_array(lower(e.name), ' ')) AS w
+              WHERE length(w) > 0
+                AND abs(length(w) - length(v.term)) <= v.edit_budget
+                AND levenshtein(w, v.term) <= v.edit_budget
+            ) AS "editScore",
             (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "publicCraveScore",
             e.general_praise_upvotes AS "generalPraiseUpvotes"
           FROM core_entities e
@@ -941,103 +947,6 @@ export class EntityTextSearchService {
           COALESCE(scored."generalPraiseUpvotes", 0) DESC,
           scored."name" ASC
         LIMIT ${options.perTermLimit}
-      ) r
-      ORDER BY v.term_index ASC;
-    `);
-  }
-
-  private async fetchPhoneticRowsForTerms(options: {
-    terms: {
-      term: string;
-      phonetic: string;
-      excludedIds: string[];
-      remaining: number;
-    }[];
-    entityTypes: EntityType[];
-    marketKey: string | null;
-    marketKeys?: string[];
-  }): Promise<EntitySearchRow[]> {
-    const values = Prisma.join(
-      options.terms.map((entry, idx) => {
-        const excludedIds =
-          entry.excludedIds.length > 0
-            ? Prisma.sql`ARRAY[${Prisma.join(
-                entry.excludedIds.map((id) => Prisma.sql`${id}::uuid`),
-              )}]::uuid[]`
-            : Prisma.sql`'{}'::uuid[]`;
-        return Prisma.sql`(${entry.term}, ${entry.phonetic}, ${excludedIds}, ${entry.remaining}, ${idx})`;
-      }),
-    );
-    const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
-      options.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
-    )}]`;
-    const marketFilter = this.buildRestaurantMarketFilter(
-      'e',
-      options.marketKeys ?? options.marketKey,
-    );
-
-    return this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
-      SELECT
-        v.term AS "term",
-        r."entityId",
-        r."name",
-        r."type",
-        r."exactHit",
-        r."nameSimilarity",
-        r."aliasSimilarity",
-        r."ftsRank",
-        r."prefixHit",
-        r."nameFtsHit",
-        r."aliasTrgmHit",
-        r."phoneticMatch",
-        r."publicCraveScore",
-        r."generalPraiseUpvotes"
-      FROM (
-        VALUES ${values}
-      ) AS v(term, phonetic_term, excluded_ids, remaining_limit, term_index)
-      CROSS JOIN LATERAL (
-        SELECT
-          scored."entityId",
-          scored."name",
-          scored."type",
-          scored."exactHit",
-          scored."nameSimilarity",
-          scored."aliasSimilarity",
-          scored."ftsRank",
-          scored."prefixHit",
-          scored."nameFtsHit",
-          scored."aliasTrgmHit",
-          scored."phoneticMatch",
-          scored."publicCraveScore",
-          scored."generalPraiseUpvotes"
-        FROM (
-          SELECT
-            e.entity_id AS "entityId",
-            e.name AS "name",
-            e.type AS "type",
-            CASE WHEN lower(e.name) = v.term THEN 1 ELSE 0 END AS "exactHit",
-            similarity(lower(e.name), v.term) AS "nameSimilarity",
-            0 AS "aliasSimilarity",
-            0 AS "ftsRank",
-            0 AS "prefixHit",
-            0 AS "nameFtsHit",
-            0 AS "aliasTrgmHit",
-            1 AS "phoneticMatch",
-            (SELECT pes.display_score FROM core_public_entity_scores pes WHERE pes.subject_id = e.entity_id AND pes.subject_type = 'restaurant'::crave_score_subject_type) AS "publicCraveScore",
-            e.general_praise_upvotes AS "generalPraiseUpvotes"
-          FROM core_entities e
-          WHERE e.type = ANY(${entityTypeArray})
-            AND e.status = 'active'::entity_status
-            ${marketFilter}
-            AND (array_length(v.excluded_ids, 1) IS NULL OR e.entity_id <> ALL(v.excluded_ids))
-            AND dmetaphone(regexp_replace(lower(e.name), '[^a-z0-9 ]', '', 'g')) =
-              dmetaphone(v.phonetic_term)
-        ) scored
-        ORDER BY
-          COALESCE(scored."publicCraveScore", 0) DESC,
-          COALESCE(scored."generalPraiseUpvotes", 0) DESC,
-          scored."name" ASC
-        LIMIT v.remaining_limit
       ) r
       ORDER BY v.term_index ASC;
     `);
