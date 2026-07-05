@@ -177,6 +177,35 @@ along) · P4 category edges (foundational #2 + one-hop) · P5 consumers (autocom
 LLM-judge batching). P4 before the first archive load if possible (categories bake into the
 projection rebuild).
 
+## A3. "Include similar" toggle — OWNER-SETTLED product shape (2026-07-05, spec'd, buildable now)
+
+Owner design (supersedes sections AND blend — both permanently rejected; blend rejected because
+Crave Score legibility is the product: no boosting, no 1-4-3-2 scrambling, badge==position):
+**default = exact + instances only · user toggle "Include similar" adds siblings · PURE Crave
+Score ranking in both states.** ("Instances" = canonical category MEMBERS: neapolitan pizza IS
+pizza — always in the default; "similar" = dense siblings, the different-dish family.)
+
+Spec:
+
+- **Request param `includeSimilar?: boolean`** replaces the env mode for user-facing behavior
+  (env keeps the operator default). OFF → foodIds = exact ∪ categoryMembers; ON → + siblings.
+  Toggle flip = a NEW query (new totals, reset to page 1) — honest, since the pool changes.
+- **Thin-results chip** (the toggle's front door): when `exactTotal < pageSize` AND
+  `similarCount > 0`, response metadata carries `similarAvailable: N` → client renders
+  "Only X matches — show N similar dishes?" One tap = same search with includeSimilar=true.
+  similarCount = cheap side count over sibling ids' connections, computed only when thin.
+- **End-of-pagination chip**: when the LAST page of an exact-only search returns (< pageSize
+  rows), same metadata → client shows the chip as a footer instead of dead-ending. No automatic
+  merging of similars into later pages (that would be sections-by-pagination — rejected).
+- **Threshold**: keyed to PAGE CAPACITY (pageSize, client sends 20), NOT the relaxation
+  threshold (10) — relaxation is an internal attribute-drop mechanism and stays invisible.
+  Chip logic = "does page 1 have room + do similars exist", nothing else.
+- **Pagination compatibility**: includeSimilar is stateless per request; offset pagination
+  unchanged; `exactMatch` + graded `relevance` already on every row (badging + analytics).
+- Server work: ~small (param + metadata count + chip fields). Client owns chip/toggle UX.
+- NOTE server-side pagination verified correct (page2-probe.ts: pages 1-3 × 20 rows, right
+  totals) — the current mobile load-more dead-end is CLIENT-side.
+
 ## B. HNSW index guard _(near-term, small)_
 
 The `name_embedding` HNSW index will be re-dropped on the next `prisma migrate dev` (Prisma can't
