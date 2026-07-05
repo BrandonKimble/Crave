@@ -46,6 +46,7 @@ import {
   getSeededMarkerRestaurants,
   subscribeSearchMountedResultsDataSnapshot,
 } from '../runtime/shared/search-mounted-results-data-store';
+import { reportSearchFlowContractViolation } from '../runtime/shared/search-flow-contracts';
 import type { ResolvedRestaurantMapLocation } from '../runtime/map/restaurant-location-selection';
 import {
   type SearchMapCandidateCatalog,
@@ -1506,12 +1507,50 @@ export const useDirectSearchMapSourceController = ({
         : new Map(restaurants.map((restaurant) => [restaurant.restaurantId, restaurant]));
     restaurantsByIdRef.current = restaurantsById;
     restaurantsRef.current = restaurants;
-    const markerCatalogReadModel =
-      mountedResultsSnapshot.precomputedMarkerCatalog &&
-      mountedResultsSnapshot.precomputedMarkerResultsKey === searchRequestId &&
+    // R1a SINGLE-AUTHORITY RULE (plans/search-flow-plan.md §D6): for committed results, the
+    // store's precomputed marker catalog (buildMarkerCatalogReadModel run ONCE at response
+    // commit, same computation the cards' rank order derives from) is THE marker-catalog
+    // authority. The in-controller buildMarkerCatalogReadModel below is a FALLBACK only for
+    // inputs the store cannot precompute: no committed results (seeded single-restaurant
+    // profile pin), restaurantOnly / selected-pin forced inclusion (selection changes the
+    // catalog itself — all-locations render + rankless-reveal rank-1), or a transient
+    // results-key mismatch while a new commit is in flight. Any OTHER fallback firing while a
+    // valid precomputed catalog exists for the current results identity is a double-compute
+    // (the T1 toggle-stall re-rank) — reported as a dev contract violation below, not silent.
+    // NOTE: the downstream collectSearchMapVisualCandidates pass is NOT a second catalog
+    // authority — it is the coverage merge (shortcut_coverage + main_results cross-source
+    // dedup + unified re-rank) and consumes this catalog's features as its main_results input.
+    const hasPrecomputedMarkerCatalogForResults =
+      mountedResultsSnapshot.precomputedMarkerCatalog != null &&
+      mountedResultsSnapshot.precomputedMarkerResultsKey === searchRequestId;
+    const canUsePrecomputedMarkerCatalog =
+      hasPrecomputedMarkerCatalogForResults &&
       mountedResultsSnapshot.precomputedMarkerActiveTab === activeTab &&
       effectiveRestaurantOnlyId == null &&
-      selectedRestaurantId == null
+      selectedRestaurantId == null;
+    if (
+      !canUsePrecomputedMarkerCatalog &&
+      hasPrecomputedMarkerCatalogForResults &&
+      effectiveRestaurantOnlyId == null &&
+      selectedRestaurantId == null &&
+      !isSeededRestaurantProjection
+    ) {
+      // A valid precomputed catalog exists for THIS results identity, yet we are about to
+      // re-rank fresh — today reachable only via the tab-toggle window (precomputed projection
+      // is per-tab and republishes at response commit, so a toggle recomputes here per publish
+      // until the sibling-tab commit lands). This is the R1a double-compute; R1 proper folds it
+      // into the single ResultsState commit.
+      reportSearchFlowContractViolation('marker_catalog_recomputed_with_precomputed_present', {
+        searchRequestId,
+        activeTab,
+        precomputedMarkerActiveTab: mountedResultsSnapshot.precomputedMarkerActiveTab,
+        precomputedMarkerResultsKey: mountedResultsSnapshot.precomputedMarkerResultsKey,
+        precomputedCatalogCount: mountedResultsSnapshot.precomputedMarkerCatalog?.length ?? 0,
+        searchMode,
+      });
+    }
+    const markerCatalogReadModel =
+      canUsePrecomputedMarkerCatalog && mountedResultsSnapshot.precomputedMarkerCatalog
         ? {
             catalog: mountedResultsSnapshot.precomputedMarkerCatalog,
             primaryCount: mountedResultsSnapshot.precomputedMarkerPrimaryCount,
