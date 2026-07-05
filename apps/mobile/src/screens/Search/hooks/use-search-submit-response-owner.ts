@@ -27,6 +27,7 @@ import {
   getSearchMountedResultsDataSnapshot,
   publishSearchMountedResultsDataSnapshot,
   type SearchMountedResultsMarkerProjection,
+  type SearchMountedResultsMarkerProjectionByTab,
 } from '../runtime/shared/search-mounted-results-data-store';
 import type { SegmentValue } from '../constants/search';
 import {
@@ -98,7 +99,7 @@ type SearchResponseResultsCommitProjection = {
   mergedFoodCount: number;
   mergedRestaurantCount: number;
   searchRequestId: string;
-  markerProjection: SearchMountedResultsMarkerProjection;
+  markerProjectionByTab: SearchMountedResultsMarkerProjectionByTab;
   resultsPatch: SearchResponseResultsCommitPatch;
 };
 
@@ -281,7 +282,7 @@ type SearchResponseLifecycleContext = {
   mergedRestaurantCount: number;
   committedResponse: SearchResponse;
   committedSearchRequestId: string;
-  markerProjection: SearchMountedResultsMarkerProjection;
+  markerProjectionByTab: SearchMountedResultsMarkerProjectionByTab;
   resultsPatch: SearchResponseResultsCommitPatch;
 };
 
@@ -616,37 +617,68 @@ const deriveSearchResponseResultsCommitPatch = (params: {
   const resultsHydrationCandidateKey = `${searchRequestId}:page:${resultsPage}:dishes:${mergedFoodCount}:restaurants:${mergedRestaurantCount}:totalFood:${totalFoodResults}:totalRestaurants:${totalRestaurantResults}`;
   const restaurants = committedResponse.restaurants ?? [];
   const dishes = committedResponse.dishes ?? [];
-  const markerPipelineCacheKey = buildMarkerPipelineCacheKey({
-    activeTab: markerPipelineActiveTab,
-    bounds,
-    dishes,
-    restaurants,
-    userLocation,
-  });
-  const cachedPipelineResult = markerPipelineCache.get(markerPipelineCacheKey) ?? null;
+  // R1a-2 (plans/search-flow-plan.md §D6): precompute the marker projection for BOTH tabs from
+  // this same committed response — same bounds/userLocation/anchor inputs, same resultsKey —
+  // so a tab toggle finds its target-tab catalog precomputed and the controller's fallback
+  // full-catalog rebuild (the R1a contract window, with its divergent live location anchor)
+  // never fires. A tab whose axis the response genuinely lacks gets a null entry: the
+  // controller then legitimately computes it without tripping the contract.
   const pipelineStartedAtMs = globalThis.performance?.now?.() ?? Date.now();
-  const pipelineResult =
-    cachedPipelineResult != null
-      ? {
-          ...cachedPipelineResult,
-          resultsKey: searchRequestId,
-        }
-      : computeMarkerPipeline({
-          restaurants,
-          dishes,
-          activeTab: markerPipelineActiveTab,
-          restaurantOnlyId: null,
-          selectedRestaurantId: null,
-          bounds,
-          userLocation,
-          searchRequestId,
-        });
-  if (cachedPipelineResult == null) {
-    retainMarkerPipelineCacheEntry(markerPipelineCacheKey, pipelineResult);
-  } else {
-    markerPipelineCache.delete(markerPipelineCacheKey);
-    markerPipelineCache.set(markerPipelineCacheKey, cachedPipelineResult);
-  }
+  const computeMarkerProjectionForTab = (
+    tab: ResultsActiveTab
+  ): { projection: SearchMountedResultsMarkerProjection | null; cacheHit: boolean } => {
+    const axisIsEmpty = tab === 'dishes' ? dishes.length === 0 : restaurants.length === 0;
+    if (axisIsEmpty && tab !== markerPipelineActiveTab) {
+      // Response lacks this axis (e.g. entity/restaurant-only searches): no sibling
+      // precompute — the controller's fallback handles it silently.
+      return { projection: null, cacheHit: false };
+    }
+    const markerPipelineCacheKey = buildMarkerPipelineCacheKey({
+      activeTab: tab,
+      bounds,
+      dishes,
+      restaurants,
+      userLocation,
+    });
+    const cachedPipelineResult = markerPipelineCache.get(markerPipelineCacheKey) ?? null;
+    const pipelineResult =
+      cachedPipelineResult != null
+        ? {
+            ...cachedPipelineResult,
+            resultsKey: searchRequestId,
+          }
+        : computeMarkerPipeline({
+            restaurants,
+            dishes,
+            activeTab: tab,
+            restaurantOnlyId: null,
+            selectedRestaurantId: null,
+            bounds,
+            userLocation,
+            searchRequestId,
+          });
+    if (cachedPipelineResult == null) {
+      retainMarkerPipelineCacheEntry(markerPipelineCacheKey, pipelineResult);
+    } else {
+      markerPipelineCache.delete(markerPipelineCacheKey);
+      markerPipelineCache.set(markerPipelineCacheKey, cachedPipelineResult);
+    }
+    return {
+      projection: {
+        activeTab: tab,
+        catalog: pipelineResult.catalog,
+        canonicalRestaurantRankById: pipelineResult.canonicalRestaurantRankById,
+        primaryCount: pipelineResult.primaryCount,
+        restaurantsById: pipelineResult.restaurantsById,
+        resultsKey: pipelineResult.resultsKey,
+      },
+      cacheHit: cachedPipelineResult != null,
+    };
+  };
+  const dishesProjectionResult = computeMarkerProjectionForTab('dishes');
+  const restaurantsProjectionResult = computeMarkerProjectionForTab('restaurants');
+  const activeTabProjectionResult =
+    markerPipelineActiveTab === 'dishes' ? dishesProjectionResult : restaurantsProjectionResult;
   const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
   if (isPerfScenarioAttributionActive(scenarioConfig)) {
     logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
@@ -655,10 +687,18 @@ const deriveSearchResponseResultsCommitPatch = (params: {
       activeTab: markerPipelineActiveTab,
       resultsHydrationCandidateKey,
       searchRequestId,
-      markerPipelineCacheHit: cachedPipelineResult != null,
-      markerPipelineRecomputed: cachedPipelineResult == null,
-      markerCatalogCount: pipelineResult.catalog.length,
-      markerPrimaryCount: pipelineResult.primaryCount,
+      markerPipelineCacheHit: activeTabProjectionResult.cacheHit,
+      markerPipelineRecomputed: !activeTabProjectionResult.cacheHit,
+      markerPipelineSiblingCacheHit:
+        markerPipelineActiveTab === 'dishes'
+          ? restaurantsProjectionResult.cacheHit
+          : dishesProjectionResult.cacheHit,
+      markerCatalogCount: activeTabProjectionResult.projection?.catalog.length ?? 0,
+      markerPrimaryCount: activeTabProjectionResult.projection?.primaryCount ?? 0,
+      markerSiblingCatalogCount:
+        (markerPipelineActiveTab === 'dishes'
+          ? restaurantsProjectionResult.projection?.catalog.length
+          : dishesProjectionResult.projection?.catalog.length) ?? 0,
       restaurantCount: restaurants.length,
       dishCount: dishes.length,
       durationMs: Number(
@@ -672,13 +712,9 @@ const deriveSearchResponseResultsCommitPatch = (params: {
     mergedFoodCount,
     mergedRestaurantCount,
     searchRequestId,
-    markerProjection: {
-      activeTab: markerPipelineActiveTab,
-      catalog: pipelineResult.catalog,
-      canonicalRestaurantRankById: pipelineResult.canonicalRestaurantRankById,
-      primaryCount: pipelineResult.primaryCount,
-      restaurantsById: pipelineResult.restaurantsById,
-      resultsKey: pipelineResult.resultsKey,
+    markerProjectionByTab: {
+      dishes: dishesProjectionResult.projection,
+      restaurants: restaurantsProjectionResult.projection,
     },
     resultsPatch: {
       resultsRequestKey: searchRequestId,
@@ -739,7 +775,7 @@ const deriveSearchResponseLifecycleContext = (params: {
     mergedRestaurantCount: responseCommitProjection.mergedRestaurantCount,
     committedResponse: responseCommitProjection.committedResponse,
     committedSearchRequestId: responseCommitProjection.searchRequestId,
-    markerProjection: responseCommitProjection.markerProjection,
+    markerProjectionByTab: responseCommitProjection.markerProjectionByTab,
     resultsPatch: responseCommitProjection.resultsPatch,
   };
 };
@@ -1371,10 +1407,13 @@ export const useSearchSubmitResponseOwner = ({
           respD: responseContext.committedResponse.dishes?.length ?? 0,
           dataReadyFrom,
           stale: isResponseApplyStale,
+          bothTabs:
+            responseContext.markerProjectionByTab.dishes != null &&
+            responseContext.markerProjectionByTab.restaurants != null,
         });
         publishSearchMountedResultsDataSnapshot(responseContext.committedResponse, {
           activeTab: initialUiState.targetTab,
-          markerProjection: responseContext.markerProjection,
+          markerProjectionByTab: responseContext.markerProjectionByTab,
           resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey,
         });
         logPerfScenarioWorkSpan({

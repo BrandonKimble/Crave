@@ -42,12 +42,12 @@ import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
 export type SearchMountedResultsDataSnapshot = {
   activeTab: 'dishes' | 'restaurants' | null;
-  precomputedCanonicalRestaurantRankById: Map<string, number> | null;
-  precomputedMarkerActiveTab: 'dishes' | 'restaurants' | null;
-  precomputedMarkerCatalog: MarkerCatalogEntry[] | null;
-  precomputedMarkerPrimaryCount: number;
-  precomputedMarkerResultsKey: string | null;
-  precomputedRestaurantsById: Map<string, RestaurantResult> | null;
+  // R1a-2: marker projections precomputed at response commit for BOTH tabs (the dual_list
+  // response carries dishes[] AND restaurants[]), so a tab toggle finds its target-tab
+  // catalog ready and the controller's fallback full-catalog rebuild never fires. A tab's
+  // entry is null when the committed response genuinely lacks that axis — the controller's
+  // fallback then legitimately computes it without tripping the R1a contract.
+  precomputedMarkerProjectionByTab: SearchMountedResultsMarkerProjectionByTab | null;
   resultsDataIdentityKey: string | null;
   results: SearchResponse | null;
   resultsHydrationKey: string | null;
@@ -62,6 +62,11 @@ export type SearchMountedResultsMarkerProjection = {
   primaryCount: number;
   restaurantsById: Map<string, RestaurantResult>;
   resultsKey: string;
+};
+
+export type SearchMountedResultsMarkerProjectionByTab = {
+  dishes: SearchMountedResultsMarkerProjection | null;
+  restaurants: SearchMountedResultsMarkerProjection | null;
 };
 
 export type SearchMountedResultsRowsViewKeyArgs = {
@@ -166,12 +171,7 @@ const NOOP_SHOW_MORE_EXACT = (): void => {};
 
 const EMPTY_SEARCH_MOUNTED_RESULTS_DATA_SNAPSHOT: SearchMountedResultsDataSnapshot = {
   activeTab: null,
-  precomputedCanonicalRestaurantRankById: null,
-  precomputedMarkerActiveTab: null,
-  precomputedMarkerCatalog: null,
-  precomputedMarkerPrimaryCount: 0,
-  precomputedMarkerResultsKey: null,
-  precomputedRestaurantsById: null,
+  precomputedMarkerProjectionByTab: null,
   resultsDataIdentityKey: null,
   results: null,
   resultsHydrationKey: null,
@@ -851,7 +851,7 @@ export const publishSearchMountedResultsDataSnapshot = (
   results: SearchResponse | null,
   options?: {
     activeTab?: 'dishes' | 'restaurants' | null;
-    markerProjection?: SearchMountedResultsMarkerProjection | null;
+    markerProjectionByTab?: SearchMountedResultsMarkerProjectionByTab | null;
     resultsHydrationKey?: string | null;
   }
 ): boolean => {
@@ -865,7 +865,7 @@ export const publishSearchMountedResultsDataSnapshot = (
   const nextResultsRequestKey = results?.metadata?.searchRequestId ?? null;
   const nextResultsHydrationKey = options?.resultsHydrationKey ?? null;
   const nextActiveTab = options?.activeTab ?? null;
-  const nextMarkerProjection = options?.markerProjection ?? null;
+  const nextMarkerProjectionByTab = options?.markerProjectionByTab ?? null;
   const nextResultsDataIdentityKey = createSearchMountedResultsDataIdentityKey(results);
   const activeRedrawTransactionId =
     getSearchSurfaceRuntime().getActiveOrPendingRedrawTransactionId();
@@ -874,7 +874,10 @@ export const publishSearchMountedResultsDataSnapshot = (
     snapshot.resultsRequestKey === nextResultsRequestKey &&
     snapshot.resultsHydrationKey === nextResultsHydrationKey &&
     snapshot.activeTab === nextActiveTab &&
-    snapshot.precomputedMarkerResultsKey === nextMarkerProjection?.resultsKey
+    (snapshot.precomputedMarkerProjectionByTab?.dishes?.resultsKey ?? null) ===
+      (nextMarkerProjectionByTab?.dishes?.resultsKey ?? null) &&
+    (snapshot.precomputedMarkerProjectionByTab?.restaurants?.resultsKey ?? null) ===
+      (nextMarkerProjectionByTab?.restaurants?.resultsKey ?? null)
   ) {
     return false;
   }
@@ -900,13 +903,7 @@ export const publishSearchMountedResultsDataSnapshot = (
   }
   snapshot = {
     activeTab: nextActiveTab,
-    precomputedCanonicalRestaurantRankById:
-      nextMarkerProjection?.canonicalRestaurantRankById ?? null,
-    precomputedMarkerActiveTab: nextMarkerProjection?.activeTab ?? null,
-    precomputedMarkerCatalog: nextMarkerProjection?.catalog ?? null,
-    precomputedMarkerPrimaryCount: nextMarkerProjection?.primaryCount ?? 0,
-    precomputedMarkerResultsKey: nextMarkerProjection?.resultsKey ?? null,
-    precomputedRestaurantsById: nextMarkerProjection?.restaurantsById ?? null,
+    precomputedMarkerProjectionByTab: nextMarkerProjectionByTab,
     resultsDataIdentityKey: nextResultsDataIdentityKey,
     results,
     resultsHydrationKey: nextResultsHydrationKey,

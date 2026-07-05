@@ -1491,19 +1491,30 @@ export const useDirectSearchMapSourceController = ({
       });
       return;
     }
+    // R1a-2: marker projections are precomputed PER-TAB at response commit. Resolve the
+    // CURRENT tab's entry (results-key-guarded). The rank/restaurantsById lookups are
+    // tab-independent (both derive from restaurants[]), so any matching entry serves them
+    // even when the current tab's entry is null (axis genuinely absent from the response).
+    const resolvePrecomputedMarkerProjectionForTab = (tab: 'dishes' | 'restaurants') => {
+      const entry = mountedResultsSnapshot.precomputedMarkerProjectionByTab?.[tab] ?? null;
+      return entry != null && entry.resultsKey === searchRequestId ? entry : null;
+    };
+    const activeTabPrecomputedMarkerProjection =
+      resolvePrecomputedMarkerProjectionForTab(activeTab);
+    const anyPrecomputedMarkerProjectionForResults =
+      activeTabPrecomputedMarkerProjection ??
+      resolvePrecomputedMarkerProjectionForTab(activeTab === 'dishes' ? 'restaurants' : 'dishes');
     const canonicalRestaurantRankById =
-      mountedResultsSnapshot.precomputedCanonicalRestaurantRankById &&
-      mountedResultsSnapshot.precomputedMarkerResultsKey === searchRequestId
-        ? mountedResultsSnapshot.precomputedCanonicalRestaurantRankById
+      anyPrecomputedMarkerProjectionForResults != null
+        ? anyPrecomputedMarkerProjectionForResults.canonicalRestaurantRankById
         : new Map(
             restaurants
               .filter((restaurant) => typeof restaurant.rank === 'number')
               .map((restaurant) => [restaurant.restaurantId, restaurant.rank as number])
           );
     const restaurantsById =
-      mountedResultsSnapshot.precomputedRestaurantsById &&
-      mountedResultsSnapshot.precomputedMarkerResultsKey === searchRequestId
-        ? mountedResultsSnapshot.precomputedRestaurantsById
+      anyPrecomputedMarkerProjectionForResults != null
+        ? anyPrecomputedMarkerProjectionForResults.restaurantsById
         : new Map(restaurants.map((restaurant) => [restaurant.restaurantId, restaurant]));
     restaurantsByIdRef.current = restaurantsById;
     restaurantsRef.current = restaurants;
@@ -1513,19 +1524,18 @@ export const useDirectSearchMapSourceController = ({
     // authority. The in-controller buildMarkerCatalogReadModel below is a FALLBACK only for
     // inputs the store cannot precompute: no committed results (seeded single-restaurant
     // profile pin), restaurantOnly / selected-pin forced inclusion (selection changes the
-    // catalog itself — all-locations render + rankless-reveal rank-1), or a transient
-    // results-key mismatch while a new commit is in flight. Any OTHER fallback firing while a
-    // valid precomputed catalog exists for the current results identity is a double-compute
-    // (the T1 toggle-stall re-rank) — reported as a dev contract violation below, not silent.
+    // catalog itself — all-locations render + rankless-reveal rank-1), a transient
+    // results-key mismatch while a new commit is in flight, or a null tab entry (the response
+    // genuinely lacks that axis — silent legitimate fallback). Any OTHER fallback firing while
+    // the CURRENT tab's precomputed projection exists for the current results identity is a
+    // double-compute — reported as a dev contract violation below, not silent. R1a-2
+    // precomputes BOTH tabs at response commit, so a plain tab toggle must never fire it.
     // NOTE: the downstream collectSearchMapVisualCandidates pass is NOT a second catalog
     // authority — it is the coverage merge (shortcut_coverage + main_results cross-source
     // dedup + unified re-rank) and consumes this catalog's features as its main_results input.
-    const hasPrecomputedMarkerCatalogForResults =
-      mountedResultsSnapshot.precomputedMarkerCatalog != null &&
-      mountedResultsSnapshot.precomputedMarkerResultsKey === searchRequestId;
+    const hasPrecomputedMarkerCatalogForResults = activeTabPrecomputedMarkerProjection != null;
     const canUsePrecomputedMarkerCatalog =
       hasPrecomputedMarkerCatalogForResults &&
-      mountedResultsSnapshot.precomputedMarkerActiveTab === activeTab &&
       effectiveRestaurantOnlyId == null &&
       selectedRestaurantId == null;
     if (
@@ -1535,25 +1545,24 @@ export const useDirectSearchMapSourceController = ({
       selectedRestaurantId == null &&
       !isSeededRestaurantProjection
     ) {
-      // A valid precomputed catalog exists for THIS results identity, yet we are about to
-      // re-rank fresh — today reachable only via the tab-toggle window (precomputed projection
-      // is per-tab and republishes at response commit, so a toggle recomputes here per publish
-      // until the sibling-tab commit lands). This is the R1a double-compute; R1 proper folds it
-      // into the single ResultsState commit.
+      // The CURRENT tab's precomputed projection exists for THIS results identity, yet we are
+      // about to re-rank fresh. Post-R1a-2 (both tabs precomputed at response commit) this is
+      // structurally unreachable on the happy path and on tab toggles — any firing is a new
+      // double-compute regression.
       reportSearchFlowContractViolation('marker_catalog_recomputed_with_precomputed_present', {
         searchRequestId,
         activeTab,
-        precomputedMarkerActiveTab: mountedResultsSnapshot.precomputedMarkerActiveTab,
-        precomputedMarkerResultsKey: mountedResultsSnapshot.precomputedMarkerResultsKey,
-        precomputedCatalogCount: mountedResultsSnapshot.precomputedMarkerCatalog?.length ?? 0,
+        precomputedMarkerActiveTab: activeTabPrecomputedMarkerProjection?.activeTab ?? null,
+        precomputedMarkerResultsKey: activeTabPrecomputedMarkerProjection?.resultsKey ?? null,
+        precomputedCatalogCount: activeTabPrecomputedMarkerProjection?.catalog.length ?? 0,
         searchMode,
       });
     }
     const markerCatalogReadModel =
-      canUsePrecomputedMarkerCatalog && mountedResultsSnapshot.precomputedMarkerCatalog
+      canUsePrecomputedMarkerCatalog && activeTabPrecomputedMarkerProjection != null
         ? {
-            catalog: mountedResultsSnapshot.precomputedMarkerCatalog,
-            primaryCount: mountedResultsSnapshot.precomputedMarkerPrimaryCount,
+            catalog: activeTabPrecomputedMarkerProjection.catalog,
+            primaryCount: activeTabPrecomputedMarkerProjection.primaryCount,
           }
         : buildMarkerCatalogReadModel({
             activeTab: isSeededRestaurantProjection ? 'restaurants' : activeTab,
