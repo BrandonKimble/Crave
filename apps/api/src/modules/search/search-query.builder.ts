@@ -241,6 +241,26 @@ export class SearchQueryBuilder {
     const restaurantOrder = this.resolveRestaurantOrderSql(
       plan.ranking.restaurantOrder,
     );
+    // SECTIONED RELEVANCY (restaurant axis): a restaurant serving ≥1 EXACT-match
+    // dish is tier 0; widened-only restaurants tier 1. Same grouping-not-blending
+    // contract as the dish list.
+    const restExactIds = directives?.sectionedRanking
+      ? (directives.exactFoodIds ?? [])
+      : [];
+    const restTierExpr = restExactIds.length
+      ? Prisma.sql`CASE WHEN EXISTS (
+          SELECT 1 FROM core_restaurant_items ce
+          WHERE ce.restaurant_id = fr.entity_id
+            AND ce.food_id = ANY(${restExactIds}::uuid[])
+        ) THEN 0 ELSE 1 END`
+      : null;
+    const restTierSelect = restTierExpr
+      ? Prisma.sql`${restTierExpr} AS match_tier,`
+      : Prisma.sql`NULL::int AS match_tier,`;
+    const restTierOrder = restTierExpr
+      ? Prisma.sql`${restTierExpr} ASC, `
+      : Prisma.sql``;
+    const restTierOrderPreview = restTierExpr ? 'match_tier ASC, ' : '';
     const restaurantTopDishOrder = this.resolveTopDishOrderSql(
       plan.ranking.foodOrder,
     );
@@ -253,6 +273,7 @@ export class SearchQueryBuilder {
 ranked_restaurants AS (
   SELECT
     fr.entity_id AS restaurant_id,
+    ${restTierSelect}
     fr.name AS restaurant_name,
     fr.aliases AS restaurant_aliases,
     ${activeMarketKey}::varchar(255) AS market_key,
@@ -293,7 +314,7 @@ ranked_restaurants AS (
   LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
 	  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
 	  ${minimumVotesWhereSql}
-	  ORDER BY ${restaurantOrder.sql}
+	  ORDER BY ${restTierOrder}${restaurantOrder.sql}
 	  OFFSET ${pagination.skip}
 	  LIMIT ${pagination.take}
 	)`;
@@ -314,7 +335,7 @@ ranked_restaurants AS (
   LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
 	  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
 	  ${minimumVotesWherePreview}
-	  ORDER BY ${restaurantOrder.preview}
+	  ORDER BY ${restTierOrderPreview}${restaurantOrder.preview}
 	  OFFSET ${pagination.skip} LIMIT ${pagination.take}
 	)`.trim();
 
@@ -633,6 +654,20 @@ filtered_connections AS (
 
     const order = this.resolveDishOrderSql(plan.ranking.foodOrder);
 
+    // SECTIONED RELEVANCY: exact-match rows (tier 0) rank before widened rows
+    // (tier 1 — siblings/categories/lexical), pure Crave Score WITHIN each tier;
+    // every row carries match_tier so the client can draw the section divider.
+    const exactIds = directives?.sectionedRanking
+      ? (directives.exactFoodIds ?? [])
+      : [];
+    const tierSelectSql = exactIds.length
+      ? Prisma.sql`, CASE WHEN fc.food_id = ANY(${exactIds}::uuid[]) THEN 0 ELSE 1 END AS match_tier`
+      : Prisma.sql`, NULL::int AS match_tier`;
+    const tierOrderSql = exactIds.length
+      ? Prisma.sql`CASE WHEN fc.food_id = ANY(${exactIds}::uuid[]) THEN 0 ELSE 1 END ASC, `
+      : Prisma.sql``;
+    const tierOrderPreview = exactIds.length ? 'match_tier ASC, ' : '';
+
     // Build WITH clause
     const withClause = Prisma.sql`
 WITH
@@ -660,9 +695,9 @@ WITH
 
     const dataSql = Prisma.sql`
 ${withClause}
-SELECT *
+SELECT *${tierSelectSql}
 FROM filtered_connections fc
-ORDER BY ${order.sql}
+ORDER BY ${tierOrderSql}${order.sql}
 OFFSET ${pagination.skip}
 LIMIT ${pagination.take}`;
 
@@ -677,7 +712,7 @@ FROM filtered_connections fc`;
 ${withPreview}
 SELECT *
 FROM filtered_connections fc
-ORDER BY ${order.preview}
+ORDER BY ${tierOrderPreview}${order.preview}
 OFFSET ${pagination.skip}
 LIMIT ${pagination.take};`.trim();
 

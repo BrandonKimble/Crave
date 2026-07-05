@@ -63,12 +63,31 @@ async function main(): Promise<void> {
         `  totals         : dishes=${Number.isFinite(totalDishes) ? totalDishes : '?'} restaurants=${Number.isFinite(totalRestaurants) ? totalRestaurants : '?'}`,
       );
       out(`  expansion meta : ${JSON.stringify(idExpansion ?? null)}`);
-      const foods = new Set(
-        (res.dishes ?? []).map(
-          (d) => (d as unknown as { foodName?: string }).foodName ?? '?',
-        ),
+      const dishRows = (res.dishes ?? []).map(
+        (d) =>
+          d as unknown as {
+            foodName?: string;
+            exactMatch?: boolean;
+            craveScore?: number;
+          },
       );
-      out(`  distinct foods : ${[...foods].slice(0, 15).join(', ')}`);
+      out(
+        `  rows           : ${dishRows
+          .slice(0, 12)
+          .map(
+            (r) =>
+              `${r.exactMatch === false ? '~' : r.exactMatch === true ? '=' : ' '}${r.foodName}`,
+          )
+          .join(', ')}`,
+      );
+      const firstWidened = dishRows.findIndex((r) => r.exactMatch === false);
+      const lateExact = dishRows.findIndex(
+        (r, i) =>
+          r.exactMatch === true && firstWidened >= 0 && i > firstWidened,
+      );
+      out(
+        `  sectioning     : firstWidenedAt=${firstWidened} exactAfterWidened=${lateExact >= 0 ? 'VIOLATION@' + lateExact : 'none'}`,
+      );
     }
   } finally {
     await app.close();

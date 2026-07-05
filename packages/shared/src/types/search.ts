@@ -50,6 +50,9 @@ export interface FoodResult {
   scoreSubjectType: 'connection';
   scoreSubjectId: string;
   craveScore: number;
+  // Sectioned relevancy: true = exact-match tier (section 1), false = widened
+  // (sibling/category/lexical) tier. Absent when sectioning didn't apply.
+  exactMatch?: boolean;
   // High-precision Crave score (percentile_rank, Decimal(6,5), 0..1, higher = better). `craveScore` is the
   // DISPLAY score (0-10 scale) rounded for display — ordering by it ties top restaurants and the map vs list
   // break ties differently. Order/rank by this; never display it. Additive/optional for backward-compat.
@@ -79,6 +82,9 @@ export interface RestaurantFoodSnippet {
   scoreSubjectType: 'connection';
   scoreSubjectId: string;
   craveScore: number;
+  // Sectioned relevancy: true = exact-match tier (section 1), false = widened
+  // (sibling/category/lexical) tier. Absent when sectioning didn't apply.
+  exactMatch?: boolean;
   rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
 }

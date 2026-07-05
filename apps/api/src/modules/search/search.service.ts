@@ -210,6 +210,7 @@ export class SearchService {
   private readonly denseSiblingsMode: DenseSiblingsMode;
   private readonly denseSiblingsCut: SiblingCutOptions;
   private readonly expansionBudgetMs: number;
+  private readonly sectionedRanking: boolean;
 
   constructor(
     loggerService: LoggerService,
@@ -244,6 +245,7 @@ export class SearchService {
     this.denseSiblingsMode = this.resolveDenseSiblingsMode();
     this.denseSiblingsCut = this.resolveDenseSiblingsCut();
     this.expansionBudgetMs = this.resolveExpansionBudgetMs();
+    this.sectionedRanking = this.resolveSectionedRanking();
   }
 
   buildQueryPlan(request: SearchQueryRequestDto): QueryPlan {
@@ -943,10 +945,20 @@ export class SearchService {
       // Pooled page-1 lists are sliced to the requested take: with the probe take
       // clamped to the relaxation threshold, the strict pool can exceed a
       // sub-threshold pageSize (idempotent when already within the page).
+      // Sectioned relevancy holds ACROSS the strict+relaxed pool too: exact-match
+      // tier first, pure Crave Score within each tier (rows without a tier sort
+      // as exact — sectioning didn't apply to that query).
+      const tierOf = (row: { exactMatch?: boolean }) =>
+        row.exactMatch === false ? 1 : 0;
+      const pooledOrder = (
+        a: { exactMatch?: boolean; craveScore: number },
+        b: { exactMatch?: boolean; craveScore: number },
+      ) => tierOf(a) - tierOf(b) || b.craveScore - a.craveScore;
+
       const dishes = needsDishRelaxation
         ? pagination.page === 1
           ? [...strictProbe.exec.dishes, ...relaxed.exec.dishes]
-              .sort((a, b) => b.craveScore - a.craveScore)
+              .sort(pooledOrder)
               .slice(0, pagination.take)
           : relaxed.exec.dishes
         : strictPage.exec.dishes;
@@ -954,7 +966,7 @@ export class SearchService {
       const restaurants = needsRestaurantRelaxation
         ? pagination.page === 1
           ? [...strictProbe.exec.restaurants, ...relaxed.exec.restaurants]
-              .sort((a, b) => b.craveScore - a.craveScore)
+              .sort(pooledOrder)
               .slice(0, pagination.take)
           : relaxed.exec.restaurants
         : strictPage.exec.restaurants;
@@ -1803,6 +1815,7 @@ export class SearchService {
   }
 
   private buildExecutionDirectives(
+    request: SearchQueryRequestDto,
     constraints: SearchConstraints,
     planExpansion: PlanExpansionState | null,
     activeMarketKey: string | null,
@@ -1812,8 +1825,26 @@ export class SearchService {
     const hasPrimaryFoodAttributeQuery = constraints.primaryFoodAttributeQuery;
     const hasActiveMarketKey =
       typeof activeMarketKey === 'string' && activeMarketKey.trim().length > 0;
+    // Sectioned ranking: tier 0 = the resolved query foods PLUS their canonical
+    // category MEMBERS (is-a instances — "neapolitan pizza" IS the pizza you
+    // asked for); tier 1 = dense siblings + lexical fuzzy adds (similar, not
+    // instances). Fires only when the filter actually got widened past tier 0.
+    const baseFoodIds = this.sectionedRanking
+      ? this.collectEntityIds(request.entities.food)
+      : [];
+    const exactFoodIds = baseFoodIds.length
+      ? Array.from(
+          new Set([
+            ...baseFoodIds,
+            ...(planExpansion?.categoryMemberFoodIds ?? []),
+          ]),
+        )
+      : [];
+    const widened =
+      exactFoodIds.length > 0 &&
+      constraints.ids.foodIds.length > exactFoodIds.length;
 
-    if (!hasPrimaryFoodAttributeQuery && !hasActiveMarketKey) {
+    if (!hasPrimaryFoodAttributeQuery && !hasActiveMarketKey && !widened) {
       return undefined;
     }
 
@@ -1824,6 +1855,8 @@ export class SearchService {
         hasPrimaryFoodAttributeQuery && textFoodIds.length
           ? textFoodIds
           : undefined,
+      exactFoodIds: widened ? exactFoodIds : undefined,
+      sectionedRanking: widened || undefined,
     };
   }
 
@@ -1859,6 +1892,7 @@ export class SearchService {
     const planMs = performance.now() - planStart;
 
     const directives = this.buildExecutionDirectives(
+      params.request,
       constraints,
       params.planExpansion,
       params.activeMarketKey,
@@ -3389,6 +3423,20 @@ export class SearchService {
       }
     }
     return 3;
+  }
+
+  /** SECTIONED RELEVANCY (owner-approved): exact-match rows form section 1
+   *  (pure Crave Score within), widened rows (siblings/categories/lexical)
+   *  section 2 — rank integrity holds WITHIN each section, relevance is
+   *  expressed as GROUPING, never as score-blending. 'crave' restores the
+   *  single pure-score list. */
+  private resolveSectionedRanking(): boolean {
+    const raw = process.env.SEARCH_RANKING_MODE?.trim().toLowerCase();
+    if (raw === 'crave') return false;
+    if (raw && raw !== 'sectioned') {
+      this.logger.warn('Invalid SEARCH_RANKING_MODE; using sectioned', { raw });
+    }
+    return true;
   }
 
   /** Wall-clock budget for the plan-expansion block (lexical + dense sibling

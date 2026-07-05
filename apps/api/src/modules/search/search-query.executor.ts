@@ -119,6 +119,7 @@ interface QueryResultRow {
  * Row type for restaurant query (Query A) - restaurants with top dishes
  */
 interface RestaurantQueryRow {
+  match_tier?: number | null;
   restaurant_id: string;
   restaurant_name: string;
   restaurant_aliases: string[];
@@ -165,6 +166,7 @@ interface RestaurantQueryRow {
  * Row type for dish query (Query B) - dishes with restaurant data for map pins
  */
 interface DishQueryRow {
+  match_tier?: number | null;
   connection_id: string;
   restaurant_id: string;
   food_id: string;
@@ -2195,6 +2197,12 @@ export class SearchQueryExecutor {
         restaurantId: row.restaurant_id,
         restaurantName: row.restaurant_name,
         restaurantAliases: row.restaurant_aliases || [],
+        exactMatch:
+          row.match_tier === 0
+            ? true
+            : row.match_tier === 1
+              ? false
+              : undefined,
         rank: rankStart + index,
         scoreSubjectType: 'restaurant',
         scoreSubjectId: row.restaurant_id,
@@ -2271,6 +2279,12 @@ export class SearchQueryExecutor {
         connectionId: row.connection_id,
         foodId: row.food_id,
         foodName: row.food_name,
+        exactMatch:
+          row.match_tier === 0
+            ? true
+            : row.match_tier === 1
+              ? false
+              : undefined,
         foodAliases: row.food_aliases || [],
         restaurantId: row.restaurant_entity_id,
         restaurantName: row.restaurant_name,
