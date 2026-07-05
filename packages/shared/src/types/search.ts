@@ -53,6 +53,11 @@ export interface FoodResult {
   // Sectioned relevancy: true = exact-match tier (section 1), false = widened
   // (sibling/category/lexical) tier. Absent when sectioning didn't apply.
   exactMatch?: boolean;
+  // Graded relatedness to the query entity on one calibrated 0..1 scale
+  // (1 = the thing you asked for or an instance of it; siblings carry
+  // ceiling-normalized cosine). Present whenever the query resolved a food;
+  // unread by ranking today — the substrate for a future relevancy treatment.
+  relevance?: number;
   // High-precision Crave score (percentile_rank, Decimal(6,5), 0..1, higher = better). `craveScore` is the
   // DISPLAY score (0-10 scale) rounded for display — ordering by it ties top restaurants and the map vs list
   // break ties differently. Order/rank by this; never display it. Additive/optional for backward-compat.
@@ -82,9 +87,6 @@ export interface RestaurantFoodSnippet {
   scoreSubjectType: 'connection';
   scoreSubjectId: string;
   craveScore: number;
-  // Sectioned relevancy: true = exact-match tier (section 1), false = widened
-  // (sibling/category/lexical) tier. Absent when sectioning didn't apply.
-  exactMatch?: boolean;
   rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
 }
@@ -130,6 +132,14 @@ export interface RestaurantResult {
   scoreSubjectType: 'restaurant';
   scoreSubjectId: string;
   craveScore: number;
+  // Sectioned relevancy: true = exact-match tier (section 1), false = widened
+  // (sibling/category/lexical) tier. Absent when sectioning didn't apply.
+  exactMatch?: boolean;
+  // Graded relatedness to the query entity on one calibrated 0..1 scale
+  // (1 = the thing you asked for or an instance of it; siblings carry
+  // ceiling-normalized cosine). Present whenever the query resolved a food;
+  // unread by ranking today — the substrate for a future relevancy treatment.
+  relevance?: number;
   // High-precision Crave score (percentile_rank, Decimal(6,5), 0..1, higher = better) — see FoodResult. The
   // map ranks pins and the results list orders rows by THIS so the badge number == the list position; the
   // rounded `craveScore` is display-only. Additive/optional.

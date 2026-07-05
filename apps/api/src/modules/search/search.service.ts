@@ -118,6 +118,13 @@ interface PlanExpansionState {
   // getCategoryMemberFoodIds). Replaces the per-connection `c.categories &&`
   // SQL arm — membership is resolved at plan time from the per-food edge table.
   categoryMemberFoodIds: string[];
+  // Graded relatedness of every widened food id to the QUERY entity, on one
+  // calibrated scale: siblings carry CEILING-NORMALIZED cosine (cosine ÷ the
+  // query dish's closest-sibling cosine — comparable across queries, unlike raw
+  // cosine whose family ceilings span ~0.77–0.95), lexical variants carry their
+  // match similarity, is-a instances are 1.0. Attached to result rows for the
+  // future relevancy treatment; unread by ranking today.
+  relevanceByFoodId: Record<string, number>;
 }
 
 type RelaxationCapabilities = {
@@ -395,20 +402,26 @@ export class SearchService {
       {
         const anchorFoodIds = this.collectEntityIds(request.entities.food);
         if (anchorFoodIds.length) {
-          const [categoryMemberFoodIds, denseSiblingFoodIds] =
-            await Promise.all([
-              // Category members apply on EVERY search (they replace the old
-              // per-connection `c.categories &&` SQL arm) — one-hop: resolved
-              // from the exact query foods only.
-              this.siblingExpansion.getCategoryMemberFoodIds(anchorFoodIds),
-              this.denseSiblingsMode === 'always'
-                ? this.siblingExpansion.getSiblingFoodIds(
-                    anchorFoodIds,
-                    this.denseSiblingsCut,
-                  )
-                : Promise.resolve([] as string[]),
-            ]);
+          const [categoryMemberFoodIds, siblingMatches] = await Promise.all([
+            // Category members apply on EVERY search (they replace the old
+            // per-connection `c.categories &&` SQL arm) — one-hop: resolved
+            // from the exact query foods only.
+            this.siblingExpansion.getCategoryMemberFoodIds(anchorFoodIds),
+            this.denseSiblingsMode === 'always'
+              ? this.siblingExpansion.getSiblingFoodIds(
+                  anchorFoodIds,
+                  this.denseSiblingsCut,
+                )
+              : Promise.resolve(
+                  [] as { siblingId: string; relevance: number }[],
+                ),
+          ]);
+          const denseSiblingFoodIds = siblingMatches.map((s) => s.siblingId);
           if (categoryMemberFoodIds.length || denseSiblingFoodIds.length) {
+            const relevanceByFoodId: Record<string, number> = {};
+            for (const id of categoryMemberFoodIds) relevanceByFoodId[id] = 1;
+            for (const s of siblingMatches)
+              relevanceByFoodId[s.siblingId] = s.relevance;
             planExpansion = {
               foodIds: [],
               foodAttributeIds: [],
@@ -416,6 +429,7 @@ export class SearchService {
               foodIdsFromPrimaryFoodAttributeText: [],
               denseSiblingFoodIds,
               categoryMemberFoodIds,
+              relevanceByFoodId,
             };
             if (this.debugMode !== 'off') {
               this.logger.info('Search debug: pre-probe food widening seeded', {
@@ -561,6 +575,10 @@ export class SearchService {
                 ...expansionResult.categoryMemberFoodIds,
               ]),
             ),
+            relevanceByFoodId: {
+              ...(planExpansion?.relevanceByFoodId ?? {}),
+              ...expansionResult.relevanceByFoodId,
+            },
           };
           expansionAnalysisMetadata = this.buildExpansionMetadata(
             strictCoverageCount,
@@ -1899,6 +1917,10 @@ export class SearchService {
     );
 
     const executeStart = performance.now();
+    const relevanceByFoodId = this.buildRelevanceMap(
+      params.request,
+      params.planExpansion,
+    );
     const exec = await this.queryExecutor.executeDual({
       plan: stagePlan,
       request: params.request,
@@ -1913,7 +1935,46 @@ export class SearchService {
     });
     const executeMs = performance.now() - executeStart;
 
+    // Attach graded relatedness (see PlanExpansionState.relevanceByFoodId) —
+    // one choke point so strict, re-probe, and relaxed rows all carry it.
+    if (relevanceByFoodId) {
+      for (const dish of exec.dishes) {
+        dish.relevance =
+          relevanceByFoodId[dish.foodId] ??
+          (dish.exactMatch === false ? undefined : 1);
+      }
+      for (const restaurant of exec.restaurants) {
+        const snippetScores = (restaurant.topFood ?? [])
+          .map(
+            (snippet) =>
+              relevanceByFoodId[snippet.foodId] ??
+              (restaurant.exactMatch === false ? undefined : 1),
+          )
+          .filter((value): value is number => typeof value === 'number');
+        restaurant.relevance = snippetScores.length
+          ? Math.max(...snippetScores)
+          : undefined;
+      }
+    }
+
     return { stagePlan, exec, timings: { planMs, executeMs } };
+  }
+
+  /** Query-food relatedness per food id: exact + is-a instances = 1.0, widened
+   *  ids (siblings/lexical) carry their graded scores from plan expansion.
+   *  Null when the query resolved no food (browse/restaurant queries). */
+  private buildRelevanceMap(
+    request: SearchQueryRequestDto,
+    planExpansion: PlanExpansionState | null,
+  ): Record<string, number> | null {
+    const baseFoodIds = this.collectEntityIds(request.entities.food);
+    if (!baseFoodIds.length) return null;
+    const map: Record<string, number> = {
+      ...(planExpansion?.relevanceByFoodId ?? {}),
+    };
+    for (const id of baseFoodIds) map[id] = 1;
+    for (const id of planExpansion?.categoryMemberFoodIds ?? []) map[id] = 1;
+    return map;
   }
 
   private buildSearchConstraints(
@@ -3737,6 +3798,19 @@ export class SearchService {
     // the winners and every lexical food id already headed into the filter.
     // ('always' mode fetches earlier, before the first strict probe.)
     let denseSiblingFoodIds: string[] = [];
+    const relevanceByFoodId: Record<string, number> = {};
+    // Lexical variants: graded by their match similarity (honest per-tier
+    // scores from the lattice — exact/instance-class matches read as 1.0).
+    for (const match of foods) {
+      if (match.evidence === 'exact' || match.evidence === 'prefix') {
+        relevanceByFoodId[match.entityId] = 1;
+      } else if (typeof match.similarity === 'number') {
+        relevanceByFoodId[match.entityId] = Math.min(
+          1,
+          Math.max(0, match.similarity),
+        );
+      }
+    }
     if (this.denseSiblingsMode === 'expansion') {
       const anchorFoodIds = this.collectEntityIds(request.entities.food);
       if (anchorFoodIds.length) {
@@ -3745,12 +3819,15 @@ export class SearchService {
           ...foodIds,
           ...foodIdsFromPrimaryFoodAttributeText,
         ]);
-        denseSiblingFoodIds = (
+        const siblingMatches = (
           await this.siblingExpansion.getSiblingFoodIds(
             anchorFoodIds,
             this.denseSiblingsCut,
           )
-        ).filter((id) => !seen.has(id));
+        ).filter((s) => !seen.has(s.siblingId));
+        denseSiblingFoodIds = siblingMatches.map((s) => s.siblingId);
+        for (const s of siblingMatches)
+          relevanceByFoodId[s.siblingId] = s.relevance;
       }
     }
 
@@ -3763,6 +3840,7 @@ export class SearchService {
       // Seeded pre-probe (every search), not here — the union at the caller
       // preserves it across this object.
       categoryMemberFoodIds: [],
+      relevanceByFoodId,
     };
 
     if (this.debugMode !== 'off') {

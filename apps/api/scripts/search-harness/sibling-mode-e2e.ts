@@ -68,6 +68,7 @@ async function main(): Promise<void> {
           d as unknown as {
             foodName?: string;
             exactMatch?: boolean;
+            relevance?: number;
             craveScore?: number;
           },
       );
@@ -76,7 +77,7 @@ async function main(): Promise<void> {
           .slice(0, 12)
           .map(
             (r) =>
-              `${r.exactMatch === false ? '~' : r.exactMatch === true ? '=' : ' '}${r.foodName}`,
+              `${r.exactMatch === false ? '~' : r.exactMatch === true ? '=' : ' '}${r.foodName}(${typeof r.relevance === 'number' ? r.relevance.toFixed(2) : '—'})`,
           )
           .join(', ')}`,
       );

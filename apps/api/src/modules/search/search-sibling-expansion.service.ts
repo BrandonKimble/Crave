@@ -78,7 +78,7 @@ export class SearchSiblingExpansionService {
   async getSiblingFoodIds(
     anchorFoodIds: string[],
     options: SiblingCutOptions,
-  ): Promise<string[]> {
+  ): Promise<{ siblingId: string; relevance: number }[]> {
     const anchors = Array.from(new Set(anchorFoodIds.filter(Boolean))).slice(
       0,
       Math.max(1, options.maxAnchors),
@@ -86,22 +86,42 @@ export class SearchSiblingExpansionService {
     if (!anchors.length) return [];
 
     try {
-      const rows = await this.prisma.$queryRaw<{ siblingId: string }[]>(
+      // `relevance` = CEILING-NORMALIZED cosine: this sibling's cosine divided
+      // by its anchor's CLOSEST-sibling cosine. Raw cosine is not comparable
+      // across queries (per-dish family ceilings span ~0.77–0.95 — the same
+      // measurement that made top-K beat a flat floor); normalizing by each
+      // anchor's own ceiling makes 0.9 mean "90% as close as this dish's
+      // closest relative" for EVERY query. Multi-anchor unions keep the MAX.
+      const rows = await this.prisma.$queryRaw<
+        { siblingId: string; relevance: number }[]
+      >(
         Prisma.sql`
-          SELECT DISTINCT e.sibling_entity_id AS "siblingId"
-          FROM derived_entity_sibling_edges e
-          JOIN core_entities s ON s.entity_id = e.sibling_entity_id
-            AND s.type = 'food'::entity_type
-            AND s.status = 'active'::entity_status
-          WHERE e.anchor_entity_id = ANY(${anchors}::uuid[])
-            AND e.cosine >= ${options.minCosine}
-            AND e.forward_rank <= ${options.forwardK}
-            AND e.mutual_rank IS NOT NULL
-            AND e.mutual_rank <= ${options.mutualR}
+          SELECT "siblingId", MAX(normalized) AS "relevance"
+          FROM (
+            SELECT
+              e.sibling_entity_id AS "siblingId",
+              e.cosine / MAX(e.cosine) OVER (PARTITION BY e.anchor_entity_id)
+                AS normalized
+            FROM derived_entity_sibling_edges e
+            JOIN core_entities s ON s.entity_id = e.sibling_entity_id
+              AND s.type = 'food'::entity_type
+              AND s.status = 'active'::entity_status
+            WHERE e.anchor_entity_id = ANY(${anchors}::uuid[])
+              AND e.cosine >= ${options.minCosine}
+              AND e.forward_rank <= ${options.forwardK}
+              AND e.mutual_rank IS NOT NULL
+              AND e.mutual_rank <= ${options.mutualR}
+          ) sib
+          GROUP BY "siblingId"
         `,
       );
       const anchorSet = new Set(anchors);
-      return rows.map((r) => r.siblingId).filter((id) => !anchorSet.has(id));
+      return rows
+        .filter((r) => !anchorSet.has(r.siblingId))
+        .map((r) => ({
+          siblingId: r.siblingId,
+          relevance: Number(r.relevance),
+        }));
     } catch (error) {
       this.logger.warn('Sibling expansion read failed (failing open)', {
         anchorCount: anchors.length,
