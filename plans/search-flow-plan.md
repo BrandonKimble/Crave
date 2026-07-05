@@ -175,9 +175,11 @@ Owner-directed audit (4 agents: data-flow · git archaeology · API semantics ·
 zero-network tab toggle, confirmed in code), coverage deliberately filter-free (dots = the
 universe; filters shape results only), skip-LLM entity/favorites launches, sibling-tab
 coverage prefetch (`use-direct-search-map-source-controller.ts:2669`), page-1 client cache.
-Small fixable frictions: **bounds missing from the client cache key** (`useSearchQuery.ts:78`
-— wrong-geography cache hits possible), no coverage bounds-debounce, filter-burst races
-(overlapping rerunActiveSearch calls unserialized).
+Claimed frictions — **verified against code 2026-07-05 before R1**: bounds-missing-from-cache-key
+is REFUTED (both caches include bounds: `normalizeParams` keys it; `buildSearchCacheKey`
+stringifies the full payload, `search.ts:167`); coverage already bounds-buckets its requestKey.
+The one SURVIVING friction: filter-burst races (overlapping `rerunActiveSearch` calls
+unserialized) — fold into R2's coordinator (the restarting debounce serializes them by design).
 
 **The MIDDLE layer (response-commit → native bridge) is accreted — rebuild it.** Evidence:
 
