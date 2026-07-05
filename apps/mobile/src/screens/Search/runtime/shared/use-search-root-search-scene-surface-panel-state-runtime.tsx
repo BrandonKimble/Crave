@@ -28,7 +28,7 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
     !shouldSuppressResultsSurface &&
     (resolvedResultsRuntime.resolvedResults != null ||
       searchResultsRuntimeState.resultsRequestKey != null ||
-      searchResultsRuntimeState.resultsHydrationCandidateKey != null ||
+      searchResultsRuntimeState.resultsIdentityCandidateKey != null ||
       searchResultsRuntimeState.resultsDishCount > 0 ||
       searchResultsRuntimeState.resultsRestaurantCount > 0);
   const activeTabRenderableRowCount = shouldSuppressResultsSurface
@@ -75,7 +75,7 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
     searchPresentationRuntimeState.renderPolicy,
     searchResultsRuntimeState.activeTab,
     searchResultsRuntimeState.resultsDishCount,
-    searchResultsRuntimeState.resultsHydrationCandidateKey,
+    searchResultsRuntimeState.resultsIdentityCandidateKey,
     searchResultsRuntimeState.resultsRestaurantCount,
     searchResultsRuntimeState.isSearchLoading,
   ]);

@@ -121,7 +121,7 @@ export const useSearchClearOwner = <Suggestion>({
     publishSearchMountedResultsDataSnapshot(null);
     searchRuntimeBus.publish({
       resultsRequestKey: null,
-      resultsHydrationCandidateKey: null,
+      resultsIdentityCandidateKey: null,
       resultsPage: null,
       resultsDishCount: 0,
       resultsRestaurantCount: 0,
@@ -240,7 +240,7 @@ export const useSearchClearOwner = <Suggestion>({
       publishSearchMountedResultsDataSnapshot(null);
       searchRuntimeBus.publish({
         resultsRequestKey: null,
-        resultsHydrationCandidateKey: null,
+        resultsIdentityCandidateKey: null,
         resultsPage: null,
         resultsDishCount: 0,
         resultsRestaurantCount: 0,

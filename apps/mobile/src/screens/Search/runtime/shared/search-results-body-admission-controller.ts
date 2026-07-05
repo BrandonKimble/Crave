@@ -11,7 +11,7 @@ type ResolveSearchResultsBodyAdmissionArgs = {
   activeTab: 'dishes' | 'restaurants';
   rowsByTab: SearchResultsBodyAdmissionRowsByTab;
   fullRowsByTab: SearchResultsBodyAdmissionRowsByTab;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
 };
 
 export type SearchResultsBodyAdmissionSnapshot = {
@@ -37,19 +37,19 @@ export const resolveSearchResultsBodyAdmissionPreparationRows = ({
 }: {
   activeTab: 'dishes' | 'restaurants';
   rowsByTab: SearchResultsBodyAdmissionRowsByTab;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
 }): SearchResultsBodyAdmissionRowsByTab => rowsByTab;
 
 export const resolveSearchResultsBodyAdmission = ({
   activeTab,
   fullRowsByTab,
-  resultsHydrationKey,
+  resultsIdentityKey,
   rowsByTab,
 }: ResolveSearchResultsBodyAdmissionArgs): SearchResultsBodyAdmissionSnapshot => {
   const activeList: SearchResultsBodyAdmissionActiveList =
     activeTab === 'restaurants' ? 'primary' : 'secondary';
   const fullActiveRows = resolveActiveRows({ activeTab, rowsByTab: fullRowsByTab });
-  if (fullActiveRows.length === 0 || resultsHydrationKey == null) {
+  if (fullActiveRows.length === 0 || resultsIdentityKey == null) {
     return {
       activeList,
       mode: 'shell',

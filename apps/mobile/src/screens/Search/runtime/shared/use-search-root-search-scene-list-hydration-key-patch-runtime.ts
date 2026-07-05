@@ -11,7 +11,7 @@ export const useSearchRootSearchSceneListHydrationKeyPatchRuntime = ({
   hydrationKeyRuntime: ReturnType<typeof useSearchResultsPanelHydrationKeyRuntime>;
 }): Pick<
   SearchRootSearchSceneListHydrationPatch,
-  'resultsHydrationKey' | 'hydratedResultsKey' | 'shouldHydrateResultsForRender'
+  'resultsIdentityKey' | 'hydratedResultsKey' | 'shouldHydrateResultsForRender'
 > => ({
   ...useSearchRootSearchSceneListHydrationKeysPatchRuntime({
     hydrationKeyRuntime,

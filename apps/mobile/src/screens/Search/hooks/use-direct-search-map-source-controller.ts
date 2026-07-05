@@ -757,8 +757,8 @@ const resolveMapSurfaceResultsLabelSourcesReadyKey = (
       resultsPresentationAuthority,
       resultsPresentationSurfaceAuthority
     ) ??
-    mountedResultsSnapshot.resultsHydrationKey ??
-    resultsPresentationSurfaceAuthority.getSnapshot().resultsHydrationKey ??
+    mountedResultsSnapshot.resultsIdentityKey ??
+    resultsPresentationSurfaceAuthority.getSnapshot().resultsIdentityKey ??
     mountedResultsSnapshot.resultsRequestKey ??
     resultsPresentationSurfaceAuthority.getSnapshot().resultsRequestKey ??
     state.resultsRequestKey ??
@@ -3250,7 +3250,7 @@ export const useDirectSearchMapSourceController = ({
     });
     const unsubscribeSurfaceTransaction = resultsPresentationSurfaceAuthority.subscribe(
       publishAndFetch,
-      ['searchSurfaceResultsTransactionKey', 'resultsHydrationKey', 'resultsRequestKey'] as const,
+      ['searchSurfaceResultsTransactionKey', 'resultsIdentityKey', 'resultsRequestKey'] as const,
       'map_source_controller_surface_transaction'
     );
     const unsubscribeRedrawTransaction = getSearchSurfaceRuntime().subscribeSelector(

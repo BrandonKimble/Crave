@@ -50,7 +50,7 @@ export type SearchMountedResultsDataSnapshot = {
   precomputedMarkerProjectionByTab: SearchMountedResultsMarkerProjectionByTab | null;
   resultsDataIdentityKey: string | null;
   results: SearchResponse | null;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   resultsRequestKey: string | null;
   version: number;
 };
@@ -72,7 +72,7 @@ export type SearchMountedResultsMarkerProjectionByTab = {
 export type SearchMountedResultsRowsViewKeyArgs = {
   activeTab: 'dishes' | 'restaurants';
   headerHeight: number;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
   targetSnapPointMiddle: number | null;
   viewportHeight: number;
@@ -98,7 +98,7 @@ export type SearchMountedResultsBodyRuntimeSnapshot = {
   hydratedResultsKey: string | null;
   isResultsHydrationSettled: boolean;
   searchSurfaceResultsTransactionKey: string | null;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
   shouldHydrateResultsForRender: boolean;
 };
@@ -122,7 +122,7 @@ export type SearchMountedResultsRowsSnapshot = {
   headerHeight: number;
   preparationKey: string | null;
   restaurantCardDescriptorsById: Map<string, RestaurantResultCardDescriptor>;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   resultsRequestKey: string | null;
   rowsByTab: {
     dishes: ResultsListItem[];
@@ -154,7 +154,7 @@ export type SearchMountedResultsListDataSnapshot = {
   debugRowsSnapshotVersion: number;
   debugSecondaryRowCount: number;
   preparedRowsActiveRowCount: number;
-  preparedRowsReadinessKey: string | null;
+  preparedRowsIdentityKey: string | null;
   primaryListHeaderComponent?: SearchMountedResultsListHeaderComponent;
   primaryListFooterComponent?: SearchMountedResultsListFooterComponent;
   primaryData: ReadonlyArray<ResultsListItem>;
@@ -174,7 +174,7 @@ const EMPTY_SEARCH_MOUNTED_RESULTS_DATA_SNAPSHOT: SearchMountedResultsDataSnapsh
   precomputedMarkerProjectionByTab: null,
   resultsDataIdentityKey: null,
   results: null,
-  resultsHydrationKey: null,
+  resultsIdentityKey: null,
   resultsRequestKey: null,
   version: 0,
 };
@@ -193,7 +193,7 @@ const EMPTY_SEARCH_MOUNTED_RESULTS_LIST_DATA_SNAPSHOT: SearchMountedResultsListD
   debugRowsSnapshotVersion: 0,
   debugSecondaryRowCount: 0,
   preparedRowsActiveRowCount: 0,
-  preparedRowsReadinessKey: null,
+  preparedRowsIdentityKey: null,
   primaryData: EMPTY_SEARCH_MOUNTED_RESULTS_LIST_DATA,
   primaryExtraData: 0,
   scrollIndicatorInsets: {
@@ -282,7 +282,7 @@ const EMPTY_SEARCH_MOUNTED_RESULTS_ROWS_SNAPSHOT: SearchMountedResultsRowsSnapsh
   headerHeight: 0,
   preparationKey: null,
   restaurantCardDescriptorsById: EMPTY_RESTAURANT_CARD_DESCRIPTORS,
-  resultsHydrationKey: null,
+  resultsIdentityKey: null,
   resultsRequestKey: null,
   rowsByTab: EMPTY_SEARCH_MOUNTED_RESULTS_ROWS,
   version: 0,
@@ -320,7 +320,7 @@ const areSearchMountedResultsRowsSnapshotsStructurallyEqual = (
   left.handleShowMoreExactDishes === right.handleShowMoreExactDishes &&
   left.handleShowMoreExactRestaurants === right.handleShowMoreExactRestaurants &&
   left.headerHeight === right.headerHeight &&
-  left.resultsHydrationKey === right.resultsHydrationKey &&
+  left.resultsIdentityKey === right.resultsIdentityKey &&
   left.resultsRequestKey === right.resultsRequestKey &&
   left.rowsByTab === right.rowsByTab;
 
@@ -341,7 +341,7 @@ const EMPTY_SEARCH_MOUNTED_RESULTS_BODY_RUNTIME: SearchMountedResultsBodyRuntime
   hydratedResultsKey: null,
   isResultsHydrationSettled: true,
   searchSurfaceResultsTransactionKey: null,
-  resultsHydrationKey: null,
+  resultsIdentityKey: null,
   searchSurfaceRedrawPhase: 'idle',
   shouldHydrateResultsForRender: false,
 };
@@ -426,12 +426,12 @@ const isMountedRestaurantCardRow = (row: ResultsListItem): row is ResultsMounted
 
 const markSearchMountedResultsCountContract = ({
   admission,
-  resultsHydrationKey,
+  resultsIdentityKey,
   resultsRequestKey,
   rowsByTab,
 }: {
   admission: SearchResultsBodyAdmissionSnapshot;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   resultsRequestKey: string | null;
   rowsByTab: {
     dishes: ResultsListItem[];
@@ -462,7 +462,7 @@ const markSearchMountedResultsCountContract = ({
     backendRestaurantCountOnPage: mountedResults.restaurants?.length ?? 0,
     mode: admission.mode,
     renderRowCount: admission.renderRowCount,
-    resultsHydrationKey: quietMeasuredLoopActive ? null : resultsHydrationKey,
+    resultsIdentityKey: quietMeasuredLoopActive ? null : resultsIdentityKey,
     resultsRequestKey: quietMeasuredLoopActive ? null : resultsRequestKey,
     rowsByTabDishRowCount: rowsByTab.dishes.length,
     rowsByTabRestaurantCardRowCount: countRestaurantRows(rowsByTab.restaurants),
@@ -487,7 +487,7 @@ const areSearchMountedResultsBodyRuntimeSnapshotsEqual = (
   left.hydratedResultsKey === right.hydratedResultsKey &&
   left.isResultsHydrationSettled === right.isResultsHydrationSettled &&
   left.searchSurfaceResultsTransactionKey === right.searchSurfaceResultsTransactionKey &&
-  left.resultsHydrationKey === right.resultsHydrationKey &&
+  left.resultsIdentityKey === right.resultsIdentityKey &&
   left.searchSurfaceRedrawPhase === right.searchSurfaceRedrawPhase &&
   left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender;
 
@@ -556,13 +556,13 @@ const resolveMountedRowsProjection = ({
 export const createSearchMountedResultsRowsViewKey = ({
   activeTab,
   headerHeight,
-  resultsHydrationKey,
+  resultsIdentityKey,
   searchSurfaceRedrawPhase,
   targetSnapPointMiddle,
   viewportHeight,
 }: SearchMountedResultsRowsViewKeyArgs): string =>
   [
-    `hydration:${resultsHydrationKey ?? 'null'}`,
+    `hydration:${resultsIdentityKey ?? 'null'}`,
     `tab:${activeTab}`,
     `header:${normalizeKeyNumber(headerHeight)}`,
     `phase:${searchSurfaceRedrawPhase}`,
@@ -647,7 +647,7 @@ const resolveSearchMountedResultsListDataSnapshot = (): SearchMountedResultsList
   debugRowsSnapshotVersion: rowsSnapshot.version,
   debugSecondaryRowCount: rowsSnapshot.admission.secondaryRows.length,
   preparedRowsActiveRowCount: rowsSnapshot.admission.renderRowCount,
-  preparedRowsReadinessKey: rowsSnapshot.resultsHydrationKey ?? rowsSnapshot.resultsRequestKey,
+  preparedRowsIdentityKey: rowsSnapshot.resultsIdentityKey ?? rowsSnapshot.resultsRequestKey,
   primaryData: rowsSnapshot.admission.primaryRows,
   primaryExtraData: rowsSnapshot.version,
   primaryListFooterComponent: mountedResultsListDecorationsSnapshot.primaryListFooterComponent,
@@ -693,22 +693,22 @@ const publishSearchMountedResultsListDataSnapshotIfChanged = (): void => {
 const publishSearchMountedResultsPreparedRowsSnapshot = ({
   activeRowCount,
   ready,
-  readinessKey,
+  resultsIdentityKey,
   source,
 }: {
   activeRowCount: number;
   ready: boolean;
-  readinessKey: string | null;
+  resultsIdentityKey: string | null;
   source: string;
 }): void => {
   const authority = getResultsPresentationSurfaceAuthority();
-  if (readinessKey == null || activeRowCount <= 0) {
+  if (resultsIdentityKey == null || activeRowCount <= 0) {
     authority.publish(
       {
         listPreparedRowsReady: false,
         preparedRows: {
-          targetReadinessKey: null,
-          readyReadinessKey: null,
+          targetResultsIdentityKey: null,
+          readyResultsIdentityKey: null,
           activeRowCount: 0,
         },
       },
@@ -717,12 +717,12 @@ const publishSearchMountedResultsPreparedRowsSnapshot = ({
     return;
   }
   const currentSnapshot = authority.getSnapshot().preparedRows;
-  const readyReadinessKey = ready ? readinessKey : null;
+  const readyResultsIdentityKey = ready ? resultsIdentityKey : null;
   const listPreparedRowsReady =
-    ready && authority.getSnapshot().resultsPreparedRowsKey === readinessKey;
+    ready && authority.getSnapshot().resultsPreparedRowsKey === resultsIdentityKey;
   if (
-    currentSnapshot.targetReadinessKey === readinessKey &&
-    currentSnapshot.readyReadinessKey === readyReadinessKey &&
+    currentSnapshot.targetResultsIdentityKey === resultsIdentityKey &&
+    currentSnapshot.readyResultsIdentityKey === readyResultsIdentityKey &&
     currentSnapshot.activeRowCount === activeRowCount &&
     authority.getSnapshot().listPreparedRowsReady === listPreparedRowsReady
   ) {
@@ -732,8 +732,8 @@ const publishSearchMountedResultsPreparedRowsSnapshot = ({
     {
       listPreparedRowsReady,
       preparedRows: {
-        targetReadinessKey: readinessKey,
-        readyReadinessKey,
+        targetResultsIdentityKey: resultsIdentityKey,
+        readyResultsIdentityKey,
         activeRowCount,
       },
     },
@@ -743,57 +743,60 @@ const publishSearchMountedResultsPreparedRowsSnapshot = ({
 
 const stageSearchMountedResultsPreparedRowsTarget = ({
   activeRowCount,
-  readinessKey,
+  resultsIdentityKey,
 }: {
   activeRowCount: number;
-  readinessKey: string | null;
+  resultsIdentityKey: string | null;
 }): void => {
   publishSearchMountedResultsPreparedRowsSnapshot({
     activeRowCount,
     ready: false,
-    readinessKey,
+    resultsIdentityKey,
     source: 'mounted_results_prepared_rows_staged',
   });
 };
 
 export const markSearchMountedResultsPreparedRowsCommitted = ({
   activeRowCount,
-  readinessKey,
+  resultsIdentityKey,
 }: {
   activeRowCount: number;
-  readinessKey: string | null;
+  resultsIdentityKey: string | null;
 }): void => {
   publishSearchMountedResultsPreparedRowsSnapshot({
     activeRowCount,
     ready: true,
-    readinessKey,
+    resultsIdentityKey,
     source: 'mounted_results_prepared_rows_committed',
   });
 };
 
 export const commitSearchMountedResultsPreparedRowsTarget = ({
-  readinessKey,
+  resultsIdentityKey,
 }: {
-  readinessKey: string | null;
+  resultsIdentityKey: string | null;
 }): void => {
-  if (readinessKey == null) {
+  if (resultsIdentityKey == null) {
     return;
   }
   const preparedRows = getResultsPresentationSurfaceAuthority().getSnapshot().preparedRows;
-  if (preparedRows.targetReadinessKey !== readinessKey || preparedRows.activeRowCount <= 0) {
+  if (
+    preparedRows.targetResultsIdentityKey !== resultsIdentityKey ||
+    preparedRows.activeRowCount <= 0
+  ) {
     // R0 loud-contracts (§D6): a commit attempt against a DIFFERENT staged target (or a
     // zero-row staging) can strand cardsReady=false forever — the audit's "stuck staging"
     // silent zone. Same-key-but-empty and stale-key cases are both suspicious here.
     reportSearchFlowContractViolation('prepared_rows_commit_target_mismatch', {
-      readinessKey,
-      targetReadinessKey: preparedRows.targetReadinessKey,
+      resultsIdentityKey,
+      targetResultsIdentityKey: preparedRows.targetResultsIdentityKey,
       activeRowCount: preparedRows.activeRowCount,
     });
     return;
   }
   markSearchMountedResultsPreparedRowsCommitted({
     activeRowCount: preparedRows.activeRowCount,
-    readinessKey,
+    resultsIdentityKey,
   });
 };
 
@@ -852,7 +855,7 @@ export const publishSearchMountedResultsDataSnapshot = (
   options?: {
     activeTab?: 'dishes' | 'restaurants' | null;
     markerProjectionByTab?: SearchMountedResultsMarkerProjectionByTab | null;
-    resultsHydrationKey?: string | null;
+    resultsIdentityKey?: string | null;
   }
 ): boolean => {
   if (__DEV__ && results == null && snapshot.results != null) {
@@ -863,7 +866,7 @@ export const publishSearchMountedResultsDataSnapshot = (
     );
   }
   const nextResultsRequestKey = results?.metadata?.searchRequestId ?? null;
-  const nextResultsHydrationKey = options?.resultsHydrationKey ?? null;
+  const nextResultsIdentityKey = options?.resultsIdentityKey ?? null;
   const nextActiveTab = options?.activeTab ?? null;
   const nextMarkerProjectionByTab = options?.markerProjectionByTab ?? null;
   const nextResultsDataIdentityKey = createSearchMountedResultsDataIdentityKey(results);
@@ -872,7 +875,7 @@ export const publishSearchMountedResultsDataSnapshot = (
   if (
     snapshot.results === results &&
     snapshot.resultsRequestKey === nextResultsRequestKey &&
-    snapshot.resultsHydrationKey === nextResultsHydrationKey &&
+    snapshot.resultsIdentityKey === nextResultsIdentityKey &&
     snapshot.activeTab === nextActiveTab &&
     (snapshot.precomputedMarkerProjectionByTab?.dishes?.resultsKey ?? null) ===
       (nextMarkerProjectionByTab?.dishes?.resultsKey ?? null) &&
@@ -884,13 +887,13 @@ export const publishSearchMountedResultsDataSnapshot = (
 
   logPerfScenarioStackAttribution({
     owner: 'search_mounted_results_data_writer',
-    path: `${snapshot.resultsHydrationKey ?? snapshot.resultsRequestKey ?? 'null'}->${
-      nextResultsHydrationKey ?? nextResultsRequestKey ?? 'null'
+    path: `${snapshot.resultsIdentityKey ?? snapshot.resultsRequestKey ?? 'null'}->${
+      nextResultsIdentityKey ?? nextResultsRequestKey ?? 'null'
     }`,
     details: {
       activeTab: nextActiveTab,
       dishCount: results?.dishes?.length ?? 0,
-      hydrationKey: nextResultsHydrationKey,
+      hydrationKey: nextResultsIdentityKey,
       restaurantCount: results?.restaurants?.length ?? 0,
       listenerCount: listeners.size,
     },
@@ -906,7 +909,7 @@ export const publishSearchMountedResultsDataSnapshot = (
     precomputedMarkerProjectionByTab: nextMarkerProjectionByTab,
     resultsDataIdentityKey: nextResultsDataIdentityKey,
     results,
-    resultsHydrationKey: nextResultsHydrationKey,
+    resultsIdentityKey: nextResultsIdentityKey,
     resultsRequestKey: nextResultsRequestKey,
     version: snapshot.version + 1,
   };
@@ -962,7 +965,7 @@ export const publishSearchMountedResultsRowsSnapshot = (
   };
   stageSearchMountedResultsPreparedRowsTarget({
     activeRowCount: nextSnapshot.admission.renderRowCount,
-    readinessKey: nextSnapshot.resultsHydrationKey ?? nextSnapshot.resultsRequestKey,
+    resultsIdentityKey: nextSnapshot.resultsIdentityKey ?? nextSnapshot.resultsRequestKey,
   });
   rowListeners.forEach((listener) => {
     listener();
@@ -976,15 +979,15 @@ const createMountedResultsBodyRowsInput = (): PrepareSearchMountedResultsRowsSna
   const activeRowsHydrationKey =
     resultsDataSnapshot.results == null
       ? null
-      : (resultsDataSnapshot.resultsHydrationKey ??
-        bodyRuntimeSnapshot.resultsHydrationKey ??
+      : (resultsDataSnapshot.resultsIdentityKey ??
+        bodyRuntimeSnapshot.resultsIdentityKey ??
         bodyRuntimeSnapshot.hydratedResultsKey ??
         resultsDataSnapshot.resultsRequestKey);
   return {
     activeTab: bodyRuntimeSnapshot.activeTab ?? resultsDataSnapshot.activeTab ?? 'restaurants',
     headerHeight: bodyLayoutSnapshot.headerHeight,
     resultsDataSnapshot,
-    resultsHydrationKey: activeRowsHydrationKey,
+    resultsIdentityKey: activeRowsHydrationKey,
     searchSurfaceRedrawPhase: MOUNTED_ROWS_ADMISSION_PHASE,
     targetSnapPointMiddle: bodyLayoutSnapshot.targetSnapPointMiddle,
     targetSnapPoints: bodyLayoutSnapshot.targetSnapPoints,
@@ -1012,13 +1015,13 @@ export const commitSearchMountedResultsHydrationRuntimeSnapshot = ({
   activeTab,
   hydratedResultsKey,
   isResultsHydrationSettled,
-  resultsHydrationKey,
+  resultsIdentityKey,
   shouldHydrateResultsForRender,
 }: {
   activeTab: 'dishes' | 'restaurants';
   hydratedResultsKey: string | null;
   isResultsHydrationSettled: boolean;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   shouldHydrateResultsForRender: boolean;
 }): boolean =>
   publishSearchMountedResultsBodyRuntimeSnapshot({
@@ -1026,7 +1029,7 @@ export const commitSearchMountedResultsHydrationRuntimeSnapshot = ({
     hydratedResultsKey,
     isResultsHydrationSettled,
     searchSurfaceResultsTransactionKey: bodyRuntimeSnapshot.searchSurfaceResultsTransactionKey,
-    resultsHydrationKey,
+    resultsIdentityKey,
     searchSurfaceRedrawPhase: MOUNTED_ROWS_ADMISSION_PHASE,
     shouldHydrateResultsForRender,
   });
@@ -1197,7 +1200,7 @@ export const prepareSearchMountedResultsRowsSnapshot = ({
   });
   const preparationRowsByTab = resolveSearchResultsBodyAdmissionPreparationRows({
     activeTab: viewArgs.activeTab,
-    resultsHydrationKey: viewArgs.resultsHydrationKey,
+    resultsIdentityKey: viewArgs.resultsIdentityKey,
     rowsByTab: fullRowsByTab,
   });
   const rowsByTab = {
@@ -1221,7 +1224,7 @@ export const prepareSearchMountedResultsRowsSnapshot = ({
   const admission = resolveSearchResultsBodyAdmission({
     activeTab: viewArgs.activeTab,
     fullRowsByTab,
-    resultsHydrationKey: viewArgs.resultsHydrationKey,
+    resultsIdentityKey: viewArgs.resultsIdentityKey,
     rowsByTab,
   });
   const didPublish = publishSearchMountedResultsRowsSnapshot({
@@ -1236,14 +1239,14 @@ export const prepareSearchMountedResultsRowsSnapshot = ({
     headerHeight: viewArgs.headerHeight,
     preparationKey,
     restaurantCardDescriptorsById,
-    resultsHydrationKey: viewArgs.resultsHydrationKey,
+    resultsIdentityKey: viewArgs.resultsIdentityKey,
     resultsRequestKey: resultsDataSnapshot.resultsRequestKey,
     rowsByTab,
     viewKey,
   });
   markSearchMountedResultsCountContract({
     admission,
-    resultsHydrationKey: viewArgs.resultsHydrationKey,
+    resultsIdentityKey: viewArgs.resultsIdentityKey,
     resultsRequestKey: resultsDataSnapshot.resultsRequestKey,
     rowsByTab,
   });
@@ -1283,7 +1286,7 @@ export const useSearchMountedResultsBodyAuthorityOwner = ({
         SearchRuntimeBus['getState']
       > & {
         hydratedResultsKey?: string | null;
-        resultsHydrationKey?: string | null;
+        resultsIdentityKey?: string | null;
         shouldHydrateResultsForRender?: boolean;
       };
       publishSearchMountedResultsBodyRuntimeSnapshot({
@@ -1291,7 +1294,7 @@ export const useSearchMountedResultsBodyAuthorityOwner = ({
         hydratedResultsKey: runtimeState.hydratedResultsKey ?? null,
         isResultsHydrationSettled: true,
         searchSurfaceResultsTransactionKey: bodyRuntimeSnapshot.searchSurfaceResultsTransactionKey,
-        resultsHydrationKey: runtimeState.resultsHydrationKey ?? null,
+        resultsIdentityKey: runtimeState.resultsIdentityKey ?? null,
         searchSurfaceRedrawPhase: runtimeState.searchSurfaceRedrawPhase,
         shouldHydrateResultsForRender: runtimeState.shouldHydrateResultsForRender ?? false,
       });

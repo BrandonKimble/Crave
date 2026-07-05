@@ -4,7 +4,7 @@ import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
 import { logPerfScenarioStackAttribution } from '../../../../perf/perf-scenario-attribution';
 
 export const useSearchResultsHydrationSyncLifecycleRuntime = ({
-  resultsHydrationKey,
+  resultsIdentityKey,
   hydratedResultsKey,
   activeOverlayKey,
   shouldResetHydrationCommit,
@@ -15,7 +15,7 @@ export const useSearchResultsHydrationSyncLifecycleRuntime = ({
   canFinalizeRowsRelease,
   onFinalizeRowsReleaseReady,
 }: {
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   hydratedResultsKey: string | null;
   activeOverlayKey: string;
   shouldResetHydrationCommit: boolean;
@@ -31,16 +31,16 @@ export const useSearchResultsHydrationSyncLifecycleRuntime = ({
   React.useEffect(() => {
     const hasAlreadySettledHydrationKey =
       !shouldResetHydrationCommit &&
-      resultsHydrationKey != null &&
-      resultsHydrationKey === hydratedResultsKey &&
+      resultsIdentityKey != null &&
+      resultsIdentityKey === hydratedResultsKey &&
       activeOverlayKey === 'search';
     if (hasAlreadySettledHydrationKey) {
-      if (settledHydrationKeyRef.current !== resultsHydrationKey) {
-        settledHydrationKeyRef.current = resultsHydrationKey;
+      if (settledHydrationKeyRef.current !== resultsIdentityKey) {
+        settledHydrationKeyRef.current = resultsIdentityKey;
         onFinalizeRowsReleaseReady();
         logPerfScenarioStackAttribution({
           owner: 'results_hydration_sync_lifecycle_effect',
-          path: `settled_reuse:${resultsHydrationKey}`,
+          path: `settled_reuse:${resultsIdentityKey}`,
           details: {
             activeOverlayKey,
           },
@@ -51,7 +51,7 @@ export const useSearchResultsHydrationSyncLifecycleRuntime = ({
     settledHydrationKeyRef.current = null;
     logPerfScenarioStackAttribution({
       owner: 'results_hydration_sync_lifecycle_effect',
-      path: `pending:${resultsHydrationKey ?? 'null'}|hydrated:${
+      path: `pending:${resultsIdentityKey ?? 'null'}|hydrated:${
         hydratedResultsKey ?? 'null'
       }|reset:${shouldResetHydrationCommit ? 'true' : 'false'}`,
       details: {
@@ -66,7 +66,7 @@ export const useSearchResultsHydrationSyncLifecycleRuntime = ({
     }
     return phaseBMaterializerRef.current.syncHydrationCommit({
       operationId: resolveOperationId(),
-      pendingHydrationKey: resultsHydrationKey,
+      pendingHydrationKey: resultsIdentityKey,
       hydratedHydrationKey: hydratedResultsKey,
       activeOverlayKey,
       commitHydrationKey,
@@ -83,7 +83,7 @@ export const useSearchResultsHydrationSyncLifecycleRuntime = ({
     onFinalizeRowsReleaseReady,
     phaseBMaterializerRef,
     resolveOperationId,
-    resultsHydrationKey,
+    resultsIdentityKey,
     shouldResetHydrationCommit,
   ]);
 };

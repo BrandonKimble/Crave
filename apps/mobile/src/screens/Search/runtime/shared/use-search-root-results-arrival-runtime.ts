@@ -13,17 +13,17 @@ type UseSearchRootResultsArrivalRuntimeArgs = {
 
 const hasVisibleSearchResultsSurface = ({
   resultsRequestKey,
-  resultsHydrationCandidateKey,
+  resultsIdentityCandidateKey,
   resultsDishCount,
   resultsRestaurantCount,
 }: {
   resultsRequestKey: string | null;
-  resultsHydrationCandidateKey: string | null;
+  resultsIdentityCandidateKey: string | null;
   resultsDishCount: number;
   resultsRestaurantCount: number;
 }): boolean =>
   resultsRequestKey != null ||
-  resultsHydrationCandidateKey != null ||
+  resultsIdentityCandidateKey != null ||
   resultsDishCount > 0 ||
   resultsRestaurantCount > 0;
 
@@ -40,7 +40,7 @@ export const useSearchRootResultsArrivalRuntime = ({
       isPaginationExhausted: state.isPaginationExhausted,
       pendingTabSwitchTab: state.pendingTabSwitchTab,
       resultsRequestKey: state.resultsRequestKey,
-      resultsHydrationCandidateKey: state.resultsHydrationCandidateKey,
+      resultsIdentityCandidateKey: state.resultsIdentityCandidateKey,
       resultsDishCount: state.resultsDishCount,
       resultsRestaurantCount: state.resultsRestaurantCount,
       resultsPage: state.resultsPage,
@@ -53,7 +53,7 @@ export const useSearchRootResultsArrivalRuntime = ({
       a.isPaginationExhausted === b.isPaginationExhausted &&
       a.pendingTabSwitchTab === b.pendingTabSwitchTab &&
       a.resultsRequestKey === b.resultsRequestKey &&
-      a.resultsHydrationCandidateKey === b.resultsHydrationCandidateKey &&
+      a.resultsIdentityCandidateKey === b.resultsIdentityCandidateKey &&
       a.resultsDishCount === b.resultsDishCount &&
       a.resultsRestaurantCount === b.resultsRestaurantCount &&
       a.resultsPage === b.resultsPage &&
@@ -65,7 +65,7 @@ export const useSearchRootResultsArrivalRuntime = ({
       'isPaginationExhausted',
       'pendingTabSwitchTab',
       'resultsRequestKey',
-      'resultsHydrationCandidateKey',
+      'resultsIdentityCandidateKey',
       'resultsDishCount',
       'resultsRestaurantCount',
       'resultsPage',
@@ -78,7 +78,7 @@ export const useSearchRootResultsArrivalRuntime = ({
       currentResults: null,
       hasResults: hasVisibleSearchResultsSurface({
         resultsRequestKey: resultsArrivalScalarState.resultsRequestKey,
-        resultsHydrationCandidateKey: resultsArrivalScalarState.resultsHydrationCandidateKey,
+        resultsIdentityCandidateKey: resultsArrivalScalarState.resultsIdentityCandidateKey,
         resultsDishCount: resultsArrivalScalarState.resultsDishCount,
         resultsRestaurantCount: resultsArrivalScalarState.resultsRestaurantCount,
       }),
@@ -99,7 +99,7 @@ export const useSearchRootResultsArrivalRuntime = ({
     resultsArrivalScalarState.isPaginationExhausted,
     resultsArrivalScalarState.pendingTabSwitchTab,
     resultsArrivalScalarState.resultsDishCount,
-    resultsArrivalScalarState.resultsHydrationCandidateKey,
+    resultsArrivalScalarState.resultsIdentityCandidateKey,
     resultsArrivalScalarState.resultsRestaurantCount,
     resultsArrivalScalarState.resultsPage,
     resultsArrivalScalarState.resultsRequestKey,

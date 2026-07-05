@@ -29,6 +29,7 @@ import {
   type SearchMountedResultsMarkerProjection,
   type SearchMountedResultsMarkerProjectionByTab,
 } from '../runtime/shared/search-mounted-results-data-store';
+import { buildResultsIdentityKey } from '../runtime/shared/results-identity-key';
 import type { SegmentValue } from '../constants/search';
 import {
   resolveSubmissionDefaultTab,
@@ -88,7 +89,7 @@ export type SearchSubmitResponseHandlerOptions = {
 type SearchResponseResultsCommitPatch = Pick<
   SearchRuntimeBusState,
   | 'resultsRequestKey'
-  | 'resultsHydrationCandidateKey'
+  | 'resultsIdentityCandidateKey'
   | 'resultsPage'
   | 'resultsDishCount'
   | 'resultsRestaurantCount'
@@ -105,7 +106,7 @@ type SearchResponseResultsCommitProjection = {
 
 type SearchResponseRootBusResultsPatch = Pick<
   SearchRuntimeBusState,
-  'resultsHydrationCandidateKey' | 'resultsDishCount' | 'resultsRestaurantCount'
+  'resultsIdentityCandidateKey' | 'resultsDishCount' | 'resultsRestaurantCount'
 > &
   Partial<Pick<SearchRuntimeBusState, 'resultsRequestKey' | 'resultsPage'>>;
 
@@ -134,7 +135,7 @@ const deriveSearchResponseRootBusResultsPatch = ({
   preserveRouteIdentity
     ? patch
     : {
-        resultsHydrationCandidateKey: patch.resultsHydrationCandidateKey,
+        resultsIdentityCandidateKey: patch.resultsIdentityCandidateKey,
         resultsDishCount: patch.resultsDishCount,
         resultsRestaurantCount: patch.resultsRestaurantCount,
       };
@@ -263,7 +264,7 @@ type SearchResponsePhaseACommitOptions = {
   initialUiState: SearchSubmitInitialResultUiState;
   committedResponse: SearchResponse;
   committedSearchRequestId: string;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   resultsDataKey: string | null;
   dataReadyFrom: 'network' | 'cache' | 'in_flight';
   searchInputKey: string | null;
@@ -351,7 +352,7 @@ type UseSearchSubmitResponseOwnerArgs = {
   onPageOneResultsCommitted?: (payload: {
     searchRequestId: string | null;
     requestBounds: MapBounds | null;
-    resultsHydrationKey: string | null;
+    resultsIdentityKey: string | null;
     resultsDataKey: string | null;
     dataReadyFrom: 'network' | 'cache' | 'in_flight';
     searchInputKey: string | null;
@@ -614,7 +615,14 @@ const deriveSearchResponseResultsCommitPatch = (params: {
     typeof committedResponse.metadata?.totalRestaurantResults === 'number'
       ? committedResponse.metadata.totalRestaurantResults
       : 'na';
-  const resultsHydrationCandidateKey = `${searchRequestId}:page:${resultsPage}:dishes:${mergedFoodCount}:restaurants:${mergedRestaurantCount}:totalFood:${totalFoodResults}:totalRestaurants:${totalRestaurantResults}`;
+  const resultsIdentityCandidateKey = buildResultsIdentityKey({
+    searchRequestId,
+    page: resultsPage,
+    dishCount: mergedFoodCount,
+    restaurantCount: mergedRestaurantCount,
+    totalFoodResults,
+    totalRestaurantResults,
+  });
   const restaurants = committedResponse.restaurants ?? [];
   const dishes = committedResponse.dishes ?? [];
   // R1a-2 (plans/search-flow-plan.md §D6): precompute the marker projection for BOTH tabs from
@@ -685,7 +693,7 @@ const deriveSearchResponseResultsCommitPatch = (params: {
       event: 'results_data_reuse_contract',
       source: 'search_response_results_commit',
       activeTab: markerPipelineActiveTab,
-      resultsHydrationCandidateKey,
+      resultsIdentityCandidateKey,
       searchRequestId,
       markerPipelineCacheHit: activeTabProjectionResult.cacheHit,
       markerPipelineRecomputed: !activeTabProjectionResult.cacheHit,
@@ -718,7 +726,7 @@ const deriveSearchResponseResultsCommitPatch = (params: {
     },
     resultsPatch: {
       resultsRequestKey: searchRequestId,
-      resultsHydrationCandidateKey,
+      resultsIdentityCandidateKey,
       resultsPage,
       resultsDishCount: mergedFoodCount,
       resultsRestaurantCount: mergedRestaurantCount,
@@ -971,12 +979,12 @@ export const useSearchSubmitResponseOwner = ({
         const runtimeRequestKey = getSearchMountedResultsDataSnapshot().resultsRequestKey ?? null;
         const hasExpectedRequest = runtimeRequestKey === expectedRequestKey;
         const expectedPreparedRowsKey =
-          runtimeState.resultsHydrationKey ?? runtimeState.resultsRequestKey;
+          runtimeState.resultsIdentityKey ?? runtimeState.resultsRequestKey;
         const arePreparedRowsReady =
           hasExpectedRequest &&
           runtimeState.listPreparedRowsReady &&
           expectedPreparedRowsKey != null &&
-          runtimeState.preparedRows.readyReadinessKey === expectedPreparedRowsKey;
+          runtimeState.preparedRows.readyResultsIdentityKey === expectedPreparedRowsKey;
         if (arePreparedRowsReady) {
           onReady();
           return;
@@ -1323,7 +1331,7 @@ export const useSearchSubmitResponseOwner = ({
       initialUiState,
       committedResponse,
       committedSearchRequestId,
-      resultsHydrationKey,
+      resultsIdentityKey,
       resultsDataKey,
       dataReadyFrom,
       searchInputKey,
@@ -1355,7 +1363,7 @@ export const useSearchSubmitResponseOwner = ({
         onPageOneResultsCommitted?.({
           searchRequestId: committedSearchRequestId,
           requestBounds: requestBounds ?? null,
-          resultsHydrationKey,
+          resultsIdentityKey,
           resultsDataKey,
           dataReadyFrom,
           searchInputKey,
@@ -1394,7 +1402,7 @@ export const useSearchSubmitResponseOwner = ({
     }: ApplySearchResponseLifecycleContextOptions) => {
       const dataReadyFrom = responseCacheStatus?.dataReadyFrom ?? 'network';
       const searchInputKey = responseCacheStatus?.searchInputKey ?? null;
-      const resultsDataKey = responseContext.resultsPatch.resultsHydrationCandidateKey ?? null;
+      const resultsDataKey = responseContext.resultsPatch.resultsIdentityCandidateKey ?? null;
       searchRuntimeBus.batch(() => {
         const mountedDataPublishStartedAtMs = getPerfScenarioWorkNow();
         // [tclur] MOUNT-PUBLISH probe: when (and whether) a target-tab response actually re-commits into
@@ -1414,14 +1422,14 @@ export const useSearchSubmitResponseOwner = ({
         publishSearchMountedResultsDataSnapshot(responseContext.committedResponse, {
           activeTab: initialUiState.targetTab,
           markerProjectionByTab: responseContext.markerProjectionByTab,
-          resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey,
+          resultsIdentityKey: responseContext.resultsPatch.resultsIdentityCandidateKey,
         });
         logPerfScenarioWorkSpan({
           owner: 'search_response_mounted_results_data_publish',
           path: runtimeTuple.mode,
           startedAtMs: mountedDataPublishStartedAtMs,
           details: {
-            resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey,
+            resultsIdentityKey: responseContext.resultsPatch.resultsIdentityCandidateKey,
             activeTab: initialUiState.targetTab,
             responseDishCount: responseContext.committedResponse.dishes?.length ?? 0,
             responseRestaurantCount: responseContext.committedResponse.restaurants?.length ?? 0,
@@ -1431,11 +1439,11 @@ export const useSearchSubmitResponseOwner = ({
         resultsPresentationSurfaceAuthority.publish(
           {
             resultsRequestKey: responseContext.resultsPatch.resultsRequestKey ?? null,
-            resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey ?? null,
+            resultsIdentityKey: responseContext.resultsPatch.resultsIdentityCandidateKey ?? null,
             resultsPreparedRowsKey: null,
             listPreparedRowsReady: false,
             isResultsHydrationSettled:
-              responseContext.resultsPatch.resultsHydrationCandidateKey == null,
+              responseContext.resultsPatch.resultsIdentityCandidateKey == null,
           },
           'search_response_owner_results_commit'
         );
@@ -1444,7 +1452,7 @@ export const useSearchSubmitResponseOwner = ({
           path: runtimeTuple.mode,
           startedAtMs: surfacePublishStartedAtMs,
           details: {
-            resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey,
+            resultsIdentityKey: responseContext.resultsPatch.resultsIdentityCandidateKey,
             listenerCount: resultsPresentationSurfaceAuthority.readDiagnostics().listenerCount,
           },
         });
@@ -1459,7 +1467,7 @@ export const useSearchSubmitResponseOwner = ({
           path: runtimeTuple.mode,
           startedAtMs: runtimeBusPublishStartedAtMs,
           details: {
-            resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey,
+            resultsIdentityKey: responseContext.resultsPatch.resultsIdentityCandidateKey,
             routeIdentityPublishSkipped:
               rootBusResultsPatch.resultsRequestKey == null &&
               rootBusResultsPatch.resultsPage == null,
@@ -1476,7 +1484,7 @@ export const useSearchSubmitResponseOwner = ({
           initialUiState,
           committedResponse: responseContext.committedResponse,
           committedSearchRequestId: responseContext.committedSearchRequestId,
-          resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey ?? null,
+          resultsIdentityKey: responseContext.resultsPatch.resultsIdentityCandidateKey ?? null,
           resultsDataKey,
           dataReadyFrom,
           searchInputKey,
@@ -1619,7 +1627,7 @@ export const useSearchSubmitResponseOwner = ({
           append,
           targetPage,
           operationId: runtimeTuple.operationId,
-          resultsHydrationKey: responseContext.resultsPatch.resultsHydrationCandidateKey ?? null,
+          resultsIdentityKey: responseContext.resultsPatch.resultsIdentityCandidateKey ?? null,
         },
       });
     },

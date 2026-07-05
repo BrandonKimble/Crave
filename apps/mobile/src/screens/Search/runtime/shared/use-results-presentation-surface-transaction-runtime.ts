@@ -209,7 +209,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
             searchSurfaceResultsPresentationTransactionInput.resultsPresentationTransport,
         }),
       resultsSnapshotKey:
-        resultsPresentationSurfaceAuthority.getSnapshot().resultsHydrationKey ??
+        resultsPresentationSurfaceAuthority.getSnapshot().resultsIdentityKey ??
         resultsPresentationSurfaceAuthority.getSnapshot().resultsRequestKey,
     }),
     [
@@ -444,13 +444,13 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     const mountedBodyRuntimeSnapshot = getSearchMountedResultsBodyRuntimeSnapshot();
     const mountedResultsSnapshot = getSearchMountedResultsDataSnapshot();
     const mountedResultsKey =
-      mountedResultsSnapshot.resultsHydrationKey ?? mountedResultsSnapshot.resultsRequestKey;
+      mountedResultsSnapshot.resultsIdentityKey ?? mountedResultsSnapshot.resultsRequestKey;
     const preparedRowsSnapshot = surfaceSnapshot.preparedRows;
-    const mountedPreparedRowsReadyKey = preparedRowsSnapshot.readyReadinessKey;
-    const mountedPreparedRowsTargetKey = preparedRowsSnapshot.targetReadinessKey;
+    const mountedPreparedRowsReadyKey = preparedRowsSnapshot.readyResultsIdentityKey;
+    const mountedPreparedRowsTargetKey = preparedRowsSnapshot.targetResultsIdentityKey;
     const mountedPreparedRowsActiveCount = preparedRowsSnapshot.activeRowCount;
     const currentResultsSnapshotKey =
-      surfaceSnapshot.resultsHydrationKey ?? surfaceSnapshot.resultsRequestKey;
+      surfaceSnapshot.resultsIdentityKey ?? surfaceSnapshot.resultsRequestKey;
     const hasNoRenderableResults =
       mountedResultsSnapshot.results != null &&
       mountedResultsSnapshot.results.dishes.length === 0 &&
@@ -683,7 +683,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
             requestKey: transactionId,
             resultsSnapshotKey: stagingInputs.resultsSnapshotKey,
             readinessKey: stagingInputs.mountedPreparedRowsReadyKey,
-            targetReadinessKey: stagingInputs.mountedPreparedRowsTargetKey,
+            targetResultsIdentityKey: stagingInputs.mountedPreparedRowsTargetKey,
             activeRowCount: stagingInputs.mountedPreparedRowsActiveCount,
             listPreparedRowsReady: stagingInputs.listPreparedRowsReady,
             hasNoRenderableResults: stagingInputs.hasNoRenderableResults,
@@ -782,7 +782,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
       if (recoverablePreparedRowsDataKey != null) {
         resultsPresentationSurfaceAuthority.publish(
           {
-            resultsHydrationKey: recoverablePreparedRowsDataKey,
+            resultsIdentityKey: recoverablePreparedRowsDataKey,
             hydratedResultsKey: recoverablePreparedRowsDataKey,
             resultsPreparedRowsKey: recoverablePreparedRowsDataKey,
             listPreparedRowsReady: true,
@@ -1039,7 +1039,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     const unsubscribeSurfaceAuthority = resultsPresentationSurfaceAuthority.subscribe(
       tryCommitFromRuntimeStores,
       [
-        'resultsHydrationKey',
+        'resultsIdentityKey',
         'resultsRequestKey',
         'hydratedResultsKey',
         'isResultsHydrationSettled',

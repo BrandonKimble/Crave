@@ -18,7 +18,7 @@ export const useSearchResultsHydrationKeyCommitEmissionRuntime = ({
         operationId: resolveOperationId(),
         activeOverlayKey,
         searchRequestId,
-        resultsHydrationKey: nextHydrationKey,
+        resultsIdentityKey: nextHydrationKey,
         durationMs,
       });
     },

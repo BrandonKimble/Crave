@@ -74,7 +74,7 @@ type UseSearchResultsReadModelSelectorsArgs = {
     event: 'runtime_write_span',
     payload?: Record<string, unknown>
   ) => void;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   hydratedResultsKey: string | null;
   hydrationOperationId: string | null;
   activeOverlayKey: string;
@@ -141,7 +141,7 @@ export const useSearchResultsReadModelSelectors = (
     renderDishCard,
     renderRestaurantCard,
     onRuntimeMechanismEvent,
-    resultsHydrationKey,
+    resultsIdentityKey,
     hydratedResultsKey,
     hydrationOperationId,
     activeOverlayKey,
@@ -192,7 +192,7 @@ export const useSearchResultsReadModelSelectors = (
     dishes,
     restaurants,
     results,
-    resultsHydrationKey,
+    resultsIdentityKey,
     shouldHydrateResultsForRender,
     searchSurfaceRedrawCommitSpanPressureActive,
     mapQueryBudget,
@@ -203,18 +203,18 @@ export const useSearchResultsReadModelSelectors = (
   const hydrationSettleStateRuntime = useSearchResultsHydrationSettleStateRuntime({
     dishesCount: resultsProjectionRuntime.safeResultsCountByTab.dishes,
     restaurantsCount: resultsProjectionRuntime.safeResultsCountByTab.restaurants,
-    resultsHydrationKey,
+    resultsIdentityKey,
     hydratedResultsKey,
   });
   useSearchResultsHydrationRowsReleaseRuntime({
-    resultsHydrationKey,
+    resultsIdentityKey,
     activeOverlayKey,
     settleStateRuntime: hydrationSettleStateRuntime,
   });
   const hydrationCommitPolicyRuntime = useSearchResultsHydrationCommitPolicyRuntime({
     activeOverlayKey,
     getAllowHydrationFinalizeCommit,
-    resultsHydrationKey,
+    resultsIdentityKey,
   });
   const applyHydrationKey = useSearchResultsHydrationKeyApplyRuntime({
     setHydratedResultsKeySync,
@@ -263,14 +263,14 @@ export const useSearchResultsReadModelSelectors = (
   }, [getAllowHydrationFinalizeCommit, searchInteractionRef]);
   const onFinalizeRowsReleaseReady = React.useCallback(() => {
     commitSearchMountedResultsPreparedRowsTarget({
-      readinessKey: resultsHydrationKey,
+      resultsIdentityKey,
     });
     hydrationSettleStateRuntime.setHydrationFinalizeRowsReleaseCompletedToken(
       hydrationSettleStateRuntime.hydrationRowsReleaseVersionToken
     );
-  }, [hydrationSettleStateRuntime, resultsHydrationKey]);
+  }, [hydrationSettleStateRuntime, resultsIdentityKey]);
   useSearchResultsHydrationSyncLifecycleRuntime({
-    resultsHydrationKey,
+    resultsIdentityKey,
     hydratedResultsKey,
     activeOverlayKey,
     shouldResetHydrationCommit: hydrationCommitPolicyRuntime.shouldResetHydrationCommit,
@@ -286,7 +286,7 @@ export const useSearchResultsReadModelSelectors = (
   });
   useSearchResultsHydrationRowsReleaseEmissionRuntime({
     activeOverlayKey,
-    resultsHydrationKey,
+    resultsIdentityKey,
     searchRequestId,
     mapQueryBudget,
     emitRuntimeWriteSpan,

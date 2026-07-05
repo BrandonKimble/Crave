@@ -8,7 +8,7 @@ export type SearchResultsPanelRetainedResultsRuntime = {
 };
 
 export type SearchResultsPanelHydrationKeyRuntime = {
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   hydratedResultsKey: string | null;
   shouldHydrateResultsForRender: boolean;
   setHydratedResultsKeySync: (nextHydrationKey: string | null) => void;

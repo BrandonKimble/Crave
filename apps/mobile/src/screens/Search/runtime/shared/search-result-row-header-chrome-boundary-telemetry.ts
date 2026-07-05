@@ -156,7 +156,7 @@ const tryEmitSearchResultRowHeaderChromeBoundaryContract = (): void => {
     surfaceMode: context.surfaceMode,
     transactionId,
     requestKey: context.requestKey,
-    transactionIdSource: context.transactionId == null ? 'requestKey' : 'resultsHydrationKey',
+    transactionIdSource: context.transactionId == null ? 'requestKey' : 'resultsIdentityKey',
     activeRowCount: context.activeRowCount,
     source: context.source,
   });

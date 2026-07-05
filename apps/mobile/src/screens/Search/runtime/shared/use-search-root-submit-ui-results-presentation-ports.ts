@@ -35,7 +35,7 @@ export const useSearchRootSubmitUiResultsPresentationPorts = ({
         resultsPresentationOwner.handlePageOneResultsCommitted({
           surfaceTransactionMutationKind:
             payload.presentationIntentKind === 'search_this_area' ? 'search_this_area' : undefined,
-          expectedResultsDataKey: payload.resultsDataKey ?? payload.resultsHydrationKey,
+          expectedResultsDataKey: payload.resultsDataKey ?? payload.resultsIdentityKey,
           dataReadyFrom: payload.dataReadyFrom,
           searchInputKey: payload.searchInputKey,
         });

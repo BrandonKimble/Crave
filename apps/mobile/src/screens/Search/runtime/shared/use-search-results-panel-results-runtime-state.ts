@@ -10,7 +10,7 @@ export const useSearchResultsPanelResultsRuntimeState = (
     (state) => ({
       results: null,
       resultsRequestKey: state.resultsRequestKey,
-      resultsHydrationCandidateKey: state.resultsHydrationCandidateKey,
+      resultsIdentityCandidateKey: state.resultsIdentityCandidateKey,
       resultsPage: state.resultsPage,
       resultsDishCount: state.resultsDishCount,
       resultsRestaurantCount: state.resultsRestaurantCount,
@@ -23,7 +23,7 @@ export const useSearchResultsPanelResultsRuntimeState = (
     }),
     (left, right) =>
       left.resultsRequestKey === right.resultsRequestKey &&
-      left.resultsHydrationCandidateKey === right.resultsHydrationCandidateKey &&
+      left.resultsIdentityCandidateKey === right.resultsIdentityCandidateKey &&
       left.resultsPage === right.resultsPage &&
       left.resultsDishCount === right.resultsDishCount &&
       left.resultsRestaurantCount === right.resultsRestaurantCount &&
@@ -35,7 +35,7 @@ export const useSearchResultsPanelResultsRuntimeState = (
       left.submittedQuery === right.submittedQuery,
     [
       'resultsRequestKey',
-      'resultsHydrationCandidateKey',
+      'resultsIdentityCandidateKey',
       'resultsPage',
       'resultsDishCount',
       'resultsRestaurantCount',

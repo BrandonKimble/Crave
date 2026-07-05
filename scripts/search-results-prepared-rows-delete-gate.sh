@@ -42,7 +42,7 @@ scan_active "SearchResultsBodyFirstPaintAdmission|firstPaintRenderMode|FIRST_PAI
   "old partial-admission or row-layout readiness path still exists" \
   "${ACTIVE_PATHS[@]}"
 
-scan_active "retainedRowsMatchMountedResults|preparedRowsSnapshot\\.readyReadinessKey \\?\\?|preparedRowsSnapshot\\.targetReadinessKey \\?\\?|listPreparedRowsReady \\|\\||mountedPreparedRowsReadyKey === inputs\\.resultsSnapshotKey" \
+scan_active "retainedRowsMatchMountedResults|preparedRowsSnapshot\\.readyReadinessKey \\?\\?|preparedRowsSnapshot\\.readyResultsIdentityKey \\?\\?|preparedRowsSnapshot\\.targetReadinessKey \\?\\?|preparedRowsSnapshot\\.targetResultsIdentityKey \\?\\?|listPreparedRowsReady \\|\\||mountedPreparedRowsReadyKey === inputs\\.resultsSnapshotKey" \
   "prepared-row readiness must not keep retained-row or key-match fallback paths" \
   "apps/mobile/src/screens/Search/runtime/shared/search-surface-results-transaction.ts" \
   "apps/mobile/src/screens/Search/runtime/shared/use-results-presentation-surface-transaction-runtime.ts"

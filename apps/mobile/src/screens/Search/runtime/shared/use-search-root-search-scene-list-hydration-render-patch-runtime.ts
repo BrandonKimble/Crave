@@ -9,7 +9,7 @@ export const useSearchRootSearchSceneListHydrationRenderPatchRuntime = ({
   hydrationKeyRuntime: ReturnType<typeof useSearchResultsPanelHydrationKeyRuntime>;
 }): Pick<
   SearchRootSearchSceneListHydrationPatch,
-  | 'resultsHydrationKey'
+  | 'resultsIdentityKey'
   | 'hydratedResultsKey'
   | 'resultsPreparedRowsKey'
   | 'listPreparedRowsReady'

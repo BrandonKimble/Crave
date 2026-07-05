@@ -25,10 +25,10 @@ export const useSearchResultsPanelHydrationRuntimeState = (
   );
   const sampledSearchRuntimeState = searchRuntimeBus.getState();
   const sampledPolicyFacts = searchRuntimeBus.getPolicyFactsSnapshot();
-  const surfaceResultsHydrationKey =
-    resultsPresentationSurfaceAuthority.getSnapshot().resultsHydrationKey;
+  const surfaceResultsIdentityKey =
+    resultsPresentationSurfaceAuthority.getSnapshot().resultsIdentityKey;
   const sampledSearchSurfaceRedrawPhase =
-    surfaceResultsHydrationKey == null
+    surfaceResultsIdentityKey == null
       ? sampledSearchRuntimeState.searchSurfaceRedrawPhase
       : resolveBodyAdmissionHandoffPhase(sampledSearchRuntimeState.searchSurfaceRedrawPhase);
 
@@ -51,7 +51,7 @@ export const useSearchResultsPanelHydrationRuntimeState = (
       sampledSearchRuntimeState.searchSurfaceRedrawCommitSpanPressureActive,
       sampledSearchRuntimeState.searchSurfaceRedrawPhase,
       sampledSearchSurfaceRedrawPhase,
-      surfaceResultsHydrationKey,
+      surfaceResultsIdentityKey,
     ]
   );
 };

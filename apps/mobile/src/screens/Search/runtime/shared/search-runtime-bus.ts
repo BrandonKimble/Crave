@@ -46,7 +46,7 @@ export const isSearchRuntimeMapPresentationSettled = (
 
 export type SearchRuntimeBusState = {
   results: SearchResponse | null;
-  resultsHydrationCandidateKey: string | null;
+  resultsIdentityCandidateKey: string | null;
   resultsPage: number | null;
   resultsDishCount: number;
   resultsRestaurantCount: number;
@@ -150,7 +150,7 @@ const IDLE_PROFILE_SHELL_STATE: SearchRuntimeProfileShellState = {
 
 const INITIAL_STATE: SearchRuntimeBusState = {
   results: null,
-  resultsHydrationCandidateKey: null,
+  resultsIdentityCandidateKey: null,
   resultsPage: null,
   resultsDishCount: 0,
   resultsRestaurantCount: 0,
@@ -388,7 +388,7 @@ export class SearchRuntimeBus {
       !changedKeys.has('isLoadingMore') &&
       !changedKeys.has('results') &&
       !changedKeys.has('resultsRequestKey') &&
-      !changedKeys.has('resultsHydrationCandidateKey') &&
+      !changedKeys.has('resultsIdentityCandidateKey') &&
       !changedKeys.has('resultsDishCount') &&
       !changedKeys.has('resultsRestaurantCount')
     ) {
@@ -401,7 +401,7 @@ export class SearchRuntimeBus {
       hasResults:
         this.state.results != null ||
         this.state.resultsRequestKey != null ||
-        this.state.resultsHydrationCandidateKey != null ||
+        this.state.resultsIdentityCandidateKey != null ||
         this.state.resultsDishCount > 0 ||
         this.state.resultsRestaurantCount > 0,
     });

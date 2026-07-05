@@ -416,7 +416,7 @@ const SearchMountedResultsListTarget = React.memo(
       });
       markSearchMountedResultsPreparedRowsCommitted({
         activeRowCount: listDataSnapshot.preparedRowsActiveRowCount,
-        readinessKey: listDataSnapshot.preparedRowsReadinessKey,
+        resultsIdentityKey: listDataSnapshot.preparedRowsIdentityKey,
       });
       const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
       if (isPerfScenarioAttributionActive(scenarioConfig)) {
@@ -431,7 +431,7 @@ const SearchMountedResultsListTarget = React.memo(
           path: compactResultsListDebugKey(listDataSnapshot.debugPreparationKey),
           durationMs: Number(durationMs.toFixed(3)),
           activeList,
-          preparedRowsReadinessKey: listDataSnapshot.preparedRowsReadinessKey,
+          preparedRowsIdentityKey: listDataSnapshot.preparedRowsIdentityKey,
           renderRowCount: listDataSnapshot.debugRenderRowCount,
         });
       }

@@ -8,7 +8,7 @@ export type SearchResultsPayload = SearchResponse | null;
 export type SearchResultsPanelResultsRuntimeState = {
   results: SearchResultsPayload;
   resultsRequestKey: string | null;
-  resultsHydrationCandidateKey: string | null;
+  resultsIdentityCandidateKey: string | null;
   resultsPage: number | null;
   resultsDishCount: number;
   resultsRestaurantCount: number;

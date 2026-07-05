@@ -3,20 +3,20 @@ import React from 'react';
 type SearchResultsHydrationCommitPolicyRuntimeArgs = {
   activeOverlayKey: string;
   getAllowHydrationFinalizeCommit?: () => boolean;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
 };
 
 export const useSearchResultsHydrationCommitPolicyRuntime = ({
   activeOverlayKey,
   getAllowHydrationFinalizeCommit,
-  resultsHydrationKey,
+  resultsIdentityKey,
 }: SearchResultsHydrationCommitPolicyRuntimeArgs) =>
   React.useMemo(
     () => ({
       shouldResetHydrationCommit:
         activeOverlayKey === 'search' &&
         getAllowHydrationFinalizeCommit?.() === false &&
-        resultsHydrationKey == null,
+        resultsIdentityKey == null,
     }),
-    [activeOverlayKey, getAllowHydrationFinalizeCommit, resultsHydrationKey]
+    [activeOverlayKey, getAllowHydrationFinalizeCommit, resultsIdentityKey]
   );
