@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { useSearchStore } from '../../../../store/searchStore';
 import { logger } from '../../../../utils';
 import type { ScheduleToggleCommit } from '../shared/results-toggle-interaction-contract';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
@@ -152,17 +151,15 @@ export const useQueryMutationOrchestrator = (
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
     const nextValue = !votesFilterActive;
-    searchRuntimeBus.publish({
-      votesFilterActive: nextValue,
-    });
+    // R1c single-writer: the setter publishes to the bus (the runtime authority) — chips and
+    // read-models all read the same bus value immediately.
+    setVotes100Plus(nextValue);
     if (!canRerunForCurrentQuery()) {
-      setVotes100Plus(nextValue);
       return;
     }
     const minimumVotes = nextValue ? minimumVotesFilter : null;
     scheduleToggleCommit(
       () => {
-        setVotes100Plus(nextValue);
         fireRerunActiveSearch({
           searchMode,
           activeTab,
@@ -199,16 +196,14 @@ export const useQueryMutationOrchestrator = (
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
     const nextValue = !risingActive;
-    searchRuntimeBus.publish({
-      risingActive: nextValue,
-    });
+    // R1c single-writer: the setter publishes to the bus (the runtime authority) — chips and
+    // read-models all read the same bus value immediately.
+    setRisingActive(nextValue);
     if (!canRerunForCurrentQuery()) {
-      setRisingActive(nextValue);
       return;
     }
     scheduleToggleCommit(
       () => {
-        setRisingActive(nextValue);
         fireRerunActiveSearch({
           searchMode,
           activeTab,
@@ -244,16 +239,14 @@ export const useQueryMutationOrchestrator = (
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
     const nextValue = !openNow;
-    searchRuntimeBus.publish({
-      openNow: nextValue,
-    });
+    // R1c single-writer: the setter publishes to the bus (the runtime authority) — chips and
+    // read-models all read the same bus value immediately.
+    setOpenNow(nextValue);
     if (!canRerunForCurrentQuery()) {
-      setOpenNow(nextValue);
       return;
     }
     scheduleToggleCommit(
       () => {
-        setOpenNow(nextValue);
         fireRerunActiveSearch({
           searchMode,
           activeTab,
@@ -297,7 +290,7 @@ export const useQueryMutationOrchestrator = (
     const normalizedRange = normalizePriceRangeValues(snapshot);
     const shouldClear = isFullPriceRange(normalizedRange);
     const nextLevels = shouldClear ? [] : buildLevelsFromRange(normalizedRange);
-    const currentLevels = useSearchStore.getState().priceLevels;
+    const currentLevels = searchRuntimeBus.getState().priceLevels;
     const hasChanged =
       nextLevels.length !== currentLevels.length ||
       nextLevels.some((value, index) => value !== currentLevels[index]);
@@ -342,6 +335,7 @@ export const useQueryMutationOrchestrator = (
     query,
     scheduleToggleCommit,
     searchMode,
+    searchRuntimeBus,
     setIsPriceSelectorVisible,
     setPriceLevels,
     submittedQuery,

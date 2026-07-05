@@ -56,6 +56,7 @@ export type SearchRuntimeBusState = {
   openNow: boolean;
   votesFilterActive: boolean;
   risingActive: boolean;
+  priceLevels: number[];
   isPriceSelectorVisible: boolean;
   toggleInteraction: ToggleInteractionState;
   shouldRetrySearchOnReconnect: boolean;
@@ -63,6 +64,8 @@ export type SearchRuntimeBusState = {
   searchSurfaceRedrawCommitSpanPressureActive: boolean;
   submittedQuery: string;
   activeTab: SearchRuntimeActiveTab;
+  preferredActiveTab: SearchRuntimeActiveTab;
+  hasActiveTabPreference: boolean;
   pendingTabSwitchTab: SearchRuntimeActiveTab | null;
   searchMode: SearchRuntimeSearchMode;
   isSearchSessionActive: boolean;
@@ -160,6 +163,7 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   openNow: false,
   votesFilterActive: false,
   risingActive: false,
+  priceLevels: [],
   isPriceSelectorVisible: false,
   toggleInteraction: IDLE_TOGGLE_INTERACTION_STATE,
   shouldRetrySearchOnReconnect: false,
@@ -167,6 +171,8 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   searchSurfaceRedrawCommitSpanPressureActive: false,
   submittedQuery: '',
   activeTab: 'dishes',
+  preferredActiveTab: 'dishes',
+  hasActiveTabPreference: false,
   pendingTabSwitchTab: null,
   searchMode: null,
   isSearchSessionActive: false,

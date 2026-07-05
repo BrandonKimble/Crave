@@ -16,9 +16,6 @@ export const useSearchRootSearchSceneUiBusPatchRuntime = ({
   SearchRootSearchSceneBusPatch,
   | 'priceButtonLabelText'
   | 'priceButtonIsActive'
-  | 'openNow'
-  | 'votesFilterActive'
-  | 'risingActive'
   | 'isPriceSelectorVisible'
   | 'shouldRetrySearchOnReconnect'
 > => ({

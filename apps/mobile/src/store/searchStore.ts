@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { SetStateAction } from 'react';
 import type { MapBounds } from '../types';
 import { logger } from '../utils';
 
@@ -9,7 +8,7 @@ const HISTORY_LIMIT = 8;
 const SEARCH_STORE_VERSION = 7;
 export type SearchActiveTab = 'restaurants' | 'dishes';
 
-const normalizePriceLevels = (levels: unknown): number[] => {
+export const normalizePriceLevels = (levels: unknown): number[] => {
   if (!Array.isArray(levels)) {
     return [];
   }
@@ -40,6 +39,22 @@ export interface SearchFilters {
   risingActive: boolean;
 }
 
+// R1c single-writer contract (plans/search-flow-plan.md §D6): the filter/tab fields below
+// (openNow, priceLevels, votes100Plus, risingActive, activeTab, preferredActiveTab,
+// hasActiveTabPreference) are RUNTIME-OWNED by the SearchRuntimeBus. This store is a pure
+// persistence mirror for them: the ONLY writer is applySearchRuntimeStateMirror, called by
+// the single bus subscription in search-runtime-filter-state-store-bridge.ts. Do not add
+// per-field setters back here — publish to the bus instead.
+export type SearchRuntimeMirroredState = {
+  openNow: boolean;
+  priceLevels: number[];
+  votes100Plus: boolean;
+  risingActive: boolean;
+  activeTab: SearchActiveTab;
+  preferredActiveTab: SearchActiveTab;
+  hasActiveTabPreference: boolean;
+};
+
 interface SearchState extends SearchFilters {
   query: string;
   page: number;
@@ -51,21 +66,15 @@ interface SearchState extends SearchFilters {
   clearQuery: () => void;
   setPage: (page: number) => void;
   resetPage: () => void;
-  resetFilters: () => void;
-  setOpenNow: (openNow: boolean) => void;
+  resetBoundsFilter: () => void;
   setBounds: (
     bounds: MapBounds | null,
     options?: { label?: string | null; presetId?: string | null }
   ) => void;
-  setPriceLevels: (levels: number[]) => void;
   recordSearch: (query: string) => void;
   removeHistoryEntry: (query: string) => void;
   clearHistory: () => void;
-  setVotes100Plus: (enabled: boolean) => void;
-  setRisingActive: (enabled: boolean) => void;
-  setActiveTab: (tab: SetStateAction<SearchActiveTab>) => void;
-  setActiveTabPreference: (tab: SearchActiveTab) => void;
-  setPreferredActiveTab: (tab: SearchActiveTab) => void;
+  applySearchRuntimeStateMirror: (patch: Partial<SearchRuntimeMirroredState>) => void;
 }
 
 const defaultState = {
@@ -99,7 +108,7 @@ const defaultState = {
   | 'history'
 >;
 
-const normalizeActiveTab = (tab: unknown): SearchActiveTab => {
+export const normalizeActiveTab = (tab: unknown): SearchActiveTab => {
   if (tab === 'restaurants' || tab === 'dishes') {
     return tab;
   }
@@ -126,19 +135,11 @@ export const useSearchStore = create<SearchState>()(
         set(() => ({
           page: 1,
         })),
-      resetFilters: () =>
+      resetBoundsFilter: () =>
         set(() => ({
-          openNow: defaultState.openNow,
           bounds: defaultState.bounds,
           boundsLabel: defaultState.boundsLabel,
           boundsPresetId: defaultState.boundsPresetId,
-          priceLevels: defaultState.priceLevels,
-          votes100Plus: defaultState.votes100Plus,
-          risingActive: defaultState.risingActive,
-        })),
-      setOpenNow: (openNow) =>
-        set(() => ({
-          openNow,
         })),
       setBounds: (bounds, options) =>
         set(() => ({
@@ -146,44 +147,19 @@ export const useSearchStore = create<SearchState>()(
           boundsLabel: options?.label ?? null,
           boundsPresetId: options?.presetId ?? null,
         })),
-      setPriceLevels: (levels) =>
-        set(() => ({
-          priceLevels: normalizePriceLevels(levels),
-        })),
-      setVotes100Plus: (enabled) =>
-        set(() => ({
-          votes100Plus: Boolean(enabled),
-        })),
-      setRisingActive: (enabled) =>
-        set(() => ({
-          risingActive: Boolean(enabled),
-        })),
-      setActiveTab: (tab) =>
-        set((state) => {
-          const resolved =
-            typeof tab === 'function'
-              ? (tab as (previousState: SearchActiveTab) => SearchActiveTab)(state.activeTab)
-              : tab;
-          return {
-            activeTab: normalizeActiveTab(resolved),
-          };
-        }),
-      setActiveTabPreference: (tab) =>
+      applySearchRuntimeStateMirror: (patch) =>
         set(() => {
-          const normalized = normalizeActiveTab(tab);
-          return {
-            preferredActiveTab: normalized,
-            hasActiveTabPreference: true,
-          };
-        }),
-      setPreferredActiveTab: (tab) =>
-        set(() => {
-          const normalized = normalizeActiveTab(tab);
-          return {
-            activeTab: normalized,
-            preferredActiveTab: normalized,
-            hasActiveTabPreference: true,
-          };
+          const next: Partial<SearchRuntimeMirroredState> = { ...patch };
+          if (patch.priceLevels != null) {
+            next.priceLevels = normalizePriceLevels(patch.priceLevels);
+          }
+          if (patch.activeTab != null) {
+            next.activeTab = normalizeActiveTab(patch.activeTab);
+          }
+          if (patch.preferredActiveTab != null) {
+            next.preferredActiveTab = normalizeActiveTab(patch.preferredActiveTab);
+          }
+          return next;
         }),
       recordSearch: (query) => {
         const trimmed = query.trim();

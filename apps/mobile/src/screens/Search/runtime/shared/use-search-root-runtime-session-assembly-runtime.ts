@@ -29,6 +29,7 @@ export const useSearchRootRuntimeSessionAssemblyRuntime = ({
   const searchMapNativeCameraExecutor = useSearchMapNativeCameraExecutor();
   const rootPrimitivesRuntime = useSearchRootPrimitivesRuntime({
     startupCamera: appEntryPlaneRuntime.startupCamera,
+    searchRuntimeBus,
     primitiveUiStateController,
     suggestionPanelStateController,
   });

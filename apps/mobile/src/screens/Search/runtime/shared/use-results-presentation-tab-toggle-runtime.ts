@@ -45,9 +45,10 @@ export const useResultsPresentationTabToggleRuntime = ({
         return;
       }
 
+      // R1c: setActiveTab publishes activeTab to the bus itself (single writer) — no second
+      // activeTab publish here.
       setActiveTab(next);
       searchRuntimeBus.publish({
-        activeTab: next,
         pendingTabSwitchTab: null,
       });
       setActiveTabPreference(next);

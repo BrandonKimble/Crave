@@ -1,9 +1,11 @@
 import React from 'react';
 import type { FlashListRef } from '@shopify/flash-list';
-import { useShallow } from 'zustand/react/shallow';
+import type { SetStateAction } from 'react';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
-import { useSearchStore } from '../../../../store/searchStore';
+import { normalizeActiveTab, type SearchActiveTab } from '../../../../store/searchStore';
+import type { SearchRuntimeBus } from './search-runtime-bus';
+import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 import {
   cloneSearchFiltersLayoutCache,
   type SearchFiltersLayoutCache,
@@ -15,9 +17,11 @@ import type { SearchSuggestionPanelStateController } from './search-suggestion-p
 import type { SearchRootSearchStateRuntime } from './search-root-primitives-runtime-contract';
 
 export const useSearchRootSearchPrimitivesRuntime = ({
+  searchRuntimeBus,
   primitiveUiStateController,
   suggestionPanelStateController,
 }: {
+  searchRuntimeBus: SearchRuntimeBus;
   primitiveUiStateController: SearchPrimitiveUiStateController;
   suggestionPanelStateController: SearchSuggestionPanelStateController;
 }): SearchRootSearchStateRuntime => {
@@ -164,20 +168,39 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       setSuggestions,
     ]
   );
-  const {
-    activeTab,
-    preferredActiveTab,
-    setActiveTab,
-    hasActiveTabPreference,
-    setActiveTabPreference,
-  } = useSearchStore(
-    useShallow((state) => ({
+  // R1c single-writer: tab state lives on the SearchRuntimeBus (the runtime authority); the
+  // zustand searchStore only mirrors it via search-runtime-filter-state-store-bridge.ts.
+  const { activeTab, preferredActiveTab, hasActiveTabPreference } = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => ({
       activeTab: state.activeTab,
       preferredActiveTab: state.preferredActiveTab,
-      setActiveTab: state.setActiveTab,
       hasActiveTabPreference: state.hasActiveTabPreference,
-      setActiveTabPreference: state.setActiveTabPreference,
-    }))
+    }),
+    (left, right) =>
+      left.activeTab === right.activeTab &&
+      left.preferredActiveTab === right.preferredActiveTab &&
+      left.hasActiveTabPreference === right.hasActiveTabPreference,
+    ['activeTab', 'preferredActiveTab', 'hasActiveTabPreference'] as const,
+    'search_root_tab_state_runtime'
+  );
+  const setActiveTab = React.useCallback(
+    (tab: SetStateAction<SearchActiveTab>) => {
+      const resolved = typeof tab === 'function' ? tab(searchRuntimeBus.getState().activeTab) : tab;
+      searchRuntimeBus.publish({
+        activeTab: normalizeActiveTab(resolved),
+      });
+    },
+    [searchRuntimeBus]
+  );
+  const setActiveTabPreference = React.useCallback(
+    (tab: SearchActiveTab) => {
+      searchRuntimeBus.publish({
+        preferredActiveTab: normalizeActiveTab(tab),
+        hasActiveTabPreference: true,
+      });
+    },
+    [searchRuntimeBus]
   );
   const inputRef = primitiveUiStateController.inputRef;
   const ignoreNextSearchBlurRef = React.useRef(false);

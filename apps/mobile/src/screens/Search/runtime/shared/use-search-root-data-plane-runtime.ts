@@ -52,7 +52,7 @@ export const useSearchRootDataPlaneRuntime = ({
       primitives.searchSurfaceRedrawCommitSpanPressureByOperationRef,
   });
   const historyRuntime = useSearchHistoryRuntime({ isSignedIn });
-  const filterStateRuntime = useSearchFilterStateRuntime();
+  const filterStateRuntime = useSearchFilterStateRuntime(searchRuntimeBus);
   const requestStatusRuntime = useSearchRequestStatusRuntime();
 
   return React.useMemo(

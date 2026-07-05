@@ -5,6 +5,10 @@ import { createResultsSurfacePolicyController } from './results-surface-policy-c
 import { createResultsSurfaceReadModelPolicyController } from './results-surface-read-model-policy-controller';
 import { createSearchRuntimeBus, type SearchRuntimeBus } from './search-runtime-bus';
 import {
+  attachSearchStoreRuntimeStateMirror,
+  seedSearchRuntimeBusFromSearchStore,
+} from './search-runtime-filter-state-store-bridge';
+import {
   createResultsPresentationAuthority,
   type ResultsPresentationAuthority,
 } from './results-presentation-authority';
@@ -31,6 +35,9 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
 
   if (runtimeRef.current == null) {
     const searchRuntimeBus: SearchRuntimeBus = createSearchRuntimeBus();
+    // R1c: the bus is the single runtime writer for filter/tab state; seed it synchronously
+    // from the persisted zustand mirror so first-render reads see the persisted values.
+    seedSearchRuntimeBusFromSearchStore(searchRuntimeBus);
     const resultsPresentationAuthority: ResultsPresentationAuthority =
       createResultsPresentationAuthority();
     const resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority =
@@ -77,8 +84,15 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
 
   const runtime = runtimeRef.current;
 
-  React.useEffect(
-    () => () => {
+  React.useEffect(() => {
+    // R1c: single bus→zustand mirror subscription (the only zustand writer for filter/tab
+    // state). Detached BEFORE the bus reset below so the reset-to-defaults never mirrors
+    // over the persisted values.
+    const detachSearchStoreRuntimeStateMirror = attachSearchStoreRuntimeStateMirror(
+      runtime.searchRuntimeBus
+    );
+    return () => {
+      detachSearchStoreRuntimeStateMirror();
       runtime.searchRuntimeBus.reset();
       runtime.resultsPresentationAuthority.reset();
       runtime.resultsPresentationSurfaceAuthority.reset();
@@ -86,9 +100,8 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
       runtime.primitiveUiStateController.reset();
       runtime.surfacePolicyController.reset();
       runtime.readModelPolicyController.reset(null);
-    },
-    [runtime]
-  );
+    };
+  }, [runtime]);
 
   return runtime;
 };

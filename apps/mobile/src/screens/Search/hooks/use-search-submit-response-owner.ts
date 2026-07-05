@@ -1214,9 +1214,9 @@ export const useSearchSubmitResponseOwner = ({
           unstable_batchedUpdates(() => {
             searchRuntimeBus.batch(() => {
               if (resolvedActiveTab != null) {
+                // R1c: setActiveTab publishes activeTab to the bus itself (single writer).
                 setActiveTab(resolvedActiveTab);
                 searchRuntimeBus.publish({
-                  activeTab: resolvedActiveTab,
                   pendingTabSwitchTab: null,
                 });
               }
