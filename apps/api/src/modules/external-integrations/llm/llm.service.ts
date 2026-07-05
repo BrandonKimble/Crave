@@ -1475,7 +1475,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       responseMimeType: 'application/json',
       responseJsonSchema: ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
     };
-    const thinkingConfig = this.getThinkingConfig(model, 'content');
+    const thinkingConfig = this.getThinkingConfig(model, 'query');
     if (thinkingConfig) {
       generationConfig.thinkingConfig = thinkingConfig;
     }
@@ -1490,7 +1490,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       systemInstruction: this.entityMatchPrompt,
       model,
       maxRetries: 1,
-      thinkingContext: 'content',
+      // 'query' (MINIMAL thinking) — consistent with matchEntitiesBatch; the
+      // same/new judgment measured zero thought tokens either way.
+      thinkingContext: 'query',
     });
     const content = this.extractTextContent(response, 'match_entity');
     return this.parseEntityMatchResponse(content, input);
