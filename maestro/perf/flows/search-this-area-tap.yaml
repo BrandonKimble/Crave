@@ -1,0 +1,7 @@
+appId: com.brandonkimble.cravesearch
+# Lane-3 reveal-joint attribution (plans/search-flow-plan.md D1): taps the real
+# "Search this area" pill by testID (coordinate taps are unreliable on this surface).
+# Precondition: results up + map moved so the pill is visible (drive via perf deep links).
+---
+- tapOn:
+    id: 'search-this-area-button'

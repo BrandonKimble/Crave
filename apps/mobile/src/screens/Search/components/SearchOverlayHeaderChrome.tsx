@@ -215,6 +215,7 @@ const SearchOverlayHeaderChrome = ({
           style={styles.searchThisAreaButton}
           accessibilityRole="button"
           accessibilityLabel="Search this area"
+          testID="search-this-area-button"
           hitSlop={8}
           onLayout={({ nativeEvent: { layout } }) => {
             searchThisAreaLayoutRef.current = layout;
