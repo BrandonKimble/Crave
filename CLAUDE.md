@@ -7,11 +7,23 @@ git history if needed.)
 
 ---
 
+## Workflow: solo dev — commit straight to `main`, no branches, no PRs
+
+Decision 2026-07-05. Solo project: **work directly on `main` and commit straight to it.**
+No feature branches, no PRs, no isolation worktrees — they only pile up as stale cruft
+(on 2026-07-05 we deleted 5 worktrees + 8 branches whose committed work was ALL already on
+main). The standard "commit/push only when the user asks" still applies — this rule is
+about WHERE commits land (`main`, directly), not about committing unprompted. If you later
+find a stray branch or worktree, treat it as cruft to surface, not something to build on.
+
+---
+
 ## Where product & business thinking lives (read before working on a feature)
 
 Three doc homes, by purpose:
-- **`plans/`** — concrete *execution* plans for work in flight (technical, sequenced).
-- **`product/`** — living *feature-idea backlog*, one file per app area
+
+- **`plans/`** — concrete _execution_ plans for work in flight (technical, sequenced).
+- **`product/`** — living _feature-idea backlog_, one file per app area
   ([favorites](product/favorites.md), [notifications](product/notifications.md),
   [profile](product/profile.md), [polls](product/polls.md),
   [restaurant-profile](product/restaurant-profile.md),
@@ -35,10 +47,11 @@ Cost me many wasted validation rounds (2026-06-22). When you edit JS then
 the last **full** bundle Metro built — which does NOT include subsequent
 Fast-Refresh "(1 module)" HMR patches. So you measure STALE code: a console.log /
 fix you just added simply never runs, and you chase ghosts.
+
 - TELL-TALE: a render-body `console.log` you added prints 0 times even though the
   component clearly renders on screen. That's stale bundle, not a render bug.
 - FORCE A FRESH FULL BUNDLE before validating: `curl -s -o /dev/null -w "%{http_code}\n"
-  "http://localhost:8081/apps/mobile/AppEntry.bundle?platform=ios&dev=true"` (look for
+"http://localhost:8081/apps/mobile/AppEntry.bundle?platform=ios&dev=true"` (look for
   a multi-second rebuild + a `Bundled … (N modules)` line with N in the thousands).
   Then cold-launch. `/index.bundle` 404s here; the entry is `apps/mobile/AppEntry.js`.
 - Confirm freshness with a uniquely-named marker log (`[BUILDCHECK-vN]`) each round;
@@ -70,71 +83,60 @@ effects do fire.
 
 ---
 
-## Memory: How to use the LOD harness (USE IT — don't guess from screenshots)
+## Memory: The map is SHIPPED — and the old `[lodev]` LOD harness is GONE
 
-We built a JSONL telemetry harness specifically to validate marker LOD
-(pin promote/demote, crossfade, wiggle) behavior. It is the source of truth for
-"what is the map actually doing." Read it BEFORE describing on-screen state or
-diagnosing a problem.
+The custom iOS map (pins/labels/dots LOD, crossfade, wiggle) is done and best-in-class
+as of ~2026-07. Two corrections to prior memory so you don't chase ghosts:
 
-**Enable / capture** (`lodHarnessEnabled = true`, hardcoded in
-`apps/mobile/ios/cravesearch/SearchMapRenderController.swift`):
+- **The `[lodev]` JSONL telemetry harness this file used to document DOES NOT EXIST in
+  the code.** There is no `lodHarnessEnabled`, no `step/mut/frame/render/lod` events, no
+  `renderP`/`roleGap` fields; `log stream --predicate '[lodev]'` returns nothing. Do not
+  go looking for it. What remains is narrative `[LODDBG]` NSLog behind
+  `static let lodDebugLoggingEnabled = false` in `SearchMapRenderController.swift` (inert;
+  flip to true only if you must debug the map again). Treat it as dead scaffolding, not a
+  source of truth.
+- **Don't build or strip map instrumentation unless you're actually changing the map.**
+  It's a finished, precious ~9.7k-line surface — a "cleanup" edit there risks regressing
+  hard-won behavior for zero benefit. The dormant NSLog costs nothing sitting behind a
+  `false` flag; its proper replacement (a structured mach-clock event log) gets built as
+  PART of a real map change, never as a naked delete.
 
-```bash
-DEV=7B0DD874-3496-46F7-9480-3EDDABCE2F31   # booted sim udid
-# live stream:
-xcrun simctl spawn $DEV log stream --style compact \
-  --predicate 'eventMessage CONTAINS "[lodev]"'
-# or after the fact:
-xcrun simctl spawn $DEV log show --last 3m --style compact \
-  --predicate 'eventMessage CONTAINS "[lodev]"'
-```
+**Go-forward testing methodology (for the REST of the app) — this is the lesson from the
+4–6 month map saga:** instrument the **composite / rendered output**, never intent (state
+values, style-spec literals, "a handler fired"); **every metric must be able to show RED**
+(an always-green metric is lying — that was the whole disease); the **human eye stays the
+oracle for feel** (centered / instant / seamless), while instruments gate _regression_
+against a human-blessed baseline. Build order: bidirectional command bus (ack + state
+snapshot) → app-owned "settled" signal → mach-clock event log → golden-timeline with a
+proven-RED self-mutation backstop → composited-pixel checks only where truly needed.
+**Foundation to build on (KEEP — do not delete):** `apps/mobile/src/perf/` — the
+command-bus seed (`perf-scenario-command-registry.ts` + `PerfScenarioCoordinator.tsx`,
+today fire-and-forget verbs that deliberately bypass gestures) and the frame/latency
+samplers. `apps/mobile/ios/MapLodKit` `LodEngine` + its tests are the clean pure-engine
+golden home (`swift test`, no sim).
 
-**Event types:** `step`, `mut`, `frame`, `cwork`, `render`, `lod`.
+**iOS build verification (durable — don't measure a stale binary):**
 
-**`step` — per-frame role/render state. Read the RIGHT field:**
-- `activePin` / `activeDot` = count of markers with an **active in-flight transition**
-  (crossfading right now) — NOT how many pins are visible. Easy to misread.
-- `roleP` = role table promoted count (how many SHOULD be pins).
-- `renderP` = pins actually painted (effective `nativeLodOpacity` > 0.5). **This is
-  the "are pins visible?" metric.** `roleGap = roleP - renderP` = promoted-but-invisible.
-- GOTCHA (fixed 2026-06): `renderP` used to read a feature-state key `nativePinOpacity`
-  that NOTHING writes → always `nil ?? 1` → renderP fakely echoed roleP, roleGap always 0.
-  A metric that's always green is lying. The pin's real on-screen opacity is
-  `presentationOpacity × nativeLodOpacity` (style line ~2362); read `nativeLodOpacity`
-  (feature-state → baked property → 1), the same coalesce the style + read site ~5316 use.
-- `moving` = camera in motion. `pinMidFade`/`dotMidFade` = markers at intermediate opacity.
-
-**`mut` — source mutations (the wiggle axis):**
-- `bundle:[add, update, remove]` — the 3rd element (removes) **while `moving:true`**
-  is the wiggle: removing a marker's bundle re-tiles the whole pin layer and every
-  pin re-snaps. Wiggle fix = `bundle:[*,*,0]` (zero removes) during movement.
-- `reason` = which path mutated: `native_lod` (LOD flips during pan/zoom),
-  `dot_transition_complete` / `pin_transition_complete` (a crossfade finished).
-- `affected` / `total` = scope of the mutation.
-
-**Build verification (don't measure a stale binary):**
 - `xcodebuild ... build` can print `BUILD SUCCEEDED` for a sub-step yet end with
-  `(N failures)` — and a Bash `run_in_background` "completed exit code 0" only means
-  the shell exited, NOT that the build linked. I measured a STALE binary for several
-  rounds this way (harness fields I'd just added were absent → tipped me off).
-- After EVERY build, before measuring: confirm the installed binary is newer than the
-  source edit. `stat -f "%Sm" -t "%H:%M:%S" <derivedData>/Build/Products/Debug-iphonesimulator/cravesearch.app/cravesearch`
-  vs the .swift mtime. If a NEW harness field you added is missing from the events,
-  the binary is stale — rebuild and check for `error:` lines.
+  `(N failures)`; a Bash `run_in_background` "exit code 0" only means the shell exited,
+  NOT that the build linked. After EVERY build, confirm the installed binary is newer than
+  the source edit: `stat -f "%Sm" -t "%H:%M:%S" <derivedData>/Build/Products/Debug-iphonesimulator/cravesearch.app/cravesearch`
+  vs the source mtime, and grep the build log for `error:` lines.
 - Build cmd: `xcodebuild -workspace cravesearch.xcworkspace -scheme cravesearch -configuration Debug -destination 'id=<udid>' -derivedDataPath ~/Library/Developer/Xcode/DerivedData/cravesearch-ebulueazabvxrcfekwsqmhnjeydn build`
   then `simctl install <udid> <app>`. `SourceState` has `featureStateById` but NOT
   `featureById` — read baked feature properties via `<family>State.collection.featureById`.
 
-**Driving the repro (self-test, no user needed):**
-- Maestro needs JDK: `export JAVA_HOME=/opt/homebrew/opt/openjdk@17`.
-- Jitter/pan repro flow: `maestro/perf/flows/search-map-jitter-swipe.yaml`.
+**Driving a repro without the user (STILL VALID — this is the command-bus seed):**
+
 - Perf deep links: `crave://perf-scenario-command?action=set_map_camera&lat=..&lng=..&zoom=..`
   and `action=submit_shortcut_restaurants` (wiring in
-  `apps/mobile/src/perf/PerfScenarioCoordinator.tsx`).
-- NOTE: the deep-link `submit_shortcut_restaurants` path can land on a poll CTA
-  instead of results depending on UI state — verify with `activePin`/`activeDot`,
-  not assumptions.
+  `apps/mobile/src/perf/PerfScenarioCoordinator.tsx` + `perf-scenario-command-registry.ts`).
+  These are exactly the fire-and-forget verbs the methodology's bidirectional bus extends
+  (add an ack + `read_state()` return so a no-op can't silently pass).
+- Maestro needs JDK: `export JAVA_HOME=/opt/homebrew/opt/openjdk@17`. Old map-saga flows
+  live under `maestro/perf/flows/` (mostly historical throwaway; `market-demand/` is
+  current search work; `map-accept.sh` is the best existing "outer-shell drives + asserts
+  on a probe" example).
 
 ---
 
@@ -143,12 +145,13 @@ xcrun simctl spawn $DEV log show --last 3m --style compact \
 When something is wrong, the order is **attribute → prove → then fix.** Do NOT
 propose or implement a solution before the data points at a specific cause.
 
-- Read the harness / logs first. If they already show the answer (e.g.
-  `activePin:0`), there is nothing to guess about — state it.
+- Read the logs / instrumentation first. If they already show the answer, there is
+  nothing to guess about — state it.
 - If attribution returns zero events, that itself is signal: keep ADDING logs
   until something tells you something. Don't theorize into the void.
-- "Trust the screen / sim" over green metrics — but the harness IS the screen,
-  quantified. Use it to confirm what the eye sees.
+- "Trust the screen / sim" over green metrics — instrument the COMPOSITE, not intent,
+  so the instrument quantifies what the eye actually sees. A metric that can only ever
+  show green is lying; if you can't make it show RED on a real defect, don't trust it.
 - Only claim a root cause once it's proven through attribution AND code, not
   plausibility. One change at a time; verify each via the harness before moving on.
 
