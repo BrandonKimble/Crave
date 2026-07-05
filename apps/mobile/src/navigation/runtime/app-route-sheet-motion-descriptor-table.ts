@@ -107,6 +107,49 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
     transitionKind: 'openChild',
     motion: { kind: 'promoteAtLeast', snap: 'middle' },
   },
+  // Stub-pass full-page children (plans/page-registry.md §1) — open at expanded like saveList.
+  {
+    from: '*',
+    to: 'userProfile',
+    transitionKind: 'openChild',
+    motion: { kind: 'snapTo', snap: 'expanded' },
+  },
+  {
+    from: '*',
+    to: 'listDetail',
+    transitionKind: 'openChild',
+    motion: { kind: 'snapTo', snap: 'expanded' },
+  },
+  {
+    from: '*',
+    to: 'followList',
+    transitionKind: 'openChild',
+    motion: { kind: 'snapTo', snap: 'expanded' },
+  },
+  {
+    from: '*',
+    to: 'notifications',
+    transitionKind: 'openChild',
+    motion: { kind: 'snapTo', snap: 'expanded' },
+  },
+  {
+    from: '*',
+    to: 'settings',
+    transitionKind: 'openChild',
+    motion: { kind: 'snapTo', snap: 'expanded' },
+  },
+  {
+    from: '*',
+    to: 'editProfile',
+    transitionKind: 'openChild',
+    motion: { kind: 'snapTo', snap: 'expanded' },
+  },
+  {
+    from: '*',
+    to: 'shareConfig',
+    transitionKind: 'openChild',
+    motion: { kind: 'snapTo', snap: 'expanded' },
+  },
 
   // CHILD DISMISS (owner req 2d example — the poll-detail pair). closeChild leaves the sheet at
   // its live Y while the body swaps back to the parent. This row equals the catch-all on purpose:

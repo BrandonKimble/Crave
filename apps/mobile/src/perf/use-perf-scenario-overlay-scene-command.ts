@@ -2,7 +2,12 @@ import React from 'react';
 
 import type { AppRouteSceneRuntime } from '../navigation/runtime/app-route-scene-runtime';
 import type { OverlayKey } from '../overlays/types';
+import { APP_OVERLAY_ROUTE_METADATA_BY_KEY } from '../navigation/runtime/app-overlay-route-types';
 import { registerPerfScenarioCommands } from './perf-scenario-command-registry';
+
+const isSwitchableOverlaySceneKey = (scene: string): scene is OverlayKey =>
+  Object.prototype.hasOwnProperty.call(APP_OVERLAY_ROUTE_METADATA_BY_KEY, scene) &&
+  APP_OVERLAY_ROUTE_METADATA_BY_KEY[scene as OverlayKey].sceneSwitch;
 
 const POLL_CHILD_COMMIT_DELAY_MS = 600;
 
@@ -64,7 +69,18 @@ export const usePerfScenarioOverlaySceneCommand = ({
           command.setRootRoute(scene as OverlayKey);
           return true;
         default:
-          return false;
+          // Metadata-driven fallback: any registered switchable scene is drivable without a
+          // hand-maintained whitelist (the old default:false silently rejected e.g. 'restaurant'
+          // and every page-registry stub scene). Poll scenes keep their choreography above.
+          if (!isSwitchableOverlaySceneKey(scene)) {
+            return false;
+          }
+          if (APP_OVERLAY_ROUTE_METADATA_BY_KEY[scene].role === 'topLevel') {
+            command.setRootRoute(scene);
+            return true;
+          }
+          command.pushRoute(scene);
+          return true;
       }
     };
 

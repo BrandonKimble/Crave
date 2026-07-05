@@ -1,6 +1,7 @@
 import {
   createPollCreationChildRouteParams,
   createPollDetailChildRouteParams,
+  getAppOverlayRouteMetadata,
   isAppOverlayRouteSceneSwitchKey,
   type OverlayKey,
   type OverlayRouteParamsMap,
@@ -149,18 +150,23 @@ export const createAppOverlayRouteCommandRuntime = ({
       });
       return;
     }
-    if (overlay === 'saveList' || overlay === 'restaurant') {
+    if (getAppOverlayRouteMetadata(overlay).role === 'child') {
+      // Metadata-driven (was `overlay === 'saveList' || overlay === 'restaurant'`): EVERY
+      // child-role scene push is a real openChild scene switch — a child that fell through to
+      // the bare pushRouteState below silently updated the route stack without ever presenting
+      // (the page-registry stub scenes hit exactly that). pollCreation/pollDetail stay special
+      // above only for their param normalization; behavior for saveList/restaurant is unchanged.
       requestRouteSceneSwitch({
         targetSceneKey: overlay,
         routeAction: 'push',
         routeParams: params,
         sheetTransitionKind: 'openChild',
         sheetOpenerSource: 'routeCommand',
-        // contentHandoff intentionally omitted: restaurant and saveList are both now in
-        // SEEDED_FORWARD_OPEN_SCENES, so the central descriptor resolves swapImmediately for
-        // this forward open — each paints its own seeded shell at once (saveList's form shell,
-        // restaurant's dish-skeleton seed) while its data loads, so holding the outgoing surface
-        // would only show a stale feed. Central descriptor decision, no per-call-site opt-out.
+        // contentHandoff intentionally omitted: forward-open children sit in
+        // SEEDED_FORWARD_OPEN_SCENES, so the central descriptor resolves swapImmediately —
+        // each paints its own seeded shell at once (saveList's form shell, restaurant's
+        // dish-skeleton seed) while its data loads, so holding the outgoing surface would only
+        // show a stale feed. Central descriptor decision, no per-call-site opt-out.
       });
       return;
     }

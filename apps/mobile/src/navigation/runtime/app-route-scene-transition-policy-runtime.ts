@@ -192,6 +192,15 @@ const SEEDED_FORWARD_OPEN_SCENES = new Set<OverlayKey>([
   'bookmarks',
   'polls',
   'search',
+  // Stub-pass child scenes (plans/page-registry.md §1): static mounted placeholder bodies paint
+  // their own shell on frame 1 (same as saveList) → hard-swap, no held-outgoing crossfade.
+  'userProfile',
+  'listDetail',
+  'followList',
+  'notifications',
+  'settings',
+  'editProfile',
+  'shareConfig',
 ]);
 
 const isSharedSheetChildScene = (sceneKey: OverlayKey): boolean =>

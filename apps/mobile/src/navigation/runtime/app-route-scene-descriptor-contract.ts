@@ -46,9 +46,32 @@ export type AppRouteSceneSecondaryListTransportPublication = {
   testID?: string;
 };
 
-export type AppRouteMountedSceneBodyKey = 'bookmarks' | 'polls' | 'profile' | 'saveList' | 'search';
+export type AppRouteMountedSceneBodyKey =
+  | 'bookmarks'
+  | 'polls'
+  | 'profile'
+  | 'saveList'
+  | 'search'
+  | 'userProfile'
+  | 'listDetail'
+  | 'followList'
+  | 'notifications'
+  | 'settings'
+  | 'editProfile'
+  | 'shareConfig';
 
-export type AppRouteMountedSceneChromeKey = 'bookmarks' | 'polls' | 'profile' | 'saveList';
+export type AppRouteMountedSceneChromeKey =
+  | 'bookmarks'
+  | 'polls'
+  | 'profile'
+  | 'saveList'
+  | 'userProfile'
+  | 'listDetail'
+  | 'followList'
+  | 'notifications'
+  | 'settings'
+  | 'editProfile'
+  | 'shareConfig';
 
 export type AppRouteMountedSceneChromeSurface = 'underlay' | 'background' | 'header' | 'overlay';
 

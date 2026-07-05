@@ -170,6 +170,93 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     chromePolicy: 'preserve',
     headerActionPolicy: 'fixed-close',
   },
+  // ── Stub-pass child scenes (plans/page-registry.md §1) — metadata + policy only; no entry
+  // points yet. requiresOwnerSceneKey is FALSE on all of them for now.
+  // stub: flip to true when real open params land.
+  userProfile: {
+    role: 'child',
+    productSceneKey: null,
+    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
+    requiresOwnerSceneKey: false,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: true,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'preserve',
+    headerActionPolicy: 'fixed-close',
+  },
+  listDetail: {
+    role: 'child',
+    productSceneKey: null,
+    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
+    requiresOwnerSceneKey: false,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: true,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'preserve',
+    headerActionPolicy: 'fixed-close',
+  },
+  followList: {
+    role: 'child',
+    productSceneKey: null,
+    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
+    requiresOwnerSceneKey: false,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: true,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'preserve',
+    headerActionPolicy: 'fixed-close',
+  },
+  notifications: {
+    role: 'child',
+    productSceneKey: null,
+    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
+    requiresOwnerSceneKey: false,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: true,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'preserve',
+    headerActionPolicy: 'fixed-close',
+  },
+  settings: {
+    role: 'child',
+    productSceneKey: null,
+    parentSceneKeys: ['profile'],
+    requiresOwnerSceneKey: false,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: true,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'preserve',
+    headerActionPolicy: 'fixed-close',
+  },
+  editProfile: {
+    role: 'child',
+    productSceneKey: null,
+    parentSceneKeys: ['profile'],
+    requiresOwnerSceneKey: false,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: true,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'preserve',
+    headerActionPolicy: 'fixed-close',
+  },
+  shareConfig: {
+    role: 'child',
+    productSceneKey: null,
+    parentSceneKeys: ['bookmarks', 'profile'],
+    requiresOwnerSceneKey: false,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: true,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'preserve',
+    headerActionPolicy: 'fixed-close',
+  },
 } as const satisfies Record<OverlayKey, AppOverlayRouteMetadata>;
 
 export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
@@ -181,12 +268,28 @@ export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
   'pollCreation',
   'pollDetail',
   'restaurant',
+  // stub-pass scenes (append-only — order is mount order)
+  'userProfile',
+  'listDetail',
+  'followList',
+  'notifications',
+  'settings',
+  'editProfile',
+  'shareConfig',
 ] as const satisfies readonly OverlayKey[];
 
 export const APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS = [
   'saveList',
   'bookmarks',
   'profile',
+  // stub-pass scenes (append-only — order is mount order)
+  'userProfile',
+  'listDetail',
+  'followList',
+  'notifications',
+  'settings',
+  'editProfile',
+  'shareConfig',
 ] as const satisfies readonly OverlayKey[];
 
 export const APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS = [
@@ -370,6 +473,24 @@ export type OverlayRouteParamsMap = {
     // comment. The routing layer guarantees the right poll re-mounts; the scroll-to + flash is a
     // panel-layer concern (PollDetailPanel's anchor restore effect).
     commentAnchorId?: string | null;
+  };
+  // ── Stub-pass scenes — param shapes only (all optional/nullable until real opens land).
+  userProfile?: {
+    userId?: string | null;
+  };
+  listDetail?: {
+    listId?: string | null;
+    ownerUserId?: string | null;
+  };
+  followList?: {
+    userId?: string | null;
+    mode?: 'followers' | 'following' | null;
+  };
+  notifications?: undefined;
+  settings?: undefined;
+  editProfile?: undefined;
+  shareConfig?: {
+    listId?: string | null;
   };
 };
 

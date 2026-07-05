@@ -56,9 +56,27 @@ export type SearchRouteMountedSceneBodyKey =
   | 'polls'
   | 'profile'
   | 'saveList'
-  | 'search';
+  | 'search'
+  | 'userProfile'
+  | 'listDetail'
+  | 'followList'
+  | 'notifications'
+  | 'settings'
+  | 'editProfile'
+  | 'shareConfig';
 
-export type SearchRouteMountedSceneChromeKey = 'bookmarks' | 'polls' | 'profile' | 'saveList';
+export type SearchRouteMountedSceneChromeKey =
+  | 'bookmarks'
+  | 'polls'
+  | 'profile'
+  | 'saveList'
+  | 'userProfile'
+  | 'listDetail'
+  | 'followList'
+  | 'notifications'
+  | 'settings'
+  | 'editProfile'
+  | 'shareConfig';
 
 export type SearchRouteMountedSceneChromeSurface = 'underlay' | 'background' | 'header' | 'overlay';
 

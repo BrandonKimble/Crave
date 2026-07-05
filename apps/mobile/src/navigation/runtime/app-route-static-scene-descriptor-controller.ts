@@ -14,9 +14,7 @@ import type {
   AppRouteSceneChromePublication,
   AppRouteSceneStackShellSpec,
 } from './app-route-scene-descriptor-contract';
-import type {
-  RouteShellSceneInputLane,
-} from './app-route-scene-foundation-runtime';
+import type { RouteShellSceneInputLane } from './app-route-scene-foundation-runtime';
 
 type RouteSceneLayoutAuthority = {
   subscribe: (listener: () => void) => () => void;
@@ -28,7 +26,16 @@ export type AppRouteStaticSceneDescriptorRuntime = {
 };
 
 type StaticTabSceneKey = 'bookmarks' | 'profile';
-type StaticSceneKey = 'saveList' | StaticTabSceneKey;
+// Stub-pass child scenes (plans/page-registry.md §1) — static descriptors with placeholder bodies.
+type StaticStubChildSceneKey =
+  | 'userProfile'
+  | 'listDetail'
+  | 'followList'
+  | 'notifications'
+  | 'settings'
+  | 'editProfile'
+  | 'shareConfig';
+type StaticSceneKey = 'saveList' | StaticTabSceneKey | StaticStubChildSceneKey;
 
 const staticSceneStyles = StyleSheet.create({
   scrollContent: {
@@ -53,6 +60,22 @@ const SAVE_LIST_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 72 }],
   keyboardShouldPersistTaps: 'handled',
 };
+
+// Shared transport for the stub child scenes (SAVE_LIST_BODY_TRANSPORT minus the
+// keyboard field — no inputs in a stub body).
+const STUB_CHILD_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
+  contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 72 }],
+};
+
+const STATIC_STUB_CHILD_SCENE_KEYS: readonly StaticStubChildSceneKey[] = [
+  'userProfile',
+  'listDetail',
+  'followList',
+  'notifications',
+  'settings',
+  'editProfile',
+  'shareConfig',
+];
 
 const STATIC_RETAINED_TAB_BODY_ADMISSION_POLICY: AppRouteSceneBodyAdmissionPolicy = {
   retainMountedBodyDuringTransition: true,
@@ -85,13 +108,16 @@ const createStaticTabShellSpec = ({
     style: overlaySheetStyles.container,
   });
 
-const createSaveListShellSpec = ({
+// Parameterized shell spec for the static child scenes (saveList + the stub pass).
+const createStaticChildShellSpec = ({
+  sceneKey,
   sceneLayout,
 }: {
+  sceneKey: 'saveList' | StaticStubChildSceneKey;
   sceneLayout: SearchRouteSceneLayoutState;
 }): AppRouteSceneStackShellSpec =>
   normalizeSearchRouteSceneStackShellSpec({
-    overlayKey: 'saveList',
+    overlayKey: sceneKey,
     snapPoints: sceneLayout.snapPoints,
     style: overlaySheetStyles.container,
   });
@@ -135,12 +161,26 @@ class AppRouteStaticSceneDescriptorController {
   }): void {
     sceneInputLane.publishRouteSceneDescriptor({
       sceneKey: 'saveList',
-      shellSpec: createSaveListShellSpec({
+      shellSpec: createStaticChildShellSpec({
+        sceneKey: 'saveList',
         sceneLayout,
       }),
       sceneChrome: createMountedChrome('saveList'),
       sceneBodyContent: createMountedBody('saveList'),
       sceneBodyTransport: SAVE_LIST_BODY_TRANSPORT,
+    });
+    // Stub-pass child scenes — same static-descriptor shape as saveList, placeholder bodies.
+    STATIC_STUB_CHILD_SCENE_KEYS.forEach((sceneKey) => {
+      sceneInputLane.publishRouteSceneDescriptor({
+        sceneKey,
+        shellSpec: createStaticChildShellSpec({
+          sceneKey,
+          sceneLayout,
+        }),
+        sceneChrome: createMountedChrome(sceneKey),
+        sceneBodyContent: createMountedBody(sceneKey),
+        sceneBodyTransport: STUB_CHILD_BODY_TRANSPORT,
+      });
     });
     sceneInputLane.publishRouteSceneDescriptor({
       sceneKey: 'bookmarks',

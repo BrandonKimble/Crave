@@ -17,7 +17,14 @@ export type OverlayKey =
   | 'price'
   | 'scoreInfo'
   | 'pollCreation'
-  | 'pollDetail';
+  | 'pollDetail'
+  | 'userProfile'
+  | 'listDetail'
+  | 'followList'
+  | 'notifications'
+  | 'settings'
+  | 'editProfile'
+  | 'shareConfig';
 
 export type OverlaySheetSnap = BottomSheetSnap;
 export type OverlaySheetSnapRequest = {

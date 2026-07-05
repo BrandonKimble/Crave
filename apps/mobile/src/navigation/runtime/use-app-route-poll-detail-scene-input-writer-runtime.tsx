@@ -19,7 +19,6 @@ export const useAppRoutePollDetailSceneInputWriterRuntime = ({
     activeOverlayRoute,
   });
   const pollDetailSceneParts = useSearchRoutePollDetailPanelSpec({
-    routeSceneRuntime,
     sceneLayout,
     pollDetailPollId: pollDetailSceneStateRuntime.pollDetailPollId,
     pollDetailPoll: pollDetailSceneStateRuntime.pollDetailPoll,

@@ -779,6 +779,15 @@ const SCENE_STACK_BODY_SKELETON_SPECS: Partial<Record<OverlayKey, SceneStackBody
   restaurant: { rowType: 'dish' },
   pollDetail: { rowType: 'comment', frostBacking: true },
   pollCreation: { rowType: 'comment', frostBacking: true },
+  // Stub-pass scenes (plans/page-registry.md §1) — skeleton specs registered ahead of the
+  // real bodies.
+  userProfile: { rowType: 'restaurant' },
+  listDetail: { rowType: 'restaurant' },
+  followList: { rowType: 'tile' },
+  notifications: { rowType: 'comment' },
+  settings: { rowType: 'tile' },
+  editProfile: { rowType: 'tile' },
+  shareConfig: { rowType: 'tile' },
 };
 
 const SceneStackBodyContentLayerHost = React.memo(
