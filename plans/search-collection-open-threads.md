@@ -165,8 +165,9 @@ one OR-filter group); replay replica imports the generated table (drift-proof). 
 food_aliases (established-shorthand only, structural super/subset filter at the sink); F:
 intra-batch overlay dedupe (cheap deterministic gate lev≤3/containment → strict LLM judge →
 alias banking + `intra_batch_near_duplicate_collapsed` counter). Remaining in this doc: G
-(archive-load validation) + Deferred section + sectioned-relevancy sort (owner-approved shape:
-exact-first grouping, designed not yet built).
+(archive-load validation) + Deferred section + sectioned-relevancy sort ✅ BUILT (0eb8f9f4:
+tier 0 = query food + category members, tier 1 = siblings/lexical; exactMatch row provenance
+awaits the mobile divider UI).
 
 **Suggested packages:** P1 correctness quick-wins (singleton floor, relaxation clamp, expansion
 fail-open, on-demand idempotency, perRestaurantLimit delete, page>1 reorder) · P2 evidence-tier
