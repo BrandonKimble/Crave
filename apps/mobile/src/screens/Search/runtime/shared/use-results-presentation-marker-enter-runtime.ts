@@ -60,10 +60,18 @@ export const useResultsPresentationMarkerEnterRuntime = ({
       return false;
     }
     pendingMarkerEnterStartRef.current = null;
-    return runtimeMachineRef.current!.markEnterNativeStartRequested(
+    const didRequestStart = runtimeMachineRef.current!.markEnterNativeStartRequested(
       pending.requestKey,
       pending.executionBatch
     );
+    if (__DEV__ && didRequestStart) {
+      // [REVEALSYNC] Phase-1 attribution (plans/search-flow-plan.md D1): the cards-admit /
+      // native-start-request tick. Pair with the rampStart emit below to measure the joint.
+      console.log(
+        `[REVEALSYNC] cardsAdmit key=${pending.requestKey} jsNowMs=${performance.now().toFixed(1)}`
+      );
+    }
+    return didRequestStart;
   }, [canStartMarkerEnterForSurface, runtimeMachineRef]);
 
   const handleExecutionBatchMountedHidden = React.useCallback(
@@ -104,6 +112,15 @@ export const useResultsPresentationMarkerEnterRuntime = ({
           executionBatch,
         };
         return;
+      }
+      if (__DEV__) {
+        // [REVEALSYNC] native ramp actually started (presentation_enter_started consumer).
+        // Logged on RECEIPT (markEnterStarted below may correctly no-op when the start-request
+        // path already hid the cover). nativeStartedAtMs = CACurrentMediaTime*1000 at ramp start.
+        const startedAtMs = (payload as { startedAtMs?: number }).startedAtMs;
+        console.log(
+          `[REVEALSYNC] rampStart key=${payload.requestKey} nativeStartedAtMs=${startedAtMs ?? 'nil'} jsNowMs=${performance.now().toFixed(1)}`
+        );
       }
       if (!runtimeMachineRef.current!.markEnterStarted(payload.requestKey, executionBatch)) {
         return;
