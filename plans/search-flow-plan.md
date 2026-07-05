@@ -133,6 +133,121 @@ not migration risk). **Pick mode** threads through the search-mode select-transi
 UI, same transition; `mode:'pick'` returns the selection to the requester and closes back —
 no search flow, no page switch (listDetail "Add places" is the first consumer).
 
+### D1a — EMPIRICAL DEFECT LEDGER (2026-07-05, isolated rig `Crave-flow`, all measured)
+
+Phase-1 attribution ran headless (arm scenario → camera/market → `submit_shortcut_restaurants`
+→ `toggle_tab&routeParam=…`×3; probes `[REVEALSYNC]` `[SRINULL]` `[T4DEDUP]` `[SRCPROJ]` in
+`/tmp/crave-flow-metro.log`). Findings, most severe first:
+
+1. **Toggle-BACK breaks the map source (root of T4 + the "MapLoad = env" myth).** Reproduced
+   2/2 clean runs: toggle dishes→restaurants emits `cardsAdmit` but NEVER `rampStart`; 3 log
+   lines later native throws `MapLoad error: "Failed to add duplicate feature to GeoJSON
+source"` + `"Failed to remove non-exist feature"`. JS's delta bookkeeping vs the actual
+   native source content DIVERGES on the cached-tab path → mutation rejected → enter never
+   arms → source corrupts incrementally → repeated toggles kill the map entirely (0 markers,
+   the state past sessions misdiagnosed as an environment failure needing relaunch).
+2. **~300ms JS-thread stall at toggle commit (T1, measured).** `frameMs: 303.7`, `floorFps:
+3.3` sitting exactly between `cardsAdmit` and `rampStart` → toggle Δ = 105–111ms
+   (reproducible; enter lane Δ = 1.9–6.4ms passes). Tracked spans account for only ~53ms —
+   the burner is untracked synchronous work in the commit window.
+3. **Silent submit failure.** 2 of 3 command-driven submits produced NO `MOUNT-PUBLISH`
+   (response never committed) with zero error surface — everything downstream no-ops
+   silently (`noSri` guard publishes `ready:false` forever, unlogged before our probe).
+4. **Frame-republish churn.** `[T4DEDUP]` shows both tabs' frames re-published (and
+   suppressed as byte-equal) roughly every second at idle — a subscription loop.
+5. **Identity-key proliferation** (`searchRequestId`/`requestKey`/`transactionId`/
+   `readinessKey`/`pvck`/`executionBatchId`/`frameGenerationId`…) with silent no-op guards at
+   each translation — the mechanism behind 1–3 being invisible until instrumented.
+
+**Owner directive (2026-07-05):** don't patch this shape — audit the entire data/logic flow
+(calls, stores, projection, pagination, map-vs-cards split, toggle evolution since the
+`2ca844dd` "good era") and produce an ideal-shape verdict: refactor vs ground-up redesign.
+Audit running (3 agents: data-flow architecture · git archaeology · API call semantics);
+synthesis lands in this doc as §D6.
+
+### D6 — FULL-FLOW AUDIT VERDICT (2026-07-05): keep the call layer, REBUILD the middle
+
+Owner-directed audit (4 agents: data-flow · git archaeology · API semantics · identity keys)
+
+- the D1a empirical ledger. Full agent reports in the session transcript; conclusions:
+
+**The CALL layer is well-designed — keep it.** Dual-list response (both axes in one call →
+zero-network tab toggle, confirmed in code), coverage deliberately filter-free (dots = the
+universe; filters shape results only), skip-LLM entity/favorites launches, sibling-tab
+coverage prefetch (`use-direct-search-map-source-controller.ts:2669`), page-1 client cache.
+Small fixable frictions: **bounds missing from the client cache key** (`useSearchQuery.ts:78`
+— wrong-geography cache hits possible), no coverage bounds-debounce, filter-burst races
+(overlapping rerunActiveSearch calls unserialized).
+
+**The MIDDLE layer (response-commit → native bridge) is accreted — rebuild it.** Evidence:
+
+- **13 identity-key types** (`searchRequestId`→`sectionedSearchRequestId`→`resultsHydrationKey`
+  →`readinessKey`; `transactionId`; `executionBatchId`/`frameGenerationId`; `visualCycleKey`;
+  `markersRenderKey`; …) with translation hops, **8 of whose mismatch guards silently no-op**
+  (census in the identity-key audit) — the mechanism behind every D1a defect being invisible.
+- **Archaeology:** the March "good era" (`2ca844dd`) was ONE 268-line coordinator: press-up →
+  restarting 300ms debounce → runner once → visual-sync → finalize, linear, one clock.
+  `e11f6202` (Apr 9, the frost split) deleted the debounce + split it into today's 3-file
+  ref-callback choreography; June–July added a PARALLEL toggle path (`beginInteractionFadeOut`
+  - under-cover reproject) beside the canonical enter machinery — the plan's own
+    `07-IDEAL-ARCHITECTURE-INVESTIGATION.md` already concluded that parallel path IS the bug
+    surface, and `cb97686f` (canonical-swap) started the unification but stopped.
+- **Native-truth divergence (D1a #1):** the frame port dedups against cached-per-tab
+  baselines, not against what the native source actually holds → toggle-back computes wrong
+  deltas → `duplicate feature`/`non-exist feature` → progressive source corruption.
+- **Marker catalog computed TWICE** (store-hop audit): `buildMarkerCatalogReadModel` in the
+  data store AND `collectSearchMapVisualCandidates` re-dedup/re-rank in the 3300-line map
+  source controller — card order ≠ marker order whenever tie-breaks drift.
+- **Filter state dual-sourced:** zustand `searchStore` AND `searchRuntimeBus` both hold
+  `openNow`/`priceLevels`/`activeTab`; updates are not atomic (orchestrator syncs on
+  explicit toggles only).
+- CORRECTION to an earlier live hypothesis: cards and map DO read the same committed
+  snapshot on the happy path — the "cards without store" runs were silently-failed submits
+  where nothing had data (defect #3), not a second source.
+
+**THE IDEAL SHAPE (one pipeline, one key, loud contracts):**
+
+```
+SearchIntent (openSearchFlow, D4)
+  → call layer (unchanged) → SearchResponse{dishes, restaurants, meta}
+  → ONE ResultsState commit (single store; cards AND map read the SAME commit;
+    identity = searchRequestId:page threaded end-to-end — kill the translations)
+  → derived projections (card rows · marker catalog · source frames) — pure functions of
+    ResultsState + {activeTab, filters, camera}; a toggle = variant-select, NOT a new pipeline
+  → ONE presentation machine (the canonical enter path): enter / toggle-swap / rerun /
+    dismiss are all "fade → commit variant under cover → both-ready joint → reveal";
+    coordinator restored to the March shape (single file, restarting debounce, seq guard)
+    — this IS the TR5 portable toggle primitive of step 3
+  → native bridge with ACKNOWLEDGED deltas: dedup/delta computed ONLY against the last
+    native-acknowledged applied state (seq-numbered), never a JS-side cached belief
+  → contracts: every key-mismatch/no-op guard logs a reason in dev + emits a contract event;
+    ready:false always says WHY; a silent no-op is a build failure of the design
+```
+
+**Verdict: focused REBUILD of the middle layer** (not refactor-in-place, not total rewrite —
+the call layer, native renderer, and the enter machine's core survive). Reasons: (1) the
+defect classes are structural (parallel paths, belief-vs-truth dedup, key translation maze) —
+each patch adds a 14th key; (2) the owner's step-3 toggle primitive REQUIRES the single
+coordinator anyway; (3) archaeology shows the target shape already existed twice (March
+coordinator; July canonical-swap direction) — this is convergence with proof, not invention.
+
+**Rebuild phases (each committed + measured before the next):**
+
+- **R0 — loud contracts (cheap, immediate):** convert the 8 silent guards to logged contract
+  events; keep [REVEALSYNC]/[T4DEDUP]/[SRINULL] probes as permanent dev telemetry.
+- **R1 — one ResultsState:** fold search-mounted-results-data-store into the single commit
+  both consumers read; thread `searchRequestId:page`; delete key translations. Also the call
+  frictions: bounds→cache key, coverage debounce, serialize filter reruns.
+- **R2 — one presentation path:** toggle/rerun/filters ride the canonical enter machinery
+  (variant-select under cover); delete the parallel reproject path; restore the single-file
+  restarting-debounce coordinator (= TR5 primitive). Fixes T1's stall window by moving the
+  variant commit off the interaction frame (measure!).
+- **R3 — acknowledged deltas:** native acks each applied source mutation (seq); JS deltas
+  diff against acked state only → structurally kills duplicate/non-exist corruption.
+- **R4 — the measurement gate:** REVEALSYNC ≤1 frame on ALL lanes incl. toggle-back (p90
+  over 20 runs), zero MapLoad errors across a 50-toggle torture run, stall p95 < 32ms at
+  commit, plus RED self-mutations for each contract.
+
 ### D5 — Command-bus verbs ride along (methodology phase-0)
 
 - `trigger_search` → `openSearchFlow({source:'command', ...})`, ack + `{transactionId}`.
