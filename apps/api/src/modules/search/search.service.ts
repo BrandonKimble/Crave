@@ -3431,12 +3431,12 @@ export class SearchService {
    *  expressed as GROUPING, never as score-blending. 'crave' restores the
    *  single pure-score list. */
   private resolveSectionedRanking(): boolean {
+    // Default OFF (pure Crave Score — the owner's standing decision). The
+    // sectioned shape is one CANDIDATE for the future relevancy treatment
+    // (owner is still weighing a relevancy+score blend); rows carry exactMatch
+    // provenance either way, which any future shape needs.
     const raw = process.env.SEARCH_RANKING_MODE?.trim().toLowerCase();
-    if (raw === 'crave') return false;
-    if (raw && raw !== 'sectioned') {
-      this.logger.warn('Invalid SEARCH_RANKING_MODE; using sectioned', { raw });
-    }
-    return true;
+    return raw === 'sectioned';
   }
 
   /** Wall-clock budget for the plan-expansion block (lexical + dense sibling
