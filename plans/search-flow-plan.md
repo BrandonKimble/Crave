@@ -159,6 +159,13 @@ source"` + `"Failed to remove non-exist feature"`. JS's delta bookkeeping vs the
    `readinessKey`/`pvck`/`executionBatchId`/`frameGenerationId`…) with silent no-op guards at
    each translation — the mechanism behind 1–3 being invisible until instrumented.
 
+6. **Pagination reported BROKEN by owner (pre-dates the rebuild; 2026-07-05).** Not yet
+   reproduced/attributed. Repro lever: `maestro/perf/flows/search-results-scroll-repeat.yaml`
+   (cards scroll → `loadMoreResults` → `/search` page-2 append). Suspects to check when
+   attributed: the page-1-only client cache gate, append-merge in the response owner, and the
+   identity key's page/count factors (R1b preserved these semantics deliberately). Schedule:
+   attribute right after R1c, before R2 (R2 rebuilds the commit path pagination rides).
+
 **Owner directive (2026-07-05):** don't patch this shape — audit the entire data/logic flow
 (calls, stores, projection, pagination, map-vs-cards split, toggle evolution since the
 `2ca844dd` "good era") and produce an ideal-shape verdict: refactor vs ground-up redesign.
