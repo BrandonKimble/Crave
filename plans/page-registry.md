@@ -1,7 +1,9 @@
 # Page Registry — the app's full page inventory + navigation contracts
 
-**Status:** decided 2026-07-05 (owner-blessed decisions inline). This is step 1 of the
-sequencing: page inventory → source-agnostic search flow → toggle primitive extraction.
+**Status:** decided 2026-07-05 (owner-blessed decisions inline); **scene-key stub pass DONE +
+on-sim verified same day** (`71587785` — all 7 child scene keys wired end-to-end, stub bodies
+"coming soon", drivable via the deep-link recipe below; modals not yet stubbed). This is step 1
+of the sequencing: page inventory → source-agnostic search flow → toggle primitive extraction.
 The switching **engine** already exists (PresentationFrame single-writer + co-mounted legs +
 skeleton hard-swap, merged `4eeaa27b` — see `plans/page-switch-handoff.md`); this doc is the
 **inventory + contracts** that the search-flow and toggle efforts build against.
@@ -159,5 +161,22 @@ visibility. The nav in/out motion reuses the existing search-transition slide/ma
 - `followList` could fold into `userProfile` as a tab later — kept separate for stack
   clarity.
 - Skeleton row types for the new scenes are placeholders — pick at build time.
-- Stub order when building: `userProfile` → `listDetail` → `notifications` → `settings`/
-  `editProfile` → modals (each stub = key + leg + skeleton + header, no body).
+- ✅ Scene-key stubs BUILT + sim-verified 2026-07-05 (`71587785`): all 7 child scenes present
+  with header + frost + placeholder body (`StubScenePanels.tsx`, testID `stub-scene-<key>`).
+  Modal-layer stubs (sortSheet/marketPicker/…) still pending.
+- **Driving any scene without UI (the recipe — arm FIRST or commands are ignored):**
+  1. `crave://perf-scenario?scenario=<name>&durationMs=<ms>` (arm; commands are ignored
+     with `no_active_scenario` otherwise)
+  2. `crave://perf-scenario-command?action=open_overlay_scene&scene=<OverlayKey>`
+     (now METADATA-driven — any `sceneSwitch` scene works: topLevel → setRootRoute,
+     child → openChild push; was a hand-whitelist that silently rejected everything else)
+  3. Verify via the painter probe: `grep '\[pageswitch\] host' /tmp/crave-metro.log` →
+     `"displayed":"<scene>"` is the "actually presented" signal (not the command ack).
+- Two systemic fixes landed with the stubs (both were hand-rolled whitelists that silently
+  no-op'd unlisted scenes — the always-green disease in routing form):
+  `use-perf-scenario-overlay-scene-command.ts` (default:false → metadata fallback) and
+  `app-overlay-route-command-runtime.ts` `revealRoute` (only saveList/restaurant got a real
+  openChild switch; now every child-role scene does).
+- Stub finger-test residuals (owner eyes, non-blocking): the close (X) pop path on stubs
+  (shared `closeActiveRoute`, same as every child), and whether the nav bar transitions out
+  on stub opens per the §3 rule (couldn't confirm under the dev error toast).
