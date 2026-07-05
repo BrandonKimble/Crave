@@ -1032,11 +1032,21 @@ export class EntityResolutionService implements OnModuleInit {
           .filter((primary) => {
             const other = (primary.normalizedName ?? '').toLowerCase().trim();
             if (!other || other === normalizedName) return false;
-            return (
+            // Nomination signals (candidate gate only — the judge decides):
+            // containment, bounded edit distance, or word-set overlap (catches
+            // word-order variants like "beef bulgogi"/"bulgogi beef" that both
+            // containment and whole-string edit distance miss).
+            if (
               other.includes(normalizedName) ||
               normalizedName.includes(other) ||
               this.boundedEditDistance(other, normalizedName, 3) !== null
-            );
+            ) {
+              return true;
+            }
+            const a = new Set(other.split(/\s+/));
+            const b = normalizedName.split(/\s+/);
+            const shared = b.filter((w) => a.has(w)).length;
+            return shared > 0 && shared >= Math.min(a.size, b.length) - 0;
           })
           .slice(0, 8);
         if (overlayCandidates.length) {
