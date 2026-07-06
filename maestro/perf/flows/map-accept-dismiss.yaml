@@ -1,7 +1,0 @@
-appId: com.brandonkimble.cravesearch
-# map-accept dismiss leg — run by maestro/perf/map-accept.sh AFTER it records the pre-dismiss
-# Metro-log boundary (post-dismiss `[t4dbg]` frames are legitimately count=0, so the final-state
-# assertions must not see them). Companion of map-accept-drive.yaml.
----
-- tapOn: { text: 'Close results' }
-- waitForAnimationToEnd: { timeout: 3000 }
