@@ -199,6 +199,23 @@ the secondary list under cover (the primary/secondary list infrastructure alread
 the tab swap is a pointer flip — evicting the card render from the commit window entirely —
 plus attribute the runner's ~150ms interior with one more mark pass.**
 
+### D6b — R2-C ROUND RESULTS (2026-07-05, commit 22d06921)
+
+JS commit window CLEARED: the toggle was a keyed full FlashList remount (~250-290ms card
+render) → dual co-mounted per-tab lists, flip-only (per-tab scroll offsets now persist —
+owner to bless); the ~125-142ms source-frame build → sibling prewarm into the fingerprint
+cache via the same build path, re-armed after every live publish (fp-diff probe proved the
+settle-time prewarm drifted: camera-fit bounds + promoted-hash). Toggle lookup HITS;
+contracts silent. Replay path itself costs ~84ms (re-stamp/commit/equality — future trim).
+
+**THE REMAINING GAP IS NATIVE:** cardsAdmit↔rampStart = ~107ms UNCHANGED across every JS
+variant (enter lane does request→ramp in 3ms). The toggle's native reveal path (under-cover
+reproject → QRF → commit fence → ramp arm in SearchMapRenderController.swift) owns it.
+Next: Swift-side mach-clock timestamps partitioning beginInteractionFadeOut →
+reprojectCatalogUnderCoverIfReady → presentation arm → first ramp tick. ALSO STILL OPEN:
+toggle-back corruption (R3) truncates every multi-toggle distribution — pull R3 forward if
+it keeps blocking R2's p90 gate.
+
 ### D6 — FULL-FLOW AUDIT VERDICT (2026-07-05): keep the call layer, REBUILD the middle
 
 Owner-directed audit (4 agents: data-flow · git archaeology · API semantics · identity keys)
