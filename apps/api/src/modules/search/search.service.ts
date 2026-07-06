@@ -407,7 +407,7 @@ export class SearchService {
             // per-connection `c.categories &&` SQL arm) — one-hop: resolved
             // from the exact query foods only.
             this.siblingExpansion.getCategoryMemberFoodIds(anchorFoodIds),
-            this.denseSiblingsMode === 'always'
+            this.siblingsWanted(request, 'preProbe')
               ? this.siblingExpansion.getSiblingFoodIds(
                   anchorFoodIds,
                   this.denseSiblingsCut,
@@ -867,6 +867,14 @@ export class SearchService {
             : null,
           metadata,
         };
+        await this.attachSimilarPreview({
+          response,
+          request,
+          planExpansion,
+          activeMarketKey: resolvedMarket.marketKey,
+          pagination,
+          topDishesLimit: TOP_DISHES_LIMIT,
+        });
         return this.applySearchResponseProfile(response, request);
       }
 
@@ -1231,6 +1239,14 @@ export class SearchService {
           : null,
         metadata,
       };
+      await this.attachSimilarPreview({
+        response,
+        request,
+        planExpansion,
+        activeMarketKey: resolvedMarket.marketKey,
+        pagination,
+        topDishesLimit: TOP_DISHES_LIMIT,
+      });
       return this.applySearchResponseProfile(response, request);
     } catch (error) {
       this.searchMetrics.recordSearchFailure({
@@ -1958,6 +1974,92 @@ export class SearchService {
     }
 
     return { stagePlan, exec, timings: { planMs, executeMs } };
+  }
+
+  /**
+   * Page-1 union prefetch for the "Include similar" toggle: on an EXACT-view
+   * page-1 response, also compute the pooled-view page 1 (one extra dual query,
+   * only when siblings exist) and attach the rows NOT already shown — tagged
+   * exactMatch=false with relevance — plus the similarAvailable count that
+   * drives the chip. Pooled top-N minus exact top-N is provably sibling-only
+   * (adding rows to a pure-score list can only push exacts DOWN), so the diff
+   * needs no tier computation. Fail-open: any error leaves the response as-is.
+   */
+  private async attachSimilarPreview(params: {
+    response: SearchResponseDto;
+    request: SearchQueryRequestDto;
+    planExpansion: PlanExpansionState | null;
+    activeMarketKey: string | null;
+    pagination: PaginationState;
+    topDishesLimit: number;
+  }): Promise<void> {
+    const { response, request, pagination } = params;
+    if (pagination.page !== 1) return;
+    if (request.includeSimilar === true) return; // already the pooled view
+    const anchorFoodIds = this.collectEntityIds(request.entities.food);
+    if (!anchorFoodIds.length) return;
+    try {
+      const siblings = await this.siblingExpansion.getSiblingFoodIds(
+        anchorFoodIds,
+        this.denseSiblingsCut,
+      );
+      if (!siblings.length) {
+        response.metadata.similarAvailable = 0;
+        return;
+      }
+      const widened: PlanExpansionState = {
+        foodIds: params.planExpansion?.foodIds ?? [],
+        foodAttributeIds: params.planExpansion?.foodAttributeIds ?? [],
+        restaurantAttributeIds:
+          params.planExpansion?.restaurantAttributeIds ?? [],
+        foodIdsFromPrimaryFoodAttributeText:
+          params.planExpansion?.foodIdsFromPrimaryFoodAttributeText ?? [],
+        categoryMemberFoodIds:
+          params.planExpansion?.categoryMemberFoodIds ?? [],
+        denseSiblingFoodIds: siblings.map((s) => s.siblingId),
+        relevanceByFoodId: {
+          ...(params.planExpansion?.relevanceByFoodId ?? {}),
+          ...Object.fromEntries(
+            siblings.map((s) => [s.siblingId, s.relevance]),
+          ),
+        },
+      };
+      const pageOne = { skip: 0, take: pagination.take };
+      const widenedRun = await this.executeSearchStage({
+        request,
+        stage: 'strict',
+        planExpansion: widened,
+        activeMarketKey: params.activeMarketKey,
+        pagination,
+        restaurantPagination: pageOne,
+        dishPagination: pageOne,
+        topDishesLimit: params.topDishesLimit,
+      });
+      const shownConnections = new Set(
+        response.dishes.map((d) => d.connectionId),
+      );
+      response.similarDishes = widenedRun.exec.dishes
+        .filter((d) => !shownConnections.has(d.connectionId))
+        .map((d) => ({ ...d, exactMatch: false }));
+      const shownRestaurants = new Set(
+        response.restaurants.map((r) => r.restaurantId),
+      );
+      response.similarRestaurants = widenedRun.exec.restaurants
+        .filter((r) => !shownRestaurants.has(r.restaurantId))
+        .map((r) => ({ ...r, exactMatch: false }));
+      response.metadata.similarAvailable = Math.max(
+        0,
+        widenedRun.exec.totalDishCount -
+          (response.metadata.totalFoodResults ?? 0),
+      );
+    } catch (error) {
+      this.logger.warn('Similar preview failed (failing open)', {
+        error:
+          error instanceof Error
+            ? { message: error.message }
+            : { message: String(error) },
+      });
+    }
   }
 
   /** Query-food relatedness per food id: exact + is-a instances = 1.0, widened
@@ -3511,6 +3613,23 @@ export class SearchService {
     return 1_500;
   }
 
+  /** The effective "include similar dishes" decision for one request: an
+   *  explicit request param (the user's toggle) ALWAYS wins; absent, the env
+   *  mode decides ('always' widens up front, 'expansion' widens only in the
+   *  thin-results plan expansion, 'off' never). */
+  private siblingsWanted(
+    request: SearchQueryRequestDto,
+    context: 'preProbe' | 'expansion',
+  ): boolean {
+    if (typeof request.includeSimilar === 'boolean') {
+      // Explicit toggle: widen up-front when on; NEVER silently widen when off.
+      return context === 'preProbe' && request.includeSimilar;
+    }
+    return context === 'preProbe'
+      ? this.denseSiblingsMode === 'always'
+      : this.denseSiblingsMode === 'expansion';
+  }
+
   /** Dense sibling co-inclusion mode — see DenseSiblingsMode. Default
    *  'expansion' (siblings only widen thin searches); 'always' is the
    *  main-search experiment flag, 'off' the kill switch. */
@@ -3811,7 +3930,7 @@ export class SearchService {
         );
       }
     }
-    if (this.denseSiblingsMode === 'expansion') {
+    if (this.siblingsWanted(request, 'expansion')) {
       const anchorFoodIds = this.collectEntityIds(request.entities.food);
       if (anchorFoodIds.length) {
         const seen = new Set<string>([

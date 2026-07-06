@@ -235,6 +235,10 @@ export interface ScoreInfoSummary {
 }
 
 export interface SearchResponseMetadata {
+  /** Count of similar (sibling) dishes available beyond the exact results —
+   *  drives the "show N similar dishes" chip. Present on page-1 exact-view
+   *  responses when the query resolved a food. */
+  similarAvailable?: number;
   totalFoodResults: number;
   totalRestaurantResults: number;
   queryExecutionTimeMs: number;
@@ -287,6 +291,15 @@ export interface SearchResponseMetadata {
 }
 
 export interface SearchResponse {
+  /**
+   * "Include similar" page-1 union prefetch: when the request ran WITHOUT
+   * includeSimilar, these are the pooled-page-1 rows NOT already in
+   * dishes/restaurants (tagged exactMatch=false, relevance attached). The
+   * client composes the toggle-ON view from one payload — page-1 flips are
+   * zero-network and the map gets its extra pins from the same union.
+   */
+  similarDishes?: FoodResult[];
+  similarRestaurants?: RestaurantResult[];
   format: QueryFormat;
   plan: QueryPlan;
   dishes: FoodResult[];

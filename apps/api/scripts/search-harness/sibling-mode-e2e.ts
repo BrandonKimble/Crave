@@ -81,6 +81,21 @@ async function main(): Promise<void> {
           )
           .join(', ')}`,
       );
+      const similar = (
+        res as unknown as {
+          similarDishes?: { foodName?: string; relevance?: number }[];
+        }
+      ).similarDishes;
+      const similarAvailable = (meta as { similarAvailable?: number })
+        ?.similarAvailable;
+      out(
+        `  similarPreview : available=${similarAvailable ?? '—'} rows=[${(
+          similar ?? []
+        )
+          .slice(0, 8)
+          .map((s) => `${s.foodName}(${s.relevance?.toFixed(2) ?? '—'})`)
+          .join(', ')}]`,
+      );
       const firstWidened = dishRows.findIndex((r) => r.exactMatch === false);
       const lateExact = dishRows.findIndex(
         (r, i) =>
