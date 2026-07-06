@@ -235,7 +235,30 @@ reprojectCatalogUnderCoverIfReady → presentation arm → first ramp tick. ALSO
 toggle-back corruption (R3) truncates every multi-toggle distribution — pull R3 forward if
 it keeps blocking R2's p90 gate.
 
-### D6e — ENDGAME ROOT CAUSE COMPLETE (2026-07-05, [GENREUSE]+VDIAG): the collision promotion round-trip
+### D6e — ✅ SURGERY COMPLETE (2026-07-05, commit 2e0bd8d8): the collision promotion round-trip
+
+**SHIPPED + measured.** Candidate B (native-owned obstacle gating) picked by evidence:
+`applyV5ObstacleReseed` already existed and writes source properties (reparse-immune — no
+LEA channel needed). Changes: (1) JS bakes every collision obstacle demoted
+(`nativeLodOpacity: 0`, the pin doctrine) — `promotedMarkerKeys` plumb +
+`nativePromotedReuseKey` cache segment deleted; (2) native re-asserts obstacle gating
+after every JS apply that mutates the collision source (reconcile + live_role hooks stash
+`lastPromotedInOrder` → reseed), and blocked reseeds RE-STASH instead of dropping;
+(3) transport dedup rekeyed generation→`frameTransportRevision` — generation reuse
+activating for the first time exposed that the acked-generation dedup dropped the toggle's
+presentation-only `entering` frame (reveal stalled at pending_mount, empty map; caught by
+the verified-bundle drive).
+**Measured:** collision-only generation mints 0; cardsAdmit↔rampStart (native clock,
+24-toggle torture incl. toggle-backs) p90 3.7ms / median 0.7ms / max 6.2ms (was
+105–285ms) = enter-lane parity; idle [T4DEDUP] churn gone; [R3RECON] silent at idle
+(toggle-publish ledger corrections unchanged = the structural backstop); zero MapLoad;
+collision doctrine eyeballed before/after at z15.5 + a z13→z16 mid-zoom-promotion pass
+(labels yield incl. newly promoted pins, dot thinning, basemap suppression). NEXT (not
+started): D6d parallel-path deletion + rerun/dismiss unification → R4 gates.
+
+Original attribution below for the record.
+
+#### (historical) ENDGAME ROOT CAUSE (2026-07-05, [GENREUSE]+VDIAG)
 
 The residual toggle gap's full causal chain, every link measured:
 `buildStableCollisionFeature` BAKES the live native promoted set into the collision

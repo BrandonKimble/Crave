@@ -1071,7 +1071,7 @@ const takeNextNativeRenderOwnerFrameForTransport = <
   transportState: NativeRenderOwnerTransportState<TFrame>;
   ownerEpoch: number;
 }): TFrame | null => {
-  const { queueState, lastNativeAck } = transportState;
+  const { queueState } = transportState;
   if (queueState.syncInFlight || queueState.pendingFrame == null) {
     return null;
   }
