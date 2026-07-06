@@ -891,3 +891,54 @@ export async function geocodeCountyAnchor(county: string): Promise<Coordinate> {
   }
   return { lat, lng };
 }
+
+/**
+ * AUTO-DISCOVER the counties of a metro: reverse-geocode a ring of sample
+ * points around the center (8 bearings at the radius + 8 at half radius +
+ * the center) at CountrySecondarySubdivision level and dedupe by county.
+ * TomTom has no "counties of X" enumeration endpoint — this derives it from
+ * the point→county lookups it does expose. The radius is the one remaining
+ * judgment knob (how far out is still "the metro").
+ */
+export async function discoverMetroCountyAnchors(
+  center: Coordinate,
+  radiusKm: number,
+): Promise<{ county: string; anchor: Coordinate }[]> {
+  const apiKey = resolveTomTomApiKey();
+  const points: Coordinate[] = [center];
+  for (const radius of [radiusKm, radiusKm / 2]) {
+    for (let bearing = 0; bearing < 360; bearing += 45) {
+      const rad = (bearing * Math.PI) / 180;
+      const dLat = (radius / 111.32) * Math.cos(rad);
+      const dLng =
+        (radius / (111.32 * Math.cos((center.lat * Math.PI) / 180))) *
+        Math.sin(rad);
+      points.push({ lat: center.lat + dLat, lng: center.lng + dLng });
+    }
+  }
+
+  const byCounty = new Map<string, Coordinate>();
+  for (const point of points) {
+    const url = `${DEFAULT_TOMTOM_REVERSE_GEOCODE_BASE_URL}/${point.lat},${point.lng}.json`;
+    const response = await fetchTomTomJson<TomTomReverseGeocodeResponse>(
+      url,
+      {
+        key: apiKey,
+        entityType: 'CountrySecondarySubdivision',
+        language: TOMTOM_LANGUAGE,
+      },
+      randomUUID(),
+    ).catch(() => null);
+    const match = (response?.addresses ?? [])[0];
+    const county = match?.address?.countrySecondarySubdivision?.trim();
+    const state = match?.address?.countrySubdivision?.trim();
+    if (county && !byCounty.has(`${county}|${state}`)) {
+      byCounty.set(`${county}|${state}`, point);
+    }
+  }
+
+  return Array.from(byCounty.entries()).map(([key, anchor]) => ({
+    county: key.split('|')[0],
+    anchor,
+  }));
+}

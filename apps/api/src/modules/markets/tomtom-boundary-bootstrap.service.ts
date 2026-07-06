@@ -209,15 +209,16 @@ export class TomTomBoundaryBootstrapService {
 
     // Negative cache: a recent no_boundary result near this point means
     // TomTom has no municipality here (rural/water) — don't re-ask on every
-    // search submit from the same area. ~3km radius, 30-day TTL.
+    // search submit from the same area. ~1km radius (small enough that a real neighboring town's polygon is
+    // unlikely to be skipped), 30-day TTL.
     const recentMiss = await this.prisma.$queryRaw<{ id: number }[]>(
       Prisma.sql`
         SELECT 1 AS id FROM market_bootstrap_events
         WHERE event_type = 'no_boundary'
           AND created_at > now() - interval '30 days'
           AND lookup_latitude IS NOT NULL
-          AND abs(lookup_latitude - ${normalized.lat}) < 0.027
-          AND abs(lookup_longitude - ${normalized.lng}) < 0.027
+          AND abs(lookup_latitude - ${normalized.lat}) < 0.009
+          AND abs(lookup_longitude - ${normalized.lng}) < 0.009
         LIMIT 1
       `,
     );

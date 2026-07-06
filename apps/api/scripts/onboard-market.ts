@@ -8,6 +8,7 @@ import {
   provisionCollectionCommunity,
   geocodeCityCenter,
   geocodeCountyAnchor,
+  discoverMetroCountyAnchors,
   type RegionMarketSeed,
 } from '../prisma/market-provisioning';
 
@@ -37,6 +38,7 @@ interface Options {
   country?: string;
   center?: { lat: number; lng: number };
   counties: string[];
+  metroRadiusKm?: number;
   skipSubreddit: boolean;
 }
 
@@ -73,6 +75,8 @@ function parseArgs(argv: string[]): Options {
     else if (token === '--center')
       options.center = parseCoordinate(next(), '--center');
     else if (token === '--county') options.counties.push(next());
+    else if (token === '--metro-radius-km')
+      options.metroRadiusKm = Number(next());
     else if (token === '--skip-subreddit') options.skipSubreddit = true;
     else throw new Error(`Unknown argument: ${token}`);
   }
@@ -124,7 +128,19 @@ async function main(): Promise<void> {
         : geocodeCountyAnchor(county),
     ),
   );
-  const anchors = [center, ...extraAnchors];
+  let anchors = [center, ...extraAnchors];
+  if (options.metroRadiusKm && Number.isFinite(options.metroRadiusKm)) {
+    const discovered = await discoverMetroCountyAnchors(
+      center,
+      options.metroRadiusKm,
+    );
+    process.stdout.write(
+      `Metro discovery (${options.metroRadiusKm}km): ${discovered
+        .map((entry) => entry.county)
+        .join(', ')}\n`,
+    );
+    anchors = [...anchors, ...discovered.map((entry) => entry.anchor)];
+  }
   const seed: RegionMarketSeed = {
     marketKey,
     marketName: options.city,

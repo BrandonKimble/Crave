@@ -5,6 +5,7 @@ import { Redis } from 'ioredis';
 import { createHash } from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { UsageLedgerService } from '../shared/usage-ledger.service';
 
 /**
  * Text embeddings via Gemini. Used as the *recall* stage of entity resolution:
@@ -31,6 +32,7 @@ export class EmbeddingService implements OnModuleInit {
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     private readonly redisService: RedisService,
+    private readonly usageLedger: UsageLedgerService,
   ) {}
 
   onModuleInit(): void {
@@ -63,6 +65,19 @@ export class EmbeddingService implements OnModuleInit {
         model: this.model,
         contents: batch,
         config: { taskType, outputDimensionality: this.dimensions },
+      });
+      this.usageLedger.record({
+        service: 'gemini',
+        operation: 'embedContent',
+        model: this.model,
+        mode: 'interactive',
+        // embedContent bills per input token; usageMetadata isn't returned, so
+        // approximate from characters (~4 chars/token) for cost slicing.
+        inputTokens: Math.round(
+          batch.reduce((sum, text) => sum + text.length, 0) / 4,
+        ),
+        requestCount: 1,
+        caller: 'embedding.embed',
       });
       const vectors = response.embeddings ?? [];
       if (vectors.length !== batch.length) {
