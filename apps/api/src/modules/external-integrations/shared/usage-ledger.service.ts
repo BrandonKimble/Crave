@@ -3,7 +3,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 
 export interface UsageEvent {
-  service: 'gemini' | 'google_places';
+  service: 'gemini' | 'google_places' | 'tomtom';
   operation: string;
   skuTier?: string;
   model?: string;

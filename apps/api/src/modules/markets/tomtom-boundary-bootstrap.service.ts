@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UsageLedgerService } from '../external-integrations/shared/usage-ledger.service';
 import { LoggerService } from '../../shared';
 import { MarketBootstrapMetricsService } from './market-bootstrap-metrics.service';
 
@@ -155,6 +156,7 @@ export class TomTomBoundaryBootstrapService {
     private readonly configService: ConfigService,
     private readonly bootstrapMetrics: MarketBootstrapMetricsService,
     loggerService: LoggerService,
+    private readonly usageLedger: UsageLedgerService,
   ) {
     this.logger = loggerService.setContext('TomTomBoundaryBootstrapService');
     this.reverseGeocodeBaseUrl =
@@ -184,6 +186,13 @@ export class TomTomBoundaryBootstrapService {
     return this.findBoundaryContainingPoint(point);
   }
 
+  /** In-flight dedupe: concurrent bootstraps for the same ~100m grid cell
+   *  share one TomTom round-trip instead of racing duplicates. */
+  private readonly inFlightBootstraps = new Map<
+    string,
+    Promise<BoundaryFeatureRecord | null>
+  >();
+
   async bootstrapMunicipalityForPoint(
     point: Coordinate,
     options?: BoundaryBootstrapOptions,
@@ -197,6 +206,41 @@ export class TomTomBoundaryBootstrapService {
     if (stored) {
       return stored;
     }
+
+    // Negative cache: a recent no_boundary result near this point means
+    // TomTom has no municipality here (rural/water) — don't re-ask on every
+    // search submit from the same area. ~3km radius, 30-day TTL.
+    const recentMiss = await this.prisma.$queryRaw<{ id: number }[]>(
+      Prisma.sql`
+        SELECT 1 AS id FROM market_bootstrap_events
+        WHERE event_type = 'no_boundary'
+          AND created_at > now() - interval '30 days'
+          AND lookup_latitude IS NOT NULL
+          AND abs(lookup_latitude - ${normalized.lat}) < 0.027
+          AND abs(lookup_longitude - ${normalized.lng}) < 0.027
+        LIMIT 1
+      `,
+    );
+    if (recentMiss.length > 0) {
+      return null;
+    }
+
+    const cellKey = `${normalized.lat.toFixed(3)},${normalized.lng.toFixed(3)}`;
+    const inFlight = this.inFlightBootstraps.get(cellKey);
+    if (inFlight) {
+      return inFlight;
+    }
+    const run = this.runBootstrapForPoint(normalized, options).finally(() => {
+      this.inFlightBootstraps.delete(cellKey);
+    });
+    this.inFlightBootstraps.set(cellKey, run);
+    return run;
+  }
+
+  private async runBootstrapForPoint(
+    normalized: Coordinate,
+    options?: BoundaryBootstrapOptions,
+  ): Promise<BoundaryFeatureRecord | null> {
     const requestId = this.resolveRequestId(options?.requestId);
     const requestOptions: BoundaryBootstrapOptions = {
       ...options,
@@ -460,6 +504,11 @@ export class TomTomBoundaryBootstrapService {
       throw new Error('tomtom_config_missing');
     }
 
+    this.usageLedger.record({
+      service: 'tomtom',
+      operation: 'reverseGeocode',
+      caller: 'market-bootstrap.reverseGeocodeMunicipality',
+    });
     const url = `${this.reverseGeocodeBaseUrl.replace(/\/$/, '')}/${
       point.lat
     },${point.lng}.json`;
@@ -529,6 +578,11 @@ export class TomTomBoundaryBootstrapService {
       return null;
     }
 
+    this.usageLedger.record({
+      service: 'tomtom',
+      operation: 'boundaryGeometry',
+      caller: 'market-bootstrap.fetchBoundaryGeometry',
+    });
     const params: Record<string, string | number> = {
       key: apiKey,
       geometries: sourceBoundaryId,
