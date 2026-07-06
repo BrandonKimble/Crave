@@ -854,3 +854,40 @@ export async function geocodeCityCenter(city: string): Promise<GeocodedCity> {
   }
   return { center: { lat, lng }, cityName, stateCode, countryCode };
 }
+
+/**
+ * Geocode a county by NAME ("Williamson County, TX") to an anchor point via
+ * TomTom's structured geocode (entityTypeSet=CountrySecondarySubdivision) —
+ * so onboarding takes county names, not hunted-down coordinates.
+ */
+export async function geocodeCountyAnchor(county: string): Promise<Coordinate> {
+  const apiKey = resolveTomTomApiKey();
+  const url = `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(county)}.json`;
+  const response = await fetchTomTomJson<{
+    results?: Array<{
+      entityType?: string;
+      position?: { lat?: number; lon?: number };
+    }>;
+  }>(
+    url,
+    {
+      key: apiKey,
+      language: TOMTOM_LANGUAGE,
+      entityTypeSet: 'CountrySecondarySubdivision',
+      limit: '1',
+    },
+    randomUUID(),
+  );
+  const match = (response.results ?? [])[0];
+  const lat = match?.position?.lat;
+  const lng = match?.position?.lon;
+  if (
+    typeof lat !== 'number' ||
+    typeof lng !== 'number' ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng)
+  ) {
+    throw new Error(`TomTom could not geocode county "${county}"`);
+  }
+  return { lat, lng };
+}

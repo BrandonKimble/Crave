@@ -7,6 +7,7 @@ import {
   provisionRegionMarket,
   provisionCollectionCommunity,
   geocodeCityCenter,
+  geocodeCountyAnchor,
   type RegionMarketSeed,
 } from '../prisma/market-provisioning';
 
@@ -35,7 +36,7 @@ interface Options {
   state?: string;
   country?: string;
   center?: { lat: number; lng: number };
-  counties: { lat: number; lng: number }[];
+  counties: string[];
   skipSubreddit: boolean;
 }
 
@@ -53,9 +54,10 @@ function parseCoordinate(
 }
 
 function parseArgs(argv: string[]): Options {
-  const options: Partial<Options> & {
-    counties: { lat: number; lng: number }[];
-  } = { counties: [], skipSubreddit: false };
+  const options: Partial<Options> & { counties: string[] } = {
+    counties: [],
+    skipSubreddit: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     const next = () => {
@@ -70,8 +72,7 @@ function parseArgs(argv: string[]): Options {
     else if (token === '--country') options.country = next();
     else if (token === '--center')
       options.center = parseCoordinate(next(), '--center');
-    else if (token === '--county')
-      options.counties.push(parseCoordinate(next(), '--county'));
+    else if (token === '--county') options.counties.push(next());
     else if (token === '--skip-subreddit') options.skipSubreddit = true;
     else throw new Error(`Unknown argument: ${token}`);
   }
@@ -113,8 +114,17 @@ async function main(): Promise<void> {
   }
   const marketKey = `region-${slugify(country)}-${slugify(state)}-${slugify(short)}`;
 
-  // The county containing the center is always part of the market.
-  const anchors = [center, ...options.counties];
+  // The county containing the center is always part of the market; extra
+  // counties are given by NAME ("Williamson County, TX") or "lat,lng" and
+  // geocoded to anchors.
+  const extraAnchors = await Promise.all(
+    options.counties.map((county) =>
+      /^-?\d+(\.\d+)?\s*,\s*-?\d+(\.\d+)?$/.test(county.trim())
+        ? Promise.resolve(parseCoordinate(county, '--county'))
+        : geocodeCountyAnchor(county),
+    ),
+  );
+  const anchors = [center, ...extraAnchors];
   const seed: RegionMarketSeed = {
     marketKey,
     marketName: options.city,
