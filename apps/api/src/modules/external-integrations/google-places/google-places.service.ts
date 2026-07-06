@@ -13,6 +13,7 @@ import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
 import { LoggerService } from '../../../shared';
 import { RateLimitCoordinatorService } from '../shared/rate-limit-coordinator.service';
+import { UsageLedgerService } from '../shared/usage-ledger.service';
 import { ExternalApiService } from '../shared/external-integrations.types';
 
 const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
@@ -262,6 +263,7 @@ export class GooglePlacesService {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly rateLimitCoordinator: RateLimitCoordinatorService,
+    private readonly usageLedger: UsageLedgerService,
   ) {
     this.logger = loggerService.setContext('GooglePlacesService');
     this.requestTimeout =
@@ -318,6 +320,12 @@ export class GooglePlacesService {
     }
 
     const requestStart = Date.now();
+    this.usageLedger.record({
+      service: 'google_places',
+      operation: 'placeDetails',
+      skuTier: UsageLedgerService.classifyPlacesSku(fieldMaskFields),
+      caller: 'google-places.getPlaceDetails',
+    });
 
     try {
       const response = await firstValueFrom(
@@ -477,6 +485,12 @@ export class GooglePlacesService {
     }
 
     const requestStart = Date.now();
+    this.usageLedger.record({
+      service: 'google_places',
+      operation: 'autocomplete',
+      skuTier: 'essentials',
+      caller: 'google-places.autocompletePlace',
+    });
 
     try {
       const response = await firstValueFrom(
@@ -664,6 +678,12 @@ export class GooglePlacesService {
     }
 
     const requestStart = Date.now();
+    this.usageLedger.record({
+      service: 'google_places',
+      operation: 'textSearch',
+      skuTier: UsageLedgerService.classifyPlacesSku(fieldMaskFields),
+      caller: 'google-places.findPlaceFromText',
+    });
 
     try {
       const response = await firstValueFrom(

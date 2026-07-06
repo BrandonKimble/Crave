@@ -545,14 +545,21 @@ dish. Apply the test to the finished canonical `food` phrase (that is why this s
 
 - "bacon egg and cheese" -> `food_aliases`: ["bec"] (established shorthand)
 - "barbecue" -> `food_aliases`: ["bbq"]
+- "budae jjigae" -> `food_aliases`: ["army stew"] (established co-name for the same dish)
 - "carnitas taco" -> `food_aliases`: [] — no established shorthand exists; do not invent one
 - "spicy tuna roll" -> `food_aliases`: [] — "tuna roll" is a CATEGORY (broader), never an alias
 - "ramen" -> `food_aliases`: [] — most dishes have NO alias; empty is the correct default
+- "margherita pizza" -> `food_aliases`: [] — "marg" FAILS the collision half: it more commonly
+  means margarita (the drink). An alias that could point at ANY other dish or drink is poison
+  for search recall — never bank it, even if this source used it.
 
-Decisive test: would this alias appear as a dish name on a menu AND point to nothing but this
-dish? If either half fails, omit it. Never derive an alias by shortening, pluralizing, or
-translating the name yourself — only record shorthand the food world already uses. Restaurants
-never get aliases from this step.
+Decisive test, BOTH halves required: (1) would this alias appear as a dish name on a menu, and
+(2) does it point to nothing but this dish — anywhere in the food world, not just in this thread?
+If either half fails or you are unsure, omit it. **An empty list is the expected, correct output
+for the vast majority of dishes — there is no credit for producing aliases and no penalty for
+producing none.** Never derive an alias by shortening, pluralizing, or translating the name
+yourself — only record shorthand the food world already uses. Restaurants never get aliases from
+this step.
 
 ## Step 5: Menu Item Identification
 

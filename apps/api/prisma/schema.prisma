@@ -237,6 +237,29 @@ model LlmBatchJobItem {
   @@map("llm_batch_job_items")
 }
 
+/// Automatic per-call usage ledger for paid external APIs (Gemini + Google
+/// Places). Written at the service chokepoints so every run's cost is
+/// queryable later: slice by runKey/purpose/skuTier, multiply by rates.
+model ApiUsageEvent {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  service      String   @db.VarChar(32) // 'gemini' | 'google_places'
+  operation    String   @db.VarChar(64) // e.g. 'generateContent', 'placeDetails', 'textSearch'
+  skuTier      String?  @map("sku_tier") @db.VarChar(32) // Places: 'essentials'|'pro'|'enterprise'|'enterprise_atmosphere'
+  model        String?  @db.VarChar(128) // Gemini model id
+  mode         String?  @db.VarChar(16) // Gemini: 'interactive' | 'batch'
+  inputTokens  Int?     @map("input_tokens")
+  outputTokens Int?     @map("output_tokens")
+  cachedTokens Int?     @map("cached_tokens")
+  requestCount Int      @default(1) @map("request_count")
+  caller       String   @db.VarChar(128) // logical call site, e.g. 'enrichment.placeDetails'
+  runKey       String?  @map("run_key") @db.VarChar(256) // extractionRunId / batchId / jobId when known
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([service, createdAt], map: "idx_api_usage_service_created")
+  @@index([runKey], map: "idx_api_usage_run_key")
+  @@map("api_usage_ledger")
+}
+
 model RestaurantItemMention {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   connectionId  String     @map("connection_id") @db.Uuid

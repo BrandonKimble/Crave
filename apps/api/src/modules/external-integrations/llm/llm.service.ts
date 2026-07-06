@@ -17,6 +17,7 @@ import { Redis } from 'ioredis';
 import { Counter } from 'prom-client';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { MetricsService } from '../../metrics/metrics.service';
+import { UsageLedgerService } from '../shared/usage-ledger.service';
 import {
   LLMConfig,
   LLMModelInput,
@@ -188,6 +189,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     private readonly redisService: RedisService,
     private readonly metricsService: MetricsService,
+    private readonly usageLedger: UsageLedgerService,
   ) {}
 
   onModuleInit(): void {
@@ -3010,6 +3012,16 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         const finishReason = response.candidates?.[0]?.finishReason;
         const tokensUsed = response.usageMetadata?.totalTokenCount || 0;
         const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
+        this.usageLedger.record({
+          service: 'gemini',
+          operation: 'generateContent',
+          model: targetModel,
+          mode: 'interactive',
+          inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
+          outputTokens,
+          cachedTokens: response.usageMetadata?.cachedContentTokenCount ?? 0,
+          caller: 'llm.callGeminiApi',
+        });
         const tokenLimit =
           typeof requestConfigWithTimeout.maxOutputTokens === 'number' &&
           Number.isFinite(requestConfigWithTimeout.maxOutputTokens)

@@ -5,6 +5,7 @@ import { GoogleGenAI, JobState } from '@google/genai';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
+import { UsageLedgerService } from '../shared/usage-ledger.service';
 
 export interface BatchSubmitItem {
   /** Caller's stable key for this item (e.g. the chunk id). */
@@ -59,6 +60,7 @@ export class GeminiBatchService {
     private readonly prisma: PrismaService,
     configService: ConfigService,
     loggerService: LoggerService,
+    private readonly usageLedger: UsageLedgerService,
   ) {
     this.logger = loggerService.setContext('GeminiBatchService');
     this.genAI = new GoogleGenAI({
@@ -229,6 +231,26 @@ export class GeminiBatchService {
 
     // SUCCEEDED: store responses by request order.
     const inlined = remote.dest?.inlinedResponses ?? [];
+    const usage = { input: 0, output: 0, cached: 0, model: '' };
+    for (const entry of inlined) {
+      const meta = entry.response?.usageMetadata;
+      usage.input += meta?.promptTokenCount ?? 0;
+      usage.output += meta?.candidatesTokenCount ?? 0;
+      usage.cached += meta?.cachedContentTokenCount ?? 0;
+      usage.model ||= entry.response?.modelVersion ?? '';
+    }
+    this.usageLedger.record({
+      service: 'gemini',
+      operation: 'batchGenerateContent',
+      model: usage.model || undefined,
+      mode: 'batch',
+      inputTokens: usage.input,
+      outputTokens: usage.output,
+      cachedTokens: usage.cached,
+      requestCount: inlined.length,
+      caller: `gemini-batch.${purpose}`,
+      runKey: jobId,
+    });
     for (let index = 0; index < inlined.length; index += 1) {
       const entry = inlined[index];
       await this.prisma.llmBatchJobItem.updateMany({
