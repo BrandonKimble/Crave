@@ -6,6 +6,7 @@ import type {
 } from './use-search-foreground-interaction-runtime-contract';
 import { resolveForegroundSearchSubmitEntrySurface } from './search-submit-entry-surface-contract';
 import type { useSearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
+import { SHORTCUT_QUERY_LABEL_BY_TAB } from './shortcut-toggle-display-query';
 
 type UseSearchForegroundViewportShortcutRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,
@@ -31,8 +32,8 @@ export const useSearchForegroundViewportShortcutRuntime = ({
 
   const handleBestDishesHere = React.useCallback(() => {
     submitPreparationRuntime.prepareSubmitChrome({ captureOrigin: true });
-    setQuery('Best dishes');
-    void submitViewportShortcut('dishes', 'Best dishes', {
+    setQuery(SHORTCUT_QUERY_LABEL_BY_TAB.dishes);
+    void submitViewportShortcut('dishes', SHORTCUT_QUERY_LABEL_BY_TAB.dishes, {
       transitionFromDockedPolls: shouldShowDockedPollsRef.current.shouldShowDockedPolls,
       entrySurface,
       forceFreshBounds: true,
@@ -47,8 +48,8 @@ export const useSearchForegroundViewportShortcutRuntime = ({
 
   const handleBestRestaurantsHere = React.useCallback(() => {
     submitPreparationRuntime.prepareSubmitChrome({ captureOrigin: true });
-    setQuery('Best restaurants');
-    void submitViewportShortcut('restaurants', 'Best restaurants', {
+    setQuery(SHORTCUT_QUERY_LABEL_BY_TAB.restaurants);
+    void submitViewportShortcut('restaurants', SHORTCUT_QUERY_LABEL_BY_TAB.restaurants, {
       transitionFromDockedPolls: shouldShowDockedPollsRef.current.shouldShowDockedPolls,
       entrySurface,
       forceFreshBounds: true,

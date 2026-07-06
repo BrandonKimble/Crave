@@ -8,6 +8,7 @@ import type {
   SubmitSearchOptions,
 } from './use-search-submit-entry-owner';
 import type { StructuredSearchFilters } from './use-search-request-preparation-owner';
+import { SHORTCUT_QUERY_LABEL_BY_TAB } from '../runtime/shared/shortcut-toggle-display-query';
 
 type SearchSubmitActionOwnerArgs = {
   query: string;
@@ -104,7 +105,9 @@ export const useSearchSubmitActionOwner = ({
       }
       if (params.searchMode === 'shortcut' && params.isSearchSessionActive) {
         const fallbackShortcutLabel =
-          params.activeTab === 'restaurants' ? 'Best restaurants' : 'Best dishes';
+          params.activeTab === 'restaurants'
+            ? SHORTCUT_QUERY_LABEL_BY_TAB.restaurants
+            : SHORTCUT_QUERY_LABEL_BY_TAB.dishes;
         const submittedLabel = params.submittedQuery.trim() || fallbackShortcutLabel;
         await submitViewportShortcut(params.activeTab, submittedLabel, {
           preserveSheetState: params.preserveSheetState,

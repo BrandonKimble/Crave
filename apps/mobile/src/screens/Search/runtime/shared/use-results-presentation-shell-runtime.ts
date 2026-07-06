@@ -17,6 +17,7 @@ import {
   selectSearchSurfaceVisualPolicy,
   useSearchSurfaceRuntimeSelector,
 } from '../surface/search-surface-runtime';
+import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 
 type UseResultsPresentationShellRuntimeArgs = {
   query: string;
@@ -93,9 +94,25 @@ export const useResultsPresentationShellRuntime = ({
     onSearchSheetContentLaneChanged?.(laneChange);
   }, [onSearchSheetContentLaneChanged, policyFactsSnapshot]);
 
+  // Shortcut toggle title swap inputs (display-only): the bar text follows the OPTIMISTIC tab
+  // (pendingTabSwitchTab flips at toggle press-up) for shortcut-mode searches.
+  const shortcutToggleDisplayState = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => ({
+      searchMode: state.searchMode,
+      optimisticActiveTab: state.pendingTabSwitchTab ?? state.activeTab,
+    }),
+    (left, right) =>
+      left.searchMode === right.searchMode &&
+      left.optimisticActiveTab === right.optimisticActiveTab,
+    ['searchMode', 'pendingTabSwitchTab', 'activeTab'] as const
+  );
+
   const shellModel = useResultsPresentationShellModelRuntime({
     query,
     submittedQuery,
+    searchMode: shortcutToggleDisplayState.searchMode,
+    optimisticActiveTab: shortcutToggleDisplayState.optimisticActiveTab,
     isSuggestionPanelActive,
     shouldRenderSearchOverlay,
     shouldEnableShortcutInteractions,

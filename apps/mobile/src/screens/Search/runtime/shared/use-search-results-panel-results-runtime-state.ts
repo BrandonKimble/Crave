@@ -20,6 +20,7 @@ export const useSearchResultsPanelResultsRuntimeState = (
       isSearchLoading: state.isSearchLoading,
       isLoadingMore: state.isLoadingMore,
       submittedQuery: state.submittedQuery,
+      searchMode: state.searchMode,
     }),
     (left, right) =>
       left.resultsRequestKey === right.resultsRequestKey &&
@@ -32,7 +33,8 @@ export const useSearchResultsPanelResultsRuntimeState = (
       left.canLoadMore === right.canLoadMore &&
       left.isSearchLoading === right.isSearchLoading &&
       left.isLoadingMore === right.isLoadingMore &&
-      left.submittedQuery === right.submittedQuery,
+      left.submittedQuery === right.submittedQuery &&
+      left.searchMode === right.searchMode,
     [
       'resultsRequestKey',
       'resultsIdentityCandidateKey',
@@ -45,6 +47,7 @@ export const useSearchResultsPanelResultsRuntimeState = (
       'isSearchLoading',
       'isLoadingMore',
       'submittedQuery',
+      'searchMode',
     ] as const,
     'results_panel_results_runtime_state'
   );

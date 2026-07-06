@@ -18,6 +18,7 @@ export type SearchResultsPanelResultsRuntimeState = {
   isSearchLoading: boolean;
   isLoadingMore: boolean;
   submittedQuery: string;
+  searchMode: string | null;
 };
 
 export type SearchResultsPanelFiltersRuntimeState = {
