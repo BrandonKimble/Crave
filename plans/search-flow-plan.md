@@ -235,6 +235,59 @@ reprojectCatalogUnderCoverIfReady → presentation arm → first ramp tick. ALSO
 toggle-back corruption (R3) truncates every multi-toggle distribution — pull R3 forward if
 it keeps blocking R2's p90 gate.
 
+### TR5-N — NETWORK-TOGGLE UNIFICATION (charter, 2026-07-06): every toggle rides the tab toggle's lifecycle
+
+**THE MEASURED DEFECT (owner-reported, rig-asserted end to end):** a NETWORK toggle
+(open-now / rising / price / mid-pagination include-similar) reveals at COMMIT time with the
+STALE data, then the response lands into an already-settled surface:
+`press-up fade → +300ms runner fires the network request → +160ms cardsAdmit+rampStart on a
+search-surface-results-transaction staged by the SUBMIT path → seconds later MOUNT-PUBLISH
+commits the real response → cards hard-snap late; the map's enter already ran so pins keep
+the old variant; the chip's bus state gets fought by the post-settle response lifecycle
+(visually stuck inactive after the first tap).` The tab toggle never shows any of this
+because its variant is LOCAL at commit — data and choreography can't be out of order. The
+include-similar PAGE-1 flip is also local (applyIncludeSimilarLocalSwap) and correct; its
+mid-pagination path shares the network defect.
+
+**ROOT CAUSE (structural):** the chip runners call `fireRerunActiveSearch`, which routes
+through the INITIAL-SEARCH submit machinery (`prepareSearchRequestForegroundUi` →
+`scheduleSubmitUiLanes` → stages the enter transaction NOW). That machinery was designed for
+fresh searches where the leg's skeleton page is the loading visual — not for an in-place
+variant swap under the interaction cover. The coordinator's `awaitVisualSync` then waits on
+the WRONG (immediate, stale) transaction. Supporting defects, same lineage: the
+interaction-fade hold's 1500ms expiry re-reveals the OLD map mid-wait; an EMPTY page-1
+commit renders a BLANK body (no empty-state message; map keeps stale pins); the initial
+reveal admits CARDS before the map+strip joint (owner: skeleton → cards → map+strip late —
+the both-ready joint isn't gating the card admission on this lane).
+
+**THE IDEAL SHAPE (the tab toggle IS the template — one lifecycle for every variant swap):**
+
+1. Press-up: optimistic chip flip + interaction fade + skeleton cover (SHIPPED, shared).
+2. Commit: runner resolves the NEXT VARIANT'S DATA — locally (tab flip, page-1
+   include-similar) or by awaiting the network response — WITHOUT staging any reveal. The
+   cover holds while waiting; the fade hold must NOT expire during an active awaited toggle
+   (extend/park the 1500ms expiry while toggleInteraction.kind != null).
+3. Data-ready: commit the response into mountedResults, THEN stage the enter transaction —
+   apply frame under cover → both-ready joint → reveal cards+map+strip on the SAME tick
+   (the D6d contract). The rerun path must NOT call clearResultsForReplacement /
+   scheduleSubmitUiLanes — an in-place variant swap owns no initial-search UI lanes.
+4. Empty data is a first-class variant: reveal = empty-state message + empty map catalog
+   (pins clear under the same cover), strip stays (shipped: strip=chrome, bba30c51).
+5. Chip truth: the bus is the single writer (shipped); the response lifecycle must never
+   republish filter state (audit `resetFilters`/persistence-bridge writes on response
+   commit — the owner sees the chip revert after the first rerun).
+
+**AUDIT SCOPE for the focused session:** query-mutation-orchestrator runners (all 4 chips) ·
+rerunActiveSearch / submitViewportShortcut / prepareSearchRequestForegroundUi lane usage ·
+use-search-surface-results-enter-transaction-execution staging vs response lifecycle ·
+interaction-fade-hold expiry interplay · both-ready joint gating of cardsAdmit on the
+initial-reveal lane (owner: cards admit before map+strip) · openNow session persistence
+product call. Measurement kit in place: [REQPROBE] (outgoing filters), [tclur] MOUNT-PUBLISH
+(response rows), [REVEALSYNC] (admit/ramp pairs), [PUBTRIG] (publish triggers),
+[CONTRACT] empty_page_with_nonzero_totals. Acceptance: for EVERY toggle — one reveal, on the
+NEW data, cards+map+strip on the same joint, chip state stable across repeated taps, p90
+pair gap parity with the tab toggle; RED self-mutation per the methodology.
+
 ### D6e — ✅ SURGERY COMPLETE (2026-07-05, commit 2e0bd8d8): the collision promotion round-trip
 
 **SHIPPED + measured.** Candidate B (native-owned obstacle gating) picked by evidence:
