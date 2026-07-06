@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportSearchFlowContractViolation } from '../runtime/shared/search-flow-contracts';
 import { InteractionManager, Keyboard, unstable_batchedUpdates } from 'react-native';
 
 import type {
@@ -1420,6 +1421,29 @@ export const useSearchSubmitResponseOwner = ({
             responseContext.markerProjectionByTab.dishes != null &&
             responseContext.markerProjectionByTab.restaurants != null,
         });
+        {
+          // STRUCTURAL-CONSISTENCY CONTRACT (2026-07-06): a page-1 response with ZERO rows on
+          // BOTH tabs but NONZERO totals is internally inconsistent — committing it silently
+          // wipes the cards AND the filter strip (the list header), which reads as "toggles
+          // stopped accepting touch" + a bare white sheet. Every observed instance tonight was
+          // the backend's natural/filtered search lane returning empty page arrays (shortcut
+          // submits were fine). Loud, not fatal: the commit still proceeds (an honestly-empty
+          // filtered result must render empty), but the log names the poisoned response.
+          const respRowCount =
+            (responseContext.committedResponse.restaurants?.length ?? 0) +
+            (responseContext.committedResponse.dishes?.length ?? 0);
+          const respTotals =
+            (responseContext.committedResponse.metadata?.totalRestaurantResults ?? 0) +
+            (responseContext.committedResponse.metadata?.totalFoodResults ?? 0);
+          if (respRowCount === 0 && respTotals > 0) {
+            reportSearchFlowContractViolation('empty_page_with_nonzero_totals', {
+              resultsIdentityKey: responseContext.resultsPatch.resultsIdentityCandidateKey,
+              totals: respTotals,
+              dataReadyFrom,
+              targetTab: initialUiState.targetTab,
+            });
+          }
+        }
         publishSearchMountedResultsDataSnapshot(responseContext.committedResponse, {
           activeTab: initialUiState.targetTab,
           markerProjectionByTab: responseContext.markerProjectionByTab,
