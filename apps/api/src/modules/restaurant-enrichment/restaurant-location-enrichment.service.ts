@@ -23,6 +23,7 @@ import { RestaurantSecondaryLocationExpansionQueueService } from './restaurant-s
 import {
   GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
   GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
+  RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME,
 } from './google-place-type-attributes';
 
 const PREFERRED_PLACE_TYPES = new Set([
@@ -2881,6 +2882,7 @@ export class RestaurantLocationEnrichmentService {
       data: {
         name: canonicalName,
         type: EntityType.restaurant_attribute,
+        aliases: RESTAURANT_ATTRIBUTE_ALIASES_BY_NAME.get(canonicalName) ?? [],
       },
       select: { entityId: true },
     });
