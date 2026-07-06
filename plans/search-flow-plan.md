@@ -211,6 +211,12 @@ incoming tab's source mutations only begin applying when the token lands. Remedy
 the start signal. Both remedies belong to the coordinator-unification chunk (restore the
 March single-file coordinator = TR5): the coordinator's commit phase becomes
 "apply frame under cover (direct call) → when ready, fire start (direct call)".
+**[NGAPJS] refinement:** cardsAdmit==tokenStaged (synchronous — NO effect delay); the gap =
+32ms full-frame build/serialize (the token needlessly rides the whole frame pipeline) + 78ms
+native bridge-queue/source-apply/ready. Sources+token travel in ONE frame at admit — the
+rewrite must (1) flush the mutation frame at debounce-COMMIT so sources apply under cover
+early, (2) send the enter start as a tiny direct call, not a frame rebuild. Expected result:
+pair-gap ≈ native arm only (single-digit ms, matching the enter lane's 3ms).
 
 ### D6b — R2-C ROUND RESULTS (2026-07-05, commit 22d06921)
 
