@@ -235,30 +235,40 @@ async function fetchTomTomJson<T>(
     searchParams.set(key, String(value));
   });
 
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    resolveTomTomTimeoutMs(),
-  );
-  try {
-    const response = await fetch(`${url}?${searchParams.toString()}`, {
-      headers: {
-        'Tracking-ID': requestId,
-      },
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      throw new Error(
-        `TomTom request failed (${response.status}) for ${url}: ${body.slice(
-          0,
-          300,
-        )}`,
-      );
+  // Free-tier TomTom rate-limits bursts (429); provisioning fires several
+  // requests per market, so back off and retry rather than failing the run.
+  const maxAttempts = 4;
+  for (let attempt = 1; ; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      resolveTomTomTimeoutMs(),
+    );
+    try {
+      const response = await fetch(`${url}?${searchParams.toString()}`, {
+        headers: {
+          'Tracking-ID': requestId,
+        },
+        signal: controller.signal,
+      });
+      if (response.status === 429 && attempt < maxAttempts) {
+        const delayMs = attempt * 2000;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        continue;
+      }
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        throw new Error(
+          `TomTom request failed (${response.status}) for ${url}: ${body.slice(
+            0,
+            300,
+          )}`,
+        );
+      }
+      return (await response.json()) as T;
+    } finally {
+      clearTimeout(timeout);
     }
-    return (await response.json()) as T;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -787,4 +797,60 @@ export async function provisionCollectionCommunity(
     },
     select: { marketKey: true },
   });
+}
+
+export interface GeocodedCity {
+  center: Coordinate;
+  cityName: string;
+  stateCode: string;
+  countryCode: string;
+}
+
+/**
+ * Geocode a city string ("Austin, TX") to its center + names via TomTom
+ * (same provider/key as the boundary fetches). Lets onboarding derive
+ * short name, state, and center from the city string alone.
+ */
+export async function geocodeCityCenter(city: string): Promise<GeocodedCity> {
+  const apiKey = resolveTomTomApiKey();
+  const url = `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(city)}.json`;
+  const response = await fetchTomTomJson<{
+    results?: Array<{
+      type?: string;
+      entityType?: string;
+      position?: { lat?: number; lon?: number };
+      address?: TomTomReverseGeocodeAddress & { countryCode?: string };
+    }>;
+  }>(url, { key: apiKey, language: TOMTOM_LANGUAGE, limit: '5' }, randomUUID());
+
+  const results = Array.isArray(response.results) ? response.results : [];
+  const match =
+    results.find((entry) => entry.entityType === 'Municipality') ?? results[0];
+  const lat = match?.position?.lat;
+  const lng = match?.position?.lon;
+  if (
+    !match ||
+    typeof lat !== 'number' ||
+    typeof lng !== 'number' ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng)
+  ) {
+    throw new Error(`TomTom could not geocode city "${city}"`);
+  }
+  const address = match.address ?? {};
+  const cityName =
+    address.municipality?.trim() || city.split(',')[0]?.trim() || city;
+  const stateCode =
+    normalizeStateCode(address.countrySubdivision) ??
+    city.split(',')[1]?.trim().toUpperCase() ??
+    '';
+  const countryCode = normalizeCountryCode(
+    (address as { countryCode?: string }).countryCode,
+  );
+  if (!stateCode) {
+    throw new Error(
+      `Could not resolve a state for "${city}" — pass --state explicitly`,
+    );
+  }
+  return { center: { lat, lng }, cityName, stateCode, countryCode };
 }

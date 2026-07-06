@@ -6,6 +6,7 @@ import { PrismaClient } from '@prisma/client';
 import {
   provisionRegionMarket,
   provisionCollectionCommunity,
+  geocodeCityCenter,
   type RegionMarketSeed,
 } from '../prisma/market-provisioning';
 
@@ -15,25 +16,25 @@ import {
  * chains the existing subreddit onboarding (Google viewport + volume jobs).
  * After this, loading the city = pointing archive-collect.ts at its archives.
  *
- *   yarn ts-node scripts/onboard-market.ts \
- *     --subreddit austinfood \
- *     --city "Austin, TX" --short Austin --state TX \
- *     --center 30.2672,-97.7431 \
- *     --county 30.646,-97.6034 --county 29.8833,-97.9414
+ *   yarn ts-node scripts/onboard-market.ts --subreddit austinfood --city "Austin, TX"
  *
- * Counties are anchor points (any lat/lng inside the county); names resolve
- * automatically via TomTom reverse geocode. The county containing --center is
- * always included, so a compact single-county market needs no --county args.
+ * That's the whole required input: the city geocodes via TomTom to derive the
+ * short name, state, and center, and the market defaults to the county
+ * containing the center. Metro expansion stays a PRODUCT decision (the Census
+ * MSA for Austin is 5 counties; the owner's Austin is 6 — automation would
+ * have gotten it wrong): add `--county lat,lng` anchors (any point inside
+ * each extra county; names auto-resolve). `--short/--state/--center/--country`
+ * remain available as explicit overrides.
  * Idempotent — re-running updates in place (same upserts the seed replays).
  */
 
 interface Options {
   subreddit: string;
   city: string;
-  short: string;
-  state: string;
-  country: string;
-  center: { lat: number; lng: number };
+  short?: string;
+  state?: string;
+  country?: string;
+  center?: { lat: number; lng: number };
   counties: { lat: number; lng: number }[];
   skipSubreddit: boolean;
 }
@@ -54,7 +55,7 @@ function parseCoordinate(
 function parseArgs(argv: string[]): Options {
   const options: Partial<Options> & {
     counties: { lat: number; lng: number }[];
-  } = { counties: [], country: 'US', skipSubreddit: false };
+  } = { counties: [], skipSubreddit: false };
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     const next = () => {
@@ -74,7 +75,7 @@ function parseArgs(argv: string[]): Options {
     else if (token === '--skip-subreddit') options.skipSubreddit = true;
     else throw new Error(`Unknown argument: ${token}`);
   }
-  const missing = ['subreddit', 'city', 'short', 'state', 'center'].filter(
+  const missing = ['subreddit', 'city'].filter(
     (key) => !(key in options) || !options[key as keyof typeof options],
   );
   if (missing.length) {
@@ -95,19 +96,34 @@ function slugify(value: string): string {
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
-  const marketKey = `region-${slugify(options.country)}-${slugify(options.state)}-${slugify(options.short)}`;
+  const subreddit = options.subreddit.trim().toLowerCase();
+
+  // Derive short/state/center/country from the city string unless overridden.
+  const needsGeocode =
+    !options.short || !options.state || !options.center || !options.country;
+  const geocoded = needsGeocode ? await geocodeCityCenter(options.city) : null;
+  const short = options.short ?? geocoded!.cityName;
+  const state = (options.state ?? geocoded!.stateCode).toUpperCase();
+  const country = (options.country ?? geocoded!.countryCode).toUpperCase();
+  const center = options.center ?? geocoded!.center;
+  if (geocoded) {
+    process.stdout.write(
+      `Geocoded "${options.city}" -> ${short}, ${state} ${country} @ ${center.lat},${center.lng}\n`,
+    );
+  }
+  const marketKey = `region-${slugify(country)}-${slugify(state)}-${slugify(short)}`;
 
   // The county containing the center is always part of the market.
-  const anchors = [options.center, ...options.counties];
+  const anchors = [center, ...options.counties];
   const seed: RegionMarketSeed = {
     marketKey,
     marketName: options.city,
-    marketShortName: options.short,
-    countryCode: options.country.toUpperCase(),
-    stateCode: options.state.toUpperCase(),
-    center: options.center,
+    marketShortName: short,
+    countryCode: country,
+    stateCode: state,
+    center,
     sourceBoundaries: anchors.map((anchor, index) => ({
-      label: `${options.short} county anchor ${index + 1} (${anchor.lat},${anchor.lng})`,
+      label: `${short} county anchor ${index + 1} (${anchor.lat},${anchor.lng})`,
       entityType: 'CountrySecondarySubdivision',
       anchor,
     })),
@@ -124,12 +140,12 @@ async function main(): Promise<void> {
     );
 
     await provisionCollectionCommunity(prisma, {
-      communityName: options.subreddit,
+      communityName: subreddit,
       locationName: options.city,
       marketKey,
     });
     process.stdout.write(
-      `  community ${options.subreddit} -> ${marketKey} (collectable, scheduler on)\n`,
+      `  community ${subreddit} -> ${marketKey} (collectable, scheduler on)\n`,
     );
   } finally {
     await prisma.$disconnect();
@@ -142,15 +158,15 @@ async function main(): Promise<void> {
 
   // Chain the existing subreddit onboarding (Google viewport + volume jobs +
   // market-key mapping) — composition over re-implementation.
-  process.stdout.write(`Onboarding subreddit r/${options.subreddit}...\n`);
+  process.stdout.write(`Onboarding subreddit r/${subreddit}...\n`);
   const result = spawnSync(
     'yarn',
     [
       'ts-node',
       path.join(__dirname, 'onboard-subreddit.ts'),
-      options.subreddit,
-      String(options.center.lat),
-      String(options.center.lng),
+      subreddit,
+      String(center.lat),
+      String(center.lng),
       '--location-name',
       options.city,
     ],
@@ -160,7 +176,7 @@ async function main(): Promise<void> {
     throw new Error(`onboard-subreddit exited with status ${result.status}`);
   }
   process.stdout.write(
-    `✅ ${options.city} onboarded. Next: archive-collect.ts --subreddit ${options.subreddit} --batch-size 250\n`,
+    `✅ ${options.city} onboarded. Next: archive-collect.ts --subreddit ${subreddit} --batch-size 250\n`,
   );
 }
 
