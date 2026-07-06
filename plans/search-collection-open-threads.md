@@ -195,8 +195,19 @@ Spec:
   "Only X matches — show N similar dishes?" One tap = same search with includeSimilar=true.
   similarCount = cheap side count over sibling ids' connections, computed only when thin.
 - **End-of-pagination chip**: when the LAST page of an exact-only search returns (< pageSize
-  rows), same metadata → client shows the chip as a footer instead of dead-ending. No automatic
-  merging of similars into later pages (that would be sections-by-pagination — rejected).
+  rows), same metadata → client shows the chip as a footer instead of dead-ending.
+- **Chip = REMOTE CONTROL for the toggle (owner-settled, supersedes expand-in-place)**: tapping
+  it flips the Include-similar toggle and runs the ONE shared toggle flow/choreography (cards +
+  map pins reload together) — no exceptional append path.
+- **Page-1 prefetch**: the initial search response carries the UNION of both page-1s — the top
+  pageSize EXACT rows plus whichever pooled-top-pageSize rows aren't among them — every row
+  tagged `exactMatch`. Client composes either view from one payload → page-1 toggle flips are
+  zero-network, full choreography (map gets its extra pins from the same union).
+- **Mid-pagination flip = reset-to-top, pooled page 1** (filter-change norm; preserving position
+  would HIDE the similars that pool in above it). Coming from the end-of-list chip the user has
+  seen every exact, so the only unseen rows are the similars — which the client subtly
+  HIGHLIGHTS via `exactMatch === false` (no new state needed). Deeper-page flips fetch fresh
+  pooled page 1; infinite scroll continues in pooled pages.
 - **Threshold**: keyed to PAGE CAPACITY (pageSize, client sends 20), NOT the relaxation
   threshold (10) — relaxation is an internal attribute-drop mechanism and stays invisible.
   Chip logic = "does page 1 have room + do similars exist", nothing else.
