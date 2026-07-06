@@ -285,6 +285,33 @@ Two defects found + fixed DURING validation (same stale-lane class):
    orphaned stale `dist/main` held :3000 serving pre-TR5-N code (price coverage 400/empty
    map) — kill it and relaunch `yarn start:dev` when coverage behaves impossibly.
 
+**OPEN — MOVED-BOUNDS AUDIT (owner directive 2026-07-06, work in flight):** owner reports:
+after a search + a REAL map pan, a toggle makes ALL map items vanish permanently — pins,
+dots, AND the native basemap street labels never return (cards do change). Basemap labels
+stuck = the dismiss-side basemap-suppress/collision ran and the matching ENTER never
+landed. REPRO ATTEMPTS THAT ALL PASS (cannot reproduce yet, 6 drives): shortcut submit +
+set_map_camera pan + open-now; + maestro finger-pan (search-this-area chip armed) +
+open-now; + 3x big finger pans + open-now (video'd — full choreography, new-viewport pins);
+
+- finger-pan + tab toggle. All revealed correctly with fresh-bounds data. SUSPECTED missing
+  ingredient: NATURAL (typed) search mode — every drive above is shortcut mode; the
+  variant_rerun natural branch (submitSearch path in rerunActiveSearch) is unexercised on the
+  rig (maestro type-into-search lane not landing yet; testID search-header-input added).
+  NEED FROM OWNER: exact repro — typed query or shortcut? which tab? which toggle? zoom
+  change or pure pan? Also owner-directed follow-ups queued for this audit:
+  (a) chip toggles feel SLOW vs tab toggle even without a map move — they ARE a network
+  rerun by design (server-filtered variant + coverage refetch; tab toggle is zero-network
+  local). Measured shape: ~300ms debounce + RTT + ~0.5s choreography. If it should be
+  instant, the ideal is the include-similar pattern: page-1 response carries the openNow/
+  price variant (union prefetch) so the first flip is local — product/arch decision.
+  (b) pins SNAPPED in with the strip on a toggle reveal instead of fading — eyeball'd once
+  by owner; check native ramp duration on the variant_rerun lane.
+  (c) collision timing directive: basemap-label collision must flip ON at fade-IN START and
+  OFF at fade-OUT START (never wait for ramp end), and basemap labels must keep their native
+  crossfade. Native change on the precious map surface — needs its own careful pass.
+  Owner authorizes ground-up redo of the moved-bounds rerun lane if it's messy — it is the
+  foundation of search-this-area and will be global.
+
 **OPEN (one acceptance item, root-caused partway):** the EMPTY variant (0-row page) never
 opens the reveal joint — cover holds forever (fails closed; watchdogs stay SILENT — no
 reveal-watchdog bark, no tier-1/2). Evidence trail: response commits (MOUNT-PUBLISH 0/0) →
