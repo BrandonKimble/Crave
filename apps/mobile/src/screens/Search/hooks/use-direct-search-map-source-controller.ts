@@ -1268,7 +1268,19 @@ export const useDirectSearchMapSourceController = ({
 
   const publishSourcesRef = React.useRef<() => void>(() => {});
   publishSourcesRef.current = () => {
-    if (__DEV__) console.log(`[T1DBG] projection:start t=${performance.now().toFixed(1)}`);
+    const __t1dbgProjStart = performance.now();
+    if (__DEV__) console.log(`[T1DBG] projection:start t=${__t1dbgProjStart.toFixed(1)}`);
+    try {
+      publishSourcesInnerRef.current();
+    } finally {
+      if (__DEV__) {
+        const dur = performance.now() - __t1dbgProjStart;
+        if (dur > 8) console.log(`[T1DBG] projection:end dur=${dur.toFixed(1)}`);
+      }
+    }
+  };
+  const publishSourcesInnerRef = React.useRef<() => void>(() => {});
+  publishSourcesInnerRef.current = () => {
     const state = searchRuntimeBus.getState();
     const args = latestArgsRef.current;
     const projectionIsMapMoving =
