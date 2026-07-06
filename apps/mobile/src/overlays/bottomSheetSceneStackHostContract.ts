@@ -37,6 +37,9 @@ export type BottomSheetSceneStackBodyScrollRuntime = {
   // the heavy list body (frame-drop fix, 2026-07-02).
   shouldEnableScrollShared: SharedValue<boolean>;
   ScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
+  // Scroll container for the secondary co-mounted list (distinct GestureDetector/gesture). Stable
+  // type so a dual-list surface can keep BOTH lists' scroll subtrees mounted across a tab toggle.
+  SecondaryScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
   primaryScrollViewOnScroll: ScrollViewProps['onScroll'];
   primaryListOnScroll: FlashListProps<unknown>['onScroll'];
   secondaryListOnScroll: FlashListProps<unknown>['onScroll'];

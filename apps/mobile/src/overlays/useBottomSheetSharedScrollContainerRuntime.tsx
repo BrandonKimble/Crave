@@ -7,15 +7,20 @@ import BottomSheetScrollContainer from './BottomSheetScrollContainer';
 
 type UseBottomSheetSharedScrollContainerRuntimeArgs = {
   gesturesScroll: GestureType | ComposedGesture;
+  // Distinct gesture instance for the secondary co-mounted list's container — one RNGH gesture
+  // cannot be attached to two GestureDetectors, so dual-list surfaces need one per container.
+  gesturesScrollSecondary: GestureType | ComposedGesture;
   scrollHeaderComponent?: React.ReactNode;
 };
 
 type UseBottomSheetSharedScrollContainerRuntimeResult = {
   ScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
+  SecondaryScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
 };
 
 export const useBottomSheetSharedScrollContainerRuntime = ({
   gesturesScroll,
+  gesturesScrollSecondary,
   scrollHeaderComponent,
 }: UseBottomSheetSharedScrollContainerRuntimeArgs): UseBottomSheetSharedScrollContainerRuntimeResult => {
   const transparent = scrollHeaderComponent != null;
@@ -33,6 +38,8 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
   // so any staleness window is confined to a mid-transition frame where interaction is blocked.
   const gesturesScrollRef = React.useRef(gesturesScroll);
   gesturesScrollRef.current = gesturesScroll;
+  const gesturesScrollSecondaryRef = React.useRef(gesturesScrollSecondary);
+  gesturesScrollSecondaryRef.current = gesturesScrollSecondary;
   const transparentRef = React.useRef(transparent);
   transparentRef.current = transparent;
 
@@ -49,7 +56,21 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
     return Component;
   }, []);
 
+  const SecondaryScrollComponent = React.useMemo(() => {
+    const Component = React.forwardRef<ScrollView, ScrollViewProps>((props, ref) => (
+      <BottomSheetScrollContainer
+        {...props}
+        ref={ref}
+        gesture={gesturesScrollSecondaryRef.current}
+        transparent={transparentRef.current}
+      />
+    ));
+    Component.displayName = 'OverlaySheetSecondaryScrollView';
+    return Component;
+  }, []);
+
   return {
     ScrollComponent,
+    SecondaryScrollComponent,
   };
 };

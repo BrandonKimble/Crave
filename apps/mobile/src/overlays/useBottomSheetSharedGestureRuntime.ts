@@ -503,13 +503,30 @@ export const useBottomSheetSharedGestureRuntime = ({
       .requireExternalGestureToFail(expandPanGesture)
       .simultaneousWithExternalGesture(collapsePanGesture);
 
-    expandPanGesture.simultaneousWithExternalGesture(nativeScrollGesture);
+    // Second native scroll gesture for CO-MOUNTED dual lists (R2-C1 toggle-render eviction):
+    // one RNGH gesture instance can only be attached to ONE GestureDetector, so a surface that
+    // keeps two FlashLists mounted (active + hidden tab) needs a distinct gesture per scroll
+    // container. Identical relations to the primary; only the visible list receives touches.
+    const secondaryNativeScrollGesture = Gesture.Native()
+      .enabled(shouldEnableScroll)
+      .requireExternalGestureToFail(expandPanGesture)
+      .simultaneousWithExternalGesture(collapsePanGesture);
+
+    expandPanGesture.simultaneousWithExternalGesture(
+      nativeScrollGesture,
+      secondaryNativeScrollGesture
+    );
     nativeScrollGesture.simultaneousWithExternalGesture(expandPanGesture);
-    collapsePanGesture.simultaneousWithExternalGesture(nativeScrollGesture);
+    secondaryNativeScrollGesture.simultaneousWithExternalGesture(expandPanGesture);
+    collapsePanGesture.simultaneousWithExternalGesture(
+      nativeScrollGesture,
+      secondaryNativeScrollGesture
+    );
 
     return {
       sheet: Gesture.Simultaneous(expandPanGesture, collapsePanGesture, tapToMiddleGesture),
       scroll: nativeScrollGesture,
+      scrollSecondary: secondaryNativeScrollGesture,
     };
   }, [
     collapsedSnap,

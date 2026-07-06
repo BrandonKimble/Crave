@@ -1,4 +1,5 @@
 import React from 'react';
+import { InteractionManager } from 'react-native';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import MapboxGL from '@rnmapbox/maps';
 
@@ -141,6 +142,25 @@ type ShortcutCoverageRequestResource = {
 type DirectMapPreparedSourceFrame = {
   fingerprint: string;
   snapshot: ReturnType<SearchMapSourceFramePort['getSnapshot']>;
+  // True when this entry was built by the idle sibling-tab PREWARM (R2-C2) rather than a live
+  // publish. Drives the 'toggle_frame_rebuilt_despite_prewarm' dev contract: a toggle publish
+  // that rebuilds while a prewarmed entry exists for the SAME fingerprint means the cache-hit
+  // gate rejected a frame the prewarm believed valid — a silent double-compute regression.
+  prewarmed: boolean;
+};
+
+// R2-C2 sibling-tab frame PREWARM (plans/search-flow-plan.md §D6a): after a reveal/toggle
+// settles, publishSourcesInner re-runs in this mode on the IDLE queue to build the OTHER
+// tab's source frame into the prepared-frame cache. Prewarm mode is build-only: it must
+// never publish to the source frame port, never mutate the controller's shared refs
+// (resident stores / catalog memo / LOD reset keys / diagnostics), and must read the
+// SIBLING tab's coverage from the by-requestKey caches (the live refs hold the ACTIVE
+// tab's coverage). Staleness is handled purely by key identity: the prewarmed entry is
+// stored under the same buildSourceFrameDataReuseKey fingerprint the toggle publish
+// computes, so any input drift (camera bounds, native promoted set, catalog, coverage,
+// selection, query) is a key mismatch and the toggle rebuilds as before.
+type DirectMapFramePrewarmRequest = {
+  prewarmTab: 'dishes' | 'restaurants';
 };
 
 const normalizeJsonValue = (value: unknown): unknown => {
@@ -1267,6 +1287,32 @@ export const useDirectSearchMapSourceController = ({
   );
 
   const publishSourcesRef = React.useRef<() => void>(() => {});
+  // R2-C2 fix (fp-diff attributed): the settle-triggered prewarm fired BEFORE the map finished
+  // settling (post-reveal camera fit + LOD promotion still moving), so its fingerprint drifted
+  // (bounds + promoted-hash segments) and the toggle lookup missed. Every LIVE publish already
+  // re-runs on exactly the inputs that invalidate the fingerprint, so the sibling prewarm is
+  // re-armed (debounced, idle-scheduled) after each live publish — it converges to the final
+  // inputs automatically and bails cheaply when the fingerprint is already cached.
+  const siblingPrewarmDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armSiblingPrewarmAfterLivePublish = React.useCallback(() => {
+    if (siblingPrewarmDebounceRef.current != null) {
+      clearTimeout(siblingPrewarmDebounceRef.current);
+    }
+    siblingPrewarmDebounceRef.current = setTimeout(() => {
+      siblingPrewarmDebounceRef.current = null;
+      InteractionManager.runAfterInteractions(() => {
+        prewarmSiblingTabSourceFrameRef.current();
+      });
+    }, 300);
+  }, []);
+  React.useEffect(
+    () => () => {
+      if (siblingPrewarmDebounceRef.current != null) {
+        clearTimeout(siblingPrewarmDebounceRef.current);
+      }
+    },
+    []
+  );
   publishSourcesRef.current = () => {
     const __t1dbgProjStart = performance.now();
     if (__DEV__) console.log(`[T1DBG] projection:start t=${__t1dbgProjStart.toFixed(1)}`);
@@ -1277,10 +1323,16 @@ export const useDirectSearchMapSourceController = ({
         const dur = performance.now() - __t1dbgProjStart;
         if (dur > 8) console.log(`[T1DBG] projection:end dur=${dur.toFixed(1)}`);
       }
+      armSiblingPrewarmAfterLivePublish();
     }
   };
-  const publishSourcesInnerRef = React.useRef<() => void>(() => {});
-  publishSourcesInnerRef.current = () => {
+  // Prewarm mode (R2-C2): build-only re-entry for the SIBLING tab. Returns true when a
+  // frame was built and stored into the prepared cache (drives the [T1DBG] prewarm log).
+  const publishSourcesInnerRef = React.useRef<
+    (prewarm?: DirectMapFramePrewarmRequest) => boolean | void
+  >(() => {});
+  publishSourcesInnerRef.current = (prewarm?: DirectMapFramePrewarmRequest) => {
+    const isPrewarmBuild = prewarm != null;
     const state = searchRuntimeBus.getState();
     const args = latestArgsRef.current;
     const projectionIsMapMoving =
@@ -1328,11 +1380,19 @@ export const useDirectSearchMapSourceController = ({
       args.restaurantOnlyId != null && (!hasCommittedResultState || hasOnlyRestaurantOnlyResults)
         ? args.restaurantOnlyId
         : null;
-    const activeTab = state.activeTab;
+    // Prewarm builds the SIBLING tab's frame: override the tab axis; everything downstream
+    // (catalog resolution, coverage requestKey, fingerprint) derives from this one binding, so
+    // the stored fingerprint is exactly what the toggle-time publish will compute.
+    const activeTab = prewarm?.prewarmTab ?? state.activeTab;
     const searchMode = state.searchMode;
+    // Prewarm is only useful where the prepared-frame cache-hit replay applies (shortcut mode,
+    // committed results, no selection intent — mirrored below once selection is resolved).
+    if (isPrewarmBuild && (searchMode !== 'shortcut' || searchRequestId == null)) {
+      return false;
+    }
     const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
     const resetKey = `${searchMode ?? 'none'}::${activeTab}`;
-    if (lodPinnedResetKeyRef.current !== resetKey) {
+    if (!isPrewarmBuild && lodPinnedResetKeyRef.current !== resetKey) {
       lodPinnedResetKeyRef.current = resetKey;
       lodPinnedVisualKeyRef.current = '';
       lodPinnedMarkersRef.current = [];
@@ -1356,7 +1416,11 @@ export const useDirectSearchMapSourceController = ({
         isPreparedResultsEnterActive ||
         effectiveRestaurantOnlyId != null ||
         selectedRestaurantId != null);
-    if (preparedVisualCycleKey != null && String(preparedVisualCycleKey).includes('toggle')) {
+    if (
+      !isPrewarmBuild &&
+      preparedVisualCycleKey != null &&
+      String(preparedVisualCycleKey).includes('toggle')
+    ) {
       logger.info('[SRCPROJ] entry', {
         pvck: preparedVisualCycleKey,
         contentVis: resultsPresentationSnapshot.resultsPresentation.contentVisibility,
@@ -1367,6 +1431,15 @@ export const useDirectSearchMapSourceController = ({
         proj: shouldProjectResultSources,
         sri: searchRequestId,
       });
+    }
+    // Prewarm bail-outs: selection intents force-mutate the catalog (all-locations render /
+    // rank-1 reveal) AND the cache-hit replay path never fires while a selection is active, so
+    // a prewarmed selected-frame could never be consumed — skip instead of caching dead weight.
+    if (isPrewarmBuild && (effectiveRestaurantOnlyId != null || selectedRestaurantId != null)) {
+      return false;
+    }
+    if (isPrewarmBuild && !isSearchVisualProjectionLive) {
+      return false;
     }
     if (!isSearchVisualProjectionLive) {
       markerCandidatesRef.current = [];
@@ -1388,7 +1461,6 @@ export const useDirectSearchMapSourceController = ({
       args.resultsPresentationSurfaceAuthority
     );
     const previousSourceFrameSnapshot = sourceFramePort.getSnapshot();
-    const coverageResource = shortcutCoverageResourceRef.current;
     const shortcutCoverageSnapshotForCurrentRequest =
       searchRequestId != null
         ? (shortcutCoverageSnapshotByRequestIdRef.current.get(searchRequestId) ?? null)
@@ -1417,6 +1489,41 @@ export const useDirectSearchMapSourceController = ({
             marketKey: mountedResults?.metadata?.marketKey ?? '',
           })
         : null;
+    // Coverage resolution. LIVE publish: the active resource/features refs (owned by the active
+    // tab). PREWARM: the SIBLING tab's coverage from the by-requestKey terminal + features caches
+    // (populated by prefetchSiblingTabCoverage / prior fetches) — the exact objects the toggle-time
+    // restoreFromCache path will install into the live refs, so requestKey/status (fingerprint
+    // inputs) and the dot features (frame input) are identical at prewarm time and toggle time.
+    const prewarmCoverageResource =
+      isPrewarmBuild && currentShortcutCoverageRequestKey != null
+        ? (shortcutCoverageTerminalByRequestKeyRef.current.get(currentShortcutCoverageRequestKey) ??
+          null)
+        : null;
+    const coverageResource = isPrewarmBuild
+      ? prewarmCoverageResource
+      : shortcutCoverageResourceRef.current;
+    if (isPrewarmBuild) {
+      // Only a SUCCESS terminal is a buildable coverage input; 'completed' must also have its
+      // features cached (lockstep contract). Anything else → the toggle will fetch/restore first;
+      // building now would bake a frame the toggle-time fingerprint can never match.
+      const prewarmCoverageStatus = prewarmCoverageResource?.status ?? null;
+      if (prewarmCoverageStatus !== 'completed' && prewarmCoverageStatus !== 'empty') {
+        return false;
+      }
+      if (
+        prewarmCoverageStatus === 'completed' &&
+        !shortcutCoverageFeaturesByRequestKeyRef.current.has(
+          prewarmCoverageResource?.requestKey ?? ''
+        )
+      ) {
+        return false;
+      }
+    }
+    const coverageDotFeaturesForBuild = isPrewarmBuild
+      ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(
+          prewarmCoverageResource?.requestKey ?? ''
+        ) ?? null)
+      : shortcutCoverageDotFeaturesRef.current;
     const hasShortcutCoverageInput =
       searchMode === 'shortcut' &&
       searchRequestId != null &&
@@ -1529,8 +1636,10 @@ export const useDirectSearchMapSourceController = ({
       anyPrecomputedMarkerProjectionForResults != null
         ? anyPrecomputedMarkerProjectionForResults.restaurantsById
         : new Map(restaurants.map((restaurant) => [restaurant.restaurantId, restaurant]));
-    restaurantsByIdRef.current = restaurantsById;
-    restaurantsRef.current = restaurants;
+    if (!isPrewarmBuild) {
+      restaurantsByIdRef.current = restaurantsById;
+      restaurantsRef.current = restaurants;
+    }
     // R1a SINGLE-AUTHORITY RULE (plans/search-flow-plan.md §D6): for committed results, the
     // store's precomputed marker catalog (buildMarkerCatalogReadModel run ONCE at response
     // commit, same computation the cards' rank order derives from) is THE marker-catalog
@@ -1552,6 +1661,7 @@ export const useDirectSearchMapSourceController = ({
       effectiveRestaurantOnlyId == null &&
       selectedRestaurantId == null;
     if (
+      !isPrewarmBuild &&
       !canUsePrecomputedMarkerCatalog &&
       hasPrecomputedMarkerCatalogForResults &&
       effectiveRestaurantOnlyId == null &&
@@ -1616,7 +1726,17 @@ export const useDirectSearchMapSourceController = ({
     });
     const cachedPreparedFrame =
       preparedSourceFrameByFingerprintRef.current.get(preparedFrameFingerprint);
+    if (__DEV__) {
+      console.log(
+        `[T1DBG] frameCache:lookup hit=${cachedPreparedFrame != null} fp=${preparedFrameFingerprint}`
+      );
+    }
+    if (isPrewarmBuild && cachedPreparedFrame != null) {
+      // Already prepared under this exact fingerprint (a prior publish or prewarm) — nothing to do.
+      return false;
+    }
     if (
+      !isPrewarmBuild &&
       cachedPreparedFrame != null &&
       readinessKey != null &&
       searchMode === 'shortcut' &&
@@ -1721,6 +1841,29 @@ export const useDirectSearchMapSourceController = ({
       );
       return;
     }
+    // R2-C2 guardrail: a TOGGLE publish is about to do the full frame rebuild even though a
+    // PREWARMED entry exists for this exact fingerprint — the cache-hit gate above rejected it
+    // (coverage resource / loading-flag / readiness state drifted from what the prewarm assumed).
+    // Loud, not silent: this is the projection cost the prewarm exists to remove.
+    if (
+      !isPrewarmBuild &&
+      cachedPreparedFrame != null &&
+      cachedPreparedFrame.prewarmed &&
+      readinessKey != null &&
+      String(readinessKey).includes('toggle')
+    ) {
+      reportSearchFlowContractViolation('toggle_frame_rebuilt_despite_prewarm', {
+        readinessKey,
+        activeTab,
+        searchMode,
+        fingerprint: preparedFrameFingerprint.slice(-48),
+        coverageStatus: coverageResource?.status ?? null,
+        coverageRequestKey: coverageResource?.requestKey ?? null,
+        shortcutCoverageLoading: shortcutCoverageLoadingRef.current,
+        selectedRestaurantId,
+        restaurantOnlyId: effectiveRestaurantOnlyId,
+      });
+    }
     // v4 invariant 1 (RESIDENT sources): the natural-search candidate set is the
     // FULL result catalog, not a viewport query. Natural search returns a BOUNDED set
     // — the backend result limit caps it (SEARCH_MAX_RESULTS, default 100, hard max 500
@@ -1734,7 +1877,10 @@ export const useDirectSearchMapSourceController = ({
     // ejected from the source on pan. Promotion is viewport-gated downstream by NATIVE
     // (projectAndEmitOnScreenMarkers computes the on-screen top-N and — via the v5 engine decide it
     // runs — flips those to full pins), so only on-screen markers ever promote.
-    markerCandidatesRef.current = markerCatalogEntries.map((entry) => entry.feature);
+    const markerCandidateFeatures = markerCatalogEntries.map((entry) => entry.feature);
+    if (!isPrewarmBuild) {
+      markerCandidatesRef.current = markerCandidateFeatures;
+    }
     // IDEAL SHAPE (viewport-bounded): the RANK pool and the DOT pool are the SAME set — every
     // in-view restaurant is both a dot (resident) and a promotion candidate, so any of them can
     // crossfade to a pin. The pool = shortcut_coverage (every in-viewport restaurant for this
@@ -1748,17 +1894,17 @@ export const useDirectSearchMapSourceController = ({
     // (projectAndEmitOnScreenMarkers promotes the top-N of the ON-SCREEN subset only, so an off-view
     // rank can never promote). shortcut_coverage has higher VISUAL_SOURCE_PRIORITY than main_results,
     // so the dedup keeps the coverage rank; the merged list is re-ranked 1..N by sorted position below.
-    const shortcutResultFeatures = searchMode === 'shortcut' ? markerCandidatesRef.current : [];
+    const shortcutResultFeatures = searchMode === 'shortcut' ? markerCandidateFeatures : [];
     const shortcutCoverageCandidateSources: SearchMapVisualCandidateSource[] =
       searchMode === 'shortcut'
         ? [
             {
               sourceKind: 'shortcut_coverage',
-              features: shortcutCoverageDotFeaturesRef.current?.features ?? [],
+              features: coverageDotFeaturesForBuild?.features ?? [],
             },
             { sourceKind: 'main_results', features: shortcutResultFeatures },
           ]
-        : [{ sourceKind: 'viewport', features: markerCandidatesRef.current }];
+        : [{ sourceKind: 'viewport', features: markerCandidateFeatures }];
     const rankedCandidateSources: SearchMapVisualCandidateSource[] =
       shortcutCoverageCandidateSources;
     const dotCandidateSources: SearchMapVisualCandidateSource[] = shortcutCoverageCandidateSources;
@@ -1817,7 +1963,11 @@ export const useDirectSearchMapSourceController = ({
         });
       });
       candidateCatalog = { key: candidateCatalogKey, entries: catalogEntries };
-      lastCandidateCatalogRef.current = candidateCatalog;
+      // Prewarm must not evict the ACTIVE tab's catalog memo — the sibling catalog lives only
+      // inside the prepared snapshot it rides.
+      if (!isPrewarmBuild) {
+        lastCandidateCatalogRef.current = candidateCatalog;
+      }
     }
     // Stage B (B3): consume the native screen-space on-screen marker set purely for the
     // attribution probe below. JS no longer uses it to gate promotion (native is the sole LOD
@@ -1831,7 +1981,7 @@ export const useDirectSearchMapSourceController = ({
     let rawVisibleAdded = 0;
     let rawVisibleRemoved = 0;
     let rawVisibleCount = -1;
-    if (nativeVisible != null) {
+    if (!isPrewarmBuild && nativeVisible != null) {
       const rawKeys = new Set(nativeVisible.markerKeys);
       rawVisibleCount = rawKeys.size;
       const previousRaw = previousRawVisibleKeysRef.current;
@@ -1894,7 +2044,7 @@ export const useDirectSearchMapSourceController = ({
 
     // Far-out shortcut → auto-zoom onto the radius once per search (programmatic, so it
     // doesn't trip "map moved"; the region stays a radius off the frozen baseline).
-    if (overlapRegion?.kind === 'radius' && submittedSearchBounds) {
+    if (!isPrewarmBuild && overlapRegion?.kind === 'radius' && submittedSearchBounds) {
       const autoZoomKey = `${submittedSearchBounds.northEast.lat.toFixed(4)}:${submittedSearchBounds.northEast.lng.toFixed(4)}:${submittedSearchBounds.southWest.lat.toFixed(4)}:${submittedSearchBounds.southWest.lng.toFixed(4)}`;
       if (lastAutoZoomedSearchKeyRef.current !== autoZoomKey) {
         lastAutoZoomedSearchKeyRef.current = autoZoomKey;
@@ -2157,7 +2307,7 @@ export const useDirectSearchMapSourceController = ({
     // so we can see whether membership is churning mid-gesture (the flash) vs only
     // on settle. In an ideal resident model, viewport pan/zoom should produce ZERO
     // removals (markers stay resident, tile-culled by Mapbox / faded by opacity).
-    if (isPerfScenarioAttributionActive(scenarioConfig)) {
+    if (!isPrewarmBuild && isPerfScenarioAttributionActive(scenarioConfig)) {
       const prevPinIds = new Set(previousPinSourceStoreRef.current?.idsInOrder ?? []);
       const prevDotIds = new Set(previousDotSourceStoreRef.current?.idsInOrder ?? []);
       const nextPinIds = pinSourceStore.idsInOrder;
@@ -2330,7 +2480,7 @@ export const useDirectSearchMapSourceController = ({
       shortcutCoverageReadyForPreparedEnter &&
       pinInteractionSourcesComplete &&
       (!expectsPreparedVisualSources || hasVisualSources);
-    if (readinessKey != null && String(readinessKey).includes('toggle')) {
+    if (!isPrewarmBuild && readinessKey != null && String(readinessKey).includes('toggle')) {
       logger.info('[TGLDBG-v2] srcGate', {
         activeTab,
         rk: readinessKey,
@@ -2382,6 +2532,7 @@ export const useDirectSearchMapSourceController = ({
     const activePresentationTransport =
       args.resultsPresentationAuthority.getSnapshot().resultsPresentationTransport;
     const shouldPreserveResidentEnterSourceFrame =
+      !isPrewarmBuild &&
       preparedVisualCycleKey != null &&
       previousSourceFrameSnapshot.visualCycleKey === preparedVisualCycleKey &&
       hasNonEmptySearchMapSourceFrame(previousSourceFrameSnapshot) &&
@@ -2401,15 +2552,28 @@ export const useDirectSearchMapSourceController = ({
       }
       return;
     }
+    if (__DEV__) {
+      // [T1DBG] fingerprint diff probe: pair a prewarm store's fp with the toggle lookup's fp
+      // to name the drifting key segment when a prewarm misses.
+      console.log(
+        `[T1DBG] frameCache:store prewarm=${isPrewarmBuild} fp=${preparedFrameFingerprint}`
+      );
+    }
     preparedSourceFrameByFingerprintRef.current.set(preparedFrameFingerprint, {
       fingerprint: preparedFrameFingerprint,
       snapshot: sourceFrameSnapshot,
+      prewarmed: isPrewarmBuild,
     });
     if (preparedSourceFrameByFingerprintRef.current.size > 4) {
       const [oldestKey] = preparedSourceFrameByFingerprintRef.current.keys();
       if (oldestKey != null) {
         preparedSourceFrameByFingerprintRef.current.delete(oldestKey);
       }
+    }
+    if (isPrewarmBuild) {
+      // Build-only mode ends here: the frame is cached for the toggle-time replay. NO port
+      // publish, NO resident-ref adoption, NO telemetry — the on-screen frame is untouched.
+      return true;
     }
     const didPublishSourceFrame = commitResidentSourceFrameSnapshot(sourceFrameSnapshot);
     if (isPerfScenarioAttributionActive(scenarioConfig)) {
@@ -3296,6 +3460,87 @@ export const useDirectSearchMapSourceController = ({
     sourceFramePort,
     viewportBoundsService,
   ]);
+
+  // R2-C2 (plans/search-flow-plan.md §D6a): SIBLING-TAB FRAME PREWARM. The toggle commit's
+  // remaining ~125ms burner is the synchronous source-frame build for the incoming tab
+  // (publishSourcesInner: coverage merge + re-rank + pin/dot/pinInteraction/label store builds).
+  // The marker CATALOGS are already precomputed per-tab at response commit (R1a-2), but the
+  // FRAME depends on late-settling inputs (camera bounds, native promoted set, coverage), so it
+  // cannot be built at response commit — instead we build it on the IDLE queue after each
+  // reveal/toggle settles, into the existing prepared-frame cache under the exact fingerprint
+  // the toggle-time publish will compute. Toggle → fingerprint match → cached replay (the
+  // pre-existing cacheReveal path), no rebuild. Any input drift (camera move, promotion change,
+  // new search, coverage change, selection) changes the fingerprint → normal rebuild + a fresh
+  // prewarm after the next settle. Stale frames can therefore never publish: the ONLY consumer
+  // is the fingerprint-keyed lookup.
+  const prewarmSiblingTabSourceFrameRef = React.useRef<() => void>(() => {});
+  prewarmSiblingTabSourceFrameRef.current = () => {
+    const state = searchRuntimeBus.getState();
+    if (state.searchMode !== 'shortcut') {
+      return;
+    }
+    const siblingTab = state.activeTab === 'dishes' ? 'restaurants' : 'dishes';
+    const prewarmStartMs = performance.now();
+    let built: boolean | void = false;
+    try {
+      built = publishSourcesInnerRef.current({ prewarmTab: siblingTab });
+    } catch (error) {
+      // Best-effort by design: a failed prewarm must never break the live pipeline — the
+      // toggle simply rebuilds as before.
+      logger.warn('Sibling-tab source-frame prewarm failed', {
+        message: error instanceof Error ? error.message : 'unknown error',
+        siblingTab,
+      });
+      return;
+    }
+    if (__DEV__ && built === true) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[T1DBG] prewarm:built tab=${siblingTab} dur=${(performance.now() - prewarmStartMs).toFixed(1)}`
+      );
+    }
+  };
+
+  React.useEffect(() => {
+    let disposed = false;
+    let pendingIdleTask: ReturnType<typeof InteractionManager.runAfterInteractions> | null = null;
+    let lastExecutionStage =
+      resultsPresentationAuthority.getSnapshot().resultsPresentationTransport.executionStage;
+    const unsubscribe = resultsPresentationAuthority.subscribe(
+      () => {
+        const transport = resultsPresentationAuthority.getSnapshot().resultsPresentationTransport;
+        const previousStage = lastExecutionStage;
+        lastExecutionStage = transport.executionStage;
+        // Fire once per enter-settle edge (reveal or toggle fade-in completed). Exits don't
+        // prewarm — a dismissed surface has no imminent toggle.
+        if (
+          transport.executionStage !== 'settled' ||
+          previousStage === 'settled' ||
+          transport.snapshotKind === 'results_exit'
+        ) {
+          return;
+        }
+        pendingIdleTask?.cancel();
+        // Off the interaction window: runAfterInteractions defers past the settle animations /
+        // active gestures; a superseding settle (rapid toggling) cancels and reschedules, and
+        // key-identity makes any late run stale-safe regardless.
+        pendingIdleTask = InteractionManager.runAfterInteractions(() => {
+          pendingIdleTask = null;
+          if (disposed) {
+            return;
+          }
+          prewarmSiblingTabSourceFrameRef.current();
+        });
+      },
+      ['resultsPresentationTransport'] as const,
+      'map_source_controller_sibling_frame_prewarm'
+    );
+    return () => {
+      disposed = true;
+      pendingIdleTask?.cancel();
+      unsubscribe();
+    };
+  }, [resultsPresentationAuthority, searchRuntimeBus]);
 
   // Re-publish sources when the highlight / restaurantOnly intent changes (or map-move state
   // flips) so the catalog rebuilds against the new selection.
