@@ -1,16 +1,15 @@
 appId: com.brandonkimble.cravesearch
-# Pagination attribution (ledger #6): scroll to bottom, back off, return — re-arms
-# FlashList's onEndReached after any spurious reveal-time firing.
+# Pagination attribution (ledger #6): deep scroll to bottom, back off, return.
 ---
 - repeat:
-    times: 6
+    times: 12
     commands:
       - swipe:
           start: '50%, 80%'
           end: '50%, 25%'
-          duration: 400
+          duration: 350
       - waitForAnimationToEnd:
-          timeout: 600
+          timeout: 500
 - swipe:
     start: '50%, 30%'
     end: '50%, 75%'
@@ -18,11 +17,11 @@ appId: com.brandonkimble.cravesearch
 - waitForAnimationToEnd:
     timeout: 600
 - repeat:
-    times: 3
+    times: 4
     commands:
       - swipe:
           start: '50%, 80%'
           end: '50%, 25%'
-          duration: 400
+          duration: 350
       - waitForAnimationToEnd:
-          timeout: 600
+          timeout: 500

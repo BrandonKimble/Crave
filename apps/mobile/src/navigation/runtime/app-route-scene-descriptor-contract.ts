@@ -206,8 +206,10 @@ export type AppRouteSceneBodyTransportSpec = {
   /** Fired from the list's live onScroll with the current offsetY. The gesture-handoff
    * scroll container never produces native drag events (the finger is on the sheet's
    * GestureDetector; scrolling is worklet-driven), so consumers needing 'a real user scroll
-   * happened' (pagination's anti-auto-load gate) key on THIS, not onScrollBeginDrag. */
-  onUserListScrollActivity?: (offsetY: number) => void;
+   * happened' (pagination's anti-auto-load gate) key on THIS, not onScrollBeginDrag. distanceFromEnd
+   * (content minus viewport minus offset) lets consumers derive end-proximity — FlashList's
+   * onEndReached also never fires under handoff scrolling, so pagination triggers off THIS. */
+  onUserListScrollActivity?: (offsetY: number, distanceFromEnd: number) => void;
   onScrollEndDrag?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onScrollEndDrag'];
   onMomentumBeginJS?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onMomentumBeginJS'];
   onMomentumEndJS?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onMomentumEndJS'];

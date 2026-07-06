@@ -547,6 +547,7 @@ export class SearchSurfaceRuntime {
     coverState = reason === 'submit' ? 'initial_loading' : 'interaction_loading',
     dataMode = 'transactional',
   }: BeginRedrawTransactionInput): string => {
+    if (__DEV__) console.log(`[T1DBG] beginRedrawTxn t=${performance.now().toFixed(1)}`);
     const id = transactionId ?? `search-surface-redraw:${++this.transactionSeq}`;
     this.pendingRedrawMotionArm = {
       id,

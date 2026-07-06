@@ -57,7 +57,13 @@ export const useResultsPresentationToggleCommitRuntime = ({
 
       let outcome: ToggleCommitOutcome | void;
       try {
+        const __t1dbgRunnerStart = performance.now();
+        if (__DEV__) console.log(`[T1DBG] runner:start t=${__t1dbgRunnerStart.toFixed(1)}`);
         outcome = runner({ intentId });
+        if (__DEV__)
+          console.log(
+            `[T1DBG] runner:end t=${performance.now().toFixed(1)} dur=${(performance.now() - __t1dbgRunnerStart).toFixed(1)}`
+          );
       } catch (error) {
         logger.warn('Toggle interaction commit failed', {
           message: error instanceof Error ? error.message : 'unknown error',

@@ -37,6 +37,7 @@ export const useResultsPresentationTabToggleRuntime = ({
 
   const commitTabChange = React.useCallback(
     (next: 'dishes' | 'restaurants') => {
+      if (__DEV__) console.log(`[T1DBG] commitTabChange:start t=${performance.now().toFixed(1)}`);
       if (activeTabRef.current === next) {
         searchRuntimeBus.publish({
           pendingTabSwitchTab: null,

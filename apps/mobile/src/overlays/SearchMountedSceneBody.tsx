@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import type { FlashListProps } from '@shopify/flash-list';
 import { FlashList } from '@shopify/flash-list';
-import Animated from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 
 import type {
   BottomSheetSceneStackBodyDefaults,
@@ -345,6 +345,42 @@ const SearchMountedResultsListTarget = React.memo(
     const renderSceneScrollComponent = bodyScrollRuntime.ScrollComponent as NonNullable<
       FlashListProps<unknown>['renderScrollComponent']
     >;
+    if (__DEV__) {
+      // [T1DBG] render-body mark: partitions the dark gap between store publish and projection
+      console.log(`[T1DBG] bodyRender t=${performance.now().toFixed(1)}`);
+    }
+    // Pagination #6b (Reanimated-correct): activeListOnScroll is a Reanimated handler OBJECT —
+    // it must stay the direct onScroll prop (wrapping it in a JS closure throws
+    // "activeListOnScroll is not a function"). The user-scroll-activity signal is derived from
+    // the scrollOffset SharedValue instead; content/layout heights come from list callbacks.
+    const listContentHeightRef = React.useRef(0);
+    const listLayoutHeightRef = React.useRef(0);
+    const emitUserListScrollActivity = React.useCallback(
+      (offsetY: number) => {
+        const distanceFromEnd =
+          listContentHeightRef.current - listLayoutHeightRef.current - offsetY;
+        sceneBodyTransport.onUserListScrollActivity?.(offsetY, distanceFromEnd);
+      },
+      [sceneBodyTransport]
+    );
+    useAnimatedReaction(
+      () => bodyScrollRuntime.scrollOffset.value,
+      (current, previous) => {
+        if (previous == null || Math.abs(current - previous) >= 48) {
+          runOnJS(emitUserListScrollActivity)(current);
+        }
+      },
+      [emitUserListScrollActivity]
+    );
+    const handleListContentSizeChange = React.useCallback((_w: number, h: number) => {
+      listContentHeightRef.current = h;
+    }, []);
+    const handleListLayout = React.useCallback(
+      (event: { nativeEvent: { layout: { height: number } } }) => {
+        listLayoutHeightRef.current = event.nativeEvent.layout.height;
+      },
+      []
+    );
     const handleScrollBeginDrag = React.useCallback(
       (event: ScrollEvent) => {
         if (__DEV__) {
@@ -465,10 +501,9 @@ const SearchMountedResultsListTarget = React.memo(
           keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
           scrollEnabled={bodyScrollRuntime.shouldEnableScroll}
           renderScrollComponent={renderSceneScrollComponent}
-          onScroll={(event) => {
-            sceneBodyTransport.onUserListScrollActivity?.(event.nativeEvent.contentOffset.y);
-            activeListOnScroll?.(event);
-          }}
+          onScroll={activeListOnScroll}
+          onContentSizeChange={handleListContentSizeChange}
+          onLayout={handleListLayout}
           scrollEventThrottle={16}
           onScrollBeginDrag={handleScrollBeginDrag}
           onScrollEndDrag={handleScrollEndDrag}

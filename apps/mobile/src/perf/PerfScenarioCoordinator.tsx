@@ -642,6 +642,23 @@ export const PerfScenarioCoordinator: React.FC = () => {
       return;
     }
 
+    if (event.action === 'scroll_results') {
+      if (!registry.scrollResults || event.offsetY == null) {
+        logPayload({
+          event: 'perf_scenario_command_failed',
+          action: event.action,
+          reason: registry.scrollResults ? 'missing_offsetY' : 'scroll_results_not_registered',
+        });
+        return;
+      }
+      const accepted = registry.scrollResults({ offsetY: event.offsetY, animated: true });
+      logPayload({
+        event: accepted ? 'perf_scenario_command_executed' : 'perf_scenario_command_failed',
+        action: event.action,
+        offsetY: event.offsetY,
+      });
+      return;
+    }
     if (event.action === 'open_overlay_scene') {
       if (!registry.openOverlayScene || !event.scene) {
         logPayload({

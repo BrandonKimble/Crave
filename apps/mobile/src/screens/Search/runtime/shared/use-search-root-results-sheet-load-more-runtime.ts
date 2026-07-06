@@ -26,6 +26,7 @@ export const useSearchRootResultsSheetLoadMoreRuntime = ({
   const hasUserScrolledResultsRef = React.useRef(false);
   const allowLoadMoreForCurrentScrollRef = React.useRef(true);
   const lastLoadMorePageRef = React.useRef<number | null>(null);
+  const wasInOffsetTriggerEndZoneRef = React.useRef(false);
   const loadMoreResultsRef = React.useRef(submitRuntimeResult.loadMoreResults);
   const searchModeRef = React.useRef(searchMode);
   const isSearchLoadingRef = React.useRef(isSearchLoading);
@@ -39,24 +40,6 @@ export const useSearchRootResultsSheetLoadMoreRuntime = ({
   isLoadingMoreRef.current = isLoadingMore;
   canLoadMoreRef.current = canLoadMore;
   currentPageRef.current = currentPage;
-
-  // Pagination fix (ledger #6): the gesture-handoff scroll container produces NO native drag
-  // events (finger on the sheet's GestureDetector, worklet-driven scroll), so the old
-  // scroll-begin marker never fired and the anti-auto-load gate blocked loadMore forever.
-  // The live signal is the list's onScroll offset: a real user scroll takes the offset past
-  // the threshold; mount/reveal resets sit at ~0, so spurious layout-time endReached stays
-  // blocked (the gate's original intent).
-  const USER_SCROLL_ACTIVITY_MIN_OFFSET_PX = 100;
-  const handleResultsListUserScrollActivity = React.useCallback((offsetY: number) => {
-    if (offsetY < USER_SCROLL_ACTIVITY_MIN_OFFSET_PX) {
-      return;
-    }
-    if (__DEV__ && !hasUserScrolledResultsRef.current) {
-      console.log(`[PAGDBG] scroll activity marked offsetY=${Math.round(offsetY)}`);
-    }
-    hasUserScrolledResultsRef.current = true;
-    allowLoadMoreForCurrentScrollRef.current = true;
-  }, []);
 
   const markResultsListUserScrollStart = React.useCallback(() => {
     if (__DEV__ && !hasUserScrolledResultsRef.current) {
@@ -102,6 +85,52 @@ export const useSearchRootResultsSheetLoadMoreRuntime = ({
     }
     loadMoreResultsRef.current(searchModeRef.current);
   }, [shouldLogSearchStateChanges]);
+
+  // Pagination fix (ledger #6): the gesture-handoff scroll container produces NO native drag
+  // events (finger on the sheet's GestureDetector, worklet-driven scroll), so the old
+  // scroll-begin marker never fired and the anti-auto-load gate blocked loadMore forever.
+  // The live signal is the list's onScroll offset: a real user scroll takes the offset past
+  // the threshold; mount/reveal resets sit at ~0, so spurious layout-time endReached stays
+  // blocked (the gate's original intent).
+  //
+  // Ledger #6b: FlashList's onEndReached ALSO never fires under handoff scrolling (verified
+  // across 3 instrumented drives — only spurious reveal-time firings at offset≈0), so this
+  // same live signal carries distanceFromEnd and IS the pagination trigger: within half a
+  // viewport of the bottom, run the end-reached logic directly. Its internal gates
+  // (scrolled / allow-per-scroll / canLoadMore / loading / page-dedup) all still apply.
+  // FlashList's onEndReached binding stays wired as a harmless secondary path.
+  const USER_SCROLL_ACTIVITY_MIN_OFFSET_PX = 100;
+  const OFFSET_TRIGGER_END_PROXIMITY_PX = 400; // ~0.5 viewport
+  const handleResultsListUserScrollActivity = React.useCallback(
+    (offsetY: number, distanceFromEnd: number) => {
+      if (__DEV__) {
+        const g = globalThis as { __pagTraceAtMs?: number };
+        const now = performance.now();
+        if (g.__pagTraceAtMs == null || now - g.__pagTraceAtMs > 800) {
+          g.__pagTraceAtMs = now;
+          console.log(
+            `[PAGDBG] trace offsetY=${Math.round(offsetY)} distanceFromEnd=${Math.round(distanceFromEnd)}`
+          );
+        }
+      }
+      if (offsetY >= USER_SCROLL_ACTIVITY_MIN_OFFSET_PX) {
+        if (__DEV__ && !hasUserScrolledResultsRef.current) {
+          console.log(`[PAGDBG] scroll activity marked offsetY=${Math.round(offsetY)}`);
+        }
+        hasUserScrolledResultsRef.current = true;
+        allowLoadMoreForCurrentScrollRef.current = true;
+      }
+      const isInEndZone = distanceFromEnd < OFFSET_TRIGGER_END_PROXIMITY_PX;
+      if (isInEndZone) {
+        if (__DEV__ && !wasInOffsetTriggerEndZoneRef.current) {
+          console.log(`[PAGDBG] offset-trigger distanceFromEnd=${Math.round(distanceFromEnd)}`);
+        }
+        handleResultsEndReached();
+      }
+      wasInOffsetTriggerEndZoneRef.current = isInEndZone;
+    },
+    [handleResultsEndReached]
+  );
 
   return React.useMemo(
     () => ({

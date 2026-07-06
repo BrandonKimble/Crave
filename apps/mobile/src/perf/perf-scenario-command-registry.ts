@@ -45,6 +45,9 @@ type PerfScenarioCommandRegistrySnapshot = {
   openOverlayScene:
     | ((input: { scene: string; routeParam?: string | null; label?: string | null }) => boolean)
     | null;
+  // Verification harness: deterministic results-list scroll (Maestro swipes are consumed by the
+  // sheet's gesture handoff and cannot reliably reach the list bottom).
+  scrollResults: ((input: { offsetY: number; animated?: boolean | null }) => boolean) | null;
 };
 
 const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
@@ -56,6 +59,7 @@ const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
   toggleTab: null,
   setScaleProbeMarkers: null,
   openOverlayScene: null,
+  scrollResults: null,
 };
 
 export type PerfScenarioCommandRegistration = {
@@ -96,6 +100,7 @@ export type PerfScenarioCommandRegistration = {
     routeParam?: string | null;
     label?: string | null;
   }) => boolean;
+  scrollResults?: (input: { offsetY: number; animated?: boolean | null }) => boolean;
 };
 
 export const registerPerfScenarioCommands = ({
@@ -107,6 +112,7 @@ export const registerPerfScenarioCommands = ({
   toggleTab,
   setScaleProbeMarkers,
   openOverlayScene,
+  scrollResults,
 }: PerfScenarioCommandRegistration): (() => void) => {
   if (closeResults) {
     commandRegistry.closeResults = closeResults;
@@ -131,6 +137,9 @@ export const registerPerfScenarioCommands = ({
   }
   if (openOverlayScene) {
     commandRegistry.openOverlayScene = openOverlayScene;
+  }
+  if (scrollResults) {
+    commandRegistry.scrollResults = scrollResults;
   }
 
   return () => {
@@ -164,6 +173,9 @@ export const registerPerfScenarioCommands = ({
     if (openOverlayScene && commandRegistry.openOverlayScene === openOverlayScene) {
       commandRegistry.openOverlayScene = null;
     }
+    if (scrollResults && commandRegistry.scrollResults === scrollResults) {
+      commandRegistry.scrollResults = null;
+    }
   };
 };
 
@@ -176,4 +188,5 @@ export const readPerfScenarioCommandRegistry = (): PerfScenarioCommandRegistrySn
   toggleTab: commandRegistry.toggleTab,
   setScaleProbeMarkers: commandRegistry.setScaleProbeMarkers,
   openOverlayScene: commandRegistry.openOverlayScene,
+  scrollResults: commandRegistry.scrollResults,
 });
