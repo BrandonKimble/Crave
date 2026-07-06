@@ -235,6 +235,31 @@ reprojectCatalogUnderCoverIfReady → presentation arm → first ramp tick. ALSO
 toggle-back corruption (R3) truncates every multi-toggle distribution — pull R3 forward if
 it keeps blocking R2's p90 gate.
 
+### D6e — ENDGAME ROOT CAUSE COMPLETE (2026-07-05, [GENREUSE]+VDIAG): the collision promotion round-trip
+
+The residual toggle gap's full causal chain, every link measured:
+`buildStableCollisionFeature` BAKES the live native promoted set into the collision
+features (`nativeLodOpacity: promotedNativeLodOpacity` — the "#16" fix), while the label
+builder explicitly strips those transient keys for stability. Every LOD promotion therefore
+round-trips native→JS→collision-rebuild→republish; after a reveal promotes 30 pins, that
+republish lands BETWEEN the mutation frame and the token frame → `changedIds=labelCollisions`
+→ the token frame mints a NEW generation → native resets mount/source-ready/election and
+re-mounts identical sources (~106ms). ONE flaw, THREE ledger symptoms: the generation reset
+(this), the [R3RECON] duplicate-adds on restaurant-label-collision-source (R3's ledger
+corrects them structurally), and the idle both-tab republish churn (ledger #4).
+
+**THE SURGERY (own focused session — touches the precious map's load-bearing label-collision
+doctrine; load map-architecture-shipped + map-lod memories first):** make the collision
+source's JS representation PROMOTION-INDEPENDENT — the obstacle's promotion gating moves
+fully native (native already reseeds obstacles from the catalog via applyV5ObstacleReseed;
+the JS-baked seed becomes the reparse-immune fallback exactly like the LEA pattern), OR the
+promotion opacity rides the transient/feature-state channel (already excluded from semantic
+identity) instead of baked properties. Constraints: obstacle correctness during mid-zoom
+promotion (#16's original bug), basemap suppression, dense thinning — the full collision
+doctrine. Acceptance: [GENREUSE] shows generation REUSE on the token frame; toggle pair-gap
+≈ enter lane (~3ms); [R3RECON] silent at steady state; idle [T4DEDUP] churn gone. Then:
+parallel-path deletion + rerun/dismiss unification + R4 gates.
+
 ### D6d — THE ENDGAME: single native lifecycle for every variant swap (designed 2026-07-05)
 
 **Diagnosis chain complete.** After U1+U2a (27596f09) the toggle's residual ~140ms is the
