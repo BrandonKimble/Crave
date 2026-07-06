@@ -16,6 +16,7 @@ type UseResultsPresentationOwnerValueRuntimeArgs = Pick<
   | 'scheduleToggleCommit'
   | 'cancelToggleInteraction'
   | 'beginSearchThisAreaPresentationPending'
+  | 'beginVariantRerunPresentationPending'
   | 'stageSearchSurfaceResultsTransaction'
   | 'clearStagedSearchSurfaceResultsTransaction'
   | 'handlePageOneResultsCommitted'
@@ -49,6 +50,8 @@ export const useResultsPresentationOwnerValueRuntime = ({
         cancelToggleInteraction: resultsRuntimeOwner.cancelToggleInteraction,
         beginSearchThisAreaPresentationPending:
           resultsRuntimeOwner.beginSearchThisAreaPresentationPending,
+        beginVariantRerunPresentationPending:
+          resultsRuntimeOwner.beginVariantRerunPresentationPending,
         stageSearchSurfaceResultsTransaction:
           resultsRuntimeOwner.stageSearchSurfaceResultsTransaction,
         clearStagedSearchSurfaceResultsTransaction:

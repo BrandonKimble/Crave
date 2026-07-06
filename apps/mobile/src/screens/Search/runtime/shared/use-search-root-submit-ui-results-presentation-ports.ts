@@ -34,7 +34,11 @@ export const useSearchRootSubmitUiResultsPresentationPorts = ({
       onPageOneResultsCommitted: (payload) => {
         resultsPresentationOwner.handlePageOneResultsCommitted({
           surfaceTransactionMutationKind:
-            payload.presentationIntentKind === 'search_this_area' ? 'search_this_area' : undefined,
+            payload.presentationIntentKind === 'search_this_area'
+              ? 'search_this_area'
+              : payload.presentationIntentKind === 'variant_rerun'
+                ? 'variant_rerun'
+                : undefined,
           expectedResultsDataKey: payload.resultsDataKey ?? payload.resultsIdentityKey,
           dataReadyFrom: payload.dataReadyFrom,
           searchInputKey: payload.searchInputKey,

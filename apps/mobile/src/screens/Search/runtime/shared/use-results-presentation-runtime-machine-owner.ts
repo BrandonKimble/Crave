@@ -16,6 +16,7 @@ type ResultsPresentationRuntimeMachineOwner = Pick<
   ResultsPresentationRuntimeOwner,
   | 'searchSurfaceResultsTransactionKey'
   | 'beginSearchThisAreaPresentationPending'
+  | 'beginVariantRerunPresentationPending'
   | 'stageSearchSurfaceResultsTransaction'
   | 'commitSearchSurfaceResultsExitTransaction'
   | 'clearStagedSearchSurfaceResultsTransaction'
@@ -82,6 +83,8 @@ export const useResultsPresentationRuntimeMachineOwner = ({
         surfaceTransactionRuntime.searchSurfaceResultsTransactionKey,
       beginSearchThisAreaPresentationPending:
         surfaceTransactionRuntime.beginSearchThisAreaPresentationPending,
+      beginVariantRerunPresentationPending:
+        surfaceTransactionRuntime.beginVariantRerunPresentationPending,
       stageSearchSurfaceResultsTransaction:
         surfaceTransactionRuntime.stageSearchSurfaceResultsTransaction,
       clearStagedSearchSurfaceResultsTransaction:

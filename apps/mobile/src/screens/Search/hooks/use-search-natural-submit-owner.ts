@@ -15,8 +15,8 @@ import { resolveLoadMoreRequestErrorMessage } from './search-submit-runtime-util
 import type {
   ResolveNaturalSearchAttemptConfigResult,
   SearchSubmitEntrySurface,
-  SearchSubmitPresentationIntentKind,
   SubmitSearchOptions,
+  SearchSubmitInPlaceRerunIntentKind,
 } from './use-search-submit-entry-owner';
 
 type UseSearchNaturalSubmitOwnerArgs = {
@@ -37,7 +37,7 @@ type UseSearchNaturalSubmitOwnerArgs = {
     targetTab: SegmentValue;
     submittedLabel: string;
     replaceResultsLabel?: string;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
     entrySurface: SearchSubmitEntrySurface;
   }) => void;
   prepareNaturalSearchAttemptPayload: (options: {
@@ -88,7 +88,7 @@ type UseSearchNaturalSubmitOwnerArgs = {
     submissionContext?: NaturalSearchRequest['submissionContext'];
     requestBounds: import('../../../types').MapBounds | null;
     replaceResultsInPlace: boolean;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
     searchCacheStatus?: SearchRequestCacheStatus | null;
   }) => boolean;
   runManagedRequestAttempt: SearchRequestRuntimeOwner['runManagedRequestAttempt'];

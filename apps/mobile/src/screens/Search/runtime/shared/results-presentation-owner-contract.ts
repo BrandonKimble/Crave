@@ -18,6 +18,7 @@ export type ResultsPresentationOwner = Pick<
   | 'stageSearchSurfaceResultsTransaction'
   | 'clearStagedSearchSurfaceResultsTransaction'
   | 'beginSearchThisAreaPresentationPending'
+  | 'beginVariantRerunPresentationPending'
   | 'handlePageOneResultsCommitted'
   | 'cancelPresentationIntent'
   | 'handlePresentationIntentAbort'

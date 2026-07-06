@@ -351,7 +351,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
   const armSearchSurfaceResultsPending = React.useCallback(
     (
       snapshot: SearchSurfaceResultsEnterTransaction,
-      stagingInputs: SearchSurfaceResultsTransactionGateInputs
+      _stagingInputs: SearchSurfaceResultsTransactionGateInputs
     ) => {
       getSearchSurfaceRuntime().beginRedrawTransaction({
         reason:
@@ -386,6 +386,42 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
       commitSearchMountedResultsSearchSurfaceResultsTransactionKey(snapshot.transactionId);
     },
     [resultsPresentationSurfaceAuthority, runtimeMachineRef, searchMapSourceFramePort]
+  );
+
+  // TR5-N: a chip rerun (open-now/rising/price/mid-pagination include-similar) is an IN-PLACE
+  // variant swap — the toggle coordinator's runner arms this pending cover at COMMIT (before
+  // firing the network request), and the enter transaction is staged only at RESPONSE time
+  // (handlePageOneResultsCommitted, data-keyed) — the search-this-area lane's shape, keyed to
+  // the TOGGLE INTENT id so the coordinator's visual-sync finalize fires at reveal settle.
+  const pendingVariantRerunTransactionIdRef = React.useRef<string | null>(null);
+  const beginVariantRerunPresentationPending = React.useCallback(
+    (transactionId: string) => {
+      clearStagedSearchSurfaceResultsTransaction();
+      pendingVariantRerunTransactionIdRef.current = transactionId;
+      getSearchSurfaceRuntime().beginRedrawTransaction({
+        reason: 'toggle',
+        transactionId,
+        coverState: 'interaction_loading',
+      });
+      runtimeMachineRef.current!.applyStagingCoverState('interaction_loading');
+      resultsPresentationSurfaceAuthority.publish(
+        {
+          searchSurfaceResultsTransactionKey: transactionId,
+        },
+        'variant_rerun_pending_cover'
+      );
+      commitSearchMountedResultsSearchSurfaceResultsTransactionKey(transactionId);
+      searchMapSourceFramePort.publishVisualState({
+        mapSearchSurfaceResultsSourcesReady: false,
+        mapSearchSurfaceResultsSourcesReadyKey: transactionId,
+      });
+    },
+    [
+      clearStagedSearchSurfaceResultsTransaction,
+      resultsPresentationSurfaceAuthority,
+      runtimeMachineRef,
+      searchMapSourceFramePort,
+    ]
   );
 
   const beginSearchThisAreaPresentationPending = React.useCallback(() => {
@@ -949,11 +985,38 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
   );
   const handlePageOneResultsCommitted = React.useCallback(
     (payload?: {
-      surfaceTransactionMutationKind?: 'search_this_area';
+      surfaceTransactionMutationKind?: 'search_this_area' | 'variant_rerun';
       expectedResultsDataKey?: string | null;
       dataReadyFrom?: 'network' | 'cache' | 'in_flight';
       searchInputKey?: string | null;
     }) => {
+      if (
+        payload?.surfaceTransactionMutationKind === 'variant_rerun' &&
+        payload.expectedResultsDataKey != null
+      ) {
+        // TR5-N: the chip rerun's response just committed — stage the enter NOW, data-keyed,
+        // under the pending cover the runner armed at commit. The transaction id is the toggle
+        // intent id (armed by beginVariantRerunPresentationPending) so the coordinator's
+        // finalize fires at reveal settle; the transaction MUTATION kind reuses
+        // 'search_this_area' (the identical data-keyed in-place-rerun gate semantics).
+        const variantRerunTransactionId =
+          pendingVariantRerunTransactionIdRef.current ??
+          searchSurfaceResultsTransactionKeyInput.activeOperationId ??
+          payload.expectedResultsDataKey;
+        pendingVariantRerunTransactionIdRef.current = null;
+        stageSearchSurfaceResultsTransaction(
+          createSearchSurfaceResultsEnterTransaction(
+            variantRerunTransactionId,
+            'search_this_area',
+            'interaction_loading',
+            payload.expectedResultsDataKey,
+            payload.dataReadyFrom ?? 'network',
+            payload.searchInputKey ?? null,
+            null
+          )
+        );
+        return;
+      }
       if (
         payload?.surfaceTransactionMutationKind === 'search_this_area' &&
         payload.expectedResultsDataKey != null
@@ -1099,6 +1162,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
   ]);
 
   const handlePresentationIntentAbort = React.useCallback(() => {
+    pendingVariantRerunTransactionIdRef.current = null;
     clearStagedSearchSurfaceResultsTransaction();
     handleRuntimePresentationIntentAbort();
   }, [clearStagedSearchSurfaceResultsTransaction, handleRuntimePresentationIntentAbort]);
@@ -1107,6 +1171,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     () => ({
       searchSurfaceResultsTransactionKey,
       beginSearchThisAreaPresentationPending,
+      beginVariantRerunPresentationPending,
       stageSearchSurfaceResultsTransaction,
       clearStagedSearchSurfaceResultsTransaction,
       handlePageOneResultsCommitted,
@@ -1114,6 +1179,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     }),
     [
       beginSearchThisAreaPresentationPending,
+      beginVariantRerunPresentationPending,
       clearStagedSearchSurfaceResultsTransaction,
       handlePageOneResultsCommitted,
       handlePresentationIntentAbort,

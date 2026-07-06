@@ -10,9 +10,9 @@ import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-own
 import { resolveLoadMoreRequestErrorMessage } from './search-submit-runtime-utils';
 import type {
   SearchSubmitEntrySurface,
-  SearchSubmitPresentationIntentKind,
   StructuredAppendAttemptConfig,
   StructuredInitialAttemptConfig,
+  SearchSubmitInPlaceRerunIntentKind,
 } from './use-search-submit-entry-owner';
 import type { StructuredSearchFilters } from './use-search-request-preparation-owner';
 import type { SearchSubmitActiveOperationTuple } from './use-search-submit-response-owner';
@@ -33,7 +33,7 @@ type RunBestHereOptions = {
   transitionFromDockedPolls?: boolean;
   filters?: StructuredSearchFilters;
   forceFreshBounds?: boolean;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   entrySurface: SearchSubmitEntrySurface;
 };
 
@@ -65,7 +65,7 @@ type UseSearchStructuredSubmitOwnerArgs = {
     preserveSheetState: boolean;
     transitionFromDockedPolls: boolean;
     replaceResultsInPlace: boolean;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
     entrySurface: SearchSubmitEntrySurface;
   }) => StructuredInitialAttemptConfig;
   createShortcutStructuredAppendAttemptConfig: (params: {
@@ -146,7 +146,7 @@ type UseSearchStructuredSubmitOwnerArgs = {
     submittedLabel: string;
     requestBounds: import('../../../types').MapBounds | null;
     replaceResultsInPlace: boolean;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
     coverageSnapshot?: ShortcutCoverageSnapshot;
     searchCacheStatus?: SearchRequestCacheStatus | null;
   }) => boolean;
@@ -269,7 +269,7 @@ export const useSearchStructuredSubmitOwner = ({
       filters?: StructuredSearchFilters;
       forceFreshBounds: boolean;
       replaceResultsInPlace: boolean;
-      presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+      presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
     }) => {
       const payload = await prepareStructuredInitialRequestPayload({
         tuple,

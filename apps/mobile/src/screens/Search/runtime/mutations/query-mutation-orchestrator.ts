@@ -32,6 +32,7 @@ type RerunActiveSearchOptions = {
   isSearchSessionActive: boolean;
   preserveSheetState?: boolean;
   filters?: StructuredSearchFilters;
+  presentationIntentKind?: 'search_this_area' | 'variant_rerun';
 };
 
 type QueryMutationMechanismEmitter = (
@@ -68,7 +69,9 @@ type UseQueryMutationOrchestratorArgs = {
   }) => boolean;
   resultsRuntimeOwner: Pick<
     ResultsPresentationRuntimeOwner,
-    'clearStagedSearchSurfaceResultsTransaction' | 'stageSearchSurfaceResultsTransaction'
+    | 'clearStagedSearchSurfaceResultsTransaction'
+    | 'stageSearchSurfaceResultsTransaction'
+    | 'beginVariantRerunPresentationPending'
   >;
   priceSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
   onMechanismEvent?: QueryMutationMechanismEmitter;
@@ -160,12 +163,54 @@ export const useQueryMutationOrchestrator = (
     [rerunActiveSearch]
   );
 
+  // TR5-N: the ONE network-chip commit shape (open-now / rising / price / mid-pagination
+  // include-similar). The tab toggle is the template: the runner resolves the next variant's
+  // DATA before any reveal — here that means arming the pending interaction cover (keyed to
+  // the TOGGLE INTENT so the coordinator finalizes at reveal settle) and firing the rerun as a
+  // 'variant_rerun' submission. The submit machinery defers ALL staging; the enter transaction
+  // is staged at response commit (handlePageOneResultsCommitted), data-keyed — the reveal can
+  // never run on stale data.
+  const runVariantRerunToggleCommit = React.useCallback(
+    ({ intentId, filters }: { intentId: string; filters: StructuredSearchFilters }) => {
+      resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
+      resultsRuntimeOwner.beginVariantRerunPresentationPending(intentId);
+      // Read the rerun identity from the bus at COMMIT time. The prop copies thread through
+      // lane memos that can go stale across commits (the openNow flip bug had the same shape);
+      // a stale/empty submittedQuery here silently no-ops the rerun and leaves the cover armed
+      // until the watchdog force-commits.
+      const busState = searchRuntimeBus.getState();
+      fireRerunActiveSearch({
+        searchMode: busState.searchMode ?? searchMode,
+        activeTab: busState.activeTab ?? activeTab,
+        submittedQuery: busState.submittedQuery || submittedQuery,
+        query,
+        isSearchSessionActive: busState.isSearchSessionActive || isSearchSessionActive,
+        preserveSheetState: true,
+        presentationIntentKind: 'variant_rerun',
+        filters,
+      });
+      return {
+        awaitVisualSync: true as const,
+      };
+    },
+    [
+      activeTab,
+      fireRerunActiveSearch,
+      isSearchSessionActive,
+      query,
+      resultsRuntimeOwner,
+      searchMode,
+      searchRuntimeBus,
+      submittedQuery,
+    ]
+  );
+
   const toggleIncludeSimilar = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
-    const nextValue = !includeSimilarActive;
-    // R1c single-writer: the setter publishes to the bus (the runtime authority) — chips and
-    // read-models all read the same bus value immediately (optimistic pill flip on press-up).
+    // R1c single-writer: read the current value from the bus at press time (see toggleOpenNow) —
+    // the chip flip publishes optimistically on press-up.
+    const nextValue = !searchRuntimeBus.getState().includeSimilarActive;
     setIncludeSimilar(nextValue);
     if (!canRerunForCurrentQuery()) {
       return;
@@ -203,19 +248,11 @@ export const useQueryMutationOrchestrator = (
           };
         }
         // Mid-pagination (page > 1) or no local similar data: reset to top via a fresh
-        // network rerun carrying the new includeSimilar value (toggleOpenNow's shape).
-        fireRerunActiveSearch({
-          searchMode,
-          activeTab,
-          submittedQuery,
-          query,
-          isSearchSessionActive,
-          preserveSheetState: true,
+        // network rerun carrying the new includeSimilar value (the shared variant-rerun shape).
+        return runVariantRerunToggleCommit({
+          intentId,
           filters: { includeSimilar: nextValue },
         });
-        return {
-          awaitVisualSync: true,
-        };
       },
       { kind: 'filter_include_similar' }
     );
@@ -240,28 +277,18 @@ export const useQueryMutationOrchestrator = (
   const toggleRising = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
-    const nextValue = !risingActive;
-    // R1c single-writer: the setter publishes to the bus (the runtime authority) — chips and
-    // read-models all read the same bus value immediately.
+    // R1c single-writer: read the current value from the bus at press time (see toggleOpenNow).
+    const nextValue = !searchRuntimeBus.getState().risingActive;
     setRisingActive(nextValue);
     if (!canRerunForCurrentQuery()) {
       return;
     }
     scheduleToggleCommit(
-      () => {
-        fireRerunActiveSearch({
-          searchMode,
-          activeTab,
-          submittedQuery,
-          query,
-          isSearchSessionActive,
-          preserveSheetState: true,
+      ({ intentId }) =>
+        runVariantRerunToggleCommit({
+          intentId,
           filters: { rising: nextValue },
-        });
-        return {
-          awaitVisualSync: true,
-        };
-      },
+        }),
       { kind: 'filter_rising' }
     );
   }, [
@@ -283,28 +310,21 @@ export const useQueryMutationOrchestrator = (
   const toggleOpenNow = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
-    const nextValue = !openNow;
-    // R1c single-writer: the setter publishes to the bus (the runtime authority) — chips and
-    // read-models all read the same bus value immediately.
+    // R1c single-writer: the CURRENT value is read from the bus at press time (same source the
+    // setter writes and the request lane reads) — the `openNow` prop threads through lane memos
+    // that proved stale across variant-rerun commits, which froze the flip (every tap recomputed
+    // the same nextValue). commitPriceSelection already reads the bus this way.
+    const nextValue = !searchRuntimeBus.getState().openNow;
     setOpenNow(nextValue);
     if (!canRerunForCurrentQuery()) {
       return;
     }
     scheduleToggleCommit(
-      () => {
-        fireRerunActiveSearch({
-          searchMode,
-          activeTab,
-          submittedQuery,
-          query,
-          isSearchSessionActive,
-          preserveSheetState: true,
+      ({ intentId }) =>
+        runVariantRerunToggleCommit({
+          intentId,
           filters: { openNow: nextValue },
-        });
-        return {
-          awaitVisualSync: true,
-        };
-      },
+        }),
       { kind: 'filter_open_now' }
     );
   }, [
@@ -352,20 +372,12 @@ export const useQueryMutationOrchestrator = (
     }
 
     scheduleToggleCommit(
-      () => {
+      ({ intentId }) => {
         setPriceLevels(nextLevels);
-        fireRerunActiveSearch({
-          searchMode,
-          activeTab,
-          submittedQuery,
-          query,
-          isSearchSessionActive,
-          preserveSheetState: true,
+        return runVariantRerunToggleCommit({
+          intentId,
           filters: { priceLevels: nextLevels },
         });
-        return {
-          awaitVisualSync: true,
-        };
       },
       { kind: 'filter_price' }
     );

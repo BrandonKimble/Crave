@@ -82,6 +82,7 @@ export const useResultsPresentationOwnerPublicationRuntime = ({
     cancelToggleInteraction: resultsRuntimeOwner.cancelToggleInteraction,
     beginSearchThisAreaPresentationPending:
       resultsRuntimeOwner.beginSearchThisAreaPresentationPending,
+    beginVariantRerunPresentationPending: resultsRuntimeOwner.beginVariantRerunPresentationPending,
     stageSearchSurfaceResultsTransaction: resultsRuntimeOwner.stageSearchSurfaceResultsTransaction,
     clearStagedSearchSurfaceResultsTransaction:
       resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction,

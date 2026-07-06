@@ -36,7 +36,7 @@ import type { SegmentValue } from '../constants/search';
 import {
   resolveSubmissionDefaultTab,
   type SearchMode,
-  type SearchSubmitPresentationIntentKind,
+  type SearchSubmitInPlaceRerunIntentKind,
 } from './use-search-submit-entry-owner';
 import { mergeSearchResponses } from '../utils/merge';
 import { resolveSingleRestaurantCandidate } from '../utils/response';
@@ -82,7 +82,7 @@ export type SearchSubmitResponseHandlerOptions = {
   submissionContext?: NaturalSearchRequest['submissionContext'];
   requestBounds?: MapBounds | null;
   replaceResultsInPlace?: boolean;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   responseReceivedPayload: SearchSessionEventPayload;
   responseCacheStatus?: SearchRequestCacheStatus | null;
   runtimeShadow: SearchSubmitHandleSearchResponseRuntimeShadow;
@@ -272,7 +272,7 @@ type SearchResponsePhaseACommitOptions = {
   searchInputKey: string | null;
   requestBounds?: MapBounds | null;
   replaceResultsInPlace?: boolean;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   isResponseApplyStale: () => boolean;
   emitShadowTransition: SearchSubmitHandleSearchResponseRuntimeShadow['emitShadowTransition'];
 };
@@ -299,7 +299,7 @@ type SearchResponseLifecycleOptions = {
   submissionContext?: NaturalSearchRequest['submissionContext'];
   requestBounds?: MapBounds | null;
   replaceResultsInPlace?: boolean;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   runtimeTuple: SearchSubmitActiveOperationTuple;
   emitShadowTransition: SearchSubmitHandleSearchResponseRuntimeShadow['emitShadowTransition'];
   handleStart: number;
@@ -359,7 +359,7 @@ type UseSearchSubmitResponseOwnerArgs = {
     dataReadyFrom: 'network' | 'cache' | 'in_flight';
     searchInputKey: string | null;
     replaceResultsInPlace: boolean;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }) => void;
   activeOperationTupleRef: React.MutableRefObject<SearchSubmitActiveOperationTuple | null>;
   responseApplyTokenRef: React.MutableRefObject<number>;

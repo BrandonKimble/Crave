@@ -17,7 +17,22 @@ export type SearchMode = 'natural' | 'shortcut' | null;
 export type SearchSubmitPresentationIntentKind =
   | 'initial_search'
   | 'shortcut_rerun'
-  | 'search_this_area';
+  | 'search_this_area'
+  // TR5-N: an in-place chip rerun (open-now/rising/price/mid-pagination include-similar).
+  // Rides the search-this-area DEFERRED staging lane: the toggle runner arms the pending
+  // cover at commit; the enter transaction is staged at response commit, data-keyed.
+  | 'variant_rerun';
+
+// The in-place rerun kinds: the submit machinery must NOT clear results or stage a reveal
+// for these — the reveal is staged at response time under the already-armed cover.
+export type SearchSubmitInPlaceRerunIntentKind = Extract<
+  SearchSubmitPresentationIntentKind,
+  'search_this_area' | 'variant_rerun'
+>;
+export const isSearchSubmitInPlaceRerunIntentKind = (
+  kind: SearchSubmitPresentationIntentKind | undefined
+): kind is SearchSubmitInPlaceRerunIntentKind =>
+  kind === 'search_this_area' || kind === 'variant_rerun';
 
 export type SubmitSearchOptions = {
   openNow?: boolean;
@@ -30,7 +45,7 @@ export type SubmitSearchOptions = {
   replaceResultsInPlace?: boolean;
   transitionFromDockedPolls?: boolean;
   forceFreshBounds?: boolean;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   entrySurface?: SearchSubmitEntrySurface;
   submission?: {
     source: NaturalSearchRequest['submissionSource'];
@@ -45,7 +60,7 @@ export type ResolveNaturalSearchAttemptConfigResult = {
   preserveSheetState: boolean;
   transitionFromDockedPolls: boolean;
   shouldReplaceResultsInPlace: boolean;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   effectiveOpenNow: boolean;
   effectivePriceLevels: number[];
   effectiveIncludeSimilar: boolean;
@@ -63,7 +78,7 @@ export type StructuredInitialAttemptConfig = {
     mode: SearchMode;
     preserveSheetState: boolean;
     transitionFromDockedPolls: boolean;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
     targetTab: SegmentValue;
     submittedLabel: string;
     shouldResetPagination: boolean;
@@ -102,7 +117,7 @@ type PrepareNaturalSearchForegroundUiOptions = {
   targetTab: SegmentValue;
   submittedLabel: string;
   replaceResultsLabel?: string;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   entrySurface: SearchSubmitEntrySurface;
 };
 
@@ -164,7 +179,7 @@ const resolveSearchSubmitPresentationEntrySurface = ({
 }: {
   append?: boolean;
   preserveSheetState: boolean;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   entrySurface?: SearchSubmitEntrySurface;
   label: string;
 }): SearchSubmitEntrySurface => {
@@ -335,7 +350,7 @@ export const useSearchSubmitEntryOwner = ({
       setError(null);
       Keyboard.dismiss();
       logSearchPhase(`${logLabel}:ui-lanes-scheduled`);
-      if (replaceResultsLabel && presentationIntentKind !== 'search_this_area') {
+      if (replaceResultsLabel && !isSearchSubmitInPlaceRerunIntentKind(presentationIntentKind)) {
         clearResultsForReplacement(replaceResultsLabel);
       }
     },
@@ -377,7 +392,7 @@ export const useSearchSubmitEntryOwner = ({
       });
       activeLoadingMoreTokenRef.current = null;
       logSearchPhase('submitSearch:ui-lanes-scheduled');
-      if (replaceResultsLabel && presentationIntentKind !== 'search_this_area') {
+      if (replaceResultsLabel && !isSearchSubmitInPlaceRerunIntentKind(presentationIntentKind)) {
         clearResultsForReplacement(replaceResultsLabel);
       }
     },
@@ -440,7 +455,7 @@ export const useSearchSubmitEntryOwner = ({
       preserveSheetState: boolean;
       transitionFromDockedPolls: boolean;
       replaceResultsInPlace: boolean;
-      presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+      presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
       entrySurface: SearchSubmitEntrySurface;
     }): StructuredInitialAttemptConfig => ({
       submitPayload: createShortcutSubmitIntentPayload({

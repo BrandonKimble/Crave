@@ -3112,13 +3112,21 @@ final class SearchMapRenderController: RCTEventEmitter {
       ])
     }
     // INTERACTION-FADE HOLD: expire a stale hold (abandoned interaction — no commit ever arrived)
-    // so the idle restore below can self-heal the map back to visible.
+    // so the idle restore below can self-heal the map back to visible. TR5-N: while the JS
+    // interaction cover is UP (coverState 'interaction_loading' — a chip's network rerun can
+    // legitimately hold it for seconds), the interaction is NOT abandoned — re-stamp the clock
+    // instead of expiring, so the old map can never re-reveal mid-wait. The expiry resumes the
+    // moment the cover drops without an enter/dismiss having taken ownership.
     if state.interactionFadeHoldActive,
        let heldAtMs = state.interactionFadeHoldStartedAtMs,
        Self.nowMs() - heldAtMs > 1500 {
-      state.interactionFadeHoldActive = false
-      state.interactionFadeHoldStartedAtMs = nil
-      self.emitVisualDiag(instanceId: instanceId, message: "interaction_fade_hold_expired")
+      if Self.readCoverState(fromJSON: presentationStateJSON) == "interaction_loading" {
+        state.interactionFadeHoldStartedAtMs = Self.nowMs()
+      } else {
+        state.interactionFadeHoldActive = false
+        state.interactionFadeHoldStartedAtMs = nil
+        self.emitVisualDiag(instanceId: instanceId, message: "interaction_fade_hold_expired")
+      }
     }
     if previousPresentationBatchPhase != "idle", state.lastPresentationBatchPhase == "idle",
        !state.interactionFadeHoldActive {

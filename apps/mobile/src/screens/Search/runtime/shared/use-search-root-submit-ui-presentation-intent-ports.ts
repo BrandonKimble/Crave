@@ -30,6 +30,12 @@ export const useSearchRootSubmitUiPresentationIntentPorts = ({
           resultsPresentationOwner.beginSearchThisAreaPresentationPending();
           return;
         }
+        // TR5-N: a chip rerun's pending cover was already armed BY THE TOGGLE RUNNER at commit
+        // (beginVariantRerunPresentationPending, keyed to the toggle intent id). Staging happens
+        // at response commit — nothing to do at submit time.
+        if (params.kind === 'variant_rerun') {
+          return;
+        }
         const presentationKind =
           params.kind === 'shortcut_rerun' ? 'shortcut_submit' : 'manual_submit';
         resultsPresentationOwner.presentationActions.requestSearchPresentationIntent({

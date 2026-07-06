@@ -3,10 +3,7 @@ import React from 'react';
 import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
 import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { SearchRequestCacheStatus, StructuredSearchRequest } from '../../../services/search';
-import {
-  favoriteListsService,
-  type FavoriteListType,
-} from '../../../services/favorite-lists';
+import { favoriteListsService, type FavoriteListType } from '../../../services/favorite-lists';
 import { createFavoritesResponseReceivedPayload } from '../runtime/adapters/favorites-adapter';
 import { logPerfScenarioSearchRequestLifecycle } from '../../../perf/perf-scenario-attribution';
 import {
@@ -21,7 +18,7 @@ import { createNaturalResponseReceivedPayload } from '../runtime/adapters/natura
 import { createShortcutResponseReceivedPayload } from '../runtime/adapters/shortcut-adapter';
 import type { SegmentValue } from '../constants/search';
 import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
-import type { SearchSubmitPresentationIntentKind } from './use-search-submit-entry-owner';
+import type { SearchSubmitInPlaceRerunIntentKind } from './use-search-submit-entry-owner';
 import type {
   SearchSubmitActiveOperationTuple,
   SearchSubmitInitialResultUiState,
@@ -40,7 +37,7 @@ type StartStructuredResponseLifecycleOptions = {
   pushToHistory: boolean;
   requestBounds: MapBounds | null;
   replaceResultsInPlace: boolean;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   responseLogLabel: string;
   responseReceivedPayload: SearchSessionEventPayload;
   submissionContext?: NaturalSearchRequest['submissionContext'];
@@ -59,7 +56,7 @@ type StartNaturalResponseLifecycleOptions = {
   submissionContext?: NaturalSearchRequest['submissionContext'];
   requestBounds: MapBounds | null;
   replaceResultsInPlace: boolean;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   searchCacheStatus?: SearchRequestCacheStatus | null;
 };
 
@@ -82,7 +79,7 @@ type StartShortcutStructuredResponseLifecycleOptions = {
   submittedLabel: string;
   requestBounds: MapBounds | null;
   replaceResultsInPlace: boolean;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   coverageSnapshot?: ShortcutCoverageSnapshot;
   searchCacheStatus?: SearchRequestCacheStatus | null;
 };
@@ -95,7 +92,7 @@ type StartShortcutInitialResponseLifecycleOptions = {
   submittedLabel: string;
   requestBounds: MapBounds | null;
   replaceResultsInPlace: boolean;
-  presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   coverageSnapshot?: ShortcutCoverageSnapshot;
   searchCacheStatus?: SearchRequestCacheStatus | null;
 };

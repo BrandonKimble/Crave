@@ -21,6 +21,7 @@ import {
   type SearchSubmitEntrySurface,
   type SearchSubmitPresentationIntentKind,
   type SubmitSearchOptions,
+  type SearchSubmitInPlaceRerunIntentKind,
 } from './use-search-submit-entry-owner';
 import { useSearchNaturalSubmitOwner } from './use-search-natural-submit-owner';
 import { useSearchSubmitExecutionOwner } from './use-search-submit-execution-owner';
@@ -66,7 +67,7 @@ type SearchSubmitOwnerUiPorts = {
     dataReadyFrom: 'network' | 'cache' | 'in_flight';
     searchInputKey: string | null;
     replaceResultsInPlace: boolean;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }) => void;
   onShortcutSearchCoverageSnapshot?: (snapshot: {
     searchRequestId: string;
@@ -132,7 +133,7 @@ type SearchSubmitOwner = {
       transitionFromDockedPolls?: boolean;
       filters?: StructuredSearchFilters;
       forceFreshBounds?: boolean;
-      presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+      presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
       entrySurface: SearchSubmitEntrySurface;
     }
   ) => Promise<void>;
@@ -145,7 +146,7 @@ type SearchSubmitOwner = {
     preserveSheetState?: boolean;
     replaceResultsInPlace?: boolean;
     filters?: StructuredSearchFilters;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
   // "Include similar" page-1 zero-network flip — see use-search-submit-response-owner.
