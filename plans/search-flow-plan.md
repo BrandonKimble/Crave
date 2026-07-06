@@ -237,6 +237,55 @@ it keeps blocking R2's p90 gate.
 
 ### TR5-N — NETWORK-TOGGLE UNIFICATION (charter, 2026-07-06): every toggle rides the tab toggle's lifecycle
 
+**STATUS (2026-07-06): BUILT + MEASURED + COMMITTED** (e146ad5a core lane, e7a815eb
+coverage-follows-filters, 9076070a empty-page store groundwork). All four chip runners
+route through `runVariantRerunToggleCommit` → `beginVariantRerunPresentationPending(intentId)`
+(pending cover keyed to the TOGGLE INTENT so the coordinator finalizes at enter-settle) →
+`fireRerunActiveSearch({presentationIntentKind:'variant_rerun'})` (skips
+clearResultsForReplacement + immediate enter staging) → enter staged at RESPONSE commit in
+`handlePageOneResultsCommitted`, data-keyed on `expectedResultsDataKey`. Swift fade-hold
+expiry parks while coverState is `interaction_loading`.
+
+Acceptance measured on cold full-bundle drives: 5-tap open-now alternation with ONE reveal
+per intent on the new data (respD/respR 14/12 ↔ 20/20, cardsAdmit→rampStart 0.8–9.4 ms =
+sub-frame, tab-toggle parity); rising on/off + include-similar network flip same shape;
+rapid 3-tap burst = 3 intents/3 reveals; tab-toggle regression green; collision doctrine
+eyeballed intact. RED self-mutation (corrupted expectedResultsDataKey): the joint REFUSES
+to open — mismatched data never paints (fails closed).
+
+Two defects found + fixed DURING validation (same stale-lane class):
+
+1. Toggle flips computed `next` from lane-memo prop copies that froze after the first
+   commit (5 taps kept emitting the same variant while the chip color — bus-fed — looked
+   right). Fix: flips + rerun identity (searchMode/activeTab/submittedQuery) read the
+   RUNTIME BUS at press/commit time (commitPriceSelection already did this).
+2. `rerunActiveSearch`'s empty-query bail silently stranded the armed cover (~9s watchdog
+   force-commit). Fix: the shortcut branch no longer needs the query (per-tab fallback
+   label), and a variant_rerun drop on the natural path is a LOUD logger.error.
+3. Shortcut coverage (the map's pin/dot set) was filter-free by design → filtered cards
+   over a stale map. Fix: coverage carries openNow (JS hours post-filter) /
+   priceLevels (SQL) / rising (sort), and the coverage requestKey gains a filters segment
+   (frame fingerprint inherits). Both directions screenshot-verified.
+
+**OPEN (one acceptance item, root-caused partway):** the EMPTY variant (0-row page) never
+opens the reveal joint — cover holds forever (fails closed; watchdogs stay SILENT — no
+reveal-watchdog bark, no tier-1/2). Evidence trail: response commits (MOUNT-PUBLISH 0/0) →
+phaseA fires → handlePageOneResultsCommitted stages the variant_rerun enter with the empty
+data key → prepared-rows now stage+commit ready=true for the empty identity (store fix
+9076070a) → then silence: no stage work-span, no armResultsRevealWatchdog ticks, no
+cardsAdmit. The RED self-mutation reproduces the IDENTICAL silent strand with a non-empty
+page and a mismatched key ⇒ the strand is in the staged-transaction path itself (deferred
+runDeferredStage / staging-coordinator gate), not the empty data. Also still missing: the
+empty-state message surface (list shows skeleton, not "no results") and the zero-pin native
+frame ack (T4DEDUP suppresses byte-equal empty frames → nativeMarkerFrameReady may starve).
+Needs a focused pass; reproduce with: submit shortcut at Madison Sq → set_map_camera to
+40.7035,-74.0250 (Hudson) → tap open-now.
+
+**FLAGGED TO OWNER (product call, do not decide alone):** `openNow` PERSISTS across app
+restarts (zustand persist mirror). Cold starts therefore submit an already-filtered search
+(observed repeatedly on the rig: baseline "unfiltered" drive was actually filtered). Is a
+sticky open-now across sessions the intended product behavior?
+
 **THE MEASURED DEFECT (owner-reported, rig-asserted end to end):** a NETWORK toggle
 (open-now / rising / price / mid-pagination include-similar) reveals at COMMIT time with the
 STALE data, then the response lands into an already-settled surface:
