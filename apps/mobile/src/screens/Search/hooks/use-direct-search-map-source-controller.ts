@@ -2862,6 +2862,8 @@ export const useDirectSearchMapSourceController = ({
     shortcutCoverageFeaturesByRequestKeyRef.current.clear();
     shortcutCoverageFetchSeqRef.current += 1;
     shortcutCoverageLoadingRef.current = false;
+    // eslint-disable-next-line no-console
+    if (__DEV__) console.log('[PUBTRIG] coverage_reset');
     publishSourcesRef.current();
   }, []);
 
@@ -2878,6 +2880,8 @@ export const useDirectSearchMapSourceController = ({
         bounds: snapshot.bounds,
         entities: snapshot.entities,
       });
+      // eslint-disable-next-line no-console
+      if (__DEV__) console.log('[PUBTRIG] coverage_snapshot');
       publishSourcesRef.current();
     },
     []
@@ -3009,6 +3013,8 @@ export const useDirectSearchMapSourceController = ({
           shortcutCoverageDotFeaturesRef.current = cacheDecision.restoreFeatures
             ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey) ?? null)
             : null;
+          // eslint-disable-next-line no-console
+          if (__DEV__) console.log('[PUBTRIG] coverage_cachehit_terminal');
           publishSourcesRef.current();
           return;
         }
@@ -3046,6 +3052,8 @@ export const useDirectSearchMapSourceController = ({
         shortcutCoverageLoadingRef.current = false;
         shortcutCoverageDotFeaturesRef.current = null;
         shortcutCoverageCountersRef.current.completed += 1;
+        // eslint-disable-next-line no-console
+        if (__DEV__) console.log('[PUBTRIG] coverage_failed_terminal');
         publishSourcesRef.current();
 
         const latestSourceFrame = sourceFramePort.getSnapshot();
@@ -3146,6 +3154,8 @@ export const useDirectSearchMapSourceController = ({
         shortcutCoverageDotFeaturesRef.current = cacheDecision.restoreFeatures
           ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey) ?? null)
           : null;
+        // eslint-disable-next-line no-console
+        if (__DEV__) console.log('[PUBTRIG] coverage_cachehit');
         publishSourcesRef.current();
       }
       return;
@@ -3288,6 +3298,8 @@ export const useDirectSearchMapSourceController = ({
         // restore them without a re-fetch. Without this, the cache-hit path restored only the resource and
         // left the features ref on the other tab's coverage (stale-236 / promoted=0).
         shortcutCoverageFeaturesByRequestKeyRef.current.set(requestKey, coverageFeatureCollection);
+        // eslint-disable-next-line no-console
+        if (__DEV__) console.log('[PUBTRIG] coverage_fetched');
         publishSourcesRef.current();
         const latestSourceFrame = sourceFramePort.getSnapshot();
         const latestScenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
@@ -3354,6 +3366,8 @@ export const useDirectSearchMapSourceController = ({
             requestId: searchRequestId,
           });
         }
+        // eslint-disable-next-line no-console
+        if (__DEV__) console.log('[PUBTRIG] coverage_fetch_error');
         publishSourcesRef.current();
         const latestSourceFrame = sourceFramePort.getSnapshot();
         const latestScenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
@@ -3395,7 +3409,9 @@ export const useDirectSearchMapSourceController = ({
   ]);
 
   React.useEffect(() => {
-    const publishAndFetch = () => {
+    const publishAndFetch = (trigger: string) => () => {
+      // eslint-disable-next-line no-console
+      if (__DEV__) console.log(`[PUBTRIG] ${trigger}`);
       // [tclur FIX] Restore THIS tab's coverage (a cache-hit synchronously restores the features ref +
       // re-projects) BEFORE the trailing projection — so the projection reads the CURRENT tab's coverage,
       // not the prior tab's for one frame (the rapid-toggle 1-frame wrong-count flash, e.g. dishes showing
@@ -3405,23 +3421,26 @@ export const useDirectSearchMapSourceController = ({
       maybeFetchShortcutCoverage();
       publishSourcesRef.current();
     };
-    publishAndFetch();
+    publishAndFetch('mount')();
     const unsubscribeBus = searchRuntimeBus.subscribe(
-      publishAndFetch,
+      publishAndFetch('bus'),
       ['searchMode', 'activeTab', 'submittedQuery'] as const,
       'map_source_controller_direct_state'
     );
-    const unsubscribeMountedResults = subscribeSearchMountedResultsDataSnapshot(publishAndFetch, {
-      notifyMode: 'deferred',
-    });
+    const unsubscribeMountedResults = subscribeSearchMountedResultsDataSnapshot(
+      publishAndFetch('mounted'),
+      {
+        notifyMode: 'deferred',
+      }
+    );
     const unsubscribeSurfaceTransaction = resultsPresentationSurfaceAuthority.subscribe(
-      publishAndFetch,
+      publishAndFetch('surface'),
       ['searchSurfaceResultsTransactionKey', 'resultsIdentityKey', 'resultsRequestKey'] as const,
       'map_source_controller_surface_transaction'
     );
     const unsubscribeRedrawTransaction = getSearchSurfaceRuntime().subscribeSelector(
       (snapshot) => snapshot.redrawTransaction?.id ?? null,
-      publishAndFetch
+      publishAndFetch('redraw')
     );
     // GRANULAR LOD (native-owned, Phase 2): the native projector now applies the promotion
     // decision per camera frame and crossfades the pins that changed role directly (no JS
@@ -3534,6 +3553,8 @@ export const useDirectSearchMapSourceController = ({
   // Re-publish sources when the highlight / restaurantOnly intent changes (or map-move state
   // flips) so the catalog rebuilds against the new selection.
   React.useEffect(() => {
+    // eslint-disable-next-line no-console
+    if (__DEV__) console.log('[PUBTRIG] effect_moving_highlight');
     publishSourcesRef.current();
   }, [isMapMoving, highlightedRestaurantId, restaurantOnlyId]);
 

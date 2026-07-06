@@ -25,6 +25,7 @@ export const useSearchRootRouteSearchSceneHeaderPolicyRuntime = ({
   );
   const routeSearchSceneHeaderLayoutRuntime = useSearchRootSearchSceneHeaderLayoutRuntime();
   const routeSearchSceneFiltersHeaderRuntime = useSearchRootSearchSceneFiltersHeaderRuntime({
+    searchRuntimeBus: sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus,
     stateFoundationLane: stateAssemblyRuntime.stateFoundationLane,
     filterModalControlLane,
     searchResultsRuntimeState: routeSearchSceneDataStateRuntime.routeSearchSceneResultsRuntimeState,

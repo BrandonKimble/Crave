@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { cloneSearchFiltersLayoutCache } from '../../components/SearchFilters';
+import type { SearchRuntimeBus } from './search-runtime-bus';
 import { ACTIVE_TAB_COLOR, CONTENT_HORIZONTAL_PADDING } from '../../constants/search';
 import { useSearchFilterChipReadModel } from '../read-models/chip-read-model-builder';
 import type { SearchRootFilterModalControlLane } from './use-search-root-control-plane-runtime-contract';
@@ -10,6 +11,7 @@ import type { useSearchResultsPanelHydrationKeyRuntime } from './use-search-resu
 import type { useSearchResultsPanelResultsRuntimeState } from './use-search-results-panel-results-runtime-state';
 
 export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
+  searchRuntimeBus,
   stateFoundationLane,
   filterModalControlLane,
   searchResultsRuntimeState,
@@ -17,6 +19,7 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
   hydrationKeyRuntime,
   scheduleTabToggleCommit,
 }: {
+  searchRuntimeBus: SearchRuntimeBus;
   stateFoundationLane: SearchRootStateFoundationLane;
   filterModalControlLane: SearchRootFilterModalControlLane;
   searchResultsRuntimeState: ReturnType<typeof useSearchResultsPanelResultsRuntimeState>;
@@ -47,6 +50,9 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
 
   return React.useMemo(
     () => ({
+      // Live chip-state source for the strip (see SearchFiltersProps.searchRuntimeBus) — a
+      // stable reference, so it never churns this memo.
+      searchRuntimeBus,
       activeTab: filtersActiveTab,
       onTabChange: handleInteractionTabChange,
       openNow: filterChipReadModel.openNow,

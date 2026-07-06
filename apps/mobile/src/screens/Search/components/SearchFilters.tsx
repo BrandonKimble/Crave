@@ -30,6 +30,8 @@ import {
   FrostedFilterStrip,
   type FrostedFilterStripMeasuredLayout,
 } from '../../../components/FrostedFilterStrip';
+import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 
 const TOGGLE_HEIGHT = CONTROL_HEIGHT;
 const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
@@ -112,6 +114,13 @@ export const cloneSearchFiltersLayoutCache = (
 };
 
 export type SearchFiltersProps = {
+  // LIVE chip-state source. The rendered strip element rides the mounted-results snapshot
+  // store (chrome-freeze), so its PROPS can be stale between data commits — the tab pill hid
+  // this behind its internal press animation, but the plain chips (Open now, Rising, Include
+  // similar, Price) visibly failed to flip color on press-up. The strip therefore reads its
+  // display states straight from the runtime bus (the single writer the toggle setters flip
+  // optimistically at press time); the same-named props remain as the first-render values.
+  searchRuntimeBus: SearchRuntimeBus;
   activeTab: SegmentValue;
   onTabChange: (value: SegmentValue) => void;
   openNow: boolean;
@@ -137,6 +146,7 @@ export type SearchFiltersProps = {
 };
 
 const SearchFilters: React.FC<SearchFiltersProps> = ({
+  searchRuntimeBus,
   activeTab,
   onTabChange,
   openNow,
@@ -158,6 +168,47 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   // telemetryHostLayer / telemetryInSheetBody are still accepted (consumers pass them) but
   // the perf-readiness telemetry moved out with the shell extraction — intentionally unused.
 }) => {
+  const liveChipState = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => ({
+      activeTab: (state.pendingTabSwitchTab ?? state.activeTab) as SegmentValue,
+      openNow: state.openNow,
+      includeSimilarActive: state.includeSimilarActive,
+      similarAvailableCount: state.results?.metadata?.similarAvailable ?? 0,
+      risingActive: state.risingActive,
+      priceButtonActive: state.priceButtonIsActive,
+      priceButtonLabel: state.priceButtonLabelText,
+      isPriceSelectorVisible: state.isPriceSelectorVisible,
+    }),
+    (left, right) =>
+      left.activeTab === right.activeTab &&
+      left.openNow === right.openNow &&
+      left.includeSimilarActive === right.includeSimilarActive &&
+      left.similarAvailableCount === right.similarAvailableCount &&
+      left.risingActive === right.risingActive &&
+      left.priceButtonActive === right.priceButtonActive &&
+      left.priceButtonLabel === right.priceButtonLabel &&
+      left.isPriceSelectorVisible === right.isPriceSelectorVisible,
+    [
+      'pendingTabSwitchTab',
+      'activeTab',
+      'openNow',
+      'includeSimilarActive',
+      'results',
+      'risingActive',
+      'priceButtonIsActive',
+      'priceButtonLabelText',
+      'isPriceSelectorVisible',
+    ] as const
+  );
+  activeTab = liveChipState.activeTab;
+  openNow = liveChipState.openNow;
+  includeSimilarActive = liveChipState.includeSimilarActive;
+  similarAvailableCount = liveChipState.similarAvailableCount;
+  risingActive = liveChipState.risingActive;
+  priceButtonActive = liveChipState.priceButtonActive;
+  priceButtonLabel = liveChipState.priceButtonLabel;
+  isPriceSelectorVisible = liveChipState.isPriceSelectorVisible;
   // The frosted cutout shell (mask geometry, per-control hole registration, horizontal
   // scroll) is now the SHARED `FrostedFilterStrip` — search renders its controls through it
   // so the result-sheet strip can't drift from the polls/favorites strips. We keep only the
@@ -448,6 +499,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         accessibilityRole="button"
         accessibilityLabel="Toggle open now results"
         accessibilityState={{ selected: openNow }}
+        testID="search-open-now-toggle"
         style={[
           styles.openNowButton,
           openNow && [styles.openNowButtonActive, { backgroundColor: accentColor }],
