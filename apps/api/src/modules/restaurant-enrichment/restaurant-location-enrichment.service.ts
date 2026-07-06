@@ -10,6 +10,7 @@ import {
   GooglePlacesV1AutocompleteSuggestion,
   GooglePlacesV1Place,
   GooglePlacesV1PlaceDetailsResponse,
+  REFRESH_PLACE_DETAILS_FIELD_MASK_FIELDS,
 } from '../external-integrations/google-places';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LoggerService } from '../../shared';
@@ -541,6 +542,95 @@ export class RestaurantLocationEnrichmentService {
     }
 
     return this.enrichRestaurant(entity, options);
+  }
+
+  /**
+   * Cheap volatile-data refresh for ALREADY-ENRICHED locations. Uses the lean
+   * refresh field mask (no atmosphere/editorial fields → bills below the
+   * Enterprise+Atmosphere SKU the full mask forces) and only touches
+   * locations whose lastPolledAt is older than the TTL. This is the ONLY
+   * sanctioned way to re-poll Google for a place-backed location; `force`
+   * full re-enrichment is for identity changes, not data freshness.
+   */
+  async refreshStaleLocations(
+    options: { olderThanDays?: number; limit?: number } = {},
+  ): Promise<{
+    checked: number;
+    updated: number;
+    closedOrMoved: number;
+    failed: number;
+  }> {
+    const olderThanDays = options.olderThanDays ?? 30;
+    const limit = options.limit ?? 100;
+    const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
+
+    const stale = await this.prisma.restaurantLocation.findMany({
+      where: {
+        googlePlaceId: { not: null },
+        OR: [{ lastPolledAt: null }, { lastPolledAt: { lt: cutoff } }],
+      },
+      orderBy: { lastPolledAt: { sort: 'asc', nulls: 'first' } },
+      take: limit,
+    });
+
+    const summary = { checked: 0, updated: 0, closedOrMoved: 0, failed: 0 };
+    for (const location of stale) {
+      summary.checked += 1;
+      try {
+        const details = await this.googlePlacesService.getPlaceDetails(
+          location.googlePlaceId as string,
+          { fields: REFRESH_PLACE_DETAILS_FIELD_MASK_FIELDS },
+        );
+        const place = details.place;
+        if (!place) {
+          summary.failed += 1;
+          continue;
+        }
+        if (
+          place.businessStatus === 'CLOSED_PERMANENTLY' ||
+          (typeof place.movedPlaceId === 'string' && place.movedPlaceId.trim())
+        ) {
+          summary.closedOrMoved += 1;
+          this.logger.warn('Refreshed location is closed or moved', {
+            locationId: location.locationId,
+            restaurantId: location.restaurantId,
+            googlePlaceId: location.googlePlaceId,
+            businessStatus: place.businessStatus,
+            movedPlaceId: place.movedPlaceId,
+          });
+          // Still stamp lastPolledAt so we don't re-poll it every run; the
+          // closed/moved follow-up is a deliberate manual/ops decision.
+          await this.prisma.restaurantLocation.update({
+            where: { locationId: location.locationId },
+            data: { lastPolledAt: new Date() },
+          });
+          continue;
+        }
+        const { update } = this.buildLocationUpsertData(
+          location.restaurantId,
+          location,
+          place,
+        );
+        await this.prisma.restaurantLocation.update({
+          where: { locationId: location.locationId },
+          data: update,
+        });
+        summary.updated += 1;
+      } catch (error) {
+        summary.failed += 1;
+        this.logger.warn('Location refresh failed', {
+          locationId: location.locationId,
+          googlePlaceId: location.googlePlaceId,
+          error:
+            error instanceof Error
+              ? { message: error.message }
+              : { message: String(error) },
+        });
+      }
+    }
+
+    this.logger.info('Stale location refresh complete', { ...summary });
+    return summary;
   }
 
   async expandSecondaryLocationsForRestaurant(
@@ -2761,18 +2851,37 @@ export class RestaurantLocationEnrichmentService {
       const canonicalName = this.normalizeRestaurantAttributeName(
         definition.canonicalName,
       );
-      const entityId = idsByName.get(canonicalName);
-      if (!entityId) {
-        this.logger.warn('Missing seeded restaurant_attribute entity', {
-          canonicalName,
-          type: EntityType.restaurant_attribute,
-        });
-        continue;
-      }
+      const entityId =
+        idsByName.get(canonicalName) ??
+        (await this.ensureRestaurantAttributeEntity(canonicalName, idsByName));
       ids.push(entityId);
     }
 
     return Array.from(new Set(ids));
+  }
+
+  /**
+   * Attribute vocabulary is defined in code (google-place-type-attributes.ts),
+   * not in a seed file — a missing entity is created on first use so
+   * enrichment never silently drops an attribute link.
+   */
+  private async ensureRestaurantAttributeEntity(
+    canonicalName: string,
+    idsByName: Map<string, string>,
+  ): Promise<string> {
+    const created = await this.prisma.entity.create({
+      data: {
+        name: canonicalName,
+        type: EntityType.restaurant_attribute,
+      },
+      select: { entityId: true },
+    });
+    idsByName.set(canonicalName, created.entityId);
+    this.logger.info('Created restaurant_attribute entity on demand', {
+      canonicalName,
+      entityId: created.entityId,
+    });
+    return created.entityId;
   }
 
   private async resolveRestaurantAttributeIdsForNames(
@@ -2787,14 +2896,9 @@ export class RestaurantLocationEnrichmentService {
 
     for (const name of names) {
       const canonicalName = this.normalizeRestaurantAttributeName(name);
-      const entityId = idsByName.get(canonicalName);
-      if (!entityId) {
-        this.logger.warn('Missing seeded restaurant_attribute entity', {
-          canonicalName,
-          type: EntityType.restaurant_attribute,
-        });
-        continue;
-      }
+      const entityId =
+        idsByName.get(canonicalName) ??
+        (await this.ensureRestaurantAttributeEntity(canonicalName, idsByName));
       ids.push(entityId);
     }
 
@@ -3684,6 +3788,7 @@ export class RestaurantLocationEnrichmentService {
           ? normalizedHours.utcOffsetMinutes
           : null,
       timeZone: normalizedHours.timezone ?? null,
+      lastPolledAt: new Date(),
       updatedAt: new Date(),
     };
 

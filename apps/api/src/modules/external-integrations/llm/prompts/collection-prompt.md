@@ -412,13 +412,13 @@ Outputs
 
 1. Start from `foodTokensClean` (Step 3) and confirm the dish is tied to the correct canonical `restaurant` when context is implicit.
 2. Compose a single `food` using the head food noun plus identity-changing specifiers; avoid ingredient fan-out.
-3. Build concise `food_categories` (ingredients + parent categories), 3-6 salient terms, deduped and singular where natural.
+3. Build concise `food_categories` (orderable parent dish classes ONLY — never ingredients, flavors, or serving formats), deduped and singular where natural.
 4. Validate invariants (readable name, aligned categories) and emit `composedFoods` entries, each carrying the linked `restaurant`, for Steps 5-6.
    Outcome: structured `food` with complementary `food_categories` for use in Steps 5-6
 
 ### 4.1 Connection-Level Composition Principle
 
-Represent each restaurant->food connection as one composed dish. Do not emit separate mentions for component ingredients or related nouns; capture them under `food_categories` for the same dish connection.
+Represent each restaurant->food connection as one composed dish. Do not emit separate mentions for component ingredients or related nouns — a dish is ONE mention. Component ingredients are not categories either: they are dropped unless they independently name an orderable dish class (4.3).
 
 - Carry forward the canonical `restaurant`; the backend maps names to deterministic IDs.
 
@@ -437,11 +437,11 @@ Run this procedure for each composed dish after Step 3 cleansing:
 2. Attach only identity-defining specifiers.
    - Retain proteins, broths, or preparation words that **name the order** and change the dish identity ("duck carnitas taco", "tonkotsu ramen", "fried chicken sandwich"). A preparation word stays in `food` when it is part of what you would say to order; it becomes an attribute (Step 3) only when the dish is the same order without it ("grilled burger" → `food: "burger"`, attribute "grilled").
    - Do not reattach modifiers already exported to `food_attributes` in Step 3.
-   - For additive clauses introduced by "with/and", keep the core dish as `food` and push the list items into `food_categories`.
+   - For additive clauses introduced by "with/and", keep the core dish as `food` and DROP the additive list items — they are components of this dish, not categories (4.3).
 
 3. Sanity-check the phrase.
    - Ask: "Would this exact wording appear on a menu?" If not, peel a modifier until it does while keeping the head noun intact.
-   - Confirm the remaining phrase is still an orderable dish rather than a single ingredient. If you end up with a lone ingredient, move that noun to `food_categories` and keep the broader dish for `food`.
+   - Confirm the remaining phrase is still an orderable dish rather than a single ingredient. If you end up with a lone ingredient, keep the broader dish for `food` and drop the ingredient — a lone ingredient is neither a dish nor a category.
 
 4. Normalize.
    - Lowercase, singularize where natural (avoid awkward singulars that reduce clarity), and keep punctuation minimal.
@@ -457,40 +457,34 @@ Self-check examples:
 
 ### 4.3 `food_categories` Hierarchy Algorithm
 
-Produce a cascading, high-signal list of categories after locking the `food` phrase. Every entry must pass the 3.0 test — an **orderable edible noun** the dish rolls up into ("tuna roll", "roll", "tuna", "soup"). Cuisines, styles, meal-periods, and other properties are attributes, never categories.
+Produce a cascading, high-signal list of categories after locking the `food` phrase. Every entry must pass a STRICTER test than 3.0: it must name a dish class someone could order **by that name alone** as a complete order ("tuna roll", "roll", "soup"). Cuisines, styles, meal-periods, and other properties are attributes, never categories — and **ingredients, flavor descriptors, and serving formats are NOTHING** (not categories, not attributes): "balsamic", "gruyere", "pecan", "ranch", "pepperoni", "sweet and spicy", "buffet", "combo plate" must never appear in `food_categories`. The tell: "I'll have the gruyere" is not a complete order; "I'll have the popover" is. Each category becomes a searchable dish entity downstream — emit only words a diner would search as a dish.
 
 1. Seed with the most specific dish noun.
    - Start with the `food` phrase unless it still includes attribute words; otherwise use the first attribute-free variant (e.g., "tuna roll" instead of "spicy tuna roll").
    - If no shorter variant exists, keep the single item as the seed.
 
 2. Derive progressive fallbacks.
-   - Iteratively remove leading modifiers that remain after Step 3, asking "Does the remainder still name a recognizable, orderable dish?" Only keep versions that pass.
+   - Iteratively remove leading modifiers that remain after Step 3, asking the strict gate question: "Could a diner order the remainder **by that name alone** as a complete order?" Only keep versions that pass — "masa crouton" → neither "crouton" nor "masa" passes (components of a composed dish, not orders); "tuna roll" → "roll" passes.
    - After each iteration, consider trimming a trailing classifier (wrap, taco, sandwich, roll, burger, pasta, soup, salad, pizza, bowl, plate, toast, skewer, snack, grain bowl, noodle, dumpling, bao, bun, slider, fry, sando, lavash, arepa, etc.) when the preceding chunk is dish-like. Treat the list as guidance — if a new tail word functions as a serving format, handle it the same way.
    - Preserve head-first constructions: "pho tai" → `["pho tai", "pho"]`, not `["tai"]`.
-   - Stop before the remainder is a lone ingredient; ingredient nouns belong in the component step below.
+   - Stop before the remainder is a lone ingredient; ingredient nouns are dropped entirely (they are components of the dish, not classes it belongs to).
 
 3. Add parent categories (menu-section parents).
    - Use the parent-category rules in 4.4 to add section-level parents (dessert, pastry, coffee, tea, sandwich, soup, etc.) that the dish implies.
    - Add these even when not explicitly stated, but only when the dish clearly belongs to that section.
 
-4. Append component nouns.
-   - Add distinct edible components revealed during the peeling process ("tuna" from "tuna roll", "pork belly" from "pork belly bao bun", "bao" in addition to "bao bun").
-   - Exclude adjectives, cuisines, styles, meal periods, and service styles — none of them name an orderable edible noun.
-
-5. Merge additive ingredients from "with/and" clauses (burrata, chanterelles, pesto, etc.).
-
-6. Deduplicate, sort by specificity (most specific first). Keep the list concise but do not enforce a hard cap; include all high-signal parent categories and core ingredients.
+4. Deduplicate, sort by specificity (most specific first). Keep the list concise but do not enforce a hard cap; include all high-signal parent dish classes. Ingredients, flavors, and formats never appear — a peeled component ("tuna" from "tuna roll", "burrata" from a "with burrata" clause) enters ONLY if it independently names a complete orderable dish class in this context (e.g. "tuna" at a sushi bar); default to dropping it.
 
 Self-check questions:
 
-- Does each category name an orderable dish or core ingredient (passes the 3.0 test)?
+- Does each category name a dish class orderable **by that name alone** (no bare ingredients, flavors, or formats)?
 - Does the chain broaden logically without jumping to unrelated attribute-only terms?
 - Are cuisines, styles, dietary flags, and meal periods kept in attributes instead of categories?
 - Does the list include parent categories when the dish clearly belongs to a menu section?
 
 Example pairs:
 
-- Good: "spicy tuna roll" → `["tuna roll", "roll", "tuna"]`; avoid `["spicy", "tuna"]`.
+- Good: "spicy tuna roll" → `["tuna roll", "roll"]`; avoid `["spicy", "tuna"]` (flavor + bare ingredient).
 - Good: "tuna melt sandwich" → `["tuna melt sandwich", "tuna melt", "sandwich"]`; avoid emitting only `["sandwich"]`.
 - Good: "south indian filter coffee" → `["filter coffee", "coffee"]` with "south indian" as an attribute.
 - Good: "pho tai" → `["pho tai", "pho", "soup"]`.
@@ -529,16 +523,16 @@ Apply these inferences conservatively so categories stay focused and high-signal
   - attributes: ["spicy"]
 - "spicy tuna roll" ->
   - `food`: "spicy tuna roll"
-  - `food_categories`: ["tuna roll", "roll", "tuna"]
+  - `food_categories`: ["tuna roll", "roll"]
   - attributes: ["spicy"]
 - "pasta with burrata, chanterelle mushrooms, and pesto" ->
   - `food`: "pasta"
-  - `food_categories`: ["pasta", "burrata", "chanterelle mushrooms", "pesto"]
-  - One mention only; ingredients captured as categories.
+  - `food_categories`: ["pasta"]
+  - One mention only; the "with" ingredients (burrata, chanterelles, pesto) are components of this dish — dropped, never categories.
 - "chicken caesar salad wrap" ->
   - `food`: "chicken caesar salad wrap"
-  - `food_categories`: ["chicken caesar salad wrap", "caesar salad wrap", "salad wrap", "wrap", "chicken", "caesar salad"]
-  - attributes: []
+  - `food_categories`: ["chicken caesar salad wrap", "caesar salad wrap", "salad wrap", "wrap", "caesar salad"]
+  - attributes: [] ("chicken" alone is a bare ingredient here, not a dish class)
 - Two restaurants, same dish: "Get the carnitas tacos at Nixta and at Suerte." -> emit two `composedFoods` entries with identical `food`/`food_categories` but distinct `restaurant` values so later steps can keep the pairs separate.
 
 ### 4.6 Dish Aliases (`food_aliases`)
@@ -676,7 +670,7 @@ Outputs
 - **Praise is an independent, restaurant-level axis (governing rule).** `general_praise` records whether the source **endorses the place overall**, judged by the quality signal defined in 1.3 (firsthand or consensus, positive, and landing on the option the source endorses). Composing a dish neither creates nor suppresses it, and endorsing a place neither creates nor suppresses a dish (3.0(d)). Because the verdict is about the whole place, it is a single fact per `(source, restaurant)`.
 - **Holistic means the object is the place, not a dish.** A holistic verdict targets the place itself ("this place is amazing", "this is the spot", "a must", "you can't go wrong here", or a bare "go to Royale"). A recommendation whose object is a specific dish ("go here **for the burger**", "get the X") is **not** holistic — it credits the dish connection, and `general_praise` stays `false`. The dish's endorsement is the connection itself (3.0(d)).
 - **One holistic verdict, one carrier.** When the source endorses the place overall, set `general_praise: true` on the single restaurant-level connection for that `(source, restaurant)` — the `food: null` mention seeded in Step 5, or, when the source named only dishes, one `food: null` mention added here to hold the verdict. Every dish→restaurant mention keeps `general_praise: false`. This yields exactly one `general_praise` no matter how many dishes the source praises.
-- **Neutral mentions.** A neutral, non-endorsing aside ("they also do X", "they have burgers too") sets nothing; the connection stands on its own with `general_praise: false`.
+- **Neutral mentions.** A neutral, non-endorsing aside sets nothing; the connection stands on its own with `general_praise: false`. Two shapes that are NEVER endorsements on their own: (1) **bare availability** — "X has Y", "they also do X", "you can get Y at X" states existence, not quality; (2) **popularity/busy-ness anecdotes** — "they're slammed", "busy slanging a shitload of tacos", "there's always a line" describe traffic, not the speaker's verdict. Both require an explicit quality signal elsewhere in the same source before any `general_praise: true`.
 - **Non item-specific listings**: When the comment is limited to one or more restaurant names (plus simple connectors like commas, "and", "or", " / ", "try", "go to"), treat it as a holistic endorsement of each named place — carry `general_praise: true` on that place's single restaurant-level connection. If additional text introduces statements unrelated to food/restaurant quality, skip.
 - **Item-specific replies**: When the reply ties a dish to the restaurant, apply the normal item vs category rules; the dish mention stays `general_praise: false`. A holistic endorsement of the place — one whose object is the place, not the dish — additionally carries `general_praise: true` on the single restaurant-level connection. When the reply only names the restaurant, follow "Ask Handling (item-specific replies)" to inherit the category; the inherited connection carries the holistic verdict only when the place itself is endorsed.
 - **Restaurant-only attributes**: A positive attribute without a holistic verdict ("great patio") emits a restaurant-only mention with `general_praise: false`. If neither an attribute nor a holistic verdict is present, skip the mention.
@@ -694,7 +688,7 @@ For every mention, populate fields as follows:
   - `restaurant_attributes`: array of restaurant-scoped attributes (or omit/null if none).
   - `restaurant_attribute_surfaces`: array aligned with `restaurant_attributes`, preserving the original attribute tokens before normalization.
 - Food (optional)
-  - If a food is present: set `food` from the aligned `composedFood` (Step 4) or, when inheriting an ask's target, from the category supplied in Step 5. Pair it with `food_categories` from the same source (Step 4 or the inherited list in Step 5)—these must stay dish nouns/ingredients—and apply the `is_menu_item` decision from Step 5.
+  - If a food is present: set `food` from the aligned `composedFood` (Step 4) or, when inheriting an ask's target, from the category supplied in Step 5. Pair it with `food_categories` from the same source (Step 4 or the inherited list in Step 5)—these must stay orderable dish nouns—and apply the `is_menu_item` decision from Step 5.
   - `food_surface`: exact source string for the composed dish/item.
   - `food_category_surfaces`: array aligned index-for-index with `food_categories`, preserving the surface tokens.
   - `food_aliases`: established shorthand for exactly this dish per 4.6 (empty for most dishes).

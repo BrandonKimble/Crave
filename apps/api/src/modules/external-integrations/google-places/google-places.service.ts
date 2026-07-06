@@ -57,6 +57,30 @@ const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
   'takeout',
 ];
 
+/**
+ * Volatile-data-only mask for refreshing an ALREADY-ENRICHED location. Omits
+ * every atmosphere/editorial field (serves*, goodFor*, editorialSummary,
+ * priceRange, …) so the call bills below the Enterprise+Atmosphere SKU that
+ * the full first-enrichment mask forces. Attributes extracted at first
+ * enrichment are the durable source of truth; a refresh only needs the
+ * fields that actually drift.
+ */
+export const REFRESH_PLACE_DETAILS_FIELD_MASK_FIELDS = [
+  'id',
+  'businessStatus',
+  'movedPlaceId',
+  'formattedAddress',
+  'addressComponents',
+  'location',
+  'nationalPhoneNumber',
+  'internationalPhoneNumber',
+  'websiteUri',
+  'regularOpeningHours',
+  'currentOpeningHours',
+  'utcOffsetMinutes',
+  'timeZone',
+];
+
 const DEFAULT_TEXT_SEARCH_FIELD_MASK_FIELDS = [
   'id',
   'displayName',
