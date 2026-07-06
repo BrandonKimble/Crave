@@ -272,6 +272,18 @@ Two defects found + fixed DURING validation (same stale-lane class):
    the same bus snapshot as the coverage filters key — rising DESC (missing last), then
    the existing craveScoreExact tie-break chain. Both directions screenshot-verified
    (rising ON: Legends=7 rising-tinted; OFF: Ambassadors=2/Milk Bar=12/HOWOO=18 restored).
+5. (owner-reported post-ship, fixed 245b402a) INITIAL reveal showed cards ~0.5–1s before the
+   strip+pins joint: page-1 rows hydrate into the live list during initial_loading (the
+   transition leg's skeleton ends at scene settle; nothing covered the body until the joint).
+   Fix: the cutout-skeleton loading cover now also renders for initial_loading (full-body —
+   the strip is hidden in that mode); rows mount+measure beneath it, the joint lifts the
+   cover + reveals strip + starts the pin ramp same-tick. Video-verified (frame extraction):
+   pre-fix cards-alone window; post-fix cards+strip+pins land in ONE frame step. Permanent
+   dev probe: [REVEALSYNC] rowsAdmission (shell↔full transitions). Price toggle map-follow
+   verified end-to-end (chip → sheet → Done → filtered cards + filtered coverage map;
+   testIDs search-price-toggle/search-price-done added). RIG GOTCHA confirmed live: an
+   orphaned stale `dist/main` held :3000 serving pre-TR5-N code (price coverage 400/empty
+   map) — kill it and relaunch `yarn start:dev` when coverage behaves impossibly.
 
 **OPEN (one acceptance item, root-caused partway):** the EMPTY variant (0-row page) never
 opens the reveal joint — cover holds forever (fails closed; watchdogs stay SILENT — no
