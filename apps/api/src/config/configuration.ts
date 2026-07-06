@@ -242,8 +242,8 @@ export default () => {
       apiKey: resolveSecretEnv(appEnv, 'LLM_API_KEY'),
       // Fallbacks track the CURRENT production model (.env normally sets these);
       // a stale fallback silently downgraded two generations when env was absent.
-      model: process.env.LLM_MODEL || 'gemini-3-flash-preview',
-      queryModel: process.env.LLM_QUERY_MODEL || 'gemini-3-flash-preview',
+      model: process.env.LLM_MODEL || 'gemini-3.5-flash',
+      queryModel: process.env.LLM_QUERY_MODEL || 'gemini-3.5-flash',
       queryTimeout: parseInt(process.env.LLM_QUERY_TIMEOUT || '0', 10),
       queryLogOutputs: process.env.LLM_QUERY_LOG_OUTPUTS === 'true',
       baseUrl:
