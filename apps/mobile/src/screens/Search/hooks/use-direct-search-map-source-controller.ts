@@ -470,16 +470,20 @@ const shouldReplaceVisualCandidate = (
   return next.markerKey.localeCompare(previous.markerKey) < 0;
 };
 
+type SearchMapVisualRankOrder = 'crave' | 'rising';
+
 const collectSearchMapVisualCandidates = ({
   sources,
   selectedRestaurantId,
   restaurantOnlyId,
   buildMarkerKey,
+  rankOrder,
 }: {
   sources: readonly SearchMapVisualCandidateSource[];
   selectedRestaurantId: string | null;
   restaurantOnlyId: string | null;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
+  rankOrder: SearchMapVisualRankOrder;
 }): SearchMapVisualCandidate[] => {
   const candidatesByVisualIdentity = new Map<
     SearchMapVisualIdentityKey,
@@ -514,11 +518,26 @@ const collectSearchMapVisualCandidates = ({
   });
 
   return Array.from(candidatesByVisualIdentity.values()).sort((left, right) => {
-    // RANK by the HIGH-PRECISION craveScoreExact (percentile_rank) DESC — NOT VISUAL_SOURCE_PRIORITY (that is
-    // DEDUP-only; see shouldReplaceVisualCandidate) and NOT the rounded display craveScore. This makes the pin
-    // badge == the results-list position (the list follows the API's percentile_rank order = the same key) and
-    // stops a tapped ('selected') marker from renumbering to rank 1. Missing exact sorts last. Tie-breaks:
-    // display craveScore DESC, then a stable restaurantId, then markerKey — so map + list never disagree.
+    // RANK by the ACTIVE VARIANT'S ranking key so the pin badge == the results-list position:
+    // rising DESC (nulls last) when the rising toggle is on, else the HIGH-PRECISION
+    // craveScoreExact (percentile_rank) DESC — NOT VISUAL_SOURCE_PRIORITY (that is DEDUP-only;
+    // see shouldReplaceVisualCandidate) and NOT the rounded display craveScore. Hard-coding
+    // craveScoreExact here was the "map ignores the rising toggle" bug: the list re-sorted by
+    // rising while the pins kept crave order. Missing keys sort last. Tie-breaks: craveScoreExact
+    // DESC, display craveScore DESC, then a stable restaurantId, then markerKey.
+    if (rankOrder === 'rising') {
+      const leftRising =
+        typeof left.feature.properties.rising === 'number'
+          ? left.feature.properties.rising
+          : -Infinity;
+      const rightRising =
+        typeof right.feature.properties.rising === 'number'
+          ? right.feature.properties.rising
+          : -Infinity;
+      if (leftRising !== rightRising) {
+        return rightRising - leftRising;
+      }
+    }
     const leftExact =
       typeof left.feature.properties.craveScoreExact === 'number'
         ? left.feature.properties.craveScoreExact
@@ -554,24 +573,28 @@ const projectSearchMapVisualFrame = ({
   selectedRestaurantId,
   restaurantOnlyId,
   buildMarkerKey,
+  rankOrder,
 }: {
   rankedSources: readonly SearchMapVisualCandidateSource[];
   dotSources: readonly SearchMapVisualCandidateSource[];
   selectedRestaurantId: string | null;
   restaurantOnlyId: string | null;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
+  rankOrder: SearchMapVisualRankOrder;
 }): ProjectedSearchMapVisualFrame => {
   const rankedCandidates = collectSearchMapVisualCandidates({
     sources: rankedSources,
     selectedRestaurantId,
     restaurantOnlyId,
     buildMarkerKey,
+    rankOrder,
   });
   const dotCandidates = collectSearchMapVisualCandidates({
     sources: dotSources,
     selectedRestaurantId,
     restaurantOnlyId,
     buildMarkerKey,
+    rankOrder,
   });
   // No selection → NO selected candidates. The old fallback (all rankedCandidates)
   // poisoned the in/out-region classifier downstream: selectedMarkerKeys contained
@@ -587,6 +610,7 @@ const projectSearchMapVisualFrame = ({
           selectedRestaurantId,
           restaurantOnlyId,
           buildMarkerKey,
+          rankOrder,
         })
           .filter((candidate) => candidate.feature.properties.restaurantId === selectedRestaurantId)
           .map((candidate) => candidate.feature)
@@ -1931,12 +1955,18 @@ export const useDirectSearchMapSourceController = ({
     const rankedCandidateSources: SearchMapVisualCandidateSource[] =
       shortcutCoverageCandidateSources;
     const dotCandidateSources: SearchMapVisualCandidateSource[] = shortcutCoverageCandidateSources;
+    // The pin badge follows the ACTIVE variant's ranking (rising vs crave) — read at frame
+    // build from the same bus snapshot the coverage filters key uses, so badge order and the
+    // coverage variant can never disagree.
+    const visualRankOrder: SearchMapVisualRankOrder =
+      state.risingActive === true ? 'rising' : 'crave';
     const projectedInitialCandidates = projectSearchMapVisualFrame({
       rankedSources: rankedCandidateSources,
       dotSources: dotCandidateSources,
       selectedRestaurantId,
       restaurantOnlyId: effectiveRestaurantOnlyId,
       buildMarkerKey,
+      rankOrder: visualRankOrder,
     });
     // RANK DEDUP: a shortcut search merges TWO backends (shortcut_coverage + main_results) that each
     // rank their results from 1, so the raw feature.properties.rank collides across sources (the
@@ -2112,6 +2142,7 @@ export const useDirectSearchMapSourceController = ({
       selectedRestaurantId,
       restaurantOnlyId: effectiveRestaurantOnlyId,
       buildMarkerKey,
+      rankOrder: visualRankOrder,
     });
     // ONE-RANK UNIFICATION (2026-06-23): the SAME sorted-position re-rank applied to the catalog above
     // (projectedInitialCandidates → rank=index+1) MUST also drive the pin BADGE sprite and the JS reveal
