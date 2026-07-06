@@ -598,11 +598,19 @@ export class RestaurantLocationEnrichmentService {
             businessStatus: place.businessStatus,
             movedPlaceId: place.movedPlaceId,
           });
-          // Still stamp lastPolledAt so we don't re-poll it every run; the
-          // closed/moved follow-up is a deliberate manual/ops decision.
+          // Persist the decay signal for the janitor to act on, and stamp
+          // lastPolledAt so we don't re-poll it every run.
           await this.prisma.restaurantLocation.update({
             where: { locationId: location.locationId },
-            data: { lastPolledAt: new Date() },
+            data: {
+              lastPolledAt: new Date(),
+              businessStatus: place.businessStatus ?? null,
+              movedPlaceId:
+                typeof place.movedPlaceId === 'string' &&
+                place.movedPlaceId.trim()
+                  ? place.movedPlaceId.trim()
+                  : null,
+            },
           });
           continue;
         }
@@ -3788,6 +3796,14 @@ export class RestaurantLocationEnrichmentService {
           ? normalizedHours.utcOffsetMinutes
           : null,
       timeZone: normalizedHours.timezone ?? null,
+      businessStatus:
+        typeof details.businessStatus === 'string'
+          ? details.businessStatus
+          : null,
+      movedPlaceId:
+        typeof details.movedPlaceId === 'string' && details.movedPlaceId.trim()
+          ? details.movedPlaceId.trim()
+          : null,
       lastPolledAt: new Date(),
       updatedAt: new Date(),
     };

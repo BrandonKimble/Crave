@@ -8,6 +8,7 @@ import { EntityResolverModule } from '../content-processing/entity-resolver/enti
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
 import { MarketsModule } from '../markets/markets.module';
 import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
+import { RestaurantJanitorService } from './restaurant-janitor.service';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 import { RestaurantCuisineExtractionService } from './restaurant-cuisine-extraction.service';
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
@@ -43,6 +44,7 @@ const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
   ],
   providers: [
     RestaurantLocationEnrichmentService,
+    RestaurantJanitorService,
     RestaurantEntityMergeService,
     RestaurantCuisineExtractionService,
     RestaurantCuisineExtractionQueueService,

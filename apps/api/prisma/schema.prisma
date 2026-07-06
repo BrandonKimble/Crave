@@ -113,6 +113,10 @@ model RestaurantLocation {
   timeZone         String?   @map("time_zone") @db.VarChar(64)
   isPrimary        Boolean   @default(false) @map("is_primary")
   lastPolledAt     DateTime? @map("last_polled_at")
+  /// Google businessStatus from the last refresh poll (CLOSED_PERMANENTLY etc.);
+  /// written by refreshStaleLocations, acted on by the janitor.
+  businessStatus   String?   @map("business_status") @db.VarChar(32)
+  movedPlaceId     String?   @map("moved_place_id") @db.VarChar(255)
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @default(now()) @map("updated_at")
   restaurant       Entity    @relation("RestaurantLocations", fields: [restaurantId], references: [entityId], onDelete: Cascade)
