@@ -748,8 +748,15 @@ export async function provisionRegionMarket(
 ): Promise<RegionUpsertRow> {
   const requestId = randomUUID();
   const storedBoundaries: StoredBoundary[] = [];
+  const seenBoundaryIds = new Set<string>();
   for (const source of seed.sourceBoundaries) {
     const candidate = await fetchTomTomBoundaryCandidate(source, requestId);
+    // Multiple anchors can land in the same county (e.g. the city center plus
+    // a discovered anchor) — fetch/store each boundary once.
+    if (seenBoundaryIds.has(candidate.sourceBoundaryId)) {
+      continue;
+    }
+    seenBoundaryIds.add(candidate.sourceBoundaryId);
     const geometry = await fetchTomTomBoundaryGeometry(
       candidate.sourceBoundaryId,
       requestId,
@@ -804,6 +811,8 @@ export interface GeocodedCity {
   cityName: string;
   stateCode: string;
   countryCode: string;
+  /** TomTom geometry id for the municipality polygon (Additional Data service). */
+  geometryId: string | null;
 }
 
 /**
@@ -820,6 +829,7 @@ export async function geocodeCityCenter(city: string): Promise<GeocodedCity> {
       entityType?: string;
       position?: { lat?: number; lon?: number };
       address?: TomTomReverseGeocodeAddress & { countryCode?: string };
+      dataSources?: { geometry?: { id?: string } };
     }>;
   }>(url, { key: apiKey, language: TOMTOM_LANGUAGE, limit: '5' }, randomUUID());
 
@@ -852,7 +862,13 @@ export async function geocodeCityCenter(city: string): Promise<GeocodedCity> {
       `Could not resolve a state for "${city}" — pass --state explicitly`,
     );
   }
-  return { center: { lat, lng }, cityName, stateCode, countryCode };
+  return {
+    center: { lat, lng },
+    cityName,
+    stateCode,
+    countryCode,
+    geometryId: match.dataSources?.geometry?.id?.trim() || null,
+  };
 }
 
 /**
@@ -928,6 +944,131 @@ export async function discoverMetroCountyAnchors(
         language: TOMTOM_LANGUAGE,
       },
       randomUUID(),
+    ).catch(() => null);
+    const match = (response?.addresses ?? [])[0];
+    const county = match?.address?.countrySecondarySubdivision?.trim();
+    const state = match?.address?.countrySubdivision?.trim();
+    if (county && !byCounty.has(`${county}|${state}`)) {
+      byCounty.set(`${county}|${state}`, point);
+    }
+  }
+
+  return Array.from(byCounty.entries()).map(([key, anchor]) => ({
+    county: key.split('|')[0],
+    anchor,
+  }));
+}
+
+function pointInRing(point: Coordinate, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (
+      yi > point.lat !== yj > point.lat &&
+      point.lng < ((xj - xi) * (point.lat - yi)) / (yj - yi) + xi
+    ) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function pointInFeatureCollection(
+  point: Coordinate,
+  collection: GeoJsonFeatureCollection,
+): boolean {
+  for (const feature of collection.features ?? []) {
+    const geometry = feature.geometry;
+    if (!geometry) continue;
+    const polygons: number[][][][] =
+      geometry.type === 'Polygon'
+        ? [geometry.coordinates as number[][][]]
+        : geometry.type === 'MultiPolygon'
+          ? (geometry.coordinates as number[][][][])
+          : [];
+    for (const polygon of polygons) {
+      if (!polygon.length) continue;
+      if (!pointInRing(point, polygon[0])) continue;
+      // Inside outer ring; excluded if inside any hole.
+      const inHole = polygon.slice(1).some((hole) => pointInRing(point, hole));
+      if (!inHole) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * COUNTIES INTERSECTING THE CITY'S OWN POLYGON — the deterministic default.
+ * TomTom exposes the municipality polygon (via the geocode result's geometry
+ * id + Additional Data) but has NO child-enumeration or polygon-intersection
+ * query, so this derives it: grid-sample points INSIDE the city polygon and
+ * reverse-geocode each at county level. Interior sampling (unlike ring
+ * sampling) cannot skip an enclosed county, and the city polygon naturally
+ * respects state lines (NYC -> exactly its 5 boroughs, no NJ bleed).
+ */
+export async function discoverCityCountyAnchors(
+  geometryId: string,
+  maxSamples = 24,
+): Promise<{ county: string; anchor: Coordinate }[]> {
+  const apiKey = resolveTomTomApiKey();
+  const requestId = randomUUID();
+  const geometry = await fetchTomTomBoundaryGeometry(geometryId, requestId);
+
+  // Bounding box of all polygon coordinates.
+  let minLat = 90,
+    maxLat = -90,
+    minLng = 180,
+    maxLng = -180;
+  for (const feature of geometry.features ?? []) {
+    const geom = feature.geometry;
+    if (!geom) continue;
+    const polys: number[][][][] =
+      geom.type === 'Polygon'
+        ? [geom.coordinates as number[][][]]
+        : geom.type === 'MultiPolygon'
+          ? (geom.coordinates as number[][][][])
+          : [];
+    for (const poly of polys) {
+      for (const ring of poly) {
+        for (const [lng, lat] of ring) {
+          if (lat < minLat) minLat = lat;
+          if (lat > maxLat) maxLat = lat;
+          if (lng < minLng) minLng = lng;
+          if (lng > maxLng) maxLng = lng;
+        }
+      }
+    }
+  }
+
+  // Dense grid filtered to inside-polygon, then evenly subsampled.
+  const GRID = 14;
+  const inside: Coordinate[] = [];
+  for (let i = 0; i < GRID; i += 1) {
+    for (let j = 0; j < GRID; j += 1) {
+      const point = {
+        lat: minLat + ((i + 0.5) / GRID) * (maxLat - minLat),
+        lng: minLng + ((j + 0.5) / GRID) * (maxLng - minLng),
+      };
+      if (pointInFeatureCollection(point, geometry)) {
+        inside.push(point);
+      }
+    }
+  }
+  const step = Math.max(1, Math.ceil(inside.length / maxSamples));
+  const samples = inside.filter((_, index) => index % step === 0);
+
+  const byCounty = new Map<string, Coordinate>();
+  for (const point of samples) {
+    const url = `${DEFAULT_TOMTOM_REVERSE_GEOCODE_BASE_URL}/${point.lat},${point.lng}.json`;
+    const response = await fetchTomTomJson<TomTomReverseGeocodeResponse>(
+      url,
+      {
+        key: apiKey,
+        entityType: 'CountrySecondarySubdivision',
+        language: TOMTOM_LANGUAGE,
+      },
+      requestId,
     ).catch(() => null);
     const match = (response?.addresses ?? [])[0];
     const county = match?.address?.countrySecondarySubdivision?.trim();

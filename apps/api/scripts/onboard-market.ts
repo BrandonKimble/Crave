@@ -9,6 +9,7 @@ import {
   geocodeCityCenter,
   geocodeCountyAnchor,
   discoverMetroCountyAnchors,
+  discoverCityCountyAnchors,
   type RegionMarketSeed,
 } from '../prisma/market-provisioning';
 
@@ -103,19 +104,16 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const subreddit = options.subreddit.trim().toLowerCase();
 
-  // Derive short/state/center/country from the city string unless overridden.
-  const needsGeocode =
-    !options.short || !options.state || !options.center || !options.country;
-  const geocoded = needsGeocode ? await geocodeCityCenter(options.city) : null;
-  const short = options.short ?? geocoded!.cityName;
-  const state = (options.state ?? geocoded!.stateCode).toUpperCase();
-  const country = (options.country ?? geocoded!.countryCode).toUpperCase();
-  const center = options.center ?? geocoded!.center;
-  if (geocoded) {
-    process.stdout.write(
-      `Geocoded "${options.city}" -> ${short}, ${state} ${country} @ ${center.lat},${center.lng}\n`,
-    );
-  }
+  // Always geocode: it also yields the municipality geometry id that powers
+  // default county discovery.
+  const geocoded = await geocodeCityCenter(options.city);
+  const short = options.short ?? geocoded.cityName;
+  const state = (options.state ?? geocoded.stateCode).toUpperCase();
+  const country = (options.country ?? geocoded.countryCode).toUpperCase();
+  const center = options.center ?? geocoded.center;
+  process.stdout.write(
+    `Geocoded "${options.city}" -> ${short}, ${state} ${country} @ ${center.lat},${center.lng}\n`,
+  );
   const marketKey = `region-${slugify(country)}-${slugify(state)}-${slugify(short)}`;
 
   // The county containing the center is always part of the market; extra
@@ -129,6 +127,19 @@ async function main(): Promise<void> {
     ),
   );
   let anchors = [center, ...extraAnchors];
+
+  // DEFAULT: every county the city's own polygon intersects (interior grid
+  // sampling of the TomTom municipality geometry — deterministic w.r.t. city
+  // limits; NYC -> its exact 5 boroughs, Houston -> Harris/Fort Bend/
+  // Montgomery). --county / --metro-radius-km EXPAND from this core.
+  if (geocoded.geometryId) {
+    const cityCounties = await discoverCityCountyAnchors(geocoded.geometryId);
+    process.stdout.write(
+      `City-polygon counties: ${cityCounties.map((entry) => entry.county).join(', ')}\n`,
+    );
+    anchors = [...anchors, ...cityCounties.map((entry) => entry.anchor)];
+  }
+
   if (options.metroRadiusKm && Number.isFinite(options.metroRadiusKm)) {
     const discovered = await discoverMetroCountyAnchors(
       center,

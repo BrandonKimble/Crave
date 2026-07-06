@@ -63,12 +63,11 @@ Order matters:
 2. Onboard the market — ONE command (attribute vocabulary is fully self-provisioning now,
    no seeding needed):
    `yarn ts-node scripts/onboard-market.ts --subreddit austinfood --city "Austin, TX"
---short Austin --state TX --center 30.2672,-97.7431 --county 30.646,-97.6034
---county 29.8833,-97.9414 --county 30.1105,-97.3153 --county 29.8849,-97.6699
---county 30.7582,-98.2284`
-   (county anchors = any point inside each metro county; TomTom fetches + PostGIS unions the
-   polygons; the subreddit viewport + volume jobs chain automatically. `yarn db:seed` replays
-   the same provisioning from the config lists if you prefer; both are idempotent.)
+--county "Bastrop County, TX" --county "Caldwell County, TX" --county "Burnet County, TX"`
+   (default = every county the CITY POLYGON intersects, auto-discovered — Austin's city limits
+   give Travis/Hays/Williamson; --county names add metro reach, --metro-radius-km N auto-rings.
+   TomTom fetches + PostGIS unions the polygons; subreddit viewport + volume jobs chain
+   automatically. `yarn db:seed` replays the config lists; both idempotent.)
 3. Verify: HNSW index exists (`idx_entities_name_embedding_hnsw` — boot self-heal also covers
    this), markets table has Austin with geometry (~13,726 km², 6 boundaries), collection
    community row maps austinfood → the market.
