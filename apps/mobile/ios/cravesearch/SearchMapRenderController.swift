@@ -12418,6 +12418,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       return
     }
     lastVisualDiagByInstance[instanceId] = message
+    NSLog("[VDIAG] %@", message)
     emit([
       "type": "visual_diagnostic",
       "instanceId": instanceId,

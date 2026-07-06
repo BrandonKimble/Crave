@@ -3354,8 +3354,30 @@ const useSearchMapNativeRenderOwnerSync = ({
           transportState.lastDesiredSnapshot = effectiveSourceSnapshot;
           return;
         }
-        transportState.frameGenerationSeq += 1;
-        const frameGenerationId = `frame:${transportState.frameGenerationSeq}`;
+        // D6d endgame fix (VDIAG-attributed): a PRESENTATION-ONLY frame (unchanged source
+        // snapshot, same execution batch) must NOT mint a new frame generation — the native
+        // enter lane keys its mount/source-ready/election state on the generation, so a fresh
+        // id for identical sources forced a full re-mount + re-election (~106ms measured, the
+        // toggle's residual gap). Reusing the generation lets native skip the reset: same
+        // generation + empty deltas -> election and sourceReady survive -> the start token
+        // gates through immediately.
+        const canReuseFrameGeneration =
+          !snapshotChanged &&
+          transportState.lastDesiredFrameGenerationId != null &&
+          transportState.lastDesiredExecutionBatchId === executionBatchId;
+        if (__DEV__ && !canReuseFrameGeneration) {
+          // [GENREUSE] endgame probe: WHY did this frame mint a new generation? (first fix
+          // attempt was refuted by measurement — these inputs name the blocking condition)
+          console.log(
+            `[GENREUSE] mint snapshotChanged=${snapshotChanged} changedIds=${sourceTransport.effectiveChangedSourceIds.join(',') || 'none'} batchSame=${transportState.lastDesiredExecutionBatchId === executionBatchId}`
+          );
+        }
+        if (!canReuseFrameGeneration) {
+          transportState.frameGenerationSeq += 1;
+        }
+        const frameGenerationId = canReuseFrameGeneration
+          ? transportState.lastDesiredFrameGenerationId!
+          : `frame:${transportState.frameGenerationSeq}`;
         rememberSearchMapNativeFrameVisualSourceCounts({
           instanceId,
           frameGenerationId,
