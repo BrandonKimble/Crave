@@ -166,7 +166,12 @@ source"` + `"Failed to remove non-exist feature"`. JS's delta bookkeeping vs the
    never fired. Fix: new `onUserListScrollActivity(offsetY)` transport signal from the
    list's live onScroll (≥100px threshold preserves the anti-auto-load intent; drag events
    still mark too when the sheet is expanded and the list owns the gesture).
-   (b) OPEN → R2: FlashList `onEndReached` never fires from handoff scrolling (only as
+   (b) ✅ FIXED 1a25b52c: load-more trigger derived from the scrollOffset SharedValue
+   (useAnimatedReaction → runOnJS; the Reanimated handler MUST stay the direct onScroll
+   prop — a JS wrapper throws). PROVEN end-to-end on-sim: page-2 API call + append 20→40
+   rows both tabs; spurious reveal-time zone entry correctly gate-blocked. New
+   `scroll_results&offsetY=` command verb (Maestro swipes are handoff-consumed, ~35px net).
+   Historical note — the original (b) finding: FlashList `onEndReached` never fires from handoff scrolling (only as
    reveal-time layout artifacts at offset≈0; raising onEndReachedThreshold 0→0.5 did not
    produce firings; PAGDBG-verified across 3 drives). The R2 pipeline should derive the
    pagination trigger from the offset signal (contentOffset/contentSize distance-from-end
@@ -182,6 +187,17 @@ source"` + `"Failed to remove non-exist feature"`. JS's delta bookkeeping vs the
 `2ca844dd` "good era") and produce an ideal-shape verdict: refactor vs ground-up redesign.
 Audit running (3 agents: data-flow architecture · git archaeology · API call semantics);
 synthesis lands in this doc as §D6.
+
+### D6a — T1 STALL ATTRIBUTED (2026-07-05, measured; the R2-C design input)
+
+Toggle commit window ≈ 490ms, partitioned by [T1DBG] marks (probes committed as the R2
+measurement kit): **~150–175ms inside the coordinator runner** (pre-projection; internals
+still coarse) + **~250–290ms React child-commit rendering the incoming tab's visible dish
+cards (~30–50ms/card, cardRender-counter confirmed)** + rowsPrepare/listData/projection all
+<5ms (innocent). The catalog rebuild was already eliminated (R1a-2). **R2-C remedy: prewarm
+the secondary list under cover (the primary/secondary list infrastructure already exists) so
+the tab swap is a pointer flip — evicting the card render from the commit window entirely —
+plus attribute the runner's ~150ms interior with one more mark pass.**
 
 ### D6 — FULL-FLOW AUDIT VERDICT (2026-07-05): keep the call layer, REBUILD the middle
 
