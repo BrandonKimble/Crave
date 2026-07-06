@@ -40,7 +40,28 @@ export const useSearchRootResultsSheetLoadMoreRuntime = ({
   canLoadMoreRef.current = canLoadMore;
   currentPageRef.current = currentPage;
 
+  // Pagination fix (ledger #6): the gesture-handoff scroll container produces NO native drag
+  // events (finger on the sheet's GestureDetector, worklet-driven scroll), so the old
+  // scroll-begin marker never fired and the anti-auto-load gate blocked loadMore forever.
+  // The live signal is the list's onScroll offset: a real user scroll takes the offset past
+  // the threshold; mount/reveal resets sit at ~0, so spurious layout-time endReached stays
+  // blocked (the gate's original intent).
+  const USER_SCROLL_ACTIVITY_MIN_OFFSET_PX = 100;
+  const handleResultsListUserScrollActivity = React.useCallback((offsetY: number) => {
+    if (offsetY < USER_SCROLL_ACTIVITY_MIN_OFFSET_PX) {
+      return;
+    }
+    if (__DEV__ && !hasUserScrolledResultsRef.current) {
+      console.log(`[PAGDBG] scroll activity marked offsetY=${Math.round(offsetY)}`);
+    }
+    hasUserScrolledResultsRef.current = true;
+    allowLoadMoreForCurrentScrollRef.current = true;
+  }, []);
+
   const markResultsListUserScrollStart = React.useCallback(() => {
+    if (__DEV__ && !hasUserScrolledResultsRef.current) {
+      console.log('[PAGDBG] scrollStart marked');
+    }
     hasUserScrolledResultsRef.current = true;
     allowLoadMoreForCurrentScrollRef.current = true;
   }, []);
@@ -50,6 +71,11 @@ export const useSearchRootResultsSheetLoadMoreRuntime = ({
   }, []);
 
   const handleResultsEndReached = React.useCallback(() => {
+    if (__DEV__) {
+      console.log(
+        `[PAGDBG] endReached scrolled=${hasUserScrolledResultsRef.current} allow=${allowLoadMoreForCurrentScrollRef.current} canLoadMore=${canLoadMoreRef.current} loading=${isSearchLoadingRef.current} loadingMore=${isLoadingMoreRef.current} page=${currentPageRef.current}`
+      );
+    }
     if (!hasUserScrolledResultsRef.current) {
       return;
     }
@@ -82,7 +108,13 @@ export const useSearchRootResultsSheetLoadMoreRuntime = ({
       markResultsListUserScrollStart,
       resetResultsListScrollProgress,
       handleResultsEndReached,
+      handleResultsListUserScrollActivity,
     }),
-    [handleResultsEndReached, markResultsListUserScrollStart, resetResultsListScrollProgress]
+    [
+      handleResultsEndReached,
+      handleResultsListUserScrollActivity,
+      markResultsListUserScrollStart,
+      resetResultsListScrollProgress,
+    ]
   );
 };

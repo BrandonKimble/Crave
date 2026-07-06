@@ -11,4 +11,5 @@ export type ResultsSheetInteractionModel = {
   handleResultsSheetSettlingChange: (isSettling: boolean) => void;
   handleResultsEndReached: FlashListProps<ResultsListItem>['onEndReached'];
   resetResultsListScrollProgress: () => void;
+  handleResultsListUserScrollActivity: (offsetY: number) => void;
 };

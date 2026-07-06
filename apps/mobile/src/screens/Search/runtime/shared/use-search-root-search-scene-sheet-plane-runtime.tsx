@@ -39,6 +39,7 @@ export const useSearchRootSearchSceneSheetPlaneRuntime = ({
     handleResultsSheetDragStateChange,
     handleResultsSheetSettlingChange,
     handleResultsEndReached,
+    handleResultsListUserScrollActivity,
   } = resultsSheetControlLane.resultsSheetInteractionModel;
   const isResultsClosing = searchSheetContentLaneKind === 'results_closing';
   const shouldDisableResultsSheetInteractionForRender =
@@ -66,6 +67,7 @@ export const useSearchRootSearchSceneSheetPlaneRuntime = ({
   return React.useMemo(
     () => ({
       handleResultsEndReached,
+      handleResultsListUserScrollActivity,
       handleResultsListMomentumBegin,
       handleResultsListMomentumEnd,
       handleResultsListScrollBegin,
@@ -82,6 +84,7 @@ export const useSearchRootSearchSceneSheetPlaneRuntime = ({
     }),
     [
       handleResultsEndReached,
+      handleResultsListUserScrollActivity,
       handleResultsListMomentumBegin,
       handleResultsListMomentumEnd,
       handleResultsListScrollBegin,

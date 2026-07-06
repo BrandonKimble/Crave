@@ -243,7 +243,10 @@ export const useSearchRouteSearchSceneModelOwner = ({
       onEndReached:
         routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
           .handleResultsEndReached,
-      onEndReachedThreshold: 0,
+      // Pagination fix (ledger #6b): threshold 0 = fire only at the EXACT end — after the
+      // spurious reveal-time firing consumed it, real bottom approaches never re-triggered.
+      // 0.5 viewports re-arms and fires like every standard infinite list.
+      onEndReachedThreshold: 0.5,
     }),
     [
       routeSearchSceneReadModelRuntime.routeSearchSceneResultsReadModelSelectors
@@ -288,6 +291,9 @@ export const useSearchRouteSearchSceneModelOwner = ({
         onScrollBeginDrag:
           routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
             .handleResultsListScrollBegin,
+        onUserListScrollActivity:
+          routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
+            .handleResultsListUserScrollActivity,
         onScrollEndDrag:
           routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
             .handleResultsListScrollEnd,
@@ -324,6 +330,8 @@ export const useSearchRouteSearchSceneModelOwner = ({
           .handleResultsListMomentumEnd,
         routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
           .handleResultsListScrollBegin,
+        routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
+          .handleResultsListUserScrollActivity,
         routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime
           .handleResultsListScrollEnd,
         routeSearchSceneSheetTransportRuntime.routeSearchSceneSheetPlaneRuntime.listRef,

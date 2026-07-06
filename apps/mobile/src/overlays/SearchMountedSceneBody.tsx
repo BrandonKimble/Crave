@@ -347,6 +347,11 @@ const SearchMountedResultsListTarget = React.memo(
     >;
     const handleScrollBeginDrag = React.useCallback(
       (event: ScrollEvent) => {
+        if (__DEV__) {
+          console.log(
+            `[PAGDBG] body scrollBeginDrag fired transportHandler=${sceneBodyTransport.onScrollBeginDrag != null}`
+          );
+        }
         sceneBodyTransport.onScrollBeginDrag?.();
         activeFlashListProps.onScrollBeginDrag?.(event);
       },
@@ -460,7 +465,10 @@ const SearchMountedResultsListTarget = React.memo(
           keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
           scrollEnabled={bodyScrollRuntime.shouldEnableScroll}
           renderScrollComponent={renderSceneScrollComponent}
-          onScroll={activeListOnScroll}
+          onScroll={(event) => {
+            sceneBodyTransport.onUserListScrollActivity?.(event.nativeEvent.contentOffset.y);
+            activeListOnScroll?.(event);
+          }}
           scrollEventThrottle={16}
           onScrollBeginDrag={handleScrollBeginDrag}
           onScrollEndDrag={handleScrollEndDrag}

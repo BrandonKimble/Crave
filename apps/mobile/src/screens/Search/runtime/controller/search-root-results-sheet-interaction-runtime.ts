@@ -9,6 +9,7 @@ export const createSearchRootResultsSheetInteractionModel = ({
   handleResultsSheetSettlingChange,
   handleResultsEndReached,
   resetResultsListScrollProgress,
+  handleResultsListUserScrollActivity,
 }: ResultsSheetInteractionModel): ResultsSheetInteractionModel => ({
   handleResultsListScrollBegin,
   handleResultsListScrollEnd,
@@ -18,4 +19,5 @@ export const createSearchRootResultsSheetInteractionModel = ({
   handleResultsSheetSettlingChange,
   handleResultsEndReached,
   resetResultsListScrollProgress,
+  handleResultsListUserScrollActivity,
 });

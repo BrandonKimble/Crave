@@ -159,8 +159,19 @@ source"` + `"Failed to remove non-exist feature"`. JS's delta bookkeeping vs the
    `readinessKey`/`pvck`/`executionBatchId`/`frameGenerationId`…) with silent no-op guards at
    each translation — the mechanism behind 1–3 being invisible until instrumented.
 
-6. **Pagination reported BROKEN by owner (pre-dates the rebuild; 2026-07-05).** Not yet
-   reproduced/attributed. Repro lever: `maestro/perf/flows/search-results-scroll-repeat.yaml`
+6. **Pagination BROKEN — reproduced + attributed 2026-07-05 (two stacked defects).**
+   (a) FIXED: the anti-auto-load gate (`hasUserScrolledResults`) was permanently closed —
+   the gesture-handoff scroll container produces NO native drag events (finger on the
+   sheet's GestureDetector; worklet-driven scroll), so `markResultsListUserScrollStart`
+   never fired. Fix: new `onUserListScrollActivity(offsetY)` transport signal from the
+   list's live onScroll (≥100px threshold preserves the anti-auto-load intent; drag events
+   still mark too when the sheet is expanded and the list owns the gesture).
+   (b) OPEN → R2: FlashList `onEndReached` never fires from handoff scrolling (only as
+   reveal-time layout artifacts at offset≈0; raising onEndReachedThreshold 0→0.5 did not
+   produce firings; PAGDBG-verified across 3 drives). The R2 pipeline should derive the
+   pagination trigger from the offset signal (contentOffset/contentSize distance-from-end
+   in the body's onScroll wrapper) instead of FlashList's event — same move as (a):
+   replace dead gesture-era events with live owned signals. Repro lever: `maestro/perf/flows/search-results-scroll-repeat.yaml`
    (cards scroll → `loadMoreResults` → `/search` page-2 append). Suspects to check when
    attributed: the page-1-only client cache gate, append-merge in the response owner, and the
    identity key's page/count factors (R1b preserved these semantics deliberately). Schedule:

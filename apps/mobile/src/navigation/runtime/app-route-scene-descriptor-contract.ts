@@ -203,6 +203,11 @@ export type AppRouteSceneBodyTransportSpec = {
   scrollIndicatorInsets?: ScrollViewProps['scrollIndicatorInsets'];
   onScrollOffsetChange?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onScrollOffsetChange'];
   onScrollBeginDrag?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onScrollBeginDrag'];
+  /** Fired from the list's live onScroll with the current offsetY. The gesture-handoff
+   * scroll container never produces native drag events (the finger is on the sheet's
+   * GestureDetector; scrolling is worklet-driven), so consumers needing 'a real user scroll
+   * happened' (pagination's anti-auto-load gate) key on THIS, not onScrollBeginDrag. */
+  onUserListScrollActivity?: (offsetY: number) => void;
   onScrollEndDrag?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onScrollEndDrag'];
   onMomentumBeginJS?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onMomentumBeginJS'];
   onMomentumEndJS?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onMomentumEndJS'];
@@ -383,6 +388,7 @@ export const areAppRouteSceneBodyTransportSpecsEqual = (
     left.scrollIndicatorInsets === right.scrollIndicatorInsets &&
     left.onScrollOffsetChange === right.onScrollOffsetChange &&
     left.onScrollBeginDrag === right.onScrollBeginDrag &&
+    left.onUserListScrollActivity === right.onUserListScrollActivity &&
     left.onScrollEndDrag === right.onScrollEndDrag &&
     left.onMomentumBeginJS === right.onMomentumBeginJS &&
     left.onMomentumEndJS === right.onMomentumEndJS &&
