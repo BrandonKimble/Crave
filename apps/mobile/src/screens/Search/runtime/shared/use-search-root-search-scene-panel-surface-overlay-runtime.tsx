@@ -115,7 +115,13 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
               style={styles.resultsLoadingCoverAccessibilityTarget}
               testID="results-loading-cover"
             />
-            <Reanimated.View pointerEvents="none" style={loadingContentAnimatedStyle}>
+            {/* absoluteFill: the cover has alignItems:'center', so an unsized wrapper collapses
+                (the skeleton inside wants 100% of a content-sized parent → 0) and the cover
+                renders as a bare white plate — the owner's "white cover, not the skeleton". */}
+            <Reanimated.View
+              pointerEvents="none"
+              style={[styles.resultsLoadingCoverContent, loadingContentAnimatedStyle]}
+            >
               {surfaceContentRuntime.loadingContent}
             </Reanimated.View>
           </Reanimated.View>

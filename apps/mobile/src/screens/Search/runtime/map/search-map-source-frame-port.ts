@@ -72,6 +72,11 @@ export type SearchMapCandidateCatalogEntry = {
   // The restaurant display name, carried atomically so the native label ViewAnnotation roster has the
   // text without a second lookup (labels → ViewAnnotation, Mapbox 11.26).
   restaurantName?: string;
+  // The label VA's rendered text pair. On the dishes tab the PRIMARY line is the dish name and the
+  // restaurant name drops to the smaller secondary line (the GL twin's format expression did this;
+  // the VA migration lost it). labelText falls back to restaurantName natively when absent.
+  labelText?: string;
+  labelSubtext?: string;
 };
 
 export type SearchMapCandidateCatalog = {

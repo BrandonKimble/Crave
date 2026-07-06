@@ -637,7 +637,11 @@ const SearchMountedResultsListTarget = React.memo(
     // remounts and the incoming tab's already-rendered cards paint on the flip frame. Header,
     // footer, and empty components follow scroll ownership (sibling pattern:
     // BottomSheetSceneStackListBodySurface) — inserting a header is a layout shift for the
-    // incoming list, not a card re-render.
+    // incoming list, not a card re-render. NOTE (2026-07-06): do NOT permanent-mount the header
+    // on both lists to chase the once-reported strip flash — the header elements flow through
+    // the chrome-freeze snapshot store, so a permanently-mounted instance can receive a STALE
+    // element (measured: the pill stuck on the old tab). The flash itself no longer reproduces
+    // (188-frame @60fps sweep) now that the press-up fade choreography is fixed.
     const renderedListLayer = (
       <>
         <View

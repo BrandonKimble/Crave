@@ -136,8 +136,25 @@ private final class LabelVAView: UIView {
     addSubview(label)
   }
   required init?(coder: NSCoder) { fatalError("LabelVAView is code-only") }
-  func setText(_ text: String) {
-    label.text = text
+  private(set) var appliedText: String = ""
+  private(set) var appliedSubtext: String = ""
+  func setText(_ text: String, subtext: String? = nil) {
+    appliedText = text
+    appliedSubtext = subtext ?? ""
+    if let subtext, !subtext.isEmpty {
+      // Dish label: dish name (full size) over the restaurant name at 0.85× — the GL twin's
+      // `format` expression (font-scale 0.85), recreated for the VA label.
+      let primaryFont = label.font ?? .systemFont(ofSize: 13, weight: .semibold)
+      let secondaryFont = primaryFont.withSize((primaryFont.pointSize * 0.85).rounded())
+      let composed = NSMutableAttributedString(
+        string: text, attributes: [.font: primaryFont])
+      composed.append(NSAttributedString(string: "\n"))
+      composed.append(NSAttributedString(string: subtext, attributes: [.font: secondaryFont]))
+      label.attributedText = composed
+    } else {
+      label.attributedText = nil
+      label.text = text
+    }
     label.sizeToFit()
     let size = label.bounds.insetBy(dx: -2, dy: -2).size   // symmetric halo margin (2pt each side; compensated in the anchor offsets)
     label.frame = CGRect(origin: .zero, size: size)
@@ -615,7 +632,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     let badgeImageId: String?
     let activeBadgeImageId: String?
     let restaurantId: String?
-    let labelText: String?   // restaurant name for the label VA (Phase 2); atomic with the coordinate
+    let labelText: String?     // label VA PRIMARY line (dish name on the dishes tab, else restaurant name)
+    let labelSubtext: String?  // optional smaller SECONDARY line (restaurant name under a dish label)
   }
 
   // R3 (plans/search-flow-plan.md §D6): the native APPLIED-FEATURE LEDGER — the acked truth of
@@ -690,6 +708,15 @@ final class SearchMapRenderController: RCTEventEmitter {
     var allowEmptyEnter: Bool
     var currentPresentationOpacityTarget: Double
     var currentPresentationOpacityValue: Double
+    // INTERACTION-FADE HOLD (owner-mandated choreography, 2026-07-06): the press-up toggle fade
+    // (beginInteractionFadeOut) is a native presentation INTENT, not a decoration — while it is
+    // active, frame-driven opacity restores (the presentation_idle 1.0 snap) must NOT clobber it
+    // (measured: the press-up coverState frame killed the fade 24ms in via
+    // setPresentationOpacityImmediate → the catalog swapped at full opacity → the end-flash).
+    // Ownership transfers to the enter machine (reveal_preroll/enter start) or a dismiss; the
+    // startedAt stamp bounds the hold (self-heals if an interaction is abandoned).
+    var interactionFadeHoldActive = false
+    var interactionFadeHoldStartedAtMs: Double? = nil
     var nextSourceCommitSequence: Int
     var pendingPresentationSettleRequestKey: String?
     var pendingPresentationSettleKind: String?
@@ -1415,7 +1442,8 @@ final class SearchMapRenderController: RCTEventEmitter {
           badgeImageId: raw["badgeImageId"] as? String,
           activeBadgeImageId: raw["activeBadgeImageId"] as? String,
           restaurantId: raw["restaurantId"] as? String,
-          labelText: raw["restaurantName"] as? String
+          labelText: (raw["labelText"] as? String) ?? (raw["restaurantName"] as? String),
+          labelSubtext: raw["labelSubtext"] as? String
         ))
       }
       state.candidateCatalog = catalog
@@ -1526,6 +1554,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.lodV5Engine = engine
       instances[instanceId] = state
     }
+    state.interactionFadeHoldActive = true
+    state.interactionFadeHoldStartedAtMs = Self.nowMs()
+    instances[instanceId] = state
     do {
       try animatePresentationOpacity(
         to: 0,
@@ -2843,6 +2874,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.blockedPresentationSettleKind = nil
       state.blockedPresentationCommitFenceStartedAtMs = nil
       if let revealRequestKey {
+        // The enter machine takes presentation ownership — the interaction-fade hold ends here.
+        state.interactionFadeHoldActive = false
+        state.interactionFadeHoldStartedAtMs = nil
         self.beginRevealVisualLifecycle(
           instanceId: instanceId,
           state: &state,
@@ -2916,6 +2950,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       self.dismissFrameFallbackWorkItems[instanceId] = nil
       state.lastDismissRequestKey = dismissRequestKey
       if let dismissRequestKey {
+        // A dismiss supersedes any in-flight interaction fade (both end at 0).
+        state.interactionFadeHoldActive = false
+        state.interactionFadeHoldStartedAtMs = nil
         self.beginDismissVisualLifecycle(instanceId: instanceId, state: &state)
         self.instances[instanceId] = state
         let opacityStartedAt = CACurrentMediaTime() * 1000
@@ -3065,7 +3102,17 @@ final class SearchMapRenderController: RCTEventEmitter {
         "startedAtMs": startedAtMs,
       ])
     }
-    if previousPresentationBatchPhase != "idle", state.lastPresentationBatchPhase == "idle" {
+    // INTERACTION-FADE HOLD: expire a stale hold (abandoned interaction — no commit ever arrived)
+    // so the idle restore below can self-heal the map back to visible.
+    if state.interactionFadeHoldActive,
+       let heldAtMs = state.interactionFadeHoldStartedAtMs,
+       Self.nowMs() - heldAtMs > 1500 {
+      state.interactionFadeHoldActive = false
+      state.interactionFadeHoldStartedAtMs = nil
+      self.emitVisualDiag(instanceId: instanceId, message: "interaction_fade_hold_expired")
+    }
+    if previousPresentationBatchPhase != "idle", state.lastPresentationBatchPhase == "idle",
+       !state.interactionFadeHoldActive {
       state.currentPresentationRenderPhase = "live"
       let idleOpacityTarget = state.keepSourcesHiddenUntilEnter ? 0.0 : 1.0
       if state.currentPresentationOpacityTarget != idleOpacityTarget {
@@ -3495,6 +3542,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.interactionMode = "enabled"
       state.currentPresentationOpacityTarget = 1
       state.currentPresentationOpacityValue = 1
+      state.interactionFadeHoldActive = false
+      state.interactionFadeHoldStartedAtMs = nil
       state.nextSourceCommitSequence = 0
       state.pendingPresentationSettleRequestKey = nil
       state.pendingPresentationSettleKind = nil
@@ -7605,6 +7654,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     var viewByKey: [String: LabelVAView] = [:]
     var coordByKey: [String: CLLocationCoordinate2D] = [:]
     var textByKey: [String: String] = [:]
+    var subtextByKey: [String: String] = [:]
     var restaurantIdByKey: [String: String] = [:]
     var highlightedKeys: Set<String> = []
   }
@@ -7989,15 +8039,18 @@ final class SearchMapRenderController: RCTEventEmitter {
 
     var coordByKey: [String: CLLocationCoordinate2D] = [:]
     var textByKey: [String: String] = [:]
+    var subtextByKey: [String: String] = [:]
     var restaurantIdByKey: [String: String] = [:]
     coordByKey.reserveCapacity(state.candidateCatalog.count)
     for entry in state.candidateCatalog {
       coordByKey[entry.markerKey] = entry.coordinate
       if let t = entry.labelText, !t.isEmpty { textByKey[entry.markerKey] = t }
+      if let s = entry.labelSubtext, !s.isEmpty { subtextByKey[entry.markerKey] = s }
       if let r = entry.restaurantId { restaurantIdByKey[entry.markerKey] = r }
     }
     inst.coordByKey = coordByKey
     inst.textByKey = textByKey
+    inst.subtextByKey = subtextByKey
     inst.restaurantIdByKey = restaurantIdByKey
     inst.highlightedKeys = Self.resolveOverlayHighlightedKeys(state: state, restaurantIdByKey: restaurantIdByKey)
 
@@ -8010,7 +8063,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     for key in engine.lastPromotedInOrder where desired.contains(key) && inst.vaByKey[key] == nil {
       guard let coord = coordByKey[key], let text = textByKey[key] else { continue }
       let view = LabelVAView(frame: .zero)
-      view.setText(text)
+      view.setText(text, subtext: subtextByKey[key])
       view.setHighlighted(inst.highlightedKeys.contains(key))
       view.alpha = 0
       let va = ViewAnnotation(coordinate: coord, view: view)
@@ -8022,8 +8075,19 @@ final class SearchMapRenderController: RCTEventEmitter {
       inst.vaByKey[key] = va
       inst.viewByKey[key] = view
     }
-    // Recolor highlight changes on live labels.
-    for (key, view) in inst.viewByKey { view.setHighlighted(inst.highlightedKeys.contains(key)) }
+    // Recolor highlight changes on live labels, and RE-TEXT reused labels whose catalog text
+    // changed (tab toggle: the same restaurant's marker survives but its label flips between
+    // "restaurant" and "dish\nrestaurant" — text was previously only set at VA creation, so
+    // toggles kept the stale line).
+    for (key, view) in inst.viewByKey {
+      view.setHighlighted(inst.highlightedKeys.contains(key))
+      if let text = textByKey[key] {
+        let subtext = subtextByKey[key] ?? ""
+        if view.appliedText != text || view.appliedSubtext != subtext {
+          view.setText(text, subtext: subtextByKey[key])
+        }
+      }
+    }
     // Remove vanished.
     for key in Array(inst.vaByKey.keys) where !desired.contains(key) {
       inst.vaByKey.removeValue(forKey: key)?.remove()

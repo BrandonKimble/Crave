@@ -1945,6 +1945,16 @@ export const useDirectSearchMapSourceController = ({
           restaurantId: feature.properties.restaurantId,
           // Label VA substrate: carry the name so native renders the label text (atomic with the coord).
           restaurantName: feature.properties.restaurantName,
+          // Dish pins label as "dish name\nrestaurant name" (primary + smaller secondary line) —
+          // the GL label twin's format expression, restored for the VA labels.
+          ...(feature.properties.isDishPin === true &&
+          typeof feature.properties.dishName === 'string' &&
+          feature.properties.dishName.length > 0
+            ? {
+                labelText: feature.properties.dishName,
+                labelSubtext: feature.properties.restaurantName,
+              }
+            : null),
         });
       });
       candidateCatalog = { key: candidateCatalogKey, entries: catalogEntries };

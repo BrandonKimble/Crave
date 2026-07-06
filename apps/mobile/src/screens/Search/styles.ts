@@ -595,6 +595,11 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: '#ffffff',
   },
+  // The cutout-skeleton content INSIDE the loading cover must fill it (the cover centers its
+  // children, so an unsized wrapper collapses to zero and only the white fill paints).
+  resultsLoadingCoverContent: {
+    ...StyleSheet.absoluteFillObject,
+  },
   resultsSurfaceInteraction: {
     position: 'absolute',
     left: 0,
