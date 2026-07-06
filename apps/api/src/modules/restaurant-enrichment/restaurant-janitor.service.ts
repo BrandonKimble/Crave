@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -38,6 +39,44 @@ export class RestaurantJanitorService {
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('RestaurantJanitorService');
+  }
+
+  private lifecycleCronInFlight = false;
+
+  /**
+   * Weekly detect→act lifecycle pass: refresh a slice of stale locations
+   * (DETECT — writes business_status/moved_place_id at the cheap SKU), then
+   * run the janitor on whatever got flagged (ACT). Weekly over monthly:
+   * identical total cost (the 90-day TTL sets poll volume, the cron only sets
+   * burst size), but smaller batches and a failure only delays a week.
+   * Enable at launch: LOCATION_LIFECYCLE_CRON_ENABLED=true (pre-launch
+   * checklist) — a dev corpus has nothing worth keeping fresh.
+   */
+  @Cron(CronExpression.EVERY_WEEK)
+  async weeklyLifecyclePass(): Promise<void> {
+    if (process.env.LOCATION_LIFECYCLE_CRON_ENABLED !== 'true') return;
+    if (this.lifecycleCronInFlight) return;
+    this.lifecycleCronInFlight = true;
+    try {
+      const refresh = await this.enrichmentService.refreshStaleLocations({
+        olderThanDays: Number(process.env.LOCATION_REFRESH_TTL_DAYS ?? 90),
+        limit: Number(process.env.LOCATION_REFRESH_LIMIT ?? 250),
+      });
+      const janitor = await this.run();
+      this.logger.info('Weekly location lifecycle pass complete', {
+        refresh: refresh as unknown as Record<string, unknown>,
+        janitor: janitor as unknown as Record<string, unknown>,
+      });
+    } catch (error) {
+      this.logger.error('Weekly location lifecycle pass failed', {
+        error:
+          error instanceof Error
+            ? { message: error.message }
+            : { message: String(error) },
+      });
+    } finally {
+      this.lifecycleCronInFlight = false;
+    }
   }
 
   async run(
