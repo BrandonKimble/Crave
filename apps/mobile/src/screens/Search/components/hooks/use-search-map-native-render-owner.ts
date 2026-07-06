@@ -2775,6 +2775,9 @@ const useSearchMapNativeRenderOwnerSync = ({
       return;
     }
     mapMotionPressureController.applySourcePublishLifecycleEvent({ kind: 'started' });
+    if (__DEV__ && effectiveDesiredFrame.frame.presentation.startToken != null) {
+      console.log(`[NGAPJS] tokenFlushed t=${performance.now().toFixed(1)}`);
+    }
     const bridgeStartedAtMs = resolveNativeRenderOwnerPerfNow();
     const bridgePresentationLaneState = derivePresentationLaneState(
       effectiveDesiredFrame.frame.presentation
@@ -3318,6 +3321,18 @@ const useSearchMapNativeRenderOwnerSync = ({
         });
         mapMotionPressureController.applyNormalWorkEffect(frameAdmission.normalWorkEffect, nowMs);
         const frameAdmissionDecision = frameAdmission.decision;
+        if (__DEV__) {
+          // [NGAPJS] token-hop probe: when a frame carrying a NEW enter startToken is staged,
+          // log the admission decision + t — partitions the cardsAdmit→native-arrival gap.
+          const g = globalThis as { __ngapLastTokenSeen?: number | null };
+          const tokenNow = nextPresentationState.startToken ?? null;
+          if (tokenNow != null && g.__ngapLastTokenSeen !== tokenNow) {
+            g.__ngapLastTokenSeen = tokenNow;
+            console.log(
+              `[NGAPJS] tokenStaged t=${performance.now().toFixed(1)} decision=${frameAdmissionDecision}`
+            );
+          }
+        }
         if (
           !shouldQueueNativeEnterMountAckFrame &&
           (frameAdmissionDecision === 'suppress_redundant_hidden_covered_frame' ||
