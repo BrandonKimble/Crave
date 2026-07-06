@@ -731,6 +731,10 @@ export const searchService = {
       viewportPolygon?: Array<[number, number]>;
       includeTopDish?: boolean;
       marketKey?: string | null;
+      // TR5-N: the coverage layer applies the ACTIVE filter variant (map follows the cards).
+      openNow?: boolean;
+      priceLevels?: number[];
+      rising?: boolean;
     },
     options: Pick<RequestOptions, 'signal'> = {}
   ): Promise<FeatureCollection<Point>> => {

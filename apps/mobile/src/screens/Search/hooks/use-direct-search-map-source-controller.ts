@@ -38,7 +38,7 @@ import {
   dotBucketImageId,
   rankBadgeImageId,
 } from '../../../utils/quality-color';
-import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import type { SearchRuntimeBus, SearchRuntimeBusState } from '../runtime/shared/search-runtime-bus';
 import type { ResultsPresentationAuthority } from '../runtime/shared/results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
 import { getSearchSurfaceRuntime } from '../runtime/surface/search-surface-runtime';
@@ -206,18 +206,53 @@ const buildShortcutCoverageBoundsKey = (bounds: MapBounds): string =>
     bucketCoordinate(bounds.southWest.lng),
   ].join(',');
 
+// TR5-N (map follows the active variant): the coverage request carries the ACTIVE filter
+// state (open-now / price / rising) so the dots+pins reflect the same variant as the cards.
+// The filters fold into the coverage request key — a filter flip is a DIFFERENT coverage
+// variant (cache miss + refetch), and the frame fingerprint inherits it via the coverage
+// requestKey it already embeds.
+type ShortcutCoverageFilterSnapshot = {
+  openNow: boolean;
+  priceLevels: number[];
+  rising: boolean;
+};
+
+const readShortcutCoverageFilterSnapshot = (
+  busState: Pick<SearchRuntimeBusState, 'openNow' | 'priceLevels' | 'risingActive'>
+): ShortcutCoverageFilterSnapshot => ({
+  openNow: busState.openNow === true,
+  priceLevels: Array.isArray(busState.priceLevels) ? busState.priceLevels : [],
+  rising: busState.risingActive === true,
+});
+
+const buildShortcutCoverageFiltersKey = (filters: ShortcutCoverageFilterSnapshot): string => {
+  const parts: string[] = [];
+  if (filters.openNow) {
+    parts.push('open');
+  }
+  if (filters.priceLevels.length) {
+    parts.push(`price=${[...filters.priceLevels].sort((a, b) => a - b).join(',')}`);
+  }
+  if (filters.rising) {
+    parts.push('rising');
+  }
+  return parts.length ? parts.join('+') : 'none';
+};
+
 const buildShortcutCoverageRequestKey = ({
   entitiesKey,
   activeTab,
   marketKey,
   boundsKey,
+  filtersKey,
 }: {
   entitiesKey: string;
   activeTab: string | null;
   marketKey: string;
   boundsKey: string;
+  filtersKey: string;
 }): string =>
-  `entities:${entitiesKey}|tab:${activeTab ?? 'none'}|market:${marketKey}|bounds:${boundsKey}`;
+  `entities:${entitiesKey}|tab:${activeTab ?? 'none'}|market:${marketKey}|bounds:${boundsKey}|filters:${filtersKey}`;
 
 // Shared coverage-feature mapping — the ONE place that turns a raw shortcut-coverage FeatureCollection into
 // the validated dot features. Used by BOTH the active-tab fetch and the sibling-tab prefetch, so the two tabs'
@@ -1476,6 +1511,9 @@ export const useDirectSearchMapSourceController = ({
               shortcutCoverageEntitiesForCurrentRequest
             ),
             marketKey: mountedResults?.metadata?.marketKey ?? '',
+            filtersKey: buildShortcutCoverageFiltersKey(
+              readShortcutCoverageFilterSnapshot(searchRuntimeBus.getState())
+            ),
           })
         : null;
     // Coverage resolution. LIVE publish: the active resource/features refs (owned by the active
@@ -2900,6 +2938,8 @@ export const useDirectSearchMapSourceController = ({
       boundsKey: string;
       currentActiveTab: string | null;
       viewportPolygon: Array<[number, number]> | undefined;
+      coverageFilters: ShortcutCoverageFilterSnapshot;
+      filtersKey: string;
     }) => {
       const siblingTab = params.currentActiveTab === 'dishes' ? 'restaurants' : 'dishes';
       const includeTopDish = siblingTab === 'dishes';
@@ -2908,6 +2948,7 @@ export const useDirectSearchMapSourceController = ({
         activeTab: siblingTab,
         marketKey: params.marketKey,
         boundsKey: params.boundsKey,
+        filtersKey: params.filtersKey,
       });
       const cachedTerminal = shortcutCoverageTerminalByRequestKeyRef.current.get(requestKey);
       if (
@@ -2926,6 +2967,11 @@ export const useDirectSearchMapSourceController = ({
             viewportPolygon: params.viewportPolygon,
             includeTopDish,
             marketKey: params.marketKey,
+            openNow: params.coverageFilters.openNow || undefined,
+            priceLevels: params.coverageFilters.priceLevels.length
+              ? params.coverageFilters.priceLevels
+              : undefined,
+            rising: params.coverageFilters.rising || undefined,
           },
           {}
         )
@@ -2989,6 +3035,9 @@ export const useDirectSearchMapSourceController = ({
           activeTab,
           marketKey,
           boundsKey,
+          filtersKey: buildShortcutCoverageFiltersKey(
+            readShortcutCoverageFilterSnapshot(searchRuntimeBus.getState())
+          ),
         });
         const activeResource = shortcutCoverageResourceRef.current;
         const cachedTerminalResource =
@@ -3102,11 +3151,14 @@ export const useDirectSearchMapSourceController = ({
     const marketKey = mountedResults.metadata.marketKey ?? '';
     const activeTab = state.activeTab ?? null;
     const entitiesKey = buildShortcutCoverageEntitiesKey(snapshot.entities);
+    const coverageFilters = readShortcutCoverageFilterSnapshot(state);
+    const filtersKey = buildShortcutCoverageFiltersKey(coverageFilters);
     const requestKey = buildShortcutCoverageRequestKey({
       entitiesKey,
       activeTab,
       marketKey,
       boundsKey,
+      filtersKey,
     });
     // Fire the sibling-tab coverage prefetch in parallel with the active-tab work, so the FIRST toggle to the
     // other tab is a zero-network cache hit (kills the ~12s covNotReady blank). Idempotent + best-effort.
@@ -3116,6 +3168,8 @@ export const useDirectSearchMapSourceController = ({
       marketKey,
       entitiesKey,
       boundsKey,
+      coverageFilters,
+      filtersKey,
       currentActiveTab: activeTab,
       viewportPolygon:
         viewportBoundsService
@@ -3248,6 +3302,9 @@ export const useDirectSearchMapSourceController = ({
               ?.map(([lng, lat]) => [lng, lat] as [number, number]) ?? undefined,
           includeTopDish,
           marketKey: mountedResults.metadata.marketKey,
+          openNow: coverageFilters.openNow || undefined,
+          priceLevels: coverageFilters.priceLevels.length ? coverageFilters.priceLevels : undefined,
+          rising: coverageFilters.rising || undefined,
         },
         {
           signal: abortController?.signal,

@@ -594,6 +594,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         accessibilityRole="button"
         accessibilityLabel="Toggle rising momentum filter"
         accessibilityState={{ selected: risingActive }}
+        testID="search-rising-toggle"
         style={[
           styles.risingButton,
           risingActive && [styles.risingButtonActive, { backgroundColor: accentColor }],

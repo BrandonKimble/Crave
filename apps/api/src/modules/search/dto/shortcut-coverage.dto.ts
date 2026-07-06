@@ -2,8 +2,11 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsInt,
   IsOptional,
   IsString,
+  Max,
+  Min,
   ValidateNested,
 } from 'class-validator';
 
@@ -32,4 +35,23 @@ export class ShortcutCoverageRequestDto {
   @IsOptional()
   @IsString()
   marketKey?: string;
+
+  // TR5-N (map follows the active variant): the coverage/dots layer applies the SAME filter
+  // state as the ranked results, so a filtered rerun (open-now / price / rising) re-shapes the
+  // map, not just the cards. Absent fields = unfiltered coverage (byte-identical to before).
+  @IsOptional()
+  @IsBoolean()
+  openNow?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(4, { each: true })
+  @Type(() => Number)
+  priceLevels?: number[];
+
+  @IsOptional()
+  @IsBoolean()
+  rising?: boolean;
 }
