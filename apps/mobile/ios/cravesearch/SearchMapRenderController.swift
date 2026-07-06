@@ -618,6 +618,16 @@ final class SearchMapRenderController: RCTEventEmitter {
     let labelText: String?   // restaurant name for the label VA (Phase 2); atomic with the coordinate
   }
 
+  // R3 (plans/search-flow-plan.md §D6): the native APPLIED-FEATURE LEDGER — the acked truth of
+  // what this controller has actually sent into each GeoJSON source. Incremental mutation plans
+  // are RECONCILED against it before applying, so a stale JS-side journal (cached/prewarmed
+  // frame replay, toggle-back baselines) can never corrupt the source ("Failed to add duplicate
+  // feature" / "Failed to remove non-exist feature" → progressive map death). Corrections are
+  // loud ([R3RECON]) so the upstream drift stays visible instead of masked.
+  final class SourceAppliedFeatureLedger {
+    var idsBySourceId: [String: Set<String>] = [:]
+  }
+
   private struct InstanceState {
     // The single RENDERED bundle source id (pin art + interaction + labels for
     // every promoted marker, slot-scoped by `nativeLodZ` in the layer filters).
@@ -646,6 +656,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     var lastDotCount: Int
     var lastLabelCount: Int
     var lastPresentationBatchPhase: String
+    let appliedFeatureLedger = SourceAppliedFeatureLedger()
     var lastEnterRequestKey: String?
     var enterLane: EnterLaneState
     var lastEnterStartToken: Double?
@@ -10271,6 +10282,103 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
+  private struct ReconciledSourceMutation {
+    var removeIds: [String]
+    var addFeatures: [Feature]
+    var addIds: [String]
+    var updateFeatures: [Feature]
+    var updateIds: [String]
+    var correctionCount: Int
+  }
+
+  private static func reconcileSourceMutationAgainstLedger(
+    sourceId: String,
+    ledger: SourceAppliedFeatureLedger,
+    removeIds: [String],
+    addFeatures: [Feature],
+    addIds: [String],
+    updateFeatures: [Feature],
+    updateIds: [String]
+  ) -> ReconciledSourceMutation {
+    guard let applied = ledger.idsBySourceId[sourceId] else {
+      // Ledger not initialized for this source yet (no full replace seen) — pass through
+      // unchanged; the first baseline replace seeds it.
+      return ReconciledSourceMutation(
+        removeIds: removeIds,
+        addFeatures: addFeatures,
+        addIds: addIds,
+        updateFeatures: updateFeatures,
+        updateIds: updateIds,
+        correctionCount: 0
+      )
+    }
+    var corrections = 0
+    var nextRemoveIds: [String] = []
+    nextRemoveIds.reserveCapacity(removeIds.count)
+    for id in removeIds {
+      if applied.contains(id) {
+        nextRemoveIds.append(id)
+      } else {
+        corrections += 1
+      }
+    }
+    var nextAddFeatures: [Feature] = []
+    var nextAddIds: [String] = []
+    var nextUpdateFeatures: [Feature] = Array(updateFeatures)
+    var nextUpdateIds: [String] = Array(updateIds)
+    for (index, id) in addIds.enumerated() where index < addFeatures.count {
+      if applied.contains(id) {
+        // Adding an id the source already holds → Mapbox rejects; demote to update.
+        nextUpdateFeatures.append(addFeatures[index])
+        nextUpdateIds.append(id)
+        corrections += 1
+      } else {
+        nextAddFeatures.append(addFeatures[index])
+        nextAddIds.append(id)
+      }
+    }
+    var finalUpdateFeatures: [Feature] = []
+    var finalUpdateIds: [String] = []
+    for (index, id) in nextUpdateIds.enumerated() where index < nextUpdateFeatures.count {
+      if applied.contains(id) {
+        finalUpdateFeatures.append(nextUpdateFeatures[index])
+        finalUpdateIds.append(id)
+      } else {
+        // Updating an id the source does not hold → promote to add.
+        nextAddFeatures.append(nextUpdateFeatures[index])
+        nextAddIds.append(id)
+        corrections += 1
+      }
+    }
+    if corrections > 0 {
+      NSLog(
+        "[R3RECON] source=%@ corrections=%d removes %d->%d adds %d->%d updates %d->%d",
+        sourceId, corrections, removeIds.count, nextRemoveIds.count,
+        addIds.count, nextAddIds.count, updateIds.count, finalUpdateIds.count
+      )
+    }
+    return ReconciledSourceMutation(
+      removeIds: nextRemoveIds,
+      addFeatures: nextAddFeatures,
+      addIds: nextAddIds,
+      updateFeatures: finalUpdateFeatures,
+      updateIds: finalUpdateIds,
+      correctionCount: corrections
+    )
+  }
+
+  private static func commitLedgerAfterIncrementalApply(
+    sourceId: String,
+    ledger: SourceAppliedFeatureLedger,
+    removedIds: [String],
+    addedIds: [String]
+  ) {
+    guard var applied = ledger.idsBySourceId[sourceId] else { return }
+    applied.subtract(removedIds)
+    applied.formUnion(addedIds)
+    ledger.idsBySourceId[sourceId] = applied
+  }
+
   private static func applySourceMutation(
     sourceId: String,
     previousSourceLifecyclePhase: SourceLifecyclePhase,
@@ -10290,6 +10398,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     if previousSourceLifecyclePhase != .incremental {
       try replaceSourceData(sourceId: sourceId, next: next, mapboxMap: mapboxMap)
+      state.appliedFeatureLedger.idsBySourceId[sourceId] = Set(next.idsInOrder)
       return MutationSummary(
         addCount: next.idsInOrder.count,
         updateCount: 0,
@@ -10298,42 +10407,53 @@ final class SearchMapRenderController: RCTEventEmitter {
         addedFeatureIds: next.idsInOrder
       )
     }
-    let removeIds = next.removedFeatureIdsInOrder
-    let addFeatureIds = next.addedFeatureIdsInOrder
-    let updateFeatureIds = next.updatedFeatureIdsInOrder
+    let reconciled = reconcileSourceMutationAgainstLedger(
+      sourceId: sourceId,
+      ledger: state.appliedFeatureLedger,
+      removeIds: Array(next.removedFeatureIdsInOrder),
+      addFeatures: next.addedFeatures,
+      addIds: Array(next.addedFeatureIdsInOrder),
+      updateFeatures: next.updatedFeatures,
+      updateIds: Array(next.updatedFeatureIdsInOrder)
+    )
     let dataId: String? =
-      (!removeIds.isEmpty || !addFeatureIds.isEmpty || !updateFeatureIds.isEmpty)
+      (!reconciled.removeIds.isEmpty || !reconciled.addIds.isEmpty
+        || !reconciled.updateIds.isEmpty)
       ? nextSourceCommitDataId(sourceId: sourceId, state: &state)
       : nil
-    if !removeIds.isEmpty {
+    if !reconciled.removeIds.isEmpty {
       mapboxMap.removeGeoJSONSourceFeatures(
         forSourceId: sourceId,
-        featureIds: Array(removeIds),
+        featureIds: reconciled.removeIds,
         dataId: dataId
       )
     }
-    let addFeatures = next.addedFeatures
-    if !addFeatures.isEmpty {
+    if !reconciled.addFeatures.isEmpty {
       mapboxMap.addGeoJSONSourceFeatures(
         forSourceId: sourceId,
-        features: addFeatures,
+        features: reconciled.addFeatures,
         dataId: dataId
       )
     }
-    let updateFeatures = next.updatedFeatures
-    if !updateFeatures.isEmpty {
+    if !reconciled.updateFeatures.isEmpty {
       mapboxMap.updateGeoJSONSourceFeatures(
         forSourceId: sourceId,
-        features: updateFeatures,
+        features: reconciled.updateFeatures,
         dataId: dataId
       )
     }
+    commitLedgerAfterIncrementalApply(
+      sourceId: sourceId,
+      ledger: state.appliedFeatureLedger,
+      removedIds: reconciled.removeIds,
+      addedIds: reconciled.addIds
+    )
     return MutationSummary(
-      addCount: addFeatureIds.count,
-      updateCount: updateFeatureIds.count,
-      removeCount: removeIds.count,
+      addCount: reconciled.addIds.count,
+      updateCount: reconciled.updateIds.count,
+      removeCount: reconciled.removeIds.count,
       dataId: dataId,
-      addedFeatureIds: addFeatureIds
+      addedFeatureIds: reconciled.addIds
     )
   }
 
@@ -10421,6 +10541,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   private static func applySourceMutationBatch(
     _ plans: [ResolvedSourceMutationPlan],
     mapboxMap: MapboxMap,
+    ledger: SourceAppliedFeatureLedger,
     recordMutationApply: ((String, String, Int, Double) -> Void)? = nil
   ) throws {
     for plan in plans {
@@ -10431,6 +10552,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
       let startedAt = CACurrentMediaTime() * 1000
       try replaceSourceData(sourceId: plan.sourceId, next: plan.next, mapboxMap: mapboxMap)
+      ledger.idsBySourceId[plan.sourceId] = Set(plan.next.idsInOrder)
       recordMutationApply?(
         plan.sourceId,
         "mapbox.replace_source_data",
@@ -10439,23 +10561,49 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
     }
 
+    // R3: reconcile every incremental plan against the applied-feature ledger ONCE, then the
+    // remove/add/update phases below consume the corrected arrays. Ledger committed here too.
+    var reconciledBySourceId: [String: ReconciledSourceMutation] = [:]
+    for plan in plans where plan.mutationMode == .incrementalPatch
+      && plan.previousSourceRevision != plan.next.sourceRevision {
+      let reconciled = reconcileSourceMutationAgainstLedger(
+        sourceId: plan.sourceId,
+        ledger: ledger,
+        removeIds: Array(plan.next.removedFeatureIdsInOrder),
+        addFeatures: plan.next.addedFeatures,
+        addIds: Array(plan.next.addedFeatureIdsInOrder),
+        updateFeatures: plan.next.updatedFeatures,
+        updateIds: Array(plan.next.updatedFeatureIdsInOrder)
+      )
+      reconciledBySourceId[plan.sourceId] = reconciled
+      commitLedgerAfterIncrementalApply(
+        sourceId: plan.sourceId,
+        ledger: ledger,
+        removedIds: reconciled.removeIds,
+        addedIds: reconciled.addIds
+      )
+    }
     for plan in plans {
       guard plan.mutationMode == .incrementalPatch,
-            plan.previousSourceRevision != plan.next.sourceRevision,
-            !plan.next.removedFeatureIdsInOrder.isEmpty
+            plan.previousSourceRevision != plan.next.sourceRevision
+      else {
+        continue
+      }
+      guard let reconciled = reconciledBySourceId[plan.sourceId],
+            !reconciled.removeIds.isEmpty
       else {
         continue
       }
       let startedAt = CACurrentMediaTime() * 1000
       mapboxMap.removeGeoJSONSourceFeatures(
         forSourceId: plan.sourceId,
-        featureIds: plan.next.removedFeatureIdsInOrder,
+        featureIds: reconciled.removeIds,
         dataId: plan.dataId
       )
       recordMutationApply?(
         plan.sourceId,
         "mapbox.remove_features",
-        plan.next.removedFeatureIdsInOrder.count,
+        reconciled.removeIds.count,
         CACurrentMediaTime() * 1000 - startedAt
       )
     }
@@ -10463,20 +10611,21 @@ final class SearchMapRenderController: RCTEventEmitter {
     for plan in plans {
       guard plan.mutationMode == .incrementalPatch,
             plan.previousSourceRevision != plan.next.sourceRevision,
-            !plan.next.addedFeatures.isEmpty
+            let reconciled = reconciledBySourceId[plan.sourceId],
+            !reconciled.addFeatures.isEmpty
       else {
         continue
       }
       let startedAt = CACurrentMediaTime() * 1000
       mapboxMap.addGeoJSONSourceFeatures(
         forSourceId: plan.sourceId,
-        features: plan.next.addedFeatures,
+        features: reconciled.addFeatures,
         dataId: plan.dataId
       )
       recordMutationApply?(
         plan.sourceId,
         "mapbox.add_features",
-        plan.next.addedFeatures.count,
+        reconciled.addFeatures.count,
         CACurrentMediaTime() * 1000 - startedAt
       )
     }
@@ -10484,20 +10633,21 @@ final class SearchMapRenderController: RCTEventEmitter {
     for plan in plans {
       guard plan.mutationMode == .incrementalPatch,
             plan.previousSourceRevision != plan.next.sourceRevision,
-            !plan.next.updatedFeatures.isEmpty
+            let reconciled = reconciledBySourceId[plan.sourceId],
+            !reconciled.updateFeatures.isEmpty
       else {
         continue
       }
       let startedAt = CACurrentMediaTime() * 1000
       mapboxMap.updateGeoJSONSourceFeatures(
         forSourceId: plan.sourceId,
-        features: plan.next.updatedFeatures,
+        features: reconciled.updateFeatures,
         dataId: plan.dataId
       )
       recordMutationApply?(
         plan.sourceId,
         "mapbox.update_features",
-        plan.next.updatedFeatures.count,
+        reconciled.updateFeatures.count,
         CACurrentMediaTime() * 1000 - startedAt
       )
     }
@@ -10746,6 +10896,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     try Self.applySourceMutationBatch(
       resolvedMutationPlans,
       mapboxMap: mapboxMap,
+      ledger: state.appliedFeatureLedger,
       recordMutationApply: { sourceId, section, operationCount, durationMs in
         self.recordNativeApply(
           section: section,
