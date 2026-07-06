@@ -23,7 +23,6 @@ import { syncSearchResultsPreMeasureOverlay } from '../../../../overlays/SearchR
 import { useSearchRootRouteSearchSceneDataRuntime } from './use-search-root-route-search-scene-data-runtime';
 import { useSearchRootRouteSearchSceneReadModelRuntime } from './use-search-root-route-search-scene-read-model-runtime';
 import { useSearchRootRouteSearchSceneRenderRuntime } from './use-search-root-route-search-scene-render-runtime';
-import { useSearchRootRouteSearchSceneSurfaceInteractionRuntime } from './use-search-root-route-search-scene-surface-interaction-runtime';
 import { useSearchRootRouteSearchSceneSurfacePanelPartsRuntime } from './use-search-root-route-search-scene-surface-panel-parts-runtime';
 import { useSearchRootRouteSearchSceneSurfaceTransportRuntime } from './use-search-root-route-search-scene-surface-transport-runtime';
 import { useSearchRootSearchScenePanelSurfaceRenderRuntime } from './use-search-root-search-scene-panel-surface-render-runtime';
@@ -132,19 +131,12 @@ export const useSearchRouteSearchSceneModelOwner = ({
     }),
     [routeSearchSceneRenderRuntime, routeSearchSceneSurfacePanelStateRuntime]
   );
-  const routeSearchSceneInteractionFrostRuntime =
-    useSearchRootRouteSearchSceneSurfaceInteractionRuntime({
-      controlAuthorityRuntime,
-      routeSearchSceneDataRuntime,
-      routeSearchSceneSurfaceStateRuntime,
-    });
   const routeSearchSceneSurfacePanelPartsRuntime =
     useSearchRootRouteSearchSceneSurfacePanelPartsRuntime({
       visualAssemblyRuntime,
       routeSearchSceneDataRuntime,
       routeSearchSceneReadModelRuntime,
       routeSearchSceneSurfaceStateRuntime,
-      routeSearchSceneInteractionFrostRuntime,
     });
   const routeSearchScenePanelSurfaceRenderRuntime =
     useSearchRootSearchScenePanelSurfaceRenderRuntime({

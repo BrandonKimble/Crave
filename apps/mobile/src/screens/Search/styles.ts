@@ -556,13 +556,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: '#ffffff',
   },
-  resultsWashOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#ffffff',
-  },
   resultsSurface: {
     position: 'absolute',
     left: 0,
@@ -573,6 +566,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
+  // The skeleton loading surface (the ONE interaction-loading visual): the white background is
+  // the skeleton's sheet plate — it hides the stale rows; the cutout holes self-frost inside.
   resultsLoadingCoverSurface: {
     position: 'absolute',
     left: 0,
@@ -581,8 +576,6 @@ const styles = StyleSheet.create({
     zIndex: 20,
     elevation: 20,
     backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
   },
   resultsLoadingCoverAccessibilityTarget: {
     position: 'absolute',
@@ -591,25 +584,10 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
-  resultsLoadingCoverFill: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ffffff',
-  },
-  // The cutout-skeleton content INSIDE the loading cover must fill it (the cover centers its
-  // children, so an unsized wrapper collapses to zero and only the white fill paints).
+  // The skeleton content must FILL the loading surface (an unsized wrapper collapses to zero
+  // and only the plate paints).
   resultsLoadingCoverContent: {
     ...StyleSheet.absoluteFillObject,
-  },
-  resultsSurfaceInteraction: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 7,
-    backgroundColor: 'transparent',
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
   },
   resultsHeaderSurface: {
     position: 'relative',

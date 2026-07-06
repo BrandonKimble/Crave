@@ -36,10 +36,7 @@ type ToggleCommitOutcome = ReturnType<ToggleCommitRunner>;
 
 export type ResultsPresentationToggleCoordinator = Pick<
   ResultsPresentationRuntimeOwner,
-  | 'pendingTogglePresentationIntentId'
-  | 'scheduleToggleCommit'
-  | 'notifyFrostReady'
-  | 'cancelToggleInteraction'
+  'pendingTogglePresentationIntentId' | 'scheduleToggleCommit' | 'cancelToggleInteraction'
 > & {
   beginToggleInteraction: (
     runner: ToggleCommitRunner,
@@ -282,12 +279,6 @@ export const useResultsPresentationToggleCoordinator = ({
     [beginToggleInteraction]
   );
 
-  // The commit is driven SOLELY by the restarting quiet-window debounce above. The 90ms
-  // frost is pure visual cover and must NOT advance the commit clock — otherwise the toggle
-  // settles a frost-fade after the first tap (90ms) instead of after the user pauses (300ms).
-  // Kept for interface parity.
-  const notifyFrostReady = React.useCallback((_intentId: string) => {}, []);
-
   const notifyIntentComplete = React.useCallback(
     (intentId: string) => {
       if (activeIntentIdRef.current !== intentId) {
@@ -307,14 +298,12 @@ export const useResultsPresentationToggleCoordinator = ({
     () => ({
       pendingTogglePresentationIntentId,
       scheduleToggleCommit,
-      notifyFrostReady,
       cancelToggleInteraction,
       beginToggleInteraction,
     }),
     [
       pendingTogglePresentationIntentId,
       scheduleToggleCommit,
-      notifyFrostReady,
       cancelToggleInteraction,
       beginToggleInteraction,
     ]

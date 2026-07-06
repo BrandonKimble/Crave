@@ -80,7 +80,6 @@ export const useResultsPresentationOwnerBridgeRuntime = ({
         pendingTogglePresentationIntentId:
           resultsInteractionRuntime.pendingTogglePresentationIntentId,
         scheduleToggleCommit: resultsInteractionRuntime.scheduleToggleCommit,
-        notifyFrostReady: resultsInteractionRuntime.notifyFrostReady,
         cancelToggleInteraction: resultsInteractionRuntime.cancelToggleInteraction,
       }),
     [resultsInteractionRuntime, resultsRuntimeMachineOwner]

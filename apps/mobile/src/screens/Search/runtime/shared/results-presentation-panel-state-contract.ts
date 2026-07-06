@@ -14,9 +14,7 @@ export type ResultsPresentationPanelState = {
   surfaceMode: ResultsPresentationPanelSurfaceMode;
   shouldShowResultsSurface: boolean;
   surfaceActive: boolean;
-  shouldUseInteractionSurface: boolean;
   shouldHideScrollHeaderForSurface: boolean;
-  shouldRenderWhiteWash: boolean;
 };
 
 export const resolveResultsPresentationPanelState = ({
@@ -71,8 +69,6 @@ export const resolveResultsPresentationPanelState = ({
     surfaceMode,
     shouldShowResultsSurface: surfaceMode !== 'none',
     surfaceActive: surfaceMode !== 'none',
-    shouldUseInteractionSurface: surfaceMode === 'interaction_loading',
     shouldHideScrollHeaderForSurface: surfaceMode === 'initial_loading',
-    shouldRenderWhiteWash: surfaceMode === 'initial_loading',
   };
 };

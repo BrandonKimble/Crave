@@ -62,9 +62,7 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
       surfaceMode: 'none' as const,
       shouldShowResultsSurface: false,
       surfaceActive: false,
-      shouldUseInteractionSurface: false,
       shouldHideScrollHeaderForSurface: false,
-      shouldRenderWhiteWash: false,
     };
   }, [
     allowsInteractionLoadingState,

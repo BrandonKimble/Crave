@@ -45,8 +45,6 @@ import {
   type SearchBottomNavMotionTarget,
 } from './search-bottom-nav-motion-runtime';
 
-const RESULTS_WASH_FADE_MS = 220;
-
 const commandBottomNavMotionOnUI = (
   bottomNavHideProgress: ReturnType<typeof useSharedValue<number>>,
   navBarCutoutIsHidingValue: ReturnType<typeof useSharedValue<boolean>>,
@@ -74,7 +72,6 @@ type UseSearchForegroundBottomNavVisualRuntimeArgs = Pick<
   UseSearchForegroundVisualRuntimeArgs,
   | 'shouldDimResultsSheet'
   | 'suggestionProgress'
-  | 'shouldSuspendResultsSheet'
   | 'isSearchOverlay'
   | 'inputMode'
   | 'searchSheetContentLaneKind'
@@ -88,7 +85,6 @@ type UseSearchForegroundBottomNavVisualRuntimeArgs = Pick<
 export const useSearchForegroundBottomNavVisualRuntime = ({
   shouldDimResultsSheet,
   suggestionProgress,
-  shouldSuspendResultsSheet,
   isSearchOverlay,
   inputMode,
   searchSheetContentLaneKind,
@@ -150,13 +146,9 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
   const navBarTop = navBarTopForSnaps;
   const navBarHeight = fallbackNavBarHeight;
 
-  const resultsWashOpacity = useSharedValue(0);
   const bottomNavHideProgress = useSharedValue(shouldStartBottomNavHiddenForResultsMotion ? 0 : 1);
   const navBarCutoutIsHidingValue = useSharedValue(shouldStartBottomNavHiddenForResultsMotion);
   const bottomNavOpacity = useSharedValue(shouldHideBottomNavForSuggestionSurface ? 0 : 1);
-  const resultsWashAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: resultsWashOpacity.value,
-  }));
   const resultsSheetVisibilityAnimatedStyle = useAnimatedStyle(
     () => ({
       opacity: shouldDimResultsSheet ? 1 - suggestionProgress.value : 1,
@@ -196,12 +188,6 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     ]
   );
 
-  React.useEffect(() => {
-    resultsWashOpacity.value = withTiming(shouldSuspendResultsSheet ? 1 : 0, {
-      duration: RESULTS_WASH_FADE_MS,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [resultsWashOpacity, shouldSuspendResultsSheet]);
   const commandBottomNavMotion = React.useCallback(
     (target: SearchBottomNavMotionTarget) => {
       runOnUI(commandBottomNavMotionOnUI)(bottomNavHideProgress, navBarCutoutIsHidingValue, target);
@@ -469,7 +455,6 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     navBarTop,
     navBarHeight,
     bottomNavHiddenTranslateY,
-    resultsWashAnimatedStyle,
     resultsSheetVisibilityAnimatedStyle,
     shouldHideBottomNavForRender,
     navBarCutoutIsHiding: shouldHideBottomNavForMotion,

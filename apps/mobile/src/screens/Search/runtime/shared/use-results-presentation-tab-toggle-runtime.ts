@@ -125,8 +125,7 @@ export const useResultsPresentationTabToggleRuntime = ({
   return React.useMemo(
     () => ({
       scheduleTabToggleCommit,
-      notifyToggleInteractionFrostReady: toggleLifecycleRuntime.notifyFrostReady,
     }),
-    [scheduleTabToggleCommit, toggleLifecycleRuntime.notifyFrostReady]
+    [scheduleTabToggleCommit]
   );
 };

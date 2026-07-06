@@ -10,10 +10,7 @@ import { useResultsPresentationToggleCoordinator } from './use-results-presentat
 
 type ResultsPresentationInteractionRuntime = Pick<
   ResultsPresentationRuntimeOwner,
-  | 'pendingTogglePresentationIntentId'
-  | 'scheduleToggleCommit'
-  | 'notifyFrostReady'
-  | 'cancelToggleInteraction'
+  'pendingTogglePresentationIntentId' | 'scheduleToggleCommit' | 'cancelToggleInteraction'
 > & {
   interactionModel: ResultsInteractionModel;
 };
@@ -63,7 +60,6 @@ export const useResultsPresentationInteractionRuntime = ({
       createResultsPresentationInteractionRuntimeValue({
         pendingTogglePresentationIntentId: toggleLifecycleRuntime.pendingTogglePresentationIntentId,
         scheduleToggleCommit: toggleLifecycleRuntime.scheduleToggleCommit,
-        notifyFrostReady: toggleLifecycleRuntime.notifyFrostReady,
         cancelToggleInteraction: toggleLifecycleRuntime.cancelToggleInteraction,
         interactionModel,
       }),

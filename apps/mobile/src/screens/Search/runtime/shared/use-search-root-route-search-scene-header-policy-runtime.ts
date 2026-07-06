@@ -46,6 +46,7 @@ export const useSearchRootRouteSearchSceneHeaderPolicyRuntime = ({
     useSearchRootSearchSceneInteractionLoadingPolicyRuntime({
       searchSheetContentLaneKind:
         routeSearchSceneDataStateRuntime.routeSearchSceneSearchSheetContentLane.kind,
+      searchRuntimeBus: sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus,
     });
 
   return {

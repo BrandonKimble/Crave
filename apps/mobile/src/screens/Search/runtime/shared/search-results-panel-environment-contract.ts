@@ -21,7 +21,6 @@ export type RuntimeMechanismEmitter = (
 ) => void;
 
 export type ResultsPanelVisualRuntimeModel = {
-  resultsWashAnimatedStyle: StyleProp<ViewStyle>;
   resultsSheetVisibilityAnimatedStyle: StyleProp<ViewStyle>;
   shouldDisableResultsSheetInteraction: boolean;
   resultsScrollRef: React.RefObject<FlashListRef<ResultsListItem> | null>;

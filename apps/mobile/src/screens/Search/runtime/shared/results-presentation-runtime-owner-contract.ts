@@ -30,7 +30,6 @@ export type ResultsPresentationRuntimeOwner = {
   searchSurfaceResultsTransactionKey: string | null;
   pendingTogglePresentationIntentId: string | null;
   scheduleToggleCommit: ScheduleToggleCommit;
-  notifyFrostReady: (intentId: string) => void;
   cancelToggleInteraction: () => void;
   beginSearchThisAreaPresentationPending: () => void;
   stageSearchSurfaceResultsTransaction: (snapshot: SearchSurfaceResultsEnterTransaction) => void;
