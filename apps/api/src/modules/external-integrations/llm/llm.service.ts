@@ -1072,6 +1072,43 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     return this.decorateSearchQueryAnalysis(analysis, false, null);
   }
 
+  /**
+   * BATCH-MODE request builder for the main collection prompt: the exact
+   * contents + config an interactive processContent call would send, minus the
+   * cached-content reference (a Gemini batch may run hours later — an expired
+   * explicit cache would fail the whole item, so batch requests carry the
+   * system prompt INLINE; the Batch API's 50% discount applies to those tokens).
+   */
+  buildCollectionBatchRequest(input: LLMModelInput): {
+    contents: string;
+    config: Record<string, unknown>;
+  } {
+    const contents = this.buildProcessingPrompt(input);
+    const config: Record<string, unknown> = {
+      temperature: this.llmConfig.temperature,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: this.llmConfig.candidateCount,
+      maxOutputTokens: this.llmConfig.maxTokens || 65536,
+      responseMimeType: 'application/json',
+      responseJsonSchema: COLLECTION_RESPONSE_JSON_SCHEMA,
+      systemInstruction: this.systemPrompt,
+    };
+    const thinking = this.getThinkingConfig(this.llmConfig.model, 'content');
+    if (thinking) {
+      config.thinkingConfig = thinking;
+    }
+    return { contents, config };
+  }
+
+  /**
+   * BATCH-MODE response parser: same parseResponse path the interactive call
+   * uses, applied to a stored GenerateContentResponse from a batch item.
+   */
+  parseCollectionBatchResponse(response: unknown): LLMOutputStructure {
+    return this.parseResponse(response as LLMApiResponse);
+  }
+
   getSystemPrompt(): string {
     return this.systemPrompt;
   }

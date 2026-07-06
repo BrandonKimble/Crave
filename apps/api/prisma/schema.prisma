@@ -201,6 +201,42 @@ model FoodCategoryEdge {
   @@map("derived_food_category_edges")
 }
 
+/// Gemini Batch API job tracking (COLLECTION_LLM_MODE=batch): a job's items
+/// carry everything needed to resume the pipeline when results land — the
+/// poller cron ingests via the purpose-keyed registry in GeminiBatchService.
+model LlmBatchJob {
+  jobId           String    @id @default(dbgenerated("gen_random_uuid()")) @map("job_id") @db.Uuid
+  purpose         String    @db.VarChar(64)
+  model           String    @db.VarChar(128)
+  providerJobName String?   @map("provider_job_name") @db.VarChar(256)
+  status          String    @default("pending") @db.VarChar(32)
+  requestCount    Int       @map("request_count")
+  resumeContext   Json?     @map("resume_context")
+  error           String?
+  submittedAt     DateTime? @map("submitted_at")
+  completedAt     DateTime? @map("completed_at")
+  ingestedAt      DateTime? @map("ingested_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  items           LlmBatchJobItem[]
+
+  @@index([status], map: "idx_llm_batch_jobs_status")
+  @@map("llm_batch_jobs")
+}
+
+model LlmBatchJobItem {
+  jobId     String  @map("job_id") @db.Uuid
+  itemIndex Int     @map("item_index")
+  itemKey   String  @map("item_key") @db.VarChar(256)
+  request   Json
+  response  Json?
+  error     String?
+  job       LlmBatchJob @relation(fields: [jobId], references: [jobId], onDelete: Cascade)
+
+  @@id([jobId, itemIndex])
+  @@map("llm_batch_job_items")
+}
+
 model RestaurantItemMention {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   connectionId  String     @map("connection_id") @db.Uuid

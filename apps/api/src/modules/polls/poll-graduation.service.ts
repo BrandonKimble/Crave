@@ -174,6 +174,9 @@ export class PollGraduationService {
     const batchId = `poll-${pollId}-${Date.now()}`;
     const result = await this.extractionPipeline.processPosts({
       pipeline: 'poll-thread',
+      // Synchronous consumer: the gazetteer backfill right below expects the
+      // graduated entities to already exist — never defer this to a batch job.
+      llmMode: 'interactive',
       platform: 'poll',
       community: marketKey,
       llmPosts: [llmPost],

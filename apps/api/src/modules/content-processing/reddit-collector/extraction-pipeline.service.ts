@@ -8,8 +8,13 @@ import {
 import {
   LLMConcurrentProcessingService,
   ProcessingResult as ConcurrentProcessingResult,
+  type ChunkProcessingResult,
 } from '../../external-integrations/llm/llm-concurrent-processing.service';
 import { LLMService } from '../../external-integrations/llm/llm.service';
+import {
+  GeminiBatchService,
+  type BatchIngestItem,
+} from '../../external-integrations/llm/gemini-batch.service';
 import {
   EnrichedLLMMention,
   EnrichedLLMOutputStructure,
@@ -17,6 +22,7 @@ import {
   LLMMention,
   LLMPost,
   LLMProcessingInput,
+  LLMOutputStructure,
   LLMSourceMap,
   LLMSourceMapEntry,
 } from '../../external-integrations/llm/llm.types';
@@ -84,6 +90,11 @@ export interface StoredExtractionInputChunk {
 type ProcessingChunkResult = ChunkResult<LLMProcessingInput>;
 
 interface ExtractionPipelineBaseParams {
+  /** Per-call LLM mode override: pipelines whose CALLER consumes the result
+   *  synchronously (poll graduation re-runs the gazetteer expecting the new
+   *  entities to exist) must force 'interactive' regardless of
+   *  COLLECTION_LLM_MODE. */
+  llmMode?: 'interactive' | 'batch';
   // Reddit collection types plus `poll-thread` (close-time poll graduation, §6.3).
   pipeline: BatchJob['collectionType'] | 'poll-thread';
   community: string;
@@ -115,6 +126,10 @@ export interface ExtractionPipelineStoredInputsParams
 
 export interface ExtractionPipelineResult {
   extractionRunId: string;
+  /** COLLECTION_LLM_MODE=batch: the LLM work was submitted as a Gemini batch
+   *  job; mentions/dbResult are ZEROED stubs and the pipeline resumes via the
+   *  batch poller's ingestor when results land (hours, half price). */
+  deferredBatchJobId?: string;
   llmOutput: EnrichedLLMOutputStructure;
   rawMentionsSample: EnrichedLLMMention[];
   dbResult: UnifiedProcessingDatabaseResult;
@@ -145,11 +160,28 @@ export class ExtractionPipelineService implements OnModuleInit {
     private readonly llmService: LLMService,
     private readonly collectionEvidenceService: CollectionEvidenceService,
     private readonly unifiedProcessingService: UnifiedProcessingService,
+    private readonly geminiBatchService: GeminiBatchService,
   ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('ExtractionPipelineService');
+    // COLLECTION_LLM_MODE=batch defers every chunk's LLM call to a Gemini
+    // batch job (~50% price; ≤24h SLA — every collection flow is async, none
+    // blocks a user). 'interactive' (default) keeps the live path for dev/test
+    // runs that shouldn't wait on batch turnaround.
+    this.collectionLlmMode =
+      process.env.COLLECTION_LLM_MODE?.trim().toLowerCase() === 'batch'
+        ? 'batch'
+        : 'interactive';
+    this.geminiBatchService.registerIngestor(
+      'collection_extraction',
+      async ({ jobId, resumeContext, items }) => {
+        await this.ingestCollectionBatch(jobId, resumeContext, items);
+      },
+    );
   }
+
+  private collectionLlmMode: 'interactive' | 'batch' = 'interactive';
 
   async processPosts(
     params: ExtractionPipelinePostsParams,
@@ -256,6 +288,10 @@ export class ExtractionPipelineService implements OnModuleInit {
           },
         });
 
+      if (this.collectionLlmMode === 'batch') {
+        return await this.deferChunkPlanToBatch(params, extractionRunId);
+      }
+
       const llmStartTime = Date.now();
       const processingResult: ConcurrentProcessingResult<LLMProcessingInput> =
         await this.llmConcurrentService.processConcurrent(
@@ -277,132 +313,18 @@ export class ExtractionPipelineService implements OnModuleInit {
         );
       }
 
-      const flatMentions: HydratingMention[] =
-        processingResult.chunkResults.flatMap((chunkResult) =>
-          (chunkResult.result?.mentions ?? []).map((mention) => ({
-            ...mention,
-            source_id: this.resolveCanonicalSourceIdForMention(
-              mention.source_id,
-              chunkResult.input,
-              chunkResult.chunkId,
-            ),
-            __inputChunkId: chunkResult.chunkId,
-            __extractionInputId:
-              extractionInputIdByChunkId.get(chunkResult.chunkId) ?? null,
-          })),
-        );
-
-      const enrichment = this.buildSourceEnrichmentMaps(params.llmPosts);
-      const llmOutput: EnrichedLLMOutputStructure = {
-        mentions: flatMentions.map((mention) => {
-          const canonicalSourceId = mention.source_id?.trim();
-          if (!canonicalSourceId) {
-            throw new Error('Missing source_id in model output');
-          }
-          const metadata = enrichment.metadataById.get(canonicalSourceId);
-          if (!metadata) {
-            throw new Error(
-              `Unable to resolve source metadata for source_id=${canonicalSourceId}`,
-            );
-          }
-          const contentOverride =
-            enrichment.contentById.get(canonicalSourceId) ??
-            mention.source_content ??
-            '';
-          const postContext =
-            enrichment.postContextBySource.get(canonicalSourceId) ?? '';
-          const sourceType =
-            metadata.type ??
-            mention.source_type ??
-            this.inferSourceTypeFromSourceId(canonicalSourceId);
-          if (!sourceType) {
-            throw new Error(
-              `Unable to resolve source type for mention source_id=${canonicalSourceId}`,
-            );
-          }
-          const sourceUps = metadata.ups ?? mention.source_ups ?? 0;
-          const sourceUrl = metadata.url ?? mention.source_url ?? '';
-          const createdAt =
-            metadata.created_at ??
-            mention.source_created_at ??
-            new Date().toISOString();
-          const subreddit =
-            metadata.subreddit ?? mention.subreddit ?? 'unknown';
-          const sourceDocumentId = sourceType
-            ? (params.sourceDocumentIdBySourceKey.get(
-                buildSourceDocumentKey(sourceType, canonicalSourceId),
-              ) ?? null)
-            : null;
-
-          return {
-            ...mention,
-            source_id: canonicalSourceId,
-            source_content: contentOverride,
-            source_type: sourceType,
-            source_ups: sourceUps,
-            source_url: sourceUrl,
-            source_created_at: createdAt,
-            subreddit,
-            post_context: postContext,
-            __sourceDocumentId: sourceDocumentId,
-          };
-        }),
-      };
-
-      this.ensureSurfaceDefaults(llmOutput.mentions);
-      this.normalizeRestaurantNames(llmOutput.mentions, enrichment);
-      this.dropDuplicateRestaurantMentions(llmOutput.mentions, enrichment);
-
-      const rawMentionsSample = [...llmOutput.mentions];
-      const llmProcessingTimeMs = Date.now() - llmStartTime;
-
-      const dbStartTime = Date.now();
-      const sourceBreakdown = this.buildSourceBreakdown(
-        params.baseParams.pipeline,
-        params.llmPosts.length,
-      );
-      const temporalRange =
-        this.computeTemporalRange(params.llmPosts) ?? undefined;
-      const extractionTrace: ExtractionTraceContext = {
-        extractionRunId,
-        sourceDocumentIdBySourceKey: params.sourceDocumentIdBySourceKey,
-        extractionInputIdByChunkId,
-      };
-
-      const dbResult = await this.unifiedProcessingService.processLLMOutput(
-        {
-          mentions: llmOutput.mentions,
-          sourceMetadata: {
-            batchId: params.baseParams.batchId,
-            collectionType: params.baseParams.pipeline,
-            subreddit: params.baseParams.community,
-            searchEntity: params.baseParams.searchEntity,
-            sourceBreakdown,
-            temporalRange,
-            extractionTrace,
-          },
-        },
-        {
-          skipSourceLedgerDedupe: params.baseParams.skipSourceLedgerDedupe,
-        },
-      );
-      const dbProcessingTimeMs = Date.now() - dbStartTime;
-
-      await this.collectionEvidenceService.markExtractionRunCompleted(
-        extractionRunId,
-      );
-
-      return {
-        extractionRunId,
-        llmOutput,
-        rawMentionsSample,
-        dbResult,
-        llmProcessingTimeMs,
-        dbProcessingTimeMs,
+      return await this.completeChunkPlan({
+        baseParams: params.baseParams,
+        llmPosts: params.llmPosts,
+        chunkMetadata: params.chunkData.metadata,
         chunkDurationMs: params.chunkDurationMs,
-        chunkStats: this.summarizeChunkMetadata(params.chunkData.metadata),
+        sourceDocumentIdBySourceKey: params.sourceDocumentIdBySourceKey,
+        extractionRunId,
+        extractionInputIdByChunkId,
+        chunkResults: processingResult.chunkResults,
         processingMetrics: processingResult.metrics,
-      };
+        llmProcessingTimeMs: Date.now() - llmStartTime,
+      });
     } catch (error) {
       if (extractionRunId) {
         await this.collectionEvidenceService.markExtractionRunFailed(
@@ -412,6 +334,368 @@ export class ExtractionPipelineService implements OnModuleInit {
       }
       throw error;
     }
+  }
+
+  /**
+   * BATCH MODE: persist the run's chunk inputs (rawOutput null), submit every
+   * chunk as one Gemini batch job (inline system prompt; ~50% price), and stash
+   * a self-contained resume context. The poller's ingestor picks up from
+   * completeChunkPlan when results land — identical downstream to interactive.
+   */
+  private async deferChunkPlanToBatch(
+    params: {
+      baseParams: ExtractionPipelineBaseParams;
+      llmPosts: LLMPost[];
+      chunkData: ProcessingChunkResult;
+      sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>;
+      activateDocumentIds: string[];
+      chunkDurationMs: number;
+    },
+    extractionRunId: string,
+  ): Promise<ExtractionPipelineResult> {
+    const stubs: ChunkProcessingResult<LLMProcessingInput>[] =
+      params.chunkData.chunks.map((input, index) => {
+        const metadata = params.chunkData.metadata[index];
+        return {
+          success: false,
+          result: undefined,
+          chunkId: metadata?.chunkId ?? `chunk_${index}`,
+          commentCount: metadata?.commentCount ?? 0,
+          duration: 0,
+          metadata: metadata ?? {
+            chunkId: `chunk_${index}`,
+            commentCount: 0,
+            rootCommentScore: 0,
+            estimatedProcessingTime: 0,
+            threadRootId: `chunk_${index}`,
+          },
+          input,
+        };
+      });
+
+    const extractionInputIdByChunkId =
+      await this.collectionEvidenceService.persistExtractionInputs({
+        extractionRunId,
+        chunkResults: stubs,
+        sourceDocumentIdBySourceKey: params.sourceDocumentIdBySourceKey,
+      });
+
+    const jobId = await this.geminiBatchService.submit({
+      purpose: 'collection_extraction',
+      model: this.llmService.getContentModel(),
+      items: stubs.map((stub) => ({
+        key: stub.chunkId,
+        ...this.llmService.buildCollectionBatchRequest(stub.input),
+      })),
+      resumeContext: {
+        extractionRunId,
+        baseParams: {
+          pipeline: params.baseParams.pipeline,
+          batchId: params.baseParams.batchId,
+          community: params.baseParams.community,
+          platform: params.baseParams.platform ?? 'reddit',
+          searchEntity: params.baseParams.searchEntity ?? null,
+          skipSourceLedgerDedupe:
+            params.baseParams.skipSourceLedgerDedupe ?? false,
+          collectionRunScopeKey:
+            params.baseParams.collectionRunScopeKey ?? null,
+          parentJobId: params.baseParams.parentJobId ?? null,
+          runMetadata: params.baseParams.runMetadata ?? null,
+        },
+        llmPosts: params.llmPosts,
+        chunkInputs: stubs.map((stub) => ({
+          chunkId: stub.chunkId,
+          input: stub.input,
+          metadata: stub.metadata,
+        })),
+        sourceDocEntries: [...params.sourceDocumentIdBySourceKey.entries()],
+        inputIdEntries: [...extractionInputIdByChunkId.entries()],
+        activateDocumentIds: params.activateDocumentIds,
+        chunkDurationMs: params.chunkDurationMs,
+      },
+    });
+
+    this.logger.info('Extraction deferred to Gemini batch', {
+      extractionRunId,
+      batchJobId: jobId,
+      chunkCount: stubs.length,
+    });
+
+    return {
+      extractionRunId,
+      deferredBatchJobId: jobId,
+      llmOutput: { mentions: [] },
+      rawMentionsSample: [],
+      dbResult: {
+        entitiesCreated: 0,
+        connectionsCreated: 0,
+        affectedConnectionIds: [],
+        affectedRestaurantIds: [],
+      },
+      llmProcessingTimeMs: 0,
+      dbProcessingTimeMs: 0,
+      chunkDurationMs: params.chunkDurationMs,
+      chunkStats: this.summarizeChunkMetadata(params.chunkData.metadata),
+      processingMetrics: {
+        totalDuration: 0,
+        chunksProcessed: stubs.length,
+        successRate: 0,
+        topCommentsCount: 0,
+        averageChunkTime: 0,
+        fastestChunk: 0,
+        slowestChunk: 0,
+      },
+    };
+  }
+
+  /** Batch-poller ingestor: rebuild the chunk results from the stored resume
+   *  context + item responses, then run the SAME post-LLM half. */
+  private async ingestCollectionBatch(
+    jobId: string,
+    resumeContext: unknown,
+    items: BatchIngestItem[],
+  ): Promise<void> {
+    const context = resumeContext as {
+      extractionRunId: string;
+      baseParams: ExtractionPipelineBaseParams;
+      llmPosts: LLMPost[];
+      chunkInputs: {
+        chunkId: string;
+        input: LLMProcessingInput;
+        metadata: ChunkMetadata;
+      }[];
+      sourceDocEntries: [SourceDocumentKey, string][];
+      inputIdEntries: [string, string][];
+      activateDocumentIds: string[];
+      chunkDurationMs: number;
+    };
+    const inputByChunkId = new Map(
+      context.chunkInputs.map((chunk) => [chunk.chunkId, chunk]),
+    );
+
+    const chunkResults: ChunkProcessingResult<LLMProcessingInput>[] = [];
+    let failures = 0;
+    for (const item of items) {
+      const chunk = inputByChunkId.get(item.itemKey);
+      if (!chunk) {
+        this.logger.warn('Batch item has no matching chunk input', {
+          jobId,
+          itemKey: item.itemKey,
+        });
+        continue;
+      }
+      let result: LLMOutputStructure | undefined;
+      if (item.response && !item.error) {
+        try {
+          result = this.llmService.parseCollectionBatchResponse(item.response);
+        } catch (error) {
+          failures += 1;
+          this.logger.warn('Batch item response failed to parse', {
+            jobId,
+            itemKey: item.itemKey,
+            error:
+              error instanceof Error
+                ? { message: error.message }
+                : { message: String(error) },
+          });
+        }
+      } else if (item.error) {
+        failures += 1;
+      }
+      chunkResults.push({
+        success: Boolean(result),
+        result,
+        chunkId: chunk.chunkId,
+        commentCount: chunk.metadata?.commentCount ?? 0,
+        duration: 0,
+        metadata: chunk.metadata,
+        input: chunk.input,
+      });
+    }
+
+    // Store the raw outputs onto the pre-persisted extraction inputs so the
+    // evidence trail matches the interactive path.
+    const inputIdByChunkId = new Map(context.inputIdEntries);
+    await this.collectionEvidenceService.updateExtractionInputOutputs({
+      extractionRunId: context.extractionRunId,
+      chunkResults,
+      inputIdByChunkId,
+    });
+
+    if (context.activateDocumentIds.length > 0) {
+      await this.collectionEvidenceService.activateRunForDocuments(
+        context.extractionRunId,
+        context.activateDocumentIds,
+      );
+    }
+
+    const succeeded = chunkResults.filter((chunk) => chunk.success).length;
+    await this.completeChunkPlan({
+      baseParams: context.baseParams,
+      llmPosts: context.llmPosts,
+      chunkMetadata: context.chunkInputs.map((chunk) => chunk.metadata),
+      chunkDurationMs: context.chunkDurationMs,
+      sourceDocumentIdBySourceKey: new Map(context.sourceDocEntries),
+      extractionRunId: context.extractionRunId,
+      extractionInputIdByChunkId: inputIdByChunkId,
+      chunkResults,
+      processingMetrics: {
+        totalDuration: 0,
+        chunksProcessed: chunkResults.length,
+        successRate: chunkResults.length ? succeeded / chunkResults.length : 0,
+        topCommentsCount: 0,
+        averageChunkTime: 0,
+        fastestChunk: 0,
+        slowestChunk: 0,
+      },
+      llmProcessingTimeMs: 0,
+    });
+    this.logger.info('Batch extraction ingested', {
+      jobId,
+      extractionRunId: context.extractionRunId,
+      chunks: chunkResults.length,
+      failures,
+    });
+  }
+
+  /** POST-LLM half of the chunk plan — shared by the interactive path and the
+   *  batch ingestor (identical downstream no matter how the LLM ran). */
+  private async completeChunkPlan(args: {
+    baseParams: ExtractionPipelineBaseParams;
+    llmPosts: LLMPost[];
+    chunkMetadata: ChunkMetadata[];
+    chunkDurationMs: number;
+    sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>;
+    extractionRunId: string;
+    extractionInputIdByChunkId: Map<string, string>;
+    chunkResults: ChunkProcessingResult<LLMProcessingInput>[];
+    processingMetrics: ConcurrentProcessingResult<LLMProcessingInput>['metrics'];
+    llmProcessingTimeMs: number;
+  }): Promise<ExtractionPipelineResult> {
+    const flatMentions: HydratingMention[] = args.chunkResults.flatMap(
+      (chunkResult) =>
+        (chunkResult.result?.mentions ?? []).map((mention) => ({
+          ...mention,
+          source_id: this.resolveCanonicalSourceIdForMention(
+            mention.source_id,
+            chunkResult.input,
+            chunkResult.chunkId,
+          ),
+          __inputChunkId: chunkResult.chunkId,
+          __extractionInputId:
+            args.extractionInputIdByChunkId.get(chunkResult.chunkId) ?? null,
+        })),
+    );
+
+    const enrichment = this.buildSourceEnrichmentMaps(args.llmPosts);
+    const llmOutput: EnrichedLLMOutputStructure = {
+      mentions: flatMentions.map((mention) => {
+        const canonicalSourceId = mention.source_id?.trim();
+        if (!canonicalSourceId) {
+          throw new Error('Missing source_id in model output');
+        }
+        const metadata = enrichment.metadataById.get(canonicalSourceId);
+        if (!metadata) {
+          throw new Error(
+            `Unable to resolve source metadata for source_id=${canonicalSourceId}`,
+          );
+        }
+        const contentOverride =
+          enrichment.contentById.get(canonicalSourceId) ??
+          mention.source_content ??
+          '';
+        const postContext =
+          enrichment.postContextBySource.get(canonicalSourceId) ?? '';
+        const sourceType =
+          metadata.type ??
+          mention.source_type ??
+          this.inferSourceTypeFromSourceId(canonicalSourceId);
+        if (!sourceType) {
+          throw new Error(
+            `Unable to resolve source type for mention source_id=${canonicalSourceId}`,
+          );
+        }
+        const sourceUps = metadata.ups ?? mention.source_ups ?? 0;
+        const sourceUrl = metadata.url ?? mention.source_url ?? '';
+        const createdAt =
+          metadata.created_at ??
+          mention.source_created_at ??
+          new Date().toISOString();
+        const subreddit = metadata.subreddit ?? mention.subreddit ?? 'unknown';
+        const sourceDocumentId = sourceType
+          ? (args.sourceDocumentIdBySourceKey.get(
+              buildSourceDocumentKey(sourceType, canonicalSourceId),
+            ) ?? null)
+          : null;
+
+        return {
+          ...mention,
+          source_id: canonicalSourceId,
+          source_content: contentOverride,
+          source_type: sourceType,
+          source_ups: sourceUps,
+          source_url: sourceUrl,
+          source_created_at: createdAt,
+          subreddit,
+          post_context: postContext,
+          __sourceDocumentId: sourceDocumentId,
+        };
+      }),
+    };
+
+    this.ensureSurfaceDefaults(llmOutput.mentions);
+    this.normalizeRestaurantNames(llmOutput.mentions, enrichment);
+    this.dropDuplicateRestaurantMentions(llmOutput.mentions, enrichment);
+
+    const rawMentionsSample = [...llmOutput.mentions];
+    const llmProcessingTimeMs = args.llmProcessingTimeMs;
+
+    const dbStartTime = Date.now();
+    const sourceBreakdown = this.buildSourceBreakdown(
+      args.baseParams.pipeline,
+      args.llmPosts.length,
+    );
+    const temporalRange = this.computeTemporalRange(args.llmPosts) ?? undefined;
+    const extractionTrace: ExtractionTraceContext = {
+      extractionRunId: args.extractionRunId,
+      sourceDocumentIdBySourceKey: args.sourceDocumentIdBySourceKey,
+      extractionInputIdByChunkId: args.extractionInputIdByChunkId,
+    };
+
+    const dbResult = await this.unifiedProcessingService.processLLMOutput(
+      {
+        mentions: llmOutput.mentions,
+        sourceMetadata: {
+          batchId: args.baseParams.batchId,
+          collectionType: args.baseParams.pipeline,
+          subreddit: args.baseParams.community,
+          searchEntity: args.baseParams.searchEntity,
+          sourceBreakdown,
+          temporalRange,
+          extractionTrace,
+        },
+      },
+      {
+        skipSourceLedgerDedupe: args.baseParams.skipSourceLedgerDedupe,
+      },
+    );
+    const dbProcessingTimeMs = Date.now() - dbStartTime;
+
+    await this.collectionEvidenceService.markExtractionRunCompleted(
+      args.extractionRunId,
+    );
+
+    return {
+      extractionRunId: args.extractionRunId,
+      llmOutput,
+      rawMentionsSample,
+      dbResult,
+      llmProcessingTimeMs,
+      dbProcessingTimeMs,
+      chunkDurationMs: args.chunkDurationMs,
+      chunkStats: this.summarizeChunkMetadata(args.chunkMetadata),
+      processingMetrics: args.processingMetrics,
+    };
   }
 
   private buildSourceBreakdown(

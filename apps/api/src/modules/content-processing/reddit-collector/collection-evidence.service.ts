@@ -125,6 +125,26 @@ export class CollectionEvidenceService implements OnModuleInit {
     return run.extractionRunId;
   }
 
+  /** Batch-mode companion to persistExtractionInputs: the inputs were persisted
+   *  BEFORE the LLM ran (rawOutput null); fill in the outputs once the Gemini
+   *  batch results land so the evidence trail matches the interactive path. */
+  async updateExtractionInputOutputs(params: {
+    extractionRunId: string;
+    chunkResults: ChunkProcessingResult<LLMProcessingInput>[];
+    inputIdByChunkId: Map<string, string>;
+  }): Promise<void> {
+    for (const chunk of params.chunkResults) {
+      const inputId = params.inputIdByChunkId.get(chunk.chunkId);
+      if (!inputId || !chunk.result) continue;
+      await this.prismaService.extractionInput.update({
+        where: { inputId },
+        data: {
+          rawOutput: chunk.result as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }
+  }
+
   async persistExtractionInputs(params: {
     extractionRunId: string;
     chunkResults: ChunkProcessingResult<LLMProcessingInput>[];
