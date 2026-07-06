@@ -235,6 +235,36 @@ reprojectCatalogUnderCoverIfReady → presentation arm → first ramp tick. ALSO
 toggle-back corruption (R3) truncates every multi-toggle distribution — pull R3 forward if
 it keeps blocking R2's p90 gate.
 
+### D6d — THE ENDGAME: single native lifecycle for every variant swap (designed 2026-07-05)
+
+**Diagnosis chain complete.** After U1+U2a (27596f09) the toggle's residual ~140ms is the
+LAST structural defect: the toggle runs TWO overlapping native lifecycles —
+(a) the redraw/reproject path (`beginInteractionFadeOut` → `reprojectCatalogUnderCoverIfReady`
+→ `presentation_toggle_settled`) and (b) the enter machine (executionBatch → mounted_hidden
+election → start token → enter_started). The enter lane's mountedHidden election waits for
+the frame with its matching executionBatch, which today leaves JS only at admit-time.
+
+**Target shape:** ONE lifecycle — the enter machine — for enter, toggle, rerun, dismiss:
+
+1. Coordinator commit (U2 marker #1): publish stores AND flush the mutation frame
+   IMMEDIATELY (U2b) — the frame with the new executionBatch leaves at commit; the render
+   owner's admission must emit (not defer) covered structural frames on the commit path.
+2. Native applies under cover → mounted_hidden election → JS `markRedrawNativeMarkerFrameReady`
+   → the both-ready joint opens → cardsAdmit + `commitEnterStart` (U2a, done) on the same
+   tick → native ramp fires the moment srcReady flips. Expected pair-gap ≈ enter lane's ~3ms.
+3. DELETE the parallel path: `reprojectCatalogUnderCoverIfReady`'s toggle role +
+   `presentation_toggle_settled` fold into the enter settle; `beginInteractionFadeOut` stays
+   (press-up presentation fade only — it is not a data lifecycle). Rerun (search-this-area)
+   and dismiss ride the same machine (dismiss = the exit lifecycle it already has).
+4. Contracts: a toggle that produces TWO native settles (redraw + enter) becomes a contract
+   violation during the migration window; delete the redraw settle path once silent.
+
+**Gates (R4 pulls in):** pair Δ ≤ 1 frame p90×20 ALL lanes incl. toggle-back; zero MapLoad
+across a 50-toggle torture; zero [R3RECON] corrections steady-state (the ledger stays as the
+structural backstop); RED self-mutations per contract. This chunk is native reveal-machinery
+surgery on SearchMapRenderController.swift + the render-owner admission + the enter runtime —
+sized for a focused session with this spec + the [NGAP]/[NGAPJS]/[T1DBG] kit.
+
 ### D6 — FULL-FLOW AUDIT VERDICT (2026-07-05): keep the call layer, REBUILD the middle
 
 Owner-directed audit (4 agents: data-flow · git archaeology · API semantics · identity keys)
