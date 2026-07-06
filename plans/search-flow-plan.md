@@ -266,6 +266,12 @@ Two defects found + fixed DURING validation (same stale-lane class):
    over a stale map. Fix: coverage carries openNow (JS hours post-filter) /
    priceLevels (SQL) / rising (sort), and the coverage requestKey gains a filters segment
    (frame fingerprint inherits). Both directions screenshot-verified.
+4. (owner-reported post-ship, fixed ecc84d77) The PIN RANK badges ignored rising: the
+   visual-candidate sort hard-coded craveScoreExact DESC, so the list re-sorted by rising
+   while the map kept crave order. Fix: the sort takes rankOrder ('crave'|'rising') from
+   the same bus snapshot as the coverage filters key — rising DESC (missing last), then
+   the existing craveScoreExact tie-break chain. Both directions screenshot-verified
+   (rising ON: Legends=7 rising-tinted; OFF: Ambassadors=2/Milk Bar=12/HOWOO=18 restored).
 
 **OPEN (one acceptance item, root-caused partway):** the EMPTY variant (0-row page) never
 opens the reveal joint — cover holds forever (fails closed; watchdogs stay SILENT — no
