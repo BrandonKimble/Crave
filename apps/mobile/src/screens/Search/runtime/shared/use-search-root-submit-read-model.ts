@@ -33,7 +33,6 @@ export const useSearchRootSubmitReadModel = ({
       isLoadingMore: rootDataPlaneRuntime.resultsArrivalState.isLoadingMore,
       openNow: rootDataPlaneRuntime.filterStateRuntime.openNow,
       priceLevels: rootDataPlaneRuntime.filterStateRuntime.priceLevels,
-      votes100Plus: rootDataPlaneRuntime.filterStateRuntime.votes100Plus,
       risingActive: rootDataPlaneRuntime.filterStateRuntime.risingActive,
     }),
     [
@@ -43,7 +42,6 @@ export const useSearchRootSubmitReadModel = ({
       rootPrimitivesRuntime.searchState.query,
       rootDataPlaneRuntime.filterStateRuntime.openNow,
       rootDataPlaneRuntime.filterStateRuntime.priceLevels,
-      rootDataPlaneRuntime.filterStateRuntime.votes100Plus,
       rootDataPlaneRuntime.filterStateRuntime.risingActive,
       rootDataPlaneRuntime.resultsArrivalState.canLoadMore,
       rootDataPlaneRuntime.resultsArrivalState.currentPage,

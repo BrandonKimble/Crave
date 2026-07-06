@@ -10,7 +10,7 @@ import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime
 import type { Coordinate, MapBounds, NaturalSearchRequest } from '../../../types';
 import type { StructuredSearchRequest } from '../../../services/search';
 import { logger } from '../../../utils';
-import { DEFAULT_PAGE_SIZE, MINIMUM_VOTES_FILTER } from '../constants/search';
+import { DEFAULT_PAGE_SIZE } from '../constants/search';
 import type { MapboxMapRef } from '../components/search-map';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
@@ -21,7 +21,7 @@ import type { SearchSubmitActiveOperationTuple } from './use-search-submit-respo
 export type StructuredSearchFilters = {
   openNow?: boolean;
   priceLevels?: number[] | null;
-  minimumVotes?: number | null;
+  includeSimilar?: boolean;
   rising?: boolean;
 };
 
@@ -49,7 +49,7 @@ export type PrepareNaturalSearchAttemptPayloadOptions = {
   submissionContext?: NaturalSearchRequest['submissionContext'];
   openNow?: boolean;
   priceLevels?: number[] | null;
-  minimumVotes?: number | null;
+  includeSimilar?: boolean;
   rising?: boolean;
   forceFreshBounds?: boolean;
 };
@@ -63,7 +63,6 @@ type UseSearchRequestPreparationOwnerArgs = {
   isLoadingMore: boolean;
   openNow: boolean;
   priceLevels: number[];
-  votes100Plus: boolean;
   risingActive: boolean;
   searchRuntimeBus: SearchRuntimeBus;
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
@@ -138,7 +137,6 @@ export const useSearchRequestPreparationOwner = ({
   isLoadingMore,
   openNow,
   priceLevels,
-  votes100Plus,
   risingActive,
   searchRuntimeBus,
   latestBoundsRef,
@@ -433,12 +431,12 @@ export const useSearchRequestPreparationOwner = ({
       const effectivePriceLevels =
         filters.priceLevels !== undefined ? filters.priceLevels : priceLevels;
       const normalizedPriceLevels = normalizePriceFilter(effectivePriceLevels);
-      const effectiveMinimumVotes =
-        filters.minimumVotes !== undefined
-          ? filters.minimumVotes
-          : votes100Plus
-            ? MINIMUM_VOTES_FILTER
-            : null;
+      // includeSimilar is session-scoped bus state; the toggle publishes the optimistic
+      // value before the debounced rerun fires, so the bus read here is the effective
+      // value for this request. Always sent EXPLICITLY: false suppresses the server's
+      // silent dense widening (env default), true opts in.
+      const effectiveIncludeSimilar =
+        filters.includeSimilar ?? searchRuntimeBus.getState().includeSimilarActive;
       const effectiveRising = filters.rising ?? risingActive;
 
       if (effectiveOpenNow) {
@@ -449,8 +447,12 @@ export const useSearchRequestPreparationOwner = ({
         payload.priceLevels = normalizedPriceLevels;
       }
 
-      if (typeof effectiveMinimumVotes === 'number' && effectiveMinimumVotes > 0) {
-        payload.minimumVotes = effectiveMinimumVotes;
+      // TODO(shared-types): once the API's include-similar contract is live on main,
+      // send this ALWAYS-EXPLICITLY (false suppresses the server env default's silent
+      // dense widening). Today's backend rejects unknown properties, so the field is
+      // attached only when it is true or the caller explicitly overrode it.
+      if (effectiveIncludeSimilar || filters.includeSimilar !== undefined) {
+        payload.includeSimilar = effectiveIncludeSimilar;
       }
 
       if (effectiveRising) {
@@ -494,9 +496,9 @@ export const useSearchRequestPreparationOwner = ({
       priceLevels,
       resolveRequestBounds,
       risingActive,
+      searchRuntimeBus,
       shouldLogSearchResponseTimings,
       userLocationRef,
-      votes100Plus,
     ]
   );
 
@@ -566,7 +568,7 @@ export const useSearchRequestPreparationOwner = ({
       submissionContext,
       openNow: nextOpenNow,
       priceLevels: nextPriceLevels,
-      minimumVotes,
+      includeSimilar,
       rising,
       forceFreshBounds,
     }: PrepareNaturalSearchAttemptPayloadOptions): Promise<PrepareNaturalSearchAttemptPayloadResult | null> => {
@@ -602,8 +604,14 @@ export const useSearchRequestPreparationOwner = ({
         payload.priceLevels = normalizedPriceLevels;
       }
 
-      if (typeof minimumVotes === 'number' && minimumVotes > 0) {
-        payload.minimumVotes = minimumVotes;
+      // Reads the session bus value when the caller did not pass one (e.g. search-this-area
+      // reruns keep the current toggle). TODO(shared-types): once the API contract is live,
+      // send ALWAYS-EXPLICITLY (false suppresses env-default silent dense widening); today's
+      // backend rejects unknown properties, so attach only when true or explicitly overridden.
+      const effectiveIncludeSimilar =
+        includeSimilar ?? searchRuntimeBus.getState().includeSimilarActive;
+      if (effectiveIncludeSimilar || includeSimilar !== undefined) {
+        payload.includeSimilar = effectiveIncludeSimilar;
       }
 
       if (rising) {
@@ -659,6 +667,7 @@ export const useSearchRequestPreparationOwner = ({
       logForceFreshBoundsTelemetry,
       logSearchPhase,
       resolveRequestBounds,
+      searchRuntimeBus,
       setError,
       userLocationRef,
     ]

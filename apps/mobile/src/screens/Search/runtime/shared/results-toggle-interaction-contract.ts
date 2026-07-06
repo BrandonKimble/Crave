@@ -1,7 +1,7 @@
 export type ToggleInteractionKind =
   | 'tab_switch'
   | 'filter_open_now'
-  | 'filter_votes'
+  | 'filter_include_similar'
   | 'filter_rising'
   | 'filter_price';
 

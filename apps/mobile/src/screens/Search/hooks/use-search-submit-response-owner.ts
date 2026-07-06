@@ -30,6 +30,7 @@ import {
   type SearchMountedResultsMarkerProjectionByTab,
 } from '../runtime/shared/search-mounted-results-data-store';
 import { buildResultsIdentityKey } from '../runtime/shared/results-identity-key';
+import { buildIncludeSimilarVariantResponse } from '../runtime/shared/search-include-similar-variant';
 import type { SegmentValue } from '../constants/search';
 import {
   resolveSubmissionDefaultTab,
@@ -1793,10 +1794,102 @@ export const useSearchSubmitResponseOwner = ({
     [executeSearchResponseLifecycle, prepareSearchResponseLifecycleEntry]
   );
 
+  // "Include similar" page-1 zero-network flip: swap the committed results between the
+  // exact and union variants LOCALLY and republish through the SAME commit pipeline the
+  // network response path uses (deriveSearchResponseResultsCommitPatch → mounted-data
+  // publish + surface-authority publish + runtime-bus results patch) — one commit path,
+  // fresh markerProjectionByTab for both tabs. Returns false when the flip cannot be
+  // served locally (page > 1, no committed results, or no similar data on the response);
+  // the caller then falls back to a network rerun with the new includeSimilar value.
+  const applyIncludeSimilarLocalSwap = React.useCallback(
+    ({
+      nextIncludeSimilar,
+      targetTab,
+    }: {
+      nextIncludeSimilar: boolean;
+      targetTab: ResultsActiveTab;
+    }): boolean => {
+      const mounted = getSearchMountedResultsDataSnapshot();
+      const currentResponse = mounted.results;
+      if (currentResponse == null) {
+        return false;
+      }
+      const currentPage = searchRuntimeBus.getState().currentPage;
+      const responsePage = currentResponse.metadata?.page ?? 1;
+      if (currentPage !== 1 || responsePage !== 1) {
+        // Mid-pagination flip: the merged multi-page set has no local similar coverage
+        // for pages > 1 — reset + network rerun (handled by the caller).
+        return false;
+      }
+      const variantResponse = buildIncludeSimilarVariantResponse(
+        currentResponse,
+        nextIncludeSimilar
+      );
+      if (variantResponse == null) {
+        return false;
+      }
+      const responseCommitProjection = deriveSearchResponseResultsCommitPatch({
+        mergedResponse: variantResponse,
+        normalizedResponse: variantResponse,
+        runtimeMode: 'natural',
+        requestId: responseApplyTokenRef.current,
+        markerPipelineActiveTab: targetTab,
+        bounds: latestBoundsRef.current,
+        userLocation: userLocationRef.current,
+      });
+      searchRuntimeBus.batch(() => {
+        publishSearchMountedResultsDataSnapshot(responseCommitProjection.committedResponse, {
+          activeTab: targetTab,
+          markerProjectionByTab: responseCommitProjection.markerProjectionByTab,
+          resultsIdentityKey: responseCommitProjection.resultsPatch.resultsIdentityCandidateKey,
+        });
+        resultsPresentationSurfaceAuthority.publish(
+          {
+            resultsRequestKey: responseCommitProjection.resultsPatch.resultsRequestKey ?? null,
+            resultsIdentityKey:
+              responseCommitProjection.resultsPatch.resultsIdentityCandidateKey ?? null,
+            resultsPreparedRowsKey: null,
+            listPreparedRowsReady: false,
+            isResultsHydrationSettled:
+              responseCommitProjection.resultsPatch.resultsIdentityCandidateKey == null,
+          },
+          'include_similar_local_swap_commit'
+        );
+        const totalFoodAvailable =
+          responseCommitProjection.committedResponse.metadata?.totalFoodResults ??
+          responseCommitProjection.mergedFoodCount;
+        const totalRestaurantAvailable =
+          responseCommitProjection.committedResponse.metadata?.totalRestaurantResults ??
+          responseCommitProjection.mergedRestaurantCount;
+        const hasMoreFood = responseCommitProjection.mergedFoodCount < totalFoodAvailable;
+        const hasMoreRestaurants =
+          responseCommitProjection.committedResponse.format === 'dual_list'
+            ? responseCommitProjection.mergedRestaurantCount < totalRestaurantAvailable
+            : false;
+        searchRuntimeBus.publish({
+          ...responseCommitProjection.resultsPatch,
+          hasMoreFood,
+          hasMoreRestaurants,
+          isPaginationExhausted: false,
+          canLoadMore: hasMoreFood || hasMoreRestaurants,
+        });
+      });
+      return true;
+    },
+    [
+      latestBoundsRef,
+      responseApplyTokenRef,
+      resultsPresentationSurfaceAuthority,
+      searchRuntimeBus,
+      userLocationRef,
+    ]
+  );
+
   return React.useMemo(
     () => ({
       handleSearchResponse,
+      applyIncludeSimilarLocalSwap,
     }),
-    [handleSearchResponse]
+    [applyIncludeSimilarLocalSwap, handleSearchResponse]
   );
 };

@@ -33,7 +33,9 @@ export interface StructuredSearchRequest {
   includeSqlPreview?: boolean;
   userLocation?: Coordinate;
   priceLevels?: number[];
-  minimumVotes?: number;
+  // TODO(shared-types): part of the include-similar contract (see types/search.ts).
+  // Always sent explicitly — false suppresses the server's silent dense widening.
+  includeSimilar?: boolean;
   risingActive?: boolean;
   submissionSource?: NaturalSearchRequest['submissionSource'];
   submissionContext?: NaturalSearchRequest['submissionContext'];

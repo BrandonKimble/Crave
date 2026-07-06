@@ -55,7 +55,7 @@ type UseSearchNaturalSubmitOwnerArgs = {
     submissionContext?: NaturalSearchRequest['submissionContext'];
     openNow?: boolean;
     priceLevels?: number[] | null;
-    minimumVotes?: number | null;
+    includeSimilar?: boolean;
     rising?: boolean;
     forceFreshBounds?: boolean;
   }) => Promise<{
@@ -183,7 +183,7 @@ export const useSearchNaturalSubmitOwner = ({
             submissionContext: naturalAttemptConfig.submissionContext,
             openNow: naturalAttemptConfig.effectiveOpenNow,
             priceLevels: naturalAttemptConfig.effectivePriceLevels,
-            minimumVotes: naturalAttemptConfig.effectiveMinimumVotes,
+            includeSimilar: naturalAttemptConfig.effectiveIncludeSimilar,
             rising: naturalAttemptConfig.effectiveRising,
             forceFreshBounds: naturalAttemptConfig.shouldForceFreshBounds,
           });

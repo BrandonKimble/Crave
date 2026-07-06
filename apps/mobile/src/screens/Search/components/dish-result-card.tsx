@@ -245,6 +245,11 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                   {dishStatusLine}
                 </View>
               ) : null}
+              {item.exactMatch === false ? (
+                <Text variant="caption" style={styles.similarMatchLabel}>
+                  Similar match
+                </Text>
+              ) : null}
               {marketLabel ? (
                 <View style={styles.coverageBadge}>
                   <Text variant="body" style={styles.coverageBadgeText}>

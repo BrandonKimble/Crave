@@ -215,7 +215,6 @@ export const useSearchStructuredSubmitOwner = ({
         filters: {
           openNow: false,
           priceLevels: [],
-          minimumVotes: 0,
         },
         forceFreshBounds: false,
       });
@@ -548,8 +547,7 @@ export const useSearchStructuredSubmitOwner = ({
   const launchFavoritesListResults = React.useCallback(
     async (params: { listId: string; listType: FavoriteListType; submittedLabel: string }) => {
       logSearchPhase('launchFavorites:start', { reset: true });
-      const targetTab: SegmentValue =
-        params.listType === 'dish' ? 'dishes' : 'restaurants';
+      const targetTab: SegmentValue = params.listType === 'dish' ? 'dishes' : 'restaurants';
       resetMapMoveFlag();
       await runManagedRequestAttempt({
         mode: 'favorites',

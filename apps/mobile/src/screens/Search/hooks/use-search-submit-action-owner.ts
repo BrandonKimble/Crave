@@ -122,7 +122,7 @@ export const useSearchSubmitActionOwner = ({
           replaceResultsInPlace: params.replaceResultsInPlace,
           openNow: params.filters?.openNow,
           priceLevels: params.filters?.priceLevels,
-          minimumVotes: params.filters?.minimumVotes,
+          includeSimilar: params.filters?.includeSimilar,
           forceFreshBounds: true,
           presentationIntentKind: params.presentationIntentKind,
           entrySurface: 'results',

@@ -11,7 +11,8 @@ export const useSearchResultsPanelFiltersRuntimeState = (
       priceButtonLabelText: state.priceButtonLabelText,
       priceButtonIsActive: state.priceButtonIsActive,
       openNow: state.openNow,
-      votesFilterActive: state.votesFilterActive,
+      includeSimilarActive: state.includeSimilarActive,
+      similarAvailableCount: state.results?.metadata?.similarAvailable ?? 0,
       risingActive: state.risingActive,
       isPriceSelectorVisible: state.isPriceSelectorVisible,
     }),
@@ -19,14 +20,16 @@ export const useSearchResultsPanelFiltersRuntimeState = (
       left.priceButtonLabelText === right.priceButtonLabelText &&
       left.priceButtonIsActive === right.priceButtonIsActive &&
       left.openNow === right.openNow &&
-      left.votesFilterActive === right.votesFilterActive &&
+      left.includeSimilarActive === right.includeSimilarActive &&
+      left.similarAvailableCount === right.similarAvailableCount &&
       left.risingActive === right.risingActive &&
       left.isPriceSelectorVisible === right.isPriceSelectorVisible,
     [
       'priceButtonLabelText',
       'priceButtonIsActive',
       'openNow',
-      'votesFilterActive',
+      'includeSimilarActive',
+      'results',
       'risingActive',
       'isPriceSelectorVisible',
     ] as const

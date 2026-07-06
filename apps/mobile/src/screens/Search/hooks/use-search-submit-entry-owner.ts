@@ -2,7 +2,7 @@ import React from 'react';
 import { Keyboard, unstable_batchedUpdates } from 'react-native';
 
 import type { NaturalSearchRequest } from '../../../types';
-import { DEFAULT_SEGMENT, MINIMUM_VOTES_FILTER } from '../constants/search';
+import { DEFAULT_SEGMENT } from '../constants/search';
 import type { SegmentValue } from '../constants/search';
 import { createEntitySubmitIntentPayload } from '../runtime/adapters/entity-adapter';
 import { createShortcutSubmitIntentPayload } from '../runtime/adapters/shortcut-adapter';
@@ -22,7 +22,7 @@ export type SearchSubmitPresentationIntentKind =
 export type SubmitSearchOptions = {
   openNow?: boolean;
   priceLevels?: number[] | null;
-  minimumVotes?: number | null;
+  includeSimilar?: boolean;
   rising?: boolean;
   page?: number;
   append?: boolean;
@@ -48,7 +48,7 @@ export type ResolveNaturalSearchAttemptConfigResult = {
   presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
   effectiveOpenNow: boolean;
   effectivePriceLevels: number[];
-  effectiveMinimumVotes: number | null;
+  effectiveIncludeSimilar: boolean;
   effectiveRising: boolean;
   shouldForceFreshBounds: boolean;
   entrySurface: SearchSubmitEntrySurface;
@@ -114,7 +114,6 @@ type UseSearchSubmitEntryOwnerArgs = {
   isLoadingMore: boolean;
   openNow: boolean;
   priceLevels: number[];
-  votes100Plus: boolean;
   risingActive: boolean;
   setActiveTab: React.Dispatch<React.SetStateAction<SegmentValue>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
@@ -186,7 +185,6 @@ export const useSearchSubmitEntryOwner = ({
   isLoadingMore,
   openNow,
   priceLevels,
-  votes100Plus,
   risingActive,
   setActiveTab,
   setError,
@@ -312,6 +310,12 @@ export const useSearchSubmitEntryOwner = ({
       presentationIntentKind,
       entrySurface,
     }: PrepareSearchRequestForegroundUiOptions) => {
+      // Same new-search reset as the natural path (see resolveNaturalSearchAttemptConfig):
+      // structured launches (shortcut/entity/favorites) from outside the results surface
+      // start with "Include similar" off; the payload build reads the bus afterwards.
+      if (entrySurface !== 'results' && searchRuntimeBus.getState().includeSimilarActive) {
+        searchRuntimeBus.publish({ includeSimilarActive: false });
+      }
       setSearchRequestInFlight(true);
       onPresentationIntentStart?.({
         kind: presentationIntentKind ?? kind,
@@ -340,6 +344,7 @@ export const useSearchSubmitEntryOwner = ({
       logSearchPhase,
       onPresentationIntentStart,
       scheduleSubmitUiLanes,
+      searchRuntimeBus,
       setError,
       setSearchRequestInFlight,
     ]
@@ -554,15 +559,21 @@ export const useSearchSubmitEntryOwner = ({
         entrySurface: options?.entrySurface,
         label: 'submitSearch',
       });
+      // A genuinely NEW search (launched outside the results surface) resets the
+      // session-scoped "Include similar" toggle to its default (off) BEFORE the
+      // effective value is read for the request payload. Reruns/filter toggles
+      // (entrySurface 'results') keep the current value.
+      if (entrySurface !== 'results' && searchRuntimeBus.getState().includeSimilarActive) {
+        searchRuntimeBus.publish({ includeSimilarActive: false });
+      }
       const effectiveOpenNow = options?.openNow ?? openNow;
       const effectivePriceLevels =
         options?.priceLevels !== undefined ? (options.priceLevels ?? []) : priceLevels;
-      const effectiveMinimumVotes =
-        options?.minimumVotes !== undefined
-          ? options.minimumVotes
-          : votes100Plus
-            ? MINIMUM_VOTES_FILTER
-            : null;
+      // includeSimilar is SESSION-scoped bus state (not persisted); the toggle publishes
+      // the optimistic value to the bus before the debounced rerun fires, so reading the
+      // bus here always sees the effective value. An explicit option still overrides.
+      const effectiveIncludeSimilar =
+        options?.includeSimilar ?? searchRuntimeBus.getState().includeSimilarActive;
       const effectiveRising = options?.rising ?? risingActive;
 
       return {
@@ -576,12 +587,19 @@ export const useSearchSubmitEntryOwner = ({
         entrySurface,
         effectiveOpenNow,
         effectivePriceLevels,
-        effectiveMinimumVotes,
+        effectiveIncludeSimilar,
         effectiveRising,
         shouldForceFreshBounds: Boolean(options?.forceFreshBounds),
       };
     },
-    [hasActiveTabPreference, openNow, preferredActiveTab, priceLevels, risingActive, votes100Plus]
+    [
+      hasActiveTabPreference,
+      openNow,
+      preferredActiveTab,
+      priceLevels,
+      risingActive,
+      searchRuntimeBus,
+    ]
   );
 
   return React.useMemo(

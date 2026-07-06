@@ -2,6 +2,9 @@ import React from 'react';
 
 import { logger } from '../../../../utils';
 import type { ScheduleToggleCommit } from '../shared/results-toggle-interaction-contract';
+import { createSearchSurfaceResultsEnterTransaction } from '../shared/search-surface-results-transaction';
+import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
+import type { ResultsPresentationRuntimeOwner } from '../shared/results-presentation-runtime-owner-contract';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 import {
   buildLevelsFromRange,
@@ -15,7 +18,7 @@ type SearchMode = 'natural' | 'shortcut' | null;
 type SegmentValue = 'dishes' | 'restaurants';
 
 type StructuredSearchFilters = {
-  minimumVotes?: number | null;
+  includeSimilar?: boolean;
   openNow?: boolean;
   priceLevels?: number[];
   rising?: boolean;
@@ -44,27 +47,36 @@ type UseQueryMutationOrchestratorArgs = {
   query: string;
   isSearchSessionActive: boolean;
   openNow: boolean;
-  votesFilterActive: boolean;
+  includeSimilarActive: boolean;
   risingActive: boolean;
   pendingPriceRange: PriceRangeTuple;
   setPendingPriceRange: (next: PriceRangeTuple) => void;
   isPriceSelectorVisible: boolean;
   setIsPriceSelectorVisible: (next: boolean) => void;
   priceLevels: number[];
-  setVotes100Plus: (next: boolean) => void;
+  setIncludeSimilar: (next: boolean) => void;
   setRisingActive: (next: boolean) => void;
   setOpenNow: (next: boolean) => void;
   setPriceLevels: (next: number[]) => void;
   scheduleToggleCommit: ScheduleToggleCommit;
   rerunActiveSearch: (options: RerunActiveSearchOptions) => Promise<void>;
+  // Page-1 zero-network include-similar flip (use-search-submit-response-owner); returns
+  // false when the flip cannot be served locally → the runner falls back to a rerun.
+  applyIncludeSimilarLocalSwap: (options: {
+    nextIncludeSimilar: boolean;
+    targetTab: SegmentValue;
+  }) => boolean;
+  resultsRuntimeOwner: Pick<
+    ResultsPresentationRuntimeOwner,
+    'clearStagedSearchSurfaceResultsTransaction' | 'stageSearchSurfaceResultsTransaction'
+  >;
   priceSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
-  minimumVotesFilter: number;
   onMechanismEvent?: QueryMutationMechanismEmitter;
 };
 
 type QueryMutationOrchestrator = {
   togglePriceSelector: () => void;
-  toggleVotesFilter: () => void;
+  toggleIncludeSimilar: () => void;
   toggleRising: () => void;
   toggleOpenNow: () => void;
   commitPriceSelection: () => void;
@@ -84,21 +96,22 @@ export const useQueryMutationOrchestrator = (
     query,
     isSearchSessionActive,
     openNow,
-    votesFilterActive,
+    includeSimilarActive,
     risingActive,
     pendingPriceRange,
     setPendingPriceRange,
     isPriceSelectorVisible,
     setIsPriceSelectorVisible,
     priceLevels,
-    setVotes100Plus,
+    setIncludeSimilar,
     setRisingActive,
     setOpenNow,
     setPriceLevels,
     scheduleToggleCommit,
     rerunActiveSearch,
+    applyIncludeSimilarLocalSwap,
+    resultsRuntimeOwner,
     priceSheetRef,
-    minimumVotesFilter,
     onMechanismEvent,
   } = args;
 
@@ -147,19 +160,50 @@ export const useQueryMutationOrchestrator = (
     [rerunActiveSearch]
   );
 
-  const toggleVotesFilter = React.useCallback(() => {
+  const toggleIncludeSimilar = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
-    const nextValue = !votesFilterActive;
+    const nextValue = !includeSimilarActive;
     // R1c single-writer: the setter publishes to the bus (the runtime authority) — chips and
-    // read-models all read the same bus value immediately.
-    setVotes100Plus(nextValue);
+    // read-models all read the same bus value immediately (optimistic pill flip on press-up).
+    setIncludeSimilar(nextValue);
     if (!canRerunForCurrentQuery()) {
       return;
     }
-    const minimumVotes = nextValue ? minimumVotesFilter : null;
     scheduleToggleCommit(
-      () => {
+      ({ intentId }) => {
+        // Page-1 flip is ZERO-NETWORK: the client already holds the exact + similar sets
+        // from the page-1 response — swap the committed variant locally and drive the
+        // shared toggle choreography exactly like the (also zero-network) tab toggle:
+        // redraw transaction + staged enter transaction, then await visual sync.
+        const nextTab = searchRuntimeBus.getState().activeTab;
+        const swappedLocally = applyIncludeSimilarLocalSwap({
+          nextIncludeSimilar: nextValue,
+          targetTab: nextTab,
+        });
+        if (swappedLocally) {
+          resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
+          getSearchSurfaceRuntime().beginRedrawTransaction({
+            reason: 'toggle',
+            transactionId: intentId,
+            targetTab: nextTab,
+            coverState: 'interaction_loading',
+          });
+          resultsRuntimeOwner.stageSearchSurfaceResultsTransaction(
+            createSearchSurfaceResultsEnterTransaction(
+              intentId,
+              'initial_search',
+              'interaction_loading',
+              null,
+              'cache'
+            )
+          );
+          return {
+            awaitVisualSync: true,
+          };
+        }
+        // Mid-pagination (page > 1) or no local similar data: reset to top via a fresh
+        // network rerun carrying the new includeSimilar value (toggleOpenNow's shape).
         fireRerunActiveSearch({
           searchMode,
           activeTab,
@@ -167,29 +211,30 @@ export const useQueryMutationOrchestrator = (
           query,
           isSearchSessionActive,
           preserveSheetState: true,
-          filters: { minimumVotes },
+          filters: { includeSimilar: nextValue },
         });
         return {
           awaitVisualSync: true,
         };
       },
-      { kind: 'filter_votes' }
+      { kind: 'filter_include_similar' }
     );
   }, [
     activeTab,
+    applyIncludeSimilarLocalSwap,
     canRerunForCurrentQuery,
     clearPendingTabSwitchDraft,
     fireRerunActiveSearch,
+    includeSimilarActive,
     isSearchSessionActive,
-    minimumVotesFilter,
     query,
+    resultsRuntimeOwner,
     scheduleToggleCommit,
     searchRuntimeBus,
     searchMode,
+    setIncludeSimilar,
     setIsPriceSelectorVisible,
-    setVotes100Plus,
     submittedQuery,
-    votesFilterActive,
   ]);
 
   const toggleRising = React.useCallback(() => {
@@ -368,7 +413,7 @@ export const useQueryMutationOrchestrator = (
 
   return {
     togglePriceSelector,
-    toggleVotesFilter,
+    toggleIncludeSimilar,
     toggleRising,
     toggleOpenNow,
     commitPriceSelection,

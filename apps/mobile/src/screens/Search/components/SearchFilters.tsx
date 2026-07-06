@@ -116,8 +116,11 @@ export type SearchFiltersProps = {
   onTabChange: (value: SegmentValue) => void;
   openNow: boolean;
   onToggleOpenNow: () => void;
-  votesFilterActive: boolean;
-  onToggleVotesFilter: () => void;
+  includeSimilarActive: boolean;
+  onToggleIncludeSimilar: () => void;
+  // metadata.similarAvailable from the committed page-1 response; the availability chip
+  // renders when > 0 and the toggle is off, and is a REMOTE CONTROL for the toggle.
+  similarAvailableCount: number;
   risingActive: boolean;
   onToggleRising: () => void;
   priceButtonLabel: string;
@@ -138,8 +141,9 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   onTabChange,
   openNow,
   onToggleOpenNow,
-  votesFilterActive,
-  onToggleVotesFilter,
+  includeSimilarActive,
+  onToggleIncludeSimilar,
+  similarAvailableCount,
   risingActive,
   onToggleRising,
   priceButtonLabel,
@@ -494,23 +498,45 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         )}
       </Pressable>
       <Pressable
-        onPress={onToggleVotesFilter}
+        testID="search-include-similar-toggle"
+        onPress={onToggleIncludeSimilar}
         accessibilityRole="button"
-        accessibilityLabel="Toggle 100 plus votes filter"
-        accessibilityState={{ selected: votesFilterActive }}
+        accessibilityLabel="Toggle including similar results"
+        accessibilityState={{ selected: includeSimilarActive }}
         style={[
-          styles.votesButton,
-          votesFilterActive && [styles.votesButtonActive, { backgroundColor: accentColor }],
+          styles.includeSimilarButton,
+          includeSimilarActive && [
+            styles.includeSimilarButtonActive,
+            { backgroundColor: accentColor },
+          ],
         ]}
       >
         <Text
           variant="caption"
           weight="semibold"
-          style={[styles.votesText, votesFilterActive && styles.votesTextActive]}
+          style={[
+            styles.includeSimilarText,
+            includeSimilarActive && styles.includeSimilarTextActive,
+          ]}
         >
-          100+ votes
+          Include similar
         </Text>
       </Pressable>
+      {similarAvailableCount > 0 && !includeSimilarActive ? (
+        // REMOTE CONTROL for the toggle: tapping only flips "Include similar" — same
+        // shared toggle flow/choreography for cards AND map (no expand-in-place).
+        <Pressable
+          testID="search-similar-available-chip"
+          onPress={onToggleIncludeSimilar}
+          accessibilityRole="button"
+          accessibilityLabel={`Show ${similarAvailableCount} similar results`}
+          style={styles.similarAvailableButton}
+        >
+          <Text variant="caption" weight="semibold" style={styles.similarAvailableText}>
+            {similarAvailableCount} similar
+          </Text>
+        </Pressable>
+      ) : null}
       <Pressable
         onPress={onToggleRising}
         accessibilityRole="button"
@@ -676,19 +702,24 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     marginTop: 0,
   },
-  votesButton: {
+  includeSimilarButton: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
     flexDirection: 'row',
   },
-  votesButtonActive: {},
-  votesButtonDisabled: {
-    opacity: 0.6,
-  },
-  votesText: {
+  includeSimilarButtonActive: {},
+  includeSimilarText: {
     color: '#111827',
   },
-  votesTextActive: {
+  includeSimilarTextActive: {
     color: '#ffffff',
+  },
+  similarAvailableButton: {
+    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
+    flexDirection: 'row',
+  },
+  similarAvailableText: {
+    // Quiet informational chip — muted vs. the solid toggle chips.
+    color: '#6b7280',
   },
   risingButton: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),

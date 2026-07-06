@@ -36,7 +36,6 @@ const deriveDarkerHexColor = (hexColor: string, factor = 0.72) => {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 };
 export const ACTIVE_TAB_COLOR_DARK = deriveDarkerHexColor(ACTIVE_TAB_COLOR);
-export const MINIMUM_VOTES_FILTER = 100;
 export const DEFAULT_PAGE_SIZE = 20;
 export const RESULTS_BOTTOM_PADDING = 200;
 // Slider thumb: visible "thumbprint" is intentionally larger than the inner dot for easier grabs.

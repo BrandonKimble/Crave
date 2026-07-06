@@ -56,6 +56,8 @@ type ResultsPresentationOwnerValue = Pick<
   | 'scheduleToggleCommit'
   | 'cancelToggleInteraction'
   | 'beginSearchThisAreaPresentationPending'
+  | 'stageSearchSurfaceResultsTransaction'
+  | 'clearStagedSearchSurfaceResultsTransaction'
   | 'handlePageOneResultsCommitted'
   | 'cancelPresentationIntent'
   | 'handlePresentationIntentAbort'
@@ -77,6 +79,8 @@ export const createResultsPresentationOwnerValue = ({
   scheduleToggleCommit,
   cancelToggleInteraction,
   beginSearchThisAreaPresentationPending,
+  stageSearchSurfaceResultsTransaction,
+  clearStagedSearchSurfaceResultsTransaction,
   handlePageOneResultsCommitted,
   cancelPresentationIntent,
   handlePresentationIntentAbort,
@@ -95,6 +99,8 @@ export const createResultsPresentationOwnerValue = ({
   scheduleToggleCommit,
   cancelToggleInteraction,
   beginSearchThisAreaPresentationPending,
+  stageSearchSurfaceResultsTransaction,
+  clearStagedSearchSurfaceResultsTransaction,
   handlePageOneResultsCommitted,
   cancelPresentationIntent,
   handlePresentationIntentAbort,

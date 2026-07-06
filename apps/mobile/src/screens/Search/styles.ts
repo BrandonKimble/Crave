@@ -1019,6 +1019,11 @@ const styles = StyleSheet.create({
     gap: CARD_LINE_GAP,
     paddingLeft: RESULT_DETAILS_INDENT,
   },
+  // Quiet cue on dense-sibling ("Include similar") rows — muted caption, no loud badge.
+  similarMatchLabel: {
+    color: '#9ca3af',
+    letterSpacing: 0.2,
+  },
   coverageBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 8,

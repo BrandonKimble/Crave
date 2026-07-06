@@ -16,6 +16,8 @@ export type ResultsPresentationOwner = Pick<
   | 'pendingTogglePresentationIntentId'
   | 'scheduleToggleCommit'
   | 'cancelToggleInteraction'
+  | 'stageSearchSurfaceResultsTransaction'
+  | 'clearStagedSearchSurfaceResultsTransaction'
   | 'beginSearchThisAreaPresentationPending'
   | 'handlePageOneResultsCommitted'
   | 'cancelPresentationIntent'

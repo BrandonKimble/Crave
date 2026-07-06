@@ -5,7 +5,7 @@ import type { MapBounds } from '../types';
 import { logger } from '../utils';
 
 const HISTORY_LIMIT = 8;
-const SEARCH_STORE_VERSION = 7;
+const SEARCH_STORE_VERSION = 8;
 export type SearchActiveTab = 'restaurants' | 'dishes';
 
 export const normalizePriceLevels = (levels: unknown): number[] => {
@@ -35,12 +35,11 @@ export interface SearchFilters {
   boundsLabel?: string | null;
   boundsPresetId?: string | null;
   priceLevels: number[];
-  votes100Plus: boolean;
   risingActive: boolean;
 }
 
 // R1c single-writer contract (plans/search-flow-plan.md §D6): the filter/tab fields below
-// (openNow, priceLevels, votes100Plus, risingActive, activeTab, preferredActiveTab,
+// (openNow, priceLevels, risingActive, activeTab, preferredActiveTab,
 // hasActiveTabPreference) are RUNTIME-OWNED by the SearchRuntimeBus. This store is a pure
 // persistence mirror for them: the ONLY writer is applySearchRuntimeStateMirror, called by
 // the single bus subscription in search-runtime-filter-state-store-bridge.ts. Do not add
@@ -48,7 +47,6 @@ export interface SearchFilters {
 export type SearchRuntimeMirroredState = {
   openNow: boolean;
   priceLevels: number[];
-  votes100Plus: boolean;
   risingActive: boolean;
   activeTab: SearchActiveTab;
   preferredActiveTab: SearchActiveTab;
@@ -88,7 +86,6 @@ const defaultState = {
   boundsLabel: null,
   boundsPresetId: null,
   priceLevels: [],
-  votes100Plus: false,
   risingActive: false,
   history: [] as SearchHistoryEntry[],
 } as const satisfies Pick<
@@ -103,7 +100,6 @@ const defaultState = {
   | 'boundsLabel'
   | 'boundsPresetId'
   | 'priceLevels'
-  | 'votes100Plus'
   | 'risingActive'
   | 'history'
 >;
@@ -201,7 +197,9 @@ export const useSearchStore = create<SearchState>()(
           return persistedState as SearchState;
         }
 
-        const state = persistedState as Partial<SearchState>;
+        const state = persistedState as Partial<SearchState> & { votes100Plus?: boolean };
+        // v8: the '100+ votes' filter was removed end-to-end; strip the stale persisted key.
+        delete state.votes100Plus;
         return {
           ...state,
           activeTab: defaultState.activeTab,
@@ -263,7 +261,6 @@ export const useSearchStore = create<SearchState>()(
         boundsLabel: state.boundsLabel,
         boundsPresetId: state.boundsPresetId,
         priceLevels: state.priceLevels,
-        votes100Plus: state.votes100Plus,
         risingActive: state.risingActive,
         history: state.history,
       }),

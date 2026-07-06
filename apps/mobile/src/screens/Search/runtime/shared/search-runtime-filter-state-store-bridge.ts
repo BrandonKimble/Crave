@@ -1,7 +1,8 @@
 // R1c of the search-flow rebuild (plans/search-flow-plan.md §D6): SINGLE-WRITER filter/tab state.
 //
-// The SearchRuntimeBus is the runtime authority for openNow / priceLevels / votes(100Plus↔
-// votesFilterActive) / risingActive / activeTab / preferredActiveTab / hasActiveTabPreference.
+// The SearchRuntimeBus is the runtime authority for openNow / priceLevels /
+// risingActive / activeTab / preferredActiveTab / hasActiveTabPreference.
+// (includeSimilarActive is bus-only session state — deliberately NOT mirrored here.)
 // The zustand searchStore is a pure persistence mirror for those fields (AsyncStorage persist +
 // survival across route-scene bus resets). This bridge is the ONLY place that flows state
 // between the two:
@@ -21,7 +22,6 @@ import type { SearchRuntimeBus, SearchRuntimeBusState } from './search-runtime-b
 const MIRRORED_BUS_KEYS = [
   'openNow',
   'priceLevels',
-  'votesFilterActive',
   'risingActive',
   'activeTab',
   'preferredActiveTab',
@@ -33,7 +33,6 @@ const readMirroredStateFromStore = (): SearchRuntimeMirroredState => {
   return {
     openNow: storeState.openNow,
     priceLevels: storeState.priceLevels,
-    votes100Plus: storeState.votes100Plus,
     risingActive: storeState.risingActive,
     activeTab: normalizeActiveTab(storeState.activeTab),
     preferredActiveTab: normalizeActiveTab(storeState.preferredActiveTab),
@@ -46,7 +45,6 @@ const toBusPatch = (
 ): Pick<SearchRuntimeBusState, (typeof MIRRORED_BUS_KEYS)[number]> => ({
   openNow: mirrored.openNow,
   priceLevels: mirrored.priceLevels,
-  votesFilterActive: mirrored.votes100Plus,
   risingActive: mirrored.risingActive,
   activeTab: mirrored.activeTab,
   preferredActiveTab: mirrored.preferredActiveTab,
@@ -56,7 +54,6 @@ const toBusPatch = (
 const toMirroredState = (busState: SearchRuntimeBusState): SearchRuntimeMirroredState => ({
   openNow: busState.openNow,
   priceLevels: busState.priceLevels,
-  votes100Plus: busState.votesFilterActive,
   risingActive: busState.risingActive,
   activeTab: busState.activeTab,
   preferredActiveTab: busState.preferredActiveTab,

@@ -54,7 +54,9 @@ export type SearchRuntimeBusState = {
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
   openNow: boolean;
-  votesFilterActive: boolean;
+  // "Include similar" toggle — SESSION-SCOPED runtime state (NOT mirrored to the
+  // zustand persistence store): reset to false on a new search submit and on bus reset.
+  includeSimilarActive: boolean;
   risingActive: boolean;
   priceLevels: number[];
   isPriceSelectorVisible: boolean;
@@ -161,7 +163,7 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   priceButtonLabelText: '',
   priceButtonIsActive: false,
   openNow: false,
-  votesFilterActive: false,
+  includeSimilarActive: false,
   risingActive: false,
   priceLevels: [],
   isPriceSelectorVisible: false,

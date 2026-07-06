@@ -52,7 +52,7 @@ export type SearchResultsPanelEnvironment = {
   userLocation: UsePollsPanelSpecOptions['userLocation'];
   searchInteractionRef: React.MutableRefObject<SearchInteractionSnapshot>;
   toggleOpenNow: () => void;
-  toggleVotesFilter: () => void;
+  toggleIncludeSimilar: () => void;
   togglePriceSelector: () => void;
   shouldDisableSearchBlur: boolean;
   searchFiltersLayoutCacheRef: React.MutableRefObject<SearchFiltersLayoutCache | null>;

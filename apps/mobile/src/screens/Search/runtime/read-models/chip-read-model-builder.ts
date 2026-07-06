@@ -5,7 +5,8 @@ export type SearchFilterChipReadModel = {
   priceButtonLabel: string;
   priceButtonActive: boolean;
   openNow: boolean;
-  votesFilterActive: boolean;
+  includeSimilarActive: boolean;
+  similarAvailableCount: number;
   risingActive: boolean;
   isPriceSelectorVisible: boolean;
   projectionKey: string;
@@ -17,7 +18,8 @@ type UseSearchFilterChipReadModelArgs = {
   priceButtonLabel: string;
   priceButtonActive: boolean;
   openNow: boolean;
-  votesFilterActive: boolean;
+  includeSimilarActive: boolean;
+  similarAvailableCount: number;
   risingActive: boolean;
   isPriceSelectorVisible: boolean;
 };
@@ -28,9 +30,9 @@ export const useSearchFilterChipReadModel = (
   const cacheRef = React.useRef<{ key: string; value: SearchFilterChipReadModel } | null>(null);
   const projectionKey = `${args.requestVersionKey}::${args.activeTab}::${args.priceButtonLabel}::${
     args.priceButtonActive ? 1 : 0
-  }::${args.openNow ? 1 : 0}::${args.votesFilterActive ? 1 : 0}::${
-    args.risingActive ? 1 : 0
-  }::${args.isPriceSelectorVisible ? 1 : 0}`;
+  }::${args.openNow ? 1 : 0}::${args.includeSimilarActive ? 1 : 0}::${
+    args.similarAvailableCount
+  }::${args.risingActive ? 1 : 0}::${args.isPriceSelectorVisible ? 1 : 0}`;
 
   React.useEffect(() => {
     cacheRef.current = null;
@@ -45,7 +47,8 @@ export const useSearchFilterChipReadModel = (
     priceButtonLabel: args.priceButtonLabel,
     priceButtonActive: args.priceButtonActive,
     openNow: args.openNow,
-    votesFilterActive: args.votesFilterActive,
+    includeSimilarActive: args.includeSimilarActive,
+    similarAvailableCount: args.similarAvailableCount,
     risingActive: args.risingActive,
     isPriceSelectorVisible: args.isPriceSelectorVisible,
     projectionKey,

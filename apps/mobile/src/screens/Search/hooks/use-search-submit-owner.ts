@@ -44,7 +44,6 @@ type SearchSubmitOwnerReadModel = {
   isLoadingMore: boolean;
   openNow: boolean;
   priceLevels: number[];
-  votes100Plus: boolean;
   risingActive: boolean;
 };
 
@@ -149,6 +148,11 @@ type SearchSubmitOwner = {
     presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
   }) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
+  // "Include similar" page-1 zero-network flip — see use-search-submit-response-owner.
+  applyIncludeSimilarLocalSwap: (options: {
+    nextIncludeSimilar: boolean;
+    targetTab: SegmentValue;
+  }) => boolean;
   launchFavoritesListResults: (params: {
     listId: string;
     listType: FavoriteListType;
@@ -181,7 +185,6 @@ const useSearchSubmitOwner = ({
     isLoadingMore,
     openNow,
     priceLevels,
-    votes100Plus,
     risingActive,
   } = readModel;
   const {
@@ -237,7 +240,6 @@ const useSearchSubmitOwner = ({
     isLoadingMore,
     openNow,
     priceLevels,
-    votes100Plus,
     risingActive,
     searchRuntimeBus,
     latestBoundsRef,
@@ -264,7 +266,6 @@ const useSearchSubmitOwner = ({
     isLoadingMore,
     openNow,
     priceLevels,
-    votes100Plus,
     risingActive,
     setActiveTab,
     setError,
@@ -279,7 +280,7 @@ const useSearchSubmitOwner = ({
     lastAutoOpenKeyRef,
     onPresentationIntentStart,
   });
-  const { handleSearchResponse } = useSearchSubmitResponseOwner({
+  const { handleSearchResponse, applyIncludeSimilarLocalSwap } = useSearchSubmitResponseOwner({
     activeTab,
     currentResults,
     pendingTabSwitchTab,
@@ -428,6 +429,7 @@ const useSearchSubmitOwner = ({
     submitViewportShortcut,
     rerunActiveSearch,
     loadMoreResults,
+    applyIncludeSimilarLocalSwap,
     launchFavoritesListResults,
     launchEntitySearchResults,
   };

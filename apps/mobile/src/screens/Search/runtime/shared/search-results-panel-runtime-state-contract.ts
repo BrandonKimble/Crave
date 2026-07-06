@@ -24,7 +24,10 @@ export type SearchResultsPanelFiltersRuntimeState = {
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
   openNow: boolean;
-  votesFilterActive: boolean;
+  includeSimilarActive: boolean;
+  // metadata.similarAvailable from the committed page-1 response — drives the
+  // "similar results available" chip (rendered when > 0 and the toggle is off).
+  similarAvailableCount: number;
   risingActive: boolean;
   isPriceSelectorVisible: boolean;
 };
