@@ -459,6 +459,12 @@ export const useSearchRequestPreparationOwner = ({
         payload.risingActive = true;
       }
 
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[REQPROBE] structured page=${page} openNow=${payload.openNow ?? false} price=${(payload.priceLevels ?? []).length} rising=${payload.risingActive ?? false} includeSimilar=${payload.includeSimilar ?? 'unset'}`
+        );
+      }
       const requestBounds = await resolveRequestBounds({
         shouldCaptureBounds: page === 1,
         forceFreshBounds: options?.forceFreshBounds,

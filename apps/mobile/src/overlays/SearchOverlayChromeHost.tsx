@@ -196,6 +196,8 @@ const SearchOverlayFiltersWarmupHost = React.memo(
     return (
       <View
         pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
         style={{
           position: 'absolute',
           left: 0,
