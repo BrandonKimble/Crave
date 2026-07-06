@@ -183,6 +183,30 @@ export class ExtractionPipelineService implements OnModuleInit {
 
   private collectionLlmMode: 'interactive' | 'batch' = 'interactive';
 
+  /** Per-pipeline post-completion continuations (e.g. poll graduation's
+   *  gazetteer backfill + leaderboard). Dispatched at the END of
+   *  completeChunkPlan — which runs inline on the interactive path and at
+   *  batch-ingest time on the batch path — so a consumer registers ONCE and
+   *  its continuation follows the extraction no matter how the LLM ran.
+   *  Handlers must be idempotent (batch ingest retries on failure). */
+  private readonly completionHandlers = new Map<
+    string,
+    (
+      result: ExtractionPipelineResult,
+      baseParams: ExtractionPipelineBaseParams,
+    ) => Promise<void>
+  >();
+
+  registerCompletionHandler(
+    pipeline: ExtractionPipelineBaseParams['pipeline'],
+    handler: (
+      result: ExtractionPipelineResult,
+      baseParams: ExtractionPipelineBaseParams,
+    ) => Promise<void>,
+  ): void {
+    this.completionHandlers.set(pipeline, handler);
+  }
+
   async processPosts(
     params: ExtractionPipelinePostsParams,
   ): Promise<ExtractionPipelineResult> {
@@ -685,7 +709,7 @@ export class ExtractionPipelineService implements OnModuleInit {
       args.extractionRunId,
     );
 
-    return {
+    const result: ExtractionPipelineResult = {
       extractionRunId: args.extractionRunId,
       llmOutput,
       rawMentionsSample,
@@ -696,6 +720,15 @@ export class ExtractionPipelineService implements OnModuleInit {
       chunkStats: this.summarizeChunkMetadata(args.chunkMetadata),
       processingMetrics: args.processingMetrics,
     };
+
+    const completionHandler = this.completionHandlers.get(
+      args.baseParams.pipeline,
+    );
+    if (completionHandler) {
+      await completionHandler(result, args.baseParams);
+    }
+
+    return result;
   }
 
   private buildSourceBreakdown(

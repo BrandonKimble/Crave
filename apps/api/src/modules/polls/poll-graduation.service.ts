@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import {
   Prisma,
   PollState,
@@ -36,7 +36,7 @@ import { PollsService } from './polls.service';
  * for dedupe; the active-run projection is what guarantees no double-count.)
  */
 @Injectable()
-export class PollGraduationService {
+export class PollGraduationService implements OnModuleInit {
   private readonly logger: LoggerService;
 
   constructor(
@@ -46,6 +46,32 @@ export class PollGraduationService {
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PollGraduationService');
+  }
+
+  onModuleInit(): void {
+    // The post-extraction half of graduation (gazetteer backfill so new
+    // entities become tappable, span-based leaderboard, graduatedAt stamp)
+    // runs as the pipeline's completion continuation: inline when the LLM ran
+    // interactively, at batch-ingest time when it was deferred. One code path
+    // either way; idempotent via the graduatedAt guard.
+    this.extractionPipeline.registerCompletionHandler(
+      'poll-thread',
+      async (result, baseParams) => {
+        const pollId = (baseParams.runMetadata as { pollId?: string })?.pollId;
+        if (!pollId) {
+          this.logger.warn('poll-thread run missing pollId in runMetadata', {
+            extractionRunId: result.extractionRunId,
+          });
+          return;
+        }
+        await this.finalizeGraduation(pollId, {
+          batchId: baseParams.batchId,
+          extractionRunId: result.extractionRunId,
+          entitiesCreated: result.dbResult.entitiesCreated,
+          connectionsCreated: result.dbResult.connectionsCreated,
+        });
+      },
+    );
   }
 
   /**
@@ -77,6 +103,25 @@ export class PollGraduationService {
     }
     if (poll.graduatedAt) {
       return;
+    }
+    // A batch job is already in flight for this thread — don't resubmit.
+    // (Recovers automatically if that job failed: we clear the stamp and fall
+    // through to a fresh pass.)
+    const pendingJobId = (
+      poll.metadata as { graduationPendingBatchJobId?: string } | null
+    )?.graduationPendingBatchJobId;
+    if (pendingJobId) {
+      const job = await this.prisma.llmBatchJob.findUnique({
+        where: { jobId: pendingJobId },
+        select: { status: true },
+      });
+      if (job && job.status !== 'failed') {
+        return;
+      }
+      this.logger.warn('Pending graduation batch job failed — retrying', {
+        pollId,
+        batchJobId: pendingJobId,
+      });
     }
     if (poll.state !== PollState.active && poll.state !== PollState.closed) {
       // draft / scheduled / archived never graduate.
@@ -170,13 +215,17 @@ export class PollGraduationService {
       extract_from_post: false,
     };
 
-    // 4. Run the authoritative collection pass.
+    // 4. Run the authoritative collection pass. Everything the user SEES at
+    //    close (vote results, projections, live-gazetteer highlights of
+    //    already-known entities, discussion) is untouched by this — collection
+    //    only feeds scores/new entities in the background — so the LLM work
+    //    follows COLLECTION_LLM_MODE like every other collection type. The
+    //    post-extraction half (backfill + leaderboard + graduatedAt) runs via
+    //    the pipeline's 'poll-thread' completion handler: inline when
+    //    interactive, at batch-ingest when deferred.
     const batchId = `poll-${pollId}-${Date.now()}`;
     const result = await this.extractionPipeline.processPosts({
       pipeline: 'poll-thread',
-      // Synchronous consumer: the gazetteer backfill right below expects the
-      // graduated entities to already exist — never defer this to a batch job.
-      llmMode: 'interactive',
       platform: 'poll',
       community: marketKey,
       llmPosts: [llmPost],
@@ -184,6 +233,62 @@ export class PollGraduationService {
       collectionRunScopeKey: `poll:${pollId}`,
       activateDocumentsBeforeProcessing: true,
       runMetadata: { pollId, marketKey },
+    });
+
+    if (result.deferredBatchJobId) {
+      // Stamp the pending job so the graduation cron doesn't resubmit the
+      // thread while the batch is in flight (graduatedAt is still unset).
+      await this.prisma.poll.update({
+        where: { pollId },
+        data: {
+          metadata: {
+            ...((poll.metadata as Record<string, unknown>) ?? {}),
+            graduationPendingBatchJobId: result.deferredBatchJobId,
+          } as Prisma.InputJsonValue,
+        },
+      });
+      this.logger.info('Poll graduation deferred to batch', {
+        pollId,
+        batchJobId: result.deferredBatchJobId,
+        commentsProcessed: comments.length,
+      });
+    }
+  }
+
+  /**
+   * Post-extraction half of graduation — invoked by the pipeline completion
+   * handler (inline for interactive runs, at ingest for batch runs).
+   * Idempotent via the graduatedAt guard in markGraduated's caller path.
+   */
+  async finalizeGraduation(
+    pollId: string,
+    stats: {
+      batchId: string;
+      extractionRunId: string;
+      entitiesCreated: number;
+      connectionsCreated: number;
+    },
+  ): Promise<void> {
+    const poll = await this.prisma.poll.findUnique({
+      where: { pollId },
+      select: {
+        pollId: true,
+        marketKey: true,
+        metadata: true,
+        graduatedAt: true,
+      },
+    });
+    if (!poll || poll.graduatedAt) {
+      return;
+    }
+
+    const comments = await this.prisma.pollComment.findMany({
+      where: {
+        pollId,
+        deletedAt: null,
+        moderationStatus: PollCommentModerationStatus.approved,
+      },
+      select: { commentId: true, body: true },
     });
 
     // 5. Backfill highlights: re-run the gazetteer now that graduated entities
@@ -206,20 +311,24 @@ export class PollGraduationService {
     // 6. Finalize the leaderboard from the backfilled spans.
     await this.pollsService.refreshPollLeaderboard(pollId);
 
-    // 7. Mark graduated.
-    await this.markGraduated(pollId, poll.metadata, {
+    // 7. Mark graduated (also clears the pending-batch stamp by overwrite).
+    const cleanedMetadata = {
+      ...((poll.metadata as Record<string, unknown>) ?? {}),
+    };
+    delete cleanedMetadata.graduationPendingBatchJobId;
+    await this.markGraduated(pollId, cleanedMetadata as Prisma.JsonValue, {
       commentsProcessed: comments.length,
-      batchId,
-      extractionRunId: result.extractionRunId,
-      entitiesCreated: result.dbResult.entitiesCreated,
-      connectionsCreated: result.dbResult.connectionsCreated,
+      batchId: stats.batchId,
+      extractionRunId: stats.extractionRunId,
+      entitiesCreated: stats.entitiesCreated,
+      connectionsCreated: stats.connectionsCreated,
     });
 
     this.logger.info('Graduated poll thread', {
       pollId,
       commentsProcessed: comments.length,
-      entitiesCreated: result.dbResult.entitiesCreated,
-      connectionsCreated: result.dbResult.connectionsCreated,
+      entitiesCreated: stats.entitiesCreated,
+      connectionsCreated: stats.connectionsCreated,
     });
   }
 
