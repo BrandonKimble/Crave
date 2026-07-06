@@ -1507,6 +1507,13 @@ final class SearchMapRenderController: RCTEventEmitter {
   /// covered) and from the presentation tick (fires at the fade-in's first under-cover tick).
   private static let underCoverReprojectThreshold = 0.05
   private func reprojectCatalogUnderCoverIfReady(instanceId: String, force: Bool = false) {
+    let ngapReprojectStartMs = CACurrentMediaTime() * 1000
+    defer {
+      let dur = CACurrentMediaTime() * 1000 - ngapReprojectStartMs
+      if dur > 4 {
+        NSLog("[NGAP] reproject dur=%.1f", dur)
+      }
+    }
     guard pendingUnderCoverReproject.contains(instanceId) else { return }
     guard var state = instances[instanceId] else { return }
     // Normally the re-decide waits for presentation to be under cover (opacity≈0) so the marker swap is
@@ -5731,6 +5738,23 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     let revealStatus = Self.readEnterStatus(fromJSON: presentationStateJSON)
     let revealStartToken = Self.readEnterStartToken(fromJSON: presentationStateJSON)
+    // [NGAP] native-gap attribution (plans/search-flow-plan.md §D6b): a NEW start token is
+    // visible — log which guard (if any) is holding the ramp so the JS-request→rampStart gap
+    // partitions into transport vs named native waits.
+    if let token = revealStartToken, state.lastEnterStartToken != token {
+      let fencePending = hasPendingCommitFence(capturePendingVisualSourceCommitFence(state: state))
+      NSLog(
+        "[NGAP] tokenSeen t=%.1f status=%@ phase=%@ laneKeyMatch=%d mountedHidden=%d blocked=%@ srcReady=%d fence=%d",
+        CACurrentMediaTime() * 1000,
+        revealStatus ?? "nil",
+        state.lastPresentationBatchPhase,
+        (state.enterLane.requestedRequestKey == state.lastEnterRequestKey) ? 1 : 0,
+        state.enterLane.mountedHidden != nil ? 1 : 0,
+        state.blockedEnterStartRequestKey ?? "nil",
+        Self.isActiveFrameSourceReady(state: state) ? 1 : 0,
+        fencePending ? 1 : 0
+      )
+    }
     guard
       let revealRequestKey = state.lastEnterRequestKey,
       let revealStartToken,
