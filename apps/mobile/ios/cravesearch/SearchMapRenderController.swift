@@ -136,6 +136,11 @@ private final class LabelVAView: UIView {
     addSubview(label)
   }
   required init?(coder: NSCoder) { fatalError("LabelVAView is code-only") }
+  // The GL labels wrapped at Mapbox's DEFAULT text-max-width (10 em = 10 × text-size 13 = 130pt);
+  // the VA migration lost that (unconstrained sizeToFit), and the roster's re-text path made it
+  // worse by wrapping at the PREVIOUS text's bounds (dish labels compressed to the old restaurant
+  // name's width). Measure every setText against this fixed max width instead — the old GL look.
+  static let maxTextWidth: CGFloat = 130
   private(set) var appliedText: String = ""
   private(set) var appliedSubtext: String = ""
   func setText(_ text: String, subtext: String? = nil) {
@@ -155,7 +160,11 @@ private final class LabelVAView: UIView {
       label.attributedText = nil
       label.text = text
     }
-    label.sizeToFit()
+    // Measure against the fixed max width (NOT the current bounds — a re-text would otherwise
+    // wrap at the previous text's width).
+    let measured = label.sizeThatFits(
+      CGSize(width: Self.maxTextWidth, height: .greatestFiniteMagnitude))
+    label.frame = CGRect(origin: .zero, size: measured)
     let size = label.bounds.insetBy(dx: -2, dy: -2).size   // symmetric halo margin (2pt each side; compensated in the anchor offsets)
     label.frame = CGRect(origin: .zero, size: size)
     bounds = label.frame                                   // VA anchors on the view bounds
@@ -5971,7 +5980,18 @@ final class SearchMapRenderController: RCTEventEmitter {
       reason: "reveal_start"
     )
     state.lastEnterStartedRequestKey = requestKey
+    // OBSTACLE ASSERT AT ENTER START (D6e follow-up, owner-reported "labels stopped yielding to
+    // pins"): JS bakes every collision obstacle demoted; the under-cover toggle redecide reseeds
+    // BEFORE the mutation frame's new collision features apply, so markers ADDED by this frame
+    // enter with obstacle=0 and their labels place over pins. The ramp start is deterministically
+    // AFTER the frame is applied + mounted, so assert the full live promoted set here — the last
+    // word before anything becomes visible.
+    if let promoted = state.lodV5Engine?.lastPromotedInOrder, !promoted.isEmpty {
+      state.lodV5ObstacleReseedKeys.formUnion(promoted)
+    }
     instances[instanceId] = state
+    applyV5ObstacleReseed(for: instanceId)
+    state = instances[instanceId] ?? state
     emitVisualDiag(
       instanceId: instanceId,
       message:
