@@ -76,6 +76,15 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   openRestaurantProfile,
   openScoreInfo,
 }) => {
+  if (__DEV__) {
+    // [T1DBG] card-render counter: confirms whether the toggle dark gap = 20-card commit
+    (globalThis as { __t1dbgCardCount?: number }).__t1dbgCardCount =
+      ((globalThis as { __t1dbgCardCount?: number }).__t1dbgCardCount ?? 0) + 1;
+    const count = (globalThis as { __t1dbgCardCount?: number }).__t1dbgCardCount!;
+    if (count % 5 === 0)
+      console.log(`[T1DBG] cardRender n=${count} t=${performance.now().toFixed(1)}`);
+  }
+
   const rank = index + 1;
   const trackRecentlyViewedFood = useSearchHistoryStore((state) => state.trackRecentlyViewedFood);
   const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
