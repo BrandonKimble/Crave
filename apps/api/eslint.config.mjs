@@ -38,7 +38,7 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['prisma/*.ts', 'test-pipeline.ts'],
+          allowDefaultProject: ['test-pipeline.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },

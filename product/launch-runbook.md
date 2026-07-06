@@ -60,13 +60,18 @@ Collect PRODUCTION credentials (dev keys stay local-only in `.env`, which is git
 Order matters:
 
 1. `railway run yarn db:migrate:deploy` — all migrations (extensions, tables, HNSW indexes).
-2. `railway run yarn db:seed` — the market provisioner: 155-attribute search vocabulary,
-   **regional markets incl. TomTom boundary geometry** (needs `TOMTOM_API_KEY`), subreddit
-   collection registry. Idempotent — safe to re-run. (`yarn tomtom-market:deploy-gate` wraps
-   the health-check-then-seed-then-migrate sequence for later deploys.)
+2. Onboard the market — ONE command (attribute vocabulary is fully self-provisioning now,
+   no seeding needed):
+   `yarn ts-node scripts/onboard-market.ts --subreddit austinfood --city "Austin, TX"
+--short Austin --state TX --center 30.2672,-97.7431 --county 30.646,-97.6034
+--county 29.8833,-97.9414 --county 30.1105,-97.3153 --county 29.8849,-97.6699
+--county 30.7582,-98.2284`
+   (county anchors = any point inside each metro county; TomTom fetches + PostGIS unions the
+   polygons; the subreddit viewport + volume jobs chain automatically. `yarn db:seed` replays
+   the same provisioning from the config lists if you prefer; both are idempotent.)
 3. Verify: HNSW index exists (`idx_entities_name_embedding_hnsw` — boot self-heal also covers
-   this), `SELECT count(*) FROM core_entities WHERE type='restaurant_attribute'` ≈ 155, markets
-   table has Austin with geometry.
+   this), markets table has Austin with geometry (~13,726 km², 6 boundaries), collection
+   community row maps austinfood → the market.
 
 **Gate:** an empty search against the prod API returns 200 with zero results (not 500).
 
