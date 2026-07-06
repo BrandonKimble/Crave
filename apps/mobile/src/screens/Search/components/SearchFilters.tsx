@@ -515,6 +515,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       </Pressable>
       <Pressable
         onPress={onTogglePriceSelector}
+        testID="search-price-toggle"
         accessibilityRole="button"
         accessibilityLabel="Select price filters"
         accessibilityState={{

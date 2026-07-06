@@ -32,8 +32,18 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   const filtersHeaderHeightValue = useSharedValue(filtersHeaderHeight);
   const surfaceActiveValue = useSharedValue(surfaceActive ? 1 : 0);
   const interactionLoadingModeValue = useSharedValue(surfaceMode === 'interaction_loading' ? 1 : 0);
+  // TR5-N (initial reveal parity, owner-reported): the INITIAL load needs this cover too. The
+  // transition leg's skeleton page ends when the scene settles, but page-1 rows hydrate into the
+  // live list BEFORE the reveal joint (cards visibly swapped in ~0.5-1s before the strip+pins;
+  // measured rowsAdmission shell->full 483ms ahead of cardsAdmit). Holding the cutout skeleton
+  // over the body for the WHOLE initial_loading mode lets the rows mount+measure beneath it
+  // (readiness still commits from the list layoutEffect), and the joint then lifts the cover,
+  // reveals the strip, and starts the pin ramp on the same tick — the toggle choreography.
+  // Full-body offset: the strip is HIDDEN during initial_loading, so no filters-height inset.
+  const initialLoadingModeValue = useSharedValue(surfaceMode === 'initial_loading' ? 1 : 0);
   const emptyModeValue = useSharedValue(surfaceMode === 'empty' ? 1 : 0);
-  const shouldExposeLoadingCover = surfaceMode === 'interaction_loading';
+  const shouldExposeLoadingCover =
+    surfaceMode === 'interaction_loading' || surfaceMode === 'initial_loading';
 
   React.useEffect(() => {
     headerTopValue.value = resolvedResultsHeaderHeightForRender;
@@ -46,16 +56,20 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   }, [surfaceActive, surfaceActiveValue]);
   React.useEffect(() => {
     interactionLoadingModeValue.value = surfaceMode === 'interaction_loading' ? 1 : 0;
+    initialLoadingModeValue.value = surfaceMode === 'initial_loading' ? 1 : 0;
     emptyModeValue.value = surfaceMode === 'empty' ? 1 : 0;
-  }, [emptyModeValue, interactionLoadingModeValue, surfaceMode]);
+  }, [emptyModeValue, initialLoadingModeValue, interactionLoadingModeValue, surfaceMode]);
   const emptySurfaceAnimatedStyle = useAnimatedStyle(() => ({
     opacity: surfaceActiveValue.value * emptyModeValue.value,
     top: headerTopValue.value,
   }));
   const loadingSurfaceAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: surfaceActiveValue.value * interactionLoadingModeValue.value,
-    // Interaction reload: start below the toggle strip so it stays uncovered.
-    top: headerTopValue.value + filtersHeaderHeightValue.value,
+    opacity:
+      surfaceActiveValue.value *
+      Math.max(interactionLoadingModeValue.value, initialLoadingModeValue.value),
+    // Interaction reload: start below the toggle strip so it stays uncovered. Initial load:
+    // the strip is hidden, so the cover is full-body (no filters inset).
+    top: headerTopValue.value + filtersHeaderHeightValue.value * interactionLoadingModeValue.value,
   }));
 
   return React.useMemo(

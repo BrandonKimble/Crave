@@ -925,6 +925,24 @@ export const publishSearchMountedResultsDataSnapshot = (
   return true;
 };
 
+const logRowsAdmissionTransition = (
+  previous: SearchMountedResultsRowsSnapshot,
+  next: Omit<SearchMountedResultsRowsSnapshot, 'version'>
+): void => {
+  if (!__DEV__) {
+    return;
+  }
+  if (
+    previous.admission.mode !== next.admission.mode ||
+    previous.admission.renderRowCount !== next.admission.renderRowCount
+  ) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[REVEALSYNC] rowsAdmission ${previous.admission.mode}:${previous.admission.renderRowCount} -> ${next.admission.mode}:${next.admission.renderRowCount} jsNowMs=${(globalThis.performance?.now?.() ?? Date.now()).toFixed(1)}`
+    );
+  }
+};
+
 export const publishSearchMountedResultsRowsSnapshot = (
   nextSnapshot: Omit<SearchMountedResultsRowsSnapshot, 'version'>
 ): boolean => {
@@ -964,6 +982,7 @@ export const publishSearchMountedResultsRowsSnapshot = (
       listenerCount: rowListeners.size,
     },
   });
+  logRowsAdmissionTransition(rowsSnapshot, nextSnapshot);
   rowsSnapshot = {
     ...nextSnapshot,
     version: rowsSnapshot.version + 1,
