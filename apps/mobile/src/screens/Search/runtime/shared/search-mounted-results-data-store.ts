@@ -706,7 +706,11 @@ const publishSearchMountedResultsPreparedRowsSnapshot = ({
   source: string;
 }): void => {
   const authority = getResultsPresentationSurfaceAuthority();
-  if (resultsIdentityKey == null || activeRowCount <= 0) {
+  // TR5-N empty-variant: activeRowCount === 0 WITH a results identity is a legitimate,
+  // first-class variant (e.g. open-now filtered every row out) — it stages and commits like
+  // any other page so the reveal joint can open on the empty state. Only a NULL identity
+  // means "nothing prepared" (reset/clear).
+  if (resultsIdentityKey == null) {
     authority.publish(
       {
         listPreparedRowsReady: false,
@@ -784,13 +788,10 @@ export const commitSearchMountedResultsPreparedRowsTarget = ({
     return;
   }
   const preparedRows = getResultsPresentationSurfaceAuthority().getSnapshot().preparedRows;
-  if (
-    preparedRows.targetResultsIdentityKey !== resultsIdentityKey ||
-    preparedRows.activeRowCount <= 0
-  ) {
-    // R0 loud-contracts (§D6): a commit attempt against a DIFFERENT staged target (or a
-    // zero-row staging) can strand cardsReady=false forever — the audit's "stuck staging"
-    // silent zone. Same-key-but-empty and stale-key cases are both suspicious here.
+  if (preparedRows.targetResultsIdentityKey !== resultsIdentityKey) {
+    // R0 loud-contracts (§D6): a commit attempt against a DIFFERENT staged target can strand
+    // cardsReady=false forever — the audit's "stuck staging" silent zone. A zero-row staging
+    // with a MATCHING key is NOT suspicious: it's the first-class empty variant (TR5-N).
     reportSearchFlowContractViolation('prepared_rows_commit_target_mismatch', {
       resultsIdentityKey,
       targetResultsIdentityKey: preparedRows.targetResultsIdentityKey,
