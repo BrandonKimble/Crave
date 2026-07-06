@@ -199,6 +199,19 @@ the secondary list under cover (the primary/secondary list infrastructure alread
 the tab swap is a pointer flip — evicting the card render from the commit window entirely —
 plus attribute the runner's ~150ms interior with one more mark pass.**
 
+### D6c — NATIVE GAP DECODED (2026-07-05, [NGAP] probes)
+
+cardsAdmit→rampStart partitions into two named waits (fence + reproject exonerated):
+**(A) token-over-prop transport, 50–167ms** — the enter-start token travels as a React prop,
+so it waits for a React commit to flush (toggle-back's heavier JS delays it most). Remedy:
+send the enter-start as a DIRECT bridge call (the beginInteractionFadeOut pattern).
+**(B) source-ready wait, 68–118ms** — at token arrival `mountedHidden=0/srcReady=0`: the
+incoming tab's source mutations only begin applying when the token lands. Remedy: apply the
+(already-prewarmed) frame under cover at debounce-commit time, so srcReady is green before
+the start signal. Both remedies belong to the coordinator-unification chunk (restore the
+March single-file coordinator = TR5): the coordinator's commit phase becomes
+"apply frame under cover (direct call) → when ready, fire start (direct call)".
+
 ### D6b — R2-C ROUND RESULTS (2026-07-05, commit 22d06921)
 
 JS commit window CLEARED: the toggle was a keyed full FlashList remount (~250-290ms card
