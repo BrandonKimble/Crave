@@ -1,3 +1,9 @@
+// TR5 portable-toggle-primitive seed: this coordinator is the single linear toggle
+// pipeline (press-up fade + optimistic publish → restarting quiet-window debounce →
+// commit runner → optional visual-sync wait → finalize) that page-registry §1b
+// consumers (favorites strips next) will adopt. Its commit phase gains the D6c
+// semantics in U2 (commit-time mutation flush + direct enter-start) — see the
+// `// U2:` markers at the exact insertion points below.
 import React from 'react';
 
 import {
@@ -12,7 +18,9 @@ import type {
   ToggleInteractionLifecycleEvent,
 } from './results-toggle-interaction-contract';
 import { IDLE_TOGGLE_INTERACTION_STATE } from './results-toggle-interaction-contract';
+import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import type { SearchRuntimeBus, SearchRuntimeBusState } from './search-runtime-bus';
+import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 import { searchMapRenderController } from '../map/search-map-render-controller';
 
 const TOGGLE_INTENT_PREFIX = 'toggle-intent:';
@@ -24,42 +32,46 @@ const DEFAULT_TOGGLE_SETTLE_MS = 300;
 
 type ToggleCommitRunner = Parameters<ScheduleToggleCommit>[0];
 type ToggleCommitOptions = Parameters<ScheduleToggleCommit>[1];
+type ToggleCommitOutcome = ReturnType<ToggleCommitRunner>;
 
-export type ResultsPresentationToggleStateRuntime = {
-  interactionSeqRef: React.MutableRefObject<number>;
-  activeInteractionKindRef: React.MutableRefObject<ToggleInteractionKind | null>;
-  activeIntentIdRef: React.MutableRefObject<string | null>;
-  activeRunnerRef: React.MutableRefObject<ToggleCommitRunner | null>;
-  awaitingVisualSyncRef: React.MutableRefObject<boolean>;
-  commitActiveInteractionRef: React.MutableRefObject<((intentId: string) => void) | null>;
-  finalizeInteraction: (seq: number, awaitedVisualSync: boolean) => boolean;
-  cancelToggleInteraction: () => void;
+export type ResultsPresentationToggleCoordinator = Pick<
+  ResultsPresentationRuntimeOwner,
+  | 'pendingTogglePresentationIntentId'
+  | 'scheduleToggleCommit'
+  | 'notifyFrostReady'
+  | 'cancelToggleInteraction'
+> & {
   beginToggleInteraction: (
     runner: ToggleCommitRunner,
     options: ToggleCommitOptions,
     startPatch?: Partial<SearchRuntimeBusState>
   ) => void;
-  scheduleToggleCommit: (runner: ToggleCommitRunner, options: ToggleCommitOptions) => void;
 };
 
-type UseResultsPresentationToggleStateRuntimeArgs = {
+type UseResultsPresentationToggleCoordinatorArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   handleToggleInteractionLifecycle: (event: ToggleInteractionLifecycleEvent) => void;
+  notifyIntentCompleteRef: React.MutableRefObject<((intentId: string) => void) | null>;
 };
 
-export const useResultsPresentationToggleStateRuntime = ({
+export const useResultsPresentationToggleCoordinator = ({
   searchRuntimeBus,
   handleToggleInteractionLifecycle,
-}: UseResultsPresentationToggleStateRuntimeArgs): ResultsPresentationToggleStateRuntime => {
+  notifyIntentCompleteRef,
+}: UseResultsPresentationToggleCoordinatorArgs): ResultsPresentationToggleCoordinator => {
+  const pendingTogglePresentationIntentId = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => state.toggleInteraction.pendingPresentationIntentId,
+    Object.is,
+    ['toggleInteraction'] as const
+  );
+
   const interactionSeqRef = React.useRef(0);
   const activeInteractionKindRef = React.useRef<ToggleInteractionKind | null>(null);
   const activeIntentIdRef = React.useRef<string | null>(null);
   const activeRunnerRef = React.useRef<ToggleCommitRunner | null>(null);
   const awaitingVisualSyncRef = React.useRef(false);
   const settleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Populated by the commit runtime (mirrors notifyIntentCompleteRef) so the debounce timer,
-  // which lives here, can fire the commit without a circular hook dependency.
-  const commitActiveInteractionRef = React.useRef<((intentId: string) => void) | null>(null);
 
   const clearSettleTimeout = React.useCallback(() => {
     if (settleTimeoutRef.current) {
@@ -121,6 +133,72 @@ export const useResultsPresentationToggleStateRuntime = ({
       });
     }
   }, [clearSettleTimeout, handleToggleInteractionLifecycle, searchRuntimeBus]);
+
+  const commitActiveInteraction = React.useCallback(
+    (intentId: string) => {
+      if (activeIntentIdRef.current !== intentId) {
+        return;
+      }
+
+      const seq = interactionSeqRef.current;
+      const runner = activeRunnerRef.current;
+      const interactionKind = activeInteractionKindRef.current;
+
+      if (!runner || !interactionKind || awaitingVisualSyncRef.current) {
+        return;
+      }
+
+      activeRunnerRef.current = null;
+      logger.info('[TOGGLE] settle:commit', {
+        intentId,
+        kind: interactionKind,
+        source: 'frost_ready',
+      });
+      searchRuntimeBus.publish({
+        toggleInteraction: {
+          kind: interactionKind,
+          pendingPresentationIntentId: null,
+        },
+      });
+      handleToggleInteractionLifecycle({
+        type: 'settled',
+        intentId,
+        kind: interactionKind,
+      });
+
+      let outcome: ToggleCommitOutcome | void;
+      try {
+        const __t1dbgRunnerStart = performance.now();
+        if (__DEV__) console.log(`[T1DBG] runner:start t=${__t1dbgRunnerStart.toFixed(1)}`);
+        outcome = runner({ intentId });
+        if (__DEV__)
+          console.log(
+            `[T1DBG] runner:end t=${performance.now().toFixed(1)} dur=${(performance.now() - __t1dbgRunnerStart).toFixed(1)}`
+          );
+      } catch (error) {
+        logger.warn('Toggle interaction commit failed', {
+          message: error instanceof Error ? error.message : 'unknown error',
+        });
+        finalizeInteraction(seq, false);
+        return;
+      }
+      // U2: commit-time mutation flush + direct enter-start land here (after the runner's
+      // variant commit, before the visual-sync branch).
+
+      if (interactionSeqRef.current !== seq) {
+        return;
+      }
+
+      if (outcome?.awaitVisualSync !== true) {
+        finalizeInteraction(seq, false);
+        return;
+      }
+
+      // U2: the visual-sync wait gains the D6c direct enter-start handoff here.
+      awaitingVisualSyncRef.current = true;
+    },
+    [finalizeInteraction, handleToggleInteractionLifecycle, searchRuntimeBus]
+  );
 
   const beginToggleInteraction = React.useCallback(
     (
@@ -186,10 +264,15 @@ export const useResultsPresentationToggleStateRuntime = ({
         if (superseded) {
           return;
         }
-        commitActiveInteractionRef.current?.(intentId);
+        commitActiveInteraction(intentId);
       }, DEFAULT_TOGGLE_SETTLE_MS);
     },
-    [clearSettleTimeout, handleToggleInteractionLifecycle, searchRuntimeBus]
+    [
+      clearSettleTimeout,
+      commitActiveInteraction,
+      handleToggleInteractionLifecycle,
+      searchRuntimeBus,
+    ]
   );
 
   const scheduleToggleCommit = React.useCallback(
@@ -199,21 +282,41 @@ export const useResultsPresentationToggleStateRuntime = ({
     [beginToggleInteraction]
   );
 
+  // The commit is driven SOLELY by the restarting quiet-window debounce above. The 90ms
+  // frost is pure visual cover and must NOT advance the commit clock — otherwise the toggle
+  // settles a frost-fade after the first tap (90ms) instead of after the user pauses (300ms).
+  // Kept for interface parity.
+  const notifyFrostReady = React.useCallback((_intentId: string) => {}, []);
+
+  const notifyIntentComplete = React.useCallback(
+    (intentId: string) => {
+      if (activeIntentIdRef.current !== intentId) {
+        return;
+      }
+
+      finalizeInteraction(interactionSeqRef.current, true);
+    },
+    [finalizeInteraction]
+  );
+
+  notifyIntentCompleteRef.current = notifyIntentComplete;
+
   React.useEffect(() => clearSettleTimeout, [clearSettleTimeout]);
 
   return React.useMemo(
     () => ({
-      interactionSeqRef,
-      activeInteractionKindRef,
-      activeIntentIdRef,
-      activeRunnerRef,
-      awaitingVisualSyncRef,
-      commitActiveInteractionRef,
-      finalizeInteraction,
+      pendingTogglePresentationIntentId,
+      scheduleToggleCommit,
+      notifyFrostReady,
       cancelToggleInteraction,
       beginToggleInteraction,
-      scheduleToggleCommit,
     }),
-    [beginToggleInteraction, cancelToggleInteraction, finalizeInteraction, scheduleToggleCommit]
+    [
+      pendingTogglePresentationIntentId,
+      scheduleToggleCommit,
+      notifyFrostReady,
+      cancelToggleInteraction,
+      beginToggleInteraction,
+    ]
   );
 };

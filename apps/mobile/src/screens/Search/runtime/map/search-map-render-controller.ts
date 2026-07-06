@@ -40,6 +40,11 @@ type SearchMapRenderControllerNativeModule = {
     entries: ReadonlyArray<{ markerKey: string; lng: number; lat: number; rank: number }>;
   }) => Promise<{ catalogCount: number } | null | void>;
   beginInteractionFadeOut?: (payload: { instanceId?: string }) => Promise<void>;
+  commitEnterStart?: (payload: {
+    instanceId?: string;
+    requestKey: string;
+    startToken: number;
+  }) => Promise<{ started: boolean }>;
   resetNativeApplyAttribution?: (payload: { reason?: string; runId?: string }) => Promise<void>;
   flushNativeApplyAttribution?: (payload: {
     reason?: string;
@@ -860,6 +865,21 @@ export const searchMapRenderController = {
 
   // Press-up marker fade-out: ramps the native presentation scalar 1→0 + snapSettled immediately, decoupled from
   // the debounced data commit (so markers fade out on press, co-triggered with the JS frost). Idempotent.
+  // U2 (§D6c): deliver the enter-start token over the direct bridge — skips the +32ms
+  // full-frame rebuild the token used to ride. Fire-and-forget safe: the gate is idempotent
+  // and the follow-up frame carrying the same token is a no-op.
+  async commitEnterStart(payload: {
+    requestKey: string;
+    startToken: number;
+    instanceId?: string;
+  }): Promise<boolean> {
+    if (!nativeModule?.commitEnterStart) {
+      return false;
+    }
+    const result = await nativeModule.commitEnterStart(payload);
+    return result?.started === true;
+  },
+
   async beginInteractionFadeOut(instanceId?: string): Promise<void> {
     if (!nativeModule?.beginInteractionFadeOut) {
       return;

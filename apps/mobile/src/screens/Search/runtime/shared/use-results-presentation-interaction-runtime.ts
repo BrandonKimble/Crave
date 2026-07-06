@@ -6,7 +6,7 @@ import type { ResultsPresentationRuntimeOwner } from './results-presentation-run
 import type { ToggleInteractionLifecycleEvent } from './results-toggle-interaction-contract';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useResultsPresentationTabToggleRuntime } from './use-results-presentation-tab-toggle-runtime';
-import { useResultsPresentationToggleLifecycleRuntime } from './use-results-presentation-toggle-lifecycle-runtime';
+import { useResultsPresentationToggleCoordinator } from './use-results-presentation-toggle-coordinator';
 
 type ResultsPresentationInteractionRuntime = Pick<
   ResultsPresentationRuntimeOwner,
@@ -42,7 +42,7 @@ export const useResultsPresentationInteractionRuntime = ({
   notifyIntentCompleteRef,
   resultsRuntimeOwner,
 }: UseResultsPresentationInteractionRuntimeArgs): ResultsPresentationInteractionRuntime => {
-  const toggleLifecycleRuntime = useResultsPresentationToggleLifecycleRuntime({
+  const toggleLifecycleRuntime = useResultsPresentationToggleCoordinator({
     searchRuntimeBus,
     handleToggleInteractionLifecycle,
     notifyIntentCompleteRef,

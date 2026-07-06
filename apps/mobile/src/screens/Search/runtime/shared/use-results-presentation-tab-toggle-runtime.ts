@@ -4,7 +4,7 @@ import { createSearchSurfaceResultsEnterTransaction } from './search-surface-res
 import type { ResultsInteractionModel } from './results-presentation-owner-contract';
 import type { ResultsPresentationRuntimeOwner } from './results-presentation-runtime-owner-contract';
 import type { SearchRuntimeBus } from './search-runtime-bus';
-import type { useResultsPresentationToggleLifecycleRuntime } from './use-results-presentation-toggle-lifecycle-runtime';
+import type { ResultsPresentationToggleCoordinator } from './use-results-presentation-toggle-coordinator';
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
 type UseResultsPresentationTabToggleRuntimeArgs = {
@@ -13,7 +13,7 @@ type UseResultsPresentationTabToggleRuntimeArgs = {
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
   isSearchSessionActive: boolean;
   searchRuntimeBus: SearchRuntimeBus;
-  toggleLifecycleRuntime: ReturnType<typeof useResultsPresentationToggleLifecycleRuntime>;
+  toggleLifecycleRuntime: ResultsPresentationToggleCoordinator;
   resultsRuntimeOwner: Pick<
     ResultsPresentationRuntimeOwner,
     'clearStagedSearchSurfaceResultsTransaction' | 'stageSearchSurfaceResultsTransaction'

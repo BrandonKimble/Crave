@@ -657,6 +657,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     var lastLabelCount: Int
     var lastPresentationBatchPhase: String
     let appliedFeatureLedger = SourceAppliedFeatureLedger()
+    // U2 (§D6c): the enter-start TOKEN delivered over the direct bridge call (commitEnterStart)
+    // instead of riding a full render-frame rebuild. Consulted by startEnterPresentationIfReady
+    // alongside the JSON token; cleared when consumed or when the request key rotates.
+    var directEnterStartRequestKey: String?
+    var directEnterStartToken: Double?
     var lastEnterRequestKey: String?
     var enterLane: EnterLaneState
     var lastEnterStartToken: Double?
@@ -1441,6 +1446,48 @@ final class SearchMapRenderController: RCTEventEmitter {
   /// debounced data commit. Idempotent (re-targeting 0 across a rapid-tap burst is a no-op). The engine freeze
   /// makes the scalar the only moving curve. NO catalog change here; the under-cover re-decide + fade-IN still
   /// run on the commit (reprojectCatalogUnderCoverIfReady fires immediately there since opacity is already ~0).
+  /// U2 (§D6c): deliver the enter-start token over the DIRECT bridge instead of a full
+  /// render-frame rebuild (+32ms JS serialize) — the mutation frame (flushed at commit) has
+  /// already armed mounted_hidden; this just supplies the token and re-evaluates the gate.
+  /// Idempotent: a duplicate token is ignored by the gate's lastEnterStartToken guard, and the
+  /// follow-up frame carrying the same token in JSON is a no-op.
+  @objc
+  func commitEnterStart(
+    _ payload: NSDictionary,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else {
+        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
+        return
+      }
+      guard let requestKey = payload["requestKey"] as? String,
+            let startToken = (payload["startToken"] as? NSNumber)?.doubleValue
+      else {
+        reject("commit_enter_start_invalid_payload", "requestKey + startToken required", nil)
+        return
+      }
+      let targetIds: [String] =
+        (payload["instanceId"] as? String).map { [$0] } ?? Array(self.instances.keys)
+      var started = false
+      for instanceId in targetIds {
+        guard var state = self.instances[instanceId] else { continue }
+        state.directEnterStartRequestKey = requestKey
+        state.directEnterStartToken = startToken
+        self.instances[instanceId] = state
+        NSLog("[NGAP] directEnterStart t=%.1f key=%@", CACurrentMediaTime() * 1000, requestKey)
+        var latest = self.instances[instanceId] ?? state
+        self.startEnterPresentationIfReady(instanceId: instanceId, state: &latest)
+        self.instances[instanceId] = latest
+        if latest.lastEnterStartedRequestKey == requestKey {
+          started = true
+        }
+      }
+      resolve(["started": started])
+    }
+  }
+
   @objc
   func beginInteractionFadeOut(
     _ payload: NSDictionary,
@@ -5737,7 +5784,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       return
     }
     let revealStatus = Self.readEnterStatus(fromJSON: presentationStateJSON)
-    let revealStartToken = Self.readEnterStartToken(fromJSON: presentationStateJSON)
+    let jsonStartToken = Self.readEnterStartToken(fromJSON: presentationStateJSON)
+    let directStartToken: Double? =
+      (state.directEnterStartRequestKey != nil
+        && state.directEnterStartRequestKey == state.lastEnterRequestKey)
+      ? state.directEnterStartToken : nil
+    let revealStartToken = directStartToken ?? jsonStartToken
     // [NGAP] native-gap attribution (plans/search-flow-plan.md §D6b): a NEW start token is
     // visible — log which guard (if any) is holding the ramp so the JS-request→rampStart gap
     // partitions into transport vs named native waits.

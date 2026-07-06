@@ -42,6 +42,8 @@ export type ResultsPresentationRuntimeMachine = {
     intentId: string,
     executionBatch: ResultsPresentationTransportState['executionBatch']
   ) => boolean;
+  /** U2 (§D6c): the transport's current enter start token, for the direct-bridge start call. */
+  getEnterStartToken: () => number | null;
   markEnterBatchSettled: (
     intentId: string,
     executionBatch: ResultsPresentationTransportState['executionBatch']
