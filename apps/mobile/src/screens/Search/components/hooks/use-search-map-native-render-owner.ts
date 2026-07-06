@@ -940,6 +940,13 @@ const resolveNativeRenderOwnerFrameAdmission = ({
 type MapRenderFrameTransportQueueFrame = {
   ownerEpoch: number;
   frameGenerationId: string;
+  // D6e collision surgery: monotonic per-queue revision. The transport dedup keys on THIS, not
+  // on frameGenerationId — generation REUSE (a presentation/control-only frame riding an
+  // already-acked generation) is now the norm for toggles, and a generation-keyed dedup dropped
+  // exactly those frames (the `entering` presentation state never reached native → the toggle
+  // reveal stalled at pending_mount). Every queued frame passed the something-changed admission
+  // guard, so a higher revision is by construction new content for native.
+  frameTransportRevision: number;
 };
 
 type NativeRenderOwnerSourceAck = {
@@ -989,6 +996,8 @@ type NativeRenderOwnerTransportState<TFrame extends MapRenderFrameTransportQueue
   queueState: MapRenderFrameTransportQueueState<TFrame>;
   frameGenerationSeq: number;
   executionBatchSeq: number;
+  frameTransportRevisionSeq: number;
+  lastAckedFrameTransportRevision: number;
   lastDesiredExecutionBatchId: string | null;
 };
 
@@ -1007,6 +1016,8 @@ const createNativeRenderOwnerTransportState = <
   },
   frameGenerationSeq: 0,
   executionBatchSeq: 0,
+  frameTransportRevisionSeq: 0,
+  lastAckedFrameTransportRevision: 0,
   lastDesiredExecutionBatchId: null,
 });
 
@@ -1017,6 +1028,9 @@ const markNativeRenderOwnerVisualSourcesNotResident = <
 ): void => {
   state.lastNativeAck = null;
   state.lastNativeAckSnapshot = null;
+  // Revision dedup mirrors the lastNativeAck lifecycle: once native's resident state is no
+  // longer trusted, any staged frame must be re-sendable.
+  state.lastAckedFrameTransportRevision = 0;
 };
 
 const resetNativeRenderOwnerTransportState = <TFrame extends MapRenderFrameTransportQueueFrame>({
@@ -1071,7 +1085,9 @@ const takeNextNativeRenderOwnerFrameForTransport = <
         };
   queueState.pendingFrame = pendingFrame;
 
-  if (lastNativeAck?.frameGenerationId === pendingFrame.frameGenerationId) {
+  // D6e collision surgery: dedup on the per-queue revision, NOT the frame generation — see
+  // MapRenderFrameTransportQueueFrame.frameTransportRevision.
+  if (pendingFrame.frameTransportRevision <= transportState.lastAckedFrameTransportRevision) {
     queueState.pendingFrame = null;
     return null;
   }
@@ -1088,9 +1104,14 @@ const acknowledgeNativeRenderOwnerFrameTransportSync = <
   transportState: NativeRenderOwnerTransportState<TFrame>,
   frameGenerationId: string
 ): void => {
-  if (transportState.queueState.inFlightFrame?.frameGenerationId !== frameGenerationId) {
+  const inFlightFrame = transportState.queueState.inFlightFrame;
+  if (inFlightFrame?.frameGenerationId !== frameGenerationId) {
     return;
   }
+  transportState.lastAckedFrameTransportRevision = Math.max(
+    transportState.lastAckedFrameTransportRevision,
+    inFlightFrame.frameTransportRevision
+  );
   transportState.queueState.inFlightFrame = null;
   transportState.queueState.syncInFlight = false;
 };
@@ -2686,6 +2707,7 @@ const useSearchMapNativeRenderOwnerSync = ({
   type NativeRenderOwnerFrameEnvelope = {
     ownerEpoch: number;
     frameGenerationId: string;
+    frameTransportRevision: number;
     executionBatchId: string;
     frame: SearchMapRenderFrame;
     snapshot: SearchMapRenderSnapshot;
@@ -3395,6 +3417,7 @@ const useSearchMapNativeRenderOwnerSync = ({
         queueLatestNativeRenderOwnerFrameForTransport(transportState, {
           ownerEpoch,
           frameGenerationId,
+          frameTransportRevision: ++transportState.frameTransportRevisionSeq,
           executionBatchId,
           frame: effectiveFrame,
           snapshot: effectiveSourceSnapshot,

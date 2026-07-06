@@ -157,8 +157,9 @@ type DirectMapPreparedSourceFrame = {
 // SIBLING tab's coverage from the by-requestKey caches (the live refs hold the ACTIVE
 // tab's coverage). Staleness is handled purely by key identity: the prewarmed entry is
 // stored under the same buildSourceFrameDataReuseKey fingerprint the toggle publish
-// computes, so any input drift (camera bounds, native promoted set, catalog, coverage,
-// selection, query) is a key mismatch and the toggle rebuilds as before.
+// computes, so any input drift (camera bounds, catalog, coverage, selection, query) is a
+// key mismatch and the toggle rebuilds as before. (The native promoted set is NOT an
+// input — the collision bake is promotion-independent per the D6e surgery.)
 type DirectMapFramePrewarmRequest = {
   prewarmTab: 'dishes' | 'restaurants';
 };
@@ -945,12 +946,7 @@ const buildStableLabelBaseFeature = (
 
 const buildStableCollisionFeature = (
   feature: Feature<Point, RestaurantFeatureProperties>,
-  markerKey: string,
-  // The promotion seed (1 = promoted pin → obstacle, 0 = demoted dot → no obstacle) that the obstacle
-  // layer filters on. Passed in from the LIVE native promoted set so a pin promoted mid-zoom gets its
-  // obstacle (labels yield) instead of the stale publish-time seed (#16). Falls back to the feature's
-  // baked value when native hasn't reported a promoted set yet.
-  promotedNativeLodOpacity: number
+  markerKey: string
 ): Feature<Point, RestaurantFeatureProperties> =>
   ({
     type: 'Feature',
@@ -961,7 +957,14 @@ const buildStableCollisionFeature = (
       restaurantId: feature.properties.restaurantId,
       nativeLodZ: feature.properties.nativeLodZ,
       lodZ: feature.properties.lodZ,
-      nativeLodOpacity: promotedNativeLodOpacity,
+      // PROMOTION-INDEPENDENT (D6e collision surgery): JS bakes every obstacle demoted (0), exactly
+      // like the pin doctrine ("nativeLodOpacity=0 for ALL pins under v5 — the engine owns opacity").
+      // NATIVE owns obstacle gating: applyV5ObstacleReseed flips promoted obstacles to 1 from the
+      // engine's live promoted set (decide-delta drains + the post-JS-apply re-assert), covering #16
+      // (mid-zoom promotion) natively. Baking the live promoted set here (the old #16 fix) made every
+      // LOD promotion round-trip native→JS→rebuild→republish → collision-only frame generations →
+      // native re-mounted identical sources (~106ms/toggle) + [R3RECON] duplicate-adds + idle churn.
+      nativeLodOpacity: 0,
     } as RestaurantFeatureProperties,
   }) satisfies Feature<Point, RestaurantFeatureProperties>;
 
@@ -970,7 +973,6 @@ const buildDirectLabelStores = ({
   previousLabelSourceStore,
   previousLabelCollisionSourceStore,
   onScreenMarkerKeys,
-  promotedMarkerKeys,
 }: {
   pinSourceStore: SearchMapSourceStore;
   previousLabelSourceStore: SearchMapSourceStore;
@@ -978,10 +980,6 @@ const buildDirectLabelStores = ({
   // Native's on-screen marker set (getNativeVisibleMarkerKeys), or null when native has not
   // reported yet. Labels are built only for these keys (the set native promotes its top-N from).
   onScreenMarkerKeys: ReadonlySet<string> | null;
-  // Native's LIVE promoted set — the collision obstacle is baked from THIS (not the publish-time pin
-  // seed) so a pin promoted mid-zoom gets its label-yielding obstacle (#16). Null pre-projection → fall
-  // back to each feature's baked seed.
-  promotedMarkerKeys: ReadonlySet<string> | null;
 }): {
   labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
@@ -1035,21 +1033,12 @@ const buildDirectLabelStores = ({
       });
     });
     // COLLISION obstacle: ON-SCREEN-GATED, same set as the labels above (keeps the structural invariant
-    // labelCount == labelCollisionCount × LABEL_CANDIDATES). The v5 obstacle for markers promoted at
-    // zoomed/panned viewports is reseeded NATIVELY from the catalog coordinate (applyV5ObstacleReseed), so JS
-    // collision residency does NOT need to cover off-screen candidates — building it for all of them only
-    // broke this invariant (labelCount 1868 vs expected 1888) without helping FM#3.
-    const promotedNativeLodOpacity =
-      promotedMarkerKeys != null
-        ? promotedMarkerKeys.has(markerKey)
-          ? 1
-          : 0
-        : (feature.properties.nativeLodOpacity ?? 0);
-    const collisionFeature = buildStableCollisionFeature(
-      feature,
-      markerKey,
-      promotedNativeLodOpacity
-    );
+    // labelCount == labelCollisionCount × LABEL_CANDIDATES). PROMOTION-INDEPENDENT: obstacle gating
+    // (0↔1 on the promoted set) is fully NATIVE — applyV5ObstacleReseed reseeds from the catalog
+    // coordinate on decide deltas AND re-asserts after every JS collision-source apply — so JS
+    // collision residency does NOT need to cover off-screen candidates, and promotion changes never
+    // re-enter the JS build (the D6e round-trip).
+    const collisionFeature = buildStableCollisionFeature(feature, markerKey);
     const collisionRevision = buildLabelSourceFeatureDiffKey(collisionFeature);
     collisionBuilder.appendFeature(collisionFeature, {
       featureId: markerKey,
@@ -1700,13 +1689,10 @@ export const useDirectSearchMapSourceController = ({
             getCraveScoreColorFromScore: args.getCraveScoreColorFromScore,
           });
     const markerCatalogEntries = markerCatalogReadModel.catalog;
-    // #16: include the LIVE native promoted set in the reuse key so a promotion change (native LOD during
-    // a zoom) MISSES the prepared-frame cache on the next publish (the settle republish) and does a full
-    // rebuild — which re-bakes the label-collision obstacle from the current promoted set so labels yield
-    // to mid-zoom-promoted pins. Without this the cache replays the stale obstacle (settle covered spikes).
-    const nativePromotedReuseKey = buildStableKeyFingerprint(
-      [...(sourceFramePort.getNativeVisibleMarkerKeys()?.nativePromotedKeys ?? [])].sort()
-    );
+    // D6e collision surgery: the LIVE native promoted set is NO LONGER a build input (the obstacle
+    // bake is promotion-independent; native owns gating via applyV5ObstacleReseed), so it is gone
+    // from the reuse key — promotion changes must NOT bust the prepared-frame cache (that was the
+    // round-trip that minted collision-only frame generations).
     const preparedFrameFingerprint = buildSourceFrameDataReuseKey({
       activeTab,
       bounds: currentBounds,
@@ -1714,7 +1700,6 @@ export const useDirectSearchMapSourceController = ({
         markerCatalogReadModel.primaryCount.toString(36),
         coverageResource?.requestKey ?? 'coverage:none',
         coverageResource?.status ?? 'coverage:idle',
-        nativePromotedReuseKey,
       ].join(':'),
       markersRenderKey: buildStableKeyFingerprint(
         markerCatalogEntries.map((entry) => buildMarkerKey(entry.feature))
@@ -2434,18 +2419,12 @@ export const useDirectSearchMapSourceController = ({
     const nativeVisibleForLabels = sourceFramePort.getNativeVisibleMarkerKeys();
     const onScreenMarkerKeysForLabels =
       nativeVisibleForLabels != null ? new Set(nativeVisibleForLabels.markerKeys) : null;
-    // The LIVE promoted set drives the collision obstacle baking (#16): on a settle-republish (this runs
-    // when isMapMoving flips false) the obstacle re-bakes to match the pins native promoted during the
-    // gesture, so labels yield to them instead of the stale publish-time set.
-    const promotedMarkerKeysForLabels =
-      nativeVisibleForLabels != null ? new Set(nativeVisibleForLabels.nativePromotedKeys) : null;
     const { labelSourceStore, labelCollisionSourceStore, labelDerivedSourceIdentityKey } =
       buildDirectLabelStores({
         pinSourceStore,
         previousLabelSourceStore: previousLabelSourceStoreRef.current,
         previousLabelCollisionSourceStore: previousLabelCollisionSourceStoreRef.current,
         onScreenMarkerKeys: onScreenMarkerKeysForLabels,
-        promotedMarkerKeys: promotedMarkerKeysForLabels,
       });
     assertProjectedVisualFrameInvariants({
       pinSourceStore,
@@ -3465,11 +3444,11 @@ export const useDirectSearchMapSourceController = ({
   // remaining ~125ms burner is the synchronous source-frame build for the incoming tab
   // (publishSourcesInner: coverage merge + re-rank + pin/dot/pinInteraction/label store builds).
   // The marker CATALOGS are already precomputed per-tab at response commit (R1a-2), but the
-  // FRAME depends on late-settling inputs (camera bounds, native promoted set, coverage), so it
+  // FRAME depends on late-settling inputs (camera bounds, coverage), so it
   // cannot be built at response commit — instead we build it on the IDLE queue after each
   // reveal/toggle settles, into the existing prepared-frame cache under the exact fingerprint
   // the toggle-time publish will compute. Toggle → fingerprint match → cached replay (the
-  // pre-existing cacheReveal path), no rebuild. Any input drift (camera move, promotion change,
+  // pre-existing cacheReveal path), no rebuild. Any input drift (camera move,
   // new search, coverage change, selection) changes the fingerprint → normal rebuild + a fresh
   // prewarm after the next settle. Stale frames can therefore never publish: the ONLY consumer
   // is the fingerprint-keyed lookup.

@@ -4873,6 +4873,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       durationMs: CACurrentMediaTime() * 1000 - batchStartedAt,
       operationCount: preparedPinAndLabelOutput.plans.count + preparedDotOutput.plans.count
     )
+    // D6e collision surgery: JS bakes every collision obstacle demoted (promotion-independent), so a
+    // JS frame that rewrote collision features just clobbered the live promotion gating to 0.
+    // Re-assert it natively: stash the engine's promoted set for the obstacle reseed (drained below
+    // once `state` is written back, or — if blocked under cover — at the next drain point).
+    let reconcileCollisionMutation = mutationSummaryBySourceId[state.labelCollisionSourceId]
+    let reconcileNeedsObstacleReassert =
+      (reconcileCollisionMutation.map { $0.addCount + $0.updateCount + $0.removeCount } ?? 0) > 0
+    if reconcileNeedsObstacleReassert, let promoted = state.lodV5Engine?.lastPromotedInOrder,
+       !promoted.isEmpty {
+      state.lodV5ObstacleReseedKeys.formUnion(promoted)
+    }
     if state.lastEnterRequestKey != nil && state.lastPresentationBatchPhase != "live" {
       let pinMutationSummary = mutationSummaryBySourceId[state.pinSourceId] ?? MutationSummary(
         addCount: 0,
@@ -4938,6 +4949,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     Self.setDerivedFamilyState(latestDotFamilyState, sourceId: state.dotSourceId, state: &state)
     maybeElectMountedHiddenExecutionBatch(instanceId: instanceId, state: &state)
     instances[instanceId] = state
+    if reconcileNeedsObstacleReassert {
+      // Drain the re-assert now that `instances` holds the applied state (no-ops/re-stashes if the
+      // visual source is covered or recovering — the reveal/camera drains pick it up).
+      applyV5ObstacleReseed(for: instanceId)
+    }
     let animationStartedAt = CACurrentMediaTime() * 1000
     updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
     self.recordNativeApply(
@@ -5338,6 +5354,15 @@ final class SearchMapRenderController: RCTEventEmitter {
       durationMs: CACurrentMediaTime() * 1000 - batchStartedAt,
       operationCount: preparedPinAndLabelOutput.plans.count + preparedDotOutput.plans.count
     )
+    // D6e collision surgery: same re-assert as the reconcile path — a JS-driven collision write
+    // ships demoted-baked obstacles; native re-gates the promoted set right after.
+    let liveRoleCollisionMutation = mutationSummaryBySourceId[state.labelCollisionSourceId]
+    let liveRoleNeedsObstacleReassert =
+      (liveRoleCollisionMutation.map { $0.addCount + $0.updateCount + $0.removeCount } ?? 0) > 0
+    if liveRoleNeedsObstacleReassert, let promoted = state.lodV5Engine?.lastPromotedInOrder,
+       !promoted.isEmpty {
+      state.lodV5ObstacleReseedKeys.formUnion(promoted)
+    }
     finalizePreparedPinAndLabelOutput(
       instanceId: instanceId,
       prepared: preparedPinAndLabelOutput,
@@ -5363,6 +5388,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     Self.setDerivedFamilyState(latestDotFamilyState, sourceId: state.dotSourceId, state: &state)
     maybeElectMountedHiddenExecutionBatch(instanceId: instanceId, state: &state)
     instances[instanceId] = state
+    if liveRoleNeedsObstacleReassert {
+      applyV5ObstacleReseed(for: instanceId)
+    }
     updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
     recordNativeApply(
       section: "live_role.total",
@@ -8278,6 +8306,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.lodV5ObstacleReseedKeys = []
     guard !affectedMarkerKeys.isEmpty else { instances[instanceId] = state; return }
     guard !Self.isVisualSourceInactiveOrDismissing(state), !Self.isSourceRecoveryActive(state) else {
+      // D6e collision surgery: RE-STASH instead of dropping — a blocked reseed (covered apply /
+      // recovery window) must survive to the next drain point (camera idle, tap, toggle-redecide at
+      // reveal), because JS now bakes every obstacle demoted (0) and this reseed is the ONLY
+      // promotion-gating authority. Dropping the keys here would leave promoted pins obstacle-less
+      // after a covered JS republish (labels would stop yielding).
+      state.lodV5ObstacleReseedKeys.formUnion(affectedMarkerKeys)
       instances[instanceId] = state
       return
     }
