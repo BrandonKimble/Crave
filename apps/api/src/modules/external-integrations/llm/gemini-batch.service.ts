@@ -168,7 +168,9 @@ export class GeminiBatchService {
       const open = await this.prisma.llmBatchJob.findMany({
         where: { status: 'submitted' },
         select: { jobId: true, providerJobName: true, purpose: true },
-        take: 20,
+        // Sized for archive loads: a full city sliced at ~250 posts/job can
+        // have ~100 jobs open at once; poll them all each cycle.
+        take: 200,
       });
       for (const job of open) {
         if (!job.providerJobName) continue;
