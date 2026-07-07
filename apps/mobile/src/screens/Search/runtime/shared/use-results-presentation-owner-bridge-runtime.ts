@@ -63,14 +63,11 @@ export const useResultsPresentationOwnerBridgeRuntime = ({
     });
 
   const resultsInteractionRuntime = useResultsPresentationInteractionRuntime({
-    activeTab,
     setActiveTab,
     setActiveTabPreference,
-    isSearchSessionActive,
     searchRuntimeBus,
     handleToggleInteractionLifecycle,
     notifyIntentCompleteRef,
-    resultsRuntimeOwner: resultsRuntimeMachineOwner,
   });
 
   const resultsRuntimeOwner = React.useMemo(

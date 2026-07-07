@@ -1,6 +1,8 @@
 import React from 'react';
 
 import { registerSearchReconcilerPresentationPort } from '../reconciler/search-reconciler-presentation-port';
+import { createSearchSurfaceResultsEnterTransaction } from './search-surface-results-transaction';
+import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
 import { useSearchFilterModalOwner } from '../../hooks/use-search-filter-modal-owner';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
@@ -41,8 +43,34 @@ export const useSearchRootFilterModalRuntime = ({
           resultsPresentationOwner.beginVariantRerunPresentationPending,
         clearStagedSearchSurfaceResultsTransaction:
           resultsPresentationOwner.clearStagedSearchSurfaceResultsTransaction,
+        presentTabSwitch: ({ intentId, targetTab }) => {
+          const searchRuntimeBus = sessionCoreLane.searchRuntimeBus;
+          resultsPresentationOwner.clearStagedSearchSurfaceResultsTransaction();
+          // Direct PRESENTED-tab publish (never the tuple writer): the desire already
+          // holds targetTab; this is the presentation catching up under the cover.
+          if (searchRuntimeBus.getState().activeTab !== targetTab) {
+            searchRuntimeBus.publish({ activeTab: targetTab, pendingTabSwitchTab: null });
+          } else {
+            searchRuntimeBus.publish({ pendingTabSwitchTab: null });
+          }
+          getSearchSurfaceRuntime().beginRedrawTransaction({
+            reason: 'toggle',
+            transactionId: intentId,
+            targetTab,
+            coverState: 'interaction_loading',
+          });
+          resultsPresentationOwner.stageSearchSurfaceResultsTransaction(
+            createSearchSurfaceResultsEnterTransaction(
+              intentId,
+              'initial_search',
+              'interaction_loading',
+              null,
+              'cache'
+            )
+          );
+        },
       }),
-    [resultsPresentationOwner]
+    [resultsPresentationOwner, sessionCoreLane.searchRuntimeBus]
   );
   const filterModalOwner = useSearchFilterModalOwner({
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,

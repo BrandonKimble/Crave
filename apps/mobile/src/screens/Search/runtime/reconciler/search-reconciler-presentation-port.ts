@@ -10,6 +10,9 @@ export type SearchReconcilerPresentationPort = {
   scheduleToggleCommit: ScheduleToggleCommit;
   beginVariantRerunPresentationPending: (transactionId: string) => void;
   clearStagedSearchSurfaceResultsTransaction: () => void;
+  /** S4c-1b: the tab-switch commit body — presents the CURRENT desired tab (direct
+   *  activeTab publish, never the tuple writer) and arms the cache-keyed re-reveal. */
+  presentTabSwitch: (args: { intentId: string; targetTab: 'dishes' | 'restaurants' }) => void;
 };
 
 let port: SearchReconcilerPresentationPort | null = null;

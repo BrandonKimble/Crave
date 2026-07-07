@@ -59,7 +59,6 @@ type SearchSubmitOwnerReadModel = {
 };
 
 type SearchSubmitOwnerUiPorts = {
-  setActiveTab: React.Dispatch<React.SetStateAction<SegmentValue>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   resetSheetToHidden: () => void;
   scrollResultsToTop: () => void;
@@ -194,7 +193,6 @@ const useSearchSubmitOwner = ({
     risingActive,
   } = readModel;
   const {
-    setActiveTab,
     setError,
     resetSheetToHidden,
     scrollResultsToTop,
@@ -278,7 +276,9 @@ const useSearchSubmitOwner = ({
           : intent.entrySurface,
     });
     lastAutoOpenKeyRef.current = null;
-    setActiveTab(tuple.tab);
+    // Presentation-path tab publish (S4c-1b): the enter presents its tab directly —
+    // the tuple writer no longer projects activeTab for in-session tab deltas.
+    searchRuntimeBus.publish({ activeTab: tuple.tab, pendingTabSwitchTab: null });
     setError(null);
     Keyboard.dismiss();
   };
@@ -290,10 +290,9 @@ const useSearchSubmitOwner = ({
   >(() => {});
   worldPresentedEffectsRef.current = ({ tuple, value, presentationIntentKind }) => {
     const identity = tuple.queryIdentity;
-    // The response-adopted tab must reach the REACT tab state too (rows prepare off it);
-    // the tuple writer already projected the bus key. Idempotent when nothing adopted.
-    // The dual state dies in S4 when the reconciler owns presentation.
-    setActiveTab(tuple.tab);
+    // The response-adopted tab is PRESENTED here (direct publish, never the tuple
+    // writer) — idempotent when nothing adopted; the bus dedupes equal keys.
+    searchRuntimeBus.publish({ activeTab: tuple.tab, pendingTabSwitchTab: null });
     if (identity.kind === 'natural') {
       updateLocalRecentSearches(identity.query);
       void loadRecentHistory();

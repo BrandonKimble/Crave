@@ -137,7 +137,15 @@ export const writeSearchDesiredTuple = (
             next.queryIdentity.kind !== 'idle' && next.queryIdentity.kind !== 'profileSeed',
         }
       : {}),
-    ...(patch.tab != null && prev.tab !== next.tab ? { activeTab: next.tab } : {}),
+    // S4c-1b: desired tab ≠ presented tab. A pure tab toggle inside an active session
+    // is PRESENTED by the reconciler's tab-switch commit (cover → swap → reveal) — the
+    // write only surfaces the optimistic hint. Identity writes and idle-session toggles
+    // present immediately (enter builds its own cover; home pill has no choreography).
+    ...(patch.tab != null && prev.tab !== next.tab
+      ? state.isSearchSessionActive && !identityChanged
+        ? { pendingTabSwitchTab: next.tab }
+        : { activeTab: next.tab, pendingTabSwitchTab: null }
+      : {}),
   });
   if (__DEV__) {
     // The append-only trace (charter §1: measurement labels, never lifecycle).

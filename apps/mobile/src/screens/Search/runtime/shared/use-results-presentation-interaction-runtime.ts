@@ -16,28 +16,19 @@ type ResultsPresentationInteractionRuntime = Pick<
 };
 
 type UseResultsPresentationInteractionRuntimeArgs = {
-  activeTab: 'dishes' | 'restaurants';
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
-  isSearchSessionActive: boolean;
   searchRuntimeBus: SearchRuntimeBus;
   handleToggleInteractionLifecycle: (event: ToggleInteractionLifecycleEvent) => void;
   notifyIntentCompleteRef: React.MutableRefObject<((intentId: string) => void) | null>;
-  resultsRuntimeOwner: Pick<
-    ResultsPresentationRuntimeOwner,
-    'clearStagedSearchSurfaceResultsTransaction' | 'stageSearchSurfaceResultsTransaction'
-  >;
 };
 
 export const useResultsPresentationInteractionRuntime = ({
-  activeTab,
   setActiveTab,
   setActiveTabPreference,
-  isSearchSessionActive,
   searchRuntimeBus,
   handleToggleInteractionLifecycle,
   notifyIntentCompleteRef,
-  resultsRuntimeOwner,
 }: UseResultsPresentationInteractionRuntimeArgs): ResultsPresentationInteractionRuntime => {
   const toggleLifecycleRuntime = useResultsPresentationToggleCoordinator({
     searchRuntimeBus,
@@ -46,13 +37,8 @@ export const useResultsPresentationInteractionRuntime = ({
   });
 
   const interactionModel = useResultsPresentationTabToggleRuntime({
-    activeTab,
     setActiveTab,
     setActiveTabPreference,
-    isSearchSessionActive,
-    searchRuntimeBus,
-    toggleLifecycleRuntime,
-    resultsRuntimeOwner,
   });
 
   return React.useMemo(

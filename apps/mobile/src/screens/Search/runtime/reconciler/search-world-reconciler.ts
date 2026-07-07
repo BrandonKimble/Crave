@@ -287,11 +287,30 @@ export const createSearchWorldReconciler = (
         });
         return;
       }
-      case 'tab_switch':
+      case 'tab_switch': {
+        // S4c-1b: the reconciler presents the tab recompose — coordinator debounce +
+        // press-up fade, then the commit body re-reads the CURRENT desire and swaps
+        // (a net-zero burst re-reveals without the tab publish; markers were dimmed).
+        const port = getSearchReconcilerPresentationPort();
+        if (port == null) {
+          reportSearchFlowContractViolation('reconciler_presentation_port_missing', {
+            generation,
+          });
+          return;
+        }
+        port.scheduleToggleCommit(
+          ({ intentId }) => {
+            const busState = env.searchRuntimeBus.getState();
+            port.presentTabSwitch({ intentId, targetTab: busState.desiredTuple.tab });
+            return { awaitVisualSync: true as const };
+          },
+          { kind: 'tab_switch' }
+        );
+        return;
+      }
       case 'session_exit':
       case 'boot_noop':
       case 'response_tab_adopt':
-        // tab_switch: the legacy tab lane presents the recompose (S4c folds it in).
         // session_exit: close choreography stays trigger-owned until S4c.
         // response_tab_adopt: the resolver's own mid-resolution write — same episode.
         return;
