@@ -408,7 +408,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   if (engineInstanceIdRef.current == null) {
     engineInstanceIdRef.current = `search-map-engine:${Math.random().toString(36).slice(2)}`;
   }
-  const engineInstanceId = engineInstanceIdRef.current;
   const [nativeViewportState, setNativeViewportState] = React.useState<{
     bounds: MapBounds | null;
     isGestureActive: boolean;

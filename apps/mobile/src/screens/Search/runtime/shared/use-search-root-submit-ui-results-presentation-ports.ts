@@ -2,7 +2,6 @@ import React from 'react';
 
 import useSearchSubmitOwnerValue from '../../hooks/use-search-submit-owner';
 import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
-import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
 
 type SearchRootSubmitUiResultsPresentationPorts = Pick<
@@ -11,18 +10,14 @@ type SearchRootSubmitUiResultsPresentationPorts = Pick<
 >;
 
 type UseSearchRootSubmitUiResultsPresentationPortsArgs = {
-  stateFoundationLane: SearchRootStateFoundationLane;
   resultsPresentationOwner: ResultsPresentationOwner;
   profileOwner: ProfileOwner;
 };
 
 export const useSearchRootSubmitUiResultsPresentationPorts = ({
-  stateFoundationLane,
   resultsPresentationOwner,
   profileOwner,
 }: UseSearchRootSubmitUiResultsPresentationPortsArgs): SearchRootSubmitUiResultsPresentationPorts => {
-  const { sessionPrimitivesLane } = stateFoundationLane;
-
   return React.useMemo(
     () => ({
       getIsProfilePresentationActive: () =>

@@ -1,9 +1,5 @@
 import type { Coordinate, MapBounds } from '../../../types';
-import {
-  getBoundsCenter,
-  getBoundsDiagonalMiles,
-  haversineDistanceMiles,
-} from './geo';
+import { getBoundsCenter, getBoundsDiagonalMiles, haversineDistanceMiles } from './geo';
 
 // ---------------------------------------------------------------------------
 // OVERLAP-ALLOWED REGION — where shortcut-search pins are allowOverlap:true (all
@@ -116,4 +112,3 @@ export const zoomToFitRadiusMiles = (
   const zoom = Math.log2((EQUATOR_METERS_PER_PIXEL_Z0 * cosLat * viewportWidthPx) / diameterMeters);
   return Math.max(1, Math.min(20, zoom));
 };
-

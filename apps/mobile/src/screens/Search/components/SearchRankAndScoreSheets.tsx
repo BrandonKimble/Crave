@@ -44,9 +44,7 @@ const SearchRankAndScoreSheets = ({
   formatCompactCount,
   onProfilerRender,
 }: SearchRankAndScoreSheetsProps) => {
-  const scoreMovementDetail = scoreInfo
-    ? formatCraveScoreMovementDetail(scoreInfo.rising)
-    : null;
+  const scoreMovementDetail = scoreInfo ? formatCraveScoreMovementDetail(scoreInfo.rising) : null;
   const sheet = (
     <MemoOverlayModalSheet
       visible={Boolean(isScoreInfoVisible && scoreInfo)}
