@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { logger } from '../../../../utils';
+import { writeSearchDesiredTuple } from '../shared/search-desired-state-writer';
 import type { ScheduleToggleCommit } from '../shared/results-toggle-interaction-contract';
 import { createSearchSurfaceResultsEnterTransaction } from '../shared/search-surface-results-transaction';
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
@@ -205,143 +206,182 @@ export const useQueryMutationOrchestrator = (
     ]
   );
 
+  // S2 THIN READER (charter §7): trigger sources WRITE the desired tuple; this subscription
+  // adapts each filter-variant change into the existing commit lanes (schedule/debounce/
+  // choreography unchanged). It is the only place a filter tuple change becomes a commit —
+  // chips, price sheet, deep links, and any future source converge here by construction.
+  // Deleted in S4 when the reconciler+resolver own resolution.
+  const lastReadDesiredTupleRef = React.useRef(searchRuntimeBus.getState().desiredTuple);
+  React.useEffect(() => {
+    lastReadDesiredTupleRef.current = searchRuntimeBus.getState().desiredTuple;
+    return searchRuntimeBus.subscribe(
+      () => {
+        const state = searchRuntimeBus.getState();
+        const prev = lastReadDesiredTupleRef.current;
+        const next = state.desiredTuple;
+        if (prev === next) {
+          return;
+        }
+        lastReadDesiredTupleRef.current = next;
+        const cause = state.desiredTupleCause;
+        if (
+          cause !== 'chip_open_now' &&
+          cause !== 'chip_rising' &&
+          cause !== 'chip_price' &&
+          cause !== 'chip_include_similar'
+        ) {
+          // Only USER VARIANT intents commit through this reader. Seeding restores state,
+          // dismiss/submit writes reset the variant as part of their own lanes' choreography
+          // (those lanes convert to the reconciler in S4) — none of them re-run a search here.
+          return;
+        }
+        const prevFilters = prev.filterVariant;
+        const nextFilters = next.filterVariant;
+        const priceChanged =
+          prevFilters.priceLevels.length !== nextFilters.priceLevels.length ||
+          nextFilters.priceLevels.some((value, index) => value !== prevFilters.priceLevels[index]);
+        if (prevFilters.openNow !== nextFilters.openNow) {
+          if (!canRerunForCurrentQuery()) {
+            return;
+          }
+          scheduleToggleCommit(
+            ({ intentId }) =>
+              runVariantRerunToggleCommit({
+                intentId,
+                filters: { openNow: nextFilters.openNow },
+              }),
+            { kind: 'filter_open_now' }
+          );
+          return;
+        }
+        if (prevFilters.rising !== nextFilters.rising) {
+          if (!canRerunForCurrentQuery()) {
+            return;
+          }
+          scheduleToggleCommit(
+            ({ intentId }) =>
+              runVariantRerunToggleCommit({
+                intentId,
+                filters: { rising: nextFilters.rising },
+              }),
+            { kind: 'filter_rising' }
+          );
+          return;
+        }
+        if (priceChanged) {
+          if (!canRerunForCurrentQuery()) {
+            return;
+          }
+          scheduleToggleCommit(
+            ({ intentId }) =>
+              runVariantRerunToggleCommit({
+                intentId,
+                filters: { priceLevels: [...nextFilters.priceLevels] },
+              }),
+            { kind: 'filter_price' }
+          );
+          return;
+        }
+        if (prevFilters.includeSimilar !== nextFilters.includeSimilar) {
+          if (!canRerunForCurrentQuery()) {
+            return;
+          }
+          scheduleToggleCommit(
+            ({ intentId }) => {
+              // Page-1 flip is ZERO-NETWORK: the client already holds the exact + similar
+              // sets from the page-1 response — swap the committed variant locally and
+              // drive the shared toggle choreography exactly like the tab toggle.
+              const nextTab = searchRuntimeBus.getState().activeTab;
+              const swappedLocally = applyIncludeSimilarLocalSwap({
+                nextIncludeSimilar: nextFilters.includeSimilar,
+                targetTab: nextTab,
+              });
+              if (swappedLocally) {
+                resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
+                getSearchSurfaceRuntime().beginRedrawTransaction({
+                  reason: 'toggle',
+                  transactionId: intentId,
+                  targetTab: nextTab,
+                  coverState: 'interaction_loading',
+                });
+                resultsRuntimeOwner.stageSearchSurfaceResultsTransaction(
+                  createSearchSurfaceResultsEnterTransaction(
+                    intentId,
+                    'initial_search',
+                    'interaction_loading',
+                    null,
+                    'cache'
+                  )
+                );
+                return {
+                  awaitVisualSync: true,
+                };
+              }
+              // Mid-pagination (page > 1) or no local similar data: fresh network rerun.
+              return runVariantRerunToggleCommit({
+                intentId,
+                filters: { includeSimilar: nextFilters.includeSimilar },
+              });
+            },
+            { kind: 'filter_include_similar' }
+          );
+        }
+      },
+      ['desiredTuple'],
+      'desired_tuple_filter_reader'
+    );
+  }, [
+    applyIncludeSimilarLocalSwap,
+    canRerunForCurrentQuery,
+    resultsRuntimeOwner,
+    runVariantRerunToggleCommit,
+    scheduleToggleCommit,
+    searchRuntimeBus,
+  ]);
+
   const toggleIncludeSimilar = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
-    // R1c single-writer: read the current value from the bus at press time (see toggleOpenNow) —
-    // the chip flip publishes optimistically on press-up.
-    const nextValue = !searchRuntimeBus.getState().includeSimilarActive;
-    setIncludeSimilar(nextValue);
-    if (!canRerunForCurrentQuery()) {
-      return;
-    }
-    scheduleToggleCommit(
-      ({ intentId }) => {
-        // Page-1 flip is ZERO-NETWORK: the client already holds the exact + similar sets
-        // from the page-1 response — swap the committed variant locally and drive the
-        // shared toggle choreography exactly like the (also zero-network) tab toggle:
-        // redraw transaction + staged enter transaction, then await visual sync.
-        const nextTab = searchRuntimeBus.getState().activeTab;
-        const swappedLocally = applyIncludeSimilarLocalSwap({
-          nextIncludeSimilar: nextValue,
-          targetTab: nextTab,
-        });
-        if (swappedLocally) {
-          resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
-          getSearchSurfaceRuntime().beginRedrawTransaction({
-            reason: 'toggle',
-            transactionId: intentId,
-            targetTab: nextTab,
-            coverState: 'interaction_loading',
-          });
-          resultsRuntimeOwner.stageSearchSurfaceResultsTransaction(
-            createSearchSurfaceResultsEnterTransaction(
-              intentId,
-              'initial_search',
-              'interaction_loading',
-              null,
-              'cache'
-            )
-          );
-          return {
-            awaitVisualSync: true,
-          };
-        }
-        // Mid-pagination (page > 1) or no local similar data: reset to top via a fresh
-        // network rerun carrying the new includeSimilar value (the shared variant-rerun shape).
-        return runVariantRerunToggleCommit({
-          intentId,
-          filters: { includeSimilar: nextValue },
-        });
+    // S2: the trigger only WRITES the tuple (optimistic chip flip via the legacy
+    // projection in the same publish); the desired-tuple reader owns the commit.
+    writeSearchDesiredTuple(
+      searchRuntimeBus,
+      {
+        filterVariant: {
+          includeSimilar: !searchRuntimeBus.getState().desiredTuple.filterVariant.includeSimilar,
+        },
       },
-      { kind: 'filter_include_similar' }
+      'chip_include_similar'
     );
-  }, [
-    activeTab,
-    applyIncludeSimilarLocalSwap,
-    canRerunForCurrentQuery,
-    clearPendingTabSwitchDraft,
-    fireRerunActiveSearch,
-    includeSimilarActive,
-    isSearchSessionActive,
-    query,
-    resultsRuntimeOwner,
-    scheduleToggleCommit,
-    searchRuntimeBus,
-    searchMode,
-    setIncludeSimilar,
-    setIsPriceSelectorVisible,
-    submittedQuery,
-  ]);
+  }, [clearPendingTabSwitchDraft, searchRuntimeBus, setIsPriceSelectorVisible]);
 
   const toggleRising = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
-    // R1c single-writer: read the current value from the bus at press time (see toggleOpenNow).
-    const nextValue = !searchRuntimeBus.getState().risingActive;
-    setRisingActive(nextValue);
-    if (!canRerunForCurrentQuery()) {
-      return;
-    }
-    scheduleToggleCommit(
-      ({ intentId }) =>
-        runVariantRerunToggleCommit({
-          intentId,
-          filters: { rising: nextValue },
-        }),
-      { kind: 'filter_rising' }
+    writeSearchDesiredTuple(
+      searchRuntimeBus,
+      {
+        filterVariant: {
+          rising: !searchRuntimeBus.getState().desiredTuple.filterVariant.rising,
+        },
+      },
+      'chip_rising'
     );
-  }, [
-    activeTab,
-    canRerunForCurrentQuery,
-    clearPendingTabSwitchDraft,
-    fireRerunActiveSearch,
-    isSearchSessionActive,
-    query,
-    risingActive,
-    scheduleToggleCommit,
-    searchRuntimeBus,
-    searchMode,
-    setIsPriceSelectorVisible,
-    setRisingActive,
-    submittedQuery,
-  ]);
+  }, [clearPendingTabSwitchDraft, searchRuntimeBus, setIsPriceSelectorVisible]);
 
   const toggleOpenNow = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
-    // R1c single-writer: the CURRENT value is read from the bus at press time (same source the
-    // setter writes and the request lane reads) — the `openNow` prop threads through lane memos
-    // that proved stale across variant-rerun commits, which froze the flip (every tap recomputed
-    // the same nextValue). commitPriceSelection already reads the bus this way.
-    const nextValue = !searchRuntimeBus.getState().openNow;
-    setOpenNow(nextValue);
-    if (!canRerunForCurrentQuery()) {
-      return;
-    }
-    scheduleToggleCommit(
-      ({ intentId }) =>
-        runVariantRerunToggleCommit({
-          intentId,
-          filters: { openNow: nextValue },
-        }),
-      { kind: 'filter_open_now' }
+    writeSearchDesiredTuple(
+      searchRuntimeBus,
+      {
+        filterVariant: {
+          openNow: !searchRuntimeBus.getState().desiredTuple.filterVariant.openNow,
+        },
+      },
+      'chip_open_now'
     );
-  }, [
-    activeTab,
-    canRerunForCurrentQuery,
-    clearPendingTabSwitchDraft,
-    fireRerunActiveSearch,
-    isSearchSessionActive,
-    openNow,
-    query,
-    scheduleToggleCommit,
-    searchRuntimeBus,
-    searchMode,
-    setIsPriceSelectorVisible,
-    setOpenNow,
-    submittedQuery,
-  ]);
+  }, [clearPendingTabSwitchDraft, searchRuntimeBus, setIsPriceSelectorVisible]);
 
   const commitPriceSelection = React.useCallback(() => {
     const snapshot = pendingPriceRangeRef.current;
@@ -355,7 +395,7 @@ export const useQueryMutationOrchestrator = (
     const normalizedRange = normalizePriceRangeValues(snapshot);
     const shouldClear = isFullPriceRange(normalizedRange);
     const nextLevels = shouldClear ? [] : buildLevelsFromRange(normalizedRange);
-    const currentLevels = searchRuntimeBus.getState().priceLevels;
+    const currentLevels = searchRuntimeBus.getState().desiredTuple.filterVariant.priceLevels;
     const hasChanged =
       nextLevels.length !== currentLevels.length ||
       nextLevels.some((value, index) => value !== currentLevels[index]);
@@ -365,37 +405,19 @@ export const useQueryMutationOrchestrator = (
       return;
     }
     clearPendingTabSwitchDraft();
-
-    if (!canRerunForCurrentQuery()) {
-      setPriceLevels(nextLevels);
-      return;
-    }
-
-    scheduleToggleCommit(
-      ({ intentId }) => {
-        setPriceLevels(nextLevels);
-        return runVariantRerunToggleCommit({
-          intentId,
-          filters: { priceLevels: nextLevels },
-        });
-      },
-      { kind: 'filter_price' }
+    // S2: the price sheet is DRAFT state (widget-owned sliders) committed as ONE tuple
+    // write at the Done gesture; the desired-tuple reader owns the rerun commit.
+    writeSearchDesiredTuple(
+      searchRuntimeBus,
+      { filterVariant: { priceLevels: nextLevels } },
+      'chip_price'
     );
   }, [
-    activeTab,
-    canRerunForCurrentQuery,
     clearPendingTabSwitchDraft,
     emitMutationCoalesced,
-    fireRerunActiveSearch,
-    isSearchSessionActive,
     priceSheetRef,
-    query,
-    scheduleToggleCommit,
-    searchMode,
     searchRuntimeBus,
     setIsPriceSelectorVisible,
-    setPriceLevels,
-    submittedQuery,
   ]);
 
   const closePriceSelector = React.useCallback(() => {

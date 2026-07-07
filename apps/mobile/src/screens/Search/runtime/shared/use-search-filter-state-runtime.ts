@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { normalizePriceLevels, useSearchStore } from '../../../../store/searchStore';
+import { writeSearchDesiredTuple } from './search-desired-state-writer';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 
@@ -27,41 +28,56 @@ export const useSearchFilterStateRuntime = (searchRuntimeBus: SearchRuntimeBus) 
     'search_filter_state_runtime'
   );
 
+  // S2: every setter routes through the ONE tuple writer (the legacy keys are read-only
+  // projections of the tuple from here on — two-writer divergence is unrepresentable).
   const setOpenNow = React.useCallback(
     (openNow: boolean) => {
-      searchRuntimeBus.publish({ openNow });
+      writeSearchDesiredTuple(searchRuntimeBus, { filterVariant: { openNow } }, 'chip_open_now');
     },
     [searchRuntimeBus]
   );
 
   const setPriceLevels = React.useCallback(
     (levels: number[]) => {
-      searchRuntimeBus.publish({ priceLevels: normalizePriceLevels(levels) });
+      writeSearchDesiredTuple(
+        searchRuntimeBus,
+        { filterVariant: { priceLevels: normalizePriceLevels(levels) } },
+        'chip_price'
+      );
     },
     [searchRuntimeBus]
   );
 
   const setIncludeSimilar = React.useCallback(
     (enabled: boolean) => {
-      searchRuntimeBus.publish({ includeSimilarActive: Boolean(enabled) });
+      writeSearchDesiredTuple(
+        searchRuntimeBus,
+        { filterVariant: { includeSimilar: Boolean(enabled) } },
+        'chip_include_similar'
+      );
     },
     [searchRuntimeBus]
   );
 
   const setRisingActive = React.useCallback(
     (enabled: boolean) => {
-      searchRuntimeBus.publish({ risingActive: Boolean(enabled) });
+      writeSearchDesiredTuple(
+        searchRuntimeBus,
+        { filterVariant: { rising: Boolean(enabled) } },
+        'chip_rising'
+      );
     },
     [searchRuntimeBus]
   );
 
   const resetFilters = React.useCallback(() => {
-    searchRuntimeBus.publish({
-      openNow: false,
-      priceLevels: [],
-      includeSimilarActive: false,
-      risingActive: false,
-    });
+    writeSearchDesiredTuple(
+      searchRuntimeBus,
+      {
+        filterVariant: { openNow: false, priceLevels: [], includeSimilar: false, rising: false },
+      },
+      'dismiss'
+    );
     // Bounds are not runtime-bus state (not duplicated); they stay zustand-owned.
     useSearchStore.getState().resetBoundsFilter();
   }, [searchRuntimeBus]);

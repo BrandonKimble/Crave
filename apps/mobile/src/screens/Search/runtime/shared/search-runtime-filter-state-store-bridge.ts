@@ -130,6 +130,20 @@ export const attachSearchStoreRuntimeStateMirror = (
   if (!useSearchStore.persist.hasHydrated()) {
     unsubscribeHydration = useSearchStore.persist.onFinishHydration(() => {
       lastMirrored = readMirroredStateFromStore();
+      // Convergence rule for the ASYNC seed: rehydration may only seed a tuple the user
+      // hasn't touched yet. If any non-seed write already landed, the user's desire wins —
+      // a late rehydrate clobbering a live toggle would be the state equivalent of a stale
+      // resolution presenting. Skipped LOUDLY, never silently.
+      const state = searchRuntimeBus.getState();
+      const userHasWritten =
+        state.desiredTupleGeneration > 0 && state.desiredTupleCause !== 'boot_seed';
+      if (userHasWritten) {
+        reportSearchFlowContractViolation('persist_rehydrate_after_user_write_skipped', {
+          desiredTupleGeneration: state.desiredTupleGeneration,
+          desiredTupleCause: state.desiredTupleCause ?? 'null',
+        });
+        return;
+      }
       seedSearchRuntimeBusFromSearchStore(searchRuntimeBus);
     });
   }

@@ -4,6 +4,7 @@ import { Keyboard, unstable_batchedUpdates } from 'react-native';
 import type { NaturalSearchRequest } from '../../../types';
 import { DEFAULT_SEGMENT } from '../constants/search';
 import type { SegmentValue } from '../constants/search';
+import { writeSearchDesiredTuple } from '../runtime/shared/search-desired-state-writer';
 import { createEntitySubmitIntentPayload } from '../runtime/adapters/entity-adapter';
 import { createShortcutSubmitIntentPayload } from '../runtime/adapters/shortcut-adapter';
 import type { SearchRuntimeBus, SearchRuntimeBusState } from '../runtime/shared/search-runtime-bus';
@@ -329,7 +330,13 @@ export const useSearchSubmitEntryOwner = ({
       // structured launches (shortcut/entity/favorites) from outside the results surface
       // start with "Include similar" off; the payload build reads the bus afterwards.
       if (entrySurface !== 'results' && searchRuntimeBus.getState().includeSimilarActive) {
-        searchRuntimeBus.publish({ includeSimilarActive: false });
+        // S2: routed through the ONE tuple writer (legacy key is a projection). The
+        // desired-tuple reader ignores non-chip causes, so this reset never re-commits.
+        writeSearchDesiredTuple(
+          searchRuntimeBus,
+          { filterVariant: { includeSimilar: false } },
+          'initial_submit'
+        );
       }
       setSearchRequestInFlight(true);
       onPresentationIntentStart?.({
@@ -579,7 +586,13 @@ export const useSearchSubmitEntryOwner = ({
       // effective value is read for the request payload. Reruns/filter toggles
       // (entrySurface 'results') keep the current value.
       if (entrySurface !== 'results' && searchRuntimeBus.getState().includeSimilarActive) {
-        searchRuntimeBus.publish({ includeSimilarActive: false });
+        // S2: routed through the ONE tuple writer (legacy key is a projection). The
+        // desired-tuple reader ignores non-chip causes, so this reset never re-commits.
+        writeSearchDesiredTuple(
+          searchRuntimeBus,
+          { filterVariant: { includeSimilar: false } },
+          'initial_submit'
+        );
       }
       const effectiveOpenNow = options?.openNow ?? openNow;
       const effectivePriceLevels =
