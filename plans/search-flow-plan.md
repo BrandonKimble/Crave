@@ -299,11 +299,28 @@ open-now; + 3x big finger pans + open-now (video'd — full choreography, new-vi
   rig (maestro type-into-search lane not landing yet; testID search-header-input added).
   NEED FROM OWNER: exact repro — typed query or shortcut? which tab? which toggle? zoom
   change or pure pan? Also owner-directed follow-ups queued for this audit:
-  (a) chip toggles feel SLOW vs tab toggle even without a map move — they ARE a network
-  rerun by design (server-filtered variant + coverage refetch; tab toggle is zero-network
-  local). Measured shape: ~300ms debounce + RTT + ~0.5s choreography. If it should be
-  instant, the ideal is the include-similar pattern: page-1 response carries the openNow/
-  price variant (union prefetch) so the first flip is local — product/arch decision.
+  (a) chip toggles feel SLOW vs tab toggle — FULLY ATTRIBUTED 2026-07-06 (fork session,
+  attribution scenario `search_submit_dismiss_repeat` — NOTE: the `toggle` scenario is NOT
+  in the attribution allowlist, which is why lifecycle/gate events were dark all day).
+  Measured commit→joint budget for one open-now toggle, no map move:
+  · /search/run round trip: 224–366ms — the SERVER IS FAST (backend refactor confirmed).
+  · Coverage was SERIALIZED behind the search (+340–460ms): the commit-time fetch used the
+  OLD searchRequestId's stale request bounds and was thrown away; the needed
+  viewport-bounds fetch only started after the response. FIXED bbf97e85: while a
+  non-append page-1 op is in flight, coverage fetches against the CURRENT viewport →
+  post-response fetch = terminal-cache hit; coverage now completes ~+70ms, parallel.
+  Joint moved +737ms → +441ms on the matched drive.
+  · REMAINING response→joint pipeline: 300–470ms (varies) = rows prepare+list layout+
+  preparedRows commit ~135ms, then a ~115ms gap between the JS frame publish and the
+  native set_render_frame bridge dispatch, native apply+mounted-hidden ack ~45ms, plus
+  gate notify ticks. NEXT TARGETS: the frame→bridge dispatch gap, and the rows leg.
+  · Plus the pre-commit press-up debounce (settle source 'frost_ready').
+  · ARCHITECTURAL NOTE: the redraw-phase chain is circular for reruns (rows release wants
+  phase hydration_ready, which advances on phase_b_materializing AFTER visual_released =
+  after the reveal) — the reveal actually opens via the preparedRows committed path, and
+  the rows-release rAF spin only resolves post-settle. Untangle in the R2 pass.
+  If first-flip should be INSTANT, the ideal remains the include-similar pattern: page-1
+  carries the variant union so the flip is local — product/arch decision.
   (b) pins SNAPPED in with the strip on a toggle reveal instead of fading — eyeball'd once
   by owner; check native ramp duration on the variant_rerun lane.
   (c) collision timing directive: basemap-label collision must flip ON at fade-IN START and
