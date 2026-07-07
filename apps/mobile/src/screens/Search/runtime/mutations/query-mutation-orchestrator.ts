@@ -48,18 +48,11 @@ type UseQueryMutationOrchestratorArgs = {
   submittedQuery: string;
   query: string;
   isSearchSessionActive: boolean;
-  openNow: boolean;
-  includeSimilarActive: boolean;
-  risingActive: boolean;
   pendingPriceRange: PriceRangeTuple;
   setPendingPriceRange: (next: PriceRangeTuple) => void;
   isPriceSelectorVisible: boolean;
   setIsPriceSelectorVisible: (next: boolean) => void;
   priceLevels: number[];
-  setIncludeSimilar: (next: boolean) => void;
-  setRisingActive: (next: boolean) => void;
-  setOpenNow: (next: boolean) => void;
-  setPriceLevels: (next: number[]) => void;
   scheduleToggleCommit: ScheduleToggleCommit;
   rerunActiveSearch: (options: RerunActiveSearchOptions) => Promise<void>;
   // Page-1 zero-network include-similar flip (use-search-submit-response-owner); returns
@@ -99,18 +92,11 @@ export const useQueryMutationOrchestrator = (
     submittedQuery,
     query,
     isSearchSessionActive,
-    openNow,
-    includeSimilarActive,
-    risingActive,
     pendingPriceRange,
     setPendingPriceRange,
     isPriceSelectorVisible,
     setIsPriceSelectorVisible,
     priceLevels,
-    setIncludeSimilar,
-    setRisingActive,
-    setOpenNow,
-    setPriceLevels,
     scheduleToggleCommit,
     rerunActiveSearch,
     applyIncludeSimilarLocalSwap,
