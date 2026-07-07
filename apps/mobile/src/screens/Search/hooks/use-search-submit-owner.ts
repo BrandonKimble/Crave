@@ -28,13 +28,16 @@ import { useSearchSubmitExecutionOwner } from './use-search-submit-execution-own
 import { useSearchSubmitResponseOwner } from './use-search-submit-response-owner';
 import { useSearchSubmitStructuredHelperOwner } from './use-search-submit-structured-helper-owner';
 import { useSearchStructuredSubmitOwner } from './use-search-structured-submit-owner';
-import { captureFreshCommittedBounds } from '../runtime/shared/search-desired-state-writer';
+import { captureFreshCommittedBounds } from '../runtime/shared/search-fresh-bounds-capture';
 import {
   createSearchWorldResolver,
   type SearchWorldResolveArgs,
 } from '../runtime/resolver/search-world-resolver';
 import { createSearchWorldPresentationSeam } from '../runtime/resolver/search-world-presentation-seam';
-import { createSearchWorldFetcher } from '../runtime/resolver/search-world-fetch';
+import {
+  createSearchWorldFetcher,
+  createSearchWorldNextPageFetcher,
+} from '../runtime/resolver/search-world-fetch';
 import { searchService } from '../../../services/search';
 import { getSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 import { useSearchSubmitActionOwner } from './use-search-submit-action-owner';
@@ -421,6 +424,15 @@ const useSearchSubmitOwner = ({
           favoriteListsService.getListResults(listId, options),
       }),
       now: () => globalThis.performance?.now?.() ?? Date.now(),
+      fetchNextPageForTuple: createSearchWorldNextPageFetcher({
+        runSearch: (request) => runSearchForWorldRef.current(request),
+        userLocationRef,
+        shortcutCoverage: (params, options) => searchService.shortcutCoverage(params, options),
+        getMarketKey: () =>
+          getSearchMountedResultsDataSnapshot().results?.metadata?.marketKey ?? '',
+        getFavoritesListResults: (listId, options) =>
+          favoriteListsService.getListResults(listId, options),
+      }),
       onWorldPresented: (args) => worldPresentedEffectsRef.current(args),
     });
   }, [searchRuntimeBus, resultsPresentationSurfaceAuthority, userLocationRef]);
@@ -501,7 +513,17 @@ const useSearchSubmitOwner = ({
     [submitSearch]
   );
 
-  const { loadMoreResults, rerunActiveSearch } = useSearchSubmitActionOwner({
+  // S3c pagination cutover: EVERY load-more is resolver.resolveNextPage — guards read
+  // the WORLD's pagination meta (the honest source), in-flight dedupe is per identity,
+  // and a superseded append caches without presenting. The action owner's dispatcher
+  // and the shortcut append chain are dead.
+  const loadMoreResults = React.useCallback(
+    (_searchMode: SearchMode) => {
+      void worldResolver.resolveNextPage();
+    },
+    [worldResolver]
+  );
+  const { rerunActiveSearch } = useSearchSubmitActionOwner({
     isWorldResolving: worldResolver.isResolving,
     query,
     submittedQuery,

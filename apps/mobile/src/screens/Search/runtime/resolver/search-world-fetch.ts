@@ -260,3 +260,83 @@ export const createSearchWorldFetcher =
       searchInputKey: cacheStatusRef.current?.searchInputKey ?? null,
     };
   };
+
+/** Page-N fetch for the CURRENT world (S3 edit map §3): payload from the WORLD's
+ *  identity inputs (tuple bounds pinned at page 1 — appends never chase the live
+ *  camera), searchRequestId from the committed response so the backend serves the same
+ *  result set. The merged value VERSIONS under the same identity. */
+export const createSearchWorldNextPageFetcher =
+  (env: SearchWorldFetchEnv) =>
+  async (args: {
+    tuple: SearchDesiredTuple;
+    baseValue: import('./search-world-presentation-seam').SearchWorldValue;
+    targetPage: number;
+  }): Promise<SearchWorldNetworkFetchResult> => {
+    const { tuple, baseValue, targetPage } = args;
+    const identity = tuple.queryIdentity;
+    const userLocation = env.userLocationRef.current;
+    const cacheStatusRef: { current: SearchRequestCacheStatus | null } = { current: null };
+    const onCacheStatus = (status: SearchRequestCacheStatus): void => {
+      cacheStatusRef.current = status;
+    };
+    let response: SearchResponse | null = null;
+    if (
+      identity.kind === 'shortcut' ||
+      (identity.kind === 'entity' && identity.entityType === 'restaurant')
+    ) {
+      const payload: StructuredSearchRequest = {
+        entities:
+          identity.kind === 'entity'
+            ? {
+                restaurants: [
+                  {
+                    normalizedName: identity.displayName,
+                    entityIds: [identity.entityId],
+                    originalText: identity.displayName,
+                  },
+                ],
+              }
+            : {},
+        pagination: { page: targetPage, pageSize: DEFAULT_PAGE_SIZE },
+        includeSqlPreview: false,
+      };
+      attachTupleScopeToPayload(payload, tuple, userLocation);
+      response = await env.runSearch({ kind: 'structured', payload, onCacheStatus });
+    } else if (identity.kind === 'natural' || identity.kind === 'entity') {
+      const payload: NaturalSearchRequest = {
+        query: identity.kind === 'natural' ? identity.query : identity.displayName,
+        pagination: { page: targetPage, pageSize: DEFAULT_PAGE_SIZE },
+        includeSqlPreview: false,
+        searchRequestId: baseValue.searchRequestId,
+      };
+      attachTupleScopeToPayload(payload, tuple, userLocation);
+      response = await env.runSearch({ kind: 'natural', payload, onCacheStatus });
+    } else {
+      // entities (favorites) return the whole list at once; profileSeed never paginates.
+      throw new Error(`search-world-fetch: identity kind '${identity.kind}' cannot paginate`);
+    }
+    if (response == null) {
+      throw new Error('search-world-fetch: next-page runSearch returned no response');
+    }
+    const value = constructSearchWorldValue({
+      response,
+      activeTab: tuple.tab,
+      bounds: tuple.committedBounds?.bounds ?? null,
+      userLocation,
+      preserveRouteIdentity: identity.kind !== 'shortcut',
+      appendTo: {
+        baseResponse: baseValue.committedResponse,
+        targetPage,
+        prevIsPaginationExhausted: baseValue.paginationMeta.isPaginationExhausted,
+      },
+    });
+    // The append inherits the page-1 world's coverage + presentation metadata — an
+    // append never refetches coverage or re-decides the single-restaurant collapse.
+    value.coverageByTab = baseValue.coverageByTab;
+    value.singleRestaurantCandidate = baseValue.singleRestaurantCandidate;
+    return {
+      value,
+      dataReadyFrom: cacheStatusRef.current?.dataReadyFrom ?? 'network',
+      searchInputKey: cacheStatusRef.current?.searchInputKey ?? null,
+    };
+  };

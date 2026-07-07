@@ -12,6 +12,7 @@ import type {
   SearchMountedResultsMarkerProjectionByTab,
 } from '../shared/search-mounted-results-data-store';
 import { buildResultsIdentityKey } from '../shared/results-identity-key';
+import { mergeSearchResponses } from '../../utils/merge';
 import type { SearchWorldValue } from './search-world-presentation-seam';
 
 type ResultsActiveTab = 'dishes' | 'restaurants';
@@ -60,20 +61,30 @@ export const constructSearchWorldValue = (args: {
    *  the route lane); every other mode publishes the full patch — the exact
    *  preserveRouteIdentity rule from the response owner. */
   preserveRouteIdentity: boolean;
+  /** Pagination append: merge the landed page into the world's committed response —
+   *  the value VERSIONS under one identity (the cache bumps worldId@vN). */
+  appendTo?: {
+    baseResponse: SearchResponse;
+    targetPage: number;
+    prevIsPaginationExhausted: boolean;
+  };
 }): SearchWorldValue => {
-  const { response, activeTab, bounds, userLocation, preserveRouteIdentity } = args;
+  const { response, activeTab, bounds, userLocation, preserveRouteIdentity, appendTo } = args;
   const searchRequestId = response.metadata?.searchRequestId;
   if (typeof searchRequestId !== 'string' || searchRequestId.length === 0) {
     throw new Error('Search response missing required metadata.searchRequestId');
   }
-  const page =
-    typeof response.metadata?.page === 'number' && response.metadata.page > 0
+  const isAppend = appendTo != null;
+  const merged = isAppend ? mergeSearchResponses(appendTo.baseResponse, response, true) : response;
+  const page = isAppend
+    ? appendTo.targetPage
+    : typeof response.metadata?.page === 'number' && response.metadata.page > 0
       ? response.metadata.page
       : 1;
   const committedResponse: SearchResponse =
-    response.metadata?.page === page
-      ? response
-      : { ...response, metadata: { ...response.metadata, page } };
+    merged.metadata?.page === page && merged.metadata?.searchRequestId === searchRequestId
+      ? merged
+      : { ...merged, metadata: { ...merged.metadata, page, searchRequestId } };
   const dishes = committedResponse.dishes ?? [];
   const restaurants = committedResponse.restaurants ?? [];
   const totalFoodResults =
@@ -176,6 +187,17 @@ export const constructSearchWorldValue = (args: {
   const hasMoreFood = dishes.length < totalFood;
   const hasMoreRestaurants =
     committedResponse.format === 'dual_list' ? restaurants.length < totalRestaurants : false;
+  // Append exhaustion (the response-owner rule): exhausted when the page grew nothing
+  // or both axes report drained — sticky across appends.
+  const prevFoodCount = appendTo?.baseResponse.dishes?.length ?? 0;
+  const prevRestaurantCount = appendTo?.baseResponse.restaurants?.length ?? 0;
+  const appendExhausted =
+    isAppend &&
+    (!(dishes.length > prevFoodCount || restaurants.length > prevRestaurantCount) ||
+      (!hasMoreFood && !hasMoreRestaurants));
+  const isPaginationExhausted = isAppend
+    ? appendExhausted || (appendTo?.prevIsPaginationExhausted ?? false)
+    : false;
 
   return {
     committedResponse,
@@ -192,10 +214,8 @@ export const constructSearchWorldValue = (args: {
       page,
       hasMoreFood,
       hasMoreRestaurants,
-      // Page-1 commits never report exhausted (the response-owner rule); canLoadMore is
-      // the honest gate when both axes are drained.
-      isPaginationExhausted: false,
-      canLoadMore: hasMoreFood || hasMoreRestaurants,
+      isPaginationExhausted,
+      canLoadMore: !isPaginationExhausted && (hasMoreFood || hasMoreRestaurants),
       totalRestaurantResults: totalRestaurants,
       totalFoodResults: totalFood,
     },

@@ -66,6 +66,12 @@ export type SearchWorldResolverEnv = {
     cache: SearchWorldCache<SearchWorldValue>;
   }) => SearchWorldNetworkFetchResult | null;
   now: () => number;
+  /** Page-N fetch (S3 pagination cutover) — payload from the world's identity inputs. */
+  fetchNextPageForTuple?: (args: {
+    tuple: SearchDesiredTuple;
+    baseValue: SearchWorldValue;
+    targetPage: number;
+  }) => Promise<SearchWorldNetworkFetchResult>;
   /** Post-present side effects keyed to the DESIRE (history push, single-restaurant
    *  sheet collapse) — strangler home until S4's reconciler owns them. */
   onWorldPresented?: (args: {
@@ -93,6 +99,9 @@ export type SearchWorldResolveArgs = {
 export type SearchWorldResolver = {
   /** Imperative kick (S3a): the trigger's reader hands the freshly-written tuple over. */
   resolve: (args: SearchWorldResolveArgs) => Promise<void>;
+  /** Append the next page into the CURRENT desired world (version bump, no page-one
+   *  choreography). Guards read the WORLD's pagination meta — the honest source. */
+  resolveNextPage: () => Promise<void>;
   isResolving: () => boolean;
   cache: SearchWorldCache<SearchWorldValue>;
   core: ResolverCore;
@@ -250,8 +259,72 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
     }
   };
 
+  const resolveNextPage = async (): Promise<void> => {
+    const state = env.searchRuntimeBus.getState();
+    const tuple = state.desiredTuple;
+    const cardsKey = buildSearchCardsWorldKey(tuple);
+    const entry = cache.get(cardsKey);
+    if (entry == null || entry.status.kind !== 'ready' || env.fetchNextPageForTuple == null) {
+      return;
+    }
+    const meta = entry.value.paginationMeta;
+    if (!meta.canLoadMore || meta.isPaginationExhausted) {
+      return;
+    }
+    // In-flight dedupe on a per-identity append key: a second load-more while page N is
+    // in flight attaches (returns) instead of double-fetching.
+    const appendKey = `${cardsKey}#append`;
+    if (!core.begin({ generation: state.desiredTupleGeneration, worldKey: appendKey })) {
+      return;
+    }
+    env.searchRuntimeBus.publish({ isLoadingMore: true });
+    if (__DEV__) {
+      logger.info('[RESOLVE] next-page', { cardsKey, targetPage: meta.page + 1 });
+    }
+    try {
+      const fetched = await env.fetchNextPageForTuple({
+        tuple,
+        baseValue: entry.value,
+        targetPage: meta.page + 1,
+      });
+      const nextEntry = cache.commit({
+        worldKey: cardsKey,
+        status: { kind: 'ready' },
+        value: fetched.value,
+        resolvedAt: env.now(),
+      });
+      core.land({ generation: state.desiredTupleGeneration, worldKey: appendKey }, () => true);
+      if (isTupleStillDesired(tuple)) {
+        env.seam.commitWorldToMountedState({
+          worldId: nextEntry.worldId,
+          generation: state.desiredTupleGeneration,
+          value: nextEntry.value,
+          activeTab: tuple.tab,
+          dataReadyFrom: fetched.dataReadyFrom,
+          searchInputKey: fetched.searchInputKey,
+          requestBounds: tuple.committedBounds?.bounds ?? null,
+          isVersionUpdateOfPresentedWorld: true,
+        });
+      } else {
+        // Superseded mid-append (retoggle landed first): the merged value is CACHED for
+        // the world's return; nothing presents.
+        env.searchRuntimeBus.publish({ isLoadingMore: false });
+        if (__DEV__) {
+          logger.info('[RESOLVE] next-page superseded, cached', { cardsKey });
+        }
+      }
+    } catch (error) {
+      core.fail({ generation: state.desiredTupleGeneration, worldKey: appendKey });
+      env.searchRuntimeBus.publish({ isLoadingMore: false });
+      logger.warn('[RESOLVE] next-page failed', {
+        message: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
+  };
+
   return {
     resolve,
+    resolveNextPage,
     isResolving: () => core.inFlightKeys().length > 0,
     cache,
     core,
