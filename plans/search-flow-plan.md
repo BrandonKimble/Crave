@@ -310,10 +310,19 @@ open-now; + 3x big finger pans + open-now (video'd — full choreography, new-vi
   non-append page-1 op is in flight, coverage fetches against the CURRENT viewport →
   post-response fetch = terminal-cache hit; coverage now completes ~+70ms, parallel.
   Joint moved +737ms → +441ms on the matched drive.
-  · REMAINING response→joint pipeline: 300–470ms (varies) = rows prepare+list layout+
-  preparedRows commit ~135ms, then a ~115ms gap between the JS frame publish and the
-  native set_render_frame bridge dispatch, native apply+mounted-hidden ack ~45ms, plus
-  gate notify ticks. NEXT TARGETS: the frame→bridge dispatch gap, and the rows leg.
+  · REMAINING response→joint pipeline: 300–470ms (varies). CORRECTED ATTRIBUTION
+  (2026-07-06 follow-up, per-invocation exit probes on queueNativeRenderOwnerFrame): the
+  "~115ms frame→bridge dispatch gap" is NOT a scheduler gap — the frame queues 23–130ms
+  after the response (variance = JS thread busy with rows layout; the subscription is
+  synchronous). The real costs, measured on a slow-server run (http 594ms, joint +1099):
+  (1) the structural frame's queued→applied span = ~335ms — the 'applied' ack rides a JS
+  PROMISE resolution, so most of this is JS main-thread saturation (20 cards laying out
+  under the cover), not native work; (2) a REDUNDANT second full structural frame (all 5
+  sources changed again) ships ~430ms after the first — two consecutive full applies per
+  toggle before the small startToken frame admits the cards. NEXT LEVERS: (a) attribute +
+  dedupe the second structural frame (why do all source revisions change twice per
+  response?), (b) decouple the ack from the JS event loop (native event instead of promise,
+  or measure native-side apply duration separately), (c) the rows leg ~135ms.
   · Plus the pre-commit press-up debounce (settle source 'frost_ready').
   · ARCHITECTURAL NOTE: the redraw-phase chain is circular for reruns (rows release wants
   phase hydration_ready, which advances on phase_b_materializing AFTER visual_released =
