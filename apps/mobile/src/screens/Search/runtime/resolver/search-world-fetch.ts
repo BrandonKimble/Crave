@@ -21,6 +21,8 @@ import {
   fetchShortcutCoverageWorldEntry,
   type ShortcutCoverageService,
 } from './shortcut-coverage-world';
+import { resolveNaturalResponseAdoptedTab } from './natural-response-presentation';
+import { resolveSingleRestaurantCandidate } from '../../utils/response';
 
 export type SearchWorldRunSearch = (
   request:
@@ -153,16 +155,29 @@ export const createSearchWorldFetcher =
     if (response == null) {
       throw new Error('search-world-fetch: runSearch returned no response');
     }
+    // Natural presentation facts derive from the RESPONSE (world metadata): the adopted
+    // tab (marker projections must be computed for it) and the single-restaurant
+    // collapse candidate.
+    const singleRestaurantCandidate =
+      identity.kind === 'natural' ? resolveSingleRestaurantCandidate(response) : null;
+    const adoptedTab =
+      identity.kind === 'natural' && singleRestaurantCandidate == null
+        ? resolveNaturalResponseAdoptedTab({ response, currentTab: tuple.tab })
+        : identity.kind === 'natural'
+          ? 'restaurants'
+          : undefined;
     const value = constructSearchWorldValue({
       response,
-      activeTab: tuple.tab,
+      activeTab: adoptedTab ?? tuple.tab,
       bounds: tuple.committedBounds?.bounds ?? null,
       userLocation,
       preserveRouteIdentity: identity.kind !== 'shortcut',
     });
     value.coverageByTab = coverageByTab;
+    value.singleRestaurantCandidate = singleRestaurantCandidate;
     return {
       value,
+      adoptedTab,
       dataReadyFrom: cacheStatusRef.current?.dataReadyFrom ?? 'network',
       searchInputKey: cacheStatusRef.current?.searchInputKey ?? null,
     };

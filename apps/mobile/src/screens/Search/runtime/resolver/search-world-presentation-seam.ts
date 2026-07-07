@@ -57,6 +57,9 @@ export type SearchWorldValue = {
   coverageByTab: Partial<
     Record<'restaurants' | 'dishes', SearchMountedResultsCoverageEntry | null>
   >;
+  /** Natural identities: the response's single-restaurant collapse candidate (world
+   *  metadata — presentation effects read it post-commit, never re-derive from UI). */
+  singleRestaurantCandidate?: unknown;
 };
 
 export type SearchWorldCommitArgs = {

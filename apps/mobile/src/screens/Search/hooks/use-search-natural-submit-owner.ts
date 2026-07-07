@@ -20,6 +20,20 @@ import type {
 } from './use-search-submit-entry-owner';
 
 type UseSearchNaturalSubmitOwnerArgs = {
+  searchRuntimeBus: import('../runtime/shared/search-runtime-bus').SearchRuntimeBus;
+  /** S3b-2: context-free non-append natural submits resolve through the world resolver. */
+  resolveDesiredWorld: (
+    args: import('../runtime/resolver/search-world-resolver').SearchWorldResolveArgs
+  ) => Promise<void>;
+  beginResolverSubmitForegroundUi: (options: {
+    mode: 'natural' | 'shortcut' | null;
+    targetTab: SegmentValue;
+    submittedLabel: string;
+    preserveSheetState: boolean;
+    transitionFromDockedPolls: boolean;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
+    entrySurface: SearchSubmitEntrySurface;
+  }) => void;
   prepareNaturalSearchEntry: (
     options?: SubmitSearchOptions,
     overrideQuery?: string
@@ -98,6 +112,9 @@ type UseSearchNaturalSubmitOwnerArgs = {
 };
 
 export const useSearchNaturalSubmitOwner = ({
+  searchRuntimeBus,
+  resolveDesiredWorld,
+  beginResolverSubmitForegroundUi,
   prepareNaturalSearchEntry,
   resolveNaturalSearchAttemptConfig,
   prepareNaturalSearchForegroundUi,
@@ -238,6 +255,37 @@ export const useSearchNaturalSubmitOwner = ({
       }
       const { append, targetPage, trimmedQuery } = naturalEntry;
       const naturalAttemptConfig = resolveNaturalSearchAttemptConfig(options);
+      // S3b-2: context-free non-append natural submits are a tuple write (already done
+      // by prepareNaturalSearchEntry) + resolve. Context-carrying submissions (entity
+      // taps) stay on the legacy chain until S3c folds them into the 'entity' kind;
+      // appends stay until the pagination cutover.
+      if (!append && naturalAttemptConfig.submissionContext == null) {
+        const busState = searchRuntimeBus.getState();
+        await resolveDesiredWorld({
+          tuple: busState.desiredTuple,
+          generation: busState.desiredTupleGeneration,
+          cause: busState.desiredTupleCause,
+          presentationIntentKind: naturalAttemptConfig.presentationIntentKind,
+          onResolutionBegan: () => {
+            beginResolverSubmitForegroundUi({
+              mode: 'natural',
+              targetTab: naturalAttemptConfig.preRequestTab,
+              submittedLabel: trimmedQuery,
+              preserveSheetState: naturalAttemptConfig.preserveSheetState,
+              transitionFromDockedPolls: naturalAttemptConfig.transitionFromDockedPolls,
+              presentationIntentKind: naturalAttemptConfig.presentationIntentKind,
+              entrySurface: naturalAttemptConfig.entrySurface,
+            });
+            logSearchPhase('submitSearch:ui-lanes-scheduled');
+          },
+          onResolutionFailed: (reason) => {
+            logger.error('Search request failed', { message: reason });
+            searchRuntimeBus.publish({ isMapActivationDeferred: false });
+            onPresentationIntentAbort?.();
+          },
+        });
+        return;
+      }
       await executeActivatedNaturalSearchAttempt({
         append,
         targetPage,

@@ -96,6 +96,9 @@ export type SearchTupleWriteCause =
   | 'chip_include_similar'
   | 'tab_toggle'
   | 'search_this_area'
+  /** The resolver adopts the response-derived tab for natural identities (the ONE
+   *  writer rule: even the resolver's own adopt is a tuple write). */
+  | 'response_tab_adopt'
   | 'favorites_launch'
   | 'entity_tap'
   | 'profile_seed'

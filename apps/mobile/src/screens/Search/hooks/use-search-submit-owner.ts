@@ -365,6 +365,28 @@ const useSearchSubmitOwner = ({
   // stable singleton across renders.
   const onPageOneResultsCommittedForWorldRef = React.useRef(onPageOneResultsCommitted);
   const runSearchForWorldRef = React.useRef(runSearch);
+  // Post-present side effects (the response owner's post-commit UI sequence, reduced to
+  // its surviving members): recent-history push for natural searches, single-restaurant
+  // sheet collapse, scroll reset. Ref-indirected so the resolver stays a singleton.
+  const worldPresentedEffectsRef = React.useRef<
+    NonNullable<Parameters<typeof createSearchWorldResolver>[0]['onWorldPresented']>
+  >(() => {});
+  worldPresentedEffectsRef.current = ({ tuple, value, presentationIntentKind }) => {
+    const identity = tuple.queryIdentity;
+    if (identity.kind === 'natural') {
+      updateLocalRecentSearches(identity.query);
+      void loadRecentHistory();
+    }
+    const isInPlaceRerun =
+      presentationIntentKind === 'search_this_area' || presentationIntentKind === 'variant_rerun';
+    if (value.singleRestaurantCandidate != null && identity.kind === 'natural') {
+      // The response collapsed to one restaurant: hide the results sheet (the profile
+      // auto-open runtime keys off lastSearchRequestIdRef, already truthful).
+      resetSheetToHidden();
+    } else if (!isInPlaceRerun && !isSearchEditingRef?.current) {
+      scrollResultsToTop();
+    }
+  };
   React.useEffect(() => {
     onPageOneResultsCommittedForWorldRef.current = onPageOneResultsCommitted;
     runSearchForWorldRef.current = runSearch;
@@ -395,6 +417,7 @@ const useSearchSubmitOwner = ({
           getSearchMountedResultsDataSnapshot().results?.metadata?.marketKey ?? '',
       }),
       now: () => globalThis.performance?.now?.() ?? Date.now(),
+      onWorldPresented: (args) => worldPresentedEffectsRef.current(args),
     });
   }, [searchRuntimeBus, resultsPresentationSurfaceAuthority, userLocationRef]);
   const resolveDesiredWorld = React.useCallback(
@@ -442,6 +465,9 @@ const useSearchSubmitOwner = ({
     startFavoritesResponseLifecycle,
   });
   const { submitSearch } = useSearchNaturalSubmitOwner({
+    searchRuntimeBus,
+    resolveDesiredWorld,
+    beginResolverSubmitForegroundUi,
     prepareNaturalSearchEntry,
     resolveNaturalSearchAttemptConfig,
     prepareNaturalSearchForegroundUi,

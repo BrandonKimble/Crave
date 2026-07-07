@@ -18,6 +18,7 @@ import {
   type SearchDesiredTuple,
   type SearchTupleWriteCause,
 } from '../shared/search-desired-state-contract';
+import { writeSearchDesiredTuple } from '../shared/search-desired-state-writer';
 import {
   createSearchWorldCache,
   type SearchWorldCache,
@@ -37,6 +38,9 @@ export const OPEN_NOW_WORLD_STALE_AFTER_MS = 60 * 1000;
 
 export type SearchWorldNetworkFetchResult = {
   value: SearchWorldValue;
+  /** Natural identities: the response-derived tab this world should present under.
+   *  The resolver adopts it via ONE tuple write (cause 'response_tab_adopt'). */
+  adoptedTab?: 'restaurants' | 'dishes';
   /** Where the data actually came from (the request layer may have its own cache). */
   dataReadyFrom: 'cache' | 'network' | 'in_flight';
   searchInputKey: string | null;
@@ -62,6 +66,14 @@ export type SearchWorldResolverEnv = {
     cache: SearchWorldCache<SearchWorldValue>;
   }) => SearchWorldNetworkFetchResult | null;
   now: () => number;
+  /** Post-present side effects keyed to the DESIRE (history push, single-restaurant
+   *  sheet collapse) — strangler home until S4's reconciler owns them. */
+  onWorldPresented?: (args: {
+    tuple: SearchDesiredTuple;
+    value: SearchWorldValue;
+    dataReadyFrom: 'cache' | 'network' | 'in_flight';
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
+  }) => void;
 };
 
 export type SearchWorldResolveArgs = {
@@ -117,6 +129,12 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
       dataReadyFrom: args.dataReadyFrom,
       searchInputKey: args.searchInputKey,
       requestBounds: args.tuple.committedBounds?.bounds ?? null,
+      presentationIntentKind: args.presentationIntentKind,
+    });
+    env.onWorldPresented?.({
+      tuple: args.tuple,
+      value: args.entry.value,
+      dataReadyFrom: args.dataReadyFrom,
       presentationIntentKind: args.presentationIntentKind,
     });
   };
@@ -200,9 +218,21 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         isTupleStillDesired(tuple)
       );
       if (disposition === 'present') {
+        // Natural tab adopt: the response decides the tab; even the resolver's own
+        // adopt is a TUPLE WRITE (one writer), then the world presents under it.
+        let presentTuple = tuple;
+        if (fetched.adoptedTab != null && fetched.adoptedTab !== tuple.tab) {
+          const adopted = writeSearchDesiredTuple(
+            env.searchRuntimeBus,
+            { tab: fetched.adoptedTab },
+            'response_tab_adopt'
+          );
+          core.observeGeneration(adopted.generation);
+          presentTuple = adopted.tuple;
+        }
         presentEntry({
           entry,
-          tuple,
+          tuple: presentTuple,
           generation,
           dataReadyFrom: fetched.dataReadyFrom,
           searchInputKey: fetched.searchInputKey,
