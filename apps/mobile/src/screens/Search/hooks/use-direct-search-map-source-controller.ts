@@ -186,6 +186,32 @@ const normalizeJsonValue = (value: unknown): unknown => {
 // S1: every coverage completion path commits into the WORLD store. The resource lanes
 // carry activeTab as a plain string; a coverage fetch without a real tab is a broken
 // input — loud, never silently narrowed.
+const readWorldCoverageEntry = (
+  searchRequestId: string | null,
+  tab: 'dishes' | 'restaurants' | null
+): SearchMountedResultsCoverageEntry | null => {
+  if (searchRequestId == null || (tab !== 'dishes' && tab !== 'restaurants')) {
+    return null;
+  }
+  const coverage = getSearchMountedResultsDataSnapshot().coverage;
+  return coverage?.searchRequestId === searchRequestId ? (coverage.byTab[tab] ?? null) : null;
+};
+
+// Port-compatible readiness mapping (the frame port keeps its enum; the values are now a
+// PROJECTION of the world entry — key and features can never come from different worlds).
+const toCoverageReadinessStatus = (
+  entry: SearchMountedResultsCoverageEntry | null
+): 'idle' | 'loading' | 'completed' | 'empty' | 'failed' =>
+  entry == null
+    ? 'idle'
+    : entry.status === 'resolving'
+      ? 'loading'
+      : entry.status === 'failed'
+        ? 'failed'
+        : (entry.features?.length ?? 0) > 0
+          ? 'completed'
+          : 'empty';
+
 const commitCoverageEntryToWorld = (
   searchRequestId: string,
   tab: string | null,
@@ -1268,10 +1294,6 @@ export const useDirectSearchMapSourceController = ({
   const shortcutCoveragePendingSnapshotByRequestIdRef = React.useRef<
     Map<string, { entities: StructuredSearchRequest['entities'] }>
   >(new Map());
-  const shortcutCoverageDotFeaturesRef = React.useRef<FeatureCollection<
-    Point,
-    RestaurantFeatureProperties
-  > | null>(null);
   const shortcutCoverageResourceRef = React.useRef<ShortcutCoverageRequestResource | null>(null);
   const shortcutCoverageTerminalByRequestKeyRef = React.useRef<
     Map<string, ShortcutCoverageRequestResource>
@@ -1320,17 +1342,23 @@ export const useDirectSearchMapSourceController = ({
 
   const publishTelemetry = React.useCallback(
     (pinCount: number, dotCount: number) => {
-      const coverageResource = shortcutCoverageResourceRef.current;
+      const busState = searchRuntimeBus.getState();
+      const worldEntry = readWorldCoverageEntry(
+        getSearchMountedResultsDataSnapshot().results?.metadata?.searchRequestId ?? null,
+        busState.activeTab === 'dishes' || busState.activeTab === 'restaurants'
+          ? busState.activeTab
+          : null
+      );
       sourceFramePort.publishVisualState({
         visibleSortedRestaurantMarkersCount: pinCount,
         visibleDotRestaurantFeaturesCount: dotCount,
-        isShortcutCoverageLoading: shortcutCoverageLoadingRef.current,
-        shortcutCoverageRequestKey: coverageResource?.requestKey ?? null,
-        shortcutCoverageReadinessStatus: coverageResource?.status ?? 'idle',
-        shortcutCoverageReadinessReason: coverageResource?.terminalReason ?? null,
+        isShortcutCoverageLoading: worldEntry?.status === 'resolving',
+        shortcutCoverageRequestKey: worldEntry?.requestKey ?? null,
+        shortcutCoverageReadinessStatus: toCoverageReadinessStatus(worldEntry),
+        shortcutCoverageReadinessReason: worldEntry?.reason ?? null,
       });
     },
-    [sourceFramePort]
+    [searchRuntimeBus, sourceFramePort]
   );
 
   const adoptResidentSourceFrameSnapshot = React.useCallback(
@@ -1532,112 +1560,42 @@ export const useDirectSearchMapSourceController = ({
       args.resultsPresentationSurfaceAuthority
     );
     const previousSourceFrameSnapshot = sourceFramePort.getSnapshot();
-    const shortcutCoverageSnapshotForCurrentRequest =
-      searchRequestId != null
-        ? (shortcutCoverageSnapshotByRequestIdRef.current.get(searchRequestId) ?? null)
-        : null;
-    const shortcutCoveragePendingForCurrentRequest =
-      searchRequestId != null
-        ? (shortcutCoveragePendingSnapshotByRequestIdRef.current.get(searchRequestId) ?? null)
-        : null;
-    const shortcutCoverageBoundsForCurrentRequest =
-      shortcutCoverageSnapshotForCurrentRequest?.bounds ??
-      (shortcutCoveragePendingForCurrentRequest != null ? currentBounds : null);
-    const shortcutCoverageEntitiesForCurrentRequest =
-      shortcutCoverageSnapshotForCurrentRequest?.entities ??
-      shortcutCoveragePendingForCurrentRequest?.entities ??
-      null;
-    const currentShortcutCoverageRequestKey =
+    // S1b: coverage is read EXCLUSIVELY from the world snapshot — results and coverage
+    // arrive in one atomic snapshot, so the frame can never pair a key with another
+    // world's features, and "coverage not ready for this key" limbo (the covNotReady
+    // ladder) is unrepresentable. World readiness is ONE fact below.
+    const isShortcutCoverageProjection =
       searchMode === 'shortcut' &&
-      shortcutCoverageBoundsForCurrentRequest != null &&
-      shortcutCoverageEntitiesForCurrentRequest != null
-        ? buildShortcutCoverageRequestKey({
-            activeTab,
-            boundsKey: buildShortcutCoverageBoundsKey(shortcutCoverageBoundsForCurrentRequest),
-            entitiesKey: buildShortcutCoverageEntitiesKey(
-              shortcutCoverageEntitiesForCurrentRequest
-            ),
-            marketKey: mountedResults?.metadata?.marketKey ?? '',
-            filtersKey: buildShortcutCoverageFiltersKey(
-              readShortcutCoverageFilterSnapshot(searchRuntimeBus.getState())
-            ),
-          })
-        : null;
-    // Coverage resolution. LIVE publish: the active resource/features refs (owned by the active
-    // tab). PREWARM: the SIBLING tab's coverage from the by-requestKey terminal + features caches
-    // (populated by prefetchSiblingTabCoverage / prior fetches) — the exact objects the toggle-time
-    // restoreFromCache path will install into the live refs, so requestKey/status (fingerprint
-    // inputs) and the dot features (frame input) are identical at prewarm time and toggle time.
-    const prewarmCoverageResource =
-      isPrewarmBuild && currentShortcutCoverageRequestKey != null
-        ? (shortcutCoverageTerminalByRequestKeyRef.current.get(currentShortcutCoverageRequestKey) ??
-          null)
-        : null;
-    const coverageResource = isPrewarmBuild
-      ? prewarmCoverageResource
-      : shortcutCoverageResourceRef.current;
-    if (isPrewarmBuild) {
-      // Only a SUCCESS terminal is a buildable coverage input; 'completed' must also have its
-      // features cached (lockstep contract). Anything else → the toggle will fetch/restore first;
-      // building now would bake a frame the toggle-time fingerprint can never match.
-      const prewarmCoverageStatus = prewarmCoverageResource?.status ?? null;
-      if (prewarmCoverageStatus !== 'completed' && prewarmCoverageStatus !== 'empty') {
-        return false;
-      }
-      if (
-        prewarmCoverageStatus === 'completed' &&
-        !shortcutCoverageFeaturesByRequestKeyRef.current.has(
-          prewarmCoverageResource?.requestKey ?? ''
-        )
-      ) {
-        return false;
-      }
-    }
-    const coverageDotFeaturesForBuild = isPrewarmBuild
-      ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(
-          prewarmCoverageResource?.requestKey ?? ''
-        ) ?? null)
-      : shortcutCoverageDotFeaturesRef.current;
-    const hasShortcutCoverageInput =
-      searchMode === 'shortcut' &&
-      searchRequestId != null &&
       effectiveRestaurantOnlyId == null &&
-      selectedRestaurantId == null &&
-      (shortcutCoverageSnapshotByRequestIdRef.current.has(searchRequestId) ||
-        shortcutCoveragePendingSnapshotByRequestIdRef.current.has(searchRequestId) ||
-        (currentShortcutCoverageRequestKey != null &&
-          coverageResource?.requestKey === currentShortcutCoverageRequestKey));
-    // Coverage is the in-viewport DOTS source (restored), so the reveal waits for it again (normal
-    // gate). Earlier this was force-true while coverage was being dropped; forcing it true skipped the
-    // coverage-ready handshake and left the visual-source lifecycle from reaching .visible → native
-    // promotion never ran (all dots, no pins at reveal). With coverage back + viewport-bounded, the
-    // standard "coverage resolved" gate restores the normal reveal → promotion flow.
-    const shortcutCoverageReadyForPreparedEnter =
-      !hasShortcutCoverageInput ||
-      (coverageResource != null &&
-        (coverageResource.searchRequestId === searchRequestId ||
-          coverageResource.requestKey === currentShortcutCoverageRequestKey) &&
-        coverageResource.status !== 'idle' &&
-        coverageResource.status !== 'loading');
+      selectedRestaurantId == null;
+    const coverageEntry = isShortcutCoverageProjection
+      ? readWorldCoverageEntry(searchRequestId, activeTab)
+      : null;
+    const isCoverageLoading = coverageEntry?.status === 'resolving';
+    const coverageTerminal =
+      coverageEntry?.status === 'ready' || coverageEntry?.status === 'failed';
+    const coverageReadinessStatus = toCoverageReadinessStatus(coverageEntry);
+    if (isPrewarmBuild && isShortcutCoverageProjection && coverageEntry?.status !== 'ready') {
+      // Only a READY world entry is a buildable prewarm input (its features ride the
+      // entry — a ready entry structurally has them). Anything else → the toggle
+      // resolves first; building now would bake a frame the toggle can never match.
+      return false;
+    }
     if (
-      searchMode === 'shortcut' &&
+      !isPrewarmBuild &&
+      isShortcutCoverageProjection &&
       readinessKey != null &&
       preparedVisualCycleKey != null &&
-      effectiveRestaurantOnlyId == null &&
-      selectedRestaurantId == null &&
-      searchRequestId == null
+      (searchRequestId == null || !coverageTerminal)
     ) {
-      if (String(readinessKey).includes('toggle')) {
-        logger.info('[SRCPROJ] early=shortcut-noSri', {
-          rk: readinessKey,
-          pvck: preparedVisualCycleKey,
-          // [SRINULL] attribution: which link is null? (metadata vs committed-state vs mode)
-          mode: state.searchMode,
-          rrk: mountedResultsSnapshot.resultsRequestKey,
-          committed: hasCommittedResultState,
-          restCount: mountedResults?.restaurants?.length ?? -1,
-          metaSri: mountedResults?.metadata?.searchRequestId ?? 'nil',
-          shouldProject: shouldProjectResultSources,
+      if (searchRequestId == null && mountedResults != null) {
+        // A shortcut world with COMMITTED results always has a searchRequestId; a null
+        // here is a broken input. (Results not yet committed — submit in flight — is the
+        // normal wait state and publishes not-ready below without noise.)
+        reportSearchFlowContractViolation('shortcut_world_missing_search_request_id', {
+          readinessKey,
+          preparedVisualCycleKey,
+          resultsRequestKey: mountedResultsSnapshot.resultsRequestKey ?? 'null',
         });
       }
       sourceFramePort.publishVisualState({
@@ -1645,45 +1603,25 @@ export const useDirectSearchMapSourceController = ({
           previousSourceFrameSnapshot.pinSourceStore.idsInOrder.length,
         visibleDotRestaurantFeaturesCount:
           previousSourceFrameSnapshot.dotSourceStore.idsInOrder.length,
-        isShortcutCoverageLoading: shortcutCoverageLoadingRef.current,
-        shortcutCoverageRequestKey:
-          coverageResource?.requestKey ?? currentShortcutCoverageRequestKey,
-        shortcutCoverageReadinessStatus: coverageResource?.status ?? 'loading',
-        shortcutCoverageReadinessReason: coverageResource?.terminalReason ?? null,
+        isShortcutCoverageLoading: isCoverageLoading,
+        shortcutCoverageRequestKey: coverageEntry?.requestKey ?? null,
+        shortcutCoverageReadinessStatus:
+          coverageEntry == null ? 'loading' : coverageReadinessStatus,
+        shortcutCoverageReadinessReason: coverageEntry?.reason ?? null,
         mapSearchSurfaceResultsSourcesReady: false,
         mapSearchSurfaceResultsSourcesReadyKey: readinessKey,
       });
       return;
     }
-    if (
-      searchMode === 'shortcut' &&
-      readinessKey != null &&
-      preparedVisualCycleKey != null &&
-      effectiveRestaurantOnlyId == null &&
-      selectedRestaurantId == null &&
-      hasShortcutCoverageInput &&
-      !shortcutCoverageReadyForPreparedEnter
-    ) {
-      if (String(readinessKey).includes('toggle')) {
-        logger.info('[SRCPROJ] early=shortcut-covNotReady', {
-          rk: readinessKey,
-          cov: coverageResource?.status ?? 'loading',
-        });
-      }
-      sourceFramePort.publishVisualState({
-        visibleSortedRestaurantMarkersCount:
-          previousSourceFrameSnapshot.pinSourceStore.idsInOrder.length,
-        visibleDotRestaurantFeaturesCount:
-          previousSourceFrameSnapshot.dotSourceStore.idsInOrder.length,
-        isShortcutCoverageLoading: shortcutCoverageLoadingRef.current,
-        shortcutCoverageRequestKey:
-          coverageResource?.requestKey ?? currentShortcutCoverageRequestKey,
-        shortcutCoverageReadinessStatus: coverageResource?.status ?? 'loading',
-        shortcutCoverageReadinessReason: coverageResource?.terminalReason ?? null,
-        mapSearchSurfaceResultsSourcesReady: false,
-        mapSearchSurfaceResultsSourcesReadyKey: readinessKey,
+    if (!isPrewarmBuild && coverageEntry?.status === 'failed') {
+      // LOUD degraded frame: zero dots, pins from main_results still render. Never an
+      // invisible early return.
+      reportSearchFlowContractViolation('shortcut_coverage_failed_frame_built', {
+        requestKey: coverageEntry.requestKey,
+        reason: coverageEntry.reason ?? 'unknown',
+        searchRequestId: searchRequestId ?? 'null',
+        activeTab,
       });
-      return;
     }
     // R1a-2: marker projections are precomputed PER-TAB at response commit. Resolve the
     // CURRENT tab's entry (results-key-guarded). The rank/restaurantsById lookups are
@@ -1783,8 +1721,8 @@ export const useDirectSearchMapSourceController = ({
       bounds: currentBounds,
       labelDerivedSourceIdentityKey: [
         markerCatalogReadModel.primaryCount.toString(36),
-        coverageResource?.requestKey ?? 'coverage:none',
-        coverageResource?.status ?? 'coverage:idle',
+        coverageEntry?.requestKey ?? 'coverage:none',
+        coverageReadinessStatus,
       ].join(':'),
       markersRenderKey: buildStableKeyFingerprint(
         markerCatalogEntries.map((entry) => buildMarkerKey(entry.feature))
@@ -1812,10 +1750,7 @@ export const useDirectSearchMapSourceController = ({
       searchMode === 'shortcut' &&
       effectiveRestaurantOnlyId == null &&
       selectedRestaurantId == null &&
-      !shortcutCoverageLoadingRef.current &&
-      coverageResource != null &&
-      coverageResource.status !== 'idle' &&
-      coverageResource.status !== 'loading'
+      coverageTerminal
     ) {
       const pinInteractionSourcesComplete = arePinInteractionSourcesComplete(
         cachedPreparedFrame.snapshot
@@ -1825,12 +1760,13 @@ export const useDirectSearchMapSourceController = ({
         visualCycleKey: preparedVisualCycleKey,
         isShortcutCoverageLoading: false,
         shortcutCoverageRequestKey:
-          coverageResource?.requestKey ?? cachedPreparedFrame.snapshot.shortcutCoverageRequestKey,
+          coverageEntry?.requestKey ?? cachedPreparedFrame.snapshot.shortcutCoverageRequestKey,
         shortcutCoverageReadinessStatus:
-          coverageResource?.status ?? cachedPreparedFrame.snapshot.shortcutCoverageReadinessStatus,
+          coverageEntry != null
+            ? coverageReadinessStatus
+            : cachedPreparedFrame.snapshot.shortcutCoverageReadinessStatus,
         shortcutCoverageReadinessReason:
-          coverageResource?.terminalReason ??
-          cachedPreparedFrame.snapshot.shortcutCoverageReadinessReason,
+          coverageEntry?.reason ?? cachedPreparedFrame.snapshot.shortcutCoverageReadinessReason,
         mapSearchSurfaceResultsSourcesReady: pinInteractionSourcesComplete,
         mapSearchSurfaceResultsSourcesReadyKey: readinessKey,
       };
@@ -1927,9 +1863,9 @@ export const useDirectSearchMapSourceController = ({
         activeTab,
         searchMode,
         fingerprint: preparedFrameFingerprint.slice(-48),
-        coverageStatus: coverageResource?.status ?? null,
-        coverageRequestKey: coverageResource?.requestKey ?? null,
-        shortcutCoverageLoading: shortcutCoverageLoadingRef.current,
+        coverageStatus: coverageReadinessStatus,
+        coverageRequestKey: coverageEntry?.requestKey ?? null,
+        shortcutCoverageLoading: isCoverageLoading,
         selectedRestaurantId,
         restaurantOnlyId: effectiveRestaurantOnlyId,
       });
@@ -1970,7 +1906,7 @@ export const useDirectSearchMapSourceController = ({
         ? [
             {
               sourceKind: 'shortcut_coverage',
-              features: coverageDotFeaturesForBuild?.features ?? [],
+              features: coverageEntry?.status === 'ready' ? (coverageEntry.features ?? []) : [],
             },
             { sourceKind: 'main_results', features: shortcutResultFeatures },
           ]
@@ -2555,10 +2491,11 @@ export const useDirectSearchMapSourceController = ({
       pinSourceStore,
       pinInteractionSourceStore,
     });
+    const coverageReadyForPreparedEnter = !isShortcutCoverageProjection || coverageTerminal;
     const mapSearchSurfaceResultsSourcesReady =
       readinessKey != null &&
       hasCommittedDataForPreparedEnter &&
-      shortcutCoverageReadyForPreparedEnter &&
+      coverageReadyForPreparedEnter &&
       pinInteractionSourcesComplete &&
       (!expectsPreparedVisualSources || hasVisualSources);
     if (!isPrewarmBuild && readinessKey != null && String(readinessKey).includes('toggle')) {
@@ -2573,7 +2510,7 @@ export const useDirectSearchMapSourceController = ({
         dots: dotSourceStore.idsInOrder.length,
         labels: labelSourceStore.idsInOrder.length,
         committedData: hasCommittedDataForPreparedEnter,
-        cov: shortcutCoverageReadyForPreparedEnter,
+        cov: coverageReadyForPreparedEnter,
         pinInter: pinInteractionSourcesComplete,
         shouldProj: shouldProjectResultSources,
         expectsVis: expectsPreparedVisualSources,
@@ -2582,11 +2519,8 @@ export const useDirectSearchMapSourceController = ({
       });
     }
     const coverageCounters = shortcutCoverageCountersRef.current;
-    const shortcutCoverageInFlightCount = coverageResource?.status === 'loading' ? 1 : 0;
-    const shortcutCoverageTerminal =
-      coverageResource != null &&
-      coverageResource.status !== 'idle' &&
-      coverageResource.status !== 'loading';
+    const shortcutCoverageInFlightCount = isCoverageLoading ? 1 : 0;
+    const shortcutCoverageTerminal = coverageTerminal;
     const sourceFrameSnapshot = {
       visualCycleKey: preparedVisualCycleKey,
       selectedRestaurantId,
@@ -2599,10 +2533,10 @@ export const useDirectSearchMapSourceController = ({
       markersRenderKey: `pins:${pinsRenderKey}:dots:${dotsRenderKey}`,
       visibleSortedRestaurantMarkersCount: pinSourceStore.idsInOrder.length,
       visibleDotRestaurantFeaturesCount: dotSourceStore.idsInOrder.length,
-      isShortcutCoverageLoading: shortcutCoverageLoadingRef.current,
-      shortcutCoverageRequestKey: coverageResource?.requestKey ?? null,
-      shortcutCoverageReadinessStatus: coverageResource?.status ?? 'idle',
-      shortcutCoverageReadinessReason: coverageResource?.terminalReason ?? null,
+      isShortcutCoverageLoading: isCoverageLoading,
+      shortcutCoverageRequestKey: coverageEntry?.requestKey ?? null,
+      shortcutCoverageReadinessStatus: coverageReadinessStatus,
+      shortcutCoverageReadinessReason: coverageEntry?.reason ?? null,
       mapSearchSurfaceResultsSourcesReady,
       mapSearchSurfaceResultsSourcesReadyKey: readinessKey,
       // Pins ride the SAME snapshot as dots/labels: one commit, one dedup, atomic delivery to native — and
@@ -2702,26 +2636,26 @@ export const useDirectSearchMapSourceController = ({
           ? {
               shortcutCoverageInFlightCount,
               shortcutCoverageCompletedCount: coverageCounters.completed,
-              shortcutCoverageReturnedFeatureCount: coverageResource?.returnedFeatureCount ?? 0,
-              shortcutCoverageAcceptedFeatureCount: coverageResource?.acceptedFeatureCount ?? 0,
-              shortcutCoverageStatus: coverageResource?.status ?? 'idle',
-              shortcutCoverageTerminalReason: coverageResource?.terminalReason ?? null,
+              shortcutCoverageReturnedFeatureCount: coverageEntry?.features?.length ?? 0,
+              shortcutCoverageAcceptedFeatureCount: coverageEntry?.features?.length ?? 0,
+              shortcutCoverageStatus: coverageReadinessStatus,
+              shortcutCoverageTerminalReason: coverageEntry?.reason ?? null,
             }
           : {
-              shortcutCoverageRequestKey: coverageResource?.requestKey ?? null,
-              shortcutCoverageSearchRequestId: coverageResource?.searchRequestId ?? searchRequestId,
-              shortcutCoverageBoundsKey: coverageResource?.boundsKey ?? null,
-              shortcutCoverageActiveTab: coverageResource?.activeTab ?? activeTab,
-              shortcutCoverageMarketKey: coverageResource?.marketKey ?? null,
-              shortcutCoverageFetchReason: coverageResource?.fetchReason ?? null,
+              shortcutCoverageRequestKey: coverageEntry?.requestKey ?? null,
+              shortcutCoverageSearchRequestId: searchRequestId,
+              shortcutCoverageBoundsKey: null,
+              shortcutCoverageActiveTab: activeTab,
+              shortcutCoverageMarketKey: mountedResults?.metadata?.marketKey ?? null,
+              shortcutCoverageFetchReason: null,
               shortcutCoverageInFlightCount,
               shortcutCoverageSupersededCount: coverageCounters.superseded,
               shortcutCoverageAbortedCount: coverageCounters.aborted,
               shortcutCoverageCompletedCount: coverageCounters.completed,
-              shortcutCoverageReturnedFeatureCount: coverageResource?.returnedFeatureCount ?? 0,
-              shortcutCoverageAcceptedFeatureCount: coverageResource?.acceptedFeatureCount ?? 0,
-              shortcutCoverageStatus: coverageResource?.status ?? 'idle',
-              shortcutCoverageTerminalReason: coverageResource?.terminalReason ?? null,
+              shortcutCoverageReturnedFeatureCount: coverageEntry?.features?.length ?? 0,
+              shortcutCoverageAcceptedFeatureCount: coverageEntry?.features?.length ?? 0,
+              shortcutCoverageStatus: coverageReadinessStatus,
+              shortcutCoverageTerminalReason: coverageEntry?.reason ?? null,
             };
         const lodProof = quietMeasuredLoopActive
           ? {
@@ -2792,7 +2726,7 @@ export const useDirectSearchMapSourceController = ({
         });
         if (
           searchMode === 'shortcut' &&
-          coverageResource != null &&
+          coverageEntry != null &&
           shortcutCoverageTerminal &&
           restaurants.length > 0 &&
           pinSourceStore.idsInOrder.length + dotSourceStore.idsInOrder.length === 0
@@ -2801,23 +2735,20 @@ export const useDirectSearchMapSourceController = ({
             event: 'shortcut_coverage_terminal_empty_visual_contract',
             transactionId: preparedVisualCycleKey,
             readinessKey,
-            requestKey: coverageResource.requestKey,
-            searchRequestId: coverageResource.searchRequestId,
-            boundsKey: coverageResource.boundsKey,
-            activeTab: coverageResource.activeTab,
-            marketKey: coverageResource.marketKey,
-            fetchReason: coverageResource.fetchReason,
+            requestKey: coverageEntry.requestKey,
+            searchRequestId,
+            activeTab,
             inFlightCount: shortcutCoverageInFlightCount,
             supersededCount: coverageCounters.superseded,
             abortedCount: coverageCounters.aborted,
             completedCount: coverageCounters.completed,
-            returnedFeatureCount: coverageResource.returnedFeatureCount,
-            acceptedFeatureCount: coverageResource.acceptedFeatureCount,
+            returnedFeatureCount: coverageEntry.features?.length ?? 0,
+            acceptedFeatureCount: coverageEntry.features?.length ?? 0,
             pinCount: pinSourceStore.idsInOrder.length,
             dotCount: dotSourceStore.idsInOrder.length,
             labelCount: labelSourceStore.idsInOrder.length,
             mapSearchSurfaceResultsSourcesReady,
-            terminalReason: coverageResource.terminalReason,
+            terminalReason: coverageEntry.reason,
             resultRestaurantCount: restaurants.length,
           });
         }
@@ -2882,8 +2813,10 @@ export const useDirectSearchMapSourceController = ({
           return isPromoted || dotFeature?.properties.nativeDotOpacity !== 0;
         });
         const eligibleCoverageFeatureCount =
-          searchMode === 'shortcut' && coverageResource?.status === 'completed'
-            ? coverageResource.acceptedFeatureCount
+          searchMode === 'shortcut' &&
+          coverageEntry?.status === 'ready' &&
+          (coverageEntry.features?.length ?? 0) > 0
+            ? (coverageEntry.features?.length ?? 0)
             : null;
         const projectedVisualFeatureCount = new Set([
           ...Array.from(pinVisualIdentityKeys),
@@ -2948,7 +2881,6 @@ export const useDirectSearchMapSourceController = ({
     }
     shortcutCoverageSnapshotByRequestIdRef.current.clear();
     shortcutCoveragePendingSnapshotByRequestIdRef.current.clear();
-    shortcutCoverageDotFeaturesRef.current = null;
     shortcutCoverageResourceRef.current = null;
     shortcutCoverageTerminalByRequestKeyRef.current.clear();
     shortcutCoverageFeaturesByRequestKeyRef.current.clear();
@@ -3140,9 +3072,6 @@ export const useDirectSearchMapSourceController = ({
           // [tclur FIX / red-team M1] Restore features ONLY for a SUCCESS terminal — mirror the main
           // cache-hit path so the two read paths can never diverge (a non-success terminal never surfaces
           // stale features). An 'aborted'/'failed' terminal → null (clear coverage).
-          shortcutCoverageDotFeaturesRef.current = cacheDecision.restoreFeatures
-            ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey) ?? null)
-            : null;
           commitCoverageEntryToWorld(searchRequestId, cachedTerminalResource.activeTab, {
             status: cacheDecision.restoreFeatures ? 'ready' : 'failed',
             requestKey,
@@ -3189,7 +3118,6 @@ export const useDirectSearchMapSourceController = ({
         // [tclur FIX / red-team M1] features cache in lockstep with this non-success ('failed') terminal.
         shortcutCoverageFeaturesByRequestKeyRef.current.delete(requestKey);
         shortcutCoverageLoadingRef.current = false;
-        shortcutCoverageDotFeaturesRef.current = null;
         shortcutCoverageCountersRef.current.completed += 1;
         commitCoverageEntryToWorld(searchRequestId, activeTab, {
           status: 'failed',
@@ -3302,9 +3230,6 @@ export const useDirectSearchMapSourceController = ({
         shortcutCoverageLoadingRef.current = false;
         // Restore THIS tab's features from the features cache so the map switches immediately. An 'empty'
         // terminal legitimately cached no features → null clears the coverage.
-        shortcutCoverageDotFeaturesRef.current = cacheDecision.restoreFeatures
-          ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey) ?? null)
-          : null;
         commitCoverageEntryToWorld(searchRequestId, successTerminal.activeTab, {
           status: cacheDecision.restoreFeatures ? 'ready' : 'failed',
           requestKey,
@@ -3463,7 +3388,6 @@ export const useDirectSearchMapSourceController = ({
           type: 'FeatureCollection',
           features,
         };
-        shortcutCoverageDotFeaturesRef.current = coverageFeatureCollection;
         // [tclur FIX] Cache the features by requestKey so a later cache-hit (toggle-back to this tab) can
         // restore them without a re-fetch. Without this, the cache-hit path restored only the resource and
         // left the features ref on the other tab's coverage (stale-236 / promoted=0).
@@ -3518,7 +3442,6 @@ export const useDirectSearchMapSourceController = ({
         }
         const aborted = isAbortLikeError(error) || abortController?.signal.aborted === true;
         shortcutCoverageLoadingRef.current = false;
-        shortcutCoverageDotFeaturesRef.current = null;
         const terminalResource: ShortcutCoverageRequestResource = {
           ...nextResource,
           status: aborted ? 'aborted' : 'failed',
@@ -3809,11 +3732,16 @@ export const useDirectSearchMapSourceController = ({
         restaurantId,
         coordinate: pressedCoordinate ?? null,
       };
+      const worldSnapshot = getSearchMountedResultsDataSnapshot();
+      const worldCoverageFeatures =
+        worldSnapshot.coverage != null
+          ? (Object.values(worldSnapshot.coverage.byTab)
+              .flatMap((entry) => entry?.features ?? [])
+              .find((feature) => feature.properties.restaurantId === restaurantId) ?? null)
+          : null;
       latestArgsRef.current.profileCommandPort.openProfileFromMarker({
         restaurantId,
-        restaurantName: shortcutCoverageDotFeaturesRef.current?.features.find(
-          (feature) => feature.properties.restaurantId === restaurantId
-        )?.properties.restaurantName,
+        restaurantName: worldCoverageFeatures?.properties.restaurantName,
         restaurant: restaurantsByIdRef.current.get(restaurantId),
         pressedCoordinate,
       });
