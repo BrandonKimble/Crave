@@ -58,6 +58,7 @@ import {
   ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
   POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
   COLLECTION_RESPONSE_JSON_SCHEMA,
+  jsonSchemaToTypedSchema,
   CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
   MODERATION_RESPONSE_JSON_SCHEMA,
   RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
@@ -1093,7 +1094,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidateCount: this.llmConfig.candidateCount,
       maxOutputTokens: this.llmConfig.maxTokens || 65536,
       responseMimeType: 'application/json',
-      responseJsonSchema: COLLECTION_RESPONSE_JSON_SCHEMA,
+      // The batch backend rejects responseJsonSchema (INVALID_ARGUMENT for
+      // every item — attributed via single-variable slice tests) but accepts
+      // and enforces the typed responseSchema form, so convert at build time.
+      responseSchema: jsonSchemaToTypedSchema(COLLECTION_RESPONSE_JSON_SCHEMA),
       systemInstruction: this.systemPrompt,
     };
     const thinking = this.getThinkingConfig(this.llmConfig.model, 'content');

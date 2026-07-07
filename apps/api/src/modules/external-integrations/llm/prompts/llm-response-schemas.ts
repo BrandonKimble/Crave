@@ -337,3 +337,74 @@ export const ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA = {
   },
   required: ['items'],
 } as const;
+
+/**
+ * Convert our JSON-Schema-style response schemas to Google's TYPED Schema
+ * form. The batch backend rejects `responseJsonSchema` outright (blanket
+ * INVALID_ARGUMENT — proven by single-variable slice tests 2026-07-06) but
+ * accepts + enforces typed `responseSchema`, so batch requests convert at
+ * build time. Handles the subset our schemas use: basic types, anyOf-null
+ * (-> nullable), enum, description, required, propertyOrdering.
+ */
+export function jsonSchemaToTypedSchema(
+  schema: Record<string, unknown>,
+): Record<string, unknown> {
+  const TYPE_MAP: Record<string, string> = {
+    object: 'OBJECT',
+    array: 'ARRAY',
+    string: 'STRING',
+    boolean: 'BOOLEAN',
+    integer: 'INTEGER',
+    number: 'NUMBER',
+  };
+
+  const anyOf = schema.anyOf as Record<string, unknown>[] | undefined;
+  if (Array.isArray(anyOf)) {
+    const nonNull = anyOf.filter((entry) => entry.type !== 'null');
+    if (nonNull.length !== 1 || nonNull.length === anyOf.length) {
+      throw new Error(
+        'jsonSchemaToTypedSchema: only anyOf-with-null unions are supported',
+      );
+    }
+    return { ...jsonSchemaToTypedSchema(nonNull[0]), nullable: true };
+  }
+
+  const out: Record<string, unknown> = {};
+  const type = schema.type as string | undefined;
+  if (type) {
+    const mapped = TYPE_MAP[type];
+    if (!mapped) {
+      throw new Error(`jsonSchemaToTypedSchema: unsupported type "${type}"`);
+    }
+    out.type = mapped;
+  }
+  if (typeof schema.description === 'string') {
+    out.description = schema.description;
+  }
+  if (Array.isArray(schema.enum)) {
+    out.enum = schema.enum;
+  }
+  if (Array.isArray(schema.required)) {
+    out.required = schema.required;
+  }
+  if (Array.isArray(schema.propertyOrdering)) {
+    out.propertyOrdering = schema.propertyOrdering;
+  }
+  if (schema.items && typeof schema.items === 'object') {
+    out.items = jsonSchemaToTypedSchema(
+      schema.items as Record<string, unknown>,
+    );
+  }
+  if (schema.properties && typeof schema.properties === 'object') {
+    const properties: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(
+      schema.properties as Record<string, unknown>,
+    )) {
+      properties[key] = jsonSchemaToTypedSchema(
+        value as Record<string, unknown>,
+      );
+    }
+    out.properties = properties;
+  }
+  return out;
+}
