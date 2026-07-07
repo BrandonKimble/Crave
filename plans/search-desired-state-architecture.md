@@ -217,7 +217,29 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
   late-rehydrate skip. Trace: append-only [TUPLE] lines (generation/cause/worldKey).
   Deferred to S3 per the edit map: entity taps fold into the sum type, profileSeed
   zero-network derivation, lane-A legacy publish deletion (values already identical).
-- **S3 IN FLIGHT**; S4 pending.
+- **S3 IN FLIGHT** (executable map: plans/search-s3-resolver-edit-map.md):
+  - **Substrate SHIPPED** (9655997f world cache, d543d58f resolver core — both
+    model-tested).
+  - **S3-pre SHIPPED** (61e9a5cc): captureFreshCommittedBounds (writer-side settled-camera
+    adopt; chips + STA adopt the CURRENT viewport in the same tuple write — the
+    zoom-then-toggle lane proven on-rig via [TUPLE] worldKey bounds); entities identity
+    carries listId/listType; resolver + seam landed dark.
+  - **S3a SHIPPED** (7b774d21): chip-cause reruns resolve through the WORLD RESOLVER
+    (cache→derivation→network); the seam's commitWorldToMountedState is the one commit
+    body; coverage (BOTH tabs) fetched in parallel with cards and folded into the world
+    value (the controller's post-response coverage lane starves resolver worlds — its
+    snapshot registry is legacy-relay-primed — so the relay bypass the map called for
+    was REQUIRED in S3a, not deferrable); load-more guards gate on isResolving().
+    On-rig: A→B→A retoggle = dataReadyFrom 'cache', instant zero-network reveal.
+    RED-contract lesson: world_recommitted must scope to the PRESENTED world (grounded
+    in the mounted snapshot's identity), else it kills the cache's whole point.
+  - **S3a leftovers → S3b:** includeSimilar page-1 local swap still legacy
+    (applyIncludeSimilarLocalSwap; moves to the derivation tier once submits populate
+    the cache); bbf97e85 interim block still serves legacy STA reruns; natural-identity
+    chip rerun path routed but only exercised for shortcut on-rig.
+  - **Next: S3b** (initial submits incl. STA → tuple write + resolver; market resolution
+    into the fetch env), then S3c (launches + pagination), S3d (delete the owner chain).
+- S4 pending.
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
