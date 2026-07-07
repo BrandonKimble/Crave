@@ -271,9 +271,9 @@ const useSearchSubmitOwner = ({
   });
   const {
     prepareSearchRequestForegroundUi,
+    beginResolverSubmitForegroundUi,
     prepareNaturalSearchForegroundUi,
     createRestaurantEntityInitialAttemptConfig,
-    createShortcutStructuredInitialAttemptConfig,
     createShortcutStructuredAppendAttemptConfig,
     prepareNaturalSearchEntry,
     resolveNaturalSearchAttemptConfig,
@@ -328,7 +328,6 @@ const useSearchSubmitOwner = ({
     publishRuntimeLaneState,
   });
   const {
-    primeShortcutStructuredRequest,
     applyShortcutStructuredAppendRequestState,
     publishShortcutCoverageForResponse,
     applyRestaurantEntityStructuredRequest,
@@ -338,7 +337,6 @@ const useSearchSubmitOwner = ({
   const {
     startNaturalResponseLifecycle,
     startEntityStructuredResponseLifecycle,
-    startShortcutInitialResponseLifecycle,
     startShortcutAppendResponseLifecycle,
     startFavoritesResponseLifecycle,
     executeEntityStructuredSearchAttempt,
@@ -378,6 +376,11 @@ const useSearchSubmitOwner = ({
       onPageOneResultsCommitted: (payload) => {
         onPageOneResultsCommittedForWorldRef.current?.(payload);
       },
+      // Strangler side state: profile auto-open + the natural append payload read this
+      // ref; the resolver keeps it truthful at every commit until S4 deletes it.
+      onWorldCommitted: ({ searchRequestId }) => {
+        lastSearchRequestIdRef.current = searchRequestId;
+      },
     });
     return createSearchWorldResolver({
       searchRuntimeBus,
@@ -408,6 +411,8 @@ const useSearchSubmitOwner = ({
     viewportBoundsService,
     captureFreshTupleBounds,
     isWorldResolving: worldResolver.isResolving,
+    resolveDesiredWorld,
+    beginResolverSubmitForegroundUi,
     currentPage,
     canLoadMore,
     hasResults,
@@ -423,18 +428,15 @@ const useSearchSubmitOwner = ({
     openNow,
     userLocationRef,
     createRestaurantEntityInitialAttemptConfig,
-    createShortcutStructuredInitialAttemptConfig,
     createShortcutStructuredAppendAttemptConfig,
     prepareSearchRequestForegroundUi,
     prepareStructuredInitialRequestPayload,
     prepareStructuredAppendRequestPayload,
     applyRestaurantEntityStructuredRequest,
-    primeShortcutStructuredRequest,
     applyShortcutStructuredAppendRequestState,
     executeEntityStructuredSearchAttempt,
     executeShortcutStructuredSearchAttempt,
     startEntityStructuredResponseLifecycle,
-    startShortcutInitialResponseLifecycle,
     startShortcutAppendResponseLifecycle,
     executeFavoritesHydrateAttempt,
     startFavoritesResponseLifecycle,

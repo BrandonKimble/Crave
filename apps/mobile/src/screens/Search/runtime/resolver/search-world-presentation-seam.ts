@@ -95,6 +95,9 @@ export type SearchWorldPresentationSeamEnv = {
     generation: number;
     presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }) => void;
+  /** Fires on every world commit (including represent-noops) — the strangler home for
+   *  lastSearchRequestIdRef and other commit-keyed side state until S4. */
+  onWorldCommitted?: (args: { searchRequestId: string; worldId: string }) => void;
 };
 
 export type SearchWorldPresentationSeam = {
@@ -146,12 +149,34 @@ export const createSearchWorldPresentationSeam = (
         value.resultsIdentityKey != null &&
         mountedIdentityKey === value.resultsIdentityKey;
       if (worldIsOnScreen && !isVersionUpdateOfPresentedWorld) {
-        // RED: a second structural frame for the world already on screen — a lifecycle
-        // bug upstream (idempotent re-asserts must die at the tuple writer, not here).
-        reportSearchFlowContractViolation('world_recommitted_while_presented', {
-          worldId,
-          generation,
+        // REPRESENT-NOOP: the world is already the mounted composite (a re-assert of the
+        // same desire — re-submit, coalesced double-tap). "One structural frame per
+        // world" is enforced BY CONSTRUCTION here: skip the structural batch entirely,
+        // but complete the operation (id/lane/loading) and the page-one choreography so
+        // an armed presentation intent settles instead of hanging on a commit that never
+        // comes. Provable in the trace via represent_noop.
+        env.searchRuntimeBus.publish({
+          activeOperationId: `world:${generation}`,
+          activeOperationLane: 'lane_b_data_commit',
+          isSearchLoading: false,
+          isLoadingMore: false,
         });
+        if (value.paginationMeta.page === 1) {
+          env.onPageOneResultsCommitted({
+            searchRequestId: value.searchRequestId,
+            requestBounds: args.requestBounds,
+            resultsIdentityKey: value.resultsIdentityKey,
+            resultsDataKey: value.resultsIdentityKey,
+            dataReadyFrom,
+            searchInputKey,
+            replaceResultsInPlace: Boolean(replaceResultsInPlace),
+            presentationIntentKind,
+          });
+        }
+        env.onWorldCommitted?.({ searchRequestId: value.searchRequestId, worldId });
+        if (__DEV__) {
+          logger.info('[WORLD-COMMIT] represent_noop', { generation, worldId });
+        }
         return;
       }
       presentedWorldId = worldId;
@@ -224,6 +249,7 @@ export const createSearchWorldPresentationSeam = (
           presentationIntentKind,
         });
       }
+      env.onWorldCommitted?.({ searchRequestId: value.searchRequestId, worldId });
       if (__DEV__) {
         logger.info('[WORLD-COMMIT]', {
           generation,

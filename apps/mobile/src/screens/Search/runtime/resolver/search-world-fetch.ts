@@ -105,24 +105,38 @@ export const createSearchWorldFetcher =
         includeSqlPreview: false,
       };
       attachTupleScopeToPayload(payload, tuple, userLocation);
-      const marketKey = env.getMarketKey();
-      const [cardsResponse, restaurantsCoverage, dishesCoverage] = await Promise.all([
-        env.runSearch({ kind: 'structured', payload, onCacheStatus }),
-        fetchShortcutCoverageWorldEntry({
-          shortcutCoverage: env.shortcutCoverage,
-          tuple,
-          tab: 'restaurants',
-          marketKey,
-        }),
-        fetchShortcutCoverageWorldEntry({
-          shortcutCoverage: env.shortcutCoverage,
-          tuple,
-          tab: 'dishes',
-          marketKey,
-        }),
-      ]);
-      response = cardsResponse;
-      coverageByTab = { restaurants: restaurantsCoverage, dishes: dishesCoverage };
+      const fetchBothTabCoverage = async (marketKey: string) => {
+        const [restaurantsCoverage, dishesCoverage] = await Promise.all([
+          fetchShortcutCoverageWorldEntry({
+            shortcutCoverage: env.shortcutCoverage,
+            tuple,
+            tab: 'restaurants',
+            marketKey,
+          }),
+          fetchShortcutCoverageWorldEntry({
+            shortcutCoverage: env.shortcutCoverage,
+            tuple,
+            tab: 'dishes',
+            marketKey,
+          }),
+        ]);
+        return { restaurants: restaurantsCoverage, dishes: dishesCoverage };
+      };
+      const knownMarketKey = env.getMarketKey();
+      if (knownMarketKey) {
+        // Market known (rerun / STA in the same market): coverage rides in PARALLEL.
+        const [cardsResponse, coverage] = await Promise.all([
+          env.runSearch({ kind: 'structured', payload, onCacheStatus }),
+          fetchBothTabCoverage(knownMarketKey),
+        ]);
+        response = cardsResponse;
+        coverageByTab = coverage;
+      } else {
+        // First submit in a market: the cards response resolves the market, coverage
+        // follows — the same serialization the legacy post-response lane had.
+        response = await env.runSearch({ kind: 'structured', payload, onCacheStatus });
+        coverageByTab = await fetchBothTabCoverage(response?.metadata?.marketKey ?? '');
+      }
     } else if (identity.kind === 'natural') {
       const payload: NaturalSearchRequest = {
         query: identity.query,

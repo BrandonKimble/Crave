@@ -23,7 +23,6 @@ import type {
 } from './use-search-submit-entry-owner';
 import type { StructuredSearchFilters } from './use-search-request-preparation-owner';
 import type { SearchSubmitActiveOperationTuple } from './use-search-submit-response-owner';
-import type { ShortcutCoverageSnapshot } from './use-search-submit-structured-helper-owner';
 
 type RunRestaurantEntitySearchParams = {
   restaurantId: string;
@@ -52,6 +51,19 @@ type UseSearchStructuredSubmitOwnerArgs = {
   captureFreshTupleBounds: () => Promise<SearchCommittedBounds | null>;
   /** S3a: a resolver-run rerun is in flight — appends must not race it. */
   isWorldResolving: () => boolean;
+  /** S3b: the world resolver — shortcut initial submits + STA resolve through it. */
+  resolveDesiredWorld: (
+    args: import('../runtime/resolver/search-world-resolver').SearchWorldResolveArgs
+  ) => Promise<void>;
+  beginResolverSubmitForegroundUi: (options: {
+    mode: 'natural' | 'shortcut' | null;
+    targetTab: SegmentValue;
+    submittedLabel: string;
+    preserveSheetState: boolean;
+    transitionFromDockedPolls: boolean;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
+    entrySurface: SearchSubmitEntrySurface;
+  }) => void;
   currentPage: number;
   canLoadMore: boolean;
   hasResults: boolean;
@@ -71,15 +83,6 @@ type UseSearchStructuredSubmitOwnerArgs = {
     restaurantId: string;
     restaurantName: string;
     preserveSheetState: boolean;
-    entrySurface: SearchSubmitEntrySurface;
-  }) => StructuredInitialAttemptConfig;
-  createShortcutStructuredInitialAttemptConfig: (params: {
-    targetTab: SegmentValue;
-    submittedLabel: string;
-    preserveSheetState: boolean;
-    transitionFromDockedPolls: boolean;
-    replaceResultsInPlace: boolean;
-    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
     entrySurface: SearchSubmitEntrySurface;
   }) => StructuredInitialAttemptConfig;
   createShortcutStructuredAppendAttemptConfig: (params: {
@@ -110,7 +113,6 @@ type UseSearchStructuredSubmitOwnerArgs = {
       typedPrefix?: string;
     }
   ) => NaturalSearchRequest['submissionContext'];
-  primeShortcutStructuredRequest: (payload: StructuredSearchRequest) => ShortcutCoverageSnapshot;
   applyShortcutStructuredAppendRequestState: (payload: StructuredSearchRequest) => void;
   executeEntityStructuredSearchAttempt: (params: {
     payload: StructuredSearchRequest;
@@ -152,18 +154,6 @@ type UseSearchStructuredSubmitOwnerArgs = {
     targetTab: SegmentValue;
     submittedLabel: string;
   }) => boolean;
-  startShortcutInitialResponseLifecycle: (params: {
-    response: SearchResponse;
-    requestId: number;
-    runtimeTuple: SearchSubmitActiveOperationTuple;
-    targetTab: SegmentValue;
-    submittedLabel: string;
-    requestBounds: import('../../../types').MapBounds | null;
-    replaceResultsInPlace: boolean;
-    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-    coverageSnapshot?: ShortcutCoverageSnapshot;
-    searchCacheStatus?: SearchRequestCacheStatus | null;
-  }) => boolean;
   startShortcutAppendResponseLifecycle: (params: {
     response: SearchResponse;
     requestId: number;
@@ -179,6 +169,8 @@ export const useSearchStructuredSubmitOwner = ({
   viewportBoundsService,
   captureFreshTupleBounds,
   isWorldResolving,
+  resolveDesiredWorld,
+  beginResolverSubmitForegroundUi,
   currentPage,
   canLoadMore,
   hasResults,
@@ -195,18 +187,15 @@ export const useSearchStructuredSubmitOwner = ({
   openNow,
   userLocationRef,
   createRestaurantEntityInitialAttemptConfig,
-  createShortcutStructuredInitialAttemptConfig,
   createShortcutStructuredAppendAttemptConfig,
   prepareSearchRequestForegroundUi,
   prepareStructuredInitialRequestPayload,
   prepareStructuredAppendRequestPayload,
   applyRestaurantEntityStructuredRequest,
-  primeShortcutStructuredRequest,
   applyShortcutStructuredAppendRequestState,
   executeEntityStructuredSearchAttempt,
   executeShortcutStructuredSearchAttempt,
   startEntityStructuredResponseLifecycle,
-  startShortcutInitialResponseLifecycle,
   startShortcutAppendResponseLifecycle,
   executeFavoritesHydrateAttempt,
   startFavoritesResponseLifecycle,
@@ -266,66 +255,6 @@ export const useSearchStructuredSubmitOwner = ({
       logSearchPhase,
       prepareStructuredInitialRequestPayload,
       startEntityStructuredResponseLifecycle,
-    ]
-  );
-
-  const executeShortcutInitialAttempt = React.useCallback(
-    async ({
-      requestId,
-      tuple,
-      targetTab,
-      submittedLabel,
-      filters,
-      forceFreshBounds,
-      replaceResultsInPlace,
-      presentationIntentKind,
-    }: {
-      requestId: number;
-      tuple: SearchSubmitActiveOperationTuple;
-      targetTab: SegmentValue;
-      submittedLabel: string;
-      filters?: StructuredSearchFilters;
-      forceFreshBounds: boolean;
-      replaceResultsInPlace: boolean;
-      presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-    }) => {
-      const payload = await prepareStructuredInitialRequestPayload({
-        tuple,
-        logLabel: 'runBestHere:loading-state',
-        loadingMoreLogLabel: 'runBestHere:loading-more',
-        filters,
-        forceFreshBounds,
-      });
-      if (!payload) {
-        return false;
-      }
-      const shortcutCoverageSnapshot = primeShortcutStructuredRequest(payload);
-      logSearchPhase('runBestHere:runSearch');
-      return executeShortcutStructuredSearchAttempt({
-        payload,
-        requestId,
-        append: false,
-        startLifecycle: (response, searchCacheStatus) =>
-          startShortcutInitialResponseLifecycle({
-            response,
-            requestId,
-            runtimeTuple: tuple,
-            targetTab,
-            submittedLabel,
-            requestBounds: payload.bounds ?? null,
-            replaceResultsInPlace,
-            presentationIntentKind,
-            coverageSnapshot: shortcutCoverageSnapshot,
-            searchCacheStatus,
-          }),
-      });
-    },
-    [
-      executeShortcutStructuredSearchAttempt,
-      logSearchPhase,
-      prepareStructuredInitialRequestPayload,
-      primeShortcutStructuredRequest,
-      startShortcutInitialResponseLifecycle,
     ]
   );
 
@@ -444,7 +373,7 @@ export const useSearchStructuredSubmitOwner = ({
         options?.presentationIntentKind === 'search_this_area' || options?.forceFreshBounds
           ? await captureFreshTupleBounds()
           : captureCommittedBounds(viewportBoundsService);
-      writeSearchDesiredTuple(
+      const writeResult = writeSearchDesiredTuple(
         searchRuntimeBus,
         {
           queryIdentity: {
@@ -462,65 +391,50 @@ export const useSearchStructuredSubmitOwner = ({
       const preserveSheetState = Boolean(options?.preserveSheetState);
       const transitionFromDockedPolls =
         !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
-      const shouldForceFreshBounds = Boolean(options?.forceFreshBounds);
       const shouldReplaceResultsInPlace = Boolean(options?.replaceResultsInPlace);
       const presentationIntentKind = options?.presentationIntentKind;
       const entrySurface = options.entrySurface;
-      const initialAttemptConfig = createShortcutStructuredInitialAttemptConfig({
-        targetTab,
-        submittedLabel,
-        preserveSheetState,
-        transitionFromDockedPolls,
-        replaceResultsInPlace: shouldReplaceResultsInPlace,
-        presentationIntentKind,
-        entrySurface,
-      });
-
       if (presentationIntentKind !== 'search_this_area') {
         resetMapMoveFlag();
       }
-      await runManagedRequestAttempt({
-        mode: 'shortcut',
-        submitPayload: initialAttemptConfig.submitPayload,
-        finalizeReason: initialAttemptConfig.finalizeReason,
-        shouldAbortPresentationIntent: true,
-        abortPresentationIntent: onPresentationIntentAbort,
-        setError,
-        onError: (err) => {
-          logger.error(initialAttemptConfig.errorLogLabel, {
-            message: err instanceof Error ? err.message : 'unknown error',
-          });
-        },
-        resolveFailure: () => ({
-          idleStatePatch: {
-            isMapActivationDeferred: false,
-          },
-          uiErrorMessage: null,
-        }),
-        executeAttempt: async ({ requestId, tuple }) => {
-          prepareSearchRequestForegroundUi(initialAttemptConfig.foregroundUi);
-          return executeShortcutInitialAttempt({
-            requestId,
-            tuple,
+      // S3b: the submit IS a tuple write + resolve. The resolver's ladder serves cache
+      // hits instantly (re-entering a just-seen viewport), the seam owns the commit, the
+      // presentation intent arms in onResolutionBegan AFTER activeOperationId publishes.
+      await resolveDesiredWorld({
+        tuple: writeResult.tuple,
+        generation: writeResult.generation,
+        cause:
+          presentationIntentKind === 'search_this_area' ? 'search_this_area' : 'initial_submit',
+        presentationIntentKind,
+        onResolutionBegan: () => {
+          beginResolverSubmitForegroundUi({
+            mode: 'shortcut',
             targetTab,
             submittedLabel,
-            filters: options?.filters,
-            forceFreshBounds: shouldForceFreshBounds,
-            replaceResultsInPlace: shouldReplaceResultsInPlace,
+            preserveSheetState,
+            transitionFromDockedPolls,
             presentationIntentKind,
+            entrySurface,
           });
+          logSearchPhase('runBestHere:ui-lanes-scheduled');
+        },
+        onResolutionFailed: (reason) => {
+          logger.error('Best-here search failed', { message: reason });
+          searchRuntimeBus.publish({ isMapActivationDeferred: false });
+          onPresentationIntentAbort?.();
         },
       });
+      void shouldReplaceResultsInPlace;
     },
     [
-      createShortcutStructuredInitialAttemptConfig,
-      executeShortcutInitialAttempt,
+      beginResolverSubmitForegroundUi,
+      captureFreshTupleBounds,
       logSearchPhase,
       onPresentationIntentAbort,
-      prepareSearchRequestForegroundUi,
       resetMapMoveFlag,
-      runManagedRequestAttempt,
-      setError,
+      resolveDesiredWorld,
+      searchRuntimeBus,
+      viewportBoundsService,
     ]
   );
 

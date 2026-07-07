@@ -29,18 +29,6 @@ export const useSearchSubmitStructuredHelperOwner = ({
   const shortcutBoundsSnapshotRef = React.useRef<MapBounds | null>(null);
   const shortcutSearchRequestIdRef = React.useRef<string | null>(null);
 
-  const primeShortcutStructuredRequest = React.useCallback(
-    (payload: StructuredSearchRequest): ShortcutCoverageSnapshot => {
-      shortcutSearchRequestIdRef.current = null;
-      shortcutBoundsSnapshotRef.current = payload.bounds ?? null;
-      return {
-        bounds: payload.bounds ?? null,
-        entities: payload.entities,
-      };
-    },
-    []
-  );
-
   const applyShortcutStructuredAppendRequestState = React.useCallback(
     (payload: StructuredSearchRequest) => {
       if (shortcutBoundsSnapshotRef.current) {
@@ -103,7 +91,6 @@ export const useSearchSubmitStructuredHelperOwner = ({
 
   return React.useMemo(
     () => ({
-      primeShortcutStructuredRequest,
       applyShortcutStructuredAppendRequestState,
       publishShortcutCoverageForResponse,
       applyRestaurantEntityStructuredRequest,
@@ -111,7 +98,6 @@ export const useSearchSubmitStructuredHelperOwner = ({
     [
       applyRestaurantEntityStructuredRequest,
       applyShortcutStructuredAppendRequestState,
-      primeShortcutStructuredRequest,
       publishShortcutCoverageForResponse,
     ]
   );

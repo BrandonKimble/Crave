@@ -378,6 +378,48 @@ export const useSearchSubmitEntryOwner = ({
     ]
   );
 
+  // S3b: the SURVIVING foreground effects for a resolver-run submit — the presentation
+  // intent (the transaction machine stays sole presentation writer), local tab state,
+  // deferred map activation, error clear, keyboard. Everything else the legacy
+  // prepareSearchRequestForegroundUi did (lane-A publishes, clearResultsForReplacement,
+  // in-flight flag) is either projected by the tuple writer or owned by the seam.
+  // Invoked from resolve()'s onResolutionBegan, AFTER activeOperationId is published.
+  const beginResolverSubmitForegroundUi = React.useCallback(
+    (options: {
+      mode: SearchMode;
+      targetTab: SegmentValue;
+      submittedLabel: string;
+      preserveSheetState: boolean;
+      transitionFromDockedPolls: boolean;
+      presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
+      entrySurface: SearchSubmitEntrySurface;
+    }) => {
+      onPresentationIntentStart?.({
+        kind: options.presentationIntentKind ?? 'initial_search',
+        mode: options.mode,
+        preserveSheetState: options.preserveSheetState,
+        transitionFromDockedPolls: options.transitionFromDockedPolls,
+        targetTab: options.targetTab,
+        submittedLabel: options.submittedLabel,
+        entrySurface: options.entrySurface,
+      });
+      lastAutoOpenKeyRef.current = null;
+      activeLoadingMoreTokenRef.current = null;
+      setActiveTab(options.targetTab);
+      searchRuntimeBus.publish({ isMapActivationDeferred: true });
+      setError(null);
+      Keyboard.dismiss();
+    },
+    [
+      activeLoadingMoreTokenRef,
+      lastAutoOpenKeyRef,
+      onPresentationIntentStart,
+      searchRuntimeBus,
+      setActiveTab,
+      setError,
+    ]
+  );
+
   const prepareNaturalSearchForegroundUi = React.useCallback(
     ({
       preserveSheetState,
@@ -449,50 +491,6 @@ export const useSearchSubmitEntryOwner = ({
       },
       errorLogLabel: 'Structured restaurant search failed',
       finalizeReason: 'entity_finalized_without_response_lifecycle',
-    }),
-    []
-  );
-
-  const createShortcutStructuredInitialAttemptConfig = React.useCallback(
-    ({
-      targetTab,
-      submittedLabel,
-      preserveSheetState,
-      transitionFromDockedPolls,
-      replaceResultsInPlace,
-      presentationIntentKind,
-      entrySurface,
-    }: {
-      targetTab: SegmentValue;
-      submittedLabel: string;
-      preserveSheetState: boolean;
-      transitionFromDockedPolls: boolean;
-      replaceResultsInPlace: boolean;
-      presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-      entrySurface: SearchSubmitEntrySurface;
-    }): StructuredInitialAttemptConfig => ({
-      submitPayload: createShortcutSubmitIntentPayload({
-        targetTab,
-        submittedLabel,
-        preserveSheetState,
-        targetPage: 1,
-        append: false,
-      }),
-      foregroundUi: {
-        kind: 'shortcut_rerun',
-        mode: 'shortcut',
-        preserveSheetState,
-        transitionFromDockedPolls,
-        presentationIntentKind,
-        targetTab,
-        submittedLabel,
-        shouldResetPagination: true,
-        logLabel: 'runBestHere',
-        replaceResultsLabel: replaceResultsInPlace ? submittedLabel : undefined,
-        entrySurface,
-      },
-      errorLogLabel: 'Best here request failed',
-      finalizeReason: 'shortcut_finalized_without_response_lifecycle',
     }),
     []
   );
@@ -662,17 +660,17 @@ export const useSearchSubmitEntryOwner = ({
   return React.useMemo(
     () => ({
       prepareSearchRequestForegroundUi,
+      beginResolverSubmitForegroundUi,
       prepareNaturalSearchForegroundUi,
       createRestaurantEntityInitialAttemptConfig,
-      createShortcutStructuredInitialAttemptConfig,
       createShortcutStructuredAppendAttemptConfig,
       prepareNaturalSearchEntry,
       resolveNaturalSearchAttemptConfig,
     }),
     [
+      beginResolverSubmitForegroundUi,
       createRestaurantEntityInitialAttemptConfig,
       createShortcutStructuredAppendAttemptConfig,
-      createShortcutStructuredInitialAttemptConfig,
       prepareNaturalSearchEntry,
       prepareNaturalSearchForegroundUi,
       prepareSearchRequestForegroundUi,
