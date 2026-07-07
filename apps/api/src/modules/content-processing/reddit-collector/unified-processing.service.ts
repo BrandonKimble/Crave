@@ -852,35 +852,17 @@ export class UnifiedProcessingService implements OnModuleInit {
             mention.food_surface,
             mention.food,
           );
-          // food_aliases (prompt 4.6): established shorthand only. STRUCTURAL
-          // sanity filter (not a stop-list): reject an alias that is a token
-          // super/subset of the dish name — that is a category or an expansion,
-          // and a junk alias silently poisons the dense name_embedding doc.
-          const foodTokens = new Set(
-            this.normalizeEntityName(mention.food, 'food').split(/\s+/),
-          );
-          const promptAliases = (mention.food_aliases ?? [])
-            .map((a) => (typeof a === 'string' ? a.trim().toLowerCase() : ''))
-            .filter((a) => a.length > 0 && a !== mention.food?.toLowerCase())
-            .filter((a) => {
-              const tokens = a.split(/\s+/);
-              const allShared = tokens.every((t) => foodTokens.has(t));
-              const covers = [...foodTokens].every((t) => tokens.includes(t));
-              return !(allShared || covers); // subset/superset ⇒ not an alias
-            });
+          // Natural-variation capture: the verbatim surface banks as an alias
+          // when it differs from the canonical name. (Established-shorthand
+          // aliases are KNOWLEDGE, synthesized per dish offline — collection
+          // emits only what was said, so no alias field exists here.)
           entities.push({
             normalizedName: this.normalizeEntityName(mention.food, 'food'),
             originalText: foodSurface,
             entityType: 'food' as const,
             tempId: foodEntityTempId,
-            aliases: Array.from(
-              new Set([
-                ...(foodSurface && foodSurface !== mention.food
-                  ? [foodSurface]
-                  : []),
-                ...promptAliases,
-              ]),
-            ),
+            aliases:
+              foodSurface && foodSurface !== mention.food ? [foodSurface] : [],
           });
         } else {
           mention.__foodEntityTempId = null;

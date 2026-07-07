@@ -535,31 +535,26 @@ Apply these inferences conservatively so categories stay focused and high-signal
   - attributes: [] ("chicken" alone is a bare ingredient here, not a dish class)
 - Two restaurants, same dish: "Get the carnitas tacos at Nixta and at Suerte." -> emit two `composedFoods` entries with identical `food`/`food_categories` but distinct `restaurant` values so later steps can keep the pairs separate.
 
-### 4.6 Dish Aliases (`food_aliases`)
+### 4.6 Source Ingredients (`ingredients`)
 
-`food_aliases` is the ONE sanctioned exception to the food-side anti-synthesis law, and it is
-deliberately narrow: an alias is an ESTABLISHED, canonical shorthand or expansion for exactly this
-dish — a name that would itself appear as the dish's name on a menu and points to nothing but this
-dish. Apply the test to the finished canonical `food` phrase (that is why this step sits after
-`food_categories`: a parent category is never an alias).
+`ingredients` records the ingredient nouns THIS SOURCE actually names for THIS dish — the same
+kind of claim as everything else you emit: something the writer said, not something you know.
+Two sources, and only two:
 
-- "bacon egg and cheese" -> `food_aliases`: ["bec"] (established shorthand)
-- "barbecue" -> `food_aliases`: ["bbq"]
-- "budae jjigae" -> `food_aliases`: ["army stew"] (established co-name for the same dish)
-- "carnitas taco" -> `food_aliases`: [] — no established shorthand exists; do not invent one
-- "spicy tuna roll" -> `food_aliases`: [] — "tuna roll" is a CATEGORY (broader), never an alias
-- "ramen" -> `food_aliases`: [] — most dishes have NO alias; empty is the correct default
-- "margherita pizza" -> `food_aliases`: [] — "marg" FAILS the collision half: it more commonly
-  means margarita (the drink). An alias that could point at ANY other dish or drink is poison
-  for search recall — never bank it, even if this source used it.
+1. Additive clauses tied to the dish ("pasta **with burrata, chanterelles, and pesto**" ->
+   `ingredients: ["burrata", "chanterelle mushroom", "pesto"]`).
+2. Ingredient nouns inside the composed dish name itself ("gruyere popover" -> `["gruyere"]`,
+   "masa crouton" -> `["masa"]`).
 
-Decisive test, BOTH halves required: (1) would this alias appear as a dish name on a menu, and
-(2) does it point to nothing but this dish — anywhere in the food world, not just in this thread?
-If either half fails or you are unsure, omit it. **An empty list is the expected, correct output
-for the vast majority of dishes — there is no credit for producing aliases and no penalty for
-producing none.** Never derive an alias by shortening, pluralizing, or translating the name
-yourself — only record shorthand the food world already uses. Restaurants never get aliases from
-this step.
+Do NOT add ingredients from your own knowledge of the dish ("al pastor taco" -> `[]` unless the
+source names its contents — the app derives typical ingredients per dish elsewhere; your job is
+only what was said here). Normalize singular and lowercase. An empty list is the expected output
+for most mentions — food talk rarely enumerates contents, and that is fine.
+
+- "pasta with burrata, chanterelles, and pesto" -> `ingredients: ["burrata", "chanterelle mushroom", "pesto"]`
+- "the brisket was smoky and tender" -> `ingredients: []` (descriptors are attributes, not contents)
+- "get the al pastor" -> `ingredients: []` (nothing named; typical contents are derived elsewhere)
+- "shiitake dumpling" -> `ingredients: ["shiitake"]` (named inside the dish name)
 
 ## Step 5: Menu Item Identification
 
@@ -698,7 +693,7 @@ For every mention, populate fields as follows:
   - If a food is present: set `food` from the aligned `composedFood` (Step 4) or, when inheriting an ask's target, from the category supplied in Step 5. Pair it with `food_categories` from the same source (Step 4 or the inherited list in Step 5)—these must stay orderable dish nouns—and apply the `is_menu_item` decision from Step 5.
   - `food_surface`: exact source string for the composed dish/item.
   - `food_category_surfaces`: array aligned index-for-index with `food_categories`, preserving the surface tokens.
-  - `food_aliases`: established shorthand for exactly this dish per 4.6 (empty for most dishes).
+  - `ingredients`: source-named ingredient nouns for this dish per 4.6 (empty for most mentions).
   - If no food (and no inherited ask category): set `food`, `food_categories`, and `is_menu_item` to null (or omit when allowed by schema). Item-specific asks that only yield a restaurant still count as having food data via the inherited category, so do not null them out.
 - Attributes
   - Populate `food_attributes` with the array from the matching `attributeLinks` entry in Step 3 (same canonical `restaurant` and `food` null vs populated). Omit or set to null when none.

@@ -261,9 +261,9 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
             'Hierarchical decomposition: parent categories, ingredient categories, related food terms',
           ),
-          food_aliases: withDescription(
+          ingredients: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
-            'ESTABLISHED shorthand for exactly this dish only (bec, bbq); empty for most dishes; never invented, shortened, or translated',
+            'Ingredient nouns THIS source names for this dish (with-clauses or dish-name components); singular lowercase; empty for most mentions; never from world knowledge',
           ),
           food_attributes: withDescription(
             { ...NULLABLE_STRING_ARRAY_SCHEMA },
@@ -289,7 +289,7 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
           'restaurant_attributes',
           'food',
           'food_categories',
-          'food_aliases',
+          'ingredients',
           'is_menu_item',
           'food_attributes',
           'general_praise',

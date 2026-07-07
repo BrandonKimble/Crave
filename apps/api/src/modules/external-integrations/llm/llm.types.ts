@@ -118,7 +118,7 @@ interface LLMMentionBase {
   food?: string | null; // Normalized name only
   food_surface?: string | null; // Exact string as observed in source
   food_categories?: string[] | null; // Hierarchical decomposition
-  food_aliases?: string[] | null; // Established shorthand ONLY (4.6) — the one sanctioned anti-synthesis exception
+  ingredients?: string[] | null; // Source-named ingredient nouns for this dish (4.6) — evidence tier; canonical dish ingredients are synthesized offline
   food_category_surfaces?: (string | null)[] | null; // Surface tokens aligned with food_categories
   is_menu_item?: boolean | null;
 
