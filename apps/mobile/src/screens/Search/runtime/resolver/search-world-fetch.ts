@@ -93,8 +93,14 @@ const attachTupleScopeToPayload = (
 
 export const createSearchWorldFetcher =
   (env: SearchWorldFetchEnv) =>
-  async (args: { tuple: SearchDesiredTuple }): Promise<SearchWorldNetworkFetchResult> => {
-    const { tuple } = args;
+  async (args: {
+    tuple: SearchDesiredTuple;
+    requestDecoration?: {
+      submissionSource?: string;
+      submissionContext?: Record<string, unknown>;
+    };
+  }): Promise<SearchWorldNetworkFetchResult> => {
+    const { tuple, requestDecoration } = args;
     const identity = tuple.queryIdentity;
     const userLocation = env.userLocationRef.current;
     const cacheStatusRef: { current: SearchRequestCacheStatus | null } = { current: null };
@@ -153,8 +159,12 @@ export const createSearchWorldFetcher =
         query: identity.query,
         pagination: { page: 1, pageSize: DEFAULT_PAGE_SIZE },
         includeSqlPreview: false,
-        submissionSource: 'manual',
+        submissionSource: (requestDecoration?.submissionSource ??
+          'manual') as NaturalSearchRequest['submissionSource'],
       };
+      if (requestDecoration?.submissionContext != null) {
+        payload.submissionContext = requestDecoration.submissionContext;
+      }
       attachTupleScopeToPayload(payload, tuple, userLocation);
       response = await env.runSearch({ kind: 'natural', payload, onCacheStatus });
     } else if (identity.kind === 'entities') {
@@ -170,7 +180,11 @@ export const createSearchWorldFetcher =
       // food/attribute taps ride the natural endpoint with a selected-entity context the
       // backend routes through buildSelectedEntitySearchRequest (no LLM cost).
       const submissionContext = {
-        typedPrefix: identity.displayName,
+        // The REAL typed prefix rides the decoration when the trigger has one (recall
+        // telemetry); the display name is the honest fallback.
+        typedPrefix:
+          (requestDecoration?.submissionContext?.typedPrefix as string | undefined) ??
+          identity.displayName,
         matchType: 'entity',
         selectedEntityId: identity.entityId,
         selectedEntityType: identity.entityType,

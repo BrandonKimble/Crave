@@ -38,6 +38,7 @@ import {
   createSearchWorldFetcher,
   createSearchWorldNextPageFetcher,
 } from '../runtime/resolver/search-world-fetch';
+import { createSearchWorldDerivation } from '../runtime/resolver/search-world-derivation';
 import { searchService } from '../../../services/search';
 import { getSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 import { useSearchSubmitActionOwner } from './use-search-submit-action-owner';
@@ -424,6 +425,7 @@ const useSearchSubmitOwner = ({
           favoriteListsService.getListResults(listId, options),
       }),
       now: () => globalThis.performance?.now?.() ?? Date.now(),
+      deriveWorldForTuple: createSearchWorldDerivation({ userLocationRef }),
       fetchNextPageForTuple: createSearchWorldNextPageFetcher({
         runSearch: (request) => runSearchForWorldRef.current(request),
         userLocationRef,

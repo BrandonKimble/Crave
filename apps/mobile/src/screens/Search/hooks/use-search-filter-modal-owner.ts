@@ -13,7 +13,6 @@ import { useQueryMutationOrchestrator } from '../runtime/mutations/query-mutatio
 import { formatPriceRangeSummary, getRangeFromLevels, type PriceRangeTuple } from '../utils/price';
 
 type SearchMode = 'natural' | 'shortcut' | null;
-type SegmentValue = 'dishes' | 'restaurants';
 
 type UseSearchFilterModalOwnerArgs = {
   searchRuntimeBus: SearchRuntimeBus;
@@ -31,9 +30,6 @@ type UseSearchFilterModalOwnerArgs = {
   setOpenNow: (next: boolean) => void;
   setPriceLevels: (next: number[]) => void;
   scheduleToggleCommit: Parameters<typeof useQueryMutationOrchestrator>[0]['scheduleToggleCommit'];
-  applyIncludeSimilarLocalSwap: Parameters<
-    typeof useQueryMutationOrchestrator
-  >[0]['applyIncludeSimilarLocalSwap'];
   resultsRuntimeOwner: Parameters<typeof useQueryMutationOrchestrator>[0]['resultsRuntimeOwner'];
   captureFreshTupleBounds: Parameters<
     typeof useQueryMutationOrchestrator
@@ -163,7 +159,6 @@ export const useSearchFilterModalOwner = ({
   priceLevels,
   panelVisible,
   scheduleToggleCommit,
-  applyIncludeSimilarLocalSwap,
   resultsRuntimeOwner,
   captureFreshTupleBounds,
   resolveDesiredWorld,
@@ -276,7 +271,6 @@ export const useSearchFilterModalOwner = ({
     priceLevels,
     scheduleToggleCommit,
     resolveDesiredWorld,
-    applyIncludeSimilarLocalSwap,
     resultsRuntimeOwner,
     priceSheetRef,
     captureFreshTupleBounds,

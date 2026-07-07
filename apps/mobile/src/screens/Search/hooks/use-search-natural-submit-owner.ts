@@ -281,7 +281,10 @@ export const useSearchNaturalSubmitOwner = ({
         contextRecord?.matchType === 'entity' &&
         selectedEntityId != null &&
         entityIdentityType != null;
-      if (!append && (naturalAttemptConfig.submissionContext == null || isEntitySubmission)) {
+      // ALL non-append submissions resolve. Non-entity contexts (matchType 'query' —
+      // typedPrefix analytics) ride as request DECORATION: they never fragment the
+      // cache key, and a cache hit legitimately owes no analytics request.
+      if (!append) {
         if (isEntitySubmission && selectedEntityId != null && entityIdentityType != null) {
           writeSearchDesiredTuple(
             searchRuntimeBus,
@@ -302,6 +305,10 @@ export const useSearchNaturalSubmitOwner = ({
           generation: busState.desiredTupleGeneration,
           cause: busState.desiredTupleCause,
           presentationIntentKind: naturalAttemptConfig.presentationIntentKind,
+          requestDecoration: {
+            submissionSource: naturalAttemptConfig.submissionSource,
+            submissionContext: contextRecord ?? undefined,
+          },
           onResolutionBegan: () => {
             beginResolverSubmitForegroundUi({
               mode: 'natural',

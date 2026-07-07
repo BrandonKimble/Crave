@@ -4,8 +4,6 @@ import { logger } from '../../../../utils';
 import { writeSearchDesiredTuple } from '../shared/search-desired-state-writer';
 import type { SearchCommittedBounds } from '../shared/search-desired-state-contract';
 import type { ScheduleToggleCommit } from '../shared/results-toggle-interaction-contract';
-import { createSearchSurfaceResultsEnterTransaction } from '../shared/search-surface-results-transaction';
-import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 import type { ResultsPresentationRuntimeOwner } from '../shared/results-presentation-runtime-owner-contract';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 import {
@@ -17,7 +15,6 @@ import {
 } from '../../utils/price';
 
 type SearchMode = 'natural' | 'shortcut' | null;
-type SegmentValue = 'dishes' | 'restaurants';
 
 type QueryMutationMechanismEmitter = (
   event: 'query_mutation_coalesced',
@@ -40,12 +37,6 @@ type UseQueryMutationOrchestratorArgs = {
   resolveDesiredWorld: (
     args: import('../resolver/search-world-resolver').SearchWorldResolveArgs
   ) => Promise<void>;
-  // Page-1 zero-network include-similar flip (use-search-submit-response-owner); returns
-  // false when the flip cannot be served locally → the runner falls back to a rerun.
-  applyIncludeSimilarLocalSwap: (options: {
-    nextIncludeSimilar: boolean;
-    targetTab: SegmentValue;
-  }) => boolean;
   resultsRuntimeOwner: Pick<
     ResultsPresentationRuntimeOwner,
     | 'clearStagedSearchSurfaceResultsTransaction'
@@ -86,7 +77,6 @@ export const useQueryMutationOrchestrator = (
     priceLevels,
     scheduleToggleCommit,
     resolveDesiredWorld,
-    applyIncludeSimilarLocalSwap,
     resultsRuntimeOwner,
     priceSheetRef,
     captureFreshTupleBounds,
@@ -256,49 +246,18 @@ export const useQueryMutationOrchestrator = (
           if (!canRerunForCurrentQuery()) {
             return;
           }
-          scheduleToggleCommit(
-            ({ intentId }) => {
-              // Page-1 flip is ZERO-NETWORK: the client already holds the exact + similar
-              // sets from the page-1 response — swap the committed variant locally and
-              // drive the shared toggle choreography exactly like the tab toggle.
-              const nextTab = searchRuntimeBus.getState().activeTab;
-              const swappedLocally = applyIncludeSimilarLocalSwap({
-                nextIncludeSimilar: nextFilters.includeSimilar,
-                targetTab: nextTab,
-              });
-              if (swappedLocally) {
-                resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
-                getSearchSurfaceRuntime().beginRedrawTransaction({
-                  reason: 'toggle',
-                  transactionId: intentId,
-                  targetTab: nextTab,
-                  coverState: 'interaction_loading',
-                });
-                resultsRuntimeOwner.stageSearchSurfaceResultsTransaction(
-                  createSearchSurfaceResultsEnterTransaction(
-                    intentId,
-                    'initial_search',
-                    'interaction_loading',
-                    null,
-                    'cache'
-                  )
-                );
-                return {
-                  awaitVisualSync: true,
-                };
-              }
-              // Mid-pagination (page > 1) or no local similar data: fresh network rerun.
-              return runVariantRerunToggleCommit({ intentId });
-            },
-            { kind: 'filter_include_similar' }
-          );
+          // The page-1 zero-network flip lives in the resolver's DERIVATION TIER now —
+          // the commit shape is identical to every other chip; the ladder decides
+          // cache/derivation/network.
+          scheduleToggleCommit(({ intentId }) => runVariantRerunToggleCommit({ intentId }), {
+            kind: 'filter_include_similar',
+          });
         }
       },
       ['desiredTuple'],
       'desired_tuple_filter_reader'
     );
   }, [
-    applyIncludeSimilarLocalSwap,
     canRerunForCurrentQuery,
     resultsRuntimeOwner,
     runVariantRerunToggleCommit,

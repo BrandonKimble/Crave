@@ -56,6 +56,7 @@ export type SearchWorldResolverEnv = {
     tuple: SearchDesiredTuple;
     generation: number;
     cause: SearchTupleWriteCause | null;
+    requestDecoration?: SearchWorldResolveArgs['requestDecoration'];
   }) => Promise<SearchWorldNetworkFetchResult>;
   /** Derivation tier (optional per sub-stage): serve the requested tuple by recomposing
    *  an already-resolved world (tab-only change; page-1 includeSimilar swap). Returns
@@ -87,6 +88,13 @@ export type SearchWorldResolveArgs = {
   generation: number;
   cause: SearchTupleWriteCause | null;
   presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
+  /** Request DECORATION: analytics metadata (submissionSource, typedPrefix context)
+   *  that rides the network request but never the cache key — a cache hit means no
+   *  request, so no decoration is owed. */
+  requestDecoration?: {
+    submissionSource?: string;
+    submissionContext?: Record<string, unknown>;
+  };
   /** Invoked SYNCHRONOUSLY after seam.beginResolution (activeOperationId published) and
    *  BEFORE any tier can commit — the slot where a pending presentation arm reads the
    *  operation id (the transaction-id ordering named in the edit map). */
@@ -216,7 +224,12 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
       logger.info('[RESOLVE]', { generation, cause, cardsKey, coverageKey, tier: 'network' });
     }
     try {
-      const fetched = await env.fetchWorldForTuple({ tuple, generation, cause });
+      const fetched = await env.fetchWorldForTuple({
+        tuple,
+        generation,
+        cause,
+        requestDecoration: args.requestDecoration,
+      });
       const entry = cache.commit({
         worldKey: cardsKey,
         status: { kind: 'ready' },

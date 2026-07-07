@@ -45,7 +45,6 @@ export const useSearchRootFilterModalRuntime = ({
     setOpenNow: rootDataPlaneRuntime.filterStateRuntime.setOpenNow,
     setPriceLevels: rootDataPlaneRuntime.filterStateRuntime.setPriceLevels,
     scheduleToggleCommit: resultsPresentationOwner.scheduleToggleCommit,
-    applyIncludeSimilarLocalSwap: submitRuntimeResult.applyIncludeSimilarLocalSwap,
     resultsRuntimeOwner: resultsPresentationOwner,
     captureFreshTupleBounds: submitRuntimeResult.captureFreshTupleBounds,
     resolveDesiredWorld: submitRuntimeResult.resolveDesiredWorld,
