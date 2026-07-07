@@ -1,15 +1,21 @@
-// The WORLD RECONCILER (charter §2, S4 edit map §2). S4a: DARK — it classifies every
-// tuple transition and derives the presentation intent the statechart will own, tracing
-// [RECONCILE] lines next to the trigger-passed intents (RED contract on kind mismatch).
-// It drives nothing yet; S4b makes it the ONE resolution kicker, S4c hands its events to
-// the statechart host for real.
-//
-// The classification table is the owner directive made code: presentation intents are
-// DERIVED from tuple transitions — causes are trace labels, never branching inputs.
+// The WORLD RECONCILER (charter §2, S4 edit map §2). S4b: the ONE resolution driver —
+// it classifies every tuple transition, derives the presentation intent from the delta
+// (causes are trace labels, never branching inputs), and drives resolution + the
+// EXISTING presentation choreography per class:
+//   session_enter/replace/area_rerun → foreground effects + resolve
+//   variant_rerun (and reversals)    → toggle-coordinator commit (arm cover + resolve)
+//   session_exit / tab_switch        → traced only (close + tab choreography stay
+//                                      lane-owned until S4c's statechart)
+// S4c hands its events to the reveal statechart and deletes the presentation port.
 
 import { logger } from '../../../../utils';
 import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
+import { getSearchReconcilerPresentationPort } from './search-reconciler-presentation-port';
+import {
+  takePendingSearchRequestDecoration,
+  type SearchRequestDecoration,
+} from './search-request-decoration-registry';
 import {
   areSearchCommittedBoundsEqual,
   areSearchFilterVariantsEqual,
@@ -146,23 +152,151 @@ export type SearchWorldReconcilerEnv = {
   searchRuntimeBus: SearchRuntimeBus;
   /** The mounted world's cards key (the presented identity) — read at classify time. */
   getPresentedCardsKey: () => string | null;
+  /** The resolver kick (in-flight dedupe + ladder live inside). */
+  resolve: (args: {
+    tuple: SearchDesiredTuple;
+    generation: number;
+    cause: string | null;
+    presentationIntentKind?: 'search_this_area' | 'variant_rerun';
+    requestDecoration?: SearchRequestDecoration;
+    onResolutionBegan?: () => void;
+    onResolutionFailed?: (reason: string) => void;
+  }) => Promise<void>;
+  /** Surviving foreground effects for full enters (the old
+   *  beginResolverSubmitForegroundUi body, now class-keyed here). */
+  runEnterForegroundEffects: (args: {
+    intent: SearchWorldDerivedIntent;
+    tuple: SearchDesiredTuple;
+  }) => void;
+  onResolveFailed: (reason: string) => void;
 };
 
 export type SearchWorldReconciler = {
   start: () => () => void;
-  /** S4a parity hook: the resolver reports each trigger-passed kick; the reconciler
-   *  compares it against its own derivation and reports a RED contract on mismatch. */
-  onResolveKick: (args: {
-    generation: number;
-    presentationIntentKind: 'search_this_area' | 'variant_rerun' | undefined;
-  }) => void;
+};
+
+const deriveToggleKindFromFilterDelta = (
+  prev: SearchDesiredTuple['filterVariant'],
+  next: SearchDesiredTuple['filterVariant']
+): 'filter_open_now' | 'filter_rising' | 'filter_price' | 'filter_include_similar' => {
+  if (prev.openNow !== next.openNow) {
+    return 'filter_open_now';
+  }
+  if (prev.rising !== next.rising) {
+    return 'filter_rising';
+  }
+  if (prev.includeSimilar !== next.includeSimilar) {
+    return 'filter_include_similar';
+  }
+  return 'filter_price';
 };
 
 export const createSearchWorldReconciler = (
   env: SearchWorldReconcilerEnv
 ): SearchWorldReconciler => {
   let lastTuple = env.searchRuntimeBus.getState().desiredTuple;
-  let lastDerived: { generation: number; transition: SearchWorldTransition } | null = null;
+
+  const kickRerunThroughCoordinator = (args: {
+    tuple: SearchDesiredTuple;
+    generation: number;
+    cause: string | null;
+    kind: 'filter_open_now' | 'filter_rising' | 'filter_price' | 'filter_include_similar';
+    decoration: SearchRequestDecoration | undefined;
+  }): void => {
+    const port = getSearchReconcilerPresentationPort();
+    if (port == null) {
+      // Boot-order gap (a rerun before the presentation runtimes mounted) is a broken
+      // composition, not a state to compensate for.
+      reportSearchFlowContractViolation('reconciler_presentation_port_missing', {
+        generation: args.generation,
+      });
+      return;
+    }
+    port.scheduleToggleCommit(
+      ({ intentId }) => {
+        port.clearStagedSearchSurfaceResultsTransaction();
+        port.beginVariantRerunPresentationPending(intentId);
+        // Re-read the CURRENT desire at commit time — the coordinator debounce may have
+        // coalesced newer tuple writes over the one that scheduled this commit.
+        const busState = env.searchRuntimeBus.getState();
+        void env
+          .resolve({
+            tuple: busState.desiredTuple,
+            generation: busState.desiredTupleGeneration,
+            cause: busState.desiredTupleCause,
+            presentationIntentKind: 'variant_rerun',
+            requestDecoration: args.decoration,
+            onResolutionFailed: (reason) => {
+              port.clearStagedSearchSurfaceResultsTransaction();
+              env.onResolveFailed(reason);
+            },
+          })
+          .catch((error) => {
+            env.onResolveFailed(error instanceof Error ? error.message : 'unknown error');
+          });
+        return { awaitVisualSync: true as const };
+      },
+      { kind: args.kind }
+    );
+  };
+
+  const dispatch = (args: {
+    prev: SearchDesiredTuple;
+    next: SearchDesiredTuple;
+    generation: number;
+    cause: string | null;
+    transition: SearchWorldTransition;
+  }): void => {
+    const { prev, next, generation, cause, transition } = args;
+    const decoration = takePendingSearchRequestDecoration();
+    switch (transition.class) {
+      case 'session_enter':
+      case 'session_replace':
+      case 'area_rerun': {
+        const intent = transition.intent;
+        void env
+          .resolve({
+            tuple: next,
+            generation,
+            cause,
+            presentationIntentKind: intent?.presentationIntentKind,
+            requestDecoration: decoration,
+            onResolutionBegan: () => {
+              if (intent != null) {
+                env.runEnterForegroundEffects({ intent, tuple: next });
+              }
+            },
+            onResolutionFailed: env.onResolveFailed,
+          })
+          .catch((error) => {
+            env.onResolveFailed(error instanceof Error ? error.message : 'unknown error');
+          });
+        return;
+      }
+      case 'variant_rerun':
+      case 'retoggle_reversal': {
+        // A reversal rides the same rerun path: the resolver cache-hits and the seam's
+        // represent-noop completes the armed choreography (the S4c statechart replaces
+        // this with a true fade-back).
+        kickRerunThroughCoordinator({
+          tuple: next,
+          generation,
+          cause,
+          kind: deriveToggleKindFromFilterDelta(prev.filterVariant, next.filterVariant),
+          decoration,
+        });
+        return;
+      }
+      case 'tab_switch':
+      case 'session_exit':
+      case 'boot_noop':
+      case 'response_tab_adopt':
+        // tab_switch: the legacy tab lane presents the recompose (S4c folds it in).
+        // session_exit: close choreography stays trigger-owned until S4c.
+        // response_tab_adopt: the resolver's own mid-resolution write — same episode.
+        return;
+    }
+  };
 
   const start = (): (() => void) => {
     lastTuple = env.searchRuntimeBus.getState().desiredTuple;
@@ -175,12 +309,15 @@ export const createSearchWorldReconciler = (
         }
         const prev = lastTuple;
         lastTuple = next;
+        // The resolver's own tab-adopt write must not re-enter resolution.
+        if (state.desiredTupleCause === 'response_tab_adopt') {
+          return;
+        }
         const transition = classifySearchWorldTransition({
           prev,
           next,
           presentedCardsKey: env.getPresentedCardsKey(),
         });
-        lastDerived = { generation: state.desiredTupleGeneration, transition };
         if (__DEV__) {
           logger.info('[RECONCILE]', {
             generation: state.desiredTupleGeneration,
@@ -191,33 +328,18 @@ export const createSearchWorldReconciler = (
             entrySurface: transition.intent?.entrySurface ?? null,
           });
         }
+        dispatch({
+          prev,
+          next,
+          generation: state.desiredTupleGeneration,
+          cause: state.desiredTupleCause,
+          transition,
+        });
       },
       ['desiredTuple'],
       'search_world_reconciler'
     );
   };
 
-  const onResolveKick: SearchWorldReconciler['onResolveKick'] = ({
-    generation,
-    presentationIntentKind,
-  }) => {
-    if (lastDerived == null || lastDerived.generation !== generation) {
-      // Kicks for generations the reconciler never classified (e.g. imperative re-kicks)
-      // are visible in the trace by their absence; not a violation by themselves.
-      return;
-    }
-    const derivedKind = lastDerived.transition.intent?.presentationIntentKind;
-    // The legacy triggers pass undefined for initial enters AND tab switches; the
-    // derivation must agree on the rerun kinds exactly.
-    if (derivedKind !== presentationIntentKind) {
-      reportSearchFlowContractViolation('reconciler_intent_mismatch', {
-        generation,
-        class: lastDerived.transition.class,
-        derivedKind: derivedKind ?? 'initial',
-        passedKind: presentationIntentKind ?? 'initial',
-      });
-    }
-  };
-
-  return { start, onResolveKick };
+  return { start };
 };

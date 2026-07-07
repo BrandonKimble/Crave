@@ -1,5 +1,4 @@
 import React from 'react';
-import { Keyboard } from 'react-native';
 
 import type { NaturalSearchRequest } from '../../../types';
 import { DEFAULT_SEGMENT } from '../constants/search';
@@ -95,20 +94,9 @@ type UseSearchSubmitEntryOwnerArgs = {
   openNow: boolean;
   priceLevels: number[];
   risingActive: boolean;
-  setActiveTab: React.Dispatch<React.SetStateAction<SegmentValue>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   searchRuntimeBus: SearchRuntimeBus;
   resetMapMoveFlag: () => void;
-  lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
-  onPresentationIntentStart?: (params: {
-    kind: SearchSubmitPresentationIntentKind;
-    mode: SearchMode;
-    preserveSheetState: boolean;
-    transitionFromDockedPolls: boolean;
-    targetTab: SegmentValue;
-    submittedLabel?: string;
-    entrySurface: SearchSubmitEntrySurface;
-  }) => void;
 };
 
 export const resolveSubmissionDefaultTab = (
@@ -159,45 +147,18 @@ export const useSearchSubmitEntryOwner = ({
   openNow,
   priceLevels,
   risingActive,
-  setActiveTab,
   setError,
   searchRuntimeBus,
   resetMapMoveFlag,
-  lastAutoOpenKeyRef,
-  onPresentationIntentStart,
 }: UseSearchSubmitEntryOwnerArgs) => {
-  const beginResolverSubmitForegroundUi = React.useCallback(
-    (options: {
-      mode: SearchMode;
-      targetTab: SegmentValue;
-      submittedLabel: string;
-      preserveSheetState: boolean;
-      transitionFromDockedPolls: boolean;
-      presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-      entrySurface: SearchSubmitEntrySurface;
-    }) => {
-      onPresentationIntentStart?.({
-        kind: options.presentationIntentKind ?? 'initial_search',
-        mode: options.mode,
-        preserveSheetState: options.preserveSheetState,
-        transitionFromDockedPolls: options.transitionFromDockedPolls,
-        targetTab: options.targetTab,
-        submittedLabel: options.submittedLabel,
-        entrySurface: options.entrySurface,
-      });
-      lastAutoOpenKeyRef.current = null;
-      setActiveTab(options.targetTab);
-      searchRuntimeBus.publish({ isMapActivationDeferred: true });
-      setError(null);
-      Keyboard.dismiss();
-    },
-    [lastAutoOpenKeyRef, onPresentationIntentStart, searchRuntimeBus, setActiveTab, setError]
-  );
-
   const prepareNaturalSearchEntry = React.useCallback(
     (
       options?: SubmitSearchOptions,
-      overrideQuery?: string
+      overrideQuery?: string,
+      // S4b: selected-entity submissions write their entity identity in the SAME (one)
+      // tuple write — a natural-then-entity double write would double-resolve now that
+      // the reconciler acts on every write.
+      identityOverride?: import('../runtime/shared/search-desired-state-contract').SearchQueryIdentity
     ): PrepareNaturalSearchEntryResult | null => {
       const append = Boolean(options?.append);
       if (append && isLoadingMore) {
@@ -237,7 +198,7 @@ export const useSearchSubmitEntryOwner = ({
         writeSearchDesiredTuple(
           searchRuntimeBus,
           {
-            queryIdentity: { kind: 'natural', query: trimmedQuery },
+            queryIdentity: identityOverride ?? { kind: 'natural', query: trimmedQuery },
             ...(options?.replaceResultsInPlace && !options?.forceFreshBounds
               ? {}
               : { committedBounds: captureCommittedBounds(viewportBoundsService) }),
@@ -324,10 +285,9 @@ export const useSearchSubmitEntryOwner = ({
 
   return React.useMemo(
     () => ({
-      beginResolverSubmitForegroundUi,
       prepareNaturalSearchEntry,
       resolveNaturalSearchAttemptConfig,
     }),
-    [beginResolverSubmitForegroundUi, prepareNaturalSearchEntry, resolveNaturalSearchAttemptConfig]
+    [prepareNaturalSearchEntry, resolveNaturalSearchAttemptConfig]
   );
 };

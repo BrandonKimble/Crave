@@ -34,6 +34,9 @@ import {
 } from '../runtime/resolver/search-world-fetch';
 import { createSearchWorldDerivation } from '../runtime/resolver/search-world-derivation';
 import { createSearchWorldReconciler } from '../runtime/reconciler/search-world-reconciler';
+import { getSearchReconcilerViewInputs } from '../runtime/reconciler/search-reconciler-presentation-port';
+import { Keyboard } from 'react-native';
+import { logger } from '../../../utils';
 import { searchService } from '../../../services/search';
 import { getSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 import { useSearchSubmitActionOwner } from './use-search-submit-action-owner';
@@ -213,26 +216,20 @@ const useSearchSubmitOwner = ({
     viewportBoundsService,
     userLocationRef,
   } = runtimePorts;
-  const {
-    beginResolverSubmitForegroundUi,
-    prepareNaturalSearchEntry,
-    resolveNaturalSearchAttemptConfig,
-  } = useSearchSubmitEntryOwner({
-    viewportBoundsService,
-    query,
-    preferredActiveTab,
-    hasActiveTabPreference,
-    isLoadingMore,
-    openNow,
-    priceLevels,
-    risingActive,
-    setActiveTab,
-    setError,
-    searchRuntimeBus,
-    resetMapMoveFlag,
-    lastAutoOpenKeyRef,
-    onPresentationIntentStart,
-  });
+  const { prepareNaturalSearchEntry, resolveNaturalSearchAttemptConfig } =
+    useSearchSubmitEntryOwner({
+      viewportBoundsService,
+      query,
+      preferredActiveTab,
+      hasActiveTabPreference,
+      isLoadingMore,
+      openNow,
+      priceLevels,
+      risingActive,
+      setError,
+      searchRuntimeBus,
+      resetMapMoveFlag,
+    });
   // S3-pre: commit-moment triggers (STA, chip reruns) adopt the SETTLED native camera
   // into the tuple BEFORE writing it — the resolver never touches the map ref.
   const captureFreshTupleBounds = React.useCallback(
@@ -248,6 +245,44 @@ const useSearchSubmitOwner = ({
   // stable singleton across renders.
   const onPageOneResultsCommittedForWorldRef = React.useRef(onPageOneResultsCommitted);
   const runSearchForWorldRef = React.useRef(runSearch);
+  const onPresentationIntentAbortRef = React.useRef(onPresentationIntentAbort);
+  onPresentationIntentAbortRef.current = onPresentationIntentAbort;
+  // S4b: the surviving full-enter foreground effects, driven from the reconciler's
+  // DERIVED intent (the old beginResolverSubmitForegroundUi, trigger params replaced by
+  // tuple facts + bus projections + view inputs).
+  const enterForegroundEffectsRef = React.useRef<
+    (args: {
+      intent: {
+        presentationIntentKind: 'search_this_area' | 'variant_rerun' | undefined;
+        preserveSheetState: boolean;
+        entrySurface: 'home' | 'search_mode' | 'results' | 'profile' | null;
+      };
+      tuple: import('../runtime/shared/search-desired-state-contract').SearchDesiredTuple;
+    }) => void
+  >(() => {});
+  enterForegroundEffectsRef.current = ({ intent, tuple }) => {
+    const busState = searchRuntimeBus.getState();
+    const dockedPolls =
+      !intent.preserveSheetState &&
+      (getSearchReconcilerViewInputs()?.getDockedPollsFlag() ?? false);
+    onPresentationIntentStart?.({
+      kind: intent.presentationIntentKind ?? 'initial_search',
+      mode: busState.searchMode ?? null,
+      preserveSheetState: intent.preserveSheetState,
+      transitionFromDockedPolls: dockedPolls,
+      targetTab: tuple.tab,
+      submittedLabel: busState.submittedQuery || undefined,
+      entrySurface:
+        intent.entrySurface === 'profile' || intent.entrySurface == null
+          ? 'home'
+          : intent.entrySurface,
+    });
+    lastAutoOpenKeyRef.current = null;
+    setActiveTab(tuple.tab);
+    searchRuntimeBus.publish({ isMapActivationDeferred: true });
+    setError(null);
+    Keyboard.dismiss();
+  };
   // Post-present side effects (the response owner's post-commit UI sequence, reduced to
   // its surviving members): recent-history push for natural searches, single-restaurant
   // sheet collapse, scroll reset. Ref-indirected so the resolver stays a singleton.
@@ -289,10 +324,6 @@ const useSearchSubmitOwner = ({
     runSearchForWorldRef.current = runSearch;
   });
   const worldResolver = React.useMemo(() => {
-    // S4a: the DARK reconciler — classifies every tuple transition, traces [RECONCILE],
-    // and RED-diffs the derived intent against each trigger-passed resolve kick. It
-    // drives nothing yet (S4b makes it the one kicker).
-    let reconcilerRef: ReturnType<typeof createSearchWorldReconciler> | null = null;
     const seam = createSearchWorldPresentationSeam({
       searchRuntimeBus,
       resultsPresentationSurfaceAuthority,
@@ -305,19 +336,9 @@ const useSearchSubmitOwner = ({
         lastSearchRequestIdRef.current = searchRequestId;
       },
     });
-    const reconciler = createSearchWorldReconciler({
-      searchRuntimeBus,
-      getPresentedCardsKey: () => {
-        const worldId = seam.getPresentedWorldId();
-        return worldId == null ? null : worldId.replace(/@v\d+$/, '');
-      },
-    });
-    reconcilerRef = reconciler;
-    reconciler.start();
-    return createSearchWorldResolver({
+    const resolver = createSearchWorldResolver({
       searchRuntimeBus,
       seam,
-      onResolveKick: (kick) => reconcilerRef?.onResolveKick(kick),
       fetchWorldForTuple: createSearchWorldFetcher({
         runSearch: (request) => runSearchForWorldRef.current(request),
         userLocationRef,
@@ -342,6 +363,24 @@ const useSearchSubmitOwner = ({
       }),
       onWorldPresented: (args) => worldPresentedEffectsRef.current(args),
     });
+    // S4b: the reconciler is the ONE resolution driver — triggers only write the tuple.
+    const reconciler = createSearchWorldReconciler({
+      searchRuntimeBus,
+      getPresentedCardsKey: () => {
+        const worldId = seam.getPresentedWorldId();
+        return worldId == null ? null : worldId.replace(/@v\d+$/, '');
+      },
+      resolve: (resolveArgs) =>
+        resolver.resolve(resolveArgs as Parameters<typeof resolver.resolve>[0]),
+      runEnterForegroundEffects: (effectArgs) => enterForegroundEffectsRef.current(effectArgs),
+      onResolveFailed: (reason) => {
+        logger.error('Search resolution failed', { message: reason });
+        searchRuntimeBus.publish({ isMapActivationDeferred: false });
+        onPresentationIntentAbortRef.current?.();
+      },
+    });
+    reconciler.start();
+    return resolver;
   }, [searchRuntimeBus, resultsPresentationSurfaceAuthority, userLocationRef]);
   const resolveDesiredWorld = React.useCallback(
     (resolveArgs: SearchWorldResolveArgs) => worldResolver.resolve(resolveArgs),
@@ -352,18 +391,11 @@ const useSearchSubmitOwner = ({
       searchRuntimeBus,
       viewportBoundsService,
       captureFreshTupleBounds,
-      resolveDesiredWorld,
-      beginResolverSubmitForegroundUi,
-      onPresentationIntentAbort,
       resetMapMoveFlag,
     });
   const { submitSearch } = useSearchNaturalSubmitOwner({
-    searchRuntimeBus,
-    resolveDesiredWorld,
-    beginResolverSubmitForegroundUi,
     prepareNaturalSearchEntry,
     resolveNaturalSearchAttemptConfig,
-    onPresentationIntentAbort,
   });
 
   // Skip-LLM entity reveal: a natural-search submission whose context carries a

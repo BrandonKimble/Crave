@@ -1,33 +1,19 @@
 import React from 'react';
 
-import { logger } from '../../../utils';
-import { writeSearchDesiredTuple } from '../runtime/shared/search-desired-state-writer';
-import type { SegmentValue } from '../constants/search';
+import {
+  clearPendingSearchRequestDecoration,
+  registerPendingSearchRequestDecoration,
+} from '../runtime/reconciler/search-request-decoration-registry';
 import type {
   ResolveNaturalSearchAttemptConfigResult,
-  SearchSubmitEntrySurface,
   SubmitSearchOptions,
-  SearchSubmitInPlaceRerunIntentKind,
 } from './use-search-submit-entry-owner';
 
 type UseSearchNaturalSubmitOwnerArgs = {
-  searchRuntimeBus: import('../runtime/shared/search-runtime-bus').SearchRuntimeBus;
-  /** S3b-2: context-free non-append natural submits resolve through the world resolver. */
-  resolveDesiredWorld: (
-    args: import('../runtime/resolver/search-world-resolver').SearchWorldResolveArgs
-  ) => Promise<void>;
-  beginResolverSubmitForegroundUi: (options: {
-    mode: 'natural' | 'shortcut' | null;
-    targetTab: SegmentValue;
-    submittedLabel: string;
-    preserveSheetState: boolean;
-    transitionFromDockedPolls: boolean;
-    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-    entrySurface: SearchSubmitEntrySurface;
-  }) => void;
   prepareNaturalSearchEntry: (
     options?: SubmitSearchOptions,
-    overrideQuery?: string
+    overrideQuery?: string,
+    identityOverride?: import('../runtime/shared/search-desired-state-contract').SearchQueryIdentity
   ) => {
     append: boolean;
     targetPage: number;
@@ -36,33 +22,18 @@ type UseSearchNaturalSubmitOwnerArgs = {
   resolveNaturalSearchAttemptConfig: (
     options?: SubmitSearchOptions
   ) => ResolveNaturalSearchAttemptConfigResult;
-  onPresentationIntentAbort?: () => void;
   logSearchPhase?: (label: string, options?: { reset?: boolean }) => void;
 };
 
 export const useSearchNaturalSubmitOwner = ({
-  searchRuntimeBus,
-  resolveDesiredWorld,
-  beginResolverSubmitForegroundUi,
   prepareNaturalSearchEntry,
   resolveNaturalSearchAttemptConfig,
-  onPresentationIntentAbort,
   logSearchPhase = () => {},
 }: UseSearchNaturalSubmitOwnerArgs) => {
   const submitSearch = React.useCallback(
     async (options?: SubmitSearchOptions, overrideQuery?: string) => {
       logSearchPhase('submitSearch:start', { reset: true });
-      const naturalEntry = prepareNaturalSearchEntry(options, overrideQuery);
-      if (!naturalEntry) {
-        return;
-      }
-      const { append, trimmedQuery } = naturalEntry;
       const naturalAttemptConfig = resolveNaturalSearchAttemptConfig(options);
-      // S3b-2/S3c: non-append submits are a tuple write + resolve. Context-free typed
-      // searches keep the natural tuple prepareNaturalSearchEntry wrote; selected-entity
-      // submissions (autocomplete taps, poll-comment entity taps) CONVERT the identity
-      // to the 'entity' kind — the skip-LLM lane is an identity fact, not a payload
-      // detail. Appends stay legacy until the pagination cutover.
       const contextRecord =
         naturalAttemptConfig.submissionContext != null &&
         typeof naturalAttemptConfig.submissionContext === 'object' &&
@@ -79,71 +50,37 @@ export const useSearchNaturalSubmitOwner = ({
         selectedEntityType === 'restaurant_attribute'
           ? selectedEntityType
           : null;
-      const isEntitySubmission =
+      const trimmedForIdentity = (overrideQuery ?? '').trim();
+      const entityIdentity =
         contextRecord?.matchType === 'entity' &&
         selectedEntityId != null &&
-        entityIdentityType != null;
-      // ALL non-append submissions resolve. Non-entity contexts (matchType 'query' —
-      // typedPrefix analytics) ride as request DECORATION: they never fragment the
-      // cache key, and a cache hit legitimately owes no analytics request.
-      if (!append) {
-        if (isEntitySubmission && selectedEntityId != null && entityIdentityType != null) {
-          writeSearchDesiredTuple(
-            searchRuntimeBus,
-            {
-              queryIdentity: {
-                kind: 'entity',
-                entityType: entityIdentityType,
-                entityId: selectedEntityId,
-                displayName: trimmedQuery,
-              },
-            },
-            'entity_tap'
-          );
-        }
-        const busState = searchRuntimeBus.getState();
-        await resolveDesiredWorld({
-          tuple: busState.desiredTuple,
-          generation: busState.desiredTupleGeneration,
-          cause: busState.desiredTupleCause,
-          presentationIntentKind: naturalAttemptConfig.presentationIntentKind,
-          requestDecoration: {
-            submissionSource: naturalAttemptConfig.submissionSource,
-            submissionContext: contextRecord ?? undefined,
-          },
-          onResolutionBegan: () => {
-            beginResolverSubmitForegroundUi({
-              mode: 'natural',
-              targetTab: naturalAttemptConfig.preRequestTab,
-              submittedLabel: trimmedQuery,
-              preserveSheetState: naturalAttemptConfig.preserveSheetState,
-              transitionFromDockedPolls: naturalAttemptConfig.transitionFromDockedPolls,
-              presentationIntentKind: naturalAttemptConfig.presentationIntentKind,
-              entrySurface: naturalAttemptConfig.entrySurface,
-            });
-            logSearchPhase('submitSearch:ui-lanes-scheduled');
-          },
-          onResolutionFailed: (reason) => {
-            logger.error('Search request failed', { message: reason });
-            searchRuntimeBus.publish({ isMapActivationDeferred: false });
-            onPresentationIntentAbort?.();
-          },
-        });
+        entityIdentityType != null
+          ? ({
+              kind: 'entity',
+              entityType: entityIdentityType,
+              entityId: selectedEntityId,
+              displayName: trimmedForIdentity,
+            } as const)
+          : undefined;
+      // S4b: the submit IS the tuple write — the reconciler (which fires SYNCHRONOUSLY
+      // inside the write) classifies the transition and drives resolution. Decoration
+      // pre-registers so the kick can take it.
+      registerPendingSearchRequestDecoration({
+        submissionSource: naturalAttemptConfig.submissionSource,
+        submissionContext: contextRecord ?? undefined,
+      });
+      const naturalEntry = prepareNaturalSearchEntry(options, overrideQuery, entityIdentity);
+      if (!naturalEntry) {
+        clearPendingSearchRequestDecoration();
         return;
       }
-      // Appends never reach submitSearch anymore (loadMore routes to
-      // resolveNextPage); anything arriving here is a broken caller.
-      throw new Error('submitSearch: append reached the deleted legacy lane');
+      if (naturalEntry.append) {
+        clearPendingSearchRequestDecoration();
+        // Appends never reach submitSearch anymore (loadMore routes to resolveNextPage).
+        throw new Error('submitSearch: append reached the deleted legacy lane');
+      }
     },
-    [
-      beginResolverSubmitForegroundUi,
-      logSearchPhase,
-      onPresentationIntentAbort,
-      prepareNaturalSearchEntry,
-      resolveDesiredWorld,
-      resolveNaturalSearchAttemptConfig,
-      searchRuntimeBus,
-    ]
+    [logSearchPhase, prepareNaturalSearchEntry, resolveNaturalSearchAttemptConfig]
   );
 
   return React.useMemo(

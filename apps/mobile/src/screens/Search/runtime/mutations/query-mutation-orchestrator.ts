@@ -1,10 +1,7 @@
 import React from 'react';
 
-import { logger } from '../../../../utils';
 import { writeSearchDesiredTuple } from '../shared/search-desired-state-writer';
 import type { SearchCommittedBounds } from '../shared/search-desired-state-contract';
-import type { ScheduleToggleCommit } from '../shared/results-toggle-interaction-contract';
-import type { ResultsPresentationRuntimeOwner } from '../shared/results-presentation-runtime-owner-contract';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 import {
   buildLevelsFromRange,
@@ -14,8 +11,6 @@ import {
   type PriceRangeTuple,
 } from '../../utils/price';
 
-type SearchMode = 'natural' | 'shortcut' | null;
-
 type QueryMutationMechanismEmitter = (
   event: 'query_mutation_coalesced',
   payload?: Record<string, unknown>
@@ -23,26 +18,11 @@ type QueryMutationMechanismEmitter = (
 
 type UseQueryMutationOrchestratorArgs = {
   searchRuntimeBus: SearchRuntimeBus;
-  searchMode: SearchMode;
-  submittedQuery: string;
-  query: string;
-  isSearchSessionActive: boolean;
   pendingPriceRange: PriceRangeTuple;
   setPendingPriceRange: (next: PriceRangeTuple) => void;
   isPriceSelectorVisible: boolean;
   setIsPriceSelectorVisible: (next: boolean) => void;
   priceLevels: number[];
-  scheduleToggleCommit: ScheduleToggleCommit;
-  /** S3a: the world resolver — a chip commit hands the coalesced desired tuple here. */
-  resolveDesiredWorld: (
-    args: import('../resolver/search-world-resolver').SearchWorldResolveArgs
-  ) => Promise<void>;
-  resultsRuntimeOwner: Pick<
-    ResultsPresentationRuntimeOwner,
-    | 'clearStagedSearchSurfaceResultsTransaction'
-    | 'stageSearchSurfaceResultsTransaction'
-    | 'beginVariantRerunPresentationPending'
-  >;
   priceSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
   /** S3-pre commit-moment adopt: a chip commit re-reads the SETTLED native camera into the
    *  tuple, so a zoom-then-toggle resolves against the CURRENT viewport by construction. */
@@ -66,18 +46,11 @@ export const useQueryMutationOrchestrator = (
 ): QueryMutationOrchestrator => {
   const {
     searchRuntimeBus,
-    searchMode,
-    submittedQuery,
-    query,
-    isSearchSessionActive,
     pendingPriceRange,
     setPendingPriceRange,
     isPriceSelectorVisible,
     setIsPriceSelectorVisible,
     priceLevels,
-    scheduleToggleCommit,
-    resolveDesiredWorld,
-    resultsRuntimeOwner,
     priceSheetRef,
     captureFreshTupleBounds,
     onMechanismEvent,
@@ -136,134 +109,11 @@ export const useQueryMutationOrchestrator = (
     [onMechanismEvent]
   );
 
-  const canRerunForCurrentQuery = React.useCallback(() => {
-    const hasCommittedQuery = Boolean((isSearchSessionActive ? submittedQuery : query).trim());
-    return searchMode === 'shortcut' || hasCommittedQuery;
-  }, [isSearchSessionActive, query, searchMode, submittedQuery]);
-
   const clearPendingTabSwitchDraft = React.useCallback(() => {
     searchRuntimeBus.publish({
       pendingTabSwitchTab: null,
     });
   }, [searchRuntimeBus]);
-
-  // TR5-N shape, S3a substance: the ONE network-chip commit (open-now / rising / price /
-  // mid-pagination include-similar) arms the pending interaction cover (keyed to the
-  // TOGGLE INTENT so the coordinator finalizes at reveal settle) and hands the DESIRED
-  // TUPLE to the world resolver. The tuple read at COMMIT time is the coalesced variant
-  // (rapid re-taps collapse into one resolution by construction); the enter transaction
-  // is staged at world commit (handlePageOneResultsCommitted), data-keyed — the reveal
-  // can never run on stale data. The legacy rerun submit chain no longer fires for chips.
-  const runVariantRerunToggleCommit = React.useCallback(
-    ({ intentId }: { intentId: string }) => {
-      resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
-      resultsRuntimeOwner.beginVariantRerunPresentationPending(intentId);
-      const busState = searchRuntimeBus.getState();
-      void resolveDesiredWorld({
-        tuple: busState.desiredTuple,
-        generation: busState.desiredTupleGeneration,
-        cause: busState.desiredTupleCause,
-        presentationIntentKind: 'variant_rerun',
-        onResolutionFailed: (reason) => {
-          // Disarm the cover so a failed rerun can't hold the screen until the watchdog.
-          resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
-          logger.warn('Toggle rerun failed', { message: reason });
-        },
-      }).catch((error) => {
-        logger.warn('Toggle rerun failed', {
-          message: error instanceof Error ? error.message : 'unknown error',
-        });
-      });
-      return {
-        awaitVisualSync: true as const,
-      };
-    },
-    [resolveDesiredWorld, resultsRuntimeOwner, searchRuntimeBus]
-  );
-
-  // S2 THIN READER (charter §7): trigger sources WRITE the desired tuple; this subscription
-  // adapts each filter-variant change into the existing commit lanes (schedule/debounce/
-  // choreography unchanged). It is the only place a filter tuple change becomes a commit —
-  // chips, price sheet, deep links, and any future source converge here by construction.
-  // Deleted in S4 when the reconciler+resolver own resolution.
-  const lastReadDesiredTupleRef = React.useRef(searchRuntimeBus.getState().desiredTuple);
-  React.useEffect(() => {
-    lastReadDesiredTupleRef.current = searchRuntimeBus.getState().desiredTuple;
-    return searchRuntimeBus.subscribe(
-      () => {
-        const state = searchRuntimeBus.getState();
-        const prev = lastReadDesiredTupleRef.current;
-        const next = state.desiredTuple;
-        if (prev === next) {
-          return;
-        }
-        lastReadDesiredTupleRef.current = next;
-        const cause = state.desiredTupleCause;
-        if (
-          cause !== 'chip_open_now' &&
-          cause !== 'chip_rising' &&
-          cause !== 'chip_price' &&
-          cause !== 'chip_include_similar'
-        ) {
-          // Only USER VARIANT intents commit through this reader. Seeding restores state,
-          // dismiss/submit writes reset the variant as part of their own lanes' choreography
-          // (those lanes convert to the reconciler in S4) — none of them re-run a search here.
-          return;
-        }
-        const prevFilters = prev.filterVariant;
-        const nextFilters = next.filterVariant;
-        const priceChanged =
-          prevFilters.priceLevels.length !== nextFilters.priceLevels.length ||
-          nextFilters.priceLevels.some((value, index) => value !== prevFilters.priceLevels[index]);
-        if (prevFilters.openNow !== nextFilters.openNow) {
-          if (!canRerunForCurrentQuery()) {
-            return;
-          }
-          scheduleToggleCommit(({ intentId }) => runVariantRerunToggleCommit({ intentId }), {
-            kind: 'filter_open_now',
-          });
-          return;
-        }
-        if (prevFilters.rising !== nextFilters.rising) {
-          if (!canRerunForCurrentQuery()) {
-            return;
-          }
-          scheduleToggleCommit(({ intentId }) => runVariantRerunToggleCommit({ intentId }), {
-            kind: 'filter_rising',
-          });
-          return;
-        }
-        if (priceChanged) {
-          if (!canRerunForCurrentQuery()) {
-            return;
-          }
-          scheduleToggleCommit(({ intentId }) => runVariantRerunToggleCommit({ intentId }), {
-            kind: 'filter_price',
-          });
-          return;
-        }
-        if (prevFilters.includeSimilar !== nextFilters.includeSimilar) {
-          if (!canRerunForCurrentQuery()) {
-            return;
-          }
-          // The page-1 zero-network flip lives in the resolver's DERIVATION TIER now —
-          // the commit shape is identical to every other chip; the ladder decides
-          // cache/derivation/network.
-          scheduleToggleCommit(({ intentId }) => runVariantRerunToggleCommit({ intentId }), {
-            kind: 'filter_include_similar',
-          });
-        }
-      },
-      ['desiredTuple'],
-      'desired_tuple_filter_reader'
-    );
-  }, [
-    canRerunForCurrentQuery,
-    resultsRuntimeOwner,
-    runVariantRerunToggleCommit,
-    scheduleToggleCommit,
-    searchRuntimeBus,
-  ]);
 
   const toggleIncludeSimilar = React.useCallback(() => {
     setIsPriceSelectorVisible(false);

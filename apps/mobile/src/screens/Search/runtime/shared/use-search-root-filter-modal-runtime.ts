@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { registerSearchReconcilerPresentationPort } from '../reconciler/search-reconciler-presentation-port';
+
 import { useSearchFilterModalOwner } from '../../hooks/use-search-filter-modal-owner';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type {
@@ -29,12 +31,21 @@ export const useSearchRootFilterModalRuntime = ({
   const { rootInstrumentationRuntime, rootOverlayStoreRuntime, appRouteSharedSheetRuntimeOwner } =
     rootOverlayFoundationRuntime;
 
+  // S4b strangler glue (dies in S4c): the reconciler drives the toggle coordinator +
+  // pending-cover arm through this port — the composition that owns them registers it.
+  React.useEffect(
+    () =>
+      registerSearchReconcilerPresentationPort({
+        scheduleToggleCommit: resultsPresentationOwner.scheduleToggleCommit,
+        beginVariantRerunPresentationPending:
+          resultsPresentationOwner.beginVariantRerunPresentationPending,
+        clearStagedSearchSurfaceResultsTransaction:
+          resultsPresentationOwner.clearStagedSearchSurfaceResultsTransaction,
+      }),
+    [resultsPresentationOwner]
+  );
   const filterModalOwner = useSearchFilterModalOwner({
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
-    searchMode: rootDataPlaneRuntime.runtimeFlags.searchMode,
-    submittedQuery: rootDataPlaneRuntime.resultsArrivalState.submittedQuery,
-    query: rootPrimitivesRuntime.searchState.query,
-    isSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
     openNow: rootDataPlaneRuntime.filterStateRuntime.openNow,
     includeSimilarActive: rootDataPlaneRuntime.filterStateRuntime.includeSimilarActive,
     risingActive: rootDataPlaneRuntime.filterStateRuntime.risingActive,
@@ -44,10 +55,7 @@ export const useSearchRootFilterModalRuntime = ({
     setRisingActive: rootDataPlaneRuntime.filterStateRuntime.setRisingActive,
     setOpenNow: rootDataPlaneRuntime.filterStateRuntime.setOpenNow,
     setPriceLevels: rootDataPlaneRuntime.filterStateRuntime.setPriceLevels,
-    scheduleToggleCommit: resultsPresentationOwner.scheduleToggleCommit,
-    resultsRuntimeOwner: resultsPresentationOwner,
     captureFreshTupleBounds: submitRuntimeResult.captureFreshTupleBounds,
-    resolveDesiredWorld: submitRuntimeResult.resolveDesiredWorld,
     registerTransientDismissor: rootOverlayStoreRuntime.registerTransientDismissor,
     onMechanismEvent: rootInstrumentationRuntime.emitRuntimeMechanismEvent,
   });

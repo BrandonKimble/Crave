@@ -2,7 +2,6 @@ import React from 'react';
 
 import type { NaturalSearchRequest } from '../../../types';
 import type { FavoriteListType } from '../../../services/favorite-lists';
-import { logger } from '../../../utils';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import {
@@ -42,20 +41,6 @@ type UseSearchStructuredSubmitOwnerArgs = {
   /** S3-pre commit-moment adopt: awaits the SETTLED native camera (bounds + polygon)
    *  before the tuple write, so the resolver reads bounds from the tuple only. */
   captureFreshTupleBounds: () => Promise<SearchCommittedBounds | null>;
-  /** S3b: the world resolver — every launch in this owner resolves through it. */
-  resolveDesiredWorld: (
-    args: import('../runtime/resolver/search-world-resolver').SearchWorldResolveArgs
-  ) => Promise<void>;
-  beginResolverSubmitForegroundUi: (options: {
-    mode: 'natural' | 'shortcut' | null;
-    targetTab: SegmentValue;
-    submittedLabel: string;
-    preserveSheetState: boolean;
-    transitionFromDockedPolls: boolean;
-    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-    entrySurface: SearchSubmitEntrySurface;
-  }) => void;
-  onPresentationIntentAbort?: () => void;
   logSearchPhase?: (label: string, options?: { reset?: boolean }) => void;
   resetMapMoveFlag: () => void;
 };
@@ -64,9 +49,6 @@ export const useSearchStructuredSubmitOwner = ({
   searchRuntimeBus,
   viewportBoundsService,
   captureFreshTupleBounds,
-  resolveDesiredWorld,
-  beginResolverSubmitForegroundUi,
-  onPresentationIntentAbort,
   logSearchPhase = () => {},
   resetMapMoveFlag,
 }: UseSearchStructuredSubmitOwnerArgs) => {
@@ -81,7 +63,7 @@ export const useSearchStructuredSubmitOwner = ({
       resetMapMoveFlag();
       // S3c: a restaurant tap IS an entity-identity tuple write + resolve (skip-LLM
       // structured lane routed by the fetch table).
-      const writeResult = writeSearchDesiredTuple(
+      writeSearchDesiredTuple(
         searchRuntimeBus,
         {
           queryIdentity: {
@@ -96,37 +78,9 @@ export const useSearchStructuredSubmitOwner = ({
         },
         'entity_tap'
       );
-      await resolveDesiredWorld({
-        tuple: writeResult.tuple,
-        generation: writeResult.generation,
-        cause: 'entity_tap',
-        onResolutionBegan: () => {
-          beginResolverSubmitForegroundUi({
-            mode: 'shortcut',
-            targetTab: 'restaurants',
-            submittedLabel: trimmedName,
-            preserveSheetState,
-            transitionFromDockedPolls: false,
-            entrySurface: params.entrySurface,
-          });
-          logSearchPhase('runRestaurantEntitySearch:ui-lanes-scheduled');
-        },
-        onResolutionFailed: (reason) => {
-          logger.error('Restaurant entity search failed', { message: reason });
-          searchRuntimeBus.publish({ isMapActivationDeferred: false });
-          onPresentationIntentAbort?.();
-        },
-      });
+      void preserveSheetState;
     },
-    [
-      beginResolverSubmitForegroundUi,
-      logSearchPhase,
-      onPresentationIntentAbort,
-      resetMapMoveFlag,
-      resolveDesiredWorld,
-      searchRuntimeBus,
-      viewportBoundsService,
-    ]
+    [logSearchPhase, resetMapMoveFlag, searchRuntimeBus, viewportBoundsService]
   );
 
   const submitViewportShortcut = React.useCallback(
@@ -141,7 +95,7 @@ export const useSearchStructuredSubmitOwner = ({
         options?.presentationIntentKind === 'search_this_area' || options?.forceFreshBounds
           ? await captureFreshTupleBounds()
           : captureCommittedBounds(viewportBoundsService);
-      const writeResult = writeSearchDesiredTuple(
+      writeSearchDesiredTuple(
         searchRuntimeBus,
         {
           queryIdentity: {
@@ -156,51 +110,16 @@ export const useSearchStructuredSubmitOwner = ({
           ? 'search_this_area'
           : 'initial_submit'
       );
-      const preserveSheetState = Boolean(options?.preserveSheetState);
-      const transitionFromDockedPolls =
-        !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
-      const shouldReplaceResultsInPlace = Boolean(options?.replaceResultsInPlace);
-      const presentationIntentKind = options?.presentationIntentKind;
-      const entrySurface = options.entrySurface;
-      if (presentationIntentKind !== 'search_this_area') {
+      if (options?.presentationIntentKind !== 'search_this_area') {
         resetMapMoveFlag();
       }
-      // S3b: the submit IS a tuple write + resolve. The resolver's ladder serves cache
-      // hits instantly (re-entering a just-seen viewport), the seam owns the commit, the
-      // presentation intent arms in onResolutionBegan AFTER activeOperationId publishes.
-      await resolveDesiredWorld({
-        tuple: writeResult.tuple,
-        generation: writeResult.generation,
-        cause:
-          presentationIntentKind === 'search_this_area' ? 'search_this_area' : 'initial_submit',
-        presentationIntentKind,
-        onResolutionBegan: () => {
-          beginResolverSubmitForegroundUi({
-            mode: 'shortcut',
-            targetTab,
-            submittedLabel,
-            preserveSheetState,
-            transitionFromDockedPolls,
-            presentationIntentKind,
-            entrySurface,
-          });
-          logSearchPhase('runBestHere:ui-lanes-scheduled');
-        },
-        onResolutionFailed: (reason) => {
-          logger.error('Best-here search failed', { message: reason });
-          searchRuntimeBus.publish({ isMapActivationDeferred: false });
-          onPresentationIntentAbort?.();
-        },
-      });
-      void shouldReplaceResultsInPlace;
+      // S4b: the submit IS the tuple write — the reconciler classifies the transition,
+      // derives the presentation intent, and drives resolution.
     },
     [
-      beginResolverSubmitForegroundUi,
       captureFreshTupleBounds,
       logSearchPhase,
-      onPresentationIntentAbort,
       resetMapMoveFlag,
-      resolveDesiredWorld,
       searchRuntimeBus,
       viewportBoundsService,
     ]
@@ -215,7 +134,7 @@ export const useSearchStructuredSubmitOwner = ({
       // viewport adopt (committedBounds null — the results define the camera); the
       // fetch table routes listId to getListResults, the adopt rule honors the list
       // axis, and favorites suppress the single-restaurant collapse in the fetcher.
-      const writeResult = writeSearchDesiredTuple(
+      writeSearchDesiredTuple(
         searchRuntimeBus,
         {
           queryIdentity: {
@@ -232,39 +151,8 @@ export const useSearchStructuredSubmitOwner = ({
         },
         'favorites_launch'
       );
-      await resolveDesiredWorld({
-        tuple: writeResult.tuple,
-        generation: writeResult.generation,
-        cause: 'favorites_launch',
-        onResolutionBegan: () => {
-          beginResolverSubmitForegroundUi({
-            mode: 'natural',
-            targetTab,
-            submittedLabel: params.submittedLabel,
-            preserveSheetState: false,
-            transitionFromDockedPolls: false,
-            entrySurface: 'home',
-          });
-          logSearchPhase('launchFavorites:ui-lanes-scheduled');
-        },
-        onResolutionFailed: (reason) => {
-          logger.error('Favorites list results request failed', {
-            message: reason,
-            listId: params.listId,
-          });
-          searchRuntimeBus.publish({ isMapActivationDeferred: false });
-          onPresentationIntentAbort?.();
-        },
-      });
     },
-    [
-      beginResolverSubmitForegroundUi,
-      logSearchPhase,
-      onPresentationIntentAbort,
-      resetMapMoveFlag,
-      resolveDesiredWorld,
-      searchRuntimeBus,
-    ]
+    [logSearchPhase, resetMapMoveFlag, searchRuntimeBus]
   );
 
   return React.useMemo(

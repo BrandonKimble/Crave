@@ -12,14 +12,8 @@ import type { ScoreInfoPayload } from '../components/SearchRankAndScoreSheets';
 import { useQueryMutationOrchestrator } from '../runtime/mutations/query-mutation-orchestrator';
 import { formatPriceRangeSummary, getRangeFromLevels, type PriceRangeTuple } from '../utils/price';
 
-type SearchMode = 'natural' | 'shortcut' | null;
-
 type UseSearchFilterModalOwnerArgs = {
   searchRuntimeBus: SearchRuntimeBus;
-  searchMode: SearchMode;
-  submittedQuery: string;
-  query: string;
-  isSearchSessionActive: boolean;
   openNow: boolean;
   includeSimilarActive: boolean;
   risingActive: boolean;
@@ -29,12 +23,9 @@ type UseSearchFilterModalOwnerArgs = {
   setRisingActive: (next: boolean) => void;
   setOpenNow: (next: boolean) => void;
   setPriceLevels: (next: number[]) => void;
-  scheduleToggleCommit: Parameters<typeof useQueryMutationOrchestrator>[0]['scheduleToggleCommit'];
-  resultsRuntimeOwner: Parameters<typeof useQueryMutationOrchestrator>[0]['resultsRuntimeOwner'];
   captureFreshTupleBounds: Parameters<
     typeof useQueryMutationOrchestrator
   >[0]['captureFreshTupleBounds'];
-  resolveDesiredWorld: Parameters<typeof useQueryMutationOrchestrator>[0]['resolveDesiredWorld'];
   registerTransientDismissor: (handler: () => void) => () => void;
   onMechanismEvent?: (event: 'query_mutation_coalesced', payload?: Record<string, unknown>) => void;
 };
@@ -152,16 +143,9 @@ type SearchFilterModalOwner = {
 
 export const useSearchFilterModalOwner = ({
   searchRuntimeBus,
-  searchMode,
-  submittedQuery,
-  query,
-  isSearchSessionActive,
   priceLevels,
   panelVisible,
-  scheduleToggleCommit,
-  resultsRuntimeOwner,
   captureFreshTupleBounds,
-  resolveDesiredWorld,
   registerTransientDismissor,
   onMechanismEvent,
 }: UseSearchFilterModalOwnerArgs): SearchFilterModalOwner => {
@@ -260,18 +244,11 @@ export const useSearchFilterModalOwner = ({
     handlePriceDone,
   } = useQueryMutationOrchestrator({
     searchRuntimeBus,
-    searchMode,
-    submittedQuery,
-    query,
-    isSearchSessionActive,
     pendingPriceRange,
     setPendingPriceRange,
     isPriceSelectorVisible,
     setIsPriceSelectorVisible,
     priceLevels,
-    scheduleToggleCommit,
-    resolveDesiredWorld,
-    resultsRuntimeOwner,
     priceSheetRef,
     captureFreshTupleBounds,
     onMechanismEvent,
