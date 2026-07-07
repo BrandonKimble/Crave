@@ -149,3 +149,44 @@ counts, coverageStatusByTab, msFromTupleWrite} · LOUD world_subfetch_failed {ha
 worldKey, willRetryOnlyHalf} · superseded-completion trace (proves A→B→A) · RED: second
 commitWorldToMountedState for same (worldKey, version) is a violation (one structural
 frame per world) · pinned-key eviction = loud impossible.
+
+## 6. S3b-2 execution notes (design settled 2026-07-07, next window executes)
+
+Scope: NON-APPEND natural submits WITHOUT submissionContext (manual typed searches +
+natural STA). Context-carrying submissions (entity taps via launchEntitySearchResults /
+autocomplete) stay legacy until S3c folds them into the 'entity' identity kind.
+
+- **Discriminator in submitSearch:** `options?.submission?.context == null && !append` →
+  resolver path; else legacy. prepareNaturalSearchEntry ALREADY writes the natural tuple
+  (S2); reuse its write result (return {writeResult} from it or re-read bus state).
+- **Foreground:** beginResolverSubmitForegroundUi({mode:'natural', targetTab:
+  preRequestTab, submittedLabel: trimmedQuery, ...config}) in onResolutionBegan.
+- **Tab adopt:** relocate `resolveNaturalResponseActiveTab` (response-owner :437) +
+  `resolveSubmissionDefaultTab` usage into the resolver dir. In resolve()'s land path,
+  natural identities compute adoptedTab from the LANDED response; if ≠ tuple.tab, ONE
+  writeSearchDesiredTuple({tab}, 'response_tab_adopt') (add the cause to the contract)
+  BEFORE presentEntry, and present with the NEW tuple (cardsKey is tab-agnostic so the
+  entry still matches; the reader ignores non-chip causes).
+- **Single-restaurant candidate:** `resolveSingleRestaurantCandidate(response)` (utils/
+  response) becomes WORLD METADATA (value.singleRestaurantCandidate). The seam exposes it
+  on onPageOneResultsCommitted... NO — keep the seam contract stable: add
+  `value.presentation = {singleRestaurantCandidate}` and a thin post-commit effect in the
+  submit owner (env.onWorldCommitted already exists) that replicates
+  deriveSearchResponseDeferredUiProjection: hide the results sheet
+  (resetSheetToHidden) when candidate != null && mode natural, and let the existing
+  profile auto-open runtime (which keys off lastSearchRequestIdRef — already truthful)
+  fire as today. Natural fetch does NOT fold coverage (no coverage lane for natural).
+- **History push:** post-commit effect (onWorldCommitted): updateLocalRecentSearches(
+  trimmedQuery) + loadRecentHistory — replicate scheduleResponsePostCommitUiSequence's
+  history block (:1277-1303) for the resolver path only.
+- **Natural STA bounds:** prepareNaturalSearchEntry still adopts SYNC service bounds (S2
+  behavior). Upgrade to captureFreshTupleBounds when routing natural STA — the entry fn
+  must become async or the STA trigger awaits capture before calling submitSearch (prefer
+  the latter: rerunActiveSearch's natural branch awaits captureFreshTupleBounds() and
+  passes bounds via a new SubmitSearchOptions.committedBoundsOverride consumed by
+  prepareNaturalSearchEntry's tuple write).
+- **includeSimilar variants:** natural resolver fetch already attaches tuple filters;
+  effectiveIncludeSimilar reads the tuple (not the bus legacy key).
+- Gates: tsc, jest, rig lane = typed query submit → reveal; qualifying single-restaurant
+  query → sheet hides + auto-open; tab adopt on a dish-heavy query from restaurants tab;
+  natural STA (pan + search-this-area on a natural session).
