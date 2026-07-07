@@ -316,6 +316,14 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     episode token. `activeOperationId` survives only inside the transaction machine and
     dies with it in S4c-1.
   - **S4c-1a SHIPPED** (ee830491): both reveal watchdogs deleted (−320 lines, log-only).
+  - **S4c-1b SHIPPED** (ca28ed45 + 9acc4db4): tab_switch rides the reconciler; desired
+    tab ≠ presented tab. Pill tap = pure tuple write (+preference); the writer defers
+    the activeTab projection for in-session tab deltas (pendingTabSwitchTab hint);
+    reconciler tab_switch → coordinator → port.presentTabSwitch (direct activeTab
+    publish + redraw + cache-keyed stage; net-zero bursts re-reveal). Response adopt +
+    enter effects publish presented tab directly. Lane-owned tab commit body deleted;
+    dead activeTab args pruned through the owner tower. Rig: toggle reveal contract
+    green (cards/sheet/native frame), dishes header + labels + cards eyeballed.
   - **Next: S4c-1b..e** — tab_switch rides the reconciler, then the worldId-keyed
     presentation host replaces the transaction machine (seam world_ready; adapter onto
     the existing native protocol), redraw re-key, profileSeed synthesis. FILE-LEVEL MAP:

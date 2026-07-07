@@ -112,7 +112,7 @@ Swift side (`ios/cravesearch/SearchMapRenderController.swift`, 12.8k lines — t
   `activeOperationId` now has exactly ONE reader left: the surface-transaction runtime itself.
 - **S4c-1a SHIPPED** (ee830491): both reveal watchdogs deleted (−320 lines; log-only,
   perf-harness-gated). Runtime is now 871 lines.
-- **S4c-1b NEXT — tab_switch rides the reconciler.** Today's lane
+- **S4c-1b SHIPPED (ca28ed45 + 9acc4db4) — tab_switch rides the reconciler.** Today's lane
   (`use-results-presentation-tab-toggle-runtime.ts`): pill tap → toggle coordinator debounce →
   commit = commitTabChange (setActiveTab writes the tuple, cause `tab_toggle`) + clearStaged +
   `beginRedrawTransaction({reason:'toggle', targetTab})` + stage(enter tx, mutationKind
@@ -129,7 +129,7 @@ Swift side (`ios/cravesearch/SearchMapRenderController.swift`, 12.8k lines — t
   handles this today by always staging when session active; preserve by classifying net-zero
   as boot_noop at the tuple level BUT the coordinator's overlay/debounce still fires — keep the
   always-stage behavior inside the port implementation, not the classifier.
-- **S4c-1b DESIGN CRUX (found on-code 2026-07-07): desired tab ≠ presented tab.**
+- **S4c-1b DESIGN CRUX (IMPLEMENTED as designed): desired tab ≠ presented tab.**
   `setActiveTab` (use-search-root-search-primitives-runtime.ts:188) IS the tuple writer
   (cause `tab_toggle`) and the S2 writer projects `activeTab` in the SAME publish — but the
   rows/sheet read React `activeTab`, so a tap-time tuple write would swap the sheet BEFORE
