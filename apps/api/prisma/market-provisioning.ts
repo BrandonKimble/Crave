@@ -776,17 +776,19 @@ export async function provisionRegionMarket(
 export async function provisionCollectionCommunity(
   prisma: PrismaClient,
   seed: CollectionCommunitySeed,
+  options: { requireActive?: boolean } = {},
 ): Promise<void> {
   const communityName = normalize(seed.communityName);
   const locationName = seed.locationName.trim();
   const marketKey = normalize(seed.marketKey);
+  const requireActive = options.requireActive ?? true;
   const linkedMarket = await prisma.market.findFirst({
-    where: { marketKey, isActive: true },
+    where: { marketKey, ...(requireActive ? { isActive: true } : {}) },
     select: { marketKey: true },
   });
   if (!linkedMarket?.marketKey) {
     throw new Error(
-      `Collection community "${communityName}" references missing active market "${marketKey}"`,
+      `Collection community "${communityName}" references missing${requireActive ? ' active' : ''} market "${marketKey}"`,
     );
   }
   await prisma.collectionCommunity.upsert({
@@ -800,7 +802,8 @@ export async function provisionCollectionCommunity(
       sourceCommunity: communityName,
       isCollectable: true,
       schedulerEnabled: true,
-      isActive: true,
+      // Dark onboarding (requireActive=false) must not flip visibility on.
+      ...(requireActive ? { isActive: true } : {}),
     },
     select: { marketKey: true },
   });

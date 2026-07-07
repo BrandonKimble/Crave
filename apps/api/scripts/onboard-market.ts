@@ -32,7 +32,7 @@ import {
  */
 
 interface Options {
-  subreddit: string;
+  subreddits: string[];
   city: string;
   short?: string;
   state?: string;
@@ -41,6 +41,7 @@ interface Options {
   counties: string[];
   metroRadiusKm?: number;
   skipSubreddit: boolean;
+  dark: boolean;
 }
 
 function parseCoordinate(
@@ -57,9 +58,14 @@ function parseCoordinate(
 }
 
 function parseArgs(argv: string[]): Options {
-  const options: Partial<Options> & { counties: string[] } = {
+  const options: Partial<Options> & {
+    counties: string[];
+    subreddits: string[];
+  } = {
     counties: [],
+    subreddits: [],
     skipSubreddit: false,
+    dark: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
@@ -68,7 +74,7 @@ function parseArgs(argv: string[]): Options {
       if (value === undefined) throw new Error(`${token} needs a value`);
       return value;
     };
-    if (token === '--subreddit') options.subreddit = next();
+    if (token === '--subreddit') options.subreddits.push(next());
     else if (token === '--city') options.city = next();
     else if (token === '--short') options.short = next();
     else if (token === '--state') options.state = next();
@@ -79,14 +85,12 @@ function parseArgs(argv: string[]): Options {
     else if (token === '--metro-radius-km')
       options.metroRadiusKm = Number(next());
     else if (token === '--skip-subreddit') options.skipSubreddit = true;
+    else if (token === '--dark') options.dark = true;
     else throw new Error(`Unknown argument: ${token}`);
   }
-  const missing = ['subreddit', 'city'].filter(
-    (key) => !(key in options) || !options[key as keyof typeof options],
-  );
-  if (missing.length) {
+  if (!options.subreddits.length || !options.city) {
     throw new Error(
-      `Missing required args: ${missing.map((key) => `--${key}`).join(', ')}`,
+      'Missing required args: --subreddit (repeatable) and --city',
     );
   }
   return options as Options;
@@ -102,7 +106,9 @@ function slugify(value: string): string {
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
-  const subreddit = options.subreddit.trim().toLowerCase();
+  const subreddits = options.subreddits.map((name) =>
+    name.trim().toLowerCase(),
+  );
 
   // Always geocode: it also yields the municipality geometry id that powers
   // default county discovery.
@@ -176,14 +182,30 @@ async function main(): Promise<void> {
       `  ${region.marketKey}: ${String(region.boundaryCount)} boundaries, ${String(region.areaKm2)} km²\n`,
     );
 
-    await provisionCollectionCommunity(prisma, {
-      communityName: subreddit,
-      locationName: options.city,
-      marketKey,
-    });
-    process.stdout.write(
-      `  community ${subreddit} -> ${marketKey} (collectable, scheduler on)\n`,
-    );
+    if (options.dark) {
+      // Dark launch: data loads + collection run, but the market is not
+      // user-visible until re-run WITHOUT --dark (idempotent flip).
+      await prisma.market.update({
+        where: { marketKey },
+        data: { isActive: false },
+      });
+      process.stdout.write(`  market ${marketKey} set DARK (isActive=false)\n`);
+    }
+
+    for (const community of subreddits) {
+      await provisionCollectionCommunity(
+        prisma,
+        {
+          communityName: community,
+          locationName: options.city,
+          marketKey,
+        },
+        { requireActive: !options.dark },
+      );
+      process.stdout.write(
+        `  community ${community} -> ${marketKey} (collectable, scheduler on)\n`,
+      );
+    }
   } finally {
     await prisma.$disconnect();
   }
@@ -195,25 +217,27 @@ async function main(): Promise<void> {
 
   // Chain the existing subreddit onboarding (Google viewport + volume jobs +
   // market-key mapping) — composition over re-implementation.
-  process.stdout.write(`Onboarding subreddit r/${subreddit}...\n`);
-  const result = spawnSync(
-    'yarn',
-    [
-      'ts-node',
-      path.join(__dirname, 'onboard-subreddit.ts'),
-      subreddit,
-      String(center.lat),
-      String(center.lng),
-      '--location-name',
-      options.city,
-    ],
-    { stdio: 'inherit', cwd: path.join(__dirname, '..') },
-  );
-  if (result.status !== 0) {
-    throw new Error(`onboard-subreddit exited with status ${result.status}`);
+  for (const community of subreddits) {
+    process.stdout.write(`Onboarding subreddit r/${community}...\n`);
+    const result = spawnSync(
+      'yarn',
+      [
+        'ts-node',
+        path.join(__dirname, 'onboard-subreddit.ts'),
+        community,
+        String(center.lat),
+        String(center.lng),
+        '--location-name',
+        options.city,
+      ],
+      { stdio: 'inherit', cwd: path.join(__dirname, '..') },
+    );
+    if (result.status !== 0) {
+      throw new Error(`onboard-subreddit exited with status ${result.status}`);
+    }
   }
   process.stdout.write(
-    `✅ ${options.city} onboarded. Next: archive-collect.ts --subreddit ${subreddit} --batch-size 250\n`,
+    `✅ ${options.city} onboarded. Next: archive-collect.ts --subreddit ${subreddits[0]} --batch-size 250\n`,
   );
 }
 

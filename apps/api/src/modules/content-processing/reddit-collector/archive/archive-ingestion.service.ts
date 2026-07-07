@@ -550,6 +550,24 @@ export class ArchiveIngestionService implements OnModuleInit {
     }>;
   }> {
     const postsById = new Map<string, LLMPost>();
+    // Stage-0 pre-filter (plans/archive-prefilter-pipeline.md): ingest window +
+    // structural drops happen HERE, before anything is queued or billed.
+    const windowYears = Number(process.env.PUSHSHIFT_WINDOW_YEARS ?? 3);
+    const windowCutoffSec =
+      windowYears > 0
+        ? Math.floor(Date.now() / 1000) - windowYears * 365 * 24 * 3600
+        : 0;
+    const droppedPostIds = new Set<string>();
+    const stage0 = {
+      windowDroppedSubmissions: 0,
+      structuralDroppedSubmissions: 0,
+      droppedComments: 0,
+      zeroCommentDropped: 0,
+    };
+    const isBotAuthor = (author?: string): boolean => {
+      const normalized = (author ?? '').toLowerCase();
+      return normalized === 'automoderator' || normalized.endsWith('bot');
+    };
     const filesProcessed: Array<{
       fileType: 'comments' | 'submissions';
       result: ProcessingResult;
@@ -565,6 +583,23 @@ export class ArchiveIngestionService implements OnModuleInit {
         submissionFilePath,
         (submission) => {
           const postId = this.normalizePostId(submission.id);
+          if (
+            windowCutoffSec &&
+            Number(submission.created_utc ?? 0) < windowCutoffSec
+          ) {
+            stage0.windowDroppedSubmissions += 1;
+            droppedPostIds.add(postId);
+            return;
+          }
+          if (
+            submission.selftext === '[removed]' ||
+            submission.selftext === '[deleted]' ||
+            isBotAuthor(submission.author)
+          ) {
+            stage0.structuralDroppedSubmissions += 1;
+            droppedPostIds.add(postId);
+            return;
+          }
           const existing = postsById.get(postId);
           const createdAt = this.toIsoTimestamp(submission.created_utc);
           const subredditName = submission.subreddit || subreddit;
@@ -619,11 +654,31 @@ export class ArchiveIngestionService implements OnModuleInit {
       await this.streamProcessor.processZstdNdjsonFile<RedditComment>(
         commentFilePath,
         (comment) => {
-          if (!comment.body || comment.body === '[deleted]') {
+          if (
+            !comment.body ||
+            comment.body === '[deleted]' ||
+            comment.body === '[removed]' ||
+            isBotAuthor(comment.author)
+          ) {
+            stage0.droppedComments += 1;
             return;
           }
 
           const postId = this.normalizePostId(comment.link_id);
+          if (droppedPostIds.has(postId)) {
+            stage0.droppedComments += 1;
+            return;
+          }
+          if (
+            windowCutoffSec &&
+            Number(comment.created_utc ?? 0) < windowCutoffSec &&
+            !postsById.has(postId)
+          ) {
+            // Out-of-window comment on a post we never accepted — don't let it
+            // resurrect a placeholder thread from outside the window.
+            stage0.droppedComments += 1;
+            return;
+          }
           let postRecord = postsById.get(postId);
 
           if (!postRecord) {
@@ -674,10 +729,20 @@ export class ArchiveIngestionService implements OnModuleInit {
       filePath: commentFilePath,
     });
 
-    const posts = Array.from(postsById.values()).map((post) => ({
-      ...post,
-      comments: post.comments.sort((a, b) => b.score - a.score),
-    }));
+    // Zero-comment posts carry no discussion to extract — dropped
+    // unconditionally (owner decision; no body-length exception).
+    const posts = Array.from(postsById.values())
+      .filter((post) => {
+        if (post.comments.length === 0) {
+          stage0.zeroCommentDropped += 1;
+          return false;
+        }
+        return true;
+      })
+      .map((post) => ({
+        ...post,
+        comments: post.comments.sort((a, b) => b.score - a.score),
+      }));
 
     posts.sort(
       (a, b) =>
@@ -688,6 +753,8 @@ export class ArchiveIngestionService implements OnModuleInit {
       correlationId,
       subreddit,
       postCount: posts.length,
+      windowYears,
+      ...stage0,
     });
 
     return { posts, filesProcessed };
