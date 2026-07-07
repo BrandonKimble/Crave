@@ -294,7 +294,17 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     keyboard/scroll as thin post-commit effects, single-restaurant candidate
     (hide-sheet + profile auto-open) as world metadata. Then S3c (launches +
     pagination), S3d (delete the owner chain).
-- S4 pending.
+- **S4 IN FLIGHT** (executable map: plans/search-s4-reconciler-edit-map.md):
+  - **S4a SHIPPED** (ae6ff44a): the DARK reconciler classifies every tuple transition
+    with DERIVED intents + RED parity vs trigger-passed kinds — zero mismatches on-rig.
+    Parity caught + fixed: tab-toggle misclassified as reversal (reversal now requires
+    unchanged tab); dismiss = ONE atomic tuple write (two-write phantom variant_rerun
+    killed); profile-dismiss clear lane never wrote idle (S2 gap, fixed).
+  - **Next: S4b** — reconciler owns resolution (delete the S2 chip reader + trigger
+    resolve kicks + beginResolverSubmitForegroundUi; effects move to the per-class
+    table; transaction machine still presents via a worldId-keyed adapter). Then S4c
+    (statechart replaces the machine), S4d (native (worldId, phase) + ack-everything —
+    task #16 acceptance), S4e (legacy bus-key deletion via tuple selectors).
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
