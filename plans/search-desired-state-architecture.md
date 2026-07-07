@@ -260,7 +260,21 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     includeSimilar flip from the sibling variant's world — local-swap branch deleted);
     request DECORATION channel (typedPrefix/submissionSource ride the request, never
     the cache key) → ALL non-append submissions resolve.
-  - **Next: S3d — THE DELETION.** Now unreachable: executeActivatedNaturalSearch-
+  - **S3d chunks A+B SHIPPED** (43358ef1 + 840ca302, −5,978 lines): the legacy submit
+    chain (response/execution/preparation/helper owners) and the shadow request machine
+    (request-runtime owner, session controller/state machine/events/reducer, 4 submit
+    adapters, shadow-transition bridge) are DELETED. The execution authority is now the
+    auto-open dedupe ref + a dismiss-time cancel. Rig: submit/toggle/retoggle/dismiss/
+    resubmit all commit + reveal, zero contract noise.
+  - **SURFACED (pre-existing, NOT S3): dismiss→resubmit leaves VA pins/labels
+    unrevealed** (dots+cards fine; sources carry features; phase machine settles
+    cleanly; bisected to reproduce at the S2 baseline 0c7d8506). Tracked as task #16 —
+    dies structurally in S4's native (worldId, phase) + ack protocol.
+  - **S3d remaining:** the map controller's post-response coverage lane + bbf97e85
+    interim + snapshot/terminal refs (silently no-ops for resolver worlds — resolver
+    fetches coverage into the world since S3a); a focused surgical pass on the
+    controller. profileSeed stays lane-owned until S4.
+  - (superseded) **Next: S3d — THE DELETION.** Now unreachable: executeActivatedNaturalSearch-
     Attempt (natural owner), loadMoreResults+loadMoreShortcutResults legacy bodies +
     executeShortcutAppendAttempt (action/structured owners), runManagedRequestAttempt
     consumers, execution owner attempts, response owner lifecycle, request-runtime
