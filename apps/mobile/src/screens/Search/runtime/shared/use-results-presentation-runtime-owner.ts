@@ -30,7 +30,6 @@ export type {
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 
 export type UseResultsPresentationOwnerArgs<Suggestion> = {
-  activeTab: 'dishes' | 'restaurants';
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
   clearTypedQuery: SearchClearOwner['clearTypedQuery'];
@@ -89,7 +88,6 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
 };
 
 export const useResultsPresentationOwner = <Suggestion>({
-  activeTab,
   setActiveTab,
   setActiveTabPreference,
   clearTypedQuery,
@@ -138,7 +136,6 @@ export const useResultsPresentationOwner = <Suggestion>({
   searchChromeScalarSurfacePresentationRuntime,
 }: UseResultsPresentationOwnerArgs<Suggestion>): ResultsPresentationOwner => {
   return useResultsPresentationOwnerCompositionRuntime({
-    activeTab,
     setActiveTab,
     setActiveTabPreference,
     clearTypedQuery,

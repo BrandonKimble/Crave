@@ -25,7 +25,6 @@ export type ResultsPresentationOwnerStateSessionRuntime = {
 };
 
 export const useResultsPresentationOwnerStateSessionRuntime = ({
-  activeTab,
   setActiveTab,
   setActiveTabPreference,
   query,
@@ -48,7 +47,6 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
   onSearchSheetContentLaneChanged,
   searchChromeScalarSurfacePresentationRuntime,
 }: {
-  activeTab: 'dishes' | 'restaurants';
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
   query: string;
@@ -80,10 +78,8 @@ export const useResultsPresentationOwnerStateSessionRuntime = ({
   searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 }): ResultsPresentationOwnerStateSessionRuntime => {
   const bridgeStateRuntime = useResultsPresentationOwnerBridgeStateRuntime({
-    activeTab,
     setActiveTab,
     setActiveTabPreference,
-    isSearchSessionActive,
     searchRuntimeBus,
     resultsPresentationAuthority,
     resultsPresentationSurfaceAuthority,

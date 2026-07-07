@@ -12,10 +12,8 @@ import { useResultsPresentationRuntimeMachineOwner } from './use-results-present
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 
 type UseResultsPresentationOwnerBridgeRuntimeArgs = {
-  activeTab: 'dishes' | 'restaurants';
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
-  isSearchSessionActive: boolean;
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
@@ -32,10 +30,8 @@ type ResultsPresentationOwnerBridgeRuntime = {
 };
 
 export const useResultsPresentationOwnerBridgeRuntime = ({
-  activeTab,
   setActiveTab,
   setActiveTabPreference,
-  isSearchSessionActive,
   searchRuntimeBus,
   resultsPresentationAuthority,
   resultsPresentationSurfaceAuthority,

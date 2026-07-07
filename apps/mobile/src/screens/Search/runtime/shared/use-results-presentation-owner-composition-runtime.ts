@@ -18,7 +18,6 @@ import { useResultsPresentationOwnerStateRuntime } from './use-results-presentat
 import { useResultsPresentationOwnerPublicationRuntime } from './use-results-presentation-owner-publication-runtime';
 
 export type UseResultsPresentationOwnerCompositionRuntimeArgs<Suggestion> = {
-  activeTab: 'dishes' | 'restaurants';
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
   clearTypedQuery: SearchClearOwner['clearTypedQuery'];
@@ -77,7 +76,6 @@ export type UseResultsPresentationOwnerCompositionRuntimeArgs<Suggestion> = {
 };
 
 export const useResultsPresentationOwnerCompositionRuntime = <Suggestion>({
-  activeTab,
   setActiveTab,
   setActiveTabPreference,
   clearTypedQuery,
@@ -126,7 +124,6 @@ export const useResultsPresentationOwnerCompositionRuntime = <Suggestion>({
   searchChromeScalarSurfacePresentationRuntime,
 }: UseResultsPresentationOwnerCompositionRuntimeArgs<Suggestion>): ResultsPresentationOwner => {
   const ownerStateRuntime = useResultsPresentationOwnerStateRuntime({
-    activeTab,
     setActiveTab,
     setActiveTabPreference,
     query,

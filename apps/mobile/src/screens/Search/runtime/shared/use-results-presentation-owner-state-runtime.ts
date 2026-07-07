@@ -22,7 +22,6 @@ import type { ResultsPresentationPolicyFactsLaneChange } from './results-present
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 
 export type UseResultsPresentationOwnerStateRuntimeArgs<Suggestion> = {
-  activeTab: 'dishes' | 'restaurants';
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
   query: string;
@@ -81,7 +80,6 @@ export type ResultsPresentationOwnerStateRuntime = {
 };
 
 export const useResultsPresentationOwnerStateRuntime = <Suggestion>({
-  activeTab,
   setActiveTab,
   setActiveTabPreference,
   query,
@@ -124,7 +122,6 @@ export const useResultsPresentationOwnerStateRuntime = <Suggestion>({
   searchChromeScalarSurfacePresentationRuntime,
 }: UseResultsPresentationOwnerStateRuntimeArgs<Suggestion>): ResultsPresentationOwnerStateRuntime => {
   const sessionRuntime = useResultsPresentationOwnerStateSessionRuntime({
-    activeTab,
     setActiveTab,
     setActiveTabPreference,
     query,

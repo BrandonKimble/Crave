@@ -100,7 +100,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
     ]
   );
   const resultsPresentationOwner = useResultsPresentationOwner({
-    activeTab: rootPrimitivesRuntime.searchState.activeTab,
     setActiveTab: rootPrimitivesRuntime.searchState.setActiveTab,
     setActiveTabPreference: rootPrimitivesRuntime.searchState.setActiveTabPreference,
     query: rootPrimitivesRuntime.searchState.query,
