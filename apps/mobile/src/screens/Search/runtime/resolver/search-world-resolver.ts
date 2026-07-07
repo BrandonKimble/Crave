@@ -28,7 +28,7 @@ import type {
   SearchWorldPresentationSeam,
   SearchWorldValue,
 } from './search-world-presentation-seam';
-import type { SearchSubmitPresentationIntentKind } from '../../hooks/use-search-submit-entry-owner';
+import type { SearchSubmitInPlaceRerunIntentKind } from '../../hooks/use-search-submit-entry-owner';
 
 const WORLD_CACHE_MAX_UNPINNED = 8;
 const WORLD_CACHE_STALE_AFTER_MS = 5 * 60 * 1000;
@@ -51,7 +51,7 @@ export type SearchWorldResolverEnv = {
   fetchWorldForTuple: (args: {
     tuple: SearchDesiredTuple;
     generation: number;
-    cause: SearchTupleWriteCause;
+    cause: SearchTupleWriteCause | null;
   }) => Promise<SearchWorldNetworkFetchResult>;
   /** Derivation tier (optional per sub-stage): serve the requested tuple by recomposing
    *  an already-resolved world (tab-only change; page-1 includeSimilar swap). Returns
@@ -67,8 +67,15 @@ export type SearchWorldResolverEnv = {
 export type SearchWorldResolveArgs = {
   tuple: SearchDesiredTuple;
   generation: number;
-  cause: SearchTupleWriteCause;
-  presentationIntentKind?: SearchSubmitPresentationIntentKind;
+  cause: SearchTupleWriteCause | null;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
+  /** Invoked SYNCHRONOUSLY after seam.beginResolution (activeOperationId published) and
+   *  BEFORE any tier can commit — the slot where a pending presentation arm reads the
+   *  operation id (the transaction-id ordering named in the edit map). */
+  onResolutionBegan?: () => void;
+  /** Invoked when the resolution fails terminally — the trigger disarms its pending
+   *  presentation so a failed rerun can't leave the cover armed until the watchdog. */
+  onResolutionFailed?: (reason: string) => void;
 };
 
 export type SearchWorldResolver = {
@@ -100,7 +107,7 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
     generation: number;
     dataReadyFrom: 'cache' | 'network' | 'in_flight';
     searchInputKey: string | null;
-    presentationIntentKind?: SearchSubmitPresentationIntentKind;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }): void => {
     env.seam.commitWorldToMountedState({
       worldId: args.entry.worldId,
@@ -109,16 +116,18 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
       activeTab: args.tuple.tab,
       dataReadyFrom: args.dataReadyFrom,
       searchInputKey: args.searchInputKey,
+      requestBounds: args.tuple.committedBounds?.bounds ?? null,
       presentationIntentKind: args.presentationIntentKind,
     });
   };
 
   const resolve = async (args: SearchWorldResolveArgs): Promise<void> => {
-    const { tuple, generation, cause, presentationIntentKind } = args;
+    const { tuple, generation, cause, presentationIntentKind, onResolutionBegan } = args;
     const cardsKey = buildSearchCardsWorldKey(tuple);
     const coverageKey = buildSearchCoverageWorldKey(tuple);
     core.observeGeneration(generation);
     env.seam.beginResolution({ generation, presentationIntentKind });
+    onResolutionBegan?.();
 
     // Tier 1 — cache.
     const cached = cache.get(cardsKey);
@@ -204,11 +213,10 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         logger.info('[RESOLVE] superseded landing cached', { generation, cardsKey });
       }
     } catch (error) {
+      const reason = error instanceof Error ? error.message : 'unknown error';
       core.fail({ generation, worldKey: cardsKey });
-      env.seam.failResolution({
-        generation,
-        reason: error instanceof Error ? error.message : 'unknown error',
-      });
+      env.seam.failResolution({ generation, reason });
+      args.onResolutionFailed?.(reason);
     }
   };
 

@@ -29,6 +29,14 @@ import { useSearchSubmitResponseOwner } from './use-search-submit-response-owner
 import { useSearchSubmitStructuredHelperOwner } from './use-search-submit-structured-helper-owner';
 import { useSearchStructuredSubmitOwner } from './use-search-structured-submit-owner';
 import { captureFreshCommittedBounds } from '../runtime/shared/search-desired-state-writer';
+import {
+  createSearchWorldResolver,
+  type SearchWorldResolveArgs,
+} from '../runtime/resolver/search-world-resolver';
+import { createSearchWorldPresentationSeam } from '../runtime/resolver/search-world-presentation-seam';
+import { createSearchWorldFetcher } from '../runtime/resolver/search-world-fetch';
+import { searchService } from '../../../services/search';
+import { getSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 import { useSearchSubmitActionOwner } from './use-search-submit-action-owner';
 import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
 type SearchSubmitOwnerReadModel = {
@@ -121,6 +129,11 @@ type SearchSubmitOwner = {
   captureFreshTupleBounds: () => Promise<
     import('../runtime/shared/search-desired-state-contract').SearchCommittedBounds | null
   >;
+  /** S3a: resolve the desired tuple through the world resolver (chip-cause reruns). */
+  resolveDesiredWorld: (
+    args: import('../runtime/resolver/search-world-resolver').SearchWorldResolveArgs
+  ) => Promise<void>;
+  worldResolverIsResolving: () => boolean;
   runRestaurantEntitySearch: (params: {
     restaurantId: string;
     restaurantName: string;
@@ -345,6 +358,46 @@ const useSearchSubmitOwner = ({
     () => captureFreshCommittedBounds({ mapRef, viewportBoundsService }),
     [mapRef, viewportBoundsService]
   );
+
+  // S3a: the WORLD RESOLVER + PRESENTATION SEAM. Chip-cause reruns resolve through this
+  // (tuple in → seam commit out); the remaining trigger sources join per strangler
+  // sub-stage (S3b initial submits, S3c launches + pagination). Composed here because
+  // this hook already holds every seam dependency; the composition point (not the
+  // resolver) dies with this file in S3d. Ref-indirected callbacks keep the resolver a
+  // stable singleton across renders.
+  const onPageOneResultsCommittedForWorldRef = React.useRef(onPageOneResultsCommitted);
+  const runSearchForWorldRef = React.useRef(runSearch);
+  React.useEffect(() => {
+    onPageOneResultsCommittedForWorldRef.current = onPageOneResultsCommitted;
+    runSearchForWorldRef.current = runSearch;
+  });
+  const worldResolver = React.useMemo(() => {
+    const seam = createSearchWorldPresentationSeam({
+      searchRuntimeBus,
+      resultsPresentationSurfaceAuthority,
+      onPageOneResultsCommitted: (payload) => {
+        onPageOneResultsCommittedForWorldRef.current?.(payload);
+      },
+    });
+    return createSearchWorldResolver({
+      searchRuntimeBus,
+      seam,
+      fetchWorldForTuple: createSearchWorldFetcher({
+        runSearch: (request) => runSearchForWorldRef.current(request),
+        userLocationRef,
+        shortcutCoverage: (params, options) => searchService.shortcutCoverage(params, options),
+        // Chip reruns never move the camera, so the presented world's market is the
+        // rerun's market; initial submits carry their own market resolution (S3b).
+        getMarketKey: () =>
+          getSearchMountedResultsDataSnapshot().results?.metadata?.marketKey ?? '',
+      }),
+      now: () => globalThis.performance?.now?.() ?? Date.now(),
+    });
+  }, [searchRuntimeBus, resultsPresentationSurfaceAuthority, userLocationRef]);
+  const resolveDesiredWorld = React.useCallback(
+    (resolveArgs: SearchWorldResolveArgs) => worldResolver.resolve(resolveArgs),
+    [worldResolver]
+  );
   const {
     runRestaurantEntitySearch,
     submitViewportShortcut,
@@ -354,6 +407,7 @@ const useSearchSubmitOwner = ({
     searchRuntimeBus,
     viewportBoundsService,
     captureFreshTupleBounds,
+    isWorldResolving: worldResolver.isResolving,
     currentPage,
     canLoadMore,
     hasResults,
@@ -426,6 +480,7 @@ const useSearchSubmitOwner = ({
   );
 
   const { loadMoreResults, rerunActiveSearch } = useSearchSubmitActionOwner({
+    isWorldResolving: worldResolver.isResolving,
     query,
     submittedQuery,
     hasResults,
@@ -442,6 +497,8 @@ const useSearchSubmitOwner = ({
   return {
     submitSearch,
     captureFreshTupleBounds,
+    resolveDesiredWorld,
+    worldResolverIsResolving: worldResolver.isResolving,
     runRestaurantEntitySearch,
     submitViewportShortcut,
     rerunActiveSearch,

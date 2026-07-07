@@ -20,6 +20,8 @@ type SearchSubmitActionOwnerArgs = {
   isLoadingMore: boolean;
   isPaginationExhausted: boolean;
   isSearchRequestInFlightRef: React.MutableRefObject<boolean>;
+  /** S3a: a resolver-run rerun is in flight — appends must not race it. */
+  isWorldResolving: () => boolean;
   submitSearch: (options?: SubmitSearchOptions, overrideQuery?: string) => Promise<void>;
   loadMoreShortcutResults: () => void;
   submitViewportShortcut: (
@@ -58,6 +60,7 @@ export const useSearchSubmitActionOwner = ({
   isLoadingMore,
   isPaginationExhausted,
   isSearchRequestInFlightRef,
+  isWorldResolving,
   submitSearch,
   loadMoreShortcutResults,
   submitViewportShortcut,
@@ -66,6 +69,7 @@ export const useSearchSubmitActionOwner = ({
     (searchMode: SearchMode) => {
       if (
         isSearchRequestInFlightRef.current ||
+        isWorldResolving() ||
         isLoadingMore ||
         !hasResults ||
         !canLoadMore ||
@@ -91,6 +95,7 @@ export const useSearchSubmitActionOwner = ({
       isLoadingMore,
       isPaginationExhausted,
       isSearchRequestInFlightRef,
+      isWorldResolving,
       loadMoreShortcutResults,
       query,
       submitSearch,

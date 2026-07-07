@@ -15,17 +15,9 @@ import { formatPriceRangeSummary, getRangeFromLevels, type PriceRangeTuple } fro
 type SearchMode = 'natural' | 'shortcut' | null;
 type SegmentValue = 'dishes' | 'restaurants';
 
-type StructuredSearchFilters = {
-  includeSimilar?: boolean;
-  openNow?: boolean;
-  priceLevels?: number[];
-  rising?: boolean;
-};
-
 type UseSearchFilterModalOwnerArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   searchMode: SearchMode;
-  activeTab: SegmentValue;
   submittedQuery: string;
   query: string;
   isSearchSessionActive: boolean;
@@ -46,16 +38,7 @@ type UseSearchFilterModalOwnerArgs = {
   captureFreshTupleBounds: Parameters<
     typeof useQueryMutationOrchestrator
   >[0]['captureFreshTupleBounds'];
-  rerunActiveSearch: (options: {
-    searchMode: SearchMode;
-    activeTab: SegmentValue;
-    submittedQuery: string;
-    query: string;
-    isSearchSessionActive: boolean;
-    preserveSheetState?: boolean;
-    replaceResultsInPlace?: boolean;
-    filters?: StructuredSearchFilters;
-  }) => Promise<void>;
+  resolveDesiredWorld: Parameters<typeof useQueryMutationOrchestrator>[0]['resolveDesiredWorld'];
   registerTransientDismissor: (handler: () => void) => () => void;
   onMechanismEvent?: (event: 'query_mutation_coalesced', payload?: Record<string, unknown>) => void;
 };
@@ -174,7 +157,6 @@ type SearchFilterModalOwner = {
 export const useSearchFilterModalOwner = ({
   searchRuntimeBus,
   searchMode,
-  activeTab,
   submittedQuery,
   query,
   isSearchSessionActive,
@@ -184,7 +166,7 @@ export const useSearchFilterModalOwner = ({
   applyIncludeSimilarLocalSwap,
   resultsRuntimeOwner,
   captureFreshTupleBounds,
-  rerunActiveSearch,
+  resolveDesiredWorld,
   registerTransientDismissor,
   onMechanismEvent,
 }: UseSearchFilterModalOwnerArgs): SearchFilterModalOwner => {
@@ -284,7 +266,6 @@ export const useSearchFilterModalOwner = ({
   } = useQueryMutationOrchestrator({
     searchRuntimeBus,
     searchMode,
-    activeTab,
     submittedQuery,
     query,
     isSearchSessionActive,
@@ -294,7 +275,7 @@ export const useSearchFilterModalOwner = ({
     setIsPriceSelectorVisible,
     priceLevels,
     scheduleToggleCommit,
-    rerunActiveSearch,
+    resolveDesiredWorld,
     applyIncludeSimilarLocalSwap,
     resultsRuntimeOwner,
     priceSheetRef,

@@ -19,11 +19,12 @@ import type { SearchRuntimeBus, SearchRuntimeBusState } from '../shared/search-r
 import type { ResultsPresentationSurfaceAuthority } from '../shared/results-presentation-surface-authority';
 import {
   commitSearchMountedResultsCoverage,
+  getSearchMountedResultsDataSnapshot,
   publishSearchMountedResultsDataSnapshot,
   type SearchMountedResultsCoverageEntry,
   type SearchMountedResultsMarkerProjectionByTab,
 } from '../shared/search-mounted-results-data-store';
-import type { SearchSubmitPresentationIntentKind } from '../../hooks/use-search-submit-entry-owner';
+import type { SearchSubmitInPlaceRerunIntentKind } from '../../hooks/use-search-submit-entry-owner';
 
 /** The root-bus results patch a committed world carries (precomputed by the world-value
  *  constructor; the seam publishes it verbatim — identity keys preserved or narrowed by
@@ -36,7 +37,10 @@ export type SearchWorldRootBusResultsPatch = Pick<
 
 export type SearchWorldPaginationMeta = {
   page: number;
+  hasMoreFood: boolean;
+  hasMoreRestaurants: boolean;
   isPaginationExhausted: boolean;
+  canLoadMore: boolean;
   totalRestaurantResults: number;
   totalFoodResults: number;
 };
@@ -62,7 +66,10 @@ export type SearchWorldCommitArgs = {
   activeTab: 'restaurants' | 'dishes';
   dataReadyFrom: 'cache' | 'network' | 'in_flight';
   searchInputKey: string | null;
-  presentationIntentKind?: SearchSubmitPresentationIntentKind;
+  /** The bounds this world resolved against (tuple.committedBounds) — the page-one
+   *  adapter's camera input. */
+  requestBounds: import('../../../../types').MapBounds | null;
+  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   replaceResultsInPlace?: boolean;
   /** Version bump under the SAME identity (pagination append): steps 1/3/4/5 only — no
    *  page-one choreography, no coverage refetch. */
@@ -80,13 +87,13 @@ export type SearchWorldPresentationSeamEnv = {
     dataReadyFrom: 'cache' | 'network' | 'in_flight';
     searchInputKey: string | null;
     replaceResultsInPlace: boolean;
-    presentationIntentKind?: SearchSubmitPresentationIntentKind;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }) => void;
   /** Surviving foreground effects from prepareSearchRequestForegroundUi (presentation
    *  intent start, keyboard dismiss, error clear) — invoked by beginResolution. */
   onResolutionStart?: (args: {
     generation: number;
-    presentationIntentKind?: SearchSubmitPresentationIntentKind;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }) => void;
 };
 
@@ -95,7 +102,7 @@ export type SearchWorldPresentationSeam = {
    *  isSearchLoading before returning — pending presentation arms read it right after. */
   beginResolution: (args: {
     generation: number;
-    presentationIntentKind?: SearchSubmitPresentationIntentKind;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }) => void;
   commitWorldToMountedState: (args: SearchWorldCommitArgs) => void;
   failResolution: (args: { generation: number; reason: string }) => void;
@@ -104,7 +111,12 @@ export type SearchWorldPresentationSeam = {
 export const createSearchWorldPresentationSeam = (
   env: SearchWorldPresentationSeamEnv
 ): SearchWorldPresentationSeam => {
-  const committedWorldIds = new Set<string>();
+  // RED-contract state: one structural frame per world PER PRESENTATION EPISODE. A
+  // re-commit of the world that is ALREADY ON SCREEN is a violation (double frame); a
+  // cached world returning after something else presented (A→B→A) is the cache working.
+  // Grounded in the COMPOSITE (the mounted snapshot's identity), not seam-local memory —
+  // the legacy submit path also presents until S3d, and only the mounted store sees both.
+  let presentedWorldId: string | null = null;
   return {
     beginResolution: ({ generation, presentationIntentKind }) => {
       env.searchRuntimeBus.publish({
@@ -128,12 +140,21 @@ export const createSearchWorldPresentationSeam = (
         replaceResultsInPlace,
         isVersionUpdateOfPresentedWorld,
       } = args;
-      if (committedWorldIds.has(worldId)) {
-        // RED: one structural frame per world — a re-commit means a lifecycle bug upstream.
-        reportSearchFlowContractViolation('world_recommitted', { worldId, generation });
+      const mountedIdentityKey = getSearchMountedResultsDataSnapshot().resultsIdentityKey;
+      const worldIsOnScreen =
+        worldId === presentedWorldId &&
+        value.resultsIdentityKey != null &&
+        mountedIdentityKey === value.resultsIdentityKey;
+      if (worldIsOnScreen && !isVersionUpdateOfPresentedWorld) {
+        // RED: a second structural frame for the world already on screen — a lifecycle
+        // bug upstream (idempotent re-asserts must die at the tuple writer, not here).
+        reportSearchFlowContractViolation('world_recommitted_while_presented', {
+          worldId,
+          generation,
+        });
         return;
       }
-      committedWorldIds.add(worldId);
+      presentedWorldId = worldId;
       env.searchRuntimeBus.batch(() => {
         // (contract carried from the response owner) a page-1 response with zero rows on
         // both tabs but nonzero totals is internally inconsistent — loud, not fatal.
@@ -184,13 +205,17 @@ export const createSearchWorldPresentationSeam = (
           activeOperationLane: 'lane_b_data_commit',
           isSearchLoading: false,
           isLoadingMore: false,
+          currentPage: value.paginationMeta.page,
+          hasMoreFood: value.paginationMeta.hasMoreFood,
+          hasMoreRestaurants: value.paginationMeta.hasMoreRestaurants,
           isPaginationExhausted: value.paginationMeta.isPaginationExhausted,
+          canLoadMore: value.paginationMeta.canLoadMore,
         });
       });
       if (!isVersionUpdateOfPresentedWorld && value.paginationMeta.page === 1) {
         env.onPageOneResultsCommitted({
           searchRequestId: value.searchRequestId,
-          requestBounds: null,
+          requestBounds: args.requestBounds,
           resultsIdentityKey: value.resultsIdentityKey,
           resultsDataKey: value.resultsIdentityKey,
           dataReadyFrom,

@@ -19,24 +19,6 @@ import {
 type SearchMode = 'natural' | 'shortcut' | null;
 type SegmentValue = 'dishes' | 'restaurants';
 
-type StructuredSearchFilters = {
-  includeSimilar?: boolean;
-  openNow?: boolean;
-  priceLevels?: number[];
-  rising?: boolean;
-};
-
-type RerunActiveSearchOptions = {
-  searchMode: SearchMode;
-  activeTab: SegmentValue;
-  submittedQuery: string;
-  query: string;
-  isSearchSessionActive: boolean;
-  preserveSheetState?: boolean;
-  filters?: StructuredSearchFilters;
-  presentationIntentKind?: 'search_this_area' | 'variant_rerun';
-};
-
 type QueryMutationMechanismEmitter = (
   event: 'query_mutation_coalesced',
   payload?: Record<string, unknown>
@@ -45,7 +27,6 @@ type QueryMutationMechanismEmitter = (
 type UseQueryMutationOrchestratorArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   searchMode: SearchMode;
-  activeTab: SegmentValue;
   submittedQuery: string;
   query: string;
   isSearchSessionActive: boolean;
@@ -55,7 +36,10 @@ type UseQueryMutationOrchestratorArgs = {
   setIsPriceSelectorVisible: (next: boolean) => void;
   priceLevels: number[];
   scheduleToggleCommit: ScheduleToggleCommit;
-  rerunActiveSearch: (options: RerunActiveSearchOptions) => Promise<void>;
+  /** S3a: the world resolver — a chip commit hands the coalesced desired tuple here. */
+  resolveDesiredWorld: (
+    args: import('../resolver/search-world-resolver').SearchWorldResolveArgs
+  ) => Promise<void>;
   // Page-1 zero-network include-similar flip (use-search-submit-response-owner); returns
   // false when the flip cannot be served locally → the runner falls back to a rerun.
   applyIncludeSimilarLocalSwap: (options: {
@@ -92,7 +76,6 @@ export const useQueryMutationOrchestrator = (
   const {
     searchRuntimeBus,
     searchMode,
-    activeTab,
     submittedQuery,
     query,
     isSearchSessionActive,
@@ -102,7 +85,7 @@ export const useQueryMutationOrchestrator = (
     setIsPriceSelectorVisible,
     priceLevels,
     scheduleToggleCommit,
-    rerunActiveSearch,
+    resolveDesiredWorld,
     applyIncludeSimilarLocalSwap,
     resultsRuntimeOwner,
     priceSheetRef,
@@ -174,57 +157,38 @@ export const useQueryMutationOrchestrator = (
     });
   }, [searchRuntimeBus]);
 
-  const fireRerunActiveSearch = React.useCallback(
-    (options: RerunActiveSearchOptions) => {
-      void rerunActiveSearch(options).catch((error) => {
+  // TR5-N shape, S3a substance: the ONE network-chip commit (open-now / rising / price /
+  // mid-pagination include-similar) arms the pending interaction cover (keyed to the
+  // TOGGLE INTENT so the coordinator finalizes at reveal settle) and hands the DESIRED
+  // TUPLE to the world resolver. The tuple read at COMMIT time is the coalesced variant
+  // (rapid re-taps collapse into one resolution by construction); the enter transaction
+  // is staged at world commit (handlePageOneResultsCommitted), data-keyed — the reveal
+  // can never run on stale data. The legacy rerun submit chain no longer fires for chips.
+  const runVariantRerunToggleCommit = React.useCallback(
+    ({ intentId }: { intentId: string }) => {
+      resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
+      resultsRuntimeOwner.beginVariantRerunPresentationPending(intentId);
+      const busState = searchRuntimeBus.getState();
+      void resolveDesiredWorld({
+        tuple: busState.desiredTuple,
+        generation: busState.desiredTupleGeneration,
+        cause: busState.desiredTupleCause,
+        presentationIntentKind: 'variant_rerun',
+        onResolutionFailed: (reason) => {
+          // Disarm the cover so a failed rerun can't hold the screen until the watchdog.
+          resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
+          logger.warn('Toggle rerun failed', { message: reason });
+        },
+      }).catch((error) => {
         logger.warn('Toggle rerun failed', {
           message: error instanceof Error ? error.message : 'unknown error',
         });
-      });
-    },
-    [rerunActiveSearch]
-  );
-
-  // TR5-N: the ONE network-chip commit shape (open-now / rising / price / mid-pagination
-  // include-similar). The tab toggle is the template: the runner resolves the next variant's
-  // DATA before any reveal — here that means arming the pending interaction cover (keyed to
-  // the TOGGLE INTENT so the coordinator finalizes at reveal settle) and firing the rerun as a
-  // 'variant_rerun' submission. The submit machinery defers ALL staging; the enter transaction
-  // is staged at response commit (handlePageOneResultsCommitted), data-keyed — the reveal can
-  // never run on stale data.
-  const runVariantRerunToggleCommit = React.useCallback(
-    ({ intentId, filters }: { intentId: string; filters: StructuredSearchFilters }) => {
-      resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
-      resultsRuntimeOwner.beginVariantRerunPresentationPending(intentId);
-      // Read the rerun identity from the bus at COMMIT time. The prop copies thread through
-      // lane memos that can go stale across commits (the openNow flip bug had the same shape);
-      // a stale/empty submittedQuery here silently no-ops the rerun and leaves the cover armed
-      // until the watchdog force-commits.
-      const busState = searchRuntimeBus.getState();
-      fireRerunActiveSearch({
-        searchMode: busState.searchMode ?? searchMode,
-        activeTab: busState.activeTab ?? activeTab,
-        submittedQuery: busState.submittedQuery || submittedQuery,
-        query,
-        isSearchSessionActive: busState.isSearchSessionActive || isSearchSessionActive,
-        preserveSheetState: true,
-        presentationIntentKind: 'variant_rerun',
-        filters,
       });
       return {
         awaitVisualSync: true as const,
       };
     },
-    [
-      activeTab,
-      fireRerunActiveSearch,
-      isSearchSessionActive,
-      query,
-      resultsRuntimeOwner,
-      searchMode,
-      searchRuntimeBus,
-      submittedQuery,
-    ]
+    [resolveDesiredWorld, resultsRuntimeOwner, searchRuntimeBus]
   );
 
   // S2 THIN READER (charter §7): trigger sources WRITE the desired tuple; this subscription
@@ -265,42 +229,27 @@ export const useQueryMutationOrchestrator = (
           if (!canRerunForCurrentQuery()) {
             return;
           }
-          scheduleToggleCommit(
-            ({ intentId }) =>
-              runVariantRerunToggleCommit({
-                intentId,
-                filters: { openNow: nextFilters.openNow },
-              }),
-            { kind: 'filter_open_now' }
-          );
+          scheduleToggleCommit(({ intentId }) => runVariantRerunToggleCommit({ intentId }), {
+            kind: 'filter_open_now',
+          });
           return;
         }
         if (prevFilters.rising !== nextFilters.rising) {
           if (!canRerunForCurrentQuery()) {
             return;
           }
-          scheduleToggleCommit(
-            ({ intentId }) =>
-              runVariantRerunToggleCommit({
-                intentId,
-                filters: { rising: nextFilters.rising },
-              }),
-            { kind: 'filter_rising' }
-          );
+          scheduleToggleCommit(({ intentId }) => runVariantRerunToggleCommit({ intentId }), {
+            kind: 'filter_rising',
+          });
           return;
         }
         if (priceChanged) {
           if (!canRerunForCurrentQuery()) {
             return;
           }
-          scheduleToggleCommit(
-            ({ intentId }) =>
-              runVariantRerunToggleCommit({
-                intentId,
-                filters: { priceLevels: [...nextFilters.priceLevels] },
-              }),
-            { kind: 'filter_price' }
-          );
+          scheduleToggleCommit(({ intentId }) => runVariantRerunToggleCommit({ intentId }), {
+            kind: 'filter_price',
+          });
           return;
         }
         if (prevFilters.includeSimilar !== nextFilters.includeSimilar) {
@@ -339,10 +288,7 @@ export const useQueryMutationOrchestrator = (
                 };
               }
               // Mid-pagination (page > 1) or no local similar data: fresh network rerun.
-              return runVariantRerunToggleCommit({
-                intentId,
-                filters: { includeSimilar: nextFilters.includeSimilar },
-              });
+              return runVariantRerunToggleCommit({ intentId });
             },
             { kind: 'filter_include_similar' }
           );

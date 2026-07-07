@@ -32,7 +32,6 @@ export const useSearchRootFilterModalRuntime = ({
   const filterModalOwner = useSearchFilterModalOwner({
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
     searchMode: rootDataPlaneRuntime.runtimeFlags.searchMode,
-    activeTab: rootPrimitivesRuntime.searchState.activeTab,
     submittedQuery: rootDataPlaneRuntime.resultsArrivalState.submittedQuery,
     query: rootPrimitivesRuntime.searchState.query,
     isSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
@@ -49,7 +48,7 @@ export const useSearchRootFilterModalRuntime = ({
     applyIncludeSimilarLocalSwap: submitRuntimeResult.applyIncludeSimilarLocalSwap,
     resultsRuntimeOwner: resultsPresentationOwner,
     captureFreshTupleBounds: submitRuntimeResult.captureFreshTupleBounds,
-    rerunActiveSearch: submitRuntimeResult.rerunActiveSearch,
+    resolveDesiredWorld: submitRuntimeResult.resolveDesiredWorld,
     registerTransientDismissor: rootOverlayStoreRuntime.registerTransientDismissor,
     onMechanismEvent: rootInstrumentationRuntime.emitRuntimeMechanismEvent,
   });

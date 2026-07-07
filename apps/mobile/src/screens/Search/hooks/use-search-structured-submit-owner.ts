@@ -50,6 +50,8 @@ type UseSearchStructuredSubmitOwnerArgs = {
   /** S3-pre commit-moment adopt: awaits the SETTLED native camera (bounds + polygon)
    *  before the tuple write, so the resolver reads bounds from the tuple only. */
   captureFreshTupleBounds: () => Promise<SearchCommittedBounds | null>;
+  /** S3a: a resolver-run rerun is in flight — appends must not race it. */
+  isWorldResolving: () => boolean;
   currentPage: number;
   canLoadMore: boolean;
   hasResults: boolean;
@@ -176,6 +178,7 @@ export const useSearchStructuredSubmitOwner = ({
   searchRuntimeBus,
   viewportBoundsService,
   captureFreshTupleBounds,
+  isWorldResolving,
   currentPage,
   canLoadMore,
   hasResults,
@@ -524,6 +527,7 @@ export const useSearchStructuredSubmitOwner = ({
   const loadMoreShortcutResults = React.useCallback(() => {
     if (
       isSearchRequestInFlightRef.current ||
+      isWorldResolving() ||
       isLoadingMore ||
       !hasResults ||
       !canLoadMore ||
@@ -564,6 +568,7 @@ export const useSearchStructuredSubmitOwner = ({
     });
   }, [
     canLoadMore,
+    isWorldResolving,
     createShortcutStructuredAppendAttemptConfig,
     currentPage,
     executeShortcutAppendAttempt,
