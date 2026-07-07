@@ -942,6 +942,32 @@ export class UnifiedProcessingService implements OnModuleInit {
           }
         }
 
+        // Source ingredients (prompt 4.6): evidence-tier contents named for
+        // THIS dish. Own entity type — never a dish surface.
+        if (mention.food && Array.isArray(mention.ingredients)) {
+          const seenIngredientIds = new Set<string>();
+          for (const ingredientName of mention.ingredients) {
+            if (typeof ingredientName === 'string' && ingredientName.trim()) {
+              const ingredientTempId =
+                this.buildIngredientTempId(ingredientName);
+              if (seenIngredientIds.has(ingredientTempId)) {
+                continue;
+              }
+              seenIngredientIds.add(ingredientTempId);
+              entities.push({
+                normalizedName: this.normalizeEntityName(
+                  ingredientName,
+                  'ingredient',
+                ),
+                originalText: ingredientName,
+                entityType: 'ingredient' as const,
+                tempId: ingredientTempId,
+                aliases: [],
+              });
+            }
+          }
+        }
+
         // Restaurant attributes (FIXED: Consistent temp_id strategy)
         if (
           mention.restaurant_attributes &&
@@ -1055,6 +1081,11 @@ export class UnifiedProcessingService implements OnModuleInit {
       return `${restaurantTempId}::food::${normalizedFoodName}`;
     }
     return `${restaurantTempId}::${this.createFallbackId('food', mention)}`;
+  }
+
+  private buildIngredientTempId(ingredientName: string): string {
+    const normalized = this.normalizeEntityName(ingredientName, 'ingredient');
+    return `ingredient::${this.stableHash(normalized)}`;
   }
 
   private buildFoodCategoryTempId(categoryName: string): string {
@@ -1885,6 +1916,20 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
       }
 
+      const ingredientIds: string[] = [];
+      if (mention.food && Array.isArray(mention.ingredients)) {
+        for (const ingredientName of mention.ingredients) {
+          if (typeof ingredientName !== 'string' || !ingredientName.trim()) {
+            continue;
+          }
+          const tempId = this.buildIngredientTempId(ingredientName);
+          const ingredientEntityId = tempIdToEntityIdMap.get(tempId);
+          if (ingredientEntityId) {
+            ingredientIds.push(ingredientEntityId);
+          }
+        }
+      }
+
       const restaurantAttributeIds: string[] = [];
 
       if (
@@ -1995,6 +2040,23 @@ export class UnifiedProcessingService implements OnModuleInit {
             entityId: attributeId,
             entityType: 'food_attribute',
             evidenceType: 'food_attribute',
+            isMenuItem: mention.is_menu_item ?? null,
+            mentionedAt: mentionCreatedAt,
+            sourceUpvotes: mention.source_ups ?? 0,
+            metadata: {},
+          });
+        });
+
+        Array.from(new Set(ingredientIds)).forEach((ingredientId) => {
+          restaurantEntityEvents.push({
+            extractionRunId: extractionTrace.extractionRunId,
+            inputId,
+            sourceDocumentId,
+            restaurantId: restaurantEntityId,
+            mentionKey,
+            entityId: ingredientId,
+            entityType: 'ingredient',
+            evidenceType: 'ingredient',
             isMenuItem: mention.is_menu_item ?? null,
             mentionedAt: mentionCreatedAt,
             sourceUpvotes: mention.source_ups ?? 0,

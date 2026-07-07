@@ -54,6 +54,8 @@ type RestaurantItemProjection = {
   categories: string[];
   baseFoodAttributes: string[];
   foodAttributes: string[];
+  /** Source-faithful ingredient entity ids (evidence tier). */
+  ingredients: string[];
   mentionCount: number;
   totalUpvotes: number;
   supportMentionCount: number;
@@ -353,6 +355,13 @@ export class ProjectionRebuildService implements OnModuleInit {
             .map((event) => event.entityId),
         ),
       );
+      const ingredients = Array.from(
+        new Set(
+          group.events
+            .filter((event) => event.evidenceType === 'ingredient')
+            .map((event) => event.entityId),
+        ),
+      );
       const key = `${foodEvent.restaurantId}:${foodEvent.entityId}`;
       const aggregate =
         items.get(key) ??
@@ -362,6 +371,7 @@ export class ProjectionRebuildService implements OnModuleInit {
           categories: [],
           baseFoodAttributes: [],
           foodAttributes: [],
+          ingredients: [],
           mentionCount: 0,
           totalUpvotes: 0,
           supportMentionCount: 0,
@@ -379,6 +389,9 @@ export class ProjectionRebuildService implements OnModuleInit {
       ).sort();
       aggregate.foodAttributes = Array.from(
         new Set([...aggregate.foodAttributes, ...foodAttributes]),
+      ).sort();
+      aggregate.ingredients = Array.from(
+        new Set([...aggregate.ingredients, ...ingredients]),
       ).sort();
 
       this.applyTimedContribution(
@@ -630,6 +643,7 @@ export class ProjectionRebuildService implements OnModuleInit {
           data: {
             categories: item.categories,
             foodAttributes: item.foodAttributes,
+            ingredients: item.ingredients,
             mentionCount: item.mentionCount,
             totalUpvotes: item.totalUpvotes,
             supportMentionCount: item.supportMentionCount,
@@ -646,6 +660,7 @@ export class ProjectionRebuildService implements OnModuleInit {
             foodId: item.foodId,
             categories: item.categories,
             foodAttributes: item.foodAttributes,
+            ingredients: item.ingredients,
             mentionCount: item.mentionCount,
             totalUpvotes: item.totalUpvotes,
             supportMentionCount: item.supportMentionCount,
