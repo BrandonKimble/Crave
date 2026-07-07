@@ -17,6 +17,7 @@ import {
   type SearchRuntimeMirroredState,
 } from '../../../../store/searchStore';
 import { reportSearchFlowContractViolation } from './search-flow-contracts';
+import { writeSearchDesiredTuple } from './search-desired-state-writer';
 import type { SearchRuntimeBus, SearchRuntimeBusState } from './search-runtime-bus';
 
 const MIRRORED_BUS_KEYS = [
@@ -40,17 +41,6 @@ const readMirroredStateFromStore = (): SearchRuntimeMirroredState => {
   };
 };
 
-const toBusPatch = (
-  mirrored: SearchRuntimeMirroredState
-): Pick<SearchRuntimeBusState, (typeof MIRRORED_BUS_KEYS)[number]> => ({
-  openNow: mirrored.openNow,
-  priceLevels: mirrored.priceLevels,
-  risingActive: mirrored.risingActive,
-  activeTab: mirrored.activeTab,
-  preferredActiveTab: mirrored.preferredActiveTab,
-  hasActiveTabPreference: mirrored.hasActiveTabPreference,
-});
-
 const toMirroredState = (busState: SearchRuntimeBusState): SearchRuntimeMirroredState => ({
   openNow: busState.openNow,
   priceLevels: busState.priceLevels,
@@ -61,7 +51,31 @@ const toMirroredState = (busState: SearchRuntimeBusState): SearchRuntimeMirrored
 });
 
 export const seedSearchRuntimeBusFromSearchStore = (searchRuntimeBus: SearchRuntimeBus): void => {
-  searchRuntimeBus.publish(toBusPatch(readMirroredStateFromStore()));
+  const mirrored = readMirroredStateFromStore();
+  // S2: the persist mirror seeds the DESIRED TUPLE (once here; once more on async
+  // rehydration below) and is write-through-only otherwise — nothing else ever reads it.
+  // The tuple writer projects the legacy filter keys in the same publish, so both the
+  // ranked-request lane and the coverage lane read ONE seeded source (the measured
+  // cold-start split — persisted filter reaching coverage but not the ranked request —
+  // is unrepresentable).
+  writeSearchDesiredTuple(
+    searchRuntimeBus,
+    {
+      filterVariant: {
+        openNow: mirrored.openNow,
+        priceLevels: mirrored.priceLevels,
+        rising: mirrored.risingActive,
+      },
+      tab: mirrored.activeTab === 'dishes' ? 'dishes' : 'restaurants',
+    },
+    'boot_seed'
+  );
+  // Tab-lane keys stay on their existing lane until S4 (activeTab/preferred/preference).
+  searchRuntimeBus.publish({
+    activeTab: mirrored.activeTab,
+    preferredActiveTab: mirrored.preferredActiveTab,
+    hasActiveTabPreference: mirrored.hasActiveTabPreference,
+  });
 };
 
 export const attachSearchStoreRuntimeStateMirror = (
@@ -116,7 +130,7 @@ export const attachSearchStoreRuntimeStateMirror = (
   if (!useSearchStore.persist.hasHydrated()) {
     unsubscribeHydration = useSearchStore.persist.onFinishHydration(() => {
       lastMirrored = readMirroredStateFromStore();
-      searchRuntimeBus.publish(toBusPatch(lastMirrored));
+      seedSearchRuntimeBusFromSearchStore(searchRuntimeBus);
     });
   }
 
