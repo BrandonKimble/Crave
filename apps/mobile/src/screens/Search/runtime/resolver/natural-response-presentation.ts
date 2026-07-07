@@ -63,3 +63,26 @@ export const resolveNaturalResponseAdoptedTab = (params: {
   }
   return hasFoodResults ? 'dishes' : 'restaurants';
 };
+
+/** Favorites: honor the list's axis when populated; otherwise whichever axis has rows
+ *  (the response-owner's favorites branch — a 1-restaurant dish list must not collapse). */
+export const resolveFavoritesAdoptedTab = (params: {
+  response: SearchResponse;
+  listTab: ResultsActiveTab;
+}): ResultsActiveTab => {
+  const hasFoodResults = (params.response.dishes?.length ?? 0) > 0;
+  const hasRestaurantsResults = (params.response.restaurants?.length ?? 0) > 0;
+  if (params.listTab === 'dishes' && hasFoodResults) {
+    return 'dishes';
+  }
+  if (params.listTab === 'restaurants' && hasRestaurantsResults) {
+    return 'restaurants';
+  }
+  if (hasFoodResults) {
+    return 'dishes';
+  }
+  if (hasRestaurantsResults) {
+    return 'restaurants';
+  }
+  return params.listTab;
+};

@@ -1,6 +1,6 @@
 import React from 'react';
 
-import type { Coordinate, NaturalSearchRequest, SearchResponse } from '../../../types';
+import type { NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { SearchRequestCacheStatus, StructuredSearchRequest } from '../../../services/search';
 import type { FavoriteListType } from '../../../services/favorite-lists';
 import { logger } from '../../../utils';
@@ -12,13 +12,11 @@ import {
 } from '../runtime/shared/search-desired-state-writer';
 import type { SearchCommittedBounds } from '../runtime/shared/search-desired-state-contract';
 import type { SegmentValue } from '../constants/search';
-import { createFavoritesSubmitIntentPayload } from '../runtime/adapters/favorites-adapter';
 import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
 import { resolveLoadMoreRequestErrorMessage } from './search-submit-runtime-utils';
 import type {
   SearchSubmitEntrySurface,
   StructuredAppendAttemptConfig,
-  StructuredInitialAttemptConfig,
   SearchSubmitInPlaceRerunIntentKind,
 } from './use-search-submit-entry-owner';
 import type { StructuredSearchFilters } from './use-search-request-preparation-owner';
@@ -77,51 +75,16 @@ type UseSearchStructuredSubmitOwnerArgs = {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   logSearchPhase?: (label: string, options?: { reset?: boolean }) => void;
   resetMapMoveFlag: () => void;
-  openNow: boolean;
-  userLocationRef: React.MutableRefObject<Coordinate | null>;
-  createRestaurantEntityInitialAttemptConfig: (params: {
-    restaurantId: string;
-    restaurantName: string;
-    preserveSheetState: boolean;
-    entrySurface: SearchSubmitEntrySurface;
-  }) => StructuredInitialAttemptConfig;
   createShortcutStructuredAppendAttemptConfig: (params: {
     targetTab: SegmentValue;
     submittedQuery: string;
     targetPage: number;
   }) => StructuredAppendAttemptConfig;
-  prepareSearchRequestForegroundUi: (
-    options: StructuredInitialAttemptConfig['foregroundUi']
-  ) => void;
-  prepareStructuredInitialRequestPayload: (params: {
-    tuple: SearchSubmitActiveOperationTuple;
-    logLabel: string;
-    loadingMoreLogLabel?: string;
-    filters?: StructuredSearchFilters;
-    forceFreshBounds: boolean;
-  }) => Promise<StructuredSearchRequest | null>;
   prepareStructuredAppendRequestPayload: (params: {
     tuple: SearchSubmitActiveOperationTuple;
     targetPage: number;
   }) => Promise<StructuredSearchRequest | null>;
-  applyRestaurantEntityStructuredRequest: (
-    payload: StructuredSearchRequest,
-    params: {
-      restaurantId: string;
-      restaurantName: string;
-      submissionSource: NaturalSearchRequest['submissionSource'];
-      typedPrefix?: string;
-    }
-  ) => NaturalSearchRequest['submissionContext'];
   applyShortcutStructuredAppendRequestState: (payload: StructuredSearchRequest) => void;
-  executeEntityStructuredSearchAttempt: (params: {
-    payload: StructuredSearchRequest;
-    requestId: number;
-    startLifecycle: (
-      response: SearchResponse,
-      cacheStatus: SearchRequestCacheStatus | null
-    ) => boolean;
-  }) => Promise<boolean>;
   executeShortcutStructuredSearchAttempt: (params: {
     payload: StructuredSearchRequest;
     requestId: number;
@@ -131,29 +94,6 @@ type UseSearchStructuredSubmitOwnerArgs = {
       cacheStatus: SearchRequestCacheStatus | null
     ) => boolean;
   }) => Promise<boolean>;
-  startEntityStructuredResponseLifecycle: (params: {
-    response: SearchResponse;
-    requestId: number;
-    runtimeTuple: SearchSubmitActiveOperationTuple;
-    submittedLabel: string;
-    submissionContext?: NaturalSearchRequest['submissionContext'];
-    requestBounds: import('../../../types').MapBounds | null;
-  }) => boolean;
-  executeFavoritesHydrateAttempt: (params: {
-    listId: string;
-    listType: FavoriteListType;
-    requestId: number;
-    openNow?: boolean;
-    userLocation?: Coordinate | null;
-    startLifecycle: (response: SearchResponse) => boolean;
-  }) => Promise<boolean>;
-  startFavoritesResponseLifecycle: (params: {
-    response: SearchResponse;
-    requestId: number;
-    runtimeTuple: SearchSubmitActiveOperationTuple;
-    targetTab: SegmentValue;
-    submittedLabel: string;
-  }) => boolean;
   startShortcutAppendResponseLifecycle: (params: {
     response: SearchResponse;
     requestId: number;
@@ -184,80 +124,12 @@ export const useSearchStructuredSubmitOwner = ({
   setError,
   logSearchPhase = () => {},
   resetMapMoveFlag,
-  openNow,
-  userLocationRef,
-  createRestaurantEntityInitialAttemptConfig,
   createShortcutStructuredAppendAttemptConfig,
-  prepareSearchRequestForegroundUi,
-  prepareStructuredInitialRequestPayload,
   prepareStructuredAppendRequestPayload,
-  applyRestaurantEntityStructuredRequest,
   applyShortcutStructuredAppendRequestState,
-  executeEntityStructuredSearchAttempt,
   executeShortcutStructuredSearchAttempt,
-  startEntityStructuredResponseLifecycle,
   startShortcutAppendResponseLifecycle,
-  executeFavoritesHydrateAttempt,
-  startFavoritesResponseLifecycle,
 }: UseSearchStructuredSubmitOwnerArgs) => {
-  const executeRestaurantEntityInitialAttempt = React.useCallback(
-    async ({
-      requestId,
-      tuple,
-      restaurantId,
-      restaurantName,
-      submissionSource,
-      typedPrefix,
-    }: {
-      requestId: number;
-      tuple: SearchSubmitActiveOperationTuple;
-      restaurantId: string;
-      restaurantName: string;
-      submissionSource: NaturalSearchRequest['submissionSource'];
-      typedPrefix?: string;
-    }) => {
-      const payload = await prepareStructuredInitialRequestPayload({
-        tuple,
-        logLabel: 'runRestaurantEntitySearch:loading-state',
-        filters: {
-          openNow: false,
-          priceLevels: [],
-        },
-        forceFreshBounds: false,
-      });
-      if (!payload) {
-        return false;
-      }
-      const submissionContext = applyRestaurantEntityStructuredRequest(payload, {
-        restaurantId,
-        restaurantName,
-        submissionSource,
-        typedPrefix,
-      });
-      logSearchPhase('runRestaurantEntitySearch:runSearch');
-      return executeEntityStructuredSearchAttempt({
-        payload,
-        requestId,
-        startLifecycle: (response, searchCacheStatus) =>
-          startEntityStructuredResponseLifecycle({
-            response,
-            requestId,
-            runtimeTuple: tuple,
-            submittedLabel: restaurantName,
-            submissionContext,
-            requestBounds: payload.bounds ?? null,
-          }),
-      });
-    },
-    [
-      applyRestaurantEntityStructuredRequest,
-      executeEntityStructuredSearchAttempt,
-      logSearchPhase,
-      prepareStructuredInitialRequestPayload,
-      startEntityStructuredResponseLifecycle,
-    ]
-  );
-
   const executeShortcutAppendAttempt = React.useCallback(
     async ({
       requestId,
@@ -311,53 +183,54 @@ export const useSearchStructuredSubmitOwner = ({
         return;
       }
       const preserveSheetState = Boolean(params.preserveSheetState);
-      const initialAttemptConfig = createRestaurantEntityInitialAttemptConfig({
-        restaurantId: params.restaurantId,
-        restaurantName: trimmedName,
-        preserveSheetState,
-        entrySurface: params.entrySurface,
-      });
       resetMapMoveFlag();
-      await runManagedRequestAttempt({
-        mode: 'entity',
-        submitPayload: initialAttemptConfig.submitPayload,
-        finalizeReason: initialAttemptConfig.finalizeReason,
-        shouldAbortPresentationIntent: true,
-        abortPresentationIntent: onPresentationIntentAbort,
-        setError,
-        onError: (err) => {
-          logger.error(initialAttemptConfig.errorLogLabel, {
-            message: err instanceof Error ? err.message : 'unknown error',
-          });
-        },
-        resolveFailure: () => ({
-          idleStatePatch: {
-            isMapActivationDeferred: false,
+      // S3c: a restaurant tap IS an entity-identity tuple write + resolve (skip-LLM
+      // structured lane routed by the fetch table).
+      const writeResult = writeSearchDesiredTuple(
+        searchRuntimeBus,
+        {
+          queryIdentity: {
+            kind: 'entity',
+            entityType: 'restaurant',
+            entityId: params.restaurantId,
+            displayName: trimmedName,
           },
-          uiErrorMessage: null,
-        }),
-        executeAttempt: async ({ requestId, tuple }) => {
-          prepareSearchRequestForegroundUi(initialAttemptConfig.foregroundUi);
-          return executeRestaurantEntityInitialAttempt({
-            requestId,
-            tuple,
-            restaurantId: params.restaurantId,
-            restaurantName: trimmedName,
-            submissionSource: params.submissionSource,
-            typedPrefix: params.typedPrefix,
+          tab: 'restaurants',
+          filterVariant: { includeSimilar: false },
+          committedBounds: captureCommittedBounds(viewportBoundsService),
+        },
+        'entity_tap'
+      );
+      await resolveDesiredWorld({
+        tuple: writeResult.tuple,
+        generation: writeResult.generation,
+        cause: 'entity_tap',
+        onResolutionBegan: () => {
+          beginResolverSubmitForegroundUi({
+            mode: 'shortcut',
+            targetTab: 'restaurants',
+            submittedLabel: trimmedName,
+            preserveSheetState,
+            transitionFromDockedPolls: false,
+            entrySurface: params.entrySurface,
           });
+          logSearchPhase('runRestaurantEntitySearch:ui-lanes-scheduled');
+        },
+        onResolutionFailed: (reason) => {
+          logger.error('Restaurant entity search failed', { message: reason });
+          searchRuntimeBus.publish({ isMapActivationDeferred: false });
+          onPresentationIntentAbort?.();
         },
       });
     },
     [
-      createRestaurantEntityInitialAttemptConfig,
-      executeRestaurantEntityInitialAttempt,
+      beginResolverSubmitForegroundUi,
       logSearchPhase,
       onPresentationIntentAbort,
-      prepareSearchRequestForegroundUi,
       resetMapMoveFlag,
-      runManagedRequestAttempt,
-      setError,
+      resolveDesiredWorld,
+      searchRuntimeBus,
+      viewportBoundsService,
     ]
   );
 
@@ -507,10 +380,11 @@ export const useSearchStructuredSubmitOwner = ({
       logSearchPhase('launchFavorites:start', { reset: true });
       const targetTab: SegmentValue = params.listType === 'dish' ? 'dishes' : 'restaurants';
       resetMapMoveFlag();
-      // S2: favorites-as-search writes the tuple (entities kind; id sets arrive with the
-      // response until S3's resolver — the listId path stays lane-owned). No viewport adopt:
-      // the results define the camera.
-      writeSearchDesiredTuple(
+      // S3c: favorites-as-search IS an entities-identity tuple write + resolve. No
+      // viewport adopt (committedBounds null — the results define the camera); the
+      // fetch table routes listId to getListResults, the adopt rule honors the list
+      // axis, and favorites suppress the single-restaurant collapse in the fetcher.
+      const writeResult = writeSearchDesiredTuple(
         searchRuntimeBus,
         {
           queryIdentity: {
@@ -523,74 +397,42 @@ export const useSearchStructuredSubmitOwner = ({
           },
           tab: targetTab === 'dishes' ? 'dishes' : 'restaurants',
           filterVariant: { includeSimilar: false },
+          committedBounds: null,
         },
         'favorites_launch'
       );
-      await runManagedRequestAttempt({
-        mode: 'favorites',
-        submitPayload: createFavoritesSubmitIntentPayload({
-          listId: params.listId,
-          listType: params.listType,
-          submittedLabel: params.submittedLabel,
-        }),
-        finalizeReason: 'favorites_finalized_without_response_lifecycle',
-        shouldAbortPresentationIntent: true,
-        abortPresentationIntent: onPresentationIntentAbort,
-        setError,
-        onError: (err) => {
-          logger.error('Favorites list results request failed', {
-            message: err instanceof Error ? err.message : 'unknown error',
-            listId: params.listId,
-          });
-        },
-        resolveFailure: () => ({
-          idleStatePatch: {
-            isMapActivationDeferred: false,
-          },
-          uiErrorMessage: null,
-        }),
-        executeAttempt: async ({ requestId, tuple }) => {
-          prepareSearchRequestForegroundUi({
-            kind: 'initial_search',
+      await resolveDesiredWorld({
+        tuple: writeResult.tuple,
+        generation: writeResult.generation,
+        cause: 'favorites_launch',
+        onResolutionBegan: () => {
+          beginResolverSubmitForegroundUi({
             mode: 'natural',
-            preserveSheetState: false,
-            transitionFromDockedPolls: false,
             targetTab,
             submittedLabel: params.submittedLabel,
-            shouldResetPagination: true,
-            logLabel: 'launchFavorites',
+            preserveSheetState: false,
+            transitionFromDockedPolls: false,
             entrySurface: 'home',
           });
-          logSearchPhase('launchFavorites:runRequest');
-          return executeFavoritesHydrateAttempt({
+          logSearchPhase('launchFavorites:ui-lanes-scheduled');
+        },
+        onResolutionFailed: (reason) => {
+          logger.error('Favorites list results request failed', {
+            message: reason,
             listId: params.listId,
-            listType: params.listType,
-            requestId,
-            openNow,
-            userLocation: userLocationRef.current,
-            startLifecycle: (response) =>
-              startFavoritesResponseLifecycle({
-                response,
-                requestId,
-                runtimeTuple: tuple,
-                targetTab,
-                submittedLabel: params.submittedLabel,
-              }),
           });
+          searchRuntimeBus.publish({ isMapActivationDeferred: false });
+          onPresentationIntentAbort?.();
         },
       });
     },
     [
-      executeFavoritesHydrateAttempt,
+      beginResolverSubmitForegroundUi,
       logSearchPhase,
       onPresentationIntentAbort,
-      openNow,
-      prepareSearchRequestForegroundUi,
       resetMapMoveFlag,
-      runManagedRequestAttempt,
-      setError,
-      startFavoritesResponseLifecycle,
-      userLocationRef,
+      resolveDesiredWorld,
+      searchRuntimeBus,
     ]
   );
 

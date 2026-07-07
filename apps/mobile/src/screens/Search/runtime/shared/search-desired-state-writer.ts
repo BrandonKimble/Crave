@@ -23,12 +23,22 @@ import {
   type SearchTupleWriteCause,
 } from './search-desired-state-contract';
 
+// The legacy searchMode key is LOAD-BEARING for the map frame: 'shortcut' switches the
+// controller into the shortcut-coverage projection (frame waits for a coverage-terminal
+// world entry). Only true shortcuts and restaurant-entity taps (which collapse to the
+// single-restaurant projection) may claim it; food/attribute entity taps and favorites
+// ran the legacy natural lane and must project 'natural' or their coverage-less worlds
+// starve the frame.
 const deriveLegacySearchMode = (identity: SearchQueryIdentity): 'natural' | 'shortcut' | null =>
-  identity.kind === 'natural'
+  identity.kind === 'natural' || identity.kind === 'entities'
     ? 'natural'
-    : identity.kind === 'shortcut' || identity.kind === 'entities' || identity.kind === 'entity'
+    : identity.kind === 'shortcut'
       ? 'shortcut'
-      : null;
+      : identity.kind === 'entity'
+        ? identity.entityType === 'restaurant'
+          ? 'shortcut'
+          : 'natural'
+        : null;
 
 const deriveLegacySubmittedQuery = (identity: SearchQueryIdentity): string =>
   identity.kind === 'natural'

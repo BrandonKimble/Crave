@@ -45,8 +45,9 @@ export type SearchQueryIdentity =
     }
   | {
       kind: 'entity';
-      /** Poll-comment / autocomplete entity tap: one entity, skip-LLM lane. */
-      entityType: 'restaurant' | 'food';
+      /** Poll-comment / autocomplete entity tap: one entity, skip-LLM lane. Restaurant
+       *  taps fetch structured; food/attribute taps fetch natural + submissionContext. */
+      entityType: 'restaurant' | 'food' | 'food_attribute' | 'restaurant_attribute';
       entityId: string;
       displayName: string;
     }

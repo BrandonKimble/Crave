@@ -9,6 +9,7 @@ import type { NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { SearchRequestCacheStatus } from '../../../services/search';
 import { logger } from '../../../utils';
 import { createNaturalSubmitIntentPayload } from '../runtime/adapters/natural-adapter';
+import { writeSearchDesiredTuple } from '../runtime/shared/search-desired-state-writer';
 import type { SegmentValue } from '../constants/search';
 import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
 import { resolveLoadMoreRequestErrorMessage } from './search-submit-runtime-utils';
@@ -255,11 +256,46 @@ export const useSearchNaturalSubmitOwner = ({
       }
       const { append, targetPage, trimmedQuery } = naturalEntry;
       const naturalAttemptConfig = resolveNaturalSearchAttemptConfig(options);
-      // S3b-2: context-free non-append natural submits are a tuple write (already done
-      // by prepareNaturalSearchEntry) + resolve. Context-carrying submissions (entity
-      // taps) stay on the legacy chain until S3c folds them into the 'entity' kind;
-      // appends stay until the pagination cutover.
-      if (!append && naturalAttemptConfig.submissionContext == null) {
+      // S3b-2/S3c: non-append submits are a tuple write + resolve. Context-free typed
+      // searches keep the natural tuple prepareNaturalSearchEntry wrote; selected-entity
+      // submissions (autocomplete taps, poll-comment entity taps) CONVERT the identity
+      // to the 'entity' kind — the skip-LLM lane is an identity fact, not a payload
+      // detail. Appends stay legacy until the pagination cutover.
+      const contextRecord =
+        naturalAttemptConfig.submissionContext != null &&
+        typeof naturalAttemptConfig.submissionContext === 'object' &&
+        !Array.isArray(naturalAttemptConfig.submissionContext)
+          ? (naturalAttemptConfig.submissionContext as Record<string, unknown>)
+          : null;
+      const selectedEntityId =
+        typeof contextRecord?.selectedEntityId === 'string' ? contextRecord.selectedEntityId : null;
+      const selectedEntityType = contextRecord?.selectedEntityType;
+      const entityIdentityType =
+        selectedEntityType === 'restaurant' ||
+        selectedEntityType === 'food' ||
+        selectedEntityType === 'food_attribute' ||
+        selectedEntityType === 'restaurant_attribute'
+          ? selectedEntityType
+          : null;
+      const isEntitySubmission =
+        contextRecord?.matchType === 'entity' &&
+        selectedEntityId != null &&
+        entityIdentityType != null;
+      if (!append && (naturalAttemptConfig.submissionContext == null || isEntitySubmission)) {
+        if (isEntitySubmission && selectedEntityId != null && entityIdentityType != null) {
+          writeSearchDesiredTuple(
+            searchRuntimeBus,
+            {
+              queryIdentity: {
+                kind: 'entity',
+                entityType: entityIdentityType,
+                entityId: selectedEntityId,
+                displayName: trimmedQuery,
+              },
+            },
+            'entity_tap'
+          );
+        }
         const busState = searchRuntimeBus.getState();
         await resolveDesiredWorld({
           tuple: busState.desiredTuple,

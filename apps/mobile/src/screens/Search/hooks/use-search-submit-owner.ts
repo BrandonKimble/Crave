@@ -3,7 +3,7 @@ import React from 'react';
 import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
 import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { RecentSearch, StructuredSearchRequest } from '../../../services/search';
-import type { FavoriteListType } from '../../../services/favorite-lists';
+import { favoriteListsService, type FavoriteListType } from '../../../services/favorite-lists';
 import type { SegmentValue } from '../constants/search';
 import type { MapboxMapRef } from '../components/search-map';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
@@ -251,29 +251,24 @@ const useSearchSubmitOwner = ({
     runManagedRequestAttempt,
     setSearchRequestInFlight,
   } = requestRuntimeOwner;
+  const { prepareStructuredAppendRequestPayload, prepareNaturalSearchAttemptPayload } =
+    useSearchRequestPreparationOwner({
+      isLoadingMore,
+      openNow,
+      priceLevels,
+      risingActive,
+      searchRuntimeBus,
+      latestBoundsRef,
+      viewportBoundsService,
+      mapRef,
+      userLocationRef,
+      lastSearchRequestIdRef,
+      isOperationTupleStillActive,
+      setError,
+    });
   const {
-    prepareStructuredInitialRequestPayload,
-    prepareStructuredAppendRequestPayload,
-    prepareNaturalSearchAttemptPayload,
-  } = useSearchRequestPreparationOwner({
-    isLoadingMore,
-    openNow,
-    priceLevels,
-    risingActive,
-    searchRuntimeBus,
-    latestBoundsRef,
-    viewportBoundsService,
-    mapRef,
-    userLocationRef,
-    lastSearchRequestIdRef,
-    isOperationTupleStillActive,
-    setError,
-  });
-  const {
-    prepareSearchRequestForegroundUi,
     beginResolverSubmitForegroundUi,
     prepareNaturalSearchForegroundUi,
-    createRestaurantEntityInitialAttemptConfig,
     createShortcutStructuredAppendAttemptConfig,
     prepareNaturalSearchEntry,
     resolveNaturalSearchAttemptConfig,
@@ -327,22 +322,15 @@ const useSearchSubmitOwner = ({
     runtimeWorkSchedulerRef,
     publishRuntimeLaneState,
   });
-  const {
-    applyShortcutStructuredAppendRequestState,
-    publishShortcutCoverageForResponse,
-    applyRestaurantEntityStructuredRequest,
-  } = useSearchSubmitStructuredHelperOwner({
-    onShortcutSearchCoverageSnapshot,
-  });
+  const { applyShortcutStructuredAppendRequestState, publishShortcutCoverageForResponse } =
+    useSearchSubmitStructuredHelperOwner({
+      onShortcutSearchCoverageSnapshot,
+    });
   const {
     startNaturalResponseLifecycle,
-    startEntityStructuredResponseLifecycle,
     startShortcutAppendResponseLifecycle,
-    startFavoritesResponseLifecycle,
-    executeEntityStructuredSearchAttempt,
     executeShortcutStructuredSearchAttempt,
     executeNaturalSearchAttempt,
-    executeFavoritesHydrateAttempt,
   } = useSearchSubmitExecutionOwner({
     runSearch,
     activeSearchRequestRef,
@@ -373,13 +361,27 @@ const useSearchSubmitOwner = ({
   >(() => {});
   worldPresentedEffectsRef.current = ({ tuple, value, presentationIntentKind }) => {
     const identity = tuple.queryIdentity;
+    // The response-adopted tab must reach the REACT tab state too (rows prepare off it);
+    // the tuple writer already projected the bus key. Idempotent when nothing adopted.
+    // The dual state dies in S4 when the reconciler owns presentation.
+    setActiveTab(tuple.tab);
     if (identity.kind === 'natural') {
       updateLocalRecentSearches(identity.query);
+      void loadRecentHistory();
+    } else if (identity.kind === 'entity') {
+      updateLocalRecentSearches({
+        queryText: identity.displayName,
+        selectedEntityId: identity.entityId,
+        selectedEntityType: identity.entityType,
+      });
       void loadRecentHistory();
     }
     const isInPlaceRerun =
       presentationIntentKind === 'search_this_area' || presentationIntentKind === 'variant_rerun';
-    if (value.singleRestaurantCandidate != null && identity.kind === 'natural') {
+    const collapsesToSingleRestaurant =
+      value.singleRestaurantCandidate != null &&
+      (identity.kind === 'natural' || identity.kind === 'entity');
+    if (collapsesToSingleRestaurant) {
       // The response collapsed to one restaurant: hide the results sheet (the profile
       // auto-open runtime keys off lastSearchRequestIdRef, already truthful).
       resetSheetToHidden();
@@ -415,6 +417,8 @@ const useSearchSubmitOwner = ({
         // rerun's market; initial submits carry their own market resolution (S3b).
         getMarketKey: () =>
           getSearchMountedResultsDataSnapshot().results?.metadata?.marketKey ?? '',
+        getFavoritesListResults: (listId, options) =>
+          favoriteListsService.getListResults(listId, options),
       }),
       now: () => globalThis.performance?.now?.() ?? Date.now(),
       onWorldPresented: (args) => worldPresentedEffectsRef.current(args),
@@ -448,21 +452,11 @@ const useSearchSubmitOwner = ({
     onPresentationIntentAbort,
     setError,
     resetMapMoveFlag,
-    openNow,
-    userLocationRef,
-    createRestaurantEntityInitialAttemptConfig,
     createShortcutStructuredAppendAttemptConfig,
-    prepareSearchRequestForegroundUi,
-    prepareStructuredInitialRequestPayload,
     prepareStructuredAppendRequestPayload,
-    applyRestaurantEntityStructuredRequest,
     applyShortcutStructuredAppendRequestState,
-    executeEntityStructuredSearchAttempt,
     executeShortcutStructuredSearchAttempt,
-    startEntityStructuredResponseLifecycle,
     startShortcutAppendResponseLifecycle,
-    executeFavoritesHydrateAttempt,
-    startFavoritesResponseLifecycle,
   });
   const { submitSearch } = useSearchNaturalSubmitOwner({
     searchRuntimeBus,
