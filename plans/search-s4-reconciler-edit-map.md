@@ -129,6 +129,40 @@ Swift side (`ios/cravesearch/SearchMapRenderController.swift`, 12.8k lines — t
   handles this today by always staging when session active; preserve by classifying net-zero
   as boot_noop at the tuple level BUT the coordinator's overlay/debounce still fires — keep the
   always-stage behavior inside the port implementation, not the classifier.
+- **S4c-1b DESIGN CRUX (found on-code 2026-07-07): desired tab ≠ presented tab.**
+  `setActiveTab` (use-search-root-search-primitives-runtime.ts:188) IS the tuple writer
+  (cause `tab_toggle`) and the S2 writer projects `activeTab` in the SAME publish — but the
+  rows/sheet read React `activeTab`, so a tap-time tuple write would swap the sheet BEFORE
+  the coordinator's cover arms (visible flash). Today this is hidden because the tab lane
+  defers `setActiveTab` into the coordinator's debounce commit. The ideal shape:
+  1. `activeTab` becomes the PRESENTED tab — written ONLY by the presentation path (the
+     tab-switch commit body + the seam's world commit `activeTab` arg + response adopt),
+     never projected from the tuple write.
+  2. The pill tap = pure tuple write ({tab: next}, cause tab_toggle) + setActiveTabPreference.
+     `pendingTabSwitchTab` becomes derivable (tuple.tab ≠ presented activeTab) — keep the
+     bus key as a projection until S4e, published by the writer (tuple.tab≠activeTab at
+     write time → pendingTabSwitchTab: tuple.tab).
+  3. Reconciler `tab_switch` branch → port.scheduleToggleCommit(kind 'tab_switch'); commit
+     body re-reads CURRENT desire: presentTab = desiredTuple.tab; if presentTab ≠ activeTab
+     → setActiveTabProjection(presentTab) (a DIRECT bus publish of activeTab +
+     pendingTabSwitchTab:null, NOT the tuple writer) + clearStaged + beginRedrawTransaction
+     ({reason:'toggle', transactionId:intentId, targetTab:presentTab, coverState:
+     'interaction_loading'}) + stage(enter, 'initial_search', 'interaction_loading', null,
+     'cache'). If equal (net-zero burst) → same staging WITHOUT the tab publish (re-reveal
+     only, markers were dimmed by press-up).
+  4. Idle-session tab writes (queryIdentity idle → classifier hits the idle branch first):
+     the WRITER must still project activeTab directly when no session is active (home-screen
+     pill has no choreography) — i.e. the writer's activeTab projection becomes conditional:
+     `isSearchSessionActive ? defer-to-presentation : project-now`.
+  5. Callers of setActiveTab that mean "present now" (worldPresentedEffects
+     setActiveTab(tuple.tab), enter foreground effects) switch to the direct projection
+     publish — they are presentation-path writers, not desire writers.
+  6. DELETE after wiring: use-results-presentation-tab-toggle-runtime.ts, the
+     scheduleTabToggleCommit plumbing chain (results-presentation-owner-contract →
+     filters-header runtime), commitTabChange.
+     Rig acceptance: tab toggle = identical choreography (press-up fade → cover → swap →
+     reveal), net-zero burst re-reveals, rapid odd-count burst lands once on the target tab,
+     home-screen pill (idle) swaps instantly with no cover, response tab adopt unaffected.
 - **S4c-1c — the statechart proper (the big cut).** Re-key the level-triggered gate by worldId:
   - Seam's `onPageOneResultsCommitted` becomes the `world_ready` event into a new
     `search-world-presentation-host.ts` (runtime/reconciler/): on reconciler-begin it arms
