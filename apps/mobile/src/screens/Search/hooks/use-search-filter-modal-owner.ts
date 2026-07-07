@@ -43,6 +43,9 @@ type UseSearchFilterModalOwnerArgs = {
     typeof useQueryMutationOrchestrator
   >[0]['applyIncludeSimilarLocalSwap'];
   resultsRuntimeOwner: Parameters<typeof useQueryMutationOrchestrator>[0]['resultsRuntimeOwner'];
+  captureFreshTupleBounds: Parameters<
+    typeof useQueryMutationOrchestrator
+  >[0]['captureFreshTupleBounds'];
   rerunActiveSearch: (options: {
     searchMode: SearchMode;
     activeTab: SegmentValue;
@@ -180,6 +183,7 @@ export const useSearchFilterModalOwner = ({
   scheduleToggleCommit,
   applyIncludeSimilarLocalSwap,
   resultsRuntimeOwner,
+  captureFreshTupleBounds,
   rerunActiveSearch,
   registerTransientDismissor,
   onMechanismEvent,
@@ -294,6 +298,7 @@ export const useSearchFilterModalOwner = ({
     applyIncludeSimilarLocalSwap,
     resultsRuntimeOwner,
     priceSheetRef,
+    captureFreshTupleBounds,
     onMechanismEvent,
   });
 

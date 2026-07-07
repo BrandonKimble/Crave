@@ -28,6 +28,7 @@ import { useSearchSubmitExecutionOwner } from './use-search-submit-execution-own
 import { useSearchSubmitResponseOwner } from './use-search-submit-response-owner';
 import { useSearchSubmitStructuredHelperOwner } from './use-search-submit-structured-helper-owner';
 import { useSearchStructuredSubmitOwner } from './use-search-structured-submit-owner';
+import { captureFreshCommittedBounds } from '../runtime/shared/search-desired-state-writer';
 import { useSearchSubmitActionOwner } from './use-search-submit-action-owner';
 import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
 type SearchSubmitOwnerReadModel = {
@@ -116,6 +117,10 @@ type RecentSearchInput = {
 
 type SearchSubmitOwner = {
   submitSearch: (options?: SubmitSearchOptions, overrideQuery?: string) => Promise<void>;
+  /** S3-pre: commit-moment settled-camera adopt for tuple writers (STA, chip reruns). */
+  captureFreshTupleBounds: () => Promise<
+    import('../runtime/shared/search-desired-state-contract').SearchCommittedBounds | null
+  >;
   runRestaurantEntitySearch: (params: {
     restaurantId: string;
     restaurantName: string;
@@ -334,6 +339,12 @@ const useSearchSubmitOwner = ({
     handleSearchResponse,
     publishShortcutCoverageForResponse,
   });
+  // S3-pre: commit-moment triggers (STA, chip reruns) adopt the SETTLED native camera
+  // into the tuple BEFORE writing it — the resolver never touches the map ref.
+  const captureFreshTupleBounds = React.useCallback(
+    () => captureFreshCommittedBounds({ mapRef, viewportBoundsService }),
+    [mapRef, viewportBoundsService]
+  );
   const {
     runRestaurantEntitySearch,
     submitViewportShortcut,
@@ -342,6 +353,7 @@ const useSearchSubmitOwner = ({
   } = useSearchStructuredSubmitOwner({
     searchRuntimeBus,
     viewportBoundsService,
+    captureFreshTupleBounds,
     currentPage,
     canLoadMore,
     hasResults,
@@ -429,6 +441,7 @@ const useSearchSubmitOwner = ({
 
   return {
     submitSearch,
+    captureFreshTupleBounds,
     runRestaurantEntitySearch,
     submitViewportShortcut,
     rerunActiveSearch,

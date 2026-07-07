@@ -48,6 +48,7 @@ export const useSearchRootFilterModalRuntime = ({
     scheduleToggleCommit: resultsPresentationOwner.scheduleToggleCommit,
     applyIncludeSimilarLocalSwap: submitRuntimeResult.applyIncludeSimilarLocalSwap,
     resultsRuntimeOwner: resultsPresentationOwner,
+    captureFreshTupleBounds: submitRuntimeResult.captureFreshTupleBounds,
     rerunActiveSearch: submitRuntimeResult.rerunActiveSearch,
     registerTransientDismissor: rootOverlayStoreRuntime.registerTransientDismissor,
     onMechanismEvent: rootInstrumentationRuntime.emitRuntimeMechanismEvent,

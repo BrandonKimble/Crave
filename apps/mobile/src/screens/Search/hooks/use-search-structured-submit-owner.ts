@@ -10,6 +10,7 @@ import {
   captureCommittedBounds,
   writeSearchDesiredTuple,
 } from '../runtime/shared/search-desired-state-writer';
+import type { SearchCommittedBounds } from '../runtime/shared/search-desired-state-contract';
 import type { SegmentValue } from '../constants/search';
 import { createFavoritesSubmitIntentPayload } from '../runtime/adapters/favorites-adapter';
 import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
@@ -46,6 +47,9 @@ type RunBestHereOptions = {
 type UseSearchStructuredSubmitOwnerArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   viewportBoundsService: ViewportBoundsService;
+  /** S3-pre commit-moment adopt: awaits the SETTLED native camera (bounds + polygon)
+   *  before the tuple write, so the resolver reads bounds from the tuple only. */
+  captureFreshTupleBounds: () => Promise<SearchCommittedBounds | null>;
   currentPage: number;
   canLoadMore: boolean;
   hasResults: boolean;
@@ -171,6 +175,7 @@ type UseSearchStructuredSubmitOwnerArgs = {
 export const useSearchStructuredSubmitOwner = ({
   searchRuntimeBus,
   viewportBoundsService,
+  captureFreshTupleBounds,
   currentPage,
   canLoadMore,
   hasResults,
@@ -430,6 +435,12 @@ export const useSearchStructuredSubmitOwner = ({
       // S2: the trigger writes the DESIRED TUPLE first (identity + tab + adopted viewport);
       // the writer projects searchMode/submittedQuery/session in the same publish. The
       // submit machinery below still executes the resolution until S3's resolver.
+      // S3-pre: STA (and any post-camera-move commit moment) awaits the SETTLED native
+      // camera so the tuple's bounds are the request bounds — never a stale service read.
+      const adoptedBounds =
+        options?.presentationIntentKind === 'search_this_area' || options?.forceFreshBounds
+          ? await captureFreshTupleBounds()
+          : captureCommittedBounds(viewportBoundsService);
       writeSearchDesiredTuple(
         searchRuntimeBus,
         {
@@ -439,7 +450,7 @@ export const useSearchStructuredSubmitOwner = ({
           },
           tab: targetTab === 'dishes' ? 'dishes' : 'restaurants',
           filterVariant: { includeSimilar: false },
-          committedBounds: captureCommittedBounds(viewportBoundsService),
+          committedBounds: adoptedBounds,
         },
         options?.presentationIntentKind === 'search_this_area'
           ? 'search_this_area'
@@ -587,6 +598,8 @@ export const useSearchStructuredSubmitOwner = ({
             kind: 'entities',
             restaurantIds: [],
             foodIds: [],
+            listId: params.listId,
+            listType: params.listType,
             displayTitle: params.submittedLabel,
           },
           tab: targetTab === 'dishes' ? 'dishes' : 'restaurants',

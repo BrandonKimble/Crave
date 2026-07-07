@@ -36,6 +36,10 @@ export type SearchQueryIdentity =
       /** Favorites-as-search / shared lists: explicit entity id sets, no LLM. */
       restaurantIds: readonly string[];
       foodIds: readonly string[];
+      /** The list the sets came from — the resolver's fetch handle (getListResults).
+       *  Null for raw id-set launches that carry their ids inline. */
+      listId: string | null;
+      listType: 'restaurant' | 'dish' | null;
       /** Presentation title for the results header (e.g. the list name). */
       displayTitle: string;
     }
@@ -134,6 +138,8 @@ export const areSearchQueryIdentitiesEqual = (
       const other = b as Extract<SearchQueryIdentity, { kind: 'entities' }>;
       return (
         a.displayTitle === other.displayTitle &&
+        a.listId === other.listId &&
+        a.listType === other.listType &&
         a.restaurantIds.length === other.restaurantIds.length &&
         a.restaurantIds.every((id, index) => id === other.restaurantIds[index]) &&
         a.foodIds.length === other.foodIds.length &&
@@ -196,7 +202,7 @@ export const buildSearchCardsWorldKey = (tuple: SearchDesiredTuple): string => {
       : identity.kind === 'shortcut'
         ? `shortcut:${identity.shortcutTab}`
         : identity.kind === 'entities'
-          ? `entities:${identity.restaurantIds.join(',')}|${identity.foodIds.join(',')}`
+          ? `entities:${identity.listId ?? ''}:${identity.listType ?? ''}:${identity.restaurantIds.join(',')}|${identity.foodIds.join(',')}`
           : identity.kind === 'entity'
             ? `entity:${identity.entityType}:${identity.entityId}`
             : identity.kind === 'profileSeed'

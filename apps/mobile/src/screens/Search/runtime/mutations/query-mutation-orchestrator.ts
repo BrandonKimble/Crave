@@ -2,6 +2,7 @@ import React from 'react';
 
 import { logger } from '../../../../utils';
 import { writeSearchDesiredTuple } from '../shared/search-desired-state-writer';
+import type { SearchCommittedBounds } from '../shared/search-desired-state-contract';
 import type { ScheduleToggleCommit } from '../shared/results-toggle-interaction-contract';
 import { createSearchSurfaceResultsEnterTransaction } from '../shared/search-surface-results-transaction';
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
@@ -68,6 +69,9 @@ type UseQueryMutationOrchestratorArgs = {
     | 'beginVariantRerunPresentationPending'
   >;
   priceSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
+  /** S3-pre commit-moment adopt: a chip commit re-reads the SETTLED native camera into the
+   *  tuple, so a zoom-then-toggle resolves against the CURRENT viewport by construction. */
+  captureFreshTupleBounds: () => Promise<SearchCommittedBounds | null>;
   onMechanismEvent?: QueryMutationMechanismEmitter;
 };
 
@@ -102,8 +106,39 @@ export const useQueryMutationOrchestrator = (
     applyIncludeSimilarLocalSwap,
     resultsRuntimeOwner,
     priceSheetRef,
+    captureFreshTupleBounds,
     onMechanismEvent,
   } = args;
+
+  // Chip commits are COMMIT MOMENTS (charter §2): adopt the settled camera into the tuple
+  // in the same write as the variant flip, so the rerun resolves against the viewport the
+  // user is looking at — the zoom-then-toggle lane needs no special casing anywhere else.
+  // The flip value is read AFTER the capture lands so rapid re-taps stay correct.
+  const writeChipVariantTuple = React.useCallback(
+    (
+      buildFilterVariant: () => {
+        openNow?: boolean;
+        priceLevels?: number[];
+        rising?: boolean;
+        includeSimilar?: boolean;
+      },
+      cause: 'chip_open_now' | 'chip_rising' | 'chip_price' | 'chip_include_similar'
+    ) => {
+      void captureFreshTupleBounds()
+        .catch(() => null)
+        .then((committedBounds) => {
+          writeSearchDesiredTuple(
+            searchRuntimeBus,
+            {
+              filterVariant: buildFilterVariant(),
+              ...(committedBounds != null ? { committedBounds } : {}),
+            },
+            cause
+          );
+        });
+    },
+    [captureFreshTupleBounds, searchRuntimeBus]
+  );
 
   const pendingPriceRangeRef = React.useRef<PriceRangeTuple>(pendingPriceRange);
 
@@ -330,44 +365,50 @@ export const useQueryMutationOrchestrator = (
     clearPendingTabSwitchDraft();
     // S2: the trigger only WRITES the tuple (optimistic chip flip via the legacy
     // projection in the same publish); the desired-tuple reader owns the commit.
-    writeSearchDesiredTuple(
-      searchRuntimeBus,
-      {
-        filterVariant: {
-          includeSimilar: !searchRuntimeBus.getState().desiredTuple.filterVariant.includeSimilar,
-        },
-      },
+    writeChipVariantTuple(
+      () => ({
+        includeSimilar: !searchRuntimeBus.getState().desiredTuple.filterVariant.includeSimilar,
+      }),
       'chip_include_similar'
     );
-  }, [clearPendingTabSwitchDraft, searchRuntimeBus, setIsPriceSelectorVisible]);
+  }, [
+    clearPendingTabSwitchDraft,
+    searchRuntimeBus,
+    setIsPriceSelectorVisible,
+    writeChipVariantTuple,
+  ]);
 
   const toggleRising = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
-    writeSearchDesiredTuple(
-      searchRuntimeBus,
-      {
-        filterVariant: {
-          rising: !searchRuntimeBus.getState().desiredTuple.filterVariant.rising,
-        },
-      },
+    writeChipVariantTuple(
+      () => ({
+        rising: !searchRuntimeBus.getState().desiredTuple.filterVariant.rising,
+      }),
       'chip_rising'
     );
-  }, [clearPendingTabSwitchDraft, searchRuntimeBus, setIsPriceSelectorVisible]);
+  }, [
+    clearPendingTabSwitchDraft,
+    searchRuntimeBus,
+    setIsPriceSelectorVisible,
+    writeChipVariantTuple,
+  ]);
 
   const toggleOpenNow = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
     clearPendingTabSwitchDraft();
-    writeSearchDesiredTuple(
-      searchRuntimeBus,
-      {
-        filterVariant: {
-          openNow: !searchRuntimeBus.getState().desiredTuple.filterVariant.openNow,
-        },
-      },
+    writeChipVariantTuple(
+      () => ({
+        openNow: !searchRuntimeBus.getState().desiredTuple.filterVariant.openNow,
+      }),
       'chip_open_now'
     );
-  }, [clearPendingTabSwitchDraft, searchRuntimeBus, setIsPriceSelectorVisible]);
+  }, [
+    clearPendingTabSwitchDraft,
+    searchRuntimeBus,
+    setIsPriceSelectorVisible,
+    writeChipVariantTuple,
+  ]);
 
   const commitPriceSelection = React.useCallback(() => {
     const snapshot = pendingPriceRangeRef.current;
@@ -393,12 +434,9 @@ export const useQueryMutationOrchestrator = (
     clearPendingTabSwitchDraft();
     // S2: the price sheet is DRAFT state (widget-owned sliders) committed as ONE tuple
     // write at the Done gesture; the desired-tuple reader owns the rerun commit.
-    writeSearchDesiredTuple(
-      searchRuntimeBus,
-      { filterVariant: { priceLevels: nextLevels } },
-      'chip_price'
-    );
+    writeChipVariantTuple(() => ({ priceLevels: nextLevels }), 'chip_price');
   }, [
+    writeChipVariantTuple,
     clearPendingTabSwitchDraft,
     emitMutationCoalesced,
     priceSheetRef,
