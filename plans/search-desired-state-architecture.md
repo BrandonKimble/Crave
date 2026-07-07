@@ -149,6 +149,18 @@ transition is rejected loudly.
   with ack). **The atomic joint is a VISIBILITY FLIP, not atomic construction** — cards +
   strip + pin fade-in start on the same tick with O(1) JS cost (this is §D6c's
   mounted-hidden election, kept and named).
+- **Readiness is a DATA fact, never a render fact** (perf-fork finding, 2026-07-06):
+  today "cardsReady" derives from the list's layoutEffect — RENDERING is the readiness
+  oracle, so the joint is hostage to JS-thread saturation (~335ms measured while 20 cards
+  lay out under cover) and the empty variant strands because zero rows can't
+  "render-ready." In this design: world-ready = prepared rows COMMITTED (a store fact) +
+  native sources ACKED; the list paints under the cover but is never gated on. Rendering
+  under cover may overlap arming freely — it just can't hold the joint.
+- **Exactly ONE structural frame per world** — an explicit RED-provable invariant (the
+  perf fork measured every toggle paying TWO full five-source structural applies, ~430ms
+  apart). Frame identity = worldId; a second apply for the same worldId is an acked
+  native no-op by §6, and the JS frame builder emitting twice for one world is a loud
+  contract violation.
 - **Revealing → idle:** joint opens when the armed world == the CURRENT desired tuple's
   world; collision ON at fade-in start; `presented ← worldId` on ack.
 - A wedge (desired ≠ presented beyond budget) is REPRESENTABLE and LOUD — a contract
@@ -166,6 +178,11 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
 - **Ack EVERYTHING:** `accepted | superseded_by | dropped(reason)` + state snapshot, on
   every payload including drops. JS `presentedWorld` updates ONLY from these acks; the
   reconciler subscribes to acks with the same priority as tuple writes.
+- **Acks are native EVENTS with native (mach-clock) timestamps, never JS promise
+  resolutions** (perf-fork finding: the 'applied' ack rides a JS promise today, so a
+  saturated JS thread delays the ack — and everything gated on it — by hundreds of ms
+  while cards lay out; the measured "native apply" time was mostly starved-callback time).
+  Native timestamps also make the joint-gap metric honest.
 - **Retarget algebra:** a reveal assertion implies dismiss-key-clear; a reveal-key change
   during ANY phase is a retarget (the enter-lane reset already exists); the
   reveal-during-dismiss wedge (dismiss key present blocks enter forever) becomes
@@ -208,9 +225,27 @@ gates; each stage ships whole with measurements (joint gap ≤ 1 frame, zero str
 a scripted zoom/toggle/zoom/toggle/zoom-out/retoggle torture lane, chip stability,
 empty-variant reveal, basemap-label crossfade eyeball). The append-only trace (tuple
 writes, resolutions, phase transitions) is the attribution substrate.
+Rig gotcha (perf fork): the `toggle` perf scenario is NOT in the attribution allowlist —
+lifecycle/gate events are invisible under it; drive timelines with
+`search_submit_dismiss_repeat`.
+
+**Measured latency baseline (perf fork, 2026-07-06 — the numbers each stage must beat):**
+server /search/run 224–366ms for a shortcut open-now toggle (LLM not in path — the server
+refactor works); coverage serialization behind the search cost ~300–460ms and was
+parallelized in the fork (bbf97e85 — a resolver-shaped interim: coverage fetches against
+the current viewport while the page-1 rerun is in flight; S3's resolver absorbs and
+replaces this); post-response pipeline 300–470ms decomposing to rows prepare + layout +
+readiness commit ~135ms, structural-frame queued→applied ~335ms (mostly JS-starved
+promise-ack time, not native work — see §6 native-event acks), plus a fully redundant
+SECOND five-source structural apply ~430ms later (see §5 one-frame-per-world invariant).
+The joint opened at +441ms post-commit on the matched drive after the coverage fix.
+S3+S4 acceptance: joint ≤ ~250ms post-commit on the same drive (server RTT + one apply),
+one structural frame per world, ack delivered natively. Also measured: the circular
+redraw-phase chain for reruns (rows release waits on a phase that only advances after the
+reveal; resolves via a side path today) — dies with the transaction machine in S4.
 
 **Later (resolver-internal, not architectural):** merge coverage into /search/run — one
-round trip per world; halves chip-toggle latency (the owner's "why is open-now slow").
+round trip per world; the fork's serialization measurement quantifies the win.
 Payload-size numbers required first.
 
 ## 8. Bug classes this makes unrepresentable (the test of the design)
