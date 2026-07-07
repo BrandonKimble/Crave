@@ -270,10 +270,14 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     unrevealed** (dots+cards fine; sources carry features; phase machine settles
     cleanly; bisected to reproduce at the S2 baseline 0c7d8506). Tracked as task #16 —
     dies structurally in S4's native (worldId, phase) + ack protocol.
-  - **S3d remaining:** the map controller's post-response coverage lane + bbf97e85
-    interim + snapshot/terminal refs (silently no-ops for resolver worlds — resolver
-    fetches coverage into the world since S3a); a focused surgical pass on the
-    controller. profileSeed stays lane-owned until S4.
+  - **S3d tail SHIPPED** (0918f227, −1,388 lines): the controller's coverage fetch
+    lane is DELETED (maybeFetchShortcutCoverage + sibling prefetch + bbf97e85 interim +
+    relay entry + 8 refs + key builders + coverage-cache-policy module). The frame reads
+    coverage from the WORLD only; dismiss clears the mounted projection while the
+    resolver's world cache survives (idle = resident-dormant). On-rig: submit → tab
+    toggle to dishes (dish labels + dots from the world) → open-now rerun on dishes —
+    full composite green. **S3 IS COMPLETE** (~7.4k legacy lines deleted) except
+    profileSeed, which is chartered into S4's reconciler by design.
   - (superseded) **Next: S3d — THE DELETION.** Now unreachable: executeActivatedNaturalSearch-
     Attempt (natural owner), loadMoreResults+loadMoreShortcutResults legacy bodies +
     executeShortcutAppendAttempt (action/structured owners), runManagedRequestAttempt
