@@ -2,6 +2,7 @@ import React from 'react';
 import { Keyboard, type TextInput } from 'react-native';
 
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import { writeSearchDesiredTuple } from '../runtime/shared/search-desired-state-writer';
 import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 
 export type SearchClearOwner = {
@@ -227,6 +228,15 @@ export const useSearchClearOwner = <Suggestion>({
         resetSubmitTransitionHold();
       }
       resetFilters();
+      // S2: dismiss returns the DESIRED TUPLE to idle (identity + bounds cleared; the
+      // filter reset above already routed through the writer). The reader ignores
+      // non-chip causes, so this never re-runs a search — close choreography stays
+      // trigger-owned until S4.
+      writeSearchDesiredTuple(
+        searchRuntimeBus,
+        { queryIdentity: { kind: 'idle' }, committedBounds: null },
+        'dismiss'
+      );
       cancelToggleInteraction();
       if (!preserveForegroundEditing) {
         setIsSearchFocused(false);

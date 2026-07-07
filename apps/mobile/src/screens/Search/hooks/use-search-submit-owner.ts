@@ -260,6 +260,7 @@ const useSearchSubmitOwner = ({
     prepareNaturalSearchEntry,
     resolveNaturalSearchAttemptConfig,
   } = useSearchSubmitEntryOwner({
+    viewportBoundsService,
     query,
     submittedQuery,
     preferredActiveTab,
@@ -339,6 +340,8 @@ const useSearchSubmitOwner = ({
     loadMoreShortcutResults,
     launchFavoritesListResults,
   } = useSearchStructuredSubmitOwner({
+    searchRuntimeBus,
+    viewportBoundsService,
     currentPage,
     canLoadMore,
     hasResults,

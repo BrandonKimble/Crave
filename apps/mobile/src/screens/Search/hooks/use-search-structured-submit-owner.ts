@@ -4,6 +4,12 @@ import type { Coordinate, NaturalSearchRequest, SearchResponse } from '../../../
 import type { SearchRequestCacheStatus, StructuredSearchRequest } from '../../../services/search';
 import type { FavoriteListType } from '../../../services/favorite-lists';
 import { logger } from '../../../utils';
+import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
+import {
+  captureCommittedBounds,
+  writeSearchDesiredTuple,
+} from '../runtime/shared/search-desired-state-writer';
 import type { SegmentValue } from '../constants/search';
 import { createFavoritesSubmitIntentPayload } from '../runtime/adapters/favorites-adapter';
 import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
@@ -38,6 +44,8 @@ type RunBestHereOptions = {
 };
 
 type UseSearchStructuredSubmitOwnerArgs = {
+  searchRuntimeBus: SearchRuntimeBus;
+  viewportBoundsService: ViewportBoundsService;
   currentPage: number;
   canLoadMore: boolean;
   hasResults: boolean;
@@ -161,6 +169,8 @@ type UseSearchStructuredSubmitOwnerArgs = {
 };
 
 export const useSearchStructuredSubmitOwner = ({
+  searchRuntimeBus,
+  viewportBoundsService,
   currentPage,
   canLoadMore,
   hasResults,
@@ -417,6 +427,24 @@ export const useSearchStructuredSubmitOwner = ({
   const submitViewportShortcut = React.useCallback(
     async (targetTab: SegmentValue, submittedLabel: string, options: RunBestHereOptions) => {
       logSearchPhase('runBestHere:start', { reset: true });
+      // S2: the trigger writes the DESIRED TUPLE first (identity + tab + adopted viewport);
+      // the writer projects searchMode/submittedQuery/session in the same publish. The
+      // submit machinery below still executes the resolution until S3's resolver.
+      writeSearchDesiredTuple(
+        searchRuntimeBus,
+        {
+          queryIdentity: {
+            kind: 'shortcut',
+            shortcutTab: targetTab === 'dishes' ? 'dishes' : 'restaurants',
+          },
+          tab: targetTab === 'dishes' ? 'dishes' : 'restaurants',
+          filterVariant: { includeSimilar: false },
+          committedBounds: captureCommittedBounds(viewportBoundsService),
+        },
+        options?.presentationIntentKind === 'search_this_area'
+          ? 'search_this_area'
+          : 'initial_submit'
+      );
       const preserveSheetState = Boolean(options?.preserveSheetState);
       const transitionFromDockedPolls =
         !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
@@ -549,6 +577,23 @@ export const useSearchStructuredSubmitOwner = ({
       logSearchPhase('launchFavorites:start', { reset: true });
       const targetTab: SegmentValue = params.listType === 'dish' ? 'dishes' : 'restaurants';
       resetMapMoveFlag();
+      // S2: favorites-as-search writes the tuple (entities kind; id sets arrive with the
+      // response until S3's resolver — the listId path stays lane-owned). No viewport adopt:
+      // the results define the camera.
+      writeSearchDesiredTuple(
+        searchRuntimeBus,
+        {
+          queryIdentity: {
+            kind: 'entities',
+            restaurantIds: [],
+            foodIds: [],
+            displayTitle: params.submittedLabel,
+          },
+          tab: targetTab === 'dishes' ? 'dishes' : 'restaurants',
+          filterVariant: { includeSimilar: false },
+        },
+        'favorites_launch'
+      );
       await runManagedRequestAttempt({
         mode: 'favorites',
         submitPayload: createFavoritesSubmitIntentPayload({

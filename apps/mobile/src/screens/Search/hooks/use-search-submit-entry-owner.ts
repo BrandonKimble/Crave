@@ -4,7 +4,11 @@ import { Keyboard, unstable_batchedUpdates } from 'react-native';
 import type { NaturalSearchRequest } from '../../../types';
 import { DEFAULT_SEGMENT } from '../constants/search';
 import type { SegmentValue } from '../constants/search';
-import { writeSearchDesiredTuple } from '../runtime/shared/search-desired-state-writer';
+import {
+  captureCommittedBounds,
+  writeSearchDesiredTuple,
+} from '../runtime/shared/search-desired-state-writer';
+import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import { createEntitySubmitIntentPayload } from '../runtime/adapters/entity-adapter';
 import { createShortcutSubmitIntentPayload } from '../runtime/adapters/shortcut-adapter';
 import type { SearchRuntimeBus, SearchRuntimeBusState } from '../runtime/shared/search-runtime-bus';
@@ -123,6 +127,7 @@ type PrepareNaturalSearchForegroundUiOptions = {
 };
 
 type UseSearchSubmitEntryOwnerArgs = {
+  viewportBoundsService: ViewportBoundsService;
   query: string;
   submittedQuery: string;
   preferredActiveTab: SegmentValue;
@@ -194,6 +199,7 @@ const resolveSearchSubmitPresentationEntrySurface = ({
 };
 
 export const useSearchSubmitEntryOwner = ({
+  viewportBoundsService,
   query,
   submittedQuery,
   preferredActiveTab,
@@ -553,13 +559,36 @@ export const useSearchSubmitEntryOwner = ({
         return null;
       }
 
+      if (!append) {
+        // S2: the natural submit writes the DESIRED TUPLE (identity + adopted viewport);
+        // idempotent for variant reruns (identity unchanged → filter writes already landed
+        // via their chip causes). Appends never rewrite desire.
+        writeSearchDesiredTuple(
+          searchRuntimeBus,
+          {
+            queryIdentity: { kind: 'natural', query: trimmedQuery },
+            ...(options?.replaceResultsInPlace && !options?.forceFreshBounds
+              ? {}
+              : { committedBounds: captureCommittedBounds(viewportBoundsService) }),
+          },
+          'initial_submit'
+        );
+      }
       return {
         append,
         targetPage,
         trimmedQuery,
       };
     },
-    [isLoadingMore, isSearchRequestInFlightRef, query, resetMapMoveFlag, searchRuntimeBus, setError]
+    [
+      isLoadingMore,
+      isSearchRequestInFlightRef,
+      query,
+      resetMapMoveFlag,
+      searchRuntimeBus,
+      setError,
+      viewportBoundsService,
+    ]
   );
 
   const resolveNaturalSearchAttemptConfig = React.useCallback(

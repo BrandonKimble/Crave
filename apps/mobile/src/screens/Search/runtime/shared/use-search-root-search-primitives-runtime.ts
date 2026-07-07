@@ -3,6 +3,7 @@ import type { FlashListRef } from '@shopify/flash-list';
 import type { SetStateAction } from 'react';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
+import { writeSearchDesiredTuple } from './search-desired-state-writer';
 import { normalizeActiveTab, type SearchActiveTab } from '../../../../store/searchStore';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
@@ -187,9 +188,14 @@ export const useSearchRootSearchPrimitivesRuntime = ({
   const setActiveTab = React.useCallback(
     (tab: SetStateAction<SearchActiveTab>) => {
       const resolved = typeof tab === 'function' ? tab(searchRuntimeBus.getState().activeTab) : tab;
-      searchRuntimeBus.publish({
-        activeTab: normalizeActiveTab(resolved),
-      });
+      const normalized = normalizeActiveTab(resolved);
+      // S2: the tab is tuple state — ONE writer; activeTab is its projection. The tab
+      // toggle's commit lane (pendingTabSwitchTab choreography) stays lane-owned until S4.
+      writeSearchDesiredTuple(
+        searchRuntimeBus,
+        { tab: normalized === 'dishes' ? 'dishes' : 'restaurants' },
+        'tab_toggle'
+      );
     },
     [searchRuntimeBus]
   );

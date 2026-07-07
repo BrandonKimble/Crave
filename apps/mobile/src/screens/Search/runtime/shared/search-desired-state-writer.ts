@@ -12,6 +12,7 @@ import { logger } from '../../../../utils';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import {
   areSearchDesiredTuplesEqual,
+  areSearchQueryIdentitiesEqual,
   buildSearchCoverageWorldKey,
   type SearchCommittedBounds,
   type SearchDesiredTuple,
@@ -19,6 +20,45 @@ import {
   type SearchQueryIdentity,
   type SearchTupleWriteCause,
 } from './search-desired-state-contract';
+
+const deriveLegacySearchMode = (identity: SearchQueryIdentity): 'natural' | 'shortcut' | null =>
+  identity.kind === 'natural'
+    ? 'natural'
+    : identity.kind === 'shortcut' || identity.kind === 'entities' || identity.kind === 'entity'
+      ? 'shortcut'
+      : null;
+
+const deriveLegacySubmittedQuery = (identity: SearchQueryIdentity): string =>
+  identity.kind === 'natural'
+    ? identity.query
+    : identity.kind === 'shortcut'
+      ? identity.shortcutTab === 'restaurants'
+        ? 'Best restaurants'
+        : 'Best dishes'
+      : identity.kind === 'entities'
+        ? identity.displayTitle
+        : identity.kind === 'entity'
+          ? identity.displayName
+          : '';
+
+/** Adopt-viewport helper for commit-moment triggers: captures the SETTLED camera the same
+ *  way request preparation does (bounds + screen-accurate polygon). */
+export const captureCommittedBounds = (viewportBoundsService: {
+  getBounds: () => import('../../../../types').MapBounds | null;
+  getSubmittedPolygon: () => Array<[number, number]> | null | undefined;
+}): SearchCommittedBounds | null => {
+  const bounds = viewportBoundsService.getBounds();
+  if (bounds == null) {
+    return null;
+  }
+  const polygon = viewportBoundsService.getSubmittedPolygon();
+  return {
+    bounds,
+    viewportPolygon: Array.isArray(polygon)
+      ? polygon.map(([lng, lat]) => [lng, lat] as const)
+      : null,
+  };
+};
 
 export type SearchDesiredTuplePatch = {
   queryIdentity?: SearchQueryIdentity;
@@ -52,15 +92,42 @@ export const writeSearchDesiredTuple = (
     return { tuple: prev, generation: state.desiredTupleGeneration, changed: false };
   }
   const generation = state.desiredTupleGeneration + 1;
+  // Legacy projections — read-only elsewhere from S2 on; deleted in S4. Only CHANGED keys
+  // are included (the bus Object.is-guards per key; a fresh-but-equal array would spuriously
+  // notify priceLevels subscribers — the bridge's value-compare lesson).
+  const identityChanged =
+    patch.queryIdentity != null &&
+    !areSearchQueryIdentitiesEqual(prev.queryIdentity, next.queryIdentity);
+  const priceChanged =
+    prev.filterVariant.priceLevels.length !== next.filterVariant.priceLevels.length ||
+    next.filterVariant.priceLevels.some(
+      (value, index) => value !== prev.filterVariant.priceLevels[index]
+    );
   searchRuntimeBus.publish({
     desiredTuple: next,
     desiredTupleGeneration: generation,
     desiredTupleCause: cause,
-    // Legacy projections — read-only elsewhere from S2 on; deleted in S4.
-    openNow: next.filterVariant.openNow,
-    priceLevels: [...next.filterVariant.priceLevels],
-    risingActive: next.filterVariant.rising,
-    includeSimilarActive: next.filterVariant.includeSimilar,
+    ...(prev.filterVariant.openNow !== next.filterVariant.openNow
+      ? { openNow: next.filterVariant.openNow }
+      : {}),
+    ...(priceChanged ? { priceLevels: [...next.filterVariant.priceLevels] } : {}),
+    ...(prev.filterVariant.rising !== next.filterVariant.rising
+      ? { risingActive: next.filterVariant.rising }
+      : {}),
+    ...(prev.filterVariant.includeSimilar !== next.filterVariant.includeSimilar
+      ? { includeSimilarActive: next.filterVariant.includeSimilar }
+      : {}),
+    // Identity-derived projections publish ONLY on identity change (a chip write while the
+    // identity conversion is still lane-owned must never null searchMode).
+    ...(identityChanged
+      ? {
+          searchMode: deriveLegacySearchMode(next.queryIdentity),
+          submittedQuery: deriveLegacySubmittedQuery(next.queryIdentity),
+          isSearchSessionActive:
+            next.queryIdentity.kind !== 'idle' && next.queryIdentity.kind !== 'profileSeed',
+        }
+      : {}),
+    ...(patch.tab != null && prev.tab !== next.tab ? { activeTab: next.tab } : {}),
   });
   if (__DEV__) {
     // The append-only trace (charter §1: measurement labels, never lifecycle).
