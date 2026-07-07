@@ -237,8 +237,22 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     (applyIncludeSimilarLocalSwap; moves to the derivation tier once submits populate
     the cache); bbf97e85 interim block still serves legacy STA reruns; natural-identity
     chip rerun path routed but only exercised for shortcut on-rig.
-  - **Next: S3b** (initial submits incl. STA → tuple write + resolver; market resolution
-    into the fetch env), then S3c (launches + pagination), S3d (delete the owner chain).
+  - **S3b-1 SHIPPED** (f00c95a0): shortcut initial submits + STA = tuple write +
+    resolve; beginResolverSubmitForegroundUi = the surviving foreground effects;
+    seam REPRESENT-NOOP (re-assert of the on-screen world skips the structural batch
+    by construction and completes choreography — invariant enforced, not warned);
+    onWorldCommitted keeps lastSearchRequestIdRef truthful; coverage parallel when
+    market known / serialized behind cards on first-in-market; DEAD:
+    executeShortcutInitialAttempt + createShortcutStructuredInitialAttemptConfig +
+    primeShortcutStructuredRequest. On-rig: cold submit reveal + chip toggle +
+    represent_noop resubmit all green, zero contract noise.
+  - **Next: S3b-2** — natural submits through the resolver: prepareNaturalSearchEntry
+    already writes the tuple; route submitSearch's non-append path to resolve();
+    needs the response tab-adopt as a 'response_tab_adopt' tuple write decided from
+    the landed response (resolveNaturalResponseActiveTab), history push +
+    keyboard/scroll as thin post-commit effects, single-restaurant candidate
+    (hide-sheet + profile auto-open) as world metadata. Then S3c (launches +
+    pagination), S3d (delete the owner chain).
 - S4 pending.
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
