@@ -706,6 +706,11 @@ const publishSearchMountedResultsPreparedRowsSnapshot = ({
   source: string;
 }): void => {
   const authority = getResultsPresentationSurfaceAuthority();
+  // eslint-disable-next-line no-console
+  if (__DEV__)
+    console.log(
+      `[REVEALSYNC] preparedRows src=${source} ready=${ready} count=${activeRowCount} jsNowMs=${(globalThis.performance?.now?.() ?? 0).toFixed(1)}`
+    );
   // TR5-N empty-variant: activeRowCount === 0 WITH a results identity is a legitimate,
   // first-class variant (e.g. open-now filtered every row out) — it stages and commits like
   // any other page so the reveal joint can open on the empty state. Only a NULL identity

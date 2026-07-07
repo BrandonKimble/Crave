@@ -3053,6 +3053,22 @@ export const useDirectSearchMapSourceController = ({
     }
     const searchRequestId = mountedResults.metadata.searchRequestId;
     let snapshot = shortcutCoverageSnapshotByRequestIdRef.current.get(searchRequestId) ?? null;
+    // TR5-N perf (measured 2026-07-06): while a page-1 rerun is IN FLIGHT (chip toggle /
+    // search-this-area), the mounted snapshot still belongs to the OLD searchRequestId whose
+    // request bounds can differ from what the rerun will submit (forceFreshBounds = the CURRENT
+    // viewport). The commit-time coverage fetch then runs against the stale bounds and is thrown
+    // away, and the correct (viewport-bounds) fetch only STARTS after the response — serializing
+    // ~340ms of coverage behind a ~220ms search (the reveal joint waited at +737ms instead of
+    // ~+400ms). Fetching the pending variant against the CURRENT viewport instead makes the
+    // post-response fetch a requestKey cache hit, so coverage loads in PARALLEL with the search.
+    // Guards: only while a non-append operation is in flight (tab toggles set no operation;
+    // appends set isLoadingMore and must keep the settled frame's bounds identity).
+    if (snapshot && state.activeOperationId != null && !state.isLoadingMore) {
+      const liveBounds = viewportBoundsService.getBounds();
+      if (liveBounds) {
+        snapshot = { bounds: liveBounds, entities: snapshot.entities };
+      }
+    }
     if (!snapshot) {
       const pending = shortcutCoveragePendingSnapshotByRequestIdRef.current.get(searchRequestId);
       const bounds = viewportBoundsService.getBounds();
