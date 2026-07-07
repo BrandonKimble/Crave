@@ -1,7 +1,9 @@
 import React from 'react';
+import type { Feature, Point } from 'geojson';
 import { reportSearchFlowContractViolation } from './search-flow-contracts';
 
 import type { RestaurantResult, SearchResponse } from '../../../../types';
+import type { RestaurantFeatureProperties } from '../../components/search-map';
 import type { MarkerCatalogEntry } from '../map/map-viewport-query';
 import {
   isPerfScenarioAttributionActive,
@@ -40,6 +42,29 @@ import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { SearchRuntimeInteractionState } from './use-search-root-session-runtime-contract';
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
+// S1 (plans/search-desired-state-architecture.md §7): coverage is a FIELD of the world
+// value, not a separately-keyed resource. The frame builder reads coverage from HERE —
+// results and coverage arrive in one snapshot, so a "coverage not ready for this key"
+// limbo (the covNotReady ladder) is unrepresentable. `features` is null only while
+// resolving/failed; an EMPTY array is a valid ready world (zero dots is a real variant).
+export type SearchMountedResultsCoverageEntry = {
+  status: 'resolving' | 'ready' | 'failed';
+  requestKey: string;
+  features: Array<Feature<Point, RestaurantFeatureProperties>> | null;
+  reason: string | null;
+  resolvedAt: number | null;
+};
+
+export type SearchMountedResultsCoverage = {
+  // The world identity this coverage belongs to. Commits for a different world are
+  // dropped by IDENTITY at the results commit (carry-forward rule), never by a guard.
+  searchRequestId: string;
+  byTab: {
+    dishes: SearchMountedResultsCoverageEntry | null;
+    restaurants: SearchMountedResultsCoverageEntry | null;
+  };
+};
+
 export type SearchMountedResultsDataSnapshot = {
   activeTab: 'dishes' | 'restaurants' | null;
   // R1a-2: marker projections precomputed at response commit for BOTH tabs (the dual_list
@@ -48,6 +73,7 @@ export type SearchMountedResultsDataSnapshot = {
   // entry is null when the committed response genuinely lacks that axis — the controller's
   // fallback then legitimately computes it without tripping the R1a contract.
   precomputedMarkerProjectionByTab: SearchMountedResultsMarkerProjectionByTab | null;
+  coverage: SearchMountedResultsCoverage | null;
   resultsDataIdentityKey: string | null;
   results: SearchResponse | null;
   resultsIdentityKey: string | null;
@@ -172,6 +198,7 @@ const NOOP_SHOW_MORE_EXACT = (): void => {};
 const EMPTY_SEARCH_MOUNTED_RESULTS_DATA_SNAPSHOT: SearchMountedResultsDataSnapshot = {
   activeTab: null,
   precomputedMarkerProjectionByTab: null,
+  coverage: null,
   resultsDataIdentityKey: null,
   results: null,
   resultsIdentityKey: null,
@@ -917,6 +944,11 @@ export const publishSearchMountedResultsDataSnapshot = (
   snapshot = {
     activeTab: nextActiveTab,
     precomputedMarkerProjectionByTab: nextMarkerProjectionByTab,
+    // S1 convergence rule: coverage survives the results commit iff it belongs to the NEW
+    // world (identity match) — so coverage-before-results and results-before-coverage both
+    // converge to the same snapshot structurally, in either commit order.
+    coverage:
+      snapshot.coverage?.searchRequestId === nextResultsRequestKey ? snapshot.coverage : null,
     resultsDataIdentityKey: nextResultsDataIdentityKey,
     results,
     resultsIdentityKey: nextResultsIdentityKey,
@@ -928,6 +960,52 @@ export const publishSearchMountedResultsDataSnapshot = (
   });
   prepareSearchMountedResultsRowsSnapshotFromAuthority();
   return true;
+};
+
+// S1: coverage commits into the WORLD (never into a controller-local pointer). Committing
+// under a searchRequestId that never becomes the world is inert — the next results commit
+// drops it by identity. Coverage is a map-frame input, not a rows input: no rows prepare.
+export const commitSearchMountedResultsCoverage = (args: {
+  searchRequestId: string;
+  tab: 'dishes' | 'restaurants';
+  entry: SearchMountedResultsCoverageEntry;
+}): void => {
+  if (args.entry.status === 'ready' && args.entry.features == null) {
+    // The old features/terminal lockstep bug class, made unconstructable-loud: a ready
+    // coverage entry ALWAYS carries its features array (empty array = valid empty world).
+    reportSearchFlowContractViolation('coverage_ready_without_features', {
+      searchRequestId: args.searchRequestId,
+      tab: args.tab,
+      requestKey: args.entry.requestKey,
+      reason: args.entry.reason,
+    });
+    return;
+  }
+  const current =
+    snapshot.coverage?.searchRequestId === args.searchRequestId
+      ? snapshot.coverage
+      : { searchRequestId: args.searchRequestId, byTab: { dishes: null, restaurants: null } };
+  snapshot = {
+    ...snapshot,
+    coverage: {
+      searchRequestId: args.searchRequestId,
+      byTab: { ...current.byTab, [args.tab]: args.entry },
+    },
+    version: snapshot.version + 1,
+  };
+  listeners.forEach((listener) => {
+    listener();
+  });
+};
+
+export const clearSearchMountedResultsCoverage = (): void => {
+  if (snapshot.coverage == null) {
+    return;
+  }
+  snapshot = { ...snapshot, coverage: null, version: snapshot.version + 1 };
+  listeners.forEach((listener) => {
+    listener();
+  });
 };
 
 const logRowsAdmissionTransition = (

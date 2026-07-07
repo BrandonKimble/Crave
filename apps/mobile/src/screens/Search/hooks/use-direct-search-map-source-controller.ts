@@ -43,9 +43,12 @@ import type { ResultsPresentationAuthority } from '../runtime/shared/results-pre
 import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
 import { getSearchSurfaceRuntime } from '../runtime/surface/search-surface-runtime';
 import {
+  clearSearchMountedResultsCoverage,
+  commitSearchMountedResultsCoverage,
   getSearchMountedResultsDataSnapshot,
   getSeededMarkerRestaurants,
   subscribeSearchMountedResultsDataSnapshot,
+  type SearchMountedResultsCoverageEntry,
 } from '../runtime/shared/search-mounted-results-data-store';
 import { reportSearchFlowContractViolation } from '../runtime/shared/search-flow-contracts';
 import type { ResolvedRestaurantMapLocation } from '../runtime/map/restaurant-location-selection';
@@ -178,6 +181,26 @@ const normalizeJsonValue = (value: unknown): unknown => {
     }, {});
   }
   return value;
+};
+
+// S1: every coverage completion path commits into the WORLD store. The resource lanes
+// carry activeTab as a plain string; a coverage fetch without a real tab is a broken
+// input — loud, never silently narrowed.
+const commitCoverageEntryToWorld = (
+  searchRequestId: string,
+  tab: string | null,
+  entry: SearchMountedResultsCoverageEntry
+): void => {
+  if (tab !== 'dishes' && tab !== 'restaurants') {
+    reportSearchFlowContractViolation('coverage_commit_without_tab', {
+      searchRequestId,
+      tab: tab ?? 'null',
+      requestKey: entry.requestKey,
+      status: entry.status,
+    });
+    return;
+  }
+  commitSearchMountedResultsCoverage({ searchRequestId, tab, entry });
 };
 
 const buildShortcutCoverageEntitiesKey = (
@@ -2931,6 +2954,7 @@ export const useDirectSearchMapSourceController = ({
     shortcutCoverageFeaturesByRequestKeyRef.current.clear();
     shortcutCoverageFetchSeqRef.current += 1;
     shortcutCoverageLoadingRef.current = false;
+    clearSearchMountedResultsCoverage();
     // eslint-disable-next-line no-console
     if (__DEV__) console.log('[PUBTRIG] coverage_reset');
     publishSourcesRef.current();
@@ -3034,6 +3058,16 @@ export const useDirectSearchMapSourceController = ({
             type: 'FeatureCollection',
             features,
           });
+          // S1: the sibling tab's coverage lands in the WORLD at prefetch completion — this is
+          // the tab-toggle guarantee (the toggle finds its coverage in the same snapshot as the
+          // results, no cache-restore choreography in the frame path).
+          commitCoverageEntryToWorld(params.searchRequestId, siblingTab, {
+            status: 'ready',
+            requestKey,
+            features,
+            reason: acceptedFeatureCount > 0 ? 'accepted_features' : 'validated_empty_coverage',
+            resolvedAt: globalThis.performance?.now?.() ?? Date.now(),
+          });
         })
         .catch(() => {
           // Best-effort: on failure leave the caches empty so a real toggle does a normal fetch.
@@ -3109,6 +3143,15 @@ export const useDirectSearchMapSourceController = ({
           shortcutCoverageDotFeaturesRef.current = cacheDecision.restoreFeatures
             ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey) ?? null)
             : null;
+          commitCoverageEntryToWorld(searchRequestId, cachedTerminalResource.activeTab, {
+            status: cacheDecision.restoreFeatures ? 'ready' : 'failed',
+            requestKey,
+            features: cacheDecision.restoreFeatures
+              ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey)?.features ?? [])
+              : null,
+            reason: cachedTerminalResource.terminalReason,
+            resolvedAt: globalThis.performance?.now?.() ?? Date.now(),
+          });
           // eslint-disable-next-line no-console
           if (__DEV__) console.log('[PUBTRIG] coverage_cachehit_terminal');
           publishSourcesRef.current();
@@ -3148,6 +3191,13 @@ export const useDirectSearchMapSourceController = ({
         shortcutCoverageLoadingRef.current = false;
         shortcutCoverageDotFeaturesRef.current = null;
         shortcutCoverageCountersRef.current.completed += 1;
+        commitCoverageEntryToWorld(searchRequestId, activeTab, {
+          status: 'failed',
+          requestKey,
+          features: null,
+          reason: 'viewport_bounds_unavailable',
+          resolvedAt: globalThis.performance?.now?.() ?? Date.now(),
+        });
         // eslint-disable-next-line no-console
         if (__DEV__) console.log('[PUBTRIG] coverage_failed_terminal');
         publishSourcesRef.current();
@@ -3255,6 +3305,15 @@ export const useDirectSearchMapSourceController = ({
         shortcutCoverageDotFeaturesRef.current = cacheDecision.restoreFeatures
           ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey) ?? null)
           : null;
+        commitCoverageEntryToWorld(searchRequestId, successTerminal.activeTab, {
+          status: cacheDecision.restoreFeatures ? 'ready' : 'failed',
+          requestKey,
+          features: cacheDecision.restoreFeatures
+            ? (shortcutCoverageFeaturesByRequestKeyRef.current.get(requestKey)?.features ?? [])
+            : null,
+          reason: successTerminal.terminalReason,
+          resolvedAt: globalThis.performance?.now?.() ?? Date.now(),
+        });
         // eslint-disable-next-line no-console
         if (__DEV__) console.log('[PUBTRIG] coverage_cachehit');
         publishSourcesRef.current();
@@ -3304,6 +3363,13 @@ export const useDirectSearchMapSourceController = ({
     shortcutCoverageResourceRef.current = nextResource;
     shortcutCoverageCountersRef.current.started += 1;
     shortcutCoverageLoadingRef.current = true;
+    commitCoverageEntryToWorld(searchRequestId, activeTab, {
+      status: 'resolving',
+      requestKey,
+      features: null,
+      reason: null,
+      resolvedAt: null,
+    });
     publishTelemetry(
       sourceFramePort.getSnapshot().pinSourceStore.idsInOrder.length,
       sourceFramePort.getSnapshot().dotSourceStore.idsInOrder.length
@@ -3402,6 +3468,13 @@ export const useDirectSearchMapSourceController = ({
         // restore them without a re-fetch. Without this, the cache-hit path restored only the resource and
         // left the features ref on the other tab's coverage (stale-236 / promoted=0).
         shortcutCoverageFeaturesByRequestKeyRef.current.set(requestKey, coverageFeatureCollection);
+        commitCoverageEntryToWorld(searchRequestId, activeTab, {
+          status: 'ready',
+          requestKey,
+          features,
+          reason: terminalReason,
+          resolvedAt: globalThis.performance?.now?.() ?? Date.now(),
+        });
         // eslint-disable-next-line no-console
         if (__DEV__) console.log('[PUBTRIG] coverage_fetched');
         publishSourcesRef.current();
@@ -3463,8 +3536,17 @@ export const useDirectSearchMapSourceController = ({
         shortcutCoverageFeaturesByRequestKeyRef.current.delete(requestKey);
         if (aborted) {
           shortcutCoverageCountersRef.current.aborted += 1;
+          // An abort means a successor fetch owns this tab — the successor's start-commit
+          // already wrote 'resolving' into the world; committing 'failed' here would fight it.
         } else {
           shortcutCoverageCountersRef.current.completed += 1;
+          commitCoverageEntryToWorld(searchRequestId, activeTab, {
+            status: 'failed',
+            requestKey,
+            features: null,
+            reason: 'request_failed',
+            resolvedAt: globalThis.performance?.now?.() ?? Date.now(),
+          });
           logger.warn('Shortcut coverage dot fetch failed', {
             message: error instanceof Error ? error.message : 'unknown error',
             requestId: searchRequestId,
