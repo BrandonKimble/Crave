@@ -315,12 +315,13 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     S3d (nothing published lane_e). Close-cleanup's staleness token migrated to the
     episode token. `activeOperationId` survives only inside the transaction machine and
     dies with it in S4c-1.
-  - **Next: S4c-1** — statechart replaces the transaction machine (seam emits
-    world_ready; adapter onto the existing native protocol; synthesize fade_out_acked
-    from transport events; DELETE the 1,190-line surface-transaction runtime +
-    coordinator + redraw-transaction lanes + both watchdogs + pendingTabSwitchTab +
-    React-tab present-sync). Then S4d (native (worldId, phase) + ack-everything — task
-    #16 acceptance), S4e (legacy bus-key deletion via tuple selectors).
+  - **S4c-1a SHIPPED** (ee830491): both reveal watchdogs deleted (−320 lines, log-only).
+  - **Next: S4c-1b..e** — tab_switch rides the reconciler, then the worldId-keyed
+    presentation host replaces the transaction machine (seam world_ready; adapter onto
+    the existing native protocol), redraw re-key, profileSeed synthesis. FILE-LEVEL MAP:
+    plans/search-s4-reconciler-edit-map.md §"S4c execution state". Then S4d (native
+    (worldId, phase) + ack-everything — task #16 acceptance), S4e (legacy bus-key
+    deletion via tuple selectors).
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be

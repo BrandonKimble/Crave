@@ -101,6 +101,56 @@ Swift side (`ios/cravesearch/SearchMapRenderController.swift`, 12.8k lines — t
 - **S4a — reconciler dark + intent-derivation parity.** Land reconciler + statechart host; reconciler classifies every tuple write and TRACES `[RECONCILE] {generation, class, derivedIntent}` next to the trigger-passed intent; RED contract on mismatch. Statechart runs shadow (events in, effects traced, none executed). No behavior change. Rig: full composite lane, zero mismatch lines across submit/STA/chips/tab/favorites/entity/dismiss/resubmit.
 - **S4b — reconciler owns resolution.** Delete the S2 chip reader, all trigger `resolveDesiredWorld` calls, `beginResolverSubmitForegroundUi` (effects move per §2), resolver arg surface shrinks. Transaction machine still the presentation writer, driven by the reconciler through the EXISTING seam callbacks (temporary adapter: reconciler class → the machine's `beginVariantRerunPresentationPending`/staging entries, keyed by worldId-as-transactionId). Rig: S3 composite + torture lane (zoom/toggle/zoom/toggle/zoom-out/retoggle) — zero strands, chip stability.
 - **S4c — statechart replaces the transaction machine (JS only).** Seam emits `world_ready`; host executes effects through an ADAPTER onto the existing native protocol (worldId → requestKey mapping; phases → today's `visualFrameTransaction` kinds) — still exactly one native writer, no native diff yet. DELETE: `use-results-presentation-surface-transaction-runtime.ts`, `search-surface-results-transaction.ts` coordinator, redraw-transaction runtime in `search-surface-runtime.ts`, both watchdogs, `pendingTabSwitchTab` lane, React-tab present-sync. Rig: joint gap ≤ 1 frame on `search_submit_dismiss_repeat`, empty-variant reveal, A→B→A reversal eyeball.
+
+### S4c execution state (progressive slices, each committed green)
+
+- **S4c-0 SHIPPED** (db58c719): `(presentedWorldId, presentingPhase)` published by the seam
+  (`resolving` at beginResolution, `presented` at both commit paths, fail settles back onto
+  the presented world). Lane ladder DELETED: `activeOperationLane`/`SearchRuntimeOperationLane`/
+  `isMapActivationDeferred` + the SearchMapWithMarkerEngine polish-advance controller (provably
+  dead — nothing published lane_e since S3d). Close-cleanup staleness token = episode token.
+  `activeOperationId` now has exactly ONE reader left: the surface-transaction runtime itself.
+- **S4c-1a SHIPPED** (ee830491): both reveal watchdogs deleted (−320 lines; log-only,
+  perf-harness-gated). Runtime is now 871 lines.
+- **S4c-1b NEXT — tab_switch rides the reconciler.** Today's lane
+  (`use-results-presentation-tab-toggle-runtime.ts`): pill tap → toggle coordinator debounce →
+  commit = commitTabChange (setActiveTab writes the tuple, cause `tab_toggle`) + clearStaged +
+  `beginRedrawTransaction({reason:'toggle', targetTab})` + stage(enter tx, mutationKind
+  'initial_search', dataReadyFrom 'cache'). Move the choreography INTO the reconciler's
+  `tab_switch` branch (mirror of `kickRerunThroughCoordinator`, kind 'tab_switch'): the pill's
+  tap becomes a pure tuple write ({tab}, cause tab_toggle) exactly like chips in S4b; the port
+  gains a stage/redraw entry (or reuse beginVariantRerunPresentationPending? NO — tab stage is
+  dataReadyFrom 'cache' with immediate stage, not response-keyed; add
+  `beginTabSwitchPresentation(intentId, targetTab)` to the port). commitTabChange side effects
+  (setActiveTab/setActiveTabPreference/pendingTabSwitchTab:null) become the branch's foreground
+  effects via the view-inputs port. `pendingTabSwitchTab` optimistic hint keeps its writers
+  (coordinator overlay publish) until S4e turns it into a tuple-vs-presented selector.
+  GOTCHA: net-zero burst must still re-reveal (press-up fade dimmed markers) — the coordinator
+  handles this today by always staging when session active; preserve by classifying net-zero
+  as boot_noop at the tuple level BUT the coordinator's overlay/debounce still fires — keep the
+  always-stage behavior inside the port implementation, not the classifier.
+- **S4c-1c — the statechart proper (the big cut).** Re-key the level-triggered gate by worldId:
+  - Seam's `onPageOneResultsCommitted` becomes the `world_ready` event into a new
+    `search-world-presentation-host.ts` (runtime/reconciler/): on reconciler-begin it arms
+    cover + redraw keyed by worldId; on world_ready it stages data-keyed; `maybeCommit` gate
+    inputs are UNCHANGED (rows prepared/hydration/map-sources/visual-reveal triple — they are
+    the composite readiness, keep them); finalize clears + publishes presentingPhase phases.
+  - DELETE from the 871-line runtime: pendingPageOneResultsCommitRef merge lane,
+    pendingStageTransactionRef, recoverablePreparedRowsDataKey recovery lane (cache worlds
+    now always carry expectedResultsDataKey from the seam), beginSearchThisAreaPresentationPending's
+    activeOperationId read (worldId comes from the reconciler), the 2-frame deferred stage
+    (measure first — it existed to let the cover mount before staging).
+  - `search-surface-results-transaction.ts` coordinator survives as the pure gate but keyed
+    by worldId; transactionId == worldId end-to-end (the adapter maps worldId → requestKey
+    for the native protocol; S4d deletes the mapping).
+  - Four remaining `activeOperationId` consumers inside the runtime die with it; the key is
+    then write-only from the seam → delete the key (S4e can be early for this one).
+- **S4c-1d — redraw-transaction re-key.** `getSearchSurfaceRuntime().beginRedrawTransaction`
+  - readiness triple (cardsReady/sheetReady/nativeMarkerFrameReady) stay (they ARE the
+    composite reveal gate) but the id becomes the worldId; the redraw-phase instrumentation
+    web (searchSurfaceRedrawCoordinator, ~30 files) is untouched — it reads its own coordinator.
+- **S4c-1e — profileSeed zero-network synthesis** through the resolver (last lane-owned
+  identity), then S4d.
 - **S4d — native protocol.** (worldId, phase) payload + ack-everything mach-clock events + dedupe/dismiss-swallow/hold-timer deletions + collision-at-fade-start, all in ONE commit (never both hold regimes alive). Delete the S4c adapter. Rig: dismiss→resubmit VA-pin lane (task #16 acceptance), joint ≤ ~250ms post-commit on the matched drive, `read_state()` divergence silent.
 - **S4e — legacy key deletion.** Selectors module in; migrate the §4 inventory per key (one commit per key is fine — each is independently green); delete the writer projections + the eight bus keys + `activeOperationId`/lane keys after the marker-engine/token migrations. Rig: chip render parity, persist round-trip (cold start filters), tab pill.
 
