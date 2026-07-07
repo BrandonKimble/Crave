@@ -12,21 +12,15 @@ import type { ResultsPresentationAuthority } from '../runtime/shared/results-pre
 import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import {
-  useSearchRequestPreparationOwner,
-  type StructuredSearchFilters,
-} from './use-search-request-preparation-owner';
-import {
   useSearchSubmitEntryOwner,
   type SearchMode,
   type SearchSubmitEntrySurface,
   type SearchSubmitPresentationIntentKind,
   type SubmitSearchOptions,
   type SearchSubmitInPlaceRerunIntentKind,
+  type StructuredSearchFilters,
 } from './use-search-submit-entry-owner';
 import { useSearchNaturalSubmitOwner } from './use-search-natural-submit-owner';
-import { useSearchSubmitExecutionOwner } from './use-search-submit-execution-owner';
-import { useSearchSubmitResponseOwner } from './use-search-submit-response-owner';
-import { useSearchSubmitStructuredHelperOwner } from './use-search-submit-structured-helper-owner';
 import { useSearchStructuredSubmitOwner } from './use-search-structured-submit-owner';
 import { captureFreshCommittedBounds } from '../runtime/shared/search-fresh-bounds-capture';
 import {
@@ -171,11 +165,6 @@ type SearchSubmitOwner = {
     presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
-  // "Include similar" page-1 zero-network flip — see use-search-submit-response-owner.
-  applyIncludeSimilarLocalSwap: (options: {
-    nextIncludeSimilar: boolean;
-    targetTab: SegmentValue;
-  }) => boolean;
   launchFavoritesListResults: (params: {
     listId: string;
     listType: FavoriteListType;
@@ -195,14 +184,6 @@ const useSearchSubmitOwner = ({
 }: UseSearchSubmitOwnerOptions): SearchSubmitOwner => {
   const {
     query,
-    submittedQuery,
-    hasResults,
-    canLoadMore,
-    currentPage,
-    activeTab,
-    currentResults,
-    isPaginationExhausted,
-    pendingTabSwitchTab,
     preferredActiveTab,
     hasActiveTabPreference,
     isLoadingMore,
@@ -219,67 +200,29 @@ const useSearchSubmitOwner = ({
     resetMapMoveFlag,
     loadRecentHistory,
     updateLocalRecentSearches,
-    getIsProfilePresentationActive,
-    clearMapHighlightedRestaurantId,
     onPageOneResultsCommitted,
-    onShortcutSearchCoverageSnapshot,
     onPresentationIntentStart,
     onPresentationIntentAbort,
   } = uiPorts;
   const {
-    runtimeWorkSchedulerRef,
     searchRuntimeBus,
-    resultsPresentationAuthority,
     resultsPresentationSurfaceAuthority,
     lastSearchRequestIdRef,
     lastAutoOpenKeyRef,
     runSearch,
     mapRef,
-    latestBoundsRef,
     viewportBoundsService,
     userLocationRef,
     requestRuntimeOwner,
   } = runtimePorts;
-  const {
-    activeSearchRequestRef,
-    activeLoadingMoreTokenRef,
-    isSearchRequestInFlightRef,
-    activeOperationTupleRef,
-    responseApplyTokenRef,
-    isMountedRef,
-    clearActiveOperationTuple,
-    isRequestStillActive,
-    isOperationTupleStillActive,
-    publishRuntimeLaneState,
-    createHandleSearchResponseRuntimeShadow,
-    runManagedRequestAttempt,
-    setSearchRequestInFlight,
-  } = requestRuntimeOwner;
-  const { prepareStructuredAppendRequestPayload, prepareNaturalSearchAttemptPayload } =
-    useSearchRequestPreparationOwner({
-      isLoadingMore,
-      openNow,
-      priceLevels,
-      risingActive,
-      searchRuntimeBus,
-      latestBoundsRef,
-      viewportBoundsService,
-      mapRef,
-      userLocationRef,
-      lastSearchRequestIdRef,
-      isOperationTupleStillActive,
-      setError,
-    });
+  const { activeLoadingMoreTokenRef, isSearchRequestInFlightRef } = requestRuntimeOwner;
   const {
     beginResolverSubmitForegroundUi,
-    prepareNaturalSearchForegroundUi,
-    createShortcutStructuredAppendAttemptConfig,
     prepareNaturalSearchEntry,
     resolveNaturalSearchAttemptConfig,
   } = useSearchSubmitEntryOwner({
     viewportBoundsService,
     query,
-    submittedQuery,
     preferredActiveTab,
     hasActiveTabPreference,
     isLoadingMore,
@@ -289,58 +232,11 @@ const useSearchSubmitOwner = ({
     setActiveTab,
     setError,
     searchRuntimeBus,
-    clearMapHighlightedRestaurantId,
     resetMapMoveFlag,
-    activeOperationTupleRef,
     activeLoadingMoreTokenRef,
     isSearchRequestInFlightRef,
-    publishRuntimeLaneState,
-    setSearchRequestInFlight,
     lastAutoOpenKeyRef,
     onPresentationIntentStart,
-  });
-  const { handleSearchResponse, applyIncludeSimilarLocalSwap } = useSearchSubmitResponseOwner({
-    activeTab,
-    currentResults,
-    pendingTabSwitchTab,
-    isPaginationExhausted,
-    searchRuntimeBus,
-    resultsPresentationAuthority,
-    resultsPresentationSurfaceAuthority,
-    latestBoundsRef,
-    userLocationRef,
-    lastSearchRequestIdRef,
-    isSearchEditingRef,
-    getIsProfilePresentationActive,
-    loadRecentHistory,
-    updateLocalRecentSearches,
-    resetSheetToHidden,
-    scrollResultsToTop,
-    setActiveTab,
-    onPageOneResultsCommitted,
-    activeOperationTupleRef,
-    responseApplyTokenRef,
-    isMountedRef,
-    clearActiveOperationTuple,
-    isRequestStillActive,
-    runtimeWorkSchedulerRef,
-    publishRuntimeLaneState,
-  });
-  const { applyShortcutStructuredAppendRequestState, publishShortcutCoverageForResponse } =
-    useSearchSubmitStructuredHelperOwner({
-      onShortcutSearchCoverageSnapshot,
-    });
-  const {
-    startNaturalResponseLifecycle,
-    startShortcutAppendResponseLifecycle,
-    executeShortcutStructuredSearchAttempt,
-    executeNaturalSearchAttempt,
-  } = useSearchSubmitExecutionOwner({
-    runSearch,
-    activeSearchRequestRef,
-    createHandleSearchResponseRuntimeShadow,
-    handleSearchResponse,
-    publishShortcutCoverageForResponse,
   });
   // S3-pre: commit-moment triggers (STA, chip reruns) adopt the SETTLED native camera
   // into the tuple BEFORE writing it — the resolver never touches the map ref.
@@ -442,49 +338,23 @@ const useSearchSubmitOwner = ({
     (resolveArgs: SearchWorldResolveArgs) => worldResolver.resolve(resolveArgs),
     [worldResolver]
   );
-  const {
-    runRestaurantEntitySearch,
-    submitViewportShortcut,
-    loadMoreShortcutResults,
-    launchFavoritesListResults,
-  } = useSearchStructuredSubmitOwner({
-    searchRuntimeBus,
-    viewportBoundsService,
-    captureFreshTupleBounds,
-    isWorldResolving: worldResolver.isResolving,
-    resolveDesiredWorld,
-    beginResolverSubmitForegroundUi,
-    currentPage,
-    canLoadMore,
-    hasResults,
-    isLoadingMore,
-    isPaginationExhausted,
-    preferredActiveTab,
-    submittedQuery,
-    isSearchRequestInFlightRef,
-    runManagedRequestAttempt,
-    onPresentationIntentAbort,
-    setError,
-    resetMapMoveFlag,
-    createShortcutStructuredAppendAttemptConfig,
-    prepareStructuredAppendRequestPayload,
-    applyShortcutStructuredAppendRequestState,
-    executeShortcutStructuredSearchAttempt,
-    startShortcutAppendResponseLifecycle,
-  });
+  const { runRestaurantEntitySearch, submitViewportShortcut, launchFavoritesListResults } =
+    useSearchStructuredSubmitOwner({
+      searchRuntimeBus,
+      viewportBoundsService,
+      captureFreshTupleBounds,
+      resolveDesiredWorld,
+      beginResolverSubmitForegroundUi,
+      onPresentationIntentAbort,
+      resetMapMoveFlag,
+    });
   const { submitSearch } = useSearchNaturalSubmitOwner({
     searchRuntimeBus,
     resolveDesiredWorld,
     beginResolverSubmitForegroundUi,
     prepareNaturalSearchEntry,
     resolveNaturalSearchAttemptConfig,
-    prepareNaturalSearchForegroundUi,
-    prepareNaturalSearchAttemptPayload,
-    executeNaturalSearchAttempt,
-    startNaturalResponseLifecycle,
-    runManagedRequestAttempt,
     onPresentationIntentAbort,
-    setError,
   });
 
   // Skip-LLM entity reveal: a natural-search submission whose context carries a
@@ -526,17 +396,7 @@ const useSearchSubmitOwner = ({
     [worldResolver]
   );
   const { rerunActiveSearch } = useSearchSubmitActionOwner({
-    isWorldResolving: worldResolver.isResolving,
-    query,
-    submittedQuery,
-    hasResults,
-    canLoadMore,
-    currentPage,
-    isLoadingMore,
-    isPaginationExhausted,
-    isSearchRequestInFlightRef,
     submitSearch,
-    loadMoreShortcutResults,
     submitViewportShortcut,
   });
 
@@ -549,7 +409,6 @@ const useSearchSubmitOwner = ({
     submitViewportShortcut,
     rerunActiveSearch,
     loadMoreResults,
-    applyIncludeSimilarLocalSwap,
     launchFavoritesListResults,
     launchEntitySearchResults,
   };

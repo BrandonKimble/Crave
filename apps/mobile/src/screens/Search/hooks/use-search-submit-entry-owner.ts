@@ -1,5 +1,5 @@
 import React from 'react';
-import { Keyboard, unstable_batchedUpdates } from 'react-native';
+import { Keyboard } from 'react-native';
 
 import type { NaturalSearchRequest } from '../../../types';
 import { DEFAULT_SEGMENT } from '../constants/search';
@@ -11,7 +11,7 @@ import {
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import { createEntitySubmitIntentPayload } from '../runtime/adapters/entity-adapter';
 import { createShortcutSubmitIntentPayload } from '../runtime/adapters/shortcut-adapter';
-import type { SearchRuntimeBus, SearchRuntimeBusState } from '../runtime/shared/search-runtime-bus';
+import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 import type { SearchSubmitEntrySurface } from '../runtime/shared/search-submit-entry-surface-contract';
 import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
@@ -19,6 +19,15 @@ import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-own
 export type { SearchSubmitEntrySurface } from '../runtime/shared/search-submit-entry-surface-contract';
 
 export type SearchMode = 'natural' | 'shortcut' | null;
+
+/** The chip-filter override shape submit options carry (re-homed from the deleted
+ *  request-preparation owner). */
+export type StructuredSearchFilters = {
+  openNow?: boolean;
+  priceLevels?: number[] | null;
+  includeSimilar?: boolean;
+  rising?: boolean;
+};
 export type SearchSubmitPresentationIntentKind =
   | 'initial_search'
   | 'shortcut_rerun'
@@ -107,29 +116,9 @@ type PrepareNaturalSearchEntryResult = {
   trimmedQuery: string;
 };
 
-type SubmitUiLanesOptions = {
-  mode: SearchMode;
-  targetTab: SegmentValue;
-  shouldResetPagination: boolean;
-  submittedLabel?: string;
-};
-
-type PrepareSearchRequestForegroundUiOptions = StructuredInitialAttemptConfig['foregroundUi'];
-
-type PrepareNaturalSearchForegroundUiOptions = {
-  preserveSheetState: boolean;
-  transitionFromDockedPolls: boolean;
-  targetTab: SegmentValue;
-  submittedLabel: string;
-  replaceResultsLabel?: string;
-  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-  entrySurface: SearchSubmitEntrySurface;
-};
-
 type UseSearchSubmitEntryOwnerArgs = {
   viewportBoundsService: ViewportBoundsService;
   query: string;
-  submittedQuery: string;
   preferredActiveTab: SegmentValue;
   hasActiveTabPreference: boolean;
   isLoadingMore: boolean;
@@ -139,15 +128,10 @@ type UseSearchSubmitEntryOwnerArgs = {
   setActiveTab: React.Dispatch<React.SetStateAction<SegmentValue>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   searchRuntimeBus: SearchRuntimeBus;
-  clearMapHighlightedRestaurantId?: () => void;
   resetMapMoveFlag: () => void;
-  activeOperationTupleRef: SearchRequestRuntimeOwner['activeOperationTupleRef'];
   activeLoadingMoreTokenRef: SearchRequestRuntimeOwner['activeLoadingMoreTokenRef'];
   isSearchRequestInFlightRef: SearchRequestRuntimeOwner['isSearchRequestInFlightRef'];
-  publishRuntimeLaneState: SearchRequestRuntimeOwner['publishRuntimeLaneState'];
-  setSearchRequestInFlight: SearchRequestRuntimeOwner['setSearchRequestInFlight'];
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
-  logSearchPhase?: (label: string) => void;
   onPresentationIntentStart?: (params: {
     kind: SearchSubmitPresentationIntentKind;
     mode: SearchMode;
@@ -201,7 +185,6 @@ const resolveSearchSubmitPresentationEntrySurface = ({
 export const useSearchSubmitEntryOwner = ({
   viewportBoundsService,
   query,
-  submittedQuery,
   preferredActiveTab,
   hasActiveTabPreference,
   isLoadingMore,
@@ -211,179 +194,12 @@ export const useSearchSubmitEntryOwner = ({
   setActiveTab,
   setError,
   searchRuntimeBus,
-  clearMapHighlightedRestaurantId,
   resetMapMoveFlag,
-  activeOperationTupleRef,
   activeLoadingMoreTokenRef,
   isSearchRequestInFlightRef,
-  publishRuntimeLaneState,
-  setSearchRequestInFlight,
   lastAutoOpenKeyRef,
-  logSearchPhase = () => {},
   onPresentationIntentStart,
 }: UseSearchSubmitEntryOwnerArgs) => {
-  const scheduleAfterTwoFrames = React.useCallback((run: () => void) => {
-    if (typeof requestAnimationFrame === 'function') {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          run();
-        });
-      });
-      return;
-    }
-    run();
-  }, []);
-
-  const runNonCriticalStateUpdate = React.useCallback((run: () => void) => {
-    if (typeof React.startTransition === 'function') {
-      React.startTransition(() => {
-        run();
-      });
-      return;
-    }
-    run();
-  }, []);
-
-  const scheduleSubmitUiLanes = React.useCallback(
-    ({ mode, targetTab, shouldResetPagination, submittedLabel }: SubmitUiLanesOptions) => {
-      const activeTuple = activeOperationTupleRef.current;
-      searchRuntimeBus.batch(() => {
-        publishRuntimeLaneState(activeTuple, 'lane_a_ack', {
-          isMapActivationDeferred: true,
-        });
-      });
-
-      unstable_batchedUpdates(() => {
-        lastAutoOpenKeyRef.current = null;
-        activeLoadingMoreTokenRef.current = null;
-      });
-      searchRuntimeBus.batch(() => {
-        const laneAStatePatch: Partial<SearchRuntimeBusState> = {
-          activeTab: targetTab,
-          pendingTabSwitchTab: null,
-          searchMode: mode,
-          isSearchSessionActive: mode != null,
-          isLoadingMore: false,
-          submittedQuery: submittedLabel ?? submittedQuery,
-        };
-        publishRuntimeLaneState(activeOperationTupleRef.current, 'lane_a_ack', laneAStatePatch);
-      });
-      setActiveTab(targetTab);
-
-      if (shouldResetPagination) {
-        scheduleAfterTwoFrames(() => {
-          runNonCriticalStateUpdate(() => {
-            searchRuntimeBus.publish({
-              hasMoreFood: false,
-              hasMoreRestaurants: false,
-              isPaginationExhausted: false,
-              currentPage: 1,
-            });
-          });
-        });
-      }
-    },
-    [
-      activeLoadingMoreTokenRef,
-      activeOperationTupleRef,
-      lastAutoOpenKeyRef,
-      publishRuntimeLaneState,
-      runNonCriticalStateUpdate,
-      scheduleAfterTwoFrames,
-      searchRuntimeBus,
-      setActiveTab,
-      submittedQuery,
-    ]
-  );
-
-  const clearResultsForReplacement = React.useCallback(
-    (submittedQueryOverride?: string) => {
-      clearMapHighlightedRestaurantId?.();
-      publishSearchMountedResultsDataSnapshot(null);
-      searchRuntimeBus.publish({
-        resultsRequestKey: null,
-        resultsIdentityCandidateKey: null,
-        resultsPage: null,
-        resultsDishCount: 0,
-        resultsRestaurantCount: 0,
-        currentPage: 1,
-        hasMoreFood: false,
-        hasMoreRestaurants: false,
-        isPaginationExhausted: false,
-        isLoadingMore: false,
-        canLoadMore: false,
-        submittedQuery: submittedQueryOverride ?? submittedQuery,
-      });
-    },
-    [clearMapHighlightedRestaurantId, searchRuntimeBus, submittedQuery]
-  );
-
-  const prepareSearchRequestForegroundUi = React.useCallback(
-    ({
-      kind,
-      mode,
-      preserveSheetState,
-      transitionFromDockedPolls,
-      targetTab,
-      submittedLabel,
-      shouldResetPagination,
-      logLabel,
-      replaceResultsLabel,
-      presentationIntentKind,
-      entrySurface,
-    }: PrepareSearchRequestForegroundUiOptions) => {
-      // Same new-search reset as the natural path (see resolveNaturalSearchAttemptConfig):
-      // structured launches (shortcut/entity/favorites) from outside the results surface
-      // start with "Include similar" off; the payload build reads the bus afterwards.
-      if (entrySurface !== 'results' && searchRuntimeBus.getState().includeSimilarActive) {
-        // S2: routed through the ONE tuple writer (legacy key is a projection). The
-        // desired-tuple reader ignores non-chip causes, so this reset never re-commits.
-        writeSearchDesiredTuple(
-          searchRuntimeBus,
-          { filterVariant: { includeSimilar: false } },
-          'initial_submit'
-        );
-      }
-      setSearchRequestInFlight(true);
-      onPresentationIntentStart?.({
-        kind: presentationIntentKind ?? kind,
-        mode,
-        preserveSheetState,
-        transitionFromDockedPolls,
-        targetTab,
-        submittedLabel,
-        entrySurface,
-      });
-      scheduleSubmitUiLanes({
-        mode,
-        targetTab,
-        shouldResetPagination,
-        submittedLabel,
-      });
-      setError(null);
-      Keyboard.dismiss();
-      logSearchPhase(`${logLabel}:ui-lanes-scheduled`);
-      if (replaceResultsLabel && !isSearchSubmitInPlaceRerunIntentKind(presentationIntentKind)) {
-        clearResultsForReplacement(replaceResultsLabel);
-      }
-    },
-    [
-      clearResultsForReplacement,
-      logSearchPhase,
-      onPresentationIntentStart,
-      scheduleSubmitUiLanes,
-      searchRuntimeBus,
-      setError,
-      setSearchRequestInFlight,
-    ]
-  );
-
-  // S3b: the SURVIVING foreground effects for a resolver-run submit — the presentation
-  // intent (the transaction machine stays sole presentation writer), local tab state,
-  // deferred map activation, error clear, keyboard. Everything else the legacy
-  // prepareSearchRequestForegroundUi did (lane-A publishes, clearResultsForReplacement,
-  // in-flight flag) is either projected by the tuple writer or owned by the seam.
-  // Invoked from resolve()'s onResolutionBegan, AFTER activeOperationId is published.
   const beginResolverSubmitForegroundUi = React.useCallback(
     (options: {
       mode: SearchMode;
@@ -418,107 +234,6 @@ export const useSearchSubmitEntryOwner = ({
       setActiveTab,
       setError,
     ]
-  );
-
-  const prepareNaturalSearchForegroundUi = React.useCallback(
-    ({
-      preserveSheetState,
-      transitionFromDockedPolls,
-      targetTab,
-      submittedLabel,
-      replaceResultsLabel,
-      presentationIntentKind,
-      entrySurface,
-    }: PrepareNaturalSearchForegroundUiOptions) => {
-      setSearchRequestInFlight(true);
-      onPresentationIntentStart?.({
-        kind: presentationIntentKind ?? 'initial_search',
-        mode: 'natural',
-        preserveSheetState,
-        transitionFromDockedPolls,
-        targetTab,
-        submittedLabel,
-        entrySurface,
-      });
-      scheduleSubmitUiLanes({
-        mode: 'natural',
-        targetTab,
-        shouldResetPagination: false,
-      });
-      activeLoadingMoreTokenRef.current = null;
-      logSearchPhase('submitSearch:ui-lanes-scheduled');
-      if (replaceResultsLabel && !isSearchSubmitInPlaceRerunIntentKind(presentationIntentKind)) {
-        clearResultsForReplacement(replaceResultsLabel);
-      }
-    },
-    [
-      activeLoadingMoreTokenRef,
-      clearResultsForReplacement,
-      logSearchPhase,
-      onPresentationIntentStart,
-      scheduleSubmitUiLanes,
-      setSearchRequestInFlight,
-    ]
-  );
-
-  const createRestaurantEntityInitialAttemptConfig = React.useCallback(
-    ({
-      restaurantId,
-      restaurantName,
-      preserveSheetState,
-      entrySurface,
-    }: {
-      restaurantId: string;
-      restaurantName: string;
-      preserveSheetState: boolean;
-      entrySurface: SearchSubmitEntrySurface;
-    }): StructuredInitialAttemptConfig => ({
-      submitPayload: createEntitySubmitIntentPayload({
-        restaurantId,
-        restaurantName,
-        preserveSheetState,
-      }),
-      foregroundUi: {
-        kind: 'initial_search',
-        mode: 'natural',
-        preserveSheetState,
-        transitionFromDockedPolls: false,
-        targetTab: 'restaurants',
-        submittedLabel: restaurantName,
-        shouldResetPagination: true,
-        logLabel: 'runRestaurantEntitySearch',
-        entrySurface,
-      },
-      errorLogLabel: 'Structured restaurant search failed',
-      finalizeReason: 'entity_finalized_without_response_lifecycle',
-    }),
-    []
-  );
-
-  const createShortcutStructuredAppendAttemptConfig = React.useCallback(
-    ({
-      targetTab,
-      submittedQuery: nextSubmittedQuery,
-      targetPage,
-    }: {
-      targetTab: SegmentValue;
-      submittedQuery: string;
-      targetPage: number;
-    }): StructuredAppendAttemptConfig => {
-      const submittedLabel = nextSubmittedQuery || 'Best dishes here';
-      return {
-        submitPayload: createShortcutSubmitIntentPayload({
-          targetTab,
-          submittedLabel,
-          preserveSheetState: true,
-          targetPage,
-          append: true,
-        }),
-        errorLogLabel: 'Best dishes here pagination failed',
-        submittedLabel,
-      };
-    },
-    []
   );
 
   const prepareNaturalSearchEntry = React.useCallback(
@@ -659,22 +374,10 @@ export const useSearchSubmitEntryOwner = ({
 
   return React.useMemo(
     () => ({
-      prepareSearchRequestForegroundUi,
       beginResolverSubmitForegroundUi,
-      prepareNaturalSearchForegroundUi,
-      createRestaurantEntityInitialAttemptConfig,
-      createShortcutStructuredAppendAttemptConfig,
       prepareNaturalSearchEntry,
       resolveNaturalSearchAttemptConfig,
     }),
-    [
-      beginResolverSubmitForegroundUi,
-      createRestaurantEntityInitialAttemptConfig,
-      createShortcutStructuredAppendAttemptConfig,
-      prepareNaturalSearchEntry,
-      prepareNaturalSearchForegroundUi,
-      prepareSearchRequestForegroundUi,
-      resolveNaturalSearchAttemptConfig,
-    ]
+    [beginResolverSubmitForegroundUi, prepareNaturalSearchEntry, resolveNaturalSearchAttemptConfig]
   );
 };

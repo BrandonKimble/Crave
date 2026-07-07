@@ -7,23 +7,12 @@ import type {
   SearchSubmitEntrySurface,
   SubmitSearchOptions,
   SearchSubmitInPlaceRerunIntentKind,
+  StructuredSearchFilters,
 } from './use-search-submit-entry-owner';
-import type { StructuredSearchFilters } from './use-search-request-preparation-owner';
 import { SHORTCUT_QUERY_LABEL_BY_TAB } from '../runtime/shared/shortcut-toggle-display-query';
 
 type SearchSubmitActionOwnerArgs = {
-  query: string;
-  submittedQuery: string;
-  hasResults: boolean;
-  canLoadMore: boolean;
-  currentPage: number;
-  isLoadingMore: boolean;
-  isPaginationExhausted: boolean;
-  isSearchRequestInFlightRef: React.MutableRefObject<boolean>;
-  /** S3a: a resolver-run rerun is in flight — appends must not race it. */
-  isWorldResolving: () => boolean;
   submitSearch: (options?: SubmitSearchOptions, overrideQuery?: string) => Promise<void>;
-  loadMoreShortcutResults: () => void;
   submitViewportShortcut: (
     targetTab: SegmentValue,
     submittedLabel: string,
@@ -52,57 +41,9 @@ export type SearchSubmitRerunParams = {
 };
 
 export const useSearchSubmitActionOwner = ({
-  query,
-  submittedQuery,
-  hasResults,
-  canLoadMore,
-  currentPage,
-  isLoadingMore,
-  isPaginationExhausted,
-  isSearchRequestInFlightRef,
-  isWorldResolving,
   submitSearch,
-  loadMoreShortcutResults,
   submitViewportShortcut,
 }: SearchSubmitActionOwnerArgs) => {
-  const loadMoreResults = React.useCallback(
-    (searchMode: SearchMode) => {
-      if (
-        isSearchRequestInFlightRef.current ||
-        isWorldResolving() ||
-        isLoadingMore ||
-        !hasResults ||
-        !canLoadMore ||
-        isPaginationExhausted
-      ) {
-        return;
-      }
-      if (searchMode === 'shortcut') {
-        loadMoreShortcutResults();
-        return;
-      }
-      const nextPage = currentPage + 1;
-      const activeQuery = submittedQuery || query;
-      if (!activeQuery.trim()) {
-        return;
-      }
-      void submitSearch({ page: nextPage, append: true }, activeQuery);
-    },
-    [
-      canLoadMore,
-      currentPage,
-      hasResults,
-      isLoadingMore,
-      isPaginationExhausted,
-      isSearchRequestInFlightRef,
-      isWorldResolving,
-      loadMoreShortcutResults,
-      query,
-      submitSearch,
-      submittedQuery,
-    ]
-  );
-
   const rerunActiveSearch = React.useCallback(
     async (params: SearchSubmitRerunParams) => {
       const rerunQuery = (params.submittedQuery || params.query).trim();
@@ -155,7 +96,6 @@ export const useSearchSubmitActionOwner = ({
   );
 
   return {
-    loadMoreResults,
     rerunActiveSearch,
   };
 };

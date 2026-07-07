@@ -1,7 +1,6 @@
 import React from 'react';
 
-import type { NaturalSearchRequest, SearchResponse } from '../../../types';
-import type { SearchRequestCacheStatus, StructuredSearchRequest } from '../../../services/search';
+import type { NaturalSearchRequest } from '../../../types';
 import type { FavoriteListType } from '../../../services/favorite-lists';
 import { logger } from '../../../utils';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
@@ -12,15 +11,11 @@ import {
 } from '../runtime/shared/search-desired-state-writer';
 import type { SearchCommittedBounds } from '../runtime/shared/search-desired-state-contract';
 import type { SegmentValue } from '../constants/search';
-import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
-import { resolveLoadMoreRequestErrorMessage } from './search-submit-runtime-utils';
 import type {
   SearchSubmitEntrySurface,
-  StructuredAppendAttemptConfig,
   SearchSubmitInPlaceRerunIntentKind,
+  StructuredSearchFilters,
 } from './use-search-submit-entry-owner';
-import type { StructuredSearchFilters } from './use-search-request-preparation-owner';
-import type { SearchSubmitActiveOperationTuple } from './use-search-submit-response-owner';
 
 type RunRestaurantEntitySearchParams = {
   restaurantId: string;
@@ -47,9 +42,7 @@ type UseSearchStructuredSubmitOwnerArgs = {
   /** S3-pre commit-moment adopt: awaits the SETTLED native camera (bounds + polygon)
    *  before the tuple write, so the resolver reads bounds from the tuple only. */
   captureFreshTupleBounds: () => Promise<SearchCommittedBounds | null>;
-  /** S3a: a resolver-run rerun is in flight — appends must not race it. */
-  isWorldResolving: () => boolean;
-  /** S3b: the world resolver — shortcut initial submits + STA resolve through it. */
+  /** S3b: the world resolver — every launch in this owner resolves through it. */
   resolveDesiredWorld: (
     args: import('../runtime/resolver/search-world-resolver').SearchWorldResolveArgs
   ) => Promise<void>;
@@ -62,119 +55,21 @@ type UseSearchStructuredSubmitOwnerArgs = {
     presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
     entrySurface: SearchSubmitEntrySurface;
   }) => void;
-  currentPage: number;
-  canLoadMore: boolean;
-  hasResults: boolean;
-  isLoadingMore: boolean;
-  isPaginationExhausted: boolean;
-  preferredActiveTab: SegmentValue;
-  submittedQuery: string;
-  isSearchRequestInFlightRef: SearchRequestRuntimeOwner['isSearchRequestInFlightRef'];
-  runManagedRequestAttempt: SearchRequestRuntimeOwner['runManagedRequestAttempt'];
   onPresentationIntentAbort?: () => void;
-  setError: React.Dispatch<React.SetStateAction<string | null>>;
   logSearchPhase?: (label: string, options?: { reset?: boolean }) => void;
   resetMapMoveFlag: () => void;
-  createShortcutStructuredAppendAttemptConfig: (params: {
-    targetTab: SegmentValue;
-    submittedQuery: string;
-    targetPage: number;
-  }) => StructuredAppendAttemptConfig;
-  prepareStructuredAppendRequestPayload: (params: {
-    tuple: SearchSubmitActiveOperationTuple;
-    targetPage: number;
-  }) => Promise<StructuredSearchRequest | null>;
-  applyShortcutStructuredAppendRequestState: (payload: StructuredSearchRequest) => void;
-  executeShortcutStructuredSearchAttempt: (params: {
-    payload: StructuredSearchRequest;
-    requestId: number;
-    append: boolean;
-    startLifecycle: (
-      response: SearchResponse,
-      cacheStatus: SearchRequestCacheStatus | null
-    ) => boolean;
-  }) => Promise<boolean>;
-  startShortcutAppendResponseLifecycle: (params: {
-    response: SearchResponse;
-    requestId: number;
-    runtimeTuple: SearchSubmitActiveOperationTuple;
-    targetPage: number;
-    targetTab: SegmentValue;
-    submittedLabel: string;
-  }) => boolean;
 };
 
 export const useSearchStructuredSubmitOwner = ({
   searchRuntimeBus,
   viewportBoundsService,
   captureFreshTupleBounds,
-  isWorldResolving,
   resolveDesiredWorld,
   beginResolverSubmitForegroundUi,
-  currentPage,
-  canLoadMore,
-  hasResults,
-  isLoadingMore,
-  isPaginationExhausted,
-  preferredActiveTab,
-  submittedQuery,
-  isSearchRequestInFlightRef,
-  runManagedRequestAttempt,
   onPresentationIntentAbort,
-  setError,
   logSearchPhase = () => {},
   resetMapMoveFlag,
-  createShortcutStructuredAppendAttemptConfig,
-  prepareStructuredAppendRequestPayload,
-  applyShortcutStructuredAppendRequestState,
-  executeShortcutStructuredSearchAttempt,
-  startShortcutAppendResponseLifecycle,
 }: UseSearchStructuredSubmitOwnerArgs) => {
-  const executeShortcutAppendAttempt = React.useCallback(
-    async ({
-      requestId,
-      tuple,
-      targetPage,
-      targetTab,
-      submittedLabel,
-    }: {
-      requestId: number;
-      tuple: SearchSubmitActiveOperationTuple;
-      targetPage: number;
-      targetTab: SegmentValue;
-      submittedLabel: string;
-    }) => {
-      const payload = await prepareStructuredAppendRequestPayload({
-        tuple,
-        targetPage,
-      });
-      if (!payload) {
-        return false;
-      }
-      applyShortcutStructuredAppendRequestState(payload);
-      return executeShortcutStructuredSearchAttempt({
-        payload,
-        requestId,
-        append: true,
-        startLifecycle: (response, searchCacheStatus) =>
-          startShortcutAppendResponseLifecycle({
-            response,
-            requestId,
-            runtimeTuple: tuple,
-            targetPage,
-            targetTab,
-            submittedLabel,
-          }),
-      });
-    },
-    [
-      applyShortcutStructuredAppendRequestState,
-      executeShortcutStructuredSearchAttempt,
-      prepareStructuredAppendRequestPayload,
-      startShortcutAppendResponseLifecycle,
-    ]
-  );
-
   const runRestaurantEntitySearch = React.useCallback(
     async (params: RunRestaurantEntitySearchParams) => {
       logSearchPhase('runRestaurantEntitySearch:start', { reset: true });
@@ -311,70 +206,6 @@ export const useSearchStructuredSubmitOwner = ({
     ]
   );
 
-  const loadMoreShortcutResults = React.useCallback(() => {
-    if (
-      isSearchRequestInFlightRef.current ||
-      isWorldResolving() ||
-      isLoadingMore ||
-      !hasResults ||
-      !canLoadMore ||
-      isPaginationExhausted
-    ) {
-      return;
-    }
-
-    const nextPage = currentPage + 1;
-    const appendAttemptConfig = createShortcutStructuredAppendAttemptConfig({
-      targetTab: preferredActiveTab,
-      submittedQuery,
-      targetPage: nextPage,
-    });
-    void runManagedRequestAttempt({
-      mode: 'shortcut',
-      submitPayload: appendAttemptConfig.submitPayload,
-      append: true,
-      targetPage: nextPage,
-      finalizeReason: 'append_finalized_without_response_lifecycle',
-      setError,
-      onError: (err) => {
-        logger.error(appendAttemptConfig.errorLogLabel, {
-          message: err instanceof Error ? err.message : 'unknown error',
-        });
-      },
-      resolveFailure: (err) => ({
-        uiErrorMessage: resolveLoadMoreRequestErrorMessage(err),
-      }),
-      executeAttempt: async ({ requestId, tuple }) =>
-        executeShortcutAppendAttempt({
-          requestId,
-          tuple,
-          targetPage: nextPage,
-          targetTab: preferredActiveTab,
-          submittedLabel: appendAttemptConfig.submittedLabel,
-        }),
-    });
-  }, [
-    canLoadMore,
-    isWorldResolving,
-    createShortcutStructuredAppendAttemptConfig,
-    currentPage,
-    executeShortcutAppendAttempt,
-    hasResults,
-    isLoadingMore,
-    isPaginationExhausted,
-    isSearchRequestInFlightRef,
-    preferredActiveTab,
-    resolveLoadMoreRequestErrorMessage,
-    runManagedRequestAttempt,
-    setError,
-    submittedQuery,
-  ]);
-
-  // A favorites launch is "a natural search whose data SOURCE is the favorites
-  // endpoint instead of /search". It runs through the SAME managed request +
-  // structured response lifecycle as the shortcut/natural paths (marker pipeline,
-  // staged reveal lanes, readiness gates all fire identically) — it just fetches
-  // the SearchResponse from favoriteListsService.getListResults rather than runSearch.
   const launchFavoritesListResults = React.useCallback(
     async (params: { listId: string; listType: FavoriteListType; submittedLabel: string }) => {
       logSearchPhase('launchFavorites:start', { reset: true });
@@ -440,14 +271,8 @@ export const useSearchStructuredSubmitOwner = ({
     () => ({
       runRestaurantEntitySearch,
       submitViewportShortcut,
-      loadMoreShortcutResults,
       launchFavoritesListResults,
     }),
-    [
-      launchFavoritesListResults,
-      loadMoreShortcutResults,
-      submitViewportShortcut,
-      runRestaurantEntitySearch,
-    ]
+    [launchFavoritesListResults, submitViewportShortcut, runRestaurantEntitySearch]
   );
 };
