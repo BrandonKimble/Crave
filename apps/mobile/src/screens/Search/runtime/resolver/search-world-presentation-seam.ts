@@ -104,6 +104,8 @@ export type SearchWorldPresentationSeamEnv = {
 };
 
 export type SearchWorldPresentationSeam = {
+  /** The worldId last committed to the screen (S4a reconciler classification input). */
+  getPresentedWorldId: () => string | null;
   /** SYNCHRONOUS: publishes activeOperationId ('world:'+generation) + lane_a_ack +
    *  isSearchLoading before returning — pending presentation arms read it right after. */
   beginResolution: (args: {
@@ -124,6 +126,7 @@ export const createSearchWorldPresentationSeam = (
   // the legacy submit path also presents until S3d, and only the mounted store sees both.
   let presentedWorldId: string | null = null;
   return {
+    getPresentedWorldId: () => presentedWorldId,
     beginResolution: ({ generation, presentationIntentKind }) => {
       env.searchRuntimeBus.publish({
         activeOperationId: `world:${generation}`,

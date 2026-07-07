@@ -3,6 +3,7 @@ import { Keyboard, type TextInput } from 'react-native';
 
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { writeSearchDesiredTuple } from '../runtime/shared/search-desired-state-writer';
+import { DEFAULT_SEARCH_FILTER_VARIANT } from '../runtime/shared/search-desired-state-contract';
 import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 
 export type SearchClearOwner = {
@@ -39,7 +40,6 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
   resetSubmitTransitionHold: () => void;
-  resetFilters: () => void;
   cancelToggleInteraction: () => void;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
@@ -79,7 +79,6 @@ export const useSearchClearOwner = <Suggestion>({
   cancelAutocomplete,
   handleCancelPendingMutationWork,
   resetSubmitTransitionHold,
-  resetFilters,
   cancelToggleInteraction,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
@@ -112,7 +111,18 @@ export const useSearchClearOwner = <Suggestion>({
     cancelAutocomplete();
     handleCancelPendingMutationWork();
     resetSubmitTransitionHold();
-    resetFilters();
+    // Same atomic dismiss write as clearSearchState — this lane previously reset
+    // filters but never returned the tuple to idle (an S2 gap the reconciler
+    // classification made visible: the tuple claimed a live session after close).
+    writeSearchDesiredTuple(
+      searchRuntimeBus,
+      {
+        queryIdentity: { kind: 'idle' },
+        committedBounds: null,
+        filterVariant: { ...DEFAULT_SEARCH_FILTER_VARIANT },
+      },
+      'dismiss'
+    );
     cancelToggleInteraction();
     setIsSearchFocused(false);
     setIsSuggestionPanelActive(false);
@@ -169,7 +179,6 @@ export const useSearchClearOwner = <Suggestion>({
     isSearchSessionActive,
     lastAutoOpenKeyRef,
     requestDefaultPostSearchRestore,
-    resetFilters,
     resetFocusedMapState,
     resetMapMoveFlag,
     resetShortcutCoverageState,
@@ -227,14 +236,16 @@ export const useSearchClearOwner = <Suggestion>({
       if (!deferSuggestionClear) {
         resetSubmitTransitionHold();
       }
-      resetFilters();
-      // S2: dismiss returns the DESIRED TUPLE to idle (identity + bounds cleared; the
-      // filter reset above already routed through the writer). The reader ignores
-      // non-chip causes, so this never re-runs a search — close choreography stays
-      // trigger-owned until S4.
+      // Dismiss is ONE commit moment = ONE atomic tuple write (identity idle + filters
+      // reset + bounds cleared). Two writes made the intermediate filters-only delta
+      // classify as a phantom variant_rerun — caught by the S4a reconciler parity trace.
       writeSearchDesiredTuple(
         searchRuntimeBus,
-        { queryIdentity: { kind: 'idle' }, committedBounds: null },
+        {
+          queryIdentity: { kind: 'idle' },
+          committedBounds: null,
+          filterVariant: { ...DEFAULT_SEARCH_FILTER_VARIANT },
+        },
         'dismiss'
       );
       cancelToggleInteraction();
@@ -316,7 +327,6 @@ export const useSearchClearOwner = <Suggestion>({
       profilePresentationActiveRef,
       clearRestaurantProfileForSearchDismissRef,
       requestDefaultPostSearchRestore,
-      resetFilters,
       resetFocusedMapState,
       resetMapMoveFlag,
       resetRestaurantProfileFocusSessionRef,

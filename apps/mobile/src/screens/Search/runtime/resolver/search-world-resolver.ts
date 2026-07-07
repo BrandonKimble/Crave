@@ -67,6 +67,12 @@ export type SearchWorldResolverEnv = {
     cache: SearchWorldCache<SearchWorldValue>;
   }) => SearchWorldNetworkFetchResult | null;
   now: () => number;
+  /** S4a parity: report every resolve kick (generation + passed intent kind) so the
+   *  dark reconciler can diff its derivation. Deleted in S4b. */
+  onResolveKick?: (args: {
+    generation: number;
+    presentationIntentKind: 'search_this_area' | 'variant_rerun' | undefined;
+  }) => void;
   /** Page-N fetch (S3 pagination cutover) — payload from the world's identity inputs. */
   fetchNextPageForTuple?: (args: {
     tuple: SearchDesiredTuple;
@@ -161,6 +167,7 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
     const cardsKey = buildSearchCardsWorldKey(tuple);
     const coverageKey = buildSearchCoverageWorldKey(tuple);
     core.observeGeneration(generation);
+    env.onResolveKick?.({ generation, presentationIntentKind });
     env.seam.beginResolution({ generation, presentationIntentKind });
     onResolutionBegan?.();
 

@@ -54,7 +54,6 @@ export const useSearchRootClearRestoreAuthorityRuntime = ({
     requestDefaultPostSearchRestore: routeOverlaySessionActions.requestDefaultPostSearchRestore,
     cancelAutocomplete: rootDataPlaneRuntime.requestStatusRuntime.cancelAutocomplete,
     resetSubmitTransitionHold: rootSuggestionRuntime.resetSubmitTransitionHold,
-    resetFilters: rootDataPlaneRuntime.filterStateRuntime.resetFilters,
     setIsSearchFocused: rootPrimitivesRuntime.searchState.setIsSearchFocused,
     setIsSuggestionPanelActive: rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
     setIsAutocompleteSuppressed: rootPrimitivesRuntime.searchState.setIsAutocompleteSuppressed,

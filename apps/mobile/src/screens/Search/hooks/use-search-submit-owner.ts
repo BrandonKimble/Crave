@@ -33,6 +33,7 @@ import {
   createSearchWorldNextPageFetcher,
 } from '../runtime/resolver/search-world-fetch';
 import { createSearchWorldDerivation } from '../runtime/resolver/search-world-derivation';
+import { createSearchWorldReconciler } from '../runtime/reconciler/search-world-reconciler';
 import { searchService } from '../../../services/search';
 import { getSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 import { useSearchSubmitActionOwner } from './use-search-submit-action-owner';
@@ -288,6 +289,10 @@ const useSearchSubmitOwner = ({
     runSearchForWorldRef.current = runSearch;
   });
   const worldResolver = React.useMemo(() => {
+    // S4a: the DARK reconciler — classifies every tuple transition, traces [RECONCILE],
+    // and RED-diffs the derived intent against each trigger-passed resolve kick. It
+    // drives nothing yet (S4b makes it the one kicker).
+    let reconcilerRef: ReturnType<typeof createSearchWorldReconciler> | null = null;
     const seam = createSearchWorldPresentationSeam({
       searchRuntimeBus,
       resultsPresentationSurfaceAuthority,
@@ -300,9 +305,19 @@ const useSearchSubmitOwner = ({
         lastSearchRequestIdRef.current = searchRequestId;
       },
     });
+    const reconciler = createSearchWorldReconciler({
+      searchRuntimeBus,
+      getPresentedCardsKey: () => {
+        const worldId = seam.getPresentedWorldId();
+        return worldId == null ? null : worldId.replace(/@v\d+$/, '');
+      },
+    });
+    reconcilerRef = reconciler;
+    reconciler.start();
     return createSearchWorldResolver({
       searchRuntimeBus,
       seam,
+      onResolveKick: (kick) => reconcilerRef?.onResolveKick(kick),
       fetchWorldForTuple: createSearchWorldFetcher({
         runSearch: (request) => runSearchForWorldRef.current(request),
         userLocationRef,
