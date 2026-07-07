@@ -1,6 +1,11 @@
 import React from 'react';
 
 import type { SearchResponse } from '../../../../types';
+import {
+  IDLE_SEARCH_DESIRED_TUPLE,
+  type SearchDesiredTuple,
+  type SearchTupleWriteCause,
+} from './search-desired-state-contract';
 import type {
   CameraSnapshot,
   ProfileTransitionStatus,
@@ -45,6 +50,14 @@ export const isSearchRuntimeMapPresentationSettled = (
 ): boolean => !isSearchRuntimeMapPresentationPending(phase);
 
 export type SearchRuntimeBusState = {
+  // S2 (plans/search-desired-state-architecture.md §2): the DESIRED SEARCH TUPLE — the
+  // single writer surface for every trigger source. Written ONLY through
+  // writeSearchDesiredTuple (search-desired-state-writer.ts); the legacy filter/tab/query
+  // keys below become read-only PROJECTIONS of it (same batch, one writer) until S4
+  // deletes them.
+  desiredTuple: SearchDesiredTuple;
+  desiredTupleGeneration: number;
+  desiredTupleCause: SearchTupleWriteCause | null;
   results: SearchResponse | null;
   resultsIdentityCandidateKey: string | null;
   resultsPage: number | null;
@@ -154,6 +167,9 @@ const IDLE_PROFILE_SHELL_STATE: SearchRuntimeProfileShellState = {
 };
 
 const INITIAL_STATE: SearchRuntimeBusState = {
+  desiredTuple: IDLE_SEARCH_DESIRED_TUPLE,
+  desiredTupleGeneration: 0,
+  desiredTupleCause: null,
   results: null,
   resultsIdentityCandidateKey: null,
   resultsPage: null,
