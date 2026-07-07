@@ -23,14 +23,9 @@ import {
 import { logPerfScenarioStackAttribution } from '../../../../perf/perf-scenario-attribution';
 export type SearchRuntimeActiveTab = 'dishes' | 'restaurants';
 export type SearchRuntimeSearchMode = 'natural' | 'shortcut' | null;
-export type SearchRuntimeOperationLane =
-  | 'idle'
-  | 'lane_a_ack'
-  | 'lane_b_data_commit'
-  | 'lane_c_prepared_rows'
-  | 'lane_d_map_dots'
-  | 'lane_e_map_pins'
-  | 'lane_f_polish';
+/** S4c token economy: the phase of the world currently being presented. Published by
+ *  the presentation seam; refined into full reveal phases by the S4c statechart. */
+export type SearchPresentingPhase = 'idle' | 'resolving' | 'presented';
 
 export type SearchRuntimeMapPresentationPhase =
   | 'idle'
@@ -86,9 +81,12 @@ export type SearchRuntimeBusState = {
   isSearchSessionActive: boolean;
   isSearchLoading: boolean;
   isLoadingMore: boolean;
-  isMapActivationDeferred: boolean;
   activeOperationId: string | null;
-  activeOperationLane: SearchRuntimeOperationLane;
+  /** S4c: the worldId last committed to the screen + its presentation phase — the
+   *  episode token presentation-adjacent readers key off (replaces the lane ladder;
+   *  `activeOperationId` dies with the transaction machine). */
+  presentedWorldId: string | null;
+  presentingPhase: SearchPresentingPhase;
   currentPage: number;
   hasMoreFood: boolean;
   hasMoreRestaurants: boolean;
@@ -134,7 +132,7 @@ type SearchRuntimeBusDiagnosticEntry = {
   notifiedListenerLabels?: string[];
   batchDepth: number;
   version: number;
-  activeOperationLane: SearchRuntimeOperationLane;
+  presentingPhase: SearchPresentingPhase;
   searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
   resultsPresentationStage: string | null;
   stack?: string[];
@@ -196,9 +194,9 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   isSearchSessionActive: false,
   isSearchLoading: false,
   isLoadingMore: false,
-  isMapActivationDeferred: false,
   activeOperationId: null,
-  activeOperationLane: 'idle',
+  presentedWorldId: null,
+  presentingPhase: 'idle',
   currentPage: 1,
   hasMoreFood: false,
   hasMoreRestaurants: false,
@@ -455,7 +453,7 @@ export class SearchRuntimeBus {
             notifiedListenerLabels == null || notifiedListenerLabels.length === 0
               ? undefined
               : notifiedListenerLabels.slice(0, 16),
-          activeOperationLane: this.state.activeOperationLane,
+          presentingPhase: this.state.presentingPhase,
           searchSurfaceRedrawPhase: this.state.searchSurfaceRedrawPhase,
           resultsPresentationStage: null,
         },
@@ -474,7 +472,7 @@ export class SearchRuntimeBus {
           : notifiedListenerLabels.slice(0, 16),
       batchDepth: this.batchDepth,
       version: this.version,
-      activeOperationLane: this.state.activeOperationLane,
+      presentingPhase: this.state.presentingPhase,
       searchSurfaceRedrawPhase: this.state.searchSurfaceRedrawPhase,
       resultsPresentationStage: null,
     });

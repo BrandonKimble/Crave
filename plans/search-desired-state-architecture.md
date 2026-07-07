@@ -300,11 +300,27 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     Parity caught + fixed: tab-toggle misclassified as reversal (reversal now requires
     unchanged tab); dismiss = ONE atomic tuple write (two-write phantom variant_rerun
     killed); profile-dismiss clear lane never wrote idle (S2 gap, fixed).
-  - **Next: S4b** — reconciler owns resolution (delete the S2 chip reader + trigger
-    resolve kicks + beginResolverSubmitForegroundUi; effects move to the per-class
-    table; transaction machine still presents via a worldId-keyed adapter). Then S4c
-    (statechart replaces the machine), S4d (native (worldId, phase) + ack-everything —
-    task #16 acceptance), S4e (legacy bus-key deletion via tuple selectors).
+  - **S4b SHIPPED** (463ac8cb): the reconciler is the ONE resolution driver; triggers
+    are pure tuple writes. Structured/natural/favorites owners reduced to writes (entity
+    conversion = identityOverride, ONE write); variant reruns + reversals ride the
+    toggle coordinator through a settable presentation port; request decoration via a
+    pending-slot registry (the reconciler fires synchronously inside the write);
+    beginResolverSubmitForegroundUi deleted — foreground effects are per-class in the
+    dispatch table. Rig: full lane green, resubmit-after-dismiss = instant cache reveal
+    incl. pins.
+  - **S4c-0 SHIPPED**: the token economy (riskiest coupling #1, inverted). The seam
+    publishes `(presentedWorldId, presentingPhase)`; the lane ladder is DELETED
+    (`activeOperationLane`, `SearchRuntimeOperationLane`, `isMapActivationDeferred`) —
+    its polish-advance controller in SearchMapWithMarkerEngine was provably dead since
+    S3d (nothing published lane_e). Close-cleanup's staleness token migrated to the
+    episode token. `activeOperationId` survives only inside the transaction machine and
+    dies with it in S4c-1.
+  - **Next: S4c-1** — statechart replaces the transaction machine (seam emits
+    world_ready; adapter onto the existing native protocol; synthesize fade_out_acked
+    from transport events; DELETE the 1,190-line surface-transaction runtime +
+    coordinator + redraw-transaction lanes + both watchdogs + pendingTabSwitchTab +
+    React-tab present-sync). Then S4d (native (worldId, phase) + ack-everything — task
+    #16 acceptance), S4e (legacy bus-key deletion via tuple selectors).
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be

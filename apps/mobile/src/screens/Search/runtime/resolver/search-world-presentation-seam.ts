@@ -106,8 +106,9 @@ export type SearchWorldPresentationSeamEnv = {
 export type SearchWorldPresentationSeam = {
   /** The worldId last committed to the screen (S4a reconciler classification input). */
   getPresentedWorldId: () => string | null;
-  /** SYNCHRONOUS: publishes activeOperationId ('world:'+generation) + lane_a_ack +
-   *  isSearchLoading before returning — pending presentation arms read it right after. */
+  /** SYNCHRONOUS: publishes activeOperationId ('world:'+generation) + presentingPhase
+   *  'resolving' + isSearchLoading before returning — pending presentation arms read it
+   *  right after. */
   beginResolution: (args: {
     generation: number;
     presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
@@ -130,7 +131,7 @@ export const createSearchWorldPresentationSeam = (
     beginResolution: ({ generation, presentationIntentKind }) => {
       env.searchRuntimeBus.publish({
         activeOperationId: `world:${generation}`,
-        activeOperationLane: 'lane_a_ack',
+        presentingPhase: 'resolving',
         isSearchLoading: true,
         pendingTabSwitchTab: null,
         isLoadingMore: false,
@@ -163,7 +164,8 @@ export const createSearchWorldPresentationSeam = (
         // comes. Provable in the trace via represent_noop.
         env.searchRuntimeBus.publish({
           activeOperationId: `world:${generation}`,
-          activeOperationLane: 'lane_b_data_commit',
+          presentedWorldId: worldId,
+          presentingPhase: 'presented',
           isSearchLoading: false,
           isLoadingMore: false,
         });
@@ -233,7 +235,8 @@ export const createSearchWorldPresentationSeam = (
         env.searchRuntimeBus.publish({
           ...value.rootBusResultsPatch,
           activeOperationId: `world:${generation}`,
-          activeOperationLane: 'lane_b_data_commit',
+          presentedWorldId: worldId,
+          presentingPhase: 'presented',
           isSearchLoading: false,
           isLoadingMore: false,
           currentPage: value.paginationMeta.page,
@@ -271,7 +274,9 @@ export const createSearchWorldPresentationSeam = (
     failResolution: ({ generation, reason }) => {
       env.searchRuntimeBus.publish({
         activeOperationId: null,
-        activeOperationLane: 'idle',
+        // A failed resolution settles back onto whatever is on screen — 'idle' only
+        // when nothing is presented (a failed session enter).
+        presentingPhase: presentedWorldId != null ? 'presented' : 'idle',
         isSearchLoading: false,
         isLoadingMore: false,
       });

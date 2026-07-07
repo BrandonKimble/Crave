@@ -35,9 +35,7 @@ export const useSearchRootRequestExecutionAuthorityRuntime = ({
     setSearchRequestLoading(false);
     searchRuntimeBus.publish({
       activeOperationId: null,
-      activeOperationLane: 'idle',
       isSearchLoading: false,
-      isMapActivationDeferred: false,
       isLoadingMore: false,
     });
   }, [cancelSearch, searchRuntimeBus, setSearchRequestLoading]);

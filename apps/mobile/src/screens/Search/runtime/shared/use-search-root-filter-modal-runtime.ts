@@ -27,7 +27,7 @@ export const useSearchRootFilterModalRuntime = ({
   resultsPresentationOwner,
   submitRuntimeResult,
 }: UseSearchRootFilterModalRuntimeArgs): FilterModalRuntime => {
-  const { rootPrimitivesRuntime, rootDataPlaneRuntime } = stateFoundationLane;
+  const { rootDataPlaneRuntime } = stateFoundationLane;
   const { rootInstrumentationRuntime, rootOverlayStoreRuntime, appRouteSharedSheetRuntimeOwner } =
     rootOverlayFoundationRuntime;
 

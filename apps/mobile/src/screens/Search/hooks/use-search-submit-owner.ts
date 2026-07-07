@@ -279,7 +279,6 @@ const useSearchSubmitOwner = ({
     });
     lastAutoOpenKeyRef.current = null;
     setActiveTab(tuple.tab);
-    searchRuntimeBus.publish({ isMapActivationDeferred: true });
     setError(null);
     Keyboard.dismiss();
   };
@@ -375,7 +374,6 @@ const useSearchSubmitOwner = ({
       runEnterForegroundEffects: (effectArgs) => enterForegroundEffectsRef.current(effectArgs),
       onResolveFailed: (reason) => {
         logger.error('Search resolution failed', { message: reason });
-        searchRuntimeBus.publish({ isMapActivationDeferred: false });
         onPresentationIntentAbortRef.current?.();
       },
     });
