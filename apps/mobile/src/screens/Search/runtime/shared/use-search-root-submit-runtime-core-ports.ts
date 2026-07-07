@@ -8,11 +8,7 @@ type SearchRootSubmitRuntimePorts = Parameters<
 
 type SearchRootSubmitRuntimeCorePorts = Pick<
   SearchRootSubmitRuntimePorts,
-  | 'runtimeWorkSchedulerRef'
-  | 'searchRuntimeBus'
-  | 'lastSearchRequestIdRef'
-  | 'lastAutoOpenKeyRef'
-  | 'requestRuntimeOwner'
+  'runtimeWorkSchedulerRef' | 'searchRuntimeBus' | 'lastSearchRequestIdRef' | 'lastAutoOpenKeyRef'
 >;
 
 type UseSearchRootSubmitRuntimeCorePortsArgs = {
@@ -20,7 +16,6 @@ type UseSearchRootSubmitRuntimeCorePortsArgs = {
   searchRuntimeBus: SearchRootSubmitRuntimePorts['searchRuntimeBus'];
   lastSearchRequestIdRef: SearchRootSubmitRuntimePorts['lastSearchRequestIdRef'];
   lastAutoOpenKeyRef: SearchRootSubmitRuntimePorts['lastAutoOpenKeyRef'];
-  requestRuntimeOwner: SearchRootSubmitRuntimePorts['requestRuntimeOwner'];
 };
 
 export const useSearchRootSubmitRuntimeCorePorts = ({
@@ -28,7 +23,6 @@ export const useSearchRootSubmitRuntimeCorePorts = ({
   searchRuntimeBus,
   lastSearchRequestIdRef,
   lastAutoOpenKeyRef,
-  requestRuntimeOwner,
 }: UseSearchRootSubmitRuntimeCorePortsArgs): SearchRootSubmitRuntimeCorePorts => {
   const busRuntimePorts = useSearchRootSubmitRuntimeBusPorts({
     runtimeWorkSchedulerRef,
@@ -37,7 +31,6 @@ export const useSearchRootSubmitRuntimeCorePorts = ({
   const requestRuntimePorts = useSearchRootSubmitRuntimeRequestPorts({
     lastSearchRequestIdRef,
     lastAutoOpenKeyRef,
-    requestRuntimeOwner,
   });
 
   return React.useMemo(

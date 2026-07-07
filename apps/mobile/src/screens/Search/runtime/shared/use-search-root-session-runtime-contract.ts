@@ -11,7 +11,6 @@ import { useSearchRequestStatusRuntime } from './use-search-request-status-runti
 import { useSearchFilterStateRuntime } from './use-search-filter-state-runtime';
 import { useSearchFreezeGateRuntime } from './use-search-freeze-gate-runtime';
 import { useSearchHistoryRuntime } from './use-search-history-runtime';
-import type { SearchSessionController } from '../controller/search-session-controller';
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
@@ -149,7 +148,6 @@ export type SearchRootSessionCoreLane = {
   viewportBoundsService: ViewportBoundsService;
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
   cameraIntentArbiter: CameraIntentArbiter;
-  searchSessionController: SearchSessionController;
   runtimeWorkSchedulerRef: React.MutableRefObject<RuntimeWorkScheduler>;
   searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;

@@ -9,12 +9,9 @@ import {
   writeSearchDesiredTuple,
 } from '../runtime/shared/search-desired-state-writer';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
-import { createEntitySubmitIntentPayload } from '../runtime/adapters/entity-adapter';
-import { createShortcutSubmitIntentPayload } from '../runtime/adapters/shortcut-adapter';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 import type { SearchSubmitEntrySurface } from '../runtime/shared/search-submit-entry-surface-contract';
-import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
 
 export type { SearchSubmitEntrySurface } from '../runtime/shared/search-submit-entry-surface-contract';
 
@@ -83,33 +80,6 @@ export type ResolveNaturalSearchAttemptConfigResult = {
   entrySurface: SearchSubmitEntrySurface;
 };
 
-export type StructuredInitialAttemptConfig = {
-  submitPayload:
-    | ReturnType<typeof createEntitySubmitIntentPayload>
-    | ReturnType<typeof createShortcutSubmitIntentPayload>;
-  foregroundUi: {
-    kind: SearchSubmitPresentationIntentKind;
-    mode: SearchMode;
-    preserveSheetState: boolean;
-    transitionFromDockedPolls: boolean;
-    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-    targetTab: SegmentValue;
-    submittedLabel: string;
-    shouldResetPagination: boolean;
-    logLabel: string;
-    replaceResultsLabel?: string;
-    entrySurface: SearchSubmitEntrySurface;
-  };
-  errorLogLabel: string;
-  finalizeReason: string;
-};
-
-export type StructuredAppendAttemptConfig = {
-  submitPayload: ReturnType<typeof createShortcutSubmitIntentPayload>;
-  errorLogLabel: string;
-  submittedLabel: string;
-};
-
 type PrepareNaturalSearchEntryResult = {
   append: boolean;
   targetPage: number;
@@ -129,8 +99,6 @@ type UseSearchSubmitEntryOwnerArgs = {
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   searchRuntimeBus: SearchRuntimeBus;
   resetMapMoveFlag: () => void;
-  activeLoadingMoreTokenRef: SearchRequestRuntimeOwner['activeLoadingMoreTokenRef'];
-  isSearchRequestInFlightRef: SearchRequestRuntimeOwner['isSearchRequestInFlightRef'];
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
   onPresentationIntentStart?: (params: {
     kind: SearchSubmitPresentationIntentKind;
@@ -195,8 +163,6 @@ export const useSearchSubmitEntryOwner = ({
   setError,
   searchRuntimeBus,
   resetMapMoveFlag,
-  activeLoadingMoreTokenRef,
-  isSearchRequestInFlightRef,
   lastAutoOpenKeyRef,
   onPresentationIntentStart,
 }: UseSearchSubmitEntryOwnerArgs) => {
@@ -220,20 +186,12 @@ export const useSearchSubmitEntryOwner = ({
         entrySurface: options.entrySurface,
       });
       lastAutoOpenKeyRef.current = null;
-      activeLoadingMoreTokenRef.current = null;
       setActiveTab(options.targetTab);
       searchRuntimeBus.publish({ isMapActivationDeferred: true });
       setError(null);
       Keyboard.dismiss();
     },
-    [
-      activeLoadingMoreTokenRef,
-      lastAutoOpenKeyRef,
-      onPresentationIntentStart,
-      searchRuntimeBus,
-      setActiveTab,
-      setError,
-    ]
+    [lastAutoOpenKeyRef, onPresentationIntentStart, searchRuntimeBus, setActiveTab, setError]
   );
 
   const prepareNaturalSearchEntry = React.useCallback(
@@ -242,7 +200,7 @@ export const useSearchSubmitEntryOwner = ({
       overrideQuery?: string
     ): PrepareNaturalSearchEntryResult | null => {
       const append = Boolean(options?.append);
-      if (append && (isSearchRequestInFlightRef.current || isLoadingMore)) {
+      if (append && isLoadingMore) {
         return null;
       }
 
@@ -293,15 +251,7 @@ export const useSearchSubmitEntryOwner = ({
         trimmedQuery,
       };
     },
-    [
-      isLoadingMore,
-      isSearchRequestInFlightRef,
-      query,
-      resetMapMoveFlag,
-      searchRuntimeBus,
-      setError,
-      viewportBoundsService,
-    ]
+    [isLoadingMore, query, resetMapMoveFlag, searchRuntimeBus, setError, viewportBoundsService]
   );
 
   const resolveNaturalSearchAttemptConfig = React.useCallback(

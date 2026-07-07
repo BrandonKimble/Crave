@@ -36,7 +36,6 @@ import { createSearchWorldDerivation } from '../runtime/resolver/search-world-de
 import { searchService } from '../../../services/search';
 import { getSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 import { useSearchSubmitActionOwner } from './use-search-submit-action-owner';
-import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
 type SearchSubmitOwnerReadModel = {
   query: string;
   submittedQuery: string;
@@ -105,7 +104,6 @@ type SearchSubmitOwnerRuntimePorts = {
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
   viewportBoundsService: ViewportBoundsService;
   userLocationRef: React.MutableRefObject<Coordinate | null>;
-  requestRuntimeOwner: SearchRequestRuntimeOwner;
 };
 
 type UseSearchSubmitOwnerOptions = {
@@ -213,9 +211,7 @@ const useSearchSubmitOwner = ({
     mapRef,
     viewportBoundsService,
     userLocationRef,
-    requestRuntimeOwner,
   } = runtimePorts;
-  const { activeLoadingMoreTokenRef, isSearchRequestInFlightRef } = requestRuntimeOwner;
   const {
     beginResolverSubmitForegroundUi,
     prepareNaturalSearchEntry,
@@ -233,8 +229,6 @@ const useSearchSubmitOwner = ({
     setError,
     searchRuntimeBus,
     resetMapMoveFlag,
-    activeLoadingMoreTokenRef,
-    isSearchRequestInFlightRef,
     lastAutoOpenKeyRef,
     onPresentationIntentStart,
   });
