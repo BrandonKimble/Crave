@@ -197,6 +197,28 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
 
 ## 7. Migration — presentation LAST, one native writer per stage (corrected)
 
+**PROGRESS (2026-07-06/07, this campaign):**
+
+- **Foundations SHIPPED** (b2b85f1c): tuple contract (sum-type identity incl.
+  profileSeed/idle; cardsWorld/coverageWorld keys) + the pure reveal statechart with 10
+  model tests (totality + RED joint invariant).
+- **S1 SHIPPED** (37aa22d2 + acd4379d): coverage is a world FIELD (per-tab entries,
+  identity-keyed carry-forward convergence, both commit orders converge structurally);
+  the frame reads coverage ONLY from the world; the covNotReady ladder + the
+  dotFeaturesRef active pointer (stale-236 class) are DELETED; failed coverage = LOUD
+  degraded frame. Validated: initial/open-now/tab/zoom-then-toggle all green, the
+  owner-reported zoom-vanish lane works.
+- **S2 SHIPPED** (6a55bfae + a8b09439 + 7fda1311 + 1304ff3c + 0c7d8506): desiredTuple/
+  generation/cause on the bus; writeSearchDesiredTuple is the ONE writer (idempotent,
+  per-key delta projection of legacy keys — deleted in S4); chips/price/tab/submits
+  (shortcut incl. STA + deep link, natural)/favorites/dismiss/boot-seed all write the
+  tuple; the thin reader (in the orchestrator, chip-cause-scoped) adapts filter changes
+  into the existing commit lanes; persist mirror is write-through-only with a LOUD
+  late-rehydrate skip. Trace: append-only [TUPLE] lines (generation/cause/worldKey).
+  Deferred to S3 per the edit map: entity taps fold into the sum type, profileSeed
+  zero-network derivation, lane-A legacy publish deletion (values already identical).
+- **S3 IN FLIGHT**; S4 pending.
+
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
 guard-free. The invariant: **exactly one native presentation writer at every stage.**
