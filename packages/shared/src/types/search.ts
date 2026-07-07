@@ -3,6 +3,7 @@ export type EntityScope =
   | 'food'
   | 'food_attribute'
   | 'restaurant_attribute'
+  | 'ingredient'
   | 'connection';
 
 export type QueryFormat = 'dual_list' | 'single_list';
