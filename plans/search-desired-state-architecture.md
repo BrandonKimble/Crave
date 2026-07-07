@@ -246,7 +246,30 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     executeShortcutInitialAttempt + createShortcutStructuredInitialAttemptConfig +
     primeShortcutStructuredRequest. On-rig: cold submit reveal + chip toggle +
     represent_noop resubmit all green, zero contract noise.
-  - **Next: S3b-2** — natural submits through the resolver: prepareNaturalSearchEntry
+  - **S3b-2 SHIPPED** (fb180fc5): typed natural submits resolve; response tab adopt =
+    ONE tuple write (cause response_tab_adopt); singleRestaurantCandidate = world
+    metadata driving post-present effects. On-rig: 'pizza' adopted Dishes, 9 cards.
+  - **S3c SHIPPED** (9d2b61ee + 224b1126 + 849d9383): entity taps = 'entity' identity
+    (restaurant→structured, food/attr→natural+context; ROOT-CAUSE: writer's legacy
+    searchMode projection must be 'natural' for food/attr+favorites or coverage-less
+    worlds starve the frame; React activeTab synced at present); favorites = entities
+    identity via getListResults (list-axis adopt, collapse suppressed; NEEDS OWNER
+    EYEBALL — test account has no lists); pagination = resolveNextPage (value versions,
+    superseded-append caches-only, 4 model tests; Maestro can't scroll the list so the
+    on-device append lane needs an owner eyeball); DERIVATION TIER live (page-1
+    includeSimilar flip from the sibling variant's world — local-swap branch deleted);
+    request DECORATION channel (typedPrefix/submissionSource ride the request, never
+    the cache key) → ALL non-append submissions resolve.
+  - **Next: S3d — THE DELETION.** Now unreachable: executeActivatedNaturalSearch-
+    Attempt (natural owner), loadMoreResults+loadMoreShortcutResults legacy bodies +
+    executeShortcutAppendAttempt (action/structured owners), runManagedRequestAttempt
+    consumers, execution owner attempts, response owner lifecycle, request-runtime
+    shadow machine, preparation owner, coverage relay (helper owner), shadow session
+    controller + adapters, controller post-response coverage lane + bbf97e85 interim.
+    Verify each file's remaining exports before deleting (applyIncludeSimilarLocalSwap
+    is GONE from consumers; response owner may still export types in use). profileSeed
+    stays lane-owned until S4 (its zero-network synthesis lands with the reconciler).
+  - (superseded) **S3b-2 was:** — natural submits through the resolver: prepareNaturalSearchEntry
     already writes the tuple; route submitSearch's non-append path to resolve();
     needs the response tab-adopt as a 'response_tab_adopt' tuple write decided from
     the landed response (resolveNaturalResponseActiveTab), history push +
