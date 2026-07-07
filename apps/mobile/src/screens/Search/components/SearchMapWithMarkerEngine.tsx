@@ -213,9 +213,6 @@ const useSearchMapLaneAdvancement = ({
 
 export type SearchMapMarkerEngineHandle = {
   resetShortcutCoverageState: () => void;
-  handleShortcutSearchCoverageSnapshot: ReturnType<
-    typeof useDirectSearchMapSourceController
-  >['handleShortcutSearchCoverageSnapshot'];
 };
 
 // ---------------------------------------------------------------------------
@@ -446,34 +443,29 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     resultsPresentationAuthority,
   });
 
-  const {
-    restaurantLabelStyle,
-    buildMarkerKey,
-    handleShortcutSearchCoverageSnapshot,
-    resetShortcutCoverageState,
-    handleMarkerPress,
-  } = useDirectSearchMapSourceController({
-    searchRuntimeBus,
-    resultsPresentationAuthority,
-    resultsPresentationSurfaceAuthority,
-    sourceFramePort,
-    restaurantOnlyId,
-    highlightedRestaurantId,
-    viewportBoundsService,
-    userLocation,
-    resolveRestaurantMapLocations,
-    resolveRestaurantLocationSelectionAnchor,
-    pickPreferredRestaurantMapLocation,
-    getCraveScoreColorFromScore,
-    mapGestureActiveRef,
-    mapMotionPressureController,
-    shouldLogSearchComputes,
-    getPerfNow,
-    logSearchCompute,
-    maxFullPins,
-    isMapMoving: nativeViewportState.isMoving,
-    profileCommandPort,
-  });
+  const { restaurantLabelStyle, buildMarkerKey, resetShortcutCoverageState, handleMarkerPress } =
+    useDirectSearchMapSourceController({
+      searchRuntimeBus,
+      resultsPresentationAuthority,
+      resultsPresentationSurfaceAuthority,
+      sourceFramePort,
+      restaurantOnlyId,
+      highlightedRestaurantId,
+      viewportBoundsService,
+      userLocation,
+      resolveRestaurantMapLocations,
+      resolveRestaurantLocationSelectionAnchor,
+      pickPreferredRestaurantMapLocation,
+      getCraveScoreColorFromScore,
+      mapGestureActiveRef,
+      mapMotionPressureController,
+      shouldLogSearchComputes,
+      getPerfNow,
+      logSearchCompute,
+      maxFullPins,
+      isMapMoving: nativeViewportState.isMoving,
+      profileCommandPort,
+    });
 
   React.useEffect(
     () =>
@@ -627,9 +619,8 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     ref,
     () => ({
       resetShortcutCoverageState,
-      handleShortcutSearchCoverageSnapshot,
     }),
-    [resetShortcutCoverageState, handleShortcutSearchCoverageSnapshot]
+    [resetShortcutCoverageState]
   );
 
   // -------------------------------------------------------------------------

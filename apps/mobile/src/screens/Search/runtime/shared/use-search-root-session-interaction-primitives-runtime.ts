@@ -29,16 +29,6 @@ export const useSearchRootSessionInteractionPrimitivesRuntime = ({
     return Date.now();
   }, []);
   const readRuntimeMemoryDiagnostics = React.useCallback(() => null, []);
-  const handleShortcutSearchCoverageSnapshot = React.useCallback<
-    SearchRuntimePrimitivesRuntime['handleShortcutSearchCoverageSnapshot']
-  >(
-    (snapshot) => {
-      rootPrimitivesRuntime.mapState.markerEngineRef.current?.handleShortcutSearchCoverageSnapshot?.(
-        snapshot
-      );
-    },
-    [rootPrimitivesRuntime.mapState.markerEngineRef]
-  );
   const resetShortcutCoverageState = React.useCallback(() => {
     rootPrimitivesRuntime.mapState.markerEngineRef.current?.resetShortcutCoverageState?.();
   }, [rootPrimitivesRuntime.mapState.markerEngineRef]);
@@ -51,14 +41,8 @@ export const useSearchRootSessionInteractionPrimitivesRuntime = ({
       searchSurfaceRedrawCommitSpanPressureByOperationRef,
       getPerfNow,
       readRuntimeMemoryDiagnostics,
-      handleShortcutSearchCoverageSnapshot,
       resetShortcutCoverageState,
     }),
-    [
-      getPerfNow,
-      handleShortcutSearchCoverageSnapshot,
-      readRuntimeMemoryDiagnostics,
-      resetShortcutCoverageState,
-    ]
+    [getPerfNow, readRuntimeMemoryDiagnostics, resetShortcutCoverageState]
   );
 };

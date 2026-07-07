@@ -67,11 +67,6 @@ export type SearchRuntimePrimitivesRuntime = {
   searchSurfaceRedrawCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
   getPerfNow: () => number;
   readRuntimeMemoryDiagnostics: () => null;
-  handleShortcutSearchCoverageSnapshot: (snapshot: {
-    searchRequestId: string;
-    bounds: MapBounds | null;
-    entities: Record<string, unknown>;
-  }) => void;
   resetShortcutCoverageState: () => void;
 };
 

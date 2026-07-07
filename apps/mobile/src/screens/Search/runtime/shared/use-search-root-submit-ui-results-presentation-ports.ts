@@ -7,10 +7,7 @@ import type { ResultsPresentationOwner } from './use-results-presentation-runtim
 
 type SearchRootSubmitUiResultsPresentationPorts = Pick<
   Parameters<typeof useSearchSubmitOwnerValue>[0]['uiPorts'],
-  | 'getIsProfilePresentationActive'
-  | 'clearMapHighlightedRestaurantId'
-  | 'onPageOneResultsCommitted'
-  | 'onShortcutSearchCoverageSnapshot'
+  'getIsProfilePresentationActive' | 'clearMapHighlightedRestaurantId' | 'onPageOneResultsCommitted'
 >;
 
 type UseSearchRootSubmitUiResultsPresentationPortsArgs = {
@@ -44,14 +41,11 @@ export const useSearchRootSubmitUiResultsPresentationPorts = ({
           searchInputKey: payload.searchInputKey,
         });
       },
-      onShortcutSearchCoverageSnapshot:
-        sessionPrimitivesLane.primitives.handleShortcutSearchCoverageSnapshot,
     }),
     [
       profileOwner.profileActions.clearMapHighlightedRestaurantId,
       profileOwner.profileViewState.presentation.isPresentationActive,
       resultsPresentationOwner,
-      sessionPrimitivesLane.primitives.handleShortcutSearchCoverageSnapshot,
     ]
   );
 };
