@@ -175,12 +175,14 @@ export class ExtractionPipelineService implements OnModuleInit {
       process.env.COLLECTION_LLM_MODE?.trim().toLowerCase() === 'batch'
         ? 'batch'
         : 'interactive';
-    // Relevance gate rollout: off (default) | archive (archive loads only) |
-    // all (every collection type). plans/archive-prefilter-pipeline.md.
+    // Relevance gate: ON for every collection type by DEFAULT (owner call
+    // 2026-07-07 after the drop-audit review read clean — 30/30 random drops
+    // unambiguous non-food). COLLECTION_RELEVANCE_GATE=off|archive remain as
+    // explicit opt-downs for debugging/staged loads.
     const gateMode =
       process.env.COLLECTION_RELEVANCE_GATE?.trim().toLowerCase();
     this.relevanceGateMode =
-      gateMode === 'all' || gateMode === 'archive' ? gateMode : 'off';
+      gateMode === 'off' || gateMode === 'archive' ? gateMode : 'all';
     this.geminiBatchService.registerIngestor(
       'collection_extraction',
       async ({ jobId, resumeContext, items }) => {

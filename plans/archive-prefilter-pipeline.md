@@ -134,9 +134,10 @@ collection types.
      to cheap; drop audits read clean (chess classes, transit news, medical)
    - One borderline drop seen in 90 audited: a Kyoto itinerary mentioning
      Nishiki Market without a food ask — acceptable at fail-open calibration
-     OWNER EYEBALL of the drop audits = the lock gate before flipping
-     COLLECTION_RELEVANCE_GATE=archive for the Austin load, then =all after the
-     load proves it.
+     OWNER GATE CLEARED 2026-07-07: owner delegated to review; 30/30 random
+     drops from the verdict ledger read unambiguously non-food. Gate is now ON
+     BY DEFAULT for ALL collection types (code default 'all'); =off/=archive
+     remain explicit opt-downs.
 
 ## Dependencies / notes
 
