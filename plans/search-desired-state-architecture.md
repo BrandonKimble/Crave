@@ -393,13 +393,22 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     noise. NOTE on the JSON same-state skip: with episode tokens as transactionId it
     already IS (worldId, phase) idempotence, and it ACKS via the `apply_same_state`
     snapshot emit — kept as the idempotence path, not content-dedupe.
-  - **Remaining: S4d-3c (rename, no regime change)** — collapse the
-    lastEnter\*/lastDismiss registers into (currentWorldId, currentPhase) and replace
-    the five JS request keys + native `deriveSearchMapVisualFrameTransactionKind`
-    with an explicit (worldId, phase) payload. Purely mechanical now: the keys are
-    already worldId episode tokens end-to-end and no timer/bypass regime remains, so
-    this no longer needs to land atomically with anything. Then S4e (legacy bus-key
-    deletion via tuple selectors).
+  - **S4d-3c slice 1 SHIPPED (d0582ee1): the five legacy request keys left the
+    native payload.** requestKey/visualCycleKey/readinessKey/
+    shortcutCoverageRequestKey/markersRenderKey were serialized into every
+    setRenderFrame transaction and parsed natively but NEVER read — deleted from the
+    JS transaction type/builder and the Swift struct/parser. Lane green on-rig
+    (incl. a cache-hit resubmit: g4 `dataReadyFrom: cache`).
+  - **Remaining: S4d-3c slice 2 (register collapse — a real state redesign, NOT a
+    sed rename).** lastEnterRequestKey / lastEnterStartedRequestKey /
+    lastEnterSettledRequestKey / lastDismissRequestKey (~80 refs) become
+    (currentWorldId, currentPhase) where started/settled are phase _levels_ of one
+    register, not sibling keys; `deriveSearchMapVisualFrameTransactionKind` (which
+    already derives from the JS phase machine, not transport content — the disease
+    is gone, only the shape remains) is replaced by an explicit phase field. No
+    timer/bypass regime remains, so this can land as its own focused pass with a
+    full regression lane. Then S4e (legacy bus-key deletion via tuple selectors;
+    plus the JS exit-lane double exit_started re-publish).
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
