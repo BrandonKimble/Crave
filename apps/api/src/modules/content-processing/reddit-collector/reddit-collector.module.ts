@@ -31,6 +31,7 @@ import { ArchiveCollectionWorker } from './archive/archive-collection.worker';
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
 import { CollectionEvidenceService } from './collection-evidence.service';
 import { ExtractionPipelineService } from './extraction-pipeline.service';
+import { RelevanceGateService } from './relevance-gate.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 import { ReplayService } from './replay.service';
 import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
@@ -43,6 +44,7 @@ import { isWorkerRuntime } from '../../../shared/utils/process-role';
 const redditCollectorCoreProviders = [
   CollectionEvidenceService,
   ExtractionPipelineService,
+  RelevanceGateService,
   ProjectionRebuildService,
   ReplayService,
   UnifiedProcessingService,

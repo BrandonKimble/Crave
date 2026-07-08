@@ -276,6 +276,21 @@ model ApiUsageEvent {
   @@map("api_usage_ledger")
 }
 
+/// Persisted relevance-gate verdicts (plans/archive-prefilter-pipeline.md):
+/// a post judged once is never re-judged; false drops are auditable.
+model CollectionRelevanceVerdict {
+  platform String   @db.VarChar(32)
+  postId   String   @map("post_id") @db.VarChar(64)
+  keep     Boolean
+  reason   String?  @db.VarChar(256)
+  model    String   @db.VarChar(128)
+  judgedAt DateTime @default(now()) @map("judged_at")
+
+  @@id([platform, postId])
+  @@index([keep], map: "idx_relevance_verdicts_keep")
+  @@map("collection_relevance_verdicts")
+}
+
 model RestaurantItemMention {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   connectionId  String     @map("connection_id") @db.Uuid

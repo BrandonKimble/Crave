@@ -15,6 +15,7 @@ import {
   GeminiBatchService,
   type BatchIngestItem,
 } from '../../external-integrations/llm/gemini-batch.service';
+import { RelevanceGateService } from './relevance-gate.service';
 import {
   EnrichedLLMMention,
   EnrichedLLMOutputStructure,
@@ -161,6 +162,7 @@ export class ExtractionPipelineService implements OnModuleInit {
     private readonly collectionEvidenceService: CollectionEvidenceService,
     private readonly unifiedProcessingService: UnifiedProcessingService,
     private readonly geminiBatchService: GeminiBatchService,
+    private readonly relevanceGate: RelevanceGateService,
   ) {}
 
   onModuleInit(): void {
@@ -173,6 +175,12 @@ export class ExtractionPipelineService implements OnModuleInit {
       process.env.COLLECTION_LLM_MODE?.trim().toLowerCase() === 'batch'
         ? 'batch'
         : 'interactive';
+    // Relevance gate rollout: off (default) | archive (archive loads only) |
+    // all (every collection type). plans/archive-prefilter-pipeline.md.
+    const gateMode =
+      process.env.COLLECTION_RELEVANCE_GATE?.trim().toLowerCase();
+    this.relevanceGateMode =
+      gateMode === 'all' || gateMode === 'archive' ? gateMode : 'off';
     this.geminiBatchService.registerIngestor(
       'collection_extraction',
       async ({ jobId, resumeContext, items }) => {
@@ -182,6 +190,7 @@ export class ExtractionPipelineService implements OnModuleInit {
   }
 
   private collectionLlmMode: 'interactive' | 'batch' = 'interactive';
+  private relevanceGateMode: 'off' | 'archive' | 'all' = 'off';
 
   /** Per-pipeline post-completion continuations (e.g. poll graduation's
    *  gazetteer backfill + leaderboard). Dispatched at the END of
@@ -210,6 +219,18 @@ export class ExtractionPipelineService implements OnModuleInit {
   async processPosts(
     params: ExtractionPipelinePostsParams,
   ): Promise<ExtractionPipelineResult> {
+    // Universal relevance gate: cheap title+body admission BEFORE anything is
+    // persisted, chunked, or billed at extraction rates. Fail-open inside.
+    const gateApplies =
+      this.relevanceGateMode === 'all' ||
+      (this.relevanceGateMode === 'archive' && params.pipeline === 'archive');
+    if (gateApplies) {
+      const gated = await this.relevanceGate.filterPosts(
+        params.platform ?? 'reddit',
+        params.llmPosts,
+      );
+      params = { ...params, llmPosts: gated.kept };
+    }
     const llmInput: LLMModelInput = { posts: params.llmPosts };
     const sourceDocumentIdBySourceKey =
       await this.collectionEvidenceService.persistSourceDocuments({
