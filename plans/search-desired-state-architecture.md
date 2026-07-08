@@ -370,13 +370,21 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
   - **S4d-2 SHIPPED: `presentation_fade_out_acked`** at the ramp floor, mach-clocked
     — the statechart's covering-exit input (riskiest coupling #2). Fires for both
     regimes on-rig (interaction_fade_out + dismiss_start). JS log-only until consumed.
-  - **Next: S4d-3** — the ONE-commit hold-regime swap: delete dismiss-in-progress
-    bypass + JSON same-state dedupe + hold/heal timers (dismissSettleWorkItems /
-    dismissFrameFallbackWorkItems / dismissSettleDelayMs / interactionFadeHold
-    expiry) + collapse the lastEnter\*/lastDismiss registers into (currentWorldId,
-    currentPhase); JS sends phases explicitly ((worldId, phase) payload replaces
-    the five request keys); retarget algebra = any new worldId re-ramps from
-    current opacity. Then S4e (legacy bus-key deletion via tuple selectors).
+  - **S4d-3a SHIPPED (07155aa1): the dismiss-settle wall-clock dies.**
+    dismissSettleWorkItems + dismissSettleDelayMs (300ms guess) deleted; the settle
+    is level-triggered at the fade-out floor (the fade_out_acked completion),
+    tolerant of the lifecycle having already advanced to .hidden. Clean cycle
+    on-rig: 1 dismiss → 1 ack → 1 exit_settled; resubmit reveals the full VA set.
+    Found: exit_started re-emits once per dismiss (JS exit-lane re-publish — S4e
+    cleanup). Metro restarted with a fresh /tmp/crave-flow-metro.log.
+  - **Remaining: S4d-3b** — the ONE-commit hold-regime swap: delete
+    dismiss-in-progress bypass + JSON same-state dedupe +
+    dismissFrameFallbackWorkItems (96ms frame poll) + interactionFadeHold expiry
+    heuristic + collapse the lastEnter\*/lastDismiss registers into
+    (currentWorldId, currentPhase); JS sends phases explicitly ((worldId, phase)
+    payload replaces the five request keys); retarget algebra = any new worldId
+    re-ramps from current opacity. Then S4e (legacy bus-key deletion via tuple
+    selectors).
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
