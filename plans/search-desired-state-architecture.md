@@ -399,16 +399,34 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     setRenderFrame transaction and parsed natively but NEVER read — deleted from the
     JS transaction type/builder and the Swift struct/parser. Lane green on-rig
     (incl. a cache-hit resubmit: g4 `dataReadyFrom: cache`).
-  - **Remaining: S4d-3c slice 2 (register collapse — a real state redesign, NOT a
-    sed rename).** lastEnterRequestKey / lastEnterStartedRequestKey /
-    lastEnterSettledRequestKey / lastDismissRequestKey (~80 refs) become
-    (currentWorldId, currentPhase) where started/settled are phase _levels_ of one
-    register, not sibling keys; `deriveSearchMapVisualFrameTransactionKind` (which
-    already derives from the JS phase machine, not transport content — the disease
-    is gone, only the shape remains) is replaced by an explicit phase field. No
-    timer/bypass regime remains, so this can land as its own focused pass with a
-    full regression lane. Then S4e (legacy bus-key deletion via tuple selectors;
-    plus the JS exit-lane double exit_started re-publish).
+  - **S4d-3c slice 2a SHIPPED (a160f73d): the wire is explicit (worldId, phase).**
+    presentationStateJson carries worldId (episode token = lifecycle identity),
+    exitAckId (exit transaction key — ack correlation LABEL only), and phase (the ONE
+    JS derivation, serialized at its single chokepoint).
+    transactionId/snapshotKind/executionStage left the wire; native's readers are
+    direct field reads; readEnterStatus + isEnterStatusArmable collapsed into phase
+    (armable ⇔ enter_requested|entering — pending_mount vs mounted_hidden was never
+    read natively).
+  - **S4d-3c slice 2b SHIPPED (a5c18d36): ONE (worldId, level) register.** The three
+    enter request keys became (currentWorldId, currentWorldLevel) with started/settled
+    as ordered LEVELS — the subset invariant was already guard-enforced, so illegal
+    register states (settled ≠ requested key) are now unrepresentable.
+    enterStartedWorldId/enterSettledWorldId computed predicates kept all ~40 read
+    sites mechanical; native event field names/values unchanged (values were already
+    worldIds). lastDismissRequestKey stays as the exit ack label + dismiss-lane
+    register. Full lane green (submit 84 pins / toggles 34+94 / dismiss→resubmit,
+    zero contract noise).
+  - **S4d-3c COMPLETE — one conscious keep:** `deriveSearchMapVisualFrameTransactionKind`
+    (the frame `kind`) STAYS. Post-2a/2b it is pure TRANSPORT routing (markerRoleFrame
+    patch-mode gating in JS + structural apply branch natively), computed at ONE site
+    from the same inputs as the wire phase — consistent by construction, no longer
+    presentation-lifecycle-load-bearing. Deleting it would smear one clean derivation
+    into longer predicates on both sides of the bridge. Revisit only if the native
+    structural switch ever gets re-keyed (S5 territory).
+  - **Remaining: S4e** — legacy bus-key deletion via tuple selectors (~8 keys,
+    ~150 files mechanical; incl. pendingTabSwitchTab → derived selector, the 7-value
+    `SearchRuntimeMapPresentationPhase` bus enum → the statechart phases, and the JS
+    exit-lane double exit_started re-publish).
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
