@@ -4,6 +4,7 @@ import { SharedModule } from '../../shared';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { EntitlementService } from './entitlement.service';
 import { RequireEntitlementGuard } from './require-entitlement.guard';
+import { RewardGrantService } from './reward-grant.service';
 
 /**
  * Access-grant ledger + runtime gating (plans/payments-ideal-shape.md).
@@ -13,7 +14,7 @@ import { RequireEntitlementGuard } from './require-entitlement.guard';
  */
 @Module({
   imports: [ConfigModule, SharedModule, PrismaModule],
-  providers: [EntitlementService, RequireEntitlementGuard],
-  exports: [EntitlementService, RequireEntitlementGuard],
+  providers: [EntitlementService, RequireEntitlementGuard, RewardGrantService],
+  exports: [EntitlementService, RequireEntitlementGuard, RewardGrantService],
 })
 export class EntitlementsModule {}

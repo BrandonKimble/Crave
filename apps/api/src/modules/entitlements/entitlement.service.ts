@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis } from 'ioredis';
@@ -68,14 +68,14 @@ export class EntitlementService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-    redisService: RedisService,
+    @Optional() redisService: RedisService | null,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('EntitlementService');
     this.defaultCode =
       this.configService.get<string>('billing.defaultEntitlement') || 'premium';
     try {
-      this.redis = redisService.getOrThrow();
+      this.redis = redisService?.getOrThrow() ?? null;
     } catch {
       this.redis = null; // cache is an optimization only
     }
@@ -130,6 +130,17 @@ export class EntitlementService {
       expiresAt: expiresAt?.toISOString() ?? 'lifetime',
     });
     return { grantId: grant.grantId };
+  }
+
+  /** Lookup a grant by its idempotency ref (reward double-pay guard). */
+  async findGrantByRef(
+    userId: string,
+    sourceRef: string,
+  ): Promise<{ grantId: string } | null> {
+    return this.prisma.accessGrant.findFirst({
+      where: { userId, sourceRef },
+      select: { grantId: true },
+    });
   }
 
   /** Revoke a single grant (reversible history stays). */
