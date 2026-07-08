@@ -68,13 +68,6 @@ type SearchSurfaceResultsTransactionCommitSource =
   | 'surface_runtime_notify'
   | 'staged_transaction_version';
 
-type PendingPageOneResultsCommit = {
-  transactionId: string;
-  expectedResultsDataKey: string | null;
-  dataReadyFrom?: Exclude<SearchSurfaceResultsEnterTransaction['dataReadyFrom'], 'pending'>;
-  searchInputKey: string | null;
-};
-
 export const useResultsPresentationSurfaceTransactionRuntime = ({
   searchRuntimeBus,
   resultsPresentationAuthority,
@@ -132,10 +125,6 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
   activeScenarioConfigRef.current = activeScenarioConfig;
   const cancelDeferredStageRef = React.useRef<(() => void) | null>(null);
   const cancelDeferredSourceReadyCommitRef = React.useRef<(() => void) | null>(null);
-  const pendingPageOneResultsCommitRef = React.useRef<PendingPageOneResultsCommit | null>(null);
-  const pendingStageTransactionRef = React.useRef<SearchSurfaceResultsEnterTransaction | null>(
-    null
-  );
   if (!stagingCoordinatorRef.current) {
     stagingCoordinatorRef.current = createSearchSurfaceResultsTransactionCoordinator({
       applyStagingCoverState: (coverState) => {
@@ -181,20 +170,6 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     (transactionId?: string) => {
       cancelDeferredStageRef.current?.();
       cancelDeferredSourceReadyCommitRef.current?.();
-      const pendingStageTransaction = pendingStageTransactionRef.current;
-      if (
-        pendingStageTransaction != null &&
-        (transactionId == null || pendingStageTransaction.transactionId === transactionId)
-      ) {
-        pendingStageTransactionRef.current = null;
-      }
-      const pendingPageOneCommit = pendingPageOneResultsCommitRef.current;
-      if (
-        pendingPageOneCommit != null &&
-        (transactionId == null || pendingPageOneCommit.transactionId === transactionId)
-      ) {
-        pendingPageOneResultsCommitRef.current = null;
-      }
       stagingCoordinatorRef.current!.clear(transactionId);
 
       const publishedTransactionKey =
@@ -497,44 +472,11 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
       const stagingInputs = readSearchSurfaceResultsTransactionGateInputs();
       const scenarioConfig = activeScenarioConfigRef.current;
       cancelDeferredStageRef.current?.();
-      const recoverablePreparedRowsDataKey =
-        snapshot.expectedResultsDataKey == null &&
-        snapshot.dataReadyFrom === 'pending' &&
-        stagingInputs.mountedPreparedRowsReadyKey != null &&
-        stagingInputs.mountedPreparedRowsReadyKey === stagingInputs.mountedPreparedRowsTargetKey &&
-        stagingInputs.mountedPreparedRowsActiveCount > 0
-          ? stagingInputs.mountedPreparedRowsReadyKey
-          : null;
-      const transactionSnapshot =
-        recoverablePreparedRowsDataKey == null
-          ? snapshot
-          : {
-              ...snapshot,
-              dataReadyFrom: 'cache' as const,
-              expectedResultsDataKey: recoverablePreparedRowsDataKey,
-            };
-      const stagingResultsSnapshotKey =
-        recoverablePreparedRowsDataKey ?? stagingInputs.resultsSnapshotKey;
-      if (recoverablePreparedRowsDataKey != null) {
-        resultsPresentationSurfaceAuthority.publish(
-          {
-            resultsIdentityKey: recoverablePreparedRowsDataKey,
-            hydratedResultsKey: recoverablePreparedRowsDataKey,
-            resultsPreparedRowsKey: recoverablePreparedRowsDataKey,
-            listPreparedRowsReady: true,
-            isResultsHydrationSettled: true,
-          },
-          'search_surface_results_cached_prepared_rows_recovered'
-        );
-      }
-      pendingStageTransactionRef.current = transactionSnapshot;
-      const pendingPageOneCommit = pendingPageOneResultsCommitRef.current;
-      if (
-        pendingPageOneCommit != null &&
-        pendingPageOneCommit.transactionId !== transactionSnapshot.transactionId
-      ) {
-        pendingPageOneResultsCommitRef.current = null;
-      }
+      // S4c-1c: no recovery lane, no ordering refs — the coordinator's world-ready
+      // latch merges a data commit that landed before this (deferred) stage, in the
+      // pure gate, order-independently.
+      const transactionSnapshot = snapshot;
+      const stagingResultsSnapshotKey = stagingInputs.resultsSnapshotKey;
       if (isPerfScenarioAttributionActive(scenarioConfig)) {
         logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
           event: 'scenario_work_span',
@@ -567,49 +509,14 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
         });
         cancelers.length = 0;
         cancelDeferredStageRef.current = null;
-        if (
-          pendingStageTransactionRef.current?.transactionId === transactionSnapshot.transactionId
-        ) {
-          pendingStageTransactionRef.current = null;
-        }
       };
       const runDeferredStage = () => {
         if (didCancelDeferredStage) {
           return;
         }
         cancelDeferredStageRef.current = null;
-        if (
-          pendingStageTransactionRef.current?.transactionId === transactionSnapshot.transactionId
-        ) {
-          pendingStageTransactionRef.current = null;
-        }
-        const pendingPageOneCommitForTransaction = pendingPageOneResultsCommitRef.current;
-        const shouldMergePendingPageOneCommit =
-          pendingPageOneCommitForTransaction != null &&
-          pendingPageOneCommitForTransaction.transactionId === transactionSnapshot.transactionId;
-        const stagedTransactionSnapshot = shouldMergePendingPageOneCommit
-          ? {
-              ...transactionSnapshot,
-              dataReadyFrom:
-                pendingPageOneCommitForTransaction.dataReadyFrom ??
-                transactionSnapshot.dataReadyFrom,
-              expectedResultsDataKey:
-                pendingPageOneCommitForTransaction.expectedResultsDataKey ??
-                transactionSnapshot.expectedResultsDataKey ??
-                null,
-              searchInputKey:
-                pendingPageOneCommitForTransaction.searchInputKey ??
-                transactionSnapshot.searchInputKey ??
-                null,
-            }
-          : transactionSnapshot;
-        const stagedResultsSnapshotKey = shouldMergePendingPageOneCommit
-          ? (pendingPageOneCommitForTransaction.expectedResultsDataKey ?? stagingResultsSnapshotKey)
-          : stagingResultsSnapshotKey;
-        stagingCoordinatorRef.current!.stage(stagedTransactionSnapshot, stagedResultsSnapshotKey);
-        if (shouldMergePendingPageOneCommit) {
-          pendingPageOneResultsCommitRef.current = null;
-        }
+        const stagedTransactionSnapshot = transactionSnapshot;
+        stagingCoordinatorRef.current!.stage(stagedTransactionSnapshot, stagingResultsSnapshotKey);
         if (isPerfScenarioAttributionActive(scenarioConfig)) {
           const searchThisAreaSubmitId =
             stagedTransactionSnapshot.mutationKind === 'search_this_area'
@@ -735,23 +642,8 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
         );
         return;
       }
-      const activeTransactionId = searchSurfaceResultsTransactionKeyInput.activeOperationId;
-      const pendingStageTransactionId = pendingStageTransactionRef.current?.transactionId ?? null;
-      const stagedTransactionId =
-        stagingCoordinatorRef.current!.getStagedTransaction()?.snapshot.transactionId ?? null;
-      if (stagingCoordinatorRef.current!.getStagedTransaction() == null) {
-        const targetTransactionId =
-          pendingStageTransactionId ?? stagedTransactionId ?? activeTransactionId;
-        if (targetTransactionId != null) {
-          pendingPageOneResultsCommitRef.current = {
-            transactionId: targetTransactionId,
-            expectedResultsDataKey: payload?.expectedResultsDataKey ?? null,
-            dataReadyFrom: payload?.dataReadyFrom,
-            searchInputKey: payload?.searchInputKey ?? null,
-          };
-        }
-        return;
-      }
+      // Enter world_ready: hand it to the coordinator in EITHER order — if the deferred
+      // stage hasn't landed yet, the pure gate latches it (S4c-1c).
       stagingCoordinatorRef.current!.handlePageOneResultsCommitted(
         readSearchSurfaceResultsTransactionGateInputs(),
         payload?.expectedResultsDataKey ?? null,

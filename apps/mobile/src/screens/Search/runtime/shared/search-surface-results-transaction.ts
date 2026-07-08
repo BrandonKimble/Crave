@@ -224,6 +224,15 @@ export const createSearchSurfaceResultsTransactionCoordinator = (
   options: SearchSurfaceResultsTransactionCoordinatorOptions
 ): SearchSurfaceResultsTransactionCoordinator => {
   let stagedTransaction: SearchSurfaceResultsStagedTransaction | null = null;
+  // S4c-1c: the WORLD-READY LATCH. The seam's page-one commit (world_ready) can land
+  // BEFORE the deferred enter stage (a cache hit resolves synchronously inside the
+  // reconciler kick; the stage waits two frames for the cover to mount). The latch makes
+  // the gate level-triggered in BOTH orders — the React runtime carries no ordering refs.
+  let pendingWorldReady: {
+    expectedResultsDataKey: string | null;
+    dataReadyFrom?: Exclude<SearchSurfaceResultsDataReadyFrom, 'pending'>;
+    searchInputKey: string | null;
+  } | null = null;
 
   const notifyChanged = () => {
     options.onStagedTransactionChanged?.();
@@ -276,20 +285,34 @@ export const createSearchSurfaceResultsTransactionCoordinator = (
       );
     },
     stage(snapshot, stagingResultsSnapshotKey) {
-      options.applyStagingCoverState(resolveSearchSurfaceResultsTransactionCoverState(snapshot));
-      options.publishSearchSurfaceResultsTransactionKey(snapshot.transactionId);
+      const merged =
+        pendingWorldReady == null
+          ? snapshot
+          : {
+              ...snapshot,
+              dataReadyFrom: pendingWorldReady.dataReadyFrom ?? snapshot.dataReadyFrom,
+              expectedResultsDataKey:
+                pendingWorldReady.expectedResultsDataKey ?? snapshot.expectedResultsDataKey ?? null,
+              searchInputKey: pendingWorldReady.searchInputKey ?? snapshot.searchInputKey ?? null,
+            };
+      pendingWorldReady = null;
+      options.applyStagingCoverState(resolveSearchSurfaceResultsTransactionCoverState(merged));
+      options.publishSearchSurfaceResultsTransactionKey(merged.transactionId);
       const nextStagedTransaction = {
-        snapshot,
-        dataReady: snapshot.dataReadyFrom !== 'pending',
+        snapshot: merged,
+        dataReady: merged.dataReadyFrom !== 'pending',
         presentationCommitted: false,
         stagingResultsSnapshotKey,
       };
       setStagedTransaction(nextStagedTransaction);
       if (nextStagedTransaction.dataReady) {
-        options.onRowsReadyForPresentation?.(snapshot);
+        options.onRowsReadyForPresentation?.(merged);
       }
     },
     clear(transactionId) {
+      if (transactionId == null) {
+        pendingWorldReady = null;
+      }
       if (stagedTransaction == null) {
         return;
       }
@@ -327,6 +350,12 @@ export const createSearchSurfaceResultsTransactionCoordinator = (
     },
     handlePageOneResultsCommitted(inputs, expectedResultsDataKey, dataReadyFrom, searchInputKey) {
       if (stagedTransaction == null) {
+        // world_ready before the (deferred) stage — latch it; stage() merges.
+        pendingWorldReady = {
+          expectedResultsDataKey: expectedResultsDataKey ?? null,
+          dataReadyFrom,
+          searchInputKey: searchInputKey ?? null,
+        };
         return;
       }
       const committedExpectedResultsDataKey =
