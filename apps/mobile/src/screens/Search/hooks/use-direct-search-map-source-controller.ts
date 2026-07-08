@@ -2652,8 +2652,26 @@ export const useDirectSearchMapSourceController = ({
       publishSourcesRef.current();
     };
     publishAndFetch('mount')();
+    // S4e red-team fix: `desiredTuple` publishes on EVERY tuple write (bounds commits,
+    // chip taps, tab press-ups), but this controller's frame build consumes only the
+    // identity projections (searchMode, submittedQuery). Value-guard on the derived
+    // projection — the exact notification rate the deleted legacy keys provided — so a
+    // chip/bounds write can't burn a ~125ms source-frame rebuild mid-choreography.
+    let lastIdentityProjection = (() => {
+      const state = searchRuntimeBus.getState();
+      return `${selectSearchMode(state) ?? ''}|${selectSubmittedQuery(state)}|${state.activeTab}`;
+    })();
+    const publishOnIdentityProjectionChange = () => {
+      const state = searchRuntimeBus.getState();
+      const nextProjection = `${selectSearchMode(state) ?? ''}|${selectSubmittedQuery(state)}|${state.activeTab}`;
+      if (nextProjection === lastIdentityProjection) {
+        return;
+      }
+      lastIdentityProjection = nextProjection;
+      publishAndFetch('bus')();
+    };
     const unsubscribeBus = searchRuntimeBus.subscribe(
-      publishAndFetch('bus'),
+      publishOnIdentityProjectionChange,
       ['desiredTuple', 'activeTab'] as const,
       'map_source_controller_direct_state'
     );

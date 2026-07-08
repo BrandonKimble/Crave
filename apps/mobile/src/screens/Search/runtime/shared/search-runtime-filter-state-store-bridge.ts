@@ -113,6 +113,21 @@ export const attachSearchStoreRuntimeStateMirror = (
       }
     }
     const next = toMirroredState(searchRuntimeBus.getState());
+    // S4e red-team fix: the 'desiredTuple' subscription fires on EVERY tuple write
+    // (bounds commits, identity writes), not just mirrored-field changes like the old
+    // per-key publishes. Value-guard before the zustand write or every gesture would
+    // serialize the whole persisted state to AsyncStorage.
+    const unchanged =
+      next.openNow === lastMirrored.openNow &&
+      next.risingActive === lastMirrored.risingActive &&
+      next.activeTab === lastMirrored.activeTab &&
+      next.preferredActiveTab === lastMirrored.preferredActiveTab &&
+      next.hasActiveTabPreference === lastMirrored.hasActiveTabPreference &&
+      next.priceLevels.length === lastMirrored.priceLevels.length &&
+      next.priceLevels.every((value, index) => value === lastMirrored.priceLevels[index]);
+    if (unchanged) {
+      return;
+    }
     lastMirrored = next;
     useSearchStore.getState().applySearchRuntimeStateMirror(next);
   };

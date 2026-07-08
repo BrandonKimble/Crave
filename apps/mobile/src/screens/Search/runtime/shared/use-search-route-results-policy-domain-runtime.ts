@@ -1,4 +1,5 @@
 import React from 'react';
+import { selectIsSearchSessionActive } from './search-desired-tuple-selectors';
 
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
 import { createResultsSurfacePolicyController } from './results-surface-policy-controller';
@@ -56,6 +57,24 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
       routeSceneVisibilityPolicyRuntime: routeSceneRuntime.routeSceneVisibilityPolicyRuntime,
       suggestionPanelStateController,
     });
+    // S4e red-team fix: the deleted setIsSearchSessionActive setter was the ONLY trigger
+    // of publishCurrent('searchSessionActive'). The domain controller now derives
+    // session-active from the tuple, so the republish edge rides the tuple directly:
+    // publish when the derived value FLIPS (session enter/exit), never per tuple write.
+    // The bus and the authority share the runtime's lifetime — no teardown needed.
+    let lastPublishedSessionActive = selectIsSearchSessionActive(searchRuntimeBus.getState());
+    searchRuntimeBus.subscribe(
+      () => {
+        const nextSessionActive = selectIsSearchSessionActive(searchRuntimeBus.getState());
+        if (nextSessionActive === lastPublishedSessionActive) {
+          return;
+        }
+        lastPublishedSessionActive = nextSessionActive;
+        foregroundPolicyPublicationAuthority.publishCurrent('searchSessionActive');
+      },
+      ['desiredTuple'] as const,
+      'foreground_policy_session_active_edge'
+    );
     const surfacePolicyController = createResultsSurfacePolicyController();
     const readModelPolicyController = createResultsSurfaceReadModelPolicyController();
     runtimeRef.current = {

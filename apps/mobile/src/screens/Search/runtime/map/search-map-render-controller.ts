@@ -191,7 +191,10 @@ export type SearchMapRenderControllerEvent =
         | 'pin_roster_teardown_inactive'
         | 'pin_roster_synced'
         | 'catalog_arrived'
-        | 'reproject_deferred';
+        | 'reproject_deferred'
+        | 'reproject_ran'
+        | 'pin_roster_no_manager'
+        | 'reveal_drain_no_pending';
       catalogCount?: number;
       deferredWhy?: string;
       desiredCount?: number;
@@ -700,6 +703,10 @@ const serializePresentationState = (presentation: SearchMapRenderPresentationSta
     coverState: presentation.coverState,
     allowEmptyEnter: presentation.allowEmptyEnter,
     selectedRestaurantId: presentation.selectedRestaurantId,
+    // LOAD-BEARING despite native never reading it (red-team 2026-07-08): executionBatch
+    // (null → non-null across pending_mount → mounted_hidden) keeps otherwise-identical
+    // payloads DISTINCT, so native's same-state idempotence short-circuit cannot swallow
+    // the mounted-hidden transition on the cache-resident path. Do not "clean this up".
     executionBatch: presentation.executionBatch,
   });
 };
