@@ -1077,9 +1077,18 @@ export class ExtractionPipelineService implements OnModuleInit {
       throw new Error(`Missing source_map for chunk=${chunkId}`);
     }
 
-    // The model occasionally type-prefixes the ref ("t1_SRC002"); the ref is
-    // unambiguous after stripping, so normalize instead of failing the chunk.
+    // TOLERANCE, scheduled for DELETION: outputs prompted under the pre-fix
+    // contract (which commanded t1_/t3_ prefixes) may still type-prefix the
+    // ref. Once the last old-prompt batch jobs ingest, this normalizer must
+    // be removed so contract drift fails LOUD again. The warn below measures
+    // whether the fixed prompt has ended the class.
     const normalizedRef = trimmedSourceId.replace(/^t[13]_(?=SRC)/i, '');
+    if (normalizedRef !== trimmedSourceId) {
+      this.logger.warn('Normalized type-prefixed SRC ref (old-prompt output)', {
+        sourceId: trimmedSourceId,
+        chunkId,
+      });
+    }
     const mappedSource = sourceMap[normalizedRef];
     if (!mappedSource) {
       const allowedRefs = Object.keys(sourceMap).sort().slice(0, 10).join(', ');
