@@ -423,10 +423,30 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     presentation-lifecycle-load-bearing. Deleting it would smear one clean derivation
     into longer predicates on both sides of the bridge. Revisit only if the native
     structural switch ever gets re-keyed (S5 territory).
-  - **Remaining: S4e** — legacy bus-key deletion via tuple selectors (~8 keys,
-    ~150 files mechanical; incl. pendingTabSwitchTab → derived selector, the 7-value
-    `SearchRuntimeMapPresentationPhase` bus enum → the statechart phases, and the JS
-    exit-lane double exit_started re-publish).
+  - **S4e COMPLETE (20642c57 · 7dbcfcaf · 559184fd · c2b2a40a): all 8 legacy bus keys
+    are DELETED.** Readers derive from the tuple via
+    `search-desired-tuple-selectors.ts` (holds the load-bearing searchMode map-frame
+    rule + the submittedQuery display rule). Reality vs the ~150-file estimate: the
+    direct BUS reads had already funneled through ~20 files (everything else plumbed
+    values), so the migration was surgical. Step 1: the four filter keys (7 read
+    files + the persist-mirror bridge re-derives from desiredTuple, still
+    write-through-only; priceLevels propagates readonly). Step 2: the identity trio —
+    and the deletion exposed + killed the trio's RESIDUAL WRITERS (clear/submit
+    owners' belt-and-suspenders publishes, the whole
+    setSearchMode/setIsSearchSessionActive setter chain): session exit is the tuple
+    identity going idle, ONE write. Step 3: pendingTabSwitchTab dies — every
+    `pending ?? activeTab` read WAS the desired tab and now reads tuple.tab
+    (adopt-safe: the resolver's response_tab_adopt writes the tuple first, so
+    tuple.tab is the authority in all cases); bus `activeTab` remains with exactly
+    ONE role: the PRESENTED tab, written only by presentation paths. Step 4: the
+    exit-lane synthetic exit_started pre-announce deleted (one dismiss = one
+    exit_started, verified). CONSCIOUS KEEP: the 7-value
+    `SearchRuntimeMapPresentationPhase` enum is not a bus key — it IS the protocol's
+    wire phase vocabulary (single definition, serialized at the one chokepoint since
+    S4d-3c-2a); no statechart-host rename needed.
+  - **The S1–S4 charter is fully executed.** Every projection key, timer, bypass,
+    and hint state is gone; desired vs presented are two distinct sources with no
+    third state anywhere; the native protocol is (worldId, phase) end-to-end.
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
