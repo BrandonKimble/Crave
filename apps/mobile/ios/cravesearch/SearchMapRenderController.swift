@@ -6073,6 +6073,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     instances[instanceId] = state
     updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
     state = instances[instanceId] ?? state
+    // S4d-1: basemap collision flips at fade START — the twin wakes exactly as the
+    // items begin fading in, so the basemap labels' own crossfade-out rides our
+    // fade-in (previously: preroll, which could suppress the basemap seconds early).
+    setLabelRenderLayersVisible(true, for: state, instanceId: instanceId, reason: "reveal_ramp_start")
     try animatePresentationOpacity(
       to: 1,
       for: &state,
@@ -6569,10 +6573,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       reason: "reveal_preroll"
     )
     state.labelCollisionObstacleLayersVisible = true
-    // Re-assert that the GL label render layers stay hidden (labels render as ViewAnnotations; only the
-    // invisible collision-twin participates in placement). Runs at reveal preroll while presentation
-    // opacity is still ~0, so it is flash-free.
-    setLabelRenderLayersVisible(true, for: state, instanceId: instanceId, reason: "reveal_preroll")
+    // S4d-1 (owner directive: collision flips at fade START, both directions): the
+    // basemap-facing collision-twin (label RENDER layers) no longer wakes at preroll —
+    // on a slow resolution that suppressed basemap street names long before anything
+    // faded in. It wakes at the reveal RAMP START (startEnterPresentation) instead.
+    // The pin/dot OBSTACLE layers stay preroll-restored (internal label-vs-pin
+    // yielding must be seated before placement, invisible to the basemap).
     recordNativeApply(
       section: "presentation.reveal_preroll_collision_restore",
       phase: state.lastPresentationBatchPhase,
@@ -6604,6 +6610,11 @@ final class SearchMapRenderController: RCTEventEmitter {
       durationMs: CACurrentMediaTime() * 1000 - collisionLayerStartedAt,
       operationCount: state.labelCollisionLayerIds.count
     )
+    // S4d-1: basemap collision flips at fade START — the twin dorms as the dismiss
+    // fade begins, so the basemap street names crossfade back in DURING our fade-out
+    // (previously: only at exit settle, leaving a ghost-town basemap for the whole
+    // fade). Labels are ViewAnnotations; the GL twin has no visual of its own.
+    setLabelRenderLayersVisible(false, for: state, instanceId: instanceId, reason: "dismiss_ramp_start")
     state.keepSourcesHiddenUntilEnter = true
     state.currentPresentationRenderPhase = "exiting"
     state.visualSourceLifecycleState = .dismissing
