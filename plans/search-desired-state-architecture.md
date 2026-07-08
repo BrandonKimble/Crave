@@ -333,8 +333,13 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     EXPLICITLY — reconciler → enter effects → STA pending arm, and via the seam's
     page-one payload to the response-time stages. `activeOperationId` bus key DELETED
     (zero readers). Rig: zoom→area_rerun reveals under transactionId world:5.
-  - **Next: S4c-1c-3..e** — worldId as the transaction id end-to-end (adapter maps
-    worldId → native requestKey), the statechart host extraction, redraw re-key,
+  - **S4c-1c-3 SHIPPED**: the episode token `cardsKey#g{generation}` IS the enter
+    transaction id — worldId end-to-end, derived INDEPENDENTLY on both sides (arm from
+    the tuple, seam from the committed worldId); #gN keeps native request keys fresh
+    per episode (no dedupe adapter needed). Remaining non-world ids: exit mint +
+    toggle-coordinator intent ids (die with the coordinator).
+  - **Next: S4c-1c-4..e** — statechart host extraction (seam world_ready is already the
+    coordinator latch input), redraw re-key, pendingTabSwitchTab → selector,
     profileSeed synthesis. FILE-LEVEL MAP: plans/search-s4-reconciler-edit-map.md
     §"S4c execution state". Then S4d (native (worldId, phase) + ack-everything — task
     #16 acceptance), S4e (legacy bus-key deletion via tuple selectors).
