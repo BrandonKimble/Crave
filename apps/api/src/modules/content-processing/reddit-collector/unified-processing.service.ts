@@ -517,6 +517,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     ledgerRecordsBySourceId: Map<string, SourceLedgerRecord>,
   ): Promise<ProcessingResult> {
     const startTime = Date.now();
+    const subBatchFailures: string[] = [];
     const batchSize = config.batchSize;
     const totalMentions = llmOutput.mentions.length;
     const batchCount = Math.ceil(totalMentions / batchSize);
@@ -593,8 +594,21 @@ export class UnifiedProcessingService implements OnModuleInit {
           batchIndex: i + 1,
           totalBatches: batchCount,
         });
-        // Continue processing other batches despite failures
+        // Keep processing the remaining sub-batches (their work is
+        // independent), but record the failure — a partially-failed batch
+        // must FAIL the run loudly, never report success with missing data.
+        subBatchFailures.push(
+          `${subBatchId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
+    }
+
+    if (subBatchFailures.length) {
+      throw new Error(
+        `${subBatchFailures.length}/${batchCount} sub-batches failed (re-collection is idempotent — rerun to fill the gap): ${subBatchFailures
+          .slice(0, 3)
+          .join('; ')}`,
+      );
     }
 
     const processingTime = Date.now() - startTime;
