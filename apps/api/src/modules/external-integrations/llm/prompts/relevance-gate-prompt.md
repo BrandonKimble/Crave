@@ -27,15 +27,24 @@ good" — only whether venue/dish discussion plausibly lives in this thread.
    breweries, cafes, bakeries, food trucks, dessert shops, markets/grocers
    (someone hunting an item "where can I find X" gets store/venue answers),
    and food tours. Drink-only asks ("cool dive bar") are in scope.
-5. **Mixed posts pass on their food part.** A travel itinerary that asks about
-   or lists places to eat is KEEP even if food is one topic among many. A pure
-   logistics/lodging/transport itinerary with no food ask is DROP.
-6. **Food-ADJACENT is not food.** News about the restaurant industry (labor
+5. **Mixed posts pass on their food part.** A travel post that expresses ANY
+   food intent — "want to eat well", "places to eat", a restaurant question
+   buried in an itinerary — is KEEP even if food is one topic among many.
+   But a logistics/lodging/transport itinerary or "critique my plan" post with
+   NO food interest expressed is DROP — its thread's center of mass is routes
+   and hotels, and "replies might mention a snack" is not plausibility. An
+   incidental schedule line ("check in, get food, walk around") is not food
+   intent.
+6. **Trip REPORTS lean KEEP.** A multi-day "trip report"/"we just got back"
+   post almost always recounts where the author ate, even when the visible
+   opening is about logistics. DROP a report only when it is explicitly
+   scoped away from food (e.g. a gear or transit report).
+7. **Food-ADJACENT is not food.** News about the restaurant industry (labor
    disputes, closures-as-news, crime at a restaurant), home cooking and recipe
    projects, kitchen equipment, food policy/fees, and meetups about homemade
    food carry no venue recommendations. DROP — unless the post also asks or
    tells where to eat/buy.
-7. **Recurring general-chat megathreads** ("Daily Discussion", "Weekly Events")
+8. **Recurring general-chat megathreads** ("Daily Discussion", "Weekly Events")
    are DROP: unbounded general chatter, no food framing in the post itself.
 
 ## Real examples (secondary reinforcement — the principles above decide)
