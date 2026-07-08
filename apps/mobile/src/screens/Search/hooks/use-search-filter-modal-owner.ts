@@ -17,7 +17,7 @@ type UseSearchFilterModalOwnerArgs = {
   openNow: boolean;
   includeSimilarActive: boolean;
   risingActive: boolean;
-  priceLevels: number[];
+  priceLevels: readonly number[];
   panelVisible: boolean;
   setIncludeSimilar: (next: boolean) => void;
   setRisingActive: (next: boolean) => void;

@@ -11,20 +11,22 @@ import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 // `includeSimilarActive` is deliberately session-scoped (bus-only, NOT mirrored/persisted):
 // it resets to false on a new search submit and on bus reset.
 export const useSearchFilterStateRuntime = (searchRuntimeBus: SearchRuntimeBus) => {
+  // S4e: filter reads come straight off the desired tuple (the legacy projection keys
+  // left the bus). Output field names unchanged — consumers are agnostic.
   const filterState = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => ({
-      openNow: state.openNow,
-      priceLevels: state.priceLevels,
-      includeSimilarActive: state.includeSimilarActive,
-      risingActive: state.risingActive,
+      openNow: state.desiredTuple.filterVariant.openNow,
+      priceLevels: state.desiredTuple.filterVariant.priceLevels,
+      includeSimilarActive: state.desiredTuple.filterVariant.includeSimilar,
+      risingActive: state.desiredTuple.filterVariant.rising,
     }),
     (left, right) =>
       left.openNow === right.openNow &&
       left.priceLevels === right.priceLevels &&
       left.includeSimilarActive === right.includeSimilarActive &&
       left.risingActive === right.risingActive,
-    ['openNow', 'priceLevels', 'includeSimilarActive', 'risingActive'] as const,
+    ['desiredTuple'] as const,
     'search_filter_state_runtime'
   );
 

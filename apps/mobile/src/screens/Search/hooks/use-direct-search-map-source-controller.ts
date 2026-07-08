@@ -1675,7 +1675,7 @@ export const useDirectSearchMapSourceController = ({
     // build from the same bus snapshot the coverage filters key uses, so badge order and the
     // coverage variant can never disagree.
     const visualRankOrder: SearchMapVisualRankOrder =
-      state.risingActive === true ? 'rising' : 'crave';
+      state.desiredTuple.filterVariant.rising === true ? 'rising' : 'crave';
     const projectedInitialCandidates = projectSearchMapVisualFrame({
       rankedSources: rankedCandidateSources,
       dotSources: dotCandidateSources,

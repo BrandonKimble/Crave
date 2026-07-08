@@ -55,7 +55,7 @@ type SearchSubmitOwnerReadModel = {
   hasActiveTabPreference: boolean;
   isLoadingMore: boolean;
   openNow: boolean;
-  priceLevels: number[];
+  priceLevels: readonly number[];
   risingActive: boolean;
 };
 

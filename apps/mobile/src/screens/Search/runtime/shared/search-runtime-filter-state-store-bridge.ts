@@ -20,10 +20,10 @@ import { reportSearchFlowContractViolation } from './search-flow-contracts';
 import { writeSearchDesiredTuple } from './search-desired-state-writer';
 import type { SearchRuntimeBus, SearchRuntimeBusState } from './search-runtime-bus';
 
+// S4e: the mirrored filter fields re-derive from the desired tuple (the legacy projection
+// keys left the bus); tab-lane keys keep their own lane until their own migration step.
 const MIRRORED_BUS_KEYS = [
-  'openNow',
-  'priceLevels',
-  'risingActive',
+  'desiredTuple',
   'activeTab',
   'preferredActiveTab',
   'hasActiveTabPreference',
@@ -42,9 +42,9 @@ const readMirroredStateFromStore = (): SearchRuntimeMirroredState => {
 };
 
 const toMirroredState = (busState: SearchRuntimeBusState): SearchRuntimeMirroredState => ({
-  openNow: busState.openNow,
-  priceLevels: busState.priceLevels,
-  risingActive: busState.risingActive,
+  openNow: busState.desiredTuple.filterVariant.openNow,
+  priceLevels: [...busState.desiredTuple.filterVariant.priceLevels],
+  risingActive: busState.desiredTuple.filterVariant.rising,
   activeTab: busState.activeTab,
   preferredActiveTab: busState.preferredActiveTab,
   hasActiveTabPreference: busState.hasActiveTabPreference,

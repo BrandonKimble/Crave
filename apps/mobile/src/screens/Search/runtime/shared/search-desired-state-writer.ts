@@ -108,25 +108,10 @@ export const writeSearchDesiredTuple = (
   const identityChanged =
     patch.queryIdentity != null &&
     !areSearchQueryIdentitiesEqual(prev.queryIdentity, next.queryIdentity);
-  const priceChanged =
-    prev.filterVariant.priceLevels.length !== next.filterVariant.priceLevels.length ||
-    next.filterVariant.priceLevels.some(
-      (value, index) => value !== prev.filterVariant.priceLevels[index]
-    );
   searchRuntimeBus.publish({
     desiredTuple: next,
     desiredTupleGeneration: generation,
     desiredTupleCause: cause,
-    ...(prev.filterVariant.openNow !== next.filterVariant.openNow
-      ? { openNow: next.filterVariant.openNow }
-      : {}),
-    ...(priceChanged ? { priceLevels: [...next.filterVariant.priceLevels] } : {}),
-    ...(prev.filterVariant.rising !== next.filterVariant.rising
-      ? { risingActive: next.filterVariant.rising }
-      : {}),
-    ...(prev.filterVariant.includeSimilar !== next.filterVariant.includeSimilar
-      ? { includeSimilarActive: next.filterVariant.includeSimilar }
-      : {}),
     // Identity-derived projections publish ONLY on identity change (a chip write while the
     // identity conversion is still lane-owned must never null searchMode).
     ...(identityChanged

@@ -72,7 +72,7 @@ export type ResolveNaturalSearchAttemptConfigResult = {
   shouldReplaceResultsInPlace: boolean;
   presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   effectiveOpenNow: boolean;
-  effectivePriceLevels: number[];
+  effectivePriceLevels: readonly number[];
   effectiveIncludeSimilar: boolean;
   effectiveRising: boolean;
   shouldForceFreshBounds: boolean;
@@ -92,7 +92,7 @@ type UseSearchSubmitEntryOwnerArgs = {
   hasActiveTabPreference: boolean;
   isLoadingMore: boolean;
   openNow: boolean;
-  priceLevels: number[];
+  priceLevels: readonly number[];
   risingActive: boolean;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   searchRuntimeBus: SearchRuntimeBus;
@@ -238,7 +238,10 @@ export const useSearchSubmitEntryOwner = ({
       // session-scoped "Include similar" toggle to its default (off) BEFORE the
       // effective value is read for the request payload. Reruns/filter toggles
       // (entrySurface 'results') keep the current value.
-      if (entrySurface !== 'results' && searchRuntimeBus.getState().includeSimilarActive) {
+      if (
+        entrySurface !== 'results' &&
+        searchRuntimeBus.getState().desiredTuple.filterVariant.includeSimilar
+      ) {
         // S2: routed through the ONE tuple writer (legacy key is a projection). The
         // desired-tuple reader ignores non-chip causes, so this reset never re-commits.
         writeSearchDesiredTuple(
@@ -254,7 +257,8 @@ export const useSearchSubmitEntryOwner = ({
       // the optimistic value to the bus before the debounced rerun fires, so reading the
       // bus here always sees the effective value. An explicit option still overrides.
       const effectiveIncludeSimilar =
-        options?.includeSimilar ?? searchRuntimeBus.getState().includeSimilarActive;
+        options?.includeSimilar ??
+        searchRuntimeBus.getState().desiredTuple.filterVariant.includeSimilar;
       const effectiveRising = options?.rising ?? risingActive;
 
       return {

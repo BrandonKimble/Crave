@@ -171,11 +171,13 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const liveChipState = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => ({
-      activeTab: (state.pendingTabSwitchTab ?? state.activeTab) as SegmentValue,
-      openNow: state.openNow,
-      includeSimilarActive: state.includeSimilarActive,
+      // S4e: the chip strip renders DESIRED state — the tuple directly (tuple.tab IS the
+      // old optimistic `pendingTabSwitchTab ?? activeTab` read, by the writer's invariant).
+      activeTab: state.desiredTuple.tab as SegmentValue,
+      openNow: state.desiredTuple.filterVariant.openNow,
+      includeSimilarActive: state.desiredTuple.filterVariant.includeSimilar,
       similarAvailableCount: state.results?.metadata?.similarAvailable ?? 0,
-      risingActive: state.risingActive,
+      risingActive: state.desiredTuple.filterVariant.rising,
       priceButtonActive: state.priceButtonIsActive,
       priceButtonLabel: state.priceButtonLabelText,
       isPriceSelectorVisible: state.isPriceSelectorVisible,
@@ -190,12 +192,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       left.priceButtonLabel === right.priceButtonLabel &&
       left.isPriceSelectorVisible === right.isPriceSelectorVisible,
     [
-      'pendingTabSwitchTab',
-      'activeTab',
-      'openNow',
-      'includeSimilarActive',
+      'desiredTuple',
       'results',
-      'risingActive',
       'priceButtonIsActive',
       'priceButtonLabelText',
       'isPriceSelectorVisible',

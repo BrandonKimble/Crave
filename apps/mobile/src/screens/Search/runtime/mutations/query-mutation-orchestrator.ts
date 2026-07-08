@@ -22,7 +22,7 @@ type UseQueryMutationOrchestratorArgs = {
   setPendingPriceRange: (next: PriceRangeTuple) => void;
   isPriceSelectorVisible: boolean;
   setIsPriceSelectorVisible: (next: boolean) => void;
-  priceLevels: number[];
+  priceLevels: readonly number[];
   priceSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
   /** S3-pre commit-moment adopt: a chip commit re-reads the SETTLED native camera into the
    *  tuple, so a zoom-then-toggle resolves against the CURRENT viewport by construction. */
