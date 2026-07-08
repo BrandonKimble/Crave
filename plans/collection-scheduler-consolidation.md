@@ -1,5 +1,12 @@
 # Collection Scheduler Consolidation (audit item 5)
 
+**BUILD STATUS: COMPLETE 2026-07-08** (529ef13d table → 4c5591eb loop+steps 2-4 →
+5039c2fb / 577f6d81 step 5). All map-era planning deleted; hot-spike whitelist and
+lastTopRelevanceRunAt now durable in collection_schedules rows (the map-empty
+whitelist would have left hot-spike silently dead — caught and fixed in step 5).
+Gates passed live: budget defer, cadence advance, restart-safe rows, hot-spike
+dispatch from durable rows.
+
 **Mandate:** owner 2026-07-08 — fix, not defer. One scheduler owns WHEN we
 talk to Reddit; today two independent systems plan against one account-wide
 API budget.
