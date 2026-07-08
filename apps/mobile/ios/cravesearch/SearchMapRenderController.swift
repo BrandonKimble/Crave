@@ -6044,6 +6044,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     // items begin fading in, so the basemap labels' own crossfade-out rides our
     // fade-in (previously: preroll, which could suppress the basemap seconds early).
     setLabelRenderLayersVisible(true, for: state, instanceId: instanceId, reason: "reveal_ramp_start")
+    // VA half: resident pin/label views (kept across a dismiss→re-enter of the same
+    // world) re-join the collision pass exactly as they begin fading in.
+    setOverlayCollisionParticipation(instanceId: instanceId, enabled: true)
     try animatePresentationOpacity(
       to: 1,
       for: &state,
@@ -6582,6 +6585,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     // (previously: only at exit settle, leaving a ghost-town basemap for the whole
     // fade). Labels are ViewAnnotations; the GL twin has no visual of its own.
     setLabelRenderLayersVisible(false, for: state, instanceId: instanceId, reason: "dismiss_ramp_start")
+    // The VA half of the same directive: pins + label views stop colliding NOW (they
+    // keep fading visually), releasing the mid-city basemap labels the GL twin never
+    // owned. Without this the basemap stayed suppressed FOREVER after a dismiss.
+    setOverlayCollisionParticipation(instanceId: instanceId, enabled: false)
     state.keepSourcesHiddenUntilEnter = true
     state.currentPresentationRenderPhase = "exiting"
     state.visualSourceLifecycleState = .dismissing
@@ -6627,6 +6634,11 @@ final class SearchMapRenderController: RCTEventEmitter {
       reason: reason
     )
     Self.clearDismissedHighlightState(&state)
+    // The VA roster is torn down at the floor (views are invisible; the next reveal
+    // rebuilds it from the level-triggered catalog drain). Guarantees the collision
+    // release even if a stray participation write raced, and frees the views.
+    teardownPinVA(instanceId: instanceId)
+    teardownLabelVA(instanceId: instanceId)
     recordNativeApply(
       section: "presentation.hidden_marker_layer_dormancy",
       phase: state.lastPresentationBatchPhase,
@@ -7837,6 +7849,25 @@ final class SearchMapRenderController: RCTEventEmitter {
   // Per-frame one-writer alpha tick for the VA pins + labels (rides the shared display link + the
   // presentation animator). `forceProject`/`writeOpacity` kept for the callers; the VA alpha writers gate on
   // writeOpacity, position/z-order are SDK-owned.
+  /// S4d/owner directive (collision flips at fade START, VA half): the VA pins + labels
+  /// participate in the symbol collision pass regardless of alpha — after a dismiss they
+  /// kept suppressing the basemap city-wide until a camera-driven roster sync tore them
+  /// down (often never). Participation is a LEVEL tied to the presentation ramps: OFF at
+  /// the fade-out start (basemap re-places and crossfades in while our items alpha out),
+  /// ON at the fade-in start. The SDK property is live-settable.
+  private func setOverlayCollisionParticipation(instanceId: String, enabled: Bool) {
+    if let inst = pinVAInstances[instanceId] {
+      for va in inst.vaByKey.values where va.enableSymbolLayerCollision != enabled {
+        va.enableSymbolLayerCollision = enabled
+      }
+    }
+    if let inst = labelVAInstances[instanceId] {
+      for va in inst.vaByKey.values where va.enableSymbolLayerCollision != enabled {
+        va.enableSymbolLayerCollision = enabled
+      }
+    }
+  }
+
   private func refreshOverlayFrame(instanceId: String, writeOpacity: Bool = true, forceProject: Bool = false) {
     refreshLabelVAAlpha(instanceId: instanceId, writeOpacity: writeOpacity)
     refreshPinVAAlpha(instanceId: instanceId, writeOpacity: writeOpacity)
