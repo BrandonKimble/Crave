@@ -94,14 +94,19 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     ['resultsPresentationTransport'] as const,
     'search_surface_results_transaction_presentation_transaction_input'
   );
-  const searchSurfaceResultsTransactionKeyInput = useSearchRuntimeBusSelector(
+  // S4c-1c-2: the episode token replaces the operation id as the recompute trigger for
+  // the committed-key derivation (the id itself is threaded explicitly through params).
+  const searchSurfaceResultsEpisodeInput = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => ({
-      activeOperationId: state.activeOperationId,
+      presentedWorldId: state.presentedWorldId,
+      presentingPhase: state.presentingPhase,
     }),
-    (left, right) => left.activeOperationId === right.activeOperationId,
-    ['activeOperationId'] as const,
-    'search_surface_results_transaction_active_operation_input'
+    (left, right) =>
+      left.presentedWorldId === right.presentedWorldId &&
+      left.presentingPhase === right.presentingPhase,
+    ['presentedWorldId', 'presentingPhase'] as const,
+    'search_surface_results_transaction_episode_input'
   );
   const searchSurfaceResultsTransactionInputs = React.useMemo(
     () => ({
@@ -117,7 +122,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     }),
     [
       searchSurfaceResultsPresentationTransactionInput.resultsPresentationTransport,
-      searchSurfaceResultsTransactionKeyInput.activeOperationId,
+      searchSurfaceResultsEpisodeInput,
       resultsPresentationSurfaceAuthority,
     ]
   );
@@ -271,55 +276,57 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     ]
   );
 
-  const beginSearchThisAreaPresentationPending = React.useCallback(() => {
-    clearStagedSearchSurfaceResultsTransaction();
-    const transactionId = searchSurfaceResultsTransactionKeyInput.activeOperationId;
-    if (transactionId != null) {
-      getSearchSurfaceRuntime().beginRedrawTransaction({
-        reason: 'search_this_area',
-        transactionId,
-        coverState: 'interaction_loading',
-      });
-    } else {
-      // R0 loud-contracts (§D6): a search-this-area pending WITHOUT an active operation id
-      // proceeds with NO redraw transaction — readiness signals then arrive against
-      // transactionId:null and are ignored (loud via the contract event below).
-      reportSearchFlowContractViolation('search_this_area_pending_without_transaction', {
-        coverState: 'interaction_loading',
-      });
-    }
-    runtimeMachineRef.current!.applyStagingCoverState('interaction_loading');
-    resultsPresentationSurfaceAuthority.publish(
-      {
-        searchSurfaceResultsTransactionKey: transactionId,
-      },
-      'search_this_area_pending_cover'
-    );
-    commitSearchMountedResultsSearchSurfaceResultsTransactionKey(transactionId);
-    searchMapSourceFramePort.publishVisualState({
-      mapSearchSurfaceResultsSourcesReady: false,
-      mapSearchSurfaceResultsSourcesReadyKey: transactionId,
-    });
-    const scenarioConfig = activeScenarioConfigRef.current;
-    if (isPerfScenarioAttributionActive(scenarioConfig)) {
-      logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-        event: 'search_this_area_pending_cover_contract',
-        searchThisAreaSubmitId: getActivePerfScenarioSearchThisAreaSubmitId(),
-        coverState: 'interaction_loading',
-        preserveSheetState: true,
-        loadingStateVisible: true,
-        searchSurfaceResultsTransactionKey: transactionId,
+  const beginSearchThisAreaPresentationPending = React.useCallback(
+    (operationToken: string | null) => {
+      clearStagedSearchSurfaceResultsTransaction();
+      const transactionId = operationToken;
+      if (transactionId != null) {
+        getSearchSurfaceRuntime().beginRedrawTransaction({
+          reason: 'search_this_area',
+          transactionId,
+          coverState: 'interaction_loading',
+        });
+      } else {
+        // R0 loud-contracts (§D6): a search-this-area pending WITHOUT an active operation id
+        // proceeds with NO redraw transaction — readiness signals then arrive against
+        // transactionId:null and are ignored (loud via the contract event below).
+        reportSearchFlowContractViolation('search_this_area_pending_without_transaction', {
+          coverState: 'interaction_loading',
+        });
+      }
+      runtimeMachineRef.current!.applyStagingCoverState('interaction_loading');
+      resultsPresentationSurfaceAuthority.publish(
+        {
+          searchSurfaceResultsTransactionKey: transactionId,
+        },
+        'search_this_area_pending_cover'
+      );
+      commitSearchMountedResultsSearchSurfaceResultsTransactionKey(transactionId);
+      searchMapSourceFramePort.publishVisualState({
         mapSearchSurfaceResultsSourcesReady: false,
         mapSearchSurfaceResultsSourcesReadyKey: transactionId,
       });
-    }
-  }, [
-    clearStagedSearchSurfaceResultsTransaction,
-    resultsPresentationSurfaceAuthority,
-    runtimeMachineRef,
-    searchMapSourceFramePort,
-    searchSurfaceResultsTransactionKeyInput.activeOperationId,
-  ]);
+      const scenarioConfig = activeScenarioConfigRef.current;
+      if (isPerfScenarioAttributionActive(scenarioConfig)) {
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'search_this_area_pending_cover_contract',
+          searchThisAreaSubmitId: getActivePerfScenarioSearchThisAreaSubmitId(),
+          coverState: 'interaction_loading',
+          preserveSheetState: true,
+          loadingStateVisible: true,
+          searchSurfaceResultsTransactionKey: transactionId,
+          mapSearchSurfaceResultsSourcesReady: false,
+          mapSearchSurfaceResultsSourcesReadyKey: transactionId,
+        });
+      }
+    },
+    [
+      clearStagedSearchSurfaceResultsTransaction,
+      resultsPresentationSurfaceAuthority,
+      runtimeMachineRef,
+      searchMapSourceFramePort,
+    ]
+  );
 
   const readSearchSurfaceResultsTransactionGateInputs = React.useCallback(() => {
     const surfaceSnapshot = resultsPresentationSurfaceAuthority.getSnapshot();
@@ -590,6 +597,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
   );
   const handlePageOneResultsCommitted = React.useCallback(
     (payload?: {
+      operationToken?: string | null;
       surfaceTransactionMutationKind?: 'search_this_area' | 'variant_rerun';
       expectedResultsDataKey?: string | null;
       dataReadyFrom?: 'network' | 'cache' | 'in_flight';
@@ -606,7 +614,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
         // 'search_this_area' (the identical data-keyed in-place-rerun gate semantics).
         const variantRerunTransactionId =
           pendingVariantRerunTransactionIdRef.current ??
-          searchSurfaceResultsTransactionKeyInput.activeOperationId ??
+          payload.operationToken ??
           payload.expectedResultsDataKey;
         pendingVariantRerunTransactionIdRef.current = null;
         stageSearchSurfaceResultsTransaction(
@@ -627,8 +635,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
         payload.expectedResultsDataKey != null
       ) {
         const searchThisAreaTransactionId =
-          searchSurfaceResultsTransactionKeyInput.activeOperationId ??
-          payload.expectedResultsDataKey;
+          payload.operationToken ?? payload.expectedResultsDataKey;
         stageSearchSurfaceResultsTransaction(
           createSearchSurfaceResultsEnterTransaction(
             searchThisAreaTransactionId,
@@ -655,7 +662,6 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     [
       maybeCommitStagedSearchSurfaceResultsTransaction,
       readSearchSurfaceResultsTransactionGateInputs,
-      searchSurfaceResultsTransactionKeyInput.activeOperationId,
       stageSearchSurfaceResultsTransaction,
     ]
   );

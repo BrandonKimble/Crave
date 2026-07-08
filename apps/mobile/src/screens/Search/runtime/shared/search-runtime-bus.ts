@@ -81,10 +81,9 @@ export type SearchRuntimeBusState = {
   isSearchSessionActive: boolean;
   isSearchLoading: boolean;
   isLoadingMore: boolean;
-  activeOperationId: string | null;
   /** S4c: the worldId last committed to the screen + its presentation phase — the
-   *  episode token presentation-adjacent readers key off (replaces the lane ladder;
-   *  `activeOperationId` dies with the transaction machine). */
+   *  episode token presentation-adjacent readers key off (the lane ladder and the
+   *  bus-read operation id are gone; operation tokens thread through params). */
   presentedWorldId: string | null;
   presentingPhase: SearchPresentingPhase;
   currentPage: number;
@@ -194,7 +193,6 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   isSearchSessionActive: false,
   isSearchLoading: false,
   isLoadingMore: false,
-  activeOperationId: null,
   presentedWorldId: null,
   presentingPhase: 'idle',
   currentPage: 1,

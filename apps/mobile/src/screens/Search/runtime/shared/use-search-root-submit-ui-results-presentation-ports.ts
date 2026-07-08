@@ -25,6 +25,7 @@ export const useSearchRootSubmitUiResultsPresentationPorts = ({
       clearMapHighlightedRestaurantId: profileOwner.profileActions.clearMapHighlightedRestaurantId,
       onPageOneResultsCommitted: (payload) => {
         resultsPresentationOwner.handlePageOneResultsCommitted({
+          operationToken: payload.operationToken,
           surfaceTransactionMutationKind:
             payload.presentationIntentKind === 'search_this_area'
               ? 'search_this_area'

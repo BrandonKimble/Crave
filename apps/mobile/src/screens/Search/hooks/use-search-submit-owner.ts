@@ -70,6 +70,7 @@ type SearchSubmitOwnerUiPorts = {
   clearMapHighlightedRestaurantId?: () => void;
   onPageOneResultsCommitted?: (payload: {
     searchRequestId: string | null;
+    operationToken: string;
     requestBounds: MapBounds | null;
     resultsIdentityKey: string | null;
     resultsDataKey: string | null;
@@ -85,6 +86,9 @@ type SearchSubmitOwnerUiPorts = {
   }) => void;
   onPresentationIntentStart?: (params: {
     kind: SearchSubmitPresentationIntentKind;
+    /** The resolving operation's token ('world:'+generation) — the STA pending-arm key
+     *  (S4c-1c-2: threaded explicitly, never read back off the bus). */
+    operationToken: string;
     mode: SearchMode;
     preserveSheetState: boolean;
     transitionFromDockedPolls: boolean;
@@ -256,15 +260,17 @@ const useSearchSubmitOwner = ({
         entrySurface: 'home' | 'search_mode' | 'results' | 'profile' | null;
       };
       tuple: import('../runtime/shared/search-desired-state-contract').SearchDesiredTuple;
+      generation: number;
     }) => void
   >(() => {});
-  enterForegroundEffectsRef.current = ({ intent, tuple }) => {
+  enterForegroundEffectsRef.current = ({ intent, tuple, generation }) => {
     const busState = searchRuntimeBus.getState();
     const dockedPolls =
       !intent.preserveSheetState &&
       (getSearchReconcilerViewInputs()?.getDockedPollsFlag() ?? false);
     onPresentationIntentStart?.({
       kind: intent.presentationIntentKind ?? 'initial_search',
+      operationToken: `world:${generation}`,
       mode: busState.searchMode ?? null,
       preserveSheetState: intent.preserveSheetState,
       transitionFromDockedPolls: dockedPolls,

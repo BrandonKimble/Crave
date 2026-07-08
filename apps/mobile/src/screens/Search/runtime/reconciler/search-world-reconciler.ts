@@ -167,6 +167,7 @@ export type SearchWorldReconcilerEnv = {
   runEnterForegroundEffects: (args: {
     intent: SearchWorldDerivedIntent;
     tuple: SearchDesiredTuple;
+    generation: number;
   }) => void;
   onResolveFailed: (reason: string) => void;
 };
@@ -263,7 +264,7 @@ export const createSearchWorldReconciler = (
             requestDecoration: decoration,
             onResolutionBegan: () => {
               if (intent != null) {
-                env.runEnterForegroundEffects({ intent, tuple: next });
+                env.runEnterForegroundEffects({ intent, tuple: next, generation });
               }
             },
             onResolutionFailed: env.onResolveFailed,

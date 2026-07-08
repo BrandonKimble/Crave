@@ -5,9 +5,9 @@
 // fires onPageOneResultsCommitted OUTSIDE the batch (the unchanged adapter into the
 // surface-transaction machine, which stays the sole presentation writer).
 //
-// Ordering contract (the riskiest coupling named in the edit map): beginResolution
-// publishes `activeOperationId` SYNCHRONOUSLY, BEFORE any pending presentation arm
-// (search-this-area / variant-rerun) reads it as the transaction-id source.
+// Token contract (S4c-1c-2): the operation token ('world:'+generation) threads
+// EXPLICITLY — beginResolution hands it to onResolutionStart, the page-one payload
+// carries it to the response-time stages. Nothing reads it back off the bus.
 //
 // RED contract: a second commitWorldToMountedState for the same worldId is a violation —
 // one structural frame per world, provable in the log.
@@ -84,6 +84,9 @@ export type SearchWorldPresentationSeamEnv = {
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   onPageOneResultsCommitted: (payload: {
     searchRequestId: string;
+    /** 'world:'+generation — the resolving operation's token; the STA/variant response
+     *  stage keys to the SAME token the pending arm used (S4c-1c-2: never bus-read). */
+    operationToken: string;
     requestBounds: import('../../../../types').MapBounds | null;
     resultsIdentityKey: string | null;
     resultsDataKey: string | null;
@@ -106,9 +109,8 @@ export type SearchWorldPresentationSeamEnv = {
 export type SearchWorldPresentationSeam = {
   /** The worldId last committed to the screen (S4a reconciler classification input). */
   getPresentedWorldId: () => string | null;
-  /** SYNCHRONOUS: publishes activeOperationId ('world:'+generation) + presentingPhase
-   *  'resolving' + isSearchLoading before returning — pending presentation arms read it
-   *  right after. */
+  /** SYNCHRONOUS: publishes presentingPhase 'resolving' + isSearchLoading, then runs
+   *  onResolutionStart (which arms pending presentations with the explicit token). */
   beginResolution: (args: {
     generation: number;
     presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
@@ -130,7 +132,6 @@ export const createSearchWorldPresentationSeam = (
     getPresentedWorldId: () => presentedWorldId,
     beginResolution: ({ generation, presentationIntentKind }) => {
       env.searchRuntimeBus.publish({
-        activeOperationId: `world:${generation}`,
         presentingPhase: 'resolving',
         isSearchLoading: true,
         pendingTabSwitchTab: null,
@@ -163,7 +164,6 @@ export const createSearchWorldPresentationSeam = (
         // an armed presentation intent settles instead of hanging on a commit that never
         // comes. Provable in the trace via represent_noop.
         env.searchRuntimeBus.publish({
-          activeOperationId: `world:${generation}`,
           presentedWorldId: worldId,
           presentingPhase: 'presented',
           isSearchLoading: false,
@@ -172,6 +172,7 @@ export const createSearchWorldPresentationSeam = (
         if (value.paginationMeta.page === 1) {
           env.onPageOneResultsCommitted({
             searchRequestId: value.searchRequestId,
+            operationToken: `world:${generation}`,
             requestBounds: args.requestBounds,
             resultsIdentityKey: value.resultsIdentityKey,
             resultsDataKey: value.resultsIdentityKey,
@@ -234,7 +235,6 @@ export const createSearchWorldPresentationSeam = (
         );
         env.searchRuntimeBus.publish({
           ...value.rootBusResultsPatch,
-          activeOperationId: `world:${generation}`,
           presentedWorldId: worldId,
           presentingPhase: 'presented',
           isSearchLoading: false,
@@ -249,6 +249,7 @@ export const createSearchWorldPresentationSeam = (
       if (!isVersionUpdateOfPresentedWorld && value.paginationMeta.page === 1) {
         env.onPageOneResultsCommitted({
           searchRequestId: value.searchRequestId,
+          operationToken: `world:${generation}`,
           requestBounds: args.requestBounds,
           resultsIdentityKey: value.resultsIdentityKey,
           resultsDataKey: value.resultsIdentityKey,
@@ -273,7 +274,6 @@ export const createSearchWorldPresentationSeam = (
     },
     failResolution: ({ generation, reason }) => {
       env.searchRuntimeBus.publish({
-        activeOperationId: null,
         // A failed resolution settles back onto whatever is on screen — 'idle' only
         // when nothing is presented (a failed session enter).
         presentingPhase: presentedWorldId != null ? 'presented' : 'idle',

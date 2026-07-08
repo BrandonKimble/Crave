@@ -34,7 +34,6 @@ export const useSearchRootRequestExecutionAuthorityRuntime = ({
     cancelSearch();
     setSearchRequestLoading(false);
     searchRuntimeBus.publish({
-      activeOperationId: null,
       isSearchLoading: false,
       isLoadingMore: false,
     });

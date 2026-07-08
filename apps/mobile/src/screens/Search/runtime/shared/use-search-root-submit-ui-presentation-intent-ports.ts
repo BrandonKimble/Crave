@@ -27,7 +27,7 @@ export const useSearchRootSubmitUiPresentationIntentPorts = ({
       onPresentationIntentStart: (params) => {
         resultsPresentationOwner.presentationActions.cancelCloseSearch();
         if (params.kind === 'search_this_area') {
-          resultsPresentationOwner.beginSearchThisAreaPresentationPending();
+          resultsPresentationOwner.beginSearchThisAreaPresentationPending(params.operationToken);
           return;
         }
         // TR5-N: a chip rerun's pending cover was already armed BY THE TOGGLE RUNNER at commit

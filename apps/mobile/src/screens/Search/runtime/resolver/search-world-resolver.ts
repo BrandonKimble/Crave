@@ -101,7 +101,7 @@ export type SearchWorldResolveArgs = {
     submissionSource?: string;
     submissionContext?: Record<string, unknown>;
   };
-  /** Invoked SYNCHRONOUSLY after seam.beginResolution (activeOperationId published) and
+  /** Invoked SYNCHRONOUSLY after seam.beginResolution (the operation token published) and
    *  BEFORE any tier can commit — the slot where a pending presentation arm reads the
    *  operation id (the transaction-id ordering named in the edit map). */
   onResolutionBegan?: () => void;
