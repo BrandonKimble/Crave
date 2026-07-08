@@ -1,3 +1,4 @@
+import { applyAuditReasonPolicy } from './llm-audit-policy';
 import {
   Injectable,
   OnModuleInit,
@@ -1306,7 +1307,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       // still needs headroom (512 truncated mid-thought → fail-closed to `new`).
       maxOutputTokens: 2048,
       responseMimeType: 'application/json',
-      responseJsonSchema: ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
+      responseJsonSchema: applyAuditReasonPolicy(
+        ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
+      ),
     };
     const thinkingConfig = this.getThinkingConfig(model, 'content');
     if (thinkingConfig) {
@@ -1615,7 +1618,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       // still needs headroom (truncated mid-thought → fail-closed to `new`).
       maxOutputTokens: 2048,
       responseMimeType: 'application/json',
-      responseJsonSchema: ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
+      responseJsonSchema: applyAuditReasonPolicy(
+        ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
+      ),
     };
     const thinkingConfig = this.getThinkingConfig(model, 'query');
     if (thinkingConfig) {
@@ -1719,7 +1724,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidateCount: 1,
       maxOutputTokens: 1024,
       responseMimeType: 'application/json',
-      responseJsonSchema: POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
+      responseJsonSchema: applyAuditReasonPolicy(
+        POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
+      ),
     };
     const thinkingConfig = this.getThinkingConfig(model, 'query');
     if (thinkingConfig) {

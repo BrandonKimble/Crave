@@ -309,7 +309,8 @@ export interface LLMAttributePlacementInput {
 export interface LLMAttributePlacementResult {
   decision: 'match' | 'new' | 'reject';
   candidateId: number | null;
-  reason: string;
+  /** Audit-only; absent in prod (llm-audit-policy). */
+  reason?: string;
 }
 
 export interface LLMAttributeNameInput {
@@ -335,7 +336,8 @@ export interface LLMEntityMatchInput {
 export interface LLMEntityMatchResult {
   decision: 'match' | 'new';
   candidateId: number | null;
-  reason: string;
+  /** Audit-only; absent in prod (llm-audit-policy). */
+  reason?: string;
 }
 
 export interface LLMPollAxisConstraint {

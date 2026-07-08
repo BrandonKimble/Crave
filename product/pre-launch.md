@@ -27,6 +27,9 @@ items here to avoid work; this file is for the rare truly-data-gated checks.
 - [ ] **Enable the location-refresh cron** (`refreshStaleLocations`) at launch — freshness only
       matters when users are looking. Suggested: weekly, TTL 90d, limit sized to stay inside the
       free Enterprise SKU quota (see plans/search-collection-open-threads.md cost notes).
+- [ ] **Verify LLM audit reasons are OFF in prod**: `LLM_AUDIT_REASONS` unset +
+      `APP_ENV=prod` → judge/classifier calls skip reason output (cost). Flip
+      `LLM_AUDIT_REASONS=true` temporarily whenever tuning prompts in prod.
 - [ ] **Google usage ledger review** — after the first month of real traffic, read the internal
       call ledger + Cloud billing export; hunt inefficiencies.
 

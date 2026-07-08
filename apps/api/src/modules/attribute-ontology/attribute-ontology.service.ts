@@ -226,7 +226,7 @@ export class AttributeOntologyService {
           plan.rejections.push({
             entityId: row.entityId,
             name: row.name,
-            reason: result.reason,
+            reason: result.reason ?? '(audit reasons off)',
           });
         } else if (
           result.decision === 'match' &&

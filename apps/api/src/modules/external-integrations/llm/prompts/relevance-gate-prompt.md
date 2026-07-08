@@ -80,4 +80,8 @@ For each input post `{index, title, body}` return one verdict:
 ```
 
 Every input index must appear exactly once. `reason` is a terse justification
-(used for auditing false drops).
+used for auditing. It must be EVIDENCE, not narrative: when you keep a post
+because it asks about food, QUOTE the ask (a few verbatim words, e.g.
+`asks: "open to restaurant recommendations"`) — never claim an ask that you
+cannot quote. When the `reason` field is not in the requested output shape,
+omit reasons entirely.

@@ -7,6 +7,7 @@ import { join } from 'path';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { UsageLedgerService } from '../../external-integrations/shared/usage-ledger.service';
+import { auditReasonsEnabled } from '../../external-integrations/llm/llm-audit-policy';
 import { LLMPost } from '../../external-integrations/llm/llm.types';
 
 export interface RelevanceGateResult {
@@ -117,7 +118,9 @@ export class RelevanceGateService implements OnModuleInit {
         platform,
         postId: post.id,
         keep: verdicts[index]?.keep ?? true,
-        reason: verdicts[index]?.reason?.slice(0, 256) ?? 'fail_open',
+        reason:
+          verdicts[index]?.reason?.slice(0, 256) ??
+          (verdicts[index] ? null : 'fail_open'),
         model: GATE_MODEL,
         promptHash: this.promptHash,
       }));
@@ -154,12 +157,15 @@ export class RelevanceGateService implements OnModuleInit {
 
   private async judgeBatch(
     posts: LLMPost[],
-  ): Promise<Array<{ keep: boolean; reason: string } | null>> {
+  ): Promise<Array<{ keep: boolean; reason?: string } | null>> {
     const payload = posts.map((post, index) => ({
       index,
       title: post.title,
       body: post.content ?? '',
     }));
+    const outputShape = auditReasonsEnabled()
+      ? ''
+      : '\n\nOutput shape for THIS request: {"verdicts":[{"index":0,"keep":true}]} — omit reason fields.';
     try {
       const response = await this.genAI.models.generateContent({
         model: GATE_MODEL,
@@ -167,7 +173,7 @@ export class RelevanceGateService implements OnModuleInit {
           {
             parts: [
               {
-                text: `${this.prompt}\n\n## Posts\n\n${JSON.stringify(payload)}`,
+                text: `${this.prompt}${outputShape}\n\n## Posts\n\n${JSON.stringify(payload)}`,
               },
             ],
           },
@@ -191,14 +197,14 @@ export class RelevanceGateService implements OnModuleInit {
       const parsed = JSON.parse(text) as {
         verdicts?: { index: number; keep: boolean; reason?: string }[];
       };
-      const out: Array<{ keep: boolean; reason: string } | null> = posts.map(
+      const out: Array<{ keep: boolean; reason?: string } | null> = posts.map(
         () => null,
       );
       for (const verdict of parsed.verdicts ?? []) {
         if (verdict.index >= 0 && verdict.index < posts.length) {
           out[verdict.index] = {
             keep: Boolean(verdict.keep),
-            reason: verdict.reason ?? '',
+            reason: verdict.reason,
           };
         }
       }
