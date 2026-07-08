@@ -175,14 +175,13 @@ export class ExtractionPipelineService implements OnModuleInit {
       process.env.COLLECTION_LLM_MODE?.trim().toLowerCase() === 'batch'
         ? 'batch'
         : 'interactive';
-    // Relevance gate: ON for every collection type by DEFAULT (owner call
-    // 2026-07-07 after the drop-audit review read clean — 30/30 random drops
-    // unambiguous non-food). COLLECTION_RELEVANCE_GATE=off|archive remain as
-    // explicit opt-downs for debugging/staged loads.
-    const gateMode =
-      process.env.COLLECTION_RELEVANCE_GATE?.trim().toLowerCase();
-    this.relevanceGateMode =
-      gateMode === 'off' || gateMode === 'archive' ? gateMode : 'all';
+    // Relevance gate: ON for every collection type, always (owner call
+    // 2026-07-07 after drop-audit review). COLLECTION_RELEVANCE_GATE=off is
+    // the single explicit opt-down for debugging ("why wasn't my post
+    // collected?"); the staged-rollout 'archive' mode was deleted once the
+    // rollout completed.
+    this.relevanceGateEnabled =
+      process.env.COLLECTION_RELEVANCE_GATE?.trim().toLowerCase() !== 'off';
     this.geminiBatchService.registerIngestor(
       'collection_extraction',
       async ({ jobId, resumeContext, items }) => {
@@ -192,7 +191,7 @@ export class ExtractionPipelineService implements OnModuleInit {
   }
 
   private collectionLlmMode: 'interactive' | 'batch' = 'interactive';
-  private relevanceGateMode: 'off' | 'archive' | 'all' = 'off';
+  private relevanceGateEnabled = true;
 
   /** Per-pipeline post-completion continuations (e.g. poll graduation's
    *  gazetteer backfill + leaderboard). Dispatched at the END of
@@ -223,10 +222,7 @@ export class ExtractionPipelineService implements OnModuleInit {
   ): Promise<ExtractionPipelineResult> {
     // Universal relevance gate: cheap title+body admission BEFORE anything is
     // persisted, chunked, or billed at extraction rates. Fail-open inside.
-    const gateApplies =
-      this.relevanceGateMode === 'all' ||
-      (this.relevanceGateMode === 'archive' && params.pipeline === 'archive');
-    if (gateApplies) {
+    if (this.relevanceGateEnabled) {
       const gated = await this.relevanceGate.filterPosts(
         params.platform ?? 'reddit',
         params.llmPosts,
