@@ -16,20 +16,12 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
 }) => {
   const resultsMetadata = (resolvedResults?.metadata ?? {}) as { emptyQueryMessage?: string };
 
-  // Owner directive (2026-07-07): loading states are TRUE CUTOUTS — the skeleton's white
-  // plate is the cover and its holes are transparent down to the hoisted frosted map.
-  // INITIAL loads have no rows beneath (the body is empty) so the holes are real windows.
-  // INTERACTION (toggle) reloads still sit over the STALE rows, so they keep the
-  // self-frost backing until the body-hide (rows at opacity 0 under the cover) lands —
-  // then this fork collapses and both modes are real windows.
+  // Owner directive (2026-07-07): EVERY loading state is a TRUE CUTOUT — the skeleton's
+  // white plate is the cover and its holes are transparent down to the hoisted frosted
+  // map. The rows beneath hide via the rows-visibility level (same frame as the cover),
+  // so the holes never show stale content and no self-frost fallback exists here.
   const loadingContent = React.useMemo(
     () => <SceneLoadingSurface rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'} />,
-    [activeTab]
-  );
-  const interactionLoadingContent = React.useMemo(
-    () => (
-      <SceneLoadingSurface rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'} frostBacking />
-    ),
     [activeTab]
   );
 
@@ -49,8 +41,7 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
     () => ({
       emptyContent,
       loadingContent,
-      interactionLoadingContent,
     }),
-    [emptyContent, interactionLoadingContent, loadingContent]
+    [emptyContent, loadingContent]
   );
 };

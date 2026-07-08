@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import Reanimated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 import styles from '../../styles';
+import { setResultsRowsHiddenForLoading } from './search-results-rows-visibility';
 import type { useSearchRootSearchScenePanelSurfaceContentRuntime } from './use-search-root-search-scene-panel-surface-content-runtime';
 
 // The results-surface overlays, reduced to their ideal shape (2026-07-06 owner directive):
@@ -58,6 +59,12 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
     interactionLoadingModeValue.value = surfaceMode === 'interaction_loading' ? 1 : 0;
     initialLoadingModeValue.value = surfaceMode === 'initial_loading' ? 1 : 0;
     emptyModeValue.value = surfaceMode === 'empty' ? 1 : 0;
+    // TRUE CUTOUTS (owner directive): while EITHER loading cover is up, the rows beneath
+    // hide (same write, same frame) so the skeleton's holes are real windows to the
+    // hoisted frost — no self-frost fallback, no stale rows through the holes.
+    setResultsRowsHiddenForLoading(
+      surfaceMode === 'interaction_loading' || surfaceMode === 'initial_loading'
+    );
   }, [emptyModeValue, initialLoadingModeValue, interactionLoadingModeValue, surfaceMode]);
   const emptySurfaceAnimatedStyle = useAnimatedStyle(() => ({
     opacity: surfaceActiveValue.value * emptyModeValue.value,
@@ -67,12 +74,11 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
     opacity:
       surfaceActiveValue.value *
       Math.max(interactionLoadingModeValue.value, initialLoadingModeValue.value),
-    // Interaction reload: start below the toggle strip so it stays uncovered, and stay
-    // OPAQUE (stale rows beneath — the self-frost skeleton needs the white back). Initial
-    // load: full-body and TRANSPARENT behind the skeleton plate, so its holes are real
-    // windows down to the hoisted frost (owner directive: true cutouts).
+    // Interaction reload: start below the toggle strip so it stays uncovered. Initial
+    // load: the strip is hidden, so the cover is full-body. Both are TRANSPARENT behind
+    // the skeleton's own white plate — its holes are real windows down to the hoisted
+    // frost (the rows beneath hide via the rows-visibility level, same frame).
     top: headerTopValue.value + filtersHeaderHeightValue.value * interactionLoadingModeValue.value,
-    backgroundColor: interactionLoadingModeValue.value > 0.5 ? '#ffffff' : 'transparent',
   }));
 
   return React.useMemo(
@@ -98,9 +104,7 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
               testID="results-loading-cover"
             />
             <View pointerEvents="none" style={styles.resultsLoadingCoverContent}>
-              {surfaceMode === 'interaction_loading'
-                ? surfaceContentRuntime.interactionLoadingContent
-                : surfaceContentRuntime.loadingContent}
+              {surfaceContentRuntime.loadingContent}
             </View>
           </Reanimated.View>
         ) : null}
