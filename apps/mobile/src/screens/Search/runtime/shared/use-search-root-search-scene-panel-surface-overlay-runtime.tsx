@@ -104,7 +104,9 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
               testID="results-loading-cover"
             />
             <View pointerEvents="none" style={styles.resultsLoadingCoverContent}>
-              {surfaceContentRuntime.loadingContent}
+              {surfaceMode === 'initial_loading'
+                ? surfaceContentRuntime.initialLoadingContent
+                : surfaceContentRuntime.loadingContent}
             </View>
           </Reanimated.View>
         ) : null}

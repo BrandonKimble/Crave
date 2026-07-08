@@ -20,6 +20,18 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
   // white plate is the cover and its holes are transparent down to the hoisted frosted
   // map. The rows beneath hide via the rows-visibility level (same frame as the cover),
   // so the holes never show stale content and no self-frost fallback exists here.
+  // TWO DESIGNS by mode (owner): the INITIAL/reveal skeleton carries static pill holes
+  // where the toggle strip sits (the real strip is hidden then); the INTERACTION skeleton
+  // omits them — the live strip renders above that cover and stays tappable.
+  const initialLoadingContent = React.useMemo(
+    () => (
+      <SceneLoadingSurface
+        rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'}
+        withFilterStripHoles
+      />
+    ),
+    [activeTab]
+  );
   const loadingContent = React.useMemo(
     () => <SceneLoadingSurface rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'} />,
     [activeTab]
@@ -41,7 +53,8 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
     () => ({
       emptyContent,
       loadingContent,
+      initialLoadingContent,
     }),
-    [emptyContent, loadingContent]
+    [emptyContent, initialLoadingContent, loadingContent]
   );
 };

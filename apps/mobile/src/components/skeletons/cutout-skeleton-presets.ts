@@ -77,7 +77,13 @@ const buildCommentHoles = ({ originX, originY, rowWidth }: RowOptions): MaskedHo
   cursorY += META_HEIGHT + META_MARGIN_BOTTOM;
   // Body line 1 (full content width).
   cursorY += BODY_LINE_GAP;
-  holes.push({ x: contentX, y: cursorY, width: contentWidth, height: BODY_HEIGHT, borderRadius: 5 });
+  holes.push({
+    x: contentX,
+    y: cursorY,
+    width: contentWidth,
+    height: BODY_HEIGHT,
+    borderRadius: 5,
+  });
   cursorY += BODY_HEIGHT;
   // Body line 2 (72% of content width).
   cursorY += BODY_LINE_GAP;
@@ -136,7 +142,13 @@ const buildResultCardHoles = (
   const bodyWidth = Math.max(0, titleAvailable - RESULT_DETAILS_INDENT);
 
   // Rank badge + title.
-  holes.push({ x: originX, y: titleY, width: RANK_BADGE_WIDTH, height: RANK_HEIGHT, borderRadius: 15 });
+  holes.push({
+    x: originX,
+    y: titleY,
+    width: RANK_BADGE_WIDTH,
+    height: RANK_HEIGHT,
+    borderRadius: 15,
+  });
   holes.push({
     x: originX + RANK_BADGE_WIDTH + CARD_LINE_GAP,
     y: titleY + (RANK_HEIGHT - TITLE_HEIGHT) / 2,
@@ -169,8 +181,15 @@ const buildResultCardHoles = (
   });
 
   // Right-hand actions column (heart + share), centered in the 32-wide column.
-  const actionX = originX + rowWidth - RESULT_ACTIONS_COLUMN + (RESULT_ACTIONS_COLUMN - RESULT_ACTION_SIZE) / 2;
-  holes.push({ x: actionX, y: titleY, width: RESULT_ACTION_SIZE, height: RESULT_ACTION_SIZE, borderRadius: 10 });
+  const actionX =
+    originX + rowWidth - RESULT_ACTIONS_COLUMN + (RESULT_ACTIONS_COLUMN - RESULT_ACTION_SIZE) / 2;
+  holes.push({
+    x: actionX,
+    y: titleY,
+    width: RESULT_ACTION_SIZE,
+    height: RESULT_ACTION_SIZE,
+    borderRadius: 10,
+  });
   holes.push({
     x: actionX,
     y: titleY + RESULT_ACTION_SIZE + RESULT_ACTIONS_GAP,
@@ -289,6 +308,37 @@ const ROW_BUILDERS: Record<CutoutSkeletonRowType, { build: RowBuilder; stride: n
   history: { build: buildHistoryHoles, stride: HISTORY_ROW_HEIGHT },
 };
 
+// ─── filter-strip pills (owner design 2026-07-07: the INITIAL/reveal skeleton carries a
+// few pill-shaped holes exactly where the toggle strip sits — static approximations of the
+// strip's cutouts, since the real strip is hidden during initial loading; the interaction
+// skeleton omits them because the live strip is visible above it) ───────────────────────
+const STRIP_PILL_HEIGHT = 32; // CONTROL_HEIGHT
+const STRIP_PILL_RADIUS = 8; // CONTROL_RADIUS
+const STRIP_PILL_GAP = 8;
+const STRIP_PILL_WIDTHS = [104, 72, 88];
+const STRIP_BLOCK_BOTTOM_GAP = 12;
+
+/** The vertical space the strip-pill block occupies (rows stack below it). */
+export const FILTER_STRIP_HOLES_BLOCK_HEIGHT = STRIP_PILL_HEIGHT + STRIP_BLOCK_BOTTOM_GAP;
+
+export const buildFilterStripPillHoles = ({
+  originX,
+  originY,
+}: Pick<RowOptions, 'originX' | 'originY'>): MaskedHole[] => {
+  let cursorX = originX;
+  return STRIP_PILL_WIDTHS.map((width) => {
+    const hole = {
+      x: cursorX,
+      y: originY,
+      width,
+      height: STRIP_PILL_HEIGHT,
+      borderRadius: STRIP_PILL_RADIUS,
+    };
+    cursorX += width + STRIP_PILL_GAP;
+    return hole;
+  });
+};
+
 export type BuildPresetHolesOptions = {
   rowType: CutoutSkeletonRowType;
   /** Width of the surface content area (surface width minus 2× inset). */
@@ -332,7 +382,9 @@ export const presetRowStride = (rowType: CutoutSkeletonRowType): number => {
   if (stride == null) {
     if (__DEV__) {
       // eslint-disable-next-line no-console
-      console.warn(`[cutout-skeleton] no preset for rowType "${rowType}" — using a fallback stride.`);
+      console.warn(
+        `[cutout-skeleton] no preset for rowType "${rowType}" — using a fallback stride.`
+      );
     }
     return FALLBACK_ROW_STRIDE;
   }

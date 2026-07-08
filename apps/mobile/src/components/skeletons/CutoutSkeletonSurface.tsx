@@ -55,6 +55,9 @@ export type CutoutSkeletonSurfaceProps = {
    * Provide this directly, or pass `rowType` to derive a preset list.
    */
   holes?: MaskedHole[];
+  /** Extra absolute-positioned holes merged with the preset (e.g. the reveal skeleton's
+   *  static filter-strip pills). Ignored when `holes` is provided directly. */
+  extraHoles?: MaskedHole[];
   /** Convenience: derive `holes` from a named preset (e.g. 'comment'). */
   rowType?: CutoutSkeletonRowType;
   /** How many preset rows to stack when using `rowType`. */
@@ -144,6 +147,7 @@ const DominoHole: React.FC<DominoHoleProps> = ({
 
 export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
   holes,
+  extraHoles,
   rowType,
   rowCount = 6,
   insetX = 16,
@@ -198,16 +202,17 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
       return holes;
     }
     if (rowType && size.width > 0) {
-      return buildPresetHoles({
+      const presetHoles = buildPresetHoles({
         rowType,
         rowWidth: size.width - insetX * 2,
         rowCount,
         insetX,
         insetY,
       });
+      return extraHoles && extraHoles.length > 0 ? [...extraHoles, ...presetHoles] : presetHoles;
     }
-    return [];
-  }, [holes, rowType, rowCount, insetX, insetY, size.width]);
+    return extraHoles ?? [];
+  }, [holes, extraHoles, rowType, rowCount, insetX, insetY, size.width]);
 
   // --- Pulse: a full-surface highlight whose opacity breathes. ---
   const pulse = useSharedValue(PULSE_MAX_OPACITY);
@@ -222,7 +227,10 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
     }
     pulse.value = PULSE_MAX_OPACITY;
     pulse.value = withRepeat(
-      withTiming(PULSE_MIN_OPACITY, { duration: shimmerDurationMs, easing: Easing.inOut(Easing.ease) }),
+      withTiming(PULSE_MIN_OPACITY, {
+        duration: shimmerDurationMs,
+        easing: Easing.inOut(Easing.ease),
+      }),
       -1,
       true
     );
