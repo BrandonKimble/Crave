@@ -26,6 +26,7 @@ import { AppRouteCoordinator } from './src/navigation/runtime/AppRouteCoordinato
 import { AppRouteSceneRuntimeProvider } from './src/navigation/runtime/AppRouteSceneRuntimeProvider';
 import { MainLaunchCoordinator } from './src/navigation/runtime/MainLaunchCoordinator';
 import NetworkStatusListener from './src/providers/NetworkStatusListener';
+import { PurchasesProvider } from './src/providers/PurchasesProvider';
 import PollNotificationListener from './src/providers/PollNotificationListener';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
 import { PerfScenarioCoordinator } from './src/perf/PerfScenarioCoordinator';
@@ -89,6 +90,7 @@ export default function App() {
                 <MainLaunchCoordinator>
                   <AppRouteSceneRuntimeProvider>
                     <PollNotificationListener />
+                    <PurchasesProvider />
                     <SystemStatusBanner />
                     <Reanimated.View style={[styles.contentSurface, contentAnimatedStyle]}>
                       <NavigationContainer>

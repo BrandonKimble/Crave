@@ -12,6 +12,14 @@ export interface UserStats {
   favoritesTotalCount: number;
 }
 
+export interface AccessSummary {
+  entitlementCode: string;
+  active: boolean;
+  /** null = lifetime while active. ISO string over the wire. */
+  expiresAt: string | null;
+  source: string | null;
+}
+
 export interface UserProfile {
   userId: string;
   email?: string;
@@ -21,6 +29,9 @@ export interface UserProfile {
   usernameStatus?: string | null;
   onboarding: UserOnboardingProfile;
   stats: UserStats;
+  /** SERVER-TRUTH access block (the entitlement ledger). Paywall/trial
+   *  countdown render from THIS — never from local purchase state. */
+  access?: AccessSummary;
 }
 
 export interface UsernameAvailability {

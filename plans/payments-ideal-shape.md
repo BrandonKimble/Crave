@@ -120,3 +120,38 @@ business/monetization-and-gating.md (dish-level = premium, restaurant-level
   pricing (Layer-1 config), paused subscriptions (grant gap), ambassador/
   influencer comps, B2B restaurant accounts (new entitlementCode, phase 2),
   double-sided referral rewards (grant to both users).
+
+## Step 5 — mobile integration (built 2026-07-08)
+
+Shipped:
+
+- `apps/mobile/src/services/purchases.ts` — RC wrapper; app_user_id = Clerk
+  user id; guarded `require` so the JS bundle survives until the native
+  module is in the dev-client binary; `isPurchasesAvailable()` tells the UI.
+- `apps/mobile/src/providers/PurchasesProvider.tsx` — mounted in App.tsx,
+  keeps RC identity in lockstep with Clerk (configure/logIn/logOut).
+- `apps/mobile/src/hooks/useAccess.ts` — THE access hook: server-truth
+  `access` block from GET /users/me (react-query). Never gates on
+  CustomerInfo.
+- `apps/mobile/src/screens/PaywallScreen.tsx` — functional skeleton
+  (offerings → purchase → poll server truth → restore). Screens thread
+  re-skins + mounts it.
+- `UserProfile.access` (AccessSummary) in services/users.ts;
+  `EXPO_PUBLIC_REVENUECAT_IOS_KEY` in .env/.env.example (empty = no-op).
+
+Owner setup required before sandbox E2E (not executable by Claude):
+
+1. App Store Connect: create the auto-renewing subscription group +
+   products (monthly $7.99, annual $39.99), fill paid-apps agreement.
+2. RevenueCat: create project + iOS app, paste the App Store Connect
+   API key, define entitlement (map to our `premium` via
+   REVENUECAT_ENTITLEMENT_MAP), attach products to a "default" offering,
+   copy the public iOS SDK key into EXPO_PUBLIC_REVENUECAT_IOS_KEY.
+3. RC webhook: point at POST /billing/webhooks/revenuecat with the bearer
+   secret in REVENUECAT_WEBHOOK_SECRET (endpoint fails closed without it).
+4. Rebuild the dev client (react-native-purchases is native):
+   `npx expo prebuild` not needed — just a new xcodebuild of the workspace
+   after pod install; until then all purchase calls no-op by design.
+5. Sandbox test: App Store sandbox tester account → purchase in PaywallScreen
+   → RC webhook → `access_grants` row (source `subscription`,
+   sourceRef `revenuecat:<txn>`) → /users/me access flips.
