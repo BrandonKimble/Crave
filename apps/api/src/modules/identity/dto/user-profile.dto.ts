@@ -47,6 +47,16 @@ export interface UserProfileDto {
   onboarding: UserOnboardingProfile;
   stats: UserStatsDto;
   entitlements: UserEntitlementDto[];
+  /** SERVER-TRUTH access summary (the ledger, via EntitlementService) — the
+   *  mobile app renders paywalls/trial countdown from THIS, never local
+   *  inference. */
+  access: {
+    entitlementCode: string;
+    active: boolean;
+    /** null = lifetime while active; ignore when inactive. */
+    expiresAt: Date | null;
+    source: string | null;
+  };
 }
 
 export interface PublicUserProfileDto {

@@ -9,7 +9,6 @@ import Stripe from 'stripe';
 import {
   BillingEventStatus,
   CheckoutSessionStatus,
-  EntitlementStatus,
   Prisma,
   SubscriptionPlatform,
   SubscriptionProvider,
@@ -22,6 +21,7 @@ import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { CreatePortalSessionDto } from './dto/create-portal-session.dto';
 import { RevenueCatWebhookDto } from './dto/revenuecat-webhook.dto';
 import { UserService } from '../identity/user.service';
+import { EntitlementService } from '../entitlements/entitlement.service';
 
 interface LogBillingEventParams {
   source: SubscriptionProvider;
@@ -29,6 +29,9 @@ interface LogBillingEventParams {
   externalEventId: string;
   eventType: string;
   payload: unknown;
+  /** When set, the event is recorded as FAILED with this message (findable +
+   *  replayable) instead of processed. */
+  failed?: string;
 }
 
 @Injectable()
@@ -45,6 +48,7 @@ export class BillingService {
     private readonly prisma: PrismaService,
     private readonly logger: LoggerService,
     private readonly userService: UserService,
+    private readonly entitlements: EntitlementService,
   ) {
     const stripeSecret = this.configService.get<string>('stripe.secretKey');
     this.stripe = stripeSecret
@@ -66,7 +70,19 @@ export class BillingService {
       'http://localhost:3000/account/subscription';
     this.defaultEntitlement =
       this.configService.get<string>('billing.defaultEntitlement') || 'premium';
+    // 'ourCode:rcEntitlementId,ourCode2:rcId2' -> Map<rcId, ourCode>
+    const mapRaw =
+      this.configService.get<string>('revenueCat.entitlementMap') || '';
+    this.reverseEntitlementMap = new Map(
+      mapRaw
+        .split(',')
+        .map((pair) => pair.split(':').map((part) => part.trim()))
+        .filter((parts) => parts.length === 2 && parts[0] && parts[1])
+        .map(([ourCode, rcId]) => [rcId, ourCode] as const),
+    );
   }
+
+  private reverseEntitlementMap!: Map<string, string>;
 
   async createCheckoutSession(
     user: User,
@@ -206,6 +222,16 @@ export class BillingService {
       case 'checkout.session.completed':
         await this.markCheckoutSessionCompleted(event.data.object);
         break;
+      case 'charge.refunded':
+        await this.handleStripeRefund(event.data.object);
+        break;
+      case 'invoice.payment_failed':
+        this.logger.warn('Stripe invoice payment failed', {
+          customer: (event.data.object as { customer?: string }).customer,
+          // Access expiry rides currentPeriodEnd on the grant: a failed
+          // renewal simply never extends it. Logged for dunning follow-up.
+        });
+        break;
       default:
         this.logger.debug('Stripe event ignored', { eventType: event.type });
     }
@@ -218,11 +244,16 @@ export class BillingService {
     const expectedSecret = this.configService.get<string>(
       'revenueCat.webhookSecret',
     );
-    if (expectedSecret) {
-      const provided = this.extractBearerToken(authorizationHeader);
-      if (provided !== expectedSecret) {
-        throw new UnauthorizedException('Invalid RevenueCat webhook secret');
-      }
+    if (!expectedSecret) {
+      // Fail CLOSED: without a configured secret, any caller could forge
+      // entitlement-granting events.
+      throw new ServiceUnavailableException(
+        'RevenueCat webhook secret is not configured',
+      );
+    }
+    const provided = this.extractBearerToken(authorizationHeader);
+    if (provided !== expectedSecret) {
+      throw new UnauthorizedException('Invalid RevenueCat webhook secret');
     }
 
     if (!payload.event) {
@@ -234,9 +265,24 @@ export class BillingService {
       payload.event.app_user_id || payload.event.original_app_user_id;
     const user = await this.lookupUserByAuthIdentifier(authId);
     if (!user) {
+      // Not silent: the event log row is marked failed so it is findable and
+      // replayable once the user exists (webhook can arrive before signup
+      // sync lands).
       this.logger.warn('RevenueCat event without matching user', {
         authId,
         eventId: payload.event.id,
+      });
+      await this.logBillingEvent({
+        source: SubscriptionProvider.revenuecat,
+        platform: SubscriptionPlatform.ios,
+        externalEventId:
+          payload.event.id ||
+          payload.event.original_transaction_id ||
+          payload.event.transaction_id ||
+          `${Date.now()}`,
+        eventType: payload.event.type || 'unknown',
+        payload,
+        failed: `no matching user for app_user_id=${authId ?? 'null'}`,
       });
       return;
     }
@@ -255,10 +301,14 @@ export class BillingService {
       payload,
     });
 
-    const entitlementCode =
+    // REVENUECAT_ENTITLEMENT_MAP ('ourCode:rcEntitlementId,...') maps RC
+    // entitlement ids to our codes; unmapped ids fall through as-is.
+    const rawEntitlement =
       payload.event.entitlement_id ||
       payload.event.product_id ||
       this.defaultEntitlement;
+    const entitlementCode =
+      this.reverseEntitlementMap.get(rawEntitlement) ?? rawEntitlement;
     const expiresAt = payload.event.expiration_at_ms
       ? new Date(payload.event.expiration_at_ms)
       : null;
@@ -306,17 +356,66 @@ export class BillingService {
       },
     });
 
-    await this.userService.upsertEntitlement({
+    // Ledger is the access truth (see the Stripe path).
+    await this.entitlements.syncSubscriptionGrant({
       userId: user.userId,
-      entitlementCode,
-      source: SubscriptionProvider.revenuecat,
-      platform: SubscriptionPlatform.ios,
-      status:
-        status === SubscriptionStatus.expired
-          ? EntitlementStatus.expired
-          : EntitlementStatus.active,
+      sourceRef: `revenuecat:${
+        payload.event.original_transaction_id ||
+        payload.event.transaction_id ||
+        entitlementCode
+      }`,
       expiresAt,
-      metadata: revenueCatMetadata,
+      active: status === SubscriptionStatus.active,
+      entitlementCode,
+    });
+  }
+
+  /** Cancel the user's active Stripe subscription at period end (access
+   *  naturally lapses when the grant's expiresAt passes). */
+  async cancelSubscription(user: User): Promise<{ cancelAtPeriodEnd: true }> {
+    const stripe = this.ensureStripe();
+    const subscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId: user.userId,
+        provider: SubscriptionProvider.stripe,
+        status: SubscriptionStatus.active,
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { externalSubscriptionId: true },
+    });
+    if (!subscription?.externalSubscriptionId) {
+      throw new BadRequestException('No active subscription to cancel');
+    }
+    await stripe.subscriptions.update(subscription.externalSubscriptionId, {
+      cancel_at_period_end: true,
+    });
+    // The subscription.updated webhook carries the state change into the
+    // Subscription record and the grant; nothing else to write here.
+    return { cancelAtPeriodEnd: true };
+  }
+
+  /** Refund/chargeback: revoke the subscription grant immediately. */
+  private async handleStripeRefund(charge: Stripe.Charge): Promise<void> {
+    const customerId =
+      typeof charge.customer === 'string' ? charge.customer : null;
+    if (!customerId) return;
+    const user = await this.prisma.user.findFirst({
+      where: { stripeCustomerId: customerId },
+      select: { userId: true },
+    });
+    if (!user) {
+      this.logger.warn('Stripe refund without matching user', { customerId });
+      return;
+    }
+    const revoked = await this.entitlements.revokeBySource({
+      userId: user.userId,
+      source: 'subscription',
+      reason: `stripe charge refunded: ${charge.id}`,
+    });
+    this.logger.info('Stripe refund processed', {
+      userId: user.userId,
+      chargeId: charge.id,
+      grantsRevoked: revoked,
     });
   }
 
@@ -331,8 +430,11 @@ export class BillingService {
         },
       },
       update: {
-        status: BillingEventStatus.processed,
+        status: params.failed
+          ? BillingEventStatus.failed
+          : BillingEventStatus.processed,
         processedAt: new Date(),
+        errorMessage: params.failed ?? null,
         ...(payloadJson !== undefined ? { payload: payloadJson } : {}),
         eventType: params.eventType,
       },
@@ -341,7 +443,10 @@ export class BillingService {
         platform: params.platform ?? null,
         externalEventId: params.externalEventId,
         eventType: params.eventType,
-        status: BillingEventStatus.processed,
+        status: params.failed
+          ? BillingEventStatus.failed
+          : BillingEventStatus.processed,
+        errorMessage: params.failed ?? null,
         ...(payloadJson !== undefined ? { payload: payloadJson } : {}),
       },
     });
@@ -427,18 +532,15 @@ export class BillingService {
       },
     });
 
-    await this.userService.upsertEntitlement({
+    // Ledger is the access truth: mirror this subscription into a
+    // subscription-source grant (renewals extend it, cancellation/refund
+    // revokes it); UserEntitlement is recomputed as the cache.
+    await this.entitlements.syncSubscriptionGrant({
       userId: user.userId,
-      entitlementCode,
-      source: SubscriptionProvider.stripe,
-      platform: SubscriptionPlatform.web,
-      status:
-        status === SubscriptionStatus.active
-          ? EntitlementStatus.active
-          : EntitlementStatus.inactive,
+      sourceRef: `stripe:${subscription.id}`,
       expiresAt: currentPeriodEnd,
-      isGracePeriod: subscription.cancel_at_period_end,
-      metadata: stripeMetadata,
+      active: status === SubscriptionStatus.active,
+      entitlementCode,
     });
 
     await this.prisma.user.update({
@@ -455,7 +557,11 @@ export class BillingService {
     const sessionMetadata = this.toJsonInput(session);
 
     await this.prisma.checkoutSession.updateMany({
-      where: { externalSessionId: session.id },
+      // Idempotent: replayed webhooks must not re-stamp or clobber metadata.
+      where: {
+        externalSessionId: session.id,
+        status: { not: CheckoutSessionStatus.completed },
+      },
       data: {
         status: CheckoutSessionStatus.completed,
         completedAt: new Date(),

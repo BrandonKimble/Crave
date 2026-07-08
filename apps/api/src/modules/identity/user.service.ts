@@ -25,6 +25,7 @@ import {
   type ClerkJwtClaims,
   type ClerkUserIdentity,
 } from './auth/clerk-auth.service';
+import { EntitlementService } from '../entitlements/entitlement.service';
 import { UserProfileDto, UserEntitlementDto } from './dto/user-profile.dto';
 import { UserStatsService } from './user-stats.service';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
@@ -57,6 +58,7 @@ export class UserService {
     private readonly logger: LoggerService,
     private readonly userStats: UserStatsService,
     private readonly clerkAuth: ClerkAuthService,
+    private readonly entitlements: EntitlementService,
   ) {
     this.defaultEntitlement =
       this.configService.get<string>('billing.defaultEntitlement') || 'premium';
@@ -157,6 +159,24 @@ export class UserService {
 
     await this.userStats.ensure(user.userId);
 
+    // Reverse trial (app-owned, NOT a store trial — store trials can't be
+    // extended, and photo/invite rewards must be able to extend this):
+    // exactly one trial_base grant per user, written on first sight. No-op
+    // while BILLING_TRIAL_DAYS=0.
+    if (this.trialDays > 0) {
+      const existingTrial = await this.prisma.accessGrant.findFirst({
+        where: { userId: user.userId, source: 'trial_base' },
+        select: { grantId: true },
+      });
+      if (!existingTrial) {
+        await this.entitlements.grant({
+          userId: user.userId,
+          source: 'trial_base',
+          days: this.trialDays,
+        });
+      }
+    }
+
     return user;
   }
 
@@ -180,7 +200,9 @@ export class UserService {
     const onboardingRow = await this.getOnboardingProfileRow(userId);
     const activeSubscription = user.subscriptions[0];
     const stats = user.stats ?? (await this.userStats.ensure(userId));
+    const access = await this.entitlements.summarize(userId);
     return {
+      access,
       userId: user.userId,
       email: user.email,
       username: user.username,

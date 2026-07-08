@@ -26,4 +26,9 @@ export class BillingController {
   ) {
     return this.billingService.createPortalSession(user, dto);
   }
+
+  @Post('subscription/cancel')
+  async cancelSubscription(@CurrentUser() user: User) {
+    return this.billingService.cancelSubscription(user);
+  }
 }

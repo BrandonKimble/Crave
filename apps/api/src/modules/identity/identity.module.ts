@@ -1,3 +1,4 @@
+import { EntitlementsModule } from '../entitlements/entitlements.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
@@ -25,6 +26,7 @@ import { UserFollowService } from './user-follow.service';
     PrismaModule,
     HttpModule,
     ModerationModule,
+    EntitlementsModule,
   ],
   controllers: [UserController, PublicUserController, AuthController],
   providers: [

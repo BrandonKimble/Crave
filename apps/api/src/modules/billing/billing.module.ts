@@ -3,12 +3,19 @@ import { ConfigModule } from '@nestjs/config';
 import { SharedModule } from '../../shared';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { IdentityModule } from '../identity/identity.module';
+import { EntitlementsModule } from '../entitlements/entitlements.module';
 import { BillingService } from './billing.service';
 import { BillingController } from './billing.controller';
 import { BillingWebhookController } from './billing-webhook.controller';
 
 @Module({
-  imports: [ConfigModule, SharedModule, PrismaModule, IdentityModule],
+  imports: [
+    ConfigModule,
+    SharedModule,
+    PrismaModule,
+    IdentityModule,
+    EntitlementsModule,
+  ],
   controllers: [BillingController, BillingWebhookController],
   providers: [BillingService],
   exports: [BillingService],
