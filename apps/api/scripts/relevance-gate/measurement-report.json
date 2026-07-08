@@ -1,41 +1,41 @@
 [
   {
     "sub": "austinfood",
-    "stage0Posts": 12977,
+    "stage0Posts": 12976,
     "measured": 2000,
-    "kept": 1885,
-    "dropped": 115,
-    "keepRate": 0.943,
-    "fromCache": 110,
+    "kept": 1883,
+    "dropped": 117,
+    "keepRate": 0.942,
+    "fromCache": 0,
     "contentTokensAll": 2128411,
-    "contentTokensKept": 1987702,
-    "tokenSavingsPct": 0.066,
-    "gateMinutes": 3.1
+    "contentTokensKept": 2016687,
+    "tokenSavingsPct": 0.052,
+    "gateMinutes": 3.4
   },
   {
     "sub": "JapanTravel",
-    "stage0Posts": 13806,
+    "stage0Posts": 13805,
     "measured": 2000,
-    "kept": 1134,
-    "dropped": 866,
-    "keepRate": 0.567,
+    "kept": 1793,
+    "dropped": 207,
+    "keepRate": 0.896,
     "fromCache": 0,
     "contentTokensAll": 4255114,
-    "contentTokensKept": 2506960,
-    "tokenSavingsPct": 0.411,
-    "gateMinutes": 3.4
+    "contentTokensKept": 3832036,
+    "tokenSavingsPct": 0.099,
+    "gateMinutes": 4.2
   },
   {
     "sub": "Atlanta",
     "stage0Posts": 7415,
     "measured": 2000,
-    "kept": 570,
-    "dropped": 1430,
-    "keepRate": 0.285,
+    "kept": 573,
+    "dropped": 1427,
+    "keepRate": 0.286,
     "fromCache": 0,
     "contentTokensAll": 1645018,
-    "contentTokensKept": 491283,
-    "tokenSavingsPct": 0.701,
-    "gateMinutes": 3
+    "contentTokensKept": 470697,
+    "tokenSavingsPct": 0.714,
+    "gateMinutes": 3.2
   }
 ]

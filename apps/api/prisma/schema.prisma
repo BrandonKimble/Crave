@@ -283,8 +283,9 @@ model CollectionRelevanceVerdict {
   postId   String   @map("post_id") @db.VarChar(64)
   keep     Boolean
   reason   String?  @db.VarChar(256)
-  model    String   @db.VarChar(128)
-  judgedAt DateTime @default(now()) @map("judged_at")
+  model      String   @db.VarChar(128)
+  promptHash String?  @map("prompt_hash") @db.VarChar(16)
+  judgedAt   DateTime @default(now()) @map("judged_at")
 
   @@id([platform, postId])
   @@index([keep], map: "idx_relevance_verdicts_keep")

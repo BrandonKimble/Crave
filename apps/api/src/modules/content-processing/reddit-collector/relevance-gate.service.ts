@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { readFileSync } from 'fs';
+import { createHash } from 'crypto';
 import { join } from 'path';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
@@ -16,8 +17,12 @@ export interface RelevanceGateResult {
 }
 
 const GATE_MODEL = 'gemini-3.1-flash-lite-preview';
-const BATCH_SIZE = 25;
-const BODY_CHARS = 500;
+// NO body truncation — a 500-char window caused PROVEN false drops (itinerary
+// posts express food intent at char ~500-800: "Find a place to eat Okonomiyaki"
+// @573). Reddit caps selftext at 40k chars, so cost is bounded by DYNAMIC
+// PACKING instead: posts fill a call until the token budget is reached.
+const PACK_TOKEN_BUDGET = 20000;
+const PACK_MAX_POSTS = 25;
 
 /**
  * Universal thread-admission gate (plans/archive-prefilter-pipeline.md):
@@ -38,6 +43,7 @@ export class RelevanceGateService implements OnModuleInit {
   private logger!: LoggerService;
   private genAI!: GoogleGenAI;
   private prompt!: string;
+  private promptHash!: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -58,6 +64,10 @@ export class RelevanceGateService implements OnModuleInit {
       ),
       'utf8',
     );
+    this.promptHash = createHash('sha256')
+      .update(this.prompt)
+      .digest('hex')
+      .slice(0, 16);
   }
 
   /** Filter posts to the relevance-gate keepers. Fail-open everywhere: a
@@ -78,8 +88,29 @@ export class RelevanceGateService implements OnModuleInit {
     const unseen = posts.filter((post) => !verdictById.has(post.id));
 
     let judged = 0;
-    for (let i = 0; i < unseen.length; i += BATCH_SIZE) {
-      const batch = unseen.slice(i, i + BATCH_SIZE);
+    const batches: LLMPost[][] = [];
+    let current: LLMPost[] = [];
+    let currentTokens = 0;
+    for (const post of unseen) {
+      const postTokens = Math.ceil(
+        (post.title.length + (post.content ?? '').length) / 4,
+      );
+      if (
+        current.length &&
+        (current.length >= PACK_MAX_POSTS ||
+          currentTokens + postTokens > PACK_TOKEN_BUDGET)
+      ) {
+        batches.push(current);
+        current = [];
+        currentTokens = 0;
+      }
+      current.push(post);
+      currentTokens += postTokens;
+    }
+    if (current.length) {
+      batches.push(current);
+    }
+    for (const batch of batches) {
       const verdicts = await this.judgeBatch(batch);
       judged += batch.length;
       const rows = batch.map((post, index) => ({
@@ -88,6 +119,7 @@ export class RelevanceGateService implements OnModuleInit {
         keep: verdicts[index]?.keep ?? true,
         reason: verdicts[index]?.reason?.slice(0, 256) ?? 'fail_open',
         model: GATE_MODEL,
+        promptHash: this.promptHash,
       }));
       for (const row of rows) {
         verdictById.set(row.postId, row.keep);
@@ -126,7 +158,7 @@ export class RelevanceGateService implements OnModuleInit {
     const payload = posts.map((post, index) => ({
       index,
       title: post.title,
-      body: (post.content ?? '').slice(0, BODY_CHARS),
+      body: post.content ?? '',
     }));
     try {
       const response = await this.genAI.models.generateContent({

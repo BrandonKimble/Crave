@@ -49,7 +49,7 @@ async function main() {
     const payload = batch.map((s, j) => ({
       index: j,
       title: s.title,
-      body: s.body.slice(0, 500),
+      body: s.body,
     }));
     const res = await ai.models.generateContent({
       model: 'gemini-3.1-flash-lite-preview',

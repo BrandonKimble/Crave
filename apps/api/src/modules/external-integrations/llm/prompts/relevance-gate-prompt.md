@@ -27,14 +27,17 @@ good" — only whether venue/dish discussion plausibly lives in this thread.
    breweries, cafes, bakeries, food trucks, dessert shops, markets/grocers
    (someone hunting an item "where can I find X" gets store/venue answers),
    and food tours. Drink-only asks ("cool dive bar") are in scope.
-5. **Mixed posts pass on their food part.** A travel post that expresses ANY
-   food intent — "want to eat well", "places to eat", a restaurant question
-   buried in an itinerary — is KEEP even if food is one topic among many.
-   But a logistics/lodging/transport itinerary or "critique my plan" post with
-   NO food interest expressed is DROP — its thread's center of mass is routes
-   and hotels, and "replies might mention a snack" is not plausibility. An
-   incidental schedule line ("check in, get food, walk around") is not food
-   intent.
+5. **Mixed posts pass on their food ASK, not their food schedule.** Food
+   intent means the post ASKS about or invites discussion of where to eat
+   ("want to eat well", "any ramen recs?", "places to eat near X?") — KEEP,
+   even buried in an itinerary. But a forward-looking PLAN that merely
+   SCHEDULES meals ("Day 2: Dinner at Ichiran", "Dotonbori street food stop")
+   without asking anything about food is DROP: planned stops are not
+   endorsements, and such threads' replies discuss routing and pacing, not
+   restaurants (verified empirically on real itinerary-check threads). A
+   logistics/lodging itinerary with no food content at all is likewise DROP.
+   An incidental schedule line ("check in, get food, walk around") is not
+   food intent.
 6. **Trip REPORTS lean KEEP.** A multi-day "trip report"/"we just got back"
    post almost always recounts where the author ate, even when the visible
    opening is about logistics. DROP a report only when it is explicitly
