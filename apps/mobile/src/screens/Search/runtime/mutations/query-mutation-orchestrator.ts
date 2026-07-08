@@ -109,15 +109,8 @@ export const useQueryMutationOrchestrator = (
     [onMechanismEvent]
   );
 
-  const clearPendingTabSwitchDraft = React.useCallback(() => {
-    searchRuntimeBus.publish({
-      pendingTabSwitchTab: null,
-    });
-  }, [searchRuntimeBus]);
-
   const toggleIncludeSimilar = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
-    clearPendingTabSwitchDraft();
     // S2: the trigger only WRITES the tuple (optimistic chip flip via the legacy
     // projection in the same publish); the desired-tuple reader owns the commit.
     writeChipVariantTuple(
@@ -126,44 +119,27 @@ export const useQueryMutationOrchestrator = (
       }),
       'chip_include_similar'
     );
-  }, [
-    clearPendingTabSwitchDraft,
-    searchRuntimeBus,
-    setIsPriceSelectorVisible,
-    writeChipVariantTuple,
-  ]);
+  }, [searchRuntimeBus, setIsPriceSelectorVisible, writeChipVariantTuple]);
 
   const toggleRising = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
-    clearPendingTabSwitchDraft();
     writeChipVariantTuple(
       () => ({
         rising: !searchRuntimeBus.getState().desiredTuple.filterVariant.rising,
       }),
       'chip_rising'
     );
-  }, [
-    clearPendingTabSwitchDraft,
-    searchRuntimeBus,
-    setIsPriceSelectorVisible,
-    writeChipVariantTuple,
-  ]);
+  }, [searchRuntimeBus, setIsPriceSelectorVisible, writeChipVariantTuple]);
 
   const toggleOpenNow = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
-    clearPendingTabSwitchDraft();
     writeChipVariantTuple(
       () => ({
         openNow: !searchRuntimeBus.getState().desiredTuple.filterVariant.openNow,
       }),
       'chip_open_now'
     );
-  }, [
-    clearPendingTabSwitchDraft,
-    searchRuntimeBus,
-    setIsPriceSelectorVisible,
-    writeChipVariantTuple,
-  ]);
+  }, [searchRuntimeBus, setIsPriceSelectorVisible, writeChipVariantTuple]);
 
   const commitPriceSelection = React.useCallback(() => {
     const snapshot = pendingPriceRangeRef.current;
@@ -186,13 +162,12 @@ export const useQueryMutationOrchestrator = (
       emitMutationCoalesced({ reason: 'price_filter_duplicate_intent' });
       return;
     }
-    clearPendingTabSwitchDraft();
     // S2: the price sheet is DRAFT state (widget-owned sliders) committed as ONE tuple
     // write at the Done gesture; the desired-tuple reader owns the rerun commit.
     writeChipVariantTuple(() => ({ priceLevels: nextLevels }), 'chip_price');
   }, [
     writeChipVariantTuple,
-    clearPendingTabSwitchDraft,
+
     emitMutationCoalesced,
     priceSheetRef,
     searchRuntimeBus,

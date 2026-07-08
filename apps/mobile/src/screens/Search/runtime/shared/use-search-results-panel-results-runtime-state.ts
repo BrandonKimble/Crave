@@ -16,7 +16,7 @@ export const useSearchResultsPanelResultsRuntimeState = (
       resultsDishCount: state.resultsDishCount,
       resultsRestaurantCount: state.resultsRestaurantCount,
       activeTab: state.activeTab,
-      pendingTabSwitchTab: state.pendingTabSwitchTab,
+      desiredTab: state.desiredTuple.tab,
       canLoadMore: state.canLoadMore,
       isSearchLoading: state.isSearchLoading,
       isLoadingMore: state.isLoadingMore,
@@ -30,7 +30,7 @@ export const useSearchResultsPanelResultsRuntimeState = (
       left.resultsDishCount === right.resultsDishCount &&
       left.resultsRestaurantCount === right.resultsRestaurantCount &&
       left.activeTab === right.activeTab &&
-      left.pendingTabSwitchTab === right.pendingTabSwitchTab &&
+      left.desiredTab === right.desiredTab &&
       left.canLoadMore === right.canLoadMore &&
       left.isSearchLoading === right.isSearchLoading &&
       left.isLoadingMore === right.isLoadingMore &&
@@ -43,7 +43,6 @@ export const useSearchResultsPanelResultsRuntimeState = (
       'resultsDishCount',
       'resultsRestaurantCount',
       'activeTab',
-      'pendingTabSwitchTab',
       'canLoadMore',
       'isSearchLoading',
       'isLoadingMore',

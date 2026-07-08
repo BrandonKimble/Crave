@@ -69,7 +69,6 @@ export type SearchRuntimeBusState = {
   activeTab: SearchRuntimeActiveTab;
   preferredActiveTab: SearchRuntimeActiveTab;
   hasActiveTabPreference: boolean;
-  pendingTabSwitchTab: SearchRuntimeActiveTab | null;
   isSearchLoading: boolean;
   isLoadingMore: boolean;
   /** S4c: the worldId last committed to the screen + its presentation phase — the
@@ -174,7 +173,6 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   activeTab: 'dishes',
   preferredActiveTab: 'dishes',
   hasActiveTabPreference: false,
-  pendingTabSwitchTab: null,
   isSearchLoading: false,
   isLoadingMore: false,
   presentedWorldId: null,

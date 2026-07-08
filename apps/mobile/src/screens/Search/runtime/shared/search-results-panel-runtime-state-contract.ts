@@ -13,7 +13,7 @@ export type SearchResultsPanelResultsRuntimeState = {
   resultsDishCount: number;
   resultsRestaurantCount: number;
   activeTab: 'dishes' | 'restaurants';
-  pendingTabSwitchTab: 'dishes' | 'restaurants' | null;
+  desiredTab: 'dishes' | 'restaurants';
   canLoadMore: boolean;
   isSearchLoading: boolean;
   isLoadingMore: boolean;

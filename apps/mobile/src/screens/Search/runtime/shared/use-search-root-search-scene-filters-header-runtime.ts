@@ -28,8 +28,7 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
   scheduleTabToggleCommit: (next: 'dishes' | 'restaurants') => void;
 }) => {
   const { searchState } = stateFoundationLane.rootPrimitivesRuntime;
-  const filtersActiveTab =
-    searchResultsRuntimeState.pendingTabSwitchTab ?? searchResultsRuntimeState.activeTab;
+  const filtersActiveTab = searchResultsRuntimeState.desiredTab;
   const handleInteractionTabChange = React.useCallback(
     (next: 'dishes' | 'restaurants') => {
       scheduleTabToggleCommit(next);

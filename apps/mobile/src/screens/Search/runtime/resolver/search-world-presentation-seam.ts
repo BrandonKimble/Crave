@@ -135,7 +135,6 @@ export const createSearchWorldPresentationSeam = (
       env.searchRuntimeBus.publish({
         presentingPhase: 'resolving',
         isSearchLoading: true,
-        pendingTabSwitchTab: null,
         isLoadingMore: false,
       });
       env.onResolutionStart?.({ generation, presentationIntentKind });

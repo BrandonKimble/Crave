@@ -25,7 +25,6 @@ export const useSearchRootSubmitReadModel = ({
       activeTab: rootPrimitivesRuntime.searchState.activeTab,
       currentResults: rootDataPlaneRuntime.resultsArrivalState.currentResults,
       isPaginationExhausted: rootDataPlaneRuntime.resultsArrivalState.isPaginationExhausted,
-      pendingTabSwitchTab: rootDataPlaneRuntime.resultsArrivalState.pendingTabSwitchTab,
       preferredActiveTab:
         rootPrimitivesRuntime.searchState.preferredActiveTab ??
         rootPrimitivesRuntime.searchState.activeTab,
@@ -49,7 +48,6 @@ export const useSearchRootSubmitReadModel = ({
       rootDataPlaneRuntime.resultsArrivalState.hasResults,
       rootDataPlaneRuntime.resultsArrivalState.isLoadingMore,
       rootDataPlaneRuntime.resultsArrivalState.isPaginationExhausted,
-      rootDataPlaneRuntime.resultsArrivalState.pendingTabSwitchTab,
       rootDataPlaneRuntime.resultsArrivalState.submittedQuery,
     ]
   );

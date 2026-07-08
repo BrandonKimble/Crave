@@ -39,7 +39,6 @@ export const useSearchRootResultsArrivalRuntime = ({
       canLoadMore: state.canLoadMore,
       currentPage: state.currentPage,
       isPaginationExhausted: state.isPaginationExhausted,
-      pendingTabSwitchTab: state.pendingTabSwitchTab,
       resultsRequestKey: state.resultsRequestKey,
       resultsIdentityCandidateKey: state.resultsIdentityCandidateKey,
       resultsDishCount: state.resultsDishCount,
@@ -52,7 +51,6 @@ export const useSearchRootResultsArrivalRuntime = ({
       a.canLoadMore === b.canLoadMore &&
       a.currentPage === b.currentPage &&
       a.isPaginationExhausted === b.isPaginationExhausted &&
-      a.pendingTabSwitchTab === b.pendingTabSwitchTab &&
       a.resultsRequestKey === b.resultsRequestKey &&
       a.resultsIdentityCandidateKey === b.resultsIdentityCandidateKey &&
       a.resultsDishCount === b.resultsDishCount &&
@@ -64,7 +62,6 @@ export const useSearchRootResultsArrivalRuntime = ({
       'canLoadMore',
       'currentPage',
       'isPaginationExhausted',
-      'pendingTabSwitchTab',
       'resultsRequestKey',
       'resultsIdentityCandidateKey',
       'resultsDishCount',
@@ -87,7 +84,6 @@ export const useSearchRootResultsArrivalRuntime = ({
       canLoadMore: resultsArrivalScalarState.canLoadMore,
       currentPage: resultsArrivalScalarState.currentPage,
       isPaginationExhausted: resultsArrivalScalarState.isPaginationExhausted,
-      pendingTabSwitchTab: resultsArrivalScalarState.pendingTabSwitchTab,
       restaurantResults: null,
       resultsRequestKey: resultsArrivalScalarState.resultsRequestKey,
       submittedQuery: resultsArrivalScalarState.submittedQuery,
@@ -98,7 +94,6 @@ export const useSearchRootResultsArrivalRuntime = ({
     resultsArrivalScalarState.currentPage,
     resultsArrivalScalarState.isLoadingMore,
     resultsArrivalScalarState.isPaginationExhausted,
-    resultsArrivalScalarState.pendingTabSwitchTab,
     resultsArrivalScalarState.resultsDishCount,
     resultsArrivalScalarState.resultsIdentityCandidateKey,
     resultsArrivalScalarState.resultsRestaurantCount,

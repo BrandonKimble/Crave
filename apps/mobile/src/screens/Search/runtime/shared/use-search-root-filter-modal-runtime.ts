@@ -49,9 +49,7 @@ export const useSearchRootFilterModalRuntime = ({
           // Direct PRESENTED-tab publish (never the tuple writer): the desire already
           // holds targetTab; this is the presentation catching up under the cover.
           if (searchRuntimeBus.getState().activeTab !== targetTab) {
-            searchRuntimeBus.publish({ activeTab: targetTab, pendingTabSwitchTab: null });
-          } else {
-            searchRuntimeBus.publish({ pendingTabSwitchTab: null });
+            searchRuntimeBus.publish({ activeTab: targetTab });
           }
           getSearchSurfaceRuntime().beginRedrawTransaction({
             reason: 'toggle',

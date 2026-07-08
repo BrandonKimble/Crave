@@ -79,16 +79,16 @@ export const writeSearchDesiredTuple = (
     desiredTuple: next,
     desiredTupleGeneration: generation,
     desiredTupleCause: cause,
-    // S4c-1b: desired tab ≠ presented tab. A pure tab toggle inside an active session
-    // is PRESENTED by the reconciler's tab-switch commit (cover → swap → reveal) — the
-    // write only surfaces the optimistic hint. Identity writes and idle-session toggles
-    // present immediately (enter builds its own cover; home pill has no choreography).
+    // S4e: desired tab ≠ presented tab, with NO hint key — chips read tuple.tab
+    // directly. An in-session tab toggle is PRESENTED by the reconciler's tab-switch
+    // commit (cover → swap → reveal); identity writes and idle-session toggles present
+    // immediately (enter builds its own cover; home pill has no choreography).
     ...(patch.tab != null && prev.tab !== next.tab
       ? prev.queryIdentity.kind !== 'idle' &&
         prev.queryIdentity.kind !== 'profileSeed' &&
         !identityChanged
-        ? { pendingTabSwitchTab: next.tab }
-        : { activeTab: next.tab, pendingTabSwitchTab: null }
+        ? {}
+        : { activeTab: next.tab }
       : {}),
   });
   if (__DEV__) {

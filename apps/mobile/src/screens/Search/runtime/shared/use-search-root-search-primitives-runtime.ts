@@ -190,7 +190,7 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       const resolved = typeof tab === 'function' ? tab(searchRuntimeBus.getState().activeTab) : tab;
       const normalized = normalizeActiveTab(resolved);
       // S2: the tab is tuple state — ONE writer; activeTab is its projection. The tab
-      // toggle's commit lane (pendingTabSwitchTab choreography) stays lane-owned until S4.
+      // toggle's commit lane stays presentation-owned (the reconciler's tab-switch commit).
       writeSearchDesiredTuple(
         searchRuntimeBus,
         { tab: normalized === 'dishes' ? 'dishes' : 'restaurants' },

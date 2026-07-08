@@ -28,7 +28,7 @@ type UseResultsPresentationShellModelRuntimeArgs = {
   query: string;
   submittedQuery: string;
   // Shortcut toggle title swap (display-only): the current search mode + the optimistic tab
-  // (pendingTabSwitchTab ?? activeTab) so a shortcut search's bar text flips to the sibling
+  // (the desired tab, tuple.tab) so a shortcut search's bar text flips to the sibling
   // shortcut label on toggle press-up.
   searchMode: string | null;
   optimisticActiveTab: 'dishes' | 'restaurants';

@@ -77,7 +77,6 @@ export type SearchRootResultsArrivalState = {
   canLoadMore: boolean;
   currentPage: number;
   isPaginationExhausted: boolean;
-  pendingTabSwitchTab: ReturnType<SearchRuntimeBus['getState']>['pendingTabSwitchTab'];
   restaurantResults: SearchResponse['restaurants'] | null;
   resultsRequestKey: string | null;
   submittedQuery: string;

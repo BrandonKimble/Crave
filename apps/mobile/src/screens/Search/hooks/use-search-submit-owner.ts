@@ -54,7 +54,6 @@ type SearchSubmitOwnerReadModel = {
   activeTab: SegmentValue;
   currentResults: SearchResponse | null;
   isPaginationExhausted: boolean;
-  pendingTabSwitchTab: SegmentValue | null;
   preferredActiveTab: SegmentValue;
   hasActiveTabPreference: boolean;
   isLoadingMore: boolean;
@@ -289,7 +288,7 @@ const useSearchSubmitOwner = ({
     lastAutoOpenKeyRef.current = null;
     // Presentation-path tab publish (S4c-1b): the enter presents its tab directly —
     // the tuple writer no longer projects activeTab for in-session tab deltas.
-    searchRuntimeBus.publish({ activeTab: tuple.tab, pendingTabSwitchTab: null });
+    searchRuntimeBus.publish({ activeTab: tuple.tab });
     setError(null);
     Keyboard.dismiss();
   };
@@ -303,7 +302,7 @@ const useSearchSubmitOwner = ({
     const identity = tuple.queryIdentity;
     // The response-adopted tab is PRESENTED here (direct publish, never the tuple
     // writer) — idempotent when nothing adopted; the bus dedupes equal keys.
-    searchRuntimeBus.publish({ activeTab: tuple.tab, pendingTabSwitchTab: null });
+    searchRuntimeBus.publish({ activeTab: tuple.tab });
     if (identity.kind === 'natural') {
       updateLocalRecentSearches(identity.query);
       void loadRecentHistory();

@@ -47,12 +47,11 @@ export const useSearchRootSearchSceneChromeFreezeRuntime = ({
     filtersHeaderRuntime,
     // Shortcut toggle title swap: a shortcut search toggled to the sibling tab shows the sibling
     // shortcut's label ("Best restaurants" ⇄ "Best dishes"), swapped optimistically on press-up
-    // via pendingTabSwitchTab. Display-only — the bus submittedQuery is untouched.
+    // via the desired tab (tuple.tab). Display-only.
     submittedQuery: resolveShortcutToggleDisplayQuery({
       displayQuery: searchResultsRuntimeState.submittedQuery,
       searchMode: searchResultsRuntimeState.searchMode,
-      optimisticActiveTab:
-        searchResultsRuntimeState.pendingTabSwitchTab ?? searchResultsRuntimeState.activeTab,
+      optimisticActiveTab: searchResultsRuntimeState.desiredTab,
     }),
     effectiveFiltersHeaderHeight,
     effectiveResultsHeaderHeight,

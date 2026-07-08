@@ -96,7 +96,7 @@ export const useResultsPresentationShellRuntime = ({
   }, [onSearchSheetContentLaneChanged, policyFactsSnapshot]);
 
   // Shortcut toggle title swap inputs (display-only): the bar text follows the OPTIMISTIC tab
-  // (pendingTabSwitchTab flips at toggle press-up) for shortcut-mode searches.
+  // (tuple.tab flips at toggle press-up) for shortcut-mode searches.
   const shortcutToggleDisplayState = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => ({
