@@ -1222,6 +1222,11 @@ const styles = StyleSheet.create({
   secondaryMetricInline: {
     color: themeColors.textBody,
   },
+  // The empty-results block top-aligns inside the results surface (which spans from the
+  // header to the screen bottom — most of it below the sheet's collapsed fold), so it
+  // takes comfortable top padding rather than centering in the oversized container. The
+  // old marginTop: -20 (from a centered parent era) clipped the whole block above the
+  // surface's visible bounds — the empty favorites "blank sheet".
   emptyState: {
     paddingVertical: 0,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
@@ -1229,7 +1234,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    marginTop: -20,
+  },
+  emptyStateSurfaceBlock: {
+    paddingTop: 48,
   },
   emptyStateSubtitle: {
     alignSelf: 'stretch',

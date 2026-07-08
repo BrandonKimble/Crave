@@ -42,7 +42,7 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
     const emptySubtitle =
       resultsMetadata.emptyQueryMessage ?? 'Try moving the map or adjusting your search.';
     return (
-      <View style={styles.emptyState}>
+      <View style={[styles.emptyState, styles.emptyStateSurfaceBlock]}>
         {onDemandNotice}
         <EmptyState title={emptyTitle} subtitle={emptySubtitle} />
       </View>

@@ -42,9 +42,14 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   // reveals the strip, and starts the pin ramp on the same tick — the toggle choreography.
   // Full-body offset: the strip is HIDDEN during initial_loading, so no filters-height inset.
   const initialLoadingModeValue = useSharedValue(surfaceMode === 'initial_loading' ? 1 : 0);
-  const emptyModeValue = useSharedValue(surfaceMode === 'empty' ? 1 : 0);
   const shouldExposeLoadingCover =
     surfaceMode === 'interaction_loading' || surfaceMode === 'initial_loading';
+  // RENDER-TIME, not animated (proven 2026-07-08 on the empty-favorites blank sheet):
+  // this hook renders in the scene body-spec family where React effects may never
+  // commit — an effect-written shared value stayed 0 while the surface re-rendered 25×
+  // with surfaceMode 'empty'. The empty surface mounts/unmounts by render like the
+  // loading cover, and its top offset is the render-time prop.
+  const shouldExposeEmptySurface = surfaceMode === 'empty';
 
   React.useEffect(() => {
     headerTopValue.value = resolvedResultsHeaderHeightForRender;
@@ -58,18 +63,13 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   React.useEffect(() => {
     interactionLoadingModeValue.value = surfaceMode === 'interaction_loading' ? 1 : 0;
     initialLoadingModeValue.value = surfaceMode === 'initial_loading' ? 1 : 0;
-    emptyModeValue.value = surfaceMode === 'empty' ? 1 : 0;
     // TRUE CUTOUTS (owner directive): while EITHER loading cover is up, the rows beneath
     // hide (same write, same frame) so the skeleton's holes are real windows to the
     // hoisted frost — no self-frost fallback, no stale rows through the holes.
     setResultsRowsHiddenForLoading(
       surfaceMode === 'interaction_loading' || surfaceMode === 'initial_loading'
     );
-  }, [emptyModeValue, initialLoadingModeValue, interactionLoadingModeValue, surfaceMode]);
-  const emptySurfaceAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: surfaceActiveValue.value * emptyModeValue.value,
-    top: headerTopValue.value,
-  }));
+  }, [initialLoadingModeValue, interactionLoadingModeValue, surfaceMode]);
   const loadingSurfaceAnimatedStyle = useAnimatedStyle(() => ({
     opacity:
       surfaceActiveValue.value *
@@ -84,12 +84,14 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   return React.useMemo(
     () => (
       <>
-        <Reanimated.View
-          pointerEvents="none"
-          style={[styles.resultsSurface, emptySurfaceAnimatedStyle]}
-        >
-          {surfaceContentRuntime.emptyContent}
-        </Reanimated.View>
+        {shouldExposeEmptySurface ? (
+          <View
+            pointerEvents="none"
+            style={[styles.resultsSurface, { top: resolvedResultsHeaderHeightForRender }]}
+          >
+            {surfaceContentRuntime.emptyContent}
+          </View>
+        ) : null}
         {shouldExposeLoadingCover ? (
           <Reanimated.View
             pointerEvents="none"
@@ -113,10 +115,13 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
       </>
     ),
     [
-      emptySurfaceAnimatedStyle,
       loadingSurfaceAnimatedStyle,
+      resolvedResultsHeaderHeightForRender,
+      shouldExposeEmptySurface,
       shouldExposeLoadingCover,
+      surfaceMode,
       surfaceContentRuntime.emptyContent,
+      surfaceContentRuntime.initialLoadingContent,
       surfaceContentRuntime.loadingContent,
     ]
   );

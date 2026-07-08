@@ -326,6 +326,8 @@ export class FavoriteListsService {
           pageSize: 1,
           perRestaurantLimit: 0,
           resultCoverageStatus: 'full',
+          emptyQueryMessage:
+            'This list has no items yet — add favorites to see them here.',
           analysisMetadata: {
             favorites: {
               listId,
@@ -456,7 +458,8 @@ export class FavoriteListsService {
       boundsApplied: false,
       openNowApplied: exec.metadata.openNowApplied,
       openNowSupportedRestaurants: exec.metadata.openNowSupportedRestaurants,
-      openNowUnsupportedRestaurants: exec.metadata.openNowUnsupportedRestaurants,
+      openNowUnsupportedRestaurants:
+        exec.metadata.openNowUnsupportedRestaurants,
       openNowUnsupportedRestaurantIds:
         exec.metadata.openNowUnsupportedRestaurantIds,
       openNowFilteredOut: exec.metadata.openNowFilteredOut,
@@ -945,7 +948,9 @@ export class FavoriteListsService {
   }
 
   // High-precision percentile_rank for tie-proof map/list ordering; undefined if missing (client falls back).
-  private toPublicScoreExact(score: FavoritePublicScore | undefined): number | undefined {
+  private toPublicScoreExact(
+    score: FavoritePublicScore | undefined,
+  ): number | undefined {
     if (!score || score.percentileRank == null) {
       return undefined;
     }
@@ -996,9 +1001,7 @@ export class FavoriteListsService {
             CraveScoreSubjectType.connection,
             food.connectionId,
           ),
-          rising: this.toPublicScoreDelta(
-            topFoodScores.get(food.connectionId),
-          ),
+          rising: this.toPublicScoreDelta(topFoodScores.get(food.connectionId)),
           totalUpvotes: food.totalUpvotes ?? 0,
         }))
         .sort((left, right) => {
