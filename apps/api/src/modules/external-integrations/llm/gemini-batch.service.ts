@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { GoogleGenAI, JobState } from '@google/genai';
@@ -60,12 +60,26 @@ const TERMINAL: Partial<Record<string, 'succeeded' | 'failed'>> = {
  * are mapped back (itemIndex); itemKey additionally rides along for callers.
  */
 @Injectable()
-export class GeminiBatchService {
+export class GeminiBatchService implements OnModuleDestroy {
   private readonly logger: LoggerService;
   private readonly genAI: GoogleGenAI;
   private readonly ingestors = new Map<string, BatchIngestor>();
   private readonly failureHandlers = new Map<string, BatchFailureHandler>();
   private pollInFlight = false;
+  private pollDone: Promise<void> | null = null;
+  private shuttingDown = false;
+
+  /** Ideal shutdown ordering by OWNERSHIP: this service owns its in-flight
+   *  poll/ingest cycle, so shutdown (a) stops NEW cycles and (b) awaits the
+   *  running one — an ingest's DB writes always complete before Nest tears
+   *  down Prisma/Redis. No mid-write "Connection is closed" is possible; the
+   *  parked-job retry design remains the backstop for hard kills (SIGKILL). */
+  async onModuleDestroy(): Promise<void> {
+    this.shuttingDown = true;
+    if (this.pollDone) {
+      await this.pollDone;
+    }
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -181,8 +195,13 @@ export class GeminiBatchService {
   @Cron(CronExpression.EVERY_5_MINUTES)
   async poll(): Promise<void> {
     if (process.env.LLM_BATCH_POLL_ENABLED === 'false') return;
+    if (this.shuttingDown) return;
     if (this.pollInFlight) return;
     this.pollInFlight = true;
+    let markDone: () => void = () => undefined;
+    this.pollDone = new Promise<void>((resolve) => {
+      markDone = resolve;
+    });
     try {
       const open = await this.prisma.llmBatchJob.findMany({
         where: { status: 'submitted' },
@@ -224,6 +243,7 @@ export class GeminiBatchService {
       }
     } finally {
       this.pollInFlight = false;
+      markDone();
     }
   }
 
