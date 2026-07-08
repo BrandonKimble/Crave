@@ -310,6 +310,51 @@ model LlmDecisionRecord {
   @@map("llm_decision_records")
 }
 
+/// ACCESS-GRANT LEDGER (plans/payments-ideal-shape.md): the single truth for
+/// "does user X have entitlement Y". Every access path is a grant row —
+/// trial_base, reward_photo, reward_referral, comp, promo, subscription —
+/// expiresAt NULL = lifetime, revocable in one update. UserEntitlement is the
+/// materialized CACHE of this ledger, never written directly by product code.
+model AccessGrant {
+  grantId         String    @id @default(dbgenerated("gen_random_uuid()")) @map("grant_id") @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  entitlementCode String    @map("entitlement_code") @db.VarChar(64)
+  source          String    @db.VarChar(32)
+  sourceRef       String?   @map("source_ref") @db.VarChar(256)
+  startsAt        DateTime  @default(now()) @map("starts_at")
+  expiresAt       DateTime? @map("expires_at")
+  revokedAt       DateTime? @map("revoked_at")
+  revokedReason   String?   @map("revoked_reason") @db.VarChar(256)
+  metadata        Json?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  user            User      @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, entitlementCode], map: "idx_access_grants_user_code")
+  @@index([source], map: "idx_access_grants_source")
+  @@index([expiresAt], map: "idx_access_grants_expires")
+  @@map("access_grants")
+}
+
+/// Durable per-(community, workKind) collection cadence — the single source
+/// of WHEN we talk to Reddit (plans/collection-scheduler-consolidation.md).
+/// chronological | keyword | on_demand_hot_spike are job VARIANTS planned by
+/// one loop under one Reddit budget; restart resumes from here.
+model CollectionSchedule {
+  community    String    @db.VarChar(255)
+  workKind     String    @map("work_kind") @db.VarChar(32)
+  enabled      Boolean   @default(true)
+  intervalDays Float     @map("interval_days")
+  nextDueAt    DateTime  @default(now()) @map("next_due_at")
+  lastRanAt    DateTime? @map("last_ran_at")
+  metadata     Json?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @default(now()) @map("updated_at")
+
+  @@id([community, workKind])
+  @@index([enabled, nextDueAt], map: "idx_collection_schedules_due")
+  @@map("collection_schedules")
+}
+
 model RestaurantItemMention {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   connectionId  String     @map("connection_id") @db.Uuid
@@ -1012,6 +1057,7 @@ model User {
   updatedAt              DateTime                @updatedAt @map("updated_at")
   checkoutSessions       CheckoutSession[]
   subscriptions          Subscription[]
+  accessGrants                AccessGrant[]
   entitlements           UserEntitlement[]
   events                 UserEvent[]
   favorites              UserFavorite[]
