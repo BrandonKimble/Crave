@@ -1622,8 +1622,8 @@ export class KeywordSearchOrchestratorService
 
   private backgroundJobsEnabled(): boolean {
     const raw =
-      this.configService.get<string>('TEST_COLLECTION_JOBS_ENABLED') ??
-      process.env.TEST_COLLECTION_JOBS_ENABLED;
+      this.configService.get<string>('COLLECTION_JOBS_ENABLED') ??
+      process.env.COLLECTION_JOBS_ENABLED;
     if (typeof raw !== 'string') {
       return true;
     }

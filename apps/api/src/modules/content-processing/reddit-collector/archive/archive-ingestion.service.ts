@@ -48,6 +48,8 @@ export interface SubredditProcessingResult {
 export interface ArchiveEnqueueOptions {
   batchSize?: number;
   maxPosts?: number;
+  /** Ingest window override (defaults to PUSHSHIFT_WINDOW_YEARS, default 3). */
+  windowYears?: number;
 }
 
 export interface ArchiveProcessedFileSummary {
@@ -291,6 +293,7 @@ export class ArchiveIngestionService implements OnModuleInit {
     const { posts: loadedPosts, filesProcessed } = await this.loadArchivePosts(
       subreddit,
       correlationId,
+      options,
     );
 
     const envMaxPosts =
@@ -541,6 +544,7 @@ export class ArchiveIngestionService implements OnModuleInit {
   private async loadArchivePosts(
     subreddit: string,
     correlationId: string,
+    options: ArchiveEnqueueOptions = {},
   ): Promise<{
     posts: LLMPost[];
     filesProcessed: Array<{
@@ -552,7 +556,8 @@ export class ArchiveIngestionService implements OnModuleInit {
     const postsById = new Map<string, LLMPost>();
     // Stage-0 pre-filter (plans/archive-prefilter-pipeline.md): ingest window +
     // structural drops happen HERE, before anything is queued or billed.
-    const windowYears = Number(process.env.PUSHSHIFT_WINDOW_YEARS ?? 3);
+    const windowYears =
+      options.windowYears ?? Number(process.env.PUSHSHIFT_WINDOW_YEARS ?? 3);
     const windowCutoffSec =
       windowYears > 0
         ? Math.floor(Date.now() / 1000) - windowYears * 365 * 24 * 3600

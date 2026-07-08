@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
-import { EntityType, Entity, Prisma } from '@prisma/client';
+import { EntityType, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { Redis } from 'ioredis';
 import { Counter } from 'prom-client';
@@ -1636,105 +1636,6 @@ export class EntityResolutionService implements OnModuleInit {
       processingTimeMs: Math.max(processingTimeMs, 1), // Ensure minimum 1ms for testing
       averageConfidence: Math.round(averageConfidence * 100) / 100,
     };
-  }
-
-  /**
-   * Merge two entities by consolidating their aliases and updating the target entity
-   * Implements PRD Section 9.2.1 - Alias management integrates seamlessly with entity resolution system
-   */
-  async mergeEntities(
-    sourceEntityId: string,
-    targetEntityId: string,
-    entityType: EntityType,
-  ): Promise<{
-    mergedEntity: Entity;
-    aliasesAdded: number;
-    duplicatesRemoved: number;
-    violations: string[];
-  }> {
-    this.logger.info('Starting entity merge operation', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-      operation: 'merge_entities',
-      sourceEntityId,
-      targetEntityId,
-      entityType,
-    });
-
-    try {
-      // Fetch both entities
-      const [sourceEntity, targetEntity] = await Promise.all([
-        this.prisma.entity.findUnique({
-          where: { entityId: sourceEntityId },
-          select: { entityId: true, name: true, aliases: true, type: true },
-        }),
-        this.prisma.entity.findUnique({
-          where: { entityId: targetEntityId },
-          select: { entityId: true, name: true, aliases: true, type: true },
-        }),
-      ]);
-
-      if (!sourceEntity || !targetEntity) {
-        throw new Error(
-          `Entity not found: source=${!sourceEntity}, target=${!targetEntity}`,
-        );
-      }
-
-      if (sourceEntity.type !== targetEntity.type) {
-        throw new Error(
-          `Entity type mismatch: source=${sourceEntity.type}, target=${targetEntity.type}`,
-        );
-      }
-
-      // Prepare alias merge using alias management service
-      const mergeResult = this.aliasManagementService.prepareAliasesForMerge({
-        sourceEntityId,
-        targetEntityId,
-        sourceAliases: sourceEntity.aliases,
-        targetAliases: targetEntity.aliases,
-        entityType,
-      });
-
-      // Update target entity with merged aliases
-      const updatedEntity = await this.prisma.entity.update({
-        where: { entityId: targetEntityId },
-        data: {
-          aliases: mergeResult.mergedAliases,
-          lastUpdated: new Date(),
-          // Merged aliases change the entity doc → mark the dense vector stale for
-          // the reconciler to re-embed.
-          nameEmbeddingStale: true,
-        },
-      });
-
-      // Log the merge operation
-      this.logger.info('Entity merge completed successfully', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'merge_entities',
-        sourceEntityId,
-        targetEntityId,
-        finalAliasCount: mergeResult.mergedAliases.length,
-        duplicatesRemoved: mergeResult.duplicatesRemoved,
-        violations: mergeResult.crossScopeViolations.length,
-      });
-
-      return {
-        mergedEntity: updatedEntity,
-        aliasesAdded:
-          mergeResult.mergedAliases.length - targetEntity.aliases.length,
-        duplicatesRemoved: mergeResult.duplicatesRemoved,
-        violations: mergeResult.crossScopeViolations,
-      };
-    } catch (error) {
-      this.logger.error('Entity merge operation failed', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'merge_entities',
-        error: error instanceof Error ? error.message : String(error),
-        sourceEntityId,
-        targetEntityId,
-        entityType,
-      });
-      throw error;
-    }
   }
 
   /**
