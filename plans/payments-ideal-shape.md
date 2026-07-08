@@ -155,3 +155,28 @@ Owner setup required before sandbox E2E (not executable by Claude):
 5. Sandbox test: App Store sandbox tester account → purchase in PaywallScreen
    → RC webhook → `access_grants` row (source `subscription`,
    sourceRef `revenuecat:<txn>`) → /users/me access flips.
+
+## Business-model DECISION (2026-07-08)
+
+**Launch = soft paywall at onboarding end.** Options: monthly (paid
+immediately) or annual with an **App Store introductory free trial** (card
+upfront, store-managed; Apple reminds before it converts, cancel anytime).
+Dismissible — declining lands on the free tier (restaurants/map/polls);
+dish layer stays gated. Rationale: fastest capital return + simplest.
+
+What this changes vs the doc above:
+
+- The launch trial is the STORE'S intro offer on the annual product, not
+  the app-owned `trial_base` grant. `BILLING_TRIAL_DAYS` stays **0**.
+- App-owned trial + earned-extension mechanics = the future **freemium
+  pivot** (everything is built and env-gated; flipping = set
+  BILLING_TRIAL_DAYS>0 + copy changes). Nothing gets deleted.
+- Reward grants (photo/invite days) still work at launch for FREE users —
+  they grant real dish-layer days through the ledger without a
+  subscription. Marketing framing: "earn Crave+ days."
+- Apple's no-extension limit doesn't bite: we never extend the store
+  trial; earned days ride the ledger on top.
+- Gate flip to `enforce` is now unblocked (was waiting on this decision) —
+  do it as part of launch checklist, after paywall screens exist.
+- App Store Connect setup gains one item: attach the introductory offer
+  (free trial, e.g. 7 days) to the ANNUAL product only.

@@ -17,8 +17,13 @@ import { useAccess } from '../hooks/useAccess';
  *  - purchase -> RC -> App Store sheet -> RC webhook -> server ledger grant
  *    -> refresh() pulls SERVER truth (never gate on the local result)
  *  - restore for reinstalls
- *  - business-model note: NO card upfront in either candidate model — this
- *    screen appears at trial end / gate touch, not at signup.
+ *  - business model (decided 2026-07-08): SOFT paywall at onboarding end.
+ *    Monthly = paid immediately; ANNUAL carries an App Store introductory
+ *    free trial (card upfront, store-managed, cancel-anytime — configured
+ *    on the product in App Store Connect, RC surfaces eligibility on the
+ *    package). Dismissible; declining leaves the user on the free tier.
+ *    BILLING_TRIAL_DAYS stays 0 (app-owned trial is the future freemium
+ *    pivot, not launch).
  */
 export function PaywallScreen({ onClose }: { onClose?: () => void }): ReactElement {
   const access = useAccess();
