@@ -684,8 +684,24 @@ const isRecoverableNativeRenderOwnerFrameError = (error: unknown): boolean => {
   );
 };
 
+// S4d-3c slice 2: the wire is EXPLICIT (worldId, phase). Native no longer re-derives
+// identity/phase from {transactionId, snapshotKind, executionStage} — those fields leave
+// the payload. worldId = the episode token when a world is desired (non-exit frames);
+// exitAckId = the exit transaction key, kept ONLY as the ack correlation label (never
+// lifecycle identity); phase = the ONE derivation (deriveSearchMapRenderPresentationPhase)
+// serialized at this single chokepoint.
 const serializePresentationState = (presentation: SearchMapRenderPresentationState): string => {
-  return JSON.stringify(presentation);
+  const isExit = presentation.snapshotKind === 'results_exit';
+  return JSON.stringify({
+    worldId: !isExit && presentation.snapshotKind != null ? presentation.transactionId : null,
+    exitAckId: isExit ? presentation.transactionId : null,
+    phase: deriveSearchMapRenderPresentationPhase(presentation),
+    startToken: presentation.startToken,
+    coverState: presentation.coverState,
+    allowEmptyEnter: presentation.allowEmptyEnter,
+    selectedRestaurantId: presentation.selectedRestaurantId,
+    executionBatch: presentation.executionBatch,
+  });
 };
 
 const resolveRenderControllerPerfNow = (): number => {

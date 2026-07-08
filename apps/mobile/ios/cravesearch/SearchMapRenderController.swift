@@ -5923,7 +5923,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard let presentationStateJSON = state.lastPresentationStateJSON else {
       return
     }
-    let revealStatus = Self.readEnterStatus(fromJSON: presentationStateJSON)
     let jsonStartToken = Self.readEnterStartToken(fromJSON: presentationStateJSON)
     let directStartToken: Double? =
       (state.directEnterStartRequestKey != nil
@@ -5936,9 +5935,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     if let token = revealStartToken, state.lastEnterStartToken != token {
       let fencePending = hasPendingCommitFence(capturePendingVisualSourceCommitFence(state: state))
       NSLog(
-        "[NGAP] tokenSeen t=%.1f status=%@ phase=%@ laneKeyMatch=%d mountedHidden=%d blocked=%@ srcReady=%d fence=%d",
+        "[NGAP] tokenSeen t=%.1f phase=%@ laneKeyMatch=%d mountedHidden=%d blocked=%@ srcReady=%d fence=%d",
         CACurrentMediaTime() * 1000,
-        revealStatus ?? "nil",
         state.lastPresentationBatchPhase,
         (state.enterLane.requestedRequestKey == state.lastEnterRequestKey) ? 1 : 0,
         state.enterLane.mountedHidden != nil ? 1 : 0,
@@ -5950,7 +5948,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard
       let revealRequestKey = state.lastEnterRequestKey,
       let revealStartToken,
-      revealStatus == "entering",
       state.lastPresentationBatchPhase == "entering",
       state.enterLane.requestedRequestKey == revealRequestKey,
       state.enterLane.mountedHidden != nil,
@@ -6166,7 +6163,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard let presentationStateJSON = state.lastPresentationStateJSON else {
       return
     }
-    guard Self.isEnterStatusArmable(Self.readEnterStatus(fromJSON: presentationStateJSON)) else {
+    guard Self.isEnterPhaseArmable(Self.readPresentationBatchPhase(fromJSON: presentationStateJSON)) else {
       return
     }
     guard state.lastEnterRequestKey == executionBatch.requestKey else {
@@ -6246,11 +6243,11 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
       return
     }
-    guard Self.isEnterStatusArmable(Self.readEnterStatus(fromJSON: presentationStateJSON)) else {
+    guard Self.isEnterPhaseArmable(Self.readPresentationBatchPhase(fromJSON: presentationStateJSON)) else {
       emitVisualDiag(
         instanceId: instanceId,
         message:
-          "enter_mount_not_elected reason=enter_status_not_armable request=\(requestKey) status=\(Self.readEnterStatus(fromJSON: presentationStateJSON) ?? "nil") phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil")"
+          "enter_mount_not_elected reason=enter_phase_not_armable request=\(requestKey) phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil")"
       )
       return
     }
@@ -12890,38 +12887,18 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
   }
 
+  // S4d-3c slice 2: the wire is explicit (worldId, phase) — native never re-derives
+  // phase or identity from transport internals. The phase enum is JS's
+  // deriveSearchMapRenderPresentationPhase, serialized at its one chokepoint.
   private static func readPresentationBatchPhase(fromJSON json: String) -> String {
     guard
       let data = json.data(using: .utf8),
-      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      let phase = object["phase"] as? String
     else {
       return "unknown"
     }
-    let executionStage = object["executionStage"] as? String ?? "idle"
-    let snapshotKind = object["snapshotKind"] as? String
-    if snapshotKind == "results_exit" {
-      if executionStage == "exit_executing" {
-        return "exiting"
-      }
-      if executionStage == "exit_requested" {
-        return "exit_preroll"
-      }
-    } else if snapshotKind != nil {
-      if executionStage == "enter_executing" {
-        return "entering"
-      }
-      if executionStage == "enter_pending_mount" || executionStage == "enter_mounted_hidden" {
-        return "enter_requested"
-      }
-      if executionStage == "settled" {
-        return "live"
-      }
-    }
-    let coverState = object["coverState"] as? String
-    if coverState == "initial_loading" {
-      return "covered"
-    }
-    return "idle"
+    return phase
   }
 
   private static func readCoverState(fromJSON json: String) -> String? {
@@ -12934,6 +12911,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     return object["coverState"] as? String
   }
 
+  // The exit transaction key survives ONLY as the ack correlation label — never
+  // lifecycle identity (that is the worldId).
   private static func readDismissRequestKey(fromJSON json: String) -> String? {
     guard
       let data = json.data(using: .utf8),
@@ -12941,10 +12920,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     else {
       return nil
     }
-    if object["snapshotKind"] as? String == "results_exit" {
-      return object["transactionId"] as? String
-    }
-    return nil
+    return object["exitAckId"] as? String
   }
 
   private static func readEnterRequestKey(fromJSON json: String) -> String? {
@@ -12954,64 +12930,28 @@ final class SearchMapRenderController: RCTEventEmitter {
     else {
       return nil
     }
-    if
-      let snapshotKind = object["snapshotKind"] as? String,
-      snapshotKind != "results_exit"
-    {
-      return object["transactionId"] as? String
-    }
-    return nil
-  }
-
-  private static func readEnterStatus(fromJSON json: String) -> String? {
-    guard
-      let data = json.data(using: .utf8),
-      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    else {
-      return nil
-    }
-    if
-      let snapshotKind = object["snapshotKind"] as? String,
-      snapshotKind != "results_exit"
-    {
-      switch object["executionStage"] as? String {
-      case "enter_pending_mount":
-        return "pending_mount"
-      case "enter_mounted_hidden":
-        return "mounted_hidden"
-      case "enter_executing":
-        return "entering"
-      default:
-        return nil
-      }
-    }
-    return nil
+    return object["worldId"] as? String
   }
 
   private static func readEnterStartToken(fromJSON json: String) -> Double? {
     guard
       let data = json.data(using: .utf8),
-      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+      let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+      object["worldId"] as? String != nil
     else {
       return nil
     }
-    if
-      let snapshotKind = object["snapshotKind"] as? String,
-      snapshotKind != "results_exit"
-    {
-      if let value = object["startToken"] as? NSNumber {
-        return value.doubleValue
-      }
-      if let value = object["startToken"] as? Double {
-        return value
-      }
-      return nil
+    if let value = object["startToken"] as? NSNumber {
+      return value.doubleValue
+    }
+    if let value = object["startToken"] as? Double {
+      return value
     }
     return nil
   }
 
-  private static func isEnterStatusArmable(_ status: String?) -> Bool {
-    status == "pending_mount" || status == "mounted_hidden" || status == "entering"
+  private static func isEnterPhaseArmable(_ phase: String) -> Bool {
+    phase == "enter_requested" || phase == "entering"
   }
 
   private static func shouldHidePresentationWithoutActiveRequests(_ phase: String) -> Bool {
