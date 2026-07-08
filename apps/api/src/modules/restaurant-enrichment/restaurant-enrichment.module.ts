@@ -22,6 +22,7 @@ import { RedditCollectorModule } from '../content-processing/reddit-collector/re
 
 const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
   ? [
+      RestaurantEnrichmentWorker,
       RestaurantCuisineExtractionWorker,
       RestaurantSecondaryLocationExpansionWorker,
     ]
@@ -51,7 +52,6 @@ const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
     RestaurantLocationEnrichmentService,
     RestaurantJanitorService,
     RestaurantEnrichmentQueueService,
-    RestaurantEnrichmentWorker,
     RestaurantEntityMergeService,
     RestaurantCuisineExtractionService,
     RestaurantCuisineExtractionQueueService,

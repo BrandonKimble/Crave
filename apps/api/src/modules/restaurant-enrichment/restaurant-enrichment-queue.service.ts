@@ -40,29 +40,25 @@ export class RestaurantEnrichmentQueueService {
   ): Promise<void> {
     const normalized = restaurantId?.trim();
     if (!normalized) return;
-    try {
-      await this.queue.add(
-        JOB_NAME,
-        {
-          restaurantId: normalized,
-          requestedAt: new Date().toISOString(),
-          ...context,
-        },
-        {
-          jobId: `${QUEUE_NAME}:${normalized}`,
-          removeOnComplete: true,
-          removeOnFail: 50,
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 5000 },
-        },
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes('already exists')) {
-        return; // duplicate enqueue collapsed by jobId
-      }
-      throw error;
-    }
+    await this.queue.add(
+      JOB_NAME,
+      {
+        restaurantId: normalized,
+        requestedAt: new Date().toISOString(),
+        ...context,
+      },
+      {
+        jobId: `${QUEUE_NAME}:${normalized}`,
+        removeOnComplete: true,
+        // Failed jobs must not squat on the jobId and silently no-op later
+        // enqueues: the worker's error log + the still-placeholder restaurant
+        // row are the durable signal, and the janitor's weekly retry
+        // re-enqueues.
+        removeOnFail: true,
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      },
+    );
   }
 }
 

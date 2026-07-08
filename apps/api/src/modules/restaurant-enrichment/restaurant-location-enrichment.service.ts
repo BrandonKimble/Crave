@@ -1,6 +1,12 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Entity, EntityType, Prisma, RestaurantLocation } from '@prisma/client';
+import {
+  Entity,
+  EntityStatus,
+  EntityType,
+  Prisma,
+  RestaurantLocation,
+} from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { parse as parseDomain } from 'tldts';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -569,6 +575,9 @@ export class RestaurantLocationEnrichmentService {
       where: {
         googlePlaceId: { not: null },
         OR: [{ lastPolledAt: null }, { lastPolledAt: { lt: cutoff } }],
+        // Archived restaurants (janitor's all-locations-closed action) are
+        // dead weight — never spend Places refresh polls on them.
+        restaurant: { status: { not: EntityStatus.archived } },
       },
       orderBy: { lastPolledAt: { sort: 'asc', nulls: 'first' } },
       take: limit,

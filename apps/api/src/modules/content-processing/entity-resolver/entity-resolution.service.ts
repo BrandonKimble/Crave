@@ -1055,7 +1055,9 @@ export class EntityResolutionService implements OnModuleInit {
             const a = new Set(other.split(/\s+/));
             const b = normalizedName.split(/\s+/);
             const shared = b.filter((w) => a.has(w)).length;
-            return shared > 0 && shared >= Math.min(a.size, b.length) - 0;
+            // Both names are trimmed, so both token sets are non-empty and
+            // Math.min(...) >= 1 — full coverage of the smaller word set.
+            return shared >= Math.min(a.size, b.length);
           })
           .slice(0, 8);
         if (overlayCandidates.length) {
@@ -1067,7 +1069,12 @@ export class EntityResolutionService implements OnModuleInit {
           // one lite call per firing is the honest cost of the semantics.
           const verdict = await this.llmService.matchEntity({
             term: entity.normalizedName,
-            kind: entityType === 'restaurant' ? 'restaurant' : 'food',
+            kind:
+              entityType === 'restaurant'
+                ? 'restaurant'
+                : entityType === 'ingredient'
+                  ? 'ingredient'
+                  : 'food',
             candidates: overlayCandidates.map((c, i) => ({
               id: i,
               name: c.normalizedName ?? '',

@@ -177,6 +177,9 @@ export class RestaurantJanitorService {
       where: { movedPlaceId: { not: null } },
       select: { restaurantId: true },
       distinct: ['restaurantId'],
+      // Rotate: a retried-and-failed row's updatedAt advances on the attempt,
+      // sending it to the back so later rows don't starve under the cap.
+      orderBy: { updatedAt: 'asc' },
       take: retryLimit,
     });
     if (!dryRun) {

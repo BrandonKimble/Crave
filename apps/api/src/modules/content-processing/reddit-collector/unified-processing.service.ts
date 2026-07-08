@@ -344,7 +344,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     const processingConfig = { ...defaultConfig, ...config };
     const pipelineKey = this.resolvePipelineKey(sourceMetadata.collectionType);
 
-    const { filteredMentions, newRecordsBySourceId, skippedCount } =
+    const { newRecordsBySourceId, previouslySeenSourceCount } =
       await this.prepareSourceLedgerRecords(
         mentions,
         pipelineKey,
@@ -352,20 +352,25 @@ export class UnifiedProcessingService implements OnModuleInit {
         processingConfig.skipSourceLedgerDedupe,
       );
 
-    if (skippedCount > 0) {
-      this.logger.debug('Skipped previously processed sources', {
-        batchId,
-        skippedCount,
-        collectionType: sourceMetadata.collectionType,
-      });
+    if (previouslySeenSourceCount > 0) {
+      // Sources already in the ledger are recorded once, but their mentions
+      // are ALWAYS reprocessed — idempotency lives at the projection layer
+      // (activeExtractionRunId), not here.
+      this.logger.debug(
+        'Sources already in ledger (mentions still reprocessed)',
+        {
+          batchId,
+          previouslySeenSourceCount,
+          collectionType: sourceMetadata.collectionType,
+        },
+      );
     }
 
-    if (filteredMentions.length === 0) {
-      this.logger.info('No new mentions to process after dedupe', {
+    if (mentions.length === 0) {
+      this.logger.info('No mentions in batch', {
         batchId,
         collectionType: sourceMetadata.collectionType,
         totalMentions: mentions.length,
-        dedupedMentions: 0,
       });
 
       return {
@@ -382,7 +387,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     try {
       this.logger.info('Processing LLM output directly', {
         batchId,
-        mentionsCount: filteredMentions.length,
+        mentionsCount: mentions.length,
         collectionType: sourceMetadata.collectionType,
         subreddit: sourceMetadata.subreddit,
       });
@@ -392,13 +397,13 @@ export class UnifiedProcessingService implements OnModuleInit {
           sourceMetadata.subreddit ?? null,
         );
         const resolutionResult = await this.resolveEntitiesForOutput(
-          { mentions: filteredMentions },
+          { mentions },
           marketKey,
         );
 
         this.logger.info('Unified processing dry run enabled', {
           batchId,
-          mentionsCount: filteredMentions.length,
+          mentionsCount: mentions.length,
           collectionType: sourceMetadata.collectionType,
           subreddit: sourceMetadata.subreddit,
           entitiesResolved: resolutionResult.resolutionResults.length,
@@ -418,11 +423,11 @@ export class UnifiedProcessingService implements OnModuleInit {
 
       // Create LLM output structure for existing pipeline
       const llmOutput: EnrichedLLMOutputStructure = {
-        mentions: filteredMentions,
+        mentions,
       };
 
       // PRD 6.6.4: Check if batch needs to be split
-      if (filteredMentions.length > processingConfig.batchSize) {
+      if (mentions.length > processingConfig.batchSize) {
         const batchResult = await this.processMentionsInBatches(
           llmOutput,
           sourceMetadata,
@@ -488,7 +493,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
       this.logger.error('LLM output processing failed', {
         batchId,
-        mentionsCount: filteredMentions.length,
+        mentionsCount: mentions.length,
         error: error instanceof Error ? error.message : String(error),
         processingTime,
         sourceBreakdown: sourceMetadata.sourceBreakdown,
@@ -499,7 +504,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         errorCause,
         {
           batchId,
-          mentionsCount: filteredMentions.length,
+          mentionsCount: mentions.length,
           processingTime,
           sourceBreakdown: sourceMetadata.sourceBreakdown,
         },
@@ -2112,13 +2117,13 @@ export class UnifiedProcessingService implements OnModuleInit {
         error: error instanceof Error ? error.message : String(error),
       });
 
-      return {
-        restaurantMetadataOperations: [],
-        affectedConnectionIds: [],
-        restaurantEntityId: '',
-        restaurantEvents: [],
-        restaurantEntityEvents: [],
-      };
+      // Rethrow so the failure rides the existing sub-batch accumulation in
+      // processMentionsInBatches and ends in its loud "N/M sub-batches
+      // failed" throw — a mention error must never yield a silent empty
+      // result.
+      throw new Error(
+        `Mention ${mention.temp_id} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -2273,29 +2278,34 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
   }
 
+  /**
+   * Prepare source-ledger records for sources not yet in the ledger.
+   *
+   * This does NOT filter mentions — every mention is always reprocessed;
+   * idempotency lives at the projection layer (activeExtractionRunId). The
+   * ledger only records each source once; `previouslySeenSourceCount` counts
+   * sources already recorded.
+   */
   private async prepareSourceLedgerRecords(
     mentions: ProcessableMention[],
     pipeline: string,
     defaultSubreddit?: string,
-    skipDedupe?: boolean,
+    skipSourceLedger?: boolean,
   ): Promise<{
-    filteredMentions: ProcessableMention[];
     newRecordsBySourceId: Map<string, SourceLedgerRecord>;
-    skippedCount: number;
+    previouslySeenSourceCount: number;
   }> {
     if (!Array.isArray(mentions) || mentions.length === 0) {
       return {
-        filteredMentions: [],
         newRecordsBySourceId: new Map(),
-        skippedCount: 0,
+        previouslySeenSourceCount: 0,
       };
     }
 
-    if (skipDedupe) {
+    if (skipSourceLedger) {
       return {
-        filteredMentions: [...mentions],
         newRecordsBySourceId: new Map(),
-        skippedCount: 0,
+        previouslySeenSourceCount: 0,
       };
     }
 
@@ -2311,9 +2321,8 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     if (sourceIdSet.size === 0) {
       return {
-        filteredMentions: [...mentions],
         newRecordsBySourceId: new Map(),
-        skippedCount: 0,
+        previouslySeenSourceCount: 0,
       };
     }
 
@@ -2330,7 +2339,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       existingRecords.map((record) => record.sourceId),
     );
     const newRecordsBySourceId = new Map<string, SourceLedgerRecord>();
-    const skippedCount = existingSet.size;
+    const previouslySeenSourceCount = existingSet.size;
 
     for (const mention of mentions) {
       const rawSourceId = mention.source_id.trim();
@@ -2365,9 +2374,8 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
 
     return {
-      filteredMentions: [...mentions],
       newRecordsBySourceId,
-      skippedCount,
+      previouslySeenSourceCount,
     };
   }
 
