@@ -177,7 +177,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   private let overlayZAnchorSourceId = "search-overlay-z-anchor-source"
   private let eventName = "searchMapRenderControllerEvent"
   private let enableVisualDiagnostics = false
-  private let dismissSettleDelayMs = 300
   // THE canonical presentation fade length — every reveal/dismiss/toggle/preroll ramp and the
   // settle-fallback deadline derive from this one number. There is no other fade duration. Fast + natural
   // (the search-reveal speed the owner liked); the press-up toggle fade-out and the reveal now share it.
@@ -894,7 +893,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var instances: [String: InstanceState] = [:]
   private var resolvedMapHandles: [String: ResolvedMapHandle] = [:]
   private var enterSettleWorkItems: [String: DispatchWorkItem] = [:]
-  private var dismissSettleWorkItems: [String: DispatchWorkItem] = [:]
   private var deferredDismissSourceCleanupWorkItems: [String: DispatchWorkItem] = [:]
   private var revealFrameFallbackWorkItems: [String: DispatchWorkItem] = [:]
   private var dismissFrameFallbackWorkItems: [String: DispatchWorkItem] = [:]
@@ -1395,8 +1393,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     DispatchQueue.main.async { [weak self] in
       self?.enterSettleWorkItems[instanceId]?.cancel()
       self?.enterSettleWorkItems[instanceId] = nil
-      self?.dismissSettleWorkItems[instanceId]?.cancel()
-      self?.dismissSettleWorkItems[instanceId] = nil
       self?.deferredDismissSourceCleanupWorkItems[instanceId]?.cancel()
       self?.deferredDismissSourceCleanupWorkItems[instanceId] = nil
       self?.revealFrameFallbackWorkItems[instanceId]?.cancel()
@@ -3045,8 +3041,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.blockedPresentationSettleRequestKey = nil
       state.blockedPresentationSettleKind = nil
       state.blockedPresentationCommitFenceBySourceId.removeAll()
-      self.dismissSettleWorkItems[instanceId]?.cancel()
-      self.dismissSettleWorkItems[instanceId] = nil
       self.dismissFrameFallbackWorkItems[instanceId]?.cancel()
       self.dismissFrameFallbackWorkItems[instanceId] = nil
       state.lastDismissRequestKey = dismissRequestKey
@@ -3084,37 +3078,14 @@ final class SearchMapRenderController: RCTEventEmitter {
           message:
             "presentation_transition previousPhase=\(previousPresentationBatchPhase) nextPhase=\(state.lastPresentationBatchPhase) previousOpacity=\(previousPresentationOpacityTarget) nextOpacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.lastEnterRequestKey ?? "nil") dismissRequest=\(dismissRequestKey)"
         )
-        let workItem = DispatchWorkItem { [weak self] in
-          guard let self else { return }
-          self.dismissSettleWorkItems[instanceId] = nil
-          guard var latestState = self.instances[instanceId] else { return }
-          guard latestState.lastDismissRequestKey == dismissRequestKey else { return }
-          let commitFence = self.capturePendingVisualSourceCommitFence(state: latestState)
-          if self.hasPendingCommitFence(commitFence) {
-            latestState.blockedPresentationSettleRequestKey = dismissRequestKey
-            latestState.blockedPresentationSettleKind = "exit"
-            latestState.blockedPresentationCommitFenceStartedAtMs = Self.nowMs()
-            latestState.blockedPresentationCommitFenceBySourceId = commitFence
-            latestState.currentPresentationRenderPhase = "exit_preroll"
-            self.emitVisualDiag(
-              instanceId: instanceId,
-              message:
-                "dismiss_commit_fence_blocked pending=\(self.describeCommitFence(commitFence)) \(self.commitFenceWaitSummary(state: latestState))"
-            )
-          } else {
-            latestState.blockedPresentationCommitFenceStartedAtMs = nil
-            latestState.currentPresentationRenderPhase = "exiting"
-            latestState.pendingPresentationSettleRequestKey = dismissRequestKey
-            latestState.pendingPresentationSettleKind = "exit"
-            self.armNativeDismissSettle(instanceId: instanceId, requestKey: dismissRequestKey)
-          }
-          self.instances[instanceId] = latestState
+        // S4d-3 (timers die): the settle no longer waits a wall-clock guess — it rides
+        // the fade-out FLOOR (the animator completion emits it; the already-at-zero
+        // short-circuit runs it inline). Level fact, not a timer.
+        if self.presentationOpacityAnimators[instanceId] == nil {
+          state = self.instances[instanceId] ?? state
+          self.beginDismissSettleAtFloor(instanceId: instanceId, requestKey: dismissRequestKey)
+          state = self.instances[instanceId] ?? state
         }
-        self.dismissSettleWorkItems[instanceId] = workItem
-        DispatchQueue.main.asyncAfter(
-          deadline: .now() + .milliseconds(self.dismissSettleDelayMs),
-          execute: workItem
-        )
       } else if let previousDismissRequestKey {
         if state.visualSourceLifecycleState == .hidden {
           state.currentPresentationRenderPhase = "idle"
@@ -3678,8 +3649,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       self.cancelLivePinTransitionAnimation(instanceId: instanceId)
       self.sourceRecoveryWorkItems[instanceId]?.cancel()
       self.sourceRecoveryWorkItems[instanceId] = nil
-      self.dismissSettleWorkItems[instanceId]?.cancel()
-      self.dismissSettleWorkItems[instanceId] = nil
       self.deferredDismissSourceCleanupWorkItems[instanceId]?.cancel()
       self.deferredDismissSourceCleanupWorkItems[instanceId] = nil
       self.enterSettleWorkItems[instanceId]?.cancel()
@@ -3693,8 +3662,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     instanceId: String,
     state: inout InstanceState
   ) {
-    dismissSettleWorkItems[instanceId]?.cancel()
-    dismissSettleWorkItems[instanceId] = nil
     dismissFrameFallbackWorkItems[instanceId]?.cancel()
     dismissFrameFallbackWorkItems[instanceId] = nil
     deferredDismissSourceCleanupWorkItems[instanceId]?.cancel()
@@ -8957,6 +8924,10 @@ final class SearchMapRenderController: RCTEventEmitter {
         // reaching the dark floor — the S4c/S4d statechart cannot leave `covering`
         // without this event (riskiest coupling #2 in the S4 map). Mach-clocked.
         if animator.targetOpacity <= 0.001 {
+          if let dismissRequestKey = state.lastDismissRequestKey {
+            beginDismissSettleAtFloor(instanceId: instanceId, requestKey: dismissRequestKey)
+            state = instances[instanceId] ?? state
+          }
           emit([
             "type": "presentation_fade_out_acked",
             "instanceId": instanceId,
@@ -10556,6 +10527,38 @@ final class SearchMapRenderController: RCTEventEmitter {
   // Arms the reveal-start deadlock watchdog. `resetAttemptCount` is true when the reveal is
   // first armed (from `beginRevealVisualLifecycle`) so a fresh reveal starts with a clean
   // re-attempt budget; the watchdog re-arms itself with it false to preserve the running count.
+
+  /// S4d-3: the dismiss settle, level-triggered at the fade-out floor (replaces the
+  /// 300ms dismissSettleDelayMs wall-clock work item). Idempotent per request key.
+  private func beginDismissSettleAtFloor(instanceId: String, requestKey: String) {
+    guard var latestState = instances[instanceId] else { return }
+    guard latestState.lastDismissRequestKey == requestKey else { return }
+    // The floor completion may have already advanced the lifecycle to .hidden
+    // (releaseHiddenVisualSourcesForCollision runs first) — both are the settled floor.
+    guard latestState.visualSourceLifecycleState == .dismissing
+      || latestState.visualSourceLifecycleState == .hidden else { return }
+    guard latestState.pendingPresentationSettleRequestKey != requestKey else { return }
+    let commitFence = capturePendingVisualSourceCommitFence(state: latestState)
+    if hasPendingCommitFence(commitFence) {
+      latestState.blockedPresentationSettleRequestKey = requestKey
+      latestState.blockedPresentationSettleKind = "exit"
+      latestState.blockedPresentationCommitFenceStartedAtMs = Self.nowMs()
+      latestState.blockedPresentationCommitFenceBySourceId = commitFence
+      latestState.currentPresentationRenderPhase = "exit_preroll"
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "dismiss_commit_fence_blocked pending=\(describeCommitFence(commitFence)) \(commitFenceWaitSummary(state: latestState))"
+      )
+    } else {
+      latestState.blockedPresentationCommitFenceStartedAtMs = nil
+      latestState.currentPresentationRenderPhase = "exiting"
+      latestState.pendingPresentationSettleRequestKey = requestKey
+      latestState.pendingPresentationSettleKind = "exit"
+      armNativeDismissSettle(instanceId: instanceId, requestKey: requestKey)
+    }
+    instances[instanceId] = latestState
+  }
 
   private func armNativeDismissSettle(instanceId: String, requestKey: String) {
     dismissFrameFallbackWorkItems[instanceId]?.cancel()
