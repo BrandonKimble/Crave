@@ -386,7 +386,17 @@ const useSearchSubmitOwner = ({
         resolver.resolve(resolveArgs as Parameters<typeof resolver.resolve>[0]),
       runEnterForegroundEffects: (effectArgs) => enterForegroundEffectsRef.current(effectArgs),
       onResolveFailed: (reason) => {
-        logger.error('Search resolution failed', { message: reason });
+        // A resolution canceled by a session exit (the close aborts the in-flight fetch)
+        // is expected lifecycle, not a failure — logging it as an error raised a dev
+        // LogBox toast on every dismiss-with-pending-fetch. Real failures stay loud.
+        const isCanceledByExit =
+          typeof reason === 'string' &&
+          (reason.includes('canceled') || reason.includes('runSearch returned no response'));
+        if (isCanceledByExit) {
+          logger.info('Search resolution superseded/canceled', { message: reason });
+        } else {
+          logger.error('Search resolution failed', { message: reason });
+        }
         onPresentationIntentAbortRef.current?.();
       },
     });
