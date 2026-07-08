@@ -249,6 +249,15 @@ final class SearchMapRenderController: RCTEventEmitter {
     var sourceSnapshotKind: String
   }
 
+  enum EnterWorldLevel: Int, Comparable {
+    case requested = 1
+    case started = 2
+    case settled = 3
+    static func < (lhs: EnterWorldLevel, rhs: EnterWorldLevel) -> Bool {
+      lhs.rawValue < rhs.rawValue
+    }
+  }
+
   private struct VisualFrameSnapshotApplyResult {
     var didSyncResidentFrame: Bool
     var sourceAdmissionOutcome: String
@@ -685,11 +694,20 @@ final class SearchMapRenderController: RCTEventEmitter {
     // alongside the JSON token; cleared when consumed or when the request key rotates.
     var directEnterStartRequestKey: String?
     var directEnterStartToken: Double?
-    var lastEnterRequestKey: String?
+    // S4d-3c slice 2b: ONE (worldId, level) register replaces the three enter request
+    // keys — started/settled are LEVELS of the current world, provably subsets of the
+    // requested key (every settle path guards key equality first). lastDismissRequestKey
+    // is the exit ACK CORRELATION LABEL (+ dismiss-lane register), never world identity.
+    var currentWorldId: String?
+    var currentWorldLevel: EnterWorldLevel?
+    var enterStartedWorldId: String? {
+      currentWorldLevel != nil && currentWorldLevel! >= .started ? currentWorldId : nil
+    }
+    var enterSettledWorldId: String? {
+      currentWorldLevel == .settled ? currentWorldId : nil
+    }
     var enterLane: EnterLaneState
     var lastEnterStartToken: Double?
-    var lastEnterStartedRequestKey: String?
-    var lastEnterSettledRequestKey: String?
     var lastDismissRequestKey: String?
     var currentPresentationRenderPhase: String
     var visualSourceLifecycleState: VisualSourceLifecycleState
@@ -1285,11 +1303,10 @@ final class SearchMapRenderController: RCTEventEmitter {
         lastDotCount: 0,
         lastLabelCount: 0,
         lastPresentationBatchPhase: "idle",
-        lastEnterRequestKey: nil,
+        currentWorldId: nil,
+        currentWorldLevel: nil,
         enterLane: EnterLaneState(),
         lastEnterStartToken: nil,
-        lastEnterStartedRequestKey: nil,
-        lastEnterSettledRequestKey: nil,
         lastDismissRequestKey: nil,
         currentPresentationRenderPhase: "idle",
         visualSourceLifecycleState: .hidden,
@@ -1530,7 +1547,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         var latest = self.instances[instanceId] ?? state
         self.startEnterPresentationIfReady(instanceId: instanceId, state: &latest)
         self.instances[instanceId] = latest
-        if latest.lastEnterStartedRequestKey == requestKey {
+        if latest.enterStartedWorldId == requestKey {
           started = true
         }
       }
@@ -2630,7 +2647,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     self.emitVisualDiag(
       instanceId: instanceId,
       message:
-        "frame_begin phase=\(state.lastPresentationBatchPhase) opacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.lastEnterRequestKey ?? "nil") revealStarted=\(state.lastEnterStartedRequestKey ?? "nil") revealSettled=\(state.lastEnterSettledRequestKey ?? "nil") dismissRequest=\(state.lastDismissRequestKey ?? "nil")"
+        "frame_begin phase=\(state.lastPresentationBatchPhase) opacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.currentWorldId ?? "nil") revealStarted=\(state.enterStartedWorldId ?? "nil") revealSettled=\(state.enterSettledWorldId ?? "nil") dismissRequest=\(state.lastDismissRequestKey ?? "nil")"
     )
     let isLiveMarkerRoleOnlyFrame =
       markerRoleFrame != nil &&
@@ -2746,7 +2763,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     self.emitVisualDiag(
       instanceId: instanceId,
       message:
-        "frame_after_reconcile phase=\(state.lastPresentationBatchPhase) opacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.lastEnterRequestKey ?? "nil") revealStarted=\(state.lastEnterStartedRequestKey ?? "nil") revealSettled=\(state.lastEnterSettledRequestKey ?? "nil") dismissRequest=\(state.lastDismissRequestKey ?? "nil")"
+        "frame_after_reconcile phase=\(state.lastPresentationBatchPhase) opacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.currentWorldId ?? "nil") revealStarted=\(state.enterStartedWorldId ?? "nil") revealSettled=\(state.enterSettledWorldId ?? "nil") dismissRequest=\(state.lastDismissRequestKey ?? "nil")"
     )
     let highlightedStartedAt = CACurrentMediaTime() * 1000
     if isLiveMarkerRoleOnlyFrame &&
@@ -2807,12 +2824,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     if let latestState = self.instances[instanceId],
        (latestState.lastPresentationBatchPhase != state.lastPresentationBatchPhase ||
          latestState.currentPresentationOpacityTarget != state.currentPresentationOpacityTarget ||
-         latestState.lastEnterStartedRequestKey != state.lastEnterStartedRequestKey ||
-         latestState.lastEnterSettledRequestKey != state.lastEnterSettledRequestKey) {
+         latestState.enterStartedWorldId != state.enterStartedWorldId ||
+         latestState.enterSettledWorldId != state.enterSettledWorldId) {
       self.emitVisualDiag(
         instanceId: instanceId,
         message:
-          "frame_final_write_mismatch localPhase=\(state.lastPresentationBatchPhase) localOpacity=\(state.currentPresentationOpacityTarget) localRevealStarted=\(state.lastEnterStartedRequestKey ?? "nil") localRevealSettled=\(state.lastEnterSettledRequestKey ?? "nil") latestPhase=\(latestState.lastPresentationBatchPhase) latestOpacity=\(latestState.currentPresentationOpacityTarget) latestRevealStarted=\(latestState.lastEnterStartedRequestKey ?? "nil") latestRevealSettled=\(latestState.lastEnterSettledRequestKey ?? "nil")"
+          "frame_final_write_mismatch localPhase=\(state.lastPresentationBatchPhase) localOpacity=\(state.currentPresentationOpacityTarget) localRevealStarted=\(state.enterStartedWorldId ?? "nil") localRevealSettled=\(state.enterSettledWorldId ?? "nil") latestPhase=\(latestState.lastPresentationBatchPhase) latestOpacity=\(latestState.currentPresentationOpacityTarget) latestRevealStarted=\(latestState.enterStartedWorldId ?? "nil") latestRevealSettled=\(latestState.enterSettledWorldId ?? "nil")"
       )
     }
     state = self.instances[instanceId] ?? state
@@ -2917,14 +2934,13 @@ final class SearchMapRenderController: RCTEventEmitter {
        state.lastDismissRequestKey != nil {
       self.clearDismissLifecycleRequestForEnter(instanceId: instanceId, state: &state)
     }
-    if revealRequestKey != state.lastEnterRequestKey {
+    if revealRequestKey != state.currentWorldId {
       self.enterSettleWorkItems[instanceId]?.cancel()
       self.enterSettleWorkItems[instanceId] = nil
-      state.lastEnterRequestKey = revealRequestKey
+      state.currentWorldId = revealRequestKey
+      state.currentWorldLevel = revealRequestKey != nil ? .requested : nil
       state.enterLane = EnterLaneState()
       state.lastEnterStartToken = nil
-      state.lastEnterStartedRequestKey = nil
-      state.lastEnterSettledRequestKey = nil
       state.pendingPresentationSettleRequestKey = nil
       state.pendingPresentationSettleKind = nil
       state.blockedEnterStartRequestKey = nil
@@ -3078,7 +3094,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         self.emitVisualDiag(
           instanceId: instanceId,
           message:
-            "presentation_transition previousPhase=\(previousPresentationBatchPhase) nextPhase=\(state.lastPresentationBatchPhase) previousOpacity=\(previousPresentationOpacityTarget) nextOpacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.lastEnterRequestKey ?? "nil") dismissRequest=\(dismissRequestKey)"
+            "presentation_transition previousPhase=\(previousPresentationBatchPhase) nextPhase=\(state.lastPresentationBatchPhase) previousOpacity=\(previousPresentationOpacityTarget) nextOpacity=\(state.currentPresentationOpacityTarget) revealRequest=\(state.currentWorldId ?? "nil") dismissRequest=\(dismissRequestKey)"
         )
         // S4d-3 (timers die): the settle no longer waits a wall-clock guess — it rides
         // the fade-out FLOOR (the animator completion emits it; the already-at-zero
@@ -3144,7 +3160,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     if
       state.lastDismissRequestKey == nil,
-      state.lastEnterRequestKey == nil,
+      state.currentWorldId == nil,
       Self.shouldHidePresentationWithoutActiveRequests(state.lastPresentationBatchPhase),
       state.currentPresentationOpacityTarget != 0
     {
@@ -3229,7 +3245,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         "type": "error",
         "instanceId": "__native_diag__",
         "message":
-          "slow_action action=applyFramePresentation phase=\(state.lastPresentationBatchPhase) totalMs=\(Int(totalDurationMs.rounded())) revealKey=\(state.lastEnterRequestKey ?? "nil") dismissKey=\(state.lastDismissRequestKey ?? "nil")",
+          "slow_action action=applyFramePresentation phase=\(state.lastPresentationBatchPhase) totalMs=\(Int(totalDurationMs.rounded())) revealKey=\(state.currentWorldId ?? "nil") dismissKey=\(state.lastDismissRequestKey ?? "nil")",
       ])
     }
   }
@@ -3590,11 +3606,10 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.lastDotCount = 0
       state.lastLabelCount = 0
       state.lastPresentationBatchPhase = "idle"
-      state.lastEnterRequestKey = nil
+      state.currentWorldId = nil
+      state.currentWorldLevel = nil
       state.enterLane = EnterLaneState()
       state.lastEnterStartToken = nil
-      state.lastEnterStartedRequestKey = nil
-      state.lastEnterSettledRequestKey = nil
       state.lastDismissRequestKey = nil
       state.currentPresentationRenderPhase = "idle"
       state.visualSourceLifecycleState = .hidden
@@ -4996,7 +5011,7 @@ final class SearchMapRenderController: RCTEventEmitter {
        !promoted.isEmpty {
       state.lodV5ObstacleReseedKeys.formUnion(promoted)
     }
-    if state.lastEnterRequestKey != nil && state.lastPresentationBatchPhase != "live" {
+    if state.currentWorldId != nil && state.lastPresentationBatchPhase != "live" {
       let pinMutationSummary = mutationSummaryBySourceId[state.pinSourceId] ?? MutationSummary(
         addCount: 0,
         updateCount: 0,
@@ -5926,7 +5941,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     let jsonStartToken = Self.readEnterStartToken(fromJSON: presentationStateJSON)
     let directStartToken: Double? =
       (state.directEnterStartRequestKey != nil
-        && state.directEnterStartRequestKey == state.lastEnterRequestKey)
+        && state.directEnterStartRequestKey == state.currentWorldId)
       ? state.directEnterStartToken : nil
     let revealStartToken = directStartToken ?? jsonStartToken
     // [NGAP] native-gap attribution (plans/search-flow-plan.md §D6b): a NEW start token is
@@ -5938,7 +5953,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         "[NGAP] tokenSeen t=%.1f phase=%@ laneKeyMatch=%d mountedHidden=%d blocked=%@ srcReady=%d fence=%d",
         CACurrentMediaTime() * 1000,
         state.lastPresentationBatchPhase,
-        (state.enterLane.requestedRequestKey == state.lastEnterRequestKey) ? 1 : 0,
+        (state.enterLane.requestedRequestKey == state.currentWorldId) ? 1 : 0,
         state.enterLane.mountedHidden != nil ? 1 : 0,
         state.blockedEnterStartRequestKey ?? "nil",
         Self.isActiveFrameSourceReady(state: state) ? 1 : 0,
@@ -5946,13 +5961,13 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
     }
     guard
-      let revealRequestKey = state.lastEnterRequestKey,
+      let revealRequestKey = state.currentWorldId,
       let revealStartToken,
       state.lastPresentationBatchPhase == "entering",
       state.enterLane.requestedRequestKey == revealRequestKey,
       state.enterLane.mountedHidden != nil,
       state.lastEnterStartToken != revealStartToken,
-      state.lastEnterStartedRequestKey != revealRequestKey,
+      state.enterStartedWorldId != revealRequestKey,
       state.blockedEnterStartRequestKey == nil,
       Self.isActiveFrameSourceReady(state: state),
       !hasPendingCommitFence(capturePendingVisualSourceCommitFence(state: state))
@@ -6002,10 +6017,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     else {
       return
     }
-    guard state.lastEnterRequestKey == requestKey else {
+    guard state.currentWorldId == requestKey else {
       return
     }
-    guard state.lastEnterStartedRequestKey != requestKey else {
+    guard state.enterStartedWorldId != requestKey else {
       return
     }
     guard state.lastDismissRequestKey == nil else {
@@ -6037,7 +6052,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       instanceId: instanceId,
       reason: "reveal_start"
     )
-    state.lastEnterStartedRequestKey = requestKey
+    state.currentWorldLevel = .started
     // OBSTACLE ASSERT AT ENTER START (D6e follow-up, owner-reported "labels stopped yielding to
     // pins"): JS bakes every collision obstacle demoted; the under-cover toggle redecide reseeds
     // BEFORE the mutation frame's new collision features apply, so markers ADDED by this frame
@@ -6100,12 +6115,12 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   /// The enter-settle gate: guards → commit-fence check → arm the native settle. Extracted from the old
   /// timer body so it can run from BOTH the ramp-completion tick (primary, STEP-3) and the bounded fallback
-  /// timer. Idempotent via the lastEnterSettledRequestKey guard.
+  /// timer. Idempotent via the enterSettledWorldId guard.
   private func evaluateEnterSettleGate(instanceId: String, requestKey: String) {
     guard var latestState = instances[instanceId] else { return }
-    guard latestState.lastEnterRequestKey == requestKey else { return }
-    guard latestState.lastEnterStartedRequestKey == requestKey else { return }
-    guard latestState.lastEnterSettledRequestKey != requestKey else { return }
+    guard latestState.currentWorldId == requestKey else { return }
+    guard latestState.enterStartedWorldId == requestKey else { return }
+    guard latestState.enterSettledWorldId != requestKey else { return }
     guard latestState.lastDismissRequestKey == nil else { return }
     let commitFence = capturePendingVisualSourceCommitFence(state: latestState)
     if hasPendingCommitFence(commitFence) {
@@ -6134,7 +6149,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     executionBatch: ExecutionBatchRef,
     state: inout InstanceState
   ) {
-    guard state.lastEnterRequestKey == executionBatch.requestKey else {
+    guard state.currentWorldId == executionBatch.requestKey else {
       return
     }
     guard state.enterLane.requestedRequestKey == executionBatch.requestKey else {
@@ -6166,7 +6181,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard Self.isEnterPhaseArmable(Self.readPresentationBatchPhase(fromJSON: presentationStateJSON)) else {
       return
     }
-    guard state.lastEnterRequestKey == executionBatch.requestKey else {
+    guard state.currentWorldId == executionBatch.requestKey else {
       return
     }
     guard state.enterLane.requestedRequestKey == executionBatch.requestKey else {
@@ -6178,7 +6193,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard state.lastDismissRequestKey == nil else {
       return
     }
-    guard state.lastEnterStartedRequestKey != executionBatch.requestKey else {
+    guard state.enterStartedWorldId != executionBatch.requestKey else {
       return
     }
     guard state.blockedEnterStartRequestKey == nil else {
@@ -6251,11 +6266,11 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
       return
     }
-    guard state.lastEnterRequestKey == requestKey else {
+    guard state.currentWorldId == requestKey else {
       emitVisualDiag(
         instanceId: instanceId,
         message:
-          "enter_mount_not_elected reason=request_mismatch requested=\(requestKey) lastEnter=\(state.lastEnterRequestKey ?? "nil") phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil")"
+          "enter_mount_not_elected reason=request_mismatch requested=\(requestKey) lastEnter=\(state.currentWorldId ?? "nil") phase=\(state.lastPresentationBatchPhase) frame=\(state.activeFrameGenerationId ?? "nil")"
       )
       return
     }
@@ -6267,7 +6282,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
       return
     }
-    guard state.lastEnterStartedRequestKey != requestKey else {
+    guard state.enterStartedWorldId != requestKey else {
       emitVisualDiag(
         instanceId: instanceId,
         message:
@@ -6324,13 +6339,13 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard var state = instances[instanceId] else {
       return
     }
-    guard state.lastEnterRequestKey == requestKey else {
+    guard state.currentWorldId == requestKey else {
       return
     }
-    guard state.lastEnterStartedRequestKey == requestKey else {
+    guard state.enterStartedWorldId == requestKey else {
       return
     }
-    guard state.lastEnterSettledRequestKey != requestKey else {
+    guard state.enterSettledWorldId != requestKey else {
       return
     }
     guard state.lastDismissRequestKey == nil else {
@@ -6341,7 +6356,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     state.enterLane.mountedHidden = nil
     state.enterLane.armed = nil
     state.enterLane.entering = nil
-    state.lastEnterSettledRequestKey = requestKey
+    state.currentWorldLevel = .settled
     state.pendingPresentationSettleRequestKey = nil
     state.pendingPresentationSettleKind = nil
     state.blockedPresentationSettleRequestKey = nil
@@ -8964,17 +8979,17 @@ final class SearchMapRenderController: RCTEventEmitter {
             "type": "presentation_fade_out_acked",
             "instanceId": instanceId,
             "reason": animator.reason,
-            "requestKey": (state.lastDismissRequestKey ?? state.lastEnterRequestKey) as Any,
+            "requestKey": (state.lastDismissRequestKey ?? state.currentWorldId) as Any,
             "lifecycleState": String(describing: state.visualSourceLifecycleState),
             "nativeTimestampMs": CACurrentMediaTime() * 1000,
             "ackedAtMs": Self.nowMs(),
           ])
         }
         // UNIFIED-FADE TOGGLE settled signal (map-LOD-v6). On a fade-IN ramp completion emit a DETERMINISTIC
-        // settled event keyed to the LATEST request (`lastEnterRequestKey` — every rapid tap re-stamps it at
+        // settled event keyed to the LATEST request (`currentWorldId` — every rapid tap re-stamps it at
         // :2681 and the single in-flight animator completes under the newest key). This REPLACES the racy
         // per-execution-batch `mounted_hidden` gate that silently drops superseded rapid-tap intents at the
-        // `lastEnterRequestKey == batch.requestKey` guard (:6046) → the stuck-cover bug. JS gates the toggle
+        // `currentWorldId == batch.requestKey` guard (:6046) → the stuck-cover bug. JS gates the toggle
         // cover-lift on THIS (latest-wins): N rapid taps → one ramp completion → one settled → one lift.
         // overlayTileCount + degraded let JS lift-but-flag a roster failure instead of hanging; an empty
         // result (promoted=0) lifts normally. Guarded off fade-IN + not-dismissing (cross-lane dismiss safety).
@@ -8990,7 +9005,7 @@ final class SearchMapRenderController: RCTEventEmitter {
           emit([
             "type": "presentation_toggle_settled",
             "instanceId": instanceId,
-            "requestKey": state.lastEnterRequestKey as Any,
+            "requestKey": state.currentWorldId as Any,
             "pinCount": state.lastPinCount,
             "dotCount": state.lastDotCount,
             "labelCount": state.lastLabelCount,
@@ -8999,15 +9014,15 @@ final class SearchMapRenderController: RCTEventEmitter {
             "degraded": degraded,
             "settledAtMs": Self.nowMs(),
           ])
-          Self.lodLog("[LODDBG] toggleSettled requestKey=\(state.lastEnterRequestKey ?? "nil") reason=\(animator.reason) promoted=\(promotedCount) tiles=\(overlayTileCount) degraded=\(degraded)")
+          Self.lodLog("[LODDBG] toggleSettled requestKey=\(state.currentWorldId ?? "nil") reason=\(animator.reason) promoted=\(promotedCount) tiles=\(overlayTileCount) degraded=\(degraded)")
           // STEP-3 FIX (settle-off-ramp-completion): the fade-IN just completed — this is the deterministic
           // "after the fade" moment. If the current enter is started-but-not-settled, run the settle gate NOW
           // (and cancel the bounded fallback timer). The old wall-clock timer could fire mid-visible-fade once
           // the tick-anchored/re-anchored clock stretched past arm+300ms — the LEA-commit promote-dip window.
           // Latest-wins by construction: guards inside the gate match the workItem's old guards exactly.
-          if let enterKey = state.lastEnterRequestKey,
-            state.lastEnterStartedRequestKey == enterKey,
-            state.lastEnterSettledRequestKey != enterKey {
+          if let enterKey = state.currentWorldId,
+            state.enterStartedWorldId == enterKey,
+            state.enterSettledWorldId != enterKey {
             enterSettleWorkItems[instanceId]?.cancel()
             enterSettleWorkItems[instanceId] = nil
             evaluateEnterSettleGate(instanceId: instanceId, requestKey: enterKey)
@@ -12721,9 +12736,9 @@ final class SearchMapRenderController: RCTEventEmitter {
       "type": "presentation_state_snapshot",
       "instanceId": instanceId,
       "reason": reason,
-      "revealRequestKey": state.lastEnterRequestKey as Any,
-      "revealStartedRequestKey": state.lastEnterStartedRequestKey as Any,
-      "revealSettledRequestKey": state.lastEnterSettledRequestKey as Any,
+      "revealRequestKey": state.currentWorldId as Any,
+      "revealStartedRequestKey": state.enterStartedWorldId as Any,
+      "revealSettledRequestKey": state.enterSettledWorldId as Any,
       "dismissRequestKey": state.lastDismissRequestKey as Any,
       "incomingRevealRequestKey": incomingRevealRequestKey as Any,
       "incomingDismissRequestKey": incomingDismissRequestKey as Any,
