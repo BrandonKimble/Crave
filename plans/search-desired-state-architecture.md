@@ -324,12 +324,20 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     enter effects publish presented tab directly. Lane-owned tab commit body deleted;
     dead activeTab args pruned through the owner tower. Rig: toggle reveal contract
     green (cards/sheet/native frame), dishes header + labels + cards eyeballed.
-  - **Next: S4c-1b..e** — tab_switch rides the reconciler, then the worldId-keyed
-    presentation host replaces the transaction machine (seam world_ready; adapter onto
-    the existing native protocol), redraw re-key, profileSeed synthesis. FILE-LEVEL MAP:
-    plans/search-s4-reconciler-edit-map.md §"S4c execution state". Then S4d (native
-    (worldId, phase) + ack-everything — task #16 acceptance), S4e (legacy bus-key
-    deletion via tuple selectors).
+  - **S4c-1c-1 SHIPPED** (8ac8f943): world-ready latch in the PURE gate — the
+    coordinator latches a page-one commit that lands before the deferred enter stage
+    and merges at stage time (level-triggered in both orders). The runtime's ordering
+    refs (pendingPageOneResultsCommitRef, pendingStageTransactionRef) + the
+    recoverable-prepared-rows lane DELETED; 4 model tests. Runtime 1,190 → 762.
+  - **S4c-1c-2 SHIPPED** (8340c6ec): the operation token ('world:'+generation) threads
+    EXPLICITLY — reconciler → enter effects → STA pending arm, and via the seam's
+    page-one payload to the response-time stages. `activeOperationId` bus key DELETED
+    (zero readers). Rig: zoom→area_rerun reveals under transactionId world:5.
+  - **Next: S4c-1c-3..e** — worldId as the transaction id end-to-end (adapter maps
+    worldId → native requestKey), the statechart host extraction, redraw re-key,
+    profileSeed synthesis. FILE-LEVEL MAP: plans/search-s4-reconciler-edit-map.md
+    §"S4c execution state". Then S4d (native (worldId, phase) + ack-everything — task
+    #16 acceptance), S4e (legacy bus-key deletion via tuple selectors).
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
