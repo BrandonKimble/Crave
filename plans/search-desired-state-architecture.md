@@ -338,11 +338,19 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     the tuple, seam from the committed worldId); #gN keeps native request keys fresh
     per episode (no dedupe adapter needed). Remaining non-world ids: exit mint +
     toggle-coordinator intent ids (die with the coordinator).
-  - **Next: S4c-1c-4..e** — statechart host extraction (seam world_ready is already the
-    coordinator latch input), redraw re-key, pendingTabSwitchTab → selector,
-    profileSeed synthesis. FILE-LEVEL MAP: plans/search-s4-reconciler-edit-map.md
-    §"S4c execution state". Then S4d (native (worldId, phase) + ack-everything — task
-    #16 acceptance), S4e (legacy bus-key deletion via tuple selectors).
+  - **S4c COMPLETE (JS side).** Conscious keeps vs the original delete list: the pure
+    coordinator SURVIVES as the world-keyed level-triggered gate (better than wholesale
+    replacement — it now IS the statechart host's gate, with the world-ready latch);
+    the redraw readiness triple stays (it IS the composite reveal gate) and is
+    episode-token-keyed; the exit lane's per-trigger view cleanup stays trigger-owned
+    around the atomic idle write (view concerns, not desire semantics);
+    pendingTabSwitchTab remains as the optimistic hint until S4e's selector.
+    profileSeed has NO live trigger yet — rides S4d.
+  - **Next: S4d** — native (worldId, phase) + ack-everything, ONE commit: delete
+    dismiss-in-progress bypass + content dedupe + hold/heal timers + request-key
+    registers; collision flips at fade START both directions w/ declared min-dwell;
+    read_state() RED instrument. Task #16 acceptance. Then S4e (legacy bus-key
+    deletion via tuple selectors).
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
