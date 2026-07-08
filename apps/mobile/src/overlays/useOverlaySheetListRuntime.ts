@@ -1,10 +1,7 @@
 import React from 'react';
 import type { FlashListRef } from '@shopify/flash-list';
 
-import {
-  getOverlayScrollOffset,
-  setOverlayScrollOffset,
-} from './overlayScrollOffsetRuntime';
+import { getOverlayScrollOffset, setOverlayScrollOffset } from './overlayScrollOffsetRuntime';
 import { isOverlayListContentSpec } from './types';
 import type {
   OverlaySheetListRuntime,
@@ -33,13 +30,24 @@ export const useOverlaySheetListRuntime = ({
     [isListBackedSpec, sceneIdentityKey, setOverlayScrollOffset, spec]
   );
 
+  // Cross-SCENE offset save/restore ONLY. The effect used to depend on `spec`, so every
+  // body-content republish (each variant rerun swaps the spec) re-applied the stored
+  // offset to the SAME scene — any transiently captured offset became sticky, and a
+  // user scroll-to-top was undone on the next spec churn (the owner's "reveals scrolled
+  // to cards 4–6 and hard to get out of"). The spec is read through a ref; the effect
+  // fires only when the scene identity (or visibility) actually changes.
+  const specRef = React.useRef(spec);
+  specRef.current = spec;
   React.useLayoutEffect(() => {
     if (!visible || !isListBackedSpec) {
       return;
     }
 
     const previousKey = lastSceneIdentityRef.current;
-    if (previousKey && previousKey !== sceneIdentityKey) {
+    if (previousKey === sceneIdentityKey) {
+      return;
+    }
+    if (previousKey) {
       setOverlayScrollOffset(previousKey, scrollOffset.value);
     }
     lastSceneIdentityRef.current = sceneIdentityKey;
@@ -48,13 +56,20 @@ export const useOverlaySheetListRuntime = ({
     const nextOffset = Math.max(0, storedOffset);
 
     const applyOffset = () => {
-      if (!isOverlayListContentSpec(spec)) {
+      const currentSpec = specRef.current;
+      if (!isOverlayListContentSpec(currentSpec)) {
         return false;
       }
-      const list = (spec.listRef ?? internalListRef).current;
+      const list = (currentSpec.listRef ?? internalListRef).current;
       scrollOffset.value = nextOffset;
       if (!list?.scrollToOffset) {
         return false;
+      }
+      if (__DEV__ && nextOffset > 0) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[SCROLLDBG] scene-restore apply scene=${sceneIdentityKey} offset=${nextOffset}`
+        );
       }
       list.scrollToOffset({ offset: nextOffset, animated: false });
       return true;
@@ -69,7 +84,7 @@ export const useOverlaySheetListRuntime = ({
     return () => {
       cancelAnimationFrame(animationFrameId);
     };
-  }, [isListBackedSpec, sceneIdentityKey, scrollOffset, setOverlayScrollOffset, spec, visible]);
+  }, [isListBackedSpec, sceneIdentityKey, scrollOffset, setOverlayScrollOffset, visible]);
 
   return React.useMemo(
     () => ({

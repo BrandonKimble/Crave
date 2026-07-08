@@ -1,13 +1,16 @@
 const overlayScrollOffsets = new Map<string, number>();
 
-export const setOverlayScrollOffset = (
-  overlayIdentity: string,
-  offset: number
-): void => {
+export const setOverlayScrollOffset = (overlayIdentity: string, offset: number): void => {
   const nextOffset = Math.max(0, offset);
   const existing = overlayScrollOffsets.get(overlayIdentity);
   if (existing != null && Math.abs(existing - nextOffset) < 1) {
     return;
+  }
+  if (__DEV__ && nextOffset > 0 && (existing ?? 0) === 0) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[SCROLLDBG] offset captured scene=${overlayIdentity} offset=${Math.round(nextOffset)}`
+    );
   }
   overlayScrollOffsets.set(overlayIdentity, nextOffset);
 };

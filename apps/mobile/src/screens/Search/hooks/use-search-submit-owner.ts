@@ -311,8 +311,12 @@ const useSearchSubmitOwner = ({
       });
       void loadRecentHistory();
     }
-    const isInPlaceRerun =
-      presentationIntentKind === 'search_this_area' || presentationIntentKind === 'variant_rerun';
+    // Scroll policy at the present moment (the settled design, same rule as the
+    // include-similar flip): a VARIANT rerun is a NEW result set — it reveals at top.
+    // Only search-this-area preserves the scroll (same filters, the user is driving the
+    // map; the sheet is usually collapsed). This also re-asserts the scroll LEVEL at
+    // every variant present, so no transient offset can survive a toggle cycle.
+    const preservesScroll = presentationIntentKind === 'search_this_area';
     const collapsesToSingleRestaurant =
       value.singleRestaurantCandidate != null &&
       (identity.kind === 'natural' || identity.kind === 'entity');
@@ -320,7 +324,7 @@ const useSearchSubmitOwner = ({
       // The response collapsed to one restaurant: hide the results sheet (the profile
       // auto-open runtime keys off lastSearchRequestIdRef, already truthful).
       resetSheetToHidden();
-    } else if (!isInPlaceRerun && !isSearchEditingRef?.current) {
+    } else if (!preservesScroll && !isSearchEditingRef?.current) {
       scrollResultsToTop();
     }
   };
