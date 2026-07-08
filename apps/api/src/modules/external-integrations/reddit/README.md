@@ -172,13 +172,11 @@ npm run test:e2e -- reddit-integration.spec.ts
 ### Common Issues
 
 1. **Authentication Failures**
-
    - Verify Reddit app credentials
    - Check username/password
    - Ensure app is configured for password grant
 
 2. **Rate Limiting**
-
    - Monitor request frequency
    - Implement proper delays between requests
    - Check retry-after headers

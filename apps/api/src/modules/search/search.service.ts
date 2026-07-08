@@ -287,7 +287,7 @@ export class SearchService {
 
     const pagination = this.resolvePagination(request.pagination);
     const dbPagination = this.resolveDbPagination(pagination, request);
-    const preview = this.queryBuilder.build({
+    const preview = this.queryBuilder.buildDishQuery({
       plan,
       pagination: dbPagination,
     }).preview;

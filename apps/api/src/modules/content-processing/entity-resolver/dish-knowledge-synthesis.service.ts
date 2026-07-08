@@ -172,10 +172,23 @@ export class DishKnowledgeSynthesisService {
     if (existing) {
       return { entityId: existing.entityId, created: false };
     }
-    const created = await this.prisma.entity.create({
-      data: { name: normalized, type: EntityType.ingredient },
-      select: { entityId: true },
-    });
-    return { entityId: created.entityId, created: true };
+    try {
+      const created = await this.prisma.entity.create({
+        data: { name: normalized, type: EntityType.ingredient },
+        select: { entityId: true },
+      });
+      return { entityId: created.entityId, created: true };
+    } catch (error) {
+      // Unique partial index on (name) WHERE type='ingredient' makes the
+      // find-then-create race lose loudly instead of duplicating — refetch.
+      const winner = await this.prisma.entity.findFirst({
+        where: { type: EntityType.ingredient, name: normalized },
+        select: { entityId: true },
+      });
+      if (winner) {
+        return { entityId: winner.entityId, created: false };
+      }
+      throw error;
+    }
   }
 }

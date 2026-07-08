@@ -225,6 +225,7 @@ export class AliasManagementService implements OnModuleInit {
 
       case 'restaurant':
       case 'food':
+      case 'ingredient':
         // No cross-scope restrictions for main entity types
         break;
 

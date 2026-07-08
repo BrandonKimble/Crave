@@ -94,7 +94,7 @@ export class EntityEmbeddingReconcilerService
 
     const rows = await this.prisma.$queryRawUnsafe<EntityEmbedRow[]>(
       `SELECT entity_id, name, type, aliases FROM core_entities
-       WHERE type IN ('restaurant','food','food_attribute','restaurant_attribute')
+       WHERE type IN ('restaurant','food','food_attribute','restaurant_attribute','ingredient')
          AND status = 'active'
          ${reembedAll ? '' : 'AND (name_embedding IS NULL OR name_embedding_stale = true)'}
        ORDER BY entity_id
@@ -123,7 +123,7 @@ export class EntityEmbeddingReconcilerService
 
     const [{ n }] = await this.prisma.$queryRawUnsafe<{ n: bigint }[]>(
       `SELECT count(*) AS n FROM core_entities
-       WHERE type IN ('restaurant','food','food_attribute','restaurant_attribute')
+       WHERE type IN ('restaurant','food','food_attribute','restaurant_attribute','ingredient')
          AND status = 'active'
          AND (name_embedding IS NULL OR name_embedding_stale = true)`,
     );

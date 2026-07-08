@@ -343,12 +343,15 @@ export class SearchQueryInterpretationService {
         }
         // INGREDIENT FALLBACK LANE: a food-classified term with no dish link
         // may name an ingredient ("burrata", "miso"). Retry the SAME
-        // conservative link against the ingredient vocabulary — zero
-        // query-prompt changes, and dish links always win (fallback only).
-        return this.linkOneInput(
+        // conservative link against the ingredient vocabulary; dish links
+        // always win (fallback only). When BOTH fail, return the original
+        // food-typed miss so unresolved routing / on-demand collection sees
+        // the term as the food the query model classified it as.
+        const ingredientLink = await this.linkOneInput(
           { ...input, entityType: 'ingredient' },
           collectableMarketKeys,
         );
+        return ingredientLink.entityId ? ingredientLink : live;
       },
     );
   }

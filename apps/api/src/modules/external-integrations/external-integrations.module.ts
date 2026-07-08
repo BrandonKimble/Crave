@@ -4,7 +4,6 @@ import { LLMModule } from './llm/llm.module';
 import { SharedServicesModule } from './shared/shared-services.module';
 import { SharedModule } from '../../shared/shared.module';
 import { GooglePlacesModule } from './google-places/google-places.module';
-import { GoogleGeocodingModule } from './google-geocoding/google-geocoding.module';
 
 /**
  * External Integrations Module
@@ -28,7 +27,6 @@ import { GoogleGeocodingModule } from './google-geocoding/google-geocoding.modul
     RedditModule,
     LLMModule,
     GooglePlacesModule,
-    GoogleGeocodingModule,
   ],
   providers: [],
   exports: [
@@ -36,7 +34,6 @@ import { GoogleGeocodingModule } from './google-geocoding/google-geocoding.modul
     RedditModule,
     LLMModule,
     GooglePlacesModule,
-    GoogleGeocodingModule,
   ],
 })
 export class ExternalIntegrationsModule {}

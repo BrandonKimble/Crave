@@ -1404,7 +1404,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
    * to 'new' independently (absent/invalid index in the response = new).
    */
   async matchEntitiesBatch(input: {
-    kind: 'restaurant' | 'food';
+    kind: 'restaurant' | 'food' | 'ingredient';
     items: {
       term: string;
       candidates: { id: number; name: string; aliases?: string[] }[];
@@ -1429,7 +1429,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const systemInstruction =
       `You judge entity identity for a food-discovery database. For EACH item i, ` +
       `decide independently whether item i's "term" names the SAME real-world ` +
-      `${input.kind === 'restaurant' ? 'restaurant' : 'dish'} as one of item i's own ` +
+      `${input.kind === 'restaurant' ? 'restaurant' : input.kind === 'ingredient' ? 'ingredient' : 'dish'} as one of item i's own ` +
       `candidates (spelling/plural/abbreviation/alias variants of ONE thing = match; ` +
       `related-but-different things = new). NEVER compare a term against another ` +
       `item's candidates. Uncertain = new. Return JSON ` +

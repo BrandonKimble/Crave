@@ -10,4 +10,3 @@ export {
   EnrichedLLMMention,
 } from './llm';
 export { GooglePlacesService } from './google-places';
-export { GoogleGeocodingService } from './google-geocoding/google-geocoding.service';

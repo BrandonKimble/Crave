@@ -308,19 +308,16 @@ This implementation fully satisfies PRD Section 5.1.2 requirements:
 ### Common Issues
 
 1. **Authentication Failures**
-
    - Check Reddit API credentials in environment variables
    - Ensure bot account has proper permissions
    - Verify user agent string is set correctly
 
 2. **Rate Limit Errors**
-
    - Monitor daily usage with `getCostMetrics()`
    - Check `getRateLimitStatus()` for current limits
    - Implement exponential backoff for retries
 
 3. **Network Timeouts**
-
    - Increase `REDDIT_TIMEOUT` environment variable
    - Check network connectivity to reddit.com
    - Review retry configuration settings

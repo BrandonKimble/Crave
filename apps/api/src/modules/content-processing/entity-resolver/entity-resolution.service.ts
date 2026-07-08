@@ -422,7 +422,12 @@ export class EntityResolutionService implements OnModuleInit {
     const useLlmMatcher =
       config.useLlmMatcher === true &&
       config.enableFuzzyMatching &&
-      (entityType === 'restaurant' || entityType === 'food');
+      (entityType === 'restaurant' ||
+        entityType === 'food' ||
+        // Ingredient vocabulary needs the same duplicate protection as dishes
+        // ("burrata" vs "burrata cheese") — without the judge, near-variants
+        // accumulate as separate entities.
+        entityType === 'ingredient');
     const fuzzyMatchResults = useLlmMatcher
       ? await this.performLlmMatches(unmatchedAfterAlias, entityType, marketKey)
       : [];
@@ -667,8 +672,12 @@ export class EntityResolutionService implements OnModuleInit {
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
-    const kind: 'restaurant' | 'food' =
-      entityType === 'restaurant' ? 'restaurant' : 'food';
+    const kind: 'restaurant' | 'food' | 'ingredient' =
+      entityType === 'restaurant'
+        ? 'restaurant'
+        : entityType === 'ingredient'
+          ? 'ingredient'
+          : 'food';
     const unmatchedFor = (
       entity: EntityResolutionInput,
     ): EntityResolutionResult => ({

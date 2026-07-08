@@ -3,23 +3,6 @@ import { Prisma } from '@prisma/client';
 import { EntityScope, FilterClause, QueryPlan } from './dto/search-query.dto';
 import type { SearchExecutionDirectives } from './search-execution-directives';
 
-interface BuildQueryOptions {
-  plan: QueryPlan;
-  pagination: { skip: number; take: number };
-  searchCenter?: { lat: number; lng: number } | null;
-}
-
-interface BuildQueryResult {
-  dataSql: Prisma.Sql;
-  countSql: Prisma.Sql;
-  preview: string;
-  metadata: {
-    boundsApplied: boolean;
-    priceFilterApplied: boolean;
-    minimumVotesApplied: boolean;
-  };
-}
-
 interface BuildRestaurantQueryOptions {
   plan: QueryPlan;
   pagination: { skip: number; take: number };
@@ -727,13 +710,6 @@ LIMIT ${pagination.take};`.trim();
         minimumVotesApplied,
       },
     };
-  }
-
-  /**
-   * @deprecated Use buildDishQuery instead. This method is kept for backward compatibility.
-   */
-  build(options: BuildQueryOptions): BuildQueryResult {
-    return this.buildDishQuery(options);
   }
 
   // ==========================================================================

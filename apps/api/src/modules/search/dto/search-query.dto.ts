@@ -287,7 +287,6 @@ export interface SearchPlanResponseDto {
   sqlPreview?: string | null;
 }
 
-/** @deprecated Use DishResultDto instead */
 export interface FoodResultDto extends SharedFoodResult {
   restaurantLocationId?: string;
   restaurantDistanceMiles?: number | null;
