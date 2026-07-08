@@ -2915,10 +2915,11 @@ final class SearchMapRenderController: RCTEventEmitter {
       !shouldSupersedeDismissWithReveal &&
       dismissRequestKey == nil
     {
-      // S4d-3b: the old dismiss-in-progress BYPASS (silent payload drop) is deleted — the
-      // latest payload is the desired level and always wins (retarget algebra). A keyless
-      // payload mid-dismiss means JS abandoned its dismiss without superseding it: a protocol
-      // violation. RED contract — emit loudly, never compensate; processing continues.
+      // S4d-3b/S4e: the old dismiss-in-progress BYPASS (silent payload drop) is deleted.
+      // A keyless payload mid-dismiss is legitimate ordering (a resubmit's pre-enter
+      // transport frames): the payload processes as the latest level, while the dismiss
+      // register persists to its floor ack (see the dismiss branch below). Snapshot emit
+      // keeps the path observable.
       self.emitPresentationStateSnapshot(
         instanceId: instanceId,
         state: state,
@@ -3052,7 +3053,14 @@ final class SearchMapRenderController: RCTEventEmitter {
       previousPresentationOpacityTarget: previousPresentationOpacityTarget
     )
     let previousDismissRequestKey = state.lastDismissRequestKey
-    if dismissRequestKey != state.lastDismissRequestKey {
+    // The dismiss register is the exit ACK CORRELATION LABEL: it persists until its floor
+    // ack (settle), a reveal supersession, or a NEW dismiss key. A keyless payload while
+    // the dismiss ramp is in flight (a resubmit's pre-enter transport frames) asserts
+    // "desired: nothing presented" — redundant with the dismiss already achieving it, so
+    // the in-flight dismiss runs to its floor and emits exit_settled; the keyless
+    // dismiss-clear/restore branch below applies only OUTSIDE an active dismiss.
+    if dismissRequestKey != state.lastDismissRequestKey,
+       dismissRequestKey != nil || state.visualSourceLifecycleState != .dismissing {
       self.enterSettleWorkItems[instanceId]?.cancel()
       self.enterSettleWorkItems[instanceId] = nil
       self.revealFrameFallbackWorkItems[instanceId]?.cancel()

@@ -2414,13 +2414,12 @@ const useSearchMapNativeRenderOwnerStatus = ({
             }
             if (event.type === 'presentation_state_snapshot') {
               // S4d-0/3b RED instrument — observation only, never actuated on. The silent
-              // dismiss-in-progress bypasses are DELETED; these reasons now mean a keyless
-              // payload (or snapshot) reached native mid-dismiss — a JS protocol violation
-              // that processing no longer swallows but must stay loud.
-              if (
-                event.reason === 'keyless_payload_during_dismiss' ||
-                event.reason === 'snapshot_apply_during_dismiss'
-              ) {
+              // dismiss-in-progress bypasses are DELETED. keyless_payload_during_dismiss is
+              // LEGITIMATE ordering (a resubmit's pre-enter transport frames land while the
+              // dismiss ramp runs; the dismiss register persists to its floor ack) — logged
+              // as a snapshot below, not a violation. snapshot_apply_during_dismiss stays a
+              // violation: source data landing mid-dismiss means the enter didn't supersede.
+              if (event.reason === 'snapshot_apply_during_dismiss') {
                 reportSearchFlowContractViolation(event.reason, {
                   incomingRevealRequestKey: event.incomingRevealRequestKey,
                   incomingDismissRequestKey: event.incomingDismissRequestKey,
