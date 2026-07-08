@@ -346,11 +346,25 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     around the atomic idle write (view concerns, not desire semantics);
     pendingTabSwitchTab remains as the optimistic hint until S4e's selector.
     profileSeed has NO live trigger yet — rides S4d.
-  - **Next: S4d** — native (worldId, phase) + ack-everything, ONE commit: delete
-    dismiss-in-progress bypass + content dedupe + hold/heal timers + request-key
-    registers; collision flips at fade START both directions w/ declared min-dwell;
-    read_state() RED instrument. Task #16 acceptance. Then S4e (legacy bus-key
-    deletion via tuple selectors).
+  - **S4d-0 SHIPPED (9979a661): RED instrument + task #16 ROOT-CAUSED AND FIXED.**
+    `presentation_state_snapshot` native emits at every silent path (same-state skip,
+    dismiss-in-progress bypass, reveal begin, roster sync, reproject gate) + a loud
+    `native_presentation_reveal_swallowed` JS contract. The instrument attributed the
+    dismiss→resubmit pin no-show in three passes: (1) the reveal ramp completes at
+    opacity 1 while pins are absent — the always-green pinCount was counting SOURCE
+    features, not the VA composite; (2) the catalog's under-cover reproject defers
+    while hidden and its drain rode edge-triggered choreography a cache-resident
+    re-enter never fires; (3) `attach` re-binds the render plane but ERASED the
+    world-keyed data plane (candidateCatalog + LOD engine) that JS delivered BEFORE
+    the re-attach. Fixes at the correct layer: the reveal transition is the
+    level-triggered drain point, and attach preserves the data plane + re-arms the
+    reproject. On-rig: pins+labels+dots reveal after dismiss→resubmit; toggle lanes
+    unregressed.
+  - **Next: S4d proper** — native (worldId, phase) + ack-everything, ONE commit:
+    delete dismiss-in-progress bypass + content dedupe + hold/heal timers +
+    request-key registers; collision flips at fade START both directions w/ declared
+    min-dwell (owner-eyeball acceptance). Then S4e (legacy bus-key deletion via
+    tuple selectors).
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
