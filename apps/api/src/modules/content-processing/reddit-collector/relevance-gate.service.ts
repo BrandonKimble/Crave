@@ -194,7 +194,7 @@ export class RelevanceGateService implements OnModuleInit {
           responseSchema: jsonSchemaToTypedSchema(
             RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
           ),
-          maxOutputTokens: 8192,
+          maxOutputTokens: 65536,
         },
       });
       this.usageLedger.record({

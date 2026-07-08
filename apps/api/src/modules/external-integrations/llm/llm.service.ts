@@ -955,7 +955,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: Math.min(this.llmConfig.maxTokens || 2048, 2048),
+      maxOutputTokens: this.llmConfig.maxTokens || 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: SEARCH_QUERY_RESPONSE_JSON_SCHEMA,
     };
@@ -1162,7 +1162,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 512,
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
     };
@@ -1225,7 +1225,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 256,
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: MODERATION_RESPONSE_JSON_SCHEMA,
     };
@@ -1314,7 +1314,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidateCount: 1,
       // gemini-3 thinking tokens count against this ceiling, so a tiny JSON reply
       // still needs headroom (512 truncated mid-thought → fail-closed to `new`).
-      maxOutputTokens: 2048,
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: applyAuditReasonPolicy(
         ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
@@ -1441,11 +1441,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      // 16384: thinking tokens bill against maxOutputTokens on this model —
-      // at 4096 a 12-item batch hit MAX_TOKENS mid-JSON and EVERY item
-      // silently failed closed to 'new' (found 2026-07-07 via the decision
-      // ledger; explains the judge's earlier "conservative flip-flops").
-      maxOutputTokens: 16384,
+      // POLICY: output budgets are model-max everywhere (65536). A budget's
+      // only job is capping runaway cost (~pennies at max); a too-small one
+      // SILENTLY truncates — thinking tokens bill against it unpredictably —
+      // and every parser then fails open (moderation would auto-ALLOW) or
+      // closed (judges spawn duplicate entities). Proven 2026-07-07: this
+      // call at 4096 truncated mid-JSON and every item failed closed.
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
     };
@@ -1562,7 +1564,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA,
     };
@@ -1654,7 +1656,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidateCount: 1,
       // gemini-3 thinking tokens count against this ceiling, so a tiny JSON reply
       // still needs headroom (truncated mid-thought → fail-closed to `new`).
-      maxOutputTokens: 2048,
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: applyAuditReasonPolicy(
         ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
@@ -1767,7 +1769,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 1024,
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: applyAuditReasonPolicy(
         POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
@@ -1891,7 +1893,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 256,
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: ATTRIBUTE_NAME_RESPONSE_JSON_SCHEMA,
     };
@@ -1958,7 +1960,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
       responseJsonSchema: CUISINE_HUB_CLASSIFY_RESPONSE_JSON_SCHEMA,
     };

@@ -67,7 +67,7 @@ async function main() {
       config: {
         temperature: 0,
         responseMimeType: 'application/json',
-        maxOutputTokens: 8192,
+        maxOutputTokens: 65536,
       },
     });
     const text = res.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
