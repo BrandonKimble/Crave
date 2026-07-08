@@ -2420,14 +2420,15 @@ const useSearchMapNativeRenderOwnerStatus = ({
               return;
             }
             if (event.type === 'presentation_state_snapshot') {
-              // S4d-0 RED instrument — observation only, never actuated on. A reveal
-              // payload swallowed by the dismiss-in-progress bypass is the task #16
-              // class: JS armed a new world's reveal, native silently dropped it.
+              // S4d-0/3b RED instrument — observation only, never actuated on. The silent
+              // dismiss-in-progress bypasses are DELETED; these reasons now mean a keyless
+              // payload (or snapshot) reached native mid-dismiss — a JS protocol violation
+              // that processing no longer swallows but must stay loud.
               if (
-                event.reason === 'dismiss_in_progress_bypass' &&
-                event.incomingRevealRequestKey != null
+                event.reason === 'keyless_payload_during_dismiss' ||
+                event.reason === 'snapshot_apply_during_dismiss'
               ) {
-                reportSearchFlowContractViolation('native_presentation_reveal_swallowed', {
+                reportSearchFlowContractViolation(event.reason, {
                   incomingRevealRequestKey: event.incomingRevealRequestKey,
                   incomingDismissRequestKey: event.incomingDismissRequestKey,
                   nativeRevealRequestKey: event.revealRequestKey,

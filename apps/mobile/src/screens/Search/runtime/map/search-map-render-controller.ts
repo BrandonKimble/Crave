@@ -177,14 +177,16 @@ export type SearchMapRenderControllerEvent =
     }
   | {
       // S4d-0 RED instrument: native (worldId, phase, opacity) register snapshot emitted
-      // at the presentation machine's silent paths (same-state skip, dismiss-in-progress
-      // bypass) and reveal begin — observation only, JS diffs it against the presented
-      // world and reports a contract violation on a swallowed reveal.
+      // at the presentation machine's idempotence path (same-state ack) and RED protocol
+      // contracts — observation only, never actuated on. S4d-3b deleted the silent
+      // dismiss-in-progress bypasses; the *_during_dismiss reasons are loud contract
+      // violations (the payload/snapshot still processes as the latest desired level).
       type: 'presentation_state_snapshot';
       instanceId: string;
       reason:
         | 'apply_same_state'
-        | 'dismiss_in_progress_bypass'
+        | 'keyless_payload_during_dismiss'
+        | 'snapshot_apply_during_dismiss'
         | 'reveal_begin'
         | 'pin_roster_teardown_inactive'
         | 'pin_roster_synced'

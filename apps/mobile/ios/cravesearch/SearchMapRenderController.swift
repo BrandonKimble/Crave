@@ -724,7 +724,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     // Ownership transfers to the enter machine (reveal_preroll/enter start) or a dismiss; the
     // startedAt stamp bounds the hold (self-heals if an interaction is abandoned).
     var interactionFadeHoldActive = false
-    var interactionFadeHoldStartedAtMs: Double? = nil
     var nextSourceCommitSequence: Int
     var pendingPresentationSettleRequestKey: String?
     var pendingPresentationSettleKind: String?
@@ -895,7 +894,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   private var enterSettleWorkItems: [String: DispatchWorkItem] = [:]
   private var deferredDismissSourceCleanupWorkItems: [String: DispatchWorkItem] = [:]
   private var revealFrameFallbackWorkItems: [String: DispatchWorkItem] = [:]
-  private var dismissFrameFallbackWorkItems: [String: DispatchWorkItem] = [:]
   private var sourceRecoveryWorkItems: [String: DispatchWorkItem] = [:]
   private var nextOwnerEpoch: Int = 1
   private var presentationOpacityAnimators: [String: PresentationOpacityAnimator] = [:]
@@ -1397,8 +1395,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       self?.deferredDismissSourceCleanupWorkItems[instanceId] = nil
       self?.revealFrameFallbackWorkItems[instanceId]?.cancel()
       self?.revealFrameFallbackWorkItems[instanceId] = nil
-      self?.dismissFrameFallbackWorkItems[instanceId]?.cancel()
-      self?.dismissFrameFallbackWorkItems[instanceId] = nil
       self?.sourceRecoveryWorkItems[instanceId]?.cancel()
       self?.sourceRecoveryWorkItems[instanceId] = nil
       self?.cancelPresentationOpacityAnimation(instanceId: instanceId)
@@ -1584,7 +1580,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       instances[instanceId] = state
     }
     state.interactionFadeHoldActive = true
-    state.interactionFadeHoldStartedAtMs = Self.nowMs()
     instances[instanceId] = state
     do {
       try animatePresentationOpacity(
@@ -2620,21 +2615,19 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
     }
     let actionStartedAt = CACurrentMediaTime() * 1000
+    _ = actionStartedAt
     if Self.isVisualSourceDismissing(state) {
-      state.activeFrameGenerationId = generationId
-      state.activeExecutionBatchId = executionBatchId
-      state.sourceReadyFrameGenerationId = generationId
-      state.sourceReadyExecutionBatchId = executionBatchId
-      self.instances[instanceId] = state
-      self.recordNativeApply(
-        section: "snapshot.dismiss_in_progress_bypass",
-        phase: state.lastPresentationBatchPhase,
-        durationMs: CACurrentMediaTime() * 1000 - actionStartedAt,
-        operationCount: sourceDeltas?.count ?? 0
-      )
-      return VisualFrameSnapshotApplyResult(
-        didSyncResidentFrame: true,
-        sourceAdmissionOutcome: "source_apply_blocked_dismissing"
+      // S4d-3b: the snapshot dismiss-in-progress bypass (silent frame drop that LIED with
+      // didSyncResidentFrame=true) is deleted. A legit enter supersedes the dismiss in the
+      // presentation payload applied earlier in the same setRenderFrame, so reaching here
+      // while dismissing is a JS protocol violation — RED contract, apply proceeds normally
+      // (under-cover reprojects defer via the pending-catalog drain regardless).
+      self.emitPresentationStateSnapshot(
+        instanceId: instanceId,
+        state: state,
+        reason: "snapshot_apply_during_dismiss",
+        incomingRevealRequestKey: nil,
+        incomingDismissRequestKey: nil
       )
     }
     self.emitVisualDiag(
@@ -2908,20 +2901,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       !shouldSupersedeDismissWithReveal &&
       dismissRequestKey == nil
     {
-      self.instances[instanceId] = state
-      self.recordNativeApply(
-        section: "presentation.dismiss_in_progress_bypass",
-        phase: state.lastPresentationBatchPhase,
-        durationMs: CACurrentMediaTime() * 1000 - actionStartedAt
-      )
+      // S4d-3b: the old dismiss-in-progress BYPASS (silent payload drop) is deleted — the
+      // latest payload is the desired level and always wins (retarget algebra). A keyless
+      // payload mid-dismiss means JS abandoned its dismiss without superseding it: a protocol
+      // violation. RED contract — emit loudly, never compensate; processing continues.
       self.emitPresentationStateSnapshot(
         instanceId: instanceId,
         state: state,
-        reason: "dismiss_in_progress_bypass",
+        reason: "keyless_payload_during_dismiss",
         incomingRevealRequestKey: revealRequestKey,
         incomingDismissRequestKey: dismissRequestKey
       )
-      return
     }
     state.lastPresentationStateJSON = presentationStateJSON
     state.lastPresentationBatchPhase = nextPresentationBatchPhase
@@ -2950,7 +2940,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       if let revealRequestKey {
         // The enter machine takes presentation ownership — the interaction-fade hold ends here.
         state.interactionFadeHoldActive = false
-        state.interactionFadeHoldStartedAtMs = nil
         self.beginRevealVisualLifecycle(
           instanceId: instanceId,
           state: &state,
@@ -3060,13 +3049,10 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.blockedPresentationSettleRequestKey = nil
       state.blockedPresentationSettleKind = nil
       state.blockedPresentationCommitFenceBySourceId.removeAll()
-      self.dismissFrameFallbackWorkItems[instanceId]?.cancel()
-      self.dismissFrameFallbackWorkItems[instanceId] = nil
       state.lastDismissRequestKey = dismissRequestKey
       if let dismissRequestKey {
         // A dismiss supersedes any in-flight interaction fade (both end at 0).
         state.interactionFadeHoldActive = false
-        state.interactionFadeHoldStartedAtMs = nil
         self.beginDismissVisualLifecycle(instanceId: instanceId, state: &state)
         self.instances[instanceId] = state
         let opacityStartedAt = CACurrentMediaTime() * 1000
@@ -3193,23 +3179,11 @@ final class SearchMapRenderController: RCTEventEmitter {
         "startedAtMs": startedAtMs,
       ])
     }
-    // INTERACTION-FADE HOLD: expire a stale hold (abandoned interaction — no commit ever arrived)
-    // so the idle restore below can self-heal the map back to visible. TR5-N: while the JS
-    // interaction cover is UP (coverState 'interaction_loading' — a chip's network rerun can
-    // legitimately hold it for seconds), the interaction is NOT abandoned — re-stamp the clock
-    // instead of expiring, so the old map can never re-reveal mid-wait. The expiry resumes the
-    // moment the cover drops without an enter/dismiss having taken ownership.
-    if state.interactionFadeHoldActive,
-       let heldAtMs = state.interactionFadeHoldStartedAtMs,
-       Self.nowMs() - heldAtMs > 1500 {
-      if Self.readCoverState(fromJSON: presentationStateJSON) == "interaction_loading" {
-        state.interactionFadeHoldStartedAtMs = Self.nowMs()
-      } else {
-        state.interactionFadeHoldActive = false
-        state.interactionFadeHoldStartedAtMs = nil
-        self.emitVisualDiag(instanceId: instanceId, message: "interaction_fade_hold_expired")
-      }
-    }
+    // INTERACTION-FADE HOLD (S4d-3b): a pure LEVEL — held while desired ≠ presented, lifted
+    // only when an enter or dismiss takes presentation ownership (or on teardown). The old
+    // 1500ms wall-clock expiry self-heal is DELETED: it never fired in any instrumented run,
+    // and an interaction that truly never hands off is a JS contract bug that must stay
+    // VISIBLE (map stays faded) rather than be silently healed.
     if previousPresentationBatchPhase != "idle", state.lastPresentationBatchPhase == "idle",
        !state.interactionFadeHoldActive {
       state.currentPresentationRenderPhase = "live"
@@ -3642,7 +3616,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.currentPresentationOpacityTarget = 1
       state.currentPresentationOpacityValue = 1
       state.interactionFadeHoldActive = false
-      state.interactionFadeHoldStartedAtMs = nil
       state.nextSourceCommitSequence = 0
       state.pendingPresentationSettleRequestKey = nil
       state.pendingPresentationSettleKind = nil
@@ -3681,8 +3654,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     instanceId: String,
     state: inout InstanceState
   ) {
-    dismissFrameFallbackWorkItems[instanceId]?.cancel()
-    dismissFrameFallbackWorkItems[instanceId] = nil
     deferredDismissSourceCleanupWorkItems[instanceId]?.cancel()
     deferredDismissSourceCleanupWorkItems[instanceId] = nil
     state.lastDismissRequestKey = nil
@@ -6454,11 +6425,15 @@ final class SearchMapRenderController: RCTEventEmitter {
           state.currentPresentationOpacityValue <= 0.001
       )
     else {
-      armNativeDismissSettle(instanceId: instanceId, requestKey: requestKey)
+      // S4d-3b RED contract: every caller is at the fade-out floor by construction, so an
+      // off-floor settle is a protocol bug — surface it loudly, never re-arm a poll.
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "dismiss_settle_off_floor_contract_violation key=\(requestKey) target=\(state.currentPresentationOpacityTarget) value=\(state.currentPresentationOpacityValue)"
+      )
       return
     }
-    dismissFrameFallbackWorkItems[instanceId]?.cancel()
-    dismissFrameFallbackWorkItems[instanceId] = nil
     state.pendingPresentationSettleRequestKey = nil
     state.pendingPresentationSettleKind = nil
     state.blockedPresentationSettleRequestKey = nil
@@ -9378,8 +9353,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.blockedPresentationCommitFenceBySourceId = [:]
       revealFrameFallbackWorkItems[instanceId]?.cancel()
       revealFrameFallbackWorkItems[instanceId] = nil
-      dismissFrameFallbackWorkItems[instanceId]?.cancel()
-      dismissFrameFallbackWorkItems[instanceId] = nil
       sourceRecoveryWorkItems[instanceId]?.cancel()
       sourceRecoveryWorkItems[instanceId] = nil
       emitVisualDiag(
@@ -10415,7 +10388,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.blockedPresentationCommitFenceStartedAtMs = nil
       state.blockedPresentationCommitFenceBySourceId.removeAll()
       if state.pendingPresentationSettleKind == "exit" {
-        armNativeDismissSettle(instanceId: instanceId, requestKey: blockedPresentationSettleRequestKey)
+        // S4d-3b: the exit was fence-blocked AT the fade-out floor — the fence release
+        // settles it directly (the 96ms frame-poll hop is deleted).
+        instances[instanceId] = state
+        settleDismissAfterRenderedFrame(
+          instanceId: instanceId, requestKey: blockedPresentationSettleRequestKey)
+        state = instances[instanceId] ?? state
       } else {
         armNativeEnterSettle(instanceId: instanceId, requestKey: blockedPresentationSettleRequestKey)
       }
@@ -10618,24 +10596,13 @@ final class SearchMapRenderController: RCTEventEmitter {
       latestState.currentPresentationRenderPhase = "exiting"
       latestState.pendingPresentationSettleRequestKey = requestKey
       latestState.pendingPresentationSettleKind = "exit"
-      armNativeDismissSettle(instanceId: instanceId, requestKey: requestKey)
+      // S4d-3b: the settle rides the floor DIRECTLY — the caller IS the ramp-floor completion
+      // (or the fence release after it), so the old 96ms frame-poll hop is deleted.
+      instances[instanceId] = latestState
+      settleDismissAfterRenderedFrame(instanceId: instanceId, requestKey: requestKey)
+      return
     }
     instances[instanceId] = latestState
-  }
-
-  private func armNativeDismissSettle(instanceId: String, requestKey: String) {
-    dismissFrameFallbackWorkItems[instanceId]?.cancel()
-    let workItem = DispatchWorkItem { [weak self] in
-      guard let self, let state = self.instances[instanceId] else { return }
-      guard state.pendingPresentationSettleRequestKey == requestKey else { return }
-      guard state.pendingPresentationSettleKind == "exit" else { return }
-      self.settleDismissAfterRenderedFrame(instanceId: instanceId, requestKey: requestKey)
-    }
-    dismissFrameFallbackWorkItems[instanceId] = workItem
-    DispatchQueue.main.asyncAfter(
-      deadline: .now() + .milliseconds(frameSettleFallbackDelayMs),
-      execute: workItem
-    )
   }
 
   private func resolveMapHandle(
