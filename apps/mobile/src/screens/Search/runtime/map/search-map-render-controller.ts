@@ -39,7 +39,6 @@ type SearchMapRenderControllerNativeModule = {
     instanceId: string;
     entries: ReadonlyArray<{ markerKey: string; lng: number; lat: number; rank: number }>;
   }) => Promise<{ catalogCount: number } | null | void>;
-  beginInteractionFadeOut?: (payload: { instanceId?: string }) => Promise<void>;
   commitEnterStart?: (payload: {
     instanceId?: string;
     requestKey: string;
@@ -645,11 +644,21 @@ export const deriveSearchMapRenderPresentationPhase = (
       return 'enter_requested';
     }
     if (presentationState.executionStage === 'settled') {
-      return 'live';
+      // S4d completion: the interaction cover on a SETTLED world is the 'interaction'
+      // phase — the wire now carries the press-up fade level (the old
+      // beginInteractionFadeOut side-channel verb is deleted). Native holds the map
+      // ramp down while this level is asserted and restores it when the level returns
+      // to 'live' — so a failed/canceled commit restores by rule, not by luck.
+      return presentationState.coverState === 'interaction_loading' ? 'interaction' : 'live';
     }
   }
   if (presentationState.coverState === 'initial_loading') {
     return 'covered';
+  }
+  if (presentationState.coverState === 'interaction_loading') {
+    // Kindless interaction frame (a variant rerun clears the staged transaction before
+    // the response stages the enter) — still the interaction level.
+    return 'interaction';
   }
   return 'idle';
 };
@@ -946,13 +955,6 @@ export const searchMapRenderController = {
     }
     const result = await nativeModule.commitEnterStart(payload);
     return result?.started === true;
-  },
-
-  async beginInteractionFadeOut(instanceId?: string): Promise<void> {
-    if (!nativeModule?.beginInteractionFadeOut) {
-      return;
-    }
-    await nativeModule.beginInteractionFadeOut(instanceId != null ? { instanceId } : {});
   },
 
   async setRenderFrame(payload: {

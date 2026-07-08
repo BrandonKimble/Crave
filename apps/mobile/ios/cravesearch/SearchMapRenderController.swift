@@ -731,14 +731,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     var allowEmptyEnter: Bool
     var currentPresentationOpacityTarget: Double
     var currentPresentationOpacityValue: Double
-    // INTERACTION-FADE HOLD (owner-mandated choreography, 2026-07-06): the press-up toggle fade
-    // (beginInteractionFadeOut) is a native presentation INTENT, not a decoration — while it is
-    // active, frame-driven opacity restores (the presentation_idle 1.0 snap) must NOT clobber it
-    // (measured: the press-up coverState frame killed the fade 24ms in via
-    // setPresentationOpacityImmediate → the catalog swapped at full opacity → the end-flash).
-    // Ownership transfers to the enter machine (reveal_preroll/enter start) or a dismiss; the
-    // startedAt stamp bounds the hold (self-heals if an interaction is abandoned).
-    var interactionFadeHoldActive = false
     var nextSourceCommitSequence: Int
     var pendingPresentationSettleRequestKey: String?
     var pendingPresentationSettleKind: String?
@@ -1552,61 +1544,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         }
       }
       resolve(["started": started])
-    }
-  }
-
-  @objc
-  func beginInteractionFadeOut(
-    _ payload: NSDictionary,
-    resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else {
-        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
-        return
-      }
-      // Fade the explicitly-named instance, or — when the caller (the toggle press) has no native
-      // instance id — every visual-active instance (there is one active search map).
-      let targetIds: [String] =
-        (payload["instanceId"] as? String).map { [$0] } ?? Array(self.instances.keys)
-      for instanceId in targetIds {
-        self.applyInteractionFadeOut(instanceId: instanceId)
-      }
-      resolve(nil)
-    }
-  }
-
-  private func applyInteractionFadeOut(instanceId: String) {
-    guard var state = instances[instanceId] else {
-      Self.lodLog("[FADEDBG] applyInteractionFadeOut SKIP no-instance \(instanceId)")
-      return
-    }
-    let inactive = Self.isVisualSourceInactiveOrDismissing(state)
-    Self.lodLog(
-      "[FADEDBG] applyInteractionFadeOut \(instanceId) from=\(Self.round3(state.currentPresentationOpacityValue)) inactive=\(inactive)")
-    guard !inactive,
-          state.currentPresentationOpacityValue > 0.001
-    else { return } // inactive/dismissing or already faded — idempotent no-op
-    if var engine = state.lodV5Engine {
-      engine.snapSettled(nowMs: Self.nowMs())
-      state.lodV5Engine = engine
-      instances[instanceId] = state
-    }
-    state.interactionFadeHoldActive = true
-    instances[instanceId] = state
-    do {
-      try animatePresentationOpacity(
-        to: 0,
-        for: &state,
-        instanceId: instanceId,
-        reason: "interaction_fade_out"
-      )
-    } catch {
-      emitVisualDiag(
-        instanceId: instanceId,
-        message: "interaction_fade_out_failed: \(error.localizedDescription)"
-      )
     }
   }
 
@@ -2952,8 +2889,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.blockedPresentationSettleKind = nil
       state.blockedPresentationCommitFenceStartedAtMs = nil
       if let revealRequestKey {
-        // The enter machine takes presentation ownership — the interaction-fade hold ends here.
-        state.interactionFadeHoldActive = false
         self.beginRevealVisualLifecycle(
           instanceId: instanceId,
           state: &state,
@@ -3072,8 +3007,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.blockedPresentationCommitFenceBySourceId.removeAll()
       state.lastDismissRequestKey = dismissRequestKey
       if let dismissRequestKey {
-        // A dismiss supersedes any in-flight interaction fade (both end at 0).
-        state.interactionFadeHoldActive = false
         self.beginDismissVisualLifecycle(instanceId: instanceId, state: &state)
         self.instances[instanceId] = state
         let opacityStartedAt = CACurrentMediaTime() * 1000
@@ -3200,13 +3133,57 @@ final class SearchMapRenderController: RCTEventEmitter {
         "startedAtMs": startedAtMs,
       ])
     }
-    // INTERACTION-FADE HOLD (S4d-3b): a pure LEVEL — held while desired ≠ presented, lifted
-    // only when an enter or dismiss takes presentation ownership (or on teardown). The old
-    // 1500ms wall-clock expiry self-heal is DELETED: it never fired in any instrumented run,
-    // and an interaction that truly never hands off is a JS contract bug that must stay
-    // VISIBLE (map stays faded) rather than be silently healed.
-    if previousPresentationBatchPhase != "idle", state.lastPresentationBatchPhase == "idle",
-       !state.interactionFadeHoldActive {
+    // INTERACTION FADE (S4d completion): opacity is a pure function of the WIRE. The
+    // 'interaction' phase (the transport's interaction cover level, asserted at press-up)
+    // holds the map ramp down; the level returning to 'live' on the same presented world
+    // restores it. Every episode ending restores by this rule — a new world's enter (the
+    // ramp starts from current opacity), a dismiss, or a failed/canceled commit clearing
+    // the cover — so "map stuck dark" is unrepresentable. The old beginInteractionFadeOut
+    // side-channel verb and its interactionFadeHoldActive flag are DELETED.
+    if state.lastPresentationBatchPhase == "interaction",
+       !Self.isVisualSourceInactiveOrDismissing(state),
+       state.lastDismissRequestKey == nil,
+       state.currentPresentationOpacityTarget > 0.001 {
+      if var engine = state.lodV5Engine {
+        engine.snapSettled(nowMs: Self.nowMs())
+        state.lodV5Engine = engine
+      }
+      self.instances[instanceId] = state
+      let fadeStartedAt = CACurrentMediaTime() * 1000
+      try self.animatePresentationOpacity(
+        to: 0,
+        for: &state,
+        instanceId: instanceId,
+        reason: "interaction_fade_out"
+      )
+      self.recordNativeApply(
+        section: "presentation.interaction_fade_out",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - fadeStartedAt
+      )
+    }
+    if state.lastPresentationBatchPhase == "live",
+       state.visualSourceLifecycleState == .visible,
+       state.currentWorldId == nil,
+       state.lastDismissRequestKey == nil,
+       state.currentPresentationOpacityTarget <= 0.001 {
+      // The interaction level cleared without a new world (represent-noop, failed or
+      // canceled commit): re-ramp the CURRENT world back in from wherever the fade left it.
+      self.instances[instanceId] = state
+      let restoreStartedAt = CACurrentMediaTime() * 1000
+      try self.animatePresentationOpacity(
+        to: 1,
+        for: &state,
+        instanceId: instanceId,
+        reason: "interaction_fade_restore"
+      )
+      self.recordNativeApply(
+        section: "presentation.interaction_fade_restore",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - restoreStartedAt
+      )
+    }
+    if previousPresentationBatchPhase != "idle", state.lastPresentationBatchPhase == "idle" {
       state.currentPresentationRenderPhase = "live"
       let idleOpacityTarget = state.keepSourcesHiddenUntilEnter ? 0.0 : 1.0
       if state.currentPresentationOpacityTarget != idleOpacityTarget {
@@ -3635,7 +3612,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.interactionMode = "enabled"
       state.currentPresentationOpacityTarget = 1
       state.currentPresentationOpacityValue = 1
-      state.interactionFadeHoldActive = false
       state.nextSourceCommitSequence = 0
       state.pendingPresentationSettleRequestKey = nil
       state.pendingPresentationSettleKind = nil

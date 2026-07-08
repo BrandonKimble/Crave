@@ -34,6 +34,7 @@ export type SearchRuntimeMapPresentationPhase =
   | 'entering'
   | 'live'
   | 'exit_preroll'
+  | 'interaction'
   | 'exiting';
 
 export const isSearchRuntimeMapPresentationPending = (
