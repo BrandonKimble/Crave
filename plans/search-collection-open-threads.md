@@ -1,3 +1,9 @@
+> **STATUS 2026-07-07: ~95% EXECUTED — read memory/ledger, not this doc, for truth.**
+> Threads A/A2/A3/B/C/D/E/F all BUILT+committed; G validated on real slices (full-corpus
+> re-check lives in product/pre-launch.md). food_aliases (E) was later DELETED in favor of the
+> offline dish-knowledge pass (see memory: ingredient-feature). Remaining launch-relevant items
+> moved to product/pre-launch.md + product/launch-runbook.md. Kept for design rationale only.
+
 # Search + Collection — Open Threads (backlog & pickup plan)
 
 **Provenance.** This gathers everything we touched but did **not** finish across the
