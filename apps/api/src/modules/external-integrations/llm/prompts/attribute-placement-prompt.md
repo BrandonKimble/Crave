@@ -96,6 +96,6 @@ A plausible, reusable attribute is `new`, not `reject` — but apply the bar abo
 
 ## Output
 
-Return JSON only: `{ "decision": "match" | "new" | "reject", "candidate_id": <id or null>,
-"reason": "<short justification>" }`. `candidate_id` is the matched candidate's id for
-`match`, otherwise null.
+Return JSON only, matching the enforced output schema. `candidate_id` is the
+matched candidate's id for `match`, otherwise null. If the schema requests a
+`reason`, keep it to a short justification.

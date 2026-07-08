@@ -58,7 +58,7 @@ usually call `discussion` anyway).
 
 ## Output
 
-JSON only:
-`{ "mode": "ranked"|"discussion", "confidence": <0..1>, "axis": <object or null>, "reason": "<short>" }`.
+JSON only, matching the enforced output schema (`mode`, `confidence`, `axis`;
+a short `reason` only if the schema requests it).
 The axis object is
 `{ "target_type": "dish"|"restaurant", "constraint": {"kind": "...","value": "..."}|null, "anchor": <string|null>, "market_hint": <string|null> }`.

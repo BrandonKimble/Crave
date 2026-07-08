@@ -78,6 +78,6 @@ name differs and it is not an obvious variant, choose `new`.
 
 ## Output
 
-Return JSON only: `{ "decision": "match" | "new", "candidate_id": <id or null>,
-"reason": "<short justification>" }`. `candidate_id` is the matched candidate's id for
-`match`, otherwise null.
+Return JSON only, matching the enforced output schema. `candidate_id` is the
+matched candidate's id for `match`, otherwise null. If the schema requests a
+`reason`, keep it to a short justification.
