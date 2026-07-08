@@ -47,10 +47,10 @@ async function jobControl() {
     console.log('  status   - Show current job status and settings');
     console.log('  clear    - Clear all queued jobs (emergency stop)');
     console.log(
-      '  enable   - Enable background jobs (set TEST_COLLECTION_JOBS_ENABLED=true)',
+      '  enable   - Enable background jobs (set COLLECTION_JOBS_ENABLED=true)',
     );
     console.log(
-      '  disable  - Disable background jobs (set TEST_COLLECTION_JOBS_ENABLED=false)',
+      '  disable  - Disable background jobs (set COLLECTION_JOBS_ENABLED=false)',
     );
     return;
   }
@@ -89,14 +89,14 @@ async function showStatus(redis: Redis) {
 
   // Check environment setting
   const jobsEnabled =
-    process.env.TEST_COLLECTION_JOBS_ENABLED?.toLowerCase() === 'true';
+    process.env.COLLECTION_JOBS_ENABLED?.toLowerCase() === 'true';
   console.log(
-    `🔧 Environment Setting: TEST_COLLECTION_JOBS_ENABLED=${
-      process.env.TEST_COLLECTION_JOBS_ENABLED || 'true'
+    `🔧 Environment Setting: COLLECTION_JOBS_ENABLED=${
+      process.env.COLLECTION_JOBS_ENABLED || 'true'
     } (${jobsEnabled ? 'ENABLED' : 'DISABLED'})`,
   );
   console.log(
-    `   ↳ This flag now gates both the chronological scheduler (COLLECTION_SCHEDULER_ENABLED) and keyword auto-execution (KEYWORD_SEARCH_ENABLED).`,
+    `   ↳ Collection cadence is planned by CollectionSchedulerService (COLLECTION_SCHEDULER_ENABLED); this flag additionally gates job dispatch.`,
   );
   console.log(`\n🧭 REDIS PREFIXES:`);
   console.log(`   - Bull prefix: ${bullPrefix}`);
@@ -334,17 +334,17 @@ async function toggleJobs(enable: boolean) {
   const envPath = path.join(__dirname, '.env');
   let envContent = fs.readFileSync(envPath, 'utf8');
 
-  if (envContent.includes('TEST_COLLECTION_JOBS_ENABLED=')) {
+  if (envContent.includes('COLLECTION_JOBS_ENABLED=')) {
     envContent = envContent.replace(
-      /TEST_COLLECTION_JOBS_ENABLED=.*/,
-      `TEST_COLLECTION_JOBS_ENABLED=${enable}`,
+      /COLLECTION_JOBS_ENABLED=.*/,
+      `COLLECTION_JOBS_ENABLED=${enable}`,
     );
   } else {
-    envContent += `\nTEST_COLLECTION_JOBS_ENABLED=${enable}\n`;
+    envContent += `\nCOLLECTION_JOBS_ENABLED=${enable}\n`;
   }
 
   fs.writeFileSync(envPath, envContent);
-  console.log(`✅ Updated .env: TEST_COLLECTION_JOBS_ENABLED=${enable}`);
+  console.log(`✅ Updated .env: COLLECTION_JOBS_ENABLED=${enable}`);
   console.log(`   Restart the application for changes to take effect`);
 
   if (!enable) {

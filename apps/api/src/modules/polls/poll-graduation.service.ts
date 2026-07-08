@@ -115,13 +115,24 @@ export class PollGraduationService implements OnModuleInit {
         where: { jobId: pendingJobId },
         select: { status: true },
       });
-      if (job && job.status !== 'failed') {
+      // Still live (pending/submitted/succeeded/ingesting) — wait. Two states
+      // mean the job will never graduate this poll and we must retry:
+      // 'failed' (job-level failure), and 'ingested' while we are still here
+      // ungraduated — ingest runs the graduation completion handler BEFORE
+      // the job flips to 'ingested', so reaching this line with an ingested
+      // job means the run failed (e.g. chunk failures) or the handler was
+      // skipped; without this the poll wedges forever.
+      if (job && job.status !== 'failed' && job.status !== 'ingested') {
         return;
       }
-      this.logger.warn('Pending graduation batch job failed — retrying', {
-        pollId,
-        batchJobId: pendingJobId,
-      });
+      this.logger.warn(
+        'Pending graduation batch job terminal without graduating — retrying',
+        {
+          pollId,
+          batchJobId: pendingJobId,
+          jobStatus: job?.status ?? 'missing',
+        },
+      );
     }
     if (poll.state !== PollState.active && poll.state !== PollState.closed) {
       // draft / scheduled / archived never graduate.

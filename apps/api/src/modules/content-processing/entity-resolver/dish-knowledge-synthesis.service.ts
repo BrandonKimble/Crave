@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { EntityStatus, EntityType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
+import { isWorkerRuntime } from '../../../shared/utils/process-role';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 
 export interface DishKnowledgeSummary {
@@ -45,6 +46,9 @@ export class DishKnowledgeSynthesisService {
   @Cron(CronExpression.EVERY_DAY_AT_5AM)
   async nightlyPass(): Promise<void> {
     if (process.env.DISH_KNOWLEDGE_SYNTHESIS_ENABLED !== 'true') return;
+    // cronInFlight is per-process; without the runtime gate every dyno
+    // (web + worker) fires at 5AM and races the same unsynthesized rows.
+    if (!isWorkerRuntime()) return;
     if (this.cronInFlight) return;
     this.cronInFlight = true;
     try {

@@ -1,7 +1,6 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
-import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
 import { ChronologicalCollectionJobData } from './chronological-collection.worker';
 import { ScheduledCollectionExceptionFactory } from '../scheduled-collection.exceptions';
@@ -28,10 +27,13 @@ interface ChronologicalJobOptions {
 @Injectable()
 export class CollectionJobSchedulerService implements OnModuleInit {
   private logger!: LoggerService;
-  private readonly enabled: boolean;
 
   private readonly JOB_OPTIONS: ChronologicalJobOptions = {
-    removeOnComplete: 10, // Keep last 10 completed jobs
+    // Wide completed window: tick jobIds are deterministic, and the lingering
+    // completed job is the dedupe that makes a re-dispatch of the same tick
+    // (row-advance failure / second instance) a no-op. 10 was small enough to
+    // evict within a cycle at fleet scale.
+    removeOnComplete: 100,
     removeOnFail: 20, // Keep last 20 failed jobs for debugging
     attempts: 3,
     backoff: {
@@ -43,17 +45,11 @@ export class CollectionJobSchedulerService implements OnModuleInit {
   constructor(
     @InjectQueue('chronological-collection')
     private readonly chronologicalQueue: Queue,
-    @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
-  ) {
-    this.enabled = this.resolveEnabled();
-  }
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('CollectionJobScheduler');
-    if (!this.enabled) {
-      this.logger.warn('Chronological collection dispatch is disabled');
-    }
   }
 
   /**
@@ -144,36 +140,5 @@ export class CollectionJobSchedulerService implements OnModuleInit {
         errorMessage,
       );
     }
-  }
-
-  private buildImmediateJobId(
-    subreddit: string,
-    lastProcessedAt: Date | null,
-  ): string {
-    const subredditKey = subreddit.trim().toLowerCase();
-    const cycleKey = lastProcessedAt
-      ? String(lastProcessedAt.getTime())
-      : 'never';
-    return `chronological-now:${subredditKey}:${cycleKey}`;
-  }
-
-  private resolveEnabled(): boolean {
-    const enabledRaw =
-      this.configService.get<string>('COLLECTION_SCHEDULER_ENABLED') ??
-      process.env.COLLECTION_SCHEDULER_ENABLED;
-    const enabled =
-      typeof enabledRaw === 'string'
-        ? enabledRaw.toLowerCase() === 'true'
-        : true;
-
-    const jobsEnabledRaw =
-      this.configService.get<string>('COLLECTION_JOBS_ENABLED') ??
-      process.env.COLLECTION_JOBS_ENABLED;
-    const jobsEnabled =
-      typeof jobsEnabledRaw === 'string'
-        ? jobsEnabledRaw.toLowerCase() === 'true'
-        : true;
-
-    return enabled && jobsEnabled;
   }
 }

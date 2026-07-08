@@ -1199,7 +1199,11 @@ export class KeywordSearchOrchestratorService {
     await this.keywordSearchQueue.add('run-keyword-search', payload, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 },
-      removeOnComplete: true,
+      // Keep a window of completed jobs: scheduled jobIds are deterministic
+      // per cadence tick, so a dispatch whose row-advance failed re-adds the
+      // SAME id next cycle — the lingering completed job is what makes that
+      // re-add a no-op instead of a duplicate collection.
+      removeOnComplete: 100,
       // Failed jobs must not squat on stable jobIds (hot-spike slugs are
       // deterministic) — Bull silently no-ops an add() whose jobId is still
       // in the failed set, permanently blocking that market::term. The

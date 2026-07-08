@@ -175,10 +175,12 @@ export class RestaurantJanitorService {
     // changed; enrichRestaurantById follows movedPlaceId internally).
     const moved = await this.prisma.restaurantLocation.findMany({
       where: { movedPlaceId: { not: null } },
-      select: { restaurantId: true },
+      select: { locationId: true, restaurantId: true },
       distinct: ['restaurantId'],
-      // Rotate: a retried-and-failed row's updatedAt advances on the attempt,
-      // sending it to the back so later rows don't starve under the cap.
+      // Rotate under the cap: oldest-attempted first, and we stamp the row
+      // below after EVERY attempt (success rewrites the location; failure
+      // paths never touch it — without the stamp the same failing rows
+      // re-pin the window weekly and later rows starve).
       orderBy: { updatedAt: 'asc' },
       take: retryLimit,
     });
@@ -190,6 +192,11 @@ export class RestaurantJanitorService {
         );
         if (result.status === 'updated') {
           summary.reEnrichedMoved += 1;
+        } else {
+          await this.prisma.restaurantLocation.update({
+            where: { locationId: row.locationId },
+            data: { updatedAt: new Date() },
+          });
         }
       }
     } else {

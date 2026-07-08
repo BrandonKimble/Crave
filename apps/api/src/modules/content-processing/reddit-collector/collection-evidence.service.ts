@@ -257,7 +257,8 @@ export class CollectionEvidenceService implements OnModuleInit {
   @Cron(CronExpression.EVERY_HOUR)
   async reconcileStaleRuns(): Promise<void> {
     const parsedHorizon = Number(process.env.COLLECTION_RUN_STALE_HOURS ?? 30);
-    const horizonHours = Number.isFinite(parsedHorizon) ? parsedHorizon : 30;
+    const horizonHours =
+      Number.isFinite(parsedHorizon) && parsedHorizon > 0 ? parsedHorizon : 30;
     await this.reconcileStaleBatchJobs(horizonHours);
     const stale = await this.prismaService.$queryRaw<
       { extraction_run_id: string; collection_run_id: string | null }[]
@@ -275,10 +276,17 @@ export class CollectionEvidenceService implements OnModuleInit {
     `);
     if (!stale.length) return;
     for (const run of stale) {
-      await this.markExtractionRunFailed(
-        run.extraction_run_id,
-        `stale: still running after ${horizonHours}h with no live batch job`,
-      );
+      try {
+        await this.markExtractionRunFailed(
+          run.extraction_run_id,
+          `stale: still running after ${horizonHours}h with no live batch job`,
+        );
+      } catch (error) {
+        this.logger.error('Failed to reconcile one stale extraction run', {
+          extractionRunId: run.extraction_run_id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
     this.logger.warn('Reconciled stale extraction runs to failed', {
       count: stale.length,
@@ -301,24 +309,57 @@ export class CollectionEvidenceService implements OnModuleInit {
       FROM llm_batch_jobs j
       WHERE j.status IN ('pending', 'submitted', 'succeeded', 'ingesting')
         AND COALESCE(j.submitted_at, j.created_at) < now() - (${horizonHours} * interval '1 hour')
+      ORDER BY COALESCE(j.submitted_at, j.created_at) ASC
       LIMIT 200
     `);
     if (!stale.length) return;
+    if (stale.length === 200) {
+      this.logger.warn('Stale batch-job sweep hit its 200-row cap', {
+        horizonHours,
+      });
+    }
     const errorMessage = `stale: exceeded ${horizonHours}h horizon with no terminal state`;
-    await this.prismaService.llmBatchJob.updateMany({
-      where: { jobId: { in: stale.map((job) => job.job_id) } },
-      data: { status: 'failed', error: errorMessage, completedAt: new Date() },
-    });
+    const failedJobIds: string[] = [];
     for (const job of stale) {
-      if (job.extraction_run_id) {
-        await this.markExtractionRunFailed(job.extraction_run_id, errorMessage);
+      try {
+        // CAS on the same non-terminal statuses the SELECT matched: the
+        // 5-min poller may have claimed/ingested this job since — never
+        // stomp a job that progressed to a terminal state.
+        const claimed = await this.prismaService.llmBatchJob.updateMany({
+          where: {
+            jobId: job.job_id,
+            status: { in: ['pending', 'submitted', 'succeeded', 'ingesting'] },
+          },
+          data: {
+            status: 'failed',
+            error: errorMessage,
+            completedAt: new Date(),
+          },
+        });
+        if (claimed.count === 0) continue; // progressed since SELECT
+        failedJobIds.push(job.job_id);
+        if (job.extraction_run_id) {
+          await this.markExtractionRunFailed(
+            job.extraction_run_id,
+            errorMessage,
+          );
+        }
+      } catch (error) {
+        // One bad job (e.g. its run row deleted) must not abort the sweep —
+        // or the stale-RUN pass below it silently skips this hour.
+        this.logger.error('Failed to reconcile one stale batch job', {
+          jobId: job.job_id,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
-    this.logger.warn('Reconciled stale batch jobs to failed', {
-      count: stale.length,
-      horizonHours,
-      jobIds: stale.map((job) => job.job_id),
-    });
+    if (failedJobIds.length) {
+      this.logger.warn('Reconciled stale batch jobs to failed', {
+        count: failedJobIds.length,
+        horizonHours,
+        jobIds: failedJobIds,
+      });
+    }
   }
 
   async markExtractionRunFailed(

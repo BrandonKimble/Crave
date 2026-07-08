@@ -612,7 +612,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     if (subBatchFailures.length) {
       throw new Error(
-        `${subBatchFailures.length}/${batchCount} sub-batches failed (re-collection is idempotent — rerun to fill the gap): ${subBatchFailures
+        `${subBatchFailures.length}/${batchCount} sub-batches failed (transient failures refill on rerun; a DETERMINISTIC per-mention crash repeats until code-fixed — see mention keys): ${subBatchFailures
           .slice(0, 3)
           .join('; ')}`,
       );
