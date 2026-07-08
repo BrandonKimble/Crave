@@ -222,7 +222,10 @@ export class ExtractionPipelineService implements OnModuleInit {
   ): Promise<ExtractionPipelineResult> {
     // Universal relevance gate: cheap title+body admission BEFORE anything is
     // persisted, chunked, or billed at extraction rates. Fail-open inside.
-    if (this.relevanceGateEnabled) {
+    // Poll threads are exempt: the gate filters UNCURATED external content,
+    // and poll threads are first-party food-framed questions — gating them is
+    // a wasted call plus a silent-drop risk with no upside.
+    if (this.relevanceGateEnabled && params.pipeline !== 'poll-thread') {
       const gated = await this.relevanceGate.filterPosts(
         params.platform ?? 'reddit',
         params.llmPosts,
@@ -331,7 +334,10 @@ export class ExtractionPipelineService implements OnModuleInit {
           },
         });
 
-      if (this.collectionLlmMode === 'batch') {
+      const llmModeForRun = params.baseParams.llmMode ?? this.collectionLlmMode;
+      // Zero chunks (e.g. the relevance gate dropped every post) completes
+      // inline in EITHER mode — a batch job cannot be submitted with no items.
+      if (llmModeForRun === 'batch' && params.chunkData.chunks.length > 0) {
         return await this.deferChunkPlanToBatch(params, extractionRunId);
       }
 
