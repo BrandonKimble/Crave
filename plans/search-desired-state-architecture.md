@@ -360,11 +360,23 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     level-triggered drain point, and attach preserves the data plane + re-arms the
     reproject. On-rig: pins+labels+dots reveal after dismiss→resubmit; toggle lanes
     unregressed.
-  - **Next: S4d proper** — native (worldId, phase) + ack-everything, ONE commit:
-    delete dismiss-in-progress bypass + content dedupe + hold/heal timers +
-    request-key registers; collision flips at fade START both directions w/ declared
-    min-dwell (owner-eyeball acceptance). Then S4e (legacy bus-key deletion via
-    tuple selectors).
+  - **S4d-1 SHIPPED (e6770392): collision flips at fade START, both directions**
+    (owner directive). The basemap-facing collision-twin wakes at the reveal RAMP
+    START (not preroll — a slow resolution no longer suppresses the basemap early)
+    and dorms at the dismiss RAMP START (not exit settle — the basemap crossfades
+    back during our fade-out). Obstacle layers stay preroll-seated (internal
+    yielding). Crossfade FEEL = owner eyeball. Min-dwell deferred (twin flips only
+    on session enter/exit; toggles ride the interaction fade).
+  - **S4d-2 SHIPPED: `presentation_fade_out_acked`** at the ramp floor, mach-clocked
+    — the statechart's covering-exit input (riskiest coupling #2). Fires for both
+    regimes on-rig (interaction_fade_out + dismiss_start). JS log-only until consumed.
+  - **Next: S4d-3** — the ONE-commit hold-regime swap: delete dismiss-in-progress
+    bypass + JSON same-state dedupe + hold/heal timers (dismissSettleWorkItems /
+    dismissFrameFallbackWorkItems / dismissSettleDelayMs / interactionFadeHold
+    expiry) + collapse the lastEnter\*/lastDismiss registers into (currentWorldId,
+    currentPhase); JS sends phases explicitly ((worldId, phase) payload replaces
+    the five request keys); retarget algebra = any new worldId re-ramps from
+    current opacity. Then S4e (legacy bus-key deletion via tuple selectors).
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
