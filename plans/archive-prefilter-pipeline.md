@@ -115,15 +115,28 @@ delta, and a false-drop audit (sample 30 dropped posts, eyeball). Ledger
 prices the gate itself. Only then wire Stage 1 into processPosts for all
 collection types.
 
-## Build order
+## Build order — ALL FOUR STEPS BUILT (2026-07-07)
 
-1. Stage-0 gates in the loader (window + structural) + multi-subreddit
-   onboarding + `--dark`.
-2. Sampling pass → relevance prompt drafted from real observations → labeled
-   replay (precision/recall).
-3. RelevanceGateService + verdict table + processPosts wiring (universal),
-   flag-gated `COLLECTION_RELEVANCE_GATE=off|archive|all` for staged rollout.
-4. Measurement run on Austin (+1 travel +1 city sub) → owner eyeball → lock.
+1. ✅ Stage-0 gates (8717e12f): austinfood 3y = 12,977 posts / 409k comments
+   survive (-45% posts vs full archive).
+2. ✅ Relevance prompt, grounded + calibrated (dbdd18b4): 130-post labeled
+   corpus, keep-recall 1.000 / precision 0.869; harness scripts/relevance-gate/.
+3. ✅ RelevanceGateService + collection_relevance_verdicts + processPosts
+   wiring (b85915f8); COLLECTION_RELEVANCE_GATE=off|archive|all (default off);
+   verdict cache proven (fromCache on re-run).
+4. ✅ Measurement (2,000-post samples/sub, scripts/relevance-gate/
+   measurement-report.json; gate cost for all 6k posts: 241 calls / 905k in /
+   177k out ≈ $0.15):
+   - austinfood: keep 94.3%, token savings 6.6% — dedicated food subs are
+     already dense; the gate is cheap insurance there
+   - JapanTravel: keep 56.7%, token savings 41.1%
+   - Atlanta: keep 28.5%, token savings 70.1% — city subs go from unloadable
+     to cheap; drop audits read clean (chess classes, transit news, medical)
+   - One borderline drop seen in 90 audited: a Kyoto itinerary mentioning
+     Nishiki Market without a food ask — acceptable at fail-open calibration
+     OWNER EYEBALL of the drop audits = the lock gate before flipping
+     COLLECTION_RELEVANCE_GATE=archive for the Austin load, then =all after the
+     load proves it.
 
 ## Dependencies / notes
 
