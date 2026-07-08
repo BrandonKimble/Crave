@@ -1,22 +1,15 @@
 import { Process, Processor, InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
 import { OnModuleInit, Inject } from '@nestjs/common';
-import { ModuleRef } from '@nestjs/core';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { RedditService } from '../../../external-integrations/reddit/reddit.service';
-import { CollectionJobSchedulerService } from './collection-job-scheduler.service';
 import { BatchJob } from '../batch-processing-queue.types';
 
 export interface ChronologicalCollectionJobData {
   subreddit: string; // Changed from subreddits array to single subreddit
   jobId: string;
-  triggeredBy:
-    | 'scheduled'
-    | 'manual'
-    | 'gap_detection'
-    | 'startup_due'
-    | 'delayed_schedule';
+  triggeredBy: 'scheduled' | 'manual' | 'gap_detection';
   options?: {
     lastProcessedTimestamp?: number;
     limit?: number;
@@ -91,7 +84,6 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       : 25; // Default batch size
 
   constructor(
-    private readonly moduleRef: ModuleRef,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RedditService) private readonly redditService: RedditService,
@@ -334,20 +326,11 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
             ),
           },
         );
-
-        // Schedule next collection using event-driven approach
-        const collectionJobScheduler = await this.moduleRef.resolve(
-          CollectionJobSchedulerService,
-        );
-        await collectionJobScheduler.scheduleNextCollection(subreddit);
       }
 
-      // Update scheduling based on observed posting volume
-      this.updateSchedulingFromResults(
-        subreddit,
-        posts.length,
-        latestTimestamp - (effectiveLastProcessed || 0),
-      );
+      // Cadence is owned solely by CollectionSchedulerService
+      // (collection_schedules rows) — the worker must NOT self-schedule a
+      // successor job, or two planners run in parallel and double-collect.
 
       const result: ChronologicalCollectionJobResult = {
         success: true,
@@ -445,25 +428,6 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
     }
 
     return Number.isFinite(post.created_utc) ? post.created_utc : null;
-  }
-
-  /**
-   * Update scheduling configurations based on collection results
-   * Volume tracking is now handled by database updates
-   * Scheduling is handled by the CollectionJobSchedulerService via delayed jobs
-   */
-  private updateSchedulingFromResults(
-    subredditName: string,
-    postsCollected: number,
-    timeSpanSeconds: number,
-  ): void {
-    // Placeholder for future volume tracking enhancements
-    // Current implementation relies on CollectionJobSchedulerService
-    this.logger.debug('Scheduling update completed', {
-      subreddit: subredditName,
-      postsCollected,
-      timeSpanSeconds,
-    });
   }
 
   private resolveTestFetchLimit(): number {

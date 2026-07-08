@@ -20,24 +20,6 @@ import type {
   KeywordSearchTerm,
 } from './keyword-search-orchestrator.service';
 
-export interface KeywordSearchConfig {
-  enabled: boolean;
-  intervalDays: number;
-}
-
-export interface KeywordSearchSchedule {
-  subreddit: string;
-  collectableMarketKey: string;
-  safeIntervalDays: number;
-  scheduledDate: Date;
-  terms: KeywordSearchTerm[];
-  sortPlan: KeywordSearchSortPlan[];
-  lastTopRelevanceRunAt?: Date;
-  status: 'pending' | 'scheduled' | 'completed' | 'failed';
-  lastRun?: Date;
-  nextRun: Date;
-}
-
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const HOT_SPIKE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const HOT_SPIKE_LOOKBACK_MS = HOT_SPIKE_WINDOW_MS * 8;
@@ -88,28 +70,19 @@ interface HotSpikeScoredCandidate extends HotSpikeKeywordCandidate {
 }
 
 /**
- * Keyword Search Scheduler Service
+ * Keyword planning PROVIDER (not a scheduler — cadence is owned by
+ * CollectionSchedulerService via collection_schedules rows).
  *
- * Implements keyword collection cycles with offset timing and demand-aware
- * priority scoring. Handles targeted historical enrichment for specific terms
- * across all timeframes to fill gaps in chronological collection.
- *
- * Key responsibilities:
- * - Calculate keyword collection priority from recency, quality, and user demand
- * - Schedule keyword searches with proper offset from chronological collection
- * - Select top terms using the keyword collection priority planner
- * - Coordinate with chronological collection to distribute API usage
- * - Handle entity type coverage (restaurants, food, attributes)
- * - Track enrichment history and effectiveness
+ * Provides:
+ * - buildScheduleForCommunity: term selection + sort plan for a due keyword
+ *   cadence row (demand-aware priority via slice selection)
+ * - findHotSpikeCandidates: on-demand spike scoring across enabled keyword
+ *   markets
+ * - recordTopRelevanceRun: durable heavy-sort stamp on the cadence row
  */
 @Injectable()
 export class KeywordSearchSchedulerService implements OnModuleInit {
   private logger!: LoggerService;
-  private config!: KeywordSearchConfig;
-  private readonly DEFAULT_CONFIG: KeywordSearchConfig = {
-    enabled: true,
-    intervalDays: 1,
-  };
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
@@ -122,7 +95,6 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('KeywordSearchScheduler');
-    this.config = this.loadConfiguration();
   }
 
   private buildSortPlan(params: {
@@ -187,10 +159,6 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
 
   async findHotSpikeCandidates(): Promise<HotSpikeKeywordCandidate[]> {
     const correlationId = CorrelationUtils.generateCorrelationId();
-
-    if (!this.config.enabled) {
-      return [];
-    }
 
     const now = new Date();
     const sinceLookback = new Date(now.getTime() - HOT_SPIKE_LOOKBACK_MS);
@@ -682,14 +650,6 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     );
   }
 
-  isEnabled(): boolean {
-    return this.config.enabled;
-  }
-
-  getConfig(): KeywordSearchConfig {
-    return { ...this.config };
-  }
-
   /** Durable: stamp the community's keyword cadence row so future runs skip
    *  heavy sorts recently covered by a hot-spike job. */
   async recordTopRelevanceRun(
@@ -749,58 +709,5 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       });
       throw error;
     }
-  }
-
-  /**
-   * Load configuration from environment/config service
-   */
-  private loadConfiguration(): KeywordSearchConfig {
-    const enabledRaw = this.configService.get<string>('KEYWORD_SEARCH_ENABLED');
-    const enabled = enabledRaw
-      ? enabledRaw.toLowerCase() === 'true'
-      : this.DEFAULT_CONFIG.enabled;
-
-    const intervalDays = this.parseNumberEnv(
-      'KEYWORD_SEARCH_INTERVAL_DAYS',
-      this.DEFAULT_CONFIG.intervalDays,
-    );
-
-    return {
-      enabled,
-      intervalDays,
-    };
-  }
-
-  private parseNumberEnv(key: string, fallback: number): number {
-    const raw = this.configService.get<string>(key);
-    if (!raw) {
-      return fallback;
-    }
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
-
-  private async loadActiveScheduleTargets(): Promise<
-    Array<{ subreddit: string; collectableMarketKey: string }>
-  > {
-    const targets = await this.marketRegistry.listCommunityMarketTargets({
-      onlyCollectable: true,
-    });
-
-    return targets.map((target) => ({
-      subreddit: target.community,
-      collectableMarketKey: target.marketKey,
-    }));
-  }
-
-  private buildCollectionMarketKey(record: {
-    name: string;
-    marketKey: string | null;
-  }): string {
-    const rawKey =
-      typeof record.marketKey === 'string' && record.marketKey.trim()
-        ? record.marketKey
-        : record.name;
-    return rawKey.trim().toLowerCase();
   }
 }

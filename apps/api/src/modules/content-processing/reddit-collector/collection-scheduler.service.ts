@@ -1,6 +1,5 @@
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { CollectionJobSchedulerService } from './chronological/collection-job-scheduler.service';
@@ -42,7 +41,7 @@ export class CollectionSchedulerService implements OnModuleInit {
     private readonly keywordOrchestrator: KeywordSearchOrchestratorService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     this.logger = this.loggerService.setContext('CollectionScheduler');
     this.enabled =
       String(process.env.COLLECTION_SCHEDULER_ENABLED ?? '').toLowerCase() ===
@@ -51,6 +50,32 @@ export class CollectionSchedulerService implements OnModuleInit {
     if (Number.isFinite(budget) && budget > 0) {
       this.cycleBudget = budget;
     }
+    if (this.enabled) {
+      await this.ensureGlobalHotSpikeRow();
+    }
+  }
+
+  /** Hot-spike planning is market-wide, so its cadence lives on ONE global
+   *  row. Self-provisioned here — not in market onboarding — because it is
+   *  not per-community state; without this the workKind would exist only in
+   *  the type union and never run (type-list disease). */
+  private async ensureGlobalHotSpikeRow(): Promise<void> {
+    await this.prisma.collectionSchedule.upsert({
+      where: {
+        community_workKind: {
+          community: '__global__',
+          workKind: 'on_demand_hot_spike',
+        },
+      },
+      create: {
+        community: '__global__',
+        workKind: 'on_demand_hot_spike',
+        intervalDays: 1 / 24,
+        enabled: true,
+        nextDueAt: new Date(),
+      },
+      update: {},
+    });
   }
 
   @Cron(CronExpression.EVERY_10_MINUTES)
@@ -86,13 +111,27 @@ export class CollectionSchedulerService implements OnModuleInit {
     let deferred = 0;
     for (const row of due) {
       const kind = row.workKind as WorkKind;
-      const cost = KIND_COST[kind] ?? 2;
+      const cost = KIND_COST[kind];
+      if (cost === undefined) {
+        // A row kind the planner doesn't know must never silently route or
+        // advance — leave it due and scream every cycle until it's handled.
+        this.logger.error('Unknown workKind in collection_schedules', {
+          correlationId,
+          community: row.community,
+          workKind: row.workKind,
+        });
+        continue;
+      }
       if (cost > budget) {
         deferred += 1;
         continue; // stays due; next cycle picks it up — planned, not contending
       }
       try {
-        const metadataPatch = await this.dispatch(kind, row.community, row);
+        // Tick key = the row's due time: duplicate dispatches of the SAME
+        // tick (crash between enqueue and row-advance, second instance)
+        // collapse at Bull's jobId dedupe instead of double-collecting.
+        const tickKey = String(row.nextDueAt.getTime());
+        await this.dispatch(kind, row.community, row, tickKey);
         budget -= cost;
         dispatched += 1;
         await this.prisma.collectionSchedule.update({
@@ -108,9 +147,6 @@ export class CollectionSchedulerService implements OnModuleInit {
               Date.now() + row.intervalDays * 24 * 60 * 60 * 1000,
             ),
             updatedAt: new Date(),
-            ...(metadataPatch
-              ? { metadata: metadataPatch as Prisma.InputJsonValue }
-              : {}),
           },
         });
       } catch (error) {
@@ -140,12 +176,14 @@ export class CollectionSchedulerService implements OnModuleInit {
     kind: WorkKind,
     community: string,
     row: { metadata: unknown; intervalDays: number },
-  ): Promise<Record<string, unknown> | null> {
+    tickKey: string,
+  ): Promise<void> {
     if (kind === 'chronological') {
       await this.chronologicalScheduler.scheduleChronologicalCollection(
         community,
+        { dedupeKey: tickKey },
       );
-      return null;
+      return;
     }
     if (kind === 'keyword') {
       const metadata = (row.metadata ?? {}) as {
@@ -157,28 +195,30 @@ export class CollectionSchedulerService implements OnModuleInit {
           ? new Date(metadata.lastTopRelevanceRunAt)
           : null,
       );
+      if (!schedule.terms.length) {
+        // Legit outcome of slice selection (nothing due for this community);
+        // cadence still advances — this tick had nothing to collect.
+        this.logger.info('Keyword dispatch skipped: no terms due', {
+          community,
+        });
+        return;
+      }
+      // lastTopRelevanceRunAt is stamped by the WORKER after a successful
+      // heavy-sort run — the single writer. Stamping here at enqueue time
+      // would record intent as outcome.
       await this.keywordOrchestrator.enqueueKeywordSearchJob({
         cycleId: CorrelationUtils.generateCorrelationId(),
+        jobId: `scheduled-${community}-${tickKey}`,
         subreddit: community,
         collectableMarketKey: schedule.collectableMarketKey,
         safeIntervalDays: schedule.safeIntervalDays,
         sortPlan: schedule.sortPlan,
         terms: schedule.terms,
         source: 'scheduled',
-        trackCompletion: false,
       });
-      const ranHeavySort = schedule.sortPlan.some(
-        (entry) => entry.sort === 'relevance' || entry.sort === 'top',
-      );
-      return ranHeavySort
-        ? {
-            ...(row.metadata as Record<string, unknown>),
-            lastTopRelevanceRunAt: new Date().toISOString(),
-          }
-        : null;
+      return;
     }
     // on_demand_hot_spike (global row)
     await this.keywordOrchestrator.enqueueHotSpikeJobs();
-    return null;
   }
 }

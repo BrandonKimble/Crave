@@ -57,16 +57,17 @@ export class KeywordSearchJobWorker {
             { source, collectableMarketKey, safeIntervalDays, sortPlan },
           );
 
-          // trackCompletion retired: cadence advances in CollectionSchedulerService
-
-          // at dispatch time (collection_schedules rows).
-
+          // Cadence advances in CollectionSchedulerService at dispatch time
+          // (collection_schedules rows). lastTopRelevanceRunAt is stamped HERE,
+          // post-success, as the SINGLE writer — recording it at enqueue would
+          // record intent as outcome (a failed job would suppress heavy sorts
+          // for the full 60d window).
           const ranHeavySorts =
             sortPlan?.some(
               (entry) => entry.sort === 'top' || entry.sort === 'relevance',
             ) ?? false;
 
-          if (source === 'hot_spike' && ranHeavySorts) {
+          if (ranHeavySorts) {
             await this.keywordScheduler.recordTopRelevanceRun(
               subreddit,
               result.metadata.executionStartTime,

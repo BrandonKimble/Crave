@@ -349,16 +349,13 @@ export class RedditService implements OnModuleInit {
   }
 
   private shouldRequireCredentials(): boolean {
-    const collectionSchedulerEnabled =
+    // COLLECTION_SCHEDULER_ENABLED is the single collection switch
+    // (KEYWORD_SEARCH_ENABLED retired with the consolidated scheduler).
+    return (
       (this.configService.get<string>('COLLECTION_SCHEDULER_ENABLED') ||
         process.env.COLLECTION_SCHEDULER_ENABLED ||
-        '') === 'true';
-    const keywordSearchEnabled =
-      (this.configService.get<string>('KEYWORD_SEARCH_ENABLED') ||
-        process.env.KEYWORD_SEARCH_ENABLED ||
-        '') === 'true';
-
-    return collectionSchedulerEnabled || keywordSearchEnabled;
+        '') === 'true'
+    );
   }
 
   private validateConfig(): void {

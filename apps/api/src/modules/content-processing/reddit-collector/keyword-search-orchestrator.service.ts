@@ -15,7 +15,6 @@ import { KeywordSearchSchedulerService } from './keyword-search-scheduler.servic
 import { BatchJob } from './batch-processing-queue.types';
 import { ConfigService } from '@nestjs/config';
 import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
-import { ProcessingResult } from './unified-processing.types';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
 import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
 import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
@@ -51,8 +50,6 @@ export interface KeywordSearchTerm {
  */
 @Injectable()
 export class KeywordSearchOrchestratorService {
-  // Legacy field retained to avoid compile errors in deprecated methods retained below
-  private unifiedProcessing: UnifiedProcessingAdapter | null = null;
   private readonly keywordSearchLimit: number;
   private readonly keywordSearchSorts: KeywordSearchSort[];
   constructor(
@@ -1155,177 +1152,6 @@ export class KeywordSearchOrchestratorService {
     await this.safeUpdateQueueMetrics();
   }
 
-  /**
-   * Process search results through unified processing pipeline
-   * Routes Reddit search results to LLM processing and database updates
-   *
-   * @param results - Execution results object to populate
-   * @param correlationId - Correlation ID for logging
-   */
-  private async processSearchResults(
-    results: KeywordSearchExecutionResult,
-    correlationId: string,
-  ): Promise<void> {
-    const processingStartTime = Date.now();
-
-    this.logger.debug('Starting search results processing', {
-      correlationId,
-      operation: 'process_search_results',
-      searchResultCount: Object.keys(results.searchResults).length,
-    });
-
-    for (const [entityName, searchResult] of Object.entries(
-      results.searchResults,
-    )) {
-      try {
-        this.logger.debug(
-          `Processing search results for entity: ${entityName}`,
-          {
-            correlationId,
-            entityName,
-            postsFound: searchResult.posts.length,
-            commentsFound: searchResult.comments.length,
-          },
-        );
-
-        // Convert search results to unified processing format
-        const processingData = this.convertSearchResultToProcessingFormat(
-          entityName,
-          searchResult,
-        );
-
-        // Route through unified processing pipeline per PRD 5.1.2
-        const adapter = this.unifiedProcessing;
-        if (!adapter) {
-          this.logger.warn('Unified processing adapter not configured', {
-            correlationId,
-            entityName,
-            subreddit: searchResult.metadata.subreddit,
-          });
-
-          results.processingResults[entityName] = {
-            success: false,
-            error: 'Unified processing adapter not configured',
-            processingTime: 0,
-            entitiesProcessed: 0,
-            connectionsCreated: 0,
-          };
-
-          continue;
-        }
-
-        const processingResult: ProcessingResult =
-          await adapter.processUnifiedBatch(processingData);
-
-        results.processingResults[entityName] = {
-          success: true,
-          entitiesProcessed:
-            processingResult.entityResolution?.entitiesProcessed || 0,
-          connectionsCreated:
-            processingResult.databaseOperations?.connectionsCreated || 0,
-          processingTime: processingResult.processingTimeMs,
-        };
-
-        results.metadata.processedTerms += 1;
-
-        this.logger.debug(`Successfully processed entity: ${entityName}`, {
-          correlationId,
-          entityName,
-          entitiesResolved:
-            processingResult.entityResolution?.entitiesProcessed || 0,
-          connectionsCreated:
-            processingResult.databaseOperations?.connectionsCreated || 0,
-        });
-      } catch (entityError: unknown) {
-        const errorMessage =
-          entityError instanceof Error
-            ? entityError.message
-            : String(entityError);
-
-        results.processingResults[entityName] = {
-          success: false,
-          error: errorMessage,
-          processingTime: 0,
-          entitiesProcessed: 0,
-          connectionsCreated: 0,
-        };
-
-        results.metadata.processingErrors++;
-
-        this.logger.warn(`Failed to process entity: ${entityName}`, {
-          correlationId,
-          entityName,
-          error: {
-            message: errorMessage,
-            stack: entityError instanceof Error ? entityError.stack : undefined,
-          },
-        });
-      }
-    }
-
-    const processingDuration = Date.now() - processingStartTime;
-    results.performance.processingDuration = processingDuration;
-
-    this.logger.info('Search results processing completed', {
-      correlationId,
-      processingDuration,
-      processedTerms: results.metadata.processedTerms,
-      processingErrors: results.metadata.processingErrors,
-      totalSearchResults: Object.keys(results.searchResults).length,
-    });
-  }
-
-  /**
-   * Convert Reddit search results to unified processing format
-   *
-   * @param entityName - Entity name that was searched
-   * @param searchResult - Reddit search results
-   * @returns Unified processing input format
-   */
-  private convertSearchResultToProcessingFormat(
-    entityName: string,
-    searchResult: KeywordSearchResponse,
-  ): UnifiedProcessingPayload {
-    // Convert Reddit posts and comments to format expected by unified processing service
-    // This matches the format used by other data collection services
-    const posts = searchResult.posts.map((post) => ({
-      id: post.id,
-      title: post.title,
-      selftext: post.content ?? '',
-      author: post.author,
-      created_utc: Math.floor(post.createdAt.getTime() / 1000),
-      ups: post.upvotes,
-      num_comments: post.commentCount,
-      subreddit: post.subreddit,
-      permalink: post.url.replace('https://reddit.com', ''),
-      url: post.url,
-    }));
-
-    const comments = searchResult.comments.map((comment) => ({
-      id: comment.id,
-      body: comment.content,
-      author: comment.author,
-      created_utc: Math.floor(comment.createdAt.getTime() / 1000),
-      ups: comment.upvotes,
-      parent_id: comment.parentId ?? undefined,
-      permalink: comment.url.replace('https://reddit.com', ''),
-    }));
-
-    return {
-      source: 'keyword_search',
-      subreddit: searchResult.metadata.subreddit,
-      searchEntity: entityName,
-      timestamp: searchResult.metadata.searchTimestamp,
-      posts,
-      comments,
-      metadata: {
-        searchQuery: searchResult.metadata.searchQuery,
-        totalItems: posts.length + comments.length,
-        searchOptions: searchResult.metadata.searchOptions,
-      },
-    };
-  }
-
   /** PROVIDER for the consolidated CollectionScheduler: score + enqueue
    *  hot-spike on-demand jobs. Returns the number enqueued. */
   async enqueueHotSpikeJobs(): Promise<number> {
@@ -1361,7 +1187,6 @@ export class KeywordSearchOrchestratorService {
           },
         ],
         source: 'hot_spike',
-        trackCompletion: false,
       });
     }
     return candidates.length;
@@ -1375,7 +1200,11 @@ export class KeywordSearchOrchestratorService {
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 },
       removeOnComplete: true,
-      removeOnFail: false,
+      // Failed jobs must not squat on stable jobIds (hot-spike slugs are
+      // deterministic) — Bull silently no-ops an add() whose jobId is still
+      // in the failed set, permanently blocking that market::term. The
+      // worker's error log is the durable failure signal.
+      removeOnFail: true,
       jobId: data.jobId || `${data.source}-${data.subreddit}-${cycleId}`,
     });
 
@@ -1418,20 +1247,6 @@ export class KeywordSearchOrchestratorService {
     this.keywordSearchMetrics.recordQueueSnapshot(name, counts);
   }
 
-  private keywordSchedulerConfigEnabled(): boolean {
-    return this.keywordScheduler.isEnabled() && this.backgroundJobsEnabled();
-  }
-
-  private backgroundJobsEnabled(): boolean {
-    const raw =
-      this.configService.get<string>('COLLECTION_JOBS_ENABLED') ??
-      process.env.COLLECTION_JOBS_ENABLED;
-    if (typeof raw !== 'string') {
-      return true;
-    }
-    return raw.toLowerCase() === 'true';
-  }
-
   private resolveKeywordSearchLimit(): number {
     const raw = this.configService.get<string>('KEYWORD_SEARCH_LIMIT');
     const parsed = raw ? Number(raw) : Number.NaN;
@@ -1455,45 +1270,6 @@ export class KeywordSearchOrchestratorService {
     ]);
     return { execution, processing };
   }
-}
-
-interface UnifiedProcessingAdapter {
-  processUnifiedBatch(
-    payload: UnifiedProcessingPayload,
-  ): Promise<ProcessingResult>;
-}
-
-interface UnifiedProcessingPayload {
-  source: 'keyword_search';
-  subreddit: string;
-  searchEntity: string;
-  timestamp: Date;
-  posts: Array<{
-    id: string;
-    title: string;
-    selftext: string;
-    author: string;
-    created_utc: number;
-    ups: number;
-    num_comments: number;
-    subreddit: string;
-    permalink: string;
-    url: string;
-  }>;
-  comments: Array<{
-    id: string;
-    body: string;
-    author: string;
-    created_utc: number;
-    ups: number;
-    parent_id?: string;
-    permalink: string;
-  }>;
-  metadata: {
-    searchQuery: string;
-    totalItems: number;
-    searchOptions: KeywordSearchResponse['metadata']['searchOptions'];
-  };
 }
 
 interface AggregatedKeywordEntity {
@@ -1562,32 +1338,6 @@ export interface TermProcessingResult {
   connectionsCreated: number;
 }
 
-/**
- * Keyword Search Batch Result
- */
-export interface KeywordSearchBatchResult {
-  executedSearches: KeywordSearchExecutionResult[];
-  enqueuedJobs: Array<{ subreddit: string; termCount: number }>;
-  totalSchedules: number;
-  successfulExecutions: number;
-  failedExecutions: number;
-  totalDuration: number;
-}
-
-/**
- * Keyword Search Metrics
- */
-export interface KeywordSearchMetrics {
-  totalSchedules: number;
-  activeSchedules: number;
-  completedSchedules: number;
-  failedSchedules: number;
-  nextDueSearch?: Date;
-  totalTermsScheduled: number;
-  averageTermsPerSchedule: number;
-  schedulesBySubreddit: Record<string, any>;
-}
-
 export interface KeywordSearchJobData {
   jobId?: string;
   cycleId?: string;
@@ -1597,7 +1347,6 @@ export interface KeywordSearchJobData {
   sortPlan?: KeywordSearchSortPlan[];
   terms: KeywordSearchTerm[];
   source: 'scheduled' | 'hot_spike';
-  trackCompletion: boolean;
 }
 
 export interface KeywordQueueDepth {
