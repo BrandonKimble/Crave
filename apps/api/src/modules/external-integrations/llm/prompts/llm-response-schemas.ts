@@ -22,8 +22,20 @@ export const SEARCH_QUERY_RESPONSE_JSON_SCHEMA = {
       items: { type: 'string' },
       description: 'Restaurant-level attributes such as ambiance or amenities',
     },
+    ingredients: {
+      type: 'array',
+      items: { type: 'string' },
+      description:
+        'Ingredient nouns the user searches BY (bare ingredient or "with X"); empty when the query names dishes',
+    },
   },
-  required: ['restaurants', 'foods', 'foodAttributes', 'restaurantAttributes'],
+  required: [
+    'restaurants',
+    'foods',
+    'foodAttributes',
+    'restaurantAttributes',
+    'ingredients',
+  ],
   additionalProperties: false,
 } as const;
 

@@ -85,6 +85,7 @@ interface ParsedFilters {
   foodIds: string[];
   foodTextExpansionIds: string[];
   foodAttributeIds: string[];
+  ingredientIds: string[];
   foodAttributePrimary: boolean;
   boundsPayload: BoundsPayload | null;
   polygonPayload: PolygonPayload | null;
@@ -764,6 +765,10 @@ LIMIT ${pagination.take};`.trim();
         connectionFilters,
         EntityScope.FOOD_ATTRIBUTE,
       ),
+      ingredientIds: this.collectEntityIds(
+        connectionFilters,
+        EntityScope.INGREDIENT,
+      ),
       foodAttributePrimary: Boolean(directives?.primaryFoodAttributeQuery),
       boundsPayload: this.extractBoundsPayload(plan.restaurantFilters),
       polygonPayload: this.extractPolygonPayload(plan.restaurantFilters),
@@ -1024,6 +1029,27 @@ LIMIT ${pagination.take};`.trim();
       }
     }
 
+    if (filters.ingredientIds.length) {
+      // Two-tier ingredient match: source evidence on the connection OR the
+      // dish's synthesized canonical contents (subquery keeps this clause
+      // independent of join aliases; both sides are GIN-indexed).
+      conditions.push(
+        Prisma.sql`((${this.buildArrayOverlapClause(
+          'c.ingredients',
+          filters.ingredientIds,
+        )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.buildUuidArray(
+          filters.ingredientIds,
+        )}))`,
+      );
+      conditionPreview.push(
+        `((c.ingredients && ${this.formatUuidArray(
+          filters.ingredientIds,
+        )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.formatUuidArray(
+          filters.ingredientIds,
+        )}))`,
+      );
+    }
+
     if (filters.minimumVotes !== null) {
       conditions.push(Prisma.sql`c.total_upvotes >= ${filters.minimumVotes}`);
       conditionPreview.push(`c.total_upvotes >= ${filters.minimumVotes}`);
@@ -1093,6 +1119,27 @@ LIMIT ${pagination.take};`.trim();
           )}`,
         );
       }
+    }
+
+    if (filters.ingredientIds.length) {
+      // Two-tier ingredient match: source evidence on the connection OR the
+      // dish's synthesized canonical contents (subquery keeps this clause
+      // independent of join aliases; both sides are GIN-indexed).
+      conditions.push(
+        Prisma.sql`((${this.buildArrayOverlapClause(
+          'c.ingredients',
+          filters.ingredientIds,
+        )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.buildUuidArray(
+          filters.ingredientIds,
+        )}))`,
+      );
+      conditionPreview.push(
+        `((c.ingredients && ${this.formatUuidArray(
+          filters.ingredientIds,
+        )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.formatUuidArray(
+          filters.ingredientIds,
+        )}))`,
+      );
     }
 
     if (filters.minimumVotes !== null) {

@@ -8,12 +8,19 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import type { ShortcutCoverageRequestDto } from './dto/shortcut-coverage.dto';
+import {
+  buildOperatingMetadataFromLocation,
+  evaluateOperatingStatus,
+} from './utils/restaurant-status';
 
 type CoverageRestaurantRow = {
   restaurant_id: string;
   restaurant_name: string;
   longitude: unknown;
   latitude: unknown;
+  location_hours?: unknown;
+  location_utc_offset_minutes?: unknown;
+  location_time_zone?: unknown;
   crave_score: unknown;
   crave_score_exact?: unknown;
   rising: unknown;
@@ -73,6 +80,20 @@ export class SearchCoverageService {
       // off the dish layer.
       Prisma.sql`(EXISTS (SELECT 1 FROM core_restaurant_items c WHERE c.restaurant_id = e.entity_id) OR EXISTS (SELECT 1 FROM core_restaurant_events ev WHERE ev.restaurant_id = e.entity_id))`,
     ];
+
+    // TR5-N: price filter — same semantics as the ranked lane (entity price_level IN set).
+    const priceLevels = Array.isArray(request.priceLevels)
+      ? request.priceLevels.filter(
+          (level) => Number.isInteger(level) && level >= 0 && level <= 4,
+        )
+      : [];
+    if (priceLevels.length) {
+      conditions.push(
+        Prisma.sql`e.price_level = ANY(ARRAY[${Prisma.join(
+          priceLevels,
+        )}]::int[])`,
+      );
+    }
 
     if (restaurantEntityIds.length) {
       conditions.push(
@@ -178,9 +199,15 @@ export class SearchCoverageService {
         td.rising AS top_food_rising`
       : Prisma.sql``;
     // HIGH-PRECISION coverage order: percentile_rank leads so the dots/markers match the pin+list order.
+    // TR5-N: rising is a SORT (matches the ranked lane): rising leads, score breaks ties.
+    const risingActive = request.rising === true;
     const coverageOrderSql = includeTopDish
-      ? Prisma.sql`td.crave_score_exact DESC, td.crave_score DESC, e.entity_id ASC`
-      : Prisma.sql`prs.percentile_rank DESC, prs.display_score DESC, e.entity_id ASC`;
+      ? risingActive
+        ? Prisma.sql`td.rising DESC NULLS LAST, td.crave_score_exact DESC, td.crave_score DESC, e.entity_id ASC`
+        : Prisma.sql`td.crave_score_exact DESC, td.crave_score DESC, e.entity_id ASC`
+      : risingActive
+        ? Prisma.sql`prs.rising DESC NULLS LAST, prs.percentile_rank DESC, prs.display_score DESC, e.entity_id ASC`
+        : Prisma.sql`prs.percentile_rank DESC, prs.display_score DESC, e.entity_id ASC`;
     const marketLocationFilterSql = activeMarketKey
       ? Prisma.sql`
           AND EXISTS (
@@ -213,6 +240,9 @@ export class SearchCoverageService {
           rl.restaurant_id,
           rl.longitude,
           rl.latitude,
+          rl.hours,
+          rl.utc_offset_minutes,
+          rl.time_zone,
           rl.updated_at
         FROM core_restaurant_locations rl
         WHERE rl.longitude IS NOT NULL
@@ -234,7 +264,10 @@ export class SearchCoverageService {
           cl.restaurant_id,
           cl.location_id,
           cl.longitude,
-          cl.latitude
+          cl.latitude,
+          cl.hours,
+          cl.utc_offset_minutes,
+          cl.time_zone
         FROM candidate_locations cl
         ORDER BY
           cl.restaurant_id,
@@ -260,6 +293,9 @@ export class SearchCoverageService {
         e.name AS restaurant_name,
         pl.longitude AS longitude,
         pl.latitude AS latitude,
+        pl.hours AS location_hours,
+        pl.utc_offset_minutes AS location_utc_offset_minutes,
+        pl.time_zone AS location_time_zone,
         prs.display_score AS crave_score,
         prs.percentile_rank AS crave_score_exact,
         prs.rising AS rising
@@ -274,14 +310,42 @@ export class SearchCoverageService {
       LIMIT ${maxRestaurants};
     `);
 
+    // TR5-N: open-now post-filter — the exact machinery the ranked lane uses
+    // (evaluateOperatingStatus over the location's hours/timezone). Rows WITHOUT hours data
+    // are dropped, matching the executor's semantics (unsupported rows never pass an
+    // open-now filter). Rank badges are re-indexed AFTER the filter (features map by index).
+    let coverageRows = rows;
+    if (request.openNow === true) {
+      const referenceDate = new Date();
+      const beforeCount = coverageRows.length;
+      coverageRows = coverageRows.filter((row) => {
+        const metadata = buildOperatingMetadataFromLocation(
+          row.location_hours,
+          row.location_utc_offset_minutes as never,
+          typeof row.location_time_zone === 'string'
+            ? row.location_time_zone
+            : null,
+        );
+        if (!metadata) {
+          return false;
+        }
+        const status = evaluateOperatingStatus(metadata, referenceDate);
+        return status?.isOpen === true;
+      });
+      this.logger.debug('Applied open-now filter to shortcut coverage', {
+        beforeCount,
+        afterCount: coverageRows.length,
+      });
+    }
+
     this.logger.debug('Built shortcut coverage restaurants', {
-      count: rows.length,
+      count: coverageRows.length,
       durationMs: Date.now() - startedAt,
     });
 
     return {
       type: 'FeatureCollection',
-      features: rows
+      features: coverageRows
         .map((row, index) => {
           const longitude = Number(row.longitude);
           const latitude = Number(row.latitude);

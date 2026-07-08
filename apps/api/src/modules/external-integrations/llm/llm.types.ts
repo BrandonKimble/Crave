@@ -281,6 +281,8 @@ export interface LLMSearchQueryAnalysis {
   foods: string[];
   foodAttributes: string[];
   restaurantAttributes: string[];
+  /** Ingredient nouns searched BY ("burrata", "miso") — the ingredient lane. */
+  ingredients?: string[];
   metadata?: Record<string, unknown>;
 }
 

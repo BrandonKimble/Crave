@@ -90,6 +90,15 @@ export function compileQueryPlanFromConstraints(
     });
   }
 
+  if (constraints.ids.ingredientIds.length > 0) {
+    connectionFilters.push({
+      scope: 'connection',
+      description: 'Filter by ingredients (evidence or canonical tier)',
+      entityType: EntityScope.INGREDIENT,
+      entityIds: constraints.ids.ingredientIds,
+    });
+  }
+
   if (constraints.stagePresence.foodAttributes > 0) {
     const attributeIds = constraints.ids.foodAttributeIds;
     const shouldInclude =

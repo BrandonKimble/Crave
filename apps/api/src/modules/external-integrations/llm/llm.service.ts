@@ -91,6 +91,7 @@ interface SearchQueryRawResponse {
   foods: unknown;
   foodAttributes: unknown;
   restaurantAttributes: unknown;
+  ingredients?: unknown;
 }
 
 type GeminiGenerationConfig = Record<string, unknown> & {
@@ -1049,7 +1050,8 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       analysis.restaurants.length +
       analysis.foods.length +
       analysis.foodAttributes.length +
-      analysis.restaurantAttributes.length;
+      analysis.restaurantAttributes.length +
+      (analysis.ingredients?.length ?? 0);
     if (totalInterpretedEntities === 0) {
       this.logger.warn('LLM returned empty search query interpretation', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -2249,6 +2251,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       foods: analysis.foods,
       foodAttributes: analysis.foodAttributes,
       restaurantAttributes: analysis.restaurantAttributes,
+      ingredients: analysis.ingredients ?? [],
     };
     const payload = {
       analysis: analysisPayload,
@@ -2313,6 +2316,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       foods: analysis.foods,
       foodAttributes: analysis.foodAttributes,
       restaurantAttributes: analysis.restaurantAttributes,
+      ingredients: analysis.ingredients ?? [],
     };
     const entry = {
       analysis: analysisPayload,
@@ -2553,12 +2557,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     const restaurantAttributes = this.coerceStringArray(
       parsed.restaurantAttributes,
     );
+    const ingredients = this.coerceStringArray(parsed.ingredients);
 
     return {
       restaurants,
       foods,
       foodAttributes,
       restaurantAttributes,
+      ingredients,
     };
   }
 

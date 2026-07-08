@@ -315,6 +315,7 @@ export class SearchQueryInterpretationService {
     addEntries(analysis.foods, 'food');
     addEntries(analysis.foodAttributes, 'food_attribute');
     addEntries(analysis.restaurantAttributes, 'restaurant_attribute');
+    addEntries(analysis.ingredients ?? [], 'ingredient');
 
     return inputs;
   }
@@ -336,110 +337,126 @@ export class SearchQueryInterpretationService {
       inputs,
       HYBRID_LINK_CONCURRENCY,
       async (input): Promise<EntityResolutionResult> => {
-        const term = input.normalizedName?.trim() ?? '';
-        const unmatched: EntityResolutionResult = {
-          tempId: input.tempId,
-          entityId: null,
-          confidence: 0,
-          resolutionTier: 'unmatched',
-          originalInput: input,
-        };
-        if (!term) return unmatched;
-
-        const candidates = await this.entityTextSearch.retrieveCandidates(
-          term,
-          [input.entityType],
-          HYBRID_LINK_SHORTLIST_K,
-          {
-            marketKey: input.marketKey,
-            // Step 9: recall spans the viewport-overlapping markets (falls back to
-            // the single market when the set is empty) so a restaurant across a
-            // market line is still linkable.
-            marketKeys: collectableMarketKeys.length
-              ? collectableMarketKeys
-              : undefined,
-            // Dense OFF: the link decider reads only sparseSimilarity, so dense
-            // candidates are never selectable here — the dense call was measured
-            // pure dead cost. Re-enable when a decider can consume dense evidence.
-            denseMode: 'none',
-          },
-        );
-        if (candidates.length === 0) return unmatched;
-
-        // LIVE decision (the current exact-name + 0.82 rule — behavior unchanged).
-        let live: EntityResolutionResult;
-        // Exact by EVIDENCE CLASS, not raw name-string equality: the matcher's
-        // 'exact' tier already folds in normalized-name and alias exacts, so an
-        // apostrophe/alias case ("joes pizza" → canonical "joe's pizza") links as
-        // a true exact instead of being mislabeled 'fuzzy' by a literal compare.
-        const exact = candidates.find((c) => c.sparseEvidence === 'exact');
-        if (exact) {
-          live = {
-            tempId: input.tempId,
-            entityId: exact.entityId,
-            confidence: 1,
-            resolutionTier: 'exact',
-            matchedName: exact.name,
-            originalInput: input,
-          };
-        } else {
-          // Link-eligible lexical candidates only (drop weak/dense-only), ranked
-          // by sparseSimilarity — every tier now carries an HONEST score
-          // (containment=coverage, edit=1−lev/len), so one sort is meaningful.
-          const eligible = candidates
-            .filter(
-              (c) =>
-                c.sparseEvidence != null &&
-                LINK_ELIGIBLE_EVIDENCE.has(c.sparseEvidence),
-            )
-            .sort(
-              (a, b) => (b.sparseSimilarity ?? 0) - (a.sparseSimilarity ?? 0),
-            );
-          const top = eligible[0];
-          const topSim = top?.sparseSimilarity ?? 0;
-          const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
-          const floors =
-            (top?.sparseEvidence && LINKER_TIER_FLOORS[top.sparseEvidence]) ||
-            LINKER_FALLBACK_FLOORS;
-          // Link when the winner clears its TIER's absolute floor, OR is an
-          // uncontested singleton above the tier's singleton floor, OR is
-          // dominant over the runner-up by the margin. Below the min floor,
-          // never link.
-          const linkable =
-            top != null &&
-            topSim >= LINKER_MIN_FLOOR &&
-            (topSim >= floors.absolute ||
-              (eligible.length === 1 && topSim >= floors.singleton) ||
-              (runnerSim > 0 && topSim >= LINKER_MARGIN * runnerSim));
-          if (linkable && top) {
-            // TIE PLURALITY: same-tier candidates within epsilon of the top are
-            // indistinguishable by evidence — reveal ALL of them (the ids array
-            // feeds one OR-filter group; results show every plausible read)
-            // instead of stamping a coin flip with confidence.
-            const tiedIds = eligible
-              .filter(
-                (c) =>
-                  c.sparseEvidence === top.sparseEvidence &&
-                  topSim - (c.sparseSimilarity ?? 0) <= LINKER_TIE_EPSILON,
-              )
-              .map((c) => c.entityId);
-            live = {
-              tempId: input.tempId,
-              entityId: top.entityId,
-              entityIds: tiedIds.length > 1 ? tiedIds : undefined,
-              confidence: tiedIds.length > 1 ? topSim / tiedIds.length : topSim,
-              resolutionTier: 'fuzzy',
-              matchedName: top.name,
-              originalInput: input,
-            };
-          } else {
-            live = unmatched;
-          }
+        const live = await this.linkOneInput(input, collectableMarketKeys);
+        if (live.entityId || input.entityType !== 'food') {
+          return live;
         }
-
-        return live;
+        // INGREDIENT FALLBACK LANE: a food-classified term with no dish link
+        // may name an ingredient ("burrata", "miso"). Retry the SAME
+        // conservative link against the ingredient vocabulary — zero
+        // query-prompt changes, and dish links always win (fallback only).
+        return this.linkOneInput(
+          { ...input, entityType: 'ingredient' },
+          collectableMarketKeys,
+        );
       },
     );
+  }
+
+  private async linkOneInput(
+    input: EntityResolutionInput,
+    collectableMarketKeys: string[],
+  ): Promise<EntityResolutionResult> {
+    const term = input.normalizedName?.trim() ?? '';
+    const unmatched: EntityResolutionResult = {
+      tempId: input.tempId,
+      entityId: null,
+      confidence: 0,
+      resolutionTier: 'unmatched',
+      originalInput: input,
+    };
+    if (!term) return unmatched;
+
+    const candidates = await this.entityTextSearch.retrieveCandidates(
+      term,
+      [input.entityType],
+      HYBRID_LINK_SHORTLIST_K,
+      {
+        marketKey: input.marketKey,
+        // Step 9: recall spans the viewport-overlapping markets (falls back to
+        // the single market when the set is empty) so a restaurant across a
+        // market line is still linkable.
+        marketKeys: collectableMarketKeys.length
+          ? collectableMarketKeys
+          : undefined,
+        // Dense OFF: the link decider reads only sparseSimilarity, so dense
+        // candidates are never selectable here — the dense call was measured
+        // pure dead cost. Re-enable when a decider can consume dense evidence.
+        denseMode: 'none',
+      },
+    );
+    if (candidates.length === 0) return unmatched;
+
+    // LIVE decision (the current exact-name + 0.82 rule — behavior unchanged).
+    let live: EntityResolutionResult;
+    // Exact by EVIDENCE CLASS, not raw name-string equality: the matcher's
+    // 'exact' tier already folds in normalized-name and alias exacts, so an
+    // apostrophe/alias case ("joes pizza" → canonical "joe's pizza") links as
+    // a true exact instead of being mislabeled 'fuzzy' by a literal compare.
+    const exact = candidates.find((c) => c.sparseEvidence === 'exact');
+    if (exact) {
+      live = {
+        tempId: input.tempId,
+        entityId: exact.entityId,
+        confidence: 1,
+        resolutionTier: 'exact',
+        matchedName: exact.name,
+        originalInput: input,
+      };
+    } else {
+      // Link-eligible lexical candidates only (drop weak/dense-only), ranked
+      // by sparseSimilarity — every tier now carries an HONEST score
+      // (containment=coverage, edit=1−lev/len), so one sort is meaningful.
+      const eligible = candidates
+        .filter(
+          (c) =>
+            c.sparseEvidence != null &&
+            LINK_ELIGIBLE_EVIDENCE.has(c.sparseEvidence),
+        )
+        .sort((a, b) => (b.sparseSimilarity ?? 0) - (a.sparseSimilarity ?? 0));
+      const top = eligible[0];
+      const topSim = top?.sparseSimilarity ?? 0;
+      const runnerSim = eligible[1]?.sparseSimilarity ?? 0;
+      const floors =
+        (top?.sparseEvidence && LINKER_TIER_FLOORS[top.sparseEvidence]) ||
+        LINKER_FALLBACK_FLOORS;
+      // Link when the winner clears its TIER's absolute floor, OR is an
+      // uncontested singleton above the tier's singleton floor, OR is
+      // dominant over the runner-up by the margin. Below the min floor,
+      // never link.
+      const linkable =
+        top != null &&
+        topSim >= LINKER_MIN_FLOOR &&
+        (topSim >= floors.absolute ||
+          (eligible.length === 1 && topSim >= floors.singleton) ||
+          (runnerSim > 0 && topSim >= LINKER_MARGIN * runnerSim));
+      if (linkable && top) {
+        // TIE PLURALITY: same-tier candidates within epsilon of the top are
+        // indistinguishable by evidence — reveal ALL of them (the ids array
+        // feeds one OR-filter group; results show every plausible read)
+        // instead of stamping a coin flip with confidence.
+        const tiedIds = eligible
+          .filter(
+            (c) =>
+              c.sparseEvidence === top.sparseEvidence &&
+              topSim - (c.sparseSimilarity ?? 0) <= LINKER_TIE_EPSILON,
+          )
+          .map((c) => c.entityId);
+        live = {
+          tempId: input.tempId,
+          entityId: top.entityId,
+          entityIds: tiedIds.length > 1 ? tiedIds : undefined,
+          confidence: tiedIds.length > 1 ? topSim / tiedIds.length : topSim,
+          resolutionTier: 'fuzzy',
+          matchedName: top.name,
+          originalInput: input,
+        };
+      } else {
+        live = unmatched;
+      }
+    }
+
+    return live;
   }
 
   /** Run `fn` over `items` with at most `concurrency` in flight, preserving order. */
@@ -472,6 +489,7 @@ export class SearchQueryInterpretationService {
       restaurantAttributes: this.stripGenericTokensFromTerms(
         analysis.restaurantAttributes,
       ),
+      ingredients: this.stripGenericTokensFromTerms(analysis.ingredients ?? []),
     };
   }
 
@@ -503,6 +521,7 @@ export class SearchQueryInterpretationService {
     const foodEntities: QueryEntityDto[] = [];
     const foodAttributeEntities: QueryEntityDto[] = [];
     const restaurantAttributeEntities: QueryEntityDto[] = [];
+    const ingredientEntities: QueryEntityDto[] = [];
 
     const pushEntity = (
       collection: QueryEntityDto[],
@@ -548,6 +567,9 @@ export class SearchQueryInterpretationService {
         case 'restaurant_attribute':
           pushEntity(restaurantAttributeEntities, result);
           break;
+        case 'ingredient':
+          pushEntity(ingredientEntities, result);
+          break;
         default:
           break;
       }
@@ -562,6 +584,7 @@ export class SearchQueryInterpretationService {
       restaurantAttributes: restaurantAttributeEntities.length
         ? restaurantAttributeEntities
         : undefined,
+      ingredients: ingredientEntities.length ? ingredientEntities : undefined,
     };
   }
 
@@ -786,6 +809,7 @@ export class SearchQueryInterpretationService {
       food: entities.food,
       foodAttributes: entities.foodAttributes,
       restaurantAttributes: entities.restaurantAttributes,
+      ingredients: entities.ingredients,
     });
 
     return {
@@ -852,6 +876,7 @@ export class SearchQueryInterpretationService {
       foods: analysis.foods.length,
       foodAttributes: analysis.foodAttributes.length,
       restaurantAttributes: analysis.restaurantAttributes.length,
+      ingredients: analysis.ingredients?.length ?? 0,
     };
   }
 

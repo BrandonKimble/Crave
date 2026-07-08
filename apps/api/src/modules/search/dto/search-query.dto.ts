@@ -104,6 +104,13 @@ export class QueryEntityGroupDto {
   @ValidateNested({ each: true })
   @Type(() => QueryEntityDto)
   restaurantAttributes?: QueryEntityDto[];
+
+  /** Ingredient lane: linked when a food-classified term resolves to an
+   *  ingredient entity instead of a dish ("burrata"). */
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => QueryEntityDto)
+  ingredients?: QueryEntityDto[];
 }
 
 export class CoordinateDto {
@@ -266,6 +273,7 @@ export const EntityScope = {
   FOOD: 'food',
   FOOD_ATTRIBUTE: 'food_attribute',
   RESTAURANT_ATTRIBUTE: 'restaurant_attribute',
+  INGREDIENT: 'ingredient',
   CONNECTION: 'connection',
 } as const satisfies Record<string, SharedFilterClause['entityType']>;
 

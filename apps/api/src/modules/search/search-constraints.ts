@@ -19,6 +19,8 @@ export interface ConstraintResolvedIds {
   foodIds: string[];
   foodAttributeIds: string[];
   restaurantAttributeIds: string[];
+  /** Ingredient lane — filters connections by evidence OR canonical tier. */
+  ingredientIds: string[];
 }
 
 export interface SearchConstraints {

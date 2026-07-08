@@ -2161,6 +2161,9 @@ export class SearchService {
           restaurantAttributeIds,
           planExpansion?.restaurantAttributeIds ?? [],
         ),
+        // Ingredient lane: always-on when linked (no relaxation coupling —
+        // an ingredient is the query's subject, not a droppable modifier).
+        ingredientIds: this.collectEntityIds(request.entities.ingredients),
       },
       filters: {
         bounds: request.bounds,
