@@ -7,7 +7,11 @@ import { join } from 'path';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { UsageLedgerService } from '../../external-integrations/shared/usage-ledger.service';
-import { auditReasonsEnabled } from '../../external-integrations/llm/llm-audit-policy';
+import { applyAuditReasonPolicy } from '../../external-integrations/llm/llm-audit-policy';
+import {
+  RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
+  jsonSchemaToTypedSchema,
+} from '../../external-integrations/llm/prompts/llm-response-schemas';
 import { LLMPost } from '../../external-integrations/llm/llm.types';
 
 export interface RelevanceGateResult {
@@ -163,9 +167,6 @@ export class RelevanceGateService implements OnModuleInit {
       title: post.title,
       body: post.content ?? '',
     }));
-    const outputShape = auditReasonsEnabled()
-      ? ''
-      : '\n\nOutput shape for THIS request: {"verdicts":[{"index":0,"keep":true}]} — omit reason fields.';
     try {
       const response = await this.genAI.models.generateContent({
         model: GATE_MODEL,
@@ -173,7 +174,7 @@ export class RelevanceGateService implements OnModuleInit {
           {
             parts: [
               {
-                text: `${this.prompt}${outputShape}\n\n## Posts\n\n${JSON.stringify(payload)}`,
+                text: `${this.prompt}\n\n## Posts\n\n${JSON.stringify(payload)}`,
               },
             ],
           },
@@ -181,6 +182,14 @@ export class RelevanceGateService implements OnModuleInit {
         config: {
           temperature: 0,
           responseMimeType: 'application/json',
+          // Schema is the output-shape authority (same pattern as every
+          // judge); the audit-reason policy adds/strips `reason`. TYPED
+          // responseSchema (not responseJsonSchema): flash-lite treats the
+          // json-schema form as advisory on long prompts and emits a bare
+          // array — typed is enforced (same lesson as the batch backend).
+          responseSchema: jsonSchemaToTypedSchema(
+            applyAuditReasonPolicy(RELEVANCE_GATE_RESPONSE_JSON_SCHEMA),
+          ),
           maxOutputTokens: 8192,
         },
       });
@@ -194,9 +203,15 @@ export class RelevanceGateService implements OnModuleInit {
         caller: 'relevance-gate.judgeBatch',
       });
       const text = response.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-      const parsed = JSON.parse(text) as {
-        verdicts?: { index: number; keep: boolean; reason?: string }[];
-      };
+      const raw = JSON.parse(text) as unknown;
+      // Tolerate both the schema object and a bare verdict array (fail-open
+      // parsing — a malformed response must never drop posts).
+      const verdictList = Array.isArray(raw)
+        ? (raw as { index: number; keep: boolean; reason?: string }[])
+        : ((raw as Record<string, unknown>)?.verdicts as
+            | { index: number; keep: boolean; reason?: string }[]
+            | undefined);
+      const parsed = { verdicts: verdictList };
       const out: Array<{ keep: boolean; reason?: string } | null> = posts.map(
         () => null,
       );

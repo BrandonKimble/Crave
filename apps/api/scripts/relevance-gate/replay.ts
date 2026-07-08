@@ -12,6 +12,11 @@ import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { GoogleGenAI } from '@google/genai';
+import { applyAuditReasonPolicy } from '../../src/modules/external-integrations/llm/llm-audit-policy';
+import {
+  RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
+  jsonSchemaToTypedSchema,
+} from '../../src/modules/external-integrations/llm/prompts/llm-response-schemas';
 
 const DIR = __dirname;
 const PROMPT = fs.readFileSync(
@@ -42,7 +47,7 @@ async function main() {
   console.log(`replaying ${samples.length} labeled posts`);
 
   const ai = new GoogleGenAI({ apiKey: process.env.LLM_API_KEY ?? '' });
-  const verdicts = new Map<string, { keep: boolean; reason: string }>();
+  const verdicts = new Map<string, { keep: boolean; reason?: string }>();
   const BATCH = 25;
   for (let i = 0; i < samples.length; i += BATCH) {
     const batch = samples.slice(i, i + BATCH);
@@ -67,8 +72,13 @@ async function main() {
       },
     });
     const text = res.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
-    const parsed = JSON.parse(text) as {
-      verdicts?: { index: number; keep: boolean; reason: string }[];
+    const rawParsed = JSON.parse(text) as unknown;
+    const parsed = {
+      verdicts: (Array.isArray(rawParsed)
+        ? rawParsed
+        : (rawParsed as Record<string, unknown>)?.verdicts) as
+        | { index: number; keep: boolean; reason?: string }[]
+        | undefined,
     };
     for (const v of parsed.verdicts ?? []) {
       const sample = batch[v.index];

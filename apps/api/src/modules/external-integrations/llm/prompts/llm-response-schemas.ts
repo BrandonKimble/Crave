@@ -350,6 +350,30 @@ export const ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA = {
   required: ['items'],
 } as const;
 
+export const RELEVANCE_GATE_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  description: 'Thread-admission verdicts for a batch of posts',
+  properties: {
+    verdicts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          index: { type: 'integer' },
+          keep: { type: 'boolean' },
+          reason: {
+            type: 'string',
+            description:
+              'Terse audit evidence; when keeping for a food ask, QUOTE the ask verbatim',
+          },
+        },
+        required: ['index', 'keep', 'reason'],
+      },
+    },
+  },
+  required: ['verdicts'],
+} as const;
+
 /**
  * Convert our JSON-Schema-style response schemas to Google's TYPED Schema
  * form. The batch backend rejects `responseJsonSchema` outright (blanket
