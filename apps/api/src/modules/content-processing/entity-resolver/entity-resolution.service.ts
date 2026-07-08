@@ -1059,6 +1059,12 @@ export class EntityResolutionService implements OnModuleInit {
           })
           .slice(0, 8);
         if (overlayCandidates.length) {
+          // Deliberately PER-ENTITY (audit item 7 verdict): the overlay grows
+          // within this loop — entity N must see the primary that N-1 just
+          // collapsed into — so cross-loop batching via matchEntitiesBatch
+          // would change correctness (waves would be needed). Signal-gated +
+          // capped at 8 candidates, this path fires rarely (ledger-measured);
+          // one lite call per firing is the honest cost of the semantics.
           const verdict = await this.llmService.matchEntity({
             term: entity.normalizedName,
             kind: entityType === 'restaurant' ? 'restaurant' : 'food',

@@ -1006,24 +1006,12 @@ LIMIT ${pagination.take};`.trim();
     }
 
     if (filters.ingredientIds.length) {
-      // Two-tier ingredient match: source evidence on the connection OR the
-      // dish's synthesized canonical contents (subquery keeps this clause
-      // independent of join aliases; both sides are GIN-indexed).
-      conditions.push(
-        Prisma.sql`((${this.buildArrayOverlapClause(
-          'c.ingredients',
-          filters.ingredientIds,
-        )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.buildUuidArray(
-          filters.ingredientIds,
-        )}))`,
+      const clause = this.buildEffectiveIngredientsClause(
+        filters.ingredientIds,
+        'include',
       );
-      conditionPreview.push(
-        `((c.ingredients && ${this.formatUuidArray(
-          filters.ingredientIds,
-        )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.formatUuidArray(
-          filters.ingredientIds,
-        )}))`,
-      );
+      conditions.push(clause.sql);
+      conditionPreview.push(clause.preview);
     }
 
     if (filters.minimumVotes !== null) {
@@ -1098,24 +1086,12 @@ LIMIT ${pagination.take};`.trim();
     }
 
     if (filters.ingredientIds.length) {
-      // Two-tier ingredient match: source evidence on the connection OR the
-      // dish's synthesized canonical contents (subquery keeps this clause
-      // independent of join aliases; both sides are GIN-indexed).
-      conditions.push(
-        Prisma.sql`((${this.buildArrayOverlapClause(
-          'c.ingredients',
-          filters.ingredientIds,
-        )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.buildUuidArray(
-          filters.ingredientIds,
-        )}))`,
+      const clause = this.buildEffectiveIngredientsClause(
+        filters.ingredientIds,
+        'include',
       );
-      conditionPreview.push(
-        `((c.ingredients && ${this.formatUuidArray(
-          filters.ingredientIds,
-        )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.formatUuidArray(
-          filters.ingredientIds,
-        )}))`,
-      );
+      conditions.push(clause.sql);
+      conditionPreview.push(clause.preview);
     }
 
     if (filters.minimumVotes !== null) {
@@ -1840,6 +1816,38 @@ location_aggregates AS (
     return Prisma.sql`${Prisma.raw(column)} = ANY(${this.buildSmallintArray(
       values,
     )})`;
+  }
+
+  /**
+   * THE ingredient read seam (testimony/knowledge doctrine —
+   * src/modules/content-processing/entity-resolver/testimony-knowledge-doctrine.md).
+   * No consumer touches c.ingredients / canonical_ingredients directly:
+   * - 'include' (recall): UNION of tiers — venue testimony OR the dish's
+   *   synthesized canon. Knowledge fills recall ("gruyere" finds dishes whose
+   *   canon includes it even when no Redditor named it).
+   * - 'exclude' (allergies / "no cilantro"): CONSERVATIVE — excluded when
+   *   EITHER tier names the ingredient. Canon says ramen has egg; a venue's
+   *   version might not — for an exclusion you never gamble on the venue
+   *   being the exception.
+   */
+  private buildEffectiveIngredientsClause(
+    ingredientIds: string[],
+    mode: 'include' | 'exclude',
+  ): { sql: Prisma.Sql; preview: string } {
+    const overlap = Prisma.sql`((${this.buildArrayOverlapClause(
+      'c.ingredients',
+      ingredientIds,
+    )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.buildUuidArray(
+      ingredientIds,
+    )}))`;
+    const previewCore = `((c.ingredients && ${this.formatUuidArray(
+      ingredientIds,
+    )}) OR c.food_id IN (SELECT entity_id FROM core_entities WHERE canonical_ingredients && ${this.formatUuidArray(
+      ingredientIds,
+    )}))`;
+    return mode === 'include'
+      ? { sql: overlap, preview: previewCore }
+      : { sql: Prisma.sql`NOT ${overlap}`, preview: `NOT ${previewCore}` };
   }
 
   private buildArrayOverlapClause(
