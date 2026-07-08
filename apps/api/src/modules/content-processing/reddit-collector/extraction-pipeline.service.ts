@@ -1008,7 +1008,10 @@ export class ExtractionPipelineService implements OnModuleInit {
       throw new Error(`Missing source_map for chunk=${chunkId}`);
     }
 
-    const mappedSource = sourceMap[trimmedSourceId];
+    // The model occasionally type-prefixes the ref ("t1_SRC002"); the ref is
+    // unambiguous after stripping, so normalize instead of failing the chunk.
+    const normalizedRef = trimmedSourceId.replace(/^t[13]_(?=SRC)/i, '');
+    const mappedSource = sourceMap[normalizedRef];
     if (!mappedSource) {
       const allowedRefs = Object.keys(sourceMap).sort().slice(0, 10).join(', ');
       throw new Error(
