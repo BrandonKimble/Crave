@@ -293,6 +293,65 @@ export class BillingService {
       payload.event.transaction_id ||
       `${Date.now()}`;
 
+    // Dashboard/synthetic TEST events carry no transaction — record receipt
+    // and stop before any subscription or grant write.
+    if (payload.event.type === 'TEST') {
+      await this.logBillingEvent({
+        source: SubscriptionProvider.revenuecat,
+        platform: SubscriptionPlatform.ios,
+        externalEventId: externalId,
+        eventType: payload.event.type,
+        payload,
+      });
+      return;
+    }
+
+    // REVENUECAT_ENTITLEMENT_MAP ('ourCode:rcEntitlementId,...') maps RC
+    // entitlement ids to our codes; unmapped ids fall through as-is.
+    const rawEntitlement =
+      payload.event.entitlement_ids?.[0] ||
+      payload.event.entitlement_id ||
+      this.defaultEntitlement;
+    const entitlementCode =
+      this.reverseEntitlementMap.get(rawEntitlement) ?? rawEntitlement;
+    const expiresAt = payload.event.expiration_at_ms
+      ? new Date(payload.event.expiration_at_ms)
+      : null;
+    // billing_subscriptions requires period start+end together or neither.
+    const periodStart = expiresAt
+      ? payload.event.purchased_at_ms
+        ? new Date(payload.event.purchased_at_ms)
+        : new Date()
+      : null;
+    const status = this.deriveRevenueCatStatus(payload.event);
+
+    const revenueCatMetadata = this.toJsonInput(payload);
+
+    try {
+      await this.applyRevenueCatSubscription({
+        payload,
+        user,
+        authId: authId ?? null,
+        entitlementCode,
+        periodStart,
+        expiresAt,
+        status,
+        revenueCatMetadata,
+      });
+    } catch (error) {
+      // Mark the event row failed and rethrow: RevenueCat retries on 5xx,
+      // and the failed row stays findable/replayable.
+      await this.logBillingEvent({
+        source: SubscriptionProvider.revenuecat,
+        platform: SubscriptionPlatform.ios,
+        externalEventId: externalId,
+        eventType: payload.event.type || 'unknown',
+        payload,
+        failed: error instanceof Error ? error.message : 'processing error',
+      });
+      throw error;
+    }
+
     await this.logBillingEvent({
       source: SubscriptionProvider.revenuecat,
       platform: SubscriptionPlatform.ios,
@@ -300,21 +359,31 @@ export class BillingService {
       eventType: payload.event.type || 'unknown',
       payload,
     });
+  }
 
-    // REVENUECAT_ENTITLEMENT_MAP ('ourCode:rcEntitlementId,...') maps RC
-    // entitlement ids to our codes; unmapped ids fall through as-is.
-    const rawEntitlement =
-      payload.event.entitlement_id ||
-      payload.event.product_id ||
-      this.defaultEntitlement;
-    const entitlementCode =
-      this.reverseEntitlementMap.get(rawEntitlement) ?? rawEntitlement;
-    const expiresAt = payload.event.expiration_at_ms
-      ? new Date(payload.event.expiration_at_ms)
-      : null;
-    const status = this.deriveRevenueCatStatus(payload.event);
-
-    const revenueCatMetadata = this.toJsonInput(payload);
+  private async applyRevenueCatSubscription(params: {
+    payload: RevenueCatWebhookDto;
+    user: User;
+    authId: string | null;
+    entitlementCode: string;
+    periodStart: Date | null;
+    expiresAt: Date | null;
+    status: SubscriptionStatus;
+    revenueCatMetadata: Prisma.InputJsonValue | undefined;
+  }): Promise<void> {
+    const {
+      payload,
+      user,
+      authId,
+      entitlementCode,
+      periodStart,
+      expiresAt,
+      status,
+      revenueCatMetadata,
+    } = params;
+    if (!payload.event) {
+      return;
+    }
 
     await this.prisma.subscription.upsert({
       where: {
@@ -330,7 +399,11 @@ export class BillingService {
         status,
         entitlementCode,
         productId: payload.event.product_id ?? null,
-        planName: payload.event.entitlement_id ?? null,
+        planName:
+          payload.event.entitlement_ids?.[0] ??
+          payload.event.entitlement_id ??
+          null,
+        currentPeriodStart: periodStart,
         currentPeriodEnd: expiresAt,
         ...(revenueCatMetadata !== undefined
           ? { metadata: revenueCatMetadata }
@@ -348,7 +421,11 @@ export class BillingService {
         status,
         entitlementCode,
         productId: payload.event.product_id ?? null,
-        planName: payload.event.entitlement_id ?? null,
+        planName:
+          payload.event.entitlement_ids?.[0] ??
+          payload.event.entitlement_id ??
+          null,
+        currentPeriodStart: periodStart,
         currentPeriodEnd: expiresAt,
         ...(revenueCatMetadata !== undefined
           ? { metadata: revenueCatMetadata }
@@ -647,12 +724,19 @@ export class BillingService {
     if (!identifier) {
       return null;
     }
+    // userId is a UUID column — matching a non-UUID identifier (e.g. a Clerk
+    // `user_...` app_user_id from a RevenueCat webhook) against it makes
+    // Prisma throw P2023 before the OR is evaluated.
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        identifier,
+      );
     return this.prisma.user.findFirst({
       where: {
         OR: [
           { authProviderUserId: identifier },
           { revenueCatAppUserId: identifier },
-          { userId: identifier },
+          ...(isUuid ? [{ userId: identifier }] : []),
         ],
       },
     });

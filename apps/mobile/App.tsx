@@ -27,6 +27,7 @@ import { AppRouteSceneRuntimeProvider } from './src/navigation/runtime/AppRouteS
 import { MainLaunchCoordinator } from './src/navigation/runtime/MainLaunchCoordinator';
 import NetworkStatusListener from './src/providers/NetworkStatusListener';
 import { PurchasesProvider } from './src/providers/PurchasesProvider';
+import { PaywallDevPreview } from './src/screens/PaywallDevPreview';
 import PollNotificationListener from './src/providers/PollNotificationListener';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
 import { PerfScenarioCoordinator } from './src/perf/PerfScenarioCoordinator';
@@ -103,6 +104,7 @@ export default function App() {
             </AuthProvider>
             <AppModalHost />
             {__DEV__ ? <CutoutSkeletonDevPreview /> : null}
+            {__DEV__ ? <PaywallDevPreview /> : null}
             <StatusBar style={isBannerVisible ? 'light' : 'auto'} />
           </SafeAreaProvider>
         </View>

@@ -206,3 +206,29 @@ agreement → create ASC subscription products ($7.99 monthly / $39.99 annual
 - intro free trial on annual) → connect ASC API key in RC app settings
   (app_store_connect_api_key_configured=false) → real products in RC
   referencing ASC product IDs + attach to `premium` and packages.
+
+## Test Store E2E — PASSED (2026-07-08)
+
+Full loop verified on the sim (user kimble.brandonm+clerk_test@gmail.com):
+paywall (dev harness `crave://paywall-preview?show=1`) → RC Test Store
+purchase → webhook (cloudflared tunnel) → `access_grants` row
+(source subscription, sourceRef revenuecat:<txn>, expiry = expiration_at_ms)
+→ UserEntitlement cache → /users/me access block → cold-started app renders
+"You have Crave+ / Access until <date>". RC's 5xx retry loop recovered our
+earlier failures — fail-loud design validated for real.
+
+FOUR real bugs found by the E2E (all fixed + regression-tested):
+
+1. lookupUserByAuthIdentifier: non-UUID app_user_id (Clerk id) against the
+   UUID userId column → Prisma P2023 crash. Guard: userId arm only if UUID.
+2. RC subscription upsert set currentPeriodEnd without currentPeriodStart →
+   check_subscription_period_consistency violation → grant never written.
+3. Modern RC events send entitlement_ids[] (entitlement_id null) → code fell
+   back to product_id as the entitlement code.
+4. Handler logged events 'processed' BEFORE processing; failures were
+   invisible. Now: TEST events log-and-return; processing failure marks the
+   event row failed AND rethrows (5xx → RC retries).
+
+Notes: Test Store prices are placeholders ($9.99/$79.99) — real prices live
+in ASC products ($7.99/$39.99). nest build does NOT copy prompt .md assets
+to dist (rsync'd manually; the dev watcher handles it in watch mode).

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/unbound-method */
 import {
   ServiceUnavailableException,
   UnauthorizedException,
@@ -116,6 +117,60 @@ describe('RevenueCat webhook hardening', () => {
     expect(
       (entitlements.syncSubscriptionGrant as jest.Mock).mock.calls,
     ).toHaveLength(0);
+  });
+
+  it('TEST events are logged but never write a subscription or grant', async () => {
+    const { service, prisma, entitlements } = makeService({
+      user: { userId: 'u1' },
+    });
+    await service.handleRevenueCatWebhook(
+      rcEvent({ type: 'TEST', transaction_id: undefined }),
+      'Bearer rc-secret',
+    );
+    expect(
+      (prisma.billingEventLog.upsert as jest.Mock).mock.calls,
+    ).toHaveLength(1);
+    expect((prisma.subscription.upsert as jest.Mock).mock.calls).toHaveLength(
+      0,
+    );
+    expect(
+      (entitlements.syncSubscriptionGrant as jest.Mock).mock.calls,
+    ).toHaveLength(0);
+  });
+
+  it('prefers entitlement_ids[] over legacy entitlement_id and sets both period bounds', async () => {
+    const { service, prisma, entitlements } = makeService({
+      user: { userId: 'u1' },
+    });
+    const purchasedAt = Date.now() - 1000;
+    await service.handleRevenueCatWebhook(
+      rcEvent({
+        entitlement_id: undefined,
+        entitlement_ids: ['premium'],
+        purchased_at_ms: purchasedAt,
+      }),
+      'Bearer rc-secret',
+    );
+    const grant = (entitlements.syncSubscriptionGrant as jest.Mock).mock
+      .calls[0][0];
+    expect(grant.entitlementCode).toBe('premium');
+    const sub = (prisma.subscription.upsert as jest.Mock).mock.calls[0][0];
+    // billing_subscriptions check constraint: start+end together or neither
+    expect(sub.create.currentPeriodStart).toEqual(new Date(purchasedAt));
+    expect(sub.create.currentPeriodEnd).not.toBeNull();
+  });
+
+  it('marks the event row failed and rethrows when processing throws (RC retries on 5xx)', async () => {
+    const { service, prisma } = makeService({ user: { userId: 'u1' } });
+    (prisma.subscription.upsert as jest.Mock).mockRejectedValueOnce(
+      new Error('constraint violation'),
+    );
+    await expect(
+      service.handleRevenueCatWebhook(rcEvent(), 'Bearer rc-secret'),
+    ).rejects.toThrow('constraint violation');
+    const upserts = (prisma.billingEventLog.upsert as jest.Mock).mock.calls;
+    const failed = upserts.find(([args]) => args.create?.status === 'failed');
+    expect(failed).toBeDefined();
   });
 
   it('expired events deactivate the grant', async () => {
