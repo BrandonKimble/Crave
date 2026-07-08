@@ -67,9 +67,12 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
     opacity:
       surfaceActiveValue.value *
       Math.max(interactionLoadingModeValue.value, initialLoadingModeValue.value),
-    // Interaction reload: start below the toggle strip so it stays uncovered. Initial load:
-    // the strip is hidden, so the cover is full-body (no filters inset).
+    // Interaction reload: start below the toggle strip so it stays uncovered, and stay
+    // OPAQUE (stale rows beneath — the self-frost skeleton needs the white back). Initial
+    // load: full-body and TRANSPARENT behind the skeleton plate, so its holes are real
+    // windows down to the hoisted frost (owner directive: true cutouts).
     top: headerTopValue.value + filtersHeaderHeightValue.value * interactionLoadingModeValue.value,
+    backgroundColor: interactionLoadingModeValue.value > 0.5 ? '#ffffff' : 'transparent',
   }));
 
   return React.useMemo(
@@ -95,7 +98,9 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
               testID="results-loading-cover"
             />
             <View pointerEvents="none" style={styles.resultsLoadingCoverContent}>
-              {surfaceContentRuntime.loadingContent}
+              {surfaceMode === 'interaction_loading'
+                ? surfaceContentRuntime.interactionLoadingContent
+                : surfaceContentRuntime.loadingContent}
             </View>
           </Reanimated.View>
         ) : null}

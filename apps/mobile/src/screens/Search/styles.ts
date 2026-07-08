@@ -575,7 +575,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 20,
     elevation: 20,
-    backgroundColor: '#ffffff',
+    // No backgroundColor: the cutout skeleton's own white plate is the cover — its
+    // holes must stay transparent down to the hoisted frost (the rows beneath hide
+    // during loading modes; see the body-hide keyed to the same surfaceMode).
   },
   resultsLoadingCoverAccessibilityTarget: {
     position: 'absolute',
