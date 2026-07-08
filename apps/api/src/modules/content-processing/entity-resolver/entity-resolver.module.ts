@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { EntityResolutionService } from './entity-resolution.service';
 import { FoodDedupeMergeService } from './food-dedupe-merge.service';
+import { DishKnowledgeSynthesisService } from './dish-knowledge-synthesis.service';
 import { AliasManagementService } from './alias-management.service';
 import { RepositoryModule } from '../../../repositories/repository.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
@@ -26,6 +27,7 @@ import { EntityTextSearchModule } from '../../entity-text-search/entity-text-sea
   providers: [
     EntityResolutionService,
     FoodDedupeMergeService,
+    DishKnowledgeSynthesisService,
     AliasManagementService,
   ],
   exports: [EntityResolutionService, AliasManagementService],

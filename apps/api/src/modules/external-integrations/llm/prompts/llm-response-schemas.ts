@@ -408,3 +408,32 @@ export function jsonSchemaToTypedSchema(
   }
   return out;
 }
+
+export const DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    dishes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          index: { type: 'integer' },
+          ingredients: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Canonical/typical ingredients of the dish as named; singular lowercase; empty when the name is too ambiguous',
+          },
+          aliases: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'ESTABLISHED shorthand or co-names for exactly this dish; empty for most dishes',
+          },
+        },
+        required: ['index', 'ingredients', 'aliases'],
+      },
+    },
+  },
+  required: ['dishes'],
+} as const;

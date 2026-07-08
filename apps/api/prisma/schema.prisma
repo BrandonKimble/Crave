@@ -21,6 +21,9 @@ model Entity {
   /// entity ids ("al pastor taco" -> pork, pineapple, ...). World knowledge,
   /// generated per dish by the offline synthesis pass — never testimony.
   canonicalIngredients                String[]                 @default([]) @map("canonical_ingredients") @db.Uuid
+  /// Stamp for the offline dish-knowledge pass (canonical ingredients +
+  /// established aliases). NULL = not yet synthesized.
+  knowledgeSynthesizedAt              DateTime?                @map("knowledge_synthesized_at")
   nameEmbedding                       Unsupported("vector(768)")? @map("name_embedding")
   nameEmbeddingStale                  Boolean                  @default(false) @map("name_embedding_stale")
   restaurantAttributes                String[]                 @default([]) @map("restaurant_attributes") @db.Uuid

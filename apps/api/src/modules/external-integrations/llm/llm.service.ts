@@ -59,6 +59,7 @@ import {
   POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
   COLLECTION_RESPONSE_JSON_SCHEMA,
   jsonSchemaToTypedSchema,
+  DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA,
   CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
   MODERATION_RESPONSE_JSON_SCHEMA,
   RESTAURANT_PLACE_CHOOSER_RESPONSE_JSON_SCHEMA,
@@ -1494,6 +1495,102 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             : { message: String(error) },
       });
       return failClosed;
+    }
+  }
+
+  /**
+   * KNOWLEDGE-TIER synthesis (world knowledge deliberately encouraged — this
+   * is dish knowledge, not testimony; the collection prompt stays
+   * source-faithful). For each dish NAME: canonical ingredients + established
+   * aliases. Identity modifiers in the name govern ("vegan al pastor taco"
+   * must not return pork).
+   */
+  async synthesizeDishKnowledgeBatch(
+    dishes: { name: string }[],
+  ): Promise<{ ingredients: string[]; aliases: string[] }[]> {
+    const empty = dishes.map(() => ({
+      ingredients: [] as string[],
+      aliases: [] as string[],
+    }));
+    if (!dishes.length) return [];
+
+    const generationConfig: GeminiGenerationConfig = {
+      temperature: 0,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      maxOutputTokens: 8192,
+      responseMimeType: 'application/json',
+      responseJsonSchema: DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA,
+    };
+    const systemInstruction =
+      `You are a culinary knowledge base for a food-discovery app. For EACH dish ` +
+      `name, return: (1) "ingredients" — the canonical/typical core ingredients of ` +
+      `the dish AS NAMED, from world knowledge (assume the standard preparation; ` +
+      `identity words in the name govern: "vegan al pastor taco" has no pork, ` +
+      `"white pizza" has no tomato sauce). 3-8 core items, singular lowercase, no ` +
+      `seasonings-level noise (salt, oil). Empty when the name is too ambiguous to ` +
+      `have canonical contents ("combo plate", "seasonal salad"). (2) "aliases" — ` +
+      `ESTABLISHED shorthand or co-names for exactly this dish ("bec" for bacon ` +
+      `egg and cheese, "army stew" for budae jjigae). An alias must point to ` +
+      `nothing but this dish anywhere in the food world ("marg" fails: margarita); ` +
+      `never invent, shorten, pluralize, or translate yourself. Empty is the ` +
+      `expected default. Return {"dishes":[{"index","ingredients","aliases"}]} ` +
+      `covering every input index.`;
+
+    try {
+      const payload = dishes.map((dish, index) => ({ index, name: dish.name }));
+      const response = await this.callLLMApi(
+        JSON.stringify({ dishes: payload }),
+        {
+          generationConfig,
+          systemInstruction,
+          model: this.llmConfig.model,
+          maxRetries: 1,
+          thinkingContext: 'query',
+        },
+      );
+      const content = this.extractTextContent(response, 'dish_knowledge');
+      const start = content.indexOf('{');
+      const parsed = JSON.parse(
+        start >= 0 ? content.slice(start) : content,
+      ) as {
+        dishes?: {
+          index?: unknown;
+          ingredients?: unknown;
+          aliases?: unknown;
+        }[];
+      };
+      const results = empty.map((r) => ({ ...r }));
+      for (const item of parsed.dishes ?? []) {
+        const idx = typeof item.index === 'number' ? item.index : -1;
+        if (idx < 0 || idx >= results.length) continue;
+        const clean = (values: unknown): string[] =>
+          Array.isArray(values)
+            ? Array.from(
+                new Set(
+                  values
+                    .filter((v): v is string => typeof v === 'string')
+                    .map((v) => v.trim().toLowerCase())
+                    .filter((v) => v.length > 1),
+                ),
+              )
+            : [];
+        results[idx] = {
+          ingredients: clean(item.ingredients).slice(0, 10),
+          aliases: clean(item.aliases).slice(0, 4),
+        };
+      }
+      return results;
+    } catch (error) {
+      this.logger.warn('synthesizeDishKnowledgeBatch failed; returning empty', {
+        dishes: dishes.length,
+        error:
+          error instanceof Error
+            ? { message: error.message }
+            : { message: String(error) },
+      });
+      return empty;
     }
   }
 
