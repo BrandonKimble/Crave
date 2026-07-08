@@ -27,9 +27,12 @@ items here to avoid work; this file is for the rare truly-data-gated checks.
 - [ ] **Enable the location-refresh cron** (`refreshStaleLocations`) at launch — freshness only
       matters when users are looking. Suggested: weekly, TTL 90d, limit sized to stay inside the
       free Enterprise SKU quota (see plans/search-collection-open-threads.md cost notes).
-- [ ] **Verify LLM audit reasons are OFF in prod**: `LLM_AUDIT_REASONS` unset +
-      `APP_ENV=prod` → judge/classifier calls skip reason output (cost). Flip
-      `LLM_AUDIT_REASONS=true` temporarily whenever tuning prompts in prod.
+- [ ] **Verify LLM audit reasons resolve correctly in prod**: `LLM_AUDIT_REASONS`
+      unset + `APP_ENV=prod` → ephemeral judge reasons OFF (entity match,
+      attribute placement, poll subject — paid-and-discarded), while the
+      relevance gate's PERSISTED verdict reasons stay ON by design (~$0.08/city,
+      permanent record of excluded signal). Flip `LLM_AUDIT_REASONS=true`
+      temporarily whenever tuning judge prompts in prod.
 - [ ] **Google usage ledger review** — after the first month of real traffic, read the internal
       call ledger + Cloud billing export; hunt inefficiencies.
 

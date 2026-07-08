@@ -7,7 +7,6 @@ import { join } from 'path';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { UsageLedgerService } from '../../external-integrations/shared/usage-ledger.service';
-import { applyAuditReasonPolicy } from '../../external-integrations/llm/llm-audit-policy';
 import {
   RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
   jsonSchemaToTypedSchema,
@@ -182,13 +181,18 @@ export class RelevanceGateService implements OnModuleInit {
         config: {
           temperature: 0,
           responseMimeType: 'application/json',
-          // Schema is the output-shape authority (same pattern as every
-          // judge); the audit-reason policy adds/strips `reason`. TYPED
-          // responseSchema (not responseJsonSchema): flash-lite treats the
-          // json-schema form as advisory on long prompts and emits a bare
-          // array — typed is enforced (same lesson as the batch backend).
+          // Schema is the output-shape authority. Gate reasons are EXEMPT
+          // from the audit-reason policy: they are PERSISTED per verdict and
+          // audit an IRREVERSIBLE decision (a dropped post never reaches
+          // extraction) — ~$0.08/city of output tokens for a permanent
+          // record of why signal was excluded. The policy covers only
+          // ephemeral judge reasons that would be paid for and discarded.
+          // TYPED responseSchema (not responseJsonSchema): flash-lite treats
+          // the json-schema form as advisory on long prompts and emits a
+          // bare array — typed is enforced (same lesson as the batch
+          // backend).
           responseSchema: jsonSchemaToTypedSchema(
-            applyAuditReasonPolicy(RELEVANCE_GATE_RESPONSE_JSON_SCHEMA),
+            RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
           ),
           maxOutputTokens: 8192,
         },

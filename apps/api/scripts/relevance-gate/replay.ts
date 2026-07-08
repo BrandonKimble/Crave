@@ -12,7 +12,6 @@ import 'dotenv/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import { GoogleGenAI } from '@google/genai';
-import { applyAuditReasonPolicy } from '../../src/modules/external-integrations/llm/llm-audit-policy';
 import {
   RELEVANCE_GATE_RESPONSE_JSON_SCHEMA,
   jsonSchemaToTypedSchema,

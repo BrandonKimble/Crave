@@ -7,9 +7,16 @@
  * Policy: reasons ON in dev (auditability), OFF in prod (cost), overridable
  * either way with LLM_AUDIT_REASONS=true|false.
  *
- * NOT covered by this policy: semantic reason fields the product consumes
- * (e.g. moderation's rejection label shown to users) — those stay required
- * in their schemas and never route through applyAuditReasonPolicy.
+ * NOT covered by this policy:
+ * - SEMANTIC reasons the product consumes (moderation's rejection label
+ *   shown to users) — always required.
+ * - PERSISTED audit reasons on irreversible decisions (the relevance gate's
+ *   verdict reasons, stored per post in collection_relevance_verdicts) —
+ *   always on, in prod too: ~$0.08/city buys a permanent record of why
+ *   signal was excluded, and every gate bug found so far was found by
+ *   reading them.
+ * The policy covers only EPHEMERAL reasons that would be paid for and
+ * discarded (entity match, attribute placement, poll subject).
  */
 
 let cached: boolean | null = null;
