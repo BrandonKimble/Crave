@@ -1,3 +1,4 @@
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
@@ -241,6 +242,44 @@ export class CollectionEvidenceService implements OnModuleInit {
     if (run.collectionRunId) {
       await this.refreshCollectionRunStatus(run.collectionRunId);
     }
+  }
+
+  /**
+   * Lifecycle reconciler — the missing OWNER for stuck state (audit item 2).
+   * A worker crash leaves extraction runs 'running' forever and collection-run
+   * statuses stale; nothing else ever revisits them. Every 15 min: any run
+   * still 'running' past the horizon WITHOUT an open Gemini batch job backing
+   * it (batch-deferred runs legitimately float for up to ~24h) is failed
+   * loudly, and its collection run's status is recomputed. Idempotent.
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async reconcileStaleRuns(): Promise<void> {
+    const horizonHours = Number(process.env.COLLECTION_RUN_STALE_HOURS ?? 30);
+    const stale = await this.prismaService.$queryRaw<
+      { extraction_run_id: string; collection_run_id: string | null }[]
+    >(Prisma.sql`
+      SELECT r.extraction_run_id, r.collection_run_id
+      FROM collection_extraction_runs r
+      WHERE r.status = 'running'
+        AND r.started_at < now() - (${horizonHours} * interval '1 hour')
+        AND NOT EXISTS (
+          SELECT 1 FROM llm_batch_jobs j
+          WHERE j.status IN ('pending', 'submitted', 'succeeded', 'ingesting')
+            AND j.resume_context ->> 'extractionRunId' = r.extraction_run_id::text
+        )
+      LIMIT 200
+    `);
+    if (!stale.length) return;
+    for (const run of stale) {
+      await this.markExtractionRunFailed(
+        run.extraction_run_id,
+        `stale: still running after ${horizonHours}h with no live batch job`,
+      );
+    }
+    this.logger.warn('Reconciled stale extraction runs to failed', {
+      count: stale.length,
+      horizonHours,
+    });
   }
 
   async markExtractionRunFailed(
