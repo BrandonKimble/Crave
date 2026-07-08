@@ -44,6 +44,11 @@ export type SearchWorldNetworkFetchResult = {
   /** Where the data actually came from (the request layer may have its own cache). */
   dataReadyFrom: 'cache' | 'network' | 'in_flight';
   searchInputKey: string | null;
+  /** A derived world that approximates the network truth (e.g. the client-filtered
+   *  open-now variant): the resolver presents it INSTANTLY and then trues it up from
+   *  the network in the background, committing the fetched value as a VERSION UPDATE
+   *  of the presented world (no second reveal choreography). */
+  provisional?: boolean;
 };
 
 export type SearchWorldResolverEnv = {
@@ -198,7 +203,13 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         resolvedAt: env.now(),
       });
       if (__DEV__) {
-        logger.info('[RESOLVE]', { generation, cause, cardsKey, coverageKey, tier: 'derivation' });
+        logger.info('[RESOLVE]', {
+          generation,
+          cause,
+          cardsKey,
+          coverageKey,
+          tier: derived.provisional ? 'derivation_provisional' : 'derivation',
+        });
       }
       presentEntry({
         entry,
@@ -208,6 +219,42 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         searchInputKey: derived.searchInputKey,
         presentationIntentKind,
       });
+      if (derived.provisional && env.fetchWorldForTuple != null) {
+        // Background TRUE-UP: fetch the network truth for the same world and commit it
+        // as a VERSION UPDATE of the presented world — rows/coverage/totals correct
+        // themselves in place, no second reveal choreography. Superseded landings still
+        // cache (the world is right when the user returns to it).
+        void (async () => {
+          try {
+            const fetched = await env.fetchWorldForTuple({ tuple, generation, cause });
+            const trueEntry = cache.commit({
+              worldKey: cardsKey,
+              status: { kind: 'ready' },
+              value: fetched.value,
+              resolvedAt: env.now(),
+            });
+            if (__DEV__) {
+              logger.info('[RESOLVE] provisional true-up landed', { cardsKey });
+            }
+            if (isTupleStillDesired(tuple)) {
+              env.seam.commitWorldToMountedState({
+                worldId: trueEntry.worldId,
+                generation,
+                value: trueEntry.value,
+                activeTab: tuple.tab,
+                dataReadyFrom: fetched.dataReadyFrom,
+                searchInputKey: fetched.searchInputKey,
+                requestBounds: tuple.committedBounds?.bounds ?? null,
+                isVersionUpdateOfPresentedWorld: true,
+              });
+            }
+          } catch (error) {
+            logger.warn('[RESOLVE] provisional true-up failed', {
+              message: error instanceof Error ? error.message : 'unknown error',
+            });
+          }
+        })();
+      }
       return;
     }
 

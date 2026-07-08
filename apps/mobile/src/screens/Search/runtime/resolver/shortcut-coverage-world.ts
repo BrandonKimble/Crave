@@ -151,6 +151,9 @@ export const mapShortcutCoverageWorldFeatures = (
           rising: typeof properties.rising === 'number' ? (properties.rising as number) : null,
           rank,
           restaurantCraveScore,
+          // Per-feature openness (open-now client derivation): pass the API's fact
+          // through; null/absent = no hours data (never passes an open-now filter).
+          isOpen: typeof properties.isOpen === 'boolean' ? (properties.isOpen as boolean) : null,
           pinColor: getCraveScoreColorFromScore(includeTopDish ? topDishCraveScore : craveScore),
           ...(includeTopDish
             ? {

@@ -699,6 +699,8 @@ export type RestaurantFeatureProperties = {
   nativeDotOpacity?: number;
   nativePresentationOpacity?: number;
   rank: number;
+  /** Per-feature openness (open-now client derivation); null = no hours data. */
+  isOpen?: boolean | null;
   // Pre-baked pin badge sprite id (rank in-viewport / score out-of-viewport),
   // chosen in the source builder and consumed by the pin layer's icon-image.
   badgeImageId?: string;
