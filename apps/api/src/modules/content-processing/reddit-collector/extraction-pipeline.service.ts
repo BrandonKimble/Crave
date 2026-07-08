@@ -188,6 +188,21 @@ export class ExtractionPipelineService implements OnModuleInit {
         await this.ingestCollectionBatch(jobId, resumeContext, items);
       },
     );
+    // Terminal batch-job failure (provider failed the batch, or ingest
+    // exhausted its retries) → fail the owning extraction run so it doesn't
+    // dangle 'running' until the stale-run reconciler.
+    this.geminiBatchService.registerFailureHandler(
+      'collection_extraction',
+      async ({ resumeContext, error }) => {
+        const { extractionRunId } = resumeContext as {
+          extractionRunId: string;
+        };
+        await this.collectionEvidenceService.markExtractionRunFailed(
+          extractionRunId,
+          error,
+        );
+      },
+    );
   }
 
   private collectionLlmMode: 'interactive' | 'batch' = 'interactive';
@@ -347,11 +362,18 @@ export class ExtractionPipelineService implements OnModuleInit {
           params.chunkData,
           this.llmService,
         );
+      // Failed chunks ride along (success=false) so the evidence trail keeps
+      // their inputs and completeChunkPlan's failure-rate law sees them —
+      // identical to the batch-ingest path.
+      const chunkResults = [
+        ...processingResult.chunkResults,
+        ...processingResult.failures,
+      ];
 
       const extractionInputIdByChunkId =
         await this.collectionEvidenceService.persistExtractionInputs({
           extractionRunId,
-          chunkResults: processingResult.chunkResults,
+          chunkResults,
           sourceDocumentIdBySourceKey: params.sourceDocumentIdBySourceKey,
         });
 
@@ -370,7 +392,7 @@ export class ExtractionPipelineService implements OnModuleInit {
         sourceDocumentIdBySourceKey: params.sourceDocumentIdBySourceKey,
         extractionRunId,
         extractionInputIdByChunkId,
-        chunkResults: processingResult.chunkResults,
+        chunkResults,
         processingMetrics: processingResult.metrics,
         llmProcessingTimeMs: Date.now() - llmStartTime,
       });
@@ -562,6 +584,31 @@ export class ExtractionPipelineService implements OnModuleInit {
       });
     }
 
+    // A chunk input with no batch item at all is a silent gap — count it as a
+    // failure so completeChunkPlan's failure-rate law sees it.
+    const seenChunkIds = new Set(items.map((item) => item.itemKey));
+    const missingChunks = context.chunkInputs.filter(
+      (chunk) => !seenChunkIds.has(chunk.chunkId),
+    );
+    if (missingChunks.length > 0) {
+      this.logger.error('Batch response is missing chunks', {
+        jobId,
+        missingChunkIds: missingChunks.map((chunk) => chunk.chunkId),
+      });
+      for (const chunk of missingChunks) {
+        failures += 1;
+        chunkResults.push({
+          success: false,
+          result: undefined,
+          chunkId: chunk.chunkId,
+          commentCount: chunk.metadata?.commentCount ?? 0,
+          duration: 0,
+          metadata: chunk.metadata,
+          input: chunk.input,
+        });
+      }
+    }
+
     // Store the raw outputs onto the pre-persisted extraction inputs so the
     // evidence trail matches the interactive path.
     const inputIdByChunkId = new Map(context.inputIdEntries);
@@ -730,10 +777,6 @@ export class ExtractionPipelineService implements OnModuleInit {
     );
     const dbProcessingTimeMs = Date.now() - dbStartTime;
 
-    await this.collectionEvidenceService.markExtractionRunCompleted(
-      args.extractionRunId,
-    );
-
     const result: ExtractionPipelineResult = {
       extractionRunId: args.extractionRunId,
       llmOutput,
@@ -745,6 +788,32 @@ export class ExtractionPipelineService implements OnModuleInit {
       chunkStats: this.summarizeChunkMetadata(args.chunkMetadata),
       processingMetrics: args.processingMetrics,
     };
+
+    // Failure-rate honesty: a run with failed chunks (parse errors, item
+    // errors, missing batch items) is FAILED, not 'completed' — the same loud
+    // law as sub-batches. Successful chunks' data stays persisted above;
+    // re-collection is idempotent, so a rerun fills the gap.
+    const failedChunkIds = args.chunkResults
+      .filter((chunk) => !chunk.success)
+      .map((chunk) => chunk.chunkId);
+    if (failedChunkIds.length > 0) {
+      this.logger.error(
+        'Chunk plan finished with failed chunks — failing run',
+        {
+          extractionRunId: args.extractionRunId,
+          failedChunkIds,
+        },
+      );
+      await this.collectionEvidenceService.markExtractionRunFailed(
+        args.extractionRunId,
+        `${failedChunkIds.length}/${args.chunkResults.length} chunks failed (re-collection is idempotent — rerun fills the gap)`,
+      );
+      return result;
+    }
+
+    await this.collectionEvidenceService.markExtractionRunCompleted(
+      args.extractionRunId,
+    );
 
     const completionHandler = this.completionHandlers.get(
       args.baseParams.pipeline,

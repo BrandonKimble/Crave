@@ -117,29 +117,38 @@ export class RelevanceGateService implements OnModuleInit {
     for (const batch of batches) {
       const verdicts = await this.judgeBatch(batch);
       judged += batch.length;
-      const rows = batch.map((post, index) => ({
-        platform,
-        postId: post.id,
-        keep: verdicts[index]?.keep ?? true,
-        reason:
-          verdicts[index]?.reason?.slice(0, 256) ??
-          (verdicts[index] ? null : 'fail_open'),
-        model: GATE_MODEL,
-        promptHash: this.promptHash,
-      }));
-      for (const row of rows) {
-        verdictById.set(row.postId, row.keep);
-      }
-      await this.prisma.collectionRelevanceVerdict
-        .createMany({ data: rows, skipDuplicates: true })
-        .catch((error: unknown) => {
-          this.logger.warn('Verdict persistence failed (posts still gated)', {
-            error:
-              error instanceof Error
-                ? { message: error.message }
-                : { message: String(error) },
+      // Fail-open verdicts (judge error → null) keep the post for THIS run
+      // but are NOT persisted: an absent row re-judges next collection,
+      // instead of a transient error becoming a permanent keep=true.
+      const rows = batch.flatMap((post, index) => {
+        const verdict = verdicts[index];
+        verdictById.set(post.id, verdict?.keep ?? true);
+        if (!verdict) {
+          return [];
+        }
+        return [
+          {
+            platform,
+            postId: post.id,
+            keep: verdict.keep,
+            reason: verdict.reason?.slice(0, 256) ?? null,
+            model: GATE_MODEL,
+            promptHash: this.promptHash,
+          },
+        ];
+      });
+      if (rows.length) {
+        await this.prisma.collectionRelevanceVerdict
+          .createMany({ data: rows, skipDuplicates: true })
+          .catch((error: unknown) => {
+            this.logger.warn('Verdict persistence failed (posts still gated)', {
+              error:
+                error instanceof Error
+                  ? { message: error.message }
+                  : { message: String(error) },
+            });
           });
-        });
+      }
     }
 
     const kept = posts.filter((post) => verdictById.get(post.id) !== false);
@@ -210,6 +219,12 @@ export class RelevanceGateService implements OnModuleInit {
       const raw = JSON.parse(text) as unknown;
       // Tolerate both the schema object and a bare verdict array (fail-open
       // parsing — a malformed response must never drop posts).
+      if (Array.isArray(raw)) {
+        this.logger.warn(
+          'typed responseSchema regression: model returned bare array',
+          { posts: posts.length },
+        );
+      }
       const verdictList = Array.isArray(raw)
         ? (raw as { index: number; keep: boolean; reason?: string }[])
         : ((raw as Record<string, unknown>)?.verdicts as

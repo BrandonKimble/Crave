@@ -247,14 +247,18 @@ export class CollectionEvidenceService implements OnModuleInit {
   /**
    * Lifecycle reconciler — the missing OWNER for stuck state (audit item 2).
    * A worker crash leaves extraction runs 'running' forever and collection-run
-   * statuses stale; nothing else ever revisits them. Every 15 min: any run
-   * still 'running' past the horizon WITHOUT an open Gemini batch job backing
-   * it (batch-deferred runs legitimately float for up to ~24h) is failed
-   * loudly, and its collection run's status is recomputed. Idempotent.
+   * statuses stale; nothing else ever revisits them. Hourly: first any batch
+   * JOB stuck non-terminal past the horizon is failed (with its owning run),
+   * then any run still 'running' past the horizon WITHOUT an open Gemini
+   * batch job backing it (batch-deferred runs legitimately float for up to
+   * ~24h) is failed loudly, and its collection run's status is recomputed.
+   * Idempotent.
    */
   @Cron(CronExpression.EVERY_HOUR)
   async reconcileStaleRuns(): Promise<void> {
-    const horizonHours = Number(process.env.COLLECTION_RUN_STALE_HOURS ?? 30);
+    const parsedHorizon = Number(process.env.COLLECTION_RUN_STALE_HOURS ?? 30);
+    const horizonHours = Number.isFinite(parsedHorizon) ? parsedHorizon : 30;
+    await this.reconcileStaleBatchJobs(horizonHours);
     const stale = await this.prismaService.$queryRaw<
       { extraction_run_id: string; collection_run_id: string | null }[]
     >(Prisma.sql`
@@ -282,16 +286,58 @@ export class CollectionEvidenceService implements OnModuleInit {
     });
   }
 
+  /**
+   * Stale batch-JOB sweep: a job stuck in a non-terminal status past the
+   * horizon means its half of the pipeline is broken (a 'succeeded' job that
+   * old means the ingest path never ran — the poller normally ingests within
+   * minutes). The run reconciler above treats these statuses as live cover,
+   * so without this sweep a stuck job shields its run forever.
+   */
+  private async reconcileStaleBatchJobs(horizonHours: number): Promise<void> {
+    const stale = await this.prismaService.$queryRaw<
+      { job_id: string; extraction_run_id: string | null }[]
+    >(Prisma.sql`
+      SELECT j.job_id, j.resume_context ->> 'extractionRunId' AS extraction_run_id
+      FROM llm_batch_jobs j
+      WHERE j.status IN ('pending', 'submitted', 'succeeded', 'ingesting')
+        AND COALESCE(j.submitted_at, j.created_at) < now() - (${horizonHours} * interval '1 hour')
+      LIMIT 200
+    `);
+    if (!stale.length) return;
+    const errorMessage = `stale: exceeded ${horizonHours}h horizon with no terminal state`;
+    await this.prismaService.llmBatchJob.updateMany({
+      where: { jobId: { in: stale.map((job) => job.job_id) } },
+      data: { status: 'failed', error: errorMessage, completedAt: new Date() },
+    });
+    for (const job of stale) {
+      if (job.extraction_run_id) {
+        await this.markExtractionRunFailed(job.extraction_run_id, errorMessage);
+      }
+    }
+    this.logger.warn('Reconciled stale batch jobs to failed', {
+      count: stale.length,
+      horizonHours,
+      jobIds: stale.map((job) => job.job_id),
+    });
+  }
+
   async markExtractionRunFailed(
     extractionRunId: string,
     errorMessage: string,
   ): Promise<void> {
+    // Merge into existing metadata — replacing it wholesale would erase the
+    // run's provenance (batchId, subreddit, ...).
+    const existing = await this.prismaService.extractionRun.findUniqueOrThrow({
+      where: { extractionRunId },
+      select: { metadata: true },
+    });
     const run = await this.prismaService.extractionRun.update({
       where: { extractionRunId },
       data: {
         status: 'failed',
         completedAt: new Date(),
         metadata: {
+          ...(existing.metadata as Prisma.JsonObject),
           errorMessage,
         } as Prisma.InputJsonValue,
       },

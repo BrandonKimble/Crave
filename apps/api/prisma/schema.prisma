@@ -229,6 +229,7 @@ model LlmBatchJob {
   requestCount    Int       @map("request_count")
   resumeContext   Json?     @map("resume_context")
   error           String?
+  ingestAttempts  Int       @default(0) @map("ingest_attempts")
   submittedAt     DateTime? @map("submitted_at")
   completedAt     DateTime? @map("completed_at")
   ingestedAt      DateTime? @map("ingested_at")
