@@ -176,6 +176,38 @@ export type SearchMapRenderControllerEvent =
       settledAtMs: number;
     }
   | {
+      // S4d-0 RED instrument: native (worldId, phase, opacity) register snapshot emitted
+      // at the presentation machine's silent paths (same-state skip, dismiss-in-progress
+      // bypass) and reveal begin — observation only, JS diffs it against the presented
+      // world and reports a contract violation on a swallowed reveal.
+      type: 'presentation_state_snapshot';
+      instanceId: string;
+      reason:
+        | 'apply_same_state'
+        | 'dismiss_in_progress_bypass'
+        | 'reveal_begin'
+        | 'pin_roster_teardown_inactive'
+        | 'pin_roster_synced'
+        | 'catalog_arrived'
+        | 'reproject_deferred';
+      catalogCount?: number;
+      deferredWhy?: string;
+      desiredCount?: number;
+      viewCount?: number;
+      candidateCount?: number;
+      promotedCount?: number;
+      revealRequestKey: string | null;
+      revealStartedRequestKey: string | null;
+      revealSettledRequestKey: string | null;
+      dismissRequestKey: string | null;
+      incomingRevealRequestKey: string | null;
+      incomingDismissRequestKey: string | null;
+      lifecycleState: string;
+      renderPhase: string;
+      opacityTarget: number;
+      nowMs: number;
+    }
+  | {
       type: 'presentation_exit_started';
       instanceId: string;
       requestKey: string;

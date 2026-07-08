@@ -8,6 +8,8 @@ import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runt
 import type { MapBounds } from '../../../../types';
 import { withSearchNavSwitchRuntimeAttribution } from '../../runtime/shared/search-nav-switch-runtime-attribution';
 import { resolvePresentationLanePolicy } from '../../runtime/shared/presentation-lane-policy';
+import { reportSearchFlowContractViolation } from '../../runtime/shared/search-flow-contracts';
+import { logger } from '../../../../utils';
 import {
   areSearchMapRenderPresentationStatesEqual,
   deriveSearchMapRenderPresentationPhase,
@@ -2415,6 +2417,47 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   readyAtMs: event.readyAtMs,
                 });
               });
+              return;
+            }
+            if (event.type === 'presentation_state_snapshot') {
+              // S4d-0 RED instrument — observation only, never actuated on. A reveal
+              // payload swallowed by the dismiss-in-progress bypass is the task #16
+              // class: JS armed a new world's reveal, native silently dropped it.
+              if (
+                event.reason === 'dismiss_in_progress_bypass' &&
+                event.incomingRevealRequestKey != null
+              ) {
+                reportSearchFlowContractViolation('native_presentation_reveal_swallowed', {
+                  incomingRevealRequestKey: event.incomingRevealRequestKey,
+                  incomingDismissRequestKey: event.incomingDismissRequestKey,
+                  nativeRevealRequestKey: event.revealRequestKey,
+                  nativeDismissRequestKey: event.dismissRequestKey,
+                  lifecycleState: event.lifecycleState,
+                  renderPhase: event.renderPhase,
+                  opacityTarget: event.opacityTarget,
+                });
+              }
+              if (__DEV__) {
+                logger.info('[NATIVE-SNAP]', {
+                  instanceId: event.instanceId,
+                  reason: event.reason,
+                  reveal: event.revealRequestKey,
+                  revealStarted: event.revealStartedRequestKey,
+                  revealSettled: event.revealSettledRequestKey,
+                  dismiss: event.dismissRequestKey,
+                  incomingReveal: event.incomingRevealRequestKey,
+                  incomingDismiss: event.incomingDismissRequestKey,
+                  lifecycle: event.lifecycleState,
+                  renderPhase: event.renderPhase,
+                  opacity: event.opacityTarget,
+                  desired: event.desiredCount,
+                  catalog: event.catalogCount,
+                  deferredWhy: event.deferredWhy,
+                  views: event.viewCount,
+                  candidates: event.candidateCount,
+                  promoted: event.promotedCount,
+                });
+              }
               return;
             }
             if (event.type === 'presentation_enter_started') {

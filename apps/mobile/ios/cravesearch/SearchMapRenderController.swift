@@ -1270,6 +1270,13 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
         return
       }
+      // ROOT-CAUSE (task #16, half 2): attach re-binds the RENDER plane (sources/layers/
+      // presentation registers reset). The DATA plane — candidateCatalog + LOD engine —
+      // is world-keyed state owned by the catalog channel and must SURVIVE a re-attach:
+      // on a cache-resident re-enter JS delivers the catalog BEFORE the re-attach, and
+      // erasing it here left the reveal deciding over an empty catalog (dots-only pins).
+      let preservedCatalog = self.instances[instanceId]?.candidateCatalog ?? []
+      let preservedEngine = self.instances[instanceId]?.lodV5Engine
       self.instances[instanceId] = InstanceState(
         mapTag: mapTag,
         pinSourceId: pinSourceId,
@@ -1335,9 +1342,17 @@ final class SearchMapRenderController: RCTEventEmitter {
         isAwaitingSourceRecovery: false,
         isReplayingSourceRecovery: false,
         sourceRecoveryPausedAtMs: nil,
-        candidateCatalog: [],
+        candidateCatalog: preservedCatalog,
         lastVisibleMarkerSetSignature: nil
       )
+      if preservedEngine != nil || !preservedCatalog.isEmpty {
+        var preservedState = self.instances[instanceId]!
+        preservedState.lodV5Engine = preservedEngine
+        self.instances[instanceId] = preservedState
+        // The preserved catalog must re-decide against the (possibly new) map view —
+        // under cover, drained by the reveal transition's level-triggered drain.
+        self.pendingUnderCoverReproject.insert(instanceId)
+      }
       self.resolveMapHandle(for: mapTag, attemptCount: 0, startTimeMs: CACurrentMediaTime() * 1000) {
         [weak self] result in
         guard let self else {
@@ -1473,6 +1488,15 @@ final class SearchMapRenderController: RCTEventEmitter {
       // to 0; so we mark it pending and fire the re-decide the next time presentation is under cover (≈0) —
       // unless it is ALREADY covered, in which case fire immediately.
       self.pendingUnderCoverReproject.insert(instanceId)
+      self.emit([
+        "type": "presentation_state_snapshot",
+        "instanceId": instanceId,
+        "reason": "catalog_arrived",
+        "catalogCount": catalog.count,
+        "lifecycleState": String(describing: state.visualSourceLifecycleState),
+        "opacityTarget": state.currentPresentationOpacityTarget,
+        "nowMs": Self.nowMs(),
+      ])
       self.reprojectCatalogUnderCoverIfReady(instanceId: instanceId)
       resolve(["catalogCount": catalog.count])
     }
@@ -1603,6 +1627,17 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
     guard pendingUnderCoverReproject.contains(instanceId) else { return }
     guard var state = instances[instanceId] else { return }
+    let emitReprojectDeferred: (String) -> Void = { [weak self] why in
+      self?.emit([
+        "type": "presentation_state_snapshot",
+        "instanceId": instanceId,
+        "reason": "reproject_deferred",
+        "deferredWhy": why,
+        "lifecycleState": String(describing: state.visualSourceLifecycleState),
+        "opacityTarget": state.currentPresentationOpacityTarget,
+        "nowMs": Self.nowMs(),
+      ])
+    }
     // Normally the re-decide waits for presentation to be under cover (opacity≈0) so the marker swap is
     // hidden. But a fresh catalog can arrive DURING a reveal ramp-up (rapid toggling at the debounce
     // boundary): opacity is already rising, so the reproject would DEFER and, with no subsequent fade-out,
@@ -1616,12 +1651,28 @@ final class SearchMapRenderController: RCTEventEmitter {
       // would strand it forever (no upcoming tick/completion): fall through and decide it NOW. The swap is
       // visible but it is the CURRENT tab's correct set replacing a stale one, and it happens only in the race.
       if presentationOpacityAnimators[instanceId] != nil {
+        emitReprojectDeferred("opacity_animating")
         return
       }
     }
-    guard !Self.isVisualSourceInactiveOrDismissing(state) else { return }
-    guard let handle = currentResolvedMapHandle(for: state.mapTag) else { return }
+    guard !Self.isVisualSourceInactiveOrDismissing(state) else {
+      emitReprojectDeferred("inactive_or_dismissing")
+      return
+    }
+    guard let handle = currentResolvedMapHandle(for: state.mapTag) else {
+      emitReprojectDeferred("no_map_handle")
+      return
+    }
     pendingUnderCoverReproject.remove(instanceId)
+    emit([
+      "type": "presentation_state_snapshot",
+      "instanceId": instanceId,
+      "reason": "reproject_ran",
+      "lifecycleState": String(describing: state.visualSourceLifecycleState),
+      "opacityTarget": state.currentPresentationOpacityTarget,
+      "catalogCount": state.candidateCatalog.count,
+      "nowMs": Self.nowMs(),
+    ])
     state.lastVisibleMarkerSetSignature = nil
     _ = projectAndEmitOnScreenMarkers(
       instanceId: instanceId, state: &state, handle: handle, reason: "toggle_redecide", isMoving: false)
@@ -2835,6 +2886,13 @@ final class SearchMapRenderController: RCTEventEmitter {
         phase: state.lastPresentationBatchPhase,
         durationMs: CACurrentMediaTime() * 1000 - actionStartedAt
       )
+      self.emitPresentationStateSnapshot(
+        instanceId: instanceId,
+        state: state,
+        reason: "apply_same_state",
+        incomingRevealRequestKey: nil,
+        incomingDismissRequestKey: nil
+      )
       return
     }
     let previousPresentationBatchPhase = state.lastPresentationBatchPhase
@@ -2855,6 +2913,13 @@ final class SearchMapRenderController: RCTEventEmitter {
         section: "presentation.dismiss_in_progress_bypass",
         phase: state.lastPresentationBatchPhase,
         durationMs: CACurrentMediaTime() * 1000 - actionStartedAt
+      )
+      self.emitPresentationStateSnapshot(
+        instanceId: instanceId,
+        state: state,
+        reason: "dismiss_in_progress_bypass",
+        incomingRevealRequestKey: revealRequestKey,
+        incomingDismissRequestKey: dismissRequestKey
       )
       return
     }
@@ -2892,6 +2957,26 @@ final class SearchMapRenderController: RCTEventEmitter {
           reason: "new_reveal_request"
         )
         self.instances[instanceId] = state
+        // ROOT-CAUSE FIX (task #16, dismiss→resubmit pin no-show): a catalog that arrived
+        // while hidden/dismissing correctly deferred its under-cover reproject — but the
+        // drain rode edge-triggered choreography (animator ticks / camera changes) that a
+        // cache-resident re-enter never fires, stranding the pending catalog: the VA
+        // pin/label roster was never rebuilt and the reveal showed dots only. The reveal
+        // transition IS the level-triggered drain point: "active + under cover" first
+        // becomes true here (opacity at the preroll floor — the swap is invisible).
+        if self.pendingUnderCoverReproject.contains(instanceId) {
+          self.reprojectCatalogUnderCoverIfReady(instanceId: instanceId)
+          state = self.instances[instanceId] ?? state
+        } else {
+          self.emit([
+            "type": "presentation_state_snapshot",
+            "instanceId": instanceId,
+            "reason": "reveal_drain_no_pending",
+            "lifecycleState": String(describing: state.visualSourceLifecycleState),
+            "opacityTarget": state.currentPresentationOpacityTarget,
+            "nowMs": Self.nowMs(),
+          ])
+        }
         let reconcileStartedAt = CACurrentMediaTime() * 1000
         try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
         state = self.instances[instanceId] ?? state
@@ -2931,6 +3016,13 @@ final class SearchMapRenderController: RCTEventEmitter {
           instanceId: instanceId,
           message:
             "reveal_generation_ready frame=\(state.activeFrameGenerationId ?? "nil") renderPhase=\(state.currentPresentationRenderPhase)"
+        )
+        self.emitPresentationStateSnapshot(
+          instanceId: instanceId,
+          state: state,
+          reason: "reveal_begin",
+          incomingRevealRequestKey: revealRequestKey,
+          incomingDismissRequestKey: dismissRequestKey
         )
       }
     }
@@ -7666,6 +7758,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     var highlightedKeys: Set<String> = []
     var viewBadgeId: [String: String] = [:]
     var uiImageCache: [String: (img: UIImage, size: CGSize)] = [:]
+    // S4d-0 RED instrument: dedupe key for the roster-shape snapshot emit.
+    var lastEmittedRosterSignature: String?
   }
   private var pinVAInstances: [String: PinVAInstance] = [:]
 
@@ -7885,11 +7979,33 @@ final class SearchMapRenderController: RCTEventEmitter {
   // Reconcile the VA pin roster to the engine's promoted set (∪ still-fading). Sibling of syncOverlayRoster.
   private func syncPinVARoster(instanceId: String, handle: ResolvedMapHandle) {
     guard let state = instances[instanceId], let engine = state.lodV5Engine else { return }
-    if Self.isVisualSourceInactiveOrDismissing(state) { teardownPinVA(instanceId: instanceId); return }
+    if Self.isVisualSourceInactiveOrDismissing(state) {
+      let hadViews = !(pinVAInstances[instanceId]?.viewByKey.isEmpty ?? true)
+      teardownPinVA(instanceId: instanceId)
+      if hadViews {
+        emitPresentationStateSnapshot(
+          instanceId: instanceId,
+          state: state,
+          reason: "pin_roster_teardown_inactive",
+          incomingRevealRequestKey: nil,
+          incomingDismissRequestKey: nil
+        )
+      }
+      return
+    }
     let inst = pinVAInstances[instanceId] ?? { let i = PinVAInstance(); pinVAInstances[instanceId] = i; return i }()
     inst.mapView = handle.mapView
     guard let manager = handle.mapView.viewAnnotations,
-          let mapboxMap = handle.mapView.mapboxMap else { return }
+          let mapboxMap = handle.mapView.mapboxMap else {
+      emitPresentationStateSnapshot(
+        instanceId: instanceId,
+        state: state,
+        reason: "pin_roster_no_manager",
+        incomingRevealRequestKey: nil,
+        incomingDismissRequestKey: nil
+      )
+      return
+    }
 
     var coordByKey: [String: CLLocationCoordinate2D] = [:]
     var badgeIdByKey: [String: String] = [:]
@@ -7950,6 +8066,24 @@ final class SearchMapRenderController: RCTEventEmitter {
     if inst.viewByKey.isEmpty { cancelOverlayDisplayLink(instanceId: instanceId) }
     else { ensureOverlayDisplayLink(instanceId: instanceId) }
     refreshPinVAAlpha(instanceId: instanceId, writeOpacity: true)
+    // S4d-0 RED instrument: emit the roster composite only when its shape changes.
+    let rosterSignature = "d\(desired.count)|v\(inst.viewByKey.count)|c\(state.candidateCatalog.count)|p\(engine.lastPromotedInOrder.count)"
+    if inst.lastEmittedRosterSignature != rosterSignature {
+      inst.lastEmittedRosterSignature = rosterSignature
+      emitPresentationStateSnapshot(
+        instanceId: instanceId,
+        state: state,
+        reason: "pin_roster_synced",
+        incomingRevealRequestKey: nil,
+        incomingDismissRequestKey: nil,
+        extra: [
+          "desiredCount": desired.count,
+          "viewCount": inst.viewByKey.count,
+          "candidateCount": state.candidateCatalog.count,
+          "promotedCount": engine.lastPromotedInOrder.count,
+        ]
+      )
+    }
   }
 
   // One-writer alpha tick (sibling of refreshOverlayFrame). Position + z-order are SDK-owned, so this only
@@ -12517,6 +12651,35 @@ final class SearchMapRenderController: RCTEventEmitter {
       resolvedView = contentView
     }
     return resolvedView
+  }
+
+  /// S4d-0 RED instrument (observation only, never actuated on): a (worldId, phase)
+  /// state snapshot emitted at the presentation machine's SILENT paths and reveal begin,
+  /// so JS can diff native registers against the desired/presented world. The two skip
+  /// paths were invisible drops — the dismiss-in-progress bypass is the task #16 lane.
+  private func emitPresentationStateSnapshot(
+    instanceId: String,
+    state: InstanceState,
+    reason: String,
+    incomingRevealRequestKey: String?,
+    incomingDismissRequestKey: String?,
+    extra: [String: Any] = [:]
+  ) {
+    emit([
+      "type": "presentation_state_snapshot",
+      "instanceId": instanceId,
+      "reason": reason,
+      "revealRequestKey": state.lastEnterRequestKey as Any,
+      "revealStartedRequestKey": state.lastEnterStartedRequestKey as Any,
+      "revealSettledRequestKey": state.lastEnterSettledRequestKey as Any,
+      "dismissRequestKey": state.lastDismissRequestKey as Any,
+      "incomingRevealRequestKey": incomingRevealRequestKey as Any,
+      "incomingDismissRequestKey": incomingDismissRequestKey as Any,
+      "lifecycleState": String(describing: state.visualSourceLifecycleState),
+      "renderPhase": state.currentPresentationRenderPhase,
+      "opacityTarget": state.currentPresentationOpacityTarget,
+      "nowMs": Self.nowMs(),
+    ].merging(extra) { current, _ in current })
   }
 
   private func emit(_ body: [String: Any]) {
