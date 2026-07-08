@@ -1827,11 +1827,12 @@ final class SearchMapRenderController: RCTEventEmitter {
             }
             self.instances[instanceId] = state
           }
-          func applyPresentation() throws {
+          func applyPresentation(deferPrerollReconcileToSnapshot: Bool = false) throws {
             let presentationStartedAt = CACurrentMediaTime() * 1000
             try self.applyPresentationPayload(
               instanceId: instanceId,
-              presentationStateJSON: presentationStateJSON
+              presentationStateJSON: presentationStateJSON,
+              deferPrerollReconcileToSnapshot: deferPrerollReconcileToSnapshot
             )
             attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
             self.recordNativeApply(
@@ -1883,7 +1884,9 @@ final class SearchMapRenderController: RCTEventEmitter {
             sourceAdmissionOutcome = hasSourcePayload ? "sources_cleared_hidden" : "presentation_only_clear_hidden"
           case "enter":
             try markFrameSourceAdmission(sourceReady: false)
-            try applyPresentation()
+            try applyPresentation(
+              deferPrerollReconcileToSnapshot: sourceFrameIsReady && shouldApplySourcePayload
+            )
             if sourceFrameIsReady && shouldApplySourcePayload {
               // Real new/changed source data → apply the delta. applySnapshot sets source
               // readiness SYNCHRONOUSLY (applyRenderFrameSnapshotPayload assigns
@@ -2865,7 +2868,8 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private func applyPresentationPayload(
     instanceId: String,
-    presentationStateJSON: String
+    presentationStateJSON: String,
+    deferPrerollReconcileToSnapshot: Bool = false
   ) throws {
     guard var state = self.instances[instanceId] else {
       throw NSError(
@@ -2973,14 +2977,29 @@ final class SearchMapRenderController: RCTEventEmitter {
             "nowMs": Self.nowMs(),
           ])
         }
-        let reconcileStartedAt = CACurrentMediaTime() * 1000
-        try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
-        state = self.instances[instanceId] ?? state
-        self.recordNativeApply(
-          section: "presentation.reveal_preroll_reconcile",
-          phase: state.lastPresentationBatchPhase,
-          durationMs: CACurrentMediaTime() * 1000 - reconcileStartedAt
-        )
+        // STALL FIX (bucket-attributed: reveal_preroll_reconcile max 294ms): when this
+        // presentation apply is immediately followed by a SNAPSHOT apply in the same
+        // setRenderFrame (the enter-with-new-data path), this reconcile runs against the
+        // sources the snapshot is about to REPLACE — pure waste on the main thread. The
+        // snapshot's own reconcile (which runs with the lifecycle already flipped to
+        // preparingReveal) is the one that matters. The resident-reuse path (no snapshot
+        // apply) keeps the preroll reconcile — there it is the only one.
+        if deferPrerollReconcileToSnapshot {
+          self.recordNativeApply(
+            section: "presentation.reveal_preroll_reconcile_deferred",
+            phase: state.lastPresentationBatchPhase,
+            durationMs: 0
+          )
+        } else {
+          let reconcileStartedAt = CACurrentMediaTime() * 1000
+          try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
+          state = self.instances[instanceId] ?? state
+          self.recordNativeApply(
+            section: "presentation.reveal_preroll_reconcile",
+            phase: state.lastPresentationBatchPhase,
+            durationMs: CACurrentMediaTime() * 1000 - reconcileStartedAt
+          )
+        }
         let opacityStartedAt = CACurrentMediaTime() * 1000
         try self.setPresentationOpacityImmediate(
           self.revealPrerollPlacementOpacity,
@@ -8039,6 +8058,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
 
     // Create missing VAs (alpha 0 → fades up; no add-flash).
+    let vaCreateStartedAt = CACurrentMediaTime() * 1000
+    var vaCreatedCount = 0
     for key in desired where inst.vaByKey[key] == nil {
       guard let coord = coordByKey[key],
             let badgeId = pinVAEffectiveBadgeId(inst: inst, key: key),
@@ -8055,6 +8076,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       inst.vaByKey[key] = va
       inst.viewByKey[key] = view
       inst.viewBadgeId[key] = badgeId
+      vaCreatedCount += 1
+    }
+    if vaCreatedCount > 0 {
+      // Stall attribution: sprite baking (UIGraphicsImageRenderer + the CI-blur shadow)
+      // rides this loop on the MAIN thread — bucketed so the flush shows its true cost.
+      recordNativeApply(
+        section: "roster.pin_va_create",
+        phase: state.lastPresentationBatchPhase,
+        durationMs: CACurrentMediaTime() * 1000 - vaCreateStartedAt,
+        operationCount: vaCreatedCount
+      )
     }
     // Re-skin live views whose effective badge changed (rank shift OR highlight toggle).
     for (key, view) in inst.viewByKey {
