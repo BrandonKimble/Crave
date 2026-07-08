@@ -292,6 +292,24 @@ model CollectionRelevanceVerdict {
   @@map("collection_relevance_verdicts")
 }
 
+/// Persisted LLM DECISION RECORDS for calls with lasting effects whose inputs
+/// are unreconstructible later (entity-match shortlists change as the DB
+/// evolves; moderation verdicts get disputed). inputs+decision — NOT reasons —
+/// are the replayable observability primitive; doubles as a free calibration
+/// corpus from real traffic.
+model LlmDecisionRecord {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind      String   @db.VarChar(32) // 'moderation' | 'entity_match' | 'attribute_placement'
+  input     Json
+  decision  Json
+  model     String   @db.VarChar(128)
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([kind, createdAt], map: "idx_llm_decisions_kind_created")
+  @@map("llm_decision_records")
+}
+
 model RestaurantItemMention {
   id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   connectionId  String     @map("connection_id") @db.Uuid

@@ -3,6 +3,7 @@ import { SharedModule } from '../../../shared/shared.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { RateLimitCoordinatorService } from './rate-limit-coordinator.service';
 import { UsageLedgerService } from './usage-ledger.service';
+import { DecisionLedgerService } from './decision-ledger.service';
 
 /**
  * Shared services module for external integrations
@@ -14,7 +15,15 @@ import { UsageLedgerService } from './usage-ledger.service';
     SharedModule, // Imports ConfigModule and provides LoggerService
     PrismaModule,
   ],
-  providers: [RateLimitCoordinatorService, UsageLedgerService],
-  exports: [RateLimitCoordinatorService, UsageLedgerService],
+  providers: [
+    RateLimitCoordinatorService,
+    UsageLedgerService,
+    DecisionLedgerService,
+  ],
+  exports: [
+    RateLimitCoordinatorService,
+    UsageLedgerService,
+    DecisionLedgerService,
+  ],
 })
 export class SharedServicesModule {}

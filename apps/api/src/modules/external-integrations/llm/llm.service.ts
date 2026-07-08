@@ -1,4 +1,5 @@
 import { applyAuditReasonPolicy } from './llm-audit-policy';
+import { DecisionLedgerService } from '../shared/decision-ledger.service';
 import {
   Injectable,
   OnModuleInit,
@@ -194,6 +195,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     private readonly redisService: RedisService,
     private readonly metricsService: MetricsService,
     private readonly usageLedger: UsageLedgerService,
+    private readonly decisionLedger: DecisionLedgerService,
   ) {}
 
   onModuleInit(): void {
@@ -1246,7 +1248,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       thinkingContext: 'query',
     });
     const content = this.extractTextContent(response, 'moderate_text');
-    return this.parseModerationResponse(content);
+    const result = this.parseModerationResponse(content);
+    this.decisionLedger.record({
+      kind: 'moderation',
+      input: { text: trimmed },
+      decision: result,
+      model,
+    });
+    return result;
   }
 
   private parseModerationResponse(content: string): LLMModerationResult {
@@ -1329,7 +1338,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       thinkingContext: 'content',
     });
     const content = this.extractTextContent(response, 'place_attribute');
-    return this.parseAttributePlacementResponse(content, input);
+    const placement = this.parseAttributePlacementResponse(content, input);
+    this.decisionLedger.record({
+      kind: 'attribute_placement',
+      input,
+      decision: placement,
+      model,
+    });
+    return placement;
   }
 
   private parseAttributePlacementResponse(
@@ -1425,7 +1441,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: 1,
-      maxOutputTokens: 4096,
+      // 16384: thinking tokens bill against maxOutputTokens on this model —
+      // at 4096 a 12-item batch hit MAX_TOKENS mid-JSON and EVERY item
+      // silently failed closed to 'new' (found 2026-07-07 via the decision
+      // ledger; explains the judge's earlier "conservative flip-flops").
+      maxOutputTokens: 16384,
       responseMimeType: 'application/json',
       responseJsonSchema: ENTITY_MATCH_BATCH_RESPONSE_JSON_SCHEMA,
     };
@@ -1490,6 +1510,15 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           ? { decision: 'match', candidateId: cid }
           : { decision: 'new', candidateId: null };
       }
+      for (let i = 0; i < input.items.length; i += 1) {
+        this.decisionLedger.record({
+          kind: 'entity_match',
+          input: { kind: input.kind, ...input.items[i] },
+          decision: results[i],
+          model,
+          metadata: { batched: true },
+        });
+      }
       return results;
     } catch (error) {
       this.logger.warn('matchEntitiesBatch failed; failing closed to new', {
@@ -1499,6 +1528,15 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             ? { message: error.message }
             : { message: String(error) },
       });
+      for (let i = 0; i < input.items.length; i += 1) {
+        this.decisionLedger.record({
+          kind: 'entity_match',
+          input: { kind: input.kind, ...input.items[i] },
+          decision: failClosed[i],
+          model,
+          metadata: { batched: true, failClosed: true },
+        });
+      }
       return failClosed;
     }
   }
@@ -1642,7 +1680,14 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       thinkingContext: 'query',
     });
     const content = this.extractTextContent(response, 'match_entity');
-    return this.parseEntityMatchResponse(content, input);
+    const match = this.parseEntityMatchResponse(content, input);
+    this.decisionLedger.record({
+      kind: 'entity_match',
+      input,
+      decision: match,
+      model,
+    });
+    return match;
   }
 
   private parseEntityMatchResponse(

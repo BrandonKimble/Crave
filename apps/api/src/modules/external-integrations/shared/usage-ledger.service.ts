@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 
@@ -68,7 +68,15 @@ const PRO_FIELDS = new Set([
  * A write failure only warns — the ledger must never break a real call.
  */
 @Injectable()
-export class UsageLedgerService {
+export class UsageLedgerService implements OnModuleDestroy {
+  /** In-flight fire-and-forget writes, awaited on shutdown so short-lived
+   *  scripts and deploys can't drop records. */
+  private readonly pending = new Set<Promise<unknown>>();
+
+  async onModuleDestroy(): Promise<void> {
+    await Promise.allSettled(Array.from(this.pending));
+  }
+
   private readonly logger: LoggerService;
 
   constructor(
@@ -79,7 +87,7 @@ export class UsageLedgerService {
   }
 
   record(event: UsageEvent): void {
-    void this.prisma.apiUsageEvent
+    const write = this.prisma.apiUsageEvent
       .create({
         data: {
           service: event.service,
@@ -105,6 +113,8 @@ export class UsageLedgerService {
               : { message: String(error) },
         });
       });
+    this.pending.add(write);
+    void write.finally(() => this.pending.delete(write));
   }
 
   /** Highest-SKU-in-mask classification, mirroring Google's billing rule. */
