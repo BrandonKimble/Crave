@@ -1,3 +1,4 @@
+import { selectIsSearchSessionActive } from './search-desired-tuple-selectors';
 import type {
   AppRouteSceneForegroundPolicyInputs,
   AppRouteSceneForegroundState,
@@ -38,7 +39,7 @@ export const createSearchForegroundPolicyDomainController = ({
       inputMode: transitionVisibility.inputMode,
       isCloseTransitionActive: transitionVisibility.isCloseTransitionActive,
       isSuggestionPanelActive: suggestionPanelStateController.getSnapshot().isSuggestionPanelActive,
-      isSearchSessionActive: runtimeState.isSearchSessionActive,
+      isSearchSessionActive: selectIsSearchSessionActive(runtimeState),
       isSearchLoading: runtimeState.isSearchLoading,
     };
 

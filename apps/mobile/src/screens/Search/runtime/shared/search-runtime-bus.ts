@@ -66,13 +66,10 @@ export type SearchRuntimeBusState = {
   shouldRetrySearchOnReconnect: boolean;
   hasSystemStatusBanner: boolean;
   searchSurfaceRedrawCommitSpanPressureActive: boolean;
-  submittedQuery: string;
   activeTab: SearchRuntimeActiveTab;
   preferredActiveTab: SearchRuntimeActiveTab;
   hasActiveTabPreference: boolean;
   pendingTabSwitchTab: SearchRuntimeActiveTab | null;
-  searchMode: SearchRuntimeSearchMode;
-  isSearchSessionActive: boolean;
   isSearchLoading: boolean;
   isLoadingMore: boolean;
   /** S4c: the worldId last committed to the screen + its presentation phase — the
@@ -174,13 +171,10 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   shouldRetrySearchOnReconnect: false,
   hasSystemStatusBanner: false,
   searchSurfaceRedrawCommitSpanPressureActive: false,
-  submittedQuery: '',
   activeTab: 'dishes',
   preferredActiveTab: 'dishes',
   hasActiveTabPreference: false,
   pendingTabSwitchTab: null,
-  searchMode: null,
-  isSearchSessionActive: false,
   isSearchLoading: false,
   isLoadingMore: false,
   presentedWorldId: null,
@@ -393,7 +387,7 @@ export class SearchRuntimeBus {
     }
     if (
       changedKeys != null &&
-      !changedKeys.has('isSearchSessionActive') &&
+      !changedKeys.has('desiredTuple') &&
       !changedKeys.has('isSearchLoading') &&
       !changedKeys.has('isLoadingMore') &&
       !changedKeys.has('results') &&
@@ -405,7 +399,11 @@ export class SearchRuntimeBus {
       return;
     }
     target.updatePrimitiveSnapshot({
-      isSearchSessionActive: this.state.isSearchSessionActive,
+      // S4e: the session-active rule inlined from selectIsSearchSessionActive (the
+      // selectors module imports this file — type-only, but keep the value dep one-way).
+      isSearchSessionActive:
+        this.state.desiredTuple.queryIdentity.kind !== 'idle' &&
+        this.state.desiredTuple.queryIdentity.kind !== 'profileSeed',
       isSearchLoading: this.state.isSearchLoading,
       isLoadingMore: this.state.isLoadingMore,
       hasResults:

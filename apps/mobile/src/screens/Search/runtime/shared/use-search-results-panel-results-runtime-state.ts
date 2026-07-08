@@ -1,4 +1,5 @@
 import type { SearchRuntimeBus } from './search-runtime-bus';
+import { selectSearchMode, selectSubmittedQuery } from './search-desired-tuple-selectors';
 import type { SearchResultsPanelResultsRuntimeState } from './search-results-panel-runtime-state-contract';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 
@@ -19,8 +20,8 @@ export const useSearchResultsPanelResultsRuntimeState = (
       canLoadMore: state.canLoadMore,
       isSearchLoading: state.isSearchLoading,
       isLoadingMore: state.isLoadingMore,
-      submittedQuery: state.submittedQuery,
-      searchMode: state.searchMode,
+      submittedQuery: selectSubmittedQuery(state),
+      searchMode: selectSearchMode(state),
     }),
     (left, right) =>
       left.resultsRequestKey === right.resultsRequestKey &&
@@ -46,8 +47,7 @@ export const useSearchResultsPanelResultsRuntimeState = (
       'canLoadMore',
       'isSearchLoading',
       'isLoadingMore',
-      'submittedQuery',
-      'searchMode',
+      'desiredTuple',
     ] as const,
     'results_panel_results_runtime_state'
   );

@@ -1,4 +1,5 @@
 import React from 'react';
+import { selectSubmittedQuery } from './search-desired-tuple-selectors';
 
 import { createSearchRootResultsArrivalStateValue } from '../controller/search-root-data-plane-runtime';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
@@ -44,7 +45,7 @@ export const useSearchRootResultsArrivalRuntime = ({
       resultsDishCount: state.resultsDishCount,
       resultsRestaurantCount: state.resultsRestaurantCount,
       resultsPage: state.resultsPage,
-      submittedQuery: state.submittedQuery,
+      submittedQuery: selectSubmittedQuery(state),
     }),
     (a, b) =>
       a.isLoadingMore === b.isLoadingMore &&
@@ -69,7 +70,7 @@ export const useSearchRootResultsArrivalRuntime = ({
       'resultsDishCount',
       'resultsRestaurantCount',
       'resultsPage',
-      'submittedQuery',
+      'desiredTuple',
     ] as const,
     'root_results_arrival_runtime'
   );

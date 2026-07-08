@@ -1,4 +1,5 @@
 import React from 'react';
+import { selectSearchMode } from './search-desired-tuple-selectors';
 
 import { useResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import { useResultsPresentationShellModelRuntime } from './use-results-presentation-shell-model-runtime';
@@ -99,13 +100,13 @@ export const useResultsPresentationShellRuntime = ({
   const shortcutToggleDisplayState = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => ({
-      searchMode: state.searchMode,
-      optimisticActiveTab: state.pendingTabSwitchTab ?? state.activeTab,
+      searchMode: selectSearchMode(state),
+      optimisticActiveTab: state.desiredTuple.tab,
     }),
     (left, right) =>
       left.searchMode === right.searchMode &&
       left.optimisticActiveTab === right.optimisticActiveTab,
-    ['searchMode', 'pendingTabSwitchTab', 'activeTab'] as const
+    ['desiredTuple'] as const
   );
 
   const shellModel = useResultsPresentationShellModelRuntime({

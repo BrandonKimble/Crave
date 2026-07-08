@@ -1,4 +1,8 @@
 import React from 'react';
+import {
+  selectSearchMode,
+  selectSubmittedQuery,
+} from '../runtime/shared/search-desired-tuple-selectors';
 
 import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
 import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
@@ -272,11 +276,11 @@ const useSearchSubmitOwner = ({
     onPresentationIntentStart?.({
       kind: intent.presentationIntentKind ?? 'initial_search',
       operationToken: `${buildSearchCardsWorldKey(tuple)}#g${generation}`,
-      mode: busState.searchMode ?? null,
+      mode: selectSearchMode(busState),
       preserveSheetState: intent.preserveSheetState,
       transitionFromDockedPolls: dockedPolls,
       targetTab: tuple.tab,
-      submittedLabel: busState.submittedQuery || undefined,
+      submittedLabel: selectSubmittedQuery(busState) || undefined,
       entrySurface:
         intent.entrySurface === 'profile' || intent.entrySurface == null
           ? 'home'

@@ -1,4 +1,5 @@
 import React from 'react';
+import { selectSubmittedQuery } from '../shared/search-desired-tuple-selectors';
 
 import type { CreateProfileActionRuntimeArgs } from './profile-action-runtime-port-contract';
 import type { ProfileSearchContext } from './profile-owner-runtime-contract';
@@ -16,9 +17,9 @@ export const useProfileOwnerQueryActionContextRuntime = ({
   const results = getSearchMountedResultsDataSnapshot().results;
   const submittedQuery = useSearchRuntimeBusSelector(
     searchRuntimeBus,
-    (state) => state.submittedQuery,
+    selectSubmittedQuery,
     Object.is,
-    ['submittedQuery'] as const
+    ['desiredTuple'] as const
   );
   const currentQueryKey = React.useMemo(
     () => (submittedQuery || searchContext.trimmedQuery).trim(),

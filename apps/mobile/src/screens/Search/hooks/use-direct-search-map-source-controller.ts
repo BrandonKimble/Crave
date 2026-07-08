@@ -1,4 +1,8 @@
 import React from 'react';
+import {
+  selectSearchMode,
+  selectSubmittedQuery,
+} from '../runtime/shared/search-desired-tuple-selectors';
 import { InteractionManager } from 'react-native';
 import type { Feature, Point } from 'geojson';
 import MapboxGL from '@rnmapbox/maps';
@@ -1197,7 +1201,7 @@ export const useDirectSearchMapSourceController = ({
     const committedMapSourceFrameKey = resolveCommittedMapSourceFrameKey(state);
     const selectedRestaurantId = args.highlightedRestaurantId;
     const hasCommittedResultState =
-      state.searchMode != null && mountedResultsSnapshot.resultsRequestKey != null;
+      selectSearchMode(state) != null && mountedResultsSnapshot.resultsRequestKey != null;
     // Seeded marker source: when a profile opens without committed results (e.g. an autocomplete
     // suggestion tap), the hydrated restaurant publishes itself here so the map can place its pin.
     // It is only consulted when there are no committed restaurants — committed results always win.
@@ -1240,7 +1244,7 @@ export const useDirectSearchMapSourceController = ({
     // (catalog resolution, coverage requestKey, fingerprint) derives from this one binding, so
     // the stored fingerprint is exactly what the toggle-time publish will compute.
     const activeTab = prewarm?.prewarmTab ?? state.activeTab;
-    const searchMode = state.searchMode;
+    const searchMode = selectSearchMode(state);
     // Prewarm is only useful where the prepared-frame cache-hit replay applies (shortcut mode,
     // committed results, no selection intent — mirrored below once selection is resolved).
     if (isPrewarmBuild && (searchMode !== 'shortcut' || searchRequestId == null)) {
@@ -1487,7 +1491,7 @@ export const useDirectSearchMapSourceController = ({
       restaurantOnlyId: effectiveRestaurantOnlyId,
       searchMode,
       selectedRestaurantId,
-      submittedQuery: state.submittedQuery ?? null,
+      submittedQuery: selectSubmittedQuery(state),
     });
     const cachedPreparedFrame =
       preparedSourceFrameByFingerprintRef.current.get(preparedFrameFingerprint);
@@ -2650,7 +2654,7 @@ export const useDirectSearchMapSourceController = ({
     publishAndFetch('mount')();
     const unsubscribeBus = searchRuntimeBus.subscribe(
       publishAndFetch('bus'),
-      ['searchMode', 'activeTab', 'submittedQuery'] as const,
+      ['desiredTuple', 'activeTab'] as const,
       'map_source_controller_direct_state'
     );
     const unsubscribeMountedResults = subscribeSearchMountedResultsDataSnapshot(
@@ -2696,7 +2700,7 @@ export const useDirectSearchMapSourceController = ({
   const prewarmSiblingTabSourceFrameRef = React.useRef<() => void>(() => {});
   prewarmSiblingTabSourceFrameRef.current = () => {
     const state = searchRuntimeBus.getState();
-    if (state.searchMode !== 'shortcut') {
+    if (selectSearchMode(state) !== 'shortcut') {
       return;
     }
     const siblingTab = state.activeTab === 'dishes' ? 'restaurants' : 'dishes';

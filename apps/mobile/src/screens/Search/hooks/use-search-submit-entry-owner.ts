@@ -181,7 +181,6 @@ export const useSearchSubmitEntryOwner = ({
             resultsPage: null,
             resultsDishCount: 0,
             resultsRestaurantCount: 0,
-            submittedQuery: '',
             hasMoreFood: false,
             hasMoreRestaurants: false,
             currentPage: 1,

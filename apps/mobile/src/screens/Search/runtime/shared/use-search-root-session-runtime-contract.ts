@@ -88,8 +88,6 @@ export type SearchRootRuntimeFlagsRuntime = {
   searchMode: 'natural' | 'shortcut' | null;
   isSearchSessionActive: boolean;
   searchSurfaceRedrawOperationId: string | null;
-  setSearchMode: React.Dispatch<React.SetStateAction<'natural' | 'shortcut' | null>>;
-  setIsSearchSessionActive: React.Dispatch<React.SetStateAction<boolean>>;
   isSearchLoading: boolean;
   isSearchRequestLoadingRef: React.MutableRefObject<boolean>;
   setSearchRequestLoading: (isLoadingNext: boolean) => void;

@@ -64,8 +64,6 @@ export const useSearchRootClearRestoreAuthorityRuntime = ({
     resetMapMoveFlag: rootSharedSheetRuntimeLane.resetMapMoveFlag,
     setError: rootPrimitivesRuntime.searchState.setError,
     setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
-    setIsSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.setIsSearchSessionActive,
-    setSearchMode: rootDataPlaneRuntime.runtimeFlags.setSearchMode,
     resetSheetToHidden: appRouteSharedSheetRuntimeOwner.markSharedSheetHidden,
     lastAutoOpenKeyRef: requestExecutionAuthorityRuntime.lastAutoOpenKeyRef,
     resetFocusedMapState: rootPrimitivesRuntime.searchState.resetFocusedMapState,

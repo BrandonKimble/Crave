@@ -21,36 +21,6 @@ import {
   type SearchTupleWriteCause,
 } from './search-desired-state-contract';
 
-// The legacy searchMode key is LOAD-BEARING for the map frame: 'shortcut' switches the
-// controller into the shortcut-coverage projection (frame waits for a coverage-terminal
-// world entry). Only true shortcuts and restaurant-entity taps (which collapse to the
-// single-restaurant projection) may claim it; food/attribute entity taps and favorites
-// ran the legacy natural lane and must project 'natural' or their coverage-less worlds
-// starve the frame.
-const deriveLegacySearchMode = (identity: SearchQueryIdentity): 'natural' | 'shortcut' | null =>
-  identity.kind === 'natural' || identity.kind === 'entities'
-    ? 'natural'
-    : identity.kind === 'shortcut'
-      ? 'shortcut'
-      : identity.kind === 'entity'
-        ? identity.entityType === 'restaurant'
-          ? 'shortcut'
-          : 'natural'
-        : null;
-
-const deriveLegacySubmittedQuery = (identity: SearchQueryIdentity): string =>
-  identity.kind === 'natural'
-    ? identity.query
-    : identity.kind === 'shortcut'
-      ? identity.shortcutTab === 'restaurants'
-        ? 'Best restaurants'
-        : 'Best dishes'
-      : identity.kind === 'entities'
-        ? identity.displayTitle
-        : identity.kind === 'entity'
-          ? identity.displayName
-          : '';
-
 /** Adopt-viewport helper for commit-moment triggers: captures the SETTLED camera the same
  *  way request preparation does (bounds + screen-accurate polygon). */
 export const captureCommittedBounds = (viewportBoundsService: {
@@ -102,9 +72,6 @@ export const writeSearchDesiredTuple = (
     return { tuple: prev, generation: state.desiredTupleGeneration, changed: false };
   }
   const generation = state.desiredTupleGeneration + 1;
-  // Legacy projections — read-only elsewhere from S2 on; deleted in S4. Only CHANGED keys
-  // are included (the bus Object.is-guards per key; a fresh-but-equal array would spuriously
-  // notify priceLevels subscribers — the bridge's value-compare lesson).
   const identityChanged =
     patch.queryIdentity != null &&
     !areSearchQueryIdentitiesEqual(prev.queryIdentity, next.queryIdentity);
@@ -112,22 +79,14 @@ export const writeSearchDesiredTuple = (
     desiredTuple: next,
     desiredTupleGeneration: generation,
     desiredTupleCause: cause,
-    // Identity-derived projections publish ONLY on identity change (a chip write while the
-    // identity conversion is still lane-owned must never null searchMode).
-    ...(identityChanged
-      ? {
-          searchMode: deriveLegacySearchMode(next.queryIdentity),
-          submittedQuery: deriveLegacySubmittedQuery(next.queryIdentity),
-          isSearchSessionActive:
-            next.queryIdentity.kind !== 'idle' && next.queryIdentity.kind !== 'profileSeed',
-        }
-      : {}),
     // S4c-1b: desired tab ≠ presented tab. A pure tab toggle inside an active session
     // is PRESENTED by the reconciler's tab-switch commit (cover → swap → reveal) — the
     // write only surfaces the optimistic hint. Identity writes and idle-session toggles
     // present immediately (enter builds its own cover; home pill has no choreography).
     ...(patch.tab != null && prev.tab !== next.tab
-      ? state.isSearchSessionActive && !identityChanged
+      ? prev.queryIdentity.kind !== 'idle' &&
+        prev.queryIdentity.kind !== 'profileSeed' &&
+        !identityChanged
         ? { pendingTabSwitchTab: next.tab }
         : { activeTab: next.tab, pendingTabSwitchTab: null }
       : {}),

@@ -51,8 +51,6 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
   resetMapMoveFlag: () => void;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   setSuggestions: React.Dispatch<React.SetStateAction<Suggestion[]>>;
-  setIsSearchSessionActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setSearchMode: React.Dispatch<React.SetStateAction<'natural' | 'shortcut' | null>>;
   resetSheetToHidden: () => void;
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
   resetFocusedMapState: () => void;
@@ -90,8 +88,6 @@ export const useSearchClearOwner = <Suggestion>({
   resetMapMoveFlag,
   setError,
   setSuggestions,
-  setIsSearchSessionActive,
-  setSearchMode,
   resetSheetToHidden,
   lastAutoOpenKeyRef,
   resetFocusedMapState,
@@ -136,7 +132,6 @@ export const useSearchClearOwner = <Suggestion>({
       resultsPage: null,
       resultsDishCount: 0,
       resultsRestaurantCount: 0,
-      submittedQuery: '',
       currentPage: 1,
       hasMoreFood: false,
       hasMoreRestaurants: false,
@@ -148,8 +143,6 @@ export const useSearchClearOwner = <Suggestion>({
     resetMapMoveFlag();
     setError(null);
     setSuggestions([]);
-    setIsSearchSessionActive(false);
-    setSearchMode(null);
     if (hasOriginRestorePending) {
       commitSearchCloseRestore();
       flushPendingSearchOriginRestore();
@@ -189,11 +182,9 @@ export const useSearchClearOwner = <Suggestion>({
     setError,
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
-    setIsSearchSessionActive,
     setIsSuggestionPanelActive,
     setQuery,
     setRestaurantOnlyIntent,
-    setSearchMode,
     setSearchTransitionVariant,
     setShowSuggestions,
     setSuggestions,
@@ -265,7 +256,6 @@ export const useSearchClearOwner = <Suggestion>({
         resultsPage: null,
         resultsDishCount: 0,
         resultsRestaurantCount: 0,
-        submittedQuery: '',
         currentPage: 1,
         hasMoreFood: false,
         hasMoreRestaurants: false,
@@ -279,8 +269,6 @@ export const useSearchClearOwner = <Suggestion>({
       if (!deferSuggestionClear && !preserveForegroundEditing) {
         setSuggestions([]);
       }
-      setIsSearchSessionActive(false);
-      setSearchMode(null);
       if (skipSheetAnimation) {
         resetSheetToHidden();
       }
@@ -339,11 +327,9 @@ export const useSearchClearOwner = <Suggestion>({
       setError,
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
-      setIsSearchSessionActive,
       setIsSuggestionPanelActive,
       setQuery,
       setRestaurantOnlyIntent,
-      setSearchMode,
       setSearchTransitionVariant,
       setShowSuggestions,
       setSuggestions,
