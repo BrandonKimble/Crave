@@ -180,3 +180,29 @@ What this changes vs the doc above:
   do it as part of launch checklist, after paywall screens exist.
 - App Store Connect setup gains one item: attach the introductory offer
   (free trial, e.g. 7 days) to the ANNUAL product only.
+
+## RevenueCat setup — EXECUTED via API (2026-07-08)
+
+Project `proj2c08e0c4` ("crave"). Done programmatically:
+
+- App Store app `app2a9f58f2f5` "Crave iOS" (bundle
+  com.brandonkimble.cravesearch); public SDK key
+  `appl_yCAqmZfLvXlzLbvGpWVLvcnlGKs` (use for TestFlight/App Store builds).
+- Entitlement `premium` (entldc08408f8e, display "Crave+") — lookup key now
+  MATCHES the backend code, so REVENUECAT_ENTITLEMENT_MAP=premium:premium
+  (identity). Old `crave Pro` (entl60198dffff) detached + ARCHIVED.
+- Both Test Store products (monthly/yearly) attached to `premium`; default
+  offering already had $rc_monthly/$rc_annual packages (Nov 2025 scaffold).
+- Deleted the dead ngrok sandbox webhook. Recreate at sandbox-E2E time
+  (ngrok URL + Authorization header = REVENUECAT_WEBHOOK_SECRET), and a
+  production one at the Railway URL before launch.
+- Dev .env: EXPO_PUBLIC_REVENUECAT_IOS_KEY = the Test Store public key →
+  the purchase flow is testable in the dev client BEFORE Apple enrollment
+  (RC Test Store simulates the store).
+
+Still waiting on Apple (owner): Developer Program enrollment → paid-apps
+agreement → create ASC subscription products ($7.99 monthly / $39.99 annual
+
+- intro free trial on annual) → connect ASC API key in RC app settings
+  (app_store_connect_api_key_configured=false) → real products in RC
+  referencing ASC product IDs + attach to `premium` and packages.
