@@ -377,14 +377,29 @@ dismiss-in-progress swallow :2849 — no ack, no state update). The contract bec
     on-rig: 1 dismiss → 1 ack → 1 exit_settled; resubmit reveals the full VA set.
     Found: exit_started re-emits once per dismiss (JS exit-lane re-publish — S4e
     cleanup). Metro restarted with a fresh /tmp/crave-flow-metro.log.
-  - **Remaining: S4d-3b** — the ONE-commit hold-regime swap: delete
-    dismiss-in-progress bypass + JSON same-state dedupe +
-    dismissFrameFallbackWorkItems (96ms frame poll) + interactionFadeHold expiry
-    heuristic + collapse the lastEnter\*/lastDismiss registers into
-    (currentWorldId, currentPhase); JS sends phases explicitly ((worldId, phase)
-    payload replaces the five request keys); retarget algebra = any new worldId
-    re-ramps from current opacity. Then S4e (legacy bus-key deletion via tuple
-    selectors).
+  - **S4d-3b SHIPPED (ca06354f): every silent-drop/timer hold regime deleted, one
+    commit.** (1) BOTH dismiss-in-progress bypasses (presentation payload + snapshot
+    apply) deleted — latest payload = the desired level, always wins; keyless
+    payload/snapshot mid-dismiss is now a loud RED emit
+    (`keyless_payload_during_dismiss` / `snapshot_apply_during_dismiss`) with
+    processing continuing. Instrumented evidence pre-delete: ZERO firings ever.
+    (2) dismissFrameFallbackWorkItems 96ms frame poll deleted — the settle rides the
+    fade-out floor directly (both callers at-floor by construction); off-floor settle
+    = RED `dismiss_settle_off_floor_contract_violation`, never a re-armed poll.
+    (3) interactionFadeHold 1500ms expiry + TR5-N re-stamp deleted — the hold is a
+    pure level lifted only by enter/dismiss ownership or teardown; an abandoned hold
+    is a visible JS bug (also zero expiries ever). Validated: dismiss→resubmit VA lane
+    (catalog drain, 30/30 promote, reveal), tab toggles both ways, zero contract
+    noise. NOTE on the JSON same-state skip: with episode tokens as transactionId it
+    already IS (worldId, phase) idempotence, and it ACKS via the `apply_same_state`
+    snapshot emit — kept as the idempotence path, not content-dedupe.
+  - **Remaining: S4d-3c (rename, no regime change)** — collapse the
+    lastEnter\*/lastDismiss registers into (currentWorldId, currentPhase) and replace
+    the five JS request keys + native `deriveSearchMapVisualFrameTransactionKind`
+    with an explicit (worldId, phase) payload. Purely mechanical now: the keys are
+    already worldId episode tokens end-to-end and no timer/bypass regime remains, so
+    this no longer needs to land atomically with anything. Then S4e (legacy bus-key
+    deletion via tuple selectors).
 
 The brief's "native holds first" order is REJECTED: it forces a transactionId→worldId
 shim and two lifecycle owners writing the same native ramp — a coexistence that cannot be
