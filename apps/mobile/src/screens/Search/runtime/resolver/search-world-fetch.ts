@@ -175,6 +175,17 @@ export const createSearchWorldFetcher =
         openNow: tuple.filterVariant.openNow || undefined,
         userLocation: userLocation ?? undefined,
       });
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.log('[FAVDBG] list-results', {
+          restaurants: response?.restaurants?.length ?? 0,
+          dishes: response?.dishes?.length ?? 0,
+          notes: response?.plan?.diagnostics?.notes ?? null,
+          favorites:
+            (response?.metadata as { analysisMetadata?: { favorites?: unknown } } | undefined)
+              ?.analysisMetadata?.favorites ?? null,
+        });
+      }
     } else if (identity.kind === 'entity') {
       // Skip-LLM entity lane: restaurant taps are a structured single-entity request;
       // food/attribute taps ride the natural endpoint with a selected-entity context the
