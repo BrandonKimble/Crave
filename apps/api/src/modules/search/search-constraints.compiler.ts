@@ -99,6 +99,17 @@ export function compileQueryPlanFromConstraints(
     });
   }
 
+  if (constraints.ids.excludedIngredientIds.length > 0) {
+    connectionFilters.push({
+      scope: 'connection',
+      description:
+        'Exclude by ingredients (conservative — either evidence or canonical tier)',
+      entityType: EntityScope.INGREDIENT,
+      entityIds: constraints.ids.excludedIngredientIds,
+      payload: { exclude: true },
+    });
+  }
+
   if (constraints.stagePresence.foodAttributes > 0) {
     const attributeIds = constraints.ids.foodAttributeIds;
     const shouldInclude =

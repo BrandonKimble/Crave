@@ -94,6 +94,7 @@ interface SearchQueryRawResponse {
   foodAttributes: unknown;
   restaurantAttributes: unknown;
   ingredients?: unknown;
+  excludedIngredients?: unknown;
 }
 
 type GeminiGenerationConfig = Record<string, unknown> & {
@@ -1054,7 +1055,8 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       analysis.foods.length +
       analysis.foodAttributes.length +
       analysis.restaurantAttributes.length +
-      (analysis.ingredients?.length ?? 0);
+      (analysis.ingredients?.length ?? 0) +
+      (analysis.excludedIngredients?.length ?? 0);
     if (totalInterpretedEntities === 0) {
       this.logger.warn('LLM returned empty search query interpretation', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -2306,6 +2308,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       foodAttributes: analysis.foodAttributes,
       restaurantAttributes: analysis.restaurantAttributes,
       ingredients: analysis.ingredients ?? [],
+      excludedIngredients: analysis.excludedIngredients ?? [],
     };
     const payload = {
       analysis: analysisPayload,
@@ -2371,6 +2374,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       foodAttributes: analysis.foodAttributes,
       restaurantAttributes: analysis.restaurantAttributes,
       ingredients: analysis.ingredients ?? [],
+      excludedIngredients: analysis.excludedIngredients ?? [],
     };
     const entry = {
       analysis: analysisPayload,
@@ -2612,6 +2616,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       parsed.restaurantAttributes,
     );
     const ingredients = this.coerceStringArray(parsed.ingredients);
+    const excludedIngredients = this.coerceStringArray(
+      parsed.excludedIngredients,
+    );
 
     return {
       restaurants,
@@ -2619,6 +2626,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       foodAttributes,
       restaurantAttributes,
       ingredients,
+      excludedIngredients,
     };
   }
 

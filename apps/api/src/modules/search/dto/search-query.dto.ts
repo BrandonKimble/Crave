@@ -111,6 +111,14 @@ export class QueryEntityGroupDto {
   @ValidateNested({ each: true })
   @Type(() => QueryEntityDto)
   ingredients?: QueryEntityDto[];
+
+  /** Excluded-ingredient lane: "no egg", "without cilantro", allergy phrasing.
+   *  Applied as a conservative NOT across either ingredient tier
+   *  (testimony-knowledge doctrine rule 3). */
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => QueryEntityDto)
+  excludedIngredients?: QueryEntityDto[];
 }
 
 export class CoordinateDto {

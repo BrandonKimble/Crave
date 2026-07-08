@@ -283,6 +283,9 @@ export interface LLMSearchQueryAnalysis {
   restaurantAttributes: string[];
   /** Ingredient nouns searched BY ("burrata", "miso") — the ingredient lane. */
   ingredients?: string[];
+  /** Ingredient nouns the user wants ABSENT ("no egg", "without cilantro",
+   *  "peanut-free") — the allergy-safe exclusion lane. */
+  excludedIngredients?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -327,8 +330,8 @@ export interface LLMEntityMatchCandidate {
 export interface LLMEntityMatchInput {
   /** The newly-extracted entity name to resolve. */
   term: string;
-  /** restaurant (a place) or food (a dish). */
-  kind: 'restaurant' | 'food';
+  /** restaurant (a place), food (a dish), or ingredient (a component). */
+  kind: 'restaurant' | 'food' | 'ingredient';
   /** Existing entities recalled as the closest matches to `term`. */
   candidates: LLMEntityMatchCandidate[];
 }

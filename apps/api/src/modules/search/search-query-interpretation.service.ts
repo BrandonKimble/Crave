@@ -164,10 +164,8 @@ export class SearchQueryInterpretationService {
     });
 
     const resolvedMarket = await this.resolveSearchMarketContext(request);
-    const resolutionInputs = this.buildResolutionInputs(
-      cleanedAnalysis,
-      resolvedMarket.marketKey,
-    );
+    const { inputs: resolutionInputs, excludedIngredientTempIds } =
+      this.buildResolutionInputs(cleanedAnalysis, resolvedMarket.marketKey);
     let entityResolutionMs = 0;
     const resolutionStart = performance.now();
     const resolutionResultList: EntityResolutionResult[] =
@@ -179,7 +177,10 @@ export class SearchQueryInterpretationService {
         : [];
     entityResolutionMs = performance.now() - resolutionStart;
 
-    const groupedEntities = this.groupResolvedEntities(resolutionResultList);
+    const groupedEntities = this.groupResolvedEntities(
+      resolutionResultList,
+      excludedIngredientTempIds,
+    );
 
     const structuredRequest = this.buildSearchRequest(request, groupedEntities);
     // Mint the searchRequestId HERE (runQuery reuses a present id) so the two
@@ -282,13 +283,19 @@ export class SearchQueryInterpretationService {
   private buildResolutionInputs(
     analysis: LLMSearchQueryAnalysis,
     marketKey: string | null,
-  ): EntityResolutionInput[] {
+  ): {
+    inputs: EntityResolutionInput[];
+    /** Which ingredient-typed inputs belong to the EXCLUSION lane — same
+     *  vocabulary and linker as the include lane, different downstream verb. */
+    excludedIngredientTempIds: Set<string>;
+  } {
     const inputs: EntityResolutionInput[] = [];
 
     const normalizedMarketKey =
       typeof marketKey === 'string' ? marketKey.trim().toLowerCase() : null;
-    const addEntries = (names: string[], entityType: EntityType) => {
+    const addEntries = (names: string[], entityType: EntityType): string[] => {
       const seen = new Set<string>();
+      const tempIds: string[] = [];
       for (const name of names) {
         const stripped = stripGenericTokens(name);
         const normalized = stripped.text.trim();
@@ -300,8 +307,10 @@ export class SearchQueryInterpretationService {
           continue;
         }
         seen.add(key);
+        const tempId = `${entityType}:${uuid()}`;
+        tempIds.push(tempId);
         inputs.push({
-          tempId: `${entityType}:${uuid()}`,
+          tempId,
           normalizedName: normalized,
           originalText: normalized,
           entityType,
@@ -309,6 +318,7 @@ export class SearchQueryInterpretationService {
           marketKey: entityType === 'restaurant' ? normalizedMarketKey : null,
         });
       }
+      return tempIds;
     };
 
     addEntries(analysis.restaurants, 'restaurant');
@@ -316,8 +326,11 @@ export class SearchQueryInterpretationService {
     addEntries(analysis.foodAttributes, 'food_attribute');
     addEntries(analysis.restaurantAttributes, 'restaurant_attribute');
     addEntries(analysis.ingredients ?? [], 'ingredient');
+    const excludedIngredientTempIds = new Set(
+      addEntries(analysis.excludedIngredients ?? [], 'ingredient'),
+    );
 
-    return inputs;
+    return { inputs, excludedIngredientTempIds };
   }
 
   /**
@@ -493,6 +506,9 @@ export class SearchQueryInterpretationService {
         analysis.restaurantAttributes,
       ),
       ingredients: this.stripGenericTokensFromTerms(analysis.ingredients ?? []),
+      excludedIngredients: this.stripGenericTokensFromTerms(
+        analysis.excludedIngredients ?? [],
+      ),
     };
   }
 
@@ -519,12 +535,14 @@ export class SearchQueryInterpretationService {
 
   private groupResolvedEntities(
     results: EntityResolutionResult[],
+    excludedIngredientTempIds: Set<string>,
   ): QueryEntityGroupDto {
     const restaurantEntities: QueryEntityDto[] = [];
     const foodEntities: QueryEntityDto[] = [];
     const foodAttributeEntities: QueryEntityDto[] = [];
     const restaurantAttributeEntities: QueryEntityDto[] = [];
     const ingredientEntities: QueryEntityDto[] = [];
+    const excludedIngredientEntities: QueryEntityDto[] = [];
 
     const pushEntity = (
       collection: QueryEntityDto[],
@@ -571,7 +589,12 @@ export class SearchQueryInterpretationService {
           pushEntity(restaurantAttributeEntities, result);
           break;
         case 'ingredient':
-          pushEntity(ingredientEntities, result);
+          pushEntity(
+            excludedIngredientTempIds.has(result.tempId)
+              ? excludedIngredientEntities
+              : ingredientEntities,
+            result,
+          );
           break;
         default:
           break;
@@ -588,6 +611,9 @@ export class SearchQueryInterpretationService {
         ? restaurantAttributeEntities
         : undefined,
       ingredients: ingredientEntities.length ? ingredientEntities : undefined,
+      excludedIngredients: excludedIngredientEntities.length
+        ? excludedIngredientEntities
+        : undefined,
     };
   }
 
@@ -813,6 +839,7 @@ export class SearchQueryInterpretationService {
       foodAttributes: entities.foodAttributes,
       restaurantAttributes: entities.restaurantAttributes,
       ingredients: entities.ingredients,
+      excludedIngredients: entities.excludedIngredients,
     });
 
     return {
@@ -880,6 +907,7 @@ export class SearchQueryInterpretationService {
       foodAttributes: analysis.foodAttributes.length,
       restaurantAttributes: analysis.restaurantAttributes.length,
       ingredients: analysis.ingredients?.length ?? 0,
+      excludedIngredients: analysis.excludedIngredients?.length ?? 0,
     };
   }
 

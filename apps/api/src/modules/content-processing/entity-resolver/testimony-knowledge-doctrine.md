@@ -26,7 +26,9 @@ tier's lifecycle).
 3. **Exclusion is conservative.** For allergy/"no cilantro" filtering, exclude
    when EITHER tier names the ingredient — canon says ramen has egg; a venue's
    version might not, and an exclusion never gambles on the venue being the
-   exception.
+   exception. (Wired end-to-end: query interpretation's `excludedIngredients`
+   lane → `excludedIngredientIds` constraints → the same builder seam's
+   `'exclude'` arm.)
 
 ## Fields following this pattern
 

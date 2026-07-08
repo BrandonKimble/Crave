@@ -69,6 +69,7 @@ interface ParsedFilters {
   foodTextExpansionIds: string[];
   foodAttributeIds: string[];
   ingredientIds: string[];
+  excludedIngredientIds: string[];
   foodAttributePrimary: boolean;
   boundsPayload: BoundsPayload | null;
   polygonPayload: PolygonPayload | null;
@@ -741,8 +742,15 @@ LIMIT ${pagination.take};`.trim();
         connectionFilters,
         EntityScope.FOOD_ATTRIBUTE,
       ),
+      // The INGREDIENT scope carries two lanes on one entityType — the clause
+      // payload's `exclude` flag is the discriminator (include = recall union,
+      // exclude = conservative NOT; see buildEffectiveIngredientsClause).
       ingredientIds: this.collectEntityIds(
-        connectionFilters,
+        connectionFilters.filter((filter) => filter.payload?.exclude !== true),
+        EntityScope.INGREDIENT,
+      ),
+      excludedIngredientIds: this.collectEntityIds(
+        connectionFilters.filter((filter) => filter.payload?.exclude === true),
         EntityScope.INGREDIENT,
       ),
       foodAttributePrimary: Boolean(directives?.primaryFoodAttributeQuery),
@@ -1014,6 +1022,15 @@ LIMIT ${pagination.take};`.trim();
       conditionPreview.push(clause.preview);
     }
 
+    if (filters.excludedIngredientIds.length) {
+      const clause = this.buildEffectiveIngredientsClause(
+        filters.excludedIngredientIds,
+        'exclude',
+      );
+      conditions.push(clause.sql);
+      conditionPreview.push(clause.preview);
+    }
+
     if (filters.minimumVotes !== null) {
       conditions.push(Prisma.sql`c.total_upvotes >= ${filters.minimumVotes}`);
       conditionPreview.push(`c.total_upvotes >= ${filters.minimumVotes}`);
@@ -1089,6 +1106,15 @@ LIMIT ${pagination.take};`.trim();
       const clause = this.buildEffectiveIngredientsClause(
         filters.ingredientIds,
         'include',
+      );
+      conditions.push(clause.sql);
+      conditionPreview.push(clause.preview);
+    }
+
+    if (filters.excludedIngredientIds.length) {
+      const clause = this.buildEffectiveIngredientsClause(
+        filters.excludedIngredientIds,
+        'exclude',
       );
       conditions.push(clause.sql);
       conditionPreview.push(clause.preview);
