@@ -33,9 +33,6 @@ export class KeywordSearchJobWorker {
       safeIntervalDays,
       sortPlan,
     } = job.data;
-    const scheduleKey = (collectableMarketKey ?? subreddit)
-      .trim()
-      .toLowerCase();
     const cycleId =
       job.data.cycleId ?? CorrelationUtils.generateCorrelationId();
 
@@ -60,13 +57,9 @@ export class KeywordSearchJobWorker {
             { source, collectableMarketKey, safeIntervalDays, sortPlan },
           );
 
-          if (job.data.trackCompletion) {
-            await this.keywordScheduler.markSearchCompleted(
-              scheduleKey,
-              true,
-              result.metadata.processedTerms,
-            );
-          }
+          // trackCompletion retired: cadence advances in CollectionSchedulerService
+
+          // at dispatch time (collection_schedules rows).
 
           const ranHeavySorts =
             sortPlan?.some(
@@ -74,8 +67,8 @@ export class KeywordSearchJobWorker {
             ) ?? false;
 
           if (source === 'hot_spike' && ranHeavySorts) {
-            this.keywordScheduler.recordTopRelevanceRun(
-              scheduleKey,
+            await this.keywordScheduler.recordTopRelevanceRun(
+              subreddit,
               result.metadata.executionStartTime,
             );
           }
@@ -94,14 +87,6 @@ export class KeywordSearchJobWorker {
             processedTerms: result.metadata.processedTerms,
           });
         } catch (error) {
-          if (job.data.trackCompletion) {
-            await this.keywordScheduler.markSearchCompleted(
-              scheduleKey,
-              false,
-              0,
-            );
-          }
-
           this.keywordSearchMetrics.recordJobFailure({
             source,
             subreddit,

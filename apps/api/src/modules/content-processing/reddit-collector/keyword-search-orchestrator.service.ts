@@ -1326,61 +1326,6 @@ export class KeywordSearchOrchestratorService {
     };
   }
 
-  /**
-   * Get keyword search execution metrics
-   */
-  getKeywordSearchMetrics(): KeywordSearchMetrics {
-    try {
-      const schedules = this.keywordScheduler.getAllSchedules();
-
-      const metrics: KeywordSearchMetrics = {
-        totalSchedules: schedules.length,
-        activeSchedules: schedules.filter(
-          (s) => s.status === 'pending' || s.status === 'scheduled',
-        ).length,
-        completedSchedules: schedules.filter((s) => s.status === 'completed')
-          .length,
-        failedSchedules: schedules.filter((s) => s.status === 'failed').length,
-        nextDueSearch: schedules
-          .filter((s) => s.status === 'pending')
-          .sort((a, b) => a.nextRun.getTime() - b.nextRun.getTime())[0]
-          ?.nextRun,
-        totalTermsScheduled: schedules.reduce(
-          (sum, s) => sum + s.terms.length,
-          0,
-        ),
-        averageTermsPerSchedule:
-          schedules.length > 0
-            ? schedules.reduce((sum, s) => sum + s.terms.length, 0) /
-              schedules.length
-            : 0,
-        schedulesBySubreddit: schedules.reduce(
-          (acc, s) => {
-            acc[s.subreddit] = {
-              status: s.status,
-              nextRun: s.nextRun,
-              lastRun: s.lastRun,
-              collectableMarketKey: s.collectableMarketKey,
-              termCount: s.terms.length,
-            };
-            return acc;
-          },
-          {} as Record<string, any>,
-        ),
-      };
-
-      return metrics;
-    } catch (error: unknown) {
-      this.logger.error('Failed to get keyword search metrics', {
-        error:
-          error instanceof Error
-            ? { message: error.message, name: error.name, stack: error.stack }
-            : { message: String(error) },
-      });
-      throw error;
-    }
-  }
-
   /** PROVIDER for the consolidated CollectionScheduler: score + enqueue
    *  hot-spike on-demand jobs. Returns the number enqueued. */
   async enqueueHotSpikeJobs(): Promise<number> {

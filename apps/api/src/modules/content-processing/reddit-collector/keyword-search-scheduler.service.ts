@@ -106,7 +106,6 @@ interface HotSpikeScoredCandidate extends HotSpikeKeywordCandidate {
 export class KeywordSearchSchedulerService implements OnModuleInit {
   private logger!: LoggerService;
   private config!: KeywordSearchConfig;
-  private schedules = new Map<string, KeywordSearchSchedule>();
   private readonly DEFAULT_CONFIG: KeywordSearchConfig = {
     enabled: true,
     intervalDays: 1,
@@ -124,104 +123,6 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('KeywordSearchScheduler');
     this.config = this.loadConfiguration();
-  }
-
-  /**
-   * Initialize keyword search scheduling for all configured subreddits
-   */
-  async initializeScheduling(): Promise<void> {
-    const correlationId = CorrelationUtils.generateCorrelationId();
-
-    this.logger.info('Initializing keyword search scheduling', {
-      correlationId,
-      operation: 'initialize_keyword_scheduling',
-      config: this.config,
-    });
-
-    if (!this.config.enabled) {
-      this.logger.warn('Keyword search scheduling is disabled');
-      return;
-    }
-
-    // Initialize schedules for each market key (primary subreddit per key)
-    const scheduleTargets = await this.loadActiveScheduleTargets();
-    for (const target of scheduleTargets) {
-      await this.initializeMarketSchedule(target);
-    }
-
-    this.logger.info('Keyword search scheduling initialized', {
-      nextRuns: this.getAllSchedules().map((schedule) => ({
-        collectableMarketKey: schedule.collectableMarketKey,
-        subreddit: schedule.subreddit,
-        nextRun: schedule.nextRun,
-      })),
-    });
-  }
-
-  /**
-   * Initialize keyword search schedule for a specific collection market key
-   */
-  private async initializeMarketSchedule(target: {
-    subreddit: string;
-    collectableMarketKey: string;
-  }): Promise<void> {
-    const correlationId = CorrelationUtils.generateCorrelationId();
-    const subreddit = target.subreddit.trim();
-
-    this.logger.info('Initializing keyword search schedule for market key', {
-      correlationId,
-      operation: 'initialize_subreddit_schedule',
-      subreddit,
-      collectableMarketKey: target.collectableMarketKey,
-    });
-
-    // Calculate next run date (first of next month + offset)
-    const nextRun = this.calculateNextRunDate();
-
-    const selection = await this.selectTermsForSubreddit({
-      subreddit,
-      collectableMarketKeyHint: target.collectableMarketKey,
-    });
-    const sortPlan = this.buildSortPlan({
-      safeIntervalDays: selection.safeIntervalDays,
-      runAt: nextRun,
-    });
-
-    const schedule: KeywordSearchSchedule = {
-      subreddit,
-      collectableMarketKey: selection.collectableMarketKey,
-      safeIntervalDays: selection.safeIntervalDays,
-      scheduledDate: nextRun,
-      terms: selection.terms,
-      sortPlan,
-      status: 'pending',
-      nextRun,
-    };
-
-    this.schedules.set(schedule.collectableMarketKey, schedule);
-
-    this.logger.info('Keyword search schedule initialized', {
-      correlationId,
-      subreddit,
-      nextRun,
-      termCount: selection.terms.length,
-      collectableMarketKey: selection.collectableMarketKey,
-      sortsPlanned: sortPlan.map((entry) => entry.sort),
-      topTerms: selection.terms.slice(0, 5).map((term) => ({
-        term: term.term,
-        slice: term.slice ?? null,
-        score: term.score ?? null,
-      })),
-    });
-  }
-
-  /**
-   * Calculate next run date (first of next month + offset)
-   */
-  private calculateNextRunDate(baseDate?: Date | null): Date {
-    const start = baseDate ? new Date(baseDate) : new Date();
-    start.setDate(start.getDate() + this.config.intervalDays);
-    return start;
   }
 
   private buildSortPlan(params: {
@@ -284,53 +185,6 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     };
   }
 
-  async checkDueSearches(): Promise<KeywordSearchSchedule[]> {
-    const correlationId = CorrelationUtils.generateCorrelationId();
-    const now = new Date();
-    const dueSchedules: KeywordSearchSchedule[] = [];
-
-    this.logger.debug('Checking for due keyword searches', {
-      correlationId,
-      operation: 'check_due_searches',
-      currentTime: now,
-    });
-
-    for (const [scheduleKey, schedule] of this.schedules.entries()) {
-      if (schedule.status !== 'scheduled' && now >= schedule.nextRun) {
-        const selection = await this.selectTermsForSubreddit({
-          subreddit: schedule.subreddit,
-          collectableMarketKeyHint: schedule.collectableMarketKey,
-        });
-        schedule.collectableMarketKey = selection.collectableMarketKey;
-        schedule.safeIntervalDays = selection.safeIntervalDays;
-        schedule.terms = selection.terms;
-        schedule.sortPlan = this.buildSortPlan({
-          safeIntervalDays: schedule.safeIntervalDays,
-          lastTopRelevanceRunAt: schedule.lastTopRelevanceRunAt,
-          runAt: now,
-        });
-
-        this.logger.info('Keyword search is due', {
-          correlationId,
-          subreddit: schedule.subreddit,
-          scheduledTime: schedule.nextRun,
-          collectableMarketKey: schedule.collectableMarketKey,
-          termCount: schedule.terms.length,
-          sortsPlanned: schedule.sortPlan.map((entry) => entry.sort),
-        });
-
-        schedule.status = 'scheduled';
-        if (schedule.collectableMarketKey !== scheduleKey) {
-          this.schedules.delete(scheduleKey);
-        }
-        this.schedules.set(schedule.collectableMarketKey, schedule);
-        dueSchedules.push(schedule);
-      }
-    }
-
-    return dueSchedules;
-  }
-
   async findHotSpikeCandidates(): Promise<HotSpikeKeywordCandidate[]> {
     const correlationId = CorrelationUtils.generateCorrelationId();
 
@@ -343,14 +197,41 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     const since24h = new Date(now.getTime() - HOT_SPIKE_WINDOW_MS);
     const since48h = new Date(now.getTime() - HOT_SPIKE_WINDOW_MS * 2);
 
-    const scheduleByMarketKey = new Map<string, KeywordSearchSchedule>();
-    for (const schedule of this.schedules.values()) {
-      if (schedule.status === 'scheduled') {
-        continue;
+    // Durable market whitelist: collection_schedules keyword rows (the old
+    // in-memory schedule map is gone) supply hot-spike eligibility + the
+    // per-market context candidates need.
+    const keywordRows = await this.prisma.collectionSchedule.findMany({
+      where: { workKind: 'keyword', enabled: true },
+      select: { community: true, intervalDays: true, metadata: true },
+    });
+    const scheduleByMarketKey = new Map<
+      string,
+      {
+        subreddit: string;
+        collectableMarketKey: string;
+        safeIntervalDays: number;
+        lastTopRelevanceRunAt?: Date;
       }
-      if (!scheduleByMarketKey.has(schedule.collectableMarketKey)) {
-        scheduleByMarketKey.set(schedule.collectableMarketKey, schedule);
-      }
+    >();
+    for (const row of keywordRows) {
+      const resolvedKey = (
+        (await this.marketRegistry.resolveMarketKeyForCommunity(
+          row.community,
+        )) ?? row.community
+      )
+        .trim()
+        .toLowerCase();
+      const metadata = (row.metadata ?? {}) as {
+        lastTopRelevanceRunAt?: string;
+      };
+      scheduleByMarketKey.set(resolvedKey, {
+        subreddit: row.community,
+        collectableMarketKey: resolvedKey,
+        safeIntervalDays: row.intervalDays,
+        lastTopRelevanceRunAt: metadata.lastTopRelevanceRunAt
+          ? new Date(metadata.lastTopRelevanceRunAt)
+          : undefined,
+      });
     }
 
     if (!scheduleByMarketKey.size) {
@@ -801,117 +682,39 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     );
   }
 
-  /**
-   * Mark keyword search as completed and schedule next run
-   */
-  async markSearchCompleted(
-    collectableMarketKey: string,
-    success: boolean,
-    termsProcessed?: number,
-  ): Promise<void> {
-    const correlationId = CorrelationUtils.generateCorrelationId();
-    const scheduleKey = collectableMarketKey.trim().toLowerCase();
-    const schedule = this.schedules.get(scheduleKey);
-
-    if (!schedule) {
-      this.logger.warn('Attempted to mark completion for unknown schedule', {
-        correlationId,
-        collectableMarketKey: scheduleKey,
-        success,
-      });
-      return;
-    }
-
-    schedule.status = success ? 'completed' : 'failed';
-    schedule.lastRun = new Date();
-    schedule.nextRun = this.calculateNextRunDate(schedule.lastRun);
-
-    const ranHeavySorts = schedule.sortPlan.some(
-      (entry) => entry.sort === 'top' || entry.sort === 'relevance',
-    );
-    if (success && ranHeavySorts) {
-      schedule.lastTopRelevanceRunAt = schedule.lastRun;
-    }
-
-    const selection = await this.selectTermsForSubreddit({
-      subreddit: schedule.subreddit,
-      collectableMarketKeyHint: schedule.collectableMarketKey,
-    });
-    schedule.collectableMarketKey = selection.collectableMarketKey;
-    schedule.safeIntervalDays = selection.safeIntervalDays;
-    schedule.terms = selection.terms;
-    schedule.sortPlan = this.buildSortPlan({
-      safeIntervalDays: schedule.safeIntervalDays,
-      lastTopRelevanceRunAt: schedule.lastTopRelevanceRunAt,
-      runAt: schedule.nextRun,
-    });
-
-    if (schedule.collectableMarketKey !== scheduleKey) {
-      this.schedules.delete(scheduleKey);
-    }
-    this.schedules.set(schedule.collectableMarketKey, schedule);
-
-    this.logger.info('Keyword search marked as completed', {
-      correlationId,
-      subreddit: schedule.subreddit,
-      success,
-      termsProcessed,
-      nextRun: schedule.nextRun,
-      collectableMarketKey: schedule.collectableMarketKey,
-      newTermCount: schedule.terms.length,
-      sortsPlanned: schedule.sortPlan.map((entry) => entry.sort),
-    });
-  }
-
-  recordTopRelevanceRun(collectableMarketKey: string, executedAt: Date): void {
-    const scheduleKey = collectableMarketKey.trim().toLowerCase();
-    const schedule = this.schedules.get(scheduleKey);
-    if (!schedule) {
-      return;
-    }
-
-    const safeExecutedAt =
-      executedAt instanceof Date && !Number.isNaN(executedAt.getTime())
-        ? executedAt
-        : new Date();
-
-    schedule.lastTopRelevanceRunAt = safeExecutedAt;
-    schedule.sortPlan = this.buildSortPlan({
-      safeIntervalDays: schedule.safeIntervalDays,
-      lastTopRelevanceRunAt: schedule.lastTopRelevanceRunAt,
-      runAt: schedule.nextRun,
-    });
-
-    this.schedules.set(scheduleKey, schedule);
-
-    this.logger.debug('Recorded top/relevance run for schedule', {
-      subreddit: schedule.subreddit,
-      collectableMarketKey: schedule.collectableMarketKey,
-      executedAt: safeExecutedAt,
-      sortsPlanned: schedule.sortPlan.map((entry) => entry.sort),
-    });
-  }
-
-  /**
-   * Get current schedules for all market keys
-   */
-  getAllSchedules(): KeywordSearchSchedule[] {
-    return Array.from(this.schedules.values());
-  }
-
-  /**
-   * Get schedule for specific market key
-   */
-  getSchedule(collectableMarketKey: string): KeywordSearchSchedule | undefined {
-    return this.schedules.get(collectableMarketKey.trim().toLowerCase());
-  }
-
   isEnabled(): boolean {
     return this.config.enabled;
   }
 
   getConfig(): KeywordSearchConfig {
     return { ...this.config };
+  }
+
+  /** Durable: stamp the community's keyword cadence row so future runs skip
+   *  heavy sorts recently covered by a hot-spike job. */
+  async recordTopRelevanceRun(
+    community: string,
+    executedAt: Date,
+  ): Promise<void> {
+    const safeExecutedAt =
+      executedAt instanceof Date && !Number.isNaN(executedAt.getTime())
+        ? executedAt
+        : new Date();
+    const row = await this.prisma.collectionSchedule.findUnique({
+      where: { community_workKind: { community, workKind: 'keyword' } },
+      select: { metadata: true },
+    });
+    if (!row) return;
+    await this.prisma.collectionSchedule.update({
+      where: { community_workKind: { community, workKind: 'keyword' } },
+      data: {
+        metadata: {
+          ...((row.metadata ?? {}) as Record<string, unknown>),
+          lastTopRelevanceRunAt: safeExecutedAt.toISOString(),
+        },
+        updatedAt: new Date(),
+      },
+    });
   }
 
   private async selectTermsForSubreddit(params: {

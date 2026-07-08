@@ -106,7 +106,19 @@ export class EntitlementService {
           return { grantId: null };
         }
       }
-      expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+      // Day grants STACK: they extend the user's current access horizon
+      // ("every photo adds a day" means a day ON TOP, not an overlapping
+      // window that silently vanishes inside an existing grant).
+      const current = await this.summarize(input.userId, code);
+      const base =
+        current.active && current.expiresAt
+          ? Math.max(current.expiresAt.getTime(), Date.now())
+          : Date.now();
+      expiresAt = new Date(base + days * 24 * 60 * 60 * 1000);
+      input = {
+        ...input,
+        metadata: { ...(input.metadata ?? {}), grantedDays: days },
+      };
     }
 
     const grant = await this.prisma.accessGrant.create({
@@ -270,12 +282,16 @@ export class EntitlementService {
   ): Promise<AccessSummary> {
     const code = entitlementCode ?? this.defaultCode;
     const now = new Date();
+    // +2s tolerance: a grant's DB-assigned startsAt can land marginally after
+    // this process's clock (timestamp rounding / server skew) — a just-created
+    // grant must never be invisible to its own recompute.
+    const startsBefore = new Date(now.getTime() + 2000);
     const grants = await this.prisma.accessGrant.findMany({
       where: {
         userId,
         entitlementCode: code,
         revokedAt: null,
-        startsAt: { lte: now },
+        startsAt: { lte: startsBefore },
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       select: { expiresAt: true, source: true },
@@ -338,9 +354,16 @@ export class EntitlementService {
   ): Promise<number> {
     const grants = await this.prisma.accessGrant.findMany({
       where: { userId, source, revokedAt: null },
-      select: { startsAt: true, expiresAt: true },
+      select: { startsAt: true, expiresAt: true, metadata: true },
     });
+    // NOTE: with stacking, expiresAt - startsAt no longer equals the granted
+    // days; the authoritative count rides metadata.grantedDays (set below in
+    // grant()) with the duration as a legacy fallback.
     return grants.reduce((sum, grant) => {
+      const meta = grant.metadata as { grantedDays?: number } | null;
+      if (typeof meta?.grantedDays === 'number') {
+        return sum + Math.max(0, meta.grantedDays);
+      }
       if (!grant.expiresAt) return sum;
       const days =
         (grant.expiresAt.getTime() - grant.startsAt.getTime()) /
