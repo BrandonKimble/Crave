@@ -92,14 +92,9 @@ export const useResultsSurfaceExitTransactionExecutionRuntime = ({
           shortcutOpacityTransitionDurationMs: 180,
           transactionId: snapshot.transactionId,
         });
-        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-          event: 'native_marker_exit_started',
-          requestKey: snapshot.transactionId,
-          frameGenerationId: null,
-          pinCount: 0,
-          dotCount: 0,
-          labelCount: 0,
-        });
+        // S4e: the synthetic native_marker_exit_started pre-announce is deleted — the real
+        // event logs once from the native presentation_exit_started emit in the render owner
+        // (the double publish made every dismiss read as two exits in the attribution trace).
       }
       return snapshot.transactionId;
     },
