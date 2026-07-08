@@ -9,6 +9,8 @@ import { PublicCraveScoreModule } from '../content-processing/public-crave-score
 import { MarketsModule } from '../markets/markets.module';
 import { RestaurantLocationEnrichmentService } from './restaurant-location-enrichment.service';
 import { RestaurantJanitorService } from './restaurant-janitor.service';
+import { RestaurantEnrichmentQueueService } from './restaurant-enrichment-queue.service';
+import { RestaurantEnrichmentWorker } from './restaurant-enrichment.worker';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 import { RestaurantCuisineExtractionService } from './restaurant-cuisine-extraction.service';
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
@@ -39,12 +41,17 @@ const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
       name: 'restaurant-cuisine-extraction',
     }),
     BullModule.registerQueue({
+      name: 'restaurant-primary-enrichment',
+    }),
+    BullModule.registerQueue({
       name: 'restaurant-secondary-location-expansion',
     }),
   ],
   providers: [
     RestaurantLocationEnrichmentService,
     RestaurantJanitorService,
+    RestaurantEnrichmentQueueService,
+    RestaurantEnrichmentWorker,
     RestaurantEntityMergeService,
     RestaurantCuisineExtractionService,
     RestaurantCuisineExtractionQueueService,
@@ -52,6 +59,7 @@ const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
     ...restaurantEnrichmentWorkerProviders,
   ],
   exports: [
+    RestaurantEnrichmentQueueService,
     RestaurantLocationEnrichmentService,
     RestaurantCuisineExtractionQueueService,
     RestaurantSecondaryLocationExpansionQueueService,

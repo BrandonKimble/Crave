@@ -38,6 +38,7 @@ import { RestaurantLocationEnrichmentService } from '../../restaurant-enrichment
 import { MarketRegistryService } from '../../markets/market-registry.service';
 import { AttributeOntologyQueueService } from '../../attribute-ontology/attribute-ontology-queue.service';
 import type { ExtractionTraceContext } from './collection-evidence.service';
+import { RestaurantEnrichmentQueueService } from '../../restaurant-enrichment/restaurant-enrichment-queue.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 
 const DEFAULT_UNIFIED_PROCESSING_TX_TIMEOUT_MS = 15 * 60 * 1000;
@@ -163,6 +164,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     private readonly prismaService: PrismaService,
     private readonly entityResolutionService: EntityResolutionService,
     private readonly projectionRebuildService: ProjectionRebuildService,
+    private readonly restaurantEnrichmentQueue: RestaurantEnrichmentQueueService,
     private readonly configService: ConfigService,
     private readonly restaurantLocationEnrichmentService: RestaurantLocationEnrichmentService,
     private readonly marketRegistry: MarketRegistryService,
@@ -2603,34 +2605,21 @@ export class UnifiedProcessingService implements OnModuleInit {
     if (!restaurantIds.length) {
       return;
     }
-
-    const concurrency = Math.max(1, this.restaurantEnrichmentConcurrency);
     const enrichmentContext =
       await this.resolveRestaurantEnrichmentDispatchContext(
         sourceMetadata?.subreddit ?? null,
       );
 
-    for (let index = 0; index < restaurantIds.length; index += concurrency) {
-      const batch = restaurantIds.slice(index, index + concurrency);
-      const enrichmentPromises = batch.map((entityId) =>
-        this.restaurantLocationEnrichmentService
-          .enrichRestaurantById(entityId, {
-            sourceMarket: enrichmentContext.sourceMarket,
-            countryCode: enrichmentContext.countryCode,
-            locationBias: enrichmentContext.locationBias,
-          })
-          .catch((error) => {
-            this.logger.warn('Restaurant enrichment failed', {
-              entityId,
-              error: {
-                message: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              },
-            });
-          }),
-      );
-
-      await Promise.all(enrichmentPromises);
+    // Audit item 6: enrichment rides BullMQ (like cuisine/secondary passes)
+    // instead of blocking ingest on Google's API. Job id = restaurantId, so
+    // duplicate enqueues collapse; the worker is idempotent via the
+    // hasPlaceId guard. Failures retry with backoff inside the queue.
+    for (const entityId of restaurantIds) {
+      await this.restaurantEnrichmentQueue.queueEnrichment(entityId, {
+        sourceMarket: enrichmentContext.sourceMarket ?? null,
+        countryCode: enrichmentContext.countryCode ?? null,
+        locationBias: enrichmentContext.locationBias ?? null,
+      });
     }
   }
 
