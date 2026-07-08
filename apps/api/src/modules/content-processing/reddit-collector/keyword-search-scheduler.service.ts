@@ -257,6 +257,33 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   /**
    * Check if any keyword searches are due
    */
+  /**
+   * PROVIDER for the consolidated CollectionScheduler (plans/collection-
+   * scheduler-consolidation.md): build the due keyword work for ONE community
+   * from durable inputs — no in-memory schedule map involved.
+   */
+  async buildScheduleForCommunity(
+    subreddit: string,
+    lastTopRelevanceRunAt: Date | null,
+  ): Promise<{
+    collectableMarketKey: string;
+    safeIntervalDays: number;
+    terms: KeywordSearchTerm[];
+    sortPlan: KeywordSearchSortPlan[];
+  }> {
+    const selection = await this.selectTermsForSubreddit({ subreddit });
+    return {
+      collectableMarketKey: selection.collectableMarketKey,
+      safeIntervalDays: selection.safeIntervalDays,
+      terms: selection.terms,
+      sortPlan: this.buildSortPlan({
+        safeIntervalDays: selection.safeIntervalDays,
+        lastTopRelevanceRunAt: lastTopRelevanceRunAt ?? undefined,
+        runAt: new Date(),
+      }),
+    };
+  }
+
   async checkDueSearches(): Promise<KeywordSearchSchedule[]> {
     const correlationId = CorrelationUtils.generateCorrelationId();
     const now = new Date();

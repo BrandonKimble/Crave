@@ -32,6 +32,7 @@ import { RedditBatchProcessingService } from './reddit-batch-processing.service'
 import { CollectionEvidenceService } from './collection-evidence.service';
 import { ExtractionPipelineService } from './extraction-pipeline.service';
 import { RelevanceGateService } from './relevance-gate.service';
+import { CollectionSchedulerService } from './collection-scheduler.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 import { ReplayService } from './replay.service';
 import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
@@ -45,6 +46,7 @@ const redditCollectorCoreProviders = [
   CollectionEvidenceService,
   ExtractionPipelineService,
   RelevanceGateService,
+  CollectionSchedulerService,
   ProjectionRebuildService,
   ReplayService,
   UnifiedProcessingService,

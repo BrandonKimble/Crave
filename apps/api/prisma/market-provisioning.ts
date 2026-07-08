@@ -807,6 +807,17 @@ export async function provisionCollectionCommunity(
     },
     select: { marketKey: true },
   });
+
+  // Seed the durable collection cadence rows (the consolidated scheduler
+  // plans from collection_schedules; a new community starts collecting with
+  // zero further configuration).
+  await prisma.collectionSchedule.createMany({
+    data: [
+      { community: communityName, workKind: 'chronological', intervalDays: 1 },
+      { community: communityName, workKind: 'keyword', intervalDays: 7 },
+    ],
+    skipDuplicates: true,
+  });
 }
 
 export interface GeocodedCity {

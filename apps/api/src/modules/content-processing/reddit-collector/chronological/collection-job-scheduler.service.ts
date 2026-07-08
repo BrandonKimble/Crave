@@ -114,10 +114,10 @@ export class CollectionJobSchedulerService implements OnModuleInit {
       count: this.scheduleConfig.subreddits.length,
     });
 
-    // All scheduling configuration now stored in database
-
-    // Start the scheduling loop
-    await this.startScheduling();
+    // Planning moved to CollectionSchedulerService (collection_schedules
+    // rows; plans/collection-scheduler-consolidation.md). This service keeps
+    // its enqueue/execution methods as the chronological DISPATCH provider —
+    // it no longer plans its own cadence.
   }
 
   /**

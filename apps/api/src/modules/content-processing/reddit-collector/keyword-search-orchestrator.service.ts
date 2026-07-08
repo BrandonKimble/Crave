@@ -83,8 +83,9 @@ export class KeywordSearchOrchestratorService
   async onModuleInit(): Promise<void> {
     this.autoIntervalMs = this.resolveAutoInterval();
     if (this.keywordSchedulerConfigEnabled()) {
-      await this.keywordScheduler.initializeScheduling();
-      this.startAutoExecution();
+      // Planning moved to CollectionSchedulerService — no in-memory schedule
+      // map, no auto-execution timer (collection_schedules rows drive cadence).
+      // startAutoExecution removed — CollectionSchedulerService plans cycles.
     }
   }
 
@@ -1563,6 +1564,47 @@ export class KeywordSearchOrchestratorService
       });
       throw error;
     }
+  }
+
+  /** PROVIDER for the consolidated CollectionScheduler: score + enqueue
+   *  hot-spike on-demand jobs. Returns the number enqueued. */
+  async enqueueHotSpikeJobs(): Promise<number> {
+    const candidates = await this.keywordScheduler.findHotSpikeCandidates();
+    for (const candidate of candidates) {
+      const jobId =
+        `hot_spike-${candidate.collectableMarketKey}:${candidate.normalizedTerm}`
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .slice(0, 180);
+      await this.enqueueKeywordSearchJob({
+        jobId,
+        cycleId: CorrelationUtils.generateCorrelationId(),
+        subreddit: candidate.subreddit,
+        collectableMarketKey: candidate.collectableMarketKey,
+        safeIntervalDays: candidate.safeIntervalDays,
+        sortPlan: candidate.sortPlan,
+        terms: [
+          {
+            term: candidate.term,
+            normalizedTerm: candidate.normalizedTerm,
+            slice: 'hot_spike',
+            score: candidate.priorityScore,
+            origin: {
+              trigger: candidate.trigger,
+              distinctUsersLast24h: candidate.distinctUsersLast24h,
+              distinctUsersPrev24h: candidate.distinctUsersPrev24h,
+              trendBoost: candidate.trendBoost,
+              attemptAvailability: candidate.attemptAvailability,
+              lastSeenAt: candidate.lastSeenAt.toISOString(),
+            },
+          },
+        ],
+        source: 'hot_spike',
+        trackCompletion: false,
+      });
+    }
+    return candidates.length;
   }
 
   async enqueueKeywordSearchJob(data: KeywordSearchJobData): Promise<void> {
