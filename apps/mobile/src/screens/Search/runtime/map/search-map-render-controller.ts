@@ -208,6 +208,17 @@ export type SearchMapRenderControllerEvent =
       nowMs: number;
     }
   | {
+      // S4d-2 ack-everything: the fade-out ramp reached the dark floor (mach-clocked).
+      // The reveal statechart's `covering` exit input; log-only until S4d-3 consumes it.
+      type: 'presentation_fade_out_acked';
+      instanceId: string;
+      reason: string;
+      requestKey: string | null;
+      lifecycleState: string;
+      nativeTimestampMs: number;
+      ackedAtMs: number;
+    }
+  | {
       type: 'presentation_exit_started';
       instanceId: string;
       requestKey: string;

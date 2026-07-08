@@ -8953,6 +8953,20 @@ final class SearchMapRenderController: RCTEventEmitter {
           message:
             "presentation_opacity_animation_complete reason=\(animator.reason) target=\(Self.round3(animator.targetOpacity))"
         )
+        // S4d-2 ACK-EVERYTHING: the fade-out floor ack. Today nothing acks a ramp
+        // reaching the dark floor — the S4c/S4d statechart cannot leave `covering`
+        // without this event (riskiest coupling #2 in the S4 map). Mach-clocked.
+        if animator.targetOpacity <= 0.001 {
+          emit([
+            "type": "presentation_fade_out_acked",
+            "instanceId": instanceId,
+            "reason": animator.reason,
+            "requestKey": (state.lastDismissRequestKey ?? state.lastEnterRequestKey) as Any,
+            "lifecycleState": String(describing: state.visualSourceLifecycleState),
+            "nativeTimestampMs": CACurrentMediaTime() * 1000,
+            "ackedAtMs": Self.nowMs(),
+          ])
+        }
         // UNIFIED-FADE TOGGLE settled signal (map-LOD-v6). On a fade-IN ramp completion emit a DETERMINISTIC
         // settled event keyed to the LATEST request (`lastEnterRequestKey` — every rapid tap re-stamps it at
         // :2681 and the single in-flight animator completes under the newest key). This REPLACES the racy

@@ -2460,6 +2460,17 @@ const useSearchMapNativeRenderOwnerStatus = ({
               }
               return;
             }
+            if (event.type === 'presentation_fade_out_acked') {
+              if (__DEV__) {
+                logger.info('[FADE-OUT-ACK]', {
+                  reason: event.reason,
+                  requestKey: event.requestKey,
+                  lifecycle: event.lifecycleState,
+                  nativeTimestampMs: event.nativeTimestampMs,
+                });
+              }
+              return;
+            }
             if (event.type === 'presentation_enter_started') {
               const sourceCounts = withNativePresentationEventInnerSpan(
                 event,
