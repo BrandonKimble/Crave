@@ -457,14 +457,14 @@ export type SearchMapVisualFrameTransactionKind =
 
 export type SearchMapVisualFrameSourceSnapshotKind = 'pending' | 'ready' | 'empty';
 
+// S4d-3c: the five legacy request keys (requestKey/visualCycleKey/readinessKey/
+// shortcutCoverageRequestKey/markersRenderKey) are DELETED from the native payload —
+// native parsed them into the transaction struct but never read a single one. Identity
+// rides the presentation payload's worldId episode token; the transaction carries only
+// kind + phase + source identity.
 export type SearchMapVisualFrameTransaction = {
   kind: SearchMapVisualFrameTransactionKind;
   presentationPhase: SearchRuntimeMapPresentationPhase;
-  requestKey: string | null;
-  visualCycleKey: string | null;
-  readinessKey: string | null;
-  shortcutCoverageRequestKey: string | null;
-  markersRenderKey: string | null;
   sourceFrameKey: string;
   sourceDataKey: string;
   sourceSnapshotKind: SearchMapVisualFrameSourceSnapshotKind;

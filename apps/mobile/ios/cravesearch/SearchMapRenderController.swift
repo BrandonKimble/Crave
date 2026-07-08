@@ -239,14 +239,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     case dismissing
   }
 
+  // S4d-3c: the five legacy request keys were parsed here but never read — deleted.
+  // World identity rides the presentation payload's worldId episode token.
   private struct VisualFrameTransaction {
     var kind: String
     var presentationPhase: String
-    var requestKey: String?
-    var visualCycleKey: String?
-    var readinessKey: String?
-    var shortcutCoverageRequestKey: String?
-    var markersRenderKey: String?
     var sourceFrameKey: String
     var sourceDataKey: String
     var sourceSnapshotKind: String
@@ -12887,11 +12884,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     return VisualFrameTransaction(
       kind: kind,
       presentationPhase: presentationPhase,
-      requestKey: rawTransaction["requestKey"] as? String,
-      visualCycleKey: rawTransaction["visualCycleKey"] as? String,
-      readinessKey: rawTransaction["readinessKey"] as? String,
-      shortcutCoverageRequestKey: rawTransaction["shortcutCoverageRequestKey"] as? String,
-      markersRenderKey: rawTransaction["markersRenderKey"] as? String,
       sourceFrameKey: sourceFrameKey,
       sourceDataKey: sourceDataKey,
       sourceSnapshotKind: sourceSnapshotKind

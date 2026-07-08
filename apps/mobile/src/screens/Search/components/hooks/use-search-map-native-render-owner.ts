@@ -704,25 +704,18 @@ const deriveSearchMapVisualFrameTransactionKind = ({
 const buildSearchMapVisualFrameTransaction = ({
   kind,
   presentationPhase,
-  sourceFrameMatchState,
   sourceFrameKey,
   sourceDataKey,
   sourceSnapshotKind,
 }: {
   kind: SearchMapVisualFrameTransactionKind;
   presentationPhase: SearchRuntimeMapPresentationPhase;
-  sourceFrameMatchState: SearchMapNativeSourceFrameMatchState;
   sourceFrameKey: string;
   sourceDataKey: string;
   sourceSnapshotKind: SearchMapVisualFrameSourceSnapshotKind;
 }): SearchMapVisualFrameTransaction => ({
   kind,
   presentationPhase,
-  requestKey: sourceFrameMatchState.requestKey,
-  visualCycleKey: sourceFrameMatchState.visualCycleKey,
-  readinessKey: sourceFrameMatchState.readinessKey,
-  shortcutCoverageRequestKey: sourceFrameMatchState.shortcutCoverageRequestKey,
-  markersRenderKey: sourceFrameMatchState.markersRenderKey,
   sourceFrameKey,
   sourceDataKey,
   sourceSnapshotKind,
@@ -3296,7 +3289,6 @@ const useSearchMapNativeRenderOwnerSync = ({
         const visualFrameTransaction = buildSearchMapVisualFrameTransaction({
           kind: visualFrameTransactionKind,
           presentationPhase,
-          sourceFrameMatchState,
           sourceFrameKey,
           sourceDataKey,
           sourceSnapshotKind,
