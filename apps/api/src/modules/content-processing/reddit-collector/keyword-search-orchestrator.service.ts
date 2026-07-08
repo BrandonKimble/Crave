@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Inject,
-  OnModuleInit,
-  OnModuleDestroy,
-} from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue, JobCounts, Job } from 'bull';
 import { LoggerService, CorrelationUtils } from '../../../shared';
@@ -55,13 +50,9 @@ export interface KeywordSearchTerm {
  * Coordinates entity selection, Reddit API searches, and processing pipeline integration.
  */
 @Injectable()
-export class KeywordSearchOrchestratorService
-  implements OnModuleInit, OnModuleDestroy
-{
+export class KeywordSearchOrchestratorService {
   // Legacy field retained to avoid compile errors in deprecated methods retained below
   private unifiedProcessing: UnifiedProcessingAdapter | null = null;
-  private autoIntervalMs = 60 * 60 * 1000;
-  private autoExecutionTimer?: NodeJS.Timeout;
   private readonly keywordSearchLimit: number;
   private readonly keywordSearchSorts: KeywordSearchSort[];
   constructor(
@@ -80,18 +71,8 @@ export class KeywordSearchOrchestratorService
     this.keywordSearchSorts = this.resolveKeywordSearchSorts();
   }
 
-  async onModuleInit(): Promise<void> {
-    this.autoIntervalMs = this.resolveAutoInterval();
-    if (this.keywordSchedulerConfigEnabled()) {
-      // Planning moved to CollectionSchedulerService — no in-memory schedule
-      // map, no auto-execution timer (collection_schedules rows drive cadence).
-      // startAutoExecution removed — CollectionSchedulerService plans cycles.
-    }
-  }
-
-  onModuleDestroy(): void {
-    this.stopAutoExecution();
-  }
+  // Planning lives in CollectionSchedulerService (collection_schedules rows
+  // drive cadence) — this orchestrator only executes/enqueues keyword work.
 
   /**
    * Execute keyword entity search for specific subreddit
@@ -1346,172 +1327,6 @@ export class KeywordSearchOrchestratorService
   }
 
   /**
-   * Execute due keyword searches based on scheduler
-   * Implements PRD 5.1.2 monthly scheduling with automated execution
-   *
-   * @returns Promise<KeywordSearchBatchResult> - Results from all due searches
-   */
-  async executeDueKeywordSearches(): Promise<KeywordSearchBatchResult> {
-    const startTime = Date.now();
-    const correlationId = CorrelationUtils.generateCorrelationId();
-
-    this.logger.info('Checking for due keyword searches', {
-      correlationId,
-      operation: 'execute_due_keyword_searches',
-    });
-
-    try {
-      // Check scheduler for due searches
-      const dueSchedules = await this.keywordScheduler.checkDueSearches();
-      const hotSpikeCandidates =
-        await this.keywordScheduler.findHotSpikeCandidates();
-
-      if (dueSchedules.length === 0 && hotSpikeCandidates.length === 0) {
-        this.logger.debug('No keyword searches are currently due', {
-          correlationId,
-        });
-
-        return {
-          executedSearches: [],
-          enqueuedJobs: [],
-          totalSchedules: 0,
-          successfulExecutions: 0,
-          failedExecutions: 0,
-          totalDuration: Date.now() - startTime,
-        };
-      }
-
-      if (dueSchedules.length > 0) {
-        this.logger.info('Found due keyword searches, executing', {
-          correlationId,
-          dueCount: dueSchedules.length,
-          subreddits: dueSchedules.map((s) => s.subreddit),
-        });
-      }
-
-      const scheduledEnqueuedJobs: Array<{
-        subreddit: string;
-        termCount: number;
-      }> = [];
-      const hotSpikeEnqueuedJobs: Array<{
-        subreddit: string;
-        termCount: number;
-      }> = [];
-
-      for (const schedule of dueSchedules) {
-        await this.enqueueKeywordSearchJob({
-          cycleId: CorrelationUtils.generateCorrelationId(),
-          subreddit: schedule.subreddit,
-          collectableMarketKey: schedule.collectableMarketKey,
-          safeIntervalDays: schedule.safeIntervalDays,
-          sortPlan: schedule.sortPlan,
-          terms: schedule.terms,
-          source: 'scheduled',
-          trackCompletion: true,
-        });
-        scheduledEnqueuedJobs.push({
-          subreddit: schedule.subreddit,
-          termCount: schedule.terms.length,
-        });
-      }
-
-      for (const candidate of hotSpikeCandidates) {
-        const jobId =
-          `hot_spike-${candidate.collectableMarketKey}:${candidate.normalizedTerm}`
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-+|-+$/g, '')
-            .slice(0, 180);
-
-        await this.enqueueKeywordSearchJob({
-          jobId,
-          cycleId: CorrelationUtils.generateCorrelationId(),
-          subreddit: candidate.subreddit,
-          collectableMarketKey: candidate.collectableMarketKey,
-          safeIntervalDays: candidate.safeIntervalDays,
-          sortPlan: candidate.sortPlan,
-          terms: [
-            {
-              term: candidate.term,
-              normalizedTerm: candidate.normalizedTerm,
-              slice: 'hot_spike',
-              score: candidate.priorityScore,
-              origin: {
-                trigger: candidate.trigger,
-                distinctUsersLast24h: candidate.distinctUsersLast24h,
-                distinctUsersPrev24h: candidate.distinctUsersPrev24h,
-                trendBoost: candidate.trendBoost,
-                attemptAvailability: candidate.attemptAvailability,
-                lastSeenAt: candidate.lastSeenAt.toISOString(),
-              },
-            },
-          ],
-          source: 'hot_spike',
-          trackCompletion: false,
-        });
-
-        hotSpikeEnqueuedJobs.push({
-          subreddit: candidate.subreddit,
-          termCount: 1,
-        });
-      }
-
-      const totalDuration = Date.now() - startTime;
-
-      if (scheduledEnqueuedJobs.length > 0) {
-        this.logger.info('Enqueued due keyword searches', {
-          correlationId,
-          totalDuration,
-          totalSchedules: dueSchedules.length,
-          subreddits: scheduledEnqueuedJobs.map((entry) => entry.subreddit),
-        });
-      }
-
-      if (hotSpikeEnqueuedJobs.length > 0) {
-        this.logger.info('Enqueued hot spike keyword searches', {
-          correlationId,
-          totalDuration,
-          hotSpikeCount: hotSpikeEnqueuedJobs.length,
-          subreddits: hotSpikeEnqueuedJobs.map((entry) => entry.subreddit),
-        });
-      }
-
-      const enqueuedJobs = [...scheduledEnqueuedJobs, ...hotSpikeEnqueuedJobs];
-
-      this.logger.info('Enqueued keyword searches', {
-        correlationId,
-        totalDuration,
-        scheduledCount: scheduledEnqueuedJobs.length,
-        hotSpikeCount: hotSpikeEnqueuedJobs.length,
-        totalJobs: enqueuedJobs.length,
-      });
-
-      this.keywordSearchMetrics.recordScheduledEnqueue(scheduledEnqueuedJobs);
-
-      return {
-        executedSearches: [],
-        enqueuedJobs,
-        totalSchedules: dueSchedules.length,
-        totalDuration,
-        successfulExecutions: 0,
-        failedExecutions: 0,
-      };
-    } catch (error: unknown) {
-      const totalDuration = Date.now() - startTime;
-      this.logger.error('Failed to execute due keyword searches', {
-        correlationId,
-        totalDuration,
-        error:
-          error instanceof Error
-            ? { message: error.message, name: error.name, stack: error.stack }
-            : { message: String(error) },
-      });
-
-      throw error;
-    }
-  }
-
-  /**
    * Get keyword search execution metrics
    */
   getKeywordSearchMetrics(): KeywordSearchMetrics {
@@ -1670,40 +1485,6 @@ export class KeywordSearchOrchestratorService
       return true;
     }
     return raw.toLowerCase() === 'true';
-  }
-
-  private resolveAutoInterval(): number {
-    const raw = this.configService.get<string>(
-      'KEYWORD_SEARCH_POLL_INTERVAL_MS',
-    );
-    const parsed = raw ? Number(raw) : Number.NaN;
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-    return 60 * 60 * 1000; // default 1 hour
-  }
-
-  private startAutoExecution(): void {
-    if (this.autoExecutionTimer) {
-      return;
-    }
-    this.autoExecutionTimer = setInterval(() => {
-      this.executeDueKeywordSearches().catch((error) => {
-        this.logger.error('Auto keyword execution failed', {
-          error:
-            error instanceof Error
-              ? { message: error.message, name: error.name, stack: error.stack }
-              : { message: String(error) },
-        });
-      });
-    }, this.autoIntervalMs);
-  }
-
-  private stopAutoExecution(): void {
-    if (this.autoExecutionTimer) {
-      clearInterval(this.autoExecutionTimer);
-      this.autoExecutionTimer = undefined;
-    }
   }
 
   private resolveKeywordSearchLimit(): number {
