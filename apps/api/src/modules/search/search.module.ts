@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { EntitlementsModule } from '../entitlements/entitlements.module';
 import { SharedModule } from '../../shared/shared.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { RepositoryModule } from '../../repositories/repository.module';
@@ -30,6 +31,7 @@ import { SearchSiblingExpansionService } from './search-sibling-expansion.servic
 
 @Module({
   imports: [
+    EntitlementsModule,
     SharedModule,
     PrismaModule,
     RepositoryModule,

@@ -236,6 +236,11 @@ export interface ScoreInfoSummary {
 }
 
 export interface SearchResponseMetadata {
+  /** Free-tier gating (enforce mode): dish results were locked out of this
+   *  response; the client shows the Crave+ teaser instead. */
+  dishAccessRequired?: boolean;
+  /** Rising/momentum sort was requested but requires Crave+ (ignored). */
+  risingAccessRequired?: boolean;
   /** Count of similar (sibling) dishes available beyond the exact results —
    *  drives the "show N similar dishes" chip. Present on page-1 exact-view
    *  responses when the query resolved a food. */

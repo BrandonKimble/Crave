@@ -12,6 +12,11 @@ import {
 import type { User } from '@prisma/client';
 import { LoggerService, CurrentUser } from '../../shared';
 import {
+  RequireEntitlement,
+  RequireEntitlementGuard,
+} from '../entitlements/require-entitlement.guard';
+import { EntitlementService } from '../entitlements/entitlement.service';
+import {
   NaturalSearchRequestDto,
   SearchCacheAttributionDto,
   SearchPlanResponseDto,
@@ -39,6 +44,7 @@ export class SearchController {
     private readonly searchService: SearchService,
     private readonly searchOrchestrationService: SearchOrchestrationService,
     private readonly searchCoverageService: SearchCoverageService,
+    private readonly entitlements: EntitlementService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchController');
@@ -59,7 +65,9 @@ export class SearchController {
   ): Promise<SearchResponseDto> {
     this.logger.debug('Received search execution request');
     request.userId = user.userId;
-    return this.searchService.runQuery(request);
+    await this.applyRisingGate(request);
+    const response = await this.searchService.runQuery(request);
+    return this.applyDishGate(user.userId, response);
   }
 
   @Post('natural')
@@ -70,7 +78,9 @@ export class SearchController {
   ): Promise<SearchResponseDto> {
     this.logger.debug('Received natural language search request');
     request.userId = user.userId;
-    return this.searchOrchestrationService.runNaturalQuery(request);
+    const response =
+      await this.searchOrchestrationService.runNaturalQuery(request);
+    return this.applyDishGate(user.userId, response);
   }
 
   @Post('cache-attribution')
@@ -99,6 +109,8 @@ export class SearchController {
   }
 
   @Get('restaurants/:restaurantId/dishes')
+  @UseGuards(RequireEntitlementGuard)
+  @RequireEntitlement()
   async restaurantDishes(
     @Param('restaurantId', new ParseUUIDPipe({ version: '4' }))
     restaurantId: string,
@@ -121,5 +133,40 @@ export class SearchController {
       throw new NotFoundException('Restaurant profile not found');
     }
     return profile;
+  }
+
+  /** Dish results are the paid hero (business/monetization-and-gating.md):
+   *  response-shaped, not 403'd — free users keep restaurants, dishes are
+   *  locked out with a metadata flag the client renders as the teaser.
+   *  Honors ENTITLEMENT_GATING (off/log/enforce). */
+  private async applyDishGate(
+    userId: string,
+    response: SearchResponseDto,
+  ): Promise<SearchResponseDto> {
+    if (!response.dishes?.length) return response;
+    const { allowed } = await this.entitlements.gateFeature(
+      userId,
+      'dish_results',
+    );
+    if (allowed) return response;
+    return {
+      ...response,
+      dishes: [],
+      metadata: { ...response.metadata, dishAccessRequired: true },
+    };
+  }
+
+  /** Rising/momentum sort is Crave+: locked = the request runs as if the
+   *  sort were off (param-shaped; the flag rides response metadata via
+   *  risingActive echo on the client side). */
+  private async applyRisingGate(request: SearchQueryRequestDto): Promise<void> {
+    if (!request.risingActive) return;
+    const { allowed } = await this.entitlements.gateFeature(
+      request.userId,
+      'rising_sort',
+    );
+    if (!allowed) {
+      request.risingActive = false;
+    }
   }
 }

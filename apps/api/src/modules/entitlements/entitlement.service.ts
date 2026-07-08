@@ -144,6 +144,31 @@ export class EntitlementService {
     return { grantId: grant.grantId };
   }
 
+  /** Feature-level gate for PARAM/response-shaped gating (endpoint-shaped
+   *  gating uses @RequireEntitlement instead). Honors ENTITLEMENT_GATING:
+   *  off -> always allowed; log -> allowed but would-blocks are recorded;
+   *  enforce -> callers shape the response (lock/strip), NEVER throw from
+   *  here. No userId (anonymous) counts as no access. */
+  async gateFeature(
+    userId: string | null | undefined,
+    feature: string,
+    entitlementCode?: string,
+  ): Promise<{ allowed: boolean }> {
+    const mode = process.env.ENTITLEMENT_GATING?.trim().toLowerCase();
+    if (mode !== 'log' && mode !== 'enforce') return { allowed: true };
+    const hasAccess = userId
+      ? await this.hasAccess(userId, entitlementCode)
+      : false;
+    if (hasAccess) return { allowed: true };
+    this.logger.info(
+      mode === 'log'
+        ? 'Entitlement gate WOULD lock feature (log mode)'
+        : 'Entitlement gate locked feature',
+      { userId: userId ?? 'anonymous', feature },
+    );
+    return { allowed: mode === 'log' };
+  }
+
   /** Lookup a grant by its idempotency ref (reward double-pay guard). */
   async findGrantByRef(
     userId: string,
