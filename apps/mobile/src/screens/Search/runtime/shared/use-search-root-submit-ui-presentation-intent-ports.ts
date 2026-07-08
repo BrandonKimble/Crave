@@ -40,7 +40,11 @@ export const useSearchRootSubmitUiPresentationIntentPorts = ({
           params.kind === 'shortcut_rerun' ? 'shortcut_submit' : 'manual_submit';
         resultsPresentationOwner.presentationActions.requestSearchPresentationIntent({
           kind: presentationKind,
-          transactionId: resultsPresentationOwner.pendingTogglePresentationIntentId ?? undefined,
+          // S4c-1c-3: the enter transaction IS the episode token (worldId end-to-end);
+          // a submit landing inside a pending toggle keeps the toggle intent id so the
+          // coordinator's visual-sync finalize still matches.
+          transactionId:
+            resultsPresentationOwner.pendingTogglePresentationIntentId ?? params.operationToken,
           query:
             params.submittedLabel ??
             (params.mode === 'shortcut'

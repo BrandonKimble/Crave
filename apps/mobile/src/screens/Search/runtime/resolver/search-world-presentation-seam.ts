@@ -84,8 +84,9 @@ export type SearchWorldPresentationSeamEnv = {
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   onPageOneResultsCommitted: (payload: {
     searchRequestId: string;
-    /** 'world:'+generation — the resolving operation's token; the STA/variant response
-     *  stage keys to the SAME token the pending arm used (S4c-1c-2: never bus-read). */
+    /** The EPISODE TOKEN `cardsKey#g{generation}` (S4c-1c-3): worldId end-to-end, fresh
+     *  per episode — the arm side derives the identical token from the tuple, so the
+     *  response-time stage keys to the SAME id the pending arm used (never bus-read). */
     operationToken: string;
     requestBounds: import('../../../../types').MapBounds | null;
     resultsIdentityKey: string | null;
@@ -172,7 +173,7 @@ export const createSearchWorldPresentationSeam = (
         if (value.paginationMeta.page === 1) {
           env.onPageOneResultsCommitted({
             searchRequestId: value.searchRequestId,
-            operationToken: `world:${generation}`,
+            operationToken: `${worldId.replace(/@v\d+$/, '')}#g${generation}`,
             requestBounds: args.requestBounds,
             resultsIdentityKey: value.resultsIdentityKey,
             resultsDataKey: value.resultsIdentityKey,
@@ -249,7 +250,7 @@ export const createSearchWorldPresentationSeam = (
       if (!isVersionUpdateOfPresentedWorld && value.paginationMeta.page === 1) {
         env.onPageOneResultsCommitted({
           searchRequestId: value.searchRequestId,
-          operationToken: `world:${generation}`,
+          operationToken: `${worldId.replace(/@v\d+$/, '')}#g${generation}`,
           requestBounds: args.requestBounds,
           resultsIdentityKey: value.resultsIdentityKey,
           resultsDataKey: value.resultsIdentityKey,

@@ -34,6 +34,7 @@ import {
 } from '../runtime/resolver/search-world-fetch';
 import { createSearchWorldDerivation } from '../runtime/resolver/search-world-derivation';
 import { createSearchWorldReconciler } from '../runtime/reconciler/search-world-reconciler';
+import { buildSearchCardsWorldKey } from '../runtime/shared/search-desired-state-contract';
 import { getSearchReconcilerViewInputs } from '../runtime/reconciler/search-reconciler-presentation-port';
 import { Keyboard } from 'react-native';
 import { logger } from '../../../utils';
@@ -86,8 +87,8 @@ type SearchSubmitOwnerUiPorts = {
   }) => void;
   onPresentationIntentStart?: (params: {
     kind: SearchSubmitPresentationIntentKind;
-    /** The resolving operation's token ('world:'+generation) — the STA pending-arm key
-     *  (S4c-1c-2: threaded explicitly, never read back off the bus). */
+    /** The EPISODE TOKEN `cardsKey#g{generation}` — the pending-arm/transaction id for
+     *  this resolution episode (worldId end-to-end, fresh per episode; never bus-read). */
     operationToken: string;
     mode: SearchMode;
     preserveSheetState: boolean;
@@ -270,7 +271,7 @@ const useSearchSubmitOwner = ({
       (getSearchReconcilerViewInputs()?.getDockedPollsFlag() ?? false);
     onPresentationIntentStart?.({
       kind: intent.presentationIntentKind ?? 'initial_search',
-      operationToken: `world:${generation}`,
+      operationToken: `${buildSearchCardsWorldKey(tuple)}#g${generation}`,
       mode: busState.searchMode ?? null,
       preserveSheetState: intent.preserveSheetState,
       transitionFromDockedPolls: dockedPolls,
