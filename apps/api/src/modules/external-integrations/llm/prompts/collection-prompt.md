@@ -703,10 +703,12 @@ For every mention, populate fields as follows:
 - Core flags
   - `general_praise`: boolean per 6.1 — `true` only on the single restaurant-level (`food: null`) connection that carries the holistic verdict, `false` on every dish connection.
 - Source attribution
-  - `source_id`: copy the exact `id` value from the input payload for this mention.
-    - For post-derived mentions (only when `extract_from_post: true`): use that post's full canonical ID in fullname format (for example `t3_abc123`).
-    - For comment-derived mentions: use that comment's full canonical ID in fullname format (for example `t1_def456`), even when sentiment/entities are inherited from the parent.
-    - Preserve the `t3_` / `t1_` prefix exactly; do not shorten, strip, or reformat the ID.
+  - `source_id`: copy the exact `id` value from the input payload for this mention,
+    byte-for-byte. The `id` is an OPAQUE reference (for example `SRC002`) — never
+    add, strip, or reformat anything (no prefixes, no suffixes, no renumbering).
+    - Post-derived mentions (only when `extract_from_post: true`): the post's `id`.
+    - Comment-derived mentions: that comment's `id`, even when sentiment/entities
+      are inherited from the parent.
 
 Additional rules:
 
@@ -734,7 +736,7 @@ Source text: "Nixta's duck carnitas tacos are incredibly rich, Suerte's version 
 "food_attributes": ["rich"],
 "restaurant_attributes": null,
 "general_praise": false,
-"source_id": "t1_def456"
+"source_id": "SRC004"
 },
 {
 "restaurant": "suerte",
@@ -744,7 +746,7 @@ Source text: "Nixta's duck carnitas tacos are incredibly rich, Suerte's version 
 "food_attributes": ["smoky"],
 "restaurant_attributes": null,
 "general_praise": false,
-"source_id": "t1_def456"
+"source_id": "SRC004"
 },
 {
 "restaurant": "nixta",
@@ -754,7 +756,7 @@ Source text: "Nixta's duck carnitas tacos are incredibly rich, Suerte's version 
 "food_attributes": null,
 "restaurant_attributes": ["patio"],
 "general_praise": true,
-"source_id": "t1_def456"
+"source_id": "SRC004"
 }
 ]
 }
