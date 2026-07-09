@@ -32,7 +32,7 @@ import {
   logPerfScenarioWorkSpan,
 } from '../../../../perf/perf-scenario-work-span';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
-import { useHasNavHideIntent } from '../../../../navigation/runtime/nav-hide-intent-store';
+import { useIsNavOutChildSceneRevealed } from '../../../../navigation/runtime/nav-out-derivation-store';
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
@@ -121,9 +121,10 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     !isPersistentPollHandoffCommitted;
   const shouldStartBottomNavHiddenForResultsMotion = shouldHideBottomNavForSearchResultsMotion;
   const shouldHideBottomNavForSuggestionSurface = isSuggestionPanelActive;
-  // Any scene can request the nav-push transition via the shareable intent registry
-  // (e.g. the poll-detail thread). Reuses this exact motion + sheet-grow.
-  const hasExternalNavHideIntent = useHasNavHideIntent();
+  // Nav-out is DERIVED (trigger-nav ideal §4.1): the nav leaves whenever the top-of-stack
+  // entry is a child scene — poll detail, restaurant, saveList, and every stub page inherit
+  // this motion + sheet-grow by construction, no per-scene opt-in.
+  const hasExternalNavHideIntent = useIsNavOutChildSceneRevealed();
   const shouldHideBottomNavForMotion =
     shouldHideBottomNavForSearchResultsMotion ||
     shouldHideBottomNavForSuggestionSurface ||

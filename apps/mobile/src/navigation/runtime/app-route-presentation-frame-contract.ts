@@ -28,7 +28,11 @@ import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 // divergence is legal only via `outgoingSceneKey` during an in-flight switch, bounded by
 // switchId + settle.
 
-export type PresentationLaneKind = 'top-level' | 'docked-polls' | 'child';
+// S-B slice 2: the 'child' arm is DELETED (zero consumers; nav-out now derives from route
+// metadata in nav-out-derivation-store). Child targets resolve 'top-level'; the structural
+// "a child target must never ride the docked-polls lane" rule lives as the explicit
+// isChildTarget deny inside the formula below.
+export type PresentationLaneKind = 'top-level' | 'docked-polls';
 
 export type PresentationFrame = {
   /** Monotonic per committed switch. Keys paint-acks, player starts, and readiness epochs. */
@@ -92,8 +96,8 @@ export type ResolvePresentationLaneKindInput = {
  * THE single laneKind formula — the one place the docked-polls decision is made. Transcribed for
  * EXACT behavioral parity from resolveIsPersistentPollLane (native-overlay-target-authorities
  * :345-390), whose body this replaces; the old scattered child/bookmarks/profile deny checks are
- * structural here (a child target IS laneKind 'child'; a non-search top-level target IS
- * 'top-level'), not band-aids applied per consumer.
+ * structural here (a child target is DENIED the docked-polls lane structurally; a non-search
+ * top-level target IS 'top-level'), not band-aids applied per consumer.
  */
 export const resolvePresentationLaneKind = ({
   resolvedTargetSceneKey,
@@ -101,12 +105,9 @@ export const resolvePresentationLaneKind = ({
   hasActiveDockedPollsRestoreIntent,
   laneInputs,
 }: ResolvePresentationLaneKindInput): PresentationLaneKind => {
-  if (
+  const isChildTarget =
     resolvedTargetSceneKey != null &&
-    getAppOverlayRouteMetadata(resolvedTargetSceneKey).role === 'child'
-  ) {
-    return 'child';
-  }
+    getAppOverlayRouteMetadata(resolvedTargetSceneKey).role === 'child';
   // Parity note: the original formula deny-listed exactly bookmarks|profile as non-search
   // top-level targets the lane must never force 'polls' over (the favorite↔poll nav swap fix).
   const isNonSearchTopLevelTarget =
@@ -117,6 +118,7 @@ export const resolvePresentationLaneKind = ({
     (laneInputs.isPersistentPollLaneEligible && !laneInputs.isResultsDismissing) ||
     isSurfacePersistentPollCommitted;
   const isDockedPollsLane =
+    !isChildTarget &&
     !isNonSearchTopLevelTarget &&
     rootOverlayKey === 'search' &&
     isPersistentPollLaneEligible &&

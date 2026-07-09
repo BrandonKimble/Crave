@@ -37,7 +37,6 @@ import {
   overlaySheetStyles,
 } from '../overlaySheetStyles';
 import { resolveExpandedTop } from '../sheetUtils';
-import { useNavHideIntent } from '../../navigation/runtime/nav-hide-intent-store';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import type { SnapPoints } from '../bottomSheetMotionTypes';
@@ -579,9 +578,8 @@ export const usePollDetailPanelSpec = ({
   snapPoints: snapPointsOverride,
 }: UsePollDetailPanelSpecOptions): SearchRoutePublishedSceneParts => {
   const insets = useSafeAreaInsets();
-  // Push the bottom tab bar down (the search-submit transition) while the poll thread
-  // is open, so the thread reads as a focused full-bleed detail view (§D).
-  useNavHideIntent('pollDetail', visible);
+  // The bottom tab bar leaves via the DERIVED nav-out rule (nav-out-derivation-store):
+  // pollDetail is a child scene, so the nav-push motion fires by construction (§D).
   const { isSignedIn } = useAuthController();
   const { data: viewerProfile } = useQuery({
     ...createProfileQueryOptions(),
@@ -1160,7 +1158,7 @@ export const usePollDetailPanelSpec = ({
   // Reddit style) — rendered as ListChromeComponent so it rides WITH the sheet (pinned
   // while expanded, moves down on drag-to-dismiss; the body frame translates with the
   // sheet) rather than the full-screen overlay layer. The tab bar is pushed down
-  // (useNavHideIntent above), freeing the bottom. `useAnimatedKeyboard` raises it above
+  // (the derived nav-out rule), freeing the bottom. `useAnimatedKeyboard` raises it above
   // the keyboard when focused.
   const keyboard = useAnimatedKeyboard();
   // The body frame fills the full sheet height (= screen height) but the sheet is translated

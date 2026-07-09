@@ -25,7 +25,27 @@ slices — traps 3/4/5 (key-keyed legs + registries + params selectors) must be 
   closeActive/popToRoot; previous-derivation; entryId stability across snapshots) — first tests
   this area has ever had.
 
-## Slice 2 — origin on the pushed entry
+## RE-SEQUENCED 2026-07-09 (owner rule: chase the true ideal as context grows)
+
+Code taught: origin-on-entry has NO live consumer until child pushes stop re-rooting (S-C) or
+legs remount on pop (slices on entry-keyed presentation / same-key nesting) — AND capture-at-
+push would capture the WRONG origin today (the re-root to search runs first, so the departing
+top at push time is already search; the true origin only survives in the single slot captured
+pre-re-root). Building it now = dead plumbing with wrong values. New order: the depth-derived
+nav-out slice (immediately consumable, owner-ratified 13/13 behavior change) runs as SLICE 2;
+origin-on-entry follows its consumer. Slice numbering below is superseded by this note.
+
+## Slice 2 (executed second) — depth-derived nav-out + laneKind 'child' deletion
+
+- Nav bar hides iff overlayRouteStackLength > 1, OR the existing search-results/suggestion
+  mechanisms (the §5.1 interim clause — search present is still setRoot until S-C).
+- The two useNavHideIntent registrants (PollDetailPanel, PollCreationPanel) delete; the
+  nav-hide-intent store deletes if no other registrant remains.
+- `PresentationLaneKind` loses the `'child'` arm (zero consumers, audited); docked-polls KEPT.
+- BEHAVIOR CHANGE BY DESIGN: restaurant/saveList (and stub scenes when they get entry points)
+  now hide the nav bar — the ratified 13/13 rule. Owner feel-check after.
+
+## Slice 3 (was 2) — origin on the pushed entry (lands WITH a consumer)
 
 - Push captures origin at departure ONTO the new entry (`entry.origin`), via the existing
   provider registry; pop applies the popped entry's origin to the revealed scene.
