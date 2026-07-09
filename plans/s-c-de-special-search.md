@@ -198,3 +198,55 @@ VERIFIED-SAFE by the flow auditor: STA-during-pushed-session (preserve), polls-r
 round-trip (as the recorded hybrid), deep links cold+warm, depth-2 home sessions vs every
 stackLen consumer, finalize vs mid-flight redraw (2 hygiene notes: watchdog timer not cleared;
 bookmarks pop shares the native-wire residue but is masked by the full-height sheet).
+
+---
+
+## S-C.3-B DESIGN (written 2026-07-09 ~5:20PM — implement in a FRESH session; all facts below
+
+## are already verified in code this session)
+
+**Goal:** the home dismiss becomes a TRUE POP ([search#home, search#session] → [search#home])
+owning surface exit + native wire exit + nav return — then the slot, the re-root reflexes, and
+the manual nav commands all die (ledger items 1,2,3,4,5,6,10 in one coherent unit).
+
+**The golden contract amendment (deliberate, not a workaround):** the home dismissal keeps the
+EXISTING terminalDismiss choreography end-to-end — armDismissMotion → boundary/nav marks →
+completeDismissHandoff (it is already the one owner of surface + native + nav; nothing
+motionless is needed, that framing was wrong). The ONLY change is the ROUTE MUTATION the
+choreography commits: `emitDegenerateHomeRestore` gains `routeAction: 'popToRoot'` WHEN a
+session entry exists above the search root (hasSearchSessionAboveRoot), else byte-identical
+legacy. `assertDegenerateHomeEmission` is amended to REQUIRE exactly that (the golden contract
+grows a conditional arm — the assertion still fails loudly on any other divergence: no content
+plane, no routeParams, no chrome/camera fields). popToRoot of [search#home, search#session]
+reveals search#home with rootOverlayKey unchanged ('search') — the docked-polls restore path
+(dockedPollsRestoreSnap) is UNAFFECTED because the lane derives from root+depth, both correct
+post-pop. Validation: the golden {polls,search}@collapsed dismissal must be BYTE-IDENTICAL on
+screen (home + docked polls + nav) AND the stack must end [search#home] (not a fresh root) —
+assert the entryId survives the dismissal (the RED probe: log stack[0].entryId before submit
+and after dismiss; a fresh id = the old setRoot leaked back).
+
+**Then, in dependency order (same session):**
+
+1. Generalize `prepareSearchSessionEntry`: the skip extends to ALL roots (the polls-root
+   childAnchor flow stops re-rooting; its childAnchor rides the pushed entry's origin.anchor —
+   resolveChildOriginRePush reads entry origin instead of the slot).
+2. DELETE: captureSearchSessionOrigin + capturedOriginContext slot + armSearchCloseRestore's
+   slot mechanics (restorePendingOrigin stays, fed by entry origins), ensureAppSearchRouteSearchEntry,
+   ensureAppSearchRouteSearchScene (+ its profile-foreground caller — item 10),
+   handleRootOverlayTransition's re-root reflex.
+3. Nav law FINAL: nav-out selector flips role→DEPTH (overlayRouteStackLength > 1, with the
+   presented-world clause deleted — search sessions are now always pushes); DELETE the submit
+   choreography's nav-hide command and the pop branch's requestSearchBottomNavMotionTarget
+   ('show') — the derivation owns both directions.
+4. `resolveInferredSheetTransitionKind`: the closeActive kind derives from the STACK OP (any
+   closeActive/popToRoot = close-family); the 'search'-joins-child special case dies.
+5. `applyOriginDetent` becomes THE mechanism: every pop applies the popped/deepest entry's
+   origin detent explicitly (the flag dies, always-on); the ledger-staging path demotes to
+   scroll lanes only. Validate pollDetail/saveList/restaurant pops still land correctly (their
+   descriptor rows currently decide motion — the explicit snapTo must match or intentionally
+   supersede; check each row).
+
+**RED probes for the session:** home dismissal byte-identity + entryId survival; poll-dish-from-
+comment round trip (childAnchor via entry origin); favorites/profile launches unchanged; map
+marker clearance on home dismissal (the wire exit must still run — it will, the choreography is
+untouched); tab sweep after every dismissal variant (zombie guard).
