@@ -69,19 +69,22 @@ export const createAppSearchRouteCommandActions = ({
     mode?: 'spring' | 'instant';
     contentReadinessTransactionId?: string | null;
   }): void => {
-    // S-C.2: from a non-search ROOT the session PUSHES (stack [root, search#session]) so the
-    // root survives — tab highlight, chrome, and the eventual pop-dismiss all derive from it.
-    // Search-root flows keep the legacy setRoot default until S-C.3.
-    const { rootOverlayKey } = routeSceneSwitchAuthority.getSnapshot().routeState;
+    // S-C.3 (plans/s-c-de-special-search.md): ONE rule — presenting a session is a PUSH; a
+    // re-present INSIDE the session (variant rerun, search-this-area, tab adoption) PRESERVES
+    // the route (the desire changed, not the stack). Home submit pushes search#session over
+    // search#home (same-key nesting); non-search roots push over their root. This also closes
+    // the S-C.2 gap where an in-session rerun from a favorites root would have stacked a
+    // duplicate session entry.
+    const routeState = routeSceneSwitchAuthority.getSnapshot().routeState;
+    const isInSessionRePresent =
+      routeState.activeOverlayRoute.key === 'search' && routeState.overlayRouteStackLength > 1;
     routeSceneSwitchActions.requestOverlaySwitch({
       targetSceneKey: 'search',
       sheetTransitionKind: 'topLevelSwitch',
       sheetOpenerSource: 'routeCommand',
       sheetMotion: { kind: 'snapTo', snap, mode },
       contentReadinessTransactionId: contentReadinessTransactionId ?? null,
-      ...(rootOverlayKey === 'bookmarks' || rootOverlayKey === 'profile'
-        ? { routeAction: 'push' as const }
-        : null),
+      routeAction: isInSessionRePresent ? ('preserve' as const) : ('push' as const),
     });
   };
 

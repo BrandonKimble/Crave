@@ -154,10 +154,16 @@ export const useResultsPresentationCloseActionsRuntime = ({
     // seam below remains for legacy (search-root) flows until S-C.3.
     {
       const routeState = routeSceneRuntime.routeSceneSwitchRuntime.getRouteState();
+      // Search-root (home) sessions keep the LEGACY terminalDismiss choreography for now —
+      // it owns the native map exit (the wire's dismiss correlation) that a bare pop skips
+      // (proven: home pop left the dismissed world's dots on the map). The motionless dismiss
+      // transaction that lets home dismiss be a true pop is S-C.3-B
+      // (plans/s-c-de-special-search.md). Its setRoot collapse of [home, session] → [home] is
+      // stack-legal (setRoot = tab reset).
       const isPushedSearchSession =
         routeState.activeOverlayRoute.key === 'search' &&
         routeState.overlayRouteStackLength > 1 &&
-        (routeState.rootOverlayKey === 'bookmarks' || routeState.rootOverlayKey === 'profile');
+        routeState.rootOverlayKey !== 'search';
       if (isPushedSearchSession) {
         ignoreNextSearchBlurRef.current = true;
         unstable_batchedUpdates(() => {
