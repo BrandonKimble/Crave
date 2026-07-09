@@ -97,7 +97,7 @@ application, not a remembered-snap default). Chrome-mode check still pending aft
 **Then:** finish S-C.2 rig matrix (profile root launch; restaurant child push FROM the pushed
 session — child-over-session stacking; failure/offline dismiss), commit, then S-C.3 per plan.
 
-## ⚠️ OPEN REGRESSION after S-C.2 (1e09da4c) — FIRST ITEM next session
+## ✅ RESOLVED (24efdca2): zombie-results regression — surface session-exit finalize
 
 MINIMAL REPRO (fresh boot → favorites → results-push → X-pop → tab switches): the pop itself
 is GREEN, but afterwards the tabs are polluted. SHARPENED FINDING (second run): the pollution
@@ -107,8 +107,10 @@ no-sheet-at-all on every tab. ROOT SHAPE: the pop path exits the ROUTE (closeAct
 clears the desired state (clearSearchState skipPostSearchRestore) but the RESULTS-PRESENTATION
 machine never runs its surface-exit — the rich seam paired the clear with
 dismissRestoreToTopLevelRichOrigin, and the terminalDismiss path runs
-requestClosePresentationIntent; the pop path does NEITHER. FIX DIRECTION: the pop dismiss must
-drive the results surface to a finalized idle (a motionless surface-exit — likely a
-requestClosePresentationIntent variant or the finalize path the seam uses) BEFORE/WITH the
-pop; do not invent a new teardown. Attribute against the results-presentation machine's state
-after the pop (its phase/cover/backdrop values), then wire the right finalize.
+requestClosePresentationIntent; the pop path does NEITHER. RESOLVED: probe showed
+phase idle + bottomBandOwner results_header + animatedSearchTransition clip = the RESULTS
+bundle never cleared (no dismiss transaction on the pop path — same hole as the old rich seam,
+almost certainly the charter's long-open 'favorites regression').
+finalizeSessionExitWithoutDismissMotion() on the surface runtime returns the surface to the
+poll/home bundle when a session exits without a dismissal; pop calls it after closeActiveRoute.
+Full repro chain GREEN; legacy home dismiss byte-canonical.
