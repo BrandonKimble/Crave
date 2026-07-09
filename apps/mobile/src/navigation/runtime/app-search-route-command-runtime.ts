@@ -100,6 +100,25 @@ export const createAppSearchRouteCommandActions = ({
       snap: 'collapsed',
     });
     routeSheetSnapSessionActions.setIsDockedPollsDismissed(false);
+    // S-C.3-B: dismissing a PUSHED session POPS the stack back to the surviving search#home
+    // root ([search#home, search#session] → [search#home]) — routeAction popToRoot with the
+    // SAME 'polls' presentation target (the docked feed presents beneath the collapsing sheet
+    // exactly as before; presentation and stack truth are separate axes). The legacy setRoot
+    // collapse only remains for session-less stacks (boot-shaped dismissals). Proven by the
+    // [SC3B] probe: the old explicit setRoot here was what destroyed the home entry before
+    // the golden home emission ever ran.
+    const dismissRouteState = routeSceneSwitchAuthority.getSnapshot().routeState;
+    const shouldPopPushedSession =
+      dismissRouteState.rootOverlayKey === 'search' && hasSearchSessionAboveRoot(dismissRouteState);
+    if (__DEV__) {
+      // TEMP [SC3B] entryId-survival probe — strip before finalize.
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SC3B] dismissToPolls pop=${shouldPopPushedSession} stack=[${dismissRouteState.overlayRouteStack
+          .map((entry) => `${entry.key}#${entry.entryId.replace('route-entry-', '')}`)
+          .join(',')}]`
+      );
+    }
     routeSceneSwitchActions.requestOverlaySwitch({
       ...(sourceSceneKey != null ? { sourceSceneKey } : null),
       targetSceneKey: 'polls',
@@ -107,7 +126,7 @@ export const createAppSearchRouteCommandActions = ({
       sheetOpenerSource: 'systemDismiss',
       sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
       contentHandoff: 'preserveOutgoingUntilSettle',
-      routeAction: 'setRoot',
+      routeAction: shouldPopPushedSession ? 'popToRoot' : 'setRoot',
       dockedPollsRestoreSnap: 'collapsed',
     });
   };

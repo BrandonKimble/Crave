@@ -157,11 +157,16 @@ export type RouteSceneSwitchTransitionActions = {
    * re-mint), or its derived state goes stale until an unrelated poke.
    */
   subscribePresentationFrame: (listener: (frame: PresentationFrame) => void) => () => void;
+  /**
+   * Route-stack read, on the ACTIONS slice for the same reason as getPresentationFrame: the
+   * overlay-session-state controller (actions-only wiring) derives the S-C.3-B home-dismissal
+   * pop from STACK TRUTH (hasSearchSessionAboveRoot). Every provider is the one controller.
+   */
+  getRouteState: () => RouteSceneSwitchRouteStateSnapshot;
 };
 
 export type AppRouteSceneSwitchRuntime = RouteSceneSwitchTransitionActions & {
   getTransitionState: () => RouteSceneSwitchTransitionState;
-  getRouteState: () => RouteSceneSwitchRouteStateSnapshot;
   getPreviousRouteKey: () => OverlayKey | null;
   getPreviousRouteEntry: () => OverlayRouteEntry | null;
   getRootRouteKey: () => OverlayKey | null;

@@ -6,6 +6,7 @@ import type {
 import { getOriginCaptureProvider, registerOriginCaptureProvider } from './origin-capture-registry';
 import { getOriginSceneLiveState } from './origin-scene-live-state-registry';
 import { stageOverlayScrollRestore } from '../../overlays/overlayScrollOffsetRuntime';
+import { hasSearchSessionAboveRoot } from './app-overlay-route-stack-algebra';
 import {
   registerRouteEntryOriginCapturer,
   registerRouteEntryOriginRestorer,
@@ -598,6 +599,12 @@ export class AppRouteOverlaySessionStateController {
     detent: Exclude<SearchOverlaySheetSnap, 'hidden'>
   ): void {
     const shouldRestoreDockedPolls = resolvedRootOverlay === 'search';
+    // S-C.3-B NOTE: the home emission needs NO pop arm — the stack pop happens at the
+    // dismissal dance's FIRST switch (dismissAppSearchRouteResultsToPolls, which used to
+    // setRoot-collapse the stack; proven by the [SC3B] probe: this emission always ran on an
+    // already-collapsed stack). Post-fix the surviving [search#home] makes this setRoot a
+    // value-equal IDEMPOTENT no-op at the route layer — byte-identical emission, stack truth
+    // preserved, golden contract untouched.
     const homeSwitchArgs = {
       targetSceneKey: resolvedRootOverlay,
       sheetTransitionKind: 'topLevelSwitch' as const,
