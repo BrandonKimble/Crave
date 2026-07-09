@@ -1,5 +1,45 @@
 # THE TOGGLE SYSTEM — ideal shape v2 (design of record, post-red-team)
 
+> **v2.1 RECONCILIATION (2026-07-08, third red-team) with the strides/layers plans**
+> (`plans/trigger-nav-ideal-verdict.md` S-A..S-E + `plans/world-camera-multilocation-
+foundation.md` L1-L5, being executed by a parallel session starting S-B, S-A in
+> parallel): the two ideals are complementary halves of ONE algebra — the verdict
+> blesses revise-class triggers as already-ideal, and THIS coordinator is the
+> revise-protocol machinery behind that blessing; no stride dissolves it (verified:
+> L2's camera track never enters the toggle finalize path — revise never moves the
+> camera; S-C's readiness contract is the PUSH join, a different lifecycle; the
+> world doc's §4 anti-pattern list never names the coordinator). Ownership split:
+> **the strides own push, this plan owns revise.** Consequences:
+>
+> 1. **Gate 1 items 1/2/4 (engine + adapter + polls) run NOW** — zero file overlap
+>    with S-A/S-B (verified against both plans' demonstrable file sets).
+> 2. **The search-this-area section below is HANDED TO THE S-A SESSION** — both its
+>    halves land in files S-A rewrites (`search-world-reconciler.ts` classifier/
+>    decoration, the STA submit runtime, `use-search-submit-entry-owner.ts`), and
+>    S-A's fold of bounds-source into the writer/classifier is the same edit. ONE
+>    correction to that section (I2 compliance): the kick must NOT take a
+>    trigger-passed `presentationIntentKind` — the classifier already DERIVES
+>    `'search_this_area'`; route the derived kind through `scheduleToggleCommit`
+>    reconciler-internally. Reset-at-capture + the settleMs-per-kind knob stand.
+> 3. **Gate 2 waits for/rides S-C** (the warm-restore threading runs through
+>    `SearchOverlayChromeHost`, which S-C's searchRoute-shell dissolution re-homes;
+>    the generic `initialSegmentLayouts` API survives). Add the polls strip to the
+>    Gate 2 feel-check (it consumes the same primitives).
+> 4. The failed-enter unwind (`closeSearchResultsSession`) is superseded by
+>    entry-pop under S-B/S-C; the `onDismissed → pop-to-origin` contract is
+>    unchanged.
+> 5. Engine purity addendum: the coordinator's `U2:` insertion markers (commit-time
+>    mutation flush, D6c enter-start) and the S4c port-deletion seam belong to the
+>    SEARCH ADAPTER, never the pure core.
+> 6. Polls adoption addendum (code-verified): the adoption DELETES the
+>    refetch-on-state-change effect (`polls-feed-runtime-controller.ts` ~:336-348;
+>    press handlers call the engine directly); `refreshPollFeed`'s internal
+>    latest-wins seq guard covers the flat-store stale-landing gap; do NOT wire the
+>    engine's 'failed' event there (the retry ladder never rejects — its deferred
+>    freshness error is the intended UX); preserve `skipSpinner`/never-empty-list +
+>    the visibility gate; socket/market/deep-link refetch paths stay OUTSIDE the
+>    engine.
+
 Owner commission (2026-07-08): one toggle-strip primitive containing EVERYTHING that
 makes a toggle strip good, placeable on ANY page, toggle-agnostic and logic-agnostic.
 No increments — cut over to the full long-term shape. v1 was red-teamed by two
@@ -122,7 +162,7 @@ createToggleInteractionEngine<TKind extends string>({
   permutation stays REJECTED (combinatorics × pagination); pagination fetches only
   the active state's next page.
 
-## Search-this-area (spec completed per red team)
+## Search-this-area (spec completed per red team — **OWNED BY THE S-A SESSION, see v2.1 header; apply the derived-kind correction**)
 
 - Rides the coordinator with kind `'search_this_area'`. Verified safe: bounds are
   press-time in both worlds (tuple write captures them; commit re-reads the tuple);
@@ -151,10 +191,10 @@ createToggleInteractionEngine<TKind extends string>({
 
 ## Cutover (two gates, one effort, no legacy survivors)
 
-**Gate 1 — test-gated (no sim):** extract engine + spec; rewire search adapter
-(API-identical); parameterize the kick; area onto the coordinator with
-reset-at-capture; polls onto the engine (remote shape). Full runtime suite + engine
-spec + tsc green.
+**Gate 1 — test-gated (no sim), v2.1 scope:** extract engine + spec; rewire search
+adapter (API-identical); polls onto the engine (remote shape, per addendum 6). Full
+runtime suite + engine spec + tsc green. (The area/kick work moved to the S-A
+session — v2.1 header item 2.)
 
 **Gate 2 — sim-gated (the eye):** FilterChip upgrades + port the five search chips;
 SegmentedToggle warm-restore + a11y tap + REPLACE the inline pill; stable strip slot
