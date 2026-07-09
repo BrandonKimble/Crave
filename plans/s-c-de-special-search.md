@@ -114,3 +114,26 @@ almost certainly the charter's long-open 'favorites regression').
 finalizeSessionExitWithoutDismissMotion() on the surface runtime returns the surface to the
 poll/home bundle when a session exits without a dismissal; pop calls it after closeActiveRoute.
 Full repro chain GREEN; legacy home dismiss byte-canonical.
+
+## S-C.3 slice A status (2026-07-09 ~02:20, WIP UNCOMMITTED)
+
+Built: ONE routeAction rule in openAppSearchRouteResults — `preserve` when a session is already
+active (active==='search' && depth>1: variant reruns, STA, tab adoption), `push` otherwise
+(home submit pushes search#session over search#home; non-search roots push over their root).
+Also closes the latent S-C.2 gap (in-session rerun from a favorites root would have stacked a
+duplicate session entry). Pop-dismiss branch now covers ANY pushed session (top==='search' &&
+depth>1). tsc + 93 jest green.
+
+RIG: home submit as push reveals fully; X-pop restores home with docked polls re-deriving on
+the lane formula automatically + nav restored. **BLOCKER before commit: map marker residue** —
+the dismissed world's DOTS stay on the map after the home pop. Cause: the pop path never
+drives the NATIVE world dismissal (the (worldId, exitAckId, phase) wire's exit correlation —
+armDismissMotion/commitDismissBoundary/completeDismissHandoff normally run it via the terminal
+choreography). The favorites pop escapes because its scene switch (search→bookmarks) changes
+chrome/map ownership; the home pop stays on the search scene so nothing clears the source.
+FIX DIRECTION: the pop should arm a MOTIONLESS dismiss transaction (the principled owner of
+surface exit + native map dismissal + nav return TOGETHER) — likely REPLACING
+finalizeSessionExitWithoutDismissMotion on the pop path (the finalize solved the sheet half;
+the dismiss transaction is the full ideal: one owner for the whole exit). Read
+armDismissMotion → commitDismissBoundary → markBottomBoundaryReached/markBottomNavReturnReady →
+completeDismissHandoff and the wire's exitAckId serialization before wiring.
