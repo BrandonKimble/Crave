@@ -3,86 +3,19 @@ import { useAuth } from '@clerk/clerk-expo';
 import { useAppRouteSceneRuntime } from '../../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { useAppRouteCoordinator } from '../../../navigation/runtime/AppRouteCoordinator';
 import type { FavoriteListSummary } from '../../../services/favorite-lists';
-import { notificationsService } from '../../../services/notifications';
 import type { Poll } from '../../../services/polls';
-import { useNotificationStore } from '../../../store/notificationStore';
-import { useOnboardingStore } from '../../../store/onboardingStore';
-import { announceFailureIfOnline, showAppModal } from '../../../components/app-modal-store';
-import { logger } from '../../../utils';
 import type { ProfilePanelActionsRuntime } from './profile-panel-runtime-contract';
 
 export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
-  const resetOnboarding = useOnboardingStore((state) => state.__forceOnboarding);
-  const { signOut, isSignedIn } = useAuth();
+  const { isSignedIn } = useAuth();
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const { dispatchLaunchIntent } = useAppRouteCoordinator();
-  const pushToken = useNotificationStore((state) => state.pushToken);
-  const setPushToken = useNotificationStore((state) => state.setPushToken);
-
-  const unregisterPushToken = React.useCallback(async () => {
-    if (!pushToken) {
-      return;
-    }
-    try {
-      await notificationsService.unregisterDevice(pushToken);
-    } catch (error) {
-      logger.warn('Failed to unregister push token', error);
-    } finally {
-      setPushToken(null);
-    }
-  }, [pushToken, setPushToken]);
-
-  const handleSignOut = React.useCallback(async () => {
-    try {
-      await unregisterPushToken();
-      await signOut();
-      showAppModal({
-        title: 'Signed out',
-        message: 'Sign in again the next time you open the app.',
-      });
-    } catch (error) {
-      logger.error('Sign out failed', error);
-      announceFailureIfOnline();
-    }
-  }, [signOut, unregisterPushToken]);
-
-  const handleReplayOnboarding = React.useCallback(async () => {
-    try {
-      await unregisterPushToken();
-      await signOut();
-    } catch (error) {
-      logger.warn('Replay onboarding sign-out failed', error);
-    } finally {
-      resetOnboarding();
-      showAppModal({
-        title: 'Onboarding reset',
-        message: 'Restart the app to walk through onboarding again.',
-      });
-    }
-  }, [resetOnboarding, signOut, unregisterPushToken]);
 
   const handleOpenSettings = React.useCallback(() => {
-    showAppModal({
-      title: 'Settings',
-      actions: [
-        {
-          label: 'Edit profile',
-          onPress: () =>
-            showAppModal({ title: 'Coming soon', message: 'Profile editing will land next.' }),
-        },
-        {
-          label: 'Replay onboarding',
-          onPress: () => void handleReplayOnboarding(),
-        },
-        {
-          label: 'Sign out',
-          style: 'destructive',
-          onPress: () => void handleSignOut(),
-        },
-        { label: 'Cancel', style: 'cancel' },
-      ],
-    });
-  }, [handleReplayOnboarding, handleSignOut]);
+    // Real child push (S-B slice 4 / §5.7) — the placeholder action-list modal is gone; the
+    // settings SCENE owns edit-profile / replay-onboarding / sign-out rows.
+    routeSceneRuntime.routeOverlayRouteCommandRuntime.pushRoute('settings');
+  }, [routeSceneRuntime.routeOverlayRouteCommandRuntime]);
 
   const handlePollPress = React.useCallback(
     (poll: Poll) => {

@@ -117,24 +117,18 @@ export const setRootRouteState = (
   });
 };
 
-// NOTE (slice 4 target): the same-key top-REPLACEMENT branch below is the audited GAP-B
-// behavior — `userProfile(A) → userProfile(B)` replaces instead of nesting. It stays until the
-// legs/registries are entry-keyed (slice 3); deleting it earlier silently bleeds state across
-// same-key instances.
+// S-B slice 4: push ALWAYS stacks — the same-key top-replacement is DELETED, so
+// `userProfile(A) → userProfile(B)` nests as two distinct entries and pop returns to A.
+// Rendering stays one leg per scene key (a rendering CACHE under the hard-swap engine); the
+// leg re-seeds from the top-most entry of its key, so no same-key state can bleed between
+// instances at the route layer.
 export const pushRouteState = (
   currentRouteState: RouteSceneSwitchRouteStateSnapshot,
   overlay: OverlayKey,
   params?: RouteSceneSwitchRouteParams
 ): RouteSceneSwitchRouteStateSnapshot => {
   const nextRoute = createRouteEntry(overlay, params);
-  const currentStack = currentRouteState.overlayRouteStack;
-  const currentTop = currentStack[currentStack.length - 1];
-  const overlayRouteStack =
-    currentTop?.key === overlay
-      ? [...currentStack.slice(0, -1), nextRoute]
-      : [...currentStack.slice(0, -1), currentTop, nextRoute].filter(
-          (entry): entry is OverlayRouteEntry => entry != null
-        );
+  const overlayRouteStack = [...currentRouteState.overlayRouteStack, nextRoute];
   return createRouteStateSnapshot({
     activeOverlayRoute: nextRoute,
     overlayRouteStack,
@@ -142,23 +136,28 @@ export const pushRouteState = (
 };
 
 // Params update preserves entry IDENTITY: the stack instance persists (its leg must not
-// remount); only the params value changes.
+// remount); only the params value changes. With same-key nesting legal, exactly the TOP-MOST
+// matching entry updates — updating every same-key entry would smear one instance's params
+// across its siblings (§5 resolution).
 export const updateRouteState = (
   currentRouteState: RouteSceneSwitchRouteStateSnapshot,
   overlay: OverlayKey,
   params?: RouteSceneSwitchRouteParams
 ): RouteSceneSwitchRouteStateSnapshot => {
-  let didUpdate = false;
-  const overlayRouteStack = currentRouteState.overlayRouteStack.map((route) => {
-    if (route.key !== overlay) {
-      return route;
+  const currentStack = currentRouteState.overlayRouteStack;
+  let topMatchIndex = -1;
+  for (let index = currentStack.length - 1; index >= 0; index -= 1) {
+    if (currentStack[index]?.key === overlay) {
+      topMatchIndex = index;
+      break;
     }
-    didUpdate = true;
-    return { ...route, params } as OverlayRouteEntry;
-  });
-  if (!didUpdate) {
+  }
+  if (topMatchIndex === -1) {
     return currentRouteState;
   }
+  const overlayRouteStack = currentStack.map((route, index) =>
+    index === topMatchIndex ? ({ ...route, params } as OverlayRouteEntry) : route
+  );
   const activeOverlayRoute =
     overlayRouteStack[overlayRouteStack.length - 1] ?? currentRouteState.activeOverlayRoute;
   return createRouteStateSnapshot({

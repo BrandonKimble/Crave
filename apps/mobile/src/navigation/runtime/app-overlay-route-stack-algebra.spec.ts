@@ -35,12 +35,45 @@ describe('route stack algebra (entries-as-values)', () => {
     expect(s1.overlayRouteStackLength).toBe(2);
   });
 
-  test('same-key push REPLACES the top entry (documented pre-slice-4 behavior)', () => {
-    const s1 = pushRouteState(bootState(), 'pollDetail', { pollId: 'p1' } as never);
-    const s2 = pushRouteState(s1, 'pollDetail', { pollId: 'p2' } as never);
-    expect(s2.overlayRouteStackLength).toBe(2);
-    expect(s2.activeOverlayRoute.params).toEqual({ pollId: 'p2' });
-    expect(s2.activeOverlayRoute.entryId).not.toBe(s1.activeOverlayRoute.entryId);
+  test('same-key push NESTS (slice 4): userProfile(A) → userProfile(B) → pop returns to A', () => {
+    const s1 = pushRouteState(bootState(), 'userProfile', { userId: 'u-a' } as never);
+    const entryA = s1.activeOverlayRoute;
+    const s2 = pushRouteState(s1, 'userProfile', { userId: 'u-b' } as never);
+    expect(s2.overlayRouteStackLength).toBe(3);
+    expect(s2.activeOverlayRoute.params).toEqual({ userId: 'u-b' });
+    expect(s2.previousOverlayRoute).toBe(entryA);
+    const s3 = closeActiveRouteState(s2);
+    expect(s3.activeOverlayRoute).toBe(entryA);
+    expect(s3.activeOverlayRoute.params).toEqual({ userId: 'u-a' });
+  });
+
+  test('drill-in loop: userProfile(A) → followList → userProfile(B) → back×3', () => {
+    const s1 = pushRouteState(bootState(), 'userProfile', { userId: 'u-a' } as never);
+    const s2 = pushRouteState(s1, 'followList', { userId: 'u-a', mode: 'followers' } as never);
+    const s3 = pushRouteState(s2, 'userProfile', { userId: 'u-b' } as never);
+    expect(s3.overlayRouteStack.map((e) => e.key)).toEqual([
+      'search',
+      'userProfile',
+      'followList',
+      'userProfile',
+    ]);
+    const p1 = closeActiveRouteState(s3);
+    expect(p1.activeOverlayRoute.key).toBe('followList');
+    const p2 = closeActiveRouteState(p1);
+    expect(p2.activeOverlayRoute).toBe(s1.activeOverlayRoute);
+    const p3 = closeActiveRouteState(p2);
+    expect(p3.activeOverlayRoute.key).toBe('search');
+    expect(p3.overlayRouteStackLength).toBe(1);
+  });
+
+  test('updateRouteState updates the TOP-MOST matching entry only', () => {
+    const s1 = pushRouteState(bootState(), 'userProfile', { userId: 'u-a' } as never);
+    const s2 = pushRouteState(s1, 'followList', { userId: 'u-a', mode: 'followers' } as never);
+    const s3 = pushRouteState(s2, 'userProfile', { userId: 'u-b' } as never);
+    const s4 = updateRouteState(s3, 'userProfile', { userId: 'u-b2' } as never);
+    expect(s4.overlayRouteStack[1]?.params).toEqual({ userId: 'u-a' });
+    expect(s4.overlayRouteStack[3]?.params).toEqual({ userId: 'u-b2' });
+    expect(s4.overlayRouteStack[3]?.entryId).toBe(s3.overlayRouteStack[3]?.entryId);
   });
 
   test('closeActive pops exactly one and reveals the entry VALUE beneath (same instance)', () => {
