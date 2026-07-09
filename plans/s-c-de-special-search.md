@@ -131,9 +131,14 @@ drives the NATIVE world dismissal (the (worldId, exitAckId, phase) wire's exit c
 armDismissMotion/commitDismissBoundary/completeDismissHandoff normally run it via the terminal
 choreography). The favorites pop escapes because its scene switch (search→bookmarks) changes
 chrome/map ownership; the home pop stays on the search scene so nothing clears the source.
-FIX DIRECTION: the pop should arm a MOTIONLESS dismiss transaction (the principled owner of
-surface exit + native map dismissal + nav return TOGETHER) — likely REPLACING
-finalizeSessionExitWithoutDismissMotion on the pop path (the finalize solved the sheet half;
-the dismiss transaction is the full ideal: one owner for the whole exit). Read
-armDismissMotion → commitDismissBoundary → markBottomBoundaryReached/markBottomNavReturnReady →
-completeDismissHandoff and the wire's exitAckId serialization before wiring.
+ATTRIBUTED FURTHER: after the pop, JS builds+stores an EMPTY frame (T1DBG markers:0) — the JS
+map source cleared correctly; the NATIVE side never applied it (the wire's exit/reveal
+correlation — (worldId, exitAckId, phase) — never ran on the pop path, so the native world
+holds its last source). FIX DIRECTION CONFIRMED: the pop must arm a MOTIONLESS dismiss
+transaction (the one owner of surface exit + native map dismissal + nav return) — likely
+replacing finalizeSessionExitWithoutDismissMotion on the pop path (the finalize solved the
+sheet half only). Read armDismissMotion → commitDismissBoundary → markBottomBoundaryReached/
+markBottomNavReturnReady → completeDismissHandoff + the wire's exitAckId serialization, then
+design the motionless variant (all readiness marks satisfied synchronously or by the immediate
+paint); alternatively deliver the empty frame through the wire's normal apply path if that is
+the truer seam. Home-pop dots are the RED probe for whichever design lands.
