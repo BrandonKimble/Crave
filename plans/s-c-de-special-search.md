@@ -81,15 +81,18 @@ active search / interKey bookmarks), full reveal (cards+world), X-dismiss pops t
 with content intact AND the nav bar returns with the Favorites tab still highlighted — the tab
 invariant held through a whole search session for the first time.
 
-**OPEN RED (next attribution):** the pop lands the Favorites sheet at MIDDLE, not the captured
-EXPANDED detent, with home search-bar chrome visible above (canonical Favorites = near-full
-sheet). The detent-ledger write may be losing to the pop switch's motion descriptor row
-(closeActive search→bookmarks resolves topLevelSwitch — check which row wins and whether
-`resolveSceneRememberedSnap` is even consulted for this row), OR the captured origin.detent
-was already 'middle' (verify with a [SCROLLDBG]-style probe on the capture + on
-resolveSceneRememberedSnap reads). ALSO check: chrome mode (native-overlay-target-authorities
-:616 expandedMiddle for bookmarks) — whether the pop re-applies it correctly vs the search
-chrome lingering.
+**OPEN RED (next attribution — findings so far):** the pop lands the Favorites sheet at
+MIDDLE, not the captured EXPANDED detent, with home search-bar chrome above. RULED OUT:
+(a) wrong captured detent — the [SC2-DET] probe (still in the session controller, TEMP) shows
+`restore scene=bookmarks detent=expanded` staged correctly; (b) transition KIND — closeActive
+from source 'search' now resolves 'closeChild' (policy-runtime change, in the WIP tree) and
+the landing did not change. REMAINING HYPOTHESIS: the ledger route is simply not consulted for
+this row (or is overridden); the OLD seam (restorePendingOrigin) applied the detent as an
+EXPLICIT snapTo on the restore switch. Next step: have the pop path pass the popped entry's
+origin.detent as explicit sheetMotion (a closeActiveRoute variant carrying snap), or route the
+pop through restorePendingOrigin's application mechanics — decide which is the ideal seam
+(explicit-origin-motion on pops is principled: origin restore has ALWAYS been an explicit
+application, not a remembered-snap default). Chrome-mode check still pending after detent.
 
 **Then:** finish S-C.2 rig matrix (profile root launch; restaurant child push FROM the pushed
 session — child-over-session stacking; failure/offline dismiss), commit, then S-C.3 per plan.
