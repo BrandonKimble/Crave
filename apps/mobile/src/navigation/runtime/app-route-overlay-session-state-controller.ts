@@ -465,7 +465,11 @@ export class AppRouteOverlaySessionStateController {
     if (liveState == null) {
       return base;
     }
-    const scroll = liveState.getScrollLanes().filter((lane) => lane.offset > 0);
+    // Red team RT-5: zero IS a meaningful restore target under shared warm legs (pop past a
+    // deep-scrolled same-key sibling must return THIS entry's top-of-list) — the old >0 filter
+    // made scroll-to-top unrestorable. The mounted-restore hook's no-pending guard still keeps
+    // organic re-opens jump-free.
+    const scroll = liveState.getScrollLanes();
     const segment = liveState.getSegment?.() ?? null;
     const sceneParams = liveState.getSceneParams?.() ?? null;
     return {

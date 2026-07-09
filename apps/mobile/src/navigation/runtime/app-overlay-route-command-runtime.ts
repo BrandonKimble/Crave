@@ -56,7 +56,7 @@ export type AppOverlayRouteCommandRuntime = {
   dismissActiveRoute: () => void;
   closeActiveRoute: (options?: { applyOriginDetent?: boolean }) => void;
   closeActiveRouteAfterSettle: (onSettle: RouteSceneSwitchSettleCallback) => void;
-  popToRootRoute: () => void;
+  popToRootRoute: (options?: { applyOriginDetent?: boolean }) => void;
 };
 
 export const createAppOverlayRouteCommandRuntime = ({
@@ -267,17 +267,29 @@ export const createAppOverlayRouteCommandRuntime = ({
     closeActiveRouteAfterSettle: (onSettle) => {
       closeActiveRoute(onSettle);
     },
-    popToRootRoute: () => {
-      const { activeOverlayRoute } = routeSceneSwitchRuntime.getRouteState();
+    popToRootRoute: (options?: { applyOriginDetent?: boolean }) => {
+      const routeState = routeSceneSwitchRuntime.getRouteState();
+      const { activeOverlayRoute } = routeState;
       const rootOverlayRouteKey = routeSceneSwitchRuntime.getRootRouteKey();
+      // Red team RT-4: the root's captured presentation lives on the DEEPEST pushed entry
+      // (stack[1]); popToRoot restores it (intermediate entries' origins are correctly
+      // discarded). Staged before the request — the motion plan reads the ledger.
+      const deepestPushedOrigin = routeState.overlayRouteStack[1]?.origin ?? null;
+      stageRouteEntryOriginRestore(deepestPushedOrigin);
       if (rootOverlayRouteKey != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
+        const originDetent =
+          options?.applyOriginDetent === true ? deepestPushedOrigin?.detent : undefined;
         requestRouteSceneSwitch({
           targetSceneKey: rootOverlayRouteKey,
           routeAction: 'popToRoot',
-          sheetTransitionKind: 'closeChild',
+          sheetTransitionKind: originDetent != null ? 'topLevelSwitch' : 'closeChild',
           sheetOpenerSource: 'routeCommand',
-          // sheetMotion intentionally omitted — descriptor-table closeChild decision (see
-          // closeActiveRoute above).
+          ...(originDetent != null
+            ? {
+                sheetMotion: { kind: 'snapTo' as const, snap: originDetent },
+                contentHandoff: 'swapImmediately' as const,
+              }
+            : null),
         });
         return;
       }

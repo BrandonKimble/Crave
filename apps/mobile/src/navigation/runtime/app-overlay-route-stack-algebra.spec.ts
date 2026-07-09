@@ -1,5 +1,6 @@
 import {
   areOverlayRoutesEqual,
+  hasSearchSessionAboveRoot,
   areRouteStateSnapshotsEqual,
   closeActiveRouteState,
   createRouteEntry,
@@ -141,6 +142,17 @@ describe('route stack algebra (entries-as-values)', () => {
   });
 });
 
+describe('pushed-session membership (red team RT-1/RT-2)', () => {
+  test('detects a session under a child top; not fooled by the root itself', () => {
+    const s1 = pushRouteState(bootState(), 'userProfile', { userId: 'u' } as never);
+    expect(hasSearchSessionAboveRoot(s1)).toBe(false);
+    const s2 = pushRouteState(bootState(), 'search');
+    expect(hasSearchSessionAboveRoot(s2)).toBe(true);
+    const s3 = pushRouteState(s2, 'restaurant', { restaurantId: 'r' } as never);
+    expect(hasSearchSessionAboveRoot(s3)).toBe(true);
+  });
+});
+
 describe('setRoot idempotence (session-teardown regression guard)', () => {
   test('re-rooting to the identical root (same key, same params value) is a no-op', () => {
     const s0 = bootState();
@@ -148,6 +160,14 @@ describe('setRoot idempotence (session-teardown regression guard)', () => {
     expect(s1).toBe(s0);
     const s2 = setRootRouteState(s1, 'search', undefined);
     expect(s2).toBe(s1);
+  });
+
+  test('value-equal REBUILT params are still a no-op (RT-3)', () => {
+    const s1 = setRootRouteState(bootState(), 'polls', { pollId: 'p1' } as never);
+    const s2 = setRootRouteState(s1, 'polls', { pollId: 'p1' } as never);
+    expect(s2).toBe(s1);
+    const s3 = setRootRouteState(s2, 'polls', { pollId: 'p2' } as never);
+    expect(s3).not.toBe(s2);
   });
 
   test('re-rooting with a different key still replaces', () => {

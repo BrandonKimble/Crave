@@ -1,3 +1,4 @@
+import { hasSearchSessionAboveRoot } from './app-overlay-route-stack-algebra';
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
 import { getAppOverlayRouteMetadata, type OverlayRouteParamsMap } from './app-overlay-route-types';
 import type { AppRouteSceneSwitchAuthority } from './app-route-scene-switch-authority';
@@ -76,8 +77,9 @@ export const createAppSearchRouteCommandActions = ({
     // the S-C.2 gap where an in-session rerun from a favorites root would have stacked a
     // duplicate session entry.
     const routeState = routeSceneSwitchAuthority.getSnapshot().routeState;
-    const isInSessionRePresent =
-      routeState.activeOverlayRoute.key === 'search' && routeState.overlayRouteStackLength > 1;
+    // Red team RT-2: in-session must be STACK MEMBERSHIP — a rerun issued while a child tops
+    // the session (restaurant over results) must not stack a duplicate session entry.
+    const isInSessionRePresent = hasSearchSessionAboveRoot(routeState);
     routeSceneSwitchActions.requestOverlaySwitch({
       targetSceneKey: 'search',
       sheetTransitionKind: 'topLevelSwitch',

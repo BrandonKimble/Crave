@@ -59,6 +59,35 @@ export const ROOT_SEARCH_ROUTE_ENTRY: OverlayRouteEntry<'search'> = createSentin
 
 // Value identity: same stack instance (entryId) with the same params value. `updateRouteState`
 // preserves entryId while swapping params, so params must still participate.
+/** A search SESSION entry exists above the stack bottom (red team RT-1/RT-2: pushed-session
+ * detection must be STACK MEMBERSHIP — top-of-stack identity misses child-topped sessions). */
+// Red team RT-3: setRoot idempotence must compare params by VALUE — reference equality
+// re-mints the root for value-equal rebuilt param objects (the leave-and-re-enter teardown
+// class the idempotence rule exists to prevent). Params are flat key→primitive maps.
+const areRouteParamsShallowValueEqual = (
+  left: RouteSceneSwitchRouteParams | undefined,
+  right: RouteSceneSwitchRouteParams | undefined
+): boolean => {
+  if (left === right) {
+    return true;
+  }
+  if (left == null || right == null) {
+    return left == null && right == null;
+  }
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every(
+    (key) => (left as Record<string, unknown>)[key] === (right as Record<string, unknown>)[key]
+  );
+};
+
+export const hasSearchSessionAboveRoot = (
+  routeState: RouteSceneSwitchRouteStateSnapshot
+): boolean => routeState.overlayRouteStack.slice(1).some((entry) => entry.key === 'search');
+
 export const areOverlayRoutesEqual = (
   left: OverlayRouteEntry | null,
   right: OverlayRouteEntry | null
@@ -110,7 +139,7 @@ export const setRootRouteState = (
   if (
     currentRouteState.overlayRouteStack.length === 1 &&
     currentTop?.key === overlay &&
-    currentTop.params === params
+    areRouteParamsShallowValueEqual(currentTop.params, params)
   ) {
     return currentRouteState;
   }
