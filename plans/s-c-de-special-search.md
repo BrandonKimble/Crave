@@ -142,3 +142,59 @@ markBottomNavReturnReady → completeDismissHandoff + the wire's exitAckId seria
 design the motionless variant (all readiness marks satisfied synchronously or by the immediate
 paint); alternatively deliver the empty frame through the wire's normal apply path if that is
 the truer seam. Home-pop dots are the RED probe for whichever design lands.
+
+---
+
+## RED TEAM (2026-07-09 ~02:40, 3 auditors: S-B code / S-C flows / ideal drift) — verdicts + ledger
+
+### Confirmed BREAKS (fix immediately)
+
+- **RT-1 (flows#1):** restaurant terminal dismiss from a pushed favorites session ([bookmarks,
+  search, restaurant]) never pops — `isTopLevelRichSeededOriginCaptured` FABRICATES a rich
+  origin via the live fallback (no slot was captured on the push path) → old single-switch
+  seam runs → setRoot collapse discards the pushed origin AND the seam never calls the surface
+  finalize → zombie residue returns. FIX: pushed-session detection by STACK MEMBERSHIP (a
+  'search' entry above a non-search root), the rich gate requires an ACTUALLY-captured slot
+  (no live fallback when the session was pushed), and the finalize runs on the seam branch too.
+- **RT-2 (flows#2):** in-session re-present while a CHILD tops a pushed session resolves
+  'push' → duplicate session entries ([bookmarks, search, restaurant, search#2]). Same fix:
+  in-session = stack membership, not top-of-stack.
+
+### REAL code fixes (cheap, do with RT-1/2 or next slice)
+
+- **RT-3 (code#1):** setRoot idempotence uses params REFERENCE equality — value-equal param
+  objects re-mint the root (the teardown class the rule exists to prevent). Value-compare.
+- **RT-4 (code#4):** popToRoot stages NO origins — stage `stack[1].origin` (deepest pushed
+  entry wins).
+- **RT-5 (code#3):** the `offset > 0` capture filter makes scroll-to-TOP unrestorable under
+  shared warm legs (pop past a deep-scrolled same-key sibling lands at ITS offset). Drop the
+  filter for entry-origin capture; zero is a meaningful target now.
+
+### S-C.3-B/C LEDGER (the remaining-work list the sub-slices anchor to — red team finding
+
+"S-C.3-B existed only in a code comment")
+
+1. Motionless dismiss transaction (home pop owns surface exit + native wire exit + nav return).
+2. Slot deletion + prepareSearchSessionEntry skip generalized to ALL roots (incl. the polls-root
+   childAnchor flow — currently a HYBRID: re-roots then pushes; deferred explicitly here).
+3. `handleRootOverlayTransition` re-root reflex deletion (session-state-controller ~:815).
+4. Nav law FINAL FORM: flip the nav-out selector from role-based to DEPTH-based (role≡depth
+   broke when search sessions became depth-2 topLevel pushes) + delete BOTH manual nav
+   commands (submit choreography's hide + the pop branch's requestSearchBottomNavMotionTarget).
+5. The policy-runtime `'search'`-joins-child-close special case → generalize kind from the
+   stack operation.
+6. `applyOriginDetent` decision: either explicit origin application becomes THE pop mechanism
+   (flag dies, ledger staging demoted) or the flag dies the other way — one mechanism only.
+7. Child-departure DETENT capture is root-collapsed (code#2 — masked today because stubs are
+   all expanded); resolve the departing scene's own detent.
+8. Slice-3a child unmount is unreachable on the fast dispatch path (code#5) — include a route
+   -stack signature in the fast-path guard so stack shrinkage forces the mounted-keys recompute.
+9. pollDetail/pollCreation dynamic input writers still select activeOverlayRoute (code#6) —
+   flip to the top-most-entry-of-key rule.
+10. `restaurant` profile foreground re-assert still re-roots via ensureAppSearchRouteSearchScene
+    (profile-app-foreground-runtime:33) — dies with child-pushes-stop-re-rooting.
+
+VERIFIED-SAFE by the flow auditor: STA-during-pushed-session (preserve), polls-root childAnchor
+round-trip (as the recorded hybrid), deep links cold+warm, depth-2 home sessions vs every
+stackLen consumer, finalize vs mid-flight redraw (2 hygiene notes: watchdog timer not cleared;
+bookmarks pop shares the native-wire residue but is masked by the full-height sheet).
