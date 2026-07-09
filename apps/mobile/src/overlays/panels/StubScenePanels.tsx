@@ -8,6 +8,7 @@ import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useTopMostRouteEntryForScene } from '../../navigation/runtime/use-top-most-route-entry-for-scene';
 import { useAccountActionsRuntime } from './runtime/use-account-actions-runtime';
+import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
 
 // ─── Stub-pass scenes (plans/page-registry.md §1) ────────────────────────────────────────────
 // Placeholder mounted bodies + persistent headers for the 7 registered-but-unbuilt child
@@ -75,7 +76,14 @@ const DrillInRow = ({
   </Pressable>
 );
 
-const FAKE_FOLLOW_USER_IDS = ['u-alice', 'u-bob', 'u-carol'] as const;
+// 30 rows: tall enough to SCROLL, so origin-on-entry capture/restore is rig-provable (scroll
+// deep, drill into a profile, come back — the offset must return; a RED run shows top-of-list).
+const FAKE_FOLLOW_USER_IDS = [
+  'u-alice',
+  'u-bob',
+  'u-carol',
+  ...Array.from({ length: 27 }, (_, index) => `u-user-${String(index + 1).padStart(2, '0')}`),
+] as const;
 
 const UserProfileDrillInBody = React.memo(() => {
   const entry = useTopMostRouteEntryForScene('userProfile');
@@ -106,6 +114,9 @@ const FollowListDrillInBody = React.memo(() => {
   const { pushRoute } = useAppOverlayRouteController();
   const mode = entry?.params?.mode ?? 'followers';
   const ownerUserId = entry?.params?.userId ?? 'unknown';
+  // ONE hook call = this scene is a return-to-origin source (live scroll published; capture
+  // falls out of the generalized rich-origin fallback; restore is the mounted-body hook).
+  useOriginSceneScrollPublication('followList');
   return (
     <View style={styles.body} testID="stub-scene-followList">
       <Text variant="body" style={styles.bodyText} testID="follow-list-context">

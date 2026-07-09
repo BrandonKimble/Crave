@@ -16,6 +16,8 @@ import {
   updateRouteState,
   type RouteSceneSwitchRouteStateSnapshot,
 } from './app-overlay-route-stack-algebra';
+import { captureRouteEntryOrigin } from './route-entry-origin-capture-delegate';
+import { stageOverlayScrollRestore } from '../../overlays/overlayScrollOffsetRuntime';
 import type {
   RouteSceneSwitchDockedPollsRestoreIntent,
   RouteSceneSwitchMotionPlane,
@@ -220,6 +222,19 @@ const PRESENTATION_ACK_RETENTION = 8;
 
 // Route-stack algebra (entries-as-values) lives in app-overlay-route-stack-algebra.ts.
 
+// S-B origin-on-entry: pop restores the popped entry's captured presentation. Applying =
+// staging the one-shot scroll restore lanes the revealed leg consumes on its next
+// content-ready commit (useMountedSceneScrollRestore). Runs at POP COMMIT, before motion.
+const stagePoppedEntryOriginRestore = (
+  currentRouteState: RouteSceneSwitchRouteStateSnapshot
+): void => {
+  const poppedEntry =
+    currentRouteState.overlayRouteStack[currentRouteState.overlayRouteStack.length - 1];
+  poppedEntry?.origin?.scroll?.forEach((lane) => {
+    stageOverlayScrollRestore(lane.laneKey, lane.offset);
+  });
+};
+
 const applyTransitionPlanToRouteState = (
   currentRouteState: RouteSceneSwitchRouteStateSnapshot,
   transitionPlan: AppRouteSceneTransitionPlan
@@ -232,7 +247,9 @@ const applyTransitionPlanToRouteState = (
         return pushRouteState(
           currentRouteState,
           transitionPlan.committedRootRouteKey,
-          transitionPlan.committedRouteParams
+          transitionPlan.committedRouteParams,
+          // Captured at commit — the departing scene still owns the live detent/scroll.
+          captureRouteEntryOrigin(currentRouteState.activeOverlayRoute.key)
         );
       case 'updateActive':
         return updateRouteState(
@@ -241,6 +258,7 @@ const applyTransitionPlanToRouteState = (
           transitionPlan.committedRouteParams
         );
       case 'closeActive':
+        stagePoppedEntryOriginRestore(currentRouteState);
         return closeActiveRouteState(currentRouteState);
       case 'popToRoot':
         return popToRootRouteState(currentRouteState);
@@ -847,12 +865,20 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
 
   public pushRouteState<K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]): void {
     this.applyRouteStateMutation((currentRouteState) =>
-      pushRouteState(currentRouteState, overlay, params)
+      pushRouteState(
+        currentRouteState,
+        overlay,
+        params,
+        captureRouteEntryOrigin(currentRouteState.activeOverlayRoute.key)
+      )
     );
   }
 
   public closeActiveRouteState(): void {
-    this.applyRouteStateMutation(closeActiveRouteState);
+    this.applyRouteStateMutation((currentRouteState) => {
+      stagePoppedEntryOriginRestore(currentRouteState);
+      return closeActiveRouteState(currentRouteState);
+    });
   }
 
   public popToRootRouteState(): void {

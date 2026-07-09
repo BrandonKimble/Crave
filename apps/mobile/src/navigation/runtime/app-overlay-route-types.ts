@@ -1,4 +1,7 @@
 import type { OverlayKey } from '../../overlays/types';
+// Type-only import (erased at runtime — no module cycle): OriginSnapshot is the shared
+// captured-presentation payload; its value home moves nav-side with the S-C rename pass.
+import type { OriginSnapshot } from '../../overlays/searchRouteSessionTypes';
 import type { MapBounds } from '../../types';
 
 export type { OverlayKey } from '../../overlays/types';
@@ -503,4 +506,10 @@ export type OverlayRouteEntry<K extends OverlayKey = OverlayKey> = {
   entryId: string;
   key: K;
   params: OverlayRouteParamsMap[K];
+  /**
+   * The committed presentation of the scene this push DEPARTED from (verdict §5.3: origin
+   * lives on the PUSHED entry; pop applies the popped entry's origin to the scene it
+   * reveals). Captured at push commit; null for roots/sentinels and non-push entries.
+   */
+  origin: OriginSnapshot | null;
 };

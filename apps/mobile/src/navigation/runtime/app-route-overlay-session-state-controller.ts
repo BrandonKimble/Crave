@@ -6,6 +6,7 @@ import type {
 import { getOriginCaptureProvider, registerOriginCaptureProvider } from './origin-capture-registry';
 import { getOriginSceneLiveState } from './origin-scene-live-state-registry';
 import { stageOverlayScrollRestore } from '../../overlays/overlayScrollOffsetRuntime';
+import { registerRouteEntryOriginCapturer } from './route-entry-origin-capture-delegate';
 import { stageOriginSceneSegmentRestore } from '../../overlays/originSceneSegmentRuntime';
 import type { AppSearchRouteCommandActions } from './app-search-route-command-runtime';
 import {
@@ -354,7 +355,13 @@ export class AppRouteOverlaySessionStateController {
       registerOriginCaptureProvider('search', captureDegenerateHomeOrigin),
       registerOriginCaptureProvider('polls', captureDegenerateHomeOrigin),
       registerOriginCaptureProvider('bookmarks', () => this.captureRichSceneOrigin('bookmarks')),
-      registerOriginCaptureProvider('profile', () => this.captureRichSceneOrigin('profile'))
+      registerOriginCaptureProvider('profile', () => this.captureRichSceneOrigin('profile')),
+      // S-B origin-on-entry: the scene-switch controller snapshots the DEPARTING scene onto
+      // every pushed entry through this seam. The departing key is passed EXPLICITLY (the
+      // controller's own identity resolution is root-collapsed — wrong for child departures).
+      registerRouteEntryOriginCapturer((departingSceneKey) =>
+        this.captureRichSceneOrigin(departingSceneKey)
+      )
     );
     this.handleRootOverlayTransition();
     this.handleNavRestorePending();
@@ -463,7 +470,12 @@ export class AppRouteOverlaySessionStateController {
   // still round-trips its anchor — byte-identical to before.
   private buildCurrentOriginSnapshot(childAnchor?: LaunchIntentChildAnchor | null): OriginSnapshot {
     const { sceneKey, detent } = this.resolveLiveOriginIdentity();
-    const captured = getOriginCaptureProvider(sceneKey)?.() ?? degenerateSnapshot(sceneKey, detent);
+    // Fallback generalized (S-B origin-on-entry): a scene with NO registered provider still
+    // captures rich (captureRichSceneOrigin merges any published live scroll/segment onto the
+    // degenerate base, and itself degrades to the base when the scene never published) — so a
+    // child scene opts into scroll capture with ONE publication hook call, zero registration.
+    const captured =
+      getOriginCaptureProvider(sceneKey)?.() ?? this.captureRichSceneOrigin(sceneKey);
     return {
       ...captured,
       anchor: childAnchor ?? captured.anchor ?? null,

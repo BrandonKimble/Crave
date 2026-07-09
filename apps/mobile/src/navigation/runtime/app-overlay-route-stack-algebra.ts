@@ -1,4 +1,5 @@
 import type { OverlayKey } from '../../overlays/types';
+import type { OriginSnapshot } from '../../overlays/searchRouteSessionTypes';
 import type { OverlayRouteEntry } from './app-overlay-route-types';
 import type { RouteSceneSwitchRouteParams } from './app-overlay-route-transition-contract';
 
@@ -27,12 +28,14 @@ let nextRouteEntrySeq = 1;
 
 export const createRouteEntry = (
   key: OverlayKey,
-  params?: RouteSceneSwitchRouteParams
+  params?: RouteSceneSwitchRouteParams,
+  origin?: OriginSnapshot | null
 ): OverlayRouteEntry =>
   ({
     entryId: `route-entry-${nextRouteEntrySeq++}`,
     key,
     params,
+    origin: origin ?? null,
   }) as OverlayRouteEntry;
 
 // Sentinel entries (module literals that predate any push — the boot root, inactive-slot
@@ -46,6 +49,7 @@ export const createSentinelRouteEntry = <K extends OverlayKey>(
     entryId: `route-entry-sentinel-${sentinelId}`,
     key,
     params: undefined,
+    origin: null,
   }) as OverlayRouteEntry<K>;
 
 export const ROOT_SEARCH_ROUTE_ENTRY: OverlayRouteEntry<'search'> = createSentinelRouteEntry(
@@ -125,9 +129,10 @@ export const setRootRouteState = (
 export const pushRouteState = (
   currentRouteState: RouteSceneSwitchRouteStateSnapshot,
   overlay: OverlayKey,
-  params?: RouteSceneSwitchRouteParams
+  params?: RouteSceneSwitchRouteParams,
+  origin?: OriginSnapshot | null
 ): RouteSceneSwitchRouteStateSnapshot => {
-  const nextRoute = createRouteEntry(overlay, params);
+  const nextRoute = createRouteEntry(overlay, params, origin);
   const overlayRouteStack = [...currentRouteState.overlayRouteStack, nextRoute];
   return createRouteStateSnapshot({
     activeOverlayRoute: nextRoute,
