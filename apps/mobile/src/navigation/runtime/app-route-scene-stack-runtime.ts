@@ -2499,6 +2499,25 @@ class AppRouteSceneStackLayerStateController {
     ) {
       return false;
     }
+    // S-B slice 3a (red-team ledger item 8): a popped child's leg must UNMOUNT — the
+    // mounted-keys filter only runs on the full recompute, so the fast path must yield
+    // whenever a mounted CHILD key is no longer in the route stack (stack shrank).
+    if (routeSceneSwitchSnapshot.transitionPhase === 'idle') {
+      const routeStackSceneKeys = new Set(
+        routeSceneSwitchSnapshot.overlayRouteStack.map((entry) => entry.key)
+      );
+      for (const mountedKey of this.mountedSceneKeys) {
+        if (
+          getAppOverlayRouteMetadata(mountedKey as OverlayKey).role === 'child' &&
+          !routeStackSceneKeys.has(mountedKey as OverlayKey) &&
+          mountedKey !== sheetPresentationSceneKey &&
+          mountedKey !== handoffSceneKey &&
+          mountedKey !== presentationFrame.outgoingSceneKey
+        ) {
+          return false;
+        }
+      }
+    }
     if (
       routeSceneSwitchSnapshot.transitionPhase === 'idle' &&
       !this.staticSceneMountState.inactiveTabsPrewarmed

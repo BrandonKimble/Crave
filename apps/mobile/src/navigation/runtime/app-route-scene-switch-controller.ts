@@ -105,6 +105,8 @@ export type RouteSceneSwitchSceneStackDispatchSnapshot = {
   sheetContentHandoff: RouteSceneSwitchSheetContentHandoff;
   transitionPhase: RouteSceneSwitchTransitionPhase;
   isInteractive: boolean;
+  /** The route stack (S-B slice 3a): the scene stack derives child-leg lifetime from it. */
+  overlayRouteStack: readonly OverlayRouteEntry[];
 };
 
 type RouteSceneSwitchSceneStackDispatchTarget = (
@@ -343,12 +345,14 @@ export const resolveRouteSceneSwitchSceneStackDispatchSnapshot = (
     state.transitionContract?.sheetTransitionPlan.contentHandoff ?? 'swapImmediately',
   transitionPhase: state.transitionPhase,
   isInteractive: state.isInteractive,
+  overlayRouteStack: state.routeState.overlayRouteStack,
 });
 
 const areRouteSceneSwitchSceneStackDispatchSnapshotsEqual = (
   left: RouteSceneSwitchSceneStackDispatchSnapshot,
   right: RouteSceneSwitchSceneStackDispatchSnapshot
 ): boolean =>
+  left.overlayRouteStack === right.overlayRouteStack &&
   left.routeActiveSceneKey === right.routeActiveSceneKey &&
   left.interactiveSceneKey === right.interactiveSceneKey &&
   left.pendingSceneKey === right.pendingSceneKey &&
