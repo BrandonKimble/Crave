@@ -32,7 +32,6 @@ export const useProfileAppExecutionModelRuntime = ({
   const profileAppForegroundExecutionRuntime = useProfileAppForegroundExecutionRuntime({
     routeOverlayCommandActions: routeSceneRuntime.routeOverlayCommandActions,
     routeOverlayCommandAuthority: routeSceneRuntime.routeOverlayCommandAuthority,
-    routeSearchCommandActions: routeSceneRuntime.routeSearchCommandActions,
     foregroundExecutionArgs: appExecutionArgs.foregroundExecutionArgs,
   });
   const profileAppRouteExecutionRuntime = useProfileAppRouteExecutionRuntime({

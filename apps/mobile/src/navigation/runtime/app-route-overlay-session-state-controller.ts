@@ -265,8 +265,6 @@ export class AppRouteOverlaySessionStateController {
 
   private snapshot = EMPTY_APP_ROUTE_OVERLAY_SESSION_SNAPSHOT;
 
-  private previousRootOverlay: OverlayKey | null = null;
-
   // Re-entrancy guard for the top-level-rich dismiss seam (design §71). The first dismiss owns the
   // single-switch re-root; it nulls capturedOriginContext as it fires, so a synchronous re-entrant
   // call would otherwise fall back to buildCurrentOriginSnapshot() (the now half-restored LIVE
@@ -311,7 +309,6 @@ export class AppRouteOverlaySessionStateController {
       routeOverlayRootAuthority.registerTarget({
         attributionLabel: 'AppRouteOverlaySessionRoot',
         syncRootSnapshot: () => {
-          this.handleRootOverlayTransition();
           this.recompute(true);
         },
       }),
@@ -391,7 +388,6 @@ export class AppRouteOverlaySessionStateController {
         });
       })
     );
-    this.handleRootOverlayTransition();
     this.handleNavRestorePending();
     this.snapshot = this.computeSnapshot();
   }
@@ -815,24 +811,6 @@ export class AppRouteOverlaySessionStateController {
       });
     }
     return true;
-  }
-
-  private handleRootOverlayTransition(): void {
-    const routeOverlayIdentitySnapshot = this.routeOverlayIdentityAuthority.getSnapshot();
-    const rootOverlay = routeOverlayIdentitySnapshot.rootOverlayKey;
-    const previousRootOverlay = this.previousRootOverlay;
-    this.previousRootOverlay = rootOverlay;
-    if (rootOverlay !== 'search') {
-      return;
-    }
-    if (!previousRootOverlay || previousRootOverlay === 'search') {
-      return;
-    }
-    this.routeSearchCommandActions.ensureAppSearchRouteSearchEntry({
-      rootOverlay,
-      activeOverlayKey: routeOverlayIdentitySnapshot.activeOverlayRouteKey,
-      snap: 'collapsed',
-    });
   }
 
   private computeSnapshot(): AppRouteOverlaySessionSnapshot {

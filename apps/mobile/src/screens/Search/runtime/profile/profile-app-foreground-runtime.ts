@@ -4,7 +4,6 @@ import type {
   AppRouteOverlayCommandActions,
   AppRouteOverlayCommandAuthority,
 } from '../../../../navigation/runtime/app-route-overlay-command-controller';
-import type { AppSearchRouteCommandActions } from '../../../../navigation/runtime/app-search-route-command-runtime';
 import { dismissTransientOverlays } from '../../../../overlays/overlayTransientDismissorRuntime';
 import type { ProfileAppForegroundExecutionRuntime } from '../../../../navigation/runtime/app-route-profile-app-execution-runtime-contract';
 
@@ -16,21 +15,21 @@ export type ProfileAppForegroundExecutionArgs = {
 type UseProfileAppForegroundExecutionRuntimeArgs = {
   routeOverlayCommandActions: AppRouteOverlayCommandActions;
   routeOverlayCommandAuthority: AppRouteOverlayCommandAuthority;
-  routeSearchCommandActions: AppSearchRouteCommandActions;
   foregroundExecutionArgs: ProfileAppForegroundExecutionArgs;
 };
 
 export const useProfileAppForegroundExecutionRuntime = ({
   routeOverlayCommandActions,
   routeOverlayCommandAuthority,
-  routeSearchCommandActions,
   foregroundExecutionArgs,
 }: UseProfileAppForegroundExecutionRuntimeArgs): ProfileAppForegroundExecutionRuntime => {
   const { dismissSearchInteractionUi, ensureInitialCameraReady } = foregroundExecutionArgs;
 
   const prepareForegroundUiForProfileOpen = React.useCallback(
     (options?: { captureSaveSheetState?: boolean }) => {
-      routeSearchCommandActions.ensureAppSearchRouteSearchScene();
+      // S-C.3-B step 3 (ledger item 10): the ensureAppSearchRouteSearchScene re-root is
+      // DELETED — a restaurant profile opens as a push over whatever is on the stack; the
+      // root persists (entries-as-values).
       dismissTransientOverlays();
       dismissSearchInteractionUi();
       ensureInitialCameraReady();
@@ -50,7 +49,6 @@ export const useProfileAppForegroundExecutionRuntime = ({
       ensureInitialCameraReady,
       routeOverlayCommandActions,
       routeOverlayCommandAuthority,
-      routeSearchCommandActions,
     ]
   );
 
