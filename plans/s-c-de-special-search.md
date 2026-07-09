@@ -250,3 +250,24 @@ and after dismiss; a fresh id = the old setRoot leaked back).
 comment round trip (childAnchor via entry origin); favorites/profile launches unchanged; map
 marker clearance on home dismissal (the wire exit must still run — it will, the choreography is
 untouched); tab sweep after every dismissal variant (zombie guard).
+
+## S-C.3-B step 1 SHIPPED (b889a8ba + b16a092c, 2026-07-09 ~6:15PM)
+
+DESIGN CORRECTION discovered by the RED probe: the stack died at the dismissal dance's FIRST
+switch (dismissAppSearchRouteResultsToPolls, explicit setRoot) — NOT at the golden home
+emission. The pop landed THERE (routeAction popToRoot when hasSearchSessionAboveRoot; same
+'polls' presentation target — presentation and stack truth are separate axes). The golden
+emission needed NO amendment (post-pop its setRoot is a value-equal idempotent no-op; the
+assertion is untouched). getRouteState joined the ACTIONS slice.
+
+PROVEN: double submit→dismiss shows the SAME search#home sentinel entry across both dances
+(entryId survival); home byte-canonical (docked polls, nav, zero marker residue — wire exit
+runs, choreography untouched); favorites chain + tab sweep canonical.
+
+REMAINING (design steps 2-5): prepareSearchSessionEntry skip generalizes to ALL roots — GAP
+FOUND while planning it: the polls-root childAnchor flow's anchor is LAUNCH-INTENT context;
+riding entry origins requires pollDetail to PUBLISH its own anchor (pollId + focused comment)
+via the origin live-state registry (getSceneParams/anchor getter — the publication seam
+exists), so the entry capture picks it up like scroll/segment. Then: slot deletion,
+handleRootOverlayTransition deletion, nav-law depth flip + both manual nav commands, close-kind
+generalization, applyOriginDetent one-mechanism, profile foreground re-root (item 10).
