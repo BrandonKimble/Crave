@@ -6,7 +6,10 @@ import type {
 import { getOriginCaptureProvider, registerOriginCaptureProvider } from './origin-capture-registry';
 import { getOriginSceneLiveState } from './origin-scene-live-state-registry';
 import { stageOverlayScrollRestore } from '../../overlays/overlayScrollOffsetRuntime';
-import { registerRouteEntryOriginCapturer } from './route-entry-origin-capture-delegate';
+import {
+  registerRouteEntryOriginCapturer,
+  registerRouteEntryOriginRestorer,
+} from './route-entry-origin-capture-delegate';
 import { stageOriginSceneSegmentRestore } from '../../overlays/originSceneSegmentRuntime';
 import type { AppSearchRouteCommandActions } from './app-search-route-command-runtime';
 import {
@@ -361,7 +364,18 @@ export class AppRouteOverlaySessionStateController {
       // controller's own identity resolution is root-collapsed — wrong for child departures).
       registerRouteEntryOriginCapturer((departingSceneKey) =>
         this.captureRichSceneOrigin(departingSceneKey)
-      )
+      ),
+      registerRouteEntryOriginRestorer((origin) => {
+        // Detent first (the pop switch's motion plan reads the remembered-snap ledger), then
+        // the one-shot scroll lanes the revealed leg consumes on its next active frame.
+        this.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
+          sceneKey: origin.sceneKey,
+          snap: origin.detent,
+        });
+        origin.scroll?.forEach((lane) => {
+          stageOverlayScrollRestore(lane.laneKey, lane.offset);
+        });
+      })
     );
     this.handleRootOverlayTransition();
     this.handleNavRestorePending();
@@ -530,6 +544,17 @@ export class AppRouteOverlaySessionStateController {
 
   private prepareSearchSessionEntry(options?: AppRouteSearchSessionEntryOptions): void {
     const routeOverlayIdentitySnapshot = this.routeOverlayIdentityAuthority.getSnapshot();
+    // S-C.2 (plans/s-c-de-special-search.md): from a bookmarks/profile ROOT the session entry
+    // is a PUSH — no slot capture (the pushed entry carries the origin), no re-root (the root
+    // persists; "you're still on Favorites" is route truth). The results-present verb resolves
+    // routeAction 'push' for non-search roots; dismiss is a pop. Search-root flows keep the
+    // legacy slot + re-root until S-C.3.
+    if (
+      routeOverlayIdentitySnapshot.rootOverlayKey === 'bookmarks' ||
+      routeOverlayIdentitySnapshot.rootOverlayKey === 'profile'
+    ) {
+      return;
+    }
     if (options?.captureOrigin) {
       // Forward the childAnchor into the captured origin; the dismiss restore reads it back
       // (resolveChildOriginRePush) to re-push the exact poll + comment.

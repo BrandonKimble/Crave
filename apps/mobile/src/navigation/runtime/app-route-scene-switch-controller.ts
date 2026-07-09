@@ -16,8 +16,10 @@ import {
   updateRouteState,
   type RouteSceneSwitchRouteStateSnapshot,
 } from './app-overlay-route-stack-algebra';
-import { captureRouteEntryOrigin } from './route-entry-origin-capture-delegate';
-import { stageOverlayScrollRestore } from '../../overlays/overlayScrollOffsetRuntime';
+import {
+  captureRouteEntryOrigin,
+  stageRouteEntryOriginRestore,
+} from './route-entry-origin-capture-delegate';
 import type {
   RouteSceneSwitchDockedPollsRestoreIntent,
   RouteSceneSwitchMotionPlane,
@@ -222,17 +224,16 @@ const PRESENTATION_ACK_RETENTION = 8;
 
 // Route-stack algebra (entries-as-values) lives in app-overlay-route-stack-algebra.ts.
 
-// S-B origin-on-entry: pop restores the popped entry's captured presentation. Applying =
-// staging the one-shot scroll restore lanes the revealed leg consumes on its next
-// content-ready commit (useMountedSceneScrollRestore). Runs at POP COMMIT, before motion.
+// S-B origin-on-entry: pop restores the popped entry's captured presentation via the restore
+// delegate (session controller stages detent ledger + scroll lanes). Dismiss VERBS stage it
+// before requesting the switch (the motion plan reads the ledger); the reducer paths below
+// stage as a fallback for bare (non-scene-switch) pops.
 const stagePoppedEntryOriginRestore = (
   currentRouteState: RouteSceneSwitchRouteStateSnapshot
 ): void => {
   const poppedEntry =
     currentRouteState.overlayRouteStack[currentRouteState.overlayRouteStack.length - 1];
-  poppedEntry?.origin?.scroll?.forEach((lane) => {
-    stageOverlayScrollRestore(lane.laneKey, lane.offset);
-  });
+  stageRouteEntryOriginRestore(poppedEntry?.origin);
 };
 
 const applyTransitionPlanToRouteState = (

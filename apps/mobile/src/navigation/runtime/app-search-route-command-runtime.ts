@@ -69,12 +69,19 @@ export const createAppSearchRouteCommandActions = ({
     mode?: 'spring' | 'instant';
     contentReadinessTransactionId?: string | null;
   }): void => {
+    // S-C.2: from a non-search ROOT the session PUSHES (stack [root, search#session]) so the
+    // root survives — tab highlight, chrome, and the eventual pop-dismiss all derive from it.
+    // Search-root flows keep the legacy setRoot default until S-C.3.
+    const { rootOverlayKey } = routeSceneSwitchAuthority.getSnapshot().routeState;
     routeSceneSwitchActions.requestOverlaySwitch({
       targetSceneKey: 'search',
       sheetTransitionKind: 'topLevelSwitch',
       sheetOpenerSource: 'routeCommand',
       sheetMotion: { kind: 'snapTo', snap, mode },
       contentReadinessTransactionId: contentReadinessTransactionId ?? null,
+      ...(rootOverlayKey === 'bookmarks' || rootOverlayKey === 'profile'
+        ? { routeAction: 'push' as const }
+        : null),
     });
   };
 

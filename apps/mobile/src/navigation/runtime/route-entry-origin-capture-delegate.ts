@@ -28,3 +28,26 @@ export const registerRouteEntryOriginCapturer = (
 
 export const captureRouteEntryOrigin = (departingSceneKey: OverlayKey): OriginSnapshot | null =>
   currentOriginCapturer?.(departingSceneKey) ?? null;
+
+// Restore side of the same seam: the session-state controller owns the snap ledger + scroll
+// staging, so it registers the restorer; dismiss verbs call it with the POPPED entry's origin
+// BEFORE the scene-switch plan resolves (the plan reads the remembered-snap ledger — staging
+// after commit is a stale read, proven RED on the rig as a wrong-detent pop).
+let currentOriginRestorer: ((origin: OriginSnapshot) => void) | null = null;
+
+export const registerRouteEntryOriginRestorer = (
+  restorer: (origin: OriginSnapshot) => void
+): (() => void) => {
+  currentOriginRestorer = restorer;
+  return () => {
+    if (currentOriginRestorer === restorer) {
+      currentOriginRestorer = null;
+    }
+  };
+};
+
+export const stageRouteEntryOriginRestore = (origin: OriginSnapshot | null | undefined): void => {
+  if (origin != null) {
+    currentOriginRestorer?.(origin);
+  }
+};
