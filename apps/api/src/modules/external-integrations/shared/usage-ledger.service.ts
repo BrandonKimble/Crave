@@ -14,6 +14,10 @@ export interface UsageEvent {
   requestCount?: number;
   caller: string;
   runKey?: string;
+  /** Idempotency key for at-most-once records (unique column; a duplicate
+   *  insert is silently skipped). Use when the same logical usage could be
+   *  recorded twice across crash/retry — e.g. one row per batch job. */
+  dedupeKey?: string;
 }
 
 /** Places fields that force the Enterprise+Atmosphere SKU. */
@@ -87,23 +91,25 @@ export class UsageLedgerService implements OnModuleDestroy {
   }
 
   record(event: UsageEvent): void {
+    const data = {
+      service: event.service,
+      operation: event.operation,
+      skuTier: event.skuTier ?? null,
+      model: event.model ?? null,
+      mode: event.mode ?? null,
+      inputTokens: event.inputTokens ?? null,
+      outputTokens: event.outputTokens ?? null,
+      cachedTokens: event.cachedTokens ?? null,
+      requestCount: event.requestCount ?? 1,
+      caller: event.caller,
+      runKey: event.runKey ?? null,
+      dedupeKey: event.dedupeKey ?? null,
+    };
+    // createMany + skipDuplicates makes keyed records idempotent (unique
+    // dedupe_key): crash/retry re-records are no-ops, so callers never have
+    // to choose between under- and double-recording via statement ordering.
     const write = this.prisma.apiUsageEvent
-      .create({
-        data: {
-          service: event.service,
-          operation: event.operation,
-          skuTier: event.skuTier ?? null,
-          model: event.model ?? null,
-          mode: event.mode ?? null,
-          inputTokens: event.inputTokens ?? null,
-          outputTokens: event.outputTokens ?? null,
-          cachedTokens: event.cachedTokens ?? null,
-          requestCount: event.requestCount ?? 1,
-          caller: event.caller,
-          runKey: event.runKey ?? null,
-        },
-        select: { id: true },
-      })
+      .createMany({ data: [data], skipDuplicates: true })
       .catch((error: unknown) => {
         this.logger.warn('Usage ledger write failed', {
           operation: event.operation,

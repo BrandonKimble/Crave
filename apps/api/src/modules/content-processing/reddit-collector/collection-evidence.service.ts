@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
+import { GeminiBatchService } from '../../external-integrations/llm/gemini-batch.service';
 import { ChunkProcessingResult } from '../../external-integrations/llm/llm-concurrent-processing.service';
 import {
   LLMModelInput,
@@ -32,6 +33,7 @@ export class CollectionEvidenceService implements OnModuleInit {
 
   constructor(
     private readonly prismaService: PrismaService,
+    private readonly geminiBatch: GeminiBatchService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -303,9 +305,9 @@ export class CollectionEvidenceService implements OnModuleInit {
    */
   private async reconcileStaleBatchJobs(horizonHours: number): Promise<void> {
     const stale = await this.prismaService.$queryRaw<
-      { job_id: string; extraction_run_id: string | null }[]
+      { job_id: string; purpose: string }[]
     >(Prisma.sql`
-      SELECT j.job_id, j.resume_context ->> 'extractionRunId' AS extraction_run_id
+      SELECT j.job_id, j.purpose
       FROM llm_batch_jobs j
       WHERE j.status IN ('pending', 'submitted', 'succeeded', 'ingesting')
         AND COALESCE(j.submitted_at, j.created_at) < now() - (${horizonHours} * interval '1 hour')
@@ -338,12 +340,15 @@ export class CollectionEvidenceService implements OnModuleInit {
         });
         if (claimed.count === 0) continue; // progressed since SELECT
         failedJobIds.push(job.job_id);
-        if (job.extraction_run_id) {
-          await this.markExtractionRunFailed(
-            job.extraction_run_id,
-            errorMessage,
-          );
-        }
+        // ONE mechanism for job-level run-failure: route through the
+        // purpose's registered failure handler exactly like the poller's
+        // provider-failed and ingest-exhausted paths — a richer future
+        // handler can't silently diverge from this sweep.
+        await this.geminiBatch.notifyJobFailed(
+          job.job_id,
+          job.purpose,
+          errorMessage,
+        );
       } catch (error) {
         // One bad job (e.g. its run row deleted) must not abort the sweep —
         // or the stale-RUN pass below it silently skips this hour.

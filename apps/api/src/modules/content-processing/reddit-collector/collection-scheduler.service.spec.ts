@@ -187,6 +187,33 @@ describe('CollectionSchedulerService', () => {
     );
   });
 
+  it('dispatches the global hot-spike row and advances its cadence', async () => {
+    const h = build();
+    await init(h);
+    h.prisma.collectionSchedule.findMany.mockResolvedValue([
+      makeRow({
+        community: '__global__',
+        workKind: 'on_demand_hot_spike',
+        intervalDays: 1 / 24,
+      }),
+    ]);
+
+    const result = await h.service.planAndDispatch();
+
+    expect(result).toEqual({ dispatched: 1, deferred: 0 });
+    expect(h.keywordOrchestrator.enqueueHotSpikeJobs).toHaveBeenCalledTimes(1);
+    expect(h.prisma.collectionSchedule.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          community_workKind: {
+            community: '__global__',
+            workKind: 'on_demand_hot_spike',
+          },
+        },
+      }),
+    );
+  });
+
   it('leaves a row due when dispatch throws (retry next cycle)', async () => {
     const h = build();
     await init(h);

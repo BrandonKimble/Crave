@@ -300,13 +300,9 @@ export class GeminiBatchService implements OnModuleDestroy {
         },
       });
     }
-    await this.prisma.llmBatchJob.update({
-      where: { jobId },
-      data: { status: 'succeeded', completedAt: new Date() },
-    });
-    // Ledger AFTER the status flip: a crash mid-persistence above leaves the
-    // job 'submitted' and the next poll re-runs this path — recording first
-    // would double-count the usage.
+    // Idempotent by dedupeKey (one row per job): a crash/retry re-record is
+    // skipped at the unique index, so ordering vs the status flip no longer
+    // chooses between under- and double-counting.
     this.usageLedger.record({
       service: 'gemini',
       operation: 'batchGenerateContent',
@@ -318,6 +314,11 @@ export class GeminiBatchService implements OnModuleDestroy {
       requestCount: inlined.length,
       caller: `gemini-batch.${purpose}`,
       runKey: jobId,
+      dedupeKey: `gemini-batch:${jobId}`,
+    });
+    await this.prisma.llmBatchJob.update({
+      where: { jobId },
+      data: { status: 'succeeded', completedAt: new Date() },
     });
     this.logger.info('Gemini batch succeeded', {
       jobId,
@@ -406,8 +407,11 @@ export class GeminiBatchService implements OnModuleDestroy {
   }
 
   /** Terminal job failure → the purpose's registered failure handler (which
-   *  fails the owning extraction run stashed in resumeContext). */
-  private async notifyJobFailed(
+   *  fails the owning extraction run stashed in resumeContext). Public: the
+   *  ONE mechanism for job-level run-failure — the poller's provider-failed
+   *  and ingest-exhausted paths and the hourly stale-job sweep all route
+   *  through here, so a richer future handler can't silently diverge. */
+  async notifyJobFailed(
     jobId: string,
     purpose: string,
     error: string,

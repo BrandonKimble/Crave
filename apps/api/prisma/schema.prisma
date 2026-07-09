@@ -270,6 +270,9 @@ model ApiUsageEvent {
   requestCount Int      @default(1) @map("request_count")
   caller       String   @db.VarChar(128) // logical call site, e.g. 'enrichment.placeDetails'
   runKey       String?  @map("run_key") @db.VarChar(256) // extractionRunId / batchId / jobId when known
+  /// Idempotency key for at-most-once records (e.g. one row per batch job).
+  /// Callers that can legitimately record multiple rows leave it null.
+  dedupeKey    String?  @unique @map("dedupe_key") @db.VarChar(256)
   createdAt    DateTime @default(now()) @map("created_at")
 
   @@index([service, createdAt], map: "idx_api_usage_service_created")
@@ -341,8 +344,8 @@ model AccessGrant {
 /// chronological | keyword | on_demand_hot_spike are job VARIANTS planned by
 /// one loop under one Reddit budget; restart resumes from here.
 model CollectionSchedule {
-  community    String    @db.VarChar(255)
-  workKind     String    @map("work_kind") @db.VarChar(32)
+  community    String             @db.VarChar(255)
+  workKind     CollectionWorkKind @map("work_kind")
   enabled      Boolean   @default(true)
   intervalDays Float     @map("interval_days")
   nextDueAt    DateTime  @default(now()) @map("next_due_at")
@@ -1525,6 +1528,15 @@ model KeywordAttemptHistory {
   @@index([collectableMarketKey], map: "idx_collection_keyword_attempt_history_collectable_market_key")
   @@index([cooldownUntil], map: "idx_collection_keyword_attempt_history_cooldown_until")
   @@map("collection_keyword_attempt_history")
+}
+
+/// Work kinds the collection planner can dispatch. Enum (not String) so an
+/// unknown kind is unrepresentable at the DB layer — the planner's runtime
+/// check is the exhaustiveness net, this is the wall.
+enum CollectionWorkKind {
+  chronological
+  keyword
+  on_demand_hot_spike
 }
 
 enum MarketType {

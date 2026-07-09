@@ -74,6 +74,7 @@ if (sentryDsn) {
 
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
+import { SchedulerRegistry } from '@nestjs/schedule';
 import {
   FastifyAdapter,
   NestFastifyApplication,
@@ -81,6 +82,7 @@ import {
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { createValidationPipeConfig } from './shared';
+import { isWorkerRuntime } from './shared/utils/process-role';
 import fastifyRawBody from 'fastify-raw-body';
 
 async function bootstrap() {
@@ -197,6 +199,22 @@ async function bootstrap() {
   // - Bull queues are gracefully shut down
   // - No dropped requests during Railway deployments
   app.enableShutdownHooks();
+
+  // ONE chokepoint for "which process runs scheduled work": non-worker
+  // processes stop every registered @Cron at boot. Covers all current and
+  // future crons by construction — no per-service isWorkerRuntime guards to
+  // remember (with multiple dynos, per-process in-flight latches would
+  // otherwise fire the same job on every dyno).
+  if (!isWorkerRuntime()) {
+    const schedulerRegistry = app.get(SchedulerRegistry);
+    const cronJobs = schedulerRegistry.getCronJobs();
+    for (const job of cronJobs.values()) {
+      void job.stop();
+    }
+    console.log(
+      `[CRON] Stopped ${cronJobs.size} cron jobs (non-worker runtime)`,
+    );
+  }
 
   const port = configService.get<number>('PORT') || 3000;
   // Bind dual-stack (IPv6 + IPv4-mapped) so both `127.0.0.1` and `::1` reach the

@@ -1135,6 +1135,22 @@ LIMIT ${pagination.take};`.trim();
   private buildRestaurantEntitySignalMatchConditions(
     filters: ParsedFilters,
   ): MatchClauseWithPreview {
+    // Ingredient constraints are item-level claims by nature; name-level
+    // praise signals carry no ingredient data, so a signal-only admission
+    // cannot honor them (worst case: a restaurant card whose dish list is
+    // entirely filtered out). With either ingredient lane active, admission
+    // must come from connection evidence that passed the ingredient clause.
+    if (
+      filters.ingredientIds.length > 0 ||
+      filters.excludedIngredientIds.length > 0
+    ) {
+      return {
+        sql: this.combineSqlClauses([]),
+        preview: this.combinePreviewClauses([]),
+        hasConditions: false,
+      };
+    }
+
     const conditions: Prisma.Sql[] = [];
     const conditionPreview: string[] = [];
 
