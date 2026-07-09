@@ -13,7 +13,6 @@ import {
 import { stageOriginSceneSegmentRestore } from '../../overlays/originSceneSegmentRuntime';
 import type { AppSearchRouteCommandActions } from './app-search-route-command-runtime';
 import {
-  createPollDetailChildRouteParams,
   type OverlayKey,
   type OverlayRouteParamsMap,
   getAppOverlayRouteMetadata,
@@ -69,7 +68,7 @@ type AppRouteOverlaySessionStateControllerArgs = {
 // produced before this scaffolding: a scene identity + its LIVE detent, with empty
 // scroll/segment/anchor. Home ('search'|'polls') captures EXACTLY this; richer scenes
 // fall back to it in P0 (their RICH providers — real scroll/segment/anchor — arrive in
-// later phases). The launch childAnchor is overlaid by captureSearchSessionOrigin, the
+// later phases). The launch childAnchor overlay is gone (S-C.3-B step 3b: the slot is deleted;
 // same place the old code set `childAnchor: childAnchor ?? null`.
 const degenerateSnapshot = (sceneKey: OverlayKey, detent: TabOverlaySnap): OriginSnapshot => ({
   sceneKey,
@@ -79,47 +78,6 @@ const degenerateSnapshot = (sceneKey: OverlayKey, detent: TabOverlaySnap): Origi
   scroll: [],
   anchor: null,
 });
-
-// Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Restore / P2) —
-// GENERIC child-origin re-push descriptor. The rich restore re-roots the origin home then
-// PUSHES the exact CHILD scene the reveal was launched from. The child scene + its route
-// params are derived from the captured origin's ANCHOR, NOT a `pollDetail`-literal branch in
-// restorePendingOrigin: this resolver is the single place that knows how to reconstruct a
-// child push from an anchor, so adding a new rich child source (a list-card, a foreign
-// profile) = one new branch HERE, nothing in the dismiss/restore machinery.
-//
-// `risingSnap` = the single detent the child sheet snaps to as it rises (one `snapTo`, never
-// `promoteAtLeast` — which would re-read the shared snap and double-animate). pollDetail rises
-// to 'expanded' to mirror the in-feed poll-open (the reveal played backward).
-//
-// For this phase the only rich source is a poll-discussion COMMENT (anchor.sceneKey ===
-// 'pollDetail'); the resolver returns null for any anchor it can't reconstruct a child push
-// for, so the rich branch degrades to a plain root restore.
-type ChildOriginRePush = {
-  targetSceneKey: OverlayKey;
-  routeParams: OverlayRouteParamsMap[OverlayKey];
-  risingSnap: Exclude<SearchOverlaySheetSnap, 'hidden'>;
-};
-
-const resolveChildOriginRePush = (
-  anchor: LaunchIntentChildAnchor | null
-): ChildOriginRePush | null => {
-  if (anchor == null) {
-    return null;
-  }
-  if (anchor.sceneKey === 'pollDetail' && anchor.pollId != null) {
-    return {
-      targetSceneKey: 'pollDetail',
-      routeParams: createPollDetailChildRouteParams({
-        pollId: anchor.pollId,
-        // Carry the tapped comment so the panel can best-effort scroll to it.
-        commentAnchorId: anchor.commentId,
-      } as OverlayRouteParamsMap['pollDetail']),
-      risingSnap: 'expanded',
-    };
-  }
-  return null;
-};
 
 // Return-to-origin foundation — TOP-LEVEL-RICH dismiss seam (the LAST gap).
 //
@@ -156,19 +114,6 @@ const isDegenerateHomeOrigin = (snapshot: OriginSnapshot): boolean =>
   snapshot.sceneParams == null &&
   (snapshot.sceneKey === 'search' || snapshot.sceneKey === 'polls') &&
   snapshot.detent === 'collapsed';
-
-const isTopLevelRichSeededOrigin = (snapshot: OriginSnapshot | null): boolean => {
-  if (snapshot == null) {
-    return false;
-  }
-  if (isDegenerateHomeOrigin(snapshot)) {
-    return false;
-  }
-  if (resolveChildOriginRePush(snapshot.anchor ?? null) != null) {
-    return false;
-  }
-  return SEEDED_TOP_LEVEL_RESTORE_TARGETS.has(resolveRestoreRootOverlay(snapshot));
-};
 
 // Return-to-origin foundation — GOLDEN ASSERTION (design §Home byte-identity proof).
 // The DEGENERATE home restore is the {polls,search}@collapsed deadlock seam: it MUST emit a
@@ -266,12 +211,6 @@ export class AppRouteOverlaySessionStateController {
   private snapshot = EMPTY_APP_ROUTE_OVERLAY_SESSION_SNAPSHOT;
 
   // Re-entrancy guard for the top-level-rich dismiss seam (design §71). The first dismiss owns the
-  // single-switch re-root; it nulls capturedOriginContext as it fires, so a synchronous re-entrant
-  // call would otherwise fall back to buildCurrentOriginSnapshot() (the now half-restored LIVE
-  // identity) — still a seeded rich origin — and emit a redundant second switch. Held across the
-  // synchronous emission, released on the next microtask.
-  private dismissRestoreInFlight = false;
-
   public readonly authority: AppRouteOverlaySessionAuthority;
 
   public readonly actions: AppRouteOverlaySessionActions;
@@ -295,15 +234,12 @@ export class AppRouteOverlaySessionStateController {
       getSnapshot: this.getSnapshot.bind(this),
     };
     this.actions = {
-      captureSearchSessionOrigin: this.captureSearchSessionOrigin.bind(this),
       armSearchCloseRestore: this.armSearchCloseRestore.bind(this),
       commitSearchCloseRestore: this.commitSearchCloseRestore.bind(this),
       cancelSearchCloseRestore: this.cancelSearchCloseRestore.bind(this),
       prepareSearchSessionEntry: this.prepareSearchSessionEntry.bind(this),
       flushPendingSearchOriginRestore: this.flushPendingSearchOriginRestore.bind(this),
       requestDefaultPostSearchRestore: this.requestDefaultPostSearchRestore.bind(this),
-      isTopLevelRichSeededOriginCaptured: this.isTopLevelRichSeededOriginCaptured.bind(this),
-      dismissRestoreToTopLevelRichOrigin: this.dismissRestoreToTopLevelRichOrigin.bind(this),
     };
     this.unsubscribers.push(
       routeOverlayRootAuthority.registerTarget({
@@ -510,26 +446,14 @@ export class AppRouteOverlaySessionStateController {
     };
   }
 
-  private captureSearchSessionOrigin(childAnchor?: LaunchIntentChildAnchor | null): void {
-    const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
-    this.routeSheetSnapSessionActions.setPendingOriginRestoreContext(null);
-    this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
-    if (sessionSnapshot.capturedOriginContext) {
-      return;
-    }
-    this.routeSheetSnapSessionActions.setCapturedOriginContext(
-      this.buildCurrentOriginSnapshot(childAnchor)
-    );
-  }
-
   private armSearchCloseRestore({
     allowFallback = false,
     searchRootRestoreSnap,
   }: AppRouteSearchCloseRestoreOptions = {}): boolean {
-    const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
-    const resolvedOriginContext =
-      sessionSnapshot.capturedOriginContext ??
-      (allowFallback ? this.buildCurrentOriginSnapshot() : null);
+    // S-C.3-B step 3b: the captured-origin SLOT is deleted — the terminal dismissal always
+    // resolves the LIVE origin (the degenerate home build; pushed-session dismissals pop via
+    // entry origins and never reach here).
+    const resolvedOriginContext = allowFallback ? this.buildCurrentOriginSnapshot() : null;
     const nextOriginContext =
       resolvedOriginContext?.sceneKey === 'search' && searchRootRestoreSnap
         ? {
@@ -540,7 +464,6 @@ export class AppRouteOverlaySessionStateController {
     const shouldRestoreOrigin = nextOriginContext != null;
     this.routeSheetSnapSessionActions.setPendingOriginRestoreContext(nextOriginContext);
     this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
-    this.routeSheetSnapSessionActions.setCapturedOriginContext(null);
     return shouldRestoreOrigin;
   }
 
@@ -619,7 +542,6 @@ export class AppRouteOverlaySessionStateController {
   //     detent, never collapsed here, so it isn't the deadlock-seam home case).
   private restorePendingOrigin(snapshot: OriginSnapshot): void {
     const resolvedRootOverlay = resolveRestoreRootOverlay(snapshot);
-    const childAnchor = snapshot.anchor ?? null;
     // RICHNESS gate (design §Restore step 2). A home snapshot carries NO scroll, NO anchor,
     // NO sceneParams, a root sceneKey, and a collapsed detent — exactly what the degenerate
     // providers capture. Anything richer (a child anchor, a non-root scene, a non-collapsed
@@ -632,7 +554,8 @@ export class AppRouteOverlaySessionStateController {
     // RICH restore. The structural discriminant for the ROOT sheet motion is whether the captured
     // origin carries a re-pushable CHILD (resolved generically from the anchor), NOT a literal
     // scene-key test.
-    const childRePush = resolveChildOriginRePush(childAnchor);
+    // S-C.3-B step 3b: the child re-push machinery is DELETED — a search launched from a
+    // child PUSHES over it now, so the child ENTRY survives and dismissal pops back to it.
     const shouldRestoreDockedPolls = resolvedRootOverlay === 'search';
     // P3 SCROLL + P5 SEGMENT restore (design §Restore step 5/6). SEED the captured scroll
     // lane(s) AND the active SEGMENT for the origin scene BEFORE the re-root commits, so the
@@ -646,39 +569,23 @@ export class AppRouteOverlaySessionStateController {
     // profile via routeParams; own profile has null sceneParams and omits routeParams entirely
     // (byte-identical to today's param-less profile re-root). The home emission never reaches
     // here, so the golden assertion's "no routeParams on home" contract is untouched.
-    const restoreRouteParams =
-      !childRePush && snapshot.sceneParams != null ? snapshot.sceneParams : null;
+    const restoreRouteParams = snapshot.sceneParams != null ? snapshot.sceneParams : null;
     // A top-level-rich SEEDED restore target (bookmarks/profile) sets its content handoff
     // EXPLICITLY — swapImmediately/skeleton-first — so the single-switch dismiss can NEVER orphan a
     // content plane regardless of the transition policy's SEEDED_FORWARD_OPEN_SCENES membership
     // (which used to be the sole, prose-coupled authority for that — the supersede→blank this seam
     // exists to kill). The childRePush branch is explicit for the same reason. The plain
     // non-collapsed home root (search/polls) keeps its policy-resolved handoff — byte-identical.
-    const useSwapImmediately =
-      childRePush != null || SEEDED_TOP_LEVEL_RESTORE_TARGETS.has(resolvedRootOverlay);
+    const useSwapImmediately = SEEDED_TOP_LEVEL_RESTORE_TARGETS.has(resolvedRootOverlay);
     this.routeSceneSwitchActions.requestOverlaySwitch({
       targetSceneKey: resolvedRootOverlay,
       sheetTransitionKind: 'topLevelSwitch',
       sheetOpenerSource: 'routeCommand',
-      sheetMotion: childRePush ? { kind: 'none' } : { kind: 'snapTo', snap: snapshot.detent },
+      sheetMotion: { kind: 'snapTo', snap: snapshot.detent },
       ...(useSwapImmediately ? { contentHandoff: 'swapImmediately' as const } : {}),
       ...(restoreRouteParams != null ? { routeParams: restoreRouteParams } : {}),
       dockedPollsRestoreSnap: shouldRestoreDockedPolls ? snapshot.detent : null,
     });
-    if (childRePush) {
-      // PUSH the exact CHILD scene back over the re-rooted home. Mirrors the in-feed forward open
-      // (openChild, a single instant snap to the child's risingSnap) so the back-stack is the
-      // same shape it was at reveal time; for a comment origin the pollDetail params carry the
-      // tapped comment so the panel can best-effort scroll to it.
-      this.routeSceneSwitchActions.requestOverlaySwitch({
-        targetSceneKey: childRePush.targetSceneKey,
-        routeAction: 'push',
-        routeParams: childRePush.routeParams,
-        sheetTransitionKind: 'openChild',
-        sheetOpenerSource: 'routeCommand',
-        sheetMotion: { kind: 'snapTo', snap: childRePush.risingSnap, mode: 'instant' },
-      });
-    }
   }
 
   // P3 — stage the captured scroll lane(s) for the origin scene so the scene restores them on
@@ -743,74 +650,6 @@ export class AppRouteOverlaySessionStateController {
     this.routeSheetSnapSessionActions.setIsDockedPollsDismissed(false);
     this.emitDegenerateHomeRestore('search', 'collapsed');
     this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
-  }
-
-  // Return-to-origin foundation — TOP-LEVEL-RICH dismiss seam (the LAST gap).
-  // When the CAPTURED origin is a top-level-rich SEEDED origin (bookmarks / profile), the
-  // dismiss re-roots DIRECTLY to that origin in ONE swapImmediately switch (restorePendingOrigin's
-  // rich top-level branch → topLevelSwitch into a SEEDED scene → swapImmediately, snapTo the
-  // captured detent) — with NO `terminalDismiss→polls` intermediate, so there is NOTHING to
-  // supersede and NO native-presentation latch on a torn-down outgoing handoff. The caller
-  // (beginCloseSearch) routes here BEFORE the normal terminalDismiss/collapse choreography, so
-  // the home + child-origin + restaurant-profile dismisses are UNTOUCHED (degenerate home stays
-  // byte-identical; the comment→pollDetail child origin keeps its motionless-re-root + rising
-  // openChild path). Returns true iff it handled (re-rooted to) a top-level-rich origin.
-  //
-  // ORDERING: the caller tears down the search SURFACE first (clearSearchState with
-  // skipPostSearchRestore so it does NOT also arm/flush a restore), then calls this — mirroring
-  // the finalize order (clear → restore). Arming here moves capturedOriginContext →
-  // pendingOriginRestoreContext, then flush emits the single switch.
-  // Pure read (no mutation): is the CAPTURED origin (or, absent one, the live origin the dismiss
-  // would fall back to) a top-level-rich SEEDED origin? Lets the caller decide the single-switch
-  // branch BEFORE tearing down the surface, so the teardown→re-root order matches finalize.
-  private isTopLevelRichSeededOriginCaptured(): boolean {
-    const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
-    const capturedOrigin =
-      sessionSnapshot.capturedOriginContext ?? this.buildCurrentOriginSnapshot();
-    return isTopLevelRichSeededOrigin(capturedOrigin);
-  }
-
-  private dismissRestoreToTopLevelRichOrigin(): boolean {
-    if (this.dismissRestoreInFlight) {
-      // A re-entrant dismiss is a no-op — the first one owns the single-switch re-root. Report
-      // handled so the caller does NOT fall through to the terminalDismiss path (which would
-      // re-introduce the supersede→blank this seam eliminates).
-      return true;
-    }
-    const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
-    const capturedOrigin =
-      sessionSnapshot.capturedOriginContext ?? this.buildCurrentOriginSnapshot();
-    if (!isTopLevelRichSeededOrigin(capturedOrigin)) {
-      return false;
-    }
-    if (__DEV__) {
-      // [DISMISS-SEAM] dev trace — the top-level-rich (bookmarks/profile) single-switch re-root.
-      // Kept behind __DEV__ for finger-testing the dismiss seam; never ships to release.
-      // eslint-disable-next-line no-console
-      console.log(
-        `[DISMISS-SEAM] top-level-rich single-switch re-root → ${resolveRestoreRootOverlay(
-          capturedOrigin
-        )} detent=${capturedOrigin.detent} (no terminalDismiss→polls intermediate)`
-      );
-    }
-    // ARM-equivalent teardown then flush the ONE richness-gated restore switch. restorePendingOrigin
-    // reads its ARGUMENT (capturedOrigin), NOT the pending store, so we clear the captured/nav/
-    // pending-search flags directly and pass the snapshot in — no set-then-clear of
-    // pendingOriginRestoreContext (that mirrored arm/flush but nothing between the set and the
-    // clear ever read it). No searchRootRestoreSnap override (that is search-home only).
-    this.dismissRestoreInFlight = true;
-    try {
-      this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
-      this.routeSheetSnapSessionActions.setCapturedOriginContext(null);
-      this.routeSheetSnapSessionActions.setNavRestorePending(false);
-      this.restorePendingOrigin(capturedOrigin);
-      this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
-    } finally {
-      queueMicrotask(() => {
-        this.dismissRestoreInFlight = false;
-      });
-    }
-    return true;
   }
 
   private computeSnapshot(): AppRouteOverlaySessionSnapshot {

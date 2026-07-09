@@ -13,7 +13,6 @@ export const ROUTE_SHARED_SNAP_PERSISTENCE_KEY = 'search-route-shared-snap';
 export type AppRouteSheetSnapSessionSnapshot = Readonly<{
   isDockedPollsDismissed: boolean;
   isNavRestorePending: boolean;
-  capturedOriginContext: OriginSnapshot | null;
   pendingOriginRestoreContext: OriginSnapshot | null;
   isSearchOriginRestorePending: boolean;
   sceneSheetSnaps: Readonly<Partial<Record<OverlayKey, OverlaySheetSnap>>>;
@@ -31,7 +30,6 @@ export type AppRouteSheetSnapSessionActions = {
   setIsDockedPollsDismissed: (next: React.SetStateAction<boolean>) => void;
   dismissDockedPolls: () => void;
   setNavRestorePending: (next: boolean) => void;
-  setCapturedOriginContext: (next: OriginSnapshot | null) => void;
   setPendingOriginRestoreContext: (next: OriginSnapshot | null) => void;
   setIsSearchOriginRestorePending: (next: boolean) => void;
   recordRouteSceneSheetSettle: (args: { sceneKey: OverlayKey; snap: OverlaySheetSnap }) => void;
@@ -66,7 +64,6 @@ const DEFAULT_SHARED_SNAP: RouteSheetSharedSnap = 'expanded';
 const createInitialSnapshot = (): AppRouteSheetSnapSessionSnapshot => ({
   isDockedPollsDismissed: false,
   isNavRestorePending: false,
-  capturedOriginContext: null,
   pendingOriginRestoreContext: null,
   isSearchOriginRestorePending: false,
   sceneSheetSnaps: {
@@ -147,9 +144,6 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     },
     setNavRestorePending: (next) => {
       this.commit({ isNavRestorePending: next });
-    },
-    setCapturedOriginContext: (next) => {
-      this.commit({ capturedOriginContext: next });
     },
     setPendingOriginRestoreContext: (next) => {
       this.commit({ pendingOriginRestoreContext: next });

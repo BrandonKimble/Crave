@@ -209,23 +209,6 @@ export const useResultsPresentationCloseActionsRuntime = ({
       }
     }
 
-    if (routeSceneRuntime.routeOverlaySessionActions.isTopLevelRichSeededOriginCaptured()) {
-      ignoreNextSearchBlurRef.current = true;
-      unstable_batchedUpdates(() => {
-        clearSearchState({
-          skipPostSearchRestore: true,
-          skipProfileDismissClear: true,
-        });
-        resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
-        setPendingCloseIntentId(null);
-        routeSceneRuntime.routeOverlaySessionActions.dismissRestoreToTopLevelRichOrigin();
-        // Red team RT-1: the single-switch seam never armed a dismiss transaction either —
-        // same zombie mechanism as the pop path; the finalize is idempotent.
-        getSearchSurfaceRuntime().finalizeSessionExitWithoutDismissMotion();
-      });
-      return;
-    }
-
     // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Restore / P2).
     // TWO dismiss mechanisms, both richness-gated on the captured OriginSnapshot (never on a
     // call-site anchor-scene `if`): the top-level-rich seam ABOVE handles bookmarks/profile in a
