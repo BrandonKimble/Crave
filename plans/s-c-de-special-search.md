@@ -55,3 +55,41 @@ setRoot dance — audit for deadness AFTER the push conversion, not in the same 
   content join as the per-target contract — already table-driven).
 
 Validation per slice on the rig; red team (3 auditors) after S-C.3 lands, before S-C.4.
+
+---
+
+## S-C.2 WIP status (2026-07-09 ~01:50, UNCOMMITTED working tree)
+
+Sequencing amendment executed: S-C.2 (push conversion) ran FIRST so misclassified consumers
+show RED empirically (attribute-before-ideate); S-C.1's predicate work happens as those fixes.
+
+**Built (uncommitted, tsc + 93 jest green):**
+
+- `prepareSearchSessionEntry`: bookmarks/profile roots skip slot-capture + re-root (push path).
+- `openAppSearchRouteResults`: `routeAction:'push'` when root is bookmarks/profile.
+- Pop dismiss branch in `use-results-presentation-close-actions-runtime` (before the rich
+  seam): pushed session (top='search', depth>1, root bookmarks/profile) → clearSearchState +
+  `closeActiveRoute()` + `requestSearchBottomNavMotionTarget('show')` (the submit choreography
+  commands nav out; the pop path owns commanding it home — terminalDismiss is skipped).
+- Origin-restore DELEGATE (route-entry-origin-capture-delegate gains restorer channel):
+  session controller registers detent-ledger write (`recordRouteSceneSheetSettle`) + scroll-
+  lane staging; `closeActiveRoute` stages BEFORE requesting the switch (plan reads the ledger —
+  commit-time staging is a stale read); reducer paths keep fallback staging.
+
+**Rig-validated GREEN:** favorites list → results present as PUSH over bookmarks root (frame:
+active search / interKey bookmarks), full reveal (cards+world), X-dismiss pops to Favorites
+with content intact AND the nav bar returns with the Favorites tab still highlighted — the tab
+invariant held through a whole search session for the first time.
+
+**OPEN RED (next attribution):** the pop lands the Favorites sheet at MIDDLE, not the captured
+EXPANDED detent, with home search-bar chrome visible above (canonical Favorites = near-full
+sheet). The detent-ledger write may be losing to the pop switch's motion descriptor row
+(closeActive search→bookmarks resolves topLevelSwitch — check which row wins and whether
+`resolveSceneRememberedSnap` is even consulted for this row), OR the captured origin.detent
+was already 'middle' (verify with a [SCROLLDBG]-style probe on the capture + on
+resolveSceneRememberedSnap reads). ALSO check: chrome mode (native-overlay-target-authorities
+:616 expandedMiddle for bookmarks) — whether the pop re-applies it correctly vs the search
+chrome lingering.
+
+**Then:** finish S-C.2 rig matrix (profile root launch; restaurant child push FROM the pushed
+session — child-over-session stacking; failure/offline dismiss), commit, then S-C.3 per plan.
