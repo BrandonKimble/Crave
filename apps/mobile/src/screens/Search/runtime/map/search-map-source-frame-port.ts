@@ -72,6 +72,11 @@ export type SearchMapCandidateCatalogEntry = {
   // The restaurant display name, carried atomically so the native label ViewAnnotation roster has the
   // text without a second lookup (labels → ViewAnnotation, Mapbox 11.26).
   restaurantName?: string;
+  // The label VA's rendered text pair. On the dishes tab the PRIMARY line is the dish name and the
+  // restaurant name drops to the smaller secondary line (the GL twin's format expression did this;
+  // the VA migration lost it). labelText falls back to restaurantName natively when absent.
+  labelText?: string;
+  labelSubtext?: string;
 };
 
 export type SearchMapCandidateCatalog = {
@@ -206,6 +211,14 @@ export const createSearchMapSourceFramePort = (): SearchMapSourceFramePort => {
     publishSnapshot: (nextSnapshot) => {
       const frameChanged =
         snapshot !== nextSnapshot && !areSearchMapSourceFrameSnapshotsEqual(snapshot, nextSnapshot);
+      if (__DEV__ && !frameChanged && snapshot !== nextSnapshot) {
+        // [T4DEDUP] attribution (toggle-flows-handoff T4): a source frame arrived byte-EQUAL to the
+        // held snapshot → publish suppressed. If this fires on a toggle-BACK while the SCREEN shows
+        // the other axis, the dedup is comparing against a cached frame instead of rendered truth.
+        console.log(
+          `[T4DEDUP] frame publish SUPPRESSED (equal) pins=${nextSnapshot.visibleSortedRestaurantMarkersCount} dots=${nextSnapshot.visibleDotRestaurantFeaturesCount} covKey=${nextSnapshot.shortcutCoverageRequestKey}`
+        );
+      }
       const changedKeys = new Set<SearchMapSourceFrameSnapshotKey>();
       SOURCE_FRAME_KEYS.forEach((key) => {
         if (!Object.is(snapshot[key], nextSnapshot[key])) {

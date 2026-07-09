@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
+import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
 import type { FlashListProps } from '@shopify/flash-list';
 
 import { Text } from '../../../../components';
@@ -9,6 +10,18 @@ import { logger } from '../../../../utils';
 import styles from '../../styles';
 import type { ResultsListItem, ResultsMountedRestaurantCardRow } from './list-read-model-builder';
 import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
+import { resultsRowsVisibleValue } from '../../runtime/shared/search-results-rows-visibility';
+
+// Every results ROW rides the rows-visibility level (owner directive: loading covers are
+// TRUE CUTOUTS — rows hide under the cover so its holes reach the hoisted frost). Opacity
+// only: rows keep mounting/measuring, and the list HEADER (the toggle strip) is not a row,
+// so it stays live through an interaction reload.
+const ResultsRowLoadingVisibility: React.FC<React.PropsWithChildren> = ({ children }) => {
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: resultsRowsVisibleValue.value,
+  }));
+  return <Reanimated.View style={animatedStyle}>{children}</Reanimated.View>;
+};
 
 type SearchResultsListRenderItemRuntimeArgs = {
   renderDishCard: (item: FoodResult, index: number) => React.ReactElement | null;
@@ -33,19 +46,23 @@ export const useSearchResultsListRenderItemRuntime = ({
         logger.error('FlashList renderItem received nullish item', { index });
         return null;
       }
+      const wrapRow = (row: React.ReactElement | null): React.ReactElement | null =>
+        row == null ? row : <ResultsRowLoadingVisibility>{row}</ResultsRowLoadingVisibility>;
 
       if (item && typeof item === 'object' && 'kind' in item) {
         if (item.kind === 'mounted_restaurant_card') {
           const mountedRestaurantRow = item as ResultsMountedRestaurantCardRow;
-          return renderRestaurantCard(
-            mountedRestaurantRow.restaurant,
-            index,
-            mountedRestaurantRow.preparedDescriptor
+          return wrapRow(
+            renderRestaurantCard(
+              mountedRestaurantRow.restaurant,
+              index,
+              mountedRestaurantRow.preparedDescriptor
+            )
           );
         }
 
         if (item.kind === 'section') {
-          return (
+          return wrapRow(
             <View style={[styles.resultItem, index === 0 && styles.firstResultItem]}>
               <Text style={[styles.resultMetaText, { color: themeColors.textMuted }]}>
                 {item.label}
@@ -61,7 +78,7 @@ export const useSearchResultsListRenderItemRuntime = ({
             item.hiddenCount === 1
               ? 'Show 1 more exact match'
               : `Show ${item.hiddenCount} more exact matches`;
-          return (
+          return wrapRow(
             <Pressable
               onPress={onPress}
               style={[styles.resultItem, index === 0 && styles.firstResultItem]}
@@ -74,9 +91,11 @@ export const useSearchResultsListRenderItemRuntime = ({
         }
       }
 
-      return 'foodId' in item
-        ? renderDishCard(item as FoodResult, index)
-        : renderRestaurantCard(item as RestaurantResult, index);
+      return wrapRow(
+        'foodId' in item
+          ? renderDishCard(item as FoodResult, index)
+          : renderRestaurantCard(item as RestaurantResult, index)
+      );
     },
     [
       handleShowMoreExactDishes,

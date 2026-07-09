@@ -15,9 +15,9 @@ export const createResultsPresentationRuntimeOwnerValue = ({
   searchSurfaceResultsTransactionKey,
   pendingTogglePresentationIntentId,
   scheduleToggleCommit,
-  notifyFrostReady,
   cancelToggleInteraction,
   beginSearchThisAreaPresentationPending,
+  beginVariantRerunPresentationPending,
   stageSearchSurfaceResultsTransaction,
   commitSearchSurfaceResultsExitTransaction,
   clearStagedSearchSurfaceResultsTransaction,
@@ -33,9 +33,9 @@ export const createResultsPresentationRuntimeOwnerValue = ({
   searchSurfaceResultsTransactionKey,
   pendingTogglePresentationIntentId,
   scheduleToggleCommit,
-  notifyFrostReady,
   cancelToggleInteraction,
   beginSearchThisAreaPresentationPending,
+  beginVariantRerunPresentationPending,
   stageSearchSurfaceResultsTransaction,
   commitSearchSurfaceResultsExitTransaction,
   clearStagedSearchSurfaceResultsTransaction,
@@ -56,6 +56,9 @@ type ResultsPresentationOwnerValue = Pick<
   | 'scheduleToggleCommit'
   | 'cancelToggleInteraction'
   | 'beginSearchThisAreaPresentationPending'
+  | 'beginVariantRerunPresentationPending'
+  | 'stageSearchSurfaceResultsTransaction'
+  | 'clearStagedSearchSurfaceResultsTransaction'
   | 'handlePageOneResultsCommitted'
   | 'cancelPresentationIntent'
   | 'handlePresentationIntentAbort'
@@ -77,6 +80,9 @@ export const createResultsPresentationOwnerValue = ({
   scheduleToggleCommit,
   cancelToggleInteraction,
   beginSearchThisAreaPresentationPending,
+  beginVariantRerunPresentationPending,
+  stageSearchSurfaceResultsTransaction,
+  clearStagedSearchSurfaceResultsTransaction,
   handlePageOneResultsCommitted,
   cancelPresentationIntent,
   handlePresentationIntentAbort,
@@ -95,6 +101,9 @@ export const createResultsPresentationOwnerValue = ({
   scheduleToggleCommit,
   cancelToggleInteraction,
   beginSearchThisAreaPresentationPending,
+  beginVariantRerunPresentationPending,
+  stageSearchSurfaceResultsTransaction,
+  clearStagedSearchSurfaceResultsTransaction,
   handlePageOneResultsCommitted,
   cancelPresentationIntent,
   handlePresentationIntentAbort,

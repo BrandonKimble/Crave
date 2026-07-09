@@ -24,7 +24,7 @@ export type SearchRootOverlayHostVisualRuntime = Pick<
 
 export type SearchRootSearchSceneVisualRuntime = Pick<
   SearchForegroundVisualRuntime,
-  'resultsSheetVisibilityAnimatedStyle' | 'resultsWashAnimatedStyle'
+  'resultsSheetVisibilityAnimatedStyle'
 > &
   Pick<AppRouteSceneChromeMotionRuntime, 'overlayHeaderActionProgress'>;
 

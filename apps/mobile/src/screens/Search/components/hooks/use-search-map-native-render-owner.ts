@@ -8,6 +8,8 @@ import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runt
 import type { MapBounds } from '../../../../types';
 import { withSearchNavSwitchRuntimeAttribution } from '../../runtime/shared/search-nav-switch-runtime-attribution';
 import { resolvePresentationLanePolicy } from '../../runtime/shared/presentation-lane-policy';
+import { reportSearchFlowContractViolation } from '../../runtime/shared/search-flow-contracts';
+import { logger } from '../../../../utils';
 import {
   areSearchMapRenderPresentationStatesEqual,
   deriveSearchMapRenderPresentationPhase,
@@ -702,25 +704,18 @@ const deriveSearchMapVisualFrameTransactionKind = ({
 const buildSearchMapVisualFrameTransaction = ({
   kind,
   presentationPhase,
-  sourceFrameMatchState,
   sourceFrameKey,
   sourceDataKey,
   sourceSnapshotKind,
 }: {
   kind: SearchMapVisualFrameTransactionKind;
   presentationPhase: SearchRuntimeMapPresentationPhase;
-  sourceFrameMatchState: SearchMapNativeSourceFrameMatchState;
   sourceFrameKey: string;
   sourceDataKey: string;
   sourceSnapshotKind: SearchMapVisualFrameSourceSnapshotKind;
 }): SearchMapVisualFrameTransaction => ({
   kind,
   presentationPhase,
-  requestKey: sourceFrameMatchState.requestKey,
-  visualCycleKey: sourceFrameMatchState.visualCycleKey,
-  readinessKey: sourceFrameMatchState.readinessKey,
-  shortcutCoverageRequestKey: sourceFrameMatchState.shortcutCoverageRequestKey,
-  markersRenderKey: sourceFrameMatchState.markersRenderKey,
   sourceFrameKey,
   sourceDataKey,
   sourceSnapshotKind,
@@ -940,6 +935,13 @@ const resolveNativeRenderOwnerFrameAdmission = ({
 type MapRenderFrameTransportQueueFrame = {
   ownerEpoch: number;
   frameGenerationId: string;
+  // D6e collision surgery: monotonic per-queue revision. The transport dedup keys on THIS, not
+  // on frameGenerationId — generation REUSE (a presentation/control-only frame riding an
+  // already-acked generation) is now the norm for toggles, and a generation-keyed dedup dropped
+  // exactly those frames (the `entering` presentation state never reached native → the toggle
+  // reveal stalled at pending_mount). Every queued frame passed the something-changed admission
+  // guard, so a higher revision is by construction new content for native.
+  frameTransportRevision: number;
 };
 
 type NativeRenderOwnerSourceAck = {
@@ -989,6 +991,8 @@ type NativeRenderOwnerTransportState<TFrame extends MapRenderFrameTransportQueue
   queueState: MapRenderFrameTransportQueueState<TFrame>;
   frameGenerationSeq: number;
   executionBatchSeq: number;
+  frameTransportRevisionSeq: number;
+  lastAckedFrameTransportRevision: number;
   lastDesiredExecutionBatchId: string | null;
 };
 
@@ -1007,6 +1011,8 @@ const createNativeRenderOwnerTransportState = <
   },
   frameGenerationSeq: 0,
   executionBatchSeq: 0,
+  frameTransportRevisionSeq: 0,
+  lastAckedFrameTransportRevision: 0,
   lastDesiredExecutionBatchId: null,
 });
 
@@ -1017,6 +1023,9 @@ const markNativeRenderOwnerVisualSourcesNotResident = <
 ): void => {
   state.lastNativeAck = null;
   state.lastNativeAckSnapshot = null;
+  // Revision dedup mirrors the lastNativeAck lifecycle: once native's resident state is no
+  // longer trusted, any staged frame must be re-sendable.
+  state.lastAckedFrameTransportRevision = 0;
 };
 
 const resetNativeRenderOwnerTransportState = <TFrame extends MapRenderFrameTransportQueueFrame>({
@@ -1057,7 +1066,7 @@ const takeNextNativeRenderOwnerFrameForTransport = <
   transportState: NativeRenderOwnerTransportState<TFrame>;
   ownerEpoch: number;
 }): TFrame | null => {
-  const { queueState, lastNativeAck } = transportState;
+  const { queueState } = transportState;
   if (queueState.syncInFlight || queueState.pendingFrame == null) {
     return null;
   }
@@ -1071,7 +1080,9 @@ const takeNextNativeRenderOwnerFrameForTransport = <
         };
   queueState.pendingFrame = pendingFrame;
 
-  if (lastNativeAck?.frameGenerationId === pendingFrame.frameGenerationId) {
+  // D6e collision surgery: dedup on the per-queue revision, NOT the frame generation — see
+  // MapRenderFrameTransportQueueFrame.frameTransportRevision.
+  if (pendingFrame.frameTransportRevision <= transportState.lastAckedFrameTransportRevision) {
     queueState.pendingFrame = null;
     return null;
   }
@@ -1088,9 +1099,14 @@ const acknowledgeNativeRenderOwnerFrameTransportSync = <
   transportState: NativeRenderOwnerTransportState<TFrame>,
   frameGenerationId: string
 ): void => {
-  if (transportState.queueState.inFlightFrame?.frameGenerationId !== frameGenerationId) {
+  const inFlightFrame = transportState.queueState.inFlightFrame;
+  if (inFlightFrame?.frameGenerationId !== frameGenerationId) {
     return;
   }
+  transportState.lastAckedFrameTransportRevision = Math.max(
+    transportState.lastAckedFrameTransportRevision,
+    inFlightFrame.frameTransportRevision
+  );
   transportState.queueState.inFlightFrame = null;
   transportState.queueState.syncInFlight = false;
 };
@@ -2396,6 +2412,58 @@ const useSearchMapNativeRenderOwnerStatus = ({
               });
               return;
             }
+            if (event.type === 'presentation_state_snapshot') {
+              // S4d-0/3b RED instrument — observation only, never actuated on. The silent
+              // dismiss-in-progress bypasses are DELETED. keyless_payload_during_dismiss is
+              // LEGITIMATE ordering (a resubmit's pre-enter transport frames land while the
+              // dismiss ramp runs; the dismiss register persists to its floor ack) — logged
+              // as a snapshot below, not a violation. snapshot_apply_during_dismiss stays a
+              // violation: source data landing mid-dismiss means the enter didn't supersede.
+              if (event.reason === 'snapshot_apply_during_dismiss') {
+                reportSearchFlowContractViolation(event.reason, {
+                  incomingRevealRequestKey: event.incomingRevealRequestKey,
+                  incomingDismissRequestKey: event.incomingDismissRequestKey,
+                  nativeRevealRequestKey: event.revealRequestKey,
+                  nativeDismissRequestKey: event.dismissRequestKey,
+                  lifecycleState: event.lifecycleState,
+                  renderPhase: event.renderPhase,
+                  opacityTarget: event.opacityTarget,
+                });
+              }
+              if (__DEV__) {
+                logger.info('[NATIVE-SNAP]', {
+                  instanceId: event.instanceId,
+                  reason: event.reason,
+                  reveal: event.revealRequestKey,
+                  revealStarted: event.revealStartedRequestKey,
+                  revealSettled: event.revealSettledRequestKey,
+                  dismiss: event.dismissRequestKey,
+                  incomingReveal: event.incomingRevealRequestKey,
+                  incomingDismiss: event.incomingDismissRequestKey,
+                  lifecycle: event.lifecycleState,
+                  renderPhase: event.renderPhase,
+                  opacity: event.opacityTarget,
+                  desired: event.desiredCount,
+                  catalog: event.catalogCount,
+                  deferredWhy: event.deferredWhy,
+                  views: event.viewCount,
+                  candidates: event.candidateCount,
+                  promoted: event.promotedCount,
+                });
+              }
+              return;
+            }
+            if (event.type === 'presentation_fade_out_acked') {
+              if (__DEV__) {
+                logger.info('[FADE-OUT-ACK]', {
+                  reason: event.reason,
+                  requestKey: event.requestKey,
+                  lifecycle: event.lifecycleState,
+                  nativeTimestampMs: event.nativeTimestampMs,
+                });
+              }
+              return;
+            }
             if (event.type === 'presentation_enter_started') {
               const sourceCounts = withNativePresentationEventInnerSpan(
                 event,
@@ -2686,6 +2754,7 @@ const useSearchMapNativeRenderOwnerSync = ({
   type NativeRenderOwnerFrameEnvelope = {
     ownerEpoch: number;
     frameGenerationId: string;
+    frameTransportRevision: number;
     executionBatchId: string;
     frame: SearchMapRenderFrame;
     snapshot: SearchMapRenderSnapshot;
@@ -2775,6 +2844,9 @@ const useSearchMapNativeRenderOwnerSync = ({
       return;
     }
     mapMotionPressureController.applySourcePublishLifecycleEvent({ kind: 'started' });
+    if (__DEV__ && effectiveDesiredFrame.frame.presentation.startToken != null) {
+      console.log(`[NGAPJS] tokenFlushed t=${performance.now().toFixed(1)}`);
+    }
     const bridgeStartedAtMs = resolveNativeRenderOwnerPerfNow();
     const bridgePresentationLaneState = derivePresentationLaneState(
       effectiveDesiredFrame.frame.presentation
@@ -3216,7 +3288,6 @@ const useSearchMapNativeRenderOwnerSync = ({
         const visualFrameTransaction = buildSearchMapVisualFrameTransaction({
           kind: visualFrameTransactionKind,
           presentationPhase,
-          sourceFrameMatchState,
           sourceFrameKey,
           sourceDataKey,
           sourceSnapshotKind,
@@ -3318,6 +3389,18 @@ const useSearchMapNativeRenderOwnerSync = ({
         });
         mapMotionPressureController.applyNormalWorkEffect(frameAdmission.normalWorkEffect, nowMs);
         const frameAdmissionDecision = frameAdmission.decision;
+        if (__DEV__) {
+          // [NGAPJS] token-hop probe: when a frame carrying a NEW enter startToken is staged,
+          // log the admission decision + t — partitions the cardsAdmit→native-arrival gap.
+          const g = globalThis as { __ngapLastTokenSeen?: number | null };
+          const tokenNow = nextPresentationState.startToken ?? null;
+          if (tokenNow != null && g.__ngapLastTokenSeen !== tokenNow) {
+            g.__ngapLastTokenSeen = tokenNow;
+            console.log(
+              `[NGAPJS] tokenStaged t=${performance.now().toFixed(1)} decision=${frameAdmissionDecision}`
+            );
+          }
+        }
         if (
           !shouldQueueNativeEnterMountAckFrame &&
           (frameAdmissionDecision === 'suppress_redundant_hidden_covered_frame' ||
@@ -3339,8 +3422,30 @@ const useSearchMapNativeRenderOwnerSync = ({
           transportState.lastDesiredSnapshot = effectiveSourceSnapshot;
           return;
         }
-        transportState.frameGenerationSeq += 1;
-        const frameGenerationId = `frame:${transportState.frameGenerationSeq}`;
+        // D6d endgame fix (VDIAG-attributed): a PRESENTATION-ONLY frame (unchanged source
+        // snapshot, same execution batch) must NOT mint a new frame generation — the native
+        // enter lane keys its mount/source-ready/election state on the generation, so a fresh
+        // id for identical sources forced a full re-mount + re-election (~106ms measured, the
+        // toggle's residual gap). Reusing the generation lets native skip the reset: same
+        // generation + empty deltas -> election and sourceReady survive -> the start token
+        // gates through immediately.
+        const canReuseFrameGeneration =
+          !snapshotChanged &&
+          transportState.lastDesiredFrameGenerationId != null &&
+          transportState.lastDesiredExecutionBatchId === executionBatchId;
+        if (__DEV__ && !canReuseFrameGeneration) {
+          // [GENREUSE] endgame probe: WHY did this frame mint a new generation? (first fix
+          // attempt was refuted by measurement — these inputs name the blocking condition)
+          console.log(
+            `[GENREUSE] mint snapshotChanged=${snapshotChanged} changedIds=${sourceTransport.effectiveChangedSourceIds.join(',') || 'none'} batchSame=${transportState.lastDesiredExecutionBatchId === executionBatchId}`
+          );
+        }
+        if (!canReuseFrameGeneration) {
+          transportState.frameGenerationSeq += 1;
+        }
+        const frameGenerationId = canReuseFrameGeneration
+          ? transportState.lastDesiredFrameGenerationId!
+          : `frame:${transportState.frameGenerationSeq}`;
         rememberSearchMapNativeFrameVisualSourceCounts({
           instanceId,
           frameGenerationId,
@@ -3358,6 +3463,7 @@ const useSearchMapNativeRenderOwnerSync = ({
         queueLatestNativeRenderOwnerFrameForTransport(transportState, {
           ownerEpoch,
           frameGenerationId,
+          frameTransportRevision: ++transportState.frameTransportRevisionSeq,
           executionBatchId,
           frame: effectiveFrame,
           snapshot: effectiveSourceSnapshot,

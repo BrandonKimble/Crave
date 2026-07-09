@@ -1,3 +1,4 @@
+import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 import type {
   SearchRouteSceneStackBodyContentEntry,
   SearchRouteSceneStackBodyTransportEntry,
@@ -797,6 +798,12 @@ const areStaticTabSceneInputsReady = (sceneInputAuthority: AppRouteSceneInputAut
 const isPollsSceneInputReady = (sceneInputAuthority: AppRouteSceneInputAuthority): boolean =>
   sceneInputAuthority.getSceneInputSnapshot('polls')?.shellSpec != null;
 
+// S-B slice 3a — child-leg LIFECYCLE (plans/s-b-entries-as-values.md design note): a child
+// leg's lifetime is its entry's lifetime in the route stack (+ the transition window while it
+// is still the active/presented/pending/handoff leg). Root scenes keep the accumulate-forever
+// warm-leg behavior (tab-switch perf); popped children UNMOUNT and their per-key state clears
+// (resolveSceneEntryByKey already deletes evicted keys). Re-opening after a pop is a NEW entry
+// ⇒ a fresh seeded leg, never the previous instance's warm content.
 const resolveMountedSceneKeys = ({
   previousMountedSceneKeys,
   activeSceneKey,
@@ -804,6 +811,7 @@ const resolveMountedSceneKeys = ({
   pendingSceneKey,
   handoffSceneKey,
   staticSceneMountSnapshot,
+  routeStackSceneKeys,
 }: {
   previousMountedSceneKeys: ReadonlySet<AppRouteSceneStackKey>;
   activeSceneKey: OverlayKey | null;
@@ -811,8 +819,21 @@ const resolveMountedSceneKeys = ({
   pendingSceneKey: OverlayKey | null;
   handoffSceneKey: OverlayKey | null;
   staticSceneMountSnapshot: AppRouteStaticSceneMountSnapshot;
+  routeStackSceneKeys: ReadonlySet<OverlayKey>;
 }): ReadonlySet<AppRouteSceneStackKey> => {
-  const mountedSceneKeys = new Set(previousMountedSceneKeys);
+  const transitionReferencedSceneKeys = new Set(
+    [activeSceneKey, sheetPresentationSceneKey, pendingSceneKey, handoffSceneKey].filter(
+      (sceneKey): sceneKey is OverlayKey => sceneKey != null
+    )
+  );
+  const mountedSceneKeys = new Set(
+    [...previousMountedSceneKeys].filter(
+      (sceneKey) =>
+        getAppOverlayRouteMetadata(sceneKey).role !== 'child' ||
+        routeStackSceneKeys.has(sceneKey) ||
+        transitionReferencedSceneKeys.has(sceneKey)
+    )
+  );
   appendRouteSceneKey({ mountedSceneKeys, sceneKey: activeSceneKey });
   appendRouteSceneKey({ mountedSceneKeys, sceneKey: sheetPresentationSceneKey });
   appendRouteSceneKey({ mountedSceneKeys, sceneKey: pendingSceneKey });
@@ -2478,6 +2499,25 @@ class AppRouteSceneStackLayerStateController {
     ) {
       return false;
     }
+    // S-B slice 3a (red-team ledger item 8): a popped child's leg must UNMOUNT — the
+    // mounted-keys filter only runs on the full recompute, so the fast path must yield
+    // whenever a mounted CHILD key is no longer in the route stack (stack shrank).
+    if (routeSceneSwitchSnapshot.transitionPhase === 'idle') {
+      const routeStackSceneKeys = new Set(
+        routeSceneSwitchSnapshot.overlayRouteStack.map((entry) => entry.key)
+      );
+      for (const mountedKey of this.mountedSceneKeys) {
+        if (
+          getAppOverlayRouteMetadata(mountedKey as OverlayKey).role === 'child' &&
+          !routeStackSceneKeys.has(mountedKey as OverlayKey) &&
+          mountedKey !== sheetPresentationSceneKey &&
+          mountedKey !== handoffSceneKey &&
+          mountedKey !== presentationFrame.outgoingSceneKey
+        ) {
+          return false;
+        }
+      }
+    }
     if (
       routeSceneSwitchSnapshot.transitionPhase === 'idle' &&
       !this.staticSceneMountState.inactiveTabsPrewarmed
@@ -2713,6 +2753,11 @@ class AppRouteSceneStackLayerStateController {
                 pendingSceneKey: resolvedRouteSceneSwitchSnapshot.pendingSceneKey,
                 handoffSceneKey,
                 staticSceneMountSnapshot,
+                routeStackSceneKeys: new Set(
+                  routeSceneSwitchRuntime
+                    .getRouteState()
+                    .overlayRouteStack.map((entry) => entry.key)
+                ),
               })
           )
         );

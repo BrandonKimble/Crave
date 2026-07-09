@@ -93,6 +93,9 @@ export type BottomSheetSharedGestureRuntime = {
   gestures: {
     sheet: ReturnType<typeof Gesture.Simultaneous>;
     scroll: ReturnType<typeof Gesture.Native>;
+    // Distinct native gesture for the secondary co-mounted list's scroll container (a single
+    // RNGH gesture instance cannot be attached to two GestureDetectors).
+    scrollSecondary: ReturnType<typeof Gesture.Native>;
   };
   touchBlockingEnabled: boolean;
   touchBlockingAuthority: BottomSheetSharedTouchBlockingAuthority;
@@ -100,6 +103,9 @@ export type BottomSheetSharedGestureRuntime = {
 
 export type BottomSheetSharedScrollRuntime = {
   ScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
+  // Scroll container for the secondary co-mounted list (own GestureDetector + gesture). Stable
+  // component TYPE so keeping both lists mounted never remounts either scroll subtree.
+  SecondaryScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
   shouldEnableScroll: boolean;
   // UI-thread mirror of shouldEnableScroll (frame-drop fix): sinks drive scrollEnabled off this SV
   // via useAnimatedProps so a transient activation toggle doesn't re-render the heavy list body.

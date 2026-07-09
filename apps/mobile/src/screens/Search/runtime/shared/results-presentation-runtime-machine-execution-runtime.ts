@@ -93,6 +93,9 @@ export const createResultsPresentationRuntimeMachineExecutionRuntime = ({
       ) != null
     );
   },
+  getEnterStartToken() {
+    return ownerRuntime.getState().startToken ?? null;
+  },
   markEnterBatchSettled(
     intentId: string,
     executionBatch: ResultsPresentationTransportState['executionBatch']

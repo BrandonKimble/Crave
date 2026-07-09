@@ -17,11 +17,12 @@ import { useAppRoutePollCreationSceneInputWriterRuntime } from './use-app-route-
 import { useAppRoutePollDetailSceneInputWriterRuntime } from './use-app-route-poll-detail-scene-input-writer-runtime';
 import { useRouteAuthoritySelector } from './use-route-authority-selector';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
+import { createSentinelRouteEntry } from './app-overlay-route-stack-algebra';
 
-const INACTIVE_DYNAMIC_CHILD_ROUTE: OverlayRouteEntry = {
-  key: 'search',
-  params: undefined,
-};
+const INACTIVE_DYNAMIC_CHILD_ROUTE: OverlayRouteEntry = createSentinelRouteEntry(
+  'search',
+  'inactive-dynamic-child'
+);
 
 type DynamicChildRouteStateRuntime = {
   activeOverlayRoute: OverlayRouteEntry;
@@ -33,13 +34,18 @@ const useAppRouteDynamicChildRouteStateRuntime = ({
   routeSceneRuntime: AppRouteSceneRuntime;
 }): DynamicChildRouteStateRuntime => {
   const selectDynamicChildRoute = React.useCallback(
-    (snapshot: RouteOverlayNavigationSnapshot): DynamicChildRouteStateRuntime => ({
-      activeOverlayRoute: ['pollCreation', 'pollDetail'].includes(
-        snapshot.activeOverlayRoute.key
-      )
-        ? snapshot.activeOverlayRoute
-        : INACTIVE_DYNAMIC_CHILD_ROUTE,
-    }),
+    (snapshot: RouteOverlayNavigationSnapshot): DynamicChildRouteStateRuntime => {
+      // S-B slices 3b/4 rule (red-team ledger item 9): a leg derives from the TOP-MOST stack
+      // entry of ITS key, never bare activeOverlayRoute — a still-stacked pollDetail must keep
+      // its params while a child (restaurant-from-comment) tops it, not fall to the sentinel.
+      for (let index = snapshot.overlayRouteStack.length - 1; index >= 0; index -= 1) {
+        const entry = snapshot.overlayRouteStack[index];
+        if (entry != null && ['pollCreation', 'pollDetail'].includes(entry.key)) {
+          return { activeOverlayRoute: entry };
+        }
+      }
+      return { activeOverlayRoute: INACTIVE_DYNAMIC_CHILD_ROUTE };
+    },
     []
   );
   const [overlayNavigationState, setOverlayNavigationState] =

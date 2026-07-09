@@ -3,13 +3,13 @@ import React from 'react';
 import type { useSearchResultsHydrationSettleStateRuntime } from './use-search-results-hydration-settle-state-runtime';
 
 type SearchResultsHydrationRowsReleaseRuntimeArgs = {
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   activeOverlayKey: string;
   settleStateRuntime: ReturnType<typeof useSearchResultsHydrationSettleStateRuntime>;
 };
 
 export const useSearchResultsHydrationRowsReleaseRuntime = ({
-  resultsHydrationKey,
+  resultsIdentityKey,
   activeOverlayKey,
   settleStateRuntime,
 }: SearchResultsHydrationRowsReleaseRuntimeArgs) => {
@@ -21,10 +21,10 @@ export const useSearchResultsHydrationRowsReleaseRuntime = ({
 
   React.useEffect(() => {
     setHydrationFinalizeRowsReleaseCompletedToken(null);
-  }, [resultsHydrationKey, setHydrationFinalizeRowsReleaseCompletedToken]);
+  }, [resultsIdentityKey, setHydrationFinalizeRowsReleaseCompletedToken]);
 
   React.useEffect(() => {
-    if (!resultsHydrationKey) {
+    if (!resultsIdentityKey) {
       setHydrationFinalizeRowsReleaseCompletedToken(null);
       return;
     }
@@ -40,12 +40,12 @@ export const useSearchResultsHydrationRowsReleaseRuntime = ({
     activeOverlayKey,
     hydrationRowsReleaseVersionToken,
     isHydrationPending,
-    resultsHydrationKey,
+    resultsIdentityKey,
     setHydrationFinalizeRowsReleaseCompletedToken,
   ]);
 
   React.useEffect(() => {
-    if (!resultsHydrationKey || isHydrationPending) {
+    if (!resultsIdentityKey || isHydrationPending) {
       return;
     }
     if (activeOverlayKey === 'search') {
@@ -56,7 +56,7 @@ export const useSearchResultsHydrationRowsReleaseRuntime = ({
     activeOverlayKey,
     hydrationRowsReleaseVersionToken,
     isHydrationPending,
-    resultsHydrationKey,
+    resultsIdentityKey,
     setHydrationFinalizeRowsReleaseCompletedToken,
   ]);
 };

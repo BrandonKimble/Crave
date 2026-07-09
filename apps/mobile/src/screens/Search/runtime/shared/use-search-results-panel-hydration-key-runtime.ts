@@ -9,7 +9,7 @@ type UseSearchResultsPanelHydrationKeyRuntimeArgs = {
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   resultsRuntimeState: Pick<
     SearchResultsPanelResultsRuntimeState,
-    'resultsHydrationCandidateKey' | 'resultsPage' | 'resultsRequestKey'
+    'resultsIdentityCandidateKey' | 'resultsPage' | 'resultsRequestKey'
   >;
   isSearchSceneRenderAdmitted: () => boolean;
 };
@@ -33,8 +33,8 @@ export const useSearchResultsPanelHydrationKeyRuntime = ({
         details: {
           surfaceHydratedResultsKey:
             resultsPresentationSurfaceAuthority.getSnapshot().hydratedResultsKey,
-          surfaceResultsHydrationKey:
-            resultsPresentationSurfaceAuthority.getSnapshot().resultsHydrationKey,
+          surfaceResultsIdentityKey:
+            resultsPresentationSurfaceAuthority.getSnapshot().resultsIdentityKey,
         },
       });
       hydratedResultsKeyRef.current = nextHydrationKey;
@@ -56,24 +56,24 @@ export const useSearchResultsPanelHydrationKeyRuntime = ({
   );
 
   const resultsPage = resultsRuntimeState.resultsPage ?? 1;
-  const resultsHydrationCandidate = resultsRuntimeState.resultsHydrationCandidateKey;
-  const resultsHydrationKey =
-    resultsHydrationCandidate == null
+  const resultsIdentityCandidate = resultsRuntimeState.resultsIdentityCandidateKey;
+  const resultsIdentityKey =
+    resultsIdentityCandidate == null
       ? null
       : resultsPage === 1
-        ? resultsHydrationCandidate
+        ? resultsIdentityCandidate
         : hydratedResultsKey;
   const isHydrationPendingForRuntime =
-    resultsHydrationKey != null &&
-    resultsHydrationKey !== (hydratedResultsKeyRef.current ?? hydratedResultsKey);
+    resultsIdentityKey != null &&
+    resultsIdentityKey !== (hydratedResultsKeyRef.current ?? hydratedResultsKey);
   const shouldHydrateResultsForRender =
     isHydrationPendingForRuntime && isSearchSceneRenderAdmitted();
   const requestVersionKey = React.useMemo(
     () =>
       `${resultsRuntimeState.resultsRequestKey ?? 'no-request'}::${
-        resultsHydrationKey ?? 'no-hydration'
+        resultsIdentityKey ?? 'no-hydration'
       }`,
-    [resultsHydrationKey, resultsRuntimeState.resultsRequestKey]
+    [resultsIdentityKey, resultsRuntimeState.resultsRequestKey]
   );
 
   React.useEffect(
@@ -92,8 +92,8 @@ export const useSearchResultsPanelHydrationKeyRuntime = ({
                 runtimeHydratedResultsKey ?? 'null'
               }`,
               details: {
-                surfaceResultsHydrationKey:
-                  resultsPresentationSurfaceAuthority.getSnapshot().resultsHydrationKey,
+                surfaceResultsIdentityKey:
+                  resultsPresentationSurfaceAuthority.getSnapshot().resultsIdentityKey,
               },
             });
             hydratedResultsKeyRef.current = runtimeHydratedResultsKey;
@@ -114,7 +114,7 @@ export const useSearchResultsPanelHydrationKeyRuntime = ({
 
   return React.useMemo(
     () => ({
-      resultsHydrationKey,
+      resultsIdentityKey,
       hydratedResultsKey,
       shouldHydrateResultsForRender,
       setHydratedResultsKeySync,
@@ -123,7 +123,7 @@ export const useSearchResultsPanelHydrationKeyRuntime = ({
     [
       hydratedResultsKey,
       requestVersionKey,
-      resultsHydrationKey,
+      resultsIdentityKey,
       setHydratedResultsKeySync,
       shouldHydrateResultsForRender,
     ]

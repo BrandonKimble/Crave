@@ -21,7 +21,6 @@ export type RuntimeMechanismEmitter = (
 ) => void;
 
 export type ResultsPanelVisualRuntimeModel = {
-  resultsWashAnimatedStyle: StyleProp<ViewStyle>;
   resultsSheetVisibilityAnimatedStyle: StyleProp<ViewStyle>;
   shouldDisableResultsSheetInteraction: boolean;
   resultsScrollRef: React.RefObject<FlashListRef<ResultsListItem> | null>;
@@ -52,7 +51,7 @@ export type SearchResultsPanelEnvironment = {
   userLocation: UsePollsPanelSpecOptions['userLocation'];
   searchInteractionRef: React.MutableRefObject<SearchInteractionSnapshot>;
   toggleOpenNow: () => void;
-  toggleVotesFilter: () => void;
+  toggleIncludeSimilar: () => void;
   togglePriceSelector: () => void;
   shouldDisableSearchBlur: boolean;
   searchFiltersLayoutCacheRef: React.MutableRefObject<SearchFiltersLayoutCache | null>;

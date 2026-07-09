@@ -250,6 +250,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                   >
                     <TextInput
                       ref={inputRef}
+                      testID="search-header-input"
                       value={resolvedValue}
                       onChangeText={onChangeText}
                       placeholder=""

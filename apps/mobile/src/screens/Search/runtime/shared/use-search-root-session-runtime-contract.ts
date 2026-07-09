@@ -11,7 +11,6 @@ import { useSearchRequestStatusRuntime } from './use-search-request-status-runti
 import { useSearchFilterStateRuntime } from './use-search-filter-state-runtime';
 import { useSearchFreezeGateRuntime } from './use-search-freeze-gate-runtime';
 import { useSearchHistoryRuntime } from './use-search-history-runtime';
-import type { SearchSessionController } from '../controller/search-session-controller';
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
@@ -68,11 +67,6 @@ export type SearchRuntimePrimitivesRuntime = {
   searchSurfaceRedrawCommitSpanPressureByOperationRef: React.MutableRefObject<Map<string, number>>;
   getPerfNow: () => number;
   readRuntimeMemoryDiagnostics: () => null;
-  handleShortcutSearchCoverageSnapshot: (snapshot: {
-    searchRequestId: string;
-    bounds: MapBounds | null;
-    entities: Record<string, unknown>;
-  }) => void;
   resetShortcutCoverageState: () => void;
 };
 
@@ -83,7 +77,6 @@ export type SearchRootResultsArrivalState = {
   canLoadMore: boolean;
   currentPage: number;
   isPaginationExhausted: boolean;
-  pendingTabSwitchTab: ReturnType<SearchRuntimeBus['getState']>['pendingTabSwitchTab'];
   restaurantResults: SearchResponse['restaurants'] | null;
   resultsRequestKey: string | null;
   submittedQuery: string;
@@ -94,8 +87,6 @@ export type SearchRootRuntimeFlagsRuntime = {
   searchMode: 'natural' | 'shortcut' | null;
   isSearchSessionActive: boolean;
   searchSurfaceRedrawOperationId: string | null;
-  setSearchMode: React.Dispatch<React.SetStateAction<'natural' | 'shortcut' | null>>;
-  setIsSearchSessionActive: React.Dispatch<React.SetStateAction<boolean>>;
   isSearchLoading: boolean;
   isSearchRequestLoadingRef: React.MutableRefObject<boolean>;
   setSearchRequestLoading: (isLoadingNext: boolean) => void;
@@ -149,7 +140,6 @@ export type SearchRootSessionCoreLane = {
   viewportBoundsService: ViewportBoundsService;
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
   cameraIntentArbiter: CameraIntentArbiter;
-  searchSessionController: SearchSessionController;
   runtimeWorkSchedulerRef: React.MutableRefObject<RuntimeWorkScheduler>;
   searchSurfaceRedrawCoordinatorRef: React.MutableRefObject<SearchSurfaceRedrawCoordinator>;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;

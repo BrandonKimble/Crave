@@ -9,6 +9,6 @@ export const useSearchRootSearchSceneListPreparedRowsReadinessPatchRuntime = ({
 
   return (
     resultsPreparedRowsKey != null &&
-    preparedRowsSnapshot.readyReadinessKey === resultsPreparedRowsKey
+    preparedRowsSnapshot.readyResultsIdentityKey === resultsPreparedRowsKey
   );
 };

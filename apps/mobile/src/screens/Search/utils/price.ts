@@ -58,7 +58,7 @@ export const buildLevelsFromRange = (range: PriceRangeTuple): number[] => {
   return values;
 };
 
-export const getRangeFromLevels = (levels: number[]): PriceRangeTuple => {
+export const getRangeFromLevels = (levels: readonly number[]): PriceRangeTuple => {
   if (!levels.length) {
     return [PRICE_SLIDER_MIN, PRICE_SLIDER_MAX];
   }

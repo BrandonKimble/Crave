@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportSearchFlowContractViolation } from './search-flow-contracts';
 
 import {
   getActivePerfScenarioSearchThisAreaSubmitId,
@@ -7,7 +8,6 @@ import {
 } from '../../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import {
-  areSearchSurfaceResultsRowsReadyForPresentation,
   createSearchSurfaceResultsEnterTransaction,
   createSearchSurfaceResultsTransactionCoordinator,
   type SearchSurfaceResultsEnterTransaction,
@@ -19,7 +19,6 @@ import {
   type ResultsPresentationAuthority,
   useResultsPresentationAuthoritySelector,
 } from './results-presentation-authority';
-import type { ResultsPresentationTransportState } from './results-presentation-runtime-contract';
 import {
   deriveCommittedSearchSurfaceResultsTransactionKeyFromSurface,
   type ResultsPresentationSurfaceAuthority,
@@ -61,11 +60,6 @@ const schedulePostFrame = (callback: () => void): (() => void) => {
   };
 };
 
-const RESULTS_REVEAL_WATCHDOG_INITIAL_DELAY_MS = 1200;
-const RESULTS_REVEAL_WATCHDOG_REPEAT_DELAY_MS = 1800;
-const COMMITTED_COVER_WATCHDOG_INITIAL_DELAY_MS = 1600;
-const COMMITTED_COVER_WATCHDOG_REPEAT_DELAY_MS = 2000;
-
 type SearchSurfaceResultsTransactionCommitSource =
   | 'stage'
   | 'page_one_results_committed'
@@ -73,96 +67,6 @@ type SearchSurfaceResultsTransactionCommitSource =
   | 'prepared_source_frame_ready'
   | 'surface_runtime_notify'
   | 'staged_transaction_version';
-
-type PendingPageOneResultsCommit = {
-  transactionId: string;
-  expectedResultsDataKey: string | null;
-  dataReadyFrom?: Exclude<SearchSurfaceResultsEnterTransaction['dataReadyFrom'], 'pending'>;
-  searchInputKey: string | null;
-};
-
-const resolveResultsRevealBlockedReasons = ({
-  inputs,
-  stagedTransaction,
-}: {
-  inputs: SearchSurfaceResultsTransactionGateInputs;
-  stagedTransaction: ReturnType<SearchSurfaceResultsTransactionCoordinator['getStagedTransaction']>;
-}): string[] => {
-  const reasons: string[] = [];
-  const expectedTransactionId = stagedTransaction?.snapshot.transactionId ?? null;
-  const expectedResultsDataKey = stagedTransaction?.snapshot.expectedResultsDataKey ?? null;
-  if (stagedTransaction == null) {
-    reasons.push('no_staged_transaction');
-    return reasons;
-  }
-  if (!stagedTransaction.dataReady) {
-    reasons.push('data_not_ready');
-  }
-  const rowsReadyForPresentation = areSearchSurfaceResultsRowsReadyForPresentation(
-    inputs,
-    expectedResultsDataKey
-  );
-  if (inputs.resultsSnapshotKey == null) {
-    reasons.push('missing_results_snapshot_key');
-  }
-  if (expectedResultsDataKey != null && inputs.resultsSnapshotKey !== expectedResultsDataKey) {
-    reasons.push('results_snapshot_key_mismatch');
-  }
-  if (!rowsReadyForPresentation) {
-    if (!inputs.listPreparedRowsReady && !inputs.hasNoRenderableResults) {
-      reasons.push('list_prepared_rows_not_ready');
-    }
-    if (inputs.mountedPreparedRowsActiveCount <= 0 && !inputs.hasNoRenderableResults) {
-      reasons.push('prepared_rows_empty');
-    }
-    if (
-      inputs.resultsSnapshotKey != null &&
-      !inputs.hasNoRenderableResults &&
-      inputs.mountedPreparedRowsReadyKey !== inputs.resultsSnapshotKey
-    ) {
-      reasons.push('prepared_rows_key_mismatch');
-    }
-  }
-  if (inputs.shouldHydrateResultsForRender) {
-    reasons.push('render_hydration_pending');
-  }
-  if (!inputs.isResultsHydrationSettled) {
-    reasons.push('hydration_unsettled');
-  }
-  if (!inputs.mapSearchSurfaceResultsSourcesReady) {
-    reasons.push('map_sources_not_ready');
-  }
-  if (
-    expectedTransactionId != null &&
-    inputs.mapSearchSurfaceResultsSourcesReadyKey !== expectedTransactionId
-  ) {
-    reasons.push('map_sources_key_mismatch');
-  }
-  if (inputs.isShortcutCoverageLoading) {
-    reasons.push('shortcut_coverage_loading');
-  }
-  if (inputs.visualRevealTransactionId === expectedTransactionId) {
-    if (!inputs.visualRevealCardsReady) {
-      reasons.push('visual_cards_not_ready');
-    }
-    if (!inputs.visualRevealNativeMarkerFrameReady) {
-      reasons.push('native_marker_frame_not_ready');
-    }
-    if (!inputs.visualRevealSheetReady) {
-      reasons.push('visual_sheet_not_ready');
-    }
-  } else if (expectedTransactionId != null) {
-    reasons.push('surface_redraw_transaction_mismatch');
-  }
-  return Array.from(new Set(reasons));
-};
-
-const isCommittedEnterCoverPending = (transport: ResultsPresentationTransportState): boolean =>
-  transport.snapshotKind === 'results_enter' &&
-  transport.transactionId != null &&
-  transport.coverState !== 'hidden' &&
-  transport.executionStage !== 'idle' &&
-  transport.executionStage !== 'settled';
 
 export const useResultsPresentationSurfaceTransactionRuntime = ({
   searchRuntimeBus,
@@ -190,14 +94,19 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     ['resultsPresentationTransport'] as const,
     'search_surface_results_transaction_presentation_transaction_input'
   );
-  const searchSurfaceResultsTransactionKeyInput = useSearchRuntimeBusSelector(
+  // S4c-1c-2: the episode token replaces the operation id as the recompute trigger for
+  // the committed-key derivation (the id itself is threaded explicitly through params).
+  const searchSurfaceResultsEpisodeInput = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => ({
-      activeOperationId: state.activeOperationId,
+      presentedWorldId: state.presentedWorldId,
+      presentingPhase: state.presentingPhase,
     }),
-    (left, right) => left.activeOperationId === right.activeOperationId,
-    ['activeOperationId'] as const,
-    'search_surface_results_transaction_active_operation_input'
+    (left, right) =>
+      left.presentedWorldId === right.presentedWorldId &&
+      left.presentingPhase === right.presentingPhase,
+    ['presentedWorldId', 'presentingPhase'] as const,
+    'search_surface_results_transaction_episode_input'
   );
   const searchSurfaceResultsTransactionInputs = React.useMemo(
     () => ({
@@ -208,12 +117,12 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
             searchSurfaceResultsPresentationTransactionInput.resultsPresentationTransport,
         }),
       resultsSnapshotKey:
-        resultsPresentationSurfaceAuthority.getSnapshot().resultsHydrationKey ??
+        resultsPresentationSurfaceAuthority.getSnapshot().resultsIdentityKey ??
         resultsPresentationSurfaceAuthority.getSnapshot().resultsRequestKey,
     }),
     [
       searchSurfaceResultsPresentationTransactionInput.resultsPresentationTransport,
-      searchSurfaceResultsTransactionKeyInput.activeOperationId,
+      searchSurfaceResultsEpisodeInput,
       resultsPresentationSurfaceAuthority,
     ]
   );
@@ -221,47 +130,6 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
   activeScenarioConfigRef.current = activeScenarioConfig;
   const cancelDeferredStageRef = React.useRef<(() => void) | null>(null);
   const cancelDeferredSourceReadyCommitRef = React.useRef<(() => void) | null>(null);
-  const pendingPageOneResultsCommitRef = React.useRef<PendingPageOneResultsCommit | null>(null);
-  const pendingStageTransactionRef = React.useRef<SearchSurfaceResultsEnterTransaction | null>(
-    null
-  );
-  const resultsRevealWatchdogRef = React.useRef<{
-    transactionId: string;
-    timeoutId: ReturnType<typeof setTimeout>;
-    startedAtMs: number;
-    attempt: number;
-  } | null>(null);
-  const committedCoverWatchdogRef = React.useRef<{
-    transactionId: string;
-    timeoutId: ReturnType<typeof setTimeout>;
-    startedAtMs: number;
-    attempt: number;
-  } | null>(null);
-
-  const cancelResultsRevealWatchdog = React.useCallback((transactionId?: string | null) => {
-    const watchdog = resultsRevealWatchdogRef.current;
-    if (watchdog == null) {
-      return;
-    }
-    if (transactionId != null && watchdog.transactionId !== transactionId) {
-      return;
-    }
-    clearTimeout(watchdog.timeoutId);
-    resultsRevealWatchdogRef.current = null;
-  }, []);
-
-  const cancelCommittedCoverWatchdog = React.useCallback((transactionId?: string | null) => {
-    const watchdog = committedCoverWatchdogRef.current;
-    if (watchdog == null) {
-      return;
-    }
-    if (transactionId != null && watchdog.transactionId !== transactionId) {
-      return;
-    }
-    clearTimeout(watchdog.timeoutId);
-    committedCoverWatchdogRef.current = null;
-  }, []);
-
   if (!stagingCoordinatorRef.current) {
     stagingCoordinatorRef.current = createSearchSurfaceResultsTransactionCoordinator({
       applyStagingCoverState: (coverState) => {
@@ -307,21 +175,6 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     (transactionId?: string) => {
       cancelDeferredStageRef.current?.();
       cancelDeferredSourceReadyCommitRef.current?.();
-      cancelResultsRevealWatchdog(transactionId);
-      const pendingStageTransaction = pendingStageTransactionRef.current;
-      if (
-        pendingStageTransaction != null &&
-        (transactionId == null || pendingStageTransaction.transactionId === transactionId)
-      ) {
-        pendingStageTransactionRef.current = null;
-      }
-      const pendingPageOneCommit = pendingPageOneResultsCommitRef.current;
-      if (
-        pendingPageOneCommit != null &&
-        (transactionId == null || pendingPageOneCommit.transactionId === transactionId)
-      ) {
-        pendingPageOneResultsCommitRef.current = null;
-      }
       stagingCoordinatorRef.current!.clear(transactionId);
 
       const publishedTransactionKey =
@@ -344,13 +197,13 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
         mapSearchSurfaceResultsSourcesReadyKey: null,
       });
     },
-    [cancelResultsRevealWatchdog, resultsPresentationSurfaceAuthority, searchMapSourceFramePort]
+    [resultsPresentationSurfaceAuthority, searchMapSourceFramePort]
   );
 
   const armSearchSurfaceResultsPending = React.useCallback(
     (
       snapshot: SearchSurfaceResultsEnterTransaction,
-      stagingInputs: SearchSurfaceResultsTransactionGateInputs
+      _stagingInputs: SearchSurfaceResultsTransactionGateInputs
     ) => {
       getSearchSurfaceRuntime().beginRedrawTransaction({
         reason:
@@ -387,48 +240,93 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     [resultsPresentationSurfaceAuthority, runtimeMachineRef, searchMapSourceFramePort]
   );
 
-  const beginSearchThisAreaPresentationPending = React.useCallback(() => {
-    clearStagedSearchSurfaceResultsTransaction();
-    const transactionId = searchSurfaceResultsTransactionKeyInput.activeOperationId;
-    if (transactionId != null) {
+  // TR5-N: a chip rerun (open-now/rising/price/mid-pagination include-similar) is an IN-PLACE
+  // variant swap — the toggle coordinator's runner arms this pending cover at COMMIT (before
+  // firing the network request), and the enter transaction is staged only at RESPONSE time
+  // (handlePageOneResultsCommitted, data-keyed) — the search-this-area lane's shape, keyed to
+  // the TOGGLE INTENT id so the coordinator's visual-sync finalize fires at reveal settle.
+  const pendingVariantRerunTransactionIdRef = React.useRef<string | null>(null);
+  const beginVariantRerunPresentationPending = React.useCallback(
+    (transactionId: string) => {
+      clearStagedSearchSurfaceResultsTransaction();
+      pendingVariantRerunTransactionIdRef.current = transactionId;
       getSearchSurfaceRuntime().beginRedrawTransaction({
-        reason: 'search_this_area',
+        reason: 'toggle',
         transactionId,
         coverState: 'interaction_loading',
       });
-    }
-    runtimeMachineRef.current!.applyStagingCoverState('interaction_loading');
-    resultsPresentationSurfaceAuthority.publish(
-      {
-        searchSurfaceResultsTransactionKey: transactionId,
-      },
-      'search_this_area_pending_cover'
-    );
-    commitSearchMountedResultsSearchSurfaceResultsTransactionKey(transactionId);
-    searchMapSourceFramePort.publishVisualState({
-      mapSearchSurfaceResultsSourcesReady: false,
-      mapSearchSurfaceResultsSourcesReadyKey: transactionId,
-    });
-    const scenarioConfig = activeScenarioConfigRef.current;
-    if (isPerfScenarioAttributionActive(scenarioConfig)) {
-      logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-        event: 'search_this_area_pending_cover_contract',
-        searchThisAreaSubmitId: getActivePerfScenarioSearchThisAreaSubmitId(),
-        coverState: 'interaction_loading',
-        preserveSheetState: true,
-        loadingStateVisible: true,
-        searchSurfaceResultsTransactionKey: transactionId,
+      runtimeMachineRef.current!.applyStagingCoverState('interaction_loading');
+      resultsPresentationSurfaceAuthority.publish(
+        {
+          searchSurfaceResultsTransactionKey: transactionId,
+        },
+        'variant_rerun_pending_cover'
+      );
+      commitSearchMountedResultsSearchSurfaceResultsTransactionKey(transactionId);
+      searchMapSourceFramePort.publishVisualState({
         mapSearchSurfaceResultsSourcesReady: false,
         mapSearchSurfaceResultsSourcesReadyKey: transactionId,
       });
-    }
-  }, [
-    clearStagedSearchSurfaceResultsTransaction,
-    resultsPresentationSurfaceAuthority,
-    runtimeMachineRef,
-    searchMapSourceFramePort,
-    searchSurfaceResultsTransactionKeyInput.activeOperationId,
-  ]);
+    },
+    [
+      clearStagedSearchSurfaceResultsTransaction,
+      resultsPresentationSurfaceAuthority,
+      runtimeMachineRef,
+      searchMapSourceFramePort,
+    ]
+  );
+
+  const beginSearchThisAreaPresentationPending = React.useCallback(
+    (operationToken: string | null) => {
+      clearStagedSearchSurfaceResultsTransaction();
+      const transactionId = operationToken;
+      if (transactionId != null) {
+        getSearchSurfaceRuntime().beginRedrawTransaction({
+          reason: 'search_this_area',
+          transactionId,
+          coverState: 'interaction_loading',
+        });
+      } else {
+        // R0 loud-contracts (§D6): a search-this-area pending WITHOUT an active operation id
+        // proceeds with NO redraw transaction — readiness signals then arrive against
+        // transactionId:null and are ignored (loud via the contract event below).
+        reportSearchFlowContractViolation('search_this_area_pending_without_transaction', {
+          coverState: 'interaction_loading',
+        });
+      }
+      runtimeMachineRef.current!.applyStagingCoverState('interaction_loading');
+      resultsPresentationSurfaceAuthority.publish(
+        {
+          searchSurfaceResultsTransactionKey: transactionId,
+        },
+        'search_this_area_pending_cover'
+      );
+      commitSearchMountedResultsSearchSurfaceResultsTransactionKey(transactionId);
+      searchMapSourceFramePort.publishVisualState({
+        mapSearchSurfaceResultsSourcesReady: false,
+        mapSearchSurfaceResultsSourcesReadyKey: transactionId,
+      });
+      const scenarioConfig = activeScenarioConfigRef.current;
+      if (isPerfScenarioAttributionActive(scenarioConfig)) {
+        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
+          event: 'search_this_area_pending_cover_contract',
+          searchThisAreaSubmitId: getActivePerfScenarioSearchThisAreaSubmitId(),
+          coverState: 'interaction_loading',
+          preserveSheetState: true,
+          loadingStateVisible: true,
+          searchSurfaceResultsTransactionKey: transactionId,
+          mapSearchSurfaceResultsSourcesReady: false,
+          mapSearchSurfaceResultsSourcesReadyKey: transactionId,
+        });
+      }
+    },
+    [
+      clearStagedSearchSurfaceResultsTransaction,
+      resultsPresentationSurfaceAuthority,
+      runtimeMachineRef,
+      searchMapSourceFramePort,
+    ]
+  );
 
   const readSearchSurfaceResultsTransactionGateInputs = React.useCallback(() => {
     const surfaceSnapshot = resultsPresentationSurfaceAuthority.getSnapshot();
@@ -436,13 +334,13 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     const mountedBodyRuntimeSnapshot = getSearchMountedResultsBodyRuntimeSnapshot();
     const mountedResultsSnapshot = getSearchMountedResultsDataSnapshot();
     const mountedResultsKey =
-      mountedResultsSnapshot.resultsHydrationKey ?? mountedResultsSnapshot.resultsRequestKey;
+      mountedResultsSnapshot.resultsIdentityKey ?? mountedResultsSnapshot.resultsRequestKey;
     const preparedRowsSnapshot = surfaceSnapshot.preparedRows;
-    const mountedPreparedRowsReadyKey = preparedRowsSnapshot.readyReadinessKey;
-    const mountedPreparedRowsTargetKey = preparedRowsSnapshot.targetReadinessKey;
+    const mountedPreparedRowsReadyKey = preparedRowsSnapshot.readyResultsIdentityKey;
+    const mountedPreparedRowsTargetKey = preparedRowsSnapshot.targetResultsIdentityKey;
     const mountedPreparedRowsActiveCount = preparedRowsSnapshot.activeRowCount;
     const currentResultsSnapshotKey =
-      surfaceSnapshot.resultsHydrationKey ?? surfaceSnapshot.resultsRequestKey;
+      surfaceSnapshot.resultsIdentityKey ?? surfaceSnapshot.resultsRequestKey;
     const hasNoRenderableResults =
       mountedResultsSnapshot.results != null &&
       mountedResultsSnapshot.results.dishes.length === 0 &&
@@ -482,183 +380,11 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     };
   }, [resultsPresentationSurfaceAuthority, searchMapSourceFramePort]);
 
-  const armResultsRevealWatchdog = React.useCallback(
-    (transactionId: string) => {
-      cancelResultsRevealWatchdog();
-      const startedAtMs = globalThis.performance?.now?.() ?? Date.now();
-      const schedule = (attempt: number, delayMs: number) => {
-        const timeoutId = setTimeout(() => {
-          const watchdog = resultsRevealWatchdogRef.current;
-          if (watchdog == null || watchdog.transactionId !== transactionId) {
-            return;
-          }
-          const stagedTransaction = stagingCoordinatorRef.current!.getStagedTransaction();
-          if (stagedTransaction?.snapshot.transactionId !== transactionId) {
-            cancelResultsRevealWatchdog(transactionId);
-            return;
-          }
-          const inputs = readSearchSurfaceResultsTransactionGateInputs();
-          const surfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
-          const activeRedrawTransaction = surfaceSnapshot.redrawTransaction;
-          const currentTransport =
-            resultsPresentationAuthority.getSnapshot().resultsPresentationTransport;
-          const activeResultsTransactionId =
-            surfaceSnapshot.activeBundle.kind === 'results'
-              ? surfaceSnapshot.activeBundle.transactionId
-              : null;
-          const activeResultsCoverState =
-            surfaceSnapshot.activeBundle.kind === 'results'
-              ? surfaceSnapshot.activeBundle.coverState
-              : null;
-          const isStagedTransactionStillActive =
-            activeRedrawTransaction?.id === transactionId ||
-            (activeResultsTransactionId === transactionId &&
-              activeResultsCoverState !== 'hidden') ||
-            (currentTransport.transactionId === transactionId &&
-              currentTransport.snapshotKind === 'results_enter' &&
-              currentTransport.coverState !== 'hidden');
-          if (!isStagedTransactionStillActive) {
-            cancelResultsRevealWatchdog(transactionId);
-            return;
-          }
-          const blockedReasons = resolveResultsRevealBlockedReasons({
-            inputs,
-            stagedTransaction,
-          });
-          const elapsedMs = Number(
-            ((globalThis.performance?.now?.() ?? Date.now()) - startedAtMs).toFixed(1)
-          );
-          const scenarioConfig = activeScenarioConfigRef.current;
-          if (isPerfScenarioAttributionActive(scenarioConfig)) {
-            logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-              event: 'results_reveal_watchdog_pending',
-              attempt,
-              elapsedMs,
-              transactionId,
-              blockedReasons,
-              mutationKind: stagedTransaction.snapshot.mutationKind,
-              coverState: stagedTransaction.snapshot.coverState,
-              stagedDataReady: stagedTransaction.dataReady,
-              resultsSnapshotKey: inputs.resultsSnapshotKey,
-              hydratedResultsKey: inputs.hydratedResultsKey,
-              isResultsHydrationSettled: inputs.isResultsHydrationSettled,
-              shouldHydrateResultsForRender: inputs.shouldHydrateResultsForRender,
-              listPreparedRowsReady: inputs.listPreparedRowsReady,
-              mountedPreparedRowsActiveCount: inputs.mountedPreparedRowsActiveCount,
-              mountedPreparedRowsReadyKey: inputs.mountedPreparedRowsReadyKey,
-              mountedPreparedRowsTargetKey: inputs.mountedPreparedRowsTargetKey,
-              hasNoRenderableResults: inputs.hasNoRenderableResults,
-              mapSearchSurfaceResultsSourcesReady: inputs.mapSearchSurfaceResultsSourcesReady,
-              mapSearchSurfaceResultsSourcesReadyKey: inputs.mapSearchSurfaceResultsSourcesReadyKey,
-              activeRedrawCardsReady: activeRedrawTransaction?.readiness.cardsReady ?? null,
-              activeRedrawNativeMarkerFrameReady:
-                activeRedrawTransaction?.readiness.nativeMarkerFrameReady ?? null,
-              activeRedrawSheetReady: activeRedrawTransaction?.readiness.sheetReady ?? null,
-            });
-          }
-          schedule(attempt + 1, RESULTS_REVEAL_WATCHDOG_REPEAT_DELAY_MS);
-        }, delayMs);
-        resultsRevealWatchdogRef.current = {
-          transactionId,
-          timeoutId,
-          startedAtMs,
-          attempt,
-        };
-      };
-      schedule(1, RESULTS_REVEAL_WATCHDOG_INITIAL_DELAY_MS);
-    },
-    [
-      cancelResultsRevealWatchdog,
-      readSearchSurfaceResultsTransactionGateInputs,
-      resultsPresentationAuthority,
-      searchMapSourceFramePort,
-    ]
-  );
-  const armCommittedCoverWatchdog = React.useCallback(
-    (transport: ResultsPresentationTransportState) => {
-      if (!isCommittedEnterCoverPending(transport) || transport.transactionId == null) {
-        cancelCommittedCoverWatchdog();
-        return;
-      }
-      const transactionId = transport.transactionId;
-      cancelCommittedCoverWatchdog();
-      const startedAtMs = globalThis.performance?.now?.() ?? Date.now();
-      const schedule = (attempt: number, delayMs: number) => {
-        const timeoutId = setTimeout(() => {
-          const watchdog = committedCoverWatchdogRef.current;
-          if (watchdog == null || watchdog.transactionId !== transactionId) {
-            return;
-          }
-          const currentTransport =
-            resultsPresentationAuthority.getSnapshot().resultsPresentationTransport;
-          if (
-            currentTransport.transactionId !== transactionId ||
-            !isCommittedEnterCoverPending(currentTransport)
-          ) {
-            cancelCommittedCoverWatchdog(transactionId);
-            return;
-          }
-          const inputs = readSearchSurfaceResultsTransactionGateInputs();
-          const stagedTransaction = stagingCoordinatorRef.current!.getStagedTransaction();
-          const surfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
-          const activeRedrawTransaction = surfaceSnapshot.redrawTransaction;
-          const blockedReasons = resolveResultsRevealBlockedReasons({
-            inputs,
-            stagedTransaction,
-          });
-          const elapsedMs = Number(
-            ((globalThis.performance?.now?.() ?? Date.now()) - startedAtMs).toFixed(1)
-          );
-          const scenarioConfig = activeScenarioConfigRef.current;
-          if (isPerfScenarioAttributionActive(scenarioConfig)) {
-            logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-              event: 'committed_results_cover_watchdog_pending',
-              attempt,
-              elapsedMs,
-              transactionId,
-              blockedReasons,
-              transportExecutionStage: currentTransport.executionStage,
-              transportCoverState: currentTransport.coverState,
-              resultsSnapshotKey: inputs.resultsSnapshotKey,
-              hydratedResultsKey: inputs.hydratedResultsKey,
-              isResultsHydrationSettled: inputs.isResultsHydrationSettled,
-              shouldHydrateResultsForRender: inputs.shouldHydrateResultsForRender,
-              mapSearchSurfaceResultsSourcesReady: inputs.mapSearchSurfaceResultsSourcesReady,
-              mapSearchSurfaceResultsSourcesReadyKey: inputs.mapSearchSurfaceResultsSourcesReadyKey,
-              activeRedrawTransactionId: activeRedrawTransaction?.id ?? null,
-              activeRedrawCardsReady: activeRedrawTransaction?.readiness.cardsReady ?? null,
-              activeRedrawNativeMarkerFrameReady:
-                activeRedrawTransaction?.readiness.nativeMarkerFrameReady ?? null,
-              activeRedrawSheetReady: activeRedrawTransaction?.readiness.sheetReady ?? null,
-            });
-          }
-          schedule(attempt + 1, COMMITTED_COVER_WATCHDOG_REPEAT_DELAY_MS);
-        }, delayMs);
-        committedCoverWatchdogRef.current = {
-          transactionId,
-          timeoutId,
-          startedAtMs,
-          attempt,
-        };
-      };
-      schedule(1, COMMITTED_COVER_WATCHDOG_INITIAL_DELAY_MS);
-    },
-    [
-      cancelCommittedCoverWatchdog,
-      readSearchSurfaceResultsTransactionGateInputs,
-      resultsPresentationAuthority,
-      searchMapSourceFramePort,
-    ]
-  );
-
   const maybeCommitStagedSearchSurfaceResultsTransaction = React.useCallback(
     (source: SearchSurfaceResultsTransactionCommitSource) => {
       const stagingInputs = readSearchSurfaceResultsTransactionGateInputs();
       const stagedBeforeCommit = stagingCoordinatorRef.current!.getStagedTransaction();
       const didCommit = stagingCoordinatorRef.current!.maybeCommit(stagingInputs);
-      if (didCommit) {
-        cancelResultsRevealWatchdog(stagedBeforeCommit?.snapshot.transactionId ?? null);
-      }
       const scenarioConfig = activeScenarioConfigRef.current;
       if (didCommit && isPerfScenarioAttributionActive(scenarioConfig)) {
         const transactionId = stagedBeforeCommit?.snapshot.transactionId ?? null;
@@ -675,7 +401,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
             requestKey: transactionId,
             resultsSnapshotKey: stagingInputs.resultsSnapshotKey,
             readinessKey: stagingInputs.mountedPreparedRowsReadyKey,
-            targetReadinessKey: stagingInputs.mountedPreparedRowsTargetKey,
+            targetResultsIdentityKey: stagingInputs.mountedPreparedRowsTargetKey,
             activeRowCount: stagingInputs.mountedPreparedRowsActiveCount,
             listPreparedRowsReady: stagingInputs.listPreparedRowsReady,
             hasNoRenderableResults: stagingInputs.hasNoRenderableResults,
@@ -706,7 +432,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
       }
       return didCommit;
     },
-    [cancelResultsRevealWatchdog, readSearchSurfaceResultsTransactionGateInputs]
+    [readSearchSurfaceResultsTransactionGateInputs]
   );
   const maybeCommitAfterPreparedSourceFrame = React.useCallback(
     (source: SearchSurfaceResultsTransactionCommitSource) => {
@@ -753,44 +479,11 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
       const stagingInputs = readSearchSurfaceResultsTransactionGateInputs();
       const scenarioConfig = activeScenarioConfigRef.current;
       cancelDeferredStageRef.current?.();
-      const recoverablePreparedRowsDataKey =
-        snapshot.expectedResultsDataKey == null &&
-        snapshot.dataReadyFrom === 'pending' &&
-        stagingInputs.mountedPreparedRowsReadyKey != null &&
-        stagingInputs.mountedPreparedRowsReadyKey === stagingInputs.mountedPreparedRowsTargetKey &&
-        stagingInputs.mountedPreparedRowsActiveCount > 0
-          ? stagingInputs.mountedPreparedRowsReadyKey
-          : null;
-      const transactionSnapshot =
-        recoverablePreparedRowsDataKey == null
-          ? snapshot
-          : {
-              ...snapshot,
-              dataReadyFrom: 'cache' as const,
-              expectedResultsDataKey: recoverablePreparedRowsDataKey,
-            };
-      const stagingResultsSnapshotKey =
-        recoverablePreparedRowsDataKey ?? stagingInputs.resultsSnapshotKey;
-      if (recoverablePreparedRowsDataKey != null) {
-        resultsPresentationSurfaceAuthority.publish(
-          {
-            resultsHydrationKey: recoverablePreparedRowsDataKey,
-            hydratedResultsKey: recoverablePreparedRowsDataKey,
-            resultsPreparedRowsKey: recoverablePreparedRowsDataKey,
-            listPreparedRowsReady: true,
-            isResultsHydrationSettled: true,
-          },
-          'search_surface_results_cached_prepared_rows_recovered'
-        );
-      }
-      pendingStageTransactionRef.current = transactionSnapshot;
-      const pendingPageOneCommit = pendingPageOneResultsCommitRef.current;
-      if (
-        pendingPageOneCommit != null &&
-        pendingPageOneCommit.transactionId !== transactionSnapshot.transactionId
-      ) {
-        pendingPageOneResultsCommitRef.current = null;
-      }
+      // S4c-1c: no recovery lane, no ordering refs — the coordinator's world-ready
+      // latch merges a data commit that landed before this (deferred) stage, in the
+      // pure gate, order-independently.
+      const transactionSnapshot = snapshot;
+      const stagingResultsSnapshotKey = stagingInputs.resultsSnapshotKey;
       if (isPerfScenarioAttributionActive(scenarioConfig)) {
         logPerfScenarioAttributionEvent('WorkSpan', scenarioConfig, {
           event: 'scenario_work_span',
@@ -823,50 +516,14 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
         });
         cancelers.length = 0;
         cancelDeferredStageRef.current = null;
-        if (
-          pendingStageTransactionRef.current?.transactionId === transactionSnapshot.transactionId
-        ) {
-          pendingStageTransactionRef.current = null;
-        }
       };
       const runDeferredStage = () => {
         if (didCancelDeferredStage) {
           return;
         }
         cancelDeferredStageRef.current = null;
-        if (
-          pendingStageTransactionRef.current?.transactionId === transactionSnapshot.transactionId
-        ) {
-          pendingStageTransactionRef.current = null;
-        }
-        const pendingPageOneCommitForTransaction = pendingPageOneResultsCommitRef.current;
-        const shouldMergePendingPageOneCommit =
-          pendingPageOneCommitForTransaction != null &&
-          pendingPageOneCommitForTransaction.transactionId === transactionSnapshot.transactionId;
-        const stagedTransactionSnapshot = shouldMergePendingPageOneCommit
-          ? {
-              ...transactionSnapshot,
-              dataReadyFrom:
-                pendingPageOneCommitForTransaction.dataReadyFrom ??
-                transactionSnapshot.dataReadyFrom,
-              expectedResultsDataKey:
-                pendingPageOneCommitForTransaction.expectedResultsDataKey ??
-                transactionSnapshot.expectedResultsDataKey ??
-                null,
-              searchInputKey:
-                pendingPageOneCommitForTransaction.searchInputKey ??
-                transactionSnapshot.searchInputKey ??
-                null,
-            }
-          : transactionSnapshot;
-        const stagedResultsSnapshotKey = shouldMergePendingPageOneCommit
-          ? (pendingPageOneCommitForTransaction.expectedResultsDataKey ?? stagingResultsSnapshotKey)
-          : stagingResultsSnapshotKey;
-        stagingCoordinatorRef.current!.stage(stagedTransactionSnapshot, stagedResultsSnapshotKey);
-        if (shouldMergePendingPageOneCommit) {
-          pendingPageOneResultsCommitRef.current = null;
-        }
-        armResultsRevealWatchdog(stagedTransactionSnapshot.transactionId);
+        const stagedTransactionSnapshot = transactionSnapshot;
+        stagingCoordinatorRef.current!.stage(stagedTransactionSnapshot, stagingResultsSnapshotKey);
         if (isPerfScenarioAttributionActive(scenarioConfig)) {
           const searchThisAreaSubmitId =
             stagedTransactionSnapshot.mutationKind === 'search_this_area'
@@ -931,7 +588,6 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     },
     [
       armSearchSurfaceResultsPending,
-      armResultsRevealWatchdog,
       maybeCommitStagedSearchSurfaceResultsTransaction,
       readSearchSurfaceResultsTransactionGateInputs,
       resultsPresentationSurfaceAuthority,
@@ -941,18 +597,45 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
   );
   const handlePageOneResultsCommitted = React.useCallback(
     (payload?: {
-      surfaceTransactionMutationKind?: 'search_this_area';
+      operationToken?: string | null;
+      surfaceTransactionMutationKind?: 'search_this_area' | 'variant_rerun';
       expectedResultsDataKey?: string | null;
       dataReadyFrom?: 'network' | 'cache' | 'in_flight';
       searchInputKey?: string | null;
     }) => {
       if (
+        payload?.surfaceTransactionMutationKind === 'variant_rerun' &&
+        payload.expectedResultsDataKey != null
+      ) {
+        // TR5-N: the chip rerun's response just committed — stage the enter NOW, data-keyed,
+        // under the pending cover the runner armed at commit. The transaction id is the toggle
+        // intent id (armed by beginVariantRerunPresentationPending) so the coordinator's
+        // finalize fires at reveal settle; the transaction MUTATION kind reuses
+        // 'search_this_area' (the identical data-keyed in-place-rerun gate semantics).
+        const variantRerunTransactionId =
+          pendingVariantRerunTransactionIdRef.current ??
+          payload.operationToken ??
+          payload.expectedResultsDataKey;
+        pendingVariantRerunTransactionIdRef.current = null;
+        stageSearchSurfaceResultsTransaction(
+          createSearchSurfaceResultsEnterTransaction(
+            variantRerunTransactionId,
+            'search_this_area',
+            'interaction_loading',
+            payload.expectedResultsDataKey,
+            payload.dataReadyFrom ?? 'network',
+            payload.searchInputKey ?? null,
+            null
+          )
+        );
+        return;
+      }
+      if (
         payload?.surfaceTransactionMutationKind === 'search_this_area' &&
         payload.expectedResultsDataKey != null
       ) {
         const searchThisAreaTransactionId =
-          searchSurfaceResultsTransactionKeyInput.activeOperationId ??
-          payload.expectedResultsDataKey;
+          payload.operationToken ?? payload.expectedResultsDataKey;
         stageSearchSurfaceResultsTransaction(
           createSearchSurfaceResultsEnterTransaction(
             searchThisAreaTransactionId,
@@ -966,23 +649,8 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
         );
         return;
       }
-      const activeTransactionId = searchSurfaceResultsTransactionKeyInput.activeOperationId;
-      const pendingStageTransactionId = pendingStageTransactionRef.current?.transactionId ?? null;
-      const stagedTransactionId =
-        stagingCoordinatorRef.current!.getStagedTransaction()?.snapshot.transactionId ?? null;
-      if (stagingCoordinatorRef.current!.getStagedTransaction() == null) {
-        const targetTransactionId =
-          pendingStageTransactionId ?? stagedTransactionId ?? activeTransactionId;
-        if (targetTransactionId != null) {
-          pendingPageOneResultsCommitRef.current = {
-            transactionId: targetTransactionId,
-            expectedResultsDataKey: payload?.expectedResultsDataKey ?? null,
-            dataReadyFrom: payload?.dataReadyFrom,
-            searchInputKey: payload?.searchInputKey ?? null,
-          };
-        }
-        return;
-      }
+      // Enter world_ready: hand it to the coordinator in EITHER order — if the deferred
+      // stage hasn't landed yet, the pure gate latches it (S4c-1c).
       stagingCoordinatorRef.current!.handlePageOneResultsCommitted(
         readSearchSurfaceResultsTransactionGateInputs(),
         payload?.expectedResultsDataKey ?? null,
@@ -994,26 +662,9 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     [
       maybeCommitStagedSearchSurfaceResultsTransaction,
       readSearchSurfaceResultsTransactionGateInputs,
-      searchSurfaceResultsTransactionKeyInput.activeOperationId,
       stageSearchSurfaceResultsTransaction,
     ]
   );
-
-  React.useEffect(() => {
-    const transport = searchSurfaceResultsPresentationTransactionInput.resultsPresentationTransport;
-    if (!isCommittedEnterCoverPending(transport)) {
-      cancelCommittedCoverWatchdog();
-      return;
-    }
-    armCommittedCoverWatchdog(transport);
-    return () => {
-      cancelCommittedCoverWatchdog(transport.transactionId);
-    };
-  }, [
-    armCommittedCoverWatchdog,
-    cancelCommittedCoverWatchdog,
-    searchSurfaceResultsPresentationTransactionInput.resultsPresentationTransport,
-  ]);
 
   React.useEffect(() => {
     const tryCommitFromRuntimeStores = () => {
@@ -1031,7 +682,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     const unsubscribeSurfaceAuthority = resultsPresentationSurfaceAuthority.subscribe(
       tryCommitFromRuntimeStores,
       [
-        'resultsHydrationKey',
+        'resultsIdentityKey',
         'resultsRequestKey',
         'hydratedResultsKey',
         'isResultsHydrationSettled',
@@ -1076,10 +727,8 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     () => () => {
       cancelDeferredStageRef.current?.();
       cancelDeferredSourceReadyCommitRef.current?.();
-      cancelResultsRevealWatchdog();
-      cancelCommittedCoverWatchdog();
     },
-    [cancelCommittedCoverWatchdog, cancelResultsRevealWatchdog]
+    []
   );
   const searchSurfaceResultsTransactionKey = React.useMemo(() => {
     return stagingCoordinatorRef.current!.getSearchSurfaceResultsTransactionKey(
@@ -1091,6 +740,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
   ]);
 
   const handlePresentationIntentAbort = React.useCallback(() => {
+    pendingVariantRerunTransactionIdRef.current = null;
     clearStagedSearchSurfaceResultsTransaction();
     handleRuntimePresentationIntentAbort();
   }, [clearStagedSearchSurfaceResultsTransaction, handleRuntimePresentationIntentAbort]);
@@ -1099,6 +749,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     () => ({
       searchSurfaceResultsTransactionKey,
       beginSearchThisAreaPresentationPending,
+      beginVariantRerunPresentationPending,
       stageSearchSurfaceResultsTransaction,
       clearStagedSearchSurfaceResultsTransaction,
       handlePageOneResultsCommitted,
@@ -1106,6 +757,7 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
     }),
     [
       beginSearchThisAreaPresentationPending,
+      beginVariantRerunPresentationPending,
       clearStagedSearchSurfaceResultsTransaction,
       handlePageOneResultsCommitted,
       handlePresentationIntentAbort,

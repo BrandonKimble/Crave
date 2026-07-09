@@ -1,4 +1,5 @@
 import React from 'react';
+import { selectIsSearchSessionActive, selectSearchMode } from './search-desired-tuple-selectors';
 
 import { createSearchRootRuntimeFlagsValue } from '../controller/search-root-data-plane-runtime';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
@@ -27,56 +28,17 @@ export const useSearchRootRuntimeFlagsRuntime = ({
   const runtimeFlagsState = useSearchRuntimeBusSelector(
     searchRuntimeBus,
     (state) => ({
-      searchMode: state.searchMode,
-      isSearchSessionActive: state.isSearchSessionActive,
+      searchMode: selectSearchMode(state),
+      isSearchSessionActive: selectIsSearchSessionActive(state),
     }),
     (left, right) =>
       left.searchMode === right.searchMode &&
       left.isSearchSessionActive === right.isSearchSessionActive,
-    ['searchMode', 'isSearchSessionActive'] as const,
+    ['desiredTuple'] as const,
     'root_runtime_flags'
   );
   const { searchMode, isSearchSessionActive } = runtimeFlagsState;
   const searchSurfaceRedrawOperationId = searchRuntimeBus.getState().searchSurfaceRedrawOperationId;
-
-  const setSearchMode = React.useCallback<
-    React.Dispatch<React.SetStateAction<'natural' | 'shortcut' | null>>
-  >(
-    (nextValue) => {
-      const resolvedValue =
-        typeof nextValue === 'function'
-          ? (
-              nextValue as (
-                previous: 'natural' | 'shortcut' | null
-              ) => 'natural' | 'shortcut' | null
-            )(searchMode)
-          : nextValue;
-      if (resolvedValue === searchMode) {
-        return;
-      }
-      searchRuntimeBus.publish({
-        searchMode: resolvedValue,
-      });
-    },
-    [searchMode, searchRuntimeBus]
-  );
-
-  const setIsSearchSessionActive = React.useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
-    (nextValue) => {
-      const resolvedValue =
-        typeof nextValue === 'function'
-          ? (nextValue as (previous: boolean) => boolean)(isSearchSessionActive)
-          : nextValue;
-      if (resolvedValue === isSearchSessionActive) {
-        return;
-      }
-      searchRuntimeBus.publish({
-        isSearchSessionActive: resolvedValue,
-      });
-      foregroundPolicyPublicationAuthority.publishCurrent('searchSessionActive');
-    },
-    [foregroundPolicyPublicationAuthority, isSearchSessionActive, searchRuntimeBus]
-  );
 
   const isSearchRequestLoadingRef = React.useRef(false);
   const setSearchRequestLoading = React.useCallback(
@@ -105,8 +67,6 @@ export const useSearchRootRuntimeFlagsRuntime = ({
         searchMode,
         isSearchSessionActive,
         searchSurfaceRedrawOperationId,
-        setSearchMode,
-        setIsSearchSessionActive,
         isSearchLoading: isSearchRequestLoadingRef.current,
         isSearchRequestLoadingRef,
         setSearchRequestLoading,
@@ -118,8 +78,6 @@ export const useSearchRootRuntimeFlagsRuntime = ({
       resultsArrivalState.resultsRequestKey,
       searchSurfaceRedrawOperationId,
       searchMode,
-      setIsSearchSessionActive,
-      setSearchMode,
       setSearchRequestLoading,
     ]
   );

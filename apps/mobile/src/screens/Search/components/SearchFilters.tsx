@@ -30,6 +30,8 @@ import {
   FrostedFilterStrip,
   type FrostedFilterStripMeasuredLayout,
 } from '../../../components/FrostedFilterStrip';
+import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 
 const TOGGLE_HEIGHT = CONTROL_HEIGHT;
 const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
@@ -112,12 +114,22 @@ export const cloneSearchFiltersLayoutCache = (
 };
 
 export type SearchFiltersProps = {
+  // LIVE chip-state source. The rendered strip element rides the mounted-results snapshot
+  // store (chrome-freeze), so its PROPS can be stale between data commits — the tab pill hid
+  // this behind its internal press animation, but the plain chips (Open now, Rising, Include
+  // similar, Price) visibly failed to flip color on press-up. The strip therefore reads its
+  // display states straight from the runtime bus (the single writer the toggle setters flip
+  // optimistically at press time); the same-named props remain as the first-render values.
+  searchRuntimeBus: SearchRuntimeBus;
   activeTab: SegmentValue;
   onTabChange: (value: SegmentValue) => void;
   openNow: boolean;
   onToggleOpenNow: () => void;
-  votesFilterActive: boolean;
-  onToggleVotesFilter: () => void;
+  includeSimilarActive: boolean;
+  onToggleIncludeSimilar: () => void;
+  // metadata.similarAvailable from the committed page-1 response; the availability chip
+  // renders when > 0 and the toggle is off, and is a REMOTE CONTROL for the toggle.
+  similarAvailableCount: number;
   risingActive: boolean;
   onToggleRising: () => void;
   priceButtonLabel: string;
@@ -134,12 +146,14 @@ export type SearchFiltersProps = {
 };
 
 const SearchFilters: React.FC<SearchFiltersProps> = ({
+  searchRuntimeBus,
   activeTab,
   onTabChange,
   openNow,
   onToggleOpenNow,
-  votesFilterActive,
-  onToggleVotesFilter,
+  includeSimilarActive,
+  onToggleIncludeSimilar,
+  similarAvailableCount,
   risingActive,
   onToggleRising,
   priceButtonLabel,
@@ -154,6 +168,45 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   // telemetryHostLayer / telemetryInSheetBody are still accepted (consumers pass them) but
   // the perf-readiness telemetry moved out with the shell extraction — intentionally unused.
 }) => {
+  const liveChipState = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => ({
+      // S4e: the chip strip renders DESIRED state — the tuple directly (tuple.tab IS the
+      // old optimistic `pendingTabSwitchTab ?? activeTab` read, by the writer's invariant).
+      activeTab: state.desiredTuple.tab as SegmentValue,
+      openNow: state.desiredTuple.filterVariant.openNow,
+      includeSimilarActive: state.desiredTuple.filterVariant.includeSimilar,
+      similarAvailableCount: state.results?.metadata?.similarAvailable ?? 0,
+      risingActive: state.desiredTuple.filterVariant.rising,
+      priceButtonActive: state.priceButtonIsActive,
+      priceButtonLabel: state.priceButtonLabelText,
+      isPriceSelectorVisible: state.isPriceSelectorVisible,
+    }),
+    (left, right) =>
+      left.activeTab === right.activeTab &&
+      left.openNow === right.openNow &&
+      left.includeSimilarActive === right.includeSimilarActive &&
+      left.similarAvailableCount === right.similarAvailableCount &&
+      left.risingActive === right.risingActive &&
+      left.priceButtonActive === right.priceButtonActive &&
+      left.priceButtonLabel === right.priceButtonLabel &&
+      left.isPriceSelectorVisible === right.isPriceSelectorVisible,
+    [
+      'desiredTuple',
+      'results',
+      'priceButtonIsActive',
+      'priceButtonLabelText',
+      'isPriceSelectorVisible',
+    ] as const
+  );
+  activeTab = liveChipState.activeTab;
+  openNow = liveChipState.openNow;
+  includeSimilarActive = liveChipState.includeSimilarActive;
+  similarAvailableCount = liveChipState.similarAvailableCount;
+  risingActive = liveChipState.risingActive;
+  priceButtonActive = liveChipState.priceButtonActive;
+  priceButtonLabel = liveChipState.priceButtonLabel;
+  isPriceSelectorVisible = liveChipState.isPriceSelectorVisible;
   // The frosted cutout shell (mask geometry, per-control hole registration, horizontal
   // scroll) is now the SHARED `FrostedFilterStrip` — search renders its controls through it
   // so the result-sheet strip can't drift from the polls/favorites strips. We keep only the
@@ -444,6 +497,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         accessibilityRole="button"
         accessibilityLabel="Toggle open now results"
         accessibilityState={{ selected: openNow }}
+        testID="search-open-now-toggle"
         style={[
           styles.openNowButton,
           openNow && [styles.openNowButtonActive, { backgroundColor: accentColor }],
@@ -459,6 +513,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       </Pressable>
       <Pressable
         onPress={onTogglePriceSelector}
+        testID="search-price-toggle"
         accessibilityRole="button"
         accessibilityLabel="Select price filters"
         accessibilityState={{
@@ -494,28 +549,51 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         )}
       </Pressable>
       <Pressable
-        onPress={onToggleVotesFilter}
+        testID="search-include-similar-toggle"
+        onPress={onToggleIncludeSimilar}
         accessibilityRole="button"
-        accessibilityLabel="Toggle 100 plus votes filter"
-        accessibilityState={{ selected: votesFilterActive }}
+        accessibilityLabel="Toggle including similar results"
+        accessibilityState={{ selected: includeSimilarActive }}
         style={[
-          styles.votesButton,
-          votesFilterActive && [styles.votesButtonActive, { backgroundColor: accentColor }],
+          styles.includeSimilarButton,
+          includeSimilarActive && [
+            styles.includeSimilarButtonActive,
+            { backgroundColor: accentColor },
+          ],
         ]}
       >
         <Text
           variant="caption"
           weight="semibold"
-          style={[styles.votesText, votesFilterActive && styles.votesTextActive]}
+          style={[
+            styles.includeSimilarText,
+            includeSimilarActive && styles.includeSimilarTextActive,
+          ]}
         >
-          100+ votes
+          Include similar
         </Text>
       </Pressable>
+      {similarAvailableCount > 0 && !includeSimilarActive ? (
+        // REMOTE CONTROL for the toggle: tapping only flips "Include similar" — same
+        // shared toggle flow/choreography for cards AND map (no expand-in-place).
+        <Pressable
+          testID="search-similar-available-chip"
+          onPress={onToggleIncludeSimilar}
+          accessibilityRole="button"
+          accessibilityLabel={`Show ${similarAvailableCount} similar results`}
+          style={styles.similarAvailableButton}
+        >
+          <Text variant="caption" weight="semibold" style={styles.similarAvailableText}>
+            {similarAvailableCount} similar
+          </Text>
+        </Pressable>
+      ) : null}
       <Pressable
         onPress={onToggleRising}
         accessibilityRole="button"
         accessibilityLabel="Toggle rising momentum filter"
         accessibilityState={{ selected: risingActive }}
+        testID="search-rising-toggle"
         style={[
           styles.risingButton,
           risingActive && [styles.risingButtonActive, { backgroundColor: accentColor }],
@@ -597,21 +675,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     overflow: 'hidden',
   },
-  rankButton: {
-    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
-    paddingRight: PRICE_TOGGLE_RIGHT_PADDING,
-  },
-  rankButtonActive: {},
-  rankButtonLabel: {
-    color: '#111827',
-  },
-  rankButtonLabelActive: {
-    color: '#ffffff',
-  },
-  rankButtonChevron: {
-    marginLeft: 6,
-    marginTop: 0,
-  },
   segmentedOption: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
     justifyContent: 'center',
@@ -649,9 +712,6 @@ const styles = StyleSheet.create({
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
   },
   openNowButtonActive: {},
-  openNowButtonDisabled: {
-    opacity: 0.6,
-  },
   openNowText: {
     color: '#111827',
   },
@@ -663,9 +723,6 @@ const styles = StyleSheet.create({
     paddingRight: PRICE_TOGGLE_RIGHT_PADDING,
   },
   priceButtonActive: {},
-  priceButtonDisabled: {
-    opacity: 0.6,
-  },
   priceButtonLabel: {
     color: '#111827',
   },
@@ -676,28 +733,30 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     marginTop: 0,
   },
-  votesButton: {
+  includeSimilarButton: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
     flexDirection: 'row',
   },
-  votesButtonActive: {},
-  votesButtonDisabled: {
-    opacity: 0.6,
-  },
-  votesText: {
+  includeSimilarButtonActive: {},
+  includeSimilarText: {
     color: '#111827',
   },
-  votesTextActive: {
+  includeSimilarTextActive: {
     color: '#ffffff',
+  },
+  similarAvailableButton: {
+    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
+    flexDirection: 'row',
+  },
+  similarAvailableText: {
+    // Quiet informational chip — muted vs. the solid toggle chips.
+    color: '#6b7280',
   },
   risingButton: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
     flexDirection: 'row',
   },
   risingButtonActive: {},
-  risingButtonDisabled: {
-    opacity: 0.6,
-  },
   risingText: {
     color: '#111827',
   },

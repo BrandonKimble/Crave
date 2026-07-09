@@ -2,6 +2,8 @@ import React from 'react';
 import { Keyboard, type TextInput } from 'react-native';
 
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
+import { writeSearchDesiredTuple } from '../runtime/shared/search-desired-state-writer';
+import { DEFAULT_SEARCH_FILTER_VARIANT } from '../runtime/shared/search-desired-state-contract';
 import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 
 export type SearchClearOwner = {
@@ -38,7 +40,6 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
   resetSubmitTransitionHold: () => void;
-  resetFilters: () => void;
   cancelToggleInteraction: () => void;
   setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
   setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
@@ -50,8 +51,6 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
   resetMapMoveFlag: () => void;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   setSuggestions: React.Dispatch<React.SetStateAction<Suggestion[]>>;
-  setIsSearchSessionActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setSearchMode: React.Dispatch<React.SetStateAction<'natural' | 'shortcut' | null>>;
   resetSheetToHidden: () => void;
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
   resetFocusedMapState: () => void;
@@ -78,7 +77,6 @@ export const useSearchClearOwner = <Suggestion>({
   cancelAutocomplete,
   handleCancelPendingMutationWork,
   resetSubmitTransitionHold,
-  resetFilters,
   cancelToggleInteraction,
   setIsSearchFocused,
   setIsSuggestionPanelActive,
@@ -90,8 +88,6 @@ export const useSearchClearOwner = <Suggestion>({
   resetMapMoveFlag,
   setError,
   setSuggestions,
-  setIsSearchSessionActive,
-  setSearchMode,
   resetSheetToHidden,
   lastAutoOpenKeyRef,
   resetFocusedMapState,
@@ -111,7 +107,18 @@ export const useSearchClearOwner = <Suggestion>({
     cancelAutocomplete();
     handleCancelPendingMutationWork();
     resetSubmitTransitionHold();
-    resetFilters();
+    // Same atomic dismiss write as clearSearchState — this lane previously reset
+    // filters but never returned the tuple to idle (an S2 gap the reconciler
+    // classification made visible: the tuple claimed a live session after close).
+    writeSearchDesiredTuple(
+      searchRuntimeBus,
+      {
+        queryIdentity: { kind: 'idle' },
+        committedBounds: null,
+        filterVariant: { ...DEFAULT_SEARCH_FILTER_VARIANT },
+      },
+      'dismiss'
+    );
     cancelToggleInteraction();
     setIsSearchFocused(false);
     setIsSuggestionPanelActive(false);
@@ -121,11 +128,10 @@ export const useSearchClearOwner = <Suggestion>({
     publishSearchMountedResultsDataSnapshot(null);
     searchRuntimeBus.publish({
       resultsRequestKey: null,
-      resultsHydrationCandidateKey: null,
+      resultsIdentityCandidateKey: null,
       resultsPage: null,
       resultsDishCount: 0,
       resultsRestaurantCount: 0,
-      submittedQuery: '',
       currentPage: 1,
       hasMoreFood: false,
       hasMoreRestaurants: false,
@@ -137,8 +143,6 @@ export const useSearchClearOwner = <Suggestion>({
     resetMapMoveFlag();
     setError(null);
     setSuggestions([]);
-    setIsSearchSessionActive(false);
-    setSearchMode(null);
     if (hasOriginRestorePending) {
       commitSearchCloseRestore();
       flushPendingSearchOriginRestore();
@@ -168,7 +172,6 @@ export const useSearchClearOwner = <Suggestion>({
     isSearchSessionActive,
     lastAutoOpenKeyRef,
     requestDefaultPostSearchRestore,
-    resetFilters,
     resetFocusedMapState,
     resetMapMoveFlag,
     resetShortcutCoverageState,
@@ -179,11 +182,9 @@ export const useSearchClearOwner = <Suggestion>({
     setError,
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
-    setIsSearchSessionActive,
     setIsSuggestionPanelActive,
     setQuery,
     setRestaurantOnlyIntent,
-    setSearchMode,
     setSearchTransitionVariant,
     setShowSuggestions,
     setSuggestions,
@@ -226,7 +227,18 @@ export const useSearchClearOwner = <Suggestion>({
       if (!deferSuggestionClear) {
         resetSubmitTransitionHold();
       }
-      resetFilters();
+      // Dismiss is ONE commit moment = ONE atomic tuple write (identity idle + filters
+      // reset + bounds cleared). Two writes made the intermediate filters-only delta
+      // classify as a phantom variant_rerun — caught by the S4a reconciler parity trace.
+      writeSearchDesiredTuple(
+        searchRuntimeBus,
+        {
+          queryIdentity: { kind: 'idle' },
+          committedBounds: null,
+          filterVariant: { ...DEFAULT_SEARCH_FILTER_VARIANT },
+        },
+        'dismiss'
+      );
       cancelToggleInteraction();
       if (!preserveForegroundEditing) {
         setIsSearchFocused(false);
@@ -240,11 +252,10 @@ export const useSearchClearOwner = <Suggestion>({
       publishSearchMountedResultsDataSnapshot(null);
       searchRuntimeBus.publish({
         resultsRequestKey: null,
-        resultsHydrationCandidateKey: null,
+        resultsIdentityCandidateKey: null,
         resultsPage: null,
         resultsDishCount: 0,
         resultsRestaurantCount: 0,
-        submittedQuery: '',
         currentPage: 1,
         hasMoreFood: false,
         hasMoreRestaurants: false,
@@ -258,8 +269,6 @@ export const useSearchClearOwner = <Suggestion>({
       if (!deferSuggestionClear && !preserveForegroundEditing) {
         setSuggestions([]);
       }
-      setIsSearchSessionActive(false);
-      setSearchMode(null);
       if (skipSheetAnimation) {
         resetSheetToHidden();
       }
@@ -306,7 +315,6 @@ export const useSearchClearOwner = <Suggestion>({
       profilePresentationActiveRef,
       clearRestaurantProfileForSearchDismissRef,
       requestDefaultPostSearchRestore,
-      resetFilters,
       resetFocusedMapState,
       resetMapMoveFlag,
       resetRestaurantProfileFocusSessionRef,
@@ -319,11 +327,9 @@ export const useSearchClearOwner = <Suggestion>({
       setError,
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
-      setIsSearchSessionActive,
       setIsSuggestionPanelActive,
       setQuery,
       setRestaurantOnlyIntent,
-      setSearchMode,
       setSearchTransitionVariant,
       setShowSuggestions,
       setSuggestions,

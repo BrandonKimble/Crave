@@ -32,7 +32,7 @@ import {
   logPerfScenarioWorkSpan,
 } from '../../../../perf/perf-scenario-work-span';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
-import { useHasNavHideIntent } from '../../../../navigation/runtime/nav-hide-intent-store';
+import { useIsNavOutChildSceneRevealed } from '../../../../navigation/runtime/nav-out-derivation-store';
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
@@ -44,8 +44,6 @@ import {
   registerSearchBottomNavMotionCommandSink,
   type SearchBottomNavMotionTarget,
 } from './search-bottom-nav-motion-runtime';
-
-const RESULTS_WASH_FADE_MS = 220;
 
 const commandBottomNavMotionOnUI = (
   bottomNavHideProgress: ReturnType<typeof useSharedValue<number>>,
@@ -74,7 +72,6 @@ type UseSearchForegroundBottomNavVisualRuntimeArgs = Pick<
   UseSearchForegroundVisualRuntimeArgs,
   | 'shouldDimResultsSheet'
   | 'suggestionProgress'
-  | 'shouldSuspendResultsSheet'
   | 'isSearchOverlay'
   | 'inputMode'
   | 'searchSheetContentLaneKind'
@@ -88,7 +85,6 @@ type UseSearchForegroundBottomNavVisualRuntimeArgs = Pick<
 export const useSearchForegroundBottomNavVisualRuntime = ({
   shouldDimResultsSheet,
   suggestionProgress,
-  shouldSuspendResultsSheet,
   isSearchOverlay,
   inputMode,
   searchSheetContentLaneKind,
@@ -125,9 +121,10 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     !isPersistentPollHandoffCommitted;
   const shouldStartBottomNavHiddenForResultsMotion = shouldHideBottomNavForSearchResultsMotion;
   const shouldHideBottomNavForSuggestionSurface = isSuggestionPanelActive;
-  // Any scene can request the nav-push transition via the shareable intent registry
-  // (e.g. the poll-detail thread). Reuses this exact motion + sheet-grow.
-  const hasExternalNavHideIntent = useHasNavHideIntent();
+  // Nav-out is DERIVED (trigger-nav ideal §4.1): the nav leaves whenever the top-of-stack
+  // entry is a child scene — poll detail, restaurant, saveList, and every stub page inherit
+  // this motion + sheet-grow by construction, no per-scene opt-in.
+  const hasExternalNavHideIntent = useIsNavOutChildSceneRevealed();
   const shouldHideBottomNavForMotion =
     shouldHideBottomNavForSearchResultsMotion ||
     shouldHideBottomNavForSuggestionSurface ||
@@ -150,13 +147,9 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
   const navBarTop = navBarTopForSnaps;
   const navBarHeight = fallbackNavBarHeight;
 
-  const resultsWashOpacity = useSharedValue(0);
   const bottomNavHideProgress = useSharedValue(shouldStartBottomNavHiddenForResultsMotion ? 0 : 1);
   const navBarCutoutIsHidingValue = useSharedValue(shouldStartBottomNavHiddenForResultsMotion);
   const bottomNavOpacity = useSharedValue(shouldHideBottomNavForSuggestionSurface ? 0 : 1);
-  const resultsWashAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: resultsWashOpacity.value,
-  }));
   const resultsSheetVisibilityAnimatedStyle = useAnimatedStyle(
     () => ({
       opacity: shouldDimResultsSheet ? 1 - suggestionProgress.value : 1,
@@ -196,12 +189,6 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     ]
   );
 
-  React.useEffect(() => {
-    resultsWashOpacity.value = withTiming(shouldSuspendResultsSheet ? 1 : 0, {
-      duration: RESULTS_WASH_FADE_MS,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [resultsWashOpacity, shouldSuspendResultsSheet]);
   const commandBottomNavMotion = React.useCallback(
     (target: SearchBottomNavMotionTarget) => {
       runOnUI(commandBottomNavMotionOnUI)(bottomNavHideProgress, navBarCutoutIsHidingValue, target);
@@ -469,7 +456,6 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     navBarTop,
     navBarHeight,
     bottomNavHiddenTranslateY,
-    resultsWashAnimatedStyle,
     resultsSheetVisibilityAnimatedStyle,
     shouldHideBottomNavForRender,
     navBarCutoutIsHiding: shouldHideBottomNavForMotion,

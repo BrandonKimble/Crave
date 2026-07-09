@@ -13,6 +13,7 @@ import {
 import { BottomSheetSceneStackMountedBody } from './BottomSheetSceneStackMountedBodyRegistry';
 import { BottomSheetSceneStackListBodySurface } from './BottomSheetSceneStackListBodySurface';
 import { useMountedSceneScrollRestore } from './useMountedSceneScrollRestore';
+import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
 import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneStackBodyActivityContext';
 
 const StaticContentSurface = React.memo(
@@ -45,9 +46,14 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
   // path, as the sole writer that frame. For the list path / static / non-mounted scenes the
   // render-activity provider is absent → hasActivatedExpandedContent defaults false → inert.
   const { hasActivatedExpandedContent } = useBottomSheetSceneStackBodyRenderActivity();
+  // S-B origin-on-entry: hasActivatedExpandedContent only ever flips for RETAINED static tabs
+  // with data lanes — a child mounted scene (no data lane) renders its content SYNCHRONOUSLY,
+  // so its content is ready whenever it is active. Without this arm the pop-restore gate never
+  // opens for child scenes (proven RED on the rig: staged lane consumed by nothing).
+  const isSynchronousMountedContent = !isSceneBodyDataActivityKey(sceneKey);
   const mountedScrollRestoreRef = useMountedSceneScrollRestore({
     sceneKey,
-    contentReady: isActive && hasActivatedExpandedContent,
+    contentReady: isActive && (hasActivatedExpandedContent || isSynchronousMountedContent),
   });
   const sceneBodyContentSpec = sceneBodyContentEntry.bodyContentSpec;
   const sceneBodyTransportSpec = sceneBodyTransportEntry.bodyTransportSpec;
@@ -62,8 +68,8 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     sceneBodyContentSpec.surfaceKind === 'content'
       ? sceneBodyContentSpec.contentScrollMode
       : sceneBodyContentSpec.surfaceKind === 'mounted'
-      ? sceneBodyContentSpec.contentScrollMode ?? 'scroll'
-      : 'scroll';
+        ? (sceneBodyContentSpec.contentScrollMode ?? 'scroll')
+        : 'scroll';
   const sceneContentComponent =
     sceneBodyContentSpec.surfaceKind === 'content' ? (
       sceneBodyContentSpec.contentComponent

@@ -27,14 +27,24 @@ export const useSearchRootSubmitUiPresentationIntentPorts = ({
       onPresentationIntentStart: (params) => {
         resultsPresentationOwner.presentationActions.cancelCloseSearch();
         if (params.kind === 'search_this_area') {
-          resultsPresentationOwner.beginSearchThisAreaPresentationPending();
+          resultsPresentationOwner.beginSearchThisAreaPresentationPending(params.operationToken);
+          return;
+        }
+        // TR5-N: a chip rerun's pending cover was already armed BY THE TOGGLE RUNNER at commit
+        // (beginVariantRerunPresentationPending, keyed to the toggle intent id). Staging happens
+        // at response commit — nothing to do at submit time.
+        if (params.kind === 'variant_rerun') {
           return;
         }
         const presentationKind =
           params.kind === 'shortcut_rerun' ? 'shortcut_submit' : 'manual_submit';
         resultsPresentationOwner.presentationActions.requestSearchPresentationIntent({
           kind: presentationKind,
-          transactionId: resultsPresentationOwner.pendingTogglePresentationIntentId ?? undefined,
+          // S4c-1c-3: the enter transaction IS the episode token (worldId end-to-end);
+          // a submit landing inside a pending toggle keeps the toggle intent id so the
+          // coordinator's visual-sync finalize still matches.
+          transactionId:
+            resultsPresentationOwner.pendingTogglePresentationIntentId ?? params.operationToken,
           query:
             params.submittedLabel ??
             (params.mode === 'shortcut'

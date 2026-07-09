@@ -6,6 +6,9 @@ import { Text } from '../../components';
 import { overlaySheetStyles } from '../overlaySheetStyles';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
+import { useTopMostRouteEntryForScene } from '../../navigation/runtime/use-top-most-route-entry-for-scene';
+import { useAccountActionsRuntime } from './runtime/use-account-actions-runtime';
+import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
 
 // ─── Stub-pass scenes (plans/page-registry.md §1) ────────────────────────────────────────────
 // Placeholder mounted bodies + persistent headers for the 7 registered-but-unbuilt child
@@ -43,6 +46,128 @@ const createStubMountedSceneBody = (sceneKey: StubSceneKey): React.ComponentType
   StubMountedSceneBody.displayName = `StubMountedSceneBody(${sceneKey})`;
   return StubMountedSceneBody;
 };
+
+// ─── Drill-in practice bodies (S-B slices 3b/4 — trigger-nav ideal §4.2) ────────────────────
+// The child-nav mechanism is exercised against REAL pushes with placeholder pixels: the
+// userProfile body pushes followList; followList rows push OTHER userProfiles — same-key
+// nesting (userProfile(A) → followList → userProfile(B)) and exact back-out run on device.
+// A leg renders from the TOP-MOST entry of ITS key (useTopMostRouteEntryForScene) — never
+// activeOverlayRoute. UI identity comes later per page; the logic is the deliverable.
+
+const DrillInRow = ({
+  label,
+  testID,
+  onPress,
+}: {
+  label: string;
+  testID: string;
+  onPress: () => void;
+}) => (
+  <Pressable
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel={label}
+    testID={testID}
+    style={styles.drillInRow}
+  >
+    <Text variant="body" weight="semibold" style={styles.bodyText}>
+      {label}
+    </Text>
+  </Pressable>
+);
+
+// 30 rows: tall enough to SCROLL, so origin-on-entry capture/restore is rig-provable (scroll
+// deep, drill into a profile, come back — the offset must return; a RED run shows top-of-list).
+const FAKE_FOLLOW_USER_IDS = [
+  'u-alice',
+  'u-bob',
+  'u-carol',
+  ...Array.from({ length: 27 }, (_, index) => `u-user-${String(index + 1).padStart(2, '0')}`),
+] as const;
+
+const UserProfileDrillInBody = React.memo(() => {
+  const entry = useTopMostRouteEntryForScene('userProfile');
+  const { pushRoute } = useAppOverlayRouteController();
+  const userId = entry?.params?.userId ?? 'unknown';
+  return (
+    <View style={styles.body} testID="stub-scene-userProfile">
+      <Text variant="body" style={styles.bodyText} testID="user-profile-user-id">
+        {`Profile of ${userId}`}
+      </Text>
+      <DrillInRow
+        label="Followers"
+        testID="user-profile-followers"
+        onPress={() => pushRoute('followList', { userId, mode: 'followers' })}
+      />
+      <DrillInRow
+        label="Following"
+        testID="user-profile-following"
+        onPress={() => pushRoute('followList', { userId, mode: 'following' })}
+      />
+    </View>
+  );
+});
+UserProfileDrillInBody.displayName = 'UserProfileDrillInBody';
+
+const FollowListDrillInBody = React.memo(() => {
+  const entry = useTopMostRouteEntryForScene('followList');
+  const { pushRoute } = useAppOverlayRouteController();
+  const mode = entry?.params?.mode ?? 'followers';
+  const ownerUserId = entry?.params?.userId ?? 'unknown';
+  // ONE hook call = this scene is a return-to-origin source (live scroll published; capture
+  // falls out of the generalized rich-origin fallback; restore is the mounted-body hook).
+  useOriginSceneScrollPublication('followList');
+  return (
+    <View style={styles.body} testID="stub-scene-followList">
+      <Text variant="body" style={styles.bodyText} testID="follow-list-context">
+        {`${mode === 'following' ? 'Following' : 'Followers'} of ${ownerUserId}`}
+      </Text>
+      {FAKE_FOLLOW_USER_IDS.map((userId) => (
+        <DrillInRow
+          key={userId}
+          label={userId}
+          testID={`follow-list-user-${userId}`}
+          onPress={() => pushRoute('userProfile', { userId })}
+        />
+      ))}
+    </View>
+  );
+});
+FollowListDrillInBody.displayName = 'FollowListDrillInBody';
+
+// The settings SCENE owns the rows the old placeholder action-list modal held (§5.7): edit
+// profile is a real child push; sign-out / replay-onboarding ride the extracted account
+// actions runtime. "Sample public profile" is the drill-in practice entry into the
+// userProfile ⇄ followList loop until EntityLink (S-D) wires the real ones.
+const SettingsSceneBody = React.memo(() => {
+  const { pushRoute } = useAppOverlayRouteController();
+  const { handleSignOut, handleReplayOnboarding } = useAccountActionsRuntime();
+  return (
+    <View style={styles.body} testID="stub-scene-settings">
+      <DrillInRow
+        label="Edit profile"
+        testID="settings-edit-profile"
+        onPress={() => pushRoute('editProfile')}
+      />
+      <DrillInRow
+        label="Sample public profile"
+        testID="settings-sample-profile"
+        onPress={() => pushRoute('userProfile', { userId: 'u-me' })}
+      />
+      <DrillInRow
+        label="Replay onboarding"
+        testID="settings-replay-onboarding"
+        onPress={() => void handleReplayOnboarding()}
+      />
+      <DrillInRow
+        label="Sign out"
+        testID="settings-sign-out"
+        onPress={() => void handleSignOut()}
+      />
+    </View>
+  );
+});
+SettingsSceneBody.displayName = 'SettingsSceneBody';
 
 const createStubPersistentHeaderTitle = (sceneKey: StubSceneKey): React.ComponentType => {
   // Static text → synchronous first-frame render (same contract as SaveListPanel's title).
@@ -96,11 +221,21 @@ const createStubScene = (sceneKey: StubSceneKey): React.ComponentType => {
   return createStubMountedSceneBody(sceneKey);
 };
 
-export const UserProfileMountedSceneBody = createStubScene('userProfile');
+const registerStubHeader = (sceneKey: StubSceneKey): void => {
+  registerPersistentHeaderDescriptor(sceneKey, {
+    Title: createStubPersistentHeaderTitle(sceneKey),
+    Action: createStubPersistentHeaderAction(sceneKey),
+  });
+};
+
+registerStubHeader('userProfile');
+registerStubHeader('followList');
+registerStubHeader('settings');
+export const UserProfileMountedSceneBody = UserProfileDrillInBody;
+export const FollowListMountedSceneBody = FollowListDrillInBody;
+export const SettingsMountedSceneBody = SettingsSceneBody;
 export const ListDetailMountedSceneBody = createStubScene('listDetail');
-export const FollowListMountedSceneBody = createStubScene('followList');
 export const NotificationsMountedSceneBody = createStubScene('notifications');
-export const SettingsMountedSceneBody = createStubScene('settings');
 export const EditProfileMountedSceneBody = createStubScene('editProfile');
 export const ShareConfigMountedSceneBody = createStubScene('shareConfig');
 
@@ -110,6 +245,11 @@ const styles = StyleSheet.create({
   },
   bodyText: {
     color: '#0f172a',
+  },
+  drillInRow: {
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#e2e8f0',
   },
   headerTextGroup: {
     flex: 1,

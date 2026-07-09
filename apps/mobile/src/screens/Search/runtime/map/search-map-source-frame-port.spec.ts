@@ -61,6 +61,7 @@ const makeSnapshot = (): SearchMapSourceFrameSnapshot => ({
   shortcutCoverageReadinessReason: 'accepted_features',
   mapSearchSurfaceResultsSourcesReady: true,
   mapSearchSurfaceResultsSourcesReadyKey: 'ready-key-1',
+  candidateCatalog: null,
 });
 
 // The frame comparator's contract: these fields ARE keyed (each must flip equality)…
@@ -74,6 +75,7 @@ const FRAME_KEYED_FIELDS = [
   'labelCollisionSourceStore',
   'labelDerivedSourceIdentityKey',
   'markersRenderKey',
+  'candidateCatalog',
 ] as const satisfies readonly (keyof SearchMapSourceFrameSnapshot)[];
 
 // …and these are DELIBERATELY exempt: telemetry/readiness surface state that notifies
@@ -115,6 +117,7 @@ const FIELD_MUTATORS: {
   shortcutCoverageReadinessReason: () => 'request_failed',
   mapSearchSurfaceResultsSourcesReady: (base) => !base.mapSearchSurfaceResultsSourcesReady,
   mapSearchSurfaceResultsSourcesReadyKey: () => 'ready-key-2',
+  candidateCatalog: () => ({ key: 'catalog-2', entries: [] }),
 };
 
 const withMutatedField = (

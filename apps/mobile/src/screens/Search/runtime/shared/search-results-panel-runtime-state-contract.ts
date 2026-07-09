@@ -8,23 +8,33 @@ export type SearchResultsPayload = SearchResponse | null;
 export type SearchResultsPanelResultsRuntimeState = {
   results: SearchResultsPayload;
   resultsRequestKey: string | null;
-  resultsHydrationCandidateKey: string | null;
+  resultsIdentityCandidateKey: string | null;
   resultsPage: number | null;
   resultsDishCount: number;
   resultsRestaurantCount: number;
   activeTab: 'dishes' | 'restaurants';
-  pendingTabSwitchTab: 'dishes' | 'restaurants' | null;
+  desiredTab: 'dishes' | 'restaurants';
+  resolutionFailure: {
+    generation: number;
+    reason: string;
+    offline: boolean;
+    atMs: number;
+  } | null;
   canLoadMore: boolean;
   isSearchLoading: boolean;
   isLoadingMore: boolean;
   submittedQuery: string;
+  searchMode: string | null;
 };
 
 export type SearchResultsPanelFiltersRuntimeState = {
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
   openNow: boolean;
-  votesFilterActive: boolean;
+  includeSimilarActive: boolean;
+  // metadata.similarAvailable from the committed page-1 response — drives the
+  // "similar results available" chip (rendered when > 0 and the toggle is off).
+  similarAvailableCount: number;
   risingActive: boolean;
   isPriceSelectorVisible: boolean;
 };

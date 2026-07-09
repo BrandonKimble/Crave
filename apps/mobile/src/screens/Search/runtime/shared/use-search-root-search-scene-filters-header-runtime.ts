@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { cloneSearchFiltersLayoutCache } from '../../components/SearchFilters';
+import type { SearchRuntimeBus } from './search-runtime-bus';
 import { ACTIVE_TAB_COLOR, CONTENT_HORIZONTAL_PADDING } from '../../constants/search';
 import { useSearchFilterChipReadModel } from '../read-models/chip-read-model-builder';
 import type { SearchRootFilterModalControlLane } from './use-search-root-control-plane-runtime-contract';
@@ -10,6 +11,7 @@ import type { useSearchResultsPanelHydrationKeyRuntime } from './use-search-resu
 import type { useSearchResultsPanelResultsRuntimeState } from './use-search-results-panel-results-runtime-state';
 
 export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
+  searchRuntimeBus,
   stateFoundationLane,
   filterModalControlLane,
   searchResultsRuntimeState,
@@ -17,6 +19,7 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
   hydrationKeyRuntime,
   scheduleTabToggleCommit,
 }: {
+  searchRuntimeBus: SearchRuntimeBus;
   stateFoundationLane: SearchRootStateFoundationLane;
   filterModalControlLane: SearchRootFilterModalControlLane;
   searchResultsRuntimeState: ReturnType<typeof useSearchResultsPanelResultsRuntimeState>;
@@ -25,8 +28,7 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
   scheduleTabToggleCommit: (next: 'dishes' | 'restaurants') => void;
 }) => {
   const { searchState } = stateFoundationLane.rootPrimitivesRuntime;
-  const filtersActiveTab =
-    searchResultsRuntimeState.pendingTabSwitchTab ?? searchResultsRuntimeState.activeTab;
+  const filtersActiveTab = searchResultsRuntimeState.desiredTab;
   const handleInteractionTabChange = React.useCallback(
     (next: 'dishes' | 'restaurants') => {
       scheduleTabToggleCommit(next);
@@ -39,19 +41,24 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
     priceButtonLabel: searchFiltersRuntimeState.priceButtonLabelText,
     priceButtonActive: searchFiltersRuntimeState.priceButtonIsActive,
     openNow: searchFiltersRuntimeState.openNow,
-    votesFilterActive: searchFiltersRuntimeState.votesFilterActive,
+    includeSimilarActive: searchFiltersRuntimeState.includeSimilarActive,
+    similarAvailableCount: searchFiltersRuntimeState.similarAvailableCount,
     risingActive: searchFiltersRuntimeState.risingActive,
     isPriceSelectorVisible: searchFiltersRuntimeState.isPriceSelectorVisible,
   });
 
   return React.useMemo(
     () => ({
+      // Live chip-state source for the strip (see SearchFiltersProps.searchRuntimeBus) — a
+      // stable reference, so it never churns this memo.
+      searchRuntimeBus,
       activeTab: filtersActiveTab,
       onTabChange: handleInteractionTabChange,
       openNow: filterChipReadModel.openNow,
       onToggleOpenNow: filterModalControlLane.filterModalRuntime.toggleOpenNow,
-      votesFilterActive: filterChipReadModel.votesFilterActive,
-      onToggleVotesFilter: filterModalControlLane.filterModalRuntime.toggleVotesFilter,
+      includeSimilarActive: filterChipReadModel.includeSimilarActive,
+      similarAvailableCount: filterChipReadModel.similarAvailableCount,
+      onToggleIncludeSimilar: filterModalControlLane.filterModalRuntime.toggleIncludeSimilar,
       risingActive: filterChipReadModel.risingActive,
       onToggleRising: filterModalControlLane.filterModalRuntime.toggleRising,
       priceButtonLabel: filterChipReadModel.priceButtonLabel,
@@ -70,11 +77,12 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
       filterChipReadModel.openNow,
       filterChipReadModel.priceButtonActive,
       filterChipReadModel.priceButtonLabel,
-      filterChipReadModel.votesFilterActive,
+      filterChipReadModel.includeSimilarActive,
+      filterChipReadModel.similarAvailableCount,
       filterChipReadModel.risingActive,
       filterModalControlLane.filterModalRuntime.toggleOpenNow,
       filterModalControlLane.filterModalRuntime.togglePriceSelector,
-      filterModalControlLane.filterModalRuntime.toggleVotesFilter,
+      filterModalControlLane.filterModalRuntime.toggleIncludeSimilar,
       filterModalControlLane.filterModalRuntime.toggleRising,
       filtersActiveTab,
       handleInteractionTabChange,

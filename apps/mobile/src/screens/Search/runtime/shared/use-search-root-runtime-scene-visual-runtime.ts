@@ -11,5 +11,4 @@ export const useSearchRootRuntimeSceneVisualRuntime = ({
 }): SearchRootSearchSceneVisualRuntime => ({
   overlayHeaderActionProgress: appRouteSceneChromeMotionRuntime.overlayHeaderActionProgress,
   resultsSheetVisibilityAnimatedStyle: foregroundVisualRuntime.resultsSheetVisibilityAnimatedStyle,
-  resultsWashAnimatedStyle: foregroundVisualRuntime.resultsWashAnimatedStyle,
 });

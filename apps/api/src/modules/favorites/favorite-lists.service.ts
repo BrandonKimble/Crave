@@ -325,6 +325,8 @@ export class FavoriteListsService {
           page: 1,
           pageSize: 1,
           resultCoverageStatus: 'full',
+          emptyQueryMessage:
+            'This list has no items yet — add favorites to see them here.',
           analysisMetadata: {
             favorites: {
               listId,

@@ -1,4 +1,5 @@
 import React from 'react';
+import { selectSearchMode } from './search-desired-tuple-selectors';
 
 import { useResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
 import { useResultsPresentationShellModelRuntime } from './use-results-presentation-shell-model-runtime';
@@ -17,6 +18,7 @@ import {
   selectSearchSurfaceVisualPolicy,
   useSearchSurfaceRuntimeSelector,
 } from '../surface/search-surface-runtime';
+import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 
 type UseResultsPresentationShellRuntimeArgs = {
   query: string;
@@ -93,9 +95,25 @@ export const useResultsPresentationShellRuntime = ({
     onSearchSheetContentLaneChanged?.(laneChange);
   }, [onSearchSheetContentLaneChanged, policyFactsSnapshot]);
 
+  // Shortcut toggle title swap inputs (display-only): the bar text follows the OPTIMISTIC tab
+  // (tuple.tab flips at toggle press-up) for shortcut-mode searches.
+  const shortcutToggleDisplayState = useSearchRuntimeBusSelector(
+    searchRuntimeBus,
+    (state) => ({
+      searchMode: selectSearchMode(state),
+      optimisticActiveTab: state.desiredTuple.tab,
+    }),
+    (left, right) =>
+      left.searchMode === right.searchMode &&
+      left.optimisticActiveTab === right.optimisticActiveTab,
+    ['desiredTuple'] as const
+  );
+
   const shellModel = useResultsPresentationShellModelRuntime({
     query,
     submittedQuery,
+    searchMode: shortcutToggleDisplayState.searchMode,
+    optimisticActiveTab: shortcutToggleDisplayState.optimisticActiveTab,
     isSuggestionPanelActive,
     shouldRenderSearchOverlay,
     shouldEnableShortcutInteractions,

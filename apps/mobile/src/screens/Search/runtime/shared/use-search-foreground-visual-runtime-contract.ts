@@ -6,7 +6,6 @@ export type UseSearchForegroundVisualRuntimeArgs = {
   shouldDimResultsSheet: boolean;
   isSuggestionOverlayVisible: boolean;
   suggestionProgress: SharedValue<number>;
-  shouldSuspendResultsSheet: boolean;
   isSearchOverlay: boolean;
   inputMode: 'editing' | 'resting';
   searchSheetContentLaneKind: string;
@@ -37,7 +36,6 @@ export type SearchForegroundBottomNavVisualRuntime = {
   navBarTop: number;
   navBarHeight: number;
   bottomNavHiddenTranslateY: number;
-  resultsWashAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   resultsSheetVisibilityAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   shouldHideBottomNavForRender: boolean;
   navBarCutoutIsHiding: boolean;

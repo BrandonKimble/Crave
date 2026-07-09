@@ -21,7 +21,6 @@ import {
   overlaySheetStyles,
 } from '../overlaySheetStyles';
 import { resolveExpandedTop } from '../sheetUtils';
-import { useNavHideIntent } from '../../navigation/runtime/nav-hide-intent-store';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import type { OverlayRouteEntry } from '../../navigation/runtime/app-overlay-route-types';
@@ -69,9 +68,8 @@ export const usePollCreationPanelSpec = ({
   onCreated,
 }: UsePollCreationPanelSpecOptions): SearchRoutePublishedSceneParts => {
   const insets = useSafeAreaInsets();
-  // §J: push the bottom tab bar down while creating (like pollDetail) so the pinned Publish chin
-  // has the bottom band to itself and isn't covered by the nav.
-  useNavHideIntent('pollCreation', visible);
+  // §J: the bottom tab bar leaves via the DERIVED nav-out rule (child scene ⇒ nav out), so
+  // the pinned Publish chin has the bottom band to itself and isn't covered by the nav.
   const { pushRoute } = useAppOverlayRouteController();
   // Subject-first: the free-text question the LLM resolves into a poll (type + axis
   // are inferred server-side — no manual poll-type picker). The description is the

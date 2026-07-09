@@ -14,9 +14,7 @@ export type ResultsPresentationPanelState = {
   surfaceMode: ResultsPresentationPanelSurfaceMode;
   shouldShowResultsSurface: boolean;
   surfaceActive: boolean;
-  shouldUseInteractionSurface: boolean;
   shouldHideScrollHeaderForSurface: boolean;
-  shouldRenderWhiteWash: boolean;
 };
 
 export const resolveResultsPresentationPanelState = ({
@@ -24,6 +22,7 @@ export const resolveResultsPresentationPanelState = ({
   allowsInteractionLoadingState,
   hasRenderableRows,
   hasResolvedResults,
+  hasResolutionFailure = false,
   isSearchLoading,
   shouldUsePlaceholderRows,
   freezeClassification,
@@ -32,6 +31,9 @@ export const resolveResultsPresentationPanelState = ({
   allowsInteractionLoadingState: boolean;
   hasRenderableRows: boolean;
   hasResolvedResults: boolean;
+  /** The bus failure level: a failed FIRST search has nothing resolved but must
+   *  still render the empty surface (failure copy + Retry), never a blank sheet. */
+  hasResolutionFailure?: boolean;
   isSearchLoading: boolean;
   shouldUsePlaceholderRows: boolean;
   freezeClassification: SearchFreezeClassification;
@@ -50,7 +52,7 @@ export const resolveResultsPresentationPanelState = ({
     !shouldShowInteractionLoadingState &&
     !shouldShowInitialLoadingState &&
     !hasRenderableRows &&
-    hasResolvedResults &&
+    (hasResolvedResults || hasResolutionFailure) &&
     !isSearchLoading;
   const surfaceMode: ResultsPresentationPanelSurfaceMode = shouldShowInitialLoadingState
     ? 'initial_loading'
@@ -71,8 +73,6 @@ export const resolveResultsPresentationPanelState = ({
     surfaceMode,
     shouldShowResultsSurface: surfaceMode !== 'none',
     surfaceActive: surfaceMode !== 'none',
-    shouldUseInteractionSurface: surfaceMode === 'interaction_loading',
     shouldHideScrollHeaderForSurface: surfaceMode === 'initial_loading',
-    shouldRenderWhiteWash: surfaceMode === 'initial_loading',
   };
 };

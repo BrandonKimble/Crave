@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { createSearchRootSearchSceneChromeFreezeRuntime } from '../controller/search-root-search-scene-chrome-freeze-runtime';
+import { resolveShortcutToggleDisplayQuery } from './shortcut-toggle-display-query';
 import type { useSearchRootSearchSceneFiltersHeaderRuntime } from './use-search-root-search-scene-filters-header-runtime';
 import type { useSearchRootSearchSceneHeaderLayoutRuntime } from './use-search-root-search-scene-header-layout-runtime';
 import type { useSearchResultsPanelHydrationRuntimeState } from './use-search-results-panel-hydration-runtime-state';
@@ -44,7 +45,14 @@ export const useSearchRootSearchSceneChromeFreezeRuntime = ({
   const freezeRuntimeValue = searchSceneChromeFreezeRuntimeRef.current.resolve({
     shouldFreezeResultsChrome,
     filtersHeaderRuntime,
-    submittedQuery: searchResultsRuntimeState.submittedQuery,
+    // Shortcut toggle title swap: a shortcut search toggled to the sibling tab shows the sibling
+    // shortcut's label ("Best restaurants" ⇄ "Best dishes"), swapped optimistically on press-up
+    // via the desired tab (tuple.tab). Display-only.
+    submittedQuery: resolveShortcutToggleDisplayQuery({
+      displayQuery: searchResultsRuntimeState.submittedQuery,
+      searchMode: searchResultsRuntimeState.searchMode,
+      optimisticActiveTab: searchResultsRuntimeState.desiredTab,
+    }),
     effectiveFiltersHeaderHeight,
     effectiveResultsHeaderHeight,
   });

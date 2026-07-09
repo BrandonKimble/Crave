@@ -26,13 +26,12 @@ export const useSearchRootSubmitRuntimePorts = ({
 }: UseSearchRootSubmitRuntimePortsArgs): SearchRootSubmitRuntimePorts => {
   const { rootPrimitivesRuntime, rootDataPlaneRuntime, sessionPrimitivesLane } =
     stateFoundationLane;
-  const { lastAutoOpenKeyRef, searchRequestRuntimeOwner } = requestExecutionAuthorityRuntime;
+  const { lastAutoOpenKeyRef } = requestExecutionAuthorityRuntime;
   const coreRuntimePorts = useSearchRootSubmitRuntimeCorePorts({
     runtimeWorkSchedulerRef: sessionCoreLane.runtimeWorkSchedulerRef,
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
     lastSearchRequestIdRef: sessionPrimitivesLane.primitives.lastSearchRequestIdRef,
     lastAutoOpenKeyRef,
-    requestRuntimeOwner: searchRequestRuntimeOwner,
   });
   const viewportRuntimePorts = useSearchRootSubmitRuntimeViewportPorts({
     runSearch: rootDataPlaneRuntime.requestStatusRuntime.runSearch,

@@ -31,7 +31,6 @@ export const useSearchRootSubmitUiPresentationPorts = ({
   submitReadModel,
 }: UseSearchRootSubmitUiPresentationPortsArgs): SearchRootSubmitUiPresentationPorts => {
   const resultsPresentationPorts = useSearchRootSubmitUiResultsPresentationPorts({
-    stateFoundationLane,
     resultsPresentationOwner,
     profileOwner,
   });

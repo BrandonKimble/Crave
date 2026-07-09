@@ -1,5 +1,7 @@
 import React from 'react';
 import { unstable_batchedUpdates } from 'react-native';
+import { requestSearchBottomNavMotionTarget } from './search-bottom-nav-motion-runtime';
+import { hasSearchSessionAboveRoot } from '../../../../navigation/runtime/app-overlay-route-stack-algebra';
 
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import { createSearchSurfaceResultsExitTransaction } from './search-surface-results-transaction';
@@ -147,6 +149,44 @@ export const useResultsPresentationCloseActionsRuntime = ({
     // terminalDismiss path below (the home seam stays byte-identical). We tear down the search
     // SURFACE first with skipPostSearchRestore (it does NOT arm/flush, so the captured origin
     // survives), THEN emit the single re-root — mirroring the finalize CLEAR→RESTORE order.
+    // S-C.2 (plans/s-c-de-special-search.md): a search session PUSHED over a bookmarks/profile
+    // root dismisses as a plain POP — the root was never destroyed, and the popped entry's
+    // origin (S-B origin-on-entry) restores the departed presentation. The slot-based rich
+    // seam below remains for legacy (search-root) flows until S-C.3.
+    {
+      const routeState = routeSceneRuntime.routeSceneSwitchRuntime.getRouteState();
+      // Search-root (home) sessions keep the LEGACY terminalDismiss choreography for now —
+      // it owns the native map exit (the wire's dismiss correlation) that a bare pop skips
+      // (proven: home pop left the dismissed world's dots on the map). The motionless dismiss
+      // transaction that lets home dismiss be a true pop is S-C.3-B ledger item 1. Its setRoot
+      // collapse of [home, session] → [home] is stack-legal (setRoot = tab reset).
+      // Red team RT-1: detection is STACK MEMBERSHIP — a child (restaurant) may top the
+      // session; the dismissal then pops EVERYTHING above the root (popToRoot restores the
+      // deepest pushed entry's origin = the root's captured presentation).
+      const isPushedSearchSession =
+        routeState.rootOverlayKey !== 'search' && hasSearchSessionAboveRoot(routeState);
+      if (isPushedSearchSession) {
+        ignoreNextSearchBlurRef.current = true;
+        unstable_batchedUpdates(() => {
+          clearSearchState({
+            skipPostSearchRestore: true,
+            skipProfileDismissClear: true,
+          });
+          resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
+          setPendingCloseIntentId(null);
+          routeSceneRuntime.routeOverlayRouteCommandRuntime.popToRootRoute({
+            applyOriginDetent: true,
+          });
+          getSearchSurfaceRuntime().finalizeSessionExitWithoutDismissMotion();
+
+          // The submit choreography commanded the nav out; the pop path owns commanding it
+          // home (the terminalDismiss choreography that normally does this is skipped).
+          requestSearchBottomNavMotionTarget('show');
+        });
+        return;
+      }
+    }
+
     if (routeSceneRuntime.routeOverlaySessionActions.isTopLevelRichSeededOriginCaptured()) {
       ignoreNextSearchBlurRef.current = true;
       unstable_batchedUpdates(() => {
@@ -157,6 +197,9 @@ export const useResultsPresentationCloseActionsRuntime = ({
         resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
         setPendingCloseIntentId(null);
         routeSceneRuntime.routeOverlaySessionActions.dismissRestoreToTopLevelRichOrigin();
+        // Red team RT-1: the single-switch seam never armed a dismiss transaction either —
+        // same zombie mechanism as the pop path; the finalize is idempotent.
+        getSearchSurfaceRuntime().finalizeSessionExitWithoutDismissMotion();
       });
       return;
     }

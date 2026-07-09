@@ -13,7 +13,6 @@ export const useSearchForegroundVisualRuntime = ({
   shouldDimResultsSheet,
   isSuggestionOverlayVisible,
   suggestionProgress,
-  shouldSuspendResultsSheet,
   isSearchOverlay,
   inputMode,
   searchSheetContentLaneKind,
@@ -41,7 +40,6 @@ export const useSearchForegroundVisualRuntime = ({
   const bottomNavVisualRuntime = useSearchForegroundBottomNavVisualRuntime({
     shouldDimResultsSheet,
     suggestionProgress,
-    shouldSuspendResultsSheet,
     isSearchOverlay,
     inputMode,
     searchSheetContentLaneKind,

@@ -1,7 +1,6 @@
 import type React from 'react';
 
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
-import type { SearchRequestRuntimeOwner } from '../../hooks/use-search-request-runtime-owner';
 import type { useSearchAutocompleteRuntime } from './use-search-autocomplete-runtime';
 import type { useSearchRecentActivityRuntime } from './use-search-recent-activity-runtime';
 import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
@@ -46,7 +45,10 @@ export type SearchRootResultsInteractionPorts = {
 
 export type SearchRootRequestExecutionAuthorityRuntime = {
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
-  searchRequestRuntimeOwner: SearchRequestRuntimeOwner;
+  searchRequestRuntimeOwner: {
+    /** Dismiss-time cancel: drops any in-flight request + publishes idle operation keys. */
+    cancelActiveSearchRequest: () => void;
+  };
 };
 
 export type SearchRootAutocompleteAuthorityRuntime = {

@@ -1,6 +1,11 @@
 import React from 'react';
 
 import type { SearchResponse } from '../../../../types';
+import {
+  IDLE_SEARCH_DESIRED_TUPLE,
+  type SearchDesiredTuple,
+  type SearchTupleWriteCause,
+} from './search-desired-state-contract';
 import type {
   CameraSnapshot,
   ProfileTransitionStatus,
@@ -18,14 +23,9 @@ import {
 import { logPerfScenarioStackAttribution } from '../../../../perf/perf-scenario-attribution';
 export type SearchRuntimeActiveTab = 'dishes' | 'restaurants';
 export type SearchRuntimeSearchMode = 'natural' | 'shortcut' | null;
-export type SearchRuntimeOperationLane =
-  | 'idle'
-  | 'lane_a_ack'
-  | 'lane_b_data_commit'
-  | 'lane_c_prepared_rows'
-  | 'lane_d_map_dots'
-  | 'lane_e_map_pins'
-  | 'lane_f_polish';
+/** S4c token economy: the phase of the world currently being presented. Published by
+ *  the presentation seam; refined into full reveal phases by the S4c statechart. */
+export type SearchPresentingPhase = 'idle' | 'resolving' | 'presented';
 
 export type SearchRuntimeMapPresentationPhase =
   | 'idle'
@@ -34,6 +34,7 @@ export type SearchRuntimeMapPresentationPhase =
   | 'entering'
   | 'live'
   | 'exit_preroll'
+  | 'interaction'
   | 'exiting';
 
 export const isSearchRuntimeMapPresentationPending = (
@@ -45,32 +46,46 @@ export const isSearchRuntimeMapPresentationSettled = (
 ): boolean => !isSearchRuntimeMapPresentationPending(phase);
 
 export type SearchRuntimeBusState = {
+  // S2 (plans/search-desired-state-architecture.md §2): the DESIRED SEARCH TUPLE — the
+  // single writer surface for every trigger source. Written ONLY through
+  // writeSearchDesiredTuple (search-desired-state-writer.ts); the legacy filter/tab/query
+  // keys below become read-only PROJECTIONS of it (same batch, one writer) until S4
+  // deletes them.
+  desiredTuple: SearchDesiredTuple;
+  desiredTupleGeneration: number;
+  desiredTupleCause: SearchTupleWriteCause | null;
+  // FAILURE LEVEL (single writer: the presentation seam). Set when a resolution fails,
+  // cleared when the next resolution begins — the retry chip, the failed empty state,
+  // and reconnect auto-retry all read this one fact.
+  searchResolutionFailure: {
+    generation: number;
+    reason: string;
+    offline: boolean;
+    atMs: number;
+  } | null;
   results: SearchResponse | null;
-  resultsHydrationCandidateKey: string | null;
+  resultsIdentityCandidateKey: string | null;
   resultsPage: number | null;
   resultsDishCount: number;
   resultsRestaurantCount: number;
   canLoadMore: boolean;
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
-  openNow: boolean;
-  votesFilterActive: boolean;
-  risingActive: boolean;
   isPriceSelectorVisible: boolean;
   toggleInteraction: ToggleInteractionState;
   shouldRetrySearchOnReconnect: boolean;
   hasSystemStatusBanner: boolean;
   searchSurfaceRedrawCommitSpanPressureActive: boolean;
-  submittedQuery: string;
   activeTab: SearchRuntimeActiveTab;
-  pendingTabSwitchTab: SearchRuntimeActiveTab | null;
-  searchMode: SearchRuntimeSearchMode;
-  isSearchSessionActive: boolean;
+  preferredActiveTab: SearchRuntimeActiveTab;
+  hasActiveTabPreference: boolean;
   isSearchLoading: boolean;
   isLoadingMore: boolean;
-  isMapActivationDeferred: boolean;
-  activeOperationId: string | null;
-  activeOperationLane: SearchRuntimeOperationLane;
+  /** S4c: the worldId last committed to the screen + its presentation phase — the
+   *  episode token presentation-adjacent readers key off (the lane ladder and the
+   *  bus-read operation id are gone; operation tokens thread through params). */
+  presentedWorldId: string | null;
+  presentingPhase: SearchPresentingPhase;
   currentPage: number;
   hasMoreFood: boolean;
   hasMoreRestaurants: boolean;
@@ -116,7 +131,7 @@ type SearchRuntimeBusDiagnosticEntry = {
   notifiedListenerLabels?: string[];
   batchDepth: number;
   version: number;
-  activeOperationLane: SearchRuntimeOperationLane;
+  presentingPhase: SearchPresentingPhase;
   searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
   resultsPresentationStage: string | null;
   stack?: string[];
@@ -149,32 +164,30 @@ const IDLE_PROFILE_SHELL_STATE: SearchRuntimeProfileShellState = {
 };
 
 const INITIAL_STATE: SearchRuntimeBusState = {
+  desiredTuple: IDLE_SEARCH_DESIRED_TUPLE,
+  desiredTupleGeneration: 0,
+  desiredTupleCause: null,
+  searchResolutionFailure: null,
   results: null,
-  resultsHydrationCandidateKey: null,
+  resultsIdentityCandidateKey: null,
   resultsPage: null,
   resultsDishCount: 0,
   resultsRestaurantCount: 0,
   canLoadMore: false,
   priceButtonLabelText: '',
   priceButtonIsActive: false,
-  openNow: false,
-  votesFilterActive: false,
-  risingActive: false,
   isPriceSelectorVisible: false,
   toggleInteraction: IDLE_TOGGLE_INTERACTION_STATE,
   shouldRetrySearchOnReconnect: false,
   hasSystemStatusBanner: false,
   searchSurfaceRedrawCommitSpanPressureActive: false,
-  submittedQuery: '',
   activeTab: 'dishes',
-  pendingTabSwitchTab: null,
-  searchMode: null,
-  isSearchSessionActive: false,
+  preferredActiveTab: 'dishes',
+  hasActiveTabPreference: false,
   isSearchLoading: false,
   isLoadingMore: false,
-  isMapActivationDeferred: false,
-  activeOperationId: null,
-  activeOperationLane: 'idle',
+  presentedWorldId: null,
+  presentingPhase: 'idle',
   currentPage: 1,
   hasMoreFood: false,
   hasMoreRestaurants: false,
@@ -383,25 +396,29 @@ export class SearchRuntimeBus {
     }
     if (
       changedKeys != null &&
-      !changedKeys.has('isSearchSessionActive') &&
+      !changedKeys.has('desiredTuple') &&
       !changedKeys.has('isSearchLoading') &&
       !changedKeys.has('isLoadingMore') &&
       !changedKeys.has('results') &&
       !changedKeys.has('resultsRequestKey') &&
-      !changedKeys.has('resultsHydrationCandidateKey') &&
+      !changedKeys.has('resultsIdentityCandidateKey') &&
       !changedKeys.has('resultsDishCount') &&
       !changedKeys.has('resultsRestaurantCount')
     ) {
       return;
     }
     target.updatePrimitiveSnapshot({
-      isSearchSessionActive: this.state.isSearchSessionActive,
+      // S4e: the session-active rule inlined from selectIsSearchSessionActive (the
+      // selectors module imports this file — type-only, but keep the value dep one-way).
+      isSearchSessionActive:
+        this.state.desiredTuple.queryIdentity.kind !== 'idle' &&
+        this.state.desiredTuple.queryIdentity.kind !== 'profileSeed',
       isSearchLoading: this.state.isSearchLoading,
       isLoadingMore: this.state.isLoadingMore,
       hasResults:
         this.state.results != null ||
         this.state.resultsRequestKey != null ||
-        this.state.resultsHydrationCandidateKey != null ||
+        this.state.resultsIdentityCandidateKey != null ||
         this.state.resultsDishCount > 0 ||
         this.state.resultsRestaurantCount > 0,
     });
@@ -431,7 +448,7 @@ export class SearchRuntimeBus {
             notifiedListenerLabels == null || notifiedListenerLabels.length === 0
               ? undefined
               : notifiedListenerLabels.slice(0, 16),
-          activeOperationLane: this.state.activeOperationLane,
+          presentingPhase: this.state.presentingPhase,
           searchSurfaceRedrawPhase: this.state.searchSurfaceRedrawPhase,
           resultsPresentationStage: null,
         },
@@ -450,7 +467,7 @@ export class SearchRuntimeBus {
           : notifiedListenerLabels.slice(0, 16),
       batchDepth: this.batchDepth,
       version: this.version,
-      activeOperationLane: this.state.activeOperationLane,
+      presentingPhase: this.state.presentingPhase,
       searchSurfaceRedrawPhase: this.state.searchSurfaceRedrawPhase,
       resultsPresentationStage: null,
     });

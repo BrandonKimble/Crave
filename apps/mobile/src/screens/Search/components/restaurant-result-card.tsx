@@ -358,6 +358,11 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
               </Text>
             </View>
             <View style={[styles.resultContent, styles.resultContentStack]}>
+              {restaurant.exactMatch === false ? (
+                <Text variant="caption" style={styles.similarMatchLabel}>
+                  Similar match
+                </Text>
+              ) : null}
               {craveScoreValue !== null && craveScoreValue !== undefined ? (
                 <View style={styles.metricBlock}>
                   <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>

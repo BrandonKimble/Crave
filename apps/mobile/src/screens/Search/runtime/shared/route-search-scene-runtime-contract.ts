@@ -20,7 +20,6 @@ import type { useSearchRootSearchScenePanelListTransportRuntime } from './use-se
 import type { useSearchRootSearchSceneFiltersHeaderRuntime } from './use-search-root-search-scene-filters-header-runtime';
 import type { useSearchRootSearchSceneHeaderLayoutRuntime } from './use-search-root-search-scene-header-layout-runtime';
 import type { useSearchRootSearchSceneChromeFreezeRuntime } from './use-search-root-search-scene-chrome-freeze-runtime';
-import type { useSearchRootSearchSceneInteractionFrostRuntime } from './use-search-root-search-scene-interaction-frost-runtime';
 import type { useSearchRootSearchSceneInteractionLoadingPolicyRuntime } from './use-search-root-search-scene-interaction-loading-policy-runtime';
 import type { useSearchRootSearchSceneListHeaderRuntime } from './use-search-root-search-scene-list-header-runtime';
 import type { useSearchRootSearchSceneSurfacePanelStateRuntime } from './use-search-root-search-scene-surface-panel-state-runtime';
@@ -67,6 +66,7 @@ export type SearchRootRouteSearchSceneResultsSurfaceRuntimeArgs = {
 };
 
 export type SearchRootRuntimeRouteSearchSceneDataStateRuntime = {
+  /** Failure retry: re-asserts the current desired tuple through the reconciler. */
   routeSearchSceneSearchSheetContentLane: ReturnType<
     typeof useSearchRootControlAuthorityRuntime
   >['presentationAuthorityRuntime']['resultsPresentationControlLane']['resultsPresentationOwner']['shellModel']['searchSheetContentLane'];
@@ -155,7 +155,3 @@ export type SearchRootRuntimeRouteSearchSceneSheetTransportRuntime = {
     typeof useSearchRootSearchScenePanelListTransportRuntime
   >;
 };
-
-export type SearchRootRuntimeRouteSearchSceneInteractionFrostRuntime = ReturnType<
-  typeof useSearchRootSearchSceneInteractionFrostRuntime
->;

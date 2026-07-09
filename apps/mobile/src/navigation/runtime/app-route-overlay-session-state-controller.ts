@@ -6,12 +6,17 @@ import type {
 import { getOriginCaptureProvider, registerOriginCaptureProvider } from './origin-capture-registry';
 import { getOriginSceneLiveState } from './origin-scene-live-state-registry';
 import { stageOverlayScrollRestore } from '../../overlays/overlayScrollOffsetRuntime';
+import {
+  registerRouteEntryOriginCapturer,
+  registerRouteEntryOriginRestorer,
+} from './route-entry-origin-capture-delegate';
 import { stageOriginSceneSegmentRestore } from '../../overlays/originSceneSegmentRuntime';
 import type { AppSearchRouteCommandActions } from './app-search-route-command-runtime';
 import {
   createPollDetailChildRouteParams,
   type OverlayKey,
   type OverlayRouteParamsMap,
+  getAppOverlayRouteMetadata,
 } from './app-overlay-route-types';
 import {
   type AppRouteOverlaySessionActions,
@@ -354,7 +359,37 @@ export class AppRouteOverlaySessionStateController {
       registerOriginCaptureProvider('search', captureDegenerateHomeOrigin),
       registerOriginCaptureProvider('polls', captureDegenerateHomeOrigin),
       registerOriginCaptureProvider('bookmarks', () => this.captureRichSceneOrigin('bookmarks')),
-      registerOriginCaptureProvider('profile', () => this.captureRichSceneOrigin('profile'))
+      registerOriginCaptureProvider('profile', () => this.captureRichSceneOrigin('profile')),
+      // S-B origin-on-entry: the scene-switch controller snapshots the DEPARTING scene onto
+      // every pushed entry through this seam. The departing key is passed EXPLICITLY (the
+      // controller's own identity resolution is root-collapsed — wrong for child departures).
+      registerRouteEntryOriginCapturer((departingSceneKey) => {
+        const captured = this.captureRichSceneOrigin(departingSceneKey);
+        // Ledger item 7 (red team code#2): captureRichSceneOrigin's detent comes from
+        // resolveLiveOriginIdentity, which is ROOT-collapsed (it only knows the top-level
+        // lanes). For a CHILD departure the ONE physical sheet's remembered snap for that
+        // scene is its live detent — same bug class as the scroll-lane mis-keying, one field
+        // over. Root scenes keep the root resolution (it encodes the docked-polls nuances).
+        if (getAppOverlayRouteMetadata(departingSceneKey).role !== 'child') {
+          return captured;
+        }
+        const childSnap =
+          this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(departingSceneKey);
+        return childSnap != null && childSnap !== 'hidden'
+          ? { ...captured, detent: childSnap }
+          : captured;
+      }),
+      registerRouteEntryOriginRestorer((origin) => {
+        // Detent first (the pop switch's motion plan reads the remembered-snap ledger), then
+        // the one-shot scroll lanes the revealed leg consumes on its next active frame.
+        this.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
+          sceneKey: origin.sceneKey,
+          snap: origin.detent,
+        });
+        origin.scroll?.forEach((lane) => {
+          stageOverlayScrollRestore(lane.laneKey, lane.offset);
+        });
+      })
     );
     this.handleRootOverlayTransition();
     this.handleNavRestorePending();
@@ -444,7 +479,11 @@ export class AppRouteOverlaySessionStateController {
     if (liveState == null) {
       return base;
     }
-    const scroll = liveState.getScrollLanes().filter((lane) => lane.offset > 0);
+    // Red team RT-5: zero IS a meaningful restore target under shared warm legs (pop past a
+    // deep-scrolled same-key sibling must return THIS entry's top-of-list) — the old >0 filter
+    // made scroll-to-top unrestorable. The mounted-restore hook's no-pending guard still keeps
+    // organic re-opens jump-free.
+    const scroll = liveState.getScrollLanes();
     const segment = liveState.getSegment?.() ?? null;
     const sceneParams = liveState.getSceneParams?.() ?? null;
     return {
@@ -462,8 +501,13 @@ export class AppRouteOverlaySessionStateController {
   // set `childAnchor: childAnchor ?? null`) so a restaurant/entity-from-comment origin
   // still round-trips its anchor — byte-identical to before.
   private buildCurrentOriginSnapshot(childAnchor?: LaunchIntentChildAnchor | null): OriginSnapshot {
-    const { sceneKey, detent } = this.resolveLiveOriginIdentity();
-    const captured = getOriginCaptureProvider(sceneKey)?.() ?? degenerateSnapshot(sceneKey, detent);
+    const { sceneKey } = this.resolveLiveOriginIdentity();
+    // Fallback generalized (S-B origin-on-entry): a scene with NO registered provider still
+    // captures rich (captureRichSceneOrigin merges any published live scroll/segment onto the
+    // degenerate base, and itself degrades to the base when the scene never published) — so a
+    // child scene opts into scroll capture with ONE publication hook call, zero registration.
+    const captured =
+      getOriginCaptureProvider(sceneKey)?.() ?? this.captureRichSceneOrigin(sceneKey);
     return {
       ...captured,
       anchor: childAnchor ?? captured.anchor ?? null,
@@ -518,6 +562,17 @@ export class AppRouteOverlaySessionStateController {
 
   private prepareSearchSessionEntry(options?: AppRouteSearchSessionEntryOptions): void {
     const routeOverlayIdentitySnapshot = this.routeOverlayIdentityAuthority.getSnapshot();
+    // S-C.2 (plans/s-c-de-special-search.md): from a bookmarks/profile ROOT the session entry
+    // is a PUSH — no slot capture (the pushed entry carries the origin), no re-root (the root
+    // persists; "you're still on Favorites" is route truth). The results-present verb resolves
+    // routeAction 'push' for non-search roots; dismiss is a pop. Search-root flows keep the
+    // legacy slot + re-root until S-C.3.
+    if (
+      routeOverlayIdentitySnapshot.rootOverlayKey === 'bookmarks' ||
+      routeOverlayIdentitySnapshot.rootOverlayKey === 'profile'
+    ) {
+      return;
+    }
     if (options?.captureOrigin) {
       // Forward the childAnchor into the captured origin; the dismiss restore reads it back
       // (resolveChildOriginRePush) to re-push the exact poll + comment.

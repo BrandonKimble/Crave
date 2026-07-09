@@ -7,14 +7,14 @@ const getNowMs = (): number =>
 
 export const useSearchResultsHydrationRowsReleaseEmissionRuntime = ({
   activeOverlayKey,
-  resultsHydrationKey,
+  resultsIdentityKey,
   searchRequestId,
   mapQueryBudget,
   emitRuntimeWriteSpan,
   releaseToken,
 }: {
   activeOverlayKey: string;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   searchRequestId: string | null;
   mapQueryBudget: MapQueryBudget;
   emitRuntimeWriteSpan: (payload: Record<string, unknown>) => void;
@@ -40,7 +40,7 @@ export const useSearchResultsHydrationRowsReleaseEmissionRuntime = ({
       label: 'hydration_finalize_rows_release',
       activeOverlayKey,
       searchRequestId,
-      resultsHydrationKey,
+      resultsIdentityKey,
       durationMs,
     });
   }, [
@@ -48,7 +48,7 @@ export const useSearchResultsHydrationRowsReleaseEmissionRuntime = ({
     emitRuntimeWriteSpan,
     mapQueryBudget,
     releaseToken,
-    resultsHydrationKey,
+    resultsIdentityKey,
     searchRequestId,
   ]);
 };

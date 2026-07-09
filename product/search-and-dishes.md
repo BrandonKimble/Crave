@@ -107,6 +107,82 @@ A **Friends lens** (an opt-in toggle that filters results to _only_ friend-saved
 - **Search-demand layer.** A rebuildable `user_search_demand_daily` aggregate draws from search logs, cache reveals, on-demand asks, views, favorite events, and autocomplete selections, splitting `sourceKind` (provenance) from `signalKind` (interpretation) so consumers opt into signal kinds, with a dual market scope (UI `marketKey` vs `collectableMarketKey`). Polls, on-demand, and keyword collection share one scoring vocabulary: per-user log-scaled demand, distinct-user breadth as the main signal, diminishing repeat-ask power, recency with smooth decay, and recovery curves rather than hard caps.
 - **Caching & indexing.** Cache frequent/viral queries with 24h retention so a follow-up "best tacos" is instant; cache reveals clone server-owned attribution (fresh searchRequestId, original id in metadata) distinguished by `eventKind`. Targets: <400ms cached, <3s uncached-with-LLM. `core_entities` text search uses a name prefix index, name trigram, and name+aliases FTS, with batched multi-term expansion and a gated phonetic fallback.
 
+## Failure & offline UX (plumbing BUILT 2026-07-08 — UI polish needed)
+
+**REVISED (owner call, 2026-07-08 evening):** the failure announcement is now the ONE
+standard modal, not per-surface chips/banners — uniform across every page and
+transition. Offline is the universal hang.
+
+- **Offline (app-wide standard):** navigate freely; loaded content stays; anything NEW
+  hangs in its skeleton/loading state (never an error surface); the black system banner
+  explains; back-out always works; reconnect auto-retries pending desires (the hang is
+  finite). Rig-proven for search; the same standard applies to every other scene by
+  construction (their loads simply don't complete offline).
+- **Online failure → THE STANDARD MODAL:** "Something went wrong / We couldn't complete
+  that. Please try again." with **ONE button ("OK")** — and every close path (button,
+  swipe, backdrop) does the IDENTICAL thing (owner revision, 2026-07-08 late): close
+  the modal and return the user to the last state that worked. **The modal never
+  auto-retries** — a retry would fight the bring-them-back motion; trying again is the
+  user's move from the page they came back to. **Universal unwind rule:** a failed
+  ENTER (the sheet rose / search mode engaged for a search that never landed — from
+  home, the suggestion sheet, favorites list tap, anywhere) closes the session on
+  dismissal via the exact user back-out (pop-to-captured-origin: page + snap point +
+  scroll; `closeSearchResultsSession()` → beginCloseSearch). A failed rerun over
+  presented results unwinds NOTHING — worlds commit on success, so the old results
+  never left. "How far they got is where they return to": each page that worked is the
+  fallback for the next one that didn't. **Resting-surface doctrine:** quiet "couldn't
+  load" empty states are transient resting copy behind the modal / during the
+  slide-down, never announcements, never with their own retry buttons (search's inline
+  Retry was deleted — ONE retry story).
+- **App-wide chokepoints (red-teamed + built 2026-07-08):** (1) a `MutationCache
+onError` on the app QueryClient announces every react-query mutation failure via the
+  uniform modal (opt-out per mutation: `meta.suppressFailureModal`); (2)
+  `announceFailureIfOnline({onRetry?})` in app-modal-store for hand-rolled catches
+  (poll endorsement, bookmark list save/visibility/delete, sign-out) — silent when
+  offline (the hang + banner own it); (3) the search runtime's failure announcer rides
+  the same helper. The last `Alert.alert`s (profile settings menu, bookmarks long-press
+  menu) migrated to `showAppModal`.
+- **THE STANDARD MODAL SURFACE (all modals):** OverlayModalSheet is now the app-wide
+  modal primitive — dimmed backdrop, no snap points, no grab handle, grab-to-rubber-band
+  (asymptotic upward resistance), swipe-down-only dismiss (distance or flick), backdrop
+  tap dismiss. AppModalHost (the Alert.alert replacement, 13 call sites) renders through
+  it — the old centered non-swipeable card is gone. The price + rank/score sheets get
+  the gesture for free.
+- **Polish / finger-check pass:** the sheet gesture FEEL (rubber-band ceiling 56,
+  dismiss distance 110, flick velocity 900, settle spring — all tunable constants at the
+  top of OverlayModalSheet), modal typography/spacing, EmailAuthModal migration to the
+  primitive (auth-critical, deferred — until then it's the one native Modal, and any
+  showAppModal fired while it's open would paint underneath it), and the failure modal
+  copy. Deferred with reasons: Android hardware-back on the sheet (iOS-only app today;
+  own it in the primitive via BackHandler when Android matters), offline load-more is
+  dropped rather than paused (scroll again re-triggers; inconsistent with the hang model
+  but harmless), polls-feed cold-load has no reconnect resume edge of its own (react-query
+  onlineManager covers query surfaces; the custom feed controller does not — verify on
+  device with the reconnect pass).
+
+The behavior is in its ideal shape and rig-proven; what remains is making the surfaces
+pretty. The architecture: a single `searchResolutionFailure` LEVEL on the runtime bus
+(written by the presentation seam on a failed resolution, cleared when the next attempt
+begins), and ONE retry mechanism (`retrySearchDesiredResolution` re-asserts the current
+desired tuple; the reconciler classifies it `reassert_unresolved` and re-resolves —
+in-place rerun choreography over stale results, fresh enter when nothing is presented).
+
+- **Stale results + failure** → the uniform modal announces; results are never
+  destroyed (the retry chip was deleted — no per-surface failure design).
+- **Nothing presented + failure** → the **empty surface renders failure copy + a Retry
+  button** ("Something went wrong…" / offline variant "You're offline — results will load
+  when you're back online"). _Polish:_ illustration/icon, button styling (currently a
+  plain dark pill), copy review.
+- **Offline** → the **hang** (owner call): an offline "failure" is a PAUSED resolution,
+  not a failure — the loading state simply persists (universal across every transition in
+  the app, zero per-surface offline styling), the existing black system banner explains,
+  and on reconnect the pending desire **auto-retries** — so the hang is FINITE and
+  self-completing, unlike Airbnb's open-ended version. The retry chip and failure copy
+  never show for offline; the banner owns that story. Rig-observed: Wi-Fi off →
+  banner + skeleton hold steady, no error state, no toast.
+- **Dev**: real failures still raise the LogBox toast; canceled/superseded resolutions log
+  info only.
+
 ## Adjacent ideas
 
 - **"Also worth trying"** — score-ranked siblings under a dish/restaurant result.

@@ -65,12 +65,15 @@ export const useResultsPresentationCloseSearchCleanupRuntime = <Suggestion>({
     (closeIntentId: string) => {
       const scheduledState = searchRuntimeBus.getState();
       const scheduledSurfaceSnapshot = getResultsPresentationSurfaceAuthority().getSnapshot();
-      const scheduledOperationId = scheduledState.activeOperationId;
+      // S4c token economy: the presentation episode token is (presentedWorldId,
+      // presentingPhase) — a new resolution or commit between schedule and run makes
+      // the token stale and the cleanup aborts.
+      const scheduledEpisodeToken = `${scheduledState.presentedWorldId ?? 'world:none'}@${scheduledState.presentingPhase}`;
       const scheduledSurfaceResultsTransactionKey =
         scheduledSurfaceSnapshot.searchSurfaceResultsTransactionKey;
       const cleanupToken = [
         closeIntentId,
-        scheduledOperationId ?? 'operation:none',
+        scheduledEpisodeToken,
         scheduledSurfaceResultsTransactionKey ?? 'prepared:none',
       ].join('|');
       setPendingCloseIntentId(closeIntentId);
@@ -80,9 +83,10 @@ export const useResultsPresentationCloseSearchCleanupRuntime = <Suggestion>({
       }
       const currentState = searchRuntimeBus.getState();
       const currentSurfaceSnapshot = getResultsPresentationSurfaceAuthority().getSnapshot();
+      const currentEpisodeToken = `${currentState.presentedWorldId ?? 'world:none'}@${currentState.presentingPhase}`;
       if (
         activeCleanupTokenRef.current !== cleanupToken ||
-        currentState.activeOperationId !== scheduledOperationId ||
+        currentEpisodeToken !== scheduledEpisodeToken ||
         currentSurfaceSnapshot.searchSurfaceResultsTransactionKey !==
           scheduledSurfaceResultsTransactionKey
       ) {

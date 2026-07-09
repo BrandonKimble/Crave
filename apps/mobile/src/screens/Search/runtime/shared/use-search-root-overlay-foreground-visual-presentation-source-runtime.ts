@@ -12,7 +12,6 @@ export const useSearchRootOverlayForegroundVisualPresentationSourceRuntime = ({
 }) =>
   React.useMemo<{
     shouldDimResultsSheet: boolean;
-    shouldSuspendResultsSheet: boolean;
     inputMode: 'editing' | 'resting';
     searchSheetContentLaneKind: SearchResultsPanelEnvironment['resultsPresentationOwner']['shellModel']['searchSheetContentLane']['kind'];
     searchHeaderDefaultChromeProgress: SearchResultsPanelEnvironment['resultsPresentationOwner']['shellModel']['defaultChromeProgress'];
@@ -23,8 +22,6 @@ export const useSearchRootOverlayForegroundVisualPresentationSourceRuntime = ({
     () => ({
       shouldDimResultsSheet:
         resultsPresentationStateControlLane.presentationState.shouldDimResultsSheet,
-      shouldSuspendResultsSheet:
-        resultsPresentationStateControlLane.presentationState.shouldSuspendResultsSheet,
       inputMode:
         resultsPresentationOwner.shellModel.inputMode === 'editing' ? 'editing' : 'resting',
       searchSheetContentLaneKind: resultsPresentationOwner.shellModel.searchSheetContentLane.kind,
@@ -46,6 +43,5 @@ export const useSearchRootOverlayForegroundVisualPresentationSourceRuntime = ({
       resultsPresentationOwner.shellModel.inputMode,
       resultsPresentationOwner.shellModel.searchSheetContentLane.kind,
       resultsPresentationStateControlLane.presentationState.shouldDimResultsSheet,
-      resultsPresentationStateControlLane.presentationState.shouldSuspendResultsSheet,
     ]
   );

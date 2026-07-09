@@ -5,6 +5,7 @@ import { ACTIVE_TAB_COLOR, CONTENT_HORIZONTAL_PADDING } from '../../constants/se
 import type { SearchOverlayChromeHiddenSearchFiltersWarmupProps } from './search-foreground-chrome-contract';
 import type { SearchRootFilterModalControlLane } from './use-search-root-control-plane-runtime-contract';
 import type { SearchRootSearchStateRuntime } from './search-root-primitives-runtime-contract';
+import { createSearchRuntimeBus } from './search-runtime-bus';
 
 type UseSearchRootOverlayHeaderWarmupRuntimeArgs = {
   filterModalControlLane: SearchRootFilterModalControlLane;
@@ -13,6 +14,12 @@ type UseSearchRootOverlayHeaderWarmupRuntimeArgs = {
 
 const NOOP = (): void => undefined;
 void SearchFilters;
+
+// The hidden warmup render exists purely to measure the strip's LAYOUT — its chip states are
+// irrelevant, so it renders against a detached throwaway bus (SearchFilters requires a live
+// chip-state source; wiring the real session bus through the chrome-host chain would thread
+// 4 extra contracts for values the warmup never shows).
+const WARMUP_DETACHED_BUS = createSearchRuntimeBus();
 
 export const useSearchRootOverlayHeaderWarmupRuntime = ({
   filterModalControlLane,
@@ -25,7 +32,7 @@ export const useSearchRootOverlayHeaderWarmupRuntime = ({
         : {
             activeTab: searchState.activeTab,
             openNow: filterModalControlLane.filterModalRuntime.openNow,
-            votesFilterActive: filterModalControlLane.filterModalRuntime.votesFilterActive,
+            includeSimilarActive: filterModalControlLane.filterModalRuntime.includeSimilarActive,
             risingActive: filterModalControlLane.filterModalRuntime.risingActive,
             priceButtonLabelText: filterModalControlLane.filterModalRuntime.priceButtonLabelText,
             priceButtonIsActive: filterModalControlLane.filterModalRuntime.priceButtonIsActive,
@@ -38,7 +45,7 @@ export const useSearchRootOverlayHeaderWarmupRuntime = ({
       filterModalControlLane.filterModalRuntime.openNow,
       filterModalControlLane.filterModalRuntime.priceButtonIsActive,
       filterModalControlLane.filterModalRuntime.priceButtonLabelText,
-      filterModalControlLane.filterModalRuntime.votesFilterActive,
+      filterModalControlLane.filterModalRuntime.includeSimilarActive,
       filterModalControlLane.filterModalRuntime.risingActive,
       searchState.activeTab,
       searchState.handleSearchFiltersLayoutCache,
@@ -54,7 +61,8 @@ export const useSearchRootOverlayHeaderWarmupRuntime = ({
         : {
             activeTab: filtersWarmupSnapshot.activeTab,
             openNow: filtersWarmupSnapshot.openNow,
-            votesFilterActive: filtersWarmupSnapshot.votesFilterActive,
+            includeSimilarActive: filtersWarmupSnapshot.includeSimilarActive,
+            similarAvailableCount: 0,
             risingActive: filtersWarmupSnapshot.risingActive,
             priceButtonLabel: filtersWarmupSnapshot.priceButtonLabelText,
             priceButtonActive: filtersWarmupSnapshot.priceButtonIsActive,
@@ -80,9 +88,10 @@ export const useSearchRootOverlayHeaderWarmupRuntime = ({
         : {
             ...hiddenFiltersWarmupState,
             ...hiddenFiltersWarmupLayout,
+            searchRuntimeBus: WARMUP_DETACHED_BUS,
             onTabChange: NOOP,
             onToggleOpenNow: NOOP,
-            onToggleVotesFilter: NOOP,
+            onToggleIncludeSimilar: NOOP,
             onToggleRising: NOOP,
             onTogglePriceSelector: NOOP,
             isPriceSelectorVisible: false,

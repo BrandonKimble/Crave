@@ -4,7 +4,7 @@ import { useSearchRootSearchSceneListHydrationRenderPatchRuntime } from './use-s
 import { useSearchRootSearchSceneListHydrationStatusPatchRuntime } from './use-search-root-search-scene-list-hydration-status-patch-runtime';
 
 export type SearchRootSearchSceneListHydrationPatch = {
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   hydratedResultsKey: string | null;
   resultsPreparedRowsKey: string | null;
   listPreparedRowsReady: boolean;

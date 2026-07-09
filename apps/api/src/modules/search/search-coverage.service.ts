@@ -343,6 +343,29 @@ export class SearchCoverageService {
       durationMs: Date.now() - startedAt,
     });
 
+    // Per-feature openness (client derivation support): the mobile resolver derives the
+    // open-now variant world CLIENT-SIDE from the base world (instant toggle, background
+    // true-up) — that derivation must filter COVERAGE too, so every feature carries the
+    // openness the open-now post-filter would have used. null = no hours data (such rows
+    // never pass an open-now filter, matching the executor's semantics).
+    const opennessReferenceDate = new Date();
+    const resolveRowIsOpen = (
+      row: (typeof coverageRows)[number],
+    ): boolean | null => {
+      const metadata = buildOperatingMetadataFromLocation(
+        row.location_hours,
+        row.location_utc_offset_minutes as never,
+        typeof row.location_time_zone === 'string'
+          ? row.location_time_zone
+          : null,
+      );
+      if (!metadata) {
+        return null;
+      }
+      const status = evaluateOperatingStatus(metadata, opennessReferenceDate);
+      return status?.isOpen === true;
+    };
+
     return {
       type: 'FeatureCollection',
       features: coverageRows
@@ -399,6 +422,7 @@ export class SearchCoverageService {
               rising: includeTopDish ? topFoodRising : rising,
               rank: index + 1,
               restaurantCraveScore: craveScore,
+              isOpen: resolveRowIsOpen(row),
               isDishPin: includeTopDish ? true : undefined,
               dishName:
                 includeTopDish && typeof row.top_food_name === 'string'

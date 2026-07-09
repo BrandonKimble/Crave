@@ -1,9 +1,14 @@
 import React from 'react';
+import { useSystemStatusStore } from '../../../store/systemStatusStore';
+import {
+  selectSearchMode,
+  selectSubmittedQuery,
+} from '../runtime/shared/search-desired-tuple-selectors';
 
 import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
 import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { RecentSearch, StructuredSearchRequest } from '../../../services/search';
-import type { FavoriteListType } from '../../../services/favorite-lists';
+import { favoriteListsService, type FavoriteListType } from '../../../services/favorite-lists';
 import type { SegmentValue } from '../constants/search';
 import type { MapboxMapRef } from '../components/search-map';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
@@ -12,23 +17,35 @@ import type { ResultsPresentationAuthority } from '../runtime/shared/results-pre
 import type { ResultsPresentationSurfaceAuthority } from '../runtime/shared/results-presentation-surface-authority';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import {
-  useSearchRequestPreparationOwner,
-  type StructuredSearchFilters,
-} from './use-search-request-preparation-owner';
-import {
   useSearchSubmitEntryOwner,
   type SearchMode,
   type SearchSubmitEntrySurface,
   type SearchSubmitPresentationIntentKind,
   type SubmitSearchOptions,
+  type SearchSubmitInPlaceRerunIntentKind,
+  type StructuredSearchFilters,
 } from './use-search-submit-entry-owner';
 import { useSearchNaturalSubmitOwner } from './use-search-natural-submit-owner';
-import { useSearchSubmitExecutionOwner } from './use-search-submit-execution-owner';
-import { useSearchSubmitResponseOwner } from './use-search-submit-response-owner';
-import { useSearchSubmitStructuredHelperOwner } from './use-search-submit-structured-helper-owner';
 import { useSearchStructuredSubmitOwner } from './use-search-structured-submit-owner';
+import { captureFreshCommittedBounds } from '../runtime/shared/search-fresh-bounds-capture';
+import {
+  createSearchWorldResolver,
+  type SearchWorldResolveArgs,
+} from '../runtime/resolver/search-world-resolver';
+import { createSearchWorldPresentationSeam } from '../runtime/resolver/search-world-presentation-seam';
+import {
+  createSearchWorldFetcher,
+  createSearchWorldNextPageFetcher,
+} from '../runtime/resolver/search-world-fetch';
+import { createSearchWorldDerivation } from '../runtime/resolver/search-world-derivation';
+import { createSearchWorldReconciler } from '../runtime/reconciler/search-world-reconciler';
+import { buildSearchCardsWorldKey } from '../runtime/shared/search-desired-state-contract';
+import { getSearchReconcilerViewInputs } from '../runtime/reconciler/search-reconciler-presentation-port';
+import { Keyboard } from 'react-native';
+import { logger } from '../../../utils';
+import { searchService } from '../../../services/search';
+import { getSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 import { useSearchSubmitActionOwner } from './use-search-submit-action-owner';
-import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
 type SearchSubmitOwnerReadModel = {
   query: string;
   submittedQuery: string;
@@ -38,18 +55,15 @@ type SearchSubmitOwnerReadModel = {
   activeTab: SegmentValue;
   currentResults: SearchResponse | null;
   isPaginationExhausted: boolean;
-  pendingTabSwitchTab: SegmentValue | null;
   preferredActiveTab: SegmentValue;
   hasActiveTabPreference: boolean;
   isLoadingMore: boolean;
   openNow: boolean;
-  priceLevels: number[];
-  votes100Plus: boolean;
+  priceLevels: readonly number[];
   risingActive: boolean;
 };
 
 type SearchSubmitOwnerUiPorts = {
-  setActiveTab: React.Dispatch<React.SetStateAction<SegmentValue>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   resetSheetToHidden: () => void;
   scrollResultsToTop: () => void;
@@ -61,13 +75,14 @@ type SearchSubmitOwnerUiPorts = {
   clearMapHighlightedRestaurantId?: () => void;
   onPageOneResultsCommitted?: (payload: {
     searchRequestId: string | null;
+    operationToken: string;
     requestBounds: MapBounds | null;
-    resultsHydrationKey: string | null;
+    resultsIdentityKey: string | null;
     resultsDataKey: string | null;
     dataReadyFrom: 'network' | 'cache' | 'in_flight';
     searchInputKey: string | null;
     replaceResultsInPlace: boolean;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }) => void;
   onShortcutSearchCoverageSnapshot?: (snapshot: {
     searchRequestId: string;
@@ -76,6 +91,9 @@ type SearchSubmitOwnerUiPorts = {
   }) => void;
   onPresentationIntentStart?: (params: {
     kind: SearchSubmitPresentationIntentKind;
+    /** The EPISODE TOKEN `cardsKey#g{generation}` — the pending-arm/transaction id for
+     *  this resolution episode (worldId end-to-end, fresh per episode; never bus-read). */
+    operationToken: string;
     mode: SearchMode;
     preserveSheetState: boolean;
     transitionFromDockedPolls: boolean;
@@ -98,7 +116,6 @@ type SearchSubmitOwnerRuntimePorts = {
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
   viewportBoundsService: ViewportBoundsService;
   userLocationRef: React.MutableRefObject<Coordinate | null>;
-  requestRuntimeOwner: SearchRequestRuntimeOwner;
 };
 
 type UseSearchSubmitOwnerOptions = {
@@ -116,6 +133,15 @@ type RecentSearchInput = {
 
 type SearchSubmitOwner = {
   submitSearch: (options?: SubmitSearchOptions, overrideQuery?: string) => Promise<void>;
+  /** S3-pre: commit-moment settled-camera adopt for tuple writers (STA, chip reruns). */
+  captureFreshTupleBounds: () => Promise<
+    import('../runtime/shared/search-desired-state-contract').SearchCommittedBounds | null
+  >;
+  /** S3a: resolve the desired tuple through the world resolver (chip-cause reruns). */
+  resolveDesiredWorld: (
+    args: import('../runtime/resolver/search-world-resolver').SearchWorldResolveArgs
+  ) => Promise<void>;
+  worldResolverIsResolving: () => boolean;
   runRestaurantEntitySearch: (params: {
     restaurantId: string;
     restaurantName: string;
@@ -133,7 +159,7 @@ type SearchSubmitOwner = {
       transitionFromDockedPolls?: boolean;
       filters?: StructuredSearchFilters;
       forceFreshBounds?: boolean;
-      presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+      presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
       entrySurface: SearchSubmitEntrySurface;
     }
   ) => Promise<void>;
@@ -146,7 +172,7 @@ type SearchSubmitOwner = {
     preserveSheetState?: boolean;
     replaceResultsInPlace?: boolean;
     filters?: StructuredSearchFilters;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
+    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
   launchFavoritesListResults: (params: {
@@ -168,24 +194,14 @@ const useSearchSubmitOwner = ({
 }: UseSearchSubmitOwnerOptions): SearchSubmitOwner => {
   const {
     query,
-    submittedQuery,
-    hasResults,
-    canLoadMore,
-    currentPage,
-    activeTab,
-    currentResults,
-    isPaginationExhausted,
-    pendingTabSwitchTab,
     preferredActiveTab,
     hasActiveTabPreference,
     isLoadingMore,
     openNow,
     priceLevels,
-    votes100Plus,
     risingActive,
   } = readModel;
   const {
-    setActiveTab,
     setError,
     resetSheetToHidden,
     scrollResultsToTop,
@@ -193,191 +209,230 @@ const useSearchSubmitOwner = ({
     resetMapMoveFlag,
     loadRecentHistory,
     updateLocalRecentSearches,
-    getIsProfilePresentationActive,
-    clearMapHighlightedRestaurantId,
     onPageOneResultsCommitted,
-    onShortcutSearchCoverageSnapshot,
     onPresentationIntentStart,
     onPresentationIntentAbort,
   } = uiPorts;
   const {
-    runtimeWorkSchedulerRef,
     searchRuntimeBus,
-    resultsPresentationAuthority,
     resultsPresentationSurfaceAuthority,
     lastSearchRequestIdRef,
     lastAutoOpenKeyRef,
     runSearch,
     mapRef,
-    latestBoundsRef,
     viewportBoundsService,
     userLocationRef,
-    requestRuntimeOwner,
   } = runtimePorts;
-  const {
-    activeSearchRequestRef,
-    activeLoadingMoreTokenRef,
-    isSearchRequestInFlightRef,
-    activeOperationTupleRef,
-    responseApplyTokenRef,
-    isMountedRef,
-    clearActiveOperationTuple,
-    isRequestStillActive,
-    isOperationTupleStillActive,
-    publishRuntimeLaneState,
-    createHandleSearchResponseRuntimeShadow,
-    runManagedRequestAttempt,
-    setSearchRequestInFlight,
-  } = requestRuntimeOwner;
-  const {
-    prepareStructuredInitialRequestPayload,
-    prepareStructuredAppendRequestPayload,
-    prepareNaturalSearchAttemptPayload,
-  } = useSearchRequestPreparationOwner({
-    isLoadingMore,
-    openNow,
-    priceLevels,
-    votes100Plus,
-    risingActive,
-    searchRuntimeBus,
-    latestBoundsRef,
-    viewportBoundsService,
-    mapRef,
-    userLocationRef,
-    lastSearchRequestIdRef,
-    isOperationTupleStillActive,
-    setError,
-  });
-  const {
-    prepareSearchRequestForegroundUi,
-    prepareNaturalSearchForegroundUi,
-    createRestaurantEntityInitialAttemptConfig,
-    createShortcutStructuredInitialAttemptConfig,
-    createShortcutStructuredAppendAttemptConfig,
-    prepareNaturalSearchEntry,
-    resolveNaturalSearchAttemptConfig,
-  } = useSearchSubmitEntryOwner({
-    query,
-    submittedQuery,
-    preferredActiveTab,
-    hasActiveTabPreference,
-    isLoadingMore,
-    openNow,
-    priceLevels,
-    votes100Plus,
-    risingActive,
-    setActiveTab,
-    setError,
-    searchRuntimeBus,
-    clearMapHighlightedRestaurantId,
-    resetMapMoveFlag,
-    activeOperationTupleRef,
-    activeLoadingMoreTokenRef,
-    isSearchRequestInFlightRef,
-    publishRuntimeLaneState,
-    setSearchRequestInFlight,
-    lastAutoOpenKeyRef,
-    onPresentationIntentStart,
-  });
-  const { handleSearchResponse } = useSearchSubmitResponseOwner({
-    activeTab,
-    currentResults,
-    pendingTabSwitchTab,
-    isPaginationExhausted,
-    searchRuntimeBus,
-    resultsPresentationAuthority,
-    resultsPresentationSurfaceAuthority,
-    latestBoundsRef,
-    userLocationRef,
-    lastSearchRequestIdRef,
-    isSearchEditingRef,
-    getIsProfilePresentationActive,
-    loadRecentHistory,
-    updateLocalRecentSearches,
-    resetSheetToHidden,
-    scrollResultsToTop,
-    setActiveTab,
-    onPageOneResultsCommitted,
-    activeOperationTupleRef,
-    responseApplyTokenRef,
-    isMountedRef,
-    clearActiveOperationTuple,
-    isRequestStillActive,
-    runtimeWorkSchedulerRef,
-    publishRuntimeLaneState,
-  });
-  const {
-    primeShortcutStructuredRequest,
-    applyShortcutStructuredAppendRequestState,
-    publishShortcutCoverageForResponse,
-    applyRestaurantEntityStructuredRequest,
-  } = useSearchSubmitStructuredHelperOwner({
-    onShortcutSearchCoverageSnapshot,
-  });
-  const {
-    startNaturalResponseLifecycle,
-    startEntityStructuredResponseLifecycle,
-    startShortcutInitialResponseLifecycle,
-    startShortcutAppendResponseLifecycle,
-    startFavoritesResponseLifecycle,
-    executeEntityStructuredSearchAttempt,
-    executeShortcutStructuredSearchAttempt,
-    executeNaturalSearchAttempt,
-    executeFavoritesHydrateAttempt,
-  } = useSearchSubmitExecutionOwner({
-    runSearch,
-    activeSearchRequestRef,
-    createHandleSearchResponseRuntimeShadow,
-    handleSearchResponse,
-    publishShortcutCoverageForResponse,
-  });
-  const {
-    runRestaurantEntitySearch,
-    submitViewportShortcut,
-    loadMoreShortcutResults,
-    launchFavoritesListResults,
-  } = useSearchStructuredSubmitOwner({
-      currentPage,
-      canLoadMore,
-      hasResults,
-      isLoadingMore,
-      isPaginationExhausted,
+  const { prepareNaturalSearchEntry, resolveNaturalSearchAttemptConfig } =
+    useSearchSubmitEntryOwner({
+      viewportBoundsService,
+      query,
       preferredActiveTab,
-      submittedQuery,
-      isSearchRequestInFlightRef,
-      runManagedRequestAttempt,
-      onPresentationIntentAbort,
-      setError,
-      resetMapMoveFlag,
+      hasActiveTabPreference,
+      isLoadingMore,
       openNow,
-      userLocationRef,
-      createRestaurantEntityInitialAttemptConfig,
-      createShortcutStructuredInitialAttemptConfig,
-      createShortcutStructuredAppendAttemptConfig,
-      prepareSearchRequestForegroundUi,
-      prepareStructuredInitialRequestPayload,
-      prepareStructuredAppendRequestPayload,
-      applyRestaurantEntityStructuredRequest,
-      primeShortcutStructuredRequest,
-      applyShortcutStructuredAppendRequestState,
-      executeEntityStructuredSearchAttempt,
-      executeShortcutStructuredSearchAttempt,
-      startEntityStructuredResponseLifecycle,
-      startShortcutInitialResponseLifecycle,
-      startShortcutAppendResponseLifecycle,
-      executeFavoritesHydrateAttempt,
-      startFavoritesResponseLifecycle,
+      priceLevels,
+      risingActive,
+      setError,
+      searchRuntimeBus,
+      resetMapMoveFlag,
+    });
+  // S3-pre: commit-moment triggers (STA, chip reruns) adopt the SETTLED native camera
+  // into the tuple BEFORE writing it — the resolver never touches the map ref.
+  const captureFreshTupleBounds = React.useCallback(
+    () => captureFreshCommittedBounds({ mapRef, viewportBoundsService }),
+    [mapRef, viewportBoundsService]
+  );
+
+  // S3a: the WORLD RESOLVER + PRESENTATION SEAM. Chip-cause reruns resolve through this
+  // (tuple in → seam commit out); the remaining trigger sources join per strangler
+  // sub-stage (S3b initial submits, S3c launches + pagination). Composed here because
+  // this hook already holds every seam dependency; the composition point (not the
+  // resolver) dies with this file in S3d. Ref-indirected callbacks keep the resolver a
+  // stable singleton across renders.
+  const onPageOneResultsCommittedForWorldRef = React.useRef(onPageOneResultsCommitted);
+  const runSearchForWorldRef = React.useRef(runSearch);
+  const onPresentationIntentAbortRef = React.useRef(onPresentationIntentAbort);
+  onPresentationIntentAbortRef.current = onPresentationIntentAbort;
+  // S4b: the surviving full-enter foreground effects, driven from the reconciler's
+  // DERIVED intent (the old beginResolverSubmitForegroundUi, trigger params replaced by
+  // tuple facts + bus projections + view inputs).
+  const enterForegroundEffectsRef = React.useRef<
+    (args: {
+      intent: {
+        presentationIntentKind: 'search_this_area' | 'variant_rerun' | undefined;
+        preserveSheetState: boolean;
+        entrySurface: 'home' | 'search_mode' | 'results' | 'profile' | null;
+      };
+      tuple: import('../runtime/shared/search-desired-state-contract').SearchDesiredTuple;
+      generation: number;
+    }) => void
+  >(() => {});
+  enterForegroundEffectsRef.current = ({ intent, tuple, generation }) => {
+    const busState = searchRuntimeBus.getState();
+    const dockedPolls =
+      !intent.preserveSheetState &&
+      (getSearchReconcilerViewInputs()?.getDockedPollsFlag() ?? false);
+    onPresentationIntentStart?.({
+      kind: intent.presentationIntentKind ?? 'initial_search',
+      operationToken: `${buildSearchCardsWorldKey(tuple)}#g${generation}`,
+      mode: selectSearchMode(busState),
+      preserveSheetState: intent.preserveSheetState,
+      transitionFromDockedPolls: dockedPolls,
+      targetTab: tuple.tab,
+      submittedLabel: selectSubmittedQuery(busState) || undefined,
+      entrySurface:
+        intent.entrySurface === 'profile' || intent.entrySurface == null
+          ? 'home'
+          : intent.entrySurface,
+    });
+    lastAutoOpenKeyRef.current = null;
+    // Presentation-path tab publish (S4c-1b): the enter presents its tab directly —
+    // the tuple writer no longer projects activeTab for in-session tab deltas.
+    searchRuntimeBus.publish({ activeTab: tuple.tab });
+    setError(null);
+    Keyboard.dismiss();
+  };
+  // Post-present side effects (the response owner's post-commit UI sequence, reduced to
+  // its surviving members): recent-history push for natural searches, single-restaurant
+  // sheet collapse, scroll reset. Ref-indirected so the resolver stays a singleton.
+  const worldPresentedEffectsRef = React.useRef<
+    NonNullable<Parameters<typeof createSearchWorldResolver>[0]['onWorldPresented']>
+  >(() => {});
+  worldPresentedEffectsRef.current = ({ tuple, value, presentationIntentKind }) => {
+    const identity = tuple.queryIdentity;
+    // The response-adopted tab is PRESENTED here (direct publish, never the tuple
+    // writer) — idempotent when nothing adopted; the bus dedupes equal keys.
+    searchRuntimeBus.publish({ activeTab: tuple.tab });
+    if (identity.kind === 'natural') {
+      updateLocalRecentSearches(identity.query);
+      void loadRecentHistory();
+    } else if (identity.kind === 'entity') {
+      updateLocalRecentSearches({
+        queryText: identity.displayName,
+        selectedEntityId: identity.entityId,
+        selectedEntityType: identity.entityType,
+      });
+      void loadRecentHistory();
+    }
+    // Scroll policy at the present moment (the settled design, same rule as the
+    // include-similar flip): a VARIANT rerun is a NEW result set — it reveals at top.
+    // Only search-this-area preserves the scroll (same filters, the user is driving the
+    // map; the sheet is usually collapsed). This also re-asserts the scroll LEVEL at
+    // every variant present, so no transient offset can survive a toggle cycle.
+    const preservesScroll = presentationIntentKind === 'search_this_area';
+    const collapsesToSingleRestaurant =
+      value.singleRestaurantCandidate != null &&
+      (identity.kind === 'natural' || identity.kind === 'entity');
+    if (collapsesToSingleRestaurant) {
+      // The response collapsed to one restaurant: hide the results sheet (the profile
+      // auto-open runtime keys off lastSearchRequestIdRef, already truthful).
+      resetSheetToHidden();
+    } else if (!preservesScroll && !isSearchEditingRef?.current) {
+      scrollResultsToTop();
+    }
+  };
+  React.useEffect(() => {
+    onPageOneResultsCommittedForWorldRef.current = onPageOneResultsCommitted;
+    runSearchForWorldRef.current = runSearch;
+  });
+  const worldResolutionDriver = React.useMemo(() => {
+    const seam = createSearchWorldPresentationSeam({
+      searchRuntimeBus,
+      resultsPresentationSurfaceAuthority,
+      onPageOneResultsCommitted: (payload) => {
+        onPageOneResultsCommittedForWorldRef.current?.(payload);
+      },
+      // Strangler side state: profile auto-open + the natural append payload read this
+      // ref; the resolver keeps it truthful at every commit until S4 deletes it.
+      onWorldCommitted: ({ searchRequestId }) => {
+        lastSearchRequestIdRef.current = searchRequestId;
+      },
+    });
+    const resolver = createSearchWorldResolver({
+      searchRuntimeBus,
+      seam,
+      fetchWorldForTuple: createSearchWorldFetcher({
+        runSearch: (request) => runSearchForWorldRef.current(request),
+        userLocationRef,
+        shortcutCoverage: (params, options) => searchService.shortcutCoverage(params, options),
+        // Chip reruns never move the camera, so the presented world's market is the
+        // rerun's market; initial submits carry their own market resolution (S3b).
+        getMarketKey: () =>
+          getSearchMountedResultsDataSnapshot().results?.metadata?.marketKey ?? '',
+        getFavoritesListResults: (listId, options) =>
+          favoriteListsService.getListResults(listId, options),
+      }),
+      now: () => globalThis.performance?.now?.() ?? Date.now(),
+      deriveWorldForTuple: createSearchWorldDerivation({ userLocationRef }),
+      fetchNextPageForTuple: createSearchWorldNextPageFetcher({
+        runSearch: (request) => runSearchForWorldRef.current(request),
+        userLocationRef,
+        shortcutCoverage: (params, options) => searchService.shortcutCoverage(params, options),
+        getMarketKey: () =>
+          getSearchMountedResultsDataSnapshot().results?.metadata?.marketKey ?? '',
+        getFavoritesListResults: (listId, options) =>
+          favoriteListsService.getListResults(listId, options),
+      }),
+      onWorldPresented: (args) => worldPresentedEffectsRef.current(args),
+    });
+    // S4b: the reconciler is the ONE resolution driver — triggers only write the tuple.
+    const reconciler = createSearchWorldReconciler({
+      searchRuntimeBus,
+      getPresentedCardsKey: () => {
+        const worldId = seam.getPresentedWorldId();
+        return worldId == null ? null : worldId.replace(/@v\d+$/, '');
+      },
+      resolve: (resolveArgs) =>
+        resolver.resolve(resolveArgs as Parameters<typeof resolver.resolve>[0]),
+      runEnterForegroundEffects: (effectArgs) => enterForegroundEffectsRef.current(effectArgs),
+      onResolveFailed: (reason) => {
+        // OFFLINE = a paused resolution (owner call): the loading level persists and
+        // the reconnect auto-retry resumes it — so the presentation intent must NOT
+        // abort (the abort is what clears the covers). No error toast either; the
+        // system banner owns the offline story.
+        if (useSystemStatusStore.getState().isOffline) {
+          logger.info('Search resolution paused offline', { message: reason });
+          return;
+        }
+        // A resolution canceled by a session exit (the close aborts the in-flight fetch)
+        // is expected lifecycle, not a failure — logging it as an error raised a dev
+        // LogBox toast on every dismiss-with-pending-fetch. Real failures stay loud.
+        const isCanceledByExit =
+          typeof reason === 'string' &&
+          (reason.includes('canceled') || reason.includes('runSearch returned no response'));
+        if (isCanceledByExit) {
+          logger.info('Search resolution superseded/canceled', { message: reason });
+        } else {
+          logger.error('Search resolution failed', { message: reason });
+        }
+        onPresentationIntentAbortRef.current?.();
+      },
+    });
+    return { resolver, reconciler };
+  }, [searchRuntimeBus, resultsPresentationSurfaceAuthority, userLocationRef]);
+  const worldResolver = worldResolutionDriver.resolver;
+  // The reconciler's bus subscription lives in the effect lifecycle, not the memo —
+  // a memo-time start() has no teardown, so every Fast Refresh (which re-runs memos)
+  // stacked another live resolution driver (N resolve kicks per tuple write).
+  React.useEffect(() => {
+    const stopReconciler = worldResolutionDriver.reconciler.start();
+    return stopReconciler;
+  }, [worldResolutionDriver]);
+  const resolveDesiredWorld = React.useCallback(
+    (resolveArgs: SearchWorldResolveArgs) => worldResolver.resolve(resolveArgs),
+    [worldResolver]
+  );
+  const { runRestaurantEntitySearch, submitViewportShortcut, launchFavoritesListResults } =
+    useSearchStructuredSubmitOwner({
+      searchRuntimeBus,
+      viewportBoundsService,
+      captureFreshTupleBounds,
+      resetMapMoveFlag,
     });
   const { submitSearch } = useSearchNaturalSubmitOwner({
     prepareNaturalSearchEntry,
     resolveNaturalSearchAttemptConfig,
-    prepareNaturalSearchForegroundUi,
-    prepareNaturalSearchAttemptPayload,
-    executeNaturalSearchAttempt,
-    startNaturalResponseLifecycle,
-    runManagedRequestAttempt,
-    onPresentationIntentAbort,
-    setError,
   });
 
   // Skip-LLM entity reveal: a natural-search submission whose context carries a
@@ -408,22 +463,26 @@ const useSearchSubmitOwner = ({
     [submitSearch]
   );
 
-  const { loadMoreResults, rerunActiveSearch } = useSearchSubmitActionOwner({
-    query,
-    submittedQuery,
-    hasResults,
-    canLoadMore,
-    currentPage,
-    isLoadingMore,
-    isPaginationExhausted,
-    isSearchRequestInFlightRef,
+  // S3c pagination cutover: EVERY load-more is resolver.resolveNextPage — guards read
+  // the WORLD's pagination meta (the honest source), in-flight dedupe is per identity,
+  // and a superseded append caches without presenting. The action owner's dispatcher
+  // and the shortcut append chain are dead.
+  const loadMoreResults = React.useCallback(
+    (_searchMode: SearchMode) => {
+      void worldResolver.resolveNextPage();
+    },
+    [worldResolver]
+  );
+  const { rerunActiveSearch } = useSearchSubmitActionOwner({
     submitSearch,
-    loadMoreShortcutResults,
     submitViewportShortcut,
   });
 
   return {
     submitSearch,
+    captureFreshTupleBounds,
+    resolveDesiredWorld,
+    worldResolverIsResolving: worldResolver.isResolving,
     runRestaurantEntitySearch,
     submitViewportShortcut,
     rerunActiveSearch,

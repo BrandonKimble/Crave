@@ -54,7 +54,8 @@ export const createSearchRootSearchSceneChromeFreezeRuntime = () => {
               // that made toggles look stuck — same color, never switching on tap.
               activeTab: filtersHeaderRuntime.activeTab,
               openNow: filtersHeaderRuntime.openNow,
-              votesFilterActive: filtersHeaderRuntime.votesFilterActive,
+              includeSimilarActive: filtersHeaderRuntime.includeSimilarActive,
+              similarAvailableCount: filtersHeaderRuntime.similarAvailableCount,
               risingActive: filtersHeaderRuntime.risingActive,
               priceButtonActive: filtersHeaderRuntime.priceButtonActive,
               priceButtonLabel: filtersHeaderRuntime.priceButtonLabel,

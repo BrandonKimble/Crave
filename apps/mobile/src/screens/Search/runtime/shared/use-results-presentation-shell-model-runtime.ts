@@ -17,6 +17,7 @@ import {
 import type { SearchSurfaceVisualPolicySnapshot } from '../surface/search-surface-runtime';
 import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import { resolveSearchHeaderVisualModel } from './results-presentation-shell-visual-runtime';
+import { resolveShortcutToggleDisplayQuery } from './shortcut-toggle-display-query';
 
 const clamp01 = (value: number): number => {
   'worklet';
@@ -26,6 +27,11 @@ const clamp01 = (value: number): number => {
 type UseResultsPresentationShellModelRuntimeArgs = {
   query: string;
   submittedQuery: string;
+  // Shortcut toggle title swap (display-only): the current search mode + the optimistic tab
+  // (the desired tab, tuple.tab) so a shortcut search's bar text flips to the sibling
+  // shortcut label on toggle press-up.
+  searchMode: string | null;
+  optimisticActiveTab: 'dishes' | 'restaurants';
   isSuggestionPanelActive: boolean;
   shouldRenderSearchOverlay: boolean;
   shouldEnableShortcutInteractions: boolean;
@@ -44,6 +50,8 @@ type UseResultsPresentationShellModelRuntimeArgs = {
 export const useResultsPresentationShellModelRuntime = ({
   query,
   submittedQuery,
+  searchMode,
+  optimisticActiveTab,
   isSuggestionPanelActive,
   shouldRenderSearchOverlay,
   shouldEnableShortcutInteractions,
@@ -72,12 +80,16 @@ export const useResultsPresentationShellModelRuntime = ({
     return 1 - backgroundProgress.value;
   });
 
-  const resultsDisplayQuery =
-    query.trim().length > 0
-      ? query
-      : submittedQuery.trim().length > 0
-        ? submittedQuery
-        : displayQueryOverride;
+  const resultsDisplayQuery = resolveShortcutToggleDisplayQuery({
+    displayQuery:
+      query.trim().length > 0
+        ? query
+        : submittedQuery.trim().length > 0
+          ? submittedQuery
+          : displayQueryOverride,
+    searchMode,
+    optimisticActiveTab,
+  });
 
   const lastResultsDisplayQueryRef = React.useRef('');
   if (resultsDisplayQuery.trim().length > 0) {

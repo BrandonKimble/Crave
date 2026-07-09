@@ -39,7 +39,11 @@ type SearchMapRenderControllerNativeModule = {
     instanceId: string;
     entries: ReadonlyArray<{ markerKey: string; lng: number; lat: number; rank: number }>;
   }) => Promise<{ catalogCount: number } | null | void>;
-  beginInteractionFadeOut?: (payload: { instanceId?: string }) => Promise<void>;
+  commitEnterStart?: (payload: {
+    instanceId?: string;
+    requestKey: string;
+    startToken: number;
+  }) => Promise<{ started: boolean }>;
   resetNativeApplyAttribution?: (payload: { reason?: string; runId?: string }) => Promise<void>;
   flushNativeApplyAttribution?: (payload: {
     reason?: string;
@@ -169,6 +173,54 @@ export type SearchMapRenderControllerEvent =
       promotedCount: number;
       degraded: boolean;
       settledAtMs: number;
+    }
+  | {
+      // S4d-0 RED instrument: native (worldId, phase, opacity) register snapshot emitted
+      // at the presentation machine's idempotence path (same-state ack) and RED protocol
+      // contracts — observation only, never actuated on. S4d-3b deleted the silent
+      // dismiss-in-progress bypasses; the *_during_dismiss reasons are loud contract
+      // violations (the payload/snapshot still processes as the latest desired level).
+      type: 'presentation_state_snapshot';
+      instanceId: string;
+      reason:
+        | 'apply_same_state'
+        | 'keyless_payload_during_dismiss'
+        | 'snapshot_apply_during_dismiss'
+        | 'reveal_begin'
+        | 'pin_roster_teardown_inactive'
+        | 'pin_roster_synced'
+        | 'catalog_arrived'
+        | 'reproject_deferred'
+        | 'reproject_ran'
+        | 'pin_roster_no_manager'
+        | 'reveal_drain_no_pending';
+      catalogCount?: number;
+      deferredWhy?: string;
+      desiredCount?: number;
+      viewCount?: number;
+      candidateCount?: number;
+      promotedCount?: number;
+      revealRequestKey: string | null;
+      revealStartedRequestKey: string | null;
+      revealSettledRequestKey: string | null;
+      dismissRequestKey: string | null;
+      incomingRevealRequestKey: string | null;
+      incomingDismissRequestKey: string | null;
+      lifecycleState: string;
+      renderPhase: string;
+      opacityTarget: number;
+      nowMs: number;
+    }
+  | {
+      // S4d-2 ack-everything: the fade-out ramp reached the dark floor (mach-clocked).
+      // The reveal statechart's `covering` exit input; log-only until S4d-3 consumes it.
+      type: 'presentation_fade_out_acked';
+      instanceId: string;
+      reason: string;
+      requestKey: string | null;
+      lifecycleState: string;
+      nativeTimestampMs: number;
+      ackedAtMs: number;
     }
   | {
       type: 'presentation_exit_started';
@@ -407,14 +459,14 @@ export type SearchMapVisualFrameTransactionKind =
 
 export type SearchMapVisualFrameSourceSnapshotKind = 'pending' | 'ready' | 'empty';
 
+// S4d-3c: the five legacy request keys (requestKey/visualCycleKey/readinessKey/
+// shortcutCoverageRequestKey/markersRenderKey) are DELETED from the native payload —
+// native parsed them into the transaction struct but never read a single one. Identity
+// rides the presentation payload's worldId episode token; the transaction carries only
+// kind + phase + source identity.
 export type SearchMapVisualFrameTransaction = {
   kind: SearchMapVisualFrameTransactionKind;
   presentationPhase: SearchRuntimeMapPresentationPhase;
-  requestKey: string | null;
-  visualCycleKey: string | null;
-  readinessKey: string | null;
-  shortcutCoverageRequestKey: string | null;
-  markersRenderKey: string | null;
   sourceFrameKey: string;
   sourceDataKey: string;
   sourceSnapshotKind: SearchMapVisualFrameSourceSnapshotKind;
@@ -592,11 +644,21 @@ export const deriveSearchMapRenderPresentationPhase = (
       return 'enter_requested';
     }
     if (presentationState.executionStage === 'settled') {
-      return 'live';
+      // S4d completion: the interaction cover on a SETTLED world is the 'interaction'
+      // phase — the wire now carries the press-up fade level (the old
+      // beginInteractionFadeOut side-channel verb is deleted). Native holds the map
+      // ramp down while this level is asserted and restores it when the level returns
+      // to 'live' — so a failed/canceled commit restores by rule, not by luck.
+      return presentationState.coverState === 'interaction_loading' ? 'interaction' : 'live';
     }
   }
   if (presentationState.coverState === 'initial_loading') {
     return 'covered';
+  }
+  if (presentationState.coverState === 'interaction_loading') {
+    // Kindless interaction frame (a variant rerun clears the staged transaction before
+    // the response stages the enter) — still the interaction level.
+    return 'interaction';
   }
   return 'idle';
 };
@@ -634,8 +696,28 @@ const isRecoverableNativeRenderOwnerFrameError = (error: unknown): boolean => {
   );
 };
 
+// S4d-3c slice 2: the wire is EXPLICIT (worldId, phase). Native no longer re-derives
+// identity/phase from {transactionId, snapshotKind, executionStage} — those fields leave
+// the payload. worldId = the episode token when a world is desired (non-exit frames);
+// exitAckId = the exit transaction key, kept ONLY as the ack correlation label (never
+// lifecycle identity); phase = the ONE derivation (deriveSearchMapRenderPresentationPhase)
+// serialized at this single chokepoint.
 const serializePresentationState = (presentation: SearchMapRenderPresentationState): string => {
-  return JSON.stringify(presentation);
+  const isExit = presentation.snapshotKind === 'results_exit';
+  return JSON.stringify({
+    worldId: !isExit && presentation.snapshotKind != null ? presentation.transactionId : null,
+    exitAckId: isExit ? presentation.transactionId : null,
+    phase: deriveSearchMapRenderPresentationPhase(presentation),
+    startToken: presentation.startToken,
+    coverState: presentation.coverState,
+    allowEmptyEnter: presentation.allowEmptyEnter,
+    selectedRestaurantId: presentation.selectedRestaurantId,
+    // LOAD-BEARING despite native never reading it (red-team 2026-07-08): executionBatch
+    // (null → non-null across pending_mount → mounted_hidden) keeps otherwise-identical
+    // payloads DISTINCT, so native's same-state idempotence short-circuit cannot swallow
+    // the mounted-hidden transition on the cache-resident path. Do not "clean this up".
+    executionBatch: presentation.executionBatch,
+  });
 };
 
 const resolveRenderControllerPerfNow = (): number => {
@@ -860,11 +942,19 @@ export const searchMapRenderController = {
 
   // Press-up marker fade-out: ramps the native presentation scalar 1→0 + snapSettled immediately, decoupled from
   // the debounced data commit (so markers fade out on press, co-triggered with the JS frost). Idempotent.
-  async beginInteractionFadeOut(instanceId?: string): Promise<void> {
-    if (!nativeModule?.beginInteractionFadeOut) {
-      return;
+  // U2 (§D6c): deliver the enter-start token over the direct bridge — skips the +32ms
+  // full-frame rebuild the token used to ride. Fire-and-forget safe: the gate is idempotent
+  // and the follow-up frame carrying the same token is a no-op.
+  async commitEnterStart(payload: {
+    requestKey: string;
+    startToken: number;
+    instanceId?: string;
+  }): Promise<boolean> {
+    if (!nativeModule?.commitEnterStart) {
+      return false;
     }
-    await nativeModule.beginInteractionFadeOut(instanceId != null ? { instanceId } : {});
+    const result = await nativeModule.commitEnterStart(payload);
+    return result?.started === true;
   },
 
   async setRenderFrame(payload: {

@@ -64,7 +64,40 @@ Decide whether your scene belongs:
 - `isSceneBodyDataActivityKey` (`app-route-scene-input-registry.ts`) — does the
   body run a tracked live data lane?
 
-## 5. Persistent-poll-lane caveat
+## 5. THE PAGE FOUNDATION — every page gets all eight (owner standard, 2026-07-08)
+
+Every page in this app is built from the same eight foundation pieces. A new page
+is not done until each row below has an explicit answer — "not applicable" is an
+answer, "we forgot" is not. (Audit 2026-07-08: pieces marked ⚠️ are honor-system
+today and slated for compile-time hardening — see
+`plans/page-foundation-codification.md`.)
+
+| #   | Piece                          | The ONE home                                                                                                                                                                                                                               | New-page requirement                                                                                                                                                                                                                                                                                                                        |
+| --- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Persistent header              | `app-route-persistent-header-registry.ts` → `PersistentSheetHeaderHost`                                                                                                                                                                    | Register a header descriptor. ⚠️ Runtime map, dev-warn only — a missing one renders null.                                                                                                                                                                                                                                                   |
+| 2   | Frost + white plate w/ cutouts | ONE hoisted `FrostedGlassBackground` (`BottomSheetSceneStackHost`); per-scene white plate via the page frame's `backgroundComponent` slot                                                                                                  | Free by construction; supply a `backgroundComponent` only for custom cutouts.                                                                                                                                                                                                                                                               |
+| 3   | Cutout skeleton                | `SceneLoadingSurface` via `SCENE_STACK_BODY_SKELETON_SPECS` + in-body ready-gate                                                                                                                                                           | Add a spec row (pick `rowType`) AND an in-body ready-gate. ⚠️ `Partial<Record>` today — omission degrades silently.                                                                                                                                                                                                                         |
+| 4   | Toggle/filter strip            | `FrostedFilterStrip` + `SegmentedToggle`/`FilterChip` (search's strip is canonical)                                                                                                                                                        | Use these; NEVER hand-roll a segment row (bookmarks/profile did — being consolidated).                                                                                                                                                                                                                                                      |
+| 5   | Snap rules                     | `SHEET_MOTION_DESCRIPTOR_TABLE` (+ scene-policy allowed snaps)                                                                                                                                                                             | Add your rows. House de-facto rules: top-level map-first scenes → `collapsed`; content top-levels → `rememberedDetent`→`expanded`; child opens → `snapTo expanded` (restaurant's `promoteAtLeast middle` is the exception); `closeChild` → `preserveLiveY`; `terminalDismiss` → `hide`; modals → mandate `none`.                            |
+| 6   | Child-page nav-out             | ✅ DERIVED (S-B slice 2, 2026-07-09): the nav transitions out whenever the top-of-stack entry's metadata role is `'child'` (nav-out-derivation-store, single writer). A new child page inherits nav-out by construction — nothing to wire. |
+| 7   | Scroll/no-bounce list          | `BottomSheetScrollContainer` via `surfaceKind: 'list'`                                                                                                                                                                                     | Free when you pick `'list'` (§2). Never a raw FlatList/ScrollView.                                                                                                                                                                                                                                                                          |
+| 8   | Failure + offline              | `announceFailureIfOnline()` (uniform modal, ONE OK button, every close path identical) + offline = the hang (banner + persisting skeleton, NO error UI) + a self-guarding `unwindFailedXEnter()` if the page has an enter transition       | Mutations get the announcer free via the QueryClient `MutationCache`. Hand-rolled async: call `announceFailureIfOnline()` in the catch. Enterable surface: export ONE self-guarding unwind (mirror `search-failed-enter-unwind.ts`) and wire `onDismissed` in one line. NEVER bespoke failure copy, inline retry buttons, or `Alert.alert`. |
+
+The house seam for all of this is the metadata table + `Record<OverlayKey>`
+completeness pattern (§1): when a piece can be a compile-time-exhaustive table, make
+it one — a forgotten key must be a build error that names the key, not a silent
+default.
+
+**The toggle contract (owner decree, 2026-07-08):** every toggle-like control —
+including conditional ones like "Search this area" (a toggle whose availability is a
+predicate) — gets FIVE benefits from the shared implementations, never hand-rolled:
+(1) pill/chip visual mechanics (`SegmentedToggle`/`FilterChip`), (2) optimistic
+press-up flip, (3) restarting quiet-window debounce, (4) cancelable consequence,
+(5) visual-sync finalize (the results-presentation toggle coordinator — being
+extracted into a portable `declareToggle` core; status + work queue in
+`plans/page-foundation-codification.md` §4b).
+
+## 6. Persistent-poll-lane caveat
 
 The docked polls lane is the one bespoke subsystem. Its search→docked dismiss
 handoff marks readiness off the polls body surface, so it is **surface-aware**

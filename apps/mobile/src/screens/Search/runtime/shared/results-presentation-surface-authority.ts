@@ -10,14 +10,14 @@ import {
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 
 export type ResultsPresentationSurfacePreparedRowsSnapshot = {
-  targetReadinessKey: string | null;
-  readyReadinessKey: string | null;
+  targetResultsIdentityKey: string | null;
+  readyResultsIdentityKey: string | null;
   activeRowCount: number;
 };
 
 export type ResultsPresentationSurfaceAuthoritySnapshot = {
   resultsRequestKey: string | null;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   hydratedResultsKey: string | null;
   resultsPreparedRowsKey: string | null;
   listPreparedRowsReady: boolean;
@@ -46,7 +46,7 @@ type ResultsPresentationSurfaceAuthorityDiagnosticEntry = {
   notifiedListenerLabels?: string[];
   version: number;
   resultsRequestKey: string | null;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   hydratedResultsKey: string | null;
   searchSurfaceResultsTransactionKey: string | null;
 };
@@ -60,15 +60,15 @@ export type ResultsPresentationSurfaceAuthorityDiagnosticsSnapshot = {
 type EqualityFn<T> = (left: T, right: T) => boolean;
 
 const EMPTY_PREPARED_ROWS: ResultsPresentationSurfacePreparedRowsSnapshot = {
-  targetReadinessKey: null,
-  readyReadinessKey: null,
+  targetResultsIdentityKey: null,
+  readyResultsIdentityKey: null,
   activeRowCount: 0,
 };
 
 const INITIAL_RESULTS_PRESENTATION_SURFACE_AUTHORITY_SNAPSHOT: ResultsPresentationSurfaceAuthoritySnapshot =
   {
     resultsRequestKey: null,
-    resultsHydrationKey: null,
+    resultsIdentityKey: null,
     hydratedResultsKey: null,
     resultsPreparedRowsKey: null,
     listPreparedRowsReady: false,
@@ -84,8 +84,8 @@ const arePreparedRowsSnapshotsEqual = (
   left: ResultsPresentationSurfacePreparedRowsSnapshot,
   right: ResultsPresentationSurfacePreparedRowsSnapshot
 ): boolean =>
-  left.targetReadinessKey === right.targetReadinessKey &&
-  left.readyReadinessKey === right.readyReadinessKey &&
+  left.targetResultsIdentityKey === right.targetResultsIdentityKey &&
+  left.readyResultsIdentityKey === right.readyResultsIdentityKey &&
   left.activeRowCount === right.activeRowCount;
 
 export const deriveCommittedSearchSurfaceResultsTransactionKeyFromSurface = ({
@@ -94,12 +94,12 @@ export const deriveCommittedSearchSurfaceResultsTransactionKeyFromSurface = ({
 }: {
   surfaceSnapshot: Pick<
     ResultsPresentationSurfaceAuthoritySnapshot,
-    'resultsHydrationKey' | 'resultsRequestKey'
+    'resultsIdentityKey' | 'resultsRequestKey'
   >;
   resultsPresentationTransport: ResultsPresentationTransportState;
 }): string | null => {
   const resultsSnapshotKey =
-    surfaceSnapshot.resultsHydrationKey ?? surfaceSnapshot.resultsRequestKey;
+    surfaceSnapshot.resultsIdentityKey ?? surfaceSnapshot.resultsRequestKey;
   const { executionStage, snapshotKind, transactionId } = resultsPresentationTransport;
   return executionStage === 'idle' ||
     executionStage === 'settled' ||
@@ -112,11 +112,11 @@ export const deriveCommittedSearchSurfaceResultsTransactionKeyFromSurface = ({
 export const deriveSearchSurfaceResultsTransactionKeyFromSurface = (
   surfaceSnapshot: Pick<
     ResultsPresentationSurfaceAuthoritySnapshot,
-    'searchSurfaceResultsTransactionKey' | 'resultsHydrationKey' | 'resultsRequestKey'
+    'searchSurfaceResultsTransactionKey' | 'resultsIdentityKey' | 'resultsRequestKey'
   >
 ): string | null =>
   surfaceSnapshot.searchSurfaceResultsTransactionKey ??
-  surfaceSnapshot.resultsHydrationKey ??
+  surfaceSnapshot.resultsIdentityKey ??
   surfaceSnapshot.resultsRequestKey;
 
 export class ResultsPresentationSurfaceAuthority {
@@ -270,11 +270,11 @@ export class ResultsPresentationSurfaceAuthority {
         notifiedListenerLabels:
           notifiedListenerLabels.length === 0 ? undefined : notifiedListenerLabels.slice(0, 16),
         resultsRequestKey: this.snapshot.resultsRequestKey,
-        resultsHydrationKey: this.snapshot.resultsHydrationKey,
+        resultsIdentityKey: this.snapshot.resultsIdentityKey,
         hydratedResultsKey: this.snapshot.hydratedResultsKey,
         allowHydrationFinalizeCommit: this.snapshot.allowHydrationFinalizeCommit,
         searchSurfaceResultsTransactionKey: this.snapshot.searchSurfaceResultsTransactionKey,
-        preparedRowsReadyKey: this.snapshot.preparedRows.readyReadinessKey,
+        preparedRowsReadyKey: this.snapshot.preparedRows.readyResultsIdentityKey,
       },
     });
 
@@ -300,7 +300,7 @@ export class ResultsPresentationSurfaceAuthority {
         notifiedListenerLabels.length === 0 ? undefined : notifiedListenerLabels.slice(0, 16),
       version: this.version,
       resultsRequestKey: this.snapshot.resultsRequestKey,
-      resultsHydrationKey: this.snapshot.resultsHydrationKey,
+      resultsIdentityKey: this.snapshot.resultsIdentityKey,
       hydratedResultsKey: this.snapshot.hydratedResultsKey,
       searchSurfaceResultsTransactionKey: this.snapshot.searchSurfaceResultsTransactionKey,
     });

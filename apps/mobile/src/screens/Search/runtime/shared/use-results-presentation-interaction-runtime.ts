@@ -6,56 +6,39 @@ import type { ResultsPresentationRuntimeOwner } from './results-presentation-run
 import type { ToggleInteractionLifecycleEvent } from './results-toggle-interaction-contract';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useResultsPresentationTabToggleRuntime } from './use-results-presentation-tab-toggle-runtime';
-import { useResultsPresentationToggleLifecycleRuntime } from './use-results-presentation-toggle-lifecycle-runtime';
+import { useResultsPresentationToggleCoordinator } from './use-results-presentation-toggle-coordinator';
 
 type ResultsPresentationInteractionRuntime = Pick<
   ResultsPresentationRuntimeOwner,
-  | 'pendingTogglePresentationIntentId'
-  | 'scheduleToggleCommit'
-  | 'notifyFrostReady'
-  | 'cancelToggleInteraction'
+  'pendingTogglePresentationIntentId' | 'scheduleToggleCommit' | 'cancelToggleInteraction'
 > & {
   interactionModel: ResultsInteractionModel;
 };
 
 type UseResultsPresentationInteractionRuntimeArgs = {
-  activeTab: 'dishes' | 'restaurants';
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
-  isSearchSessionActive: boolean;
   searchRuntimeBus: SearchRuntimeBus;
   handleToggleInteractionLifecycle: (event: ToggleInteractionLifecycleEvent) => void;
   notifyIntentCompleteRef: React.MutableRefObject<((intentId: string) => void) | null>;
-  resultsRuntimeOwner: Pick<
-    ResultsPresentationRuntimeOwner,
-    'clearStagedSearchSurfaceResultsTransaction' | 'stageSearchSurfaceResultsTransaction'
-  >;
 };
 
 export const useResultsPresentationInteractionRuntime = ({
-  activeTab,
   setActiveTab,
   setActiveTabPreference,
-  isSearchSessionActive,
   searchRuntimeBus,
   handleToggleInteractionLifecycle,
   notifyIntentCompleteRef,
-  resultsRuntimeOwner,
 }: UseResultsPresentationInteractionRuntimeArgs): ResultsPresentationInteractionRuntime => {
-  const toggleLifecycleRuntime = useResultsPresentationToggleLifecycleRuntime({
+  const toggleLifecycleRuntime = useResultsPresentationToggleCoordinator({
     searchRuntimeBus,
     handleToggleInteractionLifecycle,
     notifyIntentCompleteRef,
   });
 
   const interactionModel = useResultsPresentationTabToggleRuntime({
-    activeTab,
     setActiveTab,
     setActiveTabPreference,
-    isSearchSessionActive,
-    searchRuntimeBus,
-    toggleLifecycleRuntime,
-    resultsRuntimeOwner,
   });
 
   return React.useMemo(
@@ -63,7 +46,6 @@ export const useResultsPresentationInteractionRuntime = ({
       createResultsPresentationInteractionRuntimeValue({
         pendingTogglePresentationIntentId: toggleLifecycleRuntime.pendingTogglePresentationIntentId,
         scheduleToggleCommit: toggleLifecycleRuntime.scheduleToggleCommit,
-        notifyFrostReady: toggleLifecycleRuntime.notifyFrostReady,
         cancelToggleInteraction: toggleLifecycleRuntime.cancelToggleInteraction,
         interactionModel,
       }),

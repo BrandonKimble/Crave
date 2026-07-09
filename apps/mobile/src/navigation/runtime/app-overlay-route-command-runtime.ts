@@ -11,6 +11,7 @@ import type {
   RouteSceneSwitchRouteParams,
 } from './app-overlay-route-transition-contract';
 import type { OverlaySheetSnap } from '../../overlays/types';
+import { stageRouteEntryOriginRestore } from './route-entry-origin-capture-delegate';
 import type {
   AppRouteSceneSwitchRuntime,
   RouteSceneSwitchRouteStateSnapshot,
@@ -53,9 +54,9 @@ export type AppOverlayRouteCommandRuntime = {
   // (return to the exact origin entry beneath the reveal). `closeActiveRoute` is the
   // legacy alias.
   dismissActiveRoute: () => void;
-  closeActiveRoute: () => void;
+  closeActiveRoute: (options?: { applyOriginDetent?: boolean }) => void;
   closeActiveRouteAfterSettle: (onSettle: RouteSceneSwitchSettleCallback) => void;
-  popToRootRoute: () => void;
+  popToRootRoute: (options?: { applyOriginDetent?: boolean }) => void;
 };
 
 export const createAppOverlayRouteCommandRuntime = ({
@@ -80,20 +81,39 @@ export const createAppOverlayRouteCommandRuntime = ({
   // captured CHILD origin (pollDetail @ snap + comment) via restorePendingOrigin, so a
   // restaurant left with no previous entry just pops the stack like any other child rather
   // than stranding the user on polls HOME.
-  const closeActiveRoute = (onSettle?: RouteSceneSwitchSettleCallback): void => {
+  const closeActiveRoute = (
+    onSettle?: RouteSceneSwitchSettleCallback,
+    options?: { applyOriginDetent?: boolean }
+  ): void => {
     const routeState = routeSceneSwitchRuntime.getRouteState();
     const { activeOverlayRoute } = routeState;
-    const previousOverlayRouteKey = routeSceneSwitchRuntime.getPreviousRouteKey();
-    if (
-      previousOverlayRouteKey != null &&
-      isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)
-    ) {
+    // S-B: the pop target is the ENTRY beneath the top (a value), not a key lookup — with
+    // same-key nesting (slice 4) a key cannot identify which instance is revealed.
+    const previousOverlayRoute = routeSceneSwitchRuntime.getPreviousRouteEntry();
+    // Stage the POPPED entry's origin BEFORE the switch request: the motion plan reads the
+    // remembered-snap ledger during plan resolution (staging at commit is a stale read).
+    stageRouteEntryOriginRestore(activeOverlayRoute.origin);
+    if (previousOverlayRoute != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
+      // Origin restore is an EXPLICIT application (the seam always applied the captured
+      // detent as a snapTo, never via the remembered-snap default) — opt-in per pop path.
+      const originDetent =
+        options?.applyOriginDetent === true ? activeOverlayRoute.origin?.detent : undefined;
       requestRouteSceneSwitch(
         {
-          targetSceneKey: previousOverlayRouteKey,
+          targetSceneKey: previousOverlayRoute.key,
           routeAction: 'closeActive',
-          sheetTransitionKind: 'closeChild',
+          // An origin-detent pop mimics the restore seam's switch EXACTLY (topLevelSwitch +
+          // swapImmediately + explicit snapTo) — the closeChild kind left the search surface's
+          // clip/band ownership latched (the zombie-results residue); the seam's switch shape
+          // is the one proven to hand the sheet back cleanly.
+          sheetTransitionKind: originDetent != null ? 'topLevelSwitch' : 'closeChild',
           sheetOpenerSource: 'routeCommand',
+          ...(originDetent != null
+            ? {
+                sheetMotion: { kind: 'snapTo' as const, snap: originDetent },
+                contentHandoff: 'swapImmediately' as const,
+              }
+            : null),
           // sheetMotion intentionally omitted (P6 req 2d): the closeChild dismiss motion is a
           // descriptor-table decision (app-route-sheet-motion-descriptor-table.ts — today
           // preserveLiveY via the pollDetail dismiss row / the catch-all). Tuning a child's
@@ -241,23 +261,35 @@ export const createAppOverlayRouteCommandRuntime = ({
     dismissActiveRoute: () => {
       closeActiveRoute();
     },
-    closeActiveRoute: () => {
-      closeActiveRoute();
+    closeActiveRoute: (options) => {
+      closeActiveRoute(undefined, options);
     },
     closeActiveRouteAfterSettle: (onSettle) => {
       closeActiveRoute(onSettle);
     },
-    popToRootRoute: () => {
-      const { activeOverlayRoute } = routeSceneSwitchRuntime.getRouteState();
+    popToRootRoute: (options?: { applyOriginDetent?: boolean }) => {
+      const routeState = routeSceneSwitchRuntime.getRouteState();
+      const { activeOverlayRoute } = routeState;
       const rootOverlayRouteKey = routeSceneSwitchRuntime.getRootRouteKey();
+      // Red team RT-4: the root's captured presentation lives on the DEEPEST pushed entry
+      // (stack[1]); popToRoot restores it (intermediate entries' origins are correctly
+      // discarded). Staged before the request — the motion plan reads the ledger.
+      const deepestPushedOrigin = routeState.overlayRouteStack[1]?.origin ?? null;
+      stageRouteEntryOriginRestore(deepestPushedOrigin);
       if (rootOverlayRouteKey != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
+        const originDetent =
+          options?.applyOriginDetent === true ? deepestPushedOrigin?.detent : undefined;
         requestRouteSceneSwitch({
           targetSceneKey: rootOverlayRouteKey,
           routeAction: 'popToRoot',
-          sheetTransitionKind: 'closeChild',
+          sheetTransitionKind: originDetent != null ? 'topLevelSwitch' : 'closeChild',
           sheetOpenerSource: 'routeCommand',
-          // sheetMotion intentionally omitted — descriptor-table closeChild decision (see
-          // closeActiveRoute above).
+          ...(originDetent != null
+            ? {
+                sheetMotion: { kind: 'snapTo' as const, snap: originDetent },
+                contentHandoff: 'swapImmediately' as const,
+              }
+            : null),
         });
         return;
       }

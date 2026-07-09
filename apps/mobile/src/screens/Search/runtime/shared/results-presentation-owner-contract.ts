@@ -7,7 +7,6 @@ import type { ResultsPresentationRuntimeOwner } from './results-presentation-run
 
 export type ResultsInteractionModel = {
   scheduleTabToggleCommit: (next: 'dishes' | 'restaurants') => void;
-  notifyToggleInteractionFrostReady: (intentId: string) => void;
 };
 
 export type ResultsPresentationOwner = Pick<
@@ -16,7 +15,10 @@ export type ResultsPresentationOwner = Pick<
   | 'pendingTogglePresentationIntentId'
   | 'scheduleToggleCommit'
   | 'cancelToggleInteraction'
+  | 'stageSearchSurfaceResultsTransaction'
+  | 'clearStagedSearchSurfaceResultsTransaction'
   | 'beginSearchThisAreaPresentationPending'
+  | 'beginVariantRerunPresentationPending'
   | 'handlePageOneResultsCommitted'
   | 'cancelPresentationIntent'
   | 'handlePresentationIntentAbort'

@@ -3,27 +3,27 @@ import React from 'react';
 type SearchResultsHydrationSettleStateRuntimeArgs = {
   dishesCount: number;
   restaurantsCount: number;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   hydratedResultsKey: string | null;
 };
 
 export const useSearchResultsHydrationSettleStateRuntime = ({
   dishesCount,
   restaurantsCount,
-  resultsHydrationKey,
+  resultsIdentityKey,
   hydratedResultsKey,
 }: SearchResultsHydrationSettleStateRuntimeArgs) => {
   const hydrationRowsReleaseVersionToken =
-    resultsHydrationKey == null
+    resultsIdentityKey == null
       ? null
-      : `${resultsHydrationKey}:d${dishesCount}:r${restaurantsCount}`;
+      : `${resultsIdentityKey}:d${dishesCount}:r${restaurantsCount}`;
   const [
     hydrationFinalizeRowsReleaseCompletedToken,
     setHydrationFinalizeRowsReleaseCompletedToken,
   ] = React.useState<string | null>(null);
 
   const isHydrationPending =
-    resultsHydrationKey != null && resultsHydrationKey !== hydratedResultsKey;
+    resultsIdentityKey != null && resultsIdentityKey !== hydratedResultsKey;
   const isResultsHydrationSettled =
     !isHydrationPending &&
     hydrationFinalizeRowsReleaseCompletedToken === hydrationRowsReleaseVersionToken;

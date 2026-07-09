@@ -1,0 +1,27 @@
+appId: com.brandonkimble.cravesearch
+# Pagination attribution (ledger #6): deep scroll to bottom, back off, return.
+---
+- repeat:
+    times: 12
+    commands:
+      - swipe:
+          start: '50%, 80%'
+          end: '50%, 25%'
+          duration: 350
+      - waitForAnimationToEnd:
+          timeout: 500
+- swipe:
+    start: '50%, 30%'
+    end: '50%, 75%'
+    duration: 400
+- waitForAnimationToEnd:
+    timeout: 600
+- repeat:
+    times: 4
+    commands:
+      - swipe:
+          start: '50%, 80%'
+          end: '50%, 25%'
+          duration: 350
+      - waitForAnimationToEnd:
+          timeout: 500

@@ -16,7 +16,6 @@ export interface SearchQueryParams {
   userLocation?: Coordinate;
   includeSqlPreview?: boolean;
   priceLevels?: number[];
-  minimumVotes?: number;
 }
 
 export interface SearchQueryCacheKey {
@@ -26,7 +25,6 @@ export interface SearchQueryCacheKey {
   openNow: boolean;
   bounds: MapBounds | null;
   priceLevels: number[] | null;
-  minimumVotes: number | null;
 }
 
 export const searchKeys = {
@@ -60,10 +58,6 @@ const buildRequestPayload = (
     payload.priceLevels = params.priceLevels;
   }
 
-  if (params.minimumVotes && params.minimumVotes > 0) {
-    payload.minimumVotes = params.minimumVotes;
-  }
-
   if (params.userLocation) {
     payload.userLocation = params.userLocation;
   }
@@ -80,10 +74,6 @@ const normalizeParams = (params: SearchQueryParams, query: string): SearchQueryC
   const pageSize = params.pageSize ?? DEFAULT_SEARCH_PAGE_SIZE;
   const bounds = params.bounds ?? null;
   const priceLevels = normalizePriceLevels(params.priceLevels);
-  const minimumVotes =
-    typeof params.minimumVotes === 'number' && params.minimumVotes > 0
-      ? Math.floor(params.minimumVotes)
-      : null;
 
   return {
     query,
@@ -92,7 +82,6 @@ const normalizeParams = (params: SearchQueryParams, query: string): SearchQueryC
     openNow: params.openNow ?? false,
     bounds,
     priceLevels,
-    minimumVotes,
   };
 };
 

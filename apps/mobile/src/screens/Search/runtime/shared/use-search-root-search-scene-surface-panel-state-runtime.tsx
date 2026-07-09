@@ -28,7 +28,7 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
     !shouldSuppressResultsSurface &&
     (resolvedResultsRuntime.resolvedResults != null ||
       searchResultsRuntimeState.resultsRequestKey != null ||
-      searchResultsRuntimeState.resultsHydrationCandidateKey != null ||
+      searchResultsRuntimeState.resultsIdentityCandidateKey != null ||
       searchResultsRuntimeState.resultsDishCount > 0 ||
       searchResultsRuntimeState.resultsRestaurantCount > 0);
   const activeTabRenderableRowCount = shouldSuppressResultsSurface
@@ -45,6 +45,8 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
         : allowsInteractionLoadingState,
       hasRenderableRows: activeTabRenderableRowCount > 0,
       hasResolvedResults,
+      hasResolutionFailure:
+        !shouldSuppressResultsSurface && searchResultsRuntimeState.resolutionFailure != null,
       isSearchLoading: searchResultsRuntimeState.isSearchLoading,
       shouldUsePlaceholderRows: false,
       freezeClassification: searchHydrationRuntimeState.chromeFreezeClassification,
@@ -62,9 +64,7 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
       surfaceMode: 'none' as const,
       shouldShowResultsSurface: false,
       surfaceActive: false,
-      shouldUseInteractionSurface: false,
       shouldHideScrollHeaderForSurface: false,
-      shouldRenderWhiteWash: false,
     };
   }, [
     allowsInteractionLoadingState,
@@ -75,8 +75,9 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
     searchPresentationRuntimeState.renderPolicy,
     searchResultsRuntimeState.activeTab,
     searchResultsRuntimeState.resultsDishCount,
-    searchResultsRuntimeState.resultsHydrationCandidateKey,
+    searchResultsRuntimeState.resultsIdentityCandidateKey,
     searchResultsRuntimeState.resultsRestaurantCount,
+    searchResultsRuntimeState.resolutionFailure,
     searchResultsRuntimeState.isSearchLoading,
   ]);
 };

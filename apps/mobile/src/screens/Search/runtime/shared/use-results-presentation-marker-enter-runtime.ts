@@ -1,4 +1,5 @@
 import React from 'react';
+import { reportSearchFlowContractViolation } from './search-flow-contracts';
 
 import type { ExecutionBatchPayload } from './results-presentation-runtime-owner-contract';
 import type { ResultsPresentationRuntimeMachine } from './results-presentation-runtime-machine';
@@ -7,6 +8,7 @@ import type {
   SearchMapMarkerEnterSettledPayload,
 } from './search-map-protocol-contract';
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
+import { searchMapRenderController } from '../map/search-map-render-controller';
 import {
   getSearchSurfaceRuntime,
   selectSearchSurfaceVisualPolicy,
@@ -14,6 +16,15 @@ import {
 
 const toExecutionBatchRef = (payload: ExecutionBatchPayload) => {
   if (payload.executionBatchId == null || payload.frameGenerationId == null) {
+    // R0 loud-contracts (§D6): BOTH ids null = a non-batch event (legitimate). Exactly ONE
+    // null = partial identity — a malformed native payload the audit found silently dropped,
+    // which strands the enter (no cardsAdmit/rampStart pairing).
+    if ((payload.executionBatchId == null) !== (payload.frameGenerationId == null)) {
+      reportSearchFlowContractViolation('marker_enter_partial_batch_identity', {
+        executionBatchId: payload.executionBatchId ?? null,
+        frameGenerationId: payload.frameGenerationId ?? null,
+      });
+    }
     return null;
   }
 
@@ -70,6 +81,19 @@ export const useResultsPresentationMarkerEnterRuntime = ({
       console.log(
         `[REVEALSYNC] cardsAdmit key=${pending.requestKey} jsNowMs=${performance.now().toFixed(1)}`
       );
+    }
+    if (didRequestStart) {
+      // U2 (§D6c): deliver the start token over the DIRECT bridge — the gate can then fire the
+      // moment native readiness flips, without waiting for the token to ride the next full
+      // render-frame rebuild (+32ms serialize measured). Fire-and-forget; frame path stays as
+      // the idempotent fallback.
+      const startToken = runtimeMachineRef.current!.getEnterStartToken();
+      if (startToken != null) {
+        void searchMapRenderController.commitEnterStart({
+          requestKey: pending.requestKey,
+          startToken,
+        });
+      }
     }
     return didRequestStart;
   }, [canStartMarkerEnterForSurface, runtimeMachineRef]);

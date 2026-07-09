@@ -1,11 +1,7 @@
 import React from 'react';
 import { createStackNavigator, type StackNavigationOptions } from '@react-navigation/stack';
 
-import {
-  RecentSearchesScreen,
-  RecentlyViewedScreen,
-  SearchScreen,
-} from '../../screens';
+import { RecentSearchesScreen, RecentlyViewedScreen, SearchScreen } from '../../screens';
 import type { RootStackParamList } from '../../types/navigation';
 import { AppRouteOverlayHostRuntimeProvider } from './AppRouteOverlayHostRuntimeProvider';
 import { AppRouteSharedSheetRuntimeProvider } from './AppRouteSharedSheetRuntimeProvider';
@@ -15,6 +11,7 @@ import { useAppRouteSceneRuntime } from './AppRouteSceneRuntimeProvider';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 import { createAppRoutePollsSceneInputController } from './app-route-polls-scene-input-controller';
 import { useAppRouteDynamicSceneInputWritersRuntime } from './use-app-route-dynamic-scene-input-writers-runtime';
+import { useAppRouteNavOutDerivationWriterRuntime } from './use-app-route-nav-out-derivation-writer-runtime';
 import { useAppRoutePollsSceneInputWriterRuntime } from './use-app-route-polls-scene-input-writer-runtime';
 import { usePerfScenarioOverlaySceneCommand } from '../../perf/use-perf-scenario-overlay-scene-command';
 
@@ -62,6 +59,10 @@ const AppRouteSceneInputWritersRuntimeHost = React.memo(
     });
 
     useAppRouteDynamicSceneInputWritersRuntime({
+      routeSceneRuntime,
+    });
+
+    useAppRouteNavOutDerivationWriterRuntime({
       routeSceneRuntime,
     });
 

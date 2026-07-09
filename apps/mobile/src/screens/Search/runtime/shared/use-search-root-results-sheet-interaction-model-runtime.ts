@@ -84,9 +84,12 @@ export const useSearchRootResultsSheetInteractionModelRuntime = ({
           resultsSheetMotionRuntime.handleResultsSheetSettlingChange,
         handleResultsEndReached: resultsSheetLoadMoreRuntime.handleResultsEndReached,
         resetResultsListScrollProgress: resultsSheetLoadMoreRuntime.resetResultsListScrollProgress,
+        handleResultsListUserScrollActivity:
+          resultsSheetLoadMoreRuntime.handleResultsListUserScrollActivity,
       }),
     [
       resultsSheetLoadMoreRuntime.handleResultsEndReached,
+      resultsSheetLoadMoreRuntime.handleResultsListUserScrollActivity,
       resultsSheetLoadMoreRuntime.markResultsListUserScrollStart,
       resultsSheetLoadMoreRuntime.resetResultsListScrollProgress,
       resultsSheetMotionRuntime.handleResultsListMomentumBegin,

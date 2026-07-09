@@ -3,10 +3,7 @@ import type { ResultsPresentationRuntimeOwner } from '../shared/results-presenta
 
 type ResultsPresentationInteractionRuntimeValue = Pick<
   ResultsPresentationRuntimeOwner,
-  | 'pendingTogglePresentationIntentId'
-  | 'scheduleToggleCommit'
-  | 'notifyFrostReady'
-  | 'cancelToggleInteraction'
+  'pendingTogglePresentationIntentId' | 'scheduleToggleCommit' | 'cancelToggleInteraction'
 > & {
   interactionModel: ResultsInteractionModel;
 };
@@ -14,13 +11,11 @@ type ResultsPresentationInteractionRuntimeValue = Pick<
 export const createResultsPresentationInteractionRuntimeValue = ({
   pendingTogglePresentationIntentId,
   scheduleToggleCommit,
-  notifyFrostReady,
   cancelToggleInteraction,
   interactionModel,
 }: ResultsPresentationInteractionRuntimeValue): ResultsPresentationInteractionRuntimeValue => ({
   pendingTogglePresentationIntentId,
   scheduleToggleCommit,
-  notifyFrostReady,
   cancelToggleInteraction,
   interactionModel,
 });

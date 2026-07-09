@@ -59,8 +59,8 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
       routeSearchSceneDataRuntime.routeSearchSceneShouldLogResultsViewability,
     searchInteractionRef: routeSearchSceneDataRuntime.routeSearchSceneSearchInteractionRef,
     onRuntimeMechanismEvent: routeSearchSceneDataRuntime.routeSearchSceneOnRuntimeMechanismEvent,
-    resultsHydrationKey:
-      routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime.resultsHydrationKey,
+    resultsIdentityKey:
+      routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime.resultsIdentityKey,
     hydratedResultsKey:
       routeSearchSceneDataRuntime.routeSearchSceneHydrationKeyRuntime.hydratedResultsKey,
     hydrationOperationId: null,

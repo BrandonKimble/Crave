@@ -8,48 +8,24 @@ import {
 
 import type { OverlayModalSheetHandle } from '../../../overlays/OverlayModalSheet';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
-import { MINIMUM_VOTES_FILTER } from '../constants/search';
 import type { ScoreInfoPayload } from '../components/SearchRankAndScoreSheets';
 import { useQueryMutationOrchestrator } from '../runtime/mutations/query-mutation-orchestrator';
 import { formatPriceRangeSummary, getRangeFromLevels, type PriceRangeTuple } from '../utils/price';
 
-type SearchMode = 'natural' | 'shortcut' | null;
-type SegmentValue = 'dishes' | 'restaurants';
-
-type StructuredSearchFilters = {
-  minimumVotes?: number | null;
-  openNow?: boolean;
-  priceLevels?: number[];
-  rising?: boolean;
-};
-
 type UseSearchFilterModalOwnerArgs = {
   searchRuntimeBus: SearchRuntimeBus;
-  searchMode: SearchMode;
-  activeTab: SegmentValue;
-  submittedQuery: string;
-  query: string;
-  isSearchSessionActive: boolean;
   openNow: boolean;
-  votesFilterActive: boolean;
+  includeSimilarActive: boolean;
   risingActive: boolean;
-  priceLevels: number[];
+  priceLevels: readonly number[];
   panelVisible: boolean;
-  setVotes100Plus: (next: boolean) => void;
+  setIncludeSimilar: (next: boolean) => void;
   setRisingActive: (next: boolean) => void;
   setOpenNow: (next: boolean) => void;
   setPriceLevels: (next: number[]) => void;
-  scheduleToggleCommit: Parameters<typeof useQueryMutationOrchestrator>[0]['scheduleToggleCommit'];
-  rerunActiveSearch: (options: {
-    searchMode: SearchMode;
-    activeTab: SegmentValue;
-    submittedQuery: string;
-    query: string;
-    isSearchSessionActive: boolean;
-    preserveSheetState?: boolean;
-    replaceResultsInPlace?: boolean;
-    filters?: StructuredSearchFilters;
-  }) => Promise<void>;
+  captureFreshTupleBounds: Parameters<
+    typeof useQueryMutationOrchestrator
+  >[0]['captureFreshTupleBounds'];
   registerTransientDismissor: (handler: () => void) => () => void;
   onMechanismEvent?: (event: 'query_mutation_coalesced', payload?: Record<string, unknown>) => void;
 };
@@ -157,7 +133,7 @@ type SearchFilterModalOwner = {
   priceSheetSummaryReelNearestIndex: ReturnType<typeof useDerivedValue<number>>;
   priceSheetSummaryNeighborVisibility: ReturnType<typeof useDerivedValue<number>>;
   togglePriceSelector: () => void;
-  toggleVotesFilter: () => void;
+  toggleIncludeSimilar: () => void;
   toggleRising: () => void;
   toggleOpenNow: () => void;
   closePriceSelector: () => void;
@@ -167,22 +143,9 @@ type SearchFilterModalOwner = {
 
 export const useSearchFilterModalOwner = ({
   searchRuntimeBus,
-  searchMode,
-  activeTab,
-  submittedQuery,
-  query,
-  isSearchSessionActive,
-  openNow,
-  votesFilterActive,
-  risingActive,
   priceLevels,
   panelVisible,
-  setVotes100Plus,
-  setRisingActive,
-  setOpenNow,
-  setPriceLevels,
-  scheduleToggleCommit,
-  rerunActiveSearch,
+  captureFreshTupleBounds,
   registerTransientDismissor,
   onMechanismEvent,
 }: UseSearchFilterModalOwnerArgs): SearchFilterModalOwner => {
@@ -273,7 +236,7 @@ export const useSearchFilterModalOwner = ({
 
   const {
     togglePriceSelector,
-    toggleVotesFilter,
+    toggleIncludeSimilar,
     toggleRising,
     toggleOpenNow,
     closePriceSelector,
@@ -281,27 +244,13 @@ export const useSearchFilterModalOwner = ({
     handlePriceDone,
   } = useQueryMutationOrchestrator({
     searchRuntimeBus,
-    searchMode,
-    activeTab,
-    submittedQuery,
-    query,
-    isSearchSessionActive,
-    openNow,
-    votesFilterActive,
-    risingActive,
     pendingPriceRange,
     setPendingPriceRange,
     isPriceSelectorVisible,
     setIsPriceSelectorVisible,
     priceLevels,
-    setVotes100Plus,
-    setRisingActive,
-    setOpenNow,
-    setPriceLevels,
-    scheduleToggleCommit,
-    rerunActiveSearch,
     priceSheetRef,
-    minimumVotesFilter: MINIMUM_VOTES_FILTER,
+    captureFreshTupleBounds,
     onMechanismEvent,
   });
 
@@ -357,7 +306,7 @@ export const useSearchFilterModalOwner = ({
       priceSheetSummaryReelNearestIndex,
       priceSheetSummaryNeighborVisibility,
       togglePriceSelector,
-      toggleVotesFilter,
+      toggleIncludeSimilar,
       toggleRising,
       toggleOpenNow,
       closePriceSelector,
@@ -388,10 +337,10 @@ export const useSearchFilterModalOwner = ({
       priceSummaryPillWidth,
       scoreInfo,
       summaryReelItems,
+      toggleIncludeSimilar,
       toggleOpenNow,
       togglePriceSelector,
       toggleRising,
-      toggleVotesFilter,
     ]
   );
 };

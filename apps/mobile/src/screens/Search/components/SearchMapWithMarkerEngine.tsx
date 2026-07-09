@@ -7,12 +7,9 @@ import { withSearchNavSwitchRuntimeAttribution } from '../runtime/shared/search-
 import { useDirectSearchMapSourceController } from '../hooks/use-direct-search-map-source-controller';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
 import type { SearchMapPresentationScene } from '../runtime/map/map-presentation-runtime-contract';
-import type {
-  MapMotionPressureController,
-  MotionPressureState,
-} from '../runtime/map/map-motion-pressure';
+import type { MapMotionPressureController } from '../runtime/map/map-motion-pressure';
 import type { ResolvedRestaurantMapLocation } from '../runtime/map/restaurant-location-selection';
-import { type SearchRuntimeBus, useSearchBus } from '../runtime/shared/search-runtime-bus';
+import { useSearchBus } from '../runtime/shared/search-runtime-bus';
 import {
   useResultsPresentationAuthority,
   type ResultsPresentationAuthority,
@@ -30,25 +27,6 @@ import { mapStateBoundsToMapBounds } from '../utils/geo';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import type { SearchMapRenderInteractionMode } from '../runtime/map/search-map-render-controller';
 import SearchMap, { type MapboxMapRef } from './search-map';
-
-const shouldAdvanceMapPolishLane = ({
-  mapPresentationSettled,
-  shouldDeferMapFromPressure,
-  nativeSyncInFlight,
-}: {
-  mapPresentationSettled: boolean;
-  shouldDeferMapFromPressure: boolean;
-  nativeSyncInFlight: boolean;
-}): boolean => mapPresentationSettled && !shouldDeferMapFromPressure && !nativeSyncInFlight;
-
-const isMapNativeSyncInFlight = (
-  mapMotionPressureController: MapMotionPressureController
-): boolean => {
-  const controller = mapMotionPressureController as {
-    getState: () => MotionPressureState;
-  };
-  return controller.getState().nativeSyncInFlight;
-};
 
 const useSearchMapNativeInteractionMode = ({
   disableMarkers,
@@ -92,120 +70,6 @@ const useSearchMapNativeInteractionMode = ({
   return canInteract ? 'enabled' : 'suppressed';
 };
 
-const useSearchMapLaneAdvancement = ({
-  mapMotionPressureController,
-  searchRuntimeBus,
-  resultsPresentationAuthority,
-}: {
-  mapMotionPressureController: MapMotionPressureController;
-  searchRuntimeBus: SearchRuntimeBus;
-  resultsPresentationAuthority: ResultsPresentationAuthority;
-}): void => {
-  const mapMotionPressureControllerRef = React.useRef(mapMotionPressureController);
-
-  React.useEffect(() => {
-    mapMotionPressureControllerRef.current = mapMotionPressureController;
-  }, [mapMotionPressureController]);
-
-  React.useEffect(() => {
-    let animationFrameHandle: number | null = null;
-    let microtaskReleaseCancelled = false;
-
-    const clearScheduledRelease = () => {
-      if (animationFrameHandle != null && typeof cancelAnimationFrame === 'function') {
-        cancelAnimationFrame(animationFrameHandle);
-        animationFrameHandle = null;
-      }
-      microtaskReleaseCancelled = true;
-    };
-
-    const canAdvanceMapPolishLane = () => {
-      const presentationState = resultsPresentationAuthority.getSnapshot();
-      const runtimeState = searchRuntimeBus.getState();
-      return shouldAdvanceMapPolishLane({
-        mapPresentationSettled: presentationState.resultsPresentation.isSettled,
-        shouldDeferMapFromPressure:
-          runtimeState.isMapActivationDeferred ||
-          runtimeState.searchSurfaceRedrawCommitSpanPressureActive,
-        nativeSyncInFlight: isMapNativeSyncInFlight(mapMotionPressureControllerRef.current),
-      });
-    };
-
-    const releaseIdleIfReady = (operationId: string) => {
-      const state = searchRuntimeBus.getState();
-      if (
-        state.activeOperationId !== operationId ||
-        state.activeOperationLane !== 'lane_f_polish'
-      ) {
-        return;
-      }
-      if (!canAdvanceMapPolishLane()) {
-        return;
-      }
-      searchRuntimeBus.publish({
-        activeOperationLane: 'idle',
-        activeOperationId: null,
-      });
-    };
-
-    const scheduleRelease = (operationId: string) => {
-      clearScheduledRelease();
-      microtaskReleaseCancelled = false;
-      if (typeof requestAnimationFrame === 'function') {
-        animationFrameHandle = requestAnimationFrame(() => {
-          animationFrameHandle = null;
-          releaseIdleIfReady(operationId);
-        });
-        return;
-      }
-      queueMicrotask(() => {
-        if (microtaskReleaseCancelled) {
-          return;
-        }
-        releaseIdleIfReady(operationId);
-      });
-    };
-
-    const maybeAdvancePolishLane = () => {
-      const state = searchRuntimeBus.getState();
-      const activeOperationId = state.activeOperationId;
-      if (!activeOperationId || state.activeOperationLane !== 'lane_e_map_pins') {
-        return;
-      }
-      if (!canAdvanceMapPolishLane()) {
-        return;
-      }
-      searchRuntimeBus.publish({
-        activeOperationLane: 'lane_f_polish',
-      });
-      scheduleRelease(activeOperationId);
-    };
-
-    maybeAdvancePolishLane();
-    const unsubscribeBus = searchRuntimeBus.subscribe(
-      maybeAdvancePolishLane,
-      [
-        'activeOperationId',
-        'activeOperationLane',
-        'isMapActivationDeferred',
-        'searchSurfaceRedrawCommitSpanPressureActive',
-      ] as const,
-      'search_map_lane_advancement_controller'
-    );
-    const unsubscribePresentation = resultsPresentationAuthority.subscribe(
-      maybeAdvancePolishLane,
-      ['resultsPresentation'] as const,
-      'search_map_lane_advancement_controller'
-    );
-
-    return () => {
-      clearScheduledRelease();
-      unsubscribeBus();
-      unsubscribePresentation();
-    };
-  }, [resultsPresentationAuthority, searchRuntimeBus]);
-};
-
 // ---------------------------------------------------------------------------
 // ---------------------------------------------------------------------------
 // Imperative handle type
@@ -213,9 +77,6 @@ const useSearchMapLaneAdvancement = ({
 
 export type SearchMapMarkerEngineHandle = {
   resetShortcutCoverageState: () => void;
-  handleShortcutSearchCoverageSnapshot: ReturnType<
-    typeof useDirectSearchMapSourceController
-  >['handleShortcutSearchCoverageSnapshot'];
 };
 
 // ---------------------------------------------------------------------------
@@ -411,7 +272,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   if (engineInstanceIdRef.current == null) {
     engineInstanceIdRef.current = `search-map-engine:${Math.random().toString(36).slice(2)}`;
   }
-  const engineInstanceId = engineInstanceIdRef.current;
   const [nativeViewportState, setNativeViewportState] = React.useState<{
     bounds: MapBounds | null;
     isGestureActive: boolean;
@@ -446,34 +306,29 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     resultsPresentationAuthority,
   });
 
-  const {
-    restaurantLabelStyle,
-    buildMarkerKey,
-    handleShortcutSearchCoverageSnapshot,
-    resetShortcutCoverageState,
-    handleMarkerPress,
-  } = useDirectSearchMapSourceController({
-    searchRuntimeBus,
-    resultsPresentationAuthority,
-    resultsPresentationSurfaceAuthority,
-    sourceFramePort,
-    restaurantOnlyId,
-    highlightedRestaurantId,
-    viewportBoundsService,
-    userLocation,
-    resolveRestaurantMapLocations,
-    resolveRestaurantLocationSelectionAnchor,
-    pickPreferredRestaurantMapLocation,
-    getCraveScoreColorFromScore,
-    mapGestureActiveRef,
-    mapMotionPressureController,
-    shouldLogSearchComputes,
-    getPerfNow,
-    logSearchCompute,
-    maxFullPins,
-    isMapMoving: nativeViewportState.isMoving,
-    profileCommandPort,
-  });
+  const { restaurantLabelStyle, buildMarkerKey, resetShortcutCoverageState, handleMarkerPress } =
+    useDirectSearchMapSourceController({
+      searchRuntimeBus,
+      resultsPresentationAuthority,
+      resultsPresentationSurfaceAuthority,
+      sourceFramePort,
+      restaurantOnlyId,
+      highlightedRestaurantId,
+      viewportBoundsService,
+      userLocation,
+      resolveRestaurantMapLocations,
+      resolveRestaurantLocationSelectionAnchor,
+      pickPreferredRestaurantMapLocation,
+      getCraveScoreColorFromScore,
+      mapGestureActiveRef,
+      mapMotionPressureController,
+      shouldLogSearchComputes,
+      getPerfNow,
+      logSearchCompute,
+      maxFullPins,
+      isMapMoving: nativeViewportState.isMoving,
+      profileCommandPort,
+    });
 
   React.useEffect(
     () =>
@@ -594,12 +449,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     []
   );
 
-  useSearchMapLaneAdvancement({
-    mapMotionPressureController,
-    searchRuntimeBus,
-    resultsPresentationAuthority,
-  });
-
   // -------------------------------------------------------------------------
   // Map tree props
   // -------------------------------------------------------------------------
@@ -627,9 +476,8 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     ref,
     () => ({
       resetShortcutCoverageState,
-      handleShortcutSearchCoverageSnapshot,
     }),
-    [resetShortcutCoverageState, handleShortcutSearchCoverageSnapshot]
+    [resetShortcutCoverageState]
   );
 
   // -------------------------------------------------------------------------

@@ -4201,7 +4201,7 @@ if (scenarioIsMapRuntimeOnly) {
 }
 
 const busHydrationPreparedOwnershipPattern =
-  'searchSurfaceResultsTransactionKey|resultsHydrationKey|hydratedResultsKey|shouldHydrateResultsForRender|isResultsHydrationSettled|resultsFirstPaintKey|listFirstPaintReady|allowHydrationFinalizeCommit|hydrationOperationId|deriveCommittedSearchSurfaceResultsSnapshotKey|deriveSearchSurfaceResultsTransactionKey';
+  'searchSurfaceResultsTransactionKey|resultsHydrationKey|resultsIdentityKey|hydratedResultsKey|shouldHydrateResultsForRender|isResultsHydrationSettled|resultsFirstPaintKey|listFirstPaintReady|allowHydrationFinalizeCommit|hydrationOperationId|deriveCommittedSearchSurfaceResultsSnapshotKey|deriveSearchSurfaceResultsTransactionKey';
 if (
   rgNoMatch(busHydrationPreparedOwnershipPattern, [
     'apps/mobile/src/screens/Search/runtime/shared/search-runtime-bus.ts',
@@ -4239,7 +4239,7 @@ if (
 
 if (
   rgNoMatch(
-    'searchRuntimeBus\\.getState\\(\\)\\.(resultsHydrationKey|hydratedResultsKey|shouldHydrateResultsForRender|isResultsHydrationSettled|searchSurfaceResultsTransactionKey|allowHydrationFinalizeCommit|hydrationOperationId)|searchRuntimeBus\\.publish\\(\\{[\\s\\S]{0,240}(resultsHydrationKey|hydratedResultsKey|shouldHydrateResultsForRender|isResultsHydrationSettled|searchSurfaceResultsTransactionKey|allowHydrationFinalizeCommit|hydrationOperationId)',
+    'searchRuntimeBus\\.getState\\(\\)\\.(resultsHydrationKey|resultsIdentityKey|hydratedResultsKey|shouldHydrateResultsForRender|isResultsHydrationSettled|searchSurfaceResultsTransactionKey|allowHydrationFinalizeCommit|hydrationOperationId)|searchRuntimeBus\\.publish\\(\\{[\\s\\S]{0,240}(resultsHydrationKey|resultsIdentityKey|hydratedResultsKey|shouldHydrateResultsForRender|isResultsHydrationSettled|searchSurfaceResultsTransactionKey|allowHydrationFinalizeCommit|hydrationOperationId)',
     ['apps/mobile/src/screens/Search']
   )
 ) {
@@ -4258,11 +4258,11 @@ if (!scenarioIsMapRuntimeOnly) {
   );
   if (
     !hydrationRuntimeStateSource.includes(
-      "['allowHydrationFinalizeCommit', 'resultsHydrationKey']"
+      "['allowHydrationFinalizeCommit', 'resultsIdentityKey']"
     ) &&
     !hydrationRuntimeStateSource.includes('useResultsPresentationSurfaceAuthoritySelector') &&
     !hydrationRuntimeStateSource.includes('results_panel_hydration_runtime_surface_state') &&
-    /const surfaceResultsHydrationKey\s*=\s*[\s\S]*resultsPresentationSurfaceAuthority\.getSnapshot\(\)\.resultsHydrationKey/.test(
+    /const surfaceResultsIdentityKey\s*=\s*[\s\S]*resultsPresentationSurfaceAuthority\.getSnapshot\(\)\.resultsIdentityKey/.test(
       hydrationRuntimeStateSource
     ) &&
     /getAllowHydrationFinalizeCommit[\s\S]*resultsPresentationSurfaceAuthority\.getSnapshot\(\)\.allowHydrationFinalizeCommit/.test(

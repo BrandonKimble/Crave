@@ -7,11 +7,11 @@ export const useSearchRootSearchSceneListHydrationKeysPatchRuntime = ({
   hydrationKeyRuntime,
 }: {
   hydrationKeyRuntime: ReturnType<typeof useSearchResultsPanelHydrationKeyRuntime>;
-}): Pick<SearchRootSearchSceneListHydrationPatch, 'resultsHydrationKey' | 'hydratedResultsKey'> =>
+}): Pick<SearchRootSearchSceneListHydrationPatch, 'resultsIdentityKey' | 'hydratedResultsKey'> =>
   React.useMemo(
     () => ({
-      resultsHydrationKey: hydrationKeyRuntime.resultsHydrationKey,
+      resultsIdentityKey: hydrationKeyRuntime.resultsIdentityKey,
       hydratedResultsKey: hydrationKeyRuntime.hydratedResultsKey,
     }),
-    [hydrationKeyRuntime.hydratedResultsKey, hydrationKeyRuntime.resultsHydrationKey]
+    [hydrationKeyRuntime.hydratedResultsKey, hydrationKeyRuntime.resultsIdentityKey]
   );

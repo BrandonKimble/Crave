@@ -442,6 +442,7 @@ export const useBottomSheetSharedRuntime = ({
   });
   const scrollContainerRuntime = useBottomSheetSharedScrollContainerRuntime({
     gesturesScroll: gestures.scroll,
+    gesturesScrollSecondary: gestures.scrollSecondary,
     scrollHeaderComponent,
   });
   const animatedSurfaceRuntime = useBottomSheetSharedAnimatedSurfaceRuntime({
@@ -458,6 +459,7 @@ export const useBottomSheetSharedRuntime = ({
     },
     scrollRuntime: {
       ScrollComponent: scrollContainerRuntime.ScrollComponent,
+      SecondaryScrollComponent: scrollContainerRuntime.SecondaryScrollComponent,
       shouldEnableScroll,
       // UI-thread mirror of shouldEnableScroll (kept in sync above). Frame-drop fix: sinks drive
       // the FlashList/ScrollView scrollEnabled off THIS SharedValue via useAnimatedProps, so a

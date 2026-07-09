@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { showAppModal, Text } from '../../components';
+import { announceFailureIfOnline, showAppModal, Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import {
   togglePollEndorsement,
@@ -67,7 +67,14 @@ type PollCandidateBarRowProps = {
 };
 
 const PollCandidateBarRow = React.memo(
-  ({ candidate, fraction, fillColor, viewerAvatarUrl, disabled, onToggle }: PollCandidateBarRowProps) => {
+  ({
+    candidate,
+    fraction,
+    fillColor,
+    viewerAvatarUrl,
+    disabled,
+    onToggle,
+  }: PollCandidateBarRowProps) => {
     const endorsed = candidate.currentUserEndorsed;
     const label = candidate.name ?? 'Unknown';
     const pctLabel = `${Math.round(fraction * 100)}%`;
@@ -187,6 +194,7 @@ export const PollCandidateBars = React.memo(
           onCandidatesChange?.(settled);
         } catch {
           setOptimistic(null); // revert to props on failure
+          announceFailureIfOnline();
         } finally {
           inFlight.current = false;
         }

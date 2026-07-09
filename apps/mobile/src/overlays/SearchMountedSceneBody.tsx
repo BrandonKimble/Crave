@@ -1,9 +1,9 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { InteractionManager, StyleSheet, View } from 'react-native';
 
 import type { FlashListProps } from '@shopify/flash-list';
 import { FlashList } from '@shopify/flash-list';
-import Animated from 'react-native-reanimated';
+import Animated, { runOnJS, useAnimatedReaction } from 'react-native-reanimated';
 
 import type {
   BottomSheetSceneStackBodyDefaults,
@@ -265,146 +265,333 @@ const SearchMountedResultsListTarget = React.memo(
     });
     previousListDataSnapshotRef.current = listDataSnapshot;
 
+    // R2-C1 toggle-render eviction: BOTH tabs' FlashLists stay co-mounted (primary=restaurants,
+    // secondary=dishes — the admission controller binds them permanently). The toggle is a
+    // visibility flip (opacity/pointerEvents), NOT a data swap or remount, so the incoming tab's
+    // cards are already rendered and the ~250-290ms card render leaves the commit window.
+    const secondaryListContent = sceneBodyContent.secondaryList;
+    const secondaryListTransport = sceneBodyTransport.secondaryList;
+    const hasSecondaryList = secondaryListContent != null;
     const activeList =
-      listDataSnapshot.activeList === 'secondary' && sceneBodyContent.secondaryList != null
-        ? 'secondary'
-        : 'primary';
-    const activeSecondaryList = sceneBodyContent.secondaryList;
-    const activeListContent = activeList === 'secondary' ? activeSecondaryList : sceneBodyContent;
-    const activeListTransport =
-      activeList === 'secondary' ? sceneBodyTransport.secondaryList : null;
-    const activeFlashListProps = React.useMemo(
+      listDataSnapshot.activeList === 'secondary' && hasSecondaryList ? 'secondary' : 'primary';
+    const primaryOwnsScroll = activeList === 'primary';
+    const secondaryOwnsScroll = activeList === 'secondary';
+    const activeListValueRef = useLatestRef(activeList);
+    const primaryFlashListProps = React.useMemo(
       () => ({
         ...(sceneBodyTransport.flashListProps ?? bodyDefaults.activeFlashListProps ?? {}),
-        ...(activeListTransport?.flashListProps ?? {}),
       }),
-      [
-        activeListTransport?.flashListProps,
-        bodyDefaults.activeFlashListProps,
-        sceneBodyTransport.flashListProps,
-      ]
+      [bodyDefaults.activeFlashListProps, sceneBodyTransport.flashListProps]
     );
-    const activeData =
-      activeList === 'secondary' ? listDataSnapshot.secondaryData : listDataSnapshot.primaryData;
-    const activeExtraData =
-      activeList === 'secondary'
-        ? listDataSnapshot.secondaryExtraData
-        : listDataSnapshot.primaryExtraData;
-    const activeListRef =
-      activeList === 'secondary' ? activeListTransport?.listRef : sceneBodyTransport.listRef;
-    const activeRenderItem = activeListContent?.renderItem ?? sceneBodyContent.renderItem;
-    const activeKeyExtractor = activeListContent?.keyExtractor ?? sceneBodyContent.keyExtractor;
-    const activeEstimatedItemSize =
-      activeListContent?.estimatedItemSize ?? sceneBodyContent.estimatedItemSize;
-    const activeListHeaderComponent =
-      activeListContent?.ListHeaderComponent ?? sceneBodyContent.ListHeaderComponent;
-    const activeListFooterComponent =
-      activeListContent?.ListFooterComponent ?? sceneBodyContent.ListFooterComponent;
-    const activeListEmptyComponent =
-      activeListContent?.ListEmptyComponent ?? sceneBodyContent.ListEmptyComponent;
-    const activeItemSeparatorComponent =
-      activeListContent?.ItemSeparatorComponent ?? sceneBodyContent.ItemSeparatorComponent;
-    const activeOnEndReached = activeListContent?.onEndReached ?? sceneBodyContent.onEndReached;
-    const activeListOnScroll =
-      activeList === 'secondary'
-        ? bodyScrollRuntime.secondaryListOnScroll
-        : bodyScrollRuntime.primaryListOnScroll;
+    const secondaryFlashListProps = React.useMemo(
+      () => ({
+        ...primaryFlashListProps,
+        ...(secondaryListTransport?.flashListProps ?? {}),
+      }),
+      [primaryFlashListProps, secondaryListTransport?.flashListProps]
+    );
     const sceneKeyboardShouldPersistTaps =
       sceneBodyTransport.keyboardShouldPersistTaps ??
       bodyDefaults.resolvedKeyboardShouldPersistTaps;
     const sceneKeyboardDismissMode =
       sceneBodyTransport.keyboardDismissMode ?? bodyDefaults.resolvedKeyboardDismissMode;
-    const sceneContentContainerStyle = React.useMemo(
-      () =>
-        sanitizeContentContainerStyle(
-          activeListTransport?.contentContainerStyle ??
-            listDataSnapshot.contentContainerStyle ??
-            sceneBodyTransport.contentContainerStyle ??
-            bodyDefaults.resolvedContentContainerStyle
-        ),
-      [
-        activeListTransport?.contentContainerStyle,
-        bodyDefaults.resolvedContentContainerStyle,
-        listDataSnapshot.contentContainerStyle,
-        sceneBodyTransport.contentContainerStyle,
-      ]
-    );
-    const sceneListContentContainerStyle = React.useMemo(
+    const primaryListContentContainerStyle = React.useMemo(
       () =>
         resolveListContentContainerStyle({
-          baseStyle: sceneContentContainerStyle,
+          baseStyle: sanitizeContentContainerStyle(
+            listDataSnapshot.contentContainerStyle ??
+              sceneBodyTransport.contentContainerStyle ??
+              bodyDefaults.resolvedContentContainerStyle
+          ),
           hasScrollHeaderOverlay: bodyDefaults.scrollHeaderComponent != null,
           scrollHeaderHeight: bodyDefaults.scrollHeaderHeight,
         }),
       [
+        bodyDefaults.resolvedContentContainerStyle,
         bodyDefaults.scrollHeaderComponent,
         bodyDefaults.scrollHeaderHeight,
-        sceneContentContainerStyle,
+        listDataSnapshot.contentContainerStyle,
+        sceneBodyTransport.contentContainerStyle,
+      ]
+    );
+    const secondaryListContentContainerStyle = React.useMemo(
+      () =>
+        resolveListContentContainerStyle({
+          baseStyle: sanitizeContentContainerStyle(
+            secondaryListTransport?.contentContainerStyle ??
+              listDataSnapshot.contentContainerStyle ??
+              sceneBodyTransport.contentContainerStyle ??
+              bodyDefaults.resolvedContentContainerStyle
+          ),
+          hasScrollHeaderOverlay: bodyDefaults.scrollHeaderComponent != null,
+          scrollHeaderHeight: bodyDefaults.scrollHeaderHeight,
+        }),
+      [
+        bodyDefaults.resolvedContentContainerStyle,
+        bodyDefaults.scrollHeaderComponent,
+        bodyDefaults.scrollHeaderHeight,
+        listDataSnapshot.contentContainerStyle,
+        sceneBodyTransport.contentContainerStyle,
+        secondaryListTransport?.contentContainerStyle,
       ]
     );
     const renderSceneScrollComponent = bodyScrollRuntime.ScrollComponent as NonNullable<
       FlashListProps<unknown>['renderScrollComponent']
     >;
-    const handleScrollBeginDrag = React.useCallback(
-      (event: ScrollEvent) => {
-        sceneBodyTransport.onScrollBeginDrag?.();
-        activeFlashListProps.onScrollBeginDrag?.(event);
+    // Distinct scroll container (own GestureDetector + native gesture) for the secondary list —
+    // attached PERMANENTLY so the toggle never changes the scroll-container component type
+    // (a renderScrollComponent type flip would remount the subtree and re-pay the card render).
+    const renderSecondarySceneScrollComponent =
+      bodyScrollRuntime.SecondaryScrollComponent as NonNullable<
+        FlashListProps<unknown>['renderScrollComponent']
+      >;
+    if (__DEV__) {
+      // [T1DBG] render-body mark: partitions the dark gap between store publish and projection
+      console.log(`[T1DBG] bodyRender t=${performance.now().toFixed(1)}`);
+    }
+    // Pagination #6b (Reanimated-correct): activeListOnScroll is a Reanimated handler OBJECT —
+    // it must stay the direct onScroll prop (wrapping it in a JS closure throws
+    // "activeListOnScroll is not a function"). The user-scroll-activity signal is derived from
+    // the scrollOffset SharedValue instead; content/layout heights come from list callbacks.
+    const primaryContentHeightRef = React.useRef(0);
+    const primaryLayoutHeightRef = React.useRef(0);
+    const secondaryContentHeightRef = React.useRef(0);
+    const secondaryLayoutHeightRef = React.useRef(0);
+    const emitUserListScrollActivity = React.useCallback(
+      (offsetY: number) => {
+        // Heights of the ACTIVE list only: the shared scrollOffset SharedValue is driven by the
+        // visible list (the hidden co-mounted list cannot scroll), so the pagination signal keeps
+        // tracking the active tab exactly as before the dual-mount.
+        const activeIsSecondary = activeListValueRef.current === 'secondary';
+        const contentHeight = activeIsSecondary
+          ? secondaryContentHeightRef.current
+          : primaryContentHeightRef.current;
+        const layoutHeight = activeIsSecondary
+          ? secondaryLayoutHeightRef.current
+          : primaryLayoutHeightRef.current;
+        const distanceFromEnd = contentHeight - layoutHeight - offsetY;
+        sceneBodyTransport.onUserListScrollActivity?.(offsetY, distanceFromEnd);
       },
-      [activeFlashListProps, sceneBodyTransport]
+      [activeListValueRef, sceneBodyTransport]
     );
-    const handleEndReached = React.useCallback(() => {
-      activeOnEndReached?.();
-    }, [activeOnEndReached]);
-    const handleScrollEndDrag = React.useCallback(
+    useAnimatedReaction(
+      () => bodyScrollRuntime.scrollOffset.value,
+      (current, previous) => {
+        if (previous == null || Math.abs(current - previous) >= 48) {
+          runOnJS(emitUserListScrollActivity)(current);
+        }
+      },
+      [emitUserListScrollActivity]
+    );
+    const handlePrimaryContentSizeChange = React.useCallback((_w: number, h: number) => {
+      primaryContentHeightRef.current = h;
+    }, []);
+    const handlePrimaryLayout = React.useCallback(
+      (event: { nativeEvent: { layout: { height: number } } }) => {
+        primaryLayoutHeightRef.current = event.nativeEvent.layout.height;
+      },
+      []
+    );
+    const handleSecondaryContentSizeChange = React.useCallback((_w: number, h: number) => {
+      secondaryContentHeightRef.current = h;
+    }, []);
+    const handleSecondaryLayout = React.useCallback(
+      (event: { nativeEvent: { layout: { height: number } } }) => {
+        secondaryLayoutHeightRef.current = event.nativeEvent.layout.height;
+      },
+      []
+    );
+    const handlePrimaryScrollBeginDrag = React.useCallback(
+      (event: ScrollEvent) => {
+        if (__DEV__) {
+          console.log(
+            `[PAGDBG] body scrollBeginDrag fired list=primary transportHandler=${sceneBodyTransport.onScrollBeginDrag != null}`
+          );
+        }
+        sceneBodyTransport.onScrollBeginDrag?.();
+        primaryFlashListProps.onScrollBeginDrag?.(event);
+      },
+      [primaryFlashListProps, sceneBodyTransport]
+    );
+    const handleSecondaryScrollBeginDrag = React.useCallback(
+      (event: ScrollEvent) => {
+        if (__DEV__) {
+          console.log(
+            `[PAGDBG] body scrollBeginDrag fired list=secondary transportHandler=${sceneBodyTransport.onScrollBeginDrag != null}`
+          );
+        }
+        sceneBodyTransport.onScrollBeginDrag?.();
+        secondaryFlashListProps.onScrollBeginDrag?.(event);
+      },
+      [secondaryFlashListProps, sceneBodyTransport]
+    );
+    // onEndReached stays attached to both lists (prop identity stability) but only the ACTIVE
+    // list may trigger pagination — the hidden prewarmed list must never fire it.
+    const primaryOnEndReached = sceneBodyContent.onEndReached;
+    const secondaryOnEndReached =
+      secondaryListContent?.onEndReached ?? sceneBodyContent.onEndReached;
+    const handlePrimaryEndReached = React.useCallback(() => {
+      if (activeListValueRef.current !== 'primary') {
+        return;
+      }
+      primaryOnEndReached?.();
+    }, [activeListValueRef, primaryOnEndReached]);
+    const handleSecondaryEndReached = React.useCallback(() => {
+      if (activeListValueRef.current !== 'secondary') {
+        return;
+      }
+      secondaryOnEndReached?.();
+    }, [activeListValueRef, secondaryOnEndReached]);
+    const handlePrimaryScrollEndDrag = React.useCallback(
       (event: ScrollEvent) => {
         sceneBodyTransport.onScrollEndDrag?.();
         sceneBodyTransport.onScrollOffsetChange?.(bodyScrollRuntime.scrollOffset.value);
-        activeFlashListProps.onScrollEndDrag?.(event);
+        primaryFlashListProps.onScrollEndDrag?.(event);
       },
-      [activeFlashListProps, bodyScrollRuntime.scrollOffset, sceneBodyTransport]
+      [bodyScrollRuntime.scrollOffset, primaryFlashListProps, sceneBodyTransport]
     );
-    const sceneFlashListSurfaceStyle = React.useMemo(
+    const handleSecondaryScrollEndDrag = React.useCallback(
+      (event: ScrollEvent) => {
+        sceneBodyTransport.onScrollEndDrag?.();
+        sceneBodyTransport.onScrollOffsetChange?.(bodyScrollRuntime.scrollOffset.value);
+        secondaryFlashListProps.onScrollEndDrag?.(event);
+      },
+      [bodyScrollRuntime.scrollOffset, secondaryFlashListProps, sceneBodyTransport]
+    );
+    const primaryFlashListSurfaceStyle = React.useMemo(
       () =>
         StyleSheet.flatten([
-          activeFlashListProps.style,
+          primaryFlashListProps.style,
           bodyDefaults.scrollHeaderComponent ? styles.transparentFlashListSurface : null,
         ]) ?? undefined,
-      [activeFlashListProps.style, bodyDefaults.scrollHeaderComponent]
+      [primaryFlashListProps.style, bodyDefaults.scrollHeaderComponent]
     );
-    const preparedRowsInitialDrawBatchSize = Math.min(
-      MAX_PREPARED_ROWS_INITIAL_DRAW_BATCH_SIZE,
-      Math.max(DEFAULT_INITIAL_DRAW_BATCH_SIZE, activeData.length)
+    const secondaryFlashListSurfaceStyle = React.useMemo(
+      () =>
+        StyleSheet.flatten([
+          secondaryFlashListProps.style,
+          bodyDefaults.scrollHeaderComponent ? styles.transparentFlashListSurface : null,
+        ]) ?? undefined,
+      [secondaryFlashListProps.style, bodyDefaults.scrollHeaderComponent]
     );
-    const resolvedFlashListProps = React.useMemo(
+    // Prewarm scheduling: a NEW rows snapshot (search response / page commit) only re-renders the
+    // ACTIVE list synchronously. The hidden list keeps its previous rows for that commit and picks
+    // up the new rows right after interactions settle — so neither the response commit nor the
+    // toggle commit pays both tabs' card renders. If the user toggles before the prewarm lands,
+    // the incoming list reads live data in the toggle commit (no worse than the pre-dual-mount
+    // behavior).
+    const livePrimaryWarmTarget = React.useMemo(
       () => ({
-        drawDistance: DEFAULT_DRAW_DISTANCE,
-        removeClippedSubviews: false,
-        estimatedItemSize: activeEstimatedItemSize,
-        ...activeFlashListProps,
-        overrideProps: {
-          ...(activeFlashListProps.overrideProps ?? {}),
-          initialDrawBatchSize: preparedRowsInitialDrawBatchSize,
-        },
+        data: listDataSnapshot.primaryData,
+        extraData: listDataSnapshot.primaryExtraData,
       }),
-      [activeEstimatedItemSize, activeFlashListProps, preparedRowsInitialDrawBatchSize]
+      [listDataSnapshot.primaryData, listDataSnapshot.primaryExtraData]
     );
-    const flashListPropsForRender = React.useMemo(
+    const liveSecondaryWarmTarget = React.useMemo(
+      () => ({
+        data: listDataSnapshot.secondaryData,
+        extraData: listDataSnapshot.secondaryExtraData,
+      }),
+      [listDataSnapshot.secondaryData, listDataSnapshot.secondaryExtraData]
+    );
+    const [warmPrimaryTarget, setWarmPrimaryTarget] = React.useState(() =>
+      primaryOwnsScroll
+        ? livePrimaryWarmTarget
+        : { data: EMPTY_SEARCH_MOUNTED_RESULTS_LIST_DATA, extraData: 0 as unknown }
+    );
+    const [warmSecondaryTarget, setWarmSecondaryTarget] = React.useState(() =>
+      secondaryOwnsScroll
+        ? liveSecondaryWarmTarget
+        : { data: EMPTY_SEARCH_MOUNTED_RESULTS_LIST_DATA, extraData: 0 as unknown }
+    );
+    React.useEffect(() => {
+      if (
+        warmPrimaryTarget === livePrimaryWarmTarget &&
+        warmSecondaryTarget === liveSecondaryWarmTarget
+      ) {
+        return;
+      }
+      const interactionHandle = InteractionManager.runAfterInteractions(() => {
+        setWarmPrimaryTarget(livePrimaryWarmTarget);
+        setWarmSecondaryTarget(liveSecondaryWarmTarget);
+        if (__DEV__) {
+          console.log(`[T1DBG] inactiveListPrewarm t=${performance.now().toFixed(1)}`);
+        }
+      });
+      return () => {
+        interactionHandle.cancel();
+      };
+    }, [livePrimaryWarmTarget, liveSecondaryWarmTarget, warmPrimaryTarget, warmSecondaryTarget]);
+    const primaryRenderTarget = primaryOwnsScroll ? livePrimaryWarmTarget : warmPrimaryTarget;
+    const secondaryRenderTarget = secondaryOwnsScroll
+      ? liveSecondaryWarmTarget
+      : warmSecondaryTarget;
+    const primaryInitialDrawBatchSize = Math.min(
+      MAX_PREPARED_ROWS_INITIAL_DRAW_BATCH_SIZE,
+      Math.max(DEFAULT_INITIAL_DRAW_BATCH_SIZE, primaryRenderTarget.data.length)
+    );
+    const secondaryInitialDrawBatchSize = Math.min(
+      MAX_PREPARED_ROWS_INITIAL_DRAW_BATCH_SIZE,
+      Math.max(DEFAULT_INITIAL_DRAW_BATCH_SIZE, secondaryRenderTarget.data.length)
+    );
+    const primaryFlashListPropsForRender = React.useMemo(
       () =>
         ({
-          ...resolvedFlashListProps,
-          style: sceneFlashListSurfaceStyle,
-          data: activeData,
-          renderItem: activeRenderItem,
-          keyExtractor: activeKeyExtractor,
-          contentContainerStyle: sceneListContentContainerStyle,
+          drawDistance: DEFAULT_DRAW_DISTANCE,
+          removeClippedSubviews: false,
+          estimatedItemSize: sceneBodyContent.estimatedItemSize,
+          ...primaryFlashListProps,
+          overrideProps: {
+            ...(primaryFlashListProps.overrideProps ?? {}),
+            initialDrawBatchSize: primaryInitialDrawBatchSize,
+          },
+          style: primaryFlashListSurfaceStyle,
+          data: primaryRenderTarget.data,
+          renderItem: sceneBodyContent.renderItem,
+          keyExtractor: sceneBodyContent.keyExtractor,
+          contentContainerStyle: primaryListContentContainerStyle,
         }) as FlashListProps<unknown>,
       [
-        activeData,
-        activeKeyExtractor,
-        activeRenderItem,
-        resolvedFlashListProps,
-        sceneFlashListSurfaceStyle,
-        sceneListContentContainerStyle,
+        primaryFlashListProps,
+        primaryFlashListSurfaceStyle,
+        primaryInitialDrawBatchSize,
+        primaryListContentContainerStyle,
+        primaryRenderTarget.data,
+        sceneBodyContent.estimatedItemSize,
+        sceneBodyContent.keyExtractor,
+        sceneBodyContent.renderItem,
+      ]
+    );
+    const secondaryFlashListPropsForRender = React.useMemo(
+      () =>
+        ({
+          drawDistance: DEFAULT_DRAW_DISTANCE,
+          removeClippedSubviews: false,
+          estimatedItemSize:
+            secondaryListContent?.estimatedItemSize ?? sceneBodyContent.estimatedItemSize,
+          ...secondaryFlashListProps,
+          overrideProps: {
+            ...(secondaryFlashListProps.overrideProps ?? {}),
+            initialDrawBatchSize: secondaryInitialDrawBatchSize,
+          },
+          style: secondaryFlashListSurfaceStyle,
+          data: secondaryRenderTarget.data,
+          renderItem: secondaryListContent?.renderItem ?? sceneBodyContent.renderItem,
+          keyExtractor: secondaryListContent?.keyExtractor ?? sceneBodyContent.keyExtractor,
+          contentContainerStyle: secondaryListContentContainerStyle,
+        }) as FlashListProps<unknown>,
+      [
+        sceneBodyContent.estimatedItemSize,
+        sceneBodyContent.keyExtractor,
+        sceneBodyContent.renderItem,
+        secondaryFlashListProps,
+        secondaryFlashListSurfaceStyle,
+        secondaryInitialDrawBatchSize,
+        secondaryListContent?.estimatedItemSize,
+        secondaryListContent?.keyExtractor,
+        secondaryListContent?.renderItem,
+        secondaryListContentContainerStyle,
+        secondaryRenderTarget.data,
       ]
     );
 
@@ -416,7 +603,7 @@ const SearchMountedResultsListTarget = React.memo(
       });
       markSearchMountedResultsPreparedRowsCommitted({
         activeRowCount: listDataSnapshot.preparedRowsActiveRowCount,
-        readinessKey: listDataSnapshot.preparedRowsReadinessKey,
+        resultsIdentityKey: listDataSnapshot.preparedRowsIdentityKey,
       });
       const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
       if (isPerfScenarioAttributionActive(scenarioConfig)) {
@@ -431,52 +618,133 @@ const SearchMountedResultsListTarget = React.memo(
           path: compactResultsListDebugKey(listDataSnapshot.debugPreparationKey),
           durationMs: Number(durationMs.toFixed(3)),
           activeList,
-          preparedRowsReadinessKey: listDataSnapshot.preparedRowsReadinessKey,
+          preparedRowsIdentityKey: listDataSnapshot.preparedRowsIdentityKey,
           renderRowCount: listDataSnapshot.debugRenderRowCount,
         });
       }
     });
 
+    const primaryListHeaderComponent =
+      listDataSnapshot.primaryListHeaderComponent !== undefined
+        ? (listDataSnapshot.primaryListHeaderComponent as SearchMountedListBodyContentSpec['ListHeaderComponent'])
+        : sceneBodyContent.ListHeaderComponent;
+    const secondaryListHeaderComponent =
+      listDataSnapshot.primaryListHeaderComponent !== undefined
+        ? (listDataSnapshot.primaryListHeaderComponent as SearchMountedListBodyContentSpec['ListHeaderComponent'])
+        : (secondaryListContent?.ListHeaderComponent ?? sceneBodyContent.ListHeaderComponent);
+    // Co-mounted dual list layers: the toggle flips visibility (opacity/pointerEvents) only —
+    // keys, refs, data bindings, and scroll containers are PERMANENT per list, so nothing
+    // remounts and the incoming tab's already-rendered cards paint on the flip frame. Header,
+    // footer, and empty components follow scroll ownership (sibling pattern:
+    // BottomSheetSceneStackListBodySurface) — inserting a header is a layout shift for the
+    // incoming list, not a card re-render. NOTE (2026-07-06): do NOT permanent-mount the header
+    // on both lists to chase the once-reported strip flash — the header elements flow through
+    // the chrome-freeze snapshot store, so a permanently-mounted instance can receive a STALE
+    // element (measured: the pill stuck on the old tab). The flash itself no longer reproduces
+    // (188-frame @60fps sweep) now that the press-up fade choreography is fixed.
     const renderedListLayer = (
-      <View style={styles.singleListLayer}>
-        <AnimatedFlashList
-          key={`search:${activeList}:${
-            activeListContent?.listKey ?? sceneBodyContent.listKey ?? 'mounted-results-list'
-          }`}
-          ref={activeListRef}
-          {...flashListPropsForRender}
-          ListHeaderComponent={
-            listDataSnapshot.primaryListHeaderComponent !== undefined
-              ? (listDataSnapshot.primaryListHeaderComponent as typeof activeListHeaderComponent)
-              : activeListHeaderComponent
-          }
-          ListFooterComponent={
-            activeList === 'primary' && listDataSnapshot.primaryListFooterComponent !== undefined
-              ? (listDataSnapshot.primaryListFooterComponent as typeof activeListFooterComponent)
-              : activeListFooterComponent
-          }
-          ListEmptyComponent={activeListEmptyComponent}
-          ItemSeparatorComponent={activeItemSeparatorComponent}
-          keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
-          scrollEnabled={bodyScrollRuntime.shouldEnableScroll}
-          renderScrollComponent={renderSceneScrollComponent}
-          onScroll={activeListOnScroll}
-          scrollEventThrottle={16}
-          onScrollBeginDrag={handleScrollBeginDrag}
-          onScrollEndDrag={handleScrollEndDrag}
-          onEndReached={handleEndReached}
-          onEndReachedThreshold={sceneBodyContent.onEndReachedThreshold}
-          showsVerticalScrollIndicator={bodyDefaults.effectiveShowsVerticalScrollIndicator}
-          keyboardDismissMode={sceneKeyboardDismissMode}
-          testID={
-            activeListTransport?.testID ?? sceneBodyTransport.testID ?? bodyDefaults.resolvedTestID
-          }
-          extraData={activeExtraData}
-          scrollIndicatorInsets={
-            activeListTransport?.scrollIndicatorInsets ?? listDataSnapshot.scrollIndicatorInsets
-          }
-        />
-      </View>
+      <>
+        <View
+          pointerEvents={primaryOwnsScroll ? 'auto' : 'none'}
+          style={[
+            hasSecondaryList ? styles.dualListLayer : styles.singleListLayer,
+            primaryOwnsScroll ? styles.visibleLayer : styles.hiddenLayer,
+          ]}
+        >
+          <AnimatedFlashList
+            key={`search:primary:${sceneBodyContent.listKey ?? 'mounted-results-list'}`}
+            ref={sceneBodyTransport.listRef}
+            {...primaryFlashListPropsForRender}
+            ListHeaderComponent={primaryOwnsScroll ? primaryListHeaderComponent : null}
+            ListFooterComponent={
+              primaryOwnsScroll
+                ? listDataSnapshot.primaryListFooterComponent !== undefined
+                  ? (listDataSnapshot.primaryListFooterComponent as SearchMountedListBodyContentSpec['ListFooterComponent'])
+                  : sceneBodyContent.ListFooterComponent
+                : null
+            }
+            ListEmptyComponent={primaryOwnsScroll ? sceneBodyContent.ListEmptyComponent : null}
+            ItemSeparatorComponent={sceneBodyContent.ItemSeparatorComponent}
+            keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
+            scrollEnabled={bodyScrollRuntime.shouldEnableScroll && primaryOwnsScroll}
+            renderScrollComponent={renderSceneScrollComponent}
+            onScroll={bodyScrollRuntime.primaryListOnScroll}
+            onContentSizeChange={handlePrimaryContentSizeChange}
+            onLayout={handlePrimaryLayout}
+            scrollEventThrottle={16}
+            onScrollBeginDrag={handlePrimaryScrollBeginDrag}
+            onScrollEndDrag={handlePrimaryScrollEndDrag}
+            onEndReached={handlePrimaryEndReached}
+            onEndReachedThreshold={sceneBodyContent.onEndReachedThreshold}
+            showsVerticalScrollIndicator={
+              bodyDefaults.effectiveShowsVerticalScrollIndicator && primaryOwnsScroll
+            }
+            keyboardDismissMode={sceneKeyboardDismissMode}
+            testID={sceneBodyTransport.testID ?? bodyDefaults.resolvedTestID}
+            extraData={primaryRenderTarget.extraData}
+            scrollIndicatorInsets={listDataSnapshot.scrollIndicatorInsets}
+          />
+        </View>
+        {hasSecondaryList ? (
+          <View
+            pointerEvents={secondaryOwnsScroll ? 'auto' : 'none'}
+            style={[
+              styles.dualListLayer,
+              secondaryOwnsScroll ? styles.visibleLayer : styles.hiddenLayer,
+            ]}
+          >
+            <AnimatedFlashList
+              key={`search:secondary:${
+                secondaryListContent?.listKey ?? sceneBodyContent.listKey ?? 'mounted-results-list'
+              }`}
+              ref={secondaryListTransport?.listRef}
+              {...secondaryFlashListPropsForRender}
+              ListHeaderComponent={secondaryOwnsScroll ? secondaryListHeaderComponent : null}
+              ListFooterComponent={
+                secondaryOwnsScroll
+                  ? (secondaryListContent?.ListFooterComponent ??
+                    sceneBodyContent.ListFooterComponent)
+                  : null
+              }
+              ListEmptyComponent={
+                secondaryOwnsScroll
+                  ? (secondaryListContent?.ListEmptyComponent ??
+                    sceneBodyContent.ListEmptyComponent)
+                  : null
+              }
+              ItemSeparatorComponent={
+                secondaryListContent?.ItemSeparatorComponent ??
+                sceneBodyContent.ItemSeparatorComponent
+              }
+              keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
+              scrollEnabled={bodyScrollRuntime.shouldEnableScroll && secondaryOwnsScroll}
+              renderScrollComponent={renderSecondarySceneScrollComponent}
+              onScroll={bodyScrollRuntime.secondaryListOnScroll}
+              onContentSizeChange={handleSecondaryContentSizeChange}
+              onLayout={handleSecondaryLayout}
+              scrollEventThrottle={16}
+              onScrollBeginDrag={handleSecondaryScrollBeginDrag}
+              onScrollEndDrag={handleSecondaryScrollEndDrag}
+              onEndReached={handleSecondaryEndReached}
+              onEndReachedThreshold={sceneBodyContent.onEndReachedThreshold}
+              showsVerticalScrollIndicator={
+                bodyDefaults.effectiveShowsVerticalScrollIndicator && secondaryOwnsScroll
+              }
+              keyboardDismissMode={sceneKeyboardDismissMode}
+              testID={
+                secondaryListTransport?.testID ??
+                sceneBodyTransport.testID ??
+                bodyDefaults.resolvedTestID
+              }
+              extraData={secondaryRenderTarget.extraData}
+              scrollIndicatorInsets={
+                secondaryListTransport?.scrollIndicatorInsets ??
+                listDataSnapshot.scrollIndicatorInsets
+              }
+            />
+          </View>
+        ) : null}
+      </>
     );
 
     const listTarget = (

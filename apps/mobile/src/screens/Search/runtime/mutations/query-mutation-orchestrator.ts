@@ -1,8 +1,7 @@
 import React from 'react';
 
-import { useSearchStore } from '../../../../store/searchStore';
-import { logger } from '../../../../utils';
-import type { ScheduleToggleCommit } from '../shared/results-toggle-interaction-contract';
+import { writeSearchDesiredTuple } from '../shared/search-desired-state-writer';
+import type { SearchCommittedBounds } from '../shared/search-desired-state-contract';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 import {
   buildLevelsFromRange,
@@ -12,26 +11,6 @@ import {
   type PriceRangeTuple,
 } from '../../utils/price';
 
-type SearchMode = 'natural' | 'shortcut' | null;
-type SegmentValue = 'dishes' | 'restaurants';
-
-type StructuredSearchFilters = {
-  minimumVotes?: number | null;
-  openNow?: boolean;
-  priceLevels?: number[];
-  rising?: boolean;
-};
-
-type RerunActiveSearchOptions = {
-  searchMode: SearchMode;
-  activeTab: SegmentValue;
-  submittedQuery: string;
-  query: string;
-  isSearchSessionActive: boolean;
-  preserveSheetState?: boolean;
-  filters?: StructuredSearchFilters;
-};
-
 type QueryMutationMechanismEmitter = (
   event: 'query_mutation_coalesced',
   payload?: Record<string, unknown>
@@ -39,33 +18,21 @@ type QueryMutationMechanismEmitter = (
 
 type UseQueryMutationOrchestratorArgs = {
   searchRuntimeBus: SearchRuntimeBus;
-  searchMode: SearchMode;
-  activeTab: SegmentValue;
-  submittedQuery: string;
-  query: string;
-  isSearchSessionActive: boolean;
-  openNow: boolean;
-  votesFilterActive: boolean;
-  risingActive: boolean;
   pendingPriceRange: PriceRangeTuple;
   setPendingPriceRange: (next: PriceRangeTuple) => void;
   isPriceSelectorVisible: boolean;
   setIsPriceSelectorVisible: (next: boolean) => void;
-  priceLevels: number[];
-  setVotes100Plus: (next: boolean) => void;
-  setRisingActive: (next: boolean) => void;
-  setOpenNow: (next: boolean) => void;
-  setPriceLevels: (next: number[]) => void;
-  scheduleToggleCommit: ScheduleToggleCommit;
-  rerunActiveSearch: (options: RerunActiveSearchOptions) => Promise<void>;
+  priceLevels: readonly number[];
   priceSheetRef: React.MutableRefObject<{ requestClose: () => void } | null>;
-  minimumVotesFilter: number;
+  /** S3-pre commit-moment adopt: a chip commit re-reads the SETTLED native camera into the
+   *  tuple, so a zoom-then-toggle resolves against the CURRENT viewport by construction. */
+  captureFreshTupleBounds: () => Promise<SearchCommittedBounds | null>;
   onMechanismEvent?: QueryMutationMechanismEmitter;
 };
 
 type QueryMutationOrchestrator = {
   togglePriceSelector: () => void;
-  toggleVotesFilter: () => void;
+  toggleIncludeSimilar: () => void;
   toggleRising: () => void;
   toggleOpenNow: () => void;
   commitPriceSelection: () => void;
@@ -79,29 +46,45 @@ export const useQueryMutationOrchestrator = (
 ): QueryMutationOrchestrator => {
   const {
     searchRuntimeBus,
-    searchMode,
-    activeTab,
-    submittedQuery,
-    query,
-    isSearchSessionActive,
-    openNow,
-    votesFilterActive,
-    risingActive,
     pendingPriceRange,
     setPendingPriceRange,
     isPriceSelectorVisible,
     setIsPriceSelectorVisible,
     priceLevels,
-    setVotes100Plus,
-    setRisingActive,
-    setOpenNow,
-    setPriceLevels,
-    scheduleToggleCommit,
-    rerunActiveSearch,
     priceSheetRef,
-    minimumVotesFilter,
+    captureFreshTupleBounds,
     onMechanismEvent,
   } = args;
+
+  // Chip commits are COMMIT MOMENTS (charter §2): adopt the settled camera into the tuple
+  // in the same write as the variant flip, so the rerun resolves against the viewport the
+  // user is looking at — the zoom-then-toggle lane needs no special casing anywhere else.
+  // The flip value is read AFTER the capture lands so rapid re-taps stay correct.
+  const writeChipVariantTuple = React.useCallback(
+    (
+      buildFilterVariant: () => {
+        openNow?: boolean;
+        priceLevels?: number[];
+        rising?: boolean;
+        includeSimilar?: boolean;
+      },
+      cause: 'chip_open_now' | 'chip_rising' | 'chip_price' | 'chip_include_similar'
+    ) => {
+      void captureFreshTupleBounds()
+        .catch(() => null)
+        .then((committedBounds) => {
+          writeSearchDesiredTuple(
+            searchRuntimeBus,
+            {
+              filterVariant: buildFilterVariant(),
+              ...(committedBounds != null ? { committedBounds } : {}),
+            },
+            cause
+          );
+        });
+    },
+    [captureFreshTupleBounds, searchRuntimeBus]
+  );
 
   const pendingPriceRangeRef = React.useRef<PriceRangeTuple>(pendingPriceRange);
 
@@ -126,164 +109,37 @@ export const useQueryMutationOrchestrator = (
     [onMechanismEvent]
   );
 
-  const canRerunForCurrentQuery = React.useCallback(() => {
-    const hasCommittedQuery = Boolean((isSearchSessionActive ? submittedQuery : query).trim());
-    return searchMode === 'shortcut' || hasCommittedQuery;
-  }, [isSearchSessionActive, query, searchMode, submittedQuery]);
-
-  const clearPendingTabSwitchDraft = React.useCallback(() => {
-    searchRuntimeBus.publish({
-      pendingTabSwitchTab: null,
-    });
-  }, [searchRuntimeBus]);
-
-  const fireRerunActiveSearch = React.useCallback(
-    (options: RerunActiveSearchOptions) => {
-      void rerunActiveSearch(options).catch((error) => {
-        logger.warn('Toggle rerun failed', {
-          message: error instanceof Error ? error.message : 'unknown error',
-        });
-      });
-    },
-    [rerunActiveSearch]
-  );
-
-  const toggleVotesFilter = React.useCallback(() => {
+  const toggleIncludeSimilar = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
-    clearPendingTabSwitchDraft();
-    const nextValue = !votesFilterActive;
-    searchRuntimeBus.publish({
-      votesFilterActive: nextValue,
-    });
-    if (!canRerunForCurrentQuery()) {
-      setVotes100Plus(nextValue);
-      return;
-    }
-    const minimumVotes = nextValue ? minimumVotesFilter : null;
-    scheduleToggleCommit(
-      () => {
-        setVotes100Plus(nextValue);
-        fireRerunActiveSearch({
-          searchMode,
-          activeTab,
-          submittedQuery,
-          query,
-          isSearchSessionActive,
-          preserveSheetState: true,
-          filters: { minimumVotes },
-        });
-        return {
-          awaitVisualSync: true,
-        };
-      },
-      { kind: 'filter_votes' }
+    // S2: the trigger only WRITES the tuple (optimistic chip flip via the legacy
+    // projection in the same publish); the desired-tuple reader owns the commit.
+    writeChipVariantTuple(
+      () => ({
+        includeSimilar: !searchRuntimeBus.getState().desiredTuple.filterVariant.includeSimilar,
+      }),
+      'chip_include_similar'
     );
-  }, [
-    activeTab,
-    canRerunForCurrentQuery,
-    clearPendingTabSwitchDraft,
-    fireRerunActiveSearch,
-    isSearchSessionActive,
-    minimumVotesFilter,
-    query,
-    scheduleToggleCommit,
-    searchRuntimeBus,
-    searchMode,
-    setIsPriceSelectorVisible,
-    setVotes100Plus,
-    submittedQuery,
-    votesFilterActive,
-  ]);
+  }, [searchRuntimeBus, setIsPriceSelectorVisible, writeChipVariantTuple]);
 
   const toggleRising = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
-    clearPendingTabSwitchDraft();
-    const nextValue = !risingActive;
-    searchRuntimeBus.publish({
-      risingActive: nextValue,
-    });
-    if (!canRerunForCurrentQuery()) {
-      setRisingActive(nextValue);
-      return;
-    }
-    scheduleToggleCommit(
-      () => {
-        setRisingActive(nextValue);
-        fireRerunActiveSearch({
-          searchMode,
-          activeTab,
-          submittedQuery,
-          query,
-          isSearchSessionActive,
-          preserveSheetState: true,
-          filters: { rising: nextValue },
-        });
-        return {
-          awaitVisualSync: true,
-        };
-      },
-      { kind: 'filter_rising' }
+    writeChipVariantTuple(
+      () => ({
+        rising: !searchRuntimeBus.getState().desiredTuple.filterVariant.rising,
+      }),
+      'chip_rising'
     );
-  }, [
-    activeTab,
-    canRerunForCurrentQuery,
-    clearPendingTabSwitchDraft,
-    fireRerunActiveSearch,
-    isSearchSessionActive,
-    query,
-    risingActive,
-    scheduleToggleCommit,
-    searchRuntimeBus,
-    searchMode,
-    setIsPriceSelectorVisible,
-    setRisingActive,
-    submittedQuery,
-  ]);
+  }, [searchRuntimeBus, setIsPriceSelectorVisible, writeChipVariantTuple]);
 
   const toggleOpenNow = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
-    clearPendingTabSwitchDraft();
-    const nextValue = !openNow;
-    searchRuntimeBus.publish({
-      openNow: nextValue,
-    });
-    if (!canRerunForCurrentQuery()) {
-      setOpenNow(nextValue);
-      return;
-    }
-    scheduleToggleCommit(
-      () => {
-        setOpenNow(nextValue);
-        fireRerunActiveSearch({
-          searchMode,
-          activeTab,
-          submittedQuery,
-          query,
-          isSearchSessionActive,
-          preserveSheetState: true,
-          filters: { openNow: nextValue },
-        });
-        return {
-          awaitVisualSync: true,
-        };
-      },
-      { kind: 'filter_open_now' }
+    writeChipVariantTuple(
+      () => ({
+        openNow: !searchRuntimeBus.getState().desiredTuple.filterVariant.openNow,
+      }),
+      'chip_open_now'
     );
-  }, [
-    activeTab,
-    canRerunForCurrentQuery,
-    clearPendingTabSwitchDraft,
-    fireRerunActiveSearch,
-    isSearchSessionActive,
-    openNow,
-    query,
-    scheduleToggleCommit,
-    searchRuntimeBus,
-    searchMode,
-    setIsPriceSelectorVisible,
-    setOpenNow,
-    submittedQuery,
-  ]);
+  }, [searchRuntimeBus, setIsPriceSelectorVisible, writeChipVariantTuple]);
 
   const commitPriceSelection = React.useCallback(() => {
     const snapshot = pendingPriceRangeRef.current;
@@ -297,7 +153,7 @@ export const useQueryMutationOrchestrator = (
     const normalizedRange = normalizePriceRangeValues(snapshot);
     const shouldClear = isFullPriceRange(normalizedRange);
     const nextLevels = shouldClear ? [] : buildLevelsFromRange(normalizedRange);
-    const currentLevels = useSearchStore.getState().priceLevels;
+    const currentLevels = searchRuntimeBus.getState().desiredTuple.filterVariant.priceLevels;
     const hasChanged =
       nextLevels.length !== currentLevels.length ||
       nextLevels.some((value, index) => value !== currentLevels[index]);
@@ -306,45 +162,16 @@ export const useQueryMutationOrchestrator = (
       emitMutationCoalesced({ reason: 'price_filter_duplicate_intent' });
       return;
     }
-    clearPendingTabSwitchDraft();
-
-    if (!canRerunForCurrentQuery()) {
-      setPriceLevels(nextLevels);
-      return;
-    }
-
-    scheduleToggleCommit(
-      () => {
-        setPriceLevels(nextLevels);
-        fireRerunActiveSearch({
-          searchMode,
-          activeTab,
-          submittedQuery,
-          query,
-          isSearchSessionActive,
-          preserveSheetState: true,
-          filters: { priceLevels: nextLevels },
-        });
-        return {
-          awaitVisualSync: true,
-        };
-      },
-      { kind: 'filter_price' }
-    );
+    // S2: the price sheet is DRAFT state (widget-owned sliders) committed as ONE tuple
+    // write at the Done gesture; the desired-tuple reader owns the rerun commit.
+    writeChipVariantTuple(() => ({ priceLevels: nextLevels }), 'chip_price');
   }, [
-    activeTab,
-    canRerunForCurrentQuery,
-    clearPendingTabSwitchDraft,
+    writeChipVariantTuple,
+
     emitMutationCoalesced,
-    fireRerunActiveSearch,
-    isSearchSessionActive,
     priceSheetRef,
-    query,
-    scheduleToggleCommit,
-    searchMode,
+    searchRuntimeBus,
     setIsPriceSelectorVisible,
-    setPriceLevels,
-    submittedQuery,
   ]);
 
   const closePriceSelector = React.useCallback(() => {
@@ -374,7 +201,7 @@ export const useQueryMutationOrchestrator = (
 
   return {
     togglePriceSelector,
-    toggleVotesFilter,
+    toggleIncludeSimilar,
     toggleRising,
     toggleOpenNow,
     commitPriceSelection,

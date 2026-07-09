@@ -45,7 +45,7 @@ export const useProfileAppClosePreparationRuntime = ({
 
     const surfaceSnapshot = resultsPresentationSurfaceAuthority.getSnapshot();
     const hydrationCommitRequest = resolveProfileCloseHydrationCommitRequest({
-      resultsHydrationKey: surfaceSnapshot.resultsHydrationKey,
+      resultsIdentityKey: surfaceSnapshot.resultsIdentityKey,
       hydratedResultsKey: surfaceSnapshot.hydratedResultsKey,
       hydrationOperationId,
     });

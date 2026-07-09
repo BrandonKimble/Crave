@@ -9,7 +9,7 @@ type SearchResultsSectionedProjectionTelemetryRuntimeArgs = {
   dishes: Array<unknown>;
   restaurants: Array<unknown>;
   results: SearchResponse | null;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   shouldHydrateResultsForRender: boolean;
   searchSurfaceRedrawCommitSpanPressureActive: boolean;
   mapQueryBudget: MapQueryBudget;
@@ -22,7 +22,7 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
   dishes,
   restaurants,
   results,
-  resultsHydrationKey,
+  resultsIdentityKey,
   shouldHydrateResultsForRender,
   searchSurfaceRedrawCommitSpanPressureActive,
   mapQueryBudget,
@@ -32,7 +32,7 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
   const searchRequestId = results?.metadata?.searchRequestId ?? null;
   const responsePage = results?.metadata?.page ?? 1;
   const requestVersionKey = `${searchRequestId ?? 'no-request'}::${
-    resultsHydrationKey ?? 'no-hydration'
+    resultsIdentityKey ?? 'no-hydration'
   }::page:${responsePage}::dishes:${dishes.length}::restaurants:${restaurants.length}`;
 
   const previousBuildKeyRef = React.useRef<string | null>(null);
@@ -51,7 +51,7 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
       label: 'list_read_model_build',
       requestVersionKey,
       searchRequestId,
-      resultsHydrationKey,
+      resultsIdentityKey,
       activeTab,
       durationMs,
       sectionedRowCount,
@@ -67,7 +67,7 @@ export const useSearchResultsSectionedProjectionTelemetryRuntime = ({
     projectionStateRuntime.activeSectionedRowCount,
     projectionStateRuntime.buildDurationMs,
     requestVersionKey,
-    resultsHydrationKey,
+    resultsIdentityKey,
     searchSurfaceRedrawCommitSpanPressureActive,
     searchRequestId,
     shouldHydrateResultsForRender,

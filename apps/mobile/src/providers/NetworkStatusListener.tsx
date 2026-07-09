@@ -38,6 +38,17 @@ const NetworkStatusListener: React.FC = () => {
   React.useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       focusManager.setFocused(nextState === 'active');
+      // NetInfo's own guidance: connectivity EVENTS can be missed while backgrounded
+      // (and the iOS simulator drops them after host network flaps) — re-evaluate on
+      // every foreground so the offline level (and the reconnect auto-retry that rides
+      // its edge) never sticks stale.
+      if (nextState === 'active') {
+        void NetInfo.fetch().then((state) => {
+          const online = isOnlineState(state);
+          onlineManager.setOnline(online);
+          useSystemStatusStore.getState().setOffline(!online);
+        });
+      }
     });
 
     return () => {

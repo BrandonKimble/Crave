@@ -5,12 +5,26 @@ import type { BottomSheetSnap } from '../../overlays/bottomSheetMotionTypes';
 import type { OverlayKey } from '../../overlays/types';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
 import type { OverlayRouteEntry, OverlayRouteParamsMap } from './app-overlay-route-types';
+import {
+  areRouteStateSnapshotsEqual,
+  closeActiveRouteState,
+  createRouteStateSnapshot,
+  popToRootRouteState,
+  pushRouteState,
+  ROOT_SEARCH_ROUTE_ENTRY,
+  setRootRouteState,
+  updateRouteState,
+  type RouteSceneSwitchRouteStateSnapshot,
+} from './app-overlay-route-stack-algebra';
+import {
+  captureRouteEntryOrigin,
+  stageRouteEntryOriginRestore,
+} from './route-entry-origin-capture-delegate';
 import type {
   RouteSceneSwitchDockedPollsRestoreIntent,
   RouteSceneSwitchMotionPlane,
   RouteSceneSwitchPollsParams,
   RouteSceneSwitchRequestInput,
-  RouteSceneSwitchRouteParams,
   RouteSceneSwitchSheetContentHandoff,
   RouteSceneSwitchTransitionContract,
   RouteSceneSwitchTransitionPhase,
@@ -53,13 +67,7 @@ export type RouteSceneSwitchTransitionState = {
   routeState: RouteSceneSwitchRouteStateSnapshot;
 };
 
-export type RouteSceneSwitchRouteStateSnapshot = {
-  activeOverlayRoute: OverlayRouteEntry;
-  previousOverlayRoute: OverlayRouteEntry | null;
-  overlayRouteStack: readonly OverlayRouteEntry[];
-  rootOverlayKey: OverlayKey;
-  overlayRouteStackLength: number;
-};
+export type { RouteSceneSwitchRouteStateSnapshot } from './app-overlay-route-stack-algebra';
 
 type RouteSceneSwitchTransitionListener = (
   transitionState: RouteSceneSwitchTransitionState
@@ -97,6 +105,8 @@ export type RouteSceneSwitchSceneStackDispatchSnapshot = {
   sheetContentHandoff: RouteSceneSwitchSheetContentHandoff;
   transitionPhase: RouteSceneSwitchTransitionPhase;
   isInteractive: boolean;
+  /** The route stack (S-B slice 3a): the scene stack derives child-leg lifetime from it. */
+  overlayRouteStack: readonly OverlayRouteEntry[];
 };
 
 type RouteSceneSwitchSceneStackDispatchTarget = (
@@ -153,6 +163,7 @@ export type AppRouteSceneSwitchRuntime = RouteSceneSwitchTransitionActions & {
   getTransitionState: () => RouteSceneSwitchTransitionState;
   getRouteState: () => RouteSceneSwitchRouteStateSnapshot;
   getPreviousRouteKey: () => OverlayKey | null;
+  getPreviousRouteEntry: () => OverlayRouteEntry | null;
   getRootRouteKey: () => OverlayKey | null;
   setRootRouteState: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   updateRouteState: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
@@ -200,11 +211,6 @@ export type AppRouteSceneSwitchRuntime = RouteSceneSwitchTransitionActions & {
   dispose: () => void;
 };
 
-const SEARCH_ROUTE: OverlayRouteEntry<'search'> = {
-  key: 'search',
-  params: undefined,
-};
-
 // Pre-wiring lane inputs (the runtime provider registers the live feed at boot). All-false resolves
 // laneKind 'top-level' — inert until the docked-polls inputs are wired (same atomic phase).
 const DEFAULT_PRESENTATION_LANE_INPUTS: PresentationLaneInputs = {
@@ -218,158 +224,18 @@ const DEFAULT_PRESENTATION_LANE_INPUTS: PresentationLaneInputs = {
 // immediately-previous frame's switchId.
 const PRESENTATION_ACK_RETENTION = 8;
 
-const createRouteEntry = (
-  key: OverlayKey,
-  params?: RouteSceneSwitchRouteParams
-): OverlayRouteEntry =>
-  ({
-    key,
-    params,
-  }) as OverlayRouteEntry;
+// Route-stack algebra (entries-as-values) lives in app-overlay-route-stack-algebra.ts.
 
-const createRouteStateSnapshot = ({
-  activeOverlayRoute,
-  previousOverlayRoute,
-  overlayRouteStack,
-}: {
-  activeOverlayRoute: OverlayRouteEntry;
-  previousOverlayRoute: OverlayRouteEntry | null;
-  overlayRouteStack: readonly OverlayRouteEntry[];
-}): RouteSceneSwitchRouteStateSnapshot => ({
-  activeOverlayRoute,
-  previousOverlayRoute,
-  overlayRouteStack,
-  rootOverlayKey: overlayRouteStack[0]?.key ?? activeOverlayRoute.key,
-  overlayRouteStackLength: overlayRouteStack.length,
-});
-
-const areOverlayRoutesEqual = (
-  left: OverlayRouteEntry | null,
-  right: OverlayRouteEntry | null
-): boolean =>
-  left === right ||
-  (left != null && right != null && left.key === right.key && left.params === right.params);
-
-const areOverlayRouteStacksEqual = (
-  left: readonly OverlayRouteEntry[],
-  right: readonly OverlayRouteEntry[]
-): boolean =>
-  left.length === right.length &&
-  left.every((route, index) => areOverlayRoutesEqual(route, right[index] ?? null));
-
-const areRouteStateSnapshotsEqual = (
-  left: RouteSceneSwitchRouteStateSnapshot,
-  right: RouteSceneSwitchRouteStateSnapshot
-): boolean =>
-  areOverlayRoutesEqual(left.activeOverlayRoute, right.activeOverlayRoute) &&
-  areOverlayRoutesEqual(left.previousOverlayRoute, right.previousOverlayRoute) &&
-  areOverlayRouteStacksEqual(left.overlayRouteStack, right.overlayRouteStack);
-
-const setRootRouteState = (
-  currentRouteState: RouteSceneSwitchRouteStateSnapshot,
-  overlay: OverlayKey,
-  params?: RouteSceneSwitchRouteParams
-): RouteSceneSwitchRouteStateSnapshot => {
-  const nextRoute = createRouteEntry(overlay, params);
-  const previousOverlayRoute =
-    currentRouteState.activeOverlayRoute.key === overlay
-      ? currentRouteState.previousOverlayRoute
-      : currentRouteState.activeOverlayRoute;
-  return createRouteStateSnapshot({
-    activeOverlayRoute: nextRoute,
-    previousOverlayRoute,
-    overlayRouteStack: [nextRoute],
-  });
-};
-
-const pushRouteState = (
-  currentRouteState: RouteSceneSwitchRouteStateSnapshot,
-  overlay: OverlayKey,
-  params?: RouteSceneSwitchRouteParams
-): RouteSceneSwitchRouteStateSnapshot => {
-  const nextRoute = createRouteEntry(overlay, params);
-  const currentStack = currentRouteState.overlayRouteStack;
-  const currentTop = currentStack[currentStack.length - 1];
-  const overlayRouteStack =
-    currentTop?.key === overlay
-      ? [...currentStack.slice(0, -1), nextRoute]
-      : [...currentStack.slice(0, -1), currentTop, nextRoute].filter(
-          (entry): entry is OverlayRouteEntry => entry != null
-        );
-  const previousOverlayRoute =
-    currentRouteState.activeOverlayRoute.key === overlay
-      ? currentRouteState.previousOverlayRoute
-      : currentTop?.key === currentRouteState.activeOverlayRoute.key
-        ? currentTop
-        : currentRouteState.activeOverlayRoute;
-  return createRouteStateSnapshot({
-    activeOverlayRoute: nextRoute,
-    previousOverlayRoute,
-    overlayRouteStack,
-  });
-};
-
-const updateRouteState = (
-  currentRouteState: RouteSceneSwitchRouteStateSnapshot,
-  overlay: OverlayKey,
-  params?: RouteSceneSwitchRouteParams
-): RouteSceneSwitchRouteStateSnapshot => {
-  let didUpdate = false;
-  const overlayRouteStack = currentRouteState.overlayRouteStack.map((route) => {
-    if (route.key !== overlay) {
-      return route;
-    }
-    didUpdate = true;
-    return createRouteEntry(overlay, params);
-  });
-  if (!didUpdate) {
-    return currentRouteState;
-  }
-  const activeOverlayRoute =
-    overlayRouteStack[overlayRouteStack.length - 1] ?? currentRouteState.activeOverlayRoute;
-  const previousOverlayRoute =
-    overlayRouteStack.length > 1
-      ? (overlayRouteStack[overlayRouteStack.length - 2] ?? null)
-      : currentRouteState.previousOverlayRoute;
-  return createRouteStateSnapshot({
-    activeOverlayRoute,
-    previousOverlayRoute,
-    overlayRouteStack,
-  });
-};
-
-const closeActiveRouteState = (
+// S-B origin-on-entry: pop restores the popped entry's captured presentation via the restore
+// delegate (session controller stages detent ledger + scroll lanes). Dismiss VERBS stage it
+// before requesting the switch (the motion plan reads the ledger); the reducer paths below
+// stage as a fallback for bare (non-scene-switch) pops.
+const stagePoppedEntryOriginRestore = (
   currentRouteState: RouteSceneSwitchRouteStateSnapshot
-): RouteSceneSwitchRouteStateSnapshot => {
-  if (currentRouteState.overlayRouteStack.length <= 1) {
-    return currentRouteState;
-  }
-  const overlayRouteStack = currentRouteState.overlayRouteStack.slice(0, -1);
-  const activeOverlayRoute = overlayRouteStack[overlayRouteStack.length - 1] ?? SEARCH_ROUTE;
-  const previousOverlayRoute =
-    overlayRouteStack.length > 1 ? (overlayRouteStack[overlayRouteStack.length - 2] ?? null) : null;
-  return createRouteStateSnapshot({
-    activeOverlayRoute,
-    previousOverlayRoute,
-    overlayRouteStack,
-  });
-};
-
-const popToRootRouteState = (
-  currentRouteState: RouteSceneSwitchRouteStateSnapshot
-): RouteSceneSwitchRouteStateSnapshot => {
-  const rootOverlayRoute = currentRouteState.overlayRouteStack[0] ?? SEARCH_ROUTE;
-  if (
-    currentRouteState.overlayRouteStack.length <= 1 &&
-    currentRouteState.activeOverlayRoute.key === rootOverlayRoute.key
-  ) {
-    return currentRouteState;
-  }
-  return createRouteStateSnapshot({
-    activeOverlayRoute: rootOverlayRoute,
-    previousOverlayRoute: currentRouteState.previousOverlayRoute,
-    overlayRouteStack: [rootOverlayRoute],
-  });
+): void => {
+  const poppedEntry =
+    currentRouteState.overlayRouteStack[currentRouteState.overlayRouteStack.length - 1];
+  stageRouteEntryOriginRestore(poppedEntry?.origin);
 };
 
 const applyTransitionPlanToRouteState = (
@@ -384,7 +250,9 @@ const applyTransitionPlanToRouteState = (
         return pushRouteState(
           currentRouteState,
           transitionPlan.committedRootRouteKey,
-          transitionPlan.committedRouteParams
+          transitionPlan.committedRouteParams,
+          // Captured at commit — the departing scene still owns the live detent/scroll.
+          captureRouteEntryOrigin(currentRouteState.activeOverlayRoute.key)
         );
       case 'updateActive':
         return updateRouteState(
@@ -393,6 +261,7 @@ const applyTransitionPlanToRouteState = (
           transitionPlan.committedRouteParams
         );
       case 'closeActive':
+        stagePoppedEntryOriginRestore(currentRouteState);
         return closeActiveRouteState(currentRouteState);
       case 'popToRoot':
         return popToRootRouteState(currentRouteState);
@@ -424,9 +293,8 @@ const INITIAL_ROUTE_SCENE_SWITCH_TRANSITION_STATE: RouteSceneSwitchTransitionSta
   transitionToken: 0,
   transitionContract: null,
   routeState: createRouteStateSnapshot({
-    activeOverlayRoute: SEARCH_ROUTE,
-    previousOverlayRoute: null,
-    overlayRouteStack: [SEARCH_ROUTE],
+    activeOverlayRoute: ROOT_SEARCH_ROUTE_ENTRY,
+    overlayRouteStack: [ROOT_SEARCH_ROUTE_ENTRY],
   }),
 };
 
@@ -477,12 +345,14 @@ export const resolveRouteSceneSwitchSceneStackDispatchSnapshot = (
     state.transitionContract?.sheetTransitionPlan.contentHandoff ?? 'swapImmediately',
   transitionPhase: state.transitionPhase,
   isInteractive: state.isInteractive,
+  overlayRouteStack: state.routeState.overlayRouteStack,
 });
 
 const areRouteSceneSwitchSceneStackDispatchSnapshotsEqual = (
   left: RouteSceneSwitchSceneStackDispatchSnapshot,
   right: RouteSceneSwitchSceneStackDispatchSnapshot
 ): boolean =>
+  left.overlayRouteStack === right.overlayRouteStack &&
   left.routeActiveSceneKey === right.routeActiveSceneKey &&
   left.interactiveSceneKey === right.interactiveSceneKey &&
   left.pendingSceneKey === right.pendingSceneKey &&
@@ -967,6 +837,15 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     );
   }
 
+  /** The entry a pop will reveal — the VALUE, not just its key (S-B: pops target entries). */
+  public getPreviousRouteEntry(): OverlayRouteEntry | null {
+    return (
+      this.transitionState.routeState.overlayRouteStack[
+        this.transitionState.routeState.overlayRouteStack.length - 2
+      ] ?? null
+    );
+  }
+
   public getRootRouteKey(): OverlayKey | null {
     return this.transitionState.routeState.overlayRouteStack[0]?.key ?? null;
   }
@@ -991,12 +870,20 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
 
   public pushRouteState<K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]): void {
     this.applyRouteStateMutation((currentRouteState) =>
-      pushRouteState(currentRouteState, overlay, params)
+      pushRouteState(
+        currentRouteState,
+        overlay,
+        params,
+        captureRouteEntryOrigin(currentRouteState.activeOverlayRoute.key)
+      )
     );
   }
 
   public closeActiveRouteState(): void {
-    this.applyRouteStateMutation(closeActiveRouteState);
+    this.applyRouteStateMutation((currentRouteState) => {
+      stagePoppedEntryOriginRestore(currentRouteState);
+      return closeActiveRouteState(currentRouteState);
+    });
   }
 
   public popToRootRouteState(): void {

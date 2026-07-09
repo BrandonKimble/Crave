@@ -33,7 +33,9 @@ export interface StructuredSearchRequest {
   includeSqlPreview?: boolean;
   userLocation?: Coordinate;
   priceLevels?: number[];
-  minimumVotes?: number;
+  // TODO(shared-types): part of the include-similar contract (see types/search.ts).
+  // Always sent explicitly — false suppresses the server's silent dense widening.
+  includeSimilar?: boolean;
   risingActive?: boolean;
   submissionSource?: NaturalSearchRequest['submissionSource'];
   submissionContext?: NaturalSearchRequest['submissionContext'];
@@ -729,6 +731,10 @@ export const searchService = {
       viewportPolygon?: Array<[number, number]>;
       includeTopDish?: boolean;
       marketKey?: string | null;
+      // TR5-N: the coverage layer applies the ACTIVE filter variant (map follows the cards).
+      openNow?: boolean;
+      priceLevels?: number[];
+      rising?: boolean;
     },
     options: Pick<RequestOptions, 'signal'> = {}
   ): Promise<FeatureCollection<Point>> => {

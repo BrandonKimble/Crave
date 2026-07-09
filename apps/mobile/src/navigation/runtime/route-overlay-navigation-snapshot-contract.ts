@@ -1,5 +1,6 @@
 import type { OverlayKey } from '../../overlays/types';
 import type { OverlayRouteEntry } from './app-overlay-route-types';
+import { ROOT_SEARCH_ROUTE_ENTRY } from './app-overlay-route-stack-algebra';
 
 export type RouteOverlayNavigationSnapshot = {
   activeOverlayRoute: OverlayRouteEntry;
@@ -18,16 +19,8 @@ export type RouteOverlayIdentitySnapshot = {
 };
 
 export const EMPTY_ROUTE_OVERLAY_NAVIGATION_SNAPSHOT: RouteOverlayNavigationSnapshot = {
-  activeOverlayRoute: {
-    key: 'search',
-    params: undefined,
-  },
-  overlayRouteStack: [
-    {
-      key: 'search',
-      params: undefined,
-    },
-  ],
+  activeOverlayRoute: ROOT_SEARCH_ROUTE_ENTRY,
+  overlayRouteStack: [ROOT_SEARCH_ROUTE_ENTRY],
   activeOverlayRouteKey: 'search',
   rootOverlayKey: 'search',
   overlayRouteStackLength: 1,

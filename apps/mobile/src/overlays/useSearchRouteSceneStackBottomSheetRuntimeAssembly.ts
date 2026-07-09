@@ -195,6 +195,7 @@ export const useSearchRouteSceneStackBottomSheetRuntimeAssembly = ({
       // off THIS via useAnimatedProps (frame-drop fix — see useBottomSheetSharedRuntime).
       shouldEnableScrollShared: scrollRuntime.shouldEnableScrollShared,
       ScrollComponent: scrollRuntime.ScrollComponent,
+      SecondaryScrollComponent: scrollRuntime.SecondaryScrollComponent,
       primaryScrollViewOnScroll: scrollRuntime.primaryScrollViewOnScroll,
       primaryListOnScroll: scrollRuntime.primaryListOnScroll,
       secondaryListOnScroll: scrollRuntime.secondaryListOnScroll,

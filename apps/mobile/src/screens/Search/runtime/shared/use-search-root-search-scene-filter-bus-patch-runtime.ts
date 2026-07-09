@@ -11,12 +11,7 @@ export const useSearchRootSearchSceneFilterBusPatchRuntime = ({
   filterModalControlLane: SearchRootFilterModalControlLane;
 }): Pick<
   SearchRootSearchSceneBusPatch,
-  | 'priceButtonLabelText'
-  | 'priceButtonIsActive'
-  | 'openNow'
-  | 'votesFilterActive'
-  | 'risingActive'
-  | 'isPriceSelectorVisible'
+  'priceButtonLabelText' | 'priceButtonIsActive' | 'isPriceSelectorVisible'
 > => ({
   ...useSearchRootSearchSceneFilterChipBusPatchRuntime({
     filterModalControlLane,

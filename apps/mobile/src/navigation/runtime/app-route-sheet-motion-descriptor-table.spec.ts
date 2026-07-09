@@ -43,9 +43,34 @@ const SCENE_KEY_DOMAIN = {
   scoreInfo: true,
   pollCreation: true,
   pollDetail: true,
+  userProfile: true,
+  listDetail: true,
+  followList: true,
+  notifications: true,
+  settings: true,
+  editProfile: true,
+  shareConfig: true,
 } satisfies Record<OverlayKey, true>;
 
 const ALL_SCENE_KEYS = Object.keys(SCENE_KEY_DOMAIN) as readonly OverlayKey[];
+
+// The parity oracle below is a byte-frozen fossil of the PRE-TABLE switch. Scene keys added
+// AFTER the table migration (the 7 stub scenes, 2026-07) have deliberate table rows the oracle
+// never knew about — parity is only meaningful over the legacy domain. Totality tests (T1,
+// duplicate-rows) still sweep the FULL domain.
+const LEGACY_SCENE_KEYS: readonly OverlayKey[] = [
+  'search',
+  'searchRoute',
+  'polls',
+  'bookmarks',
+  'profile',
+  'restaurant',
+  'saveList',
+  'price',
+  'scoreInfo',
+  'pollCreation',
+  'pollDetail',
+];
 
 const TRANSITION_KIND_DOMAIN = {
   bootstrap: true,
@@ -141,11 +166,11 @@ const legacyOracleSheetMotionPlan = ({
 };
 
 describe('sheet-motion descriptor table (P6 step 1)', () => {
-  it('resolves byte-identically to the pre-table switch over the FULL input domain', () => {
+  it('resolves byte-identically to the pre-table switch over the LEGACY input domain', () => {
     const mismatches: string[] = [];
     let combos = 0;
-    for (const sourceSceneKey of ALL_SCENE_KEYS) {
-      for (const targetSceneKey of ALL_SCENE_KEYS) {
+    for (const sourceSceneKey of LEGACY_SCENE_KEYS) {
+      for (const targetSceneKey of LEGACY_SCENE_KEYS) {
         for (const transitionKind of ALL_TRANSITION_KINDS) {
           for (const rememberedSceneSnap of ALL_REMEMBERED_SNAPS) {
             for (const explicitSnapTarget of ALL_EXPLICIT_SNAPS) {
@@ -176,7 +201,7 @@ describe('sheet-motion descriptor table (P6 step 1)', () => {
       }
     }
     expect(combos).toBe(
-      ALL_SCENE_KEYS.length ** 2 *
+      LEGACY_SCENE_KEYS.length ** 2 *
         ALL_TRANSITION_KINDS.length *
         ALL_REMEMBERED_SNAPS.length *
         ALL_EXPLICIT_SNAPS.length

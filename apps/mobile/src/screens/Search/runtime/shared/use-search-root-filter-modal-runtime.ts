@@ -1,5 +1,9 @@
 import React from 'react';
 
+import { registerSearchReconcilerPresentationPort } from '../reconciler/search-reconciler-presentation-port';
+import { createSearchSurfaceResultsEnterTransaction } from './search-surface-results-transaction';
+import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
+
 import { useSearchFilterModalOwner } from '../../hooks/use-search-filter-modal-owner';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type {
@@ -25,28 +29,59 @@ export const useSearchRootFilterModalRuntime = ({
   resultsPresentationOwner,
   submitRuntimeResult,
 }: UseSearchRootFilterModalRuntimeArgs): FilterModalRuntime => {
-  const { rootPrimitivesRuntime, rootDataPlaneRuntime } = stateFoundationLane;
+  const { rootDataPlaneRuntime } = stateFoundationLane;
   const { rootInstrumentationRuntime, rootOverlayStoreRuntime, appRouteSharedSheetRuntimeOwner } =
     rootOverlayFoundationRuntime;
 
+  // S4b strangler glue (dies in S4c): the reconciler drives the toggle coordinator +
+  // pending-cover arm through this port — the composition that owns them registers it.
+  React.useEffect(
+    () =>
+      registerSearchReconcilerPresentationPort({
+        scheduleToggleCommit: resultsPresentationOwner.scheduleToggleCommit,
+        beginVariantRerunPresentationPending:
+          resultsPresentationOwner.beginVariantRerunPresentationPending,
+        clearStagedSearchSurfaceResultsTransaction:
+          resultsPresentationOwner.clearStagedSearchSurfaceResultsTransaction,
+        presentTabSwitch: ({ intentId, targetTab }) => {
+          const searchRuntimeBus = sessionCoreLane.searchRuntimeBus;
+          resultsPresentationOwner.clearStagedSearchSurfaceResultsTransaction();
+          // Direct PRESENTED-tab publish (never the tuple writer): the desire already
+          // holds targetTab; this is the presentation catching up under the cover.
+          if (searchRuntimeBus.getState().activeTab !== targetTab) {
+            searchRuntimeBus.publish({ activeTab: targetTab });
+          }
+          getSearchSurfaceRuntime().beginRedrawTransaction({
+            reason: 'toggle',
+            transactionId: intentId,
+            targetTab,
+            coverState: 'interaction_loading',
+          });
+          resultsPresentationOwner.stageSearchSurfaceResultsTransaction(
+            createSearchSurfaceResultsEnterTransaction(
+              intentId,
+              'initial_search',
+              'interaction_loading',
+              null,
+              'cache'
+            )
+          );
+        },
+      }),
+    [resultsPresentationOwner, sessionCoreLane.searchRuntimeBus]
+  );
   const filterModalOwner = useSearchFilterModalOwner({
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
-    searchMode: rootDataPlaneRuntime.runtimeFlags.searchMode,
-    activeTab: rootPrimitivesRuntime.searchState.activeTab,
-    submittedQuery: rootDataPlaneRuntime.resultsArrivalState.submittedQuery,
-    query: rootPrimitivesRuntime.searchState.query,
-    isSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
     openNow: rootDataPlaneRuntime.filterStateRuntime.openNow,
-    votesFilterActive: rootDataPlaneRuntime.filterStateRuntime.votes100Plus,
+    includeSimilarActive: rootDataPlaneRuntime.filterStateRuntime.includeSimilarActive,
     risingActive: rootDataPlaneRuntime.filterStateRuntime.risingActive,
     priceLevels: rootDataPlaneRuntime.filterStateRuntime.priceLevels,
     panelVisible: appRouteSharedSheetRuntimeOwner.panelVisible,
-    setVotes100Plus: rootDataPlaneRuntime.filterStateRuntime.setVotes100Plus,
+    setIncludeSimilar: rootDataPlaneRuntime.filterStateRuntime.setIncludeSimilar,
     setRisingActive: rootDataPlaneRuntime.filterStateRuntime.setRisingActive,
     setOpenNow: rootDataPlaneRuntime.filterStateRuntime.setOpenNow,
     setPriceLevels: rootDataPlaneRuntime.filterStateRuntime.setPriceLevels,
-    scheduleToggleCommit: resultsPresentationOwner.scheduleToggleCommit,
-    rerunActiveSearch: submitRuntimeResult.rerunActiveSearch,
+    captureFreshTupleBounds: submitRuntimeResult.captureFreshTupleBounds,
     registerTransientDismissor: rootOverlayStoreRuntime.registerTransientDismissor,
     onMechanismEvent: rootInstrumentationRuntime.emitRuntimeMechanismEvent,
   });
@@ -56,14 +91,14 @@ export const useSearchRootFilterModalRuntime = ({
       ...filterModalOwner,
       openNow: rootDataPlaneRuntime.filterStateRuntime.openNow,
       priceButtonIsActive: rootDataPlaneRuntime.filterStateRuntime.priceLevels.length > 0,
-      votesFilterActive: rootDataPlaneRuntime.filterStateRuntime.votes100Plus,
+      includeSimilarActive: rootDataPlaneRuntime.filterStateRuntime.includeSimilarActive,
       risingActive: rootDataPlaneRuntime.filterStateRuntime.risingActive,
     }),
     [
       filterModalOwner,
       rootDataPlaneRuntime.filterStateRuntime.openNow,
       rootDataPlaneRuntime.filterStateRuntime.priceLevels.length,
-      rootDataPlaneRuntime.filterStateRuntime.votes100Plus,
+      rootDataPlaneRuntime.filterStateRuntime.includeSimilarActive,
       rootDataPlaneRuntime.filterStateRuntime.risingActive,
     ]
   );

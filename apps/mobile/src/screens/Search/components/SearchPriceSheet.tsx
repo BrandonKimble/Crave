@@ -221,6 +221,7 @@ const SearchPriceSheet = ({
         </Pressable>
         <Pressable
           onPress={handlePriceDone}
+          testID="search-price-done"
           accessibilityRole="button"
           accessibilityLabel="Apply price filters"
           style={[styles.priceSheetDoneButton, { backgroundColor: activeTabColor }]}

@@ -47,11 +47,11 @@ export const useResultsPresentationSurfaceHydrationPublicationRuntime = ({
       const currentSurfaceSnapshot = resultsPresentationSurfaceAuthority.getSnapshot();
       const nextListPreparedRowsReady =
         payload.searchSceneListHydrationPatch.resultsPreparedRowsKey != null &&
-        currentSurfaceSnapshot.preparedRows.readyReadinessKey ===
+        currentSurfaceSnapshot.preparedRows.readyResultsIdentityKey ===
           payload.searchSceneListHydrationPatch.resultsPreparedRowsKey;
       resultsPresentationSurfaceAuthority.publish(
         {
-          resultsHydrationKey: payload.searchSceneListHydrationPatch.resultsHydrationKey,
+          resultsIdentityKey: payload.searchSceneListHydrationPatch.resultsIdentityKey,
           hydratedResultsKey: payload.searchSceneListHydrationPatch.hydratedResultsKey,
           resultsPreparedRowsKey: payload.searchSceneListHydrationPatch.resultsPreparedRowsKey,
           isResultsHydrationSettled:
@@ -64,7 +64,7 @@ export const useResultsPresentationSurfaceHydrationPublicationRuntime = ({
         activeTab: payload.activeTab,
         hydratedResultsKey: payload.searchSceneListHydrationPatch.hydratedResultsKey,
         isResultsHydrationSettled: payload.searchSceneListHydrationPatch.isResultsHydrationSettled,
-        resultsHydrationKey: payload.searchSceneListHydrationPatch.resultsHydrationKey,
+        resultsIdentityKey: payload.searchSceneListHydrationPatch.resultsIdentityKey,
         shouldHydrateResultsForRender:
           payload.searchSceneListHydrationPatch.shouldHydrateResultsForRender,
       });

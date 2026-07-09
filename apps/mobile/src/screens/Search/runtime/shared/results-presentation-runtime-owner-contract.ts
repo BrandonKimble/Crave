@@ -1,5 +1,4 @@
 import type {
-  ResultsPresentationEnterMutationKind,
   SearchSurfaceResultsEnterTransaction,
   SearchSurfaceResultsTransaction,
 } from './search-surface-results-transaction';
@@ -30,19 +29,17 @@ export type ResultsPresentationRuntimeOwner = {
   searchSurfaceResultsTransactionKey: string | null;
   pendingTogglePresentationIntentId: string | null;
   scheduleToggleCommit: ScheduleToggleCommit;
-  notifyFrostReady: (intentId: string) => void;
   cancelToggleInteraction: () => void;
-  beginSearchThisAreaPresentationPending: () => void;
+  beginSearchThisAreaPresentationPending: (operationToken: string | null) => void;
+  beginVariantRerunPresentationPending: (transactionId: string) => void;
   stageSearchSurfaceResultsTransaction: (snapshot: SearchSurfaceResultsEnterTransaction) => void;
   commitSearchSurfaceResultsExitTransaction: (
     snapshot: Extract<SearchSurfaceResultsTransaction, { kind: 'results_exit' }>
   ) => void;
   clearStagedSearchSurfaceResultsTransaction: (transactionId?: string) => void;
   handlePageOneResultsCommitted: (payload?: {
-    surfaceTransactionMutationKind?: Extract<
-      ResultsPresentationEnterMutationKind,
-      'search_this_area'
-    >;
+    operationToken?: string | null;
+    surfaceTransactionMutationKind?: 'search_this_area' | 'variant_rerun';
     expectedResultsDataKey?: string | null;
     dataReadyFrom?: 'network' | 'cache' | 'in_flight';
     searchInputKey?: string | null;

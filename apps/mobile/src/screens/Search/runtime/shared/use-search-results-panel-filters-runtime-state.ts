@@ -10,24 +10,25 @@ export const useSearchResultsPanelFiltersRuntimeState = (
     (state) => ({
       priceButtonLabelText: state.priceButtonLabelText,
       priceButtonIsActive: state.priceButtonIsActive,
-      openNow: state.openNow,
-      votesFilterActive: state.votesFilterActive,
-      risingActive: state.risingActive,
+      openNow: state.desiredTuple.filterVariant.openNow,
+      includeSimilarActive: state.desiredTuple.filterVariant.includeSimilar,
+      similarAvailableCount: state.results?.metadata?.similarAvailable ?? 0,
+      risingActive: state.desiredTuple.filterVariant.rising,
       isPriceSelectorVisible: state.isPriceSelectorVisible,
     }),
     (left, right) =>
       left.priceButtonLabelText === right.priceButtonLabelText &&
       left.priceButtonIsActive === right.priceButtonIsActive &&
       left.openNow === right.openNow &&
-      left.votesFilterActive === right.votesFilterActive &&
+      left.includeSimilarActive === right.includeSimilarActive &&
+      left.similarAvailableCount === right.similarAvailableCount &&
       left.risingActive === right.risingActive &&
       left.isPriceSelectorVisible === right.isPriceSelectorVisible,
     [
       'priceButtonLabelText',
       'priceButtonIsActive',
-      'openNow',
-      'votesFilterActive',
-      'risingActive',
+      'desiredTuple',
+      'results',
       'isPriceSelectorVisible',
     ] as const
   );

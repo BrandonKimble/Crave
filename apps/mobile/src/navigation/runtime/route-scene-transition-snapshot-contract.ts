@@ -1,4 +1,5 @@
 import type { AppRouteSceneTransitionSnapshot } from './app-route-scene-switch-authority';
+import { ROOT_SEARCH_ROUTE_ENTRY } from './app-overlay-route-stack-algebra';
 
 export type RouteSceneTransitionSnapshot = AppRouteSceneTransitionSnapshot;
 
@@ -14,17 +15,9 @@ export const EMPTY_ROUTE_SCENE_TRANSITION_SNAPSHOT: RouteSceneTransitionSnapshot
   activeDockedPollsRestoreIntent: null,
   isInteractive: true,
   routeState: {
-    activeOverlayRoute: {
-      key: 'search',
-      params: undefined,
-    },
+    activeOverlayRoute: ROOT_SEARCH_ROUTE_ENTRY,
     previousOverlayRoute: null,
-    overlayRouteStack: [
-      {
-        key: 'search',
-        params: undefined,
-      },
-    ],
+    overlayRouteStack: [ROOT_SEARCH_ROUTE_ENTRY],
     rootOverlayKey: 'search',
     overlayRouteStackLength: 1,
   },

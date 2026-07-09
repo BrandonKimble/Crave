@@ -4,7 +4,8 @@ export type SearchHiddenFiltersWarmupStateInputs = Pick<
   SearchFiltersProps,
   | 'activeTab'
   | 'openNow'
-  | 'votesFilterActive'
+  | 'includeSimilarActive'
+  | 'similarAvailableCount'
   | 'risingActive'
   | 'priceButtonLabel'
   | 'priceButtonActive'

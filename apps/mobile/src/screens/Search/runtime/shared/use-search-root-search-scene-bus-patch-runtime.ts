@@ -4,12 +4,11 @@ import type {
 } from './use-search-root-control-plane-runtime-contract';
 import { useSearchRootSearchSceneUiBusPatchRuntime } from './use-search-root-search-scene-ui-bus-patch-runtime';
 
+// R1c: openNow / includeSimilarActive / risingActive are no longer part of this patch — they are
+// bus-authoritative and single-written by the toggle runner / filter-state runtime.
 export type SearchRootSearchSceneBusPatch = {
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
-  openNow: boolean;
-  votesFilterActive: boolean;
-  risingActive: boolean;
   isPriceSelectorVisible: boolean;
   shouldRetrySearchOnReconnect: boolean;
 };

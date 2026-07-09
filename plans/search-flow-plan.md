@@ -159,11 +159,332 @@ source"` + `"Failed to remove non-exist feature"`. JS's delta bookkeeping vs the
    `readinessKey`/`pvck`/`executionBatchId`/`frameGenerationId`…) with silent no-op guards at
    each translation — the mechanism behind 1–3 being invisible until instrumented.
 
+6. **Pagination BROKEN — reproduced + attributed 2026-07-05 (two stacked defects).**
+   (a) FIXED: the anti-auto-load gate (`hasUserScrolledResults`) was permanently closed —
+   the gesture-handoff scroll container produces NO native drag events (finger on the
+   sheet's GestureDetector; worklet-driven scroll), so `markResultsListUserScrollStart`
+   never fired. Fix: new `onUserListScrollActivity(offsetY)` transport signal from the
+   list's live onScroll (≥100px threshold preserves the anti-auto-load intent; drag events
+   still mark too when the sheet is expanded and the list owns the gesture).
+   (b) ✅ FIXED 1a25b52c: load-more trigger derived from the scrollOffset SharedValue
+   (useAnimatedReaction → runOnJS; the Reanimated handler MUST stay the direct onScroll
+   prop — a JS wrapper throws). PROVEN end-to-end on-sim: page-2 API call + append 20→40
+   rows both tabs; spurious reveal-time zone entry correctly gate-blocked. New
+   `scroll_results&offsetY=` command verb (Maestro swipes are handoff-consumed, ~35px net).
+   Historical note — the original (b) finding: FlashList `onEndReached` never fires from handoff scrolling (only as
+   reveal-time layout artifacts at offset≈0; raising onEndReachedThreshold 0→0.5 did not
+   produce firings; PAGDBG-verified across 3 drives). The R2 pipeline should derive the
+   pagination trigger from the offset signal (contentOffset/contentSize distance-from-end
+   in the body's onScroll wrapper) instead of FlashList's event — same move as (a):
+   replace dead gesture-era events with live owned signals. Repro lever: `maestro/perf/flows/search-results-scroll-repeat.yaml`
+   (cards scroll → `loadMoreResults` → `/search` page-2 append). Suspects to check when
+   attributed: the page-1-only client cache gate, append-merge in the response owner, and the
+   identity key's page/count factors (R1b preserved these semantics deliberately). Schedule:
+   attribute right after R1c, before R2 (R2 rebuilds the commit path pagination rides).
+
 **Owner directive (2026-07-05):** don't patch this shape — audit the entire data/logic flow
 (calls, stores, projection, pagination, map-vs-cards split, toggle evolution since the
 `2ca844dd` "good era") and produce an ideal-shape verdict: refactor vs ground-up redesign.
 Audit running (3 agents: data-flow architecture · git archaeology · API call semantics);
 synthesis lands in this doc as §D6.
+
+### D6a — T1 STALL ATTRIBUTED (2026-07-05, measured; the R2-C design input)
+
+Toggle commit window ≈ 490ms, partitioned by [T1DBG] marks (probes committed as the R2
+measurement kit): **~150–175ms inside the coordinator runner** (pre-projection; internals
+still coarse) + **~250–290ms React child-commit rendering the incoming tab's visible dish
+cards (~30–50ms/card, cardRender-counter confirmed)** + rowsPrepare/listData/projection all
+<5ms (innocent). The catalog rebuild was already eliminated (R1a-2). **R2-C remedy: prewarm
+the secondary list under cover (the primary/secondary list infrastructure already exists) so
+the tab swap is a pointer flip — evicting the card render from the commit window entirely —
+plus attribute the runner's ~150ms interior with one more mark pass.**
+
+### D6c — NATIVE GAP DECODED (2026-07-05, [NGAP] probes)
+
+cardsAdmit→rampStart partitions into two named waits (fence + reproject exonerated):
+**(A) token-over-prop transport, 50–167ms** — the enter-start token travels as a React prop,
+so it waits for a React commit to flush (toggle-back's heavier JS delays it most). Remedy:
+send the enter-start as a DIRECT bridge call (the beginInteractionFadeOut pattern).
+**(B) source-ready wait, 68–118ms** — at token arrival `mountedHidden=0/srcReady=0`: the
+incoming tab's source mutations only begin applying when the token lands. Remedy: apply the
+(already-prewarmed) frame under cover at debounce-commit time, so srcReady is green before
+the start signal. Both remedies belong to the coordinator-unification chunk (restore the
+March single-file coordinator = TR5): the coordinator's commit phase becomes
+"apply frame under cover (direct call) → when ready, fire start (direct call)".
+**[NGAPJS] refinement:** cardsAdmit==tokenStaged (synchronous — NO effect delay); the gap =
+32ms full-frame build/serialize (the token needlessly rides the whole frame pipeline) + 78ms
+native bridge-queue/source-apply/ready. Sources+token travel in ONE frame at admit — the
+rewrite must (1) flush the mutation frame at debounce-COMMIT so sources apply under cover
+early, (2) send the enter start as a tiny direct call, not a frame rebuild. Expected result:
+pair-gap ≈ native arm only (single-digit ms, matching the enter lane's 3ms).
+
+### D6b — R2-C ROUND RESULTS (2026-07-05, commit 22d06921)
+
+JS commit window CLEARED: the toggle was a keyed full FlashList remount (~250-290ms card
+render) → dual co-mounted per-tab lists, flip-only (per-tab scroll offsets now persist —
+owner to bless); the ~125-142ms source-frame build → sibling prewarm into the fingerprint
+cache via the same build path, re-armed after every live publish (fp-diff probe proved the
+settle-time prewarm drifted: camera-fit bounds + promoted-hash). Toggle lookup HITS;
+contracts silent. Replay path itself costs ~84ms (re-stamp/commit/equality — future trim).
+
+**THE REMAINING GAP IS NATIVE:** cardsAdmit↔rampStart = ~107ms UNCHANGED across every JS
+variant (enter lane does request→ramp in 3ms). The toggle's native reveal path (under-cover
+reproject → QRF → commit fence → ramp arm in SearchMapRenderController.swift) owns it.
+Next: Swift-side mach-clock timestamps partitioning beginInteractionFadeOut →
+reprojectCatalogUnderCoverIfReady → presentation arm → first ramp tick. ALSO STILL OPEN:
+toggle-back corruption (R3) truncates every multi-toggle distribution — pull R3 forward if
+it keeps blocking R2's p90 gate.
+
+### TR5-N — NETWORK-TOGGLE UNIFICATION (charter, 2026-07-06): every toggle rides the tab toggle's lifecycle
+
+**STATUS (2026-07-06): BUILT + MEASURED + COMMITTED** (e146ad5a core lane, e7a815eb
+coverage-follows-filters, 9076070a empty-page store groundwork). All four chip runners
+route through `runVariantRerunToggleCommit` → `beginVariantRerunPresentationPending(intentId)`
+(pending cover keyed to the TOGGLE INTENT so the coordinator finalizes at enter-settle) →
+`fireRerunActiveSearch({presentationIntentKind:'variant_rerun'})` (skips
+clearResultsForReplacement + immediate enter staging) → enter staged at RESPONSE commit in
+`handlePageOneResultsCommitted`, data-keyed on `expectedResultsDataKey`. Swift fade-hold
+expiry parks while coverState is `interaction_loading`.
+
+Acceptance measured on cold full-bundle drives: 5-tap open-now alternation with ONE reveal
+per intent on the new data (respD/respR 14/12 ↔ 20/20, cardsAdmit→rampStart 0.8–9.4 ms =
+sub-frame, tab-toggle parity); rising on/off + include-similar network flip same shape;
+rapid 3-tap burst = 3 intents/3 reveals; tab-toggle regression green; collision doctrine
+eyeballed intact. RED self-mutation (corrupted expectedResultsDataKey): the joint REFUSES
+to open — mismatched data never paints (fails closed).
+
+Two defects found + fixed DURING validation (same stale-lane class):
+
+1. Toggle flips computed `next` from lane-memo prop copies that froze after the first
+   commit (5 taps kept emitting the same variant while the chip color — bus-fed — looked
+   right). Fix: flips + rerun identity (searchMode/activeTab/submittedQuery) read the
+   RUNTIME BUS at press/commit time (commitPriceSelection already did this).
+2. `rerunActiveSearch`'s empty-query bail silently stranded the armed cover (~9s watchdog
+   force-commit). Fix: the shortcut branch no longer needs the query (per-tab fallback
+   label), and a variant_rerun drop on the natural path is a LOUD logger.error.
+3. Shortcut coverage (the map's pin/dot set) was filter-free by design → filtered cards
+   over a stale map. Fix: coverage carries openNow (JS hours post-filter) /
+   priceLevels (SQL) / rising (sort), and the coverage requestKey gains a filters segment
+   (frame fingerprint inherits). Both directions screenshot-verified.
+4. (owner-reported post-ship, fixed ecc84d77) The PIN RANK badges ignored rising: the
+   visual-candidate sort hard-coded craveScoreExact DESC, so the list re-sorted by rising
+   while the map kept crave order. Fix: the sort takes rankOrder ('crave'|'rising') from
+   the same bus snapshot as the coverage filters key — rising DESC (missing last), then
+   the existing craveScoreExact tie-break chain. Both directions screenshot-verified
+   (rising ON: Legends=7 rising-tinted; OFF: Ambassadors=2/Milk Bar=12/HOWOO=18 restored).
+5. (owner-reported post-ship, fixed 245b402a) INITIAL reveal showed cards ~0.5–1s before the
+   strip+pins joint: page-1 rows hydrate into the live list during initial_loading (the
+   transition leg's skeleton ends at scene settle; nothing covered the body until the joint).
+   Fix: the cutout-skeleton loading cover now also renders for initial_loading (full-body —
+   the strip is hidden in that mode); rows mount+measure beneath it, the joint lifts the
+   cover + reveals strip + starts the pin ramp same-tick. Video-verified (frame extraction):
+   pre-fix cards-alone window; post-fix cards+strip+pins land in ONE frame step. Permanent
+   dev probe: [REVEALSYNC] rowsAdmission (shell↔full transitions). Price toggle map-follow
+   verified end-to-end (chip → sheet → Done → filtered cards + filtered coverage map;
+   testIDs search-price-toggle/search-price-done added). RIG GOTCHA confirmed live: an
+   orphaned stale `dist/main` held :3000 serving pre-TR5-N code (price coverage 400/empty
+   map) — kill it and relaunch `yarn start:dev` when coverage behaves impossibly.
+
+**OPEN — MOVED-BOUNDS AUDIT (owner directive 2026-07-06, work in flight):** owner reports:
+after a search + a REAL map pan, a toggle makes ALL map items vanish permanently — pins,
+dots, AND the native basemap street labels never return (cards do change). Basemap labels
+stuck = the dismiss-side basemap-suppress/collision ran and the matching ENTER never
+landed. REPRO ATTEMPTS THAT ALL PASS (cannot reproduce yet, 6 drives): shortcut submit +
+set_map_camera pan + open-now; + maestro finger-pan (search-this-area chip armed) +
+open-now; + 3x big finger pans + open-now (video'd — full choreography, new-viewport pins);
+
+- finger-pan + tab toggle. All revealed correctly with fresh-bounds data. SUSPECTED missing
+  ingredient: NATURAL (typed) search mode — every drive above is shortcut mode; the
+  variant_rerun natural branch (submitSearch path in rerunActiveSearch) is unexercised on the
+  rig (maestro type-into-search lane not landing yet; testID search-header-input added).
+  NEED FROM OWNER: exact repro — typed query or shortcut? which tab? which toggle? zoom
+  change or pure pan? Also owner-directed follow-ups queued for this audit:
+  (a) chip toggles feel SLOW vs tab toggle — FULLY ATTRIBUTED 2026-07-06 (fork session,
+  attribution scenario `search_submit_dismiss_repeat` — NOTE: the `toggle` scenario is NOT
+  in the attribution allowlist, which is why lifecycle/gate events were dark all day).
+  Measured commit→joint budget for one open-now toggle, no map move:
+  · /search/run round trip: 224–366ms — the SERVER IS FAST (backend refactor confirmed).
+  · Coverage was SERIALIZED behind the search (+340–460ms): the commit-time fetch used the
+  OLD searchRequestId's stale request bounds and was thrown away; the needed
+  viewport-bounds fetch only started after the response. FIXED bbf97e85: while a
+  non-append page-1 op is in flight, coverage fetches against the CURRENT viewport →
+  post-response fetch = terminal-cache hit; coverage now completes ~+70ms, parallel.
+  Joint moved +737ms → +441ms on the matched drive.
+  · REMAINING response→joint pipeline: 300–470ms (varies). CORRECTED ATTRIBUTION
+  (2026-07-06 follow-up, per-invocation exit probes on queueNativeRenderOwnerFrame): the
+  "~115ms frame→bridge dispatch gap" is NOT a scheduler gap — the frame queues 23–130ms
+  after the response (variance = JS thread busy with rows layout; the subscription is
+  synchronous). The real costs, measured on a slow-server run (http 594ms, joint +1099):
+  (1) the structural frame's queued→applied span = ~335ms — the 'applied' ack rides a JS
+  PROMISE resolution, so most of this is JS main-thread saturation (20 cards laying out
+  under the cover), not native work; (2) a REDUNDANT second full structural frame (all 5
+  sources changed again) ships ~430ms after the first — two consecutive full applies per
+  toggle before the small startToken frame admits the cards. NEXT LEVERS: (a) attribute +
+  dedupe the second structural frame (why do all source revisions change twice per
+  response?), (b) decouple the ack from the JS event loop (native event instead of promise,
+  or measure native-side apply duration separately), (c) the rows leg ~135ms.
+  · Plus the pre-commit press-up debounce (settle source 'frost_ready').
+  · ARCHITECTURAL NOTE: the redraw-phase chain is circular for reruns (rows release wants
+  phase hydration_ready, which advances on phase_b_materializing AFTER visual_released =
+  after the reveal) — the reveal actually opens via the preparedRows committed path, and
+  the rows-release rAF spin only resolves post-settle. Untangle in the R2 pass.
+  If first-flip should be INSTANT, the ideal remains the include-similar pattern: page-1
+  carries the variant union so the flip is local — product/arch decision.
+  (b) pins SNAPPED in with the strip on a toggle reveal instead of fading — eyeball'd once
+  by owner; check native ramp duration on the variant_rerun lane.
+  (c) collision timing directive: basemap-label collision must flip ON at fade-IN START and
+  OFF at fade-OUT START (never wait for ramp end), and basemap labels must keep their native
+  crossfade. Native change on the precious map surface — needs its own careful pass.
+  Owner authorizes ground-up redo of the moved-bounds rerun lane if it's messy — it is the
+  foundation of search-this-area and will be global.
+
+**OPEN (one acceptance item, root-caused partway):** the EMPTY variant (0-row page) never
+opens the reveal joint — cover holds forever (fails closed; watchdogs stay SILENT — no
+reveal-watchdog bark, no tier-1/2). Evidence trail: response commits (MOUNT-PUBLISH 0/0) →
+phaseA fires → handlePageOneResultsCommitted stages the variant_rerun enter with the empty
+data key → prepared-rows now stage+commit ready=true for the empty identity (store fix
+9076070a) → then silence: no stage work-span, no armResultsRevealWatchdog ticks, no
+cardsAdmit. The RED self-mutation reproduces the IDENTICAL silent strand with a non-empty
+page and a mismatched key ⇒ the strand is in the staged-transaction path itself (deferred
+runDeferredStage / staging-coordinator gate), not the empty data. Also still missing: the
+empty-state message surface (list shows skeleton, not "no results") and the zero-pin native
+frame ack (T4DEDUP suppresses byte-equal empty frames → nativeMarkerFrameReady may starve).
+Needs a focused pass; reproduce with: submit shortcut at Madison Sq → set_map_camera to
+40.7035,-74.0250 (Hudson) → tap open-now.
+
+**FLAGGED TO OWNER (product call, do not decide alone):** `openNow` PERSISTS across app
+restarts (zustand persist mirror). Cold starts therefore submit an already-filtered search
+(observed repeatedly on the rig: baseline "unfiltered" drive was actually filtered). Is a
+sticky open-now across sessions the intended product behavior?
+
+**THE MEASURED DEFECT (owner-reported, rig-asserted end to end):** a NETWORK toggle
+(open-now / rising / price / mid-pagination include-similar) reveals at COMMIT time with the
+STALE data, then the response lands into an already-settled surface:
+`press-up fade → +300ms runner fires the network request → +160ms cardsAdmit+rampStart on a
+search-surface-results-transaction staged by the SUBMIT path → seconds later MOUNT-PUBLISH
+commits the real response → cards hard-snap late; the map's enter already ran so pins keep
+the old variant; the chip's bus state gets fought by the post-settle response lifecycle
+(visually stuck inactive after the first tap).` The tab toggle never shows any of this
+because its variant is LOCAL at commit — data and choreography can't be out of order. The
+include-similar PAGE-1 flip is also local (applyIncludeSimilarLocalSwap) and correct; its
+mid-pagination path shares the network defect.
+
+**ROOT CAUSE (structural):** the chip runners call `fireRerunActiveSearch`, which routes
+through the INITIAL-SEARCH submit machinery (`prepareSearchRequestForegroundUi` →
+`scheduleSubmitUiLanes` → stages the enter transaction NOW). That machinery was designed for
+fresh searches where the leg's skeleton page is the loading visual — not for an in-place
+variant swap under the interaction cover. The coordinator's `awaitVisualSync` then waits on
+the WRONG (immediate, stale) transaction. Supporting defects, same lineage: the
+interaction-fade hold's 1500ms expiry re-reveals the OLD map mid-wait; an EMPTY page-1
+commit renders a BLANK body (no empty-state message; map keeps stale pins); the initial
+reveal admits CARDS before the map+strip joint (owner: skeleton → cards → map+strip late —
+the both-ready joint isn't gating the card admission on this lane).
+
+**THE IDEAL SHAPE (the tab toggle IS the template — one lifecycle for every variant swap):**
+
+1. Press-up: optimistic chip flip + interaction fade + skeleton cover (SHIPPED, shared).
+2. Commit: runner resolves the NEXT VARIANT'S DATA — locally (tab flip, page-1
+   include-similar) or by awaiting the network response — WITHOUT staging any reveal. The
+   cover holds while waiting; the fade hold must NOT expire during an active awaited toggle
+   (extend/park the 1500ms expiry while toggleInteraction.kind != null).
+3. Data-ready: commit the response into mountedResults, THEN stage the enter transaction —
+   apply frame under cover → both-ready joint → reveal cards+map+strip on the SAME tick
+   (the D6d contract). The rerun path must NOT call clearResultsForReplacement /
+   scheduleSubmitUiLanes — an in-place variant swap owns no initial-search UI lanes.
+4. Empty data is a first-class variant: reveal = empty-state message + empty map catalog
+   (pins clear under the same cover), strip stays (shipped: strip=chrome, bba30c51).
+5. Chip truth: the bus is the single writer (shipped); the response lifecycle must never
+   republish filter state (audit `resetFilters`/persistence-bridge writes on response
+   commit — the owner sees the chip revert after the first rerun).
+
+**AUDIT SCOPE for the focused session:** query-mutation-orchestrator runners (all 4 chips) ·
+rerunActiveSearch / submitViewportShortcut / prepareSearchRequestForegroundUi lane usage ·
+use-search-surface-results-enter-transaction-execution staging vs response lifecycle ·
+interaction-fade-hold expiry interplay · both-ready joint gating of cardsAdmit on the
+initial-reveal lane (owner: cards admit before map+strip) · openNow session persistence
+product call. Measurement kit in place: [REQPROBE] (outgoing filters), [tclur] MOUNT-PUBLISH
+(response rows), [REVEALSYNC] (admit/ramp pairs), [PUBTRIG] (publish triggers),
+[CONTRACT] empty_page_with_nonzero_totals. Acceptance: for EVERY toggle — one reveal, on the
+NEW data, cards+map+strip on the same joint, chip state stable across repeated taps, p90
+pair gap parity with the tab toggle; RED self-mutation per the methodology.
+
+### D6e — ✅ SURGERY COMPLETE (2026-07-05, commit 2e0bd8d8): the collision promotion round-trip
+
+**SHIPPED + measured.** Candidate B (native-owned obstacle gating) picked by evidence:
+`applyV5ObstacleReseed` already existed and writes source properties (reparse-immune — no
+LEA channel needed). Changes: (1) JS bakes every collision obstacle demoted
+(`nativeLodOpacity: 0`, the pin doctrine) — `promotedMarkerKeys` plumb +
+`nativePromotedReuseKey` cache segment deleted; (2) native re-asserts obstacle gating
+after every JS apply that mutates the collision source (reconcile + live_role hooks stash
+`lastPromotedInOrder` → reseed), and blocked reseeds RE-STASH instead of dropping;
+(3) transport dedup rekeyed generation→`frameTransportRevision` — generation reuse
+activating for the first time exposed that the acked-generation dedup dropped the toggle's
+presentation-only `entering` frame (reveal stalled at pending_mount, empty map; caught by
+the verified-bundle drive).
+**Measured:** collision-only generation mints 0; cardsAdmit↔rampStart (native clock,
+24-toggle torture incl. toggle-backs) p90 3.7ms / median 0.7ms / max 6.2ms (was
+105–285ms) = enter-lane parity; idle [T4DEDUP] churn gone; [R3RECON] silent at idle
+(toggle-publish ledger corrections unchanged = the structural backstop); zero MapLoad;
+collision doctrine eyeballed before/after at z15.5 + a z13→z16 mid-zoom-promotion pass
+(labels yield incl. newly promoted pins, dot thinning, basemap suppression). NEXT (not
+started): D6d parallel-path deletion + rerun/dismiss unification → R4 gates.
+
+Original attribution below for the record.
+
+#### (historical) ENDGAME ROOT CAUSE (2026-07-05, [GENREUSE]+VDIAG)
+
+The residual toggle gap's full causal chain, every link measured:
+`buildStableCollisionFeature` BAKES the live native promoted set into the collision
+features (`nativeLodOpacity: promotedNativeLodOpacity` — the "#16" fix), while the label
+builder explicitly strips those transient keys for stability. Every LOD promotion therefore
+round-trips native→JS→collision-rebuild→republish; after a reveal promotes 30 pins, that
+republish lands BETWEEN the mutation frame and the token frame → `changedIds=labelCollisions`
+→ the token frame mints a NEW generation → native resets mount/source-ready/election and
+re-mounts identical sources (~106ms). ONE flaw, THREE ledger symptoms: the generation reset
+(this), the [R3RECON] duplicate-adds on restaurant-label-collision-source (R3's ledger
+corrects them structurally), and the idle both-tab republish churn (ledger #4).
+
+**THE SURGERY (own focused session — touches the precious map's load-bearing label-collision
+doctrine; load map-architecture-shipped + map-lod memories first):** make the collision
+source's JS representation PROMOTION-INDEPENDENT — the obstacle's promotion gating moves
+fully native (native already reseeds obstacles from the catalog via applyV5ObstacleReseed;
+the JS-baked seed becomes the reparse-immune fallback exactly like the LEA pattern), OR the
+promotion opacity rides the transient/feature-state channel (already excluded from semantic
+identity) instead of baked properties. Constraints: obstacle correctness during mid-zoom
+promotion (#16's original bug), basemap suppression, dense thinning — the full collision
+doctrine. Acceptance: [GENREUSE] shows generation REUSE on the token frame; toggle pair-gap
+≈ enter lane (~3ms); [R3RECON] silent at steady state; idle [T4DEDUP] churn gone. Then:
+parallel-path deletion + rerun/dismiss unification + R4 gates.
+
+### D6d — THE ENDGAME: single native lifecycle for every variant swap (designed 2026-07-05)
+
+**Diagnosis chain complete.** After U1+U2a (27596f09) the toggle's residual ~140ms is the
+LAST structural defect: the toggle runs TWO overlapping native lifecycles —
+(a) the redraw/reproject path (`beginInteractionFadeOut` → `reprojectCatalogUnderCoverIfReady`
+→ `presentation_toggle_settled`) and (b) the enter machine (executionBatch → mounted_hidden
+election → start token → enter_started). The enter lane's mountedHidden election waits for
+the frame with its matching executionBatch, which today leaves JS only at admit-time.
+
+**Target shape:** ONE lifecycle — the enter machine — for enter, toggle, rerun, dismiss:
+
+1. Coordinator commit (U2 marker #1): publish stores AND flush the mutation frame
+   IMMEDIATELY (U2b) — the frame with the new executionBatch leaves at commit; the render
+   owner's admission must emit (not defer) covered structural frames on the commit path.
+2. Native applies under cover → mounted_hidden election → JS `markRedrawNativeMarkerFrameReady`
+   → the both-ready joint opens → cardsAdmit + `commitEnterStart` (U2a, done) on the same
+   tick → native ramp fires the moment srcReady flips. Expected pair-gap ≈ enter lane's ~3ms.
+3. DELETE the parallel path: `reprojectCatalogUnderCoverIfReady`'s toggle role +
+   `presentation_toggle_settled` fold into the enter settle; `beginInteractionFadeOut` stays
+   (press-up presentation fade only — it is not a data lifecycle). Rerun (search-this-area)
+   and dismiss ride the same machine (dismiss = the exit lifecycle it already has).
+4. Contracts: a toggle that produces TWO native settles (redraw + enter) becomes a contract
+   violation during the migration window; delete the redraw settle path once silent.
+
+**Gates (R4 pulls in):** pair Δ ≤ 1 frame p90×20 ALL lanes incl. toggle-back; zero MapLoad
+across a 50-toggle torture; zero [R3RECON] corrections steady-state (the ledger stays as the
+structural backstop); RED self-mutations per contract. This chunk is native reveal-machinery
+surgery on SearchMapRenderController.swift + the render-owner admission + the enter runtime —
+sized for a focused session with this spec + the [NGAP]/[NGAPJS]/[T1DBG] kit.
 
 ### D6 — FULL-FLOW AUDIT VERDICT (2026-07-05): keep the call layer, REBUILD the middle
 
@@ -178,6 +499,11 @@ coverage prefetch (`use-direct-search-map-source-controller.ts:2669`), page-1 cl
 Small fixable frictions: **bounds missing from the client cache key** (`useSearchQuery.ts:78`
 — wrong-geography cache hits possible), no coverage bounds-debounce, filter-burst races
 (overlapping rerunActiveSearch calls unserialized).
+Claimed frictions — **verified against code 2026-07-05 before R1**: bounds-missing-from-cache-key
+is REFUTED (both caches include bounds: `normalizeParams` keys it; `buildSearchCacheKey`
+stringifies the full payload, `search.ts:167`); coverage already bounds-buckets its requestKey.
+The one SURVIVING friction: filter-burst races (overlapping `rerunActiveSearch` calls
+unserialized) — fold into R2's coordinator (the restarting debounce serializes them by design).
 
 **The MIDDLE layer (response-commit → native bridge) is accreted — rebuild it.** Evidence:
 

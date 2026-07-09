@@ -3,7 +3,12 @@ import { StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { CONTENT_HORIZONTAL_PADDING } from '../../screens/Search/constants/search';
 import { CutoutSkeletonSurface } from './CutoutSkeletonSurface';
-import { presetRowStride, type CutoutSkeletonRowType } from './cutout-skeleton-presets';
+import {
+  buildFilterStripPillHoles,
+  FILTER_STRIP_HOLES_BLOCK_HEIGHT,
+  presetRowStride,
+  type CutoutSkeletonRowType,
+} from './cutout-skeleton-presets';
 
 /**
  * The loading container. Fills the sheet body and paints a structure-matched CUTOUT-SHIMMER
@@ -59,6 +64,12 @@ export type SceneLoadingSurfaceProps = {
    * transparent holes reveal the real frosted map directly.
    */
   frostBacking?: boolean;
+  /**
+   * Prepend a static block of pill-shaped holes where the toggle strip sits (the
+   * INITIAL/reveal skeleton — the real strip is hidden then; rows stack below the block).
+   * The interaction skeleton omits it: the live strip renders above that cover.
+   */
+  withFilterStripHoles?: boolean;
   style?: ViewStyle | ViewStyle[];
 };
 
@@ -67,14 +78,21 @@ export const SceneLoadingSurface: React.FC<SceneLoadingSurfaceProps> = ({
   count = rowType === 'tile' ? TILE_ROW_COUNT : DEFAULT_ROW_COUNT,
   insetX = CONTENT_HORIZONTAL_PADDING,
   frostBacking = false,
+  withFilterStripHoles = false,
   style,
 }) => {
   const rowCount = Math.max(0, Math.floor(count));
+  const stripBlockHeight = withFilterStripHoles ? FILTER_STRIP_HOLES_BLOCK_HEIGHT : 0;
+  const extraHoles = React.useMemo(
+    () =>
+      withFilterStripHoles ? buildFilterStripPillHoles({ originX: insetX, originY: 0 }) : undefined,
+    [insetX, withFilterStripHoles]
+  );
   // The cutout surface is absolutely filled (no intrinsic height), so guarantee the container is
   // at least tall enough for the rows — otherwise a content-sizing parent (e.g. a ListEmptyComponent
   // without flexGrow) would collapse it to zero and paint no holes. flex:1 still lets it fill a
   // taller body (the white plate covers the whole sheet) when the parent provides the height.
-  const minRowsHeight = rowCount * presetRowStride(rowType);
+  const minRowsHeight = stripBlockHeight + rowCount * presetRowStride(rowType);
   return (
     <View
       accessibilityElementsHidden
@@ -88,7 +106,8 @@ export const SceneLoadingSurface: React.FC<SceneLoadingSurfaceProps> = ({
         rowType={rowType}
         rowCount={rowCount}
         insetX={insetX}
-        insetY={0}
+        insetY={stripBlockHeight}
+        extraHoles={extraHoles}
         withFrost={frostBacking}
       />
     </View>

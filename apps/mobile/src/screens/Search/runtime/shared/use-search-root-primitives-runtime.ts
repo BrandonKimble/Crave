@@ -4,17 +4,20 @@ import { createSearchRootPrimitivesRuntimeValue } from '../controller/search-roo
 import type { SearchRootPrimitivesRuntime } from './search-root-primitives-runtime-contract';
 import type { SearchRootBootstrapEnvironment } from './search-root-environment-contract';
 import type { SearchPrimitiveUiStateController } from './search-primitive-ui-state-controller';
+import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { SearchSuggestionPanelStateController } from './search-suggestion-panel-state-controller';
 import { useSearchRootMapPrimitivesRuntime } from './use-search-root-map-primitives-runtime';
 import { useSearchRootSearchPrimitivesRuntime } from './use-search-root-search-primitives-runtime';
 
 type UseSearchRootPrimitivesRuntimeArgs = Pick<SearchRootBootstrapEnvironment, 'startupCamera'> & {
+  searchRuntimeBus: SearchRuntimeBus;
   primitiveUiStateController: SearchPrimitiveUiStateController;
   suggestionPanelStateController: SearchSuggestionPanelStateController;
 };
 
 export const useSearchRootPrimitivesRuntime = ({
   startupCamera,
+  searchRuntimeBus,
   primitiveUiStateController,
   suggestionPanelStateController,
 }: UseSearchRootPrimitivesRuntimeArgs): SearchRootPrimitivesRuntime => {
@@ -22,6 +25,7 @@ export const useSearchRootPrimitivesRuntime = ({
     startupCamera,
   });
   const searchState = useSearchRootSearchPrimitivesRuntime({
+    searchRuntimeBus,
     primitiveUiStateController,
     suggestionPanelStateController,
   });

@@ -1,10 +1,5 @@
 import React from 'react';
-import {
-  type LayoutChangeEvent,
-  type LayoutRectangle,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { type LayoutChangeEvent, type LayoutRectangle, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   Easing,
@@ -13,18 +8,22 @@ import Reanimated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { Text } from './ui/Text';
 
 /**
- * Two-position sliding-pill segmented toggle — a self-contained, reusable mirror of
- * the search restaurant⇄dish pill (`SearchFilters.tsx`). Same mechanism: an
- * absolutely-positioned highlight whose `translateX` + `width` interpolate over a
- * 0→1 progress value across the two `onLayout`-measured segments, with the labels
- * cross-fading between a dark (inactive) and white (active-on-pill) layer. Travel is
- * distance-aware linear `withTiming` (34–150ms). Decoupled from the search runtime
- * and the frosted-glass hole-punch overlay, so it drops onto any (incl. white)
- * surface. Drives the polls feed Live/Results split (§4/§6).
+ * N-position sliding-pill segmented toggle — THE house toggle primitive, a
+ * self-contained, reusable mirror of the search restaurant⇄dish pill
+ * (`SearchFilters.tsx`). Same mechanism: an absolutely-positioned highlight whose
+ * `translateX` + `width` interpolate over a 0→N-1 progress value across the
+ * `onLayout`-measured segments, with each label cross-fading between a dark
+ * (inactive) and white (active-on-pill) layer. Travel is distance-aware linear
+ * `withTiming` (34–150ms per segment-width). Decoupled from the search runtime and
+ * the frosted-glass hole-punch overlay, so it drops onto any (incl. white) surface.
+ * Consumers: polls feed Live/Results, bookmarks Restaurants/Dishes, profile
+ * Created/Contributed/Favorites. Every improvement to the toggle mechanism lands
+ * HERE, once — pages never hand-roll segment rows.
  */
 
 const SEGMENT_TRAVEL_MIN_MS = 34;
@@ -45,13 +44,8 @@ const resolveSegmentTravelDurationMs = (from: number, to: number): number => {
   return Math.max(SEGMENT_TRAVEL_MIN_MS, Math.round(distance * SEGMENT_TRAVEL_FULL_MS));
 };
 
-const areLayoutsEqual = (
-  prev: LayoutRectangle | undefined,
-  next: LayoutRectangle,
-): boolean =>
-  prev != null &&
-  Math.abs(prev.x - next.x) < 0.5 &&
-  Math.abs(prev.width - next.width) < 0.5;
+const areLayoutsEqual = (prev: LayoutRectangle | undefined, next: LayoutRectangle): boolean =>
+  prev != null && Math.abs(prev.x - next.x) < 0.5 && Math.abs(prev.width - next.width) < 0.5;
 
 export type SegmentedToggleOption<T extends string> = {
   label: string;
@@ -59,8 +53,8 @@ export type SegmentedToggleOption<T extends string> = {
 };
 
 export type SegmentedToggleProps<T extends string> = {
-  /** Exactly two options; index 0 is the left segment (progress 0). */
-  options: readonly [SegmentedToggleOption<T>, SegmentedToggleOption<T>];
+  /** Two or more options, left to right; index i sits at progress i. */
+  options: readonly SegmentedToggleOption<T>[];
   value: T;
   onChange: (value: T) => void;
   /** Pill fill color (defaults to the brand accent). */
@@ -71,6 +65,56 @@ export type SegmentedToggleProps<T extends string> = {
 
 const DEFAULT_ACCENT = '#ff3368';
 
+/** One segment's cross-fading label pair, driven by its distance from the pill. */
+const SegmentLabel = ({
+  label,
+  index,
+  selectionProgress,
+  onLayout,
+}: {
+  label: string;
+  index: number;
+  selectionProgress: SharedValue<number>;
+  onLayout: (event: LayoutChangeEvent) => void;
+}) => {
+  const activeStyle = useAnimatedStyle(() => ({
+    opacity: Math.max(0, 1 - Math.abs(selectionProgress.value - index)),
+  }));
+  const inactiveStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(1, Math.abs(selectionProgress.value - index)),
+  }));
+  return (
+    <View onLayout={onLayout} style={styles.option}>
+      <View style={styles.labelStack}>
+        {/* Invisible measuring label reserves the segment width. */}
+        <Text
+          numberOfLines={1}
+          variant="caption"
+          weight="semibold"
+          style={[styles.label, styles.labelMeasure]}
+        >
+          {label}
+        </Text>
+        <Reanimated.View pointerEvents="none" style={[styles.labelLayer, inactiveStyle]}>
+          <Text numberOfLines={1} variant="caption" weight="semibold" style={styles.label}>
+            {label}
+          </Text>
+        </Reanimated.View>
+        <Reanimated.View pointerEvents="none" style={[styles.labelLayer, activeStyle]}>
+          <Text
+            numberOfLines={1}
+            variant="caption"
+            weight="semibold"
+            style={[styles.label, styles.labelActive]}
+          >
+            {label}
+          </Text>
+        </Reanimated.View>
+      </View>
+    </View>
+  );
+};
+
 export function SegmentedToggle<T extends string>({
   options,
   value,
@@ -79,18 +123,21 @@ export function SegmentedToggle<T extends string>({
   accessibilityLabel,
   testID,
 }: SegmentedToggleProps<T>) {
-  const [first, second] = options;
-  const progressFor = React.useCallback(
-    (val: T): 0 | 1 => (val === first.value ? 0 : 1),
-    [first.value],
+  const indexFor = React.useCallback(
+    (val: T): number =>
+      Math.max(
+        0,
+        options.findIndex((option) => option.value === val)
+      ),
+    [options]
   );
 
-  const selectionProgress = useSharedValue(progressFor(value));
-  const targetProgress = useSharedValue(progressFor(value));
-  const firstX = useSharedValue(0);
-  const firstWidth = useSharedValue(0);
-  const secondX = useSharedValue(0);
-  const secondWidth = useSharedValue(0);
+  const selectionProgress = useSharedValue(indexFor(value));
+  const targetProgress = useSharedValue(indexFor(value));
+  // Segment geometry as arrays (reassigned whole on change — Reanimated reacts to
+  // the reference swap). Index-aligned with `options`.
+  const segmentXs = useSharedValue<number[]>(options.map(() => 0));
+  const segmentWidths = useSharedValue<number[]>(options.map(() => 0));
   const layoutReady = useSharedValue(0);
 
   const layoutsRef = React.useRef<Partial<Record<T, LayoutRectangle>>>({});
@@ -99,7 +146,7 @@ export function SegmentedToggle<T extends string>({
 
   const animateSelection = React.useCallback(
     (val: T, animated: boolean) => {
-      const next = progressFor(val);
+      const next = indexFor(val);
       const duration = resolveSegmentTravelDurationMs(selectionProgress.value, next);
       targetProgress.value = next;
       if (animated) {
@@ -111,58 +158,44 @@ export function SegmentedToggle<T extends string>({
         selectionProgress.value = next;
       }
     },
-    [progressFor, selectionProgress, targetProgress],
+    [indexFor, selectionProgress, targetProgress]
   );
 
   const registerSegmentLayout = React.useCallback(
-    (val: T) => (event: LayoutChangeEvent) => {
+    (val: T, index: number) => (event: LayoutChangeEvent) => {
       const layout = event.nativeEvent.layout;
       const prev = layoutsRef.current[val];
       if (prev && areLayoutsEqual(prev, layout)) {
         return;
       }
       layoutsRef.current[val] = layout;
-      if (val === first.value) {
-        firstX.value = layout.x;
-        firstWidth.value = layout.width;
-      } else {
-        secondX.value = layout.x;
-        secondWidth.value = layout.width;
-      }
-      const a = layoutsRef.current[first.value];
-      const b = layoutsRef.current[second.value];
-      if (a?.width && a.width > 0 && b?.width && b.width > 0) {
+      const nextXs = [...segmentXs.value];
+      const nextWidths = [...segmentWidths.value];
+      nextXs[index] = layout.x;
+      nextWidths[index] = layout.width;
+      segmentXs.value = nextXs;
+      segmentWidths.value = nextWidths;
+      if (nextWidths.every((width) => width > 0)) {
         layoutReady.value = 1;
       }
     },
-    [first.value, second.value, firstX, firstWidth, secondX, secondWidth, layoutReady],
+    [segmentXs, segmentWidths, layoutReady]
   );
 
-  const highlightStyle = useAnimatedStyle(() => ({
-    opacity: layoutReady.value,
-    transform: [
-      {
-        translateX: interpolate(
-          selectionProgress.value,
-          [0, 1],
-          [firstX.value, secondX.value],
-        ),
-      },
-    ],
-    width: interpolate(selectionProgress.value, [0, 1], [firstWidth.value, secondWidth.value]),
-  }));
-  const firstActiveStyle = useAnimatedStyle(() => ({
-    opacity: 1 - selectionProgress.value,
-  }));
-  const firstInactiveStyle = useAnimatedStyle(() => ({
-    opacity: selectionProgress.value,
-  }));
-  const secondActiveStyle = useAnimatedStyle(() => ({
-    opacity: selectionProgress.value,
-  }));
-  const secondInactiveStyle = useAnimatedStyle(() => ({
-    opacity: 1 - selectionProgress.value,
-  }));
+  const segmentCount = options.length;
+  const highlightStyle = useAnimatedStyle(() => {
+    if (segmentCount < 2) {
+      return { opacity: 0 };
+    }
+    const inputRange = segmentXs.value.map((_x, i) => i);
+    return {
+      opacity: layoutReady.value,
+      transform: [
+        { translateX: interpolate(selectionProgress.value, inputRange, segmentXs.value) },
+      ],
+      width: interpolate(selectionProgress.value, inputRange, segmentWidths.value),
+    };
+  });
 
   // Follow external `value` changes (e.g. programmatic resets); skip the very first
   // pass so the pill starts settled, not animating in.
@@ -181,73 +214,56 @@ export function SegmentedToggle<T extends string>({
   }, [value, animateSelection, layoutReady]);
 
   const commit = React.useCallback(
-    (next: T) => {
-      if (next === interactionValueRef.current) {
+    (nextIndex: number) => {
+      const next = options[nextIndex]?.value;
+      if (next == null || next === interactionValueRef.current) {
         return;
       }
       interactionValueRef.current = next;
       onChange(next);
     },
-    [onChange],
+    [onChange, options]
   );
 
   const tapGesture = React.useMemo(
     () =>
       Gesture.Tap()
         .shouldCancelWhenOutside(false)
-        .onEnd((_event, success) => {
+        .onEnd((event, success) => {
+          'worklet';
           if (!success) {
             return;
           }
-          const next = targetProgress.value === 0 ? 1 : 0;
+          // Resolve the tapped segment from the measured geometry; with two segments
+          // an off-segment tap still flips (the original toggle affordance).
+          const xs = segmentXs.value;
+          const widths = segmentWidths.value;
+          let next = -1;
+          for (let i = 0; i < xs.length; i += 1) {
+            if (event.x >= xs[i] && event.x <= xs[i] + widths[i]) {
+              next = i;
+              break;
+            }
+          }
+          if (next === -1) {
+            if (xs.length === 2) {
+              next = targetProgress.value === 0 ? 1 : 0;
+            } else {
+              return;
+            }
+          }
+          if (next === targetProgress.value) {
+            return;
+          }
           const duration = resolveSegmentTravelDurationMs(selectionProgress.value, next);
           targetProgress.value = next;
           selectionProgress.value = withTiming(next, {
             duration,
             easing: SEGMENT_TRAVEL_EASING,
           });
-          runOnJS(commit)(next === 0 ? first.value : second.value);
+          runOnJS(commit)(next);
         }),
-    [commit, first.value, second.value, selectionProgress, targetProgress],
-  );
-
-  const renderSegment = (
-    option: SegmentedToggleOption<T>,
-    activeStyle: ReturnType<typeof useAnimatedStyle>,
-    inactiveStyle: ReturnType<typeof useAnimatedStyle>,
-  ) => (
-    <View
-      key={option.value}
-      onLayout={registerSegmentLayout(option.value)}
-      style={styles.option}
-    >
-      <View style={styles.labelStack}>
-        {/* Invisible measuring label reserves the segment width. */}
-        <Text
-          numberOfLines={1}
-          variant="caption"
-          weight="semibold"
-          style={[styles.label, styles.labelMeasure]}
-        >
-          {option.label}
-        </Text>
-        <Reanimated.View pointerEvents="none" style={[styles.labelLayer, inactiveStyle]}>
-          <Text numberOfLines={1} variant="caption" weight="semibold" style={styles.label}>
-            {option.label}
-          </Text>
-        </Reanimated.View>
-        <Reanimated.View pointerEvents="none" style={[styles.labelLayer, activeStyle]}>
-          <Text
-            numberOfLines={1}
-            variant="caption"
-            weight="semibold"
-            style={[styles.label, styles.labelActive]}
-          >
-            {option.label}
-          </Text>
-        </Reanimated.View>
-      </View>
-    </View>
+    [commit, segmentXs, segmentWidths, selectionProgress, targetProgress]
   );
 
   return (
@@ -257,15 +273,22 @@ export function SegmentedToggle<T extends string>({
         accessible
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? 'Toggle'}
-        accessibilityState={{ selected: value === second.value }}
+        accessibilityValue={{ text: options[indexFor(value)]?.label }}
         testID={testID}
       >
         <Reanimated.View
           pointerEvents="none"
           style={[styles.highlight, { backgroundColor: accentColor }, highlightStyle]}
         />
-        {renderSegment(first, firstActiveStyle, firstInactiveStyle)}
-        {renderSegment(second, secondActiveStyle, secondInactiveStyle)}
+        {options.map((option, index) => (
+          <SegmentLabel
+            key={option.value}
+            label={option.label}
+            index={index}
+            selectionProgress={selectionProgress}
+            onLayout={registerSegmentLayout(option.value, index)}
+          />
+        ))}
       </View>
     </GestureDetector>
   );

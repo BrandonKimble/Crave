@@ -49,6 +49,7 @@ export type ResultsPresentationPanelPolicyInputs = {
   allowsInteractionLoadingState: boolean;
   hasRenderableRows: boolean;
   hasResolvedResults: boolean;
+  hasResolutionFailure?: boolean;
   isSearchLoading: boolean;
   shouldUsePlaceholderRows: boolean;
   freezeClassification: SearchFreezeClassification;

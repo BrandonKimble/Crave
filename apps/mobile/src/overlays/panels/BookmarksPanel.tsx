@@ -1,17 +1,11 @@
 import React from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  Share,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
+import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';
+import { SegmentedToggle } from '../../components/SegmentedToggle';
 import { colors as themeColors } from '../../constants/theme';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
@@ -38,10 +32,7 @@ const TILE_BORDER = '#e2e8f0';
 const TILE_BG = '#f8fafc';
 const TILE_TEXT = '#0f172a';
 const TILE_SUBTEXT = themeColors.textBody;
-const SEGMENT_BG = '#f1f5f9';
-const SEGMENT_ACTIVE = '#ffffff';
 const SEGMENT_TEXT = themeColors.textBody;
-const SEGMENT_ACTIVE_TEXT = '#0f172a';
 const FORM_BG = '#ffffff';
 const FORM_BORDER = '#e2e8f0';
 const FORM_PLACEHOLDER = themeColors.textBody;
@@ -58,10 +49,10 @@ type ListFormState = {
   visibility: FavoriteListVisibility;
 };
 
-const BOOKMARK_LIST_TYPES = [
-  { id: 'restaurant', label: 'Restaurants' },
-  { id: 'dish', label: 'Dishes' },
-] as const;
+const BOOKMARK_LIST_TYPE_OPTIONS = [
+  { value: 'restaurant', label: 'Restaurants' },
+  { value: 'dish', label: 'Dishes' },
+] as const satisfies readonly { value: FavoriteListType; label: string }[];
 
 const chunkFavoriteLists = (
   lists: readonly FavoriteListSummary[]
@@ -263,24 +254,13 @@ const BookmarksListHeader = React.memo(
     sceneReady ? (
       <View>
         <View style={styles.segmentRow}>
-          {BOOKMARK_LIST_TYPES.map(({ id, label }) => {
-            const isActive = listType === id;
-            return (
-              <Pressable
-                key={id}
-                onPress={() => onSelectListType(id)}
-                style={[styles.segmentButton, isActive && styles.segmentButtonActive]}
-              >
-                <Text
-                  variant="caption"
-                  weight="semibold"
-                  style={[styles.segmentText, isActive && styles.segmentTextActive]}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
+          <SegmentedToggle
+            options={BOOKMARK_LIST_TYPE_OPTIONS}
+            value={listType}
+            onChange={onSelectListType}
+            accessibilityLabel="Toggle between restaurant and dish lists"
+            testID="bookmarks-list-type-toggle"
+          />
         </View>
         <BookmarksFormPanel
           formState={formState}
@@ -519,20 +499,26 @@ const BookmarksDataSurface = React.memo(
       if (!formState.name.trim()) {
         return;
       }
-      if (formState.mode === 'create') {
-        await favoriteListsService.create({
-          name: formState.name,
-          description: formState.description,
-          listType,
-          visibility: formState.visibility,
-        });
-      }
-      if (formState.mode === 'edit' && formState.list) {
-        await favoriteListsService.update(formState.list.listId, {
-          name: formState.name,
-          description: formState.description,
-          visibility: formState.visibility,
-        });
+      try {
+        if (formState.mode === 'create') {
+          await favoriteListsService.create({
+            name: formState.name,
+            description: formState.description,
+            listType,
+            visibility: formState.visibility,
+          });
+        }
+        if (formState.mode === 'edit' && formState.list) {
+          await favoriteListsService.update(formState.list.listId, {
+            name: formState.name,
+            description: formState.description,
+            visibility: formState.visibility,
+          });
+        }
+      } catch {
+        // The form stays open with the user's input intact — the uniform modal announces.
+        announceFailureIfOnline();
+        return;
       }
       await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
       resetForm();
@@ -570,7 +556,12 @@ const BookmarksDataSurface = React.memo(
     const handleToggleVisibility = React.useCallback(
       async (list: FavoriteListSummary) => {
         const nextVisibility = list.visibility === 'public' ? 'private' : 'public';
-        await favoriteListsService.update(list.listId, { visibility: nextVisibility });
+        try {
+          await favoriteListsService.update(list.listId, { visibility: nextVisibility });
+        } catch {
+          announceFailureIfOnline();
+          return;
+        }
         await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
       },
       [queryClient]
@@ -578,7 +569,12 @@ const BookmarksDataSurface = React.memo(
 
     const handleDelete = React.useCallback(
       async (list: FavoriteListSummary) => {
-        await favoriteListsService.remove(list.listId);
+        try {
+          await favoriteListsService.remove(list.listId);
+        } catch {
+          announceFailureIfOnline();
+          return;
+        }
         await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
       },
       [queryClient]
@@ -586,29 +582,32 @@ const BookmarksDataSurface = React.memo(
 
     const openListMenu = React.useCallback(
       (list: FavoriteListSummary) => {
-        Alert.alert(list.name, undefined, [
-          {
-            text: 'Edit',
-            onPress: () => openEditForm(list),
-          },
-          {
-            text: 'Share',
-            onPress: () => void handleShare(list),
-          },
-          {
-            text: list.visibility === 'public' ? 'Make Private' : 'Make Public',
-            onPress: () => void handleToggleVisibility(list),
-          },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => void handleDelete(list),
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]);
+        showAppModal({
+          title: list.name,
+          actions: [
+            {
+              label: 'Edit',
+              onPress: () => openEditForm(list),
+            },
+            {
+              label: 'Share',
+              onPress: () => void handleShare(list),
+            },
+            {
+              label: list.visibility === 'public' ? 'Make Private' : 'Make Public',
+              onPress: () => void handleToggleVisibility(list),
+            },
+            {
+              label: 'Delete',
+              style: 'destructive',
+              onPress: () => void handleDelete(list),
+            },
+            {
+              label: 'Cancel',
+              style: 'cancel',
+            },
+          ],
+        });
       },
       [handleDelete, handleShare, handleToggleVisibility, openEditForm]
     );
@@ -736,32 +735,8 @@ const styles = StyleSheet.create({
   },
   segmentRow: {
     flexDirection: 'row',
-    backgroundColor: SEGMENT_BG,
-    borderRadius: 999,
-    padding: 4,
     marginTop: 8,
     marginBottom: 12,
-  },
-  segmentButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  segmentButtonActive: {
-    backgroundColor: SEGMENT_ACTIVE,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  segmentText: {
-    color: SEGMENT_TEXT,
-  },
-  segmentTextActive: {
-    color: SEGMENT_ACTIVE_TEXT,
   },
   gridList: {
     gap: GRID_GAP,

@@ -1,28 +1,19 @@
 import React from 'react';
 
 import {
-  isPerfScenarioAttributionActive,
-  logPerfScenarioAttributionEvent,
-} from '../../../perf/perf-scenario-attribution';
-import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
-import type { NaturalSearchRequest, SearchResponse } from '../../../types';
-import type { SearchRequestCacheStatus } from '../../../services/search';
-import { logger } from '../../../utils';
-import { createNaturalSubmitIntentPayload } from '../runtime/adapters/natural-adapter';
-import type { SegmentValue } from '../constants/search';
-import type { SearchRequestRuntimeOwner } from './use-search-request-runtime-owner';
-import { resolveLoadMoreRequestErrorMessage } from './search-submit-runtime-utils';
+  clearPendingSearchRequestDecoration,
+  registerPendingSearchRequestDecoration,
+} from '../runtime/reconciler/search-request-decoration-registry';
 import type {
   ResolveNaturalSearchAttemptConfigResult,
-  SearchSubmitEntrySurface,
-  SearchSubmitPresentationIntentKind,
   SubmitSearchOptions,
 } from './use-search-submit-entry-owner';
 
 type UseSearchNaturalSubmitOwnerArgs = {
   prepareNaturalSearchEntry: (
     options?: SubmitSearchOptions,
-    overrideQuery?: string
+    overrideQuery?: string,
+    identityOverride?: import('../runtime/shared/search-desired-state-contract').SearchQueryIdentity
   ) => {
     append: boolean;
     targetPage: number;
@@ -31,226 +22,65 @@ type UseSearchNaturalSubmitOwnerArgs = {
   resolveNaturalSearchAttemptConfig: (
     options?: SubmitSearchOptions
   ) => ResolveNaturalSearchAttemptConfigResult;
-  prepareNaturalSearchForegroundUi: (options: {
-    preserveSheetState: boolean;
-    transitionFromDockedPolls: boolean;
-    targetTab: SegmentValue;
-    submittedLabel: string;
-    replaceResultsLabel?: string;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
-    entrySurface: SearchSubmitEntrySurface;
-  }) => void;
-  prepareNaturalSearchAttemptPayload: (options: {
-    tuple: {
-      mode: 'entity' | 'natural' | 'shortcut' | 'favorites';
-      sessionId: string;
-      operationId: string;
-      requestId: number;
-      seq: number;
-    };
-    append: boolean;
-    targetPage: number;
-    trimmedQuery: string;
-    submissionSource?: NaturalSearchRequest['submissionSource'];
-    submissionContext?: NaturalSearchRequest['submissionContext'];
-    openNow?: boolean;
-    priceLevels?: number[] | null;
-    minimumVotes?: number | null;
-    rising?: boolean;
-    forceFreshBounds?: boolean;
-  }) => Promise<{
-    payload: NaturalSearchRequest;
-    requestBounds: import('../../../types').MapBounds | null;
-  } | null>;
-  executeNaturalSearchAttempt: (options: {
-    payload: NaturalSearchRequest;
-    requestId: number;
-    responsePhaseLabel: string;
-    startLifecycle: (
-      response: SearchResponse,
-      cacheStatus: SearchRequestCacheStatus | null
-    ) => boolean;
-  }) => Promise<boolean>;
-  startNaturalResponseLifecycle: (options: {
-    response: SearchResponse;
-    requestId: number;
-    runtimeTuple: {
-      mode: 'entity' | 'natural' | 'shortcut' | 'favorites';
-      sessionId: string;
-      operationId: string;
-      requestId: number;
-      seq: number;
-    };
-    append: boolean;
-    targetPage: number;
-    targetTab: SegmentValue;
-    submittedLabel?: string;
-    submissionContext?: NaturalSearchRequest['submissionContext'];
-    requestBounds: import('../../../types').MapBounds | null;
-    replaceResultsInPlace: boolean;
-    presentationIntentKind?: Extract<SearchSubmitPresentationIntentKind, 'search_this_area'>;
-    searchCacheStatus?: SearchRequestCacheStatus | null;
-  }) => boolean;
-  runManagedRequestAttempt: SearchRequestRuntimeOwner['runManagedRequestAttempt'];
-  onPresentationIntentAbort?: () => void;
-  setError: React.Dispatch<React.SetStateAction<string | null>>;
   logSearchPhase?: (label: string, options?: { reset?: boolean }) => void;
 };
 
 export const useSearchNaturalSubmitOwner = ({
   prepareNaturalSearchEntry,
   resolveNaturalSearchAttemptConfig,
-  prepareNaturalSearchForegroundUi,
-  prepareNaturalSearchAttemptPayload,
-  executeNaturalSearchAttempt,
-  startNaturalResponseLifecycle,
-  runManagedRequestAttempt,
-  onPresentationIntentAbort,
-  setError,
   logSearchPhase = () => {},
 }: UseSearchNaturalSubmitOwnerArgs) => {
-  const executeActivatedNaturalSearchAttempt = React.useCallback(
-    async ({
-      append,
-      targetPage,
-      trimmedQuery,
-      naturalAttemptConfig,
-    }: {
-      append: boolean;
-      targetPage: number;
-      trimmedQuery: string;
-      naturalAttemptConfig: ResolveNaturalSearchAttemptConfigResult;
-    }) => {
-      const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
-      if (isPerfScenarioAttributionActive(scenarioConfig)) {
-        logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
-          event: 'natural_submit_attempt_contract',
-          append,
-          targetPage,
-          targetTab: naturalAttemptConfig.preRequestTab,
-          trimmedQueryLength: trimmedQuery.length,
-          submissionSource: naturalAttemptConfig.submissionSource,
-          submissionContext: naturalAttemptConfig.submissionContext,
-          preserveSheetState: naturalAttemptConfig.preserveSheetState,
-          transitionFromDockedPolls: naturalAttemptConfig.transitionFromDockedPolls,
-          forceFreshBounds: naturalAttemptConfig.shouldForceFreshBounds,
-          replaceResultsInPlace: naturalAttemptConfig.shouldReplaceResultsInPlace,
-        });
-      }
-      if (!append) {
-        prepareNaturalSearchForegroundUi({
-          preserveSheetState: naturalAttemptConfig.preserveSheetState,
-          transitionFromDockedPolls: naturalAttemptConfig.transitionFromDockedPolls,
-          targetTab: naturalAttemptConfig.preRequestTab,
-          submittedLabel: trimmedQuery,
-          replaceResultsLabel: naturalAttemptConfig.shouldReplaceResultsInPlace
-            ? trimmedQuery
-            : undefined,
-          presentationIntentKind: naturalAttemptConfig.presentationIntentKind,
-          entrySurface: naturalAttemptConfig.entrySurface,
-        });
-      }
-      await runManagedRequestAttempt({
-        mode: 'natural',
-        submitPayload: createNaturalSubmitIntentPayload({
-          query: trimmedQuery,
-          targetPage,
-          append,
-          submissionSource: naturalAttemptConfig.submissionSource,
-        }),
-        append,
-        targetPage,
-        finalizeReason: 'natural_finalized_without_response_lifecycle',
-        shouldAbortPresentationIntent: !append,
-        abortPresentationIntent: onPresentationIntentAbort,
-        setError,
-        onError: (err) => {
-          logger.error('Search request failed', { message: (err as Error).message });
-        },
-        resolveFailure: (err) => ({
-          idleStatePatch: {
-            isMapActivationDeferred: false,
-          },
-          uiErrorMessage: append ? resolveLoadMoreRequestErrorMessage(err) : null,
-        }),
-        executeAttempt: async ({ requestId, tuple }) => {
-          const preparedPayload = await prepareNaturalSearchAttemptPayload({
-            tuple,
-            append,
-            targetPage,
-            trimmedQuery,
-            submissionSource: naturalAttemptConfig.submissionSource,
-            submissionContext: naturalAttemptConfig.submissionContext,
-            openNow: naturalAttemptConfig.effectiveOpenNow,
-            priceLevels: naturalAttemptConfig.effectivePriceLevels,
-            minimumVotes: naturalAttemptConfig.effectiveMinimumVotes,
-            rising: naturalAttemptConfig.effectiveRising,
-            forceFreshBounds: naturalAttemptConfig.shouldForceFreshBounds,
-          });
-          if (!preparedPayload) {
-            return false;
-          }
-          const { payload, requestBounds } = preparedPayload;
-
-          logSearchPhase('submitSearch:runSearch');
-          return executeNaturalSearchAttempt({
-            payload,
-            requestId,
-            responsePhaseLabel: 'submitSearch:response',
-            startLifecycle: (response, searchCacheStatus) =>
-              startNaturalResponseLifecycle({
-                response,
-                requestId,
-                runtimeTuple: tuple,
-                append,
-                targetPage,
-                targetTab: naturalAttemptConfig.preRequestTab,
-                submittedLabel: append ? undefined : trimmedQuery,
-                submissionContext: naturalAttemptConfig.submissionContext,
-                requestBounds,
-                replaceResultsInPlace: naturalAttemptConfig.shouldReplaceResultsInPlace,
-                presentationIntentKind: naturalAttemptConfig.presentationIntentKind,
-                searchCacheStatus,
-              }),
-          });
-        },
-      });
-    },
-    [
-      executeNaturalSearchAttempt,
-      logSearchPhase,
-      onPresentationIntentAbort,
-      prepareNaturalSearchAttemptPayload,
-      prepareNaturalSearchForegroundUi,
-      resolveLoadMoreRequestErrorMessage,
-      runManagedRequestAttempt,
-      setError,
-      startNaturalResponseLifecycle,
-    ]
-  );
-
   const submitSearch = React.useCallback(
     async (options?: SubmitSearchOptions, overrideQuery?: string) => {
       logSearchPhase('submitSearch:start', { reset: true });
-      const naturalEntry = prepareNaturalSearchEntry(options, overrideQuery);
+      const naturalAttemptConfig = resolveNaturalSearchAttemptConfig(options);
+      const contextRecord =
+        naturalAttemptConfig.submissionContext != null &&
+        typeof naturalAttemptConfig.submissionContext === 'object' &&
+        !Array.isArray(naturalAttemptConfig.submissionContext)
+          ? (naturalAttemptConfig.submissionContext as Record<string, unknown>)
+          : null;
+      const selectedEntityId =
+        typeof contextRecord?.selectedEntityId === 'string' ? contextRecord.selectedEntityId : null;
+      const selectedEntityType = contextRecord?.selectedEntityType;
+      const entityIdentityType =
+        selectedEntityType === 'restaurant' ||
+        selectedEntityType === 'food' ||
+        selectedEntityType === 'food_attribute' ||
+        selectedEntityType === 'restaurant_attribute'
+          ? selectedEntityType
+          : null;
+      const trimmedForIdentity = (overrideQuery ?? '').trim();
+      const entityIdentity =
+        contextRecord?.matchType === 'entity' &&
+        selectedEntityId != null &&
+        entityIdentityType != null
+          ? ({
+              kind: 'entity',
+              entityType: entityIdentityType,
+              entityId: selectedEntityId,
+              displayName: trimmedForIdentity,
+            } as const)
+          : undefined;
+      // S4b: the submit IS the tuple write — the reconciler (which fires SYNCHRONOUSLY
+      // inside the write) classifies the transition and drives resolution. Decoration
+      // pre-registers so the kick can take it.
+      registerPendingSearchRequestDecoration({
+        submissionSource: naturalAttemptConfig.submissionSource,
+        submissionContext: contextRecord ?? undefined,
+      });
+      const naturalEntry = prepareNaturalSearchEntry(options, overrideQuery, entityIdentity);
       if (!naturalEntry) {
+        clearPendingSearchRequestDecoration();
         return;
       }
-      const { append, targetPage, trimmedQuery } = naturalEntry;
-      const naturalAttemptConfig = resolveNaturalSearchAttemptConfig(options);
-      await executeActivatedNaturalSearchAttempt({
-        append,
-        targetPage,
-        trimmedQuery,
-        naturalAttemptConfig,
-      });
+      if (naturalEntry.append) {
+        clearPendingSearchRequestDecoration();
+        // Appends never reach submitSearch anymore (loadMore routes to resolveNextPage).
+        throw new Error('submitSearch: append reached the deleted legacy lane');
+      }
     },
-    [
-      executeActivatedNaturalSearchAttempt,
-      logSearchPhase,
-      prepareNaturalSearchEntry,
-      resolveNaturalSearchAttemptConfig,
-    ]
+    [logSearchPhase, prepareNaturalSearchEntry, resolveNaturalSearchAttemptConfig]
   );
 
   return React.useMemo(

@@ -1,5 +1,7 @@
 import React from 'react';
 
+import { registerSearchReconcilerViewInputs } from '../reconciler/search-reconciler-presentation-port';
+
 import type { ProfileOwner } from '../profile/profile-owner-runtime-contract';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type {
@@ -41,6 +43,16 @@ export const useSearchRootForegroundCommandRuntime = ({
     rootSharedSheetRuntimeLane,
     routeSearchCommandActions,
   } = rootOverlayFoundationRuntime;
+  // S4b: the reconciler derives the docked-polls enter-transition variant as a VIEW
+  // INPUT at transition time (the trigger no longer passes it).
+  React.useEffect(
+    () =>
+      registerSearchReconcilerViewInputs({
+        getDockedPollsFlag: () =>
+          routeOverlaySessionSnapshotRef.current.shouldShowDockedPolls === true,
+      }),
+    [routeOverlaySessionSnapshotRef]
+  );
   const openPollDetail = React.useCallback(
     (pollId: string) => {
       routeSearchCommandActions.openAppSearchRoutePollsHome({

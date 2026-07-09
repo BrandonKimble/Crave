@@ -128,5 +128,18 @@ export const resolveToggleInteractionLifecycleTransportAttempt = (
     };
   }
 
-  return resolveCancelledResultsPresentationTransportAttempt(state, event.intentId);
+  // Finalized WITHOUT visual sync = the commit failed, threw, or produced no
+  // presentation. The cancel below no-ops when the stage is idle/settled — exactly the
+  // state a press-up leaves the transport in — which used to STRAND the interaction
+  // cover level (stuck skeleton + map held dark; the failed-commit black-markers bug).
+  // The interaction cover is this lifecycle's own level: clear it explicitly so the
+  // wire phase returns to 'live' and native restores the map by rule.
+  const cancelled = resolveCancelledResultsPresentationTransportAttempt(state, event.intentId);
+  if (cancelled.nextState != null) {
+    return cancelled;
+  }
+  if (state.coverState === 'interaction_loading') {
+    return resolveClearedResultsPresentationCoverStateTransportAttempt(state);
+  }
+  return cancelled;
 };

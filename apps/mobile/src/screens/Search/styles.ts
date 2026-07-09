@@ -556,13 +556,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: '#ffffff',
   },
-  resultsWashOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: '#ffffff',
-  },
   resultsSurface: {
     position: 'absolute',
     left: 0,
@@ -573,6 +566,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
+  // The skeleton loading surface (the ONE interaction-loading visual): the white background is
+  // the skeleton's sheet plate — it hides the stale rows; the cutout holes self-frost inside.
   resultsLoadingCoverSurface: {
     position: 'absolute',
     left: 0,
@@ -580,9 +575,9 @@ const styles = StyleSheet.create({
     bottom: 0,
     zIndex: 20,
     elevation: 20,
-    backgroundColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+    // No backgroundColor: the cutout skeleton's own white plate is the cover — its
+    // holes must stay transparent down to the hoisted frost (the rows beneath hide
+    // during loading modes; see the body-hide keyed to the same surfaceMode).
   },
   resultsLoadingCoverAccessibilityTarget: {
     position: 'absolute',
@@ -591,20 +586,10 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
   },
-  resultsLoadingCoverFill: {
+  // The skeleton content must FILL the loading surface (an unsized wrapper collapses to zero
+  // and only the plate paints).
+  resultsLoadingCoverContent: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ffffff',
-  },
-  resultsSurfaceInteraction: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 7,
-    backgroundColor: 'transparent',
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
   },
   resultsHeaderSurface: {
     position: 'relative',
@@ -1019,6 +1004,11 @@ const styles = StyleSheet.create({
     gap: CARD_LINE_GAP,
     paddingLeft: RESULT_DETAILS_INDENT,
   },
+  // Quiet cue on dense-sibling ("Include similar") rows — muted caption, no loud badge.
+  similarMatchLabel: {
+    color: '#9ca3af',
+    letterSpacing: 0.2,
+  },
   coverageBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 8,
@@ -1232,6 +1222,11 @@ const styles = StyleSheet.create({
   secondaryMetricInline: {
     color: themeColors.textBody,
   },
+  // The empty-results block top-aligns inside the results surface (which spans from the
+  // header to the screen bottom — most of it below the sheet's collapsed fold), so it
+  // takes comfortable top padding rather than centering in the oversized container. The
+  // old marginTop: -20 (from a centered parent era) clipped the whole block above the
+  // surface's visible bounds — the empty favorites "blank sheet".
   emptyState: {
     paddingVertical: 0,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
@@ -1239,7 +1234,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    marginTop: -20,
+  },
+  emptyStateSurfaceBlock: {
+    paddingTop: 48,
+  },
+  emptyStateActionButton: {
+    marginTop: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: themeColors.textPrimary,
+  },
+  emptyStateActionText: {
+    color: '#ffffff',
   },
   emptyStateSubtitle: {
     alignSelf: 'stretch',

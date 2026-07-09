@@ -1,4 +1,5 @@
 import React, { useSyncExternalStore } from 'react';
+import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
 
 import {
   isPerfScenarioAttributionActive,
@@ -546,6 +547,7 @@ export class SearchSurfaceRuntime {
     coverState = reason === 'submit' ? 'initial_loading' : 'interaction_loading',
     dataMode = 'transactional',
   }: BeginRedrawTransactionInput): string => {
+    if (__DEV__) console.log(`[T1DBG] beginRedrawTxn t=${performance.now().toFixed(1)}`);
     const id = transactionId ?? `search-surface-redraw:${++this.transactionSeq}`;
     this.pendingRedrawMotionArm = {
       id,
@@ -635,7 +637,11 @@ export class SearchSurfaceRuntime {
       if (!active.readiness.nativeMarkerFrameReady) {
         logger.warn(
           '[PRESENTATION-WATCHDOG] tier-1 force-resolving nativeMarkerFrame (rapid-tap supersession drop)',
-          { transactionId: id, cardsReady: active.readiness.cardsReady, sheetReady: active.readiness.sheetReady }
+          {
+            transactionId: id,
+            cardsReady: active.readiness.cardsReady,
+            sheetReady: active.readiness.sheetReady,
+          }
         );
         this.patchActiveRedrawTransaction(id, { nativeMarkerFrameReady: true });
       }
@@ -712,10 +718,13 @@ export class SearchSurfaceRuntime {
     degraded: boolean = false
   ): void => {
     if (degraded) {
-      logger.warn('[PRESENTATION-WATCHDOG] toggle settled DEGRADED (roster failed) — cover lifts anyway', {
-        requestedTransactionId: transactionId ?? null,
-        activeRedrawTransactionId: this.snapshot.redrawTransaction?.id ?? null,
-      });
+      logger.warn(
+        '[PRESENTATION-WATCHDOG] toggle settled DEGRADED (roster failed) — cover lifts anyway',
+        {
+          requestedTransactionId: transactionId ?? null,
+          activeRedrawTransactionId: this.snapshot.redrawTransaction?.id ?? null,
+        }
+      );
     }
     this.patchActiveRedrawTransaction(transactionId, { nativeMarkerFrameReady: true });
   };
@@ -734,6 +743,33 @@ export class SearchSurfaceRuntime {
         ...this.snapshot.activeBundle,
         bodyBundle,
       },
+    });
+  };
+
+  // S-C.2 / favorites-regression root fix: a session can exit WITHOUT a surface dismissal —
+  // the pop dismiss (and the old single-switch rich seam) never arm a dismiss transaction, so
+  // the RESULTS bundle stayed active forever: bottomBandOwner 'results_header' + the
+  // animatedSearchTransition clip lingered, resurfacing as a zombie Results sheet on later tab
+  // switches. This verb returns the surface to its poll (home) bundle — a no-op whenever a
+  // real dismissal owns the exit (dismissTransaction armed) or the surface is already home.
+  public finalizeSessionExitWithoutDismissMotion = (): void => {
+    if (this.snapshot.dismissTransaction != null) {
+      return;
+    }
+    if (
+      this.snapshot.activeBundle.kind !== 'results' &&
+      this.snapshot.heldBundle == null &&
+      this.snapshot.redrawTransaction == null
+    ) {
+      return;
+    }
+    const pollBundle = this.snapshot.pollBundle;
+    this.publish({
+      ...this.snapshot,
+      activeBundle: pollBundle,
+      heldBundle: null,
+      redrawTransaction: null,
+      completedRedrawTransaction: null,
     });
   };
 
@@ -873,12 +909,37 @@ export class SearchSurfaceRuntime {
     });
   };
 
+  // R0 loud-contracts (§D6): a dismiss-lifecycle marker arriving with a non-null id that
+  // MISMATCHES a LIVE dismiss transaction means two lifecycles disagree about which dismiss
+  // is running — the suspicious case the audit found silently swallowed. (No live
+  // transaction, or an intentionally-null id, remains a legitimate no-op.)
+  private reportDismissMarkerMismatch(
+    marker: string,
+    liveId: string,
+    transactionId?: string | null
+  ): void {
+    if (transactionId != null && liveId !== transactionId) {
+      reportSearchFlowContractViolation('dismiss_marker_transaction_mismatch', {
+        marker,
+        liveId,
+        transactionId,
+      });
+    }
+  }
+
   public markBottomBoundaryReached = (transactionId?: string | null): void => {
     const dismissTransaction = this.snapshot.dismissTransaction;
     if (
       dismissTransaction == null ||
       !this.matchesTransaction(dismissTransaction.id, transactionId)
     ) {
+      if (dismissTransaction != null) {
+        this.reportDismissMarkerMismatch(
+          'bottomBoundaryReached',
+          dismissTransaction.id,
+          transactionId
+        );
+      }
       return;
     }
     this.publishDismissTransaction({
@@ -894,6 +955,13 @@ export class SearchSurfaceRuntime {
       !this.matchesTransaction(dismissTransaction.id, transactionId) ||
       dismissTransaction.bottomNavReturnReady
     ) {
+      if (dismissTransaction != null && !dismissTransaction.bottomNavReturnReady) {
+        this.reportDismissMarkerMismatch(
+          'bottomNavReturnReady',
+          dismissTransaction.id,
+          transactionId
+        );
+      }
       return;
     }
     this.publishDismissTransaction({
@@ -908,6 +976,13 @@ export class SearchSurfaceRuntime {
       dismissTransaction == null ||
       !this.matchesTransaction(dismissTransaction.id, transactionId)
     ) {
+      if (dismissTransaction != null) {
+        this.reportDismissMarkerMismatch(
+          'completeDismissHandoff',
+          dismissTransaction.id,
+          transactionId
+        );
+      }
       return;
     }
     const canCompleteDismissHandoff =

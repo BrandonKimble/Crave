@@ -173,6 +173,12 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       )?.(...args),
     [rawSceneBodyContentRef]
   );
+  const stableOnUserListScrollActivity = React.useCallback<
+    NonNullable<SearchMountedListBodyTransportSpec['onUserListScrollActivity']>
+  >(
+    (...args) => rawSceneBodyTransportRef.current.onUserListScrollActivity?.(...args),
+    [rawSceneBodyTransportRef]
+  );
   const stableOnScrollOffsetChange = React.useCallback<
     NonNullable<SearchMountedListBodyTransportSpec['onScrollOffsetChange']>
   >(
@@ -230,6 +236,7 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
   const stableFlashListProps = React.useMemo<SearchMountedListBodyTransportSpec['flashListProps']>(
     () => ({
       onScrollBeginDrag: stableOnScrollBeginDragFlashList,
+      onUserListScrollActivity: stableOnUserListScrollActivity,
       onScrollEndDrag: stableOnScrollEndDragFlashList,
       onViewableItemsChanged: stableOnViewableItemsChanged,
     }),

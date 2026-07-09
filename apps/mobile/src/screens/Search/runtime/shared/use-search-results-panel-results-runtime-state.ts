@@ -1,4 +1,5 @@
 import type { SearchRuntimeBus } from './search-runtime-bus';
+import { selectSearchMode, selectSubmittedQuery } from './search-desired-tuple-selectors';
 import type { SearchResultsPanelResultsRuntimeState } from './search-results-panel-runtime-state-contract';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 
@@ -10,41 +11,45 @@ export const useSearchResultsPanelResultsRuntimeState = (
     (state) => ({
       results: null,
       resultsRequestKey: state.resultsRequestKey,
-      resultsHydrationCandidateKey: state.resultsHydrationCandidateKey,
+      resultsIdentityCandidateKey: state.resultsIdentityCandidateKey,
       resultsPage: state.resultsPage,
       resultsDishCount: state.resultsDishCount,
       resultsRestaurantCount: state.resultsRestaurantCount,
       activeTab: state.activeTab,
-      pendingTabSwitchTab: state.pendingTabSwitchTab,
+      desiredTab: state.desiredTuple.tab,
+      resolutionFailure: state.searchResolutionFailure,
       canLoadMore: state.canLoadMore,
       isSearchLoading: state.isSearchLoading,
       isLoadingMore: state.isLoadingMore,
-      submittedQuery: state.submittedQuery,
+      submittedQuery: selectSubmittedQuery(state),
+      searchMode: selectSearchMode(state),
     }),
     (left, right) =>
       left.resultsRequestKey === right.resultsRequestKey &&
-      left.resultsHydrationCandidateKey === right.resultsHydrationCandidateKey &&
+      left.resultsIdentityCandidateKey === right.resultsIdentityCandidateKey &&
       left.resultsPage === right.resultsPage &&
       left.resultsDishCount === right.resultsDishCount &&
       left.resultsRestaurantCount === right.resultsRestaurantCount &&
       left.activeTab === right.activeTab &&
-      left.pendingTabSwitchTab === right.pendingTabSwitchTab &&
+      left.desiredTab === right.desiredTab &&
+      left.resolutionFailure === right.resolutionFailure &&
       left.canLoadMore === right.canLoadMore &&
       left.isSearchLoading === right.isSearchLoading &&
       left.isLoadingMore === right.isLoadingMore &&
-      left.submittedQuery === right.submittedQuery,
+      left.submittedQuery === right.submittedQuery &&
+      left.searchMode === right.searchMode,
     [
       'resultsRequestKey',
-      'resultsHydrationCandidateKey',
+      'resultsIdentityCandidateKey',
       'resultsPage',
       'resultsDishCount',
       'resultsRestaurantCount',
       'activeTab',
-      'pendingTabSwitchTab',
       'canLoadMore',
       'isSearchLoading',
       'isLoadingMore',
-      'submittedQuery',
+      'desiredTuple',
+      'searchResolutionFailure',
     ] as const,
     'results_panel_results_runtime_state'
   );

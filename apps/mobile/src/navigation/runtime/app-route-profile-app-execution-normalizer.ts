@@ -2,7 +2,7 @@ import type { AppRouteSaveSheetState } from './app-route-overlay-command-control
 import type { ProfileForegroundUiRestoreState } from './app-route-profile-transition-state-contract';
 
 export type ProfileCloseHydrationCommitInput = {
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   hydratedResultsKey: string | null;
   hydrationOperationId: string | null;
 };
@@ -13,16 +13,16 @@ export type ProfileCloseHydrationCommitRequest = {
 };
 
 export const resolveProfileCloseHydrationCommitRequest = ({
-  resultsHydrationKey,
+  resultsIdentityKey,
   hydratedResultsKey,
   hydrationOperationId,
 }: ProfileCloseHydrationCommitInput): ProfileCloseHydrationCommitRequest | null => {
-  if (!resultsHydrationKey || resultsHydrationKey === hydratedResultsKey) {
+  if (!resultsIdentityKey || resultsIdentityKey === hydratedResultsKey) {
     return null;
   }
   return {
     operationId: hydrationOperationId ?? 'profile-close-hydration',
-    nextHydrationKey: resultsHydrationKey,
+    nextHydrationKey: resultsIdentityKey,
   };
 };
 

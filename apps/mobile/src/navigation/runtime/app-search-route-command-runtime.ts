@@ -1,3 +1,4 @@
+import { hasSearchSessionAboveRoot } from './app-overlay-route-stack-algebra';
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
 import { getAppOverlayRouteMetadata, type OverlayRouteParamsMap } from './app-overlay-route-types';
 import type { AppRouteSceneSwitchAuthority } from './app-route-scene-switch-authority';
@@ -69,12 +70,23 @@ export const createAppSearchRouteCommandActions = ({
     mode?: 'spring' | 'instant';
     contentReadinessTransactionId?: string | null;
   }): void => {
+    // S-C.3 (plans/s-c-de-special-search.md): ONE rule — presenting a session is a PUSH; a
+    // re-present INSIDE the session (variant rerun, search-this-area, tab adoption) PRESERVES
+    // the route (the desire changed, not the stack). Home submit pushes search#session over
+    // search#home (same-key nesting); non-search roots push over their root. This also closes
+    // the S-C.2 gap where an in-session rerun from a favorites root would have stacked a
+    // duplicate session entry.
+    const routeState = routeSceneSwitchAuthority.getSnapshot().routeState;
+    // Red team RT-2: in-session must be STACK MEMBERSHIP — a rerun issued while a child tops
+    // the session (restaurant over results) must not stack a duplicate session entry.
+    const isInSessionRePresent = hasSearchSessionAboveRoot(routeState);
     routeSceneSwitchActions.requestOverlaySwitch({
       targetSceneKey: 'search',
       sheetTransitionKind: 'topLevelSwitch',
       sheetOpenerSource: 'routeCommand',
       sheetMotion: { kind: 'snapTo', snap, mode },
       contentReadinessTransactionId: contentReadinessTransactionId ?? null,
+      routeAction: isInSessionRePresent ? ('preserve' as const) : ('push' as const),
     });
   };
 

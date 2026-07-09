@@ -12,10 +12,8 @@ import { useResultsPresentationRuntimeMachineOwner } from './use-results-present
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 
 type UseResultsPresentationOwnerBridgeRuntimeArgs = {
-  activeTab: 'dishes' | 'restaurants';
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
-  isSearchSessionActive: boolean;
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
@@ -32,10 +30,8 @@ type ResultsPresentationOwnerBridgeRuntime = {
 };
 
 export const useResultsPresentationOwnerBridgeRuntime = ({
-  activeTab,
   setActiveTab,
   setActiveTabPreference,
-  isSearchSessionActive,
   searchRuntimeBus,
   resultsPresentationAuthority,
   resultsPresentationSurfaceAuthority,
@@ -63,14 +59,11 @@ export const useResultsPresentationOwnerBridgeRuntime = ({
     });
 
   const resultsInteractionRuntime = useResultsPresentationInteractionRuntime({
-    activeTab,
     setActiveTab,
     setActiveTabPreference,
-    isSearchSessionActive,
     searchRuntimeBus,
     handleToggleInteractionLifecycle,
     notifyIntentCompleteRef,
-    resultsRuntimeOwner: resultsRuntimeMachineOwner,
   });
 
   const resultsRuntimeOwner = React.useMemo(
@@ -80,7 +73,6 @@ export const useResultsPresentationOwnerBridgeRuntime = ({
         pendingTogglePresentationIntentId:
           resultsInteractionRuntime.pendingTogglePresentationIntentId,
         scheduleToggleCommit: resultsInteractionRuntime.scheduleToggleCommit,
-        notifyFrostReady: resultsInteractionRuntime.notifyFrostReady,
         cancelToggleInteraction: resultsInteractionRuntime.cancelToggleInteraction,
       }),
     [resultsInteractionRuntime, resultsRuntimeMachineOwner]

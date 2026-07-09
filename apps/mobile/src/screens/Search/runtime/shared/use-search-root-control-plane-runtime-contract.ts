@@ -24,7 +24,7 @@ export type SubmitRuntimeResult = ReturnType<typeof useSearchSubmitOwner>;
 export type FilterModalRuntime = ReturnType<typeof useSearchFilterModalOwner> & {
   openNow: boolean;
   priceButtonIsActive: boolean;
-  votesFilterActive: boolean;
+  includeSimilarActive: boolean;
   risingActive: boolean;
 };
 export type ForegroundInteractionRuntime = SearchForegroundInteractionRuntime;

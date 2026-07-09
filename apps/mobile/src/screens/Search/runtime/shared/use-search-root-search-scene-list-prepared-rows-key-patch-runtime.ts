@@ -4,4 +4,4 @@ export const useSearchRootSearchSceneListPreparedRowsKeyPatchRuntime = ({
   hydrationKeyRuntime,
 }: {
   hydrationKeyRuntime: ReturnType<typeof useSearchResultsPanelHydrationKeyRuntime>;
-}): string | null => hydrationKeyRuntime.resultsHydrationKey;
+}): string | null => hydrationKeyRuntime.resultsIdentityKey;

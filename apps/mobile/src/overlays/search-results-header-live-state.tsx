@@ -49,6 +49,16 @@ export const publishSearchResultsHeaderLiveState = (
   });
 };
 
+/**
+ * Imperative session close for non-UI callers (e.g. the uniform failure modal's
+ * unwind): runs the EXACT user back-out — beginCloseSearch's tuple→idle +
+ * pop-to-captured-origin (page + snap + scroll) — via the same published handler the
+ * header's close button presses. No-ops while no results session is published.
+ */
+export const closeSearchResultsSession = (): void => {
+  getSearchResultsHeaderLiveState()?.handleCloseResults();
+};
+
 const getSearchResultsHeaderLiveState = (): SearchResultsHeaderLiveState | null =>
   currentSearchResultsHeaderLiveState;
 

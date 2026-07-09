@@ -15,6 +15,7 @@ export type AppModalAction = {
   label: string;
   onPress?: () => void;
   style?: AppModalActionStyle;
+  testID?: string;
 };
 
 export type AppModalConfig = {
@@ -22,6 +23,14 @@ export type AppModalConfig = {
   message?: string;
   /** Defaults to a single dismissing "OK" when omitted. */
   actions?: AppModalAction[];
+  /**
+   * Fires EXACTLY ONCE when THIS config's modal is gone, by ANY path — action press,
+   * swipe-down, backdrop tap, or being replaced by a newer showAppModal (the host fires
+   * the outgoing config at replacement time). All paths are equivalent by contract
+   * (owner spec: the buttons never fork the flow), so post-close behavior hangs here,
+   * never on a specific action's onPress.
+   */
+  onDismissed?: () => void;
 };
 
 let currentConfig: AppModalConfig | null = null;
@@ -36,11 +45,53 @@ export const showAppModal = (config: AppModalConfig): void => {
   emit();
 };
 
-export const dismissAppModal = (): void => {
-  if (currentConfig != null) {
-    currentConfig = null;
-    emit();
+/**
+ * Dismisses the modal. Pass the config being dismissed so a dismissal that raced a
+ * newer `showAppModal` (e.g. the sheet's frame-deferred close after a swipe while an
+ * async flow opened the next alert) can't kill the modal it never showed. Omitting the
+ * argument dismisses unconditionally.
+ */
+export const dismissAppModal = (config?: AppModalConfig): void => {
+  if (currentConfig == null) {
+    return;
   }
+  if (config !== undefined && config !== currentConfig) {
+    return;
+  }
+  currentConfig = null;
+  emit();
+};
+
+/**
+ * THE UNIFORM FAILURE ANNOUNCEMENT (owner spec, 2026-07-08, revised same day): every
+ * online failure in the app announces through this one modal — identical copy and
+ * surface everywhere, so no per-surface failure design exists. ONE button ("OK"), and
+ * it does EXACTLY what swipe-down/backdrop do: close the modal and return the user to
+ * the last state that worked. The modal never auto-retries — retrying is the user's
+ * move, back on the page they came from. A failed transition that had already moved
+ * presentation forward unwinds via `onDismissed` (any close path), e.g. search's
+ * pop-to-exact-origin. Offline it announces NOTHING: offline is the universal hang —
+ * the black system banner explains, skeletons persist, loaded content stays.
+ *
+ * `isOffline` is injected lazily to keep this store dependency-free; wired once at app
+ * boot from the system status store.
+ */
+let readIsOffline: (() => boolean) | null = null;
+
+export const wireFailureAnnouncerOfflineRead = (read: () => boolean): void => {
+  readIsOffline = read;
+};
+
+export const announceFailureIfOnline = (options?: { onDismissed?: () => void }): void => {
+  if (readIsOffline?.() === true) {
+    return;
+  }
+  showAppModal({
+    title: 'Something went wrong',
+    message: "We couldn't complete that. Please try again.",
+    actions: [{ label: 'OK', style: 'default', testID: 'app-modal-dismiss' }],
+    onDismissed: options?.onDismissed,
+  });
 };
 
 const subscribe = (listener: () => void): (() => void) => {

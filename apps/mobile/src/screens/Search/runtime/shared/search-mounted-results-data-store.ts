@@ -1,6 +1,9 @@
 import React from 'react';
+import type { Feature, Point } from 'geojson';
+import { reportSearchFlowContractViolation } from './search-flow-contracts';
 
 import type { RestaurantResult, SearchResponse } from '../../../../types';
+import type { RestaurantFeatureProperties } from '../../components/search-map';
 import type { MarkerCatalogEntry } from '../map/map-viewport-query';
 import {
   isPerfScenarioAttributionActive,
@@ -39,17 +42,41 @@ import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { SearchRuntimeInteractionState } from './use-search-root-session-runtime-contract';
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 
+// S1 (plans/search-desired-state-architecture.md §7): coverage is a FIELD of the world
+// value, not a separately-keyed resource. The frame builder reads coverage from HERE —
+// results and coverage arrive in one snapshot, so a "coverage not ready for this key"
+// limbo (the covNotReady ladder) is unrepresentable. `features` is null only while
+// resolving/failed; an EMPTY array is a valid ready world (zero dots is a real variant).
+export type SearchMountedResultsCoverageEntry = {
+  status: 'resolving' | 'ready' | 'failed';
+  requestKey: string;
+  features: Array<Feature<Point, RestaurantFeatureProperties>> | null;
+  reason: string | null;
+  resolvedAt: number | null;
+};
+
+export type SearchMountedResultsCoverage = {
+  // The world identity this coverage belongs to. Commits for a different world are
+  // dropped by IDENTITY at the results commit (carry-forward rule), never by a guard.
+  searchRequestId: string;
+  byTab: {
+    dishes: SearchMountedResultsCoverageEntry | null;
+    restaurants: SearchMountedResultsCoverageEntry | null;
+  };
+};
+
 export type SearchMountedResultsDataSnapshot = {
   activeTab: 'dishes' | 'restaurants' | null;
-  precomputedCanonicalRestaurantRankById: Map<string, number> | null;
-  precomputedMarkerActiveTab: 'dishes' | 'restaurants' | null;
-  precomputedMarkerCatalog: MarkerCatalogEntry[] | null;
-  precomputedMarkerPrimaryCount: number;
-  precomputedMarkerResultsKey: string | null;
-  precomputedRestaurantsById: Map<string, RestaurantResult> | null;
+  // R1a-2: marker projections precomputed at response commit for BOTH tabs (the dual_list
+  // response carries dishes[] AND restaurants[]), so a tab toggle finds its target-tab
+  // catalog ready and the controller's fallback full-catalog rebuild never fires. A tab's
+  // entry is null when the committed response genuinely lacks that axis — the controller's
+  // fallback then legitimately computes it without tripping the R1a contract.
+  precomputedMarkerProjectionByTab: SearchMountedResultsMarkerProjectionByTab | null;
+  coverage: SearchMountedResultsCoverage | null;
   resultsDataIdentityKey: string | null;
   results: SearchResponse | null;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   resultsRequestKey: string | null;
   version: number;
 };
@@ -63,10 +90,15 @@ export type SearchMountedResultsMarkerProjection = {
   resultsKey: string;
 };
 
+export type SearchMountedResultsMarkerProjectionByTab = {
+  dishes: SearchMountedResultsMarkerProjection | null;
+  restaurants: SearchMountedResultsMarkerProjection | null;
+};
+
 export type SearchMountedResultsRowsViewKeyArgs = {
   activeTab: 'dishes' | 'restaurants';
   headerHeight: number;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
   targetSnapPointMiddle: number | null;
   viewportHeight: number;
@@ -92,7 +124,7 @@ export type SearchMountedResultsBodyRuntimeSnapshot = {
   hydratedResultsKey: string | null;
   isResultsHydrationSettled: boolean;
   searchSurfaceResultsTransactionKey: string | null;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   searchSurfaceRedrawPhase: SearchSurfaceRedrawPhase;
   shouldHydrateResultsForRender: boolean;
 };
@@ -116,7 +148,7 @@ export type SearchMountedResultsRowsSnapshot = {
   headerHeight: number;
   preparationKey: string | null;
   restaurantCardDescriptorsById: Map<string, RestaurantResultCardDescriptor>;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   resultsRequestKey: string | null;
   rowsByTab: {
     dishes: ResultsListItem[];
@@ -148,7 +180,7 @@ export type SearchMountedResultsListDataSnapshot = {
   debugRowsSnapshotVersion: number;
   debugSecondaryRowCount: number;
   preparedRowsActiveRowCount: number;
-  preparedRowsReadinessKey: string | null;
+  preparedRowsIdentityKey: string | null;
   primaryListHeaderComponent?: SearchMountedResultsListHeaderComponent;
   primaryListFooterComponent?: SearchMountedResultsListFooterComponent;
   primaryData: ReadonlyArray<ResultsListItem>;
@@ -165,15 +197,11 @@ const NOOP_SHOW_MORE_EXACT = (): void => {};
 
 const EMPTY_SEARCH_MOUNTED_RESULTS_DATA_SNAPSHOT: SearchMountedResultsDataSnapshot = {
   activeTab: null,
-  precomputedCanonicalRestaurantRankById: null,
-  precomputedMarkerActiveTab: null,
-  precomputedMarkerCatalog: null,
-  precomputedMarkerPrimaryCount: 0,
-  precomputedMarkerResultsKey: null,
-  precomputedRestaurantsById: null,
+  precomputedMarkerProjectionByTab: null,
+  coverage: null,
   resultsDataIdentityKey: null,
   results: null,
-  resultsHydrationKey: null,
+  resultsIdentityKey: null,
   resultsRequestKey: null,
   version: 0,
 };
@@ -192,7 +220,7 @@ const EMPTY_SEARCH_MOUNTED_RESULTS_LIST_DATA_SNAPSHOT: SearchMountedResultsListD
   debugRowsSnapshotVersion: 0,
   debugSecondaryRowCount: 0,
   preparedRowsActiveRowCount: 0,
-  preparedRowsReadinessKey: null,
+  preparedRowsIdentityKey: null,
   primaryData: EMPTY_SEARCH_MOUNTED_RESULTS_LIST_DATA,
   primaryExtraData: 0,
   scrollIndicatorInsets: {
@@ -281,7 +309,7 @@ const EMPTY_SEARCH_MOUNTED_RESULTS_ROWS_SNAPSHOT: SearchMountedResultsRowsSnapsh
   headerHeight: 0,
   preparationKey: null,
   restaurantCardDescriptorsById: EMPTY_RESTAURANT_CARD_DESCRIPTORS,
-  resultsHydrationKey: null,
+  resultsIdentityKey: null,
   resultsRequestKey: null,
   rowsByTab: EMPTY_SEARCH_MOUNTED_RESULTS_ROWS,
   version: 0,
@@ -319,7 +347,7 @@ const areSearchMountedResultsRowsSnapshotsStructurallyEqual = (
   left.handleShowMoreExactDishes === right.handleShowMoreExactDishes &&
   left.handleShowMoreExactRestaurants === right.handleShowMoreExactRestaurants &&
   left.headerHeight === right.headerHeight &&
-  left.resultsHydrationKey === right.resultsHydrationKey &&
+  left.resultsIdentityKey === right.resultsIdentityKey &&
   left.resultsRequestKey === right.resultsRequestKey &&
   left.rowsByTab === right.rowsByTab;
 
@@ -340,7 +368,7 @@ const EMPTY_SEARCH_MOUNTED_RESULTS_BODY_RUNTIME: SearchMountedResultsBodyRuntime
   hydratedResultsKey: null,
   isResultsHydrationSettled: true,
   searchSurfaceResultsTransactionKey: null,
-  resultsHydrationKey: null,
+  resultsIdentityKey: null,
   searchSurfaceRedrawPhase: 'idle',
   shouldHydrateResultsForRender: false,
 };
@@ -425,12 +453,12 @@ const isMountedRestaurantCardRow = (row: ResultsListItem): row is ResultsMounted
 
 const markSearchMountedResultsCountContract = ({
   admission,
-  resultsHydrationKey,
+  resultsIdentityKey,
   resultsRequestKey,
   rowsByTab,
 }: {
   admission: SearchResultsBodyAdmissionSnapshot;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   resultsRequestKey: string | null;
   rowsByTab: {
     dishes: ResultsListItem[];
@@ -461,7 +489,7 @@ const markSearchMountedResultsCountContract = ({
     backendRestaurantCountOnPage: mountedResults.restaurants?.length ?? 0,
     mode: admission.mode,
     renderRowCount: admission.renderRowCount,
-    resultsHydrationKey: quietMeasuredLoopActive ? null : resultsHydrationKey,
+    resultsIdentityKey: quietMeasuredLoopActive ? null : resultsIdentityKey,
     resultsRequestKey: quietMeasuredLoopActive ? null : resultsRequestKey,
     rowsByTabDishRowCount: rowsByTab.dishes.length,
     rowsByTabRestaurantCardRowCount: countRestaurantRows(rowsByTab.restaurants),
@@ -486,7 +514,7 @@ const areSearchMountedResultsBodyRuntimeSnapshotsEqual = (
   left.hydratedResultsKey === right.hydratedResultsKey &&
   left.isResultsHydrationSettled === right.isResultsHydrationSettled &&
   left.searchSurfaceResultsTransactionKey === right.searchSurfaceResultsTransactionKey &&
-  left.resultsHydrationKey === right.resultsHydrationKey &&
+  left.resultsIdentityKey === right.resultsIdentityKey &&
   left.searchSurfaceRedrawPhase === right.searchSurfaceRedrawPhase &&
   left.shouldHydrateResultsForRender === right.shouldHydrateResultsForRender;
 
@@ -555,13 +583,13 @@ const resolveMountedRowsProjection = ({
 export const createSearchMountedResultsRowsViewKey = ({
   activeTab,
   headerHeight,
-  resultsHydrationKey,
+  resultsIdentityKey,
   searchSurfaceRedrawPhase,
   targetSnapPointMiddle,
   viewportHeight,
 }: SearchMountedResultsRowsViewKeyArgs): string =>
   [
-    `hydration:${resultsHydrationKey ?? 'null'}`,
+    `hydration:${resultsIdentityKey ?? 'null'}`,
     `tab:${activeTab}`,
     `header:${normalizeKeyNumber(headerHeight)}`,
     `phase:${searchSurfaceRedrawPhase}`,
@@ -646,7 +674,7 @@ const resolveSearchMountedResultsListDataSnapshot = (): SearchMountedResultsList
   debugRowsSnapshotVersion: rowsSnapshot.version,
   debugSecondaryRowCount: rowsSnapshot.admission.secondaryRows.length,
   preparedRowsActiveRowCount: rowsSnapshot.admission.renderRowCount,
-  preparedRowsReadinessKey: rowsSnapshot.resultsHydrationKey ?? rowsSnapshot.resultsRequestKey,
+  preparedRowsIdentityKey: rowsSnapshot.resultsIdentityKey ?? rowsSnapshot.resultsRequestKey,
   primaryData: rowsSnapshot.admission.primaryRows,
   primaryExtraData: rowsSnapshot.version,
   primaryListFooterComponent: mountedResultsListDecorationsSnapshot.primaryListFooterComponent,
@@ -668,7 +696,11 @@ const shouldNotifySearchMountedResultsListDecorations = (): boolean => {
   );
 };
 
+const __t1dbgMark = (name: string): void => {
+  if (__DEV__) console.log(`[T1DBG] ${name} t=${performance.now().toFixed(1)}`);
+};
 const publishSearchMountedResultsListDataSnapshotIfChanged = (): void => {
+  __t1dbgMark('listDataPublish');
   if (!shouldNotifySearchMountedResultsListDecorations()) {
     return;
   }
@@ -692,22 +724,31 @@ const publishSearchMountedResultsListDataSnapshotIfChanged = (): void => {
 const publishSearchMountedResultsPreparedRowsSnapshot = ({
   activeRowCount,
   ready,
-  readinessKey,
+  resultsIdentityKey,
   source,
 }: {
   activeRowCount: number;
   ready: boolean;
-  readinessKey: string | null;
+  resultsIdentityKey: string | null;
   source: string;
 }): void => {
   const authority = getResultsPresentationSurfaceAuthority();
-  if (readinessKey == null || activeRowCount <= 0) {
+  // eslint-disable-next-line no-console
+  if (__DEV__)
+    console.log(
+      `[REVEALSYNC] preparedRows src=${source} ready=${ready} count=${activeRowCount} jsNowMs=${(globalThis.performance?.now?.() ?? 0).toFixed(1)}`
+    );
+  // TR5-N empty-variant: activeRowCount === 0 WITH a results identity is a legitimate,
+  // first-class variant (e.g. open-now filtered every row out) — it stages and commits like
+  // any other page so the reveal joint can open on the empty state. Only a NULL identity
+  // means "nothing prepared" (reset/clear).
+  if (resultsIdentityKey == null) {
     authority.publish(
       {
         listPreparedRowsReady: false,
         preparedRows: {
-          targetReadinessKey: null,
-          readyReadinessKey: null,
+          targetResultsIdentityKey: null,
+          readyResultsIdentityKey: null,
           activeRowCount: 0,
         },
       },
@@ -716,12 +757,12 @@ const publishSearchMountedResultsPreparedRowsSnapshot = ({
     return;
   }
   const currentSnapshot = authority.getSnapshot().preparedRows;
-  const readyReadinessKey = ready ? readinessKey : null;
+  const readyResultsIdentityKey = ready ? resultsIdentityKey : null;
   const listPreparedRowsReady =
-    ready && authority.getSnapshot().resultsPreparedRowsKey === readinessKey;
+    ready && authority.getSnapshot().resultsPreparedRowsKey === resultsIdentityKey;
   if (
-    currentSnapshot.targetReadinessKey === readinessKey &&
-    currentSnapshot.readyReadinessKey === readyReadinessKey &&
+    currentSnapshot.targetResultsIdentityKey === resultsIdentityKey &&
+    currentSnapshot.readyResultsIdentityKey === readyResultsIdentityKey &&
     currentSnapshot.activeRowCount === activeRowCount &&
     authority.getSnapshot().listPreparedRowsReady === listPreparedRowsReady
   ) {
@@ -731,8 +772,8 @@ const publishSearchMountedResultsPreparedRowsSnapshot = ({
     {
       listPreparedRowsReady,
       preparedRows: {
-        targetReadinessKey: readinessKey,
-        readyReadinessKey,
+        targetResultsIdentityKey: resultsIdentityKey,
+        readyResultsIdentityKey,
         activeRowCount,
       },
     },
@@ -742,49 +783,57 @@ const publishSearchMountedResultsPreparedRowsSnapshot = ({
 
 const stageSearchMountedResultsPreparedRowsTarget = ({
   activeRowCount,
-  readinessKey,
+  resultsIdentityKey,
 }: {
   activeRowCount: number;
-  readinessKey: string | null;
+  resultsIdentityKey: string | null;
 }): void => {
   publishSearchMountedResultsPreparedRowsSnapshot({
     activeRowCount,
     ready: false,
-    readinessKey,
+    resultsIdentityKey,
     source: 'mounted_results_prepared_rows_staged',
   });
 };
 
 export const markSearchMountedResultsPreparedRowsCommitted = ({
   activeRowCount,
-  readinessKey,
+  resultsIdentityKey,
 }: {
   activeRowCount: number;
-  readinessKey: string | null;
+  resultsIdentityKey: string | null;
 }): void => {
   publishSearchMountedResultsPreparedRowsSnapshot({
     activeRowCount,
     ready: true,
-    readinessKey,
+    resultsIdentityKey,
     source: 'mounted_results_prepared_rows_committed',
   });
 };
 
 export const commitSearchMountedResultsPreparedRowsTarget = ({
-  readinessKey,
+  resultsIdentityKey,
 }: {
-  readinessKey: string | null;
+  resultsIdentityKey: string | null;
 }): void => {
-  if (readinessKey == null) {
+  if (resultsIdentityKey == null) {
     return;
   }
   const preparedRows = getResultsPresentationSurfaceAuthority().getSnapshot().preparedRows;
-  if (preparedRows.targetReadinessKey !== readinessKey || preparedRows.activeRowCount <= 0) {
+  if (preparedRows.targetResultsIdentityKey !== resultsIdentityKey) {
+    // R0 loud-contracts (§D6): a commit attempt against a DIFFERENT staged target can strand
+    // cardsReady=false forever — the audit's "stuck staging" silent zone. A zero-row staging
+    // with a MATCHING key is NOT suspicious: it's the first-class empty variant (TR5-N).
+    reportSearchFlowContractViolation('prepared_rows_commit_target_mismatch', {
+      resultsIdentityKey,
+      targetResultsIdentityKey: preparedRows.targetResultsIdentityKey,
+      activeRowCount: preparedRows.activeRowCount,
+    });
     return;
   }
   markSearchMountedResultsPreparedRowsCommitted({
     activeRowCount: preparedRows.activeRowCount,
-    readinessKey,
+    resultsIdentityKey,
   });
 };
 
@@ -842,36 +891,46 @@ export const publishSearchMountedResultsDataSnapshot = (
   results: SearchResponse | null,
   options?: {
     activeTab?: 'dishes' | 'restaurants' | null;
-    markerProjection?: SearchMountedResultsMarkerProjection | null;
-    resultsHydrationKey?: string | null;
+    markerProjectionByTab?: SearchMountedResultsMarkerProjectionByTab | null;
+    resultsIdentityKey?: string | null;
   }
 ): boolean => {
+  if (__DEV__ && results == null && snapshot.results != null) {
+    // [SRINULL] attribution: WHO clears the mounted-results data store (the map projection's
+    // source) while the results surface may still be live? Top stack frames name the caller.
+    console.log(
+      `[SRINULL] data-store CLEARED (had rrk=${snapshot.resultsRequestKey}) by:\n${new Error().stack?.split('\n').slice(1, 5).join('\n')}`
+    );
+  }
   const nextResultsRequestKey = results?.metadata?.searchRequestId ?? null;
-  const nextResultsHydrationKey = options?.resultsHydrationKey ?? null;
+  const nextResultsIdentityKey = options?.resultsIdentityKey ?? null;
   const nextActiveTab = options?.activeTab ?? null;
-  const nextMarkerProjection = options?.markerProjection ?? null;
+  const nextMarkerProjectionByTab = options?.markerProjectionByTab ?? null;
   const nextResultsDataIdentityKey = createSearchMountedResultsDataIdentityKey(results);
   const activeRedrawTransactionId =
     getSearchSurfaceRuntime().getActiveOrPendingRedrawTransactionId();
   if (
     snapshot.results === results &&
     snapshot.resultsRequestKey === nextResultsRequestKey &&
-    snapshot.resultsHydrationKey === nextResultsHydrationKey &&
+    snapshot.resultsIdentityKey === nextResultsIdentityKey &&
     snapshot.activeTab === nextActiveTab &&
-    snapshot.precomputedMarkerResultsKey === nextMarkerProjection?.resultsKey
+    (snapshot.precomputedMarkerProjectionByTab?.dishes?.resultsKey ?? null) ===
+      (nextMarkerProjectionByTab?.dishes?.resultsKey ?? null) &&
+    (snapshot.precomputedMarkerProjectionByTab?.restaurants?.resultsKey ?? null) ===
+      (nextMarkerProjectionByTab?.restaurants?.resultsKey ?? null)
   ) {
     return false;
   }
 
   logPerfScenarioStackAttribution({
     owner: 'search_mounted_results_data_writer',
-    path: `${snapshot.resultsHydrationKey ?? snapshot.resultsRequestKey ?? 'null'}->${
-      nextResultsHydrationKey ?? nextResultsRequestKey ?? 'null'
+    path: `${snapshot.resultsIdentityKey ?? snapshot.resultsRequestKey ?? 'null'}->${
+      nextResultsIdentityKey ?? nextResultsRequestKey ?? 'null'
     }`,
     details: {
       activeTab: nextActiveTab,
       dishCount: results?.dishes?.length ?? 0,
-      hydrationKey: nextResultsHydrationKey,
+      hydrationKey: nextResultsIdentityKey,
       restaurantCount: results?.restaurants?.length ?? 0,
       listenerCount: listeners.size,
     },
@@ -884,16 +943,15 @@ export const publishSearchMountedResultsDataSnapshot = (
   }
   snapshot = {
     activeTab: nextActiveTab,
-    precomputedCanonicalRestaurantRankById:
-      nextMarkerProjection?.canonicalRestaurantRankById ?? null,
-    precomputedMarkerActiveTab: nextMarkerProjection?.activeTab ?? null,
-    precomputedMarkerCatalog: nextMarkerProjection?.catalog ?? null,
-    precomputedMarkerPrimaryCount: nextMarkerProjection?.primaryCount ?? 0,
-    precomputedMarkerResultsKey: nextMarkerProjection?.resultsKey ?? null,
-    precomputedRestaurantsById: nextMarkerProjection?.restaurantsById ?? null,
+    precomputedMarkerProjectionByTab: nextMarkerProjectionByTab,
+    // S1 convergence rule: coverage survives the results commit iff it belongs to the NEW
+    // world (identity match) — so coverage-before-results and results-before-coverage both
+    // converge to the same snapshot structurally, in either commit order.
+    coverage:
+      snapshot.coverage?.searchRequestId === nextResultsRequestKey ? snapshot.coverage : null,
     resultsDataIdentityKey: nextResultsDataIdentityKey,
     results,
-    resultsHydrationKey: nextResultsHydrationKey,
+    resultsIdentityKey: nextResultsIdentityKey,
     resultsRequestKey: nextResultsRequestKey,
     version: snapshot.version + 1,
   };
@@ -902,6 +960,70 @@ export const publishSearchMountedResultsDataSnapshot = (
   });
   prepareSearchMountedResultsRowsSnapshotFromAuthority();
   return true;
+};
+
+// S1: coverage commits into the WORLD (never into a controller-local pointer). Committing
+// under a searchRequestId that never becomes the world is inert — the next results commit
+// drops it by identity. Coverage is a map-frame input, not a rows input: no rows prepare.
+export const commitSearchMountedResultsCoverage = (args: {
+  searchRequestId: string;
+  tab: 'dishes' | 'restaurants';
+  entry: SearchMountedResultsCoverageEntry;
+}): void => {
+  if (args.entry.status === 'ready' && args.entry.features == null) {
+    // The old features/terminal lockstep bug class, made unconstructable-loud: a ready
+    // coverage entry ALWAYS carries its features array (empty array = valid empty world).
+    reportSearchFlowContractViolation('coverage_ready_without_features', {
+      searchRequestId: args.searchRequestId,
+      tab: args.tab,
+      requestKey: args.entry.requestKey,
+      reason: args.entry.reason,
+    });
+    return;
+  }
+  const current =
+    snapshot.coverage?.searchRequestId === args.searchRequestId
+      ? snapshot.coverage
+      : { searchRequestId: args.searchRequestId, byTab: { dishes: null, restaurants: null } };
+  snapshot = {
+    ...snapshot,
+    coverage: {
+      searchRequestId: args.searchRequestId,
+      byTab: { ...current.byTab, [args.tab]: args.entry },
+    },
+    version: snapshot.version + 1,
+  };
+  listeners.forEach((listener) => {
+    listener();
+  });
+};
+
+export const clearSearchMountedResultsCoverage = (): void => {
+  if (snapshot.coverage == null) {
+    return;
+  }
+  snapshot = { ...snapshot, coverage: null, version: snapshot.version + 1 };
+  listeners.forEach((listener) => {
+    listener();
+  });
+};
+
+const logRowsAdmissionTransition = (
+  previous: SearchMountedResultsRowsSnapshot,
+  next: Omit<SearchMountedResultsRowsSnapshot, 'version'>
+): void => {
+  if (!__DEV__) {
+    return;
+  }
+  if (
+    previous.admission.mode !== next.admission.mode ||
+    previous.admission.renderRowCount !== next.admission.renderRowCount
+  ) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[REVEALSYNC] rowsAdmission ${previous.admission.mode}:${previous.admission.renderRowCount} -> ${next.admission.mode}:${next.admission.renderRowCount} jsNowMs=${(globalThis.performance?.now?.() ?? Date.now()).toFixed(1)}`
+    );
+  }
 };
 
 export const publishSearchMountedResultsRowsSnapshot = (
@@ -943,13 +1065,14 @@ export const publishSearchMountedResultsRowsSnapshot = (
       listenerCount: rowListeners.size,
     },
   });
+  logRowsAdmissionTransition(rowsSnapshot, nextSnapshot);
   rowsSnapshot = {
     ...nextSnapshot,
     version: rowsSnapshot.version + 1,
   };
   stageSearchMountedResultsPreparedRowsTarget({
     activeRowCount: nextSnapshot.admission.renderRowCount,
-    readinessKey: nextSnapshot.resultsHydrationKey ?? nextSnapshot.resultsRequestKey,
+    resultsIdentityKey: nextSnapshot.resultsIdentityKey ?? nextSnapshot.resultsRequestKey,
   });
   rowListeners.forEach((listener) => {
     listener();
@@ -963,15 +1086,15 @@ const createMountedResultsBodyRowsInput = (): PrepareSearchMountedResultsRowsSna
   const activeRowsHydrationKey =
     resultsDataSnapshot.results == null
       ? null
-      : (resultsDataSnapshot.resultsHydrationKey ??
-        bodyRuntimeSnapshot.resultsHydrationKey ??
+      : (resultsDataSnapshot.resultsIdentityKey ??
+        bodyRuntimeSnapshot.resultsIdentityKey ??
         bodyRuntimeSnapshot.hydratedResultsKey ??
         resultsDataSnapshot.resultsRequestKey);
   return {
     activeTab: bodyRuntimeSnapshot.activeTab ?? resultsDataSnapshot.activeTab ?? 'restaurants',
     headerHeight: bodyLayoutSnapshot.headerHeight,
     resultsDataSnapshot,
-    resultsHydrationKey: activeRowsHydrationKey,
+    resultsIdentityKey: activeRowsHydrationKey,
     searchSurfaceRedrawPhase: MOUNTED_ROWS_ADMISSION_PHASE,
     targetSnapPointMiddle: bodyLayoutSnapshot.targetSnapPointMiddle,
     targetSnapPoints: bodyLayoutSnapshot.targetSnapPoints,
@@ -999,13 +1122,13 @@ export const commitSearchMountedResultsHydrationRuntimeSnapshot = ({
   activeTab,
   hydratedResultsKey,
   isResultsHydrationSettled,
-  resultsHydrationKey,
+  resultsIdentityKey,
   shouldHydrateResultsForRender,
 }: {
   activeTab: 'dishes' | 'restaurants';
   hydratedResultsKey: string | null;
   isResultsHydrationSettled: boolean;
-  resultsHydrationKey: string | null;
+  resultsIdentityKey: string | null;
   shouldHydrateResultsForRender: boolean;
 }): boolean =>
   publishSearchMountedResultsBodyRuntimeSnapshot({
@@ -1013,7 +1136,7 @@ export const commitSearchMountedResultsHydrationRuntimeSnapshot = ({
     hydratedResultsKey,
     isResultsHydrationSettled,
     searchSurfaceResultsTransactionKey: bodyRuntimeSnapshot.searchSurfaceResultsTransactionKey,
-    resultsHydrationKey,
+    resultsIdentityKey,
     searchSurfaceRedrawPhase: MOUNTED_ROWS_ADMISSION_PHASE,
     shouldHydrateResultsForRender,
   });
@@ -1149,7 +1272,15 @@ const prepareRestaurantCardDescriptorsById = ({
   return descriptorsById.size > 0 ? descriptorsById : EMPTY_RESTAURANT_CARD_DESCRIPTORS;
 };
 
-export const prepareSearchMountedResultsRowsSnapshot = ({
+export const prepareSearchMountedResultsRowsSnapshot = (
+  ...__t1dbgArgs: [PrepareSearchMountedResultsRowsSnapshotArgs]
+) => {
+  if (__DEV__) console.log(`[T1DBG] rowsPrepare:start t=${performance.now().toFixed(1)}`);
+  const __t1dbgResult = prepareSearchMountedResultsRowsSnapshotInner(...__t1dbgArgs);
+  if (__DEV__) console.log(`[T1DBG] rowsPrepare:end t=${performance.now().toFixed(1)}`);
+  return __t1dbgResult;
+};
+const prepareSearchMountedResultsRowsSnapshotInner = ({
   resultsDataSnapshot = snapshot,
   ...viewArgs
 }: PrepareSearchMountedResultsRowsSnapshotArgs): boolean => {
@@ -1184,7 +1315,7 @@ export const prepareSearchMountedResultsRowsSnapshot = ({
   });
   const preparationRowsByTab = resolveSearchResultsBodyAdmissionPreparationRows({
     activeTab: viewArgs.activeTab,
-    resultsHydrationKey: viewArgs.resultsHydrationKey,
+    resultsIdentityKey: viewArgs.resultsIdentityKey,
     rowsByTab: fullRowsByTab,
   });
   const rowsByTab = {
@@ -1208,7 +1339,7 @@ export const prepareSearchMountedResultsRowsSnapshot = ({
   const admission = resolveSearchResultsBodyAdmission({
     activeTab: viewArgs.activeTab,
     fullRowsByTab,
-    resultsHydrationKey: viewArgs.resultsHydrationKey,
+    resultsIdentityKey: viewArgs.resultsIdentityKey,
     rowsByTab,
   });
   const didPublish = publishSearchMountedResultsRowsSnapshot({
@@ -1223,14 +1354,14 @@ export const prepareSearchMountedResultsRowsSnapshot = ({
     headerHeight: viewArgs.headerHeight,
     preparationKey,
     restaurantCardDescriptorsById,
-    resultsHydrationKey: viewArgs.resultsHydrationKey,
+    resultsIdentityKey: viewArgs.resultsIdentityKey,
     resultsRequestKey: resultsDataSnapshot.resultsRequestKey,
     rowsByTab,
     viewKey,
   });
   markSearchMountedResultsCountContract({
     admission,
-    resultsHydrationKey: viewArgs.resultsHydrationKey,
+    resultsIdentityKey: viewArgs.resultsIdentityKey,
     resultsRequestKey: resultsDataSnapshot.resultsRequestKey,
     rowsByTab,
   });
@@ -1270,7 +1401,7 @@ export const useSearchMountedResultsBodyAuthorityOwner = ({
         SearchRuntimeBus['getState']
       > & {
         hydratedResultsKey?: string | null;
-        resultsHydrationKey?: string | null;
+        resultsIdentityKey?: string | null;
         shouldHydrateResultsForRender?: boolean;
       };
       publishSearchMountedResultsBodyRuntimeSnapshot({
@@ -1278,7 +1409,7 @@ export const useSearchMountedResultsBodyAuthorityOwner = ({
         hydratedResultsKey: runtimeState.hydratedResultsKey ?? null,
         isResultsHydrationSettled: true,
         searchSurfaceResultsTransactionKey: bodyRuntimeSnapshot.searchSurfaceResultsTransactionKey,
-        resultsHydrationKey: runtimeState.resultsHydrationKey ?? null,
+        resultsIdentityKey: runtimeState.resultsIdentityKey ?? null,
         searchSurfaceRedrawPhase: runtimeState.searchSurfaceRedrawPhase,
         shouldHydrateResultsForRender: runtimeState.shouldHydrateResultsForRender ?? false,
       });
