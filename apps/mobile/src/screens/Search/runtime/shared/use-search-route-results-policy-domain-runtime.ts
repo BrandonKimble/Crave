@@ -1,6 +1,6 @@
 import React from 'react';
 import { announceFailureIfOnline } from '../../../../components/app-modal-store';
-import { closeSearchResultsSession } from '../../../../overlays/search-results-header-live-state';
+import { unwindFailedSearchEnter } from './search-failed-enter-unwind';
 import { useSystemStatusStore } from '../../../../store/systemStatusStore';
 import { retrySearchDesiredResolution } from './search-desired-state-writer';
 import { selectIsSearchSessionActive } from './search-desired-tuple-selectors';
@@ -118,19 +118,11 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
           return;
         }
         lastAnnouncedFailure = failure;
+        // The copyable per-surface pattern: the unwind is self-guarding, the wiring is
+        // one line. A future enterable surface adds its own unwindFailedXEnter and
+        // this exact call shape.
         announceFailureIfOnline({
-          onDismissed: () => {
-            const busState = searchRuntimeBus.getState();
-            if (
-              busState.presentedWorldId != null ||
-              busState.desiredTuple.queryIdentity.kind === 'idle'
-            ) {
-              // Presented results = nothing to unwind; idle = the user already backed
-              // out while the modal was up.
-              return;
-            }
-            closeSearchResultsSession();
-          },
+          onDismissed: () => unwindFailedSearchEnter(searchRuntimeBus),
         });
       },
       ['searchResolutionFailure'],

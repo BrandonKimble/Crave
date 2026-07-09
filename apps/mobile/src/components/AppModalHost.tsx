@@ -4,7 +4,12 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from './ui/Text';
 import { colors as themeColors } from '../constants/theme';
 import OverlayModalSheet from '../overlays/OverlayModalSheet';
-import { dismissAppModal, useAppModalConfig, type AppModalAction } from './app-modal-store';
+import {
+  dismissAppModal,
+  useAppModalConfig,
+  type AppModalAction,
+  type AppModalConfig,
+} from './app-modal-store';
 
 const ACCENT = themeColors.primary;
 const DESTRUCTIVE = '#ef4444';
@@ -55,11 +60,39 @@ export const AppModalHost: React.FC = () => {
     }
   }, [config]);
 
-  // The config's onDismissed contract: fires once when the sheet has fully closed, by
-  // ANY path (action press, swipe, backdrop) — the exit animation completing is the one
-  // moment all paths share.
+  // The onDismissed contract: fires EXACTLY ONCE per config, on whichever path closes
+  // it. Three closes exist: (a) normal — dismissed, exit animation completes; (b)
+  // hard-swap — a new showAppModal replaces it while visible (no exit runs); (c)
+  // abandoned exit — a new modal opens during the slide-out, cancelling finishExit.
+  // A pending ref owns the not-yet-fired config; (b)/(c) fire it at replacement time,
+  // (a) fires it when the sheet reports the exit finished. Without (b)/(c) a replaced
+  // failure modal would silently drop its return-to-origin unwind.
+  const pendingDismissedRef = React.useRef<AppModalConfig | null>(null);
+  const prevConfigRef = React.useRef<AppModalConfig | null>(null);
+  React.useEffect(() => {
+    const prev = prevConfigRef.current;
+    prevConfigRef.current = config;
+    if (prev != null && config != null && prev !== config) {
+      // (b) hard-swap: the outgoing config's modal is gone by the only path left.
+      prev.onDismissed?.();
+      return;
+    }
+    if (prev != null && config == null) {
+      // Dismissed — the exit animation now owns the (a) firing.
+      pendingDismissedRef.current = prev;
+      return;
+    }
+    if (prev == null && config != null && pendingDismissedRef.current != null) {
+      // (c) reopen-during-exit: the pending exit will never complete — fire now.
+      const abandoned = pendingDismissedRef.current;
+      pendingDismissedRef.current = null;
+      abandoned.onDismissed?.();
+    }
+  }, [config]);
   const handleSheetDismissed = React.useCallback((): void => {
-    lastConfigRef.current?.onDismissed?.();
+    const pending = pendingDismissedRef.current;
+    pendingDismissedRef.current = null;
+    pending?.onDismissed?.();
   }, []);
 
   return (

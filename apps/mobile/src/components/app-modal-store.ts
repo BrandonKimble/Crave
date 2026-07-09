@@ -24,10 +24,11 @@ export type AppModalConfig = {
   /** Defaults to a single dismissing "OK" when omitted. */
   actions?: AppModalAction[];
   /**
-   * Fires once when THIS config's modal has fully closed, by ANY path — action press,
-   * swipe-down, or backdrop tap. All dismissal paths are equivalent by contract (owner
-   * spec: the buttons never fork the flow), so post-close behavior hangs here, never on
-   * a specific action's onPress.
+   * Fires EXACTLY ONCE when THIS config's modal is gone, by ANY path — action press,
+   * swipe-down, backdrop tap, or being replaced by a newer showAppModal (the host fires
+   * the outgoing config at replacement time). All paths are equivalent by contract
+   * (owner spec: the buttons never fork the flow), so post-close behavior hangs here,
+   * never on a specific action's onPress.
    */
   onDismissed?: () => void;
 };
