@@ -231,7 +231,7 @@ type NativeOverlayTargetAuthorities = {
 const areOverlayRoutesEqual = (
   left: RouteOverlayNavigationSnapshot['activeOverlayRoute'],
   right: RouteOverlayNavigationSnapshot['activeOverlayRoute']
-): boolean => left === right || (left.key === right.key && left.params === right.params);
+): boolean => left === right || (left.entryId === right.entryId && left.params === right.params);
 
 const areOverlayRouteStacksEqual = (
   left: readonly RouteOverlayNavigationSnapshot['activeOverlayRoute'][],

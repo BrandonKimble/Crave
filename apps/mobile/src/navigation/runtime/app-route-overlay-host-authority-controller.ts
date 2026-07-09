@@ -608,7 +608,7 @@ const areOverlayRouteParamsEqual = (
 };
 
 const areOverlayRouteEntriesEqual = (left: OverlayRouteEntry, right: OverlayRouteEntry): boolean =>
-  left.key === right.key && areOverlayRouteParamsEqual(left.params, right.params);
+  left.entryId === right.entryId && areOverlayRouteParamsEqual(left.params, right.params);
 
 const areLocalRestaurantSessionSnapshotsEqual = (
   left: RouteLocalRestaurantOverlaySessionSnapshot,

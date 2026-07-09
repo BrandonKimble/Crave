@@ -495,6 +495,12 @@ export type OverlayRouteParamsMap = {
 };
 
 export type OverlayRouteEntry<K extends OverlayKey = OverlayKey> = {
+  /**
+   * Stack-instance identity (S-B, entries-as-values): minted once at construction, preserved
+   * across param updates. Two entries with the same scene key are DIFFERENT instances. Only
+   * the stack algebra (app-overlay-route-stack-algebra.ts) constructs entries.
+   */
+  entryId: string;
   key: K;
   params: OverlayRouteParamsMap[K];
 };

@@ -83,14 +83,13 @@ export const createAppOverlayRouteCommandRuntime = ({
   const closeActiveRoute = (onSettle?: RouteSceneSwitchSettleCallback): void => {
     const routeState = routeSceneSwitchRuntime.getRouteState();
     const { activeOverlayRoute } = routeState;
-    const previousOverlayRouteKey = routeSceneSwitchRuntime.getPreviousRouteKey();
-    if (
-      previousOverlayRouteKey != null &&
-      isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)
-    ) {
+    // S-B: the pop target is the ENTRY beneath the top (a value), not a key lookup — with
+    // same-key nesting (slice 4) a key cannot identify which instance is revealed.
+    const previousOverlayRoute = routeSceneSwitchRuntime.getPreviousRouteEntry();
+    if (previousOverlayRoute != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
       requestRouteSceneSwitch(
         {
-          targetSceneKey: previousOverlayRouteKey,
+          targetSceneKey: previousOverlayRoute.key,
           routeAction: 'closeActive',
           sheetTransitionKind: 'closeChild',
           sheetOpenerSource: 'routeCommand',

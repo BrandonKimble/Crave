@@ -17,11 +17,12 @@ import { useAppRoutePollCreationSceneInputWriterRuntime } from './use-app-route-
 import { useAppRoutePollDetailSceneInputWriterRuntime } from './use-app-route-poll-detail-scene-input-writer-runtime';
 import { useRouteAuthoritySelector } from './use-route-authority-selector';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
+import { createSentinelRouteEntry } from './app-overlay-route-stack-algebra';
 
-const INACTIVE_DYNAMIC_CHILD_ROUTE: OverlayRouteEntry = {
-  key: 'search',
-  params: undefined,
-};
+const INACTIVE_DYNAMIC_CHILD_ROUTE: OverlayRouteEntry = createSentinelRouteEntry(
+  'search',
+  'inactive-dynamic-child'
+);
 
 type DynamicChildRouteStateRuntime = {
   activeOverlayRoute: OverlayRouteEntry;
@@ -34,9 +35,7 @@ const useAppRouteDynamicChildRouteStateRuntime = ({
 }): DynamicChildRouteStateRuntime => {
   const selectDynamicChildRoute = React.useCallback(
     (snapshot: RouteOverlayNavigationSnapshot): DynamicChildRouteStateRuntime => ({
-      activeOverlayRoute: ['pollCreation', 'pollDetail'].includes(
-        snapshot.activeOverlayRoute.key
-      )
+      activeOverlayRoute: ['pollCreation', 'pollDetail'].includes(snapshot.activeOverlayRoute.key)
         ? snapshot.activeOverlayRoute
         : INACTIVE_DYNAMIC_CHILD_ROUTE,
     }),
