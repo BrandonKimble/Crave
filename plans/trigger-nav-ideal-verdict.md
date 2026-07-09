@@ -120,6 +120,27 @@ include-similar reset into the writer/classifier (both derivable from the delta)
 suggestion/blur teardown into the engine's session_enter foreground effects; collapse the 3–5
 owner hops. End state: every push trigger is one line. (Independent — can run parallel to S-B.)
 
+> **S-A carries one INBOUND deliverable from the toggle-system effort**
+> (`plans/toggle-system-ideal.md` v2.1 — read its header + "Search-this-area" section
+> before rewriting the STA trigger): **search-this-area rides the toggle coordinator.**
+> The owner decreed STA IS a toggle (availability = a predicate, flow = identical to
+> every chip); three red-teams settled the shape: the reconciler's `area_rerun` branch
+> (`search-world-reconciler.ts` ~:277-300, today a direct `env.resolve` that bypasses
+> `scheduleToggleCommit`) dispatches through the coordinator with the kind the
+> classifier DERIVES (`'search_this_area'` — never trigger-passed, per I1/I2; widen
+> `ToggleInteractionKind` + `deriveToggleKindFromFilterDelta`'s return type);
+> `runEnterForegroundEffects`/intent-kind semantics preserved (parameterize the kick,
+> don't fork it); **`mapMovedSinceSearch` resets AT CAPTURE (tuple-write time), not at
+> finalize** — reset-at-finalize preserves two live bugs (pan-during-flight wipes the
+> button; a failed search clears the retry affordance). The 300ms quiet window on a
+> today-synchronous dispatch is a feel-check item; `settleMs` per-kind override is the
+> declared knob if the eye rejects it. It lands in exactly the files S-A rewrites
+> (the STA submit runtime, `use-search-submit-entry-owner.ts`, the classifier), which
+> is why it is S-A's deliverable and was NOT built by the toggle session. The search
+> coordinator is already the thin adapter over the generic engine
+> (`src/toggles/toggle-interaction-engine.ts`, landed 613f850b, API unchanged) — S-A
+> consumes `scheduleToggleCommit` as-is.
+
 **S-B. Entries become values (the foundation stride).** Move origin + captured presentation
 (detent, segment, scroll, params) ONTO the stack entry, captured at push; key presentation off
 entry _instances_, not scene keys (per-entry leg instantiation for children); pop = restore the
