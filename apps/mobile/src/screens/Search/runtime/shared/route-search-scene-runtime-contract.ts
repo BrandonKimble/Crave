@@ -67,7 +67,6 @@ export type SearchRootRouteSearchSceneResultsSurfaceRuntimeArgs = {
 
 export type SearchRootRuntimeRouteSearchSceneDataStateRuntime = {
   /** Failure retry: re-asserts the current desired tuple through the reconciler. */
-  routeSearchSceneRetryResolution: () => void;
   routeSearchSceneSearchSheetContentLane: ReturnType<
     typeof useSearchRootControlAuthorityRuntime
   >['presentationAuthorityRuntime']['resultsPresentationControlLane']['resultsPresentationOwner']['shellModel']['searchSheetContentLane'];

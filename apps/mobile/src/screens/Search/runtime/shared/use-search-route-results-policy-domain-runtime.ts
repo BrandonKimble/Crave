@@ -1,5 +1,6 @@
 import React from 'react';
 import { announceFailureIfOnline } from '../../../../components/app-modal-store';
+import { closeSearchResultsSession } from '../../../../overlays/search-results-header-live-state';
 import { useSystemStatusStore } from '../../../../store/systemStatusStore';
 import { retrySearchDesiredResolution } from './search-desired-state-writer';
 import { selectIsSearchSessionActive } from './search-desired-tuple-selectors';
@@ -95,16 +96,20 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
     // over the persisted values.
     const detachSearchStoreRuntimeStateMirror =
       attachSearchStoreRuntimeStateMirror(searchRuntimeBus);
-    // THE UNIFORM FAILURE MODAL (owner spec, 2026-07-08): every ONLINE resolution
-    // failure announces through the ONE standard modal surface — identical across every
-    // page and transition, so no per-surface failure design exists anywhere. ONE
-    // action only (owner call): "Try again" re-asserts the desired tuple; the swipe /
-    // backdrop dismiss IS the "not now", so no second flow to design for. Dismissing
-    // leaves the page as-is (the failed empty state is the search sheet's resting
-    // surface when nothing is presented). Offline failures never announce — the hang +
-    // banner + reconnect auto-retry own that story. Edge-triggered per failure VALUE
-    // (object identity — it lives and dies with the bus, unlike a generation cursor,
-    // which outlives a bus reset and swallows the next announcement).
+    // THE UNIFORM FAILURE MODAL (owner spec, 2026-07-08, revised same day): every
+    // ONLINE resolution failure announces through the ONE standard modal surface —
+    // identical across every page and transition. Every close path (the OK button,
+    // swipe, backdrop) does the SAME thing: return the user to the last state that
+    // worked. The modal never auto-retries — retrying is the user's move from the page
+    // they came back to. Unwind rule, universal: a failed ENTER (nothing presented —
+    // the sheet rose for a search that never landed, from home, search mode, favorites,
+    // anywhere) closes the session on dismissal via the exact user back-out
+    // (pop-to-captured-origin: page + snap + scroll); a failed rerun over presented
+    // results unwinds NOTHING (worlds commit on success — the old results never left).
+    // Offline failures never announce — the hang + banner + reconnect auto-retry own
+    // that story. Edge-triggered per failure VALUE (object identity — it lives and dies
+    // with the bus, unlike a generation cursor, which outlives a bus reset and swallows
+    // the next announcement).
     let lastAnnouncedFailure: object | null = null;
     const detachFailureAnnouncer = searchRuntimeBus.subscribe(
       () => {
@@ -114,7 +119,18 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
         }
         lastAnnouncedFailure = failure;
         announceFailureIfOnline({
-          onRetry: () => retrySearchDesiredResolution(searchRuntimeBus),
+          onDismissed: () => {
+            const busState = searchRuntimeBus.getState();
+            if (
+              busState.presentedWorldId != null ||
+              busState.desiredTuple.queryIdentity.kind === 'idle'
+            ) {
+              // Presented results = nothing to unwind; idle = the user already backed
+              // out while the modal was up.
+              return;
+            }
+            closeSearchResultsSession();
+          },
         });
       },
       ['searchResolutionFailure'],

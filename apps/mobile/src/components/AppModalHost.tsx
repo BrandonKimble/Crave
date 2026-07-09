@@ -55,10 +55,18 @@ export const AppModalHost: React.FC = () => {
     }
   }, [config]);
 
+  // The config's onDismissed contract: fires once when the sheet has fully closed, by
+  // ANY path (action press, swipe, backdrop) — the exit animation completing is the one
+  // moment all paths share.
+  const handleSheetDismissed = React.useCallback((): void => {
+    lastConfigRef.current?.onDismissed?.();
+  }, []);
+
   return (
     <OverlayModalSheet
       visible={visible}
       onRequestClose={handleRequestClose}
+      onDismiss={handleSheetDismissed}
       zIndex={200}
       maxBackdropOpacity={0.45}
       paddingTop={26}

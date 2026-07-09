@@ -119,14 +119,21 @@ transition. Offline is the universal hang.
   finite). Rig-proven for search; the same standard applies to every other scene by
   construction (their loads simply don't complete offline).
 - **Online failure → THE STANDARD MODAL:** "Something went wrong / We couldn't complete
-  that. Please try again." with **ONE button only** (owner call): "Try again" when a
-  retry exists, "OK" otherwise — the swipe/backdrop dismiss IS the "not now", so there
-  is no second flow to design. One surface everywhere — no per-surface failure design
-  exists. Dismissing leaves the user exactly where they were: worlds commit only on
-  success, so a failed transition never tore the old screen down. **Resting-surface
-  doctrine:** quiet "couldn't load" empty states (search's failed empty state, the
-  bookmarks/profile list captions) are NOT failure announcements — they're what a page
-  shows when nothing loaded, behind/after the modal; they stay.
+  that. Please try again." with **ONE button ("OK")** — and every close path (button,
+  swipe, backdrop) does the IDENTICAL thing (owner revision, 2026-07-08 late): close
+  the modal and return the user to the last state that worked. **The modal never
+  auto-retries** — a retry would fight the bring-them-back motion; trying again is the
+  user's move from the page they came back to. **Universal unwind rule:** a failed
+  ENTER (the sheet rose / search mode engaged for a search that never landed — from
+  home, the suggestion sheet, favorites list tap, anywhere) closes the session on
+  dismissal via the exact user back-out (pop-to-captured-origin: page + snap point +
+  scroll; `closeSearchResultsSession()` → beginCloseSearch). A failed rerun over
+  presented results unwinds NOTHING — worlds commit on success, so the old results
+  never left. "How far they got is where they return to": each page that worked is the
+  fallback for the next one that didn't. **Resting-surface doctrine:** quiet "couldn't
+  load" empty states are transient resting copy behind the modal / during the
+  slide-down, never announcements, never with their own retry buttons (search's inline
+  Retry was deleted — ONE retry story).
 - **App-wide chokepoints (red-teamed + built 2026-07-08):** (1) a `MutationCache
 onError` on the app QueryClient announces every react-query mutation failure via the
   uniform modal (opt-out per mutation: `meta.suppressFailureModal`); (2)

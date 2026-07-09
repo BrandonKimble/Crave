@@ -1,4 +1,3 @@
-import { retrySearchDesiredResolution } from './search-desired-state-writer';
 import type {
   SearchRootRouteSearchSceneDataRuntimeArgs,
   SearchRootRuntimeRouteSearchSceneDataStateRuntime,
@@ -73,14 +72,7 @@ export const useSearchRootRouteSearchSceneDataStateRuntime = ({
     onDemandNoticeQuery: routeSearchSceneOnDemandQueryRuntime.onDemandNoticeQuery,
   });
 
-  const routeSearchSceneRetryResolution = React.useCallback(() => {
-    retrySearchDesiredResolution(
-      sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus
-    );
-  }, [sessionAssemblyRuntime.sessionRuntime.sessionCoreLane.searchRuntimeBus]);
-
   return {
-    routeSearchSceneRetryResolution,
     routeSearchSceneSearchSheetContentLane,
     routeSearchSceneHandleCloseResults,
     routeSearchSceneScheduleTabToggleCommit,

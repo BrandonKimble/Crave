@@ -32,9 +32,6 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
     }
   }, [pushToken, setPushToken]);
 
-  // The failure modal's retry closure needs the LATEST sign-out (the callback rebuilds
-  // when auth/token state changes) — a ref keeps the retry honest without self-reference.
-  const handleSignOutRef = React.useRef<() => Promise<void>>(async () => {});
   const handleSignOut = React.useCallback(async () => {
     try {
       await unregisterPushToken();
@@ -45,10 +42,9 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
       });
     } catch (error) {
       logger.error('Sign out failed', error);
-      announceFailureIfOnline({ onRetry: () => void handleSignOutRef.current() });
+      announceFailureIfOnline();
     }
   }, [signOut, unregisterPushToken]);
-  handleSignOutRef.current = handleSignOut;
 
   const handleReplayOnboarding = React.useCallback(async () => {
     try {

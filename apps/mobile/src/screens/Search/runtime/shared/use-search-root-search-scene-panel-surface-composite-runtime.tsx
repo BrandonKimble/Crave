@@ -23,7 +23,6 @@ type SearchRootSearchScenePanelSurfaceCompositeRuntimeArgs = {
   resolutionFailure: ReturnType<
     typeof useSearchResultsPanelResultsRuntimeState
   >['resolutionFailure'];
-  onRetryResolution: () => void;
 };
 
 export const useSearchRootSearchScenePanelSurfaceCompositeRuntime = ({
@@ -37,7 +36,6 @@ export const useSearchRootSearchScenePanelSurfaceCompositeRuntime = ({
   resolvedResults,
   onDemandNotice,
   resolutionFailure,
-  onRetryResolution,
 }: SearchRootSearchScenePanelSurfaceCompositeRuntimeArgs) => {
   const onProfilerRender = useSearchOverlayProfilerRender();
   const backgroundComponent = useSearchRootSearchScenePanelBackgroundRuntime({
@@ -50,7 +48,6 @@ export const useSearchRootSearchScenePanelSurfaceCompositeRuntime = ({
     activeTab,
     onDemandNotice,
     resolutionFailure,
-    onRetryResolution,
   });
   const surfaceOverlay = useSearchRootSearchScenePanelSurfaceOverlayRuntime({
     resolvedResultsHeaderHeightForRender,
