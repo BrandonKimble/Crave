@@ -1,17 +1,10 @@
 import React from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  Share,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
+import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';
 import { colors as themeColors } from '../../constants/theme';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
@@ -519,20 +512,26 @@ const BookmarksDataSurface = React.memo(
       if (!formState.name.trim()) {
         return;
       }
-      if (formState.mode === 'create') {
-        await favoriteListsService.create({
-          name: formState.name,
-          description: formState.description,
-          listType,
-          visibility: formState.visibility,
-        });
-      }
-      if (formState.mode === 'edit' && formState.list) {
-        await favoriteListsService.update(formState.list.listId, {
-          name: formState.name,
-          description: formState.description,
-          visibility: formState.visibility,
-        });
+      try {
+        if (formState.mode === 'create') {
+          await favoriteListsService.create({
+            name: formState.name,
+            description: formState.description,
+            listType,
+            visibility: formState.visibility,
+          });
+        }
+        if (formState.mode === 'edit' && formState.list) {
+          await favoriteListsService.update(formState.list.listId, {
+            name: formState.name,
+            description: formState.description,
+            visibility: formState.visibility,
+          });
+        }
+      } catch {
+        // The form stays open with the user's input intact — the uniform modal announces.
+        announceFailureIfOnline();
+        return;
       }
       await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
       resetForm();
@@ -570,7 +569,12 @@ const BookmarksDataSurface = React.memo(
     const handleToggleVisibility = React.useCallback(
       async (list: FavoriteListSummary) => {
         const nextVisibility = list.visibility === 'public' ? 'private' : 'public';
-        await favoriteListsService.update(list.listId, { visibility: nextVisibility });
+        try {
+          await favoriteListsService.update(list.listId, { visibility: nextVisibility });
+        } catch {
+          announceFailureIfOnline();
+          return;
+        }
         await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
       },
       [queryClient]
@@ -578,7 +582,12 @@ const BookmarksDataSurface = React.memo(
 
     const handleDelete = React.useCallback(
       async (list: FavoriteListSummary) => {
-        await favoriteListsService.remove(list.listId);
+        try {
+          await favoriteListsService.remove(list.listId);
+        } catch {
+          announceFailureIfOnline();
+          return;
+        }
         await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
       },
       [queryClient]
@@ -586,29 +595,32 @@ const BookmarksDataSurface = React.memo(
 
     const openListMenu = React.useCallback(
       (list: FavoriteListSummary) => {
-        Alert.alert(list.name, undefined, [
-          {
-            text: 'Edit',
-            onPress: () => openEditForm(list),
-          },
-          {
-            text: 'Share',
-            onPress: () => void handleShare(list),
-          },
-          {
-            text: list.visibility === 'public' ? 'Make Private' : 'Make Public',
-            onPress: () => void handleToggleVisibility(list),
-          },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => void handleDelete(list),
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]);
+        showAppModal({
+          title: list.name,
+          actions: [
+            {
+              label: 'Edit',
+              onPress: () => openEditForm(list),
+            },
+            {
+              label: 'Share',
+              onPress: () => void handleShare(list),
+            },
+            {
+              label: list.visibility === 'public' ? 'Make Private' : 'Make Public',
+              onPress: () => void handleToggleVisibility(list),
+            },
+            {
+              label: 'Delete',
+              style: 'destructive',
+              onPress: () => void handleDelete(list),
+            },
+            {
+              label: 'Cancel',
+              style: 'cancel',
+            },
+          ],
+        });
       },
       [handleDelete, handleShare, handleToggleVisibility, openEditForm]
     );

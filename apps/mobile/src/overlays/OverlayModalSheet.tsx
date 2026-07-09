@@ -84,6 +84,12 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
     const isExitingRef = React.useRef(false);
 
     const finishExit = React.useCallback(() => {
+      // A stale exit-completion (queued on the JS thread while a rapid reopen already
+      // started the enter) must not unmount the fresh presentation or fire a spurious
+      // onDismiss — isExitingRef is cleared by the reopen, so it gates staleness.
+      if (!isExitingRef.current) {
+        return;
+      }
       isExitingRef.current = false;
       setMounted(false);
       onDismiss?.();
@@ -94,15 +100,17 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
         return;
       }
       isExitingRef.current = true;
-      progress.value = withTiming(
-        0,
-        { duration: OVERLAY_TIMING_CONFIG.exitDurationMs, easing: Easing.in(Easing.cubic) },
-        (finished) => {
-          if (finished) {
-            runOnJS(finishExit)();
-          }
+      // The exit may start mid-travel (a drag release folded into progress): the
+      // duration scales with the remaining distance so a flick release keeps its
+      // momentum instead of stalling into a fresh ease-in over a short remainder.
+      const remaining = Math.max(0, Math.min(1, progress.value));
+      const duration = Math.max(90, OVERLAY_TIMING_CONFIG.exitDurationMs * remaining);
+      const easing = remaining < 1 ? Easing.out(Easing.quad) : Easing.in(Easing.cubic);
+      progress.value = withTiming(0, { duration, easing }, (finished) => {
+        if (finished) {
+          runOnJS(finishExit)();
         }
-      );
+      });
     }, [finishExit, mounted, progress]);
 
     const requestClose = React.useCallback(() => {
@@ -119,7 +127,10 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
     const requestCloseFromDrag = React.useCallback(() => {
       const currentDrag = dragY.value;
       if (currentDrag > 0) {
-        progress.value = Math.min(progress.value, Math.max(0, 1 - currentDrag / SCREEN_HEIGHT));
+        // Exact fold preserving (1 - p)·SH + dragY: p' = p − dragY/SH. (Clamping to
+        // 1 − dragY/SH instead is only correct from p = 1 and snaps the sheet up when
+        // released during the enter animation.)
+        progress.value = Math.max(0, progress.value - currentDrag / SCREEN_HEIGHT);
         dragY.value = 0;
       }
       requestClose();
@@ -178,6 +189,15 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
               return;
             }
             dragY.value = withSpring(0, SETTLE_SPRING);
+          })
+          .onFinalize((_event, success) => {
+            'worklet';
+            // onEnd only runs when the gesture completes; a mid-drag cancellation
+            // (gesture disabled by visible flipping false) skips it and would freeze
+            // dragY at its last value — settle it here, the hook that always runs.
+            if (!success && dragY.value !== 0) {
+              dragY.value = withSpring(0, SETTLE_SPRING);
+            }
           }),
       // dragY is a stable shared-value reference.
       [requestCloseFromDrag, visible]
@@ -216,11 +236,17 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
                 paddingHorizontal,
                 paddingTop,
                 paddingBottom: Math.max(insets.bottom, minBottomPadding),
+                maxHeight: SCREEN_HEIGHT - insets.top - 48,
               },
               sheetAnimatedStyle,
               sheetStyle,
             ]}
-            pointerEvents="auto"
+            // Content stays mounted through the exit slide-out (so it doesn't blank),
+            // but must stop receiving taps the moment dismissal starts — a live button
+            // during the exit is the double-fire class (e.g. a destructive confirm
+            // running twice). The native Modal this replaces fenced both for free.
+            pointerEvents={visible ? 'auto' : 'none'}
+            accessibilityViewIsModal={visible}
           >
             {children}
           </Reanimated.View>

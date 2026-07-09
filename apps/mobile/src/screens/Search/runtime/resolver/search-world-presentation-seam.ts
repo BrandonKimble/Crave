@@ -241,6 +241,8 @@ export const createSearchWorldPresentationSeam = (
           ...value.rootBusResultsPatch,
           presentedWorldId: worldId,
           presentingPhase: 'presented',
+          // Level honesty: a freshly presented world has no pending failure.
+          searchResolutionFailure: null,
           isSearchLoading: false,
           isLoadingMore: false,
           currentPage: value.paginationMeta.page,

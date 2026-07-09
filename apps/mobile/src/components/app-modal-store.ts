@@ -37,11 +37,58 @@ export const showAppModal = (config: AppModalConfig): void => {
   emit();
 };
 
-export const dismissAppModal = (): void => {
-  if (currentConfig != null) {
-    currentConfig = null;
-    emit();
+/**
+ * Dismisses the modal. Pass the config being dismissed so a dismissal that raced a
+ * newer `showAppModal` (e.g. the sheet's frame-deferred close after a swipe while an
+ * async flow opened the next alert) can't kill the modal it never showed. Omitting the
+ * argument dismisses unconditionally.
+ */
+export const dismissAppModal = (config?: AppModalConfig): void => {
+  if (currentConfig == null) {
+    return;
   }
+  if (config !== undefined && config !== currentConfig) {
+    return;
+  }
+  currentConfig = null;
+  emit();
+};
+
+/**
+ * THE UNIFORM FAILURE ANNOUNCEMENT (owner spec, 2026-07-08): every online failure in
+ * the app announces through this one modal — identical copy and surface everywhere, so
+ * no per-surface failure design exists. ONE action ("Try again" when a retry is
+ * provided, "OK" otherwise); the swipe/backdrop dismiss is the implicit "not now".
+ * Offline it announces NOTHING: offline is the universal hang — the black system
+ * banner explains, skeletons persist, loaded content stays.
+ *
+ * `isOffline` is injected lazily to keep this store dependency-free; wired once at app
+ * boot from the system status store.
+ */
+let readIsOffline: (() => boolean) | null = null;
+
+export const wireFailureAnnouncerOfflineRead = (read: () => boolean): void => {
+  readIsOffline = read;
+};
+
+export const announceFailureIfOnline = (options?: { onRetry?: () => void }): void => {
+  if (readIsOffline?.() === true) {
+    return;
+  }
+  showAppModal({
+    title: 'Something went wrong',
+    message: "We couldn't complete that. Please try again.",
+    actions: [
+      options?.onRetry != null
+        ? {
+            label: 'Try again',
+            style: 'default',
+            testID: 'app-modal-try-again',
+            onPress: options.onRetry,
+          }
+        : { label: 'OK', style: 'default', testID: 'app-modal-dismiss' },
+    ],
+  });
 };
 
 const subscribe = (listener: () => void): (() => void) => {

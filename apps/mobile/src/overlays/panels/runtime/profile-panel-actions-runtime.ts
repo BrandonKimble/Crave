@@ -1,5 +1,4 @@
 import React from 'react';
-import { Alert } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import { useAppRouteSceneRuntime } from '../../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { useAppRouteCoordinator } from '../../../navigation/runtime/AppRouteCoordinator';
@@ -8,6 +7,7 @@ import { notificationsService } from '../../../services/notifications';
 import type { Poll } from '../../../services/polls';
 import { useNotificationStore } from '../../../store/notificationStore';
 import { useOnboardingStore } from '../../../store/onboardingStore';
+import { announceFailureIfOnline, showAppModal } from '../../../components/app-modal-store';
 import { logger } from '../../../utils';
 import type { ProfilePanelActionsRuntime } from './profile-panel-runtime-contract';
 
@@ -32,19 +32,23 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
     }
   }, [pushToken, setPushToken]);
 
+  // The failure modal's retry closure needs the LATEST sign-out (the callback rebuilds
+  // when auth/token state changes) — a ref keeps the retry honest without self-reference.
+  const handleSignOutRef = React.useRef<() => Promise<void>>(async () => {});
   const handleSignOut = React.useCallback(async () => {
     try {
       await unregisterPushToken();
       await signOut();
-      Alert.alert('Signed out', 'Sign in again the next time you open the app.');
+      showAppModal({
+        title: 'Signed out',
+        message: 'Sign in again the next time you open the app.',
+      });
     } catch (error) {
       logger.error('Sign out failed', error);
-      Alert.alert(
-        'Unable to sign out',
-        error instanceof Error ? error.message : 'Please try again.'
-      );
+      announceFailureIfOnline({ onRetry: () => void handleSignOutRef.current() });
     }
   }, [signOut, unregisterPushToken]);
+  handleSignOutRef.current = handleSignOut;
 
   const handleReplayOnboarding = React.useCallback(async () => {
     try {
@@ -54,27 +58,34 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
       logger.warn('Replay onboarding sign-out failed', error);
     } finally {
       resetOnboarding();
-      Alert.alert('Onboarding reset', 'Restart the app to walk through onboarding again.');
+      showAppModal({
+        title: 'Onboarding reset',
+        message: 'Restart the app to walk through onboarding again.',
+      });
     }
   }, [resetOnboarding, signOut, unregisterPushToken]);
 
   const handleOpenSettings = React.useCallback(() => {
-    Alert.alert('Settings', undefined, [
-      {
-        text: 'Edit profile',
-        onPress: () => Alert.alert('Coming soon', 'Profile editing will land next.'),
-      },
-      {
-        text: 'Replay onboarding',
-        onPress: () => void handleReplayOnboarding(),
-      },
-      {
-        text: 'Sign out',
-        style: 'destructive',
-        onPress: () => void handleSignOut(),
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    showAppModal({
+      title: 'Settings',
+      actions: [
+        {
+          label: 'Edit profile',
+          onPress: () =>
+            showAppModal({ title: 'Coming soon', message: 'Profile editing will land next.' }),
+        },
+        {
+          label: 'Replay onboarding',
+          onPress: () => void handleReplayOnboarding(),
+        },
+        {
+          label: 'Sign out',
+          style: 'destructive',
+          onPress: () => void handleSignOut(),
+        },
+        { label: 'Cancel', style: 'cancel' },
+      ],
+    });
   }, [handleReplayOnboarding, handleSignOut]);
 
   const handlePollPress = React.useCallback(

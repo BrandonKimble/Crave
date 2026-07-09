@@ -119,9 +119,22 @@ transition. Offline is the universal hang.
   finite). Rig-proven for search; the same standard applies to every other scene by
   construction (their loads simply don't complete offline).
 - **Online failure → THE STANDARD MODAL:** "Something went wrong / We couldn't complete
-  that. Please try again." with Try again + Not now. One surface everywhere — no
-  per-surface failure design exists. The failed empty state remains as the search
-  sheet's resting surface behind the modal. (The interim strip retry chip was removed.)
+  that. Please try again." with **ONE button only** (owner call): "Try again" when a
+  retry exists, "OK" otherwise — the swipe/backdrop dismiss IS the "not now", so there
+  is no second flow to design. One surface everywhere — no per-surface failure design
+  exists. Dismissing leaves the user exactly where they were: worlds commit only on
+  success, so a failed transition never tore the old screen down. **Resting-surface
+  doctrine:** quiet "couldn't load" empty states (search's failed empty state, the
+  bookmarks/profile list captions) are NOT failure announcements — they're what a page
+  shows when nothing loaded, behind/after the modal; they stay.
+- **App-wide chokepoints (red-teamed + built 2026-07-08):** (1) a `MutationCache
+onError` on the app QueryClient announces every react-query mutation failure via the
+  uniform modal (opt-out per mutation: `meta.suppressFailureModal`); (2)
+  `announceFailureIfOnline({onRetry?})` in app-modal-store for hand-rolled catches
+  (poll endorsement, bookmark list save/visibility/delete, sign-out) — silent when
+  offline (the hang + banner own it); (3) the search runtime's failure announcer rides
+  the same helper. The last `Alert.alert`s (profile settings menu, bookmarks long-press
+  menu) migrated to `showAppModal`.
 - **THE STANDARD MODAL SURFACE (all modals):** OverlayModalSheet is now the app-wide
   modal primitive — dimmed backdrop, no snap points, no grab handle, grab-to-rubber-band
   (asymptotic upward resistance), swipe-down-only dismiss (distance or flick), backdrop
@@ -131,7 +144,14 @@ transition. Offline is the universal hang.
 - **Polish / finger-check pass:** the sheet gesture FEEL (rubber-band ceiling 56,
   dismiss distance 110, flick velocity 900, settle spring — all tunable constants at the
   top of OverlayModalSheet), modal typography/spacing, EmailAuthModal migration to the
-  primitive (auth-critical, deferred), and the failure modal copy.
+  primitive (auth-critical, deferred — until then it's the one native Modal, and any
+  showAppModal fired while it's open would paint underneath it), and the failure modal
+  copy. Deferred with reasons: Android hardware-back on the sheet (iOS-only app today;
+  own it in the primitive via BackHandler when Android matters), offline load-more is
+  dropped rather than paused (scroll again re-triggers; inconsistent with the hang model
+  but harmless), polls-feed cold-load has no reconnect resume edge of its own (react-query
+  onlineManager covers query surfaces; the custom feed controller does not — verify on
+  device with the reconnect pass).
 
 The behavior is in its ideal shape and rig-proven; what remains is making the surfaces
 pretty. The architecture: a single `searchResolutionFailure` LEVEL on the runtime bus
@@ -140,10 +160,8 @@ begins), and ONE retry mechanism (`retrySearchDesiredResolution` re-asserts the 
 desired tuple; the reconciler classifies it `reassert_unresolved` and re-resolves —
 in-place rerun choreography over stale results, fresh enter when nothing is presented).
 
-- **Stale results + failure** → a compact **retry chip in the strip family** (next to the
-  "N similar" chip): "Couldn't update · Retry". Results are never destroyed. _Polish:_
-  visual design of the chip (currently a functional red-tinted pill), placement/motion,
-  possibly auto-dismiss after a successful unrelated action. Needs a finger-test pass.
+- **Stale results + failure** → the uniform modal announces; results are never
+  destroyed (the retry chip was deleted — no per-surface failure design).
 - **Nothing presented + failure** → the **empty surface renders failure copy + a Retry
   button** ("Something went wrong…" / offline variant "You're offline — results will load
   when you're back online"). _Polish:_ illustration/icon, button styling (currently a

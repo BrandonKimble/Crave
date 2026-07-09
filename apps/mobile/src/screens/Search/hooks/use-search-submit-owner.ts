@@ -336,7 +336,7 @@ const useSearchSubmitOwner = ({
     onPageOneResultsCommittedForWorldRef.current = onPageOneResultsCommitted;
     runSearchForWorldRef.current = runSearch;
   });
-  const worldResolver = React.useMemo(() => {
+  const worldResolutionDriver = React.useMemo(() => {
     const seam = createSearchWorldPresentationSeam({
       searchRuntimeBus,
       resultsPresentationSurfaceAuthority,
@@ -409,9 +409,16 @@ const useSearchSubmitOwner = ({
         onPresentationIntentAbortRef.current?.();
       },
     });
-    reconciler.start();
-    return resolver;
+    return { resolver, reconciler };
   }, [searchRuntimeBus, resultsPresentationSurfaceAuthority, userLocationRef]);
+  const worldResolver = worldResolutionDriver.resolver;
+  // The reconciler's bus subscription lives in the effect lifecycle, not the memo —
+  // a memo-time start() has no teardown, so every Fast Refresh (which re-runs memos)
+  // stacked another live resolution driver (N resolve kicks per tuple write).
+  React.useEffect(() => {
+    const stopReconciler = worldResolutionDriver.reconciler.start();
+    return stopReconciler;
+  }, [worldResolutionDriver]);
   const resolveDesiredWorld = React.useCallback(
     (resolveArgs: SearchWorldResolveArgs) => worldResolver.resolve(resolveArgs),
     [worldResolver]

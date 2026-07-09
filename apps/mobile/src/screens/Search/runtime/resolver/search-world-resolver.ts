@@ -321,7 +321,25 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'unknown error';
       core.fail({ generation, worldKey: cardsKey });
-      env.seam.failResolution({ generation, reason });
+      // Failure is an episode OUTCOME and honors the same currency gate as landing:
+      // a rejection for a tuple that is no longer desired must not touch presentation
+      // state — publishing it would kill the CURRENT resolution's phase/loading levels
+      // and leave a stale failure level no commit clears. Superseded failures are a
+      // trace, not state.
+      if (!isTupleStillDesired(tuple)) {
+        if (__DEV__) {
+          logger.info('[RESOLVE] superseded failure dropped', { generation, cardsKey, reason });
+        }
+        return;
+      }
+      // Cancellation (session exit aborts the in-flight fetch) is expected lifecycle,
+      // not a failure — no failure level, no announcement. Classified HERE, once; the
+      // submit owner's handler only decides logging/abort.
+      const isCanceled =
+        reason.includes('canceled') || reason.includes('runSearch returned no response');
+      if (!isCanceled) {
+        env.seam.failResolution({ generation, reason });
+      }
       args.onResolutionFailed?.(reason);
     }
   };

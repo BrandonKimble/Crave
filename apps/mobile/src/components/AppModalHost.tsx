@@ -35,15 +35,30 @@ export const AppModalHost: React.FC = () => {
       : [{ label: 'OK', style: 'default' }];
   const isRow = actions.length === 2;
 
+  // The sheet fences taps during its exit (pointerEvents), so a press only lands while
+  // a live config is showing — dismiss exactly that config, then run its action.
   const handlePress = (action: AppModalAction): void => {
-    dismissAppModal();
+    if (config == null) {
+      return;
+    }
+    dismissAppModal(config);
     action.onPress?.();
   };
+
+  // Identity-scoped dismiss: the sheet defers onRequestClose a frame, so a swipe/backdrop
+  // close must only dismiss the config it was showing — never a newer one that landed in
+  // the gap. Closing over `config` (not a ref) pins the identity to the render the
+  // gesture fired against.
+  const handleRequestClose = React.useCallback((): void => {
+    if (config != null) {
+      dismissAppModal(config);
+    }
+  }, [config]);
 
   return (
     <OverlayModalSheet
       visible={visible}
-      onRequestClose={dismissAppModal}
+      onRequestClose={handleRequestClose}
       zIndex={200}
       maxBackdropOpacity={0.45}
       paddingTop={26}

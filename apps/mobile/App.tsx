@@ -7,7 +7,7 @@ import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, initialWindowMetrics } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MutationCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import { enableScreens } from 'react-native-screens';
 import * as SplashScreen from 'expo-splash-screen';
@@ -21,6 +21,10 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { RootNavigator } from './src/navigation';
 import { AppModalHost } from './src/components/AppModalHost';
+import {
+  announceFailureIfOnline,
+  wireFailureAnnouncerOfflineRead,
+} from './src/components/app-modal-store';
 import { AuthProvider } from './src/providers/AuthProvider';
 import { AppRouteCoordinator } from './src/navigation/runtime/AppRouteCoordinator';
 import { AppRouteSceneRuntimeProvider } from './src/navigation/runtime/AppRouteSceneRuntimeProvider';
@@ -34,7 +38,23 @@ import { useSystemStatusStore } from './src/store/systemStatusStore';
 import { OVERLAY_CORNER_RADIUS } from './src/overlays/overlaySheetStyles';
 import { colors } from './src/constants/theme';
 
-const queryClient = new QueryClient();
+// THE UNIFORM FAILURE CHOKEPOINT (owner spec, 2026-07-08): every react-query mutation
+// failure in the app announces through the ONE standard modal — no per-call-site error
+// handling. Offline the announcer stays silent (offline = the universal hang: the
+// system banner + persisting skeletons own that story). Mutations that legitimately
+// handle their own failure UX opt out via `meta: { suppressFailureModal: true }`.
+const queryClient = new QueryClient({
+  mutationCache: new MutationCache({
+    onError: (_error, _variables, _context, mutation) => {
+      if (mutation.meta?.suppressFailureModal === true) {
+        return;
+      }
+      announceFailureIfOnline();
+    },
+  }),
+});
+// The announcer's offline read is wired lazily to keep the modal store dependency-free.
+wireFailureAnnouncerOfflineRead(() => useSystemStatusStore.getState().isOffline);
 const SYSTEM_BANNER_PUSH_HEIGHT = 32;
 const BANNER_BACKGROUND = '#000000';
 
