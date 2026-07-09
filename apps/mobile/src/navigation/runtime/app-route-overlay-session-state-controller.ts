@@ -469,7 +469,7 @@ export class AppRouteOverlaySessionStateController {
   // set `childAnchor: childAnchor ?? null`) so a restaurant/entity-from-comment origin
   // still round-trips its anchor — byte-identical to before.
   private buildCurrentOriginSnapshot(childAnchor?: LaunchIntentChildAnchor | null): OriginSnapshot {
-    const { sceneKey, detent } = this.resolveLiveOriginIdentity();
+    const { sceneKey } = this.resolveLiveOriginIdentity();
     // Fallback generalized (S-B origin-on-entry): a scene with NO registered provider still
     // captures rich (captureRichSceneOrigin merges any published live scroll/segment onto the
     // degenerate base, and itself degrades to the base when the scene never published) — so a
