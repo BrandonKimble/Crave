@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSystemStatusStore } from '../../../store/systemStatusStore';
 import {
   selectSearchMode,
   selectSubmittedQuery,
@@ -386,6 +387,14 @@ const useSearchSubmitOwner = ({
         resolver.resolve(resolveArgs as Parameters<typeof resolver.resolve>[0]),
       runEnterForegroundEffects: (effectArgs) => enterForegroundEffectsRef.current(effectArgs),
       onResolveFailed: (reason) => {
+        // OFFLINE = a paused resolution (owner call): the loading level persists and
+        // the reconnect auto-retry resumes it — so the presentation intent must NOT
+        // abort (the abort is what clears the covers). No error toast either; the
+        // system banner owns the offline story.
+        if (useSystemStatusStore.getState().isOffline) {
+          logger.info('Search resolution paused offline', { message: reason });
+          return;
+        }
         // A resolution canceled by a session exit (the close aborts the in-flight fetch)
         // is expected lifecycle, not a failure — logging it as an error raised a dev
         // LogBox toast on every dismiss-with-pending-fetch. Real failures stay loud.

@@ -71,7 +71,12 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
       if (!prevState.isOffline || state.isOffline) {
         return;
       }
-      if (searchRuntimeBus.getState().searchResolutionFailure == null) {
+      const busState = searchRuntimeBus.getState();
+      if (busState.searchResolutionFailure == null) {
+        return;
+      }
+      if (busState.desiredTuple.queryIdentity.kind === 'idle') {
+        // The session was dismissed during the offline pause — nothing to resume.
         return;
       }
       retrySearchDesiredResolution(searchRuntimeBus);

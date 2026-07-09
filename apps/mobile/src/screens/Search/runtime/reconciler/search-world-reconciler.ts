@@ -9,6 +9,7 @@
 // S4c hands its events to the reveal statechart and deletes the presentation port.
 
 import { logger } from '../../../../utils';
+import { useSystemStatusStore } from '../../../../store/systemStatusStore';
 import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 import { getSearchReconcilerPresentationPort } from './search-reconciler-presentation-port';
@@ -246,7 +247,12 @@ export const createSearchWorldReconciler = (
             presentationIntentKind: 'variant_rerun',
             requestDecoration: args.decoration,
             onResolutionFailed: (reason) => {
-              port.clearStagedSearchSurfaceResultsTransaction();
+              // Offline = paused, not failed: keep the pending cover so the rerun's
+              // loading state persists (the coordinator's settle timeout may still
+              // fall back to the stale rows — that is fine; the banner explains).
+              if (!useSystemStatusStore.getState().isOffline) {
+                port.clearStagedSearchSurfaceResultsTransaction();
+              }
               env.onResolveFailed(reason);
             },
           })

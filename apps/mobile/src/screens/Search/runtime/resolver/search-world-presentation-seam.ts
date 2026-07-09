@@ -277,6 +277,21 @@ export const createSearchWorldPresentationSeam = (
       }
     },
     failResolution: ({ generation, reason }) => {
+      const offline = useSystemStatusStore.getState().isOffline;
+      if (offline) {
+        // OFFLINE = a PAUSED resolution, not a failure (owner call, 2026-07-08): the
+        // loading level simply persists — universal across every transition, no
+        // per-surface offline styling — the system banner explains, and the reconnect
+        // auto-retry resumes the pending desire (the hang is FINITE, unlike Airbnb's).
+        // Only the failure fact is recorded, for the reconnect edge to consume.
+        env.searchRuntimeBus.publish({
+          searchResolutionFailure: { generation, reason, offline: true, atMs: Date.now() },
+        });
+        if (__DEV__) {
+          logger.info('[WORLD-COMMIT] resolution paused offline', { generation, reason });
+        }
+        return;
+      }
       env.searchRuntimeBus.publish({
         // A failed resolution settles back onto whatever is on screen — 'idle' only
         // when nothing is presented (a failed session enter).
@@ -284,14 +299,8 @@ export const createSearchWorldPresentationSeam = (
         isSearchLoading: false,
         isLoadingMore: false,
         // The FAILURE LEVEL: desired stays (the charter's rule), presentation shows
-        // the failed fact. Offline failures render offline copy and are auto-retried
-        // on reconnect; the presented world (if any) is never destroyed.
-        searchResolutionFailure: {
-          generation,
-          reason,
-          offline: useSystemStatusStore.getState().isOffline,
-          atMs: Date.now(),
-        },
+        // the failed fact. The presented world (if any) is never destroyed.
+        searchResolutionFailure: { generation, reason, offline: false, atMs: Date.now() },
       });
       if (__DEV__) {
         logger.warn('[WORLD-COMMIT] resolution failed', { generation, reason });

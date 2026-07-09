@@ -124,11 +124,13 @@ in-place rerun choreography over stale results, fresh enter when nothing is pres
   button** ("Something went wrong…" / offline variant "You're offline — results will load
   when you're back online"). _Polish:_ illustration/icon, button styling (currently a
   plain dark pill), copy review.
-- **Offline** → the existing black system banner explains; the failure surfaces show the
-  offline copy; the retry chip is suppressed (the banner + auto-retry own it); and on
-  reconnect a pending failure **auto-retries** (no Airbnb-style indefinite skeleton hang —
-  the level semantics make the hang unnecessary: desired ≠ presented persists without
-  holding a spinner, and reconnect re-resolves it invisibly).
+- **Offline** → the **hang** (owner call): an offline "failure" is a PAUSED resolution,
+  not a failure — the loading state simply persists (universal across every transition in
+  the app, zero per-surface offline styling), the existing black system banner explains,
+  and on reconnect the pending desire **auto-retries** — so the hang is FINITE and
+  self-completing, unlike Airbnb's open-ended version. The retry chip and failure copy
+  never show for offline; the banner owns that story. Rig-observed: Wi-Fi off →
+  banner + skeleton hold steady, no error state, no toast.
 - **Dev**: real failures still raise the LogBox toast; canceled/superseded resolutions log
   info only.
 
