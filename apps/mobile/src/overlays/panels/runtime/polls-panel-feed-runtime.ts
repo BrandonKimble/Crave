@@ -2,12 +2,7 @@ import React from 'react';
 import { Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type {
-  Poll,
-  PollFeedSort,
-  PollFeedTime,
-  PollFeedType,
-} from '../../../services/polls';
+import type { Poll, PollFeedSort, PollFeedTime, PollFeedType } from '../../../services/polls';
 import { useCityStore } from '../../../store/cityStore';
 import { useSystemStatusStore } from '../../../store/systemStatusStore';
 import {
@@ -185,7 +180,7 @@ export const usePollsPanelFeedRuntime = ({
     ]
   );
 
-  usePollsFeedRuntimeController({
+  const { scheduleFeedQueryCommit } = usePollsFeedRuntimeController({
     visible,
     bounds,
     bootstrapSnapshot,
@@ -211,6 +206,40 @@ export const usePollsPanelFeedRuntime = ({
     pollIdParam: params?.pollId,
     interactionRef,
   });
+
+  // Feed-query toggle press handlers (toggle-system v2.1): the state write IS the
+  // optimistic flip (the pill/chip moves instantly); scheduleFeedQueryCommit hands
+  // the network consequence to the shared toggle engine, which coalesces a burst of
+  // taps into one quiet refresh. Exposed under the plain setter names so consumers
+  // (the strip) stay one-line — any future writer inherits the protocol.
+  const setFeedStateToggle = React.useCallback(
+    (value: React.SetStateAction<'active' | 'closed'>) => {
+      setFeedState(value);
+      scheduleFeedQueryCommit();
+    },
+    [scheduleFeedQueryCommit]
+  );
+  const setFeedSortToggle = React.useCallback(
+    (value: React.SetStateAction<PollFeedSort | null>) => {
+      setFeedSort(value);
+      scheduleFeedQueryCommit();
+    },
+    [scheduleFeedQueryCommit]
+  );
+  const setFeedTypeToggle = React.useCallback(
+    (value: React.SetStateAction<PollFeedType>) => {
+      setFeedType(value);
+      scheduleFeedQueryCommit();
+    },
+    [scheduleFeedQueryCommit]
+  );
+  const setFeedTimeToggle = React.useCallback(
+    (value: React.SetStateAction<PollFeedTime>) => {
+      setFeedTime(value);
+      scheduleFeedQueryCommit();
+    },
+    [scheduleFeedQueryCommit]
+  );
 
   const appliedBootstrapSnapshotAtRef = React.useRef<number>(bootstrapSnapshot?.resolvedAtMs ?? 0);
 
@@ -264,13 +293,13 @@ export const usePollsPanelFeedRuntime = ({
       snapPoints,
       visiblePolls,
       feedState,
-      setFeedState,
+      setFeedState: setFeedStateToggle,
       feedSort,
-      setFeedSort,
+      setFeedSort: setFeedSortToggle,
       feedType,
-      setFeedType,
+      setFeedType: setFeedTypeToggle,
       feedTime,
-      setFeedTime,
+      setFeedTime: setFeedTimeToggle,
     }),
     [
       candidateLocalityName,
@@ -297,6 +326,10 @@ export const usePollsPanelFeedRuntime = ({
       feedSort,
       feedType,
       feedTime,
+      setFeedStateToggle,
+      setFeedSortToggle,
+      setFeedTypeToggle,
+      setFeedTimeToggle,
     ]
   );
 };

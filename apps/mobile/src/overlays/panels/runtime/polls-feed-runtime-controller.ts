@@ -16,6 +16,7 @@ import {
   type PollFeedType,
 } from '../../../services/polls';
 import type { Coordinate, MapBounds } from '../../../types';
+import { createToggleInteractionEngine } from '../../../toggles/toggle-interaction-engine';
 import { logger } from '../../../utils';
 
 type InteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
@@ -79,6 +80,14 @@ type UsePollsFeedRuntimeControllerArgs = {
 
 export type PollsFeedRuntimeController = {
   refreshPollFeed: (options?: RefreshPollFeedOptions) => Promise<void>;
+  /**
+   * The feed-query toggle commit (toggle-system v2.1): press handlers flip their
+   * state optimistically and call this; the shared toggle engine coalesces a burst
+   * of taps into ONE quiet background refresh ~300ms after the last tap (the old
+   * refetch-on-state-change effect fired per tap, undebounced). The refresh keeps
+   * skipSpinner semantics — rows swap in place, the list never empties.
+   */
+  scheduleFeedQueryCommit: () => void;
 };
 
 export const usePollsFeedRuntimeController = ({
@@ -329,23 +338,35 @@ export const usePollsFeedRuntimeController = ({
   // Never let a scheduled retry outlive the controller.
   React.useEffect(() => clearScheduledPollFeedRetry, [clearScheduledPollFeedRetry]);
 
-  // Refetch when the Live/Results split or sort changes — but not on the initial
-  // mount (the market/bounds effects below own the first load). `refreshPollFeed`
-  // reads the toggle values via refs, so its identity stays stable here.
-  const feedQueryHydratedRef = React.useRef(false);
-  React.useEffect(() => {
-    if (!feedQueryHydratedRef.current) {
-      feedQueryHydratedRef.current = true;
-      return;
-    }
-    if (!visible || isSystemUnavailable) {
-      return;
-    }
-    // Quiet background refresh: never empty the list (which would collapse the
-    // FlashList and scroll the filter strip out of view); the toggle/sort just
-    // swaps the rows in place when the new query resolves.
-    void refreshPollFeed({ skipSpinner: true });
-  }, [feedState, feedSort, feedType, feedTime, visible, isSystemUnavailable, refreshPollFeed]);
+  // Feed-query toggles ride the shared toggle engine (replaces the old
+  // refetch-on-state-change effect, which fired one undebounced network request per
+  // tap). The runner reads the live toggle values via refreshPollFeed's own refs and
+  // re-checks the visibility gate at commit time; refreshPollFeed's internal
+  // latest-wins seq guard drops a stale landing the engine's cancel can't abort. No
+  // lifecycle sinks: the feed has no interaction cover, and failure UX stays with
+  // the controller's retry ladder + deferred freshness error (never the modal).
+  const visibilityGateRef = React.useRef({ visible, isSystemUnavailable });
+  visibilityGateRef.current = { visible, isSystemUnavailable };
+  const feedQueryToggleEngine = React.useMemo(
+    () => createToggleInteractionEngine<'feed_query'>({}),
+    []
+  );
+  React.useEffect(() => feedQueryToggleEngine.dispose, [feedQueryToggleEngine]);
+  const scheduleFeedQueryCommit = React.useCallback(() => {
+    feedQueryToggleEngine.begin(
+      async () => {
+        const gate = visibilityGateRef.current;
+        if (!gate.visible || gate.isSystemUnavailable) {
+          return;
+        }
+        // Quiet background refresh: never empty the list (which would collapse the
+        // FlashList and scroll the filter strip out of view); the toggle/sort just
+        // swaps the rows in place when the new query resolves.
+        await refreshPollFeedRef.current?.({ skipSpinner: true });
+      },
+      { kind: 'feed_query' }
+    );
+  }, [feedQueryToggleEngine]);
 
   React.useEffect(() => {
     if (!bootstrapMarketKey) {
@@ -569,7 +590,8 @@ export const usePollsFeedRuntimeController = ({
   return React.useMemo(
     () => ({
       refreshPollFeed,
+      scheduleFeedQueryCommit,
     }),
-    [refreshPollFeed]
+    [refreshPollFeed, scheduleFeedQueryCommit]
   );
 };
