@@ -92,7 +92,7 @@ The world value generalizes (this is the load-bearing move):
 
 ```
 World = {
-  body:    ResultsBody | ProfileBody | (ListBody = ResultsBody + list chrome)
+  body:    ResultsBody | ProfileBody | ListBody   // three PEER kinds (owner, 2026-07-08)
   catalog: EntityGroup[]            // §3.1 — grouped, market-wide
   camera:  CameraIntent             // §3.2 — hold | fitAll | focus
   policy:  WorldPresentationPolicy  // §3.4 — how groups render in this world
@@ -104,8 +104,16 @@ World = {
 restaurant's group]`, `camera = focus(anchor)`, `policy = profile` (all promoted, LOD off,
   normal colors). "Skipping the results sheet" is not a skip — the world's body IS the profile;
   there is nothing to skip.
-- A **list** (yours or shared) is a world: `body = ResultsBody(list rows)`, `camera =
-fitAll(members)`, `policy = search` (LOD on, for now).
+- A **list** (yours or shared) is a world: `body = ListBody(list)`, `camera =
+fitAll(members)`, `policy = search` (LOD on, for now). **ListBody is a PEER kind, not
+  "results + chrome" (owner ratification 2026-07-08):** lists are the app's richest surface and
+  WILL diverge (custom sorting that re-drives the map, list-only features results never get).
+  ListBody COMPOSES the same coordination primitives as ResultsBody — the catalog↔sheet linkage,
+  card↔pin coordination, sort re-driving both — but is its own surface with its own design
+  identity. During development it may LOOK like results; it must never be MODELED as results.
+  Corollary: the card↔pin coordination (rows and catalog derive from one ordered world source,
+  so a re-sort moves both) is itself a shared primitive BELOW the body kinds, not a ResultsBody
+  feature that ListBody borrows.
 - A **normal search** is a world: `camera = hold`, `policy = search`.
 - The resolver ladder, the reveal joint, failure/offline/retry, the dismiss/origin machinery —
   all UNCHANGED and shared, because they operate on worlds, not on flow kinds.
@@ -267,3 +275,24 @@ Each layer is only built on the one below it; nothing lands on the old shapes.
 focus-fit; composite rig proof for the joint (sheet+pins+camera land together, mach-clocked);
 RED self-mutation for each new contract (a group that loses its representative, a selection that
 never deselects, a camera intent nobody executes — all must bark).
+
+---
+
+## 6. Red-team amendments (2026-07-08)
+
+Adopted from the trigger/nav verdict §5 (that section is authoritative; summary here for
+locality):
+
+- **World residency:** exactly one live world — the nearest world-backed entry at or below
+  top-of-stack; plain-scene entries are transparent to world presentation. Pop re-presents from
+  the entry's PINNED resolved snapshot (no network on the pop path); legs beyond depth K
+  unmount, data + origin retained for instant remount.
+- **Camera execution:** intent runs on session_enter/replace or intent-VALUE change only; revise
+  never moves the camera. Restores are last-write-wins, cancel in-flight, epsilon no-op.
+  `hold` on unresolved/failed worlds. `safeRegion` derives from the world's target snap; profile
+  worlds present at MID snap.
+- **List LOD promotion** keys off crave-rank (stable across sorts); map-mirrors-sort = flaggable
+  knob, default off. `fitAll` stays exact (owner decree); cross-market continent-zoom is a named
+  open owner call.
+- **Desire sum gains `list(listId)`** (live identity — mutable lists, share slugs, synthetic
+  "All"); `entity-set` stays for literal ids. Scene key naming: `restaurantProfile`.

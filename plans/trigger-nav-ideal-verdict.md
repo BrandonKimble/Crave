@@ -159,3 +159,196 @@ by `push(search, entity-set-desire)`.
 **Dependency order:** S-B first (foundation; everything keys off entry instances) with S-A in
 parallel; then S-C; then S-D; then S-E; then S-F; pages ride along from S-C onward (listDetail
 is both a page and the proof of S-C/S-D).
+
+---
+
+## 4. Owner ratification + the drill-in / orphan addendum (2026-07-08)
+
+The owner walked the gap list and ratified the strides, with the following refinements. These
+are DESIGN, part of the fixed ideal — extracted from the behavioral brief, not from code.
+
+### 4.1 Orphan pages (new vocabulary, replaces the "child nav-out" special case)
+
+Three surfaces belong to NO page: **restaurantProfile**, **userProfile**, **listDetail**
+(deep-linked or in-app). They are triggerable from anywhere — search bar, autocomplete, an
+entity span in a poll, a deep link, a profile row — and pushing one does NOT change which root
+page you are "on": pull up a user profile while on Favorites and you are still on Favorites; the
+content switched and the nav bar left, that is all. Dismissal from any depth returns to the
+exact origin.
+
+**The unified law (supersedes the per-scene nav-out opt-in AND the "children only" phrasing):**
+
+> **The nav bar shows iff the top-of-stack entry is a root tab page (stack depth 1).**
+
+Derived, never opted into. This single rule covers children of root pages (settings under
+profile, poll detail under polls) and orphans identically — an orphan IS a stack child of
+wherever you were standing. No `laneKind` enum needed for the nav bar at all; `laneKind` remains
+only if some OTHER behavior genuinely differs by it (none identified yet — delete it if none
+materializes).
+
+Orphans come in two flavors, and the stack does not care:
+
+- **world-backed orphans** (restaurantProfile, listDetail): the entry's payload is a Desire; the
+  push runs the search flow and presents a world (ProfileBody / ListBody per the companion doc
+  `plans/world-camera-multilocation-foundation.md`); map + camera participate.
+- **plain-scene orphans** (userProfile): an ordinary scene body; no world, no map coupling (a
+  user profile may EMBED map-backed content later, but the page itself is not a world).
+
+**userProfile is searchable**: the search bar / autocomplete may resolve a person and construct
+`push(userProfile, {userId})` — same two-verb law (I1/I2), the trigger builds a value. The
+Desire sum does NOT grow a person arm; people are not worlds, they are scenes. Autocomplete
+returning mixed result kinds (dish/restaurant/person/list) maps each row kind to the right
+push — that mapping lives in EntityLink (S-D), once.
+
+### 4.2 The drill-in contract (the "locked-in standardized pattern")
+
+Drill-in journeys — poll → username → their profile → one of their lists → a restaurant →
+back-back-back to the exact origin — reduce to exactly two obligations, and nothing else:
+
+1. **To BE drillable-into**, a scene implements the scene contract: metadata row + body +
+   skeleton spec + header descriptor + origin provider (`captureOrigin()/restoreOrigin()`).
+   That is the whole membership card (invariant I6).
+2. **To DRILL IN**, a surface renders an `EntityLink` (S-D): entityRef → value → push. One
+   component, one `entityRef → push` policy function, zero per-surface wiring.
+
+Everything else is the engine's: per-entry instances (S-B) make same-key nesting and loops legal
+(`userProfile(A) → list → restaurant → userProfile(B)`, arbitrary depth, cycles fine); pop
+restores the popped-to entry's captured presentation exactly; nav-bar visibility derives from
+depth (§4.1). A new drill-in destination in the future = implement the contract; a new drill-in
+SOURCE = render EntityLink. Nothing to design per journey, ever.
+
+**Logic-perfect before UI-perfect (owner directive):** build the mechanism against REAL known
+destinations now, with unstyled-but-real pushes — a Follow button and follower/following counts
+on userProfile (→ followList), a notifications row, a settings gear, and **homes for the
+already-built modals** (buttons somewhere real so they stop living nowhere). The pages ship as
+contract-complete scenes with placeholder bodies: real entries, real origin capture, real
+skeletons, real back — provisional pixels. UI identity passes come later per page; the stack
+logic must be exercised end-to-end (poll → profile → list → restaurant → back×3, byte-exact
+origin) BEFORE any page gets its design pass.
+
+### 4.3 Registry relationship + deferrals
+
+`plans/page-registry.md` stays the owner's brain-dump of end-state behavior — we extract
+patterns FROM it into the fixed ideal (this doc + the world/camera companion); we do not build
+from it directly. Updates flowing back INTO the registry from this addendum: the nav-bar law
+generalizes to orphans (restaurantProfile / userProfile / listDetail hide it regardless of
+trigger source); listDetail is a peer surface kind, not a results variant.
+
+**Deferred (owner call): S-F pick mode.** Special-case, not foundational — drops out of the
+foundation sequence entirely; revisit when listDetail "Add places" is actually being built. The
+result-tap chokepoint centralization survives inside S-C/S-D on its own merits.
+
+**Revised dependency order:** S-B (entries-as-values, the foundation) with S-A in parallel →
+S-C (de-special search; the readiness contract is what lets world-backed orphan pushes ride the
+generic push) → S-D (One Desire + EntityLink, incl. the autocomplete row-kind → push mapping) →
+S-E (addressability; /l/<slug> inbound) → pages land from S-C onward as contract-complete
+placeholder-body scenes (userProfile, followList, listDetail, notifications, settings) →
+world/camera layers L1–L5 per the companion doc interleave where their code overlaps (L3
+ProfileBody worlds pairs naturally with S-C).
+
+---
+
+## 5. Red-team resolutions (2026-07-08, three auditors: design-consistency, code-grounded, scenario-walk)
+
+Every finding below is RESOLVED into the fixed ideal; where a doc section above says otherwise,
+this section wins.
+
+### 5.1 Search itself is a push (the nav-law dependency)
+
+Presenting a search session on any tab **is a push**: depth 2, nav out. The depth-1 search root
+is home@collapsed. TODAY search results are NOT a push (`openAppSearchRouteResults` re-roots via
+`requestOverlaySwitch` default `'setRoot'` — depth stays 1), so the nav-bar law cannot land
+before search-as-push (S-C) without an interim clause: **interim, a presented world counts as
+depth>1**. The registry's search row and its "one leg per scene key" §2 design constraint are
+SUPERSEDED by S-B (per-entry instances). Also superseded: the registry's
+`openChildScene(..., {searchFlow?})` sketch — world-backedness is scene METADATA, never a
+trigger flag (I2).
+
+### 5.2 The verb is `push(sceneKey, payload)`
+
+Retire the `push(searchScene, desire)` phrasing. World-backed scenes (`restaurantProfile`,
+`listDetail`, search) take a Desire payload; plain scenes take params. Body kind and
+world-backedness live on the scene metadata row. **Naming: `restaurantProfile`** (the current
+`restaurant` key renames). The Desire identity sum gains a **`list(listId)` arm** — live list
+identity (mutable membership, share slugs, the synthetic "All" list), NOT a frozen entity-set;
+`entity-set` remains for literal id arrays.
+
+### 5.3 World residency and the pop path (the deepest resolution)
+
+**Exactly ONE world is live: that of the nearest world-backed entry at or below top-of-stack**
+(the root page's world is the base case). Plain-scene entries (userProfile) are TRANSPARENT to
+world presentation — the world below stays presented under them (map live behind; any
+frost-under-plain-scenes treatment is a later UI decision, not structure).
+
+**Pop never re-fetches.** At push, the covered world-backed entry retains its resolved world
+snapshot (data pinned on the entry); pop re-presents FROM that snapshot through the normal
+reveal machinery — skeleton-free, pixel-exact (I3), network never on the pop path. Legs beyond
+a small depth K unmount; the entry keeps data + origin for instant remount. Same-key entries
+are independent instances; **no pop-to-existing / dedupe** — back always pops exactly one.
+
+**Origin semantics, one way only:** the origin lives on the PUSHED entry (captured at
+departure); pop applies the popped entry's origin to the scene it reveals. The single-slot
+`capturedOriginContext` (first capture wins) is replaced by per-entry origins under S-B.
+**I3 is scoped to committed presentation** (detent, segment, scroll, anchor, camera) — transient
+input chrome (autocomplete overlay, keyboard, partial query) always closes on push and is never
+restored. The verdict §2 OriginSnapshot line is amended: the ideal payload INCLUDES
+`camera{center, zoom}` (today nothing captures camera — net-new, per the companion doc).
+
+### 5.4 Camera choreography rules (added to companion doc §3.2)
+
+- Camera intent executes on **session_enter/replace deltas only**, or when the intent VALUE
+  changes; revise-class deltas (sort, filter, toggle) NEVER move the camera. (A list re-sort
+  re-drives rows + catalog, not the camera.)
+- Restores are **last-write-wins and cancel in-flight motion**; a restore within epsilon of the
+  current camera is a no-op (rapid back-back-back coalesces cleanly).
+- **`hold` on unresolved/failed worlds** — failure never moves the camera.
+- `safeRegion` derives from the world's **target snap** (data, not a constant): profile worlds
+  present at MID snap (the registry's "profile select → top snap" row is superseded — the body
+  IS the profile now; anchor lands in the visible top third).
+- List LOD promotion keys off **crave-rank (stable across sorts)**, not the active sort order —
+  no promotion churn on re-sort. (Map-mirrors-sort is a flaggable product knob, default off.)
+- `fitAll` stays exact per owner decree; cross-market lists (continent zoom on one NYC entry in
+  an Austin list) are a NAMED open owner call, not silently clamped.
+
+### 5.5 laneKind: delete the `'child'` arm only
+
+Code audit: zero consumers of `laneKind === 'child'`; nav-out today is an intent-store opt-in
+(2 registrants), not laneKind. But `'docked-polls'` is load-bearing across 5+ authorities
+(persistent-poll-lane discriminator). Resolution: **docked-polls is a presentation MODE of the
+depth-1 polls entry, not a stack level** — keep it (enum or boolean), delete the `'child'` arm;
+nav-bar visibility derives from depth alone (§4.1).
+
+### 5.6 Failure/empty is the eighth member of the scene contract
+
+§4.2's contract list omitted it: every scene (plain orphans included) ships metadata + body +
+skeleton + header + origin **+ failure/empty spec** (the page-foundation standard already
+requires this) — an offline `userProfile` push must show its failure body with retry, never a
+permanent skeleton behind a hidden nav bar. For S-E: a failed `/l/<slug>` resolution presents
+the world failure state inside ListBody with Retry + explicit "Go home" (pop); private/deleted
+lists get a distinct empty-state body; auth/visibility gating deferred but NAMED.
+
+### 5.7 Scope table (what rides the stack, what doesn't)
+
+- **Stack entries:** root tab pages; children (pollDetail, saveList, pollCreation, settings,
+  editProfile, shareConfig, followList, notifications); orphans (restaurantProfile, userProfile,
+  listDetail); search sessions (§5.1). saveList/pollCreation opens become one-line pushes under
+  S-A. shareConfig joins the S-E share story explicitly.
+- **NOT stack entries:** modals (sortSheet, marketPicker, duplicatePoll, pollInfo, paywall,
+  listEdit, listConfig — all green-field; plus built price/scoreInfo/appModal) — overlays that
+  never change top-of-stack, exempt from the nav-bar law by construction. The full-screen
+  search-suggestion surface and the handle picker are transient input chrome (§5.3): closed on
+  push, excluded from origin.
+- **"Homes" correction (§4.2):** what actually lives nowhere is the 7 contract-complete STUB
+  SCENES in `StubScenePanels.tsx` (no entry points) — plus the profile "Settings" placeholder
+  modal, which becomes a real `push(settings)`. The registry's new modals are unbuilt.
+
+### 5.8 Autocomplete row kinds = explicit S-D deliverable
+
+The wire type is open (`entityType: string`) but THREE closed unions gate it (`matchType`
+`'entity'|'query'|'poll'`, the submit-runtime fork, the SearchSuggestions render branches) —
+textbook type-list disease. S-D delivers a `rowKind` widening (person, list) + the
+row-kind → push mapping inside EntityLink; the desired-tuple entity union correctly does NOT
+grow (people/lists are pushes, not tuple identities). Note §4.1's "still on Favorites" is
+tab/route truth, not map truth: today `ensureAppSearchRouteSearchScene` re-roots to search
+before entity pushes (destroying the Favorites root) — S-B/S-C remove that re-rooting; the
+root's world is restored by the dismissal chain, not untouched.
