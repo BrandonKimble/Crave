@@ -6,7 +6,6 @@ import type {
 import { getOriginCaptureProvider, registerOriginCaptureProvider } from './origin-capture-registry';
 import { getOriginSceneLiveState } from './origin-scene-live-state-registry';
 import { stageOverlayScrollRestore } from '../../overlays/overlayScrollOffsetRuntime';
-import { hasSearchSessionAboveRoot } from './app-overlay-route-stack-algebra';
 import {
   registerRouteEntryOriginCapturer,
   registerRouteEntryOriginRestorer,

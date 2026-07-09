@@ -110,15 +110,6 @@ export const createAppSearchRouteCommandActions = ({
     const dismissRouteState = routeSceneSwitchAuthority.getSnapshot().routeState;
     const shouldPopPushedSession =
       dismissRouteState.rootOverlayKey === 'search' && hasSearchSessionAboveRoot(dismissRouteState);
-    if (__DEV__) {
-      // TEMP [SC3B] entryId-survival probe — strip before finalize.
-      // eslint-disable-next-line no-console
-      console.log(
-        `[SC3B] dismissToPolls pop=${shouldPopPushedSession} stack=[${dismissRouteState.overlayRouteStack
-          .map((entry) => `${entry.key}#${entry.entryId.replace('route-entry-', '')}`)
-          .join(',')}]`
-      );
-    }
     routeSceneSwitchActions.requestOverlaySwitch({
       ...(sourceSceneKey != null ? { sourceSceneKey } : null),
       targetSceneKey: 'polls',
