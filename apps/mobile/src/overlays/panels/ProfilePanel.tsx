@@ -3,6 +3,7 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-nat
 import { Feather } from '@expo/vector-icons';
 import { useSharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
+import { SegmentedToggle } from '../../components/SegmentedToggle';
 import { colors as themeColors } from '../../constants/theme';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import type { Poll } from '../../services/polls';
@@ -21,16 +22,11 @@ import type {
   ProfileSceneRow,
 } from './runtime/profile-panel-runtime-contract';
 
-const SEGMENT_BG = '#f1f5f9';
-const SEGMENT_ACTIVE = '#ffffff';
-const SEGMENT_TEXT = themeColors.textBody;
-const SEGMENT_ACTIVE_TEXT = '#0f172a';
-
-const PROFILE_SEGMENTS = [
-  { id: 'created', label: 'Created' },
-  { id: 'contributed', label: 'Contributed' },
-  { id: 'favorites', label: 'Favorites' },
-] as const;
+const PROFILE_SEGMENT_OPTIONS = [
+  { value: 'created', label: 'Created' },
+  { value: 'contributed', label: 'Contributed' },
+  { value: 'favorites', label: 'Favorites' },
+] as const satisfies readonly { value: ProfileSegment; label: string }[];
 
 type ProfilePreviewRowProps = {
   item: FavoriteListSummary['previewItems'][number];
@@ -213,24 +209,13 @@ type ProfileSegmentSwitcherProps = {
 const ProfileSegmentSwitcher = React.memo(
   ({ activeSegment, onSelectSegment }: ProfileSegmentSwitcherProps) => (
     <View style={styles.segmentRow}>
-      {PROFILE_SEGMENTS.map((segment) => {
-        const isActive = activeSegment === segment.id;
-        return (
-          <Pressable
-            key={segment.id}
-            onPress={() => onSelectSegment(segment.id)}
-            style={[styles.segmentButton, isActive && styles.segmentButtonActive]}
-          >
-            <Text
-              variant="caption"
-              weight="semibold"
-              style={[styles.segmentText, isActive && styles.segmentTextActive]}
-            >
-              {segment.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      <SegmentedToggle
+        options={PROFILE_SEGMENT_OPTIONS}
+        value={activeSegment}
+        onChange={onSelectSegment}
+        accessibilityLabel="Switch profile section"
+        testID="profile-segment-toggle"
+      />
     </View>
   )
 );
@@ -634,24 +619,6 @@ const styles = StyleSheet.create({
   },
   segmentRow: {
     flexDirection: 'row',
-    backgroundColor: SEGMENT_BG,
-    borderRadius: 999,
-    padding: 4,
-  },
-  segmentButton: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderRadius: 999,
-  },
-  segmentButtonActive: {
-    backgroundColor: SEGMENT_ACTIVE,
-  },
-  segmentText: {
-    color: SEGMENT_TEXT,
-  },
-  segmentTextActive: {
-    color: SEGMENT_ACTIVE_TEXT,
   },
   section: {
     gap: 16,

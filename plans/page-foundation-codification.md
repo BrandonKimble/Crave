@@ -20,8 +20,12 @@ is only the work queue). Pre-launch QA gate: `product/README.md`.
    stub children never hide the nav. Fix: ONE derivation in
    `use-search-foreground-bottom-nav-visual-runtime.ts` (`laneKind==='child' ⇒ hide`),
    delete the per-scene intents (and the store if nothing else needs it).
-   ⚠️ OWNER CALL FIRST: restaurant is a half-sheet child that today keeps the nav —
-   exception or bug? Decide, then implement + sim-verify nav-out on every child scene.
+   OWNER ANSWERED (2026-07-08): restaurant IS a child and participates in nav-out —
+   no exception. (It LOOKS correct today only incidentally: restaurant opens inside a
+   search session, where the search motion signals already hide the nav. The laneKind
+   derivation makes it structural instead of incidental.) Implement + sim-verify
+   nav-out on every child scene. Sequencing note (owner): the nav-transition work
+   rides the page-registry implementation effort when we start pulling from that file.
 2. **Harden the soft registries to RED-provable** (S/M):
    - `SCENE_STACK_BODY_SKELETON_SPECS`: `Partial<Record>` → full
      `Record<sheet-scene keys>` so a missing skeleton row is a build error naming the
@@ -35,24 +39,31 @@ is only the work queue). Pre-launch QA gate: `product/README.md`.
    `Record<OverlayKey>` table in the same file) so adding an `OverlayKey` fails
    compilation until every foundation decision is stated. Snap descriptor table stays
    as-is (it's the exemplar); curated degrade-gracefully policies stay curated.
-4. **Strip consolidation** (S): port the hand-rolled segment rows
-   (`BookmarksPanel.tsx` ~258-276, `ProfilePanel.tsx` ~213-238) onto
-   `FrostedFilterStrip` + `SegmentedToggle`. Prerequisite for the planned
-   toggle-primitive extraction.
+4. **Strip consolidation** — DONE 2026-07-08 (owner: "all toggle improvements must
+   land in one primitive"): `SegmentedToggle` generalized from exactly-2 to N
+   segments (same pill mechanism; tap resolves the segment from measured geometry);
+   bookmarks (2 segments) and profile (3 segments) ported off their hand-rolled
+   Pressable rows; dead segment styles deleted. Remaining niceties for each page's
+   design pass: whether bookmarks/profile also adopt `FrostedFilterStrip` (the frost
+   cutout treatment — a per-page VISUAL call; the toggle mechanics are now shared
+   regardless). Needs a finger-check on both pages.
 5. **Failure-standard adoption in the poll cluster** (S/M): migrate the ~12 bespoke
    `showAppModal` failure calls (PollDetailPanel, PollCreationPanel, PollsPanel feed
    freshness) to `announceFailureIfOnline`; bespoke copy dies. Then an eslint
    `no-restricted-syntax` rule banning `Alert.alert` and direct failure-copy
    `showAppModal` outside the store — the one place lint beats types.
-6. **Doc discrepancies to resolve**: page-registry §4 "food search → mid snap" vs the
-   motion table docking search at `collapsed` on topLevelSwitch (which is intended?);
-   modals (`OverlayModalSheet` system) sit entirely outside the sheet foundation —
-   fine, but state it when the 7 new modal keys land.
+6. **Doc discrepancies — RESOLVED (owner, 2026-07-08)**: no bug. The motion table's
+   `topLevelSwitch → search: collapsed` row governs the NAV-TAB switch to the search
+   top-level scene (map-first, docked). The dish-shortcut / search SUBMIT raising the
+   sheet to the MIDDLE snap is the search reveal's own presentation choreography — a
+   different transition that never consults that row, and it behaves correctly today.
+   Clarify the wording in page-registry §4 when we implement from that file. Still to
+   state in the docs when the 7 new modal keys land: modals (`OverlayModalSheet`
+   system) sit outside the sheet foundation by design.
 
 Explicitly rejected (audit): a scaffold/template generator and any new descriptor
 framework — the compile-time `Record` already names every file to touch.
 
 ## Open owner questions
 
-- Restaurant child page: nav stays (exception) or nav-out (rule)?
-- Search topLevelSwitch snap: `collapsed` (table today) or mid (registry §4 wording)?
+(None — restaurant nav-out and the search snap wording were answered 2026-07-08.)
