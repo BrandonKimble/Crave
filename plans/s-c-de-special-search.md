@@ -96,3 +96,16 @@ application, not a remembered-snap default). Chrome-mode check still pending aft
 
 **Then:** finish S-C.2 rig matrix (profile root launch; restaurant child push FROM the pushed
 session — child-over-session stacking; failure/offline dismiss), commit, then S-C.3 per plan.
+
+## ⚠️ OPEN REGRESSION after S-C.2 (1e09da4c) — FIRST ITEM next session
+
+Repro: favorites → results (push) → X-pop (all GREEN, byte-canonical restore) — THEN any tab
+switching (profile → search → bookmarks): frames commit (pageswitch active/presented correct)
+but the SHEET never re-presents on ANY tab (map + home chrome only; bookmarks/profile bodies
+and even the docked-polls home sheet gone). The pop path skips the terminalDismiss choreography
+— suspect residual sheet-session state from the pop dismiss: candidates = sheet snap session
+left 'hidden'/inconsistent (check sceneSheetSnaps + silhouette/backdrop state after the pop),
+the closeChild motion of a topLevel-role scene leaving the sheet host's shell state torn, or
+clearSearchState({skipPostSearchRestore}) leaving a pending flag that eats subsequent presents.
+Attribute with a sheet-host snapshot probe after the pop; DO NOT guess. If blocking, revert
+candidates: the closeChild-kind change (policy-runtime) is the most behavior-adjacent.
