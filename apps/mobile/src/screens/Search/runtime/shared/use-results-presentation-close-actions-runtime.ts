@@ -170,6 +170,8 @@ export const useResultsPresentationCloseActionsRuntime = ({
           routeSceneRuntime.routeOverlayRouteCommandRuntime.closeActiveRoute({
             applyOriginDetent: true,
           });
+          getSearchSurfaceRuntime().finalizeSessionExitWithoutDismissMotion();
+
           // The submit choreography commanded the nav out; the pop path owns commanding it
           // home (the terminalDismiss choreography that normally does this is skipped).
           requestSearchBottomNavMotionTarget('show');

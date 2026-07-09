@@ -102,10 +102,17 @@ export const createAppOverlayRouteCommandRuntime = ({
         {
           targetSceneKey: previousOverlayRoute.key,
           routeAction: 'closeActive',
-          sheetTransitionKind: 'closeChild',
+          // An origin-detent pop mimics the restore seam's switch EXACTLY (topLevelSwitch +
+          // swapImmediately + explicit snapTo) — the closeChild kind left the search surface's
+          // clip/band ownership latched (the zombie-results residue); the seam's switch shape
+          // is the one proven to hand the sheet back cleanly.
+          sheetTransitionKind: originDetent != null ? 'topLevelSwitch' : 'closeChild',
           sheetOpenerSource: 'routeCommand',
           ...(originDetent != null
-            ? { sheetMotion: { kind: 'snapTo' as const, snap: originDetent } }
+            ? {
+                sheetMotion: { kind: 'snapTo' as const, snap: originDetent },
+                contentHandoff: 'swapImmediately' as const,
+              }
             : null),
           // sheetMotion intentionally omitted (P6 req 2d): the closeChild dismiss motion is a
           // descriptor-table decision (app-route-sheet-motion-descriptor-table.ts — today

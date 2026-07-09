@@ -746,6 +746,33 @@ export class SearchSurfaceRuntime {
     });
   };
 
+  // S-C.2 / favorites-regression root fix: a session can exit WITHOUT a surface dismissal —
+  // the pop dismiss (and the old single-switch rich seam) never arm a dismiss transaction, so
+  // the RESULTS bundle stayed active forever: bottomBandOwner 'results_header' + the
+  // animatedSearchTransition clip lingered, resurfacing as a zombie Results sheet on later tab
+  // switches. This verb returns the surface to its poll (home) bundle — a no-op whenever a
+  // real dismissal owns the exit (dismissTransaction armed) or the surface is already home.
+  public finalizeSessionExitWithoutDismissMotion = (): void => {
+    if (this.snapshot.dismissTransaction != null) {
+      return;
+    }
+    if (
+      this.snapshot.activeBundle.kind !== 'results' &&
+      this.snapshot.heldBundle == null &&
+      this.snapshot.redrawTransaction == null
+    ) {
+      return;
+    }
+    const pollBundle = this.snapshot.pollBundle;
+    this.publish({
+      ...this.snapshot,
+      activeBundle: pollBundle,
+      heldBundle: null,
+      redrawTransaction: null,
+      completedRedrawTransaction: null,
+    });
+  };
+
   public armDismissMotion = ({
     transactionId,
     outgoingSheetSceneKey = null,
