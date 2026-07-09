@@ -45,6 +45,8 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
         : allowsInteractionLoadingState,
       hasRenderableRows: activeTabRenderableRowCount > 0,
       hasResolvedResults,
+      hasResolutionFailure:
+        !shouldSuppressResultsSurface && searchResultsRuntimeState.resolutionFailure != null,
       isSearchLoading: searchResultsRuntimeState.isSearchLoading,
       shouldUsePlaceholderRows: false,
       freezeClassification: searchHydrationRuntimeState.chromeFreezeClassification,
@@ -75,6 +77,7 @@ export const useSearchRootSearchSceneSurfacePanelStateRuntime = ({
     searchResultsRuntimeState.resultsDishCount,
     searchResultsRuntimeState.resultsIdentityCandidateKey,
     searchResultsRuntimeState.resultsRestaurantCount,
+    searchResultsRuntimeState.resolutionFailure,
     searchResultsRuntimeState.isSearchLoading,
   ]);
 };

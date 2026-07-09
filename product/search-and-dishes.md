@@ -107,6 +107,31 @@ A **Friends lens** (an opt-in toggle that filters results to _only_ friend-saved
 - **Search-demand layer.** A rebuildable `user_search_demand_daily` aggregate draws from search logs, cache reveals, on-demand asks, views, favorite events, and autocomplete selections, splitting `sourceKind` (provenance) from `signalKind` (interpretation) so consumers opt into signal kinds, with a dual market scope (UI `marketKey` vs `collectableMarketKey`). Polls, on-demand, and keyword collection share one scoring vocabulary: per-user log-scaled demand, distinct-user breadth as the main signal, diminishing repeat-ask power, recency with smooth decay, and recovery curves rather than hard caps.
 - **Caching & indexing.** Cache frequent/viral queries with 24h retention so a follow-up "best tacos" is instant; cache reveals clone server-owned attribution (fresh searchRequestId, original id in metadata) distinguished by `eventKind`. Targets: <400ms cached, <3s uncached-with-LLM. `core_entities` text search uses a name prefix index, name trigram, and name+aliases FTS, with batched multi-term expansion and a gated phonetic fallback.
 
+## Failure & offline UX (plumbing BUILT 2026-07-08 — UI polish needed)
+
+The behavior is in its ideal shape and rig-proven; what remains is making the surfaces
+pretty. The architecture: a single `searchResolutionFailure` LEVEL on the runtime bus
+(written by the presentation seam on a failed resolution, cleared when the next attempt
+begins), and ONE retry mechanism (`retrySearchDesiredResolution` re-asserts the current
+desired tuple; the reconciler classifies it `reassert_unresolved` and re-resolves —
+in-place rerun choreography over stale results, fresh enter when nothing is presented).
+
+- **Stale results + failure** → a compact **retry chip in the strip family** (next to the
+  "N similar" chip): "Couldn't update · Retry". Results are never destroyed. _Polish:_
+  visual design of the chip (currently a functional red-tinted pill), placement/motion,
+  possibly auto-dismiss after a successful unrelated action. Needs a finger-test pass.
+- **Nothing presented + failure** → the **empty surface renders failure copy + a Retry
+  button** ("Something went wrong…" / offline variant "You're offline — results will load
+  when you're back online"). _Polish:_ illustration/icon, button styling (currently a
+  plain dark pill), copy review.
+- **Offline** → the existing black system banner explains; the failure surfaces show the
+  offline copy; the retry chip is suppressed (the banner + auto-retry own it); and on
+  reconnect a pending failure **auto-retries** (no Airbnb-style indefinite skeleton hang —
+  the level semantics make the hang unnecessary: desired ≠ presented persists without
+  holding a spinner, and reconnect re-resolves it invisibly).
+- **Dev**: real failures still raise the LogBox toast; canceled/superseded resolutions log
+  info only.
+
 ## Adjacent ideas
 
 - **"Also worth trying"** — score-ranked siblings under a dish/restaurant result.

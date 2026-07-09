@@ -105,7 +105,11 @@ export type SearchTupleWriteCause =
   | 'profile_seed'
   | 'deep_link'
   | 'dismiss'
-  | 'boot_seed';
+  | 'boot_seed'
+  /** Failure retry: re-asserts the CURRENT tuple with a fresh generation so the
+   *  reconciler re-resolves desired ≠ presented (snackbar Retry, empty-state Retry,
+   *  reconnect auto-retry — one mechanism). */
+  | 'retry';
 
 export const DEFAULT_SEARCH_FILTER_VARIANT: SearchFilterVariant = {
   openNow: false,

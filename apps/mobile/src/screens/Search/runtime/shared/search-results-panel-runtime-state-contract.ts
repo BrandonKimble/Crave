@@ -14,6 +14,12 @@ export type SearchResultsPanelResultsRuntimeState = {
   resultsRestaurantCount: number;
   activeTab: 'dishes' | 'restaurants';
   desiredTab: 'dishes' | 'restaurants';
+  resolutionFailure: {
+    generation: number;
+    reason: string;
+    offline: boolean;
+    atMs: number;
+  } | null;
   canLoadMore: boolean;
   isSearchLoading: boolean;
   isLoadingMore: boolean;

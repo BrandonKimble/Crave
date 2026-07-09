@@ -1,4 +1,6 @@
 import React from 'react';
+import { useSystemStatusStore } from '../../../../store/systemStatusStore';
+import { retrySearchDesiredResolution } from './search-desired-state-writer';
 import { selectIsSearchSessionActive } from './search-desired-tuple-selectors';
 
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
@@ -62,6 +64,18 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
     // session-active from the tuple, so the republish edge rides the tuple directly:
     // publish when the derived value FLIPS (session enter/exit), never per tuple write.
     // The bus and the authority share the runtime's lifetime — no teardown needed.
+    // RECONNECT AUTO-RETRY (industry pattern; replaces hanging in a skeleton): when
+    // connectivity returns with the failure level still set, re-assert the desired
+    // tuple — the reconciler re-resolves and the failure surfaces drop on their own.
+    useSystemStatusStore.subscribe((state, prevState) => {
+      if (!prevState.isOffline || state.isOffline) {
+        return;
+      }
+      if (searchRuntimeBus.getState().searchResolutionFailure == null) {
+        return;
+      }
+      retrySearchDesiredResolution(searchRuntimeBus);
+    });
     let lastPublishedSessionActive = selectIsSearchSessionActive(searchRuntimeBus.getState());
     searchRuntimeBus.subscribe(
       () => {

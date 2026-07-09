@@ -85,8 +85,10 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
     () => (
       <>
         {shouldExposeEmptySurface ? (
+          // box-none: the surface itself is touch-transparent, but its children (the
+          // failure Retry button) must receive taps.
           <View
-            pointerEvents="none"
+            pointerEvents="box-none"
             style={[styles.resultsSurface, { top: resolvedResultsHeaderHeightForRender }]}
           >
             {surfaceContentRuntime.emptyContent}

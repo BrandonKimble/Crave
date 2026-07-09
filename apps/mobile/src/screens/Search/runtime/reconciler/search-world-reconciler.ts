@@ -33,7 +33,11 @@ export type SearchWorldTransitionClass =
   | 'retoggle_reversal'
   | 'session_exit'
   | 'boot_noop'
-  | 'response_tab_adopt';
+  | 'response_tab_adopt'
+  /** No tuple delta, but the desire is NOT what's presented — a re-assertion of an
+   *  unresolved desire (the failure retry). Presented content reruns in place; a bare
+   *  session re-enters. */
+  | 'reassert_unresolved';
 
 export type SearchWorldDerivedIntent = {
   /** The kind the legacy triggers pass to resolve() today. */
@@ -145,6 +149,20 @@ export const classifySearchWorldTransition = (args: {
       cardsKey,
     };
   }
+  if (presentedCardsKey !== cardsKey) {
+    // Desired-state's own rule: an asserted desire that is not presented must resolve,
+    // delta or no delta. Reached only by explicit re-assertion (the 'retry' cause) —
+    // ordinary equal-tuple writes never publish.
+    return {
+      class: 'reassert_unresolved',
+      intent: {
+        presentationIntentKind: presentedCardsKey != null ? 'variant_rerun' : undefined,
+        preserveSheetState: presentedCardsKey != null,
+        entrySurface: presentedCardsKey != null ? 'results' : deriveEntrySurface(next),
+      },
+      cardsKey,
+    };
+  }
   return { class: 'boot_noop', intent: null, cardsKey };
 };
 
@@ -201,7 +219,7 @@ export const createSearchWorldReconciler = (
     tuple: SearchDesiredTuple;
     generation: number;
     cause: string | null;
-    kind: 'filter_open_now' | 'filter_rising' | 'filter_price' | 'filter_include_similar';
+    kind: 'filter_open_now' | 'filter_rising' | 'filter_price' | 'filter_include_similar' | 'retry';
     decoration: SearchRequestDecoration | undefined;
   }): void => {
     const port = getSearchReconcilerPresentationPort();
@@ -307,6 +325,40 @@ export const createSearchWorldReconciler = (
           },
           { kind: 'tab_switch' }
         );
+        return;
+      }
+      case 'reassert_unresolved': {
+        if (transition.intent?.presentationIntentKind === 'variant_rerun') {
+          // Stale content on screen: the retry reruns in place with the standard
+          // interaction cover + reveal (the chip-rerun choreography).
+          kickRerunThroughCoordinator({
+            tuple: next,
+            generation,
+            cause,
+            kind: 'retry',
+            decoration,
+          });
+          return;
+        }
+        // Nothing presented: the retry is a fresh enter of the same desire.
+        const intent = transition.intent;
+        void env
+          .resolve({
+            tuple: next,
+            generation,
+            cause,
+            presentationIntentKind: undefined,
+            requestDecoration: decoration,
+            onResolutionBegan: () => {
+              if (intent != null) {
+                env.runEnterForegroundEffects({ intent, tuple: next, generation });
+              }
+            },
+            onResolutionFailed: env.onResolveFailed,
+          })
+          .catch((error) => {
+            env.onResolveFailed(error instanceof Error ? error.message : 'unknown error');
+          });
         return;
       }
       case 'session_exit':

@@ -54,6 +54,15 @@ export type SearchRuntimeBusState = {
   desiredTuple: SearchDesiredTuple;
   desiredTupleGeneration: number;
   desiredTupleCause: SearchTupleWriteCause | null;
+  // FAILURE LEVEL (single writer: the presentation seam). Set when a resolution fails,
+  // cleared when the next resolution begins — the retry chip, the failed empty state,
+  // and reconnect auto-retry all read this one fact.
+  searchResolutionFailure: {
+    generation: number;
+    reason: string;
+    offline: boolean;
+    atMs: number;
+  } | null;
   results: SearchResponse | null;
   resultsIdentityCandidateKey: string | null;
   resultsPage: number | null;
@@ -158,6 +167,7 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   desiredTuple: IDLE_SEARCH_DESIRED_TUPLE,
   desiredTupleGeneration: 0,
   desiredTupleCause: null,
+  searchResolutionFailure: null,
   results: null,
   resultsIdentityCandidateKey: null,
   resultsPage: null,

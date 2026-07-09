@@ -40,6 +40,27 @@ export const captureCommittedBounds = (viewportBoundsService: {
   };
 };
 
+/** Failure retry (charter: 'failed' is a designed state with a retry affordance).
+ *  Re-asserts the CURRENT tuple with a fresh generation — bypassing the tuple-equal
+ *  short-circuit — so the reconciler re-classifies desired ≠ presented and re-resolves.
+ *  The snackbar Retry, the failed empty state's Retry, and reconnect auto-retry all
+ *  call this one function. */
+export const retrySearchDesiredResolution = (searchRuntimeBus: SearchRuntimeBus): void => {
+  const state = searchRuntimeBus.getState();
+  const generation = state.desiredTupleGeneration + 1;
+  searchRuntimeBus.publish({
+    desiredTuple: { ...state.desiredTuple },
+    desiredTupleGeneration: generation,
+    desiredTupleCause: 'retry',
+  });
+  if (__DEV__) {
+    logger.info('[TUPLE] retry', {
+      generation,
+      worldKey: buildSearchCoverageWorldKey(state.desiredTuple),
+    });
+  }
+};
+
 export type SearchDesiredTuplePatch = {
   queryIdentity?: SearchQueryIdentity;
   filterVariant?: Partial<SearchFilterVariant>;

@@ -17,6 +17,7 @@ export const useSearchResultsPanelResultsRuntimeState = (
       resultsRestaurantCount: state.resultsRestaurantCount,
       activeTab: state.activeTab,
       desiredTab: state.desiredTuple.tab,
+      resolutionFailure: state.searchResolutionFailure,
       canLoadMore: state.canLoadMore,
       isSearchLoading: state.isSearchLoading,
       isLoadingMore: state.isLoadingMore,
@@ -31,6 +32,7 @@ export const useSearchResultsPanelResultsRuntimeState = (
       left.resultsRestaurantCount === right.resultsRestaurantCount &&
       left.activeTab === right.activeTab &&
       left.desiredTab === right.desiredTab &&
+      left.resolutionFailure === right.resolutionFailure &&
       left.canLoadMore === right.canLoadMore &&
       left.isSearchLoading === right.isSearchLoading &&
       left.isLoadingMore === right.isLoadingMore &&
@@ -47,6 +49,7 @@ export const useSearchResultsPanelResultsRuntimeState = (
       'isSearchLoading',
       'isLoadingMore',
       'desiredTuple',
+      'searchResolutionFailure',
     ] as const,
     'results_panel_results_runtime_state'
   );

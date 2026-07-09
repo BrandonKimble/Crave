@@ -1,4 +1,5 @@
 import React from 'react';
+import { retrySearchDesiredResolution } from '../runtime/shared/search-desired-state-writer';
 import {
   Pressable,
   StyleSheet,
@@ -174,6 +175,11 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       // S4e: the chip strip renders DESIRED state — the tuple directly (tuple.tab IS the
       // old optimistic `pendingTabSwitchTab ?? activeTab` read, by the writer's invariant).
       activeTab: state.desiredTuple.tab as SegmentValue,
+      // FAILURE retry chip (the include-similar-chip family): shows while the failure
+      // level is set and results are on screen. Offline failures are the banner's +
+      // reconnect auto-retry's job — no chip.
+      retryAvailable:
+        state.searchResolutionFailure != null && !state.searchResolutionFailure.offline,
       openNow: state.desiredTuple.filterVariant.openNow,
       includeSimilarActive: state.desiredTuple.filterVariant.includeSimilar,
       similarAvailableCount: state.results?.metadata?.similarAvailable ?? 0,
@@ -184,6 +190,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     }),
     (left, right) =>
       left.activeTab === right.activeTab &&
+      left.retryAvailable === right.retryAvailable &&
       left.openNow === right.openNow &&
       left.includeSimilarActive === right.includeSimilarActive &&
       left.similarAvailableCount === right.similarAvailableCount &&
@@ -193,6 +200,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       left.isPriceSelectorVisible === right.isPriceSelectorVisible,
     [
       'desiredTuple',
+      'searchResolutionFailure',
       'results',
       'priceButtonIsActive',
       'priceButtonLabelText',
@@ -588,6 +596,23 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           </Text>
         </Pressable>
       ) : null}
+      {liveChipState.retryAvailable ? (
+        // FAILURE RETRY (stale results stay presented — the charter's rule): one tap
+        // re-asserts the current desired tuple through the reconciler; the retry runs
+        // with the standard interaction cover + reveal. Visual polish tracked in
+        // product/search-and-dishes.md.
+        <Pressable
+          testID="search-retry-chip"
+          onPress={() => retrySearchDesiredResolution(searchRuntimeBus)}
+          accessibilityRole="button"
+          accessibilityLabel="Retry the failed search update"
+          style={styles.retryChipButton}
+        >
+          <Text variant="caption" weight="semibold" style={styles.retryChipText}>
+            Couldn't update · Retry
+          </Text>
+        </Pressable>
+      ) : null}
       <Pressable
         onPress={onToggleRising}
         accessibilityRole="button"
@@ -768,6 +793,17 @@ const styles = StyleSheet.create({
   similarAvailableButton: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
     flexDirection: 'row',
+  },
+  retryChipButton: {
+    paddingHorizontal: 12,
+    paddingVertical: TOGGLE_VERTICAL_PADDING,
+    borderRadius: TOGGLE_BORDER_RADIUS,
+    backgroundColor: '#fee2e2',
+    minHeight: TOGGLE_MIN_HEIGHT,
+    justifyContent: 'center',
+  },
+  retryChipText: {
+    color: '#b91c1c',
   },
   similarAvailableText: {
     // Quiet informational chip — muted vs. the solid toggle chips.

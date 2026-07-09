@@ -9,10 +9,19 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
   resolvedResults,
   activeTab,
   onDemandNotice,
+  resolutionFailure,
+  onRetryResolution,
 }: {
   resolvedResults: { metadata?: { emptyQueryMessage?: string } } | null;
   activeTab: 'dishes' | 'restaurants';
   onDemandNotice: React.ReactNode;
+  resolutionFailure: {
+    generation: number;
+    reason: string;
+    offline: boolean;
+    atMs: number;
+  } | null;
+  onRetryResolution: () => void;
 }) => {
   const resultsMetadata = (resolvedResults?.metadata ?? {}) as { emptyQueryMessage?: string };
 
@@ -38,6 +47,29 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
   );
 
   const emptyContent = React.useMemo(() => {
+    // FAILURE variant (charter: 'failed' is a designed state with a retry affordance):
+    // a failed search with nothing presented renders failure copy + Retry — never a
+    // blank sheet. Offline failures explain themselves (the system banner also shows)
+    // and auto-retry on reconnect; Retry stays available either way.
+    if (resolutionFailure != null) {
+      const failureTitle = resolutionFailure.offline ? "You're offline." : 'Something went wrong.';
+      const failureSubtitle = resolutionFailure.offline
+        ? "Results will load when you're back online."
+        : "We couldn't load results. Check your connection and try again.";
+      return (
+        <View style={[styles.emptyState, styles.emptyStateSurfaceBlock]}>
+          <EmptyState
+            title={failureTitle}
+            subtitle={failureSubtitle}
+            action={{
+              label: 'Retry',
+              onPress: onRetryResolution,
+              testID: 'search-resolution-retry',
+            }}
+          />
+        </View>
+      );
+    }
     const emptyTitle = activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.';
     const emptySubtitle =
       resultsMetadata.emptyQueryMessage ?? 'Try moving the map or adjusting your search.';
@@ -47,7 +79,13 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
         <EmptyState title={emptyTitle} subtitle={emptySubtitle} />
       </View>
     );
-  }, [activeTab, onDemandNotice, resultsMetadata.emptyQueryMessage]);
+  }, [
+    activeTab,
+    onDemandNotice,
+    onRetryResolution,
+    resolutionFailure,
+    resultsMetadata.emptyQueryMessage,
+  ]);
 
   return React.useMemo(
     () => ({

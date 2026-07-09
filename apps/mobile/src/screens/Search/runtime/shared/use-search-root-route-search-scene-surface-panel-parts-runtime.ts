@@ -33,6 +33,9 @@ export const useSearchRootRouteSearchSceneSurfacePanelPartsRuntime = ({
         routeSearchSceneDataRuntime.routeSearchSceneResolvedResultsRuntime.resolvedResults,
       activeTab: routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.activeTab,
       onDemandNotice: routeSearchSceneDataRuntime.routeSearchSceneOnDemandNotice,
+      resolutionFailure:
+        routeSearchSceneDataRuntime.routeSearchSceneResultsRuntimeState.resolutionFailure,
+      onRetryResolution: routeSearchSceneDataRuntime.routeSearchSceneRetryResolution,
     });
 
   return {

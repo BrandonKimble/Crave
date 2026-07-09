@@ -1238,6 +1238,16 @@ const styles = StyleSheet.create({
   emptyStateSurfaceBlock: {
     paddingTop: 48,
   },
+  emptyStateActionButton: {
+    marginTop: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: themeColors.textPrimary,
+  },
+  emptyStateActionText: {
+    color: '#ffffff',
+  },
   emptyStateSubtitle: {
     alignSelf: 'stretch',
     textAlign: 'center',

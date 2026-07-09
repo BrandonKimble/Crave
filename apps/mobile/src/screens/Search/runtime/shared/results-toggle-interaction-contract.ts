@@ -3,7 +3,10 @@ export type ToggleInteractionKind =
   | 'filter_open_now'
   | 'filter_include_similar'
   | 'filter_rising'
-  | 'filter_price';
+  | 'filter_price'
+  /** Failure retry with a presented world: rides the SAME interaction cover +
+   *  debounce + reveal choreography as a chip rerun. */
+  | 'retry';
 
 export type ToggleInteractionLifecycleEvent =
   | {

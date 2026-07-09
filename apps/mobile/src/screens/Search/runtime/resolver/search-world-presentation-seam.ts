@@ -13,6 +13,7 @@
 // one structural frame per world, provable in the log.
 
 import type { SearchResponse } from '../../../../types';
+import { useSystemStatusStore } from '../../../../store/systemStatusStore';
 import { logger } from '../../../../utils';
 import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
 import type { SearchRuntimeBus, SearchRuntimeBusState } from '../shared/search-runtime-bus';
@@ -136,6 +137,9 @@ export const createSearchWorldPresentationSeam = (
         presentingPhase: 'resolving',
         isSearchLoading: true,
         isLoadingMore: false,
+        // A new attempt clears the failure level — the retry surfaces drop the moment
+        // the retry (or any newer desire) starts resolving.
+        searchResolutionFailure: null,
       });
       env.onResolutionStart?.({ generation, presentationIntentKind });
     },
@@ -279,6 +283,15 @@ export const createSearchWorldPresentationSeam = (
         presentingPhase: presentedWorldId != null ? 'presented' : 'idle',
         isSearchLoading: false,
         isLoadingMore: false,
+        // The FAILURE LEVEL: desired stays (the charter's rule), presentation shows
+        // the failed fact. Offline failures render offline copy and are auto-retried
+        // on reconnect; the presented world (if any) is never destroyed.
+        searchResolutionFailure: {
+          generation,
+          reason,
+          offline: useSystemStatusStore.getState().isOffline,
+          atMs: Date.now(),
+        },
       });
       if (__DEV__) {
         logger.warn('[WORLD-COMMIT] resolution failed', { generation, reason });
