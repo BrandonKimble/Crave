@@ -16,6 +16,7 @@ import {
   createPollDetailChildRouteParams,
   type OverlayKey,
   type OverlayRouteParamsMap,
+  getAppOverlayRouteMetadata,
 } from './app-overlay-route-types';
 import {
   type AppRouteOverlaySessionActions,
@@ -362,9 +363,22 @@ export class AppRouteOverlaySessionStateController {
       // S-B origin-on-entry: the scene-switch controller snapshots the DEPARTING scene onto
       // every pushed entry through this seam. The departing key is passed EXPLICITLY (the
       // controller's own identity resolution is root-collapsed — wrong for child departures).
-      registerRouteEntryOriginCapturer((departingSceneKey) =>
-        this.captureRichSceneOrigin(departingSceneKey)
-      ),
+      registerRouteEntryOriginCapturer((departingSceneKey) => {
+        const captured = this.captureRichSceneOrigin(departingSceneKey);
+        // Ledger item 7 (red team code#2): captureRichSceneOrigin's detent comes from
+        // resolveLiveOriginIdentity, which is ROOT-collapsed (it only knows the top-level
+        // lanes). For a CHILD departure the ONE physical sheet's remembered snap for that
+        // scene is its live detent — same bug class as the scroll-lane mis-keying, one field
+        // over. Root scenes keep the root resolution (it encodes the docked-polls nuances).
+        if (getAppOverlayRouteMetadata(departingSceneKey).role !== 'child') {
+          return captured;
+        }
+        const childSnap =
+          this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap(departingSceneKey);
+        return childSnap != null && childSnap !== 'hidden'
+          ? { ...captured, detent: childSnap }
+          : captured;
+      }),
       registerRouteEntryOriginRestorer((origin) => {
         // Detent first (the pop switch's motion plan reads the remembered-snap ledger), then
         // the one-shot scroll lanes the revealed leg consumes on its next active frame.
