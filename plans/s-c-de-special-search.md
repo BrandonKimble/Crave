@@ -99,13 +99,16 @@ session — child-over-session stacking; failure/offline dismiss), commit, then 
 
 ## ⚠️ OPEN REGRESSION after S-C.2 (1e09da4c) — FIRST ITEM next session
 
-Repro: favorites → results (push) → X-pop (all GREEN, byte-canonical restore) — THEN any tab
-switching (profile → search → bookmarks): frames commit (pageswitch active/presented correct)
-but the SHEET never re-presents on ANY tab (map + home chrome only; bookmarks/profile bodies
-and even the docked-polls home sheet gone). The pop path skips the terminalDismiss choreography
-— suspect residual sheet-session state from the pop dismiss: candidates = sheet snap session
-left 'hidden'/inconsistent (check sceneSheetSnaps + silhouette/backdrop state after the pop),
-the closeChild motion of a topLevel-role scene leaving the sheet host's shell state torn, or
-clearSearchState({skipPostSearchRestore}) leaving a pending flag that eats subsequent presents.
-Attribute with a sheet-host snapshot probe after the pop; DO NOT guess. If blocking, revert
-candidates: the closeChild-kind change (policy-runtime) is the most behavior-adjacent.
+MINIMAL REPRO (fresh boot → favorites → results-push → X-pop → tab switches): the pop itself
+is GREEN, but afterwards the tabs are polluted. SHARPENED FINDING (second run): the pollution
+is a ZOMBIE RESULTS SURFACE — a stale collapsed "Results" sheet (skeleton cards, empty query)
+resurfaces over the search home after tab switches; on the first run it manifested as
+no-sheet-at-all on every tab. ROOT SHAPE: the pop path exits the ROUTE (closeActiveRoute) and
+clears the desired state (clearSearchState skipPostSearchRestore) but the RESULTS-PRESENTATION
+machine never runs its surface-exit — the rich seam paired the clear with
+dismissRestoreToTopLevelRichOrigin, and the terminalDismiss path runs
+requestClosePresentationIntent; the pop path does NEITHER. FIX DIRECTION: the pop dismiss must
+drive the results surface to a finalized idle (a motionless surface-exit — likely a
+requestClosePresentationIntent variant or the finalize path the seam uses) BEFORE/WITH the
+pop; do not invent a new teardown. Attribute against the results-presentation machine's state
+after the pop (its phase/cover/backdrop values), then wire the right finalize.
