@@ -109,6 +109,30 @@ A **Friends lens** (an opt-in toggle that filters results to _only_ friend-saved
 
 ## Failure & offline UX (plumbing BUILT 2026-07-08 — UI polish needed)
 
+**REVISED (owner call, 2026-07-08 evening):** the failure announcement is now the ONE
+standard modal, not per-surface chips/banners — uniform across every page and
+transition. Offline is the universal hang.
+
+- **Offline (app-wide standard):** navigate freely; loaded content stays; anything NEW
+  hangs in its skeleton/loading state (never an error surface); the black system banner
+  explains; back-out always works; reconnect auto-retries pending desires (the hang is
+  finite). Rig-proven for search; the same standard applies to every other scene by
+  construction (their loads simply don't complete offline).
+- **Online failure → THE STANDARD MODAL:** "Something went wrong / We couldn't complete
+  that. Please try again." with Try again + Not now. One surface everywhere — no
+  per-surface failure design exists. The failed empty state remains as the search
+  sheet's resting surface behind the modal. (The interim strip retry chip was removed.)
+- **THE STANDARD MODAL SURFACE (all modals):** OverlayModalSheet is now the app-wide
+  modal primitive — dimmed backdrop, no snap points, no grab handle, grab-to-rubber-band
+  (asymptotic upward resistance), swipe-down-only dismiss (distance or flick), backdrop
+  tap dismiss. AppModalHost (the Alert.alert replacement, 13 call sites) renders through
+  it — the old centered non-swipeable card is gone. The price + rank/score sheets get
+  the gesture for free.
+- **Polish / finger-check pass:** the sheet gesture FEEL (rubber-band ceiling 56,
+  dismiss distance 110, flick velocity 900, settle spring — all tunable constants at the
+  top of OverlayModalSheet), modal typography/spacing, EmailAuthModal migration to the
+  primitive (auth-critical, deferred), and the failure modal copy.
+
 The behavior is in its ideal shape and rig-proven; what remains is making the surfaces
 pretty. The architecture: a single `searchResolutionFailure` LEVEL on the runtime bus
 (written by the presentation seam on a failed resolution, cleared when the next attempt

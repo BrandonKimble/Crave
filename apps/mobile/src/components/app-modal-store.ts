@@ -15,6 +15,7 @@ export type AppModalAction = {
   label: string;
   onPress?: () => void;
   style?: AppModalActionStyle;
+  testID?: string;
 };
 
 export type AppModalConfig = {
