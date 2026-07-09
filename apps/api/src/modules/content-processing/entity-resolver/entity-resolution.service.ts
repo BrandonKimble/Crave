@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
-import { EntityType, Prisma } from '@prisma/client';
+import { EntityStatus, EntityType, Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import { Redis } from 'ioredis';
 import { Counter } from 'prom-client';
@@ -512,9 +512,12 @@ export class EntityResolutionService implements OnModuleInit {
     );
 
     try {
-      // Optimized bulk query for exact matches
+      // Optimized bulk query for exact matches. Archived rows are excluded:
+      // a merged-away synonym must forward to its canonical via the alias
+      // tier (the ontology banked its name there), not match its tombstone.
       const whereClause: Prisma.EntityWhereInput = {
         type: entityType,
+        status: { not: EntityStatus.archived },
         name: {
           in: normalizedNames,
           mode: 'insensitive',
@@ -600,9 +603,11 @@ export class EntityResolutionService implements OnModuleInit {
     }
 
     try {
-      // Optimized alias matching query
+      // Optimized alias matching query (archived excluded — same contract as
+      // the exact tier: only live entities are matchable).
       const whereClause: Prisma.EntityWhereInput = {
         type: entityType,
+        status: { not: EntityStatus.archived },
         aliases: {
           hasSome: allAliases,
         },
@@ -959,6 +964,38 @@ export class EntityResolutionService implements OnModuleInit {
   ): Promise<EntityResolutionResult[]> {
     const results: EntityResolutionResult[] = [];
 
+    // TOMBSTONE SINK (attribute vocab only): a term the ontology already
+    // REJECTED lives on as an archived row. Instead of minting a fresh
+    // pending entity — which the adjudicator would re-judge and re-archive
+    // forever — repeat mentions resolve onto the tombstone. Its refs are
+    // inert (read surfaces and match tiers are active/pending-only), so the
+    // junk term is permanently absorbed at zero judge cost.
+    const attributeTombstonesByName = new Map<string, string>();
+    if (
+      entityType === EntityType.food_attribute ||
+      entityType === EntityType.restaurant_attribute
+    ) {
+      const names = Array.from(
+        new Set(entities.map((e) => e.normalizedName.toLowerCase().trim())),
+      );
+      if (names.length > 0) {
+        const tombstones = await this.prisma.entity.findMany({
+          where: {
+            type: entityType,
+            status: EntityStatus.archived,
+            name: { in: names, mode: 'insensitive' },
+          },
+          select: { entityId: true, name: true },
+        });
+        for (const t of tombstones) {
+          attributeTombstonesByName.set(
+            t.name.toLowerCase().trim(),
+            t.entityId,
+          );
+        }
+      }
+    }
+
     for (const entity of entities) {
       try {
         // Prepare aliases using alias management service
@@ -1019,6 +1056,28 @@ export class EntityResolutionService implements OnModuleInit {
             duplicateTempId: entity.tempId,
           });
 
+          continue;
+        }
+
+        const tombstoneId = attributeTombstonesByName.get(normalizedName);
+        if (tombstoneId) {
+          results.push({
+            tempId: entity.tempId,
+            entityId: tombstoneId,
+            confidence: 1.0,
+            resolutionTier: 'exact',
+            matchedName: entity.normalizedName,
+            originalInput: entity,
+            isNewEntity: false,
+            entityType: entityType,
+            normalizedName: entity.normalizedName,
+            validatedAliases: scopeValidation.validAliases,
+          });
+          this.logger.debug('Resolver sank mention to rejected tombstone', {
+            entityType,
+            normalizedName: entity.normalizedName,
+            tombstoneId,
+          });
           continue;
         }
 

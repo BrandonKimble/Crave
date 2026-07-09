@@ -547,8 +547,14 @@ export class AttributeOntologyService {
 
   /**
    * Execute a canonicalization plan. The whole plan runs in ONE transaction:
-   * promotions flip status, merges fold synonyms + re-point references + delete
-   * the merged entity, rejections strip references + delete. With `apply: false`
+   * promotions flip status, merges fold synonyms + re-point references +
+   * archive the merged entity, rejections strip references + archive. Entities
+   * are NEVER hard-deleted: in-flight extractions hold resolved ids in memory
+   * for minutes, and a delete here turns their later event/ref writes into FK
+   * crashes. Archived rows are invisible to read surfaces and to resolution's
+   * match tiers; rejected tombstones additionally absorb repeat mentions of
+   * the same junk term (resolution's creation path sinks to them), so nothing
+   * is re-judged. With `apply: false`
    * (the default) the transaction is rolled back after running — verifying the
    * mechanics (and affected-row counts) against real data without persisting.
    *
@@ -603,8 +609,15 @@ export class AttributeOntologyService {
               merge.mergedEntityId,
               merge.canonicalEntityId,
             );
+            // ARCHIVE, never delete: a live extraction may hold this id in
+            // memory (event/ref writes land after adjudication) — a hard
+            // delete turns that into an FK crash. The tombstone keeps the FK
+            // world closed; read surfaces exclude non-active, and future
+            // mentions forward to the canonical via the banked alias because
+            // resolution tiers skip archived rows.
             counts.merges += await tx.$executeRawUnsafe(
-              `DELETE FROM core_entities WHERE entity_id = $1::uuid`,
+              `UPDATE core_entities SET status = 'archived'
+               WHERE entity_id = $1::uuid`,
               merge.mergedEntityId,
             );
           }
@@ -615,8 +628,14 @@ export class AttributeOntologyService {
               plan.type,
               rejection.entityId,
             );
+            // ARCHIVE, never delete (same FK-safety contract as merges).
+            // The rejected tombstone also becomes a SINK: resolution reuses
+            // it for repeat mentions of the junk term instead of minting a
+            // fresh pending entity, so the judge never re-adjudicates the
+            // same term. Its refs stay inert (read surfaces are active-only).
             counts.rejections += await tx.$executeRawUnsafe(
-              `DELETE FROM core_entities WHERE entity_id = $1::uuid`,
+              `UPDATE core_entities SET status = 'archived'
+               WHERE entity_id = $1::uuid`,
               rejection.entityId,
             );
           }
