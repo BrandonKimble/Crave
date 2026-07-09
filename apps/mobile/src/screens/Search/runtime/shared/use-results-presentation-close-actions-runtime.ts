@@ -163,9 +163,26 @@ export const useResultsPresentationCloseActionsRuntime = ({
       // Red team RT-1: detection is STACK MEMBERSHIP — a child (restaurant) may top the
       // session; the dismissal then pops EVERYTHING above the root (popToRoot restores the
       // deepest pushed entry's origin = the root's captured presentation).
-      const isPushedSearchSession =
-        routeState.rootOverlayKey !== 'search' && hasSearchSessionAboveRoot(routeState);
-      if (isPushedSearchSession) {
+      // S-C.3-B step 2: the dismiss selector generalizes over the STACK SHAPE.
+      //  • top-is-session with a CHILD beneath (poll-dish search launched from pollDetail:
+      //    [search#home, pollDetail, search#session]) → closeActive pops ONE, revealing the
+      //    untouched child leg (scroll/comment position survive because the ENTRY survives —
+      //    the old re-root+re-push machinery is dead). NO manual nav-show: the derived rule
+      //    keeps the nav out while a child is revealed.
+      //  • session on a NON-SEARCH root (favorites/profile launches, incl. children pushed
+      //    over the session) → popToRoot (RT-1 shape; deepest entry's origin restores).
+      //  • session directly on the SEARCH root → legacy terminalDismiss home dance (its
+      //    first switch pops since step 1 — the home entry survives).
+      const hasSession = hasSearchSessionAboveRoot(routeState);
+      const entryBeneathTop =
+        routeState.overlayRouteStack[routeState.overlayRouteStackLength - 2] ?? null;
+      const topIsSessionOverChild =
+        hasSession &&
+        routeState.activeOverlayRoute.key === 'search' &&
+        entryBeneathTop != null &&
+        routeState.overlayRouteStack[0] !== entryBeneathTop;
+      const isPushedSearchSession = routeState.rootOverlayKey !== 'search' && hasSession;
+      if (topIsSessionOverChild || isPushedSearchSession) {
         ignoreNextSearchBlurRef.current = true;
         unstable_batchedUpdates(() => {
           clearSearchState({
@@ -174,14 +191,19 @@ export const useResultsPresentationCloseActionsRuntime = ({
           });
           resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
           setPendingCloseIntentId(null);
-          routeSceneRuntime.routeOverlayRouteCommandRuntime.popToRootRoute({
-            applyOriginDetent: true,
-          });
+          if (topIsSessionOverChild) {
+            routeSceneRuntime.routeOverlayRouteCommandRuntime.closeActiveRoute({
+              applyOriginDetent: true,
+            });
+          } else {
+            routeSceneRuntime.routeOverlayRouteCommandRuntime.popToRootRoute({
+              applyOriginDetent: true,
+            });
+            // The submit choreography commanded the nav out; revealing a ROOT commands it
+            // home (a revealed CHILD keeps it out via the derived rule).
+            requestSearchBottomNavMotionTarget('show');
+          }
           getSearchSurfaceRuntime().finalizeSessionExitWithoutDismissMotion();
-
-          // The submit choreography commanded the nav out; the pop path owns commanding it
-          // home (the terminalDismiss choreography that normally does this is skipped).
-          requestSearchBottomNavMotionTarget('show');
         });
         return;
       }

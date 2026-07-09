@@ -264,10 +264,17 @@ PROVEN: double submit→dismiss shows the SAME search#home sentinel entry across
 (entryId survival); home byte-canonical (docked polls, nav, zero marker residue — wire exit
 runs, choreography untouched); favorites chain + tab sweep canonical.
 
-REMAINING (design steps 2-5): prepareSearchSessionEntry skip generalizes to ALL roots — GAP
-FOUND while planning it: the polls-root childAnchor flow's anchor is LAUNCH-INTENT context;
-riding entry origins requires pollDetail to PUBLISH its own anchor (pollId + focused comment)
-via the origin live-state registry (getSceneParams/anchor getter — the publication seam
-exists), so the entry capture picks it up like scroll/segment. Then: slot deletion,
+REMAINING (design steps 2-5) — STEP-2 REVISION (chase-the-true-ideal): the anchor-publication
+idea is DEAD — it compensated for the re-root+re-push mechanism itself. Under entries-as-values
+the poll-dish search pushes OVER the still-alive pollDetail entry ([search#home, pollDetail,
+search#session]); dismissal is a plain closeActive pop revealing the untouched leg — scroll,
+comment position, everything survives because the ENTRY survives. No anchor, no slot, no
+re-push. Step 2 = prepareSearchSessionEntry becomes a no-op (skip ALL roots) + the dismiss
+branch selector generalizes: top-is-session && beneath-is-child → closeActive (one pop, NO
+manual nav-show — the derived rule keeps nav out for the revealed child); beneath-is-search-
+root → legacy terminal home dance (step 1's pop); non-search root → existing popToRoot path.
+resolveChildOriginRePush + the slot machinery go DEAD and delete in step 3. Deferred: a
+pop-to-entry routeAction for [home, pollDetail, session, restaurant]-shaped X-dismissals
+(popToRoot slightly overshoots to home there; rare, noted). Then: slot deletion,
 handleRootOverlayTransition deletion, nav-law depth flip + both manual nav commands, close-kind
 generalization, applyOriginDetent one-mechanism, profile foreground re-root (item 10).

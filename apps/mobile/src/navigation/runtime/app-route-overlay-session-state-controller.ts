@@ -560,28 +560,13 @@ export class AppRouteOverlaySessionStateController {
     this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
   }
 
-  private prepareSearchSessionEntry(options?: AppRouteSearchSessionEntryOptions): void {
-    const routeOverlayIdentitySnapshot = this.routeOverlayIdentityAuthority.getSnapshot();
-    // S-C.2 (plans/s-c-de-special-search.md): from a bookmarks/profile ROOT the session entry
-    // is a PUSH — no slot capture (the pushed entry carries the origin), no re-root (the root
-    // persists; "you're still on Favorites" is route truth). The results-present verb resolves
-    // routeAction 'push' for non-search roots; dismiss is a pop. Search-root flows keep the
-    // legacy slot + re-root until S-C.3.
-    if (
-      routeOverlayIdentitySnapshot.rootOverlayKey === 'bookmarks' ||
-      routeOverlayIdentitySnapshot.rootOverlayKey === 'profile'
-    ) {
-      return;
-    }
-    if (options?.captureOrigin) {
-      // Forward the childAnchor into the captured origin; the dismiss restore reads it back
-      // (resolveChildOriginRePush) to re-push the exact poll + comment.
-      this.captureSearchSessionOrigin(options.childAnchor);
-    }
-    this.routeSearchCommandActions.ensureAppSearchRouteSearchEntry({
-      rootOverlay: routeOverlayIdentitySnapshot.rootOverlayKey,
-      activeOverlayKey: routeOverlayIdentitySnapshot.activeOverlayRouteKey,
-    });
+  private prepareSearchSessionEntry(_options?: AppRouteSearchSessionEntryOptions): void {
+    // S-C.3-B step 2 (plans/s-c-de-special-search.md): session-entry preparation is a NO-OP
+    // for EVERY root — the session is a PUSH over whatever is on the stack (root or child; the
+    // poll-dish flow pushes over the still-alive pollDetail entry), the pushed entry carries
+    // its origin, and dismissal is a pop. The slot capture (childAnchor re-push) and the
+    // re-root (ensureAppSearchRouteSearchEntry) compensated for stack destruction that no
+    // longer happens; both delete with the rest of the slot machinery in step 3.
   }
 
   // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Restore) —
