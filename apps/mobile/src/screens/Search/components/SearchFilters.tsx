@@ -675,21 +675,6 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     overflow: 'hidden',
   },
-  rankButton: {
-    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
-    paddingRight: PRICE_TOGGLE_RIGHT_PADDING,
-  },
-  rankButtonActive: {},
-  rankButtonLabel: {
-    color: '#111827',
-  },
-  rankButtonLabelActive: {
-    color: '#ffffff',
-  },
-  rankButtonChevron: {
-    marginLeft: 6,
-    marginTop: 0,
-  },
   segmentedOption: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
     justifyContent: 'center',
@@ -727,9 +712,6 @@ const styles = StyleSheet.create({
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
   },
   openNowButtonActive: {},
-  openNowButtonDisabled: {
-    opacity: 0.6,
-  },
   openNowText: {
     color: '#111827',
   },
@@ -741,9 +723,6 @@ const styles = StyleSheet.create({
     paddingRight: PRICE_TOGGLE_RIGHT_PADDING,
   },
   priceButtonActive: {},
-  priceButtonDisabled: {
-    opacity: 0.6,
-  },
   priceButtonLabel: {
     color: '#111827',
   },
@@ -778,9 +757,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   risingButtonActive: {},
-  risingButtonDisabled: {
-    opacity: 0.6,
-  },
   risingText: {
     color: '#111827',
   },

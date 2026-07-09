@@ -39,14 +39,60 @@ is only the work queue). Pre-launch QA gate: `product/README.md`.
    `Record<OverlayKey>` table in the same file) so adding an `OverlayKey` fails
    compilation until every foundation decision is stated. Snap descriptor table stays
    as-is (it's the exemplar); curated degrade-gracefully policies stay curated.
-4. **Strip consolidation** — DONE 2026-07-08 (owner: "all toggle improvements must
-   land in one primitive"): `SegmentedToggle` generalized from exactly-2 to N
-   segments (same pill mechanism; tap resolves the segment from measured geometry);
-   bookmarks (2 segments) and profile (3 segments) ported off their hand-rolled
-   Pressable rows; dead segment styles deleted. Remaining niceties for each page's
-   design pass: whether bookmarks/profile also adopt `FrostedFilterStrip` (the frost
-   cutout treatment — a per-page VISUAL call; the toggle mechanics are now shared
-   regardless). Needs a finger-check on both pages.
+4. **Strip consolidation** — panel half DONE 2026-07-08 (owner: "all toggle
+   improvements must land in one primitive"): `SegmentedToggle` generalized from
+   exactly-2 to N segments; bookmarks (2-seg) and profile (3-seg) ported off their
+   hand-rolled Pressable rows. Whether bookmarks/profile also adopt
+   `FrostedFilterStrip` = per-page visual call for their design passes. Needs a
+   finger-check on both pages. **The SEARCH half is item 4b below.**
+
+4b. **THE TOGGLE CONTRACT — full audit executed 2026-07-08 (owner decree: every
+toggle, current and future, rides ONE implementation and gets ALL the benefits;
+"Search this area" IS a toggle).** Audit verdict: the decree is half-true — the
+visual primitives (SegmentedToggle + FilterChip + FrostedFilterStrip) are genuinely
+portable (PollsPanel = the zero-plumbing proof), but the SEARCH strip — the
+feel-checked reference — still hand-rolls BOTH the pill (SearchFilters.tsx ~425-494,
+byte-identical constants to SegmentedToggle, which was extracted FROM it and never
+ported back) and its five chips (inline Pressables, not FilterChip); the
+coordination layer exists but has ONE consumer; search-this-area bypasses it.
+**The five benefits every toggle must get (the contract):** (1) pill/chip visual
+mechanics, (2) optimistic press-up flip, (3) restarting quiet-window debounce
+(300ms, seq-guarded), (4) cancelable consequence, (5) visual-sync finalize
+(awaitVisualSync + lifecycle events driving the interaction cover). Availability
+conditions (search-this-area's 8-flag predicate) are a PREDICATE over the same
+contract, never a different flow.
+Work queue (risk-ordered; a+b+c = one focused pass with a finger-check on the
+canonical strip; dead `*Disabled`/`rankButton*` styles already deleted):
+
+- (a) LOW: port SearchFilters' five inline chips onto `FilterChip` (needs children
+  support for the price chevron + "N similar" custom content — extend FilterChip,
+  don't fork).
+- (b) MEDIUM: ONE pill — add an optional layout-cache in/out to `SegmentedToggle`
+  (mirroring FrostedFilterStrip's initialHoleLayout/onMeasuredLayoutChange) and
+  replace the SearchFilters inline pill with it; the runtime-bus live read stays in
+  SearchFilters feeding value/onChange. Mechanics already identical → auditable
+  diff; feel-check gates it.
+- (c) MEDIUM: search-this-area onto the coordinator — today its press goes
+  use-search-foreground-search-area-submit-runtime.ts → rerunActiveSearch → tuple
+  cause 'initial_submit' → reconciler 'area_rerun' → DIRECT env.resolve (bypasses
+  scheduleToggleCommit; no debounce/cancel/visual-sync; resetMapMoveFlag is a
+  hand-wired promise chain). Fix: ride `scheduleToggleCommit` (kind
+  'search_this_area'), move resetMapMoveFlag into the `finalized` lifecycle, keep
+  the visibility predicate as the declared availability conditions.
+- (d) THE EXTENSIBILITY KEYSTONE: extract the generic core of
+  `use-results-presentation-toggle-coordinator.ts` (self-labeled "TR5
+  portable-toggle-primitive seed") — seq + restarting debounce + cancelable runner
+  - visual-sync wait + lifecycle events — parameterizing its two bus writes
+    (publish(toggleInteraction) + startPatch), so ANY page (deep-linked shared
+    search/list included) composes strip + toggle + `declareToggle(kind, runner,
+optimisticPatch)` and gets all five benefits by construction. Today a new page
+    gets the LOOK for free but must replicate the bus+reconciler+coordinator stack
+    for the BEHAVIOR — that's the gap.
+- Non-goals: the map dots/labels LOD crossfade is engine-internal, zoom-driven, not
+  a UI toggle (and the shipped map is not to be touched); disabled-while-resolving
+  exists NOWHERE today (optimistic flip + coalescing is the model) — adding it
+  would be a new product decision, not a consolidation.
+
 5. **Failure-standard adoption in the poll cluster** (S/M): migrate the ~12 bespoke
    `showAppModal` failure calls (PollDetailPanel, PollCreationPanel, PollsPanel feed
    freshness) to `announceFailureIfOnline`; bespoke copy dies. Then an eslint

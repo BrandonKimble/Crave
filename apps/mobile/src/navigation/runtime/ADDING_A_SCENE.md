@@ -88,6 +88,15 @@ completeness pattern (§1): when a piece can be a compile-time-exhaustive table,
 it one — a forgotten key must be a build error that names the key, not a silent
 default.
 
+**The toggle contract (owner decree, 2026-07-08):** every toggle-like control —
+including conditional ones like "Search this area" (a toggle whose availability is a
+predicate) — gets FIVE benefits from the shared implementations, never hand-rolled:
+(1) pill/chip visual mechanics (`SegmentedToggle`/`FilterChip`), (2) optimistic
+press-up flip, (3) restarting quiet-window debounce, (4) cancelable consequence,
+(5) visual-sync finalize (the results-presentation toggle coordinator — being
+extracted into a portable `declareToggle` core; status + work queue in
+`plans/page-foundation-codification.md` §4b).
+
 ## 6. Persistent-poll-lane caveat
 
 The docked polls lane is the one bespoke subsystem. Its search→docked dismiss
