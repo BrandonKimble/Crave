@@ -110,8 +110,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
       rootDataPlaneRuntime.resultsArrivalState.submittedQuery.length > 0,
     isSearchSessionActive: rootDataPlaneRuntime.runtimeFlags.isSearchSessionActive,
     hasResults: rootDataPlaneRuntime.resultsArrivalState.hasResults,
-    profilePresentationActiveRef:
-      profileBridgeAuthorityRuntime.profileBridge.profilePresentationActiveRef,
     prepareRestaurantProfileForTerminalSearchDismissRef:
       profileBridgeAuthorityRuntime.profileBridge
         .prepareRestaurantProfileForTerminalSearchDismissRef,

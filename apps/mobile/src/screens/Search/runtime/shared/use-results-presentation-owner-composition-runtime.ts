@@ -26,7 +26,6 @@ export type UseResultsPresentationOwnerCompositionRuntimeArgs<Suggestion> = {
   hasActiveSearchContent: boolean;
   isSearchSessionActive: boolean;
   hasResults: boolean;
-  profilePresentationActiveRef: React.MutableRefObject<boolean>;
   prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
   isSearchLoading: boolean;
   isSuggestionPanelActive: boolean;
@@ -79,7 +78,6 @@ export const useResultsPresentationOwnerCompositionRuntime = <Suggestion>({
   hasActiveSearchContent,
   isSearchSessionActive,
   hasResults,
-  profilePresentationActiveRef,
   prepareRestaurantProfileForTerminalSearchDismissRef,
   isSearchLoading,
   isSuggestionPanelActive,
@@ -156,7 +154,6 @@ export const useResultsPresentationOwnerCompositionRuntime = <Suggestion>({
     submittedQuery,
     isSearchSessionActive,
     hasResults,
-    profilePresentationActiveRef,
     prepareRestaurantProfileForTerminalSearchDismissRef,
     ignoreNextSearchBlurRef,
     isClearingSearchRef,

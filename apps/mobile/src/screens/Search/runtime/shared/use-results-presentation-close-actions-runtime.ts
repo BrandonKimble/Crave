@@ -17,7 +17,6 @@ type UseResultsPresentationCloseActionsRuntimeArgs = {
   submittedQuery: string;
   isSearchSessionActive: boolean;
   hasResults: boolean;
-  profilePresentationActiveRef: React.MutableRefObject<boolean>;
   prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
@@ -51,7 +50,6 @@ export const useResultsPresentationCloseActionsRuntime = ({
   submittedQuery,
   isSearchSessionActive,
   hasResults,
-  profilePresentationActiveRef,
   prepareRestaurantProfileForTerminalSearchDismissRef,
   ignoreNextSearchBlurRef,
   isClearingSearchRef,
@@ -124,11 +122,18 @@ export const useResultsPresentationCloseActionsRuntime = ({
       surfaceSnapshot.heldBundle != null ||
       surfaceSnapshot.redrawTransaction != null ||
       surfaceSnapshot.dismissTransaction != null;
+    // S-C.5 slice A: "a profile is open" is a STACK FACT (every profile open pushes the
+    // 'restaurant' entry — plans/s-c5-restaurant-stack-fact.md). The probe showed the old
+    // presentation-flag mirror only diverges for ONE frame on the close side, where the
+    // stack fact is the MORE correct signal (the profile is already gone).
+    const isRestaurantRouteActive =
+      routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute.key ===
+      'restaurant';
     const hasSearchToClose =
       isSearchSessionActive ||
       hasResults ||
       submittedQuery.length > 0 ||
-      profilePresentationActiveRef.current ||
+      isRestaurantRouteActive ||
       hasVisibleSearchSurface;
     if (!hasSearchToClose) {
       clearTypedQuery();
@@ -254,10 +259,10 @@ export const useResultsPresentationCloseActionsRuntime = ({
       isClearingSearchRef.current = true;
       const activeRouteKey =
         routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute.key;
+      // S-C.5 slice A: outgoing scene derives from the stack fact alone (the mirror read
+      // is gone; see the slice-A probe result in the plan).
       const outgoingSheetSceneKey: OverlayKey =
-        profilePresentationActiveRef.current || activeRouteKey === 'restaurant'
-          ? 'restaurant'
-          : 'search';
+        activeRouteKey === 'restaurant' ? 'restaurant' : 'search';
       const terminalDismissSource = outgoingSheetSceneKey === 'restaurant' ? 'profile' : 'results';
       if (terminalDismissSource === 'profile') {
         prepareRestaurantProfileForTerminalSearchDismissRef.current();
@@ -281,7 +286,6 @@ export const useResultsPresentationCloseActionsRuntime = ({
     isClearingSearchRef,
     isSearchSessionActive,
     prepareRestaurantProfileForTerminalSearchDismissRef,
-    profilePresentationActiveRef,
     requestClosePresentationIntent,
     routeSceneRuntime,
     resultsSheetRuntime,
