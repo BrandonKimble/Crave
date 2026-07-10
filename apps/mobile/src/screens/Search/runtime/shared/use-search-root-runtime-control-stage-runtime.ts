@@ -233,6 +233,8 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     launchEntitySearchResults: submitRuntimeResult.launchEntitySearchResults,
     // Phase 4 — the committed restaurant reveal lane (replaces the cold preview lane).
     runRestaurantEntitySearch: submitRuntimeResult.runRestaurantEntitySearch,
+    submitSearch: submitRuntimeResult.submitSearch,
+    submitViewportShortcut: submitRuntimeResult.submitViewportShortcut,
     setRestaurantOnlyIntent:
       stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState
         .setRestaurantOnlyIntent,

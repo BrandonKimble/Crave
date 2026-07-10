@@ -1,3 +1,4 @@
+import { serializeDesireLinkToPath } from '../../navigation/runtime/desire-url-codec';
 import React from 'react';
 import { ActivityIndicator, Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -542,7 +543,7 @@ const BookmarksDataSurface = React.memo(
     const handleShare = React.useCallback(async (list: FavoriteListSummary) => {
       try {
         const result = await favoriteListsService.enableShare(list.listId);
-        const shareUrl = `${SHARE_BASE_URL}/l/${result.shareSlug}`;
+        const shareUrl = `${SHARE_BASE_URL}${serializeDesireLinkToPath({ kind: 'sharedList', shareSlug: result.shareSlug })}`;
         await Share.share({
           message: `${list.name} · View on Crave Search\n${shareUrl}`,
         });

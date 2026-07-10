@@ -91,6 +91,9 @@ export type SearchForegroundLaunchIntentRuntimeArgs = {
   launchFavoritesListResults: SearchForegroundLaunchFavoritesListResults;
   launchEntitySearchResults: SearchForegroundLaunchEntitySearchResults;
   runRestaurantEntitySearch: SearchForegroundRunRestaurantEntitySearch;
+  // S-E: the URL-addressable search desires (/q, /s) land through the intent channel.
+  submitSearch: SearchForegroundSubmitRuntime['submitSearch'];
+  submitViewportShortcut: SearchForegroundSubmitRuntime['submitViewportShortcut'];
   setRestaurantOnlyIntent: (restaurantId: string | null) => void;
   pendingRestaurantSelectionRef: React.MutableRefObject<{ restaurantId: string } | null>;
   currentMarketKey?: string | null;

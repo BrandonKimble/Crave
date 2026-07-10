@@ -219,7 +219,10 @@ export class FavoriteListsService {
     dto: FavoriteListResultsDto,
   ): Promise<SearchResponse> {
     const list = await this.prisma.favoriteList.findFirst({
-      where: { listId, ownerUserId: userId },
+      // S-E (addressability): a shared list is readable by ANY authed user — the
+      // /l/<slug> inbound route lands non-owners on this same list world, whose results
+      // ride this endpoint. Visibility = owner OR share-enabled (getSharedList's rule).
+      where: { listId, OR: [{ ownerUserId: userId }, { shareEnabled: true }] },
       include: {
         items: {
           orderBy: { position: 'asc' },

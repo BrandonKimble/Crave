@@ -1,6 +1,8 @@
 import React from 'react';
 
 import { searchService } from '../../../../services/search';
+import { favoriteListsService } from '../../../../services/favorite-lists';
+import { SHORTCUT_QUERY_LABEL_BY_TAB } from './shortcut-toggle-display-query';
 import { logger } from '../../../../utils';
 
 import type { SearchForegroundLaunchIntentRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
@@ -14,6 +16,8 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   launchFavoritesListResults,
   launchEntitySearchResults,
   runRestaurantEntitySearch,
+  submitSearch,
+  submitViewportShortcut,
   setRestaurantOnlyIntent,
   pendingRestaurantSelectionRef,
   currentMarketKey,
@@ -68,6 +72,47 @@ export const useSearchForegroundLaunchIntentRuntime = ({
 
     if (activeMainIntent.type === 'search') {
       navigation.setParams({ searchIntent: activeMainIntent.searchIntent });
+      consumeActiveMainIntent();
+      return;
+    }
+
+    // S-E: /l/<shareSlug> — async resolution (getShared), then the SAME list world every
+    // list tap uses. Failure is logged loudly; the ListBody failure/empty presentation is
+    // the listDetail-era item (charter §5.6) — until then a dead slug lands you at home.
+    if (activeMainIntent.type === 'sharedList') {
+      const shareSlug = activeMainIntent.shareSlug;
+      void favoriteListsService
+        .getShared(shareSlug)
+        .then((detail) => {
+          void launchFavoritesListResults({
+            listId: detail.list.listId,
+            listType: detail.list.listType,
+            submittedLabel: detail.list.name,
+          });
+        })
+        .catch((error) => {
+          logger.warn('Shared list link failed to resolve', {
+            shareSlug,
+            message: error instanceof Error ? error.message : 'unknown error',
+          });
+        });
+      consumeActiveMainIntent();
+      return;
+    }
+
+    // S-E: /q/<query> and /s/<tab> — the URL-addressable search desires ride the same
+    // submit verbs every in-app trigger uses.
+    if (activeMainIntent.type === 'searchDesire') {
+      const desire = activeMainIntent.desire;
+      if (desire.kind === 'natural') {
+        void submitSearch({}, desire.query);
+      } else {
+        void submitViewportShortcut(
+          desire.shortcutTab,
+          SHORTCUT_QUERY_LABEL_BY_TAB[desire.shortcutTab],
+          { forceFreshBounds: true }
+        );
+      }
       consumeActiveMainIntent();
       return;
     }
