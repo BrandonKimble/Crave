@@ -178,6 +178,66 @@ export class GeminiBatchService implements OnModuleDestroy {
     return job.jobId;
   }
 
+  /** Complete the provider half of submit() for a job whose items are already
+   *  persisted (status 'pending'): rebuild the request from llm_batch_job_items
+   *  and submit. Claims the row first so concurrent pollers can't double-submit. */
+  private async resumeSubmit(
+    jobId: string,
+    purpose: string,
+    model: string,
+  ): Promise<void> {
+    const claimed = await this.prisma.llmBatchJob.updateMany({
+      where: { jobId, status: 'pending' },
+      data: { status: 'submitting' },
+    });
+    if (claimed.count === 0) return;
+    try {
+      const items = await this.prisma.llmBatchJobItem.findMany({
+        where: { jobId },
+        orderBy: { itemIndex: 'asc' },
+        select: { itemIndex: true, itemKey: true, request: true },
+      });
+      const created = await this.genAI.batches.create({
+        model,
+        src: {
+          inlinedRequests: items.map((item) => {
+            const req = item.request as {
+              contents: unknown;
+              config: unknown;
+            };
+            return {
+              contents: req.contents,
+              config: req.config,
+              metadata: { key: item.itemKey, index: String(item.itemIndex) },
+            } as never;
+          }),
+        },
+        config: { displayName: `${purpose}-${jobId.slice(0, 8)}` },
+      });
+      await this.prisma.llmBatchJob.update({
+        where: { jobId },
+        data: {
+          providerJobName: created.name ?? null,
+          status: 'submitted',
+          submittedAt: new Date(),
+        },
+      });
+      this.logger.info('Gemini batch resume-submitted', {
+        jobId,
+        providerJobName: created.name,
+        purpose,
+        requestCount: items.length,
+      });
+    } catch (error) {
+      // Back to 'pending' so the next poll cycle retries the provider call.
+      await this.prisma.llmBatchJob.updateMany({
+        where: { jobId, status: 'submitting' },
+        data: { status: 'pending' },
+      });
+      throw error;
+    }
+  }
+
   async cancel(jobId: string): Promise<void> {
     const job = await this.prisma.llmBatchJob.findUnique({
       where: { jobId },
@@ -203,6 +263,32 @@ export class GeminiBatchService implements OnModuleDestroy {
       markDone = resolve;
     });
     try {
+      // Resume-submit stale 'pending' jobs: submit() persists items BEFORE the
+      // provider call precisely so a failure between the two (crash, provider
+      // 429) leaves a resumable job — this is the resumer that honors that
+      // contract. Age-gated so we never race a submit() currently in flight.
+      const stalePending = await this.prisma.llmBatchJob.findMany({
+        where: {
+          status: 'pending',
+          createdAt: { lt: new Date(Date.now() - 15 * 60 * 1000) },
+        },
+        select: { jobId: true, purpose: true, model: true },
+        take: 10,
+      });
+      for (const job of stalePending) {
+        try {
+          await this.resumeSubmit(job.jobId, job.purpose, job.model);
+        } catch (error) {
+          this.logger.warn('Batch resume-submit failed for pending job', {
+            jobId: job.jobId,
+            error:
+              error instanceof Error
+                ? { message: error.message }
+                : { message: String(error) },
+          });
+        }
+      }
+
       const open = await this.prisma.llmBatchJob.findMany({
         where: { status: 'submitted' },
         select: { jobId: true, providerJobName: true, purpose: true },
