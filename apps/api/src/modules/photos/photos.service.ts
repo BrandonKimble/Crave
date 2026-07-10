@@ -141,7 +141,15 @@ export class PhotosService {
       this.logger.warn('Notification for unknown publicId', { publicId });
       return;
     }
-    const type = payload.notification_type as string | undefined;
+    // Upload callbacks don't always carry notification_type — an
+    // upload-result-shaped payload (width/bytes present) IS the upload
+    // notification (E2E-observed 2026-07-10).
+    const rawType = payload.notification_type as string | undefined;
+    const type =
+      rawType ??
+      (payload.width !== undefined || payload.bytes !== undefined
+        ? 'upload'
+        : undefined);
     if (type === 'upload') {
       await this.applyUploadResult(photo.photoId, payload);
       return;
@@ -151,7 +159,10 @@ export class PhotosService {
       await this.applyModerationResult(photo.photoId, publicId, status);
       return;
     }
-    this.logger.debug('Ignored Cloudinary notification type', { type });
+    this.logger.info('Ignored Cloudinary notification', {
+      type,
+      keys: Object.keys(payload).slice(0, 12),
+    });
   }
 
   private async applyUploadResult(

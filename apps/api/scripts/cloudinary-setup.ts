@@ -58,6 +58,10 @@ async function main(): Promise<void> {
         throw error;
       }
     }
+    // Deliverable under STRICT transformations (the whole allowlist).
+    await cloudinary.api.update_transformation(name, {
+      allowed_for_strict: true,
+    });
   }
 
   const presetName = process.env.CLOUDINARY_UPLOAD_PRESET || 'crave_ugc_photo';

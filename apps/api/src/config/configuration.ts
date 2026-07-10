@@ -213,6 +213,11 @@ export default () => {
       cloudName: process.env.CLOUDINARY_CLOUD_NAME,
       apiKey: process.env.CLOUDINARY_API_KEY,
       apiSecret: process.env.CLOUDINARY_API_SECRET,
+      // Notifications are signed with the account PRIMARY (root) key's
+      // secret — NOT the key that made the upload (E2E-proven 2026-07-10).
+      webhookSecret:
+        process.env.CLOUDINARY_WEBHOOK_SECRET ||
+        process.env.CLOUDINARY_API_SECRET,
       // Folder/public_id prefix per environment (isolates dev assets).
       envPrefix: process.env.CLOUDINARY_ENV_PREFIX || 'dev',
       // Public URL Cloudinary POSTs upload/moderation notifications to

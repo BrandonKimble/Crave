@@ -164,3 +164,29 @@ REMAINING for the full moderation flip (owner, Console — no API exists):
    Then rerun: `yarn ts-node scripts/photo-e2e.ts` (full pending→live flip).
    Dev webhook = cloudflared tunnel in CLOUDINARY_NOTIFICATION_URL (per
    session); prod = Railway URL.
+
+## FULL PROBE GREEN (2026-07-10, post Console clicks)
+
+Complete lifecycle verified live: ticket → direct upload → Rekognition
+approved → upload webhook AUTHENTICATED + flipped pending→LIVE in-window →
+Gemini is-food gate (proven BOTH ways: paywall screenshot REMOVED as
+not_food; rice photo passed) → signed t_crave_thumb delivery under STRICT
+transformations → delivered variant fully EXIF-stripped (GPS test image).
+
+Three more E2E-earned corrections (all committed):
+
+1. **Notifications are signed with the PRIMARY (root) key's secret**, not
+   the named key that uploads → dedicated CLOUDINARY_WEBHOOK_SECRET.
+2. **fastify-raw-body was global:false with NO routes opted in** → rawBody
+   was undefined app-wide — which means the STRIPE webhook signature check
+   had the same latent bug. Fixed with an explicit routes list (stripe +
+   cloudinary webhooks).
+3. **Strict transformations blocks inline chains** (t_named/f_auto = 401) →
+   delivery URLs are now SDK-SIGNED (sign_url), which is strict-exempt and
+   keeps f_auto effective. Upload callbacks may omit notification_type →
+   upload-shaped payloads are treated as upload notifications.
+   allowed_for_strict is set programmatically in cloudinary-setup.ts (the
+   Console allowlist click wasn't needed after all).
+4. CORRECTION to the earlier note: quality_analysis focus DOES populate on
+   the free plan via the webhook path (0.34 measured) — hero quality floor
+   works at launch.

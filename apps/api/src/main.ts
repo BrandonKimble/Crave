@@ -92,9 +92,16 @@ async function bootstrap() {
   const fastifyAdapter = new FastifyAdapter({ trustProxy: true });
   await fastifyAdapter.getInstance().register(fastifyRawBody, {
     field: 'rawBody',
+    // Exactly the webhook routes whose providers sign the RAW bytes —
+    // global:false with no opted-in routes left rawBody undefined
+    // everywhere (latent Stripe-signature bug, found by the photo E2E).
     global: false,
     encoding: 'utf8',
     runFirst: true,
+    routes: [
+      '/api/v1/billing/webhooks/stripe',
+      '/api/v1/photos/webhooks/cloudinary',
+    ],
   });
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,

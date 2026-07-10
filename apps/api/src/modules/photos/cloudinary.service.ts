@@ -1,6 +1,7 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
+import { createHash } from 'node:crypto';
 import { LoggerService } from '../../shared';
 
 /** The four delivery variants — NAMED transformations in Cloudinary
@@ -48,6 +49,7 @@ export class CloudinaryService {
   private readonly cloudName: string | undefined;
   private readonly apiKey: string | undefined;
   private readonly apiSecret: string | undefined;
+  private readonly webhookSecret: string | undefined;
   private readonly envPrefix: string;
   private readonly uploadPreset: string;
   private readonly notificationUrl: string | undefined;
@@ -60,6 +62,9 @@ export class CloudinaryService {
     this.cloudName = this.configService.get<string>('cloudinary.cloudName');
     this.apiKey = this.configService.get<string>('cloudinary.apiKey');
     this.apiSecret = this.configService.get<string>('cloudinary.apiSecret');
+    this.webhookSecret = this.configService.get<string>(
+      'cloudinary.webhookSecret',
+    );
     this.envPrefix =
       this.configService.get<string>('cloudinary.envPrefix') || 'dev';
     this.uploadPreset =
@@ -126,9 +131,12 @@ export class CloudinaryService {
     };
   }
 
-  /** Verify Cloudinary's notification signature via the SDK's own verifier
-   *  (X-Cld-Signature + X-Cld-Timestamp; staleness enforced by validFor).
-   *  Fail CLOSED — an unverified webhook can flip photo statuses. */
+  /** Verify Cloudinary's notification signature: X-Cld-Signature =
+   *  SHA-1(body + timestamp + PRIMARY key secret). E2E-proven 2026-07-10:
+   *  notifications are signed with the account's ROOT/primary secret, not
+   *  the (named) key that made the upload — hence the dedicated
+   *  CLOUDINARY_WEBHOOK_SECRET. Fail CLOSED — an unverified webhook can
+   *  flip photo statuses. */
   verifyNotificationSignature(
     rawBody: string,
     timestampHeader: string | undefined,
@@ -139,25 +147,29 @@ export class CloudinaryService {
     if (!timestampHeader || !signatureHeader) return false;
     const timestamp = Number(timestampHeader);
     if (!Number.isFinite(timestamp)) return false;
-    try {
-      return cloudinary.utils.verifyNotificationSignature(
-        rawBody,
-        timestamp,
-        signatureHeader,
-        maxAgeSeconds,
-      );
-    } catch {
-      return false;
-    }
+    if (Math.abs(Date.now() / 1000 - timestamp) > maxAgeSeconds) return false;
+    const expected = createHash('sha1')
+      .update(rawBody + timestampHeader + this.webhookSecret!)
+      .digest('hex');
+    return expected === signatureHeader;
   }
 
   /** THE delivery-URL builder — every DTO carries these; no client ever
-   *  constructs a Cloudinary URL. Named transformation (geometry/quality)
-   *  + inline f_auto,q_auto chained after it. */
+   *  constructs a Cloudinary URL. Named transformation (geometry) chained
+   *  with f_auto,q_auto, SIGNED: strict transformations blocks dynamic
+   *  chains (E2E-proven — named-only 200, chained 401), and signed URLs
+   *  are strict-exempt while keeping f_auto effective (it's inert INSIDE
+   *  named transformations). */
   buildUrls(publicId: string): PhotoUrls {
-    const base = `https://res.cloudinary.com/${this.cloudName}/image/upload`;
     const url = (variant: PhotoVariant) =>
-      `${base}/${PHOTO_VARIANTS[variant]}/f_auto,q_auto/${publicId}`;
+      cloudinary.url(publicId, {
+        transformation: [
+          { transformation: PHOTO_VARIANTS[variant].replace(/^t_/, '') },
+          { fetch_format: 'auto', quality: 'auto' },
+        ],
+        sign_url: true,
+        secure: true,
+      });
     return {
       thumb: url('thumb'),
       card: url('card'),
