@@ -70,6 +70,15 @@ direct-source :1848-1858, 2820-2846; Swift :172,212).
 
 ## Slices (each rig-proven before the next)
 
+> **ADJUDICATION 2 (2026-07-10): L1.a MERGES INTO L1.b.** After the role-emission re-scope
+> below, standalone L1.a reduces to introducing a group contract with ZERO consumers (the
+> builder already picks one representative via the P5 pair, which IS
+> `resolveRestaurantLocationSelectionAnchorFromBounds` + `pickClosestLocationToCenter` —
+> discovered on read; the focus-fit was de-duplicated to consume it, 640e98f5). Dead
+> plumbing violates the house rule. L1 is therefore ONE joint cut — contract + native group
+> budget + role emission — in a fresh focused session, slices below read as its internal
+> stages.
+
 **L1.a — EntityGroup catalog contract + anchor-rule unification (JS only, output-parity).**
 New `EntityGroupCatalogEntry {restaurantId, rank, locations[], representativeLocationId}`
 built in `computeMarkerPipeline` via `resolveAnchorLocation` (replacing
