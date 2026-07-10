@@ -304,3 +304,41 @@ generalization, applyOriginDetent one-mechanism, profile foreground re-root (ite
 S-C.3-B/C is COMPLETE except: prepareSearchSessionEntry no-op verb + call sites (collapses
 with S-A), searchRoute shell rename + reveal-supersede deadness audit (S-C.4), and the
 post-S-C.3 red team.
+
+---
+
+## POST-S-C.3 RED TEAM (2026-07-09 ~8PM, 3 auditors: correctness / ideal-shape / deadness)
+
+**Fixed same-session (3b6c5b55):** popToEntry landed (algebra + routeAction plumbing + command
+verb); the dismiss selector resolves from the DEEPEST session entry (fixes the restaurant-from-
+comment dismissal discarding pollDetail — finding #1); the degenerate home emission carries
+routeAction popToRoot when a session survives (golden assertion grew the conditional arm —
+finding #2, the armed clear-lanes door). **Cleaned same-session (5bf6b07c):** the no-op verb
+chain, childAnchor threading, and all stale-machinery prose (deadness auditor's full inventory).
+
+**S-C.4 LEDGER (updated with the ideal-shape auditor's unrecorded items):**
+
+1. searchRoute shell rename/dissolve (~15 sites, kills 3 duplicated search/searchRoute pair
+   checks) — cheap, as planned.
+2. Reveal-supersede correlation deadness audit with a RED runtime probe (log when the
+   lastReveal coalesce arm fires under push-mode) — as planned.
+3. NEW: ONE-SWITCH home dismissal — the terminal dance's two presentation switches (polls
+   intermediate + home re-emission) collapse into the pop's own reveal, with docked-polls as a
+   presentation MODE of the revealed home entry (§5.5 already declares it a mode). Medium; must
+   re-prove the golden deadlock seam. Successor shapes that unlock WITH it: the nav command
+   pair → one derivation over (childDepth, sessionEnterTransactionPending); the pending-restore
+   ledger (arm/commit/cancel/flush + pendingOriginRestoreContext) collapses — its only producer
+   is the dance and its snapshot is always the degenerate live build now.
+4. NEW: collapse the TWO origin-capture systems — the per-scene origin-capture-registry +
+   buildCurrentOriginSnapshot fold into the entry-origin delegate (one capturer, a degenerate-
+   for-roots rule inside it); the provider indirection adds nothing over the live-state
+   registry.
+5. Wire-exit ownership for pop-shaped session dismissals (the known native marker residue —
+   masked behind full-height sheets today; the session-over-child closeActive branch shares it
+   and remains finger-test-pending, no rig entry point).
+6. OWNER product call (flagged): pollDetail dismiss lands on the expanded feed vs the pure
+   origin-restore collapse to docked home.
+
+**Ideal-shape classifications confirmed:** the terminal dance = recorded-interim (successor in
+item 3); item-4 nav verdict ACCEPTED with the named successor; the launch-intent restaurant arm
+= ~90 lines ride S-A/S-D + world-camera L-layers (its prepare/anchor lines died this session).
