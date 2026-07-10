@@ -73,18 +73,26 @@ export const createAppSearchRouteCommandActions = ({
     });
     routeSheetSnapSessionActions.setIsDockedPollsDismissed(false);
     // S-C.3-B: dismissing a PUSHED session POPS the stack back to the surviving search#home
-    // root ([search#home, search#session] → [search#home]) — routeAction popToRoot with the
-    // SAME 'polls' presentation target (the docked feed presents beneath the collapsing sheet
-    // exactly as before; presentation and stack truth are separate axes). The legacy setRoot
-    // collapse only remains for session-less stacks (boot-shaped dismissals). Proven by the
-    // [SC3B] probe: the old explicit setRoot here was what destroyed the home entry before
-    // the golden home emission ever ran.
+    // root ([search#home, search#session] → [search#home]) — the legacy setRoot collapse only
+    // remains for session-less stacks (boot-shaped dismissals). Proven by the [SC3B] probe:
+    // the old explicit setRoot here was what destroyed the home entry before the golden home
+    // emission ever ran.
+    //
+    // S-C.4 item 3 (ONE-SWITCH home dismissal): the switch targets 'search' — the docked HOME
+    // — directly, instead of the old 'polls' intermediate + a second topLevelSwitch→search
+    // re-emission at the finalize boundary. Docked polls is a presentation MODE of the search
+    // root (the PF laneKind formula presents 'polls' beneath the search root on its own);
+    // terminalDismiss arms no content plane regardless of target (resolveMotionPlanes), so the
+    // {cards,nativeMarkerFrame,sheet} readiness contract for 'search' never gates this switch.
+    // The dismiss-transaction choreography (armDismissMotion → commitDismissBoundary →
+    // completeDismissHandoff, the owner of the native map wire exit) rides the sheet motion,
+    // not the route switches — unchanged.
     const dismissRouteState = routeSceneSwitchAuthority.getSnapshot().routeState;
     const shouldPopPushedSession =
       dismissRouteState.rootOverlayKey === 'search' && hasSearchSessionAboveRoot(dismissRouteState);
     routeSceneSwitchActions.requestOverlaySwitch({
       ...(sourceSceneKey != null ? { sourceSceneKey } : null),
-      targetSceneKey: 'polls',
+      targetSceneKey: 'search',
       sheetTransitionKind: 'terminalDismiss',
       sheetOpenerSource: 'systemDismiss',
       sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
