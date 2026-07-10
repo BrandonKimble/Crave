@@ -199,9 +199,12 @@ https share links open the browser); ListBody failure/empty body for dead slugs 
 listDetail-era item — today a dead slug logs loudly and stays home); the S-C.5 re-probe of
 post-commit closeRestaurantProfile arms now that programmatic switches are drivable via URLs.
 
-**S-F. Pick mode.** Centralize result-card tap into one policy-injectable handler (prerequisite
-worth doing in S-C/S-D anyway), then `push(search, desire, {pick}) → Promise<Selection>` on the
-entry; first consumer = listDetail "Add places."
+**S-F. Pick mode. — ADJUDICATED 2026-07-10: rides the listDetail page, not before.** §5's
+red-team already called pick non-foundational; with S-A..S-E executed the sharper fact is that
+pick's ONLY consumer (listDetail "Add places") doesn't exist yet — landing
+`push(search, desire, {pick})` now would be dead machinery guarding a phantom consumer.
+Original spec (unchanged, executes with the listDetail design pass): centralize result-card tap
+into one policy-injectable handler, then `push(search, desire, {pick}) → Promise<Selection>`.
 
 **Then the pages land on this foundation** — userProfile, listDetail, followList, notifications,
 settings each become: scene metadata row + body + skeleton spec + header descriptor + origin
