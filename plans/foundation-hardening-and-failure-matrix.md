@@ -107,7 +107,14 @@ coverage and repeatability. Two self-red-team amendments:
   search (search = the already-proven reference; re-run cheap). **Fix what it finds**
   (the polls reconnect gap in A is finding #1, pre-confirmed by code).
 
-## E. The dated cleanup debt
+## E. The dated cleanup debt — DEFERRED after attribution (2026-07-09)
+
+Groundwork done, deletion deferred: the script-referenced flows (map-accept-_,
+search-map-scale-probe_) are ALREADY deleted; but the foundation session is actively
+driving dismiss-repeat/interrupt/byteid/per-page-detent flows from this directory
+TONIGHT — a blind bulk sweep would sabotage a live session. The deletion needs a
+focused pass that cross-refs each of the ~48 flows against active plans + sessions
+(attribute before deleting). Original spec:
 
 - Delete the historical map-saga maestro flows (memory: "mostly historical
   throwaway"), KEEPING `maestro/market-demand/` (current), `map-accept.sh` (the
@@ -121,6 +128,9 @@ coverage and repeatability. Two self-red-team amendments:
    case 1 on polls proves the resume live.
 2. B+C (spec table + derivations + header bark) — RED-proofs: delete a spec row →
    build error names the key; unregister a header in dev → violation names the key.
-3. D (harness + full walk on 5 pages) — evidence bundle; fix findings as they land.
-4. E (deletion sweep).
+3. D — SHIPPED 2026-07-09 (a60549f6): lever + ONE-online-truth mirror + driver;
+   walked: lever RED-proof, offline-enter favorites/profile, polls reconnect RESUME
+   (content-entry diff at the 1→0 edge). REMAINING: the API-kill cases (enter/action
+   failure per page) when the shared rig is free of other sessions.
+4. E — deferred per the attribution note above.
    Commits per step; owner feel items stay out (this is correctness, not feel).
