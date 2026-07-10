@@ -13,7 +13,15 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
+import { PhotoEventType } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
+  IsEnum,
+  IsInt,
+  Min,
+  ValidateNested,
   IsISO8601,
   IsOptional,
   IsString,
@@ -24,6 +32,8 @@ import { CurrentUser } from '../../shared';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 import { PhotosService } from './photos.service';
+import { PhotoReadService } from './photo-read.service';
+import { PhotoEventService } from './photo-event.service';
 import { CloudinaryService } from './cloudinary.service';
 
 export class CreateUploadTicketDto {
@@ -53,12 +63,58 @@ export class CreateUploadTicketDto {
   takenAt?: string;
 }
 
+export class PhotoEventDto {
+  @IsUUID('4')
+  photoId!: string;
+
+  @IsEnum(PhotoEventType)
+  eventType!: PhotoEventType;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  count?: number;
+}
+
+export class RecordPhotoEventsDto {
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => PhotoEventDto)
+  events!: PhotoEventDto[];
+}
+
 /** Contribution endpoints sit BEHIND the app-wide paywall (subscribers
  *  contribute); no @AllowUnentitled here. */
 @Controller('photos')
 @UseGuards(ClerkAuthGuard)
 export class PhotosController {
-  constructor(private readonly photos: PhotosService) {}
+  constructor(
+    private readonly photos: PhotosService,
+    private readonly reads: PhotoReadService,
+    private readonly events: PhotoEventService,
+  ) {}
+
+  @Get('restaurants/:restaurantId/gallery')
+  async restaurantGallery(
+    @Param('restaurantId', new ParseUUIDPipe()) restaurantId: string,
+  ) {
+    return this.reads.restaurantGallery(restaurantId);
+  }
+
+  @Get('users/:userId/food-log')
+  async foodLog(
+    @CurrentUser() viewer: User,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+  ) {
+    return this.reads.userFoodLog(userId, viewer.userId);
+  }
+
+  @Post('events')
+  recordEvents(@CurrentUser() user: User, @Body() dto: RecordPhotoEventsDto) {
+    this.events.record(user.userId, dto.events);
+    return { received: true };
+  }
 
   @Post('upload-ticket')
   async createUploadTicket(

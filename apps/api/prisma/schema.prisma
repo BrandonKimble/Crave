@@ -1189,6 +1189,11 @@ model FavoriteListItem {
   addedByUserId String?      @map("added_by_user_id") @db.Uuid
   restaurantId  String?      @map("restaurant_id") @db.Uuid
   connectionId  String?      @map("connection_id") @db.Uuid
+  /// Save-funnel toolkit (product/favorites.md): the owner's personal note —
+  /// what makes shared lists feel authored.
+  note          String?      @db.VarChar(512)
+  /// Friction-free micro-notes; later become toggle-strip filters.
+  tags          String[]     @default([])
   position      Int          @default(0) @map("position")
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt @map("updated_at")

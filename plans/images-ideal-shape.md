@@ -190,3 +190,29 @@ Three more E2E-earned corrections (all committed):
 4. CORRECTION to the earlier note: quality_analysis focus DOES populate on
    the free plan via the webhook path (0.34 measured) — hero quality floor
    works at launch.
+
+## Steps 3-5 BUILT + live-verified (2026-07-10)
+
+- **Read paths** (PhotoReadService, exported): restaurantGallery (All +
+  per-dish sections; client orders sections by the profile's ranked dish
+  list — ranking lives in ONE place), userFoodLog (grouped by restaurant;
+  owner sees pending/hidden, visitors live-only), heroPhotos (batched
+  maps by restaurantId/connectionId, recent-above-focus-floor 0.15,
+  null-focus passes). Endpoints: GET /photos/restaurants/:id/gallery,
+  GET /photos/users/:id/food-log. DELIBERATELY NOT YET folded into search
+  result DTOs — that assembly belongs with the card designs (screens
+  thread) and search files are other sessions' active surface;
+  PhotoReadService.heroPhotos is the ready seam.
+- **photo_events**: POST /photos/events (batched, max 200/call,
+  usage-ledger fire-and-forget pattern, PhotoEventType enum).
+- **Toolkit schema**: FavoriteListItem.note (512) + tags[] (≤10×40),
+  accepted through addItem — UI fast-follow per spec.
+- **Demand signal**: photos.pendingDishName + the partial index IS the
+  queryable signal (no speculative OnDemandReason wiring; a collection-side
+  sweep can consume it when built).
+- Hardening review round: all six findings fixed (see commit 8cb5b849).
+
+REMAINING in the images effort: step 6 mobile plumbing (picker dep +
+permissions + upload service + addPhotos functional skeleton) — held for
+the registry/screens phase per the foundation-vs-registry split; the
+backend is complete and E2E-proven.

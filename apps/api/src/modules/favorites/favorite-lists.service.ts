@@ -677,6 +677,8 @@ export class FavoriteListsService {
           addedByUserId: userId,
           restaurantId: dto.restaurantId ?? null,
           connectionId: dto.connectionId ?? null,
+          note: dto.note?.slice(0, 512) ?? null,
+          tags: dto.tags ?? [],
           position: dto.position ?? (maxPosition._max.position ?? 0) + 1,
         },
       });

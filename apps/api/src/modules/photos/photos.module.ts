@@ -8,6 +8,8 @@ import { PhotoVisionService } from './photo-vision.service';
 import { PhotosService } from './photos.service';
 import { PhotosController, PhotosWebhookController } from './photos.controller';
 import { PhotoReconciliationService } from './photo-reconciliation.service';
+import { PhotoReadService } from './photo-read.service';
+import { PhotoEventService } from './photo-event.service';
 
 /**
  * UGC photos (product/images.md + plans/images-ideal-shape.md): signed
@@ -23,7 +25,9 @@ import { PhotoReconciliationService } from './photo-reconciliation.service';
     PhotoVisionService,
     PhotosService,
     PhotoReconciliationService,
+    PhotoReadService,
+    PhotoEventService,
   ],
-  exports: [PhotosService, CloudinaryService],
+  exports: [PhotosService, CloudinaryService, PhotoReadService],
 })
 export class PhotosModule {}
