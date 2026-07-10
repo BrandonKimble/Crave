@@ -1,0 +1,109 @@
+# World-camera L1 — EntityGroup catalog: execution plan
+
+**Status:** designed 2026-07-10 from a full terrain survey (below), for a FRESH focused
+session. Parent design: `plans/world-camera-multilocation-foundation.md` §2/§3.1/§3.4/§4.
+L2's pure half already landed (`resolve-focus-camera.ts` — anchor rule + focus fit, goldens,
+commit 63a655a5); L1 consumes `resolveAnchorLocation` for the representative.
+
+⚠️ This cut touches the SHIPPED map (best-in-class, precious). House rules apply in full:
+composite-rig proof per slice, every metric must show RED, no cleanup edits beyond the cut,
+LodEngine changes land with `swift test` goldens.
+
+---
+
+## Terrain (surveyed 2026-07-10; file:line current as of 790b8fe9)
+
+**The flat catalog today**
+
+- Contract: `MarkerCatalogEntry` — `src/screens/Search/runtime/map/map-viewport-query.ts:15-19`
+  `{feature, rank, locationIndex}` — one entry = one PIN = one location; siblings are peers.
+- Builder (the flattening): `buildMarkerCatalogReadModel` —
+  `map/map-read-model-builder.ts:38-182`. Restaurants branch :111-177:
+  `resolveRestaurantMapLocations` yields all locations; `shouldRenderAllLocations =
+selectedRestaurantId === restaurant.restaurantId`; else `pickPreferredRestaurantMapLocation`
+  picks ONE. **Binary today: representative-only vs all-as-full-pins; siblings are DROPPED
+  from the catalog entirely (not even dots).**
+- Pipeline: `computeMarkerPipeline` — `map/compute-marker-pipeline.ts:27-106` (off render path).
+- Anchor de-facto: `restaurant-location-selection.ts` `pickClosestLocationToCenter:136` /
+  `pickPreferredRestaurantMapLocation:170` — the seam `resolveAnchorLocation` replaces.
+- Per-marker props: `RestaurantFeatureProperties` — `search-map.tsx:686-730`. No grouping key,
+  no render-role enum, no z-lift channel.
+
+**restaurantOnlyId/Intent (84 refs, 22 files)** — the degenerate profile world
+
+- Producers: `use-search-root-search-primitives-runtime.ts:32` (state + the `ln` ref);
+  `use-search-foreground-interaction-effects-runtime.ts:104-113` (the ONE derived-id producer).
+- Heaviest consumer + `effectiveRestaurantOnlyId`: `use-direct-search-map-source-controller.ts`
+  (~28 refs; 1211,1235-1241 computes the effective gate).
+- Catalog filter: `map-read-model-builder.ts:12,45,61,113,121,128`.
+- Profile-open matcher: `profile-open-presentation-plan-runtime.ts:24`
+  (`matchesTarget = ln===id || restaurantOnlyId===id`) — **couples to L3**, see sequencing.
+- `search-world-value-constructor.ts:161` hardcodes `restaurantOnlyId: null` (the new-path stub).
+
+**Seeded markers (5 files)** — store `search-mounted-results-data-store.ts:242-263`;
+publishers `profile-panel-hydration-runtime.ts` (+ camera focus
+`profile-seeded-camera-focus-handler.ts`), clear `profile-shell-state-publisher.ts`; reader
+`use-direct-search-map-source-controller.ts:1208-1229` (fallback when committedRestaurants==0).
+
+**Native handoff**
+
+- JS→native: `search-map-render-controller.ts:28-31` `setCandidateCatalog({entries:
+[{markerKey,lng,lat,rank}]})` — **flat; no group key**. `setRenderFrame` :14-27 carries
+  `highlightedRestaurantId/highlightedMarkerKey(s)`.
+- LodEngine (`ios/MapLodKit/.../LodEngine.swift`, 264 lines): identity = `Anchor.markerKey`,
+  flat competition; **`forcedKeys` (:132,140) = the existing budget-exemption seam** →
+  §3.4's selection EXEMPT maps here. Golden-tested (`LodEngineTests.swift`).
+- `SearchMapRenderController.swift` (~13k lines): `restaurantId` IS carried per marker
+  (:648,1466,1897,3242-3256) but only for press-targeting/highlight — the grouping-key seam.
+  Pins already go resident-invisible at `nativeLodOpacity==0` (:2158,5357-5359,6375) — the
+  `invisible` role has an existing opacity-0 substrate. z via `lodZ`/SymbolLayer slots
+  (search-map.tsx:719-720); no selected-group z-lift.
+
+**Data**: multi-location rides `RestaurantResult.locations[]` + `displayLocation` (server
+`locations_json` aggregates market-covered locations — verified in the parent doc §3.5).
+
+**Selection today**: `highlightedMarkerKeys`/`nativeHighlighted` (6 files, ~25 refs) — color
+swap + native forcedPromote only (search-map.tsx:1731-1774, 1949-1989;
+direct-source :1848-1858, 2820-2846; Swift :172,212).
+
+---
+
+## Slices (each rig-proven before the next)
+
+**L1.a — EntityGroup catalog contract + builder (JS only, no native change).**
+New `EntityGroupCatalogEntry {restaurantId, rank, locations[], representativeLocationId}`
+built in `computeMarkerPipeline` via `resolveAnchorLocation` (replacing
+`pickPreferredRestaurantMapLocation` — DELETE it + `pickClosestLocationToCenter` after);
+`buildMarkerCatalogReadModel` derives per-location entries FROM groups with a `renderRole:
+'representative' | 'sibling-dot' | 'invisible-resident'` field (policy 'search': in-viewport
+siblings → dots; out-of-viewport in-market → invisible-resident, RESIDENT in the catalog —
+today they're dropped, so this is the first behavior delta). RED probe: a group whose
+representative is filtered must bark, not silently promote a sibling.
+
+**L1.b — native grouping key + group-slot competition.**
+`setCandidateCatalog` entries gain `groupId` (=restaurantId); `LodEngine.Anchor` gains it;
+`decide()` dedupes slots per group (one slot per group, occupied by the representative).
+Land WITH new LodEngine goldens (`swift test`, no sim): two same-group anchors never eat two
+slots; forcedKeys exemption unchanged. Then on-sim composite proof vs a human-blessed
+baseline recording.
+
+**L1.c — the deletion: restaurantOnly + seeded markers.**
+Order: producer (`ln`/`n`, interaction-effects resolver) → consumers (builder filter,
+`effectiveRestaurantOnlyId` web in direct-source, profile-open matcher) → plumbing/contract
+fields → the seeded-marker store + publishers + camera-focus handler (its camera intent is
+L2's `focus`). ⚠️ SEQUENCING (survey flag): `profile-open-presentation-plan-runtime.ts:24`
+and `use-search-submit-owner.ts:328,346` (single-restaurant collapse feeding profile
+auto-open) couple this to **L3's ProfileBody worlds** — L1.c's profile-adjacent arms land
+WITH L3, not before. L1.c proper = the search-path consumers only.
+
+**L1.d — policy value + selection overlay substrate (rides into L4).**
+`WorldPresentationPolicy` on the world value ('search' | 'list' | 'profile'); the roles in
+L1.a read it. The z-lift channel + full-group promotion are L4; L1 only guarantees the
+catalog SHAPE supports them (group residency + roles).
+
+## Verification style
+
+- Goldens: LodEngine group competition (Swift), catalog builder role derivation (jest).
+- Composite rig: markers:N counts per role from the native ack; the eye blesses the baseline.
+- RED self-mutations: drop the group key on one entry → the invariant barks; force an
+  invisible-resident to render → pixel-diff catches it.
