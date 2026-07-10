@@ -222,17 +222,10 @@ export const useResultsPresentationCloseActionsRuntime = ({
       }
     }
 
-    // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Restore / P2).
-    // TWO dismiss mechanisms, both richness-gated on the captured OriginSnapshot (never on a
-    // call-site anchor-scene `if`): the top-level-rich seam ABOVE handles bookmarks/profile in a
-    // single synchronous swapImmediately re-root; EVERYTHING ELSE (home + comment→pollDetail child)
-    // runs the SAME terminalDismiss surface-exit choreography BELOW, which ARMS the snapshot
-    // (armSearchCloseRestore) and, on the collapse boundary, flushes the ONE richness-gated restore
-    // (flushPendingSearchOriginRestore → restorePendingOrigin). The snapshot's SHAPE decides the
-    // motion — a DEGENERATE home origin short-circuits to the byte-identical {polls,search}@collapsed
-    // home switch; a RICH child origin (a poll-discussion COMMENT, anchor.sceneKey==='pollDetail')
-    // re-roots the origin home BENEATH the child and re-pushes the exact child scene that rises to
-    // the captured detent. The branch is read from the snapshot inside restorePendingOrigin.
+    // S-C.4 item 3: EVERYTHING reaching here is a HOME-root dismissal (children and
+    // non-search roots popped above). The terminalDismiss below is the ONE switch — it pops
+    // the session and lands the docked home directly (docked polls = presentation mode of the
+    // search root); there is no second restore emission and no origin ledger.
     ignoreNextSearchBlurRef.current = true;
     unstable_batchedUpdates(() => {
       clearTypedQuery();

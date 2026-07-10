@@ -29,13 +29,13 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
   isSearchSessionActive: boolean;
   hasResults: boolean;
   submittedQuery: string;
-  armSearchCloseRestore: (options?: {
+  captureSearchCloseOrigin: (options?: {
     allowFallback?: boolean;
     searchRootRestoreSnap?: 'expanded' | 'middle' | 'collapsed';
-  }) => boolean;
-  commitSearchCloseRestore: () => boolean;
-  flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
+  }) => import('../../../overlays/searchRouteSessionTypes').OriginSnapshot | null;
+  restoreSearchCloseOrigin: (
+    origin: import('../../../overlays/searchRouteSessionTypes').OriginSnapshot | null
+  ) => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
@@ -69,10 +69,8 @@ export const useSearchClearOwner = <Suggestion>({
   isSearchSessionActive,
   hasResults,
   submittedQuery,
-  armSearchCloseRestore,
-  commitSearchCloseRestore,
-  flushPendingSearchOriginRestore,
-  requestDefaultPostSearchRestore,
+  captureSearchCloseOrigin,
+  restoreSearchCloseOrigin,
   cancelActiveSearchRequest,
   cancelAutocomplete,
   handleCancelPendingMutationWork,
@@ -98,7 +96,7 @@ export const useSearchClearOwner = <Suggestion>({
   scrollResultsToTop,
 }: UseSearchClearOwnerArgs<Suggestion>): SearchClearOwner => {
   const clearSearchAfterProfileDismiss = React.useCallback(() => {
-    const hasOriginRestorePending = armSearchCloseRestore({
+    const closeRestoreOrigin = captureSearchCloseOrigin({
       allowFallback: isSearchSessionActive || hasResults || submittedQuery.length > 0,
       searchRootRestoreSnap: 'collapsed',
     });
@@ -143,12 +141,7 @@ export const useSearchClearOwner = <Suggestion>({
     resetMapMoveFlag();
     setError(null);
     setSuggestions([]);
-    if (hasOriginRestorePending) {
-      commitSearchCloseRestore();
-      flushPendingSearchOriginRestore();
-    } else {
-      requestDefaultPostSearchRestore();
-    }
+    restoreSearchCloseOrigin(closeRestoreOrigin);
     lastAutoOpenKeyRef.current = null;
     resetFocusedMapState();
     setRestaurantOnlyIntent(null);
@@ -159,19 +152,17 @@ export const useSearchClearOwner = <Suggestion>({
     scrollResultsToTop();
     isClearingSearchRef.current = false;
   }, [
-    armSearchCloseRestore,
+    captureSearchCloseOrigin,
     cancelActiveSearchRequest,
     cancelAutocomplete,
     cancelToggleInteraction,
-    commitSearchCloseRestore,
-    flushPendingSearchOriginRestore,
     handleCancelPendingMutationWork,
     hasResults,
     inputRef,
     isClearingSearchRef,
     isSearchSessionActive,
     lastAutoOpenKeyRef,
-    requestDefaultPostSearchRestore,
+    restoreSearchCloseOrigin,
     resetFocusedMapState,
     resetMapMoveFlag,
     resetShortcutCoverageState,
@@ -214,9 +205,11 @@ export const useSearchClearOwner = <Suggestion>({
       preserveForegroundEditing = false,
       skipProfileDismissClear = false,
     }: ClearSearchStateOptions = {}) => {
-      const hasOriginRestorePending = skipPostSearchRestore
-        ? false
-        : armSearchCloseRestore({
+      // S-C.4 item 3 step 2: the origin is a local VALUE — captured here (pre-teardown state),
+      // restored at the same point in the sequence the old flush ran. No store ledger.
+      const closeRestoreOrigin = skipPostSearchRestore
+        ? null
+        : captureSearchCloseOrigin({
             allowFallback: isSearchSessionActive || hasResults || submittedQuery.length > 0,
             searchRootRestoreSnap: 'collapsed',
           });
@@ -272,11 +265,10 @@ export const useSearchClearOwner = <Suggestion>({
       if (skipSheetAnimation) {
         resetSheetToHidden();
       }
-      if (hasOriginRestorePending) {
-        commitSearchCloseRestore();
-        flushPendingSearchOriginRestore();
+      if (closeRestoreOrigin != null) {
+        restoreSearchCloseOrigin(closeRestoreOrigin);
       } else if (!skipPostSearchRestore) {
-        requestDefaultPostSearchRestore();
+        restoreSearchCloseOrigin(null);
       }
       if (profilePresentationActiveRef.current && !skipProfileDismissClear) {
         clearRestaurantProfileForSearchDismissRef.current();
@@ -300,12 +292,10 @@ export const useSearchClearOwner = <Suggestion>({
       }
     },
     [
-      armSearchCloseRestore,
+      captureSearchCloseOrigin,
       cancelActiveSearchRequest,
       cancelAutocomplete,
       cancelToggleInteraction,
-      commitSearchCloseRestore,
-      flushPendingSearchOriginRestore,
       handleCancelPendingMutationWork,
       hasResults,
       inputRef,
@@ -314,7 +304,7 @@ export const useSearchClearOwner = <Suggestion>({
       lastAutoOpenKeyRef,
       profilePresentationActiveRef,
       clearRestaurantProfileForSearchDismissRef,
-      requestDefaultPostSearchRestore,
+      restoreSearchCloseOrigin,
       resetFocusedMapState,
       resetMapMoveFlag,
       resetRestaurantProfileFocusSessionRef,

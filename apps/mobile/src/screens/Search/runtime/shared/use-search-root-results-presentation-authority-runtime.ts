@@ -45,7 +45,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
     stateFoundationLane;
   const {
     rootInstrumentationRuntime,
-    routeOverlaySessionActions,
     rootOverlaySessionSurfaceRuntime,
     appRouteSharedSheetRuntimeOwner,
   } = rootOverlayFoundationRuntime;
@@ -123,11 +122,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
       !rootPrimitivesRuntime.searchState.shouldDisableSearchShortcutsRef.current,
     ignoreNextSearchBlurRef: rootPrimitivesRuntime.searchState.ignoreNextSearchBlurRef,
     isClearingSearchRef: rootPrimitivesRuntime.searchState.isClearingSearchRef,
-    armSearchCloseRestore: routeOverlaySessionActions.armSearchCloseRestore,
-    commitSearchCloseRestore: routeOverlaySessionActions.commitSearchCloseRestore,
-    cancelSearchCloseRestore: routeOverlaySessionActions.cancelSearchCloseRestore,
-    flushPendingSearchOriginRestore: routeOverlaySessionActions.flushPendingSearchOriginRestore,
-    requestDefaultPostSearchRestore: routeOverlaySessionActions.requestDefaultPostSearchRestore,
     cancelAutocomplete: rootDataPlaneRuntime.requestStatusRuntime.cancelAutocomplete,
     resetSubmitTransitionHold: rootSuggestionRuntime.resetSubmitTransitionHold,
     setIsSearchFocused: rootPrimitivesRuntime.searchState.setIsSearchFocused,

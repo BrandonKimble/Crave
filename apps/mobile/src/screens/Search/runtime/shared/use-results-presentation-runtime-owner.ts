@@ -6,7 +6,6 @@ import { type ResultsPresentationAuthority } from './results-presentation-author
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
 import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-port';
 import { type SearchRuntimeBus } from './search-runtime-bus';
-import { type ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
 import { type ResultsPresentationOwner } from './results-presentation-owner-contract';
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
@@ -14,7 +13,6 @@ import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/sea
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
 import { useResultsPresentationOwnerCompositionRuntime } from './use-results-presentation-owner-composition-runtime';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
-export type { ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
 export type {
   ResultsInteractionModel,
   ResultsPresentationOwner,
@@ -57,11 +55,6 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
     | 'markSharedSheetHidden'
     | 'sheetState'
   >;
-  armSearchCloseRestore: (options?: ArmSearchCloseRestoreOptions) => boolean;
-  commitSearchCloseRestore: () => boolean;
-  cancelSearchCloseRestore: () => void;
-  flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
@@ -106,11 +99,6 @@ export const useResultsPresentationOwner = <Suggestion>({
   ignoreNextSearchBlurRef,
   isClearingSearchRef,
   resultsSheetRuntime,
-  armSearchCloseRestore,
-  commitSearchCloseRestore,
-  cancelSearchCloseRestore,
-  flushPendingSearchOriginRestore,
-  requestDefaultPostSearchRestore,
   cancelActiveSearchRequest,
   cancelAutocomplete,
   handleCancelPendingMutationWork,
@@ -154,11 +142,6 @@ export const useResultsPresentationOwner = <Suggestion>({
     ignoreNextSearchBlurRef,
     isClearingSearchRef,
     resultsSheetRuntime,
-    armSearchCloseRestore,
-    commitSearchCloseRestore,
-    cancelSearchCloseRestore,
-    flushPendingSearchOriginRestore,
-    requestDefaultPostSearchRestore,
     cancelActiveSearchRequest,
     cancelAutocomplete,
     handleCancelPendingMutationWork,

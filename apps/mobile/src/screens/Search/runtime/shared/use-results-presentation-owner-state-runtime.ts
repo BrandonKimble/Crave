@@ -7,7 +7,6 @@ import type { SearchMapSourceFramePort } from '../map/search-map-source-frame-po
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
-import type { ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
 import {
   useResultsPresentationOwnerStateSessionRuntime,
   type ResultsPresentationOwnerStateSessionRuntime,
@@ -42,11 +41,6 @@ export type UseResultsPresentationOwnerStateRuntimeArgs<Suggestion> = {
     | 'markSharedSheetHidden'
     | 'sheetState'
   >;
-  armSearchCloseRestore: (options?: ArmSearchCloseRestoreOptions) => boolean;
-  commitSearchCloseRestore: () => boolean;
-  cancelSearchCloseRestore: () => void;
-  flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
   clearSearchState: () => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
@@ -91,11 +85,6 @@ export const useResultsPresentationOwnerStateRuntime = <Suggestion>({
   shouldRenderSearchOverlay,
   shouldEnableShortcutInteractions,
   resultsSheetRuntime,
-  armSearchCloseRestore,
-  commitSearchCloseRestore,
-  cancelSearchCloseRestore,
-  flushPendingSearchOriginRestore,
-  requestDefaultPostSearchRestore,
   clearSearchState,
   cancelActiveSearchRequest,
   cancelAutocomplete,
@@ -148,11 +137,6 @@ export const useResultsPresentationOwnerStateRuntime = <Suggestion>({
   const transitionRuntime = useResultsPresentationOwnerStateTransitionRuntime<Suggestion>({
     searchRuntimeBus,
     clearSearchState,
-    armSearchCloseRestore,
-    commitSearchCloseRestore,
-    cancelSearchCloseRestore,
-    flushPendingSearchOriginRestore,
-    requestDefaultPostSearchRestore,
     cancelActiveSearchRequest,
     cancelAutocomplete,
     handleCancelPendingMutationWork,

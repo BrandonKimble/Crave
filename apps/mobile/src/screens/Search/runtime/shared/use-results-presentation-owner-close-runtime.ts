@@ -5,16 +5,10 @@ import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/r
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useResultsPresentationCloseTransitionBridgeRuntime } from './use-results-presentation-close-transition-bridge-runtime';
 import { useResultsPresentationCloseTransitionRuntime } from './use-results-presentation-close-transition-runtime';
-import type { ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
 
 type UseResultsPresentationOwnerCloseRuntimeArgs<Suggestion> = {
   searchRuntimeBus: SearchRuntimeBus;
   clearSearchState: () => void;
-  armSearchCloseRestore: (options?: ArmSearchCloseRestoreOptions) => boolean;
-  commitSearchCloseRestore: () => boolean;
-  cancelSearchCloseRestore: () => void;
-  flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;

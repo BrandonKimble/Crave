@@ -31,13 +31,6 @@ import {
 
 type UseResultsPresentationCloseTransitionStateRuntimeArgs = {
   clearSearchState: SearchClearOwner['clearSearchState'];
-  armSearchCloseRestore: (
-    options?: import('./results-presentation-shell-runtime-contract').ArmSearchCloseRestoreOptions
-  ) => boolean;
-  commitSearchCloseRestore: () => boolean;
-  cancelSearchCloseRestore: () => void;
-  flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
   shellLocalState: ResultsPresentationShellLocalState;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
 };
@@ -116,24 +109,15 @@ const areReleaseReadyCloseSnapshotsEqual = (
 
 export const useResultsPresentationCloseTransitionStateRuntime = ({
   clearSearchState,
-  armSearchCloseRestore,
-  commitSearchCloseRestore,
-  cancelSearchCloseRestore,
-  flushPendingSearchOriginRestore,
-  requestDefaultPostSearchRestore,
   shellLocalState,
   routeSceneVisibilityPolicyRuntime,
 }: UseResultsPresentationCloseTransitionStateRuntimeArgs): ResultsPresentationCloseTransitionStateRuntime => {
   const intentRuntime = useResultsPresentationCloseTransitionIntentRuntime({
-    armSearchCloseRestore,
     shellLocalState,
     routeSceneVisibilityPolicyRuntime,
   });
   const finalizeRuntime = useResultsPresentationCloseTransitionFinalizeRuntime({
     clearSearchState,
-    flushPendingSearchOriginRestore,
-    requestDefaultPostSearchRestore,
-    cancelSearchCloseRestore,
     shellLocalState,
     intentRuntime,
   });
@@ -261,7 +245,6 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       }
       getSearchSurfaceRuntime().commitDismissBoundary(activeCloseIntentId);
       shellLocalState.setHoldPersistentPollLane(false);
-      intentRuntime.commitArmedSearchCloseRestore(commitSearchCloseRestore);
       const nextCloseTransitionState = applySearchCloseCollapsedReached({
         current: shellLocalState.searchCloseTransitionState,
         closeIntentId: activeCloseIntentId,
@@ -287,7 +270,6 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
     },
     [
       boundaryCloseIntentIdRef,
-      commitSearchCloseRestore,
       emitReleaseReadyBottomHandoffTelemetry,
       finalizeReleaseReadyCloseTransition,
       intentRuntime,
@@ -301,7 +283,6 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       if (!activeCloseIntentId || snap !== 'collapsed') {
         return;
       }
-      intentRuntime.commitArmedSearchCloseRestore(commitSearchCloseRestore);
       shellLocalState.setSearchCloseTransitionState((current) => {
         const update = applySearchCloseSheetSettled({
           current,
@@ -311,7 +292,7 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
         return update.nextState;
       });
     },
-    [commitSearchCloseRestore, intentRuntime, shellLocalState]
+    [intentRuntime, shellLocalState]
   );
 
   const beginCloseTransition = React.useCallback(

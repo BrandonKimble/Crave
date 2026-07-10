@@ -1,10 +1,5 @@
 import type { SearchPresentationIntent } from './results-presentation-shell-contract';
 
-export type ArmSearchCloseRestoreOptions = {
-  allowFallback?: boolean;
-  searchRootRestoreSnap?: 'expanded' | 'middle' | 'collapsed';
-};
-
 export type ResultsPresentationActions = {
   requestSearchPresentationIntent: (intent: SearchPresentationIntent) => string | null;
   beginCloseSearch: () => void;

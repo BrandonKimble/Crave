@@ -6,9 +6,6 @@ import type { ResultsPresentationShellLocalState } from './use-results-presentat
 import { createSearchCloseTransitionState } from './results-presentation-shell-close-transition-state';
 
 type UseResultsPresentationCloseTransitionIntentRuntimeArgs = {
-  armSearchCloseRestore: (
-    options?: import('./results-presentation-shell-runtime-contract').ArmSearchCloseRestoreOptions
-  ) => boolean;
   shellLocalState: ResultsPresentationShellLocalState;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
 };
@@ -25,21 +22,16 @@ export type ResultsPresentationCloseTransitionIntentRuntime = {
     }
   ) => void;
   resetCloseTransition: () => void;
-  commitArmedSearchCloseRestore: (commitSearchCloseRestore: () => boolean) => void;
-  cancelArmedSearchCloseRestore: () => void;
   finalizedCloseIntentIdRef: React.MutableRefObject<string | null>;
   pendingCloseIntentIdRef: React.MutableRefObject<string | null>;
 };
 
 export const useResultsPresentationCloseTransitionIntentRuntime = ({
-  armSearchCloseRestore,
   shellLocalState,
   routeSceneVisibilityPolicyRuntime,
 }: UseResultsPresentationCloseTransitionIntentRuntimeArgs): ResultsPresentationCloseTransitionIntentRuntime => {
   const pendingCloseIntentIdRef = React.useRef<string | null>(null);
   const activeCloseIntentIdRef = React.useRef<string | null>(null);
-  const hasArmedRestoreRef = React.useRef(false);
-  const hasCommittedRestoreRef = React.useRef(false);
   const finalizedCloseIntentIdRef = React.useRef<string | null>(null);
 
   const setPendingCloseIntentId = React.useCallback((intentId: string | null) => {
@@ -52,8 +44,6 @@ export const useResultsPresentationCloseTransitionIntentRuntime = ({
 
   const resetCloseTransition = React.useCallback(() => {
     activeCloseIntentIdRef.current = null;
-    hasArmedRestoreRef.current = false;
-    hasCommittedRestoreRef.current = false;
     finalizedCloseIntentIdRef.current = null;
     routeSceneVisibilityPolicyRuntime.updateCloseTransitionActive(false);
     shellLocalState.setSearchCloseTransitionState(null);
@@ -74,17 +64,10 @@ export const useResultsPresentationCloseTransitionIntentRuntime = ({
       const terminalDismissSource = options?.terminalDismissSource ?? 'results';
       activeCloseIntentIdRef.current = closeIntentId;
       finalizedCloseIntentIdRef.current = null;
-      // Phase 5 (canonical-sheet-transition-master-plan §4 Failure 4) — ARM the origin
-      // restore for EVERY terminal dismiss, including a profile/restaurant dismiss. The old
-      // `terminalDismissSource === 'profile' ? false : …` skip stranded the captured origin
-      // dismiss never returned to the comment — it fell to the docked-search HOME fallback.
-      // Arming here lets flushPendingSearchOriginRestore → restorePendingOrigin re-push the
-      // exact pollDetail comment origin on dismiss.
-      hasArmedRestoreRef.current = armSearchCloseRestore({
-        allowFallback: true,
-        searchRootRestoreSnap: 'collapsed',
-      });
-      hasCommittedRestoreRef.current = false;
+      // S-C.4 item 3 step 2: the old ARM (origin capture into the store ledger) is gone —
+      // the terminal dance only serves HOME dismissals now (children/non-search roots pop
+      // via entry origins in the dismiss selector), and the home restore rides the dismiss
+      // verb's ONE terminalDismiss switch. Nothing to arm, nothing to flush at finalize.
       shellLocalState.setHoldPersistentPollLane(false);
       shellLocalState.setBackdropTarget('default');
       shellLocalState.setInputMode('idle');
@@ -95,22 +78,8 @@ export const useResultsPresentationCloseTransitionIntentRuntime = ({
       );
       shellLocalState.setSearchCloseTransitionState(nextCloseTransitionState);
     },
-    [armSearchCloseRestore, routeSceneVisibilityPolicyRuntime, shellLocalState]
+    [routeSceneVisibilityPolicyRuntime, shellLocalState]
   );
-
-  const commitArmedSearchCloseRestore = React.useCallback(
-    (commitSearchCloseRestore: () => boolean) => {
-      if (hasArmedRestoreRef.current && !hasCommittedRestoreRef.current) {
-        hasCommittedRestoreRef.current = commitSearchCloseRestore();
-      }
-    },
-    []
-  );
-
-  const cancelArmedSearchCloseRestore = React.useCallback(() => {
-    hasArmedRestoreRef.current = false;
-    hasCommittedRestoreRef.current = false;
-  }, []);
 
   const getActiveCloseIntentId = React.useCallback(() => {
     return activeCloseIntentIdRef.current;
@@ -123,15 +92,11 @@ export const useResultsPresentationCloseTransitionIntentRuntime = ({
       getActiveCloseIntentId,
       beginCloseTransition,
       resetCloseTransition,
-      commitArmedSearchCloseRestore,
-      cancelArmedSearchCloseRestore,
       finalizedCloseIntentIdRef,
       pendingCloseIntentIdRef,
     }),
     [
       beginCloseTransition,
-      cancelArmedSearchCloseRestore,
-      commitArmedSearchCloseRestore,
       getActiveCloseIntentId,
       matchesPendingCloseIntentId,
       resetCloseTransition,

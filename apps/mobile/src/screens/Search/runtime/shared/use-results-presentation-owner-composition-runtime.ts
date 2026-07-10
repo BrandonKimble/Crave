@@ -9,7 +9,6 @@ import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { ResultsPresentationOwner } from './results-presentation-owner-contract';
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
-import type { ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/search-chrome-scalar-surface-presentation-runtime';
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
@@ -45,11 +44,6 @@ export type UseResultsPresentationOwnerCompositionRuntimeArgs<Suggestion> = {
     | 'markSharedSheetHidden'
     | 'sheetState'
   >;
-  armSearchCloseRestore: (options?: ArmSearchCloseRestoreOptions) => boolean;
-  commitSearchCloseRestore: () => boolean;
-  cancelSearchCloseRestore: () => void;
-  flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
@@ -94,11 +88,6 @@ export const useResultsPresentationOwnerCompositionRuntime = <Suggestion>({
   ignoreNextSearchBlurRef,
   isClearingSearchRef,
   resultsSheetRuntime,
-  armSearchCloseRestore,
-  commitSearchCloseRestore,
-  cancelSearchCloseRestore,
-  flushPendingSearchOriginRestore,
-  requestDefaultPostSearchRestore,
   cancelActiveSearchRequest,
   cancelAutocomplete,
   handleCancelPendingMutationWork,
@@ -135,11 +124,6 @@ export const useResultsPresentationOwnerCompositionRuntime = <Suggestion>({
     shouldRenderSearchOverlay,
     shouldEnableShortcutInteractions,
     resultsSheetRuntime,
-    armSearchCloseRestore,
-    commitSearchCloseRestore,
-    cancelSearchCloseRestore,
-    flushPendingSearchOriginRestore,
-    requestDefaultPostSearchRestore,
     clearSearchState,
     cancelActiveSearchRequest,
     cancelAutocomplete,

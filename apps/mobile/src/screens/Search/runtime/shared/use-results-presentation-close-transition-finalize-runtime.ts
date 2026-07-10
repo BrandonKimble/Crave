@@ -8,9 +8,6 @@ import type { ResultsPresentationCloseTransitionIntentRuntime } from './use-resu
 
 type UseResultsPresentationCloseTransitionFinalizeRuntimeArgs = {
   clearSearchState: SearchClearOwner['clearSearchState'];
-  flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
-  cancelSearchCloseRestore: () => void;
   shellLocalState: ResultsPresentationShellLocalState;
   intentRuntime: Pick<
     ResultsPresentationCloseTransitionIntentRuntime,
@@ -18,7 +15,6 @@ type UseResultsPresentationCloseTransitionFinalizeRuntimeArgs = {
     | 'finalizedCloseIntentIdRef'
     | 'resetCloseTransition'
     | 'getActiveCloseIntentId'
-    | 'cancelArmedSearchCloseRestore'
   >;
 };
 
@@ -29,9 +25,6 @@ export type ResultsPresentationCloseTransitionFinalizeRuntime = {
 
 export const useResultsPresentationCloseTransitionFinalizeRuntime = ({
   clearSearchState,
-  flushPendingSearchOriginRestore,
-  requestDefaultPostSearchRestore,
-  cancelSearchCloseRestore,
   shellLocalState,
   intentRuntime,
 }: UseResultsPresentationCloseTransitionFinalizeRuntimeArgs): ResultsPresentationCloseTransitionFinalizeRuntime => {
@@ -70,27 +63,14 @@ export const useResultsPresentationCloseTransitionFinalizeRuntime = ({
           return;
         }
         getSearchSurfaceRuntime().completeDismissHandoff(closeIntentId);
-        // Phase 5 (canonical-sheet-transition-master-plan §4 Failure 4) — flush the origin
-        // restore for EVERY terminal dismiss, including profile/restaurant. The old
-        // `terminalDismissSource !== 'profile'` skip meant a restaurant-from-comment dismiss
-        // ran NO restore at all (neither flushPendingSearchOriginRestore NOR the default),
-        // stranding the user on the docked-search HOME. flushPendingSearchOriginRestore now
-        // re-pushes the captured pollDetail comment origin; the default fallback covers a
-        // dismiss with no captured origin (e.g. a restaurant opened from a result card).
-        const restored = flushPendingSearchOriginRestore();
-        if (!restored) {
-          requestDefaultPostSearchRestore();
-        }
+        // S-C.4 item 3 step 2: NO restore emission here — the home landing already rode the
+        // dismiss verb's ONE terminalDismiss switch (targetSceneKey 'search', docked-polls
+        // mode). The old flush/default pair (and the ledger they read) is deleted; children
+        // and non-search roots never reach this dance (the dismiss selector pops them).
         intentRuntime.resetCloseTransition();
       });
     },
-    [
-      finalizeCloseSearch,
-      flushPendingSearchOriginRestore,
-      intentRuntime,
-      requestDefaultPostSearchRestore,
-      shellLocalState.searchCloseTransitionState,
-    ]
+    [finalizeCloseSearch, intentRuntime, shellLocalState.searchCloseTransitionState]
   );
 
   const cancelSearchSheetCloseTransition = React.useCallback(
@@ -104,12 +84,10 @@ export const useResultsPresentationCloseTransitionFinalizeRuntime = ({
         return;
       }
 
-      cancelSearchCloseRestore();
-      intentRuntime.cancelArmedSearchCloseRestore();
       intentRuntime.resetCloseTransition();
       shellLocalState.setHoldPersistentPollLane(false);
     },
-    [cancelSearchCloseRestore, intentRuntime, shellLocalState]
+    [intentRuntime, shellLocalState]
   );
 
   return React.useMemo(

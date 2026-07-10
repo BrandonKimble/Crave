@@ -177,7 +177,6 @@ const assertDegenerateHomeEmission = (
 };
 
 const EMPTY_APP_ROUTE_OVERLAY_SESSION_SNAPSHOT: AppRouteOverlaySessionSnapshot = {
-  isSearchOriginRestorePending: false,
   shouldShowDockedPollsTarget: false,
   shouldShowDockedPolls: false,
   shouldShowPollsSheet: false,
@@ -187,7 +186,6 @@ const areAppRouteOverlaySessionSnapshotsEqual = (
   left: AppRouteOverlaySessionSnapshot,
   right: AppRouteOverlaySessionSnapshot
 ): boolean =>
-  left.isSearchOriginRestorePending === right.isSearchOriginRestorePending &&
   left.shouldShowDockedPollsTarget === right.shouldShowDockedPollsTarget &&
   left.shouldShowDockedPolls === right.shouldShowDockedPolls &&
   left.shouldShowPollsSheet === right.shouldShowPollsSheet;
@@ -232,11 +230,8 @@ export class AppRouteOverlaySessionStateController {
       getSnapshot: this.getSnapshot.bind(this),
     };
     this.actions = {
-      armSearchCloseRestore: this.armSearchCloseRestore.bind(this),
-      commitSearchCloseRestore: this.commitSearchCloseRestore.bind(this),
-      cancelSearchCloseRestore: this.cancelSearchCloseRestore.bind(this),
-      flushPendingSearchOriginRestore: this.flushPendingSearchOriginRestore.bind(this),
-      requestDefaultPostSearchRestore: this.requestDefaultPostSearchRestore.bind(this),
+      captureSearchCloseOrigin: this.captureSearchCloseOrigin.bind(this),
+      restoreSearchCloseOrigin: this.restoreSearchCloseOrigin.bind(this),
     };
     this.unsubscribers.push(
       routeOverlayRootAuthority.registerTarget({
@@ -415,45 +410,31 @@ export class AppRouteOverlaySessionStateController {
     };
   }
 
-  private armSearchCloseRestore({
+  // S-C.4 item 3 step 2 — the close-restore origin is a VALUE the caller holds (entries-as-
+  // values, one level up): capture at intent time, pass back to restoreSearchCloseOrigin at
+  // restore time. The store ledger (pendingOriginRestoreContext + isSearchOriginRestorePending
+  // + arm/commit/cancel/flush) is deleted — its only async consumer was the two-switch home
+  // dance, whose restore now rides the dismiss verb's ONE terminalDismiss switch; the clear
+  // lanes capture and restore synchronously within one call chain.
+  private captureSearchCloseOrigin({
     allowFallback = false,
     searchRootRestoreSnap,
-  }: AppRouteSearchCloseRestoreOptions = {}): boolean {
-    // S-C.3-B step 3b: the captured-origin SLOT is deleted — the terminal dismissal always
-    // resolves the LIVE origin (the degenerate home build; pushed-session dismissals pop via
-    // entry origins and never reach here).
+  }: AppRouteSearchCloseRestoreOptions = {}): OriginSnapshot | null {
     const resolvedOriginContext = allowFallback ? this.buildCurrentOriginSnapshot() : null;
-    const nextOriginContext =
-      resolvedOriginContext?.sceneKey === 'search' && searchRootRestoreSnap
-        ? {
-            ...resolvedOriginContext,
-            detent: searchRootRestoreSnap,
-          }
-        : resolvedOriginContext;
-    const shouldRestoreOrigin = nextOriginContext != null;
-    this.routeSheetSnapSessionActions.setPendingOriginRestoreContext(nextOriginContext);
-    this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
-    return shouldRestoreOrigin;
-  }
-
-  private commitSearchCloseRestore(): boolean {
-    const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
-    const hasPendingOrigin = sessionSnapshot.pendingOriginRestoreContext != null;
-    this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(hasPendingOrigin);
-    return hasPendingOrigin;
-  }
-
-  private cancelSearchCloseRestore(): void {
-    this.routeSheetSnapSessionActions.setPendingOriginRestoreContext(null);
-    this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
+    return resolvedOriginContext?.sceneKey === 'search' && searchRootRestoreSnap
+      ? {
+          ...resolvedOriginContext,
+          detent: searchRootRestoreSnap,
+        }
+      : resolvedOriginContext;
   }
 
   // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Restore) —
   // the DEGENERATE home restore emission. This is the byte-identical base every dismiss
   // already emitted: the {polls,search}@collapsed deadlock seam's home-restore. It is the
   // ONE place the home switch is constructed; BOTH the captured-home-origin restore (via
-  // restorePendingOrigin's degenerate short-circuit) and the no-pending-origin fallback (via
-  // requestDefaultPostSearchRestore) funnel through here, so the home emission can never
+  // restorePendingOrigin's degenerate short-circuit) and the no-origin fallback (via
+  // restoreSearchCloseOrigin(null)) funnel through here, so the home emission can never
   // silently diverge between those two lanes. GOLDEN-GUARDED (assertDegenerateHomeEmission)
   // so a future edit that attaches a sheet/content plane to home — and would regress the
   // deadlock seam — fails loudly in dev rather than at runtime.
@@ -564,38 +545,16 @@ export class AppRouteOverlaySessionStateController {
     stageOriginSceneSegmentRestore(snapshot.sceneKey, snapshot.segment ?? null);
   }
 
-  private flushPendingSearchOriginRestore(): boolean {
-    const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
-    const pendingOrigin = sessionSnapshot.pendingOriginRestoreContext;
-    if (!pendingOrigin) {
-      return false;
-    }
-    this.routeSheetSnapSessionActions.setPendingOriginRestoreContext(null);
+  // ONE richness-gated restore verb (design §Restore step 7 + S-C.4 item 3 step 2): a captured
+  // origin routes through restorePendingOrigin (degenerate home short-circuits to the golden
+  // emission; rich re-roots directly); a NULL origin IS the degenerate home case — the docked-
+  // polls re-arm is its own state priming (the captured-origin path drives docked polls via the
+  // snapshot's dockedPollsRestoreSnap instead). Same funnel guarantee as before: the home
+  // emission is byte-identical whether or not an origin was captured.
+  private restoreSearchCloseOrigin(origin: OriginSnapshot | null): void {
     this.routeSheetSnapSessionActions.setNavRestorePending(false);
-    // ONE richness-gated path — pass the WHOLE captured snapshot so the restore can read
-    // richness (scroll/anchor/sceneParams/detent) itself; a degenerate home origin short-
-    // circuits to the byte-identical home emission, a pollDetail-anchored origin re-pushes
-    // the EXACT poll.
-    this.restorePendingOrigin(pendingOrigin);
-    this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
-    return true;
-  }
-
-  // Return-to-origin foundation (design §Restore step 7) — the no-pending-origin fallback is
-  // NO LONGER a separate restore lane: a dismiss with no captured origin IS the degenerate
-  // home case, so it funnels through the SAME emitDegenerateHomeRestore the captured-home
-  // origin uses. This guarantees the home emission is byte-identical whether or not an origin
-  // was captured. The docked-polls re-arm (recordRouteSceneSheetSettle('polls','collapsed') +
-  // setIsDockedPollsDismissed(false)) is preserved BEFORE the switch — it is the no-origin
-  // fallback's own state priming (the captured-origin path drives the docked polls via the
-  // snapshot's dockedPollsRestoreSnap instead). No `options`/mode param: the old `chrome-only`
-  // invisible-re-root sub-lane was dead and is removed — the rich restore owns the motionless
-  // re-root via its own sheetMotion:none.
-  private requestDefaultPostSearchRestore(): void {
-    const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
-    this.routeSheetSnapSessionActions.setNavRestorePending(false);
-    if (sessionSnapshot.pendingOriginRestoreContext) {
-      this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
+    if (origin != null) {
+      this.restorePendingOrigin(origin);
       return;
     }
     this.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
@@ -604,7 +563,6 @@ export class AppRouteOverlaySessionStateController {
     });
     this.routeSheetSnapSessionActions.setIsDockedPollsDismissed(false);
     this.emitDegenerateHomeRestore('search', 'collapsed');
-    this.routeSheetSnapSessionActions.setIsSearchOriginRestorePending(false);
   }
 
   private computeSnapshot(): AppRouteOverlaySessionSnapshot {
@@ -616,11 +574,9 @@ export class AppRouteOverlaySessionStateController {
     // flags stay layered on top exactly as before.
     const shouldShowDockedPollsTarget =
       this.routeSceneSwitchActions.getPresentationFrame().laneKind === 'docked-polls' &&
-      !sessionSnapshot.isSearchOriginRestorePending &&
       !sessionSnapshot.isDockedPollsDismissed;
 
     return {
-      isSearchOriginRestorePending: sessionSnapshot.isSearchOriginRestorePending,
       shouldShowDockedPollsTarget,
       shouldShowDockedPolls: shouldShowDockedPollsTarget,
       shouldShowPollsSheet: shouldShowDockedPollsTarget,

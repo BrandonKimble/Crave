@@ -1,6 +1,5 @@
 import type React from 'react';
 
-import type { ArmSearchCloseRestoreOptions } from './results-presentation-shell-runtime-contract';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
 import { useResultsPresentationOwnerCloseStateRuntime } from './use-results-presentation-owner-close-state-runtime';
@@ -13,11 +12,6 @@ export type ResultsPresentationOwnerStateTransitionRuntime = {
 export const useResultsPresentationOwnerStateTransitionRuntime = <Suggestion>({
   searchRuntimeBus,
   clearSearchState,
-  armSearchCloseRestore,
-  commitSearchCloseRestore,
-  cancelSearchCloseRestore,
-  flushPendingSearchOriginRestore,
-  requestDefaultPostSearchRestore,
   cancelActiveSearchRequest,
   cancelAutocomplete,
   handleCancelPendingMutationWork,
@@ -35,11 +29,6 @@ export const useResultsPresentationOwnerStateTransitionRuntime = <Suggestion>({
 }: {
   searchRuntimeBus: SearchRuntimeBus;
   clearSearchState: () => void;
-  armSearchCloseRestore: (options?: ArmSearchCloseRestoreOptions) => boolean;
-  commitSearchCloseRestore: () => boolean;
-  cancelSearchCloseRestore: () => void;
-  flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
   cancelActiveSearchRequest: () => void;
   cancelAutocomplete: () => void;
   handleCancelPendingMutationWork: () => void;
@@ -58,11 +47,6 @@ export const useResultsPresentationOwnerStateTransitionRuntime = <Suggestion>({
   const closeTransitionRuntime = useResultsPresentationOwnerCloseStateRuntime({
     searchRuntimeBus,
     clearSearchState,
-    armSearchCloseRestore,
-    commitSearchCloseRestore,
-    cancelSearchCloseRestore,
-    flushPendingSearchOriginRestore,
-    requestDefaultPostSearchRestore,
     cancelActiveSearchRequest,
     cancelAutocomplete,
     handleCancelPendingMutationWork,

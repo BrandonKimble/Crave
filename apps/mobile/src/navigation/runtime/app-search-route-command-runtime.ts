@@ -1,6 +1,6 @@
 import { hasSearchSessionAboveRoot } from './app-overlay-route-stack-algebra';
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
-import { getAppOverlayRouteMetadata, type OverlayRouteParamsMap } from './app-overlay-route-types';
+import type { OverlayRouteParamsMap } from './app-overlay-route-types';
 import type { AppRouteSceneSwitchAuthority } from './app-route-scene-switch-authority';
 import type { RouteSceneSwitchTransitionActions } from './app-route-scene-switch-controller';
 import type { AppRouteSheetSnapSessionActions } from './app-route-sheet-snap-session-runtime';

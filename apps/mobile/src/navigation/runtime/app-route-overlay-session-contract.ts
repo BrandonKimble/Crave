@@ -9,18 +9,22 @@ export type AppRouteSearchCloseRestoreOptions = {
 };
 
 export type AppRouteOverlaySessionSnapshot = {
-  isSearchOriginRestorePending: boolean;
   shouldShowDockedPollsTarget: boolean;
   shouldShowDockedPolls: boolean;
   shouldShowPollsSheet: boolean;
 };
 
+// S-C.4 item 3 step 2 — the close-restore origin is a VALUE the caller holds, not a store
+// ledger: capture at intent time, pass back at restore time. The arm/commit/cancel/flush
+// four-verb ceremony died with the two-switch home dance (the home dismissal's restore rides
+// the dismiss verb's ONE terminalDismiss switch; the clear lanes are synchronous).
 export type AppRouteOverlaySessionActions = {
-  armSearchCloseRestore: (options?: AppRouteSearchCloseRestoreOptions) => boolean;
-  commitSearchCloseRestore: () => boolean;
-  cancelSearchCloseRestore: () => void;
-  flushPendingSearchOriginRestore: () => boolean;
-  requestDefaultPostSearchRestore: () => void;
+  captureSearchCloseOrigin: (
+    options?: AppRouteSearchCloseRestoreOptions
+  ) => import('../../overlays/searchRouteSessionTypes').OriginSnapshot | null;
+  restoreSearchCloseOrigin: (
+    origin: import('../../overlays/searchRouteSessionTypes').OriginSnapshot | null
+  ) => void;
 };
 
 export type AppRouteOverlaySessionAuthority = {

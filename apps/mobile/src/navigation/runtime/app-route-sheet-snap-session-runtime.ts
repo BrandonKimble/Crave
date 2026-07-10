@@ -1,6 +1,5 @@
 import React from 'react';
 
-import type { OriginSnapshot } from '../../overlays/searchRouteSessionTypes';
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
 import type { SearchRouteSceneSnapMeta } from '../../overlays/searchRouteSceneShellMotionContract';
 
@@ -13,8 +12,6 @@ export const ROUTE_SHARED_SNAP_PERSISTENCE_KEY = 'search-route-shared-snap';
 export type AppRouteSheetSnapSessionSnapshot = Readonly<{
   isDockedPollsDismissed: boolean;
   isNavRestorePending: boolean;
-  pendingOriginRestoreContext: OriginSnapshot | null;
-  isSearchOriginRestorePending: boolean;
   sceneSheetSnaps: Readonly<Partial<Record<OverlayKey, OverlaySheetSnap>>>;
   hasUserSharedSnap: boolean;
   sharedSnap: RouteSheetSharedSnap;
@@ -30,8 +27,6 @@ export type AppRouteSheetSnapSessionActions = {
   setIsDockedPollsDismissed: (next: React.SetStateAction<boolean>) => void;
   dismissDockedPolls: () => void;
   setNavRestorePending: (next: boolean) => void;
-  setPendingOriginRestoreContext: (next: OriginSnapshot | null) => void;
-  setIsSearchOriginRestorePending: (next: boolean) => void;
   recordRouteSceneSheetSettle: (args: { sceneKey: OverlayKey; snap: OverlaySheetSnap }) => void;
   settleRouteSceneTabSnap: (args: {
     sceneKey: 'bookmarks' | 'profile';
@@ -64,8 +59,6 @@ const DEFAULT_SHARED_SNAP: RouteSheetSharedSnap = 'expanded';
 const createInitialSnapshot = (): AppRouteSheetSnapSessionSnapshot => ({
   isDockedPollsDismissed: false,
   isNavRestorePending: false,
-  pendingOriginRestoreContext: null,
-  isSearchOriginRestorePending: false,
   sceneSheetSnaps: {
     polls: 'collapsed',
   },
@@ -144,12 +137,6 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     },
     setNavRestorePending: (next) => {
       this.commit({ isNavRestorePending: next });
-    },
-    setPendingOriginRestoreContext: (next) => {
-      this.commit({ pendingOriginRestoreContext: next });
-    },
-    setIsSearchOriginRestorePending: (next) => {
-      this.commit({ isSearchOriginRestorePending: next });
     },
     recordRouteSceneSheetSettle: (args) => {
       this.recordRouteSceneSheetSettle(args);

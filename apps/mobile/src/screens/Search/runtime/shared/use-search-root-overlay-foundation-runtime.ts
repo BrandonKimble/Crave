@@ -29,7 +29,6 @@ const selectRouteOverlaySessionSnapshot = (
 ): AppRouteOverlaySessionSnapshot => {
   const isDockedPollsLane = frame.laneKind === 'docked-polls';
   return {
-    isSearchOriginRestorePending: false,
     shouldShowDockedPollsTarget: isDockedPollsLane,
     shouldShowDockedPolls: isDockedPollsLane,
     shouldShowPollsSheet: isDockedPollsLane,
