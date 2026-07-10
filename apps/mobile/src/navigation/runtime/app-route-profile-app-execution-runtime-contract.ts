@@ -1,8 +1,3 @@
-import type {
-  PreparedProfileCloseFinalization,
-  PreparedProfileRouteIntent,
-  ProfilePresentationCommandExecutionContext,
-} from './app-route-profile-prepared-presentation-transaction-contract';
 import type { ProfileForegroundUiRestoreState } from './app-route-profile-transition-state-contract';
 
 export type ProfileAppForegroundExecutionRuntime = {
@@ -11,21 +6,14 @@ export type ProfileAppForegroundExecutionRuntime = {
   }) => ProfileForegroundUiRestoreState | null;
 };
 
-export type ProfileAppRouteExecutionRuntime = {
-  applyProfileRouteIntent: (
-    routeIntent: PreparedProfileRouteIntent,
-    executionContext: ProfilePresentationCommandExecutionContext
-  ) => void;
-};
-
+// L3 slice 4: the machine's route-intent + close-finalization arms are DELETED — the
+// standard push/pop owns navigation; the pop-teardown owner runs the close.
 export type ProfileAppCloseExecutionRuntime = {
   prepareForProfileClose: () => void;
-  finalizePreparedProfileClose: (closeFinalization: PreparedProfileCloseFinalization) => void;
 };
 
 export type ProfileAppShellExecutionRuntime = {
   foregroundExecutionModel: ProfileAppForegroundExecutionRuntime;
-  routeExecutionModel: ProfileAppRouteExecutionRuntime;
   closeExecutionModel: ProfileAppCloseExecutionRuntime;
 };
 

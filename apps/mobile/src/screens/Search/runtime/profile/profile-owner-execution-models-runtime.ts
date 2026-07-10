@@ -1,5 +1,4 @@
 import React from 'react';
-import { unstable_batchedUpdates } from 'react-native';
 
 import type { AppRouteSceneRuntime } from '../../../../navigation/runtime/app-route-scene-runtime';
 import { useProfileAppExecutionModelRuntime } from './profile-app-execution-model-runtime';
@@ -10,10 +9,6 @@ import type {
   ProfileOwnerNativeExecutionArgs,
   ProfileSearchContext,
 } from './profile-owner-runtime-contract';
-import {
-  useProfilePreparedPresentationRuntime,
-  type PreparedProfilePresentationCompletionEvent,
-} from './profile-prepared-presentation-runtime';
 import type { ProfilePreparedPresentationRuntime } from './profile-prepared-presentation-runtime-contract';
 import { useProfileDirectPresentationRuntime } from './profile-direct-presentation-runtime';
 import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract';
@@ -40,12 +35,7 @@ export const useProfileOwnerExecutionModelsRuntime = ({
   nativeExecutionArgs,
   appExecutionArgs,
 }: UseProfileOwnerExecutionModelsRuntimeArgs): ProfileOwnerExecutionModelsRuntime => {
-  const preparedProfileCompletionHandlerRef = React.useRef<
-    ((event: PreparedProfilePresentationCompletionEvent) => void) | null
-  >(null);
-
   const nativeExecutionModel = useProfileNativeExecutionModelRuntime({
-    preparedProfileCompletionHandlerRef,
     nativeExecutionArgs,
     setProfileCameraPadding: runtimeStateOwner.shellRuntimeState.setProfileCameraPadding,
   });
@@ -54,34 +44,17 @@ export const useProfileOwnerExecutionModelsRuntime = ({
     routeSceneRuntime,
     resultsPresentationSurfaceAuthority,
     appExecutionArgs,
-    runtimeStateOwner,
-    preparedProfileCompletionHandlerRef,
   });
 
-  // L3 cutover slices 2+3: the machine's transaction runtime still assembles (deleted in
-  // the next slice) but the PORTS bind to the DIRECT runtime — camera + standard push/hide;
-  // the pop-teardown writer owns every close.
-  const machinePresentationRuntime = useProfilePreparedPresentationRuntime({
-    preparedProfileCompletionHandlerRef,
-    runBatch: unstable_batchedUpdates as (fn: () => void) => void,
-    nativeExecutionModel,
-    runtimeStateOwner,
-    appExecutionRuntime,
-  });
-  void machinePresentationRuntime;
+  // L3 slice 4: the transaction machine is DELETED — the direct runtime IS the
+  // presentation surface (camera + standard push/hide; the pop-teardown writer owns
+  // every close).
   const directPresentationRuntime = useProfileDirectPresentationRuntime({
     nativeExecutionModel,
     routeOverlayRouteCommandRuntime: routeSceneRuntime.routeOverlayRouteCommandRuntime,
     setProfileTransitionStatus: runtimeStateOwner.transitionRuntimeState.setProfileTransitionStatus,
   });
-  const preparedPresentationRuntime = React.useMemo(
-    () =>
-      ({
-        ...machinePresentationRuntime,
-        ...directPresentationRuntime,
-      }) as ProfilePreparedPresentationRuntime,
-    [directPresentationRuntime, machinePresentationRuntime]
-  );
+  const preparedPresentationRuntime: ProfilePreparedPresentationRuntime = directPresentationRuntime;
 
   return React.useMemo(
     () => ({

@@ -15,9 +15,6 @@ export const setProfileTransitionStatusOnRecord = (
 export const getProfileTransitionStateFromRecord = (controllerState: ProfileControllerState) =>
   controllerState.runtime.transition;
 
-export const getPreparedProfileSnapshotFromRecord = (controllerState: ProfileControllerState) =>
-  controllerState.runtime.transition.preparedSnapshot;
-
 export const capturePreparedProfileTransitionSnapshotOnRecord = ({
   controllerState,
   snapshotCapture,

@@ -1,4 +1,3 @@
-import type { PreparedProfilePresentationSnapshot } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-snapshot-contract';
 import type {
   CameraSnapshot,
   ProfileTransitionState,
@@ -13,7 +12,6 @@ export const resolveProfilePresentationModel = ({
   transitionStatus,
   hasRestaurantRouteEntry,
   restaurantPanelSnapshot,
-  preparedSnapshot,
 }: {
   transitionStatus: ProfileTransitionState['status'];
   /** L3 cutover slice 1: the ROUTE-STACK fact (a 'restaurant' entry exists). The
@@ -24,19 +22,7 @@ export const resolveProfilePresentationModel = ({
    *  in-flight signal. */
   hasRestaurantRouteEntry: boolean;
   restaurantPanelSnapshot: RestaurantPanelSnapshot | null;
-  preparedSnapshot: PreparedProfilePresentationSnapshot | null;
 }): ProfilePresentationModel => {
-  const shouldExposePreparedSnapshotKey =
-    preparedSnapshot != null &&
-    (transitionStatus === 'opening' ||
-      transitionStatus === 'closing' ||
-      (transitionStatus === 'open' && restaurantPanelSnapshot != null));
-  const preparedSnapshotKey =
-    shouldExposePreparedSnapshotKey && preparedSnapshot != null
-      ? preparedSnapshot.kind === 'profile_close'
-        ? `${preparedSnapshot.transactionId}:close:${preparedSnapshot.restaurantId ?? 'none'}`
-        : `${preparedSnapshot.transactionId}:open:${preparedSnapshot.restaurantId ?? 'none'}`
-      : null;
   const isTransitionAnimating = transitionStatus === 'opening' || transitionStatus === 'closing';
   const isOverlayVisible = hasRestaurantRouteEntry;
   const isPresentationActive = hasRestaurantRouteEntry || restaurantPanelSnapshot != null;
@@ -50,7 +36,6 @@ export const resolveProfilePresentationModel = ({
     isOverlayVisible,
     isPresentationActive,
     activeOpenRestaurantId,
-    preparedSnapshotKey,
   };
 };
 
@@ -60,20 +45,17 @@ export const resolveProfileViewState = ({
   restaurantPanelSnapshot,
   mapCameraPadding,
   mapHighlightedRestaurantId,
-  preparedSnapshot,
 }: {
   transitionStatus: ProfileTransitionState['status'];
   hasRestaurantRouteEntry: boolean;
   restaurantPanelSnapshot: RestaurantPanelSnapshot | null;
   mapCameraPadding: CameraSnapshot['padding'];
   mapHighlightedRestaurantId: string | null;
-  preparedSnapshot: PreparedProfilePresentationSnapshot | null;
 }): ProfileViewState => ({
   presentation: resolveProfilePresentationModel({
     transitionStatus,
     hasRestaurantRouteEntry,
     restaurantPanelSnapshot,
-    preparedSnapshot,
   }),
   highlightedRestaurantId: mapHighlightedRestaurantId,
   restaurantPanelSnapshot,

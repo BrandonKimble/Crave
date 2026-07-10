@@ -1,13 +1,9 @@
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
-import type { PreparedProfilePresentationCompletionEvent } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileNativeCommandExecutionModel } from './profile-native-command-runtime';
 import type { ProfileNativeTransitionExecutionModel } from './profile-native-transition-runtime';
 
 export type ProfileNativeExecutionArgs = {
-  preparedProfileCompletionHandlerRef: React.MutableRefObject<
-    ((event: PreparedProfilePresentationCompletionEvent) => void) | null
-  >;
   emitRuntimeMechanismEvent: (
     event: 'profile_intent_cancelled',
     payload: Record<string, unknown>

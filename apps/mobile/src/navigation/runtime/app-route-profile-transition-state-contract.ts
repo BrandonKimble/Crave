@@ -1,6 +1,4 @@
 import type { FoodResult, RestaurantResult, RestaurantResultScorePreview } from '../../types';
-import type { PreparedProfilePresentationSnapshot } from './app-route-profile-prepared-presentation-snapshot-contract';
-import type { PreparedProfilePresentationTransaction } from './app-route-profile-prepared-presentation-transaction-contract';
 
 export type ProfileTransitionStatus = 'idle' | 'opening' | 'open' | 'closing';
 
@@ -45,30 +43,11 @@ export type ProfileTransitionSnapshotCapture = {
   savedResultsScrollOffset: number | null;
 };
 
-export type ProfileOpenSettleState = {
-  transactionId: string | null;
-  requestToken: number | null;
-  cameraRequestToken: number | null;
-  sheetRequestToken: number | null;
-  cameraSettled: boolean;
-  sheetSettled: boolean;
-};
-
-export type ProfileDismissCompletionState = {
-  requestToken: number | null;
-  handled: boolean;
-};
-
-export type ProfilePresentationCompletionState = {
-  preparedTransaction: PreparedProfilePresentationTransaction | null;
-  dismiss: ProfileDismissCompletionState;
-  openSettle: ProfileOpenSettleState;
-};
-
+// L3 slice 4: the machine's preparedSnapshot/completionState (settle ledger) fields are
+// DELETED — the transition state is now the small honest record the pop-teardown owner
+// reads: an interim status flag + the saved presentation the restore consumes.
 export type ProfileTransitionState = {
   status: ProfileTransitionStatus;
-  preparedSnapshot: PreparedProfilePresentationSnapshot | null;
-  completionState: ProfilePresentationCompletionState;
   savedCamera: CameraSnapshot | null;
   savedResultsScrollOffset: number | null;
 };

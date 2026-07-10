@@ -3,7 +3,6 @@ import React from 'react';
 import type { ProfileControllerState } from './profile-runtime-state-record';
 import {
   capturePreparedProfileTransitionSnapshotOnRecord,
-  getPreparedProfileSnapshotFromRecord,
   getProfileTransitionStateFromRecord,
   getProfileTransitionStatusFromRecord,
 } from './profile-transition-state-record';
@@ -17,7 +16,6 @@ export type ProfileTransitionRuntimeState = {
   getProfileTransitionStatus: () => ProfileTransitionStatus;
   setProfileTransitionStatus: (transitionStatus: ProfileTransitionStatus) => void;
   getProfileTransitionState: () => ProfileTransitionState;
-  getPreparedProfileSnapshot: () => ProfileTransitionState['preparedSnapshot'];
   capturePreparedProfileTransitionSnapshot: (
     snapshotCapture: ProfileTransitionSnapshotCapture
   ) => void;
@@ -42,11 +40,6 @@ export const useProfileTransitionRuntimeState = ({
     [profileControllerStateRef]
   );
 
-  const getPreparedProfileSnapshot = React.useCallback(
-    () => getPreparedProfileSnapshotFromRecord(profileControllerStateRef.current),
-    [profileControllerStateRef]
-  );
-
   const capturePreparedProfileTransitionSnapshot = React.useCallback(
     (snapshotCapture: ProfileTransitionSnapshotCapture) => {
       capturePreparedProfileTransitionSnapshotOnRecord({
@@ -62,12 +55,10 @@ export const useProfileTransitionRuntimeState = ({
       getProfileTransitionStatus,
       setProfileTransitionStatus,
       getProfileTransitionState,
-      getPreparedProfileSnapshot,
       capturePreparedProfileTransitionSnapshot,
     }),
     [
       capturePreparedProfileTransitionSnapshot,
-      getPreparedProfileSnapshot,
       getProfileTransitionState,
       getProfileTransitionStatus,
       setProfileTransitionStatus,

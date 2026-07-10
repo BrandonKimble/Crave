@@ -1,43 +1,15 @@
 import type {
-  ProfileDismissCompletionState,
-  ProfileOpenSettleState,
-  ProfilePresentationCompletionState,
   ProfileTransitionSnapshotCapture,
   ProfileTransitionState,
 } from './app-route-profile-transition-state-contract';
 
-export const createIdleProfileOpenSettleState = (): ProfileOpenSettleState => ({
-  transactionId: null,
-  requestToken: null,
-  cameraRequestToken: null,
-  sheetRequestToken: null,
-  cameraSettled: true,
-  sheetSettled: true,
-});
-
-export const createInitialProfileDismissCompletionState = (): ProfileDismissCompletionState => ({
-  requestToken: null,
-  handled: false,
-});
-
-export const createInitialProfilePresentationCompletionState =
-  (): ProfilePresentationCompletionState => ({
-    preparedTransaction: null,
-    dismiss: createInitialProfileDismissCompletionState(),
-    openSettle: createIdleProfileOpenSettleState(),
-  });
-
+// L3 slice 4: the machine's settle/dismiss completion builders are DELETED with their
+// fields; the transition state is the pop-teardown owner's small record.
 export const createInitialProfileTransitionState = (): ProfileTransitionState => ({
   status: 'idle',
-  preparedSnapshot: null,
-  completionState: createInitialProfilePresentationCompletionState(),
   savedCamera: null,
   savedResultsScrollOffset: null,
 });
-
-export const resetPreparedProfileDismissHandling = (transition: ProfileTransitionState): void => {
-  transition.completionState.dismiss.handled = false;
-};
 
 export const resetProfileTransitionState = (transition: ProfileTransitionState): void => {
   Object.assign(transition, createInitialProfileTransitionState());

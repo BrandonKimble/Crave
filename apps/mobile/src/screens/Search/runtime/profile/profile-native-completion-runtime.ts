@@ -2,12 +2,8 @@ import React from 'react';
 
 import type { CameraIntentArbiter } from '../map/camera-intent-arbiter';
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
-import type { PreparedProfilePresentationCompletionEvent } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 
 type UseProfileNativeCompletionRuntimeArgs = {
-  preparedProfileCompletionHandlerRef: React.MutableRefObject<
-    ((event: PreparedProfilePresentationCompletionEvent) => void) | null
-  >;
   cameraIntentArbiter: CameraIntentArbiter;
   lastCameraStateRef: React.MutableRefObject<{
     center: [number, number];
@@ -17,7 +13,6 @@ type UseProfileNativeCompletionRuntimeArgs = {
 };
 
 export const useProfileNativeCompletionRuntime = ({
-  preparedProfileCompletionHandlerRef,
   cameraIntentArbiter,
   lastCameraStateRef,
   pendingProfileCameraTargetRef,
@@ -36,12 +31,10 @@ export const useProfileNativeCompletionRuntime = ({
           zoom: pendingCameraTarget.zoom,
         };
       }
-      preparedProfileCompletionHandlerRef.current?.({
-        type: 'camera_settled',
-        requestToken: payload.requestToken,
-      });
+      // L3 slice 4: the machine's camera_settled completion emit is DELETED — this
+      // handler's surviving job is the camera-state truth sync on animation completion.
     },
-    [lastCameraStateRef, pendingProfileCameraTargetRef, preparedProfileCompletionHandlerRef]
+    [lastCameraStateRef, pendingProfileCameraTargetRef]
   );
 
   React.useEffect(() => {

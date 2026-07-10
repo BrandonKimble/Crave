@@ -1,4 +1,3 @@
-import type { PreparedProfilePresentationSnapshot } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-snapshot-contract';
 import type { OverlaySheetSnap } from '../../../../overlays/types';
 import {
   resolveProfileCameraPadding,
@@ -20,7 +19,6 @@ export type ProfilePresentationModel = {
   isOverlayVisible: boolean;
   isPresentationActive: boolean;
   activeOpenRestaurantId: string | null;
-  preparedSnapshotKey: string | null;
 };
 
 export type ProfileViewState = {
@@ -56,7 +54,6 @@ export type CreateProfilePresentationModelRuntimeArgs = {
     mapCameraPadding: CameraSnapshot['padding'];
     mapHighlightedRestaurantId: string | null;
   };
-  preparedSnapshot: PreparedProfilePresentationSnapshot | null;
   cameraLayoutModel: ProfilePresentationCameraLayoutModel;
   getCurrentLastCameraState: () => { center: [number, number]; zoom: number } | null;
 };
@@ -75,7 +72,6 @@ export const createProfilePresentationModelRuntime = ({
     mapCameraPadding,
     mapHighlightedRestaurantId: shellMapHighlightedRestaurantId,
   },
-  preparedSnapshot,
   cameraLayoutModel: {
     sheetScrollOffset,
     snapPoints,
@@ -118,7 +114,6 @@ export const createProfilePresentationModelRuntime = ({
       restaurantPanelSnapshot,
       mapCameraPadding,
       mapHighlightedRestaurantId: shellMapHighlightedRestaurantId,
-      preparedSnapshot,
     }),
     resolveProfileCameraPadding: getResolvedProfileCameraPadding,
     getProfileTransitionSnapshotCapture: () =>

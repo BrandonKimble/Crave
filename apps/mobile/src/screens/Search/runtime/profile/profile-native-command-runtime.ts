@@ -1,14 +1,10 @@
 import React from 'react';
 
-import type { ProfilePresentationCommandExecutionContext } from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import { PROFILE_CAMERA_ANIMATION_MODE } from './profile-camera-motion-constants';
 
 export type ProfileNativeCommandExecutionModel = {
-  commitProfileCameraTargetCommand: (
-    targetCamera: CameraSnapshot,
-    executionContext: ProfilePresentationCommandExecutionContext
-  ) => boolean;
+  commitProfileCameraTargetCommand: (targetCamera: CameraSnapshot) => boolean;
 };
 
 type UseProfileNativeCommandExecutionRuntimeArgs = {
@@ -36,10 +32,7 @@ export const useProfileNativeCommandExecutionRuntime = ({
   commitCameraViewport,
 }: UseProfileNativeCommandExecutionRuntimeArgs): ProfileNativeCommandExecutionModel => {
   const commitProfileCameraTargetCommand = React.useCallback(
-    (
-      targetCamera: CameraSnapshot,
-      executionContext: ProfilePresentationCommandExecutionContext
-    ) => {
+    (targetCamera: CameraSnapshot) => {
       setIsFollowingUser(false);
       suppressMapMoved();
       const didCommit = commitCameraViewport(
@@ -52,7 +45,7 @@ export const useProfileNativeCommandExecutionRuntime = ({
           allowDuringGesture: true,
           animationMode: PROFILE_CAMERA_ANIMATION_MODE,
           animationDurationMs: profileCameraAnimationMs,
-          requestToken: executionContext.requestToken,
+          requestToken: null,
           deferControlledCameraStateUntilCompletion: true,
         }
       );

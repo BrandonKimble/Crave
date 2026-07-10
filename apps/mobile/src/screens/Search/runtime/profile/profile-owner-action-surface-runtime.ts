@@ -101,13 +101,8 @@ export const useProfileOwnerActionSurfaceRuntime = ({
     if (transition.status === 'idle') {
       return false;
     }
-    const isMachineCloseInFlight =
-      transition.status === 'closing' ||
-      transition.preparedSnapshot?.kind === 'profile_close' ||
-      transition.completionState.dismiss.requestToken != null;
-    if (isMachineCloseInFlight) {
-      return false;
-    }
+    // L3 slice 4: the machine-yield guard is DELETED — with the machine gone, the pop
+    // writer is the sole close owner (dissolution trace §2c/§3).
     prepareRestaurantProfileForTerminalSearchDismiss();
     // L3 slice 3: an autocomplete/auto-open-sourced profile dismisses with 'clear' —
     // the search session ends with it (the machine's close finalization used to do this;
@@ -138,11 +133,10 @@ export const useProfileOwnerActionSurfaceRuntime = ({
   ]);
 
   const finalizeRestaurantEntryPopTeardown = React.useCallback(() => {
-    const transition = getProfileTransitionState();
-    // A NEW open superseded the pop before the settle — never clear the fresh snapshot.
-    if (transition.status === 'opening' || transition.status === 'closing') {
-      return;
-    }
+    // L3 slice 4: the machine-era status guard is DELETED — the pop-teardown WRITER
+    // already disarms this settle half when a restaurant entry re-appears before the
+    // settle (S-C.5 re-open-before-settle rule), so a superseding open can never reach
+    // this clear.
     finalizePreparedProfileCloseState();
   }, [finalizePreparedProfileCloseState, getProfileTransitionState]);
 

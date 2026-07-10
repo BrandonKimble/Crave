@@ -29,12 +29,6 @@ type UseProfileDirectPresentationRuntimeArgs = {
   setProfileTransitionStatus: (transitionStatus: ProfileTransitionStatus) => void;
 };
 
-const DIRECT_EXECUTION_CONTEXT = {
-  transactionId: null,
-  phase: 'pre_shell',
-  requestToken: null,
-} as const;
-
 export const useProfileDirectPresentationRuntime = ({
   nativeExecutionModel,
   routeOverlayRouteCommandRuntime,
@@ -50,10 +44,7 @@ export const useProfileDirectPresentationRuntime = ({
       if (targetCamera == null) {
         return;
       }
-      nativeExecutionModel.commandExecutionModel.commitProfileCameraTargetCommand(
-        targetCamera,
-        DIRECT_EXECUTION_CONTEXT
-      );
+      nativeExecutionModel.commandExecutionModel.commitProfileCameraTargetCommand(targetCamera);
     },
     [nativeExecutionModel.commandExecutionModel]
   );

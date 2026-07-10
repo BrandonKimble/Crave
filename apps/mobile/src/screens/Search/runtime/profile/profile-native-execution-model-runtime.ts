@@ -10,13 +10,11 @@ import { useProfileNativeTransitionExecutionRuntime } from './profile-native-tra
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 
 type UseProfileNativeExecutionModelRuntimeArgs = {
-  preparedProfileCompletionHandlerRef: ProfileNativeExecutionArgs['preparedProfileCompletionHandlerRef'];
-  nativeExecutionArgs: Omit<ProfileNativeExecutionArgs, 'preparedProfileCompletionHandlerRef'>;
+  nativeExecutionArgs: ProfileNativeExecutionArgs;
   setProfileCameraPadding: (padding: CameraSnapshot['padding']) => void;
 };
 
 export const useProfileNativeExecutionModelRuntime = ({
-  preparedProfileCompletionHandlerRef,
   nativeExecutionArgs: {
     emitRuntimeMechanismEvent,
     cameraIntentArbiter,
@@ -38,7 +36,6 @@ export const useProfileNativeExecutionModelRuntime = ({
   }, [cameraIntentArbiter, setProfileCameraPadding]);
 
   useProfileNativeCompletionRuntime({
-    preparedProfileCompletionHandlerRef,
     cameraIntentArbiter,
     lastCameraStateRef,
     pendingProfileCameraTargetRef,

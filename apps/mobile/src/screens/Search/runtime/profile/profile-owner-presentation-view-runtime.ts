@@ -24,7 +24,6 @@ export const useProfileOwnerPresentationViewRuntime = ({
   runtimeStateOwner,
   getLastCameraState,
 }: UseProfileOwnerPresentationViewRuntimeArgs): ProfileOwnerPresentationViewRuntime => {
-  const preparedSnapshot = runtimeStateOwner.transitionRuntimeState.getPreparedProfileSnapshot();
   // L3 cutover slice 1: the reactive stack fact feeds the presence-shaped model facts.
   const hasRestaurantRouteEntry = useTopMostRouteEntryForScene('restaurant') != null;
 
@@ -51,11 +50,10 @@ export const useProfileOwnerPresentationViewRuntime = ({
     () =>
       createProfilePresentationModelRuntime({
         profileShellState,
-        preparedSnapshot,
         cameraLayoutModel: cameraTransitionPorts,
         getCurrentLastCameraState: getLastCameraState,
       }),
-    [cameraTransitionPorts, getLastCameraState, preparedSnapshot, profileShellState]
+    [cameraTransitionPorts, getLastCameraState, profileShellState]
   );
 
   const currentMapZoom =

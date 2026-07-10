@@ -5,7 +5,7 @@ import type {
   RestaurantProfileSeed,
 } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
 import type { ProfileControllerState } from './profile-runtime-state-record';
-import { resetPreparedProfileDismissHandling } from '../../../../navigation/runtime/app-route-profile-transition-state-mutations';
+import {} from '../../../../navigation/runtime/app-route-profile-transition-state-mutations';
 import type { ProfileHydrationRequestRuntime } from './profile-hydration-request-runtime';
 import { createSeededRestaurantPanelSnapshot } from './profile-panel-hydration-snapshot-runtime';
 
@@ -43,8 +43,7 @@ export const useProfilePanelSeedRuntime = ({
     ) => {
       const restaurantId = restaurant.restaurantId;
       const cachedProfile = getCachedRestaurantProfile(restaurantId, restaurant.marketKey ?? null);
-
-      resetPreparedProfileDismissHandling(profileControllerStateRef.current.runtime.transition);
+      profileControllerStateRef.current.runtime.transition;
 
       setRestaurantPanelSnapshot((prev) =>
         createSeededRestaurantPanelSnapshot({

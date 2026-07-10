@@ -1,19 +1,10 @@
 import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
-import type { ProfileTransitionState } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
-import type { PreparedProfileCommandExecutionRuntime } from './profile-prepared-presentation-command-executor';
-import type { PreparedProfileStateExecutionRuntime } from './profile-prepared-presentation-state-executor';
-import type {
-  PreparedProfilePresentationCompletionEvent,
-  PreparedProfilePresentationTransaction,
-} from '../../../../navigation/runtime/app-route-profile-prepared-presentation-transaction-contract';
 
-export type ExecutePreparedProfilePresentationTransaction = (
-  transaction: PreparedProfilePresentationTransaction
-) => void;
-
+// L3 slice 4: the prepared-presentation transaction machine is DELETED — this contract is
+// the machine-less presentation surface (profile-direct-presentation-runtime.ts): camera
+// commit + the standard child push/hide. The legacy method names survive one more pass
+// (the action ports/callers keep their spelling); a rename sweep can trail.
 export type ProfilePreparedPresentationRuntime = {
-  executePreparedProfileTransaction: (transaction: PreparedProfilePresentationTransaction) => void;
-  handlePreparedProfileCompletionEvent: (event: PreparedProfilePresentationCompletionEvent) => void;
   openPreparedProfilePresentation: (
     restaurantId: string,
     targetCamera: CameraSnapshot | null | undefined,
@@ -22,22 +13,4 @@ export type ProfilePreparedPresentationRuntime = {
   ) => void;
   closePreparedProfilePresentation: (restaurantId: string | null) => void;
   focusPreparedProfileCamera: (targetCamera: CameraSnapshot) => void;
-};
-
-export type CreateProfilePreparedPresentationRuntimeArgs = {
-  runBatch: (fn: () => void) => void;
-  commandExecutionRuntime: PreparedProfileCommandExecutionRuntime;
-  stateExecutionRuntime: PreparedProfileStateExecutionRuntime;
-  completionExecution: {
-    getRequestSeq: () => number;
-    setRequestSeq: (requestSeq: number) => void;
-    cancelHydrationIntentOnOverlayDismiss: (nextRequestSeq: number) => void;
-    getProfileTransitionState: () => ProfileTransitionState;
-  };
-  transactionExecution: {
-    createTransactionId: () => string;
-    getProfileTransitionState: CreateProfilePreparedPresentationRuntimeArgs['completionExecution']['getProfileTransitionState'];
-    getProfileDismissBehavior: () => 'restore' | 'clear';
-    getProfileShouldClearSearchOnDismiss: () => boolean;
-  };
 };
