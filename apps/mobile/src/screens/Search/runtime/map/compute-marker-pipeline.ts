@@ -91,6 +91,7 @@ export const computeMarkerPipeline = (args: {
     selectedRestaurantId,
     canonicalRestaurantRankById,
     locationSelectionAnchor,
+    searchedBounds: bounds,
     resolveRestaurantMapLocations,
     pickPreferredRestaurantMapLocation,
     getCraveScoreColorFromScore,

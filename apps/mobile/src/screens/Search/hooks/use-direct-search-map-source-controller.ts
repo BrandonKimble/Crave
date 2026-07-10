@@ -1468,6 +1468,7 @@ export const useDirectSearchMapSourceController = ({
             selectedRestaurantId,
             canonicalRestaurantRankById,
             locationSelectionAnchor: args.resolveRestaurantLocationSelectionAnchor(),
+            searchedBounds: viewportBoundsService.getSearchBaselineBounds() ?? null,
             resolveRestaurantMapLocations: args.resolveRestaurantMapLocations,
             pickPreferredRestaurantMapLocation: args.pickPreferredRestaurantMapLocation,
             getCraveScoreColorFromScore: args.getCraveScoreColorFromScore,

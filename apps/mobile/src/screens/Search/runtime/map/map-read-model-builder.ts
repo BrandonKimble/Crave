@@ -1,8 +1,9 @@
 import type { Feature, Point } from 'geojson';
 
-import type { Coordinate, FoodResult, RestaurantResult } from '../../../../types';
+import type { Coordinate, FoodResult, MapBounds, RestaurantResult } from '../../../../types';
 import type { RestaurantFeatureProperties } from '../../components/search-map';
 import type { MarkerCatalogEntry } from './map-viewport-query';
+import { isCoordinateWithinBounds } from './map-viewport-query';
 import type { ResolvedRestaurantMapLocation } from './restaurant-location-selection';
 
 type BuildMarkerCatalogArgs = {
@@ -13,6 +14,10 @@ type BuildMarkerCatalogArgs = {
   selectedRestaurantId: string | null;
   canonicalRestaurantRankById: Map<string, number>;
   locationSelectionAnchor: Coordinate | null;
+  /** The SEARCHED bounds (committed viewport). Siblings inside them join the catalog as
+   *  group members (the native group budget demotes them to dots); siblings outside stay
+   *  INVISIBLE-RESIDENT — no catalog entry, data resident on the restaurant/group. */
+  searchedBounds: MapBounds | null;
   resolveRestaurantMapLocations: (restaurant: RestaurantResult) => ResolvedRestaurantMapLocation[];
   pickPreferredRestaurantMapLocation: (
     restaurant: RestaurantResult,
@@ -25,6 +30,13 @@ const orderByEntry = (left: MarkerCatalogEntry, right: MarkerCatalogEntry): numb
   const rankDiff = left.rank - right.rank;
   if (rankDiff !== 0) {
     return rankDiff;
+  }
+  // L1: within a group (equal rank) the representative sorts FIRST — the native group
+  // budget promotes the first on-screen member, and the slot belongs to the representative.
+  const representativeDiff =
+    Number(right.isGroupRepresentative === true) - Number(left.isGroupRepresentative === true);
+  if (representativeDiff !== 0) {
+    return representativeDiff;
   }
   const locationDiff = left.locationIndex - right.locationIndex;
   if (locationDiff !== 0) {
@@ -46,6 +58,7 @@ export const buildMarkerCatalogReadModel = (
     selectedRestaurantId,
     canonicalRestaurantRankById,
     locationSelectionAnchor,
+    searchedBounds,
     resolveRestaurantMapLocations,
     pickPreferredRestaurantMapLocation,
     getCraveScoreColorFromScore,
@@ -137,13 +150,28 @@ export const buildMarkerCatalogReadModel = (
       const locations = resolveRestaurantMapLocations(restaurant);
       const shouldRenderAllLocations =
         selectedRestaurantId !== null && restaurant.restaurantId === selectedRestaurantId;
-      const closestLocation = shouldRenderAllLocations
+      const representativeLocation = shouldRenderAllLocations
         ? null
         : pickPreferredRestaurantMapLocation(restaurant, locationSelectionAnchor);
+      // L1 (§3.1 search policy): the representative competes for the group's budget slot;
+      // siblings INSIDE the searched bounds join as group members (demoted to dots by the
+      // native group budget); siblings outside stay invisible-resident (no entry — their
+      // data lives on the restaurant for the selection overlay to promote later).
+      const inBoundsSiblings =
+        shouldRenderAllLocations || representativeLocation == null || searchedBounds == null
+          ? []
+          : locations.filter(
+              (location) =>
+                location.locationId !== representativeLocation.locationId &&
+                isCoordinateWithinBounds(
+                  { lat: location.latitude, lng: location.longitude },
+                  searchedBounds
+                )
+            );
       const locationsToRender = shouldRenderAllLocations
         ? locations
-        : closestLocation
-          ? [closestLocation]
+        : representativeLocation
+          ? [representativeLocation, ...inBoundsSiblings]
           : [];
 
       locationsToRender.forEach((location) => {
@@ -169,6 +197,10 @@ export const buildMarkerCatalogReadModel = (
           feature,
           rank,
           locationIndex: location.locationIndex,
+          ...(representativeLocation != null &&
+          location.locationId === representativeLocation.locationId
+            ? { isGroupRepresentative: true }
+            : null),
         });
         if (location.isPrimary) {
           primaryCount += 1;

@@ -29,18 +29,8 @@ const isValidMapLocation = (
   return typeof location.googlePlaceId === 'string' && location.googlePlaceId.length > 0;
 };
 
-export const isCoordinateWithinBounds = (coordinate: Coordinate, bounds: MapBounds): boolean => {
-  const minLat = Math.min(bounds.southWest.lat, bounds.northEast.lat);
-  const maxLat = Math.max(bounds.southWest.lat, bounds.northEast.lat);
-  const latWithinRange = coordinate.lat >= minLat && coordinate.lat <= maxLat;
-  const minLng = bounds.southWest.lng;
-  const maxLng = bounds.northEast.lng;
-  const lngWithinRange =
-    minLng <= maxLng
-      ? coordinate.lng >= minLng && coordinate.lng <= maxLng
-      : coordinate.lng >= minLng || coordinate.lng <= maxLng;
-  return latWithinRange && lngWithinRange;
-};
+import { isCoordinateWithinBounds } from './map-viewport-query';
+export { isCoordinateWithinBounds };
 
 export const resolveRestaurantLocationSelectionAnchorFromBounds = ({
   bounds,
