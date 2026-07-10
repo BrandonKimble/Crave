@@ -222,13 +222,12 @@ const resolveInferredSheetTransitionKind = ({
     return 'terminalDismiss';
   }
   if (routeAction === 'closeActive' || routeAction === 'popToRoot') {
-    // S-C.2: a PUSHED search session pops like any pushed entry — child-style close (the
-    // popped-to scene's remembered presentation wins, not a top-level tab switch). Until
-    // S-C.3 generalizes the kind from the stack operation itself, 'search' joins the child
-    // set for close resolution (a search-source closeActive only exists on the pop path).
-    return isSharedSheetChildScene(sourceSceneKey) || sourceSceneKey === 'search'
-      ? 'closeChild'
-      : 'topLevelSwitch';
+    // S-C.3-B item 5: the kind derives from the STACK OPERATION — a pop is a CLOSE, whatever
+    // scene is popping (child, search session, future orphan pages). The old per-scene-set
+    // membership test ('is the source a shared-sheet child?') predates entries-as-values;
+    // every live pop verb also passes its kind explicitly, so this inference is the
+    // fallback rule, and the rule is: pops close.
+    return 'closeChild';
   }
   if (routeAction === 'push' || routeAction === 'updateActive') {
     return isSharedSheetChildScene(targetSceneKey) ? 'openChild' : 'topLevelSwitch';

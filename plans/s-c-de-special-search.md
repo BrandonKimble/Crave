@@ -278,3 +278,29 @@ pop-to-entry routeAction for [home, pollDetail, session, restaurant]-shaped X-di
 (popToRoot slightly overshoots to home there; rare, noted). Then: slot deletion,
 handleRootOverlayTransition deletion, nav-law depth flip + both manual nav commands, close-kind
 generalization, applyOriginDetent one-mechanism, profile foreground re-root (item 10).
+
+## Ledger items 4-6 CLOSED (2026-07-09 ~7PM)
+
+- **Item 5 (code):** the closeActive/popToRoot KIND inference collapses to the stack-operation
+  rule — a pop is a CLOSE ('closeChild'), whatever scene pops. The per-scene-set membership
+  test and the 'search'-joins-child special case are gone (every live pop verb also passes its
+  kind explicitly; the inference is the fallback rule).
+- **Item 4 (verdict — final form, not interim):** the nav-out law's depth form governs CHILD
+  entries (derived store, shipped); SESSION nav motion is TRANSACTION-owned BY DESIGN because
+  the desired-state architecture presents after resolve — the route commits at REVEAL while
+  the nav must leave at SUBMIT (press-up feel). The enter/exit-transaction 'hide'/'show'
+  commands are a symmetric owner pair, not manual stragglers; the pop-dismiss branch's 'show'
+  is the exit half for pop-shaped dismissals. Flipping the store to raw depth would command the
+  nav home EARLY during the home-dismissal collapse (route pops at the dance's first switch,
+  boundary lands later) — rejected with reasons.
+- **Item 6 (verdict — one mechanism per POP CLASS):** applyOriginDetent selects the
+  WORLD-SESSION pop shape (explicit origin-detent snapTo + topLevelSwitch/swapImmediately —
+  the proven seam shape for dismissing a presented world). CHILD pops keep descriptor motion +
+  the staged remembered-snap ledger: their dismiss detent is a PRODUCT choice. ⚠️ OWNER CALL
+  (open): pollDetail dismiss deliberately lands on the EXPANDED feed today, not the captured
+  docked-home origin — the pure §5.3 origin restore would collapse back to docked. Flag when
+  feel-checking.
+
+S-C.3-B/C is COMPLETE except: prepareSearchSessionEntry no-op verb + call sites (collapses
+with S-A), searchRoute shell rename + reveal-supersede deadness audit (S-C.4), and the
+post-S-C.3 red team.

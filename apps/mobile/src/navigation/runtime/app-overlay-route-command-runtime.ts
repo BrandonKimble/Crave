@@ -94,8 +94,14 @@ export const createAppOverlayRouteCommandRuntime = ({
     // remembered-snap ledger during plan resolution (staging at commit is a stale read).
     stageRouteEntryOriginRestore(activeOverlayRoute.origin);
     if (previousOverlayRoute != null && isAppOverlayRouteSceneSwitchKey(activeOverlayRoute.key)) {
-      // Origin restore is an EXPLICIT application (the seam always applied the captured
-      // detent as a snapTo, never via the remembered-snap default) — opt-in per pop path.
+      // Ledger item 6 VERDICT (one mechanism per POP CLASS, not one flag-free mechanism):
+      // applyOriginDetent selects the WORLD-SESSION pop shape — explicit snapTo of the popped
+      // entry's origin detent + topLevelSwitch/swapImmediately (the proven seam shape for
+      // dismissing a presented world). CHILD pops keep descriptor-table motion + the staged
+      // remembered-snap ledger: their dismiss detent is a PRODUCT choice (e.g. pollDetail
+      // deliberately lands on the expanded feed, not the captured docked origin — flipping
+      // that is an owner call, tracked in plans/s-c-de-special-search.md). Origin restore is
+      // an EXPLICIT application in both classes; the classes legitimately differ in shape.
       const originDetent =
         options?.applyOriginDetent === true ? activeOverlayRoute.origin?.detent : undefined;
       requestRouteSceneSwitch(

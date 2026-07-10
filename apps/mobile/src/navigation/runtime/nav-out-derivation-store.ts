@@ -7,9 +7,15 @@ import React from 'react';
  * construction. This store replaces the per-scene nav-hide-intent registry (2 opt-ins).
  *
  * One writer: useAppRouteNavOutDerivationWriterRuntime (mounted once in the app shell) projects
- * the route navigation snapshot into this boolean. Interim clause (§5.1): search results are
- * NOT a push yet (setRoot until S-C), so results/suggestion nav-out stays with the existing
- * search-motion mechanisms; this store covers the child-scene half of the law.
+ * the route navigation snapshot into this boolean.
+ *
+ * Ledger item 4 VERDICT — this split IS the final form, not an interim (the §5.1 "interim
+ * clause" framing was wrong): search sessions ARE pushes now, but the desired-state
+ * architecture presents AFTER resolve — the route commits at REVEAL, while the nav must leave
+ * at SUBMIT (press-up feel). Session nav motion is therefore TRANSACTION-owned by design: the
+ * enter transaction commands 'hide', the exit transaction / the pop-dismiss branch command
+ * 'show' — a symmetric pair, not stray manual writers. This store owns the CHILD half of the
+ * law, where route commits coincide with user intent (child pushes commit immediately).
  */
 
 type Listener = () => void;
