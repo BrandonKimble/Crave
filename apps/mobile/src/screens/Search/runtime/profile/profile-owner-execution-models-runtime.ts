@@ -15,6 +15,7 @@ import {
   type PreparedProfilePresentationCompletionEvent,
 } from './profile-prepared-presentation-runtime';
 import type { ProfilePreparedPresentationRuntime } from './profile-prepared-presentation-runtime-contract';
+import { useProfileDirectPresentationRuntime } from './profile-direct-presentation-runtime';
 import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract';
 import type { ProfileAppExecutionArgs } from './profile-app-execution-runtime-contract';
 
@@ -57,13 +58,30 @@ export const useProfileOwnerExecutionModelsRuntime = ({
     preparedProfileCompletionHandlerRef,
   });
 
-  const preparedPresentationRuntime = useProfilePreparedPresentationRuntime({
+  // L3 cutover slices 2+3: the machine's transaction runtime still assembles (deleted in
+  // the next slice) but the PORTS bind to the DIRECT runtime — camera + standard push/hide;
+  // the pop-teardown writer owns every close.
+  const machinePresentationRuntime = useProfilePreparedPresentationRuntime({
     preparedProfileCompletionHandlerRef,
     runBatch: unstable_batchedUpdates as (fn: () => void) => void,
     nativeExecutionModel,
     runtimeStateOwner,
     appExecutionRuntime,
   });
+  void machinePresentationRuntime;
+  const directPresentationRuntime = useProfileDirectPresentationRuntime({
+    nativeExecutionModel,
+    routeOverlayRouteCommandRuntime: routeSceneRuntime.routeOverlayRouteCommandRuntime,
+    setProfileTransitionStatus: runtimeStateOwner.transitionRuntimeState.setProfileTransitionStatus,
+  });
+  const preparedPresentationRuntime = React.useMemo(
+    () =>
+      ({
+        ...machinePresentationRuntime,
+        ...directPresentationRuntime,
+      }) as ProfilePreparedPresentationRuntime,
+    [directPresentationRuntime, machinePresentationRuntime]
+  );
 
   return React.useMemo(
     () => ({

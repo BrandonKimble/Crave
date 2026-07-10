@@ -19,6 +19,11 @@ type UseProfileOwnerActionSurfaceRuntimeArgs = {
   resetRestaurantProfileFocusSession: ProfileRuntimeStateOwner['focusRuntime']['resetRestaurantProfileFocusSession'];
   getProfileTransitionState: ProfileRuntimeStateOwner['transitionRuntimeState']['getProfileTransitionState'];
   finalizePreparedProfileCloseState: ProfileRuntimeStateOwner['closeRuntimeState']['finalizationRuntimeState']['finalizePreparedProfileCloseState'];
+  // L3 cutover slice 3: the pop-commit handler owns the CLEAR-dismiss arm (the machine's
+  // close finalization used to run it; every close is pop-shaped now).
+  getProfileDismissBehavior: ProfileRuntimeStateOwner['closeRuntimeState']['policyRuntimeState']['getProfileDismissBehavior'];
+  getProfileShouldClearSearchOnDismiss: ProfileRuntimeStateOwner['closeRuntimeState']['policyRuntimeState']['getProfileShouldClearSearchOnDismiss'];
+  clearSearchAfterProfileDismiss: () => void;
 };
 
 export const useProfileOwnerActionSurfaceRuntime = ({
@@ -34,6 +39,9 @@ export const useProfileOwnerActionSurfaceRuntime = ({
   resetRestaurantProfileFocusSession,
   getProfileTransitionState,
   finalizePreparedProfileCloseState,
+  getProfileDismissBehavior,
+  getProfileShouldClearSearchOnDismiss,
+  clearSearchAfterProfileDismiss,
 }: UseProfileOwnerActionSurfaceRuntimeArgs): ProfileRuntimeActions => {
   const presentationActions = useProfileOwnerPresentationActionsRuntime({
     queryState,
@@ -101,6 +109,12 @@ export const useProfileOwnerActionSurfaceRuntime = ({
       return false;
     }
     prepareRestaurantProfileForTerminalSearchDismiss();
+    // L3 slice 3: an autocomplete/auto-open-sourced profile dismisses with 'clear' —
+    // the search session ends with it (the machine's close finalization used to do this;
+    // the behavior record resets at the settle-half finalize).
+    if (getProfileDismissBehavior() === 'clear' && getProfileShouldClearSearchOnDismiss()) {
+      clearSearchAfterProfileDismiss();
+    }
     const nextRequestSeq = getRestaurantProfileRequestSeq() + 1;
     cancelActiveHydrationIntent('profile_hydration_cancelled_on_overlay_dismiss', {
       nextRequestSeq,
@@ -113,6 +127,9 @@ export const useProfileOwnerActionSurfaceRuntime = ({
   }, [
     actionExecutionPorts,
     cancelActiveHydrationIntent,
+    clearSearchAfterProfileDismiss,
+    getProfileDismissBehavior,
+    getProfileShouldClearSearchOnDismiss,
     getProfileTransitionState,
     getRestaurantProfileRequestSeq,
     prepareRestaurantProfileForTerminalSearchDismiss,

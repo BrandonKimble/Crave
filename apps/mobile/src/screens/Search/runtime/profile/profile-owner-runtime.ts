@@ -146,6 +146,12 @@ export const useProfileOwner = ({
     cancelActiveHydrationIntent,
     resetRestaurantProfileFocusSession,
     getProfileTransitionState: runtimeStateOwner.transitionRuntimeState.getProfileTransitionState,
+    getProfileDismissBehavior:
+      runtimeStateOwner.closeRuntimeState.policyRuntimeState.getProfileDismissBehavior,
+    getProfileShouldClearSearchOnDismiss:
+      runtimeStateOwner.closeRuntimeState.policyRuntimeState.getProfileShouldClearSearchOnDismiss,
+    clearSearchAfterProfileDismiss:
+      appExecutionArgs.closeExecutionArgs.clearSearchAfterProfileDismiss,
     finalizePreparedProfileCloseState:
       runtimeStateOwner.closeRuntimeState.finalizationRuntimeState
         .finalizePreparedProfileCloseState,
