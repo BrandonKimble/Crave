@@ -112,9 +112,34 @@ export class PrismaService
     await this.$connect();
 
     await this.logTableProbe();
+    await this.assertClientSchemaCoherence();
 
     // this.startHealthChecks();
     this.logger.info('Database connection established');
+  }
+
+  /**
+   * Schema-drift tripwire: a Prisma client generated from a stale schema
+   * SELECTs columns migrations have dropped, poisoning every request that
+   * touches the model (2026-07-09 incident: every AUTHED request 500'd at
+   * the auth guard's user sync while anonymous traffic looked healthy).
+   * Querying the hot models with no `select` exercises the client's full
+   * column list — drift fails THE BOOT, loudly, instead of runtime.
+   */
+  private async assertClientSchemaCoherence(): Promise<void> {
+    try {
+      await this.user.findFirst();
+      await this.accessGrant.findFirst();
+      await this.subscription.findFirst();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        'FATAL: Prisma client does not match the database schema — ' +
+          'run `npx prisma generate` and rebuild before starting',
+        { operation: 'prisma_schema_coherence', error: { message } },
+      );
+      throw new Error(`Prisma client/schema drift detected: ${message}`);
+    }
   }
 
   async onModuleDestroy() {
