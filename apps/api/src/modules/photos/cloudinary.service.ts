@@ -1,7 +1,6 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
-import { createHash } from 'node:crypto';
 import { LoggerService } from '../../shared';
 
 /** The four delivery variants — NAMED transformations in Cloudinary
@@ -127,8 +126,8 @@ export class CloudinaryService {
     };
   }
 
-  /** Verify Cloudinary's notification signature (X-Cld-Signature =
-   *  SHA-1(body + timestamp + api_secret)) and reject stale timestamps.
+  /** Verify Cloudinary's notification signature via the SDK's own verifier
+   *  (X-Cld-Signature + X-Cld-Timestamp; staleness enforced by validFor).
    *  Fail CLOSED — an unverified webhook can flip photo statuses. */
   verifyNotificationSignature(
     rawBody: string,
@@ -140,12 +139,16 @@ export class CloudinaryService {
     if (!timestampHeader || !signatureHeader) return false;
     const timestamp = Number(timestampHeader);
     if (!Number.isFinite(timestamp)) return false;
-    const age = Math.abs(Date.now() / 1000 - timestamp);
-    if (age > maxAgeSeconds) return false;
-    const expected = createHash('sha1')
-      .update(rawBody + timestampHeader + this.apiSecret!)
-      .digest('hex');
-    return expected === signatureHeader;
+    try {
+      return cloudinary.utils.verifyNotificationSignature(
+        rawBody,
+        timestamp,
+        signatureHeader,
+        maxAgeSeconds,
+      );
+    } catch {
+      return false;
+    }
   }
 
   /** THE delivery-URL builder — every DTO carries these; no client ever

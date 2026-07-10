@@ -135,3 +135,32 @@ except a Cloudinary account (owner: create one, drop the three env keys).
   (owner keys pending). Used for one-time setup: named transformations,
   strict-transformations flag, upload preset — scripted + committed so
   setup is reproducible.
+
+## Live E2E results (2026-07-10, keys landed)
+
+VERIFIED live: signed ticket → direct multipart upload (incoming transform
+applied, 2560 cap) → upload webhook through the tunnel (SDK
+verifyNotificationSignature — the hand-rolled SHA-1 scheme was wrong and
+got replaced) → width/height/bytes filled → delivery via t_crave_thumb +
+f_auto → delivered variant FULLY EXIF-stripped (GPS test image).
+
+TWO design amendments from the run:
+
+1. **takenAt is CLIENT-supplied at ticket time** (picker EXIF, read
+   on-device before upload). The research-flagged pitfall is real: the
+   incoming transform strips EXIF before Cloudinary can extract it — and
+   that's the PRIVACY WIN (GPS never reaches storage), so we keep the
+   transform and move capture-time to the ticket. Mobile step 6: read EXIF
+   via expo-image-picker and send takenAt.
+2. **focus_score unavailable on the free plan** (quality_analysis returned
+   nothing) — hero policy degrades to recency-only until paid; column
+   stays.
+
+REMAINING for the full moderation flip (owner, Console — no API exists):
+
+1. Add-ons → register "Amazon Rekognition AI Moderation" (free tier)
+2. Security → enable STRICT TRANSFORMATIONS; allowlist
+   t_crave_thumb/card/gallery/full
+   Then rerun: `yarn ts-node scripts/photo-e2e.ts` (full pending→live flip).
+   Dev webhook = cloudflared tunnel in CLOUDINARY_NOTIFICATION_URL (per
+   session); prod = Railway URL.

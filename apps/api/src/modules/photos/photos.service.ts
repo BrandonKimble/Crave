@@ -47,8 +47,9 @@ type PhotoRow = Prisma.PhotoGetPayload<{ select: typeof PHOTO_DTO_SELECT }>;
  *   ticket (row created PENDING, public_id minted server-side)
  *     -> device uploads DIRECTLY to Cloudinary (signed; preset pins
  *        moderation/incoming-transform/metadata extraction)
- *     -> Cloudinary webhooks: upload notification fills dimensions/EXIF
- *        takenAt/focus score; moderation notification decides safety
+ *     -> Cloudinary webhooks: upload notification fills dimensions/focus
+ *        score; moderation notification decides safety (takenAt is
+ *        client-supplied at ticket time — stored originals are stripped)
  *     -> safety approved -> async is-food gate (Gemini, fail-open)
  *     -> LIVE (or REMOVED, Cloudinary asset destroyed)
  *
@@ -73,13 +74,18 @@ export class PhotosService {
       this.configService.get<number>('cloudinary.reportHideThreshold') ?? 3;
   }
 
-  /** Create the pending row + signed direct-upload ticket. */
+  /** Create the pending row + signed direct-upload ticket. takenAt comes
+   *  from the CLIENT's picker EXIF (read on-device BEFORE upload): the
+   *  incoming transform strips ALL metadata from the stored original —
+   *  verified E2E 2026-07-10 — which is the privacy win (GPS never reaches
+   *  storage) and why the server can't extract capture time itself. */
   async createUploadTicket(params: {
     userId: string;
     restaurantId: string;
     connectionId?: string;
     caption?: string;
     pendingDishName?: string;
+    takenAt?: Date;
   }): Promise<{ photo: PhotoDto; ticket: SignedUploadTicket }> {
     const restaurant = await this.prisma.entity.findUnique({
       where: { entityId: params.restaurantId },
@@ -106,6 +112,7 @@ export class PhotosService {
         connectionId: params.connectionId ?? null,
         caption: params.caption?.slice(0, 512) ?? null,
         pendingDishName: params.pendingDishName?.slice(0, 256) ?? null,
+        takenAt: params.takenAt ?? null,
         publicId: 'pending', // replaced below once the id exists
       },
       select: { photoId: true },
@@ -151,7 +158,9 @@ export class PhotosService {
     photoId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
-    const takenAt = this.cloudinary.extractTakenAt(payload);
+    // takenAt is client-supplied at ticket time; the stored original is
+    // metadata-stripped by the incoming transform (GPS never reaches
+    // storage — E2E-verified), so there is nothing to extract here.
     await this.prisma.photo.update({
       where: { photoId },
       data: {
@@ -161,8 +170,6 @@ export class PhotosService {
         focusScore:
           (payload.quality_analysis as { focus?: number } | undefined)?.focus ??
           undefined,
-        takenAt: takenAt ?? undefined,
-        // GPS deliberately never read or stored.
       },
     });
     // Some uploads carry the moderation verdict inline (sync add-ons).
@@ -305,7 +312,6 @@ export class PhotosService {
           height: asset.height ?? undefined,
           bytes: asset.bytes ?? undefined,
           focusScore: asset.focusScore ?? undefined,
-          takenAt: asset.takenAt ?? undefined,
         },
       });
       await this.applyModerationResult(

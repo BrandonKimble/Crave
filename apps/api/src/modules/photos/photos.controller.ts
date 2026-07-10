@@ -13,7 +13,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
-import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsISO8601,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { CurrentUser } from '../../shared';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
@@ -39,6 +45,12 @@ export class CreateUploadTicketDto {
   @IsString()
   @MaxLength(256)
   pendingDishName?: string;
+
+  /** Capture time from the device picker's EXIF (read client-side BEFORE
+   *  upload — the stored original is metadata-stripped for privacy). */
+  @IsOptional()
+  @IsISO8601()
+  takenAt?: string;
 }
 
 /** Contribution endpoints sit BEHIND the app-wide paywall (subscribers
@@ -59,6 +71,7 @@ export class PhotosController {
       connectionId: dto.connectionId,
       caption: dto.caption,
       pendingDishName: dto.pendingDishName,
+      takenAt: dto.takenAt ? new Date(dto.takenAt) : undefined,
     });
   }
 
