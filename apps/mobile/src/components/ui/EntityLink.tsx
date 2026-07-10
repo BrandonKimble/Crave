@@ -1,12 +1,8 @@
 import React from 'react';
 import { Text, type StyleProp, type TextStyle } from 'react-native';
 
-import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
-import {
-  resolveEntityRefAction,
-  type EntityRef,
-} from '../../navigation/runtime/entity-ref-action-policy';
-import { useAppOverlayRouteController } from '../../overlays/useAppOverlayRouteController';
+import { type EntityRef } from '../../navigation/runtime/entity-ref-action-policy';
+import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
 import { colors as themeColors } from '../../constants/theme';
 
 type EntityLinkProps = {
@@ -34,36 +30,11 @@ const linkStyle: TextStyle = {
  * in S-D.4); pushScene pushes the child route directly.
  */
 export const EntityLink = ({ entityRef, children, style }: EntityLinkProps): React.JSX.Element => {
-  const { dispatchLaunchIntent } = useAppRouteCoordinator();
-  const { pushRoute } = useAppOverlayRouteController();
+  const executeEntityRefAction = useEntityRefActionExecutor();
   const tappable = entityRef.entityId.length > 0;
   const handlePress = React.useCallback(() => {
-    const action = resolveEntityRefAction(entityRef);
-    switch (action.kind) {
-      case 'restaurantWorld':
-        dispatchLaunchIntent({
-          type: 'restaurant',
-          restaurantId: action.restaurantId,
-          restaurantName: action.restaurantName,
-        });
-        return;
-      case 'entityDesire':
-        dispatchLaunchIntent({
-          type: 'entity',
-          entityId: action.entityId,
-          entityType: action.entityType,
-          submittedLabel: action.label,
-        });
-        return;
-      case 'pushScene':
-        if (action.scene === 'userProfile') {
-          pushRoute('userProfile', { userId: action.params.userId });
-          return;
-        }
-        pushRoute('listDetail', { listId: action.params.listId });
-        return;
-    }
-  }, [dispatchLaunchIntent, entityRef, pushRoute]);
+    executeEntityRefAction(entityRef);
+  }, [entityRef, executeEntityRefAction]);
   return (
     <Text
       style={[spanStyle, tappable && linkStyle, style]}

@@ -63,7 +63,7 @@ const deriveEntrySurface = (
       return 'search_mode';
     case 'entity':
       return 'search_mode';
-    case 'entities':
+    case 'list':
       return 'home';
     case 'profileSeed':
       return 'profile';

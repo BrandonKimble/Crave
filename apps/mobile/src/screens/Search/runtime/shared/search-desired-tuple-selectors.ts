@@ -33,7 +33,7 @@ export const selectIncludeSimilarActive = (state: SearchRuntimeBusState): boolea
 export const deriveSearchModeFromIdentity = (
   identity: SearchQueryIdentity
 ): 'natural' | 'shortcut' | null =>
-  identity.kind === 'natural' || identity.kind === 'entities'
+  identity.kind === 'natural' || identity.kind === 'list'
     ? 'natural'
     : identity.kind === 'shortcut'
       ? 'shortcut'
@@ -54,7 +54,7 @@ export const deriveSubmittedQueryFromIdentity = (identity: SearchQueryIdentity):
       ? identity.shortcutTab === 'restaurants'
         ? 'Best restaurants'
         : 'Best dishes'
-      : identity.kind === 'entities'
+      : identity.kind === 'list'
         ? identity.displayTitle
         : identity.kind === 'entity'
           ? identity.displayName

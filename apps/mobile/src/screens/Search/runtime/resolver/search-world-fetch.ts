@@ -48,7 +48,7 @@ export type SearchWorldFetchEnv = {
    *  world lands atomic (S1 invariant) and the frame never waits on a relay. */
   shortcutCoverage: ShortcutCoverageService;
   getMarketKey: () => string;
-  /** Favorites-as-search: the entities identity's list fetch (no LLM, no bounds —
+  /** Favorites-as-search: the list identity's fetch (no LLM, no bounds —
    *  the results define the camera). */
   getFavoritesListResults: (
     listId: string,
@@ -167,10 +167,7 @@ export const createSearchWorldFetcher =
       }
       attachTupleScopeToPayload(payload, tuple, userLocation);
       response = await env.runSearch({ kind: 'natural', payload, onCacheStatus });
-    } else if (identity.kind === 'entities') {
-      if (identity.listId == null) {
-        throw new Error('search-world-fetch: entities identity without a listId');
-      }
+    } else if (identity.kind === 'list') {
       response = await env.getFavoritesListResults(identity.listId, {
         openNow: tuple.filterVariant.openNow || undefined,
         userLocation: userLocation ?? undefined,
@@ -263,7 +260,7 @@ export const createSearchWorldFetcher =
             submissionContext: adoptSubmissionContext,
           })
         : 'restaurants'
-      : identity.kind === 'entities'
+      : identity.kind === 'list'
         ? resolveFavoritesAdoptedTab({
             response,
             listTab: identity.listType === 'dish' ? 'dishes' : 'restaurants',

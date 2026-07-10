@@ -130,7 +130,7 @@ export const useSearchStructuredSubmitOwner = ({
       logSearchPhase('launchFavorites:start', { reset: true });
       const targetTab: SegmentValue = params.listType === 'dish' ? 'dishes' : 'restaurants';
       resetMapMoveFlag();
-      // S3c: favorites-as-search IS an entities-identity tuple write + resolve. No
+      // S3c/S-D.2: favorites-as-search IS a list-identity tuple write + resolve. No
       // viewport adopt (committedBounds null — the results define the camera); the
       // fetch table routes listId to getListResults, the adopt rule honors the list
       // axis, and favorites suppress the single-restaurant collapse in the fetcher.
@@ -138,9 +138,7 @@ export const useSearchStructuredSubmitOwner = ({
         searchRuntimeBus,
         {
           queryIdentity: {
-            kind: 'entities',
-            restaurantIds: [],
-            foodIds: [],
+            kind: 'list',
             listId: params.listId,
             listType: params.listType,
             displayTitle: params.submittedLabel,

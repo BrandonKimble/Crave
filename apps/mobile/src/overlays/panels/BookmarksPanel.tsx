@@ -8,7 +8,7 @@ import { announceFailureIfOnline, showAppModal } from '../../components/app-moda
 import { SegmentedToggle } from '../../components/SegmentedToggle';
 import { colors as themeColors } from '../../constants/theme';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
-import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
+import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
 import {
   favoriteListsService,
@@ -410,7 +410,7 @@ type BookmarksDataSurfaceProps = {
 const BookmarksDataSurface = React.memo(
   ({ shouldSubscribeDataLane, sceneReady }: BookmarksDataSurfaceProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
-    const { dispatchLaunchIntent } = useAppRouteCoordinator();
+    const executeEntityRefAction = useEntityRefActionExecutor();
     const queryClient = useQueryClient();
     const isOffline = useSystemStatusStore((state) => state.isOffline);
     const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
@@ -526,19 +526,17 @@ const BookmarksDataSurface = React.memo(
 
     const handleListPress = React.useCallback(
       (list: FavoriteListSummary) => {
-        // Launch the favorites list as a search-sourced results surface (same
-        // list + toggle strip + map pins + staged reveal as a real search). The
-        // launch-intent runtime captures the bookmarks origin so the search
-        // dismisses back here. (Replaced the standalone favoriteListDetail
-        // route, now deleted.)
-        dispatchLaunchIntent({
-          type: 'favorites',
-          listId: list.listId,
+        // S-D.2: the tap's meaning resolves through THE entity policy (listWorld =
+        // favorites-as-search today; the listDetail hybrid changes the policy arm, not
+        // this handler). The byte-identical profile-panel copy routes the same way.
+        executeEntityRefAction({
+          entityId: list.listId,
+          entityType: 'list',
+          label: list.name,
           listType: list.listType,
-          submittedLabel: list.name,
         });
       },
-      [dispatchLaunchIntent]
+      [executeEntityRefAction]
     );
 
     const handleShare = React.useCallback(async (list: FavoriteListSummary) => {

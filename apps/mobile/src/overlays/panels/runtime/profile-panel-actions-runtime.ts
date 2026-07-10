@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '@clerk/clerk-expo';
 import { useAppRouteSceneRuntime } from '../../../navigation/runtime/AppRouteSceneRuntimeProvider';
-import { useAppRouteCoordinator } from '../../../navigation/runtime/AppRouteCoordinator';
+import { useEntityRefActionExecutor } from '../../../navigation/runtime/use-entity-ref-action-executor';
 import type { FavoriteListSummary } from '../../../services/favorite-lists';
 import type { Poll } from '../../../services/polls';
 import type { ProfilePanelActionsRuntime } from './profile-panel-runtime-contract';
@@ -9,7 +9,7 @@ import type { ProfilePanelActionsRuntime } from './profile-panel-runtime-contrac
 export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
   const { isSignedIn } = useAuth();
   const routeSceneRuntime = useAppRouteSceneRuntime();
-  const { dispatchLaunchIntent } = useAppRouteCoordinator();
+  const executeEntityRefAction = useEntityRefActionExecutor();
 
   const handleOpenSettings = React.useCallback(() => {
     // Real child push (S-B slice 4 / §5.7) — the placeholder action-list modal is gone; the
@@ -34,19 +34,15 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
 
   const handleListPress = React.useCallback(
     (list: FavoriteListSummary) => {
-      // Launch the favorites list as a search-sourced results surface (same list
-      // + toggle strip + map pins + staged reveal as a real search). The
-      // launch-intent runtime captures the profile origin so the search dismisses
-      // back here. (Replaced the standalone favoriteListDetail route, now
-      // deleted.)
-      dispatchLaunchIntent({
-        type: 'favorites',
-        listId: list.listId,
+      // S-D.2: routes through THE entity policy (listWorld = favorites-as-search today).
+      executeEntityRefAction({
+        entityId: list.listId,
+        entityType: 'list',
+        label: list.name,
         listType: list.listType,
-        submittedLabel: list.name,
       });
     },
-    [dispatchLaunchIntent]
+    [executeEntityRefAction]
   );
 
   return React.useMemo(
