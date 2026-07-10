@@ -71,6 +71,20 @@ with the parallel machine coexisting until proven — then the machine is delete
 > classify each as body-agnostic vs results-only, and let that classification BE the
 > union's shape.
 
+> **The commit-step classification (read 2026-07-10 ~4:50AM,
+> `search-world-presentation-seam.ts:146-280`) — this IS the union's shape:**
+>
+> | step                                                                             | body-agnostic?                                                                                                                                                                               |
+> | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | represent-noop branch (:163-194, identity compare + operation completion)        | ✅ agnostic                                                                                                                                                                                  |
+> | rowCount/totals contract check (:199-212)                                        | results-only                                                                                                                                                                                 |
+> | `publishSearchMountedResultsDataSnapshot(committedResponse, projections)` (:213) | SPLIT: marker projections agnostic (a profile world publishes its one-group projection); the response rows results-only — the mounted store needs a body-aware publish, NOT a faked response |
+> | coverage commits (:218-229)                                                      | results-only                                                                                                                                                                                 |
+> | surface-authority hydration keys (:230-239)                                      | results-only in content; the profile world's REVEAL READINESS analog = panel-body-ready (the redraw contract's 'cards' weld becomes body-dispatched)                                         |
+> | root-bus patch + pagination (:240-253)                                           | results-only except presentedWorldId/phase (agnostic)                                                                                                                                        |
+> | `onPageOneResultsCommitted` choreography (:255-267)                              | ✅ agnostic — the enter-txn weld every body needs                                                                                                                                            |
+> | `onWorldCommitted` → lastSearchRequestIdRef (:268)                               | dies with the auto-open web in L3.c                                                                                                                                                          |
+
 **L3.a — the `profileSeed` live lane (additive; machine coexists).**
 Route it in `search-world-fetch.ts` (zero-network synthesis: the world's catalog = the one
 restaurant group — needs the restaurant profile fetch for locations; "zero-network" means
