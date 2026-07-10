@@ -80,3 +80,22 @@ Bearer crave-dev-perf-scenario" -d '{"body":"<text mentioning known entities>"}'
   normalize machinery in AppRouteCoordinator simplifies; `saved_place` resolved.
 
 Validation per slice on the rig; red team after S-D.4.
+
+## S-D CHARTER COMPLETE (2026-07-10 ~2:31AM — client side)
+
+- **S-D.4 (7b8b9ec2)**: the LaunchIntent search vocabulary DISSOLVED into
+  {type:'entityAction', action: EntityRefAction} — ONE action vocabulary end-to-end (the
+  channel survives as the cross-tree bridge because the search runtime bus is hook-scoped,
+  but its VALUE no longer duplicates EntityRefAction). saved_place DELETED (trap 7: parse-only,
+  no consumer). Deep-link restaurant parse constructs restaurantWorld with empty name (the
+  consumer's fetch fallback). Rig: all three kinds green (list tap → list world; gelato span →
+  entity world + popToEntry return; restaurant span → committed single-restaurant world).
+  Deep-link COLD-START is type-proven only (dev client swallows cold crave:// — release/finger
+  test).
+- **S-D.3 (a5fc2237)**: selectedEntity travels TYPED on SubmitSearchOptions; the attempt
+  config constructs the wire fields at ONE point; the natural-submit stringly parse DELETED
+  (wire and identity share one typed source). Producers: autocomplete entity selection +
+  launchEntitySearchResults. Rig: typed 'gelat' → row tap → the same entity:food world.
+- **REMAINING S-D**: ONLY the BE-gated person/list autocomplete row widening (needs the
+  endpoint to serve those rows; widen ALL unions in one commit when it does — type-list
+  disease). The notifications payload→Desire generalization rides S-E as planned.
