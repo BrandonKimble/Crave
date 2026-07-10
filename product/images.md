@@ -131,3 +131,9 @@ tags live on the favorites side (see product/favorites.md), not on Photo.
 - Video uploads; tags UI (schema first); AI dish-suggestion (cheap async
   batch pass post-launch — never blocking, never at capture time); gallery
   ML categories; likes on photos (metrics only, no like button).
+
+## Gallery UI note (owner, 2026-07-09)
+
+Copy Google's pattern: a horizontal-scrolling SELECTOR mini-row at the top
+of the gallery (sections as tappable thumbnails/chips — "All photos" first,
+then the dishes RANKED left-to-right); tapping swaps the gallery grid below.
