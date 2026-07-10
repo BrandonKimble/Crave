@@ -88,3 +88,50 @@ path (noted, not built).
 Each step: build → red-team → E2E on the sim (upload a real photo through
 the funnel, watch it propagate) → commit. Sandbox needs nothing external
 except a Cloudinary account (owner: create one, drop the three env keys).
+
+## Step-1/2 researched decisions (Cloudinary deep-dive, 2026-07-09 — LOCKED)
+
+- **Signed uploads + SIGNED upload preset.** Ticket = api_key/timestamp/
+  signature/public_id/preset (1h validity). Signature covers every param —
+  client cannot alter public_id/folder/moderation/notification_url. Server
+  mints public_id crave/{env}/photos/{photoId}. Preset pins: folder,
+  incoming transformation (w_2560,h_2560,c_limit,q_auto:good — caps stored
+  originals), allowed_formats, moderation, notification_url. NEVER unsigned
+  presets (preset name = bearer credential).
+- **Moderation = pending→live, NOT publish-then-gate** (amends the spec
+  wording; UX identical, seconds-scale): `moderation: aws_rek` holds the
+  asset pending; async webhook delivers approved/rejected + labels
+  (thresholds tunable). Rejected assets CDN-invalidated. is-food is NOT
+  Rekognition's job → our own async Gemini flash vision pass (existing LLM
+  stack + usage ledger) as part of the confirm/webhook pipeline. Quality
+  floor = `quality_analysis: true` focus score (free, sync in upload
+  response) + width/height/bytes.
+- **EXIF**: `media_metadata: true` on upload → takenAt from
+  DateTimeOriginal in the RESPONSE; GPS never persisted anywhere (privacy).
+  Stored original is downscaled+metadata-stripped by the incoming
+  transform; derived deliveries strip EXIF by default. E2E must verify
+  DateTimeOriginal survives the incoming transform (known pitfall);
+  fallback = drop incoming transform + strict-only delivery.
+- **Delivery**: named transformations t_thumb/t_card/t_gallery/t_full with
+  f_auto appended INLINE (f_auto is inert inside named transformations);
+  STRICT TRANSFORMATIONS ON with those 4 allowlisted (public URLs +
+  open transforms = billing-abuse vector); explicit dpr from the client;
+  no signed delivery URLs (overkill for public UGC). ONE server-side URL
+  builder — clients never hand-roll URLs; DTOs carry ready URLs.
+- **Webhook**: notification_url signed into the ticket → POST
+  /photos/webhooks/cloudinary; verify X-Cld-Signature (+timestamp
+  staleness); idempotent + 200-fast; retries are only 3/6/9min then give
+  up → RECONCILIATION CRON sweeps pending photos via Admin API
+  resources_by_moderation (500 req/hr free — never poll per-photo).
+- **Free tier = 25 FUNGIBLE credits/mo** (storage GB + bandwidth GB +
+  transformations/1000 share it) — fine for launch with the 4-variant
+  named-transformation discipline; not "25GB storage".
+- **SDK**: `cloudinary` v2 npm, server-side only (signing, admin, URL
+  building, webhook verify). No client SDK — the app uploads with plain
+  multipart POST using the ticket.
+- **FK truth**: dish link = `connectionId` (Connection = restaurant×food),
+  matching favorites' {restaurantId?, connectionId?} convention.
+- **CLI**: cloudinary-cli installed via pipx (`cld`); needs CLOUDINARY_URL
+  (owner keys pending). Used for one-time setup: named transformations,
+  strict-transformations flag, upload preset — scripted + committed so
+  setup is reproducible.
