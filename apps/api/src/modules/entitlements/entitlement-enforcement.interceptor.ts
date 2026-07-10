@@ -95,7 +95,9 @@ export class EntitlementEnforcementInterceptor implements NestInterceptor {
     }
     throw new ForbiddenException({
       code: 'ENTITLEMENT_REQUIRED',
-      entitlement: 'premium',
+      // errorCode mirrors the api client's existing response-field convention.
+      errorCode: 'ENTITLEMENT_REQUIRED',
+      entitlement: this.entitlements.defaultCode,
     });
   }
 }

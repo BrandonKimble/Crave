@@ -9,7 +9,6 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import Stripe from 'stripe';
 import {
   BillingEventStatus,
-  CheckoutSessionStatus,
   Prisma,
   SubscriptionPlatform,
   SubscriptionProvider,
@@ -18,8 +17,6 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
-import { CreatePortalSessionDto } from './dto/create-portal-session.dto';
 import { RevenueCatWebhookDto } from './dto/revenuecat-webhook.dto';
 import { UserService } from '../identity/user.service';
 import { EntitlementService } from '../entitlements/entitlement.service';
@@ -85,95 +82,6 @@ export class BillingService {
 
   private reverseEntitlementMap!: Map<string, string>;
 
-  async createCheckoutSession(
-    user: User,
-    dto: CreateCheckoutSessionDto,
-  ): Promise<{
-    url?: string | null;
-    sessionId: string;
-    expiresAt?: Date | null;
-  }> {
-    const stripe = this.ensureStripe();
-    const priceId = dto.priceId || this.defaultPriceId;
-    if (!priceId) {
-      throw new BadRequestException('priceId is required');
-    }
-
-    const customerId = await this.userService.ensureStripeCustomer(
-      user,
-      stripe,
-    );
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
-      customer: customerId,
-      client_reference_id: user.authProviderUserId ?? user.userId,
-      success_url: dto.successUrl || this.successUrl,
-      cancel_url: dto.cancelUrl || this.cancelUrl,
-      metadata: {
-        user_id: user.authProviderUserId ?? user.userId,
-      },
-      line_items: [
-        {
-          price: priceId,
-          quantity: 1,
-        },
-      ],
-    });
-
-    const checkoutMetadata = this.toJsonInput(session);
-
-    await this.prisma.checkoutSession.create({
-      data: {
-        userId: user.userId,
-        provider: SubscriptionProvider.stripe,
-        externalSessionId: session.id,
-        status: CheckoutSessionStatus.pending,
-        url: session.url ?? null,
-        successUrl: dto.successUrl || this.successUrl,
-        cancelUrl: dto.cancelUrl || this.cancelUrl,
-        expiresAt: session.expires_at
-          ? new Date(session.expires_at * 1000)
-          : null,
-        ...(checkoutMetadata !== undefined
-          ? { metadata: checkoutMetadata }
-          : {}),
-      },
-    });
-
-    return {
-      url: session.url,
-      sessionId: session.id,
-      expiresAt: session.expires_at
-        ? new Date(session.expires_at * 1000)
-        : null,
-    };
-  }
-
-  async createPortalSession(
-    user: User,
-    dto: CreatePortalSessionDto,
-  ): Promise<{ url: string }> {
-    const stripe = this.ensureStripe();
-    if (!user.stripeCustomerId) {
-      throw new BadRequestException(
-        'User does not have a Stripe customer. Start with a Checkout Session.',
-      );
-    }
-
-    const portalSession = await stripe.billingPortal.sessions.create({
-      customer: user.stripeCustomerId,
-      return_url: dto.returnUrl || this.portalReturnUrl,
-    });
-
-    if (!portalSession.url) {
-      throw new ServiceUnavailableException(
-        'Stripe did not return a portal URL',
-      );
-    }
-
-    return { url: portalSession.url };
-  }
-
   async handleStripeWebhook(
     signature: string | undefined,
     rawBody: Buffer | string | undefined,
@@ -230,9 +138,6 @@ export class BillingService {
         case 'customer.subscription.updated':
         case 'customer.subscription.deleted':
           await this.applyStripeSubscription(event.data.object);
-          break;
-        case 'checkout.session.completed':
-          await this.markCheckoutSessionCompleted(event.data.object);
           break;
         case 'charge.refunded':
           await this.handleStripeRefund(event.data.object);
@@ -565,11 +470,6 @@ export class BillingService {
       expiresAt,
       active: status !== SubscriptionStatus.expired,
       entitlementCode,
-    });
-
-    await this.prisma.user.update({
-      where: { userId: user.userId },
-      data: { subscriptionStatus: status },
     });
   }
 
@@ -912,32 +812,6 @@ export class BillingService {
         status === SubscriptionStatus.active ||
         status === SubscriptionStatus.trialing,
       entitlementCode,
-    });
-
-    await this.prisma.user.update({
-      where: { userId: user.userId },
-      data: {
-        subscriptionStatus: status,
-      },
-    });
-  }
-
-  private async markCheckoutSessionCompleted(
-    session: Stripe.Checkout.Session,
-  ): Promise<void> {
-    const sessionMetadata = this.toJsonInput(session);
-
-    await this.prisma.checkoutSession.updateMany({
-      // Idempotent: replayed webhooks must not re-stamp or clobber metadata.
-      where: {
-        externalSessionId: session.id,
-        status: { not: CheckoutSessionStatus.completed },
-      },
-      data: {
-        status: CheckoutSessionStatus.completed,
-        completedAt: new Date(),
-        ...(sessionMetadata !== undefined ? { metadata: sessionMetadata } : {}),
-      },
     });
   }
 

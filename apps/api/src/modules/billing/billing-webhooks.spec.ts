@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/unbound-method */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unnecessary-type-assertion */
 import {
   ServiceUnavailableException,
   UnauthorizedException,
@@ -9,7 +9,7 @@ import type { RevenueCatWebhookDto } from './dto/revenuecat-webhook.dto';
 /**
  * Webhook-hardening contract tests (mocked providers — these pin the
  * SEMANTICS the audit found missing: fail-closed auth, entitlement mapping,
- * failed-event recording, refund revocation, idempotent completion).
+ * failed-event recording, refund revocation, replay idempotency).
  */
 function makeService(overrides?: {
   webhookSecret?: string | null;
@@ -37,7 +37,6 @@ function makeService(overrides?: {
       findFirst: jest.fn().mockResolvedValue(null),
       findUnique: jest.fn().mockResolvedValue(null),
     },
-    checkoutSession: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     user: {
       findFirst: jest.fn().mockResolvedValue(overrides?.user ?? null),
       findUnique: jest.fn().mockResolvedValue(overrides?.user ?? null),
@@ -354,17 +353,5 @@ describe('Stripe hardening', () => {
     const call = (entitlements.revokeBySource as jest.Mock).mock.calls[0][0];
     expect(call.userId).toBe('u9');
     expect(call.source).toBe('subscription');
-  });
-
-  it('checkout completion only transitions non-completed sessions (replay-safe)', async () => {
-    const { service, prisma } = makeService();
-    await (
-      service as unknown as {
-        markCheckoutSessionCompleted(session: unknown): Promise<void>;
-      }
-    ).markCheckoutSessionCompleted({ id: 'cs_1' });
-    const where = (prisma.checkoutSession.updateMany as jest.Mock).mock
-      .calls[0][0].where;
-    expect(where.status).toEqual({ not: 'completed' });
   });
 });

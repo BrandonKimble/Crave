@@ -8,16 +8,7 @@ import {
   type UserOnboardingProfile,
 } from '@crave-search/shared';
 import { ConfigService } from '@nestjs/config';
-import {
-  AuthProvider,
-  EntitlementStatus,
-  Prisma,
-  SubscriptionPlatform,
-  SubscriptionProvider,
-  SubscriptionStatus,
-  type User,
-} from '@prisma/client';
-import type Stripe from 'stripe';
+import { AuthProvider, Prisma, type User } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import {
@@ -26,7 +17,7 @@ import {
   type ClerkUserIdentity,
 } from './auth/clerk-auth.service';
 import { EntitlementService } from '../entitlements/entitlement.service';
-import { UserProfileDto, UserEntitlementDto } from './dto/user-profile.dto';
+import { UserProfileDto } from './dto/user-profile.dto';
 import { UserStatsService } from './user-stats.service';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { UpdateUserOnboardingDto } from './dto/update-user-onboarding.dto';
@@ -87,8 +78,6 @@ export class UserService {
     const displayName = identity.displayName;
     const avatarUrl = identity.avatarUrl;
     const now = new Date();
-    const trialEndsAt =
-      this.trialDays > 0 ? this.addDays(now, this.trialDays) : null;
 
     let user: User;
     try {
@@ -107,9 +96,6 @@ export class UserService {
           authProviderUserId: authId,
           revenueCatAppUserId: authId,
           lastSignInAt: now,
-          trialStartedAt: this.trialDays > 0 ? now : null,
-          trialEndsAt,
-          subscriptionStatus: SubscriptionStatus.trialing,
         },
       });
     } catch (error) {
@@ -192,7 +178,6 @@ export class UserService {
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
-        entitlements: true,
         stats: true,
       },
     });
@@ -213,9 +198,6 @@ export class UserService {
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       usernameStatus: user.usernameStatus,
-      subscriptionStatus: user.subscriptionStatus,
-      trialEndsAt: user.trialEndsAt ?? undefined,
-      stripeCustomerId: user.stripeCustomerId ?? undefined,
       lastSignInAt: user.lastSignInAt ?? undefined,
       activeSubscription: activeSubscription
         ? {
@@ -236,13 +218,6 @@ export class UserService {
         favoriteListsCount: stats.favoriteListsCount,
         favoritesTotalCount: stats.favoritesTotalCount,
       },
-      entitlements: user.entitlements.map((entitlement) => ({
-        entitlementCode: entitlement.entitlementCode,
-        source: entitlement.source,
-        status: entitlement.status,
-        expiresAt: entitlement.expiresAt ?? undefined,
-        isGracePeriod: entitlement.isGracePeriod,
-      })),
     };
   }
 
@@ -343,82 +318,6 @@ export class UserService {
         username: true,
         displayName: true,
         avatarUrl: true,
-      },
-    });
-  }
-
-  async listEntitlements(userId: string): Promise<UserEntitlementDto[]> {
-    const entitlements = await this.prisma.userEntitlement.findMany({
-      where: { userId },
-    });
-
-    return entitlements.map((entitlement) => ({
-      entitlementCode: entitlement.entitlementCode,
-      source: entitlement.source,
-      status: entitlement.status,
-      expiresAt: entitlement.expiresAt ?? undefined,
-      isGracePeriod: entitlement.isGracePeriod,
-    }));
-  }
-
-  async ensureStripeCustomer(user: User, stripe: Stripe): Promise<string> {
-    if (user.stripeCustomerId) {
-      return user.stripeCustomerId;
-    }
-
-    const customer = await stripe.customers.create({
-      email: user.email,
-      metadata: {
-        user_id: user.authProviderUserId ?? user.userId,
-      },
-    });
-
-    await this.prisma.user.update({
-      where: { userId: user.userId },
-      data: { stripeCustomerId: customer.id },
-    });
-
-    return customer.id;
-  }
-
-  async upsertEntitlement(params: {
-    userId: string;
-    entitlementCode?: string | null;
-    source: SubscriptionProvider;
-    platform?: SubscriptionPlatform | null;
-    status: EntitlementStatus;
-    expiresAt?: Date | null;
-    gracePeriodEndsAt?: Date | null;
-    isGracePeriod?: boolean;
-    metadata?: Prisma.InputJsonValue | null;
-  }): Promise<void> {
-    const entitlementCode = params.entitlementCode || this.defaultEntitlement;
-    await this.prisma.userEntitlement.upsert({
-      where: {
-        userId_entitlementCode: {
-          userId: params.userId,
-          entitlementCode,
-        },
-      },
-      update: {
-        status: params.status,
-        expiresAt: params.expiresAt ?? null,
-        gracePeriodEndsAt: params.gracePeriodEndsAt ?? null,
-        isGracePeriod: params.isGracePeriod ?? false,
-        platform: params.platform ?? null,
-        lastSyncedAt: new Date(),
-        metadata: params.metadata ?? Prisma.JsonNull,
-      },
-      create: {
-        userId: params.userId,
-        entitlementCode,
-        source: params.source,
-        platform: params.platform ?? null,
-        status: params.status,
-        expiresAt: params.expiresAt ?? null,
-        gracePeriodEndsAt: params.gracePeriodEndsAt ?? null,
-        isGracePeriod: params.isGracePeriod ?? false,
-        metadata: params.metadata ?? Prisma.JsonNull,
       },
     });
   }

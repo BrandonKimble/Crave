@@ -317,7 +317,7 @@ model LlmDecisionRecord {
 /// ACCESS-GRANT LEDGER (plans/payments-ideal-shape.md): the single truth for
 /// "does user X have entitlement Y". Every access path is a grant row —
 /// trial_base, reward_photo, reward_referral, comp, promo, subscription —
-/// expiresAt NULL = lifetime, revocable in one update. UserEntitlement is the
+/// expiresAt NULL = lifetime, revocable in one update. Redis is the
 /// materialized CACHE of this ledger, never written directly by product code.
 model AccessGrant {
   grantId         String    @id @default(dbgenerated("gen_random_uuid()")) @map("grant_id") @db.Uuid
@@ -326,7 +326,11 @@ model AccessGrant {
   source          String    @db.VarChar(32)
   sourceRef       String?   @map("source_ref") @db.VarChar(256)
   startsAt        DateTime  @default(now()) @map("starts_at")
+  /// Absolute grants only: period end; NULL = lifetime. Day-XOR-absolute is
+  /// CHECK-enforced (a grant never carries both).
   expiresAt       DateTime? @map("expires_at")
+  /// Day grants only: duration of coverage, derived to wall-clock at read.
+  grantedDays     Int?      @map("granted_days")
   revokedAt       DateTime? @map("revoked_at")
   revokedReason   String?   @map("revoked_reason") @db.VarChar(256)
   metadata        Json?
@@ -1047,22 +1051,15 @@ model User {
   onboardingPreviewCity  String?                 @map("onboarding_preview_city") @db.VarChar(255)
   onboardingResponses    Json?                   @map("onboarding_responses")
   createdAt              DateTime                @default(now()) @map("created_at")
-  trialStartedAt         DateTime?               @map("trial_started_at")
-  trialEndsAt            DateTime?               @map("trial_ends_at")
-  subscriptionStatus     SubscriptionStatus      @default(trialing) @map("subscription_status")
   stripeCustomerId       String?                 @map("stripe_customer_id") @db.VarChar(255)
-  referralCode           String?                 @unique @map("referral_code") @db.VarChar(50)
-  referredBy             String?                 @map("referred_by") @db.Uuid
   authProvider           AuthProvider            @default(clerk) @map("auth_provider")
   authProviderUserId     String?                 @unique @map("auth_provider_user_id") @db.VarChar(255)
   deletedAt              DateTime?               @map("deleted_at")
   lastSignInAt           DateTime?               @map("last_sign_in_at")
   revenueCatAppUserId    String?                 @unique @map("revenuecat_app_user_id") @db.VarChar(255)
   updatedAt              DateTime                @updatedAt @map("updated_at")
-  checkoutSessions       CheckoutSession[]
   subscriptions          Subscription[]
   accessGrants                AccessGrant[]
-  entitlements           UserEntitlement[]
   events                 UserEvent[]
   favorites              UserFavorite[]
   favoriteEvents         UserFavoriteEvent[]
@@ -1082,8 +1079,6 @@ model User {
   pollComments           PollComment[]
   pollCommentLikes       PollCommentLike[]
   pollEndorsements       PollEndorsement[]
-  referrer               User?                   @relation("UserReferrals", fields: [referredBy], references: [userId])
-  referrals              User[]                  @relation("UserReferrals")
 
   @@index([email], map: "idx_users_email")
   @@index([username], map: "idx_users_username")
@@ -1091,11 +1086,8 @@ model User {
   @@index([authProvider], map: "idx_users_auth_provider")
   @@index([authProviderUserId], map: "idx_users_auth_provider_user_id")
   @@index([revenueCatAppUserId], map: "idx_users_revenuecat_app_user_id")
-  @@index([subscriptionStatus], map: "idx_users_subscription_status")
   @@index([createdAt(sort: Desc)], map: "idx_users_created_at")
   @@index([trialEndsAt], map: "idx_users_trial_ends_at")
-  @@index([referralCode], map: "idx_users_referral_code")
-  @@index([referredBy], map: "idx_users_referred_by")
   @@map("users")
 }
 
@@ -1241,31 +1233,6 @@ model Subscription {
   @@map("billing_subscriptions")
 }
 
-model UserEntitlement {
-  entitlementId     String                @id @default(dbgenerated("gen_random_uuid()")) @map("entitlement_id") @db.Uuid
-  userId            String                @map("user_id") @db.Uuid
-  entitlementCode   String                @map("entitlement_code") @db.VarChar(255)
-  source            SubscriptionProvider  @map("source")
-  platform          SubscriptionPlatform? @map("platform")
-  status            EntitlementStatus     @default(active)
-  isGracePeriod     Boolean               @default(false) @map("is_grace_period")
-  activatedAt       DateTime              @default(now()) @map("activated_at")
-  expiresAt         DateTime?             @map("expires_at")
-  gracePeriodEndsAt DateTime?             @map("grace_period_ends_at")
-  lastEventId       String?               @map("last_event_id") @db.VarChar(255)
-  lastSyncedAt      DateTime?             @map("last_synced_at")
-  metadata          Json?                 @default("{}")
-  createdAt         DateTime              @default(now()) @map("created_at")
-  updatedAt         DateTime              @updatedAt @map("updated_at")
-  user              User                  @relation(fields: [userId], references: [userId])
-
-  @@unique([userId, entitlementCode], map: "user_entitlements_user_code_key")
-  @@index([userId], map: "idx_user_entitlements_user_id")
-  @@index([entitlementCode], map: "idx_user_entitlements_code")
-  @@index([status], map: "idx_user_entitlements_status")
-  @@map("billing_entitlements")
-}
-
 model BillingEventLog {
   eventLogId      String                @id @default(dbgenerated("gen_random_uuid()")) @map("event_log_id") @db.Uuid
   source          SubscriptionProvider  @map("source")
@@ -1286,30 +1253,6 @@ model BillingEventLog {
   @@index([status], map: "idx_billing_event_status")
   @@index([receivedAt(sort: Desc)], map: "idx_billing_event_received_at")
   @@map("billing_event_logs")
-}
-
-model CheckoutSession {
-  checkoutSessionId String                @id @default(dbgenerated("gen_random_uuid()")) @map("checkout_session_id") @db.Uuid
-  userId            String                @map("user_id") @db.Uuid
-  provider          SubscriptionProvider  @map("provider")
-  externalSessionId String?               @map("external_session_id") @db.VarChar(255)
-  status            CheckoutSessionStatus @default(pending)
-  url               String?               @db.VarChar(2048)
-  cancelUrl         String?               @map("cancel_url") @db.VarChar(2048)
-  successUrl        String?               @map("success_url") @db.VarChar(2048)
-  expiresAt         DateTime?             @map("expires_at")
-  completedAt       DateTime?             @map("completed_at")
-  cancelledAt       DateTime?             @map("cancelled_at")
-  metadata          Json?                 @default("{}")
-  createdAt         DateTime              @default(now()) @map("created_at")
-  updatedAt         DateTime              @updatedAt @map("updated_at")
-  user              User                  @relation(fields: [userId], references: [userId])
-
-  @@index([userId], map: "idx_checkout_sessions_user_id")
-  @@index([provider], map: "idx_checkout_sessions_provider")
-  @@index([status], map: "idx_checkout_sessions_status")
-  @@index([externalSessionId], map: "idx_checkout_sessions_external_id")
-  @@map("billing_checkout_sessions")
 }
 
 model UserEvent {
@@ -1769,16 +1712,6 @@ enum BillingEventStatus {
   failed
 
   @@map("billing_event_status")
-}
-
-enum CheckoutSessionStatus {
-  pending
-  open
-  completed
-  expired
-  cancelled
-
-  @@map("checkout_session_status")
 }
 
 enum AuthProvider {

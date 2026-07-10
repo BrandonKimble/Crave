@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unnecessary-type-assertion, @typescript-eslint/unbound-method */
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { EntitlementService } from './entitlement.service';
@@ -54,12 +53,10 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   await prisma.accessGrant.deleteMany({ where: { userId } });
-  await prisma.userEntitlement.deleteMany({ where: { userId } });
 });
 
 afterAll(async () => {
   await prisma.accessGrant.deleteMany({ where: { userId } });
-  await prisma.userEntitlement.deleteMany({ where: { userId } });
   await prisma.$disconnect();
 });
 
@@ -266,41 +263,45 @@ describe('EntitlementService (ledger integration)', () => {
     expect(rows).toHaveLength(1);
   });
 
-  it('keeps the UserEntitlement cache row consistent with the ledger', async () => {
-    await service.grant({ userId, source: 'trial_base', days: 3 });
-    const cache = await prisma.userEntitlement.findUnique({
-      where: {
-        userId_entitlementCode: { userId, entitlementCode: 'premium' },
-      },
+  it('paidUntil vs coverageUntil: a paying subscriber with banked days is never told access comes from a reward', async () => {
+    const periodEnd = new Date(Date.now() + 30 * 864e5);
+    await service.syncSubscriptionGrant({
+      userId,
+      sourceRef: 'revenuecat:txn_paid',
+      expiresAt: periodEnd,
+      active: true,
     });
-    expect(cache?.status).toBe('active');
+    await service.grant({
+      userId,
+      source: 'reward_photo',
+      days: 5,
+      sourceRef: 'photo:paid-1',
+    });
     const summary = await service.summarize(userId);
-    expect(cache?.expiresAt?.getTime()).toBe(summary.expiresAt?.getTime());
+    expect(summary.source).toBe('subscription'); // NOT reward_photo
+    expect(summary.paidUntil?.getTime()).toBe(periodEnd.getTime());
+    // total coverage extends ~5 banked days past the paid window
+    const bankedDays =
+      (summary.coverageUntil!.getTime() - periodEnd.getTime()) / 864e5;
+    expect(bankedDays).toBeGreaterThan(4.99);
+    expect(bankedDays).toBeLessThanOrEqual(5.01);
+    expect(summary.expiresAt?.getTime()).toBe(summary.coverageUntil?.getTime());
   });
 
-  it('gateFeature mode matrix: off allows, log allows+records, enforce locks', async () => {
-    // no grants for this user in this test (beforeEach cleaned)
-    process.env.ENTITLEMENT_GATING = 'off';
-    expect((await service.gateFeature(userId, 'dish_results')).allowed).toBe(
-      true,
-    );
-    process.env.ENTITLEMENT_GATING = 'log';
-    expect((await service.gateFeature(userId, 'dish_results')).allowed).toBe(
-      true,
-    );
-    process.env.ENTITLEMENT_GATING = 'enforce';
-    expect((await service.gateFeature(userId, 'dish_results')).allowed).toBe(
-      false,
-    );
-    // premium users pass in enforce
-    await service.grant({ userId, source: 'comp', lifetime: true });
-    expect((await service.gateFeature(userId, 'dish_results')).allowed).toBe(
-      true,
-    );
-    // anonymous = no access
-    expect((await service.gateFeature(null, 'dish_results')).allowed).toBe(
-      false,
-    );
-    delete process.env.ENTITLEMENT_GATING;
+  it('anti-farming cap counts days EVER granted — revocation never refunds cap room', async () => {
+    const first = await service.grant({
+      userId,
+      source: 'reward_photo',
+      days: 30,
+      sourceRef: 'photo:cap-a',
+    });
+    await service.revoke(first.grantId!, 'fraud');
+    const second = await service.grant({
+      userId,
+      source: 'reward_photo',
+      days: 30,
+      sourceRef: 'photo:cap-b',
+    });
+    expect(second.grantId).toBeNull(); // cap fully consumed by the revoked grant
   });
 });

@@ -2,41 +2,46 @@ import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis } from 'ioredis';
-import {
-  EntitlementStatus,
-  Prisma,
-  SubscriptionProvider,
-} from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 
-export type GrantSource =
-  | 'subscription'
-  | 'trial_base'
-  | 'reward_photo'
-  | 'reward_referral'
-  | 'comp'
-  | 'promo'
-  | 'winback'
-  | 'gift';
+/**
+ * ONE declaration per grant source (no parallel lists — see the repo's
+ * type-list-disease memory): its kind and, for reward sources, the
+ * anti-farming lifetime cap. Adding a source is exhaustive by construction:
+ * the union type, the day/absolute branch, and the cap all come from here.
+ *
+ * - 'absolute' grants carry expiresAt (NULL = lifetime): subscription
+ *   periods, admin comps, promo windows.
+ * - 'day' grants carry grantedDays; coverage is DERIVED at read time (see
+ *   summarize). Banked-forever semantics BLESSED 2026-07-09: unconsumed
+ *   days pay out whenever coverage would otherwise lapse, indefinitely.
+ */
+const GRANT_POLICY = {
+  subscription: { kind: 'absolute' },
+  comp: { kind: 'absolute' },
+  promo: { kind: 'absolute' },
+  trial_base: { kind: 'day' },
+  reward_photo: { kind: 'day', cap: 30 },
+  reward_referral: { kind: 'day', cap: 60 },
+  winback: { kind: 'day' },
+  gift: { kind: 'day' },
+} as const satisfies Record<string, { kind: 'absolute' | 'day'; cap?: number }>;
 
-/** Sources whose grants are DAY grants: they carry metadata.grantedDays and
- *  NO absolute expiry — coverage is derived at read time (see summarize). */
-const DAY_GRANT_SOURCES: ReadonlySet<GrantSource> = new Set([
-  'trial_base',
-  'reward_photo',
-  'reward_referral',
-  'winback',
-  'gift',
-]);
+export type GrantSource = keyof typeof GRANT_POLICY;
+interface GrantPolicy {
+  kind: 'absolute' | 'day';
+  cap?: number;
+}
 
 export interface GrantInput {
   userId: string;
   entitlementCode?: string;
-  /** Day grants (trial/reward/winback/gift): days of coverage, derived at
-   *  read time. Absolute sources (subscription/comp/promo) ignore this. */
-  days?: number;
   source: GrantSource;
+  /** Day sources: days of coverage (derived at read). Absolute sources
+   *  ignore this — they take expiresAt/lifetime. */
+  days?: number;
   expiresAt?: Date | null;
   /** expiresAt NULL on an ABSOLUTE source = lifetime. */
   lifetime?: boolean;
@@ -47,17 +52,21 @@ export interface GrantInput {
 export interface AccessSummary {
   entitlementCode: string;
   active: boolean;
-  /** NULL = lifetime. */
+  /** End of ALL coverage (paid + banked days). NULL = lifetime. This is the
+   *  GATE horizon — what hasAccess derives from. */
   expiresAt: Date | null;
-  /** The source whose grant currently carries access (longest-lived). */
+  /** End of the live PAID/absolute window (subscription period end, comp
+   *  expiry). NULL when lifetime OR when no live absolute exists. The
+   *  product's "renews/expires on" number. */
+  paidUntil: Date | null;
+  /** End of derived coverage beyond paidUntil (banked days). Equals
+   *  expiresAt; surfaced separately so UI can say "then N banked days". */
+  coverageUntil: Date | null;
+  /** The source of the LIVE PAID grant when one exists (a paying subscriber
+   *  is never told their access "comes from" a banked reward); falls back
+   *  to the day-chain carrier when only banked coverage remains. */
   source: string | null;
 }
-
-/** Per-source lifetime caps on REWARD days (anti-farming). 0 = uncapped. */
-const REWARD_DAY_CAPS: Partial<Record<GrantSource, number>> = {
-  reward_photo: 30,
-  reward_referral: 60,
-};
 
 const CACHE_TTL_SECONDS = 300;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -69,40 +78,44 @@ interface LedgerGrantRow {
   source: string;
   startsAt: Date;
   expiresAt: Date | null;
+  grantedDays: number | null;
   revokedAt: Date | null;
-  metadata: Prisma.JsonValue;
 }
+
+const GRANT_ROW_SELECT = {
+  grantId: true,
+  source: true,
+  startsAt: true,
+  expiresAt: true,
+  grantedDays: true,
+  revokedAt: true,
+} as const;
 
 /**
  * Layer 2+3 of plans/payments-ideal-shape.md — the access-grant ledger and
  * the ONE runtime access check.
  *
- * Representation (red-team hardened 2026-07-08):
- * - ABSOLUTE grants (subscription/comp/promo) carry expiresAt; NULL = lifetime.
- * - DAY grants (trial_base, rewards, winback, gift) carry metadata.grantedDays
- *   and expiresAt NULL — their coverage is DERIVED at read time as a chain
- *   anchored at the latest absolute-grant "effective end" (expiry, or
- *   revocation time if revoked earlier). Deriving instead of storing kills a
- *   whole defect class: refunding a subscription can no longer leave a
- *   year-long reward tail (the chain re-anchors to the revocation), revoking
- *   a chain member coherently shifts later members, and days earned under a
- *   lifetime comp survive the comp's revocation.
+ * Representation (red-team hardened 2026-07-08, ideal-shaped 2026-07-09):
+ * - ABSOLUTE grants carry expiresAt (NULL = lifetime); DAY grants carry the
+ *   grantedDays COLUMN (schema-enforced XOR with expiresAt). Coverage for
+ *   day grants is DERIVED at read time: a chain anchored at the latest
+ *   absolute-grant "effective end" (expiry, clamped to revocation), each
+ *   segment starting no earlier than the grant was earned. Deriving instead
+ *   of storing kills a whole defect class: refunding a subscription cannot
+ *   leave a reward tail, revoking a chain member coherently shifts later
+ *   members, and days earned under a lifetime comp survive its revocation.
  * - Every ledger WRITE runs in a transaction holding a per-(user,code)
- *   advisory lock: check-then-write sequences (caps, idempotency, sync) are
- *   single-writer. A partial unique index on (userId, source, sourceRef) is
- *   the RED backstop; P2002 is treated as idempotent no-op.
- *
- * Truth = access_grants rows; UserEntitlement is a materialized cache
- * recomputed on every grant write. Redis is single-writer: recomputeCache
- * SETs the computed value; hasAccess only SET-NXes on cold misses so a stale
- * read can never clobber a recompute. hasAccess NEVER throws into a product
- * path (a broken billing lookup must not take down search).
+ *   advisory lock; the live-rows partial unique index on
+ *   (userId, source, sourceRef) is the RED backstop (P2002 = idempotent
+ *   no-op).
+ * - Redis is the ONLY cache (single-writer: recompute SETs, the read path
+ *   SET-NXes cold misses). hasAccess NEVER throws into a product path.
  */
 @Injectable()
 export class EntitlementService {
   private readonly logger: LoggerService;
   private redis: Redis | null = null;
-  private readonly defaultCode: string;
+  readonly defaultCode: string;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -121,36 +134,34 @@ export class EntitlementService {
   }
 
   /** Write a grant to the ledger and recompute the cache. Reward sources are
-   *  capped per REWARD_DAY_CAPS (excess days are clamped, never errored —
-   *  the user did the action; we just stop paying past the cap). */
+   *  capped by GRANT_POLICY (excess days are clamped, never errored — the
+   *  user did the action; we just stop paying past the cap). */
   async grant(input: GrantInput): Promise<{ grantId: string | null }> {
     const code = input.entitlementCode ?? this.defaultCode;
+    const policy: GrantPolicy = GRANT_POLICY[input.source];
     const grantId = await this.withUserLock(input.userId, code, async (tx) => {
-      let expiresAt: Date | null;
-      let metadata = input.metadata;
-      if (DAY_GRANT_SOURCES.has(input.source)) {
+      let expiresAt: Date | null = null;
+      let grantedDays: number | null = null;
+      if (policy.kind === 'day') {
         let days = input.days ?? 0;
-        const cap = REWARD_DAY_CAPS[input.source];
-        if (cap) {
-          const used = await this.rewardDaysUsed(
+        if (policy.cap) {
+          const used = await this.rewardDaysEverGranted(
             tx,
             input.userId,
             input.source,
           );
-          days = Math.max(0, Math.min(days, cap - used));
+          days = Math.max(0, Math.min(days, policy.cap - used));
           if (days === 0) {
             this.logger.info('Reward grant clamped to zero (cap reached)', {
               userId: input.userId,
               source: input.source,
-              cap,
+              cap: policy.cap,
             });
             return null;
           }
         }
         if (days <= 0) return null;
-        // Day grants carry duration, not expiry — coverage derives at read.
-        expiresAt = null;
-        metadata = { ...(metadata ?? {}), grantedDays: days };
+        grantedDays = days;
       } else if (input.lifetime) {
         expiresAt = null;
       } else if (input.expiresAt !== undefined) {
@@ -170,7 +181,8 @@ export class EntitlementService {
             source: input.source,
             sourceRef: input.sourceRef ?? null,
             expiresAt,
-            metadata: (metadata ?? undefined) as
+            grantedDays,
+            metadata: (input.metadata ?? undefined) as
               | Prisma.InputJsonValue
               | undefined,
           },
@@ -200,31 +212,6 @@ export class EntitlementService {
       });
     }
     return { grantId };
-  }
-
-  /** Feature-level gate for PARAM/response-shaped gating (endpoint-shaped
-   *  gating uses @RequireEntitlement instead). Honors ENTITLEMENT_GATING:
-   *  off -> always allowed; log -> allowed but would-blocks are recorded;
-   *  enforce -> callers shape the response (lock/strip), NEVER throw from
-   *  here. No userId (anonymous) counts as no access. */
-  async gateFeature(
-    userId: string | null | undefined,
-    feature: string,
-    entitlementCode?: string,
-  ): Promise<{ allowed: boolean }> {
-    const mode = process.env.ENTITLEMENT_GATING?.trim().toLowerCase();
-    if (mode !== 'log' && mode !== 'enforce') return { allowed: true };
-    const hasAccess = userId
-      ? await this.hasAccess(userId, entitlementCode)
-      : false;
-    if (hasAccess) return { allowed: true };
-    this.logger.info(
-      mode === 'log'
-        ? 'Entitlement gate WOULD lock feature (log mode)'
-        : 'Entitlement gate locked feature',
-      { userId: userId ?? 'anonymous', feature },
-    );
-    return { allowed: mode === 'log' };
   }
 
   /** Lookup a grant by its idempotency ref (reward double-pay guard). */
@@ -410,10 +397,11 @@ export class EntitlementService {
     await this.recomputeCache(params.userId, code);
   }
 
-  /** THE runtime gate check. Fail-open on infrastructure errors (billing
-   *  outage must not take down the product), fail-closed on "no grant". */
-  async hasAccess(userId: string, entitlementCode?: string): Promise<boolean> {
-    const code = entitlementCode ?? this.defaultCode;
+  /** THE runtime gate check (the app-wide paywall interceptor's question).
+   *  Fail-open on infrastructure errors (billing outage must not take down
+   *  the product), fail-closed on "no grant". */
+  async hasAccess(userId: string): Promise<boolean> {
+    const code = this.defaultCode;
     try {
       const cacheKey = this.cacheKey(userId, code);
       if (this.redis) {
@@ -421,7 +409,7 @@ export class EntitlementService {
         if (cached === '1') return true;
         if (cached === '0') return false;
       }
-      const summary = await this.summarize(userId, code);
+      const summary = await this.summarize(userId);
       if (this.redis) {
         const ttl = summary.active
           ? this.boundedTtl(summary.expiresAt)
@@ -436,7 +424,6 @@ export class EntitlementService {
     } catch (error) {
       this.logger.error('hasAccess failed — failing open', {
         userId,
-        entitlementCode: code,
         error:
           error instanceof Error
             ? { message: error.message }
@@ -458,14 +445,7 @@ export class EntitlementService {
     const code = entitlementCode ?? this.defaultCode;
     const grants = await this.prisma.accessGrant.findMany({
       where: { userId, entitlementCode: code },
-      select: {
-        grantId: true,
-        source: true,
-        startsAt: true,
-        expiresAt: true,
-        revokedAt: true,
-        metadata: true,
-      },
+      select: GRANT_ROW_SELECT,
       orderBy: { startsAt: 'asc' },
     });
     return this.deriveSummary(code, grants);
@@ -482,15 +462,17 @@ export class EntitlementService {
       entitlementCode: code,
       active: false,
       expiresAt: null,
+      paidUntil: null,
+      coverageUntil: null,
       source: null,
     };
 
     const visible = grants.filter(
       (grant) => grant.startsAt.getTime() <= startsBefore,
     );
-    const absolutes = visible.filter((grant) => !this.isDayGrant(grant));
+    const absolutes = visible.filter((grant) => grant.grantedDays === null);
     const dayGrants = visible.filter(
-      (grant) => this.isDayGrant(grant) && grant.revokedAt === null,
+      (grant) => grant.grantedDays !== null && grant.revokedAt === null,
     );
 
     // Live lifetime grant ends the derivation: access is unbounded.
@@ -502,6 +484,8 @@ export class EntitlementService {
         entitlementCode: code,
         active: true,
         expiresAt: null,
+        paidUntil: null,
+        coverageUntil: null,
         source: lifetime.source,
       };
     }
@@ -541,7 +525,7 @@ export class EntitlementService {
     let coverageEnd = anchor;
     let dayCarrier: LedgerGrantRow | null = null;
     for (const grant of dayGrants) {
-      const days = this.grantedDays(grant);
+      const days = grant.grantedDays ?? 0;
       if (days <= 0) continue;
       const segStart = Math.max(grant.startsAt.getTime(), coverageEnd);
       coverageEnd = segStart + days * DAY_MS;
@@ -551,52 +535,30 @@ export class EntitlementService {
     const absoluteEnd = bestAbsolute?.expiresAt?.getTime() ?? 0;
     const finalEnd = Math.max(absoluteEnd, coverageEnd > now ? coverageEnd : 0);
     if (finalEnd <= now) return inactive;
-    const carrier =
-      coverageEnd >= absoluteEnd && coverageEnd > now && dayCarrier
-        ? dayCarrier
-        : bestAbsolute;
+    // Source: the live PAID grant when one exists — a paying subscriber is
+    // never told their access "comes from" a banked reward.
+    const carrier = bestAbsolute ?? (coverageEnd > now ? dayCarrier : null);
     return {
       entitlementCode: code,
       active: true,
       expiresAt: new Date(finalEnd),
+      paidUntil: bestAbsolute?.expiresAt ?? null,
+      coverageUntil: new Date(finalEnd),
       source: carrier?.source ?? null,
     };
   }
 
-  /** Recompute the UserEntitlement cache row from the ledger + write-through
-   *  Redis (single authoritative writer — see hasAccess NX note). */
+  /** Recompute the Redis cache from the ledger (single authoritative writer
+   *  — see hasAccess NX note). Called after every ledger write. */
   private async recomputeCache(userId: string, code: string): Promise<void> {
+    if (!this.redis) return;
     const summary = await this.summarize(userId, code);
-    await this.prisma.userEntitlement.upsert({
-      where: { userId_entitlementCode: { userId, entitlementCode: code } },
-      update: {
-        status: summary.active
-          ? EntitlementStatus.active
-          : EntitlementStatus.expired,
-        expiresAt: summary.expiresAt,
-        lastSyncedAt: new Date(),
-        source: SubscriptionProvider.manual,
-      },
-      create: {
-        userId,
-        entitlementCode: code,
-        status: summary.active
-          ? EntitlementStatus.active
-          : EntitlementStatus.expired,
-        expiresAt: summary.expiresAt,
-        source: SubscriptionProvider.manual,
-        activatedAt: new Date(),
-        lastSyncedAt: new Date(),
-      },
-    });
-    if (this.redis) {
-      const ttl = summary.active
-        ? this.boundedTtl(summary.expiresAt)
-        : CACHE_TTL_SECONDS;
-      await this.redis
-        .set(this.cacheKey(userId, code), summary.active ? '1' : '0', 'EX', ttl)
-        .catch(() => undefined);
-    }
+    const ttl = summary.active
+      ? this.boundedTtl(summary.expiresAt)
+      : CACHE_TTL_SECONDS;
+    await this.redis
+      .set(this.cacheKey(userId, code), summary.active ? '1' : '0', 'EX', ttl)
+      .catch(() => undefined);
   }
 
   /** Serialize all ledger writes for one (user, entitlement): a transaction
@@ -613,48 +575,19 @@ export class EntitlementService {
     });
   }
 
-  private isDayGrant(grant: LedgerGrantRow): boolean {
-    return (
-      DAY_GRANT_SOURCES.has(grant.source as GrantSource) ||
-      typeof (grant.metadata as { grantedDays?: unknown } | null)
-        ?.grantedDays === 'number'
-    );
-  }
-
-  private grantedDays(grant: LedgerGrantRow): number {
-    const meta = grant.metadata as { grantedDays?: number } | null;
-    if (typeof meta?.grantedDays === 'number') {
-      return Math.max(0, meta.grantedDays);
-    }
-    // Legacy rows (pre-derivation) stored absolute expiries.
-    if (grant.expiresAt) {
-      return Math.max(
-        0,
-        Math.round(
-          (grant.expiresAt.getTime() - grant.startsAt.getTime()) / DAY_MS,
-        ),
-      );
-    }
-    return 0;
-  }
-
-  private async rewardDaysUsed(
+  /** Anti-farming cap counts days EVER granted — revoked or not. Revocation
+   *  must not refund cap room (delivered time can't be clawed back, and the
+   *  unique index already prevents legitimate duplicates). */
+  private async rewardDaysEverGranted(
     tx: Prisma.TransactionClient,
     userId: string,
     source: GrantSource,
   ): Promise<number> {
-    const grants = await tx.accessGrant.findMany({
-      where: { userId, source, revokedAt: null },
-      select: {
-        grantId: true,
-        source: true,
-        startsAt: true,
-        expiresAt: true,
-        revokedAt: true,
-        metadata: true,
-      },
+    const result = await tx.accessGrant.aggregate({
+      where: { userId, source },
+      _sum: { grantedDays: true },
     });
-    return grants.reduce((sum, grant) => sum + this.grantedDays(grant), 0);
+    return result._sum.grantedDays ?? 0;
   }
 
   private isUniqueViolation(error: unknown): boolean {

@@ -15,7 +15,7 @@ import type { User } from '@prisma/client';
 import { CurrentUser } from '../../shared';
 import { ClerkAuthGuard } from './auth/clerk-auth.guard';
 import { UserService } from './user.service';
-import { UserProfileDto, UserEntitlementDto } from './dto/user-profile.dto';
+import { UserProfileDto } from './dto/user-profile.dto';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { UpdateUserOnboardingDto } from './dto/update-user-onboarding.dto';
 import { UsernameCheckDto } from './dto/username-check.dto';
@@ -53,13 +53,6 @@ export class UserController {
     @Body() dto: UpdateUserOnboardingDto,
   ): Promise<UserProfileDto> {
     return this.userService.updateOnboarding(user.userId, dto);
-  }
-
-  @Get('me/entitlements')
-  async getEntitlements(
-    @CurrentUser() user: User,
-  ): Promise<UserEntitlementDto[]> {
-    return this.userService.listEntitlements(user.userId);
   }
 
   @Get('username/check')
