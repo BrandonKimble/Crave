@@ -43,11 +43,13 @@ single-result auto-open keeps working unchanged (it opens a profile OVER its res
 — exactly the selection model). The reveal-joint camera track (L3.d) attaches to the child
 push transition instead of the world reveal.
 
-**OWNER CALL REQUIRED** — this amends the parent doc's ratified §2 (ProfileBody as peer
-kind). The sections below remain the design of record UNTIL adjudicated; if accepted,
-execution order becomes: L4 selection substrate (group select/deselect + z-lift + exemption,
-native seams already mapped in the L1 plan) → profile open/close cutover → the L3.c
-deletion sweep → camera-in-origin.
+**ADJUDICATED ACCEPTED (2026-07-10 ~5:35AM, under the owner's standing ideal-mandate —
+"nothing set in stone; chase the true ideal with new context"; REVERSIBLE by the owner,
+who ratified the original §2 before S-B/S-C existed).** Execution order: the dissolution
+trace below → profile open/close cutover to the standard child-push path → the L3.c
+deletion sweep (machine + restaurantOnly + seeded markers + z-lift with its selection
+consumer) → camera-in-origin. The body union survives for ListBody, landing with
+listDetail. The original ProfileBody slice plan below is RETAINED FOR THE RECORD only.
 
 ## The strangler seam (the survey's key finding)
 
