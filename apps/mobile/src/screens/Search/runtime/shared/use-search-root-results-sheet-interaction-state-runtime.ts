@@ -127,9 +127,9 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
         return;
       }
       lastActiveBundleKind = activeBundleKind;
-      if (activeBundleKind === 'results') {
-        return;
-      }
+      // RT-8: zero on BOTH edges. Leaving 'results' ends the session's flags; entering
+      // 'results' clears anything a late motion-BEGIN from the detached plane re-latched
+      // while no results sheet existed (no END can ever pair it).
       resultsSheetDraggingRef.current = false;
       resultsListScrollingRef.current = false;
       resultsSheetSettlingRef.current = false;

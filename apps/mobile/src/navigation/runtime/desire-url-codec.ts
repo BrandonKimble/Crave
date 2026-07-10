@@ -47,6 +47,19 @@ const resolveSegments = (parsed: URL): string[] => {
   return isWebScheme || !parsed.hostname ? pathSegments : [parsed.hostname, ...pathSegments];
 };
 
+// RT-1 (red-team 2026-07-10): WHATWG URL accepts a stray '%' in the path but
+// decodeURIComponent THROWS on it — and this codec runs inside the Linking event listener
+// (a throw = crash) and the cold-launch getInitialURL chain (a throw = the intent silently
+// lost). Malformed encodings fold to the raw segment: a garbled link degrades to a harmless
+// lookup miss instead of taking the app down.
+const safeDecode = (segment: string): string => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+};
+
 export const parseDesireLink = (url: string): ParsedDesireLink => {
   let parsed: URL;
   try {
@@ -65,7 +78,7 @@ export const parseDesireLink = (url: string): ParsedDesireLink => {
             kind: 'entityAction',
             action: {
               kind: 'restaurantWorld',
-              restaurantId: decodeURIComponent(a),
+              restaurantId: safeDecode(a),
               restaurantName: params.get('name') ?? '',
             },
           }
@@ -77,7 +90,7 @@ export const parseDesireLink = (url: string): ParsedDesireLink => {
             action: {
               kind: 'entityDesire',
               entityType: a,
-              entityId: decodeURIComponent(b),
+              entityId: safeDecode(b),
               label: params.get('label') ?? '',
             },
           }
@@ -89,33 +102,33 @@ export const parseDesireLink = (url: string): ParsedDesireLink => {
             action: {
               kind: 'pushScene',
               scene: 'userProfile',
-              params: { userId: decodeURIComponent(a) },
+              params: { userId: safeDecode(a) },
             },
           }
         : { kind: 'none' };
     case 'l':
-      return a ? { kind: 'sharedList', shareSlug: decodeURIComponent(a) } : { kind: 'none' };
+      return a ? { kind: 'sharedList', shareSlug: safeDecode(a) } : { kind: 'none' };
     case 'list':
       return a
         ? {
             kind: 'entityAction',
             action: {
               kind: 'listWorld',
-              listId: decodeURIComponent(a),
+              listId: safeDecode(a),
               listType: params.get('type') === 'dish' ? 'dish' : 'restaurant',
               label: params.get('title') ?? '',
             },
           }
         : { kind: 'none' };
     case 'q':
-      return a ? { kind: 'naturalSearch', query: decodeURIComponent(a) } : { kind: 'none' };
+      return a ? { kind: 'naturalSearch', query: safeDecode(a) } : { kind: 'none' };
     case 's':
       return a === 'dishes' || a === 'restaurants'
         ? { kind: 'shortcutSearch', shortcutTab: a }
         : { kind: 'none' };
     case 'p':
       return a
-        ? { kind: 'polls', pollId: decodeURIComponent(a), marketKey: params.get('market') }
+        ? { kind: 'polls', pollId: safeDecode(a), marketKey: params.get('market') }
         : { kind: 'none' };
     case 'polls':
       return { kind: 'polls', marketKey: params.get('market'), pollId: params.get('poll') };

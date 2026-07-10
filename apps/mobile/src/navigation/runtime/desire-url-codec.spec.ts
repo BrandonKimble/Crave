@@ -43,6 +43,10 @@ const ROUND_TRIP_CASES: LiveLink[] = [
   { kind: 'polls', pollId: 'poll-1', marketKey: null },
 ];
 
+// RT-1: malformed percent-encoding must NEVER throw — WHATWG URL accepts a stray '%'
+// in the path, decodeURIComponent throws on it, and this codec runs inside the Linking
+// event listener. Garbled links degrade to the raw segment / a lookup miss.
+
 describe('desire-url-codec', () => {
   describe('round trip (serialize → parse ≡ identity, both bases)', () => {
     it.each(ROUND_TRIP_CASES.map((link) => [serializeDesireLinkToPath(link), link] as const))(
@@ -59,6 +63,19 @@ describe('desire-url-codec', () => {
         expect(parseDesireLink(`crave:/${path}`)).toEqual(link);
       }
     );
+  });
+
+  describe('desire-url-codec — malformed percent-encoding (RT-1)', () => {
+    it('a stray % in a query segment parses without throwing (raw segment preserved)', () => {
+      const parsed = parseDesireLink('crave://q/50%');
+      expect(parsed).toEqual({ kind: 'naturalSearch', query: '50%' });
+    });
+
+    it('a truncated escape in an id segment parses without throwing', () => {
+      expect(() => parseDesireLink('crave://r/abc%2')).not.toThrow();
+      expect(() => parseDesireLink('crave://l/x%zz')).not.toThrow();
+      expect(() => parseDesireLink('https://crave.example/u/%')).not.toThrow();
+    });
   });
 
   it('parses the bare polls collection with market', () => {

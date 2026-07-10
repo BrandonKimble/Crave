@@ -68,6 +68,9 @@ type PrepareNaturalSearchEntryResult = {
   append: boolean;
   targetPage: number;
   trimmedQuery: string;
+  /** RT-6: false when the desired-tuple write was idempotent (no publish, no dispatch) —
+   *  the caller must clear its pre-registered request decoration. */
+  tupleChanged: boolean;
 };
 
 type UseSearchSubmitEntryOwnerArgs = {
@@ -143,11 +146,16 @@ export const useSearchSubmitEntryOwner = ({
         return null;
       }
 
+      // RT-6: the writer's changed fact flows back so a tuple-equal (idempotent) submit
+      // can clear its pre-registered request decoration — otherwise the single-slot
+      // decoration leaks to the NEXT dispatch of any class (stale entity wire fields on a
+      // later filter rerun).
+      let tupleChanged = false;
       if (!append) {
         // S2: the natural submit writes the DESIRED TUPLE (identity + adopted viewport);
         // idempotent for variant reruns (identity unchanged → filter writes already landed
         // via their chip causes). Appends never rewrite desire.
-        writeSearchDesiredTuple(
+        tupleChanged = writeSearchDesiredTuple(
           searchRuntimeBus,
           {
             queryIdentity: identityOverride ?? { kind: 'natural', query: trimmedQuery },
@@ -161,12 +169,13 @@ export const useSearchSubmitEntryOwner = ({
             ...(options?.replaceResultsInPlace ? {} : { filterVariant: { includeSimilar: false } }),
           },
           'initial_submit'
-        );
+        ).changed;
       }
       return {
         append,
         targetPage,
         trimmedQuery,
+        tupleChanged,
       };
     },
     [isLoadingMore, query, resetMapMoveFlag, searchRuntimeBus, setError, viewportBoundsService]

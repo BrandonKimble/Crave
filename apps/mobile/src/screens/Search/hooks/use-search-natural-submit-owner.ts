@@ -18,6 +18,7 @@ type UseSearchNaturalSubmitOwnerArgs = {
     append: boolean;
     targetPage: number;
     trimmedQuery: string;
+    tupleChanged: boolean;
   } | null;
   resolveNaturalSearchAttemptConfig: (
     options?: SubmitSearchOptions
@@ -63,6 +64,12 @@ export const useSearchNaturalSubmitOwner = ({
       if (!naturalEntry) {
         clearPendingSearchRequestDecoration();
         return;
+      }
+      if (!naturalEntry.tupleChanged) {
+        // RT-6: an idempotent (tuple-equal) submit publishes nothing and dispatches
+        // nothing — the pre-registered decoration would sit in the single slot and ride
+        // the NEXT dispatch of any class. Clear it with the no-op.
+        clearPendingSearchRequestDecoration();
       }
       if (naturalEntry.append) {
         clearPendingSearchRequestDecoration();
