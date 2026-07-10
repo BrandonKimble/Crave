@@ -174,13 +174,25 @@ export const useResultsPresentationCloseActionsRuntime = ({
       //  • session directly on the SEARCH root → legacy terminalDismiss home dance (its
       //    first switch pops since step 1 — the home entry survives).
       const hasSession = hasSearchSessionAboveRoot(routeState);
-      const entryBeneathTop =
-        routeState.overlayRouteStack[routeState.overlayRouteStackLength - 2] ?? null;
-      const topIsSessionOverChild =
-        hasSession &&
-        routeState.activeOverlayRoute.key === 'search' &&
-        entryBeneathTop != null &&
-        routeState.overlayRouteStack[0] !== entryBeneathTop;
+      // Red team (post-S-C.3 #1): resolve the pop target from the DEEPEST session entry —
+      // children may sit both beneath it (poll-dish over pollDetail) AND above it (restaurant
+      // opened from the results). Everything at-or-above the deepest session belongs to the
+      // session; the dismissal pops to the entry beneath it (a child ⇒ popToEntry; the root ⇒
+      // popToRoot / the terminal home dance).
+      let deepestSessionIndex = -1;
+      for (let index = 1; index < routeState.overlayRouteStackLength; index += 1) {
+        if (routeState.overlayRouteStack[index]?.key === 'search') {
+          deepestSessionIndex = index;
+          break;
+        }
+      }
+      const entryBeneathSession =
+        deepestSessionIndex > 0
+          ? (routeState.overlayRouteStack[deepestSessionIndex - 1] ?? null)
+          : null;
+      const beneathSessionIsChild =
+        entryBeneathSession != null && entryBeneathSession !== routeState.overlayRouteStack[0];
+      const topIsSessionOverChild = hasSession && beneathSessionIsChild;
       const isPushedSearchSession = routeState.rootOverlayKey !== 'search' && hasSession;
       if (topIsSessionOverChild || isPushedSearchSession) {
         ignoreNextSearchBlurRef.current = true;
@@ -191,10 +203,11 @@ export const useResultsPresentationCloseActionsRuntime = ({
           });
           resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
           setPendingCloseIntentId(null);
-          if (topIsSessionOverChild) {
-            routeSceneRuntime.routeOverlayRouteCommandRuntime.closeActiveRoute({
-              applyOriginDetent: true,
-            });
+          if (topIsSessionOverChild && entryBeneathSession != null) {
+            routeSceneRuntime.routeOverlayRouteCommandRuntime.popToEntryRoute(
+              entryBeneathSession.entryId,
+              { applyOriginDetent: true }
+            );
           } else {
             routeSceneRuntime.routeOverlayRouteCommandRuntime.popToRootRoute({
               applyOriginDetent: true,

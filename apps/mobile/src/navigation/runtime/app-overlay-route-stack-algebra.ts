@@ -215,6 +215,27 @@ export const closeActiveRouteState = (
   });
 };
 
+/** Pop until the entry with `entryId` is top-of-stack (no-op if absent or already top). The
+ * general pop-to-origin verb: dismissing a session pops to the entry BENEATH the deepest
+ * session entry — which may be a CHILD (poll-dish search over pollDetail), not the root. */
+export const popToEntryRouteState = (
+  currentRouteState: RouteSceneSwitchRouteStateSnapshot,
+  entryId: string
+): RouteSceneSwitchRouteStateSnapshot => {
+  const currentStack = currentRouteState.overlayRouteStack;
+  const targetIndex = currentStack.findIndex((entry) => entry.entryId === entryId);
+  if (targetIndex === -1 || targetIndex === currentStack.length - 1) {
+    return currentRouteState;
+  }
+  const overlayRouteStack = currentStack.slice(0, targetIndex + 1);
+  const activeOverlayRoute =
+    overlayRouteStack[overlayRouteStack.length - 1] ?? ROOT_SEARCH_ROUTE_ENTRY;
+  return createRouteStateSnapshot({
+    activeOverlayRoute,
+    overlayRouteStack,
+  });
+};
+
 export const popToRootRouteState = (
   currentRouteState: RouteSceneSwitchRouteStateSnapshot
 ): RouteSceneSwitchRouteStateSnapshot => {

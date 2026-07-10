@@ -91,6 +91,7 @@ export type RouteSceneSwitchRouteAction =
   | 'push'
   | 'updateActive'
   | 'closeActive'
+  | 'popToEntry'
   | 'popToRoot';
 
 export type RouteSceneSwitchRouteParams = OverlayRouteParamsMap[OverlayKey];
@@ -116,6 +117,7 @@ export type RouteSceneSwitchTransitionContract = {
   settleToken: number;
   committedRootRouteKey: OverlayKey | null;
   committedRouteAction: RouteSceneSwitchRouteAction;
+  committedRouteEntryId: string | null;
   committedRouteParams: RouteSceneSwitchRouteParams | undefined;
   snapTarget: BottomSheetSnap | null;
   sheetHostSceneKey: OverlayKey | null;
@@ -148,6 +150,8 @@ export type RouteSceneSwitchRequestInput = {
   chromeVisibilityTarget?: RouteSceneSwitchChromeVisibilityTarget;
   dockedPollsRestoreSnap?: Exclude<BottomSheetSnap, 'hidden'> | null;
   routeAction?: RouteSceneSwitchRouteAction;
+  /** popToEntry target: pop until this entry is top-of-stack (S-C.3 pop-to-origin verb). */
+  routeEntryId?: string;
   routeParams?: RouteSceneSwitchRouteParams;
   // Phase 2 (canonical-sheet-transition-master-plan.md §6) — the redraw
   // transactionId the readiness collector keys on (e.g.

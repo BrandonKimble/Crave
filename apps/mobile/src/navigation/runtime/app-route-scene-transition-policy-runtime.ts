@@ -47,6 +47,7 @@ export type AppRouteSceneTransitionPolicyInput = {
   pollsParams?: RouteSceneSwitchPollsParams | null;
   dockedPollsRestoreSnap?: RouteSceneSwitchDockedPollsRestoreIntent['snap'] | null;
   routeAction?: RouteSceneSwitchRouteAction;
+  routeEntryId?: string;
   routeParams?: RouteSceneSwitchRouteParams;
   // Phase 2 — see RouteSceneSwitchRequestInput.contentReadinessTransactionId.
   contentReadinessTransactionId?: string | null;
@@ -64,6 +65,7 @@ export type AppRouteSceneTransitionPlan = {
   targetSceneKey: OverlayKey;
   committedRootRouteKey: OverlayKey;
   committedRouteAction: RouteSceneSwitchRouteAction;
+  committedRouteEntryId: string | null;
   committedRouteParams: RouteSceneSwitchRouteParams | undefined;
   settleToken: number | null;
   snapTarget: BottomSheetSnap | null;
@@ -221,7 +223,11 @@ const resolveInferredSheetTransitionKind = ({
   if (snapTarget === 'hidden') {
     return 'terminalDismiss';
   }
-  if (routeAction === 'closeActive' || routeAction === 'popToRoot') {
+  if (
+    routeAction === 'closeActive' ||
+    routeAction === 'popToRoot' ||
+    routeAction === 'popToEntry'
+  ) {
     // S-C.3-B item 5: the kind derives from the STACK OPERATION — a pop is a CLOSE, whatever
     // scene is popping (child, search session, future orphan pages). The old per-scene-set
     // membership test ('is the source a shared-sheet child?') predates entries-as-values;
@@ -485,6 +491,7 @@ export const resolveAppRouteSceneTransitionPlan = ({
   pollsParams,
   dockedPollsRestoreSnap,
   routeAction = 'setRoot',
+  routeEntryId,
   routeParams,
   contentReadinessTransactionId,
   currentRootRouteKey,
@@ -562,6 +569,7 @@ export const resolveAppRouteSceneTransitionPlan = ({
       targetSceneKey,
     }),
     committedRouteAction: routeAction,
+    committedRouteEntryId: routeEntryId ?? null,
     committedRouteParams: routeParams,
     snapTarget: resolvedSheetSnapTarget,
     sheetHostSceneKey,

@@ -56,6 +56,7 @@ export type AppOverlayRouteCommandRuntime = {
   dismissActiveRoute: () => void;
   closeActiveRoute: (options?: { applyOriginDetent?: boolean }) => void;
   closeActiveRouteAfterSettle: (onSettle: RouteSceneSwitchSettleCallback) => void;
+  popToEntryRoute: (entryId: string, options?: { applyOriginDetent?: boolean }) => void;
   popToRootRoute: (options?: { applyOriginDetent?: boolean }) => void;
 };
 
@@ -272,6 +273,38 @@ export const createAppOverlayRouteCommandRuntime = ({
     },
     closeActiveRouteAfterSettle: (onSettle) => {
       closeActiveRoute(onSettle);
+    },
+    popToEntryRoute: (entryId: string, options?: { applyOriginDetent?: boolean }) => {
+      const routeState = routeSceneSwitchRuntime.getRouteState();
+      const targetIndex = routeState.overlayRouteStack.findIndex(
+        (entry) => entry.entryId === entryId
+      );
+      const targetEntry = targetIndex >= 0 ? routeState.overlayRouteStack[targetIndex] : null;
+      if (targetEntry == null || targetIndex === routeState.overlayRouteStackLength - 1) {
+        return;
+      }
+      // The revealed entry's presentation restores from the entry directly above it.
+      const entryAboveTarget = routeState.overlayRouteStack[targetIndex + 1] ?? null;
+      stageRouteEntryOriginRestore(entryAboveTarget?.origin);
+      if (isAppOverlayRouteSceneSwitchKey(targetEntry.key)) {
+        const originDetent =
+          options?.applyOriginDetent === true ? entryAboveTarget?.origin?.detent : undefined;
+        requestRouteSceneSwitch({
+          targetSceneKey: targetEntry.key,
+          routeAction: 'popToEntry',
+          routeEntryId: entryId,
+          sheetTransitionKind: originDetent != null ? 'topLevelSwitch' : 'closeChild',
+          sheetOpenerSource: 'routeCommand',
+          ...(originDetent != null
+            ? {
+                sheetMotion: { kind: 'snapTo' as const, snap: originDetent },
+                contentHandoff: 'swapImmediately' as const,
+              }
+            : null),
+        });
+        return;
+      }
+      routeSceneSwitchRuntime.popToEntryRouteState(entryId);
     },
     popToRootRoute: (options?: { applyOriginDetent?: boolean }) => {
       const routeState = routeSceneSwitchRuntime.getRouteState();

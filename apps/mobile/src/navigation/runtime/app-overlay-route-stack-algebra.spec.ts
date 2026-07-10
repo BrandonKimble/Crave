@@ -5,6 +5,7 @@ import {
   closeActiveRouteState,
   createRouteEntry,
   createRouteStateSnapshot,
+  popToEntryRouteState,
   popToRootRouteState,
   pushRouteState,
   ROOT_SEARCH_ROUTE_ENTRY,
@@ -139,6 +140,24 @@ describe('route stack algebra (entries-as-values)', () => {
     // and a genuinely different instance compares unequal even with identical keys/params
     const s3 = pushRouteState(bootState(), 'pollDetail', { pollId: 'p1' } as never);
     expect(areRouteStateSnapshotsEqual(s1, s3)).toBe(false);
+  });
+});
+
+describe('popToEntry (the general pop-to-origin verb)', () => {
+  test('pops to the entry beneath the deepest session — a CHILD, not the root', () => {
+    const s1 = pushRouteState(bootState(), 'pollDetail', { pollId: 'p1' } as never);
+    const pollEntry = s1.activeOverlayRoute;
+    const s2 = pushRouteState(s1, 'search');
+    const s3 = pushRouteState(s2, 'restaurant', { restaurantId: 'r1' } as never);
+    const popped = popToEntryRouteState(s3, pollEntry.entryId);
+    expect(popped.activeOverlayRoute).toBe(pollEntry);
+    expect(popped.overlayRouteStack.map((e) => e.key)).toEqual(['search', 'pollDetail']);
+  });
+
+  test('no-op when the entry is absent or already top', () => {
+    const s1 = pushRouteState(bootState(), 'pollDetail', { pollId: 'p1' } as never);
+    expect(popToEntryRouteState(s1, s1.activeOverlayRoute.entryId)).toBe(s1);
+    expect(popToEntryRouteState(s1, 'route-entry-nonexistent')).toBe(s1);
   });
 });
 

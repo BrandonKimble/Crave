@@ -6,6 +6,7 @@ import type {
 import { getOriginCaptureProvider, registerOriginCaptureProvider } from './origin-capture-registry';
 import { getOriginSceneLiveState } from './origin-scene-live-state-registry';
 import { stageOverlayScrollRestore } from '../../overlays/overlayScrollOffsetRuntime';
+import { hasSearchSessionAboveRoot } from './app-overlay-route-stack-algebra';
 import {
   registerRouteEntryOriginCapturer,
   registerRouteEntryOriginRestorer,
@@ -126,7 +127,13 @@ const isDegenerateHomeOrigin = (snapshot: OriginSnapshot): boolean =>
 const assertDegenerateHomeEmission = (
   args: RouteSceneSwitchRequestInput,
   expectedRoot: OverlayKey,
-  expectedDetent: TabOverlaySnap
+  expectedDetent: TabOverlaySnap,
+  // Post-S-C.3 red team #2 (deliberate golden amendment): the ARMED clear-search lanes can
+  // reach this emission with a session still on the stack (the terminal dance pops before it,
+  // but the flush lanes do not) — the legacy setRoot would mint a fresh root and destroy the
+  // surviving entries. When a session exists, the emission carries routeAction 'popToRoot';
+  // the assertion REQUIRES exactly that conditional arm and still forbids everything else.
+  expectPopToRoot: boolean
 ): void => {
   if (!__DEV__) {
     return;
@@ -154,8 +161,10 @@ const assertDegenerateHomeEmission = (
   if (args.contentHandoff != null) {
     violations.push(`contentHandoff=${args.contentHandoff} (expected absent)`);
   }
-  if (args.routeAction != null) {
-    violations.push(`routeAction=${args.routeAction} (expected absent)`);
+  if (expectPopToRoot ? args.routeAction !== 'popToRoot' : args.routeAction != null) {
+    violations.push(
+      `routeAction=${String(args.routeAction)} (expected ${expectPopToRoot ? "'popToRoot'" : 'absent'})`
+    );
   }
   if (args.routeParams != null) {
     violations.push('routeParams present (expected absent)');
@@ -508,14 +517,17 @@ export class AppRouteOverlaySessionStateController {
     // already-collapsed stack). Post-fix the surviving [search#home] makes this setRoot a
     // value-equal IDEMPOTENT no-op at the route layer — byte-identical emission, stack truth
     // preserved, golden contract untouched.
+    const routeState = this.routeSceneSwitchActions.getRouteState();
+    const shouldPopSession = hasSearchSessionAboveRoot(routeState);
     const homeSwitchArgs = {
       targetSceneKey: resolvedRootOverlay,
       sheetTransitionKind: 'topLevelSwitch' as const,
       sheetOpenerSource: 'routeCommand' as const,
       sheetMotion: { kind: 'snapTo' as const, snap: detent },
       dockedPollsRestoreSnap: shouldRestoreDockedPolls ? detent : null,
+      ...(shouldPopSession ? { routeAction: 'popToRoot' as const } : null),
     };
-    assertDegenerateHomeEmission(homeSwitchArgs, resolvedRootOverlay, detent);
+    assertDegenerateHomeEmission(homeSwitchArgs, resolvedRootOverlay, detent, shouldPopSession);
     this.routeSceneSwitchActions.requestOverlaySwitch(homeSwitchArgs);
   }
 

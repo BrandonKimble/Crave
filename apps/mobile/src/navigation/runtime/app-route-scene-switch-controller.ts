@@ -9,6 +9,7 @@ import {
   areRouteStateSnapshotsEqual,
   closeActiveRouteState,
   createRouteStateSnapshot,
+  popToEntryRouteState,
   popToRootRouteState,
   pushRouteState,
   ROOT_SEARCH_ROUTE_ENTRY,
@@ -174,6 +175,7 @@ export type AppRouteSceneSwitchRuntime = RouteSceneSwitchTransitionActions & {
   updateRouteState: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   pushRouteState: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   closeActiveRouteState: () => void;
+  popToEntryRouteState: (entryId: string) => void;
   popToRootRouteState: () => void;
   subscribeTransitionState: (
     listener: (transitionState: RouteSceneSwitchTransitionState) => void,
@@ -268,6 +270,20 @@ const applyTransitionPlanToRouteState = (
       case 'closeActive':
         stagePoppedEntryOriginRestore(currentRouteState);
         return closeActiveRouteState(currentRouteState);
+      case 'popToEntry': {
+        if (transitionPlan.committedRouteEntryId == null) {
+          return currentRouteState;
+        }
+        // The revealed entry's presentation restores from the entry directly ABOVE it — the
+        // one whose push captured it (origins live on pushed entries).
+        const targetIndex = currentRouteState.overlayRouteStack.findIndex(
+          (entry) => entry.entryId === transitionPlan.committedRouteEntryId
+        );
+        const entryAboveTarget =
+          targetIndex >= 0 ? currentRouteState.overlayRouteStack[targetIndex + 1] : null;
+        stageRouteEntryOriginRestore(entryAboveTarget?.origin);
+        return popToEntryRouteState(currentRouteState, transitionPlan.committedRouteEntryId);
+      }
       case 'popToRoot':
         return popToRootRouteState(currentRouteState);
       case 'setRoot':
@@ -409,6 +425,7 @@ const createTransitionContract = ({
   settleToken,
   committedRootRouteKey: transitionPlan.committedRootRouteKey,
   committedRouteAction: transitionPlan.committedRouteAction,
+  committedRouteEntryId: transitionPlan.committedRouteEntryId,
   committedRouteParams: transitionPlan.committedRouteParams,
   snapTarget: transitionPlan.snapTarget,
   sheetHostSceneKey: transitionPlan.sheetHostSceneKey,
@@ -888,6 +905,18 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     this.applyRouteStateMutation((currentRouteState) => {
       stagePoppedEntryOriginRestore(currentRouteState);
       return closeActiveRouteState(currentRouteState);
+    });
+  }
+
+  public popToEntryRouteState(entryId: string): void {
+    this.applyRouteStateMutation((currentRouteState) => {
+      const targetIndex = currentRouteState.overlayRouteStack.findIndex(
+        (entry) => entry.entryId === entryId
+      );
+      const entryAboveTarget =
+        targetIndex >= 0 ? currentRouteState.overlayRouteStack[targetIndex + 1] : null;
+      stageRouteEntryOriginRestore(entryAboveTarget?.origin);
+      return popToEntryRouteState(currentRouteState, entryId);
     });
   }
 
