@@ -93,3 +93,25 @@ through the arbiter's writers (L2 integration, 9fe4e25e) — same function §3.4
   ≡ profile presentation per the adjudication above.
 - NEXT: iOS build + on-device slice D (multi-location select: market siblings fade in
   activated; z-order; deselect restore; badge numbers not inflated).
+
+## L4 EXECUTED (2026-07-10 ~7:20AM — 9a589c05, 4ca51f39, 4eabb2ea)
+
+- **On-device composite verified** (dish world 'gelato' → autocomplete Gelateria Gentile):
+  world pins retained, the 5-location group promoted ADDITIVELY in activated color, all
+  members sharing the group-dense rank badge, labels placed, z-lifted, camera focus-fit.
+- **Additive rule** (4eabb2ea): the seeded/hydrated restaurant appends to ANY presented
+  world when it is the active selection (no longer gated on an empty committed world);
+  the builder's selection spread is TAB-AGNOSTIC (restaurant-axis emission on the dish
+  axis too). Pure-seed profile-from-home = the degenerate union — the seeded channel's
+  special-casing is now one rule.
+- **REVEAL-DEADLOCK RACE root-caused + fixed** (4ca51f39) while gating this slice: pins
+  had stopped painting APP-WIDE (every reveal whose U2 direct enter-start token raced the
+  label-collision source's sourcedata ack deadlocked at reveal_preroll/opacity 0.001 —
+  the fence guard bailed WITHOUT recording the block, and the ack-side promote only fires
+  for recorded blocks). Predates tonight (stash-baseline byte-identical); this was the
+  standing "pin paint unverified" probe item. Fix records the block when the fence is the
+  sole blocker. RED→GREEN typed repro; final binary re-verified diagnostics-off.
+- Remaining L4 nits (owner feel checks): deselect restore on-device, z-lift overlap eyeball
+  vs neighbors, invisible-resident fade-in from a PAN (the pre-pan invisible member never
+  dots). The §3.4 'policy value' as an explicit World field stays deferred until a second
+  policy consumer exists (today policy is fully derived — a value would be dead plumbing).
