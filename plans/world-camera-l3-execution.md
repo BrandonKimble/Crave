@@ -163,3 +163,46 @@ joint's camera track starts at ramp start.
   (the S-D rig levers: 'View <name>' a11y tap; poll seeding via POST comments w/ perf token).
 - L3.c: full deletion sweep + the three-shape dismiss sweep + zero NAV-CONTRACT fires.
 - Owner finger: camera feel on open (focus-fit vs today's motion) + terminal-dismiss restore.
+
+---
+
+## THE DISSOLUTION TRACE (2026-07-10 ~5:40AM — the cutover is now mechanical)
+
+**Open, ordered effects:** only THREE machine-only effects exist, all self-contained:
+(0) the snapshot/openSettle ledger write (`transition-runtime.ts:39-63`), (2) the
+`transition.status` write, (3) the settleToken/settle-callback plumbing. The actual
+navigation (push 'restaurant' + openChild) and the camera (arbiter) are standard-path.
+The pre_shell camera rides `commitProfileCameraTargetCommand`
+(`profile-native-command-runtime.ts:38-63`) — NOT the route cameraIntent (resolver nulls
+it) — and folds into the camera-intent-arbiter as the sole open-camera owner.
+
+**Completion consumers:** the ENTIRE settle/dismiss/preparedTransaction ledger is
+class-(a) self-contained (no reader outside the machine family). The two exceptions:
+`isPresentationActive` (`profile-view-state-runtime.ts:34`) re-feeds from ROUTE-ENTRY
+PRESENCE (`selectHasRestaurantEntry`) + panel snapshot — every profilePresentationActiveRef
+consumer then needs zero change; and the pop-writer's `isMachineCloseInFlight` guard
+(`profile-owner-action-surface-runtime.ts:96-102`) is DEAD once the machine dies (it only
+existed to yield to the machine's close).
+
+**Close verdict — ONE owner:** the machine close's `cameraIntent(restoreCamera)` and the
+pop-teardown writer's `focusPreparedProfileCamera(savedCamera)` read the SAME savedCamera
+(snapshot copies it at `snapshot-contract.ts:79-87`) and are mutually exclusive by the
+guard above. Delete the machine → the standard pop + the pop-teardown writer is the sole
+close/camera-restore owner. Sheet motion selection is already a descriptor-table concern.
+
+**Snap:** `shouldForceSharedMiddleSnap`/promoteAtLeast-middle is FULLY REDUNDANT with the
+openChild descriptor row (`app-route-sheet-motion-descriptor-table.ts:104-109`); only the
+resultCard `preserveLiveY` variant needs a sheetMotion on the standard push if that feel
+is kept.
+
+**Deletable (verify importers on 17-20 first):** the 8-file navigation family
+(transaction/resolver/snapshot/transition/settle/completion/dismiss contracts+runtimes +
+focus builder) + 12 screens/profile files (transaction/state/command/completion/event/
+entry runtimes, open/close builders, runtime+contract+binding shims, profile-app-route
+bridge, native-command runtime, prepared-snapshot-key runtime). **Survivors:**
+`resolveProfileCloseRouteAction` + camera-intent helpers in the normalizer; the WHOLE
+pop-teardown writer (sole owner); `handleRestaurantEntryPopped`/finalize/prepare in the
+action surface (guard clauses pruned); `isPresentationActive` re-fed;
+`searchRestaurantRouteController` (the standard path); the arbiter;
+`ProfileTransitionState.savedCamera/savedResultsScrollOffset/status` (completionState
+fields removed); the profilePresentationActiveRef bridge unchanged.
