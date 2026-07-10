@@ -259,6 +259,14 @@ Each layer is only built on the one below it; nothing lands on the old shapes.
   else reads these values. Includes deleting restaurantOnly/seeded-markers.
 - **L2 — CameraIntent + focus-fit + camera-in-origin + camera track in the reveal joint.**
   (Golden tests for `resolveFocusCamera` land with it.)
+  **STATUS 2026-07-10: the PURE half is SHIPPED** — `resolve-focus-camera.ts` (7 goldens;
+  self-median growth per §3.3; commits 63a655a5 + 640e98f5). Two adjudications recorded:
+  P5's home is the EXISTING `resolveRestaurantLocationSelectionAnchorFromBounds` +
+  `pickClosestLocationToCenter` pair (it already implements user-inside-viewport-else-center
+  with the primary tiebreak — the focus-fit takes the anchor as input, no duplicate rule);
+  and camera-in-origin + the reveal-joint camera track RIDE L1/L3 (their consumer is the
+  profile/world restore that today works via the pop-teardown owner — a parallel channel
+  now would duplicate a working mechanism). L1 execution plan: `plans/world-camera-l1-execution.md`.
 - **L3 — ProfileBody worlds**: the entity desire resolves to a profile world; dissolve the
   prepared-presentation family; autocomplete/poll-restaurant taps become the one-line
   entity-desire push. (Rides S-A trigger deletion.)
