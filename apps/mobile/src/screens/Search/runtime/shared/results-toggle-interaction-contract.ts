@@ -6,7 +6,11 @@ export type ToggleInteractionKind =
   | 'filter_price'
   /** Failure retry with a presented world: rides the SAME interaction cover +
    *  debounce + reveal choreography as a chip rerun. */
-  | 'retry';
+  | 'retry'
+  /** S-A (toggle-system-ideal §STA): search-this-area IS a toggle — availability is a
+   *  predicate (mapMovedSinceSearch), the flow is identical to every chip. The kind is
+   *  DERIVED by the classifier (the area_rerun transition), never trigger-passed. */
+  | 'search_this_area';
 
 export type ToggleInteractionLifecycleEvent =
   | {

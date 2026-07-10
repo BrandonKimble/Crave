@@ -90,12 +90,17 @@ export const useSearchForegroundSearchAreaSubmitRuntime = ({
     }
     resetFocusedMapState();
     setRestaurantOnlyIntent(null);
+    // S-A (toggle-system-ideal §STA): mapMovedSinceSearch resets AT CAPTURE (press time),
+    // not at finalize. Reset-at-finalize carried two live bugs: a pan during the in-flight
+    // window got wiped (the button vanished while screen ≠ searched area), and a FAILED
+    // search cleared the retry affordance (the old finalize ran on BOTH promise arms).
+    // Post-press pans re-set the flag naturally; failure leaves it set.
+    resetMapMoveFlag();
     // Press-up map fade-out rides the WIRE (S4d completion): the rerun below runs the
     // reconciler's search-this-area pending synchronously in this tick, which applies the
     // interaction cover to the transport — serialized as the 'interaction' phase that
     // holds the map ramp down. No side-channel fade verb exists anymore.
     const finalizeSearchThisAreaRerun = () => {
-      resetMapMoveFlag();
       clearActivePerfScenarioSearchThisAreaSubmitId(searchThisAreaSubmitId);
       if (isPerfScenarioAttributionActive(scenarioConfig)) {
         logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {

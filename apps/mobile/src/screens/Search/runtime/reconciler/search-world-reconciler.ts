@@ -220,8 +220,19 @@ export const createSearchWorldReconciler = (
     tuple: SearchDesiredTuple;
     generation: number;
     cause: string | null;
-    kind: 'filter_open_now' | 'filter_rising' | 'filter_price' | 'filter_include_similar' | 'retry';
+    kind:
+      | 'filter_open_now'
+      | 'filter_rising'
+      | 'filter_price'
+      | 'filter_include_similar'
+      | 'retry'
+      | 'search_this_area';
     decoration: SearchRequestDecoration | undefined;
+    /** S-A: the kick is PARAMETERIZED, not forked — the area path carries its own
+     *  presentation intent and keeps firing the enter foreground effects exactly as the
+     *  old direct-resolve branch did. */
+    presentationIntentKind?: 'variant_rerun' | 'search_this_area';
+    onResolutionBegan?: () => void;
   }): void => {
     const port = getSearchReconcilerPresentationPort();
     if (port == null) {
@@ -244,8 +255,9 @@ export const createSearchWorldReconciler = (
             tuple: busState.desiredTuple,
             generation: busState.desiredTupleGeneration,
             cause: busState.desiredTupleCause,
-            presentationIntentKind: 'variant_rerun',
+            presentationIntentKind: args.presentationIntentKind ?? 'variant_rerun',
             requestDecoration: args.decoration,
+            onResolutionBegan: args.onResolutionBegan,
             onResolutionFailed: (reason) => {
               // Offline = paused, not failed: keep the pending cover so the rerun's
               // loading state persists (the coordinator's settle timeout may still
@@ -275,9 +287,29 @@ export const createSearchWorldReconciler = (
     const { prev, next, generation, cause, transition } = args;
     const decoration = takePendingSearchRequestDecoration();
     switch (transition.class) {
-      case 'session_enter':
-      case 'session_replace':
       case 'area_rerun': {
+        // S-A (toggle-system-ideal §STA): search-this-area RIDES THE COORDINATOR — the
+        // same debounce + interaction cover + commit choreography as every chip, with the
+        // kind the classifier derives (never trigger-passed). The enter foreground effects
+        // are preserved via the parameterized kick.
+        const areaIntent = transition.intent;
+        kickRerunThroughCoordinator({
+          tuple: next,
+          generation,
+          cause,
+          kind: 'search_this_area',
+          decoration,
+          presentationIntentKind: 'search_this_area',
+          onResolutionBegan: () => {
+            if (areaIntent != null) {
+              env.runEnterForegroundEffects({ intent: areaIntent, tuple: next, generation });
+            }
+          },
+        });
+        return;
+      }
+      case 'session_enter':
+      case 'session_replace': {
         const intent = transition.intent;
         void env
           .resolve({
