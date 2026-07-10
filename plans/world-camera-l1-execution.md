@@ -70,15 +70,22 @@ direct-source :1848-1858, 2820-2846; Swift :172,212).
 
 ## Slices (each rig-proven before the next)
 
-**L1.a — EntityGroup catalog contract + builder (JS only, no native change).**
+**L1.a — EntityGroup catalog contract + anchor-rule unification (JS only, output-parity).**
 New `EntityGroupCatalogEntry {restaurantId, rank, locations[], representativeLocationId}`
 built in `computeMarkerPipeline` via `resolveAnchorLocation` (replacing
-`pickPreferredRestaurantMapLocation` — DELETE it + `pickClosestLocationToCenter` after);
-`buildMarkerCatalogReadModel` derives per-location entries FROM groups with a `renderRole:
-'representative' | 'sibling-dot' | 'invisible-resident'` field (policy 'search': in-viewport
-siblings → dots; out-of-viewport in-market → invisible-resident, RESIDENT in the catalog —
-today they're dropped, so this is the first behavior delta). RED probe: a group whose
-representative is filtered must bark, not silently promote a sibling.
+`pickPreferredRestaurantMapLocation` — DELETE it + `pickClosestLocationToCenter` after; note
+the anchor RULE changes subtly: user-inside-viewport-else-viewport-center replaces
+closest-to-anchor-coordinate — finger-check which representative wins on a real
+multi-location search). The flat `MarkerCatalogEntry` output stays ONE representative per
+group — **byte-parity except the anchor-rule delta**.
+⚠️ RE-SCOPED 2026-07-10 (adjudicated against the builder code, pre-implementation): the
+original L1.a emitted sibling-dot/invisible-resident entries JS-side — WRONG SEQUENCE. Any
+entry added to the catalog competes in today's FLAT LOD as a full pin candidate; a sibling
+must never be promotable, which requires the native group-aware budget FIRST. The role
+emission (`renderRole: 'representative' | 'sibling-dot' | 'invisible-resident'`, siblings as
+dots, in-market invisible-residents) moves INTO L1.b, landing in the same cut as the
+LodEngine group competition. RED probe unchanged: a group whose representative is filtered
+must bark, not silently promote a sibling.
 
 **L1.b — native grouping key + group-slot competition.**
 `setCandidateCatalog` entries gain `groupId` (=restaurantId); `LodEngine.Anchor` gains it;
