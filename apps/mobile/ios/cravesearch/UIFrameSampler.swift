@@ -150,6 +150,15 @@ final class UIFrameSampler: RCTEventEmitter {
     let droppedFrameEstimate = max(0, expectedFrames - Double(frameCount))
     let droppedFrameRatio = expectedFrames > 0 ? droppedFrameEstimate / expectedFrames : 0
     let shouldEmit = stallCount > 0 || avgFps < logOnlyBelowFps || floorFps < logOnlyBelowFps
+    // RELEASE-LANE SINK (red-team 2026-07-10): sub-threshold windows also NSLog so a Release
+    // build (no Metro, JS console lost) still yields the honest UI-thread 60fps gate via
+    // `log show`. Same emit predicate — quiet at steady state.
+    if shouldEmit {
+      NSLog(
+        "[UIFPS] window avg=%.1f floor=%.1f p95=%.1f maxFrameMs=%.1f dropped=%.1f stalls=%d",
+        avgFps, floorFps, p95Fps, maxFrameMs, droppedFrameEstimate, stallCount
+      )
+    }
     if shouldEmit, hasListeners {
       sendEvent(
         withName: Self.windowEventName,
