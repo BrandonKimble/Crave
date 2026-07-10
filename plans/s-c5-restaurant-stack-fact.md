@@ -187,3 +187,19 @@ accessibilityLabel) opens the profile reliably — coordinate and bare-name taps
 signal), 1-full (executor verbs, one exit-transaction construction site), 2-full (close-chain
 one-file), foreground profilePresentationActive consumers → stack fact, then S-D.3+4 as one
 session.
+
+## LANE-INPUT ATTRIBUTION CLOSED (2026-07-10 ~1:12AM, 71ca5fff)
+
+The [SC5-LANE] mint probe attributed the degraded landing in one pass: after the X the
+surface parks at results_dismissing FOREVER (release:false), because the dismiss
+transaction's poll-readiness weld needs polls MOUNTED, polls only mount via the docked
+lane, and the lane's dismissing arm required release — release needs readiness the
+unmounted polls can never mark. **The circular wait was introduced by item 3** (the old
+two-switch dance mounted polls as switch 1's TARGET scene; the one-switch dismissal made
+the lane the only mount path); it was invisible to every canonical flow because they all
+entered with polls presented. FIX in THE formula: `(isResultsDismissing &&
+hasActiveDockedPollsRestoreIntent)` joins the eligibility arms — the switch's own
+declaration admits the lane immediately, restoring the old mount timing; the release
+gates still gate the finalize. RED-proven (deadlocking flow → canonical home) +
+dismiss-repeat + profile cycle green. `/tmp/sc5-4b.yaml` should graduate to
+maestro/perf/flows as the docked-dismiss round-trip flow (owner call on naming).
