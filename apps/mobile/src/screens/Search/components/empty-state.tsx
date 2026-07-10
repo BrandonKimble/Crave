@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 
 import { Text } from '../../../components';
 import styles from '../styles';
@@ -7,16 +7,12 @@ import styles from '../styles';
 type EmptyStateProps = {
   title: string;
   subtitle: string;
-  /** Optional action (the failure Retry). Plumbing-first: visual polish tracked in
-   *  product/search-and-dishes.md. */
-  action?: {
-    label: string;
-    onPress: () => void;
-    testID?: string;
-  };
 };
 
-const EmptyState: React.FC<EmptyStateProps> = ({ title, subtitle, action }) => (
+// No action affordance by design: failures announce via the uniform modal and unwind
+// to origin (the modal never auto-retries; retrying is the user's move from where
+// they came back to) — an inline retry here would be a second, competing flow.
+const EmptyState: React.FC<EmptyStateProps> = ({ title, subtitle }) => (
   <View style={styles.emptyState}>
     <Text variant="body" style={styles.textSlate900}>
       {title}
@@ -24,19 +20,6 @@ const EmptyState: React.FC<EmptyStateProps> = ({ title, subtitle, action }) => (
     <Text variant="body" style={[styles.textSlate900, styles.emptyStateSubtitle]}>
       {subtitle}
     </Text>
-    {action ? (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={action.label}
-        testID={action.testID}
-        onPress={action.onPress}
-        style={styles.emptyStateActionButton}
-      >
-        <Text variant="body" weight="semibold" style={styles.emptyStateActionText}>
-          {action.label}
-        </Text>
-      </Pressable>
-    ) : null}
   </View>
 );
 

@@ -20,11 +20,7 @@ export const useSearchRootSearchSceneListHeaderRuntime = ({
   React.useMemo(
     () => (
       <View style={styles.resultsListHeader} onLayout={handleFiltersHeaderLayout}>
-        <SearchFilters
-          {...filtersHeaderRuntimeForReadModel}
-          telemetryHostLayer="SearchMountedSceneBody"
-          telemetryInSheetBody={true}
-        />
+        <SearchFilters {...filtersHeaderRuntimeForReadModel} />
         <View style={styles.resultsListHeaderBottomStrip} />
       </View>
     ),

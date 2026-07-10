@@ -99,8 +99,6 @@ export type SearchFiltersProps = {
   disableBlur?: boolean;
   initialLayoutCache?: SearchFiltersLayoutCache | null;
   onLayoutCacheChange?: (cache: SearchFiltersLayoutCache) => void;
-  telemetryHostLayer?: 'SearchMountedSceneBody';
-  telemetryInSheetBody?: boolean;
 };
 
 const SearchFilters: React.FC<SearchFiltersProps> = ({
@@ -123,8 +121,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   disableBlur = false,
   initialLayoutCache,
   onLayoutCacheChange,
-  // telemetryHostLayer / telemetryInSheetBody are still accepted (consumers pass them) but
-  // the perf-readiness telemetry moved out with the shell extraction — intentionally unused.
 }) => {
   const liveChipState = useSearchRuntimeBusSelector(
     searchRuntimeBus,
