@@ -8,7 +8,6 @@ import {
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import { resolveSearchSurfaceResultsSheetTargetSnap } from './results-presentation-shell-transaction-intent';
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
-import { resolveSearchSubmitEntryMotion } from './search-submit-entry-surface-contract';
 import type {
   ResultsSurfaceEnterTransactionExecutor,
   UseResultsSurfaceEnterTransactionExecutionRuntimeArgs,
@@ -43,7 +42,6 @@ export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
         snapshot.kind,
         preserveSheetState
       );
-      const entryMotion = resolveSearchSubmitEntryMotion({ entrySurface, preserveSheetState });
       setDisplayQueryOverride(displayQueryOverride ?? '');
       const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
       if (
