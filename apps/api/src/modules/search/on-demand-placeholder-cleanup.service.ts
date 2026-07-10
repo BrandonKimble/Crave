@@ -58,15 +58,21 @@ export class OnDemandPlaceholderCleanupService
   }
 
   /**
-   * Remove on-demand placeholder restaurants that never produced connections
-   * within the retention window.
+   * Archive on-demand placeholder restaurants that never produced
+   * connections within the retention window (archive-not-delete contract).
    */
   async runCleanup(): Promise<void> {
     const cutoff = new Date(Date.now() - this.retentionMs);
+    // ARCHIVE, never delete (audit §1): entity rows are FK-load-bearing —
+    // an in-flight extraction can hold a placeholder's id and write events
+    // after this sweep; a hard delete makes that an FK crash. Archived
+    // placeholders are invisible to all read surfaces and matching.
     const deleted = await this.prisma.$executeRaw(
       Prisma.sql`
-        DELETE FROM core_entities e
+        UPDATE core_entities e
+        SET status = 'archived'
         WHERE e.type = 'restaurant'
+          AND e.status <> 'archived'
           AND e.restaurant_metadata->>'origin' = 'on_demand'
           AND e.created_at < ${cutoff}
           AND NOT EXISTS (

@@ -60,8 +60,24 @@ export class RestaurantEntityMergeService {
         data: canonicalUpdate,
       });
 
-      await tx.entity.delete({
+      // ARCHIVE, never delete (audit §1: entity rows are FK-load-bearing —
+      // an in-flight extraction holding this id writes events AFTER the merge
+      // and a hard delete turns that into an FK crash, the exact class that
+      // wedged the stage-2 load). Bank the duplicate's name as an alias on
+      // the canonical so future mentions forward via the alias tier
+      // (resolution excludes archived rows from matching).
+      await tx.$executeRaw`
+        UPDATE core_entities y
+        SET aliases = (
+          SELECT array_agg(DISTINCT a)
+          FROM unnest(y.aliases || ARRAY[x.name] || x.aliases) a
+        )
+        FROM core_entities x
+        WHERE y.entity_id = ${canonical.entityId}::uuid
+          AND x.entity_id = ${duplicate.entityId}::uuid`;
+      await tx.entity.update({
         where: { entityId: duplicate.entityId },
+        data: { status: 'archived' },
       });
 
       return updatedCanonical;

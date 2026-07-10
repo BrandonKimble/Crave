@@ -1,5 +1,11 @@
 import 'dotenv/config';
 process.env.PROCESS_ROLE = 'all';
+// SINGLE-WRITER (audit §6): the batch lifecycle (submit/poll/ingest) is owned
+// by the APP runtime's poller, never by this script — during the stage-2 load
+// three processes with different code versions raced the same claims. This
+// script is an enqueue-and-OBSERVE wrapper: it waits on job counts and prints
+// the report. Ensure the API (dev server or deployed app) is running.
+process.env.LLM_BATCH_POLL_ENABLED = 'false';
 
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
@@ -7,7 +13,9 @@ import { getQueueToken } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { GeminiBatchService } from '../src/modules/external-integrations/llm/gemini-batch.service';
+import * as fs from 'fs';
+import * as path from 'path';
+import { printCostReport } from './lib/cost-report';
 import type {
   ArchiveCollectionJobData,
   ArchiveCollectionJobResult,
@@ -67,37 +75,23 @@ function parseArgs(argv: string[]): Options {
   return options;
 }
 
-/** Official per-request rates (Cloud Billing catalog, 2026-07-08), post-free-
- *  tier. Free monthly tiers (1k enterprise/atmosphere, 5k pro, 10k essentials
- *  & autocomplete) make real bills LOWER than this report. */
-const PLACES_RATES: Record<string, number> = {
-  'placeDetails:enterprise_atmosphere': 0.025,
-  'placeDetails:enterprise': 0.02,
-  'placeDetails:pro': 0.017,
-  'placeDetails:essentials': 0.005,
-  'textSearch:enterprise_atmosphere': 0.04,
-  'textSearch:enterprise': 0.035,
-  'textSearch:pro': 0.032,
-  'autocomplete:essentials': 0.0028,
-};
-/** OFFICIAL Gemini rates per 1M tokens (ai.google.dev/gemini-api/docs/pricing,
- *  verified 2026-07-10 after the cost-recon audit found the previous values
- *  ~5x low — the portal, not the ledger, was right). Batch = half. Cached
- *  input reads bill at ~10% of the input rate, NOT modeled here — treat the
- *  input-side line as a CEILING. */
-const GEMINI_RATES: Record<string, { in: number; out: number }> = {
-  'gemini-3.5-flash': { in: 1.5, out: 9.0 },
-  'gemini-3-flash-preview': { in: 0.5, out: 3.0 },
-  'gemini-3.1-flash-lite-preview': { in: 0.25, out: 1.5 },
-  'gemini-embedding-001': { in: 0.15, out: 0 },
-};
-
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });
-  const out = (m: string) => process.stdout.write(`${m}\n`);
+  const logDir = path.join(__dirname, '..', 'logs');
+  fs.mkdirSync(logDir, { recursive: true });
+  const logFile = path.join(
+    logDir,
+    `seed-market-${new Date().toISOString().replace(/[:.]/g, '-')}.log`,
+  );
+  // Tee to a logfile so a killed wrapper/pipe can never eat the report
+  // (audit §9 — it happened).
+  const out = (m: string) => {
+    process.stdout.write(`${m}\n`);
+    fs.appendFileSync(logFile, `${m}\n`);
+  };
   try {
     const prisma = app.get(PrismaService);
     const queue = app.get<Queue<ArchiveCollectionJobData>>(
@@ -153,50 +147,42 @@ async function main(): Promise<void> {
       out('  batch queue drained.');
     }
 
-    // Batch-mode LLM work sits at Google until polled. In a deployed app the
-    // 5-min cron owns this; a seeding run owns it itself so the command is
-    // complete when it exits (and the cost report is final).
-    const geminiBatch = app.get(GeminiBatchService);
+    // Batch-mode LLM work sits at Google until the APP runtime's 5-min poll
+    // cron moves it (single-writer, audit §6) — this script only OBSERVES.
+    // Lease-based claims mean a dead worker's job self-releases; if counts
+    // stop moving for a long time, check that the API process is running.
     for (;;) {
       const openBatchJobs = await prisma.llmBatchJob.count({
-        where: { status: { in: ['pending', 'submitted', 'ingesting'] } },
+        where: {
+          status: {
+            in: [
+              'persisting',
+              'pending',
+              'submitting',
+              'submitted',
+              'succeeded',
+              'ingesting',
+            ],
+          },
+        },
       });
       if (openBatchJobs === 0) break;
-      out(`  waiting on ${openBatchJobs} Gemini batch job(s)...`);
+      out(
+        `  waiting on ${openBatchJobs} Gemini batch job(s) (lifecycle owned by the app runtime — ensure the API is running)...`,
+      );
       await new Promise((resolve) => setTimeout(resolve, 60000));
-      await geminiBatch.poll();
     }
 
-    // ---- COST REPORT (run window, official rates) ----
-    const usage = await prisma.apiUsageEvent.groupBy({
-      by: ['service', 'operation', 'skuTier', 'model', 'mode'],
-      where: { createdAt: { gte: startedAt } },
-      _sum: { requestCount: true, inputTokens: true, outputTokens: true },
-    });
-    let placesUsd = 0;
-    let geminiUsd = 0;
-    out('\n=== COST REPORT (this run) ===');
-    for (const row of usage) {
-      const requests = row._sum.requestCount ?? 0;
-      if (row.service === 'google_places') {
-        const rate = PLACES_RATES[`${row.operation}:${row.skuTier}`] ?? 0;
-        const usd = requests * rate;
-        placesUsd += usd;
-        out(
-          `  places ${row.operation}/${row.skuTier}: ${requests} req -> $${usd.toFixed(2)}`,
-        );
-      } else if (row.service === 'gemini') {
-        const rates = GEMINI_RATES[row.model ?? ''] ?? { in: 0.3, out: 2.5 };
-        const discount = row.mode === 'batch' ? 0.5 : 1;
-        const usd =
-          (((row._sum.inputTokens ?? 0) / 1e6) * rates.in +
-            ((row._sum.outputTokens ?? 0) / 1e6) * rates.out) *
-          discount;
-        geminiUsd += usd;
-        out(
-          `  gemini ${row.model}/${row.mode}: ${requests} req, ${row._sum.inputTokens ?? 0} in / ${row._sum.outputTokens ?? 0} out -> $${usd.toFixed(2)}`,
-        );
-      }
+    // ---- COST REPORT (shared, rerunnable, post-sequence attributed) ----
+    // Also re-runnable any time after the fact:
+    //   yarn ts-node scripts/cost-report.ts --since <ISO> --market <subreddit>
+    for (const subreddit of options.subreddits) {
+      await printCostReport({
+        prisma,
+        out,
+        since: startedAt,
+        market: subreddit,
+      });
     }
     const after = {
       entities: await prisma.entity.count({ where: { status: 'active' } }),
@@ -204,19 +190,10 @@ async function main(): Promise<void> {
         where: { googlePlaceId: { not: null } },
       }),
     };
-    const newRestaurants = after.restaurants - baseline.restaurants;
     out(
-      `\nentities +${after.entities - baseline.entities}; place-backed restaurants +${newRestaurants}`,
+      `\nentities +${after.entities - baseline.entities}; place-backed locations +${after.restaurants - baseline.restaurants} (wall-clock, ALL markets — the per-market truth is the post-sequence section above)`,
     );
-    out(
-      `TOTAL: places $${placesUsd.toFixed(2)} + gemini $${geminiUsd.toFixed(2)} = $${(placesUsd + geminiUsd).toFixed(2)}` +
-        (newRestaurants > 0
-          ? ` (places $${(placesUsd / newRestaurants).toFixed(3)}/new restaurant)`
-          : ''),
-    );
-    out(
-      'Free monthly SKU tiers are NOT subtracted above — real bills are lower.',
-    );
+    out(`report also written to ${logFile}`);
   } finally {
     await app.close();
   }

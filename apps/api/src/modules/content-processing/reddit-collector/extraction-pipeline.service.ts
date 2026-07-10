@@ -1,5 +1,5 @@
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
-import { LoggerService } from '../../../shared';
+import { buildCauseChain, LoggerService } from '../../../shared';
 import {
   ChunkMetadata,
   ChunkResult,
@@ -699,7 +699,7 @@ export class ExtractionPipelineService implements OnModuleInit {
         );
         flatMentions.push(...hydrated);
       } catch (error) {
-        const cause = error instanceof Error ? error.message : String(error);
+        const cause = buildCauseChain(error);
         chunkResult.success = false;
         chunkResult.result = undefined;
         quarantinedChunks.push({ chunkId: chunkResult.chunkId, cause });

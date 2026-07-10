@@ -17,7 +17,7 @@ import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { LoggerService } from '../../../shared';
+import { buildCauseChain, LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
 import {
   ProcessingResult,
@@ -604,9 +604,9 @@ export class UnifiedProcessingService implements OnModuleInit {
         // Keep processing the remaining sub-batches (their work is
         // independent), but record the failure — a partially-failed batch
         // must FAIL the run loudly, never report success with missing data.
-        subBatchFailures.push(
-          `${subBatchId}: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        // Cause CHAIN, not just the wrapper message — the persisted failure
+        // record must attribute without a repro (audit §5).
+        subBatchFailures.push(`${subBatchId}: ${buildCauseChain(error)}`);
       }
     }
 

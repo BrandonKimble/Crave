@@ -233,6 +233,10 @@ model LlmBatchJob {
   resumeContext   Json?             @map("resume_context")
   error           String?
   ingestAttempts  Int               @default(0) @map("ingest_attempts")
+  /// Lease for in-flight claims (status 'submitting'/'ingesting'): a live
+  /// worker heartbeats this forward; an expired lease means the worker died
+  /// and any poller may reclaim the job. NULL outside claimed states.
+  leaseExpiresAt  DateTime?         @map("lease_expires_at")
   submittedAt     DateTime?         @map("submitted_at")
   completedAt     DateTime?         @map("completed_at")
   ingestedAt      DateTime?         @map("ingested_at")

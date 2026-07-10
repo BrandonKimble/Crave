@@ -31,3 +31,4 @@ export { TextSanitizerService } from './sanitization/text-sanitizer.service';
 
 // Module
 export { SharedModule } from './shared.module';
+export { buildCauseChain } from './error-cause';
