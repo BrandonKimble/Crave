@@ -93,19 +93,16 @@ export class MarketResolverService {
     }
 
     try {
-      const regionalMarket = await this.findMarket(anchor, MarketType.regional);
-      if (regionalMarket) {
+      // World-camera L5 (§3.5, the owner's roll-up rule): the market for an anchor point is
+      // the OUTERMOST active market covering it — "keep rolling up until it doesn't fit
+      // within another market." One covering query ordered largest-first replaces the old
+      // regional-then-locality type ladder; behavior-identical on current data (regionals
+      // are never nested inside localities), and durable when super-regions arrive: a
+      // nested regional can never shadow its enclosing market.
+      const rolledUpMarket = await this.findOutermostCoveringMarket(anchor);
+      if (rolledUpMarket) {
         return this.buildResolvedResult(
-          regionalMarket,
-          anchorType,
-          viewportContainsUser,
-        );
-      }
-
-      const localityMarket = await this.findMarket(anchor, MarketType.locality);
-      if (localityMarket) {
-        return this.buildResolvedResult(
-          localityMarket,
+          rolledUpMarket,
           anchorType,
           viewportContainsUser,
         );
@@ -188,9 +185,8 @@ export class MarketResolverService {
     }
   }
 
-  private async findMarket(
+  private async findOutermostCoveringMarket(
     point: Coordinate,
-    marketType: MarketType,
   ): Promise<MarketCandidateRow | null> {
     const pointSql = Prisma.sql`ST_SetSRID(ST_MakePoint(${point.lng}, ${point.lat}), 4326)`;
     const rows = await this.prisma.$queryRaw<MarketCandidateRow[]>(Prisma.sql`
@@ -206,11 +202,10 @@ export class MarketResolverService {
         bbox_sw_longitude AS "bboxSwLng"
       FROM core_markets
       WHERE is_active = true
-        AND market_type = ${marketType}::market_type
         AND geometry IS NOT NULL
         AND geometry && ${pointSql}
         AND ST_Covers(geometry, ${pointSql})
-      ORDER BY ST_Area(geometry::geography) ASC
+      ORDER BY ST_Area(geometry::geography) DESC
       LIMIT 1
     `);
 
