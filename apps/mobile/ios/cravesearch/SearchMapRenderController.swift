@@ -1016,7 +1016,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     // blocks the main thread long enough to be the R1 stall (~30ms+), regardless of the perf-scenario
     // attribution arm (whose quiet measured loop interferes with UI-driven reveals). Strip at cleanup.
     if durationMs > 30 {
-      // TEMP [FRAMEDBG] — commit-instant attribution (red-team follow-up). Strip after.
+      // LOUD CONTRACT (red-team 2026-07-10): any instrumented section blocking main >30ms
+      // logs in EVERY configuration — a frame-budget violation must never be silent.
       NSLog(
         "[applyslow] %@|%@|%@ ms=%.1f ops=%d", section, phase, source, durationMs, operationCount)
       Self.lodLog(
