@@ -244,6 +244,13 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       }
       getSearchSurfaceRuntime().commitDismissBoundary(activeCloseIntentId);
       shellLocalState.setHoldPersistentPollLane(false);
+      // Post-S-C.4 red team (state-runtime smell, adjudicated 2026-07-10): this outside
+      // compute reads the RENDER-CAPTURED close state while the setState below uses the
+      // functional form — they can diverge if another mark landed between render and this
+      // event. SAFE BY MONOTONICITY: every close-state flag only goes false→true, so the
+      // captured value under-reports at worst, the release check below can only DELAY the
+      // finalize, and the sheet-settled path finalizes anyway. Do not "fix" this with a
+      // ref mirror; document > machinery.
       const nextCloseTransitionState = applySearchCloseCollapsedReached({
         current: shellLocalState.searchCloseTransitionState,
         closeIntentId: activeCloseIntentId,
