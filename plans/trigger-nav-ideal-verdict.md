@@ -156,6 +156,14 @@ already scene-generic); lift the results-readiness join into the generic push as
 content-readiness contract (search supplies map+cards readiness; other scenes already supply
 paint-ack — same slot).
 
+> **S-C COMPLETION UNBLOCKS toggle Gate 2 (owner directive 2026-07-09):** when S-C
+> closes (specifically once `SearchOverlayChromeHost` / the warmup-host threading is
+> re-homed), run `plans/toggle-system-ideal.md` Gate 2 — FilterChip upgrades + port
+> the five SearchFilters chips; SegmentedToggle warm-restore + a11y tap + REPLACE the
+> hand-rolled SearchFilters pill; stable strip slot keys — with the feel-check script
+> in that plan (incl. chrome-swap first frame + polls strip). Flag it to the owner at
+> S-C close if a session isn't picking it up.
+
 **S-D. One Desire + EntityLink.** Dissolve the dual value families: LaunchIntent's search-shaped
 members become `push(search, desire)` (the tuple identity IS the payload); its pure-nav members
 become plain pushes. One `entityRef → Desire` function replaces the 3–4 copies (restaurant-vs-
