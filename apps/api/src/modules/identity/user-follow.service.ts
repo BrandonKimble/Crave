@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { NotificationType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UserNotificationFeedService } from '../notifications/user-notification-feed.service';
 import { UserStatsService } from './user-stats.service';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -9,6 +11,7 @@ export class UserFollowService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly userStats: UserStatsService,
+    private readonly feed: UserNotificationFeedService,
   ) {}
 
   async followUser(followerUserId: string, followingUserId: string) {
@@ -38,6 +41,17 @@ export class UserFollowService {
 
     await this.userStats.applyDelta(followerUserId, { followingCount: 1 });
     await this.userStats.applyDelta(followingUserId, { followersCount: 1 });
+
+    // Feed producer ("{user} started following you") — never fails the follow itself.
+    try {
+      await this.feed.enqueue({
+        userId: followingUserId,
+        type: NotificationType.follower_added,
+        payload: { followerUserId },
+      });
+    } catch {
+      // The follow edge is the truth; a missed feed row is acceptable loss.
+    }
 
     return { followed: true };
   }

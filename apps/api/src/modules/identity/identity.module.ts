@@ -1,3 +1,5 @@
+import { forwardRef } from '@nestjs/common';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { EntitlementsModule } from '../entitlements/entitlements.module';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -27,6 +29,7 @@ import { UserFollowService } from './user-follow.service';
     HttpModule,
     ModerationModule,
     EntitlementsModule,
+    forwardRef(() => NotificationsModule),
   ],
   controllers: [UserController, PublicUserController, AuthController],
   providers: [

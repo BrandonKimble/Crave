@@ -794,6 +794,22 @@ model Notification {
   @@map("notifications")
 }
 
+/// The USER-facing in-app notification feed (the notifications page) — distinct from the
+/// push-delivery ledger above (device-keyed, delivery status). One row per feed item;
+/// readAt = read-state. NotificationType stays the ONE extension point for both channels.
+model UserNotification {
+  userNotificationId String           @id @default(dbgenerated("gen_random_uuid()")) @map("user_notification_id") @db.Uuid
+  userId             String           @map("user_id") @db.Uuid
+  type               NotificationType @map("notification_type")
+  payload            Json?            @default("{}")
+  readAt             DateTime?        @map("read_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  user               User             @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_user_notifications_user_created")
+  @@map("user_notifications")
+}
+
 /// Attributed search history rows fan out by entity and market scope.
 /// A DB-level unique index named uq_search_log_request_entity_market enforces
 /// idempotency on searchRequestId + entityId + marketKey + collectableMarketKey
@@ -1069,6 +1085,7 @@ model User {
   favoriteEvents         UserFavoriteEvent[]
   favoriteLists          FavoriteList[]
   favoriteListItems      FavoriteListItem[]
+  userNotifications      UserNotification[]
   searchEvents           SearchEvent[]
   searchDemandDailyRows  UserSearchDemandDaily[]
   restaurantViews        RestaurantView[]
@@ -1727,6 +1744,7 @@ enum NotificationStatus {
 
 enum NotificationType {
   poll_release
+  follower_added
 
   @@map("notification_type")
 }

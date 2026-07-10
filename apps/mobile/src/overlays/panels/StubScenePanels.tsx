@@ -10,6 +10,7 @@ import { useAccountActionsRuntime } from './runtime/use-account-actions-runtime'
 import { usersService } from '../../services/users';
 import { UserProfilePanelBody } from './UserProfilePanel';
 import { FollowListPanelBody } from './FollowListPanel';
+import { NotificationsPanelBody } from './NotificationsPanel';
 
 // ─── Stub-pass scenes (plans/page-registry.md §1) ────────────────────────────────────────────
 // Placeholder mounted bodies + persistent headers for the 7 registered-but-unbuilt child
@@ -191,7 +192,8 @@ export const UserProfileMountedSceneBody = UserProfilePanelBody;
 export const FollowListMountedSceneBody = FollowListPanelBody;
 export const SettingsMountedSceneBody = SettingsSceneBody;
 export const ListDetailMountedSceneBody = createStubScene('listDetail');
-export const NotificationsMountedSceneBody = createStubScene('notifications');
+registerStubHeader('notifications');
+export const NotificationsMountedSceneBody = NotificationsPanelBody;
 export const EditProfileMountedSceneBody = createStubScene('editProfile');
 export const ShareConfigMountedSceneBody = createStubScene('shareConfig');
 
