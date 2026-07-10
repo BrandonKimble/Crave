@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 
@@ -107,6 +108,39 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
     },
     [handleResultsSheetDragStateChange, rootSharedSheetRuntimeLane, updateSearchInteractionRef]
   );
+
+  // [SE-QSTALL root fix, 2026-07-10] The interaction flags are RESULTS-SESSION-SCOPED state,
+  // but their settle/drag END events ride the sheet plane's motion callbacks — and a terminal
+  // dismissal detaches the results plane MID-SETTLE, so the end event dispatches to the next
+  // plane's handler and the flags latch true forever. A latched isResultsSheetSettling starves
+  // the hydration publication runtime (its motion-lane gate re-defers on a rAF loop), which
+  // starves listPreparedRowsReady, which parks the NEXT session's enter commit at skeleton —
+  // hit by any submit that doesn't itself move the sheet (the /q deep-link lane; typed submits
+  // mask it by starting a new settle cycle). The flags' OWNER ends them with the session: when
+  // the surface's active bundle stops being 'results', no results-sheet motion can exist.
+  React.useEffect(() => {
+    const surfaceRuntime = getSearchSurfaceRuntime();
+    let lastActiveBundleKind = surfaceRuntime.getSnapshot().activeBundle.kind;
+    return surfaceRuntime.subscribe(() => {
+      const activeBundleKind = surfaceRuntime.getSnapshot().activeBundle.kind;
+      if (activeBundleKind === lastActiveBundleKind) {
+        return;
+      }
+      lastActiveBundleKind = activeBundleKind;
+      if (activeBundleKind === 'results') {
+        return;
+      }
+      resultsSheetDraggingRef.current = false;
+      resultsListScrollingRef.current = false;
+      resultsSheetSettlingRef.current = false;
+      sessionPrimitivesLane.primitives.anySheetDraggingRef.current = false;
+      updateSearchInteractionRef({
+        isResultsSheetDragging: false,
+        isResultsListScrolling: false,
+        isResultsSheetSettling: false,
+      });
+    });
+  }, [sessionPrimitivesLane.primitives.anySheetDraggingRef, updateSearchInteractionRef]);
 
   const handleResultsListScrollBegin = React.useCallback(() => {
     setResultsListScrolling(true);
