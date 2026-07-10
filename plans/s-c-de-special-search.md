@@ -327,7 +327,16 @@ chain, childAnchor threading, and all stale-machinery prose (deadness auditor's 
    sweeps: a close-then-resubmit switch carries no txn of its own and correlates via the
    surviving reveal txn. Verdict recorded at the arm in the scene-switch controller; probe
    stripped. NOT dead code — do not re-open without a new structural change to re-submit.
-3. NEW: ONE-SWITCH home dismissal — the terminal dance's two presentation switches (polls
+3. ~~ONE-SWITCH home dismissal~~ **DONE 2026-07-09 (step 1 f983194c, step 2 8e038dd5)** — the
+   dismiss verb's terminalDismiss targets 'search' directly; the pending-restore ledger
+   (arm/commit/cancel/flush + pendingOriginRestoreContext + isSearchOriginRestorePending +
+   requestDefaultPostSearchRestore + ArmSearchCloseRestoreOptions threading) is DELETED; the
+   clear lanes hold the origin as a local value (captureSearchCloseOrigin →
+   restoreSearchCloseOrigin); the finalize boundary emits nothing; the golden assertion still
+   guards the clear lanes' emitDegenerateHomeRestore seam. Rig: dismiss-repeat + interrupt
+   green on both steps, zero marker residue, home canonical. NOTE: the successor shapes
+   (nav command pair → one derivation) remain OPEN — ledgered separately below as item 3b.
+   (was: ONE-SWITCH home dismissal — the terminal dance's two presentation switches (polls
    intermediate + home re-emission) collapse into the pop's own reveal, with docked-polls as a
    presentation MODE of the revealed home entry (§5.5 already declares it a mode). Medium; must
    re-prove the golden deadlock seam. Successor shapes that unlock WITH it: the nav command
@@ -338,7 +347,11 @@ chain, childAnchor threading, and all stale-machinery prose (deadness auditor's 
    origin-capture-registry is deleted; buildCurrentOriginSnapshot carries the one rule directly
    (home roots 'search'/'polls' → degenerate snapshot; everything else → captureRichSceneOrigin,
    which the deleted rich providers literally called). Construction-equivalent; sweeps green.
-5. Wire-exit ownership for pop-shaped session dismissals (the known native marker residue —
+5. Wire-exit ownership for pop-shaped session dismissals — NARROWED by item 3: the home
+   dismissal's wire exit provably rides the dismiss-transaction choreography (unchanged by the
+   one-switch cut; dismiss_start→hidden observed on-rig). Remaining scope is ONLY the
+   pop-shaped branches (popToEntry session-over-child, popToRoot to non-search roots) using
+   finalizeSessionExitWithoutDismissMotion — (the original text follows:) wire-exit for pop-shaped session dismissals (the known native marker residue —
    masked behind full-height sheets today; the session-over-child closeActive branch shares it
    and remains finger-test-pending, no rig entry point).
 6. OWNER product call (flagged): pollDetail dismiss lands on the expanded feed vs the pure
