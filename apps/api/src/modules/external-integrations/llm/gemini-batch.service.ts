@@ -369,7 +369,9 @@ export class GeminiBatchService implements OnModuleDestroy {
     for (const entry of inlined) {
       const meta = entry.response?.usageMetadata;
       usage.input += meta?.promptTokenCount ?? 0;
-      usage.output += meta?.candidatesTokenCount ?? 0;
+      // Thinking tokens BILL as output (cost-recon audit 2026-07-10).
+      usage.output +=
+        (meta?.candidatesTokenCount ?? 0) + (meta?.thoughtsTokenCount ?? 0);
       usage.cached += meta?.cachedContentTokenCount ?? 0;
       usage.model ||= entry.response?.modelVersion ?? '';
     }

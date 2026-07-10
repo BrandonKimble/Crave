@@ -47,7 +47,10 @@ async function main(): Promise<void> {
   const prismaClient = new PrismaClient();
   const prisma = prismaClient as unknown as PrismaService;
   const cloudinary = new CloudinaryService(fakeConfig, fakeLogger);
-  const vision = new PhotoVisionService(fakeConfig, fakeLogger);
+  const fakeLedger = {
+    record: () => undefined,
+  } as unknown as import('../src/modules/external-integrations/shared/usage-ledger.service').UsageLedgerService;
+  const vision = new PhotoVisionService(fakeConfig, fakeLedger, fakeLogger);
   const photos = new PhotosService(
     prisma,
     fakeConfig,

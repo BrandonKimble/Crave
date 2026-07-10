@@ -3187,7 +3187,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           model: targetModel,
           mode: 'interactive',
           inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
-          outputTokens,
+          // Thinking tokens BILL as output — sum them so the ledger prices
+          // what Google charges (cost-recon audit 2026-07-10).
+          outputTokens:
+            outputTokens + (response.usageMetadata?.thoughtsTokenCount ?? 0),
           cachedTokens: response.usageMetadata?.cachedContentTokenCount ?? 0,
           caller: 'llm.callGeminiApi',
         });

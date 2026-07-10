@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { LoggerService } from '../../shared';
+import { UsageLedgerService } from '../external-integrations/shared/usage-ledger.service';
 
 /**
  * The IS-FOOD gate (product/images.md moderation): Rekognition covers
@@ -17,6 +18,7 @@ export class PhotoVisionService {
 
   constructor(
     private readonly configService: ConfigService,
+    private readonly usageLedger: UsageLedgerService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PhotoVisionService');
@@ -64,6 +66,20 @@ export class PhotoVisionService {
             ],
           },
         ],
+      });
+      // Paid chokepoint: every Gemini call is ledgered (cost-recon audit
+      // 2026-07-10 found this was the one unledgered caller).
+      this.usageLedger.record({
+        service: 'gemini',
+        operation: 'generateContent',
+        model: 'gemini-2.5-flash-lite',
+        mode: 'interactive',
+        inputTokens: response.usageMetadata?.promptTokenCount ?? 0,
+        outputTokens:
+          (response.usageMetadata?.candidatesTokenCount ?? 0) +
+          (response.usageMetadata?.thoughtsTokenCount ?? 0),
+        cachedTokens: response.usageMetadata?.cachedContentTokenCount ?? 0,
+        caller: 'photo-vision.isFoodContent',
       });
       const text = (response.text ?? '').trim().toUpperCase();
       return !text.startsWith('NO');

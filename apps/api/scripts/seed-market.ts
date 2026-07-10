@@ -80,11 +80,15 @@ const PLACES_RATES: Record<string, number> = {
   'textSearch:pro': 0.032,
   'autocomplete:essentials': 0.0028,
 };
-/** Public Gemini rates per 1M tokens (approximate; batch = half). */
+/** OFFICIAL Gemini rates per 1M tokens (ai.google.dev/gemini-api/docs/pricing,
+ *  verified 2026-07-10 after the cost-recon audit found the previous values
+ *  ~5x low — the portal, not the ledger, was right). Batch = half. Cached
+ *  input reads bill at ~10% of the input rate, NOT modeled here — treat the
+ *  input-side line as a CEILING. */
 const GEMINI_RATES: Record<string, { in: number; out: number }> = {
-  'gemini-3.5-flash': { in: 0.3, out: 2.5 },
-  'gemini-3-flash-preview': { in: 0.3, out: 2.5 },
-  'gemini-3.1-flash-lite-preview': { in: 0.1, out: 0.4 },
+  'gemini-3.5-flash': { in: 1.5, out: 9.0 },
+  'gemini-3-flash-preview': { in: 0.5, out: 3.0 },
+  'gemini-3.1-flash-lite-preview': { in: 0.25, out: 1.5 },
   'gemini-embedding-001': { in: 0.15, out: 0 },
 };
 
