@@ -28,10 +28,14 @@ function makeService(overrides?: {
     ['billing.defaultEntitlement', 'premium'],
   ]);
   const prisma = {
-    billingEventLog: { upsert: jest.fn().mockResolvedValue({}) },
+    billingEventLog: {
+      upsert: jest.fn().mockResolvedValue({}),
+      findUnique: jest.fn().mockResolvedValue(null),
+    },
     subscription: {
       upsert: jest.fn().mockResolvedValue({}),
       findFirst: jest.fn().mockResolvedValue(null),
+      findUnique: jest.fn().mockResolvedValue(null),
     },
     checkoutSession: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     user: {
@@ -173,6 +177,126 @@ describe('RevenueCat webhook hardening', () => {
     expect(failed).toBeDefined();
   });
 
+  it('CANCELLATION with time left KEEPS access until expiry (auto-renew off ≠ revoke)', async () => {
+    const { service, entitlements } = makeService({ user: { userId: 'u1' } });
+    await service.handleRevenueCatWebhook(
+      rcEvent({ type: 'CANCELLATION' }),
+      'Bearer rc-secret',
+    );
+    const call = (entitlements.syncSubscriptionGrant as jest.Mock).mock
+      .calls[0][0];
+    expect(call.active).toBe(true); // grant rides to expiration_at_ms
+  });
+
+  it('UNCANCELLATION re-activates (never string-matches "cancel")', async () => {
+    const { service, entitlements } = makeService({ user: { userId: 'u1' } });
+    await service.handleRevenueCatWebhook(
+      rcEvent({ type: 'UNCANCELLATION' }),
+      'Bearer rc-secret',
+    );
+    const call = (entitlements.syncSubscriptionGrant as jest.Mock).mock
+      .calls[0][0];
+    expect(call.active).toBe(true);
+  });
+
+  it('EXPIRATION ends access even with a residual future expiry field', async () => {
+    const { service, entitlements } = makeService({ user: { userId: 'u1' } });
+    await service.handleRevenueCatWebhook(
+      rcEvent({ type: 'EXPIRATION' }),
+      'Bearer rc-secret',
+    );
+    const call = (entitlements.syncSubscriptionGrant as jest.Mock).mock
+      .calls[0][0];
+    expect(call.active).toBe(false);
+  });
+
+  it('trial purchases carry trialing status and still grant access', async () => {
+    const { service, prisma, entitlements } = makeService({
+      user: { userId: 'u1' },
+    });
+    await service.handleRevenueCatWebhook(
+      rcEvent({ period_type: 'TRIAL' }),
+      'Bearer rc-secret',
+    );
+    const sub = (prisma.subscription.upsert as jest.Mock).mock.calls[0][0];
+    expect(sub.create.status).toBe('trialing');
+    const grant = (entitlements.syncSubscriptionGrant as jest.Mock).mock
+      .calls[0][0];
+    expect(grant.active).toBe(true);
+  });
+
+  it('unknown event types never touch grants (logged and skipped)', async () => {
+    const { service, prisma, entitlements } = makeService({
+      user: { userId: 'u1' },
+    });
+    await service.handleRevenueCatWebhook(
+      rcEvent({ type: 'INVOICE_ISSUANCE' }),
+      'Bearer rc-secret',
+    );
+    expect((prisma.subscription.upsert as jest.Mock).mock.calls).toHaveLength(
+      0,
+    );
+    expect(
+      (entitlements.syncSubscriptionGrant as jest.Mock).mock.calls,
+    ).toHaveLength(0);
+    expect(
+      (prisma.billingEventLog.upsert as jest.Mock).mock.calls,
+    ).toHaveLength(1);
+  });
+
+  it('a stale retry (older event_timestamp_ms than applied) is skipped', async () => {
+    const { service, prisma, entitlements } = makeService({
+      user: { userId: 'u1' },
+    });
+    (prisma.subscription.findUnique as jest.Mock).mockResolvedValue({
+      metadata: { event: { event_timestamp_ms: 2_000_000 } },
+    });
+    await service.handleRevenueCatWebhook(
+      rcEvent({ event_timestamp_ms: 1_000_000 }),
+      'Bearer rc-secret',
+    );
+    expect((prisma.subscription.upsert as jest.Mock).mock.calls).toHaveLength(
+      0,
+    );
+    expect(
+      (entitlements.syncSubscriptionGrant as jest.Mock).mock.calls,
+    ).toHaveLength(0);
+  });
+
+  it('an already-processed event id is an ack, not a reapply', async () => {
+    const { service, prisma, entitlements } = makeService({
+      user: { userId: 'u1' },
+    });
+    (prisma.billingEventLog.findUnique as jest.Mock).mockResolvedValue({
+      status: 'processed',
+    });
+    await service.handleRevenueCatWebhook(rcEvent(), 'Bearer rc-secret');
+    expect(
+      (entitlements.syncSubscriptionGrant as jest.Mock).mock.calls,
+    ).toHaveLength(0);
+  });
+
+  it('TRANSFER revokes the losing account (scoped to revenuecat refs)', async () => {
+    const { service, entitlements } = makeService({ user: { userId: 'uOld' } });
+    await service.handleRevenueCatWebhook(
+      rcEvent({
+        type: 'TRANSFER',
+        transferred_from: ['clerk-old'],
+        transferred_to: [],
+        app_user_id: undefined,
+        expiration_at_ms: undefined,
+      }),
+      'Bearer rc-secret',
+    );
+    const call = (entitlements.revokeBySource as jest.Mock).mock.calls[0][0];
+    expect(call.userId).toBe('uOld');
+    expect(call.sourceRefPrefix).toBe('revenuecat:');
+    // and no grant is minted from the transfer payload itself
+    expect(
+      (entitlements.syncSubscriptionGrant as jest.Mock).mock.calls,
+    ).toHaveLength(0);
+  });
+
   it('expired events deactivate the grant', async () => {
     const { service, entitlements } = makeService({
       user: { userId: 'u1' },
@@ -188,6 +312,28 @@ describe('RevenueCat webhook hardening', () => {
 });
 
 describe('Stripe hardening', () => {
+  it('PARTIAL refunds and non-invoice charges never touch access', async () => {
+    const { service, entitlements } = makeService({ user: { userId: 'u9' } });
+    const svc = service as unknown as {
+      handleStripeRefund(charge: unknown): Promise<void>;
+    };
+    await svc.handleStripeRefund({
+      id: 'ch_partial',
+      customer: 'cus_9',
+      refunded: false, // partial
+      invoice: { id: 'in_1', subscription: 'sub_9' },
+    });
+    await svc.handleStripeRefund({
+      id: 'ch_oneoff',
+      customer: 'cus_9',
+      refunded: true,
+      invoice: null, // not a subscription invoice
+    });
+    expect((entitlements.revokeBySource as jest.Mock).mock.calls).toHaveLength(
+      0,
+    );
+  });
+
   it('charge.refunded revokes subscription grants for the customer', async () => {
     const { service, entitlements } = makeService({
       user: { userId: 'u9' },
@@ -196,7 +342,15 @@ describe('Stripe hardening', () => {
       service as unknown as {
         handleStripeRefund(charge: unknown): Promise<void>;
       }
-    ).handleStripeRefund({ id: 'ch_1', customer: 'cus_9' });
+    ).handleStripeRefund({
+      id: 'ch_1',
+      customer: 'cus_9',
+      refunded: true,
+      invoice: { id: 'in_1', subscription: 'sub_9' },
+    });
+    expect(
+      (entitlements.revokeBySource as jest.Mock).mock.calls[0][0].sourceRef,
+    ).toBe('stripe:sub_9');
     const call = (entitlements.revokeBySource as jest.Mock).mock.calls[0][0];
     expect(call.userId).toBe('u9');
     expect(call.source).toBe('subscription');

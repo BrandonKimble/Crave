@@ -169,10 +169,14 @@ export class UserService {
         select: { grantId: true },
       });
       if (!existingTrial) {
+        // sourceRef makes the (userId, source, sourceRef) unique index the
+        // once-ever contract — concurrent first-launch requests can't stack
+        // multiple trials (grant() treats the violation as a no-op).
         await this.entitlements.grant({
           userId: user.userId,
           source: 'trial_base',
           days: this.trialDays,
+          sourceRef: 'signup',
         });
       }
     }

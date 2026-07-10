@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import Stripe from 'stripe';
 import {
   BillingEventStatus,
@@ -205,6 +206,59 @@ export class BillingService {
       );
     }
 
+    // Exactly-once (parity with the RC path): replays of processed events
+    // are acks; failures mark the row failed and rethrow so Stripe retries.
+    const prior = await this.prisma.billingEventLog.findUnique({
+      where: {
+        source_externalEventId: {
+          source: SubscriptionProvider.stripe,
+          externalEventId: event.id,
+        },
+      },
+      select: { status: true },
+    });
+    if (prior?.status === BillingEventStatus.processed) {
+      this.logger.debug('Stripe event replayed, already processed', {
+        eventId: event.id,
+      });
+      return;
+    }
+
+    try {
+      switch (event.type) {
+        case 'customer.subscription.created':
+        case 'customer.subscription.updated':
+        case 'customer.subscription.deleted':
+          await this.applyStripeSubscription(event.data.object);
+          break;
+        case 'checkout.session.completed':
+          await this.markCheckoutSessionCompleted(event.data.object);
+          break;
+        case 'charge.refunded':
+          await this.handleStripeRefund(event.data.object);
+          break;
+        case 'invoice.payment_failed':
+          this.logger.warn('Stripe invoice payment failed', {
+            customer: (event.data.object as { customer?: string }).customer,
+            // Access expiry rides currentPeriodEnd on the grant: a failed
+            // renewal simply never extends it. Logged for dunning follow-up.
+          });
+          break;
+        default:
+          this.logger.debug('Stripe event ignored', { eventType: event.type });
+      }
+    } catch (error) {
+      await this.logBillingEvent({
+        source: SubscriptionProvider.stripe,
+        platform: SubscriptionPlatform.web,
+        externalEventId: event.id,
+        eventType: event.type,
+        payload: event,
+        failed: error instanceof Error ? error.message : 'processing error',
+      });
+      throw error;
+    }
+
     await this.logBillingEvent({
       source: SubscriptionProvider.stripe,
       platform: SubscriptionPlatform.web,
@@ -212,29 +266,6 @@ export class BillingService {
       eventType: event.type,
       payload: event,
     });
-
-    switch (event.type) {
-      case 'customer.subscription.created':
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted':
-        await this.applyStripeSubscription(event.data.object);
-        break;
-      case 'checkout.session.completed':
-        await this.markCheckoutSessionCompleted(event.data.object);
-        break;
-      case 'charge.refunded':
-        await this.handleStripeRefund(event.data.object);
-        break;
-      case 'invoice.payment_failed':
-        this.logger.warn('Stripe invoice payment failed', {
-          customer: (event.data.object as { customer?: string }).customer,
-          // Access expiry rides currentPeriodEnd on the grant: a failed
-          // renewal simply never extends it. Logged for dunning follow-up.
-        });
-        break;
-      default:
-        this.logger.debug('Stripe event ignored', { eventType: event.type });
-    }
   }
 
   async handleRevenueCatWebhook(
@@ -252,12 +283,78 @@ export class BillingService {
       );
     }
     const provided = this.extractBearerToken(authorizationHeader);
-    if (provided !== expectedSecret) {
+    if (!provided || !this.secretsEqual(provided, expectedSecret)) {
       throw new UnauthorizedException('Invalid RevenueCat webhook secret');
     }
 
     if (!payload.event) {
       this.logger.warn('RevenueCat webhook missing event payload');
+      return;
+    }
+
+    const externalId =
+      payload.event.id ||
+      payload.event.original_transaction_id ||
+      payload.event.transaction_id ||
+      `${Date.now()}`;
+
+    // Exactly-once: a replayed delivery of an already-processed event is an
+    // ack, not a reapply (protects against duplicate grants and stale
+    // retries overwriting newer state).
+    const prior = await this.prisma.billingEventLog.findUnique({
+      where: {
+        source_externalEventId: {
+          source: SubscriptionProvider.revenuecat,
+          externalEventId: externalId,
+        },
+      },
+      select: { status: true },
+    });
+    if (prior?.status === BillingEventStatus.processed) {
+      this.logger.debug('RevenueCat event replayed, already processed', {
+        eventId: externalId,
+      });
+      return;
+    }
+
+    // Dashboard/synthetic TEST events carry no transaction — record receipt
+    // and stop before any subscription or grant write.
+    if (payload.event.type === 'TEST') {
+      await this.logBillingEvent({
+        source: SubscriptionProvider.revenuecat,
+        platform: SubscriptionPlatform.ios,
+        externalEventId: externalId,
+        eventType: payload.event.type,
+        payload,
+      });
+      return;
+    }
+
+    // TRANSFER moves entitlements between app_user_ids (restore on another
+    // account): revoke the losing side, resync the gaining side from RC's
+    // subscriber truth. Never runs through the normal grant path — transfer
+    // payloads carry no expiration and must not mint grants directly.
+    if (payload.event.type === 'TRANSFER') {
+      try {
+        await this.handleRevenueCatTransfer(payload.event);
+      } catch (error) {
+        await this.logBillingEvent({
+          source: SubscriptionProvider.revenuecat,
+          platform: SubscriptionPlatform.ios,
+          externalEventId: externalId,
+          eventType: payload.event.type,
+          payload,
+          failed: error instanceof Error ? error.message : 'transfer error',
+        });
+        throw error;
+      }
+      await this.logBillingEvent({
+        source: SubscriptionProvider.revenuecat,
+        platform: SubscriptionPlatform.ios,
+        externalEventId: externalId,
+        eventType: payload.event.type,
+        payload,
+      });
       return;
     }
 
@@ -275,33 +372,10 @@ export class BillingService {
       await this.logBillingEvent({
         source: SubscriptionProvider.revenuecat,
         platform: SubscriptionPlatform.ios,
-        externalEventId:
-          payload.event.id ||
-          payload.event.original_transaction_id ||
-          payload.event.transaction_id ||
-          `${Date.now()}`,
+        externalEventId: externalId,
         eventType: payload.event.type || 'unknown',
         payload,
         failed: `no matching user for app_user_id=${authId ?? 'null'}`,
-      });
-      return;
-    }
-
-    const externalId =
-      payload.event.id ||
-      payload.event.original_transaction_id ||
-      payload.event.transaction_id ||
-      `${Date.now()}`;
-
-    // Dashboard/synthetic TEST events carry no transaction — record receipt
-    // and stop before any subscription or grant write.
-    if (payload.event.type === 'TEST') {
-      await this.logBillingEvent({
-        source: SubscriptionProvider.revenuecat,
-        platform: SubscriptionPlatform.ios,
-        externalEventId: externalId,
-        eventType: payload.event.type,
-        payload,
       });
       return;
     }
@@ -324,6 +398,21 @@ export class BillingService {
         : new Date()
       : null;
     const status = this.deriveRevenueCatStatus(payload.event);
+    if (status === null) {
+      // Informational/unknown event type: record receipt, never touch grants.
+      this.logger.info('RevenueCat event type not grant-relevant, ignored', {
+        eventType: payload.event.type,
+        eventId: externalId,
+      });
+      await this.logBillingEvent({
+        source: SubscriptionProvider.revenuecat,
+        platform: SubscriptionPlatform.ios,
+        externalEventId: externalId,
+        eventType: payload.event.type || 'unknown',
+        payload,
+      });
+      return;
+    }
 
     const revenueCatMetadata = this.toJsonInput(payload);
 
@@ -385,14 +474,50 @@ export class BillingService {
       return;
     }
 
+    const externalSubscriptionId =
+      payload.event.original_transaction_id ||
+      payload.event.transaction_id ||
+      entitlementCode;
+
+    // Monotonic guard: RC retries failed deliveries for days, so a stale
+    // event can land after a newer one already applied. The last-applied
+    // event's payload lives in subscription.metadata — compare timestamps
+    // and never let an older event overwrite newer state.
+    const eventTs = payload.event.event_timestamp_ms ?? null;
+    if (eventTs) {
+      const existing = await this.prisma.subscription.findUnique({
+        where: {
+          provider_externalSubscriptionId: {
+            provider: SubscriptionProvider.revenuecat,
+            externalSubscriptionId,
+          },
+        },
+        select: { metadata: true },
+      });
+      const lastTs = (
+        existing?.metadata as {
+          event?: { event_timestamp_ms?: number };
+        } | null
+      )?.event?.event_timestamp_ms;
+      if (typeof lastTs === 'number' && eventTs < lastTs) {
+        this.logger.warn(
+          'Skipping stale RevenueCat event (older than applied)',
+          {
+            externalSubscriptionId,
+            eventTs,
+            lastAppliedTs: lastTs,
+            eventType: payload.event.type,
+          },
+        );
+        return;
+      }
+    }
+
     await this.prisma.subscription.upsert({
       where: {
         provider_externalSubscriptionId: {
           provider: SubscriptionProvider.revenuecat,
-          externalSubscriptionId:
-            payload.event.original_transaction_id ||
-            payload.event.transaction_id ||
-            entitlementCode,
+          externalSubscriptionId,
         },
       },
       update: {
@@ -412,10 +537,7 @@ export class BillingService {
       create: {
         userId: user.userId,
         provider: SubscriptionProvider.revenuecat,
-        externalSubscriptionId:
-          payload.event.original_transaction_id ||
-          payload.event.transaction_id ||
-          entitlementCode,
+        externalSubscriptionId,
         externalCustomerId: authId ?? null,
         platform: SubscriptionPlatform.ios,
         status,
@@ -433,36 +555,161 @@ export class BillingService {
       },
     });
 
-    // Ledger is the access truth (see the Stripe path).
+    // Ledger is the access truth (see the Stripe path). The grant lives for
+    // ANY non-expired status: active, trialing, and cancelled-with-time-left
+    // (CANCELLATION = auto-renew off; paid/trial access rides to expiry —
+    // EXPIRATION is what ends it).
     await this.entitlements.syncSubscriptionGrant({
       userId: user.userId,
-      sourceRef: `revenuecat:${
-        payload.event.original_transaction_id ||
-        payload.event.transaction_id ||
-        entitlementCode
-      }`,
+      sourceRef: `revenuecat:${externalSubscriptionId}`,
       expiresAt,
-      active: status === SubscriptionStatus.active,
+      active: status !== SubscriptionStatus.expired,
       entitlementCode,
+    });
+
+    await this.prisma.user.update({
+      where: { userId: user.userId },
+      data: { subscriptionStatus: status },
     });
   }
 
+  /** TRANSFER: entitlements moved between RC app_user_ids. Revoke the
+   *  losing accounts' RC grants; resync the gaining accounts from RC's
+   *  subscriber API (the transfer payload itself carries no expiration). */
+  private async handleRevenueCatTransfer(
+    event: NonNullable<RevenueCatWebhookDto['event']>,
+  ): Promise<void> {
+    const fromIds = this.asStringArray(event.transferred_from);
+    const toIds = this.asStringArray(event.transferred_to);
+    for (const fromId of fromIds) {
+      const fromUser = await this.lookupUserByAuthIdentifier(fromId);
+      if (!fromUser) continue;
+      const revoked = await this.entitlements.revokeBySource({
+        userId: fromUser.userId,
+        source: 'subscription',
+        sourceRefPrefix: 'revenuecat:',
+        reason: 'entitlement transferred to another account',
+      });
+      this.logger.info('RevenueCat transfer: revoked losing account', {
+        userId: fromUser.userId,
+        grantsRevoked: revoked,
+      });
+    }
+    for (const toId of toIds) {
+      const toUser = await this.lookupUserByAuthIdentifier(toId);
+      if (!toUser) {
+        this.logger.warn('RevenueCat transfer target has no user', { toId });
+        continue;
+      }
+      const state = await this.fetchRevenueCatEntitlementState(toId);
+      if (!state) continue;
+      await this.entitlements.syncSubscriptionGrant({
+        userId: toUser.userId,
+        sourceRef: `revenuecat:${state.transactionRef}`,
+        expiresAt: state.expiresAt,
+        active: state.expiresAt.getTime() > Date.now(),
+        entitlementCode: state.entitlementCode,
+      });
+      this.logger.info('RevenueCat transfer: resynced gaining account', {
+        userId: toUser.userId,
+        expiresAt: state.expiresAt.toISOString(),
+      });
+    }
+  }
+
+  /** Read the subscriber's current entitlement truth from RC's v1 API
+   *  (public SDK keys work here — REVENUECAT_API_KEY). */
+  private async fetchRevenueCatEntitlementState(appUserId: string): Promise<{
+    entitlementCode: string;
+    expiresAt: Date;
+    transactionRef: string;
+  } | null> {
+    const apiKey = this.configService.get<string>('revenueCat.apiKey');
+    if (!apiKey) {
+      throw new Error(
+        'REVENUECAT_API_KEY not configured — cannot resync transferred subscriber',
+      );
+    }
+    const response = await fetch(
+      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`,
+      { headers: { Authorization: `Bearer ${apiKey}` } },
+    );
+    if (!response.ok) {
+      throw new Error(`RevenueCat subscriber fetch failed: ${response.status}`);
+    }
+    const body = (await response.json()) as {
+      subscriber?: {
+        entitlements?: Record<
+          string,
+          { expires_date?: string | null; product_identifier?: string }
+        >;
+      };
+    };
+    const entitlements = body.subscriber?.entitlements ?? {};
+    let best: {
+      entitlementCode: string;
+      expiresAt: Date;
+      transactionRef: string;
+    } | null = null;
+    for (const [rcId, state] of Object.entries(entitlements)) {
+      if (!state.expires_date) continue;
+      const expiresAt = new Date(state.expires_date);
+      if (expiresAt.getTime() <= Date.now()) continue;
+      if (!best || expiresAt > best.expiresAt) {
+        best = {
+          entitlementCode: this.reverseEntitlementMap.get(rcId) ?? rcId,
+          expiresAt,
+          transactionRef: `transfer:${appUserId}:${state.product_identifier ?? rcId}`,
+        };
+      }
+    }
+    return best;
+  }
+
+  private asStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) {
+      return value.filter((item): item is string => typeof item === 'string');
+    }
+    return typeof value === 'string' ? [value] : [];
+  }
+
   /** Cancel the user's active Stripe subscription at period end (access
-   *  naturally lapses when the grant's expiresAt passes). */
+   *  naturally lapses when the grant's expiresAt passes). iOS subscriptions
+   *  can only be cancelled through Apple — the client is told to open the
+   *  App Store management sheet. */
   async cancelSubscription(user: User): Promise<{ cancelAtPeriodEnd: true }> {
-    const stripe = this.ensureStripe();
     const subscription = await this.prisma.subscription.findFirst({
       where: {
         userId: user.userId,
         provider: SubscriptionProvider.stripe,
-        status: SubscriptionStatus.active,
+        status: {
+          in: [SubscriptionStatus.active, SubscriptionStatus.trialing],
+        },
       },
       orderBy: { createdAt: 'desc' },
       select: { externalSubscriptionId: true },
     });
     if (!subscription?.externalSubscriptionId) {
+      const rcSubscription = await this.prisma.subscription.findFirst({
+        where: {
+          userId: user.userId,
+          provider: SubscriptionProvider.revenuecat,
+          status: {
+            in: [SubscriptionStatus.active, SubscriptionStatus.trialing],
+          },
+        },
+        select: { subscriptionId: true },
+      });
+      if (rcSubscription) {
+        throw new BadRequestException({
+          code: 'MANAGE_IN_APP_STORE',
+          message:
+            'This subscription is billed through the App Store — manage it there.',
+        });
+      }
       throw new BadRequestException('No active subscription to cancel');
     }
+    const stripe = this.ensureStripe();
     await stripe.subscriptions.update(subscription.externalSubscriptionId, {
       cancel_at_period_end: true,
     });
@@ -471,8 +718,18 @@ export class BillingService {
     return { cancelAtPeriodEnd: true };
   }
 
-  /** Refund/chargeback: revoke the subscription grant immediately. */
+  /** FULL refund of a subscription invoice: revoke THAT subscription's
+   *  grant. Partial refunds and one-off charges never touch access, and a
+   *  Stripe refund can never revoke a RevenueCat grant (scoped by
+   *  sourceRef). */
   private async handleStripeRefund(charge: Stripe.Charge): Promise<void> {
+    if (!charge.refunded) {
+      // charge.refunded === true only when FULLY refunded.
+      this.logger.info('Stripe partial refund — access unchanged', {
+        chargeId: charge.id,
+      });
+      return;
+    }
     const customerId =
       typeof charge.customer === 'string' ? charge.customer : null;
     if (!customerId) return;
@@ -484,14 +741,46 @@ export class BillingService {
       this.logger.warn('Stripe refund without matching user', { customerId });
       return;
     }
+    // Resolve which subscription the refunded charge paid for (use the
+    // expanded invoice when the event carries it; fetch otherwise).
+    if (!charge.invoice) {
+      this.logger.info(
+        'Stripe refund of non-invoice charge — access unchanged',
+        {
+          chargeId: charge.id,
+          userId: user.userId,
+        },
+      );
+      return;
+    }
+    const invoice =
+      typeof charge.invoice === 'string'
+        ? await this.ensureStripe().invoices.retrieve(charge.invoice)
+        : charge.invoice;
+    const subscriptionId =
+      typeof invoice.subscription === 'string'
+        ? invoice.subscription
+        : (invoice.subscription?.id ?? null);
+    if (!subscriptionId) {
+      this.logger.info(
+        'Stripe refund without subscription — access unchanged',
+        {
+          chargeId: charge.id,
+          userId: user.userId,
+        },
+      );
+      return;
+    }
     const revoked = await this.entitlements.revokeBySource({
       userId: user.userId,
       source: 'subscription',
+      sourceRef: `stripe:${subscriptionId}`,
       reason: `stripe charge refunded: ${charge.id}`,
     });
     this.logger.info('Stripe refund processed', {
       userId: user.userId,
       chargeId: charge.id,
+      subscriptionId,
       grantsRevoked: revoked,
     });
   }
@@ -616,7 +905,12 @@ export class BillingService {
       userId: user.userId,
       sourceRef: `stripe:${subscription.id}`,
       expiresAt: currentPeriodEnd,
-      active: status === SubscriptionStatus.active,
+      // Trials grant access too; 'cancelled' from Stripe means the period
+      // actually ended ('canceled' status arrives at period end — pending
+      // cancels stay 'active' with cancel_at_period_end=true).
+      active:
+        status === SubscriptionStatus.active ||
+        status === SubscriptionStatus.trialing,
       entitlementCode,
     });
 
@@ -652,29 +946,51 @@ export class BillingService {
       case 'trialing':
         return SubscriptionStatus.trialing;
       case 'active':
-      case 'past_due':
-      case 'incomplete':
+      case 'past_due': // grace period: access rides until the period end
         return SubscriptionStatus.active;
       case 'canceled':
         return SubscriptionStatus.cancelled;
       default:
+        // incomplete/incomplete_expired/unpaid: first payment never landed —
+        // no access.
         return SubscriptionStatus.expired;
     }
   }
 
+  /** Explicit RC event-type map (never substring-match: UNCANCELLATION
+   *  contains "cancel"). Returns null for informational/unknown types —
+   *  those must never touch grants. Semantics: CANCELLATION = auto-renew
+   *  OFF, access rides until expiration (EXPIRATION is what ends access). */
   private deriveRevenueCatStatus(
     event: RevenueCatWebhookDto['event'],
-  ): SubscriptionStatus {
-    if (!event) {
-      return SubscriptionStatus.expired;
+  ): SubscriptionStatus | null {
+    if (!event) return null;
+    const type = (event.type ?? '').toUpperCase();
+    const hasFutureExpiry =
+      !!event.expiration_at_ms && event.expiration_at_ms > Date.now();
+    switch (type) {
+      case 'EXPIRATION':
+        return SubscriptionStatus.expired;
+      case 'CANCELLATION':
+      case 'SUBSCRIPTION_PAUSED':
+        return hasFutureExpiry
+          ? SubscriptionStatus.cancelled
+          : SubscriptionStatus.expired;
+      case 'INITIAL_PURCHASE':
+      case 'RENEWAL':
+      case 'UNCANCELLATION':
+      case 'PRODUCT_CHANGE':
+      case 'BILLING_ISSUE': // grace period: expiration_at_ms is the horizon
+      case 'SUBSCRIPTION_EXTENDED':
+      case 'NON_RENEWING_PURCHASE':
+      case 'TEMPORARY_ENTITLEMENT_GRANT':
+        if (!hasFutureExpiry) return SubscriptionStatus.expired;
+        return event.period_type === 'TRIAL'
+          ? SubscriptionStatus.trialing
+          : SubscriptionStatus.active;
+      default:
+        return null;
     }
-    if (event.expiration_at_ms && event.expiration_at_ms < Date.now()) {
-      return SubscriptionStatus.expired;
-    }
-    if (event.type?.toLowerCase().includes('cancel')) {
-      return SubscriptionStatus.cancelled;
-    }
-    return SubscriptionStatus.active;
   }
 
   private extractBearerToken(header?: string): string | undefined {
@@ -684,6 +1000,13 @@ export class BillingService {
       return undefined;
     }
     return token.trim();
+  }
+
+  /** Constant-time secret compare (hash first so lengths always match). */
+  private secretsEqual(provided: string, expected: string): boolean {
+    const a = createHash('sha256').update(provided).digest();
+    const b = createHash('sha256').update(expected).digest();
+    return timingSafeEqual(a, b);
   }
 
   private normalizeRawBody(rawBody: Buffer | string | undefined): Buffer {

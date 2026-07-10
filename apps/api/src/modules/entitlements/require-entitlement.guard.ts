@@ -21,7 +21,6 @@ export const RequireEntitlement = (code = 'premium') =>
 @Injectable()
 export class RequireEntitlementGuard implements CanActivate {
   private readonly logger: LoggerService;
-  private readonly mode: 'off' | 'log' | 'enforce';
 
   constructor(
     private readonly reflector: Reflector,
@@ -29,12 +28,18 @@ export class RequireEntitlementGuard implements CanActivate {
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('RequireEntitlementGuard');
+  }
+
+  /** Read per call (not latched at construction) so a runtime mode flip
+   *  moves endpoint gates and response-shaped gates together. */
+  private mode(): 'off' | 'log' | 'enforce' {
     const mode = process.env.ENTITLEMENT_GATING?.trim().toLowerCase();
-    this.mode = mode === 'enforce' || mode === 'log' ? mode : 'off';
+    return mode === 'enforce' || mode === 'log' ? mode : 'off';
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    if (this.mode === 'off') return true;
+    const mode = this.mode();
+    if (mode === 'off') return true;
     const code = this.reflector.getAllAndOverride<string | undefined>(
       ENTITLEMENT_KEY,
       [context.getHandler(), context.getClass()],
@@ -53,7 +58,7 @@ export class RequireEntitlementGuard implements CanActivate {
     const allowed = await this.entitlements.hasAccess(userId, code);
     if (allowed) return true;
 
-    if (this.mode === 'log') {
+    if (mode === 'log') {
       this.logger.info('Entitlement gate WOULD block (log mode)', {
         userId,
         entitlementCode: code,

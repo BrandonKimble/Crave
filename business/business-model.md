@@ -20,10 +20,10 @@ the free incumbent lacks.
   open-now/price filters, poll voting + discussion. (This is the trust asset + word-of-mouth engine.)
 - **Crave+ (paid):** the **dish** intelligence layer (the hero), rising/momentum + trending, and
   power filter/sort on your own favorites lists. Full free/paid map → [monetization-and-gating.md](monetization-and-gating.md).
-- **Trial:** a soft, multi-step onboarding that lets people *feel* the rankings, then a trial of
+- **Trial:** a soft, multi-step onboarding that lets people _feel_ the rankings, then a trial of
   Crave+. The exact trial mechanic (reverse trial vs. honest time-limited trial vs. card-on-file vs.
   no-trial direct-purchase) is a **launch A/B**, decided on 60-day revenue-per-install — not assumed.
-  Adapty's Lifestyle data shows trials can *reduce* LTV ~21%, so "trial = good" is not a given.
+  Adapty's Lifestyle data shows trials can _reduce_ LTV ~21%, so "trial = good" is not a given.
 
 ### Pricing
 
@@ -40,7 +40,7 @@ Earlier reasoning leaned on "a paywall would starve the network." The codebase a
 crowd is **~4/10 load-bearing, not existential** — the Score rebuilds from a founder-controlled
 Reddit-mining pipeline with zero live users, the vote model is deleted, and polls feed the Score
 only at close-time graduation. So the app is **day-one valuable to a single user** (no cold-start),
-which actually makes a paywall *more* viable than for a typical network app. The real reasons to
+which actually makes a paywall _more_ viable than for a typical network app. The real reasons to
 start freemium anyway:
 
 1. **Reversibility is asymmetric.** Tightening (freemium → paywall) is routine and grandfatherable
@@ -57,10 +57,10 @@ start freemium anyway:
   playbook; the failures are invisible).
 - "Hard converts 5× better" (10.7% vs 2.1%, RevenueCat) is a **survivorship/denominator artifact** —
   Adapty's view-to-payment metric shows **soft beats hard ~50%** (4.85% vs 3.34%). Different denominators.
-- **1-year retention is model-independent (~27% vs ~28%)** — a paywall buys front-loaded cash, *not* stickiness.
+- **1-year retention is model-independent (~27% vs ~28%)** — a paywall buys front-loaded cash, _not_ stickiness.
 - "86% of AI apps skip trials" = **busted / unverifiable. Do not cite.**
 - Every authoritative source names discovery / network / UGC apps as where **freemium stays correct**.
-- **Hard truth:** no Western pure-play food-discovery *consumer subscription* has scaled. Beli ("no
+- **Hard truth:** no Western pure-play food-discovery _consumer subscription_ has scaled. Beli ("no
   coherent revenue model" after 4yr / 58M ratings), DoorDash's Zesty (dead in <5 months). The analogs
   that work monetize a **utility the free incumbent lacks** (AllTrails: offline/nav) or a no-free-
   alternative market (Tabelog/Japan — doesn't transfer to the US, where 62% discover via Google).
@@ -73,7 +73,7 @@ start freemium anyway:
 1. Launch **one city**, freemium, with the trial A/B running from day one.
 2. **Pre-commit a kill criterion before launch:** e.g. if trial→paid is below ~5–6% after ~90 days
    AND free users show no referral/word-of-mouth lift AND free support load is crushing solo bandwidth
-   → *tighten* (move the gate earlier, thin the free tier; harder paywall only as a last resort,
+   → _tighten_ (move the gate earlier, thin the free tier; harder paywall only as a last resort,
    grandfathering anyone who already paid). **Never run the reverse sequence (paywall → freemium).**
 3. **B2B is Phase 2** — claimed restaurant profiles, analytics, sponsored polls — only post-density,
    and **never injected into the ranking** (see [monetization-and-gating.md](monetization-and-gating.md)
@@ -91,6 +91,7 @@ Indie.vc shut down in 2021 when its own LPs balked. Don't bank the plan on it.
 ## Apple-proofing (non-negotiable from v1 — a pull is existential for a solo founder)
 
 Apple pulled Cal AI (April 2026, Guideline 3.1.2(c)/5.6) for four things — avoid all of them:
+
 1. Show the **real billed number** most prominently (never a per-week divide-down bigger than the charge).
 2. Auto-renewal terms **inline** + a visual trial timeline (what you get / when charged / how to cancel).
 3. **Never re-prompt a decliner** with a second, different offer.
@@ -107,11 +108,11 @@ Clerk for end-placed sign-in.
 
 ## Manifestos / reading list (the philosophy behind this path)
 
-- *Rework* and *It Doesn't Have to Be Crazy at Work* — Jason Fried & DHH (the calm-company bible)
-- *The Minimalist Entrepreneur* — Sahil Lavingia (tried for the billion, nearly died, found better)
-- *The SaaS Playbook* + the "stair-step approach" — Rob Walling (MicroConf)
+- _Rework_ and _It Doesn't Have to Be Crazy at Work_ — Jason Fried & DHH (the calm-company bible)
+- _The Minimalist Entrepreneur_ — Sahil Lavingia (tried for the billion, nearly died, found better)
+- _The SaaS Playbook_ + the "stair-step approach" — Rob Walling (MicroConf)
 - "Default Alive or Default Dead" — Paul Graham
-- RevenueCat *State of Subscription Apps*, Adapty *State of In-App Subscriptions*, Airbridge
+- RevenueCat _State of Subscription Apps_, Adapty _State of In-App Subscriptions_, Airbridge
   "Hard Paywall vs Freemium", RevenueCat's AllTrails product-channel piece (the template)
 
 ## Open decisions
@@ -119,3 +120,18 @@ Clerk for end-placed sign-in.
 - Exact trial mechanic (the launch A/B): reverse trial vs honest time-limited trial vs card-on-file vs no-trial.
 - The free-tier cap on number of lists (if any).
 - Whether/how to meter freeform (LLM-costed) search for cost control — see [monetization-and-gating.md](monetization-and-gating.md).
+
+---
+
+## DECISION SUPERSEDING NOTE (2026-07-08)
+
+The launch model is a HARD PAYWALL at onboarding end (owner decision):
+monthly $7.99 / annual $39.99, store-managed introductory FREE TRIAL with
+card upfront on the annual product (Apple charges at trial end unless
+cancelled; Apple sends the pre-charge reminder). The freemium/reverse-trial
+recommendation above is retained as the documented FUTURE PIVOT (all
+machinery built and env-gated; see plans/payments-ideal-shape.md). The
+"never loosen a paywall" warning above was weighed and overridden for
+capital-return speed + solo simplicity; the pivot path is deliberately kept
+one-commit-sized. Gating scope for the hard paywall (gate-everything vs a
+thin free shell) is an OPEN owner decision.

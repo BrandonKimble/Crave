@@ -114,6 +114,115 @@ describe('EntitlementService (ledger integration)', () => {
     expect(summary.source).toBe('trial_base');
   });
 
+  it('REFUND-TAIL: a reward stacked on a subscription horizon dies with the refund', async () => {
+    // Annual subscription (365d), then a 1-day photo reward "on top".
+    await service.syncSubscriptionGrant({
+      userId,
+      sourceRef: 'revenuecat:txn_tail',
+      expiresAt: new Date(Date.now() + 365 * 864e5),
+      active: true,
+    });
+    await service.grant({
+      userId,
+      source: 'reward_photo',
+      days: 1,
+      sourceRef: 'photo:tail-1',
+    });
+    // Immediate refund revokes the subscription grant.
+    await service.revokeBySource({
+      userId,
+      source: 'subscription',
+      reason: 'refund',
+    });
+    const summary = await service.summarize(userId);
+    // The reward chain re-anchors to the revocation: the user keeps their
+    // EARNED 1 day, not a 366-day tail.
+    expect(summary.active).toBe(true);
+    const days =
+      (summary.expiresAt!.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    expect(days).toBeLessThanOrEqual(1.01);
+    expect(summary.source).toBe('reward_photo');
+  });
+
+  it('revoking an early chain member shifts later members instead of stranding time', async () => {
+    await service.grant({
+      userId,
+      source: 'reward_photo',
+      days: 10,
+      sourceRef: 'photo:a',
+    });
+    const second = await service.grant({
+      userId,
+      source: 'reward_photo',
+      days: 10,
+      sourceRef: 'photo:b',
+    });
+    expect(second.grantId).not.toBeNull();
+    let summary = await service.summarize(userId);
+    let days =
+      (summary.expiresAt!.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    expect(days).toBeGreaterThan(19);
+    // Revoke the FIRST grant: coverage re-derives to ~10 days (grant b's
+    // days), not the stale 20-day absolute endpoint.
+    const first = await prisma.accessGrant.findFirst({
+      where: { userId, sourceRef: 'photo:a' },
+      select: { grantId: true },
+    });
+    await service.revoke(first!.grantId, 'fraud');
+    summary = await service.summarize(userId);
+    days = (summary.expiresAt!.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    expect(days).toBeGreaterThan(9);
+    expect(days).toBeLessThanOrEqual(10.01);
+  });
+
+  it('concurrent same-sourceRef rewards collapse to one grant (unique backstop)', async () => {
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        service.grant({
+          userId,
+          source: 'reward_photo',
+          days: 1,
+          sourceRef: 'photo:race',
+        }),
+      ),
+    );
+    const granted = results.filter((result) => result.grantId !== null);
+    expect(granted).toHaveLength(1);
+    const rows = await prisma.accessGrant.findMany({
+      where: { userId, sourceRef: 'photo:race' },
+    });
+    expect(rows).toHaveLength(1);
+  });
+
+  it('concurrent DISTINCT rewards cannot blow past the cap (advisory lock)', async () => {
+    await Promise.all(
+      Array.from({ length: 6 }, (_, index) =>
+        service.grant({
+          userId,
+          source: 'reward_photo',
+          days: 10,
+          sourceRef: `photo:cap-${index}`,
+        }),
+      ),
+    );
+    const summary = await service.summarize(userId);
+    const days =
+      (summary.expiresAt!.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    // cap is 30 — six concurrent 10-day grants must clamp to exactly 30.
+    expect(days).toBeGreaterThan(29);
+    expect(days).toBeLessThanOrEqual(30.01);
+  });
+
+  it('subscription grant refuses to become lifetime (active without expiry)', async () => {
+    await service.syncSubscriptionGrant({
+      userId,
+      sourceRef: 'revenuecat:txn_nolife',
+      expiresAt: null,
+      active: true,
+    });
+    expect(await service.hasAccess(userId)).toBe(false);
+  });
+
   it('subscription sync: create, renew extends, deactivate revokes — idempotent per sourceRef', async () => {
     const ref = 'stripe:sub_spec';
     await service.syncSubscriptionGrant({

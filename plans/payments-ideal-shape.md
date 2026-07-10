@@ -232,3 +232,70 @@ FOUR real bugs found by the E2E (all fixed + regression-tested):
 Notes: Test Store prices are placeholders ($9.99/$79.99) — real prices live
 in ASC products ($7.99/$39.99). nest build does NOT copy prompt .md assets
 to dist (rsync'd manually; the dev watcher handles it in watch mode).
+
+## Red team #2 — full-surface (2026-07-08, 4 independent reviewers + verify pass)
+
+All findings verified against code before fixing. Everything below is FIXED,
+tested (35 backend tests incl. new regression suite; 113 repo-wide green),
+and the dev API restarted on the fixed build.
+
+**Ledger representation change (the big one):** day grants (trial_base,
+rewards, winback, gift) no longer store absolute expiries. They store
+metadata.grantedDays; summarize() DERIVES coverage as a chain anchored at
+the latest absolute-grant effective end (expiry, clamped to revocation).
+Pure function of ledger rows. Kills: the refund-tail exploit (annual sub +
+1 photo + refund left a ~366-day reward tail; now the chain re-anchors to
+the refund → 1 day), incoherent revocation arithmetic, and reward days
+burning invisibly under lifetime comps.
+
+**Ledger concurrency:** every write path runs in a transaction holding a
+per-(user,code) pg advisory lock (cap clamps, reward idempotency,
+subscription sync, signup trial are single-writer now); partial unique
+index on live (user_id, source, source_ref) rows is the RED backstop
+(P2002 = idempotent no-op). Redis is single-writer: recomputeCache SETs the
+computed value; hasAccess only SET-NXes cold misses (no stale-clobber
+window). Guard reads ENTITLEMENT_GATING per call (no construction latch).
+
+**RC webhook lifecycle (was badly broken):** explicit event-type map
+replaces substring matching — previously UNCANCELLATION matched
+includes('cancel') and REVOKED re-subscribers; CANCELLATION revoked paid
+access immediately (should ride to expiry — EXPIRATION ends access);
+unknown/expiration-less events minted LIFETIME grants (TRANSFER!). Now:
+CANCELLATION/SUBSCRIPTION_PAUSED keep the grant to expiry; EXPIRATION ends
+it; period_type=TRIAL → trialing status (grant still active); unknown types
+log-and-skip; subscription grants REFUSE to be lifetime; TRANSFER revokes
+the losing account's revenuecat-ref grants and resyncs the gaining account
+from RC's v1 subscriber API; PRODUCT_CHANGE revokes the old entitlement
+code's grant inside the same lock. Replay guard (processed event id = ack)
+
+- monotonic event_timestamp_ms check (stale retries can't overwrite newer
+  state). Timing-safe bearer compare.
+
+**Stripe parity:** events logged processed only AFTER processing (failed +
+rethrow → Stripe retries); charge.refunded scoped to FULL refunds of the
+refunded charge's own subscription (partial refunds and one-off charges
+never touch access; a Stripe refund can never revoke an RC grant);
+'incomplete' no longer maps to active (free-access-without-paying);
+trialing Stripe subs grant access; cancel endpoint detects RC subscribers
+→ {code:'MANAGE_IN_APP_STORE'}; user.subscriptionStatus mirrored on the RC
+path too.
+
+**Mobile:** react-query cache cleared on ANY account switch
+(PurchasesProvider watches identity; access query key also user-scoped —
+belt + suspenders against serving user A's premium state to user B); RC
+identity transitions serialized through a promise queue; purchases REFUSED
+unless RC is confirmed configured as the purchasing Clerk user (no
+anonymous-purchase window); configure wrapped (unlinked native module →
+availability false, not a crash); post-purchase poll early-exits on access
+flip and after a store-confirmed purchase the buy buttons NEVER re-arm
+("Activating…" state — no double-charge path); restore uses the same poll;
+client-side expiry override (cached active + past expiresAt reads
+inactive); RELEASE builds with a test\_ key disable purchases loudly
+(Test-Store-in-prod = App Review rejection).
+
+**Deferred/owner items from the model-fit review:** see the decision list
+in the session summary — gate scope (gate-everything vs thin free shell),
+in-app account deletion (Apple 5.1.1(v), REQUIRED before submission),
+3.1.2 disclosure block + manage-subscription link (screens thread),
+App Review demo account via comp grant, reward-days = win-back framing at
+launch.

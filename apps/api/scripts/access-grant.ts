@@ -63,11 +63,17 @@ async function main(): Promise<void> {
           throw new Error('comp requires --lifetime or --days N');
         }
         const note = flag('note') ?? 'comp';
+        // comp is an ABSOLUTE source: a timed comp carries a concrete expiry
+        // (day-grant derivation is for earned rewards, not admin comps).
         const { grantId } = await entitlements.grant({
           userId: user.userId,
           source: 'comp',
           lifetime,
-          days,
+          ...(lifetime
+            ? {}
+            : {
+                expiresAt: new Date(Date.now() + days! * 24 * 60 * 60 * 1000),
+              }),
           sourceRef: note,
         });
         out(

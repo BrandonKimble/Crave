@@ -1,7 +1,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '@clerk/clerk-expo';
 import { usersService, type AccessSummary } from '../services/users';
 
-const ACCESS_QUERY_KEY = ['users', 'me', 'access'] as const;
+/** User-scoped: an account switch must never serve the previous user's
+ *  access state (PurchasesProvider also clears the whole cache on switch —
+ *  this is the belt to that suspender). */
+export const accessQueryKey = (userId: string | null | undefined) =>
+  ['users', 'me', 'access', userId ?? 'anonymous'] as const;
 
 export interface AccessState {
   /** SERVER-TRUTH: does this user currently have Crave+ access. */
@@ -13,8 +18,9 @@ export interface AccessState {
   /** Days until access lapses (undefined for lifetime/inactive). */
   daysRemaining?: number;
   isLoading: boolean;
-  /** Call after a purchase or reward to pull fresh server truth. */
-  refresh: () => Promise<void>;
+  /** Force-refetch server truth NOW and return it (purchase/restore polls
+   *  await this — unlike invalidate, it works with no observer mounted). */
+  refresh: () => Promise<AccessSummary | null>;
 }
 
 /**
@@ -24,18 +30,24 @@ export interface AccessState {
  */
 export function useAccess(): AccessState {
   const queryClient = useQueryClient();
+  const { userId } = useAuth();
+  const queryKey = accessQueryKey(userId);
   const query = useQuery({
-    queryKey: ACCESS_QUERY_KEY,
+    queryKey,
     queryFn: async (): Promise<AccessSummary | null> => {
       const profile = await usersService.getMe();
       return profile.access ?? null;
     },
+    enabled: !!userId,
     staleTime: 60_000,
   });
 
   const access = query.data ?? null;
-  const active = access?.active ?? false;
   const expiresAt = access?.expiresAt ?? null;
+  // Client-side expiry override: a cached "active" whose expiry has passed
+  // while cached must read as INACTIVE (the cache can outlive the grant).
+  const expired = expiresAt !== null && new Date(expiresAt).getTime() <= Date.now();
+  const active = (access?.active ?? false) && !expired;
   const daysRemaining =
     active && expiresAt
       ? Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)))
@@ -43,12 +55,20 @@ export function useAccess(): AccessState {
 
   return {
     active,
-    expiresAt,
-    source: access?.source ?? null,
+    expiresAt: active ? expiresAt : null,
+    source: active ? (access?.source ?? null) : null,
     daysRemaining,
     isLoading: query.isLoading,
     refresh: async () => {
-      await queryClient.invalidateQueries({ queryKey: ACCESS_QUERY_KEY });
+      const fresh = await queryClient.fetchQuery({
+        queryKey,
+        queryFn: async (): Promise<AccessSummary | null> => {
+          const profile = await usersService.getMe();
+          return profile.access ?? null;
+        },
+        staleTime: 0,
+      });
+      return fresh;
     },
   };
 }

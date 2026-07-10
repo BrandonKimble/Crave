@@ -13,6 +13,12 @@ export interface RevenueCatWebhookDto {
     purchased_at_ms?: number;
     expiration_at_ms?: number;
     event_timestamp_ms?: number;
+    /** NORMAL | TRIAL | INTRO */
+    period_type?: string;
+    cancel_reason?: string;
+    /** TRANSFER events: app_user_ids losing/gaining the entitlements. */
+    transferred_from?: string[];
+    transferred_to?: string[];
     [key: string]: unknown;
   };
   [key: string]: unknown;

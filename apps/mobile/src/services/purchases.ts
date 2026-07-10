@@ -47,7 +47,7 @@ function loadModule(): PurchasesModule | null {
 }
 
 function getApiKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY;
+  const key: string | undefined = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY;
   if (!key) return undefined;
   if (!__DEV__ && key.startsWith('test_')) {
     // eslint-disable-next-line no-console
