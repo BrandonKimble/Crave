@@ -361,7 +361,18 @@ chain, childAnchor threading, and all stale-machinery prose (deadness auditor's 
    origin-capture-registry is deleted; buildCurrentOriginSnapshot carries the one rule directly
    (home roots 'search'/'polls' → degenerate snapshot; everything else → captureRichSceneOrigin,
    which the deleted rich providers literally called). Construction-equivalent; sweeps green.
-5. Wire-exit ownership for pop-shaped session dismissals — NARROWED by item 3: the home
+5. ~~Wire-exit ownership for pop-shaped session dismissals~~ **CLOSED 2026-07-09 (c342cc0a)** —
+   the pop branch commits a results_exit presentation transaction alongside the surface
+   finalize (the wire's normal self-driving exit path; no dismissTransaction, no motion).
+   Rig-proven on the favorites chain: markers:20 world revealed over the bookmarks root, X-pop
+   → native lifecycle dismissing→hidden with the minted exit ack id, byte-canonical Favorites,
+   zero dots. Session-over-child shares the code path (exit commit precedes the branch split);
+   its finger test still rides the seeded-comments gap. UNBLOCKED en route: the authed-API 500
+   root cause was NOT billing enforcement (log mode) — the schema kept an @@index on the
+   deleted users.trial_ends_at field, so prisma generate failed and the long-running server's
+   stale client selected the dropped subscription_status column → P2022 → unlogged 500 on every
+   identity sync; fixed by dropping the stale index + regenerate + rebuild (own commit).
+   (superseded text: NARROWED by item 3: the home
    dismissal's wire exit provably rides the dismiss-transaction choreography (unchanged by the
    one-switch cut; dismiss_start→hidden observed on-rig). Remaining scope is ONLY the
    pop-shaped branches (popToEntry session-over-child, popToRoot to non-search roots) using
