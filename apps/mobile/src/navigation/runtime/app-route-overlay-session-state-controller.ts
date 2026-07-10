@@ -11,7 +11,10 @@ import {
   registerRouteEntryOriginRestorer,
 } from './route-entry-origin-capture-delegate';
 import { stageOriginSceneSegmentRestore } from '../../overlays/originSceneSegmentRuntime';
-import type { AppSearchRouteCommandActions } from './app-search-route-command-runtime';
+import {
+  primeDockedPollsForHomeLanding,
+  type AppSearchRouteCommandActions,
+} from './app-search-route-command-runtime';
 import { type OverlayKey, getAppOverlayRouteMetadata } from './app-overlay-route-types';
 import {
   type AppRouteOverlaySessionActions,
@@ -553,11 +556,7 @@ export class AppRouteOverlaySessionStateController {
       this.restorePendingOrigin(origin);
       return;
     }
-    this.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
-      sceneKey: 'polls',
-      snap: 'collapsed',
-    });
-    this.routeSheetSnapSessionActions.setIsDockedPollsDismissed(false);
+    primeDockedPollsForHomeLanding(this.routeSheetSnapSessionActions);
     this.emitDegenerateHomeRestore('search', 'collapsed');
   }
 

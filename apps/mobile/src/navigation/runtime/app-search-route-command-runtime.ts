@@ -24,6 +24,25 @@ export type AppSearchRouteCommandActions = {
   }) => void;
 };
 
+// S-C.5 item 4b VERDICT (probe 2026-07-10, plans/s-c5-restaurant-stack-fact.md): this pair is
+// LOAD-BEARING, not derivable. A home dismissal RESURRECTS user-dismissed docked polls by
+// design; without the explicit un-dismiss the settle-side clear is CIRCULAR (a dismissed lane
+// never presents, so the polls sheet never settles collapsed, so the flag never clears) and
+// the home lands with the stale results banner docked. ONE named intent, two callers (this
+// verb + the no-origin clear-lane restore).
+export const primeDockedPollsForHomeLanding = (
+  routeSheetSnapSessionActions: Pick<
+    AppRouteSheetSnapSessionActions,
+    'recordRouteSceneSheetSettle' | 'setIsDockedPollsDismissed'
+  >
+): void => {
+  routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
+    sceneKey: 'polls',
+    snap: 'collapsed',
+  });
+  routeSheetSnapSessionActions.setIsDockedPollsDismissed(false);
+};
+
 export const createAppSearchRouteCommandActions = ({
   routeSceneSwitchAuthority,
   routeSceneSwitchActions,
@@ -67,11 +86,7 @@ export const createAppSearchRouteCommandActions = ({
   }: {
     sourceSceneKey?: OverlayKey;
   } = {}): void => {
-    routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
-      sceneKey: 'polls',
-      snap: 'collapsed',
-    });
-    routeSheetSnapSessionActions.setIsDockedPollsDismissed(false);
+    primeDockedPollsForHomeLanding(routeSheetSnapSessionActions);
     // S-C.3-B: dismissing a session POPS the stack back to the surviving search#home root
     // ([search#home, search#session] → [search#home]). Proven by the [SC3B] probe: the old
     // explicit setRoot here was what destroyed the home entry before the golden home
