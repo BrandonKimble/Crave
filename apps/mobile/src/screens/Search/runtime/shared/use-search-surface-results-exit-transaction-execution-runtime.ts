@@ -11,7 +11,6 @@ import type {
   ResultsSurfaceExitTransactionExecutor,
   UseResultsSurfaceExitTransactionExecutionRuntimeArgs,
 } from './search-surface-results-transaction-execution-runtime-contract';
-import { requestSearchBottomNavMotionTarget } from './search-bottom-nav-motion-runtime';
 
 export const useResultsSurfaceExitTransactionExecutionRuntime = ({
   getCurrentSheetSnap,
@@ -40,7 +39,6 @@ export const useResultsSurfaceExitTransactionExecutionRuntime = ({
           transactionId: snapshot.transactionId,
         });
       }
-      requestSearchBottomNavMotionTarget('show');
       unstable_batchedUpdates(() => {
         resultsRuntimeOwner.commitSearchSurfaceResultsExitTransaction(snapshot);
         beginCloseTransition(snapshot.transactionId, {

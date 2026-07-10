@@ -9,13 +9,14 @@ import React from 'react';
  * One writer: useAppRouteNavOutDerivationWriterRuntime (mounted once in the app shell) projects
  * the route navigation snapshot into this boolean.
  *
- * Ledger item 4 VERDICT — this split IS the final form, not an interim (the §5.1 "interim
- * clause" framing was wrong): search sessions ARE pushes now, but the desired-state
- * architecture presents AFTER resolve — the route commits at REVEAL, while the nav must leave
- * at SUBMIT (press-up feel). Session nav motion is therefore TRANSACTION-owned by design: the
- * enter transaction commands 'hide', the exit transaction / the pop-dismiss branch command
- * 'show' — a symmetric pair, not stray manual writers. This store owns the CHILD half of the
- * law, where route commits coincide with user intent (child pushes commit immediately).
+ * S-C.4 item 3b (supersedes the earlier item-4 "transaction-owned pair" verdict): the manual
+ * session command pair is DELETED. Nav motion has ONE writer — the derivation layout effect in
+ * use-search-foreground-bottom-nav-visual-runtime — fed by three derived arms: the SESSION arm
+ * (surface visual policy, which the enter/exit transactions flip in the same batched update
+ * that used to carry the manual command — press-up timing unchanged), the SUGGESTION arm
+ * (panel flag), and this store's CHILD arm (top-of-stack role). The old verdict's premise was
+ * that the route commit lags SUBMIT — true, but the surface policy does NOT lag, and it was
+ * always the honest signal.
  */
 
 type Listener = () => void;

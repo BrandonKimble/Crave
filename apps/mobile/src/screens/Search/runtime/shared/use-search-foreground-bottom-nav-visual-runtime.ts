@@ -41,7 +41,6 @@ import {
 } from '../surface/search-surface-runtime';
 import {
   SEARCH_BOTTOM_NAV_MOTION_DURATION_MS,
-  registerSearchBottomNavMotionCommandSink,
   type SearchBottomNavMotionTarget,
 } from './search-bottom-nav-motion-runtime';
 
@@ -195,10 +194,11 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     },
     [bottomNavHideProgress, navBarCutoutIsHidingValue]
   );
-  React.useEffect(
-    () => registerSearchBottomNavMotionCommandSink(commandBottomNavMotion),
-    [commandBottomNavMotion]
-  );
+  // S-C.4 item 3b — ONE derivation commands the nav. The external command sink (the
+  // submit-hide / dismiss-show manual pair) is DELETED: the session half derives from the
+  // surface visual policy the transactions flip in the same batched update, the child half
+  // from the stack-role store, the suggestion half from the panel flag. This layout effect
+  // is the SINGLE writer of the nav motion target.
   React.useLayoutEffect(() => {
     commandBottomNavMotion(shouldHideBottomNavForMotion ? 'hide' : 'show');
   }, [commandBottomNavMotion, shouldHideBottomNavForMotion]);

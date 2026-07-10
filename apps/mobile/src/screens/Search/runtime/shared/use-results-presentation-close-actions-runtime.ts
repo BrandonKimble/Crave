@@ -1,6 +1,5 @@
 import React from 'react';
 import { unstable_batchedUpdates } from 'react-native';
-import { requestSearchBottomNavMotionTarget } from './search-bottom-nav-motion-runtime';
 import { hasSearchSessionAboveRoot } from '../../../../navigation/runtime/app-overlay-route-stack-algebra';
 
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
@@ -212,9 +211,6 @@ export const useResultsPresentationCloseActionsRuntime = ({
             routeSceneRuntime.routeOverlayRouteCommandRuntime.popToRootRoute({
               applyOriginDetent: true,
             });
-            // The submit choreography commanded the nav out; revealing a ROOT commands it
-            // home (a revealed CHILD keeps it out via the derived rule).
-            requestSearchBottomNavMotionTarget('show');
           }
           getSearchSurfaceRuntime().finalizeSessionExitWithoutDismissMotion();
         });

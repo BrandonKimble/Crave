@@ -7,7 +7,6 @@ import {
 } from '../../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import { resolveSearchSurfaceResultsSheetTargetSnap } from './results-presentation-shell-transaction-intent';
-import { requestSearchBottomNavMotionTarget } from './search-bottom-nav-motion-runtime';
 import { getSearchSurfaceRuntime } from '../surface/search-surface-runtime';
 import { resolveSearchSubmitEntryMotion } from './search-submit-entry-surface-contract';
 import type {
@@ -81,7 +80,9 @@ export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
         });
       }
       if (targetSnap != null) {
-        requestSearchBottomNavMotionTarget('hide');
+        // S-C.4 item 3b: the manual nav 'hide' command is gone — the nav-visual runtime
+        // DERIVES the hide from the surface visual policy this same transaction flips
+        // (typed submits are already hidden by the suggestion-surface arm and hand off).
         prepareSharedSheetForSearchPresentation?.();
       }
       resultsRuntimeOwner.cancelPresentationIntent();

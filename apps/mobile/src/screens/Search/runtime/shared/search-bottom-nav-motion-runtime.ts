@@ -9,27 +9,6 @@ export type SearchBottomNavMotionRuntime = {
   navTranslateY: SharedValue<number> | DerivedValue<number>;
 };
 
-type SearchBottomNavMotionCommandSink = (target: SearchBottomNavMotionTarget) => void;
-
-let activeSearchBottomNavMotionCommandSink: SearchBottomNavMotionCommandSink | null = null;
-
-export const registerSearchBottomNavMotionCommandSink = (
-  sink: SearchBottomNavMotionCommandSink
-): (() => void) => {
-  activeSearchBottomNavMotionCommandSink = sink;
-  return () => {
-    if (activeSearchBottomNavMotionCommandSink === sink) {
-      activeSearchBottomNavMotionCommandSink = null;
-    }
-  };
-};
-
-export const requestSearchBottomNavMotionTarget = (
-  target: SearchBottomNavMotionTarget
-): boolean => {
-  if (activeSearchBottomNavMotionCommandSink == null) {
-    return false;
-  }
-  activeSearchBottomNavMotionCommandSink(target);
-  return true;
-};
+// S-C.4 item 3b: the external command sink is DELETED — nav motion has ONE writer, the
+// derivation layout effect in use-search-foreground-bottom-nav-visual-runtime. This module
+// keeps only the shared constants/types.
