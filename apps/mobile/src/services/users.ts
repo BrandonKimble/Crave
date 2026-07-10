@@ -43,6 +43,27 @@ export interface UserProfile {
   access?: AccessSummary;
 }
 
+/** S-B pages (userProfile/followList): the public profile + follow surfaces. */
+export interface PublicUserProfile {
+  userId: string;
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  stats: UserStats;
+}
+
+export interface FollowEdge {
+  isFollowedByMe: boolean;
+  isMe: boolean;
+}
+
+export interface FollowListUser {
+  userId: string;
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
 export interface UsernameAvailability {
   normalized: string;
   available: boolean;
@@ -102,5 +123,27 @@ export const usersService = {
       username,
     });
     return response.data.suggestions ?? [];
+  },
+  async getPublicProfile(userId: string): Promise<PublicUserProfile> {
+    const response = await api.get<PublicUserProfile>(`/users/${userId}/profile`);
+    return response.data;
+  },
+  async getFollowEdge(userId: string): Promise<FollowEdge> {
+    const response = await api.get<FollowEdge>(`/users/${userId}/follow`);
+    return response.data;
+  },
+  async followUser(userId: string): Promise<void> {
+    await api.post(`/users/${userId}/follow`);
+  },
+  async unfollowUser(userId: string): Promise<void> {
+    await api.delete(`/users/${userId}/follow`);
+  },
+  async listFollowers(userId: string): Promise<FollowListUser[]> {
+    const response = await api.get<FollowListUser[]>(`/users/${userId}/followers`);
+    return response.data ?? [];
+  },
+  async listFollowing(userId: string): Promise<FollowListUser[]> {
+    const response = await api.get<FollowListUser[]>(`/users/${userId}/following`);
+    return response.data ?? [];
   },
 };
