@@ -30,6 +30,8 @@ import {
 import { announceFailureIfOnline, showAppModal, Text } from '../../components';
 import { SceneLoadingSurface } from '../../components/skeletons';
 import { colors as themeColors } from '../../constants/theme';
+import { EntityLink } from '../../components/ui/EntityLink';
+import type { EntityRefType } from '../../navigation/runtime/entity-ref-action-policy';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import {
   OVERLAY_HORIZONTAL_PADDING,
@@ -70,7 +72,6 @@ import {
 } from './pollThreadModel';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
 import { API_BASE_URL } from '../../services/api';
-import { useAppRouteCoordinator } from '../../navigation/runtime/AppRouteCoordinator';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACCENT = themeColors.primary;
@@ -157,12 +158,9 @@ type CommentBodyProps = {
   // When the reply was flattened past the indent cap, prepend an @mention of the parent's
   // author so the reply target stays legible despite losing the visual nesting.
   mentionUser: PollCommentUser | null;
-  // commentId is threaded alongside the entity so a cross-surface reveal can carry the
-  // return to this comment).
-  onEntityPress: (entity: EntitySpan, commentId: string) => void;
 };
 
-const CommentBody = React.memo(({ comment, mentionUser, onEntityPress }: CommentBodyProps) => {
+const CommentBody = React.memo(({ comment, mentionUser }: CommentBodyProps) => {
   const segments = React.useMemo(
     () => buildBodySegments(comment.body, comment.entitySpans),
     [comment.body, comment.entitySpans]
@@ -174,19 +172,21 @@ const CommentBody = React.memo(({ comment, mentionUser, onEntityPress }: Comment
       ) : null}
       {segments.map((segment, index) => {
         if (!segment.entity) return segment.text;
-        // Every gazetteer-resolved span is tappable → the entity-driven reveal
-        // (restaurant → profile fast-path; food / attribute → skip-LLM results
-        // search). The only requirement is a resolved entityId.
-        const tappable = Boolean(segment.entity.entityId);
+        // S-D.1: every gazetteer-resolved span renders through THE EntityLink — the tap's
+        // meaning (restaurant world / skip-LLM entity desire / child push) is resolved by
+        // resolveEntityRefAction, not a per-surface fork. An unresolved span (no entityId)
+        // renders the span styling with no press affordance, exactly as before.
         return (
-          <Text
+          <EntityLink
             key={index}
-            style={[styles.entitySpan, tappable && styles.entitySpanLink]}
-            onPress={tappable ? () => onEntityPress(segment.entity!, comment.commentId) : undefined}
-            suppressHighlighting={!tappable}
+            entityRef={{
+              entityId: segment.entity.entityId ?? '',
+              entityType: segment.entity.type as EntityRefType,
+              label: segment.entity.name || segment.entity.text,
+            }}
           >
             {segment.text}
-          </Text>
+          </EntityLink>
         );
       })}
     </Text>
@@ -286,7 +286,6 @@ type PollCommentRowProps = {
   onDelete: (comment: PollComment) => void;
   onSubmitEdit: (text: string) => void;
   onCancelCompose: () => void;
-  onEntityPress: (entity: EntitySpan, commentId: string) => void;
   onToggleCollapse: (commentId: string) => void;
 };
 
@@ -305,7 +304,6 @@ const PollCommentRow = React.memo(
     onDelete,
     onSubmitEdit,
     onCancelCompose,
-    onEntityPress,
     onToggleCollapse,
   }: PollCommentRowProps) => {
     const { comment, depth, isCollapsed, hiddenCount, mentionUser } = item;
@@ -374,11 +372,7 @@ const PollCommentRow = React.memo(
                 onCancel={onCancelCompose}
               />
             ) : (
-              <CommentBody
-                comment={comment}
-                mentionUser={mentionUser}
-                onEntityPress={onEntityPress}
-              />
+              <CommentBody comment={comment} mentionUser={mentionUser} />
             )}
             {!isEditing ? (
               <View style={styles.commentActions}>
@@ -511,7 +505,6 @@ type PollThreadNodeProps = {
   onDelete: (comment: PollComment) => void;
   onSubmitEdit: (text: string) => void;
   onCancelCompose: () => void;
-  onEntityPress: (entity: EntitySpan, commentId: string) => void;
   onToggleCollapse: (commentId: string) => void;
 };
 
@@ -548,7 +541,6 @@ const PollThreadNode = React.memo((props: PollThreadNodeProps) => {
         onDelete={props.onDelete}
         onSubmitEdit={props.onSubmitEdit}
         onCancelCompose={props.onCancelCompose}
-        onEntityPress={props.onEntityPress}
         onToggleCollapse={props.onToggleCollapse}
       />
       {node.children.length > 0 ? (
@@ -585,7 +577,6 @@ export const usePollDetailPanelSpec = ({
     enabled: isSignedIn,
   });
   const viewerUserId = viewerProfile?.userId ?? null;
-  const { dispatchLaunchIntent } = useAppRouteCoordinator();
 
   const [poll, setPoll] = React.useState<Poll | null>(pollSeed ?? null);
   const [comments, setComments] = React.useState<PollComment[]>([]);
@@ -948,46 +939,6 @@ export const usePollDetailPanelSpec = ({
     [editTarget, mutatingComment, refresh]
   );
 
-  // Tapping a comment entity span routes it through the entity-driven reveal. A
-  // RESTAURANT span takes the map-aware restaurant fast-path (opens the profile +
-  // seeds the map pin + centers the camera). A FOOD / FOOD_ATTRIBUTE /
-  // RESTAURANT_ATTRIBUTE span takes a skip-LLM results reveal (a search on that
-  // entity — the BE skips the LLM whenever an entityType is supplied). Both go
-  // through the cross-surface launch-intent dispatch; dismiss returns to the polls
-  // root captured on entry.
-  const handleEntityPress = React.useCallback(
-    (entity: EntitySpan, commentId: string) => {
-      if (!entity.entityId) return;
-      // Return-to-comment: the pollDetail ENTRY survives the search push now (entries-as-values),
-      // so the pop lands back on this exact thread with its scroll intact — no anchor threading.
-      void commentId;
-      if (entity.type === 'restaurant') {
-        // Thread the span's display text as the restaurant name so the hard-swapped restaurant
-        // panel paints its header title immediately (no empty-title flash while the committed
-        // single-restaurant search resolves).
-        dispatchLaunchIntent({
-          type: 'restaurant',
-          restaurantId: entity.entityId,
-          restaurantName: entity.name,
-        });
-        return;
-      }
-      if (
-        entity.type === 'food' ||
-        entity.type === 'food_attribute' ||
-        entity.type === 'restaurant_attribute'
-      ) {
-        dispatchLaunchIntent({
-          type: 'entity',
-          entityId: entity.entityId,
-          entityType: entity.type,
-          submittedLabel: entity.name,
-        });
-      }
-    },
-    [dispatchLaunchIntent, pollId]
-  );
-
   const handleDelete = React.useCallback(
     (comment: PollComment) => {
       showAppModal({
@@ -1029,7 +980,6 @@ export const usePollDetailPanelSpec = ({
         onDelete={handleDelete}
         onSubmitEdit={handleSubmitEdit}
         onCancelCompose={handleCancelCompose}
-        onEntityPress={handleEntityPress}
         onToggleCollapse={handleToggleCollapse}
       />
     ),
@@ -1039,7 +989,6 @@ export const usePollDetailPanelSpec = ({
       editTarget,
       handleCancelCompose,
       handleDelete,
-      handleEntityPress,
       handleLike,
       handleStartEdit,
       handleStartReply,
