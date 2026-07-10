@@ -117,6 +117,28 @@ WITH L3, not before. L1.c proper = the search-path consumers only.
 L1.a read it. The z-lift channel + full-group promotion are L4; L1 only guarantees the
 catalog SHAPE supports them (group residency + roles).
 
+## Progress + discovered constraints (2026-07-10, same night)
+
+- **SHIPPED f9e2e44f: the native group budget.** `Anchor.groupId` (nil = own group),
+  `promotedInOrder`/`decide` dedupe per group, controller maps `restaurantId → groupId`
+  (the transport already carried it). 5 Swift goldens (39/39); on-sim composite canonical
+  (roundtrip + STA flows; settled frame = ranked pins + labels + dots, byte-baseline —
+  inert for one-location catalogs as designed). forcedKeys exemption untouched.
+- **Sibling-emission slice (NEXT) — two constraints found pre-implementation:**
+  1. Group members share one rank, and the engine promotes the FIRST on-screen member in
+     ranking order — so the JS catalog must order the REPRESENTATIVE first within its
+     group (today's `orderByEntry` sorts rank → locationIndex, and the representative is
+     closest-to-anchor, not locationIndex 0). Either bake representative-first into the
+     intra-group sort or carry an explicit flag the native sort respects. Note the
+     off-screen-representative case is DESIRED behavior: an on-screen sibling takes the
+     group's slot (golden testGroupRepresentativeIsBestRankedOnScreen).
+  2. Sibling entries must join the DOT source membership (dotSourceStore) — map where the
+     dot GL source derives from the catalog before emitting, or siblings will be
+     LOD-resident but dot-invisible.
+  3. The invisible-resident role (market-wide far locations must NOT become dots when
+     panned over) needs the SEARCHED-viewport membership fact at catalog build time
+     (committedBounds into the builder) — a role the render honors, not a screen test.
+
 ## Verification style
 
 - Goldens: LodEngine group competition (Swift), catalog builder role derivation (jest).
