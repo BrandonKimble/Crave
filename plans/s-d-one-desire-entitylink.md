@@ -60,8 +60,19 @@
   RIG LEVER (record): seed spans with `curl -X POST .../polls/<id>/comments -H "Authorization:
 Bearer crave-dev-perf-scenario" -d '{"body":"<text mentioning known entities>"}'`; open the
   poll via testID poll-card-title-<pollId>; spans tap via coordinates on the detail sheet.
-- **S-D.2** List rows: bookmarks + profile rows render EntityLink (the byte-identical copies
-  delete); `list(listId)` desire arm lands with them.
+- **S-D.2** ~~List rows + list desire arm~~ **SHIPPED 2026-07-10 (a48e96ef)**: kind:'list' is
+  first-class {listId, listType, displayTitle} (the 'entities' id-set piggyback + nullable
+  listId + fetch throw arm are DEAD); policy list arm = listWorld (favorites-as-search today;
+  the listDetail hybrid changes the arm in ONE place); executor extracted
+  (use-entity-ref-action-executor — EntityLink renders + executes, row handlers execute) and
+  both byte-identical handleListPress copies route through it. Rig: list tap → world key
+  list:<id>:<type>, resolver fetched by listId, X-pop restored Favorites.
+- **S-D.3 SCOPE VERDICT (2026-07-10)**: the person/list row widening is BE-GATED (autocomplete
+  serves no such rows — widened client arms would be dead code); the selectedEntityId
+  submission collapse is INTERLOCKED with recents/history/deep-link wire encodings
+  (6+ producer sites, not the plan's 3) and belongs WITH S-D.4's channel dissolution. Do
+  S-D.3+S-D.4 as one focused session: typed entity identity end-to-end, LaunchIntent
+  dissolution, saved_place resolution, THEN the row widening when the BE serves the rows.
 - **S-D.3** Autocomplete: row-kind widening (all unions in one commit) + person/list rows
   push through the policy; the selectedEntityId submission triplication collapses into the
   desire constructor.

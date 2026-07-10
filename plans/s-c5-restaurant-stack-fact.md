@@ -121,7 +121,10 @@ accessibilityLabel) opens the profile reliably — coordinate and bare-name taps
   behavioral consumer) — delete with the close-chain collapse (S-C.5 item 2); the
   profilePresentationActive foreground consumers (editing/clear runtimes) can move to the
   stack fact when a route getter reaches them; applyPreparedProfileOverlayDismissUpdate is
-  DEAD (zero callers) — delete or wire deliberately.
+  **LIVE** (red-team claim corrected 2026-07-10: its caller is
+  applyPreparedProfilePresentationCompletionEvent in the SAME file, overlay_dismissed
+  events — the same-file grep exclusion fooled two verification passes; a deletion was
+  attempted and fully reverted).
 
 ## Risks / verification
 
