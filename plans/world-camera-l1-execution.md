@@ -203,3 +203,20 @@ Gates: tsc, 140 jest, 4-lane rig sweep; the /r committed reveal stash-baselined
 BYTE-IDENTICAL pre/post (its reveal_preroll/opacity-0.001 end-state is PRE-EXISTING —
 noted as an open probe item, same family as the profile-pin-paint check).
 Phase D (seeded channel) still lands WITH the one-group catalog publish (L1 core).
+
+## L1 status adjudication (2026-07-10 ~6:45AM)
+
+With 92709da7 landed, **L1 is functionally complete modulo its L4-riding pieces**:
+
+- Group competition (LodEngine groupId, f9e2e44f), sibling emission (representative-first +
+  in-bounds dots, b441771c), restaurantOnly deletion (92709da7): DONE.
+- **Phase D re-adjudicated CLOSED-BY-RESHAPE:** under the accepted L3 re-adjudication (no
+  ProfileBody world — profile = standard push + selection), the hydration publish
+  (publishHydratedRestaurantMarkerSource, consulted only when no world is committed) IS the
+  one-group catalog write for sessionless profile opens — it already flows through
+  buildMarkerCatalogReadModel and emits the full group via the sibling path. There is no
+  separate "one-group publish" left to build; deleting the channel would delete the feature.
+  What remains non-ideal about it (implicit committed-results precedence rather than an
+  explicit catalog owner) is a naming/ownership nit, not a parallel mechanism.
+- Remaining L1 items are exactly the §3.4 native contract additions — policy value,
+  invisible role, z-lift, budget exemption — which ARE L4. L1 execution transfers there.
