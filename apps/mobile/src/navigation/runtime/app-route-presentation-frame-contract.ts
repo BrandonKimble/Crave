@@ -116,7 +116,16 @@ export const resolvePresentationLaneKind = ({
     laneInputs.isResultsDismissing && laneInputs.canReleasePersistentPolls;
   const isPersistentPollLaneEligible =
     (laneInputs.isPersistentPollLaneEligible && !laneInputs.isResultsDismissing) ||
-    isSurfacePersistentPollCommitted;
+    isSurfacePersistentPollCommitted ||
+    // S-C.5 lane-input attribution (2026-07-10, plans/s-c5-restaurant-stack-fact.md): a home
+    // dismissal CARRYING the docked-polls restore intent admits the lane immediately — the
+    // switch itself declares polls shall present at the landing. Under the old two-switch
+    // dance polls presented as switch 1's TARGET scene, which fed the dismiss transaction's
+    // poll-readiness weld; the one-switch dismissal made the lane the ONLY mount path, and
+    // without this arm a swipe-dismissed docked-polls entry state DEADLOCKS (lane needs
+    // release, release needs poll readiness, readiness needs the lane to mount polls). The
+    // release gates still gate the FINALIZE — this only restores the old mount timing.
+    (laneInputs.isResultsDismissing && hasActiveDockedPollsRestoreIntent);
   const isDockedPollsLane =
     !isChildTarget &&
     !isNonSearchTopLevelTarget &&
