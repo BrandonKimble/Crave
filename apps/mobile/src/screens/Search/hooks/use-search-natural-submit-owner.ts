@@ -40,28 +40,18 @@ export const useSearchNaturalSubmitOwner = ({
         !Array.isArray(naturalAttemptConfig.submissionContext)
           ? (naturalAttemptConfig.submissionContext as Record<string, unknown>)
           : null;
-      const selectedEntityId =
-        typeof contextRecord?.selectedEntityId === 'string' ? contextRecord.selectedEntityId : null;
-      const selectedEntityType = contextRecord?.selectedEntityType;
-      const entityIdentityType =
-        selectedEntityType === 'restaurant' ||
-        selectedEntityType === 'food' ||
-        selectedEntityType === 'food_attribute' ||
-        selectedEntityType === 'restaurant_attribute'
-          ? selectedEntityType
-          : null;
+      // S-D.3: the entity identity derives from the TYPED option — the stringly
+      // context-record parse is gone (the wire fields are injected by the attempt config
+      // from the same typed source, so wire and identity can no longer diverge).
       const trimmedForIdentity = (overrideQuery ?? '').trim();
-      const entityIdentity =
-        contextRecord?.matchType === 'entity' &&
-        selectedEntityId != null &&
-        entityIdentityType != null
-          ? ({
-              kind: 'entity',
-              entityType: entityIdentityType,
-              entityId: selectedEntityId,
-              displayName: trimmedForIdentity,
-            } as const)
-          : undefined;
+      const entityIdentity = options?.selectedEntity
+        ? ({
+            kind: 'entity',
+            entityType: options.selectedEntity.entityType,
+            entityId: options.selectedEntity.entityId,
+            displayName: trimmedForIdentity,
+          } as const)
+        : undefined;
       // S4b: the submit IS the tuple write — the reconciler (which fires SYNCHRONOUSLY
       // inside the write) classifies the transition and drives resolution. Decoration
       // pre-registers so the kick can take it.

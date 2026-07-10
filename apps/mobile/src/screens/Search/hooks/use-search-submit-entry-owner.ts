@@ -57,6 +57,14 @@ export type SubmitSearchOptions = {
   forceFreshBounds?: boolean;
   presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   entrySurface?: SearchSubmitEntrySurface;
+  /** S-D.3 — TYPED selected-entity submission (the skip-LLM lane). ONE construction: the
+   *  attempt config injects the wire fields (selectedEntityId/Type + matchType:'entity')
+   *  into submissionContext, and the natural submit derives the entity IDENTITY from this —
+   *  producers no longer hand-build stringly context records. */
+  selectedEntity?: {
+    entityId: string;
+    entityType: 'food' | 'food_attribute' | 'restaurant_attribute';
+  };
   submission?: {
     source: NaturalSearchRequest['submissionSource'];
     context?: NaturalSearchRequest['submissionContext'];
@@ -217,7 +225,14 @@ export const useSearchSubmitEntryOwner = ({
   const resolveNaturalSearchAttemptConfig = React.useCallback(
     (options?: SubmitSearchOptions): ResolveNaturalSearchAttemptConfigResult => {
       const submissionSource = options?.submission?.source ?? 'manual';
-      const submissionContext = options?.submission?.context;
+      const submissionContext = options?.selectedEntity
+        ? {
+            ...(options.submission?.context as Record<string, unknown> | undefined),
+            matchType: 'entity',
+            selectedEntityId: options.selectedEntity.entityId,
+            selectedEntityType: options.selectedEntity.entityType,
+          }
+        : options?.submission?.context;
       const submissionContextTab = resolveSubmissionDefaultTab(submissionContext);
       const preRequestTab =
         submissionContextTab ?? (hasActiveTabPreference ? preferredActiveTab : DEFAULT_SEGMENT);

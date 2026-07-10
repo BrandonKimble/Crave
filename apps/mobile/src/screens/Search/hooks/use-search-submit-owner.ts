@@ -448,14 +448,8 @@ const useSearchSubmitOwner = ({
       await submitSearch(
         {
           entrySurface: 'search_mode',
-          submission: {
-            source: 'autocomplete',
-            context: {
-              selectedEntityId: params.entityId,
-              selectedEntityType: params.entityType,
-              matchType: 'entity',
-            },
-          },
+          selectedEntity: { entityId: params.entityId, entityType: params.entityType },
+          submission: { source: 'autocomplete' },
         },
         params.submittedLabel
       );

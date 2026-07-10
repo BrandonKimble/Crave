@@ -104,18 +104,29 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       setRestaurantOnlyIntent(null);
       const matchType =
         match.matchType === 'query' || match.entityType === 'query' ? 'query' : 'entity';
-      const submissionContext: Record<string, unknown> = {
-        typedPrefix,
-        matchType,
-      };
-      if (matchType === 'entity' && match.entityId && match.entityType) {
-        submissionContext.selectedEntityId = match.entityId;
-        submissionContext.selectedEntityType = match.entityType;
-      }
+      // S-D.3: the entity selection travels TYPED (the attempt config injects the wire
+      // fields); only the non-entity metadata stays in the context record.
+      const isTypedEntitySelection =
+        matchType === 'entity' &&
+        Boolean(match.entityId) &&
+        (match.entityType === 'food' ||
+          match.entityType === 'food_attribute' ||
+          match.entityType === 'restaurant_attribute');
       void submitSearch(
         {
           entrySurface: 'search_mode',
-          submission: { source: 'autocomplete', context: submissionContext },
+          ...(isTypedEntitySelection && match.entityId
+            ? {
+                selectedEntity: {
+                  entityId: match.entityId,
+                  entityType: match.entityType as
+                    | 'food'
+                    | 'food_attribute'
+                    | 'restaurant_attribute',
+                },
+              }
+            : null),
+          submission: { source: 'autocomplete', context: { typedPrefix, matchType } },
         },
         nextQuery
       );
