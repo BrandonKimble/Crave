@@ -206,3 +206,28 @@ action surface (guard clauses pruned); `isPresentationActive` re-fed;
 `searchRestaurantRouteController` (the standard path); the arbiter;
 `ProfileTransitionState.savedCamera/savedResultsScrollOffset/status` (completionState
 fields removed); the profilePresentationActiveRef bridge unchanged.
+
+## Cutover slice 1 addendum (2026-07-10 ~5:45AM — the model's full input contract)
+
+`resolveProfilePresentationModel` (profile-view-state-runtime.ts) derives FIVE facts from
+`transitionStatus`, not just `isPresentationActive`:
+
+- `isPresentationActive` → re-feed: route-entry presence OR panelSnapshot != null.
+- `isOverlayVisible` (consumer: results-sheet suspension,
+  `use-search-root-results-presentation-state-runtime.ts:24,37,48`) → re-feed:
+  route-entry presence (the stack fact — S-C.5 slice-A proved it the MORE correct signal).
+- `activeOpenRestaurantId` (consumer: auto-open dedupe) → re-feed:
+  entry-present ? panelSnapshot?.restaurant.restaurantId : null.
+- `isTransitionAnimating` (consumer: same results-presentation runtime :26,49) → re-feed:
+  the scene-switch in-flight fact for the restaurant switch (PF outgoing/pending — plumb
+  from the route authority; verify which exact signal at the wiring site).
+- `preparedSnapshotKey` → dies with the machine (its runtime is deletable #20).
+
+Wiring site: `createProfilePresentationModelRuntime` is created ONLY by
+`profile-owner-presentation-view-runtime.ts:47`; the profile OWNER runtime
+(`use-search-root-profile-owner-runtime.ts`) already holds `routeOverlayNavigationAuthority`
+(it registers the pop-teardown writer at :15) — plumb `hasRestaurantRouteEntry` +
+`isRestaurantSwitchInFlight` from there into `profileShellState` and the model derives
+everything; `transitionStatus` leaves the input contract. The shell-state PUBLISHER
+(`profile-shell-state-publisher.ts`) keeps writing status until the machine deletion slice,
+so slice 1 is behavior-parity by the S-C.5 one-frame argument.
