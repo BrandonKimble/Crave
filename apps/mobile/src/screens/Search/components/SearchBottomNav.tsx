@@ -23,7 +23,7 @@ import {
 } from '../../../navigation/runtime/app-route-nav-silhouette-authority';
 import { SearchRouteNavSilhouetteHostNativeView } from '../../../overlays/SearchRouteNavSilhouetteHostNativeView';
 import { ACTIVE_TAB_COLOR, NAV_BOTTOM_PADDING } from '../constants/search';
-import type { SearchBottomNavMotionRuntime } from '../runtime/shared/search-bottom-nav-motion-runtime';
+import type { SearchBottomNavMotionRuntime } from '../runtime/shared/use-search-foreground-visual-runtime-contract';
 import styles from '../styles';
 
 type NavItem = {

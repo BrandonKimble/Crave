@@ -1,6 +1,15 @@
 import { useAnimatedStyle, type DerivedValue, type SharedValue } from 'react-native-reanimated';
 import type { AppRouteNavSilhouetteSheetExclusionModeValue } from '../../../../navigation/runtime/app-route-nav-silhouette-authority';
-import type { SearchBottomNavMotionRuntime } from './search-bottom-nav-motion-runtime';
+// S-C.5 item 7: the old search-bottom-nav-motion-runtime module dissolved here — after the
+// command sink's deletion (S-C.4 item 3b) it held only these shared types + the duration.
+export const SEARCH_BOTTOM_NAV_MOTION_DURATION_MS = 360;
+
+export type SearchBottomNavMotionTarget = 'hide' | 'show';
+
+export type SearchBottomNavMotionRuntime = {
+  navOpacity: SharedValue<number> | DerivedValue<number>;
+  navTranslateY: SharedValue<number> | DerivedValue<number>;
+};
 
 export type UseSearchForegroundVisualRuntimeArgs = {
   shouldDimResultsSheet: boolean;

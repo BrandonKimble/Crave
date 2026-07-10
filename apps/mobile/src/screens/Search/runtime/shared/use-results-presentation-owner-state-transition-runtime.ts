@@ -2,11 +2,11 @@ import type React from 'react';
 
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/runtime/app-route-scene-visibility-policy-contract';
-import { useResultsPresentationOwnerCloseStateRuntime } from './use-results-presentation-owner-close-state-runtime';
+import { useResultsPresentationOwnerCloseRuntime } from './use-results-presentation-owner-close-runtime';
 import type { ResultsPresentationOwnerStateSessionRuntime } from './use-results-presentation-owner-state-session-runtime';
 
 export type ResultsPresentationOwnerStateTransitionRuntime = {
-  closeTransitionRuntime: ReturnType<typeof useResultsPresentationOwnerCloseStateRuntime>;
+  closeTransitionRuntime: ReturnType<typeof useResultsPresentationOwnerCloseRuntime>;
 };
 
 export const useResultsPresentationOwnerStateTransitionRuntime = <Suggestion>({
@@ -44,7 +44,9 @@ export const useResultsPresentationOwnerStateTransitionRuntime = <Suggestion>({
   sessionRuntime: ResultsPresentationOwnerStateSessionRuntime;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
 }): ResultsPresentationOwnerStateTransitionRuntime => {
-  const closeTransitionRuntime = useResultsPresentationOwnerCloseStateRuntime({
+  // S-C.5 item 2 (wrapper collapse): the pure re-lister owner-close-state-runtime is
+  // deleted — its only move was picking these two fields off the session runtimes.
+  const closeTransitionRuntime = useResultsPresentationOwnerCloseRuntime({
     searchRuntimeBus,
     clearSearchState,
     cancelActiveSearchRequest,
@@ -59,8 +61,10 @@ export const useResultsPresentationOwnerStateTransitionRuntime = <Suggestion>({
     setError,
     setSuggestions,
     inputRef,
-    bridgeStateRuntime: sessionRuntime.bridgeStateRuntime,
-    shellStateRuntime: sessionRuntime.shellStateRuntime,
+    shellLocalState: sessionRuntime.shellStateRuntime.shellLocalState,
+    resultsRuntimeOwner: sessionRuntime.bridgeStateRuntime.resultsRuntimeOwner,
+    markSearchSheetCloseMapExitSettledRef:
+      sessionRuntime.bridgeStateRuntime.markSearchSheetCloseMapExitSettledRef,
     routeSceneVisibilityPolicyRuntime,
   });
 

@@ -42,7 +42,7 @@ import {
 import {
   SEARCH_BOTTOM_NAV_MOTION_DURATION_MS,
   type SearchBottomNavMotionTarget,
-} from './search-bottom-nav-motion-runtime';
+} from './use-search-foreground-visual-runtime-contract';
 
 const commandBottomNavMotionOnUI = (
   bottomNavHideProgress: ReturnType<typeof useSharedValue<number>>,
