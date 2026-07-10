@@ -60,6 +60,16 @@ with the parallel machine coexisting until proven — then the machine is delete
 > ProfileBody world from the hydration payload — not a SearchResponse look-alike. Do not
 > shortcut this with a synthesized single-restaurant SearchResponse: that would re-encode
 > the auto-open-over-results shape the stride exists to dissolve.
+>
+> **Sizing (verified in the seam):** `SearchWorldValue.committedResponse: SearchResponse`
+> is REQUIRED and the seam commit pipes it into the mounted-results store, root-bus patch,
+> and marker projections (`search-world-presentation-seam.ts:51-64`). The axis therefore
+> means a body-discriminated value — `body: {kind:'results', committedResponse, …} |
+{kind:'profile', restaurantId, profile, group}` — with the seam's commit steps
+> body-dispatched (results steps unchanged verbatim; profile steps = panel seed + catalog
+> publish + camera focus). Start the cut at the seam's commit function: list its steps,
+> classify each as body-agnostic vs results-only, and let that classification BE the
+> union's shape.
 
 **L3.a — the `profileSeed` live lane (additive; machine coexists).**
 Route it in `search-world-fetch.ts` (zero-network synthesis: the world's catalog = the one
