@@ -78,11 +78,27 @@ const build = (overrides?: {
   });
 
 describe('buildMarkerCatalogReadModel — L1 group emission', () => {
-  it('emits the representative + in-bounds siblings; out-of-bounds stays invisible-resident', () => {
+  it('emits the representative + in-bounds siblings; out-of-bounds joins as INVISIBLE-RESIDENT (L4)', () => {
     const { catalog } = build();
     const ids = catalog.map((entry) => entry.feature.id);
-    expect(ids).toEqual(['rest-A-loc-primary', 'rest-A-loc-in-1', 'rest-A-loc-in-2']);
-    expect(ids).not.toContain('rest-A-loc-out');
+    expect(ids).toEqual([
+      'rest-A-loc-primary',
+      'rest-A-loc-in-1',
+      'rest-A-loc-in-2',
+      'rest-A-loc-out',
+    ]);
+    const outEntry = catalog.find((entry) => entry.feature.id === 'rest-A-loc-out');
+    expect(outEntry?.isInvisibleResident).toBe(true);
+    expect(outEntry?.feature.properties.isInvisibleResident).toBe(true);
+    expect(
+      catalog
+        .filter((entry) => entry.feature.id !== 'rest-A-loc-out')
+        .every(
+          (entry) =>
+            entry.isInvisibleResident !== true &&
+            entry.feature.properties.isInvisibleResident !== true
+        )
+    ).toBe(true);
   });
 
   it('marks exactly the representative and sorts it FIRST within the equal-rank group', () => {
@@ -95,6 +111,12 @@ describe('buildMarkerCatalogReadModel — L1 group emission', () => {
   it('no searched bounds → representative only (no sibling class without the viewport fact)', () => {
     const { catalog } = build({ searchedBounds: null });
     expect(catalog.map((entry) => entry.feature.id)).toEqual(['rest-A-loc-primary']);
+  });
+
+  it('selected restaurant: ALL locations render NORMALLY — no invisible flag (no double-emit)', () => {
+    const { catalog } = build({ selectedRestaurantId: 'rest-A' });
+    expect(catalog).toHaveLength(4);
+    expect(catalog.every((entry) => entry.isInvisibleResident !== true)).toBe(true);
   });
 
   it('selected restaurant renders ALL locations (the selection spread, forced-lane territory)', () => {

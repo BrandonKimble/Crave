@@ -744,6 +744,34 @@ const buildInteractionSemanticRevision = ({
 }): string =>
   `${family}|marker:${markerKey}|restaurant:${restaurantId ?? ''}|lng:${lng}|lat:${lat}`;
 
+// L1/L4 GROUP-AWARE rank unification: the unified rank is the GROUP's dense position in the
+// projected order — a multi-location restaurant's members (representative + in-bounds sibling
+// dots + invisible residents) all carry their group's ONE rank and consume ONE position, so a
+// 3-location #1 can never inflate the next restaurant's badge to 4. Dish pins are their own
+// group (one location per dish by construction). Used by BOTH the candidate-catalog re-rank and
+// the badge/reveal-seed re-rank — the two MUST stay identical (badge == promotion rank).
+const assignUnifiedGroupRanks = (
+  features: Array<Feature<Point, RestaurantFeatureProperties>>,
+  buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string
+): Array<Feature<Point, RestaurantFeatureProperties>> => {
+  const unifiedRankByGroup = new Map<string, number>();
+  return features.map((feature) => {
+    const groupKey =
+      feature.properties.isDishPin === true || !feature.properties.restaurantId
+        ? String(feature.id ?? buildMarkerKey(feature))
+        : feature.properties.restaurantId;
+    let unifiedRank = unifiedRankByGroup.get(groupKey);
+    if (unifiedRank == null) {
+      unifiedRank = unifiedRankByGroup.size + 1;
+      unifiedRankByGroup.set(groupKey, unifiedRank);
+    }
+    return {
+      ...feature,
+      properties: { ...feature.properties, rank: unifiedRank },
+    };
+  });
+};
+
 type DirectMapSourceControllerBaseArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
@@ -1644,10 +1672,10 @@ export const useDirectSearchMapSourceController = ({
     // (source priority → rank → order), so the sorted POSITION is the single unified, unique,
     // stable-per-search rank. Re-assign it so the rank badge, the native promotion top-N, and the
     // native candidate catalog all read one consistent rank instead of two colliding rank spaces.
-    const rankedCandidates = projectedInitialCandidates.rankedCandidates.map((feature, index) => ({
-      ...feature,
-      properties: { ...feature.properties, rank: index + 1 },
-    }));
+    const rankedCandidates = assignUnifiedGroupRanks(
+      projectedInitialCandidates.rankedCandidates,
+      buildMarkerKey
+    );
     // The full ranked candidate catalog (every showable marker, NOT viewport-filtered) that native projects
     // to screen space to decide on-screen LOD membership. It rides the source-frame snapshot assembled below
     // (attached at `candidateCatalog:`), so the pins it drives are committed ATOMICALLY with the dots/labels
@@ -1681,6 +1709,9 @@ export const useDirectSearchMapSourceController = ({
           badgeImageId: rankBadgeImageId(catalogCraveScore, catalogRank),
           activeBadgeImageId: activeRankBadgeImageId(catalogRank),
           restaurantId: feature.properties.restaurantId,
+          ...(feature.properties.isInvisibleResident === true
+            ? { isInvisibleResident: true }
+            : null),
           // Label VA substrate: carry the name so native renders the label text (atomic with the coord).
           restaurantName: feature.properties.restaurantName,
           // Dish pins label as "dish name\nrestaurant name" (primary + smaller secondary line) —
@@ -1822,11 +1853,9 @@ export const useDirectSearchMapSourceController = ({
     // (identical args → identical order), so re-ranking it by index+1 here yields the IDENTICAL rank the
     // catalog/engine uses → badge number == promotion rank everywhere. (Whether that position == Crave-score
     // order is governed by projectSearchMapVisualFrame's sort, separate from this badge/promotion agreement.)
-    const rerankedVisualCandidates = projectedVisualFrame.rankedCandidates.map(
-      (feature, index) => ({
-        ...feature,
-        properties: { ...feature.properties, rank: index + 1 },
-      })
+    const rerankedVisualCandidates = assignUnifiedGroupRanks(
+      projectedVisualFrame.rankedCandidates,
+      buildMarkerKey
     );
     // markerKey → unified position rank. renderedLodCandidates is built mostly from the DOT pass (which
     // carries every candidate but NOT this re-rank), so the badge build below must look the unified rank up

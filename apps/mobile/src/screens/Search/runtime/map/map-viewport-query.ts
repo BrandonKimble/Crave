@@ -37,4 +37,8 @@ export type MarkerCatalogEntry = {
    *  on-screen member in catalog order — the sort keys off this flag so the representative
    *  wins the group's slot whenever it is on-screen. Absent = single-location entry. */
   isGroupRepresentative?: boolean;
+  /** World-camera L4 (§3.4): true on a group sibling OUTSIDE the searched bounds — resident
+   *  in the catalog (so the selection overlay's forcedKeys promotion can reach it) but never
+   *  presented as a pin/dot/label unless its group is selected. Absent = normal member. */
+  isInvisibleResident?: boolean;
 };

@@ -322,13 +322,45 @@ final class LodEngineTests: XCTestCase {
 // MARK: - L1 group competition (world-camera §3.1: one budget slot per entity group)
 
 extension LodEngineTests {
-  private func groupAnchor(_ key: String, rank: Int, group: String?) -> LodEngine.Anchor {
+  private func groupAnchor(
+    _ key: String, rank: Int, group: String?, invisibleResident: Bool = false
+  ) -> LodEngine.Anchor {
     LodEngine.Anchor(
       markerKey: key,
       coordinate: CLLocationCoordinate2D(latitude: 40.75, longitude: -73.98),
       rank: rank,
-      groupId: group
+      groupId: group,
+      isInvisibleResident: invisibleResident
     )
+  }
+
+  // L4 (§3.4): an invisible resident never rank-promotes — even with budget slack — and never
+  // consumes its group's slot; forcedKeys is its only door in.
+  func testInvisibleResidentNeverRankPromotesEvenWithSlack() {
+    var engine = LodEngine(budget: 10)
+    engine.setRanking([
+      groupAnchor("a1", rank: 1, group: "restA"),
+      groupAnchor("a-market", rank: 1, group: "restA", invisibleResident: true),
+      groupAnchor("b1", rank: 2, group: "restB"),
+    ])
+    let all: Set<String> = ["a1", "a-market", "b1"]
+    let result = engine.decide(onScreenKeys: all)
+    XCTAssertEqual(result.promotedInOrder, ["a1", "b1"])
+  }
+
+  func testInvisibleResidentPromotesWhenForcedAndDoesNotBlockGroupSlot() {
+    var engine = LodEngine(budget: 1)
+    engine.setRanking([
+      // Invisible resident sorts FIRST in the group's rank band — must not steal restA's slot.
+      groupAnchor("a-market", rank: 1, group: "restA", invisibleResident: true),
+      groupAnchor("a1", rank: 1, group: "restA"),
+      groupAnchor("b1", rank: 2, group: "restB"),
+    ])
+    let all: Set<String> = ["a-market", "a1", "b1"]
+    let unforced = engine.decide(onScreenKeys: all)
+    XCTAssertEqual(unforced.promotedInOrder, ["a1"])
+    let forced = engine.decide(onScreenKeys: all, forcedKeys: ["a-market", "a1"])
+    XCTAssertEqual(forced.promotedInOrder, ["a1", "a-market"])
   }
 
   func testSameGroupAnchorsShareOneBudgetSlot() {

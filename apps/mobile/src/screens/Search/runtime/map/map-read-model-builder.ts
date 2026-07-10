@@ -159,10 +159,26 @@ export const buildMarkerCatalogReadModel = (
                   searchedBounds
                 )
             );
+      // L4 (§3.4): siblings OUTSIDE the searched bounds join the catalog too, flagged
+      // invisible-resident — present in the native ranking (so the selection overlay's
+      // forcedKeys promotion reaches them) but never presented while unselected. When the
+      // group IS selected (shouldRenderAllLocations) every location renders normally, so
+      // the two emissions are mutually exclusive — no double-emit.
+      const invisibleResidentSiblings =
+        shouldRenderAllLocations || representativeLocation == null || searchedBounds == null
+          ? []
+          : locations.filter(
+              (location) =>
+                location.locationId !== representativeLocation.locationId &&
+                !inBoundsSiblings.some((sibling) => sibling.locationId === location.locationId)
+            );
+      const invisibleResidentLocationIds = new Set(
+        invisibleResidentSiblings.map((location) => location.locationId)
+      );
       const locationsToRender = shouldRenderAllLocations
         ? locations
         : representativeLocation
-          ? [representativeLocation, ...inBoundsSiblings]
+          ? [representativeLocation, ...inBoundsSiblings, ...invisibleResidentSiblings]
           : [];
 
       locationsToRender.forEach((location) => {
@@ -182,6 +198,9 @@ export const buildMarkerCatalogReadModel = (
             rising: restaurant.rising ?? null,
             rank,
             pinColor,
+            ...(invisibleResidentLocationIds.has(location.locationId)
+              ? { isInvisibleResident: true }
+              : null),
           },
         };
         entries.push({
@@ -191,6 +210,9 @@ export const buildMarkerCatalogReadModel = (
           ...(representativeLocation != null &&
           location.locationId === representativeLocation.locationId
             ? { isGroupRepresentative: true }
+            : null),
+          ...(invisibleResidentLocationIds.has(location.locationId)
+            ? { isInvisibleResident: true }
             : null),
         });
         if (location.isPrimary) {

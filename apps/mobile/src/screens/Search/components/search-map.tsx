@@ -314,6 +314,11 @@ const SearchMapMarkerScene = React.memo(
               id={DOT_LAYER_ID}
               slot={undefined}
               belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
+              // L4 (§3.4): invisible-resident group siblings (out-of-searched-bounds market
+              // locations) never place a dot — not even an opacity-0 one, which would still
+              // collide (cull neighbors / suppress basemap labels in its footprint). They only
+              // ever surface as promoted VA pins via the selection overlay's forcedKeys.
+              filter={['!=', ['get', 'isInvisibleResident'], true]}
               style={dotLayerStyle}
               sourceID={DOT_SOURCE_ID}
             />
@@ -722,6 +727,10 @@ export type RestaurantFeatureProperties = {
   pinColor: string;
   labelCandidate?: LabelCandidate;
   labelPreference?: LabelCandidate;
+  // World-camera L4: invisible-resident group sibling (out-of-searched-bounds market
+  // location). In the catalog so selection can force-promote it; excluded from dot/label
+  // presentation and from LOD rank promotion while unselected.
+  isInvisibleResident?: boolean;
   // Dish-specific fields (populated when rendering dish pins)
   isDishPin?: boolean;
   dishName?: string;

@@ -36,14 +36,20 @@ public struct LodEngine {
     /// sharing a groupId compete for ONE budget slot — a multi-location restaurant can never eat
     /// multiple slots. nil = its own group (back-compat: every pre-group caller behaves as today).
     public let groupId: String?
-    public init(markerKey: String, coordinate: CLLocationCoordinate2D, rank: Int, groupId: String? = nil) {
+    /// World-camera L4 (§3.4): an out-of-searched-bounds group sibling. Resident in the
+    /// ranking (so forcedKeys promotion reaches it) but NEVER rank-promoted and NEVER a
+    /// visible dot — role 'invisible' until its group is selected.
+    public let isInvisibleResident: Bool
+    public init(markerKey: String, coordinate: CLLocationCoordinate2D, rank: Int, groupId: String? = nil, isInvisibleResident: Bool = false) {
       self.markerKey = markerKey
       self.coordinate = coordinate
       self.rank = rank
       self.groupId = groupId
+      self.isInvisibleResident = isInvisibleResident
     }
     public static func == (l: Anchor, r: Anchor) -> Bool {
       l.markerKey == r.markerKey && l.rank == r.rank && l.groupId == r.groupId
+        && l.isInvisibleResident == r.isInvisibleResident
         && l.coordinate.latitude == r.coordinate.latitude
         && l.coordinate.longitude == r.coordinate.longitude
     }
@@ -109,6 +115,9 @@ public struct LodEngine {
     var seenGroups: Set<String> = []
     out.reserveCapacity(budget)
     for a in ranking where onScreenKeys.contains(a.markerKey) {
+      // L4: invisible residents never rank-promote (forcedKeys is their only door) and never
+      // consume their group's slot.
+      if a.isInvisibleResident { continue }
       // L1 group competition: one slot per group, occupied by its best-ranked on-screen anchor.
       if let group = a.groupId {
         if seenGroups.contains(group) { continue }
