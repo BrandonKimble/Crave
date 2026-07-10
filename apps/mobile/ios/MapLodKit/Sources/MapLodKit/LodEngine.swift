@@ -32,13 +32,18 @@ public struct LodEngine {
     public let coordinate: CLLocationCoordinate2D
     /// Crave-score rank within the viewport; lower = better. Governs BOTH promotion and the badge.
     public let rank: Int
-    public init(markerKey: String, coordinate: CLLocationCoordinate2D, rank: Int) {
+    /// World-camera L1 (§3.1): the entity GROUP this anchor belongs to (restaurantId). Anchors
+    /// sharing a groupId compete for ONE budget slot — a multi-location restaurant can never eat
+    /// multiple slots. nil = its own group (back-compat: every pre-group caller behaves as today).
+    public let groupId: String?
+    public init(markerKey: String, coordinate: CLLocationCoordinate2D, rank: Int, groupId: String? = nil) {
       self.markerKey = markerKey
       self.coordinate = coordinate
       self.rank = rank
+      self.groupId = groupId
     }
     public static func == (l: Anchor, r: Anchor) -> Bool {
-      l.markerKey == r.markerKey && l.rank == r.rank
+      l.markerKey == r.markerKey && l.rank == r.rank && l.groupId == r.groupId
         && l.coordinate.latitude == r.coordinate.latitude
         && l.coordinate.longitude == r.coordinate.longitude
     }
@@ -101,8 +106,14 @@ public struct LodEngine {
   /// `ranking` must be sorted ascending by rank; filtering preserves order so `prefix` == the true top-N.
   public static func promotedInOrder(ranking: [Anchor], onScreenKeys: Set<String>, budget: Int) -> [String] {
     var out: [String] = []
+    var seenGroups: Set<String> = []
     out.reserveCapacity(budget)
     for a in ranking where onScreenKeys.contains(a.markerKey) {
+      // L1 group competition: one slot per group, occupied by its best-ranked on-screen anchor.
+      if let group = a.groupId {
+        if seenGroups.contains(group) { continue }
+        seenGroups.insert(group)
+      }
       out.append(a.markerKey)
       if out.count == budget { break }
     }
@@ -131,9 +142,9 @@ public struct LodEngine {
   @discardableResult
   public mutating func decide(onScreenKeys: Set<String>, forcedKeys: Set<String> = [])
     -> (promotedInOrder: [String], membershipChanged: Bool) {
-    // On-screen anchors in rank order (ranking is sorted ascending by rank); promote the strict top-N.
-    let onScreenByRank = ranking.compactMap { onScreenKeys.contains($0.markerKey) ? $0.markerKey : nil }
-    var promoted = Array(onScreenByRank.prefix(budget))
+    // On-screen anchors in rank order (ranking is sorted ascending by rank); promote the strict
+    // top-N of GROUPS (L1: one slot per group — Self.promotedInOrder owns the dedupe rule).
+    var promoted = Self.promotedInOrder(ranking: ranking, onScreenKeys: onScreenKeys, budget: budget)
     if !forcedKeys.isEmpty {
       let already = Set(promoted)
       // Append forced keys in rank order (only those present in the ranking), after the budget set.

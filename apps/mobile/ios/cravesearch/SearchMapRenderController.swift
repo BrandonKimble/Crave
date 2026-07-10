@@ -1476,7 +1476,11 @@ final class SearchMapRenderController: RCTEventEmitter {
       // Crave score, that rank == the badge — the one-rank decision; until then this verifies the mechanism.)
       let ranked = catalog
         .sorted { $0.rank < $1.rank }
-        .map { LodEngine.Anchor(markerKey: $0.markerKey, coordinate: $0.coordinate, rank: $0.rank) }
+        // World-camera L1: restaurantId IS the entity group — anchors sharing it compete for
+        // ONE budget slot (a multi-location restaurant can never eat multiple slots). Inert
+        // for today's one-location-per-restaurant catalogs; live for the selected-restaurant
+        // all-locations spread (whose pins ride forcedKeys, exempt by design).
+        .map { LodEngine.Anchor(markerKey: $0.markerKey, coordinate: $0.coordinate, rank: $0.rank, groupId: $0.restaurantId) }
       var engine = state.lodV5Engine ?? LodEngine()
       engine.setRanking(ranked)
       state.lodV5Engine = engine

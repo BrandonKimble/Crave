@@ -318,3 +318,73 @@ final class LodEngineTests: XCTestCase {
     XCTAssertNil(e.takeSettledRoleChangeIfAny(), "and the follow-up same-target decide stays silent")
   }
 }
+
+// MARK: - L1 group competition (world-camera §3.1: one budget slot per entity group)
+
+extension LodEngineTests {
+  private func groupAnchor(_ key: String, rank: Int, group: String?) -> LodEngine.Anchor {
+    LodEngine.Anchor(
+      markerKey: key,
+      coordinate: CLLocationCoordinate2D(latitude: 40.75, longitude: -73.98),
+      rank: rank,
+      groupId: group
+    )
+  }
+
+  func testSameGroupAnchorsShareOneBudgetSlot() {
+    var engine = LodEngine(budget: 2)
+    engine.setRanking([
+      groupAnchor("a1", rank: 1, group: "restA"),
+      groupAnchor("a2", rank: 2, group: "restA"),  // sibling location — must NOT eat slot 2
+      groupAnchor("b1", rank: 3, group: "restB"),
+    ])
+    let all: Set<String> = ["a1", "a2", "b1"]
+    let result = engine.decide(onScreenKeys: all)
+    XCTAssertEqual(result.promotedInOrder, ["a1", "b1"])
+  }
+
+  func testGroupRepresentativeIsBestRankedOnScreen() {
+    var engine = LodEngine(budget: 1)
+    engine.setRanking([
+      groupAnchor("a1", rank: 1, group: "restA"),
+      groupAnchor("a2", rank: 2, group: "restA"),
+    ])
+    // The best-ranked anchor is OFF-screen: the on-screen sibling takes the group's slot.
+    let result = engine.decide(onScreenKeys: ["a2"])
+    XCTAssertEqual(result.promotedInOrder, ["a2"])
+  }
+
+  func testNilGroupAnchorsCompeteIndividuallyBackCompat() {
+    var engine = LodEngine(budget: 2)
+    engine.setRanking([
+      groupAnchor("x", rank: 1, group: nil),
+      groupAnchor("y", rank: 2, group: nil),
+      groupAnchor("z", rank: 3, group: nil),
+    ])
+    let result = engine.decide(onScreenKeys: ["x", "y", "z"])
+    XCTAssertEqual(result.promotedInOrder, ["x", "y"])
+  }
+
+  func testForcedKeyExemptionUnchangedByGrouping() {
+    var engine = LodEngine(budget: 1)
+    engine.setRanking([
+      groupAnchor("a1", rank: 1, group: "restA"),
+      groupAnchor("b1", rank: 2, group: "restB"),
+    ])
+    // b1 forced while a1 owns the budget slot: forced appends after the budget set.
+    let result = engine.decide(onScreenKeys: ["a1", "b1"], forcedKeys: ["b1"])
+    XCTAssertEqual(result.promotedInOrder, ["a1", "b1"])
+  }
+
+  func testStaticPromotedInOrderDedupesGroups() {
+    let ranking = [
+      groupAnchor("a1", rank: 1, group: "restA"),
+      groupAnchor("a2", rank: 2, group: "restA"),
+      groupAnchor("b1", rank: 3, group: "restB"),
+      groupAnchor("c1", rank: 4, group: "restC"),
+    ]
+    let promoted = LodEngine.promotedInOrder(
+      ranking: ranking, onScreenKeys: ["a1", "a2", "b1", "c1"], budget: 3)
+    XCTAssertEqual(promoted, ["a1", "b1", "c1"])
+  }
+}
