@@ -88,23 +88,29 @@ export const EditProfilePanelBody = React.memo(() => {
     }
     setBusy(true);
     setNotice(null);
-    const work: Promise<unknown>[] = [];
-    if (displayNameDirty) {
-      work.push(usersService.updateMe({ displayName: displayName.trim() }));
-    }
-    if (usernameClaimable) {
-      work.push(usersService.claimUsername(usernameDraft.trim()));
-    }
-    void Promise.all(work)
-      .then(() => {
+    // RT-3 (red-team 2026-07-10): SEQUENCED, reconciled per-op. The old Promise.all pair
+    // deadlocked on partial failure: claim succeeds + update fails → retry re-claims the
+    // name the user now owns → the 30-day cooldown 400 → the display name became unsavable
+    // until remount. Each op now settles its own local state, so a retry only re-sends
+    // what actually remains dirty.
+    void (async () => {
+      try {
+        if (usernameClaimable) {
+          await usersService.claimUsername(usernameDraft.trim());
+          setCurrentUsername(usernameDraft.trim());
+          setAvailability(null);
+        }
+        if (displayNameDirty) {
+          await usersService.updateMe({ displayName: displayName.trim() });
+          setSavedDisplayName(displayName.trim());
+        }
         closeActiveRoute();
-      })
-      .catch(() => {
+      } catch {
         setNotice('Couldn’t save — try again.');
-      })
-      .finally(() => {
+      } finally {
         setBusy(false);
-      });
+      }
+    })();
   }, [canSave, closeActiveRoute, displayName, displayNameDirty, usernameClaimable, usernameDraft]);
 
   if (loadState.kind === 'loading') {

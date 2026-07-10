@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { NotificationType } from '@prisma/client';
+import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserNotificationFeedService } from '../notifications/user-notification-feed.service';
 import { UserStatsService } from './user-stats.service';
@@ -32,12 +32,25 @@ export class UserFollowService {
       return { followed: true };
     }
 
-    await this.prisma.userFollow.create({
-      data: {
-        followerUserId,
-        followingUserId,
-      },
-    });
+    // RT-10: concurrent double-follow passes the read check; the second create's unique
+    // violation is idempotent success (the edge exists) — stats/feed only run for the
+    // create that actually landed.
+    try {
+      await this.prisma.userFollow.create({
+        data: {
+          followerUserId,
+          followingUserId,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return { followed: true };
+      }
+      throw error;
+    }
 
     await this.userStats.applyDelta(followerUserId, { followingCount: 1 });
     await this.userStats.applyDelta(followingUserId, { followersCount: 1 });

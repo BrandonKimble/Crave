@@ -15,9 +15,17 @@ export class NotificationsController {
     private readonly feedService: UserNotificationFeedService,
   ) {}
 
+  // RT-15 (red-team 2026-07-10): register is AUTHED and the binding derives from the
+  // session — a client-supplied userId let any caller bind a victim's userId to an
+  // attacker-controlled push token. Unregister stays capability-by-token.
+  @AllowUnentitled()
+  @UseGuards(ClerkAuthGuard)
   @Post('devices/register')
-  async registerDevice(@Body() dto: RegisterDeviceDto) {
-    await this.deviceService.registerDevice(dto);
+  async registerDevice(
+    @CurrentUser() user: User,
+    @Body() dto: RegisterDeviceDto,
+  ) {
+    await this.deviceService.registerDevice({ ...dto, userId: user.userId });
     return { status: 'ok' };
   }
 
@@ -37,9 +45,20 @@ export class NotificationsController {
     @Query('offset') offset?: string,
     @Query('limit') limit?: string,
   ) {
+    // RT-9: NaN/negative pagination params reached Prisma as skip/take (500s).
+    const parsePage = (
+      raw: string | undefined,
+      max: number,
+    ): number | undefined => {
+      if (raw == null) return undefined;
+      const value = Number(raw);
+      return Number.isInteger(value) && value >= 0 && value <= max
+        ? value
+        : undefined;
+    };
     return this.feedService.listFeed(user.userId, {
-      offset: offset ? Number(offset) : undefined,
-      limit: limit ? Number(limit) : undefined,
+      offset: parsePage(offset, 100000),
+      limit: parsePage(limit, 100),
     });
   }
 
