@@ -135,3 +135,30 @@ accessibilityLabel) opens the profile reliably — coordinate and bare-name taps
 - Rig entry points: result-card tap (needs a results world — set_map_camera_and_resolve_market
   first), autocomplete restaurant pick, poll comment span (blocked on seeded comments —
   owner finger test).
+
+## S-C.5 CONTINUATION RUN (2026-07-10 ~12:25AM — seven cuts shipped)
+
+- **4a (3143094a):** home dismissal routeAction = UNCONDITIONALLY popToRoot (the setRoot arm's
+  session-less shape is a depth-1 popToRoot no-op — identical idempotence, no minting risk).
+  **4b still open**: the docked-polls pre-write pair needs the swipe-dismiss timing probe
+  (flow: swipe docked polls DOWN, submit, X — does docked polls return with the pre-writes
+  removed? isDockedPollsDismissed is not readable from the verb; probe from the snap-session
+  side).
+- **8 (3143094a):** clearSearchAfterProfileDismiss = clearSearchState() one-liner (the 86-line
+  fork was the default clear minus one idempotent focus reset).
+- **6a (3143094a):** named bottom-band selectors (selectIsTransitionOwnedResultsExit /
+  selectIsPersistentPollHandoffCommitted / selectIsSearchResultsSurfaceOwner) beside the
+  visual policy. **6b still open**: the isExternalNavPushTransitionActive latch → derived
+  store signal (M, rides L1-L5).
+- **terminalDismissSource axis (4a80e3ab):** DELETED across 10 files — outgoing scene explicit
+  everywhere, the stored copy had zero readers, the armDismissMotion fallback arm was dead.
+- **1-lite (4639e556):** resolveSessionDismissPlan in the stack algebra (pure, 5 specs incl.
+  child-above-AND-below); beginCloseSearch resolves + executes. **1-full still open**: the
+  executor verbs (one exit-transaction construction site; the pop body + terminal body as
+  named verbs).
+- **5 still open** (depends on 4b's answer: the null-restore arm's docked re-arm pair is the
+  delta between capture-null and capture-degenerate).
+- Rig each cut: dismiss-repeat, full profile cycle, profile-over-favorites pop — all green;
+  zero NAV-CONTRACT fires; 103 jest (5 new resolver specs).
+
+**S-D.3+S-D.4 remain ONE fresh session** (scope verdict in plans/s-d-one-desire-entitylink.md).
