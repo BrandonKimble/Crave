@@ -66,3 +66,30 @@ through the arbiter's writers (L2 integration, 9fe4e25e) — same function §3.4
 - **D: rig + on-device verification.** Multi-location select (Gelateria Gentile) from a
   search world with competing pins; confirm market siblings fade in activated, z-order,
   deselect restore; the composite screenshot is the oracle.
+
+## Progress (2026-07-10 ~6:55AM)
+
+- **Slice A DONE (JS):** builder emits out-of-bounds siblings flagged `isInvisibleResident`
+  (entry + feature property); goldens updated (out-of-bounds entry present+flagged; selected
+  spread stays unflagged/no double-emit). Types widened (MarkerCatalogEntry,
+  RestaurantFeatureProperties, SearchMapCandidateCatalogEntry, setCandidateCatalog payload);
+  the flag rides the candidate-catalog payload to native.
+- **Slice B DONE (engine + presentation):** LodEngine.Anchor += isInvisibleResident;
+  promotedInOrder skips them (never rank-promoted, never consume the group slot; forcedKeys
+  = the only door) — 2 new goldens, 41/41. Dot presentation: a property-based layer FILTER
+  on the dot SymbolLayer (not opacity-0 — an opacity-0 dot still collides/suppresses
+  basemap labels in its footprint). VA pins/labels only exist for promoted keys, so no other
+  presentation lane needs a gate.
+- **Slice C DONE (native z-lift):** updatePinVAPriorities adds selectedPinZLift (1e6) for
+  highlightedKeys; applyPinVAHighlight re-runs the priorities pass so a stationary
+  select/deselect re-stacks immediately (previously only roster/camera-motion re-stacked).
+- **BONUS FIX — group rank inflation (latent since b441771c):** the unified re-rank was
+  `rank = index+1` over ALL projected candidates, so a multi-location group's members
+  inflated every later restaurant's badge number; L4's invisible residents would widen it.
+  Fixed with ONE shared `assignUnifiedGroupRanks` (dense per-group position; members share
+  the group's rank — the engine's equal-rank group model) used by BOTH re-rank sites
+  (candidate catalog + badge/reveal seed), preserving their identity contract.
+- Camera-on-select: already live via the profile-open focus path (L2, 9fe4e25e) — selection
+  ≡ profile presentation per the adjudication above.
+- NEXT: iOS build + on-device slice D (multi-location select: market siblings fade in
+  activated; z-order; deselect restore; badge numbers not inflated).
