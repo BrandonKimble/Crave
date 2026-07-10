@@ -13,14 +13,6 @@ export type { SearchSubmitEntrySurface } from '../runtime/shared/search-submit-e
 
 export type SearchMode = 'natural' | 'shortcut' | null;
 
-/** The chip-filter override shape submit options carry (re-homed from the deleted
- *  request-preparation owner). */
-export type StructuredSearchFilters = {
-  openNow?: boolean;
-  priceLevels?: number[] | null;
-  includeSimilar?: boolean;
-  rising?: boolean;
-};
 export type SearchSubmitPresentationIntentKind =
   | 'initial_search'
   | 'shortcut_rerun'
@@ -36,10 +28,6 @@ export type SearchSubmitInPlaceRerunIntentKind = Extract<
   SearchSubmitPresentationIntentKind,
   'search_this_area' | 'variant_rerun'
 >;
-export const isSearchSubmitInPlaceRerunIntentKind = (
-  kind: SearchSubmitPresentationIntentKind | undefined
-): kind is SearchSubmitInPlaceRerunIntentKind =>
-  kind === 'search_this_area' || kind === 'variant_rerun';
 
 // S-A (the great trigger deletion, 2026-07-10): the presentation flags are GONE from the
 // submit options. preserveSheetState/entrySurface/presentationIntentKind/

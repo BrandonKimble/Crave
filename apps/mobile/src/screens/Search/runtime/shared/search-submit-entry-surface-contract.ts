@@ -5,13 +5,9 @@ export type SearchSubmitEntryMotion =
   | 'instant_behind_search_mode'
   | 'preserve_sheet';
 
-export const resolveForegroundSearchSubmitEntrySurface = ({
-  isSuggestionPanelActive,
-}: {
-  isSuggestionPanelActive: boolean;
-}): Extract<SearchSubmitEntrySurface, 'home' | 'search_mode'> =>
-  isSuggestionPanelActive ? 'search_mode' : 'home';
-
+// S-A: the foreground entry-surface resolver is GONE — triggers no longer pass
+// entrySurface; the reconciler derives it from the tuple identity. This contract keeps
+// only the motion mapping the presentation side reads from the DERIVED intent.
 export const resolveSearchSubmitEntryMotion = ({
   entrySurface,
   preserveSheetState,

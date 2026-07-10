@@ -162,7 +162,17 @@ createToggleInteractionEngine<TKind extends string>({
   permutation stays REJECTED (combinatorics × pagination); pagination fetches only
   the active state's next page.
 
-## Search-this-area (spec completed per red team — **OWNED BY THE S-A SESSION, see v2.1 header; apply the derived-kind correction**)
+## Search-this-area (spec completed per red team — **SHIPPED 2026-07-10 by the S-A session, commit 4c55f24f**)
+
+> **DONE.** `area_rerun` dispatches `kickRerunThroughCoordinator` with derived kind
+> `'search_this_area'` (kick parameterized: kind + presentationIntentKind +
+> onResolutionBegan carrying `runEnterForegroundEffects`); `mapMovedSinceSearch`
+> resets at capture. Rig-verified: pan→button, press→`[RECONCILE] derivedKind:
+"search_this_area"` via the coordinator, button clears at press. One deliberate
+> deviation from the spec text below: `deriveToggleKindFromFilterDelta`'s return type
+> was NOT widened — a filter delta can never derive STA; the area cause derives its
+> kind at its own dispatch site (more precise, same I1/I2 shape). Remaining: the
+> 300ms quiet-window feel check (owner finger item; `settleMs` per-kind is the knob).
 
 - Rides the coordinator with kind `'search_this_area'`. Verified safe: bounds are
   press-time in both worlds (tuple write captures them; commit re-reads the tuple);

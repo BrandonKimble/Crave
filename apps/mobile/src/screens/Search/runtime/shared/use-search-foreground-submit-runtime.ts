@@ -96,7 +96,6 @@ export const useSearchForegroundSubmitRuntime = ({
 
   const recentSubmitRuntime = useSearchForegroundRecentSubmitRuntime({
     submitRuntime,
-    isSuggestionPanelActive,
     pendingRestaurantSelectionRef,
     setRestaurantOnlyIntent,
     deferRecentSearchUpsert,

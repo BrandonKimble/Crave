@@ -14,7 +14,6 @@ import type { useSearchForegroundSubmitPreparationRuntime } from './use-search-f
 type UseSearchForegroundRecentSubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,
   | 'submitRuntime'
-  | 'isSuggestionPanelActive'
   | 'pendingRestaurantSelectionRef'
   | 'setRestaurantOnlyIntent'
   | 'deferRecentSearchUpsert'
@@ -32,7 +31,6 @@ type SearchForegroundRecentSubmitRuntime = Pick<
 
 export const useSearchForegroundRecentSubmitRuntime = ({
   submitRuntime,
-  isSuggestionPanelActive,
   pendingRestaurantSelectionRef,
   setRestaurantOnlyIntent,
   deferRecentSearchUpsert,

@@ -114,11 +114,23 @@ Zero code; result-card taps are per-card handlers, not a policy-injectable choke
 
 ## 3. The strides (ideal-only; dependency-ordered)
 
-**S-A. The great trigger deletion.** Strip `presentationIntentKind`/`preserveSheetState`/
-`entrySurface`/decoration-side-channel from every trigger; fold bounds-source selection and the
-include-similar reset into the writer/classifier (both derivable from the delta); move keyboard/
-suggestion/blur teardown into the engine's session_enter foreground effects; collapse the 3–5
-owner hops. End state: every push trigger is one line. (Independent — can run parallel to S-B.)
+**S-A. The great trigger deletion. — ✅ EXECUTED 2026-07-10 (STA-as-toggle 4c55f24f; flag
+deletion 92274913 + harvest commit).** `presentationIntentKind`/`preserveSheetState`/
+`entrySurface`/`transitionFromDockedPolls`/the filter overrides are DELETED from every submit
+trigger (they were copies of facts `classifySearchWorldTransition` derives; the enter effects
+already ran on the derived intent). The include-similar reset rides the identity tuple write
+(`filterVariant includeSimilar:false` when not `replaceResultsInPlace`); retry became
+`replaceResultsInPlace:true`; the attempt config shrank to the decoration payload; the
+foreground entry-surface resolver is deleted. Every push trigger is `prepare + submit()`.
+**Adjudications (probed against the code, not the plan):** (1) the keyboard/suggestion/blur
+teardown does NOT move into session_enter effects — it is press-side by nature (gesture-blur
+ref ordering, the beginSubmitTransition deferral, and it must fire on the empty-query bail
+where no tuple write happens); it is already ONE line per trigger (`prepareSubmitChrome()`).
+(2) The decoration side-channel STAYS — analytics-only ({submissionSource, submissionContext}),
+one register/take pair braced around the write; folding it into the tuple would pollute value
+identity. (3) `searchThisArea`/`forceFreshBounds` survive as the two honest trigger facts
+(bounds capture is a trigger-time ACTION — awaiting the settled camera — not derivable after
+the fact). Hop count is now trigger → submit owner → tuple write.
 
 > **S-A carries one INBOUND deliverable from the toggle-system effort**
 > (`plans/toggle-system-ideal.md` v2.1 — read its header + "Search-this-area" section
