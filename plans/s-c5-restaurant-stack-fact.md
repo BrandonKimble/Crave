@@ -224,3 +224,23 @@ maestro/perf/flows as the docked-dismiss round-trip flow (owner call on naming).
 - map-adjacent flash risk — finger check mandatory), 2-full (close-chain one-file collapse, L),
   S-D.3+4 (typed identity end-to-end + LaunchIntent dissolution + saved_place + BE-gated row
   widening), the post-commit-redundancy probe above, and S-C.4 item 6 (owner product call).
+
+## RUN 3 CLOSE (2026-07-10 ~2:15AM — adjudications)
+
+- **Post-commit redundancy probe: UNREACHABLE by user gesture** — the nav bar is OUT while a
+  child tops the stack, so no tab press can route-switch over an open profile; zero probe
+  fires. The closeRestaurantProfile arms serve only programmatic switches (deep links /
+  notification taps) — KEEP; re-probe when S-E makes those paths drivable.
+- **6b REJECTED as premature generality**: the nav-clip latch is one-bit hysteresis over a
+  UI-thread SharedValue; the hook that owns the animated values IS its correct home. Moving
+  it to the nav-out store adds indirection for a second consumer that doesn't exist.
+  Revisit when world/camera adds a real second clip consumer.
+- **2-full re-scoped**: the state-runtime double-compute is SAFE BY MONOTONICITY (documented
+  in place); the 99-line close-transition wrapper is a REAL composition root (state +
+  cleanup runtimes), not ceremony — the auditor's re-thread framing was half-right. The only
+  2-full worth doing is the L-merge (intent + state + finalize → one runtime file): fresh
+  session.
+
+**Definitive remaining queue:** S-D.3+4 (one L session), the close-chain L-merge, the S-E-era
+re-probe of the post-commit arms, S-C.4 item 6 (owner call), owner finger checks (camera
+feel, submit press-up).
