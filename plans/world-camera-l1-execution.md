@@ -132,9 +132,11 @@ catalog SHAPE supports them (group residency + roles).
      intra-group sort or carry an explicit flag the native sort respects. Note the
      off-screen-representative case is DESIRED behavior: an on-screen sibling takes the
      group's slot (golden testGroupRepresentativeIsBestRankedOnScreen).
-  2. Sibling entries must join the DOT source membership (dotSourceStore) — map where the
-     dot GL source derives from the catalog before emitting, or siblings will be
-     LOD-resident but dot-invisible.
+  2. ~~Sibling dot-source membership~~ **ANSWERED**: the dot source builds from
+     `renderedLodCandidates` (direct-source :2048-2083 — every LOD candidate gets a dot
+     feature; role swaps by opacity), the same provenance as the candidate catalog
+     (:1697-1748). Sibling entries added to the PIPELINE catalog flow into both
+     automatically; the group budget demotes them to dots with no extra wiring.
   3. The invisible-resident role (market-wide far locations must NOT become dots when
      panned over) needs the SEARCHED-viewport membership fact at catalog build time
      (committedBounds into the builder) — a role the render honors, not a screen test.
