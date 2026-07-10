@@ -183,10 +183,21 @@ entity policy encoded once). Wrap PollDetailPanel's span rendering into the shar
 component; profile rows, bookmarks rows, and (later) notification rows render through it. New
 surfaces then inherit search-triggering with zero wiring (I6).
 
-**S-E. Addressability.** One parser+serializer pair making Desire ⇄ URL total: search desires
-(query/shortcut/entity/list), scenes (poll, profile, list), and the already-emitted `/l/<slug>`
-share links (inbound route + `getShared` consumer — this alone turns list-sharing from broken to
-working). Notification payloads route payload → Desire/push through the same values.
+**S-E. Addressability. — ✅ EXECUTED 2026-07-10 (59dc2413).** `desire-url-codec.ts` = THE
+parser+serializer pair (26 round-trip goldens, both bases): `/r /e /u /l /list /q /s /p` under
+crave:// AND https://crave-search.app. Found+fixed on the way: (1) custom-scheme URLs park the
+first segment in `URL.hostname` — the old pathname-only restaurant parse NEVER fired on real
+crave:// links; (2) the API's list-results endpoint was owner-scoped, so a share recipient could
+resolve the slug but never load the world — visibility widened to owner OR shareEnabled.
+LaunchIntent gained `sharedList` (async getShared → the same listWorld lane) + `searchDesire`
+(/q, /s → the same submit verbs); notifications route any `url` payload through the codec
+(poll_release kept); outbound share links serialize through it. Rig-proven: crave://q/tacos →
+full natural world; crave://l/<slug> → the shared list's world with members rendered — **list
+sharing works end-to-end for the first time.** REMAINING (named, deferred): OS universal-link
+registration (associated-domains entitlement + hosted AASA — infra/release item; until then
+https share links open the browser); ListBody failure/empty body for dead slugs (§5.6, the
+listDetail-era item — today a dead slug logs loudly and stays home); the S-C.5 re-probe of
+post-commit closeRestaurantProfile arms now that programmatic switches are drivable via URLs.
 
 **S-F. Pick mode.** Centralize result-card tap into one policy-injectable handler (prerequisite
 worth doing in S-C/S-D anyway), then `push(search, desire, {pick}) → Promise<Selection>` on the
