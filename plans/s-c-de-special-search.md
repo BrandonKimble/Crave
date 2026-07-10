@@ -453,3 +453,63 @@ marker-teardown finger/rig test.
 **Ideal-shape classifications confirmed:** the terminal dance = recorded-interim (successor in
 item 3); item-4 nav verdict ACCEPTED with the named successor; the launch-intent restaurant arm
 = ~90 lines ride S-A/S-D + world-camera L-layers (its prepare/anchor lines died this session).
+
+## POST-S-C.4 RED TEAM (2026-07-09 ~10PM — CLOSED, fixes in da6c32fb)
+
+Three auditors (correctness / ideal-shape / deadness) over 26933311^..HEAD. **No BREAKs.**
+
+**Correctness (2 RISKs, both fixed + rig-proven):**
+
+1. Pop-branch results_exit with NO world (never-submitted session / pre-reveal dismiss) parks
+   the presentation transport at exit_requested with no native ack source → FIXED: exit commit
+   gated on a results world existing (active/held bundle or in-flight redraw — the same
+   condition finalizeSessionExitWithoutDismissMotion reads). Real favorites-pop exit re-proven
+   (revealing→dismissing→hidden).
+2. Session-less non-search-root entrant to the terminal dance would setRoot('search') with no
+   recovery (the old finalize restore that caught this is deleted) → FIXED as a LOUD **DEV**
+   [NAV-CONTRACT] invariant at the verb (expose, don't compensate; reachability believed nil —
+   if it fires, fix the SELECTOR). Confirmed silent on all canonical flows.
+   Confirmed OK by the auditor: the deleted isSearchOriginRestorePending window (no surviving
+   consumer, no async window can render), the origin-as-local-value ordering (byte-parity with
+   the old arm/flush positions), nav one-writer (mount/cancel/remount covered), golden
+   assertion self-consistency, sheetHost rename.
+
+**Deadness (fixed in da6c32fb):** the isNavRestorePending chain deleted end-to-end (its only
+true-setter handleCloseResultsUiReset had zero callers since 9fa642d7 — pre-dating S-C.4);
+dismissAppSearchRouteResultsToPolls → dismissAppSearchRouteResultsToHome; the transition-policy
+P5 comment no longer claims the 'polls' target. Report-only: the maestro contract file
+search-submit-visual-parity.json is rotten (~85/197 checks stale, 4 reference deleted files;
+one check requires the deleted command sink) — historical map-saga scaffolding, owner call.
+
+**S-C.5 CANDIDATE QUEUE (ideal-shape auditor, biggest gap first):**
+
+1. TWO inline dismissal implementations in beginCloseSearch (~160 lines) → ONE plan resolver in
+   the stack algebra (resolveSessionDismissPlan → popToEntry|popToRoot|terminalHome) + named
+   executor verbs; the deepest-session scan moves out of the UI hook; the exit transaction gets
+   ONE construction site. Cost M; rides S-D, pre-shapes S-E.
+2. Close-transition chain ceremony: 4 pass-through wrapper files + a render-phase ref bridge +
+   TWO functions named beginCloseTransition at adjacent layers + a 13-setter thread → one
+   close-transition runtime file. Cost S (wrappers only) / L (full). Two smells recorded: dep
+   array lists unread searchCloseTransitionState; applySearchCloseCollapsedReached computed
+   twice (the outside copy reads possibly-stale state for the release-ready check).
+3. **Restaurant profile ref-bridge — the largest remaining commanded-not-derived mechanism**
+   (profilePresentationActiveRef + 3 sibling refs threaded through ~12 files; keeps the whole
+   terminalDismissSource 'profile' axis + outgoingSheetSceneKey forks alive). Restaurant is a
+   stack CHILD now; "profile open" should be a stack fact. Cost L; **BLOCKS S-D** (EntityLink →
+   restaurant is a headline case). Highest-leverage next stride target.
+4. Dismiss verb: the two docked-polls pre-writes are DERIVABLE (dockedPollsRestoreSnap already
+   mints the restore intent; the snap-session runtime already clears isDockedPollsDismissed on
+   polls-collapsed settle) and the SAME pair is duplicated in restoreSearchCloseOrigin's null
+   arm; the setRoot arm looks dead (probe with the #2 invariant, then delete). Cost S–M
+   (timing-sensitive — verify laneKind same-commit reads on the sim before removing the
+   pre-seed).
+5. captureSearchCloseOrigin nullability → capture ALWAYS returns a snapshot (degenerate home IS
+   the no-origin value); allowFallback + restoreSearchCloseOrigin(null) + the always-'collapsed'
+   searchRootRestoreSnap param die. Cost S–M.
+6. Nav visual runtime: the session arm's inline surface-policy formulas → named selectors
+   beside selectSearchSurfaceVisualPolicy; the isExternalNavPushTransitionActive latch →
+   a derived childNavMotionSettled signal on the nav-out store. Cost S / M; rides L1–L5.
+7. Dissolve search-bottom-nav-motion-runtime.ts (constants/types only) into the visual
+   contract. Cost S.
+8. clearSearchAfterProfileDismiss is a ~90% fork of clearSearchState (part of the #3 bridge
+   complex). Cost S–M.
