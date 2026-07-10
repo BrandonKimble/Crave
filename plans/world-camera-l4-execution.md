@@ -135,3 +135,25 @@ L3 ✅ (machine dissolved, direct presentation, pop-teardown, dismiss matcher so
 L4 ✅ (invisible-resident, z-lift, group-dense rank, additive tab-agnostic overlay,
 on-device) · L5 ✅ (roll-up + market-wide aggregates verified). Plus the app-wide reveal
 deadlock found and fixed en route (4ca51f39).
+
+## The two owner decisions — DECIDED + LANDED (2026-07-10 ~18:39, 1f666fd5)
+
+1. **Camera-in-origin on terminal search dismiss = RESTORE to the trigger viewport** (owner:
+   "the initial viewport that was sent with the search call"). Shape: one capture per
+   session at the desired-identity idle→set edge (session_replace keeps the ORIGINAL
+   origin), one restore through the CameraIntentArbiter at the set→idle exit write —
+   session-boundary-only, so it can never overlap the profile pop's savedCamera channel.
+   use-search-session-origin-camera-runtime.ts, wired in the session runtime. On-device
+   verified with paired capture/restore logs + the exact home frame back after far pans.
+   This closes the L2/L3.d camera-in-origin item — the OriginSnapshot widening is NOT
+   needed (the session boundary is the right seam; entry origins stay camera-free).
+2. **pollDetail dismiss = return to the pre-push detent** (rememberedDetent, fallback
+   middle). The descriptor row flipped from preserveLiveY; the byte-identity oracle tuned
+   with the decision recorded. On-device verified both ways: middle→detail→close lands
+   middle (pixel-identical), and an expanded pre-push posture is honored (true per-page
+   memory). PollDetail's header close carries testID 'poll-detail-close' for the rig.
+
+Rig gotchas hit en route (recorded for the next driver): the dev-client serves a STALE
+cached bundle on the first launch after a Metro rebuild (boot ReferenceError from mixed
+modules — always double-relaunch before verifying), and the dev-menu onboarding sheet can
+swallow a flow's first tap on a fresh session.
