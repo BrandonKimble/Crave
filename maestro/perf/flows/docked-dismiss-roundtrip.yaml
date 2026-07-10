@@ -1,0 +1,17 @@
+appId: com.brandonkimble.cravesearch
+# DOCKED-DISMISS ROUND TRIP (S-C.5 lane-input attribution, 2026-07-10): swipe-dismiss the
+# docked polls, submit, X — the home landing must RESURRECT the docked polls ("Polls in
+# New York" visible). This is the flow class the canonical set missed: it caught the
+# one-switch dismissal's circular-wait deadlock (fixed 71ca5fff — the restore-intent
+# eligibility arm). Requires: canonical docked home at start + a resolved market.
+---
+- extendedWaitUntil: { visible: 'Polls in New York', timeout: 20000 }
+- swipe: { start: '50%, 88%', end: '50%, 99%', duration: 300 }
+- waitForAnimationToEnd: { timeout: 2000 }
+- openLink: 'crave://perf-scenario-command?action=submit_shortcut_restaurants'
+- extendedWaitUntil: { visible: 'Close results', timeout: 20000 }
+- waitForAnimationToEnd: { timeout: 1500 }
+- tapOn: { point: '88%, 12%' }
+- waitForAnimationToEnd: { timeout: 3000 }
+- extendedWaitUntil: { visible: 'Polls in New York', timeout: 15000 }
+- takeScreenshot: docked-dismiss-roundtrip-final
