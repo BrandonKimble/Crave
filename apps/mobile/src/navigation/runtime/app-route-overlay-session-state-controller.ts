@@ -12,11 +12,7 @@ import {
 } from './route-entry-origin-capture-delegate';
 import { stageOriginSceneSegmentRestore } from '../../overlays/originSceneSegmentRuntime';
 import type { AppSearchRouteCommandActions } from './app-search-route-command-runtime';
-import {
-  type OverlayKey,
-  type OverlayRouteParamsMap,
-  getAppOverlayRouteMetadata,
-} from './app-overlay-route-types';
+import { type OverlayKey, getAppOverlayRouteMetadata } from './app-overlay-route-types';
 import {
   type AppRouteOverlaySessionActions,
   type AppRouteOverlaySessionAuthority,

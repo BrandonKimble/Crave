@@ -318,10 +318,15 @@ chain, childAnchor threading, and all stale-machinery prose (deadness auditor's 
 
 **S-C.4 LEDGER (updated with the ideal-shape auditor's unrecorded items):**
 
-1. searchRoute shell rename/dissolve (~15 sites, kills 3 duplicated search/searchRoute pair
-   checks) — cheap, as planned.
-2. Reveal-supersede correlation deadness audit with a RED runtime probe (log when the
-   lastReveal coalesce arm fires under push-mode) — as planned.
+1. ~~searchRoute shell rename/dissolve~~ **DONE 2026-07-09 (26933311)** — the shell OverlayKey
+   is now `'sheetHost'`; the search||searchRoute pair checks collapsed to `'search'` (the shell
+   key is provably never a dispatch target — it only names the pre-commit sentinel frame) and
+   the dead sheetHost readiness row deleted.
+2. ~~Reveal-supersede correlation deadness audit~~ **CLOSED 2026-07-09 — the arm is LIVE, kept**
+   (26933311). The [SC4-COALESCE] RED probe fired 8x across the submit-dismiss interrupt/repeat
+   sweeps: a close-then-resubmit switch carries no txn of its own and correlates via the
+   surviving reveal txn. Verdict recorded at the arm in the scene-switch controller; probe
+   stripped. NOT dead code — do not re-open without a new structural change to re-submit.
 3. NEW: ONE-SWITCH home dismissal — the terminal dance's two presentation switches (polls
    intermediate + home re-emission) collapse into the pop's own reveal, with docked-polls as a
    presentation MODE of the revealed home entry (§5.5 already declares it a mode). Medium; must
@@ -329,10 +334,10 @@ chain, childAnchor threading, and all stale-machinery prose (deadness auditor's 
    pair → one derivation over (childDepth, sessionEnterTransactionPending); the pending-restore
    ledger (arm/commit/cancel/flush + pendingOriginRestoreContext) collapses — its only producer
    is the dance and its snapshot is always the degenerate live build now.
-4. NEW: collapse the TWO origin-capture systems — the per-scene origin-capture-registry +
-   buildCurrentOriginSnapshot fold into the entry-origin delegate (one capturer, a degenerate-
-   for-roots rule inside it); the provider indirection adds nothing over the live-state
-   registry.
+4. ~~collapse the TWO origin-capture systems~~ **DONE 2026-07-09 (26933311)** — the
+   origin-capture-registry is deleted; buildCurrentOriginSnapshot carries the one rule directly
+   (home roots 'search'/'polls' → degenerate snapshot; everything else → captureRichSceneOrigin,
+   which the deleted rich providers literally called). Construction-equivalent; sweeps green.
 5. Wire-exit ownership for pop-shaped session dismissals (the known native marker residue —
    masked behind full-height sheets today; the session-over-child closeActive branch shares it
    and remains finger-test-pending, no rig entry point).
