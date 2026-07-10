@@ -200,6 +200,16 @@ listDetail-era item — today a dead slug logs loudly and stays home). The S-C.5
 same night: polls deep link over an open profile lands canonical — the post-commit arms are
 healthy under programmatic switches.
 
+> ✅ **CLOSED (2026-07-10 ~4:40AM, d139bc11): [SE-QSTALL] root-fixed.** Attribution via 4
+> staged probes: the results-sheet interaction flags (isResultsSheetSettling) latched TRUE
+> when a terminal dismissal detached the results plane mid-settle (the settle-END callback
+> dispatched to the next plane); the latched flag starved the hydration publication's
+> motion-lane gate (596 rAF loops/10s measured) → listPreparedRowsReady never published →
+> the next enter parked at skeleton. Only sheet-motionless submits hit it (the /q lane);
+> the perf-scenario correlation was a timing red herring. Fix at the flags' OWNER: the
+> interaction-state runtime zeroes them when the surface's active bundle leaves 'results'.
+> RED→GREEN on the exact repro. Original finding below for the record.
+>
 > ⚠️ **OPEN RED (2026-07-10 ~4AM, [SE-QSTALL]): the NEW `searchDesire` lane (/q, /s) stalls
 > at skeleton when fired as a session_enter while the DOCKED-POLLS home is presented.** The
 > world resolves fine (API 200, rows committed, frame cached, [RECONCILE] session_enter
