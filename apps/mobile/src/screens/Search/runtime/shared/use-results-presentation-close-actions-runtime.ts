@@ -17,7 +17,6 @@ type UseResultsPresentationCloseActionsRuntimeArgs = {
   submittedQuery: string;
   isSearchSessionActive: boolean;
   hasResults: boolean;
-  prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
   resultsSheetRuntime: Pick<AppRouteSharedSheetRuntimeOwner, 'sheetState'>;
@@ -50,7 +49,6 @@ export const useResultsPresentationCloseActionsRuntime = ({
   submittedQuery,
   isSearchSessionActive,
   hasResults,
-  prepareRestaurantProfileForTerminalSearchDismissRef,
   ignoreNextSearchBlurRef,
   isClearingSearchRef,
   resultsSheetRuntime,
@@ -203,7 +201,6 @@ export const useResultsPresentationCloseActionsRuntime = ({
         unstable_batchedUpdates(() => {
           clearSearchState({
             skipPostSearchRestore: true,
-            skipProfileDismissClear: true,
           });
           resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
           setPendingCloseIntentId(null);
@@ -264,9 +261,9 @@ export const useResultsPresentationCloseActionsRuntime = ({
       const outgoingSheetSceneKey: OverlayKey =
         activeRouteKey === 'restaurant' ? 'restaurant' : 'search';
       const terminalDismissSource = outgoingSheetSceneKey === 'restaurant' ? 'profile' : 'results';
-      if (terminalDismissSource === 'profile') {
-        prepareRestaurantProfileForTerminalSearchDismissRef.current();
-      }
+      // S-C.5 slices B+C: the imperative camera pre-focus is gone — the saved-camera restore
+      // now rides the restaurant ENTRY's pop (the pop-teardown writer), the same owner every
+      // other pop-shaped close uses.
       const closeIntentId = requestClosePresentationIntent({
         terminalDismissSource,
         outgoingSheetSceneKey,
@@ -285,7 +282,6 @@ export const useResultsPresentationCloseActionsRuntime = ({
     ignoreNextSearchBlurRef,
     isClearingSearchRef,
     isSearchSessionActive,
-    prepareRestaurantProfileForTerminalSearchDismissRef,
     requestClosePresentationIntent,
     routeSceneRuntime,
     resultsSheetRuntime,

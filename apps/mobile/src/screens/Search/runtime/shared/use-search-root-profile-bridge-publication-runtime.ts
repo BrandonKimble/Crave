@@ -17,21 +17,13 @@ export const useSearchRootProfileBridgePublicationRuntime = ({
       profileOwner.profileViewState.presentation.isPresentationActive;
     profileBridgeAuthorityRuntime.profileBridge.closeRestaurantProfileRef.current =
       profileOwner.profileActions.closeRestaurantProfile;
-    profileBridgeAuthorityRuntime.profileBridge.prepareRestaurantProfileForTerminalSearchDismissRef.current =
-      profileOwner.profileActions.prepareRestaurantProfileForTerminalSearchDismiss;
-    profileBridgeAuthorityRuntime.profileBridge.clearRestaurantProfileForSearchDismissRef.current =
-      profileOwner.profileActions.clearRestaurantProfileForSearchDismiss;
     profileBridgeAuthorityRuntime.profileBridge.resetRestaurantProfileFocusSessionRef.current =
       profileOwner.profileActions.resetRestaurantProfileFocusSession;
   }, [
-    profileBridgeAuthorityRuntime.profileBridge.clearRestaurantProfileForSearchDismissRef,
     profileBridgeAuthorityRuntime.profileBridge.closeRestaurantProfileRef,
-    profileBridgeAuthorityRuntime.profileBridge.prepareRestaurantProfileForTerminalSearchDismissRef,
     profileBridgeAuthorityRuntime.profileBridge.profilePresentationActiveRef,
     profileBridgeAuthorityRuntime.profileBridge.resetRestaurantProfileFocusSessionRef,
-    profileOwner.profileActions.clearRestaurantProfileForSearchDismiss,
     profileOwner.profileActions.closeRestaurantProfile,
-    profileOwner.profileActions.prepareRestaurantProfileForTerminalSearchDismiss,
     profileOwner.profileActions.resetRestaurantProfileFocusSession,
     profileOwner.profileViewState.presentation.isPresentationActive,
   ]);

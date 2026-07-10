@@ -46,6 +46,13 @@ export type ProfileRuntimeActions = {
   prepareRestaurantProfileForTerminalSearchDismiss: () => void;
   resetRestaurantProfileFocusSession: () => void;
   clearRestaurantProfileForSearchDismiss: () => void;
+  /** S-C.5 pop-owned teardown, commit half: called by the route-stack writer when the
+   *  restaurant entry leaves the stack; no-ops (returns false) when the profile machine's
+   *  own close is in flight. */
+  handleRestaurantEntryPopped: () => boolean;
+  /** S-C.5 pop-owned teardown, settle half: nulls the panel snapshot once the presentation
+   *  frame's outgoing clears (never mid-slide). */
+  finalizeRestaurantEntryPopTeardown: () => void;
   closeRestaurantProfile: (options?: CloseRestaurantProfileOptions) => void;
 };
 

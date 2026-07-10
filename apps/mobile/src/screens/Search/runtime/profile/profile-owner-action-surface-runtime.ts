@@ -74,11 +74,68 @@ export const useProfileOwnerActionSurfaceRuntime = ({
     }
   }, [actionExecutionPorts, getProfileTransitionState]);
 
+  // S-C.5 slices B+C — POP-OWNED teardown (plans/s-c5-restaurant-stack-fact.md): the
+  // restaurant entry leaving the route stack IS the close signal for a profile presentation
+  // the machine did not close itself. The machine-initiated close (back button) pops the
+  // entry through its own transaction — whose route intent already carries the camera
+  // restore and whose settle callback runs finalization — and is detected via the LIVE
+  // transition state and skipped. TWO HALVES, mirroring the machine's own close shape:
+  //  - handleRestaurantEntryPopped (at the pop COMMIT): saved-camera restore + hydration
+  //    cancel + highlight clear + focus-session reset. Returns true when it ran, so the
+  //    pop-teardown writer arms the deferred half.
+  //  - finalizeRestaurantEntryPopTeardown (at presentation SETTLE — PF outgoing cleared):
+  //    finalizePreparedProfileCloseState, which nulls the restaurant panel snapshot. It
+  //    must NOT run at commit: the outgoing leg renders the snapshot LIVE during a
+  //    preserveOutgoingUntilSettle dismissal slide, and nulling it mid-slide blanks the
+  //    descending sheet.
+  const handleRestaurantEntryPopped = React.useCallback((): boolean => {
+    const transition = getProfileTransitionState();
+    if (transition.status === 'idle') {
+      return false;
+    }
+    const isMachineCloseInFlight =
+      transition.status === 'closing' ||
+      transition.preparedSnapshot?.kind === 'profile_close' ||
+      transition.completionState.dismiss.requestToken != null;
+    if (isMachineCloseInFlight) {
+      return false;
+    }
+    prepareRestaurantProfileForTerminalSearchDismiss();
+    const nextRequestSeq = getRestaurantProfileRequestSeq() + 1;
+    cancelActiveHydrationIntent('profile_hydration_cancelled_on_overlay_dismiss', {
+      nextRequestSeq,
+      nextRestaurantId: null,
+    });
+    setRestaurantProfileRequestSeq(nextRequestSeq);
+    actionExecutionPorts.setMapHighlightedRestaurantId(null);
+    resetRestaurantProfileFocusSession();
+    return true;
+  }, [
+    actionExecutionPorts,
+    cancelActiveHydrationIntent,
+    getProfileTransitionState,
+    getRestaurantProfileRequestSeq,
+    prepareRestaurantProfileForTerminalSearchDismiss,
+    resetRestaurantProfileFocusSession,
+    setRestaurantProfileRequestSeq,
+  ]);
+
+  const finalizeRestaurantEntryPopTeardown = React.useCallback(() => {
+    const transition = getProfileTransitionState();
+    // A NEW open superseded the pop before the settle — never clear the fresh snapshot.
+    if (transition.status === 'opening' || transition.status === 'closing') {
+      return;
+    }
+    finalizePreparedProfileCloseState();
+  }, [finalizePreparedProfileCloseState, getProfileTransitionState]);
+
   return React.useMemo(
     () => ({
       clearMapHighlightedRestaurantId,
       clearRestaurantProfileForSearchDismiss,
       prepareRestaurantProfileForTerminalSearchDismiss,
+      handleRestaurantEntryPopped,
+      finalizeRestaurantEntryPopTeardown,
       hydrateRestaurantProfileById,
       focusRestaurantProfileCamera: presentationActions.focusRestaurantProfileCamera,
       openRestaurantProfilePreview: presentationActions.openRestaurantProfilePreview,
@@ -91,6 +148,9 @@ export const useProfileOwnerActionSurfaceRuntime = ({
     [
       clearRestaurantProfileForSearchDismiss,
       clearMapHighlightedRestaurantId,
+      handleRestaurantEntryPopped,
+      finalizeRestaurantEntryPopTeardown,
+      finalizeRestaurantEntryPopTeardown,
       hydrateRestaurantProfileById,
       presentationActions,
       prepareRestaurantProfileForTerminalSearchDismiss,

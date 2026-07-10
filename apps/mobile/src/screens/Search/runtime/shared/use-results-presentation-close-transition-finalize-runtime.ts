@@ -29,7 +29,7 @@ export const useResultsPresentationCloseTransitionFinalizeRuntime = ({
   intentRuntime,
 }: UseResultsPresentationCloseTransitionFinalizeRuntimeArgs): ResultsPresentationCloseTransitionFinalizeRuntime => {
   const finalizeCloseSearch = React.useCallback(
-    (intentId: string, terminalDismissSource: 'results' | 'profile') => {
+    (intentId: string) => {
       if (intentRuntime.pendingCloseIntentIdRef.current !== intentId) {
         return false;
       }
@@ -37,7 +37,6 @@ export const useResultsPresentationCloseTransitionFinalizeRuntime = ({
       clearSearchState({
         skipPostSearchRestore: true,
         preserveForegroundEditing: shellLocalState.inputMode === 'editing',
-        skipProfileDismissClear: terminalDismissSource !== 'profile',
       });
       intentRuntime.pendingCloseIntentIdRef.current = null;
       return true;
@@ -53,11 +52,7 @@ export const useResultsPresentationCloseTransitionFinalizeRuntime = ({
 
       intentRuntime.finalizedCloseIntentIdRef.current = closeIntentId;
       unstable_batchedUpdates(() => {
-        const terminalDismissSource =
-          shellLocalState.searchCloseTransitionState?.closeIntentId === closeIntentId
-            ? shellLocalState.searchCloseTransitionState.terminalDismissSource
-            : 'results';
-        const didFinalizeCloseSearch = finalizeCloseSearch(closeIntentId, terminalDismissSource);
+        const didFinalizeCloseSearch = finalizeCloseSearch(closeIntentId);
         if (!didFinalizeCloseSearch) {
           intentRuntime.resetCloseTransition();
           return;

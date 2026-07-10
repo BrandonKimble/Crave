@@ -37,7 +37,6 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
   hasActiveSearchContent: boolean;
   isSearchSessionActive: boolean;
   hasResults: boolean;
-  prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
   isSearchLoading: boolean;
   isSuggestionPanelActive: boolean;
   shouldRenderSearchOverlay: boolean;
@@ -89,7 +88,6 @@ export const useResultsPresentationOwner = <Suggestion>({
   hasActiveSearchContent,
   isSearchSessionActive,
   hasResults,
-  prepareRestaurantProfileForTerminalSearchDismissRef,
   isSearchLoading,
   isSuggestionPanelActive,
   shouldRenderSearchOverlay,
@@ -131,7 +129,6 @@ export const useResultsPresentationOwner = <Suggestion>({
     hasActiveSearchContent,
     isSearchSessionActive,
     hasResults,
-    prepareRestaurantProfileForTerminalSearchDismissRef,
     isSearchLoading,
     isSuggestionPanelActive,
     shouldRenderSearchOverlay,

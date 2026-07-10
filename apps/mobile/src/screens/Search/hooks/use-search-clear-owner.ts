@@ -18,12 +18,9 @@ export type ClearSearchStateOptions = {
   deferSuggestionClear?: boolean;
   skipPostSearchRestore?: boolean;
   preserveForegroundEditing?: boolean;
-  skipProfileDismissClear?: boolean;
 };
 
 export type UseSearchClearOwnerArgs<Suggestion> = {
-  profilePresentationActiveRef: React.MutableRefObject<boolean>;
-  clearRestaurantProfileForSearchDismissRef: React.MutableRefObject<() => void>;
   resetRestaurantProfileFocusSessionRef: React.MutableRefObject<() => void>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
   isSearchSessionActive: boolean;
@@ -62,8 +59,6 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
 };
 
 export const useSearchClearOwner = <Suggestion>({
-  profilePresentationActiveRef,
-  clearRestaurantProfileForSearchDismissRef,
   resetRestaurantProfileFocusSessionRef,
   isClearingSearchRef,
   isSearchSessionActive,
@@ -203,7 +198,6 @@ export const useSearchClearOwner = <Suggestion>({
       deferSuggestionClear = false,
       skipPostSearchRestore = false,
       preserveForegroundEditing = false,
-      skipProfileDismissClear = false,
     }: ClearSearchStateOptions = {}) => {
       // S-C.4 item 3 step 2: the origin is a local VALUE — captured here (pre-teardown state),
       // restored at the same point in the sequence the old flush ran. No store ledger.
@@ -270,9 +264,8 @@ export const useSearchClearOwner = <Suggestion>({
       } else if (!skipPostSearchRestore) {
         restoreSearchCloseOrigin(null);
       }
-      if (profilePresentationActiveRef.current && !skipProfileDismissClear) {
-        clearRestaurantProfileForSearchDismissRef.current();
-      }
+      // S-C.5 slices B+C: the profile-dismiss clear is gone — profile teardown rides the
+      // restaurant ENTRY's pop (the pop-teardown writer), not the search clear.
       lastAutoOpenKeyRef.current = null;
       resetRestaurantProfileFocusSessionRef.current();
       resetFocusedMapState();
@@ -302,8 +295,6 @@ export const useSearchClearOwner = <Suggestion>({
       isClearingSearchRef,
       isSearchSessionActive,
       lastAutoOpenKeyRef,
-      profilePresentationActiveRef,
-      clearRestaurantProfileForSearchDismissRef,
       restoreSearchCloseOrigin,
       resetFocusedMapState,
       resetMapMoveFlag,

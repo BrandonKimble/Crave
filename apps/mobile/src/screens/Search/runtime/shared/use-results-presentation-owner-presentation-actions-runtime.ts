@@ -20,7 +20,6 @@ type UseResultsPresentationOwnerPresentationActionsRuntimeArgs = {
   submittedQuery: string;
   isSearchSessionActive: boolean;
   hasResults: boolean;
-  prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   isClearingSearchRef: React.MutableRefObject<boolean>;
   resultsSheetRuntime: Pick<
@@ -55,7 +54,6 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
   submittedQuery,
   isSearchSessionActive,
   hasResults,
-  prepareRestaurantProfileForTerminalSearchDismissRef,
   ignoreNextSearchBlurRef,
   isClearingSearchRef,
   resultsSheetRuntime,
@@ -75,7 +73,6 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
     submittedQuery,
     isSearchSessionActive,
     hasResults,
-    prepareRestaurantProfileForTerminalSearchDismissRef,
     ignoreNextSearchBlurRef,
     isClearingSearchRef,
     resultsSheetRuntime,

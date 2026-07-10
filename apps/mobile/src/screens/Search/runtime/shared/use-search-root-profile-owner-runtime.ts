@@ -12,6 +12,7 @@ import type {
   SearchRootRecentActivityAuthorityRuntime,
 } from './search-root-control-ports-runtime-contract';
 import { useSearchRootProfileBridgePublicationRuntime } from './use-search-root-profile-bridge-publication-runtime';
+import { useRestaurantEntryPopTeardownWriterRuntime } from '../profile/use-restaurant-entry-pop-teardown-writer-runtime';
 import { useProfileOwner } from '../profile/profile-owner-runtime';
 import { useSearchRootProfilePresentationRuntime } from './use-search-root-profile-presentation-runtime';
 import { useSearchRootProfileSelectionRuntime } from './use-search-root-profile-selection-runtime';
@@ -108,6 +109,8 @@ export const useSearchRootProfileOwnerRuntime = ({
     profileBridgeAuthorityRuntime,
     profileOwner,
   });
+
+  useRestaurantEntryPopTeardownWriterRuntime({ profileOwner });
 
   return React.useMemo(
     () =>

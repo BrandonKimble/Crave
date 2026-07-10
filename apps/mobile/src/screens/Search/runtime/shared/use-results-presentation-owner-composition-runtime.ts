@@ -26,7 +26,6 @@ export type UseResultsPresentationOwnerCompositionRuntimeArgs<Suggestion> = {
   hasActiveSearchContent: boolean;
   isSearchSessionActive: boolean;
   hasResults: boolean;
-  prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
   isSearchLoading: boolean;
   isSuggestionPanelActive: boolean;
   shouldRenderSearchOverlay: boolean;
@@ -78,7 +77,6 @@ export const useResultsPresentationOwnerCompositionRuntime = <Suggestion>({
   hasActiveSearchContent,
   isSearchSessionActive,
   hasResults,
-  prepareRestaurantProfileForTerminalSearchDismissRef,
   isSearchLoading,
   isSuggestionPanelActive,
   shouldRenderSearchOverlay,
@@ -154,7 +152,6 @@ export const useResultsPresentationOwnerCompositionRuntime = <Suggestion>({
     submittedQuery,
     isSearchSessionActive,
     hasResults,
-    prepareRestaurantProfileForTerminalSearchDismissRef,
     ignoreNextSearchBlurRef,
     isClearingSearchRef,
     resultsSheetRuntime,

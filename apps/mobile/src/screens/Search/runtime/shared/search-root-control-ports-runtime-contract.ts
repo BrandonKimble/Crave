@@ -4,7 +4,6 @@ import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type { useSearchAutocompleteRuntime } from './use-search-autocomplete-runtime';
 import type { useSearchRecentActivityRuntime } from './use-search-recent-activity-runtime';
 import type { ResultsPresentationOwner } from './use-results-presentation-runtime-owner';
-import type { ProfileOwner } from '../profile/profile-owner-runtime';
 
 export type SearchRootAutocompletePort = Pick<
   ReturnType<typeof useSearchAutocompleteRuntime>,
@@ -32,8 +31,6 @@ export type SearchRootProfileBridgeRuntime = {
     closeRestaurantProfileRef: React.MutableRefObject<
       (options?: { dismissBehavior?: 'restore' | 'clear'; clearSearchOnDismiss?: boolean }) => void
     >;
-    prepareRestaurantProfileForTerminalSearchDismissRef: React.MutableRefObject<() => void>;
-    clearRestaurantProfileForSearchDismissRef: React.MutableRefObject<() => void>;
     resetRestaurantProfileFocusSessionRef: React.MutableRefObject<() => void>;
     cancelToggleInteractionRef: React.MutableRefObject<() => void>;
   };
