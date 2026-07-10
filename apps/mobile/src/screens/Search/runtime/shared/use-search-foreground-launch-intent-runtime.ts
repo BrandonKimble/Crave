@@ -122,7 +122,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
           restaurantName: seededRestaurantName,
           submissionSource: 'recent',
           typedPrefix: seededRestaurantName,
-          entrySurface: 'search_mode',
         }).catch((error) => {
           if (pendingRestaurantSelectionRef.current?.restaurantId === restaurantId) {
             pendingRestaurantSelectionRef.current = null;
@@ -153,7 +152,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
             restaurantName: restaurant.restaurantName,
             submissionSource: 'recent',
             typedPrefix: restaurant.restaurantName,
-            entrySurface: 'search_mode',
           }).catch((error) => {
             if (pendingRestaurantSelectionRef.current?.restaurantId === restaurantId) {
               pendingRestaurantSelectionRef.current = null;

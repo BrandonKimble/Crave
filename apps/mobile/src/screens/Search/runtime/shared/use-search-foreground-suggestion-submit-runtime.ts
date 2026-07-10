@@ -114,7 +114,6 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
           match.entityType === 'restaurant_attribute');
       void submitSearch(
         {
-          entrySurface: 'search_mode',
           ...(isTypedEntitySelection && match.entityId
             ? {
                 selectedEntity: {

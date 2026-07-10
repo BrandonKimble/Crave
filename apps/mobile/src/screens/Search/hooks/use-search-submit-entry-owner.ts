@@ -1,7 +1,6 @@
 import React from 'react';
 
 import type { NaturalSearchRequest } from '../../../types';
-import { DEFAULT_SEGMENT } from '../constants/search';
 import type { SegmentValue } from '../constants/search';
 import {
   captureCommittedBounds,
@@ -10,8 +9,6 @@ import {
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
-import type { SearchSubmitEntrySurface } from '../runtime/shared/search-submit-entry-surface-contract';
-
 export type { SearchSubmitEntrySurface } from '../runtime/shared/search-submit-entry-surface-contract';
 
 export type SearchMode = 'natural' | 'shortcut' | null;
@@ -44,19 +41,19 @@ export const isSearchSubmitInPlaceRerunIntentKind = (
 ): kind is SearchSubmitInPlaceRerunIntentKind =>
   kind === 'search_this_area' || kind === 'variant_rerun';
 
+// S-A (the great trigger deletion, 2026-07-10): the presentation flags are GONE from the
+// submit options. preserveSheetState/entrySurface/presentationIntentKind/
+// transitionFromDockedPolls were trigger-passed copies of facts the reconciler DERIVES
+// from the tuple delta (classifySearchWorldTransition) — the enter foreground effects
+// already ran on the derived intent, so the trigger copies fed nothing but a validation
+// throw and the include-similar reset gate (now folded into the tuple write below). The
+// filter overrides (openNow/priceLevels/…) fed the deleted request-build path; the
+// fetcher builds requests from the tuple.
 export type SubmitSearchOptions = {
-  openNow?: boolean;
-  priceLevels?: number[] | null;
-  includeSimilar?: boolean;
-  rising?: boolean;
   page?: number;
   append?: boolean;
-  preserveSheetState?: boolean;
   replaceResultsInPlace?: boolean;
-  transitionFromDockedPolls?: boolean;
   forceFreshBounds?: boolean;
-  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-  entrySurface?: SearchSubmitEntrySurface;
   /** S-D.3 — TYPED selected-entity submission (the skip-LLM lane). ONE construction: the
    *  attempt config injects the wire fields (selectedEntityId/Type + matchType:'entity')
    *  into submissionContext, and the natural submit derives the entity IDENTITY from this —
@@ -71,20 +68,12 @@ export type SubmitSearchOptions = {
   };
 };
 
+// S-A: shrunk to the two fields anything reads — the decoration payload. Every other
+// field (preRequestTab, the effective* filter set, the presentation flags) fed the
+// deleted legacy request-build path.
 export type ResolveNaturalSearchAttemptConfigResult = {
   submissionSource: NaturalSearchRequest['submissionSource'];
   submissionContext?: NaturalSearchRequest['submissionContext'];
-  preRequestTab: SegmentValue;
-  preserveSheetState: boolean;
-  transitionFromDockedPolls: boolean;
-  shouldReplaceResultsInPlace: boolean;
-  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-  effectiveOpenNow: boolean;
-  effectivePriceLevels: readonly number[];
-  effectiveIncludeSimilar: boolean;
-  effectiveRising: boolean;
-  shouldForceFreshBounds: boolean;
-  entrySurface: SearchSubmitEntrySurface;
 };
 
 type PrepareNaturalSearchEntryResult = {
@@ -96,12 +85,7 @@ type PrepareNaturalSearchEntryResult = {
 type UseSearchSubmitEntryOwnerArgs = {
   viewportBoundsService: ViewportBoundsService;
   query: string;
-  preferredActiveTab: SegmentValue;
-  hasActiveTabPreference: boolean;
   isLoadingMore: boolean;
-  openNow: boolean;
-  priceLevels: readonly number[];
-  risingActive: boolean;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
   searchRuntimeBus: SearchRuntimeBus;
   resetMapMoveFlag: () => void;
@@ -124,37 +108,10 @@ export const resolveSubmissionDefaultTab = (
   return null;
 };
 
-const resolveSearchSubmitPresentationEntrySurface = ({
-  append,
-  preserveSheetState,
-  presentationIntentKind,
-  entrySurface,
-  label,
-}: {
-  append?: boolean;
-  preserveSheetState: boolean;
-  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-  entrySurface?: SearchSubmitEntrySurface;
-  label: string;
-}): SearchSubmitEntrySurface => {
-  if (append || preserveSheetState || presentationIntentKind === 'search_this_area') {
-    return entrySurface ?? 'results';
-  }
-  if (entrySurface == null) {
-    throw new Error(`[SEARCH-SUBMIT-INTENT] ${label} requires entrySurface.`);
-  }
-  return entrySurface;
-};
-
 export const useSearchSubmitEntryOwner = ({
   viewportBoundsService,
   query,
-  preferredActiveTab,
-  hasActiveTabPreference,
   isLoadingMore,
-  openNow,
-  priceLevels,
-  risingActive,
   setError,
   searchRuntimeBus,
   resetMapMoveFlag,
@@ -209,6 +166,11 @@ export const useSearchSubmitEntryOwner = ({
             ...(options?.replaceResultsInPlace && !options?.forceFreshBounds
               ? {}
               : { committedBounds: captureCommittedBounds(viewportBoundsService) }),
+            // S-A: a genuinely NEW natural search resets the session-scoped "Include
+            // similar" toggle IN the identity write — the same pattern every structured
+            // lane already uses. In-place re-presents (STA, retry) keep it: they pass
+            // replaceResultsInPlace, exactly the fact the old entrySurface gate encoded.
+            ...(options?.replaceResultsInPlace ? {} : { filterVariant: { includeSimilar: false } }),
           },
           'initial_submit'
         );
@@ -233,72 +195,12 @@ export const useSearchSubmitEntryOwner = ({
             selectedEntityType: options.selectedEntity.entityType,
           }
         : options?.submission?.context;
-      const submissionContextTab = resolveSubmissionDefaultTab(submissionContext);
-      const preRequestTab =
-        submissionContextTab ?? (hasActiveTabPreference ? preferredActiveTab : DEFAULT_SEGMENT);
-      const preserveSheetState = Boolean(options?.preserveSheetState);
-      const transitionFromDockedPolls =
-        !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
-      const shouldReplaceResultsInPlace = Boolean(options?.replaceResultsInPlace);
-      const presentationIntentKind = options?.presentationIntentKind;
-      const entrySurface = resolveSearchSubmitPresentationEntrySurface({
-        append: options?.append,
-        preserveSheetState,
-        presentationIntentKind,
-        entrySurface: options?.entrySurface,
-        label: 'submitSearch',
-      });
-      // A genuinely NEW search (launched outside the results surface) resets the
-      // session-scoped "Include similar" toggle to its default (off) BEFORE the
-      // effective value is read for the request payload. Reruns/filter toggles
-      // (entrySurface 'results') keep the current value.
-      if (
-        entrySurface !== 'results' &&
-        searchRuntimeBus.getState().desiredTuple.filterVariant.includeSimilar
-      ) {
-        // S2: routed through the ONE tuple writer (legacy key is a projection). The
-        // desired-tuple reader ignores non-chip causes, so this reset never re-commits.
-        writeSearchDesiredTuple(
-          searchRuntimeBus,
-          { filterVariant: { includeSimilar: false } },
-          'initial_submit'
-        );
-      }
-      const effectiveOpenNow = options?.openNow ?? openNow;
-      const effectivePriceLevels =
-        options?.priceLevels !== undefined ? (options.priceLevels ?? []) : priceLevels;
-      // includeSimilar is SESSION-scoped bus state (not persisted); the toggle publishes
-      // the optimistic value to the bus before the debounced rerun fires, so reading the
-      // bus here always sees the effective value. An explicit option still overrides.
-      const effectiveIncludeSimilar =
-        options?.includeSimilar ??
-        searchRuntimeBus.getState().desiredTuple.filterVariant.includeSimilar;
-      const effectiveRising = options?.rising ?? risingActive;
-
       return {
         submissionSource,
         submissionContext,
-        preRequestTab,
-        preserveSheetState,
-        transitionFromDockedPolls,
-        shouldReplaceResultsInPlace,
-        presentationIntentKind,
-        entrySurface,
-        effectiveOpenNow,
-        effectivePriceLevels,
-        effectiveIncludeSimilar,
-        effectiveRising,
-        shouldForceFreshBounds: Boolean(options?.forceFreshBounds),
       };
     },
-    [
-      hasActiveTabPreference,
-      openNow,
-      preferredActiveTab,
-      priceLevels,
-      risingActive,
-      searchRuntimeBus,
-    ]
+    []
   );
 
   return React.useMemo(

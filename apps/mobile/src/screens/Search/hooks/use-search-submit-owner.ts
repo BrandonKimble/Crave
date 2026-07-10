@@ -23,7 +23,6 @@ import {
   type SearchSubmitPresentationIntentKind,
   type SubmitSearchOptions,
   type SearchSubmitInPlaceRerunIntentKind,
-  type StructuredSearchFilters,
 } from './use-search-submit-entry-owner';
 import { useSearchNaturalSubmitOwner } from './use-search-natural-submit-owner';
 import { useSearchStructuredSubmitOwner } from './use-search-structured-submit-owner';
@@ -147,20 +146,13 @@ type SearchSubmitOwner = {
     restaurantName: string;
     submissionSource: NaturalSearchRequest['submissionSource'];
     typedPrefix?: string;
-    preserveSheetState?: boolean;
-    entrySurface: SearchSubmitEntrySurface;
   }) => Promise<void>;
   submitViewportShortcut: (
     targetTab: SegmentValue,
     submittedLabel: string,
     options: {
-      preserveSheetState?: boolean;
-      replaceResultsInPlace?: boolean;
-      transitionFromDockedPolls?: boolean;
-      filters?: StructuredSearchFilters;
+      searchThisArea?: boolean;
       forceFreshBounds?: boolean;
-      presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-      entrySurface: SearchSubmitEntrySurface;
     }
   ) => Promise<void>;
   rerunActiveSearch: (params: {
@@ -169,10 +161,6 @@ type SearchSubmitOwner = {
     submittedQuery: string;
     query: string;
     isSearchSessionActive: boolean;
-    preserveSheetState?: boolean;
-    replaceResultsInPlace?: boolean;
-    filters?: StructuredSearchFilters;
-    presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
   }) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
   launchFavoritesListResults: (params: {
@@ -192,15 +180,7 @@ const useSearchSubmitOwner = ({
   uiPorts,
   runtimePorts,
 }: UseSearchSubmitOwnerOptions): SearchSubmitOwner => {
-  const {
-    query,
-    preferredActiveTab,
-    hasActiveTabPreference,
-    isLoadingMore,
-    openNow,
-    priceLevels,
-    risingActive,
-  } = readModel;
+  const { query, isLoadingMore } = readModel;
   const {
     setError,
     resetSheetToHidden,
@@ -227,12 +207,7 @@ const useSearchSubmitOwner = ({
     useSearchSubmitEntryOwner({
       viewportBoundsService,
       query,
-      preferredActiveTab,
-      hasActiveTabPreference,
       isLoadingMore,
-      openNow,
-      priceLevels,
-      risingActive,
       setError,
       searchRuntimeBus,
       resetMapMoveFlag,
@@ -447,7 +422,6 @@ const useSearchSubmitOwner = ({
     }): Promise<void> => {
       await submitSearch(
         {
-          entrySurface: 'search_mode',
           selectedEntity: { entityId: params.entityId, entityType: params.entityType },
           submission: { source: 'autocomplete' },
         },

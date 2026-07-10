@@ -1,14 +1,7 @@
 import React from 'react';
 
 import type { SegmentValue } from '../constants/search';
-import { logger } from '../../../utils';
-import type {
-  SearchMode,
-  SearchSubmitEntrySurface,
-  SubmitSearchOptions,
-  SearchSubmitInPlaceRerunIntentKind,
-  StructuredSearchFilters,
-} from './use-search-submit-entry-owner';
+import type { SearchMode, SubmitSearchOptions } from './use-search-submit-entry-owner';
 import { SHORTCUT_QUERY_LABEL_BY_TAB } from '../runtime/shared/shortcut-toggle-display-query';
 
 type SearchSubmitActionOwnerArgs = {
@@ -17,27 +10,22 @@ type SearchSubmitActionOwnerArgs = {
     targetTab: SegmentValue,
     submittedLabel: string,
     options: {
-      preserveSheetState?: boolean;
-      replaceResultsInPlace?: boolean;
-      transitionFromDockedPolls?: boolean;
-      filters?: StructuredSearchFilters;
+      searchThisArea?: boolean;
       forceFreshBounds?: boolean;
-      presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-      entrySurface: SearchSubmitEntrySurface;
     }
   ) => Promise<void>;
 };
 
+// S-A (the great trigger deletion): this owner serves exactly ONE caller — the
+// search-this-area press (variant reruns ride the toggle coordinator → reconciler, never
+// this path). The rerun params lost the presentation flags; the reconciler classifies the
+// bounds-only delta as area_rerun and derives the intent.
 export type SearchSubmitRerunParams = {
   searchMode: SearchMode;
   activeTab: SegmentValue;
   submittedQuery: string;
   query: string;
   isSearchSessionActive: boolean;
-  preserveSheetState?: boolean;
-  replaceResultsInPlace?: boolean;
-  filters?: StructuredSearchFilters;
-  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
 };
 
 export const useSearchSubmitActionOwner = ({
@@ -48,17 +36,9 @@ export const useSearchSubmitActionOwner = ({
     async (params: SearchSubmitRerunParams) => {
       const rerunQuery = (params.submittedQuery || params.query).trim();
       if (!rerunQuery) {
-        // A variant_rerun commit has ALREADY armed the pending cover — a silent return here
-        // strands it until the presentation watchdog force-commits (~9s of hung skeleton).
-        // The shortcut branch below never needs the query (it has a per-tab fallback label),
-        // so this bail only guards the natural-rerun path — and it must be LOUD.
+        // The shortcut branch below never needs the query (it has a per-tab fallback
+        // label), so this bail only guards the natural-rerun path.
         if (params.searchMode !== 'shortcut' || !params.isSearchSessionActive) {
-          if (params.presentationIntentKind === 'variant_rerun') {
-            logger.error('variant_rerun dropped: empty rerun query with pending cover armed', {
-              searchMode: params.searchMode ?? 'null',
-              isSearchSessionActive: params.isSearchSessionActive,
-            });
-          }
           return;
         }
       }
@@ -69,25 +49,15 @@ export const useSearchSubmitActionOwner = ({
             : SHORTCUT_QUERY_LABEL_BY_TAB.dishes;
         const submittedLabel = params.submittedQuery.trim() || fallbackShortcutLabel;
         await submitViewportShortcut(params.activeTab, submittedLabel, {
-          preserveSheetState: params.preserveSheetState,
-          replaceResultsInPlace: params.replaceResultsInPlace,
-          filters: params.filters,
+          searchThisArea: true,
           forceFreshBounds: true,
-          presentationIntentKind: params.presentationIntentKind,
-          entrySurface: 'results',
         });
         return;
       }
       await submitSearch(
         {
-          preserveSheetState: params.preserveSheetState,
-          replaceResultsInPlace: params.replaceResultsInPlace,
-          openNow: params.filters?.openNow,
-          priceLevels: params.filters?.priceLevels,
-          includeSimilar: params.filters?.includeSimilar,
+          replaceResultsInPlace: true,
           forceFreshBounds: true,
-          presentationIntentKind: params.presentationIntentKind,
-          entrySurface: 'results',
         },
         rerunQuery
       );

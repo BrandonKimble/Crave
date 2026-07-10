@@ -5,7 +5,6 @@ import type {
   SearchForegroundInteractionSubmitHandlers,
   SearchForegroundSubmitRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
-import { resolveForegroundSearchSubmitEntrySurface } from './search-submit-entry-surface-contract';
 import { resolveTypedReturnRestaurantPromotion } from './resolve-typed-return-restaurant-promotion';
 import type { useSearchForegroundSubmitPreparationRuntime } from './use-search-foreground-submit-preparation-runtime';
 
@@ -31,8 +30,6 @@ type SearchForegroundQuerySubmitRuntime = Pick<
 export const useSearchForegroundQuerySubmitRuntime = ({
   submitRuntime,
   query,
-  isSuggestionPanelActive,
-  shouldShowDockedPollsRef,
   suggestions,
   handleSuggestionPress,
   submitPreparationRuntime,
@@ -50,26 +47,11 @@ export const useSearchForegroundQuerySubmitRuntime = ({
       return;
     }
 
-    const entrySurface = resolveForegroundSearchSubmitEntrySurface({ isSuggestionPanelActive });
-    const trimmed = query.trim();
-    if (trimmed.length > 0) {
-      submitPreparationRuntime.prepareSubmitChrome();
-    } else {
-      submitPreparationRuntime.prepareSubmitChrome();
-    }
-    void submitSearch({
-      transitionFromDockedPolls: shouldShowDockedPollsRef.current.shouldShowDockedPolls,
-      entrySurface,
-    });
-  }, [
-    handleSuggestionPress,
-    isSuggestionPanelActive,
-    query,
-    shouldShowDockedPollsRef,
-    submitPreparationRuntime,
-    submitSearch,
-    suggestions,
-  ]);
+    submitPreparationRuntime.prepareSubmitChrome();
+    // S-A: the presentation flags are gone — the reconciler derives the intent from the
+    // tuple delta; docked-polls is a view input read at enter time.
+    void submitSearch();
+  }, [handleSuggestionPress, query, submitPreparationRuntime, submitSearch, suggestions]);
 
   return React.useMemo(
     () => ({

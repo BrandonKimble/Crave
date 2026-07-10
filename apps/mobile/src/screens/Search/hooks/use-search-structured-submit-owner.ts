@@ -10,29 +10,19 @@ import {
 } from '../runtime/shared/search-desired-state-writer';
 import type { SearchCommittedBounds } from '../runtime/shared/search-desired-state-contract';
 import type { SegmentValue } from '../constants/search';
-import type {
-  SearchSubmitEntrySurface,
-  SearchSubmitInPlaceRerunIntentKind,
-  StructuredSearchFilters,
-} from './use-search-submit-entry-owner';
-
+// S-A (the great trigger deletion): the presentation flags left these params — the
+// reconciler derives them from the tuple delta. searchThisArea survives as the one
+// honest trigger fact (it selects the settled-camera bounds adopt + the writer cause).
 type RunRestaurantEntitySearchParams = {
   restaurantId: string;
   restaurantName: string;
   submissionSource: NaturalSearchRequest['submissionSource'];
   typedPrefix?: string;
-  preserveSheetState?: boolean;
-  entrySurface: SearchSubmitEntrySurface;
 };
 
 type RunBestHereOptions = {
-  preserveSheetState?: boolean;
-  replaceResultsInPlace?: boolean;
-  transitionFromDockedPolls?: boolean;
-  filters?: StructuredSearchFilters;
+  searchThisArea?: boolean;
   forceFreshBounds?: boolean;
-  presentationIntentKind?: SearchSubmitInPlaceRerunIntentKind;
-  entrySurface: SearchSubmitEntrySurface;
 };
 
 type UseSearchStructuredSubmitOwnerArgs = {
@@ -59,7 +49,6 @@ export const useSearchStructuredSubmitOwner = ({
       if (!trimmedName) {
         return;
       }
-      const preserveSheetState = Boolean(params.preserveSheetState);
       resetMapMoveFlag();
       // S3c: a restaurant tap IS an entity-identity tuple write + resolve (skip-LLM
       // structured lane routed by the fetch table).
@@ -78,7 +67,6 @@ export const useSearchStructuredSubmitOwner = ({
         },
         'entity_tap'
       );
-      void preserveSheetState;
     },
     [logSearchPhase, resetMapMoveFlag, searchRuntimeBus, viewportBoundsService]
   );
@@ -92,7 +80,7 @@ export const useSearchStructuredSubmitOwner = ({
       // S3-pre: STA (and any post-camera-move commit moment) awaits the SETTLED native
       // camera so the tuple's bounds are the request bounds — never a stale service read.
       const adoptedBounds =
-        options?.presentationIntentKind === 'search_this_area' || options?.forceFreshBounds
+        options?.searchThisArea || options?.forceFreshBounds
           ? await captureFreshTupleBounds()
           : captureCommittedBounds(viewportBoundsService);
       writeSearchDesiredTuple(
@@ -106,11 +94,9 @@ export const useSearchStructuredSubmitOwner = ({
           filterVariant: { includeSimilar: false },
           committedBounds: adoptedBounds,
         },
-        options?.presentationIntentKind === 'search_this_area'
-          ? 'search_this_area'
-          : 'initial_submit'
+        options?.searchThisArea ? 'search_this_area' : 'initial_submit'
       );
-      if (options?.presentationIntentKind !== 'search_this_area') {
+      if (!options?.searchThisArea) {
         resetMapMoveFlag();
       }
       // S4b: the submit IS the tuple write — the reconciler classifies the transition,

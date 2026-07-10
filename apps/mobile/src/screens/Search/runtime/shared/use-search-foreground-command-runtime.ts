@@ -55,10 +55,9 @@ export const useSearchForegroundCommandRuntime = ({
       return;
     }
     setShouldRetrySearchOnReconnect(false);
-    void submitRuntimeArgs.submitRuntime.submitSearch(
-      { preserveSheetState: true, entrySurface: 'results' },
-      retryQuery
-    );
+    // S-A: retry is an in-place re-present of the same identity — replaceResultsInPlace
+    // keeps the committed bounds and the session include-similar value.
+    void submitRuntimeArgs.submitRuntime.submitSearch({ replaceResultsInPlace: true }, retryQuery);
   }, [
     isOffline,
     shouldRetrySearchOnReconnect,

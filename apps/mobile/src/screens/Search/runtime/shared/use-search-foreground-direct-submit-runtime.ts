@@ -121,8 +121,6 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   });
   const viewportShortcutRuntime = useSearchForegroundViewportShortcutRuntime({
     submitRuntime,
-    isSuggestionPanelActive,
-    shouldShowDockedPollsRef,
     setQuery,
     submitPreparationRuntime,
   });

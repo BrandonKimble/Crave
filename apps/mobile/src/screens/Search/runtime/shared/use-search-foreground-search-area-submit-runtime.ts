@@ -120,9 +120,6 @@ export const useSearchForegroundSearchAreaSubmitRuntime = ({
       submittedQuery,
       query,
       isSearchSessionActive,
-      preserveSheetState: true,
-      replaceResultsInPlace: true,
-      presentationIntentKind: 'search_this_area',
     }).then(finalizeSearchThisAreaRerun, finalizeSearchThisAreaRerun);
   }, [
     activeTab,

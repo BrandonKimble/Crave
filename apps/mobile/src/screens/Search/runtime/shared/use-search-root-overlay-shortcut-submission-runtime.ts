@@ -22,17 +22,12 @@ export const useSearchRootOverlayShortcutSubmissionRuntime = ({
     async ({
       targetTab,
       label,
-      preserveSheetState,
-      transitionFromDockedPolls,
       forceFreshBounds,
     }: Parameters<
       NonNullable<typeof instrumentationRuntime.submitShortcutScenarioCommandRef.current>
     >[0]) => {
       searchState.setQuery(label);
       await viewportShortcutControlLane.submitViewportShortcut(targetTab, label, {
-        preserveSheetState,
-        transitionFromDockedPolls,
-        entrySurface: preserveSheetState ? 'results' : 'home',
         forceFreshBounds: forceFreshBounds ?? true,
       });
     },
