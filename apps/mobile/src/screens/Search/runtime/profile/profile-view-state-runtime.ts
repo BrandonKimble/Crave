@@ -11,6 +11,7 @@ import type {
 export const resolveProfilePresentationModel = ({
   transitionStatus,
   hasRestaurantRouteEntry,
+  isRestaurantSwitchInFlight,
   restaurantPanelSnapshot,
 }: {
   transitionStatus: ProfileTransitionState['status'];
@@ -21,9 +22,12 @@ export const resolveProfilePresentationModel = ({
    *  stays on transitionStatus until the deletion slice re-feeds it from the PF switch
    *  in-flight signal. */
   hasRestaurantRouteEntry: boolean;
+  /** RT-2: the PF in-flight fact (an animating switch whose target or outgoing scene is
+   *  'restaurant') — the promised re-feed. transitionStatus no longer carries animation. */
+  isRestaurantSwitchInFlight: boolean;
   restaurantPanelSnapshot: RestaurantPanelSnapshot | null;
 }): ProfilePresentationModel => {
-  const isTransitionAnimating = transitionStatus === 'opening' || transitionStatus === 'closing';
+  const isTransitionAnimating = isRestaurantSwitchInFlight;
   const isOverlayVisible = hasRestaurantRouteEntry;
   const isPresentationActive = hasRestaurantRouteEntry || restaurantPanelSnapshot != null;
   const activeOpenRestaurantId = isOverlayVisible
@@ -42,12 +46,14 @@ export const resolveProfilePresentationModel = ({
 export const resolveProfileViewState = ({
   transitionStatus,
   hasRestaurantRouteEntry,
+  isRestaurantSwitchInFlight,
   restaurantPanelSnapshot,
   mapCameraPadding,
   mapHighlightedRestaurantId,
 }: {
   transitionStatus: ProfileTransitionState['status'];
   hasRestaurantRouteEntry: boolean;
+  isRestaurantSwitchInFlight: boolean;
   restaurantPanelSnapshot: RestaurantPanelSnapshot | null;
   mapCameraPadding: CameraSnapshot['padding'];
   mapHighlightedRestaurantId: string | null;
@@ -55,6 +61,7 @@ export const resolveProfileViewState = ({
   presentation: resolveProfilePresentationModel({
     transitionStatus,
     hasRestaurantRouteEntry,
+    isRestaurantSwitchInFlight,
     restaurantPanelSnapshot,
   }),
   highlightedRestaurantId: mapHighlightedRestaurantId,

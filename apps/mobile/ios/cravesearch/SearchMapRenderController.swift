@@ -651,6 +651,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     // L4 (§3.4): out-of-searched-bounds group sibling — resident in the LOD ranking so the
     // selection overlay's forcedKeys can promote it, but never rank-promoted (engine gate).
     let isInvisibleResident: Bool
+    // RT-7: the group representative — the ranking sort tiebreaks equal-rank group members
+    // on this (Swift's sort is not stable) so the representative wins the group's slot.
+    let isGroupRepresentative: Bool
   }
 
   // R3 (plans/search-flow-plan.md §D6): the native APPLIED-FEATURE LEDGER — the acked truth of
@@ -1469,7 +1472,8 @@ final class SearchMapRenderController: RCTEventEmitter {
           restaurantId: raw["restaurantId"] as? String,
           labelText: (raw["labelText"] as? String) ?? (raw["restaurantName"] as? String),
           labelSubtext: raw["labelSubtext"] as? String,
-          isInvisibleResident: (raw["isInvisibleResident"] as? Bool) ?? false
+          isInvisibleResident: (raw["isInvisibleResident"] as? Bool) ?? false,
+          isGroupRepresentative: (raw["isGroupRepresentative"] as? Bool) ?? false
         ))
       }
       state.candidateCatalog = catalog
@@ -1478,8 +1482,15 @@ final class SearchMapRenderController: RCTEventEmitter {
       // Feed the single-authority engine the ranked catalog (atomic full rebuild). The ranking must be
       // ascending by rank so prefix(budget) == the true top-N. (When the JS catalog is unified to sort by
       // Crave score, that rank == the badge — the one-rank decision; until then this verifies the mechanism.)
+      // RT-7: deterministic tiebreaks — Swift's sort is NOT stable. Equal-rank group
+      // members order representative-first (the slot's owner), then by markerKey so the
+      // whole ranking is total and reproducible across frames.
       let ranked = catalog
-        .sorted { $0.rank < $1.rank }
+        .sorted {
+          if $0.rank != $1.rank { return $0.rank < $1.rank }
+          if $0.isGroupRepresentative != $1.isGroupRepresentative { return $0.isGroupRepresentative }
+          return $0.markerKey < $1.markerKey
+        }
         // World-camera L1: restaurantId IS the entity group — anchors sharing it compete for
         // ONE budget slot (a multi-location restaurant can never eat multiple slots). Inert
         // for today's one-location-per-restaurant catalogs; live for the selected-restaurant
@@ -8273,7 +8284,13 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
 
     // Create missing label VAs in RANK order (mint order = allowOverlap thinning priority once flipped false).
-    for key in engine.lastPromotedInOrder where desired.contains(key) && inst.vaByKey[key] == nil {
+    // RT-11: the SELECTED group's labels mint FIRST — forcedKeys append after the budget set,
+    // so rank order alone gave the selection the LOWEST thinning priority and dense worlds
+    // culled exactly the selected labels.
+    let labelMintOrder =
+      engine.lastPromotedInOrder.filter { inst.highlightedKeys.contains($0) }
+      + engine.lastPromotedInOrder.filter { !inst.highlightedKeys.contains($0) }
+    for key in labelMintOrder where desired.contains(key) && inst.vaByKey[key] == nil {
       guard let coord = coordByKey[key], let text = textByKey[key] else { continue }
       let view = LabelVAView(frame: .zero)
       view.setText(text, subtext: subtextByKey[key])
@@ -10390,6 +10407,18 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private func promoteBlockedCommitFencesIfReady(instanceId: String, state: inout InstanceState) {
+    // RT-14 loud contract (expose, never compensate): a recorded enter-start block that
+    // outlives 2s means a visual-source commit never acked — surface it instead of letting
+    // the reveal wait silently. No behavior change; the ack/world-change paths still own release.
+    if let startedAt = state.blockedEnterStartCommitFenceStartedAtMs,
+       state.blockedEnterStartRequestKey != nil,
+       Self.nowMs() - startedAt > 2000 {
+      NSLog(
+        "[VDIAG][CONTRACT] reveal_start_commit_fence_overdue waitMs=%d pending=%@",
+        Int(Self.nowMs() - startedAt),
+        describeCommitFence(state.blockedEnterStartCommitFenceBySourceId)
+      )
+    }
     if state.blockedEnterStartRequestKey != nil,
        !hasPendingCommitFence(state.blockedEnterStartCommitFenceBySourceId) {
       let blockedWaitMs = state.blockedEnterStartCommitFenceStartedAtMs.map { max(0, Int((Self.nowMs() - $0).rounded())) }

@@ -727,6 +727,9 @@ export type RestaurantFeatureProperties = {
   pinColor: string;
   labelCandidate?: LabelCandidate;
   labelPreference?: LabelCandidate;
+  // RT-7: the group's representative location (the P5 anchor pick) — the visual sort and
+  // the native ranking tiebreak on this so the representative wins the group's budget slot.
+  isGroupRepresentative?: boolean;
   // World-camera L4: invisible-resident group sibling (out-of-searched-bounds market
   // location). In the catalog so selection can force-promote it; excluded from dot/label
   // presentation and from LOD rank promotion while unselected.

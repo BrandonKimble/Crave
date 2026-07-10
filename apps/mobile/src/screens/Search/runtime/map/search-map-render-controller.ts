@@ -933,6 +933,7 @@ export const searchMapRenderController = {
       activeBadgeImageId?: string;
       restaurantId?: string;
       isInvisibleResident?: boolean;
+      isGroupRepresentative?: boolean;
     }>;
   }): Promise<void> {
     if (!nativeModule?.setCandidateCatalog) {

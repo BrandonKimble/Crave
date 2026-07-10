@@ -50,6 +50,7 @@ export type CreateProfilePresentationModelRuntimeArgs = {
   profileShellState: {
     transitionStatus: ProfileTransitionStatus;
     hasRestaurantRouteEntry: boolean;
+    isRestaurantSwitchInFlight: boolean;
     restaurantPanelSnapshot: RestaurantPanelSnapshot | null;
     mapCameraPadding: CameraSnapshot['padding'];
     mapHighlightedRestaurantId: string | null;
@@ -68,6 +69,7 @@ export const createProfilePresentationModelRuntime = ({
   profileShellState: {
     transitionStatus,
     hasRestaurantRouteEntry,
+    isRestaurantSwitchInFlight,
     restaurantPanelSnapshot,
     mapCameraPadding,
     mapHighlightedRestaurantId: shellMapHighlightedRestaurantId,
@@ -111,6 +113,7 @@ export const createProfilePresentationModelRuntime = ({
     profileViewState: resolveProfileViewState({
       transitionStatus,
       hasRestaurantRouteEntry,
+      isRestaurantSwitchInFlight,
       restaurantPanelSnapshot,
       mapCameraPadding,
       mapHighlightedRestaurantId: shellMapHighlightedRestaurantId,

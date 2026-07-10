@@ -72,6 +72,9 @@ export type SearchMapCandidateCatalogEntry = {
   // L4 (§3.4): out-of-searched-bounds group sibling — resident in the native LOD ranking so the
   // selection overlay's forcedKeys can promote it, but never rank-promoted and never a dot.
   isInvisibleResident?: boolean;
+  // RT-7: the group representative — the native ranking tiebreaks equal-rank group members
+  // on this so the representative wins the group's one budget slot deterministically.
+  isGroupRepresentative?: boolean;
   // The restaurant display name, carried atomically so the native label ViewAnnotation roster has the
   // text without a second lookup (labels → ViewAnnotation, Mapbox 11.26).
   restaurantName?: string;

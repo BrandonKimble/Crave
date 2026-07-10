@@ -390,8 +390,16 @@ const collectSearchMapVisualCandidates = ({
     if (leftDisplay !== rightDisplay) {
       return rightDisplay - leftDisplay;
     }
+    // RT-7: within a score-tied GROUP the representative sorts FIRST — the native group
+    // budget promotes the group's first ranked member, and the slot belongs to the
+    // representative (b441771c's contract; previously lost to coordinate-lexicographic
+    // markerKey order).
+    const representativeDiff =
+      Number(right.feature.properties.isGroupRepresentative === true) -
+      Number(left.feature.properties.isGroupRepresentative === true);
     return (
       left.feature.properties.restaurantId.localeCompare(right.feature.properties.restaurantId) ||
+      representativeDiff ||
       left.markerKey.localeCompare(right.markerKey)
     );
   });
@@ -1731,6 +1739,9 @@ export const useDirectSearchMapSourceController = ({
           restaurantId: feature.properties.restaurantId,
           ...(feature.properties.isInvisibleResident === true
             ? { isInvisibleResident: true }
+            : null),
+          ...(feature.properties.isGroupRepresentative === true
+            ? { isGroupRepresentative: true }
             : null),
           // Label VA substrate: carry the name so native renders the label text (atomic with the coord).
           restaurantName: feature.properties.restaurantName,

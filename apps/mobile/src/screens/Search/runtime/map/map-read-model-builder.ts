@@ -213,6 +213,13 @@ export const buildMarkerCatalogReadModel = (
             rising: restaurant.rising ?? null,
             rank,
             pinColor,
+            // RT-7: the representative fact rides the FEATURE so the visual collect sort
+            // and the native ranking can tiebreak on it — entry-only carriage was dropped
+            // at the controller's entry→feature map.
+            ...(representativeLocation != null &&
+            location.locationId === representativeLocation.locationId
+              ? { isGroupRepresentative: true }
+              : null),
             ...(invisibleResidentLocationIds.has(location.locationId)
               ? { isInvisibleResident: true }
               : null),
@@ -230,7 +237,9 @@ export const buildMarkerCatalogReadModel = (
             ? { isInvisibleResident: true }
             : null),
         });
-        if (location.isPrimary) {
+        // RT-13: invisible residents are catalog-resident but never rendered unselected —
+        // they must not count as primary rendered locations (fingerprint honesty).
+        if (location.isPrimary && !invisibleResidentLocationIds.has(location.locationId)) {
           primaryCount += 1;
         }
       });
