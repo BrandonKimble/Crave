@@ -1319,6 +1319,7 @@ const PollDetailPersistentHeaderAction = React.memo(() => {
       onPress={closeActiveRoute}
       accessibilityRole="button"
       accessibilityLabel="Close poll"
+      testID="poll-detail-close"
       style={overlaySheetStyles.closeButton}
       hitSlop={8}
     >

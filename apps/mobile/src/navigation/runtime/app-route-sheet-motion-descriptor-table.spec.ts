@@ -108,11 +108,13 @@ const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
 
 // ─── the byte-frozen pre-table switch (see header) ──────────────────────────────────────────
 const legacyOracleSheetMotionPlan = ({
+  sourceSceneKey,
   targetSceneKey,
   transitionKind,
   explicitSnapTarget,
   rememberedSceneSnap,
 }: {
+  sourceSceneKey: OverlayKey;
   targetSceneKey: OverlayKey;
   transitionKind: RouteSceneSwitchSheetTransitionKind;
   explicitSnapTarget: BottomSheetSnap | null;
@@ -145,6 +147,13 @@ const legacyOracleSheetMotionPlan = ({
       }
       return { kind: 'preserveLiveY' };
     case 'closeChild':
+      // 2026-07-10 owner tune: pollDetail dismiss glides back to the PARENT's remembered
+      // detent (origin-faithful) instead of leaving the feed at the detail's expanded Y.
+      if (sourceSceneKey === 'pollDetail') {
+        return rememberedSceneSnap === 'middle' || rememberedSceneSnap === 'expanded'
+          ? { kind: 'snapTo', snap: rememberedSceneSnap }
+          : { kind: 'snapTo', snap: 'middle' };
+      }
       return { kind: 'preserveLiveY' };
     case 'topLevelSwitch':
       if (targetSceneKey === 'search' || targetSceneKey === 'polls') {
@@ -183,6 +192,7 @@ describe('sheet-motion descriptor table (P6 step 1)', () => {
                 resolveSceneRememberedSnap: () => rememberedSceneSnap,
               });
               const legacyPlan = legacyOracleSheetMotionPlan({
+                sourceSceneKey,
                 targetSceneKey,
                 transitionKind,
                 explicitSnapTarget,

@@ -151,14 +151,17 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
     motion: { kind: 'snapTo', snap: 'expanded' },
   },
 
-  // CHILD DISMISS (owner req 2d example — the poll-detail pair). closeChild leaves the sheet at
-  // its live Y while the body swaps back to the parent. This row equals the catch-all on purpose:
-  // it exists so the poll-detail DISMISS pattern is a visible, directly-editable row.
+  // CHILD DISMISS (owner decision 2026-07-10): backing out of a poll detail GLIDES the
+  // sheet back to the PARENT's own remembered detent — the feed left at middle comes back
+  // at middle (origin-faithful, symmetric with the rest of the nav). The old preserveLiveY
+  // left the feed inheriting the detail's expanded posture. fallback middle: card taps
+  // can't originate from a collapsed feed, so a collapsed/unvisited ledger entry only means
+  // the fact is unusable — middle is the card-visible posture.
   {
     from: 'pollDetail',
     to: '*',
     transitionKind: 'closeChild',
-    motion: { kind: 'preserveLiveY' },
+    motion: { kind: 'rememberedDetent', fallbackSnap: 'middle' },
   },
   // ── OWNER TUNING EXAMPLE (req 2d): to change the poll-card → poll-detail movement pattern,
   // edit the two pollDetail rows above — nothing else. E.g. "open only to middle, dismiss by
