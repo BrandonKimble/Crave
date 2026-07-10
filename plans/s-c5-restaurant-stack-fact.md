@@ -162,3 +162,28 @@ accessibilityLabel) opens the profile reliably — coordinate and bare-name taps
   zero NAV-CONTRACT fires; 103 jest (5 new resolver specs).
 
 **S-D.3+S-D.4 remain ONE fresh session** (scope verdict in plans/s-d-one-desire-entitylink.md).
+
+## ITEM 4b/5 CLOSURE + NEW FINDING (2026-07-10 ~1AM, 796a1b8f)
+
+- **4b CLOSED — LOAD-BEARING** (RED-proven): without the priming pair the home dismissal lands
+  in the degraded results-banner-docked state; the settle-side clear is CIRCULAR (dismissed
+  lane never presents → polls never settles collapsed → flag never clears). Pair deduped into
+  ONE named intent `primeDockedPollsForHomeLanding` (verb + no-origin clear-lane restore).
+- **5 REJECTED as-specced**: capture-always-degenerate would silently drop the null arm's
+  priming (= the 4b behavior). The nullability stays; the priming is now named.
+- **⚠️ NEW FINDING — uncovered flow, needs a lane-input attribution pass**: swipe-dismiss the
+  docked polls → submit → X lands in the degraded results-banner state EVEN WITH the priming
+  restored. Not sufficient on the one-switch architecture for this shape; canonical
+  dismiss-repeat is green on the same build (the regression class requires the explicit
+  docked-polls swipe-dismiss first — no canonical flow ever covered it, so its age is unknown:
+  it may predate item 3). Attribution recipe: instrument the PF lane inputs
+  (isPersistentPollLaneEligible / isDockedPollsDismissed / isResultsDismissing /
+  canReleasePersistentPolls) + bottomBandOwner across the cycle; flow at /tmp/sc5-4b.yaml
+  (swipe '50%,88%'→'50%,99%' dismisses the docked bar). Candidate owner: the surface's
+  persistent-poll release gates (canReleasePersistentPolls may never flip when the poll host
+  was unmounted by the swipe-dismiss).
+
+**Queue after this run**: the lane-input attribution (the finding), 6b (latch→derived
+signal), 1-full (executor verbs, one exit-transaction construction site), 2-full (close-chain
+one-file), foreground profilePresentationActive consumers → stack fact, then S-D.3+4 as one
+session.
