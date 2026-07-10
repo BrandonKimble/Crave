@@ -6,6 +6,7 @@ import {
   type ProfilePresentationModelRuntime,
 } from './profile-presentation-model-runtime';
 import type { ProfileRuntimeStateOwner } from './profile-runtime-state-contract';
+import { useTopMostRouteEntryForScene } from '../../../../navigation/runtime/use-top-most-route-entry-for-scene';
 
 type UseProfileOwnerPresentationViewRuntimeArgs = {
   cameraTransitionPorts: ProfilePresentationCameraLayoutModel;
@@ -24,10 +25,13 @@ export const useProfileOwnerPresentationViewRuntime = ({
   getLastCameraState,
 }: UseProfileOwnerPresentationViewRuntimeArgs): ProfileOwnerPresentationViewRuntime => {
   const preparedSnapshot = runtimeStateOwner.transitionRuntimeState.getPreparedProfileSnapshot();
+  // L3 cutover slice 1: the reactive stack fact feeds the presence-shaped model facts.
+  const hasRestaurantRouteEntry = useTopMostRouteEntryForScene('restaurant') != null;
 
   const profileShellState = React.useMemo(
     () => ({
       transitionStatus: runtimeStateOwner.shellRuntimeState.profileShellState.transitionStatus,
+      hasRestaurantRouteEntry,
       restaurantPanelSnapshot:
         runtimeStateOwner.shellRuntimeState.profileShellState.restaurantPanelSnapshot,
       mapCameraPadding: runtimeStateOwner.shellRuntimeState.profileShellState.mapCameraPadding,
@@ -35,6 +39,7 @@ export const useProfileOwnerPresentationViewRuntime = ({
         runtimeStateOwner.shellRuntimeState.profileShellState.mapHighlightedRestaurantId,
     }),
     [
+      hasRestaurantRouteEntry,
       runtimeStateOwner.shellRuntimeState.profileShellState.mapCameraPadding,
       runtimeStateOwner.shellRuntimeState.profileShellState.mapHighlightedRestaurantId,
       runtimeStateOwner.shellRuntimeState.profileShellState.restaurantPanelSnapshot,

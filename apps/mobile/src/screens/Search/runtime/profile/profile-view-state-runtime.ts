@@ -11,10 +11,18 @@ import type {
 
 export const resolveProfilePresentationModel = ({
   transitionStatus,
+  hasRestaurantRouteEntry,
   restaurantPanelSnapshot,
   preparedSnapshot,
 }: {
   transitionStatus: ProfileTransitionState['status'];
+  /** L3 cutover slice 1: the ROUTE-STACK fact (a 'restaurant' entry exists). The
+   *  presence-shaped facts below derive from THIS, not the machine's transitionStatus —
+   *  the stack fact is the more correct signal (S-C.5 slice-A measurement: divergence is
+   *  one frame, close-side only) and survives the machine's deletion. isTransitionAnimating
+   *  stays on transitionStatus until the deletion slice re-feeds it from the PF switch
+   *  in-flight signal. */
+  hasRestaurantRouteEntry: boolean;
   restaurantPanelSnapshot: RestaurantPanelSnapshot | null;
   preparedSnapshot: PreparedProfilePresentationSnapshot | null;
 }): ProfilePresentationModel => {
@@ -30,8 +38,8 @@ export const resolveProfilePresentationModel = ({
         : `${preparedSnapshot.transactionId}:open:${preparedSnapshot.restaurantId ?? 'none'}`
       : null;
   const isTransitionAnimating = transitionStatus === 'opening' || transitionStatus === 'closing';
-  const isOverlayVisible = transitionStatus === 'opening' || transitionStatus === 'open';
-  const isPresentationActive = transitionStatus !== 'idle' || restaurantPanelSnapshot != null;
+  const isOverlayVisible = hasRestaurantRouteEntry;
+  const isPresentationActive = hasRestaurantRouteEntry || restaurantPanelSnapshot != null;
   const activeOpenRestaurantId = isOverlayVisible
     ? (restaurantPanelSnapshot?.restaurant.restaurantId ?? null)
     : null;
@@ -48,12 +56,14 @@ export const resolveProfilePresentationModel = ({
 
 export const resolveProfileViewState = ({
   transitionStatus,
+  hasRestaurantRouteEntry,
   restaurantPanelSnapshot,
   mapCameraPadding,
   mapHighlightedRestaurantId,
   preparedSnapshot,
 }: {
   transitionStatus: ProfileTransitionState['status'];
+  hasRestaurantRouteEntry: boolean;
   restaurantPanelSnapshot: RestaurantPanelSnapshot | null;
   mapCameraPadding: CameraSnapshot['padding'];
   mapHighlightedRestaurantId: string | null;
@@ -61,6 +71,7 @@ export const resolveProfileViewState = ({
 }): ProfileViewState => ({
   presentation: resolveProfilePresentationModel({
     transitionStatus,
+    hasRestaurantRouteEntry,
     restaurantPanelSnapshot,
     preparedSnapshot,
   }),
