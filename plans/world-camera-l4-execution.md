@@ -115,3 +115,23 @@ through the arbiter's writers (L2 integration, 9fe4e25e) — same function §3.4
   vs neighbors, invisible-resident fade-in from a PAN (the pre-pan invisible member never
   dots). The §3.4 'policy value' as an explicit World field stays deferred until a second
   policy consumer exists (today policy is fully derived — a value would be dead plumbing).
+
+## World-camera close-out adjudication (2026-07-10 ~7:22AM)
+
+**L2/L3.d camera-in-origin is OWNER-GATED, not buildable-now.** The plan's "camera absent
+from OriginSnapshot" gap has shrunk to one product question: natural searches HOLD the
+camera (nothing to restore), profile pops already restore via the pop-teardown writer's
+savedCamera, and lists (fitAll) aren't built yet. The only unserved consumer is "terminal
+search dismiss after the user panned / ran STA / visited profiles — should X restore the
+pre-search camera?" — an owner-feel decision. Widening OriginSnapshot with a camera field
+before that answer (and before listDetail lands, its natural second consumer) would be a
+contract without a consumer — dead plumbing by the house rule. The mechanism is proven
+(the profile lane); the widening is a small mechanical slice once decreed.
+
+**Scoreboard: the world-camera plan's executable surface is COMPLETE.**
+L1 ✅ (group competition, sibling emission, restaurantOnly deletion, Phase D
+closed-by-reshape) · L2 ✅ pure + profile integration (camera-in-origin owner-gated) ·
+L3 ✅ (machine dissolved, direct presentation, pop-teardown, dismiss matcher source-only) ·
+L4 ✅ (invisible-resident, z-lift, group-dense rank, additive tab-agnostic overlay,
+on-device) · L5 ✅ (roll-up + market-wide aggregates verified). Plus the app-wide reveal
+deadlock found and fixed en route (4ca51f39).
