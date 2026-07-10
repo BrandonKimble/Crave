@@ -28,7 +28,6 @@ export const computeMarkerPipeline = (args: {
   restaurants: RestaurantResult[];
   dishes: FoodResult[];
   activeTab: 'dishes' | 'restaurants';
-  restaurantOnlyId: string | null;
   selectedRestaurantId: string | null;
   bounds: MapBounds | null;
   userLocation: Coordinate | null;
@@ -38,7 +37,6 @@ export const computeMarkerPipeline = (args: {
     restaurants,
     dishes,
     activeTab,
-    restaurantOnlyId,
     selectedRestaurantId,
     bounds,
     userLocation,
@@ -87,7 +85,6 @@ export const computeMarkerPipeline = (args: {
     activeTab,
     dishes,
     markerRestaurants: restaurants,
-    restaurantOnlyId,
     selectedRestaurantId,
     canonicalRestaurantRankById,
     locationSelectionAnchor,

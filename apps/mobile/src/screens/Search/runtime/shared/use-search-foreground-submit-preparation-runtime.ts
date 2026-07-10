@@ -19,7 +19,6 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
   setShowSuggestions,
   setSuggestions,
   setQuery,
-  setRestaurantOnlyIntent,
   isSearchEditingRef,
   allowSearchBlurExitRef,
   ignoreNextSearchBlurRef,
@@ -36,7 +35,6 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
   | 'setShowSuggestions'
   | 'setSuggestions'
   | 'setQuery'
-  | 'setRestaurantOnlyIntent'
   | 'isSearchEditingRef'
   | 'allowSearchBlurExitRef'
   | 'ignoreNextSearchBlurRef'
@@ -64,7 +62,6 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
     setIsSuggestionPanelActive(false);
     dismissSearchKeyboard();
     resetFocusedMapState();
-    setRestaurantOnlyIntent(null);
   }, [
     allowSearchBlurExitRef,
     beginSubmitTransition,
@@ -75,7 +72,6 @@ export const useSearchForegroundSubmitPreparationRuntime = ({
     resetFocusedMapState,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
-    setRestaurantOnlyIntent,
     setShowSuggestions,
     setSuggestions,
     suppressAutocompleteResults,

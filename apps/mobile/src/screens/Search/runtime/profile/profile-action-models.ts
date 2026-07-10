@@ -73,8 +73,6 @@ export const createProfileCloseActionModel = ({
 export const createProfileOpenActionModel = ({
   transitionStatus,
   currentPanelRestaurantId,
-  restaurantOnlyId,
-  restaurantOnlySearchId,
   queryLabel,
   transitionSnapshotCapture,
   restaurantCameraActionModel,
@@ -83,8 +81,6 @@ export const createProfileOpenActionModel = ({
 } & ProfileOpenActionModelInputs): ProfileOpenActionModel => ({
   transitionStatus,
   currentPanelRestaurantId,
-  restaurantOnlyId,
-  restaurantOnlySearchId,
   queryLabel,
   transitionSnapshotCapture,
   restaurantCameraActionModel,

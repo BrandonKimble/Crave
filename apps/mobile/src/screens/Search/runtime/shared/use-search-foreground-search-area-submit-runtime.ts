@@ -25,7 +25,6 @@ type UseSearchForegroundSearchAreaSubmitRuntimeArgs = Pick<
   | 'isSearchSessionActive'
   | 'resetFocusedMapState'
   | 'resetMapMoveFlag'
-  | 'setRestaurantOnlyIntent'
 >;
 
 type SearchForegroundSearchAreaSubmitRuntime = Pick<
@@ -45,7 +44,6 @@ export const useSearchForegroundSearchAreaSubmitRuntime = ({
   isSearchSessionActive,
   resetFocusedMapState,
   resetMapMoveFlag,
-  setRestaurantOnlyIntent,
 }: UseSearchForegroundSearchAreaSubmitRuntimeArgs): SearchForegroundSearchAreaSubmitRuntime => {
   const { rerunActiveSearch } = submitRuntime;
   const searchThisAreaSubmitSeqRef = React.useRef(0);
@@ -89,7 +87,6 @@ export const useSearchForegroundSearchAreaSubmitRuntime = ({
       });
     }
     resetFocusedMapState();
-    setRestaurantOnlyIntent(null);
     // S-A (toggle-system-ideal §STA): mapMovedSinceSearch resets AT CAPTURE (press time),
     // not at finalize. Reset-at-finalize carried two live bugs: a pan during the in-flight
     // window got wiped (the button vanished while screen ≠ searched area), and a FAILED
@@ -132,7 +129,6 @@ export const useSearchForegroundSearchAreaSubmitRuntime = ({
     resetFocusedMapState,
     resetMapMoveFlag,
     searchMode,
-    setRestaurantOnlyIntent,
     submittedQuery,
   ]);
 

@@ -35,7 +35,6 @@ type UseSearchForegroundDirectSubmitRuntimeArgs = Pick<
   | 'setShowSuggestions'
   | 'setSuggestions'
   | 'setQuery'
-  | 'setRestaurantOnlyIntent'
   | 'pendingRestaurantSelectionRef'
   | 'isSearchEditingRef'
   | 'allowSearchBlurExitRef'
@@ -79,7 +78,6 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   setShowSuggestions,
   setSuggestions,
   setQuery,
-  setRestaurantOnlyIntent,
   pendingRestaurantSelectionRef,
   isSearchEditingRef,
   allowSearchBlurExitRef,
@@ -102,7 +100,6 @@ export const useSearchForegroundDirectSubmitRuntime = ({
     setShowSuggestions,
     setSuggestions,
     setQuery,
-    setRestaurantOnlyIntent,
     pendingRestaurantSelectionRef,
     isSearchEditingRef,
     allowSearchBlurExitRef,
@@ -136,7 +133,6 @@ export const useSearchForegroundDirectSubmitRuntime = ({
     isSearchSessionActive,
     resetFocusedMapState,
     resetMapMoveFlag,
-    setRestaurantOnlyIntent,
   });
 
   return React.useMemo(

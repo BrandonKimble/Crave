@@ -2,7 +2,6 @@ import type { SearchRootStateFoundationLane } from '../shared/use-search-root-fo
 import type { SearchRootMapViewportIntentRuntime } from '../shared/search-root-map-viewport-intent-runtime-contract';
 
 export type SearchRootMapSurfaceState = {
-  restaurantOnlyId: SearchRootMapViewportIntentRuntime['restaurantOnlyId'];
   mapRef: SearchRootStateFoundationLane['rootPrimitivesRuntime']['mapState']['mapRef'];
   cameraRef: SearchRootStateFoundationLane['rootPrimitivesRuntime']['mapState']['cameraRef'];
   mapCenter: SearchRootMapViewportIntentRuntime['mapCenter'];
@@ -20,7 +19,6 @@ export const createSearchRootMapSurfaceState = ({
   stateFoundationLane: SearchRootStateFoundationLane;
   mapViewportIntentRuntime: SearchRootMapViewportIntentRuntime;
 }): SearchRootMapSurfaceState => ({
-  restaurantOnlyId: mapViewportIntentRuntime.restaurantOnlyId,
   mapRef: stateFoundationLane.rootPrimitivesRuntime.mapState.mapRef,
   cameraRef: stateFoundationLane.rootPrimitivesRuntime.mapState.cameraRef,
   mapCenter: mapViewportIntentRuntime.mapCenter,

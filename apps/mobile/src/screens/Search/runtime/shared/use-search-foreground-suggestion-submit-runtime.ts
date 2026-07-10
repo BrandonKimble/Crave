@@ -19,7 +19,6 @@ type UseSearchForegroundSuggestionSubmitRuntimeArgs = Pick<
   | 'setShowSuggestions'
   | 'setSuggestions'
   | 'setQuery'
-  | 'setRestaurantOnlyIntent'
   | 'pendingRestaurantSelectionRef'
   | 'isSearchEditingRef'
   | 'allowSearchBlurExitRef'
@@ -45,7 +44,6 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
   setShowSuggestions,
   setSuggestions,
   setQuery,
-  setRestaurantOnlyIntent,
   pendingRestaurantSelectionRef,
   isSearchEditingRef,
   allowSearchBlurExitRef,
@@ -96,12 +94,10 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       // "never a results-list-first" guarantee is structural, not a race.
       if (match.entityType === 'restaurant' && match.entityId) {
         pendingRestaurantSelectionRef.current = null;
-        setRestaurantOnlyIntent(null);
         openRestaurantProfilePreview(match.entityId, match.name);
         return;
       }
       pendingRestaurantSelectionRef.current = null;
-      setRestaurantOnlyIntent(null);
       const matchType =
         match.matchType === 'query' || match.entityType === 'query' ? 'query' : 'entity';
       // S-D.3: the entity selection travels TYPED (the attempt config injects the wire
@@ -144,7 +140,6 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       setIsSearchFocused,
       setIsSuggestionPanelActive,
       setQuery,
-      setRestaurantOnlyIntent,
       setShowSuggestions,
       setSuggestions,
       submitSearch,

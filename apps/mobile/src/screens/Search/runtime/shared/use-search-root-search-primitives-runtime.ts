@@ -29,14 +29,6 @@ export const useSearchRootSearchPrimitivesRuntime = ({
   const pendingRestaurantSelectionRef = React.useRef<{
     restaurantId: string;
   } | null>(null);
-  const [restaurantOnlyId, setRestaurantOnlyId] = React.useState<string | null>(null);
-  const restaurantOnlySearchRef = React.useRef<string | null>(null);
-  const setRestaurantOnlyIntent = React.useCallback((restaurantId: string | null) => {
-    restaurantOnlySearchRef.current = restaurantId;
-    if (!restaurantId) {
-      setRestaurantOnlyId(null);
-    }
-  }, []);
   const resetFocusedMapState = React.useCallback(() => {
     pendingRestaurantSelectionRef.current = null;
   }, []);
@@ -223,10 +215,6 @@ export const useSearchRootSearchPrimitivesRuntime = ({
   return React.useMemo(
     () => ({
       pendingRestaurantSelectionRef,
-      restaurantOnlyId,
-      setRestaurantOnlyId,
-      restaurantOnlySearchRef,
-      setRestaurantOnlyIntent,
       resetFocusedMapState,
       searchSessionQueryRef,
       isClearingSearchRef,
@@ -276,7 +264,6 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       primitiveUiCleanupActions,
       preferredActiveTab,
       query,
-      restaurantOnlyId,
       setActiveTab,
       setActiveTabPreference,
       setBeginSuggestionCloseHold,
@@ -286,8 +273,6 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       setIsSuggestionPanelActive,
       suggestionPanelStateController,
       setQuery,
-      setRestaurantOnlyId,
-      setRestaurantOnlyIntent,
       setShouldDisableSearchShortcuts,
       setSearchChromeScalarPrimitiveTarget,
       suggestions,

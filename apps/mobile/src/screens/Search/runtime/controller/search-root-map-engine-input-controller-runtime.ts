@@ -3,13 +3,11 @@ import type { SearchMapRenderEngineInputs } from '../../components/SearchMapWith
 // pins + rank pills exactly (single source of truth in quality-color).
 import { getScoreBucketColor } from '../../utils/quality';
 import type { createSearchRootMapPresentationRuntimeValue } from './search-root-map-presentation-controller-runtime';
-import type { SearchRootMapSurfaceState } from './search-root-map-surface-state-controller-runtime';
 
 export const getSearchMapEngineInputChanges = (
   left: SearchMapRenderEngineInputs,
   right: SearchMapRenderEngineInputs
 ): Record<string, boolean> => ({
-  restaurantOnlyId: left.restaurantOnlyId !== right.restaurantOnlyId,
   highlightedRestaurantId: left.highlightedRestaurantId !== right.highlightedRestaurantId,
   viewportBoundsService: left.viewportBoundsService !== right.viewportBoundsService,
   resolveRestaurantMapLocations:
@@ -33,13 +31,10 @@ export const getSearchMapEngineInputChanges = (
 });
 
 export const createSearchRootMapEngineInputs = ({
-  mapSurfaceState,
   mapPresentationRuntime,
 }: {
-  mapSurfaceState: SearchRootMapSurfaceState;
   mapPresentationRuntime: ReturnType<typeof createSearchRootMapPresentationRuntimeValue>;
 }): SearchMapRenderEngineInputs => ({
-  restaurantOnlyId: mapSurfaceState.restaurantOnlyId,
   highlightedRestaurantId: mapPresentationRuntime.highlightedRestaurantId,
   viewportBoundsService: mapPresentationRuntime.viewportBoundsService,
   resolveRestaurantMapLocations: mapPresentationRuntime.resolveRestaurantMapLocations,

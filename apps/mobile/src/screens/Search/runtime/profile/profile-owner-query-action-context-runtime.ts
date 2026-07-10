@@ -34,16 +34,9 @@ export const useProfileOwnerQueryActionContextRuntime = ({
     () => ({
       currentQueryLabel,
       currentQueryKey,
-      restaurantOnlyId: searchContext.restaurantOnlyId,
       results,
       isProfileAutoOpenSuppressed: searchContext.isProfileAutoOpenSuppressed,
     }),
-    [
-      currentQueryKey,
-      currentQueryLabel,
-      results,
-      searchContext.isProfileAutoOpenSuppressed,
-      searchContext.restaurantOnlyId,
-    ]
+    [currentQueryKey, currentQueryLabel, results, searchContext.isProfileAutoOpenSuppressed]
   );
 };

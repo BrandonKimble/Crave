@@ -1,10 +1,7 @@
 import type { SearchRootOverlayFoundationRuntime } from './search-root-overlay-foundation-runtime-contract';
 import type { SearchRootStateFoundationLane } from './use-search-root-foundation-runtime';
 import { useSearchForegroundInteractionEffectsRuntime } from './use-search-foreground-interaction-effects-runtime';
-import {
-  useSearchRootForegroundEffectsRuntimeArgs,
-  useSearchRootForegroundRestaurantOnlyResolutionArgs,
-} from './use-search-root-foreground-effects-runtime-args';
+import { useSearchRootForegroundEffectsRuntimeArgs } from './use-search-root-foreground-effects-runtime-args';
 
 type UseSearchRootForegroundEffectsRuntimeArgs = {
   stateFoundationLane: SearchRootStateFoundationLane;
@@ -19,12 +16,7 @@ export const useSearchRootForegroundEffectsRuntime = ({
     stateFoundationLane,
     rootOverlayFoundationRuntime,
   });
-  const restaurantOnlyResolutionArgs = useSearchRootForegroundRestaurantOnlyResolutionArgs({
-    stateFoundationLane,
-  });
-
   useSearchForegroundInteractionEffectsRuntime({
     effectsRuntimeArgs,
-    restaurantOnlyResolutionArgs,
   });
 };

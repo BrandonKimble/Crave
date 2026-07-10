@@ -1,5 +1,4 @@
 export type SearchRootMapViewportIntentRuntime = {
-  restaurantOnlyId: string | null;
   mapCenter: [number, number] | null;
   mapZoom: number | null;
   mapBearing: number | null;

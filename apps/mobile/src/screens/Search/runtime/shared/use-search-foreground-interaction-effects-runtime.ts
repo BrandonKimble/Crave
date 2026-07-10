@@ -1,9 +1,6 @@
 import React from 'react';
 
-import type {
-  SearchForegroundEffectsRuntimeArgs,
-  SearchForegroundRestaurantOnlyResolutionArgs,
-} from './use-search-foreground-interaction-runtime-contract';
+import type { SearchForegroundEffectsRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
 
 export type SearchForegroundInteractionRouteEffectsRuntimeArgs = Pick<
   SearchForegroundEffectsRuntimeArgs,
@@ -22,7 +19,6 @@ export type SearchForegroundInteractionRouteEffectsRuntimeArgs = Pick<
 
 type UseSearchForegroundInteractionEffectsRuntimeArgs = {
   effectsRuntimeArgs: SearchForegroundInteractionRouteEffectsRuntimeArgs;
-  restaurantOnlyResolutionArgs: SearchForegroundRestaurantOnlyResolutionArgs;
 };
 
 type UseSearchForegroundInteractionRenderRegistrationRuntimeArgs = {
@@ -44,7 +40,6 @@ export const useSearchForegroundInteractionRenderRegistrationRuntime = ({
 
 export const useSearchForegroundInteractionEffectsRuntime = ({
   effectsRuntimeArgs,
-  restaurantOnlyResolutionArgs,
 }: UseSearchForegroundInteractionEffectsRuntimeArgs): void => {
   const {
     isSearchOverlay,
@@ -59,12 +54,6 @@ export const useSearchForegroundInteractionEffectsRuntime = ({
     hasResults,
     resetMapMoveFlag,
   } = effectsRuntimeArgs;
-  const {
-    hasResults: hasRestaurantOnlyResults,
-    restaurantOnlySearchRef,
-    restaurantResults,
-    setRestaurantOnlyId,
-  } = restaurantOnlyResolutionArgs;
 
   React.useEffect(() => {
     if (!isSearchOverlay && saveSheetVisibleRef.current.saveSheetState.visible) {
@@ -95,20 +84,4 @@ export const useSearchForegroundInteractionEffectsRuntime = ({
       resetMapMoveFlag();
     }
   }, [hasResults, resetMapMoveFlag]);
-
-  React.useEffect(() => {
-    if (!hasRestaurantOnlyResults) {
-      setRestaurantOnlyId(null);
-      return;
-    }
-    const intent = restaurantOnlySearchRef.current;
-    if (!intent) {
-      setRestaurantOnlyId(null);
-      return;
-    }
-    const hasMatch = restaurantResults?.some(
-      (restaurant: { restaurantId: string }) => restaurant.restaurantId === intent
-    );
-    setRestaurantOnlyId(hasMatch ? intent : null);
-  }, [hasRestaurantOnlyResults, restaurantOnlySearchRef, restaurantResults, setRestaurantOnlyId]);
 };

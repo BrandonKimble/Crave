@@ -51,7 +51,6 @@ export type UseSearchClearOwnerArgs<Suggestion> = {
   resetSheetToHidden: () => void;
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
   resetFocusedMapState: () => void;
-  setRestaurantOnlyIntent: (restaurantId: string | null) => void;
   searchSessionQueryRef: React.MutableRefObject<string>;
   setSearchTransitionVariant: React.Dispatch<React.SetStateAction<'default' | 'submitting'>>;
   inputRef: React.RefObject<TextInput | null>;
@@ -84,7 +83,6 @@ export const useSearchClearOwner = <Suggestion>({
   resetSheetToHidden,
   lastAutoOpenKeyRef,
   resetFocusedMapState,
-  setRestaurantOnlyIntent,
   searchSessionQueryRef,
   setSearchTransitionVariant,
   inputRef,
@@ -182,7 +180,6 @@ export const useSearchClearOwner = <Suggestion>({
       lastAutoOpenKeyRef.current = null;
       resetRestaurantProfileFocusSessionRef.current();
       resetFocusedMapState();
-      setRestaurantOnlyIntent(null);
       searchSessionQueryRef.current = '';
       setSearchTransitionVariant('default');
       if (!preserveForegroundEditing) {
@@ -223,7 +220,6 @@ export const useSearchClearOwner = <Suggestion>({
       setIsSearchFocused,
       setIsSuggestionPanelActive,
       setQuery,
-      setRestaurantOnlyIntent,
       setSearchTransitionVariant,
       setShowSuggestions,
       setSuggestions,

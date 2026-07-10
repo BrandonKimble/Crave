@@ -67,7 +67,6 @@ const build = (overrides?: {
     activeTab: 'restaurants',
     dishes: [],
     markerRestaurants: [multiLocationRestaurant()],
-    restaurantOnlyId: null,
     selectedRestaurantId: overrides?.selectedRestaurantId ?? null,
     canonicalRestaurantRankById: new Map([['rest-A', 1]]),
     // Anchor near loc-primary so it is the representative.

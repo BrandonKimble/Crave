@@ -182,7 +182,6 @@ const buildSourceFrameDataReuseKey = ({
   bounds,
   labelDerivedSourceIdentityKey,
   markersRenderKey,
-  restaurantOnlyId,
   searchMode,
   selectedRestaurantId,
   submittedQuery,
@@ -191,7 +190,6 @@ const buildSourceFrameDataReuseKey = ({
   bounds: MapBounds | null;
   labelDerivedSourceIdentityKey: string;
   markersRenderKey: string;
-  restaurantOnlyId: string | null;
   searchMode: string | null;
   selectedRestaurantId: string | null;
   submittedQuery: string | null;
@@ -201,7 +199,6 @@ const buildSourceFrameDataReuseKey = ({
     `tab:${activeTab ?? 'none'}`,
     `query:${submittedQuery ?? 'none'}`,
     `bounds:${bounds == null ? 'none' : buildShortcutCoverageBoundsKey(bounds)}`,
-    `restaurantOnly:${restaurantOnlyId ?? 'none'}`,
     `selected:${selectedRestaurantId ?? 'none'}`,
     `markers:${markersRenderKey}`,
     `labels:${labelDerivedSourceIdentityKey}`,
@@ -246,12 +243,7 @@ const intersectStringSets = (left: ReadonlySet<string>, right: ReadonlySet<strin
   return overlap.sort();
 };
 
-type SearchMapVisualSourceKind =
-  | 'main_results'
-  | 'shortcut_coverage'
-  | 'viewport'
-  | 'selected'
-  | 'restaurant_only';
+type SearchMapVisualSourceKind = 'main_results' | 'shortcut_coverage' | 'viewport' | 'selected';
 
 type SearchMapVisualCandidate = {
   feature: Feature<Point, RestaurantFeatureProperties>;
@@ -274,7 +266,6 @@ type SearchMapVisualCandidateSource = {
 };
 
 const VISUAL_SOURCE_PRIORITY: Record<SearchMapVisualSourceKind, number> = {
-  restaurant_only: 500,
   selected: 400,
   shortcut_coverage: 300,
   viewport: 200,
@@ -285,16 +276,11 @@ const resolveEffectiveVisualSourceKind = ({
   feature,
   requestedSourceKind,
   selectedRestaurantId,
-  restaurantOnlyId,
 }: {
   feature: Feature<Point, RestaurantFeatureProperties>;
   requestedSourceKind: SearchMapVisualSourceKind;
   selectedRestaurantId: string | null;
-  restaurantOnlyId: string | null;
 }): SearchMapVisualSourceKind => {
-  if (restaurantOnlyId != null && feature.properties.restaurantId === restaurantOnlyId) {
-    return 'restaurant_only';
-  }
   if (selectedRestaurantId != null && feature.properties.restaurantId === selectedRestaurantId) {
     return 'selected';
   }
@@ -322,13 +308,11 @@ type SearchMapVisualRankOrder = 'crave' | 'rising';
 const collectSearchMapVisualCandidates = ({
   sources,
   selectedRestaurantId,
-  restaurantOnlyId,
   buildMarkerKey,
   rankOrder,
 }: {
   sources: readonly SearchMapVisualCandidateSource[];
   selectedRestaurantId: string | null;
-  restaurantOnlyId: string | null;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   rankOrder: SearchMapVisualRankOrder;
 }): SearchMapVisualCandidate[] => {
@@ -351,7 +335,6 @@ const collectSearchMapVisualCandidates = ({
           feature: visualFeature,
           requestedSourceKind: source.sourceKind,
           selectedRestaurantId,
-          restaurantOnlyId,
         }),
         order,
       } satisfies SearchMapVisualCandidate;
@@ -418,28 +401,24 @@ const projectSearchMapVisualFrame = ({
   rankedSources,
   dotSources,
   selectedRestaurantId,
-  restaurantOnlyId,
   buildMarkerKey,
   rankOrder,
 }: {
   rankedSources: readonly SearchMapVisualCandidateSource[];
   dotSources: readonly SearchMapVisualCandidateSource[];
   selectedRestaurantId: string | null;
-  restaurantOnlyId: string | null;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   rankOrder: SearchMapVisualRankOrder;
 }): ProjectedSearchMapVisualFrame => {
   const rankedCandidates = collectSearchMapVisualCandidates({
     sources: rankedSources,
     selectedRestaurantId,
-    restaurantOnlyId,
     buildMarkerKey,
     rankOrder,
   });
   const dotCandidates = collectSearchMapVisualCandidates({
     sources: dotSources,
     selectedRestaurantId,
-    restaurantOnlyId,
     buildMarkerKey,
     rankOrder,
   });
@@ -455,7 +434,6 @@ const projectSearchMapVisualFrame = ({
       ? collectSearchMapVisualCandidates({
           sources: [...rankedSources, ...dotSources],
           selectedRestaurantId,
-          restaurantOnlyId,
           buildMarkerKey,
           rankOrder,
         })
@@ -770,7 +748,6 @@ type DirectMapSourceControllerBaseArgs = {
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
-  restaurantOnlyId: string | null;
   highlightedRestaurantId: string | null;
   viewportBoundsService: ViewportBoundsService;
   // Live user location — anchors the overlap region's radius for far-out shortcut runs.
@@ -963,7 +940,6 @@ export const useDirectSearchMapSourceController = ({
   resultsPresentationAuthority,
   resultsPresentationSurfaceAuthority,
   sourceFramePort,
-  restaurantOnlyId,
   highlightedRestaurantId,
   viewportBoundsService,
   userLocation,
@@ -990,7 +966,6 @@ export const useDirectSearchMapSourceController = ({
   const latestArgsRef = React.useRef({
     resultsPresentationAuthority,
     resultsPresentationSurfaceAuthority,
-    restaurantOnlyId,
     highlightedRestaurantId,
     resolveRestaurantMapLocations,
     resolveRestaurantLocationSelectionAnchor,
@@ -1008,7 +983,6 @@ export const useDirectSearchMapSourceController = ({
     latestArgsRef.current = {
       resultsPresentationAuthority,
       resultsPresentationSurfaceAuthority,
-      restaurantOnlyId,
       highlightedRestaurantId,
       resolveRestaurantMapLocations,
       resolveRestaurantLocationSelectionAnchor,
@@ -1036,7 +1010,6 @@ export const useDirectSearchMapSourceController = ({
     profileCommandPort,
     resolveRestaurantLocationSelectionAnchor,
     resolveRestaurantMapLocations,
-    restaurantOnlyId,
     shouldLogSearchComputes,
   ]);
 
@@ -1207,10 +1180,7 @@ export const useDirectSearchMapSourceController = ({
     // It is only consulted when there are no committed restaurants — committed results always win.
     const seededMarkerRestaurants = getSeededMarkerRestaurants();
     const shouldProjectResultSources =
-      hasCommittedResultState ||
-      args.restaurantOnlyId != null ||
-      selectedRestaurantId != null ||
-      seededMarkerRestaurants != null;
+      hasCommittedResultState || selectedRestaurantId != null || seededMarkerRestaurants != null;
     const mountedResults = mountedResultsSnapshot.results;
     // Pure-seed case has no committed metadata, so `searchRequestId` resolves to null and the
     // precomputed-catalog branch stays skipped — `buildMarkerCatalogReadModel` runs on the seed.
@@ -1231,15 +1201,6 @@ export const useDirectSearchMapSourceController = ({
     const dishes = shouldProjectResultSources
       ? (mountedResults?.dishes ?? EMPTY_DISHES)
       : EMPTY_DISHES;
-    const hasOnlyRestaurantOnlyResults =
-      args.restaurantOnlyId != null &&
-      restaurants.length > 0 &&
-      restaurants.every((restaurant) => restaurant.restaurantId === args.restaurantOnlyId) &&
-      dishes.every((dish) => dish.restaurantId === args.restaurantOnlyId);
-    const effectiveRestaurantOnlyId =
-      args.restaurantOnlyId != null && (!hasCommittedResultState || hasOnlyRestaurantOnlyResults)
-        ? args.restaurantOnlyId
-        : null;
     // Prewarm builds the SIBLING tab's frame: override the tab axis; everything downstream
     // (catalog resolution, coverage requestKey, fingerprint) derives from this one binding, so
     // the stored fingerprint is exactly what the toggle-time publish will compute.
@@ -1274,7 +1235,6 @@ export const useDirectSearchMapSourceController = ({
       (resultsPresentationSnapshot.resultsPresentation.contentVisibility === 'visible' ||
         preparedVisualCycleKey != null ||
         isPreparedResultsEnterActive ||
-        effectiveRestaurantOnlyId != null ||
         selectedRestaurantId != null);
     if (
       !isPrewarmBuild &&
@@ -1295,7 +1255,7 @@ export const useDirectSearchMapSourceController = ({
     // Prewarm bail-outs: selection intents force-mutate the catalog (all-locations render /
     // rank-1 reveal) AND the cache-hit replay path never fires while a selection is active, so
     // a prewarmed selected-frame could never be consumed — skip instead of caching dead weight.
-    if (isPrewarmBuild && (effectiveRestaurantOnlyId != null || selectedRestaurantId != null)) {
+    if (isPrewarmBuild && selectedRestaurantId != null) {
       return false;
     }
     if (isPrewarmBuild && !isSearchVisualProjectionLive) {
@@ -1325,10 +1285,7 @@ export const useDirectSearchMapSourceController = ({
     // arrive in one atomic snapshot, so the frame can never pair a key with another
     // world's features, and "coverage not ready for this key" limbo (the covNotReady
     // ladder) is unrepresentable. World readiness is ONE fact below.
-    const isShortcutCoverageProjection =
-      searchMode === 'shortcut' &&
-      effectiveRestaurantOnlyId == null &&
-      selectedRestaurantId == null;
+    const isShortcutCoverageProjection = searchMode === 'shortcut' && selectedRestaurantId == null;
     const coverageEntry = isShortcutCoverageProjection
       ? readWorldCoverageEntry(searchRequestId, activeTab)
       : null;
@@ -1418,7 +1375,7 @@ export const useDirectSearchMapSourceController = ({
     // commit, same computation the cards' rank order derives from) is THE marker-catalog
     // authority. The in-controller buildMarkerCatalogReadModel below is a FALLBACK only for
     // inputs the store cannot precompute: no committed results (seeded single-restaurant
-    // profile pin), restaurantOnly / selected-pin forced inclusion (selection changes the
+    // profile pin), selected-pin forced inclusion (selection changes the
     // catalog itself — all-locations render + rankless-reveal rank-1), a transient
     // results-key mismatch while a new commit is in flight, or a null tab entry (the response
     // genuinely lacks that axis — silent legitimate fallback). Any OTHER fallback firing while
@@ -1430,14 +1387,11 @@ export const useDirectSearchMapSourceController = ({
     // dedup + unified re-rank) and consumes this catalog's features as its main_results input.
     const hasPrecomputedMarkerCatalogForResults = activeTabPrecomputedMarkerProjection != null;
     const canUsePrecomputedMarkerCatalog =
-      hasPrecomputedMarkerCatalogForResults &&
-      effectiveRestaurantOnlyId == null &&
-      selectedRestaurantId == null;
+      hasPrecomputedMarkerCatalogForResults && selectedRestaurantId == null;
     if (
       !isPrewarmBuild &&
       !canUsePrecomputedMarkerCatalog &&
       hasPrecomputedMarkerCatalogForResults &&
-      effectiveRestaurantOnlyId == null &&
       selectedRestaurantId == null &&
       !isSeededRestaurantProjection
     ) {
@@ -1464,7 +1418,6 @@ export const useDirectSearchMapSourceController = ({
             activeTab: isSeededRestaurantProjection ? 'restaurants' : activeTab,
             dishes,
             markerRestaurants: restaurants,
-            restaurantOnlyId: effectiveRestaurantOnlyId,
             selectedRestaurantId,
             canonicalRestaurantRankById,
             locationSelectionAnchor: args.resolveRestaurantLocationSelectionAnchor(),
@@ -1489,7 +1442,6 @@ export const useDirectSearchMapSourceController = ({
       markersRenderKey: buildStableKeyFingerprint(
         markerCatalogEntries.map((entry) => buildMarkerKey(entry.feature))
       ),
-      restaurantOnlyId: effectiveRestaurantOnlyId,
       searchMode,
       selectedRestaurantId,
       submittedQuery: selectSubmittedQuery(state),
@@ -1510,7 +1462,6 @@ export const useDirectSearchMapSourceController = ({
       cachedPreparedFrame != null &&
       readinessKey != null &&
       searchMode === 'shortcut' &&
-      effectiveRestaurantOnlyId == null &&
       selectedRestaurantId == null &&
       coverageTerminal
     ) {
@@ -1629,7 +1580,6 @@ export const useDirectSearchMapSourceController = ({
         coverageRequestKey: coverageEntry?.requestKey ?? null,
         shortcutCoverageLoading: isCoverageLoading,
         selectedRestaurantId,
-        restaurantOnlyId: effectiveRestaurantOnlyId,
       });
     }
     // v4 invariant 1 (RESIDENT sources): the natural-search candidate set is the
@@ -1685,7 +1635,6 @@ export const useDirectSearchMapSourceController = ({
       rankedSources: rankedCandidateSources,
       dotSources: dotCandidateSources,
       selectedRestaurantId,
-      restaurantOnlyId: effectiveRestaurantOnlyId,
       buildMarkerKey,
       rankOrder: visualRankOrder,
     });
@@ -1861,7 +1810,6 @@ export const useDirectSearchMapSourceController = ({
       rankedSources: rankedCandidateSources,
       dotSources: dotCandidateSources,
       selectedRestaurantId,
-      restaurantOnlyId: effectiveRestaurantOnlyId,
       buildMarkerKey,
       rankOrder: visualRankOrder,
     });
@@ -2785,16 +2733,16 @@ export const useDirectSearchMapSourceController = ({
     };
   }, [resultsPresentationAuthority, searchRuntimeBus]);
 
-  // Re-publish sources when the highlight / restaurantOnly intent changes (or map-move state
-  // flips) so the catalog rebuilds against the new selection.
+  // Re-publish sources when the highlight intent changes (or map-move state flips) so the
+  // catalog rebuilds against the new selection.
   React.useEffect(() => {
     // eslint-disable-next-line no-console
     if (__DEV__) console.log('[PUBTRIG] effect_moving_highlight');
     publishSourcesRef.current();
-  }, [isMapMoving, highlightedRestaurantId, restaurantOnlyId]);
+  }, [isMapMoving, highlightedRestaurantId]);
 
   // PIN-AT-REVEAL race fix. On a cold committed reveal (poll comment-span / restaurant deep
-  // link) the highlight / restaurantOnly intent is set BEFORE the committed search results go
+  // link) the highlight intent is set BEFORE the committed search results go
   // live, so the catalog rebuild that fires at highlight-set time runs against an EMPTY
   // projection → zero pins at the reveal frame (committedCount=0 at highlight-set → catalog
   // pins=0, then a later rebuild after committed-results-live yields pins=1). The
@@ -2808,13 +2756,13 @@ export const useDirectSearchMapSourceController = ({
   // against the now-live projection at the reveal frame. Gated to reveal intents, so it adds no
   // work and cannot regress the result-card / idle paths.
   React.useEffect(() => {
-    if (highlightedRestaurantId == null && restaurantOnlyId == null) {
+    if (highlightedRestaurantId == null) {
       return undefined;
     }
     return subscribeSearchMountedResultsDataSnapshot(() => {
       publishSourcesRef.current();
     });
-  }, [highlightedRestaurantId, restaurantOnlyId]);
+  }, [highlightedRestaurantId]);
 
   const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
     const secondaryTextSize = LABEL_TEXT_SIZE * 0.85;

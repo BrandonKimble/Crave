@@ -8,7 +8,6 @@ import type {
   RecentlyViewedFood,
   RecentlyViewedRestaurant,
 } from '../../../../services/search';
-import type { SearchResponse } from '../../../../types';
 import type { RootStackParamList, MainSearchIntent } from '../../../../types/navigation';
 import type { LaunchIntent } from '../../../../navigation/runtime/app-route-types';
 import type { OverlayKey, OverlaySheetSnap } from '../../../../overlays/types';
@@ -94,7 +93,6 @@ export type SearchForegroundLaunchIntentRuntimeArgs = {
   // S-E: the URL-addressable search desires (/q, /s) land through the intent channel.
   submitSearch: SearchForegroundSubmitRuntime['submitSearch'];
   submitViewportShortcut: SearchForegroundSubmitRuntime['submitViewportShortcut'];
-  setRestaurantOnlyIntent: (restaurantId: string | null) => void;
   pendingRestaurantSelectionRef: React.MutableRefObject<{ restaurantId: string } | null>;
   currentMarketKey?: string | null;
 };
@@ -125,7 +123,6 @@ export type SearchForegroundSubmitRuntimeArgs = {
   setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   setQuery: React.Dispatch<React.SetStateAction<string>>;
-  setRestaurantOnlyIntent: (restaurantId: string | null) => void;
   pendingRestaurantSelectionRef: React.MutableRefObject<{
     restaurantId: string;
   } | null>;
@@ -223,20 +220,12 @@ export type SearchForegroundEffectsRuntimeArgs = {
   resetMapMoveFlag: () => void;
 };
 
-export type SearchForegroundRestaurantOnlyResolutionArgs = {
-  hasResults: boolean;
-  restaurantOnlySearchRef: React.MutableRefObject<string | null>;
-  restaurantResults: SearchResponse['restaurants'] | null;
-  setRestaurantOnlyId: (value: string | null) => void;
-};
-
 export type UseSearchForegroundInteractionRuntimeArgs = {
   launchIntentArgs: SearchForegroundLaunchIntentRuntimeArgs;
   commandRuntimeArgs: SearchForegroundCommandRuntimeArgs;
   editingRuntimeArgs: SearchForegroundEditingRuntimeArgs;
   overlayRuntimeArgs: SearchForegroundOverlayRuntimeArgs;
   effectsRuntimeArgs: SearchForegroundEffectsRuntimeArgs;
-  restaurantOnlyResolutionArgs: SearchForegroundRestaurantOnlyResolutionArgs;
 };
 
 export type UseSearchForegroundTransientHandlersRuntimeArgs = Pick<

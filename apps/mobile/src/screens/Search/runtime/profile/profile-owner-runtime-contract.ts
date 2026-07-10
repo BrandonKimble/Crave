@@ -61,11 +61,9 @@ export type ProfileSearchContext = {
   resultsPresentationSurfaceAuthority: ResultsPresentationSurfaceAuthority;
   getCurrentViewportBounds: () => MapBounds | null;
   trimmedQuery: string;
-  restaurantOnlyId: string | null;
   isProfileAutoOpenSuppressed: boolean;
   getPendingRestaurantSelection: () => { restaurantId: string } | null;
   clearPendingRestaurantSelection: () => void;
-  getRestaurantOnlySearchId: () => string | null;
 };
 
 export type ProfileSelectionModel = {

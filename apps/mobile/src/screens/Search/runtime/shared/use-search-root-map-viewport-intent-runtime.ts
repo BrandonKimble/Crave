@@ -10,7 +10,6 @@ export const useSearchRootMapViewportIntentRuntime = (
 
   return React.useMemo(
     () => ({
-      restaurantOnlyId: rootPrimitivesRuntime.searchState.restaurantOnlyId,
       mapCenter: rootPrimitivesRuntime.mapState.mapCenter,
       mapZoom: rootPrimitivesRuntime.mapState.mapZoom,
       mapBearing: rootPrimitivesRuntime.mapState.mapBearing,
@@ -25,7 +24,6 @@ export const useSearchRootMapViewportIntentRuntime = (
       rootPrimitivesRuntime.mapState.mapCenter,
       rootPrimitivesRuntime.mapState.mapPitch,
       rootPrimitivesRuntime.mapState.mapZoom,
-      rootPrimitivesRuntime.searchState.restaurantOnlyId,
     ]
   );
 };

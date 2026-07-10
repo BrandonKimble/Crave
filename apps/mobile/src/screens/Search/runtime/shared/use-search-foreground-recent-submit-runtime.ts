@@ -15,7 +15,6 @@ type UseSearchForegroundRecentSubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,
   | 'submitRuntime'
   | 'pendingRestaurantSelectionRef'
-  | 'setRestaurantOnlyIntent'
   | 'deferRecentSearchUpsert'
   | 'openRestaurantProfilePreview'
 > & {
@@ -32,7 +31,6 @@ type SearchForegroundRecentSubmitRuntime = Pick<
 export const useSearchForegroundRecentSubmitRuntime = ({
   submitRuntime,
   pendingRestaurantSelectionRef,
-  setRestaurantOnlyIntent,
   deferRecentSearchUpsert,
   openRestaurantProfilePreview,
   submitPreparationRuntime,
@@ -51,7 +49,6 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       if (restaurantId) {
         pendingRestaurantSelectionRef.current = { restaurantId };
         openRestaurantProfilePreview(restaurantId, trimmedValue);
-        setRestaurantOnlyIntent(restaurantId);
         deferRecentSearchUpsert({
           queryText: trimmedValue,
           selectedEntityId: restaurantId,
@@ -67,7 +64,6 @@ export const useSearchForegroundRecentSubmitRuntime = ({
         return;
       }
       deferRecentSearchUpsert(trimmedValue);
-      setRestaurantOnlyIntent(null);
       void submitSearch({ submission: { source: 'recent' } }, trimmedValue);
     },
     [
@@ -75,7 +71,6 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
       runRestaurantEntitySearch,
-      setRestaurantOnlyIntent,
       submitPreparationRuntime,
       submitSearch,
     ]
@@ -90,7 +85,6 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       submitPreparationRuntime.prepareRecentIntentSubmit(trimmedValue);
       pendingRestaurantSelectionRef.current = { restaurantId: item.restaurantId };
       openRestaurantProfilePreview(item.restaurantId, trimmedValue);
-      setRestaurantOnlyIntent(item.restaurantId);
       deferRecentSearchUpsert({
         queryText: trimmedValue,
         selectedEntityId: item.restaurantId,
@@ -109,7 +103,6 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
       runRestaurantEntitySearch,
-      setRestaurantOnlyIntent,
       submitPreparationRuntime,
     ]
   );
@@ -123,7 +116,6 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       submitPreparationRuntime.prepareRecentIntentSubmit(trimmedValue);
       pendingRestaurantSelectionRef.current = { restaurantId: item.restaurantId };
       openRestaurantProfilePreview(item.restaurantId, trimmedValue);
-      setRestaurantOnlyIntent(item.restaurantId);
       deferRecentSearchUpsert({
         queryText: trimmedValue,
         selectedEntityId: item.restaurantId,
@@ -142,7 +134,6 @@ export const useSearchForegroundRecentSubmitRuntime = ({
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
       runRestaurantEntitySearch,
-      setRestaurantOnlyIntent,
       submitPreparationRuntime,
     ]
   );

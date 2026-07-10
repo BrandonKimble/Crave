@@ -235,9 +235,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     runRestaurantEntitySearch: submitRuntimeResult.runRestaurantEntitySearch,
     submitSearch: submitRuntimeResult.submitSearch,
     submitViewportShortcut: submitRuntimeResult.submitViewportShortcut,
-    setRestaurantOnlyIntent:
-      stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState
-        .setRestaurantOnlyIntent,
     pendingRestaurantSelectionRef:
       stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState
         .pendingRestaurantSelectionRef,

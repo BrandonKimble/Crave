@@ -34,7 +34,6 @@ export const useSearchRootMapSurfaceViewRuntime = ({
   const engineInputs = React.useMemo(
     () =>
       createSearchRootMapEngineInputs({
-        mapSurfaceState: mapSurfaceStateRuntime.mapSurfaceState,
         mapPresentationRuntime,
       }),
     [
@@ -50,7 +49,6 @@ export const useSearchRootMapSurfaceViewRuntime = ({
       mapPresentationRuntime.resolveRestaurantMapLocations,
       mapPresentationRuntime.shouldLogSearchComputes,
       mapPresentationRuntime.viewportBoundsService,
-      mapSurfaceStateRuntime.mapSurfaceState.restaurantOnlyId,
     ]
   );
 

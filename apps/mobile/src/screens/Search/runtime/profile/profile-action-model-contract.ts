@@ -65,8 +65,6 @@ export type ProfileRestaurantCameraActionModel = {
 export type ProfileOpenActionModel = {
   transitionStatus: ProfileTransitionStatus;
   currentPanelRestaurantId: string | null;
-  restaurantOnlyId: string | null;
-  restaurantOnlySearchId: string | null;
   queryLabel: string;
   transitionSnapshotCapture: ProfileTransitionSnapshotCapture;
   restaurantCameraActionModel: ProfileRestaurantCameraActionModel;
@@ -128,8 +126,6 @@ export type ProfileRestaurantCameraActionModelInputs = {
 export type ProfileOpenActionModelInputs = {
   transitionStatus: ProfileTransitionStatus;
   currentPanelRestaurantId: string | null;
-  restaurantOnlyId: string | null;
-  restaurantOnlySearchId: string | null;
   queryLabel: string;
   transitionSnapshotCapture: ProfileTransitionSnapshotCapture;
 };

@@ -79,7 +79,6 @@ export type CreateProfileActionRuntimeArgs = {
   queryState: {
     currentQueryLabel: string;
     currentQueryKey: string;
-    restaurantOnlyId: string | null;
     results: SearchResponse | null;
     isProfileAutoOpenSuppressed: boolean;
   };
@@ -110,7 +109,6 @@ export type CreateProfileActionRuntimeArgs = {
     getProfileTransitionSnapshotCapture: () => ProfileTransitionSnapshotCapture;
     getProfileMultiLocationZoomBaseline: () => number | null;
     getRestaurantFocusSession: () => RestaurantFocusSession;
-    getRestaurantOnlySearchId: () => string | null;
     getPendingSelection: () => { restaurantId: string } | null;
     getActiveOpenRestaurantId: () => string | null;
     getLastAutoOpenKey: () => string | null;

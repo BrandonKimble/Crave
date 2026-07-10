@@ -7,22 +7,8 @@ import {
 } from './profile-restaurant-camera-motion-runtime';
 import { resolveRestaurantProfileFocusTarget } from './profile-restaurant-focus-target-runtime';
 
-const resolveShouldClearSearchOnProfileDismiss = ({
-  restaurantId,
-  source,
-  restaurantOnlyId,
-  restaurantOnlySearchId,
-}: {
-  restaurantId: string;
-  source: SearchProfileSource;
-  restaurantOnlyId: string | null;
-  restaurantOnlySearchId: string | null;
-}): boolean => {
-  if (source === 'auto_open_single_candidate' || source === 'autocomplete') {
-    return true;
-  }
-  return restaurantOnlySearchId === restaurantId || restaurantOnlyId === restaurantId;
-};
+const resolveShouldClearSearchOnProfileDismiss = (source: SearchProfileSource): boolean =>
+  source === 'auto_open_single_candidate' || source === 'autocomplete';
 
 const shouldTrackOpenedRestaurantProfile = (source: SearchProfileSource): boolean =>
   source !== 'autocomplete' && source !== 'dish_card';
@@ -57,13 +43,8 @@ export const resolveProfileOpenPresentationPlan = ({
   pressedCoordinate: Coordinate | null;
   actionModel: Omit<ProfileOpenActionModel, 'queryLabel' | 'transitionSnapshotCapture'>;
 }): ProfileOpenPresentationPlan | null => {
-  const { restaurantOnlyId, restaurantOnlySearchId, restaurantCameraActionModel } = actionModel;
-  const shouldClearSearchOnDismiss = resolveShouldClearSearchOnProfileDismiss({
-    restaurantId: restaurant.restaurantId,
-    source,
-    restaurantOnlyId,
-    restaurantOnlySearchId,
-  });
+  const { restaurantCameraActionModel } = actionModel;
+  const shouldClearSearchOnDismiss = resolveShouldClearSearchOnProfileDismiss(source);
   const shouldPreferPressedCoordinate = shouldPreferPressedCoordinateForProfileOpen({
     source,
     pressedCoordinate,

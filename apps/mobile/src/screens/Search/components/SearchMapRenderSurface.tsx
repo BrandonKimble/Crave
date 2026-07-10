@@ -7,7 +7,6 @@ import { SearchMapRenderHostLayers } from './SearchMapRenderHostLayers';
 
 type SearchMapRenderShellGateSnapshot = {
   highlightedRestaurantId: SearchMapRenderHostLayerRuntime['engineInputs']['highlightedRestaurantId'];
-  restaurantOnlyId: SearchMapRenderHostLayerRuntime['engineInputs']['restaurantOnlyId'];
   styleURL: string;
   mapCenter: SearchMapRenderHostLayerRuntime['presentationProps']['mapCenter'];
   mapZoom: SearchMapRenderHostLayerRuntime['presentationProps']['mapZoom'];
@@ -24,7 +23,6 @@ const selectSearchMapRenderShellGate = (
   snapshot: SearchMapRenderHostLayerRuntime
 ): SearchMapRenderShellGateSnapshot => ({
   highlightedRestaurantId: snapshot.engineInputs.highlightedRestaurantId,
-  restaurantOnlyId: snapshot.engineInputs.restaurantOnlyId,
   styleURL: snapshot.hostConfig.styleURL,
   mapCenter: snapshot.presentationProps.mapCenter,
   mapZoom: snapshot.presentationProps.mapZoom,
@@ -43,7 +41,6 @@ const areSearchMapRenderShellGateSnapshotsEqual = (
 ): boolean =>
   left.styleURL === right.styleURL &&
   left.highlightedRestaurantId === right.highlightedRestaurantId &&
-  left.restaurantOnlyId === right.restaurantOnlyId &&
   left.mapCenter === right.mapCenter &&
   left.mapZoom === right.mapZoom &&
   left.mapCameraAnimation === right.mapCameraAnimation &&

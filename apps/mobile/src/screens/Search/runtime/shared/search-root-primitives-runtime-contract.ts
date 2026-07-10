@@ -17,10 +17,6 @@ import type { SearchSuggestionPanelStateController } from './search-suggestion-p
 
 export type SearchRootSearchStateRuntime = {
   pendingRestaurantSelectionRef: React.MutableRefObject<{ restaurantId: string } | null>;
-  restaurantOnlyId: string | null;
-  setRestaurantOnlyId: (value: string | null) => void;
-  restaurantOnlySearchRef: React.MutableRefObject<string | null>;
-  setRestaurantOnlyIntent: (value: string | null) => void;
   resetFocusedMapState: () => void;
   searchSessionQueryRef: React.MutableRefObject<string>;
   isClearingSearchRef: React.MutableRefObject<boolean>;

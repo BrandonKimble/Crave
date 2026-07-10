@@ -47,7 +47,6 @@ export const useSearchRootMapSurfaceStateRuntime = ({
       mapViewportIntentRuntime.mapCameraAnimation,
       mapViewportIntentRuntime.mapCenter,
       mapViewportIntentRuntime.mapZoom,
-      mapViewportIntentRuntime.restaurantOnlyId,
       stateFoundationLane.rootPrimitivesRuntime.mapState.cameraRef,
       stateFoundationLane.rootPrimitivesRuntime.mapState.mapRef,
     ]

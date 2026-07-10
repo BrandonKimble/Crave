@@ -20,7 +20,7 @@ export type ProfileRestaurantActionModelRuntime = {
 };
 
 export const createProfileRestaurantActionModelRuntime = ({
-  queryState: { currentQueryLabel, restaurantOnlyId },
+  queryState: { currentQueryLabel },
   selectionState: {
     resolveRestaurantMapLocations,
     resolveRestaurantLocationSelectionAnchor,
@@ -41,7 +41,6 @@ export const createProfileRestaurantActionModelRuntime = ({
     getProfileTransitionSnapshotCapture,
     getProfileMultiLocationZoomBaseline,
     getRestaurantFocusSession,
-    getRestaurantOnlySearchId,
   },
 }: ProfileRestaurantActionModelRuntimeArgs): ProfileRestaurantActionModelRuntime => {
   const createRestaurantCameraActionModel = (
@@ -68,8 +67,6 @@ export const createProfileRestaurantActionModelRuntime = ({
     createProfileOpenActionModel({
       transitionStatus: getProfileTransitionStatus(),
       currentPanelRestaurantId: getCurrentPanelRestaurantId(),
-      restaurantOnlyId,
-      restaurantOnlySearchId: getRestaurantOnlySearchId(),
       queryLabel: currentQueryLabel,
       transitionSnapshotCapture: getProfileTransitionSnapshotCapture(),
       restaurantCameraActionModel: createRestaurantCameraActionModel(restaurant),

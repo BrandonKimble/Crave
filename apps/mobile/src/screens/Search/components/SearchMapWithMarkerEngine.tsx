@@ -31,12 +31,10 @@ import SearchMap, { type MapboxMapRef } from './search-map';
 const useSearchMapNativeInteractionMode = ({
   disableMarkers,
   highlightedRestaurantId,
-  restaurantOnlyId,
   resultsPresentationAuthority,
 }: {
   disableMarkers?: boolean;
   highlightedRestaurantId: string | null;
-  restaurantOnlyId: string | null;
   resultsPresentationAuthority: ResultsPresentationAuthority;
 }): SearchMapRenderInteractionMode => {
   const canInteract = React.useSyncExternalStore(
@@ -59,11 +57,9 @@ const useSearchMapNativeInteractionMode = ({
       return (
         disableMarkers !== true &&
         !isResultsExitActive &&
-        (isResultsPresentationVisible ||
-          highlightedRestaurantId != null ||
-          restaurantOnlyId != null)
+        (isResultsPresentationVisible || highlightedRestaurantId != null)
       );
-    }, [disableMarkers, highlightedRestaurantId, restaurantOnlyId, resultsPresentationAuthority]),
+    }, [disableMarkers, highlightedRestaurantId, resultsPresentationAuthority]),
     () => false
   );
 
@@ -85,7 +81,6 @@ export type SearchMapMarkerEngineHandle = {
 
 export type SearchMapWithMarkerEngineProps = {
   // --- Marker engine inputs ---
-  restaurantOnlyId: string | null;
   highlightedRestaurantId: string | null;
   viewportBoundsService: ViewportBoundsService;
   resolveRestaurantMapLocations: (restaurant: RestaurantResult) => ResolvedRestaurantMapLocation[];
@@ -151,7 +146,6 @@ export type SearchMapWithMarkerEngineProps = {
 };
 
 type SearchMapRenderEngineInputKey =
-  | 'restaurantOnlyId'
   | 'highlightedRestaurantId'
   | 'viewportBoundsService'
   | 'resolveRestaurantMapLocations'
@@ -221,7 +215,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
 > = (
   {
     // Marker engine inputs
-    restaurantOnlyId,
     highlightedRestaurantId,
     viewportBoundsService,
     resolveRestaurantMapLocations,
@@ -302,7 +295,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
   const nativeInteractionMode = useSearchMapNativeInteractionMode({
     disableMarkers,
     highlightedRestaurantId,
-    restaurantOnlyId,
     resultsPresentationAuthority,
   });
 
@@ -312,7 +304,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       resultsPresentationAuthority,
       resultsPresentationSurfaceAuthority,
       sourceFramePort,
-      restaurantOnlyId,
       highlightedRestaurantId,
       viewportBoundsService,
       userLocation,

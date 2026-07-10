@@ -18,7 +18,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   runRestaurantEntitySearch,
   submitSearch,
   submitViewportShortcut,
-  setRestaurantOnlyIntent,
   pendingRestaurantSelectionRef,
   currentMarketKey,
 }: SearchForegroundLaunchIntentRuntimeArgs): void => {
@@ -126,7 +125,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       // through the COMMITTED single-restaurant search lifecycle — NOT the cold
       // openRestaurantProfilePreview lane. This is the exact lane the recently-viewed
       // restaurant tap uses (use-search-foreground-recent-submit-runtime.ts):
-      //   1. prime `pendingRestaurantSelectionRef` + `setRestaurantOnlyIntent` so the
+      //   1. prime `pendingRestaurantSelectionRef` so the
       //      profile auto-open kickoff opens the WARM profile on the single committed
       //      candidate (resolveProfileAutoOpenAction's pending-selection branch) — gives
       //      "guaranteed profile, no results-list flash".
@@ -157,7 +156,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       // Prime the pending selection BEFORE the committed search lands so the auto-open
       // kickoff resolves to the warm-profile open for this exact restaurant.
       pendingRestaurantSelectionRef.current = { restaurantId };
-      setRestaurantOnlyIntent(restaurantId);
       if (seededRestaurantName) {
         // Warm-seed the profile header synchronously (frame-1 title), mirroring the
         // recently-viewed-restaurant tap, THEN run the committed search for the results.
@@ -171,7 +169,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
           if (pendingRestaurantSelectionRef.current?.restaurantId === restaurantId) {
             pendingRestaurantSelectionRef.current = null;
           }
-          setRestaurantOnlyIntent(null);
           logger.warn('Failed to open restaurant launch intent', {
             message: error instanceof Error ? error.message : 'unknown error',
             restaurantId,
@@ -201,7 +198,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
             if (pendingRestaurantSelectionRef.current?.restaurantId === restaurantId) {
               pendingRestaurantSelectionRef.current = null;
             }
-            setRestaurantOnlyIntent(null);
             logger.warn('Failed to open restaurant launch intent', {
               message: error instanceof Error ? error.message : 'unknown error',
               restaurantId,
@@ -214,7 +210,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
           if (pendingRestaurantSelectionRef.current?.restaurantId === restaurantId) {
             pendingRestaurantSelectionRef.current = null;
           }
-          setRestaurantOnlyIntent(null);
           logger.warn('Failed to open restaurant launch intent', {
             message: error instanceof Error ? error.message : 'unknown error',
             restaurantId,
@@ -236,6 +231,5 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     pendingRestaurantSelectionRef,
     routeSearchCommandActions,
     runRestaurantEntitySearch,
-    setRestaurantOnlyIntent,
   ]);
 };

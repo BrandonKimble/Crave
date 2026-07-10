@@ -10,7 +10,6 @@ type BuildMarkerCatalogArgs = {
   activeTab: 'dishes' | 'restaurants';
   dishes: FoodResult[];
   markerRestaurants: RestaurantResult[];
-  restaurantOnlyId: string | null;
   selectedRestaurantId: string | null;
   canonicalRestaurantRankById: Map<string, number>;
   locationSelectionAnchor: Coordinate | null;
@@ -54,7 +53,6 @@ export const buildMarkerCatalogReadModel = (
     activeTab,
     dishes,
     markerRestaurants,
-    restaurantOnlyId,
     selectedRestaurantId,
     canonicalRestaurantRankById,
     locationSelectionAnchor,
@@ -71,9 +69,6 @@ export const buildMarkerCatalogReadModel = (
     const dishesByLocation = new Map<string, { dish: FoodResult; rank: number }>();
 
     dishes.forEach((dish, dishIndex) => {
-      if (restaurantOnlyId && dish.restaurantId !== restaurantOnlyId) {
-        return;
-      }
       if (
         typeof dish.restaurantLatitude !== 'number' ||
         typeof dish.restaurantLongitude !== 'number'
@@ -123,22 +118,18 @@ export const buildMarkerCatalogReadModel = (
     });
   } else {
     markerRestaurants.forEach((restaurant) => {
-      if (restaurantOnlyId && restaurant.restaurantId !== restaurantOnlyId) {
-        return;
-      }
       const canonicalRank = canonicalRestaurantRankById.get(restaurant.restaurantId);
       // The marker catalog drops any restaurant without a numeric rank (rank is a search-ranking
       // concept). A committed restaurant/entity reveal (poll comment-span / restaurant deep link)
       // returns a SINGLE rankless restaurant — so its only pin would be dropped here and the map
       // would render no pin at the reveal frame (the "pin pops in only on refresh" bug). When this
-      // restaurant IS the explicitly-revealed target (selectedRestaurantId / restaurantOnlyId),
-      // fall back to rank 1 so the reveal always yields a pin — mirroring the seeded-marker path
+      // restaurant IS the explicitly-revealed target (selectedRestaurantId), fall back to
+      // rank 1 so the reveal always yields a pin — mirroring the seeded-marker path
       // (publishHydratedRestaurantMarkerSource gives a rankless hydrated restaurant rank 1). Ranked
       // search results are unaffected: they always carry a canonical rank, so the fallback is inert
       // for the result-card path.
       const isRevealedRestaurant =
-        (selectedRestaurantId !== null && restaurant.restaurantId === selectedRestaurantId) ||
-        (restaurantOnlyId !== null && restaurant.restaurantId === restaurantOnlyId);
+        selectedRestaurantId !== null && restaurant.restaurantId === selectedRestaurantId;
       const rank =
         typeof canonicalRank === 'number' ? canonicalRank : isRevealedRestaurant ? 1 : undefined;
       if (typeof rank !== 'number') {

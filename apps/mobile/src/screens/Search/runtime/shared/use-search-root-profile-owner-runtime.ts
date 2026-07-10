@@ -73,7 +73,6 @@ export const useSearchRootProfileOwnerRuntime = ({
       resultsPresentationSurfaceAuthority: sessionCoreLane.resultsPresentationSurfaceAuthority,
       getCurrentViewportBounds: () => sessionCoreLane.viewportBoundsService.getBounds(),
       trimmedQuery: rootPrimitivesRuntime.searchState.query.trim(),
-      restaurantOnlyId: rootPrimitivesRuntime.searchState.restaurantOnlyId,
       isProfileAutoOpenSuppressed:
         rootPrimitivesRuntime.searchState.isSuggestionPanelActive ||
         rootPrimitivesRuntime.searchState.isSearchFocused,
@@ -82,8 +81,6 @@ export const useSearchRootProfileOwnerRuntime = ({
       clearPendingRestaurantSelection: () => {
         rootPrimitivesRuntime.searchState.pendingRestaurantSelectionRef.current = null;
       },
-      getRestaurantOnlySearchId: () =>
-        rootPrimitivesRuntime.searchState.restaurantOnlySearchRef.current,
     },
     cameraTransitionPorts,
     selectionModel: selectionModelForProfileOwner,

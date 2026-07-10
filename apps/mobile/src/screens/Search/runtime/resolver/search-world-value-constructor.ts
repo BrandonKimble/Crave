@@ -158,7 +158,6 @@ export const constructSearchWorldValue = (args: {
             restaurants,
             dishes,
             activeTab: tab,
-            restaurantOnlyId: null,
             selectedRestaurantId: null,
             bounds,
             userLocation,

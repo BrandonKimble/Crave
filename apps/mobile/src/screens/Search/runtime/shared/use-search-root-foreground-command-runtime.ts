@@ -92,7 +92,6 @@ export const useSearchRootForegroundCommandRuntime = ({
         setShowSuggestions: rootPrimitivesRuntime.searchState.setShowSuggestions,
         setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
         setQuery: rootPrimitivesRuntime.searchState.setQuery,
-        setRestaurantOnlyIntent: rootPrimitivesRuntime.searchState.setRestaurantOnlyIntent,
         pendingRestaurantSelectionRef:
           rootPrimitivesRuntime.searchState.pendingRestaurantSelectionRef,
         isSearchEditingRef: rootPrimitivesRuntime.searchState.isSearchEditingRef,
@@ -129,7 +128,6 @@ export const useSearchRootForegroundCommandRuntime = ({
       rootPrimitivesRuntime.searchState.setIsSearchFocused,
       rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
       rootPrimitivesRuntime.searchState.setQuery,
-      rootPrimitivesRuntime.searchState.setRestaurantOnlyIntent,
       rootPrimitivesRuntime.searchState.setShowSuggestions,
       rootPrimitivesRuntime.searchState.setSuggestions,
       rootPrimitivesRuntime.searchState.suggestions,

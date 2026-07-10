@@ -55,7 +55,6 @@ export const useProfileOwnerRuntimeStateRuntime = ({
       getFallbackMapZoom: () => fallbackMapZoom,
       getProfileMultiLocationZoomBaseline,
       getRestaurantFocusSession,
-      getRestaurantOnlySearchId: searchContext.getRestaurantOnlySearchId,
       getPendingSelection: searchContext.getPendingRestaurantSelection,
       getActiveOpenRestaurantId: () =>
         profileShellState.transitionStatus === 'opening' ||
@@ -80,7 +79,6 @@ export const useProfileOwnerRuntimeStateRuntime = ({
       profileShellState.transitionStatus,
       searchContext.getCurrentViewportBounds,
       searchContext.getPendingRestaurantSelection,
-      searchContext.getRestaurantOnlySearchId,
     ]
   );
 };
