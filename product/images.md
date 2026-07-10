@@ -87,16 +87,25 @@ dish?)` and rendering only the unanswered questions:
 - Cards everywhere (restaurant + dish cards in results, favorites lists —
   yours, friends', anyone's): photo strip scrollable L-R, Google-style.
 
-## Hero photo (who wins a single-thumbnail slot)
+## Strip ordering (owner correction 2026-07-10: cards NEVER show a single
 
-- Launch: most-recent ABOVE A QUALITY FLOOR (moderation pass scores
-  sharpness/brightness/resolution for free — filters "crappy photo as the
-  face of the dish").
-- v2: tap-rate = taps ÷ impressions (age-normalized). Raw views/view-time
-  just measure age — rejected.
+## photo — every card carries a horizontal photo strip)
+
+- Every restaurant/dish card renders a horizontally scrollable STRIP
+  (~3-4 photos visible, more on scroll). There is NO single-thumbnail slot
+  anywhere — the old "hero" concept survives only as WHO LEADS THE STRIP
+  (position #1) and how the rest are ordered.
+- Ordering policy: most-recent ABOVE A QUALITY FLOOR first (the moderation
+  pass scores focus for free — no blurry photo leads a strip), then
+  recency; v2 = tap-rate (taps ÷ impressions, age-normalized — raw
+  views/view-time just measure age, rejected).
+- The SAME horizontal-scroll pattern is the gallery selector on restaurant
+  profile + user profile pages: scroll across dish slices ordered by dish
+  rank, like a toggle selector.
 - Requirement NOW: track impressions + taps per photo from day one (taps in
   a gallery = interest signal, owner-confirmed). Batched fire-and-forget
-  events (usage-ledger pattern); metrics may later drive profile sorting.
+  events (usage-ledger pattern); metrics may later drive strip ordering and
+  profile sorting.
 
 ## Moderation (fully automated — owner can NEVER be an approval bottleneck)
 

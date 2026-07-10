@@ -232,10 +232,13 @@ restaurant-profile gallery add entry; user-profile food-log add entry
 
 ### Card contract (all restaurant/dish cards, everywhere incl. favorites)
 
-Photo strip scrollable L-R (Google-style); single-thumbnail slots use the
-HERO policy (product/images.md: recent-above-quality-floor → tap-rate v2);
-imageless slots render the attractive PLACEHOLDER (display state only — the
-add button appears ONLY in owner/collaborator list contexts).
+Photo strip scrollable L-R on EVERY card (~3-4 visible, more on scroll) —
+there is NO single-thumbnail slot anywhere (owner 2026-07-10). Strip ORDER
+uses the ordering policy (product/images.md: quality-floor-then-recency →
+tap-rate v2; position #1 = the old "hero"). Imageless cards render the
+attractive PLACEHOLDER (display state only — the add button appears ONLY in
+owner/collaborator list contexts). The same horizontal-scroll pattern =
+the gallery dish-slice selector on restaurant/user profiles.
 
 ### Favorites two-sided note (owner, same discussion)
 

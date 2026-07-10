@@ -31,10 +31,12 @@ export interface FoodLogGroupDto {
   photos: PhotoStripItemDto[];
 }
 
-/** Hero-photo policy (product/images.md): most recent LIVE photo above the
- *  quality floor; photos with no focus score (free-plan nulls) pass the
- *  floor — recency is the tiebreak until tap-rate v2. */
+/** Strip-ordering policy (product/images.md, owner 2026-07-10: cards carry
+ *  STRIPS, never single slots): above-quality-floor photos lead (no blurry
+ *  photo fronts a strip), then recency; null focus (free-plan) passes the
+ *  floor. Position #1 is the old "hero". */
 const FOCUS_FLOOR = 0.15;
+const STRIP_SIZE = 10;
 
 /**
  * READ paths (plans/images-ideal-shape.md step 3). Only LIVE photos are
@@ -49,21 +51,45 @@ export class PhotoReadService {
     private readonly cloudinary: CloudinaryService,
   ) {}
 
-  /** Batched hero lookup for result cards: one query per entity kind.
-   *  Returns maps keyed by restaurantId / connectionId. */
-  async heroPhotos(params: {
+  /** Batched STRIP lookup for result cards (cards always carry a
+   *  horizontal strip — never a single slot): the first STRIP_SIZE photos
+   *  per entity, quality-floor photos leading, then recency. Returns maps
+   *  keyed by restaurantId / connectionId plus total counts. */
+  async stripPhotos(params: {
     restaurantIds?: string[];
     connectionIds?: string[];
   }): Promise<{
-    byRestaurant: Map<string, PhotoStripItemDto>;
-    byConnection: Map<string, PhotoStripItemDto>;
+    byRestaurant: Map<string, PhotoStripItemDto[]>;
+    byConnection: Map<string, PhotoStripItemDto[]>;
     countsByRestaurant: Map<string, number>;
     countsByConnection: Map<string, number>;
   }> {
-    const byRestaurant = new Map<string, PhotoStripItemDto>();
-    const byConnection = new Map<string, PhotoStripItemDto>();
+    const byRestaurant = new Map<string, PhotoStripItemDto[]>();
+    const byConnection = new Map<string, PhotoStripItemDto[]>();
     const countsByRestaurant = new Map<string, number>();
     const countsByConnection = new Map<string, number>();
+
+    const collect = (
+      rows: PhotoStripRow[],
+      keyOf: (row: PhotoStripRow) => string,
+      strips: Map<string, PhotoStripItemDto[]>,
+      counts: Map<string, number>,
+    ) => {
+      const grouped = new Map<string, PhotoStripRow[]>();
+      for (const row of rows) {
+        const key = keyOf(row);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+        const bucket = grouped.get(key) ?? [];
+        bucket.push(row);
+        grouped.set(key, bucket);
+      }
+      for (const [key, bucket] of grouped) {
+        strips.set(
+          key,
+          this.orderStrip(bucket).map((r) => this.toStripItem(r)),
+        );
+      }
+    };
 
     if (params.connectionIds?.length) {
       const rows = await this.prisma.photo.findMany({
@@ -74,13 +100,12 @@ export class PhotoReadService {
         orderBy: { uploadedAt: 'desc' },
         select: PHOTO_STRIP_SELECT,
       });
-      for (const row of rows) {
-        const key = row.connectionId!;
-        countsByConnection.set(key, (countsByConnection.get(key) ?? 0) + 1);
-        if (!byConnection.has(key) && this.passesFloor(row.focusScore)) {
-          byConnection.set(key, this.toStripItem(row));
-        }
-      }
+      collect(
+        rows,
+        (row) => row.connectionId!,
+        byConnection,
+        countsByConnection,
+      );
     }
     if (params.restaurantIds?.length) {
       const rows = await this.prisma.photo.findMany({
@@ -91,13 +116,12 @@ export class PhotoReadService {
         orderBy: { uploadedAt: 'desc' },
         select: PHOTO_STRIP_SELECT,
       });
-      for (const row of rows) {
-        const key = row.restaurantId;
-        countsByRestaurant.set(key, (countsByRestaurant.get(key) ?? 0) + 1);
-        if (!byRestaurant.has(key) && this.passesFloor(row.focusScore)) {
-          byRestaurant.set(key, this.toStripItem(row));
-        }
-      }
+      collect(
+        rows,
+        (row) => row.restaurantId,
+        byRestaurant,
+        countsByRestaurant,
+      );
     }
     return {
       byRestaurant,
@@ -105,6 +129,14 @@ export class PhotoReadService {
       countsByRestaurant,
       countsByConnection,
     };
+  }
+
+  /** Quality-floor photos lead (within each group recency descending —
+   *  rows arrive newest-first), then below-floor; capped at STRIP_SIZE. */
+  private orderStrip(rows: PhotoStripRow[]): PhotoStripRow[] {
+    const above = rows.filter((row) => this.passesFloor(row.focusScore));
+    const below = rows.filter((row) => !this.passesFloor(row.focusScore));
+    return [...above, ...below].slice(0, STRIP_SIZE);
   }
 
   /** The restaurant gallery (selector-row shaped: All + per-dish). */
