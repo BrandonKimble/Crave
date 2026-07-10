@@ -1016,6 +1016,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     // blocks the main thread long enough to be the R1 stall (~30ms+), regardless of the perf-scenario
     // attribution arm (whose quiet measured loop interferes with UI-driven reveals). Strip at cleanup.
     if durationMs > 30 {
+      // TEMP [FRAMEDBG] — commit-instant attribution (red-team follow-up). Strip after.
+      NSLog(
+        "[applyslow] %@|%@|%@ ms=%.1f ops=%d", section, phase, source, durationMs, operationCount)
       Self.lodLog(
         "[applyslow] \(section)|\(phase)|\(source) ms=\(Self.round3(durationMs)) ops=\(operationCount)")
     }
@@ -1477,6 +1480,13 @@ final class SearchMapRenderController: RCTEventEmitter {
         ))
       }
       state.candidateCatalog = catalog
+      // Sprite prewarm (see prewarmPinSprites): the reveal commit must find every badge
+      // sprite + the shared shadow already baked.
+      let prewarmImageIds = Array(Set(catalog.compactMap { $0.badgeImageId })).sorted()
+      let prewarmMapTag = state.mapTag
+      DispatchQueue.main.async { [weak self] in
+        self?.prewarmPinSprites(imageIds: prewarmImageIds, mapTag: prewarmMapTag)
+      }
       // Force the next camera tick to re-emit the on-screen set against the new catalog.
       state.lastVisibleMarkerSetSignature = nil
       // Feed the single-authority engine the ranked catalog (atomic full rebuild). The ranking must be
@@ -7969,6 +7979,11 @@ final class SearchMapRenderController: RCTEventEmitter {
   // Runs on roster + every frame WHILE MOVING (at rest the
   // last ranking holds). "higher priority drawn first" — direction verified on-device; flip the sign if front/back is inverted.
   private func updatePinVAPriorities(inst: PinVAInstance, mapboxMap: MapboxMap) {
+    let framedbgStart = CACurrentMediaTime() * 1000
+    defer {
+      let framedbgDur = CACurrentMediaTime() * 1000 - framedbgStart
+      if framedbgDur > 30 { NSLog("[applyslow] pinVAPriorities|-|- ms=%.1f ops=%d", framedbgDur, inst.vaByKey.count) }
+    }
     for (key, va) in inst.vaByKey {
       guard let coord = inst.coordByKey[key] else { continue }
       let pt = mapboxMap.point(for: coord)
@@ -7989,13 +8004,48 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   // Resolve a sprite id → UIImage (+ point size) from the Mapbox style, with the same premultiplied-alpha
   // re-wrap the CA path uses (mapboxMap.image mislabels premultiplied bytes as straight → grey ring seam).
+  // PERF (commit-instant attribution, red-team follow-up): style-scoped sprite cache at the
+  // CONTROLLER level — badge ids recur across every world, so a reveal's mint loop should be
+  // dictionary hits, not style fetches. Filled by resolvePinVASprite AND by the catalog-arrival
+  // prewarm below, which moves the cold-path cost (style image fetch + premultiply fix + the
+  // one-time CI-blur shadow bake) OFF the reveal-commit frame entirely.
+  private var pinSpriteCacheByImageId: [String: (img: UIImage, size: CGSize)] = [:]
+
   private func resolvePinVASprite(inst: PinVAInstance, imageId: String, mapboxMap: MapboxMap) -> (img: UIImage, size: CGSize)? {
+    if let cached = pinSpriteCacheByImageId[imageId] { return cached }
     if let cached = inst.uiImageCache[imageId] { return cached }
     guard let img = mapboxMap.image(withId: imageId), let raw = img.cgImage else { return nil }
     let cg = Self.fixMislabeledPremultipliedAlpha(raw) ?? raw
     let result = (UIImage(cgImage: cg, scale: img.scale, orientation: .up), img.size)
-    inst.uiImageCache[imageId] = result
+    pinSpriteCacheByImageId[imageId] = result
     return result
+  }
+
+  /// Catalog-arrival sprite prewarm: resolve a few badge sprites per runloop tick (main
+  /// thread — mapboxMap.image is style API) and bake the shared pin shadow on the FIRST
+  /// resolved sprite, so the reveal-commit mint loop finds everything cached. The commit
+  /// typically lands hundreds of ms after the catalog; three-per-tick finishes a 30-badge
+  /// world in ~10 ticks (~170ms) without ever breaking a frame's budget.
+  private func prewarmPinSprites(imageIds: [String], mapTag: NSNumber, index: Int = 0) {
+    guard index < imageIds.count else { return }
+    guard let handle = currentResolvedMapHandle(for: mapTag),
+          let mapboxMap = handle.mapView.mapboxMap else { return }
+    let batchEnd = min(index + 3, imageIds.count)
+    for imageId in imageIds[index..<batchEnd] where pinSpriteCacheByImageId[imageId] == nil {
+      guard let img = mapboxMap.image(withId: imageId), let raw = img.cgImage else { continue }
+      let cg = Self.fixMislabeledPremultipliedAlpha(raw) ?? raw
+      let sprite = (UIImage(cgImage: cg, scale: img.scale, orientation: .up), img.size)
+      pinSpriteCacheByImageId[imageId] = sprite
+      if cachedPinShadow == nil, let bodyCG = sprite.0.cgImage {
+        cachedPinShadow = makePinShadowImage(
+          bodyCG: bodyCG, bodyPt: sprite.1, deviceScale: UIScreen.main.scale)
+      }
+    }
+    if batchEnd < imageIds.count {
+      DispatchQueue.main.async { [weak self] in
+        self?.prewarmPinSprites(imageIds: imageIds, mapTag: mapTag, index: batchEnd)
+      }
+    }
   }
 
   // Skin a PinVAView: body = rank sprite (view bounds = body size so .bottom anchor puts the tip on the
@@ -8075,9 +8125,17 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
 
     // Create missing VAs (alpha 0 → fades up; no add-flash).
+    // PERF: the mint is CHUNKED — at most 8 creates per pass, the remainder next runloop
+    // tick (pins mint at alpha 0 and fade from the engine's opacity, so a tick-late mint
+    // just starts its fade a tick late; a 30-pin burst was a whole dropped-frame cluster).
     let vaCreateStartedAt = CACurrentMediaTime() * 1000
     var vaCreatedCount = 0
+    var vaMintDeferred = false
     for key in desired where inst.vaByKey[key] == nil {
+      if vaCreatedCount >= 8 {
+        vaMintDeferred = true
+        break
+      }
       guard let coord = coordByKey[key],
             let badgeId = pinVAEffectiveBadgeId(inst: inst, key: key),
             let sprite = resolvePinVASprite(inst: inst, imageId: badgeId, mapboxMap: mapboxMap) else { continue }
@@ -8094,6 +8152,13 @@ final class SearchMapRenderController: RCTEventEmitter {
       inst.viewByKey[key] = view
       inst.viewBadgeId[key] = badgeId
       vaCreatedCount += 1
+    }
+    if vaMintDeferred {
+      DispatchQueue.main.async { [weak self] in
+        guard let self, let latest = self.instances[instanceId],
+              !Self.isVisualSourceInactiveOrDismissing(latest) else { return }
+        self.syncPinVARoster(instanceId: instanceId, handle: handle)
+      }
     }
     if vaCreatedCount > 0 {
       // Stall attribution: sprite baking (UIGraphicsImageRenderer + the CI-blur shadow)
@@ -10183,6 +10248,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     reason: String,
     isMoving: Bool
   ) -> Bool {
+    let framedbgStart = CACurrentMediaTime() * 1000
+    defer {
+      let framedbgDur = CACurrentMediaTime() * 1000 - framedbgStart
+      if framedbgDur > 30 { NSLog("[applyslow] projectOnScreen|-|- ms=%.1f", framedbgDur) }
+    }
+
     // Respect the existing hidden/dismissing gating — never project a stale frame for a
     // source that is not on screen (mirrors handleNativeCameraChanged's per-instance guard).
     Self.lodLog("[LODDBG] projEnter reason=\(reason) inactive=\(Self.isVisualSourceInactiveOrDismissing(state)) catalogEmpty=\(state.candidateCatalog.isEmpty)")
