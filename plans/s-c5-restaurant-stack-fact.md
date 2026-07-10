@@ -98,6 +98,31 @@ accessibilityLabel) opens the profile reliably — coordinate and bare-name taps
   composite; launch-intent restaurant arm deletes; EntityLink's first restaurant consumer
   (poll spans) proves byte-parity with today's comment-span tap.
 
+## IMPLEMENTATION STATUS (2026-07-09 ~11PM)
+
+- **Slice A SHIPPED (45525a80):** beginCloseSearch's two mirror reads → stack fact; ref prop
+  threading dropped through the presentation-owner chain.
+- **Slices B+C SHIPPED (2ad31448):** pop-owned teardown live — the pop-teardown writer
+  (registerTarget on the navigation authority) runs the COMMIT half (camera restore +
+  hydration cancel + highlight clear + focus reset; machine-close guard via live transition
+  state) at the pop and defers the SETTLE half (panel-snapshot clear) to PF outgoing==null so
+  the dismissal slide never renders a nulled snapshot. prepare/clear bridge refs DELETED end
+  to end; clear-owner profile block + skipProfileDismissClear + finalizeCloseSearch's source
+  param DELETED. profilePresentationActiveRef survives for foreground-UI consumers only;
+  closeRestaurantProfileRef survives (live consumers). Rig: back-close correctly skips both
+  halves; terminal X dismiss fires one commit + one settle in order; pop-shaped
+  profile-over-favorites-session fires both and restores Favorites; canonical home end
+  states. ⚠️ Owner finger check: camera-restore FEEL on the terminal dismiss.
+- **Slice D = S-D.1 (NOT started):** EntityRef + resolveEntityRefAction + EntityLink; the
+  launch-intent restaurant arm becomes the policy fn's warm-profile composite. This is the
+  first S-D slice proper — fresh session.
+- **Deferred residue for the S-D/S-C.6 passes:** the terminalDismissSource axis is now
+  INERT plumbing (still selects outgoingSheetSceneKey freeze + intent-state labels; no
+  behavioral consumer) — delete with the close-chain collapse (S-C.5 item 2); the
+  profilePresentationActive foreground consumers (editing/clear runtimes) can move to the
+  stack fact when a route getter reaches them; applyPreparedProfileOverlayDismissUpdate is
+  DEAD (zero callers) — delete or wire deliberately.
+
 ## Risks / verification
 
 - Camera choreography is the precious surface (map is DONE): slice B needs the composite
