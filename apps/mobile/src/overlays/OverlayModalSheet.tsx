@@ -4,6 +4,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   Easing,
   runOnJS,
+  useAnimatedKeyboard,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -203,8 +204,14 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
       [requestCloseFromDrag, visible]
     );
 
+    // Keyboard avoidance: the sheet rides above the keyboard (compositor-driven, the
+    // same useAnimatedKeyboard pattern as PollCreationPanel) so prompt/text-input
+    // content is never covered. Zero when no keyboard — non-input sheets unaffected.
+    const keyboard = useAnimatedKeyboard();
     const sheetAnimatedStyle = useAnimatedStyle(() => ({
-      transform: [{ translateY: (1 - progress.value) * SCREEN_HEIGHT + dragY.value }],
+      transform: [
+        { translateY: (1 - progress.value) * SCREEN_HEIGHT + dragY.value - keyboard.height.value },
+      ],
     }));
     const backdropAnimatedStyle = useAnimatedStyle(() => {
       // The dim follows the sheet: eases off as the sheet is dragged toward dismissal.

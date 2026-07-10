@@ -108,5 +108,33 @@ module.exports = {
   rules: {
     // Mobile-specific rules
     '@typescript-eslint/no-explicit-any': 'warn',
+    // THE STANDARD MODAL SURFACE (owner spec, 2026-07-08): every modal renders
+    // through OverlayModalSheet (AppModalHost / showAppModal / announceFailureIfOnline;
+    // `prompt` covers Alert.prompt flows). The native centered alert and native
+    // <Modal> are banned so the standard can't silently erode — an Alert.alert
+    // regressed in within a day of the migration; this rule is the door lock.
+    'no-restricted-properties': [
+      'error',
+      {
+        object: 'Alert',
+        property: 'alert',
+        message:
+          'Use showAppModal / announceFailureIfOnline (the standard modal surface) instead of Alert.alert.',
+      },
+      {
+        object: 'Alert',
+        property: 'prompt',
+        message:
+          'Use showAppModal with the `prompt` field (the standard modal surface) instead of Alert.prompt.',
+      },
+    ],
+    'no-restricted-syntax': [
+      'error',
+      {
+        selector:
+          "ImportDeclaration[source.value='react-native'] ImportSpecifier[imported.name='Modal']",
+        message: 'Use OverlayModalSheet (the standard modal surface) instead of the native Modal.',
+      },
+    ],
   },
 };

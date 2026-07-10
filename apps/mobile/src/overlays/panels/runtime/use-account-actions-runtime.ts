@@ -1,5 +1,4 @@
 import React from 'react';
-import { Alert } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 
 import { usersService } from '../../../services/users';
@@ -82,23 +81,34 @@ export const useAccountActionsRuntime = () => {
         announceFailureIfOnline();
       }
     };
-    Alert.alert(
-      'Delete account?',
-      'This permanently deletes your account, profile, and personal data. It cannot be undone.\n\nApp Store subscriptions are NOT cancelled by deleting your account — manage those in iOS Settings → Apple ID → Subscriptions.',
-      [
-        { text: 'Cancel', style: 'cancel' },
+    // Both steps ride THE standard modal (the host's exactly-once close bookkeeping
+    // makes opening step 2 from step 1's action safe); step 2 uses the sheet's
+    // `prompt` field — the Alert.prompt replacement.
+    showAppModal({
+      title: 'Delete account?',
+      message:
+        'This permanently deletes your account, profile, and personal data. It cannot be undone.\n\nApp Store subscriptions are NOT cancelled by deleting your account — manage those in iOS Settings → Apple ID → Subscriptions.',
+      actions: [
+        { label: 'Cancel', style: 'cancel' },
         {
-          text: 'Continue',
+          label: 'Continue',
           style: 'destructive',
+          testID: 'delete-account-continue',
           onPress: () => {
-            Alert.prompt(
-              'Type DELETE to confirm',
-              'This is permanent.',
-              [
-                { text: 'Cancel', style: 'cancel' },
+            showAppModal({
+              title: 'Type DELETE to confirm',
+              message: 'This is permanent.',
+              prompt: {
+                placeholder: 'DELETE',
+                autoCapitalize: 'characters',
+                testID: 'delete-account-confirm-input',
+              },
+              actions: [
+                { label: 'Cancel', style: 'cancel' },
                 {
-                  text: 'Delete forever',
+                  label: 'Delete forever',
                   style: 'destructive',
+                  testID: 'delete-account-confirm',
                   onPress: (typed?: string) => {
                     if (typed?.trim().toUpperCase() === 'DELETE') {
                       void runDeletion();
@@ -111,12 +121,11 @@ export const useAccountActionsRuntime = () => {
                   },
                 },
               ],
-              'plain-text'
-            );
+            });
           },
         },
-      ]
-    );
+      ],
+    });
   }, [signOut, unregisterPushToken]);
 
   return React.useMemo(

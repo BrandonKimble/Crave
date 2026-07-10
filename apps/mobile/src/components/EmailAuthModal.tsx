@@ -1,17 +1,10 @@
 import React from 'react';
-import {
-  Modal,
-  View,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
+import { View, StyleSheet, TextInput, TouchableOpacity } from 'react-native';
 import { useSignIn, useSignUp } from '@clerk/clerk-expo';
 import { Text } from './ui/Text';
 import { colors as themeColors } from '../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
+import OverlayModalSheet from '../overlays/OverlayModalSheet';
 import { logger } from '../utils';
 
 type EmailAuthModalProps = {
@@ -155,114 +148,107 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({ visible, onClose
     setError(null);
   };
 
+  // THE STANDARD MODAL SURFACE: the last native <Modal> in the app, migrated onto
+  // OverlayModalSheet — dimmed backdrop, rubber-band grab, swipe-down dismiss, and
+  // the sheet's built-in keyboard riding (replaces the KeyboardAvoidingView). The
+  // auth flow, form structure, and inline validation copy are unchanged (inline
+  // field errors are form UX, not failure announcements).
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.backdrop}
-      >
-        <View style={styles.modalCard}>
-          <Text variant="title" weight="bold" style={styles.modalTitle}>
-            Continue with email
+    <OverlayModalSheet
+      visible={visible}
+      onRequestClose={onClose}
+      zIndex={200}
+      maxBackdropOpacity={0.45}
+      paddingTop={24}
+      paddingHorizontal={20}
+      minBottomPadding={18}
+    >
+      <View>
+        <Text variant="title" weight="bold" style={styles.modalTitle}>
+          Continue with email
+        </Text>
+        <Text variant="body" style={styles.modalSubtitle}>
+          {mode === 'signIn'
+            ? 'Enter your email and we will send a six-digit code to sign in.'
+            : 'Use your email to create an account. We will confirm it with a six-digit code.'}
+        </Text>
+
+        {stage === 'collect' ? (
+          <View style={styles.formGroup}>
+            <Text variant="caption" weight="semibold" style={styles.label}>
+              Email address
+            </Text>
+            <TextInput
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="you@example.com"
+              style={styles.input}
+              value={email}
+              onChangeText={setEmail}
+              editable={!isBusy}
+            />
+            <TouchableOpacity
+              style={[styles.primaryButton, !canSubmitEmail && styles.primaryButtonDisabled]}
+              disabled={!canSubmitEmail}
+              onPress={sendEmailCode}
+            >
+              <Text variant="body" weight="semibold" style={styles.primaryButtonText}>
+                {status === 'sending' ? 'Sending…' : 'Send code'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.formGroup}>
+            <Text variant="caption" weight="semibold" style={styles.label}>
+              Verification code
+            </Text>
+            <TextInput
+              autoCapitalize="none"
+              keyboardType="number-pad"
+              placeholder="Enter 6-digit code"
+              style={styles.input}
+              value={code}
+              onChangeText={setCode}
+              editable={!isBusy}
+              maxLength={8}
+            />
+            <TouchableOpacity
+              style={[styles.primaryButton, !canVerifyCode && styles.primaryButtonDisabled]}
+              disabled={!canVerifyCode}
+              onPress={verifyEmailCode}
+            >
+              <Text variant="body" weight="semibold" style={styles.primaryButtonText}>
+                {status === 'verifying' ? 'Confirming…' : 'Verify & continue'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {error ? (
+          <Text variant="caption" style={styles.errorText}>
+            {error}
           </Text>
-          <Text variant="body" style={styles.modalSubtitle}>
+        ) : null}
+
+        <TouchableOpacity style={styles.secondaryButton} onPress={toggleMode}>
+          <Text variant="caption" style={styles.secondaryButtonText}>
             {mode === 'signIn'
-              ? 'Enter your email and we will send a six-digit code to sign in.'
-              : 'Use your email to create an account. We will confirm it with a six-digit code.'}
+              ? 'New to Crave? Create an account instead'
+              : 'Already have an account? Sign in instead'}
           </Text>
+        </TouchableOpacity>
 
-          {stage === 'collect' ? (
-            <View style={styles.formGroup}>
-              <Text variant="caption" weight="semibold" style={styles.label}>
-                Email address
-              </Text>
-              <TextInput
-                autoCapitalize="none"
-                keyboardType="email-address"
-                placeholder="you@example.com"
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                editable={!isBusy}
-              />
-              <TouchableOpacity
-                style={[styles.primaryButton, !canSubmitEmail && styles.primaryButtonDisabled]}
-                disabled={!canSubmitEmail}
-                onPress={sendEmailCode}
-              >
-                <Text variant="body" weight="semibold" style={styles.primaryButtonText}>
-                  {status === 'sending' ? 'Sending…' : 'Send code'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.formGroup}>
-              <Text variant="caption" weight="semibold" style={styles.label}>
-                Verification code
-              </Text>
-              <TextInput
-                autoCapitalize="none"
-                keyboardType="number-pad"
-                placeholder="Enter 6-digit code"
-                style={styles.input}
-                value={code}
-                onChangeText={setCode}
-                editable={!isBusy}
-                maxLength={8}
-              />
-              <TouchableOpacity
-                style={[styles.primaryButton, !canVerifyCode && styles.primaryButtonDisabled]}
-                disabled={!canVerifyCode}
-                onPress={verifyEmailCode}
-              >
-                <Text variant="body" weight="semibold" style={styles.primaryButtonText}>
-                  {status === 'verifying' ? 'Confirming…' : 'Verify & continue'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {error ? (
-            <Text variant="caption" style={styles.errorText}>
-              {error}
-            </Text>
-          ) : null}
-
-          <TouchableOpacity style={styles.secondaryButton} onPress={toggleMode}>
-            <Text variant="caption" style={styles.secondaryButtonText}>
-              {mode === 'signIn'
-                ? 'New to Crave? Create an account instead'
-                : 'Already have an account? Sign in instead'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.closeLink} onPress={onClose}>
-            <Text variant="caption" style={styles.closeLinkText}>
-              Cancel
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </Modal>
+        <TouchableOpacity style={styles.closeLink} onPress={onClose}>
+          <Text variant="caption" style={styles.closeLinkText}>
+            Cancel
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </OverlayModalSheet>
   );
 };
 
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.55)',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  modalCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 10,
-  },
   modalTitle: {
     textAlign: 'center',
     marginBottom: 8,

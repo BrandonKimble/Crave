@@ -5,7 +5,7 @@ import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-
 
 import { X as LucideX } from 'lucide-react-native';
 
-import { showAppModal, Text } from '../../components';
+import { announceFailureIfOnline, showAppModal, Text } from '../../components';
 import {
   checkPollDuplicate,
   createPoll,
@@ -149,10 +149,7 @@ export const usePollCreationPanelSpec = ({
       const poll = await createPoll(payload);
       onCreated(poll);
     } catch (error) {
-      showAppModal({
-        title: 'Unable to create poll',
-        message: error instanceof Error ? error.message : 'Please try again.',
-      });
+      announceFailureIfOnline();
     } finally {
       setSubmitting(false);
     }

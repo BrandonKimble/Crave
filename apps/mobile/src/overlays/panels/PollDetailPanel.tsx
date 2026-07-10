@@ -27,7 +27,7 @@ import {
   X as LucideX,
 } from 'lucide-react-native';
 
-import { showAppModal, Text } from '../../components';
+import { announceFailureIfOnline, showAppModal, Text } from '../../components';
 import { SceneLoadingSurface } from '../../components/skeletons';
 import { colors as themeColors } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
@@ -735,10 +735,7 @@ export const usePollDetailPanelSpec = ({
       setReplyTarget(null);
       await refresh();
     } catch (error) {
-      showAppModal({
-        title: 'Unable to post',
-        message: error instanceof Error ? error.message : 'Please try again.',
-      });
+      announceFailureIfOnline();
     } finally {
       setPosting(false);
     }
@@ -943,10 +940,7 @@ export const usePollDetailPanelSpec = ({
         setEditTarget(null);
         await refresh();
       } catch (error) {
-        showAppModal({
-          title: 'Unable to save',
-          message: error instanceof Error ? error.message : 'Please try again.',
-        });
+        announceFailureIfOnline();
       } finally {
         setMutatingComment(false);
       }
@@ -1008,12 +1002,7 @@ export const usePollDetailPanelSpec = ({
               setMutatingComment(true);
               deletePollComment(comment.commentId)
                 .then(() => refresh())
-                .catch((error) =>
-                  showAppModal({
-                    title: 'Unable to delete',
-                    message: error instanceof Error ? error.message : 'Please try again.',
-                  })
-                )
+                .catch(() => announceFailureIfOnline())
                 .finally(() => setMutatingComment(false));
             },
           },

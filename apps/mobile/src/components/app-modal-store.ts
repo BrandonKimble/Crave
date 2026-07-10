@@ -13,8 +13,18 @@ export type AppModalActionStyle = 'default' | 'cancel' | 'destructive';
 
 export type AppModalAction = {
   label: string;
-  onPress?: () => void;
+  /** With a `prompt` on the config, receives the typed text (Alert.prompt parity). */
+  onPress?: (promptText?: string) => void;
   style?: AppModalActionStyle;
+  testID?: string;
+};
+
+/** Text-input support (the Alert.prompt replacement — typed-confirm flows, etc.). */
+export type AppModalPrompt = {
+  placeholder?: string;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  secureTextEntry?: boolean;
+  keyboardType?: 'default' | 'email-address' | 'number-pad';
   testID?: string;
 };
 
@@ -23,6 +33,9 @@ export type AppModalConfig = {
   message?: string;
   /** Defaults to a single dismissing "OK" when omitted. */
   actions?: AppModalAction[];
+  /** Renders a text field between message and actions; its value reaches every
+   *  action's onPress. The sheet rides above the keyboard automatically. */
+  prompt?: AppModalPrompt;
   /**
    * Fires EXACTLY ONCE when THIS config's modal is gone, by ANY path — action press,
    * swipe-down, backdrop tap, or being replaced by a newer showAppModal (the host fires

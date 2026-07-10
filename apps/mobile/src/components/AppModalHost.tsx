@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Text } from './ui/Text';
 import { colors as themeColors } from '../constants/theme';
@@ -40,14 +40,27 @@ export const AppModalHost: React.FC = () => {
       : [{ label: 'OK', style: 'default' }];
   const isRow = actions.length === 2;
 
+  // Prompt state (the Alert.prompt replacement): keyed to the config identity so a
+  // new modal always starts with a blank field; the typed value reaches every
+  // action's onPress.
+  const [promptText, setPromptText] = React.useState('');
+  const promptConfigRef = React.useRef<AppModalConfig | null>(null);
+  if (config != null && promptConfigRef.current !== config) {
+    promptConfigRef.current = config;
+    if (promptText !== '') {
+      setPromptText('');
+    }
+  }
+
   // The sheet fences taps during its exit (pointerEvents), so a press only lands while
   // a live config is showing — dismiss exactly that config, then run its action.
   const handlePress = (action: AppModalAction): void => {
     if (config == null) {
       return;
     }
+    const typed = config.prompt != null ? promptText : undefined;
     dismissAppModal(config);
-    action.onPress?.();
+    action.onPress?.(typed);
   };
 
   // Identity-scoped dismiss: the sheet defers onRequestClose a frame, so a swipe/backdrop
@@ -116,6 +129,21 @@ export const AppModalHost: React.FC = () => {
           {renderedConfig.message}
         </Text>
       ) : null}
+      {renderedConfig?.prompt ? (
+        <TextInput
+          value={promptText}
+          onChangeText={setPromptText}
+          placeholder={renderedConfig.prompt.placeholder}
+          placeholderTextColor={themeColors.textMuted}
+          autoCapitalize={renderedConfig.prompt.autoCapitalize ?? 'none'}
+          secureTextEntry={renderedConfig.prompt.secureTextEntry}
+          keyboardType={renderedConfig.prompt.keyboardType}
+          autoFocus
+          autoCorrect={false}
+          style={styles.promptInput}
+          testID={renderedConfig.prompt.testID}
+        />
+      ) : null}
       <View style={[styles.actions, isRow ? styles.actionsRow : styles.actionsStack]}>
         {actions.map((action, index) => {
           const isDestructive = action.style === 'destructive';
@@ -163,6 +191,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: themeColors.textMuted,
     lineHeight: 21,
+  },
+  promptInput: {
+    marginTop: 16,
+    height: 48,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(17, 24, 39, 0.05)',
+    color: themeColors.textPrimary,
+    fontSize: 16,
   },
   actions: {
     marginTop: 22,
