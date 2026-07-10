@@ -147,3 +147,14 @@ catalog SHAPE supports them (group residency + roles).
 - Composite rig: markers:N counts per role from the native ack; the eye blesses the baseline.
 - RED self-mutations: drop the group key on one entry → the invariant barks; force an
   invisible-resident to render → pixel-diff catches it.
+
+## Status update (2026-07-10 ~6:15AM)
+
+L1 core SHIPPED (group budget f9e2e44f + sibling emission b441771c). **L3's machine is
+DELETED** (62e5d765/45fa716c — the profile opens via the standard push + arbiter camera;
+pop-teardown owns every close), which UNBLOCKS L1.c: restaurantOnly + seeded markers are
+the remaining arms. A dissolution-trace agent is mapping the live semantics (the committed
+entity world is naturally single-restaurant, so the filter may be transitional-window-only);
+the seeded-marker channel stays until its one-group catalog replacement lands IN THE SAME
+CUT (it is the sole marker source for profile-from-home). L1.d policy value lands with the
+L4 selection work.
