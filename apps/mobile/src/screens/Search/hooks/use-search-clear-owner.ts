@@ -90,93 +90,6 @@ export const useSearchClearOwner = <Suggestion>({
   inputRef,
   scrollResultsToTop,
 }: UseSearchClearOwnerArgs<Suggestion>): SearchClearOwner => {
-  const clearSearchAfterProfileDismiss = React.useCallback(() => {
-    const closeRestoreOrigin = captureSearchCloseOrigin({
-      allowFallback: isSearchSessionActive || hasResults || submittedQuery.length > 0,
-      searchRootRestoreSnap: 'collapsed',
-    });
-    isClearingSearchRef.current = true;
-    cancelActiveSearchRequest();
-    cancelAutocomplete();
-    handleCancelPendingMutationWork();
-    resetSubmitTransitionHold();
-    // Same atomic dismiss write as clearSearchState — this lane previously reset
-    // filters but never returned the tuple to idle (an S2 gap the reconciler
-    // classification made visible: the tuple claimed a live session after close).
-    writeSearchDesiredTuple(
-      searchRuntimeBus,
-      {
-        queryIdentity: { kind: 'idle' },
-        committedBounds: null,
-        filterVariant: { ...DEFAULT_SEARCH_FILTER_VARIANT },
-      },
-      'dismiss'
-    );
-    cancelToggleInteraction();
-    setIsSearchFocused(false);
-    setIsSuggestionPanelActive(false);
-    setIsAutocompleteSuppressed(true);
-    setShowSuggestions(false);
-    setQuery('');
-    publishSearchMountedResultsDataSnapshot(null);
-    searchRuntimeBus.publish({
-      resultsRequestKey: null,
-      resultsIdentityCandidateKey: null,
-      resultsPage: null,
-      resultsDishCount: 0,
-      resultsRestaurantCount: 0,
-      currentPage: 1,
-      hasMoreFood: false,
-      hasMoreRestaurants: false,
-      isPaginationExhausted: false,
-      isLoadingMore: false,
-      canLoadMore: false,
-    });
-    resetShortcutCoverageState();
-    resetMapMoveFlag();
-    setError(null);
-    setSuggestions([]);
-    restoreSearchCloseOrigin(closeRestoreOrigin);
-    lastAutoOpenKeyRef.current = null;
-    resetFocusedMapState();
-    setRestaurantOnlyIntent(null);
-    searchSessionQueryRef.current = '';
-    setSearchTransitionVariant('default');
-    Keyboard.dismiss();
-    inputRef.current?.blur();
-    scrollResultsToTop();
-    isClearingSearchRef.current = false;
-  }, [
-    captureSearchCloseOrigin,
-    cancelActiveSearchRequest,
-    cancelAutocomplete,
-    cancelToggleInteraction,
-    handleCancelPendingMutationWork,
-    hasResults,
-    inputRef,
-    isClearingSearchRef,
-    isSearchSessionActive,
-    lastAutoOpenKeyRef,
-    restoreSearchCloseOrigin,
-    resetFocusedMapState,
-    resetMapMoveFlag,
-    resetShortcutCoverageState,
-    resetSubmitTransitionHold,
-    scrollResultsToTop,
-    searchRuntimeBus,
-    searchSessionQueryRef,
-    setError,
-    setIsAutocompleteSuppressed,
-    setIsSearchFocused,
-    setIsSuggestionPanelActive,
-    setQuery,
-    setRestaurantOnlyIntent,
-    setSearchTransitionVariant,
-    setShowSuggestions,
-    setSuggestions,
-    submittedQuery,
-  ]);
-
   const clearTypedQuery = React.useCallback(() => {
     cancelAutocomplete();
     setIsAutocompleteSuppressed(false);
@@ -317,6 +230,12 @@ export const useSearchClearOwner = <Suggestion>({
       submittedQuery,
     ]
   );
+
+  // S-C.5 item 8: the old 86-line fork was clearSearchState() minus one idempotent focus
+  // reset — a copy that would only ever drift. The profile-dismiss clear IS the default clear.
+  const clearSearchAfterProfileDismiss = React.useCallback(() => {
+    clearSearchState();
+  }, [clearSearchState]);
 
   return React.useMemo(
     () => ({

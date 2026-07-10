@@ -168,6 +168,27 @@ export type SearchSurfaceRuntimeSnapshot = {
   navSilhouette: NavSilhouetteRuntimeProjection;
 };
 
+// S-C.5 item 6a — NAMED bottom-band policy selectors (the nav-visual runtime's session-arm
+// formulas, moved beside the policy they read so the "who owns the bottom band" vocabulary
+// is testable and shared; world/camera L1-L5 will need the same answers).
+export const selectIsPersistentPollHandoffCommitted = (
+  policy: SearchSurfaceVisualPolicySnapshot
+): boolean =>
+  policy.phase === 'results_dismissing' &&
+  policy.canReleasePersistentPolls &&
+  policy.bottomBandOwner === 'persistent_polls';
+
+export const selectIsTransitionOwnedResultsExit = (
+  policy: SearchSurfaceVisualPolicySnapshot
+): boolean =>
+  policy.phase === 'results_dismissing' && !selectIsPersistentPollHandoffCommitted(policy);
+
+export const selectIsSearchResultsSurfaceOwner = (
+  policy: SearchSurfaceVisualPolicySnapshot
+): boolean =>
+  policy.bottomBandOwner === 'results_header' ||
+  policy.sheetClipMode === 'animatedSearchTransition';
+
 export const selectSearchSurfaceVisualPolicy = (
   snapshot: SearchSurfaceRuntimeSnapshot
 ): SearchSurfaceVisualPolicySnapshot => {

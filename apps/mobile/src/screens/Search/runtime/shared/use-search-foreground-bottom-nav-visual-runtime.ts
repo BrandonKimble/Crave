@@ -36,6 +36,9 @@ import { useIsNavOutChildSceneRevealed } from '../../../../navigation/runtime/na
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
+  selectIsPersistentPollHandoffCommitted,
+  selectIsSearchResultsSurfaceOwner,
+  selectIsTransitionOwnedResultsExit,
   selectSearchSurfaceVisualPolicy,
   useSearchSurfaceRuntimeSelector,
 } from '../surface/search-surface-runtime';
@@ -97,19 +100,10 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
     selectSearchSurfaceVisualPolicy,
     areSearchSurfaceVisualPoliciesEqual
   );
-  const isTransitionOwnedResultsExit =
-    surfaceVisualPolicy.phase === 'results_dismissing' &&
-    !(
-      surfaceVisualPolicy.canReleasePersistentPolls &&
-      surfaceVisualPolicy.bottomBandOwner === 'persistent_polls'
-    );
+  const isTransitionOwnedResultsExit = selectIsTransitionOwnedResultsExit(surfaceVisualPolicy);
   const isPersistentPollHandoffCommitted =
-    surfaceVisualPolicy.phase === 'results_dismissing' &&
-    surfaceVisualPolicy.canReleasePersistentPolls &&
-    surfaceVisualPolicy.bottomBandOwner === 'persistent_polls';
-  const isSearchResultsSurfaceOwner =
-    surfaceVisualPolicy.bottomBandOwner === 'results_header' ||
-    surfaceVisualPolicy.sheetClipMode === 'animatedSearchTransition';
+    selectIsPersistentPollHandoffCommitted(surfaceVisualPolicy);
+  const isSearchResultsSurfaceOwner = selectIsSearchResultsSurfaceOwner(surfaceVisualPolicy);
   const isResultsClosing =
     searchSheetContentLaneKind === 'results_closing' || isTransitionOwnedResultsExit;
   const shouldHideBottomNavForSearchResultsMotion =

@@ -72,10 +72,9 @@ export const createAppSearchRouteCommandActions = ({
       snap: 'collapsed',
     });
     routeSheetSnapSessionActions.setIsDockedPollsDismissed(false);
-    // S-C.3-B: dismissing a PUSHED session POPS the stack back to the surviving search#home
-    // root ([search#home, search#session] → [search#home]) — the legacy setRoot collapse only
-    // remains for session-less stacks (boot-shaped dismissals). Proven by the [SC3B] probe:
-    // the old explicit setRoot here was what destroyed the home entry before the golden home
+    // S-C.3-B: dismissing a session POPS the stack back to the surviving search#home root
+    // ([search#home, search#session] → [search#home]). Proven by the [SC3B] probe: the old
+    // explicit setRoot here was what destroyed the home entry before the golden home
     // emission ever ran.
     //
     // S-C.4 item 3 (ONE-SWITCH home dismissal): the switch targets 'search' — the docked HOME
@@ -100,8 +99,11 @@ export const createAppSearchRouteCommandActions = ({
         { rootOverlayKey: dismissRouteState.rootOverlayKey }
       );
     }
-    const shouldPopPushedSession =
-      dismissRouteState.rootOverlayKey === 'search' && hasSearchSessionAboveRoot(dismissRouteState);
+    // S-C.5 item 4a: routeAction is UNCONDITIONALLY popToRoot. The old setRoot arm guarded
+    // the session-less home shape, where popToRoot on a depth-1 stack is a NO-OP — exactly
+    // as idempotent as the value-equal setRoot it replaces, with no fresh-root minting risk.
+    // (The non-search-root shape is the loud [NAV-CONTRACT] invariant above, not this arm's
+    // job.)
     routeSceneSwitchActions.requestOverlaySwitch({
       ...(sourceSceneKey != null ? { sourceSceneKey } : null),
       targetSceneKey: 'search',
@@ -109,7 +111,7 @@ export const createAppSearchRouteCommandActions = ({
       sheetOpenerSource: 'systemDismiss',
       sheetMotion: { kind: 'snapTo', snap: 'collapsed' },
       contentHandoff: 'preserveOutgoingUntilSettle',
-      routeAction: shouldPopPushedSession ? 'popToRoot' : 'setRoot',
+      routeAction: 'popToRoot',
       dockedPollsRestoreSnap: 'collapsed',
     });
   };
