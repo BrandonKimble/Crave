@@ -1,14 +1,14 @@
 // World-camera L2 (plans/world-camera-multilocation-foundation.md §3.2/§3.3) — the PURE
-// camera algebra. Two functions, no React, no map SDK, golden-testable like the LodEngine:
+// focus-fit: center the anchor, grow a radius greedily over the distance-sorted siblings
+// until the next sibling is an outlier (median-ratio cut), fit that radius into the safe
+// region, clamp to a city-scale zoom floor and to "never zoom IN to show context". No React,
+// no map SDK, golden-testable like the LodEngine.
 //
-//   • resolveAnchorLocation — P5, the ONE anchor rule ("closest location to the user if the
-//     user is inside the searched viewport, else closest to the viewport center"). Three
-//     consumers by design: the LOD representative (L1), the camera center (here), and the
-//     single-location pin treatment.
-//   • resolveFocusCamera — the focus-fit: center the anchor, grow a radius greedily over the
-//     distance-sorted siblings until the next sibling is an outlier (median-ratio cut), fit
-//     that radius into the safe region, clamp to a city-scale zoom floor and to "never zoom
-//     IN to show context".
+// P5 (the ONE anchor rule) deliberately does NOT live here — it ALREADY exists, battle-tested
+// with the primary tiebreak, as resolveRestaurantLocationSelectionAnchorFromBounds +
+// pickClosestLocationToCenter (runtime/map/restaurant-location-selection.ts). The caller
+// resolves the anchor with that pair and passes it in; duplicating the rule here was caught
+// and reverted pre-integration (2026-07-10).
 //
 // The tunables live in ONE table below. Lists deliberately do NOT use this — fitAll is exact
 // by owner decree ("no exceptions").
@@ -17,13 +17,6 @@ export type FocusCameraLocation = {
   locationId: string;
   latitude: number;
   longitude: number;
-};
-
-export type FocusCameraViewport = {
-  north: number;
-  south: number;
-  east: number;
-  west: number;
 };
 
 /** The map area available for the fit (between the search bar and the mid-snap sheet top),
@@ -71,65 +64,25 @@ export const haversineDistanceMeters = (
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(Math.min(1, s)));
 };
 
-const isInsideViewport = (
-  point: { latitude: number; longitude: number },
-  viewport: FocusCameraViewport
-): boolean =>
-  point.latitude <= viewport.north &&
-  point.latitude >= viewport.south &&
-  point.longitude <= viewport.east &&
-  point.longitude >= viewport.west;
-
-/** P5 — THE anchor rule. Pure; total (throws only on an empty location set, which is a
- *  broken catalog, not a state to compensate for). */
-export const resolveAnchorLocation = ({
-  locations,
-  userPosition,
-  searchedViewport,
-}: {
-  locations: readonly FocusCameraLocation[];
-  userPosition: { latitude: number; longitude: number } | null;
-  searchedViewport: FocusCameraViewport;
-}): FocusCameraLocation => {
-  if (locations.length === 0) {
-    throw new Error('[FOCUS-CAMERA] resolveAnchorLocation requires a non-empty location set');
-  }
-  const reference =
-    userPosition != null && isInsideViewport(userPosition, searchedViewport)
-      ? userPosition
-      : {
-          latitude: (searchedViewport.north + searchedViewport.south) / 2,
-          longitude: (searchedViewport.east + searchedViewport.west) / 2,
-        };
-  let best = locations[0];
-  let bestDistance = haversineDistanceMeters(reference, best);
-  for (const location of locations.slice(1)) {
-    const distance = haversineDistanceMeters(reference, location);
-    if (distance < bestDistance) {
-      best = location;
-      bestDistance = distance;
-    }
-  }
-  return best;
-};
-
 /** §3.3 — anchored robust-cluster focus fit. */
 export const resolveFocusCamera = ({
   locations,
-  userPosition,
-  searchedViewport,
+  anchorLocationId,
   safeRegion,
   currentZoom,
   tunables = FOCUS_CAMERA_TUNABLES,
 }: {
   locations: readonly FocusCameraLocation[];
-  userPosition: { latitude: number; longitude: number } | null;
-  searchedViewport: FocusCameraViewport;
+  /** Resolved by the caller via THE P5 pair (restaurant-location-selection.ts). */
+  anchorLocationId: string;
   safeRegion: FocusCameraSafeRegion;
   currentZoom: number;
   tunables?: typeof FOCUS_CAMERA_TUNABLES;
 }): FocusCameraResult => {
-  const anchor = resolveAnchorLocation({ locations, userPosition, searchedViewport });
+  const anchor = locations.find((location) => location.locationId === anchorLocationId);
+  if (anchor == null) {
+    throw new Error('[FOCUS-CAMERA] anchorLocationId must reference a catalog location');
+  }
   const siblingDistances = locations
     .filter((location) => location.locationId !== anchor.locationId)
     .map((location) => haversineDistanceMeters(anchor, location))

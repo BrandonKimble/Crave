@@ -1,15 +1,12 @@
 import {
   FOCUS_CAMERA_TUNABLES,
   haversineDistanceMeters,
-  resolveAnchorLocation,
   resolveFocusCamera,
   type FocusCameraLocation,
   type FocusCameraSafeRegion,
-  type FocusCameraViewport,
 } from './resolve-focus-camera';
 
-// Manhattan-ish fixtures. 0.01° lat ≈ 1.11km; lng scaled by cos(40.7°) ≈ 0.758.
-const VIEWPORT: FocusCameraViewport = { north: 40.8, south: 40.7, east: -73.95, west: -74.02 };
+// Manhattan-ish fixtures. 0.01° lat ≈ 1.11km.
 const SAFE_REGION: FocusCameraSafeRegion = { widthPx: 390, heightPx: 280, mapHeightPx: 844 };
 
 const loc = (locationId: string, latitude: number, longitude: number): FocusCameraLocation => ({
@@ -18,56 +15,17 @@ const loc = (locationId: string, latitude: number, longitude: number): FocusCame
   longitude,
 });
 
-describe('resolveAnchorLocation (P5 — the one anchor rule)', () => {
-  const locations = [loc('a', 40.72, -74.0), loc('b', 40.78, -73.96)];
-
-  it('picks the location closest to the user when the user is inside the searched viewport', () => {
-    const anchor = resolveAnchorLocation({
-      locations,
-      userPosition: { latitude: 40.775, longitude: -73.965 },
-      searchedViewport: VIEWPORT,
-    });
-    expect(anchor.locationId).toBe('b');
-  });
-
-  it('falls back to viewport center when the user is outside the viewport', () => {
-    const anchor = resolveAnchorLocation({
-      locations,
-      userPosition: { latitude: 30.27, longitude: -97.74 }, // Austin — outside
-      searchedViewport: VIEWPORT,
-    });
-    // Viewport center (40.75, -73.985) is nearer to 'a'? distances: a≈3.6km, b≈3.9km
-    expect(anchor.locationId).toBe('a');
-  });
-
-  it('falls back to viewport center when there is no user position', () => {
-    const anchor = resolveAnchorLocation({
-      locations,
-      userPosition: null,
-      searchedViewport: VIEWPORT,
-    });
-    expect(anchor.locationId).toBe('a');
-  });
-
-  it('throws on an empty catalog (broken composition, not a state)', () => {
-    expect(() =>
-      resolveAnchorLocation({ locations: [], userPosition: null, searchedViewport: VIEWPORT })
-    ).toThrow('[FOCUS-CAMERA]');
-  });
-});
-
 describe('resolveFocusCamera (§3.3 goldens)', () => {
-  const run = (locations: FocusCameraLocation[], currentZoom = 14) =>
+  const run = (locations: FocusCameraLocation[], currentZoom = 14, anchorLocationId = 'anchor') =>
     resolveFocusCamera({
       locations,
-      userPosition: null,
-      searchedViewport: VIEWPORT,
+      anchorLocationId,
       safeRegion: SAFE_REGION,
       currentZoom,
     });
 
   it('single location: centers, keeps the current zoom, includes 1', () => {
-    const result = run([loc('only', 40.75, -73.98)]);
+    const result = run([loc('anchor', 40.75, -73.98)]);
     expect(result.center).toEqual({ latitude: 40.75, longitude: -73.98 });
     expect(result.zoom).toBe(14);
     expect(result.includedCount).toBe(1);
@@ -103,8 +61,7 @@ describe('resolveFocusCamera (§3.3 goldens)', () => {
     const nearPair = [loc('anchor', 40.75, -73.98), loc('n', 40.751, -73.981)];
     const result = run(nearPair, 10); // currently far out
     expect(result.zoom).toBeLessThanOrEqual(10); // clamp: min(fit, current)
-    // Viewport center is nearer the sibling — the anchor rule picks it; center-only motion.
-    expect(result.center.latitude).toBeCloseTo(40.751, 3);
+    expect(result.center.latitude).toBeCloseTo(40.75, 3); // center-only motion, on the anchor
   });
 
   it('nearby cluster growth: floor-distance siblings always join', () => {
@@ -114,6 +71,10 @@ describe('resolveFocusCamera (§3.3 goldens)', () => {
       loc('f2', 40.744, -73.972), // < 2km floor
     ];
     expect(run(withinFloor).includedCount).toBe(3);
+  });
+
+  it('throws on an anchor id missing from the catalog (broken composition)', () => {
+    expect(() => run([loc('anchor', 40.75, -73.98)], 14, 'ghost')).toThrow('[FOCUS-CAMERA]');
   });
 
   it('haversine sanity: ~1.11km per 0.01° latitude', () => {
