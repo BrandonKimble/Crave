@@ -11,6 +11,7 @@ import { usersService } from '../../services/users';
 import { UserProfilePanelBody } from './UserProfilePanel';
 import { FollowListPanelBody } from './FollowListPanel';
 import { NotificationsPanelBody } from './NotificationsPanel';
+import { EditProfilePanelBody } from './EditProfilePanel';
 
 // ─── Stub-pass scenes (plans/page-registry.md §1) ────────────────────────────────────────────
 // Placeholder mounted bodies + persistent headers for the 7 registered-but-unbuilt child
@@ -194,7 +195,8 @@ export const SettingsMountedSceneBody = SettingsSceneBody;
 export const ListDetailMountedSceneBody = createStubScene('listDetail');
 registerStubHeader('notifications');
 export const NotificationsMountedSceneBody = NotificationsPanelBody;
-export const EditProfileMountedSceneBody = createStubScene('editProfile');
+registerStubHeader('editProfile');
+export const EditProfileMountedSceneBody = EditProfilePanelBody;
 export const ShareConfigMountedSceneBody = createStubScene('shareConfig');
 
 const styles = StyleSheet.create({
