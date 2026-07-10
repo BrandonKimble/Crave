@@ -169,7 +169,7 @@ const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
 // frame, exactly like the other nav pages. This branch only ever sees polls via
 // openChild/topLevelSwitch, so every dismiss stays byte-identical: closeChild/modalClose/
 // terminalDismiss are resolved ABOVE this branch, and the results→home dismiss
-// (dismissAppSearchRouteResultsToPolls) passes an EXPLICIT
+// (dismissAppSearchRouteResultsToHome) passes an EXPLICIT
 // contentHandoff:'preserveOutgoingUntilSettle' which short-circuits before any set lookup.
 // The degenerate polls@collapsed home seam is same-scene ('gesture'), never this branch.
 //
@@ -182,9 +182,10 @@ const MODAL_SCENES = new Set<OverlayKey>(['price', 'scoreInfo']);
 // fires at the same time — it now completes the skeleton→results swap inside the leg and
 // commits the search switch's PresentationFrame paint-ack (controller
 // evaluateContentReadinessForTransaction) instead of releasing a self-frost cover. The
-// results→home dismiss stays byte-identical: dismissAppSearchRouteResultsToPolls targets
-// 'polls' with an EXPLICIT contentHandoff:'preserveOutgoingUntilSettle' that short-circuits
-// before this set is consulted.
+// results→home dismiss is untouched by this set: dismissAppSearchRouteResultsToHome (the
+// ONE-SWITCH home dismissal, target 'search') passes an EXPLICIT
+// contentHandoff:'preserveOutgoingUntilSettle' that short-circuits before this set is
+// consulted.
 const SEEDED_FORWARD_OPEN_SCENES = new Set<OverlayKey>([
   'pollDetail',
   'pollCreation',

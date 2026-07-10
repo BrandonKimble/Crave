@@ -11,7 +11,6 @@ export const ROUTE_SHARED_SNAP_PERSISTENCE_KEY = 'search-route-shared-snap';
 
 export type AppRouteSheetSnapSessionSnapshot = Readonly<{
   isDockedPollsDismissed: boolean;
-  isNavRestorePending: boolean;
   sceneSheetSnaps: Readonly<Partial<Record<OverlayKey, OverlaySheetSnap>>>;
   hasUserSharedSnap: boolean;
   sharedSnap: RouteSheetSharedSnap;
@@ -26,7 +25,6 @@ export type AppRouteSheetSnapSessionAuthority = {
 export type AppRouteSheetSnapSessionActions = {
   setIsDockedPollsDismissed: (next: React.SetStateAction<boolean>) => void;
   dismissDockedPolls: () => void;
-  setNavRestorePending: (next: boolean) => void;
   recordRouteSceneSheetSettle: (args: { sceneKey: OverlayKey; snap: OverlaySheetSnap }) => void;
   settleRouteSceneTabSnap: (args: {
     sceneKey: 'bookmarks' | 'profile';
@@ -58,7 +56,6 @@ const DEFAULT_SHARED_SNAP: RouteSheetSharedSnap = 'expanded';
 
 const createInitialSnapshot = (): AppRouteSheetSnapSessionSnapshot => ({
   isDockedPollsDismissed: false,
-  isNavRestorePending: false,
   sceneSheetSnaps: {
     polls: 'collapsed',
   },
@@ -134,9 +131,6 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     },
     dismissDockedPolls: () => {
       this.dismissDockedPolls();
-    },
-    setNavRestorePending: (next) => {
-      this.commit({ isNavRestorePending: next });
     },
     recordRouteSceneSheetSettle: (args) => {
       this.recordRouteSceneSheetSettle(args);

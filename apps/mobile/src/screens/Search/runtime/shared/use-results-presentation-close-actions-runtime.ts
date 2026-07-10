@@ -209,13 +209,25 @@ export const useResultsPresentationCloseActionsRuntime = ({
           // presentation transaction drives the wire's NORMAL exit path: exit frame →
           // native presentation_exit_started/settled acks → intent completes. The exit is
           // self-driving once committed — nothing here waits on sheet motion.
-          resultsRuntimeOwner.commitSearchSurfaceResultsExitTransaction(
-            createSearchSurfaceResultsExitTransaction(
-              nextSearchSurfaceResultsExitTransactionId(),
-              'results',
-              null
-            )
-          );
+          //
+          // Post-S-C.4 red team #1: gate on a results world existing (active/held bundle or
+          // an in-flight redraw). Without a world the exit has NO native ack source — the
+          // transport would park at exit_requested until a future enter supersedes it. Same
+          // condition finalizeSessionExitWithoutDismissMotion treats as "something to exit".
+          const surfaceSnapshotForExit = getSearchSurfaceRuntime().getSnapshot();
+          const hasWorldToExit =
+            surfaceSnapshotForExit.activeBundle.kind === 'results' ||
+            surfaceSnapshotForExit.heldBundle != null ||
+            surfaceSnapshotForExit.redrawTransaction != null;
+          if (hasWorldToExit) {
+            resultsRuntimeOwner.commitSearchSurfaceResultsExitTransaction(
+              createSearchSurfaceResultsExitTransaction(
+                nextSearchSurfaceResultsExitTransactionId(),
+                'results',
+                null
+              )
+            );
+          }
           if (topIsSessionOverChild && entryBeneathSession != null) {
             routeSceneRuntime.routeOverlayRouteCommandRuntime.popToEntryRoute(
               entryBeneathSession.entryId,

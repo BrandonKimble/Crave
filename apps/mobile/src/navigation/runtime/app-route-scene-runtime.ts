@@ -178,7 +178,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     routeSceneSwitchRuntime,
   });
   const routeOverlayCommandController = createAppRouteOverlayCommandController({
-    routeSheetSnapSessionActions: routeSheetSnapSessionRuntime.actions,
     routeOverlayRouteCommandRuntime,
   });
   const routeSceneTransitionFanoutController =

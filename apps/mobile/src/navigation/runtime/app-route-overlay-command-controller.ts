@@ -10,7 +10,6 @@ import type {
   OverlayRouteParamsMap,
 } from './app-overlay-route-types';
 import type { AppOverlayRouteCommandRuntime } from './app-overlay-route-command-runtime';
-import type { AppRouteSheetSnapSessionActions } from './app-route-sheet-snap-session-runtime';
 
 type Listener = () => void;
 
@@ -39,7 +38,6 @@ export type AppRouteOverlayCommandActions = {
   setSaveSheetState: (next: React.SetStateAction<AppRouteSaveSheetState>) => void;
   restoreSaveSheetState: (state: AppRouteSaveSheetState) => void;
   restoreDockedPolls: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
-  handleCloseResultsUiReset: () => void;
   getDishSaveHandler: (connectionId: string) => () => void;
   getRestaurantSaveHandler: (restaurantId: string) => () => void;
   handleRestaurantSavePress: (restaurantId: string) => void;
@@ -147,10 +145,6 @@ class AppRouteOverlayCommandController {
       const resolvedSnap = snap ?? 'collapsed';
       this.routeOverlayRouteCommandRuntime.restoreDockedPolls({ snap: resolvedSnap });
     },
-    handleCloseResultsUiReset: () => {
-      this.routeSheetSnapSessionActions.setNavRestorePending(true);
-      this.actions.requestSearchHeaderActionFollowCollapse();
-    },
     getDishSaveHandler: (connectionId) => {
       let handler = this.dishSaveHandlers.get(connectionId);
       if (!handler) {
@@ -185,13 +179,7 @@ class AppRouteOverlayCommandController {
     },
   };
 
-  constructor(
-    private readonly routeSheetSnapSessionActions: Pick<
-      AppRouteSheetSnapSessionActions,
-      'setNavRestorePending'
-    >,
-    private readonly routeOverlayRouteCommandRuntime: AppOverlayRouteCommandRuntime
-  ) {}
+  constructor(private readonly routeOverlayRouteCommandRuntime: AppOverlayRouteCommandRuntime) {}
 
   private subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -315,16 +303,11 @@ export type AppRouteOverlayCommandControllerRuntime = {
 };
 
 export const createAppRouteOverlayCommandController = ({
-  routeSheetSnapSessionActions,
   routeOverlayRouteCommandRuntime,
 }: {
-  routeSheetSnapSessionActions: Pick<AppRouteSheetSnapSessionActions, 'setNavRestorePending'>;
   routeOverlayRouteCommandRuntime: AppOverlayRouteCommandRuntime;
 }): AppRouteOverlayCommandControllerRuntime => {
-  const controller = new AppRouteOverlayCommandController(
-    routeSheetSnapSessionActions,
-    routeOverlayRouteCommandRuntime
-  );
+  const controller = new AppRouteOverlayCommandController(routeOverlayRouteCommandRuntime);
   return {
     authority: controller.authority,
     actions: controller.actions,

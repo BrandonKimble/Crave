@@ -241,11 +241,9 @@ export class AppRouteOverlaySessionStateController {
         },
       }),
       routeScenePolicyAuthority.subscribe(() => {
-        this.handleNavRestorePending();
         this.recompute(true);
       }),
       routeSheetSnapSessionAuthority.subscribe(() => {
-        this.handleNavRestorePending();
         this.recompute(true);
       }),
       // computeSnapshot PULL-reads getPresentationFrame().laneKind (the docked-polls formula),
@@ -289,7 +287,6 @@ export class AppRouteOverlaySessionStateController {
         });
       })
     );
-    this.handleNavRestorePending();
     this.snapshot = this.computeSnapshot();
   }
 
@@ -444,7 +441,7 @@ export class AppRouteOverlaySessionStateController {
   ): void {
     const shouldRestoreDockedPolls = resolvedRootOverlay === 'search';
     // S-C.3-B NOTE: the home emission needs NO pop arm — the stack pop happens at the
-    // dismissal dance's FIRST switch (dismissAppSearchRouteResultsToPolls, which used to
+    // dismissal dance's FIRST switch (dismissAppSearchRouteResultsToHome, which used to
     // setRoot-collapse the stack; proven by the [SC3B] probe: this emission always ran on an
     // already-collapsed stack). Post-fix the surviving [search#home] makes this setRoot a
     // value-equal IDEMPOTENT no-op at the route layer — byte-identical emission, stack truth
@@ -552,7 +549,6 @@ export class AppRouteOverlaySessionStateController {
   // snapshot's dockedPollsRestoreSnap instead). Same funnel guarantee as before: the home
   // emission is byte-identical whether or not an origin was captured.
   private restoreSearchCloseOrigin(origin: OriginSnapshot | null): void {
-    this.routeSheetSnapSessionActions.setNavRestorePending(false);
     if (origin != null) {
       this.restorePendingOrigin(origin);
       return;
@@ -581,25 +577,6 @@ export class AppRouteOverlaySessionStateController {
       shouldShowDockedPolls: shouldShowDockedPollsTarget,
       shouldShowPollsSheet: shouldShowDockedPollsTarget,
     };
-  }
-
-  private handleNavRestorePending(): void {
-    const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
-    if (!sessionSnapshot.isNavRestorePending) {
-      return;
-    }
-    const routeOverlayIdentitySnapshot = this.routeOverlayIdentityAuthority.getSnapshot();
-    if (routeOverlayIdentitySnapshot.rootOverlayKey !== 'search') {
-      this.routeSheetSnapSessionActions.setNavRestorePending(false);
-      return;
-    }
-    if (!this.computeSnapshot().shouldShowDockedPollsTarget) {
-      return;
-    }
-    if (this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls') === 'hidden') {
-      return;
-    }
-    this.routeSheetSnapSessionActions.setNavRestorePending(false);
   }
 }
 

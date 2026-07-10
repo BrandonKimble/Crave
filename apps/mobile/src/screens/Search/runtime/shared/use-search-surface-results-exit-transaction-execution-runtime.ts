@@ -46,7 +46,7 @@ export const useResultsSurfaceExitTransactionExecutionRuntime = ({
           outgoingSheetSceneKey: snapshot.outgoingSheetSceneKey,
         });
       });
-      routeSceneRuntime.routeSearchCommandActions.dismissAppSearchRouteResultsToPolls({
+      routeSceneRuntime.routeSearchCommandActions.dismissAppSearchRouteResultsToHome({
         sourceSceneKey: snapshot.outgoingSheetSceneKey ?? undefined,
       });
       if (isPerfScenarioAttributionActive(scenarioConfig)) {

@@ -14,7 +14,7 @@ export type AppSearchRouteCommandActions = {
     // (gate marks) to the minted settleToken (content plane). See the contract.
     contentReadinessTransactionId?: string | null;
   }) => void;
-  dismissAppSearchRouteResultsToPolls: (args?: { sourceSceneKey?: OverlayKey }) => void;
+  dismissAppSearchRouteResultsToHome: (args?: { sourceSceneKey?: OverlayKey }) => void;
   returnAppSearchRouteToDockedSearch: (args?: {
     snap?: Exclude<OverlaySheetSnap, 'hidden'>;
   }) => void;
@@ -62,7 +62,7 @@ export const createAppSearchRouteCommandActions = ({
     });
   };
 
-  const dismissAppSearchRouteResultsToPolls = ({
+  const dismissAppSearchRouteResultsToHome = ({
     sourceSceneKey,
   }: {
     sourceSceneKey?: OverlayKey;
@@ -88,6 +88,18 @@ export const createAppSearchRouteCommandActions = ({
     // completeDismissHandoff, the owner of the native map wire exit) rides the sheet motion,
     // not the route switches — unchanged.
     const dismissRouteState = routeSceneSwitchAuthority.getSnapshot().routeState;
+    // Post-S-C.4 red team #2 — LOUD invariant, not a compensation: the terminal dance is a
+    // HOME dismissal (the dismiss selector pops non-search roots before it). A session-less
+    // non-search-root entrant would setRoot('search') and DESTROY that root with no recovery
+    // (the finalize restore that used to catch this is deleted). Reachability is believed
+    // nil; if this ever fires, fix the SELECTOR, don't soften the dance.
+    if (__DEV__ && dismissRouteState.rootOverlayKey !== 'search') {
+      // eslint-disable-next-line no-console
+      console.error(
+        '[NAV-CONTRACT] terminal home dismissal entered with a non-search root — the setRoot arm would destroy it',
+        { rootOverlayKey: dismissRouteState.rootOverlayKey }
+      );
+    }
     const shouldPopPushedSession =
       dismissRouteState.rootOverlayKey === 'search' && hasSearchSessionAboveRoot(dismissRouteState);
     routeSceneSwitchActions.requestOverlaySwitch({
@@ -134,7 +146,7 @@ export const createAppSearchRouteCommandActions = ({
 
   return {
     openAppSearchRouteResults,
-    dismissAppSearchRouteResultsToPolls,
+    dismissAppSearchRouteResultsToHome,
     returnAppSearchRouteToDockedSearch,
     openAppSearchRoutePollsHome,
   };
