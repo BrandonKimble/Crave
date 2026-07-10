@@ -202,6 +202,20 @@ export const useResultsPresentationCloseActionsRuntime = ({
           });
           resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
           setPendingCloseIntentId(null);
+          // S-C.4 item 5 — MOTIONLESS world exit. The pop skips the sheet dismissal
+          // choreography (no dismissTransaction, no slide), but the NATIVE map world must
+          // still tear down — without this the dismissed world's dots linger (masked behind
+          // full-height sheets, visible on the favorites pop). Committing the results_exit
+          // presentation transaction drives the wire's NORMAL exit path: exit frame →
+          // native presentation_exit_started/settled acks → intent completes. The exit is
+          // self-driving once committed — nothing here waits on sheet motion.
+          resultsRuntimeOwner.commitSearchSurfaceResultsExitTransaction(
+            createSearchSurfaceResultsExitTransaction(
+              nextSearchSurfaceResultsExitTransactionId(),
+              'results',
+              null
+            )
+          );
           if (topIsSessionOverChild && entryBeneathSession != null) {
             routeSceneRuntime.routeOverlayRouteCommandRuntime.popToEntryRoute(
               entryBeneathSession.entryId,
