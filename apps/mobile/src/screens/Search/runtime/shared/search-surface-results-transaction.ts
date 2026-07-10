@@ -23,7 +23,6 @@ export type SearchSurfaceResultsEnterTransaction = {
 export type SearchSurfaceResultsExitTransaction = {
   transactionId: string;
   kind: 'results_exit';
-  terminalDismissSource: 'results' | 'profile';
   outgoingSheetSceneKey: OverlayKey | null;
 };
 
@@ -110,14 +109,10 @@ export const createSearchSurfaceResultsEnterTransaction = (
 
 export const createSearchSurfaceResultsExitTransaction = (
   transactionId: string,
-  terminalDismissSource: SearchSurfaceResultsExitTransaction['terminalDismissSource'] = 'results',
-  outgoingSheetSceneKey: OverlayKey | null = terminalDismissSource === 'profile'
-    ? 'restaurant'
-    : 'search'
+  outgoingSheetSceneKey: OverlayKey | null = 'search'
 ): SearchSurfaceResultsExitTransaction => ({
   transactionId,
   kind: 'results_exit',
-  terminalDismissSource,
   outgoingSheetSceneKey,
 });
 

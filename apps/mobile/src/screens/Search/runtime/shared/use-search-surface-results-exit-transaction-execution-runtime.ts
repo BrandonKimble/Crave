@@ -42,7 +42,6 @@ export const useResultsSurfaceExitTransactionExecutionRuntime = ({
       unstable_batchedUpdates(() => {
         resultsRuntimeOwner.commitSearchSurfaceResultsExitTransaction(snapshot);
         beginCloseTransition(snapshot.transactionId, {
-          terminalDismissSource: snapshot.terminalDismissSource,
           outgoingSheetSceneKey: snapshot.outgoingSheetSceneKey,
         });
       });

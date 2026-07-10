@@ -27,7 +27,6 @@ type UseResultsPresentationCloseActionsRuntimeArgs = {
   beginCloseTransition: (
     closeIntentId: string,
     options?: {
-      terminalDismissSource?: 'results' | 'profile';
       outgoingSheetSceneKey?: OverlayKey | null;
     }
   ) => void;
@@ -36,7 +35,6 @@ type UseResultsPresentationCloseActionsRuntimeArgs = {
 
 type ResultsPresentationCloseActionsRuntime = {
   requestClosePresentationIntent: (options?: {
-    terminalDismissSource?: 'results' | 'profile';
     outgoingSheetSceneKey?: OverlayKey | null;
   }) => string | null;
   beginCloseSearch: () => void;
@@ -75,16 +73,13 @@ export const useResultsPresentationCloseActionsRuntime = ({
 
   const requestClosePresentationIntent = React.useCallback(
     ({
-      terminalDismissSource = 'results',
-      outgoingSheetSceneKey = terminalDismissSource === 'profile' ? 'restaurant' : 'search',
+      outgoingSheetSceneKey = 'search',
     }: {
-      terminalDismissSource?: 'results' | 'profile';
       outgoingSheetSceneKey?: OverlayKey | null;
     } = {}) =>
       executeSurfaceExitTransaction(
         createSearchSurfaceResultsExitTransaction(
           nextSearchSurfaceResultsExitTransactionId(),
-          terminalDismissSource,
           outgoingSheetSceneKey
         )
       ),
@@ -225,7 +220,6 @@ export const useResultsPresentationCloseActionsRuntime = ({
             resultsRuntimeOwner.commitSearchSurfaceResultsExitTransaction(
               createSearchSurfaceResultsExitTransaction(
                 nextSearchSurfaceResultsExitTransactionId(),
-                'results',
                 null
               )
             );
@@ -260,12 +254,10 @@ export const useResultsPresentationCloseActionsRuntime = ({
       // is gone; see the slice-A probe result in the plan).
       const outgoingSheetSceneKey: OverlayKey =
         activeRouteKey === 'restaurant' ? 'restaurant' : 'search';
-      const terminalDismissSource = outgoingSheetSceneKey === 'restaurant' ? 'profile' : 'results';
       // S-C.5 slices B+C: the imperative camera pre-focus is gone — the saved-camera restore
       // now rides the restaurant ENTRY's pop (the pop-teardown writer), the same owner every
       // other pop-shaped close uses.
       const closeIntentId = requestClosePresentationIntent({
-        terminalDismissSource,
         outgoingSheetSceneKey,
       });
       if (!closeIntentId) {

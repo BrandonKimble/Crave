@@ -40,7 +40,6 @@ type ResultsPresentationCloseTransitionStateRuntime = {
   beginCloseTransition: (
     closeIntentId: string,
     options?: {
-      terminalDismissSource?: 'results' | 'profile';
       outgoingSheetSceneKey?: OverlayKey | null;
     }
   ) => void;
@@ -299,7 +298,6 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
     (
       closeIntentId: string,
       options?: {
-        terminalDismissSource?: 'results' | 'profile';
         outgoingSheetSceneKey?: OverlayKey | null;
       }
     ) => {
@@ -308,11 +306,12 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       boundaryCloseIntentIdRef.current = closeIntentId;
       getSearchSurfaceRuntime().armDismissMotion({
         transactionId: closeIntentId,
-        outgoingSheetSceneKey:
-          options?.outgoingSheetSceneKey ??
-          (options?.terminalDismissSource === 'profile' ? 'restaurant' : 'search'),
+        // S-C.5 (terminalDismissSource axis deleted): every producer passes the outgoing
+        // scene explicitly (derived from the stack fact in beginCloseSearch); 'search' is
+        // only the type-level default.
+        outgoingSheetSceneKey: options?.outgoingSheetSceneKey ?? 'search',
       });
-      intentRuntime.beginCloseTransition(closeIntentId, options);
+      intentRuntime.beginCloseTransition(closeIntentId);
     },
     [intentRuntime, shellLocalState.searchCloseTransitionState]
   );

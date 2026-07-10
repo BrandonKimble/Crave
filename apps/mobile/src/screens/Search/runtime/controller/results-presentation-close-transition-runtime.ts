@@ -6,7 +6,6 @@ type ResultsPresentationCloseTransitionRuntimeValue = {
   beginCloseTransition: (
     closeIntentId: string,
     options?: {
-      terminalDismissSource?: 'results' | 'profile';
       outgoingSheetSceneKey?: OverlayKey | null;
     }
   ) => void;

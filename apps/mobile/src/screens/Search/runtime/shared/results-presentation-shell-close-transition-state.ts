@@ -2,14 +2,9 @@ import type { OverlaySheetSnap } from '../../../../overlays/types';
 import type { SearchCloseTransitionState } from './results-presentation-shell-contract';
 
 export const createSearchCloseTransitionState = (
-  closeIntentId: string,
-  terminalDismissSource: Exclude<
-    SearchCloseTransitionState,
-    null
-  >['terminalDismissSource'] = 'results'
+  closeIntentId: string
 ): Exclude<SearchCloseTransitionState, null> => ({
   closeIntentId,
-  terminalDismissSource,
   mapExitSettled: false,
   sheetCollapsedReached: false,
   sheetCollapsedSettled: false,

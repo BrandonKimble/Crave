@@ -11,7 +11,6 @@ export type SearchSheetContentLane =
 
 export type SearchCloseTransitionState = {
   closeIntentId: string;
-  terminalDismissSource: 'results' | 'profile';
   mapExitSettled: boolean;
   sheetCollapsedReached: boolean;
   sheetCollapsedSettled: boolean;
