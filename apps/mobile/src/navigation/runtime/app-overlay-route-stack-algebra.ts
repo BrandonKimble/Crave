@@ -251,3 +251,49 @@ export const popToRootRouteState = (
     overlayRouteStack: [rootOverlayRoute],
   });
 };
+
+// S-C.5 item 1 (plans/s-c5-restaurant-stack-fact.md #1) — THE session-dismiss plan resolver.
+// One place answers "what does dismissing the search session mean for THIS stack shape";
+// the executors stay per-plan-kind (the motionless pop vs the terminal home dance own
+// different choreography), but the SHAPE DECISION lives in the algebra, not a UI hook.
+//
+// Everything at-or-above the DEEPEST session entry belongs to the session (children may sit
+// both beneath it — poll-dish over pollDetail — and above it — restaurant over results); the
+// dismissal pops to the entry beneath it:
+//  • a CHILD beneath → popToEntry (reveal the untouched child leg; entries-as-values keeps
+//    scroll/thread state alive on the surviving entry);
+//  • a NON-SEARCH root → popToRoot (the deepest pushed entry's origin restores the departed
+//    presentation);
+//  • the SEARCH root (or no session at all) → the terminal home dance (the ONE-SWITCH
+//    terminalDismiss that owns the docked-home landing).
+export type SessionDismissPlan =
+  | { kind: 'popToEntry'; entryId: string }
+  | { kind: 'popToRoot' }
+  | { kind: 'terminalHome' };
+
+export const resolveSessionDismissPlan = (routeState: {
+  overlayRouteStack: readonly OverlayRouteEntry[];
+  overlayRouteStackLength: number;
+  rootOverlayKey: OverlayKey;
+}): SessionDismissPlan => {
+  let deepestSessionIndex = -1;
+  for (let index = 1; index < routeState.overlayRouteStackLength; index += 1) {
+    if (routeState.overlayRouteStack[index]?.key === 'search') {
+      deepestSessionIndex = index;
+      break;
+    }
+  }
+  const hasSession = deepestSessionIndex > 0;
+  const entryBeneathSession = hasSession
+    ? (routeState.overlayRouteStack[deepestSessionIndex - 1] ?? null)
+    : null;
+  const beneathSessionIsChild =
+    entryBeneathSession != null && entryBeneathSession !== routeState.overlayRouteStack[0];
+  if (hasSession && beneathSessionIsChild && entryBeneathSession != null) {
+    return { kind: 'popToEntry', entryId: entryBeneathSession.entryId };
+  }
+  if (hasSession && routeState.rootOverlayKey !== 'search') {
+    return { kind: 'popToRoot' };
+  }
+  return { kind: 'terminalHome' };
+};

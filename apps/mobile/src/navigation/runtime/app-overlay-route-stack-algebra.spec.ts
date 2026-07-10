@@ -7,6 +7,7 @@ import {
   createRouteStateSnapshot,
   popToEntryRouteState,
   popToRootRouteState,
+  resolveSessionDismissPlan,
   pushRouteState,
   ROOT_SEARCH_ROUTE_ENTRY,
   setRootRouteState,
@@ -194,5 +195,43 @@ describe('setRoot idempotence (session-teardown regression guard)', () => {
     const s1 = setRootRouteState(s0, 'polls', undefined);
     expect(s1).not.toBe(s0);
     expect(s1.rootOverlayKey).toBe('polls');
+  });
+});
+
+describe('resolveSessionDismissPlan (the ONE dismiss-shape decision)', () => {
+  test('session over a child beneath → popToEntry to that child', () => {
+    const s1 = bootState();
+    const s2 = pushRouteState(s1, 'pollDetail', { pollId: 'p' } as never);
+    const pollEntry = s2.activeOverlayRoute;
+    const s3 = pushRouteState(s2, 'search');
+    const plan = resolveSessionDismissPlan(s3);
+    expect(plan).toEqual({ kind: 'popToEntry', entryId: pollEntry.entryId });
+  });
+
+  test('session over a child with a child ABOVE the session still targets the beneath entry', () => {
+    const s1 = bootState();
+    const s2 = pushRouteState(s1, 'pollDetail', { pollId: 'p' } as never);
+    const pollEntry = s2.activeOverlayRoute;
+    const s3 = pushRouteState(s2, 'search');
+    const s4 = pushRouteState(s3, 'restaurant', { restaurantId: 'r' } as never);
+    expect(resolveSessionDismissPlan(s4)).toEqual({
+      kind: 'popToEntry',
+      entryId: pollEntry.entryId,
+    });
+  });
+
+  test('session on a non-search root → popToRoot', () => {
+    const base = setRootRouteState(bootState(), 'bookmarks');
+    const s2 = pushRouteState(base, 'search');
+    expect(resolveSessionDismissPlan(s2)).toEqual({ kind: 'popToRoot' });
+  });
+
+  test('session directly on the search root → terminalHome', () => {
+    const s2 = pushRouteState(bootState(), 'search');
+    expect(resolveSessionDismissPlan(s2)).toEqual({ kind: 'terminalHome' });
+  });
+
+  test('no session at all → terminalHome', () => {
+    expect(resolveSessionDismissPlan(bootState())).toEqual({ kind: 'terminalHome' });
   });
 });
