@@ -22,7 +22,6 @@ export const useSearchForegroundSubmitRuntime = ({
   isSearchSessionActive,
   isSuggestionPanelActive,
   shouldShowDockedPollsRef,
-  prepareSearchSessionEntry,
   suppressAutocompleteResults,
   cancelAutocomplete,
   dismissSearchKeyboard,
@@ -45,7 +44,6 @@ export const useSearchForegroundSubmitRuntime = ({
 }: SearchForegroundSubmitRuntimeArgs): SearchForegroundInteractionSubmitHandlers => {
   const submitPreparationRuntime = useSearchForegroundSubmitPreparationRuntime({
     isSuggestionPanelActive,
-    prepareSearchSessionEntry,
     suppressAutocompleteResults,
     cancelAutocomplete,
     dismissSearchKeyboard,
@@ -75,7 +73,6 @@ export const useSearchForegroundSubmitRuntime = ({
     isSearchSessionActive,
     isSuggestionPanelActive,
     shouldShowDockedPollsRef,
-    prepareSearchSessionEntry,
     suppressAutocompleteResults,
     cancelAutocomplete,
     dismissSearchKeyboard,

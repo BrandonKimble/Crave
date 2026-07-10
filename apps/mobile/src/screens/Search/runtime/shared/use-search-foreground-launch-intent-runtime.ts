@@ -16,7 +16,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   runRestaurantEntitySearch,
   setRestaurantOnlyIntent,
   pendingRestaurantSelectionRef,
-  prepareSearchSessionEntry,
   currentMarketKey,
 }: SearchForegroundLaunchIntentRuntimeArgs): void => {
   React.useEffect(() => {
@@ -25,11 +24,8 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     }
 
     if (activeMainIntent.type === 'favorites') {
-      // Capture the launch ORIGIN (the bookmarks/profile root) BEFORE entering
-      // the search session so the existing SearchSessionOriginContext dismisses
       // back to favorites. Then run the favorites attempt through the same
       // search response lifecycle a natural search uses.
-      prepareSearchSessionEntry({ captureOrigin: true });
       void launchFavoritesListResults({
         listId: activeMainIntent.listId,
         listType: activeMainIntent.listType,
@@ -42,15 +38,8 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     if (activeMainIntent.type === 'entity') {
       // Skip-LLM entity reveal from a poll-discussion comment span. Capture the
       // launch ORIGIN (the polls root) BEFORE entering the search session so the
-      // existing SearchSessionOriginContext dismisses back to it, then run the
       // entity search through the same response lifecycle a natural search uses
       // (the BE skips the LLM whenever an entityType is supplied).
-      // Phase 3 — thread the childAnchor (the tapped comment) into the captured
-      // origin (write-only; Phase 5 reads it for return-to-comment dismiss).
-      prepareSearchSessionEntry({
-        captureOrigin: true,
-        childAnchor: activeMainIntent.childAnchor ?? null,
-      });
       void launchEntitySearchResults({
         entityId: activeMainIntent.entityId,
         entityType: activeMainIntent.entityType,
@@ -95,12 +84,9 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       //      natural openChild snap resolves to `{promoteAtLeast,middle}` (#1) via
       //      resolveDefaultSheetMotionPlan — not from set membership.
       //
-      // Capture the launch ORIGIN (e.g. the polls root / pollDetail) and enter the search
-      // session BEFORE the committed search so SearchSessionOriginContext covers the
       // originating overlay and dismisses back to it — mirrors the favorites/entity branches.
       //
       // CRITICAL: consume the intent SYNCHRONOUSLY (like favorites/entity), THEN
-      // fire-and-forget the name fetch. prepareSearchSessionEntry does a setRoot that re-runs
       // this effect; if the intent were only consumed in an async .finally(), the re-run
       // would cancel the fetch before it consumed, leaving activeMainIntent === 'restaurant'
       // forever → an infinite push/dismiss loop. Snapshot the params before consuming.
@@ -115,12 +101,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       // name is absent (a raw deep link), fall back to fetching the profile for the name.
       const seededRestaurantName = activeMainIntent.restaurantName?.trim() || null;
       const restaurantMarketKey = currentMarketKey ?? null;
-      // Phase 3 — thread the childAnchor (the tapped comment) into the captured
-      // origin (write-only; Phase 5 reads it for return-to-comment dismiss).
-      prepareSearchSessionEntry({
-        captureOrigin: true,
-        childAnchor: activeMainIntent.childAnchor ?? null,
-      });
       consumeActiveMainIntent();
       // Prime the pending selection BEFORE the committed search lands so the auto-open
       // kickoff resolves to the warm-profile open for this exact restaurant.
@@ -204,7 +184,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     navigation,
     openRestaurantProfilePreview,
     pendingRestaurantSelectionRef,
-    prepareSearchSessionEntry,
     routeSearchCommandActions,
     runRestaurantEntitySearch,
     setRestaurantOnlyIntent,

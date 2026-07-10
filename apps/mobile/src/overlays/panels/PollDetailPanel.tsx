@@ -158,7 +158,6 @@ type CommentBodyProps = {
   // author so the reply target stays legible despite losing the visual nesting.
   mentionUser: PollCommentUser | null;
   // commentId is threaded alongside the entity so a cross-surface reveal can carry the
-  // exact-comment childAnchor into the captured origin context (read back on dismiss to
   // return to this comment).
   onEntityPress: (entity: EntitySpan, commentId: string) => void;
 };
@@ -965,12 +964,9 @@ export const usePollDetailPanelSpec = ({
   const handleEntityPress = React.useCallback(
     (entity: EntitySpan, commentId: string) => {
       if (!entity.entityId) return;
-      // Capture the EXACT comment this reveal launched from so it rides the LaunchIntent into the
-      // captured origin context; the dismiss restore reads it back to return to this comment
-      // (scroll-to + flash). Null pollId (shouldn't happen on a mounted thread) drops the anchor
-      // rather than carrying a malformed one.
-      const childAnchor =
-        pollId != null ? ({ sceneKey: 'pollDetail', pollId, commentId } as const) : null;
+      // Return-to-comment: the pollDetail ENTRY survives the search push now (entries-as-values),
+      // so the pop lands back on this exact thread with its scroll intact — no anchor threading.
+      void commentId;
       if (entity.type === 'restaurant') {
         // Thread the span's display text as the restaurant name so the hard-swapped restaurant
         // panel paints its header title immediately (no empty-title flash while the committed
@@ -979,7 +975,6 @@ export const usePollDetailPanelSpec = ({
           type: 'restaurant',
           restaurantId: entity.entityId,
           restaurantName: entity.name,
-          childAnchor,
         });
         return;
       }
@@ -993,7 +988,6 @@ export const usePollDetailPanelSpec = ({
           entityId: entity.entityId,
           entityType: entity.type,
           submittedLabel: entity.name,
-          childAnchor,
         });
       }
     },

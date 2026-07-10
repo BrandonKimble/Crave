@@ -2,7 +2,6 @@ import type {
   OverlayKey,
   OverlayRouteParamsMap,
 } from '../navigation/runtime/app-overlay-route-types';
-import type { LaunchIntentChildAnchor } from '../navigation/runtime/app-route-types';
 
 export type SearchOverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 
@@ -45,11 +44,10 @@ export type OriginSnapshot = {
   segment?: string | null;
   /** nested-aware; EMPTY for home. Degenerate ([]) in P0. */
   scroll?: OriginScrollLane[];
-  // Origin-anchor: the exact comment a cross-surface reveal launched from, threaded from
-  // the restaurant/entity LaunchIntent through prepareSearchSessionEntry →
-  // captureSearchSessionOrigin. The pollDetail child re-push (resolveChildOriginRePush)
-  // reads anchor.sceneKey/pollId/commentId to restore scroll-to + flash. EMPTY for home.
-  // Currently typed to the launch child anchor (pollDetail only); a future list-card /
-  // comment anchor source widens LaunchIntentChildAnchor.sceneKey rather than this field.
-  anchor?: LaunchIntentChildAnchor | null;
+  // Origin-anchor SEAM (currently unwritten): the exact item a departure anchored on — e.g.
+  // the comment a cross-surface reveal launched from. The old childAnchor slot-threading died
+  // with the re-push machinery (entries survive pops now); a future anchor PUBLICATION (the
+  // departing scene publishes its own anchor via the origin live-state registry, like scroll/
+  // segment) writes this when a scene wants sub-scroll anchoring on return. S-D/EntityLink.
+  anchor?: { sceneKey: string; pollId?: string; commentId?: string } | null;
 };

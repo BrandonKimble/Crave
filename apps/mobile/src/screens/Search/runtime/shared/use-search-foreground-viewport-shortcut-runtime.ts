@@ -31,7 +31,7 @@ export const useSearchForegroundViewportShortcutRuntime = ({
   const entrySurface = resolveForegroundSearchSubmitEntrySurface({ isSuggestionPanelActive });
 
   const handleBestDishesHere = React.useCallback(() => {
-    submitPreparationRuntime.prepareSubmitChrome({ captureOrigin: true });
+    submitPreparationRuntime.prepareSubmitChrome();
     setQuery(SHORTCUT_QUERY_LABEL_BY_TAB.dishes);
     void submitViewportShortcut('dishes', SHORTCUT_QUERY_LABEL_BY_TAB.dishes, {
       transitionFromDockedPolls: shouldShowDockedPollsRef.current.shouldShowDockedPolls,
@@ -47,7 +47,7 @@ export const useSearchForegroundViewportShortcutRuntime = ({
   ]);
 
   const handleBestRestaurantsHere = React.useCallback(() => {
-    submitPreparationRuntime.prepareSubmitChrome({ captureOrigin: true });
+    submitPreparationRuntime.prepareSubmitChrome();
     setQuery(SHORTCUT_QUERY_LABEL_BY_TAB.restaurants);
     void submitViewportShortcut('restaurants', SHORTCUT_QUERY_LABEL_BY_TAB.restaurants, {
       transitionFromDockedPolls: shouldShowDockedPollsRef.current.shouldShowDockedPolls,

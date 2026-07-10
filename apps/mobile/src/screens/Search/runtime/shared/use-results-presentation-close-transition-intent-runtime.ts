@@ -77,7 +77,6 @@ export const useResultsPresentationCloseTransitionIntentRuntime = ({
       // Phase 5 (canonical-sheet-transition-master-plan §4 Failure 4) — ARM the origin
       // restore for EVERY terminal dismiss, including a profile/restaurant dismiss. The old
       // `terminalDismissSource === 'profile' ? false : …` skip stranded the captured origin
-      // (capturedOriginContext, incl. the pollDetail childAnchor) so a restaurant-from-comment
       // dismiss never returned to the comment — it fell to the docked-search HOME fallback.
       // Arming here lets flushPendingSearchOriginRestore → restorePendingOrigin re-push the
       // exact pollDetail comment origin on dismiss.

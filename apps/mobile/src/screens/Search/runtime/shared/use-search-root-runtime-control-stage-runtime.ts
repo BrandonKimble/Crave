@@ -239,9 +239,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     pendingRestaurantSelectionRef:
       stateAssemblyRuntime.stateFoundationLane.rootPrimitivesRuntime.searchState
         .pendingRestaurantSelectionRef,
-    prepareSearchSessionEntry:
-      overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.routeOverlaySessionActions
-        .prepareSearchSessionEntry,
   });
 
   return {

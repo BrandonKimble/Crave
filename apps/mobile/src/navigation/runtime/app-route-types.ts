@@ -3,17 +3,6 @@ import { isPerfScenarioUrl } from '../../perf/perf-scenario-deep-link';
 
 export type AppRouteDestination = 'onboarding' | 'sign_in' | 'main';
 
-// The EXACT comment a cross-surface reveal was launched from. Carried on the restaurant + entity
-// launch intents, threaded into the captured OriginSnapshot.anchor, and READ on dismiss by
-// resolveChildOriginRePush to return to that exact comment (re-push pollDetail with the comment
-// anchor → scroll-to + flash). sceneKey is the originating child scene (the only span-tap origin
-// today is the poll-discussion thread → 'pollDetail').
-export type LaunchIntentChildAnchor = {
-  sceneKey: 'pollDetail';
-  pollId: string;
-  commentId: string;
-};
-
 export type LaunchIntent =
   | { type: 'none' }
   // restaurantName (optional): the display name when the launch ORIGIN already knows it (a
@@ -24,7 +13,6 @@ export type LaunchIntent =
       type: 'restaurant';
       restaurantId: string;
       restaurantName?: string;
-      childAnchor?: LaunchIntentChildAnchor | null;
     }
   | { type: 'polls'; marketKey?: string | null; pollId?: string | null }
   | { type: 'search'; searchIntent: MainSearchIntent }
@@ -44,7 +32,6 @@ export type LaunchIntent =
       entityId: string;
       entityType: 'food' | 'food_attribute' | 'restaurant_attribute';
       submittedLabel: string;
-      childAnchor?: LaunchIntentChildAnchor | null;
     }
   | { type: 'external'; rawUrl: string };
 

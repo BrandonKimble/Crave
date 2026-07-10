@@ -24,7 +24,6 @@ type UseSearchForegroundDirectSubmitRuntimeArgs = Pick<
   | 'isSearchSessionActive'
   | 'isSuggestionPanelActive'
   | 'shouldShowDockedPollsRef'
-  | 'prepareSearchSessionEntry'
   | 'suppressAutocompleteResults'
   | 'cancelAutocomplete'
   | 'dismissSearchKeyboard'
@@ -69,7 +68,6 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   isSearchSessionActive,
   isSuggestionPanelActive,
   shouldShowDockedPollsRef,
-  prepareSearchSessionEntry,
   suppressAutocompleteResults,
   cancelAutocomplete,
   dismissSearchKeyboard,
@@ -95,7 +93,6 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   const suggestionSubmitRuntime = useSearchForegroundSuggestionSubmitRuntime({
     submitRuntime,
     query,
-    prepareSearchSessionEntry,
     suppressAutocompleteResults,
     cancelAutocomplete,
     dismissSearchKeyboard,

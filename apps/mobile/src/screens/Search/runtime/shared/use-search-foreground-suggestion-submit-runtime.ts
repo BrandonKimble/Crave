@@ -10,7 +10,6 @@ type UseSearchForegroundSuggestionSubmitRuntimeArgs = Pick<
   SearchForegroundSubmitRuntimeArgs,
   | 'submitRuntime'
   | 'query'
-  | 'prepareSearchSessionEntry'
   | 'suppressAutocompleteResults'
   | 'cancelAutocomplete'
   | 'dismissSearchKeyboard'
@@ -37,7 +36,6 @@ type SearchForegroundSuggestionSubmitRuntime = Pick<
 export const useSearchForegroundSuggestionSubmitRuntime = ({
   submitRuntime,
   query,
-  prepareSearchSessionEntry,
   suppressAutocompleteResults,
   cancelAutocomplete,
   dismissSearchKeyboard,
@@ -76,7 +74,6 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
         openPollDetail(match.entityId);
         return;
       }
-      prepareSearchSessionEntry({ captureOrigin: true });
       isSearchEditingRef.current = false;
       allowSearchBlurExitRef.current = true;
       ignoreNextSearchBlurRef.current = true;
@@ -133,7 +130,6 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       openPollDetail,
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
-      prepareSearchSessionEntry,
       query,
       setIsSearchFocused,
       setIsSuggestionPanelActive,

@@ -11,7 +11,6 @@ import type {
 import type { SearchResponse } from '../../../../types';
 import type { RootStackParamList, MainSearchIntent } from '../../../../types/navigation';
 import type { LaunchIntent } from '../../../../navigation/runtime/app-route-types';
-import type { AppRouteSearchSessionEntryOptions } from '../../../../navigation/runtime/app-route-overlay-session-contract';
 import type { OverlayKey, OverlaySheetSnap } from '../../../../overlays/types';
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import type useSearchHistory from '../../hooks/use-search-history';
@@ -94,7 +93,6 @@ export type SearchForegroundLaunchIntentRuntimeArgs = {
   runRestaurantEntitySearch: SearchForegroundRunRestaurantEntitySearch;
   setRestaurantOnlyIntent: (restaurantId: string | null) => void;
   pendingRestaurantSelectionRef: React.MutableRefObject<{ restaurantId: string } | null>;
-  prepareSearchSessionEntry: (options?: AppRouteSearchSessionEntryOptions) => void;
   currentMarketKey?: string | null;
 };
 
@@ -113,7 +111,6 @@ export type SearchForegroundSubmitRuntimeArgs = {
   isSearchSessionActive: boolean;
   isSuggestionPanelActive: boolean;
   shouldShowDockedPollsRef: React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
-  prepareSearchSessionEntry: (options?: AppRouteSearchSessionEntryOptions) => void;
   suppressAutocompleteResults: () => void;
   cancelAutocomplete: () => void;
   dismissSearchKeyboard: () => void;

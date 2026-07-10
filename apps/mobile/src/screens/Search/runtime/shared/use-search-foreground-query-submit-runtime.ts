@@ -53,7 +53,7 @@ export const useSearchForegroundQuerySubmitRuntime = ({
     const entrySurface = resolveForegroundSearchSubmitEntrySurface({ isSuggestionPanelActive });
     const trimmed = query.trim();
     if (trimmed.length > 0) {
-      submitPreparationRuntime.prepareSubmitChrome({ captureOrigin: true });
+      submitPreparationRuntime.prepareSubmitChrome();
     } else {
       submitPreparationRuntime.prepareSubmitChrome();
     }
