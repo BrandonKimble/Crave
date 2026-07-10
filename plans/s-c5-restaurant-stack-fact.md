@@ -63,6 +63,21 @@ fallback) becomes the policy fn's restaurant implementation; EntityLink calls it
 deletes. NOTE the S-D plan line "restaurant → restaurantProfile push" is IMPRECISE — it is a
 push+world composite, not a bare push (the profile rides the search world for results/dishes).
 
+## SLICE-A PROBE RESULT (2026-07-09 ~10:15PM — measured on-rig, probe stripped after)
+
+The [SC5A-DIVERGE] probe (publication effect, isPresentationActive vs activeKey==='restaurant')
+fired EXACTLY ONCE across a full open→back-close cycle, on the CLOSE side: the route pop
+committed active='search' (switchId 6) and the presentation flag cleared one render later.
+OPEN showed zero divergence (the openChild push and the view-state flip commit together).
+
+Verdict: the mirror equals the stack fact everywhere except a 1-frame close-side lag where
+the STACK FACT IS THE MORE CORRECT SIGNAL (the profile is already gone; the mirror would
+route a search-X in that frame as a 'profile' dismissal of a closed profile, and would run
+the profile-dismiss clear redundantly — both harmless today, both wrong-shaped). Slice A is
+green-lit: replace mirror reads with route facts outright; no divergence-window special case
+is needed. Rig lever discovered: `tapOn: text: 'View <restaurant name>'` (the result card's
+accessibilityLabel) opens the profile reliably — coordinate and bare-name taps both fail.
+
 ## Slices (each rig-proven before the next)
 
 - **A. Deriving the mirror.** Replace `profilePresentationActiveRef` reads with route facts
