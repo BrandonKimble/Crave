@@ -5,6 +5,7 @@ import { usePerfScenarioRuntimeStore } from '../perf/perf-scenario-runtime-store
 import { withPerfScenarioMetadata } from '../perf/perf-scenario-attribution';
 import { logger } from '../utils';
 import { useSystemStatusStore } from '../store/systemStatusStore';
+import { useEntitlementLapseStore } from '../store/entitlementLapseStore';
 
 const DEFAULT_API_URL = 'http://localhost:3000/api/v1';
 const DEFAULT_API_TIMEOUT_MS = typeof __DEV__ !== 'undefined' && __DEV__ ? 120_000 : 15_000;
@@ -321,6 +322,16 @@ api.interceptors.response.use(
       responseRecord && typeof responseRecord.message === 'string'
         ? responseRecord.message
         : undefined;
+
+    // App-wide paywall: subscription lapsed mid-session. ONE chokepoint —
+    // announce the lapse (the App-root host mounts the paywall takeover) and
+    // tag the error so callers/mutation handlers stay quiet (one story, not
+    // a generic failure modal on top of the paywall).
+    if (status === 403 && errorCode === 'ENTITLEMENT_REQUIRED') {
+      useEntitlementLapseStore.getState().announceLapse();
+      (error as { isEntitlementLapse?: boolean }).isEntitlementLapse = true;
+      return Promise.reject(error);
+    }
 
     if (
       !requestFlags.suppressSystemStatus &&

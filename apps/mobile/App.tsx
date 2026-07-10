@@ -32,6 +32,7 @@ import { MainLaunchCoordinator } from './src/navigation/runtime/MainLaunchCoordi
 import NetworkStatusListener from './src/providers/NetworkStatusListener';
 import { PurchasesProvider } from './src/providers/PurchasesProvider';
 import { PaywallDevPreview } from './src/screens/PaywallDevPreview';
+import { EntitlementLapseHost } from './src/screens/EntitlementLapseHost';
 import PollNotificationListener from './src/providers/PollNotificationListener';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
 import { PerfScenarioCoordinator } from './src/perf/PerfScenarioCoordinator';
@@ -47,8 +48,13 @@ import { colors } from './src/constants/theme';
 // handle their own failure UX opt out via `meta: { suppressFailureModal: true }`.
 const queryClient = new QueryClient({
   mutationCache: new MutationCache({
-    onError: (_error, _variables, _context, mutation) => {
+    onError: (error, _variables, _context, mutation) => {
       if (mutation.meta?.suppressFailureModal === true) {
+        return;
+      }
+      // Entitlement lapse is ONE story: the paywall takeover owns it — no
+      // generic failure modal stacked on top.
+      if ((error as { isEntitlementLapse?: boolean })?.isEntitlementLapse) {
         return;
       }
       announceFailureIfOnline();
@@ -112,6 +118,8 @@ export default function App() {
                   <AppRouteSceneRuntimeProvider>
                     <PollNotificationListener />
                     <PurchasesProvider />
+                    <EntitlementLapseHost />
+                    {__DEV__ ? <PaywallDevPreview /> : null}
                     <SystemStatusBanner />
                     <Reanimated.View style={[styles.contentSurface, contentAnimatedStyle]}>
                       <NavigationContainer>
@@ -124,7 +132,6 @@ export default function App() {
             </AuthProvider>
             <AppModalHost />
             {__DEV__ ? <CutoutSkeletonDevPreview /> : null}
-            {__DEV__ ? <PaywallDevPreview /> : null}
             <StatusBar style={isBannerVisible ? 'light' : 'auto'} />
           </SafeAreaProvider>
         </View>

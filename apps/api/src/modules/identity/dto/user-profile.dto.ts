@@ -48,6 +48,9 @@ export interface UserProfileDto {
     /** Equals expiresAt; distinct so UI can say "then banked days". */
     coverageUntil: Date | null;
     source: string | null;
+    /** True when the app-wide paywall is enforcing (server-owned rollout
+     *  switch) — the client's paywall routing axis keys off this. */
+    enforced: boolean;
   };
 }
 

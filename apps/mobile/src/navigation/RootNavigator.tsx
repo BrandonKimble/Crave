@@ -1,6 +1,7 @@
 import React from 'react';
 import { createStackNavigator } from '@react-navigation/stack';
 import { OnboardingScreen, SignInScreen } from '../screens';
+import { PaywallScreen } from '../screens/PaywallScreen';
 import StaticSplashArtShell from '../components/StaticSplashArtShell';
 import SplashStudioScreen from '../splash-studio/SplashStudioScreen';
 import { isSplashStudioEnabled } from '../splash-studio/config';
@@ -60,6 +61,15 @@ const RootNavigator: React.FC = () => {
       return (
         <StaticSplashArtShell>
           <AuthNavigator />
+        </StaticSplashArtShell>
+      );
+    case 'paywall':
+      // HARD PAYWALL at onboarding end: non-dismissible (no onClose). Entry
+      // to 'main' = server-truth access flipping active (the coordinator's
+      // routing axis re-routes automatically post-purchase).
+      return (
+        <StaticSplashArtShell>
+          <PaywallScreen />
         </StaticSplashArtShell>
       );
     case 'main':

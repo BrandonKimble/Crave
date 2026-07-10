@@ -15,9 +15,18 @@ export interface UserStats {
 export interface AccessSummary {
   entitlementCode: string;
   active: boolean;
-  /** null = lifetime while active. ISO string over the wire. */
+  /** End of ALL coverage (paid + banked days); null = lifetime while
+   *  active. ISO string over the wire. */
   expiresAt: string | null;
+  /** End of the live PAID window (the renewal/expiry date to show); null
+   *  when lifetime or when only banked-day coverage remains. */
+  paidUntil: string | null;
+  /** Equals expiresAt; distinct so UI can say "then banked days". */
+  coverageUntil: string | null;
   source: string | null;
+  /** True when the app-wide paywall is enforcing (server-owned rollout
+   *  switch) — the paywall routing axis keys off this. */
+  enforced?: boolean;
 }
 
 export interface UserProfile {

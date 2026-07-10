@@ -17,6 +17,8 @@ export interface AccessState {
   source: string | null;
   /** Days until access lapses (undefined for lifetime/inactive). */
   daysRemaining?: number;
+  /** Server-owned rollout switch: the app-wide paywall is enforcing. */
+  enforced: boolean;
   isLoading: boolean;
   /** Force-refetch server truth NOW and return it (purchase/restore polls
    *  await this — unlike invalidate, it works with no observer mounted). */
@@ -58,6 +60,7 @@ export function useAccess(): AccessState {
     expiresAt: active ? expiresAt : null,
     source: active ? (access?.source ?? null) : null,
     daysRemaining,
+    enforced: access?.enforced ?? false,
     isLoading: query.isLoading,
     refresh: async () => {
       const fresh = await queryClient.fetchQuery({

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import type { PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
 import {
@@ -29,6 +29,29 @@ import { useAccess } from '../hooks/useAccess';
  *    BILLING_TRIAL_DAYS stays 0 (app-owned trial is the future freemium
  *    pivot, not launch).
  */
+
+/** Apple's standard EULA for apps without a custom one; swap when the
+ *  landing site ships hosted terms. Privacy MUST point at our policy. */
+const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+const PRIVACY_URL = 'https://cravesearch.com/privacy';
+const MANAGE_URL = 'https://apps.apple.com/account/subscriptions';
+
+/** "$39.99/yr" style headline — price ALWAYS from StoreKit. */
+function packageHeadline(pkg: PurchasesPackage): string {
+  return `${pkg.product.title} — ${pkg.product.priceString}`;
+}
+
+/** 3.1.2 trial/renewal line, rendered from the store's own intro-offer
+ *  config (annual carries the trial; monthly bills immediately). */
+function packageTerms(pkg: PurchasesPackage): string {
+  const intro = pkg.product.introPrice;
+  if (intro && intro.price === 0) {
+    const unit = intro.periodUnit.toLowerCase();
+    const count = intro.periodNumberOfUnits;
+    return `${count}-${unit} free trial, then ${pkg.product.priceString}. Auto-renews.`;
+  }
+  return `${pkg.product.priceString}, billed now. Auto-renews.`;
+}
 
 const ACTIVATION_POLL_ATTEMPTS = 8;
 const ACTIVATION_POLL_INTERVAL_MS = 1500;
@@ -174,11 +197,31 @@ export function PaywallScreen({ onClose }: { onClose?: () => void }): ReactEleme
             onPress={() => void buy(pkg)}
           >
             <Text style={styles.primaryText}>
-              {busy === pkg.identifier ? '…' : `${pkg.product.title} — ${pkg.product.priceString}`}
+              {busy === pkg.identifier ? '…' : packageHeadline(pkg)}
             </Text>
+            <Text style={styles.primarySubText}>{packageTerms(pkg)}</Text>
           </Pressable>
         ))
       )}
+
+      {/* Apple 3.1.2 disclosure floor: real billed price is on the buttons
+          (from StoreKit, never hardcoded); auto-renew terms + legal links
+          inline; manage/restore reachable pre-subscription. */}
+      <Text style={styles.terms}>
+        Subscriptions auto-renew until cancelled. Cancel anytime in App Store settings — at least 24
+        hours before the period ends to avoid the next charge.
+      </Text>
+      <View style={styles.legalRow}>
+        <Pressable onPress={() => void Linking.openURL(TERMS_URL)}>
+          <Text style={styles.legalLink}>Terms</Text>
+        </Pressable>
+        <Pressable onPress={() => void Linking.openURL(PRIVACY_URL)}>
+          <Text style={styles.legalLink}>Privacy</Text>
+        </Pressable>
+        <Pressable onPress={() => void Linking.openURL(MANAGE_URL)}>
+          <Text style={styles.legalLink}>Manage subscription</Text>
+        </Pressable>
+      </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -207,6 +250,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   primaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  primarySubText: { color: '#fff', fontSize: 12, opacity: 0.75, marginTop: 2 },
+  terms: { fontSize: 12, textAlign: 'center', opacity: 0.6, marginTop: 4 },
+  legalRow: { flexDirection: 'row', justifyContent: 'center', gap: 18 },
+  legalLink: { fontSize: 13, textDecorationLine: 'underline', opacity: 0.75 },
   secondary: { paddingVertical: 10, alignItems: 'center' },
   secondaryText: { fontSize: 14, opacity: 0.7 },
 });

@@ -189,9 +189,13 @@ export class UserService {
     const onboardingRow = await this.getOnboardingProfileRow(userId);
     const activeSubscription = user.subscriptions[0];
     const stats = user.stats ?? (await this.userStats.ensure(userId));
-    const access = await this.entitlements.summarize(userId);
+    const summary = await this.entitlements.summarize(userId);
+    const gatingMode = process.env.ENTITLEMENT_GATING?.trim().toLowerCase();
     return {
-      access,
+      // enforced tells the client whether the app-wide wall is LIVE — the
+      // paywall routing axis keys off this, so the rollout stays a single
+      // server-side switch.
+      access: { ...summary, enforced: gatingMode === 'enforce' },
       userId: user.userId,
       email: user.email,
       username: user.username,

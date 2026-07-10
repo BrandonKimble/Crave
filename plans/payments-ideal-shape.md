@@ -325,3 +325,47 @@ launch.
    only matter to a LAPSED user. Honest framing: win-back cushion, not an
    incentive. Launch incentives should be non-access rewards or App Store
    offer codes instead; the machinery stays for the freemium pivot.
+
+## Ideal-shape red team #3 — EXECUTED (2026-07-09)
+
+Three reviewers (truth-duplication, ledger semantics, hard-paywall UX flow);
+all verdicts implemented same-day:
+
+**Ledger:** derivation math BLESSED on every adversarial timeline. Upgrades:
+GRANT_POLICY single source declaration; granted_days real column with
+day-XOR-absolute CHECK; cap counts days EVER granted; AccessSummary splits
+paidUntil/coverageUntil (subscriber's source never reports a banked reward).
+BLESSED SEMANTIC ON RECORD: banked days are banked forever and re-payable
+across lapse cycles (economically self-limiting; consumption accounting
+deliberately not built unless abuse appears).
+
+**Deletions:** billing_entitlements, billing_checkout_sessions, user
+subscription/trial/referral columns, Stripe checkout/portal client rail,
+per-route gates (see refactor commit). End state: one truth (access_grants),
+one derivation (summarize), one cache (Redis), one mirror
+(billing_subscriptions), one wall (interceptor).
+
+**Hard-paywall UX (mobile, all three launch-blockers built):**
+
+1. LAPSE CHOKEPOINT: api.ts catches 403 ENTITLEMENT_REQUIRED once →
+   entitlementLapseStore → EntitlementLapseHost full-screen paywall takeover
+   (inside the auth tree; self-dismisses if a refresh proves access, clears
+   only when access flips active). Generic mutation-failure modal suppressed
+   for this error class — one story.
+2. PAYWALL ROUTING AXIS: AppRouteCoordinator gains the third axis — signed
+   in + onboarded + !access.active → destination 'paywall' (non-dismissible
+   PaywallScreen in RootNavigator). Keyed on access.enforced, a NEW
+   server-owned flag in the profile access block (true only when
+   ENTITLEMENT_GATING=enforce) so the rollout stays one server switch and
+   dev/log-mode dogfooding is never walled. Coordinator seeds the shared
+   access query from its own profile fetch (no double request, no flash).
+3. 3.1.2 DISCLOSURE FLOOR on PaywallScreen: per-package terms line rendered
+   from StoreKit introPrice (trial timeline on annual, billed-now on
+   monthly), auto-renew sentence, Terms/Privacy/Manage-subscription links.
+   PRIVACY_URL is a placeholder (cravesearch.com/privacy) — must go live
+   with the landing site before submission. Screens thread re-skins.
+
+Multi-session note: the sim binary currently installed was rebuilt by the
+nav session WITHOUT the RC pod — purchases layer no-ops gracefully (the
+exact degradation path the red team demanded). Rebuild with pod install
+before the next purchase test.

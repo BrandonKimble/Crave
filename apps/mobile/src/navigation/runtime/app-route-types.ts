@@ -1,7 +1,7 @@
 import type { MainSearchIntent } from '../../types/navigation';
 import { isPerfScenarioUrl } from '../../perf/perf-scenario-deep-link';
 
-export type AppRouteDestination = 'onboarding' | 'sign_in' | 'main';
+export type AppRouteDestination = 'onboarding' | 'sign_in' | 'paywall' | 'main';
 
 export type LaunchIntent =
   | { type: 'none' }

@@ -5,6 +5,8 @@ import { ONBOARDING_VERSION, type UserOnboardingProfile } from '@crave-search/sh
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useCityStore } from '../../store/cityStore';
 import { usersService } from '../../services/users';
+import { useQueryClient } from '@tanstack/react-query';
+import { accessQueryKey, useAccess } from '../../hooks/useAccess';
 import { logger } from '../../utils';
 import { usePerfScenarioRuntimeStore } from '../../perf/perf-scenario-runtime-store';
 import {
@@ -69,7 +71,11 @@ const syncCityPreference = (
 };
 
 export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn, userId: clerkUserId } = useAuth();
+  const queryClient = useQueryClient();
+  // Live server-truth access (shared query with useAccess consumers): the
+  // paywall routing axis re-routes to 'main' the moment a purchase lands.
+  const access = useAccess();
   const isPerfScenarioNavigationBypassActive = usePerfScenarioRuntimeStore(
     (state) => __DEV__ && state.activeConfig != null
   );
@@ -245,6 +251,9 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
           return;
         }
         setServerOnboardingProfile(profile.onboarding ?? null);
+        if (profile.access) {
+          queryClient.setQueryData(accessQueryKey(clerkUserId), profile.access);
+        }
         if (profile.onboarding) {
           hydrateCompletionFromServer(profile.onboarding);
           syncCityPreference(
@@ -335,11 +344,18 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     if (!isReady) {
       return null;
     }
+    // HARD PAYWALL routing axis (decided 2026-07-09): a signed-in,
+    // onboarded user without access lands on the paywall, not 'main' —
+    // but ONLY when the server wall is live (access.enforced rides the
+    // profile payload; rollout stays a single server-side switch).
+    const needsPaywall = access.enforced && !access.active;
     const destination = isPerfScenarioNavigationBypassActive
       ? 'main'
       : effectiveOnboardingStatus === 'completed'
         ? authStatus === 'signed_in'
-          ? 'main'
+          ? needsPaywall
+            ? 'paywall'
+            : 'main'
           : 'sign_in'
         : 'onboarding';
     return {
@@ -356,6 +372,8 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     effectiveOnboardingStatus,
     isPerfScenarioNavigationBypassActive,
     isReady,
+    access.enforced,
+    access.active,
   ]);
 
   React.useEffect(() => {
