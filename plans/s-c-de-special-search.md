@@ -389,6 +389,23 @@ The design:
 5. Successor shapes that unlock WITH the cut (unchanged from the ledger): nav command pair
    → one derivation over (childDepth, sessionEnterTransactionPending).
 
+**STEP 1 SHIPPED (2026-07-09 ~8:41PM, f983194c):** the dismiss verb's terminalDismiss now
+targets 'search' directly (routeAction/pop shape, snapTo collapsed, dockedPollsRestoreSnap
+unchanged). Rig-proven in the healthy window: wire exit ran (dismiss_start→hidden), zero
+marker residue, 5-cycle dismiss-repeat + interrupt flows land a byte-identical home
+(post-loop screenshots md5-equal). The finalize flush + golden emission remain as
+idempotent no-ops until step 2. STEP 2 REMAINING: delete the arm/commit/cancel/flush
+pending-restore ledger + requestDefaultPostSearchRestore (clear lanes call the restore
+directly), move the golden assertion onto the single verb emission, drop the now-unused
+getAppOverlayRouteMetadata import warning. ⚠️ BLOCKED at session end: the rig broke on the
+OWNER'S live billing-session WIP (EntitlementLapseHost.tsx renders useAuth outside
+ClerkProvider → red-screen on every fresh bundle) — step 2 needs a bootable app for the
+golden-seam re-proof. Also of note: the localhost API accumulated THREE fighting :3000
+processes (wedged Mon watcher + two dist instances); cleaned to one fresh `yarn start`
+(logs at /tmp/crave-api-sc4.log). App-authed requests were 500ing at the guard layer
+during the contaminated window — anonymous curl + junk-token 401 both fine; recheck
+after the owner's billing WIP lands.
+
 Sequencing for the implementing session: (a) teach the presentation/laneKind path that a
 terminalDismiss targeting 'search' lands docked-polls mode; (b) move origin resolution to
 the dismiss verb, attach to the switch; (c) delete the ledger + default-restore; (d) wire-exit
