@@ -12,7 +12,6 @@ export type ProfilePreviewPresentationPlan = {
   shouldClearSearchOnDismiss: false;
   targetCamera: CameraSnapshot | null;
   updatedLastCameraState: ProfilePreviewCameraTargetResolution['updatedLastCameraState'];
-  status: 'opening' | 'open';
 };
 
 export const resolveProfilePreviewPresentationPlan = ({
@@ -51,6 +50,5 @@ export const resolveProfilePreviewPresentationPlan = ({
     shouldClearSearchOnDismiss: false,
     targetCamera: previewCameraResolution.targetCamera,
     updatedLastCameraState: previewCameraResolution.updatedLastCameraState,
-    status: forceMiddleSnap ? 'opening' : 'open',
   };
 };

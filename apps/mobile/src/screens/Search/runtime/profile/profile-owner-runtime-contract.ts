@@ -43,9 +43,7 @@ export type ProfileRuntimeActions = {
     source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'
   ) => void;
   refreshOpenRestaurantProfileSelection: (restaurant: RestaurantResult, queryLabel: string) => void;
-  prepareRestaurantProfileForTerminalSearchDismiss: () => void;
   resetRestaurantProfileFocusSession: () => void;
-  clearRestaurantProfileForSearchDismiss: () => void;
   /** S-C.5 pop-owned teardown, commit half: called by the route-stack writer when the
    *  restaurant entry leaves the stack; no-ops (returns false) when the profile machine's
    *  own close is in flight. */

@@ -7,9 +7,7 @@ import type { CameraSnapshot } from '../../../../navigation/runtime/app-route-pr
 export type ProfilePreparedPresentationRuntime = {
   openPreparedProfilePresentation: (
     restaurantId: string,
-    targetCamera: CameraSnapshot | null | undefined,
-    shouldForceSharedMiddleSnap: boolean,
-    status: 'opening' | 'open'
+    targetCamera: CameraSnapshot | null | undefined
   ) => void;
   closePreparedProfilePresentation: (restaurantId: string | null) => void;
   focusPreparedProfileCamera: (targetCamera: CameraSnapshot) => void;

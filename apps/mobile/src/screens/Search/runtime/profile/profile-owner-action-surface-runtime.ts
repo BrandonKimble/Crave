@@ -59,22 +59,6 @@ export const useProfileOwnerActionSurfaceRuntime = ({
   const clearMapHighlightedRestaurantId = React.useCallback(() => {
     actionExecutionPorts.setMapHighlightedRestaurantId(null);
   }, [actionExecutionPorts.setMapHighlightedRestaurantId]);
-  const clearRestaurantProfileForSearchDismiss = React.useCallback(() => {
-    const nextRequestSeq = getRestaurantProfileRequestSeq() + 1;
-    cancelActiveHydrationIntent('profile_hydration_cancelled_on_overlay_dismiss', {
-      nextRequestSeq,
-      nextRestaurantId: null,
-    });
-    setRestaurantProfileRequestSeq(nextRequestSeq);
-    actionExecutionPorts.setMapHighlightedRestaurantId(null);
-    finalizePreparedProfileCloseState();
-  }, [
-    actionExecutionPorts.setMapHighlightedRestaurantId,
-    cancelActiveHydrationIntent,
-    finalizePreparedProfileCloseState,
-    getRestaurantProfileRequestSeq,
-    setRestaurantProfileRequestSeq,
-  ]);
   const prepareRestaurantProfileForTerminalSearchDismiss = React.useCallback(() => {
     const savedCamera = getProfileTransitionState().savedCamera;
     if (savedCamera) {
@@ -143,8 +127,6 @@ export const useProfileOwnerActionSurfaceRuntime = ({
   return React.useMemo(
     () => ({
       clearMapHighlightedRestaurantId,
-      clearRestaurantProfileForSearchDismiss,
-      prepareRestaurantProfileForTerminalSearchDismiss,
       handleRestaurantEntryPopped,
       finalizeRestaurantEntryPopTeardown,
       hydrateRestaurantProfileById,
@@ -157,10 +139,8 @@ export const useProfileOwnerActionSurfaceRuntime = ({
       closeRestaurantProfile: runtimeActions.closeRestaurantProfile,
     }),
     [
-      clearRestaurantProfileForSearchDismiss,
       clearMapHighlightedRestaurantId,
       handleRestaurantEntryPopped,
-      finalizeRestaurantEntryPopTeardown,
       finalizeRestaurantEntryPopTeardown,
       hydrateRestaurantProfileById,
       presentationActions,

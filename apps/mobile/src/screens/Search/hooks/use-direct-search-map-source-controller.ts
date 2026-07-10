@@ -760,25 +760,40 @@ const buildInteractionSemanticRevision = ({
 // the badge/reveal-seed re-rank — the two MUST stay identical (badge == promotion rank).
 const assignUnifiedGroupRanks = (
   features: Array<Feature<Point, RestaurantFeatureProperties>>,
-  buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string
+  buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string,
+  // RT-12 (red-team 2026-07-10): groups that are ADDITIVE to the presented world (the
+  // selection overlay's appended group) rank AFTER every world group — a profile
+  // open/close must never renumber the world's badges. Empty set = pure world ranking.
+  deferredGroupKeys: ReadonlySet<string> = EMPTY_DEFERRED_GROUP_KEYS
 ): Array<Feature<Point, RestaurantFeatureProperties>> => {
+  const resolveGroupKey = (feature: Feature<Point, RestaurantFeatureProperties>): string =>
+    feature.properties.isDishPin === true || !feature.properties.restaurantId
+      ? String(feature.id ?? buildMarkerKey(feature))
+      : feature.properties.restaurantId;
   const unifiedRankByGroup = new Map<string, number>();
-  return features.map((feature) => {
-    const groupKey =
-      feature.properties.isDishPin === true || !feature.properties.restaurantId
-        ? String(feature.id ?? buildMarkerKey(feature))
-        : feature.properties.restaurantId;
-    let unifiedRank = unifiedRankByGroup.get(groupKey);
-    if (unifiedRank == null) {
-      unifiedRank = unifiedRankByGroup.size + 1;
-      unifiedRankByGroup.set(groupKey, unifiedRank);
+  for (const feature of features) {
+    const groupKey = resolveGroupKey(feature);
+    if (deferredGroupKeys.has(groupKey) || unifiedRankByGroup.has(groupKey)) {
+      continue;
     }
-    return {
-      ...feature,
-      properties: { ...feature.properties, rank: unifiedRank },
-    };
-  });
+    unifiedRankByGroup.set(groupKey, unifiedRankByGroup.size + 1);
+  }
+  for (const feature of features) {
+    const groupKey = resolveGroupKey(feature);
+    if (!unifiedRankByGroup.has(groupKey)) {
+      unifiedRankByGroup.set(groupKey, unifiedRankByGroup.size + 1);
+    }
+  }
+  return features.map((feature) => ({
+    ...feature,
+    properties: {
+      ...feature.properties,
+      rank: unifiedRankByGroup.get(resolveGroupKey(feature)) as number,
+    },
+  }));
 };
+
+const EMPTY_DEFERRED_GROUP_KEYS: ReadonlySet<string> = new Set();
 
 type DirectMapSourceControllerBaseArgs = {
   searchRuntimeBus: SearchRuntimeBus;
@@ -1700,9 +1715,19 @@ export const useDirectSearchMapSourceController = ({
     // (source priority → rank → order), so the sorted POSITION is the single unified, unique,
     // stable-per-search rank. Re-assign it so the rank badge, the native promotion top-N, and the
     // native candidate catalog all read one consistent rank instead of two colliding rank spaces.
+    // RT-12: the selection overlay's group ranks LAST — appended seeded groups always;
+    // on the dish axis the selected restaurant's group too (its restaurant-axis entries
+    // would otherwise interleave by score and renumber every dish badge below it).
+    const additiveSelectionGroupKeys = new Set<string>(
+      additiveSeededRestaurants.map((restaurant) => restaurant.restaurantId)
+    );
+    if (activeTab === 'dishes' && selectedRestaurantId != null && !isSeededRestaurantProjection) {
+      additiveSelectionGroupKeys.add(selectedRestaurantId);
+    }
     const rankedCandidates = assignUnifiedGroupRanks(
       projectedInitialCandidates.rankedCandidates,
-      buildMarkerKey
+      buildMarkerKey,
+      additiveSelectionGroupKeys
     );
     // The full ranked candidate catalog (every showable marker, NOT viewport-filtered) that native projects
     // to screen space to decide on-screen LOD membership. It rides the source-frame snapshot assembled below
@@ -1886,7 +1911,8 @@ export const useDirectSearchMapSourceController = ({
     // order is governed by projectSearchMapVisualFrame's sort, separate from this badge/promotion agreement.)
     const rerankedVisualCandidates = assignUnifiedGroupRanks(
       projectedVisualFrame.rankedCandidates,
-      buildMarkerKey
+      buildMarkerKey,
+      additiveSelectionGroupKeys
     );
     // markerKey → unified position rank. renderedLodCandidates is built mostly from the DOT pass (which
     // carries every candidate but NOT this re-rank), so the badge build below must look the unified rank up

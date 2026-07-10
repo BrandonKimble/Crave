@@ -37,9 +37,7 @@ export type ProfileActionExecutionPorts = {
   setMapHighlightedRestaurantId: (restaurantId: string | null) => void;
   openPreparedProfilePresentation: (
     restaurantId: string,
-    targetCamera: CameraSnapshot | null | undefined,
-    shouldForceSharedMiddleSnap: boolean,
-    status: 'opening' | 'open'
+    targetCamera: CameraSnapshot | null | undefined
   ) => void;
   closePreparedProfilePresentation: (restaurantId: string | null) => void;
   focusPreparedProfileCamera: (targetCamera: CameraSnapshot) => void;

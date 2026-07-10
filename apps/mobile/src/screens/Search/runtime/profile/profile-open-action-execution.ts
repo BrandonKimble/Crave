@@ -57,12 +57,7 @@ export const executeProfileOpenPresentationPlan = ({
   ports.seedRestaurantProfile(restaurant, queryLabel, {
     selectedLocationId: plan.selectedLocationId,
   });
-  ports.openPreparedProfilePresentation(
-    restaurant.restaurantId,
-    plan.targetCamera,
-    forceMiddleSnap,
-    forceMiddleSnap ? 'opening' : 'open'
-  );
+  ports.openPreparedProfilePresentation(restaurant.restaurantId, plan.targetCamera);
   ports.capturePreviousForegroundUiRestoreStateIfAbsent(savedForegroundUiState);
   ports.hydrateRestaurantProfileById(restaurant.restaurantId, restaurant.marketKey ?? null);
   if (plan.shouldTrackRestaurantView) {
