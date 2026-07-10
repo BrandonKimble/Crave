@@ -59,7 +59,16 @@ export type SegmentedToggleProps<T extends string> = {
   onChange: (value: T) => void;
   /** Pill fill color (defaults to the brand accent). */
   accentColor?: string;
+  /**
+   * Warm-restore (chrome-swap first frame): seed the measured segment geometry
+   * (index-aligned with `options`) so the pill is correctly placed and visible on
+   * the FIRST frame after a remount — before any onLayout fires. Pair with
+   * `onSegmentLayoutsChange`, which emits the live geometry for caching.
+   */
+  initialSegmentLayouts?: readonly (LayoutRectangle | undefined)[];
+  onSegmentLayoutsChange?: (layouts: (LayoutRectangle | undefined)[]) => void;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
   testID?: string;
 };
 
@@ -120,7 +129,10 @@ export function SegmentedToggle<T extends string>({
   value,
   onChange,
   accentColor = DEFAULT_ACCENT,
+  initialSegmentLayouts,
+  onSegmentLayoutsChange,
   accessibilityLabel,
+  accessibilityHint,
   testID,
 }: SegmentedToggleProps<T>) {
   const indexFor = React.useCallback(
@@ -135,12 +147,19 @@ export function SegmentedToggle<T extends string>({
   const selectionProgress = useSharedValue(indexFor(value));
   const targetProgress = useSharedValue(indexFor(value));
   // Segment geometry as arrays (reassigned whole on change — Reanimated reacts to
-  // the reference swap). Index-aligned with `options`.
-  const segmentXs = useSharedValue<number[]>(options.map(() => 0));
-  const segmentWidths = useSharedValue<number[]>(options.map(() => 0));
-  const layoutReady = useSharedValue(0);
+  // the reference swap). Index-aligned with `options`. Seeded from the warm-restore
+  // cache so a remount paints the pill correctly on its first frame.
+  const initialXs = options.map((_option, i) => initialSegmentLayouts?.[i]?.x ?? 0);
+  const initialWidths = options.map((_option, i) => initialSegmentLayouts?.[i]?.width ?? 0);
+  const segmentXs = useSharedValue<number[]>(initialXs);
+  const segmentWidths = useSharedValue<number[]>(initialWidths);
+  const layoutReady = useSharedValue(initialWidths.every((width) => width > 0) ? 1 : 0);
 
-  const layoutsRef = React.useRef<Partial<Record<T, LayoutRectangle>>>({});
+  const layoutsRef = React.useRef<(LayoutRectangle | undefined)[]>(
+    options.map((_option, i) => initialSegmentLayouts?.[i])
+  );
+  const onSegmentLayoutsChangeRef = React.useRef(onSegmentLayoutsChange);
+  onSegmentLayoutsChangeRef.current = onSegmentLayoutsChange;
   const interactionValueRef = React.useRef<T>(value);
   const hasSyncedRef = React.useRef(false);
 
@@ -162,25 +181,44 @@ export function SegmentedToggle<T extends string>({
   );
 
   const registerSegmentLayout = React.useCallback(
-    (val: T, index: number) => (event: LayoutChangeEvent) => {
+    (index: number) => (event: LayoutChangeEvent) => {
       const layout = event.nativeEvent.layout;
-      const prev = layoutsRef.current[val];
+      const prev = layoutsRef.current[index];
       if (prev && areLayoutsEqual(prev, layout)) {
         return;
       }
-      layoutsRef.current[val] = layout;
-      const nextXs = [...segmentXs.value];
-      const nextWidths = [...segmentWidths.value];
-      nextXs[index] = layout.x;
-      nextWidths[index] = layout.width;
+      layoutsRef.current[index] = layout;
+      // Derive BOTH geometry arrays from the plain-JS layoutsRef, never by reading a
+      // shared value back after writing it: Reanimated array shared values do not
+      // guarantee JS-thread read-after-write, so a spread of `.value` here silently
+      // lost the sibling segment's measurement (pill invisible, active label
+      // white-on-white — caught on the Gate 2 sim pass).
+      const nextXs = layoutsRef.current.map((entry) => entry?.x ?? 0);
+      const nextWidths = layoutsRef.current.map((entry) => entry?.width ?? 0);
       segmentXs.value = nextXs;
       segmentWidths.value = nextWidths;
       if (nextWidths.every((width) => width > 0)) {
         layoutReady.value = 1;
       }
+      onSegmentLayoutsChangeRef.current?.([...layoutsRef.current]);
     },
     [segmentXs, segmentWidths, layoutReady]
   );
+
+  // VoiceOver: double-tap advances to the next segment (wrapping) — parity with the
+  // original search pill's onAccessibilityTap.
+  const handleAccessibilityTap = React.useCallback(() => {
+    const next = (indexFor(interactionValueRef.current) + 1) % options.length;
+    const nextValue = options[next]?.value;
+    if (nextValue == null) {
+      return;
+    }
+    animateSelection(nextValue, true);
+    if (nextValue !== interactionValueRef.current) {
+      interactionValueRef.current = nextValue;
+      onChange(nextValue);
+    }
+  }, [animateSelection, indexFor, onChange, options]);
 
   const segmentCount = options.length;
   const highlightStyle = useAnimatedStyle(() => {
@@ -273,7 +311,9 @@ export function SegmentedToggle<T extends string>({
         accessible
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel ?? 'Toggle'}
+        accessibilityHint={accessibilityHint}
         accessibilityValue={{ text: options[indexFor(value)]?.label }}
+        onAccessibilityTap={handleAccessibilityTap}
         testID={testID}
       >
         <Reanimated.View
@@ -286,7 +326,7 @@ export function SegmentedToggle<T extends string>({
             label={option.label}
             index={index}
             selectionProgress={selectionProgress}
-            onLayout={registerSegmentLayout(option.value, index)}
+            onLayout={registerSegmentLayout(index)}
           />
         ))}
       </View>

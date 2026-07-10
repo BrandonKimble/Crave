@@ -171,12 +171,25 @@ export function FrostedFilterStrip({
     onMeasuredLayoutChange({ holeMap, viewportWidth, rowHeight });
   }, [holeMap, onMeasuredLayoutChange, rowHeight, viewportWidth]);
 
-  // Auto-wrap each control in a hole slot keyed by position.
-  const slots = React.Children.toArray(children).map((child, index) => (
-    <StripHoleSlot key={index} holeKey={`strip-slot-${index}`} borderRadius={holeBorderRadius}>
-      {child}
-    </StripHoleSlot>
-  ));
+  // Auto-wrap each control in a hole slot keyed by the child's OWN key (toArray
+  // stamps one on every child), never by array position: a conditionally-mounted
+  // control (search's "N similar" chip) would otherwise shift every later sibling's
+  // hole identity on mount/unmount — unregister/re-register churn and a transient
+  // frame where a control sits over a stale hole. Give conditional children explicit
+  // keys; unconditional unkeyed children get React's stable positional key.
+  const slots = React.Children.toArray(children).map((child) => {
+    const childKey = React.isValidElement(child) && child.key != null ? child.key : null;
+    const slotKey = childKey ?? 'unkeyed';
+    return (
+      <StripHoleSlot
+        key={slotKey}
+        holeKey={`strip-slot-${slotKey}`}
+        borderRadius={holeBorderRadius}
+      >
+        {child}
+      </StripHoleSlot>
+    );
+  });
 
   return (
     <FrostedFilterStripContext.Provider value={ctx}>

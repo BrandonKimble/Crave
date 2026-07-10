@@ -1,70 +1,30 @@
 import React from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  View,
-  type LayoutChangeEvent,
-  type LayoutRectangle,
-} from 'react-native';
+import { type LayoutRectangle } from 'react-native';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Reanimated, {
-  Easing,
-  interpolate,
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
-import {
-  CONTROL_HEIGHT,
-  CONTROL_HORIZONTAL_PADDING,
-  CONTROL_RADIUS,
-  CONTROL_VERTICAL_PADDING,
-} from '../constants/ui';
+import { CONTROL_HORIZONTAL_PADDING, CONTROL_RADIUS } from '../constants/ui';
 import { SEGMENT_OPTIONS } from '../constants/search';
 
-import { Text } from '../../../components';
 import { type MaskedHole } from '../../../components/MaskedHoleOverlay';
+import { FilterChip } from '../../../components/FilterChip';
 import {
   FrostedFilterStrip,
   type FrostedFilterStripMeasuredLayout,
 } from '../../../components/FrostedFilterStrip';
+import { SegmentedToggle } from '../../../components/SegmentedToggle';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 
-const TOGGLE_HEIGHT = CONTROL_HEIGHT;
-const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
+// GATE 2 (plans/toggle-system-ideal.md): the search strip — the feel-checked
+// reference — now renders THROUGH the shared toggle primitives instead of mirroring
+// them: the restaurant⇄dish pill is `SegmentedToggle` (the primitive extracted from
+// this file's original pill; identical constants and mechanics) and the five chips
+// are `FilterChip`. Every toggle improvement lands in the primitives, once, and
+// reaches every strip. This file keeps only what is search's own: the live runtime-
+// bus chip-state read and the warm-restore layout-cache join.
+
+const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS;
 const TOGGLE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING + 4;
-const TOGGLE_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING;
-const TOGGLE_STACK_GAP = 8;
-const TOGGLE_MIN_HEIGHT = TOGGLE_HEIGHT;
 const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
-
-const SEGMENT_TRAVEL_MIN_MS = 34;
-const SEGMENT_TRAVEL_FULL_MS = 150;
-const SEGMENT_TRAVEL_EASING = Easing.linear;
-
-const resolveSegmentTravelDurationMs = (from: number, to: number): number => {
-  'worklet';
-  const distance = Math.abs(to - from);
-  return Math.max(SEGMENT_TRAVEL_MIN_MS, Math.round(distance * SEGMENT_TRAVEL_FULL_MS));
-};
-const getNextSegmentValue = (value: SegmentValue): SegmentValue =>
-  value === 'restaurants' ? 'dishes' : 'restaurants';
-
-const areLayoutsEqual = (prev: LayoutRectangle | undefined, next: LayoutRectangle): boolean => {
-  if (!prev) {
-    return false;
-  }
-  const closeEnough = (a: number, b: number) => Math.abs(a - b) < 0.5;
-  return (
-    closeEnough(prev.x, next.x) &&
-    closeEnough(prev.y, next.y) &&
-    closeEnough(prev.width, next.width) &&
-    closeEnough(prev.height, next.height)
-  );
-};
 
 type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];
 
@@ -72,7 +32,10 @@ export type SearchFiltersLayoutCache = {
   viewportWidth: number;
   rowHeight: number;
   holeMap: Record<string, MaskedHole>;
-  segmentLayouts?: Partial<Record<SegmentValue, LayoutRectangle>>;
+  /** Pill segment geometry, index-aligned with SEGMENT_OPTIONS (SegmentedToggle's
+   *  warm-restore schema — the pill paints correctly on the FIRST frame after a
+   *  chrome swap). */
+  segmentLayouts?: (LayoutRectangle | undefined)[];
 };
 
 const cloneLayoutRectangle = (layout: LayoutRectangle): LayoutRectangle => ({
@@ -103,12 +66,7 @@ export const cloneSearchFiltersLayoutCache = (
       Object.entries(cache.holeMap).map(([key, hole]) => [key, cloneMaskedHole(hole)])
     ),
     segmentLayouts: cache.segmentLayouts
-      ? Object.fromEntries(
-          Object.entries(cache.segmentLayouts).map(([key, layout]) => [
-            key,
-            layout ? cloneLayoutRectangle(layout) : layout,
-          ])
-        )
+      ? cache.segmentLayouts.map((layout) => (layout ? cloneLayoutRectangle(layout) : layout))
       : undefined,
   };
 };
@@ -207,10 +165,11 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   priceButtonActive = liveChipState.priceButtonActive;
   priceButtonLabel = liveChipState.priceButtonLabel;
   isPriceSelectorVisible = liveChipState.isPriceSelectorVisible;
+
   // The frosted cutout shell (mask geometry, per-control hole registration, horizontal
-  // scroll) is now the SHARED `FrostedFilterStrip` — search renders its controls through it
-  // so the result-sheet strip can't drift from the polls/favorites strips. We keep only the
-  // measured layout the shell reports back, for the warm-restore cache.
+  // scroll) is the SHARED `FrostedFilterStrip`; the pill mechanics are the SHARED
+  // `SegmentedToggle`. We keep only the measured layouts each reports back, joined
+  // into the warm-restore cache.
   const [shellLayout, setShellLayout] = React.useState<FrostedFilterStripMeasuredLayout | null>(
     initialLayoutCache
       ? {
@@ -223,166 +182,21 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const handleShellLayout = React.useCallback((layout: FrostedFilterStripMeasuredLayout) => {
     setShellLayout(layout);
   }, []);
-  const segmentLayoutsRef = React.useRef<Partial<Record<SegmentValue, LayoutRectangle>>>(
-    initialLayoutCache?.segmentLayouts ? { ...initialLayoutCache.segmentLayouts } : {}
+  const segmentLayoutsRef = React.useRef<(LayoutRectangle | undefined)[]>(
+    initialLayoutCache?.segmentLayouts ? [...initialLayoutCache.segmentLayouts] : []
   );
-  const interactionTabRef = React.useRef<SegmentValue>(activeTab);
-  const hasSyncedFromExternalTabRef = React.useRef(false);
   const [segmentLayoutsVersion, setSegmentLayoutsVersion] = React.useState(0);
-  const initialRestaurantLayout = segmentLayoutsRef.current.restaurants;
-  const initialDishesLayout = segmentLayoutsRef.current.dishes;
-  const initialSegmentLayoutReady = Boolean(
-    initialRestaurantLayout?.width &&
-      initialRestaurantLayout.width > 0 &&
-      initialDishesLayout?.width &&
-      initialDishesLayout.width > 0
-  );
-
-  const inset = contentHorizontalPadding;
-  const segmentSelectionProgress = useSharedValue(activeTab === 'restaurants' ? 0 : 1);
-  const segmentTargetProgress = useSharedValue(activeTab === 'restaurants' ? 0 : 1);
-  const restaurantSegmentX = useSharedValue(initialRestaurantLayout?.x ?? 0);
-  const restaurantSegmentWidth = useSharedValue(initialRestaurantLayout?.width ?? 0);
-  const dishesSegmentX = useSharedValue(initialDishesLayout?.x ?? 0);
-  const dishesSegmentWidth = useSharedValue(initialDishesLayout?.width ?? 0);
-  const segmentLayoutReady = useSharedValue(initialSegmentLayoutReady ? 1 : 0);
-
-  const animateSegmentSelection = React.useCallback(
-    (value: SegmentValue, animated: boolean) => {
-      const targetProgress = value === 'restaurants' ? 0 : 1;
-      const fromProgress = segmentSelectionProgress.value;
-      const durationMs = resolveSegmentTravelDurationMs(fromProgress, targetProgress);
-      segmentTargetProgress.value = targetProgress;
-      if (animated) {
-        segmentSelectionProgress.value = withTiming(targetProgress, {
-          duration: durationMs,
-          easing: SEGMENT_TRAVEL_EASING,
-        });
-      } else {
-        segmentSelectionProgress.value = targetProgress;
-      }
+  const handleSegmentLayoutsChange = React.useCallback(
+    (layouts: (LayoutRectangle | undefined)[]) => {
+      segmentLayoutsRef.current = layouts;
+      setSegmentLayoutsVersion((prev) => prev + 1);
     },
-    [segmentSelectionProgress, segmentTargetProgress]
+    []
   );
-
-  const registerSegmentLayout = React.useCallback(
-    (value: SegmentValue) => (event: LayoutChangeEvent) => {
-      const layout = event.nativeEvent.layout;
-      const prev = segmentLayoutsRef.current[value];
-      if (prev && areLayoutsEqual(prev, layout)) {
-        return;
-      }
-      segmentLayoutsRef.current[value] = layout;
-      if (value === 'restaurants') {
-        restaurantSegmentX.value = layout.x;
-        restaurantSegmentWidth.value = layout.width;
-      } else {
-        dishesSegmentX.value = layout.x;
-        dishesSegmentWidth.value = layout.width;
-      }
-      const nextRestaurantLayout = segmentLayoutsRef.current.restaurants;
-      const nextDishesLayout = segmentLayoutsRef.current.dishes;
-      if (
-        nextRestaurantLayout?.width &&
-        nextRestaurantLayout.width > 0 &&
-        nextDishesLayout?.width &&
-        nextDishesLayout.width > 0
-      ) {
-        segmentLayoutReady.value = 1;
-      }
-      setSegmentLayoutsVersion((prevVersion) => prevVersion + 1);
-    },
-    [
-      dishesSegmentWidth,
-      dishesSegmentX,
-      restaurantSegmentWidth,
-      restaurantSegmentX,
-      segmentLayoutReady,
-    ]
-  );
-
-  const highlightAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: segmentLayoutReady.value,
-    transform: [
-      {
-        translateX: interpolate(
-          segmentSelectionProgress.value,
-          [0, 1],
-          [restaurantSegmentX.value, dishesSegmentX.value]
-        ),
-      },
-    ],
-    width: interpolate(
-      segmentSelectionProgress.value,
-      [0, 1],
-      [restaurantSegmentWidth.value, dishesSegmentWidth.value]
-    ),
-  }));
-  const restaurantsLabelLightStyle = useAnimatedStyle(() => ({
-    opacity: 1 - segmentSelectionProgress.value,
-  }));
-  const restaurantsLabelDarkStyle = useAnimatedStyle(() => ({
-    opacity: segmentSelectionProgress.value,
-  }));
-  const dishesLabelLightStyle = useAnimatedStyle(() => ({
-    opacity: segmentSelectionProgress.value,
-  }));
-  const dishesLabelDarkStyle = useAnimatedStyle(() => ({
-    opacity: 1 - segmentSelectionProgress.value,
-  }));
-
-  React.useEffect(() => {
-    if (!hasSyncedFromExternalTabRef.current) {
-      interactionTabRef.current = activeTab;
-      animateSegmentSelection(activeTab, false);
-      hasSyncedFromExternalTabRef.current = true;
-      return;
-    }
-    if (activeTab === interactionTabRef.current) {
-      return;
-    }
-    interactionTabRef.current = activeTab;
-    animateSegmentSelection(activeTab, segmentLayoutReady.value > 0);
-  }, [activeTab, animateSegmentSelection, segmentLayoutReady]);
-
-  const scheduleSegmentToggleCommit = React.useCallback(
-    (next: SegmentValue) => {
-      if (next === interactionTabRef.current) {
-        return;
-      }
-      interactionTabRef.current = next;
-      onTabChange(next);
-    },
-    [onTabChange]
-  );
-  const handleSegmentToggleAccessibility = React.useCallback(() => {
-    const next = getNextSegmentValue(interactionTabRef.current);
-    animateSegmentSelection(next, true);
-    scheduleSegmentToggleCommit(next);
-  }, [animateSegmentSelection, scheduleSegmentToggleCommit]);
-  const segmentToggleTapGesture = React.useMemo(
-    () =>
-      Gesture.Tap()
-        .shouldCancelWhenOutside(false)
-        .onEnd((_event, success) => {
-          if (!success) {
-            return;
-          }
-          const currentProgress = segmentSelectionProgress.value;
-          const nextTargetProgress = segmentTargetProgress.value === 0 ? 1 : 0;
-          const durationMs = resolveSegmentTravelDurationMs(currentProgress, nextTargetProgress);
-          segmentTargetProgress.value = nextTargetProgress;
-          segmentSelectionProgress.value = withTiming(nextTargetProgress, {
-            duration: durationMs,
-            easing: SEGMENT_TRAVEL_EASING,
-          });
-          runOnJS(scheduleSegmentToggleCommit)(nextTargetProgress === 0 ? 'restaurants' : 'dishes');
-        }),
-    [scheduleSegmentToggleCommit, segmentSelectionProgress, segmentTargetProgress]
-  );
+  const initialSegmentLayouts = React.useRef(initialLayoutCache?.segmentLayouts ?? undefined);
 
   // Warm-restore cache = the shell's measured layout (hole map + viewport + row height)
-  // joined with our own segment layouts (the pill positions, which live in the controls).
+  // joined with the pill's segment layouts (reported by SegmentedToggle).
   React.useEffect(() => {
     if (!onLayoutCacheChange || !shellLayout) {
       return;
@@ -396,11 +210,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       holeMap: Object.fromEntries(
         Object.entries(shellLayout.holeMap).map(([key, hole]) => [key, cloneMaskedHole(hole)])
       ),
-      segmentLayouts: Object.fromEntries(
-        Object.entries(segmentLayoutsRef.current).map(([key, layout]) => [
-          key,
-          layout ? cloneLayoutRectangle(layout) : layout,
-        ])
+      segmentLayouts: segmentLayoutsRef.current.map((layout) =>
+        layout ? cloneLayoutRectangle(layout) : layout
       ),
     });
   }, [onLayoutCacheChange, segmentLayoutsVersion, shellLayout]);
@@ -409,7 +220,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     <FrostedFilterStrip
       disableBlur={disableBlur}
       surfaceColor="#ffffff"
-      contentInset={inset}
+      contentInset={contentHorizontalPadding}
       holeBorderRadius={TOGGLE_BORDER_RADIUS}
       initialHoleLayout={
         initialLayoutCache
@@ -422,354 +233,90 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       }
       onMeasuredLayoutChange={handleShellLayout}
     >
-      <GestureDetector gesture={segmentToggleTapGesture}>
-        <View
-          testID="search-segment-toggle"
-          style={styles.segmentedControl}
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Toggle results between restaurants and dishes"
-          accessibilityHint="Tap to switch result type"
-          onAccessibilityTap={handleSegmentToggleAccessibility}
-        >
-          <Reanimated.View
-            pointerEvents="none"
-            style={[
-              styles.segmentedHighlight,
-              { backgroundColor: accentColor },
-              highlightAnimatedStyle,
-            ]}
-          />
-          {SEGMENT_OPTIONS.map((option) => {
-            const lightLabelStyle =
-              option.value === 'restaurants' ? restaurantsLabelLightStyle : dishesLabelLightStyle;
-            const darkLabelStyle =
-              option.value === 'restaurants' ? restaurantsLabelDarkStyle : dishesLabelDarkStyle;
-            return (
-              <View
-                key={option.value}
-                onLayout={registerSegmentLayout(option.value)}
-                style={styles.segmentedOption}
-              >
-                <View style={styles.segmentedLabelStack}>
-                  <Text
-                    numberOfLines={1}
-                    variant="caption"
-                    weight="semibold"
-                    style={[styles.segmentedLabel, styles.segmentedLabelMeasure]}
-                  >
-                    {option.label}
-                  </Text>
-                  <Reanimated.View
-                    pointerEvents="none"
-                    style={[styles.segmentedLabelLayer, darkLabelStyle]}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      variant="caption"
-                      weight="semibold"
-                      style={styles.segmentedLabel}
-                    >
-                      {option.label}
-                    </Text>
-                  </Reanimated.View>
-                  <Reanimated.View
-                    pointerEvents="none"
-                    style={[styles.segmentedLabelLayer, lightLabelStyle]}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      variant="caption"
-                      weight="semibold"
-                      style={[styles.segmentedLabel, styles.segmentedLabelActive]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Reanimated.View>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-      </GestureDetector>
-      <Pressable
+      <SegmentedToggle
+        key="segment"
+        options={SEGMENT_OPTIONS}
+        value={activeTab}
+        onChange={onTabChange}
+        accentColor={accentColor}
+        initialSegmentLayouts={initialSegmentLayouts.current}
+        onSegmentLayoutsChange={handleSegmentLayoutsChange}
+        accessibilityLabel="Toggle results between restaurants and dishes"
+        accessibilityHint="Tap to switch result type"
+        testID="search-segment-toggle"
+      />
+      <FilterChip
+        key="open-now"
+        label="Open now"
+        active={openNow}
         onPress={onToggleOpenNow}
-        accessibilityRole="button"
+        accentColor={accentColor}
         accessibilityLabel="Toggle open now results"
-        accessibilityState={{ selected: openNow }}
         testID="search-open-now-toggle"
-        style={[
-          styles.openNowButton,
-          openNow && [styles.openNowButtonActive, { backgroundColor: accentColor }],
-        ]}
-      >
-        <Text
-          variant="caption"
-          weight="semibold"
-          style={[styles.openNowText, openNow && styles.openNowTextActive]}
-        >
-          Open now
-        </Text>
-      </Pressable>
-      <Pressable
+      />
+      <FilterChip
+        key="price"
+        label={priceButtonLabel}
+        active={priceButtonActive}
         onPress={onTogglePriceSelector}
-        testID="search-price-toggle"
-        accessibilityRole="button"
+        accentColor={accentColor}
         accessibilityLabel="Select price filters"
-        accessibilityState={{
-          expanded: isPriceSelectorVisible,
-          selected: priceButtonActive,
-        }}
-        style={[
-          styles.priceButton,
-          priceButtonActive && [styles.priceButtonActive, { backgroundColor: accentColor }],
-        ]}
+        accessibilityState={{ expanded: isPriceSelectorVisible }}
+        style={{ paddingRight: PRICE_TOGGLE_RIGHT_PADDING }}
+        testID="search-price-toggle"
       >
-        <Text
-          variant="caption"
-          weight="semibold"
-          style={[styles.priceButtonLabel, priceButtonActive && styles.priceButtonLabelActive]}
-        >
-          {priceButtonLabel}
-        </Text>
-        {isPriceSelectorVisible ? (
-          <ChevronUp
-            size={16}
-            strokeWidth={3}
-            color={priceButtonActive ? '#ffffff' : '#111827'}
-            style={styles.priceButtonChevron}
-          />
-        ) : (
-          <ChevronDown
-            size={16}
-            strokeWidth={3}
-            color={priceButtonActive ? '#ffffff' : '#111827'}
-            style={styles.priceButtonChevron}
-          />
-        )}
-      </Pressable>
-      <Pressable
-        testID="search-include-similar-toggle"
+        {(filled) =>
+          isPriceSelectorVisible ? (
+            <ChevronUp
+              size={16}
+              strokeWidth={3}
+              color={filled ? '#ffffff' : '#111827'}
+              style={{ marginLeft: 6 }}
+            />
+          ) : (
+            <ChevronDown
+              size={16}
+              strokeWidth={3}
+              color={filled ? '#ffffff' : '#111827'}
+              style={{ marginLeft: 6 }}
+            />
+          )
+        }
+      </FilterChip>
+      <FilterChip
+        key="include-similar"
+        label="Include similar"
+        active={includeSimilarActive}
         onPress={onToggleIncludeSimilar}
-        accessibilityRole="button"
+        accentColor={accentColor}
         accessibilityLabel="Toggle including similar results"
-        accessibilityState={{ selected: includeSimilarActive }}
-        style={[
-          styles.includeSimilarButton,
-          includeSimilarActive && [
-            styles.includeSimilarButtonActive,
-            { backgroundColor: accentColor },
-          ],
-        ]}
-      >
-        <Text
-          variant="caption"
-          weight="semibold"
-          style={[
-            styles.includeSimilarText,
-            includeSimilarActive && styles.includeSimilarTextActive,
-          ]}
-        >
-          Include similar
-        </Text>
-      </Pressable>
+        testID="search-include-similar-toggle"
+      />
       {similarAvailableCount > 0 && !includeSimilarActive ? (
         // REMOTE CONTROL for the toggle: tapping only flips "Include similar" — same
         // shared toggle flow/choreography for cards AND map (no expand-in-place).
-        <Pressable
-          testID="search-similar-available-chip"
+        <FilterChip
+          key="similar-available"
+          variant="quiet"
+          label={`${similarAvailableCount} similar`}
+          active={false}
           onPress={onToggleIncludeSimilar}
-          accessibilityRole="button"
           accessibilityLabel={`Show ${similarAvailableCount} similar results`}
-          style={styles.similarAvailableButton}
-        >
-          <Text variant="caption" weight="semibold" style={styles.similarAvailableText}>
-            {similarAvailableCount} similar
-          </Text>
-        </Pressable>
+          testID="search-similar-available-chip"
+        />
       ) : null}
-      <Pressable
+      <FilterChip
+        key="rising"
+        label="Rising"
+        active={risingActive}
         onPress={onToggleRising}
-        accessibilityRole="button"
+        accentColor={accentColor}
         accessibilityLabel="Toggle rising momentum filter"
-        accessibilityState={{ selected: risingActive }}
         testID="search-rising-toggle"
-        style={[
-          styles.risingButton,
-          risingActive && [styles.risingButtonActive, { backgroundColor: accentColor }],
-        ]}
-      >
-        <Text
-          variant="caption"
-          weight="semibold"
-          style={[styles.risingText, risingActive && styles.risingTextActive]}
-        >
-          Rising
-        </Text>
-      </Pressable>
+      />
     </FrostedFilterStrip>
   );
 };
-
-const buildToggleBaseStyle = (height: number) => ({
-  flexDirection: 'row' as const,
-  alignItems: 'center' as const,
-  borderRadius: TOGGLE_BORDER_RADIUS,
-  borderWidth: 0,
-  borderColor: 'transparent',
-  backgroundColor: 'transparent',
-  height,
-  paddingHorizontal: TOGGLE_HORIZONTAL_PADDING,
-  paddingVertical: TOGGLE_VERTICAL_PADDING,
-});
-
-const styles = StyleSheet.create({
-  resultFiltersWrapper: {
-    marginTop: 0,
-    marginBottom: 0,
-    gap: 0,
-    backgroundColor: 'transparent',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  paddedWrapper: {
-    width: '100%',
-    position: 'relative',
-  },
-  filterButtonsScroll: {
-    flexGrow: 0,
-    width: '100%',
-    backgroundColor: 'transparent',
-    zIndex: 1,
-  },
-  filterButtonsContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: TOGGLE_STACK_GAP,
-    paddingVertical: 0,
-  },
-  cutoutStrip: {
-    position: 'relative',
-    flexGrow: 0,
-    flexShrink: 0,
-    alignSelf: 'flex-start',
-  },
-  toggleRow: {
-    position: 'relative',
-  },
-  toggleRowContent: {
-    position: 'relative',
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: TOGGLE_STACK_GAP,
-    paddingVertical: 0,
-  },
-  segmentedControl: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 0,
-    padding: 0,
-    borderRadius: TOGGLE_BORDER_RADIUS,
-    backgroundColor: 'transparent',
-    alignSelf: 'flex-start',
-    flexShrink: 0,
-    overflow: 'hidden',
-  },
-  segmentedOption: {
-    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
-    justifyContent: 'center',
-    minWidth: 0,
-    flexGrow: 0,
-    flexShrink: 1,
-  },
-  segmentedHighlight: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    borderRadius: TOGGLE_BORDER_RADIUS,
-  },
-  segmentedLabel: {
-    color: '#111827',
-  },
-  segmentedLabelActive: {
-    color: '#ffffff',
-  },
-  segmentedLabelStack: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segmentedLabelLayer: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  segmentedLabelMeasure: {
-    opacity: 0,
-  },
-  openNowButton: {
-    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
-  },
-  openNowButtonActive: {},
-  openNowText: {
-    color: '#111827',
-  },
-  openNowTextActive: {
-    color: '#ffffff',
-  },
-  priceButton: {
-    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
-    paddingRight: PRICE_TOGGLE_RIGHT_PADDING,
-  },
-  priceButtonActive: {},
-  priceButtonLabel: {
-    color: '#111827',
-  },
-  priceButtonLabelActive: {
-    color: '#ffffff',
-  },
-  priceButtonChevron: {
-    marginLeft: 6,
-    marginTop: 0,
-  },
-  includeSimilarButton: {
-    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
-    flexDirection: 'row',
-  },
-  includeSimilarButtonActive: {},
-  includeSimilarText: {
-    color: '#111827',
-  },
-  includeSimilarTextActive: {
-    color: '#ffffff',
-  },
-  similarAvailableButton: {
-    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
-    flexDirection: 'row',
-  },
-  similarAvailableText: {
-    // Quiet informational chip — muted vs. the solid toggle chips.
-    color: '#6b7280',
-  },
-  risingButton: {
-    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
-    flexDirection: 'row',
-  },
-  risingButtonActive: {},
-  risingText: {
-    color: '#111827',
-  },
-  risingTextActive: {
-    color: '#ffffff',
-  },
-  maskOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    zIndex: 1,
-  },
-});
 
 export type { SegmentValue };
 export default React.memo(SearchFilters);
