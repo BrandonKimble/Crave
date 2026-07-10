@@ -1,5 +1,5 @@
 import React from 'react';
-import { Linking } from 'react-native';
+import { NativeModules, Linking } from 'react-native';
 
 import { startJsFrameSampler } from './js-frame-sampler';
 import { startJsTaskLatencySampler } from './js-task-latency-sampler';
@@ -33,6 +33,17 @@ const resolvePerfNow = (): number => {
     return performance.now();
   }
   return Date.now();
+};
+
+const logSamplerEventToNativeSink = (message: string): void => {
+  const nativeSampler = (NativeModules as Record<string, unknown>).UIFrameSampler as
+    | { logEvent?: (message: string) => void }
+    | undefined;
+  try {
+    nativeSampler?.logEvent?.(message);
+  } catch {
+    // telemetry only — never throw into the sampler path
+  }
 };
 
 const logScenarioEvent = (payload: Record<string, unknown>) => {
@@ -241,12 +252,17 @@ export const PerfScenarioCoordinator: React.FC = () => {
         bufferedSamplerEventsRef.current.push({ channel, payload: payloadWithDeliveryTiming });
         return;
       }
+      const samplerLine = `[SearchPerf][${channel}] ${JSON.stringify(
+        withScenarioMetadata(config, payloadWithDeliveryTiming)
+      )}`;
       // eslint-disable-next-line no-console
-      console.log(
-        `[SearchPerf][${channel}] ${JSON.stringify(
-          withScenarioMetadata(config, payloadWithDeliveryTiming)
-        )}`
-      );
+      console.log(samplerLine);
+      // Release-lane sink: console is stripped in Release, so the JS samplers' summaries
+      // also route to os_log through the UIFrameSampler native module ([JSPERF]) — the
+      // 60fps assertion must be measurable on the honest (Release) lane for BOTH threads.
+      if (!__DEV__) {
+        logSamplerEventToNativeSink(samplerLine);
+      }
     },
     []
   );

@@ -5,6 +5,7 @@
 @interface RCT_EXTERN_MODULE(UIFrameSampler, RCTEventEmitter)
 RCT_EXTERN_METHOD(start:(NSDictionary *)options)
 RCT_EXTERN_METHOD(stop)
+RCT_EXTERN_METHOD(logEvent:(NSString *)message)
 @end
 
 @interface RCT_EXTERN_MODULE(SearchMapRenderController, RCTEventEmitter)

@@ -63,6 +63,13 @@ final class UIFrameSampler: RCTEventEmitter {
     }
   }
 
+  /// Release-lane JS perf sink: JS console is stripped in Release, so the JS-side samplers
+  /// route their window/stall summaries here — one os_log sink for both threads' telemetry.
+  @objc
+  func logEvent(_ message: NSString) {
+    NSLog("[JSPERF] %@", message)
+  }
+
   override func invalidate() {
     stopOnMain()
     super.invalidate()
