@@ -344,6 +344,57 @@ chain, childAnchor threading, and all stale-machinery prose (deadness auditor's 
 6. OWNER product call (flagged): pollDetail dismiss lands on the expanded feed vs the pure
    origin-restore collapse to docked home.
 
+**S-C.4 ITEM 3 DESIGN (2026-07-09 — one-switch home dismissal; NOT yet implemented):**
+
+Code map (verified against source):
+
+- Switch 1 = `dismissAppSearchRouteResultsToPolls` (app-search-route-command-runtime.ts):
+  `terminalDismiss → polls`, `preserveOutgoingUntilSettle`, routeAction popToRoot/setRoot,
+  dockedPollsRestoreSnap collapsed. Plays the sheet slide over the docked feed.
+- Switch 2 = the boundary flush (`use-results-presentation-close-transition-finalize-runtime`
+  → `flushPendingSearchOriginRestore` → `restorePendingOrigin`): degenerate short-circuit →
+  `emitDegenerateHomeRestore` (`topLevelSwitch → search@collapsed`, the GOLDEN emission —
+  route-idempotent, presentation flips polls→search docked home). Rich origins take the
+  direct re-root instead.
+- The pending-restore ledger (`pendingOriginRestoreContext` + `isSearchOriginRestorePending`
+  - arm/commit/cancel/flush) exists ONLY to carry the origin across the switch-1→switch-2
+    gap. The CLEAR lanes (use-search-clear-owner) arm-and-flush SYNCHRONOUSLY — for them the
+    ledger is pure ceremony already.
+
+The design:
+
+1. The RICH seam already IS the one-switch shape — a bookmarks/profile dismiss re-roots
+   directly to the origin in ONE swapImmediately switch precisely to eliminate the
+   supersede class. Item 3 = extend that shape to HOME: the dismiss verb resolves the
+   origin AT VERB TIME and emits ONE switch — `terminalDismiss → search@collapsed` with
+   dockedPollsRestoreSnap + routeAction popToRoot (or the rich/child pop shapes) — the
+   sheet slide plays on the outgoing session content (preserveOutgoingUntilSettle), the
+   presentation lands directly in the docked-polls MODE of the search root (§5.5: docked
+   polls is a presentation mode, not a scene target).
+2. The ledger DIES: no arm/commit/cancel/flush, no pendingOriginRestoreContext, no
+   isSearchOriginRestorePending; requestDefaultPostSearchRestore dies (the no-origin case
+   is the same verb with the degenerate build). The clear lanes call the verb directly.
+3. The golden deadlock seam MOVES, not disappears: the single emission must still be
+   provably zero-plane-safe at the {polls,search}@collapsed seam. assertDegenerateHomeEmission
+   becomes the assertion on the SINGLE switch (terminalDismiss kind + snapTo collapsed +
+   dockedPollsRestoreSnap + pop arm; still no routeParams/chromeVisibilityTarget/cameraIntent).
+   Re-prove with the byte-identity flows (p1-byteid-\*, dismiss-seam-byteid) + deadlock soak.
+4. ⚠️ COUPLED TO ITEM 5 (discovered in this design pass): the two-switch dance is currently
+   LOAD-BEARING for the map WIRE EXIT — S-C.3 already tried popping home without the dance
+   and native marker residue appeared (JS emitted the empty frame, native never applied).
+   The single switch must OWN the wire exit: the search-surface exit (finalize/bundle swap)
+   has to run off the ONE switch's settle, not off the polls-intermediate reveal. Items 3+5
+   are ONE cut; do not ship 3 without re-proving marker teardown on-sim (pins gone after
+   dismiss, zoom/pan after).
+5. Successor shapes that unlock WITH the cut (unchanged from the ledger): nav command pair
+   → one derivation over (childDepth, sessionEnterTransactionPending).
+
+Sequencing for the implementing session: (a) teach the presentation/laneKind path that a
+terminalDismiss targeting 'search' lands docked-polls mode; (b) move origin resolution to
+the dismiss verb, attach to the switch; (c) delete the ledger + default-restore; (d) wire-exit
+ownership on the single switch's settle; (e) golden assertion rewrite + byte-identity flows +
+marker-teardown finger/rig test.
+
 **Ideal-shape classifications confirmed:** the terminal dance = recorded-interim (successor in
 item 3); item-4 nav verdict ACCEPTED with the named successor; the launch-intent restaurant arm
 = ~90 lines ride S-A/S-D + world-camera L-layers (its prepare/anchor lines died this session).
