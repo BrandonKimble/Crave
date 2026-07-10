@@ -50,9 +50,16 @@
 
 ## Slices
 
-- **S-D.1** EntityRef + policy fn + EntityLink component; PollDetailPanel spans re-render
-  through it (the fork at :958-1001 deletes). First consumer proof: poll span → restaurant
-  and poll span → dish searches behave byte-identically.
+- **S-D.1** ~~EntityRef + policy fn + EntityLink component~~ **SHIPPED 2026-07-09 (f02f9e5c)**:
+  entity-ref-action-policy.ts (restaurantWorld = the warm-profile COMPOSITE, not a bare push —
+  correction recorded in plans/s-c5-restaurant-stack-fact.md §S-D) + components/ui/EntityLink.tsx;
+  PollDetailPanel fork + handleEntityPress + onEntityPress threading DELETED. RIG-PROVEN with the
+  FIRST-EVER poll-dish-from-comment entry point (comment seeded via the dev perf token — BE
+  resolves entitySpans server-side on POST /polls/:id/comments): gelato span → skip-LLM entity
+  world → X → popToEntry back to the exact comment; Caffè Panna span → warm-profile composite.
+  RIG LEVER (record): seed spans with `curl -X POST .../polls/<id>/comments -H "Authorization:
+Bearer crave-dev-perf-scenario" -d '{"body":"<text mentioning known entities>"}'`; open the
+  poll via testID poll-card-title-<pollId>; spans tap via coordinates on the detail sheet.
 - **S-D.2** List rows: bookmarks + profile rows render EntityLink (the byte-identical copies
   delete); `list(listId)` desire arm lands with them.
 - **S-D.3** Autocomplete: row-kind widening (all unions in one commit) + person/list rows
