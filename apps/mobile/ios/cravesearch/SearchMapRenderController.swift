@@ -648,6 +648,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     let restaurantId: String?
     let labelText: String?     // label VA PRIMARY line (dish name on the dishes tab, else restaurant name)
     let labelSubtext: String?  // optional smaller SECONDARY line (restaurant name under a dish label)
+    // L4 (§3.4): out-of-searched-bounds group sibling — resident in the LOD ranking so the
+    // selection overlay's forcedKeys can promote it, but never rank-promoted (engine gate).
+    let isInvisibleResident: Bool
   }
 
   // R3 (plans/search-flow-plan.md §D6): the native APPLIED-FEATURE LEDGER — the acked truth of
@@ -1465,7 +1468,8 @@ final class SearchMapRenderController: RCTEventEmitter {
           activeBadgeImageId: raw["activeBadgeImageId"] as? String,
           restaurantId: raw["restaurantId"] as? String,
           labelText: (raw["labelText"] as? String) ?? (raw["restaurantName"] as? String),
-          labelSubtext: raw["labelSubtext"] as? String
+          labelSubtext: raw["labelSubtext"] as? String,
+          isInvisibleResident: (raw["isInvisibleResident"] as? Bool) ?? false
         ))
       }
       state.candidateCatalog = catalog
@@ -1480,7 +1484,11 @@ final class SearchMapRenderController: RCTEventEmitter {
         // ONE budget slot (a multi-location restaurant can never eat multiple slots). Inert
         // for today's one-location-per-restaurant catalogs; live for the selected-restaurant
         // all-locations spread (whose pins ride forcedKeys, exempt by design).
-        .map { LodEngine.Anchor(markerKey: $0.markerKey, coordinate: $0.coordinate, rank: $0.rank, groupId: $0.restaurantId) }
+        .map {
+          LodEngine.Anchor(
+            markerKey: $0.markerKey, coordinate: $0.coordinate, rank: $0.rank,
+            groupId: $0.restaurantId, isInvisibleResident: $0.isInvisibleResident)
+        }
       var engine = state.lodV5Engine ?? LodEngine()
       engine.setRanking(ranked)
       state.lodV5Engine = engine
@@ -5957,9 +5965,29 @@ final class SearchMapRenderController: RCTEventEmitter {
       state.lastEnterStartToken != revealStartToken,
       state.enterStartedWorldId != revealRequestKey,
       state.blockedEnterStartRequestKey == nil,
-      Self.isActiveFrameSourceReady(state: state),
-      !hasPendingCommitFence(capturePendingVisualSourceCommitFence(state: state))
+      Self.isActiveFrameSourceReady(state: state)
     else {
+      return
+    }
+    // FENCE-BLOCK RECORDING (the direct-token deadlock): when every other gate passes but a
+    // visual-source commit is still pending its sourcedata ack, RECORD the block — the ack
+    // handler's promoteBlockedCommitFencesIfReady is the only fence-clear re-arm, and it only
+    // fires for a recorded block. Bailing silently here (the pre-fix behavior) deadlocked the
+    // reveal whenever the U2 direct enter-start token raced ahead of the last commit's ack and
+    // no later frame re-ran this gate: token seen, fence pending, ack 3ms later → nothing left
+    // to start the ramp. Mirrors the frame-path recording (reveal_begin @~2966).
+    let pendingEnterFence = capturePendingVisualSourceCommitFence(state: state)
+    if hasPendingCommitFence(pendingEnterFence) {
+      state.blockedEnterStartRequestKey = revealRequestKey
+      state.blockedEnterStartCommitFenceStartedAtMs = Self.nowMs()
+      state.blockedEnterStartCommitFenceBySourceId = pendingEnterFence
+      state.currentPresentationRenderPhase = "enter_wait_commit"
+      instances[instanceId] = state
+      emitVisualDiag(
+        instanceId: instanceId,
+        message:
+          "reveal_start_commit_fence_blocked_direct pending=\(describeCommitFence(pendingEnterFence)) \(commitFenceWaitSummary(state: state))"
+      )
       return
     }
     do {
@@ -7933,9 +7961,15 @@ final class SearchMapRenderController: RCTEventEmitter {
     for (key, va) in inst.vaByKey {
       guard let coord = inst.coordByKey[key] else { continue }
       let pt = mapboxMap.point(for: coord)
-      if pt.y.isFinite { va.priority = Int(pt.y * 10) }
+      // L4 z-lift: the selected group's pins sit ABOVE every unselected pin regardless of
+      // viewport-y; within the lifted group viewport-y still orders members.
+      let lift = inst.highlightedKeys.contains(key) ? Self.selectedPinZLift : 0
+      if pt.y.isFinite { va.priority = Int(pt.y * 10) + lift }
     }
   }
+
+  /// L4 (§3.4): priority bump for the selected group's pin VAs — far above any viewport-y value.
+  private static let selectedPinZLift = 1_000_000
 
   private func pinVAEffectiveBadgeId(inst: PinVAInstance, key: String) -> String? {
     if inst.highlightedKeys.contains(key), let active = inst.activeBadgeIdByKey[key] { return active }
@@ -8181,6 +8215,10 @@ final class SearchMapRenderController: RCTEventEmitter {
         inst.viewBadgeId[key] = badgeId
       }
     }
+    // L4 z-lift: a highlight change re-stacks immediately — the priorities pass otherwise only
+    // runs on roster changes and while the camera moves, so a stationary select/deselect would
+    // keep the stale z until the next pan.
+    updatePinVAPriorities(inst: inst, mapboxMap: mapboxMap)
   }
 
   private func teardownPinVA(instanceId: String) {
