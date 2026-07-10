@@ -12,19 +12,29 @@ const isOnlineState = (state: NetInfoState) => {
   return Boolean(state.isConnected) && state.isInternetReachable !== false;
 };
 
+/**
+ * ONE online truth (foundation-hardening §A/§D): NetInfo writes INTO the system
+ * status store (the single writer, which the dev offline override can pin), and
+ * react-query's onlineManager MIRRORS the store — never NetInfo directly. Every
+ * consumer (banner, search pause/resume, polls resume, react-query pause/refetch,
+ * the failure-matrix lever) therefore agrees on one isOffline, always.
+ */
 const NetworkStatusListener: React.FC = () => {
   const setOffline = useSystemStatusStore((state) => state.setOffline);
-  const lastOnlineRef = React.useRef<boolean | null>(null);
+
+  // store → onlineManager mirror (the ONLY writer of onlineManager).
+  React.useEffect(() => {
+    onlineManager.setOnline(!useSystemStatusStore.getState().isOffline);
+    return useSystemStatusStore.subscribe((state, prevState) => {
+      if (state.isOffline !== prevState.isOffline) {
+        onlineManager.setOnline(!state.isOffline);
+      }
+    });
+  }, []);
 
   React.useEffect(() => {
     const handleState = (state: NetInfoState) => {
-      const online = isOnlineState(state);
-      if (lastOnlineRef.current === online) {
-        return;
-      }
-      lastOnlineRef.current = online;
-      onlineManager.setOnline(online);
-      setOffline(!online);
+      setOffline(!isOnlineState(state));
     };
 
     const unsubscribe = NetInfo.addEventListener(handleState);
@@ -44,9 +54,7 @@ const NetworkStatusListener: React.FC = () => {
       // its edge) never sticks stale.
       if (nextState === 'active') {
         void NetInfo.fetch().then((state) => {
-          const online = isOnlineState(state);
-          onlineManager.setOnline(online);
-          useSystemStatusStore.getState().setOffline(!online);
+          useSystemStatusStore.getState().setOffline(!isOnlineState(state));
         });
       }
     });

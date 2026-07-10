@@ -23,6 +23,7 @@ import {
 import { searchMapRenderController } from '../screens/Search/runtime/map/search-map-render-controller';
 import { startUiFrameSampler } from './ui-frame-sampler';
 import { resolveMarket } from '../services/markets';
+import { useSystemStatusStore } from '../store/systemStatusStore';
 import type { MapBounds } from '../types';
 
 const flushedNativeMapApplyRunIds = new Set<string>();
@@ -547,6 +548,22 @@ export const PerfScenarioCoordinator: React.FC = () => {
             message: error instanceof Error ? error.message : String(error),
           });
         });
+      return;
+    }
+
+    if (event.action === 'set_system_offline') {
+      // FAILURE-MATRIX RIG LEVER (foundation-hardening plan §D): pins the system
+      // status store's isOffline via the dev override — real host-Wi-Fi flapping
+      // wedges the simulator's NetInfo, so the matrix drives offline (and the
+      // reconnect EDGE, via 1→0) with this command. routeParam: '1' | '0' | 'clear'.
+      const value = event.routeParam === '1' ? true : event.routeParam === '0' ? false : null;
+      useSystemStatusStore.getState().setDevOfflineOverride(value);
+      logPayload({
+        event: 'perf_scenario_command_executed',
+        action: event.action,
+        step: 'set_system_offline',
+        routeParam: event.routeParam,
+      });
       return;
     }
 
