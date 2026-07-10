@@ -99,7 +99,7 @@ const SaveListPersistentHeaderAction = React.memo(() => {
 
 SaveListPersistentHeaderAction.displayName = 'SaveListPersistentHeaderAction';
 
-// Module-scope registration (house pattern — origin-capture-registry).
+// Module-scope registration (house pattern — origin-scene-live-state-registry).
 registerPersistentHeaderDescriptor('saveList', {
   Title: SaveListPersistentHeaderTitle,
   Action: SaveListPersistentHeaderAction,

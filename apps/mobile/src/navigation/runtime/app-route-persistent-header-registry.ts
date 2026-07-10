@@ -7,7 +7,7 @@ import type { OverlayKey } from '../../overlays/types';
 // OverlaySheetHeaderChrome is hoisted above the scene-stack legs (PersistentSheetHeaderHost) and
 // NEVER unmounts; what swaps per PresentationFrame.activeSceneKey is the CONTENT rendered inside
 // it — the left title and the right action area. Each scene registers a descriptor at module
-// scope (the house registry pattern — mirrors origin-capture-registry):
+// scope (the house registry pattern — mirrors origin-scene-live-state-registry):
 //   • Title/Action are COMPONENTS (not elements) so they mount inside the persistent chrome and
 //     read their own scene's runtimes/authorities directly. Title must render SYNCHRONOUSLY on
 //     the first frame of a switch (seed strings for late data — 'Poll'/'Restaurant'/query text);

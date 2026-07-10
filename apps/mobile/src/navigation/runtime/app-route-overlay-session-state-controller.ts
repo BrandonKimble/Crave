@@ -3,7 +3,6 @@ import type {
   SearchOverlaySheetSnap,
   TabOverlaySnap,
 } from '../../overlays/searchRouteSessionTypes';
-import { getOriginCaptureProvider, registerOriginCaptureProvider } from './origin-capture-registry';
 import { getOriginSceneLiveState } from './origin-scene-live-state-registry';
 import { stageOverlayScrollRestore } from '../../overlays/overlayScrollOffsetRuntime';
 import { hasSearchSessionAboveRoot } from './app-overlay-route-stack-algebra';
@@ -63,12 +62,9 @@ type AppRouteOverlaySessionStateControllerArgs = {
 };
 
 // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Capture).
-// The degenerate snapshot is the byte-equivalent of what createCurrentOriginContext
-// produced before this scaffolding: a scene identity + its LIVE detent, with empty
-// scroll/segment/anchor. Home ('search'|'polls') captures EXACTLY this; richer scenes
-// fall back to it in P0 (their RICH providers — real scroll/segment/anchor — arrive in
-// later phases).
-// same place the old code set `childAnchor: childAnchor ?? null`.
+// The degenerate snapshot is the minimal origin: a scene identity + its LIVE detent, with
+// empty scroll/segment/anchor. The home roots capture EXACTLY this (see
+// buildCurrentOriginSnapshot); rich capture merges published live state onto it.
 const degenerateSnapshot = (sceneKey: OverlayKey, detent: TabOverlaySnap): OriginSnapshot => ({
   sceneKey,
   sceneParams: null,
@@ -270,34 +266,7 @@ export class AppRouteOverlaySessionStateController {
         this.recompute(true);
       })
     );
-    // Return-to-origin foundation — register the DEGENERATE home providers. 'search' and
-    // 'polls' (the home roots) capture exactly the degenerate snapshot at their LIVE
-    // detent, byte-equivalent to the old createCurrentOriginContext output. Other scenes
-    // have no provider yet and ride the degenerate fallback in buildCurrentOriginSnapshot;
-    // their RICH providers arrive in later phases.
-    const captureDegenerateHomeOrigin = (): OriginSnapshot => {
-      const { sceneKey, detent } = this.resolveLiveOriginIdentity();
-      return degenerateSnapshot(sceneKey, detent);
-    };
-    // Return-to-origin foundation (P3) — register the RICH bookmarks provider. It reads the
-    // bookmarks scene's OWN live scroll lane from the scene live-state registry (published
-    // imperatively by the panel, never a render-body hook) and merges it onto the degenerate
-    // base (which already carries sceneKey='bookmarks' + the LIVE detent). When the scene
-    // hasn't published yet (cold) the merge is a no-op and the snapshot degrades to a plain
-    // top-level bookmarks origin — still richer than home (a non-root sceneKey), so it routes
-    // to the rich restore branch, never the degenerate-home short-circuit.
-    //
-    // P5 — register the RICH PROFILE provider (scroll + SEGMENT + sceneParams). Profile is a
-    // SEGMENTED mounted-scroll scene: its SINGLE PUBLISHER (the profile body-model runtime, the
-    // sole owner of the active segment) publishes scroll lane + active segment + the
-    // profileUserId via the scene live-state registry. captureRichSceneOrigin merges all three
-    // onto the degenerate base. Own-profile leaves profileUserId null (self-default); the
-    // foreign-profile source publishes a non-null one — same provider, same merge.
     this.unsubscribers.push(
-      registerOriginCaptureProvider('search', captureDegenerateHomeOrigin),
-      registerOriginCaptureProvider('polls', captureDegenerateHomeOrigin),
-      registerOriginCaptureProvider('bookmarks', () => this.captureRichSceneOrigin('bookmarks')),
-      registerOriginCaptureProvider('profile', () => this.captureRichSceneOrigin('profile')),
       // S-B origin-on-entry: the scene-switch controller snapshots the DEPARTING scene onto
       // every pushed entry through this seam. The departing key is passed EXPLICITLY (the
       // controller's own identity resolution is root-collapsed — wrong for child departures).
@@ -431,16 +400,19 @@ export class AppRouteOverlaySessionStateController {
     };
   }
 
-  // Source-agnostic capture: the active scene snapshots ITSELF via its registered provider;
-  // absent one, captureRichSceneOrigin merges any published live state onto the degenerate base.
+  // Source-agnostic capture (S-C.4 item 4 — the provider registry is collapsed into this one
+  // rule): the HOME roots ('search'/'polls') capture the degenerate snapshot at their LIVE
+  // detent — home is the degenerate origin by design, its scroll/segment restore rides the
+  // remembered-snap machinery, never the origin snapshot. EVERY other scene captures rich:
+  // captureRichSceneOrigin merges any published live scroll/segment onto the degenerate base
+  // (and itself degrades to the base when the scene never published) — so a scene opts into
+  // scroll capture with ONE publication hook call, zero registration.
   private buildCurrentOriginSnapshot(): OriginSnapshot {
-    const { sceneKey } = this.resolveLiveOriginIdentity();
-    // Fallback generalized (S-B origin-on-entry): a scene with NO registered provider still
-    // captures rich (captureRichSceneOrigin merges any published live scroll/segment onto the
-    // degenerate base, and itself degrades to the base when the scene never published) — so a
-    // child scene opts into scroll capture with ONE publication hook call, zero registration.
+    const { sceneKey, detent } = this.resolveLiveOriginIdentity();
     const captured =
-      getOriginCaptureProvider(sceneKey)?.() ?? this.captureRichSceneOrigin(sceneKey);
+      sceneKey === 'search' || sceneKey === 'polls'
+        ? degenerateSnapshot(sceneKey, detent)
+        : this.captureRichSceneOrigin(sceneKey);
     return {
       ...captured,
       anchor: captured.anchor ?? null,

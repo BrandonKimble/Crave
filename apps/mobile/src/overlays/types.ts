@@ -8,7 +8,7 @@ import type {
 
 export type OverlayKey =
   | 'search'
-  | 'searchRoute'
+  | 'sheetHost'
   | 'polls'
   | 'bookmarks'
   | 'profile'

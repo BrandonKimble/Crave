@@ -30,7 +30,7 @@ export type AppRouteSceneSheetMotionTargetResolution =
       kind: 'unavailable';
     };
 
-const SEARCH_ROUTE_SHEET_TARGET_KEY: OverlayKey = 'searchRoute';
+const SHEET_HOST_TARGET_KEY: OverlayKey = 'sheetHost';
 
 export class AppRouteSceneSheetMotionTargetRegistry {
   private readonly targetsBySceneKey = new Map<OverlayKey, AppRouteSceneSheetMotionTarget[]>();
@@ -58,9 +58,9 @@ export class AppRouteSceneSheetMotionTargetRegistry {
       ...this.getSceneTargets(sceneKey),
       ...(appRouteSceneUsesSharedSheetTarget({
         sceneKey,
-        sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_KEY,
+        sheetTargetGroup: SHEET_HOST_TARGET_KEY,
       })
-        ? this.getSceneTargets(SEARCH_ROUTE_SHEET_TARGET_KEY)
+        ? this.getSceneTargets(SHEET_HOST_TARGET_KEY)
         : []),
     ];
     const orderedCandidates = [...candidates].reverse();

@@ -23,11 +23,11 @@ type AppRouteScenePolicy = AppRouteSheetScenePolicy & {
   chromePolicy: AppRouteSceneChromePolicy;
 };
 
-const SEARCH_ROUTE_SHEET_TARGET_GROUP: OverlayKey = 'searchRoute';
+const SHEET_HOST_TARGET_GROUP: OverlayKey = 'sheetHost';
 
 const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
   search: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'collapsed',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
@@ -36,7 +36,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
   polls: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'collapsed',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
@@ -50,7 +50,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
   bookmarks: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
@@ -59,7 +59,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'preserve' },
   },
   profile: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
@@ -68,7 +68,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'preserve' },
   },
   saveList: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
@@ -77,7 +77,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'preserve' },
   },
   pollCreation: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
@@ -86,7 +86,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'preserve' },
   },
   pollDetail: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
@@ -95,7 +95,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'preserve' },
   },
   restaurant: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'middle',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
@@ -103,8 +103,8 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     snapPersistence: 'none',
     chromePolicy: { kind: 'preserve' },
   },
-  searchRoute: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+  sheetHost: {
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'collapsed',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
@@ -123,7 +123,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
   },
   // ── Stub-pass child scenes (plans/page-registry.md §1) — clone the saveList policy.
   userProfile: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
@@ -132,7 +132,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'preserve' },
   },
   listDetail: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
@@ -141,7 +141,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'preserve' },
   },
   followList: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
@@ -150,7 +150,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'preserve' },
   },
   notifications: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
@@ -159,7 +159,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'preserve' },
   },
   settings: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
@@ -168,7 +168,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'preserve' },
   },
   editProfile: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
@@ -177,7 +177,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     chromePolicy: { kind: 'preserve' },
   },
   shareConfig: {
-    sheetTargetGroup: SEARCH_ROUTE_SHEET_TARGET_GROUP,
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
     defaultFirstEntrySnap: 'expanded',
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,

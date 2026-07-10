@@ -237,7 +237,7 @@ export type AppRouteSheetHostAuthorityControllerRuntime = {
 };
 
 const EMPTY_ROUTE_SHEET_SHELL_SPEC: NonNullable<SearchRouteSceneStackFrameEntry['shellSpec']> = {
-  overlayKey: 'searchRoute',
+  overlayKey: 'sheetHost',
   semanticOverlayKey: null,
   shellIdentityKey: 'route-sheet-surface:empty',
   sceneIdentityKey: null,
@@ -250,7 +250,7 @@ const EMPTY_ROUTE_SHEET_SHELL_SPEC: NonNullable<SearchRouteSceneStackFrameEntry[
 // null (nothing committed yet; the native splash still covers) or the presented scene's shell
 // has not been published (renders the empty non-surface shell, never another scene's shell).
 const EMPTY_ACTIVE_SCENE_FRAME_ENTRY: SearchRouteSceneStackFrameEntry = {
-  sceneKey: 'searchRoute',
+  sceneKey: 'sheetHost',
   shellSpec: EMPTY_ROUTE_SHEET_SHELL_SPEC,
 };
 
@@ -273,8 +273,8 @@ const EMPTY_RUNTIME_CONFIG_SNAPSHOT: BottomSheetSharedRuntimeConfigSnapshot = {
 const EMPTY_MOTION_PERSISTENCE_INPUT: SearchRouteSheetMotionPersistenceInput = {
   activeShellSpec: null,
   resolvedShellIdentityKey: 'route-sheet-surface:empty',
-  activeSemanticOverlayKey: 'searchRoute',
-  rootOverlayKey: 'searchRoute',
+  activeSemanticOverlayKey: 'sheetHost',
+  rootOverlayKey: 'sheetHost',
   overlayRouteStackLength: 0,
 };
 
@@ -353,7 +353,7 @@ const resolvePolicyInitialSnap = (
   sceneKey: OverlayKey | null
 ): Exclude<OverlaySheetSnap, 'hidden'> =>
   normalizePolicyInitialSnap(
-    resolveAppRouteSheetScenePolicy(sceneKey ?? 'searchRoute').defaultFirstEntrySnap
+    resolveAppRouteSheetScenePolicy(sceneKey ?? 'sheetHost').defaultFirstEntrySnap
   );
 
 const resolveSharedSheetInteractionPolicy = ({
@@ -1097,7 +1097,7 @@ class AppRouteSheetHostAuthorityController {
     const resolvedRuntimeModel = canRenderSurface ? this.sharedRuntimeModel : null;
     // Crossfade legs — straight frame reads. INCOMING := frame.presentedSceneKey (the leg that
     // paints — the frame holds the STABLE target for the whole in-flight window, so the old
-    // mid-switch 'search'/'searchRoute' oscillation can no longer reach the display). OUTGOING
+    // mid-switch 'search'/'sheetHost' oscillation can no longer reach the display). OUTGOING
     // := frame.outgoingSceneKey (the held pre-flip leg, present only during a
     // preserveOutgoingUntilSettle window — §9.1 R2; null for every swapImmediately dismiss).
     const incomingSceneKey = presentedSceneKey;
@@ -1679,7 +1679,7 @@ class AppRouteSheetHostAuthorityController {
       }
       this.unregisterSheetMotionTarget =
         this.input.routeSceneMotionRuntime.registerSheetMotionTarget({
-          sceneKey: 'searchRoute',
+          sceneKey: 'sheetHost',
           motionCommandValue,
           resolveCurrentSnapTarget: this.resolveCurrentSnapTarget,
         });

@@ -21,7 +21,7 @@ import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 // FIELD SCOPE (final red-team): the frame carries PRESENTATION identity ONLY. The once-planned
 // snapIntent/originRef lanes are deliberately ABSENT — the P6 sheet-Y player lane was a reasoned
 // NO-GO, so snap/detent decisions live in the transition descriptor table (and return-to-origin
-// capture lives with the origin-capture registry), never on the PF.
+// capture lives with the entry-origin capture delegate), never on the PF.
 //
 // DIVERGENCE RULES (§9.1 R3-AMENDED): steady-state presented≠active is legal ONLY for
 // laneKind==='docked-polls' (the polls feed docked under the search-root home). TRANSIENT

@@ -716,7 +716,7 @@ const BookmarksPersistentHeaderAction = React.memo(() => {
 
 BookmarksPersistentHeaderAction.displayName = 'BookmarksPersistentHeaderAction';
 
-// Module-scope registration (house pattern — origin-capture-registry).
+// Module-scope registration (house pattern — origin-scene-live-state-registry).
 registerPersistentHeaderDescriptor('bookmarks', {
   Title: BookmarksPersistentHeaderTitle,
   Action: BookmarksPersistentHeaderAction,

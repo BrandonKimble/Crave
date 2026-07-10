@@ -103,7 +103,7 @@ const resolveRouteSceneSwitchSnapTarget = ({
   return null;
 };
 
-const SHARED_SHEET_HOST_SCENE_KEY: OverlayKey = 'searchRoute';
+const SHARED_SHEET_HOST_SCENE_KEY: OverlayKey = 'sheetHost';
 
 const TOP_LEVEL_SHARED_SHEET_SCENES = new Set<OverlayKey>([
   'search',

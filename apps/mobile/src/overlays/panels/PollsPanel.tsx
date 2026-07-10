@@ -363,7 +363,7 @@ const PollsPersistentHeaderAction = React.memo(() => {
 
 PollsPersistentHeaderAction.displayName = 'PollsPersistentHeaderAction';
 
-// Module-scope registration (house pattern — origin-capture-registry). The docked lane presents
+// Module-scope registration (house pattern — origin-scene-live-state-registry). The docked lane presents
 // 'polls' on the search root, so this one registration covers the polls page AND search-home.
 registerPersistentHeaderDescriptor('polls', {
   Title: PollsPersistentHeaderTitle,

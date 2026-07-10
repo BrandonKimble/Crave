@@ -33,7 +33,7 @@ import {
 // full-domain sweep below can never silently under-cover a new member.
 const SCENE_KEY_DOMAIN = {
   search: true,
-  searchRoute: true,
+  sheetHost: true,
   polls: true,
   bookmarks: true,
   profile: true,
@@ -60,7 +60,7 @@ const ALL_SCENE_KEYS = Object.keys(SCENE_KEY_DOMAIN) as readonly OverlayKey[];
 // duplicate-rows) still sweep the FULL domain.
 const LEGACY_SCENE_KEYS: readonly OverlayKey[] = [
   'search',
-  'searchRoute',
+  'sheetHost',
   'polls',
   'bookmarks',
   'profile',

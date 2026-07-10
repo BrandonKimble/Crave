@@ -53,7 +53,7 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     chromePolicy: 'searchChrome',
     headerActionPolicy: 'fixed-close',
   },
-  searchRoute: {
+  sheetHost: {
     role: 'shell',
     productSceneKey: null,
     parentSceneKeys: [],
@@ -421,7 +421,7 @@ export const createPollDetailChildRouteParams = (
 
 export type OverlayRouteParamsMap = {
   search?: undefined;
-  searchRoute?: undefined;
+  sheetHost?: undefined;
   bookmarks?: undefined;
   polls?: {
     marketKey?: string | null;

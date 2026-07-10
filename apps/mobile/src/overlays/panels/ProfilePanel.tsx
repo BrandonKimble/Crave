@@ -512,7 +512,7 @@ const ProfilePersistentHeaderAction = React.memo(() => {
 
 ProfilePersistentHeaderAction.displayName = 'ProfilePersistentHeaderAction';
 
-// Module-scope registration (house pattern — origin-capture-registry).
+// Module-scope registration (house pattern — origin-scene-live-state-registry).
 registerPersistentHeaderDescriptor('profile', {
   Title: ProfilePersistentHeaderTitle,
   Action: ProfilePersistentHeaderAction,

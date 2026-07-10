@@ -452,10 +452,10 @@ const createTransitionContract = ({
 // watchdog. This table does not itself touch resolveMotionPlanes/resolveContentHandoff.
 //
 // Rows:
-// - search / searchRoute carry the proven reveal join {cards, nativeMarkerFrame,
-//   sheet}. A search→results forward open targets the 'search' overlay key
-//   (results is a sub-state of the search scene), so the contract is keyed on
-//   'search' (and 'searchRoute' for the route-driven entry).
+// - search carries the proven reveal join {cards, nativeMarkerFrame, sheet}. A
+//   search→results forward open targets the 'search' overlay key (results is a
+//   sub-state of the search scene). The 'sheetHost' shell key is never a dispatch
+//   target (it only names the pre-commit sentinel frame), so it has no row.
 // - pollDetail is SEEDED / swapImmediately on the forward open — it arms no
 //   'content' plane, so requiredContentGates is EMPTY. Its requiredRestoreGates
 //   mirror the poll-readiness weld used at DISMISS today (search-surface-runtime
@@ -472,7 +472,6 @@ const EMPTY_SCENE_READINESS_CONTRACT: SceneReadinessContract = {
 
 const SCENE_READINESS_CONTRACT_BY_TARGET: Partial<Record<OverlayKey, SceneReadinessContract>> = {
   search: { requiredContentGates: ['cards', 'nativeMarkerFrame', 'sheet'] },
-  searchRoute: { requiredContentGates: ['cards', 'nativeMarkerFrame', 'sheet'] },
   pollDetail: {
     requiredContentGates: [],
     requiredRestoreGates: ['header', 'thread', 'sheet'],
@@ -637,9 +636,15 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   private revealAckLinkBySwitchId: { switchId: number; transactionId: string } | null = null;
 
   private recordRevealAckLink(switchId: number, transitionPlan: AppRouteSceneTransitionPlan): void {
-    const isSearchFamilyTarget =
-      transitionPlan.targetSceneKey === 'search' || transitionPlan.targetSceneKey === 'searchRoute';
-    const transactionId = isSearchFamilyTarget
+    // S-C.4 item 1: the 'sheetHost' shell key is never a dispatch target, so the old
+    // search||searchRoute pair check collapsed to the one real reveal-join scene.
+    const isSearchTarget = transitionPlan.targetSceneKey === 'search';
+    // S-C.4 item 2 AUDIT (2026-07-09, probe-proven LIVE — not dead code): the lastReveal
+    // fallback fired 8x across the submit-dismiss interrupt/repeat sweeps. A close-then-
+    // resubmit switch carries no txn of its own and correlates via the surviving reveal
+    // txn; deleting this arm would orphan that reveal ack. Same holds for the twin
+    // coalesce at the content-plane link below.
+    const transactionId = isSearchTarget
       ? (transitionPlan.contentReadinessTransactionId ??
         this.lastRevealContentReadinessTransactionId)
       : null;
@@ -1168,7 +1173,7 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     // link). A stale fully-satisfied txn re-marked late fails both branches and can no longer
     // bless a NEW search switch still on its skeleton.
     const presentedSceneKey = this.presentationFrame.presentedSceneKey;
-    if (presentedSceneKey === 'search' || presentedSceneKey === 'searchRoute') {
+    if (presentedSceneKey === 'search') {
       const liveSettleToken =
         this.transitionState.transitionContract?.settleToken ??
         this.transitionState.transitionToken;
