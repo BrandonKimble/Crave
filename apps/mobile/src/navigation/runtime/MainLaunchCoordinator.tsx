@@ -833,9 +833,9 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
         : startupLocationSnapshot?.ipMarketKey
           ? normalizePollMarketKey(startupLocationSnapshot.ipMarketKey)
           : null;
-    if (launchIntent.type === 'restaurant') {
+    if (launchIntent.type === 'entityAction' && launchIntent.action.kind === 'restaurantWorld') {
       void searchService
-        .restaurantProfile(launchIntent.restaurantId, {
+        .restaurantProfile(launchIntent.action.restaurantId, {
           marketKey: startupMarketKey ?? null,
         })
         .catch(() => undefined);

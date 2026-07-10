@@ -18,34 +18,14 @@ export const useEntityRefActionExecutor = (): ((ref: EntityRef) => void) => {
   return React.useCallback(
     (ref: EntityRef) => {
       const action = resolveEntityRefAction(ref);
-      switch (action.kind) {
-        case 'restaurantWorld':
-          dispatchLaunchIntent({
-            type: 'restaurant',
-            restaurantId: action.restaurantId,
-            restaurantName: action.restaurantName,
-          });
-          return;
-        case 'entityDesire':
-          dispatchLaunchIntent({
-            type: 'entity',
-            entityId: action.entityId,
-            entityType: action.entityType,
-            submittedLabel: action.label,
-          });
-          return;
-        case 'listWorld':
-          dispatchLaunchIntent({
-            type: 'favorites',
-            listId: action.listId,
-            listType: action.listType,
-            submittedLabel: action.label,
-          });
-          return;
-        case 'pushScene':
-          pushRoute(action.scene, action.params);
-          return;
+      // S-D.4: search-shaped actions ride the launch channel AS THE ACTION VALUE (the
+      // LaunchIntent vocabulary no longer duplicates EntityRefAction); pure-nav actions
+      // push directly.
+      if (action.kind === 'pushScene') {
+        pushRoute(action.scene, action.params);
+        return;
       }
+      dispatchLaunchIntent({ type: 'entityAction', action });
     },
     [dispatchLaunchIntent, pushRoute]
   );

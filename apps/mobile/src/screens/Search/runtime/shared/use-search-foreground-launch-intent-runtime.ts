@@ -23,27 +23,31 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       return;
     }
 
-    if (activeMainIntent.type === 'favorites') {
-      // back to favorites. Then run the favorites attempt through the same
-      // search response lifecycle a natural search uses.
+    // S-D.4: ONE entityAction branch — the channel carries the SAME action vocabulary
+    // resolveEntityRefAction produces; this consumer just routes each kind to its lane
+    // (listWorld → favorites-as-search; entityDesire → skip-LLM search; restaurantWorld →
+    // the committed single-restaurant lifecycle below). pushScene never reaches the channel
+    // (the executor pushes directly).
+    if (activeMainIntent.type === 'entityAction' && activeMainIntent.action.kind === 'listWorld') {
+      const action = activeMainIntent.action;
       void launchFavoritesListResults({
-        listId: activeMainIntent.listId,
-        listType: activeMainIntent.listType,
-        submittedLabel: activeMainIntent.submittedLabel,
+        listId: action.listId,
+        listType: action.listType,
+        submittedLabel: action.label,
       });
       consumeActiveMainIntent();
       return;
     }
 
-    if (activeMainIntent.type === 'entity') {
-      // Skip-LLM entity reveal from a poll-discussion comment span. Capture the
-      // launch ORIGIN (the polls root) BEFORE entering the search session so the
-      // entity search through the same response lifecycle a natural search uses
-      // (the BE skips the LLM whenever an entityType is supplied).
+    if (
+      activeMainIntent.type === 'entityAction' &&
+      activeMainIntent.action.kind === 'entityDesire'
+    ) {
+      const action = activeMainIntent.action;
       void launchEntitySearchResults({
-        entityId: activeMainIntent.entityId,
-        entityType: activeMainIntent.entityType,
-        submittedLabel: activeMainIntent.submittedLabel,
+        entityId: action.entityId,
+        entityType: action.entityType,
+        submittedLabel: action.label,
       });
       consumeActiveMainIntent();
       return;
@@ -68,7 +72,10 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       return;
     }
 
-    if (activeMainIntent.type === 'restaurant') {
+    if (
+      activeMainIntent.type === 'entityAction' &&
+      activeMainIntent.action.kind === 'restaurantWorld'
+    ) {
       // Phase 4 (canonical-sheet-transition-master-plan §4, BUG-1 #1/#2/#3): route the
       // restaurant reveal from a poll-discussion comment span (or a restaurant deep link)
       // through the COMMITTED single-restaurant search lifecycle — NOT the cold
@@ -90,7 +97,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       // this effect; if the intent were only consumed in an async .finally(), the re-run
       // would cancel the fetch before it consumed, leaving activeMainIntent === 'restaurant'
       // forever → an infinite push/dismiss loop. Snapshot the params before consuming.
-      const restaurantId = activeMainIntent.restaurantId;
+      const restaurantId = activeMainIntent.action.restaurantId;
       // The origin may already know the restaurant's display name (a comment-span tap carries
       // the span text). When present, warm-seed the restaurant profile SYNCHRONOUSLY via
       // openRestaurantProfilePreview(restaurantId, name) BEFORE the committed search — this is
@@ -99,7 +106,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       // hard-swapped RestaurantPanel paints its header title at frame 1 (no empty-title flash);
       // the committed runRestaurantEntitySearch then provides the results / auto-open. When the
       // name is absent (a raw deep link), fall back to fetching the profile for the name.
-      const seededRestaurantName = activeMainIntent.restaurantName?.trim() || null;
+      const seededRestaurantName = activeMainIntent.action.restaurantName.trim() || null;
       const restaurantMarketKey = currentMarketKey ?? null;
       consumeActiveMainIntent();
       // Prime the pending selection BEFORE the committed search lands so the auto-open
