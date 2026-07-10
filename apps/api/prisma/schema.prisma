@@ -1087,7 +1087,6 @@ model User {
   @@index([authProviderUserId], map: "idx_users_auth_provider_user_id")
   @@index([revenueCatAppUserId], map: "idx_users_revenuecat_app_user_id")
   @@index([createdAt(sort: Desc)], map: "idx_users_created_at")
-  @@index([trialEndsAt], map: "idx_users_trial_ends_at")
   @@map("users")
 }
 
