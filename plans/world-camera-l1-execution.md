@@ -192,3 +192,14 @@ the intent — it rides the SEEDED channel; the two are disjoint pin sources.
   :1632/:1688/:1864 telemetry, :2790-2817 effects; the 'restaurant_only' visual source kind
   :254/:277/:295-296) — one joint, tsc-driven, then the four-lane rig sweep + a
   recents-profile open (the window-delta lane). Phases C/D hold as above.
+
+**EXECUTED (92709da7, 2026-07-10 ~6:36AM):** Phases A+B+C landed as ONE joint (Phase C
+could not defer — deleting the producers would have silently dead-coded the dismiss
+matcher, so it went source-only honestly: 'clear' = auto_open/autocomplete, everything
+else 'restore', the origin-consistent shape). 43 files, −306 lines. The engine-inputs
+projection lost its mapSurfaceState param (restaurantOnlyId was its only field). The
+pin-at-reveal race arm + transitional re-publish survive on highlightedRestaurantId.
+Gates: tsc, 140 jest, 4-lane rig sweep; the /r committed reveal stash-baselined
+BYTE-IDENTICAL pre/post (its reveal_preroll/opacity-0.001 end-state is PRE-EXISTING —
+noted as an open probe item, same family as the profile-pin-paint check).
+Phase D (seeded channel) still lands WITH the one-group catalog publish (L1 core).
