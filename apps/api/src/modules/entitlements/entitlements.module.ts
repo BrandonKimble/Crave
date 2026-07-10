@@ -4,7 +4,6 @@ import { ConfigModule } from '@nestjs/config';
 import { SharedModule } from '../../shared';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { EntitlementService } from './entitlement.service';
-import { RewardGrantService } from './reward-grant.service';
 import { EntitlementEnforcementInterceptor } from './entitlement-enforcement.interceptor';
 
 /**
@@ -20,9 +19,8 @@ import { EntitlementEnforcementInterceptor } from './entitlement-enforcement.int
   imports: [ConfigModule, SharedModule, PrismaModule],
   providers: [
     EntitlementService,
-    RewardGrantService,
     { provide: APP_INTERCEPTOR, useClass: EntitlementEnforcementInterceptor },
   ],
-  exports: [EntitlementService, RewardGrantService],
+  exports: [EntitlementService],
 })
 export class EntitlementsModule {}

@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { EntitlementService } from './entitlement.service';
-import { RewardGrantService } from './reward-grant.service';
 import type { PrismaService } from '../../prisma/prisma.service';
 import type { LoggerService } from '../../shared';
 
@@ -29,11 +28,6 @@ const service = new EntitlementService(
   null as never, // no redis in tests — cache path is optional by design
   fakeLogger,
 );
-// Reward days default to 0 (dormant under the hard paywall) — activate for
-// the spec the way a win-back campaign would.
-process.env.REWARD_PHOTO_DAYS = '1';
-process.env.REWARD_REFERRAL_DAYS = '7';
-const rewards = new RewardGrantService(service, fakeLogger);
 
 let userId: string;
 
@@ -70,33 +64,6 @@ describe('EntitlementService (ledger integration)', () => {
     expect(summary.expiresAt).not.toBeNull();
   });
 
-  it('clamps reward grants at the per-source cap and never errors', async () => {
-    const first = await service.grant({
-      userId,
-      source: 'reward_photo',
-      days: 25,
-    });
-    expect(first.grantId).not.toBeNull();
-    // cap is 30 — second grant clamps to 5, third clamps to zero (no grant)
-    const second = await service.grant({
-      userId,
-      source: 'reward_photo',
-      days: 25,
-    });
-    expect(second.grantId).not.toBeNull();
-    const third = await service.grant({
-      userId,
-      source: 'reward_photo',
-      days: 5,
-    });
-    expect(third.grantId).toBeNull();
-    const summary = await service.summarize(userId);
-    const days =
-      (summary.expiresAt!.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
-    expect(days).toBeGreaterThan(29);
-    expect(days).toBeLessThanOrEqual(30.01);
-  });
-
   it('lifetime comp wins as carrier and revocation falls back, never cuts off', async () => {
     await service.grant({ userId, source: 'trial_base', days: 7 });
     const comp = await service.grant({
@@ -125,7 +92,7 @@ describe('EntitlementService (ledger integration)', () => {
     });
     await service.grant({
       userId,
-      source: 'reward_photo',
+      source: 'winback',
       days: 1,
       sourceRef: 'photo:tail-1',
     });
@@ -142,19 +109,19 @@ describe('EntitlementService (ledger integration)', () => {
     const days =
       (summary.expiresAt!.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
     expect(days).toBeLessThanOrEqual(1.01);
-    expect(summary.source).toBe('reward_photo');
+    expect(summary.source).toBe('winback');
   });
 
   it('revoking an early chain member shifts later members instead of stranding time', async () => {
     await service.grant({
       userId,
-      source: 'reward_photo',
+      source: 'winback',
       days: 10,
       sourceRef: 'photo:a',
     });
     const second = await service.grant({
       userId,
-      source: 'reward_photo',
+      source: 'winback',
       days: 10,
       sourceRef: 'photo:b',
     });
@@ -181,7 +148,7 @@ describe('EntitlementService (ledger integration)', () => {
       Array.from({ length: 4 }, () =>
         service.grant({
           userId,
-          source: 'reward_photo',
+          source: 'winback',
           days: 1,
           sourceRef: 'photo:race',
         }),
@@ -193,25 +160,6 @@ describe('EntitlementService (ledger integration)', () => {
       where: { userId, sourceRef: 'photo:race' },
     });
     expect(rows).toHaveLength(1);
-  });
-
-  it('concurrent DISTINCT rewards cannot blow past the cap (advisory lock)', async () => {
-    await Promise.all(
-      Array.from({ length: 6 }, (_, index) =>
-        service.grant({
-          userId,
-          source: 'reward_photo',
-          days: 10,
-          sourceRef: `photo:cap-${index}`,
-        }),
-      ),
-    );
-    const summary = await service.summarize(userId);
-    const days =
-      (summary.expiresAt!.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
-    // cap is 30 — six concurrent 10-day grants must clamp to exactly 30.
-    expect(days).toBeGreaterThan(29);
-    expect(days).toBeLessThanOrEqual(30.01);
   });
 
   it('subscription grant refuses to become lifetime (active without expiry)', async () => {
@@ -254,15 +202,6 @@ describe('EntitlementService (ledger integration)', () => {
     expect(await service.hasAccess(userId)).toBe(false);
   });
 
-  it('reward hooks are idempotent per sourceRef (same photo/invitee never pays twice)', async () => {
-    await rewards.grantPhotoReward({ userId, photoId: 'photo-1' });
-    await rewards.grantPhotoReward({ userId, photoId: 'photo-1' });
-    const rows = await prisma.accessGrant.findMany({
-      where: { userId, source: 'reward_photo' },
-    });
-    expect(rows).toHaveLength(1);
-  });
-
   it('paidUntil vs coverageUntil: a paying subscriber with banked days is never told access comes from a reward', async () => {
     const periodEnd = new Date(Date.now() + 30 * 864e5);
     await service.syncSubscriptionGrant({
@@ -273,7 +212,7 @@ describe('EntitlementService (ledger integration)', () => {
     });
     await service.grant({
       userId,
-      source: 'reward_photo',
+      source: 'winback',
       days: 5,
       sourceRef: 'photo:paid-1',
     });
@@ -286,22 +225,5 @@ describe('EntitlementService (ledger integration)', () => {
     expect(bankedDays).toBeGreaterThan(4.99);
     expect(bankedDays).toBeLessThanOrEqual(5.01);
     expect(summary.expiresAt?.getTime()).toBe(summary.coverageUntil?.getTime());
-  });
-
-  it('anti-farming cap counts days EVER granted — revocation never refunds cap room', async () => {
-    const first = await service.grant({
-      userId,
-      source: 'reward_photo',
-      days: 30,
-      sourceRef: 'photo:cap-a',
-    });
-    await service.revoke(first.grantId!, 'fraud');
-    const second = await service.grant({
-      userId,
-      source: 'reward_photo',
-      days: 30,
-      sourceRef: 'photo:cap-b',
-    });
-    expect(second.grantId).toBeNull(); // cap fully consumed by the revoked grant
   });
 });

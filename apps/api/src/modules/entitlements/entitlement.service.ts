@@ -8,31 +8,34 @@ import { LoggerService } from '../../shared';
 
 /**
  * ONE declaration per grant source (no parallel lists — see the repo's
- * type-list-disease memory): its kind and, for reward sources, the
- * anti-farming lifetime cap. Adding a source is exhaustive by construction:
- * the union type, the day/absolute branch, and the cap all come from here.
+ * type-list-disease memory): its kind. Adding a source is exhaustive by
+ * construction: the union type and the day/absolute branch come from here.
  *
  * - 'absolute' grants carry expiresAt (NULL = lifetime): subscription
  *   periods, admin comps, promo windows.
  * - 'day' grants carry grantedDays; coverage is DERIVED at read time (see
  *   summarize). Banked-forever semantics BLESSED 2026-07-09: unconsumed
  *   days pay out whenever coverage would otherwise lapse, indefinitely.
+ *
+ * Monetary engagement incentives (reward_photo/reward_referral) were
+ * DELETED 2026-07-09 with the hard-paywall lock-in — engagement is
+ * recognized, not paid (see product/profile.md recognition mechanics).
+ * winback/gift are the operational day sources. A future EARNED source
+ * re-adds a row here plus the per-source anti-farming cap machinery
+ * (deleted with the incentives — git history: rewardDaysEverGranted).
  */
 const GRANT_POLICY = {
   subscription: { kind: 'absolute' },
   comp: { kind: 'absolute' },
   promo: { kind: 'absolute' },
   trial_base: { kind: 'day' },
-  reward_photo: { kind: 'day', cap: 30 },
-  reward_referral: { kind: 'day', cap: 60 },
   winback: { kind: 'day' },
   gift: { kind: 'day' },
-} as const satisfies Record<string, { kind: 'absolute' | 'day'; cap?: number }>;
+} as const satisfies Record<string, { kind: 'absolute' | 'day' }>;
 
 export type GrantSource = keyof typeof GRANT_POLICY;
 interface GrantPolicy {
   kind: 'absolute' | 'day';
-  cap?: number;
 }
 
 export interface GrantInput {
@@ -133,9 +136,7 @@ export class EntitlementService {
     }
   }
 
-  /** Write a grant to the ledger and recompute the cache. Reward sources are
-   *  capped by GRANT_POLICY (excess days are clamped, never errored — the
-   *  user did the action; we just stop paying past the cap). */
+  /** Write a grant to the ledger and recompute the cache. */
   async grant(input: GrantInput): Promise<{ grantId: string | null }> {
     const code = input.entitlementCode ?? this.defaultCode;
     const policy: GrantPolicy = GRANT_POLICY[input.source];
@@ -143,23 +144,7 @@ export class EntitlementService {
       let expiresAt: Date | null = null;
       let grantedDays: number | null = null;
       if (policy.kind === 'day') {
-        let days = input.days ?? 0;
-        if (policy.cap) {
-          const used = await this.rewardDaysEverGranted(
-            tx,
-            input.userId,
-            input.source,
-          );
-          days = Math.max(0, Math.min(days, policy.cap - used));
-          if (days === 0) {
-            this.logger.info('Reward grant clamped to zero (cap reached)', {
-              userId: input.userId,
-              source: input.source,
-              cap: policy.cap,
-            });
-            return null;
-          }
-        }
+        const days = input.days ?? 0;
         if (days <= 0) return null;
         grantedDays = days;
       } else if (input.lifetime) {
@@ -573,21 +558,6 @@ export class EntitlementService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${userId}:${code}`}, 0))`;
       return fn(tx);
     });
-  }
-
-  /** Anti-farming cap counts days EVER granted — revoked or not. Revocation
-   *  must not refund cap room (delivered time can't be clawed back, and the
-   *  unique index already prevents legitimate duplicates). */
-  private async rewardDaysEverGranted(
-    tx: Prisma.TransactionClient,
-    userId: string,
-    source: GrantSource,
-  ): Promise<number> {
-    const result = await tx.accessGrant.aggregate({
-      where: { userId, source },
-      _sum: { grantedDays: true },
-    });
-    return result._sum.grantedDays ?? 0;
   }
 
   private isUniqueViolation(error: unknown): boolean {

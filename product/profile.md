@@ -1,6 +1,6 @@
 # Profile & Social
 
-> **Rolling canonical vision — not a changelog.** Keep this file thin and *current*: it describes
+> **Rolling canonical vision — not a changelog.** Keep this file thin and _current_: it describes
 > only what we want this area of the app to be **today**. When something changes, edit or delete the
 > old text in place — never append "superseded"/"old"/"previously" notes, history, or pointers to
 > past ideas. If you follow this file, you know exactly what we want. Execution detail + migrations
@@ -8,7 +8,7 @@
 
 ---
 
-Profile & Social is Crave's identity, trust, and virality layer: usernames, avatars, public profiles, the follow graph, profile activity tabs, and the friend signals that ride alongside the objective Crave Score. It's a growth surface, so under freemium it stays **free forever** — profiles, following, and creating/sharing favorites lists are all on the free side. The Crave Score is objective and global — never personalized to taste. Friends are the *second axis* next to it: "what people you trust say" laid over "what the crowd says," always as an explicit, visible overlay, never as inferred-taste re-ranking of the Score.
+Profile & Social is Crave's identity, trust, and virality layer: usernames, avatars, public profiles, the follow graph, profile activity tabs, and the friend signals that ride alongside the objective Crave Score. It's a growth surface, so under freemium it stays **free forever** — profiles, following, and creating/sharing favorites lists are all on the free side. The Crave Score is objective and global — never personalized to taste. Friends are the _second axis_ next to it: "what people you trust say" laid over "what the crowd says," always as an explicit, visible overlay, never as inferred-taste re-ranking of the Score.
 
 ## Identity: usernames, avatars, display name
 
@@ -30,22 +30,22 @@ The primary action is context-dependent: **Edit profile** on your own profile, *
 
 ## Friend graph & friends' picks
 
-The friend graph is the trust axis. The Crave Score is crowd consensus; the friend layer answers the different question — *what do the people I trust like?* — seeded by users' custom-ranked lists (see `favorites.md`), where the order is a person's real opinion. It comes in three consumption modes, from pull to ambient.
+The friend graph is the trust axis. The Crave Score is crowd consensus; the friend layer answers the different question — _what do the people I trust like?_ — seeded by users' custom-ranked lists (see `favorites.md`), where the order is a person's real opinion. It comes in three consumption modes, from pull to ambient.
 
 **Find & follow.** People are discoverable through the search bar via a dedicated **people lane**. Following is a one-directional graph (followers / following, no self-follows), surfaced with user stats on every profile. "Following" is distinct from the favorites All/Mine/Shared filter — that filter is about lists in your own library (yours vs. shared-with-you); Following powers profiles and the ambient signals below, not a favorites filter.
 
 **Browse (pull mode).** A followed user's profile is the destination for "show me everything this person likes" — their public lists and custom rankings, browsable end to end.
 
-**Ambient friend signals (the headline mode).** You should *not* have to visit a profile to benefit — friend signals come to you, wherever a restaurant or dish appears. The signal is a shared **FriendCluster** primitive: stacked, overlapping friend avatars (left to right) + a short label. The avatar stack, the "and others" collapse, and the affinity naming are shared; the label *template* differs by surface:
+**Ambient friend signals (the headline mode).** You should _not_ have to visit a profile to benefit — friend signals come to you, wherever a restaurant or dish appears. The signal is a shared **FriendCluster** primitive: stacked, overlapping friend avatars (left to right) + a short label. The avatar stack, the "and others" collapse, and the affinity naming are shared; the label _template_ differs by surface:
 
 - **Restaurants / dishes** — "**Saved by** Sarah and others" (verb-first). Appears on the result sheet, on cards inside favorites lists, and on restaurant/dish detail.
 - **Polls** — flipped to **subject-first and action-specific**: "**Sarah voted**" if the friend tapped to vote on the poll, or "**Sarah commented**" if they participated in the discussion (+ "and others"). The verb reflects the friend's actual action (see `polls.md`).
 
 **Who gets named:** the single named friend is the highest **friend-affinity** one (a tunable score — profile-view frequency is the v1 input, with room to fold in interaction count and recency); everyone else collapses into "and others." Tapping the cluster expands the full list.
 
-**Integrity — this is not the banned personalization.** Friend signals are an explicit, visually-distinct *overlay*. They never silently re-rank the objective Crave Score: the default order stays objective. It's a social signal you read, not inferred-taste re-ranking — which keeps the Score pure. (Restaurant-level clusters are free; dish-level ones ride with the Crave+ dish layer.)
+**Integrity — this is not the banned personalization.** Friend signals are an explicit, visually-distinct _overlay_. They never silently re-rank the objective Crave Score: the default order stays objective. It's a social signal you read, not inferred-taste re-ranking — which keeps the Score pure. (Restaurant-level clusters are free; dish-level ones ride with the Crave+ dish layer.)
 
-**Friends lens (exploring — not committed).** A possible opt-in toggle that filters results to *only* what friends have saved/ranked — the active "show me only my friends' sushi picks" view. The ambient cluster above may already cover most of this need, so this is a maybe to validate against real usage, not a decided feature.
+**Friends lens (exploring — not committed).** A possible opt-in toggle that filters results to _only_ what friends have saved/ranked — the active "show me only my friends' sushi picks" view. The ambient cluster above may already cover most of this need, so this is a maybe to validate against real usage, not a decided feature.
 
 **Your-circle's-consensus (later).** Aggregate the rankings of everyone you follow into a private "your people's top X" — a friend-only mini-Crave-Score. It's the natural endpoint of the friend layer, and it stays clearly walled off from the global objective Score.
 
@@ -72,3 +72,27 @@ Light social recognition lives on the profile: discoverer/contributor badges for
 - **Friends lens default** — is the lens always opt-in per session, or can a user set it sticky? And does the friend chip show on results by default for everyone, or is it itself opt-in?
 - **Your-circle's-consensus scope** — what's the minimum follow count before "your people's top X" is meaningful, and how do we present it so it never blurs with the global Score?
 - **Stat integrity** — are the user-stats counters guaranteed in lockstep by service hooks, or do we need a periodic reconciler to catch drift?
+
+## Recognition mechanics (replaces monetary engagement incentives — owner, 2026-07-09)
+
+Decision: NO monetary rewards for engagement (the reward-days machinery for
+photos/referrals was deleted with the hard-paywall lock-in — days can't stop
+Apple's billing clock, so they were a non-reward for subscribers anyway).
+Engagement is recognized, not paid:
+
+- **Universal recognition mechanic** — one system that applies across ALL
+  engagement types (photos, poll posts, comments, votes, maybe lists —
+  though list-count is trivially gameable). Think Reddit-style badges or a
+  "verified contributor" mark, not per-feature one-offs.
+- **Photo credits are definite**: contributors get visible attribution on
+  the photos they add.
+- **NO top-contributor leaderboard surface** (Beli anti-pattern: an aura of
+  unattainability, wrong vibes). If a competitive layer ever ships, it's
+  friends-scoped and designed from engagement data (likes, contribution
+  metrics) so it motivates rather than demotivates — much later, deliberate
+  design pass.
+- Referral incentives, when they come, ride App Store OFFER CODES (real
+  billing value) — not ledger days.
+- Launch will likely ship SOME engagement incentive (esp. images) — design
+  belongs to the screens/product thread; backend hookups are trivial once
+  the mechanic is chosen (recognition is user-data + UI, not billing).

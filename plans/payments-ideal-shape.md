@@ -369,3 +369,14 @@ Multi-session note: the sim binary currently installed was rebuilt by the
 nav session WITHOUT the RC pod — purchases layer no-ops gracefully (the
 exact degradation path the red team demanded). Rebuild with pod install
 before the next purchase test.
+
+## Monetary engagement incentives DELETED (owner, 2026-07-09)
+
+Photo/referral reward-day incentives abandoned completely with the
+hard-paywall lock-in: RewardGrantService, reward_photo/reward_referral
+sources, and the per-source cap machinery are gone (git history is the
+shelf; a future EARNED source re-adds a policy row + cap). Ledger day
+sources are now trial_base (freemium pivot), winback, gift — operational
+tools, not incentives. Replacement direction = universal recognition
+mechanics (product/profile.md); referral value, when it ships, = App Store
+offer codes.
