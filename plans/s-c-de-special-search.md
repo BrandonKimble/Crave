@@ -336,7 +336,21 @@ chain, childAnchor threading, and all stale-machinery prose (deadness auditor's 
    guards the clear lanes' emitDegenerateHomeRestore seam. Rig: dismiss-repeat + interrupt
    green on both steps, zero marker residue, home canonical. NOTE: the successor shapes
    (nav command pair → one derivation) remain OPEN — ledgered separately below as item 3b.
-   (was: ONE-SWITCH home dismissal — the terminal dance's two presentation switches (polls
+   (was: ONE-SWITCH home dismissal
+   **3b CLOSED 2026-07-09 (778a0a05):** nav motion has ONE writer — the manual submit-hide /
+   dismiss-show command pair (3 sites) + the command-sink registry are deleted; the visual
+   runtime's derivation layout effect (session arm = surface visual policy, suggestion arm,
+   child arm = stack role) was already commanding the same worklet — the pair was a
+   same-commit duplicate. Supersedes the item-4 "transaction-owned pair is final form"
+   verdict (its premise — route commit lags SUBMIT — was true but the surface policy never
+   lagged). Rig: dismiss-repeat 5 cycles green (show-half proven; every cycle opened results
+   and returned a clean silhouette). ⚠️ Submit-side press-up FEEL check rides the owner
+   finger test — blocked by the authed-API 500s (suspect: the hard-paywall entitlement
+   enforcement landed this evening; anonymous curl fine, guard-level, unlogged; the app's
+   circuit breaker then suppresses all requests until relaunch). Also found for the owner:
+   deterministic collection crash at projection-rebuild.service.ts:53 (Invalid
+   tx.entity.updateMany() — repeats until code-fixed).
+   — the terminal dance's two presentation switches (polls
    intermediate + home re-emission) collapse into the pop's own reveal, with docked-polls as a
    presentation MODE of the revealed home entry (§5.5 already declares it a mode). Medium; must
    re-prove the golden deadlock seam. Successor shapes that unlock WITH it: the nav command
