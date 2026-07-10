@@ -3,12 +3,12 @@ import type {
   CameraSnapshot,
   RestaurantFocusSession,
 } from '../../../../navigation/runtime/app-route-profile-transition-state-contract';
-import type { MapBounds } from '../../../../types';
 import type {
   ProfileRestaurantCameraActionModel,
   SearchProfileSource,
 } from './profile-action-model-contract';
 import type { RestaurantProfileFocusTarget } from './profile-restaurant-focus-target-runtime';
+import { FOCUS_CAMERA_TUNABLES, resolveFocusCamera } from '../camera/resolve-focus-camera';
 
 export type RestaurantProfileCameraMotionResolution = {
   targetCamera: CameraSnapshot | null;
@@ -29,98 +29,76 @@ const shouldAlwaysIssueCameraCommandForProfileSource = (source: SearchProfileSou
 const shouldUseMultiLocationZoomForSource = (source: SearchProfileSource): boolean =>
   source === 'auto_open_single_candidate' || source === 'autocomplete';
 
-const MAX_MERCATOR_LAT = 85.05112878;
-const MIN_WORLD_SPAN = 1e-7;
-const MULTI_LOCATION_FIT_MARGIN = 1.12;
 const MIN_USABLE_VIEWPORT_FRACTION = 0.2;
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
-const lngToWorldX = (lng: number): number => (lng + 180) / 360;
-
-const worldXToLng = (x: number): number => x * 360 - 180;
-
-const latToWorldY = (lat: number): number => {
-  const clampedLat = clamp(lat, -MAX_MERCATOR_LAT, MAX_MERCATOR_LAT);
-  const radians = (clampedLat * Math.PI) / 180;
-  return (1 - Math.log(Math.tan(radians) + 1 / Math.cos(radians)) / Math.PI) / 2;
-};
-
-const worldYToLat = (y: number): number =>
-  (Math.atan(Math.sinh(Math.PI * (1 - 2 * y))) * 180) / Math.PI;
-
-const resolveUsableViewportFractions = (
-  padding: CameraSnapshot['padding']
-): { x: number; y: number } => {
-  if (!padding) {
-    return { x: 1, y: 1 };
-  }
-  const { width, height } = Dimensions.get('window');
-  const usableWidth = width > 0 ? (width - padding.paddingLeft - padding.paddingRight) / width : 1;
-  const usableHeight =
-    height > 0 ? (height - padding.paddingTop - padding.paddingBottom) / height : 1;
-  return {
-    x: clamp(usableWidth, MIN_USABLE_VIEWPORT_FRACTION, 1),
-    y: clamp(usableHeight, MIN_USABLE_VIEWPORT_FRACTION, 1),
-  };
-};
-
-const resolveCurrentWorldSpan = (bounds: MapBounds): { x: number; y: number } => {
-  const westX = lngToWorldX(bounds.southWest.lng);
-  const eastX = lngToWorldX(bounds.northEast.lng);
-  const southY = latToWorldY(bounds.southWest.lat);
-  const northY = latToWorldY(bounds.northEast.lat);
-  return {
-    x: Math.max(Math.abs(eastX - westX), MIN_WORLD_SPAN),
-    y: Math.max(Math.abs(southY - northY), MIN_WORLD_SPAN),
-  };
-};
-
-const resolveMultiLocationFitCamera = ({
+// World-camera L2→profile integration (parent §3.3, owner-ratified Q3): the multi-location
+// fit slot runs the shipped anchored robust-cluster focus-fit (resolve-focus-camera.ts)
+// instead of the old bounding-box fit. Behavioral intent of the swap: the camera centers
+// the ANCHOR (the P5 pick the focus target already carries) and grows a radius over the
+// distance-sorted siblings with the self-median outlier cut — so ONE cross-market location
+// can no longer drag the zoom out to fit everything (the exact Q3 complaint). The session
+// machinery around this slot (zoom baseline restore, epsilon no-ops, per-source policies)
+// is untouched.
+const resolveMultiLocationFocusCamera = ({
   locations,
-  currentBounds,
+  anchor,
   currentZoom,
   padding,
   minZoom,
 }: {
   locations: ProfileRestaurantCameraActionModel['restaurantLocations'];
-  currentBounds: MapBounds | null;
+  anchor: { locationKey: string; lng: number; lat: number };
   currentZoom: number;
   padding: CameraSnapshot['padding'];
   minZoom: number;
 }): Pick<CameraSnapshot, 'center' | 'zoom'> | null => {
-  if (!currentBounds || locations.length < 2) {
+  if (locations.length < 2) {
     return null;
   }
-  const worldPoints = locations
-    .map((location) => ({
-      x: lngToWorldX(location.longitude),
-      y: latToWorldY(location.latitude),
-    }))
-    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
-  if (worldPoints.length < 2) {
+  const { width, height } = Dimensions.get('window');
+  const usableWidthPx = padding
+    ? Math.max(
+        width * MIN_USABLE_VIEWPORT_FRACTION,
+        width - padding.paddingLeft - padding.paddingRight
+      )
+    : width;
+  const usableHeightPx = padding
+    ? Math.max(
+        height * MIN_USABLE_VIEWPORT_FRACTION,
+        height - padding.paddingTop - padding.paddingBottom
+      )
+    : height;
+  const focusLocations = locations
+    .filter((location) => Number.isFinite(location.latitude) && Number.isFinite(location.longitude))
+    .map((location, index) => ({
+      locationId: `${location.latitude}:${location.longitude}:${index}`,
+      latitude: location.latitude,
+      longitude: location.longitude,
+    }));
+  if (focusLocations.length < 2) {
     return null;
   }
-  const minX = Math.min(...worldPoints.map((point) => point.x));
-  const maxX = Math.max(...worldPoints.map((point) => point.x));
-  const minY = Math.min(...worldPoints.map((point) => point.y));
-  const maxY = Math.max(...worldPoints.map((point) => point.y));
-  const targetSpanX = Math.max(maxX - minX, MIN_WORLD_SPAN);
-  const targetSpanY = Math.max(maxY - minY, MIN_WORLD_SPAN);
-  const currentSpan = resolveCurrentWorldSpan(currentBounds);
-  const usableFractions = resolveUsableViewportFractions(padding);
-  const requiredSpanX = (targetSpanX * MULTI_LOCATION_FIT_MARGIN) / usableFractions.x;
-  const requiredSpanY = (targetSpanY * MULTI_LOCATION_FIT_MARGIN) / usableFractions.y;
-  const fitZoomX = currentZoom + Math.log2(currentSpan.x / requiredSpanX);
-  const fitZoomY = currentZoom + Math.log2(currentSpan.y / requiredSpanY);
-  const fitZoom = Math.min(fitZoomX, fitZoomY);
-  if (!Number.isFinite(fitZoom)) {
-    return null;
-  }
+  // The anchor is the focus target's coordinate — match it into the set (the P5 pick is
+  // upstream; coordinates are the honest join key here).
+  const anchorEntry =
+    focusLocations.find(
+      (location) =>
+        Math.abs(location.latitude - anchor.lat) < 1e-9 &&
+        Math.abs(location.longitude - anchor.lng) < 1e-9
+    ) ?? focusLocations[0];
+  const result = resolveFocusCamera({
+    locations: focusLocations,
+    anchorLocationId: anchorEntry.locationId,
+    safeRegion: { widthPx: usableWidthPx, heightPx: usableHeightPx, mapHeightPx: height },
+    currentZoom,
+    tunables: { ...FOCUS_CAMERA_TUNABLES, zCityFloor: minZoom },
+  });
   return {
-    center: [worldXToLng((minX + maxX) / 2), worldYToLat((minY + maxY) / 2)],
-    zoom: Math.max(minZoom, Math.min(currentZoom, fitZoom)),
+    center: [result.center.longitude, result.center.latitude],
+    zoom: clamp(result.zoom, minZoom, currentZoom),
   };
 };
 
@@ -178,9 +156,13 @@ export const resolveRestaurantProfileCameraMotion = ({
       ) {
         nextMultiLocationZoomBaseline = currentZoom;
       }
-      const multiLocationFitCamera = resolveMultiLocationFitCamera({
+      const multiLocationFitCamera = resolveMultiLocationFocusCamera({
         locations: restaurantLocations,
-        currentBounds: currentViewportBounds,
+        anchor: {
+          locationKey: focusLocationKey,
+          lng: focusCoordinate.lng,
+          lat: focusCoordinate.lat,
+        },
         currentZoom,
         padding: profilePadding,
         minZoom: profileMultiLocationMinZoom,

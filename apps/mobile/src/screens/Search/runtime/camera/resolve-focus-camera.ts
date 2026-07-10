@@ -35,7 +35,14 @@ export type FocusCameraResult = {
   includedCount: number;
 };
 
-export const FOCUS_CAMERA_TUNABLES = {
+export type FocusCameraTunables = {
+  dFloorMeters: number;
+  alpha: number;
+  zCityFloor: number;
+  fitPaddingFactor: number;
+};
+
+export const FOCUS_CAMERA_TUNABLES: FocusCameraTunables = {
   /** Siblings within this distance always join the cluster, median-ratio notwithstanding. */
   dFloorMeters: 2_000,
   /** Greedy growth admits ds[k] while ds[k] <= max(D_FLOOR, ALPHA * median(ds[1..k])). */
@@ -44,7 +51,7 @@ export const FOCUS_CAMERA_TUNABLES = {
   zCityFloor: 9.5,
   /** Padding factor applied to the fitted radius so pins don't touch the region edge. */
   fitPaddingFactor: 1.2,
-} as const;
+};
 
 const EARTH_RADIUS_M = 6_371_000;
 /** Web-mercator: meters per pixel at zoom z, latitude φ (256px tiles). */
@@ -77,7 +84,7 @@ export const resolveFocusCamera = ({
   anchorLocationId: string;
   safeRegion: FocusCameraSafeRegion;
   currentZoom: number;
-  tunables?: typeof FOCUS_CAMERA_TUNABLES;
+  tunables?: FocusCameraTunables;
 }): FocusCameraResult => {
   const anchor = locations.find((location) => location.locationId === anchorLocationId);
   if (anchor == null) {
