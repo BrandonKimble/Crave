@@ -17,6 +17,7 @@ import { MetricsModule } from './modules/metrics/metrics.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { AccountDeletionModule } from './modules/identity/account-deletion.module';
+import { PhotosModule } from './modules/photos/photos.module';
 import { AutocompleteModule } from './modules/autocomplete/autocomplete.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
@@ -81,6 +82,7 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     IdentityModule,
     BillingModule,
     AccountDeletionModule,
+    PhotosModule,
     AutocompleteModule,
     NotificationsModule,
     ModerationModule,

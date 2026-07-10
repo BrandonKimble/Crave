@@ -209,6 +209,21 @@ export default () => {
         process.env.STRIPE_PORTAL_RETURN_URL ||
         'http://localhost:3000/account/subscription',
     },
+    cloudinary: {
+      cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+      apiKey: process.env.CLOUDINARY_API_KEY,
+      apiSecret: process.env.CLOUDINARY_API_SECRET,
+      // Folder/public_id prefix per environment (isolates dev assets).
+      envPrefix: process.env.CLOUDINARY_ENV_PREFIX || 'dev',
+      // Public URL Cloudinary POSTs upload/moderation notifications to
+      // (dev = tunnel; prod = Railway URL). Signed into every ticket.
+      notificationUrl: process.env.CLOUDINARY_NOTIFICATION_URL,
+      uploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET || 'crave_ugc_photo',
+      reportHideThreshold: parseInt(
+        process.env.PHOTO_REPORT_HIDE_THRESHOLD || '3',
+        10,
+      ),
+    },
     revenueCat: {
       apiKey: process.env.REVENUECAT_API_KEY,
       webhookSecret: process.env.REVENUECAT_WEBHOOK_SECRET,
