@@ -111,7 +111,6 @@ export const resolveRestaurantProfileCameraMotion = ({
     restaurantLocations,
     previousFocusSession,
     currentLastCameraState,
-    currentViewportBounds,
     currentMapZoom,
     fallbackZoom,
     multiLocationZoomBaseline,
