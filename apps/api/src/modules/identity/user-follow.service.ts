@@ -60,6 +60,22 @@ export class UserFollowService {
     return { followed: false };
   }
 
+  /** The viewer→user follow edge (pairs with the public profile endpoint). */
+  async getFollowEdge(viewerUserId: string, userId: string) {
+    if (viewerUserId === userId) {
+      return { isFollowedByMe: false, isMe: true };
+    }
+    const edge = await this.prisma.userFollow.findUnique({
+      where: {
+        followerUserId_followingUserId: {
+          followerUserId: viewerUserId,
+          followingUserId: userId,
+        },
+      },
+    });
+    return { isFollowedByMe: edge != null, isMe: false };
+  }
+
   async listFollowers(
     userId: string,
     options: { offset?: number; limit?: number },

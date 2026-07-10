@@ -78,6 +78,17 @@ export class UserController {
     };
   }
 
+  /** S-B pages (userProfile): the VIEWER's follow edge — pairs with the public
+   *  GET :userId/profile (PublicUserController, which is unauthenticated and cannot
+   *  carry viewer-scoped facts). Drives the Follow/Following button state. */
+  @Get(':userId/follow')
+  async getFollowEdge(
+    @CurrentUser() user: User,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+  ) {
+    return this.userFollowService.getFollowEdge(user.userId, userId);
+  }
+
   @Get(':userId/followers')
   async listFollowers(
     @Param('userId', ParseUUIDPipe) userId: string,
