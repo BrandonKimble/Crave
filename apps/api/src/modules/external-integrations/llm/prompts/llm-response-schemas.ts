@@ -320,6 +320,41 @@ export const COLLECTION_RESPONSE_JSON_SCHEMA = {
   required: ['mentions'],
 } as const;
 
+/**
+ * Chunk-constrained variant of the collection schema: `source_id` becomes an
+ * ENUM of exactly the chunk's valid SRC refs, so constrained decoding makes
+ * ref typos (SRC0018 for SRC018, SRC01 for SRC001 — the digit-count drift
+ * class attributed 2026-07-10 from stored batch payloads) IMPOSSIBLE at the
+ * decode layer instead of failing ingest post-hoc. Falls back to the
+ * unconstrained schema when refs are unavailable.
+ */
+export function collectionResponseJsonSchemaForSourceRefs(
+  sourceRefs: readonly string[] | undefined,
+): Record<string, unknown> {
+  if (!sourceRefs || sourceRefs.length === 0) {
+    return COLLECTION_RESPONSE_JSON_SCHEMA as unknown as Record<
+      string,
+      unknown
+    >;
+  }
+  const schema = structuredClone(
+    COLLECTION_RESPONSE_JSON_SCHEMA,
+  ) as unknown as {
+    properties: {
+      mentions: {
+        items: { properties: { source_id: Record<string, unknown> } };
+      };
+    };
+  };
+  schema.properties.mentions.items.properties.source_id = {
+    type: 'string',
+    enum: [...sourceRefs],
+    description:
+      'Chunk-local source identifier: exactly one of the id values in the input payload',
+  };
+  return schema as unknown as Record<string, unknown>;
+}
+
 export const CUISINE_HUB_CLASSIFY_RESPONSE_JSON_SCHEMA = {
   type: 'object',
   properties: {

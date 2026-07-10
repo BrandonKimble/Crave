@@ -23,6 +23,7 @@ import { UsageLedgerService } from '../shared/usage-ledger.service';
 import {
   LLMConfig,
   LLMModelInput,
+  LLMProcessingInput,
   LLMOutputStructure,
   LLMApiResponse,
   LLMPerformanceMetrics,
@@ -59,7 +60,7 @@ import {
   ATTRIBUTE_PLACEMENT_RESPONSE_JSON_SCHEMA,
   ENTITY_MATCH_RESPONSE_JSON_SCHEMA,
   POLL_SUBJECT_RESPONSE_JSON_SCHEMA,
-  COLLECTION_RESPONSE_JSON_SCHEMA,
+  collectionResponseJsonSchemaForSourceRefs,
   jsonSchemaToTypedSchema,
   DISH_KNOWLEDGE_RESPONSE_JSON_SCHEMA,
   CUISINE_EXTRACTION_RESPONSE_JSON_SCHEMA,
@@ -125,6 +126,10 @@ interface LLMGenerationOptions {
     includeThoughts?: boolean;
   };
   thinkingContext?: 'content' | 'query';
+  /** Collection extraction: the chunk's valid SRC refs. Constrains the
+   *  response schema's source_id to an enum so ref typos are impossible at
+   *  the decode layer (digit-count drift class, attributed 2026-07-10). */
+  sourceRefs?: string[];
 }
 
 type CacheRefreshReason =
@@ -898,6 +903,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         thinkingOverride: shouldLogThoughts
           ? { includeThoughts: true }
           : undefined,
+        sourceRefs:
+          'source_map' in input
+            ? Object.keys((input as LLMProcessingInput).source_map ?? {})
+            : undefined,
       });
       const parsed = this.parseResponse(response);
       parsed.usageMetadata = response.usageMetadata ?? null;
@@ -1105,7 +1114,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       // The batch backend rejects responseJsonSchema (INVALID_ARGUMENT for
       // every item — attributed via single-variable slice tests) but accepts
       // and enforces the typed responseSchema form, so convert at build time.
-      responseSchema: jsonSchemaToTypedSchema(COLLECTION_RESPONSE_JSON_SCHEMA),
+      responseSchema: jsonSchemaToTypedSchema(
+        collectionResponseJsonSchemaForSourceRefs(
+          'source_map' in input
+            ? Object.keys((input as LLMProcessingInput).source_map ?? {})
+            : undefined,
+        ),
+      ),
       systemInstruction: this.systemPrompt,
     };
     const thinking = this.getThinkingConfig(this.llmConfig.model, 'content');
@@ -3001,7 +3016,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       candidateCount: this.llmConfig.candidateCount,
       maxOutputTokens: this.llmConfig.maxTokens || 65536,
       responseMimeType: 'application/json',
-      responseJsonSchema: COLLECTION_RESPONSE_JSON_SCHEMA,
+      responseJsonSchema: collectionResponseJsonSchemaForSourceRefs(
+        options.sourceRefs,
+      ),
     };
     const thinkingContext = options.thinkingContext ?? 'content';
     const baseThinkingConfig = this.getThinkingConfig(

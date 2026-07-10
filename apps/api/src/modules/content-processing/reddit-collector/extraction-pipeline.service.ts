@@ -668,75 +668,51 @@ export class ExtractionPipelineService implements OnModuleInit {
     processingMetrics: ConcurrentProcessingResult<LLMProcessingInput>['metrics'];
     llmProcessingTimeMs: number;
   }): Promise<ExtractionPipelineResult> {
-    const flatMentions: HydratingMention[] = args.chunkResults.flatMap(
-      (chunkResult) =>
-        (chunkResult.result?.mentions ?? []).map((mention) => ({
-          ...mention,
-          source_id: this.resolveCanonicalSourceIdForMention(
-            mention.source_id,
-            chunkResult.input,
-            chunkResult.chunkId,
-          ),
-          __inputChunkId: chunkResult.chunkId,
-          __extractionInputId:
-            args.extractionInputIdByChunkId.get(chunkResult.chunkId) ?? null,
-        })),
-    );
-
+    // PER-CHUNK VALIDATION BOUNDARY (audit §7, attributed 2026-07-10): a
+    // chunk whose output violates the closed-world contract (bad source_id,
+    // unresolvable metadata) quarantines ITSELF — flipped to a failed chunk
+    // that the failure-rate law below names loudly — instead of one throw
+    // holding every other chunk's mentions hostage for the whole job.
     const enrichment = this.buildSourceEnrichmentMaps(args.llmPosts);
-    const llmOutput: EnrichedLLMOutputStructure = {
-      mentions: flatMentions.map((mention) => {
-        const canonicalSourceId = mention.source_id?.trim();
-        if (!canonicalSourceId) {
-          throw new Error('Missing source_id in model output');
-        }
-        const metadata = enrichment.metadataById.get(canonicalSourceId);
-        if (!metadata) {
-          throw new Error(
-            `Unable to resolve source metadata for source_id=${canonicalSourceId}`,
-          );
-        }
-        const contentOverride =
-          enrichment.contentById.get(canonicalSourceId) ??
-          mention.source_content ??
-          '';
-        const postContext =
-          enrichment.postContextBySource.get(canonicalSourceId) ?? '';
-        const sourceType =
-          metadata.type ??
-          mention.source_type ??
-          this.inferSourceTypeFromSourceId(canonicalSourceId);
-        if (!sourceType) {
-          throw new Error(
-            `Unable to resolve source type for mention source_id=${canonicalSourceId}`,
-          );
-        }
-        const sourceUps = metadata.ups ?? mention.source_ups ?? 0;
-        const sourceUrl = metadata.url ?? mention.source_url ?? '';
-        const createdAt =
-          metadata.created_at ??
-          mention.source_created_at ??
-          new Date().toISOString();
-        const subreddit = metadata.subreddit ?? mention.subreddit ?? 'unknown';
-        const sourceDocumentId = sourceType
-          ? (args.sourceDocumentIdBySourceKey.get(
-              buildSourceDocumentKey(sourceType, canonicalSourceId),
-            ) ?? null)
-          : null;
+    const flatMentions: EnrichedLLMMention[] = [];
+    const quarantinedChunks: { chunkId: string; cause: string }[] = [];
+    for (const chunkResult of args.chunkResults) {
+      if (!chunkResult.result) continue;
+      try {
+        const hydrated = (chunkResult.result.mentions ?? []).map((mention) =>
+          this.enrichHydratedMention(
+            {
+              ...mention,
+              source_id: this.resolveCanonicalSourceIdForMention(
+                mention.source_id,
+                chunkResult.input,
+                chunkResult.chunkId,
+              ),
+              __inputChunkId: chunkResult.chunkId,
+              __extractionInputId:
+                args.extractionInputIdByChunkId.get(chunkResult.chunkId) ??
+                null,
+            },
+            enrichment,
+            args.sourceDocumentIdBySourceKey,
+          ),
+        );
+        flatMentions.push(...hydrated);
+      } catch (error) {
+        const cause = error instanceof Error ? error.message : String(error);
+        chunkResult.success = false;
+        chunkResult.result = undefined;
+        quarantinedChunks.push({ chunkId: chunkResult.chunkId, cause });
+        this.logger.error('Chunk quarantined: contract validation failed', {
+          extractionRunId: args.extractionRunId,
+          chunkId: chunkResult.chunkId,
+          cause,
+        });
+      }
+    }
 
-        return {
-          ...mention,
-          source_id: canonicalSourceId,
-          source_content: contentOverride,
-          source_type: sourceType,
-          source_ups: sourceUps,
-          source_url: sourceUrl,
-          source_created_at: createdAt,
-          subreddit,
-          post_context: postContext,
-          __sourceDocumentId: sourceDocumentId,
-        };
-      }),
+    const llmOutput: EnrichedLLMOutputStructure = {
+      mentions: flatMentions,
     };
 
     this.ensureSurfaceDefaults(llmOutput.mentions);
@@ -802,11 +778,17 @@ export class ExtractionPipelineService implements OnModuleInit {
         {
           extractionRunId: args.extractionRunId,
           failedChunkIds,
+          quarantinedChunks,
         },
       );
+      const quarantineDetail = quarantinedChunks.length
+        ? `; quarantined: ${quarantinedChunks
+            .map((q) => `${q.chunkId} (${q.cause})`)
+            .join('; ')}`
+        : '';
       await this.collectionEvidenceService.markExtractionRunFailed(
         args.extractionRunId,
-        `${failedChunkIds.length}/${args.chunkResults.length} chunks failed (re-collection is idempotent — rerun fills the gap)`,
+        `${failedChunkIds.length}/${args.chunkResults.length} chunks failed (re-collection is idempotent — rerun fills the gap)${quarantineDetail}`,
       );
       return result;
     }
@@ -823,6 +805,66 @@ export class ExtractionPipelineService implements OnModuleInit {
     }
 
     return result;
+  }
+
+  /** Second contract stage of chunk hydration: resolve source metadata for a
+   *  canonicalized mention. Throws on closed-world violations — callers run
+   *  it inside the per-chunk quarantine boundary. */
+  private enrichHydratedMention(
+    mention: HydratingMention,
+    enrichment: SourceEnrichmentMaps,
+    sourceDocumentIdBySourceKey: Map<SourceDocumentKey, string>,
+  ): EnrichedLLMMention {
+    const canonicalSourceId = mention.source_id?.trim();
+    if (!canonicalSourceId) {
+      throw new Error('Missing source_id in model output');
+    }
+    const metadata = enrichment.metadataById.get(canonicalSourceId);
+    if (!metadata) {
+      throw new Error(
+        `Unable to resolve source metadata for source_id=${canonicalSourceId}`,
+      );
+    }
+    const contentOverride =
+      enrichment.contentById.get(canonicalSourceId) ??
+      mention.source_content ??
+      '';
+    const postContext =
+      enrichment.postContextBySource.get(canonicalSourceId) ?? '';
+    const sourceType =
+      metadata.type ??
+      mention.source_type ??
+      this.inferSourceTypeFromSourceId(canonicalSourceId);
+    if (!sourceType) {
+      throw new Error(
+        `Unable to resolve source type for mention source_id=${canonicalSourceId}`,
+      );
+    }
+    const sourceUps = metadata.ups ?? mention.source_ups ?? 0;
+    const sourceUrl = metadata.url ?? mention.source_url ?? '';
+    const createdAt =
+      metadata.created_at ??
+      mention.source_created_at ??
+      new Date().toISOString();
+    const subreddit = metadata.subreddit ?? mention.subreddit ?? 'unknown';
+    const sourceDocumentId = sourceType
+      ? (sourceDocumentIdBySourceKey.get(
+          buildSourceDocumentKey(sourceType, canonicalSourceId),
+        ) ?? null)
+      : null;
+
+    return {
+      ...mention,
+      source_id: canonicalSourceId,
+      source_content: contentOverride,
+      source_type: sourceType,
+      source_ups: sourceUps,
+      source_url: sourceUrl,
+      source_created_at: createdAt,
+      subreddit,
+      post_context: postContext,
+      __sourceDocumentId: sourceDocumentId,
+    } as EnrichedLLMMention;
   }
 
   private buildSourceBreakdown(
