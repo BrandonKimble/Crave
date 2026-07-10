@@ -4,6 +4,7 @@ import { StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
+import { getSceneFoundationSpec } from '../navigation/runtime/scene-foundation-spec';
 import { useAppOverlayRouteController } from './useAppOverlayRouteController';
 import OverlaySheetHeaderChrome from './OverlaySheetHeaderChrome';
 
@@ -67,8 +68,17 @@ export const PersistentSheetHeaderHost: React.FC<{
       !warnedMissingDescriptorScenes.has(sceneKey)
     ) {
       warnedMissingDescriptorScenes.add(sceneKey);
-      console.warn(
-        `[PersistentSheetHeaderHost] presented scene '${sceneKey}' has no persistent-header descriptor — the full sheet chrome is unmounted. Register one via registerPersistentHeaderDescriptor.`
+      // The foundation table (scene-foundation-spec.ts) declares header: 'persistent'
+      // for every sheet scene — a missing descriptor is a CONTRACT VIOLATION, not a
+      // styling nit: the entire sheet chrome unmounts. Bark accordingly (error, named
+      // key); prod behavior stays graceful-null.
+      const requiresHeader = getSceneFoundationSpec(sceneKey)?.header === 'persistent';
+      const report = requiresHeader ? console.error : console.warn;
+      report(
+        `[FOUNDATION] presented scene '${sceneKey}' has no persistent-header descriptor` +
+          ` — the full sheet chrome is unmounted. Register one via` +
+          ` registerPersistentHeaderDescriptor (scene-foundation-spec.ts declares` +
+          ` header: 'persistent' for every sheet scene).`
       );
     }
     return null;

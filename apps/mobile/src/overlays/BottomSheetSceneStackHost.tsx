@@ -47,7 +47,8 @@ import {
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { SearchResultsPageBundleHost } from './SearchMountedScenePageBundleAuthority';
-import { SceneLoadingSurface, type SceneLoadingRowType } from '../components/skeletons';
+import { SceneLoadingSurface } from '../components/skeletons';
+import { getSceneFoundationSpec } from '../navigation/runtime/scene-foundation-spec';
 import { PersistentSheetHeaderHost } from './PersistentSheetHeaderHost';
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
@@ -766,29 +767,9 @@ const SceneStackBodyFrameHost = React.memo(
 // else the holes are real windows down to the frost. 'search' has no spec here because it never
 // routes through this content host — its never-null skeleton page lives in
 // SearchResultsPageBundleHost (P5), which is the search leg's own S2 guarantee.
-type SceneStackBodySkeletonSpec = {
-  rowType: SceneLoadingRowType;
-  frostBacking?: boolean;
-};
-
-const SCENE_STACK_BODY_SKELETON_SPECS: Partial<Record<OverlayKey, SceneStackBodySkeletonSpec>> = {
-  polls: { rowType: 'restaurant' },
-  bookmarks: { rowType: 'tile' },
-  saveList: { rowType: 'tile' },
-  profile: { rowType: 'restaurant' },
-  restaurant: { rowType: 'dish' },
-  pollDetail: { rowType: 'comment', frostBacking: true },
-  pollCreation: { rowType: 'comment', frostBacking: true },
-  // Stub-pass scenes (plans/page-registry.md §1) — skeleton specs registered ahead of the
-  // real bodies.
-  userProfile: { rowType: 'restaurant' },
-  listDetail: { rowType: 'restaurant' },
-  followList: { rowType: 'tile' },
-  notifications: { rowType: 'comment' },
-  settings: { rowType: 'tile' },
-  editProfile: { rowType: 'tile' },
-  shareConfig: { rowType: 'tile' },
-};
+// Skeleton specs DERIVE from the compile-time SceneFoundationSpec table
+// (scene-foundation-spec.ts) — the one home for every scene's foundation decisions;
+// a new OverlayKey fails the build there until its skeleton is stated.
 
 const SceneStackBodyContentLayerHost = React.memo(
   ({
@@ -867,7 +848,7 @@ const SceneStackBodyContentLayerHost = React.memo(
       // Host), so a cold presented leg observes legRole !== 'idle' in that commit and paints the
       // skeleton, never a one-frame frost (zero-JS-switch red-team guard #4).
       const skeletonSpec =
-        legRole === 'idle' ? undefined : SCENE_STACK_BODY_SKELETON_SPECS[sceneKey];
+        legRole === 'idle' ? undefined : getSceneFoundationSpec(sceneKey)?.skeleton;
       if (skeletonSpec != null) {
         const skeletonHost = (
           <View pointerEvents="none" style={styles.sceneStackBodyLayer}>

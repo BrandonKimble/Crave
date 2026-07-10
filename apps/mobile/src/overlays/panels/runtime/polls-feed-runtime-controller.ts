@@ -17,6 +17,7 @@ import {
 } from '../../../services/polls';
 import type { Coordinate, MapBounds } from '../../../types';
 import { createToggleInteractionEngine } from '../../../toggles/toggle-interaction-engine';
+import { subscribeToReconnect } from '../../../store/systemStatusStore';
 import { logger } from '../../../utils';
 
 type InteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
@@ -337,6 +338,23 @@ export const usePollsFeedRuntimeController = ({
 
   // Never let a scheduled retry outlive the controller.
   React.useEffect(() => clearScheduledPollFeedRetry, [clearScheduledPollFeedRetry]);
+
+  // OFFLINE RESUME (foundation-hardening §A): the owner's law is that the offline
+  // hang is FINITE on every surface. Search resumes its paused desire on reconnect;
+  // the feed's equivalent desire is "fresh polls", so the reconnect edge fires one
+  // quiet in-place refresh (skipSpinner — the list never empties; the refresh's own
+  // latest-wins seq guard + ladder supersede make a redundant refresh harmless).
+  React.useEffect(
+    () =>
+      subscribeToReconnect(() => {
+        const gate = visibilityGateRef.current;
+        if (!gate.visible || gate.isSystemUnavailable) {
+          return;
+        }
+        void refreshPollFeedRef.current?.({ skipSpinner: true });
+      }),
+    []
+  );
 
   // Feed-query toggles ride the shared toggle engine (replaces the old
   // refetch-on-state-change effect, which fired one undebounced network request per

@@ -1,7 +1,7 @@
 import React from 'react';
 import { announceFailureIfOnline } from '../../../../components/app-modal-store';
 import { unwindFailedSearchEnter } from './search-failed-enter-unwind';
-import { useSystemStatusStore } from '../../../../store/systemStatusStore';
+import { subscribeToReconnect } from '../../../../store/systemStatusStore';
 import { retrySearchDesiredResolution } from './search-desired-state-writer';
 import { selectIsSearchSessionActive } from './search-desired-tuple-selectors';
 
@@ -131,10 +131,7 @@ export const useSearchRouteResultsPolicyDomainRuntime = ({
     // RECONNECT AUTO-RETRY (industry pattern; replaces hanging in a skeleton): when
     // connectivity returns with the failure level still set, re-assert the desired
     // tuple — the reconciler re-resolves and the failure surfaces drop on their own.
-    const detachReconnectRetry = useSystemStatusStore.subscribe((state, prevState) => {
-      if (!prevState.isOffline || state.isOffline) {
-        return;
-      }
+    const detachReconnectRetry = subscribeToReconnect(() => {
       const busState = searchRuntimeBus.getState();
       if (busState.searchResolutionFailure == null) {
         return;
