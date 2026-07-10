@@ -248,6 +248,7 @@ export class CloudinaryService {
     height?: number;
     bytes?: number;
     focusScore?: number;
+    version?: number;
   }> {
     this.ensureConfigured();
     try {
@@ -265,6 +266,7 @@ export class CloudinaryService {
         focusScore: (
           resource.quality_analysis as { focus?: number } | undefined
         )?.focus,
+        version: resource.version as number | undefined,
       };
     } catch (error) {
       const status = (error as { error?: { http_code?: number } }).error

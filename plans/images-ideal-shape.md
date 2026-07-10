@@ -216,3 +216,28 @@ REMAINING in the images effort: step 6 mobile plumbing (picker dep +
 permissions + upload service + addPhotos functional skeleton) — held for
 the registry/screens phase per the foundation-vs-registry split; the
 backend is complete and E2E-proven.
+
+## Comprehensive red team #2 (2026-07-10) — cross-system + new-layer, ALL FIXED
+
+Defects fixed: billing webhook could resurrect grants on a DELETED account
+(deletion's own cancel fires a webhook that re-granted — lookup now excludes
+deleted users); avatar webhook could re-populate scrubbed PII (deletedAt
+guard via updateMany, also kills the P2025 500-retry loop); account deletion
+now DESTROYS the avatar Cloudinary asset (pure PII; UGC photos survive as
+anonymous community content — GDPR Art.17 bulk-destroy sweep = documented
+follow-up); public profile of a deleted user 404s; photo_events hardened
+(FK to photos + live-photo filter + count cap 25 — the tap-rate ranking
+signal is no longer self-servable); stripPhotos + gallery dish slices are
+ROW_NUMBER window queries (≤10/entity, ≤20/dish leave the DB — no more
+full scans on the hottest read path); avatar confirm returns a
+discriminated status (approved|rejected|pending|missing) with idempotent
+asset-version URLs; UserController exemption moved to PER-METHOD (social
+graph now behind the wall; class-level decorator = type-list disease);
+favorites note/tags editable via updateItem (null-to-clear) with ONE tag
+normalizer at both write sites; stale UserEntitlement comment fixed.
+
+Deferred with rationale: PhotoEvent retention/rollup (append-only growth —
+build the aggregation when tap-rate v2 ships, BEFORE launch traffic);
+avatar overwrite race (v1-rejected destroying v2 — needs rapid re-upload +
+slow moderation; version-gate the destroy if it ever shows); deleted-user
+tombstone rendering on photo credits (client copy, screens thread).

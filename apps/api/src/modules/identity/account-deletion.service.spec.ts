@@ -30,6 +30,11 @@ function makeService(overrides?: {
       overrides?.cancelSubscription ??
       jest.fn().mockRejectedValue(new BadRequestException('none')),
   };
+  const cloudinaryService = {
+    isConfigured: true,
+    avatarPublicIdFor: (id: string) => `crave/test/avatars/${id}`,
+    destroyAsset: jest.fn().mockResolvedValue(undefined),
+  };
   const logger = {
     setContext: () => logger,
     info: jest.fn(),
@@ -42,9 +47,18 @@ function makeService(overrides?: {
     clerkAuth as never,
     entitlements as never,
     billing as never,
+    cloudinaryService as never,
     logger as never,
   );
-  return { service, prisma, clerkAuth, entitlements, billing, logger };
+  return {
+    service,
+    prisma,
+    clerkAuth,
+    entitlements,
+    billing,
+    cloudinaryService,
+    logger,
+  };
 }
 
 const user = {
@@ -57,9 +71,10 @@ describe('AccountDeletionService', () => {
     const cancelSubscription = jest
       .fn()
       .mockResolvedValue({ cancelAtPeriodEnd: true });
-    const { service, prisma, clerkAuth, entitlements } = makeService({
-      cancelSubscription,
-    });
+    const { service, prisma, clerkAuth, entitlements, cloudinaryService } =
+      makeService({
+        cancelSubscription,
+      });
     const result = await service.deleteAccount(user);
     expect(result).toEqual({ deleted: true });
     expect(cancelSubscription).toHaveBeenCalled();
@@ -67,6 +82,10 @@ describe('AccountDeletionService', () => {
     expect(entitlements.revokeAllForUser).toHaveBeenCalledWith(
       'u-del-1',
       'account_deleted',
+    );
+    // avatar asset (pure PII) destroyed with the account
+    expect(cloudinaryService.destroyAsset).toHaveBeenCalledWith(
+      'crave/test/avatars/u-del-1',
     );
     const update = prisma.user.update.mock.calls[0][0];
     expect(update.data.deletedAt).toBeInstanceOf(Date);

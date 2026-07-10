@@ -6,6 +6,7 @@ import { LoggerService } from '../../shared';
 import { ClerkAuthService } from './auth/clerk-auth.service';
 import { EntitlementService } from '../entitlements/entitlement.service';
 import { BillingService } from '../billing/billing.service';
+import { CloudinaryService } from '../photos/cloudinary.service';
 
 /**
  * In-app account deletion (Apple 5.1.1(v) — required for App Store review).
@@ -37,6 +38,7 @@ export class AccountDeletionService {
     private readonly clerkAuth: ClerkAuthService,
     private readonly entitlements: EntitlementService,
     private readonly billing: BillingService,
+    private readonly cloudinaryService: CloudinaryService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('AccountDeletionService');
@@ -72,6 +74,19 @@ export class AccountDeletionService {
     // 3. Local scrub. The Clerk user is gone; any failure below is logged
     // CRITICAL and replayable by an admin (no auth path back in exists).
     try {
+      // The avatar is pure PII with zero community value — destroy the
+      // Cloudinary asset (UGC photos survive as anonymous community
+      // content per the doc comment; a GDPR Art.17 bulk-destroy sweep is a
+      // documented follow-up, not built speculatively).
+      if (this.cloudinaryService.isConfigured) {
+        try {
+          await this.cloudinaryService.destroyAsset(
+            this.cloudinaryService.avatarPublicIdFor(user.userId),
+          );
+        } catch {
+          // asset may not exist; deletion proceeds either way
+        }
+      }
       await this.entitlements.revokeAllForUser(user.userId, 'account_deleted');
       await this.prisma.user.update({
         where: { userId: user.userId },

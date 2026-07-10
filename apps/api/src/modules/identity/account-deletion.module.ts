@@ -4,6 +4,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { IdentityModule } from './identity.module';
 import { BillingModule } from '../billing/billing.module';
 import { EntitlementsModule } from '../entitlements/entitlements.module';
+import { PhotosModule } from '../photos/photos.module';
 import { AccountDeletionService } from './account-deletion.service';
 import { AccountDeletionController } from './account-deletion.controller';
 
@@ -19,6 +20,7 @@ import { AccountDeletionController } from './account-deletion.controller';
     IdentityModule,
     BillingModule,
     EntitlementsModule,
+    PhotosModule,
   ],
   controllers: [AccountDeletionController],
   providers: [AccountDeletionService],

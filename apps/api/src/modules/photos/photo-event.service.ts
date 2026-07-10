@@ -29,22 +29,40 @@ export class PhotoEventService implements OnModuleDestroy {
 
   record(userId: string | null, events: PhotoEventInput[]): void {
     if (events.length === 0) return;
-    const rows = events.slice(0, 200).map((event) => ({
-      photoId: event.photoId,
-      userId,
-      eventType: event.eventType,
-      eventCount: Math.max(1, Math.min(event.count ?? 1, 1000)),
-    }));
-    const write = this.prisma.photoEvent
-      .createMany({ data: rows })
-      .catch((error) => {
-        this.logger.warn('photo_events write failed (dropped)', {
-          count: rows.length,
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-          },
-        });
+    // Ranking integrity: only LIVE photos accept events (FK backstops
+    // existence; this filter keeps a poisoned batch from failing whole),
+    // and per-event counts are capped tight — the tap-rate v2 signal must
+    // not be self-servable.
+    const write = (async () => {
+      const candidate = events.slice(0, 200);
+      const liveIds = new Set(
+        (
+          await this.prisma.photo.findMany({
+            where: {
+              photoId: { in: [...new Set(candidate.map((e) => e.photoId))] },
+              status: 'live',
+            },
+            select: { photoId: true },
+          })
+        ).map((row) => row.photoId),
+      );
+      const rows = candidate
+        .filter((event) => liveIds.has(event.photoId))
+        .map((event) => ({
+          photoId: event.photoId,
+          userId,
+          eventType: event.eventType,
+          eventCount: Math.max(1, Math.min(event.count ?? 1, 25)),
+        }));
+      if (rows.length === 0) return;
+      await this.prisma.photoEvent.createMany({ data: rows });
+    })().catch((error) => {
+      this.logger.warn('photo_events write failed (dropped)', {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
       });
+    });
     this.pending.add(write);
     void write.finally(() => this.pending.delete(write));
   }

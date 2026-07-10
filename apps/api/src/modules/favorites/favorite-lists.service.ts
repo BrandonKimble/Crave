@@ -31,6 +31,8 @@ import { UserStatsService } from '../identity/user-stats.service';
 import { CreateFavoriteListDto } from './dto/create-favorite-list.dto';
 import { UpdateFavoriteListDto } from './dto/update-favorite-list.dto';
 import { AddFavoriteListItemDto } from './dto/add-favorite-list-item.dto';
+import { UpdateFavoriteListItemDto } from './dto/update-favorite-list-item.dto';
+import { normalizeTags } from './tag-normalizer';
 import { ShareFavoriteListDto } from './dto/share-favorite-list.dto';
 import { ListFavoriteListsDto } from './dto/list-favorite-lists.dto';
 import { FavoriteListResultsDto } from './dto/favorite-list-results.dto';
@@ -678,7 +680,7 @@ export class FavoriteListsService {
           restaurantId: dto.restaurantId ?? null,
           connectionId: dto.connectionId ?? null,
           note: dto.note?.slice(0, 512) ?? null,
-          tags: dto.tags ?? [],
+          tags: normalizeTags(dto.tags),
           position: dto.position ?? (maxPosition._max.position ?? 0) + 1,
         },
       });
@@ -701,11 +703,11 @@ export class FavoriteListsService {
     return item;
   }
 
-  async updateItemPosition(
+  async updateItem(
     userId: string,
     listId: string,
     itemId: string,
-    position: number,
+    dto: UpdateFavoriteListItemDto,
   ) {
     const list = await this.prisma.favoriteList.findFirst({
       where: { listId, ownerUserId: userId },
@@ -717,12 +719,19 @@ export class FavoriteListsService {
 
     const result = await this.prisma.favoriteListItem.updateMany({
       where: { itemId, listId },
-      data: { position },
+      data: {
+        ...(dto.position !== undefined ? { position: dto.position } : {}),
+        // Toolkit: explicit null clears the note; [] clears tags.
+        ...(dto.note !== undefined
+          ? { note: dto.note?.slice(0, 512) ?? null }
+          : {}),
+        ...(dto.tags !== undefined ? { tags: normalizeTags(dto.tags) } : {}),
+      },
     });
     if (result.count === 0) {
       throw new NotFoundException('Favorite list item not found');
     }
-    return { itemId, position };
+    return { itemId };
   }
 
   async removeItem(userId: string, listId: string, itemId: string) {

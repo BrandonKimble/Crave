@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PhotoStatus } from '@prisma/client';
+import { PhotoStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CloudinaryService, type PhotoUrls } from './cloudinary.service';
 
@@ -69,59 +69,49 @@ export class PhotoReadService {
     const countsByRestaurant = new Map<string, number>();
     const countsByConnection = new Map<string, number>();
 
-    const collect = (
-      rows: PhotoStripRow[],
-      keyOf: (row: PhotoStripRow) => string,
-      strips: Map<string, PhotoStripItemDto[]>,
-      counts: Map<string, number>,
-    ) => {
-      const grouped = new Map<string, PhotoStripRow[]>();
-      for (const row of rows) {
-        const key = keyOf(row);
-        counts.set(key, (counts.get(key) ?? 0) + 1);
-        const bucket = grouped.get(key) ?? [];
-        bucket.push(row);
-        grouped.set(key, bucket);
-      }
-      for (const [key, bucket] of grouped) {
-        strips.set(
-          key,
-          this.orderStrip(bucket).map((r) => this.toStripItem(r)),
-        );
-      }
-    };
-
     if (params.connectionIds?.length) {
-      const rows = await this.prisma.photo.findMany({
-        where: {
-          connectionId: { in: params.connectionIds },
-          status: PhotoStatus.live,
-        },
-        orderBy: { uploadedAt: 'desc' },
-        select: PHOTO_STRIP_SELECT,
-      });
-      collect(
-        rows,
-        (row) => row.connectionId!,
-        byConnection,
-        countsByConnection,
-      );
+      const [rows, counts] = await Promise.all([
+        this.windowedStrip('connection_id', params.connectionIds),
+        this.prisma.photo.groupBy({
+          by: ['connectionId'],
+          where: {
+            connectionId: { in: params.connectionIds },
+            status: PhotoStatus.live,
+          },
+          _count: { photoId: true },
+        }),
+      ]);
+      for (const row of rows) {
+        const key = row.connectionId!;
+        const bucket = byConnection.get(key) ?? [];
+        bucket.push(this.toStripItem(row));
+        byConnection.set(key, bucket);
+      }
+      for (const count of counts) {
+        countsByConnection.set(count.connectionId!, count._count.photoId);
+      }
     }
     if (params.restaurantIds?.length) {
-      const rows = await this.prisma.photo.findMany({
-        where: {
-          restaurantId: { in: params.restaurantIds },
-          status: PhotoStatus.live,
-        },
-        orderBy: { uploadedAt: 'desc' },
-        select: PHOTO_STRIP_SELECT,
-      });
-      collect(
-        rows,
-        (row) => row.restaurantId,
-        byRestaurant,
-        countsByRestaurant,
-      );
+      const [rows, counts] = await Promise.all([
+        this.windowedStrip('restaurant_id', params.restaurantIds),
+        this.prisma.photo.groupBy({
+          by: ['restaurantId'],
+          where: {
+            restaurantId: { in: params.restaurantIds },
+            status: PhotoStatus.live,
+          },
+          _count: { photoId: true },
+        }),
+      ]);
+      for (const row of rows) {
+        const key = row.restaurantId;
+        const bucket = byRestaurant.get(key) ?? [];
+        bucket.push(this.toStripItem(row));
+        byRestaurant.set(key, bucket);
+      }
+      for (const count of counts) {
+        countsByRestaurant.set(count.restaurantId, count._count.photoId);
+      }
     }
     return {
       byRestaurant,
@@ -131,12 +121,46 @@ export class PhotoReadService {
     };
   }
 
-  /** Quality-floor photos lead (within each group recency descending —
-   *  rows arrive newest-first), then below-floor; capped at STRIP_SIZE. */
-  private orderStrip(rows: PhotoStripRow[]): PhotoStripRow[] {
-    const above = rows.filter((row) => this.passesFloor(row.focusScore));
-    const below = rows.filter((row) => !this.passesFloor(row.focusScore));
-    return [...above, ...below].slice(0, STRIP_SIZE);
+  /** ROW_NUMBER window: at most STRIP_SIZE rows PER KEY leave the database
+   *  (the hottest read path in the app must not scan a 5k-photo restaurant
+   *  per card render). Ordering matches the strip policy: above-quality-
+   *  floor first, then recency. */
+  private async windowedStrip(
+    keyColumn: 'restaurant_id' | 'connection_id',
+    ids: string[],
+    perKey = STRIP_SIZE,
+  ): Promise<PhotoStripRow[]> {
+    const column = Prisma.raw(keyColumn);
+    const rows = await this.prisma.$queryRaw<RawStripRow[]>`
+      SELECT photo_id, user_id, restaurant_id, connection_id, public_id,
+             caption, taken_at, uploaded_at, focus_score
+      FROM (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY ${column}
+          ORDER BY (focus_score IS NULL OR focus_score >= ${FOCUS_FLOOR}) DESC,
+                   uploaded_at DESC
+        ) AS rn
+        FROM photos
+        WHERE ${column} = ANY(${ids}::uuid[]) AND status = 'live'
+      ) windowed
+      WHERE rn <= ${perKey}
+      ORDER BY rn ASC
+    `;
+    return rows.map((row) => this.fromRaw(row));
+  }
+
+  private fromRaw(row: RawStripRow): PhotoStripRow {
+    return {
+      photoId: row.photo_id,
+      userId: row.user_id,
+      restaurantId: row.restaurant_id,
+      connectionId: row.connection_id,
+      publicId: row.public_id,
+      caption: row.caption,
+      takenAt: row.taken_at,
+      uploadedAt: row.uploaded_at,
+      focusScore: row.focus_score,
+    };
   }
 
   /** The restaurant gallery (selector-row shaped: All + per-dish). */
@@ -157,21 +181,13 @@ export class PhotoReadService {
       this.prisma.photo.count({
         where: { restaurantId, status: PhotoStatus.live },
       }),
-      this.prisma.photo.findMany({
-        where: {
-          restaurantId,
-          status: PhotoStatus.live,
-          connectionId: { not: null },
-        },
-        orderBy: { uploadedAt: 'desc' },
-        select: PHOTO_STRIP_SELECT,
-      }),
+      this.dishSlices(restaurantId),
     ]);
     const byDishMap = new Map<string, PhotoStripItemDto[]>();
     for (const row of dishRows) {
       const key = row.connectionId!;
       const bucket = byDishMap.get(key) ?? [];
-      if (bucket.length < 20) bucket.push(this.toStripItem(row));
+      bucket.push(this.toStripItem(row));
       byDishMap.set(key, bucket);
     }
     return {
@@ -183,6 +199,31 @@ export class PhotoReadService {
         photos,
       })),
     };
+  }
+
+  /** Windowed per-dish slices for the gallery selector (≤20/dish leave the
+   *  DB — never a full scan of a photo-heavy restaurant). */
+  private async dishSlices(
+    restaurantId: string,
+    perDish = 20,
+  ): Promise<PhotoStripRow[]> {
+    const rows = await this.prisma.$queryRaw<RawStripRow[]>`
+      SELECT photo_id, user_id, restaurant_id, connection_id, public_id,
+             caption, taken_at, uploaded_at, focus_score
+      FROM (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY connection_id
+          ORDER BY (focus_score IS NULL OR focus_score >= ${FOCUS_FLOOR}) DESC,
+                   uploaded_at DESC
+        ) AS rn
+        FROM photos
+        WHERE restaurant_id = ${restaurantId}::uuid
+          AND status = 'live' AND connection_id IS NOT NULL
+      ) windowed
+      WHERE rn <= ${perDish}
+      ORDER BY rn ASC
+    `;
+    return rows.map((row) => this.fromRaw(row));
   }
 
   /** The profile food log: grouped by restaurant, newest activity first.
@@ -249,6 +290,18 @@ const PHOTO_STRIP_SELECT = {
   uploadedAt: true,
   focusScore: true,
 } as const;
+
+interface RawStripRow {
+  photo_id: string;
+  user_id: string;
+  restaurant_id: string;
+  connection_id: string | null;
+  public_id: string;
+  caption: string | null;
+  taken_at: Date | null;
+  uploaded_at: Date;
+  focus_score: number | null;
+}
 
 interface PhotoStripRow {
   photoId: string;

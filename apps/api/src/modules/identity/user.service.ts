@@ -172,7 +172,7 @@ export class UserService {
 
   async getProfile(userId: string): Promise<UserProfileDto> {
     const user = await this.prisma.user.findUnique({
-      where: { userId },
+      where: { deletedAt: null, userId },
       include: {
         subscriptions: {
           orderBy: { createdAt: 'desc' },
@@ -276,7 +276,7 @@ export class UserService {
 
   async getPublicProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
-      where: { userId },
+      where: { deletedAt: null, userId },
       select: {
         userId: true,
         username: true,

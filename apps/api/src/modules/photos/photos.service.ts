@@ -150,24 +150,29 @@ export class PhotosService {
    *  have no row for the cron to sweep): the client calls this after its
    *  direct upload; the server reads Cloudinary's OWN truth — nothing
    *  client-supplied is trusted. */
-  async confirmAvatar(userId: string): Promise<{ updated: boolean }> {
+  async confirmAvatar(
+    userId: string,
+  ): Promise<{ status: 'approved' | 'rejected' | 'pending' | 'missing' }> {
     const publicId = this.cloudinary.avatarPublicIdFor(userId);
     const asset = await this.cloudinary.getAsset(publicId);
-    if (!asset.exists) return { updated: false };
+    if (!asset.exists) return { status: 'missing' as const };
     if (asset.moderationStatus === 'approved') {
-      await this.prisma.user.update({
-        where: { userId },
+      await this.prisma.user.updateMany({
+        where: { userId, deletedAt: null },
         data: {
           avatarUrl: this.cloudinary.buildAvatarUrl(
             userId,
-            Math.floor(Date.now() / 1000),
+            asset.version ?? Math.floor(Date.now() / 1000),
           ),
         },
       });
       this.logger.info('Avatar updated (confirm)', { userId });
-      return { updated: true };
+      return { status: 'approved' as const };
     }
-    return { updated: false };
+    if (asset.moderationStatus === 'rejected') {
+      return { status: 'rejected' as const };
+    }
+    return { status: 'pending' as const };
   }
 
   private async applyAvatarNotification(
@@ -182,11 +187,14 @@ export class PhotosService {
         typeof payload.version === 'number'
           ? payload.version
           : Math.floor(Date.now() / 1000);
-      await this.prisma.user.update({
-        where: { userId },
+      // updateMany + deletedAt guard: a deletion between upload and this
+      // webhook must never re-populate scrubbed PII (and a missing row is a
+      // no-op, not a 500 that makes Cloudinary retry pointlessly).
+      const updated = await this.prisma.user.updateMany({
+        where: { userId, deletedAt: null },
         data: { avatarUrl: this.cloudinary.buildAvatarUrl(userId, version) },
       });
-      this.logger.info('Avatar updated', { userId });
+      if (updated.count === 1) this.logger.info('Avatar updated', { userId });
     } else if (status === 'rejected') {
       try {
         await this.cloudinary.destroyAsset(publicId);

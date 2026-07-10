@@ -26,8 +26,11 @@ import { UserFollowService } from './user-follow.service';
 import { ListUserFollowsDto } from './dto/list-user-follows.dto';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
-// Exempt from the app-wide paywall (see AllowUnentitled docs for the why).
-@AllowUnentitled()
+/** Paywall exemption is PER-METHOD here (class-level would silently exempt
+ *  every future route — type-list disease in decorator form): self-service
+ *  routes (me/onboarding/username) are what a never-subscribed user needs
+ *  to reach payment; the SOCIAL GRAPH (follow endpoints) sits behind the
+ *  wall like the rest of the product. */
 @Controller('users')
 @UseGuards(ClerkAuthGuard)
 export class UserController {
@@ -37,16 +40,19 @@ export class UserController {
     private readonly userFollowService: UserFollowService,
   ) {}
 
+  @AllowUnentitled()
   @Get('me')
   async getMe(@CurrentUser() user: User): Promise<UserProfileDto> {
     return this.userService.getProfile(user.userId);
   }
 
+  @AllowUnentitled()
   @Patch('me')
   async updateMe(@CurrentUser() user: User, @Body() dto: UpdateUserProfileDto) {
     return this.userService.updateProfile(user.userId, dto);
   }
 
+  @AllowUnentitled()
   @Put('me/onboarding')
   async updateOnboarding(
     @CurrentUser() user: User,
@@ -55,6 +61,7 @@ export class UserController {
     return this.userService.updateOnboarding(user.userId, dto);
   }
 
+  @AllowUnentitled()
   @Get('username/check')
   async checkUsername(
     @CurrentUser() user: User,
@@ -63,6 +70,7 @@ export class UserController {
     return this.usernameService.checkAvailability(dto.username, user.userId);
   }
 
+  @AllowUnentitled()
   @Post('username/claim')
   async claimUsername(
     @CurrentUser() user: User,
@@ -71,6 +79,7 @@ export class UserController {
     return this.usernameService.claimUsername(user.userId, dto.username);
   }
 
+  @AllowUnentitled()
   @Post('username/suggest')
   suggestUsername(@Body() dto: UsernameSuggestDto) {
     return {

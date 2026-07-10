@@ -800,7 +800,7 @@ export class BillingService {
 
     // Ledger is the access truth: mirror this subscription into a
     // subscription-source grant (renewals extend it, cancellation/refund
-    // revokes it); UserEntitlement is recomputed as the cache.
+    // revokes it); Redis is recomputed as the cache.
     await this.entitlements.syncSubscriptionGrant({
       userId: user.userId,
       sourceRef: `stripe:${subscription.id}`,
@@ -930,6 +930,10 @@ export class BillingService {
       );
     return this.prisma.user.findFirst({
       where: {
+        // A deleted account must NEVER receive a grant: the deletion flow
+        // revokes everything, and a late webhook (e.g. the subscription
+        // update fired by deletion's own cancel call) would resurrect it.
+        deletedAt: null,
         OR: [
           { authProviderUserId: identifier },
           { revenueCatAppUserId: identifier },

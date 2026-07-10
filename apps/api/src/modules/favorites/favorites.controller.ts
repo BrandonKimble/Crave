@@ -98,17 +98,17 @@ export class FavoritesController {
   }
 
   @Patch('lists/:listId/items/:itemId')
-  updateListItemPosition(
+  updateListItem(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
     @Param('itemId', ParseUUIDPipe) itemId: string,
     @Body() dto: UpdateFavoriteListItemDto,
   ) {
-    return this.favoriteListsService.updateItemPosition(
+    return this.favoriteListsService.updateItem(
       user.userId,
       listId,
       itemId,
-      dto.position,
+      dto,
     );
   }
 
