@@ -3,7 +3,7 @@
 Every failure the staged Austin load surfaced, its root cause, its fix status,
 and the ideal-shape architecture changes the pattern demands. The staged-proof
 run did exactly its job: it flushed out six real defect classes before the
-full load. **Full load is HOLD until the owner reviews this audit.**
+full load. **2026-07-10: ALL items built to ideal shape (`0936cd29`, `a875f219`); §1 sweep converted the 2 remaining live entity hard-deletes (restaurant merge, placeholder cleanup) to archive-not-delete. Full load is GO pending owner word.**
 
 Verdicts from the 30-agent cost-recon red team are folded in (§7–8).
 
@@ -27,7 +27,7 @@ Verdicts from the 30-agent cost-recon red team are folded in (§7–8).
   contract; sweep the codebase for remaining `DELETE FROM core_entities`-class
   statements (dedupe-merge and janitor already archive; verify nothing else).
 
-### 2. Orphaned `ingesting` claims (the biggest operational tax) — OPEN, design below
+### 2. Orphaned `ingesting` claims (the biggest operational tax) — FIXED (`a875f219`)
 
 - **Symptom:** 4 separate manual resets; jobs stuck in `ingesting` for hours,
   invisible to the retry path (which only watches `succeeded`), waiting on the
@@ -59,7 +59,7 @@ Verdicts from the 30-agent cost-recon red team are folded in (§7–8).
   `pending → submitting → submitted → succeeded → ingesting → ingested/failed`
   — each edge needs a named owner and a recovery path.
 
-### 4. Transient failures burn bounded retry attempts — OPEN
+### 4. Transient failures burn bounded retry attempts — FIXED (`a875f219`)
 
 - **Symptom:** spend-cap 429s (pure transient) consumed `ingest_attempts` and
   drove 8 jobs to terminal `failed`, which also failed their extraction runs.
@@ -74,7 +74,7 @@ Verdicts from the 30-agent cost-recon red team are folded in (§7–8).
     The `MAX_INGEST_ATTEMPTS` counter applies only to the deterministic class
     (guarding against misclassification).
 
-### 5. Cause-chain swallowed by generic wrappers — OPEN
+### 5. Cause-chain swallowed by generic wrappers — FIXED (`a875f219`)
 
 - **Symptom:** job rows stored `"LLM output processing failed for batch X"`;
   real causes (FK violation; spend-cap 429) required foreground repro runs to
@@ -86,7 +86,7 @@ Verdicts from the 30-agent cost-recon red team are folded in (§7–8).
   aggregate error name each sub-batch's underlying cause. Loud-RED doctrine:
   the failure record must carry enough to attribute without a repro.
 
-### 6. Multi-poller anarchy — OPEN, policy decision
+### 6. Multi-poller anarchy — FIXED (`a875f219`)
 
 - **Symptom:** at one point THREE processes (seed script, `nest --watch` dev
   server, a stale `dist/main`) polled/claimed/ingested concurrently — with
@@ -99,7 +99,7 @@ Verdicts from the 30-agent cost-recon red team are folded in (§7–8).
   structurally absent. In prod (Railway) this is one worker dyno; in dev, the
   dev server owns it.
 
-### 7. Job granularity: one bad chunk fails a whole job/run — OPEN
+### 7. Job granularity: one bad chunk fails a whole job/run — FIXED (`0936cd29`)
 
 - **Symptom:** 5 jobs terminally failed over a single chunk's bad `source_id`
   while their other 4+ chunks were perfectly ingestable.
@@ -108,18 +108,21 @@ Verdicts from the 30-agent cost-recon red team are folded in (§7–8).
   the job ingests; the run completes with named gaps instead of failing whole.
   Re-collection then refills only the quarantined chunks.
 
-### 8. `source_id` out-of-range refs (model contract, 5 threads) — OPEN investigation
+### 8. `source_id` ref drift — ATTRIBUTED + FIXED (`0936cd29`)
 
-- **Symptom:** on 5 specific threads, the model emits refs beyond the chunk's
-  source map (`SRC0044` when only SRC001–SRC010 exist; also 4-digit forms) —
-  deterministic across resubmission, survived the byte-for-byte prompt fix.
-- **Hypothesis to verify:** these are split threads (`group_1/2/3`); the
-  payload's post-context or ordinal hints leak a thread-global numbering wider
-  than the group's own map, and the model follows it. Investigate the actual
-  stored `llm_batch_job_items.request` for one failing chunk before theorizing
-  further (ATTRIBUTE-before-ideate).
+- **Attribution (2026-07-10, from stored payloads — REFUTES the original
+  hypothesis):** the pipeline and source_map were CORRECT (all 27 refs present
+  end-to-end; the "expected one of ...SRC010" error text was a `slice(0,10)`
+  display truncation). The real defect: the model emits digit-count TYPOS of
+  valid refs — `SRC0018` for `SRC018` (pattern-inducted from the SRC00x shape
+  of refs 1–9); `SRC01` is genuinely ambiguous (SRC001 or SRC010?), so mapping
+  typos post-hoc is the wrong layer forever.
+- **Fix:** each chunk's response schema constrains `source_id` to an ENUM of
+  exactly that chunk's refs (batch typed responseSchema + interactive
+  responseJsonSchema). Constrained decoding makes the typo class impossible;
+  the t1*/t3* tolerance normalizer stays deletable on schedule.
 
-### 9. Cost report: in-process, wall-clock, and it died with the script — OPEN
+### 9. Cost report: in-process, wall-clock, and it died with the script — FIXED (`a875f219`)
 
 - **Symptoms:** the killed seed task took its report with it; and the report's
   wall-clock `createdAt` deltas counted the NYC corpus, producing a WRONG
