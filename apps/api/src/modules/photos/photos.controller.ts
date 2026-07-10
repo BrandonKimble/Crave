@@ -116,6 +116,19 @@ export class PhotosController {
     return { received: true };
   }
 
+  /** Avatar change — same signed-direct-upload machinery; user.avatarUrl
+   *  flips when moderation approves (old avatar stays until then). */
+  @Post('avatar-ticket')
+  createAvatarTicket(@CurrentUser() user: User) {
+    return { ticket: this.photos.createAvatarTicket(user.userId) };
+  }
+
+  /** Client calls after its direct upload; server reads Cloudinary truth. */
+  @Post('avatar-confirm')
+  async confirmAvatar(@CurrentUser() user: User) {
+    return this.photos.confirmAvatar(user.userId);
+  }
+
   @Post('upload-ticket')
   async createUploadTicket(
     @CurrentUser() user: User,

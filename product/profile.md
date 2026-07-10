@@ -113,3 +113,16 @@ impressions/taps are tracked from day one and may later drive sorting here.
 NO user feed (deliberate ~50-50 call; polls are the engagement center). If
 ambient social ever ships, it's the Spotify-peek analog ("X added 3 places
 to Want to Go"), not a posting feed. Do not relitigate without the owner.
+
+## Avatars + friend-presence chips (owner, 2026-07-10)
+
+- **Avatar upload** rides the SAME Cloudinary machinery as UGC photos
+  (signed ticket, Rekognition safety moderation, CDN delivery) — one asset
+  per user (overwrite), square delivery variants. Renders: profile page,
+  poll discussions (already wired), and future friend-presence chips.
+  BUILT server-side with the photo foundation.
+- **Friend-presence chips on cards**: small avatar chips on restaurant/dish
+  cards showing friends who've been/tried/photographed the same thing —
+  needs the follow graph + tried/been data; REGISTRY-PHASE product design
+  (card real estate + which signals qualify). Recorded here so the card
+  design pass accounts for the slot.

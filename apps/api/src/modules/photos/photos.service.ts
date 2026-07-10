@@ -139,12 +139,74 @@ export class PhotosService {
     return { photo: this.toDto(photo), ticket };
   }
 
+  /** Avatar upload: same machinery, no Photo row — user.avatarUrl is the
+   *  state. The new avatar goes live only when moderation approves (the
+   *  webhook/branch below); until then the old avatar stays. */
+  createAvatarTicket(userId: string): SignedUploadTicket {
+    return this.cloudinary.signAvatarTicket(userId);
+  }
+
+  /** Pull-based avatar settle (webhooks are at-most-4-attempts and avatars
+   *  have no row for the cron to sweep): the client calls this after its
+   *  direct upload; the server reads Cloudinary's OWN truth — nothing
+   *  client-supplied is trusted. */
+  async confirmAvatar(userId: string): Promise<{ updated: boolean }> {
+    const publicId = this.cloudinary.avatarPublicIdFor(userId);
+    const asset = await this.cloudinary.getAsset(publicId);
+    if (!asset.exists) return { updated: false };
+    if (asset.moderationStatus === 'approved') {
+      await this.prisma.user.update({
+        where: { userId },
+        data: {
+          avatarUrl: this.cloudinary.buildAvatarUrl(
+            userId,
+            Math.floor(Date.now() / 1000),
+          ),
+        },
+      });
+      this.logger.info('Avatar updated (confirm)', { userId });
+      return { updated: true };
+    }
+    return { updated: false };
+  }
+
+  private async applyAvatarNotification(
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const publicId = payload.public_id as string;
+    const userId = publicId.split('/').pop();
+    if (!userId) return;
+    const status = this.cloudinary.extractModerationStatus(payload);
+    if (status === 'approved') {
+      const version =
+        typeof payload.version === 'number'
+          ? payload.version
+          : Math.floor(Date.now() / 1000);
+      await this.prisma.user.update({
+        where: { userId },
+        data: { avatarUrl: this.cloudinary.buildAvatarUrl(userId, version) },
+      });
+      this.logger.info('Avatar updated', { userId });
+    } else if (status === 'rejected') {
+      try {
+        await this.cloudinary.destroyAsset(publicId);
+      } catch {
+        // reconciliation-adjacent cleanup; rejection already CDN-invalidates
+      }
+      this.logger.warn('Avatar rejected by moderation', { userId });
+    }
+  }
+
   /** Cloudinary notification entry point (already signature-verified by the
    *  controller). Handles both upload and moderation notifications;
    *  idempotent — replays re-derive the same state. */
   async handleNotification(payload: Record<string, unknown>): Promise<void> {
     const publicId = payload.public_id as string | undefined;
     if (!publicId) return;
+    if (this.cloudinary.isAvatarPublicId(publicId)) {
+      await this.applyAvatarNotification(payload);
+      return;
+    }
     const photo = await this.prisma.photo.findUnique({
       where: { publicId },
       select: { photoId: true, status: true },

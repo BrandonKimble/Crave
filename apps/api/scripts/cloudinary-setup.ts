@@ -94,6 +94,35 @@ async function main(): Promise<void> {
     }
   }
 
+  const avatarSettings = {
+    unsigned: false,
+    folder: '',
+    allowed_formats: 'jpg,png,heic,webp,avif',
+    // Square-crop at ingest; ONE asset per user (overwrite on re-upload).
+    transformation: [
+      { width: 512, height: 512, crop: 'fill', gravity: 'auto' },
+    ],
+    moderation: 'aws_rek',
+    overwrite: true,
+    invalidate: true,
+    unique_filename: false,
+  };
+  try {
+    await cloudinary.api.create_upload_preset({
+      name: 'crave_avatar',
+      ...avatarSettings,
+    });
+    process.stdout.write('✅ upload preset crave_avatar created\n');
+  } catch (error) {
+    const code = (error as { error?: { http_code?: number } }).error?.http_code;
+    if (code === 409) {
+      await cloudinary.api.update_upload_preset('crave_avatar', avatarSettings);
+      process.stdout.write('♻️  upload preset crave_avatar updated\n');
+    } else {
+      throw error;
+    }
+  }
+
   process.stdout.write(
     '\nREMINDERS (Console, manual):\n' +
       '  1. Security -> enable STRICT TRANSFORMATIONS; allow t_crave_thumb/card/gallery/full\n' +

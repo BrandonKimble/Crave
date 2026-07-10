@@ -16,6 +16,9 @@ export const PHOTO_VARIANTS = {
 } as const;
 export type PhotoVariant = keyof typeof PHOTO_VARIANTS;
 
+/** Signed preset for avatars (square incoming crop, safety moderation). */
+export const AVATAR_PRESET = 'crave_avatar';
+
 export interface PhotoUrls {
   thumb: string;
   card: string;
@@ -102,6 +105,57 @@ export class CloudinaryService {
 
   publicIdFor(photoId: string): string {
     return `crave/${this.envPrefix}/photos/${photoId}`;
+  }
+
+  avatarPublicIdFor(userId: string): string {
+    return `crave/${this.envPrefix}/avatars/${userId}`;
+  }
+
+  isAvatarPublicId(publicId: string): boolean {
+    return publicId.startsWith(`crave/${this.envPrefix}/avatars/`);
+  }
+
+  /** Avatar ticket: ONE asset per user (fixed public_id + overwrite via the
+   *  avatar preset), same signature discipline as photo tickets. */
+  signAvatarTicket(userId: string): SignedUploadTicket {
+    this.ensureConfigured();
+    const publicId = this.avatarPublicIdFor(userId);
+    const timestamp = Math.floor(Date.now() / 1000);
+    const params: Record<string, string | number> = {
+      public_id: publicId,
+      timestamp,
+      upload_preset: AVATAR_PRESET,
+      ...(this.notificationUrl
+        ? { notification_url: this.notificationUrl }
+        : {}),
+    };
+    const signature = cloudinary.utils.api_sign_request(
+      params,
+      this.apiSecret!,
+    );
+    return {
+      uploadUrl: `https://api.cloudinary.com/v1_1/${this.cloudName}/image/upload`,
+      apiKey: this.apiKey!,
+      timestamp,
+      signature,
+      publicId,
+      uploadPreset: AVATAR_PRESET,
+      notificationUrl: this.notificationUrl,
+    };
+  }
+
+  /** Square avatar delivery URL (signed, strict-compatible). versionSeed
+   *  busts CDN/client caches on re-upload (same public_id every time). */
+  buildAvatarUrl(userId: string, versionSeed: number): string {
+    return cloudinary.url(this.avatarPublicIdFor(userId), {
+      transformation: [
+        { width: 256, height: 256, crop: 'fill', gravity: 'auto' },
+        { fetch_format: 'auto', quality: 'auto' },
+      ],
+      sign_url: true,
+      secure: true,
+      version: versionSeed,
+    });
   }
 
   /** Sign a direct-upload ticket. The signature covers EVERY param the
