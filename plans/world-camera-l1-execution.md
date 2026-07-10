@@ -220,3 +220,14 @@ With 92709da7 landed, **L1 is functionally complete modulo its L4-riding pieces*
   explicit catalog owner) is a naming/ownership nit, not a parallel mechanism.
 - Remaining L1 items are exactly the §3.4 native contract additions — policy value,
   invisible role, z-lift, budget exemption — which ARE L4. L1 execution transfers there.
+
+## L5 verification close-out (2026-07-10 ~6:45AM)
+
+§3.5's three finish items are all verified/DONE:
+(a) the location aggregate is MARKET-WIDE in every search lane — one shared CTE
+(`buildLocationAggregatesCte`, single call site search-query.builder.ts:216) bounded by
+`ST_Covers(m.geometry, point)`, never viewport-trimmed; the no-market fallback is fully
+unbounded. (b) the roll-up rule shipped server-side (findOutermostCoveringMarket, 9e656bc4).
+(c) the profile/hydration lane (`getRestaurantProfile`) returns ALL locations via the Prisma
+include — the same field shape as locations_json, wider than market. The mobile group shape
+consumes both via the sibling-emission path (b441771c). **L5 COMPLETE.**
