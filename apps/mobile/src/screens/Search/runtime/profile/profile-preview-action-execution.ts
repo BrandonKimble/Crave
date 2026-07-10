@@ -10,7 +10,6 @@ import {
 export const executeProfilePreviewPresentationPlan = ({
   plan,
   restaurantId,
-  forceMiddleSnap,
   transitionSnapshotCapture,
   ports,
 }: {

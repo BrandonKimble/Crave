@@ -27,7 +27,6 @@ export const executeProfileOpenPresentationPlan = ({
   plan,
   restaurant,
   source,
-  forceMiddleSnap,
   queryLabel,
   transitionSnapshotCapture,
   ports,
