@@ -1,4 +1,5 @@
 import React from 'react';
+import { unstable_batchedUpdates } from 'react-native';
 
 import {
   isPerfScenarioAttributionActive,
@@ -15,8 +16,7 @@ import type { RouteSceneVisibilityPolicyRuntime } from '../../../../navigation/r
 import type { SearchCloseTransitionState } from './results-presentation-shell-contract';
 import type { ResultsCloseTransitionActions } from './results-presentation-shell-runtime-contract';
 import type { ResultsPresentationShellLocalState } from './use-results-presentation-shell-local-state';
-import { useResultsPresentationCloseTransitionFinalizeRuntime } from './use-results-presentation-close-transition-finalize-runtime';
-import { useResultsPresentationCloseTransitionIntentRuntime } from './use-results-presentation-close-transition-intent-runtime';
+import { createSearchCloseTransitionState } from './results-presentation-shell-close-transition-state';
 import {
   applySearchCloseCollapsedReached,
   applySearchCloseMapExitSettled,
@@ -111,27 +111,106 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
   shellLocalState,
   routeSceneVisibilityPolicyRuntime,
 }: UseResultsPresentationCloseTransitionStateRuntimeArgs): ResultsPresentationCloseTransitionStateRuntime => {
-  const intentRuntime = useResultsPresentationCloseTransitionIntentRuntime({
-    shellLocalState,
-    routeSceneVisibilityPolicyRuntime,
-  });
-  const finalizeRuntime = useResultsPresentationCloseTransitionFinalizeRuntime({
-    clearSearchState,
-    shellLocalState,
-    intentRuntime,
-  });
+  // ─── Intent phase (S-C.5 close-chain L-merge, 2026-07-10): formerly its own hook file.
+  // Three refs + the begin/reset pair — one lifecycle, one file with the marks it gates.
+  const pendingCloseIntentIdRef = React.useRef<string | null>(null);
+  const activeCloseIntentIdRef = React.useRef<string | null>(null);
+  const finalizedCloseIntentIdRef = React.useRef<string | null>(null);
+
+  const setPendingCloseIntentId = React.useCallback((intentId: string | null) => {
+    pendingCloseIntentIdRef.current = intentId;
+  }, []);
+
+  const matchesPendingCloseIntentId = React.useCallback((intentId: string) => {
+    return pendingCloseIntentIdRef.current === intentId;
+  }, []);
+
+  const resetCloseTransition = React.useCallback(() => {
+    activeCloseIntentIdRef.current = null;
+    finalizedCloseIntentIdRef.current = null;
+    routeSceneVisibilityPolicyRuntime.updateCloseTransitionActive(false);
+    shellLocalState.setSearchCloseTransitionState(null);
+  }, [routeSceneVisibilityPolicyRuntime, shellLocalState]);
+
+  const beginCloseTransitionIntent = React.useCallback(
+    (closeIntentId: string) => {
+      if (activeCloseIntentIdRef.current === closeIntentId) {
+        return;
+      }
+
+      activeCloseIntentIdRef.current = closeIntentId;
+      finalizedCloseIntentIdRef.current = null;
+      // S-C.4 item 3 step 2: the old ARM (origin capture into the store ledger) is gone —
+      // the terminal dance only serves HOME dismissals now (children/non-search roots pop
+      // via entry origins in the dismiss selector), and the home restore rides the dismiss
+      // verb's ONE terminalDismiss switch. Nothing to arm, nothing to flush at finalize.
+      shellLocalState.setHoldPersistentPollLane(false);
+      shellLocalState.setBackdropTarget('default');
+      shellLocalState.setInputMode('idle');
+      routeSceneVisibilityPolicyRuntime.updateCloseTransitionActive(true);
+      shellLocalState.setSearchCloseTransitionState(
+        createSearchCloseTransitionState(closeIntentId)
+      );
+    },
+    [routeSceneVisibilityPolicyRuntime, shellLocalState]
+  );
+
+  const getActiveCloseIntentId = React.useCallback(() => {
+    return activeCloseIntentIdRef.current;
+  }, []);
+
+  // ─── Finalize phase (same merge): clear-search + dismiss handoff + reset, batched.
+  const finalizeCloseSearch = React.useCallback(
+    (intentId: string) => {
+      if (pendingCloseIntentIdRef.current !== intentId) {
+        return false;
+      }
+
+      clearSearchState({
+        skipPostSearchRestore: true,
+        preserveForegroundEditing: shellLocalState.inputMode === 'editing',
+      });
+      pendingCloseIntentIdRef.current = null;
+      return true;
+    },
+    [clearSearchState, shellLocalState.inputMode]
+  );
+
+  const finalizeCloseTransition = React.useCallback(
+    (closeIntentId: string) => {
+      if (finalizedCloseIntentIdRef.current === closeIntentId) {
+        return;
+      }
+
+      finalizedCloseIntentIdRef.current = closeIntentId;
+      unstable_batchedUpdates(() => {
+        const didFinalizeCloseSearch = finalizeCloseSearch(closeIntentId);
+        if (!didFinalizeCloseSearch) {
+          resetCloseTransition();
+          return;
+        }
+        getSearchSurfaceRuntime().completeDismissHandoff(closeIntentId);
+        // S-C.4 item 3 step 2: NO restore emission here — the home landing already rode the
+        // dismiss verb's ONE terminalDismiss switch (targetSceneKey 'search', docked-polls
+        // mode). The old flush/default pair (and the ledger they read) is deleted; children
+        // and non-search roots never reach this dance (the dismiss selector pops them).
+        resetCloseTransition();
+      });
+    },
+    [finalizeCloseSearch, resetCloseTransition]
+  );
 
   const boundaryCloseIntentIdRef = React.useRef<string | null>(null);
   const collapsedBoundaryReachedAtMsRef = React.useRef<number | null>(null);
   const releasedCloseIntentIdRef = React.useRef<string | null>(null);
   const finalizeReleaseReadyCloseTransition = React.useCallback(
     (closeIntentId: string) => {
-      if (intentRuntime.getActiveCloseIntentId() !== closeIntentId) {
+      if (getActiveCloseIntentId() !== closeIntentId) {
         return;
       }
-      finalizeRuntime.finalizeCloseTransition(closeIntentId);
+      finalizeCloseTransition(closeIntentId);
     },
-    [finalizeRuntime, intentRuntime]
+    [finalizeCloseTransition, getActiveCloseIntentId]
   );
 
   const emitReleaseReadyBottomHandoffTelemetry = React.useCallback(
@@ -143,7 +222,7 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       if (releaseReadyCloseIntentId == null) {
         return false;
       }
-      if (intentRuntime.getActiveCloseIntentId() !== releaseReadyCloseIntentId) {
+      if (getActiveCloseIntentId() !== releaseReadyCloseIntentId) {
         return false;
       }
       if (releasedCloseIntentIdRef.current === releaseReadyCloseIntentId) {
@@ -203,7 +282,7 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       }
       return true;
     },
-    [intentRuntime, shellLocalState]
+    [getActiveCloseIntentId, shellLocalState]
   );
 
   const markSearchSheetCloseMapExitSettled = React.useCallback(
@@ -224,8 +303,7 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       snap: import('../../../../overlays/types').OverlaySheetSnap,
       source: 'motion_plane' = 'motion_plane'
     ) => {
-      const activeCloseIntentId =
-        intentRuntime.getActiveCloseIntentId() ?? boundaryCloseIntentIdRef.current;
+      const activeCloseIntentId = getActiveCloseIntentId() ?? boundaryCloseIntentIdRef.current;
       if (!activeCloseIntentId || snap !== 'collapsed') {
         return;
       }
@@ -278,14 +356,14 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
       boundaryCloseIntentIdRef,
       emitReleaseReadyBottomHandoffTelemetry,
       finalizeReleaseReadyCloseTransition,
-      intentRuntime,
+      getActiveCloseIntentId,
       shellLocalState,
     ]
   );
 
   const markSearchSheetCloseSheetSettled = React.useCallback(
     (snap: import('../../../../overlays/types').OverlaySheetSnap) => {
-      const activeCloseIntentId = intentRuntime.getActiveCloseIntentId();
+      const activeCloseIntentId = getActiveCloseIntentId();
       if (!activeCloseIntentId || snap !== 'collapsed') {
         return;
       }
@@ -298,7 +376,7 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
         return update.nextState;
       });
     },
-    [intentRuntime, shellLocalState]
+    [getActiveCloseIntentId, shellLocalState]
   );
 
   const beginCloseTransition = React.useCallback(
@@ -318,9 +396,9 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
         // only the type-level default.
         outgoingSheetSceneKey: options?.outgoingSheetSceneKey ?? 'search',
       });
-      intentRuntime.beginCloseTransition(closeIntentId);
+      beginCloseTransitionIntent(closeIntentId);
     },
-    [intentRuntime, shellLocalState.searchCloseTransitionState]
+    [beginCloseTransitionIntent, shellLocalState.searchCloseTransitionState]
   );
 
   const releaseReadyCloseSnapshot = useSearchSurfaceRuntimeSelector(
@@ -352,9 +430,19 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
 
   const cancelSearchSheetCloseTransition = React.useCallback(
     (closeIntentId?: string) => {
-      finalizeRuntime.cancelSearchSheetCloseTransition(closeIntentId);
+      const activeCloseIntentId = getActiveCloseIntentId();
+      if (
+        closeIntentId != null &&
+        activeCloseIntentId != null &&
+        activeCloseIntentId !== closeIntentId
+      ) {
+        return;
+      }
+
+      resetCloseTransition();
+      shellLocalState.setHoldPersistentPollLane(false);
     },
-    [finalizeRuntime]
+    [getActiveCloseIntentId, resetCloseTransition, shellLocalState]
   );
 
   const closeTransitionActions = React.useMemo(
@@ -376,14 +464,14 @@ export const useResultsPresentationCloseTransitionStateRuntime = ({
     () => ({
       closeTransitionActions,
       beginCloseTransition,
-      setPendingCloseIntentId: intentRuntime.setPendingCloseIntentId,
-      matchesPendingCloseIntentId: intentRuntime.matchesPendingCloseIntentId,
+      setPendingCloseIntentId,
+      matchesPendingCloseIntentId,
     }),
     [
       beginCloseTransition,
       closeTransitionActions,
-      intentRuntime.matchesPendingCloseIntentId,
-      intentRuntime.setPendingCloseIntentId,
+      matchesPendingCloseIntentId,
+      setPendingCloseIntentId,
     ]
   );
 };
