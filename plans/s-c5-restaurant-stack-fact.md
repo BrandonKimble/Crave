@@ -203,3 +203,24 @@ declaration admits the lane immediately, restoring the old mount timing; the rel
 gates still gate the finalize. RED-proven (deadlocking flow → canonical home) +
 dismiss-repeat + profile cycle green. `/tmp/sc5-4b.yaml` should graduate to
 maestro/perf/flows as the docked-dismiss round-trip flow (owner call on naming).
+
+## RUN CLOSE (2026-07-10 ~1:45AM)
+
+- **Flow graduated**: maestro/perf/flows/docked-dismiss-roundtrip.yaml (the coverage class
+  that caught the item-3 deadlock).
+- **'Foreground mirror → stack fact' REJECTED as misconceived**: every remaining
+  profilePresentationActive consumer (reactive foreground gates + imperative post-commit
+  cleanup) asks a PRESENTATION question — the view-state flag IS their correct source; the
+  stack fact is the NAV signal and already owns all nav decisions. Sharper successor
+  question (open): are use-search-route-switch-post-commit-runtime's
+  closeRestaurantProfile calls now REDUNDANT with the pop-teardown writer (double close on
+  route switches that drop the restaurant entry)? Audit with a probe before touching.
+- **Item 1 CLOSED (973c9d61)**: named executors (executeMotionlessSessionExit /
+  executeTerminalHomeDismiss); gate → plan → dispatch; the stale rich-seam prose block died.
+- Three-shape dismissal sweep green from cold (round trip / dismiss-repeat / favorites pop).
+
+**REMAINING (each = a fresh focused session):** 6b (nav-clip latch → derived signal; Reanimated
+
+- map-adjacent flash risk — finger check mandatory), 2-full (close-chain one-file collapse, L),
+  S-D.3+4 (typed identity end-to-end + LaunchIntent dissolution + saved_place + BE-gated row
+  widening), the post-commit-redundancy probe above, and S-C.4 item 6 (owner product call).
