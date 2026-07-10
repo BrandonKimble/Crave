@@ -115,3 +115,15 @@ The area is "Favorites," not "Bookmarks." Screen title leans on the list framing
 - Is "map all saved" its own entry point or a mode of the All list?
 - List privacy semantics: keep Spotify's _private_ vs _remove-from-profile_ as two separate knobs, or collapse to one public/private toggle?
 - The "post to profile" analog: how do lists (the poll-posting analog) land on the profile — auto via public visibility (the Spotify model, current lean) or an explicit publish step?
+
+## Save funnel toolkit + tried/haven't-tried (owner, 2026-07-09)
+
+- Saving = CURATING: the save sheet + create-list page carry the toolkit —
+  add photo (opt-in button, never a prompt), a note field (notes make shared
+  lists feel authored — lists are a virality surface), and tags (schema now,
+  UI fast-follow; tags become toggle-strip filters on lists). See
+  product/images.md + plans/page-registry.md §6 for the funnel shape.
+- List-card photo strips: scrollable L-R; owner/COLLABORATORS see a "+" add
+  tile prepended to the strip; plain viewers never do.
+- Dish-side status axis: **tried / haven't tried** (copy TBD) — the analog
+  of the restaurant side's been/want-to-go.

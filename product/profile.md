@@ -96,3 +96,20 @@ Engagement is recognized, not paid:
 - Launch will likely ship SOME engagement incentive (esp. images) — design
   belongs to the screens/product thread; backend hookups are trivial once
   the mechanic is chosen (recognition is user-data + UI, not billing).
+
+## The food-log gallery (owner, 2026-07-09)
+
+The profile auto-aggregates every photo the user adds anywhere in the app —
+grouped by restaurant, dishes within, takenAt (EXIF) kept for a later
+timeline. Vision: the place people keep ALL their food photos (replacing the
+camera-roll habit), seeded via the "archaeology" import entry (pick photos →
+"where is this?" → optional dish link; own lists + recents boosted in that
+search). Photo credits render here (recognition mechanics above). Gallery
+presentation/organization = profile design pass (parked). Photo
+impressions/taps are tracked from day one and may later drive sorting here.
+
+## Ambient social: considered, deferred (owner, 2026-07-09)
+
+NO user feed (deliberate ~50-50 call; polls are the engagement center). If
+ambient social ever ships, it's the Spotify-peek analog ("X added 3 places
+to Want to Go"), not a posting feed. Do not relitigate without the owner.

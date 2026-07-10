@@ -180,3 +180,65 @@ visibility. The nav in/out motion reuses the existing search-transition slide/ma
 - Stub finger-test residuals (owner eyes, non-blocking): the close (X) pop path on stubs
   (shared `closeActiveRoute`, same as every child), and whether the nav bar transitions out
   on stub opens per the §3 rule (couldn't confirm under the dev error toast).
+
+## 6. Image/photo pages + the save funnel (owner discussion locked 2026-07-09)
+
+Product design of record: product/images.md (moments, moderation, Cloudinary,
+hero policy). This section registers the PAGES/FUNNELS it adds. "Funnel" =
+the owner's term: a triggered flow of sheets that collapses back to the
+trigger point when finished.
+
+### The SAVE funnel (curation toolkit — trigger: any save/favorite button)
+
+save button → **saveSheet** (pick an existing list → done collapses the
+funnel; or "create new list" →) → **createList** page (finishing auto-saves
+the item to the new list, funnel collapses back to the trigger context).
+TOOLKIT on both saveSheet and createList: **Add photo** button (opt-in
+affordance, NEVER a prompt — discovery-savers ignore it, just-ate savers
+self-select) + **note** field (+ tags: schema now, UI fast-follow; tags later
+filter lists via the toggle strip). Dish-save → photo pre-linked to the dish;
+restaurant-save → dish question offered inside addPhotos.
+
+### The ADD PHOTOS funnel (ONE reusable screen, context-parameterized)
+
+**addPhotos(restaurant?, dish?)** — all entry points converge here; it
+renders only the questions context can't answer:
+
+- media picker (PHPicker, zero permission; in-app capture; photos-only v1)
+- dish link: always offered, never required, pre-filled from context;
+  restaurant context shows the RANKED dish list w/ typeahead + skip; last
+  item "Other…" free text (caption + collection demand signal; never creates
+  dish entities)
+- "where is this?" step ONLY for the profile-gallery (archaeology) entry:
+  search screen w/ own-lists+recents boosted in autocomplete, then the dish
+  question below it (two opt-in questions, one page, child search collapses
+  back)
+
+Entry points (complete list): owner/collaborator "+" tile prepended to list-
+card photo strips (never for viewers); restaurant-profile button-row chip
+(the profile button row itself is NEW — Google-style scrollable chip list);
+restaurant-profile gallery add entry; user-profile food-log add entry
+(archaeology); save-funnel toolkit button.
+
+### Gallery pages
+
+- **restaurantGallery** — full gallery behind the profile's preview strip
+  (strip scrollable L-R). Sections: "By dish" (rows ordered by dish RANK —
+  the Google-can't-do differentiator) + "All photos".
+- **userGallery (food log)** — on the user profile; auto-aggregates every
+  photo the user added anywhere; grouped by restaurant, dishes within;
+  takenAt kept for a later timeline view. Profile page design pass owns the
+  presentation (parked — owner wants "attractive gallery", details TBD).
+
+### Card contract (all restaurant/dish cards, everywhere incl. favorites)
+
+Photo strip scrollable L-R (Google-style); single-thumbnail slots use the
+HERO policy (product/images.md: recent-above-quality-floor → tap-rate v2);
+imageless slots render the attractive PLACEHOLDER (display state only — the
+add button appears ONLY in owner/collaborator list contexts).
+
+### Favorites two-sided note (owner, same discussion)
+
+The dish side of favorites needs the analog of the restaurant side's
+been/want-to-go: **tried / haven't tried** (copy TBD). Recorded in
+product/favorites.md.
