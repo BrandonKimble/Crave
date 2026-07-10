@@ -1,7 +1,7 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { LoggerService } from '../../shared';
 
 /** The four delivery variants — NAMED transformations in Cloudinary
@@ -73,7 +73,9 @@ export class CloudinaryService {
     this.notificationUrl = this.configService.get<string>(
       'cloudinary.notificationUrl',
     );
-    this.configured = Boolean(this.cloudName && this.apiKey && this.apiSecret);
+    this.configured = Boolean(
+      this.cloudName && this.apiKey && this.apiSecret && this.webhookSecret,
+    );
     if (this.configured) {
       cloudinary.config({
         cloud_name: this.cloudName,
@@ -86,6 +88,10 @@ export class CloudinaryService {
         'Cloudinary not configured (CLOUDINARY_* env missing) — photo endpoints will 503',
       );
     }
+  }
+
+  get isConfigured(): boolean {
+    return this.configured;
   }
 
   private ensureConfigured(): void {
@@ -151,7 +157,9 @@ export class CloudinaryService {
     const expected = createHash('sha1')
       .update(rawBody + timestampHeader + this.webhookSecret!)
       .digest('hex');
-    return expected === signatureHeader;
+    const a = Buffer.from(expected);
+    const b = Buffer.from(signatureHeader);
+    return a.length === b.length && timingSafeEqual(a, b);
   }
 
   /** THE delivery-URL builder — every DTO carries these; no client ever
@@ -178,25 +186,6 @@ export class CloudinaryService {
     };
   }
 
-  /** Admin read for the reconciliation cron (≤500 req/hr on free — the
-   *  cron sweeps in ONE list call, never per-photo). */
-  async listPendingModeration(
-    maxResults = 100,
-  ): Promise<Array<{ publicId: string; status: string }>> {
-    this.ensureConfigured();
-    const response = (await cloudinary.api.resources_by_moderation(
-      'aws_rek',
-      'pending',
-      { max_results: maxResults },
-    )) as {
-      resources?: Array<{ public_id: string; moderation_status?: string }>;
-    };
-    return (response.resources ?? []).map((resource) => ({
-      publicId: resource.public_id,
-      status: resource.moderation_status ?? 'pending',
-    }));
-  }
-
   /** Fetch a single asset's state (reconciliation fallback + confirm). */
   async getAsset(publicId: string): Promise<{
     exists: boolean;
@@ -205,7 +194,6 @@ export class CloudinaryService {
     height?: number;
     bytes?: number;
     focusScore?: number;
-    takenAt?: Date;
   }> {
     this.ensureConfigured();
     try {
@@ -223,7 +211,6 @@ export class CloudinaryService {
         focusScore: (
           resource.quality_analysis as { focus?: number } | undefined
         )?.focus,
-        takenAt: this.extractTakenAt(resource),
       };
     } catch (error) {
       const status = (error as { error?: { http_code?: number } }).error
@@ -248,17 +235,5 @@ export class CloudinaryService {
     }
     // Webhook moderation notifications carry a flat moderation_status.
     return payload.moderation_status as string | undefined;
-  }
-
-  extractTakenAt(payload: Record<string, unknown>): Date | undefined {
-    const metadata = (payload.media_metadata ?? payload.image_metadata) as
-      | Record<string, string>
-      | undefined;
-    const raw = metadata?.DateTimeOriginal ?? metadata?.CreateDate;
-    if (!raw) return undefined;
-    // EXIF format: "YYYY:MM:DD HH:MM:SS" — normalize the date part.
-    const normalized = raw.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
-    const parsed = new Date(normalized);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   }
 }

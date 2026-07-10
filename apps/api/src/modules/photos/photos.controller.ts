@@ -76,8 +76,11 @@ export class PhotosController {
   }
 
   @Get(':photoId')
-  async getPhoto(@Param('photoId', new ParseUUIDPipe()) photoId: string) {
-    return this.photos.getPhoto(photoId);
+  async getPhoto(
+    @CurrentUser() user: User,
+    @Param('photoId', new ParseUUIDPipe()) photoId: string,
+  ) {
+    return this.photos.getPhoto(photoId, user.userId);
   }
 
   @Delete(':photoId')
@@ -90,8 +93,11 @@ export class PhotosController {
   }
 
   @Post(':photoId/report')
-  async report(@Param('photoId', new ParseUUIDPipe()) photoId: string) {
-    return this.photos.report(photoId);
+  async report(
+    @CurrentUser() user: User,
+    @Param('photoId', new ParseUUIDPipe()) photoId: string,
+  ) {
+    return this.photos.report(user.userId, photoId);
   }
 }
 

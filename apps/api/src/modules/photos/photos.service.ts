@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { PhotoStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -26,6 +27,8 @@ export interface PhotoDto {
   uploadedAt: Date;
   urls: PhotoUrls;
 }
+
+const MAX_PENDING_TICKETS_PER_USER = 10;
 
 const PHOTO_DTO_SELECT = {
   photoId: true,
@@ -105,25 +108,34 @@ export class PhotosService {
         );
       }
     }
-    const row = await this.prisma.photo.create({
+    // Ticket-minting cap: pending rows cost reconciliation Admin reads —
+    // a client bug or abuser must not be able to flood them.
+    const pendingCount = await this.prisma.photo.count({
+      where: { userId: params.userId, status: PhotoStatus.pending },
+    });
+    if (pendingCount >= MAX_PENDING_TICKETS_PER_USER) {
+      throw new BadRequestException(
+        'Too many uploads in flight — finish or wait for them to settle',
+      );
+    }
+    // App-generated id -> the REAL publicId is written in ONE create (a
+    // placeholder row would poison the unique index if the process died
+    // mid-dance, and two concurrent placeholders collide).
+    const photoId = randomUUID();
+    const photo = await this.prisma.photo.create({
       data: {
+        photoId,
         userId: params.userId,
         restaurantId: params.restaurantId,
         connectionId: params.connectionId ?? null,
         caption: params.caption?.slice(0, 512) ?? null,
         pendingDishName: params.pendingDishName?.slice(0, 256) ?? null,
         takenAt: params.takenAt ?? null,
-        publicId: 'pending', // replaced below once the id exists
+        publicId: this.cloudinary.publicIdFor(photoId),
       },
-      select: { photoId: true },
-    });
-    const publicId = this.cloudinary.publicIdFor(row.photoId);
-    const photo = await this.prisma.photo.update({
-      where: { photoId: row.photoId },
-      data: { publicId },
       select: PHOTO_DTO_SELECT,
     });
-    const ticket = this.cloudinary.signUploadTicket(row.photoId);
+    const ticket = this.cloudinary.signUploadTicket(photoId);
     return { photo: this.toDto(photo), ticket };
   }
 
@@ -191,7 +203,10 @@ export class PhotosService {
     }
   }
 
-  /** Safety verdict -> is-food gate -> live/removed. Idempotent. */
+  /** Safety verdict -> is-food gate -> live/removed. Every transition is a
+   *  CONDITIONAL update (where status=pending) — the DB arbitrates races
+   *  between webhook, reconciliation, and owner-delete; a settled photo can
+   *  never be re-moved or resurrected. */
   async applyModerationResult(
     photoId: string,
     publicId: string,
@@ -206,45 +221,72 @@ export class PhotosService {
       const urls = this.cloudinary.buildUrls(publicId);
       const isFood = await this.vision.isFoodContent(urls.thumb);
       if (!isFood) {
-        await this.remove(photoId, publicId, 'not_food');
+        // Not-food keeps the ASSET (classifier false-positives must stay
+        // auditable/recoverable); only the row leaves circulation.
+        await this.transition(
+          photoId,
+          PhotoStatus.pending,
+          PhotoStatus.removed,
+        );
+        this.logger.info('Photo removed', { photoId, reason: 'not_food' });
         return;
       }
-      await this.prisma.photo.update({
-        where: { photoId },
-        data: { status: PhotoStatus.live, moderatedAt: new Date() },
-      });
-      this.logger.info('Photo live', { photoId });
+      const flipped = await this.transition(
+        photoId,
+        PhotoStatus.pending,
+        PhotoStatus.live,
+      );
+      if (flipped) this.logger.info('Photo live', { photoId });
       return;
     }
     if (moderationStatus === 'rejected') {
-      await this.remove(photoId, publicId, 'moderation_rejected');
+      const flipped = await this.transition(
+        photoId,
+        PhotoStatus.pending,
+        PhotoStatus.removed,
+      );
+      if (flipped) {
+        await this.destroyAssetSafely(photoId, publicId);
+        this.logger.info('Photo removed', {
+          photoId,
+          reason: 'moderation_rejected',
+        });
+      }
     }
     // pending/undefined: leave for the reconciliation cron.
   }
 
-  private async remove(
+  /** Conditional state transition — returns whether THIS caller won. */
+  private async transition(
+    photoId: string,
+    from: PhotoStatus,
+    to: PhotoStatus,
+  ): Promise<boolean> {
+    const result = await this.prisma.photo.updateMany({
+      where: { photoId, status: from },
+      data: { status: to, moderatedAt: new Date() },
+    });
+    return result.count === 1;
+  }
+
+  private async destroyAssetSafely(
     photoId: string,
     publicId: string,
-    reason: string,
   ): Promise<void> {
-    await this.prisma.photo.update({
-      where: { photoId },
-      data: { status: PhotoStatus.removed, moderatedAt: new Date() },
-    });
     try {
       await this.cloudinary.destroyAsset(publicId);
     } catch (error) {
-      this.logger.error('Failed to destroy removed asset (retry via cron)', {
+      this.logger.error('Failed to destroy asset (retry via cron)', {
         photoId,
         error: {
           message: error instanceof Error ? error.message : String(error),
         },
       });
     }
-    this.logger.info('Photo removed', { photoId, reason });
   }
 
-  /** Owner delete — the ONLY user-initiated destroy. */
+  /** Owner delete — the ONLY user-initiated destroy. Conditional: whatever
+   *  state the photo is in moves to removed exactly once. */
   async deleteOwnPhoto(userId: string, photoId: string): Promise<void> {
     const photo = await this.prisma.photo.findUnique({
       where: { photoId },
@@ -256,42 +298,75 @@ export class PhotosService {
     if (photo.userId !== userId) {
       throw new ForbiddenException('Not your photo');
     }
-    await this.remove(photoId, photo.publicId, 'owner_deleted');
+    const won = await this.prisma.photo.updateMany({
+      where: { photoId, status: { not: PhotoStatus.removed } },
+      data: { status: PhotoStatus.removed, moderatedAt: new Date() },
+    });
+    if (won.count === 1) {
+      await this.destroyAssetSafely(photoId, photo.publicId);
+      this.logger.info('Photo removed', { photoId, reason: 'owner_deleted' });
+    }
   }
 
-  /** Report -> threshold auto-hide (no approval queue, ever). */
-  async report(photoId: string): Promise<{ hidden: boolean }> {
-    const photo = await this.prisma.photo.update({
+  /** Report -> threshold auto-hide on DISTINCT reporters (the unique index
+   *  on photo_reports is the dedup — one account can never hide a photo
+   *  alone). No approval queue, ever. */
+  async report(userId: string, photoId: string): Promise<{ hidden: boolean }> {
+    const photo = await this.prisma.photo.findUnique({
       where: { photoId },
-      data: { reportCount: { increment: 1 } },
-      select: { reportCount: true, status: true },
+      select: { status: true },
     });
-    if (
-      photo.status === PhotoStatus.live &&
-      photo.reportCount >= this.reportHideThreshold
-    ) {
-      await this.prisma.photo.update({
-        where: { photoId },
+    if (!photo || photo.status !== PhotoStatus.live) {
+      throw new NotFoundException('Photo not found');
+    }
+    try {
+      await this.prisma.photoReport.create({ data: { photoId, userId } });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return { hidden: false }; // already reported by this user
+      }
+      throw error;
+    }
+    const reporterCount = await this.prisma.photoReport.count({
+      where: { photoId },
+    });
+    await this.prisma.photo.updateMany({
+      where: { photoId },
+      data: { reportCount: reporterCount },
+    });
+    if (reporterCount >= this.reportHideThreshold) {
+      const hid = await this.prisma.photo.updateMany({
+        where: { photoId, status: PhotoStatus.live },
         data: { status: PhotoStatus.hidden },
       });
-      this.logger.warn('Photo auto-hidden by report threshold', { photoId });
-      return { hidden: true };
+      if (hid.count === 1) {
+        this.logger.warn('Photo auto-hidden by report threshold', { photoId });
+        return { hidden: true };
+      }
     }
     return { hidden: false };
   }
 
-  async getPhoto(photoId: string): Promise<PhotoDto> {
+  /** Visibility: LIVE photos are public; anything else is owner-only —
+   *  baked here so every future read path inherits the rule. */
+  async getPhoto(photoId: string, viewerUserId?: string): Promise<PhotoDto> {
     const photo = await this.prisma.photo.findUnique({
       where: { photoId },
       select: PHOTO_DTO_SELECT,
     });
     if (!photo) throw new NotFoundException('Photo not found');
+    if (photo.status !== PhotoStatus.live && photo.userId !== viewerUserId) {
+      throw new NotFoundException('Photo not found');
+    }
     return this.toDto(photo);
   }
 
   /** Reconciliation sweep: webhooks retry only 3x — any pending row older
    *  than the grace window gets its truth read from the Admin API. */
-  async reconcilePending(graceMinutes = 10, batch = 50): Promise<number> {
+  async reconcilePending(graceMinutes = 10, batch = 25): Promise<number> {
     const stale = await this.prisma.photo.findMany({
       where: {
         status: PhotoStatus.pending,

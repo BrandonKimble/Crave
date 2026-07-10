@@ -1080,6 +1080,7 @@ model User {
   subscriptions          Subscription[]
   accessGrants           AccessGrant[]
   photos                 Photo[]
+  photoReports           PhotoReport[]
   events                 UserEvent[]
   favorites              UserFavorite[]
   favoriteEvents         UserFavoriteEvent[]
@@ -1309,6 +1310,8 @@ model Photo {
   restaurant      Entity      @relation("RestaurantPhotos", fields: [restaurantId], references: [entityId], onDelete: Cascade)
   connection      Connection? @relation(fields: [connectionId], references: [connectionId], onDelete: SetNull)
 
+  reports PhotoReport[]
+
   @@index([restaurantId, status, uploadedAt(sort: Desc)], map: "idx_photos_restaurant_status")
   @@index([connectionId, status, uploadedAt(sort: Desc)], map: "idx_photos_connection_status")
   @@index([userId, status, uploadedAt(sort: Desc)], map: "idx_photos_user_status")
@@ -1321,6 +1324,25 @@ enum PhotoStatus {
   live
   hidden
   removed
+}
+
+enum PhotoEventType {
+  impression
+  tap
+}
+
+/// One report per (photo, user) — the unique index IS the dedup; hiding
+/// requires N DISTINCT reporters, never N clicks from one account.
+model PhotoReport {
+  reportId  String   @id @default(dbgenerated("gen_random_uuid()")) @map("report_id") @db.Uuid
+  photoId   String   @map("photo_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  photo     Photo    @relation(fields: [photoId], references: [photoId], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@unique([photoId, userId], map: "photo_reports_photo_user_key")
+  @@map("photo_reports")
 }
 
 /// Batched impression|tap events for photos (usage-ledger pattern) — feeds

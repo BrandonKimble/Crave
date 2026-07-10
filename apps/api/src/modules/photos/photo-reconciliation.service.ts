@@ -1,8 +1,8 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../../shared';
 import { PhotosService } from './photos.service';
+import { CloudinaryService } from './cloudinary.service';
 
 /**
  * Webhook delivery is at-most-4-attempts (0/3/6/9min) — this cron is the
@@ -17,13 +17,12 @@ export class PhotoReconciliationService {
 
   constructor(
     private readonly photos: PhotosService,
-    @Optional() private readonly configService: ConfigService | null,
+    private readonly cloudinary: CloudinaryService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PhotoReconciliationService');
-    this.enabled = Boolean(
-      this.configService?.get<string>('cloudinary.cloudName'),
-    );
+    // ONE notion of configured — CloudinaryService owns it.
+    this.enabled = this.cloudinary.isConfigured;
   }
 
   @Cron(CronExpression.EVERY_10_MINUTES)

@@ -13,6 +13,7 @@ function makeService(overrides?: {
   photo?: Record<string, unknown> | null;
   isFood?: boolean;
   reportThreshold?: number;
+  reporterCount?: number;
 }) {
   const prisma = {
     entity: {
@@ -23,8 +24,26 @@ function makeService(overrides?: {
     connection: {
       findUnique: jest.fn().mockResolvedValue({ restaurantId: 'r1' }),
     },
+    photoReport: {
+      create: jest.fn().mockResolvedValue({}),
+      count: jest.fn().mockResolvedValue(overrides?.reporterCount ?? 1),
+    },
     photo: {
-      create: jest.fn().mockResolvedValue({ photoId: 'p1' }),
+      count: jest.fn().mockResolvedValue(0),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      create: jest.fn().mockImplementation(({ data }) =>
+        Promise.resolve({
+          photoId: data.photoId ?? 'p1',
+          userId: data.userId,
+          restaurantId: data.restaurantId,
+          connectionId: data.connectionId ?? null,
+          publicId: data.publicId,
+          status: 'pending',
+          caption: data.caption ?? null,
+          takenAt: data.takenAt ?? null,
+          uploadedAt: new Date(),
+        }),
+      ),
       update: jest.fn().mockImplementation(({ data }) =>
         Promise.resolve({
           photoId: 'p1',
@@ -55,14 +74,14 @@ function makeService(overrides?: {
   };
   const cloudinary = {
     publicIdFor: (id: string) => `crave/test/photos/${id}`,
-    signUploadTicket: jest.fn().mockReturnValue({
+    signUploadTicket: jest.fn().mockImplementation((id: string) => ({
       uploadUrl: 'https://api.cloudinary.com/v1_1/test/image/upload',
       apiKey: 'k',
       timestamp: 1,
       signature: 's',
-      publicId: 'crave/test/photos/p1',
+      publicId: `crave/test/photos/${id}`,
       uploadPreset: 'crave_ugc_photo',
-    }),
+    })),
     buildUrls: jest.fn().mockReturnValue({
       thumb: 't',
       card: 'c',
@@ -72,7 +91,6 @@ function makeService(overrides?: {
     destroyAsset: jest.fn().mockResolvedValue(undefined),
     getAsset: jest.fn().mockResolvedValue({ exists: false }),
     extractModerationStatus: jest.fn().mockReturnValue(undefined),
-    extractTakenAt: jest.fn().mockReturnValue(undefined),
   };
   const vision = {
     isFoodContent: jest.fn().mockResolvedValue(overrides?.isFood ?? true),
@@ -108,8 +126,13 @@ describe('PhotosService lifecycle', () => {
       restaurantId: 'r1',
       connectionId: 'c1',
     });
-    expect(result.ticket.publicId).toBe('crave/test/photos/p1');
-    expect(prisma.photo.create).toHaveBeenCalled();
+    // ONE create carries the REAL publicId (no placeholder row, ever) and
+    // the id is app-generated.
+    const createArgs = prisma.photo.create.mock.calls[0][0];
+    expect(createArgs.data.publicId).toBe(
+      `crave/test/photos/${createArgs.data.photoId}`,
+    );
+    expect(result.photo.photoId).toBe(createArgs.data.photoId);
 
     prisma.connection.findUnique.mockResolvedValueOnce({
       restaurantId: 'OTHER',
@@ -123,30 +146,52 @@ describe('PhotosService lifecycle', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('moderation approved + is-food -> LIVE', async () => {
+  it('moderation approved + is-food -> LIVE (conditional transition from pending)', async () => {
     const { service, prisma } = makeService({ isFood: true });
     await service.applyModerationResult(
       'p1',
       'crave/test/photos/p1',
       'approved',
     );
-    const update = prisma.photo.update.mock.calls.find(
-      ([args]) => args.data?.status === 'live',
+    const update = prisma.photo.updateMany.mock.calls.find(
+      ([args]) =>
+        args.data?.status === 'live' && args.where?.status === 'pending',
     );
     expect(update).toBeDefined();
   });
 
-  it('moderation approved but NOT food -> REMOVED + asset destroyed', async () => {
+  it('a LOST transition race never double-settles (updateMany count 0 -> no side effects)', async () => {
+    const { service, prisma, cloudinary } = makeService({ isFood: true });
+    prisma.photo.updateMany.mockResolvedValue({ count: 0 });
+    await service.applyModerationResult(
+      'p1',
+      'crave/test/photos/p1',
+      'rejected',
+    );
+    expect(cloudinary.destroyAsset).not.toHaveBeenCalled();
+  });
+
+  it('moderation approved but NOT food -> REMOVED, asset KEPT (auditable false-positives)', async () => {
     const { service, prisma, cloudinary } = makeService({ isFood: false });
     await service.applyModerationResult(
       'p1',
       'crave/test/photos/p1',
       'approved',
     );
-    const update = prisma.photo.update.mock.calls.find(
+    const update = prisma.photo.updateMany.mock.calls.find(
       ([args]) => args.data?.status === 'removed',
     );
     expect(update).toBeDefined();
+    expect(cloudinary.destroyAsset).not.toHaveBeenCalled();
+  });
+
+  it('safety-REJECTED -> REMOVED + asset destroyed', async () => {
+    const { service, cloudinary } = makeService();
+    await service.applyModerationResult(
+      'p1',
+      'crave/test/photos/p1',
+      'rejected',
+    );
     expect(cloudinary.destroyAsset).toHaveBeenCalled();
   });
 
@@ -166,13 +211,50 @@ describe('PhotosService lifecycle', () => {
       ForbiddenException,
     );
 
-    const { service: service2, prisma: prisma2 } = makeService();
-    prisma2.photo.update.mockResolvedValueOnce({
-      reportCount: 3,
-      status: 'live',
+    const { service: service2 } = makeService({
+      photo: { photoId: 'p1', status: 'live' },
+      reporterCount: 3,
     });
-    const result = await service2.report('p1');
+    const result = await service2.report('u9', 'p1');
     expect(result.hidden).toBe(true);
+  });
+
+  it('duplicate report by the same user is a no-op (unique index dedup)', async () => {
+    const { service, prisma } = makeService({
+      photo: { photoId: 'p1', status: 'live' },
+      reporterCount: 3,
+    });
+    const { Prisma } = jest.requireActual('@prisma/client');
+    prisma.photoReport.create.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('dup', {
+        code: 'P2002',
+        clientVersion: 'x',
+      }),
+    );
+    const result = await service.report('u1', 'p1');
+    expect(result.hidden).toBe(false);
+    expect(prisma.photo.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('visibility: non-live photos are owner-only', async () => {
+    const { service } = makeService({
+      photo: {
+        photoId: 'p1',
+        userId: 'owner',
+        publicId: 'x',
+        status: 'hidden',
+        restaurantId: 'r1',
+        connectionId: null,
+        caption: null,
+        takenAt: null,
+        uploadedAt: new Date(),
+      },
+    });
+    await expect(service.getPhoto('p1', 'someone-else')).rejects.toThrow(
+      'Photo not found',
+    );
+    const own = await service.getPhoto('p1', 'owner');
+    expect(own.photoId).toBe('p1');
   });
 
   it('reconciliation expires abandoned tickets (no asset, >1h old)', async () => {
