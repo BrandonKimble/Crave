@@ -119,6 +119,39 @@ describe('buildMarkerCatalogReadModel — L1 group emission', () => {
     expect(catalog.every((entry) => entry.isInvisibleResident !== true)).toBe(true);
   });
 
+  it('DISH tab: the selected restaurant group STILL emits (tab-agnostic selection overlay)', () => {
+    const { catalog } = buildMarkerCatalogReadModel({
+      activeTab: 'dishes',
+      dishes: [],
+      markerRestaurants: [multiLocationRestaurant()],
+      selectedRestaurantId: 'rest-A',
+      canonicalRestaurantRankById: new Map(),
+      locationSelectionAnchor: null,
+      searchedBounds: BOUNDS,
+      resolveRestaurantMapLocations: resolveLocations,
+      pickPreferredRestaurantMapLocation: pickClosest,
+      getCraveScoreColorFromScore: () => '#00AA00',
+    });
+    expect(catalog).toHaveLength(4);
+    expect(catalog.every((entry) => entry.feature.properties.restaurantId === 'rest-A')).toBe(true);
+  });
+
+  it('DISH tab: no selection → no restaurant-axis entries', () => {
+    const { catalog } = buildMarkerCatalogReadModel({
+      activeTab: 'dishes',
+      dishes: [],
+      markerRestaurants: [multiLocationRestaurant()],
+      selectedRestaurantId: null,
+      canonicalRestaurantRankById: new Map(),
+      locationSelectionAnchor: null,
+      searchedBounds: BOUNDS,
+      resolveRestaurantMapLocations: resolveLocations,
+      pickPreferredRestaurantMapLocation: pickClosest,
+      getCraveScoreColorFromScore: () => '#00AA00',
+    });
+    expect(catalog).toHaveLength(0);
+  });
+
   it('selected restaurant renders ALL locations (the selection spread, forced-lane territory)', () => {
     const { catalog } = build({ selectedRestaurantId: 'rest-A' });
     expect(catalog).toHaveLength(4);

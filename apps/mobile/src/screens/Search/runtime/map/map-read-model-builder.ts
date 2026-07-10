@@ -65,6 +65,19 @@ export const buildMarkerCatalogReadModel = (
   const entries: MarkerCatalogEntry[] = [];
   let primaryCount = 0;
 
+  // L4 (§3.4): the selection overlay is TAB-AGNOSTIC — on the dishes axis the selected
+  // restaurant's GROUP still emits restaurant-axis entries (the all-locations spread), so a
+  // profile opened over a dish world gets its pins. On the restaurants axis this set is the
+  // full catalog as before.
+  const restaurantAxisRestaurants =
+    activeTab === 'restaurants'
+      ? markerRestaurants
+      : selectedRestaurantId == null
+        ? []
+        : markerRestaurants.filter(
+            (restaurant) => restaurant.restaurantId === selectedRestaurantId
+          );
+
   if (activeTab === 'dishes') {
     const dishesByLocation = new Map<string, { dish: FoodResult; rank: number }>();
 
@@ -116,8 +129,10 @@ export const buildMarkerCatalogReadModel = (
       });
       primaryCount += 1;
     });
-  } else {
-    markerRestaurants.forEach((restaurant) => {
+  }
+
+  {
+    restaurantAxisRestaurants.forEach((restaurant) => {
       const canonicalRank = canonicalRestaurantRankById.get(restaurant.restaurantId);
       // The marker catalog drops any restaurant without a numeric rank (rank is a search-ranking
       // concept). A committed restaurant/entity reveal (poll comment-span / restaurant deep link)

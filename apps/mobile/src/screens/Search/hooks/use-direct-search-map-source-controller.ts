@@ -1223,9 +1223,29 @@ export const useDirectSearchMapSourceController = ({
     // and would otherwise route the catalog down the empty-dishes branch, yielding zero pins).
     const isSeededRestaurantProjection =
       committedRestaurants.length === 0 && seededMarkerRestaurants != null;
+    // L4 (§3.4 ADDITIVE selection): a profile opened for a restaurant OUTSIDE the presented
+    // world (autocomplete suggestion mid-session) joins the catalog ADDITIVELY — the world's
+    // pins stay, the selected group appends (rank-1 reveal fallback + all-locations spread +
+    // forcedKeys promotion all key off selectedRestaurantId downstream). Gated to the ACTIVE
+    // selection so a stale seed from a closed profile can never linger in later frames. The
+    // pure-seed branch above is the degenerate case (union with an empty world).
+    const additiveSeededRestaurants =
+      !isSeededRestaurantProjection &&
+      seededMarkerRestaurants != null &&
+      selectedRestaurantId != null
+        ? seededMarkerRestaurants.filter(
+            (restaurant) =>
+              restaurant.restaurantId === selectedRestaurantId &&
+              !committedRestaurants.some(
+                (committed) => committed.restaurantId === restaurant.restaurantId
+              )
+          )
+        : [];
     const restaurants = isSeededRestaurantProjection
       ? seededMarkerRestaurants
-      : committedRestaurants;
+      : additiveSeededRestaurants.length > 0
+        ? [...committedRestaurants, ...additiveSeededRestaurants]
+        : committedRestaurants;
     const dishes = shouldProjectResultSources
       ? (mountedResults?.dishes ?? EMPTY_DISHES)
       : EMPTY_DISHES;
