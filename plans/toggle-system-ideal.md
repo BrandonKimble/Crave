@@ -196,7 +196,7 @@ adapter (API-identical); polls onto the engine (remote shape, per addendum 6). F
 runtime suite + engine spec + tsc green. (The area/kick work moved to the S-A
 session — v2.1 header item 2.)
 
-**Gate 2 — sim-gated (the eye):** FilterChip upgrades + port the five search chips;
+**Gate 2 — SHIPPED 2026-07-09 (4243d1c5, net −375 lines; sim-verified — a Reanimated array-shared-value read-after-write bug in the N-segment pill was caught+fixed on this pass: geometry now derives from plain-JS layoutsRef, never a .value read-back). Owner finger items remain (pill feel ×4 surfaces, chrome-swap first frame, N-similar mount, polls hitSlop, burst feel). Original spec:** FilterChip upgrades + port the five search chips;
 SegmentedToggle warm-restore + a11y tap + REPLACE the inline pill; stable strip slot
 keys. Feel-check script MUST include: pill travel + burst-tap coalescing; chip flips;
 chrome-swap FIRST FRAME (cold reveal after sheet close — the warm-restore case);
