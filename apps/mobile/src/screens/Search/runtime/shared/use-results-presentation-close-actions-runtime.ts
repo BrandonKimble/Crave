@@ -1,6 +1,9 @@
 import React from 'react';
 import { unstable_batchedUpdates } from 'react-native';
-import { resolveSessionDismissPlan } from '../../../../navigation/runtime/app-overlay-route-stack-algebra';
+import {
+  resolveSessionDismissPlan,
+  type SessionDismissPlan,
+} from '../../../../navigation/runtime/app-overlay-route-stack-algebra';
 
 import type { SearchClearOwner } from '../../hooks/use-search-clear-owner';
 import { createSearchSurfaceResultsExitTransaction } from './search-surface-results-transaction';
@@ -108,6 +111,88 @@ export const useResultsPresentationCloseActionsRuntime = ({
     ]
   );
 
+  // S-C.5 item 1 — THE MOTIONLESS EXECUTOR (pop-shaped dismissals: a child beneath the
+  // session or a non-search root). No dismissTransaction, no sheet slide: teardown rides the
+  // popped entries (origins restore presentation; the restaurant pop-teardown writer owns the
+  // profile; the results_exit commit below owns the NATIVE world teardown — gated on a world
+  // existing, else the exit has no native ack source and the transport would park at
+  // exit_requested until a future enter supersedes it).
+  const executeMotionlessSessionExit = React.useCallback(
+    (dismissPlan: Extract<SessionDismissPlan, { kind: 'popToEntry' | 'popToRoot' }>) => {
+      ignoreNextSearchBlurRef.current = true;
+      unstable_batchedUpdates(() => {
+        clearSearchState({
+          skipPostSearchRestore: true,
+        });
+        resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
+        setPendingCloseIntentId(null);
+        const surfaceSnapshotForExit = getSearchSurfaceRuntime().getSnapshot();
+        const hasWorldToExit =
+          surfaceSnapshotForExit.activeBundle.kind === 'results' ||
+          surfaceSnapshotForExit.heldBundle != null ||
+          surfaceSnapshotForExit.redrawTransaction != null;
+        if (hasWorldToExit) {
+          resultsRuntimeOwner.commitSearchSurfaceResultsExitTransaction(
+            createSearchSurfaceResultsExitTransaction(
+              nextSearchSurfaceResultsExitTransactionId(),
+              null
+            )
+          );
+        }
+        if (dismissPlan.kind === 'popToEntry') {
+          routeSceneRuntime.routeOverlayRouteCommandRuntime.popToEntryRoute(dismissPlan.entryId, {
+            applyOriginDetent: true,
+          });
+        } else {
+          routeSceneRuntime.routeOverlayRouteCommandRuntime.popToRootRoute({
+            applyOriginDetent: true,
+          });
+        }
+        getSearchSurfaceRuntime().finalizeSessionExitWithoutDismissMotion();
+      });
+    },
+    [
+      clearSearchState,
+      ignoreNextSearchBlurRef,
+      nextSearchSurfaceResultsExitTransactionId,
+      resultsRuntimeOwner,
+      routeSceneRuntime,
+      setPendingCloseIntentId,
+    ]
+  );
+
+  // S-C.5 item 1 — THE TERMINAL EXECUTOR (home-root dismissals): the ONE terminalDismiss
+  // switch pops the session and lands the docked home directly (docked polls = presentation
+  // mode of the search root); the dismiss-transaction choreography it arms owns the sheet
+  // slide + the native map wire exit. Outgoing scene derives from the stack fact.
+  const executeTerminalHomeDismiss = React.useCallback(() => {
+    ignoreNextSearchBlurRef.current = true;
+    unstable_batchedUpdates(() => {
+      clearTypedQuery();
+      isClearingSearchRef.current = true;
+      const activeRouteKey =
+        routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute.key;
+      const outgoingSheetSceneKey: OverlayKey =
+        activeRouteKey === 'restaurant' ? 'restaurant' : 'search';
+      const closeIntentId = requestClosePresentationIntent({
+        outgoingSheetSceneKey,
+      });
+      if (!closeIntentId) {
+        return;
+      }
+      resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
+      setPendingCloseIntentId(closeIntentId);
+    });
+  }, [
+    clearTypedQuery,
+    ignoreNextSearchBlurRef,
+    isClearingSearchRef,
+    requestClosePresentationIntent,
+    resultsRuntimeOwner,
+    routeSceneRuntime,
+    setPendingCloseIntentId,
+  ]);
+
   const beginCloseSearch = React.useCallback(() => {
     const surfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
     const hasVisibleSearchSurface =
@@ -133,133 +218,23 @@ export const useResultsPresentationCloseActionsRuntime = ({
       return;
     }
 
-    // Return-to-origin foundation — TOP-LEVEL-RICH dismiss seam (the LAST gap). If the CAPTURED
-    // origin is a top-level-rich SEEDED origin (favorites-as-search launched from bookmarks /
-    // profile), dismiss it as a SINGLE swapImmediately re-root DIRECTLY to the captured origin —
-    // bypassing the `terminalDismiss→polls` collapse choreography entirely. That intermediate is
-    // what used to BLANK this dismiss: it preserved the dismissing search handoff for its sheet
-    // slide, then the boundary restore re-rooted `polls→bookmarks` swapImmediately and SUPERSEDED
-    // it before it settled, latching the native presentation on a torn-down outgoing handoff. With
-    // no intermediate there is nothing to supersede. `dismissRestoreToTopLevelRichOrigin` does the
-    // SINGLE re-root (and returns true) ONLY for that origin shape; a degenerate home / restaurant-
-    // profile / comment→pollDetail child origin returns false and falls through to the UNCHANGED
-    // terminalDismiss path below (the home seam stays byte-identical). We tear down the search
-    // SURFACE first with skipPostSearchRestore (it does NOT arm/flush, so the captured origin
-    // survives), THEN emit the single re-root — mirroring the finalize CLEAR→RESTORE order.
-    // S-C.2 (plans/s-c-de-special-search.md): a search session PUSHED over a bookmarks/profile
-    // root dismisses as a plain POP — the root was never destroyed, and the popped entry's
-    // origin (S-B origin-on-entry) restores the departed presentation. The slot-based rich
-    // seam below remains for legacy (search-root) flows until S-C.3.
-    {
-      const routeState = routeSceneRuntime.routeSceneSwitchRuntime.getRouteState();
-      // Search-root (home) sessions keep the LEGACY terminalDismiss choreography for now —
-      // it owns the native map exit (the wire's dismiss correlation) that a bare pop skips
-      // (proven: home pop left the dismissed world's dots on the map). The motionless dismiss
-      // transaction that lets home dismiss be a true pop is S-C.3-B ledger item 1. Its setRoot
-      // collapse of [home, session] → [home] is stack-legal (setRoot = tab reset).
-      // Red team RT-1: detection is STACK MEMBERSHIP — a child (restaurant) may top the
-      // session; the dismissal then pops EVERYTHING above the root (popToRoot restores the
-      // deepest pushed entry's origin = the root's captured presentation).
-      // S-C.3-B step 2: the dismiss selector generalizes over the STACK SHAPE.
-      //  • top-is-session with a CHILD beneath (poll-dish search launched from pollDetail:
-      //    [search#home, pollDetail, search#session]) → closeActive pops ONE, revealing the
-      //    untouched child leg (scroll/comment position survive because the ENTRY survives —
-      //    the old re-root+re-push machinery is dead). NO manual nav-show: the derived rule
-      //    keeps the nav out while a child is revealed.
-      //  • session on a NON-SEARCH root (favorites/profile launches, incl. children pushed
-      //    over the session) → popToRoot (RT-1 shape; deepest entry's origin restores).
-      //  • session directly on the SEARCH root → legacy terminalDismiss home dance (its
-      //    first switch pops since step 1 — the home entry survives).
-      // S-C.5 item 1: the stack-shape decision lives in the algebra now
-      // (resolveSessionDismissPlan) — this hook only executes the plan.
-      const dismissPlan = resolveSessionDismissPlan(routeState);
-      if (dismissPlan.kind !== 'terminalHome') {
-        ignoreNextSearchBlurRef.current = true;
-        unstable_batchedUpdates(() => {
-          clearSearchState({
-            skipPostSearchRestore: true,
-          });
-          resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
-          setPendingCloseIntentId(null);
-          // S-C.4 item 5 — MOTIONLESS world exit. The pop skips the sheet dismissal
-          // choreography (no dismissTransaction, no slide), but the NATIVE map world must
-          // still tear down — without this the dismissed world's dots linger (masked behind
-          // full-height sheets, visible on the favorites pop). Committing the results_exit
-          // presentation transaction drives the wire's NORMAL exit path: exit frame →
-          // native presentation_exit_started/settled acks → intent completes. The exit is
-          // self-driving once committed — nothing here waits on sheet motion.
-          //
-          // Post-S-C.4 red team #1: gate on a results world existing (active/held bundle or
-          // an in-flight redraw). Without a world the exit has NO native ack source — the
-          // transport would park at exit_requested until a future enter supersedes it. Same
-          // condition finalizeSessionExitWithoutDismissMotion treats as "something to exit".
-          const surfaceSnapshotForExit = getSearchSurfaceRuntime().getSnapshot();
-          const hasWorldToExit =
-            surfaceSnapshotForExit.activeBundle.kind === 'results' ||
-            surfaceSnapshotForExit.heldBundle != null ||
-            surfaceSnapshotForExit.redrawTransaction != null;
-          if (hasWorldToExit) {
-            resultsRuntimeOwner.commitSearchSurfaceResultsExitTransaction(
-              createSearchSurfaceResultsExitTransaction(
-                nextSearchSurfaceResultsExitTransactionId(),
-                null
-              )
-            );
-          }
-          if (dismissPlan.kind === 'popToEntry') {
-            routeSceneRuntime.routeOverlayRouteCommandRuntime.popToEntryRoute(dismissPlan.entryId, {
-              applyOriginDetent: true,
-            });
-          } else {
-            routeSceneRuntime.routeOverlayRouteCommandRuntime.popToRootRoute({
-              applyOriginDetent: true,
-            });
-          }
-          getSearchSurfaceRuntime().finalizeSessionExitWithoutDismissMotion();
-        });
-        return;
-      }
+    // S-C.5 item 1: ONE decision, named executors. The stack-shape decision lives in the
+    // algebra (resolveSessionDismissPlan); this hook resolves the plan and dispatches to the
+    // executor that owns that shape's choreography.
+    const routeState = routeSceneRuntime.routeSceneSwitchRuntime.getRouteState();
+    const dismissPlan = resolveSessionDismissPlan(routeState);
+    if (dismissPlan.kind !== 'terminalHome') {
+      executeMotionlessSessionExit(dismissPlan);
+      return;
     }
-
-    // S-C.4 item 3: EVERYTHING reaching here is a HOME-root dismissal (children and
-    // non-search roots popped above). The terminalDismiss below is the ONE switch — it pops
-    // the session and lands the docked home directly (docked polls = presentation mode of the
-    // search root); there is no second restore emission and no origin ledger.
-    ignoreNextSearchBlurRef.current = true;
-    unstable_batchedUpdates(() => {
-      clearTypedQuery();
-      isClearingSearchRef.current = true;
-      const activeRouteKey =
-        routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute.key;
-      // S-C.5 slice A: outgoing scene derives from the stack fact alone (the mirror read
-      // is gone; see the slice-A probe result in the plan).
-      const outgoingSheetSceneKey: OverlayKey =
-        activeRouteKey === 'restaurant' ? 'restaurant' : 'search';
-      // S-C.5 slices B+C: the imperative camera pre-focus is gone — the saved-camera restore
-      // now rides the restaurant ENTRY's pop (the pop-teardown writer), the same owner every
-      // other pop-shaped close uses.
-      const closeIntentId = requestClosePresentationIntent({
-        outgoingSheetSceneKey,
-      });
-      if (!closeIntentId) {
-        return;
-      }
-
-      resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction();
-      setPendingCloseIntentId(closeIntentId);
-    });
+    executeTerminalHomeDismiss();
   }, [
-    clearSearchState,
     clearTypedQuery,
+    executeMotionlessSessionExit,
+    executeTerminalHomeDismiss,
     hasResults,
-    ignoreNextSearchBlurRef,
-    isClearingSearchRef,
     isSearchSessionActive,
-    requestClosePresentationIntent,
     routeSceneRuntime,
-    resultsSheetRuntime,
-    resultsRuntimeOwner,
-    setPendingCloseIntentId,
     submittedQuery.length,
   ]);
 
