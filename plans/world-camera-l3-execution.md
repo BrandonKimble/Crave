@@ -6,6 +6,49 @@ Companions: `plans/world-camera-l1-execution.md` (restaurantOnly map + L1.c sequ
 its profile-adjacent arms land HERE), L2's pure `resolve-focus-camera.ts` (shipped 640e98f5)
 plugs in here, and the L5 resolver roll-up shipped 9e656bc4.
 
+---
+
+## ⚠️ PROPOSED RE-ADJUDICATION (2026-07-10 ~5AM) — the more ideal L3: NO ProfileBody world
+
+**Sizing the body-union cut against the code surfaced that the premise may be stale.** The
+owner ratified "ProfileBody as a peer world kind" on 2026-07-08 — BEFORE S-B (entries as
+values, origin capture/restore), S-C (search de-specialed, pops own their teardown), and
+S-C.5 (the pop-teardown writer owning camera restore) existed. With those landed, everything
+the profile "world" was designed to provide already exists as composable primitives:
+
+- **Push/pop with exact origin restore incl. camera** — the route entry + origin-on-entry +
+  the pop-teardown writer (rig-proven for months of this effort). A world adds nothing here.
+- **The map relationship** — the profile's catalog/camera needs are EXACTLY L4's selection
+  overlay on the L1 group substrate: select the restaurant's group → all locations promote
+  (budget-EXEMPT, Q5 extend-not-displace), camera = focus (L2's shipped focus-fit),
+  deselect on pop → roles recompute, camera restores. Profile-over-a-search-session keeps
+  the session's catalog and selects into it — which is ALSO the owner's stated ideal for
+  in-search selection. Profile-from-home = the same selection over a one-group catalog
+  (published directly under L1 — the seeded-marker channel's honest replacement).
+- **The body data** — profile hydration (cache-first) already owns it; no world resolution
+  adds value on top.
+
+**Under this shape L3 becomes:** open profile = `push(restaurant entry)` + `selectGroup(id)`;
+dismiss = pop (existing restore) + `deselect`. The 7-file prepared-presentation machine, the
+warm-seed choreography, pendingSelection, auto-open's pending branch, restaurantOnly, and
+seeded markers ALL still die (L3.c unchanged) — but they dissolve into push+selection+
+hydration instead of into a widened search-world pipeline. The `profileSeed` identity kind
+and the body-union cut below become UNNECESSARY for profiles (delete the stub identity);
+the body union remains the right shape for **ListBody** (lists ARE result sets — the world
+pipeline is their natural home) and lands with listDetail instead.
+
+**Consequences:** L3 collapses to ~L4's selection substrate + the deletion sweep; L4 stops
+being a separate layer (profile open IS its first consumer); the natural-query
+single-result auto-open keeps working unchanged (it opens a profile OVER its results world
+— exactly the selection model). The reveal-joint camera track (L3.d) attaches to the child
+push transition instead of the world reveal.
+
+**OWNER CALL REQUIRED** — this amends the parent doc's ratified §2 (ProfileBody as peer
+kind). The sections below remain the design of record UNTIL adjudicated; if accepted,
+execution order becomes: L4 selection substrate (group select/deselect + z-lift + exemption,
+native seams already mapped in the L1 plan) → profile open/close cutover → the L3.c
+deletion sweep → camera-in-origin.
+
 ## The strangler seam (the survey's key finding)
 
 **`profileSeed` is a reserved-but-unwritten identity kind** — defined in
