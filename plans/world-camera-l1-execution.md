@@ -158,3 +158,37 @@ entity world is naturally single-restaurant, so the filter may be transitional-w
 the seeded-marker channel stays until its one-group catalog replacement lands IN THE SAME
 CUT (it is the sole marker source for profile-from-home). L1.d policy value lands with the
 L4 selection work.
+
+## L1.c dissolution trace (2026-07-10 ~6:20AM — agent-traced, verified current)
+
+**State topology:** intent ref (`restaurantOnlySearchRef`, set by 4 recent/launch lanes)
+leads; resolved `restaurantOnlyId` trails via the interaction-effects resolver (non-null
+IFF committed results contain the intent — a self-fulfilling gate: the intent's own
+committed entity search satisfies it). The autocomplete restaurant lane EXPLICITLY nulls
+the intent — it rides the SEEDED channel; the two are disjoint pin sources.
+
+**Key verdicts:**
+
+- The builder filter is a NO-OP post-commit (entity worlds are naturally single-restaurant);
+  it only acts in the [intent-set → commit] window — where the target ISN'T in the stale
+  world either, so today's window shows NO target pin (it merely blanks the old pins).
+  **Deleting the whole web trades brief blank-map for brief old-pin retention — arguably
+  better; finger-check item.**
+- `effectiveRestaurantOnlyId` web (direct-source ~28 refs): all arms classified dead-post-
+  commit or transitional-window; the one real worker is the PIN-AT-REVEAL race arm
+  (:2810-2817 sync re-publish) — whose window disappears with the producers.
+- The rank-1 fallback's restaurantOnly branch is redundant with selectedRestaurantId's.
+- `profile-open-presentation-plan`'s matcher (dismissBehavior 'clear' for recents/launch
+  closes) is STILL LIVE (feeds the pop-commit clear arm) — **Phase C holds pending an
+  owner-feel adjudication**: under origin-restore pops, should a recents-opened profile
+  dismiss pop to its single-result list ('restore') or clear home ('clear' — today)?
+- The SEEDED channel is the sole profile-from-home pin source — it STAYS until the L1
+  one-group catalog publish replaces it (Phase D, same joint as that build).
+
+**Executable order (fresh window):** Phase A (resolver + 4 intent setters + 6 null-setters
+
+- the state trio in search-primitives) + Phase B (builder param/filter/fallback-branch;
+  the effective web incl. :1211/:1277/:1298/:1330/:1434/:1440/:1467/:1492/:1513 guards,
+  :1632/:1688/:1864 telemetry, :2790-2817 effects; the 'restaurant_only' visual source kind
+  :254/:277/:295-296) — one joint, tsc-driven, then the four-lane rig sweep + a
+  recents-profile open (the window-delta lane). Phases C/D hold as above.
