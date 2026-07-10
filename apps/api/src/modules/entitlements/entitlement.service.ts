@@ -238,6 +238,24 @@ export class EntitlementService {
     });
   }
 
+  /** Account deletion: revoke every live grant across all entitlement codes
+   *  (history stays for audit). */
+  async revokeAllForUser(userId: string, reason: string): Promise<number> {
+    const codes = await this.prisma.accessGrant.findMany({
+      where: { userId, revokedAt: null },
+      select: { entitlementCode: true },
+      distinct: ['entitlementCode'],
+    });
+    const result = await this.prisma.accessGrant.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date(), revokedReason: reason.slice(0, 256) },
+    });
+    for (const row of codes) {
+      await this.recomputeCache(userId, row.entitlementCode);
+    }
+    return result.count;
+  }
+
   /** Revoke a single grant (reversible history stays). */
   async revoke(grantId: string, reason: string): Promise<void> {
     const grant = await this.prisma.accessGrant.update({

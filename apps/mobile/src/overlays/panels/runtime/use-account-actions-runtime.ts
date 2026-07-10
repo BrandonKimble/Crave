@@ -1,6 +1,8 @@
 import React from 'react';
+import { Alert } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 
+import { usersService } from '../../../services/users';
 import { notificationsService } from '../../../services/notifications';
 import { useNotificationStore } from '../../../store/notificationStore';
 import { useOnboardingStore } from '../../../store/onboardingStore';
@@ -60,8 +62,65 @@ export const useAccountActionsRuntime = () => {
     }
   }, [resetOnboarding, signOut, unregisterPushToken]);
 
+  // Apple 5.1.1(v): permanent in-app account deletion, reachable by ANY
+  // signed-in user (entitled or lapsed). Two-step: warning (incl. the
+  // App-Store-subscription caveat — Apple subs can only be cancelled in iOS
+  // Settings, deletion does not stop that billing) → typed DELETE confirm.
+  const handleDeleteAccount = React.useCallback(() => {
+    const runDeletion = async () => {
+      try {
+        await usersService.deleteMe();
+        await unregisterPushToken();
+        await signOut();
+        showAppModal({
+          title: 'Account deleted',
+          message:
+            'Your account and personal data are gone. If you had an App Store subscription, cancel it in iOS Settings → Apple ID → Subscriptions.',
+        });
+      } catch (error) {
+        logger.error('Account deletion failed', error);
+        announceFailureIfOnline();
+      }
+    };
+    Alert.alert(
+      'Delete account?',
+      'This permanently deletes your account, profile, and personal data. It cannot be undone.\n\nApp Store subscriptions are NOT cancelled by deleting your account — manage those in iOS Settings → Apple ID → Subscriptions.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.prompt(
+              'Type DELETE to confirm',
+              'This is permanent.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Delete forever',
+                  style: 'destructive',
+                  onPress: (typed?: string) => {
+                    if (typed?.trim().toUpperCase() === 'DELETE') {
+                      void runDeletion();
+                    } else {
+                      showAppModal({
+                        title: 'Not deleted',
+                        message: 'The confirmation text did not match.',
+                      });
+                    }
+                  },
+                },
+              ],
+              'plain-text'
+            );
+          },
+        },
+      ]
+    );
+  }, [signOut, unregisterPushToken]);
+
   return React.useMemo(
-    () => ({ handleSignOut, handleReplayOnboarding }),
-    [handleSignOut, handleReplayOnboarding]
+    () => ({ handleSignOut, handleReplayOnboarding, handleDeleteAccount }),
+    [handleSignOut, handleReplayOnboarding, handleDeleteAccount]
   );
 };

@@ -56,6 +56,13 @@ export const usersService = {
     const response = await api.patch<UserProfile>('/users/me', payload);
     return response.data;
   },
+  /** Permanent account deletion (Apple 5.1.1(v)). Destroys the Clerk user
+   *  and anonymizes server data; App Store subscriptions must be cancelled
+   *  by the user in iOS Settings (the confirm dialog says so). */
+  async deleteMe(): Promise<{ deleted: true }> {
+    const response = await api.delete<{ deleted: true }>('/users/me');
+    return response.data;
+  },
   async completeOnboarding(payload: {
     status: 'completed';
     onboardingVersion: number;

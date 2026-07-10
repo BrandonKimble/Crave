@@ -141,7 +141,7 @@ FollowListDrillInBody.displayName = 'FollowListDrillInBody';
 // userProfile ⇄ followList loop until EntityLink (S-D) wires the real ones.
 const SettingsSceneBody = React.memo(() => {
   const { pushRoute } = useAppOverlayRouteController();
-  const { handleSignOut, handleReplayOnboarding } = useAccountActionsRuntime();
+  const { handleSignOut, handleReplayOnboarding, handleDeleteAccount } = useAccountActionsRuntime();
   return (
     <View style={styles.body} testID="stub-scene-settings">
       <DrillInRow
@@ -163,6 +163,11 @@ const SettingsSceneBody = React.memo(() => {
         label="Sign out"
         testID="settings-sign-out"
         onPress={() => void handleSignOut()}
+      />
+      <DrillInRow
+        label="Delete account"
+        testID="settings-delete-account"
+        onPress={handleDeleteAccount}
       />
     </View>
   );

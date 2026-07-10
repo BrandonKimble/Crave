@@ -218,6 +218,26 @@ export class ClerkAuthService {
     }
   }
 
+  /** Permanently delete the Clerk user (account deletion, Apple 5.1.1(v)).
+   *  Throws on failure — the caller must NOT proceed with local anonymization
+   *  if the auth identity still exists. A 404 (already deleted) is success. */
+  async deleteClerkUser(authId: string): Promise<void> {
+    const client = this.getClerkClient();
+    if (!client) {
+      throw new Error('Clerk is not configured — cannot delete auth user');
+    }
+    try {
+      await client.users.deleteUser(authId);
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status === 404) {
+        this.logger.warn(`Clerk user ${authId} already deleted`);
+        return;
+      }
+      throw error;
+    }
+  }
+
   private getClerkClient(): ReturnType<typeof createClerkClient> | undefined {
     if (!this.secretKey) {
       return undefined;
