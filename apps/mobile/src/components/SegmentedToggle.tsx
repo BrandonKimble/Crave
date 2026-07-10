@@ -149,11 +149,18 @@ export function SegmentedToggle<T extends string>({
   // Segment geometry as arrays (reassigned whole on change — Reanimated reacts to
   // the reference swap). Index-aligned with `options`. Seeded from the warm-restore
   // cache so a remount paints the pill correctly on its first frame.
-  const initialXs = options.map((_option, i) => initialSegmentLayouts?.[i]?.x ?? 0);
-  const initialWidths = options.map((_option, i) => initialSegmentLayouts?.[i]?.width ?? 0);
-  const segmentXs = useSharedValue<number[]>(initialXs);
-  const segmentWidths = useSharedValue<number[]>(initialWidths);
-  const layoutReady = useSharedValue(initialWidths.every((width) => width > 0) ? 1 : 0);
+  const initialGeometryRef = React.useRef<{ xs: number[]; widths: number[] } | null>(null);
+  if (initialGeometryRef.current == null) {
+    initialGeometryRef.current = {
+      xs: options.map((_option, i) => initialSegmentLayouts?.[i]?.x ?? 0),
+      widths: options.map((_option, i) => initialSegmentLayouts?.[i]?.width ?? 0),
+    };
+  }
+  const segmentXs = useSharedValue<number[]>(initialGeometryRef.current.xs);
+  const segmentWidths = useSharedValue<number[]>(initialGeometryRef.current.widths);
+  const layoutReady = useSharedValue(
+    initialGeometryRef.current.widths.every((width) => width > 0) ? 1 : 0
+  );
 
   const layoutsRef = React.useRef<(LayoutRectangle | undefined)[]>(
     options.map((_option, i) => initialSegmentLayouts?.[i])

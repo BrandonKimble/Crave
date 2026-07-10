@@ -159,6 +159,26 @@ describe('toggle-interaction-engine', () => {
     expect(events.map((e) => e.type)).toEqual(['started', 'settled', 'finalized']);
   });
 
+  it('dispose is a quiet full stop: timer cleared, signal aborted, landing dropped, no events', () => {
+    const events: ToggleLifecycleEvent<Kind>[] = [];
+    const engine = createToggleInteractionEngine<Kind>({ onLifecycle: (e) => events.push(e) });
+    const seen: { signal?: AbortSignal } = {};
+    engine.begin(
+      ({ signal }) => {
+        seen.signal = signal;
+        return new Promise<void>(() => {});
+      },
+      { kind: 'a' }
+    );
+    jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS + 10);
+    expect(events.map((e) => e.type)).toEqual(['started', 'settled']);
+    engine.dispose();
+    expect(seen.signal?.aborted).toBe(true);
+    jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS + 10);
+    // No finalize/cancel/failed after dispose — the surface is gone.
+    expect(events.map((e) => e.type)).toEqual(['started', 'settled']);
+  });
+
   it('subscribe fires on every state transition and unsubscribes cleanly', () => {
     const engine = createToggleInteractionEngine<Kind>();
     const listener = jest.fn();

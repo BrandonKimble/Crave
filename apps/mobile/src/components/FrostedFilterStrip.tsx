@@ -177,9 +177,9 @@ export function FrostedFilterStrip({
   // hole identity on mount/unmount — unregister/re-register churn and a transient
   // frame where a control sits over a stale hole. Give conditional children explicit
   // keys; unconditional unkeyed children get React's stable positional key.
-  const slots = React.Children.toArray(children).map((child) => {
+  const slots = React.Children.toArray(children).map((child, index) => {
     const childKey = React.isValidElement(child) && child.key != null ? child.key : null;
-    const slotKey = childKey ?? 'unkeyed';
+    const slotKey = childKey ?? `unkeyed-${index}`;
     return (
       <StripHoleSlot
         key={slotKey}

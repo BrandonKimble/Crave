@@ -50,7 +50,9 @@ export type ToggleInteractionEngine<TKind extends string> = {
   notifyIntentComplete: (intentId: string) => void;
   getState: () => ToggleInteractionState<TKind>;
   subscribe: (listener: () => void) => () => void;
-  /** Test/teardown hook: clears any armed settle timer without emitting events. */
+  /** Teardown: a QUIET full stop — bumps the seq (dropping any in-flight landing),
+   *  aborts the consequence signal, clears the timer. No events, no state publish:
+   *  the surface is gone; nothing should hear from the engine again. */
   dispose: () => void;
 };
 
@@ -249,6 +251,16 @@ export const createToggleInteractionEngine = <TKind extends string>({
         listeners.delete(listener);
       };
     },
-    dispose: clearSettleTimeout,
+    dispose: () => {
+      interactionSeq += 1;
+      clearSettleTimeout();
+      abortController?.abort();
+      abortController = null;
+      activeKind = null;
+      activeIntentId = null;
+      activeRunner = null;
+      awaitingVisualSync = false;
+      listeners.clear();
+    },
   };
 };
