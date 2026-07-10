@@ -196,8 +196,22 @@ full natural world; crave://l/<slug> → the shared list's world with members re
 sharing works end-to-end for the first time.** REMAINING (named, deferred): OS universal-link
 registration (associated-domains entitlement + hosted AASA — infra/release item; until then
 https share links open the browser); ListBody failure/empty body for dead slugs (§5.6, the
-listDetail-era item — today a dead slug logs loudly and stays home); the S-C.5 re-probe of
-post-commit closeRestaurantProfile arms now that programmatic switches are drivable via URLs.
+listDetail-era item — today a dead slug logs loudly and stays home). The S-C.5 re-probe RAN
+same night: polls deep link over an open profile lands canonical — the post-commit arms are
+healthy under programmatic switches.
+
+> ⚠️ **OPEN RED (2026-07-10 ~4AM, [SE-QSTALL]): the NEW `searchDesire` lane (/q, /s) stalls
+> at skeleton when fired as a session_enter while the DOCKED-POLLS home is presented.** The
+> world resolves fine (API 200, rows committed, frame cached, [RECONCILE] session_enter
+> clean) — the content-plane reveal never finalizes. NOT a regression of existing flows:
+> typed submit from the same docked home renders fully; session_replace over a stuck world
+> renders fully; the lane worked at fresh boot (before polls presented). Repro:
+> docked-dismiss-roundtrip → wait settled 'Polls in New York' → `xcrun simctl openurl
+crave://q/ramen` → title commits, skeleton forever. Attribution next session: plant a
+> probe at the results-presentation surface authority logging (visualPolicy.phase,
+> enter-transaction state, poll release gates) on the repro — candidate class: the enter
+> presentation intent racing/awaiting the docked-polls release the same way the S-C.5
+> lane-input deadlock did, but on the ENTER side. Instrument, don't theorize.
 
 **S-F. Pick mode. — ADJUDICATED 2026-07-10: rides the listDetail page, not before.** §5's
 red-team already called pick non-foundational; with S-A..S-E executed the sharper fact is that
