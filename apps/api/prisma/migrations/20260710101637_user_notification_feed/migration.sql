@@ -11,7 +11,8 @@ ALTER TABLE "public"."photos" DROP CONSTRAINT "photos_restaurant_id_fkey";
 ALTER TABLE "public"."photos" DROP CONSTRAINT "photos_user_id_fkey";
 
 -- DropIndex
-DROP INDEX "public"."idx_entities_name_embedding_hnsw";
+-- (removed) Prisma drift-diff tried to DROP idx_entities_name_embedding_hnsw —
+-- an index it cannot model; see migration 20260705003434 + the tripwire spec.
 
 -- DropEnum
 DROP TYPE "public"."checkout_session_status";
