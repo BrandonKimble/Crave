@@ -2,7 +2,10 @@ import { Body, Controller, Get, Ip, Post } from '@nestjs/common';
 import { MarketResolveDto } from './dto/market-resolve.dto';
 import { MarketRegistryService } from './market-registry.service';
 import { IpLocationService } from './ip-location.service';
+import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
+// Exempt from the app-wide paywall (see AllowUnentitled docs for the why).
+@AllowUnentitled()
 @Controller('markets')
 export class MarketsController {
   constructor(

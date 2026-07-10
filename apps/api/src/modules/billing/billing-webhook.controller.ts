@@ -2,9 +2,12 @@ import { Body, Controller, Headers, Post, Req } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import { BillingService } from './billing.service';
 import { RevenueCatWebhookDto } from './dto/revenuecat-webhook.dto';
+import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
 type RawBodyRequest = FastifyRequest & { rawBody?: Buffer | string };
 
+// Exempt from the app-wide paywall (see AllowUnentitled docs for the why).
+@AllowUnentitled()
 @Controller('billing/webhooks')
 export class BillingWebhookController {
   constructor(private readonly billingService: BillingService) {}

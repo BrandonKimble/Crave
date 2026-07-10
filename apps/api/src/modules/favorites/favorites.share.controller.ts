@@ -1,6 +1,9 @@
 import { Controller, Get, Param } from '@nestjs/common';
 import { FavoriteListsService } from './favorite-lists.service';
+import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
+// Exempt from the app-wide paywall (see AllowUnentitled docs for the why).
+@AllowUnentitled()
 @Controller('favorites/lists/share')
 export class FavoritesShareController {
   constructor(private readonly favoriteListsService: FavoriteListsService) {}

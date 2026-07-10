@@ -5,7 +5,10 @@ import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { BillingService } from './billing.service';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { CreatePortalSessionDto } from './dto/create-portal-session.dto';
+import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
+// Exempt from the app-wide paywall (see AllowUnentitled docs for the why).
+@AllowUnentitled()
 @Controller('billing')
 @UseGuards(ClerkAuthGuard)
 export class BillingController {

@@ -1,6 +1,7 @@
 import { Controller, Get, HttpCode, HttpStatus, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { HealthService } from './health.service';
+import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
 /**
  * Health check endpoints for monitoring and container orchestration.
@@ -13,6 +14,8 @@ import { HealthService } from './health.service';
  * - GET /health/live - Simple liveness probe
  * - GET /health/ready - Readiness probe (checks dependencies)
  */
+// Exempt from the app-wide paywall (see AllowUnentitled docs for the why).
+@AllowUnentitled()
 @Controller('health')
 export class HealthController {
   constructor(private readonly healthService: HealthService) {}

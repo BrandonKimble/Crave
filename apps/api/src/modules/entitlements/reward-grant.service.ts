@@ -8,12 +8,19 @@ import { EntitlementService } from './entitlement.service';
  * lifetime caps are enforced (clamped, never errored) inside
  * EntitlementService.grant. Idempotency rides sourceRef: the same photoId /
  * invitee can never pay twice.
+ *
+ * DORMANT BY DEFAULT (hard-paywall decision 2026-07-09): under the launch
+ * model everyone in the app already pays, so "earn free days" is not trial
+ * currency — ledger day-grants only matter to someone whose subscription
+ * lapses (win-back cushion). Day amounts default to 0; set
+ * REWARD_PHOTO_DAYS / REWARD_REFERRAL_DAYS > 0 to activate (the freemium
+ * pivot, or an explicit win-back campaign).
  */
 @Injectable()
 export class RewardGrantService {
   private readonly logger: LoggerService;
-  private readonly photoDays = Number(process.env.REWARD_PHOTO_DAYS ?? 1);
-  private readonly referralDays = Number(process.env.REWARD_REFERRAL_DAYS ?? 7);
+  private readonly photoDays = Number(process.env.REWARD_PHOTO_DAYS ?? 0);
+  private readonly referralDays = Number(process.env.REWARD_REFERRAL_DAYS ?? 0);
 
   constructor(
     private readonly entitlements: EntitlementService,

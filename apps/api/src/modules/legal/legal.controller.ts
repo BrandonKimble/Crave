@@ -1,4 +1,5 @@
 import { Controller, Get, Header } from '@nestjs/common';
+import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
 /**
  * Legal/Compliance Controller
@@ -10,6 +11,8 @@ import { Controller, Get, Header } from '@nestjs/common';
  * These endpoints must be accessible without authentication and
  * should return HTML or plain text that can be displayed in web views.
  */
+// Exempt from the app-wide paywall (see AllowUnentitled docs for the why).
+@AllowUnentitled()
 @Controller()
 export class LegalController {
   /**

@@ -24,7 +24,10 @@ import { UsernameSuggestDto } from './dto/username-suggest.dto';
 import { UsernameService } from './username.service';
 import { UserFollowService } from './user-follow.service';
 import { ListUserFollowsDto } from './dto/list-user-follows.dto';
+import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
+// Exempt from the app-wide paywall (see AllowUnentitled docs for the why).
+@AllowUnentitled()
 @Controller('users')
 @UseGuards(ClerkAuthGuard)
 export class UserController {

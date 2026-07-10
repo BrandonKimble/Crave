@@ -3,9 +3,12 @@ import type { User } from '@prisma/client';
 import { CurrentUser } from '../../shared';
 import { ClerkAuthGuard } from './auth/clerk-auth.guard';
 import { AccountDeletionService } from './account-deletion.service';
+import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
 /** DELETE /users/me — in-app account deletion (Apple 5.1.1(v)). Reachable
  *  by ANY authenticated user, entitled or lapsed (Apple requires it). */
+// Exempt from the app-wide paywall (see AllowUnentitled docs for the why).
+@AllowUnentitled()
 @Controller('users')
 @UseGuards(ClerkAuthGuard)
 export class AccountDeletionController {

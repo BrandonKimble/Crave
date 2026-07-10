@@ -30,6 +30,10 @@ const service = new EntitlementService(
   null as never, // no redis in tests — cache path is optional by design
   fakeLogger,
 );
+// Reward days default to 0 (dormant under the hard paywall) — activate for
+// the spec the way a win-back campaign would.
+process.env.REWARD_PHOTO_DAYS = '1';
+process.env.REWARD_REFERRAL_DAYS = '7';
 const rewards = new RewardGrantService(service, fakeLogger);
 
 let userId: string;

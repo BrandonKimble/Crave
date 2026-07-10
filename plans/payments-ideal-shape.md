@@ -299,3 +299,29 @@ in-app account deletion (Apple 5.1.1(v), REQUIRED before submission),
 3.1.2 disclosure block + manage-subscription link (screens thread),
 App Review demo account via comp grant, reward-days = win-back framing at
 launch.
+
+## Model decisions FINAL (owner, 2026-07-09)
+
+1. **Gate scope: EVERYTHING.** After the trial/subscription lapses, the whole
+   app is behind the wall (restaurants/map/polls included). The thin-free-
+   shell alternative is shelved completely. Implementation: app-wide
+   `EntitlementEnforcementInterceptor` (global APP_INTERCEPTOR — an
+   interceptor, not a guard, because global guards run before controller
+   auth attaches request.user). Every authenticated route requires access
+   unless `@AllowUnentitled()`. Exempt surface: auth, users/me (profile,
+   onboarding, deletion), public users, billing + webhooks, health, legal,
+   markets (onboarding support), favorites share/public links, metrics.
+   Rollout rides ENTITLEMENT_GATING (currently log) — log mode records every
+   WOULD-block with route+user, so the exempt set gets validated against
+   real dogfood traffic before enforce. FREEMIUM PIVOT = add
+   @AllowUnentitled to the free-surface controllers (one line each) + set
+   BILLING_TRIAL_DAYS>0.
+2. **Intro free trial on ANNUAL ONLY** (card upfront, store-managed).
+   Monthly = pay immediately. ASC setup: attach the introductory offer to
+   the annual product only.
+3. **Reward days are DORMANT at launch** (REWARD_PHOTO_DAYS /
+   REWARD_REFERRAL_DAYS default 0). Under a hard paywall every in-app user
+   already pays, and ledger days don't stop Apple's billing clock — they
+   only matter to a LAPSED user. Honest framing: win-back cushion, not an
+   incentive. Launch incentives should be non-access rewards or App Store
+   offer codes instead; the machinery stays for the freemium pivot.
