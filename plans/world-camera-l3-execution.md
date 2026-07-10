@@ -50,6 +50,17 @@ with the parallel machine coexisting until proven — then the machine is delete
 
 ## Slices
 
+> **SCOPING FACT (read of the fetch table, 2026-07-10 ~4:50AM):** the world VALUE is
+> SearchResponse-centric — §2's `World.body` union (ResultsBody | ProfileBody | ListBody)
+> does not exist in code. The entity-restaurant lane already runs a structured
+> single-entity SEARCH producing a results world the profile auto-opens OVER; profileSeed's
+> "zero-network" promise means replacing that round trip with the profile fetch
+> (cache-first) as the world's data. So L3.a's real first move is the BODY-KIND AXIS on
+> the world value (constructor + seam + panel attach), with profileSeed synthesizing a
+> ProfileBody world from the hydration payload — not a SearchResponse look-alike. Do not
+> shortcut this with a synthesized single-restaurant SearchResponse: that would re-encode
+> the auto-open-over-results shape the stride exists to dissolve.
+
 **L3.a — the `profileSeed` live lane (additive; machine coexists).**
 Route it in `search-world-fetch.ts` (zero-network synthesis: the world's catalog = the one
 restaurant group — needs the restaurant profile fetch for locations; "zero-network" means
