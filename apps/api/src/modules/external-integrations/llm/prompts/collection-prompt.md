@@ -133,6 +133,8 @@ Timeliness cues to watch:
 - Secondhand information, hearsay, or curiosity ("I've heard", "supposedly", "want to try") without a firsthand or consensus verdict.
 - In a ranked, listed, or mixed source, judge each restaurant and each dish on its own local verdict. A positive verdict on one entry never carries to another entry, and an attribute stated for one entry never attaches to another.
 - Explicitly negative listing asks ("bad/avoid/worst"): treat replies as negative intent; Step 6 will withhold emission.
+- Defunct establishments: when the in-scope text makes clear the place no longer operates (closure statements like "closed down"/"RIP"/"went out of business", or nostalgia framing such as "who remembers"/"back in the day"/"used to go"), skip the mention — a recommendation for a place that no longer exists is not actionable. Places whose status is unstated remain eligible; do not guess at closures.
+- Price-only commentary ("priciest in town", "$100+ steak") with no quality or recommendation cue is not a recommendation; skip unless a quality verdict accompanies it.
 
 ## Step 2: Canonicalization & Alias Unification
 
