@@ -341,3 +341,43 @@ the rig`) + sendMessage handler hit ✓; 5×X pop chain exact-entry ✓;
   API instance if one piled up — always `lsof -ti :3000 | xargs kill`.
 - ALL WAVES W0–W4 CLOSED. Remaining = owner finger-test pass + the
   owner-led design/polish passes + RevenueCat price reconcile.
+
+## POST-RUN RED TEAM (2026-07-11, owner-directed)
+
+Six lenses: registry completeness, lists, photos/restaurant, social/messaging/
+share, cleanup, ideal-shape. Verdict: 1 BLOCKER (public profile lists
+projected shareSlug — published the collaborator capability), ~10 SIGNIFICANT,
+7 registry misses falsifying "100% surface", a cleanup inventory, 3 ranked
+refactors. Remediation waves dispatched; every finding is either FIXED,
+recorded DEFERRED-with-trigger, or an OWNER CALL below.
+
+OWNER CALLS surfaced by the red team (decide at the finger-test pass):
+
+- Dish share link = entity-search (/e/food) vs §8.2's "restaurant profile
+  scrolled to the dish". Current build = search. Reconcile spec or code.
+- Poll market fallback (§8.13 "nearest/home market when hovering nowhere")
+  vs the current honest "Pick a market" modal.
+- Unblock can silently demote a follow-edge-only conversation back to the
+  peer's Requests lane (derived-state honest; surprising).
+- Viewer sharing someone ELSE's slug-less list: send-in-app only (copy-link
+  hidden after the fix) — acceptable v1?
+
+DEFERRED with explicit triggers (ideal-shape, recorded not lost):
+
+- Single per-scene registration module (SceneDefinition object, registries
+  derive; L effort) — trigger: next multi-scene wave; absorbs comparators +
+  layout-mode as fields.
+- ONE typed modal registry (price/scoreInfo leave OverlayKey; M) — trigger:
+  the owner design/polish pass (touches every modal anyway).
+- sceneLayoutMode 'sheet-scroll'|'sheet-static'|'full-page' as a first-class
+  concept (S-M) — trigger: 3rd consumer of static-mode or full-page tricks.
+- Section-surface primitive across the 3 panel switchers — trigger: design
+  pass or 4th consumer (premature before visuals settle). NOTE: the W3 plan's
+  "one shared segmented-page machine" was never built — claim corrected here.
+- DB-backed contract-test lane (testcontainers/tx-rollback) for raw-SQL +
+  constraint races (mocked specs can't fail on query shape) — trigger: before
+  Austin load.
+- messaging shareFanOut/shareTargets move out of MessagingService into a
+  share-domain service — trigger: realtime (M3) work.
+- unreadCount O(conversations×queries) poll — optimize when the badge lands
+  (zero consumers today).
