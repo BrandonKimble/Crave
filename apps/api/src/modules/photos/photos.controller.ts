@@ -13,12 +13,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
-import { PhotoEventType } from '@prisma/client';
+import { PhotoEventType, PhotoVisibility } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsInt,
   Min,
   ValidateNested,
@@ -61,6 +63,12 @@ export class CreateUploadTicketDto {
   @IsOptional()
   @IsISO8601()
   takenAt?: string;
+
+  /** Uploader-chosen audience: private photos surface only to the uploader
+   *  (own food log / own reads); public read surfaces exclude them. */
+  @IsOptional()
+  @IsEnum(PhotoVisibility)
+  visibility?: PhotoVisibility;
 }
 
 export class PhotoEventDto {
@@ -82,6 +90,39 @@ export class RecordPhotoEventsDto {
   @ValidateNested({ each: true })
   @Type(() => PhotoEventDto)
   events!: PhotoEventDto[];
+}
+
+/** One card's strip identity: connectionId present = dish card (dish-linked
+ *  photos only); absent = restaurant card. */
+export class PhotoStripRefDto {
+  @IsUUID('4')
+  restaurantId!: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  connectionId?: string;
+}
+
+export class GetPhotoStripsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(60)
+  @ValidateNested({ each: true })
+  @Type(() => PhotoStripRefDto)
+  refs!: PhotoStripRefDto[];
+}
+
+export const PHOTO_REPORT_REASONS = [
+  'not_food',
+  'inappropriate',
+  'wrong_entity',
+  'other',
+] as const;
+
+export class ReportPhotoDto {
+  @IsOptional()
+  @IsIn(PHOTO_REPORT_REASONS)
+  reason?: (typeof PHOTO_REPORT_REASONS)[number];
 }
 
 /** Contribution endpoints sit BEHIND the app-wide paywall (subscribers
@@ -108,6 +149,14 @@ export class PhotosController {
     @Param('userId', new ParseUUIDPipe()) userId: string,
   ) {
     return this.reads.userFoodLog(userId, viewer.userId);
+  }
+
+  /** Batch card-strip read: one POST per visible screen of cards (search
+   *  results / favorites rows / restaurant dish list all consume it lazily
+   *  without touching the search executor DTOs). */
+  @Post('strips')
+  async strips(@Body() dto: GetPhotoStripsDto) {
+    return this.reads.cardStrips(dto.refs);
   }
 
   @Post('events')
@@ -141,6 +190,7 @@ export class PhotosController {
       caption: dto.caption,
       pendingDishName: dto.pendingDishName,
       takenAt: dto.takenAt ? new Date(dto.takenAt) : undefined,
+      visibility: dto.visibility,
     });
   }
 
@@ -165,8 +215,9 @@ export class PhotosController {
   async report(
     @CurrentUser() user: User,
     @Param('photoId', new ParseUUIDPipe()) photoId: string,
+    @Body() dto: ReportPhotoDto,
   ) {
-    return this.photos.report(user.userId, photoId);
+    return this.photos.report(user.userId, photoId, dto.reason);
   }
 }
 

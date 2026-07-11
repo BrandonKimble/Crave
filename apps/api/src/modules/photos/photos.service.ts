@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
-import { PhotoStatus, Prisma } from '@prisma/client';
+import { PhotoStatus, PhotoVisibility, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import {
@@ -22,6 +22,7 @@ export interface PhotoDto {
   restaurantId: string;
   connectionId: string | null;
   status: PhotoStatus;
+  visibility: PhotoVisibility;
   caption: string | null;
   takenAt: Date | null;
   uploadedAt: Date;
@@ -37,6 +38,7 @@ const PHOTO_DTO_SELECT = {
   connectionId: true,
   publicId: true,
   status: true,
+  visibility: true,
   caption: true,
   takenAt: true,
   uploadedAt: true,
@@ -89,6 +91,7 @@ export class PhotosService {
     caption?: string;
     pendingDishName?: string;
     takenAt?: Date;
+    visibility?: PhotoVisibility;
   }): Promise<{ photo: PhotoDto; ticket: SignedUploadTicket }> {
     const restaurant = await this.prisma.entity.findUnique({
       where: { entityId: params.restaurantId },
@@ -131,6 +134,7 @@ export class PhotosService {
         caption: params.caption?.slice(0, 512) ?? null,
         pendingDishName: params.pendingDishName?.slice(0, 256) ?? null,
         takenAt: params.takenAt ?? null,
+        visibility: params.visibility ?? PhotoVisibility.public,
         publicId: this.cloudinary.publicIdFor(photoId),
       },
       select: PHOTO_DTO_SELECT,
@@ -381,7 +385,11 @@ export class PhotosService {
   /** Report -> threshold auto-hide on DISTINCT reporters (the unique index
    *  on photo_reports is the dedup — one account can never hide a photo
    *  alone). No approval queue, ever. */
-  async report(userId: string, photoId: string): Promise<{ hidden: boolean }> {
+  async report(
+    userId: string,
+    photoId: string,
+    reason?: string,
+  ): Promise<{ hidden: boolean }> {
     const photo = await this.prisma.photo.findUnique({
       where: { photoId },
       select: { status: true },
@@ -390,7 +398,9 @@ export class PhotosService {
       throw new NotFoundException('Photo not found');
     }
     try {
-      await this.prisma.photoReport.create({ data: { photoId, userId } });
+      await this.prisma.photoReport.create({
+        data: { photoId, userId, reason: reason ?? null },
+      });
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -420,15 +430,20 @@ export class PhotosService {
     return { hidden: false };
   }
 
-  /** Visibility: LIVE photos are public; anything else is owner-only —
-   *  baked here so every future read path inherits the rule. */
+  /** Visibility: LIVE + visibility=public photos are public; anything else
+   *  is owner-only — baked here so every future read path inherits the
+   *  rule. */
   async getPhoto(photoId: string, viewerUserId?: string): Promise<PhotoDto> {
     const photo = await this.prisma.photo.findUnique({
       where: { photoId },
       select: PHOTO_DTO_SELECT,
     });
     if (!photo) throw new NotFoundException('Photo not found');
-    if (photo.status !== PhotoStatus.live && photo.userId !== viewerUserId) {
+    const isOwner = photo.userId === viewerUserId;
+    const isPublic =
+      photo.status === PhotoStatus.live &&
+      photo.visibility === PhotoVisibility.public;
+    if (!isPublic && !isOwner) {
       throw new NotFoundException('Photo not found');
     }
     return this.toDto(photo);
@@ -493,6 +508,7 @@ export class PhotosService {
       restaurantId: photo.restaurantId,
       connectionId: photo.connectionId,
       status: photo.status,
+      visibility: photo.visibility,
       caption: photo.caption,
       takenAt: photo.takenAt,
       uploadedAt: photo.uploadedAt,

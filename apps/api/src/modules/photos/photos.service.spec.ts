@@ -219,6 +219,22 @@ describe('PhotosService lifecycle', () => {
     expect(result.hidden).toBe(true);
   });
 
+  it('report persists the "what\'s wrong" reason (nullable)', async () => {
+    const { service, prisma } = makeService({
+      photo: { photoId: 'p1', status: 'live' },
+      reporterCount: 1,
+    });
+    await service.report('u1', 'p1', 'not_food');
+    expect(prisma.photoReport.create).toHaveBeenCalledWith({
+      data: { photoId: 'p1', userId: 'u1', reason: 'not_food' },
+    });
+
+    await service.report('u2', 'p1');
+    expect(prisma.photoReport.create).toHaveBeenLastCalledWith({
+      data: { photoId: 'p1', userId: 'u2', reason: null },
+    });
+  });
+
   it('duplicate report by the same user is a no-op (unique index dedup)', async () => {
     const { service, prisma } = makeService({
       photo: { photoId: 'p1', status: 'live' },
@@ -255,6 +271,43 @@ describe('PhotosService lifecycle', () => {
     );
     const own = await service.getPhoto('p1', 'owner');
     expect(own.photoId).toBe('p1');
+  });
+
+  it('visibility: a LIVE but PRIVATE photo is owner-only', async () => {
+    const { service } = makeService({
+      photo: {
+        photoId: 'p1',
+        userId: 'owner',
+        publicId: 'x',
+        status: 'live',
+        visibility: 'private',
+        restaurantId: 'r1',
+        connectionId: null,
+        caption: null,
+        takenAt: null,
+        uploadedAt: new Date(),
+      },
+    });
+    await expect(service.getPhoto('p1', 'someone-else')).rejects.toThrow(
+      'Photo not found',
+    );
+    const own = await service.getPhoto('p1', 'owner');
+    expect(own.photoId).toBe('p1');
+    expect(own.visibility).toBe('private');
+  });
+
+  it('ticket: visibility lands on the row at create (default public, explicit private)', async () => {
+    const { service, prisma } = makeService();
+    await service.createUploadTicket({ userId: 'u1', restaurantId: 'r1' });
+    expect(prisma.photo.create.mock.calls[0][0].data.visibility).toBe('public');
+    await service.createUploadTicket({
+      userId: 'u1',
+      restaurantId: 'r1',
+      visibility: 'private',
+    });
+    expect(prisma.photo.create.mock.calls[1][0].data.visibility).toBe(
+      'private',
+    );
   });
 
   it('reconciliation expires abandoned tickets (no asset, >1h old)', async () => {

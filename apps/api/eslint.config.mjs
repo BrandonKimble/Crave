@@ -38,7 +38,7 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['test-pipeline.ts'],
+          allowDefaultProject: [],
         },
         tsconfigRootDir: import.meta.dirname,
       },

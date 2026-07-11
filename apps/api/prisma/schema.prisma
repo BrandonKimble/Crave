@@ -1329,6 +1329,9 @@ model Photo {
   publicId        String      @unique @map("public_id") @db.VarChar(256)
   mediaType       String      @default("photo") @map("media_type") @db.VarChar(16)
   status          PhotoStatus @default(pending)
+  /// Uploader-chosen audience: private photos surface ONLY to the uploader
+  /// (own food log / own reads); every public read path excludes them.
+  visibility      PhotoVisibility @default(public)
   caption         String?     @db.VarChar(512)
   /// EXIF DateTimeOriginal (capture time) — GPS is NEVER persisted.
   takenAt         DateTime?   @map("taken_at")
@@ -1365,6 +1368,11 @@ enum PhotoStatus {
   removed
 }
 
+enum PhotoVisibility {
+  public
+  private
+}
+
 enum PhotoEventType {
   impression
   tap
@@ -1376,6 +1384,9 @@ model PhotoReport {
   reportId  String   @id @default(dbgenerated("gen_random_uuid()")) @map("report_id") @db.Uuid
   photoId   String   @map("photo_id") @db.Uuid
   userId    String   @map("user_id") @db.Uuid
+  /// Reporter's "what's wrong" pick (page-registry §8.6): not_food |
+  /// inappropriate | wrong_entity | other. Nullable — legacy rows predate it.
+  reason    String?  @db.VarChar(32)
   createdAt DateTime @default(now()) @map("created_at")
   photo     Photo    @relation(fields: [photoId], references: [photoId], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [userId], onDelete: Cascade)

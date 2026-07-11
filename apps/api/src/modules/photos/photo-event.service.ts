@@ -40,7 +40,10 @@ export class PhotoEventService implements OnModuleDestroy {
           await this.prisma.photo.findMany({
             where: {
               photoId: { in: [...new Set(candidate.map((e) => e.photoId))] },
+              // Ranking events are a PUBLIC-surface signal: private photos
+              // never rank publicly, so owner views of them don't count.
               status: 'live',
+              visibility: 'public',
             },
             select: { photoId: true },
           })

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PhotoStatus, Prisma } from '@prisma/client';
+import { PhotoStatus, PhotoVisibility, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CloudinaryService, type PhotoUrls } from './cloudinary.service';
 
@@ -31,6 +31,15 @@ export interface FoodLogGroupDto {
   photos: PhotoStripItemDto[];
 }
 
+/** One card's strip in the batch card-strip response. `key` echoes the
+ *  request ref's identity: connectionId when the ref carried one (dish
+ *  card), else restaurantId (restaurant card). */
+export interface CardStripDto {
+  key: string;
+  totalCount: number;
+  photos: PhotoStripItemDto[];
+}
+
 /** Strip-ordering policy (product/images.md, owner 2026-07-10: cards carry
  *  STRIPS, never single slots): above-quality-floor photos lead (no blurry
  *  photo fronts a strip), then recency; null focus (free-plan) passes the
@@ -39,9 +48,10 @@ const FOCUS_FLOOR = 0.15;
 const STRIP_SIZE = 10;
 
 /**
- * READ paths (plans/images-ideal-shape.md step 3). Only LIVE photos are
- * ever returned from these surfaces; visibility rules for non-live rows
- * live in PhotosService.getPhoto. All URL building rides the ONE
+ * READ paths (plans/images-ideal-shape.md step 3). Only LIVE + PUBLIC
+ * photos are ever returned from these surfaces (private photos surface
+ * only to their uploader — food log below, single-photo read in
+ * PhotosService.getPhoto). All URL building rides the ONE
  * CloudinaryService builder.
  */
 @Injectable()
@@ -77,6 +87,7 @@ export class PhotoReadService {
           where: {
             connectionId: { in: params.connectionIds },
             status: PhotoStatus.live,
+            visibility: PhotoVisibility.public,
           },
           _count: { photoId: true },
         }),
@@ -99,6 +110,7 @@ export class PhotoReadService {
           where: {
             restaurantId: { in: params.restaurantIds },
             status: PhotoStatus.live,
+            visibility: PhotoVisibility.public,
           },
           _count: { photoId: true },
         }),
@@ -118,6 +130,44 @@ export class PhotoReadService {
       byConnection,
       countsByRestaurant,
       countsByConnection,
+    };
+  }
+
+  /** The batch card-strip endpoint's shape (POST /photos/strips): one call
+   *  per visible screen of cards, one strip per ref. A ref WITH connectionId
+   *  is a dish card (dish-linked photos only); without, a restaurant card
+   *  (all the restaurant's photos). Rides the same windowed strip query +
+   *  ordering policy as everything else. */
+  async cardStrips(
+    refs: Array<{ restaurantId: string; connectionId?: string }>,
+  ): Promise<{ strips: CardStripDto[] }> {
+    const connectionIds = [
+      ...new Set(
+        refs.flatMap((ref) => (ref.connectionId ? [ref.connectionId] : [])),
+      ),
+    ];
+    const restaurantIds = [
+      ...new Set(
+        refs.flatMap((ref) => (ref.connectionId ? [] : [ref.restaurantId])),
+      ),
+    ];
+    const {
+      byRestaurant,
+      byConnection,
+      countsByRestaurant,
+      countsByConnection,
+    } = await this.stripPhotos({ restaurantIds, connectionIds });
+    return {
+      strips: refs.map((ref) => {
+        const key = ref.connectionId ?? ref.restaurantId;
+        const photos = ref.connectionId
+          ? (byConnection.get(ref.connectionId) ?? [])
+          : (byRestaurant.get(ref.restaurantId) ?? []);
+        const totalCount = ref.connectionId
+          ? (countsByConnection.get(ref.connectionId) ?? 0)
+          : (countsByRestaurant.get(ref.restaurantId) ?? 0);
+        return { key, totalCount, photos };
+      }),
     };
   }
 
@@ -141,7 +191,8 @@ export class PhotoReadService {
                    uploaded_at DESC
         ) AS rn
         FROM photos
-        WHERE ${column} = ANY(${ids}::uuid[]) AND status = 'live'
+        WHERE ${column} = ANY(${ids}::uuid[])
+          AND status = 'live' AND visibility = 'public'
       ) windowed
       WHERE rn <= ${perKey}
       ORDER BY rn ASC
@@ -172,14 +223,22 @@ export class PhotoReadService {
     const offset = params.offset ?? 0;
     const [all, totalCount, dishRows] = await Promise.all([
       this.prisma.photo.findMany({
-        where: { restaurantId, status: PhotoStatus.live },
+        where: {
+          restaurantId,
+          status: PhotoStatus.live,
+          visibility: PhotoVisibility.public,
+        },
         orderBy: { uploadedAt: 'desc' },
         skip: offset,
         take: limit,
         select: PHOTO_STRIP_SELECT,
       }),
       this.prisma.photo.count({
-        where: { restaurantId, status: PhotoStatus.live },
+        where: {
+          restaurantId,
+          status: PhotoStatus.live,
+          visibility: PhotoVisibility.public,
+        },
       }),
       this.dishSlices(restaurantId),
     ]);
@@ -218,7 +277,8 @@ export class PhotoReadService {
         ) AS rn
         FROM photos
         WHERE restaurant_id = ${restaurantId}::uuid
-          AND status = 'live' AND connection_id IS NOT NULL
+          AND status = 'live' AND visibility = 'public'
+          AND connection_id IS NOT NULL
       ) windowed
       WHERE rn <= ${perDish}
       ORDER BY rn ASC
@@ -227,7 +287,8 @@ export class PhotoReadService {
   }
 
   /** The profile food log: grouped by restaurant, newest activity first.
-   *  Owner sees everything except removed; visitors see live only. */
+   *  Owner sees everything except removed (including their private photos);
+   *  visitors see live + public only. */
   async userFoodLog(
     userId: string,
     viewerUserId: string | undefined,
@@ -235,12 +296,18 @@ export class PhotoReadService {
   ): Promise<FoodLogGroupDto[]> {
     const isOwner = userId === viewerUserId;
     const rows = await this.prisma.photo.findMany({
-      where: {
-        userId,
-        status: isOwner
-          ? { in: [PhotoStatus.live, PhotoStatus.pending, PhotoStatus.hidden] }
-          : PhotoStatus.live,
-      },
+      where: isOwner
+        ? {
+            userId,
+            status: {
+              in: [PhotoStatus.live, PhotoStatus.pending, PhotoStatus.hidden],
+            },
+          }
+        : {
+            userId,
+            status: PhotoStatus.live,
+            visibility: PhotoVisibility.public,
+          },
       orderBy: { uploadedAt: 'desc' },
       take: Math.min(params.limit ?? 200, 500),
       select: {
