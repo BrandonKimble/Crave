@@ -241,3 +241,37 @@ before merge.
   per design).
 - [ENTRYMOUNT]/[PREMOUNT] dev logs STAY until the W4 cleanup pass.
 - W1 CLOSED.
+
+## W2 running log
+
+- W2A LANDED (76992b16): postPhotos child scene (full registration diff =
+  listDetail pattern + params-equality disambiguation), openPostPhotosFunnel
+  global host, custom expo-camera cameraCapture full-screen page (new native
+  binary w/ camera pods installed), **DEV** test-images row, RestaurantPanel
+  "Add photo" entry.
+- W2B LANDED (76992b16/3232f301): POST /photos/strips batch endpoint +
+  16ms-dataloader client hook; strips on search cards / favorites rows /
+  restaurant dish rows; photo-events buffer (impression/tap, 10s/50/background
+  flush); long-press report modal w/ reason enum (migration).
+- W2C LANDED (3232f301): photos.visibility enum, ticket→row at create, ALL
+  public reads exclude private (8-site audit; getPhoto non-owner was the one
+  leak-shaped site), owner reads include own private; specs for each.
+- W2 SIM PASS (anchor): results cards carry strips (batch endpoint hit,
+  log-mode paywall line confirms auth'd route) ✓; restaurant page Add-photo
+  chip ✓; source modal 3 rows ✓; CUSTOM CAMERA page live (permission prompt
+  w/ app.json string → viewfinder page w/ shutter/flip/flash/close) ✓;
+  test-images → Post photos child scene (2 thumbs, Public/Private, CTA) ✓;
+  dish assignment (ranked real dishes, typeahead, Other…, chip, Clear,
+  re-assign) ✓. NOT sim-provable: the final Post press → upload progression
+  (sheet eats the Maestro tap; Cloudinary creds absent on dev anyway) —
+  OWNER FINGER-TEST item; upload pipeline unit-gated.
+- GOTCHA reconfirmed ×3: coordinate taps on scene-stack sheets get eaten;
+  tapOn id: is the only reliable lever (post-photos-submit testID added).
+  A stray paramless push_child_scene&scene=restaurant poisons the restaurant
+  scene (skeleton forever) — always pass routeParamsJson.
+- OWNER FINGER-TEST items from W2: Post-photos end-to-end on device (press
+  Post, watch per-photo progress/failure badges + retry, verify strip gains
+  the photo after webhook settle); camera snap→retake→use-photo on real
+  hardware; library multi-select; long-press report on a real strip photo;
+  private photo invisible to a second account.
+- W2 CLOSED (UI complete; visuals crude by design — W3/W4 design pass).
