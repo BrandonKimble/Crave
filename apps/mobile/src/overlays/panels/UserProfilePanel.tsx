@@ -2,7 +2,7 @@ import React from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components';
-import { usersService, type FollowEdge, type PublicUserProfile } from '../../services/users';
+import { usersService, type PublicUserProfile } from '../../services/users';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useTopMostRouteEntryForScene } from '../../navigation/runtime/use-top-most-route-entry-for-scene';
 import { useQuery } from '@tanstack/react-query';
