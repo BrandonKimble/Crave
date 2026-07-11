@@ -142,6 +142,23 @@ only where the _feel_ still needs your eye.
 - [ ] OWNER ACTION: set EXPO_PUBLIC_SHARE_BASE_URL (links currently fall
       back to https://crave-search.app).
 
+## 7.6 Page-chrome standard (owner decree 2026-07-11 — verify the feel)
+
+- [ ] EVERY page: first content sits FLUSH with the header's bottom edge
+      (zero gap) — profile avatar, bookmarks segments, restaurant switcher,
+      settings first row, DM thread, poll detail subject.
+- [ ] EVERY page: scroll a few px → the hairline divider fades in at the
+      header's bottom edge (same curve as the result sheet); back to top →
+      fades out. Settings (no grab handle) and dmSession (starts scrolled,
+      divider already visible) included.
+- [ ] EVERY page has the white layer — no bare frost behind content
+      anywhere. ⚠️ Polls feed + restaurant page previously showed frost
+      between cards BY DESIGN — they're white now per the decree; if you
+      want frost gaps back there, it's a FrostCutout wrap (owner call).
+- [ ] Profile metrics box = frost cutout: the map blur shows through the
+      rounded rect and tracks the box while scrolling / switching segments.
+- [ ] Edit profile opens cleanly (the hooks crash is fixed).
+
 ## 8. Known crude bits (deliberate, for the polish pass)
 
 - Strip heights/aspects eyeballed; totalCount "+N" overflow not rendered.

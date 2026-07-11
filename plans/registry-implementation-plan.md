@@ -441,3 +441,22 @@ OWNER ACTIONS from the sweep: set EXPO_PUBLIC_SHARE_BASE_URL (share links
 silently fall back to https://crave-search.app); NotificationsPanel
 RowAvatar + PollDetailPanel CommentAvatar are trivial MonogramAvatar
 follow-ups.
+
+## Page-chrome standard (owner decree 2026-07-11) — SHIPPED
+
+Three laws, all foundation-level (ADDING_A_SCENE.md §5 records them):
+
+1. FLUSH: zero top spacing between the header's bottom edge and first
+   content, every page (per-panel tops removed; paddingBottom kept).
+2. DIVIDER: the result sheet's scroll-fade hairline ([0,3,14]→[0,.35,1],
+   rgba(15,23,42,.14)) belongs to the header everywhere — scene-keyed
+   scroll-offset registry (stack semantics for entry-keyed children),
+   fallback to the shared container offset; forked copies deleted.
+3. WHITE LAYER: bodySurface:'white' is a required scene-foundation literal
+   (bare frost unrepresentable); SceneBodyFoundationSurface renders it;
+   FrostCutout punches measured, scroll-tracked holes (house
+   MaskedHoleOverlay). First cutout: profile metrics box.
+   Also fixed: EditProfilePanel hooks-order crash (useCallback below early
+   returns). Sim-verified: profile cutout live, flush seams, settings scroll
+   clip + divider. OWNER EYE items in checklist §7.6 (incl. polls/restaurant
+   frost-gap look change — FrostCutout wrap if wanted back).
