@@ -507,6 +507,7 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         disabled={isPosting}
         accessibilityRole="button"
         accessibilityLabel="Post photos"
+        testID="post-photos-submit"
         style={[styles.postButton, isPosting && styles.postButtonBusy]}
         testID="post-photos-post"
       >
