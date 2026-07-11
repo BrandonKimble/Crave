@@ -46,7 +46,6 @@ const redditCollectorCoreProviders = [
   CollectionEvidenceService,
   ExtractionPipelineService,
   RelevanceGateService,
-  CollectionSchedulerService,
   ProjectionRebuildService,
   ReplayService,
   UnifiedProcessingService,
@@ -71,7 +70,11 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       BullQueueMetricsService,
       // Content Retrieval Pipeline components (PRD Section 5.1.2 & 6.1)
       ContentRetrievalMonitoringService,
-      // Scheduled Collection Jobs components (PRD Section 5.1.2)
+      // Scheduled Collection Jobs components (PRD Section 5.1.2).
+      // CollectionSchedulerService is THE planning loop (cron) — worker-only
+      // by module composition; the api role must not instantiate any
+      // collection scheduling machinery.
+      CollectionSchedulerService,
       CollectionJobSchedulerService,
       KeywordSearchSchedulerService,
       // Keyword Entity Search components (PRD Section 5.1.2)
