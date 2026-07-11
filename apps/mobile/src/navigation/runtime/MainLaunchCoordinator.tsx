@@ -136,6 +136,26 @@ const resolveSemanticUserLocation = (
 ): Coordinate | null =>
   resolveUserLocationState(snapshot) === 'unavailable' ? null : (snapshot?.coordinate ?? null);
 
+/**
+ * THE permission chokepoint (location red-team 2026-07-10): the app previously
+ * only ever READ permission status — nothing anywhere requested it, so a fresh
+ * install sat at 'undetermined' forever, the GPS watch never started, and the
+ * location puck never mounted. Reading is not asking: when status is
+ * undetermined, ask the OS (one system prompt); every other status is returned
+ * as-is (denied users are never nagged — the ladder falls through to IP/national).
+ */
+async function ensureForegroundLocationPermission(): Promise<Location.LocationPermissionResponse | null> {
+  try {
+    const existing = await Location.getForegroundPermissionsAsync();
+    if (existing.status !== Location.PermissionStatus.UNDETERMINED) {
+      return existing;
+    }
+    return await Location.requestForegroundPermissionsAsync();
+  } catch {
+    return null;
+  }
+}
+
 const getPermissionState = (
   status: Location.PermissionStatus | null | undefined
 ): StartupLocationSnapshot['permission'] => {
@@ -639,9 +659,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
         setStartupCamera(buildCameraFromSnapshot(overrideSnapshot));
         setIsStartupResolved(true);
 
-        const overridePermissionResponse = await Location.getForegroundPermissionsAsync().catch(
-          () => null
-        );
+        const overridePermissionResponse = await ensureForegroundLocationPermission();
         const overridePermission = getPermissionState(overridePermissionResponse?.status);
         const overrideReducedAccuracy = isReducedAccuracyPermission(overridePermissionResponse);
         if (
@@ -662,7 +680,7 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
         return;
       }
 
-      const permissionResponse = await Location.getForegroundPermissionsAsync().catch(() => null);
+      const permissionResponse = await ensureForegroundLocationPermission();
       const permission = getPermissionState(permissionResponse?.status);
       const reducedAccuracy = isReducedAccuracyPermission(permissionResponse);
 
