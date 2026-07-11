@@ -23,7 +23,7 @@ type UseSearchForegroundShortcutsVisualRuntimeArgs = Pick<
   | 'isSuggestionOverlayVisible'
   | 'backdropTarget'
   | 'suggestionProgress'
-  | 'searchChromeOpacity'
+  | 'searchChromeContentOpacity'
   | 'searchChromeScale'
   | 'searchChromeTranslateY'
   | 'shouldDisableSearchShortcuts'
@@ -38,7 +38,7 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
   isSuggestionOverlayVisible,
   backdropTarget,
   suggestionProgress,
-  searchChromeOpacity,
+  searchChromeContentOpacity,
   searchChromeScale,
   searchChromeTranslateY,
   shouldDisableSearchShortcuts,
@@ -132,9 +132,12 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
   ]);
   const searchShortcutContentAnimatedStyle = useAnimatedStyle(
     () => ({
-      opacity: 1,
+      opacity:
+        isSuggestionPanelActive || isSuggestionOverlayVisible
+          ? 1
+          : searchChromeContentOpacity.value,
     }),
-    []
+    [isSuggestionOverlayVisible, isSuggestionPanelActive, searchChromeContentOpacity]
   );
   const shouldLockSearchChromeTransform = isSuggestionPanelActive || isSuggestionOverlayVisible;
   const searchShortcutsAnimatedStyle = useAnimatedStyle(() => {
@@ -145,16 +148,14 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
         : shortcutOpacityProgress.value;
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     const chromeTranslateY = shouldLockSearchChromeTransform ? 0 : searchChromeTranslateY.value;
-    const chromeRecedeOpacity = shouldLockSearchChromeTransform ? 1 : searchChromeOpacity.value;
     return {
-      opacity: opacity * chromeRecedeOpacity,
+      opacity,
       transformOrigin: SEARCH_CHROME_SCALE_TRANSFORM_ORIGIN,
       transform: [{ translateY: chromeTranslateY }, { scale: chromeScale }],
     };
   }, [
     isShortcutExitingToResults,
     isSuggestionOverlayVisible,
-    searchChromeOpacity,
     searchChromeScale,
     searchChromeTranslateY,
     shortcutOpacityProgress,

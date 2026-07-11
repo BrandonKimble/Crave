@@ -10,6 +10,7 @@ export type AppRouteSceneChromeMotionRuntime = {
   routeChromeMotionProgress: SharedValue<number>;
   searchBarInputAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   searchChromeOpacity: SharedValue<number>;
+  searchChromeContentOpacity: SharedValue<number>;
   searchChromeScale: SharedValue<number>;
   searchChromeTranslateY: SharedValue<number>;
 };

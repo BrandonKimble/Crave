@@ -60,19 +60,20 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
     transitionProgressOverride ?? derivedSearchChromeTransitionProgress;
   const searchChromeVisibilityProgress = visibilityProgressOverride;
 
-  const searchChromeSheetRecedeOpacity = useDerivedValue(() =>
-    interpolate(
-      searchChromeTransitionProgress.value,
-      [0, 0.45, 0.62, 0.8, 1],
-      [0, 0, 0.15, 0.9, 1],
-      Extrapolation.CLAMP
-    )
+  // Containers never fade with the sheet — they only scale/translate. The sheet-linked fade
+  // applies to chrome CONTENT (input text, shortcut labels/icons), and only partially.
+  const searchChromeContentSheetRecedeOpacity = useDerivedValue(() =>
+    interpolate(searchChromeTransitionProgress.value, [0, 1], [0.45, 1], Extrapolation.CLAMP)
   );
 
-  const searchChromeOpacity = useDerivedValue(
+  const searchChromeOpacity = useDerivedValue(() =>
+    searchChromeVisibilityProgress ? searchChromeVisibilityProgress.value : 1
+  );
+
+  const searchChromeContentOpacity = useDerivedValue(
     () =>
       (searchChromeVisibilityProgress ? searchChromeVisibilityProgress.value : 1) *
-      searchChromeSheetRecedeOpacity.value
+      searchChromeContentSheetRecedeOpacity.value
   );
 
   const searchChromeScale = useDerivedValue(() =>
@@ -84,14 +85,13 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
   );
 
   const searchBarInputAnimatedStyle = useAnimatedStyle(() => ({
-    opacity:
-      (searchChromeVisibilityProgress ? searchChromeVisibilityProgress.value : 1) *
-      searchChromeSheetRecedeOpacity.value,
+    opacity: searchChromeContentOpacity.value,
   }));
 
   return React.useMemo(
     () => ({
       searchChromeOpacity,
+      searchChromeContentOpacity,
       searchChromeScale,
       searchChromeTranslateY,
       searchChromeTransitionProgress,
@@ -101,6 +101,7 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
     [
       searchBarInputAnimatedStyle,
       searchChromeOpacity,
+      searchChromeContentOpacity,
       searchChromeScale,
       searchChromeTranslateY,
       searchChromeTransitionProgress,
@@ -153,6 +154,7 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
 
   const {
     searchChromeOpacity,
+    searchChromeContentOpacity,
     searchChromeScale,
     searchChromeTranslateY,
     searchBarInputAnimatedStyle,
@@ -173,6 +175,7 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
       routeChromeMotionProgress,
       overlayBackdropSheetTopY,
       searchChromeOpacity,
+      searchChromeContentOpacity,
       searchChromeScale,
       searchChromeTranslateY,
       searchBarInputAnimatedStyle,
@@ -186,6 +189,7 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
       overlayBackdropSheetTopY,
       searchBarInputAnimatedStyle,
       searchChromeOpacity,
+      searchChromeContentOpacity,
       searchChromeScale,
       searchChromeTranslateY,
     ]

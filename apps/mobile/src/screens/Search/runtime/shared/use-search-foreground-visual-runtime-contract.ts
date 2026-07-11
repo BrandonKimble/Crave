@@ -30,6 +30,7 @@ export type UseSearchForegroundVisualRuntimeArgs = {
   isSuggestionPanelActive: boolean;
   searchChromeTransitionProgress: SharedValue<number>;
   searchChromeOpacity: SharedValue<number>;
+  searchChromeContentOpacity: SharedValue<number>;
   searchChromeScale: SharedValue<number>;
   searchChromeTranslateY: SharedValue<number>;
   isSearchSessionActive: boolean;

@@ -37,7 +37,7 @@ export const useSearchForegroundChromeSurfaceVisualRuntime = ({
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     const chromeTranslateY = shouldLockSearchChromeTransform ? 0 : searchChromeTranslateY.value;
     return {
-      opacity: shouldLockSearchChromeTransform ? 1 : searchChromeOpacity.value,
+      opacity: searchChromeOpacity.value,
       backgroundColor: `rgba(255, 255, 255, ${chromeAlpha})`,
       shadowOpacity: Number(SEARCH_BAR_SHADOW.shadowOpacity ?? 0) * chromeAlpha,
       elevation: chromeAlpha > 0 ? Number(SEARCH_BAR_SHADOW.elevation ?? 0) : 0,
