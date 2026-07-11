@@ -737,6 +737,8 @@ export class EntityResolutionService implements OnModuleInit {
       string,
       { decision: 'match' | 'new'; candidateId: number | null }
     >();
+    // 4 concurrent judge requests: uncalibrated rate-limit-friendly bound;
+    // total judge latency = ceil(chunks/4) round-trips, any small value works.
     await this.mapLimit(chunks, 4, async (chunk) => {
       const verdicts = await this.llmService.matchEntitiesBatch({
         kind,

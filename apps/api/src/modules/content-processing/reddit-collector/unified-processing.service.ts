@@ -41,8 +41,12 @@ import type { ExtractionTraceContext } from './collection-evidence.service';
 import { RestaurantEnrichmentQueueService } from '../../restaurant-enrichment/restaurant-enrichment-queue.service';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 
+// Generous ceiling so a worst-case 300-mention batch never aborts mid-write;
+// normal batches finish in seconds — only a hung DB hits it. Insensitive.
 const DEFAULT_UNIFIED_PROCESSING_TX_TIMEOUT_MS = 15 * 60 * 1000;
+// Google Places dispatch fan-out; bounded by Places QPS, not tuned. Insensitive.
 const DEFAULT_RESTAURANT_ENRICHMENT_CONCURRENCY = 5;
+// Subreddit rows change rarely; TTL only bounds staleness of display fields.
 const DEFAULT_SUBREDDIT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_SUBREDDIT_CACHE_MAX_ENTRIES = 1024;
 
@@ -100,6 +104,8 @@ interface RestaurantMetadataUpdateOperation {
 // 300 is the value production behavior has been using (.env override of the
 // old 250 fallback — reconciled 2026-07-11 in favor of .env).
 const DEFAULT_UNIFIED_BATCH_SIZE = 300;
+// Resolution slice size: bounds one resolution pass's memory/LLM shortlist
+// fan-out. Uncalibrated; throughput-neutral (all slices run anyway).
 const DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE = 100;
 
 const GENERIC_FOOD_PLACEHOLDERS = new Set<string>([

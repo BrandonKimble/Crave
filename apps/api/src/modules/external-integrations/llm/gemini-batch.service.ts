@@ -328,6 +328,8 @@ export class GeminiBatchService implements OnModuleDestroy {
           ],
         },
         select: { jobId: true, purpose: true, model: true },
+        // Per-cycle bound only (submits are provider round-trips); leftovers
+        // resume next poll cycle, so any small value works.
         take: 10,
       });
       for (const job of resumable) {
@@ -373,6 +375,9 @@ export class GeminiBatchService implements OnModuleDestroy {
           ],
         },
         select: { jobId: true, purpose: true },
+        // Ingestion is the heavy DB-write step; a small per-cycle bound keeps
+        // one poll tick cheap. Leftovers ingest next cycle — throughput knob,
+        // not correctness.
         take: 5,
       });
       for (const job of uningested) {

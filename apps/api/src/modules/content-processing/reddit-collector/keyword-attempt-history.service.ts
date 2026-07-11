@@ -4,6 +4,10 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+// Cadence choices, not calibrated: they trade Reddit-API spend against
+// keyword freshness; any sane value works (2x/0.5x shifts collection cadence,
+// never correctness — dedupe makes re-attempts idempotent). no-results gets
+// the longest floor because barren keywords stay barren.
 const SUCCESS_COOLDOWN_MS = 7 * MS_PER_DAY;
 const ERROR_COOLDOWN_MS = 1 * MS_PER_DAY;
 const DEFERRED_COOLDOWN_MS = 6 * 60 * 60 * 1000;

@@ -22,6 +22,8 @@ export class EmbeddingService implements OnModuleInit {
   private redis: Redis | null = null;
   private readonly model = 'gemini-embedding-001';
   private readonly dimensions = 768;
+  // 100 = Gemini embedding-API per-request item ceiling (provider limit,
+  // not a tuning knob).
   private readonly batchSize = 100;
   // A string's embedding is immutable, so cache entries never go stale — the TTL
   // only bounds memory and model-version drift (the model is in the key, so a
