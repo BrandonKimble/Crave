@@ -509,7 +509,6 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         accessibilityLabel="Post photos"
         testID="post-photos-submit"
         style={[styles.postButton, isPosting && styles.postButtonBusy]}
-        testID="post-photos-post"
       >
         {isPosting ? (
           <ActivityIndicator size="small" color="#ffffff" />
