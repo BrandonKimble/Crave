@@ -188,3 +188,13 @@ before merge.
   already threaded (scroll-to consumption = W3). Live sim proof deferred
   to the W1 sim pass (current sim blocked on the tags-migration API
   restart).
+- W0.3 PROVEN on-sim (2026-07-11): push_child_scene probe verb landed;
+  pollDetail pushed FROM bookmarks context, hydrated seedless via
+  fetchPoll, X-close popped back to bookmarks (painter probe
+  displayed:bookmarks). From-anywhere = working foundation behavior.
+- W0.8 paywall seam: enforce-mode drive deliberately deferred to W4
+  (flipping ENTITLEMENT_GATING on the SHARED dev API would wall the
+  foundation session's dogfooding; W4 runs it in a scoped window).
+  Routing axis + log-mode behavior verified in the payments era.
+- W0 CLOSED. Tags-migration API restart done (favorites 500 root-caused
+  to the expected cross-session schema window; healthy again).
