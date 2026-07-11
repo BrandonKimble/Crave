@@ -27,13 +27,21 @@ import type { CutoutSkeletonRowType } from './cutout-skeleton-presets';
 
 const DEEP_LINK_HOST = 'cutout-skeleton-preview';
 
-const ROW_TYPES: CutoutSkeletonRowType[] = ['comment', 'dish', 'restaurant', 'tile', 'history'];
+const ROW_TYPES: CutoutSkeletonRowType[] = [
+  'comment',
+  'dish',
+  'restaurant',
+  'tile',
+  'history',
+  'photoStrip',
+];
 const ROW_COUNT_BY_TYPE: Record<CutoutSkeletonRowType, number> = {
   comment: 5,
   dish: 5,
   restaurant: 4,
   tile: 2,
   history: 7,
+  photoStrip: 5,
 };
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));

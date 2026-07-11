@@ -53,6 +53,8 @@
 	<string>Allow $(PRODUCT_NAME) to access your location</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to access your location</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow $(PRODUCT_NAME) to use the camera so you can add photos of your food</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Allow $(PRODUCT_NAME) to connect to your local network for development</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

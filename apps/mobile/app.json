@@ -20,7 +20,8 @@
       "bundleIdentifier": "com.brandonkimble.cravesearch",
       "deploymentTarget": "15.1",
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "Allow $(PRODUCT_NAME) to connect to your local network for development"
+        "NSLocalNetworkUsageDescription": "Allow $(PRODUCT_NAME) to connect to your local network for development",
+        "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to use the camera so you can add photos of your food"
       }
     },
     "android": {

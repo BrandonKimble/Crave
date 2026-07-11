@@ -27,7 +27,13 @@ import type { MaskedHole } from '../MaskedHoleOverlay';
  * by each rowType's STRIDE.
  */
 
-export type CutoutSkeletonRowType = 'comment' | 'dish' | 'history' | 'restaurant' | 'tile';
+export type CutoutSkeletonRowType =
+  | 'comment'
+  | 'dish'
+  | 'history'
+  | 'photoStrip'
+  | 'restaurant'
+  | 'tile';
 
 /** Clamp a fractional width to the available content width, never below 0. */
 const frac = (available: number, fraction: number): number =>
@@ -263,6 +269,36 @@ const buildTileRowHoles = ({ originX, originY, rowWidth }: RowOptions): MaskedHo
 const TILE_ROW_STRIDE =
   TILE_MIN_HEIGHT + TILE_FOOTER_MARGIN_TOP + TILE_FOOTER_HEIGHT + 2 * TILE_GRID_GAP;
 
+// ─── photoStrip (mirrors PhotoStrip — a row of ~3-4 landscape photo tiles) ──────────────────
+const PHOTO_STRIP_PADDING_TOP = 10;
+const PHOTO_STRIP_TILE_HEIGHT = 72;
+const PHOTO_STRIP_TILE_ASPECT = 4 / 3;
+const PHOTO_STRIP_TILE_GAP = 6;
+const PHOTO_STRIP_TILE_RADIUS = 10;
+const PHOTO_STRIP_PADDING_BOTTOM = 10;
+
+const buildPhotoStripHoles = ({ originX, originY, rowWidth }: RowOptions): MaskedHole[] => {
+  const holes: MaskedHole[] = [];
+  const tileWidth = Math.round(PHOTO_STRIP_TILE_HEIGHT * PHOTO_STRIP_TILE_ASPECT);
+  const y = originY + PHOTO_STRIP_PADDING_TOP;
+  // Tiles until the strip runs off the right edge (clamped), like the real scroller mid-strip.
+  let x = originX;
+  while (x < originX + rowWidth) {
+    holes.push({
+      x,
+      y,
+      width: Math.min(tileWidth, originX + rowWidth - x),
+      height: PHOTO_STRIP_TILE_HEIGHT,
+      borderRadius: PHOTO_STRIP_TILE_RADIUS,
+    });
+    x += tileWidth + PHOTO_STRIP_TILE_GAP;
+  }
+  return holes;
+};
+
+const PHOTO_STRIP_ROW_STRIDE =
+  PHOTO_STRIP_PADDING_TOP + PHOTO_STRIP_TILE_HEIGHT + PHOTO_STRIP_PADDING_BOTTOM;
+
 // ─── history (mirrors HistorySkeleton — icon + one line) ────────────────────────────────────
 const HISTORY_ROW_HEIGHT = 60;
 const HISTORY_ICON_SIZE = 18;
@@ -304,6 +340,7 @@ const ROW_BUILDERS: Record<CutoutSkeletonRowType, { build: RowBuilder; stride: n
     build: (o) => buildResultCardHoles(o, DISH_BODY_FRACTIONS, DISH_SCORE_WIDTH),
     stride: DISH_ROW_STRIDE,
   },
+  photoStrip: { build: buildPhotoStripHoles, stride: PHOTO_STRIP_ROW_STRIDE },
   tile: { build: buildTileRowHoles, stride: TILE_ROW_STRIDE },
   history: { build: buildHistoryHoles, stride: HISTORY_ROW_HEIGHT },
 };
