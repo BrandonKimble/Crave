@@ -35,6 +35,15 @@ export type SceneFoundationSpec = {
    */
   grabHandle: 'visible' | 'hidden';
   /**
+   * Whether the sheet is PINNED to the expanded snap while this scene is presented.
+   * 'expanded' (settings is the first consumer) = the scene rides the STANDARD child shell —
+   * identical snap points, so page switches never move the sheet — but dragging down
+   * rubber-bands back to the top snap (the §8.11 edit-lock mechanics, keyed off this
+   * compile-time table instead of a runtime token; see overlaySheetSceneSnapLockRuntime).
+   * Required literal so every scene must STATE its lock decision.
+   */
+  snapLock: 'expanded' | 'none';
+  /**
    * The FOUNDATION WHITE LAYER (owner standard, 2026-07-11): every page renders a white plate
    * over the shared frosted foundation — no page may sit on bare frost. The only value is
    * 'white' BY DESIGN (a required literal every scene must state; opting out to bare frost is
@@ -53,6 +62,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   bookmarks: {
@@ -61,6 +71,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   profile: {
@@ -69,6 +80,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   restaurant: {
@@ -77,6 +89,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   saveList: {
@@ -85,6 +98,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   pollDetail: {
@@ -93,6 +107,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   pollCreation: {
@@ -101,6 +116,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   // Stub-pass scenes (plans/page-registry.md §1) — foundation decisions stated ahead
@@ -111,6 +127,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   listDetail: {
@@ -119,6 +136,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   followList: {
@@ -127,6 +145,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   notifications: {
@@ -135,6 +154,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   settings: {
@@ -142,8 +162,11 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     strip: 'none',
     failure: 'announcer',
     header: 'persistent',
-    // §7.7/§9a: full-snap exception — full-page illusion, NO grab handle, X close.
+    // §7.7/§9a: full-page illusion — NO grab handle, X close. Settings rides the STANDARD
+    // child shell (same snaps as every child, so profile↔settings never moves the sheet)
+    // and is LOCKED at the top snap instead: drags rubber-band back.
     grabHandle: 'hidden',
+    snapLock: 'expanded',
     bodySurface: 'white',
   },
   editProfile: {
@@ -152,6 +175,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   // W2 (page-registry §7.4): the post page — photo tiles; no filter strip.
@@ -161,6 +185,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   // W3 messaging (§4.1): inbox = person rows; DM thread = message rows.
@@ -170,6 +195,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
   dmSession: {
@@ -178,6 +204,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    snapLock: 'none',
     bodySurface: 'white',
   },
 };

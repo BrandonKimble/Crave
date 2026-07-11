@@ -32,6 +32,7 @@ import {
 } from './bottomSheetSharedRuntimeUtils';
 import { clampValue, SHEET_SPRING_CONFIG } from './sheetUtils';
 import { overlaySheetEditLockValue } from './overlaySheetEditLockRuntime';
+import { overlaySheetSceneSnapLockValue } from './overlaySheetSceneSnapLockRuntime';
 
 type RuntimeSnapValues = {
   expanded: number;
@@ -171,10 +172,11 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
     (value: number, velocity: number, gestureStartValue: number): number => {
       'worklet';
       const runtimeSnapValues = resolveRuntimeSnapValues();
-      // §8.11 edit-lock: while set, every gesture release resolves back to expanded —
-      // the gesture runtime already rubber-bands the drag itself, and this keeps a hard
-      // downward flick from gating past the lock. Inert when unset (0).
-      if (overlaySheetEditLockValue.value === 1) {
+      // Expanded pin: while the §8.11 edit-lock (dynamic) or the scene-foundation snapLock
+      // (static, presented scene's spec) is set, every gesture release resolves back to
+      // expanded — the gesture runtime already rubber-bands the drag itself, and this keeps
+      // a hard downward flick from gating past the lock. Inert when both unset (0).
+      if (overlaySheetEditLockValue.value === 1 || overlaySheetSceneSnapLockValue.value === 1) {
         return runtimeSnapValues.expanded;
       }
       const upperBound = runtimeSnapValues.preventSwipeDismiss

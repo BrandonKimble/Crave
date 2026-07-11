@@ -1,5 +1,3 @@
-import { initialWindowMetrics } from 'react-native-safe-area-context';
-
 import {
   EMPTY_SEARCH_ROUTE_SCENE_LAYOUT_STATE,
   type SearchRouteSceneLayoutState,
@@ -137,30 +135,9 @@ const createStaticTabShellSpec = ({
     style: overlaySheetStyles.container,
   });
 
-// W4 settings FULL-SNAP EXCEPTION (page-registry §7.7/§9a; W0.2 adjudication: NOT a new
-// 'full' snap kind — the pollDetail-precedent per-scene snapPoints override). The settings
-// sheet extends PAST the normal top snap (searchBarTop) to ≈ the safe-area top: full-page
-// illusion, paired with the scene-foundation `grabHandle: 'hidden'` flag. All three live
-// snaps pin to the full top (drags rubber-band back, like pollDetail); hidden rides the
-// shared layout value. initialWindowMetrics is the house source for static-context insets
-// (search-startup-geometry-seed-runtime does the same); 0-inset devices get the raw top.
-const SETTINGS_FULL_SNAP_TOP = Math.max(initialWindowMetrics?.insets.top ?? 0, 0);
-
-const createSettingsFullSnapShellSpec = ({
-  sceneLayout,
-}: {
-  sceneLayout: SearchRouteSceneLayoutState;
-}): AppRouteSceneStackShellSpec =>
-  normalizeSearchRouteSceneStackShellSpec({
-    overlayKey: 'settings',
-    snapPoints: {
-      expanded: SETTINGS_FULL_SNAP_TOP,
-      middle: SETTINGS_FULL_SNAP_TOP,
-      collapsed: SETTINGS_FULL_SNAP_TOP,
-      hidden: sceneLayout.snapPoints.hidden,
-    },
-    style: overlaySheetStyles.container,
-  });
+// Settings publishes the STANDARD child shell (identical snaps → profile↔settings never
+// moves the sheet); its top-snap pin is the scene-foundation `snapLock: 'expanded'` literal
+// (rubber-band drags, expanded-only releases), paired with `grabHandle: 'hidden'`.
 
 // Parameterized shell spec for the static child scenes (saveList + the stub pass).
 const createStaticChildShellSpec = ({
@@ -224,17 +201,13 @@ class AppRouteStaticSceneDescriptorController {
       sceneBodyTransport: SAVE_LIST_BODY_TRANSPORT,
     });
     // Stub-pass child scenes — same static-descriptor shape as saveList, placeholder bodies.
-    // settings alone swaps in the FULL-SNAP shell spec (§7.7/§9a exception).
     STATIC_STUB_CHILD_SCENE_KEYS.forEach((sceneKey) => {
       sceneInputLane.publishRouteSceneDescriptor({
         sceneKey,
-        shellSpec:
-          sceneKey === 'settings'
-            ? createSettingsFullSnapShellSpec({ sceneLayout })
-            : createStaticChildShellSpec({
-                sceneKey,
-                sceneLayout,
-              }),
+        shellSpec: createStaticChildShellSpec({
+          sceneKey,
+          sceneLayout,
+        }),
         sceneChrome: createMountedChrome(sceneKey),
         sceneBodyContent: createMountedBody(sceneKey),
         sceneBodyTransport: STUB_CHILD_BODY_TRANSPORT,

@@ -77,6 +77,8 @@ import {
   type AppRouteSheetFrameHostNativeSharedValues,
 } from './app-route-sheet-frame-host-native-targets';
 import { resolveAppRouteSheetScenePolicy } from './app-route-scene-policy-registry';
+import { getSceneFoundationSpec } from './scene-foundation-spec';
+import { setOverlaySheetSceneSnapLock } from '../../overlays/overlaySheetSceneSnapLockRuntime';
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
@@ -1457,6 +1459,13 @@ class AppRouteSheetHostAuthorityController {
     this.isRecomputingRuntimeConfig = true;
     return withSearchNavSwitchRuntimeAttribution('sheetHost', 'recomputeRuntimeConfig', () => {
       try {
+        // Scene snap lock (scene-foundation `snapLock` literal): synced from the scene whose
+        // SHELL the shared sheet currently presents (the presented scene, or the held outgoing
+        // during a transition hold — the shell the gestures physically act against). Feeds the
+        // same expanded-pin gates as the §8.11 edit-lock; idempotent SharedValue write.
+        setOverlaySheetSceneSnapLock(
+          getSceneFoundationSpec(resolvedSurfaceInput.activeSemanticOverlayKey)?.snapLock ?? 'none'
+        );
         const nextSnapshot = this.createRuntimeConfigSnapshot(resolvedSurfaceInput);
         if (areRuntimeConfigSnapshotsEqual(this.runtimeConfigSnapshot, nextSnapshot)) {
           return false;
