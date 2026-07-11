@@ -639,3 +639,30 @@ post it somewhere invisible). The poll-create page shows a display-only
 "Posting to {market}" label from the resolver (fallback: nearest/home
 market when hovering nowhere). duplicatePoll stays and is just the
 shared modal. Poll modal set is now: pollInfo + duplicatePoll.
+
+### 8.14 Profile lists FINAL + viewer list-detail + drag semantics (owner, 2026-07-11)
+
+- PROFILE LISTS (locked): pins + type badges, NO strip; middle step for
+  volume = CITY HEADER GROUPING (pinned float above groups); named
+  upgrade path if that fails = a strip of City + Restaurants|Dishes
+  only. Tags-on-tiles idea considered and dropped (tiles too busy; city
+  grouping answers it spatially).
+- OWN-PROFILE tile editing: LONG-PRESS any list tile → shared modal:
+  **Pin/Unpin · Share · Delete** (in that order). The editProfile PAGE
+  stays minimal: name, bio, picture (+ future fields) — pinning lives on
+  the tiles, not in editProfile.
+- VIEWER'S LIST DETAIL (opening a list from someone's profile): YES to a
+  toggle strip — it's the SAME strip component as the owner's list
+  detail, role-gated: viewers get **Sort** (default = the owner's custom
+  ranking when one exists — their opinion IS the artifact; plus Best/
+  Crave-Score and Recently added — flipping between "their take" and
+  "the canonical truth" is a core delight) + the item FILTERS (open now,
+  price). NO edit toggle, no add buttons, no collaborator affordances
+  (those appear only for owner/collaborators). One component, two roles.
+  Strips belong where ITEMS get sliced (list detail, for everyone);
+  the list-of-lists gallery stays strip-free.
+- DRAG SEMANTICS confirmed: movement within the first ~0.3s = scroll;
+  stillness through 0.3s = lift (row body); handle icon lifts instantly.
+  During a drag: rows shuffle live around the finger (animation quality
+  is a named polish target) and dragging to the list's top/bottom edge
+  AUTO-SCROLLS the list.
