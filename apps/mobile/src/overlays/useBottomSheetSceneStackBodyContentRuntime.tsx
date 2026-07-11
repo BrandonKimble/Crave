@@ -28,6 +28,10 @@ import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneSt
 // mounted (React state isolation by construction), shows only the ACTIVE unit, and emits the
 // temporary [ENTRYMOUNT] probe the anchor's sim pass asserts on (removed after the probe).
 const sceneEntryMountHiddenStyle = { display: 'none' as const };
+// Active unit: flexGrow so a STATIC-mode body (dmSession) can fill the frame
+// through the boundary. Inert for scroll-mode scenes — inside a content-sized
+// scroll container there is no extra space to grow into.
+const sceneEntryMountActiveStyle = { flexGrow: 1 };
 
 // W1 slice 3 — the [PREMOUNT] first-commit sentinel: rendered INSIDE the boundary's subtree
 // (after the body), so its run-once layout effect fires in the same Fabric commit as the
@@ -79,7 +83,7 @@ const SceneEntryMountBoundary = React.memo(
       return undefined;
     }, [unitKey]);
     return (
-      <View style={isActiveUnit ? null : sceneEntryMountHiddenStyle}>
+      <View style={isActiveUnit ? sceneEntryMountActiveStyle : sceneEntryMountHiddenStyle}>
         {children}
         <PremountFirstCommitSentinel sceneKey={sceneKey} entryId={entryId} unitKey={unitKey} />
       </View>
@@ -88,9 +92,13 @@ const SceneEntryMountBoundary = React.memo(
 );
 SceneEntryMountBoundary.displayName = 'SceneEntryMountBoundary';
 
+// Static-mode surface FILLS the body frame (flex:1 down the chain) so a
+// static body that owns its layout (dmSession: thread flex:1 + bottom-pinned
+// composer) can anchor to the frame's bottom edge.
+const staticContentFillStyle = { flex: 1 };
 const StaticContentSurface = React.memo(
   ({ content, containerStyle, surfaceStyle }: StaticContentSurfaceProps) => (
-    <View style={surfaceStyle}>
+    <View style={[staticContentFillStyle, surfaceStyle]}>
       <View style={containerStyle}>{content}</View>
     </View>
   )

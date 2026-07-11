@@ -1,5 +1,13 @@
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native';
 import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X as LucideX } from 'lucide-react-native';
@@ -14,6 +22,8 @@ import {
 } from '../../services/messaging';
 import { usersService } from '../../services/users';
 import { overlaySheetStyles } from '../overlaySheetStyles';
+import { resolveExpandedTop } from '../sheetUtils';
+import { getSearchStartupGeometrySeed } from '../../screens/Search/runtime/shared/search-startup-geometry';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
@@ -24,7 +34,8 @@ import type { OverlayRouteParamsMap } from '../../navigation/runtime/app-overlay
 // ─── W3 messaging scenes (plans/w3-messaging-design.md §4) ───────────────────────────────────
 // messagesInbox: child SINGLETON (no params); MVCP disabled on its transport (re-sorting list).
 // dmSession: ENTRY-KEYED child per conversation — params flow FROM THE ENTRY (C2 contract);
-// chat thread keeps default anchoring, composer = the PollDetail useAnimatedKeyboard pattern.
+// STATIC body (owns its layout): thread ScrollView flex:1 above a composer bar pinned to the
+// sheet's visible bottom edge that rides above the keyboard (PollDetail chin geometry).
 // Crude-real per the design's M2 slice: mapped rows in the sheet scroll surface (launch-scale
 // threads), 15s/5s polling via React Query intervals — M3 replaces the timers with
 // useConversationSync, same cache keys.
@@ -396,13 +407,21 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
     });
   }, [conversation, conversationId, queryClient]);
 
-  // The PollDetailPanel composer pattern: useAnimatedKeyboard lifts the composer above the
-  // keyboard (height measured from the screen bottom; subtract the inset the row already
-  // clears). The composer is the last element of the (bottom-scrolled) thread body.
+  // W4 composer geometry (the PollDetail chin on the STATIC body path): the body frame
+  // fills the full sheet height but the sheet is translated DOWN by the expanded snap
+  // offset, so the frame bottom sits `expandedTop` BELOW the visible screen bottom. The
+  // body is a flex column (thread ScrollView flex:1, composer row last) whose base
+  // paddingBottom = expandedTop + insets.bottom pins the composer just above the home
+  // indicator; the keyboard adds max(0, height − insets.bottom) so the composer rides
+  // flush on top of the keyboard (useAnimatedKeyboard measures from the screen bottom)
+  // and the thread shrinks above it instead of being covered.
+  const expandedTop = resolveExpandedTop(getSearchStartupGeometrySeed().searchBarTop, insets.top);
   const keyboard = useAnimatedKeyboard();
-  const composerAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: -Math.max(0, keyboard.height.value - insets.bottom) }],
+  const bodyBasePaddingBottom = expandedTop + Math.max(insets.bottom, 12);
+  const bodyAnimatedStyle = useAnimatedStyle(() => ({
+    paddingBottom: bodyBasePaddingBottom + Math.max(0, keyboard.height.value - insets.bottom),
   }));
+  const threadScrollRef = React.useRef<ScrollView>(null);
 
   if (conversationId == null) {
     return (
@@ -449,65 +468,78 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
   const otherUserId = conversation.otherUser.userId;
 
   return (
-    <View style={styles.body} testID="dm-session-body">
+    <Reanimated.View style={[styles.sessionBody, bodyAnimatedStyle]} testID="dm-session-body">
       {/* Crude v1: peer identity rides the body top (the persistent header stays static —
           per-entry header text lands with the shared dynamic-header pass). */}
       <Text variant="caption" weight="semibold" style={styles.peerLabel} numberOfLines={1}>
         {peerTitle(conversation)}
       </Text>
-      {messagesQuery.data?.nextCursor ? (
-        <Pressable
-          onPress={() =>
-            // Crude-real history paging: M3's sync hook owns proper cursor merge; v1 keeps
-            // the whole window in one fetch and this affordance is honest about it.
-            void messagesQuery.refetch()
-          }
-          style={styles.loadOlder}
-          accessibilityRole="button"
-          accessibilityLabel="Load older messages"
-        >
-          <Text variant="caption" style={styles.loadOlderText}>
-            Older messages exist — history paging lands with the sync hook
-          </Text>
-        </Pressable>
-      ) : null}
-      {messages.length === 0 && pendingRows.length === 0 ? (
-        <View style={styles.stateBody} testID="dm-session-empty">
-          <Text variant="body" style={styles.stateText}>
-            Start the conversation.
-          </Text>
-        </View>
-      ) : (
-        messages.map((message) => (
-          <MessageBubble
-            key={message.messageId}
-            message={message}
-            mine={message.senderUserId !== otherUserId}
-          />
-        ))
-      )}
-      {pendingRows.map((row) => (
-        <View key={row.clientDedupeId} style={[styles.bubbleRow, styles.bubbleRowMine]}>
+      <ScrollView
+        ref={threadScrollRef}
+        style={styles.threadScroll}
+        contentContainerStyle={styles.threadContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onContentSizeChange={() =>
+          // Chat anchoring: open at (and follow) the newest message.
+          threadScrollRef.current?.scrollToEnd({ animated: false })
+        }
+        testID="dm-session-thread"
+      >
+        {messagesQuery.data?.nextCursor ? (
           <Pressable
-            onPress={row.state === 'failed' ? () => handleRetry(row.clientDedupeId) : undefined}
-            disabled={row.state !== 'failed'}
-            style={[
-              styles.bubble,
-              styles.bubbleMine,
-              row.state === 'failed' && styles.bubbleFailed,
-            ]}
-            accessibilityRole={row.state === 'failed' ? 'button' : undefined}
-            accessibilityLabel={row.state === 'failed' ? 'Retry sending message' : undefined}
+            onPress={() =>
+              // Crude-real history paging: M3's sync hook owns proper cursor merge; v1 keeps
+              // the whole window in one fetch and this affordance is honest about it.
+              void messagesQuery.refetch()
+            }
+            style={styles.loadOlder}
+            accessibilityRole="button"
+            accessibilityLabel="Load older messages"
           >
-            <Text variant="body" style={styles.bubbleTextMine}>
-              {row.body}
-            </Text>
-            <Text variant="caption" style={styles.bubbleStatusText}>
-              {row.state === 'failed' ? 'Failed — tap to retry' : 'Sending…'}
+            <Text variant="caption" style={styles.loadOlderText}>
+              Older messages exist — history paging lands with the sync hook
             </Text>
           </Pressable>
-        </View>
-      ))}
+        ) : null}
+        {messages.length === 0 && pendingRows.length === 0 ? (
+          <View style={styles.stateBody} testID="dm-session-empty">
+            <Text variant="body" style={styles.stateText}>
+              Start the conversation.
+            </Text>
+          </View>
+        ) : (
+          messages.map((message) => (
+            <MessageBubble
+              key={message.messageId}
+              message={message}
+              mine={message.senderUserId !== otherUserId}
+            />
+          ))
+        )}
+        {pendingRows.map((row) => (
+          <View key={row.clientDedupeId} style={[styles.bubbleRow, styles.bubbleRowMine]}>
+            <Pressable
+              onPress={row.state === 'failed' ? () => handleRetry(row.clientDedupeId) : undefined}
+              disabled={row.state !== 'failed'}
+              style={[
+                styles.bubble,
+                styles.bubbleMine,
+                row.state === 'failed' && styles.bubbleFailed,
+              ]}
+              accessibilityRole={row.state === 'failed' ? 'button' : undefined}
+              accessibilityLabel={row.state === 'failed' ? 'Retry sending message' : undefined}
+            >
+              <Text variant="body" style={styles.bubbleTextMine}>
+                {row.body}
+              </Text>
+              <Text variant="caption" style={styles.bubbleStatusText}>
+                {row.state === 'failed' ? 'Failed — tap to retry' : 'Sending…'}
+              </Text>
+            </Pressable>
+          </View>
+        ))}
+      </ScrollView>
 
       {conversation.isRequest && !conversation.frozen ? (
         <View style={styles.requestBar} testID="dm-session-request-bar">
@@ -549,7 +581,7 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
           </Text>
         </View>
       ) : (
-        <Reanimated.View style={[styles.composerRow, composerAnimatedStyle]}>
+        <View style={styles.composerRow}>
           <TextInput
             value={draft}
             onChangeText={setDraft}
@@ -571,9 +603,9 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
               Send
             </Text>
           </Pressable>
-        </Reanimated.View>
+        </View>
       )}
-    </View>
+    </Reanimated.View>
   );
 });
 DmSessionPanelBody.displayName = 'DmSessionPanelBody';
@@ -638,6 +670,18 @@ const styles = StyleSheet.create({
   },
   body: {
     paddingVertical: 16,
+  },
+  // dmSession static body: flex column filling the frame — thread scrolls,
+  // composer pinned at the (visible) bottom; keyboard padding rides on top.
+  sessionBody: {
+    flex: 1,
+    paddingTop: 16,
+  },
+  threadScroll: {
+    flex: 1,
+  },
+  threadContent: {
+    paddingBottom: 12,
   },
   stateBody: {
     paddingVertical: 48,

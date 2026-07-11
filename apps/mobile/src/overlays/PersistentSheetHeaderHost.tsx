@@ -85,13 +85,18 @@ export const PersistentSheetHeaderHost: React.FC<{
   }
   const TitleContent = descriptor.Title;
   const ActionContent = descriptor.Action;
+  // W4 (§9a settings full-snap row): scene-foundation `grabHandle: 'hidden'` scenes render
+  // the SAME persistent chrome minus the handle bar + cutout AND minus the promote press —
+  // full-page illusion, X close is the only affordance. Every other scene keeps the handle.
+  const grabHandleHidden = getSceneFoundationSpec(sceneKey)?.grabHandle === 'hidden';
   return (
     <View pointerEvents="box-none" style={styles.persistentHeaderOverlay}>
       <OverlaySheetHeaderChrome
         title={<TitleContent />}
         actionButton={<ActionContent />}
-        onGrabHandlePress={promoteActiveSheet}
+        onGrabHandlePress={grabHandleHidden ? undefined : promoteActiveSheet}
         grabHandleAccessibilityLabel="Expand sheet"
+        grabHandleHidden={grabHandleHidden}
         onLayout={handleChromeLayout}
       />
     </View>

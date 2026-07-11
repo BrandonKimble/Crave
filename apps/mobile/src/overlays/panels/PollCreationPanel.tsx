@@ -36,6 +36,20 @@ const BORDER = themeColors.border;
 const SURFACE = themeColors.surface;
 
 // §5: user polls self-schedule their close window (3–14 days, default 1 week).
+// §8.3/§9b pollInfo — the KEPT "how polls work" explainer, rendered on THE one app
+// modal (never a bespoke sheet). Module-scope: stateless copy, no hook needed.
+const showPollInfoModal = (): void => {
+  showAppModal({
+    title: 'How polls work',
+    message:
+      'Ask the community a question — "best breakfast tacos?" — for the city on your map.\n\n' +
+      'There are no hand-made options: the ranking forms from the discussion. Every comment ' +
+      'that names a place counts as a vote, and votes stack into a live leaderboard.\n\n' +
+      'Polls close automatically after the window you pick; the results stay up for everyone.',
+    actions: [{ label: 'Got it', style: 'default', testID: 'poll-info-dismiss' }],
+  });
+};
+
 const DEFAULT_CLOSE_WINDOW_DAYS = 7;
 const CLOSE_WINDOW_OPTIONS: ReadonlyArray<{ label: string; value: number }> = [
   { label: '3 days', value: 3 },
@@ -275,6 +289,20 @@ export const usePollCreationPanelSpec = ({
           })}
         </View>
       </View>
+
+      {/* §8.3/§9b pollInfo — the ⓘ "how polls work" explainer, THE one app modal. */}
+      <Pressable
+        onPress={showPollInfoModal}
+        accessibilityRole="button"
+        accessibilityLabel="How polls work"
+        style={styles.pollInfoLink}
+        testID="poll-info-link"
+        hitSlop={8}
+      >
+        <Text variant="caption" weight="semibold" style={styles.pollInfoLinkText}>
+          How do polls work?
+        </Text>
+      </Pressable>
     </View>
   );
 
@@ -449,6 +477,14 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: 16,
+  },
+  pollInfoLink: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+  },
+  pollInfoLinkText: {
+    color: themeColors.textMuted,
+    textDecorationLine: 'underline',
   },
   sectionLabel: {
     color: '#0f172a',

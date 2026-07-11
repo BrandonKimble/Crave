@@ -89,6 +89,13 @@ export class UserController {
     };
   }
 
+  /** W4 settings (§8.6 privacy): my block list — declared BEFORE the
+   *  `:userId/*` param routes ('me' would otherwise hit the UUID pipe). */
+  @Get('me/blocks')
+  async listMyBlocks(@CurrentUser() user: User) {
+    return this.userBlockService.listBlockedUsers(user.userId);
+  }
+
   /** S-B pages (userProfile): the VIEWER's follow edge — pairs with the public
    *  GET :userId/profile (PublicUserController, which is unauthenticated and cannot
    *  carry viewer-scoped facts). Drives the Follow/Following button state. */

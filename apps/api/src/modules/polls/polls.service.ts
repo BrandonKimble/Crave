@@ -37,7 +37,6 @@ import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
 import { CheckPollDuplicateDto } from './dto/check-poll-duplicate.dto';
 import { UserEventService } from '../identity/user-event.service';
-import { UserStatsService } from '../identity/user-stats.service';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LLMPollAxis } from '../external-integrations/llm/llm.types';
 import {
@@ -104,7 +103,6 @@ export class PollsService {
     private readonly gateway: PollsGateway,
     private readonly marketRegistry: MarketRegistryService,
     private readonly userEventService: UserEventService,
-    private readonly userStats: UserStatsService,
     private readonly llmService: LLMService,
     private readonly entityTextSearch: EntityTextSearchService,
   ) {
@@ -608,7 +606,8 @@ export class PollsService {
         topicType: dto.topicType,
       },
     });
-    await this.userStats.applyDelta(userId, { pollsCreatedCount: 1 });
+    // W4: no pollsCreatedCount counter bump — the profile "Polls" stat is a
+    // live count over polls.createdByUserId (see UserService.countCreatedPolls).
     // §2 Option A: seed the leaderboard from the creator's description immediately,
     // so a ranked poll ranks the creator's organic suggestion from frame one.
     // (No-op for discussion polls — rebuildPollLeaderboard early-returns.)
@@ -779,7 +778,7 @@ export class PollsService {
         mode: PollMode.discussion,
       },
     });
-    await this.userStats.applyDelta(userId, { pollsCreatedCount: 1 });
+    // W4: no counter bump — the stat is a live count (UserService.countCreatedPolls).
     const [enriched] = await this.attachMarketLabels([poll], marketKey);
     return enriched;
   }

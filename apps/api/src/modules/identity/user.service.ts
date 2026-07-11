@@ -222,7 +222,7 @@ export class UserService {
         : undefined,
       onboarding: this.buildOnboardingProfile(onboardingRow),
       stats: {
-        pollsCreatedCount: stats.pollsCreatedCount,
+        pollsCreatedCount: await this.countCreatedPolls(userId),
         pollsContributedCount: stats.pollsContributedCount,
         followersCount: stats.followersCount,
         followingCount: stats.followingCount,
@@ -281,6 +281,15 @@ export class UserService {
     }
   }
 
+  /** W4 fix: the "Polls" stat MUST agree with the profile Polls section
+   *  (GET /polls/users/:userId?activity=created). That list's predicate is
+   *  `createdByUserId` with NO state/market filter, so the stat is a LIVE
+   *  count over the same rows — not the drifting `user_stats` counter (which
+   *  had no reconciliation and disagreed with reality in dev data). */
+  private countCreatedPolls(userId: string): Promise<number> {
+    return this.prisma.poll.count({ where: { createdByUserId: userId } });
+  }
+
   async getPublicProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { deletedAt: null, userId },
@@ -304,7 +313,7 @@ export class UserService {
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
       stats: {
-        pollsCreatedCount: stats.pollsCreatedCount,
+        pollsCreatedCount: await this.countCreatedPolls(userId),
         pollsContributedCount: stats.pollsContributedCount,
         followersCount: stats.followersCount,
         followingCount: stats.followingCount,

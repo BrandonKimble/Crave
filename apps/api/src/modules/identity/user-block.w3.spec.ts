@@ -80,6 +80,26 @@ describe('UserBlockService (§8.6)', () => {
     });
   });
 
+  it('listBlockedUsers returns only MY blocks (one direction), newest first', async () => {
+    prisma.userBlock.findMany.mockResolvedValueOnce([
+      {
+        blocked: {
+          userId: THEM,
+          username: 'them',
+          displayName: 'Them',
+          avatarUrl: null,
+        },
+      },
+    ]);
+    const users = await service.listBlockedUsers(ME);
+    expect(users).toEqual([
+      { userId: THEM, username: 'them', displayName: 'Them', avatarUrl: null },
+    ]);
+    const args = prisma.userBlock.findMany.mock.calls[0][0];
+    expect(args.where).toEqual({ blockerUserId: ME });
+    expect(args.orderBy).toEqual({ createdAt: 'desc' });
+  });
+
   it('blockedPeerIds unions both directions', async () => {
     prisma.userBlock.findMany.mockResolvedValueOnce([
       { blockerUserId: ME, blockedUserId: THEM },

@@ -32,6 +32,9 @@ type OverlaySheetHeaderChromeProps = {
   onGrabHandlePress?: () => void;
   grabHandleAccessibilityLabel?: string;
   grabHandleCutout?: boolean;
+  /** W4 (scene-foundation `grabHandle: 'hidden'`): suppresses the handle bar AND its
+   *  cutout entirely (full-page-illusion scenes — settings is the first consumer). */
+  grabHandleHidden?: boolean;
   fixedHeight?: boolean;
   paddingTop?: number;
   paddingHorizontal?: number;
@@ -82,6 +85,7 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
   onGrabHandlePress,
   grabHandleAccessibilityLabel = 'Close sheet',
   grabHandleCutout = true,
+  grabHandleHidden = false,
   fixedHeight = true,
   paddingTop = 0,
   paddingHorizontal = OVERLAY_HORIZONTAL_PADDING,
@@ -134,7 +138,7 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
     const closeHolePath = circlePath(safeCloseCenterX, safeCloseCenterY, holeRadius);
     const cutoutPaths: string[] = [closeHolePath];
 
-    if (grabHandleCutout) {
+    if (grabHandleCutout && !grabHandleHidden) {
       const handleX = (windowWidth - OVERLAY_GRAB_HANDLE_WIDTH) / 2;
       const handleY = paddingTop + OVERLAY_GRAB_HANDLE_PADDING_TOP + maskPadding;
       const handlePath = roundedRectPath(
@@ -176,10 +180,18 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
     paddingHorizontal,
     paddingTop,
     grabHandleCutout,
+    grabHandleHidden,
     windowWidth,
   ]);
 
-  const handleContent = (
+  // grabHandleHidden keeps the wrapper's LAYOUT slot (the headerRow/close-cutout Y math
+  // assumes the handle band exists) but renders no bar — and the cutout path above is
+  // suppressed, so the plate is solid where the handle would be.
+  const handleContent = grabHandleHidden ? (
+    <View style={overlaySheetStyles.grabHandleWrapper}>
+      <View style={{ width: OVERLAY_GRAB_HANDLE_WIDTH, height: OVERLAY_GRAB_HANDLE_HEIGHT }} />
+    </View>
+  ) : (
     <View style={overlaySheetStyles.grabHandleWrapper}>
       {onGrabHandlePress ? (
         <Pressable

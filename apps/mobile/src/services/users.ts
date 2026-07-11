@@ -160,4 +160,9 @@ export const usersService = {
   async unblockUser(userId: string): Promise<void> {
     await api.delete(`/users/${userId}/block`);
   },
+  /** W4 settings (§8.6 privacy): my own block list — Settings → Privacy rows. */
+  async listMyBlocks(): Promise<FollowListUser[]> {
+    const response = await api.get<FollowListUser[]>('/users/me/blocks');
+    return response.data ?? [];
+  },
 };

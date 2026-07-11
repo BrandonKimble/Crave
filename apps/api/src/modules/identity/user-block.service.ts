@@ -88,6 +88,27 @@ export class UserBlockService {
     };
   }
 
+  /** W4 settings (§8.6 privacy): the viewer's OWN block list — one direction
+   *  only (people I blocked; being-blocked stays invisible by design). Drives
+   *  Settings → Privacy → Blocked users, each row with an Unblock affordance. */
+  async listBlockedUsers(blockerUserId: string) {
+    const rows = await this.prisma.userBlock.findMany({
+      where: { blockerUserId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        blocked: {
+          select: {
+            userId: true,
+            username: true,
+            displayName: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+    return rows.map((row) => row.blocked);
+  }
+
   /** Every userId the viewer must not see / be seen by (both directions) —
    *  the follow-list filter set. */
   async blockedPeerIds(viewerUserId: string): Promise<Set<string>> {

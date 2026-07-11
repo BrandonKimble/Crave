@@ -30,11 +30,12 @@ import { useAccess } from '../hooks/useAccess';
  *    pivot, not launch).
  */
 
-/** Apple's standard EULA for apps without a custom one; swap when the
- *  landing site ships hosted terms. Privacy MUST point at our policy. */
-const TERMS_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
-const PRIVACY_URL = 'https://cravesearch.com/privacy';
-const MANAGE_URL = 'https://apps.apple.com/account/subscriptions';
+// Legal + manage URLs are shared with the settings scene (W4) — one home.
+import {
+  TERMS_URL,
+  PRIVACY_URL,
+  MANAGE_SUBSCRIPTIONS_URL as MANAGE_URL,
+} from '../constants/legalLinks';
 
 /** "$39.99/yr" style headline — price ALWAYS from StoreKit. */
 function packageHeadline(pkg: PurchasesPackage): string {

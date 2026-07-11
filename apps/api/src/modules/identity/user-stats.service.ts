@@ -4,7 +4,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 type UserStatsDelta = Partial<
   Record<
-    | 'pollsCreatedCount'
+    // NOTE: no 'pollsCreatedCount' — the profile "Polls" stat is a live count
+    // over polls.createdByUserId (UserService.countCreatedPolls); the column's
+    // writers were removed in W4 so a drifting counter can't disagree with the
+    // profile Polls section again.
     | 'pollsContributedCount'
     | 'followersCount'
     | 'followingCount'
