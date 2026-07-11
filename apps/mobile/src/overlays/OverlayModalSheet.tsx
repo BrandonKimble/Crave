@@ -1,5 +1,12 @@
 import React from 'react';
-import { Dimensions, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Dimensions,
+  ScrollView,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   Easing,
@@ -46,6 +53,15 @@ type OverlayModalSheetProps = {
   onRequestClose: () => void;
   onDismiss?: () => void;
   children: React.ReactNode;
+  /**
+   * Opt-in SCROLLABLE capability: content taller than the sheet's max height scrolls
+   * inside the content region; the chrome (rounded container, backdrop, dismiss paths)
+   * is unchanged. Inside the content the scroll WINS over the swipe-down drag (the pan
+   * requires the scroll gesture to fail first) — dismissal stays on backdrop tap, on
+   * the non-scrolling chrome, and on `requestClose`. Default off: non-scrollable
+   * contents behave exactly as before.
+   */
+  scrollable?: boolean;
   sheetStyle?: StyleProp<ViewStyle>;
   zIndex?: number;
   maxBackdropOpacity?: number;
@@ -66,6 +82,7 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
       onRequestClose,
       onDismiss,
       children,
+      scrollable = false,
       sheetStyle,
       zIndex = 130,
       maxBackdropOpacity = 0.2,
@@ -166,43 +183,49 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
       onDismiss: requestClose,
     });
 
+    // SCROLLABLE content region: the native scroll gesture is registered so the sheet
+    // pan can defer to it — inside the content, scroll wins; the pan only activates
+    // where the scroll gesture fails (the chrome padding around the scroll region).
+    const contentScrollGesture = React.useMemo(() => Gesture.Native(), []);
+
     // THE GRAB: vertical pan on the sheet body. Downward follows the finger and
     // dismisses past a distance or on a flick; upward rubber-bands. activeOffsetY keeps
     // horizontal gestures (the price slider) untouched; failOffsetX yields to them.
-    const sheetPanGesture = React.useMemo(
-      () =>
-        Gesture.Pan()
-          .enabled(visible)
-          .activeOffsetY([-12, 12])
-          .failOffsetX([-16, 16])
-          .onUpdate((event) => {
-            'worklet';
-            dragY.value =
-              event.translationY >= 0 ? event.translationY : -rubberBand(-event.translationY);
-          })
-          .onEnd((event) => {
-            'worklet';
-            const shouldDismiss =
-              event.translationY > DISMISS_DISTANCE ||
-              (event.translationY > 24 && event.velocityY > DISMISS_VELOCITY);
-            if (shouldDismiss) {
-              runOnJS(requestCloseFromDrag)();
-              return;
-            }
+    const sheetPanGesture = React.useMemo(() => {
+      const pan = Gesture.Pan()
+        .enabled(visible)
+        .activeOffsetY([-12, 12])
+        .failOffsetX([-16, 16])
+        .onUpdate((event) => {
+          'worklet';
+          dragY.value =
+            event.translationY >= 0 ? event.translationY : -rubberBand(-event.translationY);
+        })
+        .onEnd((event) => {
+          'worklet';
+          const shouldDismiss =
+            event.translationY > DISMISS_DISTANCE ||
+            (event.translationY > 24 && event.velocityY > DISMISS_VELOCITY);
+          if (shouldDismiss) {
+            runOnJS(requestCloseFromDrag)();
+            return;
+          }
+          dragY.value = withSpring(0, SETTLE_SPRING);
+        })
+        .onFinalize((_event, success) => {
+          'worklet';
+          // onEnd only runs when the gesture completes; a mid-drag cancellation
+          // (gesture disabled by visible flipping false) skips it and would freeze
+          // dragY at its last value — settle it here, the hook that always runs.
+          if (!success && dragY.value !== 0) {
             dragY.value = withSpring(0, SETTLE_SPRING);
-          })
-          .onFinalize((_event, success) => {
-            'worklet';
-            // onEnd only runs when the gesture completes; a mid-drag cancellation
-            // (gesture disabled by visible flipping false) skips it and would freeze
-            // dragY at its last value — settle it here, the hook that always runs.
-            if (!success && dragY.value !== 0) {
-              dragY.value = withSpring(0, SETTLE_SPRING);
-            }
-          }),
+          }
+        });
+      // Scroll wins inside the content: the pan may only activate once the scroll
+      // gesture has failed (i.e. the touch is on the chrome, not the scroll region).
+      return scrollable ? pan.requireExternalGestureToFail(contentScrollGesture) : pan;
       // dragY is a stable shared-value reference.
-      [requestCloseFromDrag, visible]
-    );
+    }, [contentScrollGesture, requestCloseFromDrag, scrollable, visible]);
 
     // Keyboard avoidance: the sheet rides above the keyboard (compositor-driven, the
     // same useAnimatedKeyboard pattern as PollCreationPanel) so prompt/text-input
@@ -255,7 +278,20 @@ const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModal
             pointerEvents={visible ? 'auto' : 'none'}
             accessibilityViewIsModal={visible}
           >
-            {children}
+            {scrollable ? (
+              <GestureDetector gesture={contentScrollGesture}>
+                <ScrollView
+                  style={styles.scrollRegion}
+                  bounces={false}
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {children}
+                </ScrollView>
+              </GestureDetector>
+            ) : (
+              children
+            )}
           </Reanimated.View>
         </GestureDetector>
       </View>
@@ -272,6 +308,11 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
+  },
+  scrollRegion: {
+    // Size to content (the sheet's maxHeight is the cap that makes it scroll) instead
+    // of greedily filling — short scrollable contents keep the sheet content-height.
+    flexGrow: 0,
   },
   sheet: {
     backgroundColor: '#ffffff',
