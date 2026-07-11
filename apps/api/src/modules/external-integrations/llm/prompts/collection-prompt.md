@@ -26,7 +26,7 @@ Each step's section below is authoritative for how to populate these structures.
 
 ### Core Concepts & Terminology
 
-- **In-scope context**: strictly the text provided in the current input payload (post title/body subject to `extract_from_post`, the active comment, and any parent/earlier lines included).
+- **In-scope context**: strictly the text of the POST OBJECT the active source belongs to (that post's title/body subject to `extract_from_post`, the active comment, and parent/earlier lines within that same post's threads). The payload may contain MULTIPLE independent post objects: each post is its own sealed world. Never resolve references, inherit food/restaurant context, or unify canonical names across different post objects — a comment in one post cannot "see" any other post.
 - **Anchor types** discovered in-scope:
   - `restaurant anchors`: explicit restaurant names.
   - `food anchors`: explicit dishes/categories or inherited food references.
@@ -37,8 +37,8 @@ Each step's section below is authoritative for how to populate these structures.
   - Steps 4-6 reuse the anchored outputs from Steps 1-3; they never introduce new anchors.
 - **References**: pronouns, deictics, definites, possessives, ellipsis, and short affirmations that point back to anchors.
 - **Depth-aware resolution order** (applies whenever a step calls for it):
-  - Replies: current comment (closest clause first) -> parent comment -> earlier lines in this input -> post title/body.
-  - Top-level comments: current comment -> post title/body -> earlier lines in this input.
+  - Replies: current comment (closest clause first) -> parent comment -> earlier lines within the same post object -> that post's title/body.
+  - Top-level comments: current comment -> that post's title/body -> earlier lines within the same post object.
 
 ### Global Example Note
 
@@ -214,7 +214,7 @@ When multiple observed variants exist for the same establishment in this input, 
   - Generic-suffix trimming: when two observed variants share the same leading brand tokens and one only differs by appending a generic cuisine/service term (e.g., `korean bbq`, `hot pot`, `ramen`, `bbq`, `steakhouse`, `cafe`, `bakery`, `diner`), prefer the tighter brand-only form as long as that shorter variant also appears in this input. If the shorter form never appears, keep the longer one intact.
   - Specificity over brevity: prefer the more informative name if unambiguous in context.
   - Tie-breakers: higher frequency in this input's text; if still tied, prefer the longer informative token set.
-- Canonical output: For all mentions of the same place within this post, emit `restaurant` as the chosen canonical and stick with it. Avoid emitting multiple normalized names that are token-subsets of one another for the same establishment.
+- Canonical output: For all mentions of the same place within the same post object, emit `restaurant` as the chosen canonical and stick with it (canonical selection is per post object; different post objects choose independently). Avoid emitting multiple normalized names that are token-subsets of one another for the same establishment.
 
 ### 2.6 Examples
 
@@ -585,7 +585,7 @@ Outputs
 - Context scope: Use all in-scope text - post title, post body, the current comment, and any earlier text included in this same input/chunk.
 - No placeholders: Never emit fabricated or placeholder restaurant names. If the restaurant cannot be resolved with high confidence, skip the mention instead of inventing a name.
 - Sentiment alignment: Step 1 ensures there is a positive or recommendatory intent before you reach this step, and Step 6 performs the final positive-only gate. Step 5 should remain neutral - do not override the pipeline with additional sentiment heuristics here, but avoid forwarding obviously negative dish mentions.
-- Canonicalization alignment: Within a post, use the single canonical `restaurant` chosen in Step 2. Short forms must align with that canonical name; do not produce multiple variants for the same establishment.
+- Canonicalization alignment: Within the same post object, use the single canonical `restaurant` chosen in Step 2. Short forms must align with that canonical name; do not produce multiple variants for the same establishment.
 - Food linking: Match `food` and canonical `restaurant` to one of the `composedFoods` produced in Step 4 so downstream steps can merge decisions without guessing.
 - Respect Step 4.1: Reuse the composed dish as emitted; do not re-split dishes or ingredients already locked in.
 

@@ -5,7 +5,6 @@ import { LLMCommentDto } from './dto/llm-input.dto';
 import { LLMModelInput } from './llm.types';
 
 const DEFAULT_MAX_CHUNK_COMMENTS = 80;
-const DEFAULT_MAX_CHUNK_CHAR_LENGTH = 12000;
 const DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE = 35000;
 
 /**
@@ -63,19 +62,21 @@ export class LLMChunkingService implements OnModuleInit {
       return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
     };
 
+    const maxTokensPerChunk = parsePositiveInt(
+      process.env.LLM_CHUNK_TARGET_TOKENS,
+      DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE,
+    );
     return {
-      maxCommentsPerChunk: parsePositiveInt(
-        process.env.LLM_MAX_CHUNK_COMMENTS,
-        DEFAULT_MAX_CHUNK_COMMENTS,
-      ),
-      maxCharsPerChunk: parsePositiveInt(
-        process.env.LLM_MAX_CHUNK_CHARS,
-        DEFAULT_MAX_CHUNK_CHAR_LENGTH,
-      ),
-      maxTokensPerChunk: parsePositiveInt(
-        process.env.LLM_CHUNK_TARGET_TOKENS,
-        DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE,
-      ),
+      // Thread-coherence bound only (a single degenerate mega-thread), not a
+      // packing knob — packing is governed by the token target alone.
+      maxCommentsPerChunk: DEFAULT_MAX_CHUNK_COMMENTS,
+      // DERIVED from the token target (4 chars/token estimate). The old
+      // independent LLM_MAX_CHUNK_CHARS=12000 knob silently capped every
+      // chunk at ~3k tokens, making the token target unreachable — the
+      // packing audit (2026-07-11) measured ~2k content tokens/request
+      // against a 35k target, with the system prompt at ~90% of all input.
+      maxCharsPerChunk: maxTokensPerChunk * 4,
+      maxTokensPerChunk,
     };
   }
 
@@ -471,7 +472,84 @@ export class LLMChunkingService implements OnModuleInit {
           : 0,
     });
 
-    return { chunks, metadata: chunkMetadata };
+    // CROSS-POST PACKING (packing audit 2026-07-11): per-post chunks average
+    // ~2k content tokens, so each paid the full system prompt. Greedily merge
+    // consecutive chunks up to the token target — the payload is posts[] by
+    // contract, per-chunk SRC maps stay a closed world, and the per-request
+    // source_id enum schema covers the packed union.
+    return this.packChunks(chunks, chunkMetadata);
+  }
+
+  private packChunks(
+    chunks: LLMInputDto[],
+    metadata: ChunkMetadata[],
+  ): ChunkResult {
+    const { maxTokensPerChunk } = this.getChunkingLimits();
+    const packedChunks: LLMInputDto[] = [];
+    const packedMetadata: ChunkMetadata[] = [];
+    let currentPosts: Map<string, LLMInputDto['posts'][number]> | null = null;
+    let currentTokens = 0;
+    let currentMeta: ChunkMetadata | null = null;
+
+    const flush = () => {
+      if (!currentPosts || !currentMeta) return;
+      packedChunks.push({ posts: Array.from(currentPosts.values()) });
+      packedMetadata.push({
+        ...currentMeta,
+        estimatedTokenCount: currentTokens,
+      });
+      currentPosts = null;
+      currentTokens = 0;
+      currentMeta = null;
+    };
+
+    for (let index = 0; index < chunks.length; index += 1) {
+      const chunk = chunks[index];
+      const meta = metadata[index];
+      const tokens =
+        meta.estimatedTokenCount ??
+        this.estimateTokensFromChars(JSON.stringify(chunk).length);
+      if (currentPosts && currentTokens + tokens > maxTokensPerChunk) {
+        flush();
+      }
+      if (!currentPosts) {
+        currentPosts = new Map();
+        currentMeta = {
+          ...meta,
+          chunkId: `pack_${packedChunks.length}_${meta.chunkId}`,
+        };
+      } else if (currentMeta) {
+        currentMeta.commentCount += meta.commentCount;
+      }
+      for (const post of chunk.posts) {
+        const existing = currentPosts.get(post.id);
+        if (existing) {
+          existing.comments = [
+            ...(existing.comments ?? []),
+            ...(post.comments ?? []),
+          ];
+          if ((post as { extract_from_post?: boolean }).extract_from_post) {
+            (existing as { extract_from_post?: boolean }).extract_from_post =
+              true;
+          }
+        } else {
+          currentPosts.set(post.id, {
+            ...post,
+            comments: [...(post.comments ?? [])],
+          });
+        }
+      }
+      currentTokens += tokens;
+    }
+    flush();
+
+    this.logger.info('Chunk packing complete', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      rawChunks: chunks.length,
+      packedChunks: packedChunks.length,
+      targetTokens: maxTokensPerChunk,
+    });
+    return { chunks: packedChunks, metadata: packedMetadata };
   }
 
   /**
