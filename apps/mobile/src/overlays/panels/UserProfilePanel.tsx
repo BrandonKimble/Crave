@@ -1,9 +1,21 @@
 import React from 'react';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Clipboard,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { Text } from '../../components';
-import { showAppModal } from '../../components/app-modal-store';
+import {
+  announceFailureIfOnline,
+  showAppModal,
+  type AppModalAction,
+} from '../../components/app-modal-store';
 import { usersService, type PublicUserProfile } from '../../services/users';
 import {
   fetchUserComments,
@@ -12,6 +24,8 @@ import {
   type UserProfilePollRow,
 } from '../../services/polls';
 import { favoriteListsService, type FavoriteListSummary } from '../../services/favorite-lists';
+import { favoriteListKeys } from '../../hooks/use-favorite-lists';
+import { serializeDesireLinkToPath } from '../../navigation/runtime/desire-url-codec';
 import { photosService, type FoodLogGroupDto } from '../../services/photos';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,6 +40,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 // carries a crude Block/Unblock row.
 
 const AVATAR_SIZE = 64;
+
+// Same share-link base the W1 collaborator modal uses (ListDetailPanel).
+const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
 
 type SectionKey = 'polls' | 'comments' | 'lists' | 'photos';
 
@@ -163,7 +180,16 @@ const buildListsGallery = (lists: FavoriteListSummary[]): ListsGallery => {
   return { pinnedTiles, groups };
 };
 
-const ListTileRow = ({ tile, onPress }: { tile: GalleryTile; onPress: () => void }) => {
+const ListTileRow = ({
+  tile,
+  onPress,
+  onLongPress,
+}: {
+  tile: GalleryTile;
+  onPress: () => void;
+  /** §8.14 owner curation modal — only wired on the OWN profile's concrete lists. */
+  onLongPress?: () => void;
+}) => {
   const isAll = tile.kind === 'all';
   const name = isAll
     ? tile.listType === 'restaurant'
@@ -176,6 +202,7 @@ const ListTileRow = ({ tile, onPress }: { tile: GalleryTile; onPress: () => void
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       accessibilityRole="button"
       accessibilityLabel={`Open list ${name}`}
       testID={
@@ -243,7 +270,10 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
   // §8.6: either direction of block renders the unavailable body.
   const isBlockedByMe = edge?.isBlockedByMe === true;
   const hasBlockedMe = edge?.hasBlockedMe === true;
-  const blockedEitherWay = isBlockedByMe || hasBlockedMe;
+  // The server-side profile read is also honest now (unavailable: true on a
+  // blocked pair) — fold it in so the body can never render leaked data.
+  const blockedEitherWay =
+    isBlockedByMe || hasBlockedMe || profileQuery.data?.profile.unavailable === true;
 
   // ── Section data (lazy per section; gated on a loaded, unblocked profile).
   const sectionsEnabled = userId != null && profileQuery.data != null && !blockedEitherWay;
@@ -338,6 +368,122 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
       ],
     });
   }, [isBlockedByMe, runBlockChange]);
+
+  // ── §8.14 owner long-press modal (Pin / Share / Delete) — OWN profile only.
+  const isOwnProfile = edge?.isMe === true;
+
+  const invalidateListSurfaces = React.useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['userProfileLists', userId] });
+    // The home lists surface shares the rows (pinned/share/existence changed).
+    void queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+  }, [queryClient, userId]);
+
+  const handleTogglePin = React.useCallback(
+    (list: FavoriteListSummary) => {
+      const next = list.pinned !== true;
+      // Optimistic flip in the profile-gallery cache; the refetch re-sorts
+      // (server order = pins first) and is the settled truth.
+      queryClient.setQueryData<FavoriteListSummary[]>(['userProfileLists', userId], (rows) =>
+        rows?.map((row) => (row.listId === list.listId ? { ...row, pinned: next } : row))
+      );
+      favoriteListsService
+        .update(list.listId, { pinned: next })
+        .catch(() => {
+          queryClient.setQueryData<FavoriteListSummary[]>(['userProfileLists', userId], (rows) =>
+            rows?.map((row) =>
+              row.listId === list.listId ? { ...row, pinned: list.pinned === true } : row
+            )
+          );
+          announceFailureIfOnline();
+        })
+        .finally(() => {
+          invalidateListSurfaces();
+        });
+    },
+    [invalidateListSurfaces, queryClient, userId]
+  );
+
+  const handleShareList = React.useCallback(
+    async (list: FavoriteListSummary) => {
+      try {
+        // Same slug-link shape the W1 collaborator invite uses (minus the join
+        // intent): enable share on demand — this IS the owner's profile.
+        let slug = list.shareEnabled ? (list.shareSlug ?? null) : null;
+        if (slug == null) {
+          const enabled = await favoriteListsService.enableShare(list.listId);
+          slug = enabled.shareSlug;
+          invalidateListSurfaces();
+        }
+        Clipboard.setString(
+          `${SHARE_BASE_URL}${serializeDesireLinkToPath({ kind: 'sharedList', shareSlug: slug })}`
+        );
+      } catch {
+        announceFailureIfOnline();
+      }
+    },
+    [invalidateListSurfaces]
+  );
+
+  const handleDeleteList = React.useCallback(
+    (list: FavoriteListSummary) => {
+      showAppModal({
+        title: 'Delete this list?',
+        message: `“${list.name}” and its saves will be removed. This cannot be undone.`,
+        actions: [
+          { label: 'Cancel', style: 'cancel' },
+          {
+            label: 'Delete',
+            style: 'destructive',
+            testID: 'user-profile-list-delete-confirm',
+            onPress: () => {
+              favoriteListsService
+                .remove(list.listId)
+                .then(() => {
+                  invalidateListSurfaces();
+                  // Stats row (list count) lives on the profile read.
+                  void queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+                })
+                .catch(() => {
+                  announceFailureIfOnline();
+                });
+            },
+          },
+        ],
+      });
+    },
+    [invalidateListSurfaces, queryClient, userId]
+  );
+
+  const handleListLongPress = React.useCallback(
+    (list: FavoriteListSummary) => {
+      const actions: AppModalAction[] = [
+        {
+          label: list.pinned === true ? 'Unpin from profile' : 'Pin to profile',
+          testID: 'user-profile-list-pin',
+          onPress: () => handleTogglePin(list),
+        },
+        {
+          label: 'Share',
+          testID: 'user-profile-list-share',
+          onPress: () => {
+            void handleShareList(list);
+          },
+        },
+      ];
+      // §8.7: the four system defaults are permanent — no Delete offered.
+      if (list.systemKind == null) {
+        actions.push({
+          label: 'Delete list',
+          style: 'destructive',
+          testID: 'user-profile-list-delete',
+          onPress: () => handleDeleteList(list),
+        });
+      }
+      actions.push({ label: 'Cancel', style: 'cancel' });
+      showAppModal({ title: list.name, actions });
+    },
+    [handleDeleteList, handleShareList, handleTogglePin]
+  );
 
   const load = profileQuery.refetch;
 
@@ -507,6 +653,11 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
                     key={tile.kind === 'all' ? `all-${tile.listType}` : tile.list.listId}
                     tile={tile}
                     onPress={() => openListTile(tile)}
+                    onLongPress={
+                      isOwnProfile && tile.kind === 'list'
+                        ? () => handleListLongPress(tile.list)
+                        : undefined
+                    }
                   />
                 ))}
               </View>
@@ -524,6 +675,7 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
                       key={tile.list.listId}
                       tile={tile}
                       onPress={() => openListTile(tile)}
+                      onLongPress={isOwnProfile ? () => handleListLongPress(tile.list) : undefined}
                     />
                   ) : null
                 )}

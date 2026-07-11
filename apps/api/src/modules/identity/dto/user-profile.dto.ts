@@ -60,4 +60,7 @@ export interface PublicUserProfileDto {
   displayName?: string | null;
   avatarUrl?: string | null;
   stats: UserStatsDto;
+  /** §8.6: set (true) ONLY on the blocked-pair minimal payload an authed
+   *  viewer receives; absent on the full public payload. */
+  unavailable?: true;
 }

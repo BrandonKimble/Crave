@@ -3,6 +3,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { UserBlockService } from './user-block.service';
 import { UserFollowService } from './user-follow.service';
+import { PublicUserController } from './public-user.controller';
 
 /**
  * W3 blocking contracts (page-registry §8.6): idempotent block/unblock,
@@ -136,5 +137,71 @@ describe('UserFollowService block enforcement (§8.6 seams)', () => {
     const where = prisma.userFollow.findMany.mock.calls[0][0].where;
     expect(where.followingUserId).toBeUndefined();
     expect(where.followerUserId).toBe(THEM);
+  });
+});
+
+describe('PublicUserController block enforcement (§8.6 profile read)', () => {
+  const fullProfile = {
+    userId: THEM,
+    username: 'them',
+    displayName: 'Them',
+    avatarUrl: 'https://cdn/avatar.png',
+    stats: {
+      pollsCreatedCount: 3,
+      pollsContributedCount: 4,
+      followersCount: 5,
+      followingCount: 6,
+      favoriteListsCount: 7,
+      favoritesTotalCount: 8,
+    },
+  };
+  let prisma: any;
+  let controller: PublicUserController;
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    const userService = {
+      getPublicProfile: jest.fn().mockResolvedValue(fullProfile),
+    } as any;
+    controller = new PublicUserController(
+      userService,
+      new UserBlockService(prisma),
+    );
+  });
+
+  it('anonymous viewer still gets the full public payload', async () => {
+    const result = await controller.getPublicProfile(THEM, null);
+    expect(result).toEqual(fullProfile);
+    expect(result.unavailable).toBeUndefined();
+    expect(prisma.userBlock.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('blocked viewer (either direction) gets the minimal unavailable payload', async () => {
+    prisma.userBlock.findFirst.mockResolvedValueOnce({ blockerUserId: THEM });
+    const result = await controller.getPublicProfile(THEM, {
+      userId: ME,
+    } as any);
+    expect(result.unavailable).toBe(true);
+    expect(result.userId).toBe(THEM);
+    expect(result.username).toBeNull();
+    expect(result.displayName).toBeNull();
+    expect(result.avatarUrl).toBeNull();
+    expect(result.stats).toEqual({
+      pollsCreatedCount: 0,
+      pollsContributedCount: 0,
+      followersCount: 0,
+      followingCount: 0,
+      favoriteListsCount: 0,
+      favoritesTotalCount: 0,
+    });
+  });
+
+  it('unblocked authed viewer gets the full public payload', async () => {
+    prisma.userBlock.findFirst.mockResolvedValueOnce(null);
+    const result = await controller.getPublicProfile(THEM, {
+      userId: ME,
+    } as any);
+    expect(result).toEqual(fullProfile);
+    expect(result.unavailable).toBeUndefined();
   });
 });

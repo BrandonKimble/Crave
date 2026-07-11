@@ -1109,6 +1109,8 @@ model User {
   pollComments           PollComment[]
   pollCommentLikes       PollCommentLike[]
   pollEndorsements       PollEndorsement[]
+  conversationParticipants ConversationParticipant[]
+  messagesSent           Message[]               @relation("MessagesSent")
 
   @@index([email], map: "idx_users_email")
   @@index([username], map: "idx_users_username")
@@ -1160,6 +1162,72 @@ model UserBlock {
   @@id([blockerUserId, blockedUserId])
   @@index([blockedUserId], map: "idx_user_blocks_blocked")
   @@map("user_blocks")
+}
+
+/// W3 messaging (plans/w3-messaging-design.md §2.1). Pair-unique 1:1
+/// conversations; pairKey = `${min(userIdA,userIdB)}:${max(...)}` computed in
+/// exactly one service function (MessagingService.pairKeyFor).
+model Conversation {
+  conversationId String   @id @default(dbgenerated("gen_random_uuid()")) @map("conversation_id") @db.Uuid
+  /// CANONICAL PAIR KEY — THE uniqueness contract for 1:1.
+  pairKey        String   @unique(map: "uq_conversations_pair_key") @map("pair_key")
+  /// Denormalized hot-path columns for inbox sort/preview (single-writer:
+  /// only MessagingService.sendMessage updates them, same tx as the insert).
+  lastMessageAt  DateTime @map("last_message_at")
+  lastMessageId  String?  @map("last_message_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([lastMessageAt(sort: Desc)], map: "idx_conversations_last_message_at")
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  conversationId    String    @map("conversation_id") @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  /// Read cursor: createdAt of the newest message this user has seen.
+  /// Monotonic (server clamps backward moves). Source of truth for unread.
+  lastReadMessageAt DateTime? @map("last_read_message_at")
+  /// Request-lane resolution (§1.1). Set on explicit accept only; first-reply
+  /// promotion is DERIVED (viewer has sent a message), never written here.
+  acceptedAt        DateTime? @map("accepted_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId, conversationId], map: "idx_conversation_participants_user")
+  @@map("conversation_participants")
+}
+
+model Message {
+  messageId      String            @id @default(dbgenerated("gen_random_uuid()")) @map("message_id") @db.Uuid
+  conversationId String            @map("conversation_id") @db.Uuid
+  senderUserId   String            @map("sender_user_id") @db.Uuid
+  kind           MessageKind
+  /// text kind: the message. entity_share kind: optional caption.
+  body           String?           @db.VarChar(2000)
+  /// entity_share only — typed ref, NO snapshot (bubble hydrates live).
+  /// LOUD CONTRACT (DB CHECK ck_messages_kind_shape in the migration):
+  ///   kind = entity_share ⇔ (sharedEntityKind AND sharedEntityId NOT NULL)
+  ///   kind = text          ⇔ both NULL
+  sharedEntityKind SharedEntityKind? @map("shared_entity_kind")
+  sharedEntityId   String?           @map("shared_entity_id")
+  /// Client-supplied idempotency key; unique per (conversation, sender) so a
+  /// retried send replays the SAME row instead of duplicating.
+  clientDedupeId String?           @map("client_dedupe_id") @db.VarChar(64)
+  createdAt      DateTime          @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
+  sender       User         @relation("MessagesSent", fields: [senderUserId], references: [userId], onDelete: Cascade)
+
+  @@unique([conversationId, senderUserId, clientDedupeId], map: "uq_messages_client_dedupe")
+  /// Cursor pagination: messageId tiebreak makes the cursor total-ordered.
+  @@index([conversationId, createdAt(sort: Desc), messageId(sort: Desc)], map: "idx_messages_conversation_cursor")
+  @@map("messages")
 }
 
 model ReservedUsername {
@@ -1725,6 +1793,26 @@ enum FavoriteListType {
   dish
 
   @@map("favorite_list_type")
+}
+
+/// W3 messaging (plans/w3-messaging-design.md §1.2).
+enum MessageKind {
+  text
+  entity_share
+
+  @@map("message_kind")
+}
+
+/// Exactly the universal-share-modal object set (page-registry §8.2).
+enum SharedEntityKind {
+  list
+  restaurant
+  dish
+  poll
+  comment
+  user_profile
+
+  @@map("shared_entity_kind")
 }
 
 enum FavoriteListVisibility {

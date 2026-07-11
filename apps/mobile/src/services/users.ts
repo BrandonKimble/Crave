@@ -50,6 +50,9 @@ export interface PublicUserProfile {
   displayName: string | null;
   avatarUrl: string | null;
   stats: UserStats;
+  /** §8.6: true ONLY on the blocked-pair minimal payload (authed viewer);
+   *  absent on the full public payload. */
+  unavailable?: boolean;
 }
 
 export interface FollowEdge {

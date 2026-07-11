@@ -24,6 +24,7 @@ import { ModerationModule } from './modules/moderation/moderation.module';
 import { AttributeOntologyModule } from './modules/attribute-ontology/attribute-ontology.module';
 import { PollsModule } from './modules/polls/polls.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
+import { MessagingModule } from './modules/messaging/messaging.module';
 import { HistoryModule } from './modules/history/history.module';
 import { MarketsModule } from './modules/markets/markets.module';
 // Production readiness modules
@@ -89,6 +90,7 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     AttributeOntologyModule,
     PollsModule,
     FavoritesModule,
+    MessagingModule,
     HistoryModule,
     MarketsModule,
     // Production readiness: Health checks for Railway/container orchestration

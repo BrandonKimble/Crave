@@ -9,9 +9,11 @@ import { PrismaService } from '../../prisma/prisma.service';
  * seams that consume it (each site documents itself as a §8.6 enforcement
  * point): follow write + follow edge + follow lists (user-follow.service),
  * the food log (photos.controller), public lists-of-user
- * (favorites.public.controller), and user polls/comments (polls.controller).
- * The anonymous public-profile GET carries no viewer, so profile
- * "unavailable" rides the authed follow-edge flags instead.
+ * (favorites.public.controller), user polls/comments (polls.controller), and
+ * the public profile read itself (public-user.controller: optional auth —
+ * an authed blocked-pair viewer gets a minimal `unavailable: true` payload;
+ * anonymous reads stay full). The authed follow-edge flags additionally
+ * drive the mobile "unavailable" body + Unblock affordance.
  */
 @Injectable()
 export class UserBlockService {
