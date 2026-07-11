@@ -187,3 +187,17 @@ pan gesture (overshoot → dismiss) and even land-on-element coordinate taps mis
 Pressable on that sheet, add a temporary `testID` and target it by id — don't fight
 coordinates. `tapOn: text:` against a custom `<Text>`/accessibilityLabel often won't
 match either; `id` is the reliable lever.
+
+## Memory: VERIFIED dev-client reload — use scripts/rig/reload-dev-client.sh
+
+Root cause found 2026-07-10: the dev client persists its last bundle revision and requests
+a DELTA on the next launch; a delta computed while Metro is still absorbing a batch of file
+writes boots MIXED module revisions — a one-boot `ReferenceError: Property 'X' doesn't
+exist` that clears on the next launch. Never trust a single relaunch after editing files.
+`scripts/rig/reload-dev-client.sh` makes freshness a verified fact: builds the full bundle
+until two consecutive hashes match (graph quiescent), cold-relaunches through the dev-client
+URL, greps the boot for ReferenceError, retries once, then falls back to
+uninstall+reinstall (clears the client's cached revision). Related rig traps: the dev-menu
+onboarding card swallows the first tap of a fresh session (tap Continue/X first), and
+`echo >>` markers in /tmp/crave-metro.log get CLOBBERED (Metro's fd is truncate-mode) — scan
+tails, not offsets.
