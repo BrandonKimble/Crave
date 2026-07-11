@@ -1,20 +1,15 @@
 import React from 'react';
 
 import type { UserProfile } from '../../../services/users';
-import type { ProfileSegment } from '../profileSceneQueryOptions';
 import type { ProfileSceneHeaderProps } from './profile-panel-runtime-contract';
 
 export const useProfilePanelIdentityRuntime = ({
-  activeSegment,
   onOpenSettings,
   onOpenMessages,
-  onSelectSegment,
   profile,
 }: {
-  activeSegment: ProfileSegment;
   onOpenSettings: () => void;
   onOpenMessages: () => void;
-  onSelectSegment: (segment: ProfileSegment) => void;
   profile: UserProfile | undefined;
 }): ProfileSceneHeaderProps => {
   const displayName = profile?.displayName?.trim() || profile?.username || 'Crave Explorer';
@@ -48,19 +43,15 @@ export const useProfilePanelIdentityRuntime = ({
       followersCount: stats?.followersCount ?? 0,
       followingCount: stats?.followingCount ?? 0,
       identityResolved,
-      activeSegment,
       onOpenSettings,
       onOpenMessages,
-      onSelectSegment,
     }),
     [
-      activeSegment,
       displayName,
       identityResolved,
       initials,
       onOpenMessages,
       onOpenSettings,
-      onSelectSegment,
       profile?.avatarUrl,
       stats?.followersCount,
       stats?.followingCount,

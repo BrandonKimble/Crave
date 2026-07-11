@@ -210,18 +210,8 @@ const SubscriptionStatusLine = () => {
 const SettingsSceneBody = React.memo((_props: MountedSceneBodyProps) => {
   const { pushRoute } = useAppOverlayRouteController();
   const { handleSignOut, handleReplayOnboarding, handleDeleteAccount } = useAccountActionsRuntime();
-  const handleOpenMyPublicProfile = React.useCallback(() => {
-    // The userProfile page is REAL now — push the signed-in user's actual profile.
-    void usersService
-      .getMe()
-      .then((me) => {
-        pushRoute('userProfile', { userId: me.userId });
-      })
-      .catch(() => {
-        // Offline/failed: still push — the page's failure body owns the state (§5.6).
-        pushRoute('userProfile', { userId: 'unknown' });
-      });
-  }, [pushRoute]);
+  // "My public profile" is gone: the profile TAB (root page) now IS that page — same shared
+  // four-section experience — so there is nothing to drill into from settings. Edit profile stays.
   const appVersion = Constants.expoConfig?.version ?? null;
   return (
     <View style={styles.body} testID="stub-scene-settings">
@@ -230,11 +220,6 @@ const SettingsSceneBody = React.memo((_props: MountedSceneBodyProps) => {
         label="Edit profile"
         testID="settings-edit-profile"
         onPress={() => pushRoute('editProfile')}
-      />
-      <DrillInRow
-        label="My public profile"
-        testID="settings-sample-profile"
-        onPress={handleOpenMyPublicProfile}
       />
 
       <SectionHeader label="Notifications" />

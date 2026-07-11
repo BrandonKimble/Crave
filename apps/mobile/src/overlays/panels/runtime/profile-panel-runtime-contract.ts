@@ -1,7 +1,6 @@
-import type { Poll } from '../../../services/polls';
-import type { FavoriteListSummary } from '../../../services/favorite-lists';
-import type { ProfileSegment } from '../profileSceneQueryOptions';
-
+// Identity chrome props for the root profile TAB (own profile). The FOUR-section body itself is
+// the shared ProfileSectionsBody — the root keeps only its own chrome (identity header + the
+// metrics FrostCutout), so this contract carries just the identity axis, not the sections.
 export type ProfileSceneHeaderProps = {
   avatarUrl?: string | null;
   initials: string;
@@ -16,42 +15,13 @@ export type ProfileSceneHeaderProps = {
   // 'Pick a username'/'C'/0-count text fallbacks, which would otherwise flash on the hard-swap
   // header for the seeded-but-not-yet-loaded window.
   identityResolved: boolean;
-  activeSegment: ProfileSegment;
   onOpenSettings: () => void;
   // W3 messaging (§4.4 entry 2): own-profile header → messagesInbox child push.
   onOpenMessages: () => void;
-  onSelectSegment: (segment: ProfileSegment) => void;
 };
-
-export type ProfileSceneRow =
-  | {
-      type: 'loading';
-      key: 'loading';
-    }
-  | {
-      type: 'empty';
-      key: 'empty';
-      message: string;
-    }
-  | {
-      type: 'poll';
-      key: string;
-      poll: Poll;
-    }
-  | {
-      type: 'favorite-section';
-      key: string;
-      title: string;
-      lists: readonly FavoriteListSummary[];
-      loading: boolean;
-      error: boolean;
-      emptyMessage: string;
-    };
 
 export type ProfilePanelActionsRuntime = {
   isSignedIn: boolean;
   handleOpenSettings: () => void;
   handleOpenMessages: () => void;
-  handlePollPress: (poll: Poll) => void;
-  handleListPress: (list: FavoriteListSummary) => void;
 };

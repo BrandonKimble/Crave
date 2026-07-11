@@ -109,11 +109,6 @@ export interface Poll {
   topic?: PollTopic | null;
 }
 
-export interface UserPollsResponse {
-  activity: string;
-  polls: Poll[];
-}
-
 export type PollQueryResponse = {
   marketKey?: string | null;
   marketName?: string | null;
@@ -643,16 +638,5 @@ export const togglePollEndorsement = async (
     subjectId,
     subjectType,
   });
-  return response.data;
-};
-
-export const fetchUserPolls = async (params: {
-  activity?: 'created' | 'commented' | 'participated';
-  marketKey?: string;
-  state?: string;
-  limit?: number;
-  offset?: number;
-}): Promise<UserPollsResponse> => {
-  const response = await api.get<UserPollsResponse>('/polls/me', { params });
   return response.data;
 };
