@@ -45,6 +45,7 @@ import {
   isSceneBodyDataActivityKey,
 } from '../navigation/runtime/app-route-scene-input-registry';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
+import { areSceneEntryMountUnitArraysEqual } from '../navigation/runtime/app-route-scene-entry-mounts';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { SearchResultsPageBundleHost } from './SearchMountedScenePageBundleAuthority';
 import { SceneLoadingSurface } from '../components/skeletons';
@@ -305,6 +306,21 @@ const areSceneBodySurfaceSelectionsEqual = (
       'transportEntryRef',
       left.transportEntry,
       right.transportEntry
+    );
+    return false;
+  }
+
+  // W1 slice 1 — entry-keyed child mounts are render-read by the body host (snapshot-equality
+  // landmine: render-read fields MUST be compared here or a unit change never republishes).
+  if (
+    !areSceneEntryMountUnitArraysEqual(left.mountedEntryUnits, right.mountedEntryUnits) ||
+    left.activeEntryId !== right.activeEntryId
+  ) {
+    markSceneBodySurfaceSelectionDiff(
+      sceneKey,
+      'mountedEntryUnits',
+      left.mountedEntryUnits,
+      right.mountedEntryUnits
     );
     return false;
   }
@@ -890,6 +906,8 @@ const SceneStackBodyContentLayerHost = React.memo(
         contentActivity={sceneBodySurfaceSelection.contentActivity}
         bodyDefaults={sceneBodyRuntimeSelection.bodyDefaults}
         bodyScrollRuntime={sceneBodyRuntimeSelection.bodyScrollRuntime}
+        mountedEntryUnits={sceneBodySurfaceSelection.mountedEntryUnits}
+        activeEntryId={sceneBodySurfaceSelection.activeEntryId}
       />
     );
 

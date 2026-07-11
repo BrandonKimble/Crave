@@ -1,4 +1,5 @@
 import React from 'react';
+import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components';
@@ -46,7 +47,7 @@ const RowAvatar = ({ item }: { item: NotificationFeedItem }) => {
   );
 };
 
-export const NotificationsPanelBody = React.memo(() => {
+export const NotificationsPanelBody = React.memo((_props: MountedSceneBodyProps) => {
   const { pushRoute } = useAppOverlayRouteController();
   useOriginSceneScrollPublication('notifications');
 

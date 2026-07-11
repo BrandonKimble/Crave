@@ -4,6 +4,7 @@ import type {
   SearchRouteSceneStackChromeEntry,
 } from '../../overlays/searchRouteSceneStackSheetContract';
 import type { OverlayKey } from '../../overlays/types';
+import type { SceneEntryMountUnit } from './app-route-scene-entry-mounts';
 
 export type AppRouteSceneStackMountedScenesSnapshot = {
   mountedSceneKeys: readonly OverlayKey[];
@@ -50,6 +51,14 @@ export type AppRouteSceneStackBodySurfaceSnapshot = AppRouteSceneStackBodySnapsh
     | 'shouldRenderExpandedContent'
     | 'hasActivatedExpandedContent'
   >;
+  // ─── W1 slice 1 — entry-keyed child mounts (app-route-scene-entry-mounts.ts) ──────────────
+  /**
+   * For CHILD-role scenes: the per-entry mounted units (key#entryId), stack order. NULL for
+   * root/topLevel/shell scenes — the body host takes the legacy singleton path untouched.
+   */
+  mountedEntryUnits: readonly SceneEntryMountUnit[] | null;
+  /** The unit that should be VISIBLE = the topmost in-stack entryId of the scene key. */
+  activeEntryId: string | null;
 };
 
 export type AppRouteSceneStackScenePresentationSnapshot = {
@@ -174,4 +183,6 @@ export const EMPTY_APP_ROUTE_SCENE_STACK_BODY_SURFACE_SNAPSHOT: AppRouteSceneSta
       shouldRenderExpandedContent: false,
       hasActivatedExpandedContent: false,
     },
+    mountedEntryUnits: null,
+    activeEntryId: null,
   };

@@ -1,4 +1,12 @@
 import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
+import type { OverlayRouteEntry } from './app-overlay-route-types';
+import {
+  areSceneEntryMountUnitArraysEqual,
+  isEntryKeyedMountSceneKey,
+  resolveActiveEntryIdForScene,
+  resolveMountedSceneEntryUnits,
+  type SceneEntryMountUnit,
+} from './app-route-scene-entry-mounts';
 import type {
   SearchRouteSceneStackBodyContentEntry,
   SearchRouteSceneStackBodyTransportEntry,
@@ -110,6 +118,17 @@ const APP_ROUTE_SCENE_STACK_KEYS = APP_ROUTE_SCENE_INPUT_KEYS;
 type AppRouteSceneStackKey = AppRouteSceneInputKey;
 
 const SCENE_DATA_LANE_QUIET_DELAY_MS = 350;
+
+// W1 slice 1 — stable fallback states for getSceneEntryMountState (reference-stable so the
+// body-surface equality stays cheap).
+const EMPTY_SCENE_ENTRY_MOUNT_STATE: {
+  units: readonly SceneEntryMountUnit[];
+  activeEntryId: string | null;
+} = { units: [], activeEntryId: null };
+const NULL_SCENE_ENTRY_MOUNT_STATE: {
+  units: readonly SceneEntryMountUnit[] | null;
+  activeEntryId: string | null;
+} = { units: null, activeEntryId: null };
 
 type SceneStackControllerSceneEntry = {
   sceneKey: OverlayKey;
@@ -955,6 +974,14 @@ class AppRouteSceneStackLayerStateController {
     AppRouteSceneStackBodySurfaceSnapshot
   >();
 
+  // W1 slice 1 — per-scene entry-keyed mount units (child-role scenes only). The reducer is
+  // pure (app-route-scene-entry-mounts.ts, spec-pinned); this map is the runtime's committed
+  // copy, published on the per-scene body-surface snapshot.
+  private readonly sceneEntryMountStateByKey = new Map<
+    OverlayKey,
+    { units: readonly SceneEntryMountUnit[]; activeEntryId: string | null }
+  >();
+
   private readonly deferredSceneBodyInputKeys = new Set<AppRouteSceneStackKey>();
 
   private readonly dataLaneReadySceneKeys = new Set<OverlayKey>();
@@ -1106,6 +1133,7 @@ class AppRouteSceneStackLayerStateController {
     this.sceneBodySurfaceListeners.clear();
     this.sceneBodySurfaceAuthorities.clear();
     this.sceneBodySurfaceSnapshots.clear();
+    this.sceneEntryMountStateByKey.clear();
     this.deferredSceneBodyInputKeys.clear();
     this.dataLaneTimers.forEach((timer) => {
       clearTimeout(timer);
@@ -1623,10 +1651,81 @@ class AppRouteSceneStackLayerStateController {
     return changedSceneKeys;
   }
 
+  // ─── W1 slice 1 — entry-keyed child mounts ────────────────────────────────────────────────
+  private getSceneEntryMountState(sceneKey: OverlayKey): {
+    units: readonly SceneEntryMountUnit[] | null;
+    activeEntryId: string | null;
+  } {
+    const state = this.sceneEntryMountStateByKey.get(sceneKey);
+    if (state != null) {
+      return state;
+    }
+    // Child keys with no live entries publish an EMPTY unit list (still entry-keyed); root/
+    // topLevel/shell scenes publish null → the body host's legacy singleton path.
+    return isEntryKeyedMountSceneKey(sceneKey)
+      ? EMPTY_SCENE_ENTRY_MOUNT_STATE
+      : NULL_SCENE_ENTRY_MOUNT_STATE;
+  }
+
+  /**
+   * Recompute the per-entry mounted units for every child-role scene the route stack (or a
+   * settle-window hold) references. Returns the scene keys whose units/active id changed —
+   * the caller merges them into the body-surface sync + notify lists.
+   */
+  private syncSceneEntryMountUnits({
+    overlayRouteStack,
+    outgoingEntryId,
+  }: {
+    overlayRouteStack: readonly OverlayRouteEntry[];
+    outgoingEntryId: string | null;
+  }): OverlayKey[] {
+    const sceneKeysToCheck = new Set<OverlayKey>();
+    overlayRouteStack.forEach((entry) => {
+      if (entry != null && isEntryKeyedMountSceneKey(entry.key)) {
+        sceneKeysToCheck.add(entry.key);
+      }
+    });
+    this.sceneEntryMountStateByKey.forEach((_state, sceneKey) => {
+      sceneKeysToCheck.add(sceneKey);
+    });
+
+    const changedSceneKeys: OverlayKey[] = [];
+    sceneKeysToCheck.forEach((sceneKey) => {
+      const previousState = this.sceneEntryMountStateByKey.get(sceneKey) ?? null;
+      const units = resolveMountedSceneEntryUnits({
+        sceneKey,
+        overlayRouteStack,
+        outgoingEntryId,
+        previousUnits: previousState?.units ?? null,
+      });
+      if (units == null) {
+        return; // non-child (defensive — the check set only admits child keys)
+      }
+      const activeEntryId = resolveActiveEntryIdForScene(sceneKey, overlayRouteStack);
+      const isUnchanged =
+        previousState != null
+          ? areSceneEntryMountUnitArraysEqual(previousState.units, units) &&
+            previousState.activeEntryId === activeEntryId
+          : units.length === 0 && activeEntryId == null;
+      if (isUnchanged) {
+        return;
+      }
+      if (units.length === 0 && activeEntryId == null) {
+        this.sceneEntryMountStateByKey.delete(sceneKey);
+      } else {
+        this.sceneEntryMountStateByKey.set(sceneKey, { units, activeEntryId });
+      }
+      changedSceneKeys.push(sceneKey);
+    });
+    return changedSceneKeys;
+  }
+
   private createSceneBodySurfaceSnapshot({
+    sceneKey,
     bodySnapshot,
     activitySnapshot,
   }: {
+    sceneKey: OverlayKey;
     bodySnapshot: AppRouteSceneStackBodySnapshot;
     activitySnapshot: AppRouteSceneStackSceneActivitySnapshot;
   }): AppRouteSceneStackBodySurfaceSnapshot {
@@ -1637,6 +1736,7 @@ class AppRouteSceneStackLayerStateController {
     ) {
       return EMPTY_APP_ROUTE_SCENE_STACK_BODY_SURFACE_SNAPSHOT;
     }
+    const entryMountState = this.getSceneEntryMountState(sceneKey);
     const bodySurfaceKind = bodySnapshot.contentEntry.bodyContentSpec.surfaceKind;
     const isMountedBodySurface = bodySurfaceKind === 'mounted';
 
@@ -1665,6 +1765,8 @@ class AppRouteSceneStackLayerStateController {
           ? activitySnapshot.hasActivatedExpandedContent
           : false,
       },
+      mountedEntryUnits: entryMountState.units,
+      activeEntryId: entryMountState.activeEntryId,
     };
   }
 
@@ -1774,6 +1876,20 @@ class AppRouteSceneStackLayerStateController {
     right: AppRouteSceneStackBodySurfaceSnapshot
   ): boolean {
     const sceneKey = right.contentEntry?.sceneKey ?? left.contentEntry?.sceneKey ?? null;
+    // W1 slice 1 — the entry-mount fields are render-read by the body host (snapshot-equality
+    // landmine: a field the render reads MUST be compared). Roots carry null/null → cheap.
+    const areEntryMountFieldsEqual =
+      areSceneEntryMountUnitArraysEqual(left.mountedEntryUnits, right.mountedEntryUnits) &&
+      left.activeEntryId === right.activeEntryId;
+    if (!areEntryMountFieldsEqual) {
+      this.markSceneBodySurfaceSnapshotDiff(
+        sceneKey,
+        'mountedEntryUnits',
+        left.mountedEntryUnits,
+        right.mountedEntryUnits
+      );
+      return false;
+    }
     if (sceneKey === 'search' || sceneKey === 'polls') {
       const areEntriesEqual =
         areSearchRouteSceneStackBodyContentEntriesEqual(left.contentEntry, right.contentEntry) &&
@@ -1830,6 +1946,7 @@ class AppRouteSceneStackLayerStateController {
 
   private syncSceneBodySurfaceSnapshot(sceneKey: OverlayKey): boolean {
     const nextSnapshot = this.createSceneBodySurfaceSnapshot({
+      sceneKey,
       bodySnapshot: this.getSceneBodySnapshot(sceneKey),
       activitySnapshot: this.getSceneActivitySnapshot(sceneKey),
     });
@@ -1912,6 +2029,13 @@ class AppRouteSceneStackLayerStateController {
         : 'interactive';
     const bodyAdmissionPolicy = sceneEntry?.bodyAdmissionPolicy;
     const shouldRetainMountedBody = shouldRetainMountedSceneBody(bodyAdmissionPolicy);
+    // Entry-keyed mounts (W1 slice 1): a CHILD key with any in-stack entry
+    // within depth-K keeps its mounted content attached — per-entry state
+    // isolation is meaningless if the key's content detaches at settle and
+    // guillotines every unit (the sim probe's unmount-churn finding).
+    const hasRetainedEntryUnits =
+      getAppOverlayRouteMetadata(sceneKey).role === 'child' &&
+      (this.sceneEntryMountStateByKey.get(sceneKey)?.units.length ?? 0) > 0;
     const hasActivatedExpandedContent =
       shouldRetainMountedBody && this.retainedExpandedContentSceneKeys.has(sceneKey);
     const canAdmitInteractiveDataLane = canInteract && activationPhase === 'interactive';
@@ -1987,7 +2111,8 @@ class AppRouteSceneStackLayerStateController {
       // else the crossfade's outgoing leg (opacity 1→0) would fade a blank.
       shouldRenderListBody:
         isActive || isTransitionParticipant || shouldRetainSceneListBody(bodyAdmissionPolicy),
-      shouldAttachMountedContent: canInteract || isTransitionParticipant || shouldRetainMountedBody,
+      shouldAttachMountedContent:
+        canInteract || isTransitionParticipant || shouldRetainMountedBody || hasRetainedEntryUnits,
       isTransitionParticipant,
       activationPhase,
       shouldRunDataLane,
@@ -2580,6 +2705,11 @@ class AppRouteSceneStackLayerStateController {
           : (presentationFrame.outgoingSceneKey ?? sheetPresentationSceneKey);
       const mountedSceneKeys = this.snapshot.mountedSceneKeys;
       const sceneEntryByKey = this.snapshot.sceneEntryByKey;
+      // W1 slice 1 — entry-keyed child mounts follow the SAME dispatch cadence as the frame.
+      const changedEntryMountSceneKeys = this.syncSceneEntryMountUnits({
+        overlayRouteStack: routeSceneSwitchSnapshot.overlayRouteStack,
+        outgoingEntryId: presentationFrame.outgoingEntryId,
+      });
       const activeSceneEntry =
         activeSceneKey == null ? null : (sceneEntryByKey[activeSceneKey] ?? null);
       const nextSnapshot: SceneStackControllerSnapshot = {
@@ -2596,6 +2726,13 @@ class AppRouteSceneStackLayerStateController {
       };
 
       if (areLayerSnapshotsEqual(this.snapshot, nextSnapshot)) {
+        // Entry-mount units can change with an otherwise-identical layer snapshot (a settle
+        // commit clearing the outgoing hold; a same-key push under one leg) — publish them.
+        if (changedEntryMountSceneKeys.length > 0) {
+          this.notifySceneBodySurfaceListeners(
+            this.syncSceneBodySurfaceSnapshots(changedEntryMountSceneKeys)
+          );
+        }
         return;
       }
 
@@ -2629,13 +2766,16 @@ class AppRouteSceneStackLayerStateController {
             sceneEntryByKey: nextSnapshot.sceneEntryByKey,
           })
       );
+      const bodySurfaceKeysToSync = Array.from(
+        new Set([...changedSceneActivityKeys, ...changedEntryMountSceneKeys])
+      );
       const changedSceneBodySurfaceKeys =
-        changedSceneActivityKeys.length === 0
+        bodySurfaceKeysToSync.length === 0
           ? []
           : withSearchNavSwitchRuntimeAttribution(
               'sceneStack',
               'routeSwitchPresentation:syncSceneBodySurfaceSnapshots',
-              () => this.syncSceneBodySurfaceSnapshots(changedSceneActivityKeys)
+              () => this.syncSceneBodySurfaceSnapshots(bodySurfaceKeysToSync)
             );
       const changedScenePresentationKeys =
         changedSceneActivityKeys.length === 0
@@ -2741,6 +2881,12 @@ class AppRouteSceneStackLayerStateController {
               })
           );
         this.staticSceneMountState = staticSceneMountState;
+        const overlayRouteStack = routeSceneSwitchRuntime.getRouteState().overlayRouteStack;
+        // W1 slice 1 — entry-keyed child mounts recompute on the same cadence as the key set.
+        const changedEntryMountSceneKeys = this.syncSceneEntryMountUnits({
+          overlayRouteStack,
+          outgoingEntryId: presentationFrame.outgoingEntryId,
+        });
         this.mountedSceneKeys = new Set(
           withSearchNavSwitchRuntimeAttribution(
             'sceneStack',
@@ -2753,11 +2899,7 @@ class AppRouteSceneStackLayerStateController {
                 pendingSceneKey: resolvedRouteSceneSwitchSnapshot.pendingSceneKey,
                 handoffSceneKey,
                 staticSceneMountSnapshot,
-                routeStackSceneKeys: new Set(
-                  routeSceneSwitchRuntime
-                    .getRouteState()
-                    .overlayRouteStack.map((entry) => entry.key)
-                ),
+                routeStackSceneKeys: new Set(overlayRouteStack.map((entry) => entry.key)),
               })
           )
         );
@@ -2883,6 +3025,13 @@ class AppRouteSceneStackLayerStateController {
         );
 
         if (areLayerSnapshotsEqual(this.snapshot, nextSnapshot)) {
+          // Entry-mount units can change with an otherwise-identical layer snapshot (settle
+          // clearing the outgoing hold; same-key push under one leg) — publish them.
+          if (changedEntryMountSceneKeys.length > 0) {
+            this.notifySceneBodySurfaceListeners(
+              this.syncSceneBodySurfaceSnapshots(changedEntryMountSceneKeys)
+            );
+          }
           return;
         }
 
@@ -2939,7 +3088,11 @@ class AppRouteSceneStackLayerStateController {
             })
         );
         const sceneBodySurfaceKeysToSync = Array.from(
-          new Set([...changedSceneBodyKeys, ...changedSceneActivityKeys])
+          new Set([
+            ...changedSceneBodyKeys,
+            ...changedSceneActivityKeys,
+            ...changedEntryMountSceneKeys,
+          ])
         );
         const changedSceneBodySurfaceKeys =
           sceneBodySurfaceKeysToSync.length === 0

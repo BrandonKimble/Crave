@@ -10,6 +10,7 @@ import {
   BottomSheetSceneStackBodyRenderActivityContext,
 } from './BottomSheetSceneStackBodyActivityContext';
 import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
+import { areSceneEntryMountUnitArraysEqual } from '../navigation/runtime/app-route-scene-entry-mounts';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { useBottomSheetSceneStackBodyContentRuntime } from './useBottomSheetSceneStackBodyContentRuntime';
@@ -64,6 +65,18 @@ const shouldSkipSceneStackBodyContentLayerUpdate = (
     }
   }
 
+  // W1 slice 1 — entry-keyed child mounts are render-read here (memo landmine: skip fns must
+  // compare every render-read prop or a unit change never re-renders the leg body).
+  if (
+    !areSceneEntryMountUnitArraysEqual(
+      previousProps.mountedEntryUnits,
+      nextProps.mountedEntryUnits
+    ) ||
+    previousProps.activeEntryId !== nextProps.activeEntryId
+  ) {
+    return false;
+  }
+
   return (
     previousProps.bodyDefaults === nextProps.bodyDefaults &&
     previousProps.bodyScrollRuntime === nextProps.bodyScrollRuntime
@@ -72,7 +85,12 @@ const shouldSkipSceneStackBodyContentLayerUpdate = (
 
 type SceneStackBodyContentHostProps = Pick<
   SceneStackBodyContentLayerProps,
-  'contentEntry' | 'transportEntry' | 'bodyDefaults' | 'bodyScrollRuntime'
+  | 'contentEntry'
+  | 'transportEntry'
+  | 'bodyDefaults'
+  | 'bodyScrollRuntime'
+  | 'mountedEntryUnits'
+  | 'activeEntryId'
 > & {
   isActive: boolean;
   shouldRenderListBody: boolean;
@@ -89,7 +107,9 @@ const shouldSkipSceneStackBodyContentUpdate = (
   previousProps.bodyScrollRuntime === nextProps.bodyScrollRuntime &&
   previousProps.isActive === nextProps.isActive &&
   previousProps.shouldRenderListBody === nextProps.shouldRenderListBody &&
-  previousProps.shouldAttachMountedContent === nextProps.shouldAttachMountedContent;
+  previousProps.shouldAttachMountedContent === nextProps.shouldAttachMountedContent &&
+  areSceneEntryMountUnitArraysEqual(previousProps.mountedEntryUnits, nextProps.mountedEntryUnits) &&
+  previousProps.activeEntryId === nextProps.activeEntryId;
 
 const SceneStackBodyContentHost = React.memo(
   ({
@@ -100,6 +120,8 @@ const SceneStackBodyContentHost = React.memo(
     isActive,
     shouldRenderListBody,
     shouldAttachMountedContent,
+    mountedEntryUnits,
+    activeEntryId,
   }: SceneStackBodyContentHostProps) =>
     useBottomSheetSceneStackBodyContentRuntime({
       sceneKey: contentEntry.sceneKey,
@@ -110,6 +132,8 @@ const SceneStackBodyContentHost = React.memo(
       bodyScrollRuntime,
       sceneBodyContentEntry: contentEntry,
       sceneBodyTransportEntry: transportEntry,
+      mountedEntryUnits,
+      activeEntryId,
     }),
   shouldSkipSceneStackBodyContentUpdate
 );
@@ -152,6 +176,8 @@ export const SceneStackBodyContentLayer = React.memo(
     contentActivity,
     bodyDefaults,
     bodyScrollRuntime,
+    mountedEntryUnits,
+    activeEntryId,
   }: SceneStackBodyContentLayerProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
     const bodySurfaceKind = contentEntry.bodyContentSpec.surfaceKind;
@@ -230,6 +256,8 @@ export const SceneStackBodyContentLayer = React.memo(
         isActive={contentActivity.isActive}
         shouldRenderListBody={shouldRenderListBody}
         shouldAttachMountedContent={shouldAttachMountedContent}
+        mountedEntryUnits={mountedEntryUnits}
+        activeEntryId={activeEntryId}
       />
     );
     const bodyContent = onProfilerRender ? (

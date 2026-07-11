@@ -1,10 +1,10 @@
 import React from 'react';
+import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components';
 import { usersService, type PublicUserProfile } from '../../services/users';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
-import { useTopMostRouteEntryForScene } from '../../navigation/runtime/use-top-most-route-entry-for-scene';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 // ─── userProfile — the REAL page body (trigger-nav pages; plans/page-registry.md) ───────────
@@ -75,11 +75,16 @@ const StatCell = ({
   );
 };
 
-export const UserProfilePanelBody = React.memo(() => {
-  const entry = useTopMostRouteEntryForScene('userProfile');
+// W1 slice 1 (C2): the ENTRY arrives as a prop from the entry-keyed mount unit — with two
+// live userProfile entries (the drill loop) the topmost-per-key read renders the wrong one.
+export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps) => {
   const { pushRoute } = useAppOverlayRouteController();
   const queryClient = useQueryClient();
-  const userId = typeof entry?.params?.userId === 'string' ? entry.params.userId : null;
+  const params =
+    entry?.key === 'userProfile'
+      ? (entry.params as import('../../navigation/runtime/app-overlay-route-types').OverlayRouteParamsMap['userProfile'])
+      : null;
+  const userId = typeof params?.userId === 'string' ? params.userId : null;
 
   // RT-19 (state-loss half): page data rides the query CACHE keyed by userId — the drill
   // loop's pop back to A re-renders instantly from cache instead of a spinner refetch. The

@@ -45,10 +45,12 @@ import {
   EMPTY_PRESENTATION_FRAME,
   resolvePresentationLaneKind,
   resolvePresentedSceneKey,
+  resolveSupersededOutgoingEntryId,
   resolveSupersededOutgoingSceneKey,
   type PresentationFrame,
   type PresentationLaneInputs,
 } from './app-route-presentation-frame-contract';
+import { resolveActiveEntryIdForScene } from './app-route-scene-entry-mounts';
 
 export type RouteSceneSwitchTransitionState = {
   activeSceneKey: OverlayKey | null;
@@ -797,24 +799,53 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     });
     const presentedSceneKey = resolvePresentedSceneKey(laneKind, resolvedTargetSceneKey);
     const isNewSwitch = nextState.transitionToken !== previousFrame.switchId;
+    // W1 slice 1 (C5) — the frame's ENTRY identity: topmost stack entry of the key. Additive;
+    // key-typed consumers untouched. Read from the SAME route-state snapshot as the keys.
+    const overlayRouteStack = nextState.routeState.overlayRouteStack;
+    const activeEntryId =
+      resolvedTargetSceneKey == null
+        ? null
+        : resolveActiveEntryIdForScene(resolvedTargetSceneKey, overlayRouteStack);
+    const presentedEntryId =
+      presentedSceneKey == null
+        ? null
+        : presentedSceneKey === resolvedTargetSceneKey
+          ? activeEntryId
+          : resolveActiveEntryIdForScene(presentedSceneKey, overlayRouteStack);
     let outgoingSceneKey: OverlayKey | null;
+    let outgoingEntryId: string | null;
     if (!nextState.isOverlaySwitchInFlight || contract == null) {
       // Idle-committed or settled — no held leg.
       outgoingSceneKey = null;
+      outgoingEntryId = null;
     } else if (isNewSwitch) {
+      const preservesOutgoing =
+        contract.sheetTransitionPlan.contentHandoff === 'preserveOutgoingUntilSettle';
+      const previousAckCommitted = this.presentationAckSwitchIds.has(previousFrame.switchId);
       outgoingSceneKey = resolveSupersededOutgoingSceneKey({
         previousFrame,
-        previousAckCommitted: this.presentationAckSwitchIds.has(previousFrame.switchId),
-        preservesOutgoing:
-          contract.sheetTransitionPlan.contentHandoff === 'preserveOutgoingUntilSettle',
+        previousAckCommitted,
+        preservesOutgoing,
+      });
+      // Entry-level hold mirrors the scene-key supersede but is NOT nulled on a same-KEY
+      // switch: userProfile(A)→userProfile(B) holds no outgoing LEG, yet A remains the
+      // leg-internal outgoing UNIT until settle (entry-keyed child mounts, contract c).
+      outgoingEntryId = resolveSupersededOutgoingEntryId({
+        previousFrame,
+        previousAckCommitted,
+        preservesOutgoing,
       });
       if (outgoingSceneKey === presentedSceneKey) {
         // Same-scene re-entry: the leg resolves 'incoming' at full opacity; keep the frame canonical.
         outgoingSceneKey = null;
       }
+      if (outgoingEntryId === presentedEntryId) {
+        outgoingEntryId = null;
+      }
     } else {
       // An in-flight update on the SAME switch (phase/interactive bookkeeping) keeps its hold.
       outgoingSceneKey = previousFrame.outgoingSceneKey;
+      outgoingEntryId = previousFrame.outgoingEntryId;
     }
     return {
       switchId: nextState.transitionToken,
@@ -823,6 +854,9 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       presentedSceneKey,
       outgoingSceneKey,
       laneKind,
+      activeEntryId,
+      presentedEntryId,
+      outgoingEntryId,
     };
   }
 

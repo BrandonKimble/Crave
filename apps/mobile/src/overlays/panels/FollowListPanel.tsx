@@ -1,10 +1,10 @@
 import React from 'react';
+import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components';
 import { usersService, type FollowListUser } from '../../services/users';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
-import { useTopMostRouteEntryForScene } from '../../navigation/runtime/use-top-most-route-entry-for-scene';
 import { useQuery } from '@tanstack/react-query';
 import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
 
@@ -31,11 +31,16 @@ const RowAvatar = ({ user }: { user: FollowListUser }) => {
   );
 };
 
-export const FollowListPanelBody = React.memo(() => {
-  const entry = useTopMostRouteEntryForScene('followList');
+// W1 slice 1 (C2): the ENTRY arrives as a prop from the entry-keyed mount unit — with two
+// live followList entries the topmost-per-key read would render the wrong one.
+export const FollowListPanelBody = React.memo(({ entry }: MountedSceneBodyProps) => {
   const { pushRoute } = useAppOverlayRouteController();
-  const mode = entry?.params?.mode === 'following' ? 'following' : 'followers';
-  const ownerUserId = typeof entry?.params?.userId === 'string' ? entry.params.userId : null;
+  const params =
+    entry?.key === 'followList'
+      ? (entry.params as import('../../navigation/runtime/app-overlay-route-types').OverlayRouteParamsMap['followList'])
+      : null;
+  const mode = params?.mode === 'following' ? 'following' : 'followers';
+  const ownerUserId = typeof params?.userId === 'string' ? params.userId : null;
   useOriginSceneScrollPublication('followList');
 
   // RT-19 (state-loss half): cache-keyed by (mode, userId) — the drill loop's pop back

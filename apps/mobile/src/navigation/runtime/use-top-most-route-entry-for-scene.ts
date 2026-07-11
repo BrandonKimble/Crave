@@ -2,6 +2,7 @@ import React from 'react';
 
 import type { OverlayKey, OverlayRouteEntry } from './app-overlay-route-types';
 import { areOverlayRoutesEqual } from './app-overlay-route-stack-algebra';
+import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 import { useAppRouteSceneRuntime } from './AppRouteSceneRuntimeProvider';
 import type { RouteOverlayNavigationSnapshot } from './route-overlay-navigation-snapshot-contract';
 import { useRouteAuthoritySelector } from './use-route-authority-selector';
@@ -17,6 +18,22 @@ import { useRouteAuthoritySelector } from './use-route-authority-selector';
 export const useTopMostRouteEntryForScene = <K extends OverlayKey>(
   sceneKey: K
 ): OverlayRouteEntry<K> | null => {
+  if (__DEV__) {
+    // W1 slice 1 (C2): entry-keyed mounted child bodies receive THEIR entry as a prop from the
+    // mount unit — a topmost-per-key read here renders the WRONG entry once two entries of the
+    // key are live (the drill loop). Scoped to child scenes whose body is a static mounted
+    // body (role 'child' + staticSceneInput) so key-existence checks on other children (e.g.
+    // 'restaurant') stay warning-free.
+    const metadata = getAppOverlayRouteMetadata(sceneKey);
+    if (metadata.role === 'child' && metadata.staticSceneInput) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[entry-mounts] useTopMostRouteEntryForScene('${sceneKey}') called for an entry-keyed ` +
+          'child scene — read the entry from the mount unit props instead (topmost-per-key is ' +
+          'wrong with two live entries of one key).'
+      );
+    }
+  }
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const selector = React.useCallback(
     (snapshot: RouteOverlayNavigationSnapshot): OverlayRouteEntry<K> | null => {

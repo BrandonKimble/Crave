@@ -1,4 +1,5 @@
 import React from 'react';
+import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Text } from '../../components';
@@ -13,7 +14,7 @@ import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 
 type LoadState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready' };
 
-export const EditProfilePanelBody = React.memo(() => {
+export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) => {
   const { closeActiveRoute } = useAppOverlayRouteController();
   const [loadState, setLoadState] = React.useState<LoadState>({ kind: 'loading' });
   const [displayName, setDisplayName] = React.useState('');

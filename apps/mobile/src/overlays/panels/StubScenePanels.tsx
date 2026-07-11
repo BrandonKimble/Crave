@@ -12,6 +12,7 @@ import { UserProfilePanelBody } from './UserProfilePanel';
 import { FollowListPanelBody } from './FollowListPanel';
 import { NotificationsPanelBody } from './NotificationsPanel';
 import { EditProfilePanelBody } from './EditProfilePanel';
+import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 
 // ─── Stub-pass scenes (plans/page-registry.md §1) ────────────────────────────────────────────
 // Placeholder mounted bodies + persistent headers for the 7 registered-but-unbuilt child
@@ -38,8 +39,10 @@ const STUB_SCENE_TITLES: Record<StubSceneKey, string> = {
   shareConfig: 'Share',
 };
 
-const createStubMountedSceneBody = (sceneKey: StubSceneKey): React.ComponentType => {
-  const StubMountedSceneBody = React.memo(() => (
+const createStubMountedSceneBody = (
+  sceneKey: StubSceneKey
+): React.ComponentType<MountedSceneBodyProps> => {
+  const StubMountedSceneBody = React.memo((_props: MountedSceneBodyProps) => (
     <View style={styles.body} testID={`stub-scene-${sceneKey}`}>
       <Text variant="body" style={styles.bodyText}>
         {STUB_SCENE_TITLES[sceneKey]} — coming soon
@@ -80,7 +83,7 @@ const DrillInRow = ({
 // profile is a real child push; sign-out / replay-onboarding ride the extracted account
 // actions runtime. "Sample public profile" is the drill-in practice entry into the
 // userProfile ⇄ followList loop until EntityLink (S-D) wires the real ones.
-const SettingsSceneBody = React.memo(() => {
+const SettingsSceneBody = React.memo((_props: MountedSceneBodyProps) => {
   const { pushRoute } = useAppOverlayRouteController();
   const { handleSignOut, handleReplayOnboarding, handleDeleteAccount } = useAccountActionsRuntime();
   const handleOpenMyPublicProfile = React.useCallback(() => {
@@ -169,7 +172,7 @@ const createStubPersistentHeaderAction = (sceneKey: StubSceneKey): React.Compone
   return StubPersistentHeaderAction;
 };
 
-const createStubScene = (sceneKey: StubSceneKey): React.ComponentType => {
+const createStubScene = (sceneKey: StubSceneKey): React.ComponentType<MountedSceneBodyProps> => {
   // Module-scope registration (house pattern — this module is imported by the mounted-body
   // registry, so the registrations run before any stub scene can present).
   registerPersistentHeaderDescriptor(sceneKey, {

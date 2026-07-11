@@ -13,8 +13,45 @@ import {
 import { BottomSheetSceneStackMountedBody } from './BottomSheetSceneStackMountedBodyRegistry';
 import { BottomSheetSceneStackListBodySurface } from './BottomSheetSceneStackListBodySurface';
 import { useMountedSceneScrollRestore } from './useMountedSceneScrollRestore';
+import {
+  createSceneEntryMountUnitKey,
+  type SceneEntryMountUnit,
+} from '../navigation/runtime/app-route-scene-entry-mounts';
+import { getOverlayScrollOffset, setOverlayScrollOffset } from './overlayScrollOffsetRuntime';
 import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
 import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneStackBodyActivityContext';
+
+// ─── W1 slice 1 — entry-keyed child mount boundary ──────────────────────────────────────────
+// One boundary per key#entryId unit: keeps EVERY in-stack (depth≤K) entry of a child scene
+// mounted (React state isolation by construction), shows only the ACTIVE unit, and emits the
+// temporary [ENTRYMOUNT] probe the anchor's sim pass asserts on (removed after the probe).
+const sceneEntryMountHiddenStyle = { display: 'none' as const };
+
+const SceneEntryMountBoundary = React.memo(
+  ({
+    unitKey,
+    isActiveUnit,
+    children,
+  }: {
+    unitKey: string;
+    isActiveUnit: boolean;
+    children: React.ReactNode;
+  }) => {
+    React.useEffect(() => {
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.log(`[ENTRYMOUNT] mount ${unitKey}`);
+        return () => {
+          // eslint-disable-next-line no-console
+          console.log(`[ENTRYMOUNT] unmount ${unitKey}`);
+        };
+      }
+      return undefined;
+    }, [unitKey]);
+    return <View style={isActiveUnit ? null : sceneEntryMountHiddenStyle}>{children}</View>;
+  }
+);
+SceneEntryMountBoundary.displayName = 'SceneEntryMountBoundary';
 
 const StaticContentSurface = React.memo(
   ({ content, containerStyle, surfaceStyle }: StaticContentSurfaceProps) => (
@@ -33,6 +70,8 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
   bodyScrollRuntime,
   sceneBodyContentEntry,
   sceneBodyTransportEntry,
+  mountedEntryUnits,
+  activeEntryId,
 }: SceneStackBodyContentProps): React.ReactNode => {
   // P3 return-to-origin scroll RESTORE for the mounted-scroll path (bookmarks). Gate on
   // isActive && hasActivatedExpandedContent:
@@ -55,6 +94,43 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     sceneKey,
     contentReady: isActive && (hasActivatedExpandedContent || isSynchronousMountedContent),
   });
+  React.useLayoutEffect(() => {
+    if (mountedEntryUnits == null) {
+      return; // singleton (root) path — byte-identical behavior
+    }
+    const previousEntryId = previousActiveEntryIdRef.current;
+    if (previousEntryId === activeEntryId) {
+      return;
+    }
+    previousActiveEntryIdRef.current = activeEntryId;
+    // Save the departing unit's offset under ITS lane (the container still holds it).
+    if (previousEntryId != null) {
+      setOverlayScrollOffset(
+        createSceneEntryMountUnitKey(sceneKey as never, previousEntryId),
+        bodyScrollRuntime.scrollOffset.value
+      );
+    }
+    // Restore the arriving unit's lane (0 for a fresh entry — new push starts at top).
+    if (activeEntryId != null) {
+      const storedOffset = getOverlayScrollOffset(
+        createSceneEntryMountUnitKey(sceneKey as never, activeEntryId)
+      );
+      mountedScrollRestoreRef.current?.scrollTo({ y: storedOffset, animated: false });
+    }
+  }, [
+    activeEntryId,
+    bodyScrollRuntime.scrollOffset,
+    mountedEntryUnits,
+    mountedScrollRestoreRef,
+    sceneKey,
+  ]);
+  // ─── W1 slice 2 — per-entry SCROLL lane (key#entryId) for entry-keyed child scenes ───────
+  // The leg shares ONE scroll container across its mounted units, so per-entry scroll
+  // isolation = save the departing unit's offset under its `key#entryId` lane and restore the
+  // arriving unit's lane (0 for a fresh entry). Root scenes (units null) are untouched; the
+  // one-shot origin-restore lane (useMountedSceneScrollRestore, keyed by sceneKey) is
+  // orthogonal and unchanged.
+  const previousActiveEntryIdRef = React.useRef<string | null>(activeEntryId);
   const sceneBodyContentSpec = sceneBodyContentEntry.bodyContentSpec;
   const sceneBodyTransportSpec = sceneBodyTransportEntry.bodyTransportSpec;
   const sceneKeyboardShouldPersistTaps =
@@ -75,7 +151,27 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
       sceneBodyContentSpec.contentComponent
     ) : sceneBodyContentSpec.surfaceKind === 'mounted' ? (
       shouldAttachMountedContent ? (
-        <BottomSheetSceneStackMountedBody mountedBodyKey={sceneBodyContentSpec.mountedBodyKey} />
+        mountedEntryUnits != null ? (
+          // W1 slice 1 (C1/C2): child-role scenes mount ONE body per key#entryId unit — the
+          // entry flows in AS PROPS (never a topmost-per-key read); only the active unit is
+          // visible, the rest stay mounted (state isolation) but hidden and out of layout.
+          <>
+            {mountedEntryUnits.map((unit: SceneEntryMountUnit) => (
+              <SceneEntryMountBoundary
+                key={unit.unitKey}
+                unitKey={unit.unitKey}
+                isActiveUnit={unit.entryId === activeEntryId}
+              >
+                <BottomSheetSceneStackMountedBody
+                  mountedBodyKey={sceneBodyContentSpec.mountedBodyKey}
+                  entry={unit.entry}
+                />
+              </SceneEntryMountBoundary>
+            ))}
+          </>
+        ) : (
+          <BottomSheetSceneStackMountedBody mountedBodyKey={sceneBodyContentSpec.mountedBodyKey} />
+        )
       ) : null
     ) : null;
   const sceneContentContainerStyle = React.useMemo(

@@ -14,6 +14,7 @@ import type {
   BottomSheetSceneStackBodyTransportEntry,
 } from './bottomSheetSceneStackHostContract';
 import type { AppRouteSceneStackSceneActivitySnapshot } from '../navigation/runtime/app-route-scene-stack-surface-contract';
+import type { SceneEntryMountUnit } from '../navigation/runtime/app-route-scene-entry-mounts';
 
 export type ScrollEvent = NativeSyntheticEvent<NativeScrollEvent>;
 
@@ -32,6 +33,10 @@ export type SceneStackBodyContentProps = {
   bodyScrollRuntime: BottomSheetSceneStackBodyScrollRuntime;
   sceneBodyContentEntry: BottomSheetSceneStackBodyContentEntry;
   sceneBodyTransportEntry: BottomSheetSceneStackBodyTransportEntry;
+  // W1 slice 1 — entry-keyed child mounts: non-null ONLY for child-role scenes; the mounted
+  // branch renders one body unit per entry (params by prop), roots keep the singleton path.
+  mountedEntryUnits: readonly SceneEntryMountUnit[] | null;
+  activeEntryId: string | null;
 };
 
 export type SceneStackBodyContentActivity = Pick<
@@ -66,4 +71,7 @@ export type SceneStackBodyContentLayerProps = {
   contentActivity: SceneStackBodyContentActivity;
   bodyDefaults: BottomSheetSceneStackBodyDefaults;
   bodyScrollRuntime: BottomSheetSceneStackBodyScrollRuntime;
+  // W1 slice 1 — entry-keyed child mounts (see SceneStackBodyContentProps).
+  mountedEntryUnits: readonly SceneEntryMountUnit[] | null;
+  activeEntryId: string | null;
 };

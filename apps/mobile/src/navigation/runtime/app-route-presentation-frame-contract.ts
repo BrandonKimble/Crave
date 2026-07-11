@@ -52,6 +52,22 @@ export type PresentationFrame = {
    */
   outgoingSceneKey: OverlayKey | null;
   laneKind: PresentationLaneKind;
+  // ─── W1 slice 1 (C5) — instance identity, ADDITIVE ("Frame gains instance identity WITHOUT
+  // retyping its key fields"). Key-typed consumers (native targets, silhouette, sheet host)
+  // are untouched; only the scene-stack runtime + the body host read the ids. This is what
+  // lets a SAME-KEY transition (userProfile A→B) distinguish its two legs at entry
+  // granularity for the entry-keyed child mounts.
+  /** entryId of the topmost stack entry of activeSceneKey; null when none / pre-first-commit. */
+  activeEntryId: string | null;
+  /** entryId of the topmost stack entry of presentedSceneKey; null when none. */
+  presentedEntryId: string | null;
+  /**
+   * The held ENTRY during a preserveOutgoingUntilSettle window. May be non-null while
+   * outgoingSceneKey is null: a same-key switch holds no outgoing LEG, but the leaving entry
+   * is still the leg-INTERNAL outgoing unit until settle (contract c — pop unmounts the
+   * popped entry after settle).
+   */
+  outgoingEntryId: string | null;
 };
 
 /** The pre-first-commit frame — nothing presented yet (the native splash still covers). */
@@ -62,6 +78,9 @@ export const EMPTY_PRESENTATION_FRAME: PresentationFrame = {
   presentedSceneKey: null,
   outgoingSceneKey: null,
   laneKind: 'top-level',
+  activeEntryId: null,
+  presentedEntryId: null,
+  outgoingEntryId: null,
 };
 
 // ─── Lane inputs (the docked-polls formula's mutable feeds) ──────────────────────────────────
@@ -171,6 +190,26 @@ export const resolveSupersededOutgoingSceneKey = ({
     : (previousFrame.outgoingSceneKey ?? previousFrame.presentedSceneKey);
 };
 
+// Entry-level mirror of the supersede rule (W1 slice 1 C5): same ack-conditional shape, over
+// the previous frame's ENTRY ids. Kept separate (not derived from the scene-key result) because
+// a same-key switch nulls outgoingSceneKey while the leaving ENTRY must still be held.
+export const resolveSupersededOutgoingEntryId = ({
+  previousFrame,
+  previousAckCommitted,
+  preservesOutgoing,
+}: {
+  previousFrame: PresentationFrame;
+  previousAckCommitted: boolean;
+  preservesOutgoing: boolean;
+}): string | null => {
+  if (!preservesOutgoing) {
+    return null;
+  }
+  return previousAckCommitted
+    ? previousFrame.presentedEntryId
+    : (previousFrame.outgoingEntryId ?? previousFrame.presentedEntryId);
+};
+
 export const arePresentationFramesEqual = (
   left: PresentationFrame,
   right: PresentationFrame
@@ -181,4 +220,9 @@ export const arePresentationFramesEqual = (
     left.activeSceneKey === right.activeSceneKey &&
     left.presentedSceneKey === right.presentedSceneKey &&
     left.outgoingSceneKey === right.outgoingSceneKey &&
-    left.laneKind === right.laneKind);
+    left.laneKind === right.laneKind &&
+    // W1 C5 — the entry-id identity fields are render-read (the entry-keyed body units key
+    // off them); the snapshot-equality landmine says a field the render reads MUST be here.
+    left.activeEntryId === right.activeEntryId &&
+    left.presentedEntryId === right.presentedEntryId &&
+    left.outgoingEntryId === right.outgoingEntryId);
