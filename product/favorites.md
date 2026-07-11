@@ -35,7 +35,6 @@ Lists, items, reordering, sharing, and list detail are built; the high-value fro
 - **Offline lists (future)** — download a list (and its map region — see `map.md`) for offline use, e.g. travel.
 - **Reordering** — both lists and items within a list are manually reorderable by position.
 - **Per-item personal notes** — users can attach a note to a saved dish or restaurant ("get the spicy version", "great for groups").
-- **Search within a list / across all saved** — find a spot inside a long list or across everything saved.
 - **Quick actions on list rows** — order link, maps link, share — mirroring the result Quick Actions, so a list is actionable, not just a memory.
 - **"Also worth trying" inside a list** — adjacency suggestions off saved items, kept objective and non-personalized (e.g. higher-scored nearby alternatives), never taste-modeled.
 
@@ -92,7 +91,7 @@ Lists are a primary growth surface. A public list with a slug is a shareable art
 - **Share-event tracking** — created/opened/copied/revoked events to measure list virality.
 - **"Share your bookmarks" infographic** — a branded infographic of a user's top 5–10 saved dish/restaurant pairs for social posting.
 - **Share to community** — a pre-filled post template referencing the saved item and community.
-- **Collaborative lists** — multiple contributors to one list (group trip planning, "our date-night list"). The item schema already carries `added_by_user_id`, which hints at this.
+- **Collaborative lists (DECIDED 2026-07-11)** — collaborators have full owner parity (add/remove/reorder/invite); invite rides the universal share modal ("invite as collaborator" checkbox); collaborators can Leave; owner can kick (swipe/ellipsis in the collaborator modal); owner making the list private removes all collaborators and kills all share links (dead link → "this list is private" state). The list's stacked-avatars chip leads with a plus-circle add tile.
 
 ## Alerts on saved items
 
@@ -111,12 +110,28 @@ The area is "Favorites," not "Bookmarks." Screen title leans on the list framing
 - Should sharing a private list auto-flip it to public, prompt, or block?
 - For dish-list items saved without an existing connection: create a connection or block the save?
 - Do per-item notes get shared when a public list is shared?
-- Are collaborative/multi-contributor lists in scope, and what's the invite/permission model?
 - Is "map all saved" its own entry point or a mode of the All list?
 - List privacy semantics: keep Spotify's _private_ vs _remove-from-profile_ as two separate knobs, or collapse to one public/private toggle?
 - The "post to profile" analog: how do lists (the poll-posting analog) land on the profile — auto via public visibility (the Spotify model, current lean) or an explicit publish step?
 
-## Save funnel toolkit + tried/haven't-tried (owner, 2026-07-09)
+## Save sheet toolkit + auto-created lists (current)
+
+- Save sheet = list ROWS (not grid tiles), opening on the side matching
+  the trigger with a segmented switch to the other side; row order = the
+  user's custom home order, else Recently updated. Toolkit = a NOTE field
+  under the selected row. NO tags (concept killed 2026-07-11 — drop the
+  FavoriteListItem.tags column), NO add-photo on the save sheet (photos
+  enter via the card "+" tile on own-list cards).
+- AUTO-CREATED default lists at signup (empty, pinned top): Been +
+  Want to go (restaurants); Tried + Want to try (dishes). Copy TBD.
+- The "For You" automated lists (by market/cuisine/price) are ON HOLD —
+  reachable as All + filters instead; add a MARKET toggle to the All
+  list's strip.
+- NOTE (hard paywall): the free-vs-Crave+ split below (dish lists gated,
+  filters gated) is dormant freemium-pivot framing — at launch everyone
+  in-app is entitled; do not build per-feature gates into new surfaces.
+
+## OLD toolkit note (superseded above) (owner, 2026-07-09)
 
 - Saving = CURATING: the save sheet + create-list page carry the toolkit —
   add photo (opt-in button, never a prompt), a note field (notes make shared

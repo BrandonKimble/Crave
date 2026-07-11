@@ -430,3 +430,156 @@ expansion it already is.
 - BUILD NOW: paywall wired to the END of onboarding (functional, decent
   looks, final design later).
 - Username picker: audit to most-ideal shape; polish later.
+
+## 8. Registry v2 — owner lock-in, items 10+ (2026-07-11)
+
+### 8.1 Lists (home + detail — "just as involved as listDetail")
+
+- EDIT MODE (custom re-rank by drag): triggered by a SEPARATE button
+  outside the toggle strip (NOT a toggle — editing isn't slicing/sorting),
+  labeled ~"Custom rank", visible ONLY while sort = Custom. Entering edit
+  locks the sheet at full height, drag handle is the sole activator, home
+  grid linearizes to one column, non-drag accessibility path ships too
+  (all as previously specced in product/favorites.md).
+- COLLABORATOR STACK CHIP on every list: same stacked-avatars primitive,
+  but slot #1 = a plus-in-a-circle, slot #2 = the owner, then the rest.
+  Accounts without avatars render first-letter monogram on a randomized
+  color. Tap → the shared modal: row 1 = "Add collaborator" (plus circle)
+  → opens the UNIVERSAL SHARE modal with "invite as collaborator"
+  checked; other rows = collaborators (tap → their profile; kick via
+  swipe-left or ellipsis-reveal delete, owner only).
+- COLLABORATOR POWERS = full parity with owner (add/remove/reorder/invite
+  others). Launch with that; tighten only if complaints. Collaborators
+  get a LEAVE button on lists they joined. Owner making a list PRIVATE
+  removes all collaborators and kills every outstanding share link; a
+  dead link still opens the app but lands on a "this list is private"
+  state (= the §5.6 dead-slug ListBody failure body — same surface).
+  Industry check (Spotify model) confirms: private ⇒ links stop
+  resolving for everyone else.
+- LIST TAGS ARE DEAD. Owner killed the tags concept for lists entirely
+  (was Google-copying; no felt value). Save-sheet toolkit = NOTE only.
+  ⚠️ Schema cleanup: drop the FavoriteListItem.tags column landed in the
+  images step-5 work. ("Tags" survives ONLY as the unrelated
+  restaurant-profile mention-aggregate concept, §8.4.)
+- SEARCH-WITHIN-A-LIST: dead too (owner call).
+- PER-ITEM NOTES: shown on the list item card BELOW the photo strip row.
+
+### 8.2 THE UNIVERSAL SHARE MODAL (new primitive — "a glorified modal")
+
+One share surface, invocable from anywhere, for every shareable object:
+
+- Objects + their deep-link behavior: LIST; RESTAURANT (card/profile —
+  same thing); DISH card (opens the restaurant profile auto-scrolled/
+  deep-linked to that dish — there is no dish profile); POLL; COMMENT
+  (opens the poll scrolled to + highlighting that comment); USER PROFILE.
+- Layout: a beautiful PREVIEW of the share package exactly as the
+  recipient will see it, then context-dependent options (e.g. "invite as
+  collaborator" checkbox ONLY when sharing your own list — checked =
+  recipient joins as collaborator, unchecked = view-only), then
+  destinations: Crave DMs + friends (sorted by THE universal closeness
+  sort — one algorithm reused everywhere, assistant to design), then
+  external targets: iMessage, Instagram (stories + DMs), WhatsApp,
+  Telegram, X, email, Messenger, Snapchat, TikTok (posts + messages),
+  LinkedIn, Facebook (feed + stories) — as exhaustive as the platform
+  APIs allow; a RESEARCH PASS on each platform's share API is owed.
+- The share PACKAGE (per object type: ranked-preview cards for lists,
+  etc., adaptable to stories formats / link previews / the web landing
+  page with get-the-app CTA): build the plumbing + a crude package now;
+  the beauty pass is explicitly deferred owner-in-loop work. The web
+  landing IS this package rendered at /l/{slug} — same investment.
+
+### 8.3 Poll modals (reconciled)
+
+- KEEP: pollInfo (the ⓘ "how polls work" explainer), marketPicker (a
+  poll must belong to a city market — this picks WHICH city you're
+  posting the poll into when it isn't your current one; pollCreation
+  currently shows a placeholder message instead), duplicatePoll (the
+  "this poll already exists" catch — checkPollDuplicate is wired, needs
+  its sheet).
+- DROPPED: the axis-inference confirm chip ("did you mean dish X?") —
+  resolve the subject server-side, don't ask the user. Unresolved-dish
+  subjects are ALREADY handled by design: dish-axis poll subjects are
+  poll-local composite keys (no live entity writes); the close-time
+  graduation/collection pass links — or creates via the pipeline — the
+  entity later. No new machinery needed; verify at build.
+
+### 8.4 Restaurant profile — full section anatomy (supersedes the sketch)
+
+FOUR segmented views: **Overview / Dishes / Discussions / Photos**.
+
+- OVERVIEW (best-of composite; EVERY element links to its full view):
+  your/collaborators' saved NOTE for this place (if saved) → top ~5
+  dishes → the Crave Score → (test) AI summary fed by top comments +
+  top dishes → MENTION TAGS → top 3–5 discussions + "see all". Tapping
+  any dish → Dishes view; any tag or "see all" → Discussions view.
+- MENTION TAGS (the new, unrelated-to-lists "tags"): aggregated counts
+  of entities mentioned across the restaurant's discussions — dishes,
+  restaurant attributes, dish attributes. On Overview they render as a
+  collage and act as LINKS into Discussions; inside Discussions they are
+  MULTI-SELECT opt-in filters (select many; results sorted by votes).
+- DISCUSSIONS view: score up top (+ maybe a simple visual metric
+  explainer, + the AI summary if the test works) → tags COLLAGE (not a
+  scroll strip) → the discussion list with a toggle strip = SORT ONLY
+  (Top votes | Newest) + a SEARCH BAR over the discussions (search is IN
+  here, unlike lists).
+- DISCUSSION CARDS: each card = a vote-comment framed by its poll
+  question (faint context line) so everything reads as organic mentions,
+  never reviews. THREAD-MERGE RULE: replies that are themselves
+  vote-comments for this restaurant render NESTED inside the same card
+  (one thread-slice), skipping non-vote intermediate comments; e.g.
+  "best vegan food" + its reply "and the best tofu" = one card, reply
+  indented. Username/avatar shown (another userProfile entry point).
+  Tap card → pollDetail scrolled to + highlighting that comment.
+- ⚠️ SEMI-FOUNDATIONAL: pollDetail must be openable from ANY context
+  (today it's polls-page-reachable only) with correct back-to-origin —
+  "an orphan that is also not an orphan." Route to the charter owners
+  with the other two flags.
+- DISHES view: streamlined ranked dish list (rank, name, DISH scores,
+  photo strip per dish) — deliberately NOT the results renderer (no
+  restaurant metadata, no open-times).
+- PHOTOS view: the gallery with its selector row (dish slices ranked,
+  latest, other) as previously locked.
+
+### 8.5 Blank search state: EXISTS (recents + recently viewed). Optional
+
+add: market-scoped TRENDING searches/entities above them — park unless
+cheap during the wave.
+
+### 8.6 Report + block
+
+- Every photo carries an ellipsis → shared modal with "what's wrong"
+  reasons → report (feeds the existing report/auto-hide pipeline).
+- Other users' profiles carry an ellipsis → includes BLOCK (the Apple
+  1.2 UGC requirement). Block semantics to spec with messaging design.
+
+### 8.7 Auto-created default lists + the automated-lists call
+
+- AUTO-CREATED at signup, start empty, pinned top: restaurants side =
+  Been + Want to go; dish side = Tried + Want to try (copy TBD).
+- The "For You" automated-lists section (by city/market, cuisine, price)
+  is ON HOLD — owner reasoned they're reachable as All + filters.
+  Instead: add a MARKET filter toggle to the All list's strip. Revisit
+  automated lists post-data.
+
+### 8.8 The save sheet (add-to-list) — final shape
+
+- Dynamically TWO-SIDED: opens on the side matching the trigger (dish
+  card → dish lists; restaurant → restaurant lists) with a one-tap
+  segmented switch to the other side always available.
+- ROWS, not grid tiles (the note field sits under the selected row).
+- Row order = the user's custom home order if set, else the home default
+  (Recently updated).
+
+### 8.9 Push-permission moment: after the user's first CONTRIBUTION —
+
+first poll vote ("get notified when results land" = the canonical ask),
+a photo posted publicly, or the first DM sent (reply notifications make
+it self-evident). Never at first launch.
+
+### 8.10 Hard-paywall supersede note for favorites
+
+favorites.md's internal free-vs-Crave+ split (dish lists gated, list
+filters gated) predates gate-everything: at launch every in-app user is
+entitled, so those gates are DORMANT freemium-pivot framing, not launch
+behavior. Keep the machinery mothballed; don't build per-feature gating
+into the new list surfaces.
