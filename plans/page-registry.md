@@ -666,3 +666,19 @@ shared modal. Poll modal set is now: pollInfo + duplicatePoll.
   During a drag: rows shuffle live around the finger (animation quality
   is a named polish target) and dragging to the list's top/bottom edge
   AUTO-SCROLLS the list.
+
+### 8.15 City grouping mechanics + why own-favorites keeps its strip
+
+- CITY GROUPING (profile Lists view, volume answer): lists render under
+  city section headers (Pinned floats above as its own area). A list's
+  city derives from its items' market(s): majority market wins;
+  genuinely multi-city lists land under "Multiple cities"; empty lists
+  under the newest group. Grouping ACTIVATES only at 2+ cities — a
+  single-city profile stays flat (one header would be noise).
+- OWN FAVORITES HOME: the strip STAYS (unchanged decision). The rule:
+  surfaces where YOU work get controls (R|D toggle, sort, All/Mine/
+  Shared, custom drag order, the All list); surfaces where OTHERS browse
+  your identity get curation + passive structure (pins, badges, city
+  headers). Auto city-groups are NOT applied to the own home — they
+  would fight the user's custom drag order (two competing orderings; the
+  user's own hand always wins on their own surface).
