@@ -302,7 +302,7 @@ EditProfilePanelBody.displayName = 'EditProfilePanelBody';
 
 const styles = StyleSheet.create({
   body: {
-    paddingVertical: 24,
+    paddingBottom: 24,
     gap: 8,
   },
   avatarRow: {
@@ -324,7 +324,7 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
   stateBody: {
-    paddingVertical: 48,
+    paddingBottom: 48,
     alignItems: 'center',
     gap: 16,
   },

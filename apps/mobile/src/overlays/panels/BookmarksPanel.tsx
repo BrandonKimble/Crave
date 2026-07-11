@@ -1284,9 +1284,8 @@ registerPersistentHeaderDescriptor('bookmarks', {
 });
 
 const styles = StyleSheet.create({
-  sceneBody: {
-    paddingTop: 12,
-  },
+  // FLUSH LAW (2026-07-11): content starts at the header's bottom edge — no top padding.
+  sceneBody: {},
   headerTextGroup: {
     flex: 1,
     paddingRight: 12,

@@ -126,10 +126,10 @@ FollowListPanelBody.displayName = 'FollowListPanelBody';
 
 const styles = StyleSheet.create({
   body: {
-    paddingVertical: 16,
+    paddingBottom: 16,
   },
   stateBody: {
-    paddingVertical: 48,
+    paddingBottom: 48,
     alignItems: 'center',
     gap: 16,
   },

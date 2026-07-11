@@ -746,7 +746,7 @@ registerPersistentHeaderDescriptor('postPhotos', {
 
 const styles = StyleSheet.create({
   body: {
-    paddingVertical: 16,
+    paddingBottom: 16,
   },
   section: {
     marginBottom: 20,
@@ -963,7 +963,7 @@ const styles = StyleSheet.create({
   },
   // Failure body
   stateBody: {
-    paddingVertical: 48,
+    paddingBottom: 48,
     alignItems: 'center',
     gap: 16,
   },

@@ -51,18 +51,25 @@ type BottomSheetSceneStackPageFrameProps = {
 // height so the bottom always lands exactly on the boundary regardless of the device hairline.
 const DIVIDER_THICKNESS = StyleSheet.hairlineWidth;
 
+// THE canonical header-divider fade (owner standard 2026-07-11): invisible at scroll 0, fades in
+// as content scrolls under the header. Single-sourced HERE — every header divider in the app
+// (the hoisted persistent-header divider AND standalone headers like RecentHistoryView) derives
+// its opacity from this hook, so the curve can never fork per surface.
+export const useHeaderScrollDividerOpacityStyle = (scrollOffset: SharedValue<number>) =>
+  useAnimatedStyle(
+    () => ({
+      opacity: interpolate(scrollOffset.value, [0, 3, 14], [0, 0.35, 1], Extrapolation.CLAMP),
+    }),
+    [scrollOffset]
+  );
+
 // Rendered ONCE above the hoisted persistent header (PersistentHeaderScrollDividerHost in
 // BottomSheetSceneStackHost), keyed off the measured persistent-header height and the PRESENTED
 // scene's scroll offset. Exported for that host — the frame itself no longer renders a divider
 // (the per-leg header lane is gone).
 export const HeaderScrollDivider = React.memo(
   ({ headerHeight, scrollOffset }: { headerHeight: number; scrollOffset: SharedValue<number> }) => {
-    const dividerStyle = useAnimatedStyle(
-      () => ({
-        opacity: interpolate(scrollOffset.value, [0, 3, 14], [0, 0.35, 1], Extrapolation.CLAMP),
-      }),
-      [scrollOffset]
-    );
+    const dividerStyle = useHeaderScrollDividerOpacityStyle(scrollOffset);
 
     return (
       <Animated.View

@@ -15,7 +15,6 @@ export type AppRouteSharedSheetRuntimeOwner = {
   sharedSheetRuntimeModel: BottomSheetRuntimeModel;
   shouldRenderMountedSharedSheet: boolean;
   shouldRenderMountedSharedSheetRef: React.MutableRefObject<boolean>;
-  headerDividerAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   sharedSheetContainerAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   markSharedSheetHidden: () => void;
   prepareSharedSheetForSearchPresentation: () => boolean;
@@ -23,10 +22,7 @@ export type AppRouteSharedSheetRuntimeOwner = {
 
 export type AppRouteSharedSheetVisualBinding = Pick<
   AppRouteSharedSheetRuntimeOwner,
-  | 'snapPoints'
-  | 'sheetTranslateY'
-  | 'sheetScrollOffset'
-  | 'sheetMomentum'
+  'snapPoints' | 'sheetTranslateY' | 'sheetScrollOffset' | 'sheetMomentum'
 > & {
   getCurrentSheetSnap: () => SheetPosition;
 };

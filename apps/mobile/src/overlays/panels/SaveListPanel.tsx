@@ -6,7 +6,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
-import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import {
@@ -525,10 +524,6 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
 SaveListMountedSceneBody.displayName = 'SaveListMountedSceneBody';
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    paddingTop: 12,
-  },
   sceneBody: {
     gap: ROW_GAP,
   },

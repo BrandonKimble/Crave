@@ -61,6 +61,7 @@ import {
 import { useSearchNavSwitchCommitAttribution } from '../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 import { logPerfScenarioStackAttribution } from '../perf/perf-scenario-attribution';
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { useSceneHeaderScrollOffset } from './sceneHeaderScrollOffsetRegistry';
 
 const PERSISTENT_ROUTE_SCENE_STACK_KEYS: readonly OverlayKey[] = APP_ROUTE_SCENE_INPUT_KEYS;
 
@@ -1162,7 +1163,12 @@ const PersistentHeaderScrollDividerLane = ({
   headerHeight: number;
 }) => {
   const sceneBodyRuntimeAuthority = bodyRuntimeAuthority.getSceneBodyRuntimeAuthority(sceneKey);
-  const scrollOffset = useRouteAuthoritySelector({
+  // A body that OWNS its scroll (contentScrollMode 'static' — dmSession's thread ScrollView)
+  // never scrolls the shared container, so the authority offset would pin the divider hidden.
+  // Such a body publishes its own UI-thread offset (sceneHeaderScrollOffsetRegistry); a
+  // publication wins over the authority's shared-container offset.
+  const publishedScrollOffset = useSceneHeaderScrollOffset(sceneKey);
+  const authorityScrollOffset = useRouteAuthoritySelector({
     subscribe: React.useCallback(
       (listener: () => void) => sceneBodyRuntimeAuthority.subscribe(listener),
       [sceneBodyRuntimeAuthority]
@@ -1177,7 +1183,9 @@ const PersistentHeaderScrollDividerLane = ({
     attributionOwner: 'PersistentHeaderScrollDividerLane',
     attributionOperation: `dividerScrollOffset:${sceneKey}`,
   });
+  const scrollOffset = publishedScrollOffset ?? authorityScrollOffset;
   if (scrollOffset == null) {
+    // A scene whose body genuinely publishes no scroll renders no divider (offset-0 honest).
     return null;
   }
   return (

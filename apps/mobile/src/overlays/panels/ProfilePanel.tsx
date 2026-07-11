@@ -8,7 +8,6 @@ import { colors as themeColors } from '../../constants/theme';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import type { Poll } from '../../services/polls';
 import type { FavoriteListSummary } from '../../services/favorite-lists';
-import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
@@ -535,10 +534,6 @@ registerPersistentHeaderDescriptor('profile', {
 });
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    paddingTop: 16,
-  },
   contentContainer: {
     gap: 20,
   },

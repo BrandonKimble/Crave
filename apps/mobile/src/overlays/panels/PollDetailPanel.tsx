@@ -1332,7 +1332,8 @@ export const usePollDetailPanelSpec = ({
       flashListProps: threadFlashListProps,
       contentContainerStyle: {
         paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-        paddingTop: 12,
+        // FLUSH LAW (2026-07-11): no content-side top padding — the thread starts at the
+        // header's bottom edge.
         paddingBottom: contentBottomPadding,
       },
       keyboardShouldPersistTaps: 'handled',

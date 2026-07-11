@@ -5,13 +5,7 @@ import { ChevronLeft, Clock, HandPlatter, View as ViewIcon } from 'lucide-react-
 import { useAuth } from '@clerk/clerk-expo';
 import { CommonActions, StackActions, useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import Reanimated, {
-  Extrapolation,
-  interpolate,
-  useAnimatedScrollHandler,
-  useAnimatedStyle,
-  useSharedValue,
-} from 'react-native-reanimated';
+import Reanimated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
@@ -28,6 +22,7 @@ import { SceneLoadingSurface } from '../../components/skeletons';
 import { CONTENT_HORIZONTAL_PADDING } from './constants/search';
 import { filterRecentlyViewedByRecentSearches } from './utils/history';
 import { renderMetaDetailLine } from './components/render-meta-detail-line';
+import { useHeaderScrollDividerOpacityStyle } from '../../overlays/BottomSheetSceneStackPageFrame';
 
 type HistoryMode = 'recentSearches' | 'recentlyViewed';
 
@@ -207,12 +202,10 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
   const hasSections = sections.length > 0;
   const emptyLabel = isRecentMode ? 'No recent searches yet' : 'No recently viewed items yet';
   const historyScrollOffset = useSharedValue(0);
-  const headerDividerAnimatedStyle = useAnimatedStyle(
-    () => ({
-      opacity: interpolate(historyScrollOffset.value, [0, 16], [0, 1], Extrapolation.CLAMP),
-    }),
-    [historyScrollOffset]
-  );
+  // THE canonical header divider fade (single-sourced in BottomSheetSceneStackPageFrame) —
+  // this view's header is standalone (not the persistent sheet chrome), so it composes the
+  // same primitive with its own scroll offset instead of keeping a forked copy.
+  const headerDividerAnimatedStyle = useHeaderScrollDividerOpacityStyle(historyScrollOffset);
   const historyScrollHandler = useAnimatedScrollHandler({
     onScroll: (event) => {
       historyScrollOffset.value = event.contentOffset.y;
@@ -464,13 +457,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     paddingVertical: 10,
   },
+  // The canonical divider line (matches sceneStackPageHeaderScrollDivider): hairline,
+  // rgba slate, bottom-flush on the header's bottom edge.
   headerDivider: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    height: 1,
-    backgroundColor: themeColors.border,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(15, 23, 42, 0.14)',
   },
   backButton: {
     width: 40,

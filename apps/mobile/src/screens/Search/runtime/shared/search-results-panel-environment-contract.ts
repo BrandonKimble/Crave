@@ -28,7 +28,6 @@ export type ResultsPanelVisualRuntimeModel = {
 
 export type ResultsPanelSheetRuntimeModel = Pick<
   AppRouteSharedSheetRuntimeOwner,
-  | 'headerDividerAnimatedStyle'
   | 'sharedSheetContainerAnimatedStyle'
   | 'shouldRenderMountedSharedSheet'
   | 'snapPoints'

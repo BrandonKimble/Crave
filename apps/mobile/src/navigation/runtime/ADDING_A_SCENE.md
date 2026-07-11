@@ -88,6 +88,31 @@ completeness pattern (§1): when a piece can be a compile-time-exhaustive table,
 it one — a forgotten key must be a build error that names the key, not a silent
 default.
 
+**The header/content seam laws (owner decree, 2026-07-11):** two unconditional
+laws at the header's bottom edge — neither has a per-scene flag, by design:
+
+1. **FLUSH LAW** — the first content sits EDGE-TO-EDGE on the header's bottom
+   edge: zero content-side top spacing (no body `paddingTop`/`paddingVertical`
+   top, no first-child `marginTop`, no transport `contentContainerStyle`
+   paddingTop). The header's own internal `paddingBottom`
+   (`OVERLAY_HEADER_PADDING_BOTTOM`) is part of the header and stays. Failure /
+   empty / loading state bodies are flush too (`paddingBottom` only). If an
+   element visually needs breathing room, that space lives INSIDE the element's
+   own layout — the default is flush.
+2. **DIVIDER IS PART OF THE HEADER** — the scroll-fade hairline
+   (`HeaderScrollDivider`, canonical fade `useHeaderScrollDividerOpacityStyle`
+   in `BottomSheetSceneStackPageFrame.tsx`: offset `[0, 3, 14]` → opacity
+   `[0, 0.35, 1]`, CLAMP) renders ONCE above the hoisted persistent header
+   (`PersistentHeaderScrollDividerHost`), faded by the PRESENTED scene's body
+   scroll offset — every header gets it automatically, no opt-in. Scenes on the
+   shared scroll container publish that offset for free
+   (`bodyScrollRuntime.scrollOffset`); a body that OWNS its scroll
+   (`contentScrollMode: 'static'` — dmSession's thread) publishes its UI-thread
+   offset via `sceneHeaderScrollOffsetRegistry` (stack semantics for entry-keyed
+   children). A body that genuinely publishes no scroll gets an honest hidden
+   divider (offset 0). Standalone headers outside the sheet chrome
+   (RecentHistoryView) compose the SAME fade hook — never a forked interpolation.
+
 **The toggle contract (owner decree, 2026-07-08):** every toggle-like control —
 including conditional ones like "Search this area" (a toggle whose availability is a
 predicate) — gets FIVE benefits from the shared implementations, never hand-rolled:

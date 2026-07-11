@@ -941,10 +941,10 @@ UserProfilePanelBody.displayName = 'UserProfilePanelBody';
 
 const styles = StyleSheet.create({
   body: {
-    paddingVertical: 24,
+    paddingBottom: 24,
   },
   stateBody: {
-    paddingVertical: 48,
+    paddingBottom: 48,
     alignItems: 'center',
     gap: 16,
   },

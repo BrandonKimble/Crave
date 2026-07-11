@@ -333,7 +333,6 @@ export const usePollCreationPanelSpec = ({
     sceneBodyTransport: {
       contentContainerStyle: {
         paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-        paddingTop: 16,
         // Clear the pinned Publish chin so the last field isn't hidden behind it.
         paddingBottom: contentBottomPadding,
       },

@@ -1,13 +1,11 @@
 import React from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
-import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import Reanimated, {
+  useAnimatedKeyboard,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { X as LucideX } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -31,6 +29,7 @@ import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyR
 import type { OverlayRouteParamsMap } from '../../navigation/runtime/app-overlay-route-types';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import { formatRelativeTime } from '../../utils/relative-time';
+import { publishSceneHeaderScrollOffset } from '../sceneHeaderScrollOffsetRegistry';
 
 // ─── W3 messaging scenes (plans/w3-messaging-design.md §4) ───────────────────────────────────
 // messagesInbox: child SINGLETON (no params); MVCP disabled on its transport (re-sorting list).
@@ -422,7 +421,21 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
   const bodyAnimatedStyle = useAnimatedStyle(() => ({
     paddingBottom: bodyBasePaddingBottom + Math.max(0, keyboard.height.value - insets.bottom),
   }));
-  const threadScrollRef = React.useRef<ScrollView>(null);
+  const threadScrollRef = React.useRef<React.ComponentRef<typeof Reanimated.ScrollView>>(null);
+  // Header-divider publication (sceneHeaderScrollOffsetRegistry): the dm body is STATIC — the
+  // shared sheet scroll container never scrolls, so the persistent header's scroll divider
+  // reads THIS thread ScrollView's UI-thread offset instead. Stack registry semantics keep
+  // multiple mounted dmSession entries honest (topmost = the active push).
+  const threadScrollOffset = useSharedValue(0);
+  const threadScrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      threadScrollOffset.value = event.contentOffset.y;
+    },
+  });
+  React.useEffect(
+    () => publishSceneHeaderScrollOffset('dmSession', threadScrollOffset),
+    [threadScrollOffset]
+  );
 
   if (conversationId == null) {
     return (
@@ -475,12 +488,14 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
       <Text variant="caption" weight="semibold" style={styles.peerLabel} numberOfLines={1}>
         {peerTitle(conversation)}
       </Text>
-      <ScrollView
+      <Reanimated.ScrollView
         ref={threadScrollRef}
         style={styles.threadScroll}
         contentContainerStyle={styles.threadContent}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        onScroll={threadScrollHandler}
+        scrollEventThrottle={16}
         onContentSizeChange={() =>
           // Chat anchoring: open at (and follow) the newest message.
           threadScrollRef.current?.scrollToEnd({ animated: false })
@@ -540,7 +555,7 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
             </Pressable>
           </View>
         ))}
-      </ScrollView>
+      </Reanimated.ScrollView>
 
       {conversation.isRequest && !conversation.frozen ? (
         <View style={styles.requestBar} testID="dm-session-request-bar">
@@ -669,14 +684,15 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginBottom: 8,
   },
+  // FLUSH LAW (owner standard 2026-07-11): content starts at the header's bottom edge —
+  // no content-side top padding anywhere; bottom padding only.
   body: {
-    paddingVertical: 16,
+    paddingBottom: 16,
   },
   // dmSession static body: flex column filling the frame — thread scrolls,
   // composer pinned at the (visible) bottom; keyboard padding rides on top.
   sessionBody: {
     flex: 1,
-    paddingTop: 16,
   },
   threadScroll: {
     flex: 1,
@@ -685,7 +701,7 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   stateBody: {
-    paddingVertical: 48,
+    paddingBottom: 48,
     alignItems: 'center',
     gap: 12,
   },

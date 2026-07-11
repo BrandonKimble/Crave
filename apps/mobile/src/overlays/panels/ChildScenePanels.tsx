@@ -361,7 +361,7 @@ export const EditProfileMountedSceneBody = EditProfilePanelBody;
 
 const styles = StyleSheet.create({
   body: {
-    paddingVertical: 32,
+    paddingBottom: 32,
   },
   bodyText: {
     color: '#0f172a',

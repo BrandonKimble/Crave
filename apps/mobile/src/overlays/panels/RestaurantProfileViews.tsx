@@ -375,11 +375,12 @@ export const RestaurantOverviewMentions: React.FC<{
 };
 
 const styles = StyleSheet.create({
+  // FLUSH LAW (2026-07-11): the switcher is the restaurant page's first content — it sits
+  // flush on the header's bottom edge (no marginTop).
   switcherRow: {
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    marginTop: 12,
   },
   switcherChip: {
     paddingHorizontal: 14,

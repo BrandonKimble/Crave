@@ -1,5 +1,5 @@
 import React from 'react';
-import { Extrapolation, interpolate, useAnimatedStyle } from 'react-native-reanimated';
+import { useAnimatedStyle } from 'react-native-reanimated';
 
 import { OVERLAY_TAB_HEADER_HEIGHT } from '../../overlays/overlaySheetStyles';
 import { useBottomSheetRuntimeModel } from '../../overlays/useBottomSheetRuntime';
@@ -123,17 +123,6 @@ export const useAppRouteSharedSheetRuntime = ({
       momentumFlag: sharedSheetValuesRuntime.sheetMomentum,
     },
   });
-  const headerDividerAnimatedStyle = useAnimatedStyle(
-    () => ({
-      opacity: interpolate(
-        sharedSheetValuesRuntime.sheetScrollOffset.value,
-        [0, 24],
-        [0, 1],
-        Extrapolation.CLAMP
-      ),
-    }),
-    [sharedSheetValuesRuntime.sheetScrollOffset]
-  );
   const sharedSheetContainerAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sharedSheetValuesRuntime.sheetTranslateY.value }],
   }));
@@ -285,15 +274,14 @@ export const useAppRouteSharedSheetRuntime = ({
       get shouldRenderMountedSharedSheet() {
         return sharedSheetPresentationRuntime.getSnapshot().shouldRenderMountedSharedSheet;
       },
-      shouldRenderMountedSharedSheetRef: sharedSheetPresentationRuntime.shouldRenderMountedSharedSheetRef,
-      headerDividerAnimatedStyle,
+      shouldRenderMountedSharedSheetRef:
+        sharedSheetPresentationRuntime.shouldRenderMountedSharedSheetRef,
       sharedSheetContainerAnimatedStyle,
       markSharedSheetHidden: sharedSheetPresentationRuntime.markSharedSheetHidden,
       prepareSharedSheetForSearchPresentation:
         sharedSheetPresentationRuntime.prepareSharedSheetForSearchPresentation,
     }),
     [
-      headerDividerAnimatedStyle,
       sharedSheetContainerAnimatedStyle,
       sharedSheetRuntimeModel,
       sharedSheetValuesRuntime,

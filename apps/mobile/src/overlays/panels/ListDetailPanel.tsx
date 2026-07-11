@@ -1343,7 +1343,7 @@ registerPersistentHeaderDescriptor('listDetail', {
 
 const styles = StyleSheet.create({
   body: {
-    paddingVertical: 16,
+    paddingBottom: 16,
   },
   titleRow: {
     flexDirection: 'row',
@@ -1602,7 +1602,7 @@ const styles = StyleSheet.create({
     color: '#475569',
   },
   stateBody: {
-    paddingVertical: 48,
+    paddingBottom: 48,
     alignItems: 'center',
     gap: 16,
   },
