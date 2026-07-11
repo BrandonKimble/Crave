@@ -45,10 +45,6 @@ const staticSceneStyles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },
-  // Static-mode bodies that own their layout (dmSession) fill the body frame.
-  fillColumn: {
-    flex: 1,
-  },
 });
 
 // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (the shared sheet
@@ -104,9 +100,12 @@ const MESSAGES_INBOX_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
 // rides above the keyboard — the PollDetail chin's geometry on the static
 // path). The shared scroll container put the composer at content-bottom
 // mid-sheet, which was exactly the W4 keyboard bug. Keyboard props live on the
-// panel's own thread ScrollView.
+// panel's own thread ScrollView. NOTE: no layout styles here — the transport's
+// contentContainerStyle is run through sanitizeContentContainerStyle (a padding/
+// backgroundColor WHITELIST), so a flex sent this way is silently stripped; the
+// static-mode frame fill lives in useBottomSheetSceneStackBodyContentRuntime.
 const DM_SESSION_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: [staticSceneStyles.scrollContent, staticSceneStyles.fillColumn],
+  contentContainerStyle: [staticSceneStyles.scrollContent],
 };
 
 const STATIC_RETAINED_TAB_BODY_ADMISSION_POLICY: AppRouteSceneBodyAdmissionPolicy = {

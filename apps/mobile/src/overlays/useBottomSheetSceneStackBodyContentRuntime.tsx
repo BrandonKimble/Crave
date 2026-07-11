@@ -282,7 +282,12 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     return (
       <StaticContentSurface
         content={sceneContentComponent}
-        containerStyle={sceneListContentContainerStyle}
+        // The fill is applied HERE, not via the transport's contentContainerStyle:
+        // sanitizeContentContainerStyle whitelists only padding/backgroundColor, so a
+        // flex sent through the transport is silently stripped and the static column
+        // collapses (the W4 dmSession regression). Static mode = the body owns a
+        // frame-filling layout by definition, so the fill is unconditional.
+        containerStyle={[sceneListContentContainerStyle, staticContentFillStyle]}
         surfaceStyle={sceneTransparentSurfaceStyle}
       />
     );
