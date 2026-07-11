@@ -135,35 +135,6 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
     usernameNormalized,
   ]);
 
-  if (loadState.kind === 'loading') {
-    return (
-      <View style={styles.stateBody} testID="edit-profile-loading">
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
-  if (loadState.kind === 'failed') {
-    return (
-      <View style={styles.stateBody} testID="edit-profile-failed">
-        <Text variant="body" style={styles.stateText}>
-          We couldn’t load your profile.
-        </Text>
-        <Pressable
-          onPress={load}
-          accessibilityRole="button"
-          accessibilityLabel="Retry loading profile"
-          testID="edit-profile-retry"
-          style={styles.retryButton}
-        >
-          <Text variant="body" weight="semibold" style={styles.retryText}>
-            Retry
-          </Text>
-        </Pressable>
-      </View>
-    );
-  }
-
   const handleChangePhoto = React.useCallback(() => {
     if (avatarBusy) {
       return;
@@ -198,6 +169,35 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
       }
     })();
   }, [avatarBusy]);
+
+  if (loadState.kind === 'loading') {
+    return (
+      <View style={styles.stateBody} testID="edit-profile-loading">
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
+  if (loadState.kind === 'failed') {
+    return (
+      <View style={styles.stateBody} testID="edit-profile-failed">
+        <Text variant="body" style={styles.stateText}>
+          We couldn’t load your profile.
+        </Text>
+        <Pressable
+          onPress={load}
+          accessibilityRole="button"
+          accessibilityLabel="Retry loading profile"
+          testID="edit-profile-retry"
+          style={styles.retryButton}
+        >
+          <Text variant="body" weight="semibold" style={styles.retryText}>
+            Retry
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.body} testID="stub-scene-editProfile">
