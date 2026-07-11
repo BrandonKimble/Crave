@@ -198,3 +198,23 @@ before merge.
   Routing axis + log-mode behavior verified in the payments era.
 - W0 CLOSED. Tags-migration API restart done (favorites 500 root-caused
   to the expected cross-session schema window; healthy again).
+
+## W1 running log (anchor)
+
+- Slices 1-2 LANDED (af507813) after an anchor fix the sim probe caught:
+  per-key content-attach guillotined in-stack units at settle — child
+  keys with any in-stack entry within depth-K now retain attach. Drill
+  loop proven live (three simultaneous units, exact-entry unmounts on
+  pop, A never churned).
+- Backend data layer LANDED (RT-18 capability, collaborators, batch
+  reorder, All unions; 25/25 RED->GREEN). updateListPosition kept
+  owner-only (agent adjudication accepted: home-grid order is personal).
+- Save sheet v2 + auto-created defaults LANDED (rows/note/flip;
+  system_kind; provisioning on the userStats.ensure seam — existing
+  users backfill on next sign-in). API restarted on the new build.
+- SCOPE MOVES: profile Lists view (pins/badges/city groups) moves W1→W3
+  (it is a SECTION of the user-profile dynamic single page); W1's
+  collaborator UI ships with a plain copy-invite-link step — upgraded to
+  the universal share modal in W3.
+- In flight: slices 3-4 (pre-mount + listDetail real body), slice 8a
+  (drag machinery + home edit mode).
