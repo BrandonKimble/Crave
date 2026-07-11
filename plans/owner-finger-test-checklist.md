@@ -120,6 +120,28 @@ only where the _feel_ still needs your eye.
       config, not code. Reconcile before launch.
 - [ ] ⚠️ Purchase/restore flows on TestFlight sandbox.
 
+## 7.5 Red-team additions (new since the checklist was written)
+
+- [ ] Restaurant page: **Directions** chip opens Apple Maps at the right
+      place; your saved **note** shows on Overview when the restaurant is in
+      a list with a note.
+- [ ] Post photos: "Add another restaurant" → pick → per-section photos +
+      dishes; own profile → Photos → "Add photos" starts with a restaurant
+      pick; list-row "+" tile opens the funnel preassigned.
+- [ ] ⚠️ Push permission: the OS prompt appears only after your FIRST
+      contribution (vote/comment/photo/DM), never at launch.
+- [ ] Report a comment (Report action on a comment) and a user (row under
+      Block) → "Report received".
+- [ ] ⚠️ Drag a row to the edge and HOLD STILL — the list keeps scrolling
+      while the row stays glued under your finger and the slot advances
+      (the stationary-finger fix).
+- [ ] Copy-link on a PRIVATE list you own → a confirm explains it becomes
+      public; sharing someone else's list shows send-in-app only.
+- [ ] ⚠️ Tap Message on a profile and back out WITHOUT sending — the other
+      account's Requests list stays empty (ghost-conversation fix).
+- [ ] OWNER ACTION: set EXPO_PUBLIC_SHARE_BASE_URL (links currently fall
+      back to https://crave-search.app).
+
 ## 8. Known crude bits (deliberate, for the polish pass)
 
 - Strip heights/aspects eyeballed; totalCount "+N" overflow not rendered.
@@ -130,6 +152,4 @@ only where the _feel_ still needs your eye.
   Overview don't pre-select the filter.
 - No gallery paging (>60), no photoViewer (grid tap is a no-op seam).
 - Profile section tabs/tiles are plain pills/text rows.
-- user_stats.polls_created_count column is now dead — drop in a future
-  migration.
 - Poll close/delete/report have NO backend yet (nothing fake-wired).

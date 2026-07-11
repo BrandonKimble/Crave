@@ -381,3 +381,63 @@ DEFERRED with explicit triggers (ideal-shape, recorded not lost):
   share-domain service — trigger: realtime (M3) work.
 - unreadCount O(conversations×queries) poll — optimize when the badge lands
   (zero consumers today).
+
+## Red-team wave-2 notes
+
+- **FriendCluster (§7.8 / §9b modal) — DEFERRED, assessed 2026-07-11.**
+  Voter/endorser IDENTITY is not exposed anywhere in the poll read surface:
+  the feed DTO carries counts only (`endorserCount`, per-candidate
+  `distinctEndorsers`, viewer-local `currentUserEndorsed` —
+  apps/mobile/src/services/polls.ts `Poll`/`PollCandidate`; server side
+  attachPollStats), and the only identity-bearing reads are comment authors
+  on the detail thread. Building the stacked-avatars row honestly requires a
+  NEW aggregation: a per-poll ranked-voters read (first ~5 distinct
+  endorser identities for the viewer, closeness-ranked via ClosenessService,
+  batched across the feed page — i.e. a `voterPreviews` field on the list
+  endpoint or `GET /polls/:pollId/voters?limit=5`). Future build shape:
+  server ranked-voters read → `FriendClusterRow` (max 3 overlapping
+  monograms + "X and N others", closeness sort names the leader) on poll
+  cards → tap opens THE one app modal (scrollable variant) listing all
+  participants as profile cards → userProfile push. Not built in this wave
+  because it is new server aggregation, not a registry wiring miss.
+
+## Red-team remediation CLOSE (2026-07-11)
+
+Wave 1 (1b970b04): shareSlug BLOCKER closed (audience-aware summaries);
+favorites god-service split (AccessPolicy/Assembler/mappers) + reorder
+subset/409 + score-gap degrade + blocked-slug 410; stationary-finger drag
+recompute (pure worklet + RED spec) + per-entry edit locks; mentions GIN
+index/bounded CTE/block filter/honest totalCount; photo report+delete
+oracle fixes, event clamp, ticket exclusivity, confirm-retry no-dup,
+stash release-on-collapse; messaging ghost-conversation read filter,
+fan-out dedupe + FAILED codes, tuple after-cursor, resolver block gate
+helper, optimistic prune; private-list copy-link confirm + non-owner
+link hiding; comment shares deep-link (resolver pollId); live profile
+stats (followers/following/lists/favorites); push permission at first
+contribution (§8.9); comment+user report endpoints/tables/UI (§9b);
+per-scene params comparator table + typed SceneBodyContentInsets
+(sanitizer DELETED).
+
+Wave 2 (this commit set): Directions chip; saved-note on Overview
+(+ entity memberships endpoint); multi-restaurant post + own-profile
+archaeology entry; add-tile wired; friendCluster deferred (voter identity
+not in DTOs — see Red-team wave-2 notes); ALL user_stats counter columns
+dropped (pollsContributed = live endorsed-or-commented distinct count;
+user_stats = pure ensure() seam); shareConfig scene deleted end-to-end;
+listWorld lane + launchFavoritesListResults lattice deleted; clipboard
+wrapper (expo-clipboard at next native rebuild); MonogramAvatar (8→1) +
+one relative-time util; spec renames; ChildScenePanels rename.
+
+Post-remediation gates: API 245/245, mobile 188/188, tsc clean both
+(2 exempt camera errors), boot clean via verified reload, profile stats
+live on-screen (0 Polls == empty section).
+
+STILL-DEFERRED CUT (recorded): the search-world list-identity resolver
+lane (search-desired-state-contract kind:'list' + fetch-table arm) is now
+unreachable — its only writer was the deleted launcher. It is charter
+(S1-S4) tuple-contract surface; cut it in the next search-flow session,
+not from a cleanup pass.
+OWNER ACTIONS from the sweep: set EXPO_PUBLIC_SHARE_BASE_URL (share links
+silently fall back to https://crave-search.app); NotificationsPanel
+RowAvatar + PollDetailPanel CommentAvatar are trivial MonogramAvatar
+follow-ups.
