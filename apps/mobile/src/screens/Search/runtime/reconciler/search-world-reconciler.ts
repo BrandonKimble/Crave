@@ -288,23 +288,25 @@ export const createSearchWorldReconciler = (
     const decoration = takePendingSearchRequestDecoration();
     switch (transition.class) {
       case 'area_rerun': {
-        // S-A (toggle-system-ideal §STA): search-this-area RIDES THE COORDINATOR — the
-        // same debounce + interaction cover + commit choreography as every chip, with the
-        // kind the classifier derives (never trigger-passed). The enter foreground effects
-        // are preserved via the parameterized kick.
-        const areaIntent = transition.intent;
+        // S-A (toggle-system-ideal §STA): search-this-area is a toggle whose flow is
+        // BYTE-IDENTICAL to a chip rerun (owner decree). It therefore rides the EXACT
+        // chip lane: the runner's beginVariantRerunPresentationPending arms the cover
+        // keyed to the TOGGLE INTENT ID, the response commits through the variant_rerun
+        // branch keyed to that same id, and the reveal's notifyIntentComplete matches →
+        // the engine's visual-sync finalize fires and the cover clears.
+        //   The only STA-specific bit is the interaction KIND ('search_this_area' — its
+        // telemetry identity + a settleMs override seam), which does NOT touch the
+        // presentation lane. The former `presentationIntentKind:'search_this_area'` +
+        // `onResolutionBegan → runEnterForegroundEffects` re-armed a SECOND cover keyed
+        // to the episode token (`cardsKey#gN`), which the engine's finalize guard could
+        // never match → the cover (and the map ramp) hung forever, and the double-arm
+        // split the pin/dot fade. Deleted: STA is now one lane, one id, like every chip.
         kickRerunThroughCoordinator({
           tuple: next,
           generation,
           cause,
           kind: 'search_this_area',
           decoration,
-          presentationIntentKind: 'search_this_area',
-          onResolutionBegan: () => {
-            if (areaIntent != null) {
-              env.runEnterForegroundEffects({ intent: areaIntent, tuple: next, generation });
-            }
-          },
         });
         return;
       }
