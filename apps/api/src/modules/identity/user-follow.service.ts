@@ -6,7 +6,6 @@ import {
 import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserNotificationFeedService } from '../notifications/user-notification-feed.service';
-import { UserStatsService } from './user-stats.service';
 import { UserBlockService } from './user-block.service';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -15,7 +14,6 @@ const DEFAULT_PAGE_SIZE = 25;
 export class UserFollowService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly userStats: UserStatsService,
     private readonly feed: UserNotificationFeedService,
     private readonly blocks: UserBlockService,
   ) {}
@@ -64,8 +62,9 @@ export class UserFollowService {
       throw error;
     }
 
-    await this.userStats.applyDelta(followerUserId, { followingCount: 1 });
-    await this.userStats.applyDelta(followingUserId, { followersCount: 1 });
+    // NO counter writes: follower/following stats are LIVE counts over
+    // user_follows at profile-read time (the pollsCreatedCount pattern) —
+    // a crash after the edge write can't strand a drifted counter.
 
     // Feed producer ("{user} started following you") — never fails the follow itself.
     try {
@@ -82,20 +81,15 @@ export class UserFollowService {
   }
 
   async unfollowUser(followerUserId: string, followingUserId: string) {
-    const result = await this.prisma.userFollow.deleteMany({
+    await this.prisma.userFollow.deleteMany({
       where: {
         followerUserId,
         followingUserId,
       },
     });
 
-    if (result.count === 0) {
-      return { followed: false };
-    }
-
-    await this.userStats.applyDelta(followerUserId, { followingCount: -1 });
-    await this.userStats.applyDelta(followingUserId, { followersCount: -1 });
-
+    // Stats are live counts over user_follows — nothing else to write
+    // (follower/following are LIVE counts at profile-read time).
     return { followed: false };
   }
 

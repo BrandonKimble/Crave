@@ -3,6 +3,11 @@ import { PhotoEventType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 
+// Per-event count clamp. MUST be >= the client's coalesce flush threshold
+// (FLUSH_AT_COUNT = 50 in apps/mobile/src/components/photos/photo-events-buffer.ts)
+// or legitimately coalesced impression counts get silently halved.
+export const MAX_EVENT_COUNT = 50;
+
 export interface PhotoEventInput {
   photoId: string;
   eventType: PhotoEventType;
@@ -55,7 +60,7 @@ export class PhotoEventService implements OnModuleDestroy {
           photoId: event.photoId,
           userId,
           eventType: event.eventType,
-          eventCount: Math.max(1, Math.min(event.count ?? 1, 25)),
+          eventCount: Math.max(1, Math.min(event.count ?? 1, MAX_EVENT_COUNT)),
         }));
       if (rows.length === 0) return;
       await this.prisma.photoEvent.createMany({ data: rows });

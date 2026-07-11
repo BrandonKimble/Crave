@@ -4,6 +4,7 @@ import type { ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
 
 import type { BottomSheetWithFlashListBaseProps } from '../../overlays/bottomSheetWithFlashListContract';
 import type { OverlaySheetFrameSpec } from '../../overlays/types';
+import type { SceneBodyContentInsets } from '../../overlays/bottomSheetSurfaceStyleUtils';
 
 type AppRouteSceneListItem = unknown;
 
@@ -41,7 +42,7 @@ export type AppRouteSceneSecondaryListContentPublication = {
 export type AppRouteSceneSecondaryListTransportPublication = {
   listRef?: React.RefObject<FlashListRef<AppRouteSceneListItem> | null>;
   scrollIndicatorInsets?: ScrollViewProps['scrollIndicatorInsets'];
-  contentContainerStyle?: ScrollViewProps['contentContainerStyle'];
+  contentContainerStyle?: SceneBodyContentInsets;
   flashListProps?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['flashListProps'];
   testID?: string;
 };
@@ -204,7 +205,7 @@ export type AppRouteSceneBodyContentSpec =
     };
 
 export type AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle?: ScrollViewProps['contentContainerStyle'];
+  contentContainerStyle?: SceneBodyContentInsets;
   keyboardShouldPersistTaps?: ScrollViewProps['keyboardShouldPersistTaps'];
   scrollIndicatorInsets?: ScrollViewProps['scrollIndicatorInsets'];
   onScrollOffsetChange?: BottomSheetWithFlashListBaseProps<AppRouteSceneListItem>['onScrollOffsetChange'];

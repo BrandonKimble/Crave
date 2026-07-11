@@ -24,6 +24,8 @@ import { UsernameSuggestDto } from './dto/username-suggest.dto';
 import { UsernameService } from './username.service';
 import { UserFollowService } from './user-follow.service';
 import { UserBlockService } from './user-block.service';
+import { UserReportService } from './user-report.service';
+import { ReportUserDto } from './dto/report-user.dto';
 import { ListUserFollowsDto } from './dto/list-user-follows.dto';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
@@ -40,6 +42,7 @@ export class UserController {
     private readonly usernameService: UsernameService,
     private readonly userFollowService: UserFollowService,
     private readonly userBlockService: UserBlockService,
+    private readonly userReportService: UserReportService,
   ) {}
 
   @AllowUnentitled()
@@ -167,5 +170,16 @@ export class UserController {
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
     return this.userBlockService.unblockUser(user.userId, userId);
+  }
+
+  /** §9b profileActions (Apple 1.2 UGC): report a user. Records only —
+   *  human moderation reads the table; dedupe is a quiet no-op. */
+  @Post(':userId/report')
+  async report(
+    @CurrentUser() user: User,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: ReportUserDto,
+  ) {
+    return this.userReportService.reportUser(user.userId, userId, dto.reason);
   }
 }

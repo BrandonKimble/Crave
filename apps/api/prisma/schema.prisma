@@ -696,11 +696,15 @@ model PollComment {
   parent           PollComment?                @relation("PollCommentThread", fields: [parentCommentId], references: [commentId], onDelete: NoAction, onUpdate: NoAction)
   children         PollComment[]               @relation("PollCommentThread")
   likes            PollCommentLike[]
+  reports          PollCommentReport[]
 
   @@index([pollId, score(sort: Desc)], map: "idx_poll_comments_poll_score")
   @@index([pollId, loggedAt(sort: Desc)], map: "idx_poll_comments_poll_logged")
   @@index([parentCommentId], map: "idx_poll_comments_parent")
   @@index([userId], map: "idx_poll_comments_user")
+  /// Restaurant-mentions JSONB containment (entitySpans @> [{entityId}]) — without
+  /// this every GET /polls/restaurants/:id/mentions seq-scans poll_comments.
+  @@index([entitySpans(ops: JsonbPathOps)], map: "idx_poll_comments_entity_spans_gin", type: Gin)
   @@map("poll_comments")
 }
 
@@ -1105,6 +1109,9 @@ model User {
   followers              UserFollow[]            @relation("UserFollowers")
   blocksAuthored         UserBlock[]             @relation("UserBlocksAuthored")
   blocksReceived         UserBlock[]             @relation("UserBlocksReceived")
+  userReportsAuthored    UserReport[]            @relation("UserReportsAuthored")
+  userReportsReceived    UserReport[]            @relation("UserReportsReceived")
+  pollCommentReports     PollCommentReport[]     @relation("PollCommentReportsAuthored")
   usernameHistory        UsernameHistory[]
   pollComments           PollComment[]
   pollCommentLikes       PollCommentLike[]
@@ -1162,6 +1169,41 @@ model UserBlock {
   @@id([blockerUserId, blockedUserId])
   @@index([blockedUserId], map: "idx_user_blocks_blocked")
   @@map("user_blocks")
+}
+
+/// §9b reportContent (Apple 1.2 UGC): one report per (comment, reporter) —
+/// the unique index IS the dedup. v1 RECORDS ONLY (no auto-hide threshold);
+/// moderation is human for now, so the table is the review queue.
+model PollCommentReport {
+  reportId       String      @id @default(dbgenerated("gen_random_uuid()")) @map("report_id") @db.Uuid
+  commentId      String      @map("comment_id") @db.Uuid
+  reporterUserId String      @map("reporter_user_id") @db.Uuid
+  /// spam | harassment | off_topic | other (validated at the DTO seam).
+  reason         String      @db.VarChar(32)
+  createdAt      DateTime    @default(now()) @map("created_at")
+  comment        PollComment @relation(fields: [commentId], references: [commentId], onDelete: Cascade)
+  reporter       User        @relation("PollCommentReportsAuthored", fields: [reporterUserId], references: [userId], onDelete: Cascade)
+
+  @@unique([commentId, reporterUserId], map: "poll_comment_reports_comment_reporter_key")
+  @@index([commentId], map: "idx_poll_comment_reports_comment")
+  @@map("poll_comment_reports")
+}
+
+/// §9b profileActions (Apple 1.2 UGC): one report per (reporter, reported)
+/// pair — simple unique, no per-day windowing. v1 records only.
+model UserReport {
+  reportId       String   @id @default(dbgenerated("gen_random_uuid()")) @map("report_id") @db.Uuid
+  reporterUserId String   @map("reporter_user_id") @db.Uuid
+  reportedUserId String   @map("reported_user_id") @db.Uuid
+  /// spam | harassment | impersonation | other (validated at the DTO seam).
+  reason         String   @db.VarChar(32)
+  createdAt      DateTime @default(now()) @map("created_at")
+  reporter       User     @relation("UserReportsAuthored", fields: [reporterUserId], references: [userId], onDelete: Cascade)
+  reported       User     @relation("UserReportsReceived", fields: [reportedUserId], references: [userId], onDelete: Cascade)
+
+  @@unique([reporterUserId, reportedUserId], map: "user_reports_reporter_reported_key")
+  @@index([reportedUserId], map: "idx_user_reports_reported")
+  @@map("user_reports")
 }
 
 /// W3 messaging (plans/w3-messaging-design.md §2.1). Pair-unique 1:1

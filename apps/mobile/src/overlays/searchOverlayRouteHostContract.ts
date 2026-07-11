@@ -7,6 +7,7 @@ import type {
 } from './bottomSheetWithFlashListContract';
 import type { OverlayKey, OverlaySheetFrameSpec } from './types';
 import type { SearchInteractionSnapshot } from '../screens/Search/context/SearchInteractionContext';
+import type { SceneBodyContentInsets } from './bottomSheetSurfaceStyleUtils';
 
 export type { SearchRouteHostVisualState } from './searchRouteHostVisualState';
 
@@ -46,7 +47,7 @@ export type SearchRouteSceneSecondaryListContentPublication = {
 export type SearchRouteSceneSecondaryListTransportPublication = {
   listRef?: React.RefObject<FlashListRef<any> | null>;
   scrollIndicatorInsets?: ScrollViewProps['scrollIndicatorInsets'];
-  contentContainerStyle?: ScrollViewProps['contentContainerStyle'];
+  contentContainerStyle?: SceneBodyContentInsets;
   flashListProps?: BottomSheetWithFlashListBaseProps<any>['flashListProps'];
   testID?: string;
 };
@@ -141,7 +142,7 @@ export type SearchRouteSceneBodyContentSpec =
     };
 
 export type SearchRouteSceneBodyTransportSpec = {
-  contentContainerStyle?: ScrollViewProps['contentContainerStyle'];
+  contentContainerStyle?: SceneBodyContentInsets;
   keyboardShouldPersistTaps?: ScrollViewProps['keyboardShouldPersistTaps'];
   scrollIndicatorInsets?: ScrollViewProps['scrollIndicatorInsets'];
   onScrollOffsetChange?: BottomSheetWithFlashListBaseProps<any>['onScrollOffsetChange'];

@@ -8,6 +8,7 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { computeDragFrame } from './reorder-drag-math';
 import type { ReorderScrollAdapter } from './reorder-types';
 
 // Row-body lift timing (page-registry §8.14, owner-confirmed): movement within the
@@ -15,11 +16,6 @@ import type { ReorderScrollAdapter } from './reorder-types';
 // implements exactly this — the pan FAILS if the pointer travels past slop before the
 // duration, letting the outer native scroll take the touch.
 const ROW_BODY_LIFT_MS = 300;
-
-// Edge auto-scroll: hovering the lifted row within this many px of the viewport
-// edge scrolls the container, proportional to how deep into the band the finger is.
-const AUTO_SCROLL_EDGE_BAND_PX = 96;
-const AUTO_SCROLL_MAX_STEP_PX = 14;
 
 export type ReorderDragRuntime = {
   /** Key of the row currently lifted, or null. Drives per-row active styling. */
@@ -67,6 +63,10 @@ export const useReorderDrag = ({
   const liftSlotIndex = useSharedValue(0);
   const liftScrollOffset = useSharedValue(0);
   const autoScrollStep = useSharedValue(0);
+  // Last gesture sample, replayed by the auto-scroll pump so a STATIONARY finger still
+  // gets per-frame slot/translate recomputes while the container scrolls under it.
+  const lastTranslationY = useSharedValue(0);
+  const lastAbsoluteY = useSharedValue(0);
 
   // Latest-value refs so the memoized gesture factory never captures stale JS state.
   const itemCountRef = React.useRef(itemCount);
@@ -94,29 +94,71 @@ export const useReorderDrag = ({
     scrollAdapterRef.current?.scrollBy(dy);
   }, []);
 
-  // Edge auto-scroll pump. Runs ONLY while a drag is active AND the finger sits in an
-  // edge band (the callback is toggled active below) — zero cost otherwise. The scroll
-  // itself is a JS-thread imperative scrollTo; the lifted row's position compensates
-  // via effectiveScrollOffset in the drag math, so it stays under the finger.
+  // Shared slot/translate recompute — the ONE drag-frame math both drive paths call:
+  // pan onUpdate (finger moves) and the auto-scroll pump (finger stationary, container
+  // scrolling). Worklet-pure: reads only shared values + captured constants.
+  const applyDragFrame = React.useCallback(
+    (translationY: number, absoluteY: number) => {
+      'worklet';
+      if (activeKey.value == null) {
+        return;
+      }
+      const frame = computeDragFrame({
+        translationY,
+        absoluteY,
+        scrollOffset: effectiveScrollOffset.value,
+        liftScrollOffset: liftScrollOffset.value,
+        liftSlotIndex: liftSlotIndex.value,
+        rowHeight,
+        pinnedLeadingCount,
+        itemCount: itemCountSV.value,
+        viewportTopY,
+        viewportBottomY,
+      });
+      dragTranslateY.value = frame.translate;
+      if (frame.slot !== activeSlotIndex.value) {
+        const fromIndex = activeSlotIndex.value;
+        activeSlotIndex.value = frame.slot;
+        runOnJS(emitReorder)(fromIndex, frame.slot);
+      }
+      autoScrollStep.value = frame.autoScrollStep;
+    },
+    [
+      activeKey,
+      activeSlotIndex,
+      autoScrollStep,
+      dragTranslateY,
+      effectiveScrollOffset,
+      emitReorder,
+      itemCountSV,
+      liftScrollOffset,
+      liftSlotIndex,
+      pinnedLeadingCount,
+      rowHeight,
+      viewportBottomY,
+      viewportTopY,
+    ]
+  );
+
+  // Edge auto-scroll pump. Runs ONLY while a drag is active (the callback is toggled
+  // active below) — zero cost otherwise. The scroll itself is a JS-thread imperative
+  // scrollTo; the recompute below replays the LAST gesture sample against the moving
+  // scroll offset each frame, so a STATIONARY finger keeps the lifted row finger-pinned
+  // and keeps advancing activeSlotIndex while the container auto-scrolls under it.
   const autoScrollFrame = useFrameCallback(() => {
     'worklet';
-    if (activeKey.value == null || autoScrollStep.value === 0) {
+    if (activeKey.value == null) {
       return;
     }
-    runOnJS(scrollByJS)(autoScrollStep.value);
+    if (autoScrollStep.value !== 0) {
+      runOnJS(scrollByJS)(autoScrollStep.value);
+    }
+    applyDragFrame(lastTranslationY.value, lastAbsoluteY.value);
   }, false);
   const setAutoScrollActive = autoScrollFrame.setActive;
 
   return React.useMemo(() => {
-    const resolveSlot = (translateFromLift: number) => {
-      'worklet';
-      const rawSlot = liftSlotIndex.value + Math.round(translateFromLift / rowHeight);
-      const minSlot = pinnedLeadingCount;
-      const maxSlot = itemCountSV.value - 1;
-      return Math.max(minSlot, Math.min(maxSlot, rawSlot));
-    };
-
-    const beginDrag = (key: string, index: number) => {
+    const beginDrag = (key: string, index: number, absoluteY: number) => {
       'worklet';
       activeKey.value = key;
       liftSlotIndex.value = index;
@@ -124,40 +166,21 @@ export const useReorderDrag = ({
       dragTranslateY.value = 0;
       liftScrollOffset.value = effectiveScrollOffset.value;
       autoScrollStep.value = 0;
+      // Seed the replay sample so a pump frame before the first onUpdate is a no-op
+      // recompute at the lift position, not a jump from stale coordinates.
+      lastTranslationY.value = 0;
+      lastAbsoluteY.value = absoluteY;
       runOnJS(setAutoScrollActive)(true);
       runOnJS(emitDragState)(true);
     };
 
     const updateDrag = (translationY: number, absoluteY: number) => {
       'worklet';
-      if (activeKey.value == null) {
-        return;
-      }
-      // Auto-scroll compensation: while the container scrolls under the finger, the
-      // row's translate must grow by the scrolled distance to stay finger-pinned.
-      const scrollDelta = effectiveScrollOffset.value - liftScrollOffset.value;
-      const translate = translationY + scrollDelta;
-      dragTranslateY.value = translate;
-
-      const nextSlot = resolveSlot(translate);
-      if (nextSlot !== activeSlotIndex.value) {
-        const fromIndex = activeSlotIndex.value;
-        activeSlotIndex.value = nextSlot;
-        runOnJS(emitReorder)(fromIndex, nextSlot);
-      }
-
-      // Edge bands → proportional auto-scroll step (0 outside the bands).
-      const topDepth = viewportTopY + AUTO_SCROLL_EDGE_BAND_PX - absoluteY;
-      const bottomDepth = absoluteY - (viewportBottomY - AUTO_SCROLL_EDGE_BAND_PX);
-      if (topDepth > 0) {
-        autoScrollStep.value =
-          -Math.min(1, topDepth / AUTO_SCROLL_EDGE_BAND_PX) * AUTO_SCROLL_MAX_STEP_PX;
-      } else if (bottomDepth > 0) {
-        autoScrollStep.value =
-          Math.min(1, bottomDepth / AUTO_SCROLL_EDGE_BAND_PX) * AUTO_SCROLL_MAX_STEP_PX;
-      } else {
-        autoScrollStep.value = 0;
-      }
+      // Store the sample FIRST — the auto-scroll pump replays it every frame while the
+      // finger holds still, so slot + finger-pin stay live during auto-scroll.
+      lastTranslationY.value = translationY;
+      lastAbsoluteY.value = absoluteY;
+      applyDragFrame(translationY, absoluteY);
     };
 
     const endDrag = () => {
@@ -185,9 +208,9 @@ export const useReorderDrag = ({
         .shouldCancelWhenOutside(false)
         .activeOffsetY([-4, 4])
         .failOffsetX([-16, 16])
-        .onStart(() => {
+        .onStart((event) => {
           'worklet';
-          beginDrag(key, rowIndex.value);
+          beginDrag(key, rowIndex.value, event.absoluteY);
         })
         .onUpdate((event) => {
           'worklet';
@@ -208,9 +231,9 @@ export const useReorderDrag = ({
         .maxPointers(1)
         .activateAfterLongPress(ROW_BODY_LIFT_MS)
         .shouldCancelWhenOutside(false)
-        .onStart(() => {
+        .onStart((event) => {
           'worklet';
-          beginDrag(key, rowIndex.value);
+          beginDrag(key, rowIndex.value, event.absoluteY);
         })
         .onUpdate((event) => {
           'worklet';
@@ -232,18 +255,15 @@ export const useReorderDrag = ({
   }, [
     activeKey,
     activeSlotIndex,
+    applyDragFrame,
     autoScrollStep,
     dragTranslateY,
     effectiveScrollOffset,
     emitDragState,
-    emitReorder,
-    itemCountSV,
+    lastAbsoluteY,
+    lastTranslationY,
     liftScrollOffset,
     liftSlotIndex,
-    pinnedLeadingCount,
-    rowHeight,
     setAutoScrollActive,
-    viewportBottomY,
-    viewportTopY,
   ]);
 };

@@ -21,6 +21,7 @@ import type {
   BottomSheetProgrammaticRuntimeModel,
   BottomSheetRuntimeModel,
 } from './useBottomSheetRuntime';
+import type { SceneBodyContentInsets } from './bottomSheetSurfaceStyleUtils';
 
 export type DualListSelection = 'primary' | 'secondary';
 
@@ -38,7 +39,7 @@ export type SecondaryListSpec<T> = {
   ListFooterComponent?: FlashListProps<T>['ListFooterComponent'];
   ListEmptyComponent?: FlashListProps<T>['ListEmptyComponent'];
   ItemSeparatorComponent?: FlashListProps<T>['ItemSeparatorComponent'];
-  contentContainerStyle?: FlashListProps<T>['contentContainerStyle'];
+  contentContainerStyle?: SceneBodyContentInsets;
   flashListProps?: BottomSheetWithFlashListBaseProps<T>['flashListProps'];
   testID?: string;
 };
@@ -53,7 +54,7 @@ export type BottomSheetWithFlashListBaseProps<T> = {
   headerComponent?: React.ReactNode;
   backgroundComponent?: React.ReactNode;
   overlayComponent?: React.ReactNode;
-  contentContainerStyle?: FlashListProps<T>['contentContainerStyle'];
+  contentContainerStyle?: SceneBodyContentInsets;
   keyboardShouldPersistTaps?: FlashListProps<T>['keyboardShouldPersistTaps'];
   scrollIndicatorInsets?: FlashListProps<T>['scrollIndicatorInsets'];
   onHidden?: () => void;
@@ -180,10 +181,7 @@ export type BottomSheetSceneSurfaceProps<T> =
   | BottomSheetSceneSurfaceContentProps;
 
 export type BottomSheetWithFlashListProps<T> = BottomSheetWithFlashListBaseProps<T> &
-  (
-    | BottomSheetWithFlashListListProps<T>
-    | BottomSheetWithFlashListContentOnlyProps
-  );
+  (BottomSheetWithFlashListListProps<T> | BottomSheetWithFlashListContentOnlyProps);
 
 export const isBottomSheetListSurface = <T>(
   props:

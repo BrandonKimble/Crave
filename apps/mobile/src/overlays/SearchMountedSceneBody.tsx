@@ -11,10 +11,7 @@ import type {
 } from './bottomSheetSceneStackHostContract';
 import type { ScrollEvent } from './bottomSheetSceneStackBodyLayerContract';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
-import {
-  resolveListContentContainerStyle,
-  sanitizeContentContainerStyle,
-} from './bottomSheetSurfaceStyleUtils';
+import { resolveListContentContainerStyle } from './bottomSheetSurfaceStyleUtils';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import type {
   SearchRouteSceneBodyContentSpec,
@@ -298,11 +295,10 @@ const SearchMountedResultsListTarget = React.memo(
     const primaryListContentContainerStyle = React.useMemo(
       () =>
         resolveListContentContainerStyle({
-          baseStyle: sanitizeContentContainerStyle(
+          baseStyle:
             listDataSnapshot.contentContainerStyle ??
-              sceneBodyTransport.contentContainerStyle ??
-              bodyDefaults.resolvedContentContainerStyle
-          ),
+            sceneBodyTransport.contentContainerStyle ??
+            bodyDefaults.resolvedContentContainerStyle,
           hasScrollHeaderOverlay: bodyDefaults.scrollHeaderComponent != null,
           scrollHeaderHeight: bodyDefaults.scrollHeaderHeight,
         }),
@@ -317,12 +313,11 @@ const SearchMountedResultsListTarget = React.memo(
     const secondaryListContentContainerStyle = React.useMemo(
       () =>
         resolveListContentContainerStyle({
-          baseStyle: sanitizeContentContainerStyle(
+          baseStyle:
             secondaryListTransport?.contentContainerStyle ??
-              listDataSnapshot.contentContainerStyle ??
-              sceneBodyTransport.contentContainerStyle ??
-              bodyDefaults.resolvedContentContainerStyle
-          ),
+            listDataSnapshot.contentContainerStyle ??
+            sceneBodyTransport.contentContainerStyle ??
+            bodyDefaults.resolvedContentContainerStyle,
           hasScrollHeaderOverlay: bodyDefaults.scrollHeaderComponent != null,
           scrollHeaderHeight: bodyDefaults.scrollHeaderHeight,
         }),

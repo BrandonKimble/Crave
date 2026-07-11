@@ -6,6 +6,9 @@ import {
   systemKindRank,
 } from './favorite-list-provisioning.service';
 import { FavoriteListsService } from './favorite-lists.service';
+import { FavoriteListAccessPolicy } from './favorite-list-access.policy';
+import { ListResultsAssembler } from './favorite-list-results.assembler';
+import { FavoriteListMapper } from './favorite-list.mappers';
 
 /**
  * Auto-created default lists (page-registry §8.7) + save-sheet flip
@@ -144,11 +147,13 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
       publicEntityScore: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const userStats = { applyDelta: jest.fn().mockResolvedValue(undefined) };
+    const blocks = { isBlockedPair: jest.fn().mockResolvedValue(false) };
     const service = new FavoriteListsService(
       prisma as never,
-      logger as never,
       userStats as never,
-      {} as never,
+      new FavoriteListAccessPolicy(prisma as never, blocks as never),
+      new ListResultsAssembler({} as never),
+      new FavoriteListMapper(prisma as never, logger as never),
     );
     return { service, prisma, itemCreate };
   }

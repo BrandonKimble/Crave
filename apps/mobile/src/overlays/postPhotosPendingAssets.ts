@@ -8,7 +8,8 @@ import type { ImagePickerAsset } from 'expo-image-picker';
 // overlay-sheet edit-lock registry (module-scope runtime seam, no React context).
 //
 // Lifecycle: `stash` at push time; the panel `peek`s (NOT takes) so an entry-mount remount of
-// the scene re-reads the same assets; `release` when the funnel collapses (panel unmount).
+// the scene re-reads the same assets; `release` when the funnel COLLAPSES (the all-done close
+// handler + a stack-removal check on unmount — never bare unmount, remounts must re-peek).
 // A missing nonce (dev reload dropped module state) renders the panel's honest failure body.
 
 const pendingAssetsByNonce = new Map<string, ImagePickerAsset[]>();

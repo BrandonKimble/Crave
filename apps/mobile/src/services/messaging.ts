@@ -1,4 +1,5 @@
 import api from './api';
+import { requestPushPermissionIfEligible } from './push-permission';
 
 // ─── W3 messaging client (plans/w3-messaging-design.md §3.2) ─────────────────────────────────
 // isRequest / frozen / unreadCount are SERVER-derived flags shipped on the DTO —
@@ -15,6 +16,9 @@ export type SharePackagePreview =
       title: string;
       subtitle: string | null;
       imageUrl: string | null;
+      /** comment kind only: the parent poll — tap destination is
+       *  pollDetail{pollId, commentAnchorId: id}. */
+      pollId?: string;
     };
 
 export interface DmMessage {
@@ -48,7 +52,7 @@ export interface ShareFanOutResult {
   recipientUserId: string;
   conversationId: string | null;
   messageId: string | null;
-  error: 'CONVERSATION_FROZEN' | 'NOT_FOUND' | null;
+  error: 'CONVERSATION_FROZEN' | 'NOT_FOUND' | 'FAILED' | null;
 }
 
 export const messagingService = {
@@ -85,6 +89,9 @@ export const messagingService = {
       `/messaging/conversations/${conversationId}/messages`,
       { kind: 'text', body, clientDedupeId }
     );
+    // §8.9 push-permission moment: first contribution (a DM sent) — hooked at
+    // the service seam so the panel send path stays untouched.
+    requestPushPermissionIfEligible();
     return response.data;
   },
   async advanceReadCursor(conversationId: string, lastReadMessageAt: string): Promise<void> {
@@ -108,6 +115,10 @@ export const messagingService = {
     sharedEntityKind: SharedEntityKind;
     sharedEntityId: string;
     body?: string;
+    /** Per-modal-open uuid: the server derives `share:{clientShareId}` as each
+     *  message's dedupe id, so a retry after a transport error replays instead
+     *  of double-sending to recipients that already succeeded. */
+    clientShareId?: string;
   }): Promise<{ results: ShareFanOutResult[] }> {
     const response = await api.post<{ results: ShareFanOutResult[] }>('/messaging/share', payload);
     return response.data;

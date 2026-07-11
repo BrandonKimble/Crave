@@ -13,10 +13,7 @@ import type {
 } from './bottomSheetSceneStackHostContract';
 import type { ScrollEvent } from './bottomSheetSceneStackBodyLayerContract';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
-import {
-  resolveListContentContainerStyle,
-  sanitizeContentContainerStyle,
-} from './bottomSheetSurfaceStyleUtils';
+import { resolveListContentContainerStyle } from './bottomSheetSurfaceStyleUtils';
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import {
   finishSearchNavSwitchRuntimeAttributionSpan,
@@ -166,19 +163,10 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
       bodyDefaults.resolvedScrollIndicatorInsets;
     const sceneFlashListProps =
       sceneBodyTransportSpec.flashListProps ?? bodyDefaults.activeFlashListProps;
-    const sceneContentContainerStyle = React.useMemo(
-      () =>
-        sanitizeContentContainerStyle(
-          listDataAuthoritySnapshot.contentContainerStyle ??
-            sceneBodyTransportSpec.contentContainerStyle ??
-            bodyDefaults.resolvedContentContainerStyle
-        ),
-      [
-        bodyDefaults.resolvedContentContainerStyle,
-        listDataAuthoritySnapshot.contentContainerStyle,
-        sceneBodyTransportSpec.contentContainerStyle,
-      ]
-    );
+    const sceneContentContainerStyle =
+      listDataAuthoritySnapshot.contentContainerStyle ??
+      sceneBodyTransportSpec.contentContainerStyle ??
+      bodyDefaults.resolvedContentContainerStyle;
     const sceneListContentContainerStyle = React.useMemo(
       () =>
         resolveListContentContainerStyle({
@@ -343,12 +331,11 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
     const sceneSecondaryContentContainerStyle = React.useMemo(
       () =>
         resolveListContentContainerStyle({
-          baseStyle: sanitizeContentContainerStyle(
+          baseStyle:
             sceneSecondaryListTransport?.contentContainerStyle ??
-              listDataAuthoritySnapshot.contentContainerStyle ??
-              sceneBodyTransportSpec.contentContainerStyle ??
-              bodyDefaults.resolvedContentContainerStyle
-          ),
+            listDataAuthoritySnapshot.contentContainerStyle ??
+            sceneBodyTransportSpec.contentContainerStyle ??
+            bodyDefaults.resolvedContentContainerStyle,
           hasScrollHeaderOverlay: bodyDefaults.scrollHeaderComponent != null,
           scrollHeaderHeight: bodyDefaults.scrollHeaderHeight,
         }),

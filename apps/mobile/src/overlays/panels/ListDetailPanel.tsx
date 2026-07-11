@@ -968,12 +968,15 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   // §8.11: while editing, the sheet is edit-LOCKED to expanded — swipe-down rubber-bands
   // and springs back instead of collapsing. Acquired from this effect so the cleanup
   // clears the lock on BOTH edit-exit (Save/Cancel) and scene unmount.
+  // Token is PER-ENTRY: two live listDetail entries (list A → profile → list B) each hold
+  // their own lock — a constant token would collide and the first release would drop it.
+  const editLockToken = `list-detail-edit:${entry?.entryId ?? 'root'}`;
   React.useEffect(() => {
     if (!isEditing) {
       return undefined;
     }
-    return acquireOverlaySheetEditLock('list-detail-edit');
-  }, [isEditing]);
+    return acquireOverlaySheetEditLock(editLockToken);
+  }, [editLockToken, isEditing]);
 
   const exitEditMode = React.useCallback(() => {
     setEditSession(null);
@@ -1049,9 +1052,11 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     if (editSession == null || isSavingOrder || resolvedListId == null) {
       return;
     }
-    // Batch order PATCH vocabulary = itemIds. The API enforces set equality against the
-    // full membership — if any rendered row lost its itemId projection (or the render is
-    // a partial page), fail LOUD here rather than send a request that 400s.
+    // Batch order PATCH vocabulary = itemIds, built from the RENDERED rows — which can be
+    // a SUBSET of full membership (the executor drops score-less items). The API accepts a
+    // subset (reordered rows are placed, unlisted members keep relative order after them),
+    // so we send the rendered order as-is. A row missing its itemId projection is still a
+    // loud local failure — that id can't be expressed at all.
     const orderedItemIds = editSession.order.map((key) => editRowsByKey.get(key)?.itemId ?? null);
     if (orderedItemIds.some((itemId) => itemId == null)) {
       announceFailureIfOnline();
@@ -1062,7 +1067,13 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
       await favoriteListsService.reorderItems(resolvedListId, orderedItemIds as string[]);
     } catch {
       setIsSavingOrder(false);
-      announceFailureIfOnline();
+      // Honest copy: the visible rows can be a subset of the list's membership, so a
+      // failed save may have left the order partially applied — say so, and that
+      // retrying is safe (the PATCH is idempotent over the same ordered subset).
+      announceFailureIfOnline({
+        message:
+          "We couldn't save the new order — it may have only partially applied. It's safe to try saving again.",
+      });
       return;
     }
     // Re-query on the saver's ranking: the custom order is now the list's default.
@@ -1308,6 +1319,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
               listShareSlug: metaQuery.data?.list.shareEnabled
                 ? (metaQuery.data.list.shareSlug ?? null)
                 : null,
+              listOwnedByViewer: viewerRole === 'owner',
             });
           }}
           onOpenProfile={handleOpenProfile}

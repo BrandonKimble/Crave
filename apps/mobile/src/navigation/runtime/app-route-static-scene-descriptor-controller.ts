@@ -1,4 +1,3 @@
-import { StyleSheet } from 'react-native';
 import { initialWindowMetrics } from 'react-native-safe-area-context';
 
 import {
@@ -41,34 +40,34 @@ type StaticStubChildSceneKey =
   | 'dmSession';
 type StaticSceneKey = 'saveList' | StaticTabSceneKey | StaticStubChildSceneKey;
 
-const staticSceneStyles = StyleSheet.create({
-  scrollContent: {
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-  },
-});
+// Typed SceneBodyContentInsets — the transport's contentContainerStyle carries
+// insets only (compile-enforced), so these are plain objects, not StyleSheet styles.
+const STATIC_SCENE_SCROLL_CONTENT_INSETS = {
+  paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+} as const;
 
 // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (the shared sheet
 // scroll container) so the scroll↔sheet handoff works — no per-scene over-scroll config needed.
 const BOOKMARKS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 72 }],
+  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
   contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
 };
 
 const PROFILE_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 160 }],
+  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 160 },
   keyboardShouldPersistTaps: 'handled',
   contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
 };
 
 const SAVE_LIST_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 72 }],
+  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
   keyboardShouldPersistTaps: 'handled',
 };
 
 // Shared transport for the stub child scenes (SAVE_LIST_BODY_TRANSPORT minus the
 // keyboard field — no inputs in a stub body).
 const STUB_CHILD_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 72 }],
+  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
 };
 
 const STATIC_STUB_CHILD_SCENE_KEYS: readonly StaticStubChildSceneKey[] = [
@@ -84,14 +83,14 @@ const STATIC_STUB_CHILD_SCENE_KEYS: readonly StaticStubChildSceneKey[] = [
 // W2: postPhotos publishes separately — same static-child shape, but with the
 // keyboard-persist transport (the panel has typeahead + free-text dish inputs).
 const POST_PHOTOS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 72 }],
+  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
   keyboardShouldPersistTaps: 'handled',
 };
 
 // W3 messaging (§4.1): the inbox is a RE-SORTING list (rows re-order on every
 // new message) — MVCP must be OFF (CLAUDE.md: re-sortable feeds disable it).
 const MESSAGES_INBOX_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 72 }],
+  contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
   flashListProps: { maintainVisibleContentPosition: { disabled: true } },
 };
 
@@ -100,12 +99,11 @@ const MESSAGES_INBOX_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
 // rides above the keyboard — the PollDetail chin's geometry on the static
 // path). The shared scroll container put the composer at content-bottom
 // mid-sheet, which was exactly the W4 keyboard bug. Keyboard props live on the
-// panel's own thread ScrollView. NOTE: no layout styles here — the transport's
-// contentContainerStyle is run through sanitizeContentContainerStyle (a padding/
-// backgroundColor WHITELIST), so a flex sent this way is silently stripped; the
-// static-mode frame fill lives in useBottomSheetSceneStackBodyContentRuntime.
+// panel's own thread ScrollView. No layout styles here — the transport's
+// contentContainerStyle is typed SceneBodyContentInsets (insets only, compile-
+// enforced); the static-mode frame fill lives in useBottomSheetSceneStackBodyContentRuntime.
 const DM_SESSION_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
-  contentContainerStyle: [staticSceneStyles.scrollContent],
+  contentContainerStyle: STATIC_SCENE_SCROLL_CONTENT_INSETS,
 };
 
 const STATIC_RETAINED_TAB_BODY_ADMISSION_POLICY: AppRouteSceneBodyAdmissionPolicy = {

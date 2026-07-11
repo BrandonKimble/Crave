@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { MessagingService } from './messaging.service';
+import { SharePackageResolverService } from './share-package-resolver.service';
 import { ClosenessService } from '../identity/closeness.service';
 import { UserBlockService } from '../identity/user-block.service';
 
@@ -311,6 +312,19 @@ describe('unread + request derivation (§1.1/§2.4)', () => {
     expect(inbox.conversations.map((c) => c.conversationId)).toEqual([MSG]);
   });
 
+  it('ghost-request fix: list + badge reads exclude zero-message conversations', async () => {
+    // A conversation row created by the profile Message tap has
+    // lastMessageId=null; it must not surface in ANY participant's list or
+    // counts until the first message lands (the creator's dmSession reads
+    // through getConversation, which is untouched).
+    await service.listConversations(ME, {});
+    const listWhere = prisma.conversation.findMany.mock.calls[0][0].where;
+    expect(listWhere.lastMessageId).toEqual({ not: null });
+    await service.unreadCount(ME);
+    const badgeWhere = prisma.conversation.findMany.mock.calls[1][0].where;
+    expect(badgeWhere.lastMessageId).toEqual({ not: null });
+  });
+
   it('unread-count badge excludes requests and frozen conversations', async () => {
     prisma.conversation.findMany.mockResolvedValueOnce([
       conversation(), // request (unread would not count)
@@ -345,6 +359,19 @@ describe('cursor pagination (§2.2 total order)', () => {
     const call = prisma.message.findMany.mock.calls[0][0];
     expect(call.where.createdAt).toEqual({ gt: new Date(at) });
     expect(call.orderBy[0]).toEqual({ createdAt: 'asc' });
+  });
+
+  it('after mode with afterMessageId is a total-ordered tuple (no same-ms skip)', async () => {
+    const at = '2026-07-02T00:00:00.000Z';
+    await service.listMessages(ME, CONVO, {
+      after: at,
+      afterMessageId: MSG,
+    });
+    const where = prisma.message.findMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([
+      { createdAt: { gt: new Date(at) } },
+      { createdAt: new Date(at), messageId: { gt: MSG } },
+    ]);
   });
 
   it('malformed cursor is a loud 400', async () => {
@@ -412,6 +439,139 @@ describe('shareFanOut (§3.2)', () => {
         error: 'CONVERSATION_FROZEN',
       },
     ]);
+  });
+
+  it('an unexpected mid-batch error is a per-recipient FAILED, never a rethrow', async () => {
+    const prisma = makePrisma();
+    const service = makeService(prisma);
+    jest
+      .spyOn(service, 'getOrCreateConversation')
+      .mockResolvedValueOnce({ conversationId: CONVO } as any)
+      .mockRejectedValueOnce(new Error('transport exploded'));
+    jest
+      .spyOn(service, 'sendMessage')
+      .mockResolvedValue({ messageId: MSG } as any);
+    const { results } = await service.shareFanOut(ME, {
+      recipientUserIds: [THEM, MSG],
+      sharedEntityKind: 'dish' as any,
+      sharedEntityId: CONVO,
+    });
+    // The first (successful) recipient is still reported.
+    expect(results[0].error).toBeNull();
+    expect(results[1]).toEqual({
+      recipientUserId: MSG,
+      conversationId: null,
+      messageId: null,
+      error: 'FAILED',
+    });
+  });
+
+  it('threads the per-open dedupe id share:{clientShareId} into every send', async () => {
+    const prisma = makePrisma();
+    const service = makeService(prisma);
+    jest
+      .spyOn(service, 'getOrCreateConversation')
+      .mockResolvedValue({ conversationId: CONVO } as any);
+    const sendSpy = jest
+      .spyOn(service, 'sendMessage')
+      .mockResolvedValue({ messageId: MSG } as any);
+    const shareId = 'dddddddd-dddd-4ddd-8ddd-ddddddddddd1';
+    await service.shareFanOut(ME, {
+      recipientUserIds: [THEM],
+      sharedEntityKind: 'dish' as any,
+      sharedEntityId: CONVO,
+      clientShareId: shareId,
+    });
+    expect(sendSpy).toHaveBeenCalledWith(
+      ME,
+      CONVO,
+      expect.objectContaining({ clientDedupeId: `share:${shareId}` }),
+    );
+  });
+});
+
+describe('SharePackageResolver author/owner block gate + comment pollId', () => {
+  const POLL = '11111111-1111-4111-8111-111111111111';
+
+  const makeResolver = (prismaOver: Record<string, any>) => {
+    const prisma: any = {
+      userBlock: { findFirst: jest.fn().mockResolvedValue(null) },
+      ...prismaOver,
+    };
+    return {
+      resolver: new SharePackageResolverService(
+        prisma,
+        new UserBlockService(prisma),
+      ),
+      prisma,
+    };
+  };
+
+  it('poll: blocked AUTHOR pair resolves unavailable (identity-adjacent gate)', async () => {
+    const { resolver, prisma } = makeResolver({
+      poll: {
+        findUnique: jest.fn().mockResolvedValue({
+          question: 'Best taco?',
+          state: 'live',
+          createdByUserId: THEM,
+        }),
+      },
+    });
+    prisma.userBlock.findFirst.mockResolvedValue({ blockerUserId: THEM });
+    const dto = await resolver.resolve('poll' as any, POLL, ME);
+    expect(dto.unavailable).toBe(true);
+  });
+
+  it('list: blocked OWNER pair resolves unavailable even when share-enabled', async () => {
+    const { resolver, prisma } = makeResolver({
+      favoriteList: {
+        findUnique: jest.fn().mockResolvedValue({
+          name: 'Tacos',
+          itemCount: 3,
+          visibility: 'private',
+          shareEnabled: true,
+          ownerUserId: THEM,
+          collaborators: [],
+        }),
+      },
+    });
+    prisma.userBlock.findFirst.mockResolvedValue({ blockerUserId: ME });
+    const dto = await resolver.resolve('list' as any, POLL, ME);
+    expect(dto.unavailable).toBe(true);
+  });
+
+  it('restaurant/dish carry no author identity: never gated on blocks', async () => {
+    const { resolver, prisma } = makeResolver({
+      entity: {
+        findUnique: jest.fn().mockResolvedValue({
+          name: 'Taqueria',
+          type: 'restaurant',
+          status: 'active',
+          city: 'Austin',
+        }),
+      },
+    });
+    // Even a blocked pair somewhere must not hide an identity-free entity.
+    prisma.userBlock.findFirst.mockResolvedValue({ blockerUserId: THEM });
+    const dto = await resolver.resolve('restaurant' as any, POLL, ME);
+    expect(dto.unavailable).toBe(false);
+  });
+
+  it('comment preview carries the parent pollId (registry §8.2: shared comments are destinations)', async () => {
+    const { resolver } = makeResolver({
+      pollComment: {
+        findUnique: jest.fn().mockResolvedValue({
+          body: 'so good',
+          deletedAt: null,
+          userId: THEM,
+          pollId: POLL,
+          user: { username: 'them', displayName: null },
+        }),
+      },
+    });
+    const dto: any = await resolver.resolve('comment' as any, MSG, ME);
+    expect(dto.unavailable).toBe(false);
+    expect(dto.pollId).toBe(POLL);
   });
 });
 

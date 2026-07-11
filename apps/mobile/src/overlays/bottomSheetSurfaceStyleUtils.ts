@@ -1,49 +1,22 @@
-import type { StyleProp, ViewStyle } from 'react-native';
-import { StyleSheet } from 'react-native';
+import type { ViewStyle } from 'react-native';
 
-export const sanitizeContentContainerStyle = (
-  contentContainerStyle?: StyleProp<ViewStyle>
-): ViewStyle | undefined => {
-  if (!contentContainerStyle) {
-    return undefined;
-  }
-  const flat = (StyleSheet.flatten(contentContainerStyle) || {}) as ViewStyle;
-  const {
-    padding,
-    paddingTop,
-    paddingRight,
-    paddingBottom,
-    paddingLeft,
-    paddingHorizontal,
-    paddingVertical,
-    backgroundColor,
-  } = flat;
-  const sanitized: ViewStyle = {};
-  if (padding !== undefined) {
-    sanitized.padding = padding;
-  }
-  if (paddingTop !== undefined) {
-    sanitized.paddingTop = paddingTop;
-  }
-  if (paddingRight !== undefined) {
-    sanitized.paddingRight = paddingRight;
-  }
-  if (paddingBottom !== undefined) {
-    sanitized.paddingBottom = paddingBottom;
-  }
-  if (paddingLeft !== undefined) {
-    sanitized.paddingLeft = paddingLeft;
-  }
-  if (paddingHorizontal !== undefined) {
-    sanitized.paddingHorizontal = paddingHorizontal;
-  }
-  if (paddingVertical !== undefined) {
-    sanitized.paddingVertical = paddingVertical;
-  }
-  if (backgroundColor !== undefined) {
-    sanitized.backgroundColor = backgroundColor;
-  }
-  return sanitized;
+/**
+ * The ONLY layout a scene may send through the sheet-body transport's
+ * `contentContainerStyle`: content insets + an optional background. This type
+ * REPLACES the old `sanitizeContentContainerStyle` runtime whitelist, which
+ * silently stripped everything else (a `flex` sent this way vanished — the W4
+ * dmSession static-column regression). Now the contract is compile-enforced:
+ * an unsupported style key is a type error at the producer, not a silent no-op.
+ * Frame-filling layout is the body runtime's job (see staticContentFillStyle in
+ * useBottomSheetSceneStackBodyContentRuntime), never the transport's.
+ */
+export type SceneBodyContentInsets = {
+  padding?: number;
+  paddingTop?: number;
+  paddingBottom?: number;
+  paddingHorizontal?: number;
+  paddingVertical?: number;
+  backgroundColor?: ViewStyle['backgroundColor'];
 };
 
 export const resolveListContentContainerStyle = ({
@@ -51,11 +24,11 @@ export const resolveListContentContainerStyle = ({
   hasScrollHeaderOverlay,
   scrollHeaderHeight,
 }: {
-  baseStyle?: ViewStyle;
+  baseStyle?: SceneBodyContentInsets;
   hasScrollHeaderOverlay: boolean;
   scrollHeaderHeight: number;
 }): ViewStyle | undefined => {
-  const base: ViewStyle = baseStyle ?? {};
+  const base: SceneBodyContentInsets = baseStyle ?? {};
   const shouldForceTransparentBackground =
     hasScrollHeaderOverlay && base.backgroundColor === undefined;
   if (scrollHeaderHeight <= 0) {

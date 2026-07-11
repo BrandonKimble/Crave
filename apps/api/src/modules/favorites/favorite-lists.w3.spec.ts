@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return */
 import { FavoriteListsService } from './favorite-lists.service';
+import { FavoriteListAccessPolicy } from './favorite-list-access.policy';
+import { ListResultsAssembler } from './favorite-list-results.assembler';
+import { FavoriteListMapper } from './favorite-list.mappers';
 
 /**
  * W3 profile Lists view contracts (page-registry §8.12/§8.14/§8.15):
@@ -39,11 +42,13 @@ function makeService(lists: any[], cityRows: any[] = []) {
   const logger = {
     setContext: () => ({ log: jest.fn(), warn: jest.fn(), error: jest.fn() }),
   } as any;
+  const blocks = { isBlockedPair: jest.fn().mockResolvedValue(false) };
   const service = new FavoriteListsService(
     prisma,
-    logger,
     {} as any,
-    {} as any,
+    new FavoriteListAccessPolicy(prisma, blocks as never),
+    new ListResultsAssembler({} as never),
+    new FavoriteListMapper(prisma, logger),
   );
   return { prisma, service };
 }
@@ -89,5 +94,22 @@ describe('listPublicForUser (profile Lists view, §8.14/§8.15)', () => {
     expect(result[0].pinned).toBe(true);
     expect(result[1].city).toBe('Austin');
     expect(result[0].city).toBeNull();
+  });
+
+  it('the public-profile payload carries NO shareSlug and NO shareEnabled (the slug is a join capability)', async () => {
+    // Red-team finding 1 (BLOCKER): shareSlug on GET /users/:userId/favorites/lists
+    // let any stranger POST collaborators/join and gain full mutation parity.
+    const shared = makeList({
+      listId: 'aaaaaaa2-1111-4111-8111-111111111111',
+      name: 'shared-list',
+      shareSlug: 'secret-capability-slug',
+      shareEnabled: true,
+    });
+    const { service } = makeService([shared]);
+    const result = await service.listPublicForUser(OWNER, {});
+    expect(result).toHaveLength(1);
+    expect(result[0]).not.toHaveProperty('shareSlug');
+    expect(result[0]).not.toHaveProperty('shareEnabled');
+    expect(JSON.stringify(result)).not.toContain('secret-capability-slug');
   });
 });

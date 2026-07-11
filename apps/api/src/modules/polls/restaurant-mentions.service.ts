@@ -5,6 +5,7 @@ import {
   type EntityType,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UserBlockService } from '../identity/user-block.service';
 
 // W3 (page-registry §8.4): the restaurant Discussions/mentions aggregation.
 // A "mention" = an approved, non-deleted poll comment whose gazetteer
@@ -20,7 +21,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 // tag entity).
 
 const MAX_TAGS = 30;
-const MAX_MATCHED_COMMENTS = 200;
+// Raw candidate scan bound (roots + replies). The CARD budget is applied to
+// ROOT candidates after the thread merge — replies never consume it.
+const MAX_MATCHED_COMMENTS = 1000;
+const MAX_CARDS = 200;
+// Parent-chain resolution bound: a reply nested deeper than this treats the
+// truncated chain as rootless (nests as its own card) rather than walking
+// an unbounded ancestry.
+const MAX_ANCESTOR_DEPTH = 20;
 
 export type RestaurantMentionSort = 'top' | 'new';
 
@@ -61,6 +69,8 @@ export interface RestaurantMentionsDto {
   restaurantId: string;
   tags: RestaurantMentionTagDto[];
   cards: RestaurantMentionCardDto[];
+  /** Matched ROOT cards after thread-merge (pre-cap; bounded by the raw
+   *  candidate scan) — never counts replies. */
   totalCount: number;
 }
 
@@ -79,7 +89,10 @@ const spanEntityIds = (entitySpans: unknown): string[] => {
 
 @Injectable()
 export class RestaurantMentionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly blocks: UserBlockService,
+  ) {}
 
   async getRestaurantMentions(
     restaurantId: string,
@@ -87,6 +100,7 @@ export class RestaurantMentionsService {
       sort?: RestaurantMentionSort;
       search?: string;
       tagEntityIds?: string[];
+      viewerUserId?: string;
     } = {},
   ): Promise<RestaurantMentionsDto> {
     const sort = params.sort ?? 'top';
@@ -95,7 +109,7 @@ export class RestaurantMentionsService {
       ? new Set(params.tagEntityIds)
       : null;
 
-    const [signals, matched] = await Promise.all([
+    const [signals, matched, blockedPeers] = await Promise.all([
       this.prisma.restaurantEntitySignal.findMany({
         where: { restaurantId, mentionCount: { gt: 0 } },
         orderBy: { mentionCount: 'desc' },
@@ -142,14 +156,23 @@ export class RestaurantMentionsService {
           poll: { select: { pollId: true, question: true } },
         },
       }),
+      // Blocking is bidirectional and viewer-scoped: an authed viewer never
+      // sees a blocked peer's mention cards OR replies. Anonymous = no filter.
+      params.viewerUserId
+        ? this.blocks.blockedPeerIds(params.viewerUserId)
+        : Promise.resolve(new Set<string>()),
     ]);
 
     // Multi-select tag filter: keep cards that mention ANY selected entity.
-    const filtered = tagEntityIds
-      ? matched.filter((comment) =>
-          spanEntityIds(comment.entitySpans).some((id) => tagEntityIds.has(id)),
-        )
-      : matched;
+    // Block filter: drop comments authored by a blocked peer of the viewer.
+    const filtered = matched.filter(
+      (comment) =>
+        !blockedPeers.has(comment.user.userId) &&
+        (!tagEntityIds ||
+          spanEntityIds(comment.entitySpans).some((id) =>
+            tagEntityIds.has(id),
+          )),
+    );
 
     // ── Thread merge ─────────────────────────────────────────────────────
     // Nearest MENTIONING ancestor wins: walk each matched comment's parent
@@ -157,12 +180,31 @@ export class RestaurantMentionsService {
     // nests as a reply of that comment's card — skipping non-mention
     // intermediates. Otherwise it roots its own card.
     const matchedById = new Map(filtered.map((c) => [c.commentId, c]));
-    const pollIds = [...new Set(filtered.map((c) => c.pollId))];
-    const parentEdges = pollIds.length
-      ? await this.prisma.pollComment.findMany({
-          where: { pollId: { in: pollIds } },
-          select: { commentId: true, parentCommentId: true },
-        })
+    // BOUNDED ancestor resolution: only the parent CHAINS of matched replies
+    // (recursive CTE up (id, parent_comment_id), depth-capped) — never whole
+    // polls' comment sets (a hot poll would drag thousands of rows per request).
+    const replyIds = filtered
+      .filter((c) => c.parentCommentId != null)
+      .map((c) => c.commentId);
+    const parentEdges = replyIds.length
+      ? await this.prisma.$queryRaw<
+          Array<{ commentId: string; parentCommentId: string | null }>
+        >(Prisma.sql`
+          WITH RECURSIVE ancestry AS (
+            SELECT pc.comment_id, pc.parent_comment_id, 1 AS depth
+            FROM poll_comments pc
+            WHERE pc.comment_id = ANY(${replyIds}::uuid[])
+            UNION ALL
+            SELECT parent.comment_id, parent.parent_comment_id, ancestry.depth + 1
+            FROM poll_comments parent
+            JOIN ancestry ON parent.comment_id = ancestry.parent_comment_id
+            WHERE ancestry.depth < ${MAX_ANCESTOR_DEPTH}
+          )
+          SELECT DISTINCT
+            comment_id AS "commentId",
+            parent_comment_id AS "parentCommentId"
+          FROM ancestry
+        `)
       : [];
     const parentOf = new Map(
       parentEdges.map((row) => [row.commentId, row.parentCommentId]),
@@ -229,18 +271,23 @@ export class RestaurantMentionsService {
       repliesByTrueRoot.set(rootId, target);
     }
 
-    const cards: RestaurantMentionCardDto[] = roots.map((comment) => ({
-      commentId: comment.commentId,
-      body: comment.body,
-      score: comment.score,
-      loggedAt: comment.loggedAt,
-      user: comment.user,
-      pollId: comment.poll.pollId,
-      pollQuestion: comment.poll.question,
-      replies: (repliesByTrueRoot.get(comment.commentId) ?? []).sort(
-        (a, b) => a.loggedAt.getTime() - b.loggedAt.getTime(),
-      ),
-    }));
+    // The CARD budget applies to ROOT candidates (replies ride their root's
+    // card for free); totalCount is the honest count of matched root cards
+    // BEFORE the cap (bounded by the raw candidate scan above).
+    const cards: RestaurantMentionCardDto[] = roots
+      .slice(0, MAX_CARDS)
+      .map((comment) => ({
+        commentId: comment.commentId,
+        body: comment.body,
+        score: comment.score,
+        loggedAt: comment.loggedAt,
+        user: comment.user,
+        pollId: comment.poll.pollId,
+        pollQuestion: comment.poll.question,
+        replies: (repliesByTrueRoot.get(comment.commentId) ?? []).sort(
+          (a, b) => a.loggedAt.getTime() - b.loggedAt.getTime(),
+        ),
+      }));
 
     return {
       restaurantId,
@@ -251,7 +298,7 @@ export class RestaurantMentionsService {
         mentionCount: signal.mentionCount,
       })),
       cards,
-      totalCount: filtered.length,
+      totalCount: roots.length,
     };
   }
 }

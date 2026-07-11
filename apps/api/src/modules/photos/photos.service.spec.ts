@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { PhotosService } from './photos.service';
 
 /**
@@ -146,6 +146,19 @@ describe('PhotosService lifecycle', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('ticket: connectionId + pendingDishName together is a loud 400 (mutually exclusive)', async () => {
+    const { service, prisma } = makeService();
+    await expect(
+      service.createUploadTicket({
+        userId: 'u1',
+        restaurantId: 'r1',
+        connectionId: 'c1',
+        pendingDishName: 'secret menu birria',
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.photo.create).not.toHaveBeenCalled();
+  });
+
   it('moderation approved + is-food -> LIVE (conditional transition from pending)', async () => {
     const { service, prisma } = makeService({ isFood: true });
     await service.applyModerationResult(
@@ -203,25 +216,53 @@ describe('PhotosService lifecycle', () => {
     expect(cloudinary.destroyAsset).not.toHaveBeenCalled(); // already settled
   });
 
-  it('owner delete: only the owner; report threshold auto-hides', async () => {
+  it('owner delete: someone else’s photo 404s (no 403/404 existence split); report threshold auto-hides', async () => {
     const { service } = makeService({
       photo: { photoId: 'p1', userId: 'OTHER', publicId: 'x', status: 'live' },
     });
+    // NotFound — a Forbidden here would confirm the photo exists.
     await expect(service.deleteOwnPhoto('u1', 'p1')).rejects.toThrow(
-      ForbiddenException,
+      NotFoundException,
     );
 
     const { service: service2 } = makeService({
-      photo: { photoId: 'p1', status: 'live' },
+      photo: { photoId: 'p1', status: 'live', visibility: 'public' },
       reporterCount: 3,
     });
     const result = await service2.report('u9', 'p1');
     expect(result.hidden).toBe(true);
   });
 
+  it('report: a photo INVISIBLE to the reporter 404s (no private-photo oracle, no hiding what you can’t see)', async () => {
+    // live+private, reporter is a stranger -> 404 (owner-only surface).
+    const { service } = makeService({
+      photo: {
+        photoId: 'p1',
+        userId: 'owner',
+        status: 'live',
+        visibility: 'private',
+      },
+    });
+    await expect(service.report('stranger', 'p1')).rejects.toThrow(
+      NotFoundException,
+    );
+    // pending (not yet public), stranger -> 404.
+    const { service: service2 } = makeService({
+      photo: {
+        photoId: 'p1',
+        userId: 'owner',
+        status: 'pending',
+        visibility: 'public',
+      },
+    });
+    await expect(service2.report('stranger', 'p1')).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
   it('report persists the "what\'s wrong" reason (nullable)', async () => {
     const { service, prisma } = makeService({
-      photo: { photoId: 'p1', status: 'live' },
+      photo: { photoId: 'p1', status: 'live', visibility: 'public' },
       reporterCount: 1,
     });
     await service.report('u1', 'p1', 'not_food');
@@ -237,7 +278,7 @@ describe('PhotosService lifecycle', () => {
 
   it('duplicate report by the same user is a no-op (unique index dedup)', async () => {
     const { service, prisma } = makeService({
-      photo: { photoId: 'p1', status: 'live' },
+      photo: { photoId: 'p1', status: 'live', visibility: 'public' },
       reporterCount: 3,
     });
     const { Prisma } = jest.requireActual('@prisma/client');

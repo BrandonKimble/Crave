@@ -612,6 +612,17 @@ export const togglePollCommentLike = async (
   return response.data;
 };
 
+/** §9b reportContent — comment report reasons (server-validated enum). */
+export type PollCommentReportReason = 'spam' | 'harassment' | 'off_topic' | 'other';
+
+export const reportPollComment = async (
+  commentId: string,
+  reason: PollCommentReportReason
+): Promise<{ reported: boolean }> => {
+  const response = await api.post(`/polls/comments/${commentId}/report`, { reason });
+  return response.data;
+};
+
 export const fetchPollLeaderboard = async (pollId: string): Promise<PollLeaderboardEntry[]> => {
   const response = await api.get<PollLeaderboardEntry[]>(`/polls/${pollId}/leaderboard`);
   return Array.isArray(response.data) ? response.data : [];

@@ -6,10 +6,7 @@ import {
   type StaticContentSurfaceProps,
 } from './bottomSheetSceneStackBodyLayerContract';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
-import {
-  resolveListContentContainerStyle,
-  sanitizeContentContainerStyle,
-} from './bottomSheetSurfaceStyleUtils';
+import { resolveListContentContainerStyle } from './bottomSheetSurfaceStyleUtils';
 import { BottomSheetSceneStackMountedBody } from './BottomSheetSceneStackMountedBodyRegistry';
 import { BottomSheetSceneStackListBodySurface } from './BottomSheetSceneStackListBodySurface';
 import { useMountedSceneScrollRestore } from './useMountedSceneScrollRestore';
@@ -238,13 +235,8 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
         )
       ) : null
     ) : null;
-  const sceneContentContainerStyle = React.useMemo(
-    () =>
-      sanitizeContentContainerStyle(
-        sceneBodyTransportSpec.contentContainerStyle ?? bodyDefaults.resolvedContentContainerStyle
-      ),
-    [bodyDefaults.resolvedContentContainerStyle, sceneBodyTransportSpec.contentContainerStyle]
-  );
+  const sceneContentContainerStyle =
+    sceneBodyTransportSpec.contentContainerStyle ?? bodyDefaults.resolvedContentContainerStyle;
   const sceneListContentContainerStyle = React.useMemo(
     () =>
       resolveListContentContainerStyle({
@@ -283,10 +275,10 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
       <StaticContentSurface
         content={sceneContentComponent}
         // The fill is applied HERE, not via the transport's contentContainerStyle:
-        // sanitizeContentContainerStyle whitelists only padding/backgroundColor, so a
-        // flex sent through the transport is silently stripped and the static column
-        // collapses (the W4 dmSession regression). Static mode = the body owns a
-        // frame-filling layout by definition, so the fill is unconditional.
+        // the transport carries typed SceneBodyContentInsets (padding/backgroundColor
+        // only — a flex there is now a COMPILE error, not the silent strip that caused
+        // the W4 dmSession regression). Static mode = the body owns a frame-filling
+        // layout by definition, so the fill is unconditional.
         containerStyle={[sceneListContentContainerStyle, staticContentFillStyle]}
         surfaceStyle={sceneTransparentSurfaceStyle}
       />

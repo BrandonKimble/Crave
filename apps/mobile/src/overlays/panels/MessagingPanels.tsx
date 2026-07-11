@@ -246,9 +246,18 @@ const SharedEntityCard = ({ shared }: { shared: SharePackagePreview }) => {
   const onPress =
     shared.kind === 'poll'
       ? () => pushRoute('pollDetail', { pollId: shared.id })
-      : refType != null
-        ? () => executeEntityRef({ entityId: shared.id, entityType: refType, label: shared.title })
-        : null; // comment shares: no standalone destination yet — honest static card.
+      : shared.kind === 'comment' && shared.pollId != null
+        ? // Registry §8.2: a shared comment is a DESTINATION — the resolver
+          // ships the parent pollId; anchor the thread on the comment.
+          () =>
+            pushRoute('pollDetail', {
+              pollId: shared.pollId as string,
+              commentAnchorId: shared.id,
+            })
+        : refType != null
+          ? () =>
+              executeEntityRef({ entityId: shared.id, entityType: refType, label: shared.title })
+          : null;
   return (
     <Pressable
       onPress={onPress ?? undefined}
@@ -349,6 +358,11 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
       void messagingService
         .sendText(conversationId, row.body, row.clientDedupeId)
         .then(() => {
+          // Prune the confirmed optimistic row NOW: the dedupe-id filter only
+          // hides it while the confirmed message is inside the fetched window
+          // (last 30) — once >30 newer messages exist, a stale optimistic row
+          // would resurrect as a phantom 'Sending…'.
+          setOptimistic((rows) => rows.filter((r) => r.clientDedupeId !== row.clientDedupeId));
           void queryClient.invalidateQueries({ queryKey: messagesQueryKey(conversationId) });
           void queryClient.invalidateQueries({ queryKey: INBOX_QUERY_KEY });
         })

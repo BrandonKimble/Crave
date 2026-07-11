@@ -95,13 +95,17 @@ export const wireFailureAnnouncerOfflineRead = (read: () => boolean): void => {
   readIsOffline = read;
 };
 
-export const announceFailureIfOnline = (options?: { onDismissed?: () => void }): void => {
+export const announceFailureIfOnline = (options?: {
+  onDismissed?: () => void;
+  /** Optional copy override for failures where the generic line is misleading. */
+  message?: string;
+}): void => {
   if (readIsOffline?.() === true) {
     return;
   }
   showAppModal({
     title: 'Something went wrong',
-    message: "We couldn't complete that. Please try again.",
+    message: options?.message ?? "We couldn't complete that. Please try again.",
     actions: [{ label: 'OK', style: 'default', testID: 'app-modal-dismiss' }],
     onDismissed: options?.onDismissed,
   });

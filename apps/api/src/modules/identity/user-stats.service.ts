@@ -4,15 +4,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 type UserStatsDelta = Partial<
   Record<
-    // NOTE: no 'pollsCreatedCount' — the profile "Polls" stat is a live count
-    // over polls.createdByUserId (UserService.countCreatedPolls); the column's
-    // writers were removed in W4 so a drifting counter can't disagree with the
-    // profile Polls section again.
-    | 'pollsContributedCount'
-    | 'followersCount'
-    | 'followingCount'
-    | 'favoriteListsCount'
-    | 'favoritesTotalCount',
+    // NOTE: no 'pollsCreatedCount' / 'followersCount' / 'followingCount' /
+    // 'favoriteListsCount' / 'favoritesTotalCount' as profile TRUTH — every
+    // profile stat except pollsContributedCount is a LIVE count at read time
+    // (UserService.getProfile/getPublicProfile), the pollsCreatedCount W4
+    // pattern: counters applied outside the edge-write tx drift forever on a
+    // crash between writes. The favorites fields remain in this union ONLY
+    // because the favorites service still calls applyDelta with them (owned
+    // by a parallel pass); nothing READS those columns anymore — cleanup pass
+    // should delete the call sites, these fields, and note the dead columns.
+    'pollsContributedCount' | 'favoriteListsCount' | 'favoritesTotalCount',
     number
   >
 >;

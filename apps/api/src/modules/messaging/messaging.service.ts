@@ -167,6 +167,13 @@ export class MessagingService {
     const rows = await this.prisma.conversation.findMany({
       where: {
         participants: { some: { userId: viewerUserId } },
+        // Ghost-request fix (derived truth at the READ layer): a conversation
+        // row exists from the profile Message tap alone; until a first message
+        // lands it appears in NO ONE's list — the creator's dmSession works
+        // through getConversation (membership read), which stays open. The
+        // moment lastMessageId is written (same tx as the message) the row
+        // appears for both sides.
+        lastMessageId: { not: null },
         ...(cursorWhere ?? {}),
       },
       orderBy: [{ lastMessageAt: 'desc' }, { conversationId: 'desc' }],
@@ -210,8 +217,26 @@ export class MessagingService {
 
     if (query.after != null) {
       // Poll mode: everything newer, oldest-first so the client appends.
+      // Total-ordered tuple cursor (createdAt, messageId) — a bare timestamp
+      // `gt` would silently skip messages created in the SAME millisecond as
+      // the newest one the client holds (pre-M3 landmine). When the client
+      // also sends afterMessageId, same-ms-but-newer rows are included.
+      const after = new Date(query.after);
       const rows = await this.prisma.message.findMany({
-        where: { conversationId, createdAt: { gt: new Date(query.after) } },
+        where: {
+          conversationId,
+          ...(query.afterMessageId != null
+            ? {
+                OR: [
+                  { createdAt: { gt: after } },
+                  {
+                    createdAt: after,
+                    messageId: { gt: query.afterMessageId },
+                  },
+                ],
+              }
+            : { createdAt: { gt: after } }),
+        },
         orderBy: [{ createdAt: 'asc' }, { messageId: 'asc' }],
         take: limit,
       });
@@ -259,7 +284,12 @@ export class MessagingService {
     // with at least one unseen inbound message. Launch scale: the viewer's
     // conversation list is small; derived, no counter to drift.
     const rows = await this.prisma.conversation.findMany({
-      where: { participants: { some: { userId: viewerUserId } } },
+      // Same read-layer rule as listConversations: zero-message conversations
+      // don't exist for badge purposes either.
+      where: {
+        participants: { some: { userId: viewerUserId } },
+        lastMessageId: { not: null },
+      },
       include: { participants: { include: { user: this.peerSelect() } } },
     });
     const decorated = await this.decorateConversations(viewerUserId, rows);
@@ -424,14 +454,14 @@ export class MessagingService {
       recipientUserId: string;
       conversationId: string | null;
       messageId: string | null;
-      error: 'CONVERSATION_FROZEN' | 'NOT_FOUND' | null;
+      error: 'CONVERSATION_FROZEN' | 'NOT_FOUND' | 'FAILED' | null;
     }[];
   }> {
     const results = [] as {
       recipientUserId: string;
       conversationId: string | null;
       messageId: string | null;
-      error: 'CONVERSATION_FROZEN' | 'NOT_FOUND' | null;
+      error: 'CONVERSATION_FROZEN' | 'NOT_FOUND' | 'FAILED' | null;
     }[];
     for (const recipientUserId of new Set(dto.recipientUserIds)) {
       if (recipientUserId === viewerUserId) {
@@ -450,6 +480,18 @@ export class MessagingService {
             sharedEntityKind: dto.sharedEntityKind,
             sharedEntityId: dto.sharedEntityId,
             body: dto.body,
+            // Fan-out atomicity: per-recipient dedupe, derived from the
+            // client's per-open share uuid. The dedupe unique is
+            // (conversationId, sender, clientDedupeId) and the conversation
+            // IS the recipient, so `share:{uuid}` is per-recipient by
+            // construction (and fits the VarChar(64) column). A client retry
+            // after a transport error re-sends the SAME id and sendMessage
+            // replays the original row — no double-delivery to recipients
+            // that already succeeded.
+            clientDedupeId:
+              dto.clientShareId != null
+                ? `share:${dto.clientShareId}`
+                : undefined,
           },
         );
         results.push({
@@ -475,7 +517,15 @@ export class MessagingService {
             error: 'NOT_FOUND',
           });
         } else {
-          throw error;
+          // Catch-ALL per recipient: an unexpected failure mid-batch must not
+          // rethrow (recipients already sent would be reported as nothing).
+          // The client surfaces FAILED honestly; a retry dedupes server-side.
+          results.push({
+            recipientUserId,
+            conversationId: null,
+            messageId: null,
+            error: 'FAILED',
+          });
         }
       }
     }

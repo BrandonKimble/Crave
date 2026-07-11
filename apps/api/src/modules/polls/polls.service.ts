@@ -949,6 +949,40 @@ export class PollsService {
     return { commentId, deleted: true };
   }
 
+  /** §9b reportContent (Apple 1.2 UGC). v1 RECORDS ONLY — no auto-hide
+   *  threshold; moderation is human for now and reads poll_comment_reports
+   *  directly. State gates: the comment must exist, be non-deleted, and be
+   *  approved (pending/rejected comments are not publicly visible — nothing
+   *  to report). Dedupe = the unique (commentId, reporter) index; a repeat
+   *  report is a quiet no-op. */
+  async reportComment(commentId: string, userId: string, reason: string) {
+    const comment = await this.prisma.pollComment.findUnique({
+      where: { commentId },
+      select: { deletedAt: true, moderationStatus: true },
+    });
+    if (
+      !comment ||
+      comment.deletedAt ||
+      comment.moderationStatus !== PollCommentModerationStatus.approved
+    ) {
+      throw new NotFoundException('Comment not found');
+    }
+    try {
+      await this.prisma.pollCommentReport.create({
+        data: { commentId, reporterUserId: userId, reason },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return { reported: true }; // already reported by this user
+      }
+      throw error;
+    }
+    return { reported: true };
+  }
+
   private async requireOwnComment(commentId: string, userId: string) {
     const comment = await this.prisma.pollComment.findUnique({
       where: { commentId },

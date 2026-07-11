@@ -8,18 +8,11 @@ import { GestureDetector } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 
-import type {
-  BottomSheetWithFlashListProps as BaseBottomSheetWithFlashListProps,
-} from './bottomSheetWithFlashListContract';
+import type { BottomSheetWithFlashListProps as BaseBottomSheetWithFlashListProps } from './bottomSheetWithFlashListContract';
 import { isBottomSheetListSurface } from './bottomSheetWithFlashListContract';
-import type {
-  BottomSheetMotionCommand,
-} from './bottomSheetMotionTypes';
+import type { BottomSheetMotionCommand } from './bottomSheetMotionTypes';
 import { overlaySheetStyles } from './overlaySheetStyles';
-import {
-  resolveListContentContainerStyle,
-  sanitizeContentContainerStyle,
-} from './bottomSheetSurfaceStyleUtils';
+import { resolveListContentContainerStyle } from './bottomSheetSurfaceStyleUtils';
 import { useBottomSheetSharedRuntime } from './useBottomSheetSharedRuntime';
 
 export type BottomSheetWithFlashListProps<T> = BaseBottomSheetWithFlashListProps<T> & {
@@ -110,8 +103,9 @@ const BottomSheetWithFlashList = <T,>({
   const listRefProp = listSurfaceProps?.listRef;
   const listKey = listSurfaceProps?.listKey;
   const estimatedItemSize = listSurfaceProps?.estimatedItemSize ?? DEFAULT_INITIAL_DRAW_BATCH_SIZE;
-  const contentComponent =
-    isContentSurface ? (surfaceProps as { contentComponent: React.ReactNode }).contentComponent : null;
+  const contentComponent = isContentSurface
+    ? (surfaceProps as { contentComponent: React.ReactNode }).contentComponent
+    : null;
   const contentScrollMode = isContentSurface
     ? ((surfaceProps as { contentScrollMode?: 'scroll' | 'static' }).contentScrollMode ?? 'scroll')
     : 'scroll';
@@ -144,11 +138,7 @@ const BottomSheetWithFlashList = <T,>({
   const resolvedOverScrollMode = overScrollMode;
   const resolvedTestID = testID;
 
-  const {
-    gestureRuntime,
-    scrollRuntime,
-    surfaceRuntime,
-  } = useBottomSheetSharedRuntime({
+  const { gestureRuntime, scrollRuntime, surfaceRuntime } = useBottomSheetSharedRuntime({
     visible,
     listScrollEnabled,
     snapPoints,
@@ -186,17 +176,11 @@ const BottomSheetWithFlashList = <T,>({
   const internalSecondaryListRef = React.useRef<FlashListRef<T> | null>(null);
   const secondaryFlashListRef = secondaryList?.listRef ?? internalSecondaryListRef;
 
-  const sanitizedContentContainerStyle = React.useMemo(
-    () => sanitizeContentContainerStyle(resolvedContentContainerStyle),
-    [resolvedContentContainerStyle]
-  );
-  const sanitizedSecondaryContentContainerStyle = React.useMemo(
-    () =>
-      sanitizeContentContainerStyle(
-        secondaryList?.contentContainerStyle ?? resolvedContentContainerStyle
-      ),
-    [resolvedContentContainerStyle, secondaryList?.contentContainerStyle]
-  );
+  // contentContainerStyle is a typed SceneBodyContentInsets object (compile-enforced
+  // padding/backgroundColor contract) — applied directly, no runtime sanitizing.
+  const sanitizedContentContainerStyle = resolvedContentContainerStyle;
+  const sanitizedSecondaryContentContainerStyle =
+    secondaryList?.contentContainerStyle ?? resolvedContentContainerStyle;
   const listContentContainerStyle = React.useMemo(
     () =>
       resolveListContentContainerStyle({
@@ -204,11 +188,7 @@ const BottomSheetWithFlashList = <T,>({
         hasScrollHeaderOverlay: scrollHeaderComponent != null,
         scrollHeaderHeight: scrollRuntime.scrollHeaderHeight,
       }),
-    [
-      sanitizedContentContainerStyle,
-      scrollHeaderComponent,
-      scrollRuntime.scrollHeaderHeight,
-    ]
+    [sanitizedContentContainerStyle, scrollHeaderComponent, scrollRuntime.scrollHeaderHeight]
   );
   const secondaryListContentContainerStyle = React.useMemo(
     () =>
@@ -278,14 +258,8 @@ const BottomSheetWithFlashList = <T,>({
   return (
     <GestureDetector gesture={gestureRuntime.gestures.sheet}>
       <Animated.View
-        pointerEvents={
-          visible && !gestureRuntime.touchBlockingEnabled ? 'auto' : 'none'
-        }
-        style={[
-          style,
-          surfaceRuntime.sheetHeightStyle,
-          surfaceRuntime.animatedSheetStyle,
-        ]}
+        pointerEvents={visible && !gestureRuntime.touchBlockingEnabled ? 'auto' : 'none'}
+        style={[style, surfaceRuntime.sheetHeightStyle, surfaceRuntime.animatedSheetStyle]}
       >
         <View style={shadowShellStyle}>
           <View style={resolvedSurfaceStyle}>
@@ -295,10 +269,7 @@ const BottomSheetWithFlashList = <T,>({
               </View>
             ) : null}
             {headerComponent ? (
-              <View
-                onLayout={scrollRuntime.onHeaderLayout}
-                style={styles.fixedHeader}
-              >
+              <View onLayout={scrollRuntime.onHeaderLayout} style={styles.fixedHeader}>
                 {headerComponent}
               </View>
             ) : null}
@@ -306,10 +277,7 @@ const BottomSheetWithFlashList = <T,>({
               {scrollHeaderComponent ? (
                 <Animated.View
                   onLayout={scrollRuntime.onScrollHeaderLayout}
-                  style={[
-                    styles.scrollHeaderOverlay,
-                    surfaceRuntime.scrollHeaderSyncStyle,
-                  ]}
+                  style={[styles.scrollHeaderOverlay, surfaceRuntime.scrollHeaderSyncStyle]}
                 >
                   {scrollHeaderComponent}
                 </Animated.View>
@@ -467,8 +435,7 @@ const BottomSheetWithFlashList = <T,>({
                         ItemSeparatorComponent={secondaryItemSeparatorComponent}
                         keyboardShouldPersistTaps={resolvedKeyboardShouldPersistTaps}
                         scrollEnabled={
-                          scrollRuntime.shouldEnableScroll &&
-                          resolvedActiveList === 'secondary'
+                          scrollRuntime.shouldEnableScroll && resolvedActiveList === 'secondary'
                         }
                         renderScrollComponent={
                           resolvedActiveList === 'secondary'
@@ -485,12 +452,10 @@ const BottomSheetWithFlashList = <T,>({
                         }}
                         onScrollEndDrag={(event) => {
                           onScrollEndDrag?.();
-                          onScrollOffsetChange?.(
-                            scrollRuntime.scrollOffset.value
+                          onScrollOffsetChange?.(scrollRuntime.scrollOffset.value);
+                          (secondaryList.flashListProps ?? activeFlashListProps)?.onScrollEndDrag?.(
+                            event
                           );
-                          (
-                            secondaryList.flashListProps ?? activeFlashListProps
-                          )?.onScrollEndDrag?.(event);
                         }}
                         onEndReached={secondaryList.onEndReached ?? onEndReached}
                         onEndReachedThreshold={onEndReachedThreshold}

@@ -6,6 +6,7 @@ import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import { setAuthTokenResolver } from '../services/api';
 import { notificationsService } from '../services/notifications';
+import { usePushPermissionGrantVersion } from '../services/push-permission';
 import { useCityStore } from '../store/cityStore';
 import { useNotificationStore } from '../store/notificationStore';
 import SearchHistoryPreload from './SearchHistoryPreload';
@@ -101,6 +102,7 @@ const resolveExpoProjectId = (): string | null => {
 
 const PushNotificationRegistrar: React.FC = () => {
   const { userId } = useAuth();
+  const pushPermissionGrantVersion = usePushPermissionGrantVersion();
   const selectedCity = useCityStore((state) => state.selectedCity);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
   const lastRegistrationRef = React.useRef<{
@@ -130,13 +132,12 @@ const PushNotificationRegistrar: React.FC = () => {
           return;
         }
 
+        // §8.9: NEVER prompts. The OS ask lives in push-permission.ts and
+        // fires at first-contribution moments; this registrar only registers
+        // a token when permission is ALREADY granted (and re-runs on the
+        // grant signal via pushPermissionGrantVersion below).
         const permission = await Notifications.getPermissionsAsync();
-        let status = permission.status;
-        if (status !== 'granted') {
-          const request = await Notifications.requestPermissionsAsync();
-          status = request.status;
-        }
-        if (status !== 'granted') {
+        if (permission.status !== 'granted') {
           setPushToken(null);
           return;
         }
@@ -183,7 +184,7 @@ const PushNotificationRegistrar: React.FC = () => {
     };
 
     void register();
-  }, [selectedCity, setPushToken, userId]);
+  }, [pushPermissionGrantVersion, selectedCity, setPushToken, userId]);
 
   return null;
 };

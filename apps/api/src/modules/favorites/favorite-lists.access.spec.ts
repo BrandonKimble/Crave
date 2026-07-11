@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
 import { GoneException, NotFoundException } from '@nestjs/common';
 import { FavoriteListsService } from './favorite-lists.service';
+import { FavoriteListAccessPolicy } from './favorite-list-access.policy';
+import { ListResultsAssembler } from './favorite-list-results.assembler';
+import { FavoriteListMapper } from './favorite-list.mappers';
 
 /**
  * RT-18 "the slug IS the capability" contract (w1-listdetail-structural-spec.md
@@ -138,11 +141,13 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
     }),
     executeDual: jest.fn(),
   };
+  const blocks = { isBlockedPair: jest.fn().mockResolvedValue(false) };
   const service = new FavoriteListsService(
     prisma as never,
-    logger as never,
     userStats as never,
-    executor as never,
+    new FavoriteListAccessPolicy(prisma as never, blocks as never),
+    new ListResultsAssembler(executor as never),
+    new FavoriteListMapper(prisma as never, logger as never),
   );
   return { service, prisma, shareEventCreate };
 }

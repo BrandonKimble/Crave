@@ -71,6 +71,9 @@ export interface FollowListUser {
   avatarUrl: string | null;
 }
 
+/** §9b profileActions — user report reasons (server-validated enum). */
+export type UserReportReason = 'spam' | 'harassment' | 'impersonation' | 'other';
+
 export interface UsernameAvailability {
   normalized: string;
   available: boolean;
@@ -159,6 +162,11 @@ export const usersService = {
   },
   async unblockUser(userId: string): Promise<void> {
     await api.delete(`/users/${userId}/block`);
+  },
+  /** §9b profileActions (Apple 1.2 UGC): report a user. Records only. */
+  async reportUser(userId: string, reason: UserReportReason): Promise<{ reported: boolean }> {
+    const response = await api.post(`/users/${userId}/report`, { reason });
+    return response.data;
   },
   /** W4 settings (§8.6 privacy): my own block list — Settings → Privacy rows. */
   async listMyBlocks(): Promise<FollowListUser[]> {

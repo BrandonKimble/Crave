@@ -114,13 +114,12 @@ describe('UserFollowService block enforcement (§8.6 seams)', () => {
   let prisma: any;
   let blocks: UserBlockService;
   let service: UserFollowService;
-  const stats = { applyDelta: jest.fn() } as any;
   const feed = { enqueue: jest.fn() } as any;
 
   beforeEach(() => {
     prisma = makePrisma();
     blocks = new UserBlockService(prisma);
-    service = new UserFollowService(prisma, stats, feed, blocks);
+    service = new UserFollowService(prisma, feed, blocks);
   });
 
   it('followUser refuses a blocked pair (either direction)', async () => {

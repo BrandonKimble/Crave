@@ -1,7 +1,15 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  GoneException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { FavoriteListsService } from './favorite-lists.service';
+import { FavoriteListAccessPolicy } from './favorite-list-access.policy';
+import { ListResultsAssembler } from './favorite-list-results.assembler';
+import { FavoriteListMapper } from './favorite-list.mappers';
 
 /**
  * W1 data-layer contracts beyond raw access (w1-listdetail spec B.1.2-B.1.6):
@@ -64,6 +72,7 @@ function makeHarness(opts: {
   shareEventCreate?: jest.Mock;
   itemUpdate?: jest.Mock;
   collaboratorCreate?: jest.Mock;
+  blockedPairs?: Array<[string, string]>;
 }) {
   const lists = opts.lists ?? [makeList()];
   const collaboratorIds = opts.collaboratorIds ?? [];
@@ -160,15 +169,30 @@ function makeHarness(opts: {
     executeSingle: jest.fn().mockResolvedValue(execResult()),
     executeDual: jest.fn().mockResolvedValue(execResult()),
   };
+  const blockedPairs = opts.blockedPairs ?? [];
+  const blocks = {
+    isBlockedPair: jest.fn((a: string, b: string) =>
+      Promise.resolve(
+        blockedPairs.some(
+          ([x, y]) => (x === a && y === b) || (x === b && y === a),
+        ),
+      ),
+    ),
+  };
+  const access = new FavoriteListAccessPolicy(prisma as never, blocks as never);
+  const assembler = new ListResultsAssembler(executor as never);
+  const mapper = new FavoriteListMapper(prisma as never, logger as never);
   const service = new FavoriteListsService(
     prisma as never,
-    logger as never,
     userStats as never,
-    executor as never,
+    access,
+    assembler,
+    mapper,
   );
   return {
     service,
     prisma,
+    blocks,
     executor,
     shareEventCreate,
     itemUpdate,
@@ -300,11 +324,8 @@ describe('batch reorder (spec B.1.4)', () => {
     makeItem({ itemId: R2, restaurantId: R2, position: 2 }),
   ];
 
-  it('rejects a payload that is not exactly the membership set', async () => {
+  it('rejects duplicates and foreign itemIds (still a loud 400)', async () => {
     const { service } = makeHarness({ lists: [makeList({ items })] });
-    await expect(
-      service.reorderItems(OWNER, LIST_ID, [R1]),
-    ).rejects.toBeInstanceOf(BadRequestException);
     await expect(
       service.reorderItems(OWNER, LIST_ID, [R1, R1]),
     ).rejects.toBeInstanceOf(BadRequestException);
@@ -328,6 +349,46 @@ describe('batch reorder (spec B.1.4)', () => {
       [R2, 1],
       [R1, 2],
     ]);
+  });
+
+  it('accepts a SUBSET: unlisted items keep their relative order appended after the ordered head', async () => {
+    // The client orders from executor-backed rows, which silently drop
+    // score-less/un-geocoded items — a subset must not brick the drag-save.
+    const threeItems = [
+      makeItem({ itemId: R1, restaurantId: R1, position: 1 }),
+      makeItem({ itemId: R2, restaurantId: R2, position: 2 }),
+      makeItem({ itemId: R3, restaurantId: R3, position: 3 }),
+    ];
+    const { service, itemUpdate } = makeHarness({
+      lists: [makeList({ items: threeItems })],
+    });
+    const result = await service.reorderItems(OWNER, LIST_ID, [R3, R1]);
+    expect(
+      itemUpdate.mock.calls.map((c: any) => [
+        c[0].where.itemId,
+        c[0].data.position,
+      ]),
+    ).toEqual([
+      [R3, 1],
+      [R1, 2],
+      [R2, 3], // deterministic tail: unlisted item retains its slot after the head
+    ]);
+    expect(result).toEqual({ listId: LIST_ID, itemCount: 3 });
+  });
+
+  it('a concurrent remove mid-write is a 409 Conflict, never a 500', async () => {
+    const p2025 = new Prisma.PrismaClientKnownRequestError('gone', {
+      code: 'P2025',
+      clientVersion: 'test',
+    });
+    const itemUpdate = jest.fn().mockRejectedValue(p2025);
+    const { service } = makeHarness({
+      lists: [makeList({ items })],
+      itemUpdate,
+    });
+    await expect(
+      service.reorderItems(OWNER, LIST_ID, [R2, R1]),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 });
 
@@ -412,6 +473,29 @@ describe('sort + note projection on results (spec B.1.4/B.1.5)', () => {
     const detail2: any = await service2.getListForUser(OWNER, LIST_ID);
     expect(detail2.defaultSort).toBe('best');
   });
+
+  it('detail rows project note + favoriteListItemId (parity with the results path)', async () => {
+    const detailItems = [
+      makeItem({
+        itemId: 'item-1',
+        restaurantId: R1,
+        position: 1,
+        note: 'the brisket',
+        restaurant: { entityId: R1, name: 'Place', city: 'Austin' },
+      }),
+    ];
+    const { service, prisma } = makeHarness({
+      lists: [makeList({ items: detailItems })],
+    });
+    prisma.publicEntityScore.findMany = jest
+      .fn()
+      .mockResolvedValue([
+        { subjectId: R1, displayScore: 9, percentileRank: null, rising: null },
+      ]);
+    const detail: any = await service.getListForUser(OWNER, LIST_ID);
+    expect(detail.restaurants[0].note).toBe('the brisket');
+    expect(detail.restaurants[0].favoriteListItemId).toBe('item-1');
+  });
 });
 
 describe('virtual All list (spec B.1.6)', () => {
@@ -461,5 +545,74 @@ describe('virtual All list (spec B.1.6)', () => {
     await expect(
       service.getListResults(OWNER, 'all:everything', {} as never),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('blocked pairs on the slug capability (§8.6, red-team finding 5)', () => {
+  it('a blocked viewer presenting a valid slug gets the private-shaped 410, not the list', async () => {
+    const { service } = makeHarness({
+      blockedPairs: [[OWNER, STRANGER]],
+    });
+    const failure = service.getListResults(STRANGER, LIST_ID, {
+      shareSlug: SLUG,
+    } as never);
+    await expect(failure).rejects.toBeInstanceOf(GoneException);
+    await failure.catch((error: GoneException) => {
+      expect(error.getResponse()).toMatchObject({ state: 'private' });
+    });
+  });
+
+  it('a blocked user cannot join as collaborator via the slug', async () => {
+    const { service, collaboratorCreate } = makeHarness({
+      blockedPairs: [[OWNER, STRANGER]],
+    });
+    await expect(
+      service.joinCollaborators(STRANGER, LIST_ID, SLUG),
+    ).rejects.toBeInstanceOf(GoneException);
+    expect(collaboratorCreate).not.toHaveBeenCalled();
+  });
+
+  it('an unblocked stranger with the slug still reads and joins', async () => {
+    const { service } = makeHarness({});
+    await expect(
+      service.getListResults(STRANGER, LIST_ID, { shareSlug: SLUG } as never),
+    ).resolves.toMatchObject({ format: 'dual_list' });
+    await expect(
+      service.joinCollaborators(STRANGER, LIST_ID, SLUG),
+    ).resolves.toEqual({ listId: LIST_ID, role: 'collaborator' });
+  });
+});
+
+describe('score-gap resilience on the home lists read (red-team finding 4)', () => {
+  it('a summary with one score-less item returns the list WITHOUT that preview item (no 500)', async () => {
+    const items = [
+      makeItem({
+        itemId: 'good',
+        restaurantId: R1,
+        position: 1,
+        restaurant: { entityId: R1, name: 'Scored place', city: 'Austin' },
+      }),
+      makeItem({
+        itemId: 'bad',
+        restaurantId: R2,
+        position: 2,
+        restaurant: { entityId: R2, name: 'Unscored place', city: 'Austin' },
+      }),
+    ];
+    const { service, prisma } = makeHarness({
+      lists: [makeList({ items, systemKind: null, pinned: false })],
+    });
+    // Only R1 has a public score; R2 is the data gap.
+    prisma.publicEntityScore.findMany = jest
+      .fn()
+      .mockResolvedValue([
+        { subjectId: R1, displayScore: 9.1, percentileRank: 0.9, rising: null },
+      ]);
+    const result = await service.listForUser(OWNER, {
+      listType: 'restaurant',
+    } as never);
+    expect(result).toHaveLength(1);
+    expect(result[0].previewItems.map((p: any) => p.itemId)).toEqual(['good']);
+    expect(result[0].previewItems[0].craveScore).toBe(9.1);
   });
 });

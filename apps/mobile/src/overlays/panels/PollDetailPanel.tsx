@@ -56,15 +56,18 @@ import {
   fetchPollLeaderboard,
   listPollComments,
   postPollComment,
+  reportPollComment,
   togglePollCommentLike,
   type EntitySpan,
   type Poll,
   type PollComment,
+  type PollCommentReportReason,
   type PollCommentSort,
   type PollCommentUser,
   type PollCreator,
   type PollLeaderboardEntry,
 } from '../../services/polls';
+import { requestPushPermissionIfEligible } from '../../services/push-permission';
 import { PollCandidateBars } from './PollCandidateBars';
 import {
   MAX_THREAD_INDENT,
@@ -292,6 +295,45 @@ type PollCommentRowProps = {
   onToggleCollapse: (commentId: string) => void;
 };
 
+// ── §9b reportContent (Apple 1.2 UGC): comment report on the app's ONE modal
+// surface (mirrors CardPhotoStrip's photo-report flow). A visible "Report"
+// action in the comment actions row, NOT a long-press — long-presses on the
+// gesture-handoff sheet get eaten by the pan gesture (documented gotcha).
+const COMMENT_REPORT_REASONS: Array<{ label: string; reason: PollCommentReportReason }> = [
+  { label: 'Spam', reason: 'spam' },
+  { label: 'Harassment', reason: 'harassment' },
+  { label: 'Off topic', reason: 'off_topic' },
+  { label: 'Other', reason: 'other' },
+];
+
+const submitCommentReport = (commentId: string, reason: PollCommentReportReason): void => {
+  void reportPollComment(commentId, reason)
+    .then(() => {
+      showAppModal({
+        title: 'Report received',
+        message: "Thanks — we'll take a look.",
+        actions: [{ label: 'OK', style: 'default' }],
+      });
+    })
+    .catch(() => {
+      // Reports are quiet-by-design: a duplicate/failed report simply doesn't confirm.
+    });
+};
+
+const openCommentReportModal = (commentId: string): void => {
+  showAppModal({
+    title: 'Report comment',
+    message: "What's wrong with this comment?",
+    actions: [
+      ...COMMENT_REPORT_REASONS.map(({ label, reason }) => ({
+        label,
+        onPress: () => submitCommentReport(commentId, reason),
+      })),
+      { label: 'Cancel', style: 'cancel' as const },
+    ],
+  });
+};
+
 const PollCommentRow = React.memo(
   ({
     item,
@@ -409,6 +451,19 @@ const PollCommentRow = React.memo(
                     accessibilityLabel={`Reply to ${resolveUserName(comment.user)}`}
                   >
                     <ReplyIcon size={14} color={themeColors.textMuted} strokeWidth={2} />
+                  </Pressable>
+                ) : null}
+                {!isOwn ? (
+                  <Pressable
+                    onPress={() => openCommentReportModal(comment.commentId)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Report comment"
+                    testID="poll-comment-report"
+                  >
+                    <Text variant="caption" weight="semibold" style={styles.commentAction}>
+                      Report
+                    </Text>
                   </Pressable>
                 ) : null}
                 {isOwn ? (
@@ -725,6 +780,8 @@ export const usePollDetailPanelSpec = ({
     try {
       // The chin doubles as the reply composer: when a reply target is pinned, post under it.
       await postPollComment(pollId, { body, parentCommentId: replyTarget ?? undefined });
+      // §8.9 push-permission moment: first contribution (a comment posted).
+      requestPushPermissionIfEligible();
       setDraft('');
       setReplyTarget(null);
       await refresh();

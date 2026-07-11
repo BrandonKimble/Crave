@@ -16,7 +16,7 @@ import { EMPTY_ROUTE_LOCAL_RESTAURANT_OVERLAY_SESSION_SNAPSHOT } from './route-l
 import type { RouteLocalRestaurantOverlaySessionSnapshot } from './route-local-restaurant-overlay-session-snapshot-contract';
 import type { SearchOverlayLocalRestaurantRouteVisualSnapshot } from '../../screens/Search/runtime/shared/search-overlay-local-restaurant-sheet-visual-snapshot-contract';
 import type { SnapshotAuthority } from '../../screens/Search/runtime/shared/use-snapshot-authority';
-import type { OverlayRouteEntry } from './app-overlay-route-types';
+import { areOverlayRouteEntryValuesEqual } from './app-overlay-route-params-equality';
 import type { SearchRoutePanelInteractionRef } from '../../overlays/searchOverlayRouteHostContract';
 import type {
   AppRouteOverlayHostAuthoritySurface,
@@ -557,84 +557,10 @@ const createShellSnapshotNormalizer = (): SnapshotNormalizer<SearchOverlayShellH
   };
 };
 
-const areOverlayRouteParamsEqual = (
-  left: OverlayRouteEntry['params'],
-  right: OverlayRouteEntry['params']
-): boolean => {
-  if (left === right) {
-    return true;
-  }
-  if (left == null || right == null) {
-    return left == null && right == null;
-  }
-  if ('restaurantId' in left || 'restaurantId' in right) {
-    if (!('restaurantId' in left) || !('restaurantId' in right)) {
-      return false;
-    }
-    // Both the `restaurant` child and the `postPhotos` post page carry `restaurantId`;
-    // source/sessionToken exist only on the former, sessionNonce/dish fields only on the
-    // latter (undefined === undefined otherwise — the pollId-arm precedent).
-    const leftRestaurant = left as {
-      restaurantId?: string | null;
-      source?: string | null;
-      sessionToken?: number | null;
-      sessionNonce?: string | null;
-      dishId?: string | null;
-    };
-    const rightRestaurant = right as typeof leftRestaurant;
-    return (
-      leftRestaurant.restaurantId === rightRestaurant.restaurantId &&
-      leftRestaurant.source === rightRestaurant.source &&
-      leftRestaurant.sessionToken === rightRestaurant.sessionToken &&
-      leftRestaurant.sessionNonce === rightRestaurant.sessionNonce &&
-      leftRestaurant.dishId === rightRestaurant.dishId
-    );
-  }
-  if ('pollId' in left || 'pollId' in right) {
-    if (!('pollId' in left) || !('pollId' in right)) {
-      return false;
-    }
-    // Both the `polls` home route and the `pollDetail` child carry `pollId`; the
-    // market fields exist only on the former (undefined === undefined otherwise).
-    const leftPoll = left as {
-      pollId?: string | null;
-      marketKey?: string | null;
-      marketName?: string | null;
-      pinnedMarket?: boolean | null;
-    };
-    const rightPoll = right as typeof leftPoll;
-    return (
-      leftPoll.pollId === rightPoll.pollId &&
-      leftPoll.marketKey === rightPoll.marketKey &&
-      leftPoll.marketName === rightPoll.marketName &&
-      leftPoll.pinnedMarket === rightPoll.pinnedMarket
-    );
-  }
-  if ('conversationId' in left || 'conversationId' in right) {
-    // W3 messaging: only dmSession carries conversationId — peerName is a
-    // display snapshot, but a changed snapshot still means a changed entry
-    // value (the header renders from it until the DTO hydrates).
-    if (!('conversationId' in left) || !('conversationId' in right)) {
-      return false;
-    }
-    const leftDm = left as { conversationId?: string | null; peerName?: string | null };
-    const rightDm = right as typeof leftDm;
-    return leftDm.conversationId === rightDm.conversationId && leftDm.peerName === rightDm.peerName;
-  }
-  if ('bounds' in left || 'bounds' in right) {
-    return (
-      'bounds' in left &&
-      'bounds' in right &&
-      left.marketKey === right.marketKey &&
-      left.marketName === right.marketName &&
-      left.bounds === right.bounds
-    );
-  }
-  return false;
-};
-
-const areOverlayRouteEntriesEqual = (left: OverlayRouteEntry, right: OverlayRouteEntry): boolean =>
-  left.entryId === right.entryId && areOverlayRouteParamsEqual(left.params, right.params);
+// Per-scene params equality lives in app-overlay-route-params-equality.ts: a
+// compile-exhaustive Record<OverlayKey, comparator> dispatched by the entry's key
+// (entryId + key guard + typed per-scene params compare — no shape sniffing).
+const areOverlayRouteEntriesEqual = areOverlayRouteEntryValuesEqual;
 
 const areLocalRestaurantSessionSnapshotsEqual = (
   left: RouteLocalRestaurantOverlaySessionSnapshot,

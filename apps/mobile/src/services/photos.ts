@@ -119,12 +119,17 @@ export type PhotoUploadStage = 'ticket' | 'upload' | 'confirm';
 export class PhotoUploadError extends Error {
   readonly stage: PhotoUploadStage;
   readonly cause?: unknown;
+  /** Set on 'confirm'-stage failures: the Cloudinary upload SUCCEEDED and this
+   *  Photo row exists — retry must re-poll this id (retryConfirm), NEVER mint a
+   *  new ticket (that duplicates the live photo). */
+  readonly photoId?: string;
 
-  constructor(stage: PhotoUploadStage, message: string, cause?: unknown) {
+  constructor(stage: PhotoUploadStage, message: string, cause?: unknown, photoId?: string) {
     super(message);
     this.name = 'PhotoUploadError';
     this.stage = stage;
     this.cause = cause;
+    this.photoId = photoId;
   }
 }
 
@@ -224,8 +229,21 @@ export const photosService = {
       const response = await api.get<PhotoDto>(`/photos/${photoId}`);
       return response.data;
     } catch (error) {
-      throw new PhotoUploadError('confirm', 'Uploaded, but could not read the photo back', error);
+      // The upload already succeeded — carry the photoId so retry can re-poll
+      // instead of re-uploading (a fresh ticket would DUPLICATE the photo).
+      throw new PhotoUploadError(
+        'confirm',
+        'Uploaded, but could not read the photo back',
+        error,
+        photoId
+      );
     }
+  },
+
+  /** Confirm-stage retry: the photo is already uploaded (its row exists) — the
+   *  ONLY safe retry is re-reading the row. Never re-runs ticket/upload. */
+  async retryConfirm(photoId: string): Promise<PhotoDto> {
+    return this.confirm(photoId);
   },
 
   /** The whole dance as one call: ticket → direct multipart upload → confirm.

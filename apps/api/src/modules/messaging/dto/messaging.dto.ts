@@ -54,6 +54,13 @@ export class ListMessagesQueryDto {
   @IsISO8601()
   after?: string;
 
+  /** Tuple partner for `after`: messages created in the SAME millisecond as
+   *  `after` but with a greater messageId are included (total order, no
+   *  same-ms skip). Optional for compatibility; senders should pass both. */
+  @IsOptional()
+  @IsUUID()
+  afterMessageId?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -109,6 +116,16 @@ export class ShareFanOutDto {
   @IsString()
   @MaxLength(2000)
   body?: string;
+
+  /** Per-open share id minted by the client. The server derives the message
+   *  dedupe id `share:{clientShareId}`; the (conversation, sender, dedupeId)
+   *  unique makes it per-recipient, so a retried fan-out (transport error)
+   *  replays instead of duplicating. Max 58 so `share:{id}` fits the
+   *  VarChar(64) dedupe column. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(58)
+  clientShareId?: string;
 }
 
 /** ---- Response shapes (design §3.2) ---- */
@@ -126,6 +143,9 @@ export type SharePackagePreviewDto =
       title: string;
       subtitle: string | null;
       imageUrl: string | null;
+      /** comment kind only: the parent poll — the client's tap destination is
+       *  pollDetail{pollId, commentAnchorId: id} (no public web link). */
+      pollId?: string;
     };
 
 export type MessageDto = {

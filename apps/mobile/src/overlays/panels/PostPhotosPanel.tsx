@@ -17,8 +17,10 @@ import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyR
 import { overlaySheetStyles } from '../overlaySheetStyles';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
+import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { peekPostPhotosAssets, releasePostPhotosAssets } from '../postPhotosPendingAssets';
 import { photosService, PhotoUploadError } from '../../services/photos';
+import { requestPushPermissionIfEligible } from '../../services/push-permission';
 import { searchService } from '../../services/search';
 import type { FoodResult } from '../../types';
 
@@ -57,6 +59,10 @@ type PhotoDraft = {
   dish: { connectionId: string; foodName: string } | null;
   /** "Other…" free-text dish name — the demand signal (pendingDishName on the ticket). */
   otherDishName: string | null;
+  /** Set once the Cloudinary upload succeeded (confirm-stage failure): the photo
+   *  EXISTS server-side — Retry must re-poll this id, never re-upload (a fresh
+   *  ticket would duplicate the live photo). */
+  photoId: string | null;
   status: PhotoDraftStatus;
 };
 
@@ -77,6 +83,7 @@ const draftsFromAssets = (
     asset,
     dish: preassignedDish,
     otherDishName: null,
+    photoId: null,
     status: 'draft' as const,
   }));
 
@@ -229,6 +236,7 @@ const STATUS_LABELS: Record<PhotoDraftStatus, string | null> = {
 
 export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps) => {
   const { closeActiveRoute } = useAppOverlayRouteController();
+  const routeSceneRuntime = useAppRouteSceneRuntime();
   const params: PostPhotosParams | null =
     entry?.key === 'postPhotos' ? ((entry.params ?? {}) as PostPhotosParams) : null;
   const restaurantId = typeof params?.restaurantId === 'string' ? params.restaurantId : null;
@@ -264,13 +272,28 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const [isPublic, setIsPublic] = React.useState(true);
   const [isPosting, setIsPosting] = React.useState(false);
 
-  // Release the stashed assets when the funnel collapses (scene unmount).
+  // Release the stashed assets when the funnel COLLAPSES — not on bare unmount:
+  // entry-keyed remounts of a still-stacked postPhotos scene must re-peek the
+  // same stash. The cleanup checks the route stack; a scene that unmounted while
+  // its entry is still stacked keeps the stash alive for the remount. (The
+  // all-done close handler also releases explicitly — belt and suspenders.)
   React.useEffect(() => {
     if (sessionNonce == null) {
       return undefined;
     }
-    return () => releasePostPhotosAssets(sessionNonce);
-  }, [sessionNonce]);
+    return () => {
+      const { overlayRouteStack } =
+        routeSceneRuntime.routeOverlayRouteCommandRuntime.getRouteState();
+      const stillInStack = overlayRouteStack.some(
+        (stackEntry) =>
+          stackEntry.key === 'postPhotos' &&
+          (stackEntry.params as PostPhotosParams | null | undefined)?.sessionNonce === sessionNonce
+      );
+      if (!stillInStack) {
+        releasePostPhotosAssets(sessionNonce);
+      }
+    };
+  }, [routeSceneRuntime, sessionNonce]);
 
   const updateDraft = React.useCallback((draftId: string, patch: Partial<PhotoDraft>) => {
     setSections((current) =>
@@ -287,20 +310,30 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     async (section: PostPhotosSection, draft: PhotoDraft): Promise<boolean> => {
       updateDraft(draft.id, { status: 'uploading' });
       try {
-        await photosService.uploadPhoto(draft.asset, {
-          restaurantId: section.restaurantId,
-          connectionId: draft.dish?.connectionId,
-          // "Other…" free text = the demand-signal field the backend built for it.
-          pendingDishName: draft.otherDishName ?? undefined,
-          visibility: isPublic ? 'public' : 'private',
-        });
+        if (draft.photoId != null) {
+          // Confirm-stage retry: the photo already uploaded — ONLY re-poll the
+          // row (a fresh ticket + upload would duplicate the live photo).
+          await photosService.retryConfirm(draft.photoId);
+        } else {
+          await photosService.uploadPhoto(draft.asset, {
+            restaurantId: section.restaurantId,
+            connectionId: draft.dish?.connectionId,
+            // "Other…" free text = the demand-signal field the backend built for it.
+            pendingDishName: draft.otherDishName ?? undefined,
+            visibility: isPublic ? 'public' : 'private',
+          });
+        }
         updateDraft(draft.id, { status: 'done' });
         return true;
       } catch (error) {
-        // PhotoUploadError carries the failing stage (ticket/upload/confirm); the per-photo
-        // Failed badge + retry is the whole v1 surface for it.
-        void (error instanceof PhotoUploadError ? error.stage : null);
-        updateDraft(draft.id, { status: 'failed' });
+        // PhotoUploadError carries the failing stage (ticket/upload/confirm); a
+        // confirm-stage failure also carries the photoId of the ALREADY-uploaded
+        // photo — latch it so Retry re-polls instead of re-uploading.
+        const uploadedPhotoId =
+          error instanceof PhotoUploadError && error.photoId != null
+            ? error.photoId
+            : draft.photoId;
+        updateDraft(draft.id, { status: 'failed', photoId: uploadedPhotoId ?? null });
         return false;
       }
     },
@@ -324,10 +357,15 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     }
     setIsPosting(false);
     if (allDone) {
-      // Funnel collapses back to the trigger (§7.4).
+      // §8.9 push-permission moment: first contribution (photos posted).
+      requestPushPermissionIfEligible();
+      // Funnel collapses back to the trigger (§7.4) — the stash is done for.
+      if (sessionNonce != null) {
+        releasePostPhotosAssets(sessionNonce);
+      }
       closeActiveRoute();
     }
-  }, [closeActiveRoute, isPosting, sections, uploadDraft]);
+  }, [closeActiveRoute, isPosting, sections, sessionNonce, uploadDraft]);
 
   const handleRetry = React.useCallback(
     (section: PostPhotosSection, draft: PhotoDraft) => {

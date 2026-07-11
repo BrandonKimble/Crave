@@ -221,14 +221,7 @@ export class UserService {
           }
         : undefined,
       onboarding: this.buildOnboardingProfile(onboardingRow),
-      stats: {
-        pollsCreatedCount: await this.countCreatedPolls(userId),
-        pollsContributedCount: stats.pollsContributedCount,
-        followersCount: stats.followersCount,
-        followingCount: stats.followingCount,
-        favoriteListsCount: stats.favoriteListsCount,
-        favoritesTotalCount: stats.favoritesTotalCount,
-      },
+      stats: await this.buildProfileStats(userId, stats.pollsContributedCount),
     };
   }
 
@@ -290,6 +283,47 @@ export class UserService {
     return this.prisma.poll.count({ where: { createdByUserId: userId } });
   }
 
+  /** Stats-drift disease fix (the pollsCreatedCount pattern, extended):
+   *  followers / following / lists / favorites were increment counters
+   *  applied OUTSIDE the edge-write tx — a crash between writes drifted them
+   *  forever. Each stat is now a LIVE indexed count over the SAME rows its
+   *  profile section lists, so stat == section by construction:
+   *  - followers  → user_follows.followingUserId (idx_user_follows_following)
+   *  - following  → user_follows.followerUserId  (idx_user_follows_follower)
+   *  - lists      → favorite_lists.ownerUserId   (idx_favorite_lists_owner)
+   *  - favorites  → favorite_list_items via owned lists (idx_favorite_lists_owner
+   *                 + idx_favorite_list_items_list)
+   *  Five extra indexed counts per profile read — fine at launch scale.
+   *  pollsContributedCount is the one remaining user_stats read. */
+  private async buildProfileStats(
+    userId: string,
+    pollsContributedCount: number,
+  ) {
+    const [
+      pollsCreatedCount,
+      followersCount,
+      followingCount,
+      favoriteListsCount,
+      favoritesTotalCount,
+    ] = await Promise.all([
+      this.countCreatedPolls(userId),
+      this.prisma.userFollow.count({ where: { followingUserId: userId } }),
+      this.prisma.userFollow.count({ where: { followerUserId: userId } }),
+      this.prisma.favoriteList.count({ where: { ownerUserId: userId } }),
+      this.prisma.favoriteListItem.count({
+        where: { list: { ownerUserId: userId } },
+      }),
+    ]);
+    return {
+      pollsCreatedCount,
+      pollsContributedCount,
+      followersCount,
+      followingCount,
+      favoriteListsCount,
+      favoritesTotalCount,
+    };
+  }
+
   async getPublicProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { deletedAt: null, userId },
@@ -312,14 +346,7 @@ export class UserService {
       username: user.username,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
-      stats: {
-        pollsCreatedCount: await this.countCreatedPolls(userId),
-        pollsContributedCount: stats.pollsContributedCount,
-        followersCount: stats.followersCount,
-        followingCount: stats.followingCount,
-        favoriteListsCount: stats.favoriteListsCount,
-        favoritesTotalCount: stats.favoritesTotalCount,
-      },
+      stats: await this.buildProfileStats(userId, stats.pollsContributedCount),
     };
   }
 

@@ -23,7 +23,7 @@ import {
   buildShareLinkPath,
   dismissShareModal,
   SHARE_BASE_URL,
-  shareKindHasPublicLink,
+  shareConfigCanResolveLink,
   useShareModalConfig,
   type ShareModalConfig,
 } from './share-modal-store';
@@ -128,6 +128,11 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
   const [sending, setSending] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
   const [copying, setCopying] = React.useState(false);
+  // Per-open share id: stable across retries of THIS share (server dedupes
+  // `share:{id}` per conversation), rotated after a completed fan-out so a
+  // deliberate later re-share of the same entity is never dedupe-collapsed.
+  const mintShareId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  const clientShareIdRef = React.useRef<string>(mintShareId());
 
   const targetsQuery = useQuery({
     queryKey: ['shareTargets'],
@@ -166,32 +171,58 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
     return `${SHARE_BASE_URL}${path}`;
   }, [config]);
 
+  // enableShare on a slug-less list FLIPS a private list publicly linkable —
+  // never do that silently on a "Copy link" tap. Owner confirms first; any
+  // link action on an already-linkable config runs straight through.
+  const confirmEnableShareThen = React.useCallback(
+    (run: () => void) => {
+      if (config.kind === 'list' && !config.listShareSlug) {
+        showAppModal({
+          title: 'Share this list?',
+          message:
+            'Sharing creates a public link — the list becomes visible to anyone with it. Share?',
+          actions: [
+            { label: 'Cancel', style: 'cancel' },
+            { label: 'Share', style: 'default', onPress: run },
+          ],
+        });
+        return;
+      }
+      run();
+    },
+    [config]
+  );
+
   const handleCopyLink = React.useCallback(() => {
-    setCopying(true);
-    resolveLinkUrl()
-      .then((url) => {
-        Clipboard.setString(url);
-        setCopied(true);
-      })
-      .catch(() => {
-        announceFailureIfOnline();
-      })
-      .finally(() => {
-        setCopying(false);
-      });
-  }, [resolveLinkUrl]);
+    confirmEnableShareThen(() => {
+      setCopying(true);
+      resolveLinkUrl()
+        .then((url) => {
+          Clipboard.setString(url);
+          setCopied(true);
+        })
+        .catch(() => {
+          announceFailureIfOnline();
+        })
+        .finally(() => {
+          setCopying(false);
+        });
+    });
+  }, [confirmEnableShareThen, resolveLinkUrl]);
 
   const handleSystemShare = React.useCallback(() => {
-    resolveLinkUrl()
-      .then((url) =>
-        Share.share({ message: config.title ? `${config.title} · ${url}` : url }).catch(
-          () => undefined
+    confirmEnableShareThen(() => {
+      resolveLinkUrl()
+        .then((url) =>
+          Share.share({ message: config.title ? `${config.title} · ${url}` : url }).catch(
+            () => undefined
+          )
         )
-      )
-      .catch(() => {
-        announceFailureIfOnline();
-      });
-  }, [config.title, resolveLinkUrl]);
+        .catch(() => {
+          announceFailureIfOnline();
+        });
+    });
+  }, [config.title, confirmEnableShareThen, resolveLinkUrl]);
 
   const handleSend = React.useCallback(() => {
     if (selectedIds.size === 0 || sending) {
@@ -205,8 +236,11 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
         sharedEntityKind: config.kind,
         sharedEntityId: config.id,
         body: message.trim() ? message.trim() : undefined,
+        clientShareId: clientShareIdRef.current,
       })
       .then(({ results }) => {
+        // This share is done — a future re-share must be a NEW dedupe scope.
+        clientShareIdRef.current = mintShareId();
         dismissShareModal();
         // Per-recipient honesty: surface exactly who it could not reach.
         const failed = results.filter((r) => r.error != null);
@@ -229,7 +263,9 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
       });
   }, [config.id, config.kind, message, selectedIds, sending, targets]);
 
-  const hasLink = shareKindHasPublicLink(config.kind);
+  // Hidden (not failing) rows: comment has no public URL; a non-owned list
+  // with no known slug can't mint one (enableShare is owner-only).
+  const hasLink = shareConfigCanResolveLink(config);
   const showSendSection = targetsQuery.isPending || targets.length > 0;
 
   return (

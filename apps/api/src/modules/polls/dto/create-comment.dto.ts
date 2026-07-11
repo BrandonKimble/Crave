@@ -25,6 +25,19 @@ export class EditCommentDto {
   body!: string;
 }
 
+/** §9b reportContent — the comment-report reasons (mirrors PHOTO_REPORT_REASONS shape). */
+export const COMMENT_REPORT_REASONS = [
+  'spam',
+  'harassment',
+  'off_topic',
+  'other',
+] as const;
+
+export class ReportCommentDto {
+  @IsIn(COMMENT_REPORT_REASONS)
+  reason!: (typeof COMMENT_REPORT_REASONS)[number];
+}
+
 export class ListCommentsQueryDto {
   /** `top` (by like count, default) or `new` (most recent). */
   @IsOptional()

@@ -9,6 +9,7 @@ import {
   type PollLeaderboardEntry,
 } from '../../services/polls';
 import { useAuthController } from '../../hooks/use-auth-controller';
+import { requestPushPermissionIfEligible } from '../../services/push-permission';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
 
 /**
@@ -192,6 +193,8 @@ export const PollCandidateBars = React.memo(
           const settled = result.leaderboard.slice(0, rows.length || 4).map(toCandidate);
           setOptimistic(settled);
           onCandidatesChange?.(settled);
+          // §8.9 push-permission moment: first contribution (a poll vote).
+          requestPushPermissionIfEligible();
         } catch {
           setOptimistic(null); // revert to props on failure
           announceFailureIfOnline();

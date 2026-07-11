@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -99,6 +98,14 @@ export class PhotosService {
     });
     if (!restaurant || restaurant.type !== 'restaurant') {
       throw new BadRequestException('restaurantId must be a restaurant');
+    }
+    // connectionId (a real dish link) and pendingDishName (the "Other…"
+    // free-text demand signal) are mutually exclusive by construction —
+    // a ticket carrying both is a client bug; reject loudly.
+    if (params.connectionId && params.pendingDishName) {
+      throw new BadRequestException(
+        'connectionId and pendingDishName are mutually exclusive',
+      );
     }
     if (params.connectionId) {
       const connection = await this.prisma.connection.findUnique({
@@ -366,11 +373,14 @@ export class PhotosService {
       where: { photoId },
       select: { userId: true, publicId: true, status: true },
     });
-    if (!photo || photo.status === PhotoStatus.removed) {
+    // 404 for missing/removed AND not-yours alike — a 403/404 split would
+    // confirm the existence of another user's (possibly private) photo.
+    if (
+      !photo ||
+      photo.status === PhotoStatus.removed ||
+      photo.userId !== userId
+    ) {
       throw new NotFoundException('Photo not found');
-    }
-    if (photo.userId !== userId) {
-      throw new ForbiddenException('Not your photo');
     }
     const won = await this.prisma.photo.updateMany({
       where: { photoId, status: { not: PhotoStatus.removed } },
@@ -392,9 +402,17 @@ export class PhotosService {
   ): Promise<{ hidden: boolean }> {
     const photo = await this.prisma.photo.findUnique({
       where: { photoId },
-      select: { status: true },
+      select: { status: true, visibility: true, userId: true },
     });
-    if (!photo || photo.status !== PhotoStatus.live) {
+    // Reportable = VISIBLE to the reporter (live+public, or their own photo).
+    // Anything else 404s: otherwise report is a private-photo existence
+    // oracle AND lets strangers drive a photo they can't even see to hidden.
+    const visibleToReporter =
+      photo != null &&
+      ((photo.status === PhotoStatus.live &&
+        photo.visibility === PhotoVisibility.public) ||
+        photo.userId === userId);
+    if (!visibleToReporter) {
       throw new NotFoundException('Photo not found');
     }
     try {

@@ -17,6 +17,7 @@ import type { SharedValue } from 'react-native-reanimated';
 import type { AppRouteSceneStackSurfaceAuthority } from '../navigation/runtime/app-route-scene-stack-surface-contract';
 import type { AppRouteSceneDisplayTargetRegistry } from '../navigation/runtime/app-route-scene-display-target-registry';
 import type { OverlayKey } from './types';
+import type { SceneBodyContentInsets } from './bottomSheetSurfaceStyleUtils';
 
 export type BottomSheetSceneStackBodyDefaults = {
   scrollHeaderComponent: React.ReactNode;
@@ -26,7 +27,7 @@ export type BottomSheetSceneStackBodyDefaults = {
   resolvedKeyboardDismissMode: ScrollViewProps['keyboardDismissMode'];
   resolvedScrollIndicatorInsets: ScrollViewProps['scrollIndicatorInsets'];
   resolvedTestID?: string;
-  resolvedContentContainerStyle?: ScrollViewProps['contentContainerStyle'];
+  resolvedContentContainerStyle?: SceneBodyContentInsets;
   activeFlashListProps?: BottomSheetWithFlashListBaseProps<unknown>['flashListProps'];
 };
 

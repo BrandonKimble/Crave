@@ -20,6 +20,7 @@ import {
   CreateCommentDto,
   EditCommentDto,
   ListCommentsQueryDto,
+  ReportCommentDto,
 } from './dto/create-comment.dto';
 import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
@@ -112,11 +113,14 @@ export class PollsController {
   getRestaurantMentions(
     @Param('restaurantId', new ParseUUIDPipe()) restaurantId: string,
     @Query() query: RestaurantMentionsQueryDto,
+    @CurrentUser() user?: User | null,
   ) {
     return this.restaurantMentionsService.getRestaurantMentions(restaurantId, {
       sort: query.sort,
       search: query.search,
       tagEntityIds: query.tags,
+      // Blocking: an authed viewer never sees blocked peers' mention cards/replies.
+      viewerUserId: user?.userId,
     });
   }
 
@@ -170,6 +174,19 @@ export class PollsController {
     @CurrentUser() user: User,
   ) {
     return this.pollsService.deleteComment(commentId, user.userId);
+  }
+
+  /** §9b reportContent (Apple 1.2 UGC): report a comment. Records only —
+   *  human moderation reads the table; dedupe is a quiet no-op. */
+  @Post('comments/:commentId/report')
+  @RateLimitTier('sensitive')
+  @UseGuards(ClerkAuthGuard)
+  reportComment(
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @Body() dto: ReportCommentDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.pollsService.reportComment(commentId, user.userId, dto.reason);
   }
 
   // A like toggle triggers a full leaderboard rebuild, so it's both a spam and a

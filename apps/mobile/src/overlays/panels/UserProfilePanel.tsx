@@ -10,7 +10,7 @@ import {
   type AppModalAction,
 } from '../../components/app-modal-store';
 import { showShareModal } from '../../components/share-modal-store';
-import { usersService, type PublicUserProfile } from '../../services/users';
+import { usersService, type PublicUserProfile, type UserReportReason } from '../../services/users';
 import { messagingService } from '../../services/messaging';
 import {
   fetchUserComments,
@@ -363,6 +363,45 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
     [blockBusy, queryClient, userId]
   );
 
+  // ── §9b profileActions (Apple 1.2 UGC): report user — the ONE app modal
+  // with reasons, quiet-by-design submit (mirrors the photo/comment flows).
+  const handleReportPress = React.useCallback(() => {
+    if (!userId) {
+      return;
+    }
+    const submit = (reason: UserReportReason): void => {
+      void usersService
+        .reportUser(userId, reason)
+        .then(() => {
+          showAppModal({
+            title: 'Report received',
+            message: "Thanks — we'll take a look.",
+            actions: [{ label: 'OK', style: 'default' }],
+          });
+        })
+        .catch(() => {
+          // Reports are quiet-by-design: a duplicate/failed report simply doesn't confirm.
+        });
+    };
+    const reasons: Array<{ label: string; reason: UserReportReason }> = [
+      { label: 'Spam', reason: 'spam' },
+      { label: 'Harassment', reason: 'harassment' },
+      { label: 'Impersonation', reason: 'impersonation' },
+      { label: 'Other', reason: 'other' },
+    ];
+    showAppModal({
+      title: 'Report user',
+      message: "What's wrong?",
+      actions: [
+        ...reasons.map(({ label, reason }) => ({
+          label,
+          onPress: () => submit(reason),
+        })),
+        { label: 'Cancel', style: 'cancel' as const },
+      ],
+    });
+  }, [userId]);
+
   const handleBlockPress = React.useCallback(() => {
     if (isBlockedByMe) {
       runBlockChange(false);
@@ -426,6 +465,8 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
       id: list.listId,
       title: list.name,
       listShareSlug: list.shareEnabled ? (list.shareSlug ?? null) : null,
+      // The Share action only exists on the OWN-profile long-press menu.
+      listOwnedByViewer: true,
     });
   }, []);
 
@@ -845,18 +886,31 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
       <View style={styles.sectionBody}>{renderSectionBody()}</View>
 
       {edge != null && !edge.isMe ? (
-        <Pressable
-          onPress={handleBlockPress}
-          disabled={blockBusy}
-          accessibilityRole="button"
-          accessibilityLabel="Block user"
-          testID="user-profile-block-row"
-          style={styles.blockRow}
-        >
-          <Text variant="body" weight="semibold" style={styles.blockRowText}>
-            Block user
-          </Text>
-        </Pressable>
+        <>
+          <Pressable
+            onPress={handleBlockPress}
+            disabled={blockBusy}
+            accessibilityRole="button"
+            accessibilityLabel="Block user"
+            testID="user-profile-block-row"
+            style={styles.blockRow}
+          >
+            <Text variant="body" weight="semibold" style={styles.blockRowText}>
+              Block user
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={handleReportPress}
+            accessibilityRole="button"
+            accessibilityLabel="Report user"
+            testID="user-profile-report-row"
+            style={styles.reportRow}
+          >
+            <Text variant="body" weight="semibold" style={styles.blockRowText}>
+              Report user
+            </Text>
+          </Pressable>
+        </>
       ) : null}
     </View>
   );
@@ -1055,5 +1109,9 @@ const styles = StyleSheet.create({
   },
   blockRowText: {
     color: '#dc2626',
+  },
+  reportRow: {
+    paddingVertical: 12,
+    alignItems: 'center',
   },
 });
