@@ -38,6 +38,7 @@ import { ListFavoriteListsDto } from './dto/list-favorite-lists.dto';
 import { FavoriteListResultsDto } from './dto/favorite-list-results.dto';
 import { SearchQueryExecutor } from '../search/search-query.executor';
 import type { SearchQueryRequestDto } from '../search/dto/search-query.dto';
+import { systemKindRank } from './favorite-list-provisioning.service';
 
 export type FavoriteListViewerRole = 'owner' | 'collaborator' | 'viewer';
 export type FavoriteListSort = 'custom' | 'best' | 'recent';
@@ -95,6 +96,7 @@ type FavoriteListSummary = {
   visibility: FavoriteListVisibility;
   itemCount: number;
   position: number;
+  systemKind: string | null;
   shareEnabled: boolean;
   shareSlug?: string | null;
   updatedAt: Date;
@@ -211,7 +213,51 @@ export class FavoriteListsService {
     });
 
     const previewScores = await this.loadPreviewScoreMaps(lists);
-    return lists.map((list) => this.buildListSummary(list, previewScores));
+    return this.orderHomeLists(lists).map((list) =>
+      this.buildListSummary(list, previewScores),
+    );
+  }
+
+  /**
+   * Home / save-sheet list ordering (page-registry §8.7/§8.8): system default
+   * lists pin to the top in their fixed rank (Been, Want to go, Tried, Want
+   * to try), then the user's lists in their custom home order if one exists,
+   * else the home default — recently updated. "Custom order set" = the user
+   * lists' positions diverge from their creation order (updateListPosition is
+   * the only perturbation; provisioning positions never count — system lists
+   * are excluded from the divergence test).
+   */
+  private orderHomeLists<
+    T extends Pick<
+      FavoriteList,
+      'listId' | 'systemKind' | 'position' | 'createdAt' | 'updatedAt'
+    >,
+  >(lists: T[]): T[] {
+    const systemLists = lists
+      .filter((list) => list.systemKind != null)
+      .sort(
+        (a, b) => systemKindRank(a.systemKind) - systemKindRank(b.systemKind),
+      );
+    const userLists = lists.filter((list) => list.systemKind == null);
+    const byPosition = [...userLists].sort(
+      (a, b) =>
+        a.position - b.position ||
+        a.createdAt.valueOf() - b.createdAt.valueOf(),
+    );
+    const byCreated = [...userLists].sort(
+      (a, b) =>
+        a.createdAt.valueOf() - b.createdAt.valueOf() ||
+        a.position - b.position,
+    );
+    const hasCustomHomeOrder = byPosition.some(
+      (list, index) => list.listId !== byCreated[index].listId,
+    );
+    const orderedUserLists = hasCustomHomeOrder
+      ? byPosition
+      : [...userLists].sort(
+          (a, b) => b.updatedAt.valueOf() - a.updatedAt.valueOf(),
+        );
+    return [...systemLists, ...orderedUserLists];
   }
 
   async listPublicForUser(userId: string, query: ListFavoriteListsDto) {
@@ -960,10 +1006,14 @@ export class FavoriteListsService {
   async deleteList(userId: string, listId: string) {
     const list = await this.prisma.favoriteList.findFirst({
       where: { listId, ownerUserId: userId },
-      select: { listId: true, itemCount: true },
+      select: { listId: true, itemCount: true, systemKind: true },
     });
     if (!list) {
       throw new NotFoundException('Favorite list not found');
+    }
+    if (list.systemKind != null) {
+      // Page-registry §8.7: the four auto-created defaults are permanent.
+      throw new BadRequestException('System default lists cannot be deleted');
     }
 
     await this.prisma.favoriteList.delete({
@@ -994,18 +1044,38 @@ export class FavoriteListsService {
     if (dto.restaurantId && dto.connectionId) {
       throw new BadRequestException('Only one list item target is allowed');
     }
-    if (list.listType === FavoriteListType.restaurant && !dto.restaurantId) {
+
+    let restaurantId = dto.restaurantId ?? null;
+    let connectionId = dto.connectionId ?? null;
+
+    // Save-sheet side flip (page-registry §8.8): a dish-triggered save flipped
+    // to the restaurant side targets the RESTAURANT OF THE TRIGGERING DISH.
+    // The client only carries the connectionId, so a connection target on a
+    // restaurant list resolves server-side to that connection's restaurant.
+    if (list.listType === FavoriteListType.restaurant && connectionId) {
+      const connection = await this.prisma.connection.findUnique({
+        where: { connectionId },
+        select: { restaurantId: true },
+      });
+      if (!connection) {
+        throw new NotFoundException('Connection not found');
+      }
+      restaurantId = connection.restaurantId;
+      connectionId = null;
+    }
+
+    if (list.listType === FavoriteListType.restaurant && !restaurantId) {
       throw new BadRequestException(
         'Restaurant list items require a restaurant',
       );
     }
-    if (list.listType === FavoriteListType.dish && !dto.connectionId) {
+    if (list.listType === FavoriteListType.dish && !connectionId) {
       throw new BadRequestException('Dish list items require a connection');
     }
 
-    if (dto.restaurantId) {
+    if (restaurantId) {
       const exists = await this.prisma.entity.findUnique({
-        where: { entityId: dto.restaurantId },
+        where: { entityId: restaurantId },
         select: { entityId: true },
       });
       if (!exists) {
@@ -1013,9 +1083,9 @@ export class FavoriteListsService {
       }
     }
 
-    if (dto.connectionId) {
+    if (connectionId) {
       const exists = await this.prisma.connection.findUnique({
-        where: { connectionId: dto.connectionId },
+        where: { connectionId },
         select: { connectionId: true },
       });
       if (!exists) {
@@ -1034,8 +1104,8 @@ export class FavoriteListsService {
         data: {
           listId,
           addedByUserId: userId,
-          restaurantId: dto.restaurantId ?? null,
-          connectionId: dto.connectionId ?? null,
+          restaurantId,
+          connectionId,
           note: dto.note?.slice(0, 512) ?? null,
           position: dto.position ?? (maxPosition._max.position ?? 0) + 1,
         },
@@ -1378,6 +1448,7 @@ export class FavoriteListsService {
       visibility: list.visibility,
       itemCount: list.itemCount,
       position: list.position,
+      systemKind: list.systemKind,
       shareEnabled: list.shareEnabled,
       shareSlug: list.shareSlug,
       updatedAt: list.updatedAt,

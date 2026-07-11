@@ -1175,6 +1175,11 @@ model FavoriteList {
   position     Int                      @default(0) @map("position")
   shareSlug    String?                  @unique(map: "favorite_lists_share_slug_key") @map("share_slug") @db.VarChar(64)
   shareEnabled Boolean                  @default(false) @map("share_enabled")
+  /// Auto-created default lists (page-registry §8.7): 'been' | 'want_to_go'
+  /// (restaurant side), 'tried' | 'want_to_try' (dish side). NULL = a normal
+  /// user list. System lists pin to the top of the home ordering and are
+  /// NOT deletable. The (owner, systemKind) unique is the once-ever contract.
+  systemKind   String?                  @map("system_kind") @db.VarChar(16)
   createdAt    DateTime                 @default(now()) @map("created_at")
   updatedAt    DateTime                 @updatedAt @map("updated_at")
   owner         User                       @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)
@@ -1183,6 +1188,7 @@ model FavoriteList {
   collaborators FavoriteListCollaborator[]
 
   @@unique([ownerUserId, listType, name], map: "favorite_lists_owner_type_name")
+  @@unique([ownerUserId, systemKind], map: "favorite_lists_owner_system_kind")
   @@index([ownerUserId], map: "idx_favorite_lists_owner")
   @@index([visibility], map: "idx_favorite_lists_visibility")
   @@index([listType], map: "idx_favorite_lists_type")

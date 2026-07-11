@@ -21,6 +21,7 @@ import { UserProfileDto } from './dto/user-profile.dto';
 import { UserStatsService } from './user-stats.service';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { UpdateUserOnboardingDto } from './dto/update-user-onboarding.dto';
+import { FavoriteListProvisioningService } from '../favorites/favorite-list-provisioning.service';
 
 type OnboardingProfileRow = {
   onboardingStatus: UserOnboardingProfile['status'] | null;
@@ -50,6 +51,7 @@ export class UserService {
     private readonly userStats: UserStatsService,
     private readonly clerkAuth: ClerkAuthService,
     private readonly entitlements: EntitlementService,
+    private readonly favoriteListProvisioning: FavoriteListProvisioningService,
   ) {
     this.defaultEntitlement =
       this.configService.get<string>('billing.defaultEntitlement') || 'premium';
@@ -144,6 +146,11 @@ export class UserService {
     });
 
     await this.userStats.ensure(user.userId);
+
+    // Auto-created default lists (page-registry §8.7): same self-healing
+    // seam as userStats.ensure — idempotent per sync, so existing users are
+    // backfilled on their next sign-in with no separate script.
+    await this.favoriteListProvisioning.ensureDefaultLists(user.userId);
 
     // Reverse trial (app-owned, NOT a store trial — store trials can't be
     // extended, and photo/invite rewards must be able to extend this):

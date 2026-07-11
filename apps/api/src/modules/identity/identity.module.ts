@@ -21,6 +21,10 @@ import { UsernameService } from './username.service';
 import { UserStatsService } from './user-stats.service';
 import { UserFollowService } from './user-follow.service';
 import { ClosenessService } from './closeness.service';
+// Favorites-domain code, but PROVIDED here: the signup provisioning seam is
+// UserService.syncFromClerkClaims, and FavoritesModule imports IdentityModule
+// — providing it in favorites would be a module cycle.
+import { FavoriteListProvisioningService } from '../favorites/favorite-list-provisioning.service';
 
 @Module({
   imports: [
@@ -45,6 +49,7 @@ import { ClosenessService } from './closeness.service';
     UserStatsService,
     UserFollowService,
     ClosenessService,
+    FavoriteListProvisioningService,
   ],
   exports: [
     ClerkAuthService,
@@ -58,6 +63,7 @@ import { ClosenessService } from './closeness.service';
     UserStatsService,
     UserFollowService,
     ClosenessService,
+    FavoriteListProvisioningService,
   ],
 })
 export class IdentityModule {}

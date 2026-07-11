@@ -19,6 +19,12 @@ export interface FavoriteListSummary {
   visibility: FavoriteListVisibility;
   itemCount: number;
   position: number;
+  /**
+   * Auto-created default lists (page-registry §8.7): 'been' | 'want_to_go' |
+   * 'tried' | 'want_to_try'; null for user lists. System lists arrive pinned
+   * first in the server ordering and are not deletable.
+   */
+  systemKind: string | null;
   shareEnabled: boolean;
   shareSlug?: string | null;
   updatedAt: string;
@@ -103,7 +109,13 @@ export const favoriteListsService = {
   async remove(listId: string): Promise<void> {
     await api.delete(`/favorites/lists/${listId}`);
   },
-  async addItem(listId: string, payload: { restaurantId?: string; connectionId?: string }) {
+  // Save-sheet toolkit: `note` rides the add. A `connectionId` sent to a
+  // RESTAURANT list is resolved server-side to that connection's restaurant
+  // (the §8.8 dish→restaurant side flip).
+  async addItem(
+    listId: string,
+    payload: { restaurantId?: string; connectionId?: string; note?: string }
+  ) {
     const response = await api.post(`/favorites/lists/${listId}/items`, payload);
     return response.data;
   },
