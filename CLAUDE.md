@@ -18,6 +18,22 @@ find a stray branch or worktree, treat it as cruft to surface, not something to 
 
 ---
 
+## Memory: after ANY prisma migration, rebuild + restart the shared API — twice-burned trap
+
+2026-07-11, hit twice in one day. The dev API on :3000 is one long-lived `node dist/main`
+shared by all sessions. A session that applies a migration (esp. one DROPPING columns)
+leaves that process serving a STALE generated Prisma client -> P2022 on every touched
+query. When the broken query is in the AUTH path (per-request user load), EVERY
+authenticated endpoint 500s BEFORE the request logger, so the server log looks clean and
+empty while the app shows a flapping "Service temporarily unavailable" + banner-driven
+map/header jitter (tight client retry). Unauthenticated curl returns 401 and looks healthy.
+RECIPE: `npx prisma generate && yarn build && kill <pid> && nohup node --enable-source-maps
+dist/main >> /tmp/crave-api.log 2>&1 &` from apps/api — the session that MIGRATES does this.
+Diagnose with byte-offset log DELTAS on /tmp/crave-api.log + /tmp/crave-metro.log around an
+app relaunch (0-byte API delta while the app 500s = requests dying pre-logger). Related
+gotcha fixed 2026-07-11: prompt .md files are nest-cli assets now; a clean `yarn build`
+used to produce a dist that crashed at bootstrap (ENOENT relevance-gate-prompt.md).
+
 ## Where product & business thinking lives (read before working on a feature)
 
 Three doc homes, by purpose:
