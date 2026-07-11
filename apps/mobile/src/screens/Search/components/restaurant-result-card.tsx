@@ -5,6 +5,7 @@ import { Share as LucideShare, Heart as LucideHeart } from 'lucide-react-native'
 import { Store } from 'lucide-react-native';
 
 import { Text } from '../../../components';
+import { CardPhotoStrip } from '../../../components/photos/CardPhotoStrip';
 import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES } from '../../../constants/typography';
 import { getPriceRangeLabel } from '../../../constants/pricing';
@@ -554,6 +555,13 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
           </View>
         </View>
       </Pressable>
+      {/* §7.1 card anatomy: photo strip is the card's LAST element (the button
+          strip arrives later). Display context — placeholder when empty, no
+          add tile. Sibling of the Pressable so photo taps never open the
+          profile. */}
+      <View style={styles.cardPhotoStripSection}>
+        <CardPhotoStrip restaurantId={restaurant.restaurantId} height={72} />
+      </View>
     </View>
   );
 };

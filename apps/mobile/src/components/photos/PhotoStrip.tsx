@@ -33,6 +33,8 @@ export interface PhotoStripProps {
   leadTile?: 'add';
   onAddPress?: () => void;
   onPhotoPress?: (id: string, index: number) => void;
+  /** Long-press affordance — the report entry (page-registry §8.6). */
+  onPhotoLongPress?: (id: string, index: number) => void;
 }
 
 const DEFAULT_ASPECT = 4 / 3;
@@ -65,6 +67,7 @@ export const PhotoStrip: React.FC<PhotoStripProps> = ({
   leadTile,
   onAddPress,
   onPhotoPress,
+  onPhotoLongPress,
 }) => {
   if (photos.length === 0 && leadTile !== 'add') {
     // Display-only placeholder: one soft rectangle in the strip's shape.
@@ -86,6 +89,7 @@ export const PhotoStrip: React.FC<PhotoStripProps> = ({
             key={photo.id}
             accessibilityRole="imagebutton"
             onPress={onPhotoPress ? () => onPhotoPress(photo.id, index) : undefined}
+            onLongPress={onPhotoLongPress ? () => onPhotoLongPress(photo.id, index) : undefined}
             style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
           >
             <Image

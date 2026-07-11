@@ -5,6 +5,7 @@ import type { OverlayRouteEntry } from '../navigation/runtime/app-overlay-route-
 import { BookmarksMountedSceneBody } from './panels/BookmarksPanel';
 import { ProfileMountedSceneBody } from './panels/ProfilePanel';
 import { SaveListMountedSceneBody } from './panels/SaveListPanel';
+import { PostPhotosPanelBody } from './panels/PostPhotosPanel';
 import {
   EditProfileMountedSceneBody,
   FollowListMountedSceneBody,
@@ -53,6 +54,8 @@ export const BottomSheetSceneStackMountedBody = React.memo(
         return <EditProfileMountedSceneBody entry={entry} />;
       case 'shareConfig':
         return <ShareConfigMountedSceneBody entry={entry} />;
+      case 'postPhotos':
+        return <PostPhotosPanelBody entry={entry} />;
       default:
         return null;
     }

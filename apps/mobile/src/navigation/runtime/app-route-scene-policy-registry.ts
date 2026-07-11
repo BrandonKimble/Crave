@@ -185,6 +185,16 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     snapPersistence: 'none',
     chromePolicy: { kind: 'preserve' },
   },
+  // W2 (page-registry §7.4): the post page — full-page child, same policy family.
+  postPhotos: {
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
+    defaultFirstEntrySnap: 'expanded',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: true,
+    canSwipeDismiss: false,
+    snapPersistence: 'none',
+    chromePolicy: { kind: 'preserve' },
+  },
   scoreInfo: {
     sheetTargetGroup: null,
     defaultFirstEntrySnap: null,

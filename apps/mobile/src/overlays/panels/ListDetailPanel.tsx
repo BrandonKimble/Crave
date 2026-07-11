@@ -21,8 +21,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Text } from '../../components';
-import { PhotoStrip } from '../../components/photos/PhotoStrip';
-import { announceFailureIfOnline } from '../../components/app-modal-store';
+import { CardPhotoStrip } from '../../components/photos/CardPhotoStrip';
+import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';
 import {
   ReorderableRows,
   useIsScreenReaderEnabled,
@@ -61,7 +61,7 @@ import type { FoodResult, RestaurantResult, SearchResponse } from '../../types';
 // an entry that came from an invite link (crave://l/<slug>?join=1) — the ONLY entry that
 // offers "Join as collaborator" (§8.1).
 //
-// Rows are CLEAN SIMPLE ROWS v1 (name, score dot, note under a PhotoStrip placeholder): the
+// Rows are CLEAN SIMPLE ROWS v1 (name, score dot, LIVE photo strip, note): the
 // results-sheet renderer (restaurant-result-card) is search-surface-entangled (descriptor +
 // world plumbing), and the spec's fallback names exactly this shape. No FlashList — rows ride
 // the leg's shared mounted-scroll container (the MVCP law is moot without a virtualized list).
@@ -594,18 +594,37 @@ const ScoreDot = ({ score }: { score: number | null | undefined }) => (
   </View>
 );
 
+// TODO(W2A): the add-tile press is a placeholder announce until the save
+// funnel's add-photo helper lands — then this wires straight into the shared
+// photo-source picker → post page with (restaurantId, connectionId?) context.
+const announceAddPhotoPlaceholder = (): void => {
+  showAppModal({
+    title: 'Add photos',
+    message: 'Adding photos from your lists is coming soon.',
+    actions: [{ label: 'OK', style: 'default' }],
+  });
+};
+
 const ListDetailRow = ({
   title,
   subtitle,
   score,
   note,
   testID,
+  restaurantId,
+  connectionId,
+  canAddPhoto,
 }: {
   title: string;
   subtitle?: string | null;
   score: number | null | undefined;
   note?: string | null;
   testID: string;
+  restaurantId: string;
+  connectionId?: string;
+  /** §7.1: the "+" tile exists ONLY on cards in the viewer's OWN lists
+   *  (owner/collaborator role). */
+  canAddPhoto: boolean;
 }) => (
   <View style={styles.row} testID={testID}>
     <View style={styles.rowHeader}>
@@ -621,7 +640,13 @@ const ListDetailRow = ({
       </View>
       <ScoreDot score={score} />
     </View>
-    <PhotoStrip photos={[]} height={56} />
+    <CardPhotoStrip
+      restaurantId={restaurantId}
+      connectionId={connectionId}
+      height={56}
+      leadTile={canAddPhoto ? 'add' : undefined}
+      onAddPress={canAddPhoto ? announceAddPhotoPlaceholder : undefined}
+    />
     {note ? (
       <Text variant="caption" style={styles.rowNote} testID={`${testID}-note`}>
         {note}
@@ -865,6 +890,9 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
 
   // ─── Edit mode (§8.11 within-list half) ────────────────────────────────────────────────────
   const canEdit = !isVirtualAll && (viewerRole === 'owner' || viewerRole === 'collaborator');
+  // §7.1: add-tile on the photo strip exists only in the viewer's OWN lists —
+  // role-based, and the virtual All list (role 'owner') qualifies too.
+  const canAddPhoto = viewerRole === 'owner' || viewerRole === 'collaborator';
   const [editSession, setEditSession] = React.useState<ListDetailEditSession | null>(null);
   const [isSavingOrder, setIsSavingOrder] = React.useState(false);
   const isScreenReaderEnabled = useIsScreenReaderEnabled();
@@ -1207,6 +1235,8 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
             score={restaurant.craveScore}
             note={restaurant.note}
             testID={`list-detail-row-${restaurant.restaurantId}`}
+            restaurantId={restaurant.restaurantId}
+            canAddPhoto={canAddPhoto}
           />
         ))
       ) : (
@@ -1218,6 +1248,9 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
             score={dish.craveScore}
             note={dish.note}
             testID={`list-detail-row-${dish.connectionId}`}
+            restaurantId={dish.restaurantId}
+            connectionId={dish.connectionId}
+            canAddPhoto={canAddPhoto}
           />
         ))
       )}

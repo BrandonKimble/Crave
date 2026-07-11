@@ -33,6 +33,8 @@ import NetworkStatusListener from './src/providers/NetworkStatusListener';
 import { PurchasesProvider } from './src/providers/PurchasesProvider';
 import { PaywallDevPreview } from './src/screens/PaywallDevPreview';
 import { EntitlementLapseHost } from './src/screens/EntitlementLapseHost';
+import { CameraCaptureHost } from './src/screens/CameraCaptureHost';
+import { PostPhotosFunnelHost } from './src/overlays/PostPhotosFunnelHost';
 import PollNotificationListener from './src/providers/PollNotificationListener';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
 import { PerfScenarioCoordinator } from './src/perf/PerfScenarioCoordinator';
@@ -119,6 +121,10 @@ export default function App() {
                     <PollNotificationListener />
                     <PurchasesProvider />
                     <EntitlementLapseHost />
+                    {/* W2 photo funnel (page-registry §7.4): the app-wide 2-option modal host
+                        + the full-screen custom camera (outside the sheet system, §9a). */}
+                    <PostPhotosFunnelHost />
+                    <CameraCaptureHost />
                     {__DEV__ ? <PaywallDevPreview /> : null}
                     <SystemStatusBanner />
                     <Reanimated.View style={[styles.contentSurface, contentAnimatedStyle]}>

@@ -34,7 +34,8 @@ type StaticStubChildSceneKey =
   | 'notifications'
   | 'settings'
   | 'editProfile'
-  | 'shareConfig';
+  | 'shareConfig'
+  | 'postPhotos';
 type StaticSceneKey = 'saveList' | StaticTabSceneKey | StaticStubChildSceneKey;
 
 const staticSceneStyles = StyleSheet.create({
@@ -76,6 +77,13 @@ const STATIC_STUB_CHILD_SCENE_KEYS: readonly StaticStubChildSceneKey[] = [
   'editProfile',
   'shareConfig',
 ];
+
+// W2: postPhotos publishes separately — same static-child shape, but with the
+// keyboard-persist transport (the panel has typeahead + free-text dish inputs).
+const POST_PHOTOS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
+  contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 72 }],
+  keyboardShouldPersistTaps: 'handled',
+};
 
 const STATIC_RETAINED_TAB_BODY_ADMISSION_POLICY: AppRouteSceneBodyAdmissionPolicy = {
   retainMountedBodyDuringTransition: true,
@@ -181,6 +189,16 @@ class AppRouteStaticSceneDescriptorController {
         sceneBodyContent: createMountedBody(sceneKey),
         sceneBodyTransport: STUB_CHILD_BODY_TRANSPORT,
       });
+    });
+    sceneInputLane.publishRouteSceneDescriptor({
+      sceneKey: 'postPhotos',
+      shellSpec: createStaticChildShellSpec({
+        sceneKey: 'postPhotos',
+        sceneLayout,
+      }),
+      sceneChrome: createMountedChrome('postPhotos'),
+      sceneBodyContent: createMountedBody('postPhotos'),
+      sceneBodyTransport: POST_PHOTOS_BODY_TRANSPORT,
     });
     sceneInputLane.publishRouteSceneDescriptor({
       sceneKey: 'bookmarks',

@@ -63,7 +63,8 @@ export type SearchRouteMountedSceneBodyKey =
   | 'notifications'
   | 'settings'
   | 'editProfile'
-  | 'shareConfig';
+  | 'shareConfig'
+  | 'postPhotos';
 
 export type SearchRouteMountedSceneChromeKey =
   | 'bookmarks'
@@ -76,7 +77,8 @@ export type SearchRouteMountedSceneChromeKey =
   | 'notifications'
   | 'settings'
   | 'editProfile'
-  | 'shareConfig';
+  | 'shareConfig'
+  | 'postPhotos';
 
 export type SearchRouteMountedSceneChromeSurface = 'underlay' | 'background' | 'header' | 'overlay';
 

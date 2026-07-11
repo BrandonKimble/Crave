@@ -21,6 +21,9 @@ export type PhotoSourcePickerModalProps = {
   onLibrary: () => void;
   /** Fires once the sheet's exit animation completes (any close path). */
   onDismiss?: () => void;
+  /** __DEV__-only third row ("Use test images") — the sim-drivable funnel lane.
+   *  Callers pass it gated on __DEV__; the row never renders in production. */
+  onDevTestImages?: () => void;
 };
 
 const ICON_SIZE = 22;
@@ -31,6 +34,7 @@ export const PhotoSourcePickerModal: React.FC<PhotoSourcePickerModalProps> = ({
   onCamera,
   onLibrary,
   onDismiss,
+  onDevTestImages,
 }) => {
   // Close first, then hand off — same order as AppModalHost: the sheet fences taps
   // during its exit, so a press only lands while live, and the chosen flow starts
@@ -77,6 +81,20 @@ export const PhotoSourcePickerModal: React.FC<PhotoSourcePickerModalProps> = ({
             Choose from library
           </Text>
         </Pressable>
+        {__DEV__ && onDevTestImages ? (
+          <Pressable
+            onPress={() => handleChoose(onDevTestImages)}
+            style={({ pressed }) => [styles.option, pressed ? styles.optionPressed : null]}
+            accessibilityRole="button"
+            accessibilityLabel="Use test images"
+            testID="photo-source-dev-test-images"
+          >
+            <Images size={ICON_SIZE} color={themeColors.textPrimary} strokeWidth={2} />
+            <Text variant="body" weight="semibold" style={styles.optionLabel}>
+              Use test images (dev)
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
     </OverlayModalSheet>
   );

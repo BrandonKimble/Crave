@@ -59,6 +59,9 @@ export interface UploadTicketContext {
   /** Capture time from the picker's EXIF, ISO string — read on-device BEFORE
    *  upload (the stored original is metadata-stripped for privacy). */
   takenAt?: string;
+  /** Uploader-chosen audience (default public): private photos surface only
+   *  to the uploader (own food log / own reads). */
+  visibility?: 'public' | 'private';
 }
 
 export interface PhotoStripItemDto {
@@ -85,6 +88,25 @@ export interface FoodLogGroupDto {
   restaurantName: string;
   photos: PhotoStripItemDto[];
 }
+
+/** One card's strip identity for the batch strip read: connectionId present
+ *  = dish card (dish-linked photos only), absent = restaurant card. */
+export interface PhotoStripRef {
+  restaurantId: string;
+  connectionId?: string;
+}
+
+/** One card's strip in POST /photos/strips: `key` = connectionId when the
+ *  ref carried one, else restaurantId. */
+export interface CardStripDto {
+  key: string;
+  totalCount: number;
+  photos: PhotoStripItemDto[];
+}
+
+/** The report modal's "what's wrong" vocabulary (page-registry §8.6);
+ *  mirrors PHOTO_REPORT_REASONS on the API. */
+export type PhotoReportReason = 'not_food' | 'inappropriate' | 'wrong_entity' | 'other';
 
 export type AvatarConfirmStatus = 'approved' | 'rejected' | 'pending' | 'missing';
 
@@ -260,9 +282,22 @@ export const photosService = {
     return response.data;
   },
 
-  async reportPhoto(photoId: string): Promise<{ hidden: boolean }> {
-    const response = await api.post<{ hidden: boolean }>(`/photos/${photoId}/report`);
+  async reportPhoto(photoId: string, reason?: PhotoReportReason): Promise<{ hidden: boolean }> {
+    const response = await api.post<{ hidden: boolean }>(
+      `/photos/${photoId}/report`,
+      reason ? { reason } : {}
+    );
     return response.data;
+  },
+
+  /** Batch card-strip read: one call per visible screen of cards (the
+   *  dataloader in use-card-photo-strip coalesces per-row asks into this). */
+  async getStrips(refs: PhotoStripRef[]): Promise<CardStripDto[]> {
+    if (refs.length === 0) {
+      return [];
+    }
+    const response = await api.post<{ strips: CardStripDto[] }>('/photos/strips', { refs });
+    return response.data.strips;
   },
 
   async getRestaurantGallery(restaurantId: string): Promise<RestaurantGalleryDto> {

@@ -150,6 +150,13 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
     transitionKind: 'openChild',
     motion: { kind: 'snapTo', snap: 'expanded' },
   },
+  // W2 (page-registry §7.4): the post page opens at expanded like every full-page child.
+  {
+    from: '*',
+    to: 'postPhotos',
+    transitionKind: 'openChild',
+    motion: { kind: 'snapTo', snap: 'expanded' },
+  },
 
   // CHILD DISMISS (owner decision 2026-07-10): backing out of a poll detail GLIDES the
   // sheet back to the PARENT's own remembered detent — the feed left at middle comes back

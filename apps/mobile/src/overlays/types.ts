@@ -24,7 +24,8 @@ export type OverlayKey =
   | 'notifications'
   | 'settings'
   | 'editProfile'
-  | 'shareConfig';
+  | 'shareConfig'
+  | 'postPhotos';
 
 export type OverlaySheetSnap = BottomSheetSnap;
 export type OverlaySheetSnapRequest = {

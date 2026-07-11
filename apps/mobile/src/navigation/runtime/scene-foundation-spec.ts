@@ -108,6 +108,13 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
   },
+  // W2 (page-registry §7.4): the post page — photo tiles; no filter strip.
+  postPhotos: {
+    skeleton: { rowType: 'tile' },
+    strip: 'none',
+    failure: 'announcer',
+    header: 'persistent',
+  },
   shareConfig: {
     skeleton: { rowType: 'tile' },
     strip: 'none',

@@ -248,6 +248,19 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     chromePolicy: 'preserve',
     headerActionPolicy: 'fixed-close',
   },
+  // W2 (§7.4): the post page — the photo funnel's terminal child scene.
+  postPhotos: {
+    role: 'child',
+    productSceneKey: null,
+    parentSceneKeys: ['search', 'bookmarks', 'profile', 'polls'],
+    requiresOwnerSceneKey: false,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: true,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'preserve',
+    headerActionPolicy: 'fixed-close',
+  },
   shareConfig: {
     role: 'child',
     productSceneKey: null,
@@ -279,6 +292,7 @@ export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
   'settings',
   'editProfile',
   'shareConfig',
+  'postPhotos',
 ] as const satisfies readonly OverlayKey[];
 
 export const APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS = [
@@ -293,6 +307,7 @@ export const APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS = [
   'settings',
   'editProfile',
   'shareConfig',
+  'postPhotos',
 ] as const satisfies readonly OverlayKey[];
 
 export const APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS = [
@@ -501,6 +516,16 @@ export type OverlayRouteParamsMap = {
   editProfile?: undefined;
   shareConfig?: {
     listId?: string | null;
+  };
+  // W2 (§7.4): the post page. Trigger CONTEXT (restaurant/dish pre-fill) + the pending-assets
+  // nonce — the picker/camera assets are NON-serializable and ride the module-scope
+  // postPhotosPendingAssets store; sessionNonce is the key into it.
+  postPhotos?: {
+    restaurantId?: string | null;
+    restaurantName?: string | null;
+    dishId?: string | null;
+    dishName?: string | null;
+    sessionNonce?: string | null;
   };
 };
 

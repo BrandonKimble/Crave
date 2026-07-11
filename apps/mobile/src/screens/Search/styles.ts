@@ -950,6 +950,12 @@ const styles = StyleSheet.create({
   resultPressable: {
     width: '100%',
   },
+  // §7.1 card anatomy: the photo strip rides under the metadata block as the
+  // card's last element (button strip comes later).
+  cardPhotoStripSection: {
+    width: '100%',
+    marginTop: 10,
+  },
   resultHeader: {
     position: 'relative',
     flexDirection: 'row',

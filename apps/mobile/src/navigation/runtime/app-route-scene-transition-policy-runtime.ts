@@ -204,6 +204,8 @@ const SEEDED_FORWARD_OPEN_SCENES = new Set<OverlayKey>([
   'settings',
   'editProfile',
   'shareConfig',
+  // W2: postPhotos paints its own shell on frame 1 (static mounted body) — hard-swap.
+  'postPhotos',
 ]);
 
 const isSharedSheetChildScene = (sceneKey: OverlayKey): boolean =>

@@ -568,12 +568,26 @@ const areOverlayRouteParamsEqual = (
     return left == null && right == null;
   }
   if ('restaurantId' in left || 'restaurantId' in right) {
+    if (!('restaurantId' in left) || !('restaurantId' in right)) {
+      return false;
+    }
+    // Both the `restaurant` child and the `postPhotos` post page carry `restaurantId`;
+    // source/sessionToken exist only on the former, sessionNonce/dish fields only on the
+    // latter (undefined === undefined otherwise — the pollId-arm precedent).
+    const leftRestaurant = left as {
+      restaurantId?: string | null;
+      source?: string | null;
+      sessionToken?: number | null;
+      sessionNonce?: string | null;
+      dishId?: string | null;
+    };
+    const rightRestaurant = right as typeof leftRestaurant;
     return (
-      'restaurantId' in left &&
-      'restaurantId' in right &&
-      left.restaurantId === right.restaurantId &&
-      left.source === right.source &&
-      left.sessionToken === right.sessionToken
+      leftRestaurant.restaurantId === rightRestaurant.restaurantId &&
+      leftRestaurant.source === rightRestaurant.source &&
+      leftRestaurant.sessionToken === rightRestaurant.sessionToken &&
+      leftRestaurant.sessionNonce === rightRestaurant.sessionNonce &&
+      leftRestaurant.dishId === rightRestaurant.dishId
     );
   }
   if ('pollId' in left || 'pollId' in right) {

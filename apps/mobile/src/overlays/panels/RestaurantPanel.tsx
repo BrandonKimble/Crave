@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import type { OperatingStatus } from '@crave-search/shared';
 import { Text } from '../../components';
+import { CardPhotoStrip } from '../../components/photos/CardPhotoStrip';
 import type { FoodResult } from '../../types';
 import type { RestaurantProfileSeed } from '../../navigation/runtime/app-route-profile-transition-state-contract';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
@@ -32,6 +33,7 @@ import { calculateSnapPoints } from '../sheetUtils';
 import type { OverlayContentSpec } from '../types';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useRestaurantHeaderLiveState } from '../restaurant-header-live-state';
+import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 import CraveScoreText from '../../screens/Search/components/CraveScoreText';
 
 export type RestaurantOverlayData = {
@@ -261,6 +263,24 @@ export const useRestaurantPanelSpec = ({
             <Feather name="phone" size={18} color="#0f172a" />
             <Text style={styles.primaryActionText}>Call</Text>
           </Pressable>
+          {/* W2 (page-registry §7.4): the restaurant-profile add-photo entry — crude chip;
+              the real chip-row is W3's design pass. Plain-function funnel entry (this is a
+              spec hook — effects/hooks-with-effects are off the table here). */}
+          <Pressable
+            style={styles.primaryAction}
+            onPress={() =>
+              openPostPhotosFunnel({
+                restaurantId: restaurant.restaurantId,
+                restaurantName: restaurant.restaurantName,
+              })
+            }
+            accessibilityRole="button"
+            accessibilityLabel="Add photo"
+            testID="restaurant-add-photo"
+          >
+            <Feather name="camera" size={18} color="#0f172a" />
+            <Text style={styles.primaryActionText}>Add photo</Text>
+          </Pressable>
         </View>
         {locationCandidates.length > 0 ? (
           <View style={styles.locationsSection}>
@@ -367,6 +387,7 @@ export const useRestaurantPanelSpec = ({
     resolveLocationLabel,
     restaurant?.craveScore,
     restaurant?.restaurantId,
+    restaurant?.restaurantName,
     sharedWebsiteUrl,
     shouldShowPerLocationWebsite,
     toggleLocationExpanded,
@@ -396,6 +417,15 @@ export const useRestaurantPanelSpec = ({
             <Text style={styles.dishStatLabel}>Total votes</Text>
             <Text style={styles.dishStatValue}>{item.totalUpvotes}</Text>
           </View>
+        </View>
+        {/* §7.1: every dish row carries its (dish-linked) photo strip as the
+            card's last element. Display context — placeholder when empty. */}
+        <View style={styles.dishPhotoStripSection}>
+          <CardPhotoStrip
+            restaurantId={item.restaurantId}
+            connectionId={item.connectionId}
+            height={72}
+          />
         </View>
       </View>
     ),
@@ -877,6 +907,9 @@ const styles = StyleSheet.create({
   },
   dishStat: {
     flex: 1,
+  },
+  dishPhotoStripSection: {
+    marginTop: 12,
   },
   dishStatLabel: {
     fontSize: FONT_SIZES.caption,

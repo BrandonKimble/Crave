@@ -5,6 +5,7 @@ import { Share as LucideShare, Heart as LucideHeart } from 'lucide-react-native'
 import { HandPlatter } from 'lucide-react-native';
 
 import { Text } from '../../../components';
+import { CardPhotoStrip } from '../../../components/photos/CardPhotoStrip';
 import { colors as themeColors } from '../../../constants/theme';
 import { getPriceRangeLabel } from '../../../constants/pricing';
 import { FONT_SIZES } from '../../../constants/typography';
@@ -286,6 +287,16 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
           </View>
         </View>
       </Pressable>
+      {/* §7.1 card anatomy: photo strip (dish-linked photos) is the card's
+          LAST element (button strip comes later). Display context — no add
+          tile; sibling of the Pressable so photo taps never open the profile. */}
+      <View style={styles.cardPhotoStripSection}>
+        <CardPhotoStrip
+          restaurantId={item.restaurantId}
+          connectionId={item.connectionId}
+          height={72}
+        />
+      </View>
     </View>
   );
 };
