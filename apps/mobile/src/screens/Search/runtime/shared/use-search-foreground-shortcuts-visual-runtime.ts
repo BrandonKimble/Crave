@@ -23,7 +23,6 @@ type UseSearchForegroundShortcutsVisualRuntimeArgs = Pick<
   | 'isSuggestionOverlayVisible'
   | 'backdropTarget'
   | 'suggestionProgress'
-  | 'searchChromeContentOpacity'
   | 'searchChromeScale'
   | 'searchChromeTranslateY'
   | 'shouldDisableSearchShortcuts'
@@ -38,7 +37,6 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
   isSuggestionOverlayVisible,
   backdropTarget,
   suggestionProgress,
-  searchChromeContentOpacity,
   searchChromeScale,
   searchChromeTranslateY,
   shouldDisableSearchShortcuts,
@@ -132,12 +130,9 @@ export const useSearchForegroundShortcutsVisualRuntime = ({
   ]);
   const searchShortcutContentAnimatedStyle = useAnimatedStyle(
     () => ({
-      opacity:
-        isSuggestionPanelActive || isSuggestionOverlayVisible
-          ? 1
-          : searchChromeContentOpacity.value,
+      opacity: 1,
     }),
-    [isSuggestionOverlayVisible, isSuggestionPanelActive, searchChromeContentOpacity]
+    []
   );
   const shouldLockSearchChromeTransform = isSuggestionPanelActive || isSuggestionOverlayVisible;
   const searchShortcutsAnimatedStyle = useAnimatedStyle(() => {

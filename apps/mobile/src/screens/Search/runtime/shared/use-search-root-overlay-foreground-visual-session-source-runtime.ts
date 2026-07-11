@@ -38,7 +38,6 @@ export const useSearchRootOverlayForegroundVisualSessionSourceRuntime = ({
     AppRouteSceneChromeMotionRuntime,
     | 'overlayChromeTransitionProgress'
     | 'searchChromeOpacity'
-    | 'searchChromeContentOpacity'
     | 'searchChromeScale'
     | 'searchChromeTranslateY'
   >;
@@ -55,7 +54,6 @@ export const useSearchRootOverlayForegroundVisualSessionSourceRuntime = ({
       shouldRenderSearchOverlay: rootOverlaySessionSurfaceRuntime.shouldRenderSearchOverlay,
       isSuggestionPanelActive,
       searchChromeOpacity: appRouteSceneChromeMotionRuntime.searchChromeOpacity,
-      searchChromeContentOpacity: appRouteSceneChromeMotionRuntime.searchChromeContentOpacity,
       searchChromeScale: appRouteSceneChromeMotionRuntime.searchChromeScale,
       searchChromeTranslateY: appRouteSceneChromeMotionRuntime.searchChromeTranslateY,
       isSearchSessionActive: dataPlaneRuntime.runtimeFlags.isSearchSessionActive,
@@ -78,7 +76,6 @@ export const useSearchRootOverlayForegroundVisualSessionSourceRuntime = ({
       isSuggestionPanelActive,
       appRouteSceneChromeMotionRuntime.overlayChromeTransitionProgress,
       appRouteSceneChromeMotionRuntime.searchChromeOpacity,
-      appRouteSceneChromeMotionRuntime.searchChromeContentOpacity,
       appRouteSceneChromeMotionRuntime.searchChromeScale,
       appRouteSceneChromeMotionRuntime.searchChromeTranslateY,
       resultsSheetRuntimeLane.mapMovedSinceSearch,
