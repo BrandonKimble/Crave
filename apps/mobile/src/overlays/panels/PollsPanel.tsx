@@ -559,7 +559,7 @@ export const usePollsPanelListSceneParts = (): {
       // so the loading frame reads as content, not a bare spinner. Collapsed: keep the compact
       // spinner — a full skeleton list would overflow the small collapsed sheet.
       if (isExpandedSurface) {
-        return <SceneLoadingSurface rowType="restaurant" />;
+        return <SceneLoadingSurface rowType="restaurant" frostBacking />;
       }
       return (
         <View style={styles.loaderCentered}>

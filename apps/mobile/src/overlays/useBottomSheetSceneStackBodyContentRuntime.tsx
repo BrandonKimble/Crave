@@ -18,6 +18,8 @@ import { getOverlayScrollOffset, setOverlayScrollOffset } from './overlayScrollO
 import { notePremountChildBodyFirstCommit } from '../navigation/runtime/premount-violation-probe';
 import { registerOverlaySceneScrollHandle } from './overlaySceneScrollHandleRegistry';
 import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
+import { getSceneFoundationSpec } from '../navigation/runtime/scene-foundation-spec';
+import { SceneBodyFoundationSurface } from './SceneBodyFoundationSurface';
 import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneStackBodyActivityContext';
 
 // ─── W1 slice 1 — entry-keyed child mount boundary ──────────────────────────────────────────
@@ -352,8 +354,24 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     shouldRenderListBody,
   ]);
 
-  return React.useMemo(
-    () => <View style={sceneSurfaceStyle}>{sceneBodyInner}</View>,
-    [sceneBodyInner, sceneSurfaceStyle]
-  );
+  // THE FOUNDATION WHITE LAYER (scene-foundation-spec `bodySurface: 'white'`): every sheet
+  // scene's body lane paints a white plate over the shared frost — no page sits on bare frost.
+  // Per-page cutouts (FrostCutout) punch scroll-tracked holes in this plate. 'search' has no
+  // foundation row (owns the canonical results composition) and keeps the plain wrapper.
+  const hasFoundationWhiteLayer =
+    getSceneFoundationSpec(sceneKey as Parameters<typeof getSceneFoundationSpec>[0])
+      ?.bodySurface === 'white';
+  return React.useMemo(() => {
+    if (hasFoundationWhiteLayer) {
+      return (
+        <SceneBodyFoundationSurface
+          scrollOffset={bodyScrollRuntime.scrollOffset}
+          style={sceneSurfaceStyle}
+        >
+          {sceneBodyInner}
+        </SceneBodyFoundationSurface>
+      );
+    }
+    return <View style={sceneSurfaceStyle}>{sceneBodyInner}</View>;
+  }, [bodyScrollRuntime.scrollOffset, hasFoundationWhiteLayer, sceneBodyInner, sceneSurfaceStyle]);
 };

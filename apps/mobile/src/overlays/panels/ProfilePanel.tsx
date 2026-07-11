@@ -12,6 +12,7 @@ import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
+import { FrostCutout } from '../SceneBodyFoundationSurface';
 import { SceneLoadingSurface, SkeletonBox } from '../../components/skeletons';
 import type { ProfileSegment } from './profileSceneQueryOptions';
 import { useProfilePanelBodyModelRuntime } from './runtime/profile-panel-body-model-runtime';
@@ -191,7 +192,9 @@ const ProfileIdentityChrome = React.memo(
           </Pressable>
         </View>
 
-        <View style={styles.statsRow}>
+        {/* Foundation cutout (first consumer): the metrics box is a HOLE in the scene's white
+            layer — the shared frost shows through as its background (no opaque bg of its own). */}
+        <FrostCutout borderRadius={16} style={styles.statsRow}>
           {PROFILE_STAT_LABELS.map((label, index) => (
             <View key={label} style={styles.statBlock}>
               {!identityResolved ? (
@@ -206,7 +209,7 @@ const ProfileIdentityChrome = React.memo(
               </Text>
             </View>
           ))}
-        </View>
+        </FrostCutout>
       </>
     );
   }
@@ -399,7 +402,7 @@ const ProfileSceneBody = React.memo(
         }
       })
     ) : (
-      <SceneLoadingSurface rowType="restaurant" />
+      <SceneLoadingSurface rowType="restaurant" frostBacking />
     );
     const profiledRows = onProfilerRender ? (
       <React.Profiler id="ProfileSceneBody:rows" onRender={onProfilerRender}>
@@ -422,7 +425,7 @@ ProfileSceneBody.displayName = 'ProfileSceneBody';
 
 const ProfileTransitionShell = React.memo(() => (
   <View style={styles.contentContainer}>
-    <SceneLoadingSurface rowType="restaurant" />
+    <SceneLoadingSurface rowType="restaurant" frostBacking />
   </View>
 ));
 
@@ -594,13 +597,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#f8fafc',
   },
+  // The metrics box is a FrostCutout: NO background — the hole in the foundation white layer
+  // shows the frost through; borderRadius here only rounds the wrapper for layout parity with
+  // the punched hole (radius passed to FrostCutout).
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 8,
     paddingVertical: 12,
     borderRadius: 16,
-    backgroundColor: '#f8fafc',
   },
   statBlock: {
     flex: 1,

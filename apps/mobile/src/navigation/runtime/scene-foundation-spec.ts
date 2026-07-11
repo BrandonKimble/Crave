@@ -34,6 +34,16 @@ export type SceneFoundationSpec = {
    * says 'visible').
    */
   grabHandle: 'visible' | 'hidden';
+  /**
+   * The FOUNDATION WHITE LAYER (owner standard, 2026-07-11): every page renders a white plate
+   * over the shared frosted foundation — no page may sit on bare frost. The only value is
+   * 'white' BY DESIGN (a required literal every scene must state; opting out to bare frost is
+   * unrepresentable). Rendered at the body lane (`SceneBodyFoundationSurface` in
+   * useBottomSheetSceneStackBodyContentRuntime); per-page CUTOUTS (holes showing the frost
+   * through) are runtime-registered by wrapping a content box in `<FrostCutout>` — see
+   * ADDING_A_SCENE.md §5. The search/results sheet is excluded (owns its canonical composition).
+   */
+  bodySurface: 'white';
 };
 
 export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> = {
@@ -43,6 +53,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   bookmarks: {
     skeleton: { rowType: 'tile' },
@@ -50,6 +61,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   profile: {
     skeleton: { rowType: 'restaurant' },
@@ -57,6 +69,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   restaurant: {
     skeleton: { rowType: 'dish' },
@@ -64,6 +77,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   saveList: {
     skeleton: { rowType: 'tile' },
@@ -71,6 +85,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   pollDetail: {
     skeleton: { rowType: 'comment', frostBacking: true },
@@ -78,6 +93,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   pollCreation: {
     skeleton: { rowType: 'comment', frostBacking: true },
@@ -85,6 +101,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   // Stub-pass scenes (plans/page-registry.md §1) — foundation decisions stated ahead
   // of the real bodies; their design passes revise values, never optionality.
@@ -94,6 +111,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   listDetail: {
     skeleton: { rowType: 'restaurant' },
@@ -101,6 +119,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   followList: {
     skeleton: { rowType: 'tile' },
@@ -108,6 +127,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   notifications: {
     skeleton: { rowType: 'comment' },
@@ -115,6 +135,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   settings: {
     skeleton: { rowType: 'tile' },
@@ -123,6 +144,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     header: 'persistent',
     // §7.7/§9a: full-snap exception — full-page illusion, NO grab handle, X close.
     grabHandle: 'hidden',
+    bodySurface: 'white',
   },
   editProfile: {
     skeleton: { rowType: 'tile' },
@@ -130,6 +152,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   // W2 (page-registry §7.4): the post page — photo tiles; no filter strip.
   postPhotos: {
@@ -138,6 +161,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   // W3 messaging (§4.1): inbox = person rows; DM thread = message rows.
   messagesInbox: {
@@ -146,6 +170,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
   dmSession: {
     skeleton: { rowType: 'comment' },
@@ -153,6 +178,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
+    bodySurface: 'white',
   },
 };
 

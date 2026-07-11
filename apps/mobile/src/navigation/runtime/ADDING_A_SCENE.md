@@ -75,7 +75,7 @@ today and slated for compile-time hardening — see
 | #   | Piece                          | The ONE home                                                                                                                                                                                                                               | New-page requirement                                                                                                                                                                                                                                                                                                                        |
 | --- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | Persistent header              | `app-route-persistent-header-registry.ts` → `PersistentSheetHeaderHost`                                                                                                                                                                    | Register a header descriptor. ⚠️ Runtime map, dev-warn only — a missing one renders null.                                                                                                                                                                                                                                                   |
-| 2   | Frost + white plate w/ cutouts | ONE hoisted `FrostedGlassBackground` (`BottomSheetSceneStackHost`); per-scene white plate via the page frame's `backgroundComponent` slot                                                                                                  | Free by construction; supply a `backgroundComponent` only for custom cutouts.                                                                                                                                                                                                                                                               |
+| 2   | Frost + white plate w/ cutouts | ONE hoisted `FrostedGlassBackground` (`BottomSheetSceneStackHost`); the FOUNDATION WHITE LAYER via `bodySurface: 'white'` in `scene-foundation-spec.ts` → `SceneBodyFoundationSurface` (body lane)                                         | Free by construction — the spec row's required `bodySurface: 'white'` literal is the law (no page on bare frost; there is no opt-out value). Cutouts: wrap any content box in `<FrostCutout borderRadius={r}>` — see the white-layer law below.                                                                                             |
 | 3   | Cutout skeleton                | `SceneLoadingSurface` via `SCENE_STACK_BODY_SKELETON_SPECS` + in-body ready-gate                                                                                                                                                           | Add a spec row (pick `rowType`) AND an in-body ready-gate. ⚠️ `Partial<Record>` today — omission degrades silently.                                                                                                                                                                                                                         |
 | 4   | Toggle/filter strip            | `FrostedFilterStrip` + `SegmentedToggle`/`FilterChip` (search's strip is canonical)                                                                                                                                                        | Use these; NEVER hand-roll a segment row (bookmarks/profile did — being consolidated).                                                                                                                                                                                                                                                      |
 | 5   | Snap rules                     | `SHEET_MOTION_DESCRIPTOR_TABLE` (+ scene-policy allowed snaps)                                                                                                                                                                             | Add your rows. House de-facto rules: top-level map-first scenes → `collapsed`; content top-levels → `rememberedDetent`→`expanded`; child opens → `snapTo expanded` (restaurant's `promoteAtLeast middle` is the exception); `closeChild` → `preserveLiveY`; `terminalDismiss` → `hide`; modals → mandate `none`.                            |
@@ -112,6 +112,35 @@ laws at the header's bottom edge — neither has a per-scene flag, by design:
    children). A body that genuinely publishes no scroll gets an honest hidden
    divider (offset 0). Standalone headers outside the sheet chrome
    (RecentHistoryView) compose the SAME fade hook — never a forked interpolation.
+
+**The white-layer law (owner decree, 2026-07-11):** EVERY page renders a WHITE
+LAYER on top of the shared frosted foundation — no page may sit on bare frost.
+
+- **Where it lives:** `scene-foundation-spec.ts` requires `bodySurface: 'white'`
+  on every scene row (the only representable value — opting out to bare frost is
+  a compile error, not a choice). `useBottomSheetSceneStackBodyContentRuntime`
+  renders it via `SceneBodyFoundationSurface` (`src/overlays/SceneBodyFoundationSurface.tsx`)
+  at the body lane, under the scene's scroll/list/static content. Never re-add a
+  per-transport `contentSurfaceStyle` white or a panel-painted full-bleed white —
+  those are the hacks this replaced. The search/results sheet is the stated
+  exclusion (it owns the canonical frost + plate composition this generalizes).
+- **Cutouts (per-page, optional — most pages have none):** to punch a hole in the
+  white layer so the frost shows through as a content box's background, wrap the
+  box in `<FrostCutout borderRadius={r} style={...}>` (exported from
+  `SceneBodyFoundationSurface.tsx`). It onLayout-measures its laid-out rect
+  (measureLayout against the body lane — content coordinates, immune to sheet
+  motion/scroll) and registers the hole; the white plate renders as a
+  `MaskedHoleOverlay` (the same plate-with-punched-holes primitive as the header
+  cutout plate and the cutout skeleton) translated by `-scrollOffset` on the UI
+  thread, so the hole tracks the box while scrolling. Give the box NO opaque
+  background of its own, and keep its text legible on frost gray. First consumer:
+  the profile metrics box (`ProfilePanel` `statsRow`).
+- **In-body loading skeletons:** a `SceneLoadingSurface` rendered INSIDE a body
+  (list-empty/loading states) now sits over the opaque foundation white — pass
+  `frostBacking` so its holes read as frosted windows (the self-frost rule the
+  skeleton already documents). The shared skeleton LEG (body-null fallback)
+  renders without the white layer and keeps true frost-through — leave its
+  foundation-spec `skeleton.frostBacking` values as they are.
 
 **The toggle contract (owner decree, 2026-07-08):** every toggle-like control —
 including conditional ones like "Search this area" (a toggle whose availability is a

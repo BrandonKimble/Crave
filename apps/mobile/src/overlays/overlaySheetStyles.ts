@@ -44,9 +44,6 @@ export const overlaySheetStyles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: 'transparent',
   },
-  contentSurfaceWhite: {
-    backgroundColor: '#ffffff',
-  },
   shadowShell: {
     flex: 1,
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,

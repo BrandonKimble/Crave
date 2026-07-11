@@ -47,15 +47,17 @@ const STATIC_SCENE_SCROLL_CONTENT_INSETS = {
 
 // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (the shared sheet
 // scroll container) so the scroll↔sheet handoff works — no per-scene over-scroll config needed.
+// NOTE: no per-transport contentSurfaceStyle white here anymore — the foundation white layer
+// (scene-foundation-spec `bodySurface: 'white'` → SceneBodyFoundationSurface) paints every sheet
+// scene's white plate at the body lane; the old bookmarks/profile transport white was the
+// per-scene hack it replaces.
 const BOOKMARKS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
-  contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
 };
 
 const PROFILE_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 160 },
   keyboardShouldPersistTaps: 'handled',
-  contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
 };
 
 const SAVE_LIST_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {

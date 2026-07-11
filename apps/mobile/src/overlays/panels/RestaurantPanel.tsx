@@ -635,7 +635,7 @@ export const useRestaurantPanelSpec = ({
       // structure-matched dish-card skeleton (mirrors the dish list) instead of a bare spinner.
       return (
         <View style={[styles.loadingEmptyState, { minHeight: emptyAreaMinHeight }]}>
-          <SceneLoadingSurface rowType="dish" />
+          <SceneLoadingSurface rowType="dish" frostBacking />
         </View>
       );
     }
@@ -656,14 +656,16 @@ export const useRestaurantPanelSpec = ({
   const renderSeedSkeleton = React.useCallback(
     () => (
       <View style={[styles.loadingEmptyState, { minHeight: emptyAreaMinHeight }]}>
-        <SceneLoadingSurface rowType="dish" />
+        <SceneLoadingSurface rowType="dish" frostBacking />
       </View>
     ),
     [emptyAreaMinHeight]
   );
 
-  // Frost is the shared page-frame foundation now; the restaurant body is frost-through (dish
-  // cards paint their own white), so it contributes no extra background material.
+  // Frost is the shared page-frame foundation, and the FOUNDATION WHITE LAYER
+  // (scene-foundation-spec `bodySurface: 'white'` via SceneBodyFoundationSurface) paints the
+  // body-lane white plate for every sheet scene - the panel contributes no extra background
+  // material of its own.
   const backgroundComponent = null;
 
   if (!data) {
