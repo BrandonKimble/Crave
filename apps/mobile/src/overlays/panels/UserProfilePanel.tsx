@@ -17,6 +17,7 @@ import {
   type AppModalAction,
 } from '../../components/app-modal-store';
 import { usersService, type PublicUserProfile } from '../../services/users';
+import { messagingService } from '../../services/messaging';
 import {
   fetchUserComments,
   fetchUserCreatedPolls,
@@ -321,6 +322,30 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
         setFollowBusy(false);
       });
   }, [followBusy, isFollowedByMe, userId, queryClient]);
+
+  // W3 messaging (§4.4 entry 1): Message = Follow's pair. Idempotent
+  // get-or-create by peer, then push the entry-keyed dmSession child.
+  const [messageBusy, setMessageBusy] = React.useState(false);
+  const handleMessage = React.useCallback(() => {
+    if (!userId || messageBusy) {
+      return;
+    }
+    setMessageBusy(true);
+    void messagingService
+      .getOrCreateConversation(userId)
+      .then((conversation) => {
+        pushRoute('dmSession', {
+          conversationId: conversation.conversationId,
+          peerName: conversation.otherUser.displayName ?? conversation.otherUser.username ?? null,
+        });
+      })
+      .catch(() => {
+        // Blocked pair / offline: the server said no — nothing to fake locally.
+      })
+      .finally(() => {
+        setMessageBusy(false);
+      });
+  }, [messageBusy, pushRoute, userId]);
 
   const runBlockChange = React.useCallback(
     (block: boolean) => {
@@ -746,6 +771,20 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
         </View>
         {edge != null && !edge.isMe ? (
           <Pressable
+            onPress={handleMessage}
+            disabled={messageBusy}
+            accessibilityRole="button"
+            accessibilityLabel="Message"
+            testID="user-profile-message-button"
+            style={styles.messageButton}
+          >
+            <Text variant="body" weight="semibold" style={styles.messageText}>
+              Message
+            </Text>
+          </Pressable>
+        ) : null}
+        {edge != null && !edge.isMe ? (
+          <Pressable
             onPress={handleToggleFollow}
             disabled={followBusy}
             accessibilityRole="button"
@@ -893,6 +932,16 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 999,
     backgroundColor: '#0f172a',
+  },
+  messageButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: '#f1f5f9',
+    marginRight: 8,
+  },
+  messageText: {
+    color: '#0f172a',
   },
   followButtonActive: {
     backgroundColor: '#f1f5f9',

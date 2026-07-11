@@ -17,6 +17,11 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
     routeSceneRuntime.routeOverlayRouteCommandRuntime.pushRoute('settings');
   }, [routeSceneRuntime.routeOverlayRouteCommandRuntime]);
 
+  const handleOpenMessages = React.useCallback(() => {
+    // W3 messaging (§4.4 entry 2): the inbox is a child of the own-profile page.
+    routeSceneRuntime.routeOverlayRouteCommandRuntime.pushRoute('messagesInbox');
+  }, [routeSceneRuntime.routeOverlayRouteCommandRuntime]);
+
   const handlePollPress = React.useCallback(
     (poll: Poll) => {
       routeSceneRuntime.routeSearchCommandActions.openAppSearchRoutePollsHome({
@@ -49,9 +54,10 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
     () => ({
       isSignedIn: Boolean(isSignedIn),
       handleOpenSettings,
+      handleOpenMessages,
       handlePollPress,
       handleListPress,
     }),
-    [handleListPress, handleOpenSettings, handlePollPress, isSignedIn]
+    [handleListPress, handleOpenMessages, handleOpenSettings, handlePollPress, isSignedIn]
   );
 };

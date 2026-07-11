@@ -610,6 +610,17 @@ const areOverlayRouteParamsEqual = (
       leftPoll.pinnedMarket === rightPoll.pinnedMarket
     );
   }
+  if ('conversationId' in left || 'conversationId' in right) {
+    // W3 messaging: only dmSession carries conversationId — peerName is a
+    // display snapshot, but a changed snapshot still means a changed entry
+    // value (the header renders from it until the DTO hydrates).
+    if (!('conversationId' in left) || !('conversationId' in right)) {
+      return false;
+    }
+    const leftDm = left as { conversationId?: string | null; peerName?: string | null };
+    const rightDm = right as typeof leftDm;
+    return leftDm.conversationId === rightDm.conversationId && leftDm.peerName === rightDm.peerName;
+  }
   if ('bounds' in left || 'bounds' in right) {
     return (
       'bounds' in left &&

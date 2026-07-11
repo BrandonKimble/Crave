@@ -7,11 +7,13 @@ import type { ProfileSceneHeaderProps } from './profile-panel-runtime-contract';
 export const useProfilePanelIdentityRuntime = ({
   activeSegment,
   onOpenSettings,
+  onOpenMessages,
   onSelectSegment,
   profile,
 }: {
   activeSegment: ProfileSegment;
   onOpenSettings: () => void;
+  onOpenMessages: () => void;
   onSelectSegment: (segment: ProfileSegment) => void;
   profile: UserProfile | undefined;
 }): ProfileSceneHeaderProps => {
@@ -48,6 +50,7 @@ export const useProfilePanelIdentityRuntime = ({
       identityResolved,
       activeSegment,
       onOpenSettings,
+      onOpenMessages,
       onSelectSegment,
     }),
     [
@@ -55,6 +58,7 @@ export const useProfilePanelIdentityRuntime = ({
       displayName,
       identityResolved,
       initials,
+      onOpenMessages,
       onOpenSettings,
       onSelectSegment,
       profile?.avatarUrl,

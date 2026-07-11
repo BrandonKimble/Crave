@@ -25,7 +25,9 @@ export type OverlayKey =
   | 'settings'
   | 'editProfile'
   | 'shareConfig'
-  | 'postPhotos';
+  | 'postPhotos'
+  | 'messagesInbox'
+  | 'dmSession';
 
 export type OverlaySheetSnap = BottomSheetSnap;
 export type OverlaySheetSnapRequest = {

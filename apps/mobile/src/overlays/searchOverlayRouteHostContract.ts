@@ -64,7 +64,9 @@ export type SearchRouteMountedSceneBodyKey =
   | 'settings'
   | 'editProfile'
   | 'shareConfig'
-  | 'postPhotos';
+  | 'postPhotos'
+  | 'messagesInbox'
+  | 'dmSession';
 
 export type SearchRouteMountedSceneChromeKey =
   | 'bookmarks'
@@ -78,7 +80,9 @@ export type SearchRouteMountedSceneChromeKey =
   | 'settings'
   | 'editProfile'
   | 'shareConfig'
-  | 'postPhotos';
+  | 'postPhotos'
+  | 'messagesInbox'
+  | 'dmSession';
 
 export type SearchRouteMountedSceneChromeSurface = 'underlay' | 'background' | 'header' | 'overlay';
 

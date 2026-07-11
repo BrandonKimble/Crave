@@ -18,6 +18,8 @@ export type ProfileSceneHeaderProps = {
   identityResolved: boolean;
   activeSegment: ProfileSegment;
   onOpenSettings: () => void;
+  // W3 messaging (§4.4 entry 2): own-profile header → messagesInbox child push.
+  onOpenMessages: () => void;
   onSelectSegment: (segment: ProfileSegment) => void;
 };
 
@@ -49,6 +51,7 @@ export type ProfileSceneRow =
 export type ProfilePanelActionsRuntime = {
   isSignedIn: boolean;
   handleOpenSettings: () => void;
+  handleOpenMessages: () => void;
   handlePollPress: (poll: Poll) => void;
   handleListPress: (list: FavoriteListSummary) => void;
 };

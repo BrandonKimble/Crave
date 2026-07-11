@@ -59,7 +59,9 @@ export type AppRouteMountedSceneBodyKey =
   | 'settings'
   | 'editProfile'
   | 'shareConfig'
-  | 'postPhotos';
+  | 'postPhotos'
+  | 'messagesInbox'
+  | 'dmSession';
 
 export type AppRouteMountedSceneChromeKey =
   | 'bookmarks'
@@ -73,7 +75,9 @@ export type AppRouteMountedSceneChromeKey =
   | 'settings'
   | 'editProfile'
   | 'shareConfig'
-  | 'postPhotos';
+  | 'postPhotos'
+  | 'messagesInbox'
+  | 'dmSession';
 
 export type AppRouteMountedSceneChromeSurface = 'underlay' | 'background' | 'header' | 'overlay';
 

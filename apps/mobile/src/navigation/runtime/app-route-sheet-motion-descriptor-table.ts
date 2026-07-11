@@ -157,6 +157,20 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
     transitionKind: 'openChild',
     motion: { kind: 'snapTo', snap: 'expanded' },
   },
+  // W3 messaging (§4.1/§7.9): inbox + DM thread open fully extended; back
+  // restores the prior snap via the generic child-dismiss remembered detent.
+  {
+    from: '*',
+    to: 'messagesInbox',
+    transitionKind: 'openChild',
+    motion: { kind: 'snapTo', snap: 'expanded' },
+  },
+  {
+    from: '*',
+    to: 'dmSession',
+    transitionKind: 'openChild',
+    motion: { kind: 'snapTo', snap: 'expanded' },
+  },
 
   // CHILD DISMISS (owner decision 2026-07-10): backing out of a poll detail GLIDES the
   // sheet back to the PARENT's own remembered detent — the feed left at middle comes back

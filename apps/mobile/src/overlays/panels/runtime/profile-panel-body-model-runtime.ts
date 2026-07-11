@@ -2,10 +2,7 @@ import React from 'react';
 
 import { consumePendingOriginSceneSegmentRestore } from '../../originSceneSegmentRuntime';
 import { useOriginSceneScrollPublication } from '../../useOriginSceneScrollPublication';
-import {
-  PROFILE_DEFAULT_SEGMENT,
-  type ProfileSegment,
-} from '../profileSceneQueryOptions';
+import { PROFILE_DEFAULT_SEGMENT, type ProfileSegment } from '../profileSceneQueryOptions';
 import { useProfilePanelActionsRuntime } from './profile-panel-actions-runtime';
 import { useProfilePanelDataRuntime } from './profile-panel-data-runtime';
 import { useProfilePanelIdentityRuntime } from './profile-panel-identity-runtime';
@@ -43,8 +40,7 @@ export const useProfilePanelBodyModelRuntime = ({
   shouldRunDataLane: boolean;
   isActive: boolean;
 }): ProfilePanelBodyModelRuntime => {
-  const [activeSegment, setActiveSegment] =
-    React.useState<ProfileSegment>(PROFILE_DEFAULT_SEGMENT);
+  const [activeSegment, setActiveSegment] = React.useState<ProfileSegment>(PROFILE_DEFAULT_SEGMENT);
   const actionsRuntime = useProfilePanelActionsRuntime();
   const dataLaneReady = actionsRuntime.isSignedIn && shouldRunDataLane;
   const dataRuntime = useProfilePanelDataRuntime({
@@ -85,6 +81,7 @@ export const useProfilePanelBodyModelRuntime = ({
   const headerProps = useProfilePanelIdentityRuntime({
     activeSegment,
     onOpenSettings: actionsRuntime.handleOpenSettings,
+    onOpenMessages: actionsRuntime.handleOpenMessages,
     onSelectSegment: setActiveSegment,
     profile: dataRuntime.profile,
   });

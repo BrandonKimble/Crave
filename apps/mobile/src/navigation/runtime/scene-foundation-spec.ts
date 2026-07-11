@@ -121,6 +121,19 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     failure: 'announcer',
     header: 'persistent',
   },
+  // W3 messaging (§4.1): inbox = person rows; DM thread = message rows.
+  messagesInbox: {
+    skeleton: { rowType: 'comment' },
+    strip: 'none',
+    failure: 'announcer',
+    header: 'persistent',
+  },
+  dmSession: {
+    skeleton: { rowType: 'comment' },
+    strip: 'none',
+    failure: 'announcer',
+    header: 'persistent',
+  },
 };
 
 export const getSceneFoundationSpec = (sceneKey: OverlayKey): SceneFoundationSpec | undefined =>

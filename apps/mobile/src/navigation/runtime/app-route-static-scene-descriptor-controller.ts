@@ -35,7 +35,9 @@ type StaticStubChildSceneKey =
   | 'settings'
   | 'editProfile'
   | 'shareConfig'
-  | 'postPhotos';
+  | 'postPhotos'
+  | 'messagesInbox'
+  | 'dmSession';
 type StaticSceneKey = 'saveList' | StaticTabSceneKey | StaticStubChildSceneKey;
 
 const staticSceneStyles = StyleSheet.create({
@@ -83,6 +85,22 @@ const STATIC_STUB_CHILD_SCENE_KEYS: readonly StaticStubChildSceneKey[] = [
 const POST_PHOTOS_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 72 }],
   keyboardShouldPersistTaps: 'handled',
+};
+
+// W3 messaging (§4.1): the inbox is a RE-SORTING list (rows re-order on every
+// new message) — MVCP must be OFF (CLAUDE.md: re-sortable feeds disable it).
+const MESSAGES_INBOX_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
+  contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 72 }],
+  flashListProps: { maintainVisibleContentPosition: { disabled: true } },
+};
+
+// dmSession: chat thread — MVCP stays DEFAULT ON (append/chat lists keep it);
+// composer inputs ride the keyboard-persist transport (the PostPhotos channel)
+// + on-drag dismissal so a thread swipe drops the keyboard.
+const DM_SESSION_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
+  contentContainerStyle: [staticSceneStyles.scrollContent, { paddingBottom: 24 }],
+  keyboardShouldPersistTaps: 'handled',
+  keyboardDismissMode: 'on-drag',
 };
 
 const STATIC_RETAINED_TAB_BODY_ADMISSION_POLICY: AppRouteSceneBodyAdmissionPolicy = {
@@ -199,6 +217,27 @@ class AppRouteStaticSceneDescriptorController {
       sceneChrome: createMountedChrome('postPhotos'),
       sceneBodyContent: createMountedBody('postPhotos'),
       sceneBodyTransport: POST_PHOTOS_BODY_TRANSPORT,
+    });
+    // W3 messaging (§4.1) — separate publishes for the per-scene transports.
+    sceneInputLane.publishRouteSceneDescriptor({
+      sceneKey: 'messagesInbox',
+      shellSpec: createStaticChildShellSpec({
+        sceneKey: 'messagesInbox',
+        sceneLayout,
+      }),
+      sceneChrome: createMountedChrome('messagesInbox'),
+      sceneBodyContent: createMountedBody('messagesInbox'),
+      sceneBodyTransport: MESSAGES_INBOX_BODY_TRANSPORT,
+    });
+    sceneInputLane.publishRouteSceneDescriptor({
+      sceneKey: 'dmSession',
+      shellSpec: createStaticChildShellSpec({
+        sceneKey: 'dmSession',
+        sceneLayout,
+      }),
+      sceneChrome: createMountedChrome('dmSession'),
+      sceneBodyContent: createMountedBody('dmSession'),
+      sceneBodyTransport: DM_SESSION_BODY_TRANSPORT,
     });
     sceneInputLane.publishRouteSceneDescriptor({
       sceneKey: 'bookmarks',

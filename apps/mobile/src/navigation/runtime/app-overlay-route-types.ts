@@ -273,6 +273,36 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     chromePolicy: 'preserve',
     headerActionPolicy: 'fixed-close',
   },
+  // W3 messaging (plans/w3-messaging-design.md §4.1): the inbox — child with
+  // SINGLETON semantics (no params; re-push pops-to-existing, standard child behavior).
+  messagesInbox: {
+    role: 'child',
+    productSceneKey: null,
+    parentSceneKeys: ['profile'],
+    requiresOwnerSceneKey: false,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: true,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'preserve',
+    headerActionPolicy: 'fixed-close',
+  },
+  // W3 messaging (§4.1): the DM thread — ENTRY-KEYED per conversation (RT-19:
+  // child role ⇒ entry-keyed mounts; params flow FROM THE ENTRY as props, C2).
+  dmSession: {
+    role: 'child',
+    productSceneKey: null,
+    // (parentSceneKeys is top-level product keys only + has zero runtime
+    // consumers; dmSession's real parents are userProfile/messagesInbox.)
+    parentSceneKeys: ['profile'],
+    requiresOwnerSceneKey: false,
+    sceneSwitch: true,
+    sceneInput: true,
+    staticSceneInput: true,
+    sheetPolicy: 'sharedPhysicalSheet',
+    chromePolicy: 'preserve',
+    headerActionPolicy: 'fixed-close',
+  },
 } as const satisfies Record<OverlayKey, AppOverlayRouteMetadata>;
 
 export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
@@ -293,6 +323,8 @@ export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
   'editProfile',
   'shareConfig',
   'postPhotos',
+  'messagesInbox',
+  'dmSession',
 ] as const satisfies readonly OverlayKey[];
 
 export const APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS = [
@@ -308,6 +340,8 @@ export const APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS = [
   'editProfile',
   'shareConfig',
   'postPhotos',
+  'messagesInbox',
+  'dmSession',
 ] as const satisfies readonly OverlayKey[];
 
 export const APP_OVERLAY_ROUTE_SCENE_INPUT_KEYS = [
@@ -526,6 +560,14 @@ export type OverlayRouteParamsMap = {
     dishId?: string | null;
     dishName?: string | null;
     sessionNonce?: string | null;
+  };
+  // W3 messaging (§4.1). Inbox is param-less; dmSession is entry-keyed per
+  // conversation — conversationId is the identity, peerName an optional
+  // instant-header snapshot (the DTO hydrate replaces it).
+  messagesInbox?: undefined;
+  dmSession?: {
+    conversationId?: string | null;
+    peerName?: string | null;
   };
 };
 

@@ -195,6 +195,27 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     snapPersistence: 'none',
     chromePolicy: { kind: 'preserve' },
   },
+  // W3 messaging (§4.1/§7.9): both full-page children — tapping Message/inbox
+  // fully extends the sheet (requiresExpandedPresentation), back restores the
+  // prior snap via the standard child-dismiss glide.
+  messagesInbox: {
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
+    defaultFirstEntrySnap: 'expanded',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: true,
+    canSwipeDismiss: false,
+    snapPersistence: 'none',
+    chromePolicy: { kind: 'preserve' },
+  },
+  dmSession: {
+    sheetTargetGroup: SHEET_HOST_TARGET_GROUP,
+    defaultFirstEntrySnap: 'expanded',
+    allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
+    requiresExpandedPresentation: true,
+    canSwipeDismiss: false,
+    snapPersistence: 'none',
+    chromePolicy: { kind: 'preserve' },
+  },
   scoreInfo: {
     sheetTargetGroup: null,
     defaultFirstEntrySnap: null,

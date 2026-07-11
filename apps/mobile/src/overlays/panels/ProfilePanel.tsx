@@ -115,6 +115,7 @@ type ProfileIdentityChromeProps = {
   followingCount: number;
   identityResolved: boolean;
   onOpenSettings: () => void;
+  onOpenMessages: () => void;
 };
 
 const PROFILE_STAT_LABELS = ['Polls created', 'Polls contributed', 'Followers', 'Following'];
@@ -131,6 +132,7 @@ const ProfileIdentityChrome = React.memo(
     followingCount,
     identityResolved,
     onOpenSettings,
+    onOpenMessages,
   }: ProfileIdentityChromeProps) => {
     const statValues = [pollsCreatedCount, pollsContributedCount, followersCount, followingCount];
     return (
@@ -168,6 +170,16 @@ const ProfileIdentityChrome = React.memo(
               </>
             )}
           </View>
+          {/* W3 messaging (§4.4 entry 2): own-profile header → inbox. */}
+          <Pressable
+            style={styles.settingsButton}
+            onPress={onOpenMessages}
+            accessibilityRole="button"
+            accessibilityLabel="Messages"
+            testID="profile-open-messages"
+          >
+            <Feather name="message-circle" size={20} color={themeColors.primary} />
+          </Pressable>
           <Pressable
             style={styles.settingsButton}
             onPress={onOpenSettings}
@@ -303,6 +315,7 @@ const ProfileSceneListHeader = React.memo(
     identityResolved,
     activeSegment,
     onOpenSettings,
+    onOpenMessages,
     onSelectSegment,
   }: ProfileSceneHeaderProps) => (
     <View style={styles.sceneListHeader}>
@@ -317,6 +330,7 @@ const ProfileSceneListHeader = React.memo(
         followingCount={followingCount}
         identityResolved={identityResolved}
         onOpenSettings={onOpenSettings}
+        onOpenMessages={onOpenMessages}
       />
 
       <ProfileSegmentSwitcher activeSegment={activeSegment} onSelectSegment={onSelectSegment} />

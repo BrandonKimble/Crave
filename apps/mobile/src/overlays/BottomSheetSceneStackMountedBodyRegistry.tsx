@@ -6,6 +6,7 @@ import { BookmarksMountedSceneBody } from './panels/BookmarksPanel';
 import { ProfileMountedSceneBody } from './panels/ProfilePanel';
 import { SaveListMountedSceneBody } from './panels/SaveListPanel';
 import { PostPhotosPanelBody } from './panels/PostPhotosPanel';
+import { DmSessionPanelBody, MessagesInboxPanelBody } from './panels/MessagingPanels';
 import {
   EditProfileMountedSceneBody,
   FollowListMountedSceneBody,
@@ -56,6 +57,10 @@ export const BottomSheetSceneStackMountedBody = React.memo(
         return <ShareConfigMountedSceneBody entry={entry} />;
       case 'postPhotos':
         return <PostPhotosPanelBody entry={entry} />;
+      case 'messagesInbox':
+        return <MessagesInboxPanelBody entry={entry} />;
+      case 'dmSession':
+        return <DmSessionPanelBody entry={entry} />;
       default:
         return null;
     }

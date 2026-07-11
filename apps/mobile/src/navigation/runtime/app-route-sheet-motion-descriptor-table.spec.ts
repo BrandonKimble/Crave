@@ -51,6 +51,8 @@ const SCENE_KEY_DOMAIN = {
   editProfile: true,
   shareConfig: true,
   postPhotos: true,
+  messagesInbox: true,
+  dmSession: true,
 } satisfies Record<OverlayKey, true>;
 
 const ALL_SCENE_KEYS = Object.keys(SCENE_KEY_DOMAIN) as readonly OverlayKey[];
