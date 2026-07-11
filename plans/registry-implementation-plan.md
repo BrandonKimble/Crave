@@ -482,3 +482,39 @@ Three laws, all foundation-level (ADDING_A_SCENE.md §5 records them):
   userProfile CHILD page (Polls/Comments/Lists/Photos sections) are two
   different pages by design — owner flagged the inconsistency; unifying
   the root profile onto the 4-section shape is an OWNER CALL, recorded.
+
+## Owner feedback round 3 (2026-07-11 late) — recovered from 3 limit-killed agents
+
+Three agents died on the Fable-5 limit mid-flight; I inspected the half-tree,
+kept the good work, reverted the broken files, and completed the rest (opus).
+All four asks committed + sim-verified + both adversarial verifiers clean:
+
+- SETTINGS JERK (571f2150): the deterministic jerk was the pinned full-snap
+  shell giving settings a DIFFERENT expanded snap than a normal child sheet.
+  Settings is now a STANDARD child shell (identical snaps -> zero movement on
+  switch, like messages), locked at top via a scene-foundation snapLock:
+  'expanded'|'none' literal feeding the SAME two gates as the edit-lock
+  (gesture elastic upperBound + release destination). Full-screen morph +
+  createSettingsFullSnapShellSpec deleted. Sim: settings rests at profile's
+  exact position; hard drag-down rubber-bands; close returns to profile.
+- DIVIDER (bf54dee2): the hoist re-implemented it as hairlineWidth +
+  rgba(15,23,42,0.14) (thin+harsh). Restored THE original soft 1px
+  themeColors.border (#f1f5f9) — the value still live on the search-focus
+  surface — across the hoisted divider + flush offset + RecentHistoryView.
+- SCROLL/CUTOUT (54e7dd10): deleted the direction-gated bounce
+  (bodyTouchDirection) end-to-end; sheet scroll containers are bounces=false/
+  alwaysBounceVertical=false/overScrollMode=never UNCONDITIONALLY (the working
+  list/favorites contract). scrollEnabled stays always-true. No overscroll ->
+  FrostCutout plate-translate == content-translate (the Math.max(offset,0)
+  floor can't desync). First scroll no longer sticks. Also tracked the
+  overlaySheetSceneSnapLockRuntime.ts file 571f2150 left untracked.
+- PROFILE UNIFICATION (b15f179d): root profile tab + userProfile now render
+  ONE shared ProfileSectionsBody (Polls/Comments/Lists/Photos); root keeps
+  identity chrome + metrics FrostCutout, isOwnProfile=true; settings drops the
+  My-public-profile row; Created/Contributed/Favorites segment machine deleted
+  (2 runtime files + types + orphaned services). Stale origin-restore segment
+  values degrade through the isProfileSectionKey guard.
+
+NOTE: profile is short so cutout-during-scroll isn't sim-exercisable, but the
+no-overscroll proof + verifier make it airtight. RevenueCat price + owner
+calls from prior rounds still open.
