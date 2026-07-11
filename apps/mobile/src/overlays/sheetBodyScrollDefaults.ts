@@ -22,12 +22,13 @@ import type { ScrollViewProps } from 'react-native';
  * handoff for free and can't accidentally break it. (If a future non-handoff sheet ever genuinely
  * needs bounce, add an explicit opt-out at the container — don't reintroduce a per-scene prop.)
  *
- * ALWAYS-SCROLLABLE AMENDMENT (owner decree 2026-07-11): every page must scroll/bounce even when
- * its content fits the viewport. These literals are now the REST-STATE / fallback values: the
- * container gates `bounces`/`alwaysBounceVertical` on the UI thread (bounce ON only for up-drags
- * or while bottom-overscrolled — see the `touchDirection` prop doc on BottomSheetScrollContainer).
- * The TOP contract above is unchanged: a down-drag always finds bounce off and pins at the top.
- * Android keeps `overScrollMode:'never'` (its overscroll stretch cannot be direction-gated).
+ * ALWAYS-SCROLLABLE (owner decree 2026-07-11): every page's list stays scroll-ENABLED even when its
+ * content fits the viewport (decided upstream via `shouldEnableScroll`). That is orthogonal to
+ * over-scroll: scroll-enabled short content simply doesn't move, and bounce stays OFF. No-bounce is
+ * UNCONDITIONAL — the earlier direction-gated bounce (a `touchDirection` shared value that enabled
+ * bounce on up-drags) was reverted because its top over-scroll let the list translate past the
+ * pinned header during the down-handoff AND desynced the FrostCutout plate (which translates by
+ * -scrollOffset and cannot follow a negative over-scroll offset).
  */
 export const SHEET_BODY_NO_OVERSCROLL: {
   bounces: boolean;
@@ -38,9 +39,3 @@ export const SHEET_BODY_NO_OVERSCROLL: {
   alwaysBounceVertical: false,
   overScrollMode: 'never',
 };
-
-/**
- * Slack past the content's max legitimate offset before the container treats the list as
- * bottom-overscrolled (keeps the bounce gate from flickering on sub-pixel content/frame rounding).
- */
-export const BOTTOM_OVERSCROLL_EPSILON_PX = 2;

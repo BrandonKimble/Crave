@@ -271,9 +271,6 @@ export const useBottomSheetSharedRuntime = ({
   const expandLastTouchY = useSharedValue(0);
   const expandAxisLock = useSharedValue(0);
   const collapsePanActive = useSharedValue(false);
-  // Body-touch vertical direction (+1 up / -1 down / 0 rest) — written by the pans, read by the
-  // scroll containers' always-scrollable bounce gate (see BottomSheetScrollContainer).
-  const bodyTouchDirection = useSharedValue(0);
   const collapseStartSheetY = useSharedValue(0);
   const collapseStartTouchX = useSharedValue(0);
   const collapseStartTouchY = useSharedValue(0);
@@ -429,7 +426,6 @@ export const useBottomSheetSharedRuntime = ({
     collapseLastTouchX,
     collapseLastTouchY,
     collapseAxisLock,
-    bodyTouchDirection,
     scrollOffset,
     scrollTopOffset,
     sheetY,
@@ -448,11 +444,6 @@ export const useBottomSheetSharedRuntime = ({
     gesturesScroll: gestures.scroll,
     gesturesScrollSecondary: gestures.scrollSecondary,
     scrollHeaderComponent,
-    bodyTouchDirection,
-    primaryScrollOffset,
-    secondaryScrollOffset,
-    primaryScrollTopOffset,
-    secondaryScrollTopOffset,
   });
   const animatedSurfaceRuntime = useBottomSheetSharedAnimatedSurfaceRuntime({
     scrollOffset,

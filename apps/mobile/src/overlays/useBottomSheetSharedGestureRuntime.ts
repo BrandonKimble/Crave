@@ -59,16 +59,6 @@ type UseBottomSheetSharedGestureRuntimeArgs = {
   collapseLastTouchX: SharedValue<number>;
   collapseLastTouchY: SharedValue<number>;
   collapseAxisLock: SharedValue<number>;
-  /**
-   * UI-thread body-touch vertical direction: +1 finger moving UP (content pulled up), -1 moving
-   * DOWN, 0 at rest / fresh touch. Written from the pans' onTouchesMove (they observe every body
-   * touch even when they never activate). BottomSheetScrollContainer gates iOS bounce off it:
-   * bounce only for up-drags / while bottom-overscrolled, so short content gets the
-   * always-scrollable rubber-band while a down-drag arriving at the top stays PINNED
-   * (SHEET_BODY_NO_OVERSCROLL handoff contract) with zero race — the direction is known before
-   * the boundary is reached.
-   */
-  bodyTouchDirection: SharedValue<number>;
   scrollOffset: SharedValue<number>;
   scrollTopOffset: SharedValue<number>;
   sheetY: SharedValue<number>;
@@ -119,7 +109,6 @@ export const useBottomSheetSharedGestureRuntime = ({
   collapseLastTouchX,
   collapseLastTouchY,
   collapseAxisLock,
-  bodyTouchDirection,
   scrollOffset,
   scrollTopOffset,
   sheetY,
@@ -227,9 +216,6 @@ export const useBottomSheetSharedGestureRuntime = ({
         expandPanActive.value = false;
         expandDidHandoffToScroll.value = false;
         expandAxisLock.value = AXIS_LOCK_NONE;
-        // Fresh touch: direction unknown → the scroll container keeps bounce OFF until the
-        // finger proves an up-drag (see bodyTouchDirection doc).
-        bodyTouchDirection.value = 0;
         const touchX = event.allTouches[0]?.absoluteX ?? 0;
         const touchY = event.allTouches[0]?.absoluteY ?? 0;
         expandLastTouchX.value = touchX;
@@ -269,10 +255,6 @@ export const useBottomSheetSharedGestureRuntime = ({
         const dy = touchY - expandLastTouchY.value;
         expandLastTouchX.value = touchX;
         expandLastTouchY.value = touchY;
-        if (dy !== 0) {
-          // Finger up = content pulled up (+1); finger down = -1.
-          bodyTouchDirection.value = dy < 0 ? 1 : -1;
-        }
         if (!expandPanActive.value && expandAxisLock.value !== AXIS_LOCK_VERTICAL) {
           const totalDx = touchX - expandStartTouchX.value;
           const totalDy = touchY - expandStartTouchY.value;
@@ -430,12 +412,6 @@ export const useBottomSheetSharedGestureRuntime = ({
         const dy = touchY - collapseLastTouchY.value;
         collapseLastTouchX.value = touchX;
         collapseLastTouchY.value = touchY;
-        if (dy !== 0) {
-          // Mirror of the expand pan's write: the expand pan FAILS once it hands off to scroll,
-          // so mid-scroll direction reversals are observed HERE (this pan stays alive listening
-          // for the down-handoff).
-          bodyTouchDirection.value = dy < 0 ? 1 : -1;
-        }
         if (collapseAxisLock.value !== AXIS_LOCK_VERTICAL) {
           const totalDx = touchX - collapseStartTouchX.value;
           const totalDy = touchY - collapseStartTouchY.value;
@@ -562,7 +538,6 @@ export const useBottomSheetSharedGestureRuntime = ({
       scrollSecondary: secondaryNativeScrollGesture,
     };
   }, [
-    bodyTouchDirection,
     collapsedSnap,
     collapseAxisLock,
     collapseLastTouchX,
