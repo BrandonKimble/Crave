@@ -8,3 +8,4 @@ export * from './app-modal-store';
 export * from './AppModalHost';
 export * from './share-modal-store';
 export * from './ShareModalHost';
+export * from './MonogramAvatar';

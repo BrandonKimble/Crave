@@ -21,8 +21,10 @@ import {
 import { favoriteListsService, type FavoriteListSummary } from '../../services/favorite-lists';
 import { favoriteListKeys } from '../../hooks/use-favorite-lists';
 import { photosService, type FoodLogGroupDto } from '../../services/photos';
+import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { MonogramAvatar } from '../../components/MonogramAvatar';
 
 // ─── userProfile — the REAL page body (trigger-nav pages; plans/page-registry.md) ───────────
 // W3: the §7.3 dynamic single-page shape, crude — persistent identity header +
@@ -47,19 +49,15 @@ const SECTIONS: Array<{ key: SectionKey; label: string }> = [
 const resolveDisplayTitle = (profile: PublicUserProfile): string =>
   profile.displayName?.trim() || profile.username?.trim() || 'Crave member';
 
-const AvatarCircle = ({ profile }: { profile: PublicUserProfile }) => {
-  const title = resolveDisplayTitle(profile);
-  if (profile.avatarUrl) {
-    return <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />;
-  }
-  return (
-    <View style={styles.avatarFallback}>
-      <Text variant="title" weight="semibold" style={styles.avatarInitial}>
-        {title.slice(0, 1).toUpperCase()}
-      </Text>
-    </View>
-  );
-};
+const AvatarCircle = ({ profile }: { profile: PublicUserProfile }) => (
+  <MonogramAvatar
+    seed={profile.userId}
+    avatarUrl={profile.avatarUrl}
+    title={resolveDisplayTitle(profile)}
+    size={AVATAR_SIZE}
+    textVariant="title"
+  />
+);
 
 const StatCell = ({
   label,
@@ -729,39 +727,63 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
         );
       }
       case 'photos': {
-        if (photosQuery.isPending) return <SectionLoading />;
+        // Red-team W2 (§7.4 own-profile entry): add-photos with NO restaurant
+        // context — the post page opens in "pick a restaurant first" state.
+        const addPhotosButton = isOwnProfile ? (
+          <Pressable
+            onPress={() => openPostPhotosFunnel({})}
+            accessibilityRole="button"
+            accessibilityLabel="Add photos"
+            style={styles.addPhotosButton}
+            testID="user-profile-add-photos"
+          >
+            <Feather name="camera" size={16} color="#0f172a" />
+            <Text variant="caption" weight="semibold" style={styles.addPhotosButtonText}>
+              Add photos
+            </Text>
+          </Pressable>
+        ) : null;
+        const withAdd = (content: React.ReactNode): React.ReactElement => (
+          <View>
+            {addPhotosButton}
+            {content}
+          </View>
+        );
+        if (photosQuery.isPending) return withAdd(<SectionLoading />);
         if (photosQuery.isError) {
-          return (
+          return withAdd(
             <SectionEmpty text="Couldn’t load their photos." testID="user-profile-photos-failed" />
           );
         }
         const groups = photosQuery.data ?? [];
         if (groups.length === 0) {
-          return <SectionEmpty text="No photos yet." testID="user-profile-photos-empty" />;
+          return withAdd(<SectionEmpty text="No photos yet." testID="user-profile-photos-empty" />);
         }
-        return groups.map((group: FoodLogGroupDto) => (
-          <View key={group.restaurantId} style={styles.foodLogGroup}>
-            <Text variant="body" weight="semibold" numberOfLines={1} style={styles.rowTitle}>
-              {group.restaurantName || 'Restaurant'}
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.foodLogStrip}
-            >
-              {group.photos.map((photo) => (
-                <View key={photo.photoId} style={styles.foodLogCell}>
-                  <Image source={{ uri: photo.urls.thumb }} style={styles.foodLogThumb} />
-                  {photo.caption ? (
-                    <Text variant="caption" numberOfLines={1} style={styles.foodLogCaption}>
-                      {photo.caption}
-                    </Text>
-                  ) : null}
-                </View>
-              ))}
-            </ScrollView>
-          </View>
-        ));
+        return withAdd(
+          groups.map((group: FoodLogGroupDto) => (
+            <View key={group.restaurantId} style={styles.foodLogGroup}>
+              <Text variant="body" weight="semibold" numberOfLines={1} style={styles.rowTitle}>
+                {group.restaurantName || 'Restaurant'}
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.foodLogStrip}
+              >
+                {group.photos.map((photo) => (
+                  <View key={photo.photoId} style={styles.foodLogCell}>
+                    <Image source={{ uri: photo.urls.thumb }} style={styles.foodLogThumb} />
+                    {photo.caption ? (
+                      <Text variant="caption" numberOfLines={1} style={styles.foodLogCaption}>
+                        {photo.caption}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          ))
+        );
       }
       default:
         return null;
@@ -943,23 +965,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
   },
-  avatarImage: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: '#f1f5f9',
-  },
-  avatarFallback: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    color: '#0f172a',
-  },
   identityText: {
     flex: 1,
     gap: 2,
@@ -1078,6 +1083,19 @@ const styles = StyleSheet.create({
   },
   listTileMeta: {
     color: '#64748b',
+  },
+  addPhotosButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: '#e0f2fe',
+    marginTop: 8,
+  },
+  addPhotosButtonText: {
+    color: '#0f172a',
   },
   foodLogGroup: {
     paddingVertical: 12,

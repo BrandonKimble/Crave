@@ -17,7 +17,7 @@ export type LaunchIntent =
   | { type: 'polls'; marketKey?: string | null; pollId?: string | null }
   | { type: 'search'; searchIntent: MainSearchIntent }
   // S-E (addressability): a /l/<shareSlug> share link — resolution is ASYNC (getShared),
-  // so the intent carries the slug and the consumer resolves it into a listWorld action.
+  // so the intent carries the slug and the consumer resolves it into the listDetail push.
   | { type: 'sharedList'; shareSlug: string; joinIntent?: boolean }
   // S-E: /q/<query> and /s/<tab> — the URL-addressable search desires.
   | {

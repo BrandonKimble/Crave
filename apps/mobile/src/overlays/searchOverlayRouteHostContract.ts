@@ -64,7 +64,6 @@ export type SearchRouteMountedSceneBodyKey =
   | 'notifications'
   | 'settings'
   | 'editProfile'
-  | 'shareConfig'
   | 'postPhotos'
   | 'messagesInbox'
   | 'dmSession';
@@ -80,7 +79,6 @@ export type SearchRouteMountedSceneChromeKey =
   | 'notifications'
   | 'settings'
   | 'editProfile'
-  | 'shareConfig'
   | 'postPhotos'
   | 'messagesInbox'
   | 'dmSession';

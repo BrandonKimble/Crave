@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, StyleSheet, Image } from 'react-native';
+import { View, Pressable, StyleSheet } from 'react-native';
 import { Sparkles, MessageCircle, Users, Clock } from 'lucide-react-native';
 import { useSharedValue } from 'react-native-reanimated';
 import {
@@ -40,6 +40,7 @@ import { usePollsPanelHeaderModelPublication } from './runtime/polls-panel-heade
 import { PollsHeaderTitleText } from './pollsHeaderVisuals';
 import { useSearchNavSwitchCommitAttribution } from '../../screens/Search/runtime/shared/use-search-nav-switch-commit-attribution';
 import { logPerfScenarioSearchRequestLifecycle } from '../../perf/perf-scenario-attribution';
+import { MonogramAvatar } from '../../components/MonogramAvatar';
 
 const ACCENT = themeColors.primary;
 const BORDER = themeColors.border;
@@ -108,17 +109,16 @@ const resolveCreatorName = (creator: PollCreator | undefined): string =>
   creator?.origin === 'user' ? (creator.displayName ?? creator.username ?? 'Member') : 'Crave';
 
 const PollCreatorBadge = ({ creator }: { creator?: PollCreator }) => {
-  if (creator?.origin === 'user' && creator.avatarUrl) {
-    return <Image source={{ uri: creator.avatarUrl }} style={styles.avatar} />;
-  }
   if (creator?.origin === 'user') {
-    const initial = resolveCreatorName(creator).trim().charAt(0).toUpperCase();
     return (
-      <View style={styles.avatarFallback}>
-        <Text variant="caption" weight="semibold" style={styles.avatarInitial}>
-          {initial || 'M'}
-        </Text>
-      </View>
+      <MonogramAvatar
+        seed={creator.username ?? resolveCreatorName(creator)}
+        avatarUrl={creator.avatarUrl}
+        title={resolveCreatorName(creator)}
+        size={22}
+        textVariant="caption"
+        textStyle={styles.avatarInitial}
+      />
     );
   }
   return (
@@ -676,22 +676,9 @@ const styles = StyleSheet.create({
     color: themeColors.textBody,
     maxWidth: '55%',
   },
-  avatar: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#f1f5f9',
-  },
-  avatarFallback: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#e9eef5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   avatarInitial: {
-    color: themeColors.textBody,
+    // 22px chip — the caption glyph needs a nudge smaller; color stays the
+    // MonogramAvatar white-on-deterministic-color default.
     fontSize: 11,
   },
   avatarApp: {

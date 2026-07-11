@@ -163,11 +163,6 @@ type SearchSubmitOwner = {
     isSearchSessionActive: boolean;
   }) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
-  launchFavoritesListResults: (params: {
-    listId: string;
-    listType: FavoriteListType;
-    submittedLabel: string;
-  }) => Promise<void>;
   launchEntitySearchResults: (params: {
     entityId: string;
     entityType: 'food' | 'food_attribute' | 'restaurant_attribute';
@@ -398,13 +393,12 @@ const useSearchSubmitOwner = ({
     (resolveArgs: SearchWorldResolveArgs) => worldResolver.resolve(resolveArgs),
     [worldResolver]
   );
-  const { runRestaurantEntitySearch, submitViewportShortcut, launchFavoritesListResults } =
-    useSearchStructuredSubmitOwner({
-      searchRuntimeBus,
-      viewportBoundsService,
-      captureFreshTupleBounds,
-      resetMapMoveFlag,
-    });
+  const { runRestaurantEntitySearch, submitViewportShortcut } = useSearchStructuredSubmitOwner({
+    searchRuntimeBus,
+    viewportBoundsService,
+    captureFreshTupleBounds,
+    resetMapMoveFlag,
+  });
   const { submitSearch } = useSearchNaturalSubmitOwner({
     prepareNaturalSearchEntry,
     resolveNaturalSearchAttemptConfig,
@@ -455,7 +449,6 @@ const useSearchSubmitOwner = ({
     submitViewportShortcut,
     rerunActiveSearch,
     loadMoreResults,
-    launchFavoritesListResults,
     launchEntitySearchResults,
   };
 };

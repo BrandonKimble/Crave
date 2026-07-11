@@ -259,13 +259,6 @@ const PARAMS_EQUALITY_CASES: readonly ParamsCase[] = [
     right: { profileUserId: 'u1' },
     expected: true,
   }),
-  paramsCase({
-    name: 'shareConfig: differing listId unequal',
-    key: 'shareConfig',
-    left: { listId: 'l1' },
-    right: { listId: 'l2' },
-    expected: false,
-  }),
 ];
 
 const createEntry = <K extends OverlayKey>(

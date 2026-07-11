@@ -122,5 +122,3 @@ export const CardPhotoStrip: React.FC<CardPhotoStripProps> = ({
     />
   );
 };
-
-export default CardPhotoStrip;

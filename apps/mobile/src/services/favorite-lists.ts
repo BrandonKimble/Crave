@@ -62,6 +62,16 @@ export interface FavoriteListDetail {
   dishes?: FoodResult[];
 }
 
+/** One "your list contains this entity" row (§8.4 Overview saved-note block). */
+export interface FavoriteListEntityMembership {
+  itemId: string;
+  listId: string;
+  listName: string;
+  listType: FavoriteListType;
+  systemKind: string | null;
+  note: string | null;
+}
+
 export const favoriteListsService = {
   async list(params: {
     listType?: FavoriteListType;
@@ -206,5 +216,15 @@ export const favoriteListsService = {
   },
   async disableShare(listId: string): Promise<void> {
     await api.delete(`/favorites/lists/${listId}/share`);
+  },
+  /**
+   * Red-team W2 (page-registry §8.4 Overview element 1): the viewer's lists
+   * containing an entity (restaurant or dish connection), incl. saved notes.
+   */
+  async entityMemberships(entityId: string): Promise<FavoriteListEntityMembership[]> {
+    const response = await api.get<FavoriteListEntityMembership[]>(
+      `/favorites/entities/${entityId}/memberships`
+    );
+    return response.data;
   },
 };

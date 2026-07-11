@@ -49,7 +49,6 @@ const SCENE_KEY_DOMAIN = {
   notifications: true,
   settings: true,
   editProfile: true,
-  shareConfig: true,
   postPhotos: true,
   messagesInbox: true,
   dmSession: true,

@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,6 +29,8 @@ import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-
 import type { EntityRefType } from '../../navigation/runtime/entity-ref-action-policy';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 import type { OverlayRouteParamsMap } from '../../navigation/runtime/app-overlay-route-types';
+import { MonogramAvatar } from '../../components/MonogramAvatar';
+import { formatRelativeTime } from '../../utils/relative-time';
 
 // ─── W3 messaging scenes (plans/w3-messaging-design.md §4) ───────────────────────────────────
 // messagesInbox: child SINGLETON (no params); MVCP disabled on its transport (re-sorting list).
@@ -51,16 +52,6 @@ const peerTitle = (conversation: Conversation): string =>
   conversation.otherUser.username?.trim() ||
   'Crave member';
 
-const relativeTime = (iso: string): string => {
-  const deltaMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(deltaMs / 60_000);
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  return `${Math.floor(hours / 24)}d`;
-};
-
 const previewText = (message: DmMessage | null): string => {
   if (!message) return 'Say hi';
   if (message.kind === 'text') return message.body ?? '';
@@ -69,18 +60,14 @@ const previewText = (message: DmMessage | null): string => {
   return `Shared: ${shared.title}`;
 };
 
-const PeerAvatar = ({ conversation }: { conversation: Conversation }) => {
-  if (conversation.otherUser.avatarUrl) {
-    return <Image source={{ uri: conversation.otherUser.avatarUrl }} style={styles.avatarImage} />;
-  }
-  return (
-    <View style={styles.avatarFallback}>
-      <Text variant="body" weight="semibold" style={styles.avatarInitial}>
-        {peerTitle(conversation).slice(0, 1).toUpperCase()}
-      </Text>
-    </View>
-  );
-};
+const PeerAvatar = ({ conversation }: { conversation: Conversation }) => (
+  <MonogramAvatar
+    seed={conversation.otherUser.userId}
+    avatarUrl={conversation.otherUser.avatarUrl}
+    title={peerTitle(conversation)}
+    size={44}
+  />
+);
 
 // ─── messagesInbox body ──────────────────────────────────────────────────────────────────────
 
@@ -109,7 +96,7 @@ const ConversationRow = ({
     </View>
     <View style={styles.inboxRowMeta}>
       <Text variant="caption" style={styles.inboxRowTime}>
-        {relativeTime(conversation.lastMessageAt)}
+        {formatRelativeTime(conversation.lastMessageAt)}
       </Text>
       {conversation.unreadCount > 0 ? <View style={styles.unreadDot} /> : null}
     </View>
@@ -752,22 +739,6 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: '#2563eb',
-  },
-  avatarImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-  },
-  avatarFallback: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    color: '#475569',
   },
   loadOlder: {
     alignItems: 'center',

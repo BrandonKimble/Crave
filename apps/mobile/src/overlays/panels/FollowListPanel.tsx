@@ -1,12 +1,13 @@
 import React from 'react';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components';
 import { usersService, type FollowListUser } from '../../services/users';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useQuery } from '@tanstack/react-query';
 import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
+import { MonogramAvatar } from '../../components/MonogramAvatar';
 
 // ─── followList — the REAL page body (trigger-nav pages) ────────────────────────────────────
 // Replaces the S-B drill-in practice body. Rows push userProfile — the same-key nesting loop
@@ -18,18 +19,14 @@ const AVATAR_SIZE = 40;
 const resolveRowTitle = (user: FollowListUser): string =>
   user.displayName?.trim() || user.username?.trim() || 'Crave member';
 
-const RowAvatar = ({ user }: { user: FollowListUser }) => {
-  if (user.avatarUrl) {
-    return <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />;
-  }
-  return (
-    <View style={styles.avatarFallback}>
-      <Text variant="body" weight="semibold" style={styles.avatarInitial}>
-        {resolveRowTitle(user).slice(0, 1).toUpperCase()}
-      </Text>
-    </View>
-  );
-};
+const RowAvatar = ({ user }: { user: FollowListUser }) => (
+  <MonogramAvatar
+    seed={user.userId}
+    avatarUrl={user.avatarUrl}
+    title={resolveRowTitle(user)}
+    size={AVATAR_SIZE}
+  />
+);
 
 // W1 slice 1 (C2): the ENTRY arrives as a prop from the entry-keyed mount unit — with two
 // live followList entries the topmost-per-key read would render the wrong one.
@@ -159,23 +156,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#e2e8f0',
-  },
-  avatarImage: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: '#f1f5f9',
-  },
-  avatarFallback: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    color: '#0f172a',
   },
   rowText: {
     flex: 1,

@@ -85,7 +85,6 @@ const OVERLAY_ROUTE_PARAMS_COMPARATORS = {
     left.targetUserId === right.targetUserId &&
     left.joinIntent === right.joinIntent,
   followList: (left, right) => left.userId === right.userId && left.mode === right.mode,
-  shareConfig: (left, right) => left.listId === right.listId,
   postPhotos: (left, right) =>
     left.restaurantId === right.restaurantId &&
     left.restaurantName === right.restaurantName &&

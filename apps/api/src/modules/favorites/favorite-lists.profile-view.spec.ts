@@ -45,7 +45,6 @@ function makeService(lists: any[], cityRows: any[] = []) {
   const blocks = { isBlockedPair: jest.fn().mockResolvedValue(false) };
   const service = new FavoriteListsService(
     prisma,
-    {} as any,
     new FavoriteListAccessPolicy(prisma, blocks as never),
     new ListResultsAssembler({} as never),
     new FavoriteListMapper(prisma, logger),

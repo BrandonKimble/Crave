@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Image, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
 import Constants from 'expo-constants';
 import { X as LucideX } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,49 +19,31 @@ import { NotificationsPanelBody } from './NotificationsPanel';
 import { EditProfilePanelBody } from './EditProfilePanel';
 import { ListDetailPanelBody } from './ListDetailPanel';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import { MonogramAvatar } from '../../components/MonogramAvatar';
 
-// ─── Stub-pass scenes (plans/page-registry.md §1) ────────────────────────────────────────────
-// Placeholder mounted bodies + persistent headers for the 7 registered-but-unbuilt child
-// scenes. NO real content and NO entry points yet — these exist so the scene keys are fully
-// wired through the scene-stack registries (metadata, policy, descriptors, skeletons, headers)
-// ahead of their real builds.
+// ─── Child-scene panel hub ───────────────────────────────────────────────────────────────────
+// The Settings scene body lives here, plus the re-export + persistent-header registration seam
+// for the child scenes whose real bodies live in their own Panel files (UserProfilePanel,
+// FollowListPanel, NotificationsPanel, EditProfilePanel, ListDetailPanel). Header registration
+// runs at module scope — this module is imported by the mounted-body registry, so the
+// registrations land before any child scene can present.
 
-type StubSceneKey =
+type ChildSceneKey =
   | 'userProfile'
   | 'listDetail'
   | 'followList'
   | 'notifications'
   | 'settings'
-  | 'editProfile'
-  | 'shareConfig';
+  | 'editProfile';
 
-const STUB_SCENE_TITLES: Record<StubSceneKey, string> = {
+const CHILD_SCENE_TITLES: Record<ChildSceneKey, string> = {
   userProfile: 'Profile',
   listDetail: 'List',
   followList: 'Followers',
   notifications: 'Notifications',
   settings: 'Settings',
   editProfile: 'Edit profile',
-  shareConfig: 'Share',
 };
-
-const createStubMountedSceneBody = (
-  sceneKey: StubSceneKey
-): React.ComponentType<MountedSceneBodyProps> => {
-  const StubMountedSceneBody = React.memo((_props: MountedSceneBodyProps) => (
-    <View style={styles.body} testID={`stub-scene-${sceneKey}`}>
-      <Text variant="body" style={styles.bodyText}>
-        {STUB_SCENE_TITLES[sceneKey]} — coming soon
-      </Text>
-    </View>
-  ));
-  StubMountedSceneBody.displayName = `StubMountedSceneBody(${sceneKey})`;
-  return StubMountedSceneBody;
-};
-
-// ─── Drill-in practice bodies (S-B) — RETIRED 2026-07-10: userProfile + followList are REAL
-// pages now (UserProfilePanel/FollowListPanel — live follow BE). The DrillInRow primitive
-// stays for the settings rows below.
 
 const DrillInRow = ({
   label,
@@ -113,19 +95,15 @@ const ComingSoonRow = ({ label, testID }: { label: string; testID: string }) => 
   </View>
 );
 
-const BlockedRowAvatar = ({ user }: { user: FollowListUser }) => {
-  if (user.avatarUrl) {
-    return <Image source={{ uri: user.avatarUrl }} style={styles.blockedAvatarImage} />;
-  }
-  const initial = (user.displayName ?? user.username ?? '?').slice(0, 1).toUpperCase();
-  return (
-    <View style={styles.blockedAvatarFallback}>
-      <Text variant="caption" weight="semibold" style={styles.blockedAvatarInitial}>
-        {initial}
-      </Text>
-    </View>
-  );
-};
+const BlockedRowAvatar = ({ user }: { user: FollowListUser }) => (
+  <MonogramAvatar
+    seed={user.userId}
+    avatarUrl={user.avatarUrl}
+    title={user.displayName ?? user.username ?? '?'}
+    size={36}
+    textVariant="caption"
+  />
+);
 
 // §8.6 privacy: my block list, inline under Privacy — each row carries the Unblock
 // affordance (GET /users/me/blocks + the existing DELETE :userId/block).
@@ -319,9 +297,9 @@ const SettingsSceneBody = React.memo((_props: MountedSceneBodyProps) => {
 });
 SettingsSceneBody.displayName = 'SettingsSceneBody';
 
-const createStubPersistentHeaderTitle = (sceneKey: StubSceneKey): React.ComponentType => {
+const createChildPersistentHeaderTitle = (sceneKey: ChildSceneKey): React.ComponentType => {
   // Static text → synchronous first-frame render (same contract as SaveListPanel's title).
-  const StubPersistentHeaderTitle = React.memo(() => (
+  const ChildPersistentHeaderTitle = React.memo(() => (
     <View style={styles.headerTextGroup}>
       <Text
         variant="title"
@@ -330,24 +308,24 @@ const createStubPersistentHeaderTitle = (sceneKey: StubSceneKey): React.Componen
         numberOfLines={1}
         ellipsizeMode="tail"
       >
-        {STUB_SCENE_TITLES[sceneKey]}
+        {CHILD_SCENE_TITLES[sceneKey]}
       </Text>
     </View>
   ));
-  StubPersistentHeaderTitle.displayName = `StubPersistentHeaderTitle(${sceneKey})`;
-  return StubPersistentHeaderTitle;
+  ChildPersistentHeaderTitle.displayName = `ChildPersistentHeaderTitle(${sceneKey})`;
+  return ChildPersistentHeaderTitle;
 };
 
-const createStubPersistentHeaderAction = (sceneKey: StubSceneKey): React.ComponentType => {
+const createChildPersistentHeaderAction = (sceneKey: ChildSceneKey): React.ComponentType => {
   // Generic child-scene close — the same closeActiveRoute action the pollDetail/pollCreation
   // persistent headers use (app-wide route controller).
-  const StubPersistentHeaderAction = React.memo(() => {
+  const ChildPersistentHeaderAction = React.memo(() => {
     const { closeActiveRoute } = useAppOverlayRouteController();
     return (
       <Pressable
         onPress={closeActiveRoute}
         accessibilityRole="button"
-        accessibilityLabel={`Close ${STUB_SCENE_TITLES[sceneKey].toLowerCase()}`}
+        accessibilityLabel={`Close ${CHILD_SCENE_TITLES[sceneKey].toLowerCase()}`}
         style={overlaySheetStyles.closeButton}
         hitSlop={8}
       >
@@ -357,40 +335,29 @@ const createStubPersistentHeaderAction = (sceneKey: StubSceneKey): React.Compone
       </Pressable>
     );
   });
-  StubPersistentHeaderAction.displayName = `StubPersistentHeaderAction(${sceneKey})`;
-  return StubPersistentHeaderAction;
+  ChildPersistentHeaderAction.displayName = `ChildPersistentHeaderAction(${sceneKey})`;
+  return ChildPersistentHeaderAction;
 };
 
-const createStubScene = (sceneKey: StubSceneKey): React.ComponentType<MountedSceneBodyProps> => {
-  // Module-scope registration (house pattern — this module is imported by the mounted-body
-  // registry, so the registrations run before any stub scene can present).
+const registerChildHeader = (sceneKey: ChildSceneKey): void => {
   registerPersistentHeaderDescriptor(sceneKey, {
-    Title: createStubPersistentHeaderTitle(sceneKey),
-    Action: createStubPersistentHeaderAction(sceneKey),
-  });
-  return createStubMountedSceneBody(sceneKey);
-};
-
-const registerStubHeader = (sceneKey: StubSceneKey): void => {
-  registerPersistentHeaderDescriptor(sceneKey, {
-    Title: createStubPersistentHeaderTitle(sceneKey),
-    Action: createStubPersistentHeaderAction(sceneKey),
+    Title: createChildPersistentHeaderTitle(sceneKey),
+    Action: createChildPersistentHeaderAction(sceneKey),
   });
 };
 
-registerStubHeader('userProfile');
-registerStubHeader('followList');
-registerStubHeader('settings');
+registerChildHeader('userProfile');
+registerChildHeader('followList');
+registerChildHeader('settings');
 export const UserProfileMountedSceneBody = UserProfilePanelBody;
 export const FollowListMountedSceneBody = FollowListPanelBody;
 export const SettingsMountedSceneBody = SettingsSceneBody;
 // listDetail is REAL now (W1 slice 4) — body + persistent header live in ListDetailPanel.
 export const ListDetailMountedSceneBody = ListDetailPanelBody;
-registerStubHeader('notifications');
+registerChildHeader('notifications');
 export const NotificationsMountedSceneBody = NotificationsPanelBody;
-registerStubHeader('editProfile');
+registerChildHeader('editProfile');
 export const EditProfileMountedSceneBody = EditProfilePanelBody;
-export const ShareConfigMountedSceneBody = createStubScene('shareConfig');
 
 const styles = StyleSheet.create({
   body: {
@@ -443,23 +410,6 @@ const styles = StyleSheet.create({
   },
   blockedRowSubtitle: {
     color: '#64748b',
-  },
-  blockedAvatarImage: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#e2e8f0',
-  },
-  blockedAvatarFallback: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  blockedAvatarInitial: {
-    color: '#475569',
   },
   unblockButton: {
     paddingHorizontal: 12,

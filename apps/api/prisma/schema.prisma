@@ -1131,12 +1131,6 @@ model User {
 
 model UserStats {
   userId                String   @id @map("user_id") @db.Uuid
-  pollsCreatedCount     Int      @default(0) @map("polls_created_count")
-  pollsContributedCount Int      @default(0) @map("polls_contributed_count")
-  followersCount        Int      @default(0) @map("followers_count")
-  followingCount        Int      @default(0) @map("following_count")
-  favoriteListsCount    Int      @default(0) @map("favorite_lists_count")
-  favoritesTotalCount   Int      @default(0) @map("favorites_total_count")
   updatedAt             DateTime @updatedAt @map("updated_at")
   user                  User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
 

@@ -27,21 +27,36 @@ export type PostPhotosFunnelContext = {
   dishName?: string;
 };
 
+// Two request shapes share the 2-option modal + source legs:
+// - 'route': the standard funnel — assets in hand → pushRoute('postPhotos').
+// - 'assets': red-team W2 (§7.4 multi-restaurant sections) — an ALREADY-OPEN
+//   post page re-runs the source picker for one of its sections; assets are
+//   handed back via callback instead of a second route push.
+type PostPhotosFunnelRequest =
+  | { kind: 'route'; context: PostPhotosFunnelContext }
+  | { kind: 'assets'; onAssets: (assets: ImagePickerAsset[]) => void };
+
 interface PostPhotosFunnelState {
-  pendingContext: PostPhotosFunnelContext | null;
-  openFunnel: (context: PostPhotosFunnelContext) => void;
+  pendingRequest: PostPhotosFunnelRequest | null;
+  openRequest: (request: PostPhotosFunnelRequest) => void;
   clearFunnel: () => void;
 }
 
 const usePostPhotosFunnelStore = create<PostPhotosFunnelState>((set) => ({
-  pendingContext: null,
-  openFunnel: (context) => set({ pendingContext: context }),
-  clearFunnel: () => set({ pendingContext: null }),
+  pendingRequest: null,
+  openRequest: (request) => set({ pendingRequest: request }),
+  clearFunnel: () => set({ pendingRequest: null }),
 }));
 
 /** THE app-wide add-photo entry. Callable from anywhere (incl. spec hooks). */
 export const openPostPhotosFunnel = (context: PostPhotosFunnelContext): void => {
-  usePostPhotosFunnelStore.getState().openFunnel(context);
+  usePostPhotosFunnelStore.getState().openRequest({ kind: 'route', context });
+};
+
+/** Source picker only: same modal + camera/library/dev legs, assets delivered
+ *  to the caller (the mounted post page adding photos to a section). */
+export const openPhotoSourceForAssets = (onAssets: (assets: ImagePickerAsset[]) => void): void => {
+  usePostPhotosFunnelStore.getState().openRequest({ kind: 'assets', onAssets });
 };
 
 /** Hook-shaped alias for React surfaces that prefer the hook idiom. */
@@ -73,14 +88,14 @@ const loadDevTestAssets = async (): Promise<ImagePickerAsset[]> => {
 };
 
 export function PostPhotosFunnelHost(): React.ReactElement | null {
-  const pendingContext = usePostPhotosFunnelStore((state) => state.pendingContext);
+  const pendingRequest = usePostPhotosFunnelStore((state) => state.pendingRequest);
   const clearFunnel = usePostPhotosFunnelStore((state) => state.clearFunnel);
   const { pushRoute } = useAppOverlayRouteController();
 
-  // Latch the context for the async legs (picker/camera resolve after the modal closes).
-  const contextRef = React.useRef<PostPhotosFunnelContext | null>(null);
-  if (pendingContext != null) {
-    contextRef.current = pendingContext;
+  // Latch the request for the async legs (picker/camera resolve after the modal closes).
+  const requestRef = React.useRef<PostPhotosFunnelRequest | null>(null);
+  if (pendingRequest != null) {
+    requestRef.current = pendingRequest;
   }
 
   const pushPostPhotos = React.useCallback(
@@ -88,9 +103,13 @@ export function PostPhotosFunnelHost(): React.ReactElement | null {
       if (assets.length === 0) {
         return;
       }
-      const context = contextRef.current ?? {};
+      const request = requestRef.current ?? { kind: 'route' as const, context: {} };
+      if (request.kind === 'assets') {
+        request.onAssets(assets);
+        return;
+      }
       const sessionNonce = stashPostPhotosAssets(assets);
-      pushRoute('postPhotos', { ...context, sessionNonce });
+      pushRoute('postPhotos', { ...request.context, sessionNonce });
     },
     [pushRoute]
   );
@@ -125,7 +144,7 @@ export function PostPhotosFunnelHost(): React.ReactElement | null {
 
   return (
     <PhotoSourcePickerModal
-      visible={pendingContext != null}
+      visible={pendingRequest != null}
       onRequestClose={clearFunnel}
       onCamera={handleCamera}
       onLibrary={handleLibrary}

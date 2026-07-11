@@ -24,7 +24,6 @@ export type OverlayKey =
   | 'notifications'
   | 'settings'
   | 'editProfile'
-  | 'shareConfig'
   | 'postPhotos'
   | 'messagesInbox'
   | 'dmSession';

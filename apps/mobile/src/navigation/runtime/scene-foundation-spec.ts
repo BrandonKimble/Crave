@@ -139,13 +139,6 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     header: 'persistent',
     grabHandle: 'visible',
   },
-  shareConfig: {
-    skeleton: { rowType: 'tile' },
-    strip: 'none',
-    failure: 'announcer',
-    header: 'persistent',
-    grabHandle: 'visible',
-  },
   // W3 messaging (§4.1): inbox = person rows; DM thread = message rows.
   messagesInbox: {
     skeleton: { rowType: 'comment' },

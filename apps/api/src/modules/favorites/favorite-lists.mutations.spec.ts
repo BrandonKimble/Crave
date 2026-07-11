@@ -148,7 +148,6 @@ function makeHarness(opts: {
     error: jest.fn(),
     debug: jest.fn(),
   };
-  const userStats = { applyDelta: jest.fn().mockResolvedValue(undefined) };
   const execResult = (over: any = {}) => ({
     restaurants: [],
     dishes: [],
@@ -184,7 +183,6 @@ function makeHarness(opts: {
   const mapper = new FavoriteListMapper(prisma as never, logger as never);
   const service = new FavoriteListsService(
     prisma as never,
-    userStats as never,
     access,
     assembler,
     mapper,

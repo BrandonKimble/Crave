@@ -9,6 +9,7 @@ import { openPhotoReportModal } from '../../components/photos/CardPhotoStrip';
 import { pushPhotoEvent } from '../../components/photos/photo-events-buffer';
 import { photosService, type PhotoStripItemDto } from '../../services/photos';
 import { fetchRestaurantMentions, type RestaurantMentionCard } from '../../services/polls';
+import { favoriteListsService } from '../../services/favorite-lists';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { colors as themeColors } from '../../constants/theme';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
@@ -287,6 +288,36 @@ export const RestaurantMentionsView: React.FC<{
   );
 };
 
+// ─── Overview saved note (§8.4 element 1) ────────────────────────────────────
+// Red-team W2: if the viewer has this restaurant saved in any of their lists
+// WITH a note, the note (+ which list) leads the Overview composite. A real
+// committed component (queries fire here, unlike the panel spec hook).
+
+export const RestaurantSavedNote: React.FC<{ restaurantId: string }> = ({ restaurantId }) => {
+  const membershipsQuery = useQuery({
+    queryKey: ['entityMemberships', restaurantId],
+    queryFn: () => favoriteListsService.entityMemberships(restaurantId),
+    enabled: Boolean(restaurantId),
+    staleTime: 30_000,
+  });
+  const noted = (membershipsQuery.data ?? []).filter(
+    (membership) => membership.note != null && membership.note.trim().length > 0
+  );
+  if (noted.length === 0) {
+    return null;
+  }
+  return (
+    <View style={styles.savedNoteSection} testID="restaurant-saved-note">
+      {noted.map((membership) => (
+        <View key={membership.itemId} style={styles.savedNoteCard}>
+          <Text style={styles.savedNoteText}>“{membership.note?.trim()}”</Text>
+          <Text style={styles.savedNoteMeta}>Your note · {membership.listName}</Text>
+        </View>
+      ))}
+    </View>
+  );
+};
+
 // ─── Overview mention extras (tags collage + top discussions) ───────────────
 
 export const RestaurantOverviewMentions: React.FC<{
@@ -519,6 +550,30 @@ const styles = StyleSheet.create({
     paddingLeft: 10,
     borderLeftWidth: 2,
     borderLeftColor: 'rgba(15, 23, 42, 0.12)',
+  },
+  savedNoteSection: {
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+    marginTop: 12,
+    gap: 8,
+  },
+  savedNoteCard: {
+    backgroundColor: '#fefce8',
+    borderWidth: 1,
+    borderColor: 'rgba(180, 83, 9, 0.25)',
+    borderRadius: 14,
+    padding: 12,
+  },
+  savedNoteText: {
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
+    fontStyle: 'italic',
+    color: '#0f172a',
+  },
+  savedNoteMeta: {
+    fontSize: FONT_SIZES.caption,
+    lineHeight: LINE_HEIGHTS.caption,
+    color: themeColors.textBody,
+    marginTop: 4,
   },
   overviewSection: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,

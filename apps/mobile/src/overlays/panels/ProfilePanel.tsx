@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useSharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
@@ -17,6 +17,7 @@ import { SceneLoadingSurface, SkeletonBox } from '../../components/skeletons';
 import type { ProfileSegment } from './profileSceneQueryOptions';
 import { useProfilePanelBodyModelRuntime } from './runtime/profile-panel-body-model-runtime';
 import { getCraveScoreColorFromScore } from '../../utils/quality-color';
+import { MonogramAvatar } from '../../components/MonogramAvatar';
 import type {
   ProfileSceneHeaderProps,
   ProfileSceneRow,
@@ -143,14 +144,15 @@ const ProfileIdentityChrome = React.memo(
               // Profile still loading — pulse a circle so the seeded header doesn't flash the
               // 'C' initials fallback before the real avatar/initials resolve.
               <SkeletonBox width="100%" height={64} borderRadius={32} />
-            ) : avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
             ) : (
-              <View style={styles.avatarFallback}>
-                <Text variant="title" weight="bold" style={styles.avatarInitials}>
-                  {initials}
-                </Text>
-              </View>
+              <MonogramAvatar
+                seed={usernameLabel}
+                avatarUrl={avatarUrl}
+                title={initials}
+                monogram={initials}
+                size={64}
+                textVariant="title"
+              />
             )}
           </View>
           <View style={styles.headerText}>
@@ -569,20 +571,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f5f9',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  avatarFallback: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fde2e7',
-  },
-  avatarInitials: {
-    color: themeColors.primary,
   },
   headerText: {
     flex: 1,

@@ -59,7 +59,6 @@ export type AppRouteMountedSceneBodyKey =
   | 'notifications'
   | 'settings'
   | 'editProfile'
-  | 'shareConfig'
   | 'postPhotos'
   | 'messagesInbox'
   | 'dmSession';
@@ -75,7 +74,6 @@ export type AppRouteMountedSceneChromeKey =
   | 'notifications'
   | 'settings'
   | 'editProfile'
-  | 'shareConfig'
   | 'postPhotos'
   | 'messagesInbox'
   | 'dmSession';

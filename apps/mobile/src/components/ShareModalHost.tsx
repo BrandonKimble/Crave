@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  Clipboard,
   Image,
   Pressable,
   ScrollView,
@@ -10,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { setClipboardString } from '../utils/clipboard';
 import { Feather } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 
@@ -198,7 +198,7 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
       setCopying(true);
       resolveLinkUrl()
         .then((url) => {
-          Clipboard.setString(url);
+          setClipboardString(url);
           setCopied(true);
         })
         .catch(() => {

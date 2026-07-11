@@ -32,10 +32,6 @@ const ROUND_TRIP_CASES: LiveLink[] = [
     kind: 'entityAction',
     action: { kind: 'pushScene', scene: 'userProfile', params: { userId: 'u-alice' } },
   },
-  {
-    kind: 'entityAction',
-    action: { kind: 'listWorld', listId: 'list-7', listType: 'dish', label: 'Date night' },
-  },
   { kind: 'sharedList', shareSlug: 'sunny-tacos-9f' },
   { kind: 'naturalSearch', query: 'best khachapuri & wine' },
   { kind: 'shortcutSearch', shortcutTab: 'restaurants' },

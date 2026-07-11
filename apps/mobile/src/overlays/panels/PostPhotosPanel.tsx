@@ -22,6 +22,8 @@ import { peekPostPhotosAssets, releasePostPhotosAssets } from '../postPhotosPend
 import { photosService, PhotoUploadError } from '../../services/photos';
 import { requestPushPermissionIfEligible } from '../../services/push-permission';
 import { searchService } from '../../services/search';
+import { autocompleteService } from '../../services/autocomplete';
+import { openPhotoSourceForAssets } from '../PostPhotosFunnelHost';
 import type { FoodResult } from '../../types';
 
 // ─── postPhotos — THE post page (W2; plans/page-registry.md §7.4) ────────────────────────────
@@ -67,25 +69,95 @@ type PhotoDraft = {
 };
 
 type PostPhotosSection = {
-  restaurantId: string;
-  restaurantName: string;
+  /** Panel-local section key (restaurantId can't key: unpicked sections are null). */
+  sid: string;
+  /** null = the §7.4 "pick a restaurant" state (own-profile entry / added section). */
+  restaurantId: string | null;
+  restaurantName: string | null;
   drafts: PhotoDraft[];
 };
 
 const THUMB_HEIGHT = 96;
 
+// Module counters: draft/section ids must stay unique across "Add photos"
+// re-runs (the same dev/library assets can be picked twice).
+let draftSeq = 0;
+let sectionSeq = 0;
+const nextSectionId = (): string => `section-${sectionSeq++}`;
+
 const draftsFromAssets = (
   assets: ImagePickerAsset[],
   preassignedDish: { connectionId: string; foodName: string } | null
 ): PhotoDraft[] =>
-  assets.map((asset, index) => ({
-    id: `draft-${index}-${asset.fileName ?? asset.uri.slice(-24)}`,
+  assets.map((asset) => ({
+    id: `draft-${draftSeq++}-${asset.fileName ?? asset.uri.slice(-24)}`,
     asset,
     dish: preassignedDish,
     otherDishName: null,
     photoId: null,
     status: 'draft' as const,
   }));
+
+// ─── Restaurant picker (§7.4 multi-restaurant / own-profile entry) ───────────
+// SIMPLEST honest v1: a search input over the existing restaurant-scoped
+// autocomplete endpoint; picking assigns the section's restaurant.
+const RestaurantPickInline = ({
+  onPick,
+}: {
+  onPick: (restaurant: { restaurantId: string; restaurantName: string }) => void;
+}) => {
+  const [query, setQuery] = React.useState('');
+  const trimmed = query.trim();
+  const suggestionsQuery = useQuery({
+    queryKey: ['postPhotosRestaurantPick', trimmed],
+    enabled: trimmed.length >= 2,
+    staleTime: 30_000,
+    queryFn: ({ signal }) =>
+      autocompleteService.fetchEntities(trimmed, { entityType: 'restaurant', signal }),
+  });
+  const matches = (suggestionsQuery.data?.matches ?? []).filter(
+    (match) => match.matchType == null || match.matchType === 'entity'
+  );
+  return (
+    <View style={styles.restaurantPick} testID="post-photos-restaurant-pick">
+      <Text variant="caption" weight="semibold" style={styles.dishAssignTitle}>
+        Which restaurant are these from?
+      </Text>
+      <TextInput
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Search restaurants…"
+        placeholderTextColor="#94a3b8"
+        style={styles.dishFilterInput}
+        autoCapitalize="none"
+        autoCorrect={false}
+        testID="post-photos-restaurant-input"
+      />
+      {trimmed.length >= 2 && suggestionsQuery.isPending ? (
+        <ActivityIndicator style={styles.dishListSpinner} />
+      ) : null}
+      {matches.map((match) => (
+        <Pressable
+          key={match.entityId}
+          onPress={() => onPick({ restaurantId: match.entityId, restaurantName: match.name })}
+          accessibilityRole="button"
+          accessibilityLabel={`Pick ${match.name}`}
+          style={styles.dishRow}
+          testID={`post-photos-restaurant-${match.entityId}`}
+        >
+          <Text variant="body" numberOfLines={1} style={styles.dishRowName}>
+            {match.name}
+          </Text>
+        </Pressable>
+      ))}
+      {trimmed.length >= 2 && suggestionsQuery.isSuccess && matches.length === 0 ? (
+        <Text variant="caption" style={styles.dishListEmptyText}>
+          No restaurants match.
+        </Text>
+      ) : null}
+    </View>
+  );
+};
 
 // ─── Per-photo dish assignment: inline ranked dish list + typeahead + "Other…" ──────────────
 const DishAssignList = ({
@@ -252,14 +324,16 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     [sessionNonce]
   );
 
-  // SECTIONS state: one section today; W3's own-profile entry adds the
-  // "Add another restaurant" loop by appending sections.
+  // SECTIONS state (§7.4): the trigger context seeds section 1. Own-profile
+  // entry arrives with NO restaurant → section 1 opens in "pick a restaurant"
+  // state; "Add another restaurant" appends more sections.
   const [sections, setSections] = React.useState<PostPhotosSection[]>(() =>
-    restaurantId != null && initialAssets != null
+    initialAssets != null
       ? [
           {
+            sid: nextSectionId(),
             restaurantId,
-            restaurantName,
+            restaurantName: restaurantId != null ? restaurantName : null,
             drafts: draftsFromAssets(
               initialAssets,
               dishId != null ? { connectionId: dishId, foodName: dishName ?? 'Dish' } : null
@@ -315,6 +389,10 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
           // row (a fresh ticket + upload would duplicate the live photo).
           await photosService.retryConfirm(draft.photoId);
         } else {
+          if (section.restaurantId == null) {
+            // Post is disabled while a section lacks a restaurant; loud guard.
+            throw new Error('post-photos: section has no restaurant');
+          }
           await photosService.uploadPhoto(draft.asset, {
             restaurantId: section.restaurantId,
             connectionId: draft.dish?.connectionId,
@@ -374,7 +452,7 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     [uploadDraft]
   );
 
-  if (restaurantId == null || initialAssets == null || sections.length === 0) {
+  if (initialAssets == null || sections.length === 0) {
     // Missing context or a dropped pending-assets stash (dev reload) — honest failure body.
     return (
       <View style={styles.stateBody} testID="post-photos-failed">
@@ -401,19 +479,54 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     (sum, section) => sum + section.drafts.filter((draft) => draft.status === 'done').length,
     0
   );
+  // Post gate (§7.4): every photo needs a restaurant; empty added sections don't block.
+  const hasUnpickedDrafts = sections.some(
+    (section) => section.restaurantId == null && section.drafts.length > 0
+  );
+  const postDisabled = isPosting || totalCount === 0 || hasUnpickedDrafts;
+
+  const assignSectionRestaurant = (
+    sid: string,
+    restaurant: { restaurantId: string; restaurantName: string }
+  ): void => {
+    setSections((current) =>
+      current.map((section) => (section.sid === sid ? { ...section, ...restaurant } : section))
+    );
+  };
+
+  const addAssetsToSection = (sid: string): void => {
+    // Re-runs the shared source picker (camera/library/dev) for THIS section;
+    // assets come back by callback — the panel is already mounted (§7.4).
+    openPhotoSourceForAssets((assets) => {
+      const drafts = draftsFromAssets(assets, null);
+      setSections((current) =>
+        current.map((section) =>
+          section.sid === sid ? { ...section, drafts: [...section.drafts, ...drafts] } : section
+        )
+      );
+    });
+  };
 
   return (
     <View style={styles.body} testID="post-photos-body">
       {sections.map((section) => {
         const selectedDraft = section.drafts.find((draft) => draft.id === selectedDraftId) ?? null;
         return (
-          <View key={section.restaurantId} style={styles.section}>
-            <Text variant="title" weight="semibold" numberOfLines={1} style={styles.sectionTitle}>
-              {section.restaurantName}
-            </Text>
-            <Text variant="caption" style={styles.sectionSubtitle}>
-              Tap a photo to say which dish it is (optional)
-            </Text>
+          <View key={section.sid} style={styles.section}>
+            {section.restaurantId == null ? (
+              <RestaurantPickInline
+                onPick={(restaurant) => assignSectionRestaurant(section.sid, restaurant)}
+              />
+            ) : (
+              <Text variant="title" weight="semibold" numberOfLines={1} style={styles.sectionTitle}>
+                {section.restaurantName}
+              </Text>
+            )}
+            {section.drafts.length > 0 ? (
+              <Text variant="caption" style={styles.sectionSubtitle}>
+                Tap a photo to say which dish it is (optional)
+              </Text>
+            ) : null}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -488,7 +601,19 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
                 );
               })}
             </ScrollView>
-            {selectedDraft != null ? (
+            {/* Per-section add: reopens the shared source picker for THIS section. */}
+            <Pressable
+              onPress={() => addAssetsToSection(section.sid)}
+              accessibilityRole="button"
+              accessibilityLabel="Add photos to this restaurant"
+              style={styles.sectionAddPhotos}
+              testID={`post-photos-add-assets-${section.sid}`}
+            >
+              <Text variant="caption" weight="semibold" style={styles.sectionAddPhotosText}>
+                + Add photos
+              </Text>
+            </Pressable>
+            {selectedDraft != null && section.restaurantId != null ? (
               <DishAssignList
                 restaurantId={section.restaurantId}
                 selectedConnectionId={selectedDraft.dish?.connectionId ?? null}
@@ -503,6 +628,24 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
           </View>
         );
       })}
+
+      {/* §7.4 multi-restaurant sessions: append a fresh "pick a restaurant" section. */}
+      <Pressable
+        onPress={() =>
+          setSections((current) => [
+            ...current,
+            { sid: nextSectionId(), restaurantId: null, restaurantName: null, drafts: [] },
+          ])
+        }
+        accessibilityRole="button"
+        accessibilityLabel="Add another restaurant"
+        style={styles.addRestaurantRow}
+        testID="post-photos-add-restaurant"
+      >
+        <Text variant="body" weight="semibold" style={styles.addRestaurantText}>
+          + Add another restaurant
+        </Text>
+      </Pressable>
 
       {/* PUBLIC/PRIVATE — sent as the ticket's `visibility` (owner-only when private). */}
       <View style={styles.visibilityRow}>
@@ -542,11 +685,11 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
 
       <Pressable
         onPress={() => void handlePost()}
-        disabled={isPosting}
+        disabled={postDisabled}
         accessibilityRole="button"
         accessibilityLabel="Post photos"
         testID="post-photos-submit"
-        style={[styles.postButton, isPosting && styles.postButtonBusy]}
+        style={[styles.postButton, postDisabled && styles.postButtonBusy]}
       >
         {isPosting ? (
           <ActivityIndicator size="small" color="#ffffff" />
@@ -677,6 +820,37 @@ const styles = StyleSheet.create({
   retryChipText: {
     color: '#dc2626',
     fontSize: 11,
+  },
+  sectionAddPhotos: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#e0f2fe',
+  },
+  sectionAddPhotosText: {
+    color: '#0f172a',
+  },
+  addRestaurantRow: {
+    marginTop: 4,
+    marginBottom: 8,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+  },
+  addRestaurantText: {
+    color: '#0f172a',
+  },
+  restaurantPick: {
+    borderRadius: 14,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
   },
   // Dish assignment
   dishAssign: {

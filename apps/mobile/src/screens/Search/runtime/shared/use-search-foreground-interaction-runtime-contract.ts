@@ -26,10 +26,6 @@ export type SearchForegroundSubmitRuntime = Pick<
 // The favorites launch is driven from the launch-intent runtime (not the
 // command/submit runtimes), so it is typed separately rather than added to the
 // shared submit-runtime Pick above.
-export type SearchForegroundLaunchFavoritesListResults = ReturnType<
-  typeof useSearchSubmitOwner
->['launchFavoritesListResults'];
-
 // The skip-LLM entity reveal launched from a poll-discussion comment span is also
 // driven from the launch-intent runtime, so it is typed separately alongside the
 // favorites launch rather than added to the shared submit-runtime Pick above.
@@ -91,7 +87,6 @@ export type SearchForegroundLaunchIntentRuntimeArgs = {
   activeMainIntent: LaunchIntent;
   consumeActiveMainIntent: () => void;
   openRestaurantProfilePreview: SearchForegroundOpenRestaurantProfilePreview;
-  launchFavoritesListResults: SearchForegroundLaunchFavoritesListResults;
   launchEntitySearchResults: SearchForegroundLaunchEntitySearchResults;
   runRestaurantEntitySearch: SearchForegroundRunRestaurantEntitySearch;
   // S-E: the URL-addressable search desires (/q, /s) land through the intent channel.

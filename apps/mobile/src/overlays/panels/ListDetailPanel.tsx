@@ -1,12 +1,6 @@
 import React from 'react';
-import {
-  ActivityIndicator,
-  Clipboard,
-  Pressable,
-  StyleSheet,
-  View,
-  useWindowDimensions,
-} from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { setClipboardString } from '../../utils/clipboard';
 import { X as LucideX } from 'lucide-react-native';
 import { Feather } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,7 +16,8 @@ import Animated, {
 
 import { Text } from '../../components';
 import { CardPhotoStrip } from '../../components/photos/CardPhotoStrip';
-import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';
+import { announceFailureIfOnline } from '../../components/app-modal-store';
+import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 import { showShareModal } from '../../components/share-modal-store';
 import {
   ReorderableRows,
@@ -48,6 +43,7 @@ import {
 } from '../../services/favorite-lists';
 import { usersService } from '../../services/users';
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../types';
+import { MonogramAvatar } from '../../components/MonogramAvatar';
 
 // ─── listDetail — the REAL page body (W1 slices 4/8/9;
 // plans/w1-listdetail-structural-spec.md §A.3 / §C.4 / §C.8 / §C.9) ──────────────────────────
@@ -105,50 +101,20 @@ const STRIP_MORPH_MS = 240;
 const EDIT_ROW_HEIGHT = 64;
 
 // ─── Monogram avatar (§8.1: first-letter on a DETERMINISTIC-random color) ───────────────────
-const MONOGRAM_COLORS = [
-  '#0ea5e9',
-  '#8b5cf6',
-  '#ec4899',
-  '#f59e0b',
-  '#10b981',
-  '#ef4444',
-  '#6366f1',
-  '#14b8a6',
-] as const;
-
-const monogramColorFor = (userId: string): string => {
-  let hash = 0;
-  for (let index = 0; index < userId.length; index += 1) {
-    hash = (hash * 31 + userId.charCodeAt(index)) >>> 0;
-  }
-  return MONOGRAM_COLORS[hash % MONOGRAM_COLORS.length];
-};
-
 const personDisplayName = (person: FavoriteListPerson): string =>
   person.displayName?.trim() || person.username?.trim() || 'Crave member';
 
-const PersonAvatar = ({ person, size }: { person: FavoriteListPerson; size: number }) => {
-  const title = personDisplayName(person);
-  // NOTE: avatarUrl renders would use Image; every roster read supplies the monogram
-  // fallback, and v1 keeps the chip Image-free (roster avatars are rare pre-launch).
-  return (
-    <View
-      style={[
-        styles.avatarCircle,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: monogramColorFor(person.userId),
-        },
-      ]}
-    >
-      <Text variant="caption" weight="semibold" style={styles.avatarInitial}>
-        {title.slice(0, 1).toUpperCase()}
-      </Text>
-    </View>
-  );
-};
+// NOTE: deliberately Image-free (v1 keeps the chip monogram-only; roster avatars are rare
+// pre-launch) — avatarUrl is NOT passed through.
+const PersonAvatar = ({ person, size }: { person: FavoriteListPerson; size: number }) => (
+  <MonogramAvatar
+    seed={person.userId}
+    title={personDisplayName(person)}
+    size={size}
+    textVariant="caption"
+    style={styles.avatarCircle}
+  />
+);
 
 // ─── Collaborator stack chip (§8.1): [plus] [owner] [collab…≤3] [+N] ─────────────────────────
 const CHIP_AVATAR_SIZE = 28;
@@ -622,17 +588,6 @@ const ScoreDot = ({ score }: { score: number | null | undefined }) => (
   </View>
 );
 
-// TODO(W2A): the add-tile press is a placeholder announce until the save
-// funnel's add-photo helper lands — then this wires straight into the shared
-// photo-source picker → post page with (restaurantId, connectionId?) context.
-const announceAddPhotoPlaceholder = (): void => {
-  showAppModal({
-    title: 'Add photos',
-    message: 'Adding photos from your lists is coming soon.',
-    actions: [{ label: 'OK', style: 'default' }],
-  });
-};
-
 const ListDetailRow = ({
   title,
   subtitle,
@@ -640,6 +595,7 @@ const ListDetailRow = ({
   note,
   testID,
   restaurantId,
+  restaurantName,
   connectionId,
   canAddPhoto,
 }: {
@@ -649,6 +605,7 @@ const ListDetailRow = ({
   note?: string | null;
   testID: string;
   restaurantId: string;
+  restaurantName: string;
   connectionId?: string;
   /** §7.1: the "+" tile exists ONLY on cards in the viewer's OWN lists
    *  (owner/collaborator role). */
@@ -673,7 +630,18 @@ const ListDetailRow = ({
       connectionId={connectionId}
       height={56}
       leadTile={canAddPhoto ? 'add' : undefined}
-      onAddPress={canAddPhoto ? announceAddPhotoPlaceholder : undefined}
+      // Red-team W2: the add-tile wires straight into the shared photo funnel
+      // with the row's entity context (dish rows preassign the dish).
+      onAddPress={
+        canAddPhoto
+          ? () =>
+              openPostPhotosFunnel({
+                restaurantId,
+                restaurantName,
+                ...(connectionId != null ? { dishId: connectionId, dishName: title } : {}),
+              })
+          : undefined
+      }
     />
     {note ? (
       <Text variant="caption" style={styles.rowNote} testID={`${testID}-note`}>
@@ -840,7 +808,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         shareSlug: slug,
         joinIntent: true,
       })}`;
-      Clipboard.setString(inviteUrl);
+      setClipboardString(inviteUrl);
       setInviteState('copied');
     } catch {
       announceFailureIfOnline();
@@ -1275,6 +1243,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
             note={restaurant.note}
             testID={`list-detail-row-${restaurant.restaurantId}`}
             restaurantId={restaurant.restaurantId}
+            restaurantName={restaurant.restaurantName}
             canAddPhoto={canAddPhoto}
           />
         ))
@@ -1288,6 +1257,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
             note={dish.note}
             testID={`list-detail-row-${dish.connectionId}`}
             restaurantId={dish.restaurantId}
+            restaurantName={dish.restaurantName}
             connectionId={dish.connectionId}
             canAddPhoto={canAddPhoto}
           />
@@ -1424,9 +1394,6 @@ const styles = StyleSheet.create({
   collabOverflowText: {
     color: '#64748b',
     marginLeft: 8,
-  },
-  avatarInitial: {
-    color: '#ffffff',
   },
   // Join banner
   joinBanner: {

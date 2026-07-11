@@ -1,12 +1,13 @@
 import React from 'react';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import { ActivityIndicator, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Text } from '../../components';
 import { usersService, type UsernameAvailability } from '../../services/users';
 import { photosService } from '../../services/photos';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
+import { MonogramAvatar } from '../../components/MonogramAvatar';
 
 // ─── editProfile — the REAL page body (trigger-nav pages) ───────────────────────────────────
 // Display-name editing over PATCH /users/me + username claim over the existing
@@ -201,19 +202,14 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
   return (
     <View style={styles.body} testID="stub-scene-editProfile">
       <View style={styles.avatarRow}>
-        {avatarUrl ? (
-          <Image
-            source={{ uri: avatarUrl }}
-            style={styles.avatarImage}
-            testID="edit-profile-avatar"
-          />
-        ) : (
-          <View style={styles.avatarFallback} testID="edit-profile-avatar-fallback">
-            <Text variant="title" weight="semibold" style={styles.avatarInitial}>
-              {(displayName.trim() || currentUsername || 'C').slice(0, 1).toUpperCase()}
-            </Text>
-          </View>
-        )}
+        <MonogramAvatar
+          seed={currentUsername || displayName}
+          avatarUrl={avatarUrl}
+          title={displayName.trim() || currentUsername || 'C'}
+          size={64}
+          textVariant="title"
+          testID="edit-profile-avatar"
+        />
         <Pressable
           onPress={handleChangePhoto}
           disabled={avatarBusy}
@@ -314,23 +310,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
     marginBottom: 8,
-  },
-  avatarImage: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#f1f5f9',
-  },
-  avatarFallback: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    color: '#0f172a',
   },
   changePhotoButton: {
     paddingHorizontal: 16,

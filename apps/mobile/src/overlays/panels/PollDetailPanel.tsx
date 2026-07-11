@@ -78,6 +78,7 @@ import {
 } from './pollThreadModel';
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
 import { API_BASE_URL } from '../../services/api';
+import { formatRelativeTime } from '../../utils/relative-time';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACCENT = themeColors.primary;
@@ -112,18 +113,6 @@ const resolveAnchorNodeIndex = (tree: ThreadNode[], commentId: string): number =
     return node.children.some(subtreeContains);
   };
   return tree.findIndex(subtreeContains);
-};
-
-const formatRelativeTime = (iso: string | null | undefined): string => {
-  if (!iso) return '';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return '';
-  const seconds = (Date.now() - date.getTime()) / 1000;
-  if (seconds < 60) return 'now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
-  if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h`;
-  if (seconds < 604_800) return `${Math.floor(seconds / 86_400)}d`;
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
 const resolveUserName = (user: PollCommentUser): string =>

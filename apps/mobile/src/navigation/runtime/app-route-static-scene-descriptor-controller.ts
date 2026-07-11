@@ -34,7 +34,6 @@ type StaticStubChildSceneKey =
   | 'notifications'
   | 'settings'
   | 'editProfile'
-  | 'shareConfig'
   | 'postPhotos'
   | 'messagesInbox'
   | 'dmSession';
@@ -77,7 +76,6 @@ const STATIC_STUB_CHILD_SCENE_KEYS: readonly StaticStubChildSceneKey[] = [
   'notifications',
   'settings',
   'editProfile',
-  'shareConfig',
 ];
 
 // W2: postPhotos publishes separately — same static-child shape, but with the

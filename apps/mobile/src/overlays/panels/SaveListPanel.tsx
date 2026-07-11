@@ -328,6 +328,7 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
           note: note.trim() ? note.trim() : undefined,
         });
         await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+        await queryClient.invalidateQueries({ queryKey: ['entityMemberships'] });
         onClose();
       } finally {
         setIsSaving(false);
@@ -360,6 +361,7 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
         note: note.trim() ? note.trim() : undefined,
       });
       await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      await queryClient.invalidateQueries({ queryKey: ['entityMemberships'] });
       resetForm();
       onClose();
     } finally {

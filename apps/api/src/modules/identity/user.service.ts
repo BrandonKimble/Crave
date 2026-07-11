@@ -195,7 +195,11 @@ export class UserService {
 
     const onboardingRow = await this.getOnboardingProfileRow(userId);
     const activeSubscription = user.subscriptions[0];
-    const stats = user.stats ?? (await this.userStats.ensure(userId));
+    // ensure() is the idempotent provisioning seam (user_stats row + the
+    // default-lists hook ride it) — profile stats themselves are live counts.
+    if (!user.stats) {
+      await this.userStats.ensure(userId);
+    }
     const summary = await this.entitlements.summarize(userId);
     const gatingMode = process.env.ENTITLEMENT_GATING?.trim().toLowerCase();
     return {
@@ -221,7 +225,7 @@ export class UserService {
           }
         : undefined,
       onboarding: this.buildOnboardingProfile(onboardingRow),
-      stats: await this.buildProfileStats(userId, stats.pollsContributedCount),
+      stats: await this.buildProfileStats(userId),
     };
   }
 
@@ -279,6 +283,21 @@ export class UserService {
    *  `createdByUserId` with NO state/market filter, so the stat is a LIVE
    *  count over the same rows — not the drifting `user_stats` counter (which
    *  had no reconciliation and disagreed with reality in dev data). */
+  /** "Contributed" = distinct polls the user endorsed or commented on —
+   *  a live count over the source rows (same no-drift law as the other
+   *  stats; idx_poll_endorsement_user + poll_comments(user_id) cover it). */
+  private async countContributedPolls(userId: string): Promise<number> {
+    const rows = await this.prisma.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(DISTINCT poll_id) AS count FROM (
+        SELECT poll_id FROM poll_endorsements WHERE user_id = ${userId}::uuid
+        UNION
+        SELECT poll_id FROM poll_comments
+          WHERE user_id = ${userId}::uuid AND deleted_at IS NULL
+      ) contributed
+    `;
+    return Number(rows[0]?.count ?? 0n);
+  }
+
   private countCreatedPolls(userId: string): Promise<number> {
     return this.prisma.poll.count({ where: { createdByUserId: userId } });
   }
@@ -294,19 +313,18 @@ export class UserService {
    *  - favorites  → favorite_list_items via owned lists (idx_favorite_lists_owner
    *                 + idx_favorite_list_items_list)
    *  Five extra indexed counts per profile read — fine at launch scale.
-   *  pollsContributedCount is the one remaining user_stats read. */
-  private async buildProfileStats(
-    userId: string,
-    pollsContributedCount: number,
-  ) {
+   *  pollsContributedCount = live distinct endorsed-or-commented polls. */
+  private async buildProfileStats(userId: string) {
     const [
       pollsCreatedCount,
+      pollsContributedCount,
       followersCount,
       followingCount,
       favoriteListsCount,
       favoritesTotalCount,
     ] = await Promise.all([
       this.countCreatedPolls(userId),
+      this.countContributedPolls(userId),
       this.prisma.userFollow.count({ where: { followingUserId: userId } }),
       this.prisma.userFollow.count({ where: { followerUserId: userId } }),
       this.prisma.favoriteList.count({ where: { ownerUserId: userId } }),
@@ -340,13 +358,15 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    const stats = user.stats ?? (await this.userStats.ensure(userId));
+    if (!user.stats) {
+      await this.userStats.ensure(userId);
+    }
     return {
       userId: user.userId,
       username: user.username,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
-      stats: await this.buildProfileStats(userId, stats.pollsContributedCount),
+      stats: await this.buildProfileStats(userId),
     };
   }
 

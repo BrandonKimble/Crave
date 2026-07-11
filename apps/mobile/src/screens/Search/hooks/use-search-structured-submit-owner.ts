@@ -111,40 +111,11 @@ export const useSearchStructuredSubmitOwner = ({
     ]
   );
 
-  const launchFavoritesListResults = React.useCallback(
-    async (params: { listId: string; listType: FavoriteListType; submittedLabel: string }) => {
-      logSearchPhase('launchFavorites:start', { reset: true });
-      const targetTab: SegmentValue = params.listType === 'dish' ? 'dishes' : 'restaurants';
-      resetMapMoveFlag();
-      // S3c/S-D.2: favorites-as-search IS a list-identity tuple write + resolve. No
-      // viewport adopt (committedBounds null — the results define the camera); the
-      // fetch table routes listId to getListResults, the adopt rule honors the list
-      // axis, and favorites suppress the single-restaurant collapse in the fetcher.
-      writeSearchDesiredTuple(
-        searchRuntimeBus,
-        {
-          queryIdentity: {
-            kind: 'list',
-            listId: params.listId,
-            listType: params.listType,
-            displayTitle: params.submittedLabel,
-          },
-          tab: targetTab === 'dishes' ? 'dishes' : 'restaurants',
-          filterVariant: { includeSimilar: false },
-          committedBounds: null,
-        },
-        'favorites_launch'
-      );
-    },
-    [logSearchPhase, resetMapMoveFlag, searchRuntimeBus]
-  );
-
   return React.useMemo(
     () => ({
       runRestaurantEntitySearch,
       submitViewportShortcut,
-      launchFavoritesListResults,
     }),
-    [launchFavoritesListResults, submitViewportShortcut, runRestaurantEntitySearch]
+    [submitViewportShortcut, runRestaurantEntitySearch]
   );
 };

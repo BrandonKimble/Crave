@@ -1,6 +1,6 @@
 /**
  * W4 regression, extended by the red-team stats-drift fix: every profile
- * stat except pollsContributedCount MUST be a LIVE count over the same rows
+ * stat, contributed included, MUST be a LIVE count over the same rows
  * its profile section lists — never a denormalized user_stats counter.
  *
  * Original W4 case: the "Polls" stat read the drifting
@@ -9,7 +9,9 @@
  * increment/decrement counters applied OUTSIDE the edge-write tx
  * (user-follow.service, favorites service) — a crash between the edge write
  * and the counter write drifted them forever. Fix: live indexed counts at
- * profile-read time; the follow-service applyDelta call sites are deleted.
+ * profile-read time. W2 cleanup finished the job: every applyDelta call site
+ * is deleted and the dead counter COLUMNS are dropped from user_stats
+ * (user_stats survives only as the ensure() provisioning seam).
  */
 import { UserService } from './user.service';
 
@@ -22,23 +24,23 @@ const makeService = (opts: {
   following?: number;
   lists?: number;
   favorites?: number;
+  contributed?: number;
 }) => {
   const prisma = {
+    $queryRaw: jest
+      .fn()
+      .mockResolvedValue([{ count: BigInt(opts.contributed ?? 0) }]),
     user: {
       findUnique: jest.fn().mockResolvedValue({
         userId: USER,
         username: 'them',
         displayName: 'Them',
         avatarUrl: null,
+        // user_stats is a pure provisioning seam now — the profile read only
+        // checks row PRESENCE. statsCounter simulates a stale extra field to
+        // prove nothing reads it; pollsContributed is a live $queryRaw count.
         stats: {
-          // The drifting counters — must NOT be what the DTO reports
-          // (pollsContributedCount excepted: still counter-backed).
           pollsCreatedCount: opts.statsCounter,
-          pollsContributedCount: 4,
-          followersCount: 555,
-          followingCount: 666,
-          favoriteListsCount: 777,
-          favoritesTotalCount: 888,
         },
       }),
     },
@@ -126,8 +128,12 @@ describe('UserService profile stats == live counts (W4 pattern, all stats)', () 
     });
   });
 
-  it('pollsContributedCount is the ONE remaining user_stats read', async () => {
-    const { service } = makeService({ pollCount: 1, statsCounter: 9 });
+  it('pollsContributedCount is a live endorsed-or-commented distinct count', async () => {
+    const { service } = makeService({
+      pollCount: 1,
+      statsCounter: 9,
+      contributed: 4,
+    });
     const profile = await service.getPublicProfile(USER);
     expect(profile.stats.pollsContributedCount).toBe(4);
   });

@@ -229,7 +229,6 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     currentMarketKey,
     openRestaurantProfilePreview:
       profileControlRuntime.profileOwner.profileActions.openRestaurantProfilePreview,
-    launchFavoritesListResults: submitRuntimeResult.launchFavoritesListResults,
     launchEntitySearchResults: submitRuntimeResult.launchEntitySearchResults,
     // Phase 4 — the committed restaurant reveal lane (replaces the cold preview lane).
     runRestaurantEntitySearch: submitRuntimeResult.runRestaurantEntitySearch,

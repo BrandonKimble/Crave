@@ -46,17 +46,15 @@ describe('FavoriteListProvisioningService.ensureDefaultLists', () => {
         createMany,
       },
     };
-    const userStats = { applyDelta: jest.fn().mockResolvedValue(undefined) };
     const service = new FavoriteListProvisioningService(
       prisma as never,
       logger as never,
-      userStats as never,
     );
-    return { service, createMany, userStats };
+    return { service, createMany };
   }
 
   it('creates all four defaults for a fresh user (skipDuplicates backstop)', async () => {
-    const { service, createMany, userStats } = makeHarness([]);
+    const { service, createMany } = makeHarness([]);
     await service.ensureDefaultLists(OWNER);
     expect(createMany).toHaveBeenCalledTimes(1);
     const args = createMany.mock.calls[0][0];
@@ -74,18 +72,14 @@ describe('FavoriteListProvisioningService.ensureDefaultLists', () => {
       'dish',
     ]);
     expect(args.data.every((row: any) => row.ownerUserId === OWNER)).toBe(true);
-    expect(userStats.applyDelta).toHaveBeenCalledWith(OWNER, {
-      favoriteListsCount: 4,
-    });
   });
 
   it('is idempotent: a fully provisioned user writes nothing', async () => {
-    const { service, createMany, userStats } = makeHarness(
+    const { service, createMany } = makeHarness(
       SYSTEM_DEFAULT_LISTS.map((entry) => entry.systemKind),
     );
     await service.ensureDefaultLists(OWNER);
     expect(createMany).not.toHaveBeenCalled();
-    expect(userStats.applyDelta).not.toHaveBeenCalled();
   });
 
   it('backfills only the missing kinds', async () => {
@@ -146,11 +140,9 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
       },
       publicEntityScore: { findMany: jest.fn().mockResolvedValue([]) },
     };
-    const userStats = { applyDelta: jest.fn().mockResolvedValue(undefined) };
     const blocks = { isBlockedPair: jest.fn().mockResolvedValue(false) };
     const service = new FavoriteListsService(
       prisma as never,
-      userStats as never,
       new FavoriteListAccessPolicy(prisma as never, blocks as never),
       new ListResultsAssembler({} as never),
       new FavoriteListMapper(prisma as never, logger as never),

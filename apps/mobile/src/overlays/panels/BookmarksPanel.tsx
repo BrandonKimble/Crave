@@ -1088,14 +1088,12 @@ const BookmarksDataSurface = React.memo(
 
     const handleListPress = React.useCallback(
       (list: FavoriteListSummary) => {
-        // S-D.2: the tap's meaning resolves through THE entity policy (listWorld =
-        // favorites-as-search today; the listDetail hybrid changes the policy arm, not
-        // this handler). The byte-identical profile-panel copy routes the same way.
+        // S-D.2: the tap's meaning resolves through THE entity policy (list tap = the
+        // listDetail child push). The byte-identical profile-panel copy routes the same way.
         executeEntityRefAction({
           entityId: list.listId,
           entityType: 'list',
           label: list.name,
-          listType: list.listType,
         });
       },
       [executeEntityRefAction]

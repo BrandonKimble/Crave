@@ -39,12 +39,11 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
 
   const handleListPress = React.useCallback(
     (list: FavoriteListSummary) => {
-      // S-D.2: routes through THE entity policy (listWorld = favorites-as-search today).
+      // S-D.2: routes through THE entity policy (list tap = the listDetail child push).
       executeEntityRefAction({
         entityId: list.listId,
         entityType: 'list',
         label: list.name,
-        listType: list.listType,
       });
     },
     [executeEntityRefAction]

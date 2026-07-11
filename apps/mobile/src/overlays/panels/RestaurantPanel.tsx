@@ -32,6 +32,7 @@ import {
   RestaurantMentionsView,
   RestaurantOverviewMentions,
   RestaurantPhotosView,
+  RestaurantSavedNote,
   RestaurantViewSwitcher,
   type RestaurantProfileViewKey,
 } from './RestaurantProfileViews';
@@ -245,6 +246,35 @@ export const useRestaurantPanelSpec = ({
     void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
   }, [primaryPhone, restaurantName]);
 
+  // Red-team W2 (§7.2 action chips): Directions opens Apple Maps at the
+  // primary location — coords when we have them, else the address, else a
+  // name query (same hide-nothing fallback ethos as Website/Call).
+  const primaryDirectionsTarget = React.useMemo(() => {
+    const candidates = [restaurant?.displayLocation, ...locationCandidates];
+    for (const location of candidates) {
+      if (location?.latitude != null && location?.longitude != null) {
+        return `${location.latitude},${location.longitude}`;
+      }
+    }
+    for (const location of candidates) {
+      if (location?.address) {
+        return location.address;
+      }
+    }
+    return null;
+  }, [locationCandidates, restaurant?.displayLocation]);
+
+  const handleDirectionsPress = React.useCallback(() => {
+    if (primaryDirectionsTarget) {
+      void Linking.openURL(
+        `http://maps.apple.com/?daddr=${encodeURIComponent(primaryDirectionsTarget)}`
+      );
+      return;
+    }
+    const query = `${restaurantName} ${queryLabel}`.trim();
+    void Linking.openURL(`http://maps.apple.com/?q=${encodeURIComponent(query)}`);
+  }, [primaryDirectionsTarget, queryLabel, restaurantName]);
+
   const hoursSummary =
     formatOperatingStatus(restaurant?.displayLocation?.operatingStatus) ?? 'Hours unavailable';
   const locationsLabel =
@@ -274,6 +304,8 @@ export const useRestaurantPanelSpec = ({
     return (
       <View>
         {viewSwitcher}
+        {/* §8.4 Overview element 1: the viewer's saved note(s) for this place. */}
+        <RestaurantSavedNote restaurantId={restaurant.restaurantId} />
         <View style={styles.metricsRow}>
           <View style={styles.metricCard}>
             <Text style={styles.metricLabel}>Crave rating</Text>
@@ -289,6 +321,16 @@ export const useRestaurantPanelSpec = ({
           <Text style={styles.detailValue}>{hoursSummary}</Text>
         </View>
         <View style={styles.actionsRow}>
+          <Pressable
+            style={styles.primaryAction}
+            onPress={handleDirectionsPress}
+            accessibilityRole="button"
+            accessibilityLabel="Directions"
+            testID="restaurant-directions"
+          >
+            <Feather name="navigation" size={18} color="#0f172a" />
+            <Text style={styles.primaryActionText}>Directions</Text>
+          </Pressable>
           {sharedWebsiteUrl ? (
             <Pressable style={styles.primaryAction} onPress={handleWebsitePress}>
               <Feather name="globe" size={18} color="#0f172a" />

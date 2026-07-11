@@ -261,18 +261,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     chromePolicy: 'preserve',
     headerActionPolicy: 'fixed-close',
   },
-  shareConfig: {
-    role: 'child',
-    productSceneKey: null,
-    parentSceneKeys: ['bookmarks', 'profile'],
-    requiresOwnerSceneKey: false,
-    sceneSwitch: true,
-    sceneInput: true,
-    staticSceneInput: true,
-    sheetPolicy: 'sharedPhysicalSheet',
-    chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
-  },
   // W3 messaging (plans/w3-messaging-design.md §4.1): the inbox — child with
   // SINGLETON semantics (no params; re-push pops-to-existing, standard child behavior).
   messagesInbox: {
@@ -321,7 +309,6 @@ export const APP_OVERLAY_ROUTE_SCENE_SWITCH_KEYS = [
   'notifications',
   'settings',
   'editProfile',
-  'shareConfig',
   'postPhotos',
   'messagesInbox',
   'dmSession',
@@ -338,7 +325,6 @@ export const APP_OVERLAY_STATIC_ROUTE_SCENE_INPUT_KEYS = [
   'notifications',
   'settings',
   'editProfile',
-  'shareConfig',
   'postPhotos',
   'messagesInbox',
   'dmSession',
@@ -548,9 +534,6 @@ export type OverlayRouteParamsMap = {
   notifications?: undefined;
   settings?: undefined;
   editProfile?: undefined;
-  shareConfig?: {
-    listId?: string | null;
-  };
   // W2 (§7.4): the post page. Trigger CONTEXT (restaurant/dish pre-fill) + the pending-assets
   // nonce — the picker/camera assets are NON-serializable and ride the module-scope
   // postPhotosPendingAssets store; sessionNonce is the key into it.

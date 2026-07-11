@@ -27,8 +27,6 @@ export type EntityRef = {
   entityType: EntityRefType;
   /** Display label (a span's resolved name, a row's title). Seeds headers/sheet titles. */
   label: string;
-  /** Lists only: which results tab the list world auto-selects. */
-  listType?: 'restaurant' | 'dish';
 };
 
 export type EntityRefAction =
@@ -40,16 +38,7 @@ export type EntityRefAction =
       label: string;
     }
   | { kind: 'pushScene'; scene: 'userProfile'; params: { userId: string } }
-  | { kind: 'pushScene'; scene: 'listDetail'; params: { listId: string } }
-  | {
-      /** Favorites-as-search (§5.2): the list world. W1 slice 4 flipped the policy's list
-       *  arm to the listDetail push (the hybrid page); this action remains ONLY for the
-       *  /list/<id> desire-link lane (desire-url-codec) until that lane migrates. */
-      kind: 'listWorld';
-      listId: string;
-      listType: 'restaurant' | 'dish';
-      label: string;
-    };
+  | { kind: 'pushScene'; scene: 'listDetail'; params: { listId: string } };
 
 export const resolveEntityRefAction = (ref: EntityRef): EntityRefAction => {
   switch (ref.entityType) {

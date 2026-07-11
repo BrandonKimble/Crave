@@ -144,12 +144,6 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
     transitionKind: 'openChild',
     motion: { kind: 'snapTo', snap: 'expanded' },
   },
-  {
-    from: '*',
-    to: 'shareConfig',
-    transitionKind: 'openChild',
-    motion: { kind: 'snapTo', snap: 'expanded' },
-  },
   // W2 (page-registry §7.4): the post page opens at expanded like every full-page child.
   {
     from: '*',

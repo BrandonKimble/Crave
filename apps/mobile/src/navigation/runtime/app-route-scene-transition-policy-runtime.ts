@@ -203,7 +203,6 @@ const SEEDED_FORWARD_OPEN_SCENES = new Set<OverlayKey>([
   'notifications',
   'settings',
   'editProfile',
-  'shareConfig',
   // W2: postPhotos paints its own shell on frame 1 (static mounted body) — hard-swap.
   'postPhotos',
   // W3 messaging: static mounted bodies, same hard-swap family.

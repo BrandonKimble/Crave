@@ -6,7 +6,6 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import { UserStatsService } from '../identity/user-stats.service';
 
 /**
  * Auto-created default lists (page-registry §8.7): every user owns four
@@ -62,7 +61,6 @@ export class FavoriteListProvisioningService {
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
-    private readonly userStats: UserStatsService,
   ) {
     this.logger = loggerService.setContext('FavoriteListProvisioningService');
   }
@@ -112,11 +110,6 @@ export class FavoriteListProvisioningService {
         userId,
         expected: missing.length,
         created: created.count,
-      });
-    }
-    if (created.count > 0) {
-      await this.userStats.applyDelta(userId, {
-        favoriteListsCount: created.count,
       });
     }
   }

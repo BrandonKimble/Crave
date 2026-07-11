@@ -15,7 +15,6 @@ import {
 import type { SearchResponse } from '@crave-search/shared';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UserStatsService } from '../identity/user-stats.service';
 import { CreateFavoriteListDto } from './dto/create-favorite-list.dto';
 import { UpdateFavoriteListDto } from './dto/update-favorite-list.dto';
 import { AddFavoriteListItemDto } from './dto/add-favorite-list-item.dto';
@@ -75,7 +74,6 @@ const VIRTUAL_ALL_IDS: Record<string, FavoriteListType> = {
 export class FavoriteListsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly userStats: UserStatsService,
     private readonly access: FavoriteListAccessPolicy,
     private readonly resultsAssembler: ListResultsAssembler,
     private readonly mapper: FavoriteListMapper,
@@ -215,6 +213,43 @@ export class FavoriteListsService {
     return ordered.map((list) => ({
       ...this.mapper.buildListSummary(list, previewScores, 'publicProfile'),
       city: cityByList.get(list.listId) ?? null,
+    }));
+  }
+
+  /**
+   * Red-team W2 (page-registry §8.4 Overview element 1): the viewer's lists
+   * containing an entity — restaurant entities match items.restaurantId,
+   * dish connections match items.connectionId — including the saved note.
+   * "Yours" = owner OR collaborator (full-parity co-editors see the note).
+   */
+  async listMembershipsForEntity(userId: string, entityId: string) {
+    const items = await this.prisma.favoriteListItem.findMany({
+      where: {
+        OR: [{ restaurantId: entityId }, { connectionId: entityId }],
+        list: {
+          OR: [
+            { ownerUserId: userId },
+            { collaborators: { some: { userId } } },
+          ],
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        itemId: true,
+        listId: true,
+        note: true,
+        list: {
+          select: { name: true, listType: true, systemKind: true },
+        },
+      },
+    });
+    return items.map((item) => ({
+      itemId: item.itemId,
+      listId: item.listId,
+      listName: item.list.name,
+      listType: item.list.listType,
+      systemKind: item.list.systemKind,
+      note: item.note,
     }));
   }
 
@@ -483,7 +518,6 @@ export class FavoriteListsService {
       throw error;
     }
 
-    await this.userStats.applyDelta(userId, { favoriteListsCount: 1 });
     return list;
   }
 
@@ -548,11 +582,6 @@ export class FavoriteListsService {
 
     await this.prisma.favoriteList.delete({
       where: { listId },
-    });
-
-    await this.userStats.applyDelta(userId, {
-      favoriteListsCount: -1,
-      favoritesTotalCount: -list.itemCount,
     });
   }
 
@@ -654,7 +683,6 @@ export class FavoriteListsService {
       where: { listId },
       data: { itemCount: { increment: 1 } },
     });
-    await this.userStats.applyDelta(userId, { favoritesTotalCount: 1 });
 
     return item;
   }
@@ -710,7 +738,6 @@ export class FavoriteListsService {
       where: { listId },
       data: { itemCount: { decrement: 1 } },
     });
-    await this.userStats.applyDelta(userId, { favoritesTotalCount: -1 });
   }
 
   /**

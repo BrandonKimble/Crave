@@ -22,8 +22,7 @@ import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneSt
 
 // ─── W1 slice 1 — entry-keyed child mount boundary ──────────────────────────────────────────
 // One boundary per key#entryId unit: keeps EVERY in-stack (depth≤K) entry of a child scene
-// mounted (React state isolation by construction), shows only the ACTIVE unit, and emits the
-// temporary [ENTRYMOUNT] probe the anchor's sim pass asserts on (removed after the probe).
+// mounted (React state isolation by construction) and shows only the ACTIVE unit.
 const sceneEntryMountHiddenStyle = { display: 'none' as const };
 // Active unit: flexGrow so a STATIC-mode body (dmSession) can fill the frame
 // through the boundary. Inert for scroll-mode scenes — inside a content-sized
@@ -68,17 +67,6 @@ const SceneEntryMountBoundary = React.memo(
     isActiveUnit: boolean;
     children: React.ReactNode;
   }) => {
-    React.useEffect(() => {
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.log(`[ENTRYMOUNT] mount ${unitKey}`);
-        return () => {
-          // eslint-disable-next-line no-console
-          console.log(`[ENTRYMOUNT] unmount ${unitKey}`);
-        };
-      }
-      return undefined;
-    }, [unitKey]);
     return (
       <View style={isActiveUnit ? sceneEntryMountActiveStyle : sceneEntryMountHiddenStyle}>
         {children}

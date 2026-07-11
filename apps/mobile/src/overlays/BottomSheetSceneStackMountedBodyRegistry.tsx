@@ -13,9 +13,8 @@ import {
   ListDetailMountedSceneBody,
   NotificationsMountedSceneBody,
   SettingsMountedSceneBody,
-  ShareConfigMountedSceneBody,
   UserProfileMountedSceneBody,
-} from './panels/StubScenePanels';
+} from './panels/ChildScenePanels';
 
 /**
  * W1 slice 1 (C2): a mounted CHILD body receives ITS route entry as a prop — entryId + params
@@ -53,8 +52,6 @@ export const BottomSheetSceneStackMountedBody = React.memo(
         return <SettingsMountedSceneBody entry={entry} />;
       case 'editProfile':
         return <EditProfileMountedSceneBody entry={entry} />;
-      case 'shareConfig':
-        return <ShareConfigMountedSceneBody entry={entry} />;
       case 'postPhotos':
         return <PostPhotosPanelBody entry={entry} />;
       case 'messagesInbox':

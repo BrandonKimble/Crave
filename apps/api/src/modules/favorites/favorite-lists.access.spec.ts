@@ -122,7 +122,6 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
     error: jest.fn(),
     debug: jest.fn(),
   };
-  const userStats = { applyDelta: jest.fn().mockResolvedValue(undefined) };
   const executor = {
     executeSingle: jest.fn().mockResolvedValue({
       restaurants: [],
@@ -144,7 +143,6 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
   const blocks = { isBlockedPair: jest.fn().mockResolvedValue(false) };
   const service = new FavoriteListsService(
     prisma as never,
-    userStats as never,
     new FavoriteListAccessPolicy(prisma as never, blocks as never),
     new ListResultsAssembler(executor as never),
     new FavoriteListMapper(prisma as never, logger as never),

@@ -13,7 +13,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   activeMainIntent,
   consumeActiveMainIntent,
   openRestaurantProfilePreview,
-  launchFavoritesListResults,
   launchEntitySearchResults,
   runRestaurantEntitySearch,
   submitSearch,
@@ -30,20 +29,8 @@ export const useSearchForegroundLaunchIntentRuntime = ({
 
     // S-D.4: ONE entityAction branch — the channel carries the SAME action vocabulary
     // resolveEntityRefAction produces; this consumer just routes each kind to its lane
-    // (listWorld → favorites-as-search; entityDesire → skip-LLM search; restaurantWorld →
-    // the committed single-restaurant lifecycle below). pushScene never reaches the channel
-    // (the executor pushes directly).
-    if (activeMainIntent.type === 'entityAction' && activeMainIntent.action.kind === 'listWorld') {
-      const action = activeMainIntent.action;
-      void launchFavoritesListResults({
-        listId: action.listId,
-        listType: action.listType,
-        submittedLabel: action.label,
-      });
-      consumeActiveMainIntent();
-      return;
-    }
-
+    // (entityDesire → skip-LLM search; restaurantWorld → the committed single-restaurant
+    // lifecycle below). pushScene never reaches the channel (the executor pushes directly).
     if (
       activeMainIntent.type === 'entityAction' &&
       activeMainIntent.action.kind === 'entityDesire'
@@ -215,7 +202,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     consumeActiveMainIntent,
     currentMarketKey,
     launchEntitySearchResults,
-    launchFavoritesListResults,
     navigation,
     openRestaurantProfilePreview,
     pendingRestaurantSelectionRef,

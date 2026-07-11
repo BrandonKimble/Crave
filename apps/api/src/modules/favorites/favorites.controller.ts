@@ -46,6 +46,20 @@ export class FavoritesController {
     return this.favoriteListsService.listForUser(user.userId, query);
   }
 
+  // Red-team W2 (page-registry §8.4): the viewer's lists containing an entity
+  // (restaurant or dish connection), incl. each item's saved note — feeds the
+  // restaurant Overview "your saved note" block.
+  @Get('entities/:entityId/memberships')
+  listEntityMemberships(
+    @CurrentUser() user: User,
+    @Param('entityId', ParseUUIDPipe) entityId: string,
+  ) {
+    return this.favoriteListsService.listMembershipsForEntity(
+      user.userId,
+      entityId,
+    );
+  }
+
   @Post('lists')
   createList(@CurrentUser() user: User, @Body() dto: CreateFavoriteListDto) {
     return this.favoriteListsService.createList(user.userId, dto);

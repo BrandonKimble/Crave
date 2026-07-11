@@ -1,5 +1,5 @@
 // S-E (plans/trigger-nav-ideal-verdict.md — addressability): THE one parser+serializer
-// pair making Desire ⇄ URL total. Search desires (query/shortcut/entity/list), scenes
+// pair making Desire ⇄ URL total. Search desires (query/shortcut/entity), scenes
 // (poll, restaurant, user profile), and the already-emitted /l/<shareSlug> share links all
 // speak ONE path vocabulary, valid under both the custom scheme (crave://…) and the share
 // host (https://crave-search.app/…):
@@ -8,7 +8,6 @@
 //   /e/<entityType>/<entityId>?label=…      entity desire (skip-LLM)
 //   /u/<userId>                             user profile push
 //   /l/<shareSlug>                          SHARED list (async getShared resolution)
-//   /list/<listId>?type=…&title=…           list world by LIVE id (internal/notification links)
 //   /q/<query>                              natural search desire
 //   /s/<dishes|restaurants>                 viewport shortcut desire
 //   /p/<pollId>?market=…    and  /polls?market=…
@@ -116,18 +115,6 @@ export const parseDesireLink = (url: string): ParsedDesireLink => {
             ...(params.get('join') === '1' ? { joinIntent: true as const } : {}),
           }
         : { kind: 'none' };
-    case 'list':
-      return a
-        ? {
-            kind: 'entityAction',
-            action: {
-              kind: 'listWorld',
-              listId: safeDecode(a),
-              listType: params.get('type') === 'dish' ? 'dish' : 'restaurant',
-              label: params.get('title') ?? '',
-            },
-          }
-        : { kind: 'none' };
     case 'q':
       return a ? { kind: 'naturalSearch', query: safeDecode(a) } : { kind: 'none' };
     case 's':
@@ -169,15 +156,15 @@ export const serializeDesireLinkToPath = (
           return `/e/${action.entityType}/${encodeSegment(action.entityId)}${label}`;
         }
         case 'pushScene':
-          // /u/<userId> for people; a listDetail push serializes on the codec's existing
-          // /list lane (W1 slice 4 flipped the tap policy, not the URL grammar).
-          return action.scene === 'userProfile'
-            ? `/u/${encodeSegment(action.params.userId)}`
-            : `/list/${encodeSegment(action.params.listId)}?type=restaurant`;
-        case 'listWorld': {
-          const title = action.label ? `&title=${encodeURIComponent(action.label)}` : '';
-          return `/list/${encodeSegment(action.listId)}?type=${action.listType}${title}`;
-        }
+          // /u/<userId> for people. A listDetail push has NO public-URL grammar — list
+          // sharing serializes via the sharedList slug lane ('/l/<slug>'); the dead
+          // '/list/<id>' listWorld lane was deleted in the W2 cleanup.
+          if (action.scene === 'userProfile') {
+            return `/u/${encodeSegment(action.params.userId)}`;
+          }
+          throw new Error(
+            '[DESIRE-URL] listDetail push has no public URL — share lists via the sharedList slug'
+          );
       }
       break;
     }
