@@ -1,6 +1,6 @@
 # Polls
 
-> **Rolling canonical vision — not a changelog.** Keep this file thin and *current*: it describes
+> **Rolling canonical vision — not a changelog.** Keep this file thin and _current_: it describes
 > only what we want this area of the app to be **today**. When something changes, edit or delete the
 > old text in place — never append "superseded"/"old"/"previously" notes, history, or pointers to
 > past ideas. If you follow this file, you know exactly what we want. Execution detail + migrations
@@ -8,7 +8,7 @@
 
 ---
 
-Polls are Crave's community contribution layer: a per-market feed of "best X" questions where the **discussion thread is primary** and a ranked **endorsement leaderboard** is a read-model projected over it. A poll is not a structured vote proxy — it's a first-class collection source that flows through the *same* extraction → resolution → evidence pipeline as Reddit, so at close it **graduates into the objective Crave Score** with honest, explainable evidence. Polls and discussion are deliberately **free**, alongside ranking, search, map, and open-now/price: they drive contribution, virality, and feed the Score, so gating them would kill the flywheel. Crave+ gates the dish-level experience, not this.
+Polls are Crave's community contribution layer: a per-market feed of "best X" questions where the **discussion thread is primary** and a ranked **endorsement leaderboard** is a read-model projected over it. A poll is not a structured vote proxy — it's a first-class collection source that flows through the _same_ extraction → resolution → evidence pipeline as Reddit, so at close it **graduates into the objective Crave Score** with honest, explainable evidence. Polls and discussion are deliberately **free**, alongside ranking, search, map, and open-now/price: they drive contribution, virality, and feed the Score, so gating them would kill the flywheel. Crave+ gates the dish-level experience, not this.
 
 ## Core model
 
@@ -24,8 +24,8 @@ Polls are Crave's community contribution layer: a per-market feed of "best X" qu
 
 - **Type-less, subject-first canvas.** No template picker. The user types a free-text **Subject/question** plus optional **Description**; the backend infers mode and axis. The options field is empty and non-editable ("Your ranking forms from the discussion") — options are never hand-seeded.
 - **Description is the creator's organic seed.** It's treated like a comment: its entity spans seed the creator's endorsements into the live leaderboard at creation, and it's an extractable creator-authored unit at graduation.
-- **Axis-inference confirm chip.** On high-confidence inference, show the inferred structure back ("Ranking: breakfast sandwiches · NYC") with an edit escape hatch; low/no confidence silently falls to discussion mode.
-- **Market picker is a modal value-picker**, pre-selected to the map-resolved market you're on, with a full market list and search-across-markets.
+- **No axis-inference confirm chip** (dropped, registry §8.3): the subject resolves server-side; unresolved dish subjects are already handled by poll-local composite keys + close-time graduation. Low/no confidence silently falls to discussion mode.
+- **No market picker** (deleted, registry §8.13): a poll's market is resolved from where the user's map currently is; the create page shows a display-only "Posting to {market}" label. Posting to another city = pan the map there first.
 - **Creation choreography** mirrors poll-detail's nav-push: on first open it auto-extends to the top snap with the subject focused and keyboard up; the keyboard dismisses the instant you drag the sheet and returns only at the top snap on a manual text-box tap.
 - Media attach is out of scope for now, handled later by a shared app-wide media slice; the poll components keep a clean optional-media seam.
 
@@ -51,7 +51,7 @@ Polls are Crave's community contribution layer: a per-market feed of "best X" qu
 - **Creation is never time-gated.** The weekly rhythm is about results and app polls, not user creation.
 - **User polls self-schedule a 3–14 day close window, default 7.** This avoids the Thursday-poll-gets-1-day problem, spreads close-load, and keeps a steady stream of fresh Live and freshly-Closed polls.
 - **Per-user soft cap: 2 active polls per week per market** (rolling 7-day window, clear message, app/seeded polls excluded). No cap on comments or discussion.
-- **App/Crave polls are the weekly editorial spine.** A demand-driven scheduler picks *what to ask* from real search demand, publishes Sunday with a 7-day window (closes the following Sunday — informs weekend dining, finalizes Sunday), and pins it as "poll of the week" under the default sort. This is a post-launch bet; pull the pin if unloved.
+- **App/Crave polls are the weekly editorial spine.** A demand-driven scheduler picks _what to ask_ from real search demand, publishes Sunday with a 7-day window (closes the following Sunday — informs weekend dining, finalizes Sunday), and pins it as "poll of the week" under the default sort. This is a post-launch bet; pull the pin if unloved.
 - **Demand-cooldown coupling.** A user poll targeting an entity bumps that entity's last-polled timestamp like the scheduler does, suppressing a redundant app poll on the same subject and naturally cooling its user polls over time.
 - **Per-poll close is a mini-event** — an in-app "results are in" state, with a poll-close push notification as a later add.
 
@@ -59,7 +59,7 @@ Polls are Crave's community contribution layer: a per-market feed of "best X" qu
 
 - **Threaded comment CRUD.** Post/edit/soft-delete, parent-child threading, shareable deeplink per comment, moderated on post; both ranked and discussion polls have threads.
 - **Per-comment likes** (Reddit-style, unrestricted): toggle like/unlike for thread sort; a self-like is ignored for endorsement but allowed as a like. **Comment sort: Top (default) / New.**
-- **Endorsement leaderboard = distinct users endorsing a subject**, deduped per `(user, subject, poll)`. Endorsing means authoring or liking a comment that *positively* names the subject (polarity from sentiment); the leaderboard "+1" button writes the same set, not a parallel tally. Liking three comments about Joe's counts as one endorsement.
+- **Endorsement leaderboard = distinct users endorsing a subject**, deduped per `(user, subject, poll)`. Endorsing means authoring or liking a comment that _positively_ names the subject (polarity from sentiment); the leaderboard "+1" button writes the same set, not a parallel tally. Liking three comments about Joe's counts as one endorsement.
 - **Tap-to-endorse on the leaderboard bars.** TikTok-style full-width result bars you tap to endorse; the count is split-colored (digits flip white where the fill covers them), with a pink heat scale by rank. Only existing candidates can be endorsed — new candidates enter only via discussion.
 - **Reddit-grade threading.** Vertical connector rails per ancestor level, tap-to-collapse a subtree (animated accordion), indent caps at 5 levels then flattens and @mentions the parent (IG/YouTube continuation, not a "Continue thread →" screen).
 - **Persistent compose chin + reply float.** The compose box is pinned at the bottom, keyboard-tracked. Reply raises the chin with a pinned copy of the target ("Replying to {name}" + preview + ✕) and highlights the target row.
@@ -103,7 +103,7 @@ Polls are Crave's community contribution layer: a per-market feed of "best X" qu
 
 - **Profile poll cards** (created / contributed tabs) show live stats (comments · endorsers) with contribution identity ("you commented / you endorsed") on cards and detail.
 - **Share a poll** via deep link.
-- **Restaurant-profile poll surfacing** splits into a Polls tab (every poll this restaurant ranked in, plus placement) and a Mentions/Anecdotes tab (every comment recommending it, sorted by likes — the Google-reviews-search superpower). They're different objects and don't share a list.
+- **Restaurant-profile poll surfacing** is the Discussions view of the restaurant profile (registry §8.4, SHIPPED W3): thread-merged vote-comment cards framed by their poll question, mention-tag multi-select filters, Top/Newest sort, search — cards deep-link into pollDetail scrolled to + highlighting the comment (pollDetail opens from anywhere, W0).
 - **Graduation transparency.** Once closed and graduated, a subtle "results finalized" state shows the leaderboard is final and fed real evidence.
 
 ## Still to decide

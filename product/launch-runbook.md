@@ -84,9 +84,12 @@ thread; see memory). Then, from a machine with the pushshift archives
    `ENTITY_EMBEDDING_RECONCILE_ENABLED=true`.
 2. Smoke slice first: `yarn ts-node scripts/archive/batch-slice-test.ts` (5 posts, batch mode)
    → expect deferral → ingested → +entities.
-3. Full load: `yarn ts-node scripts/archive-collect.ts --subreddit austinfood --batch-size 250`
-   (pre-filter tooling TBD gets applied here when built). ~23k posts / ~583k comments ≈ $25–50
-   LLM at batch rates; enrichment Google spend tracked live in `api_usage_ledger`.
+3. Full load: `yarn ts-node scripts/seed-market.ts --subreddit austinfood` (THE seeding
+   command: multi-subreddit, --window-years/--max-posts/--batch-size overrides, never
+   truncates, refuses un-onboarded subreddits, ends with a dollar-priced cost report at
+   official Cloud Billing rates). Runs from your machine pointed at the PROD DATABASE_URL —
+   the deployed app just sees new rows. Stage it if desired (--max-posts 1000 first);
+   everything is incremental, re-runs waste nothing.
 4. Monitor: `llm_batch_jobs` statuses; `SELECT service, operation, sku_tier, sum(request_count)
 FROM api_usage_ledger GROUP BY 1,2,3;` for spend.
 5. Post-load passes: sibling edges rebuild (`scripts/rebuild-sibling-edges.ts` or flip

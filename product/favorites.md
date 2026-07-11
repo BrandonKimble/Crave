@@ -25,7 +25,7 @@ The Favorites screen is all-white, a 2-column grid of cutout tiles. Each tile is
 
 Tapping a list opens a detail screen that reuses the Search Results renderer (same rows, meta lines, frost background). List detail runs the list's items through the search query executor, so it inherits open-now and price filtering plumbing for free, and produces map-ready entities. Item rows carry the shared **FriendCluster** (stacked avatars + "Saved by {name} and others") when people you follow have also saved that spot/dish — same overlay as the result sheet (see `profile.md`).
 
-Lists, items, reordering, sharing, and list detail are built; the high-value frontier is the auto-"All" list, cross-list intelligence, custom ranking, and the Crave+ filter layer (sort, including custom ranking, stays free).
+Lists, items, reordering, sharing, and list detail are built — and the registry run (W1, 2026-07-11) shipped the rest of the core: the real listDetail page (owner + viewer roles), custom drag ranking with edit mode on both surfaces, the auto-"All" list (home + tiles), save sheet v2, system default lists, and collaborators. The remaining frontier is cross-list intelligence (compare, best-saved, map-all) and the dormant Crave+ filter layer.
 
 ## Save flow & list management
 
@@ -91,7 +91,7 @@ Lists are a primary growth surface. A public list with a slug is a shareable art
 - **Share-event tracking** — created/opened/copied/revoked events to measure list virality.
 - **"Share your bookmarks" infographic** — a branded infographic of a user's top 5–10 saved dish/restaurant pairs for social posting.
 - **Share to community** — a pre-filled post template referencing the saved item and community.
-- **Collaborative lists (DECIDED 2026-07-11)** — collaborators have full owner parity (add/remove/reorder/invite); invite rides the universal share modal ("invite as collaborator" checkbox); collaborators can Leave; owner can kick (swipe/ellipsis in the collaborator modal); owner making the list private removes all collaborators and kills all share links (dead link → "this list is private" state). The list's stacked-avatars chip leads with a plus-circle add tile.
+- **Collaborative lists (SHIPPED W1, registry run — invite v1 = copy-link, upgraded to the universal share modal in W3)** — collaborators have full owner parity (add/remove/reorder/invite); invite rides the universal share modal ("invite as collaborator" checkbox); collaborators can Leave; owner can kick (swipe/ellipsis in the collaborator modal); owner making the list private removes all collaborators and kills all share links (dead link → "this list is private" state). The list's stacked-avatars chip leads with a plus-circle add tile.
 
 ## Alerts on saved items
 
@@ -114,7 +114,7 @@ The area is "Favorites," not "Bookmarks." Screen title leans on the list framing
 - List privacy semantics: keep Spotify's _private_ vs _remove-from-profile_ as two separate knobs, or collapse to one public/private toggle?
 - The "post to profile" analog: how do lists (the poll-posting analog) land on the profile — auto via public visibility (the Spotify model, current lean) or an explicit publish step?
 
-## Save sheet toolkit + auto-created lists (current)
+## Save sheet toolkit + auto-created lists (current — SHIPPED W1, registry run)
 
 - Save sheet = list ROWS (not grid tiles), opening on the side matching
   the trigger with a segmented switch to the other side; row order = the
@@ -131,23 +131,10 @@ The area is "Favorites," not "Bookmarks." Screen title leans on the list framing
   filters gated) is dormant freemium-pivot framing — at launch everyone
   in-app is entitled; do not build per-feature gates into new surfaces.
 
-## OLD toolkit note (superseded above) (owner, 2026-07-09)
+## listDetail add buttons (registry §7.6 — not yet built)
 
-- Saving = CURATING: the save sheet + create-list page carry the toolkit —
-  add photo (opt-in button, never a prompt), a note field (notes make shared
-  lists feel authored — lists are a virality surface), and tags (schema now,
-  UI fast-follow; tags become toggle-strip filters on lists). See
-  product/images.md + plans/page-registry.md §6 for the funnel shape.
 - List-card photo strips: scrollable L-R; owner/COLLABORATORS see a "+" add
-  tile prepended to the strip; plain viewers never do.
-- Dish-side status axis: **tried / haven't tried** (copy TBD) — the analog
-  of the restaurant side's been/want-to-go.
-
-## CORRECTION (owner, 2026-07-10 — registry §7.5/§7.6 is the authority)
-
-- Save-sheet toolkit = NOTE + TAGS inline (Google-copy). NO add-photo
-  button on the save sheet (superseding the 2026-07-09 note above).
-  Photos enter via the card "+" tile on own-list cards only.
+  tile prepended to the strip; plain viewers never do (strips SHIPPED W2).
 - listDetail: "Add places" (restaurant lists) / "Add dish" (dish lists,
   copy TBD) → search mode → immediate add, no toolkit detour. Dish-add
   search shape (dish-scoped vs restaurant-first) = A/B at build.

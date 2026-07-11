@@ -1,6 +1,6 @@
 # Restaurant Profile Page
 
-> **Rolling canonical vision — not a changelog.** Keep this file thin and *current*: it describes
+> **Rolling canonical vision — not a changelog.** Keep this file thin and _current_: it describes
 > only what we want this area of the app to be **today**. When something changes, edit or delete the
 > old text in place — never append "superseded"/"old"/"previously" notes, history, or pointers to
 > past ideas. If you follow this file, you know exactly what we want. Execution detail + migrations
@@ -8,7 +8,7 @@
 
 ---
 
-The restaurant profile (the detail surface in `apps/mobile/src/overlays/panels/RestaurantPanel.tsx`) is where Crave's objective ranking becomes one concrete decision: "is this place good, and what should I order here." A user lands on it after tapping a restaurant result, map pin, or favorite.
+The restaurant profile (the detail surface in `apps/mobile/src/overlays/panels/RestaurantPanel.tsx`) is where Crave's objective ranking becomes one concrete decision: "is this place good, and what should I order here." A user lands on it after tapping a restaurant result, map pin, or favorite. The page is ONE dynamic single page with four segmented views — **Overview / Dishes / Discussions / Photos** (registry §8.4; SHIPPED W3, registry run, incl. mention tags + thread-merged discussion cards → pollDetail; visuals crude pending the design pass).
 
 The hard frame: the **objective ranking + restaurant basics are FREE** — this is the trust/word-of-mouth engine and the integrity promise, so the page never blurs or locks the answer to whether a place is good. The **dish intelligence layer is the paid hero (Crave+)**. **Discussion stays FREE.** The Crave Score is global and objective; nothing on this page re-ranks to user taste.
 
@@ -40,7 +40,7 @@ When people you follow have ranked or saved this place, their take surfaces here
 
 ## Discussion section (FREE)
 
-The bottom-most section of the profile — **called "Discussion," not "Reviews."** It aggregates *every comment/mention linkable to this restaurant or its dishes* across polls and threads into one place: our reviews surface, but real sourced discussion (the same graduation/collection linkage that feeds the Crave Score), not star reviews.
+The bottom-most section of the profile — **called "Discussion," not "Reviews."** It aggregates _every comment/mention linkable to this restaurant or its dishes_ across polls and threads into one place: our reviews surface, but real sourced discussion (the same graduation/collection linkage that feeds the Crave Score), not star reviews.
 
 - **Tap a mention → deep-link straight to that poll's detail page**, opening directly to where the mention occurred so the user can read the surrounding context.
 - **Filter / sort** — sort by votes/likes on the comment; filter by tags (the restaurant entity signals); text-search within this restaurant's comments only.

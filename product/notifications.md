@@ -1,6 +1,6 @@
 # Notifications & Alerts
 
-> **Rolling canonical vision — not a changelog.** Keep this file thin and *current*: it describes
+> **Rolling canonical vision — not a changelog.** Keep this file thin and _current_: it describes
 > only what we want this area of the app to be **today**. When something changes, edit or delete the
 > old text in place — never append "superseded"/"old"/"previously" notes, history, or pointers to
 > past ideas. If you follow this file, you know exactly what we want. Execution detail + migrations
@@ -16,7 +16,7 @@ The `NotificationType` enum is the extension point: every new alert is a new enu
 
 Objective ranking, search, map, open-now/price, and polls/discussion are free; dish intelligence is the Crave+ hero. So restaurant-level alerts (a saved restaurant is surging) lean free and acquisition-friendly, while dish-level alerts (a new #1 dish at a saved place) are a natural Crave+ hook — and a free user's tap-through into a dish ranking is a paywall moment. All ranking in these alerts is the global, objective Crave Score; nothing is personalized to a user's taste.
 
-A locked-value alert is framed as a gift — *the good thing just happened at a place you care about* — leading to a contextual unlock at the moment of intent, never a taunt about what a free user can't see. And the free stream stays majority-actionable: free users always get alerts they *can* act on (a poll they're in closed, a saved place is open late, a shared list got saved), so paywall teasers are rate-limited and never the whole stream. The notification channel is the only no-ad-budget re-engagement lever there is, so protecting trust in it outranks any single upsell.
+A locked-value alert is framed as a gift — _the good thing just happened at a place you care about_ — leading to a contextual unlock at the moment of intent, never a taunt about what a free user can't see. And the free stream stays majority-actionable: free users always get alerts they _can_ act on (a poll they're in closed, a saved place is open late, a shared list got saved), so paywall teasers are rate-limited and never the whole stream. The notification channel is the only no-ad-budget re-engagement lever there is, so protecting trust in it outranks any single upsell.
 
 ## Movement alerts (the headline)
 
@@ -43,7 +43,7 @@ Polls are the most mature notification surface.
 
 ## Follower & social activity
 
-These ride on the followers/following social graph (`user_follows`, public profiles) once it lands, and are a fast-follow to it rather than a launch item.
+The followers/following social graph is live (`user_follows`, public profiles, Follow+Message on profiles — registry run W3), and DMs exist with a push hookup stub; these alerts are the fast-follow that rides on it.
 
 - **"{user} started following you."**
 - **"Someone you follow created a poll or shared a list."** Turns follows into a re-engagement channel.

@@ -16,17 +16,13 @@ Every user has an `@handle`: case-insensitive unique, 3–20 chars, lowercase le
 
 Users get one free initial set, then a 30-day edit cooldown. Every handle a user has ever held is kept for anti-squatting and uniqueness. A post-auth onboarding step lets users pick their handle with live debounced availability and suggestions when a name is taken ("Pick your username. This is how people find you. You can change it later.").
 
-Display name and avatar resolve from the session JWT and gap-backfill, never overwriting a user's own edits. We still owe an in-app avatar picker/upload — there's no upload path today.
+Display name and avatar resolve from the session JWT and gap-backfill, never overwriting a user's own edits. The in-app avatar picker/upload is built (registry run W3: editProfile → tap picture → shared camera/library modal, Cloudinary path).
 
 ## Profile screen
 
-The profile is a top-level nav scene with the app nav bar retained. The header shows avatar (or initials fallback), display name, @username, and settings. A four-stat row — Polls created, Polls contributed, Followers, Following — is tappable to jump to each section, with counts denormalized per user and kept fresh by service hooks on polls, votes/endorsements, list changes, and follows. A segmented control swaps three activity tabs:
+The profile is a top-level nav scene with the app nav bar retained. The header shows avatar (or initials fallback), display name, @username, and settings. A four-stat row — Polls created, Polls contributed, Followers, Following — is tappable to jump to each section, with counts denormalized per user and kept fresh by service hooks on polls, votes/endorsements, list changes, and follows. A segmented control swaps four sections (the dynamic single-page anatomy below — Polls / Comments / Lists / Photos).
 
-- **Created** — polls the user made.
-- **Contributed** — polls they voted/endorsed in or added a candidate to.
-- **Lists** — the user's public favorites lists and their custom rankings.
-
-The primary action is context-dependent: **Edit profile** on your own profile, **Follow / Unfollow** when viewing someone else's. Viewing another user's profile shows their public profile and public lists only.
+The primary action is context-dependent: **Edit profile** on your own profile, **Follow + Message** when viewing someone else's. Viewing another user's profile shows their public profile and public lists only.
 
 ## Friend graph & friends' picks
 
@@ -67,7 +63,6 @@ Light social recognition lives on the profile: discoverer/contributor badges for
 
 ## Still to decide
 
-- **Avatars** — build an in-app avatar picker/upload, or keep the JWT-sourced avatar as the permanent answer?
 - **Recognition at launch** — do we ship any badges / "track your impact" / leaderboards, and how do we keep them visibly decoupled from the objective ranking?
 - **Friends lens default** — is the lens always opt-in per session, or can a user set it sticky? And does the friend chip show on results by default for everyone, or is it itself opt-in?
 - **Your-circle's-consensus scope** — what's the minimum follow count before "your people's top X" is meaningful, and how do we present it so it never blurs with the global Score?
@@ -127,7 +122,7 @@ to Want to Go"), not a posting feed. Do not relitigate without the owner.
   (card real estate + which signals qualify). Recorded here so the card
   design pass accounts for the slot.
 
-## Profile page anatomy locked (owner, 2026-07-10 — registry §7.3)
+## Profile page anatomy locked (owner, 2026-07-10 — registry §7.3; SHIPPED W3, registry run: 4 sections, Follow+Message pair, public Lists view w/ pins + city grouping, blocking, avatar picker; messaging M1/M2 live)
 
 ONE dynamic single page (Google-Maps-profile pattern): persistent top
 (avatar/stats; others' profiles get Follow + Message buttons Instagram-

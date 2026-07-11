@@ -28,6 +28,9 @@ what we want it to be — not a backlog, log, or history.
 | [restaurant-profile.md](restaurant-profile.md) | Restaurant detail page (dish list gate, discussion, score evidence)             |
 | [search-and-dishes.md](search-and-dishes.md)   | Search, dish ranking + dish-level search, result sheet, filters                 |
 | [map.md](map.md)                               | Map surface (LOD, markers, map-based UX ideas)                                  |
+| [images.md](images.md)                         | Photos/UGC: post funnel, strips, galleries, moderation                          |
+| [messaging.md](messaging.md)                   | DMs (inbox + sessions; shipped W3 of the registry run)                          |
+| [sharing.md](sharing.md)                       | Universal share modal + the share package (shipped W3; beauty pass owed)        |
 | [scoring/](scoring/)                           | The Crave Score — what it means + how to tune the ranking when real data exists |
 
 ## Anchoring decisions (true across every area)
@@ -35,10 +38,12 @@ what we want it to be — not a backlog, log, or history.
 - **The Crave Score ranking is OBJECTIVE and global — never personalized to user taste.**
   Taste enters Crave only two ways: the user _searches_ (e.g. "vegan"), or the user builds
   their own _favorites lists_. There is no preference-based re-ranking, ever.
-- **Monetization is freemium.** Free = the objective restaurant ranking + restaurant search +
-  map + open-now/price filters + poll voting/discussion. Paid (Crave+) = the **dish**
-  intelligence layer (the hero), rising/momentum + trending, and power filter/sort on your
-  own lists. See [`../business/monetization-and-gating.md`](../business/monetization-and-gating.md).
+- **Monetization at launch is a HARD paywall** (owner final, 2026-07-09): everything is gated;
+  every in-app user is entitled. The freemium split described across these files (free =
+  objective restaurant ranking/search/map/filters/polls; Crave+ = the **dish** intelligence
+  layer, rising/trending, power list filters) is the **dormant pivot framing** — keep the
+  machinery mothballed, don't build per-feature gates into new surfaces. See
+  [`../business/monetization-and-gating.md`](../business/monetization-and-gating.md).
 - **Gating principle:** gate what Google/Yelp/Beli structurally _can't_ do; keep free the
   things they do (we just do them better — the free tier is the "this app is good" taste).
 

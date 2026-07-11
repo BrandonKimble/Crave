@@ -62,7 +62,7 @@ A **deterministic fast path runs before the LLM**: exact restaurant-name, single
 
 ## Autocomplete & suggestions
 
-- **Lane-aware.** Four lanes — entity, personal query, global query, attribute — with soft slot reservations (entities up to 3, personal queries up to 2, global query up to 1, attribute up to 1 when strong; overflow goes to the strongest remaining). Eligible from the first character, ranked per-lane rather than by one global score.
+- **Lane-aware.** Four lanes — entity, personal query, global query, attribute — plus **person rows** (people/profiles surface in autocomplete; shipped with the registry-era person-rows slice) — with soft slot reservations (entities up to 3, personal queries up to 2, global query up to 1, attribute up to 1 when strong; overflow goes to the strongest remaining). Eligible from the first character, ranked per-lane rather than by one global score.
 - **Entity match scoring.** `0.5·textConfidence + 0.35·globalPopularity + 0.1·userAffinity + favoriteBoost + viewAffinityBoost`, where view affinity = `0.7·exp(-days/30) + 0.3·min(log1p(viewCount)/log1p(10),1)`. Favorite/view boosts stay subtle — never "all your restaurants, all the time."
 - **Query-text suggestions.** Prefix matches from search-log text, capped at 3, counted by distinct request IDs, kept when userCount≥1 or globalCount≥3; global suggestions are distinct-user-dominant and recency-windowed.
 - **Empty-query screen.** Recent searches and Recently viewed restaurants (top 10, with a view cooldown), led by "What are you craving?" plus trending and popular categories.
@@ -80,7 +80,7 @@ A **deterministic fast path runs before the LLM**: exact restaurant-name, single
 
 ## Result sheet — cards, evidence & actions
 
-- **Restaurant cards (dual presentation).** Top-dish presentation when `hasMenuItems`; tag-pill presentation when the match is tag-only ("mentioned for tacos").
+- **Restaurant cards (dual presentation).** Top-dish presentation when `hasMenuItems`; tag-pill presentation when the match is tag-only ("mentioned for tacos"). Every card carries the horizontal photo strip (batch strips endpoint — SHIPPED W2, registry run).
 - **Evidence cards.** A top community quote with upvote count and recency, plus a "Join conversation" link to the source thread (Reddit deep-link, web fallback); both quote and CTA go to the same thread, with subtle "powered by communities" branding.
 - **Activity indicators.** 🔥 trending / 🕐 active are visual only and never affect ranking order; served by the momentum axis.
 - **Quick actions.** Order link (Google/direct), Google Maps link, save dish/restaurant to a list, share, and "also worth trying" alternatives.

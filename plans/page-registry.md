@@ -749,6 +749,24 @@ shareConfig stub row FOLDS INTO universalShare + slug-as-capability
 
 ### 9d. ⚠️ Foundational flags for the charter session (or W0 here, coordinated)
 
-1. settings "full" snap point (sheet past top snap, handle-less).
-2. Scrollable variant of the one global modal.
-3. pollDetail open-from-anywhere with correct origin pop.
+1. settings "full" snap point (sheet past top snap, handle-less). — RESOLVED W0:
+   no new snap kind; the existing per-scene snapPointsOverride IS the mechanism
+   (settings declares expanded ≈ safe-area top; grab-handle flag ships with W4 settings).
+2. Scrollable variant of the one global modal. — SHIPPED W0 (opt-in `scrollable` capability).
+3. pollDetail open-from-anywhere with correct origin pop. — SHIPPED + sim-proven W0.
+
+### 9e. Ship status (registry implementation run W0–W3, 2026-07-11 — see plans/registry-implementation-plan.md running logs)
+
+- **9a scenes:** postPhotos + cameraCapture SHIPPED W2; dmSession + messagesInbox
+  SHIPPED W3 (messaging M1/M2); listDetail (both roles, edit mode, collaborators)
+  SHIPPED W1; restaurant + userProfile dynamic single pages SHIPPED W3;
+  pollDetail-from-anywhere SHIPPED W0. settings full-snap scene = W4 (open).
+- **9b modals:** photoSourcePicker SHIPPED W0; reportContent SHIPPED W2;
+  universalShare, collaborators, listTileActions, profileActions (block)
+  SHIPPED W3. friendClusterExpand, pollInfo, duplicatePoll = W4 (open).
+- **9c deletions:** list tags column DROPPED W0 (migration landed);
+  marketPicker deleted; share flows folded into universalShare W3
+  (slug-as-capability RT-18 landed W1).
+- Also shipped: system default lists (Been/Want to go; Tried/Want to try) +
+  All tiles SHIPPED W1; photo strips on all cards SHIPPED W2; universal
+  share SHIPPED W3; blocking SHIPPED W3.

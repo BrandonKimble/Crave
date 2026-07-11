@@ -8,11 +8,11 @@ page entries.
   back returns to their profile; sheet fully extends on entry, returns to
   prior snap on back). Messages INBOX = child of OWN profile (header
   button), lists all conversations, opens sessions.
-- The assistant owns the full ideal-shape design: product shape (what a
-  message is, read states, notifications hookup), backend (model,
-  endpoints, realtime-vs-poll decision), and the functional UI skeleton.
-  Foundationally complete + crude visuals; owner refines presentation
-  later. Design pass = registry-era work, not yet started.
-- Not yet discussed (park for the design pass): message requests from
-  non-friends, blocking interaction (ties to the blocking talking point),
-  push notifications for DMs, unread badges.
+- SHIPPED W3 (registry run, 2026-07-11): M1 backend (conversations +
+  messages schema, 9 endpoints, REST + polling v1 architected so realtime
+  swaps in without schema change) + M2 scenes (messagesInbox + dmSession,
+  entry-keyed, all entry points). Design of record:
+  plans/w3-messaging-design.md. Request lane (non-friends), blocking
+  interaction, and unread badge are built; push notifications for DMs =
+  a stub awaiting hookup. Visuals crude by design — owner refines
+  presentation later.

@@ -27,7 +27,9 @@ Three doc homes, by purpose:
   ([favorites](product/favorites.md), [notifications](product/notifications.md),
   [profile](product/profile.md), [polls](product/polls.md),
   [restaurant-profile](product/restaurant-profile.md),
-  [search-and-dishes](product/search-and-dishes.md), [map](product/map.md)).
+  [search-and-dishes](product/search-and-dishes.md), [map](product/map.md),
+  [images](product/images.md), [messaging](product/messaging.md),
+  [sharing](product/sharing.md)).
   Start at [product/README.md](product/README.md). **Before building in an area, read its file;
   when an idea comes up, add it there.**
 - **`business/`** — the business model: [pricing/model](business/business-model.md),
