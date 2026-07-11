@@ -5,17 +5,13 @@ import { Text } from '../../components';
 import { usersService, type FollowListUser } from '../../services/users';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useTopMostRouteEntryForScene } from '../../navigation/runtime/use-top-most-route-entry-for-scene';
+import { useQuery } from '@tanstack/react-query';
 import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
 
 // ─── followList — the REAL page body (trigger-nav pages) ────────────────────────────────────
 // Replaces the S-B drill-in practice body. Rows push userProfile — the same-key nesting loop
 // stays live. Origin scroll publication stays (this scene remains a return-to-origin source;
 // the S-B standing rig proof rode this page's scroll). Failure/empty per §5.6.
-
-type LoadState =
-  | { kind: 'loading' }
-  | { kind: 'failed' }
-  | { kind: 'ready'; users: FollowListUser[] };
 
 const AVATAR_SIZE = 40;
 
@@ -42,40 +38,19 @@ export const FollowListPanelBody = React.memo(() => {
   const ownerUserId = typeof entry?.params?.userId === 'string' ? entry.params.userId : null;
   useOriginSceneScrollPublication('followList');
 
-  const [loadState, setLoadState] = React.useState<LoadState>({ kind: 'loading' });
-  const loadSeqRef = React.useRef(0);
-
-  const load = React.useCallback(() => {
-    if (!ownerUserId) {
-      setLoadState({ kind: 'failed' });
-      return;
-    }
-    const seq = ++loadSeqRef.current;
-    setLoadState({ kind: 'loading' });
-    void (
+  // RT-19 (state-loss half): cache-keyed by (mode, userId) — the drill loop's pop back
+  // re-renders instantly from cache instead of a spinner refetch.
+  const listQuery = useQuery({
+    queryKey: ['followList', mode, ownerUserId],
+    enabled: ownerUserId != null,
+    queryFn: () =>
       mode === 'following'
-        ? usersService.listFollowing(ownerUserId)
-        : usersService.listFollowers(ownerUserId)
-    )
-      .then((users) => {
-        if (loadSeqRef.current !== seq) {
-          return;
-        }
-        setLoadState({ kind: 'ready', users });
-      })
-      .catch(() => {
-        if (loadSeqRef.current !== seq) {
-          return;
-        }
-        setLoadState({ kind: 'failed' });
-      });
-  }, [mode, ownerUserId]);
+        ? usersService.listFollowing(ownerUserId as string)
+        : usersService.listFollowers(ownerUserId as string),
+  });
+  const load = listQuery.refetch;
 
-  React.useEffect(() => {
-    load();
-  }, [load]);
-
-  if (loadState.kind === 'loading') {
+  if (listQuery.isPending || (ownerUserId == null && !listQuery.isError)) {
     return (
       <View style={styles.stateBody} testID="follow-list-loading">
         <ActivityIndicator />
@@ -83,14 +58,14 @@ export const FollowListPanelBody = React.memo(() => {
     );
   }
 
-  if (loadState.kind === 'failed') {
+  if (listQuery.isError || ownerUserId == null || listQuery.data == null) {
     return (
       <View style={styles.stateBody} testID="follow-list-failed">
         <Text variant="body" style={styles.stateText}>
           We couldn’t load this list.
         </Text>
         <Pressable
-          onPress={load}
+          onPress={() => void load()}
           accessibilityRole="button"
           accessibilityLabel="Retry loading list"
           testID="follow-list-retry"
@@ -104,7 +79,7 @@ export const FollowListPanelBody = React.memo(() => {
     );
   }
 
-  const { users } = loadState;
+  const users = listQuery.data;
 
   return (
     <View style={styles.body} testID="stub-scene-followList">

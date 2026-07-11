@@ -5,6 +5,7 @@ import { Text } from '../../components';
 import { usersService, type FollowEdge, type PublicUserProfile } from '../../services/users';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useTopMostRouteEntryForScene } from '../../navigation/runtime/use-top-most-route-entry-for-scene';
+import { useQuery } from '@tanstack/react-query';
 
 // ─── userProfile — the REAL page body (trigger-nav pages; plans/page-registry.md) ───────────
 // Replaces the S-B drill-in practice body. Data = the public profile payload
@@ -13,11 +14,6 @@ import { useTopMostRouteEntryForScene } from '../../navigation/runtime/use-top-m
 // failure. Failure/empty is the eighth scene-contract member (§5.6): a failed load renders
 // the retry body, never a permanent blank. Drill rows push followList — the same-key
 // nesting loop (userProfile → followList → userProfile) S-B proved stays live here.
-
-type LoadState =
-  | { kind: 'loading' }
-  | { kind: 'failed' }
-  | { kind: 'ready'; profile: PublicUserProfile; edge: FollowEdge };
 
 const AVATAR_SIZE = 64;
 
@@ -84,56 +80,53 @@ export const UserProfilePanelBody = React.memo(() => {
   const { pushRoute } = useAppOverlayRouteController();
   const userId = typeof entry?.params?.userId === 'string' ? entry.params.userId : null;
 
-  const [loadState, setLoadState] = React.useState<LoadState>({ kind: 'loading' });
-  const [isFollowedByMe, setIsFollowedByMe] = React.useState(false);
+  // RT-19 (state-loss half): page data rides the query CACHE keyed by userId — the drill
+  // loop's pop back to A re-renders instantly from cache instead of a spinner refetch. The
+  // per-entry MOUNT isolation (two live bodies of one scene key) is the listDetail-era
+  // structural pass; this is the data-layer half every page should follow.
+  const profileQuery = useQuery({
+    queryKey: ['userProfile', userId],
+    enabled: userId != null,
+    queryFn: async () => {
+      const [profile, edge] = await Promise.all([
+        usersService.getPublicProfile(userId as string),
+        usersService.getFollowEdge(userId as string),
+      ]);
+      return { profile, edge };
+    },
+  });
+  // Optimistic follow preview: local delta over the server truth (survives refetches; the
+  // displayed follower COUNT rides the same delta so it never lags the button — RT-21).
+  const [followOverride, setFollowOverride] = React.useState<{
+    forUserId: string;
+    value: boolean;
+  } | null>(null);
   const [followBusy, setFollowBusy] = React.useState(false);
-  const loadSeqRef = React.useRef(0);
-
-  const load = React.useCallback(() => {
-    if (!userId) {
-      setLoadState({ kind: 'failed' });
-      return;
-    }
-    const seq = ++loadSeqRef.current;
-    setLoadState({ kind: 'loading' });
-    void Promise.all([usersService.getPublicProfile(userId), usersService.getFollowEdge(userId)])
-      .then(([profile, edge]) => {
-        if (loadSeqRef.current !== seq) {
-          return;
-        }
-        setIsFollowedByMe(edge.isFollowedByMe);
-        setLoadState({ kind: 'ready', profile, edge });
-      })
-      .catch(() => {
-        if (loadSeqRef.current !== seq) {
-          return;
-        }
-        setLoadState({ kind: 'failed' });
-      });
-  }, [userId]);
-
-  React.useEffect(() => {
-    load();
-  }, [load]);
+  const serverFollowed = profileQuery.data?.edge.isFollowedByMe ?? false;
+  const isFollowedByMe =
+    followOverride != null && followOverride.forUserId === userId
+      ? followOverride.value
+      : serverFollowed;
 
   const handleToggleFollow = React.useCallback(() => {
     if (!userId || followBusy) {
       return;
     }
     const next = !isFollowedByMe;
-    // Optimistic flip; reconcile on failure (the value is the server's — we only preview it).
-    setIsFollowedByMe(next);
+    setFollowOverride({ forUserId: userId, value: next });
     setFollowBusy(true);
     void (next ? usersService.followUser(userId) : usersService.unfollowUser(userId))
       .catch(() => {
-        setIsFollowedByMe(!next);
+        setFollowOverride({ forUserId: userId, value: !next });
       })
       .finally(() => {
         setFollowBusy(false);
       });
   }, [followBusy, isFollowedByMe, userId]);
 
-  if (loadState.kind === 'loading') {
+  const load = profileQuery.refetch;
+
+  if (profileQuery.isPending || (userId == null && !profileQuery.isError)) {
     return (
       <View style={styles.stateBody} testID="user-profile-loading">
         <ActivityIndicator />
@@ -141,14 +134,14 @@ export const UserProfilePanelBody = React.memo(() => {
     );
   }
 
-  if (loadState.kind === 'failed') {
+  if (profileQuery.isError || userId == null || profileQuery.data == null) {
     return (
       <View style={styles.stateBody} testID="user-profile-failed">
         <Text variant="body" style={styles.stateText}>
           We couldn’t load this profile.
         </Text>
         <Pressable
-          onPress={load}
+          onPress={() => void load()}
           accessibilityRole="button"
           accessibilityLabel="Retry loading profile"
           testID="user-profile-retry"
@@ -162,7 +155,9 @@ export const UserProfilePanelBody = React.memo(() => {
     );
   }
 
-  const { profile, edge } = loadState;
+  const { profile, edge } = profileQuery.data;
+  const followersDelta =
+    !edge.isMe && isFollowedByMe !== serverFollowed ? (isFollowedByMe ? 1 : -1) : 0;
   const title = resolveDisplayTitle(profile);
 
   return (
@@ -208,7 +203,7 @@ export const UserProfilePanelBody = React.memo(() => {
       <View style={styles.statsRow}>
         <StatCell
           label="Followers"
-          value={profile.stats.followersCount}
+          value={profile.stats.followersCount + followersDelta}
           testID="user-profile-followers"
           onPress={() => pushRoute('followList', { userId: profile.userId, mode: 'followers' })}
         />
