@@ -60,22 +60,40 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
     transitionProgressOverride ?? derivedSearchChromeTransitionProgress;
   const searchChromeVisibilityProgress = visibilityProgressOverride;
 
-  const searchChromeOpacity = useDerivedValue(() =>
-    searchChromeVisibilityProgress ? searchChromeVisibilityProgress.value : 1
+  const searchChromeSheetRecedeOpacity = useDerivedValue(() =>
+    interpolate(
+      searchChromeTransitionProgress.value,
+      [0, 0.45, 0.62, 0.8, 1],
+      [0, 0, 0.15, 0.9, 1],
+      Extrapolation.CLAMP
+    )
+  );
+
+  const searchChromeOpacity = useDerivedValue(
+    () =>
+      (searchChromeVisibilityProgress ? searchChromeVisibilityProgress.value : 1) *
+      searchChromeSheetRecedeOpacity.value
   );
 
   const searchChromeScale = useDerivedValue(() =>
-    interpolate(searchChromeTransitionProgress.value, [0, 1], [0.985, 1], Extrapolation.CLAMP)
+    interpolate(searchChromeTransitionProgress.value, [0, 1], [0.94, 1], Extrapolation.CLAMP)
+  );
+
+  const searchChromeTranslateY = useDerivedValue(() =>
+    interpolate(searchChromeTransitionProgress.value, [0, 1], [12, 0], Extrapolation.CLAMP)
   );
 
   const searchBarInputAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: searchChromeVisibilityProgress ? searchChromeVisibilityProgress.value : 1,
+    opacity:
+      (searchChromeVisibilityProgress ? searchChromeVisibilityProgress.value : 1) *
+      searchChromeSheetRecedeOpacity.value,
   }));
 
   return React.useMemo(
     () => ({
       searchChromeOpacity,
       searchChromeScale,
+      searchChromeTranslateY,
       searchChromeTransitionProgress,
       searchChromeVisibilityProgress,
       searchBarInputAnimatedStyle,
@@ -84,6 +102,7 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
       searchBarInputAnimatedStyle,
       searchChromeOpacity,
       searchChromeScale,
+      searchChromeTranslateY,
       searchChromeTransitionProgress,
       searchChromeVisibilityProgress,
     ]
@@ -123,14 +142,18 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
     [overlayBackdropDimProgress, baseSearchChromeTransitionProgress]
   );
 
-  const { searchChromeOpacity, searchChromeScale, searchBarInputAnimatedStyle } =
-    useAppRouteSceneChromeSheetProgressRuntime({
-      expandedSnap,
-      middleSnap,
-      sheetTranslateY,
-      transitionProgressOverride: overlayChromeTransitionProgress,
-      visibilityProgressOverride: overlayChromeVisibilityProgress,
-    });
+  const {
+    searchChromeOpacity,
+    searchChromeScale,
+    searchChromeTranslateY,
+    searchBarInputAnimatedStyle,
+  } = useAppRouteSceneChromeSheetProgressRuntime({
+    expandedSnap,
+    middleSnap,
+    sheetTranslateY,
+    transitionProgressOverride: overlayChromeTransitionProgress,
+    visibilityProgressOverride: overlayChromeVisibilityProgress,
+  });
 
   return React.useMemo(
     () => ({
@@ -141,6 +164,7 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
       routeChromeMotionProgress,
       searchChromeOpacity,
       searchChromeScale,
+      searchChromeTranslateY,
       searchBarInputAnimatedStyle,
     }),
     [
@@ -152,6 +176,7 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
       searchBarInputAnimatedStyle,
       searchChromeOpacity,
       searchChromeScale,
+      searchChromeTranslateY,
     ]
   );
 };

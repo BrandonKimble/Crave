@@ -113,7 +113,7 @@ const SearchOverlayShellBackdropHost = React.memo(
     });
     const rootBackdropAnimatedStyle = useAnimatedStyle(
       () => ({
-        opacity: Math.max(0, Math.min(1, backdropDimProgress?.value ?? 0)) * 0.05,
+        opacity: Math.max(0, Math.min(1, backdropDimProgress?.value ?? 0)) * 0.22,
       }),
       [backdropDimProgress]
     );

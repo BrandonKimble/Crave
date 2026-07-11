@@ -36,7 +36,10 @@ export const useSearchRootOverlayForegroundVisualSessionSourceRuntime = ({
   shouldDisableSearchShortcuts: boolean;
   appRouteSceneChromeMotionRuntime: Pick<
     AppRouteSceneChromeMotionRuntime,
-    'overlayChromeTransitionProgress' | 'searchChromeOpacity' | 'searchChromeScale'
+    | 'overlayChromeTransitionProgress'
+    | 'searchChromeOpacity'
+    | 'searchChromeScale'
+    | 'searchChromeTranslateY'
   >;
 }) =>
   React.useMemo(
@@ -52,6 +55,7 @@ export const useSearchRootOverlayForegroundVisualSessionSourceRuntime = ({
       isSuggestionPanelActive,
       searchChromeOpacity: appRouteSceneChromeMotionRuntime.searchChromeOpacity,
       searchChromeScale: appRouteSceneChromeMotionRuntime.searchChromeScale,
+      searchChromeTranslateY: appRouteSceneChromeMotionRuntime.searchChromeTranslateY,
       isSearchSessionActive: dataPlaneRuntime.runtimeFlags.isSearchSessionActive,
       mapMovedSinceSearch: resultsSheetRuntimeLane.mapMovedSinceSearch,
       isSearchLoading: dataPlaneRuntime.runtimeFlags.isSearchLoading,
@@ -73,6 +77,7 @@ export const useSearchRootOverlayForegroundVisualSessionSourceRuntime = ({
       appRouteSceneChromeMotionRuntime.overlayChromeTransitionProgress,
       appRouteSceneChromeMotionRuntime.searchChromeOpacity,
       appRouteSceneChromeMotionRuntime.searchChromeScale,
+      appRouteSceneChromeMotionRuntime.searchChromeTranslateY,
       resultsSheetRuntimeLane.mapMovedSinceSearch,
       rootOverlaySessionSurfaceRuntime.bottomNavHiddenTranslateY,
       rootOverlaySessionSurfaceRuntime.navBarCutoutHeight,
