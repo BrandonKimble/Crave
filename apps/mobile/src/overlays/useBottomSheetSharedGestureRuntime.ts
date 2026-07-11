@@ -5,6 +5,7 @@ import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import type { BottomSheetSnapChangeSource } from './bottomSheetMotionTypes';
 import type { BottomSheetSharedRuntimeConfigSharedValues } from './bottomSheetSharedRuntimeContract';
+import { overlaySheetEditLockValue } from './overlaySheetEditLockRuntime';
 import {
   AXIS_LOCK_HORIZONTAL,
   AXIS_LOCK_NONE,
@@ -149,9 +150,15 @@ export const useBottomSheetSharedGestureRuntime = ({
         middle: runtimeMiddleSnap,
         collapsed: runtimeCollapsedSnap,
         hidden: runtimeHiddenSnap,
-        upperBound: runtimePreventSwipeDismiss
-          ? runtimeCollapsedSnap
-          : (runtimeHiddenSnap ?? runtimeCollapsedSnap),
+        // §8.11 edit-lock: while a scene is in edit mode the sheet is pinned to expanded —
+        // upperBound = expandedSnap makes applyElasticBounds rubber-band ANY downward drag.
+        // Inert when unset (0): falls through to the pre-existing expression.
+        upperBound:
+          overlaySheetEditLockValue.value === 1
+            ? runtimeExpandedSnap
+            : runtimePreventSwipeDismiss
+              ? runtimeCollapsedSnap
+              : (runtimeHiddenSnap ?? runtimeCollapsedSnap),
       };
     };
 

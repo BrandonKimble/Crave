@@ -22,6 +22,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { ReorderableRows, type ReorderScrollAdapter } from '../../components/reorder';
 import { getOverlaySceneScrollHandle } from '../overlaySceneScrollHandleRegistry';
+import { acquireOverlaySheetEditLock } from '../overlaySheetEditLockRuntime';
 import { Text } from '../../components';
 import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';
 import { SegmentedToggle } from '../../components/SegmentedToggle';
@@ -810,6 +811,16 @@ const BookmarksDataSurface = React.memo(
       promoteActiveSheet({ snap: 'expanded' });
     }, [lists, promoteActiveSheet]);
 
+    // §8.11: while editing, the sheet is edit-LOCKED to expanded — swipe-down rubber-bands
+    // and springs back instead of collapsing. Acquired from this effect so the cleanup
+    // clears the lock on BOTH edit-exit (Save/Cancel) and scene unmount.
+    React.useEffect(() => {
+      if (!isEditing) {
+        return undefined;
+      }
+      return acquireOverlaySheetEditLock('bookmarks-edit');
+    }, [isEditing]);
+
     const exitEditMode = React.useCallback(() => {
       setEditSession(null);
       setIsSavingOrder(false);
@@ -848,14 +859,13 @@ const BookmarksDataSurface = React.memo(
     const handleDragStateChange = React.useCallback(
       (isDragging: boolean) => {
         if (isDragging) {
-          // Best-available sheet hold (see slice report): re-assert the top snap at
-          // lift so a drag never starts from a drifted detent.
-          promoteActiveSheet({ snap: 'expanded' });
+          // The edit-lock (acquired above) pins the sheet at expanded for the whole edit
+          // session, so no promote-on-lift re-assert is needed — the sheet cannot drift.
           return;
         }
         commitHistoryEntry();
       },
-      [commitHistoryEntry, promoteActiveSheet]
+      [commitHistoryEntry]
     );
 
     // Accessibility path: each button press is one complete move — commit immediately.
