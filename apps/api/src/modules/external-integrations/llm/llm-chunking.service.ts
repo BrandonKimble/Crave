@@ -472,11 +472,16 @@ export class LLMChunkingService implements OnModuleInit {
           : 0,
     });
 
-    // CROSS-POST PACKING (packing audit 2026-07-11): per-post chunks average
-    // ~2k content tokens, so each paid the full system prompt. Greedily merge
-    // consecutive chunks up to the token target — the payload is posts[] by
-    // contract, per-chunk SRC maps stay a closed world, and the per-request
-    // source_id enum schema covers the packed union.
+    // SAME-POST PACKING ONLY (contamination A/B verdict 2026-07-11):
+    // cross-post packing FAILED its empirical gate — packed runs resolved
+    // anaphora against co-packed sibling posts (proven at 8k: "their
+    // sandwich joint" -> a restaurant from another post) and lost 21-31% of
+    // mentions at every pack size, with no passing knee before N=1. So
+    // merging is restricted to chunks of the SAME post (group_1+group_2 —
+    // one sealed world, safe by construction; the old 12k-char cap was
+    // splitting single posts needlessly). Prompt-overhead economics are
+    // carried by the explicit batch system-prompt cache instead.
+    // Re-gate any future cross-post attempt with scripts/packing-ab.ts.
     return this.packChunks(chunks, chunkMetadata);
   }
 
@@ -509,7 +514,16 @@ export class LLMChunkingService implements OnModuleInit {
       const tokens =
         meta.estimatedTokenCount ??
         this.estimateTokensFromChars(JSON.stringify(chunk).length);
-      if (currentPosts && currentTokens + tokens > maxTokensPerChunk) {
+      const currentPostIds = currentPosts ? new Set(currentPosts.keys()) : null;
+      const sameSinglePost =
+        currentPostIds !== null &&
+        currentPostIds.size === 1 &&
+        chunk.posts.length === 1 &&
+        currentPostIds.has(chunk.posts[0].id);
+      if (
+        currentPosts &&
+        (!sameSinglePost || currentTokens + tokens > maxTokensPerChunk)
+      ) {
         flush();
       }
       if (!currentPosts) {
