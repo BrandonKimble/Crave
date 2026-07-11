@@ -76,13 +76,13 @@ const useAppRouteSceneChromeSheetProgressRuntime = ({
       searchChromeContentSheetRecedeOpacity.value
   );
 
+  // Transform magnitudes copied from the original pre-split link (use-search-chrome-transition-
+  // runtime.ts, deleted in f26102bc): a subtle 0.985 scale and no translate.
   const searchChromeScale = useDerivedValue(() =>
-    interpolate(searchChromeTransitionProgress.value, [0, 1], [0.94, 1], Extrapolation.CLAMP)
+    interpolate(searchChromeTransitionProgress.value, [0, 1], [0.985, 1], Extrapolation.CLAMP)
   );
 
-  const searchChromeTranslateY = useDerivedValue(() =>
-    interpolate(searchChromeTransitionProgress.value, [0, 1], [12, 0], Extrapolation.CLAMP)
-  );
+  const searchChromeTranslateY = useDerivedValue(() => 0);
 
   const searchBarInputAnimatedStyle = useAnimatedStyle(() => ({
     opacity: searchChromeContentOpacity.value,
