@@ -1094,15 +1094,22 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * BATCH-MODE request builder for the main collection prompt: the exact
-   * contents + config an interactive processContent call would send, minus the
-   * cached-content reference (a Gemini batch may run hours later — an expired
-   * explicit cache would fail the whole item, so batch requests carry the
-   * system prompt INLINE; the Batch API's 50% discount applies to those tokens).
+   * contents + config an interactive processContent call would send, with the
+   * system prompt referenced via a DEDICATED long-TTL explicit cache.
+   *
+   * Cost-recon red team 2026-07-11 PROVED batch implicit-cache hits bill at
+   * the FULL batch input rate (the portal's ~$69 residual): sending the
+   * ~17k-token prompt inline per request re-bought it 9,118 times. An
+   * explicit cachedContent reference bills those reads at the cached rate
+   * (10x cheaper). The old expired-cache fear is handled by TTL sizing, not
+   * by giving up: the batch cache TTL (30h) covers the Batch API's 24h SLA
+   * with margin, and storage costs ~$0.51/load (17k tokens x 30h x $1/M/hr) —
+   * noise against ~$800 of prompt re-reads at full load.
    */
-  buildCollectionBatchRequest(input: LLMModelInput): {
+  async buildCollectionBatchRequest(input: LLMModelInput): Promise<{
     contents: string;
     config: Record<string, unknown>;
-  } {
+  }> {
     const contents = this.buildProcessingPrompt(input);
     const config: Record<string, unknown> = {
       temperature: this.llmConfig.temperature,
@@ -1121,13 +1128,72 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
             : undefined,
         ),
       ),
-      systemInstruction: this.systemPrompt,
     };
+    const batchCacheName = await this.getOrCreateBatchSystemCache();
+    if (batchCacheName) {
+      config.cachedContent = batchCacheName;
+    } else {
+      // Fail-open to the inline prompt: paying full rate beats failing the
+      // batch. The warn in getOrCreateBatchSystemCache is the audit trail.
+      config.systemInstruction = this.systemPrompt;
+    }
     const thinking = this.getThinkingConfig(this.llmConfig.model, 'content');
     if (thinking) {
       config.thinkingConfig = thinking;
     }
     return { contents, config };
+  }
+
+  /** Dedicated long-TTL explicit cache for BATCH requests (separate from the
+   *  3h interactive cache): TTL must outlive the Batch API's 24h SLA so an
+   *  in-flight job can never reference an expired cache. Reused across
+   *  submissions while fresh; keyed to the current model + prompt. */
+  private batchSystemCache: { name: string; expiresAtMs: number } | null = null;
+  private static readonly BATCH_CACHE_TTL_MS = 30 * 60 * 60 * 1000;
+  /** Refuse to attach a cache that cannot cover a full batch SLA from NOW. */
+  private static readonly BATCH_CACHE_MIN_REMAINING_MS = 25 * 60 * 60 * 1000;
+
+  private async getOrCreateBatchSystemCache(): Promise<string | null> {
+    const now = Date.now();
+    if (
+      this.batchSystemCache &&
+      this.batchSystemCache.expiresAtMs - now >
+        LLMService.BATCH_CACHE_MIN_REMAINING_MS
+    ) {
+      return this.batchSystemCache.name;
+    }
+    try {
+      const ttlSeconds = Math.floor(LLMService.BATCH_CACHE_TTL_MS / 1000);
+      const cache = await this.genAI.caches.create({
+        model: this.llmConfig.model,
+        config: {
+          systemInstruction: this.systemPrompt,
+          ttl: `${ttlSeconds}s`,
+        },
+      });
+      if (!cache?.name) {
+        throw new Error('Cache name missing from Gemini cache create response');
+      }
+      this.batchSystemCache = {
+        name: cache.name,
+        expiresAtMs: now + LLMService.BATCH_CACHE_TTL_MS,
+      };
+      this.logger.info('Batch system-prompt cache created', {
+        cacheName: cache.name,
+        ttlHours: LLMService.BATCH_CACHE_TTL_MS / 3_600_000,
+      });
+      return cache.name;
+    } catch (error) {
+      this.logger.warn(
+        'Batch system-prompt cache create failed — falling back to inline prompt (full rate)',
+        {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+      return null;
+    }
   }
 
   /**

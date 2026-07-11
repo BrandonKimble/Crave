@@ -128,6 +128,60 @@ export class CollectionEvidenceService implements OnModuleInit {
     return run.extractionRunId;
   }
 
+  /**
+   * PRE-LLM DEDUPE (duplication red-team 2026-07-11): source ids already
+   * COVERED by extraction, so the caller can skip them BEFORE chunking and
+   * paying Gemini. 68% of the stage-2 load's duplicate spend was posts whose
+   * extraction had already COMPLETED being re-submitted by seed re-launches;
+   * 29% was posts whose batch job was still IN FLIGHT. Covered =
+   *   (a) a COMPLETED run with the SAME prompt hash + schema version whose
+   *       input chunk produced output (raw_output present) — prompt/schema
+   *       changes intentionally invalidate coverage so re-extraction under a
+   *       new contract still happens; or
+   *   (b) a RUNNING run with a live (non-terminal) Gemini batch job — the
+   *       work is already bought and on its way.
+   * A post with ANY uncovered source id (e.g. new comments since last
+   * collection) is NOT skipped — coverage is per-source, growth reprocesses.
+   */
+  async findExtractionCoveredSourceIds(params: {
+    platform: string;
+    sourceIds: string[];
+    systemPromptHash: string;
+    extractionSchemaVersion: string;
+  }): Promise<Set<string>> {
+    if (params.sourceIds.length === 0) {
+      return new Set();
+    }
+    const rows = await this.prismaService.$queryRaw<{ source_id: string }[]>`
+      SELECT DISTINCT d.source_id
+      FROM collection_source_documents d
+      JOIN collection_extraction_input_documents eid
+        ON eid.document_id = d.document_id
+      JOIN collection_extraction_inputs ei ON ei.input_id = eid.input_id
+      JOIN collection_extraction_runs r
+        ON r.extraction_run_id = ei.extraction_run_id
+      WHERE d.platform = ${params.platform}
+        AND d.source_id = ANY(${params.sourceIds})
+        AND (
+          (
+            r.status = 'completed'
+            AND r.system_prompt_hash = ${params.systemPromptHash}
+            AND r.extraction_schema_version = ${params.extractionSchemaVersion}
+            AND ei.raw_output IS NOT NULL
+          )
+          OR (
+            r.status = 'running'
+            AND EXISTS (
+              SELECT 1 FROM llm_batch_jobs j
+              WHERE j.resume_context->>'extractionRunId' = r.extraction_run_id::text
+                AND j.status IN ('persisting','pending','submitting','submitted','succeeded','ingesting')
+            )
+          )
+        )
+    `;
+    return new Set(rows.map((row) => row.source_id));
+  }
+
   /** Batch-mode companion to persistExtractionInputs: the inputs were persisted
    *  BEFORE the LLM ran (rawOutput null); fill in the outputs once the Gemini
    *  batch results land so the evidence trail matches the interactive path. */

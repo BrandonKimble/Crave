@@ -1,4 +1,5 @@
 import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { buildCauseChain, LoggerService } from '../../../shared';
 import {
   ChunkMetadata,
@@ -247,13 +248,53 @@ export class ExtractionPipelineService implements OnModuleInit {
       );
       params = { ...params, llmPosts: gated.kept };
     }
-    const llmInput: LLMModelInput = { posts: params.llmPosts };
     const sourceDocumentIdBySourceKey =
       await this.collectionEvidenceService.persistSourceDocuments({
         platform: 'reddit',
         community: params.community,
         posts: params.llmPosts,
       });
+
+    // PRE-LLM DEDUPE GATE (duplication red-team 2026-07-11): skip posts whose
+    // every source is already covered by a completed same-contract extraction
+    // or an in-flight batch job — BEFORE chunking and BEFORE Gemini bills.
+    // 68%+29% of the stage-2 load's duplicate spend was exactly this class
+    // (seed re-launches re-submitting the whole plan). A post with ANY new
+    // source (comment growth) still reprocesses; the post-LLM mention dedupe
+    // remains the data-level guard.
+    const currentPromptHash = createHash('sha256')
+      .update(this.llmService.getSystemPrompt())
+      .digest('hex');
+    const allSourceIds = params.llmPosts.flatMap((post) => [
+      post.id,
+      ...post.comments.map((comment) => comment.id),
+    ]);
+    const coveredSourceIds =
+      await this.collectionEvidenceService.findExtractionCoveredSourceIds({
+        platform: 'reddit',
+        sourceIds: allSourceIds,
+        systemPromptHash: currentPromptHash,
+        extractionSchemaVersion: 'v1',
+      });
+    const uncoveredPosts = params.llmPosts.filter(
+      (post) =>
+        !coveredSourceIds.has(post.id) ||
+        post.comments.some((comment) => !coveredSourceIds.has(comment.id)),
+    );
+    const skippedCount = params.llmPosts.length - uncoveredPosts.length;
+    if (skippedCount > 0) {
+      this.logger.info('Pre-LLM dedupe gate skipped covered posts', {
+        pipeline: params.pipeline,
+        community: params.community,
+        skipped: skippedCount,
+        remaining: uncoveredPosts.length,
+      });
+    }
+    if (uncoveredPosts.length === 0) {
+      return this.buildFullyCoveredResult();
+    }
+    params = { ...params, llmPosts: uncoveredPosts };
+    const llmInput: LLMModelInput = { posts: params.llmPosts };
 
     const chunkStartTime = Date.now();
     const chunkData = this.normalizeSourceRefsInChunkData(
@@ -454,10 +495,12 @@ export class ExtractionPipelineService implements OnModuleInit {
     const jobId = await this.geminiBatchService.submit({
       purpose: 'collection_extraction',
       model: this.llmService.getContentModel(),
-      items: stubs.map((stub) => ({
-        key: stub.chunkId,
-        ...this.llmService.buildCollectionBatchRequest(stub.input),
-      })),
+      items: await Promise.all(
+        stubs.map(async (stub) => ({
+          key: stub.chunkId,
+          ...(await this.llmService.buildCollectionBatchRequest(stub.input)),
+        })),
+      ),
       resumeContext: {
         extractionRunId,
         baseParams: {
@@ -865,6 +908,47 @@ export class ExtractionPipelineService implements OnModuleInit {
       post_context: postContext,
       __sourceDocumentId: sourceDocumentId,
     } as EnrichedLLMMention;
+  }
+
+  /** Everything in the batch was already extracted under the current
+   *  contract (or is in flight): a zeroed result, no run created, no LLM
+   *  spend. The gate's skip log is the audit trail. */
+  private buildFullyCoveredResult(): ExtractionPipelineResult {
+    return {
+      extractionRunId: '',
+      llmOutput: { mentions: [] },
+      rawMentionsSample: [],
+      dbResult: {
+        entitiesCreated: 0,
+        connectionsCreated: 0,
+        affectedConnectionIds: [],
+        affectedRestaurantIds: [],
+        createdEntityIds: [],
+        createdEntitySummaries: [],
+        reusedEntitySummaries: [],
+      } as unknown as UnifiedProcessingDatabaseResult,
+      llmProcessingTimeMs: 0,
+      dbProcessingTimeMs: 0,
+      chunkDurationMs: 0,
+      chunkStats: {
+        chunkCount: 0,
+        totalComments: 0,
+        avgComments: 0,
+        minComments: 0,
+        maxComments: 0,
+        avgEstimatedTokens: 0,
+        maxEstimatedTokens: 0,
+      },
+      processingMetrics: {
+        totalDuration: 0,
+        chunksProcessed: 0,
+        successRate: 1,
+        topCommentsCount: 0,
+        averageChunkTime: 0,
+        fastestChunk: 0,
+        slowestChunk: 0,
+      },
+    };
   }
 
   private buildSourceBreakdown(
