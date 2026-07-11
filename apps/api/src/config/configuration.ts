@@ -253,8 +253,13 @@ export default () => {
       apiKey: resolveSecretEnv(appEnv, 'LLM_API_KEY'),
       // Fallbacks track the CURRENT production model (.env normally sets these);
       // a stale fallback silently downgraded two generations when env was absent.
-      model: process.env.LLM_MODEL || 'gemini-3.5-flash',
-      queryModel: process.env.LLM_QUERY_MODEL || 'gemini-3.5-flash',
+      // gemini-3-flash-preview CHOSEN by the 150-post quality A/B
+      // (2026-07-11, scripts/collection-model-ab-v2.ts): equal blind-judged
+      // attribution + zero true fabrication vs 3.5-flash, BETTER recall,
+      // at ~1/3 the price ($6.60 vs $20.48 per 1k posts batch). Env override
+      // exists for A/B work only — the default IS the decision.
+      model: process.env.LLM_MODEL || 'gemini-3-flash-preview',
+      queryModel: process.env.LLM_QUERY_MODEL || 'gemini-3-flash-preview',
       // ---- Timeouts (2026-07-11 fold-in; formerly env, .env had them all 0
       // = no timeout, a prod hang risk on the interactive query path) ----
       // Interactive natural-search interpretation: user-facing, must fail fast.
