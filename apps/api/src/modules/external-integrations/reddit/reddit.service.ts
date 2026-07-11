@@ -2040,11 +2040,10 @@ export class RedditService implements OnModuleInit {
       if (isProd) {
         return null;
       }
-      const parsed = Number.parseInt(
-        process.env.REDDIT_MAX_CONSECUTIVE_RATE_LIMITS || '',
-        10,
-      );
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+      // Dev circuit breaker: abort after 3 consecutive Reddit 429s
+      // (2026-07-11 fold-in: formerly env REDDIT_MAX_CONSECUTIVE_RATE_LIMITS;
+      // prod stays null = never abort).
+      return 3;
     })();
     let consecutiveRateLimitErrors = 0;
 

@@ -65,43 +65,92 @@ SEARCH_DENSE_SIBLINGS_MODE (always|expansion — product call still open on real
 data), DISH_KNOWLEDGE_SYNTHESIS_ENABLED, KEYWORD_COLLECTION_DRY_RUN,
 UNIFIED_PROCESSING_DRY_RUN, COLLECTION_LLM_MODE (read in code, set per env).
 
-## (b) Tunables that mirror code defaults — recommend folding into code
+## (b) Tunables — **FOLD-IN EXECUTED 2026-07-11** (95 .env lines deleted)
 
-These are read in code with sane defaults; the `.env` lines mostly restate the
-default. They are NOT deleted here because each removal must be checked
-against its code default one-by-one (some .env values differ from the code
-fallback, so deleting the line changes behavior). Recommended follow-up: for
-each, either delete the `.env` line (default already equals it) or promote the
-`.env` value into the code default, then delete the line. Groups:
+Doctrine applied: never-changed tunables became code constants with rationale
+comments; process.env reads removed except where a genuine env axis exists
+(quota-shaped caps). Drift reconciliations (where .env ≠ code fallback) are
+called out per row. All groups DONE:
 
-- **AUTOCOMPLETE\_\*** (11 vars) — ranking weights; read via
-  `autocomplete.service.ts` dynamic `process.env[key]`. Weights were tuned once
-  during the autocomplete red-team; they don't vary by environment. → code
-  constants in autocomplete.service.ts.
-- **SEARCH\_\* knob block** (page sizes, on-demand caps/cooldowns, expansion
-  caps/budget, diagnostics flags) — diagnostics flags
-  (SEARCH_VERBOSE_DIAGNOSTICS, SEARCH_LOG_ENABLED,
-  SEARCH_INCLUDE_PHASE_TIMINGS, SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW) are dev-only
-  observability and CAN stay env; the numeric caps belong in code.
-- **DATABASE\_\* pool/retry knobs** (13 vars) — never changed; pool sizing is the
-  only genuinely env-different one (dev 10 vs prod sizing). Keep POOL_MAX/MIN
-  env, fold the rest.
-- **GOOGLE*PLACES*\* rate/retry knobs** (12 vars) — quota-shaped constants;
-  verify against the actual Google quota tier before folding
-  (200 rps / 12k rpm / 150k rpd currently asserted — confirm these match the
-  billing account's quota, they look like copied defaults, not measured).
-- **LLM\_ tuning block** (temperature/top*p/top_k/thinking levels/max tokens/
-  RPM/TPM/headroom/jitter) — model-behavior constants tuned once per model
-  switch; RPM/TPM are quota-shaped (verify vs the Gemini tier). The
-  LLM_DEBUG_THOUGHTS*\* subblock is dev-only debug and fine in dev .env, should
-  never exist in prod env.
-- **Cache TTL/size knobs** (LLM*QUERY_RESULT_CACHE*_,
-  ENTITY*RESOLUTION_CACHE*_ TTLs/entries/versions) — never changed; the
-  \_VERSION vars are cache-busting levers worth keeping env, TTLs → code.
-- **Misc**: RESTAURANT*VIEW_COOLDOWN_MS, PHOTO_REPORT_HIDE_THRESHOLD,
-  POLL*\_ live subset, KEYWORD\_\_ live subset, CONCURRENCY,
-  UNIFIED*PROCESSING_BATCH_SIZE, ENTITY_RESOLUTION_BATCH_SIZE,
-  RESTAURANT_ENRICHMENT*\* → code constants.
+- **AUTOCOMPLETE\_\*** (11 vars) — DONE → literals in
+  `autocomplete.service.ts:120-131` constructor block (+
+  `search-query-suggestion.service.ts` minGlobalDistinctUsers=3). All 11 .env
+  values equaled the code defaults; no drift. Env reads removed. The
+  cache/lane AUTOCOMPLETE\_\* keys (env-absent, override-only) untouched.
+- **SEARCH\_\* knob block** — DONE. Page sizes/result limit →
+  `search.service.ts` DEFAULT_PAGE_SIZE 25 / MAX_PAGE_SIZE 100 /
+  DEFAULT_RESULT_LIMIT 100 (env values restated them; resolve\* helpers now
+  return the constants). On-demand: cooldown 300s + maxEntities 5 →
+  `on-demand-request.service.ts`. **DRIFT: SEARCH_ON_DEMAND_MIN_RESULTS** —
+  .env 1 vs code fallbacks 25/defaultPageSize (three consumers disagreed);
+  reconciled to **1** (the value production behavior used = trigger on zero
+  results) in NEW shared `src/modules/search/on-demand-tuning.constants.ts`
+  (ON_DEMAND_MIN_RESULTS), imported by search.service,
+  keyword-search-scheduler, keyword-slice-selection. Diagnostics flags
+  (VERBOSE_DIAGNOSTICS/LOG_ENABLED/INCLUDE_PHASE_TIMINGS/
+  ALWAYS_INCLUDE_SQL_PREVIEW) stay env (dev observability).
+- **DATABASE\_\*** (13 vars) — DONE → constants in `configuration.ts` database
+  block; POOL_MAX/MIN stay env (only genuinely env-different knob).
+  **DRIFT: DATABASE_HANDLE_DISCONNECTS** — .env true vs code fallback false;
+  reconciled to **true**. DATABASE_LOGGING folded to NODE_ENV===development.
+- **GOOGLE_PLACES\_\*** (12 vars) — DONE → `configuration.ts` googlePlaces
+  block. **Verify verdict:** we call Places API (New)
+  (places.googleapis.com/v1); Google publishes NO default quotas anymore
+  (per-method QPM, per-project, console-only). The 200 rps / 12,000 rpm were
+  copied numbers, not measured quota → replaced with a conservative floor of
+  **10 rps / 600 rpm** per method (+ per-day kept as cost guards). rps/rpm/rpd
+  keep env override (per-project quota is a real env axis); raise only from
+  console.cloud.google.com/google/maps-apis/quotas. Timeout/radius/retry →
+  constants.
+- **LLM\_ tuning block** — DONE → `configuration.ts` llm block constants:
+  temperature 0.1 / topP 0.5 / topK 30 / candidateCount 1 / thinking
+  LOW+MINIMAL / maxTokens 0 (=model default 65,536) / system-cache 10800+600.
+  Rate limiter (`centralized-rate-limiter.service.ts`): **verify verdict** —
+  old 1000 RPM / 1M TPM were Tier-1-era; Gemini no longer publishes tier
+  tables (AI Studio shows live limits); published Flash Tier 2 = 2,000 RPM /
+  4M TPM and Tier 3 ≥ that → defaults now **2,000 RPM / 4M TPM** (env
+  override kept — set from AI Studio, never guessed). Headroom 0.95 →
+  constant. **DRIFT: LLM_MAX_REQUEST_TOKENS** .env 65000 vs fallback 60000 →
+  reconciled to **65000** (`smart-llm-processor.service.ts`). Consecutive-429
+  breakers (LLM+Reddit) → constant 3 (dev-only; prod null). Jitter 40/250 →
+  constants. **DRIFT: CONCURRENCY** .env 20 vs fallback 16 → constant **20**
+  (`llm-concurrent-processing.service.ts`). LLM_DEBUG_THOUGHTS\_\* stay in dev
+  .env (dev-only debug). LLM_MODEL/QUERY_MODEL/BASE_URL stay env.
+- **Timeouts (verify item)** — DONE. .env had LLM_TIMEOUT/QUERY_TIMEOUT/
+  HEADERS/BODY/CONNECT all **0 = no timeout** (prod hang risk). Honest values
+  folded into `configuration.ts` llm block: queryTimeout **30s** (interactive
+  natural-search), timeout **600s** (interactive extraction hang guard),
+  undici dispatcher headers/body **600s** (non-streaming generation delivers
+  headers only after full generation), connect **10s**. The `|| 0` fallbacks
+  in `llm.service.ts` onModuleInit (which silently disabled everything) →
+  `?? honest-default`.
+- **Sentry sampling (verify item)** — DONE. main.ts already defaulted
+  dev 1.0 / prod 0.1; `configuration.ts` sentry block now matches
+  (APP_ENV-aware 1.0/0.1). Stale SENTRY_TRACES/PROFILES_SAMPLE_RATE=1.0 lines
+  deleted from .env (they'd have overridden prod to 1.0 if copied). Env
+  override kept as ops lever.
+- **Cache TTL/size knobs** — DONE → constants (LLM query-result cache
+  900/120/200, entity-resolution 900/60/120/2000) in `configuration.ts`.
+  NOTE these were .env-load-bearing (code fallbacks were 0 = cache DISABLED);
+  values promoted, not deleted. \_VERSION + \_REDIS_KEY\_\* stay env
+  (cache-busting + namespacing).
+- **Misc** — DONE: RESTAURANT_VIEW_COOLDOWN_MS 120s (`history.service.ts`),
+  PHOTO_REPORT_HIDE_THRESHOLD 3 (`configuration.ts` cloudinary), POLL\_\*
+  live subset → `poll-scheduler.service.ts` constants + `poll-timing.ts` 4
+  (**DRIFT: POLL_RELEASE_DAY_OF_WEEK** .env 1/Monday vs code 0/Sunday —
+  reconciled to **0 Sunday** per polls spec §B.5, the one case where the code
+  value beat .env), KEYWORD gate knobs → `configuration.ts` keywordProcessing
+  constants, KEYWORD_SEARCH_SORTS → orchestrator constant,
+  **DRIFT: KEYWORD_SEARCH_LIMIT** .env 1 vs fallback 1000 → reconciled to
+  **1** (deliberate collection-cost lever; 1000 never governed),
+  UNIFIED_PROCESSING_BATCH_SIZE **DRIFT** .env 300 vs 250 → **300**,
+  ENTITY_RESOLUTION_BATCH_SIZE 100, RESTAURANT_ENRICHMENT_CONCURRENCY 5,
+  **DRIFT: RESTAURANT_ENRICHMENT_MIN_SCORE_THRESHOLD** .env 0.15 vs fallback
+  0.2 → **0.15**, SEARCH_INTEREST\_\* → onDemand constants 5/120/10.
+
+Open (out of scope, flagged): `.env` still sets LLM_MODEL=gemini-3-flash-preview
+while the code fallback tracks gemini-3.5-flash (the A/B-chosen production
+model) — decide deliberately which model dev should run and align.
 
 ## Healthy pattern already in place
 
@@ -109,14 +158,14 @@ each, either delete the `.env` line (default already equals it) or promote the
 code and env is override-only. That IS the ideal shape; the follow-up work in
 (b) is converging the remaining .env-restated tunables to the same pattern.
 
-## (d) flags (not changed, verify)
+## (d) flags — ALL RESOLVED 2026-07-11 (details in the (b) section above)
 
-- GOOGLE_PLACES_REQUESTS_PER_SECOND=200 (+ per-minute/day) — confirm against
-  the real billing-account quota; a too-high limiter is a silent 429 source.
-- LLM_MAX_RPM=1000 / LLM_MAX_TPM=1000000 — confirm against the Gemini paid-tier
-  quota for gemini-3.5-flash; batch pipeline mostly sidesteps this now.
-- SENTRY_TRACES_SAMPLE_RATE=1.0 / PROFILES=1.0 — correct for dev; prod env must
-  set lower (cost).
-- LLM_TIMEOUT/LLM_QUERY_TIMEOUT/HEADERS/BODY/CONNECT=0 (= no timeout) —
-  deliberate for long batch calls, but prod interactive query path with zero
-  timeout is a hang risk; consider a nonzero LLM_QUERY_TIMEOUT in prod.
+- GOOGLE_PLACES rate caps: DONE — 200 rps was a copied number; conservative
+  10 rps / 600 rpm per-method floor in code, env-overridable from measured
+  console quota.
+- LLM_MAX_RPM/TPM: DONE — defaults now 2,000 RPM / 4M TPM (published Flash
+  Tier 2 floor; Tier 3 ≥ that; exact live limits only visible in AI Studio).
+- Sentry sampling: DONE — APP_ENV-aware dev 1.0 / prod 0.1 in code; stale 1.0
+  .env lines deleted.
+- LLM timeouts: DONE — zero-timeout config eliminated; query 30s, extraction
+  600s, undici headers/body 600s, connect 10s.

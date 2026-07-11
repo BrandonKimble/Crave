@@ -316,26 +316,14 @@ export class OnDemandRequestService {
     return stripped.isGenericOnly ? '' : stripped.text;
   }
 
+  // 2026-07-11 fold-in: formerly env SEARCH_ON_DEMAND_COOLDOWN_MS /
+  // SEARCH_ON_DEMAND_MAX_ENTITIES; .env restated these values.
   private resolveCooldownMs(): number {
-    const raw = process.env.SEARCH_ON_DEMAND_COOLDOWN_MS;
-    if (raw) {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed) && parsed >= 0) {
-        return Math.max(0, Math.floor(parsed));
-      }
-    }
-    return 300_000;
+    return 300_000; // 5 min between repeat triggers for the same target/bounds
   }
 
   private resolveMaxEntities(): number {
-    const raw = process.env.SEARCH_ON_DEMAND_MAX_ENTITIES;
-    if (raw) {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed) && parsed >= 0) {
-        return Math.max(0, Math.floor(parsed));
-      }
-    }
-    return 5;
+    return 5; // entities queued per on-demand keyword cycle
   }
 
   private composeQueueTargetKey(request: {

@@ -211,18 +211,23 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       model:
         this.configService.get<string>('llm.model') ||
         'gemini-2.5-flash-preview-09-2025',
-      queryTimeout: this.configService.get<number>('llm.queryTimeout') || 0,
+      // Honest fallbacks mirror configuration.ts (2026-07-11 fold-in); the
+      // old `|| 0` fallbacks silently disabled every timeout — a prod hang
+      // risk on the interactive query path.
+      queryTimeout:
+        this.configService.get<number>('llm.queryTimeout') ?? 30_000,
       queryLogOutputs:
         this.configService.get<boolean>('llm.queryLogOutputs') === true,
       baseUrl:
         this.configService.get<string>('llm.baseUrl') ||
         'https://generativelanguage.googleapis.com/v1beta',
-      timeout: this.configService.get<number>('llm.timeout') || 0,
+      timeout: this.configService.get<number>('llm.timeout') ?? 600_000,
       headersTimeoutMs:
-        this.configService.get<number>('llm.headersTimeoutMs') || 0,
-      bodyTimeoutMs: this.configService.get<number>('llm.bodyTimeoutMs') || 0,
+        this.configService.get<number>('llm.headersTimeoutMs') ?? 600_000,
+      bodyTimeoutMs:
+        this.configService.get<number>('llm.bodyTimeoutMs') ?? 600_000,
       connectTimeoutMs:
-        this.configService.get<number>('llm.connectTimeoutMs') || 0,
+        this.configService.get<number>('llm.connectTimeoutMs') ?? 10_000,
       maxTokens: this.configService.get<number>('llm.maxTokens') || 65536, // Gemini 2.5 Flash supports up to 65,536 output tokens
       temperature: this.configService.get<number>('llm.temperature') || 0.1,
       topP: this.configService.get<number>('llm.topP') || 0.95,

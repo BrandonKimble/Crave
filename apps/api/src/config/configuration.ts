@@ -106,44 +106,33 @@ export default () => {
     database: {
       url: getDatabaseUrl(),
       connectionPool: {
+        // Pool sizing is the only genuinely env-different DB knob (dev 10 vs
+        // prod 50) — stays env-overridable. Everything else below is a
+        // never-changed constant (2026-07-11 config fold-in).
         max: parseInt(
           process.env.DATABASE_CONNECTION_POOL_MAX || getDatabasePoolSize(),
           10,
         ),
         min: parseInt(process.env.DATABASE_CONNECTION_POOL_MIN || '2', 10),
-        acquire: parseInt(
-          process.env.DATABASE_CONNECTION_ACQUIRE_TIMEOUT || '60000',
-          10,
-        ),
-        idle: parseInt(
-          process.env.DATABASE_CONNECTION_IDLE_TIMEOUT || '10000',
-          10,
-        ),
-        evict: parseInt(
-          process.env.DATABASE_CONNECTION_EVICT_INTERVAL || '10000',
-          10,
-        ),
-        handleDisconnects: process.env.DATABASE_HANDLE_DISCONNECTS === 'true',
+        acquire: 60_000, // ms to wait for a pool connection before erroring
+        idle: 10_000, // ms an idle connection lingers before release
+        evict: 10_000, // eviction sweep interval (ms)
+        handleDisconnects: true, // always reconnect on dropped connections
       },
       query: {
-        timeout: parseInt(process.env.DATABASE_QUERY_TIMEOUT || '30000', 10),
+        timeout: 30_000, // per-query ceiling (ms); slow analytical work uses its own paths
         retry: {
-          attempts: parseInt(process.env.DATABASE_RETRY_ATTEMPTS || '3', 10),
-          delay: parseInt(process.env.DATABASE_RETRY_DELAY || '1000', 10),
-          factor: parseFloat(process.env.DATABASE_RETRY_FACTOR || '2.0'),
+          attempts: 3,
+          delay: 1_000, // base backoff (ms)
+          factor: 2.0, // exponential backoff multiplier
         },
       },
       performance: {
-        preparedStatements:
-          process.env.DATABASE_PREPARED_STATEMENTS !== 'false',
+        preparedStatements: true,
         logging: {
-          enabled:
-            process.env.DATABASE_LOGGING === 'true' ||
-            process.env.NODE_ENV === 'development',
-          slowQueryThreshold: parseInt(
-            process.env.DATABASE_SLOW_QUERY_THRESHOLD || '1000',
-            10,
-          ),
+          // Query logging is a dev observability aid, not an env knob.
+          enabled: process.env.NODE_ENV === 'development',
+          slowQueryThreshold: 1_000, // ms — log queries slower than this
         },
       },
     },
@@ -161,11 +150,15 @@ export default () => {
       environment:
         process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
       release: process.env.SENTRY_RELEASE,
+      // APP_ENV-aware defaults: full sampling in dev, 10% in prod (cost).
+      // Env override kept as an ops lever (e.g. temporarily raise prod).
       tracesSampleRate: parseFloat(
-        process.env.SENTRY_TRACES_SAMPLE_RATE || '0.1',
+        process.env.SENTRY_TRACES_SAMPLE_RATE ||
+          (isProductionAppEnv(appEnv) ? '0.1' : '1.0'),
       ),
       profilesSampleRate: parseFloat(
-        process.env.SENTRY_PROFILES_SAMPLE_RATE || '0.1',
+        process.env.SENTRY_PROFILES_SAMPLE_RATE ||
+          (isProductionAppEnv(appEnv) ? '0.1' : '1.0'),
       ),
     },
     throttler: {
@@ -224,10 +217,8 @@ export default () => {
       // (dev = tunnel; prod = Railway URL). Signed into every ticket.
       notificationUrl: process.env.CLOUDINARY_NOTIFICATION_URL,
       uploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET || 'crave_ugc_photo',
-      reportHideThreshold: parseInt(
-        process.env.PHOTO_REPORT_HIDE_THRESHOLD || '3',
-        10,
-      ),
+      // Distinct-user reports that auto-hide a UGC photo pending review.
+      reportHideThreshold: 3,
     },
     revenueCat: {
       apiKey: process.env.REVENUECAT_API_KEY,
@@ -264,31 +255,36 @@ export default () => {
       // a stale fallback silently downgraded two generations when env was absent.
       model: process.env.LLM_MODEL || 'gemini-3.5-flash',
       queryModel: process.env.LLM_QUERY_MODEL || 'gemini-3.5-flash',
-      queryTimeout: parseInt(process.env.LLM_QUERY_TIMEOUT || '0', 10),
+      // ---- Timeouts (2026-07-11 fold-in; formerly env, .env had them all 0
+      // = no timeout, a prod hang risk on the interactive query path) ----
+      // Interactive natural-search interpretation: user-facing, must fail fast.
+      queryTimeout: 30_000,
       queryLogOutputs: process.env.LLM_QUERY_LOG_OUTPUTS === 'true',
       baseUrl:
         process.env.LLM_BASE_URL ||
         'https://generativelanguage.googleapis.com/v1beta',
-      timeout: parseInt(process.env.LLM_TIMEOUT || '30000', 10),
-      headersTimeoutMs: parseInt(
-        process.env.LLM_HEADERS_TIMEOUT_MS || '120000',
-        10,
-      ),
-      bodyTimeoutMs: parseInt(process.env.LLM_BODY_TIMEOUT_MS || '300000', 10),
-      connectTimeoutMs: parseInt(
-        process.env.LLM_CONNECT_TIMEOUT_MS || '30000',
-        10,
-      ),
-      maxTokens: process.env.LLM_MAX_TOKENS
-        ? parseInt(process.env.LLM_MAX_TOKENS, 10)
-        : 0, // 0 = Use Gemini 2.5 Flash default 65,536 tokens maximum
-      temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.1'),
-      topP: parseFloat(process.env.LLM_TOP_P || '0.5'),
-      topK: parseInt(process.env.LLM_TOP_K || '30', 10),
-      candidateCount: parseInt(process.env.LLM_CANDIDATE_COUNT || '1', 10),
+      // Per-call abort ceiling for interactive content-extraction calls.
+      // Non-streaming Gemini generation on big chunks can run minutes; 10 min
+      // is a hang guard, not a tuning target. Batch pipeline is async/polled
+      // and unaffected.
+      timeout: 600_000,
+      // Undici global dispatcher: headers arrive only after full generation
+      // on non-streaming calls, so headers/body get the same 10 min ceiling;
+      // TCP connect should never be slow.
+      headersTimeoutMs: 600_000,
+      bodyTimeoutMs: 600_000,
+      connectTimeoutMs: 10_000,
+      // ---- Model behavior (tuned once per model switch, never per env) ----
+      maxTokens: 0, // 0 = model default output cap (65,536 for Gemini Flash)
+      temperature: 0.1, // near-deterministic extraction/interpretation
+      topP: 0.5,
+      topK: 30,
+      candidateCount: 1,
       thinking: {
-        level: process.env.LLM_THINKING_LEVEL || undefined,
-        queryLevel: process.env.LLM_QUERY_THINKING_LEVEL || undefined,
+        // Thinking levels chosen in the gemini-3 A/B: LOW for extraction,
+        // MINIMAL for the latency-sensitive query path.
+        level: 'LOW',
+        queryLevel: 'MINIMAL',
         includeThoughts: process.env.LLM_THINKING_INCLUDE_THOUGHTS === 'true',
       },
       thoughtDebug: {
@@ -312,24 +308,18 @@ export default () => {
           process.env.LLM_DEBUG_THOUGHTS_FILE_PATH_CONTENT || undefined,
       },
       cache: {
-        systemTtlSeconds: parseInt(
-          process.env.LLM_SYSTEM_CACHE_TTL_SECONDS || '10800',
-          10,
-        ),
-        systemRefreshLeadSeconds: parseInt(
-          process.env.LLM_SYSTEM_CACHE_REFRESH_LEAD_SECONDS || '600',
-          10,
-        ),
+        // Gemini system-instruction cache: 3h TTL, refresh 10 min early.
+        systemTtlSeconds: 10_800,
+        systemRefreshLeadSeconds: 600,
         redisKey:
           resolveScopedEnv(appEnv, {
             dev: process.env.LLM_SYSTEM_CACHE_REDIS_KEY_DEV,
             prod: process.env.LLM_SYSTEM_CACHE_REDIS_KEY_PROD,
             fallback: process.env.LLM_SYSTEM_CACHE_REDIS_KEY,
           }) || `crave:${appEnv}:llm:system-instruction-cache`,
-        queryResultTtlSeconds: parseInt(
-          process.env.LLM_QUERY_RESULT_CACHE_TTL_SECONDS || '0',
-          10,
-        ),
+        // Query-analysis result cache (was .env-only; 0 here would DISABLE
+        // it — 900/120/200 are the values production behavior has been using).
+        queryResultTtlSeconds: 900,
         queryResultRedisKey:
           resolveScopedEnv(appEnv, {
             dev: process.env.LLM_QUERY_RESULT_CACHE_REDIS_KEY_DEV,
@@ -338,76 +328,52 @@ export default () => {
           }) || `crave:${appEnv}:llm:query-analysis`,
         queryResultCacheVersion:
           process.env.LLM_QUERY_RESULT_CACHE_VERSION || 'v1',
-        queryResultLocalTtlSeconds: parseInt(
-          process.env.LLM_QUERY_RESULT_CACHE_LOCAL_TTL_SECONDS || '0',
-          10,
-        ),
-        queryResultLocalMaxEntries: parseInt(
-          process.env.LLM_QUERY_RESULT_CACHE_LOCAL_MAX_ENTRIES || '0',
-          10,
-        ),
+        queryResultLocalTtlSeconds: 120,
+        queryResultLocalMaxEntries: 200,
         queryResultIncludeMetadata:
           process.env.LLM_QUERY_RESULT_CACHE_INCLUDE_METADATA === 'true',
       },
     },
     googlePlaces: {
       apiKey: resolveSecretEnv(appEnv, 'GOOGLE_PLACES_API_KEY'),
-      timeout: parseInt(process.env.GOOGLE_PLACES_TIMEOUT || '10000', 10),
+      timeout: 10_000, // per-request HTTP timeout (ms)
+      // ---- Self-imposed rate caps (2026-07-11 verify) ----
+      // We call Places API (New) (places.googleapis.com/v1). Google no longer
+      // publishes default quotas; they are per-method QPM set per-project in
+      // the Cloud Console. The old 200 rps / 12,000 rpm here was a copied
+      // number, NOT a measured quota — a silent 429 source. 10 rps / 600 rpm
+      // is a conservative floor safe under any default tier; raise ONLY after
+      // reading the project's actual per-method quota at
+      // console.cloud.google.com/google/maps-apis/quotas. Env override kept
+      // because the real quota is a per-project (per-env) fact.
       requestsPerSecond: parseInt(
-        process.env.GOOGLE_PLACES_REQUESTS_PER_SECOND || '50',
+        process.env.GOOGLE_PLACES_REQUESTS_PER_SECOND || '10',
         10,
       ),
       requestsPerMinute: parseInt(
-        process.env.GOOGLE_PLACES_REQUESTS_PER_MINUTE || '12000',
+        process.env.GOOGLE_PLACES_REQUESTS_PER_MINUTE || '600',
         10,
       ),
+      // Daily cap is a cost guard, not a Google quota.
       requestsPerDay: parseInt(
         process.env.GOOGLE_PLACES_REQUESTS_PER_DAY || '150000',
         10,
       ),
       operationLimits: {
         placeAutocomplete: {
-          requestsPerMinute: parseInt(
-            process.env.GOOGLE_PLACES_AUTOCOMPLETE_REQUESTS_PER_MINUTE ||
-              process.env.GOOGLE_PLACES_REQUESTS_PER_MINUTE ||
-              '12000',
-            10,
-          ),
-          requestsPerDay: parseInt(
-            process.env.GOOGLE_PLACES_AUTOCOMPLETE_REQUESTS_PER_DAY ||
-              process.env.GOOGLE_PLACES_REQUESTS_PER_DAY ||
-              '150000',
-            10,
-          ),
+          requestsPerMinute: 600, // same conservative per-method floor as above
+          requestsPerDay: 150_000,
         },
         placeDetails: {
-          requestsPerMinute: parseInt(
-            process.env.GOOGLE_PLACES_PLACE_DETAILS_REQUESTS_PER_MINUTE ||
-              process.env.GOOGLE_PLACES_REQUESTS_PER_MINUTE ||
-              '600',
-            10,
-          ),
-          requestsPerDay: parseInt(
-            process.env.GOOGLE_PLACES_PLACE_DETAILS_REQUESTS_PER_DAY ||
-              process.env.GOOGLE_PLACES_REQUESTS_PER_DAY ||
-              '100000',
-            10,
-          ),
+          requestsPerMinute: 600,
+          requestsPerDay: 100_000,
         },
       },
-      defaultRadius: parseInt(
-        process.env.GOOGLE_PLACES_DEFAULT_RADIUS || '5000',
-        10,
-      ),
+      defaultRadius: 5_000, // meters — default search radius
       retryOptions: {
-        maxRetries: parseInt(process.env.GOOGLE_PLACES_MAX_RETRIES || '3', 10),
-        retryDelay: parseInt(
-          process.env.GOOGLE_PLACES_RETRY_DELAY || '1000',
-          10,
-        ),
-        retryBackoffFactor: parseFloat(
-          process.env.GOOGLE_PLACES_RETRY_BACKOFF_FACTOR || '2.0',
-        ),
+        maxRetries: 3,
+        retryDelay: 1_000, // base backoff (ms)
+        retryBackoffFactor: 2.0,
       },
     },
     tomtom: {
@@ -428,23 +394,12 @@ export default () => {
       secret: process.env.JWT_SECRET,
       expiresIn: process.env.JWT_EXPIRATION || '7d',
     },
+    // On-demand keyword-collection throughput (2026-07-11 fold-in; the old
+    // SEARCH_INTEREST_* env aliases restated these same values).
     onDemand: {
-      maxPerBatch: parseInt(
-        process.env.SEARCH_ON_DEMAND_MAX_PER_BATCH ||
-          process.env.SEARCH_INTEREST_MAX_PER_BATCH ||
-          '5',
-        10,
-      ),
-      estimatedJobMinutes: parseInt(
-        process.env.SEARCH_ON_DEMAND_ESTIMATED_JOB_MINUTES || '120',
-        10,
-      ),
-      maxProcessingBacklog: parseInt(
-        process.env.SEARCH_ON_DEMAND_MAX_PROCESSING_BACKLOG ||
-          process.env.SEARCH_INTEREST_MAX_PROCESSING_BACKLOG ||
-          '10',
-        10,
-      ),
+      maxPerBatch: 5, // entities enqueued per on-demand cycle
+      estimatedJobMinutes: 120, // used for backlog/ETA math
+      maxProcessingBacklog: 10, // stop enqueueing past this many in-flight jobs
     },
     entityResolution: {
       cache: {
@@ -454,47 +409,26 @@ export default () => {
             prod: process.env.ENTITY_RESOLUTION_CACHE_REDIS_KEY_PROD,
             fallback: process.env.ENTITY_RESOLUTION_CACHE_REDIS_KEY,
           }) || `crave:${appEnv}:entity-resolution`,
-        ttlSeconds: parseInt(
-          process.env.ENTITY_RESOLUTION_CACHE_TTL_SECONDS || '0',
-          10,
-        ),
-        negativeTtlSeconds: parseInt(
-          process.env.ENTITY_RESOLUTION_CACHE_NEGATIVE_TTL_SECONDS || '0',
-          10,
-        ),
-        localTtlSeconds: parseInt(
-          process.env.ENTITY_RESOLUTION_CACHE_LOCAL_TTL_SECONDS || '0',
-          10,
-        ),
-        localMaxEntries: parseInt(
-          process.env.ENTITY_RESOLUTION_CACHE_LOCAL_MAX_ENTRIES || '0',
-          10,
-        ),
+        // Entity-resolution cache (was .env-only; 0 here would DISABLE it —
+        // these are the values production behavior has been using).
+        ttlSeconds: 900,
+        negativeTtlSeconds: 60, // short negative TTL so new entities appear fast
+        localTtlSeconds: 120,
+        localMaxEntries: 2_000,
         version: process.env.ENTITY_RESOLUTION_CACHE_VERSION || 'v1',
       },
     },
     restaurantEnrichment: {
-      minScoreThreshold: parseFloat(
-        process.env.RESTAURANT_ENRICHMENT_MIN_SCORE_THRESHOLD || '0.2',
-      ),
+      // 0.15 is the value production behavior has been using (.env override
+      // of the old 0.2 fallback — reconciled 2026-07-11 in favor of .env).
+      minScoreThreshold: 0.15,
     },
+    // Keyword-collection gating (2026-07-11 fold-in; .env restated these).
     keywordProcessing: {
-      gateLookbackDays: parseInt(
-        process.env.KEYWORD_GATE_LOOKBACK_DAYS || '21',
-        10,
-      ),
-      commentSampleLimit: parseInt(
-        process.env.KEYWORD_COMMENT_SAMPLE_LIMIT || '5',
-        10,
-      ),
-      minNewComments: parseInt(process.env.KEYWORD_MIN_NEW_COMMENTS || '3', 10),
-      pipelineScope: (
-        process.env.KEYWORD_GATE_PIPELINES ||
-        'chronological,archive,keyword,on-demand'
-      )
-        .split(',')
-        .map((value) => value.trim().toLowerCase())
-        .filter((value) => value.length > 0),
+      gateLookbackDays: 21, // recency window for gate decisions
+      commentSampleLimit: 5, // comments sampled per candidate thread
+      minNewComments: 3, // skip threads with fewer new comments
+      pipelineScope: ['chronological', 'archive', 'keyword', 'on-demand'],
     },
     unifiedProcessing: {
       dryRun: process.env.UNIFIED_PROCESSING_DRY_RUN === 'true',

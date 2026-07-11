@@ -4,11 +4,8 @@
 
 - `SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW` (default `false`): when `true`, every `/search/run` response includes the serialized SQL/Prisma preview even if the client doesn’t set `includeSqlPreview`.
 - `SEARCH_VERBOSE_DIAGNOSTICS` (default `false`): enables additional executor logging (counts, open-now coverage) for debugging environments.
-- `SEARCH_ON_DEMAND_COOLDOWN_MS` (default `300000`): minimum time between repeated keyword triggers for the same targets/bounds combo.
-- `SEARCH_ON_DEMAND_MIN_RESULTS` (default `SEARCH_DEFAULT_PAGE_SIZE`): threshold of restaurant results below which on-demand keyword collection runs (only if food entities/attributes were provided).
-- `SEARCH_ON_DEMAND_MAX_ENTITIES` (default `5`): max number of entities queued for a single on-demand keyword cycle.
 - `SEARCH_OPEN_NOW_FETCH_MULTIPLIER` (default `4`): how many pages of results to prefetch when `openNow` is requested so closed restaurants can be filtered before pagination.
-- `KEYWORD_SEARCH_LIMIT`, `KEYWORD_SEARCH_SORTS`: Reddit search limits/sorts for keyword jobs. Cadence itself is planned by `CollectionSchedulerService` via `collection_schedules` rows (`COLLECTION_SCHEDULER_ENABLED`).
+- On-demand tunables are code constants since the 2026-07-11 config fold-in: cooldown 300s + max entities 5 in `on-demand-request.service.ts`, trigger threshold `ON_DEMAND_MIN_RESULTS` (=1) in `on-demand-tuning.constants.ts`, keyword limit/sorts in `keyword-search-orchestrator.service.ts`. Cadence itself is planned by `CollectionSchedulerService` via `collection_schedules` rows (`COLLECTION_SCHEDULER_ENABLED`).
 
 ## POST /search/run
 
@@ -117,7 +114,7 @@ Restaurant rows can now include:
 - `matchedTags`: the matched restaurant-level tags returned for card/profile rendering
 - `hasMenuItems`: explicit guard showing the restaurant still has menu-item inventory backing eligibility
 
-When a query supplies food entities/attributes but returns fewer than `SEARCH_ON_DEMAND_MIN_RESULTS` restaurants, the API can automatically enqueue keyword search cycles for the overlapping `collectableMarketKeys` resolved from the viewport. A market only counts as collectable when it has an active linked community target in `collection_communities`; markets without linked communities still accumulate search demand and support polls, but they do not enqueue Reddit collection work.
+When a query supplies food entities/attributes but returns fewer than `ON_DEMAND_MIN_RESULTS` restaurants, the API can automatically enqueue keyword search cycles for the overlapping `collectableMarketKeys` resolved from the viewport. A market only counts as collectable when it has an active linked community target in `collection_communities`; markets without linked communities still accumulate search demand and support polls, but they do not enqueue Reddit collection work.
 
 Search responses now distinguish two different coverage concepts in metadata:
 

@@ -97,7 +97,9 @@ interface RestaurantMetadataUpdateOperation {
   attributeIds: string[];
 }
 
-const DEFAULT_UNIFIED_BATCH_SIZE = 250;
+// 300 is the value production behavior has been using (.env override of the
+// old 250 fallback — reconciled 2026-07-11 in favor of .env).
+const DEFAULT_UNIFIED_BATCH_SIZE = 300;
 const DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE = 100;
 
 const GENERIC_FOOD_PLACEHOLDERS = new Set<string>([
@@ -171,19 +173,14 @@ export class UnifiedProcessingService implements OnModuleInit {
     private readonly attributeOntologyQueue: AttributeOntologyQueueService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {
-    this.defaultBatchSize = this.getNumericConfig(
-      'UNIFIED_PROCESSING_BATCH_SIZE',
-      DEFAULT_UNIFIED_BATCH_SIZE,
-    );
-    this.entityResolutionBatchSize = this.getNumericConfig(
-      'ENTITY_RESOLUTION_BATCH_SIZE',
-      DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE,
-    );
+    // 2026-07-11 fold-in: batch sizes/concurrency are throughput constants,
+    // not env config (former UNIFIED_PROCESSING_BATCH_SIZE /
+    // ENTITY_RESOLUTION_BATCH_SIZE / RESTAURANT_ENRICHMENT_CONCURRENCY envs).
+    this.defaultBatchSize = DEFAULT_UNIFIED_BATCH_SIZE;
+    this.entityResolutionBatchSize = DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE;
     this.transactionTimeoutMs = DEFAULT_UNIFIED_PROCESSING_TX_TIMEOUT_MS;
-    this.restaurantEnrichmentConcurrency = this.getNumericConfig(
-      'RESTAURANT_ENRICHMENT_CONCURRENCY',
-      DEFAULT_RESTAURANT_ENRICHMENT_CONCURRENCY,
-    );
+    this.restaurantEnrichmentConcurrency =
+      DEFAULT_RESTAURANT_ENRICHMENT_CONCURRENCY;
     this.subredditCacheTtlMs = this.getNumericConfig(
       'UNIFIED_PROCESSING_SUBREDDIT_CACHE_TTL_MS',
       DEFAULT_SUBREDDIT_CACHE_TTL_MS,

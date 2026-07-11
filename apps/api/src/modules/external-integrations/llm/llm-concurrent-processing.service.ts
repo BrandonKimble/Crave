@@ -64,7 +64,10 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
   private static readonly SOURCE_ID_PATTERN = /^SRC\d+$/;
   private logger!: LoggerService;
   private limit!: ReturnType<typeof pLimit>;
-  private concurrencyLimit: number = 16; // default; can be overridden by CONCURRENCY env
+  // 20 concurrent LLM chunk calls (2026-07-11 fold-in: formerly env
+  // CONCURRENCY=20 over a 16 fallback; .env value is what production
+  // behavior used — reconciled in favor of .env).
+  private concurrencyLimit: number = 20;
   private readonly delayStrategy: 'none' | 'linear' = 'none'; // Simplified - no artificial delays
   private readonly delayMs: number = 0; // No delays - SmartLLMProcessor handles timing
   private backpressureUntil = 0;
@@ -77,10 +80,6 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
   onModuleInit() {
     this.logger = this.loggerService.setContext('LlmConcurrentProcessing');
-    const envConc = parseInt(process.env.CONCURRENCY || '', 10);
-    if (!isNaN(envConc) && envConc > 0) {
-      this.concurrencyLimit = envConc;
-    }
     this.limit = pLimit(this.concurrencyLimit);
 
     this.logger.debug('LLM Concurrent Processing Service initialized', {
@@ -429,16 +428,11 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
     if (typeof meta.postChunkIndex !== 'number' || meta.postChunkIndex <= 0) {
       return 0;
     }
-    const base = Number.parseInt(
-      process.env.LLM_CHUNK_DISPATCH_JITTER_BASE || '40',
-      10,
-    );
-    const max = Number.parseInt(
-      process.env.LLM_CHUNK_DISPATCH_JITTER_MAX || '250',
-      10,
-    );
-    const safeBase = Number.isFinite(base) && base > 0 ? base : 40;
-    const safeMax = Number.isFinite(max) && max > 0 ? max : 250;
+    // Dispatch jitter spreads same-post chunk sends so they don't hit the
+    // rate limiter in lockstep (2026-07-11 fold-in: formerly env
+    // LLM_CHUNK_DISPATCH_JITTER_BASE/MAX; .env restated these values).
+    const safeBase = 40; // ms per chunk index
+    const safeMax = 250; // ms cap
     return Math.min(safeMax, safeBase * meta.postChunkIndex);
   }
 

@@ -15,6 +15,7 @@ import {
   OnDemandReason,
   Prisma,
 } from '@prisma/client';
+import { ON_DEMAND_MIN_RESULTS } from '../../search/on-demand-tuning.constants';
 import type {
   KeywordSearchSortPlan,
   KeywordSearchTerm,
@@ -493,12 +494,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   }
 
   private resolveOnDemandTargetCount(): number {
-    const configured = Number(
-      this.configService.get<string>('SEARCH_ON_DEMAND_MIN_RESULTS'),
-    );
-    return Number.isFinite(configured) && configured > 0
-      ? Math.floor(configured)
-      : 25;
+    return ON_DEMAND_MIN_RESULTS;
   }
 
   private calculateAttemptAvailability(params: {

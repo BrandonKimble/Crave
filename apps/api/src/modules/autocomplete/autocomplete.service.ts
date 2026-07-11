@@ -125,50 +125,20 @@ export class AutocompleteService {
       'AUTOCOMPLETE_CACHE_REDIS_PREFIX',
       'autocomplete:v2',
     );
-    this.weightConfidence = this.resolveEnvNumber(
-      'AUTOCOMPLETE_WEIGHT_TEXT_CONFIDENCE',
-      0.5,
-    );
-    this.weightGlobalPopularity = this.resolveEnvNumber(
-      'AUTOCOMPLETE_WEIGHT_GLOBAL_POPULARITY',
-      0.35,
-    );
-    this.weightUserAffinity = this.resolveEnvNumber(
-      'AUTOCOMPLETE_WEIGHT_USER_AFFINITY',
-      0.1,
-    );
-    this.favoriteBoost = this.resolveEnvNumber(
-      'AUTOCOMPLETE_BOOST_FAVORITE',
-      0.05,
-    );
-    this.viewAffinityWeight = this.resolveEnvNumber(
-      'AUTOCOMPLETE_WEIGHT_VIEW_AFFINITY',
-      0.08,
-    );
-    this.viewRecencyDecayDays = this.resolveEnvNumber(
-      'AUTOCOMPLETE_VIEW_RECENCY_DECAY_DAYS',
-      30,
-    );
-    this.viewFrequencyCap = this.resolveEnvNumber(
-      'AUTOCOMPLETE_VIEW_FREQUENCY_CAP',
-      10,
-    );
-    this.querySuggestionMax = this.resolveEnvInt(
-      'AUTOCOMPLETE_QUERY_SUGGESTION_MAX',
-      3,
-    );
-    this.querySuggestionPersonalBoost = this.resolveEnvNumber(
-      'AUTOCOMPLETE_QUERY_SUGGESTION_PERSONAL_BOOST',
-      0.05,
-    );
-    this.querySuggestionMinGlobalCount = this.resolveEnvInt(
-      'AUTOCOMPLETE_QUERY_SUGGESTION_MIN_GLOBAL_COUNT',
-      3,
-    );
-    this.querySuggestionMinUserCount = this.resolveEnvInt(
-      'AUTOCOMPLETE_QUERY_SUGGESTION_MIN_USER_COUNT',
-      1,
-    );
+    // Ranking weights tuned once during the autocomplete red-team; they are
+    // product tuning, not env config (2026-07-11 fold-in: formerly
+    // AUTOCOMPLETE_* env knobs whose .env lines restated these values).
+    this.weightConfidence = 0.5;
+    this.weightGlobalPopularity = 0.35;
+    this.weightUserAffinity = 0.1;
+    this.favoriteBoost = 0.05;
+    this.viewAffinityWeight = 0.08;
+    this.viewRecencyDecayDays = 30;
+    this.viewFrequencyCap = 10;
+    this.querySuggestionMax = 3;
+    this.querySuggestionPersonalBoost = 0.05;
+    this.querySuggestionMinGlobalCount = 3;
+    this.querySuggestionMinUserCount = 1;
     this.attributeLaneEnabled =
       ATTRIBUTE_LANE_RUNTIME_READY &&
       this.resolveEnvBoolean('AUTOCOMPLETE_ENABLE_ATTRIBUTE_LANE', true);

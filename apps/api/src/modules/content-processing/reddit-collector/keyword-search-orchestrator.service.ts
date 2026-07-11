@@ -956,30 +956,9 @@ export class KeywordSearchOrchestratorService {
   }
 
   private resolveKeywordSearchSorts(): KeywordSearchSort[] {
-    const raw = this.configService.get<string>('KEYWORD_SEARCH_SORTS');
-    const defaultSorts: KeywordSearchSort[] = ['relevance', 'top', 'new'];
-
-    if (!raw) {
-      return defaultSorts;
-    }
-
-    const allowed: KeywordSearchSort[] = [
-      'relevance',
-      'new',
-      'hot',
-      'top',
-      'comments',
-    ];
-    const parsed = raw
-      .split(',')
-      .map((value) => value.trim().toLowerCase())
-      .filter((value): value is KeywordSearchSort =>
-        (allowed as string[]).includes(value),
-      );
-
-    const unique = Array.from(new Set(parsed));
-
-    return unique.length > 0 ? unique : defaultSorts;
+    // One fetch per sort per keyword cycle (2026-07-11 fold-in: formerly env
+    // KEYWORD_SEARCH_SORTS; .env restated this default).
+    return ['relevance', 'top', 'new'];
   }
 
   private normalizeTimeFilter(
@@ -1252,12 +1231,12 @@ export class KeywordSearchOrchestratorService {
   }
 
   private resolveKeywordSearchLimit(): number {
-    const raw = this.configService.get<string>('KEYWORD_SEARCH_LIMIT');
-    const parsed = raw ? Number(raw) : Number.NaN;
-    if (!Number.isFinite(parsed) || parsed <= 0) {
-      return 1000;
-    }
-    return Math.min(Math.floor(parsed), 1000);
+    // Reddit search fetch limit per (keyword, sort) cycle. 1 is the value
+    // production behavior has been using (.env KEYWORD_SEARCH_LIMIT=1 — a
+    // deliberate collection-cost lever; the 1000 code fallback was never in
+    // effect). Reconciled 2026-07-11 in favor of .env; raise deliberately if
+    // keyword cycles should pull more than the single best post per sort.
+    return 1;
   }
 
   getConfiguredSorts(): KeywordSearchSort[] {

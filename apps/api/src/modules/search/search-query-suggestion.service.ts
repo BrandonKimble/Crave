@@ -46,10 +46,9 @@ export class SearchQuerySuggestionService {
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQuerySuggestionService');
-    this.minGlobalDistinctUsers = this.resolveEnvInt(
-      'AUTOCOMPLETE_QUERY_SUGGESTION_MIN_GLOBAL_COUNT',
-      3,
-    );
+    // Mirrors AutocompleteService.querySuggestionMinGlobalCount (2026-07-11
+    // fold-in: formerly env AUTOCOMPLETE_QUERY_SUGGESTION_MIN_GLOBAL_COUNT).
+    this.minGlobalDistinctUsers = 3;
   }
 
   async getSuggestions(
@@ -497,17 +496,5 @@ export class SearchQuerySuggestionService {
 
   private formatTimestampWithoutTimeZoneKey(date: Date): string {
     return date.toISOString().slice(0, 19).replace('T', ' ');
-  }
-
-  private resolveEnvInt(key: string, fallback: number): number {
-    const raw = process.env[key];
-    if (raw === undefined) {
-      return fallback;
-    }
-    const value = Number.parseInt(raw, 10);
-    if (!Number.isFinite(value)) {
-      return fallback;
-    }
-    return value;
   }
 }

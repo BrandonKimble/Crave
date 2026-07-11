@@ -83,45 +83,18 @@ export class PollSchedulerService {
     private readonly scoringTrace: DemandScoringTraceService,
   ) {
     this.logger = loggerService.setContext('PollSchedulerService');
+    // 2026-07-11 config fold-in: formerly POLL_* env knobs; never varied by
+    // environment. Drift note: dev .env had POLL_RELEASE_DAY_OF_WEEK=1
+    // (Monday), but §B.5 of the polls spec says the app cadence publishes
+    // SUNDAY (0) — reconciled in favor of the spec value.
     this.config = {
-      topicLimit: this.resolveNumberEnv('POLL_TOPIC_LIMIT', 40),
-      maxPollsPerCity: this.resolveNumberEnv('POLL_MAX_PER_CITY', 3),
-      demandWindowDays: this.resolveNumberEnv(
-        'POLL_CITY_DEMAND_WINDOW_DAYS',
-        14,
-      ),
-      minDemandScore: this.resolveNumberEnv('POLL_CITY_MIN_DEMAND_SCORE', 1),
-      // §B.5: app/Crave poll cadence publishes SUNDAY (0). Env-overridable.
-      releaseDayOfWeek: this.resolveWeekdayEnv('POLL_RELEASE_DAY_OF_WEEK', 0),
-      releaseHour: this.resolveHourEnv('POLL_RELEASE_HOUR', 9),
+      topicLimit: 40, // markets refreshed per nightly topic pass
+      maxPollsPerCity: 3,
+      demandWindowDays: 14, // demand lookback for candidate markets
+      minDemandScore: 1,
+      releaseDayOfWeek: 0, // Sunday, per §B.5
+      releaseHour: 9, // local 9am release
     };
-  }
-
-  private resolveNumberEnv(key: string, fallback: number): number {
-    const raw = process.env[key];
-    if (!raw) {
-      return fallback;
-    }
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
-
-  private resolveWeekdayEnv(key: string, fallback: number): number {
-    const raw = process.env[key];
-    const parsed = Number(raw);
-    if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 6) {
-      return parsed;
-    }
-    return fallback;
-  }
-
-  private resolveHourEnv(key: string, fallback: number): number {
-    const raw = process.env[key];
-    const parsed = Number(raw);
-    if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 23) {
-      return parsed;
-    }
-    return fallback;
   }
 
   private shouldTraceAllCandidates(): boolean {

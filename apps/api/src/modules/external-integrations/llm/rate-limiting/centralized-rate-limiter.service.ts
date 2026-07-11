@@ -154,19 +154,23 @@ export class CentralizedRateLimiter {
     this.metricsKey = `${this.keyPrefix}:metrics`;
     this.workerQueueKey = `${this.keyPrefix}:worker-queue`;
 
+    // Quota-shaped caps (2026-07-11 verify): the old 1000 RPM / 1M TPM were
+    // Tier-1-era numbers. Google no longer publishes exact tier tables (AI
+    // Studio shows the live per-project limits); published Tier 2 for Gemini
+    // Flash is 2,000 RPM / 4M TPM and Tier 3 is at/above that, so 2,000/4M is
+    // a floor safe for this Tier 3 account. Env override kept because the
+    // real quota is a per-project/per-tier fact — set from AI Studio's shown
+    // limits, never guessed. Batch pipeline mostly sidesteps this limiter.
     const envMaxRPM = parseInt(process.env.LLM_MAX_RPM || '', 10);
     const envMaxTPM = parseInt(process.env.LLM_MAX_TPM || '', 10);
     this.maxRPM =
-      Number.isFinite(envMaxRPM) && envMaxRPM > 0 ? envMaxRPM : 1000;
+      Number.isFinite(envMaxRPM) && envMaxRPM > 0 ? envMaxRPM : 2000;
     this.maxTPM =
-      Number.isFinite(envMaxTPM) && envMaxTPM > 0 ? envMaxTPM : 1000000;
+      Number.isFinite(envMaxTPM) && envMaxTPM > 0 ? envMaxTPM : 4000000;
 
-    // Headroom (applies to both RPM and TPM). Defaults to 0.95.
-    const envHeadroom = parseFloat(process.env.LLM_RATE_HEADROOM || '');
-    this.headroom =
-      !isNaN(envHeadroom) && envHeadroom > 0 && envHeadroom <= 1
-        ? envHeadroom
-        : 0.95;
+    // Headroom (applies to both RPM and TPM); 0.95 keeps us under quota
+    // without measurable throughput cost (formerly env LLM_RATE_HEADROOM).
+    this.headroom = 0.95;
     this.safeRPM = Math.floor(this.maxRPM * this.headroom);
     this.safeTPM = Math.floor(this.maxTPM * this.headroom);
     this.safeRequestsPerSecond = Math.max(1, Math.floor(this.safeRPM / 60));

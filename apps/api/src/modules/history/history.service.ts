@@ -366,11 +366,8 @@ export class HistoryService {
   }
 
   private resolveViewCooldownMs(): number {
-    const raw = process.env.RESTAURANT_VIEW_COOLDOWN_MS;
-    const value = raw ? Number.parseInt(raw, 10) : NaN;
-    if (Number.isFinite(value) && value >= 0) {
-      return value;
-    }
+    // 2 min dedupe window for repeat views of the same restaurant
+    // (2026-07-11 fold-in: formerly env RESTAURANT_VIEW_COOLDOWN_MS).
     return 120_000;
   }
 }

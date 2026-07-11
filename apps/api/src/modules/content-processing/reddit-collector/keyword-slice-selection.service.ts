@@ -15,6 +15,7 @@ import { stripGenericTokens } from '../../../shared/utils/generic-token-handling
 import { MarketRegistryService } from '../../markets/market-registry.service';
 import { DemandScoringTraceService } from '../../analytics/demand-scoring-trace.service';
 import * as curves from '../../analytics/demand-scoring/curves';
+import { ON_DEMAND_MIN_RESULTS } from '../../search/on-demand-tuning.constants';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -778,9 +779,7 @@ export class KeywordSliceSelectionService {
     restaurantCount: number | null;
     foodCount: number | null;
   }): number {
-    const rawTarget = Number(process.env.SEARCH_ON_DEMAND_MIN_RESULTS);
-    const targetCount =
-      Number.isFinite(rawTarget) && rawTarget > 0 ? rawTarget : 25;
+    const targetCount = ON_DEMAND_MIN_RESULTS;
     const observedCount =
       typeof params.restaurantCount === 'number'
         ? Math.max(params.restaurantCount, 0)

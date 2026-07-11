@@ -87,27 +87,17 @@ export class SmartLLMProcessor implements OnModuleInit {
     if (isProd) {
       this.maxConsecutiveRateLimitErrors = null;
     } else {
-      const envMaxConsecutive = Number.parseInt(
-        process.env.LLM_MAX_CONSECUTIVE_RATE_LIMITS || '',
-        10,
-      );
-      this.maxConsecutiveRateLimitErrors =
-        Number.isFinite(envMaxConsecutive) && envMaxConsecutive > 0
-          ? envMaxConsecutive
-          : null;
+      // Dev circuit breaker: abort a run after 3 consecutive 429s instead of
+      // grinding (2026-07-11 fold-in: formerly env
+      // LLM_MAX_CONSECUTIVE_RATE_LIMITS; prod stays null = never abort).
+      this.maxConsecutiveRateLimitErrors = 3;
     }
 
-    const envMaxTokens = parseInt(
-      process.env.LLM_MAX_REQUEST_TOKENS || '60000',
-      10,
-    );
-    const defaultMax = 60000;
-    const sanitizedMax =
-      Number.isFinite(envMaxTokens) && envMaxTokens > 0
-        ? Math.min(envMaxTokens, 65000)
-        : defaultMax;
-    this.maxRequestTokens = sanitizedMax;
-    this.hardTokenCap = sanitizedMax;
+    // Per-request token ceiling. 65,000 is the value production behavior has
+    // been using (.env override of the old 60,000 fallback — reconciled
+    // 2026-07-11 in favor of .env; matches the model's 65,536 context step).
+    this.maxRequestTokens = 65000;
+    this.hardTokenCap = 65000;
   }
 
   onModuleInit() {

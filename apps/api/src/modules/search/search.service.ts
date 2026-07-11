@@ -34,6 +34,7 @@ import {
   type SiblingCutOptions,
 } from './search-sibling-expansion.service';
 import type { SearchExecutionDirectives } from './search-execution-directives';
+import { ON_DEMAND_MIN_RESULTS } from './on-demand-tuning.constants';
 import type { SearchConstraints, RelaxationStage } from './search-constraints';
 import { compileQueryPlanFromConstraints } from './search-constraints.compiler';
 import {
@@ -3452,39 +3453,18 @@ export class SearchService {
     };
   }
 
+  // Page sizing is a product decision, not an env knob (2026-07-11 fold-in;
+  // the old SEARCH_DEFAULT_PAGE_SIZE/SEARCH_MAX_PAGE_SIZE/SEARCH_MAX_RESULTS
+  // env lines restated these constants).
   private resolveDefaultPageSize(): number {
-    const raw = process.env.SEARCH_DEFAULT_PAGE_SIZE;
-    if (raw) {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed) && parsed >= 1) {
-        return Math.min(parsed, MAX_PAGE_SIZE);
-      }
-    }
-
     return DEFAULT_PAGE_SIZE;
   }
 
   private resolveMaxPageSize(): number {
-    const raw = process.env.SEARCH_MAX_PAGE_SIZE;
-    if (raw) {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed) && parsed >= 1) {
-        return Math.min(parsed, MAX_PAGE_SIZE);
-      }
-    }
-
     return MAX_PAGE_SIZE;
   }
 
   private resolveResultLimit(): number {
-    const raw = process.env.SEARCH_MAX_RESULTS;
-    if (raw) {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return Math.min(parsed, 500);
-      }
-    }
-
     return DEFAULT_RESULT_LIMIT;
   }
 
@@ -3531,14 +3511,7 @@ export class SearchService {
   }
 
   private resolveOnDemandMinResults(): number {
-    const raw = process.env.SEARCH_ON_DEMAND_MIN_RESULTS;
-    if (raw) {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return parsed;
-      }
-    }
-    return this.defaultPageSize;
+    return ON_DEMAND_MIN_RESULTS;
   }
 
   private resolveOpenNowFetchMultiplier(): number {
