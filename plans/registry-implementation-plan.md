@@ -159,3 +159,32 @@ the owner's finger pass (screenshots + logs, attribute-before-fix) →
 commit → next. Subagents: Fable 5 ONLY (`model: fable`); backend slices
 and bulk reading delegated; every subagent output reviewed by the anchor
 before merge.
+
+## W0 running log (anchor)
+
+- W0.1/W0.5 DONE (modal scrollable + photoSourcePicker) — committed.
+  Deliberate tradeoff on record: no offset-aware scroll→dismiss handoff
+  inside modal content (backdrop/chrome dismiss suffice); revisit only if
+  the owner's finger test wants it.
+- W0.4/W0.6 DONE (PhotoStrip + photo plumbing) — committed. CORRECTIONS
+  to plans/images-ideal-shape.md step 1 from the real backend: there is
+  NO client confirm endpoint (UGC photos settle via Cloudinary webhook +
+  reconciliation cron; GET /photos/:id is the owner's pending-read; only
+  avatars have an explicit confirm). Strip DTOs carry ready URLs, no
+  aspect (PhotoStrip defaults 4:3 — add width/height server-side only if
+  card design needs true aspect). Quality-floor lead ordering currently
+  degrades to recency (focus score unavailable on the free Cloudinary
+  plan). ⚠️ pod install required before the next native build
+  (expo-image, expo-image-picker).
+- W0.2 ADJUDICATED (ideal-shape checkpoint): NO new 'full' snap kind in
+  the universal union — the existing per-scene snapPointsOverride
+  mechanism (pollDetail precedent) IS the owner's "exception snap above
+  extended": settings declares expanded ≈ safe-area top. Grab-handle
+  hiding = a scene-spec flag added WITH its first consumer (settings, W4)
+  — no dead engine plumbing now.
+- W0.3 pollDetail-from-anywhere: machinery verified by read — pushRoute
+  from any context is metadata-driven (parentSceneKeys has zero runtime
+  consumers), fetchPoll(pollId) hydrates seedless, commentAnchorId param
+  already threaded (scroll-to consumption = W3). Live sim proof deferred
+  to the W1 sim pass (current sim blocked on the tags-migration API
+  restart).
