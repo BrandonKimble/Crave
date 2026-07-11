@@ -628,3 +628,14 @@ edit chrome:
   the profile entry where GPS pre-groups picks by suggested restaurant;
   or a one-tap "looks like {nearby restaurant}?" prefill chip above the
   search step. Not v1.
+
+### 8.13 marketPicker DELETED; poll market = map-resolved (owner, 2026-07-11)
+
+A poll's market is resolved from where the user's MAP currently is — no
+picker, no screens. Posting to another city = pan the map there first,
+which is self-consistent (the map is the app's market lens: you SEE the
+poll land where you're looking; a picked-but-not-viewed market would
+post it somewhere invisible). The poll-create page shows a display-only
+"Posting to {market}" label from the resolver (fallback: nearest/home
+market when hovering nowhere). duplicatePoll stays and is just the
+shared modal. Poll modal set is now: pollInfo + duplicatePoll.
