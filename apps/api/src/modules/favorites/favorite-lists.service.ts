@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  GoneException,
   InternalServerErrorException,
   Injectable,
   NotFoundException,
@@ -37,6 +38,54 @@ import { ListFavoriteListsDto } from './dto/list-favorite-lists.dto';
 import { FavoriteListResultsDto } from './dto/favorite-list-results.dto';
 import { SearchQueryExecutor } from '../search/search-query.executor';
 import type { SearchQueryRequestDto } from '../search/dto/search-query.dto';
+
+export type FavoriteListViewerRole = 'owner' | 'collaborator' | 'viewer';
+export type FavoriteListSort = 'custom' | 'best' | 'recent';
+
+/** The person-rows shape (matches user-follow's select). */
+export type FavoriteListPersonDto = {
+  userId: string;
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+};
+
+const PERSON_SELECT = {
+  userId: true,
+  username: true,
+  displayName: true,
+  avatarUrl: true,
+} as const;
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Virtual "All" lists (spec B.1.6 / page-registry §8.16): no stored row —
+ * the union of the target user's lists of one type, run through the SAME
+ * executor path. `all:restaurants` / `all:dishes`.
+ */
+const VIRTUAL_ALL_IDS: Record<string, FavoriteListType> = {
+  'all:restaurants': FavoriteListType.restaurant,
+  'all:dishes': FavoriteListType.dish,
+};
+
+type ListAccessRow = Pick<
+  FavoriteList,
+  'listId' | 'ownerUserId' | 'shareSlug' | 'shareEnabled'
+>;
+
+/** The parameterized source getListResults runs over (concrete or virtual). */
+type ListResultsSource = {
+  /** metadata label — the concrete listId or the virtual id. */
+  labelId: string;
+  listType: FavoriteListType;
+  items: FavoriteListItemDetail[];
+  updatedAtMs: number;
+  /** virtual sources cannot have a custom order. */
+  allowCustomSort: boolean;
+  defaultSort: FavoriteListSort;
+};
 
 type FavoriteListSummary = {
   listId: string;
@@ -172,9 +221,17 @@ export class FavoriteListsService {
     });
   }
 
-  async getListForUser(userId: string, listId: string) {
+  /**
+   * RT-18: the slug IS the capability. Access = owner OR collaborator OR
+   * presented-shareSlug-matches (rotation = revocation falls out). Fail-closed:
+   * everything else is a 404; a presented slug that matches a list whose
+   * sharing has been turned off is a 410 {state:'private'} (the client's
+   * "this list is private" body — distinct from 404).
+   */
+  async getListForUser(userId: string, listId: string, shareSlug?: string) {
+    this.assertConcreteListId(listId);
     const list = await this.prisma.favoriteList.findFirst({
-      where: { listId, ownerUserId: userId },
+      where: { listId },
       include: {
         items: {
           orderBy: { position: 'asc' },
@@ -199,7 +256,126 @@ export class FavoriteListsService {
       throw new NotFoundException('Favorite list not found');
     }
 
-    return this.buildListDetail(list);
+    const viewerRole = await this.resolveViewerRole(list, userId, shareSlug);
+    return this.buildListDetail(list, viewerRole);
+  }
+
+  /**
+   * Resolves the viewer's role against the RT-18 capability model. Throws
+   * NotFound (fail-closed) when no grant applies, Gone({state:'private'})
+   * when the presented slug matches but sharing is off. A slug-granted read
+   * records a deduped 'opened' share event (slug+viewer).
+   */
+  private async resolveViewerRole(
+    list: ListAccessRow,
+    viewerUserId: string | null,
+    presentedSlug?: string,
+  ): Promise<FavoriteListViewerRole> {
+    if (viewerUserId && list.ownerUserId === viewerUserId) {
+      return 'owner';
+    }
+    if (viewerUserId) {
+      const collaborator =
+        await this.prisma.favoriteListCollaborator.findUnique({
+          where: {
+            listId_userId: { listId: list.listId, userId: viewerUserId },
+          },
+          select: { userId: true },
+        });
+      if (collaborator) {
+        return 'collaborator';
+      }
+    }
+    if (presentedSlug && list.shareSlug === presentedSlug) {
+      if (!list.shareEnabled) {
+        // Dead slug: the row is kept so the client can render the
+        // "this list is private" body instead of a generic not-found.
+        throw new GoneException({ state: 'private' });
+      }
+      await this.recordShareOpenEvent(list.listId, presentedSlug, viewerUserId);
+      return 'viewer';
+    }
+    throw new NotFoundException('Favorite list not found');
+  }
+
+  /** Mutation grant: owner or collaborator only — never the slug. */
+  private async assertOwnerOrCollaborator(
+    list: Pick<FavoriteList, 'listId' | 'ownerUserId'>,
+    userId: string,
+  ): Promise<void> {
+    if (list.ownerUserId === userId) {
+      return;
+    }
+    const collaborator = await this.prisma.favoriteListCollaborator.findUnique({
+      where: { listId_userId: { listId: list.listId, userId } },
+      select: { userId: true },
+    });
+    if (!collaborator) {
+      throw new NotFoundException('Favorite list not found');
+    }
+  }
+
+  /**
+   * Share-open telemetry with the RT-18 flood fix: idempotent via the
+   * dedupe_key unique constraint (P2002 = already counted = no-op).
+   * Key = slug+viewer for authed reads, slug+day for anonymous ones
+   * (anchor adjudication, w1 spec D.8).
+   */
+  private async recordShareOpenEvent(
+    listId: string,
+    shareSlug: string,
+    viewerUserId: string | null,
+  ): Promise<void> {
+    const dedupeKey = viewerUserId
+      ? `opened:${shareSlug}:${viewerUserId}`
+      : `opened:${shareSlug}:${new Date().toISOString().slice(0, 10)}`;
+    try {
+      await this.prisma.favoriteListShareEvent.create({
+        data: {
+          listId,
+          shareSlug,
+          eventType: 'opened',
+          dedupeKey,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private assertConcreteListId(listId: string): void {
+    if (!UUID_RE.test(listId)) {
+      throw new BadRequestException('Invalid list id');
+    }
+  }
+
+  /**
+   * 'custom' order exists iff position order diverges from insertion
+   * (createdAt) order — positions are assigned append-only (max+1) until a
+   * reorder/explicit position write perturbs them.
+   */
+  private hasCustomOrder(
+    items: Array<Pick<FavoriteListItem, 'itemId' | 'position' | 'createdAt'>>,
+  ): boolean {
+    const byPosition = [...items].sort(
+      (a, b) =>
+        a.position - b.position ||
+        a.createdAt.valueOf() - b.createdAt.valueOf(),
+    );
+    const byCreated = [...items].sort(
+      (a, b) =>
+        a.createdAt.valueOf() - b.createdAt.valueOf() ||
+        a.position - b.position,
+    );
+    return byPosition.some(
+      (item, index) => item.itemId !== byCreated[index].itemId,
+    );
   }
 
   /**
@@ -213,17 +389,33 @@ export class FavoriteListsService {
    * dish lists filter the connection axis by the new c.connection_id = ANY(...)
    * builder clause. The executor INNER-JOINs scores/locations, so score-less or
    * un-geocoded favorites are silently dropped — surfaced via droppedItemCount.
+   *
+   * Access is the RT-18 capability model (owner OR collaborator OR presented
+   * slug). Also accepts the virtual All-list ids (`all:restaurants` /
+   * `all:dishes`, optional dto.targetUserId for a profile's All) — the union
+   * of the target's lists resolved through this same executor path.
    */
   async getListResults(
     userId: string,
     listId: string,
     dto: FavoriteListResultsDto,
   ): Promise<SearchResponse> {
+    const source = await this.resolveResultsSource(userId, listId, dto);
+    return this.runListResults(source, dto);
+  }
+
+  private async resolveResultsSource(
+    userId: string,
+    listId: string,
+    dto: FavoriteListResultsDto,
+  ): Promise<ListResultsSource> {
+    const virtualType = VIRTUAL_ALL_IDS[listId];
+    if (virtualType) {
+      return this.buildVirtualAllSource(userId, listId, virtualType, dto);
+    }
+    this.assertConcreteListId(listId);
     const list = await this.prisma.favoriteList.findFirst({
-      // S-E (addressability): a shared list is readable by ANY authed user — the
-      // /l/<slug> inbound route lands non-owners on this same list world, whose results
-      // ride this endpoint. Visibility = owner OR share-enabled (getSharedList's rule).
-      where: { listId, OR: [{ ownerUserId: userId }, { shareEnabled: true }] },
+      where: { listId },
       include: {
         items: {
           orderBy: { position: 'asc' },
@@ -248,26 +440,118 @@ export class FavoriteListsService {
       throw new NotFoundException('Favorite list not found');
     }
 
-    const isRestaurantAxis = list.listType === FavoriteListType.restaurant;
+    await this.resolveViewerRole(list, userId, dto.shareSlug);
 
-    const restaurantIds = isRestaurantAxis
-      ? Array.from(
-          new Set(
-            list.items
-              .map((item) => item.restaurantId)
-              .filter((id): id is string => Boolean(id)),
-          ),
-        )
-      : [];
-    const connectionIds = isRestaurantAxis
-      ? []
-      : Array.from(
-          new Set(
-            list.items
-              .map((item) => item.connectionId)
-              .filter((id): id is string => Boolean(id)),
-          ),
-        );
+    return {
+      labelId: listId,
+      listType: list.listType,
+      items: list.items,
+      updatedAtMs: (list.updatedAt ?? new Date()).valueOf(),
+      allowCustomSort: true,
+      defaultSort: this.hasCustomOrder(list.items) ? 'custom' : 'best',
+    };
+  }
+
+  private async buildVirtualAllSource(
+    userId: string,
+    labelId: string,
+    listType: FavoriteListType,
+    dto: FavoriteListResultsDto,
+  ): Promise<ListResultsSource> {
+    const targetUserId = dto.targetUserId ?? userId;
+    const lists = await this.prisma.favoriteList.findMany({
+      where:
+        targetUserId === userId
+          ? { ownerUserId: userId, listType }
+          : // Profile-All: only the target's PUBLIC lists — fail-closed by
+            // construction, nothing private can leak into the union.
+            {
+              ownerUserId: targetUserId,
+              listType,
+              visibility: FavoriteListVisibility.public,
+            },
+      orderBy: { position: 'asc' },
+      include: {
+        items: {
+          orderBy: { position: 'asc' },
+          include: {
+            restaurant: {
+              include: { primaryLocation: true },
+            },
+            connection: {
+              include: {
+                food: true,
+                restaurant: {
+                  include: { primaryLocation: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const items = lists.flatMap((list) => list.items);
+    const updatedAtMs = lists.reduce(
+      (max, list) => Math.max(max, list.updatedAt?.valueOf() ?? 0),
+      0,
+    );
+
+    return {
+      labelId,
+      listType,
+      items,
+      updatedAtMs: updatedAtMs || Date.now(),
+      allowCustomSort: false,
+      defaultSort: 'best',
+    };
+  }
+
+  private async runListResults(
+    source: ListResultsSource,
+    dto: FavoriteListResultsDto,
+  ): Promise<SearchResponse> {
+    const isRestaurantAxis = source.listType === FavoriteListType.restaurant;
+
+    const sort: FavoriteListSort = dto.sort ?? source.defaultSort;
+    if (sort === 'custom' && !source.allowCustomSort) {
+      throw new BadRequestException(
+        'Custom sort requires a concrete list (the virtual All list has no custom order)',
+      );
+    }
+
+    const axisIdOf = (item: FavoriteListItemDetail): string | null =>
+      isRestaurantAxis ? item.restaurantId : item.connectionId;
+
+    // Items arrive position-asc per list; explicit sorts re-derive the order.
+    // 'best' keeps the executor's crave-score ordering (id order irrelevant).
+    const sortedItems =
+      sort === 'custom'
+        ? [...source.items].sort(
+            (a, b) =>
+              a.position - b.position ||
+              a.createdAt.valueOf() - b.createdAt.valueOf(),
+          )
+        : sort === 'recent'
+          ? [...source.items].sort(
+              (a, b) => b.createdAt.valueOf() - a.createdAt.valueOf(),
+            )
+          : source.items;
+
+    // First-wins dedupe preserving sorted order (the virtual union can repeat
+    // an entity across lists).
+    const orderedAxisIds: string[] = [];
+    const seenAxisIds = new Set<string>();
+    for (const item of sortedItems) {
+      const id = axisIdOf(item);
+      if (id && !seenAxisIds.has(id)) {
+        seenAxisIds.add(id);
+        orderedAxisIds.push(id);
+      }
+    }
+
+    const restaurantIds = isRestaurantAxis ? orderedAxisIds : [];
+    const connectionIds = isRestaurantAxis ? [] : orderedAxisIds;
 
     // For a DISH list the map PINS + restaurant cards come from response.restaurants,
     // and each favorited dish lives at its restaurant's location. Scope the restaurant
@@ -278,13 +562,23 @@ export class FavoriteListsService {
       ? []
       : Array.from(
           new Set(
-            list.items
+            source.items
               .map((item) => item.connection?.restaurantId)
               .filter((id): id is string => Boolean(id)),
           ),
         );
 
     const requestedIds = isRestaurantAxis ? restaurantIds : connectionIds;
+
+    // The saver's note projects onto the axis rows (spec B.1.5) — first-wins
+    // across the virtual union.
+    const noteByAxisId = new Map<string, string>();
+    for (const item of source.items) {
+      const id = axisIdOf(item);
+      if (id && item.note != null && !noteByAxisId.has(id)) {
+        noteByAxisId.set(id, item.note);
+      }
+    }
 
     // Empty-axis guard: the search builder OMITS the `entity_id = ANY(...)` clause when an id
     // array is empty, which would flood the un-scoped axis with the entire global universe. A
@@ -294,54 +588,29 @@ export class FavoriteListsService {
       requestedIds.length === 0 ||
       (!isRestaurantAxis && dishListRestaurantIds.length === 0)
     ) {
-      return {
-        format: 'dual_list',
-        plan: {
-          format: 'dual_list',
-          restaurantFilters: [],
-          connectionFilters: [],
-          ranking: {
-            foodOrder: 'crave_score DESC',
-            restaurantOrder: 'crave_score DESC',
-          },
-          diagnostics: {
-            missingEntities: [],
-            notes: [`favorites:${list.listType}:empty`],
-          },
-        },
-        dishes: [],
-        restaurants: [],
-        sqlPreview: null,
-        metadata: {
-          totalFoodResults: 0,
-          totalRestaurantResults: 0,
-          queryExecutionTimeMs: 0,
-          searchRequestId: `favorites:${listId}:${(
-            list.updatedAt ?? new Date()
-          ).valueOf()}`,
-          boundsApplied: false,
-          openNowApplied: false,
-          openNowSupportedRestaurants: 0,
-          openNowUnsupportedRestaurants: 0,
-          openNowFilteredOut: 0,
-          priceFilterApplied: false,
-          minimumVotesApplied: false,
-          page: 1,
-          pageSize: 1,
-          resultCoverageStatus: 'full',
-          emptyQueryMessage:
-            'This list has no items yet — add favorites to see them here.',
-          analysisMetadata: {
-            favorites: {
-              listId,
-              listType: list.listType,
-              requestedItemCount: requestedIds.length,
-              returnedItemCount: 0,
-              droppedItemCount: requestedIds.length,
-            },
-          },
-        },
-      };
+      return this.buildEmptyListResponse(source, requestedIds.length);
+    }
+
+    const page =
+      dto.pagination?.page && dto.pagination.page > 0 ? dto.pagination.page : 1;
+    const pageSize =
+      dto.pagination?.pageSize && dto.pagination.pageSize > 0
+        ? dto.pagination.pageSize
+        : Math.max(requestedIds.length, 1);
+    const skip = (page - 1) * pageSize;
+
+    // Explicit orderings ('custom'/'recent') paginate OURSELVES over the
+    // ordered ids and hand the executor exactly the page's ids (skip 0) —
+    // the executor can only order by score. 'best' keeps the executor's
+    // score pagination untouched.
+    const explicitOrder = sort !== 'best';
+    const pageAxisIds = explicitOrder
+      ? orderedAxisIds.slice(skip, skip + pageSize)
+      : requestedIds;
+    if (explicitOrder && pageAxisIds.length === 0) {
+      // Page past the end: never hand the executor an empty id array (the
+      // builder would drop the clause and flood the axis).
+      return this.buildEmptyListResponse(source, requestedIds.length);
     }
 
     // Scope the axis we run. Restaurant list: restaurantFilters = favorited
@@ -355,7 +624,7 @@ export class FavoriteListsService {
             scope: 'restaurant',
             description: 'Match favorited restaurant entities',
             entityType: 'restaurant',
-            entityIds: restaurantIds,
+            entityIds: explicitOrder ? pageAxisIds : restaurantIds,
           },
         ]
       : [
@@ -373,7 +642,7 @@ export class FavoriteListsService {
             scope: 'connection',
             description: 'Match favorited connections',
             entityType: 'connection',
-            entityIds: connectionIds,
+            entityIds: explicitOrder ? pageAxisIds : connectionIds,
           },
         ];
 
@@ -387,17 +656,9 @@ export class FavoriteListsService {
       },
       diagnostics: {
         missingEntities: [],
-        notes: [`favorites:${list.listType}`],
+        notes: [`favorites:${source.listType}`, `favorites:sort:${sort}`],
       },
     };
-
-    const page =
-      dto.pagination?.page && dto.pagination.page > 0 ? dto.pagination.page : 1;
-    const pageSize =
-      dto.pagination?.pageSize && dto.pagination.pageSize > 0
-        ? dto.pagination.pageSize
-        : Math.max(requestedIds.length, 1);
-    const skip = (page - 1) * pageSize;
 
     // Build a minimal SearchQueryRequestDto for the executor. No bounds/polygon:
     // v1 fits the map to the list extent. entities are empty — all matching is
@@ -408,7 +669,9 @@ export class FavoriteListsService {
       userLocation: dto.userLocation,
     };
 
-    const pagination = { skip, take: pageSize };
+    const pagination = explicitOrder
+      ? { skip: 0, take: Math.max(pageAxisIds.length, 1) }
+      : { skip, take: pageSize };
 
     // NO bounds directives passed (directives omitted entirely).
     //
@@ -431,6 +694,7 @@ export class FavoriteListsService {
           pagination,
         });
 
+    const requestedForRun = explicitOrder ? pageAxisIds : requestedIds;
     const returnedIds = isRestaurantAxis
       ? exec.restaurants
           .map((r) => r.restaurantId)
@@ -439,23 +703,55 @@ export class FavoriteListsService {
           .map((d) => d.connectionId)
           .filter((id): id is string => typeof id === 'string');
     const droppedItemCount = Math.max(
-      requestedIds.length - new Set(returnedIds).size,
+      requestedForRun.length - new Set(returnedIds).size,
       0,
     );
+
+    // Re-impose the explicit ordering on the executor's score-ordered rows.
+    const axisRank = new Map(pageAxisIds.map((id, index) => [id, index]));
+    const orderExplicitly = <T>(rows: T[], idOf: (row: T) => string): T[] =>
+      explicitOrder
+        ? [...rows].sort(
+            (a, b) =>
+              (axisRank.get(idOf(a)) ?? Number.MAX_SAFE_INTEGER) -
+              (axisRank.get(idOf(b)) ?? Number.MAX_SAFE_INTEGER),
+          )
+        : rows;
 
     // A restaurant list never runs the dish axis (executeSingle above), so
     // exec.dishes is already [] and exec.totalDishCount is 0 for that path; the
     // explicit zeroes below keep the response shape unambiguous regardless.
-    const dishes = isRestaurantAxis ? [] : exec.dishes;
-    const totalFoodResults = isRestaurantAxis ? 0 : exec.totalDishCount;
+    // Note projection (spec B.1.5): the saver's note rides each axis row.
+    const dishes = isRestaurantAxis
+      ? []
+      : orderExplicitly(exec.dishes, (d) => d.connectionId).map((dish) => ({
+          ...dish,
+          note: noteByAxisId.get(dish.connectionId) ?? null,
+        }));
+    const restaurants = isRestaurantAxis
+      ? orderExplicitly(exec.restaurants, (r) => r.restaurantId).map(
+          (restaurant) => ({
+            ...restaurant,
+            note: noteByAxisId.get(restaurant.restaurantId) ?? null,
+          }),
+        )
+      : exec.restaurants;
 
-    const searchRequestId = `favorites:${listId}:${(
-      list.updatedAt ?? new Date()
-    ).valueOf()}`;
+    const totalFoodResults = isRestaurantAxis
+      ? 0
+      : explicitOrder
+        ? orderedAxisIds.length
+        : exec.totalDishCount;
+    const totalRestaurantResults =
+      isRestaurantAxis && explicitOrder
+        ? orderedAxisIds.length
+        : exec.totalRestaurantCount;
+
+    const searchRequestId = `favorites:${source.labelId}:${source.updatedAtMs}`;
 
     const metadata: SearchResponseMetadata = {
       totalFoodResults,
-      totalRestaurantResults: exec.totalRestaurantCount,
+      totalRestaurantResults,
       queryExecutionTimeMs: 0,
       searchRequestId,
       boundsApplied: false,
@@ -473,9 +769,10 @@ export class FavoriteListsService {
       resultCoverageStatus: 'full',
       analysisMetadata: {
         favorites: {
-          listId,
-          listType: list.listType,
-          requestedItemCount: requestedIds.length,
+          listId: source.labelId,
+          listType: source.listType,
+          sort,
+          requestedItemCount: requestedForRun.length,
           returnedItemCount: new Set(returnedIds).size,
           droppedItemCount,
         },
@@ -486,18 +783,70 @@ export class FavoriteListsService {
       format: plan.format,
       plan,
       dishes,
-      restaurants: exec.restaurants,
+      restaurants,
       sqlPreview: null,
       metadata,
     };
   }
 
+  private buildEmptyListResponse(
+    source: ListResultsSource,
+    requestedItemCount: number,
+  ): SearchResponse {
+    return {
+      format: 'dual_list',
+      plan: {
+        format: 'dual_list',
+        restaurantFilters: [],
+        connectionFilters: [],
+        ranking: {
+          foodOrder: 'crave_score DESC',
+          restaurantOrder: 'crave_score DESC',
+        },
+        diagnostics: {
+          missingEntities: [],
+          notes: [`favorites:${source.listType}:empty`],
+        },
+      },
+      dishes: [],
+      restaurants: [],
+      sqlPreview: null,
+      metadata: {
+        totalFoodResults: 0,
+        totalRestaurantResults: 0,
+        queryExecutionTimeMs: 0,
+        searchRequestId: `favorites:${source.labelId}:${source.updatedAtMs}`,
+        boundsApplied: false,
+        openNowApplied: false,
+        openNowSupportedRestaurants: 0,
+        openNowUnsupportedRestaurants: 0,
+        openNowFilteredOut: 0,
+        priceFilterApplied: false,
+        minimumVotesApplied: false,
+        page: 1,
+        pageSize: 1,
+        resultCoverageStatus: 'full',
+        emptyQueryMessage:
+          'This list has no items yet — add favorites to see them here.',
+        analysisMetadata: {
+          favorites: {
+            listId: source.labelId,
+            listType: source.listType,
+            requestedItemCount,
+            returnedItemCount: 0,
+            droppedItemCount: requestedItemCount,
+          },
+        },
+      },
+    };
+  }
+
   async getSharedList(shareSlug: string) {
     const list = await this.prisma.favoriteList.findFirst({
-      where: {
-        shareSlug,
-        shareEnabled: true,
-      },
+      // RT-18: match on the slug ALONE so a dead slug (sharing turned off /
+      // list flipped private) is distinguishable — 410 {state:'private'} vs
+      // a plain 404 for a slug that never existed / was rotated away.
+      where: { shareSlug },
       include: {
         items: {
           orderBy: { position: 'asc' },
@@ -521,16 +870,14 @@ export class FavoriteListsService {
     if (!list) {
       throw new NotFoundException('Shared list not found');
     }
+    if (!list.shareEnabled) {
+      throw new GoneException({ state: 'private' });
+    }
 
-    await this.prisma.favoriteListShareEvent.create({
-      data: {
-        listId: list.listId,
-        shareSlug: list.shareSlug ?? undefined,
-        eventType: 'opened',
-      },
-    });
+    // Anonymous surface: dedupe by slug+day (anchor adjudication).
+    await this.recordShareOpenEvent(list.listId, shareSlug, null);
 
-    return this.buildListDetail(list);
+    return this.buildListDetail(list, 'viewer');
   }
 
   async createList(userId: string, dto: CreateFavoriteListDto) {
@@ -573,18 +920,26 @@ export class FavoriteListsService {
       throw new NotFoundException('Favorite list not found');
     }
 
-    return this.prisma.favoriteList.update({
-      where: { listId },
-      data: {
-        name: dto.name?.trim() ?? undefined,
-        description:
-          dto.description !== undefined
-            ? dto.description?.trim() || null
-            : undefined,
-        visibility: dto.visibility ?? undefined,
-        shareEnabled:
-          dto.visibility === FavoriteListVisibility.private ? false : undefined,
-      },
+    // RT-18 private flip: going private also turns sharing off AND deletes
+    // every collaborator (the slug row stays, dead, so the share GET can
+    // answer 410 {state:'private'}).
+    const flippingPrivate = dto.visibility === FavoriteListVisibility.private;
+    return this.prisma.$transaction(async (tx) => {
+      if (flippingPrivate) {
+        await tx.favoriteListCollaborator.deleteMany({ where: { listId } });
+      }
+      return tx.favoriteList.update({
+        where: { listId },
+        data: {
+          name: dto.name?.trim() ?? undefined,
+          description:
+            dto.description !== undefined
+              ? dto.description?.trim() || null
+              : undefined,
+          visibility: dto.visibility ?? undefined,
+          shareEnabled: flippingPrivate ? false : undefined,
+        },
+      });
     });
   }
 
@@ -622,13 +977,16 @@ export class FavoriteListsService {
   }
 
   async addItem(userId: string, listId: string, dto: AddFavoriteListItemDto) {
+    // Full-parity collaborators (spec B.1.3): item mutations are
+    // owner-OR-collaborator, never slug-granted.
     const list = await this.prisma.favoriteList.findFirst({
-      where: { listId, ownerUserId: userId },
-      select: { listId: true, listType: true },
+      where: { listId },
+      select: { listId: true, ownerUserId: true, listType: true },
     });
     if (!list) {
       throw new NotFoundException('Favorite list not found');
     }
+    await this.assertOwnerOrCollaborator(list, userId);
 
     if (!dto.restaurantId && !dto.connectionId) {
       throw new BadRequestException('Missing list item target');
@@ -708,12 +1066,13 @@ export class FavoriteListsService {
     dto: UpdateFavoriteListItemDto,
   ) {
     const list = await this.prisma.favoriteList.findFirst({
-      where: { listId, ownerUserId: userId },
-      select: { listId: true },
+      where: { listId },
+      select: { listId: true, ownerUserId: true },
     });
     if (!list) {
       throw new NotFoundException('Favorite list not found');
     }
+    await this.assertOwnerOrCollaborator(list, userId);
 
     const result = await this.prisma.favoriteListItem.updateMany({
       where: { itemId, listId },
@@ -733,12 +1092,13 @@ export class FavoriteListsService {
 
   async removeItem(userId: string, listId: string, itemId: string) {
     const list = await this.prisma.favoriteList.findFirst({
-      where: { listId, ownerUserId: userId },
-      select: { listId: true },
+      where: { listId },
+      select: { listId: true, ownerUserId: true },
     });
     if (!list) {
       throw new NotFoundException('Favorite list not found');
     }
+    await this.assertOwnerOrCollaborator(list, userId);
     const result = await this.prisma.favoriteListItem.deleteMany({
       where: { itemId, listId },
     });
@@ -751,6 +1111,154 @@ export class FavoriteListsService {
       data: { itemCount: { decrement: 1 } },
     });
     await this.userStats.applyDelta(userId, { favoritesTotalCount: -1 });
+  }
+
+  /**
+   * Batch reorder (spec B.1.4): one PATCH for a drag-save instead of N item
+   * PATCHes. orderedItemIds must be EXACTLY the current membership (set
+   * equality — loud contract, no silent partial writes); positions are
+   * rewritten 1..n in one transaction.
+   */
+  async reorderItems(userId: string, listId: string, orderedItemIds: string[]) {
+    const list = await this.prisma.favoriteList.findFirst({
+      where: { listId },
+      select: { listId: true, ownerUserId: true },
+    });
+    if (!list) {
+      throw new NotFoundException('Favorite list not found');
+    }
+    await this.assertOwnerOrCollaborator(list, userId);
+
+    const currentItems = await this.prisma.favoriteListItem.findMany({
+      where: { listId },
+      select: { itemId: true },
+    });
+    const currentIds = new Set(currentItems.map((item) => item.itemId));
+    const orderedSet = new Set(orderedItemIds);
+    if (
+      orderedSet.size !== orderedItemIds.length ||
+      orderedSet.size !== currentIds.size ||
+      orderedItemIds.some((itemId) => !currentIds.has(itemId))
+    ) {
+      throw new BadRequestException(
+        'orderedItemIds must be exactly the current list membership',
+      );
+    }
+
+    await this.prisma.$transaction(
+      orderedItemIds.map((itemId, index) =>
+        this.prisma.favoriteListItem.update({
+          where: { itemId },
+          data: { position: index + 1 },
+        }),
+      ),
+    );
+
+    return { listId, itemCount: orderedItemIds.length };
+  }
+
+  /**
+   * Collaborator roster (spec B.1.3). Readable under the same RT-18
+   * capability as the list itself (owner / collaborator / presented slug).
+   */
+  async getCollaborators(
+    userId: string,
+    listId: string,
+    shareSlug?: string,
+  ): Promise<{
+    owner: FavoriteListPersonDto;
+    collaborators: FavoriteListPersonDto[];
+  }> {
+    const list = await this.prisma.favoriteList.findFirst({
+      where: { listId },
+      include: {
+        owner: { select: PERSON_SELECT },
+        collaborators: {
+          orderBy: { createdAt: 'asc' },
+          include: { user: { select: PERSON_SELECT } },
+        },
+      },
+    });
+    if (!list) {
+      throw new NotFoundException('Favorite list not found');
+    }
+    await this.resolveViewerRole(list, userId, shareSlug);
+    return {
+      owner: list.owner,
+      collaborators: list.collaborators.map((row) => row.user),
+    };
+  }
+
+  /**
+   * Join as collaborator (spec B.1.3): the invite IS the share slug presented
+   * with intent. Idempotent via the composite PK (P2002 = already a member =
+   * success, RT-10 precedent). Dead slug (sharing off) = 410 {state:'private'};
+   * wrong/rotated slug = 404 (fail-closed).
+   */
+  async joinCollaborators(userId: string, listId: string, shareSlug: string) {
+    const list = await this.prisma.favoriteList.findFirst({
+      where: { listId },
+      select: {
+        listId: true,
+        ownerUserId: true,
+        shareSlug: true,
+        shareEnabled: true,
+      },
+    });
+    if (!list || list.shareSlug !== shareSlug) {
+      throw new NotFoundException('Favorite list not found');
+    }
+    if (!list.shareEnabled) {
+      throw new GoneException({ state: 'private' });
+    }
+    if (list.ownerUserId === userId) {
+      return { listId, role: 'owner' as const };
+    }
+    try {
+      await this.prisma.favoriteListCollaborator.create({
+        data: {
+          listId,
+          userId,
+          invitedByUserId: list.ownerUserId,
+        },
+      });
+    } catch (error) {
+      if (
+        !(
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        )
+      ) {
+        throw error;
+      }
+    }
+    return { listId, role: 'collaborator' as const };
+  }
+
+  /** Self-leave (actor === target) or owner-kick. Fail-closed otherwise. */
+  async removeCollaborator(
+    actorUserId: string,
+    listId: string,
+    targetUserId: string,
+  ) {
+    const list = await this.prisma.favoriteList.findFirst({
+      where: { listId },
+      select: { listId: true, ownerUserId: true },
+    });
+    if (!list) {
+      throw new NotFoundException('Favorite list not found');
+    }
+    const isOwner = list.ownerUserId === actorUserId;
+    if (!isOwner && actorUserId !== targetUserId) {
+      // Fail-closed: a non-owner may only remove THEMSELVES; leak nothing.
+      throw new NotFoundException('Favorite list not found');
+    }
+    const result = await this.prisma.favoriteListCollaborator.deleteMany({
+      where: { listId, userId: targetUserId },
+    });
+    if (result.count === 0) {
+      throw new NotFoundException('Collaborator not found');
+    }
   }
 
   async enableShare(userId: string, listId: string, dto: ShareFavoriteListDto) {
@@ -877,19 +1385,27 @@ export class FavoriteListsService {
     };
   }
 
-  private async buildListDetail(list: FavoriteListWithDetailItems) {
+  private async buildListDetail(
+    list: FavoriteListWithDetailItems,
+    viewerRole: FavoriteListViewerRole,
+  ) {
     const summary = this.buildListSummary(
       list,
       await this.loadPreviewScoreMaps([list]),
     );
+    // defaultSort (spec B.1.2 / registry §8.14): the saver's ranking is the
+    // default whenever a custom order exists; otherwise crave-score 'best'.
+    const defaultSort: FavoriteListSort = this.hasCustomOrder(list.items)
+      ? 'custom'
+      : 'best';
     if (list.listType === FavoriteListType.restaurant) {
       const restaurantItems = list.items.filter((item) => item.restaurant);
       const results = await this.mapRestaurantResults(restaurantItems);
-      return { list: summary, restaurants: results };
+      return { list: summary, viewerRole, defaultSort, restaurants: results };
     }
     const connectionItems = list.items.filter((item) => item.connection);
     const results = await this.mapFoodResults(connectionItems);
-    return { list: summary, dishes: results };
+    return { list: summary, viewerRole, defaultSort, dishes: results };
   }
 
   private async loadPreviewScoreMaps(

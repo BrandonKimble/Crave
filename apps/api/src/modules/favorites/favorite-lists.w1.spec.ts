@@ -1,0 +1,465 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { FavoriteListsService } from './favorite-lists.service';
+
+/**
+ * W1 data-layer contracts beyond raw access (w1-listdetail spec B.1.2-B.1.6):
+ * share-event dedupe, private-flip collateral, collaborator join/leave/kick
+ * idempotency, batch reorder set-equality, sort semantics, note projection,
+ * and the virtual All-list union.
+ */
+
+const OWNER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const COLLABORATOR = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const STRANGER = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const LIST_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const SLUG = 'slug-current';
+
+const p2002 = () =>
+  new Prisma.PrismaClientKnownRequestError('duplicate', {
+    code: 'P2002',
+    clientVersion: 'test',
+  });
+
+function makeItem(overrides: any = {}) {
+  return {
+    itemId: overrides.itemId ?? 'itemid',
+    listId: LIST_ID,
+    addedByUserId: OWNER,
+    restaurantId: null,
+    connectionId: null,
+    note: null,
+    position: 0,
+    createdAt: new Date('2026-07-01T00:00:00Z'),
+    updatedAt: new Date('2026-07-01T00:00:00Z'),
+    restaurant: null,
+    connection: null,
+    ...overrides,
+  };
+}
+
+function makeList(overrides: any = {}) {
+  return {
+    listId: LIST_ID,
+    ownerUserId: OWNER,
+    name: 'BBQ crawl',
+    description: null,
+    listType: 'restaurant',
+    visibility: 'public',
+    itemCount: 0,
+    position: 1,
+    shareSlug: SLUG,
+    shareEnabled: true,
+    createdAt: new Date('2026-07-01T00:00:00Z'),
+    updatedAt: new Date('2026-07-01T00:00:00Z'),
+    items: [],
+    ...overrides,
+  };
+}
+
+function makeHarness(opts: {
+  lists?: any[];
+  collaboratorIds?: string[];
+  shareEventCreate?: jest.Mock;
+  itemUpdate?: jest.Mock;
+  collaboratorCreate?: jest.Mock;
+}) {
+  const lists = opts.lists ?? [makeList()];
+  const collaboratorIds = opts.collaboratorIds ?? [];
+  const shareEventCreate =
+    opts.shareEventCreate ?? jest.fn().mockResolvedValue({});
+  const itemUpdate = opts.itemUpdate ?? jest.fn().mockResolvedValue({});
+  const collaboratorDeleteMany = jest.fn().mockResolvedValue({
+    count: collaboratorIds.length,
+  });
+  const collaboratorCreate =
+    opts.collaboratorCreate ?? jest.fn().mockResolvedValue({});
+  const listUpdate = jest.fn().mockResolvedValue({});
+  const prisma: any = {
+    favoriteList: {
+      // findFirst assigned below (honest predicate over the fixtures)
+      findFirst: jest.fn(),
+      findMany: jest.fn((args: any) =>
+        Promise.resolve(
+          lists.filter(
+            (l) =>
+              l.ownerUserId === args.where.ownerUserId &&
+              l.listType === args.where.listType &&
+              (!args.where.visibility ||
+                l.visibility === args.where.visibility),
+          ),
+        ),
+      ),
+      update: listUpdate,
+    },
+    favoriteListCollaborator: {
+      findUnique: jest.fn((args: any) => {
+        const key = args.where.listId_userId;
+        return Promise.resolve(
+          key && collaboratorIds.includes(key.userId)
+            ? { listId: key.listId, userId: key.userId }
+            : null,
+        );
+      }),
+      deleteMany: collaboratorDeleteMany,
+      create: collaboratorCreate,
+    },
+    favoriteListShareEvent: { create: shareEventCreate },
+    favoriteListItem: {
+      findMany: jest.fn((args: any) => {
+        const list = lists.find((l) => l.listId === args.where.listId);
+        return Promise.resolve(
+          (list?.items ?? []).map((item: any) => ({ itemId: item.itemId })),
+        );
+      }),
+      update: itemUpdate,
+      aggregate: jest.fn().mockResolvedValue({ _max: { position: 0 } }),
+    },
+    publicEntityScore: { findMany: jest.fn().mockResolvedValue([]) },
+    connection: { findMany: jest.fn().mockResolvedValue([]) },
+    $transaction: jest.fn((arg: any) =>
+      typeof arg === 'function' ? arg(prisma) : Promise.all(arg),
+    ),
+  };
+  // fix findFirst: simpler honest impl
+  prisma.favoriteList.findFirst = jest.fn((args: any) => {
+    const hit = lists.find(
+      (l) =>
+        (!args.where.listId || l.listId === args.where.listId) &&
+        (!args.where.shareSlug || l.shareSlug === args.where.shareSlug) &&
+        (!args.where.ownerUserId || l.ownerUserId === args.where.ownerUserId),
+    );
+    return Promise.resolve(hit ? { ...hit } : null);
+  });
+  const logger = {
+    setContext: () => logger,
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  };
+  const userStats = { applyDelta: jest.fn().mockResolvedValue(undefined) };
+  const execResult = (over: any = {}) => ({
+    restaurants: [],
+    dishes: [],
+    totalRestaurantCount: 0,
+    totalDishCount: 0,
+    metadata: {
+      openNowApplied: false,
+      openNowSupportedRestaurants: 0,
+      openNowUnsupportedRestaurants: 0,
+      openNowUnsupportedRestaurantIds: [],
+      openNowFilteredOut: 0,
+      priceFilterApplied: false,
+      minimumVotesApplied: false,
+    },
+    ...over,
+  });
+  const executor = {
+    executeSingle: jest.fn().mockResolvedValue(execResult()),
+    executeDual: jest.fn().mockResolvedValue(execResult()),
+  };
+  const service = new FavoriteListsService(
+    prisma as never,
+    logger as never,
+    userStats as never,
+    executor as never,
+  );
+  return {
+    service,
+    prisma,
+    executor,
+    shareEventCreate,
+    itemUpdate,
+    collaboratorCreate,
+    collaboratorDeleteMany,
+    listUpdate,
+    execResult,
+  };
+}
+
+const R1 = '11111111-1111-4111-8111-111111111111';
+const R2 = '22222222-2222-4222-8222-222222222222';
+const R3 = '33333333-3333-4333-8333-333333333333';
+
+const restaurantRow = (id: string) => ({
+  restaurantId: id,
+  restaurantName: id,
+  restaurantAliases: [],
+  scoreSubjectType: 'restaurant',
+  scoreSubjectId: id,
+  craveScore: 9,
+  topFood: [],
+  totalDishCount: 0,
+});
+
+describe('share-event write dedupe (RT-18 flood fix)', () => {
+  it('authed slug read writes opened:<slug>:<viewer>; P2002 is swallowed', async () => {
+    const shareEventCreate = jest
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(p2002());
+    const { service } = makeHarness({ shareEventCreate });
+    await service.getListResults(STRANGER, LIST_ID, {
+      shareSlug: SLUG,
+    } as never);
+    await service.getListResults(STRANGER, LIST_ID, {
+      shareSlug: SLUG,
+    } as never);
+    expect(shareEventCreate).toHaveBeenCalledTimes(2);
+    expect(shareEventCreate.mock.calls[0][0].data.dedupeKey).toBe(
+      `opened:${SLUG}:${STRANGER}`,
+    );
+  });
+
+  it('anonymous share GET dedupes by slug+day', async () => {
+    const { service, shareEventCreate } = makeHarness({});
+    await service.getSharedList(SLUG);
+    const key = shareEventCreate.mock.calls[0][0].data.dedupeKey as string;
+    expect(key).toBe(`opened:${SLUG}:${new Date().toISOString().slice(0, 10)}`);
+  });
+});
+
+describe('private flip (spec B.1.1)', () => {
+  it('visibility->private disables sharing AND deletes collaborators in one transaction', async () => {
+    const { service, collaboratorDeleteMany, listUpdate } = makeHarness({
+      collaboratorIds: [COLLABORATOR],
+    });
+    await service.updateList(OWNER, LIST_ID, {
+      visibility: 'private',
+    } as never);
+    expect(collaboratorDeleteMany).toHaveBeenCalledWith({
+      where: { listId: LIST_ID },
+    });
+    expect(listUpdate.mock.calls[0][0].data).toMatchObject({
+      visibility: 'private',
+      shareEnabled: false,
+    });
+  });
+});
+
+describe('collaborators (spec B.1.3)', () => {
+  it('join via the current slug creates the row; P2002 (already joined) is success', async () => {
+    const collaboratorCreate = jest.fn().mockRejectedValue(p2002());
+    const { service } = makeHarness({ collaboratorCreate });
+    await expect(
+      service.joinCollaborators(STRANGER, LIST_ID, SLUG),
+    ).resolves.toEqual({ listId: LIST_ID, role: 'collaborator' });
+  });
+
+  it('join with a rotated slug is refused', async () => {
+    const { service } = makeHarness({});
+    await expect(
+      service.joinCollaborators(STRANGER, LIST_ID, 'old-slug'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('a non-owner cannot kick someone else', async () => {
+    const { service } = makeHarness({ collaboratorIds: [COLLABORATOR] });
+    await expect(
+      service.removeCollaborator(STRANGER, LIST_ID, COLLABORATOR),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('owner kick and self-leave both delete the row', async () => {
+    const { service, collaboratorDeleteMany } = makeHarness({
+      collaboratorIds: [COLLABORATOR],
+    });
+    await service.removeCollaborator(OWNER, LIST_ID, COLLABORATOR);
+    await service.removeCollaborator(COLLABORATOR, LIST_ID, COLLABORATOR);
+    expect(collaboratorDeleteMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('collaborator has full item parity (addItem passes the guard)', async () => {
+    const { service, prisma } = makeHarness({
+      collaboratorIds: [COLLABORATOR],
+    });
+    prisma.entity = {
+      findUnique: jest.fn().mockResolvedValue({ entityId: R1 }),
+    };
+    prisma.favoriteListItem.create = jest
+      .fn()
+      .mockResolvedValue({ itemId: 'x' });
+    await expect(
+      service.addItem(COLLABORATOR, LIST_ID, { restaurantId: R1 } as never),
+    ).resolves.toMatchObject({ itemId: 'x' });
+  });
+
+  it('a stranger is still refused item mutations', async () => {
+    const { service } = makeHarness({});
+    await expect(
+      service.removeItem(STRANGER, LIST_ID, R1),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('batch reorder (spec B.1.4)', () => {
+  const items = [
+    makeItem({ itemId: R1, restaurantId: R1, position: 1 }),
+    makeItem({ itemId: R2, restaurantId: R2, position: 2 }),
+  ];
+
+  it('rejects a payload that is not exactly the membership set', async () => {
+    const { service } = makeHarness({ lists: [makeList({ items })] });
+    await expect(
+      service.reorderItems(OWNER, LIST_ID, [R1]),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.reorderItems(OWNER, LIST_ID, [R1, R1]),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.reorderItems(OWNER, LIST_ID, [R1, R3]),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('writes 1..n positions in one transaction in the given order', async () => {
+    const { service, itemUpdate, prisma } = makeHarness({
+      lists: [makeList({ items })],
+    });
+    await service.reorderItems(OWNER, LIST_ID, [R2, R1]);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(
+      itemUpdate.mock.calls.map((c: any) => [
+        c[0].where.itemId,
+        c[0].data.position,
+      ]),
+    ).toEqual([
+      [R2, 1],
+      [R1, 2],
+    ]);
+  });
+});
+
+describe('sort + note projection on results (spec B.1.4/B.1.5)', () => {
+  const items = [
+    makeItem({
+      itemId: 'i1',
+      restaurantId: R1,
+      position: 3,
+      note: 'get the brisket',
+      createdAt: new Date('2026-07-01T00:00:00Z'),
+    }),
+    makeItem({
+      itemId: 'i2',
+      restaurantId: R2,
+      position: 1,
+      createdAt: new Date('2026-07-02T00:00:00Z'),
+    }),
+    makeItem({
+      itemId: 'i3',
+      restaurantId: R3,
+      position: 2,
+      createdAt: new Date('2026-07-03T00:00:00Z'),
+    }),
+  ];
+
+  it("sort:'custom' returns rows in position order with notes projected", async () => {
+    const { service, executor, execResult } = makeHarness({
+      lists: [makeList({ items })],
+    });
+    executor.executeSingle.mockResolvedValue(
+      execResult({
+        restaurants: [restaurantRow(R1), restaurantRow(R3), restaurantRow(R2)],
+        totalRestaurantCount: 3,
+      }),
+    );
+    const response = await service.getListResults(OWNER, LIST_ID, {
+      sort: 'custom',
+    } as never);
+    expect(response.restaurants.map((r) => r.restaurantId)).toEqual([
+      R2,
+      R3,
+      R1,
+    ]);
+    expect(response.restaurants[2].note).toBe('get the brisket');
+    expect(response.restaurants[0].note).toBeNull();
+  });
+
+  it("sort:'recent' orders by createdAt desc", async () => {
+    const { service, executor, execResult } = makeHarness({
+      lists: [makeList({ items })],
+    });
+    executor.executeSingle.mockResolvedValue(
+      execResult({
+        restaurants: [restaurantRow(R1), restaurantRow(R2), restaurantRow(R3)],
+        totalRestaurantCount: 3,
+      }),
+    );
+    const response = await service.getListResults(OWNER, LIST_ID, {
+      sort: 'recent',
+    } as never);
+    expect(response.restaurants.map((r) => r.restaurantId)).toEqual([
+      R3,
+      R2,
+      R1,
+    ]);
+  });
+
+  it('detail DTO carries viewerRole + defaultSort (custom iff order diverges from insertion)', async () => {
+    const { service } = makeHarness({ lists: [makeList({ items })] });
+    const detail: any = await service.getListForUser(OWNER, LIST_ID);
+    expect(detail.viewerRole).toBe('owner');
+    expect(detail.defaultSort).toBe('custom');
+
+    const insertionOrdered = items.map((item, index) => ({
+      ...item,
+      position: index + 1,
+    }));
+    const { service: service2 } = makeHarness({
+      lists: [makeList({ items: insertionOrdered })],
+    });
+    const detail2: any = await service2.getListForUser(OWNER, LIST_ID);
+    expect(detail2.defaultSort).toBe('best');
+  });
+});
+
+describe('virtual All list (spec B.1.6)', () => {
+  const LIST_B = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const lists = [
+    makeList({
+      items: [makeItem({ itemId: 'a1', restaurantId: R1, position: 1 })],
+      visibility: 'private',
+    }),
+    makeList({
+      listId: LIST_B,
+      name: 'other',
+      visibility: 'public',
+      items: [makeItem({ itemId: 'b1', restaurantId: R2, position: 1 })],
+    }),
+  ];
+
+  it('own All unions ALL own lists of the type through the executor', async () => {
+    const { service, executor } = makeHarness({ lists });
+    await service.getListResults(OWNER, 'all:restaurants', {} as never);
+    const filter =
+      executor.executeSingle.mock.calls[0][0].plan.restaurantFilters[0];
+    expect(new Set(filter.entityIds)).toEqual(new Set([R1, R2]));
+  });
+
+  it("profile All unions only the target's PUBLIC lists", async () => {
+    const { service, executor } = makeHarness({ lists });
+    await service.getListResults(STRANGER, 'all:restaurants', {
+      targetUserId: OWNER,
+    } as never);
+    const filter =
+      executor.executeSingle.mock.calls[0][0].plan.restaurantFilters[0];
+    expect(filter.entityIds).toEqual([R2]);
+  });
+
+  it('custom sort on the virtual list is a loud BadRequest', async () => {
+    const { service } = makeHarness({ lists });
+    await expect(
+      service.getListResults(OWNER, 'all:restaurants', {
+        sort: 'custom',
+      } as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('a non-UUID non-virtual id is rejected, never queried', async () => {
+    const { service } = makeHarness({ lists });
+    await expect(
+      service.getListResults(OWNER, 'all:everything', {} as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});

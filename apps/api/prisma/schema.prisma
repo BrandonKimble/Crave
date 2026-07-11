@@ -1090,6 +1090,8 @@ model User {
   favoriteEvents         UserFavoriteEvent[]
   favoriteLists          FavoriteList[]
   favoriteListItems      FavoriteListItem[]
+  listCollaborations     FavoriteListCollaborator[] @relation("FavoriteListCollaboratorUser")
+  listCollaboratorInvites FavoriteListCollaborator[] @relation("FavoriteListCollaboratorInviter")
   userNotifications      UserNotification[]
   searchEvents           SearchEvent[]
   searchDemandDailyRows  UserSearchDemandDaily[]
@@ -1175,9 +1177,10 @@ model FavoriteList {
   shareEnabled Boolean                  @default(false) @map("share_enabled")
   createdAt    DateTime                 @default(now()) @map("created_at")
   updatedAt    DateTime                 @updatedAt @map("updated_at")
-  owner        User                     @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)
-  items        FavoriteListItem[]
-  shareEvents  FavoriteListShareEvent[]
+  owner         User                       @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)
+  items         FavoriteListItem[]
+  shareEvents   FavoriteListShareEvent[]
+  collaborators FavoriteListCollaborator[]
 
   @@unique([ownerUserId, listType, name], map: "favorite_lists_owner_type_name")
   @@index([ownerUserId], map: "idx_favorite_lists_owner")
@@ -1213,11 +1216,34 @@ model FavoriteListItem {
   @@map("favorite_list_items")
 }
 
+/// Full-parity co-editors on a list (w1-listdetail spec B.1.3). Joining is
+/// slug-capability-gated (the invite IS the share link); a private flip
+/// deletes every row (RT-18: private kills all shared access).
+model FavoriteListCollaborator {
+  listId          String       @map("list_id") @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
+  invitedByUserId String?      @map("invited_by_user_id") @db.Uuid
+  createdAt       DateTime     @default(now()) @map("created_at")
+  list            FavoriteList @relation(fields: [listId], references: [listId], onDelete: Cascade)
+  user            User         @relation("FavoriteListCollaboratorUser", fields: [userId], references: [userId], onDelete: Cascade)
+  invitedByUser   User?        @relation("FavoriteListCollaboratorInviter", fields: [invitedByUserId], references: [userId], onDelete: SetNull)
+
+  // The composite id IS the spec's @@unique(listId,userId): join idempotency
+  // rides this constraint (P2002 = already a member = success, RT-10 precedent).
+  @@id([listId, userId], map: "list_collaborators_pkey")
+  @@index([userId], map: "idx_list_collaborators_user")
+  @@map("list_collaborators")
+}
+
 model FavoriteListShareEvent {
   eventId   String                     @id @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
   listId    String                     @map("list_id") @db.Uuid
   shareSlug String?                    @map("share_slug") @db.VarChar(64)
   eventType FavoriteListShareEventType @map("event_type")
+  /// RT-18 flood fix: unique write-dedupe key for 'opened' events —
+  /// `opened:<slug>:<viewerUserId>` (authed) / `opened:<slug>:<YYYY-MM-DD>`
+  /// (anon). P2002 = already counted = no-op. Null for created/revoked.
+  dedupeKey String?                    @unique(map: "favorite_list_share_events_dedupe_key") @map("dedupe_key") @db.VarChar(160)
   createdAt DateTime                   @default(now()) @map("created_at")
   list      FavoriteList               @relation(fields: [listId], references: [listId], onDelete: Cascade)
 

@@ -25,6 +25,8 @@ import { UpdateFavoriteListItemDto } from './dto/update-favorite-list-item.dto';
 import { ShareFavoriteListDto } from './dto/share-favorite-list.dto';
 import { ListFavoriteListsDto } from './dto/list-favorite-lists.dto';
 import { FavoriteListResultsDto } from './dto/favorite-list-results.dto';
+import { JoinFavoriteListCollaboratorsDto } from './dto/join-favorite-list-collaborators.dto';
+import { ReorderFavoriteListItemsDto } from './dto/reorder-favorite-list-items.dto';
 
 @Controller('favorites')
 @UseGuards(ClerkAuthGuard)
@@ -53,17 +55,78 @@ export class FavoritesController {
   getList(
     @CurrentUser() user: User,
     @Param('listId', ParseUUIDPipe) listId: string,
+    // RT-18: shared reads present the slug (query param on the GET).
+    @Query('shareSlug') shareSlug?: string,
   ) {
-    return this.favoriteListsService.getListForUser(user.userId, listId);
+    return this.favoriteListsService.getListForUser(
+      user.userId,
+      listId,
+      shareSlug,
+    );
   }
 
+  // No ParseUUIDPipe: also accepts the virtual All ids
+  // ('all:restaurants' / 'all:dishes'); the service validates concrete ids.
   @Post('lists/:listId/results')
   getListResults(
     @CurrentUser() user: User,
-    @Param('listId', ParseUUIDPipe) listId: string,
+    @Param('listId') listId: string,
     @Body() dto: FavoriteListResultsDto,
   ) {
     return this.favoriteListsService.getListResults(user.userId, listId, dto);
+  }
+
+  @Get('lists/:listId/collaborators')
+  getCollaborators(
+    @CurrentUser() user: User,
+    @Param('listId', ParseUUIDPipe) listId: string,
+    @Query('shareSlug') shareSlug?: string,
+  ) {
+    return this.favoriteListsService.getCollaborators(
+      user.userId,
+      listId,
+      shareSlug,
+    );
+  }
+
+  @Post('lists/:listId/collaborators/join')
+  joinCollaborators(
+    @CurrentUser() user: User,
+    @Param('listId', ParseUUIDPipe) listId: string,
+    @Body() dto: JoinFavoriteListCollaboratorsDto,
+  ) {
+    return this.favoriteListsService.joinCollaborators(
+      user.userId,
+      listId,
+      dto.shareSlug,
+    );
+  }
+
+  @Delete('lists/:listId/collaborators/:userId')
+  @HttpCode(204)
+  removeCollaborator(
+    @CurrentUser() user: User,
+    @Param('listId', ParseUUIDPipe) listId: string,
+    @Param('userId', ParseUUIDPipe) targetUserId: string,
+  ) {
+    return this.favoriteListsService.removeCollaborator(
+      user.userId,
+      listId,
+      targetUserId,
+    );
+  }
+
+  @Patch('lists/:listId/items/order')
+  reorderListItems(
+    @CurrentUser() user: User,
+    @Param('listId', ParseUUIDPipe) listId: string,
+    @Body() dto: ReorderFavoriteListItemsDto,
+  ) {
+    return this.favoriteListsService.reorderItems(
+      user.userId,
+      listId,
+      dto.orderedItemIds,
+    );
   }
 
   @Patch('lists/:listId')

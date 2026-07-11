@@ -79,6 +79,9 @@ export interface FoodResult {
   restaurantCraveScore: number;
   restaurantLatitude?: number | null;
   restaurantLongitude?: number | null;
+  // Favorites-list projection only (w1-listdetail spec B.1.5): the saver's
+  // personal note on this item. Never set by real search responses.
+  note?: string | null;
 }
 
 export interface RestaurantFoodSnippet {
@@ -169,6 +172,9 @@ export interface RestaurantResult {
   matchedTags?: RestaurantMatchedTag[];
   matchEvidenceType?: 'connection' | 'tag_signal' | 'mixed' | null;
   hasMenuItems?: boolean;
+  // Favorites-list projection only (w1-listdetail spec B.1.5): the saver's
+  // personal note on this item. Never set by real search responses.
+  note?: string | null;
 }
 
 export type RestaurantResultScorePreview = Omit<

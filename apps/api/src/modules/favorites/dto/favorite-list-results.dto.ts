@@ -1,11 +1,15 @@
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsLatitude,
   IsLongitude,
   IsNumber,
   IsOptional,
+  IsString,
+  IsUUID,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -55,4 +59,30 @@ export class FavoriteListResultsDto {
   @ValidateNested()
   @Type(() => FavoriteListResultsPaginationDto)
   pagination?: FavoriteListResultsPaginationDto;
+
+  /**
+   * RT-18 slug-as-capability: non-owner/non-collaborator access requires
+   * presenting the CURRENT share slug (rotation = revocation).
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  shareSlug?: string;
+
+  /**
+   * Row ordering (spec B.1.4): 'custom' = the saver's position order,
+   * 'recent' = newest saves first, 'best' = crave score (executor default).
+   * Omitted = the list's defaultSort ('custom' iff a custom order exists).
+   */
+  @IsOptional()
+  @IsIn(['custom', 'best', 'recent'])
+  sort?: 'custom' | 'best' | 'recent';
+
+  /**
+   * Virtual All-list only (spec B.1.6): whose All to resolve. Omitted =
+   * the viewer's own; another user = their PUBLIC lists' union.
+   */
+  @IsOptional()
+  @IsUUID()
+  targetUserId?: string;
 }
