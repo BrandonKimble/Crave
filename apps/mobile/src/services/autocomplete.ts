@@ -25,7 +25,9 @@ export type AutocompleteMatch = {
   evidenceTier?: AutocompleteEvidenceTier | string;
   // 'poll' matches surface active community polls in the §8.1 autocomplete lane;
   // their `entityId` is the pollId and `name` is the poll question.
-  matchType?: 'entity' | 'query' | 'poll';
+  matchType?: 'entity' | 'query' | 'poll' | 'user';
+  // Person rows (user lane): the handle shown under the display name.
+  username?: string | null;
   badges?: {
     favorite?: boolean;
     viewed?: boolean;

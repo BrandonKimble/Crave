@@ -52,6 +52,10 @@ export type SearchForegroundOpenRestaurantProfilePreview = (
 // screen uses.
 export type SearchForegroundOpenPollDetail = (pollId: string) => void;
 
+// Person rows (user lane): a 'user' suggestion tap PUSHES the userProfile page — the same
+// child-push the follow drill uses, so origin capture / pop-back ride the standard rails.
+export type SearchForegroundOpenUserProfile = (userId: string) => void;
+
 export type SearchForegroundCloseRestaurantProfile = (options?: {
   dismissBehavior?: 'restore' | 'clear';
   clearSearchOnDismiss?: boolean;
@@ -132,6 +136,7 @@ export type SearchForegroundSubmitRuntimeArgs = {
   deferRecentSearchUpsert: SearchForegroundHistoryRuntime['updateLocalRecentSearches'];
   openRestaurantProfilePreview: SearchForegroundOpenRestaurantProfilePreview;
   openPollDetail: SearchForegroundOpenPollDetail;
+  openUserProfile: SearchForegroundOpenUserProfile;
 };
 
 export type SearchForegroundCommandRuntimeArgs = SearchForegroundSubmitRuntimeArgs & {

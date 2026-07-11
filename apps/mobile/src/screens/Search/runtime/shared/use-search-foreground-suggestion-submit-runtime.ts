@@ -25,6 +25,7 @@ type UseSearchForegroundSuggestionSubmitRuntimeArgs = Pick<
   | 'ignoreNextSearchBlurRef'
   | 'openRestaurantProfilePreview'
   | 'openPollDetail'
+  | 'openUserProfile'
 >;
 
 type SearchForegroundSuggestionSubmitRuntime = Pick<
@@ -50,11 +51,29 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
   ignoreNextSearchBlurRef,
   openRestaurantProfilePreview,
   openPollDetail,
+  openUserProfile,
 }: UseSearchForegroundSuggestionSubmitRuntimeArgs): SearchForegroundSuggestionSubmitRuntime => {
   const { submitSearch } = submitRuntime;
 
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch) => {
+      if (match.matchType === 'user' || match.entityType === 'user') {
+        // Person row (user lane): not a search — tear down the suggestion surface and
+        // PUSH the userProfile page (the follow-drill child push; origin capture and
+        // pop-back ride the standard rails). match.entityId is the userId.
+        isSearchEditingRef.current = false;
+        allowSearchBlurExitRef.current = true;
+        ignoreNextSearchBlurRef.current = true;
+        suppressAutocompleteResults();
+        cancelAutocomplete();
+        setIsSearchFocused(false);
+        setIsSuggestionPanelActive(false);
+        dismissSearchKeyboard();
+        setShowSuggestions(false);
+        setSuggestions([]);
+        openUserProfile(match.entityId);
+        return;
+      }
       if (match.matchType === 'poll' || match.entityType === 'poll') {
         // §8.1 poll lane: this isn't a search — tear down the suggestion surface
         // and open the poll's detail (via the polls home, the same cross-surface
@@ -134,6 +153,7 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       ignoreNextSearchBlurRef,
       isSearchEditingRef,
       openPollDetail,
+      openUserProfile,
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
       query,

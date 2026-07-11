@@ -57,6 +57,13 @@ export const useSearchRootForegroundCommandRuntime = ({
     },
     [routeSearchCommandActions]
   );
+  const { routeOverlayRouteCommandRuntime } = rootOverlayFoundationRuntime;
+  const openUserProfile = React.useCallback(
+    (userId: string) => {
+      routeOverlayRouteCommandRuntime.pushRoute('userProfile', { userId });
+    },
+    [routeOverlayRouteCommandRuntime]
+  );
   const { autocompleteRuntime } = autocompleteAuthorityRuntime;
   const { recentActivityRuntime } = recentActivityAuthorityRuntime;
   const requestStatusRuntime = rootDataPlaneRuntime.requestStatusRuntime;
@@ -101,11 +108,13 @@ export const useSearchRootForegroundCommandRuntime = ({
           recentActivityRuntime.deferRecentSearchUpsert as SearchForegroundCommandRuntimeArgs['deferRecentSearchUpsert'],
         openRestaurantProfilePreview: profileOwner.profileActions.openRestaurantProfilePreview,
         openPollDetail,
+        openUserProfile,
         isOffline: requestStatusRuntime.isOffline,
       }) satisfies SearchForegroundCommandRuntimeArgs,
     [
       autocompleteRuntime.suppressAutocompleteResults,
       openPollDetail,
+      openUserProfile,
       profileOwner.profileActions.openRestaurantProfilePreview,
       recentActivityRuntime.deferRecentSearchUpsert,
       requestStatusRuntime.cancelAutocomplete,

@@ -41,6 +41,7 @@ type UseSearchForegroundDirectSubmitRuntimeArgs = Pick<
   | 'ignoreNextSearchBlurRef'
   | 'openRestaurantProfilePreview'
   | 'openPollDetail'
+  | 'openUserProfile'
 > & {
   submitPreparationRuntime: ReturnType<typeof useSearchForegroundSubmitPreparationRuntime>;
 };
@@ -84,6 +85,7 @@ export const useSearchForegroundDirectSubmitRuntime = ({
   ignoreNextSearchBlurRef,
   openRestaurantProfilePreview,
   openPollDetail,
+  openUserProfile,
   submitPreparationRuntime,
 }: UseSearchForegroundDirectSubmitRuntimeArgs): SearchForegroundDirectSubmitRuntime => {
   // Created before the query runtime because the typed-Return promoter replays
@@ -106,6 +108,7 @@ export const useSearchForegroundDirectSubmitRuntime = ({
     ignoreNextSearchBlurRef,
     openRestaurantProfilePreview,
     openPollDetail,
+    openUserProfile,
   });
   const querySubmitRuntime = useSearchForegroundQuerySubmitRuntime({
     submitRuntime,

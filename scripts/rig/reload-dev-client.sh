@@ -21,37 +21,42 @@ DEV_CLIENT_URL="crave://expo-development-client/?url=http%3A%2F%2Flocalhost%3A80
 APP_ID="com.brandonkimble.cravesearch"
 METRO_LOG="/tmp/crave-metro.log"
 
-hash_bundle() { curl -s "$BUNDLE_URL" | shasum -a 256 | cut -d' ' -f1; }
+hash_bundle() {
+  # -f: a bundler ERROR page (HTTP 500) must not hash as a stable "quiescent" build.
+  curl -sf "$BUNDLE_URL" | shasum -a 256 | cut -d' ' -f1
+}
 
 # 1+2: build until the graph is quiescent (two identical consecutive full builds).
 previous_hash="$(hash_bundle)"
+quiescent=false
 for attempt in 1 2 3 4 5; do
   sleep 1
   current_hash="$(hash_bundle)"
   if [[ "$current_hash" == "$previous_hash" ]]; then
+    quiescent=true
     break
   fi
   previous_hash="$current_hash"
 done
+if [[ "$quiescent" != "true" ]]; then
+  echo "FATAL: bundle never quiesced (graph still churning after 5 rebuilds)" >&2
+  exit 1
+fi
 echo "bundle quiescent: ${current_hash:0:12}"
 
 boot_and_check() {
   xcrun simctl terminate "$UDID" "$APP_ID" 2>/dev/null || true
   sleep 1
-  local log_size
-  log_size=$(stat -f%z "$METRO_LOG" 2>/dev/null || echo 0)
+  # Boot boundary = COUNT delta, not offsets (Metro's fd clobbers appended bytes and a
+  # prior dirty boot's error stays in any tail window — counts only grow on a NEW error).
+  local errors_before errors_after
+  errors_before=$(tail -c 800000 "$METRO_LOG" 2>/dev/null | grep -ac "ReferenceError" || true)
   xcrun simctl launch "$UDID" "$APP_ID" >/dev/null 2>&1 || true
   sleep 2
   xcrun simctl openurl "$UDID" "$DEV_CLIENT_URL"
   sleep 10
-  # Metro's fd clobbers appended bytes — scan the tail, not an offset window.
-  if tail -c 400000 "$METRO_LOG" 2>/dev/null | grep -a "ReferenceError" | tail -3 | grep -q .; then
-    # Only fail on errors from THIS boot: re-scan after a marker-free settle window.
-    sleep 3
-    local recent
-    recent=$(tail -c 120000 "$METRO_LOG" | grep -ac "ReferenceError" || true)
-    [[ "$recent" -eq 0 ]]
-  fi
+  errors_after=$(tail -c 800000 "$METRO_LOG" 2>/dev/null | grep -ac "ReferenceError" || true)
+  [[ "$errors_after" -le "$errors_before" ]]
 }
 
 if boot_and_check; then

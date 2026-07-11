@@ -43,6 +43,7 @@ export const FollowListPanelBody = React.memo(() => {
   const listQuery = useQuery({
     queryKey: ['followList', mode, ownerUserId],
     enabled: ownerUserId != null,
+    staleTime: 60_000,
     queryFn: () =>
       mode === 'following'
         ? usersService.listFollowing(ownerUserId as string)
@@ -50,7 +51,7 @@ export const FollowListPanelBody = React.memo(() => {
   });
   const load = listQuery.refetch;
 
-  if (listQuery.isPending || (ownerUserId == null && !listQuery.isError)) {
+  if (ownerUserId != null && listQuery.isPending) {
     return (
       <View style={styles.stateBody} testID="follow-list-loading">
         <ActivityIndicator />
@@ -58,7 +59,7 @@ export const FollowListPanelBody = React.memo(() => {
     );
   }
 
-  if (listQuery.isError || ownerUserId == null || listQuery.data == null) {
+  if (ownerUserId == null || listQuery.isError || listQuery.data == null) {
     return (
       <View style={styles.stateBody} testID="follow-list-failed">
         <Text variant="body" style={styles.stateText}>

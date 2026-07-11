@@ -5,7 +5,7 @@ import { Text } from '../../components';
 import { usersService, type PublicUserProfile } from '../../services/users';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useTopMostRouteEntryForScene } from '../../navigation/runtime/use-top-most-route-entry-for-scene';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 // ─── userProfile — the REAL page body (trigger-nav pages; plans/page-registry.md) ───────────
 // Replaces the S-B drill-in practice body. Data = the public profile payload
@@ -78,6 +78,7 @@ const StatCell = ({
 export const UserProfilePanelBody = React.memo(() => {
   const entry = useTopMostRouteEntryForScene('userProfile');
   const { pushRoute } = useAppOverlayRouteController();
+  const queryClient = useQueryClient();
   const userId = typeof entry?.params?.userId === 'string' ? entry.params.userId : null;
 
   // RT-19 (state-loss half): page data rides the query CACHE keyed by userId — the drill
@@ -87,6 +88,9 @@ export const UserProfilePanelBody = React.memo(() => {
   const profileQuery = useQuery({
     queryKey: ['userProfile', userId],
     enabled: userId != null,
+    // Drill pop-backs serve cache INSTANTLY and skip the background refetch inside the
+    // window (red-team F10 — siblings set explicit staleness; 0 meant a refetch per pop).
+    staleTime: 60_000,
     queryFn: async () => {
       const [profile, edge] = await Promise.all([
         usersService.getPublicProfile(userId as string),
@@ -103,6 +107,13 @@ export const UserProfilePanelBody = React.memo(() => {
   } | null>(null);
   const [followBusy, setFollowBusy] = React.useState(false);
   const serverFollowed = profileQuery.data?.edge.isFollowedByMe ?? false;
+  // Drop the optimistic override once server truth confirms it (red-team F3): a stale
+  // override must never outrank a NEWER server fact from another surface's mutation.
+  React.useEffect(() => {
+    if (followOverride != null && followOverride.value === serverFollowed) {
+      setFollowOverride(null);
+    }
+  }, [followOverride, serverFollowed]);
   const isFollowedByMe =
     followOverride != null && followOverride.forUserId === userId
       ? followOverride.value
@@ -116,6 +127,12 @@ export const UserProfilePanelBody = React.memo(() => {
     setFollowOverride({ forUserId: userId, value: next });
     setFollowBusy(true);
     void (next ? usersService.followUser(userId) : usersService.unfollowUser(userId))
+      .then(() => {
+        // Membership changed — every cached follow list and the target's profile stats
+        // are now stale (red-team F2); retained drill bodies re-read on next focus.
+        void queryClient.invalidateQueries({ queryKey: ['followList'] });
+        void queryClient.invalidateQueries({ queryKey: ['userProfile', userId] });
+      })
       .catch(() => {
         setFollowOverride({ forUserId: userId, value: !next });
       })
@@ -126,7 +143,9 @@ export const UserProfilePanelBody = React.memo(() => {
 
   const load = profileQuery.refetch;
 
-  if (profileQuery.isPending || (userId == null && !profileQuery.isError)) {
+  // A null-param entry can never load — the FAILED body (retry) is the honest render, not
+  // an eternal disabled-query spinner (red-team F1).
+  if (userId != null && profileQuery.isPending) {
     return (
       <View style={styles.stateBody} testID="user-profile-loading">
         <ActivityIndicator />
@@ -134,7 +153,7 @@ export const UserProfilePanelBody = React.memo(() => {
     );
   }
 
-  if (profileQuery.isError || userId == null || profileQuery.data == null) {
+  if (userId == null || profileQuery.isError || profileQuery.data == null) {
     return (
       <View style={styles.stateBody} testID="user-profile-failed">
         <Text variant="body" style={styles.stateText}>

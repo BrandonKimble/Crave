@@ -58,11 +58,13 @@ export class AutocompleteRequestDto {
 export class AutocompleteMatchDto {
   // For polls, `entityId` is the pollId and `name` is the poll question.
   entityId!: string;
-  entityType!: EntityType | 'query' | 'poll';
+  entityType!: EntityType | 'query' | 'poll' | 'user';
   name!: string;
   confidence!: number;
   aliases!: string[];
-  matchType?: 'entity' | 'query' | 'poll';
+  matchType?: 'entity' | 'query' | 'poll' | 'user';
+  // Person rows (user lane): the handle shown under the display name.
+  username?: string | null;
   // How this entity matched (exact / prefix / name / alias / fuzzy / phonetic /
   // embedding). Forwarded from the recall core so the client can distinguish an
   // exact hit from a weak guess — the signal the profile-jump gate needs. Absent

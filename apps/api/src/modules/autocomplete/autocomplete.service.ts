@@ -43,6 +43,11 @@ const ATTRIBUTE_LANE_RUNTIME_READY = true;
 // they surface only when they out-score leftover entity/query candidates. Gated to
 // longer queries + a min question match so they don't flood food searches.
 const POLL_LANE_MIN_QUERY_LENGTH = 3;
+// User lane (person rows, owner-scoped 2026-07-10: persons only — lists deliberately out):
+// username/displayName prefix or word-similarity; taps push the userProfile page.
+const USER_LANE_MIN_QUERY_LENGTH = 2;
+const USER_LANE_MIN_SIMILARITY = 0.4;
+const USER_LANE_MAX_CANDIDATES = 3;
 const POLL_LANE_MIN_SIMILARITY = 0.4;
 const POLL_LANE_MAX_CANDIDATES = 3;
 const REQUEST_DURATION_BUCKETS = [0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.5];
@@ -90,6 +95,8 @@ export class AutocompleteService {
   private readonly attributeLaneEnabled: boolean;
   private readonly pollLaneEnabled: boolean;
   private readonly pollLaneWeight: number;
+  private readonly userLaneEnabled: boolean;
+  private readonly userLaneWeight: number;
   private readonly requestDurationHistogram: Histogram<string>;
   private readonly requestDbDurationHistogram: Histogram<string>;
   private readonly cacheLookupsCounter: Counter<string>;
@@ -171,6 +178,14 @@ export class AutocompleteService {
     );
     this.pollLaneWeight = this.resolveEnvNumber(
       'AUTOCOMPLETE_WEIGHT_POLL_LANE',
+      0.9,
+    );
+    this.userLaneEnabled = this.resolveEnvBoolean(
+      'AUTOCOMPLETE_ENABLE_USER_LANE',
+      true,
+    );
+    this.userLaneWeight = this.resolveEnvNumber(
+      'AUTOCOMPLETE_WEIGHT_USER_LANE',
       0.9,
     );
     this.requestDurationHistogram = metricsService.getHistogram({
@@ -609,6 +624,7 @@ export class AutocompleteService {
       params.marketKey ?? null,
       limit,
     );
+    const userCandidatesPromise = this.fetchUserMatches(normalizedQuery, limit);
 
     const entityIds = Array.from(
       new Set(entityMatches.map((match) => match.entityId)),
@@ -798,6 +814,7 @@ export class AutocompleteService {
     ].slice(0, Math.max(1, this.querySuggestionMax));
 
     const pollCandidates = await pollCandidatesPromise;
+    const userCandidates = await userCandidatesPromise;
 
     const finalMatches = this.mergeAutocompleteLanes({
       entityCandidates: scoredEntities
@@ -809,6 +826,7 @@ export class AutocompleteService {
       personalQueryCandidates,
       globalQueryCandidates,
       pollCandidates,
+      userCandidates,
       limit,
     });
 
@@ -831,6 +849,7 @@ export class AutocompleteService {
       score: number;
     }>;
     pollCandidates: Array<{ match: AutocompleteMatchDto; score: number }>;
+    userCandidates: Array<{ match: AutocompleteMatchDto; score: number }>;
     limit: number;
   }): AutocompleteMatchDto[] {
     // FLOOR, NOT MANDATE (owner directive): every lane's candidates compete in ONE
@@ -848,6 +867,7 @@ export class AutocompleteService {
       ...params.personalQueryCandidates,
       ...params.globalQueryCandidates,
       ...params.pollCandidates,
+      ...params.userCandidates,
     ].sort((a, b) => b.score - a.score);
     for (const candidate of ranked) {
       if (finalMatches.length >= params.limit) {
@@ -910,6 +930,68 @@ export class AutocompleteService {
         matchType: 'poll',
       };
       return { match, score: sim * this.pollLaneWeight };
+    });
+  }
+
+  /**
+   * User lane (person rows): people by username/displayName prefix or word
+   * similarity. Same floor-not-mandate contract as every lane — user rows
+   * compete in the one global score sort, never seated ahead of stronger
+   * candidates. A tap pushes the userProfile page (client routes matchType
+   * 'user' through the pushScene arm).
+   */
+  private async fetchUserMatches(
+    normalizedQuery: string,
+    limit: number,
+  ): Promise<Array<{ match: AutocompleteMatchDto; score: number }>> {
+    if (
+      !this.userLaneEnabled ||
+      normalizedQuery.trim().length < USER_LANE_MIN_QUERY_LENGTH
+    ) {
+      return [];
+    }
+    const take = Math.max(1, Math.min(limit, USER_LANE_MAX_CANDIDATES));
+    const prefixPattern = `${normalizedQuery}%`;
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        user_id: string;
+        username: string | null;
+        display_name: string | null;
+        sim: number;
+        is_prefix: boolean;
+      }>
+    >(Prisma.sql`
+      SELECT user_id, username, display_name, sim, is_prefix
+      FROM (
+        SELECT user_id, username, display_name,
+               GREATEST(
+                 word_similarity(${normalizedQuery}, COALESCE(username::text, '')),
+                 word_similarity(${normalizedQuery}, COALESCE(display_name, ''))
+               ) AS sim,
+               (COALESCE(username::text ILIKE ${prefixPattern}, false)
+                 OR COALESCE(display_name ILIKE ${prefixPattern}, false)) AS is_prefix
+        FROM users
+        WHERE username IS NOT NULL OR display_name IS NOT NULL
+      ) candidates
+      WHERE is_prefix OR sim >= ${USER_LANE_MIN_SIMILARITY}
+      ORDER BY is_prefix DESC, sim DESC
+      LIMIT ${take}
+    `);
+    return rows.map((row) => {
+      const sim = clamp01(Number(row.sim) || 0);
+      // Prefix hits rank at the prefix band (0.9) like entity prefixes; pure
+      // similarity hits carry their similarity — evidence-first, mirroring polls.
+      const confidence = row.is_prefix ? Math.max(0.9, sim) : sim;
+      const match: AutocompleteMatchDto = {
+        entityId: row.user_id,
+        entityType: 'user',
+        name: row.display_name?.trim() || row.username || 'Crave member',
+        aliases: row.username ? [row.username] : [],
+        confidence: Number(confidence.toFixed(2)),
+        matchType: 'user',
+        username: row.username,
+      };
+      return { match, score: confidence * this.userLaneWeight };
     });
   }
 
@@ -1183,7 +1265,7 @@ export class AutocompleteService {
   }
 
   private isAttributeType(
-    entityType: EntityType | 'query' | 'poll',
+    entityType: EntityType | 'query' | 'poll' | 'user',
   ): entityType is EntityType {
     return (
       entityType === EntityType.food_attribute ||

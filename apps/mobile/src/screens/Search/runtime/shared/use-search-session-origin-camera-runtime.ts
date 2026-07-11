@@ -4,7 +4,8 @@ import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { SearchRootCameraViewportRuntime } from './use-search-root-session-runtime-contract';
 
 // Camera-in-origin (owner decision 2026-07-10): a terminal search dismiss puts the camera
-// back to the viewport the SEARCH WAS TRIGGERED from — the live camera at the instant the
+// back to the viewport the SEARCH WAS TRIGGERED from — the last SETTLED camera at the
+// instant the
 // desired identity left 'idle' (the same instant the search call's initial viewport was
 // captured). One capture per SESSION (session_replace keeps the original origin: the X
 // returns to where the user was BEFORE searching, however many searches deep they went);
@@ -43,14 +44,20 @@ export const useSearchSessionOriginCameraRuntime = ({
         }
         return;
       }
-      // Session EXIT (set → idle): glide the camera home with the dismissal.
+      // Session EXIT (set → idle): glide the camera home with the dismissal. Deferred one
+      // microtask so this commit lands AFTER any same-tick pop-side camera commit (a
+      // terminal X with a profile open fires the profile's savedCamera focus at pop
+      // commit — the SESSION origin is the final destination and must be the last word;
+      // red-team F4). Arbiter semantics are last-write-wins, so ordering is the contract.
       const originCamera = sessionOriginCameraRef.current;
       sessionOriginCameraRef.current = null;
       if (originCamera != null) {
-        commitCameraViewport(
-          { center: originCamera.center, zoom: originCamera.zoom, padding: null },
-          { allowDuringGesture: true }
-        );
+        queueMicrotask(() => {
+          commitCameraViewport(
+            { center: originCamera.center, zoom: originCamera.zoom, padding: null },
+            { allowDuringGesture: true }
+          );
+        });
       }
     };
     // Adopt the boot state without acting on it (a session may already be live on remount).

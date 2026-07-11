@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, TouchableOpacity, View, type StyleProp, type ViewStyle } from 'react-native';
 import {
   BarChart3,
+  CircleUserRound,
   Clock,
   HandPlatter,
   Heart,
@@ -207,6 +208,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                 }:${normalizedName}:${confidenceKey}:${locationCountKey}`;
             const isQuery = match.matchType === 'query' || match.entityType === 'query';
             const isPoll = match.matchType === 'poll' || match.entityType === 'poll';
+            const isUser = match.matchType === 'user' || match.entityType === 'user';
             const locationCount =
               typeof match.locationCount === 'number'
                 ? match.locationCount
@@ -222,13 +224,22 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     shouldShowLocationCount ? locationCount : null
                   )
                 : null;
-            const hasMetaLine = Boolean(statusLine);
+            // Person rows (user lane): the handle is the meta line.
+            const userHandleLine =
+              isUser && match.username ? (
+                <Text style={styles.autocompleteMetaText} numberOfLines={1}>
+                  @{match.username}
+                </Text>
+              ) : null;
+            const hasMetaLine = Boolean(statusLine) || Boolean(userHandleLine);
             const leadingIcon = isRecentQuery ? (
               <Clock size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : isViewed ? (
               <ViewIcon size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : isPoll ? (
               <BarChart3 size={20} color={themeColors.primary} strokeWidth={2} />
+            ) : isUser ? (
+              <CircleUserRound size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : isQuery ? (
               <SearchIcon size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : match.entityType === 'restaurant' ? (
@@ -256,7 +267,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     <Text style={styles.autocompletePrimaryText} numberOfLines={1}>
                       {match.name}
                     </Text>
-                    {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
+                    {hasMetaLine ? (
+                      <View style={styles.metaLine}>{statusLine ?? userHandleLine}</View>
+                    ) : null}
                   </View>
                   <View style={styles.autocompleteBadges}>
                     {match.badges?.favorite ? (
@@ -409,6 +422,10 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
 };
 
 const styles = StyleSheet.create({
+  autocompleteMetaText: {
+    fontSize: 13,
+    color: '#64748b',
+  },
   container: {
     width: '100%',
   },
