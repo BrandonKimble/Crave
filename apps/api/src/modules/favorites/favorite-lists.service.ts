@@ -97,6 +97,11 @@ type FavoriteListSummary = {
   itemCount: number;
   position: number;
   systemKind: string | null;
+  /** Profile-gallery pin (§8.12/§8.14) — owner curation, floats first there. */
+  pinned: boolean;
+  /** Majority market of the list's items (profile city grouping, §8.15).
+   *  Only computed on the public profile read; null elsewhere. */
+  city?: string | null;
   shareEnabled: boolean;
   shareSlug?: string | null;
   updatedAt: Date;
@@ -261,10 +266,82 @@ export class FavoriteListsService {
   }
 
   async listPublicForUser(userId: string, query: ListFavoriteListsDto) {
-    return this.listForUser(userId, {
-      ...query,
-      visibility: FavoriteListVisibility.public,
+    const lists = await this.prisma.favoriteList.findMany({
+      where: {
+        ownerUserId: userId,
+        listType: query.listType,
+        visibility: FavoriteListVisibility.public,
+      },
+      include: {
+        items: {
+          orderBy: { position: 'asc' },
+          take: 5,
+          include: {
+            restaurant: {
+              select: { entityId: true, name: true, city: true },
+            },
+            connection: {
+              select: {
+                connectionId: true,
+                food: { select: { entityId: true, name: true } },
+                restaurant: { select: { entityId: true, name: true } },
+              },
+            },
+          },
+        },
+      },
     });
+
+    // Profile-gallery order (§8.12/§8.14): owner pins first, then
+    // reverse-chronological. The own-home custom order never applies here.
+    const ordered = [...lists].sort(
+      (a, b) =>
+        Number(b.pinned) - Number(a.pinned) ||
+        b.updatedAt.valueOf() - a.updatedAt.valueOf(),
+    );
+
+    const [previewScores, cityByList] = await Promise.all([
+      this.loadPreviewScoreMaps(ordered),
+      this.loadMajorityCities(ordered.map((list) => list.listId)),
+    ]);
+    return ordered.map((list) => ({
+      ...this.buildListSummary(list, previewScores),
+      city: cityByList.get(list.listId) ?? null,
+    }));
+  }
+
+  /**
+   * §8.15 city grouping: a list's city = the majority market of its items
+   * (restaurant items directly; dish items via their connection's
+   * restaurant). Ties break arbitrarily-but-stably; the client renders the
+   * "Multiple cities"/flat decisions on top of this.
+   */
+  private async loadMajorityCities(
+    listIds: string[],
+  ): Promise<Map<string, string | null>> {
+    if (listIds.length === 0) {
+      return new Map();
+    }
+    const rows = await this.prisma.$queryRaw<
+      Array<{ list_id: string; city: string | null }>
+    >(Prisma.sql`
+      SELECT list_id, city FROM (
+        SELECT li.list_id,
+               COALESCE(er.city, ecr.city) AS city,
+               ROW_NUMBER() OVER (
+                 PARTITION BY li.list_id
+                 ORDER BY COUNT(*) DESC, COALESCE(er.city, ecr.city) ASC
+               ) AS rn
+        FROM favorite_list_items li
+        LEFT JOIN core_entities er ON er.entity_id = li.restaurant_id
+        LEFT JOIN core_restaurant_items c ON c.connection_id = li.connection_id
+        LEFT JOIN core_entities ecr ON ecr.entity_id = c.restaurant_id
+        WHERE li.list_id IN (${Prisma.join(listIds.map((id) => Prisma.sql`${id}::uuid`))})
+        GROUP BY li.list_id, COALESCE(er.city, ecr.city)
+      ) ranked
+      WHERE rn = 1
+    `);
+    return new Map(rows.map((row) => [row.list_id, row.city]));
   }
 
   /**
@@ -993,6 +1070,7 @@ export class FavoriteListsService {
               ? dto.description?.trim() || null
               : undefined,
           visibility: dto.visibility ?? undefined,
+          pinned: dto.pinned ?? undefined,
           shareEnabled: flippingPrivate ? false : undefined,
         },
       });
@@ -1459,6 +1537,7 @@ export class FavoriteListsService {
       itemCount: list.itemCount,
       position: list.position,
       systemKind: list.systemKind,
+      pinned: list.pinned,
       shareEnabled: list.shareEnabled,
       shareSlug: list.shareSlug,
       updatedAt: list.updatedAt,

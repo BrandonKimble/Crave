@@ -20,6 +20,7 @@ import { UserEventService } from './user-event.service';
 import { UsernameService } from './username.service';
 import { UserStatsService } from './user-stats.service';
 import { UserFollowService } from './user-follow.service';
+import { UserBlockService } from './user-block.service';
 import { ClosenessService } from './closeness.service';
 // Favorites-domain code, but PROVIDED here: the signup provisioning seam is
 // UserService.syncFromClerkClaims, and FavoritesModule imports IdentityModule
@@ -48,6 +49,7 @@ import { FavoriteListProvisioningService } from '../favorites/favorite-list-prov
     UsernameService,
     UserStatsService,
     UserFollowService,
+    UserBlockService,
     ClosenessService,
     FavoriteListProvisioningService,
   ],
@@ -62,6 +64,7 @@ import { FavoriteListProvisioningService } from '../favorites/favorite-list-prov
     UsernameService,
     UserStatsService,
     UserFollowService,
+    UserBlockService,
     ClosenessService,
     FavoriteListProvisioningService,
   ],

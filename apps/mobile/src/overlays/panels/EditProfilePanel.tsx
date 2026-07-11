@@ -1,15 +1,19 @@
 import React from 'react';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 
 import { Text } from '../../components';
 import { usersService, type UsernameAvailability } from '../../services/users';
+import { photosService } from '../../services/photos';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 
 // ─── editProfile — the REAL page body (trigger-nav pages) ───────────────────────────────────
 // Display-name editing over PATCH /users/me + username claim over the existing
 // check/claim endpoints (the onboarding picker's flow, re-homed as the settled page).
-// Avatar upload is DEFERRED to the photos/upload story (product call on source + crop).
+// W3: avatar picker wired — library pick → the existing signed avatar path
+// (ticket → direct upload → pull-based confirm; user.avatarUrl flips when
+// moderation approves, so a fresh upload reads "pending" until then).
 // Failure/empty per §5.6.
 
 type LoadState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready' };
@@ -24,6 +28,9 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
   const [availability, setAvailability] = React.useState<UsernameAvailability | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = React.useState<string | null>(null);
+  const [avatarBusy, setAvatarBusy] = React.useState(false);
+  const [avatarNotice, setAvatarNotice] = React.useState<string | null>(null);
   const loadSeqRef = React.useRef(0);
   const checkSeqRef = React.useRef(0);
 
@@ -39,6 +46,7 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
         setDisplayName(me.displayName ?? '');
         setSavedDisplayName(me.displayName ?? '');
         setCurrentUsername(me.username ?? null);
+        setAvatarUrl(me.avatarUrl ?? null);
         setLoadState({ kind: 'ready' });
       })
       .catch(() => {
@@ -155,8 +163,80 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
     );
   }
 
+  const handleChangePhoto = React.useCallback(() => {
+    if (avatarBusy) {
+      return;
+    }
+    setAvatarNotice(null);
+    void (async () => {
+      try {
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsMultipleSelection: false,
+          quality: 0.9,
+        });
+        if (result.canceled || !result.assets?.[0]) {
+          return;
+        }
+        setAvatarBusy(true);
+        const { status } = await photosService.uploadAvatar(result.assets[0]);
+        if (status === 'approved') {
+          const me = await usersService.getMe();
+          setAvatarUrl(me.avatarUrl ?? null);
+          setAvatarNotice('Photo updated.');
+        } else if (status === 'rejected') {
+          setAvatarNotice('That photo was rejected — try another.');
+        } else {
+          // Moderation pending: the old avatar stays until approval settles.
+          setAvatarNotice('Uploaded — your new photo will appear once reviewed.');
+        }
+      } catch {
+        setAvatarNotice('Couldn\u2019t update the photo \u2014 try again.');
+      } finally {
+        setAvatarBusy(false);
+      }
+    })();
+  }, [avatarBusy]);
+
   return (
     <View style={styles.body} testID="stub-scene-editProfile">
+      <View style={styles.avatarRow}>
+        {avatarUrl ? (
+          <Image
+            source={{ uri: avatarUrl }}
+            style={styles.avatarImage}
+            testID="edit-profile-avatar"
+          />
+        ) : (
+          <View style={styles.avatarFallback} testID="edit-profile-avatar-fallback">
+            <Text variant="title" weight="semibold" style={styles.avatarInitial}>
+              {(displayName.trim() || currentUsername || 'C').slice(0, 1).toUpperCase()}
+            </Text>
+          </View>
+        )}
+        <Pressable
+          onPress={handleChangePhoto}
+          disabled={avatarBusy}
+          accessibilityRole="button"
+          accessibilityLabel="Change photo"
+          testID="edit-profile-change-photo"
+          style={styles.changePhotoButton}
+        >
+          {avatarBusy ? (
+            <ActivityIndicator />
+          ) : (
+            <Text variant="body" weight="semibold" style={styles.changePhotoText}>
+              Change photo
+            </Text>
+          )}
+        </Pressable>
+      </View>
+      {avatarNotice ? (
+        <Text variant="caption" style={styles.avatarNotice} testID="edit-profile-avatar-notice">
+          {avatarNotice}
+        </Text>
+      ) : null}
+
       <Text variant="caption" style={styles.fieldLabel}>
         Display name
       </Text>
@@ -228,6 +308,41 @@ const styles = StyleSheet.create({
   body: {
     paddingVertical: 24,
     gap: 8,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 8,
+  },
+  avatarImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#f1f5f9',
+  },
+  avatarFallback: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    color: '#0f172a',
+  },
+  changePhotoButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: '#f1f5f9',
+  },
+  changePhotoText: {
+    color: '#0f172a',
+  },
+  avatarNotice: {
+    color: '#64748b',
   },
   stateBody: {
     paddingVertical: 48,

@@ -35,6 +35,13 @@ import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app
 import { useRestaurantHeaderLiveState } from '../restaurant-header-live-state';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 import CraveScoreText from '../../screens/Search/components/CraveScoreText';
+import {
+  RestaurantMentionsView,
+  RestaurantOverviewMentions,
+  RestaurantPhotosView,
+  RestaurantViewSwitcher,
+  type RestaurantProfileViewKey,
+} from './RestaurantProfileViews';
 
 export type RestaurantOverlayData = {
   restaurant: RestaurantProfileSeed;
@@ -100,6 +107,24 @@ export const useRestaurantPanelSpec = ({
   const isLoading = data?.isLoading ?? false;
   const restaurantName = restaurant?.restaurantName ?? '';
   const restaurantId = restaurant?.restaurantId ?? '';
+
+  // W3 (§8.4): the FOUR segmented views. Panel-local state, default Overview.
+  // Reset on restaurant change is RENDER-TIME derived state (the useEffect
+  // pattern is dead code in these spec hooks — CLAUDE.md).
+  const [viewState, setViewState] = React.useState<{
+    restaurantId: string;
+    view: RestaurantProfileViewKey;
+  }>({ restaurantId: '', view: 'overview' });
+  if (viewState.restaurantId !== restaurantId) {
+    setViewState({ restaurantId, view: 'overview' });
+  }
+  const activeView = viewState.restaurantId === restaurantId ? viewState.view : 'overview';
+  const setActiveView = React.useCallback(
+    (view: RestaurantProfileViewKey) => {
+      setViewState({ restaurantId, view });
+    },
+    [restaurantId]
+  );
 
   React.useEffect(() => {
     setExpandedLocations({});
@@ -232,12 +257,30 @@ export const useRestaurantPanelSpec = ({
   const locationsLabel =
     locationCandidates.length === 1 ? '1 location' : `${locationCandidates.length} locations`;
 
+  // connectionId → { name, rank } for the Photos view's ranked dish slices.
+  const dishByConnectionId = React.useMemo(() => {
+    const map = new Map<string, { name: string; rank: number }>();
+    dishes.forEach((dish, index) => {
+      map.set(dish.connectionId, { name: dish.foodName, rank: index + 1 });
+    });
+    return map;
+  }, [dishes]);
+
+  const viewSwitcher = React.useMemo(
+    () =>
+      restaurant && !isLoading ? (
+        <RestaurantViewSwitcher active={activeView} onSelect={setActiveView} />
+      ) : null,
+    [activeView, isLoading, restaurant, setActiveView]
+  );
+
   const listHeaderComponent = React.useMemo(() => {
     if (!restaurant || isLoading) {
       return null;
     }
     return (
       <View>
+        {viewSwitcher}
         <View style={styles.metricsRow}>
           <View style={styles.metricCard}>
             <Text style={styles.metricLabel}>Crave rating</Text>
@@ -365,8 +408,15 @@ export const useRestaurantPanelSpec = ({
             })}
           </View>
         ) : null}
+        {/* §8.4 Overview extras: mention-tag collage + top discussions,
+            both linking into the Discussions view. Real component — its
+            queries/effects fire (unlike this spec hook's). */}
+        <RestaurantOverviewMentions
+          restaurantId={restaurant.restaurantId}
+          onSeeAllDiscussions={() => setActiveView('discussions')}
+        />
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Menu highlights</Text>
+          <Text style={styles.sectionTitle}>Top dishes</Text>
           <Text style={styles.sectionSubtitle}>Ranked by dish rating</Text>
         </View>
       </View>
@@ -388,9 +438,117 @@ export const useRestaurantPanelSpec = ({
     restaurant?.craveScore,
     restaurant?.restaurantId,
     restaurant?.restaurantName,
+    setActiveView,
     sharedWebsiteUrl,
     shouldShowPerLocationWebsite,
     toggleLocationExpanded,
+    viewSwitcher,
+  ]);
+
+  // ── Per-view body assembly (W3 §8.4) ─────────────────────────────────────
+  // Photos/Discussions render entirely inside the list header (data = []);
+  // Overview = composite header + top-5 dishes; Dishes = the full ranked list.
+  const OVERVIEW_DISH_COUNT = 5;
+  const dishesViewHeaderComponent = React.useMemo(() => {
+    if (!restaurant || isLoading) {
+      return null;
+    }
+    return (
+      <View>
+        {viewSwitcher}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Menu highlights</Text>
+          <Text style={styles.sectionSubtitle}>Ranked by dish rating</Text>
+        </View>
+      </View>
+    );
+  }, [isLoading, restaurant, viewSwitcher]);
+
+  const photosViewHeaderComponent = React.useMemo(() => {
+    if (!restaurant || isLoading) {
+      return null;
+    }
+    return (
+      <View>
+        {viewSwitcher}
+        <RestaurantPhotosView
+          restaurantId={restaurant.restaurantId}
+          restaurantName={restaurant.restaurantName}
+          dishByConnectionId={dishByConnectionId}
+        />
+      </View>
+    );
+  }, [dishByConnectionId, isLoading, restaurant, viewSwitcher]);
+
+  const discussionsViewHeaderComponent = React.useMemo(() => {
+    if (!restaurant || isLoading) {
+      return null;
+    }
+    return (
+      <View>
+        {viewSwitcher}
+        <RestaurantMentionsView restaurantId={restaurant.restaurantId} />
+      </View>
+    );
+  }, [isLoading, restaurant, viewSwitcher]);
+
+  const overviewFooterComponent = React.useMemo(() => {
+    if (!restaurant || isLoading || dishes.length <= OVERVIEW_DISH_COUNT) {
+      return null;
+    }
+    return (
+      <Pressable
+        style={styles.seeAllDishesRow}
+        onPress={() => setActiveView('dishes')}
+        accessibilityRole="button"
+        testID="restaurant-see-all-dishes"
+      >
+        <Text style={styles.seeAllDishesText}>See all {dishes.length} dishes</Text>
+        <Feather name="chevron-right" size={16} color={themeColors.textBody} />
+      </Pressable>
+    );
+  }, [dishes.length, isLoading, restaurant, setActiveView]);
+
+  const activeViewParts = React.useMemo(() => {
+    switch (activeView) {
+      case 'dishes':
+        return {
+          data: dishes,
+          header: dishesViewHeaderComponent,
+          footer: null as React.ReactElement | null,
+          showsDishEmptyState: true,
+        };
+      case 'photos':
+        return {
+          data: EMPTY_RESTAURANT_DISHES,
+          header: photosViewHeaderComponent,
+          footer: null as React.ReactElement | null,
+          showsDishEmptyState: false,
+        };
+      case 'discussions':
+        return {
+          data: EMPTY_RESTAURANT_DISHES,
+          header: discussionsViewHeaderComponent,
+          footer: null as React.ReactElement | null,
+          showsDishEmptyState: false,
+        };
+      case 'overview':
+      default:
+        return {
+          data: dishes.slice(0, OVERVIEW_DISH_COUNT),
+          header: listHeaderComponent,
+          footer: overviewFooterComponent,
+          showsDishEmptyState: true,
+        };
+    }
+  }, [
+    activeView,
+    discussionsViewHeaderComponent,
+    dishes,
+    dishesViewHeaderComponent,
+    listHeaderComponent,
+    overviewFooterComponent,
+    photosViewHeaderComponent,
   ]);
 
   const renderDish = React.useCallback(
@@ -446,12 +604,17 @@ export const useRestaurantPanelSpec = ({
         </View>
       );
     }
+    if (!activeViewParts.showsDishEmptyState) {
+      // Photos/Discussions live in the list header — an empty data array is
+      // structural there, not an empty state.
+      return null;
+    }
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyStateText}>No dishes found for this restaurant.</Text>
       </View>
     );
-  }, [emptyAreaMinHeight, isLoading]);
+  }, [activeViewParts.showsDishEmptyState, emptyAreaMinHeight, isLoading]);
 
   // Seed-frame skeleton (used by the `!data` hard-swap seed spec): always paints the dish
   // skeleton over the empty list so the first frame is structure, not a blank or empty-state text.
@@ -511,7 +674,7 @@ export const useRestaurantPanelSpec = ({
     surfaceKind: 'list',
     snapPoints,
     animateOnMount: false,
-    data: dishes,
+    data: activeViewParts.data,
     renderItem: renderDish,
     keyExtractor,
     estimatedItemSize: 136,
@@ -519,7 +682,8 @@ export const useRestaurantPanelSpec = ({
     contentContainerStyle: {
       paddingBottom: contentBottomPadding,
     },
-    ListHeaderComponent: listHeaderComponent,
+    ListHeaderComponent: activeViewParts.header,
+    ListFooterComponent: activeViewParts.footer,
     ListEmptyComponent: listEmptyComponent,
     keyboardShouldPersistTaps: 'handled',
     backgroundComponent: backgroundComponent,
@@ -833,6 +997,19 @@ const styles = StyleSheet.create({
   sectionHeader: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
     marginTop: 24,
+  },
+  seeAllDishesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 14,
+  },
+  seeAllDishesText: {
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
+    fontWeight: '600',
+    color: themeColors.textBody,
   },
   sectionTitle: {
     fontSize: FONT_SIZES.subtitle,

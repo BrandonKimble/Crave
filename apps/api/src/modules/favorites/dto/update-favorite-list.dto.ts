@@ -1,5 +1,6 @@
 import { FavoriteListVisibility } from '@prisma/client';
 import {
+  IsBoolean,
   IsEnum,
   IsOptional,
   IsString,
@@ -22,4 +23,9 @@ export class UpdateFavoriteListDto {
   @IsOptional()
   @IsEnum(FavoriteListVisibility)
   visibility?: FavoriteListVisibility;
+
+  /** Profile-gallery pin (page-registry §8.14 long-press modal). */
+  @IsOptional()
+  @IsBoolean()
+  pinned?: boolean;
 }

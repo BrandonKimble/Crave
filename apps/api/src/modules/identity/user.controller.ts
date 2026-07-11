@@ -23,6 +23,7 @@ import { UsernameClaimDto } from './dto/username-claim.dto';
 import { UsernameSuggestDto } from './dto/username-suggest.dto';
 import { UsernameService } from './username.service';
 import { UserFollowService } from './user-follow.service';
+import { UserBlockService } from './user-block.service';
 import { ListUserFollowsDto } from './dto/list-user-follows.dto';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 
@@ -38,6 +39,7 @@ export class UserController {
     private readonly userService: UserService,
     private readonly usernameService: UsernameService,
     private readonly userFollowService: UserFollowService,
+    private readonly userBlockService: UserBlockService,
   ) {}
 
   @AllowUnentitled()
@@ -100,18 +102,27 @@ export class UserController {
 
   @Get(':userId/followers')
   async listFollowers(
+    @CurrentUser() user: User,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Query() query: ListUserFollowsDto,
   ) {
-    return this.userFollowService.listFollowers(userId, query);
+    // §8.6: viewer-relative block filtering.
+    return this.userFollowService.listFollowers(userId, {
+      ...query,
+      viewerUserId: user.userId,
+    });
   }
 
   @Get(':userId/following')
   async listFollowing(
+    @CurrentUser() user: User,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Query() query: ListUserFollowsDto,
   ) {
-    return this.userFollowService.listFollowing(userId, query);
+    return this.userFollowService.listFollowing(userId, {
+      ...query,
+      viewerUserId: user.userId,
+    });
   }
 
   @Post(':userId/follow')
@@ -128,5 +139,26 @@ export class UserController {
     @Param('userId', ParseUUIDPipe) userId: string,
   ) {
     return this.userFollowService.unfollowUser(user.userId, userId);
+  }
+
+  /** §8.6 blocking (Apple 1.2 UGC). Blocking also severs follow edges. */
+  @Post(':userId/block')
+  async block(
+    @CurrentUser() user: User,
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ) {
+    const result = await this.userBlockService.blockUser(user.userId, userId);
+    // Sever the social edges both ways (idempotent no-ops when absent).
+    await this.userFollowService.unfollowUser(user.userId, userId);
+    await this.userFollowService.unfollowUser(userId, user.userId);
+    return result;
+  }
+
+  @Delete(':userId/block')
+  async unblock(
+    @CurrentUser() user: User,
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ) {
+    return this.userBlockService.unblockUser(user.userId, userId);
   }
 }

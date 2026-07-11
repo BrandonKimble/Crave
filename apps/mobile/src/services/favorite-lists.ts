@@ -25,6 +25,11 @@ export interface FavoriteListSummary {
    * first in the server ordering and are not deletable.
    */
   systemKind: string | null;
+  /** Profile-gallery pin (§8.12/§8.14): owner curation; floats first on profiles. */
+  pinned?: boolean;
+  /** Majority market of the list's items (§8.15 city grouping) — only on the
+   *  public profile read. */
+  city?: string | null;
   shareEnabled: boolean;
   shareSlug?: string | null;
   updatedAt: string;
@@ -130,7 +135,13 @@ export const favoriteListsService = {
   },
   async update(
     listId: string,
-    payload: { name?: string; description?: string; visibility?: FavoriteListVisibility }
+    payload: {
+      name?: string;
+      description?: string;
+      visibility?: FavoriteListVisibility;
+      /** §8.14 profile pin (owner-only). */
+      pinned?: boolean;
+    }
   ): Promise<FavoriteListSummary> {
     const response = await api.patch<FavoriteListSummary>(`/favorites/lists/${listId}`, payload);
     return response.data;

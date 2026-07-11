@@ -55,6 +55,10 @@ export interface PublicUserProfile {
 export interface FollowEdge {
   isFollowedByMe: boolean;
   isMe: boolean;
+  /** §8.6 blocking flags (viewer-scoped; the anonymous profile GET can't
+   *  carry them, so they ride the authed edge). */
+  isBlockedByMe?: boolean;
+  hasBlockedMe?: boolean;
 }
 
 export interface FollowListUser {
@@ -145,5 +149,12 @@ export const usersService = {
   async listFollowing(userId: string): Promise<FollowListUser[]> {
     const response = await api.get<FollowListUser[]>(`/users/${userId}/following`);
     return response.data ?? [];
+  },
+  /** §8.6 blocking (page-registry — the Apple 1.2 UGC requirement). */
+  async blockUser(userId: string): Promise<void> {
+    await api.post(`/users/${userId}/block`);
+  },
+  async unblockUser(userId: string): Promise<void> {
+    await api.delete(`/users/${userId}/block`);
   },
 };

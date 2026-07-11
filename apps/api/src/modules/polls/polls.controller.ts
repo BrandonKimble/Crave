@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -11,6 +12,8 @@ import {
 } from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { PollsService } from './polls.service';
+import { RestaurantMentionsService } from './restaurant-mentions.service';
+import { RestaurantMentionsQueryDto } from './dto/restaurant-mentions.dto';
 import { ListPollsQueryDto } from './dto/list-polls.dto';
 import { ListUserPollsDto } from './dto/list-user-polls.dto';
 import {
@@ -23,13 +26,18 @@ import { CreatePollDto } from './dto/create-poll.dto';
 import { CheckPollDuplicateDto } from './dto/check-poll-duplicate.dto';
 import { EndorsePollSubjectDto } from './dto/endorse-poll-subject.dto';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
+import { UserBlockService } from '../identity/user-block.service';
 import { OptionalClerkAuthGuard } from '../identity/auth/optional-clerk-auth.guard';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 import { CurrentUser } from '../../shared';
 
 @Controller('polls')
 export class PollsController {
-  constructor(private readonly pollsService: PollsService) {}
+  constructor(
+    private readonly pollsService: PollsService,
+    private readonly restaurantMentionsService: RestaurantMentionsService,
+    private readonly blocks: UserBlockService,
+  ) {}
 
   @Get()
   @UseGuards(OptionalClerkAuthGuard)
@@ -64,6 +72,52 @@ export class PollsController {
   @UseGuards(ClerkAuthGuard)
   listMyPolls(@Query() query: ListUserPollsDto, @CurrentUser() user: User) {
     return this.pollsService.listPollsForUser(user.userId, query);
+  }
+
+  /** User-profile sections (page-registry §7.3 Polls/Comments): the SAME
+   *  activity-parameterized read as /polls/me, aimed at another user. Authed
+   *  (profile sections live behind the wall); a blocked pair sees nothing
+   *  (§8.6 enforcement seam). */
+  @Get('users/:userId')
+  @UseGuards(ClerkAuthGuard)
+  async listUserPolls(
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Query() query: ListUserPollsDto,
+    @CurrentUser() user: User,
+  ) {
+    if (await this.blocks.isBlockedPair(user.userId, userId)) {
+      return { activity: query.activity ?? 'created', polls: [] };
+    }
+    return this.pollsService.listPollsForUser(userId, query);
+  }
+
+  /** §7.3 Comments section: the user's own comment rows (Reddit-style),
+   *  approved + non-deleted only, newest first, with poll context. */
+  @Get('users/:userId/comments')
+  @UseGuards(ClerkAuthGuard)
+  async listUserComments(
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @CurrentUser() user: User,
+  ) {
+    if (await this.blocks.isBlockedPair(user.userId, userId)) {
+      return [];
+    }
+    return this.pollsService.listCommentsByUser(userId);
+  }
+
+  // W3 (page-registry §8.4): the restaurant Discussions aggregation — mention
+  // tags + thread-merged mention cards. MUST stay above `@Get(':pollId')`.
+  @Get('restaurants/:restaurantId/mentions')
+  @UseGuards(OptionalClerkAuthGuard)
+  getRestaurantMentions(
+    @Param('restaurantId', new ParseUUIDPipe()) restaurantId: string,
+    @Query() query: RestaurantMentionsQueryDto,
+  ) {
+    return this.restaurantMentionsService.getRestaurantMentions(restaurantId, {
+      sort: query.sort,
+      search: query.search,
+      tagEntityIds: query.tags,
+    });
   }
 
   @Get(':pollId')

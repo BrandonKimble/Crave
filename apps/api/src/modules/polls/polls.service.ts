@@ -1591,6 +1591,43 @@ export class PollsService {
     return { endorsed, leaderboard };
   }
 
+  /** User-profile Comments section (page-registry §7.3): the user's live
+   *  comment rows, newest first, with enough poll context to open
+   *  pollDetail scrolled to the comment. §8.6 block gating happens at the
+   *  controller. */
+  async listCommentsByUser(userId: string, limit = 50) {
+    const rows = await this.prisma.pollComment.findMany({
+      where: {
+        userId,
+        deletedAt: null,
+        moderationStatus: PollCommentModerationStatus.approved,
+      },
+      orderBy: { loggedAt: 'desc' },
+      take: Math.min(limit, 100),
+      select: {
+        commentId: true,
+        pollId: true,
+        body: true,
+        score: true,
+        loggedAt: true,
+        poll: {
+          select: {
+            pollId: true,
+            topic: { select: { title: true } },
+          },
+        },
+      },
+    });
+    return rows.map((row) => ({
+      commentId: row.commentId,
+      pollId: row.pollId,
+      body: row.body,
+      score: row.score,
+      loggedAt: row.loggedAt,
+      pollTitle: row.poll?.topic?.title ?? null,
+    }));
+  }
+
   async listPollsForUser(userId: string, query: ListUserPollsDto) {
     const activity = query.activity ?? UserPollActivity.participated;
     const limit = query.limit ?? 25;

@@ -32,6 +32,7 @@ import {
 } from 'class-validator';
 import { CurrentUser } from '../../shared';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
+import { UserBlockService } from '../identity/user-block.service';
 import { AllowUnentitled } from '../entitlements/entitlement-enforcement.interceptor';
 import { PhotosService } from './photos.service';
 import { PhotoReadService } from './photo-read.service';
@@ -134,6 +135,7 @@ export class PhotosController {
     private readonly photos: PhotosService,
     private readonly reads: PhotoReadService,
     private readonly events: PhotoEventService,
+    private readonly blocks: UserBlockService,
   ) {}
 
   @Get('restaurants/:restaurantId/gallery')
@@ -148,6 +150,11 @@ export class PhotosController {
     @CurrentUser() viewer: User,
     @Param('userId', new ParseUUIDPipe()) userId: string,
   ) {
+    // §8.6 blocking enforcement (food-log seam): a blocked pair sees an
+    // empty log — the profile body already renders "unavailable".
+    if (await this.blocks.isBlockedPair(viewer.userId, userId)) {
+      return [];
+    }
     return this.reads.userFoodLog(userId, viewer.userId);
   }
 

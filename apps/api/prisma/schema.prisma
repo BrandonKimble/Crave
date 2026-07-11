@@ -1103,6 +1103,8 @@ model User {
   stats                  UserStats?
   follows                UserFollow[]            @relation("UserFollows")
   followers              UserFollow[]            @relation("UserFollowers")
+  blocksAuthored         UserBlock[]             @relation("UserBlocksAuthored")
+  blocksReceived         UserBlock[]             @relation("UserBlocksReceived")
   usernameHistory        UsernameHistory[]
   pollComments           PollComment[]
   pollCommentLikes       PollCommentLike[]
@@ -1145,6 +1147,21 @@ model UserFollow {
   @@map("user_follows")
 }
 
+/// Blocking (page-registry §8.6 — the Apple 1.2 UGC requirement). A row =
+/// blocker has blocked blocked. Enforcement lives in the read paths (follow
+/// edge, follow lists, food log, public lists, user polls) + the follow write.
+model UserBlock {
+  blockerUserId String   @map("blocker_user_id") @db.Uuid
+  blockedUserId String   @map("blocked_user_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  blocker       User     @relation("UserBlocksAuthored", fields: [blockerUserId], references: [userId], onDelete: Cascade)
+  blocked       User     @relation("UserBlocksReceived", fields: [blockedUserId], references: [userId], onDelete: Cascade)
+
+  @@id([blockerUserId, blockedUserId])
+  @@index([blockedUserId], map: "idx_user_blocks_blocked")
+  @@map("user_blocks")
+}
+
 model ReservedUsername {
   username  String   @id @db.Citext
   reason    String?  @db.VarChar(255)
@@ -1180,6 +1197,9 @@ model FavoriteList {
   /// user list. System lists pin to the top of the home ordering and are
   /// NOT deletable. The (owner, systemKind) unique is the once-ever contract.
   systemKind   String?                  @map("system_kind") @db.VarChar(16)
+  /// Profile-gallery curation (page-registry §8.12/§8.14): owner-pinned lists
+  /// float first on the PROFILE Lists view. Never affects the own-home order.
+  pinned       Boolean                  @default(false)
   createdAt    DateTime                 @default(now()) @map("created_at")
   updatedAt    DateTime                 @updatedAt @map("updated_at")
   owner         User                       @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)

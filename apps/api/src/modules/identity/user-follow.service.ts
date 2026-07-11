@@ -1,8 +1,13 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UserNotificationFeedService } from '../notifications/user-notification-feed.service';
 import { UserStatsService } from './user-stats.service';
+import { UserBlockService } from './user-block.service';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -12,11 +17,18 @@ export class UserFollowService {
     private readonly prisma: PrismaService,
     private readonly userStats: UserStatsService,
     private readonly feed: UserNotificationFeedService,
+    private readonly blocks: UserBlockService,
   ) {}
 
   async followUser(followerUserId: string, followingUserId: string) {
     if (followerUserId === followingUserId) {
       throw new BadRequestException('Cannot follow yourself');
+    }
+
+    // §8.6 blocking enforcement (write seam): a blocked pair cannot re-form
+    // a follow edge in either direction.
+    if (await this.blocks.isBlockedPair(followerUserId, followingUserId)) {
+      throw new ForbiddenException('This user is unavailable');
     }
 
     const existing = await this.prisma.userFollow.findUnique({
@@ -90,27 +102,48 @@ export class UserFollowService {
   /** The viewer→user follow edge (pairs with the public profile endpoint). */
   async getFollowEdge(viewerUserId: string, userId: string) {
     if (viewerUserId === userId) {
-      return { isFollowedByMe: false, isMe: true };
+      return {
+        isFollowedByMe: false,
+        isMe: true,
+        isBlockedByMe: false,
+        hasBlockedMe: false,
+      };
     }
-    const edge = await this.prisma.userFollow.findUnique({
-      where: {
-        followerUserId_followingUserId: {
-          followerUserId: viewerUserId,
-          followingUserId: userId,
+    // §8.6 blocking enforcement (profile seam): the anonymous public-profile
+    // GET has no viewer, so the authed edge carries the block flags — the
+    // client renders the "unavailable" body from these.
+    const [edge, flags] = await Promise.all([
+      this.prisma.userFollow.findUnique({
+        where: {
+          followerUserId_followingUserId: {
+            followerUserId: viewerUserId,
+            followingUserId: userId,
+          },
         },
-      },
-    });
-    return { isFollowedByMe: edge != null, isMe: false };
+      }),
+      this.blocks.getBlockFlags(viewerUserId, userId),
+    ]);
+    return { isFollowedByMe: edge != null, isMe: false, ...flags };
   }
 
   async listFollowers(
     userId: string,
-    options: { offset?: number; limit?: number },
+    options: { offset?: number; limit?: number; viewerUserId?: string },
   ) {
     const offset = options.offset ?? 0;
     const limit = options.limit ?? DEFAULT_PAGE_SIZE;
+    // §8.6 blocking enforcement (follow-list seam): blocked users disappear
+    // from follow lists in BOTH directions, relative to the VIEWER.
+    const excluded = options.viewerUserId
+      ? await this.blocks.blockedPeerIds(options.viewerUserId)
+      : new Set<string>();
     const rows = await this.prisma.userFollow.findMany({
-      where: { followingUserId: userId },
+      where: {
+        followingUserId: userId,
+        ...(excluded.size > 0
+          ? { followerUserId: { notIn: [...excluded] } }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
       skip: offset,
       take: limit,
@@ -131,12 +164,21 @@ export class UserFollowService {
 
   async listFollowing(
     userId: string,
-    options: { offset?: number; limit?: number },
+    options: { offset?: number; limit?: number; viewerUserId?: string },
   ) {
     const offset = options.offset ?? 0;
     const limit = options.limit ?? DEFAULT_PAGE_SIZE;
+    // §8.6 blocking enforcement (follow-list seam) — see listFollowers.
+    const excluded = options.viewerUserId
+      ? await this.blocks.blockedPeerIds(options.viewerUserId)
+      : new Set<string>();
     const rows = await this.prisma.userFollow.findMany({
-      where: { followerUserId: userId },
+      where: {
+        followerUserId: userId,
+        ...(excluded.size > 0
+          ? { followingUserId: { notIn: [...excluded] } }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
       skip: offset,
       take: limit,

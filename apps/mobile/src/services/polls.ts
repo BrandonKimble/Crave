@@ -456,6 +456,35 @@ export const fetchPoll = async (pollId: string): Promise<Poll> => {
   throw new Error('Invalid poll response');
 };
 
+/** User-profile sections (page-registry §7.3): another user's created polls. */
+export interface UserProfilePollRow {
+  pollId: string;
+  state?: string | null;
+  topic?: { title?: string | null; description?: string | null } | null;
+}
+
+export const fetchUserCreatedPolls = async (userId: string): Promise<UserProfilePollRow[]> => {
+  const response = await api.get<{ polls: UserProfilePollRow[] }>(`/polls/users/${userId}`, {
+    params: { activity: 'created' },
+  });
+  return response.data?.polls ?? [];
+};
+
+/** §7.3 Comments section: the user's live comment rows w/ poll context. */
+export interface UserProfileCommentRow {
+  commentId: string;
+  pollId: string;
+  body: string;
+  score: number;
+  loggedAt: string;
+  pollTitle: string | null;
+}
+
+export const fetchUserComments = async (userId: string): Promise<UserProfileCommentRow[]> => {
+  const response = await api.get<UserProfileCommentRow[]>(`/polls/users/${userId}/comments`);
+  return response.data ?? [];
+};
+
 export const createPoll = async (body: CreatePollPayload): Promise<Poll> => {
   const response = await api.post('/polls', body);
   const normalized = normalizePoll(response.data);
@@ -478,6 +507,67 @@ export const checkPollDuplicate = async (body: {
   const response = await api.post('/polls/check-duplicate', body);
   const data = (response.data ?? {}) as { matches?: PollDuplicateMatch[] };
   return { matches: Array.isArray(data.matches) ? data.matches : [] };
+};
+
+// ─── Restaurant mentions (W3, page-registry §8.4 Discussions view) ──────────
+
+export interface RestaurantMentionUser {
+  userId: string;
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
+export interface RestaurantMentionReply {
+  commentId: string;
+  body: string;
+  score: number;
+  loggedAt: string;
+  user: RestaurantMentionUser;
+}
+
+/** One discussion card: a vote-comment framed by its poll question, with
+ *  thread-merged mention replies nested (non-mention intermediates skipped). */
+export interface RestaurantMentionCard {
+  commentId: string;
+  body: string;
+  score: number;
+  loggedAt: string;
+  user: RestaurantMentionUser;
+  pollId: string;
+  pollQuestion: string;
+  replies: RestaurantMentionReply[];
+}
+
+export interface RestaurantMentionTag {
+  entityId: string;
+  name: string;
+  type: string;
+  mentionCount: number;
+}
+
+export interface RestaurantMentionsResponse {
+  restaurantId: string;
+  tags: RestaurantMentionTag[];
+  cards: RestaurantMentionCard[];
+  totalCount: number;
+}
+
+export const fetchRestaurantMentions = async (
+  restaurantId: string,
+  params: { sort?: 'top' | 'new'; search?: string; tags?: string[] } = {}
+): Promise<RestaurantMentionsResponse> => {
+  const response = await api.get<RestaurantMentionsResponse>(
+    `/polls/restaurants/${restaurantId}/mentions`,
+    {
+      params: {
+        ...(params.sort ? { sort: params.sort } : {}),
+        ...(params.search ? { search: params.search } : {}),
+        ...(params.tags?.length ? { tags: params.tags.join(',') } : {}),
+      },
+    }
+  );
+  return response.data;
 };
 
 // ─── Live model: comments, likes, leaderboard ────────────────────────────────

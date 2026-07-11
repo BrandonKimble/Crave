@@ -21,6 +21,7 @@ import { PollAggregationService } from './poll-aggregation.service';
 import { PollLifecycleService } from './poll-lifecycle.service';
 import { PollGraduationService } from './poll-graduation.service';
 import { PollEntitySeedService } from './poll-entity-seed.service';
+import { RestaurantMentionsService } from './restaurant-mentions.service';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { PollEntitySeedService } from './poll-entity-seed.service';
   controllers: [PollsController],
   providers: [
     PollsService,
+    RestaurantMentionsService,
     PollEntitySeedService,
     PollsGateway,
     PollSchedulerService,
