@@ -275,3 +275,39 @@ before merge.
   hardware; library multi-select; long-press report on a real strip photo;
   private photo invisible to a second account.
 - W2 CLOSED (UI complete; visuals crude by design — W3/W4 design pass).
+
+## W3 running log
+
+- W3A LANDED: restaurant Overview/Dishes/Discussions/Photos views +
+  GET /polls/restaurants/:id/mentions (entitySpans containment, signal
+  tags, thread-merge). W3B LANDED: user profile 4 sections, public lists
+  view (pinned+city grouping), user_blocks + 7-site enforcement, avatar
+  picker on editProfile. W3C: plans/w3-messaging-design.md (design of
+  record). W3E LANDED: messaging M1 (schema+9 endpoints+22 specs) + M2
+  (inbox/dmSession scenes, entry-keyed, entry points). W3F LANDED: owner
+  list long-press modal + server-honest blocked profile read. W3D LANDED:
+  universal ShareModal (share-targets endpoint, fan-out, copy-link,
+  OS share) replacing every ad-hoc share.
+- W3 SIM PASS (anchor): restaurant view switcher + Mentioned-here tag
+  collage + Discussions (tags/sort/search/honest-empty) + Photos
+  (add-photos CTA/empty) ✓; own profile tab w/ inbox icon ✓; messagesInbox
+  honest empty ✓; own userProfile (4 sections, share icon, stats) ✓;
+  followList → foreign profile (Message/Following/share/Block user) ✓;
+  dmSession: composer send → bubble rendered + DB row (`text|Hello from
+the rig`) + sendMessage handler hit ✓; 5×X pop chain exact-entry ✓;
+  card share icon → ShareModal (Send-to ranked row, Copy link, Share
+  via…) ✓.
+- FOUND during pass (owner finger-test / small fixes): dmSession composer
+  sits under the keyboard while typing (lift not visible mid-thread —
+  feel item; Send works after dismiss); foreign profile stat said
+  "2 Polls" while Polls section said "No polls yet" (created-vs-
+  contributed count mismatch — check PollsService.listPollsForUser
+  filter vs the stat source); share-modal Send-to row not exercised
+  (needs 2nd account) — finger item.
+- OWNER FINGER-TEST accumulation (W3): DM round-trip on two accounts
+  (request lane + accept + unread badge); share fan-out → entity bubble
+  on the recipient; block → frozen conversation + profile unavailable +
+  unblock loop; avatar change w/ moderation-pending copy; discussions
+  card → pollDetail comment anchor; drag the RT-19 drill loop
+  (inbox→DM→profile→DM) for depth-eviction feel; composer keyboard feel.
+- W3 CLOSED (functional surface complete; visuals crude by design).
