@@ -245,3 +245,188 @@ the gallery dish-slice selector on restaurant/user profiles.
 The dish side of favorites needs the analog of the restaurant side's
 been/want-to-go: **tried / haven't tried** (copy TBD). Recorded in
 product/favorites.md.
+
+## 7. Registry v2 — owner lock-in session, items 1–9 (2026-07-10)
+
+Owner brain-dump captured verbatim-in-spirit; this section + the updated
+product pages are the record. Items 10–21 of the talking-point list are
+still pending (owner returning to them).
+
+### 7.1 Card anatomy (restaurant + dish cards, FINAL)
+
+Top→bottom: metadata block → horizontal PHOTO-STRIP preview row →
+horizontal BUTTON STRIP (chip row, toggle-strip-like but plain action
+buttons) as the card's LAST element. The add-photo affordance on cards
+exists ONLY when the card sits in the viewer's OWN saved/favorites list —
+as the placeholder sliver / "+" tile on the LEFT end of the photo strip
+(owner chose this over a toolkit-page approach: simpler, good basis).
+Cards outside own lists: no add affordance (display-only placeholder).
+
+### 7.2 Restaurant profile = ONE DYNAMIC SINGLE PAGE (Google Maps pattern)
+
+NOT a family of child pages. Anatomy:
+
+- PERSISTENT top region: header info (name/score/meta → later locations,
+  website, contact), photo gallery preview strip, scrollable ACTION CHIP
+  ROW (Google's Directions/Start/Ask row analog — ours: add photo,
+  directions, call, share, save…).
+- Below: a SEGMENTED SECTION SELECTOR (Google's Overview|Menu|Reviews|
+  Photos row — industry "segmented tabs") that swaps the content region
+  IN PLACE with one tap. Sections: Dishes, Discussions/Polls, Photos
+  (details of the set = design pass). Scrolling up always returns to the
+  same persistent header. One page, one scroll container, swappable body.
+- Add-photo entries here: chip in the action row + an entry inside the
+  Photos section (placement TBD).
+
+### 7.3 User profile = the SAME dynamic single-page pattern
+
+More similar to the restaurant page than different; social/visual vibe.
+
+- PERSISTENT top: avatar, stats; on OTHERS' profiles an Instagram-style
+  button pair — FOLLOW (left) + MESSAGE (right); on own profile — EDIT
+  PROFILE button (+ messages-inbox entry, see §7.9; settings entry §7.7).
+- SEGMENTED sections, currently FOUR: Polls (created), Comments (their
+  poll/discussion comments, Reddit-style), Lists (public), Photos.
+  Owner prefers THREE — open idea: merge Polls+Comments into one
+  "Posts"/"Activity" section (Reddit precedent). Unresolved, park.
+- Lists section on others' profiles: Spotify-playlists analog — simplified
+  read-only view of public lists. Simplest = flat chronological; leaning
+  toward carrying the toggle-strip filters (restaurant vs dish lists etc.)
+  because list volume gets overwhelming; final call at implementation,
+  AFTER the segmented single-page foundation exists.
+
+### 7.4 THE POST PAGE (supersedes the "addPhotos screen" naming — same
+
+concept, now concretized as the universal photo composer)
+
+Every add-photo flow converges here. Core contract:
+
+- STANDARD FIRST STEP app-wide: tapping ANY add-photo button (and the
+  change-avatar button) opens THE shared global modal with exactly two
+  options: **Take photo** / **Choose from library** (Twitter model; no
+  Instagram-style import options).
+  - Library → native Apple picker (PHPicker, multi-select, checkmark).
+  - Camera → our own CUSTOM CAMERA page (snap, flip, flash, exit;
+    retake / use-photo) — a NEW page to build; iOS gives no styled
+    camera UI, apps roll their own.
+- Then the POST PAGE: shows the restaurant (pre-filled from trigger
+  context), the selected photos as a horizontal scrollable row, and a
+  PER-PHOTO dish question: tap a photo in the row → a short-form RANKED
+  dish list of that restaurant appears inline below (NOT a separate
+  page — dropdown/inline; reuses the gallery-selector interaction) →
+  assign; tap the next photo; repeat or skip. Unassigned photos = the
+  general/"vibes" bucket — never nag; AI categorization later (owner
+  prefers that over more questions). "Other…" free-text dish entry
+  remains (demand signal).
+- PUBLIC/PRIVATE control on the post: private photos appear only on the
+  owner's profile (never restaurant pages); maybe friends-visible —
+  EXACT semantics = the pending privacy discussion (talking point TBD).
+- POST button → publish → funnel collapses back to the trigger.
+- MULTI-RESTAURANT SESSIONS (user-profile entry only): the post page is
+  SECTIONED — restaurant A + its photo row + dish assignments, then an
+  "Add another restaurant" button → restaurant search mode → the 2-option
+  modal → new section; repeat; ONE Post at the end disperses everything.
+- USER-PROFILE entry ORDER (owner settled after deliberation): tap add →
+  FIRST restaurant search (restaurant-only autocomplete; boost the
+  user's saved lists + recents) → then the camera/library modal → post
+  page. Restaurant is NEVER assumed from that entry point.
+- Photos are addable for restaurants the user has NOT saved anywhere —
+  that's why the picker is full search mode, not a saved-list picker.
+- v2 enhancer (feasible, flagged): read EXIF GPS CLIENT-SIDE from picked
+  photos to SUGGEST/group-by the nearby restaurant — PHPicker hands over
+  the original file including GPS with no extra permission; compatible
+  with our "GPS never persisted" rule if read transiently and never
+  uploaded. No known app does this well; genuine differentiator; not v1.
+- Photo EDIT mode (crop/aspect/orientation): likely needed eventually
+  (Google rolled their own); NOT the launch focus; never blocks the flow.
+
+### 7.5 The save-to-list TOOLKIT (CORRECTION — supersedes §6 + the
+
+product-page version)
+
+Copy Google exactly: the save sheet shows list selection PLUS inline
+NOTE area + TAG area for the selected list. **NO add-photo button on the
+save sheet** — at discovery/save time users rarely have a photo; photos
+are added later via the card "+" affordance in their list (§7.1).
+Toolkit = note + tags, inline, same page. Create-list stays the inline
+expansion it already is.
+
+### 7.6 listDetail add buttons
+
+- Restaurant list → "Add places" → search mode → tap restaurant →
+  IMMEDIATELY added (no toolkit page detour).
+- Dish list → "Add dish" (copy TBD) → search mode; OPEN UX QUESTION to
+  A/B at build: dish-scoped autocomplete vs restaurant-first-then-pick-
+  from-dish-list (owner suspects restaurant-first matches fuzzy dish
+  memory better). Either way: selection → immediately added.
+
+### 7.7 Settings (kept light, LAST area to design-complete)
+
+- Entry: button on own profile page.
+- NAV EXCEPTION (⚠️ foundational-ish — flag to the charter owners): the
+  settings sheet extends PAST the normal top snap to a new exceptional
+  "full" snap point — full-page illusion, no grab handle, close X top
+  right; nav bar transitions out like any child; close = nav bar returns
+  - sheet returns to the snap it was at when triggered. This introduces
+    a new snap-point kind ("full") to the sheet system.
+- No skeleton for the settings ROOT (text-only, render instantly —
+  industry norm); inner pages may use skeletons if needed; target = no
+  visible loading anywhere in settings.
+- Contents: build only as needed. Known: notification settings, account
+  privacy, dark/light mode (future placeholder), billing management,
+  legal, delete account (last three already exist as drill-ins). Fake/
+  anticipate sections lightly; the real settings design waits until the
+  features it toggles are settled.
+
+### 7.8 Stacked friends bubble (FriendCluster)
+
+- Display: max 3 stacked avatars + Instagram-style copy "X and N others"
+  (NOT "+N"). The NAMED person = top of the closeness sort (closeness
+  algorithm to be designed — assistant to propose).
+- Tap → THE shared global modal listing ALL participating friends as
+  tappable profile cards (same sort, nobody filtered) → tapping opens
+  their user profile (another profile entryway, like discussion avatars).
+- ⚠️ REQUIREMENT on the modal primitive: modals need an optional
+  SCROLLABLE variant — extend the ONE global modal in ideal shape (there
+  is only one modal type in this app, ever).
+
+### 7.9 MESSAGING IS IN (net-new decision — reverses "mentioned nowhere")
+
+- Every OTHER user's profile: Message button (right of Follow). Tap →
+  DM SESSION page = a CHILD page of that profile (push; back returns to
+  THEIR profile). Tapping Message fully extends the sheet first if not
+  already extended; back returns to the prior snap.
+- MESSAGES INBOX (all conversations) = its own surface, entered via a
+  button on YOUR OWN profile page (likely in the header); a DM session
+  is also reachable from the inbox. Treat inbox as a child of own
+  profile.
+- Assistant owns the FULL design (product shape, UX skeleton, plumbing,
+  backend — well-trodden territory, ideal shape expected): deliver it
+  foundationally complete + crude-visual; owner refines presentation
+  later.
+
+### 7.10 Registry-era DEVELOPMENT METHODOLOGY (owner directive)
+
+- Build 100% of the FUNCTIONAL surface at the highest standard: every
+  button hooked up, every modal opens, camera works, photos land in the
+  post page, transitions/snap behavior/nav all real and smooth. Crude
+  visuals are FINE. What is FORBIDDEN: deferring functionality because
+  presentation is undecided ("the post page was subjective so nothing
+  was implemented" is the failure mode to never hit).
+- Subjective visual polish + copy = owner-in-the-loop passes at the END,
+  one surface at a time.
+- SKELETONS during the churn: ONE base super-simple placeholder skeleton
+  everywhere; the real per-page cutout skeletons return as a FINAL pass
+  after UI locks (do not hand-craft skeletons for pages still moving).
+- While implementing, sweep the product/ pages: anything well-specified
+  and registry-scoped gets built in the same wave.
+
+### 7.11 Immediate reconcile executions (owner authorized)
+
+- Paywall registry row → hard-paywall reality (done in this edit: the
+  §1 modal-layer 'paywall' row is superseded — paywall = full-screen
+  onboarding-end page + lapse takeover; contextual-unlock modal =
+  dormant freemium machinery, git history).
+- BUILD NOW: paywall wired to the END of onboarding (functional, decent
+  looks, final design later).
+- Username picker: audit to most-ideal shape; polish later.

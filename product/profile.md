@@ -126,3 +126,15 @@ to Want to Go"), not a posting feed. Do not relitigate without the owner.
   needs the follow graph + tried/been data; REGISTRY-PHASE product design
   (card real estate + which signals qualify). Recorded here so the card
   design pass accounts for the slot.
+
+## Profile page anatomy locked (owner, 2026-07-10 — registry §7.3)
+
+ONE dynamic single page (Google-Maps-profile pattern): persistent top
+(avatar/stats; others' profiles get Follow + Message buttons Instagram-
+style; own profile gets Edit Profile + messages-inbox + settings entries)
+over SEGMENTED sections that swap in place: Polls / Comments / Lists /
+Photos (owner wants 3 — merging Polls+Comments into "Posts" is the open
+idea). Others' Lists section = Spotify-playlists analog; chronological
+first, toggle-strip filters likely. Avatar change: Edit Profile → tap
+picture → shared 2-option modal (camera/library). MESSAGING IS IN — see
+product/messaging.md.

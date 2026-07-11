@@ -127,3 +127,12 @@ The area is "Favorites," not "Bookmarks." Screen title leans on the list framing
   tile prepended to the strip; plain viewers never do.
 - Dish-side status axis: **tried / haven't tried** (copy TBD) — the analog
   of the restaurant side's been/want-to-go.
+
+## CORRECTION (owner, 2026-07-10 — registry §7.5/§7.6 is the authority)
+
+- Save-sheet toolkit = NOTE + TAGS inline (Google-copy). NO add-photo
+  button on the save sheet (superseding the 2026-07-09 note above).
+  Photos enter via the card "+" tile on own-list cards only.
+- listDetail: "Add places" (restaurant lists) / "Add dish" (dish lists,
+  copy TBD) → search mode → immediate add, no toolkit detour. Dish-add
+  search shape (dish-scoped vs restaurant-first) = A/B at build.

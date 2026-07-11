@@ -146,3 +146,21 @@ tags live on the favorites side (see product/favorites.md), not on Photo.
 Copy Google's pattern: a horizontal-scrolling SELECTOR mini-row at the top
 of the gallery (sections as tappable thumbnails/chips — "All photos" first,
 then the dishes RANKED left-to-right); tapping swaps the gallery grid below.
+
+## SUPERSEDED + concretized by registry §7 (owner, 2026-07-10)
+
+Registry plans/page-registry.md §7 is now the authority on the photo UI
+surfaces. Corrections to THIS file's earlier sections:
+
+- The save-sheet toolkit does NOT carry an add-photo button (note + tags
+  only, inline, Google-copy). Photos enter lists via the card "+" tile on
+  the owner's own list cards. (§7.5)
+- The "addPhotos screen" is concretized as THE POST PAGE: universal
+  composer, per-photo dish assignment via inline ranked dish list,
+  public/private control, multi-restaurant sections from the profile
+  entry, Post → funnel collapse. (§7.4)
+- STANDARD FIRST STEP everywhere: shared 2-option modal (Take photo /
+  Choose from library) → PHPicker or our custom camera page.
+- v2 enhancer flagged: transient client-side EXIF-GPS read to suggest the
+  restaurant (never uploaded/persisted — compatible with the GPS privacy
+  rule).
