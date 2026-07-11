@@ -45,7 +45,7 @@ const areBackdropSnapshotsEqual = (
   left.backdropDimProgress === right.backdropDimProgress &&
   left.backdropSheetTopY === right.backdropSheetTopY;
 
-const BACKDROP_DIM_MAX_OPACITY = 0.22;
+const BACKDROP_DIM_MAX_OPACITY = 0.12;
 
 // The scrim dims "everything outside the sheet": a strip that ends flush at the sheet's top
 // edge plus two inverse-corner pieces that fill the notches beside the sheet's rounded top
