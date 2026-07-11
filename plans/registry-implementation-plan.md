@@ -311,3 +311,33 @@ the rig`) + sendMessage handler hit ✓; 5×X pop chain exact-entry ✓;
   card → pollDetail comment anchor; drag the RT-19 drill loop
   (inbox→DM→profile→DM) for depth-eviction feel; composer keyboard feel.
 - W3 CLOSED (functional surface complete; visuals crude by design).
+
+## W4 running log + RUN CLOSE
+
+- W4A LANDED: settings full-snap (pinned shell) + grabHandle scene literal
+  (compile-exhaustive; settings first 'hidden' consumer), real settings tree
+  (blocked users + GET /users/me/blocks, subscription, legal, version, honest
+  Coming-soons), pollInfo modal; poll close/delete/report = NO backend
+  (reported, not faked). W4B LANDED: pollsCreatedCount counter-drift killed
+  (live count, same predicate as the list, spec-pinned; increments deleted),
+  dmSession composer = bottom-pinned static-mode layout (root cause of the
+  first cut's regression: sanitizeContentContainerStyle strips flex from
+  transports — static branch now owns the fill); trending SKIPPED with
+  reasoning (suggestion-plane plumbing, not a cheap read). W4C LANDED:
+  stale-doc sweep (ship statuses across product/ + registry §9e) +
+  plans/w4-share-package-research.md.
+- PAYWALL ENFORCE-DRIVE (anchor): ENTITLEMENT_GATING=enforce + restart →
+  cold launch hit the full Crave+ wall (products/legal/restore) ✓; reverted
+  to log. ⚠️ wall prices $9.99/$79.99 vs business-model $7.99/$39.99 —
+  RevenueCat config, reconcile before launch.
+- W4 SIM PASS (anchor): settings full-snap + NO handle + tree + blocked-users
+  loads ✓ (first read 404'd — TWO stale API processes were racing on :3000;
+  killed all, single instance, clean); dmSession regression caught on-screen
+  → sent back to the agent → root-caused + fixed + probe-verified ✓.
+- OWNER FINGER-TEST AGGREGATION: plans/owner-finger-test-checklist.md —
+  the ONE consolidated pass, ordered by surface, ⚠️-marked for finger/
+  hardware/second-account items, with drive recipes + crude-bit inventory.
+- Ops gotcha recorded: `kill $(lsof -ti :3000 | head -1)` leaks a second
+  API instance if one piled up — always `lsof -ti :3000 | xargs kill`.
+- ALL WAVES W0–W4 CLOSED. Remaining = owner finger-test pass + the
+  owner-led design/polish passes + RevenueCat price reconcile.
