@@ -682,3 +682,23 @@ shared modal. Poll modal set is now: pollInfo + duplicatePoll.
   headers). Auto city-groups are NOT applied to the own home — they
   would fight the user's custom drag order (two competing orderings; the
   user's own hand always wins on their own surface).
+
+### 8.16 The All list on profiles (owner, 2026-07-11)
+
+- The synthetic All list ALSO appears on other-user profiles: PINNED BY
+  DEFAULT and NOT unpinnable (it's furniture, not curation). It is the
+  escape hatch that keeps the no-strip gallery decision safe: passive
+  structure (pins + city groups) does the work by default, and anyone
+  who wants to slice EVERYTHING drills into All, whose viewer strip
+  carries the full slicing kit (sort incl. their-ranking/Best, open now,
+  price, and the MARKET toggle — "every restaurant they ever made
+  public, sliced by city").
+- Scope: union of PUBLIC lists only. Two tiles, one per side (All
+  restaurants / All dishes), each rendered only when that side has any
+  public lists (badge consistency; no toggle needed on the gallery).
+- Placement (assistant rec, owner to confirm at build): owner's own
+  pinned lists FIRST, the All tile(s) anchored at the END of the pinned
+  area — the profile is presentation, so the owner's curated statement
+  leads and the utility anchor stays one glance away (Spotify doesn't
+  lead profiles with "All songs"). Own home keeps All at the very top
+  (working surface, unchanged).
