@@ -81,7 +81,10 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     // capability, so it rides the entry params — the panel presents it on every server read
     // and owns resolution + the failure/dead-slug ("this list is private") bodies (§5.6).
     if (activeMainIntent.type === 'sharedList') {
-      pushRoute('listDetail', { shareSlug: activeMainIntent.shareSlug });
+      pushRoute('listDetail', {
+        shareSlug: activeMainIntent.shareSlug,
+        joinIntent: activeMainIntent.joinIntent === true,
+      });
       consumeActiveMainIntent();
       return;
     }

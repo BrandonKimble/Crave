@@ -489,6 +489,8 @@ export type OverlayRouteParamsMap = {
     listId?: string | null;
     shareSlug?: string | null;
     targetUserId?: string | null;
+    /** True only when the entry came from an invite-intent link (crave://l/<slug>?join=1). */
+    joinIntent?: boolean | null;
   };
   followList?: {
     userId?: string | null;

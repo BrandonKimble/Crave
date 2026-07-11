@@ -34,6 +34,19 @@ export interface FavoriteListSummary {
 export type FavoriteListViewerRole = 'owner' | 'collaborator' | 'viewer';
 export type FavoriteListSort = 'custom' | 'best' | 'recent';
 
+/** Collaborator roster person (spec B.1.3 — PERSON_SELECT on the API). */
+export interface FavoriteListPerson {
+  userId: string;
+  username: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+}
+
+export interface FavoriteListCollaborators {
+  owner: FavoriteListPerson;
+  collaborators: FavoriteListPerson[];
+}
+
 export interface FavoriteListDetail {
   list: FavoriteListSummary;
   /** RT-18/W1: resolved against owner/collaborator/slug-capability grants. */
@@ -137,6 +150,38 @@ export const favoriteListsService = {
   ) {
     const response = await api.post(`/favorites/lists/${listId}/items`, payload);
     return response.data;
+  },
+  /**
+   * Batch drag-save (W1 edit mode): orderedItemIds must be EXACTLY the list's
+   * current membership (the API enforces set equality — loud contract).
+   */
+  async reorderItems(listId: string, orderedItemIds: string[]): Promise<void> {
+    await api.patch(`/favorites/lists/${listId}/items/order`, { orderedItemIds });
+  },
+  async getCollaborators(
+    listId: string,
+    opts?: { shareSlug?: string | null }
+  ): Promise<FavoriteListCollaborators> {
+    const response = await api.get<FavoriteListCollaborators>(
+      `/favorites/lists/${listId}/collaborators`,
+      { params: opts?.shareSlug ? { shareSlug: opts.shareSlug } : undefined }
+    );
+    return response.data;
+  },
+  /** Join via invite link (RT-18: the slug presented WITH intent is the invite). */
+  async joinCollaborators(
+    listId: string,
+    shareSlug: string
+  ): Promise<{ listId: string; role: 'owner' | 'collaborator' }> {
+    const response = await api.post<{ listId: string; role: 'owner' | 'collaborator' }>(
+      `/favorites/lists/${listId}/collaborators/join`,
+      { shareSlug }
+    );
+    return response.data;
+  },
+  /** Owner-kick or self-leave (the API fails closed on anything else). */
+  async removeCollaborator(listId: string, userId: string): Promise<void> {
+    await api.delete(`/favorites/lists/${listId}/collaborators/${userId}`);
   },
   async updateItemPosition(listId: string, itemId: string, position: number): Promise<void> {
     await api.patch(`/favorites/lists/${listId}/items/${itemId}`, { position });

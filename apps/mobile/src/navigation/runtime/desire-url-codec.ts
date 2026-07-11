@@ -26,7 +26,9 @@ import type { EntityRefAction } from './entity-ref-action-policy';
 
 export type ParsedDesireLink =
   | { kind: 'entityAction'; action: EntityRefAction }
-  | { kind: 'sharedList'; shareSlug: string }
+  // joinIntent: the link was minted as a collaborator INVITE (crave://l/<slug>?join=1)
+  // — only set true (omitted otherwise) so the parse↔serialize bijection stays exact.
+  | { kind: 'sharedList'; shareSlug: string; joinIntent?: true }
   | { kind: 'naturalSearch'; query: string }
   | { kind: 'shortcutSearch'; shortcutTab: 'dishes' | 'restaurants' }
   | { kind: 'polls'; marketKey?: string | null; pollId?: string | null }
@@ -107,7 +109,13 @@ export const parseDesireLink = (url: string): ParsedDesireLink => {
           }
         : { kind: 'none' };
     case 'l':
-      return a ? { kind: 'sharedList', shareSlug: safeDecode(a) } : { kind: 'none' };
+      return a
+        ? {
+            kind: 'sharedList',
+            shareSlug: safeDecode(a),
+            ...(params.get('join') === '1' ? { joinIntent: true as const } : {}),
+          }
+        : { kind: 'none' };
     case 'list':
       return a
         ? {
@@ -174,7 +182,7 @@ export const serializeDesireLinkToPath = (
       break;
     }
     case 'sharedList':
-      return `/l/${encodeSegment(link.shareSlug)}`;
+      return `/l/${encodeSegment(link.shareSlug)}${link.joinIntent ? '?join=1' : ''}`;
     case 'naturalSearch':
       return `/q/${encodeSegment(link.query)}`;
     case 'shortcutSearch':

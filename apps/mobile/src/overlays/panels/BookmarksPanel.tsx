@@ -1,7 +1,6 @@
 import { serializeDesireLinkToPath } from '../../navigation/runtime/desire-url-codec';
 import React from 'react';
 import {
-  AccessibilityInfo,
   ActivityIndicator,
   Pressable,
   Share,
@@ -20,7 +19,11 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { ReorderableRows, type ReorderScrollAdapter } from '../../components/reorder';
+import {
+  ReorderableRows,
+  useIsScreenReaderEnabled,
+  type ReorderScrollAdapter,
+} from '../../components/reorder';
 import { getOverlaySceneScrollHandle } from '../overlaySceneScrollHandleRegistry';
 import { acquireOverlaySheetEditLock } from '../overlaySheetEditLockRuntime';
 import { Text } from '../../components';
@@ -116,25 +119,6 @@ const applyMove = (order: readonly string[], from: number, to: number): string[]
   return next;
 };
 
-/** WCAG 2.5.7: with a screen reader active, edit mode swaps drag for move buttons. */
-const useIsScreenReaderEnabled = (): boolean => {
-  const [enabled, setEnabled] = React.useState(false);
-  React.useEffect(() => {
-    let alive = true;
-    void AccessibilityInfo.isScreenReaderEnabled().then((value) => {
-      if (alive) {
-        setEnabled(value);
-      }
-    });
-    const subscription = AccessibilityInfo.addEventListener('screenReaderChanged', setEnabled);
-    return () => {
-      alive = false;
-      subscription.remove();
-    };
-  }, []);
-  return enabled;
-};
-
 const chunkFavoriteLists = (
   lists: readonly FavoriteListSummary[]
 ): readonly (readonly FavoriteListSummary[])[] => {
@@ -205,6 +189,39 @@ const BookmarksListTile = React.memo(({ item, onPress, onOpenMenu }: BookmarksLi
 ));
 
 BookmarksListTile.displayName = 'BookmarksListTile';
+
+// ─── §8.14: the pinned synthetic ALL tile (one per side, above the system lists) ─────
+// Virtual union of every list on this side — opens listDetail with the virtual id
+// ('all:restaurants' / 'all:dishes'); no stored row, never editable, never draggable.
+type BookmarksAllTileProps = {
+  listType: FavoriteListType;
+  onPress: (listType: FavoriteListType) => void;
+};
+
+const BookmarksAllTile = React.memo(({ listType, onPress }: BookmarksAllTileProps) => (
+  <Pressable
+    onPress={() => onPress(listType)}
+    accessibilityRole="button"
+    accessibilityLabel={listType === 'restaurant' ? 'All restaurants' : 'All dishes'}
+    testID="bookmarks-all-tile"
+    style={({ pressed }) => [styles.allTile, pressed && styles.tilePressed]}
+  >
+    <View style={styles.allTileIcon}>
+      <Feather name="layers" size={18} color={TILE_TEXT} />
+    </View>
+    <View style={styles.allTileText}>
+      <Text variant="body" weight="semibold" style={styles.tileTitle} numberOfLines={1}>
+        {listType === 'restaurant' ? 'All restaurants' : 'All dishes'}
+      </Text>
+      <Text variant="caption" style={styles.previewEmpty}>
+        Everything you saved, in one place
+      </Text>
+    </View>
+    <Feather name="chevron-right" size={18} color={SEGMENT_TEXT} />
+  </Pressable>
+));
+
+BookmarksAllTile.displayName = 'BookmarksAllTile';
 
 // ─── §8.11: the toggle strip IS the edit chrome ─────────────────────────────────────
 // Two layered strips in one clipped viewport. Tapping Edit slides the normal strip
@@ -624,6 +641,7 @@ type BookmarksSceneBodyProps = {
   onSave: () => void;
   onListPress: (list: FavoriteListSummary) => void;
   onOpenMenu: (list: FavoriteListSummary) => void;
+  onOpenAll: (listType: FavoriteListType) => void;
   stripProps: BookmarksToggleStripProps;
   editListProps: BookmarksEditListProps | null;
 };
@@ -645,6 +663,7 @@ const BookmarksSceneBody = React.memo(
     onSave,
     onListPress,
     onOpenMenu,
+    onOpenAll,
     stripProps,
     editListProps,
   }: BookmarksSceneBodyProps) => {
@@ -682,6 +701,7 @@ const BookmarksSceneBody = React.memo(
         <SceneLoadingSurface rowType="tile" insetX={0} />
       ) : lists.length ? (
         <View style={styles.gridList}>
+          <BookmarksAllTile listType={listType} onPress={onOpenAll} />
           {listRows.map((row, rowIndex) => (
             <View key={`row-${rowIndex}`} style={styles.gridRow}>
               {row.map((item) => (
@@ -785,7 +805,7 @@ const BookmarksDataSurface = React.memo(
     const isListsError = listsQuery.isError && lists.length === 0;
 
     // ─── §8.11 edit mode state ────────────────────────────────────────────────────
-    const { promoteActiveSheet } = useAppOverlayRouteController();
+    const { promoteActiveSheet, pushRoute } = useAppOverlayRouteController();
     const [sortMode, setSortMode] = React.useState<BookmarksSortMode>('recent');
     const [editSession, setEditSession] = React.useState<BookmarksEditSession | null>(null);
     const [isSavingOrder, setIsSavingOrder] = React.useState(false);
@@ -1057,6 +1077,15 @@ const BookmarksDataSurface = React.memo(
       resetForm();
     }, [formState, listType, queryClient, resetForm]);
 
+    const handleOpenAll = React.useCallback(
+      (side: FavoriteListType) => {
+        pushRoute('listDetail', {
+          listId: side === 'restaurant' ? 'all:restaurants' : 'all:dishes',
+        });
+      },
+      [pushRoute]
+    );
+
     const handleListPress = React.useCallback(
       (list: FavoriteListSummary) => {
         // S-D.2: the tap's meaning resolves through THE entity policy (listWorld =
@@ -1160,6 +1189,7 @@ const BookmarksDataSurface = React.memo(
         onSave={() => void handleFormSave()}
         onListPress={handleListPress}
         onOpenMenu={openListMenu}
+        onOpenAll={handleOpenAll}
         stripProps={stripProps}
         editListProps={editListProps}
       />
@@ -1361,6 +1391,31 @@ const styles = StyleSheet.create({
   },
   gridList: {
     gap: GRID_GAP,
+  },
+  allTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: TILE_BG,
+    borderRadius: TILE_RADIUS,
+    borderWidth: 1,
+    borderColor: TILE_BORDER,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  allTileIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: TILE_BORDER,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+  },
+  allTileText: {
+    flex: 1,
+    gap: 2,
   },
   gridRow: {
     flexDirection: 'row',

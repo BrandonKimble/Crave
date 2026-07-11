@@ -619,10 +619,17 @@ export class FavoriteListsService {
     // The saver's note projects onto the axis rows (spec B.1.5) — first-wins
     // across the virtual union.
     const noteByAxisId = new Map<string, string>();
+    // W1 edit mode: each axis row also carries the FavoriteListItem id backing
+    // it (first-wins across the virtual union, same law as the note) so the
+    // client can build the drag-save's orderedItemIds without a second read.
+    const itemIdByAxisId = new Map<string, string>();
     for (const item of source.items) {
       const id = axisIdOf(item);
       if (id && item.note != null && !noteByAxisId.has(id)) {
         noteByAxisId.set(id, item.note);
+      }
+      if (id && !itemIdByAxisId.has(id)) {
+        itemIdByAxisId.set(id, item.itemId);
       }
     }
 
@@ -773,12 +780,15 @@ export class FavoriteListsService {
       : orderExplicitly(exec.dishes, (d) => d.connectionId).map((dish) => ({
           ...dish,
           note: noteByAxisId.get(dish.connectionId) ?? null,
+          favoriteListItemId: itemIdByAxisId.get(dish.connectionId) ?? null,
         }));
     const restaurants = isRestaurantAxis
       ? orderExplicitly(exec.restaurants, (r) => r.restaurantId).map(
           (restaurant) => ({
             ...restaurant,
             note: noteByAxisId.get(restaurant.restaurantId) ?? null,
+            favoriteListItemId:
+              itemIdByAxisId.get(restaurant.restaurantId) ?? null,
           }),
         )
       : exec.restaurants;

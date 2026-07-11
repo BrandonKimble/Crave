@@ -18,7 +18,7 @@ export type LaunchIntent =
   | { type: 'search'; searchIntent: MainSearchIntent }
   // S-E (addressability): a /l/<shareSlug> share link — resolution is ASYNC (getShared),
   // so the intent carries the slug and the consumer resolves it into a listWorld action.
-  | { type: 'sharedList'; shareSlug: string }
+  | { type: 'sharedList'; shareSlug: string; joinIntent?: boolean }
   // S-E: /q/<query> and /s/<tab> — the URL-addressable search desires.
   | {
       type: 'searchDesire';
@@ -60,7 +60,11 @@ export const parseLaunchIntentFromUrl = (url: string | null): LaunchIntent => {
     case 'entityAction':
       return { type: 'entityAction', action: link.action };
     case 'sharedList':
-      return { type: 'sharedList', shareSlug: link.shareSlug };
+      return {
+        type: 'sharedList',
+        shareSlug: link.shareSlug,
+        joinIntent: link.joinIntent === true,
+      };
     case 'polls':
       return { type: 'polls', marketKey: link.marketKey ?? null, pollId: link.pollId ?? null };
     case 'naturalSearch':

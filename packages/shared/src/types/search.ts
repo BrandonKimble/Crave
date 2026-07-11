@@ -82,6 +82,10 @@ export interface FoodResult {
   // Favorites-list projection only (w1-listdetail spec B.1.5): the saver's
   // personal note on this item. Never set by real search responses.
   note?: string | null;
+  // Favorites-list projection only (W1 edit mode): the FavoriteListItem id
+  // backing this row, so a drag-save can PATCH the batch order. Never set by
+  // real search responses.
+  favoriteListItemId?: string | null;
 }
 
 export interface RestaurantFoodSnippet {
@@ -175,6 +179,10 @@ export interface RestaurantResult {
   // Favorites-list projection only (w1-listdetail spec B.1.5): the saver's
   // personal note on this item. Never set by real search responses.
   note?: string | null;
+  // Favorites-list projection only (W1 edit mode): the FavoriteListItem id
+  // backing this row, so a drag-save can PATCH the batch order. Never set by
+  // real search responses.
+  favoriteListItemId?: string | null;
 }
 
 export type RestaurantResultScorePreview = Omit<
