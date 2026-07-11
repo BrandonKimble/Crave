@@ -1,5 +1,6 @@
 import { StyleSheet } from 'react-native';
 
+import { colors as themeColors } from '../constants/theme';
 import { overlaySheetStyles } from './overlaySheetStyles';
 
 export const bottomSheetSceneStackHostStyles = StyleSheet.create({
@@ -32,12 +33,15 @@ export const bottomSheetSceneStackHostStyles = StyleSheet.create({
     zIndex: 2,
     elevation: 2,
   },
+  // THE canonical header divider: the original soft 1px line (themeColors.border = #f1f5f9),
+  // identical to the search-focus surface's separator. NOT a hairline / dark-slate value —
+  // that re-implementation read too thin and harsh (owner, 2026-07-11).
   sceneStackPageHeaderScrollDivider: {
     position: 'absolute',
     left: 0,
     right: 0,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(15, 23, 42, 0.14)',
+    height: 1,
+    backgroundColor: themeColors.border,
     zIndex: 41,
     elevation: 41,
   },

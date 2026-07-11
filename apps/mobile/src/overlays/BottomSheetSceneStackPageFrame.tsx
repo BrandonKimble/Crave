@@ -49,7 +49,7 @@ type BottomSheetSceneStackPageFrameProps = {
 // (top = boundary − thickness) so header, divider, and content meet edge-to-edge — no white sliver
 // below it, no overlap into the content. `DIVIDER_THICKNESS` ties the offset to the line's own
 // height so the bottom always lands exactly on the boundary regardless of the device hairline.
-const DIVIDER_THICKNESS = StyleSheet.hairlineWidth;
+const DIVIDER_THICKNESS = 1;
 
 // THE canonical header-divider fade (owner standard 2026-07-11): invisible at scroll 0, fades in
 // as content scrolls under the header. Single-sourced HERE — every header divider in the app

@@ -464,8 +464,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(15, 23, 42, 0.14)',
+    height: 1,
+    backgroundColor: themeColors.border,
   },
   backButton: {
     width: 40,
