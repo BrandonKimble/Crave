@@ -95,14 +95,6 @@ export const overlaySheetStyles = StyleSheet.create({
   headerRowSpaced: {
     marginBottom: OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM,
   },
-  headerDivider: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 0,
-    backgroundColor: 'transparent',
-  },
   closeButton: {
     marginRight: 0,
   },

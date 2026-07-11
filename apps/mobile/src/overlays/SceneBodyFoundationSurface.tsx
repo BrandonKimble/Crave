@@ -90,9 +90,30 @@ type SceneFrostCutoutContextValue = {
   /** Measure `node` relative to the scene's white layer (content coordinates) and register a hole. */
   measureAndRegister: (id: string, node: View | null, borderRadius: number) => void;
   unregister: (id: string) => void;
+  /**
+   * Re-measure EVERY registered cutout on the next frame (rAF-collapsed). RN `onLayout` only
+   * fires when a view's own frame WITHIN ITS PARENT changes — when content ABOVE a cutout grows
+   * (avatar/name loading, segment switches) an ANCESTOR shifts the box without resizing it, the
+   * cutout's onLayout never fires, and the registered hole goes stale (the "hole drifts up"
+   * bug). Any signal that scene content re-laid-out (content size change, a cutout commit)
+   * schedules this sweep; `store.set` dedupes no-op rects so a sweep with nothing moved is free.
+   */
+  scheduleRemeasureAll: () => void;
 };
 
 const SceneFrostCutoutContext = React.createContext<SceneFrostCutoutContextValue | null>(null);
+
+/**
+ * Content-re-layout signal for the scene's frost cutouts. Body surfaces rendered inside a
+ * SceneBodyFoundationSurface (the mounted ScrollView / FlashList body) call this from
+ * `onContentSizeChange` so registered cutouts re-measure when content above them re-flows.
+ * Outside a foundation surface it returns a stable no-op.
+ */
+export const useSceneFrostCutoutContentLayoutSignal = (): (() => void) => {
+  const context = React.useContext(SceneFrostCutoutContext);
+  const noop = React.useCallback(() => undefined, []);
+  return context?.scheduleRemeasureAll ?? noop;
+};
 
 type SceneBodyWhitePlateProps = {
   store: FrostCutoutStore;
@@ -161,45 +182,87 @@ export const SceneBodyFoundationSurface: React.FC<SceneBodyFoundationSurfaceProp
   }
   const store = storeRef.current;
 
-  const [frameHeight, setFrameHeight] = React.useState(0);
-  const handleLayout = React.useCallback((event: LayoutChangeEvent) => {
-    const height = Math.round(event.nativeEvent.layout.height);
-    setFrameHeight((prev) => (prev === height ? prev : height));
-  }, []);
+  // Live cutout registrations (node ref + radius) so the surface can re-measure ALL holes when
+  // scene content re-lays-out — not only when a cutout's own onLayout fires (see
+  // scheduleRemeasureAll doc). Refs, not React state: measurement is imperative and per-frame.
+  const registrationsRef = React.useRef(new Map<string, { node: View; borderRadius: number }>());
+  const remeasureFrameRef = React.useRef<number | null>(null);
 
-  const contextValue = React.useMemo<SceneFrostCutoutContextValue>(
-    () => ({
+  const [frameHeight, setFrameHeight] = React.useState(0);
+
+  const contextValue = React.useMemo<SceneFrostCutoutContextValue>(() => {
+    const measureNode = (id: string, node: View, borderRadius: number) => {
+      const rootNode = rootRef.current;
+      if (rootNode == null) {
+        return;
+      }
+      // measureLayout against the lane root = CONTENT coordinates by construction (native frame
+      // accumulation — a ScrollView's contentOffset never moves child frames), so the measured
+      // rect is immune to sheet snap motion and the current scroll position.
+      node.measureLayout(
+        rootNode,
+        (x, y, width, height) => {
+          if (!(width > 0 && height > 0)) {
+            return;
+          }
+          store.set({
+            id,
+            x: Math.round(x),
+            y: Math.round(y),
+            width: Math.round(width),
+            height: Math.round(height),
+            borderRadius,
+          });
+        },
+        () => undefined
+      );
+    };
+
+    return {
       measureAndRegister: (id, node, borderRadius) => {
-        const rootNode = rootRef.current;
-        if (rootNode == null || node == null) {
+        if (node == null) {
           return;
         }
-        // measureLayout against the lane root = CONTENT coordinates by construction (native frame
-        // accumulation — a ScrollView's contentOffset never moves child frames), so the measured
-        // rect is immune to sheet snap motion and the current scroll position.
-        node.measureLayout(
-          rootNode,
-          (x, y, width, height) => {
-            if (!(width > 0 && height > 0)) {
-              return;
-            }
-            store.set({
-              id,
-              x: Math.round(x),
-              y: Math.round(y),
-              width: Math.round(width),
-              height: Math.round(height),
-              borderRadius,
-            });
-          },
-          () => undefined
-        );
+        registrationsRef.current.set(id, { node, borderRadius });
+        measureNode(id, node, borderRadius);
       },
       unregister: (id) => {
+        registrationsRef.current.delete(id);
         store.remove(id);
       },
-    }),
-    [store]
+      scheduleRemeasureAll: () => {
+        if (remeasureFrameRef.current != null || registrationsRef.current.size === 0) {
+          return;
+        }
+        // rAF-collapse: a burst of layout events (data load re-flowing several rows in one
+        // commit) produces ONE sweep, after the frame's layout has settled.
+        remeasureFrameRef.current = requestAnimationFrame(() => {
+          remeasureFrameRef.current = null;
+          registrationsRef.current.forEach(({ node, borderRadius }, id) => {
+            measureNode(id, node, borderRadius);
+          });
+        });
+      },
+    };
+  }, [store]);
+
+  React.useEffect(
+    () => () => {
+      if (remeasureFrameRef.current != null) {
+        cancelAnimationFrame(remeasureFrameRef.current);
+      }
+    },
+    []
+  );
+
+  const handleLayout = React.useCallback(
+    (event: LayoutChangeEvent) => {
+      const height = Math.round(event.nativeEvent.layout.height);
+      setFrameHeight((prev) => (prev === height ? prev : height));
+      // The lane itself re-laid-out (sheet frame change) — registered holes may have shifted.
+      contextValue.scheduleRemeasureAll();
+    },
+    [contextValue]
   );
 
   return (
@@ -235,7 +298,18 @@ export const FrostCutout: React.FC<FrostCutoutProps> = ({ borderRadius = 0, styl
 
   const handleLayout = React.useCallback(() => {
     context?.measureAndRegister(id, ref.current, borderRadius);
+    // Own-frame layout implies surrounding content re-flowed too — sweep the scene's other
+    // cutouts (their onLayout does NOT fire when only an ancestor shifted them).
+    context?.scheduleRemeasureAll();
   }, [borderRadius, context, id]);
+
+  // Every commit of the cutout re-measures on the next frame: a re-render of the panel (data
+  // load, segment switch) can shift this box via an ANCESTOR without firing its onLayout.
+  // rAF-collapsed + no-op-deduped in the store, so steady-state re-renders cost one cheap
+  // measureLayout per cutout per commit.
+  React.useEffect(() => {
+    context?.scheduleRemeasureAll();
+  });
 
   React.useEffect(() => {
     return () => {

@@ -2,6 +2,7 @@ import React from 'react';
 import type { ScrollView, ScrollViewProps } from 'react-native';
 
 import type { ComposedGesture, GestureType } from 'react-native-gesture-handler';
+import type { SharedValue } from 'react-native-reanimated';
 
 import BottomSheetScrollContainer from './BottomSheetScrollContainer';
 
@@ -11,6 +12,13 @@ type UseBottomSheetSharedScrollContainerRuntimeArgs = {
   // cannot be attached to two GestureDetectors, so dual-list surfaces need one per container.
   gesturesScrollSecondary: GestureType | ComposedGesture;
   scrollHeaderComponent?: React.ReactNode;
+  // Always-scrollable bounce gate inputs (see BottomSheetScrollContainer `touchDirection` doc).
+  // Per-list offsets: each container gates on ITS OWN scroll position, not the active list's.
+  bodyTouchDirection: SharedValue<number>;
+  primaryScrollOffset: SharedValue<number>;
+  secondaryScrollOffset: SharedValue<number>;
+  primaryScrollTopOffset: SharedValue<number>;
+  secondaryScrollTopOffset: SharedValue<number>;
 };
 
 type UseBottomSheetSharedScrollContainerRuntimeResult = {
@@ -22,6 +30,11 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
   gesturesScroll,
   gesturesScrollSecondary,
   scrollHeaderComponent,
+  bodyTouchDirection,
+  primaryScrollOffset,
+  secondaryScrollOffset,
+  primaryScrollTopOffset,
+  secondaryScrollTopOffset,
 }: UseBottomSheetSharedScrollContainerRuntimeArgs): UseBottomSheetSharedScrollContainerRuntimeResult => {
   const transparent = scrollHeaderComponent != null;
 
@@ -36,6 +49,8 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
   // handoff is preserved, but a gesture re-mint no longer remounts the list. The refs are read on
   // each render of the stable component instance (which re-renders on scroll/layout/list updates),
   // so any staleness window is confined to a mid-transition frame where interaction is blocked.
+  // (The shared values below are stable object identities for the runtime's lifetime — safe to
+  // close over directly in the type-stable components.)
   const gesturesScrollRef = React.useRef(gesturesScroll);
   gesturesScrollRef.current = gesturesScroll;
   const gesturesScrollSecondaryRef = React.useRef(gesturesScrollSecondary);
@@ -50,10 +65,14 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
         ref={ref}
         gesture={gesturesScrollRef.current}
         transparent={transparentRef.current}
+        touchDirection={bodyTouchDirection}
+        scrollOffset={primaryScrollOffset}
+        scrollTopOffset={primaryScrollTopOffset}
       />
     ));
     Component.displayName = 'OverlaySheetScrollView';
     return Component;
+    // Deliberately mount-stable: every input is a ref or SharedValue (stable identity).
   }, []);
 
   const SecondaryScrollComponent = React.useMemo(() => {
@@ -63,10 +82,14 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
         ref={ref}
         gesture={gesturesScrollSecondaryRef.current}
         transparent={transparentRef.current}
+        touchDirection={bodyTouchDirection}
+        scrollOffset={secondaryScrollOffset}
+        scrollTopOffset={secondaryScrollTopOffset}
       />
     ));
     Component.displayName = 'OverlaySheetSecondaryScrollView';
     return Component;
+    // Deliberately mount-stable: every input is a ref or SharedValue (stable identity).
   }, []);
 
   return {

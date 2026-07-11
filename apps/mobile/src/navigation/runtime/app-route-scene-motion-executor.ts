@@ -1,4 +1,5 @@
 import type { OverlayKey, OverlaySheetSnapRequest } from '../../overlays/types';
+import type { BottomSheetSnapPoints } from '../../overlays/bottomSheetMotionTypes';
 import {
   PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT,
   PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET,
@@ -26,6 +27,7 @@ type AppRouteSceneSheetMotionDispatchState = {
   sceneKey: OverlayKey;
   target: AppRouteSceneSheetMotionTarget;
   request: OverlaySheetSnapRequest | null;
+  shellSnapPoints: BottomSheetSnapPoints | null;
 };
 
 export type AppRouteSceneCameraMotionTarget = {
@@ -75,6 +77,18 @@ const isPreserveMotionContract = (
     transitionContract.chromeVisibilityTarget,
     PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET
   );
+
+const areShellSnapPointsEqual = (
+  left: BottomSheetSnapPoints | null,
+  right: BottomSheetSnapPoints | null
+): boolean =>
+  left === right ||
+  (left != null &&
+    right != null &&
+    left.expanded === right.expanded &&
+    left.middle === right.middle &&
+    left.collapsed === right.collapsed &&
+    left.hidden === right.hidden);
 
 const areSnapRequestsEqual = (
   left: OverlaySheetSnapRequest | null,
@@ -128,6 +142,15 @@ type AppRouteSceneMotionExecutorInput = {
   cameraMotionTargetRegistry: AppRouteSceneCameraMotionTargetRegistry;
   chromeMotionTargetRegistry: AppRouteSceneChromeMotionTargetRegistry;
   routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime;
+  /**
+   * Resolves the semantic target scene's published shell snap points (scene-descriptor
+   * authority). The dispatcher stamps them onto the motion command so shell and target commit
+   * ATOMICALLY in one shared-value write — during a scene switch the shared runtime config
+   * still holds the OUTGOING scene's shell (its sync follows the frame flip ~50ms later), so a
+   * `snapTo` resolved against it lands on the wrong y. Null when the scene has no published
+   * static shell (dynamic scenes): the command falls back to the live config, today's behavior.
+   */
+  resolveSceneShellSnapPoints: (sceneKey: OverlayKey) => BottomSheetSnapPoints | null;
 };
 
 export class AppRouteSceneMotionExecutor {
@@ -238,19 +261,29 @@ export class AppRouteSceneMotionExecutor {
       `requestTransitionSheetMotion:${sheetSceneKey}`,
       () => {
         const request = this.resolveTransitionSheetRequest(transitionState, sheetSceneKey, target);
-        this.requestSheetMotion(target, request);
+        // Atomic shell+target commit: resolve the SEMANTIC target scene's published shell snap
+        // points (not the shared 'sheetHost' group key) and stamp them onto the command.
+        const shellSnapPoints =
+          request == null
+            ? null
+            : this.input.resolveSceneShellSnapPoints(
+                transitionContract.targetSceneKey ?? sheetSceneKey
+              );
+        this.requestSheetMotion(target, request, shellSnapPoints);
       }
     );
   }
 
   private requestSheetMotion(
     target: AppRouteSceneSheetMotionTarget,
-    request: OverlaySheetSnapRequest | null
+    request: OverlaySheetSnapRequest | null,
+    shellSnapPoints: BottomSheetSnapPoints | null
   ): void {
     if (
       this.lastSheetDispatchState?.sceneKey === target.sceneKey &&
       this.lastSheetDispatchState.target === target &&
-      areSnapRequestsEqual(this.lastSheetDispatchState.request, request)
+      areSnapRequestsEqual(this.lastSheetDispatchState.request, request) &&
+      areShellSnapPointsEqual(this.lastSheetDispatchState.shellSnapPoints, shellSnapPoints)
     ) {
       return;
     }
@@ -258,6 +291,7 @@ export class AppRouteSceneMotionExecutor {
       sceneKey: target.sceneKey,
       target,
       request,
+      shellSnapPoints,
     };
     if (request == null) {
       target.motionCommandValue.value = null;
@@ -269,6 +303,7 @@ export class AppRouteSceneMotionExecutor {
       token: this.sheetMotionCommandToken,
       settleToken: request.settleToken ?? null,
       mode: request.mode,
+      ...(shellSnapPoints != null ? { snapPoints: shellSnapPoints } : {}),
     };
     if (__DEV__) {
       // [pageswitch] content-lag attribution: the sheet-motion dispatch instant (the JS write the

@@ -206,7 +206,8 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
       velocity = 0,
       shouldNotifyHidden = false,
       source: BottomSheetSnapChangeSource = 'programmatic',
-      settleToken?: number | null
+      settleToken?: number | null,
+      snapValuesOverride?: RuntimeSnapValues
     ) => {
       'worklet';
       springId.value += 1;
@@ -214,7 +215,10 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
       const localSource = source;
       const localSettleToken = settleToken ?? null;
       const shouldClampOvershoot = localSource !== 'gesture' && !hasUserDrivenSheet.value;
-      const runtimeSnapValues = resolveRuntimeSnapValues();
+      // A transition command carries the TARGET scene's snap set (atomic shell+target commit);
+      // start/settle snap keys must resolve against it — the shared runtime config may still
+      // hold the OUTGOING scene's shell for a few frames after dispatch.
+      const runtimeSnapValues = snapValuesOverride ?? resolveRuntimeSnapValues();
       const snapKeyAtStart = resolveSnapKeyFromValues(
         target,
         runtimeSnapValues.expanded,
@@ -337,7 +341,21 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
       };
 
       let target: number | undefined;
-      const runtimeSnapValues = resolveRuntimeSnapValues();
+      // Atomic shell+target commit: a transition command carries the TARGET scene's snap set —
+      // resolve against IT, never the shared runtime config, which still holds the OUTGOING
+      // scene's shell until the frame flip syncs it (~50ms after dispatch). Commands without
+      // snapPoints (bootstrap, non-transition requests) use the live config as before.
+      const liveSnapValues = resolveRuntimeSnapValues();
+      const commandSnapPoints = nextCommand.snapPoints;
+      const runtimeSnapValues: RuntimeSnapValues = commandSnapPoints
+        ? {
+            expanded: commandSnapPoints.expanded,
+            middle: commandSnapPoints.middle,
+            collapsed: commandSnapPoints.collapsed,
+            hidden: commandSnapPoints.hidden,
+            preventSwipeDismiss: liveSnapValues.preventSwipeDismiss,
+          }
+        : liveSnapValues;
       switch (nextCommand.snapTo) {
         case 'expanded':
           target = runtimeSnapValues.expanded;
@@ -435,7 +453,8 @@ export const useBottomSheetSharedSnapExecutionRuntime = ({
         velocity,
         nextCommand.snapTo === 'hidden',
         'programmatic',
-        nextCommand.settleToken ?? null
+        nextCommand.settleToken ?? null,
+        commandSnapPoints ? runtimeSnapValues : undefined
       );
       clearConsumedCommand();
     },

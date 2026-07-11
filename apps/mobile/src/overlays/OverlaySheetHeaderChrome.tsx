@@ -39,7 +39,6 @@ type OverlaySheetHeaderChromeProps = {
   paddingTop?: number;
   paddingHorizontal?: number;
   transparent?: boolean;
-  showDivider?: boolean;
   afterRow?: React.ReactNode;
   rowStyle?: StyleProp<ViewStyle>;
   style?: StyleProp<ViewStyle>;
@@ -90,7 +89,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
   paddingTop = 0,
   paddingHorizontal = OVERLAY_HORIZONTAL_PADDING,
   transparent = true,
-  showDivider = true,
   afterRow,
   rowStyle,
   style,
@@ -240,7 +238,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
         {actionButton}
       </View>
       {afterRow ?? null}
-      {showDivider ? <View style={overlaySheetStyles.headerDivider} /> : null}
     </View>
   );
 };

@@ -126,6 +126,8 @@ export type BottomSheetSharedSurfaceRuntime = {
   };
   animatedSheetStyle: StyleProp<ViewStyle>;
   scrollHeaderSyncStyle: StyleProp<ViewStyle>;
+  // Full-screen top-radius morph (settings full-snap): borderTopLeft/RightRadius 22→0 as
+  // the sheet's top edge approaches y=0; inert (constant 22) for every ordinary scene.
 };
 
 export type BottomSheetSharedRuntimeResult = {

@@ -1,4 +1,5 @@
-import type { OverlaySheetSnapRequest } from '../../overlays/types';
+import type { OverlayKey, OverlaySheetSnapRequest } from '../../overlays/types';
+import type { BottomSheetSnapPoints } from '../../overlays/bottomSheetMotionTypes';
 import { PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET } from './app-overlay-route-transition-contract';
 import {
   AppRouteSceneMotionExecutor,
@@ -48,13 +49,15 @@ export class AppRouteSceneMotionController implements AppRouteSceneMotionRuntime
 
   constructor(
     private readonly sheetMotionTargetRegistry: AppRouteSceneSheetMotionTargetRegistry,
-    private readonly routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime
+    private readonly routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime,
+    resolveSceneShellSnapPoints: (sceneKey: OverlayKey) => BottomSheetSnapPoints | null
   ) {
     this.executor = new AppRouteSceneMotionExecutor({
       sheetMotionTargetRegistry,
       cameraMotionTargetRegistry: this.cameraMotionTargetRegistry,
       chromeMotionTargetRegistry: this.chromeMotionTargetRegistry,
       routeSceneSwitchRuntime,
+      resolveSceneShellSnapPoints,
     });
     this.unsubscribeMotionDispatchTarget =
       this.routeSceneSwitchRuntime.setRouteSceneMotionDispatchTarget((transitionState) => {
@@ -149,8 +152,14 @@ export class AppRouteSceneMotionController implements AppRouteSceneMotionRuntime
 export const createAppRouteSceneMotionRuntime = ({
   sheetMotionTargetRegistry,
   routeSceneSwitchRuntime,
+  resolveSceneShellSnapPoints,
 }: {
   sheetMotionTargetRegistry: AppRouteSceneSheetMotionTargetRegistry;
   routeSceneSwitchRuntime: AppRouteSceneSwitchRuntime;
+  resolveSceneShellSnapPoints: (sceneKey: OverlayKey) => BottomSheetSnapPoints | null;
 }): AppRouteSceneMotionRuntime =>
-  new AppRouteSceneMotionController(sheetMotionTargetRegistry, routeSceneSwitchRuntime);
+  new AppRouteSceneMotionController(
+    sheetMotionTargetRegistry,
+    routeSceneSwitchRuntime,
+    resolveSceneShellSnapPoints
+  );

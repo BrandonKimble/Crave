@@ -194,10 +194,6 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     routeSceneSwitchActions: routeSceneSwitchRuntime,
     routeSheetSnapSessionActions: routeSheetSnapSessionRuntime.actions,
   });
-  const routeSceneMotionRuntime = createAppRouteSceneMotionRuntime({
-    sheetMotionTargetRegistry: routeSceneSheetMotionTargetRegistry,
-    routeSceneSwitchRuntime,
-  });
   const routeSharedSheetPresentationRuntime = createAppRouteSharedSheetPresentationRuntime();
   const routeSceneFoundationRuntime = createAppRouteSceneFoundationRuntime({
     sceneActivityAuthority,
@@ -209,6 +205,17 @@ export const createAppRouteSceneRuntime = (): AppRouteSceneRuntime => {
     routeSceneVisibilityPolicyRuntime,
     routeOverlayCommandAuthority: routeOverlayCommandController.authority,
     routeSheetSnapSessionAuthority: routeSheetSnapSessionRuntime.authority,
+  });
+  // Created AFTER the foundation runtime: the motion dispatcher resolves the semantic target
+  // scene's published shell snap points from the scene-descriptor authority and stamps them
+  // onto each sheet motion command (atomic shell+target commit — the shared runtime config
+  // still holds the OUTGOING scene's shell at dispatch time).
+  const routeSceneMotionRuntime = createAppRouteSceneMotionRuntime({
+    sheetMotionTargetRegistry: routeSceneSheetMotionTargetRegistry,
+    routeSceneSwitchRuntime,
+    resolveSceneShellSnapPoints: (sceneKey) =>
+      routeSceneFoundationRuntime.sceneInputAuthority.getSceneInputSnapshot(sceneKey)?.shellSpec
+        ?.snapPoints ?? null,
   });
   const routeGlobalRestaurantRouteController = createAppRouteGlobalRestaurantRouteController({
     routeOverlayNavigationAuthority: routeSceneFoundationRuntime.routeSheetHostNavigationAuthority,

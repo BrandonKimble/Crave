@@ -178,6 +178,18 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
     transitionKind: 'closeChild',
     motion: { kind: 'rememberedDetent', fallbackSnap: 'middle' },
   },
+  // settings closeChild: settings is the FULL-SNAP exception (its shell pins every live snap to
+  // the safe-area top), so the catch-all preserveLiveY would strand the parent at the settings
+  // top. Glide back to the parent's own remembered detent (origin-faithful, same rule as
+  // pollDetail). fallback expanded: settings only opens from the profile header, which is
+  // visible at any detent, and an unusable remembered snap means the parent posture is unknown —
+  // expanded matches the profile tab's own topLevelSwitch fallback.
+  {
+    from: 'settings',
+    to: '*',
+    transitionKind: 'closeChild',
+    motion: { kind: 'rememberedDetent', fallbackSnap: 'expanded' },
+  },
   // ── OWNER TUNING EXAMPLE (req 2d): to change the poll-card → poll-detail movement pattern,
   // edit the two pollDetail rows above — nothing else. E.g. "open only to middle, dismiss by
   // dropping the sheet to collapsed" would be:
