@@ -1427,14 +1427,10 @@ export class ExtractionPipelineService implements OnModuleInit {
     return {
       chunkCount: chunkData.metadata.length,
       chunkIds: chunkData.metadata.map((item) => item.chunkId),
-      maxChunkComments: Number.parseInt(
-        process.env.LLM_MAX_CHUNK_COMMENTS || '80',
-        10,
-      ),
-      maxChunkChars: Number.parseInt(
-        process.env.LLM_MAX_CHUNK_CHARS || '12000',
-        10,
-      ),
+      // LLM_MAX_CHUNK_COMMENTS / LLM_MAX_CHUNK_CHARS were retired from the
+      // chunker (packing audit 2026-07-11): chars are derived from the token
+      // target inside LlmChunkingService, comments are a fixed thread-coherence
+      // bound. Only the token target remains a knob.
       targetChunkTokens: Number.parseInt(
         process.env.LLM_CHUNK_TARGET_TOKENS || '35000',
         10,
