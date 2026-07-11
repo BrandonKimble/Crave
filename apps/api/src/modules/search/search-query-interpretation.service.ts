@@ -25,12 +25,9 @@ import {
 } from './linker-calibration.generated';
 import { OnDemandRequestService } from './on-demand-request.service';
 import { MarketRegistryService } from '../markets/market-registry.service';
+import { ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES } from './on-demand-tuning.constants';
 
 const METERS_PER_MILE = 1609.34;
-const ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES = 2;
-const ON_DEMAND_VIEWPORT_TOLERANCE = 0.85;
-const ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES =
-  ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES * ON_DEMAND_VIEWPORT_TOLERANCE;
 interface InterpretationResult {
   structuredRequest: SearchQueryRequestDto;
   analysis: LLMSearchQueryAnalysis;

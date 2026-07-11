@@ -334,12 +334,7 @@ export class ArchiveIngestionService implements OnModuleInit {
       };
     }
 
-    const envBatchSize =
-      process.env.TEST_ARCHIVE_BATCH_SIZE &&
-      !Number.isNaN(Number(process.env.TEST_ARCHIVE_BATCH_SIZE))
-        ? Math.max(1, Number.parseInt(process.env.TEST_ARCHIVE_BATCH_SIZE, 10))
-        : null;
-    const batchSize = Math.max(1, options.batchSize ?? envBatchSize ?? 20);
+    const batchSize = Math.max(1, options.batchSize ?? 20);
     const chunks = this.chunkPosts(posts, batchSize);
 
     let enqueuedCount = 0;

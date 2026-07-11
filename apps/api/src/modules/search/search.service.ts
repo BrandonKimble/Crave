@@ -34,7 +34,10 @@ import {
   type SiblingCutOptions,
 } from './search-sibling-expansion.service';
 import type { SearchExecutionDirectives } from './search-execution-directives';
-import { ON_DEMAND_MIN_RESULTS } from './on-demand-tuning.constants';
+import {
+  ON_DEMAND_MIN_RESULTS,
+  ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES,
+} from './on-demand-tuning.constants';
 import type { SearchConstraints, RelaxationStage } from './search-constraints';
 import { compileQueryPlanFromConstraints } from './search-constraints.compiler';
 import {
@@ -80,10 +83,6 @@ const DEFAULT_RESULT_LIMIT = 100;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
 const METERS_PER_MILE = 1609.34;
-const ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES = 2;
-const ON_DEMAND_VIEWPORT_TOLERANCE = 0.85;
-const ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES =
-  ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES * ON_DEMAND_VIEWPORT_TOLERANCE;
 interface PaginationState {
   page: number;
   pageSize: number;

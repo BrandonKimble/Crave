@@ -25,6 +25,11 @@ const GATE_MODEL = 'gemini-3.1-flash-lite-preview';
 // posts express food intent at char ~500-800: "Find a place to eat Okonomiyaki"
 // @573). Reddit caps selftext at 40k chars, so cost is bounded by DYNAMIC
 // PACKING instead: posts fill a call until the token budget is reached.
+// Pack density CALIBRATED 2026-07-11 (scripts/relevance-gate/density-replay.ts):
+// the 130-post labeled corpus run through THIS exact packing algorithm —
+// including a maximum-density 25-post/19,752-token pack, essentially the
+// densest pack production can produce — held keep-recall 1.000 (precision
+// 0.776, fail-open slack). Re-run density-replay.ts if either value grows.
 const PACK_TOKEN_BUDGET = 20000;
 const PACK_MAX_POSTS = 25;
 

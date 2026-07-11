@@ -77,11 +77,7 @@ function chunk<T>(array: T[], size: number): T[][] {
 @Processor('chronological-collection')
 export class ChronologicalCollectionWorker implements OnModuleInit {
   private logger!: LoggerService;
-  private readonly BATCH_SIZE =
-    process.env.TEST_CHRONO_BATCH_SIZE &&
-    !Number.isNaN(Number(process.env.TEST_CHRONO_BATCH_SIZE))
-      ? Math.max(1, Number.parseInt(process.env.TEST_CHRONO_BATCH_SIZE, 10))
-      : 25; // Default batch size
+  private readonly BATCH_SIZE = 25;
 
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
@@ -206,29 +202,10 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         `Collected ${allPosts.length} posts from r/${subreddit}, limited to ${posts.length} for testing`,
       );
 
-      // TEMPORARY INJECTION: Ensure a specific post ID is processed first if provided
-      const injectIdRaw = process.env.TEST_INJECT_FIRST_POST_ID || '';
-      const injectId = injectIdRaw.replace(/^t3_/i, '').trim();
       // Build IDs list (Reddit API post.data.id is the base id without t3_)
       const ids: string[] = posts
         .map((post) => this.extractPostId(post))
         .filter((id): id is string => typeof id === 'string' && id.length > 0);
-      if (injectId) {
-        // If already present, move to front; otherwise, prepend
-        const existingIndex = ids.indexOf(injectId);
-        if (existingIndex >= 0) {
-          ids.splice(existingIndex, 1);
-          ids.unshift(injectId);
-          await job.log(
-            `🔧 Injection: moved post ${injectIdRaw} to first slot`,
-          );
-        } else {
-          ids.unshift(injectId);
-          await job.log(
-            `🔧 Injection: added post ${injectIdRaw} to first slot`,
-          );
-        }
-      }
 
       // Process all collected posts - async queue handles batching and rate limiting
 

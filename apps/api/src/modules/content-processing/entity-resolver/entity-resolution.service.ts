@@ -81,6 +81,11 @@ export class EntityResolutionService implements OnModuleInit {
   private cacheLookupCounter?: Counter<string>;
 
   // Max existing entities recalled as the LLM shortlist per unmatched entity.
+  // K=8 TESTED vs K=15 2026-07-11 (scripts/search-harness/shortlist-k-probe.ts,
+  // 150 alias→canonical pairs through the real recall core): 148/150 true
+  // entities rank in the top 8; the single rank-9..15 case judged 'new' at
+  // BOTH K values (zero verdict flips), while K=15 inflates the judge's
+  // candidate payload +46%. Re-run the probe before changing.
   private static readonly LLM_MATCHER_SHORTLIST_K = 8;
   // Bound on concurrent LLM match calls within a batch (rate-limit friendly).
   private static readonly LLM_MATCHER_CONCURRENCY = 8;

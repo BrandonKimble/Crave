@@ -77,21 +77,13 @@ function resolveScopedEnv(
   return selected || values.fallback || undefined;
 }
 
-function resolveSecretEnv(appEnv: string, name: string): string | undefined {
-  const primary = process.env[name];
-  if (primary && primary.trim()) {
-    return primary.trim();
-  }
-
-  const legacyName = isProductionAppEnv(appEnv)
-    ? `${name}_PROD`
-    : `${name}_DEV`;
-  const legacyValue = process.env[legacyName];
-  if (legacyValue && legacyValue.trim()) {
-    return legacyValue.trim();
-  }
-
-  return undefined;
+// Secrets read their canonical env name ONLY. The legacy `<NAME>_PROD` /
+// `<NAME>_DEV` resolution shim was deleted 2026-07-11 (value census): .env
+// sets only the canonical names, and a silent legacy-name hit is exactly a
+// fallback masking misconfiguration.
+function resolveSecretEnv(name: string): string | undefined {
+  const value = process.env[name];
+  return value && value.trim() ? value.trim() : undefined;
 }
 
 export default () => {
@@ -231,10 +223,10 @@ export default () => {
       trialDays: parseInt(process.env.BILLING_TRIAL_DAYS || '0', 10),
     },
     reddit: {
-      clientId: resolveSecretEnv(appEnv, 'REDDIT_CLIENT_ID'),
-      clientSecret: resolveSecretEnv(appEnv, 'REDDIT_CLIENT_SECRET'),
-      username: resolveSecretEnv(appEnv, 'REDDIT_USERNAME'),
-      password: resolveSecretEnv(appEnv, 'REDDIT_PASSWORD'),
+      clientId: resolveSecretEnv('REDDIT_CLIENT_ID'),
+      clientSecret: resolveSecretEnv('REDDIT_CLIENT_SECRET'),
+      username: resolveSecretEnv('REDDIT_USERNAME'),
+      password: resolveSecretEnv('REDDIT_PASSWORD'),
       userAgent: process.env.REDDIT_USER_AGENT || 'CraveSearch/1.0.0',
       timeout: parseInt(process.env.REDDIT_TIMEOUT || '10000', 10),
       requestsPerMinute: parseInt(
@@ -250,7 +242,7 @@ export default () => {
       },
     },
     llm: {
-      apiKey: resolveSecretEnv(appEnv, 'LLM_API_KEY'),
+      apiKey: resolveSecretEnv('LLM_API_KEY'),
       // Fallbacks track the CURRENT production model (.env normally sets these);
       // a stale fallback silently downgraded two generations when env was absent.
       // gemini-3-flash-preview CHOSEN by the 150-post quality A/B
@@ -340,7 +332,7 @@ export default () => {
       },
     },
     googlePlaces: {
-      apiKey: resolveSecretEnv(appEnv, 'GOOGLE_PLACES_API_KEY'),
+      apiKey: resolveSecretEnv('GOOGLE_PLACES_API_KEY'),
       timeout: 10_000, // per-request HTTP timeout (ms)
       // ---- Self-imposed rate caps (2026-07-11 verify) ----
       // We call Places API (New) (places.googleapis.com/v1). Google no longer
@@ -382,7 +374,7 @@ export default () => {
       },
     },
     tomtom: {
-      apiKey: resolveSecretEnv(appEnv, 'TOMTOM_API_KEY'),
+      apiKey: resolveSecretEnv('TOMTOM_API_KEY'),
       timeout: parseInt(process.env.TOMTOM_TIMEOUT || '10000', 10),
       reverseGeocodeBaseUrl:
         process.env.TOMTOM_REVERSE_GEOCODE_BASE_URL ||

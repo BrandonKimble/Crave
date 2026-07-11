@@ -53,7 +53,7 @@ export interface ProcessingResult<
  * LLM Concurrent Processing Service
  *
  * Simplified concurrency coordinator that delegates to SmartLLMProcessor:
- * - Controls worker concurrency using p-limit (16 workers max)
+ * - Controls worker concurrency using p-limit (concurrencyLimit workers, 20)
  * - Distributes chunks to SmartLLMProcessor with worker IDs
  * - Aggregates results and provides metrics
  * - All rate limiting handled by SmartLLMProcessor

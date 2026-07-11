@@ -51,13 +51,14 @@ keep-precision 0.869 calibrated on a hand-labeled 130-post corpus
 
 ### TEST (load-bearing + arbitrary — ranked, with the cheap experiment)
 
-1. **`PACK_TOKEN_BUDGET = 20000` / `PACK_MAX_POSTS = 25`** (relevance-gate.service.ts).
-   The gate's _verdict quality_ is corpus-calibrated, but the packing shape is
-   not — more posts per call risks per-post attention dilution in a
-   lite-preview model (same disease the judge BATCH avoids by staying at 10).
-   Experiment: re-run the 130-post labeled corpus packed at 25-post density vs
-   judged in small packs; diff verdicts. Cost ≈ $0.10. If keep-recall stays
-   1.000 at 25, stamp it calibrated; if not, shrink PACK_MAX_POSTS.
+1. ~~`PACK_TOKEN_BUDGET = 20000` / `PACK_MAX_POSTS = 25`~~ — **DONE 2026-07-11,
+   HOLDS.** `scripts/relevance-gate/density-replay.ts` runs the 130-post corpus
+   through the VERBATIM production packing algorithm: 6 packs including a
+   25-post/19,752-token pack — essentially the densest pack production can
+   produce (budget 20k/25). Result keep-recall **1.000** (fn=0), precision
+   0.776 (fail-open slack; baseline band 0.78–0.87, run-to-run model variance).
+   Derivation comment added at the constants; re-run density-replay.ts if
+   either value grows. Cost: ~54k in / 4k out flash-lite tokens (pennies).
 2. **`LLM_CHUNK_TARGET_TOKENS = 35000`** (llm-chunking + extraction-pipeline
    `|| '35000'`). A separate agent is testing this now (packing audit found the
    old char-cap made the target unreachable — value was effectively never
@@ -65,10 +66,13 @@ keep-precision 0.869 calibrated on a hand-labeled 130-post corpus
    value wins, ALSO delete the duplicated fallback literal in
    extraction-pipeline.service.ts:1511 and read the one chunking-service
    getter (two sources of truth today).
-3. **`LLM_MATCHER_SHORTLIST_K = 8`** (entity-resolution). Directly bounds judge
-   recall: a true match ranked 9th resolves as 'new' (duplicate entity).
-   Experiment: replay the resolution corpus at K=8 vs K=15, count verdict
-   flips; the linker replay harness already exists.
+3. ~~`LLM_MATCHER_SHORTLIST_K = 8`~~ — **DONE 2026-07-11, K=8 KEEPS.**
+   `scripts/search-harness/shortlist-k-probe.ts`: 150 alias→canonical pairs
+   through the real recall core at K=15 (type+market scoped, denseMode
+   'always'): 142 rank 1, 6 rank 2–8, **1 rank 9–15**, 1 absent@15. The single
+   rank-11 case ("brooklyn still house" → Rough Draft, a rename) judged 'new'
+   at BOTH K=8 and K=15 — **zero verdict flips** — while K=15 inflates the
+   judge candidate payload +46%. Comment added at the constant.
 4. **Relevance-gate model pin `gemini-3.1-flash-lite-preview`** — a _preview_
    model name hard-pinned in code. Not a number but same class: will 404 one
    day (loud, at least). Add to the model-migration checklist.
@@ -76,23 +80,24 @@ keep-precision 0.869 calibrated on a hand-labeled 130-post corpus
 ### DELETE queue (knobs/shims that shouldn't exist)
 
 1. ~~SRC normalizer~~ — DELETED this pass (see above).
-2. **`ON_DEMAND_VIEWPORT_TOLERANCE` duplication** — same 0.85 constant defined
-   in search.service.ts:84 and search-query-interpretation.service.ts:31. One
-   drifting is a silent behavior fork. Extract to a shared constant.
-3. **Stale docblock "16 workers max"** in llm-concurrent-processing.service.ts
-   (actual is 20). Fix the comment.
-4. **`configuration.ts` legacy env-name resolution** (lines 86-91: prod/non-prod
-   `legacyName` lookup) — verify no deployment still sets the legacy names,
-   then delete; a silent legacy-name hit is exactly a fallback masking
-   misconfiguration.
-5. **`subreddit-volume-tracking.service.ts:341` "Fallback for legacy listing
-   shape"** — Reddit API shape tolerance. Check whether the legacy shape still
-   occurs (add a counter or grep logs); if dead, delete so shape drift fails loud.
-6. **`TEST_ARCHIVE_BATCH_SIZE` / `TEST_CHRONO_BATCH_SIZE` /
-   `TEST_INJECT_FIRST_POST_ID` env hooks** in production code paths
-   (archive-ingestion, chronological worker) — test-only seams living in prod
-   code. Acceptable if used by the replay harness; if nothing references them,
-   delete.
+2. ~~`ON_DEMAND_VIEWPORT_TOLERANCE` duplication~~ — **DONE 2026-07-11.** The
+   whole viewport trio (min-width 2 / tolerance 0.85 / derived floor) moved to
+   `on-demand-tuning.constants.ts`; both services import the derived constant.
+3. ~~Stale docblock "16 workers max"~~ — **DONE 2026-07-11** (now says
+   concurrencyLimit workers, 20).
+4. ~~`configuration.ts` legacy env-name resolution~~ — **DELETED 2026-07-11.**
+   Verified: .env sets only canonical names (no `*_PROD`/`*_DEV` variants of
+   the four secrets); shell env clean. `resolveSecretEnv` now reads the
+   canonical name only.
+5. ~~`subreddit-volume-tracking.service.ts` legacy listing fallback~~ —
+   **DELETED 2026-07-11.** Proof: the only feeder is
+   `RedditService.getChronologicalPosts`, which flattens every listing child
+   via `extractChildData` — `created_utc` is always top-level; the nested
+   shape is unreachable. Drift now fails loud (null → excluded).
+6. ~~`TEST_ARCHIVE_BATCH_SIZE` / `TEST_CHRONO_BATCH_SIZE` /
+   `TEST_INJECT_FIRST_POST_ID` env hooks~~ — **DELETED 2026-07-11.** Repo-wide
+   grep (ts/md/sh/yaml/json/env, incl. root scripts + maestro): zero
+   references outside the definitions and the two census docs. Orphaned.
 
 ### Fallback inventory (`?? / ||` substituting for missing config)
 
