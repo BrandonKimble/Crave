@@ -44,11 +44,13 @@ export const useSearchRootOverlayShellHostRuntime = ({
     : null;
   const backdropFocused = overlayGateSnapshot.isFocused;
   const backdropDimProgress = overlayHostVisualRuntime.overlayBackdropDimProgress;
+  const backdropSheetTopY = overlayHostVisualRuntime.overlayBackdropSheetTopY;
   const overlayShellHostSnapshot = React.useMemo<SearchOverlayShellHostSnapshot>(
     () => ({
       isFocused: appEntryPlaneRuntime.isFocused && backdropFocused,
       statusBarFadeHeight,
       backdropDimProgress,
+      backdropSheetTopY,
       bottomNavVisualInputs,
       rankAndScoreModalLayer,
       priceModalLayer,
@@ -56,6 +58,7 @@ export const useSearchRootOverlayShellHostRuntime = ({
     [
       appEntryPlaneRuntime.isFocused,
       backdropDimProgress,
+      backdropSheetTopY,
       backdropFocused,
       bottomNavVisualInputs,
       priceModalLayer,

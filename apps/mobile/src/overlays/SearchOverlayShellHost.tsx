@@ -8,7 +8,8 @@ import SearchStatusBarFade from '../screens/Search/components/SearchStatusBarFad
 import type { SearchOverlayShellHostSnapshot } from '../screens/Search/runtime/shared/search-overlay-shell-host-snapshot-contract';
 import type { SearchOverlayShellHostAuthority } from '../screens/Search/runtime/shared/search-root-host-authority-contract';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
-import { OVERLAY_BACKDROP_SCRIM_ZINDEX } from './overlaySheetStyles';
+import Svg, { Path } from 'react-native-svg';
+import { OVERLAY_BACKDROP_SCRIM_ZINDEX, OVERLAY_CORNER_RADIUS } from './overlaySheetStyles';
 
 type SearchOverlayShellStatusSnapshot = Pick<
   SearchOverlayShellHostSnapshot,
@@ -17,7 +18,7 @@ type SearchOverlayShellStatusSnapshot = Pick<
 
 type SearchOverlayShellBackdropSnapshot = Pick<
   SearchOverlayShellHostSnapshot,
-  'isFocused' | 'backdropDimProgress'
+  'isFocused' | 'backdropDimProgress' | 'backdropSheetTopY'
 >;
 
 type SearchOverlayShellRankAndScoreSnapshot = Pick<
@@ -40,7 +41,28 @@ const areBackdropSnapshotsEqual = (
   left: SearchOverlayShellBackdropSnapshot,
   right: SearchOverlayShellBackdropSnapshot
 ): boolean =>
-  left.isFocused === right.isFocused && left.backdropDimProgress === right.backdropDimProgress;
+  left.isFocused === right.isFocused &&
+  left.backdropDimProgress === right.backdropDimProgress &&
+  left.backdropSheetTopY === right.backdropSheetTopY;
+
+const BACKDROP_DIM_MAX_OPACITY = 0.22;
+
+// The scrim dims "everything outside the sheet": a strip that ends flush at the sheet's top
+// edge plus two inverse-corner pieces that fill the notches beside the sheet's rounded top
+// corners. It never extends under the sheet body, so frost cutouts (skeletons, grab handle,
+// close circle) are never contaminated by the dim.
+const INVERSE_CORNER_PATH = `M 0 0 H ${OVERLAY_CORNER_RADIUS} A ${OVERLAY_CORNER_RADIUS} ${OVERLAY_CORNER_RADIUS} 0 0 0 0 ${OVERLAY_CORNER_RADIUS} Z`;
+
+const BackdropInverseCorner = ({ mirrored }: { mirrored: boolean }) => (
+  <Svg
+    pointerEvents="none"
+    width={OVERLAY_CORNER_RADIUS}
+    height={OVERLAY_CORNER_RADIUS}
+    style={mirrored ? styles.backdropCornerMirrored : null}
+  >
+    <Path d={INVERSE_CORNER_PATH} fill="#000000" />
+  </Svg>
+);
 
 const areRankAndScoreSnapshotsEqual = (
   left: SearchOverlayShellRankAndScoreSnapshot,
@@ -93,7 +115,7 @@ const SearchOverlayShellBackdropHost = React.memo(
   }: {
     overlayShellHostAuthority: SearchOverlayShellHostAuthority;
   }) => {
-    const { isFocused, backdropDimProgress } = useRouteAuthoritySelector<
+    const { isFocused, backdropDimProgress, backdropSheetTopY } = useRouteAuthoritySelector<
       SearchOverlayShellHostSnapshot,
       SearchOverlayShellBackdropSnapshot
     >({
@@ -106,6 +128,7 @@ const SearchOverlayShellBackdropHost = React.memo(
         (snapshot: SearchOverlayShellHostSnapshot) => ({
           isFocused: snapshot.isFocused,
           backdropDimProgress: snapshot.backdropDimProgress,
+          backdropSheetTopY: snapshot.backdropSheetTopY,
         }),
         []
       ),
@@ -113,16 +136,35 @@ const SearchOverlayShellBackdropHost = React.memo(
     });
     const rootBackdropAnimatedStyle = useAnimatedStyle(
       () => ({
-        opacity: Math.max(0, Math.min(1, backdropDimProgress?.value ?? 0)) * 0.22,
+        opacity:
+          Math.max(0, Math.min(1, backdropDimProgress?.value ?? 0)) * BACKDROP_DIM_MAX_OPACITY,
       }),
       [backdropDimProgress]
     );
+    const backdropStripAnimatedStyle = useAnimatedStyle(
+      () => ({
+        height: Math.max(0, backdropSheetTopY?.value ?? 0),
+      }),
+      [backdropSheetTopY]
+    );
+    const backdropCornersAnimatedStyle = useAnimatedStyle(
+      () => ({
+        transform: [{ translateY: Math.max(0, backdropSheetTopY?.value ?? 0) }],
+      }),
+      [backdropSheetTopY]
+    );
 
-    return isFocused && backdropDimProgress ? (
+    return isFocused && backdropDimProgress && backdropSheetTopY ? (
       <Reanimated.View
         pointerEvents="none"
-        style={[styles.rootBackdropScrim, rootBackdropAnimatedStyle]}
-      />
+        style={[styles.rootBackdropScrimLayer, rootBackdropAnimatedStyle]}
+      >
+        <Reanimated.View style={[styles.rootBackdropStrip, backdropStripAnimatedStyle]} />
+        <Reanimated.View style={[styles.rootBackdropCorners, backdropCornersAnimatedStyle]}>
+          <BackdropInverseCorner mirrored={false} />
+          <BackdropInverseCorner mirrored />
+        </Reanimated.View>
+      </Reanimated.View>
     ) : null;
   }
 );
@@ -232,10 +274,27 @@ export const SearchOverlayShellHost = React.memo(
 );
 
 const styles = StyleSheet.create({
-  rootBackdropScrim: {
+  rootBackdropScrimLayer: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#000000',
     zIndex: OVERLAY_BACKDROP_SCRIM_ZINDEX,
     elevation: OVERLAY_BACKDROP_SCRIM_ZINDEX,
+  },
+  rootBackdropStrip: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#000000',
+  },
+  rootBackdropCorners: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  backdropCornerMirrored: {
+    transform: [{ scaleX: -1 }],
   },
 });

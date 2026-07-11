@@ -8,6 +8,7 @@ export type SearchOverlayShellHostSnapshot = {
   isFocused: boolean;
   statusBarFadeHeight: number | null;
   backdropDimProgress: SharedValue<number> | null;
+  backdropSheetTopY: SharedValue<number> | null;
   bottomNavVisualInputs: SearchBottomNavVisualInputs;
   rankAndScoreModalLayer: SearchAppShellRankAndScoreModalLayerModel | null;
   priceModalLayer: SearchAppShellPriceModalLayerModel | null;

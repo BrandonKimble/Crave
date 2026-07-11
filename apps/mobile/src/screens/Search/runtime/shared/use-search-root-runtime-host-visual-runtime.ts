@@ -24,6 +24,7 @@ export const useSearchRootRuntimeHostVisualRuntime = ({
   overlayHostVisualRuntime: {
     statusBarFadeHeight: foregroundVisualRuntime.statusBarFadeHeight,
     overlayBackdropDimProgress: appRouteSceneChromeMotionRuntime.overlayBackdropDimProgress,
+    overlayBackdropSheetTopY: appRouteSceneChromeMotionRuntime.overlayBackdropSheetTopY,
     bottomNavMotionRuntime: foregroundVisualRuntime.bottomNavMotionRuntime,
     shouldHideBottomNavForRender: foregroundVisualRuntime.shouldHideBottomNavForRender,
     shouldMountSearchShortcuts: foregroundVisualRuntime.shouldMountSearchShortcuts,

@@ -20,7 +20,7 @@ export type SearchRootOverlayHostVisualRuntime = Pick<
   | 'searchShortcutChipAnimatedStyle'
   | 'searchShortcutContentAnimatedStyle'
 > &
-  Pick<AppRouteSceneChromeMotionRuntime, 'overlayBackdropDimProgress'>;
+  Pick<AppRouteSceneChromeMotionRuntime, 'overlayBackdropDimProgress' | 'overlayBackdropSheetTopY'>;
 
 export type SearchRootSearchSceneVisualRuntime = Pick<
   SearchForegroundVisualRuntime,

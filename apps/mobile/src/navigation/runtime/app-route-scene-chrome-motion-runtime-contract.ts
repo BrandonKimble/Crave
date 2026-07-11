@@ -6,6 +6,7 @@ export type AppRouteSceneChromeMotionRuntime = {
   overlayChromeTransitionProgress: SharedValue<number>;
   overlayChromeVisibilityProgress: SharedValue<number>;
   overlayBackdropDimProgress: SharedValue<number>;
+  overlayBackdropSheetTopY: SharedValue<number>;
   routeChromeMotionProgress: SharedValue<number>;
   searchBarInputAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   searchChromeOpacity: SharedValue<number>;

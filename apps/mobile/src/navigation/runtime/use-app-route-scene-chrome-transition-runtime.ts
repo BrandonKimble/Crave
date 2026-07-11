@@ -118,6 +118,7 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
   const overlayChromeTransitionProgress = useSharedValue(1);
   const overlayChromeVisibilityProgress = useSharedValue(1);
   const overlayBackdropDimProgress = useSharedValue(0);
+  const overlayBackdropSheetTopY = useSharedValue(0);
   const routeChromeMotionProgress = useSharedValue(0);
   const { searchChromeTransitionProgress: baseSearchChromeTransitionProgress } =
     useAppRouteSceneChromeSheetProgressRuntime({
@@ -142,6 +143,14 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
     [overlayBackdropDimProgress, baseSearchChromeTransitionProgress]
   );
 
+  useAnimatedReaction(
+    () => sheetTranslateY.value,
+    (next) => {
+      overlayBackdropSheetTopY.value = next;
+    },
+    [overlayBackdropSheetTopY, sheetTranslateY]
+  );
+
   const {
     searchChromeOpacity,
     searchChromeScale,
@@ -162,6 +171,7 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
       overlayChromeVisibilityProgress,
       overlayBackdropDimProgress,
       routeChromeMotionProgress,
+      overlayBackdropSheetTopY,
       searchChromeOpacity,
       searchChromeScale,
       searchChromeTranslateY,
@@ -173,6 +183,7 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
       overlayChromeVisibilityProgress,
       overlayHeaderActionProgress,
       routeChromeMotionProgress,
+      overlayBackdropSheetTopY,
       searchBarInputAnimatedStyle,
       searchChromeOpacity,
       searchChromeScale,

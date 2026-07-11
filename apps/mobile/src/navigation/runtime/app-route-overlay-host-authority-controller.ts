@@ -79,6 +79,7 @@ const EMPTY_SEARCH_OVERLAY_SHELL_SNAPSHOT: SearchOverlayShellHostSnapshot = {
   isFocused: false,
   statusBarFadeHeight: null,
   backdropDimProgress: null,
+  backdropSheetTopY: null,
   bottomNavVisualInputs: null,
   rankAndScoreModalLayer: null,
   priceModalLayer: null,
