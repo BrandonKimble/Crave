@@ -460,3 +460,25 @@ Three laws, all foundation-level (ADDING_A_SCENE.md §5 records them):
    returns). Sim-verified: profile cutout live, flush seams, settings scroll
    clip + divider. OWNER EYE items in checklist §7.6 (incl. polls/restaurant
    frost-gap look change — FrostCutout wrap if wanted back).
+
+## Owner feedback round 2 (2026-07-11 evening)
+
+- Settings full-screen (y=0 + radius morph + header safe-area inset) was
+  BUILT then REVERTED same-day per owner — settings stays the W4 pinned
+  safe-area-top sheet, snap-locked. Do not rebuild without a fresh ask.
+- profile→settings JERK root-caused + fixed: motion command vs shell
+  config were non-atomic (command resolved against the outgoing scene's
+  snaps; settings shell synced ~50ms later). Motion executor now stamps
+  the target scene's shell snap points onto the command (atomic commit);
+  snap execution prefers command-carried points.
+- FrostCutout drift fixed (re-measure sweep on content re-layout — RN
+  onLayout misses position-only shifts).
+- SCROLLABLE-BY-DEFAULT law: every page scrolls even when short;
+  direction-gated bounce preserves the top-edge handoff contract.
+- Native-divider sweep: dead headerDivider style/prop deleted; only the
+  scroll-fade primitive may appear under a header. All row-separator
+  borders audited = legitimate, untouched.
+- NOTE: profile TAB (Created/Contributed/Favorites segments) vs
+  userProfile CHILD page (Polls/Comments/Lists/Photos sections) are two
+  different pages by design — owner flagged the inconsistency; unifying
+  the root profile onto the 4-section shape is an OWNER CALL, recorded.
