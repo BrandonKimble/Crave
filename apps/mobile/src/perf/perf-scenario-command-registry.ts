@@ -45,6 +45,9 @@ type PerfScenarioCommandRegistrySnapshot = {
   openOverlayScene:
     | ((input: { scene: string; routeParam?: string | null; label?: string | null }) => boolean)
     | null;
+  // Verification harness: push a CHILD scene into the CURRENT context — mirrors
+  // pushRoute with zero choreography (the from-anywhere probe verb).
+  pushChildScene: ((input: { scene: string; params: Record<string, unknown> }) => boolean) | null;
   // Verification harness: deterministic results-list scroll (Maestro swipes are consumed by the
   // sheet's gesture handoff and cannot reliably reach the list bottom).
   scrollResults: ((input: { offsetY: number; animated?: boolean | null }) => boolean) | null;
@@ -59,6 +62,7 @@ const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
   toggleTab: null,
   setScaleProbeMarkers: null,
   openOverlayScene: null,
+  pushChildScene: null,
   scrollResults: null,
 };
 
@@ -100,6 +104,9 @@ export type PerfScenarioCommandRegistration = {
     routeParam?: string | null;
     label?: string | null;
   }) => boolean;
+  /** Push a CHILD scene into the CURRENT context — mirrors pushRoute with
+   *  zero choreography (the from-anywhere probe verb; params via JSON). */
+  pushChildScene?: (input: { scene: string; params: Record<string, unknown> }) => boolean;
   scrollResults?: (input: { offsetY: number; animated?: boolean | null }) => boolean;
 };
 
@@ -112,6 +119,7 @@ export const registerPerfScenarioCommands = ({
   toggleTab,
   setScaleProbeMarkers,
   openOverlayScene,
+  pushChildScene,
   scrollResults,
 }: PerfScenarioCommandRegistration): (() => void) => {
   if (closeResults) {
@@ -137,6 +145,9 @@ export const registerPerfScenarioCommands = ({
   }
   if (openOverlayScene) {
     commandRegistry.openOverlayScene = openOverlayScene;
+  }
+  if (pushChildScene) {
+    commandRegistry.pushChildScene = pushChildScene;
   }
   if (scrollResults) {
     commandRegistry.scrollResults = scrollResults;
@@ -173,6 +184,9 @@ export const registerPerfScenarioCommands = ({
     if (openOverlayScene && commandRegistry.openOverlayScene === openOverlayScene) {
       commandRegistry.openOverlayScene = null;
     }
+    if (pushChildScene && commandRegistry.pushChildScene === pushChildScene) {
+      commandRegistry.pushChildScene = null;
+    }
     if (scrollResults && commandRegistry.scrollResults === scrollResults) {
       commandRegistry.scrollResults = null;
     }
@@ -188,5 +202,6 @@ export const readPerfScenarioCommandRegistry = (): PerfScenarioCommandRegistrySn
   toggleTab: commandRegistry.toggleTab,
   setScaleProbeMarkers: commandRegistry.setScaleProbeMarkers,
   openOverlayScene: commandRegistry.openOverlayScene,
+  pushChildScene: commandRegistry.pushChildScene,
   scrollResults: commandRegistry.scrollResults,
 });

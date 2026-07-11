@@ -84,6 +84,27 @@ export const usePerfScenarioOverlaySceneCommand = ({
       }
     };
 
-    return registerPerfScenarioCommands({ openOverlayScene });
+    // The from-anywhere probe: push a CHILD scene into whatever context is
+    // presented RIGHT NOW — a faithful pushRoute mirror, zero choreography.
+    //   crave://perf-scenario-command?action=push_child_scene&scene=pollDetail
+    //     &routeParamsJson={"pollId":"..."}
+    const pushChildScene = ({
+      scene,
+      params,
+    }: {
+      scene: string;
+      params: Record<string, unknown>;
+    }): boolean => {
+      if (!isSwitchableOverlaySceneKey(scene)) {
+        return false;
+      }
+      if (APP_OVERLAY_ROUTE_METADATA_BY_KEY[scene].role !== 'child') {
+        return false;
+      }
+      command.pushRoute(scene as never, params as never);
+      return true;
+    };
+
+    return registerPerfScenarioCommands({ openOverlayScene, pushChildScene });
   }, [routeSceneRuntime]);
 };

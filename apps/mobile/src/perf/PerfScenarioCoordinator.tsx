@@ -692,6 +692,33 @@ export const PerfScenarioCoordinator: React.FC = () => {
       });
       return;
     }
+    if (event.action === 'push_child_scene') {
+      let parsedParams: Record<string, unknown> = {};
+      if (event.routeParamsJson) {
+        try {
+          parsedParams = JSON.parse(event.routeParamsJson) as Record<string, unknown>;
+        } catch {
+          logPayload({
+            event: 'perf_scenario_command_failed',
+            action: event.action,
+            reason: 'bad_routeParamsJson',
+            scene: event.scene,
+          });
+          return;
+        }
+      }
+      const accepted = Boolean(
+        registry.pushChildScene && event.scene
+          ? registry.pushChildScene({ scene: event.scene, params: parsedParams })
+          : false
+      );
+      logPayload({
+        event: accepted ? 'perf_scenario_command_executed' : 'perf_scenario_command_failed',
+        action: event.action,
+        scene: event.scene,
+      });
+      return;
+    }
     if (event.action === 'open_overlay_scene') {
       if (!registry.openOverlayScene || !event.scene) {
         logPayload({
