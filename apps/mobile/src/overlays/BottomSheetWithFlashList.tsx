@@ -295,7 +295,6 @@ const BottomSheetWithFlashList = <T,>({
                       style={flashListSurfaceStyle}
                       contentContainerStyle={listContentContainerStyle}
                       keyboardShouldPersistTaps={resolvedKeyboardShouldPersistTaps}
-                      scrollEnabled={scrollRuntime.shouldEnableScroll}
                       onScroll={scrollRuntime.primaryScrollViewOnScroll}
                       scrollEventThrottle={16}
                       onScrollBeginDrag={() => {
@@ -367,10 +366,7 @@ const BottomSheetWithFlashList = <T,>({
                       }
                       ItemSeparatorComponent={ItemSeparatorComponent}
                       keyboardShouldPersistTaps={resolvedKeyboardShouldPersistTaps}
-                      scrollEnabled={
-                        scrollRuntime.shouldEnableScroll &&
-                        (!shouldRenderDualLists || resolvedActiveList === 'primary')
-                      }
+                      scrollEnabled={!shouldRenderDualLists || resolvedActiveList === 'primary'}
                       renderScrollComponent={
                         !shouldRenderDualLists || resolvedActiveList === 'primary'
                           ? scrollRuntime.ScrollComponent
@@ -434,9 +430,7 @@ const BottomSheetWithFlashList = <T,>({
                         }
                         ItemSeparatorComponent={secondaryItemSeparatorComponent}
                         keyboardShouldPersistTaps={resolvedKeyboardShouldPersistTaps}
-                        scrollEnabled={
-                          scrollRuntime.shouldEnableScroll && resolvedActiveList === 'secondary'
-                        }
+                        scrollEnabled={resolvedActiveList === 'secondary'}
                         renderScrollComponent={
                           resolvedActiveList === 'secondary'
                             ? scrollRuntime.ScrollComponent

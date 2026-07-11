@@ -316,6 +316,7 @@ export class CollectionEvidenceService implements OnModuleInit {
     const horizonHours =
       Number.isFinite(parsedHorizon) && parsedHorizon > 0 ? parsedHorizon : 30;
     await this.reconcileStaleBatchJobs(horizonHours);
+    await this.compactSupersededRuns();
     const stale = await this.prismaService.$queryRaw<
       { extraction_run_id: string; collection_run_id: string | null }[]
     >(Prisma.sql`
@@ -348,6 +349,46 @@ export class CollectionEvidenceService implements OnModuleInit {
       count: stale.length,
       horizonHours,
     });
+  }
+
+  /**
+   * COMPACTION (owner decision 2026-07-11): superseded extraction evidence is
+   * a CACHE, not a record — every run stores its prompt (and git has every
+   * prompt version) and source documents are kept forever, so any past
+   * generation is reproducible by replay for pennies. Coherent rollback via
+   * pointers does not exist anyway (generations interleave per document), so
+   * standing history buys nothing. Evidence therefore stays exactly ONE
+   * generation deep: a terminal run that (a) no document points at as its
+   * active run and (b) no live batch job references is deleted, and the DB
+   * cascades take its inputs and event rows. Both predicates are structural
+   * safety, not policy — (b) is the same live-cover set the stale sweeps use,
+   * and prevents the delete-under-in-flight-ingest FK class. No retention
+   * window: replay covers forensics.
+   */
+  private async compactSupersededRuns(): Promise<void> {
+    const deleted = await this.prismaService.$executeRaw(Prisma.sql`
+      DELETE FROM collection_extraction_runs r
+      WHERE r.extraction_run_id IN (
+        SELECT r2.extraction_run_id
+        FROM collection_extraction_runs r2
+        WHERE r2.status IN ('completed', 'failed')
+          AND NOT EXISTS (
+            SELECT 1 FROM collection_source_documents d
+            WHERE d.active_extraction_run_id = r2.extraction_run_id
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM llm_batch_jobs j
+            WHERE j.status IN ('persisting', 'pending', 'submitting', 'submitted', 'succeeded', 'ingesting')
+              AND j.resume_context ->> 'extractionRunId' = r2.extraction_run_id::text
+          )
+        LIMIT 500
+      )
+    `);
+    if (deleted > 0) {
+      this.logger.info('Compacted superseded extraction runs', {
+        runsDeleted: deleted,
+      });
+    }
   }
 
   /**

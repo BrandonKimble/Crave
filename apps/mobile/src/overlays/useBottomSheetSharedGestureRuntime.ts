@@ -31,7 +31,6 @@ type GestureStateManagerLike = {
 
 type UseBottomSheetSharedGestureRuntimeArgs = {
   gestureEnabled: boolean;
-  shouldEnableScroll: boolean;
   preventSwipeDismiss: boolean;
   expandedSnap: number;
   middleSnap: number;
@@ -81,7 +80,6 @@ type UseBottomSheetSharedGestureRuntimeArgs = {
 
 export const useBottomSheetSharedGestureRuntime = ({
   gestureEnabled,
-  shouldEnableScroll,
   preventSwipeDismiss,
   expandedSnap,
   middleSnap,
@@ -507,35 +505,16 @@ export const useBottomSheetSharedGestureRuntime = ({
         }
       });
 
-    const nativeScrollGesture = Gesture.Native()
-      .enabled(shouldEnableScroll)
-      .requireExternalGestureToFail(expandPanGesture)
-      .simultaneousWithExternalGesture(collapsePanGesture);
-
-    // Second native scroll gesture for CO-MOUNTED dual lists (R2-C1 toggle-render eviction):
-    // one RNGH gesture instance can only be attached to ONE GestureDetector, so a surface that
-    // keeps two FlashLists mounted (active + hidden tab) needs a distinct gesture per scroll
-    // container. Identical relations to the primary; only the visible list receives touches.
-    const secondaryNativeScrollGesture = Gesture.Native()
-      .enabled(shouldEnableScroll)
-      .requireExternalGestureToFail(expandPanGesture)
-      .simultaneousWithExternalGesture(collapsePanGesture);
-
-    expandPanGesture.simultaneousWithExternalGesture(
-      nativeScrollGesture,
-      secondaryNativeScrollGesture
-    );
-    nativeScrollGesture.simultaneousWithExternalGesture(expandPanGesture);
-    secondaryNativeScrollGesture.simultaneousWithExternalGesture(expandPanGesture);
-    collapsePanGesture.simultaneousWithExternalGesture(
-      nativeScrollGesture,
-      secondaryNativeScrollGesture
-    );
-
+    // Native scroll gestures live PER CONTAINER INSTANCE now (BottomSheetScrollContainer mints
+    // its own Gesture.Native with requireExternalGestureToFail(expandPan) +
+    // simultaneousWithExternalGesture(collapsePan)). RNGH relation declarations are OR'd across
+    // the pair (GestureHandlerOrchestrator.kt:740; iOS delegate), so the pans declare NOTHING
+    // about scroll gestures here — any number of co-mounted scroll containers get correct
+    // arbitration without the old shared-instance one-detector landmine.
     return {
       sheet: Gesture.Simultaneous(expandPanGesture, collapsePanGesture, tapToMiddleGesture),
-      scroll: nativeScrollGesture,
-      scrollSecondary: secondaryNativeScrollGesture,
+      expandPan: expandPanGesture,
+      collapsePan: collapsePanGesture,
     };
   }, [
     collapsedSnap,
@@ -576,7 +555,6 @@ export const useBottomSheetSharedGestureRuntime = ({
     scrollOffset,
     scrollTopOffset,
     sheetY,
-    shouldEnableScroll,
     springId,
     springTargetY,
     startSpring,

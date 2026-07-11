@@ -1,8 +1,9 @@
 import React from 'react';
 import type { ScrollViewProps } from 'react-native';
 import { ScrollView, StyleSheet } from 'react-native';
-import { GestureDetector } from 'react-native-gesture-handler';
-import Animated from 'react-native-reanimated';
+import type { GestureType } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reanimated';
 
 import { useSceneFrostCutoutContentLayoutSignal } from './SceneBodyFoundationSurface';
 import { SHEET_BODY_NO_OVERSCROLL } from './sheetBodyScrollDefaults';
@@ -11,19 +12,60 @@ const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 const AnimatedNativeScrollView = AnimatedScrollView as unknown as React.ComponentType<
   ScrollViewProps & {
     ref?: React.Ref<ScrollView>;
+    animatedProps?: Partial<ScrollViewProps>;
   }
 >;
 
 type BottomSheetScrollContainerProps = ScrollViewProps & {
-  gesture: React.ComponentProps<typeof GestureDetector>['gesture'];
+  // The two shared sheet pans (expand = the universal arbiter the native scroll waits on;
+  // collapse = the simultaneous down-handoff pan). The container mints its OWN Gesture.Native
+  // per instance — RNGH binds a gesture to exactly one detector, and relation declarations are
+  // OR'd across the pair (verified: GestureHandlerOrchestrator.kt:740 + the iOS delegate), so
+  // native-side declarations suffice and any number of container instances can coexist.
+  expandPanGesture: GestureType;
+  collapsePanGesture: GestureType;
+  // UI-thread scrollEnabled authority (plans/sheet-scroll-primitive.md §3.1): the authority-synced
+  // SharedValue mirror of visible && listScrollEnabled && interactionEnabled. Driven via
+  // useAnimatedProps on THIS real ScrollView, so a child leg that first commits mid page-switch
+  // (transient false) heals the moment the runtime config syncs — no React re-render required.
+  shouldEnableScrollShared: SharedValue<boolean>;
   transparent?: boolean;
 };
 
 const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrollContainerProps>(
   (
-    { gesture, transparent = false, style, contentContainerStyle, onContentSizeChange, ...props },
+    {
+      expandPanGesture,
+      collapsePanGesture,
+      shouldEnableScrollShared,
+      transparent = false,
+      style,
+      contentContainerStyle,
+      onContentSizeChange,
+      // STRUCTURAL: strip any per-scene scrollEnabled/animatedProps so nothing can shadow the
+      // container's authorities (same law as SHEET_BODY_NO_OVERSCROLL below). scrollEnabled is
+      // owned by shouldEnableScrollShared — one writer per factor.
+      scrollEnabled: _ignoredScrollEnabled,
+      ...props
+    },
     ref
   ) => {
+    // Per-instance native scroll gesture. Always enabled: transition gating is scrollEnabled's
+    // job (the SV authority), not the gesture's — a baked .enabled(false) on a mount-stable
+    // component was one of the two frozen-scroll kill switches (plans/sheet-scroll-primitive.md §2).
+    const nativeScrollGesture = React.useMemo(
+      () =>
+        Gesture.Native()
+          .requireExternalGestureToFail(expandPanGesture)
+          .simultaneousWithExternalGesture(collapsePanGesture),
+      [collapsePanGesture, expandPanGesture]
+    );
+
+    const scrollEnabledAnimatedProps = useAnimatedProps(() => {
+      'worklet';
+      return { scrollEnabled: shouldEnableScrollShared.value };
+    }, [shouldEnableScrollShared]);
+
     // FrostCutout re-measure signal: content re-flow (a row above a cutout growing) changes the
     // content size without firing the cutout's own onLayout — this pings the scene's foundation
     // surface to sweep-re-measure its registered holes. No-op outside a foundation surface.
@@ -37,7 +79,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
     );
 
     return (
-      <GestureDetector gesture={gesture}>
+      <GestureDetector gesture={nativeScrollGesture}>
         <AnimatedNativeScrollView
           {...props}
           ref={ref}
@@ -49,12 +91,11 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
           // in lock-step with the content: the plate translates by -scrollOffset, which can never
           // go negative when the top is pinned, so the holes track their boxes exactly. Applied
           // AFTER the spread so no per-scene prop can silently re-enable bounce and break either.
-          // This is THE single source of truth for it. scrollEnabled stays whatever the caller
-          // passes (always-scrollable is decided upstream via shouldEnableScroll) — the pin is
-          // about over-scroll, not about whether the list scrolls.
+          // This is THE single source of truth for it.
           bounces={SHEET_BODY_NO_OVERSCROLL.bounces}
           alwaysBounceVertical={SHEET_BODY_NO_OVERSCROLL.alwaysBounceVertical}
           overScrollMode={SHEET_BODY_NO_OVERSCROLL.overScrollMode}
+          animatedProps={scrollEnabledAnimatedProps}
           onContentSizeChange={handleContentSizeChange}
           style={[style, transparent ? styles.transparentScrollView : null]}
           contentContainerStyle={[

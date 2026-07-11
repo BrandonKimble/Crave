@@ -398,7 +398,6 @@ export const useBottomSheetSharedRuntime = ({
 
   const gestures = useBottomSheetSharedGestureRuntime({
     gestureEnabled,
-    shouldEnableScroll,
     preventSwipeDismiss,
     expandedSnap,
     middleSnap,
@@ -441,8 +440,9 @@ export const useBottomSheetSharedRuntime = ({
     runtimeConfigValues,
   });
   const scrollContainerRuntime = useBottomSheetSharedScrollContainerRuntime({
-    gesturesScroll: gestures.scroll,
-    gesturesScrollSecondary: gestures.scrollSecondary,
+    expandPanGesture: gestures.expandPan,
+    collapsePanGesture: gestures.collapsePan,
+    shouldEnableScrollShared: runtimeConfigValues.shouldEnableScroll,
     scrollHeaderComponent,
   });
   const animatedSurfaceRuntime = useBottomSheetSharedAnimatedSurfaceRuntime({
@@ -459,12 +459,10 @@ export const useBottomSheetSharedRuntime = ({
     },
     scrollRuntime: {
       ScrollComponent: scrollContainerRuntime.ScrollComponent,
-      SecondaryScrollComponent: scrollContainerRuntime.SecondaryScrollComponent,
       shouldEnableScroll,
-      // UI-thread mirror of shouldEnableScroll (kept in sync above). Frame-drop fix: sinks drive
-      // the FlashList/ScrollView scrollEnabled off THIS SharedValue via useAnimatedProps, so a
-      // transient interactionEnabled toggle during a page switch no longer re-mints bodyScrollRuntime
-      // and re-renders the (heavy) list body. The JS `shouldEnableScroll` stays for legacy readers.
+      // UI-thread mirror of shouldEnableScroll. scrollEnabled is now applied INSIDE
+      // BottomSheetScrollContainer from this SharedValue (the single authority —
+      // plans/sheet-scroll-primitive.md §3.1); exposed here only for non-render readers.
       shouldEnableScrollShared: runtimeConfigValues.shouldEnableScroll,
       effectiveShowsVerticalScrollIndicator:
         publicationRuntime.effectiveShowsVerticalScrollIndicator,

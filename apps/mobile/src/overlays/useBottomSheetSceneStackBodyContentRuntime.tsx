@@ -305,7 +305,6 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
           style={sceneTransparentSurfaceStyle}
           contentContainerStyle={sceneListContentContainerStyle}
           keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
-          scrollEnabled={bodyScrollRuntime.shouldEnableScroll}
           onScroll={bodyScrollRuntime.primaryScrollViewOnScroll}
           scrollEventThrottle={16}
           onScrollBeginDrag={handleContentScrollBeginDrag}

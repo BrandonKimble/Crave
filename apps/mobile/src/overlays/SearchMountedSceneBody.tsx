@@ -333,13 +333,9 @@ const SearchMountedResultsListTarget = React.memo(
     const renderSceneScrollComponent = bodyScrollRuntime.ScrollComponent as NonNullable<
       FlashListProps<unknown>['renderScrollComponent']
     >;
-    // Distinct scroll container (own GestureDetector + native gesture) for the secondary list —
-    // attached PERMANENTLY so the toggle never changes the scroll-container component type
-    // (a renderScrollComponent type flip would remount the subtree and re-pay the card render).
-    const renderSecondarySceneScrollComponent =
-      bodyScrollRuntime.SecondaryScrollComponent as NonNullable<
-        FlashListProps<unknown>['renderScrollComponent']
-      >;
+    // Secondary list rides the SAME ScrollComponent type (container mints per-instance gestures
+    // now) — attached PERMANENTLY so the toggle never changes the scroll-container component type.
+    const renderSecondarySceneScrollComponent = renderSceneScrollComponent;
     if (__DEV__) {
       // [T1DBG] render-body mark: partitions the dark gap between store publish and projection
       console.log(`[T1DBG] bodyRender t=${performance.now().toFixed(1)}`);
@@ -661,7 +657,6 @@ const SearchMountedResultsListTarget = React.memo(
             ListEmptyComponent={primaryOwnsScroll ? sceneBodyContent.ListEmptyComponent : null}
             ItemSeparatorComponent={sceneBodyContent.ItemSeparatorComponent}
             keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
-            scrollEnabled={bodyScrollRuntime.shouldEnableScroll && primaryOwnsScroll}
             renderScrollComponent={renderSceneScrollComponent}
             onScroll={bodyScrollRuntime.primaryListOnScroll}
             onContentSizeChange={handlePrimaryContentSizeChange}
@@ -712,7 +707,6 @@ const SearchMountedResultsListTarget = React.memo(
                 sceneBodyContent.ItemSeparatorComponent
               }
               keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
-              scrollEnabled={bodyScrollRuntime.shouldEnableScroll && secondaryOwnsScroll}
               renderScrollComponent={renderSecondarySceneScrollComponent}
               onScroll={bodyScrollRuntime.secondaryListOnScroll}
               onContentSizeChange={handleSecondaryContentSizeChange}

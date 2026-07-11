@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import type { FlashListProps } from '@shopify/flash-list';
 import { FlashList } from '@shopify/flash-list';
-import Animated, { useAnimatedProps } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 import type {
   BottomSheetSceneStackBodyContentEntry,
@@ -36,9 +36,6 @@ const AnimatedFlashList = Animated.createAnimatedComponent(
 ) as unknown as React.ComponentType<
   FlashListProps<unknown> & {
     ref?: React.Ref<unknown>;
-    // Reanimated createAnimatedComponent adds animatedProps; the `as typeof FlashList` cast used to
-    // strip it. Frame-drop fix drives scrollEnabled through here.
-    animatedProps?: { scrollEnabled?: boolean };
   }
 >;
 
@@ -219,18 +216,13 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
     // re-rendered this heavy list body (~45ms, the biggest per-switch cost). Reading the SV via
     // useAnimatedProps keeps scrollEnabled reactive on the UI thread with NO render. ownsScroll is a
     // stable JS value (always true for single-list scenes like polls) captured in the worklet deps.
-    const primaryScrollEnabledAnimatedProps = useAnimatedProps(() => {
-      'worklet';
-      return {
-        scrollEnabled: bodyScrollRuntime.shouldEnableScrollShared.value && primaryOwnsScroll,
-      };
-    }, [bodyScrollRuntime.shouldEnableScrollShared, primaryOwnsScroll]);
-    const secondaryScrollEnabledAnimatedProps = useAnimatedProps(() => {
-      'worklet';
-      return {
-        scrollEnabled: bodyScrollRuntime.shouldEnableScrollShared.value && secondaryOwnsScroll,
-      };
-    }, [bodyScrollRuntime.shouldEnableScrollShared, secondaryOwnsScroll]);
+    // scrollEnabled: the container (BottomSheetScrollContainer) is the single authority — it
+    // drives the REAL ScrollView from the shouldEnableScrollShared SharedValue on the UI thread
+    // (plans/sheet-scroll-primitive.md §3.1). The old useAnimatedProps-on-FlashList machinery was
+    // provably dead: Reanimated targeted FlashList's root CompatView (a plain View) and baked the
+    // mount-time initial into the forwarded props — the frozen-scroll root cause. Only the OWNING
+    // list renders through the container; the non-owner keeps a static ownership scrollEnabled on
+    // FlashList's default scroller (and is pointerEvents-gated anyway).
     const [deferredSecondaryListContent, setDeferredSecondaryListContent] = React.useState<
       typeof sceneSecondaryList | null
     >(null);
@@ -451,7 +443,7 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
             ListEmptyComponent={primaryOwnsScroll ? sceneBodyContentSpec.ListEmptyComponent : null}
             ItemSeparatorComponent={sceneBodyContentSpec.ItemSeparatorComponent}
             keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
-            animatedProps={primaryScrollEnabledAnimatedProps}
+            scrollEnabled={primaryOwnsScroll}
             renderScrollComponent={primaryOwnsScroll ? renderSceneScrollComponent : undefined}
             onScroll={primaryOwnsScroll ? bodyScrollRuntime.primaryListOnScroll : undefined}
             scrollEventThrottle={primaryOwnsScroll ? 16 : undefined}
@@ -510,7 +502,7 @@ const ActiveBottomSheetSceneStackListBodySurface = React.memo(
                 sceneBodyContentSpec.ItemSeparatorComponent
               }
               keyboardShouldPersistTaps={sceneKeyboardShouldPersistTaps}
-              animatedProps={secondaryScrollEnabledAnimatedProps}
+              scrollEnabled={secondaryOwnsScroll}
               renderScrollComponent={secondaryOwnsScroll ? renderSceneScrollComponent : undefined}
               onScroll={secondaryOwnsScroll ? bodyScrollRuntime.secondaryListOnScroll : undefined}
               scrollEventThrottle={secondaryOwnsScroll ? 16 : undefined}

@@ -92,10 +92,12 @@ export type BottomSheetSharedRuntimeConfigSharedValues = {
 export type BottomSheetSharedGestureRuntime = {
   gestures: {
     sheet: ReturnType<typeof Gesture.Simultaneous>;
-    scroll: ReturnType<typeof Gesture.Native>;
-    // Distinct native gesture for the secondary co-mounted list's scroll container (a single
-    // RNGH gesture instance cannot be attached to two GestureDetectors).
-    scrollSecondary: ReturnType<typeof Gesture.Native>;
+    // The two pans, exposed so BottomSheetScrollContainer can mint a PER-INSTANCE native scroll
+    // gesture with native-side relations (requireExternalGestureToFail(expandPan) +
+    // simultaneousWithExternalGesture(collapsePan)) — RNGH OR's relation declarations across the
+    // pair, so any number of co-mounted scroll containers arbitrate correctly.
+    expandPan: ReturnType<typeof Gesture.Pan>;
+    collapsePan: ReturnType<typeof Gesture.Pan>;
   };
   touchBlockingEnabled: boolean;
   touchBlockingAuthority: BottomSheetSharedTouchBlockingAuthority;
@@ -103,12 +105,9 @@ export type BottomSheetSharedGestureRuntime = {
 
 export type BottomSheetSharedScrollRuntime = {
   ScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
-  // Scroll container for the secondary co-mounted list (own GestureDetector + gesture). Stable
-  // component TYPE so keeping both lists mounted never remounts either scroll subtree.
-  SecondaryScrollComponent: React.ComponentType<ScrollViewProps & React.RefAttributes<ScrollView>>;
   shouldEnableScroll: boolean;
-  // UI-thread mirror of shouldEnableScroll (frame-drop fix): sinks drive scrollEnabled off this SV
-  // via useAnimatedProps so a transient activation toggle doesn't re-render the heavy list body.
+  // UI-thread mirror of shouldEnableScroll. Applied to the REAL ScrollView inside
+  // BottomSheetScrollContainer (the single scrollEnabled authority); exposed for non-render readers.
   shouldEnableScrollShared: SharedValue<boolean>;
   effectiveShowsVerticalScrollIndicator: boolean;
   scrollHeaderHeight: number;
