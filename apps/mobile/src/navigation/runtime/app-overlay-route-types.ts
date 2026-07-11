@@ -481,9 +481,14 @@ export type OverlayRouteParamsMap = {
   userProfile?: {
     userId?: string | null;
   };
+  // W1 slice 4 (spec D.5 adjudication): the Desire-shaped list identity arm — listId is the
+  // identity (a concrete list id OR the virtual 'all:restaurants'/'all:dishes'); shareSlug is
+  // ACCESS MATERIAL (RT-18: the slug IS the capability — passed through to the server reads),
+  // never identity; targetUserId scopes the virtual All to another user's public lists.
   listDetail?: {
     listId?: string | null;
-    ownerUserId?: string | null;
+    shareSlug?: string | null;
+    targetUserId?: string | null;
   };
   followList?: {
     userId?: string | null;

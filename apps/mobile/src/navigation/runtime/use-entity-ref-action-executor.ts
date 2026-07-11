@@ -22,7 +22,12 @@ export const useEntityRefActionExecutor = (): ((ref: EntityRef) => void) => {
       // LaunchIntent vocabulary no longer duplicates EntityRefAction); pure-nav actions
       // push directly.
       if (action.kind === 'pushScene') {
-        pushRoute(action.scene, action.params);
+        // Narrow per scene so TS correlates each scene key with its params shape.
+        if (action.scene === 'listDetail') {
+          pushRoute('listDetail', action.params);
+        } else {
+          pushRoute('userProfile', action.params);
+        }
         return;
       }
       dispatchLaunchIntent({ type: 'entityAction', action });

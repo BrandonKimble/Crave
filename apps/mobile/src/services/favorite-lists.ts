@@ -31,8 +31,15 @@ export interface FavoriteListSummary {
   previewItems: FavoriteListPreviewItem[];
 }
 
+export type FavoriteListViewerRole = 'owner' | 'collaborator' | 'viewer';
+export type FavoriteListSort = 'custom' | 'best' | 'recent';
+
 export interface FavoriteListDetail {
   list: FavoriteListSummary;
+  /** RT-18/W1: resolved against owner/collaborator/slug-capability grants. */
+  viewerRole?: FavoriteListViewerRole;
+  /** §8.14: 'custom' iff a custom order exists — the saver's ranking is the default. */
+  defaultSort?: FavoriteListSort;
   restaurants?: RestaurantResult[];
   dishes?: FoodResult[];
 }
@@ -57,8 +64,11 @@ export const favoriteListsService = {
     );
     return response.data;
   },
-  async get(listId: string): Promise<FavoriteListDetail> {
-    const response = await api.get<FavoriteListDetail>(`/favorites/lists/${listId}`);
+  async get(listId: string, opts?: { shareSlug?: string | null }): Promise<FavoriteListDetail> {
+    // RT-18: a non-owner/non-collaborator read must PRESENT the slug (the capability).
+    const response = await api.get<FavoriteListDetail>(`/favorites/lists/${listId}`, {
+      params: opts?.shareSlug ? { shareSlug: opts.shareSlug } : undefined,
+    });
     return response.data;
   },
   // Hydrate a favorites list into a FULL SearchResponse (same shape a real
@@ -72,6 +82,12 @@ export const favoriteListsService = {
       openNow?: boolean;
       userLocation?: Coordinate;
       pagination?: { page?: number; pageSize?: number };
+      /** RT-18 slug-as-capability: shared reads present the slug. */
+      shareSlug?: string | null;
+      /** Row ordering (W1 §8.14). Omitted = the list's defaultSort. */
+      sort?: FavoriteListSort;
+      /** Virtual All ids only: whose public lists to union. */
+      targetUserId?: string | null;
     }
   ): Promise<SearchResponse> {
     const response = await api.post<SearchResponse>(`/favorites/lists/${listId}/results`, {
@@ -80,6 +96,9 @@ export const favoriteListsService = {
         ? { lat: opts.userLocation.lat, lng: opts.userLocation.lng }
         : undefined,
       pagination: opts?.pagination,
+      shareSlug: opts?.shareSlug ?? undefined,
+      sort: opts?.sort,
+      targetUserId: opts?.targetUserId ?? undefined,
     });
     return response.data;
   },

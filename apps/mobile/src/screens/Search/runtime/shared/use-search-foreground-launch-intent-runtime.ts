@@ -1,11 +1,11 @@
 import React from 'react';
 
 import { searchService } from '../../../../services/search';
-import { favoriteListsService } from '../../../../services/favorite-lists';
 import { SHORTCUT_QUERY_LABEL_BY_TAB } from './shortcut-toggle-display-query';
 import { logger } from '../../../../utils';
 
 import type { SearchForegroundLaunchIntentRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
+import { useAppOverlayRouteController } from '../../../../overlays/useAppOverlayRouteController';
 
 export const useSearchForegroundLaunchIntentRuntime = ({
   routeSearchCommandActions,
@@ -21,6 +21,8 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   pendingRestaurantSelectionRef,
   currentMarketKey,
 }: SearchForegroundLaunchIntentRuntimeArgs): void => {
+  // W1 slice 4: the sharedList intent is a plain child push now (listDetail owns the slug).
+  const { pushRoute } = useAppOverlayRouteController();
   React.useEffect(() => {
     if (activeMainIntent.type === 'none') {
       return;
@@ -75,26 +77,11 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       return;
     }
 
-    // S-E: /l/<shareSlug> — async resolution (getShared), then the SAME list world every
-    // list tap uses. Failure is logged loudly; the ListBody failure/empty presentation is
-    // the listDetail-era item (charter §5.6) — until then a dead slug lands you at home.
+    // S-E: /l/<shareSlug> → the listDetail child page (W1 slice 4). The SLUG is the RT-18
+    // capability, so it rides the entry params — the panel presents it on every server read
+    // and owns resolution + the failure/dead-slug ("this list is private") bodies (§5.6).
     if (activeMainIntent.type === 'sharedList') {
-      const shareSlug = activeMainIntent.shareSlug;
-      void favoriteListsService
-        .getShared(shareSlug)
-        .then((detail) => {
-          void launchFavoritesListResults({
-            listId: detail.list.listId,
-            listType: detail.list.listType,
-            submittedLabel: detail.list.name,
-          });
-        })
-        .catch((error) => {
-          logger.warn('Shared list link failed to resolve', {
-            shareSlug,
-            message: error instanceof Error ? error.message : 'unknown error',
-          });
-        });
+      pushRoute('listDetail', { shareSlug: activeMainIntent.shareSlug });
       consumeActiveMainIntent();
       return;
     }
@@ -229,6 +216,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     navigation,
     openRestaurantProfilePreview,
     pendingRestaurantSelectionRef,
+    pushRoute,
     routeSearchCommandActions,
     runRestaurantEntitySearch,
   ]);

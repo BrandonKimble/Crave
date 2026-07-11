@@ -40,9 +40,11 @@ export type EntityRefAction =
       label: string;
     }
   | { kind: 'pushScene'; scene: 'userProfile'; params: { userId: string } }
+  | { kind: 'pushScene'; scene: 'listDetail'; params: { listId: string } }
   | {
-      /** Favorites-as-search (§5.2): the list world. When the listDetail hybrid page lands
-       *  (trigger-nav verdict), this arm becomes its push — in ONE place. */
+      /** Favorites-as-search (§5.2): the list world. W1 slice 4 flipped the policy's list
+       *  arm to the listDetail push (the hybrid page); this action remains ONLY for the
+       *  /list/<id> desire-link lane (desire-url-codec) until that lane migrates. */
       kind: 'listWorld';
       listId: string;
       listType: 'restaurant' | 'dish';
@@ -65,11 +67,8 @@ export const resolveEntityRefAction = (ref: EntityRef): EntityRefAction => {
     case 'person':
       return { kind: 'pushScene', scene: 'userProfile', params: { userId: ref.entityId } };
     case 'list':
-      return {
-        kind: 'listWorld',
-        listId: ref.entityId,
-        listType: ref.listType ?? 'restaurant',
-        label: ref.label,
-      };
+      // W1 slice 4 (spec §A.3): the list tap IS the listDetail child push now — the ONE
+      // place the favorites-as-search arm was designed to flip. The panel owns data/failure.
+      return { kind: 'pushScene', scene: 'listDetail', params: { listId: ref.entityId } };
   }
 };

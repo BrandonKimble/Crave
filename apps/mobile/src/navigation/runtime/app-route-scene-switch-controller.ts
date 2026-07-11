@@ -36,6 +36,10 @@ import type {
 } from './app-route-scene-descriptor-contract';
 import type { AppRouteSceneSheetMotionTargetRegistry } from './app-route-scene-sheet-motion-target-registry';
 import {
+  notePremountPresentationAck,
+  notePremountPresentationFrame,
+} from './premount-violation-probe';
+import {
   resolveAppRouteSceneTransitionPlan,
   type AppRouteSceneTransitionPlan,
 } from './app-route-scene-transition-policy-runtime';
@@ -739,6 +743,8 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       return;
     }
     this.presentationAckSwitchIds.add(switchId);
+    // W1 slice 3 — [PREMOUNT] mirror: the ack IS the visibility flip instant.
+    notePremountPresentationAck(switchId);
   }
 
   public registerPresentationLaneInputs(
@@ -875,6 +881,12 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       next.switchId === this.presentationFrame.switchId
         ? { ...next, revision: this.presentationFrame.revision + 1 }
         : next;
+    // W1 slice 3 — [PREMOUNT] mirror: the probe tracks (switchId, presentedEntryId) so a
+    // child unit's first Fabric commit can be tested against the visibility flip.
+    notePremountPresentationFrame(
+      this.presentationFrame.switchId,
+      this.presentationFrame.presentedEntryId
+    );
     this.hasPendingPresentationFrameFlush = true;
   }
 
@@ -1332,6 +1344,8 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       // settle still forces the swap), so record the switch as landed — a LATER supersede then
       // resolves its outgoing to this frame's presented leg (R2 ack-conditional).
       this.presentationAckSwitchIds.add(nextState.transitionToken);
+      // W1 slice 3 — [PREMOUNT] mirror: an idle/settled commit counts as the flip (warm legs).
+      notePremountPresentationAck(nextState.transitionToken);
       this.prunePresentationAcks(nextState.transitionToken);
     }
     const nextMotionDispatchSnapshot = resolveRouteSceneSwitchMotionDispatchSnapshot(nextState);

@@ -161,7 +161,11 @@ export const serializeDesireLinkToPath = (
           return `/e/${action.entityType}/${encodeSegment(action.entityId)}${label}`;
         }
         case 'pushScene':
-          return `/u/${encodeSegment(action.params.userId)}`;
+          // /u/<userId> for people; a listDetail push serializes on the codec's existing
+          // /list lane (W1 slice 4 flipped the tap policy, not the URL grammar).
+          return action.scene === 'userProfile'
+            ? `/u/${encodeSegment(action.params.userId)}`
+            : `/list/${encodeSegment(action.params.listId)}?type=restaurant`;
         case 'listWorld': {
           const title = action.label ? `&title=${encodeURIComponent(action.label)}` : '';
           return `/list/${encodeSegment(action.listId)}?type=${action.listType}${title}`;

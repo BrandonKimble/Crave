@@ -12,6 +12,7 @@ import { UserProfilePanelBody } from './UserProfilePanel';
 import { FollowListPanelBody } from './FollowListPanel';
 import { NotificationsPanelBody } from './NotificationsPanel';
 import { EditProfilePanelBody } from './EditProfilePanel';
+import { ListDetailPanelBody } from './ListDetailPanel';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 
 // ─── Stub-pass scenes (plans/page-registry.md §1) ────────────────────────────────────────────
@@ -195,7 +196,8 @@ registerStubHeader('settings');
 export const UserProfileMountedSceneBody = UserProfilePanelBody;
 export const FollowListMountedSceneBody = FollowListPanelBody;
 export const SettingsMountedSceneBody = SettingsSceneBody;
-export const ListDetailMountedSceneBody = createStubScene('listDetail');
+// listDetail is REAL now (W1 slice 4) — body + persistent header live in ListDetailPanel.
+export const ListDetailMountedSceneBody = ListDetailPanelBody;
 registerStubHeader('notifications');
 export const NotificationsMountedSceneBody = NotificationsPanelBody;
 registerStubHeader('editProfile');
