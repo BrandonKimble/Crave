@@ -702,3 +702,53 @@ shared modal. Poll modal set is now: pollInfo + duplicatePoll.
   leads and the utility anchor stays one glance away (Spotify doesn't
   lead profiles with "All songs"). Own home keeps All at the very top
   (working surface, unchanged).
+
+## 9. Registry v2 — FORMAL ROWS (2026-07-11, anchor session)
+
+Machine-checkable inventory of every surface §7/§8 added or changed. Roles
+use §1's vocabulary. NOTE the consolidation: the DYNAMIC SINGLE-PAGE
+decision (§7.2/§7.3) means restaurantGallery and userGallery are NOT
+scenes — they are segmented VIEWS inside the profile scenes. Scene count
+grows less than §6 predicted.
+
+### 9a. Scenes (new or role-changed)
+
+| key                   | role                                   | entry points                                                                                                       | notes                                                                                                                                                |
+| --------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| postPhotos            | child scene (funnel terminal)          | card "+" tile (own lists), restaurant-profile chip, restaurant Photos view add, own-profile Photos add, avatar N/A | THE post page (§7.4). Context (restaurant?, dish?) param; multi-restaurant sections from own-profile entry; Post → funnel collapses to trigger       |
+| cameraCapture         | full-screen (outside sheet system)     | the 2-option modal, everywhere                                                                                     | custom camera: snap/flip/flash/exit → retake/use-photo → returns to caller flow                                                                      |
+| dmSession             | child scene                            | Message button (other profile), inbox row, share-to-friend                                                         | back → trigger context; sheet fully extends on entry (§7.9)                                                                                          |
+| messagesInbox         | child scene (of own profile)           | own-profile header button                                                                                          | conversations list → dmSession                                                                                                                       |
+| settings              | child scene, FULL-SNAP EXCEPTION       | own-profile button                                                                                                 | extends past top snap, no grab handle, X close; root renders instantly (no skeleton)                                                                 |
+| listDetail            | child scene (exists as stub)           | favorites tiles, profile list tiles, /l/ slugs, share links                                                        | ONE component, TWO roles: owner/collaborator (edit toggle, add buttons, collaborator chip) vs viewer (sort incl. their-ranking + filters only) §8.14 |
+| restaurant            | EXISTING — becomes dynamic single page | unchanged                                                                                                          | 4 segmented views: Overview/Dishes/Discussions/Photos (§8.4); persistent header + action chip row                                                    |
+| userProfile / profile | EXISTING — becomes dynamic single page | unchanged (+ person rows, mentions, clusters)                                                                      | 4 sections: Polls/Comments/Lists/Photos (merge to Posts = open owner idea); Follow+Message pair on others'                                           |
+| pollDetail            | EXISTING — gains open-from-anywhere    | + restaurant-profile discussion cards, shares                                                                      | ⚠️ foundational flag: any-context origin with correct pop                                                                                            |
+
+### 9b. Modal-layer contents (ALL instances of the ONE OverlayModalSheet;
+
+scrollable variant ⚠️ required)
+
+photoSourcePicker (Take photo / Choose from library — THE standard first
+step, incl. avatar) · universalShare (§8.2: preview + context options +
+destinations; scrollable) · collaborators (add row + members; kick via
+swipe/ellipsis) · listTileActions (long-press: Pin/Share/Delete) ·
+friendClusterExpand (all participants, closeness-sorted; scrollable) ·
+reportContent (photo/comment reasons) · profileActions (other-profile
+ellipsis: block, report) · pollInfo · duplicatePoll · dishLinkPicker is
+NOT a modal (inline on postPhotos).
+
+### 9c. Deleted/retired by v2 decisions
+
+marketPicker (map-resolved market + display label) · axis-inference
+confirm chip · restaurantGallery + userGallery as scene keys (views now) ·
+list tags (schema column drop pending) · search-within-a-list · paywall
+contextual modal row (hard paywall shipped; freemium machinery dormant) ·
+shareConfig stub row FOLDS INTO universalShare + slug-as-capability
+(RT-18: rotation = revocation).
+
+### 9d. ⚠️ Foundational flags for the charter session (or W0 here, coordinated)
+
+1. settings "full" snap point (sheet past top snap, handle-less).
+2. Scrollable variant of the one global modal.
+3. pollDetail open-from-anywhere with correct origin pop.
