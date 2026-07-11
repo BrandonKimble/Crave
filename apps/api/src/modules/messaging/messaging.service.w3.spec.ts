@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { MessagingService } from './messaging.service';
+import { ClosenessService } from '../identity/closeness.service';
 import { UserBlockService } from '../identity/user-block.service';
 
 /**
@@ -73,6 +74,8 @@ function makePrisma() {
       count: jest.fn().mockResolvedValue(0),
     },
     userFollow: { findMany: jest.fn().mockResolvedValue([]) },
+    pollCommentLike: { findMany: jest.fn().mockResolvedValue([]) },
+    pollComment: { findMany: jest.fn().mockResolvedValue([]) },
     userBlock: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
@@ -90,7 +93,8 @@ function makePrisma() {
 function makeService(prisma: any) {
   const blocks = new UserBlockService(prisma);
   const sharePackages = { resolve: jest.fn() } as any;
-  return new MessagingService(prisma, blocks, sharePackages);
+  const closeness = new ClosenessService(prisma);
+  return new MessagingService(prisma, blocks, sharePackages, closeness);
 }
 
 const textMessage = (over: Record<string, unknown> = {}) => ({
@@ -408,5 +412,59 @@ describe('shareFanOut (§3.2)', () => {
         error: 'CONVERSATION_FROZEN',
       },
     ]);
+  });
+});
+
+describe('shareTargets (universal share modal "Send to")', () => {
+  const FRIEND = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const BLOCKED = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+
+  const userRow = (userId: string) => ({
+    userId,
+    username: `u-${userId.slice(0, 4)}`,
+    displayName: null,
+    avatarUrl: null,
+  });
+
+  it('ranks mutual follows first and excludes blocked pairs', async () => {
+    const prisma = makePrisma();
+    // outbound follows (viewer → them): THEM (older), FRIEND (newer), BLOCKED
+    prisma.userFollow.findMany.mockImplementation(({ where }: any) => {
+      if (where.followerUserId === ME) {
+        return Promise.resolve([
+          { followingUserId: FRIEND, createdAt: new Date('2026-07-01') },
+          { followingUserId: THEM, createdAt: new Date('2026-06-01') },
+          { followingUserId: BLOCKED, createdAt: new Date('2026-07-02') },
+        ]);
+      }
+      if (where.followingUserId === ME) {
+        // THEM follows back → mutual; ClosenessService reads this same mock.
+        return Promise.resolve([{ followerUserId: THEM }]);
+      }
+      // ClosenessService outbound read ({ followerUserId: ME, followingUserId: { in } })
+      return Promise.resolve([]);
+    });
+    prisma.userBlock.findMany.mockResolvedValue([
+      { blockerUserId: ME, blockedUserId: BLOCKED },
+    ]);
+    prisma.user.findMany = jest
+      .fn()
+      .mockResolvedValue([userRow(THEM), userRow(FRIEND)]);
+
+    const service = makeService(prisma);
+    const { targets } = await service.shareTargets(ME);
+
+    // mutual (THEM) outranks one-way (FRIEND); BLOCKED never appears.
+    expect(targets.map((t) => t.userId)).toEqual([THEM, FRIEND]);
+    // blocked id never reaches the user hydration query
+    const inIds = (prisma.user.findMany as jest.Mock).mock.calls[0][0].where
+      .userId.in;
+    expect(inIds).not.toContain(BLOCKED);
+  });
+
+  it('returns empty with no follow graph', async () => {
+    const prisma = makePrisma();
+    const service = makeService(prisma);
+    await expect(service.shareTargets(ME)).resolves.toEqual({ targets: [] });
   });
 });

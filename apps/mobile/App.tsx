@@ -21,6 +21,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { RootNavigator } from './src/navigation';
 import { AppModalHost } from './src/components/AppModalHost';
+import { ShareModalHost } from './src/components/ShareModalHost';
 import {
   announceFailureIfOnline,
   wireFailureAnnouncerOfflineRead,
@@ -136,6 +137,7 @@ export default function App() {
                 </MainLaunchCoordinator>
               </AppRouteCoordinator>
             </AuthProvider>
+            <ShareModalHost />
             <AppModalHost />
             {__DEV__ ? <CutoutSkeletonDevPreview /> : null}
             <StatusBar style={isBannerVisible ? 'light' : 'auto'} />

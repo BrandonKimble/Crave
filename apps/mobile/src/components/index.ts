@@ -6,3 +6,5 @@ export * from './FilterChip';
 export * from './FrostedFilterStrip';
 export * from './app-modal-store';
 export * from './AppModalHost';
+export * from './share-modal-store';
+export * from './ShareModalHost';

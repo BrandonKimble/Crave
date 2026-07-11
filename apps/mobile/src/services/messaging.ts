@@ -44,6 +44,13 @@ export interface Conversation {
   frozen: boolean;
 }
 
+export interface ShareFanOutResult {
+  recipientUserId: string;
+  conversationId: string | null;
+  messageId: string | null;
+  error: 'CONVERSATION_FROZEN' | 'NOT_FOUND' | null;
+}
+
 export const messagingService = {
   async listConversations(
     filter: 'inbox' | 'requests' = 'inbox'
@@ -87,6 +94,22 @@ export const messagingService = {
     const response = await api.post<Conversation>(
       `/messaging/conversations/${conversationId}/accept`
     );
+    return response.data;
+  },
+  /** Ranked "Send to" candidates for the universal share modal (closeness order). */
+  async shareTargets(): Promise<{ targets: ConversationPeer[] }> {
+    const response = await api.get<{ targets: ConversationPeer[] }>('/messaging/share-targets');
+    return response.data;
+  },
+  /** Share-modal fan-out: get-or-create each conversation + send in one call.
+   *  Per-recipient errors come back honestly instead of failing the batch. */
+  async shareFanOut(payload: {
+    recipientUserIds: string[];
+    sharedEntityKind: SharedEntityKind;
+    sharedEntityId: string;
+    body?: string;
+  }): Promise<{ results: ShareFanOutResult[] }> {
+    const response = await api.post<{ results: ShareFanOutResult[] }>('/messaging/share', payload);
     return response.data;
   },
   async unreadCount(): Promise<{ total: number }> {

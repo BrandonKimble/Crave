@@ -1,13 +1,5 @@
 import React from 'react';
-import {
-  Dimensions,
-  Linking,
-  Pressable,
-  Share,
-  StyleSheet,
-  View,
-  type ViewStyle,
-} from 'react-native';
+import { Dimensions, Linking, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import {
   useSharedValue,
   type AnimatedStyle as ReanimatedAnimatedStyle,
@@ -16,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import type { OperatingStatus } from '@crave-search/shared';
 import { Text } from '../../components';
+import { showShareModal } from '../../components/share-modal-store';
 import { CardPhotoStrip } from '../../components/photos/CardPhotoStrip';
 import type { FoodResult } from '../../types';
 import type { RestaurantProfileSeed } from '../../navigation/runtime/app-route-profile-transition-state-contract';
@@ -728,7 +721,6 @@ const RestaurantPersistentHeaderAction = React.memo(() => {
   const data = headerState?.data ?? null;
   const restaurant = data?.restaurant ?? null;
   const isFavorite = data?.isFavorite ?? false;
-  const isLoading = data?.isLoading ?? false;
   const restaurantName = restaurant?.restaurantName ?? '';
   const restaurantId = restaurant?.restaurantId ?? '';
   const onToggleFavorite = headerState?.onToggleFavorite;
@@ -741,37 +733,14 @@ const RestaurantPersistentHeaderAction = React.memo(() => {
     onToggleFavorite?.(restaurantId);
   }, [onToggleFavorite, restaurantId]);
 
-  // Same primary-address coalesce the inline header shared with the panel body: displayLocation
-  // → seed address → first location candidate (dedupe keeps order, so [0] is source[0]) → the
-  // loading-aware fallback.
-  const firstLocationCandidate = React.useMemo<RestaurantPanelLocation | null>(() => {
-    if (!restaurant) {
-      return null;
+  // W3 universal share modal replaces the ad-hoc OS share sheet (the sheet is
+  // still reachable inside the modal as the "Share via…" row).
+  const handleShare = React.useCallback(() => {
+    if (!restaurantId) {
+      return;
     }
-    const source: RestaurantPanelLocation[] =
-      Array.isArray(restaurant.locations) && restaurant.locations.length > 0
-        ? restaurant.locations
-        : restaurant.displayLocation
-          ? [restaurant.displayLocation]
-          : [];
-    return source[0] ?? null;
-  }, [restaurant]);
-  const addressFallback = isLoading ? 'Loading details...' : 'Address unavailable';
-  const primaryAddress =
-    restaurant?.displayLocation?.address ??
-    restaurant?.address ??
-    firstLocationCandidate?.address ??
-    addressFallback;
-
-  const handleShare = React.useCallback(async () => {
-    try {
-      await Share.share({
-        message: `${restaurantName} · ${primaryAddress}`,
-      });
-    } catch (error) {
-      // no-op
-    }
-  }, [primaryAddress, restaurantName]);
+    showShareModal({ kind: 'restaurant', id: restaurantId, title: restaurantName });
+  }, [restaurantId, restaurantName]);
 
   const handleRequestClose = React.useCallback(() => {
     onRequestClose?.();
@@ -791,11 +760,7 @@ const RestaurantPersistentHeaderAction = React.memo(() => {
           {...(isFavorite ? { fill: '#ef4444' } : {})}
         />
       </Pressable>
-      <Pressable
-        onPress={() => void handleShare()}
-        style={styles.headerIconButton}
-        accessibilityLabel="Share"
-      >
+      <Pressable onPress={handleShare} style={styles.headerIconButton} accessibilityLabel="Share">
         <Feather name="share-2" size={18} color="#1f2937" />
       </Pressable>
       <OverlayHeaderActionButton

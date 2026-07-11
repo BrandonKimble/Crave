@@ -50,6 +50,13 @@ export class MessagingController {
     return this.messaging.unreadCount(user.userId);
   }
 
+  /** Ranked "Send to" candidates for the universal share modal (follow graph
+   *  both ways, blocked pairs excluded, ClosenessService order). */
+  @Get('share-targets')
+  shareTargets(@CurrentUser() user: User) {
+    return this.messaging.shareTargets(user.userId);
+  }
+
   @Post('share')
   share(@CurrentUser() user: User, @Body() dto: ShareFanOutDto) {
     return this.messaging.shareFanOut(user.userId, dto);

@@ -1,10 +1,11 @@
 import React from 'react';
-import { type LayoutChangeEvent, Pressable, Share, TouchableOpacity, View } from 'react-native';
+import { type LayoutChangeEvent, Pressable, TouchableOpacity, View } from 'react-native';
 
 import { Share as LucideShare, Heart as LucideHeart } from 'lucide-react-native';
 import { Store } from 'lucide-react-native';
 
 import { Text } from '../../../components';
+import { showShareModal } from '../../../components/share-modal-store';
 import { CardPhotoStrip } from '../../../components/photos/CardPhotoStrip';
 import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES } from '../../../constants/typography';
@@ -303,11 +304,14 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     hasStatus ? marketLabel : null
   );
 
+  // W3 universal share modal replaces the ad-hoc OS share sheet.
   const handleShare = React.useCallback(() => {
-    void Share.share({
-      message: `${restaurant.restaurantName} · View on Crave Search`,
-    }).catch(() => undefined);
-  }, [restaurant.restaurantName]);
+    showShareModal({
+      kind: 'restaurant',
+      id: restaurant.restaurantId,
+      title: restaurant.restaurantName,
+    });
+  }, [restaurant.restaurantId, restaurant.restaurantName]);
 
   const handleRestaurantInfoPress = React.useCallback(() => {
     openScoreInfo({

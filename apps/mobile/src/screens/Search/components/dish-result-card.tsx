@@ -1,10 +1,11 @@
 import React from 'react';
-import { Pressable, Share, TouchableOpacity, View } from 'react-native';
+import { Pressable, TouchableOpacity, View } from 'react-native';
 
 import { Share as LucideShare, Heart as LucideHeart } from 'lucide-react-native';
 import { HandPlatter } from 'lucide-react-native';
 
 import { Text } from '../../../components';
+import { showShareModal } from '../../../components/share-modal-store';
 import { CardPhotoStrip } from '../../../components/photos/CardPhotoStrip';
 import { colors as themeColors } from '../../../constants/theme';
 import { getPriceRangeLabel } from '../../../constants/pricing';
@@ -117,11 +118,10 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
       ? resolveMarketDisplayLabel(item.marketName, item.marketKey ?? null)
       : null;
 
+  // W3 universal share modal (dish share id = the food entityId).
   const handleShare = React.useCallback(() => {
-    void Share.share({
-      message: `${item.foodName} at ${item.restaurantName} · View on Crave Search`,
-    }).catch(() => undefined);
-  }, [item.foodName, item.restaurantName]);
+    showShareModal({ kind: 'dish', id: item.foodId, title: item.foodName });
+  }, [item.foodId, item.foodName]);
 
   const handleDishPress = React.useCallback(() => {
     if (!restaurantForDish) {

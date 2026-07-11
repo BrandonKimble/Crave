@@ -23,6 +23,7 @@ import Animated, {
 import { Text } from '../../components';
 import { CardPhotoStrip } from '../../components/photos/CardPhotoStrip';
 import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';
+import { showShareModal } from '../../components/share-modal-store';
 import {
   ReorderableRows,
   useIsScreenReaderEnabled,
@@ -199,6 +200,9 @@ type CollaboratorModalProps = {
   myUserId: string | null;
   inviteState: 'idle' | 'copied' | 'unavailable';
   onCopyInvite: () => void;
+  /** W3: opens the universal share modal for the list (NO join intent —
+   *  the invite row above keeps the ?join=1 collaborator semantics). */
+  onShareList: () => void;
   onOpenProfile: (userId: string) => void;
   onKick: (userId: string) => void;
   onLeave: () => void;
@@ -295,6 +299,7 @@ const CollaboratorModal = ({
   myUserId,
   inviteState,
   onCopyInvite,
+  onShareList,
   onOpenProfile,
   onKick,
   onLeave,
@@ -341,6 +346,29 @@ const CollaboratorModal = ({
         size={18}
         color={inviteState === 'copied' ? '#16a34a' : '#64748b'}
       />
+    </Pressable>
+    {/* Row 2 — Share list (W3 universal share modal, NO join intent). */}
+    <Pressable
+      onPress={onShareList}
+      accessibilityRole="button"
+      accessibilityLabel="Share list"
+      testID="collaborator-share-list"
+      style={styles.personRow}
+    >
+      <View style={styles.personRowMain}>
+        <View style={[styles.avatarCircle, styles.plusCircleLarge]}>
+          <Feather name="share-2" size={16} color="#0f172a" />
+        </View>
+        <View style={styles.personRowText}>
+          <Text variant="body" weight="semibold" style={styles.personName}>
+            Share list
+          </Text>
+          <Text variant="caption" style={styles.personBadge}>
+            Send in Crave or copy a view-only link
+          </Text>
+        </View>
+      </View>
+      <Feather name="share-2" size={18} color="#64748b" />
     </Pressable>
     <CollaboratorPersonRow
       person={roster.owner}
@@ -1267,6 +1295,21 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
           myUserId={meQuery.data?.userId ?? null}
           inviteState={inviteState}
           onCopyInvite={() => void handleCopyInvite()}
+          onShareList={() => {
+            if (resolvedListId == null) {
+              return;
+            }
+            setCollaboratorModalVisible(false);
+            setInviteState('idle');
+            showShareModal({
+              kind: 'list',
+              id: resolvedListId,
+              title: metaQuery.data?.list.name,
+              listShareSlug: metaQuery.data?.list.shareEnabled
+                ? (metaQuery.data.list.shareSlug ?? null)
+                : null,
+            });
+          }}
           onOpenProfile={handleOpenProfile}
           onKick={(userId) => void handleKick(userId)}
           onLeave={() => void handleLeave()}

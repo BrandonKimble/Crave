@@ -13,10 +13,12 @@ import {
   SharedEntityKind,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ClosenessService } from '../identity/closeness.service';
 import { UserBlockService } from '../identity/user-block.service';
 import { SharePackageResolverService } from './share-package-resolver.service';
 import {
   ConversationDto,
+  ConversationPeerDto,
   ListConversationsQueryDto,
   ListMessagesQueryDto,
   MessageDto,
@@ -27,6 +29,7 @@ import {
 const DEFAULT_CONVERSATION_PAGE = 20;
 const DEFAULT_MESSAGE_PAGE = 30;
 const UNREAD_DISPLAY_CAP = 100;
+const SHARE_TARGETS_CAP = 50;
 
 type ParticipantWithUser = ConversationParticipant & {
   user: {
@@ -58,6 +61,7 @@ export class MessagingService {
     private readonly prisma: PrismaService,
     private readonly blocks: UserBlockService,
     private readonly sharePackages: SharePackageResolverService,
+    private readonly closeness: ClosenessService,
   ) {}
 
   /** THE canonical pair key (design §2.1): uuid-string order, colon-joined. */
@@ -476,6 +480,59 @@ export class MessagingService {
       }
     }
     return { results };
+  }
+
+  /** W3 universal share modal "Send to" row: the viewer's follow graph
+   *  (both directions, deduped), blocked pairs excluded, ranked by
+   *  ClosenessService (its stable sort preserves the follow-recency
+   *  pre-order wherever closeness has no signal). */
+  async shareTargets(
+    viewerUserId: string,
+  ): Promise<{ targets: ConversationPeerDto[] }> {
+    const [outbound, inbound, blockedPeers] = await Promise.all([
+      this.prisma.userFollow.findMany({
+        where: { followerUserId: viewerUserId },
+        select: { followingUserId: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.userFollow.findMany({
+        where: { followingUserId: viewerUserId },
+        select: { followerUserId: true },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.blocks.blockedPeerIds(viewerUserId),
+    ]);
+
+    // Pre-order = follow recency, people I follow first (the fallback where
+    // closeness scores tie).
+    const ordered: string[] = [];
+    const seen = new Set<string>();
+    const push = (id: string) => {
+      if (!seen.has(id) && !blockedPeers.has(id) && id !== viewerUserId) {
+        seen.add(id);
+        ordered.push(id);
+      }
+    };
+    for (const f of outbound) push(f.followingUserId);
+    for (const f of inbound) push(f.followerUserId);
+    if (ordered.length === 0) {
+      return { targets: [] };
+    }
+
+    const ranked = (
+      await this.closeness.rankByCloseness(viewerUserId, ordered)
+    ).slice(0, SHARE_TARGETS_CAP);
+
+    const users = await this.prisma.user.findMany({
+      where: { userId: { in: ranked }, deletedAt: null },
+      ...this.peerSelect(),
+    });
+    const byId = new Map(users.map((u) => [u.userId, u]));
+    return {
+      targets: ranked
+        .map((id) => byId.get(id))
+        .filter((u): u is NonNullable<typeof u> => u != null),
+    };
   }
 
   // -------------------------------------------------------------- internals

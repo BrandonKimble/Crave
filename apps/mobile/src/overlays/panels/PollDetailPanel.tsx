@@ -27,7 +27,10 @@ import {
   X as LucideX,
 } from 'lucide-react-native';
 
+import { Feather } from '@expo/vector-icons';
 import { announceFailureIfOnline, showAppModal, Text } from '../../components';
+import { showShareModal } from '../../components/share-modal-store';
+import { useTopMostRouteEntryForScene } from '../../navigation/runtime/use-top-most-route-entry-for-scene';
 import { SceneLoadingSurface } from '../../components/skeletons';
 import { colors as themeColors } from '../../constants/theme';
 import { EntityLink } from '../../components/ui/EntityLink';
@@ -1314,19 +1317,37 @@ PollDetailPersistentHeaderTitle.displayName = 'PollDetailPersistentHeaderTitle';
 
 const PollDetailPersistentHeaderAction = React.memo(() => {
   const { closeActiveRoute } = useAppOverlayRouteController();
+  // W3 universal share modal: polls are a shareable kind (§9b). The presented
+  // poll's id rides the topmost pollDetail route entry.
+  const pollEntry = useTopMostRouteEntryForScene('pollDetail');
+  const pollId = pollEntry?.params?.pollId ?? null;
   return (
-    <Pressable
-      onPress={closeActiveRoute}
-      accessibilityRole="button"
-      accessibilityLabel="Close poll"
-      testID="poll-detail-close"
-      style={overlaySheetStyles.closeButton}
-      hitSlop={8}
-    >
-      <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
-        <LucideX size={20} color="#000000" strokeWidth={2.5} />
-      </View>
-    </Pressable>
+    <View style={styles.headerActionsRow}>
+      {pollId ? (
+        <Pressable
+          onPress={() => showShareModal({ kind: 'poll', id: pollId })}
+          accessibilityRole="button"
+          accessibilityLabel="Share poll"
+          testID="poll-detail-share"
+          style={styles.headerShareButton}
+          hitSlop={8}
+        >
+          <Feather name="share-2" size={18} color="#1f2937" />
+        </Pressable>
+      ) : null}
+      <Pressable
+        onPress={closeActiveRoute}
+        accessibilityRole="button"
+        accessibilityLabel="Close poll"
+        testID="poll-detail-close"
+        style={overlaySheetStyles.closeButton}
+        hitSlop={8}
+      >
+        <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
+          <LucideX size={20} color="#000000" strokeWidth={2.5} />
+        </View>
+      </Pressable>
+    </View>
   );
 });
 PollDetailPersistentHeaderAction.displayName = 'PollDetailPersistentHeaderAction';
@@ -1340,6 +1361,14 @@ const styles = StyleSheet.create({
   // The white body layer sits BELOW the header band so the header plate's grab-handle + close
   // cutouts see through to the shared frosty foundation (not white). The header plate's 3px
   // overlap covers the seam at the top. (Frost foundation → this white layer → thread content.)
+  headerActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  headerShareButton: {
+    padding: 6,
+  },
   sheetSurface: {
     position: 'absolute',
     top: OVERLAY_TAB_HEADER_HEIGHT,

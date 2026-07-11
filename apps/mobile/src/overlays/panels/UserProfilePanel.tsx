@@ -1,21 +1,15 @@
 import React from 'react';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import {
-  ActivityIndicator,
-  Clipboard,
-  Image,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { Feather } from '@expo/vector-icons';
 import { Text } from '../../components';
 import {
   announceFailureIfOnline,
   showAppModal,
   type AppModalAction,
 } from '../../components/app-modal-store';
+import { showShareModal } from '../../components/share-modal-store';
 import { usersService, type PublicUserProfile } from '../../services/users';
 import { messagingService } from '../../services/messaging';
 import {
@@ -26,7 +20,6 @@ import {
 } from '../../services/polls';
 import { favoriteListsService, type FavoriteListSummary } from '../../services/favorite-lists';
 import { favoriteListKeys } from '../../hooks/use-favorite-lists';
-import { serializeDesireLinkToPath } from '../../navigation/runtime/desire-url-codec';
 import { photosService, type FoodLogGroupDto } from '../../services/photos';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -41,9 +34,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 // carries a crude Block/Unblock row.
 
 const AVATAR_SIZE = 64;
-
-// Same share-link base the W1 collaborator modal uses (ListDetailPanel).
-const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
 
 type SectionKey = 'polls' | 'comments' | 'lists' | 'photos';
 
@@ -428,26 +418,16 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
     [invalidateListSurfaces, queryClient, userId]
   );
 
-  const handleShareList = React.useCallback(
-    async (list: FavoriteListSummary) => {
-      try {
-        // Same slug-link shape the W1 collaborator invite uses (minus the join
-        // intent): enable share on demand — this IS the owner's profile.
-        let slug = list.shareEnabled ? (list.shareSlug ?? null) : null;
-        if (slug == null) {
-          const enabled = await favoriteListsService.enableShare(list.listId);
-          slug = enabled.shareSlug;
-          invalidateListSurfaces();
-        }
-        Clipboard.setString(
-          `${SHARE_BASE_URL}${serializeDesireLinkToPath({ kind: 'sharedList', shareSlug: slug })}`
-        );
-      } catch {
-        announceFailureIfOnline();
-      }
-    },
-    [invalidateListSurfaces]
-  );
+  const handleShareList = React.useCallback((list: FavoriteListSummary) => {
+    // W3: the universal share modal owns list sharing (its copy-link row does
+    // the enableShare-on-demand this handler used to do inline).
+    showShareModal({
+      kind: 'list',
+      id: list.listId,
+      title: list.name,
+      listShareSlug: list.shareEnabled ? (list.shareSlug ?? null) : null,
+    });
+  }, []);
 
   const handleDeleteList = React.useCallback(
     (list: FavoriteListSummary) => {
@@ -490,9 +470,7 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
         {
           label: 'Share',
           testID: 'user-profile-list-share',
-          onPress: () => {
-            void handleShareList(list);
-          },
+          onPress: () => handleShareList(list),
         },
       ];
       // §8.7: the four system defaults are permanent — no Delete offered.
@@ -801,6 +779,17 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
             </Text>
           </Pressable>
         ) : null}
+        {/* W3 universal share modal — profiles are a shareable kind (§9b). */}
+        <Pressable
+          onPress={() => showShareModal({ kind: 'user_profile', id: profile.userId, title })}
+          accessibilityRole="button"
+          accessibilityLabel="Share profile"
+          testID="user-profile-share-button"
+          style={styles.shareIconButton}
+          hitSlop={8}
+        >
+          <Feather name="share-2" size={18} color="#1f2937" />
+        </Pressable>
       </View>
 
       <View style={styles.statsRow}>
@@ -932,6 +921,9 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 999,
     backgroundColor: '#0f172a',
+  },
+  shareIconButton: {
+    padding: 6,
   },
   messageButton: {
     paddingHorizontal: 14,
