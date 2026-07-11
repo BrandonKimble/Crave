@@ -102,16 +102,11 @@ Build shared types first:
 yarn workspace @crave-search/shared build
 ```
 
-Run the existing production-fidelity pipeline test:
+Seed a market from archives (THE seeding command — requires the API running; the
+app's poller owns the batch lifecycle):
 
 ```bash
-yarn workspace api ts-node test-pipeline.ts
-```
-
-Schedule archive collection manually:
-
-```bash
-yarn workspace api ts-node scripts/archive-collect.ts --subreddit austinfood --wait
+yarn workspace api ts-node scripts/seed-market.ts --subreddit austinfood
 ```
 
 ## Notes

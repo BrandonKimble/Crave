@@ -17,7 +17,7 @@ import {
  * ONE-COMMAND city onboarding. Provisions the regional market (TomTom county
  * polygons unioned in PostGIS), maps the subreddit collection community, and
  * chains the existing subreddit onboarding (Google viewport + volume jobs).
- * After this, loading the city = pointing archive-collect.ts at its archives.
+ * After this, loading the city = pointing seed-market.ts at its archives.
  *
  *   yarn ts-node scripts/onboard-market.ts --subreddit austinfood --city "Austin, TX"
  *
@@ -237,7 +237,7 @@ async function main(): Promise<void> {
     }
   }
   process.stdout.write(
-    `✅ ${options.city} onboarded. Next: archive-collect.ts --subreddit ${subreddits[0]} --batch-size 250\n`,
+    `✅ ${options.city} onboarded. Next: seed-market.ts --subreddit ${subreddits[0]} (requires the API running)\n`,
   );
 }
 

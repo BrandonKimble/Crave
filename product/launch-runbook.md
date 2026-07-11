@@ -45,7 +45,7 @@ Collect PRODUCTION credentials (dev keys stay local-only in `.env`, which is git
 - [ ] Throttler prod limits are automatic via NODE_ENV; Sentry: `SENTRY_ENVIRONMENT=production`,
       `SENTRY_TRACES_SAMPLE_RATE=0.1`.
 - [ ] **Flags: everything OFF for first boot** (they default off):
-      `COLLECTION_SCHEDULER_ENABLED=false`, `KEYWORD_SEARCH_ENABLED=false`,
+      `COLLECTION_SCHEDULER_ENABLED=false`,
       `LLM_BATCH_POLL_ENABLED=false`, `ENTITY_SIBLING_EDGES_REBUILD_ENABLED=false`,
       `ENTITY_EMBEDDING_RECONCILE_ENABLED=false`, `LOCATION_LIFECYCLE_CRON_ENABLED=false`,
       `SEARCH_DEMAND_AGGREGATE_REFRESH_ENABLED=false`. `COLLECTION_LLM_MODE=batch`.
@@ -76,9 +76,11 @@ Order matters:
 
 ## Phase 3 — The Austin data load
 
-Prereq: **batch INVALID_ARGUMENT fix landed and a batch slice is green** (the one open code
-thread; see memory). Then, from a machine with the pushshift archives
-(`PUSHSHIFT_LOCAL_ARCHIVE_PATH`) pointed at the PROD `DATABASE_URL`:
+Prereq: batch INVALID_ARGUMENT fix is landed (resolved 2026-07-06); confirm a batch slice is
+green. **The deployed API must be RUNNING during the load** — single-writer: the app's poller
+owns the batch lifecycle (submit/poll/ingest); seed-market only enqueues and observes. Then,
+from a machine with the pushshift archives (`PUSHSHIFT_LOCAL_ARCHIVE_PATH`) pointed at the
+PROD `DATABASE_URL`:
 
 1. Flip on the load-path flags: `LLM_BATCH_POLL_ENABLED=true`,
    `ENTITY_EMBEDDING_RECONCILE_ENABLED=true`.
@@ -104,8 +106,9 @@ FROM api_usage_ledger GROUP BY 1,2,3;` for spend.
 
 ## Phase 4 — Steady-state flags on
 
-- [ ] `COLLECTION_SCHEDULER_ENABLED=true`, `KEYWORD_SEARCH_ENABLED=true`
-      (+ `KEYWORD_SEARCH_INTERVAL_DAYS` at desired cadence) — ongoing collection, all batched.
+- [ ] `COLLECTION_SCHEDULER_ENABLED=true` — ongoing collection, all batched. (Cadence lives in
+      `collection_schedules` rows; `KEYWORD_SEARCH_ENABLED`/`KEYWORD_SEARCH_INTERVAL_DAYS` were
+      retired with the consolidated scheduler, 2026-07-08.)
 - [ ] `SEARCH_DEMAND_AGGREGATE_REFRESH_ENABLED=true`, `LOCATION_LIFECYCLE_CRON_ENABLED=true`.
 - [ ] Poll crons are always-on (scheduler/lifecycle/aggregation) — sanity-check the poll release
       schedule env (`POLL_RELEASE_DAY_OF_WEEK` etc.) fits launch timing.

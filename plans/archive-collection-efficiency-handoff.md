@@ -124,7 +124,7 @@ runs the whole extraction prompt → mentions persisted as evidence → projecti
   `PUSHSHIFT_QUALITY_MIN_SCORE`, `EXCLUDE_DELETED/REMOVED`, S3 vars).
 - Ingestion entry: `apps/api/src/modules/content-processing/reddit-collector/archive/archive-ingestion.service.ts`
   (`loadArchivePosts` currently loads the whole file — no date bound). Manual kick:
-  `yarn workspace api ts-node scripts/archive-collect.ts --subreddit austinfood --wait`.
+  `yarn workspace api ts-node scripts/seed-market.ts --subreddit austinfood` (archive-collect.ts deleted 2026-07-11; seed-market is THE seeding command and requires the API running).
 
 **The core inefficiency:** the model reads the full text of every comment just to
 decide (in Step 1) that most are ineligible. You pay premium extraction tokens to
