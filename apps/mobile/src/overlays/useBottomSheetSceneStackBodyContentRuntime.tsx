@@ -18,6 +18,8 @@ import {
   type SceneEntryMountUnit,
 } from '../navigation/runtime/app-route-scene-entry-mounts';
 import { getOverlayScrollOffset, setOverlayScrollOffset } from './overlayScrollOffsetRuntime';
+import { notePremountChildBodyFirstCommit } from '../navigation/runtime/premount-violation-probe';
+import { registerOverlaySceneScrollHandle } from './overlaySceneScrollHandleRegistry';
 import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
 import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneStackBodyActivityContext';
 
@@ -27,13 +29,41 @@ import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneSt
 // temporary [ENTRYMOUNT] probe the anchor's sim pass asserts on (removed after the probe).
 const sceneEntryMountHiddenStyle = { display: 'none' as const };
 
+// W1 slice 3 — the [PREMOUNT] first-commit sentinel: rendered INSIDE the boundary's subtree
+// (after the body), so its run-once layout effect fires in the same Fabric commit as the
+// unit's first build. The probe module tests that instant against the transition's
+// visibility flip (the C4 pre-mount law) — dev console + Release os_log when violated.
+const PremountFirstCommitSentinel = ({
+  sceneKey,
+  entryId,
+  unitKey,
+}: {
+  sceneKey: string;
+  entryId: string;
+  unitKey: string;
+}) => {
+  const hasCommittedRef = React.useRef(false);
+  React.useLayoutEffect(() => {
+    if (hasCommittedRef.current) {
+      return;
+    }
+    hasCommittedRef.current = true;
+    notePremountChildBodyFirstCommit({ sceneKey, entryId, unitKey });
+  });
+  return null;
+};
+
 const SceneEntryMountBoundary = React.memo(
   ({
     unitKey,
+    sceneKey,
+    entryId,
     isActiveUnit,
     children,
   }: {
     unitKey: string;
+    sceneKey: string;
+    entryId: string;
     isActiveUnit: boolean;
     children: React.ReactNode;
   }) => {
@@ -48,7 +78,12 @@ const SceneEntryMountBoundary = React.memo(
       }
       return undefined;
     }, [unitKey]);
-    return <View style={isActiveUnit ? null : sceneEntryMountHiddenStyle}>{children}</View>;
+    return (
+      <View style={isActiveUnit ? null : sceneEntryMountHiddenStyle}>
+        {children}
+        <PremountFirstCommitSentinel sceneKey={sceneKey} entryId={entryId} unitKey={unitKey} />
+      </View>
+    );
   }
 );
 SceneEntryMountBoundary.displayName = 'SceneEntryMountBoundary';
@@ -94,6 +129,25 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     sceneKey,
     contentReady: isActive && (hasActivatedExpandedContent || isSynchronousMountedContent),
   });
+  // Mounted-scroll scenes: publish a narrow imperative scroll handle (scrollTo + the
+  // live offset SharedValue) under the scene's lane, so in-scene features that must
+  // drive the shared scroll container (edit-mode drag-reorder edge auto-scroll,
+  // page-registry §8.14) have a seam without threading refs through transports.
+  const isMountedScrollScene =
+    sceneBodyContentEntry.bodyContentSpec.surfaceKind === 'mounted' &&
+    (sceneBodyContentEntry.bodyContentSpec.contentScrollMode ?? 'scroll') === 'scroll';
+  React.useEffect(() => {
+    if (!isMountedScrollScene) {
+      return undefined;
+    }
+    return registerOverlaySceneScrollHandle(sceneKey, {
+      scrollTo: (y, animated = false) => {
+        mountedScrollRestoreRef.current?.scrollTo({ y, animated });
+      },
+      scrollOffset: bodyScrollRuntime.scrollOffset,
+    });
+  }, [bodyScrollRuntime.scrollOffset, isMountedScrollScene, mountedScrollRestoreRef, sceneKey]);
+
   React.useLayoutEffect(() => {
     if (mountedEntryUnits == null) {
       return; // singleton (root) path — byte-identical behavior
@@ -160,6 +214,8 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
               <SceneEntryMountBoundary
                 key={unit.unitKey}
                 unitKey={unit.unitKey}
+                sceneKey={unit.sceneKey}
+                entryId={unit.entryId}
                 isActiveUnit={unit.entryId === activeEntryId}
               >
                 <BottomSheetSceneStackMountedBody

@@ -38,9 +38,14 @@ export const useAppOverlayRouteController = () => {
     appOverlayRouteController.collapseActiveSheet();
   }, [appOverlayRouteController]);
 
-  const promoteActiveSheet = React.useCallback(() => {
-    appOverlayRouteController.promoteActiveSheet();
-  }, [appOverlayRouteController]);
+  const promoteActiveSheet = React.useCallback(
+    // Forward the target snap (default stays 'middle'): edit mode (page-registry
+    // §8.11) auto-glides the sheet to the TOP snap via promoteAtLeast('expanded').
+    (args?: Parameters<typeof appOverlayRouteController.promoteActiveSheet>[0]) => {
+      appOverlayRouteController.promoteActiveSheet(args);
+    },
+    [appOverlayRouteController]
+  );
 
   const popToRootRoute = React.useCallback(() => {
     appOverlayRouteController.popToRootRoute();
