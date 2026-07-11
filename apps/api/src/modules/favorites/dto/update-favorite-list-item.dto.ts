@@ -1,6 +1,4 @@
 import {
-  ArrayMaxSize,
-  IsArray,
   IsInt,
   IsOptional,
   IsString,
@@ -21,12 +19,4 @@ export class UpdateFavoriteListItemDto {
   @IsString()
   @MaxLength(512)
   note?: string | null;
-
-  /** Toolkit: [] clears the tags. Normalized at write. */
-  @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(10)
-  @IsString({ each: true })
-  @MaxLength(40, { each: true })
-  tags?: string[];
 }

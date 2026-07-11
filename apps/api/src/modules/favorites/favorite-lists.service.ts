@@ -32,7 +32,6 @@ import { CreateFavoriteListDto } from './dto/create-favorite-list.dto';
 import { UpdateFavoriteListDto } from './dto/update-favorite-list.dto';
 import { AddFavoriteListItemDto } from './dto/add-favorite-list-item.dto';
 import { UpdateFavoriteListItemDto } from './dto/update-favorite-list-item.dto';
-import { normalizeTags } from './tag-normalizer';
 import { ShareFavoriteListDto } from './dto/share-favorite-list.dto';
 import { ListFavoriteListsDto } from './dto/list-favorite-lists.dto';
 import { FavoriteListResultsDto } from './dto/favorite-list-results.dto';
@@ -680,7 +679,6 @@ export class FavoriteListsService {
           restaurantId: dto.restaurantId ?? null,
           connectionId: dto.connectionId ?? null,
           note: dto.note?.slice(0, 512) ?? null,
-          tags: normalizeTags(dto.tags),
           position: dto.position ?? (maxPosition._max.position ?? 0) + 1,
         },
       });
@@ -721,11 +719,10 @@ export class FavoriteListsService {
       where: { itemId, listId },
       data: {
         ...(dto.position !== undefined ? { position: dto.position } : {}),
-        // Toolkit: explicit null clears the note; [] clears tags.
+        // Toolkit: explicit null clears the note.
         ...(dto.note !== undefined
           ? { note: dto.note?.slice(0, 512) ?? null }
           : {}),
-        ...(dto.tags !== undefined ? { tags: normalizeTags(dto.tags) } : {}),
       },
     });
     if (result.count === 0) {

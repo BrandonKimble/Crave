@@ -53,8 +53,12 @@ export const EditProfilePanelBody = React.memo(() => {
   }, [load]);
 
   // Debounced availability check while typing a username draft.
+  // Same normalization as onboarding + server (trim/lowercase/no spaces) so the
+  // dirty-compare and the availability check see what the server will store.
+  const usernameNormalized = usernameDraft.trim().toLowerCase().replace(/\s+/g, '');
+
   React.useEffect(() => {
-    const trimmed = usernameDraft.trim();
+    const trimmed = usernameNormalized;
     if (!trimmed || trimmed === currentUsername) {
       setAvailability(null);
       return;
@@ -75,11 +79,11 @@ export const EditProfilePanelBody = React.memo(() => {
         });
     }, 350);
     return () => clearTimeout(timer);
-  }, [currentUsername, usernameDraft]);
+  }, [currentUsername, usernameNormalized]);
 
   const displayNameDirty = displayName.trim() !== savedDisplayName;
   const usernameClaimable =
-    availability?.available === true && usernameDraft.trim() !== currentUsername;
+    availability?.available === true && usernameNormalized !== currentUsername;
   const canSave = !busy && (displayNameDirty || usernameClaimable);
 
   const handleSave = React.useCallback(() => {
@@ -96,8 +100,9 @@ export const EditProfilePanelBody = React.memo(() => {
     void (async () => {
       try {
         if (usernameClaimable) {
-          await usersService.claimUsername(usernameDraft.trim());
-          setCurrentUsername(usernameDraft.trim());
+          // Trust the server's normalized spelling, not the raw draft.
+          const claimed = await usersService.claimUsername(usernameNormalized);
+          setCurrentUsername(claimed.username);
           setAvailability(null);
         }
         if (displayNameDirty) {
@@ -111,7 +116,14 @@ export const EditProfilePanelBody = React.memo(() => {
         setBusy(false);
       }
     })();
-  }, [canSave, closeActiveRoute, displayName, displayNameDirty, usernameClaimable, usernameDraft]);
+  }, [
+    canSave,
+    closeActiveRoute,
+    displayName,
+    displayNameDirty,
+    usernameClaimable,
+    usernameNormalized,
+  ]);
 
   if (loadState.kind === 'loading') {
     return (

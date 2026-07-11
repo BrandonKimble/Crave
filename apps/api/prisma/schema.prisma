@@ -1196,8 +1196,6 @@ model FavoriteListItem {
   /// Save-funnel toolkit (product/favorites.md): the owner's personal note —
   /// what makes shared lists feel authored.
   note          String?      @db.VarChar(512)
-  /// Friction-free micro-notes; later become toggle-strip filters.
-  tags          String[]     @default([])
   position      Int          @default(0) @map("position")
   createdAt     DateTime     @default(now()) @map("created_at")
   updatedAt     DateTime     @updatedAt @map("updated_at")

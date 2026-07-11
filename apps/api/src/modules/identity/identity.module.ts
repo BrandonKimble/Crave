@@ -20,6 +20,7 @@ import { UserEventService } from './user-event.service';
 import { UsernameService } from './username.service';
 import { UserStatsService } from './user-stats.service';
 import { UserFollowService } from './user-follow.service';
+import { ClosenessService } from './closeness.service';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { UserFollowService } from './user-follow.service';
     UsernameService,
     UserStatsService,
     UserFollowService,
+    ClosenessService,
   ],
   exports: [
     ClerkAuthService,
@@ -55,6 +57,7 @@ import { UserFollowService } from './user-follow.service';
     UsernameService,
     UserStatsService,
     UserFollowService,
+    ClosenessService,
   ],
 })
 export class IdentityModule {}

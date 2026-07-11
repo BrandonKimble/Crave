@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ModerationService } from '../moderation/moderation.service';
 import { LoggerService } from '../../shared';
@@ -206,6 +207,25 @@ export class UsernameService {
     }
 
     const normalized = availability.normalized;
+    try {
+      await this.claimTransaction(userId, normalized);
+    } catch (error) {
+      // Race-safe claim: check-then-write can lose to a concurrent claimant;
+      // the citext unique on users.username is the real arbiter (P2002 → 400).
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new BadRequestException('Username unavailable: taken');
+      }
+      throw error;
+    }
+
+    this.logger.debug('Username claimed', { userId, username: normalized });
+    return { username: normalized };
+  }
+
+  private async claimTransaction(userId: string, normalized: string) {
     await this.prisma.$transaction(async (tx) => {
       await tx.user.update({
         where: { userId },
@@ -226,9 +246,6 @@ export class UsernameService {
         },
       });
     });
-
-    this.logger.debug('Username claimed', { userId, username: normalized });
-    return { username: normalized };
   }
 
   suggestUsernames(rawUsername: string): string[] {

@@ -5,6 +5,12 @@
   "compilerOptions": {
     "deleteOutDir": false,
     "tsConfigPath": "tsconfig.app.json",
-    "watchAssets": true
+    "watchAssets": true,
+    "assets": [
+      {
+        "include": "modules/external-integrations/llm/prompts/*.md",
+        "outDir": "dist"
+      }
+    ]
   }
 }
