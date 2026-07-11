@@ -22,6 +22,7 @@ import {
   EnrichedLLMOutputStructure,
   LLMModelInput,
   LLMMention,
+  LLMComment,
   LLMPost,
   LLMProcessingInput,
   LLMOutputStructure,
@@ -255,12 +256,17 @@ export class ExtractionPipelineService implements OnModuleInit {
         posts: params.llmPosts,
       });
 
-    // PRE-LLM DEDUPE GATE (duplication red-team 2026-07-11): skip posts whose
-    // every source is already covered by a completed same-contract extraction
-    // or an in-flight batch job — BEFORE chunking and BEFORE Gemini bills.
-    // 68%+29% of the stage-2 load's duplicate spend was exactly this class
-    // (seed re-launches re-submitting the whole plan). A post with ANY new
-    // source (comment growth) still reprocesses; the post-LLM mention dedupe
+    // PRE-LLM DEDUPE GATE (duplication red-team 2026-07-11; thread-level
+    // refinement same day): skip posts whose every source is already covered
+    // by a completed same-contract extraction or an in-flight batch job —
+    // BEFORE chunking and BEFORE Gemini bills. 68%+29% of the stage-2 load's
+    // duplicate spend was exactly this class (seed re-launches re-submitting
+    // the whole plan). Partially-covered posts are TRIMMED to thread level:
+    // only top-level threads containing an uncovered comment are resent
+    // (sibling threads are self-contained worlds — a new comment that needed
+    // their context would have been posted under them), with the post
+    // title/body riding along as context and extract_from_post=false when the
+    // post body itself is already covered. The post-LLM mention dedupe
     // remains the data-level guard.
     const currentPromptHash = createHash('sha256')
       .update(this.llmService.getSystemPrompt())
@@ -276,18 +282,29 @@ export class ExtractionPipelineService implements OnModuleInit {
         systemPromptHash: currentPromptHash,
         extractionSchemaVersion: 'v1',
       });
-    const uncoveredPosts = params.llmPosts.filter(
-      (post) =>
-        !coveredSourceIds.has(post.id) ||
-        post.comments.some((comment) => !coveredSourceIds.has(comment.id)),
+    const originalCommentCount = params.llmPosts.reduce(
+      (sum, post) => sum + post.comments.length,
+      0,
     );
+    const uncoveredPosts = params.llmPosts
+      .map((post) =>
+        this.rebuildPostForUncoveredThreads(post, coveredSourceIds),
+      )
+      .filter((post): post is LLMPost => post !== null);
     const skippedCount = params.llmPosts.length - uncoveredPosts.length;
-    if (skippedCount > 0) {
-      this.logger.info('Pre-LLM dedupe gate skipped covered posts', {
+    const keptCommentCount = uncoveredPosts.reduce(
+      (sum, post) => sum + post.comments.length,
+      0,
+    );
+    const trimmedCommentCount = originalCommentCount - keptCommentCount;
+    if (skippedCount > 0 || trimmedCommentCount > 0) {
+      this.logger.info('Pre-LLM dedupe gate skipped covered work', {
         pipeline: params.pipeline,
         community: params.community,
-        skipped: skippedCount,
-        remaining: uncoveredPosts.length,
+        skippedPosts: skippedCount,
+        trimmedCoveredComments: trimmedCommentCount,
+        remainingPosts: uncoveredPosts.length,
+        remainingComments: keptCommentCount,
       });
     }
     if (uncoveredPosts.length === 0) {
@@ -908,6 +925,65 @@ export class ExtractionPipelineService implements OnModuleInit {
       post_context: postContext,
       __sourceDocumentId: sourceDocumentId,
     } as EnrichedLLMMention;
+  }
+
+  /** THREAD-LEVEL DEDUPE REBUILD (2026-07-11). Given the covered-source set:
+   *  - fully covered post (post id + every comment) → null (drop entirely);
+   *  - fully uncovered post (nothing covered) → pass through unchanged;
+   *  - partially covered → keep ONLY the top-level threads (root comment +
+   *    all descendants via parent_id chains) containing at least one
+   *    uncovered comment. The post title/body always ride along as context
+   *    for the kept threads, but the post body is only RE-EXTRACTED when the
+   *    post id itself is uncovered: extract_from_post is set explicitly and
+   *    the chunker honors a pre-set false (its group-0 default only applies
+   *    when the pipeline didn't decide).
+   *  Sibling threads with no new comments are self-contained worlds — if a
+   *  new comment had needed their context it would have been posted under
+   *  them — so resending them is pure duplicate spend. Comments whose
+   *  parent chain doesn't resolve to another comment in the post (parent is
+   *  the post, null, or missing) are treated as thread roots themselves,
+   *  matching the chunker's top-level/orphan handling. */
+  private rebuildPostForUncoveredThreads(
+    post: LLMPost,
+    coveredSourceIds: Set<string>,
+  ): LLMPost | null {
+    const postCovered = coveredSourceIds.has(post.id);
+    const uncoveredComments = post.comments.filter(
+      (comment) => !coveredSourceIds.has(comment.id),
+    );
+    if (postCovered && uncoveredComments.length === 0) {
+      return null; // fully covered — drop
+    }
+    const anyCommentCovered = post.comments.length > uncoveredComments.length;
+    if (!postCovered && !anyCommentCovered) {
+      return post; // brand-new post — pass through unchanged
+    }
+
+    const commentById = new Map(
+      post.comments.map((comment) => [comment.id, comment]),
+    );
+    const threadRootOf = (comment: LLMComment): string => {
+      let current = comment;
+      const visited = new Set<string>([current.id]);
+      while (current.parent_id && commentById.has(current.parent_id)) {
+        const parent = commentById.get(current.parent_id)!;
+        if (visited.has(parent.id)) break; // defensive: cyclic parent_id
+        visited.add(parent.id);
+        current = parent;
+      }
+      return current.id;
+    };
+    const keptThreadRoots = new Set(
+      uncoveredComments.map((comment) => threadRootOf(comment)),
+    );
+    const keptComments = post.comments.filter((comment) =>
+      keptThreadRoots.has(threadRootOf(comment)),
+    );
+    return {
+      ...post,
+      comments: keptComments,
+      extract_from_post: !postCovered,
+    };
   }
 
   /** Everything in the batch was already extracted under the current

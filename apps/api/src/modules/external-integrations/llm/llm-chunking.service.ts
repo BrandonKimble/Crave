@@ -150,7 +150,10 @@ export class LLMChunkingService implements OnModuleInit {
           posts: [
             {
               id: post.id,
-              extract_from_post: true, // Always extract from posts that have no comments
+              // Extract from comment-less posts unless the caller pre-decided
+              // (thread-level dedupe sends an already-covered post body as
+              // context only, extract_from_post === false)
+              extract_from_post: post.extract_from_post !== false,
               title: post.title,
               content: post.content,
               subreddit: post.subreddit,
@@ -281,7 +284,11 @@ export class LLMChunkingService implements OnModuleInit {
       }
 
       groupedThreads.forEach((group, groupIndex) => {
-        const shouldExtractFromPost = groupIndex === 0;
+        // Group 0 carries post-body extraction by default, but a caller may
+        // pre-decide extract_from_post === false (thread-level dedupe: post
+        // body already covered, riding along as context only).
+        const shouldExtractFromPost =
+          groupIndex === 0 && post.extract_from_post !== false;
         const chunkPost = shouldExtractFromPost
           ? {
               id: post.id,
