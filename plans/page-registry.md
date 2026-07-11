@@ -583,3 +583,48 @@ filters gated) predates gate-everything: at launch every in-app user is
 entitled, so those gates are DORMANT freemium-pivot framing, not launch
 behavior. Keep the machinery mothballed; don't build per-feature gating
 into the new list surfaces.
+
+### 8.11 Edit mode — refined interaction spec (owner, 2026-07-11)
+
+Applies to BOTH the list home and list detail. The toggle strip IS the
+edit chrome:
+
+- Strip layout: sort toggle, Restaurants|Dishes, the rest. When the user
+  selects CUSTOM in the sort toggle, an EDIT toggle slides in smoothly
+  immediately LEFT of the sort toggle (auto-scroll the strip to reveal
+  it; implementation free to choose always-mounted-but-hidden vs
+  animated insert — the feel is what's specced).
+- Tapping Edit: the whole strip slides right out of view, revealing the
+  EDIT-MODE strip: Cancel (left) · Undo · Redo (middle) · Save (right).
+  Simultaneously the sheet auto-glides to the TOP snap if not there.
+  Getting these two animations right = the polish of the feature.
+- In edit mode: every row's ellipsis icon is replaced by a grab-handle
+  icon; rows reorder LIVE as you drag (items shuffle around the finger).
+  List scrolling still works; sheet swipe-down is disabled but
+  RUBBER-BANDS (resists with a bounce rather than dead-stopping).
+- Explicit commit: Save persists the new order; Cancel discards; Undo/
+  Redo step through moves.
+- ⚠️ OPEN interaction detail (assistant flag): "whole row = grab handle"
+  conflicts with list scrolling — both are vertical gestures, so
+  direction can't disambiguate. Options: (a) handle icon = instant drag,
+  row body = scroll (industry standard), (b) whole row lifts after a
+  short press-and-hold (~0.3s, iOS Reminders style), (c) both. Owner to
+  feel-test; recommendation = (c): handle drags instantly, row body
+  long-presses to lift, scroll everywhere else.
+- The accessibility non-drag path (move up/down/top) still ships.
+
+### 8.12 Profile Lists view + GPS flow — two calls
+
+- PROFILE LISTS (viewing someone's lists on their profile): NO toggle
+  strip (a lonely single toggle looks empty; a full strip is overkill
+  for casual browsing). Shape: OWNER-PINNED lists first (pinning = a new
+  small owner control, fits profile-as-curated-identity), then
+  chronological; each list tile carries a small Restaurants/Dishes badge
+  instead of a type toggle. Revisit a strip only if real volume proves
+  painful.
+- GPS-from-photo: PARKED. The locked profile add flow is
+  restaurant-first (search → pick → photos), so GPS grouping has no
+  moment. Recorded v2 shape if ever revived: a photos-first variant of
+  the profile entry where GPS pre-groups picks by suggested restaurant;
+  or a one-tap "looks like {nearby restaurant}?" prefill chip above the
+  search step. Not v1.
