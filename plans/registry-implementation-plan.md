@@ -218,3 +218,26 @@ before merge.
   the universal share modal in W3.
 - In flight: slices 3-4 (pre-mount + listDetail real body), slice 8a
   (drag machinery + home edit mode).
+- W1 closer LANDED (e57e7ea0): within-list edit (batch order PATCH w/
+  loud partial-render guard + favoriteListItemId row projection),
+  collaborator chip/modal/join (invite v1 = /l/<slug>?join=1, joinIntent
+  bijective in the codec), All tiles + honestly-disabled market chip (no
+  market data on favorites rows yet — W-later data slice).
+- Edit lock LANDED (UI-thread lock registry; gesture bound + release
+  destination both gated; inert when unset).
+- W1 SIM PASS (anchor, screenshots in session scratchpad): home
+  toggles/All tile/system defaults ✓; virtual All union + sort chips ✓;
+  listDetail sort strip + collaborator chip ✓; collaborator modal
+  (add-link row + owner row) ✓; edit morph [Cancel|Undo Redo|Save] +
+  one-column linearize + locked system rows w/ lock glyphs + handles ✓;
+  RUBBER-BAND LOCK holds under a hard swipe ✓. pollDetail-from-anywhere
+  - the 3-unit drill loop proven earlier in-wave.
+- OWNER FINGER-TEST items accumulated from W1 (for the final checklist):
+  the actual drag gesture (lift/shuffle/edge-autoscroll/save round-trip,
+  both surfaces); strip label truncation when Edit joins the row (labels
+  compress — should the strip scroll instead?); collaborator join
+  round-trip on a second account; 410-private body with a real dead
+  slug; the enter-edit glide grab (rubber-bands from expanded — expected
+  per design).
+- [ENTRYMOUNT]/[PREMOUNT] dev logs STAY until the W4 cleanup pass.
+- W1 CLOSED.
