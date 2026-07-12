@@ -116,7 +116,21 @@ container anyway).
 - Root cause + model: verified 2026-07-11 (this doc).
 - Phase A (authorities 1+2, channel deletions): BUILT + sim-verified,
   commit 369ba518.
-- Phase B v2 (commit 264ff380): the tug output is a BODY-LANE translate
+- Phase B v3 (commit c4d58a84) — THE ONE-VALUE FOLD (scroll-standard audit,
+  5-agent + adversarial verify): the scene scroll stream now has domain
+  [-tugRange, contentMax]; the pan writes the negative (rubber-band) region,
+  native scroll the positive. ALL consumers derive from it: body-lane
+  translate = min(offset,0); divider = abs(offset) via the canonical hook
+  (fades during tugs, every header); collapse gate blocks until the negative
+  region is repaid (down symmetry); zero-crossing handover exits tug mode at
+  the seam so collapsePan continues the same finger; touch-down mid-spring
+  cancels + re-anchors via inverseRubberBandDistance (d = rR/(C(R-r))).
+  Sim-verified on favorites: content-under-stationary-header tug, and a
+  down-drag that collapses with content riding rigidly (no double motion).
+  DEFERRED (Step 4 of the ruling): rehouse the ~6 parallel per-scene scroll
+  stores (offset registry, save/restore, content-fits metrics, scroll handles)
+  into one sceneScrollStateRegistry record — largest touch, lowest urgency.
+- Phase B v2 (commit 264ff380, superseded by v3): the tug output is a BODY-LANE translate
   (overlaySheetBodyTugOffsetValue applied to the page-frame body layer), NOT
   sheetY — lifting the sheet read as a grab (owner). Content + white plate +
   cutout holes all live inside the body lane and move as one; the white layer
