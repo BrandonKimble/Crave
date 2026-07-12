@@ -142,6 +142,20 @@ container anyway).
   RNGestureHandler.mm delegate), FlashList v2 CompatView root, Reanimated
   PropsFilter initial-spread.
 
+## v4 (commit c7a3ee87) — REGRESSION FIXED, sim-verified
+
+Executed the plan below. Root causes confirmed: (1) the v3 zero-crossing only
+cleared expandPanActive — the next touch-move re-activated the pan in
+sheet-drag mode while collapsePan drove sheetY (two writers = the jitter) and
+the unguarded onEnd double-fired springs; v4 marks the SAME handoff flags the
+up-handoff uses so the pan FAILS OUT (single owner per phase, the result-sheet
+shape). (2) The shared-stream echo (active-list mux / save-restore capture /
+surface listeners) suppressed the visual tug; the tug is a dedicated SV again,
+divider = max(scrollOffset, -tugOffset). Recording: one unbroken swipe from
+docked — sheet rides to expanded, same finger rubber-bands the content under
+the stationary header, springs back; down-drag collapses rigidly, zero jitter.
+The one-value stream still arrives with the sceneScrollStateRegistry rehousing.
+
 ## v3 REGRESSION (owner, 2026-07-11 late) — jitter + broken mid-gesture up-handoff
 
 v3's fold wrote the tug into the SHARED scrollOffset SV without auditing every
