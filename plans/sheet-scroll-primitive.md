@@ -142,7 +142,21 @@ container anyway).
   RNGestureHandler.mm delegate), FlashList v2 CompatView root, Reanimated
   PropsFilter initial-spread.
 
-## v4 (commit c7a3ee87) — REGRESSION FIXED, sim-verified
+## v5 (commit 6427788e) — THE STANDARD: every page IS a list; the tug is DELETED
+
+Owner's world model, implemented literally: the result sheet's handoff is
+already perfect; short pages just had nowhere to scroll. Fix: the container
+pads content to viewport + SHORT_PAGE_SCROLL_ROOM_PX (96) — a short page
+becomes a REAL list with real scroll room, and the ONE proven handoff covers
+every page identically (pan fails into native scroll mid-finger; divider on a
+real offset; scroll-to-top hands to collapse). ALL tug machinery deleted
+(-260 lines): pan branches, tug/fits SVs, metrics context, PageFrame
+translate, plate overdraw, inverse-rubber. The arbiter is back to the
+long-proven pre-tug shape. THE LAW for new sheets: render through
+ScrollComponent and you get scrollEnabled authority, per-instance handoff
+gestures, no-overscroll, scroll room, and the divider — zero wiring.
+
+## v4 (commit c7a3ee87) — superseded by v5 (the tug is gone)
 
 Executed the plan below. Root causes confirmed: (1) the v3 zero-crossing only
 cleared expandPanActive — the next touch-move re-activated the pan in
