@@ -1933,9 +1933,13 @@ class AppRouteSheetHostAuthorityController {
   };
 
   private readonly handleSheetSnapStart = (snap: OverlaySheetSnap): void => {
-    const resolvedSurfaceInput = this.getResolvedSurfaceInput();
     if (snap !== 'hidden') {
-      this.markSearchSurfaceSheetReadyForVisibleSnap(resolvedSurfaceInput);
+      // Transition-perf fence: a snap BEGINNING while a search redraw is live means the
+      // sheet is physically in motion — flip `sheetReady` to pending so the world-commit
+      // hold engages for exactly the motion window; recordSharedSheetSnap (settle)
+      // restores it. Marking READY here (the old behavior) let the hydration fan-out
+      // land mid-slide — the "two-frame" submit.
+      this.markSearchSurfaceSheetMotionPendingForVisibleSnap(this.getResolvedSurfaceInput());
       this.input.routeSharedSheetPresentationRuntime.recordSharedSheetSnap(snap);
     }
   };
@@ -1998,22 +2002,42 @@ class AppRouteSheetHostAuthorityController {
     }
   };
 
-  private markSearchSurfaceSheetReadyForVisibleSnap(
+  // Transition-perf fence: the sheet host is THE sheet-motion authority for the redraw
+  // `sheetReady` bit — snap START flips it pending, snap SETTLE restores it. Both sides
+  // key to a live search redraw transaction, so unrelated surfaces never touch it.
+  private resolveSearchSurfaceRedrawTransactionIdForVisibleSnap(
     resolvedSurfaceInput: AppRouteSheetHostResolvedSurfaceInput
-  ): void {
+  ): string | null {
     if (
       resolvedSurfaceInput.rootOverlayKey !== 'search' ||
       (resolvedSurfaceInput.activeSemanticOverlayKey !== 'search' &&
         resolvedSurfaceInput.activeSemanticOverlayKey !== 'restaurant')
     ) {
-      return;
+      return null;
     }
-    const searchSurfaceRuntime = getSearchSurfaceRuntime();
-    const transactionId = searchSurfaceRuntime.getActiveOrPendingRedrawTransactionId();
+    return getSearchSurfaceRuntime().getActiveOrPendingRedrawTransactionId();
+  }
+
+  private markSearchSurfaceSheetMotionPendingForVisibleSnap(
+    resolvedSurfaceInput: AppRouteSheetHostResolvedSurfaceInput
+  ): void {
+    const transactionId =
+      this.resolveSearchSurfaceRedrawTransactionIdForVisibleSnap(resolvedSurfaceInput);
     if (transactionId == null) {
       return;
     }
-    searchSurfaceRuntime.markRedrawSheetReady(transactionId);
+    getSearchSurfaceRuntime().markRedrawSheetMotionPending(transactionId);
+  }
+
+  private markSearchSurfaceSheetReadyForVisibleSnap(
+    resolvedSurfaceInput: AppRouteSheetHostResolvedSurfaceInput
+  ): void {
+    const transactionId =
+      this.resolveSearchSurfaceRedrawTransactionIdForVisibleSnap(resolvedSurfaceInput);
+    if (transactionId == null) {
+      return;
+    }
+    getSearchSurfaceRuntime().markRedrawSheetReady(transactionId);
   }
 
   private recordRouteSceneSnapFact(

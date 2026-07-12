@@ -9,6 +9,10 @@ import type { MapBounds } from '../../../../types';
 import { withSearchNavSwitchRuntimeAttribution } from '../../runtime/shared/search-nav-switch-runtime-attribution';
 import { resolvePresentationLanePolicy } from '../../runtime/shared/presentation-lane-policy';
 import { reportSearchFlowContractViolation } from '../../runtime/shared/search-flow-contracts';
+import {
+  notifySearchPresentationFloorLeft,
+  notifySearchPresentationFloorReached,
+} from '../../runtime/map/search-presentation-floor-signal';
 import { logger } from '../../../../utils';
 import {
   areSearchMapRenderPresentationStatesEqual,
@@ -761,7 +765,13 @@ const isNativeVisiblePresentationPhase = (
 ): boolean =>
   presentationPhase === 'entering' ||
   presentationPhase === 'exit_preroll' ||
-  presentationPhase === 'exiting';
+  presentationPhase === 'exiting' ||
+  // T3 (toggle-strip primitive): 'interaction' natively DRIVES opacity — it starts the
+  // press-up fade-out ramp. Suppressing a presentation-only interaction frame silently
+  // killed the entire toggle fade choreography (the level never reached native; the
+  // floor ack never came). Type-list disease: the phase vocabulary grew, this list
+  // didn't.
+  presentationPhase === 'interaction';
 
 const resolveNativeRenderOwnerFrameAdmission = ({
   hasPreviousDesiredFrame,
@@ -832,7 +842,12 @@ const resolveNativeRenderOwnerFrameAdmission = ({
   }
 
   const shouldProtectVisiblePresentationFrame =
-    presentationChanged && isNativeVisiblePresentationPhase(presentationPhase);
+    presentationChanged &&
+    (isNativeVisiblePresentationPhase(presentationPhase) ||
+      // The EXIT edge of an opacity-driving level matters as much as the entry: the
+      // interaction level returning to 'live' (failed/cancelled commit) is what makes
+      // native restore the map ramp — suppressing it strands the map dark.
+      previousPresentationPhase === 'interaction');
 
   if (
     hasPreviousDesiredFrame &&
@@ -1211,6 +1226,23 @@ const buildReplayJournalDelta = (
   if (replayJournals.length === 0) {
     return null;
   }
+  // CHAIN PROOF (2026-07-12, the "Source delta missing feature" native rejection): a
+  // replay is only valid if the journal chain is CONTIGUOUS from the acknowledged base
+  // AND terminates at the store's CURRENT revision. A gap (e.g. an un-journaled
+  // replace-mode commit mid-history) means the union of upserts misses features
+  // introduced inside the gap while `nextFeatureIdsInOrder` still lists them — native
+  // then rejects the whole frame. When the chain can't PROVE continuity, return null so
+  // the caller falls back to the always-correct full replace.
+  let expectedBaseRevision = baseSourceRevision;
+  for (const journal of replayJournals) {
+    if (journal.baseSourceRevision !== expectedBaseRevision) {
+      return null;
+    }
+    expectedBaseRevision = journal.sourceRevision;
+  }
+  if (expectedBaseRevision !== nextSourceStore.sourceRevision) {
+    return null;
+  }
   const removeIds = new Set<string>();
   const dirtyGroupIds = new Set<string>();
   const orderChangedGroupIds = new Set<string>();
@@ -1236,10 +1268,22 @@ const buildReplayJournalDelta = (
     }
   }
 
-  const upsertFeatures = [...upsertFeatureIds].flatMap((featureId) => {
+  const upsertFeatures: SearchMapSourceTransportFeature[] = [];
+  for (const featureId of upsertFeatureIds) {
     const transportFeature = nextSourceStore.transportFeatureById.get(featureId);
-    return transportFeature ? [transportFeature] : [];
-  });
+    if (transportFeature != null) {
+      upsertFeatures.push(transportFeature);
+      continue;
+    }
+    // A journaled upsert whose transport feature no longer resolves is only legal when
+    // the feature is GONE from the current order (removed later in the chain). If it is
+    // still listed, the patch would under-ship it and native would reject the whole
+    // frame ("Source delta missing feature") — the replay cannot prove completeness, so
+    // fall back to the always-correct full replace.
+    if (nextSourceStore.idsInOrder.includes(featureId)) {
+      return null;
+    }
+  }
 
   return {
     mode: 'patch',
@@ -2317,7 +2361,11 @@ const useSearchMapNativeRenderOwnerStatus = ({
               // dismiss ramp runs; the dismiss register persists to its floor ack) — logged
               // as a snapshot below, not a violation. snapshot_apply_during_dismiss stays a
               // violation: source data landing mid-dismiss means the enter didn't supersede.
-              if (event.reason === 'snapshot_apply_during_dismiss') {
+              if (
+                event.reason === 'snapshot_apply_during_dismiss' ||
+                event.reason === 'contract_violation_visibility_dorm_mid_ramp' ||
+                event.reason === 'contract_violation_reveal_completed_undecided'
+              ) {
                 reportSearchFlowContractViolation(event.reason, {
                   incomingRevealRequestKey: event.incomingRevealRequestKey,
                   incomingDismissRequestKey: event.incomingDismissRequestKey,
@@ -2360,9 +2408,15 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   nativeTimestampMs: event.nativeTimestampMs,
                 });
               }
+              // T3 (toggle-strip primitive): the floor ack is the LEVEL the gated toggle
+              // commit waits on — the swap lands exactly when the fade-out bottoms out.
+              notifySearchPresentationFloorReached();
               return;
             }
             if (event.type === 'presentation_enter_started') {
+              // T3: an enter ramp is leaving the floor — the floor level drops until the
+              // next fade-out ack.
+              notifySearchPresentationFloorLeft();
               const sourceCounts = withNativePresentationEventInnerSpan(
                 event,
                 'source_counts',
@@ -2919,9 +2973,31 @@ const useSearchMapNativeRenderOwnerSync = ({
             transportState,
             effectiveDesiredFrame.frameGenerationId
           );
+          if (message.includes('Source delta')) {
+            // BASELINE RESYNC (2026-07-12): a native delta rejection is PROOF the ack
+            // baseline no longer matches native's resident collection (and a partially
+            // applied multi-source frame advances native state even as the frame
+            // rejects). Drop the baseline so the NEXT frame ships a full replace — one
+            // loud log, then structural re-sync, never a rejection cascade.
+            transportState.lastNativeAck = null;
+            transportState.lastNativeAckSnapshot = null;
+          }
           mapMotionPressureController.applySourcePublishLifecycleEvent({ kind: 'settled' });
           if (transportState.queueState.pendingFrame && isAttachedRef.current) {
             flushLatestDesiredFrame();
+          }
+          if (
+            message.includes('Source delta') &&
+            !transportState.queueState.pendingFrame &&
+            isAttachedRef.current
+          ) {
+            // No newer frame queued: re-emit the CURRENT desired state so the replace
+            // actually ships (the rejected content must not silently stay off-map).
+            queueMicrotask(() => {
+              if (isAttachedRef.current) {
+                queueNativeRenderOwnerFrameRef.current();
+              }
+            });
           }
         } finally {
           logNativeRenderOwnerWorkSpan({
@@ -3136,9 +3212,28 @@ const useSearchMapNativeRenderOwnerSync = ({
           presentationState: nextPresentationState,
           previousPresentationState: lastDesiredPresentation,
         });
-        const sourceSyncBaselineRevisions = presentationSyncState.shouldForceReplaceForNewRequest
-          ? null
-          : getSourceSyncBaselineRevisions();
+        // Round-2 transport fix: force-replace-on-new-request was a blunt trust reset —
+        // it re-shipped the ENTIRE world (measured 4.9MB / ~180ms main-thread GL apply)
+        // whenever the presentation REQUEST identity changed, even when the ACKED native
+        // world already held byte-identical content (revisions are monotonic per source
+        // store, so acked parity is a proof, not a guess: native confirmed applying these
+        // exact revisions). Replace is forced only when the acked world provably differs;
+        // content parity yields an honest zero-delta presentation-only frame. Residual
+        // mismatch stays loud via the native rejection + baseline-resync path.
+        const ackedBaselineRevisions = getSourceSyncBaselineRevisions();
+        const ackedBaselineMatchesPreparedSnapshot =
+          ackedBaselineRevisions != null &&
+          ackedBaselineRevisions.pins === preparedSourceSnapshot.pins.sourceRevision &&
+          ackedBaselineRevisions.pinInteractions ===
+            preparedSourceSnapshot.pinInteractions.sourceRevision &&
+          ackedBaselineRevisions.dots === preparedSourceSnapshot.dots.sourceRevision &&
+          ackedBaselineRevisions.labelCollisions ===
+            preparedSourceSnapshot.labelCollisions.sourceRevision;
+        const sourceSyncBaselineRevisions =
+          presentationSyncState.shouldForceReplaceForNewRequest &&
+          !ackedBaselineMatchesPreparedSnapshot
+            ? null
+            : ackedBaselineRevisions;
         const nominalChangedSources = [
           sourceSyncBaselineRevisions?.pins !== preparedSourceSnapshot.pins.sourceRevision
             ? 'pins'

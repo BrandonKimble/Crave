@@ -1,8 +1,9 @@
 import React from 'react';
 import { TouchableOpacity, View } from 'react-native';
-import { HandPlatter, Store, X as LucideX } from 'lucide-react-native';
+import { HandPlatter, Store, TrendingUp, Trophy, X as LucideX } from 'lucide-react-native';
 
-import { Text } from '../../../components';
+import { OptionSelectorSheet, Text } from '../../../components';
+import type { SearchSortMode } from '../hooks/use-search-filter-modal-owner';
 import OverlayModalSheet from '../../../overlays/OverlayModalSheet';
 import { colors as themeColors } from '../../../constants/theme';
 import { CONTENT_HORIZONTAL_PADDING, SECONDARY_METRIC_ICON_SIZE } from '../constants/search';
@@ -25,6 +26,26 @@ const MemoOverlayModalSheet = React.memo(
   (prev, next) => !prev.visible && !next.visible
 );
 
+// The SORT dropdown options (owner spec 2026-07-12): the resurrected Local/Global rank
+// sheet, re-purposed — Best is the silent crave-score default, Rising rides the
+// existing rising filter through the chip-rerun choreography.
+const SORT_OPTIONS = [
+  {
+    value: 'best' as SearchSortMode,
+    label: 'Best',
+    icon: ({ color }: { selected: boolean; color: string }) => (
+      <Trophy size={16} strokeWidth={2.5} color={color} />
+    ),
+  },
+  {
+    value: 'rising' as SearchSortMode,
+    label: 'Rising',
+    icon: ({ color }: { selected: boolean; color: string }) => (
+      <TrendingUp size={16} strokeWidth={2.5} color={color} />
+    ),
+  },
+] as const;
+
 export type SearchRankAndScoreSheetsProps = {
   isScoreInfoVisible: boolean;
   scoreInfo: ScoreInfoPayload | null;
@@ -32,6 +53,10 @@ export type SearchRankAndScoreSheetsProps = {
   clearScoreInfo: () => void;
   scoreInfoMaxHeight: number;
   formatCompactCount: (value: number) => string;
+  isSortSelectorVisible: boolean;
+  sortMode: SearchSortMode;
+  onSortSelect: (mode: SearchSortMode) => void;
+  closeSortSelector: () => void;
   onProfilerRender: React.ProfilerOnRenderCallback | null;
 };
 
@@ -42,9 +67,24 @@ const SearchRankAndScoreSheets = ({
   clearScoreInfo,
   scoreInfoMaxHeight,
   formatCompactCount,
+  isSortSelectorVisible,
+  sortMode,
+  onSortSelect,
+  closeSortSelector,
   onProfilerRender,
 }: SearchRankAndScoreSheetsProps) => {
   const scoreMovementDetail = scoreInfo ? formatCraveScoreMovementDetail(scoreInfo.rising) : null;
+  const sortSheet = (
+    <OptionSelectorSheet
+      visible={isSortSelectorVisible}
+      title="Sort"
+      options={SORT_OPTIONS}
+      value={sortMode}
+      onSelect={onSortSelect}
+      onRequestClose={closeSortSelector}
+      testID="search-sort-sheet"
+    />
+  );
   const sheet = (
     <MemoOverlayModalSheet
       visible={Boolean(isScoreInfoVisible && scoreInfo)}
@@ -138,10 +178,14 @@ const SearchRankAndScoreSheets = ({
 
   return onProfilerRender ? (
     <React.Profiler id="ScoreInfoSheet" onRender={onProfilerRender}>
+      {sortSheet}
       {sheet}
     </React.Profiler>
   ) : (
-    sheet
+    <>
+      {sortSheet}
+      {sheet}
+    </>
   );
 };
 

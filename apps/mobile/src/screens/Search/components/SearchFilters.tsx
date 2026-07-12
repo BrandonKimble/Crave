@@ -11,6 +11,7 @@ import {
   type FrostedFilterStripMeasuredLayout,
 } from '../../../components/FrostedFilterStrip';
 import { SegmentedToggle } from '../../../components/SegmentedToggle';
+import { SelectorChip } from '../../../components/SelectorChip';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 
@@ -89,7 +90,8 @@ export type SearchFiltersProps = {
   // renders when > 0 and the toggle is off, and is a REMOTE CONTROL for the toggle.
   similarAvailableCount: number;
   risingActive: boolean;
-  onToggleRising: () => void;
+  /** Sort dropdown (toggle-strip primitive): opens the Best/Rising OptionSelectorSheet. */
+  onToggleSortSelector: () => void;
   priceButtonLabel: string;
   priceButtonActive: boolean;
   onTogglePriceSelector: () => void;
@@ -111,7 +113,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   onToggleIncludeSimilar,
   similarAvailableCount,
   risingActive,
-  onToggleRising,
+  onToggleSortSelector,
   priceButtonLabel,
   priceButtonActive,
   onTogglePriceSelector,
@@ -135,6 +137,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       priceButtonActive: state.priceButtonIsActive,
       priceButtonLabel: state.priceButtonLabelText,
       isPriceSelectorVisible: state.isPriceSelectorVisible,
+      isSortSelectorVisible: state.isSortSelectorVisible,
     }),
     (left, right) =>
       left.activeTab === right.activeTab &&
@@ -144,15 +147,18 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       left.risingActive === right.risingActive &&
       left.priceButtonActive === right.priceButtonActive &&
       left.priceButtonLabel === right.priceButtonLabel &&
-      left.isPriceSelectorVisible === right.isPriceSelectorVisible,
+      left.isPriceSelectorVisible === right.isPriceSelectorVisible &&
+      left.isSortSelectorVisible === right.isSortSelectorVisible,
     [
       'desiredTuple',
       'results',
       'priceButtonIsActive',
       'priceButtonLabelText',
       'isPriceSelectorVisible',
+      'isSortSelectorVisible',
     ] as const
   );
+  const isSortSelectorVisible = liveChipState.isSortSelectorVisible;
   activeTab = liveChipState.activeTab;
   openNow = liveChipState.openNow;
   includeSimilarActive = liveChipState.includeSimilarActive;
@@ -229,6 +235,19 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       }
       onMeasuredLayoutChange={handleShellLayout}
     >
+      {/* Sort dropdown (owner spec 2026-07-12): sits LEFT of the segment toggle — the
+          resurrected Local/Global rank-chip pattern. 'Sort' at the silent Best default,
+          the value ('Rising') + accent fill when overridden. Absorbs the old Rising chip. */}
+      <SelectorChip
+        key="sort"
+        label={risingActive ? 'Rising' : 'Sort'}
+        active={risingActive}
+        expanded={isSortSelectorVisible}
+        onPress={onToggleSortSelector}
+        accentColor={accentColor}
+        accessibilityLabel="Select result sort"
+        testID="search-sort-toggle"
+      />
       <SegmentedToggle
         key="segment"
         options={SEGMENT_OPTIONS}
@@ -301,15 +320,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           testID="search-similar-available-chip"
         />
       ) : null}
-      <FilterChip
-        key="rising"
-        label="Rising"
-        active={risingActive}
-        onPress={onToggleRising}
-        accentColor={accentColor}
-        accessibilityLabel="Toggle rising momentum filter"
-        testID="search-rising-toggle"
-      />
     </FrostedFilterStrip>
   );
 };

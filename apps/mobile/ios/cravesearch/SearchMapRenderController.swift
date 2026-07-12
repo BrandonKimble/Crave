@@ -906,9 +906,6 @@ final class SearchMapRenderController: RCTEventEmitter {
   // with the canonical fade-in. The map can never bare-swap a visible catalog again, regardless of which JS
   // path produced the frame.
   private var livePinTransitionAnimators: [String: CADisplayLink] = [:]
-  // UNIFIED-FADE TOGGLE (map-LOD-v6): instanceIds whose catalog was swapped but not yet re-projected on the
-  // static camera. Fired the next time presentation is UNDER COVER (≈0) — see reprojectCatalogUnderCoverIfReady.
-  private var pendingUnderCoverReproject: Set<String> = []
   private var lastVisualDiagByInstance: [String: String] = [:]
   private var slowActionWindowsByInstanceAndScope: [String: SlowActionWindowState] = [:]
   private var nativeApplyAttributionEnabled = false
@@ -1329,10 +1326,11 @@ final class SearchMapRenderController: RCTEventEmitter {
       if preservedEngine != nil || !preservedCatalog.isEmpty {
         var preservedState = self.instances[instanceId]!
         preservedState.lodV5Engine = preservedEngine
+        // The preserved catalog must re-decide against the (possibly new) map view — the
+        // epoch bump makes the decide stale by construction (C3); the reveal transition's
+        // under-cover choreography points pick it up.
+        Self.invalidatePresentationDerivations(&preservedState, reason: "attach_preserved_catalog")
         self.instances[instanceId] = preservedState
-        // The preserved catalog must re-decide against the (possibly new) map view —
-        // under cover, drained by the reveal transition's level-triggered drain.
-        self.pendingUnderCoverReproject.insert(instanceId)
       }
       self.resolveMapHandle(for: mapTag, attemptCount: 0, startTimeMs: CACurrentMediaTime() * 1000) {
         [weak self] result in
@@ -1484,11 +1482,10 @@ final class SearchMapRenderController: RCTEventEmitter {
       engine.setRanking(ranked)
       state.lodV5Engine = engine
       self.instances[instanceId] = state
-      // UNIFIED-FADE TOGGLE (map-LOD-v6): the new catalog must re-project + re-decide UNDER COVER. The catalog
-      // is typically swapped while the old set is still VISIBLE (presentation≈1), then the cover fades the map
-      // to 0; so we mark it pending and fire the re-decide the next time presentation is under cover (≈0) —
-      // unless it is ALREADY covered, in which case fire immediately.
-      self.pendingUnderCoverReproject.insert(instanceId)
+      // UNIFIED-FADE TOGGLE (map-LOD-v6): the new catalog must re-project + re-decide UNDER COVER. The
+      // catalog is typically swapped while the old set is still VISIBLE (presentation≈1), then the cover
+      // fades the map to 0. Staleness is DERIVED: the epoch bump above makes the decide stale by
+      // construction (C3); every under-cover choreography point re-checks it — no pending flag to queue.
       self.emit([
         "type": "presentation_state_snapshot",
         "instanceId": instanceId,
@@ -1562,6 +1559,14 @@ final class SearchMapRenderController: RCTEventEmitter {
   /// overlay consumer the tap-promote recipe predates). Called from setCandidateCatalog (fires if already
   /// covered) and from the presentation tick (fires at the fade-in's first under-cover tick).
   private static let underCoverReprojectThreshold = 0.05
+  /// C3 (plans/map-presentation-choreography-derivation.md): decide staleness is DERIVED
+  /// from the epoch, never remembered by a pending flag. An empty catalog has nothing to
+  /// decide and counts as current (an empty reveal must not fence).
+  private static func isDecideCurrent(_ state: InstanceState) -> Bool {
+    state.candidateCatalog.isEmpty
+      || state.presentationEpoch == state.lastDecidedPresentationEpoch
+  }
+
   private func reprojectCatalogUnderCoverIfReady(instanceId: String, force: Bool = false) {
     let ngapReprojectStartMs = CACurrentMediaTime() * 1000
     defer {
@@ -1570,8 +1575,8 @@ final class SearchMapRenderController: RCTEventEmitter {
         NSLog("[NGAP] reproject dur=%.1f", dur)
       }
     }
-    guard pendingUnderCoverReproject.contains(instanceId) else { return }
     guard var state = instances[instanceId] else { return }
+    guard !Self.isDecideCurrent(state) else { return }
     let emitReprojectDeferred: (String) -> Void = { [weak self] why in
       self?.emit([
         "type": "presentation_state_snapshot",
@@ -1608,7 +1613,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       emitReprojectDeferred("no_map_handle")
       return
     }
-    pendingUnderCoverReproject.remove(instanceId)
     emit([
       "type": "presentation_state_snapshot",
       "instanceId": instanceId,
@@ -2842,26 +2846,16 @@ final class SearchMapRenderController: RCTEventEmitter {
           reason: "new_reveal_request"
         )
         self.instances[instanceId] = state
-        // ROOT-CAUSE FIX (task #16, dismiss→resubmit pin no-show): a catalog that arrived
-        // while hidden/dismissing correctly deferred its under-cover reproject — but the
-        // drain rode edge-triggered choreography (animator ticks / camera changes) that a
-        // cache-resident re-enter never fires, stranding the pending catalog: the VA
-        // pin/label roster was never rebuilt and the reveal showed dots only. The reveal
-        // transition IS the level-triggered drain point: "active + under cover" first
-        // becomes true here (opacity at the preroll floor — the swap is invisible).
-        if self.pendingUnderCoverReproject.contains(instanceId) {
-          self.reprojectCatalogUnderCoverIfReady(instanceId: instanceId)
-          state = self.instances[instanceId] ?? state
-        } else {
-          self.emit([
-            "type": "presentation_state_snapshot",
-            "instanceId": instanceId,
-            "reason": "reveal_drain_no_pending",
-            "lifecycleState": String(describing: state.visualSourceLifecycleState),
-            "opacityTarget": state.currentPresentationOpacityTarget,
-            "nowMs": Self.nowMs(),
-          ])
-        }
+        // C3: the reveal transition is a level-triggered decide point — "active + under
+        // cover" first becomes true here (opacity at the preroll floor, the swap is
+        // invisible). Staleness is derived from the epoch, so this runs unconditionally
+        // and no-ops when current. Covers BOTH stale-decide shapes: a catalog that arrived
+        // while hidden/dismissing (the old pending-flag drain) AND a resident catalog whose
+        // decide was invalidated by the dismiss teardown (the pins/labels-snap-in-on-
+        // second-search bug — the flag was never set for it, so nothing re-decided until
+        // after the ramp).
+        self.reprojectCatalogUnderCoverIfReady(instanceId: instanceId)
+        state = self.instances[instanceId] ?? state
         // STALL FIX (bucket-attributed: reveal_preroll_reconcile max 294ms): when this
         // presentation apply is immediately followed by a SNAPSHOT apply in the same
         // setRenderFrame (the enter-with-new-data path), this reconcile runs against the
@@ -3524,6 +3518,10 @@ final class SearchMapRenderController: RCTEventEmitter {
         dotSourceId: state.dotSourceId,
         labelCollisionSourceId: state.labelCollisionSourceId
       )
+      // Reset is a derivation-input boundary (R3/C3): everything decided for the previous
+      // presentation is stale by construction — the next reveal must re-decide the resident
+      // catalog against the (possibly new) map view.
+      Self.invalidatePresentationDerivations(&state, reason: "instance_reset")
       state.isAwaitingSourceRecovery = false
       state.isReplayingSourceRecovery = false
       state.sourceRecoveryPausedAtMs = nil
@@ -5656,11 +5654,23 @@ final class SearchMapRenderController: RCTEventEmitter {
     instances[instanceId] = state
     updateLivePinTransitionAnimation(instanceId: instanceId, state: state)
     state = instances[instanceId] ?? state
-    // S4d-1: basemap collision flips at fade START — the twin wakes exactly as the
-    // items begin fading in, so the basemap labels' own crossfade-out rides our
-    // fade-in (previously: preroll, which could suppress the basemap seconds early).
-    // VA half: resident pin/label views (kept across a dismiss→re-enter of the same
-    // world) re-join the collision pass exactly as they begin fading in.
+    // C3 RAMP FENCE (plans/map-presentation-choreography-derivation.md): the ramp may not
+    // start over a stale decide. The scalar is at the preroll floor here, so a catalog that
+    // landed between preroll and the enter-start token is decided NOW, under cover — the VA
+    // roster mints at alpha 0 and rides the ramp. Without this, the roster minted at
+    // presentation=1 (the pins/labels-snap-in-after-the-dots bug). No-op when current.
+    reprojectCatalogUnderCoverIfReady(instanceId: instanceId)
+    state = instances[instanceId] ?? state
+    // S4d-1: basemap collision flips at fade START — GL placement participation and the VA
+    // collision participation join in the same call, exactly as the items begin fading in,
+    // so the basemap labels' own crossfade-out rides our fade-in (previously: preroll,
+    // which could suppress the basemap seconds early).
+    _ = setPresentedWorldPlacementParticipation(
+      true,
+      for: state,
+      instanceId: instanceId,
+      reason: "reveal_ramp_start"
+    )
     setOverlayCollisionParticipation(instanceId: instanceId, enabled: true)
     try animatePresentationOpacity(
       to: 1,
@@ -6158,12 +6168,17 @@ final class SearchMapRenderController: RCTEventEmitter {
       reason: "reveal_preroll"
     )
     state.labelCollisionObstacleLayersVisible = true
-    // S4d-1 (owner directive: collision flips at fade START, both directions): the
-    // basemap-facing collision-twin (label RENDER layers) no longer wakes at preroll —
-    // on a slow resolution that suppressed basemap street names long before anything
-    // faded in. It wakes at the reveal RAMP START (startEnterPresentation) instead.
-    // The pin/dot OBSTACLE layers stay preroll-restored (internal label-vs-pin
-    // yielding must be seated before placement, invisible to the basemap).
+    // C2: preroll = visible-but-not-claiming, uniformly. Visibility ON is legal here (the
+    // scalar is at the floor); placement stays OFF so nothing suppresses the basemap before
+    // the ramp (S4d-1: collision flips at fade START, both directions — placement joins at
+    // startEnterPresentation, beside the VA participation flip). Explicitly forced OFF here
+    // so the first-ever reveal (layers author ignore-placement:false) matches a re-reveal.
+    _ = setPresentedWorldPlacementParticipation(
+      false,
+      for: state,
+      instanceId: instanceId,
+      reason: "reveal_preroll"
+    )
     recordNativeApply(
       section: "presentation.reveal_preroll_collision_restore",
       phase: state.lastPresentationBatchPhase,
@@ -6182,13 +6197,17 @@ final class SearchMapRenderController: RCTEventEmitter {
     state: inout InstanceState
   ) {
     let collisionLayerStartedAt = CACurrentMediaTime() * 1000
-    let dormedWorldLayerCount = setPresentedWorldLayersVisible(
+    // C2 (plans/map-presentation-choreography-derivation.md): dismiss start releases the world's
+    // collision CLAIMS (placement lever) while the pixels keep fading on the presentation scalar.
+    // Visibility — the paint-kill switch — flips only at the scalar floor (completeDismiss). The
+    // previous visibility-at-fade-start here was the dots-snap-out bug: a binary style flip killed
+    // the painted dot layer on frame one while the VA pins/labels ran their CA fade.
+    let dormedWorldLayerCount = setPresentedWorldPlacementParticipation(
       false,
       for: state,
       instanceId: instanceId,
       reason: "dismiss_start"
     )
-    state.labelCollisionObstacleLayersVisible = false
     recordNativeApply(
       section: "presentation.dismiss_start_collision_obstacle_layers",
       phase: state.lastPresentationBatchPhase,
@@ -6220,8 +6239,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     // cache/clear/restore dance, crossfade-from-old-data, trivial interruption). The reveal cost
     // that the restore used to pay disappears with it. Idle cost is removed by making the only
     // expensive per-frame work — the collision-bearing label symbols — dormant via
-    // `visibility: none` (Mapbox drops a hidden layer from layout/placement entirely). Pins/dots
-    // are ignorePlacement, so they cost ~nothing resident at opacity 0. Camera projection,
+    // `visibility: none` (Mapbox drops a hidden layer from layout/placement entirely; the C2
+    // placement lever already released their claims at dismiss start). Camera projection,
     // steppers, and label observation are all already gated off in `.hidden`. No source cache is
     // populated, so the enter-time restore naturally no-ops.
     let labelDormancyStartedAt = CACurrentMediaTime() * 1000
@@ -6286,9 +6305,11 @@ final class SearchMapRenderController: RCTEventEmitter {
   /// R2 (plans/map-presentation-epoch-and-participation.md): the presented world's GL
   /// presence is DERIVED from the style — every layer reading one of the world's managed
   /// sources — never a hand-maintained id list (the twin and resident-dot bugs were both
-  /// un-enrolled colliders). World hidden => world's layers hidden; an opacity-0 symbol
-  /// still claims its collision box, so dormancy must be `visibility`, flipped at the
-  /// presentation edges. Derived per call: edge-rare, and catches late-mounting layers.
+  /// un-enrolled colliders). World hidden => world's layers hidden. C2 refinement
+  /// (plans/map-presentation-choreography-derivation.md): `visibility` is the PAINT lever
+  /// and flips only at the scalar floor (preroll restore / dismiss-complete dorm); mid-fade
+  /// collision release is the PLACEMENT lever (setPresentedWorldPlacementParticipation).
+  /// Derived per call: edge-rare, and catches late-mounting layers.
   private func presentedWorldLayerIds(state: InstanceState, mapboxMap: MapboxMap) -> [String] {
     let worldSources: Set<String> = [
       state.pinSourceId,
@@ -6304,6 +6325,24 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
+  /// The placement-lever subset of the world derivation: symbol layers only
+  /// (`icon-ignore-placement` is a symbol layout property).
+  private func presentedWorldSymbolLayerIds(state: InstanceState, mapboxMap: MapboxMap) -> [String] {
+    let worldSources: Set<String> = [
+      state.pinSourceId,
+      state.pinBundleSourceId,
+      state.pinInteractionSourceId,
+      state.dotSourceId,
+      state.labelCollisionSourceId,
+    ]
+    return mapboxMap.allLayerIdentifiers.compactMap { info in
+      guard info.type == .symbol else { return nil }
+      let source = mapboxMap.layerProperty(for: info.id, property: "source").value as? String
+      guard let source, worldSources.contains(source) else { return nil }
+      return info.id
+    }
+  }
+
   @discardableResult
   private func setPresentedWorldLayersVisible(
     _ isVisible: Bool,
@@ -6311,6 +6350,22 @@ final class SearchMapRenderController: RCTEventEmitter {
     instanceId: String,
     reason: String
   ) -> Int {
+    // C4 CONTRACT (plans/map-presentation-choreography-derivation.md): visibility is the
+    // paint-kill switch — it may flip only at the scalar floor. A mid-ramp dorm is the
+    // dots-snap-out class; expose it loudly (the write still proceeds — the tripwire's job
+    // is to make the defect visible, not to silently compensate).
+    if !isVisible, state.currentPresentationOpacityValue > 0.05 {
+      emit([
+        "type": "presentation_state_snapshot",
+        "instanceId": instanceId,
+        "reason": "contract_violation_visibility_dorm_mid_ramp",
+        "lifecycleState": String(describing: state.visualSourceLifecycleState),
+        "opacityTarget": state.currentPresentationOpacityTarget,
+        "revealRequestKey": state.currentWorldId as Any,
+        "dismissRequestKey": state.lastDismissRequestKey as Any,
+        "nowMs": Self.nowMs(),
+      ])
+    }
     var flippedCount = 0
     do {
       try withMapboxMap(for: state.mapTag) { mapboxMap in
@@ -6339,6 +6394,53 @@ final class SearchMapRenderController: RCTEventEmitter {
         "instanceId": instanceId,
         "message":
           "presented_world_layer_visibility_failed reason=\(reason) visible=\(isVisible) error=\(error.localizedDescription)",
+      ])
+    }
+    return flippedCount
+  }
+
+  /// C2 (plans/map-presentation-choreography-derivation.md): placement participation is a
+  /// SEPARATE derived lever from paint. Flips `icon-ignore-placement` on the world's symbol
+  /// layers (derived from the style per call, like visibility). Law: every world symbol layer
+  /// authors `iconIgnorePlacement: false`; this lever owns the property at runtime. ON at ramp
+  /// start (enter), OFF at dismiss start — S4d-1's "collision flips at fade START, both
+  /// directions" — while the pixels keep riding the presentation scalar. `iconAllowOverlap`
+  /// stays authored: a fading world stops CLAIMING space but keeps YIELDING, so returning
+  /// basemap labels cull fading dots via Mapbox's own placement fade, never a snap.
+  @discardableResult
+  private func setPresentedWorldPlacementParticipation(
+    _ enabled: Bool,
+    for state: InstanceState,
+    instanceId: String,
+    reason: String
+  ) -> Int {
+    var flippedCount = 0
+    do {
+      try withMapboxMap(for: state.mapTag) { mapboxMap in
+        for layerId in presentedWorldSymbolLayerIds(state: state, mapboxMap: mapboxMap) {
+          do {
+            try mapboxMap.setLayerProperty(
+              for: layerId,
+              property: "icon-ignore-placement",
+              value: !enabled
+            )
+            flippedCount += 1
+          } catch {
+            emit([
+              "type": "error",
+              "instanceId": instanceId,
+              "message":
+                "presented_world_layer_placement_failed reason=\(reason) layer=\(layerId) enabled=\(enabled) error=\(error.localizedDescription)",
+            ])
+          }
+        }
+      }
+    } catch {
+      emit([
+        "type": "error",
+        "instanceId": instanceId,
+        "message":
+          "presented_world_layer_placement_failed reason=\(reason) enabled=\(enabled) error=\(error.localizedDescription)",
       ])
     }
     return flippedCount
@@ -7328,8 +7430,8 @@ final class SearchMapRenderController: RCTEventEmitter {
   // ONE self-colliding label VA per promoted restaurant: enableSymbolLayerCollision → WINS over basemap
   // (the capability the 11.26 upgrade bought); variableAnchors [bottom>right>top>left] → the SDK picks the
   // first open side synchronously (no async selector, no dup/vanish/flicker); alpha = engine.pinOpacity ×
-  // presentation → fades with the pin. The GL label render layer is force-hidden at the
-  // setLabelRenderLayersVisible chokepoint (its collision-twin stays live for basemap suppression).
+  // presentation → fades with the pin. The GL label collision-twin stays live for basemap
+  // suppression; its visibility rides the derived world-layer dorm (setPresentedWorldLayersVisible).
   // Mirrors the pin VA roster; reuses the overlay display link.
   private final class LabelVAInstance {
     weak var mapView: MapView?
@@ -8633,11 +8735,23 @@ final class SearchMapRenderController: RCTEventEmitter {
         // overlayTileCount + degraded let JS lift-but-flag a roster failure instead of hanging; an empty
         // result (promoted=0) lifts normally. Guarded off fade-IN + not-dismissing (cross-lane dismiss safety).
         if animator.targetOpacity >= 0.999, !Self.isVisualSourceInactiveOrDismissing(state) {
-          // A reveal is completing. If a fresh catalog arrived during the ramp-up (rapid-toggle race) its
-          // under-cover reproject was stranded — decide it NOW so the reveal settles on the CURRENT catalog's
-          // promoted set instead of a stale/empty one (the "pins drop on rapid toggle"). No-op unless pending.
-          reprojectCatalogUnderCoverIfReady(instanceId: instanceId, force: true)
-          state = instances[instanceId] ?? state
+          // C4 CONTRACT: a reveal completing over a stale decide means a catalog replaced DURING the
+          // ramp-up (rapid-toggle race) — the only shape the C3 fence cannot cover under cover. Expose
+          // it LOUDLY, then correct on the current catalog (the settle must not ride a stale set).
+          if !Self.isDecideCurrent(state) {
+            emit([
+              "type": "presentation_state_snapshot",
+              "instanceId": instanceId,
+              "reason": "contract_violation_reveal_completed_undecided",
+              "lifecycleState": String(describing: state.visualSourceLifecycleState),
+              "opacityTarget": state.currentPresentationOpacityTarget,
+              "revealRequestKey": state.currentWorldId as Any,
+              "dismissRequestKey": state.lastDismissRequestKey as Any,
+              "nowMs": Self.nowMs(),
+            ])
+            reprojectCatalogUnderCoverIfReady(instanceId: instanceId, force: true)
+            state = instances[instanceId] ?? state
+          }
           let overlayTileCount = pinVAInstances[instanceId]?.viewByKey.count ?? 0
           let promotedCount = state.lodV5Engine?.lastPromotedInOrder.count ?? 0
           let degraded = promotedCount > 0 && overlayTileCount == 0
@@ -12533,6 +12647,11 @@ final class SearchMapRenderController: RCTEventEmitter {
         "enter_requested",
         "entering",
         "live",
+        // The press-up interaction level (S4d): the wire phase that drives the toggle
+        // fade-out ramp. Missing from this list since the level moved onto the wire —
+        // every interaction frame was rejected at the door (silently retried by the
+        // transport), which is why the unified-fade toggle choreography never ran.
+        "interaction",
         "exit_preroll",
         "exiting",
       ].contains(presentationPhase),

@@ -17,6 +17,7 @@ export const useSearchRootSearchSceneUiBusPatchRuntime = ({
   | 'priceButtonLabelText'
   | 'priceButtonIsActive'
   | 'isPriceSelectorVisible'
+  | 'isSortSelectorVisible'
   | 'shouldRetrySearchOnReconnect'
 > => ({
   ...useSearchRootSearchSceneFilterBusPatchRuntime({

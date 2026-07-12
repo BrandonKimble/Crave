@@ -10,6 +10,13 @@ import { logger } from '../utils';
  *   begin (press-up; caller has already flipped its own optimistic state)
  *     → restarting quiet-window debounce (rapid taps re-arm; the heavy consequence
  *       fires exactly once, ~settleMs after the LAST tap — never mid-burst)
+ *     → [awaitVisualFloor kinds] LEVEL gate: the commit additionally waits for the
+ *       surface's visual floor (the presentation fade-out acked at ~0) — the swap can
+ *       never land over a visible world (T3, plans/toggle-strip-primitive.md). The
+ *       'started' lifecycle is what asserts the cover level that STARTS that fade, so
+ *       press-up → fade-out begins → commit lands exactly at the floor. A bounded
+ *       fallback (floor never acks: backgrounded app, dead ramp) commits anyway and
+ *       logs LOUDLY — expose, never silently hang.
  *     → commit: run the consequence (sync or async; AbortSignal provided)
  *     → optional visual-sync wait (finalize deferred until notifyIntentComplete)
  *     → finalize (idle republish + 'finalized' lifecycle)
@@ -45,9 +52,13 @@ export type ToggleRunner = (args: {
 }) => ToggleRunnerOutcome | Promise<ToggleRunnerOutcome>;
 
 export type ToggleInteractionEngine<TKind extends string> = {
-  begin: (runner: ToggleRunner, options: { kind: TKind }) => void;
+  begin: (runner: ToggleRunner, options: { kind: TKind; awaitVisualFloor?: boolean }) => void;
   cancel: () => void;
   notifyIntentComplete: (intentId: string) => void;
+  /** Visual-floor ack (T3): the surface's fade-out reached ~0 — a gated commit whose
+   *  quiet window already elapsed fires NOW; otherwise the ack is remembered for the
+   *  active interaction. Idempotent; ignored when nothing is gated. */
+  notifyVisualFloor: () => void;
   getState: () => ToggleInteractionState<TKind>;
   subscribe: (listener: () => void) => () => void;
   /** Teardown: a QUIET full stop — bumps the seq (dropping any in-flight landing),
@@ -62,10 +73,18 @@ type CreateToggleInteractionEngineArgs<TKind extends string> = {
   onLifecycle?: (event: ToggleLifecycleEvent<TKind>) => void;
   /** Restarting quiet-window length. 0 commits synchronously on begin. */
   settleMs?: number;
+  /** T3 floor oracle for awaitVisualFloor interactions: returns true when the surface
+   *  is ALREADY at its visual floor (no fade will run, so no ack will arrive — e.g. a
+   *  toggle fired while the world is still covered). Checked at every commit gate. */
+  isAtVisualFloor?: () => boolean;
+  /** Bounded wait past the quiet window for the floor ack before the LOUD fallback
+   *  commit. Sized to the canonical fade (~300ms) + stall margin. */
+  visualFloorFallbackMs?: number;
 };
 
 const TOGGLE_INTENT_PREFIX = 'toggle-intent:';
 export const DEFAULT_TOGGLE_SETTLE_MS = 300;
+export const DEFAULT_VISUAL_FLOOR_FALLBACK_MS = 900;
 
 export const createIdleToggleInteractionState = <
   TKind extends string,
@@ -78,6 +97,8 @@ export const createToggleInteractionEngine = <TKind extends string>({
   onInteractionState,
   onLifecycle,
   settleMs = DEFAULT_TOGGLE_SETTLE_MS,
+  isAtVisualFloor,
+  visualFloorFallbackMs = DEFAULT_VISUAL_FLOOR_FALLBACK_MS,
 }: CreateToggleInteractionEngineArgs<TKind> = {}): ToggleInteractionEngine<TKind> => {
   let interactionSeq = 0;
   let activeKind: TKind | null = null;
@@ -86,6 +107,11 @@ export const createToggleInteractionEngine = <TKind extends string>({
   let awaitingVisualSync = false;
   let settleTimeout: ReturnType<typeof setTimeout> | null = null;
   let abortController: AbortController | null = null;
+  // T3 floor gate state (all seq-scoped; reset on begin/cancel/finalize).
+  let awaitVisualFloorActive = false;
+  let quietWindowElapsed = false;
+  let visualFloorAcked = false;
+  let visualFloorFallbackTimeout: ReturnType<typeof setTimeout> | null = null;
   let state: ToggleInteractionState<TKind> = createIdleToggleInteractionState<TKind>();
   const listeners = new Set<() => void>();
 
@@ -102,11 +128,26 @@ export const createToggleInteractionEngine = <TKind extends string>({
     }
   };
 
+  const clearVisualFloorFallbackTimeout = (): void => {
+    if (visualFloorFallbackTimeout != null) {
+      clearTimeout(visualFloorFallbackTimeout);
+      visualFloorFallbackTimeout = null;
+    }
+  };
+
+  const resetVisualFloorGate = (): void => {
+    clearVisualFloorFallbackTimeout();
+    awaitVisualFloorActive = false;
+    quietWindowElapsed = false;
+    visualFloorAcked = false;
+  };
+
   const finalizeInteraction = (seq: number, awaitedVisualSync: boolean): boolean => {
     if (interactionSeq !== seq) {
       return false;
     }
     clearSettleTimeout();
+    resetVisualFloorGate();
     const intentId = activeIntentId;
     const kind = activeKind;
     logger.info('[TOGGLE] finalize', { intentId, kind, awaitedVisualSync });
@@ -140,6 +181,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
     const kind = activeKind;
     interactionSeq += 1;
     clearSettleTimeout();
+    resetVisualFloorGate();
     abortController?.abort();
     abortController = null;
     activeKind = null;
@@ -173,6 +215,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
     if (runner == null || kind == null || awaitingVisualSync) {
       return;
     }
+    clearVisualFloorFallbackTimeout();
     activeRunner = null;
     logger.info('[TOGGLE] settle:commit', { intentId, kind });
     publishState({ kind, pendingPresentationIntentId: null });
@@ -199,7 +242,50 @@ export const createToggleInteractionEngine = <TKind extends string>({
     settleOutcome(seq, result);
   };
 
-  const begin = (runner: ToggleRunner, options: { kind: TKind }): void => {
+  // T3: the quiet window elapsed — commit now unless the visual-floor gate holds it.
+  // Gated commits fire from notifyVisualFloor (the level trigger) or the LOUD bounded
+  // fallback; an already-at-floor surface (isAtVisualFloor oracle) commits immediately
+  // since no fade will run and no ack will arrive.
+  const handleQuietWindowElapsed = (seq: number, intentId: string): void => {
+    if (interactionSeq !== seq) {
+      return;
+    }
+    quietWindowElapsed = true;
+    if (!awaitVisualFloorActive || visualFloorAcked || isAtVisualFloor?.() === true) {
+      commitActiveInteraction(intentId);
+      return;
+    }
+    clearVisualFloorFallbackTimeout();
+    visualFloorFallbackTimeout = setTimeout(() => {
+      visualFloorFallbackTimeout = null;
+      if (interactionSeq !== seq || activeIntentId !== intentId) {
+        return;
+      }
+      // CONTRACT (expose, never silently hang): the fade-out never acked its floor —
+      // the swap will be visible. Commit anyway so the user is never stuck.
+      logger.warn('[TOGGLE] visual_floor_ack_timeout', {
+        intentId,
+        kind: activeKind,
+        waitedMs: visualFloorFallbackMs,
+      });
+      commitActiveInteraction(intentId);
+    }, visualFloorFallbackMs);
+  };
+
+  const notifyVisualFloor = (): void => {
+    if (activeIntentId == null || !awaitVisualFloorActive) {
+      return;
+    }
+    visualFloorAcked = true;
+    if (quietWindowElapsed) {
+      commitActiveInteraction(activeIntentId);
+    }
+  };
+
+  const begin = (
+    runner: ToggleRunner,
+    options: { kind: TKind; awaitVisualFloor?: boolean }
+  ): void => {
     const seq = interactionSeq + 1;
     interactionSeq = seq;
     const kind = options.kind;
@@ -212,12 +298,14 @@ export const createToggleInteractionEngine = <TKind extends string>({
     activeIntentId = intentId;
     activeRunner = runner;
     awaitingVisualSync = false;
+    resetVisualFloorGate();
+    awaitVisualFloorActive = options.awaitVisualFloor === true;
     logger.info('[TOGGLE] begin', { seq, intentId, kind });
     onLifecycle?.({ type: 'started', intentId, kind });
     publishState({ kind, pendingPresentationIntentId: intentId });
 
     if (settleMs <= 0) {
-      commitActiveInteraction(intentId);
+      handleQuietWindowElapsed(seq, intentId);
       return;
     }
     // RESTARTING quiet-window debounce: each begin re-arms the timer, so the heavy
@@ -226,10 +314,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
     clearSettleTimeout();
     settleTimeout = setTimeout(() => {
       settleTimeout = null;
-      if (interactionSeq !== seq) {
-        return;
-      }
-      commitActiveInteraction(intentId);
+      handleQuietWindowElapsed(seq, intentId);
     }, settleMs);
   };
 
@@ -244,6 +329,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
     begin,
     cancel,
     notifyIntentComplete,
+    notifyVisualFloor,
     getState: () => state,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -254,6 +340,7 @@ export const createToggleInteractionEngine = <TKind extends string>({
     dispose: () => {
       interactionSeq += 1;
       clearSettleTimeout();
+      resetVisualFloorGate();
       abortController?.abort();
       abortController = null;
       activeKind = null;

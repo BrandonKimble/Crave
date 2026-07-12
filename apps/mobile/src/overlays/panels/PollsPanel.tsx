@@ -3,9 +3,11 @@ import { View, Pressable, StyleSheet } from 'react-native';
 import { Sparkles, MessageCircle, Users, Clock } from 'lucide-react-native';
 import { useSharedValue } from 'react-native-reanimated';
 import {
-  FilterChip,
   FrostedFilterStrip,
   SegmentedToggle,
+  SelectorChip,
+  toggleOptionSelector,
+  useOptionSelectorOpenKey,
   showAppModal,
   Text,
 } from '../../components';
@@ -59,19 +61,31 @@ const TYPE_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedType }> = [
   { label: 'Discussions', value: 'discussions' },
 ];
 
-// Sort overrides (§4/§6). No active chip = the silent demand-ranked default; tapping
-// the active chip clears back to it.
-const SORT_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedSort }> = [
+// Sort overrides (§4/§6), now a DROPDOWN toggle (toggle-strip primitive, owner spec
+// 2026-07-12): 'default' = the silent demand-ranked order (maps to feedSort null).
+const SORT_SELECTOR_OPTIONS = [
+  { label: 'Default', value: 'default' },
   { label: 'New', value: 'new' },
   { label: 'Top', value: 'top' },
   { label: 'Trending', value: 'trending' },
-];
+] as const;
+type PollSortSelectorValue = (typeof SORT_SELECTOR_OPTIONS)[number]['value'];
+const SORT_LABEL_BY_VALUE: Record<Exclude<PollSortSelectorValue, 'default'>, string> = {
+  new: 'New',
+  top: 'Top',
+  trending: 'Trending',
+};
 
 // Time filter (§6): exclusive, always one active (default All Time).
 const TIME_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedTime }> = [
   { label: 'All time', value: 'all_time' },
   { label: 'This week', value: 'this_week' },
 ];
+
+const TYPE_LABEL_BY_VALUE: Partial<Record<PollFeedType, string>> = {
+  polls: 'Polls',
+  discussions: 'Discussions',
+};
 
 // The polls feed is RE-SORTABLE. FlashList's maintain-visible-content-position
 // (chat-style, on by default) anchors the old top row when the Live/Results split or
@@ -462,6 +476,11 @@ export const usePollsPanelListSceneParts = (): {
   const hasVisiblePolls = visiblePolls.length > 0;
   const isExpandedSurface = resolvedSnap === 'middle' || resolvedSnap === 'expanded';
 
+  // Dropdown toggles ride the ROOT OptionSelectorHost (imperative store) — no local
+  // sheet mounting inside the list header, and no local state in this scene-spec hook
+  // (whose effects never commit — see the polls-lane memory note).
+  const optionSelectorOpenKey = useOptionSelectorOpenKey();
+
   const renderItem = React.useCallback(
     ({ item }: { item: unknown }) => <PollCard poll={item as Poll} onPress={handleOpenPoll} />,
     [handleOpenPoll]
@@ -492,43 +511,72 @@ export const usePollsPanelListSceneParts = (): {
           accessibilityLabel="Toggle between live and results polls"
           testID="poll-feed-state-toggle"
         />
-        {TYPE_OPTIONS.map((option) => (
-          <FilterChip
-            key={option.value}
-            label={option.label}
-            active={feedType === option.value}
-            accentColor={ACCENT}
-            onPress={() => setFeedType(option.value)}
-            accessibilityLabel={`Show ${option.label}`}
-            testID={`poll-feed-type-${option.value}`}
-          />
-        ))}
-        {SORT_OPTIONS.map((option) => {
-          const active = feedSort === option.value;
-          return (
-            <FilterChip
-              key={option.value}
-              label={option.label}
-              active={active}
-              accentColor={ACCENT}
-              // Tapping the active sort clears back to the default demand order.
-              onPress={() => setFeedSort(active ? null : option.value)}
-              accessibilityLabel={`Sort by ${option.label}`}
-              testID={`poll-feed-sort-${option.value}`}
-            />
-          );
-        })}
-        {TIME_OPTIONS.map((option) => (
-          <FilterChip
-            key={option.value}
-            label={option.label}
-            active={feedTime === option.value}
-            accentColor={ACCENT}
-            onPress={() => setFeedTime(option.value)}
-            accessibilityLabel={option.label}
-            testID={`poll-feed-time-${option.value}`}
-          />
-        ))}
+        {/* DROPDOWN toggles (toggle-strip primitive, owner spec 2026-07-12): each chip
+            group collapsed into one SelectorChip + OptionSelectorSheet — noun label at
+            the default, value + accent fill when overridden. */}
+        <SelectorChip
+          key="type"
+          label={feedType === 'all' ? 'Type' : (TYPE_LABEL_BY_VALUE[feedType] ?? 'Type')}
+          active={feedType !== 'all'}
+          expanded={optionSelectorOpenKey === 'poll-feed-type'}
+          onPress={() =>
+            toggleOptionSelector({
+              key: 'poll-feed-type',
+              title: 'Type',
+              options: TYPE_OPTIONS,
+              value: feedType,
+              onSelect: (value) => setFeedType(value),
+              accentColor: ACCENT,
+              testID: 'poll-feed-type-sheet',
+            })
+          }
+          accentColor={ACCENT}
+          accessibilityLabel="Select feed type"
+          testID="poll-feed-type-toggle"
+        />
+        <SelectorChip
+          key="sort"
+          label={feedSort == null ? 'Sort' : SORT_LABEL_BY_VALUE[feedSort]}
+          active={feedSort != null}
+          expanded={optionSelectorOpenKey === 'poll-feed-sort'}
+          onPress={() =>
+            toggleOptionSelector({
+              key: 'poll-feed-sort',
+              title: 'Sort',
+              options: SORT_SELECTOR_OPTIONS,
+              value: feedSort ?? 'default',
+              onSelect: (value) => setFeedSort(value === 'default' ? null : value),
+              accentColor: ACCENT,
+              testID: 'poll-feed-sort-sheet',
+            })
+          }
+          accentColor={ACCENT}
+          accessibilityLabel="Select feed sort"
+          testID="poll-feed-sort-toggle"
+        />
+        <SelectorChip
+          key="time"
+          label={feedTime === 'all_time' ? 'Time' : 'This week'}
+          active={feedTime !== 'all_time'}
+          expanded={optionSelectorOpenKey === 'poll-feed-time'}
+          onPress={() =>
+            toggleOptionSelector({
+              key: 'poll-feed-time',
+              title: 'Time',
+              options: TIME_OPTIONS.map((option) => ({
+                value: option.value,
+                label: option.label,
+              })),
+              value: feedTime,
+              onSelect: (value) => setFeedTime(value),
+              accentColor: ACCENT,
+              testID: 'poll-feed-time-sheet',
+            })
+          }
+          accentColor={ACCENT}
+          accessibilityLabel="Select feed time window"
+          testID="poll-feed-time-toggle"
+        />
       </FrostedFilterStrip>
     );
   }, [
@@ -537,10 +585,11 @@ export const usePollsPanelListSceneParts = (): {
     feedType,
     feedTime,
     isExpandedSurface,
+    optionSelectorOpenKey,
     setFeedSort,
     setFeedState,
-    setFeedType,
     setFeedTime,
+    setFeedType,
   ]);
 
   const ListEmptyComponent = React.useMemo(() => {

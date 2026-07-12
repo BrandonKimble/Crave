@@ -105,9 +105,18 @@ const getPriceSummaryReelIndexFromBoundaries = (
   return weightedIndex / totalWeight;
 };
 
+export type SearchSortMode = 'best' | 'rising';
+
 type SearchFilterModalOwner = {
   priceSheetRef: React.RefObject<OverlayModalSheetHandle | null>;
   isPriceSelectorVisible: boolean;
+  /** Sort dropdown (toggle-strip primitive): 'best' is the silent default; 'rising'
+   *  rides the EXISTING rising filter through the chip-rerun choreography. */
+  isSortSelectorVisible: boolean;
+  sortMode: SearchSortMode;
+  toggleSortSelector: () => void;
+  closeSortSelector: () => void;
+  handleSortSelect: (mode: SearchSortMode) => void;
   isPriceSheetContentReady: boolean;
   pendingPriceRange: PriceRangeTuple;
   scoreInfo: ScoreInfoPayload | null;
@@ -143,6 +152,7 @@ type SearchFilterModalOwner = {
 
 export const useSearchFilterModalOwner = ({
   searchRuntimeBus,
+  risingActive,
   priceLevels,
   panelVisible,
   captureFreshTupleBounds,
@@ -150,6 +160,7 @@ export const useSearchFilterModalOwner = ({
   onMechanismEvent,
 }: UseSearchFilterModalOwnerArgs): SearchFilterModalOwner => {
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
+  const [isSortSelectorVisible, setIsSortSelectorVisible] = React.useState(false);
   const [isPriceSheetContentReady, setIsPriceSheetContentReady] = React.useState(false);
   const priceSheetRef = React.useRef<OverlayModalSheetHandle | null>(null);
   const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceRangeTuple>(
@@ -260,6 +271,29 @@ export const useSearchFilterModalOwner = ({
     }
   }, [isPriceSelectorVisible, panelVisible]);
 
+  const sortMode: SearchSortMode = risingActive ? 'rising' : 'best';
+  const toggleSortSelector = React.useCallback(() => {
+    setIsSortSelectorVisible((prev) => !prev);
+  }, []);
+  const closeSortSelector = React.useCallback(() => {
+    setIsSortSelectorVisible(false);
+  }, []);
+  const handleSortSelect = React.useCallback(
+    (mode: SearchSortMode) => {
+      // The dropdown is a REMOTE CONTROL for the existing rising filter — a change
+      // rides toggleRising's chip-rerun choreography (press-up fade + re-reveal).
+      if ((mode === 'rising') !== risingActive) {
+        toggleRising();
+      }
+    },
+    [risingActive, toggleRising]
+  );
+  React.useEffect(() => {
+    if (!panelVisible && isSortSelectorVisible) {
+      setIsSortSelectorVisible(false);
+    }
+  }, [isSortSelectorVisible, panelVisible]);
+
   React.useEffect(() => {
     if (!isPriceSelectorVisible) {
       setIsPriceSheetContentReady(false);
@@ -277,14 +311,20 @@ export const useSearchFilterModalOwner = ({
   React.useEffect(() => {
     return registerTransientDismissor(() => {
       closePriceSelector();
+      closeSortSelector();
       closeScoreInfo();
     });
-  }, [closePriceSelector, closeScoreInfo, registerTransientDismissor]);
+  }, [closePriceSelector, closeSortSelector, closeScoreInfo, registerTransientDismissor]);
 
   return React.useMemo(
     () => ({
       priceSheetRef,
       isPriceSelectorVisible,
+      isSortSelectorVisible,
+      sortMode,
+      toggleSortSelector,
+      closeSortSelector,
+      handleSortSelect,
       isPriceSheetContentReady,
       pendingPriceRange,
       scoreInfo,
@@ -321,6 +361,11 @@ export const useSearchFilterModalOwner = ({
       handlePriceDone,
       handlePriceSliderCommit,
       isPriceSelectorVisible,
+      isSortSelectorVisible,
+      sortMode,
+      toggleSortSelector,
+      closeSortSelector,
+      handleSortSelect,
       isPriceSheetContentReady,
       isScoreInfoVisible,
       measureSummaryCandidateWidth,

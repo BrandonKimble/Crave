@@ -16,6 +16,10 @@ import {
 } from '../../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import { createToggleInteractionEngine } from '../../../../toggles/toggle-interaction-engine';
+import {
+  isSearchPresentationAtFloor,
+  subscribeSearchPresentationFloor,
+} from '../map/search-presentation-floor-signal';
 import type {
   ScheduleToggleCommit,
   ToggleInteractionKind,
@@ -59,6 +63,10 @@ export const useResultsPresentationToggleCoordinator = ({
   const engine = React.useMemo(
     () =>
       createToggleInteractionEngine<ToggleInteractionKind>({
+        // T3 (plans/toggle-strip-primitive.md): every search toggle consequence swaps
+        // the presented map world, so the commit is gated on the presentation fade-out
+        // floor. The oracle covers the already-covered case (no ramp → no ack).
+        isAtVisualFloor: isSearchPresentationAtFloor,
         onInteractionState: (state) => {
           searchRuntimeBus.publish({ toggleInteraction: state });
         },
@@ -88,20 +96,28 @@ export const useResultsPresentationToggleCoordinator = ({
     [searchRuntimeBus]
   );
   React.useEffect(() => engine.dispose, [engine]);
+  // The floor ack edge releases a gated commit the instant the fade-out bottoms out.
+  React.useEffect(
+    () => subscribeSearchPresentationFloor(() => engine.notifyVisualFloor()),
+    [engine]
+  );
 
   const scheduleToggleCommit = React.useCallback(
     (runner: ToggleCommitRunner, options: ToggleCommitOptions) => {
-      engine.begin(({ intentId }) => {
-        // [T1DBG] commit timing (adapter concern — the search reveal rig reads it).
-        const commitStart = performance.now();
-        if (__DEV__) console.log(`[T1DBG] runner:start t=${commitStart.toFixed(1)}`);
-        const outcome = runner({ intentId });
-        if (__DEV__)
-          console.log(
-            `[T1DBG] runner:end t=${performance.now().toFixed(1)} dur=${(performance.now() - commitStart).toFixed(1)}`
-          );
-        return outcome ?? undefined;
-      }, options);
+      engine.begin(
+        ({ intentId }) => {
+          // [T1DBG] commit timing (adapter concern — the search reveal rig reads it).
+          const commitStart = performance.now();
+          if (__DEV__) console.log(`[T1DBG] runner:start t=${commitStart.toFixed(1)}`);
+          const outcome = runner({ intentId });
+          if (__DEV__)
+            console.log(
+              `[T1DBG] runner:end t=${performance.now().toFixed(1)} dur=${(performance.now() - commitStart).toFixed(1)}`
+            );
+          return outcome ?? undefined;
+        },
+        { ...options, awaitVisualFloor: true }
+      );
     },
     [engine]
   );

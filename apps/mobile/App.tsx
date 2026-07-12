@@ -21,6 +21,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { RootNavigator } from './src/navigation';
 import { AppModalHost } from './src/components/AppModalHost';
+import { OptionSelectorHost } from './src/components/OptionSelectorHost';
 import { ShareModalHost } from './src/components/ShareModalHost';
 import {
   announceFailureIfOnline,
@@ -139,6 +140,9 @@ export default function App() {
             </AuthProvider>
             <ShareModalHost />
             <AppModalHost />
+            {/* Dropdown-toggle selector host (toggle-strip primitive): any strip's
+                SelectorChip opens its option sheet here via showOptionSelector. */}
+            <OptionSelectorHost />
             {__DEV__ ? <CutoutSkeletonDevPreview /> : null}
             <StatusBar style={isBannerVisible ? 'light' : 'auto'} />
           </SafeAreaProvider>

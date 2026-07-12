@@ -1,4 +1,5 @@
 import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import { logger } from '../../../../utils';
 import type { MapBounds } from '../../../../types';
 import {
   isResultsPresentationExecutionStageSettled,
@@ -178,7 +179,8 @@ export type SearchMapRenderControllerEvent =
         | 'reproject_deferred'
         | 'reproject_ran'
         | 'pin_roster_no_manager'
-        | 'reveal_drain_no_pending';
+        | 'contract_violation_visibility_dorm_mid_ramp'
+        | 'contract_violation_reveal_completed_undecided';
       catalogCount?: number;
       deferredWhy?: string;
       desiredCount?: number;
@@ -925,7 +927,26 @@ export const searchMapRenderController = {
     } = createNativeRenderFramePayload(payload);
     try {
       const nativeModuleStartedAtMs = resolveRenderControllerPerfNow();
-      const nativeTimingResult = await nativeModule.setRenderFrame(nativePayload);
+      const nativeTimingResult = await nativeModule.setRenderFrame(nativePayload).catch((error) => {
+        // LOUD CONTRACT (2026-07-12): a natively-REJECTED frame must never be silent — the
+        // transport's retry loop hid a validator rejection of every 'interaction' frame for
+        // months (the toggle fade choreography simply never ran, with zero signal). Rejection
+        // = a wire-vocabulary mismatch between JS and native; surface it every time.
+        logger.error('[MAPFRAME] set_render_frame_rejected', {
+          instanceId: payload.instanceId,
+          presentationPhase: payload.visualFrameTransaction.presentationPhase,
+          transactionKind: payload.visualFrameTransaction.kind,
+          message: error instanceof Error ? error.message : String(error),
+          deltas: (payload.sourceTransport.sourceDeltas ?? []).map((delta) => ({
+            sourceId: delta.sourceId,
+            mode: delta.mode,
+            nextIds: delta.nextFeatureIdsInOrder.length,
+            removes: delta.removeIds.length,
+            upserts: delta.upsertFeatures?.length ?? 0,
+          })),
+        });
+        throw error;
+      });
       const jsPromiseObservedAtEpochMs = Date.now();
       const nativeTiming: SearchMapRenderControllerNativeSetFrameTiming | null =
         nativeTimingResult && typeof nativeTimingResult === 'object' ? nativeTimingResult : null;

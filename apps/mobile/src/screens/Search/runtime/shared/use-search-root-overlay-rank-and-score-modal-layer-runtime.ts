@@ -21,6 +21,10 @@ export const useSearchRootOverlayRankAndScoreModalLayerRuntime = ({
         clearScoreInfo: filterModalControlLane.filterModalRuntime.clearScoreInfo,
         scoreInfoMaxHeight: SCORE_INFO_MAX_HEIGHT,
         formatCompactCount,
+        isSortSelectorVisible: filterModalControlLane.filterModalRuntime.isSortSelectorVisible,
+        sortMode: filterModalControlLane.filterModalRuntime.sortMode,
+        onSortSelect: filterModalControlLane.filterModalRuntime.handleSortSelect,
+        closeSortSelector: filterModalControlLane.filterModalRuntime.closeSortSelector,
         onProfilerRender:
           rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
       },
@@ -32,6 +36,10 @@ export const useSearchRootOverlayRankAndScoreModalLayerRuntime = ({
       filterModalControlLane.filterModalRuntime.closeScoreInfo,
       filterModalControlLane.filterModalRuntime.isScoreInfoVisible,
       filterModalControlLane.filterModalRuntime.scoreInfo,
+      filterModalControlLane.filterModalRuntime.isSortSelectorVisible,
+      filterModalControlLane.filterModalRuntime.sortMode,
+      filterModalControlLane.filterModalRuntime.handleSortSelect,
+      filterModalControlLane.filterModalRuntime.closeSortSelector,
       rootOverlayFoundationRuntime.rootInstrumentationRuntime.handleProfilerRender,
     ]
   );

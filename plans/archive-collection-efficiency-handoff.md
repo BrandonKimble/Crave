@@ -16,14 +16,14 @@ mandate to **rethink the relevance / sentiment-gating design from the ground up*
 ## 1. Where things stand right now (asset state)
 
 - **Data lives OUTSIDE the repo, on local disk:**
-  `~/crave-data/pushshift/archives/<subreddit>/<subreddit>_{comments,submissions}.zst`
+  `~/"Crave App"/data/pushshift/archives/<subreddit>/<subreddit>_{comments,submissions}.zst`
   - **783 subreddits, ~70 GB** (the "CORE" tier — see §3).
   - Deliberately NOT under `~/Documents` / `~/Desktop` (those iCloud-sync; would try to upload 70 GB).
 - **The pipeline reads it via one env var** in `apps/api/.env` (gitignored, machine-local):
   ```
-  PUSHSHIFT_BASE_DIR=/Users/brandonkimble/crave-data/pushshift/archives
-  PUSHSHIFT_LOCAL_BASE_PATH=/Users/brandonkimble/crave-data/pushshift
-  PUSHSHIFT_LOCAL_ARCHIVE_PATH=/Users/brandonkimble/crave-data/pushshift/archives
+  PUSHSHIFT_BASE_DIR=/Users/brandonkimble/Crave App/data/pushshift/archives
+  PUSHSHIFT_LOCAL_BASE_PATH=/Users/brandonkimble/Crave App/data/pushshift
+  PUSHSHIFT_LOCAL_ARCHIVE_PATH=/Users/brandonkimble/Crave App/data/pushshift/archives
   ```
   Verified: the service's real `path.resolve(baseDir, sub, file)` finds files there.
 - **Git carries zero `.zst`.** The repo keeps only infra + docs
@@ -90,7 +90,7 @@ to scale the subreddit set worldwide.
 **C. Downloaded the CORE tier (owner's choice) and moved it out of the repo.**
 
 - CORE = high-relevance `city + metro-food + travel + expat` = **783 subs, 70 GB**,
-  now at `~/crave-data/...` with `PUSHSHIFT_BASE_DIR` pointed at it (§1).
+  now at `~/"Crave App"/data/...` with `PUSHSHIFT_BASE_DIR` pointed at it (§1).
 
 ---
 
@@ -189,20 +189,20 @@ Treat these as the agenda, not settled answers:
 - Lock the _free_ wins regardless of the sentiment redesign: **5-year window +
   structural gate** at ingestion (unblocks the Austin load, zero LLM cost).
 - **Measure before committing:** run a Stage-1/Stage-2 prototype over a real 5-year
-  Austin slice from `~/crave-data` and report keep-rate + projected token deltas.
+  Austin slice from `~/"Crave App"/data` and report keep-rate + projected token deltas.
 - Then decide the sentiment/relevance architecture (§5b) with real numbers in hand.
 
 ---
 
 ## 6. Quick reference
 
-- **Data:** `~/crave-data/pushshift/archives/<sub>/<sub>_{comments,submissions}.zst` (783 subs, 70 GB)
+- **Data:** `~/"Crave App"/data/pushshift/archives/<sub>/<sub>_{comments,submissions}.zst` (783 subs, 70 GB)
 - **Manifest of all 1,240 relevant subs:** `apps/api/data/pushshift/candidate-subreddits.csv`
 - **Env:** `apps/api/.env` → `PUSHSHIFT_BASE_DIR` (+ two local-path vars)
 - **Torrent (for pulling more subs later):** academictorrents `3e3f64dee22dc304cdd2546254ca1f8e8ae542b4`
   (2005-06 → 2025-12). Tool: `aria2c --select-file=<idxs> <hash>.torrent`. To expand
   coverage, pick names from the manifest, map to file indices from the torrent's
-  `aria2c -S` file table, download, drop into `~/crave-data/...`.
+  `aria2c -S` file table, download, drop into `~/"Crave App"/data/...`.
 - **Key code:** `collection-prompt.md` (Steps 1 & 6 = relevance + sentiment),
   `reddit-batch-processing.service.ts:317` (gates), `llm.service.ts:193/870` (model/call),
   `llm-chunking.service.ts:7` (chunk limits), `archive-ingestion.service.ts` (loader —

@@ -10,6 +10,7 @@ export type SearchRootSearchSceneBusPatch = {
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
   isPriceSelectorVisible: boolean;
+  isSortSelectorVisible: boolean;
   shouldRetrySearchOnReconnect: boolean;
 };
 

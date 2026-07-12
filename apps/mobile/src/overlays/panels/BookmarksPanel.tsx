@@ -25,8 +25,15 @@ import {
   type ReorderScrollAdapter,
 } from '../../components/reorder';
 import { getOverlaySceneScrollHandle } from '../sceneScrollStateRegistry';
+import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import { acquireOverlaySheetEditLock } from '../overlaySheetEditLockRuntime';
-import { Text } from '../../components';
+import {
+  FrostedFilterStrip,
+  SelectorChip,
+  Text,
+  toggleOptionSelector,
+  useOptionSelectorOpenKey,
+} from '../../components';
 import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';
 import { SegmentedToggle } from '../../components/SegmentedToggle';
 import { colors as themeColors } from '../../constants/theme';
@@ -280,115 +287,131 @@ const BookmarksToggleStrip = React.memo(
       [stripWidth]
     );
 
+    const optionSelectorOpenKey = useOptionSelectorOpenKey();
     return (
       <View
         style={styles.stripViewport}
         onLayout={(event) => setStripWidth(event.nativeEvent.layout.width)}
       >
+        {/* TOGGLE-STRIP PRIMITIVE (plans/toggle-strip-primitive.md): each morph layer is
+            a full FrostedFilterStrip — frost + masked cutouts + horizontal overflow ride
+            the sliding rows, so the edit morph keeps its choreography while every control
+            gets the standard cutout treatment. Sort is the house dropdown toggle. */}
         <Animated.View
           style={[styles.stripRow, normalStripStyle]}
           pointerEvents={isEditing ? 'none' : 'auto'}
         >
-          {sortMode === 'custom' ? (
-            <Animated.View
-              entering={FadeIn.duration(STRIP_MORPH_MS)}
-              exiting={FadeOut.duration(120)}
-              layout={LinearTransition.duration(STRIP_MORPH_MS)}
-            >
-              <Pressable
-                onPress={onEnterEdit}
-                accessibilityRole="button"
-                accessibilityLabel="Edit list order"
-                style={styles.editChip}
-                testID="bookmarks-edit-toggle"
+          <FrostedFilterStrip testID="bookmarks-strip" style={styles.stripShell}>
+            {sortMode === 'custom' ? (
+              // §8.11: the Edit chip slides in immediately LEFT of the sort toggle
+              // when (and only when) sort = Custom.
+              <Animated.View
+                key="edit"
+                entering={FadeIn.duration(STRIP_MORPH_MS)}
+                exiting={FadeOut.duration(120)}
+                layout={LinearTransition.duration(STRIP_MORPH_MS)}
               >
-                <Feather name="edit-2" size={14} color="#0f172a" />
-                <Text variant="caption" weight="semibold" style={styles.editChipText}>
-                  Edit
-                </Text>
-              </Pressable>
-            </Animated.View>
-          ) : null}
-          <Animated.View
-            style={styles.stripSegment}
-            layout={LinearTransition.duration(STRIP_MORPH_MS)}
-          >
-            <SegmentedToggle
-              options={BOOKMARK_SORT_OPTIONS}
-              value={sortMode}
-              onChange={onSortModeChange}
+                <Pressable
+                  onPress={onEnterEdit}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit list order"
+                  style={styles.editChip}
+                  testID="bookmarks-edit-toggle"
+                >
+                  <Feather name="edit-2" size={14} color="#0f172a" />
+                  <Text variant="caption" weight="semibold" style={styles.editChipText}>
+                    Edit
+                  </Text>
+                </Pressable>
+              </Animated.View>
+            ) : null}
+            <SelectorChip
+              key="sort"
+              label={sortMode === 'recent' ? 'Sort' : 'Custom'}
+              active={sortMode !== 'recent'}
+              expanded={optionSelectorOpenKey === 'bookmarks-sort'}
+              onPress={() =>
+                toggleOptionSelector({
+                  key: 'bookmarks-sort',
+                  title: 'Sort',
+                  options: BOOKMARK_SORT_OPTIONS,
+                  value: sortMode,
+                  onSelect: (value) => onSortModeChange(value),
+                  testID: 'bookmarks-sort-sheet',
+                })
+              }
               accessibilityLabel="Sort lists"
               testID="bookmarks-sort-toggle"
             />
-          </Animated.View>
-          <Animated.View
-            style={styles.stripSegment}
-            layout={LinearTransition.duration(STRIP_MORPH_MS)}
-          >
             <SegmentedToggle
+              key="list-type"
               options={BOOKMARK_LIST_TYPE_OPTIONS}
               value={listType}
               onChange={onSelectListType}
               accessibilityLabel="Toggle between restaurant and dish lists"
               testID="bookmarks-list-type-toggle"
             />
-          </Animated.View>
+          </FrostedFilterStrip>
         </Animated.View>
         <Animated.View
           style={[styles.stripRow, styles.stripRowOverlay, editStripStyle]}
           pointerEvents={isEditing ? 'auto' : 'none'}
         >
-          <Pressable
-            onPress={onCancelEdit}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel reordering"
-            style={styles.editStripButton}
-            testID="bookmarks-edit-cancel"
-          >
-            <Text variant="caption" weight="semibold" style={styles.editStripCancelText}>
-              Cancel
-            </Text>
-          </Pressable>
-          <View style={styles.editStripMiddle}>
+          <FrostedFilterStrip testID="bookmarks-edit-strip" style={styles.stripShell}>
             <Pressable
-              onPress={onUndo}
-              disabled={!canUndo}
+              key="cancel"
+              onPress={onCancelEdit}
               accessibilityRole="button"
-              accessibilityLabel="Undo move"
-              hitSlop={6}
-              style={styles.editStripIconButton}
-              testID="bookmarks-edit-undo"
+              accessibilityLabel="Cancel reordering"
+              style={styles.editStripButton}
+              testID="bookmarks-edit-cancel"
             >
-              <Feather name="rotate-ccw" size={18} color={canUndo ? '#0f172a' : '#cbd5e1'} />
-            </Pressable>
-            <Pressable
-              onPress={onRedo}
-              disabled={!canRedo}
-              accessibilityRole="button"
-              accessibilityLabel="Redo move"
-              hitSlop={6}
-              style={styles.editStripIconButton}
-              testID="bookmarks-edit-redo"
-            >
-              <Feather name="rotate-cw" size={18} color={canRedo ? '#0f172a' : '#cbd5e1'} />
-            </Pressable>
-          </View>
-          <Pressable
-            onPress={onSaveEdit}
-            disabled={isSaving}
-            accessibilityRole="button"
-            accessibilityLabel="Save list order"
-            style={styles.editStripSave}
-            testID="bookmarks-edit-save"
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#ffffff" />
-            ) : (
-              <Text variant="caption" weight="semibold" style={styles.editStripSaveText}>
-                Save
+              <Text variant="caption" weight="semibold" style={styles.editStripCancelText}>
+                Cancel
               </Text>
-            )}
-          </Pressable>
+            </Pressable>
+            <View key="history" style={styles.editStripMiddle}>
+              <Pressable
+                onPress={onUndo}
+                disabled={!canUndo}
+                accessibilityRole="button"
+                accessibilityLabel="Undo move"
+                hitSlop={6}
+                style={styles.editStripIconButton}
+                testID="bookmarks-edit-undo"
+              >
+                <Feather name="rotate-ccw" size={18} color={canUndo ? '#0f172a' : '#cbd5e1'} />
+              </Pressable>
+              <Pressable
+                onPress={onRedo}
+                disabled={!canRedo}
+                accessibilityRole="button"
+                accessibilityLabel="Redo move"
+                hitSlop={6}
+                style={styles.editStripIconButton}
+                testID="bookmarks-edit-redo"
+              >
+                <Feather name="rotate-cw" size={18} color={canRedo ? '#0f172a' : '#cbd5e1'} />
+              </Pressable>
+            </View>
+            <Pressable
+              key="save"
+              onPress={onSaveEdit}
+              disabled={isSaving}
+              accessibilityRole="button"
+              accessibilityLabel="Save list order"
+              style={styles.editStripSave}
+              testID="bookmarks-edit-save"
+            >
+              {isSaving ? (
+                <ActivityIndicator size="small" color="#ffffff" />
+              ) : (
+                <Text variant="caption" weight="semibold" style={styles.editStripSaveText}>
+                  Save
+                </Text>
+              )}
+            </Pressable>
+          </FrostedFilterStrip>
         </Animated.View>
       </View>
     );
@@ -1294,7 +1317,6 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   segmentRow: {
-    flexDirection: 'row',
     marginTop: 8,
     marginBottom: 12,
   },
@@ -1305,7 +1327,9 @@ const styles = StyleSheet.create({
   stripRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+  },
+  stripShell: {
+    flex: 1,
   },
   stripRowOverlay: {
     ...StyleSheet.absoluteFillObject,

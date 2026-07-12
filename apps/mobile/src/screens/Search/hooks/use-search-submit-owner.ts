@@ -32,6 +32,7 @@ import {
   type SearchWorldResolveArgs,
 } from '../runtime/resolver/search-world-resolver';
 import { createSearchWorldPresentationSeam } from '../runtime/resolver/search-world-presentation-seam';
+import { getSearchSurfaceRuntime } from '../runtime/surface/search-surface-runtime';
 import {
   createSearchWorldFetcher,
   createSearchWorldNextPageFetcher,
@@ -318,6 +319,15 @@ const useSearchSubmitOwner = ({
       onWorldCommitted: ({ searchRequestId }) => {
         lastSearchRequestIdRef.current = searchRequestId;
       },
+      // Transition-perf fence: hold the world-commit fan-out while the results sheet is
+      // mid-slide (redraw transaction live with sheet motion pending). sheetReady is a
+      // motion-only fact (snap completion / motion-plane settle), so release never
+      // depends on the held commit — no cycle.
+      shouldHoldWorldCommitForSheetMotion: () => {
+        const redrawTransaction = getSearchSurfaceRuntime().getSnapshot().redrawTransaction;
+        return redrawTransaction != null && !redrawTransaction.readiness.sheetReady;
+      },
+      subscribeWorldCommitRelease: (listener) => getSearchSurfaceRuntime().subscribe(listener),
     });
     const resolver = createSearchWorldResolver({
       searchRuntimeBus,

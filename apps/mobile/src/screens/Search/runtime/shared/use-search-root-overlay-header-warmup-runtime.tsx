@@ -92,7 +92,7 @@ export const useSearchRootOverlayHeaderWarmupRuntime = ({
             onTabChange: NOOP,
             onToggleOpenNow: NOOP,
             onToggleIncludeSimilar: NOOP,
-            onToggleRising: NOOP,
+            onToggleSortSelector: NOOP,
             onTogglePriceSelector: NOOP,
             isPriceSelectorVisible: false,
             contentHorizontalPadding: CONTENT_HORIZONTAL_PADDING,

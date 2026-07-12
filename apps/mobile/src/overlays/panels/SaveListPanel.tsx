@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSharedValue } from 'react-native-reanimated';
-import { Text } from '../../components';
+import { SegmentedToggle, Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
@@ -32,8 +32,6 @@ const ROW_TEXT = '#0f172a';
 const ROW_SUBTEXT = themeColors.textBody;
 const FORM_BORDER = '#e2e8f0';
 const FORM_PLACEHOLDER = themeColors.textBody;
-const FORM_TOGGLE_BG = '#f1f5f9';
-const FORM_TOGGLE_ACTIVE = '#0f172a';
 
 type ListFormState = {
   mode: 'hidden' | 'create';
@@ -57,6 +55,16 @@ const selectSaveSheetState = (snapshot: AppRouteOverlayCommandSnapshot) => snaps
 // writes it, the header title subscribes; null = no override (trigger side).
 // ---------------------------------------------------------------------------
 type SaveSheetSideListener = () => void;
+const VISIBILITY_OPTIONS = [
+  { label: 'Private', value: 'private' },
+  { label: 'Public', value: 'public' },
+] as const satisfies readonly { label: string; value: FavoriteListVisibility }[];
+
+const SIDE_SWITCH_OPTIONS = [
+  { label: 'Restaurants', value: 'restaurant' },
+  { label: 'Dishes', value: 'dish' },
+] as const satisfies readonly { label: string; value: FavoriteListType }[];
+
 let saveSheetSideOverride: FavoriteListType | null = null;
 const saveSheetSideListeners = new Set<SaveSheetSideListener>();
 const saveSheetSideStore = {
@@ -370,28 +378,14 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
 
   return (
     <View style={styles.sceneBody}>
-      <View style={styles.sideSwitch}>
-        {(['restaurant', 'dish'] as FavoriteListType[]).map((value) => {
-          const isSelected = side === value;
-          return (
-            <Pressable
-              key={value}
-              onPress={() => handleSideChange(value)}
-              style={[styles.sideOption, isSelected && styles.sideOptionActive]}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isSelected }}
-            >
-              <Text
-                variant="caption"
-                weight="semibold"
-                style={[styles.sideOptionText, isSelected && styles.sideOptionTextActive]}
-              >
-                {value === 'restaurant' ? 'Restaurants' : 'Dishes'}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {/* THE house toggle primitive (plans/toggle-strip-primitive.md): press-up unbounded,
+          whole-control tap flips. Replaces the hand-rolled sideOption pill pair. */}
+      <SegmentedToggle
+        options={SIDE_SWITCH_OPTIONS}
+        value={side}
+        onChange={(value) => handleSideChange(value)}
+        accessibilityLabel="Toggle save target between restaurants and dishes"
+      />
       {!canSaveOnThisSide ? (
         <Text variant="caption" style={styles.sideHint}>
           {side === 'dish'
@@ -432,29 +426,12 @@ export const SaveListMountedSceneBody = React.memo((_props: MountedSceneBodyProp
             <Text variant="caption" style={styles.visibilityLabel}>
               Visibility
             </Text>
-            <View style={styles.visibilityToggle}>
-              {(['private', 'public'] as FavoriteListVisibility[]).map((value) => {
-                const isSelected = formState.visibility === value;
-                return (
-                  <Pressable
-                    key={value}
-                    onPress={() => handleVisibilityChange(value)}
-                    style={[styles.visibilityOption, isSelected && styles.visibilityOptionActive]}
-                  >
-                    <Text
-                      variant="caption"
-                      weight="semibold"
-                      style={[
-                        styles.visibilityOptionText,
-                        isSelected && styles.visibilityOptionTextActive,
-                      ]}
-                    >
-                      {value === 'private' ? 'Private' : 'Public'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <SegmentedToggle
+              options={VISIBILITY_OPTIONS}
+              value={formState.visibility}
+              onChange={(value) => handleVisibilityChange(value)}
+              accessibilityLabel="Toggle list visibility between private and public"
+            />
           </View>
           <View style={styles.formActions}>
             <Pressable onPress={resetForm} style={styles.formCancel}>
@@ -533,27 +510,6 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: '#0f172a',
-  },
-  sideSwitch: {
-    flexDirection: 'row',
-    backgroundColor: FORM_TOGGLE_BG,
-    borderRadius: 999,
-    padding: 2,
-    alignSelf: 'flex-start',
-  },
-  sideOption: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 999,
-  },
-  sideOptionActive: {
-    backgroundColor: '#ffffff',
-  },
-  sideOptionText: {
-    color: ROW_SUBTEXT,
-  },
-  sideOptionTextActive: {
-    color: FORM_TOGGLE_ACTIVE,
   },
   sideHint: {
     color: ROW_SUBTEXT,
@@ -655,26 +611,6 @@ const styles = StyleSheet.create({
   },
   visibilityLabel: {
     color: ROW_SUBTEXT,
-  },
-  visibilityToggle: {
-    flexDirection: 'row',
-    backgroundColor: FORM_TOGGLE_BG,
-    borderRadius: 999,
-    padding: 2,
-  },
-  visibilityOption: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-  visibilityOptionActive: {
-    backgroundColor: '#ffffff',
-  },
-  visibilityOptionText: {
-    color: ROW_SUBTEXT,
-  },
-  visibilityOptionTextActive: {
-    color: FORM_TOGGLE_ACTIVE,
   },
   formActions: {
     flexDirection: 'row',

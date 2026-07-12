@@ -189,6 +189,19 @@ export const selectIsSearchResultsSurfaceOwner = (
   policy.bottomBandOwner === 'results_header' ||
   policy.sheetClipMode === 'animatedSearchTransition';
 
+// The ONE derived fact for "the dismiss choreography has completed" — release means the
+// choreography is done, not "the sheet touched bottom": a bottom-snap dismiss reaches
+// the boundary at t0 (zero travel) while the nav is still sliding home; flipping to
+// dockedPersistentPoll then pins the effective navTranslateY to 0 and the mask animates
+// alone, exposing the map. Both the release policy and the commit stamp consume THIS
+// derivation so the two can never drift.
+export const isDismissChoreographyComplete = (
+  dismissTransaction: Pick<
+    SearchSurfaceDismissTransaction,
+    'bottomBoundaryReached' | 'bottomNavReturnReady'
+  >
+): boolean => dismissTransaction.bottomBoundaryReached && dismissTransaction.bottomNavReturnReady;
+
 export const selectSearchSurfaceVisualPolicy = (
   snapshot: SearchSurfaceRuntimeSnapshot
 ): SearchSurfaceVisualPolicySnapshot => {
@@ -224,7 +237,7 @@ export const selectSearchSurfaceVisualPolicy = (
       dismissTransaction.pollBodyReady &&
       dismissTransaction.pollHostReady;
     const canReleasePersistentPolls =
-      canDisplayPersistentPollSubstrate && dismissTransaction.bottomBoundaryReached;
+      canDisplayPersistentPollSubstrate && isDismissChoreographyComplete(dismissTransaction);
     return {
       transactionId: dismissTransaction.id,
       phase: 'results_dismissing',
@@ -622,7 +635,11 @@ export class SearchSurfaceRuntime {
         coverState,
         readiness: {
           cardsReady: false,
-          sheetReady: false,
+          // Born TRUE: sheetReady means "the sheet is not physically moving". Stationary
+          // redraws (toggle / search-this-area / variant rerun — staged at response
+          // time) must not gate on a slide that will never run; the sheet host flips
+          // this to pending at snap START and restores it at snap SETTLE.
+          sheetReady: true,
           nativeMarkerFrameReady: false,
           nativeMarkerFrameBatch: null,
         },
@@ -722,6 +739,17 @@ export class SearchSurfaceRuntime {
     this.patchActiveRedrawTransaction(transactionId, { sheetReady: true });
     // Phase 1 — dual-report (observe-only). See markRedrawCardsReady above.
     markActiveSceneContentGate('sheet', transactionId);
+  };
+
+  // Transition-perf fence: `sheetReady` means "the sheet is not physically moving for
+  // this transaction". Redraws are born sheet-ready; the sheet HOST flips this at snap
+  // START and restores it at snap SETTLE (both in app-route-sheet-host-authority-
+  // controller) — motion-keyed on both sides, so a deferred/no-op snap (no motion) can
+  // never strand the bit, and a commit arriving before motion begins simply flows
+  // (markers mount, the presentation lane frees, the snap then runs fenced). World
+  // commits are held behind this bit so the hydration fan-out never lands mid-slide.
+  public markRedrawSheetMotionPending = (transactionId: string | null | undefined): void => {
+    this.patchActiveRedrawTransaction(transactionId, { sheetReady: false });
   };
 
   // UNIFIED-FADE TOGGLE (map-LOD-v6): the DETERMINISTIC resolver for the `nativeMarkerFrameReady` gate.
@@ -1159,7 +1187,7 @@ export class SearchSurfaceRuntime {
       nextDismissTransaction.pollHeaderReady &&
       nextDismissTransaction.pollBodyReady &&
       nextDismissTransaction.pollHostReady &&
-      nextDismissTransaction.bottomBoundaryReached;
+      isDismissChoreographyComplete(nextDismissTransaction);
     const publishedDismissTransaction =
       isReadyToReleasePersistentPolls && nextDismissTransaction.committedAtMs == null
         ? {

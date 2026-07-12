@@ -72,6 +72,7 @@ export type SearchRuntimeBusState = {
   priceButtonLabelText: string;
   priceButtonIsActive: boolean;
   isPriceSelectorVisible: boolean;
+  isSortSelectorVisible: boolean;
   toggleInteraction: ToggleInteractionState;
   shouldRetrySearchOnReconnect: boolean;
   hasSystemStatusBanner: boolean;
@@ -177,6 +178,7 @@ const INITIAL_STATE: SearchRuntimeBusState = {
   priceButtonLabelText: '',
   priceButtonIsActive: false,
   isPriceSelectorVisible: false,
+  isSortSelectorVisible: false,
   toggleInteraction: IDLE_TOGGLE_INTERACTION_STATE,
   shouldRetrySearchOnReconnect: false,
   hasSystemStatusBanner: false,

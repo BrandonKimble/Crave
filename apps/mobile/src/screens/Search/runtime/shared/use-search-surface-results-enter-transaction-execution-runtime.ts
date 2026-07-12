@@ -108,7 +108,6 @@ export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
         );
       }
       resultsRuntimeOwner.stageSearchSurfaceResultsTransaction(snapshot);
-      getSearchSurfaceRuntime().markRedrawSheetReady(snapshot.transactionId);
       return snapshot.transactionId;
     },
     [

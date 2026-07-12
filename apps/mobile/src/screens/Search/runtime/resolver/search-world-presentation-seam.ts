@@ -106,6 +106,15 @@ export type SearchWorldPresentationSeamEnv = {
   /** Fires on every world commit (including represent-noops) — the strangler home for
    *  lastSearchRequestIdRef and other commit-keyed side state until S4. */
   onWorldCommitted?: (args: { searchRequestId: string; worldId: string }) => void;
+  /** Transition-perf fence: while the results sheet is mid-slide (an enter snap
+   *  commanded, not yet settled), the ~150ms world-commit fan-out + row mounts must not
+   *  land — they starve the 360ms slide down to a couple of frames. When this returns
+   *  true the commit is HELD (latest-wins) and flushed via the settle subscription.
+   *  Motion-only predicate: settle never depends on the commit, so no cycle. */
+  shouldHoldWorldCommitForSheetMotion?: () => boolean;
+  /** Subscribe to the signal that may release a held commit (sheet settled / redraw
+   *  transaction changed). Returns an unsubscribe. Required if the predicate is set. */
+  subscribeWorldCommitRelease?: (listener: () => void) => () => void;
 };
 
 export type SearchWorldPresentationSeam = {
@@ -130,6 +139,57 @@ export const createSearchWorldPresentationSeam = (
   // Grounded in the COMPOSITE (the mounted snapshot's identity), not seam-local memory —
   // the legacy submit path also presents until S3d, and only the mounted store sees both.
   let presentedWorldId: string | null = null;
+  // Transition-perf fence state: at most ONE held commit (latest wins — a newer commit
+  // for a newer desire supersedes a held stale one by construction), released by the
+  // sheet-settle subscription. See env.shouldHoldWorldCommitForSheetMotion. NOTE: the
+  // reveal statechart (search-reveal-statechart.ts) is chartered to own this ordering
+  // (arm-under-cover / joint sequencing); this seam-level hold is the enforcement point
+  // until that statechart is wired into production — fold it in there, don't grow it.
+  let heldCommitArgs: SearchWorldCommitArgs | null = null;
+  let releaseUnsubscribe: (() => void) | null = null;
+  const flushHeldCommitIfReleased = (): void => {
+    if (heldCommitArgs == null || env.shouldHoldWorldCommitForSheetMotion?.() === true) {
+      return;
+    }
+    releaseUnsubscribe?.();
+    releaseUnsubscribe = null;
+    const args = heldCommitArgs;
+    heldCommitArgs = null;
+    commitWorldToMountedStateNow(args);
+  };
+  const commitWorldToMountedState = (args: SearchWorldCommitArgs): void => {
+    if (env.shouldHoldWorldCommitForSheetMotion?.() === true) {
+      // Loud contract: dropping a held commit is only legal when the newcomer strictly
+      // supersedes it (newer generation, or the same world re-resolved). Any other
+      // overwrite is a lost world — report it, never lose it silently.
+      if (heldCommitArgs != null) {
+        const supersedes =
+          args.generation > heldCommitArgs.generation || args.worldId === heldCommitArgs.worldId;
+        if (!supersedes) {
+          reportSearchFlowContractViolation('held_world_commit_dropped_without_supersession', {
+            droppedWorldId: heldCommitArgs.worldId,
+            droppedGeneration: heldCommitArgs.generation,
+            incomingWorldId: args.worldId,
+            incomingGeneration: args.generation,
+          });
+        } else if (__DEV__) {
+          logger.info('[WORLD-COMMIT] held commit superseded', {
+            droppedWorldId: heldCommitArgs.worldId,
+            incomingWorldId: args.worldId,
+          });
+        }
+      }
+      heldCommitArgs = args;
+      if (releaseUnsubscribe == null && env.subscribeWorldCommitRelease != null) {
+        releaseUnsubscribe = env.subscribeWorldCommitRelease(flushHeldCommitIfReleased);
+      }
+      if (__DEV__) {
+        logger.info('[WORLD-COMMIT] held for sheet motion', { worldId: args.worldId });
+      }
+      return;
+    }
+    commitWorldToMountedStateNow(args);
+  };
   return {
     getPresentedWorldId: () => presentedWorldId,
     beginResolution: ({ generation, presentationIntentKind }) => {
@@ -143,7 +203,12 @@ export const createSearchWorldPresentationSeam = (
       });
       env.onResolutionStart?.({ generation, presentationIntentKind });
     },
-    commitWorldToMountedState: (args) => {
+    commitWorldToMountedState,
+    failResolution,
+  };
+
+  function commitWorldToMountedStateNow(args: SearchWorldCommitArgs): void {
+    {
       const {
         worldId,
         generation,
@@ -277,36 +342,37 @@ export const createSearchWorldPresentationSeam = (
           isVersionUpdate: Boolean(isVersionUpdateOfPresentedWorld),
         });
       }
-    },
-    failResolution: ({ generation, reason }) => {
-      const offline = useSystemStatusStore.getState().isOffline;
-      if (offline) {
-        // OFFLINE = a PAUSED resolution, not a failure (owner call, 2026-07-08): the
-        // loading level simply persists — universal across every transition, no
-        // per-surface offline styling — the system banner explains, and the reconnect
-        // auto-retry resumes the pending desire (the hang is FINITE, unlike Airbnb's).
-        // Only the failure fact is recorded, for the reconnect edge to consume.
-        env.searchRuntimeBus.publish({
-          searchResolutionFailure: { generation, reason, offline: true, atMs: Date.now() },
-        });
-        if (__DEV__) {
-          logger.info('[WORLD-COMMIT] resolution paused offline', { generation, reason });
-        }
-        return;
-      }
+    }
+  }
+
+  function failResolution({ generation, reason }: { generation: number; reason: string }): void {
+    const offline = useSystemStatusStore.getState().isOffline;
+    if (offline) {
+      // OFFLINE = a PAUSED resolution, not a failure (owner call, 2026-07-08): the
+      // loading level simply persists — universal across every transition, no
+      // per-surface offline styling — the system banner explains, and the reconnect
+      // auto-retry resumes the pending desire (the hang is FINITE, unlike Airbnb's).
+      // Only the failure fact is recorded, for the reconnect edge to consume.
       env.searchRuntimeBus.publish({
-        // A failed resolution settles back onto whatever is on screen — 'idle' only
-        // when nothing is presented (a failed session enter).
-        presentingPhase: presentedWorldId != null ? 'presented' : 'idle',
-        isSearchLoading: false,
-        isLoadingMore: false,
-        // The FAILURE LEVEL: desired stays (the charter's rule), presentation shows
-        // the failed fact. The presented world (if any) is never destroyed.
-        searchResolutionFailure: { generation, reason, offline: false, atMs: Date.now() },
+        searchResolutionFailure: { generation, reason, offline: true, atMs: Date.now() },
       });
       if (__DEV__) {
-        logger.warn('[WORLD-COMMIT] resolution failed', { generation, reason });
+        logger.info('[WORLD-COMMIT] resolution paused offline', { generation, reason });
       }
-    },
-  };
+      return;
+    }
+    env.searchRuntimeBus.publish({
+      // A failed resolution settles back onto whatever is on screen — 'idle' only
+      // when nothing is presented (a failed session enter).
+      presentingPhase: presentedWorldId != null ? 'presented' : 'idle',
+      isSearchLoading: false,
+      isLoadingMore: false,
+      // The FAILURE LEVEL: desired stays (the charter's rule), presentation shows
+      // the failed fact. The presented world (if any) is never destroyed.
+      searchResolutionFailure: { generation, reason, offline: false, atMs: Date.now() },
+    });
+    if (__DEV__) {
+      logger.warn('[WORLD-COMMIT] resolution failed', { generation, reason });
+    }
+  }
 };

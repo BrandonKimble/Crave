@@ -270,34 +270,50 @@ export function SegmentedToggle<T extends string>({
     [onChange, options]
   );
 
+  // PRESS-UP, UNBOUNDED (toggle-strip primitive T1/T2): the whole control is ONE target
+  // and the commit fires on finger-UP no matter how long the finger was held —
+  // `maxDuration` is lifted to effectively-infinite (the RNGH default ~500ms silently
+  // discarded a hold-then-release). Movement past the slop still cancels (maxDistance
+  // default), so a drag-away remains an escape hatch.
   const tapGesture = React.useMemo(
     () =>
       Gesture.Tap()
+        .maxDuration(1e9)
         .shouldCancelWhenOutside(false)
         .onEnd((event, success) => {
           'worklet';
           if (!success) {
             return;
           }
-          // Resolve the tapped segment from the measured geometry; with two segments
-          // an off-segment tap still flips (the original toggle affordance).
           const xs = segmentXs.value;
           const widths = segmentWidths.value;
           let next = -1;
-          for (let i = 0; i < xs.length; i += 1) {
-            if (event.x >= xs[i] && event.x <= xs[i] + widths[i]) {
-              next = i;
-              break;
+          if (xs.length === 2) {
+            // T2: a 2-position toggle flips on ANY press-up on the control — no
+            // segment aiming required. (The old shape only flipped on the inactive
+            // side; a press on the active pill was silently ignored.)
+            next = targetProgress.value === 0 ? 1 : 0;
+          } else {
+            for (let i = 0; i < xs.length; i += 1) {
+              if (event.x >= xs[i] && event.x <= xs[i] + widths[i]) {
+                next = i;
+                break;
+              }
+            }
+            if (next === -1) {
+              // Gap/padding press on an N-position control: nearest segment center wins
+              // (the whole control is the target; dead zones are not).
+              let bestDistance = Number.MAX_VALUE;
+              for (let i = 0; i < xs.length; i += 1) {
+                const distance = Math.abs(event.x - (xs[i] + widths[i] / 2));
+                if (distance < bestDistance) {
+                  bestDistance = distance;
+                  next = i;
+                }
+              }
             }
           }
-          if (next === -1) {
-            if (xs.length === 2) {
-              next = targetProgress.value === 0 ? 1 : 0;
-            } else {
-              return;
-            }
-          }
-          if (next === targetProgress.value) {
+          if (next === -1 || next === targetProgress.value) {
             return;
           }
           const duration = resolveSegmentTravelDurationMs(selectionProgress.value, next);

@@ -2,7 +2,7 @@
 # Exact stream-counts over the Austin pushshift archives → token + cost model.
 # Pushshift zst uses long-window; decompress with --long=31.
 set -euo pipefail
-BASE=/Users/brandonkimble/crave-data/pushshift/archives
+BASE="/Users/brandonkimble/Crave App/data/pushshift/archives"
 OUT=/Users/brandonkimble/Crave/apps/api/scratchpad/austin-archive-counts.tsv
 : > "$OUT"
 for SUB in Austin AustinBeer askaustin austinfood; do

@@ -191,4 +191,64 @@ describe('toggle-interaction-engine', () => {
     engine.begin(() => undefined, { kind: 'b' });
     expect(listener).toHaveBeenCalledTimes(3);
   });
+
+  describe('visual-floor gate (T3)', () => {
+    it('gated commit waits past the quiet window until notifyVisualFloor', () => {
+      const runner = jest.fn();
+      const engine = createToggleInteractionEngine<Kind>({});
+      engine.begin(runner, { kind: 'a', awaitVisualFloor: true });
+      jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS + 10);
+      expect(runner).not.toHaveBeenCalled();
+      engine.notifyVisualFloor();
+      expect(runner).toHaveBeenCalledTimes(1);
+    });
+
+    it('floor acked BEFORE the quiet window elapses commits at the window edge', () => {
+      const runner = jest.fn();
+      const engine = createToggleInteractionEngine<Kind>({});
+      engine.begin(runner, { kind: 'a', awaitVisualFloor: true });
+      engine.notifyVisualFloor();
+      expect(runner).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS + 10);
+      expect(runner).toHaveBeenCalledTimes(1);
+    });
+
+    it('already-at-floor oracle short-circuits the gate', () => {
+      const runner = jest.fn();
+      const engine = createToggleInteractionEngine<Kind>({ isAtVisualFloor: () => true });
+      engine.begin(runner, { kind: 'a', awaitVisualFloor: true });
+      jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS + 10);
+      expect(runner).toHaveBeenCalledTimes(1);
+    });
+
+    it('bounded fallback commits loudly when the floor never acks', () => {
+      const runner = jest.fn();
+      const engine = createToggleInteractionEngine<Kind>({ visualFloorFallbackMs: 500 });
+      engine.begin(runner, { kind: 'a', awaitVisualFloor: true });
+      jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS + 10);
+      expect(runner).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(500 + 10);
+      expect(runner).toHaveBeenCalledTimes(1);
+    });
+
+    it('a new begin re-arms the gate; the stale fallback never double-commits', () => {
+      const runs: string[] = [];
+      const engine = createToggleInteractionEngine<Kind>({ visualFloorFallbackMs: 500 });
+      engine.begin(() => void runs.push('first'), { kind: 'a', awaitVisualFloor: true });
+      jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS + 10);
+      engine.begin(() => void runs.push('second'), { kind: 'b', awaitVisualFloor: true });
+      jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS + 10);
+      engine.notifyVisualFloor();
+      jest.advanceTimersByTime(1000);
+      expect(runs).toEqual(['second']);
+    });
+
+    it('ungated kinds commit on the quiet window exactly as before', () => {
+      const runner = jest.fn();
+      const engine = createToggleInteractionEngine<Kind>({});
+      engine.begin(runner, { kind: 'a' });
+      jest.advanceTimersByTime(DEFAULT_TOGGLE_SETTLE_MS + 10);
+      expect(runner).toHaveBeenCalledTimes(1);
+    });
+  });
 });
