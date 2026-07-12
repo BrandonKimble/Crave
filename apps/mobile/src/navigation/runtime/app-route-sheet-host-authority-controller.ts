@@ -79,6 +79,7 @@ import {
 import { resolveAppRouteSheetScenePolicy } from './app-route-scene-policy-registry';
 import { getSceneFoundationSpec } from './scene-foundation-spec';
 import { setOverlaySheetSceneSnapLock } from '../../overlays/overlaySheetSceneSnapLockRuntime';
+import { setOverlaySheetPresentedSceneForContentFits } from '../../overlays/overlaySheetContentFitsRuntime';
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
@@ -1465,6 +1466,11 @@ class AppRouteSheetHostAuthorityController {
         // same expanded-pin gates as the §8.11 edit-lock; idempotent SharedValue write.
         setOverlaySheetSceneSnapLock(
           getSceneFoundationSpec(resolvedSurfaceInput.activeSemanticOverlayKey)?.snapLock ?? 'none'
+        );
+        // Content-fits tug (Phase B): recompute the presented scene's fits flag from the same
+        // presented-shell identity the snapLock rides — one sync site for both scene-keyed flags.
+        setOverlaySheetPresentedSceneForContentFits(
+          resolvedSurfaceInput.activeSemanticOverlayKey ?? null
         );
         const nextSnapshot = this.createRuntimeConfigSnapshot(resolvedSurfaceInput);
         if (areRuntimeConfigSnapshotsEqual(this.runtimeConfigSnapshot, nextSnapshot)) {

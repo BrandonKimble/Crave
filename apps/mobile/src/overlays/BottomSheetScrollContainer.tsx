@@ -6,6 +6,10 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reanimated';
 
 import { useSceneFrostCutoutContentLayoutSignal } from './SceneBodyFoundationSurface';
+import {
+  reportSheetBodyContentMetrics,
+  SheetSceneContentMetricsContext,
+} from './overlaySheetContentFitsRuntime';
 import { SHEET_BODY_NO_OVERSCROLL } from './sheetBodyScrollDefaults';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
@@ -42,6 +46,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       style,
       contentContainerStyle,
       onContentSizeChange,
+      onLayout,
       // STRUCTURAL: strip any per-scene scrollEnabled/animatedProps so nothing can shadow the
       // container's authorities (same law as SHEET_BODY_NO_OVERSCROLL below). scrollEnabled is
       // owned by shouldEnableScrollShared — one writer per factor.
@@ -66,6 +71,22 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       return { scrollEnabled: shouldEnableScrollShared.value };
     }, [shouldEnableScrollShared]);
 
+    // Content-fits metrics for the Phase B sheet-elastic tug (overlaySheetContentFitsRuntime):
+    // the container is the one place that knows BOTH sizes. Scene-keyed via context so hidden
+    // co-mounted legs can't clobber the presented scene's flag; null outside a scene leg → no-op.
+    const contentMetricsSceneKey = React.useContext(SheetSceneContentMetricsContext);
+    const handleLayout = React.useCallback(
+      (event: Parameters<NonNullable<ScrollViewProps['onLayout']>>[0]) => {
+        if (contentMetricsSceneKey != null) {
+          reportSheetBodyContentMetrics(contentMetricsSceneKey, {
+            viewportHeight: event.nativeEvent.layout.height,
+          });
+        }
+        onLayout?.(event);
+      },
+      [contentMetricsSceneKey, onLayout]
+    );
+
     // FrostCutout re-measure signal: content re-flow (a row above a cutout growing) changes the
     // content size without firing the cutout's own onLayout — this pings the scene's foundation
     // surface to sweep-re-measure its registered holes. No-op outside a foundation surface.
@@ -73,9 +94,12 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
     const handleContentSizeChange = React.useCallback(
       (width: number, height: number) => {
         notifyCutoutContentLayout();
+        if (contentMetricsSceneKey != null) {
+          reportSheetBodyContentMetrics(contentMetricsSceneKey, { contentHeight: height });
+        }
         onContentSizeChange?.(width, height);
       },
-      [notifyCutoutContentLayout, onContentSizeChange]
+      [contentMetricsSceneKey, notifyCutoutContentLayout, onContentSizeChange]
     );
 
     return (
@@ -96,6 +120,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
           alwaysBounceVertical={SHEET_BODY_NO_OVERSCROLL.alwaysBounceVertical}
           overScrollMode={SHEET_BODY_NO_OVERSCROLL.overScrollMode}
           animatedProps={scrollEnabledAnimatedProps}
+          onLayout={handleLayout}
           onContentSizeChange={handleContentSizeChange}
           style={[style, transparent ? styles.transparentScrollView : null]}
           contentContainerStyle={[

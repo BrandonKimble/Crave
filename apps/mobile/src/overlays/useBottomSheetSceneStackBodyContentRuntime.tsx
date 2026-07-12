@@ -19,6 +19,7 @@ import { notePremountChildBodyFirstCommit } from '../navigation/runtime/premount
 import { registerOverlaySceneScrollHandle } from './overlaySceneScrollHandleRegistry';
 import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
 import { getSceneFoundationSpec } from '../navigation/runtime/scene-foundation-spec';
+import { SheetSceneContentMetricsContext } from './overlaySheetContentFitsRuntime';
 import { SceneBodyFoundationSurface } from './SceneBodyFoundationSurface';
 import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneStackBodyActivityContext';
 
@@ -361,8 +362,16 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
     getSceneFoundationSpec(sceneKey as Parameters<typeof getSceneFoundationSpec>[0])
       ?.bodySurface === 'white';
   return React.useMemo(() => {
+    // Scene identity for the container's content-fits reports (Phase B tug — see
+    // overlaySheetContentFitsRuntime). Provided per leg so hidden co-mounted legs report under
+    // their OWN key and can never clobber the presented scene's flag.
+    const withSceneMetrics = (node: React.ReactNode) => (
+      <SheetSceneContentMetricsContext.Provider value={sceneKey}>
+        {node}
+      </SheetSceneContentMetricsContext.Provider>
+    );
     if (hasFoundationWhiteLayer) {
-      return (
+      return withSceneMetrics(
         <SceneBodyFoundationSurface
           scrollOffset={bodyScrollRuntime.scrollOffset}
           style={sceneSurfaceStyle}
@@ -371,6 +380,12 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
         </SceneBodyFoundationSurface>
       );
     }
-    return <View style={sceneSurfaceStyle}>{sceneBodyInner}</View>;
-  }, [bodyScrollRuntime.scrollOffset, hasFoundationWhiteLayer, sceneBodyInner, sceneSurfaceStyle]);
+    return withSceneMetrics(<View style={sceneSurfaceStyle}>{sceneBodyInner}</View>);
+  }, [
+    bodyScrollRuntime.scrollOffset,
+    hasFoundationWhiteLayer,
+    sceneBodyInner,
+    sceneKey,
+    sceneSurfaceStyle,
+  ]);
 };

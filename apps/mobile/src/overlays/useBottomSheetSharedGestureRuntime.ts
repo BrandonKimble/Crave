@@ -7,6 +7,7 @@ import type { BottomSheetSnapChangeSource } from './bottomSheetMotionTypes';
 import type { BottomSheetSharedRuntimeConfigSharedValues } from './bottomSheetSharedRuntimeContract';
 import { overlaySheetEditLockValue } from './overlaySheetEditLockRuntime';
 import { overlaySheetSceneSnapLockValue } from './overlaySheetSceneSnapLockRuntime';
+import { overlaySheetContentFitsValue } from './overlaySheetContentFitsRuntime';
 import {
   AXIS_LOCK_HORIZONTAL,
   AXIS_LOCK_NONE,
@@ -285,6 +286,13 @@ export const useBottomSheetSharedGestureRuntime = ({
           const shouldHandoffAtTop =
             expandStartedBelowExpanded.value || !expandAllowTopElastic.value;
           if (atExpanded && goingUp && shouldHandoffAtTop) {
+            // Phase B tug: content FITS the viewport → the scroll the handoff would surrender to
+            // cannot move (structural no-bounce). Keep the pan and go elastic instead — the whole
+            // sheet tugs above expanded and springs back (onChange's allowTopElastic path).
+            if (overlaySheetContentFitsValue.value === 1) {
+              expandAllowTopElastic.value = true;
+              return;
+            }
             handoffExpandGestureToScroll(stateManager);
           }
           return;
@@ -305,6 +313,19 @@ export const useBottomSheetSharedGestureRuntime = ({
           return;
         }
         if (goingUp) {
+          // Phase B tug: at expanded + list at top + content fits → an up-drag in the BODY becomes
+          // a sheet-elastic tug (activate with top-elastic) instead of failing into a scroll that
+          // cannot move. atTop guards the (transiently stale) fits flag: a scrollable page mid-list
+          // can never be captured. Fails open: unknown scenes report nothing → flag 0 → old path.
+          if (overlaySheetContentFitsValue.value === 1 && atTop && !isInMomentum.value) {
+            expandAllowTopElastic.value = true;
+            stateManager.activate();
+            expandPanActive.value = true;
+            beginDrag(sheetY.value);
+            expandStartSheetY.value = sheetY.value;
+            expandStartTouchY.value = touchY;
+            return;
+          }
           if (expandAllowTopElastic.value) {
             stateManager.activate();
             expandPanActive.value = true;
