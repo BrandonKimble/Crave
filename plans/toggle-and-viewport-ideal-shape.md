@@ -103,11 +103,25 @@ No big-bang rewrite (ethos: ideal shape, sequenced strangler, all in git). The p
 
 - **Revise protocol (§B, §C):** BUILT — the toggle engine (Gate 1), the visual ports (Gate 2),
   STA-onto-the-chip-lane (7c9d7fa8). Done and proven.
-- **ONE viewport value (§D):** the shipped camera fix (cd59e8a2) is step 1 (origin ← committedBounds,
-  per-trigger). Remaining: retire `lastCameraStateRef` as a _second_ camera source — derive the
-  one viewport (incl. zoom) from the live camera and feed `desire.area` + camera-in-origin from
-  it. This is the net-new work this doc adds to the world-camera plan; it's contained to the
-  search-map camera lane.
+- **ONE viewport value (§D): SHIPPED 2026-07-11 (127de8e9; camera half).** The viewport
+  service stores an atomic `{bounds, camera:{center,zoom}}` from the SAME native MapState
+  event (camera-changed + idle + perf writers supply it; bounds-only writers keep the last
+  event's camera); `captureCommittedBounds` snapshots bounds+polygon+camera in one
+  synchronous read so `tuple.committedBounds.camera` IS the searched viewport's camera;
+  the origin runtime reads only that (its `lastCameraStateRef` read + `getBoundsCenter`
+  derivation DELETED — the ref survives untouched as the profile lane's tracker, an L3
+  survivor). Camera is excluded from `areSearchCommittedBoundsEqual` + world keys (like
+  `viewportPolygon`) so revise classification and caching stay bounds-facts — reconciler
+  specs prove it. FOUND DURING THE COLLAPSE — a FOURTH representation: the service's
+  `searchBaselineBounds`+`submittedPolygon` (the STA "map moved" baseline), a second
+  independent capture of the searched viewport taken at `resetMapMoveFlag` time instead of
+  the tuple write. Its collapse (baseline becomes a mirror written from `committedBounds`
+  at the tuple write; the async polygon refine stays a service-only accuracy upgrade and
+  must NEVER write the tuple — the refined AABB differs slightly and would phantom-classify
+  `area_rerun`) is the REMAINING §D slice. Open questions for that slice: clear-owner null
+  semantics at session dismiss, the press-before-write ordering window, and that its readers
+  include `restaurant-location-selection.ts` (foundation-session anchor-rule lane — readers
+  must stay untouched; only the capture instant moves).
 - **Camera-as-value + one choreographer (§E):** world-camera L1–L5 (foundation session).
 - **Entries-as-values (§F):** trigger-nav S-B (foundation session).
 
