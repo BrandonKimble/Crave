@@ -92,7 +92,7 @@ genericization are the same move — give it the remaining two authorities:
    staleness, the secondary-gesture machinery (`SecondaryScrollComponent`
    deleted — one component, any number of instances), and the gesture re-mint
    churn that motivated the ref dance.
-3. **(Phase B — feel) Short-content sheet-elastic tug.** With no-bounce, a page
+3. **(Phase B — feel) Short-content BODY-LANE rubber-band (v2).** With no-bounce, a page
    whose content fits is a brick — reads as "scroll disabled" (the owner's
    always-scrollable decree; the round-2 direction-gated bounce was the wrong
    mechanism for this and broke both invariants). Ideal mechanism: when
@@ -116,10 +116,14 @@ container anyway).
 - Root cause + model: verified 2026-07-11 (this doc).
 - Phase A (authorities 1+2, channel deletions): BUILT + sim-verified,
   commit 369ba518.
-- Phase B (content-fits tug): BUILT + sim-verified (screen recording: ~70px
-  damped rise on the short profile page, pixel-identical spring-back;
-  settings fits=0 unaffected). overlaySheetContentFitsRuntime +
-  SheetSceneContentMetricsContext + two arbiter branches. Committed same day.
+- Phase B v2 (commit 264ff380): the tug output is a BODY-LANE translate
+  (overlaySheetBodyTugOffsetValue applied to the page-frame body layer), NOT
+  sheetY — lifting the sheet read as a grab (owner). Content + white plate +
+  cutout holes all live inside the body lane and move as one; the white layer
+  overdraws 96px below the lane so the tug never flashes frost. Detection
+  unchanged (content-fits registry + arbiter capture). Sim-verified by
+  recording: header/sheet pixel-stationary, avatar+metrics cutout slide under
+  the header and spring back exactly.
 - RNGH facts pinned: relation OR semantics (Android orchestrator :740, iOS
   RNGestureHandler.mm delegate), FlashList v2 CompatView root, Reanimated
   PropsFilter initial-spread.
