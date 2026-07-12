@@ -14,7 +14,7 @@ import {
   type LabelCandidate,
   type RestaurantFeatureProperties,
 } from '../components/search-map';
-import { ACTIVE_TAB_COLOR_DARK, LABEL_TEXT_SIZE } from '../constants/search';
+import { ACTIVE_TAB_COLOR_DARK } from '../constants/search';
 import {
   buildSearchMapVisualIdentityKey,
   normalizeSearchMapVisualFeatureIdentity,
@@ -837,7 +837,6 @@ type DirectMapSourceControllerArgs = DirectMapSourceControllerBaseArgs & {
 };
 
 type DirectMapSourceControllerResult = {
-  restaurantLabelStyle: MapboxGL.SymbolLayerStyle;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   resetShortcutCoverageState: () => void;
   handleMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
@@ -2658,10 +2657,6 @@ export const useDirectSearchMapSourceController = ({
           hasLabelCollisionSource:
             pinSourceStore.idsInOrder.length === 0 ||
             labelCollisionSourceStore.idsInOrder.length >= pinSourceStore.idsInOrder.length,
-          nativeMapLabelCollisionPreserved:
-            restaurantLabelStyle.textAllowOverlap === false &&
-            restaurantLabelStyle.textIgnorePlacement === false &&
-            restaurantLabelStyle.textOptional === false,
         });
       }
     }
@@ -2850,42 +2845,6 @@ export const useDirectSearchMapSourceController = ({
     });
   }, [highlightedRestaurantId]);
 
-  const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
-    const secondaryTextSize = LABEL_TEXT_SIZE * 0.85;
-    const nativeHighlightedExpression = [
-      '==',
-      ['coalesce', ['feature-state', 'nativeHighlighted'], ['get', 'nativeHighlighted'], 0],
-      1,
-    ] as const;
-    return {
-      textField: [
-        'case',
-        ['==', ['get', 'isDishPin'], true],
-        [
-          'format',
-          ['coalesce', ['get', 'dishName'], ''],
-          { 'font-scale': 1.0 },
-          '\n',
-          {},
-          ['coalesce', ['get', 'restaurantName'], ''],
-          { 'font-scale': secondaryTextSize / LABEL_TEXT_SIZE },
-        ],
-        ['coalesce', ['get', 'restaurantName'], ''],
-      ],
-      textJustify: 'auto',
-      textAllowOverlap: false,
-      textOptional: false,
-      textIgnorePlacement: false,
-      textSize: LABEL_TEXT_SIZE,
-      textFont: ['Open Sans Semibold', 'Arial Unicode MS Regular'],
-      textColor: ['case', nativeHighlightedExpression, ACTIVE_TAB_COLOR_DARK, '#374151'],
-      textHaloColor: 'rgba(255, 255, 255, 0.9)',
-      textHaloWidth: 1.2,
-      textHaloBlur: 0.9,
-      symbolZOrder: 'viewport-y',
-    };
-  }, []);
-
   const handleMarkerPress = React.useCallback(
     (restaurantId: string, pressedCoordinate?: Coordinate | null) => {
       lastMarkerPressTargetRef.current = {
@@ -2910,7 +2869,6 @@ export const useDirectSearchMapSourceController = ({
   );
 
   return {
-    restaurantLabelStyle,
     buildMarkerKey,
     resetShortcutCoverageState,
     handleMarkerPress,

@@ -298,7 +298,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
     resultsPresentationAuthority,
   });
 
-  const { restaurantLabelStyle, buildMarkerKey, resetShortcutCoverageState, handleMarkerPress } =
+  const { buildMarkerKey, resetShortcutCoverageState, handleMarkerPress } =
     useDirectSearchMapSourceController({
       searchRuntimeBus,
       resultsPresentationAuthority,
@@ -501,7 +501,6 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       resultsPresentationAuthority={resultsPresentationAuthority}
       emptyMapSceneSnapshot={emptyMapSceneSnapshot}
       buildMarkerKey={buildMarkerKey}
-      restaurantLabelStyle={restaurantLabelStyle}
       isMapStyleReady={isMapStyleReady}
       userLocation={userLocation}
       userLocationSnapshot={userLocationSnapshot}

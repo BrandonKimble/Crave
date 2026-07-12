@@ -158,3 +158,43 @@ Executed against the adversarially-verified plan (workflow `wd4ni1k0d`), step by
 **Net:** the peripheral GL-label dead code (tap query path + text-opacity writes) is removed and verified; the GL label render SOURCE + collision-twin are **retained by design** because the twin's broad basemap/dot suppression is live and not replicable without rebuilding the same machinery. STEP 3's "delete the source + drop the fence entry" is closed as won't-fix.
 
 > Note: the earlier "JS KEEP" line calling the twin "the (dead) twin" is superseded — the twin is LIVE (broad suppressor). The label source _builder's render half_ is likewise NOT deletable (the twin reads it).
+
+---
+
+## EXECUTION STATUS (2026-07-11, distributed re-audit + Phase A landed)
+
+**Already done by earlier passes (manifest was stale):** A/B flags (zero matches), CA pin overlay
+classes/bodies (the surviving `overlay*` fns are LIVE thin dispatchers over PinVA/LabelVA — KEEP),
+`configureLabelObservation`, `buildRenderedLabelPressTarget` (labelVAHitTest replaced it),
+LABEL_MUTEX family, JS RPC call sites, tests (none referenced deleted symbols).
+
+**Phase A LANDED (JS, safe set):** GL label SymbolLayer + LABEL*FEATURE_FILTER +
+renderSearchMapLabelLayers + labelLayerStyle/restaurantLabelStyle threading (search-map.tsx,
+SearchMapWithMarkerEngine.tsx, use-direct-search-map-source-controller.ts) + the
+nativeLabelOpacity/**lea_revealed** expressions + per-side offset math + LABEL_MIN*\* /
+LABEL_RADIAL_OFFSET_EM / LABEL_TEXT_SIZE consts + the dead style assertion. The
+RESTAURANT_LABEL_RENDER_SOURCE_ID ShapeSource remains MOUNTED (empty, no layers) because native
+still writes that source. On-device verified: pins/labels/dots/basemap-suppression intact.
+
+**Phase B REMAINING (native + JS lockstep — ORDER MATTERS):**
+
+1. Native: relax the attach guards that REJECT registration when `labelLayerIds` is empty
+   (SearchMapRenderController.swift ~1276-1284 and ~3399-3407).
+2. Native: delete `setLabelRenderLayersVisible` (~6756-6800; hard-coded isVisible=false — dead
+   effect) + its 3 call sites (~6083, ~6628, ~6671) + `state.labelLayerIds` (decl ~689, parse
+   ~1273/3396, assign ~1300/3409, init ~1350, operationCount reads ~6597/6687/6768).
+3. Native: delete the labelRender family (labelRenderRecordsByMarkerKey/labelRenderFamilyState/
+   labelRenderOrderedKeys build ~4148-4200, apply-plan wiring ~4189/4711, labelRenderSourceId
+   ~682 + managedSourceIds/residentSourceIds entries ~9253/9257/9400).
+4. JS: drop `labelLayerIds` payload + labelVisualLayerIds + RESTAURANT_LABEL_LAYER_ID; delete the
+   RESTAURANT_LABEL_RENDER_SOURCE_ID ShapeSource + const.
+5. Full Xcode build (verify binary mtime > source mtime), simctl install, on-device re-verify:
+   reveal fade-in density, VA labels place + collide, pin/label taps, toggle, dismiss, basemap
+   suppression, dots yield under visible labels.
+
+**FLAGGED FOLLOW-UP (dedicated pass, NOT mechanical):** the `labelSourceId` data family
+(derivedFamilyState 'restaurant-source') + the 4-candidate emit (labelBuilder) + labels payload +
+the LABEL half of the lea writes. After Phase B its only outputs are counts/diagnostics +
+readiness gates (promotedRoleFamiliesAreComplete label clause) — reduce to counts-only or delete
+with the readiness gates rewritten. CAUTION: `onScreenMarkerKeys` gate is SHARED with the KEPT
+collision emit — do not delete. `guard let labelSourceId` at ~1267 is attach-required until then.

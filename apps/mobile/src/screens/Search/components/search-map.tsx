@@ -33,8 +33,6 @@ import {
   usePerfScaleProbeStore,
 } from '../../../perf/perf-scale-probe-store';
 import {
-  LABEL_RADIAL_OFFSET_EM,
-  LABEL_TEXT_SIZE,
   PIN_FILL_CENTER_Y,
   PIN_FILL_RENDER_HEIGHT,
   PIN_FILL_TOP_OFFSET,
@@ -222,60 +220,16 @@ const promotedPinCollisionObstacleFilter = [
   0.5,
 ] as LabelPlacementFilter;
 
-const LABEL_FEATURE_FILTER = [
-  '==',
-  ['get', 'nativeSlotFeatureKind'],
-  'label',
-] as LabelPlacementFilter;
-
-// RESIDENT label layer (slot + mutex elimination): ONE text-only layer reading the single resident
-// label source. The 4 candidate features per restaurant (bottom>right>top>left, all
-// nativeSlotFeatureKind=='label') render through this layer; per-side textAnchor/textOffset are a
-// data-driven `match` on labelCandidate (labelLayerStyle), so all four per-side offsets are preserved
-// in one layer. Placement priority = SOURCE emission order (symbolZOrder:'source') — NOT symbolSortKey
-// (that caused camera wobble). The shared "mutex" icon is GONE: it was a single shared collision point
-// that, when occluded by a neighbor's pin obstacle, culled ALL 4 candidates at the icon stage and
-// stranded the label even with open sides. Without it each side is judged on its own text box →
-// first-fitting side wins; opposite-side survivors are deduped one-per-restaurant by the native selector.
-const renderSearchMapLabelLayers = ({
-  sourceId,
-  labelLayerStyle,
-}: {
-  sourceId: string;
-  labelLayerStyle: MapboxGL.SymbolLayerStyle;
-}) => [
-  /* The GL collision-twin is GONE (2026-07-11). It emitted an invisible, collision-ON text box for
-     ALL FOUR candidate sides of every on-screen restaurant, and after the observation-stack deletion
-     nothing read its placement — its only effect was culling dots in phantom label-sized groups
-     (the dense-then-thin fade-in bug). The label collider + basemap suppressor is the Label VA itself:
-     `enableSymbolLayerCollision = true` injects a collision box exactly at the placed side of each
-     VISIBLE label, minted at reveal start and removed at dismiss start (SearchMapRenderController
-     syncLabelVARoster / teardownLabelVA).
-     NOTE: a keyed ARRAY, not a Fragment — rnmapbox introspects React.Children, and a Fragment hides the
-     layers from that traversal (crashed Fabric mounting with a poisoned ShadowNode family). */
-  /* RENDER layer: OUT of the placement system — never culled, never placement-faded. Visibility is
-     purely our opacity product (presentation x __lea_lod__ x __lea_revealed__ x base) = SNAP on
-     collision changes, FADE only via LOD/presentation (the owner's standardized label policy). */
-  <MapboxGL.SymbolLayer
-    key={RESTAURANT_LABEL_LAYER_ID}
-    id={RESTAURANT_LABEL_LAYER_ID}
-    slot={undefined}
-    sourceID={sourceId}
-    belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-    style={{
-      ...labelLayerStyle,
-      textAllowOverlap: true,
-      textIgnorePlacement: true,
-    }}
-    filter={LABEL_FEATURE_FILTER}
-  />,
-];
+// The GL label render pipeline is GONE (2026-07-11, VA-cleanup manifest 07). Labels render as
+// native ViewAnnotations (LabelVAView); their collision box is the VA itself
+// (enableSymbolLayerCollision), minted at reveal start and removed at dismiss start. The GL
+// SymbolLayer here never painted (native held it visibility:none) and its collision-twin sibling
+// was the phantom dot-culler. Only the obstacle layers (pin + dot body) remain GL.
 
 type SearchMapMarkerSceneProps = {
   dotLayerStyle: MapboxGL.SymbolLayerStyle;
   handlePressTarget?: (event: SearchMapPressEvent) => void;
   profilerCallback: React.ProfilerOnRenderCallback;
-  labelLayerStyle: MapboxGL.SymbolLayerStyle;
   restaurantLabelPinCollisionLayerKey: string;
   restaurantLabelPinCollisionLayerId: string;
   restaurantLabelPinCollisionStyle: MapboxGL.SymbolLayerStyle;
@@ -286,7 +240,6 @@ const SearchMapMarkerScene = React.memo(
     dotLayerStyle,
     handlePressTarget,
     profilerCallback,
-    labelLayerStyle,
     restaurantLabelPinCollisionLayerKey,
     restaurantLabelPinCollisionLayerId,
     restaurantLabelPinCollisionStyle,
@@ -332,12 +285,7 @@ const SearchMapMarkerScene = React.memo(
           id={RESTAURANT_LABEL_RENDER_SOURCE_ID}
           maxZoomLevel={13}
           shape={EMPTY_POINT_FEATURES}
-        >
-          {renderSearchMapLabelLayers({
-            sourceId: RESTAURANT_LABEL_RENDER_SOURCE_ID,
-            labelLayerStyle,
-          })}
-        </MapboxGL.ShapeSource>
+        />
         <MapboxGL.ShapeSource
           id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
           maxZoomLevel={13}
@@ -372,7 +320,6 @@ const SearchMapMarkerScene = React.memo(
     previousProps.dotLayerStyle === nextProps.dotLayerStyle &&
     previousProps.handlePressTarget === nextProps.handlePressTarget &&
     previousProps.profilerCallback === nextProps.profilerCallback &&
-    previousProps.labelLayerStyle === nextProps.labelLayerStyle &&
     previousProps.restaurantLabelPinCollisionLayerKey ===
       nextProps.restaurantLabelPinCollisionLayerKey &&
     previousProps.restaurantLabelPinCollisionLayerId ===
@@ -999,8 +946,7 @@ export type LabelCandidate = 'bottom' | 'right' | 'top' | 'left';
 // list ['bottom','right','top','left'] reversed → ['left','top','right','bottom'].
 // Single resident label layer id (collapsed from 4 per-candidate layers + shared mutex). Native
 // press-targeting is a VA hit-test (labelVAHitTest); the label-observation stack is gone. The id
-// is not hardcoded native-side (JS sends it in labelLayerIds), so this is any stable string. The 4 candidate features per restaurant
-// render through this one layer; per-side placement comes from labelLayerStyle's data-driven match.
+// is not hardcoded native-side (JS sends it in labelLayerIds), so this is any stable string.
 const RESTAURANT_LABEL_LAYER_ID = 'restaurant-labels-layer';
 // COLLISION-TWIN (R-5, owner label policy): the invisible collider. It carries the label text geometry
 // through Mapbox placement (competes, gets culled, SUPPRESSES basemap under our labels) while the render
@@ -1011,12 +957,6 @@ const RESTAURANT_LABEL_LAYER_ID = 'restaurant-labels-layer';
 // suppression defect), so the twin is a constant-invisible, always-competing stand-in.
 
 const RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID = 'restaurant-labels-pin-collision';
-
-// Minimum spacing to keep label candidates from being blocked by the pin's collision silhouette
-// once we shift the ring upward to align with the pin fill centerline.
-const LABEL_MIN_BOTTOM_GAP_PX = 3.5;
-const LABEL_MIN_TOP_GAP_PX = 4;
-const LABEL_MIN_HORIZONTAL_GAP_PX = Math.ceil(PIN_MARKER_RENDER_SIZE / 2) + 6;
 
 // Dot glyphs render notably smaller than `DOT_TEXT_SIZE` due to font metrics/line-height.
 // Keep the interaction target tight so it feels intentionally dot-sized (about ~2x visible dot).
@@ -1479,7 +1419,6 @@ type SearchMapProps = {
   resultsPresentationAuthority: ResultsPresentationAuthority;
   emptyMapSceneSnapshot: SearchMapPresentationScene;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
-  restaurantLabelStyle: MapboxGL.SymbolLayerStyle;
   isMapStyleReady: boolean;
   userLocation: Coordinate | null;
   userLocationSnapshot: StartupLocationSnapshot | null;
@@ -1522,7 +1461,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   resultsPresentationAuthority,
   emptyMapSceneSnapshot,
   buildMarkerKey,
-  restaurantLabelStyle,
   isMapStyleReady: _hostMapStyleReady,
   userLocation,
   userLocationSnapshot,
@@ -1891,44 +1829,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   // (it lives in the layer's paint expression, which a reparse re-evaluates unchanged). Literal starts
   // empty; native populates it on the first decide. (Pins are no longer GL-rendered — they're drawn as
   // native ViewAnnotations (PinVAView) — so there is no pin opacity expression here; only dots + labels use LEA.)
-  const nativeLabelOpacityExpression = React.useMemo(
-    // For labels: on reparse promoted → 1 (label shows), else → 0 (no label). The membership literal is
-    // sentinel-headed (`__lea_lod__`) so the native swapper can target THIS literal (the LOD set) and not
-    // the labelSelected revealed literal that also lives in this text-opacity product. The sentinel is an
-    // inert extra member — no real markerKey ever equals it, so the `in` check is unchanged.
-    () =>
-      [
-        'coalesce',
-        ['feature-state', 'nativeLabelOpacity'],
-        ['case', ['in', ['get', 'markerKey'], ['literal', ['__lea_lod__']]], 1, 0],
-      ] as const,
-    []
-  );
-  // ONE-LABEL SELECTOR — REPARSE-IMMUNE (no feature-state). NOTE: the native writer that maintained the
-  // `__lea_revealed__` membership literal (the label one-of-four selector) is DELETED — labels are
-  // ViewAnnotations now, so the sentinel is frozen (never re-swapped). This literal reference stays LIVE
-  // only on the collision-twin's text-opacity below; the composite keys `markerKey::labelCandidate` it once
-  // carried are the WINNER set. DEFAULT HIDDEN: a candidate is visible (1)
-  // ONLY if its composite key is in the revealed set, else 0. Because the literal lives in the paint
-  // expression it SURVIVES a geojson-vt tile reparse (feature-state does NOT) → losers stay hidden through
-  // reparses during motion = NO FLASH. Default-hidden also means a freshly-entering candidate can only ever
-  // appear LATE (a ~1-frame miss — the accepted artifact under the hard "never overlap basemap" constraint),
-  // never flash. (markerKey may contain '::', but we never SPLIT the composite — JS concat and native concat
-  // build the identical string, compared by equality — so there is no parse ambiguity.)
-  const nativeLabelSelectedExpression = React.useMemo(
-    () =>
-      [
-        'case',
-        [
-          'in',
-          ['concat', ['get', 'markerKey'], '::', ['get', 'labelCandidate']],
-          ['literal', ['__lea_revealed__']],
-        ],
-        1,
-        0,
-      ] as const,
-    []
-  );
+  // (GL label opacity/selector expressions deleted 2026-07-11 — labels are ViewAnnotations.)
   const nativeDotOpacityExpression = React.useMemo(
     // REFINED LEA fallback (see nativeLabelOpacityExpression), INVERSE of the pin: on reparse the dot
     // falls through to the membership literal: promoted → 0 (no dot under the pin), else → 1 (dot shows).
@@ -1982,124 +1883,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // No *OpacityTransition — the native stepper is the SOLE opacity animator (see the pin layer).
     } as unknown as MapboxGL.SymbolLayerStyle;
   }, [nativeHighlightedExpression, nativeDotOpacityExpression]);
-  const restaurantLabelStyleWithStableOrder = React.useMemo(() => {
-    return {
-      ...restaurantLabelStyle,
-      symbolZOrder: 'source',
-      // Placement priority is encoded in source data order (sorted by labelOrder
-      // in the keyed label source builder output) instead of symbolSortKey.
-      // symbolSortKey caused per-frame re-sort during camera movement which,
-      // combined with the large collision obstacles (1.1x), produced sub-pixel
-      // placement wobble.
-    } as unknown as MapboxGL.SymbolLayerStyle;
-  }, [restaurantLabelStyle]);
-
-  const labelTextSize = React.useMemo(() => {
-    const candidate = restaurantLabelStyleWithStableOrder.textSize as unknown;
-    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
-      return candidate;
-    }
-    return LABEL_TEXT_SIZE;
-  }, [restaurantLabelStyleWithStableOrder.textSize]);
-
-  const labelPinTipToFillCenterPx = React.useMemo(() => {
-    // Feature coordinate is anchored at the pin tip (bottom of wrapper).
-    // We want candidate label placements centered on the pin fill centerline instead.
-    return PIN_MARKER_RENDER_SIZE - PIN_FILL_CENTER_Y;
-  }, []);
-
-  const labelRadialXEm = React.useMemo(() => {
-    const baselineRadialPx = LABEL_RADIAL_OFFSET_EM * labelTextSize;
-    const radialPx = Math.max(baselineRadialPx, LABEL_MIN_HORIZONTAL_GAP_PX);
-    return radialPx / labelTextSize;
-  }, [labelPinTipToFillCenterPx, labelTextSize]);
-
-  const labelRadialYEm = React.useMemo(() => {
-    const baselineRadialPx = LABEL_RADIAL_OFFSET_EM * labelTextSize;
-    const radialPx = Math.max(
-      baselineRadialPx,
-      labelPinTipToFillCenterPx + LABEL_MIN_BOTTOM_GAP_PX
-    );
-    return radialPx / labelTextSize;
-  }, [labelPinTipToFillCenterPx, labelTextSize]);
-
-  const labelRadialTopEm = React.useMemo(() => {
-    const baselineRadialPx = LABEL_RADIAL_OFFSET_EM * labelTextSize;
-    // For the top candidate, the total upward shift is `labelUpShiftPx + labelRadialTopPx`.
-    // Keep the text comfortably above the pin base silhouette, but don't over-push it (we want
-    // top labels closer than bottom/left/right when possible).
-    const minRadialPx = Math.max(
-      0,
-      PIN_MARKER_RENDER_SIZE + LABEL_MIN_TOP_GAP_PX - labelPinTipToFillCenterPx
-    );
-    const radialPx = Math.max(baselineRadialPx, minRadialPx);
-    return radialPx / labelTextSize;
-  }, [labelPinTipToFillCenterPx, labelTextSize]);
-
-  const labelUpShiftEm = React.useMemo(
-    () => labelPinTipToFillCenterPx / labelTextSize,
-    [labelPinTipToFillCenterPx, labelTextSize]
-  );
-
-  // ONE text-only label layer (the shared "mutex" icon is GONE — it was a single shared collision
-  // point at +15,-15 that, when occluded by a neighbor's pin obstacle, culled ALL 4 candidates at the
-  // icon stage and stranded the label even with open sides). The 4 candidate FEATURES per restaurant
-  // (emitted bottom>right>top>left, nativeSlotFeatureKind=='label') now render through this one layer;
-  // per-side textAnchor/textOffset are data-driven `match` on the feature's labelCandidate, so ALL FOUR
-  // independent per-side offsets are preserved. symbolZOrder:'source' (in restaurantLabelStyleWithStableOrder)
-  // makes source-emission order the placement priority; textAllowOverlap:false → Mapbox places the
-  // first-fitting side per restaurant and culls colliding candidates. Opposite-side survivors (top+bottom
-  // don't mutually collide) are deduped to one-per-restaurant by the native selector.
-  const labelLayerStyle = React.useMemo(() => {
-    const baseTextOpacity = restaurantLabelStyleWithStableOrder.textOpacity ?? 1;
-    return {
-      ...restaurantLabelStyleWithStableOrder,
-      textOpacity: [
-        // element [1] is the layer-level presentation scalar (init 1); native owns it via setLayerPresentationOpacity.
-        '*',
-        1,
-        nativeLabelOpacityExpression,
-        nativeLabelSelectedExpression,
-        baseTextOpacity,
-      ],
-      textAnchor: [
-        'match',
-        ['get', 'labelCandidate'],
-        'bottom',
-        'top',
-        'right',
-        'left',
-        'top',
-        'bottom',
-        'left',
-        'right',
-        'top',
-      ],
-      textOffset: [
-        'match',
-        ['get', 'labelCandidate'],
-        'bottom',
-        ['literal', [0, labelRadialYEm - labelUpShiftEm]],
-        'right',
-        ['literal', [labelRadialXEm, -labelUpShiftEm]],
-        'top',
-        ['literal', [0, -(labelRadialTopEm + labelUpShiftEm)]],
-        'left',
-        ['literal', [-labelRadialXEm, -labelUpShiftEm]],
-        ['literal', [0, labelRadialYEm - labelUpShiftEm]],
-      ],
-      textAllowOverlap: false,
-      textIgnorePlacement: false,
-    } as unknown as MapboxGL.SymbolLayerStyle;
-  }, [
-    labelRadialTopEm,
-    labelRadialXEm,
-    labelRadialYEm,
-    labelUpShiftEm,
-    nativeLabelOpacityExpression,
-    nativeLabelSelectedExpression,
-    restaurantLabelStyleWithStableOrder,
-  ]);
 
   const restaurantLabelPinCollisionLayerId = RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID;
   const restaurantLabelPinCollisionLayerKey = `${restaurantLabelPinCollisionLayerId}-${PIN_COLLISION_OBSTACLE_GEOMETRY}`;
@@ -2306,7 +2089,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
             dotLayerStyle,
             handlePressTarget: handleMarkerScenePressTarget,
             profilerCallback,
-            labelLayerStyle,
             restaurantLabelPinCollisionLayerKey,
             restaurantLabelPinCollisionLayerId,
             restaurantLabelPinCollisionStyle,
@@ -2315,7 +2097,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     [
       dotLayerStyle,
       handleMarkerScenePressTarget,
-      labelLayerStyle,
       profilerCallback,
       restaurantLabelPinCollisionLayerId,
       restaurantLabelPinCollisionLayerKey,
@@ -2455,9 +2236,6 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     return false;
   }
   if (!areStartupLocationSnapshotsEqual(prev.userLocationSnapshot, next.userLocationSnapshot)) {
-    return false;
-  }
-  if (prev.restaurantLabelStyle !== next.restaurantLabelStyle) {
     return false;
   }
   if (prev.buildMarkerKey !== next.buildMarkerKey) {

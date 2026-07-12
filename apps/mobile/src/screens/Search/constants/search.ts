@@ -54,12 +54,9 @@ export const TOP_FOOD_RENDER_LIMIT = 3;
 export const SINGLE_LOCATION_ZOOM_LEVEL = 13;
 export const TIGHT_BOUNDS_THRESHOLD_DEGREES = 0.002;
 export const RESTAURANT_FIT_BOUNDS_PADDING = 80;
-export const LABEL_TEXT_SIZE = FONT_SIZES.caption;
 export const PIN_MARKER_SIZE = 28;
 export const PIN_MARKER_SCALE = 1;
 export const PIN_MARKER_RENDER_SIZE = PIN_MARKER_SIZE * PIN_MARKER_SCALE;
-// Label placement baseline (natural Mapbox symbol placement).
-const LABEL_RADIAL_OFFSET_EM_BASELINE = 1.3;
 export const PIN_BASE_WIDTH = 96;
 export const PIN_BASE_HEIGHT = 96;
 export const PIN_FILL_WIDTH = 80;
@@ -80,12 +77,6 @@ export const PIN_FILL_TOP_OFFSET =
 // Pin fill center in wrapper coordinates (geometric center of symmetric shape)
 export const PIN_FILL_CENTER_X = PIN_FILL_LEFT_OFFSET + PIN_FILL_RENDER_WIDTH / 2;
 export const PIN_FILL_CENTER_Y = PIN_FILL_TOP_OFFSET + PIN_FILL_RENDER_HEIGHT / 2;
-
-// Label placement:
-// - Center left/right labels on the pin fill (not the full base).
-// - Keep labels on the old-good candidate-layer model: four explicit candidate features/layers
-//   with native rendered-label observation, never Mapbox variable anchors.
-export const LABEL_RADIAL_OFFSET_EM = LABEL_RADIAL_OFFSET_EM_BASELINE;
 
 // Rank text sizing - use pin fill dimensions for container
 export const PIN_RANK_FONT_SIZE = FONT_SIZES.body; // 14
