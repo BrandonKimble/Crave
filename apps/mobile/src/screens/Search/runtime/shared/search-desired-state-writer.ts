@@ -21,11 +21,15 @@ import {
   type SearchTupleWriteCause,
 } from './search-desired-state-contract';
 
-/** Adopt-viewport helper for commit-moment triggers: captures the SETTLED camera the same
- *  way request preparation does (bounds + screen-accurate polygon). */
+/** Adopt-viewport helper for commit-moment triggers: one synchronous read of the
+ *  service's viewport — bounds + screen-accurate polygon + the camera riding the same
+ *  event stream. The camera enters the snapshot HERE so the dismiss-restore is, by
+ *  construction, the viewport this search ran against (never a second tracker —
+ *  cd59e8a2's bug class). */
 export const captureCommittedBounds = (viewportBoundsService: {
   getBounds: () => import('../../../../types').MapBounds | null;
   getSubmittedPolygon: () => Array<[number, number]> | null | undefined;
+  getCamera: () => { center: [number, number]; zoom: number } | null;
 }): SearchCommittedBounds | null => {
   const bounds = viewportBoundsService.getBounds();
   if (bounds == null) {
@@ -37,6 +41,7 @@ export const captureCommittedBounds = (viewportBoundsService: {
     viewportPolygon: Array.isArray(polygon)
       ? polygon.map(([lng, lat]) => [lng, lat] as const)
       : null,
+    camera: viewportBoundsService.getCamera(),
   };
 };
 

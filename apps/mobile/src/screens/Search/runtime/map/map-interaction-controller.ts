@@ -307,7 +307,13 @@ export const useMapInteractionController = (
         return;
       }
       lastViewportMotionTokenRef.current = viewportMotionToken;
-      viewportBoundsService.setBounds(bounds);
+      const liveCenter = state?.properties?.center as unknown;
+      viewportBoundsService.setBounds(
+        bounds,
+        isLngLatTuple(liveCenter) && zoom !== null
+          ? { center: [liveCenter[0], liveCenter[1]], zoom }
+          : undefined
+      );
 
       // Programmatic camera animations (profile open/restore) can emit many camera ticks.
       // Skip per-tick LOD churn there and refresh once on idle instead.
@@ -461,7 +467,13 @@ export const useMapInteractionController = (
         if (shouldShowPollsSheet) {
           schedulePollBoundsUpdate(bounds);
         }
-        viewportBoundsService.setBounds(bounds);
+        const settledCenter = state?.properties?.center as unknown;
+        viewportBoundsService.setBounds(
+          bounds,
+          isLngLatTuple(settledCenter) && zoom !== null
+            ? { center: [settledCenter[0], settledCenter[1]], zoom }
+            : undefined
+        );
         if (isSearchOverlay && isSearchSessionActive && endingGestureSession != null) {
           const startCenter = getBoundsCenter(endingGestureSession.startBounds);
           const nextCenter = getBoundsCenter(bounds);

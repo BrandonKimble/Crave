@@ -4,6 +4,17 @@ import type { LngLat, OverlapRegion } from '../../utils/overlap-region';
 
 type BoundsSubscriber = (bounds: MapBounds | null) => void;
 
+/** The camera scalars ({center, zoom}) from the SAME native viewport event as the stored
+ *  bounds — one value, one instant, never assembled from two trackers. `center` is
+ *  [lng, lat] (native event order). */
+export type ViewportCameraState = {
+  center: [number, number];
+  zoom: number;
+};
+
+const cloneCamera = (camera: ViewportCameraState | null): ViewportCameraState | null =>
+  camera ? { center: [camera.center[0], camera.center[1]], zoom: camera.zoom } : null;
+
 const cloneBounds = (bounds: MapBounds | null): MapBounds | null => {
   if (!bounds) {
     return null;
@@ -37,6 +48,13 @@ const areBoundsEqual = (left: MapBounds | null, right: MapBounds | null): boolea
 
 export class ViewportBoundsService {
   private bounds: MapBounds | null;
+  // The live camera ({center, zoom}) riding the same viewport events as `bounds`. The
+  // event-payload writers (camera-changed + idle + perf commands) supply it atomically
+  // with the bounds; bounds-only writers (native getVisibleBounds reads, static seeds)
+  // omit it and the last event's camera stands — at any settled instant the two
+  // coincide. This is THE camera source for commit-moment captures; nothing downstream
+  // may pair these bounds with a camera read from a second tracker.
+  private camera: ViewportCameraState | null = null;
   // The submitted search viewport, single source of truth: the visible polygon (4
   // screen corners projected to lng/lat at submit — pitch/twist-accurate). The AABB
   // (searchBaselineBounds) is its bounding box, derived for coarse consumers
@@ -67,7 +85,12 @@ export class ViewportBoundsService {
     this.boundsRef = ref;
   }
 
-  public setBounds(nextBounds: MapBounds | null): boolean {
+  public setBounds(nextBounds: MapBounds | null, camera?: ViewportCameraState | null): boolean {
+    // The camera lands even when the bounds dedupe below short-circuits: it belongs to
+    // this event, and subscribers key on bounds — no notify for a camera-only refresh.
+    if (camera !== undefined) {
+      this.camera = cloneCamera(camera);
+    }
     if (areBoundsEqual(this.bounds, nextBounds)) {
       return false;
     }
@@ -82,6 +105,10 @@ export class ViewportBoundsService {
 
   public getBounds(): MapBounds | null {
     return cloneBounds(this.bounds);
+  }
+
+  public getCamera(): ViewportCameraState | null {
+    return cloneCamera(this.camera);
   }
 
   public captureSearchBaseline(

@@ -54,6 +54,7 @@ describe('classifySearchWorldTransition', () => {
           southWest: { lat: 0, lng: 0 },
         },
         viewportPolygon: null,
+        camera: null,
       },
     });
     const t = classifySearchWorldTransition({ prev, next, presentedCardsKey: null });
@@ -67,6 +68,7 @@ describe('classifySearchWorldTransition', () => {
       committedBounds: {
         bounds: { northEast: { lat: 2, lng: 2 }, southWest: { lat: 1, lng: 1 } },
         viewportPolygon: null,
+        camera: null,
       },
     });
     const t = classifySearchWorldTransition({ prev, next, presentedCardsKey: null });

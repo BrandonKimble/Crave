@@ -71,11 +71,20 @@ export type SearchFilterVariant = {
   includeSimilar: boolean;
 };
 
-/** Bounds adopted at a commit moment — never the live camera. */
+/** The viewport adopted at a commit moment — a frozen snapshot, never a live read.
+ *  Everything that later needs "where this search was run" (the resolver's bounds, the
+ *  dismiss-restore camera) reads THIS value; pairing these bounds with a camera from a
+ *  second tracker is the dual-source bug class (cd59e8a2). */
 export type SearchCommittedBounds = {
   bounds: MapBounds;
   /** Screen-accurate viewport polygon captured at the same commit moment. */
   viewportPolygon: ReadonlyArray<readonly [number, number]> | null;
+  /** The camera ({center: [lng, lat], zoom}) from the same commit-moment viewport event
+   *  as `bounds`. Null only when no camera event had landed by capture time. Excluded
+   *  (like viewportPolygon) from equality and world keys: revise classification and
+   *  caching are bounds-facts, and folding the camera in would phantom-classify
+   *  same-bounds recaptures as area_reruns. */
+  camera: { center: [number, number]; zoom: number } | null;
 };
 
 export type SearchDesiredTuple = {

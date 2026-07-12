@@ -167,7 +167,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       });
       if (accepted) {
         const bounds = buildScenarioCameraBounds({ lat, lng, zoom });
-        viewportBoundsService.setBounds(bounds);
+        viewportBoundsService.setBounds(bounds, { center: [lng, lat], zoom });
         schedulePollBoundsUpdate(bounds);
         emitRuntimeMechanismEvent('perf_scenario_camera_bounds_seeded', {
           bearing: bearing ?? null,
@@ -245,7 +245,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
         return false;
       }
       const bounds = buildScenarioCameraBounds({ lat, lng, zoom });
-      viewportBoundsService.setBounds(bounds);
+      viewportBoundsService.setBounds(bounds, { center: [lng, lat], zoom });
       schedulePollBoundsUpdate(bounds);
       const didMarkMapMoved =
         isSearchOverlay && isSearchSessionActive

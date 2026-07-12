@@ -60,11 +60,12 @@ export const useSearchRootSessionRuntime = ({
     cameraIntentArbiter: sessionControlServices.cameraIntentArbiter,
   });
   // Camera-in-origin (owner decision 2026-07-10): terminal dismiss glides the camera back
-  // to the session's trigger viewport. Session-boundary-only — never overlaps the profile
-  // pop's savedCamera channel.
+  // to the latest search's trigger viewport — read from the committed tuple's own camera
+  // snapshot (single source). Session-boundary-only — never overlaps the profile pop's
+  // savedCamera channel.
   useSearchSessionOriginCameraRuntime({
     searchRuntimeBus,
-    lastCameraStateRef: sessionPrimitivesLane.primitives.lastCameraStateRef,
+    viewportBoundsService: sessionControlServices.viewportBoundsService,
     commitCameraViewport: sessionPrimitivesLane.primitives.commitCameraViewport,
   });
   const sessionCoreLane = useSearchRootSessionCoreLaneRuntime({

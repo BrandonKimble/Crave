@@ -1,44 +1,35 @@
 import React from 'react';
 
-import { getBoundsCenter } from '../../utils/geo';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { SearchRootCameraViewportRuntime } from './use-search-root-session-runtime-contract';
 
-// Camera-in-origin (owner decision 2026-07-10; root-cause fix 2026-07-11): a terminal search
-// dismiss puts the camera back to the viewport the SEARCH WAS TRIGGERED FROM.
-//   The origin's LOCATION comes from the tuple's own `committedBounds` — the exact viewport
-// the search ran against, captured atomically at the tuple write from viewportBoundsService
-// (updated on every camera-changed tick, gesture AND programmatic). This is the SINGLE
-// source of truth: the restore location is, by construction, identical to what the search
-// was triggered with.
-//   THE BUG THIS FIXES (2026-07-11, reproduced on-device + rig): the origin used to be
-// `lastCameraStateRef` — a SEPARATE camera tracker updated only on map IDLE (and skipped
-// while the map was "busy", and NOT updated by raw arbiter-committed programmatic moves like
-// the app-open camera positioning). So it lagged the true trigger viewport, and dismiss flew
-// the camera to a stale earlier location the user "never searched from". Rig proof: a search
-// run at Austin captured a US-center origin because `lastCameraStateRef` still held the
-// bootstrap default while viewportBoundsService (→ committedBounds) was already fresh.
-//   Zoom still comes from `lastCameraStateRef` (viewportBoundsService carries no zoom); it is
-// device-fresh for the common case and, unlike center, a small zoom drift is not the
-// "wrong-area" symptom. (Follow-up: derive zoom from the committedBounds span for full
-// single-source fidelity.)
-//   The origin tracks the LATEST SEARCH's viewport (owner rule 2026-07-11: "wherever you
-// run the search, that's the map location [to return to]"). It refreshes on each search
-// commit (keyed to the committedBounds object identity, which turns over only at a search
-// write): a plain submit or an STA rerun moves it; a drill-in profile focus does NOT (not a
-// search write), so a terminal dismiss short-circuits any nested profile-camera chain
-// straight back to the last search. (This supersedes the 2026-07-10 once-per-session rule,
-// which returned an STA dismiss to the pre-STA session start — the wrong area.)
-//   One restore, committed through the CameraIntentArbiter at the exit write. Profile pops
-// keep their own savedCamera channel — this lane only speaks at the session boundary, so
-// the two writers can never overlap.
+// Camera-in-origin (owner decision 2026-07-10; single-source collapse 2026-07-11): a
+// terminal search dismiss puts the camera back to the viewport the LATEST SEARCH WAS
+// TRIGGERED FROM ("wherever you run the search, that's the map location to return to").
+//   ONE SOURCE: the origin is `tuple.committedBounds.camera` — the {center, zoom}
+// captured in the SAME commit-moment snapshot as the bounds the search resolved
+// against. Center and zoom can no longer disagree with the searched viewport, because
+// they are fields of it. (This retires the last dual-source read: zoom used to come
+// from `lastCameraStateRef`, a separate idle-only tracker that lagged programmatic
+// moves — the cd59e8a2 bug class. That ref remains the PROFILE lane's tracker; this
+// lane no longer touches it.)
+//   The origin tracks the LATEST search's viewport, keyed to the committedBounds
+// object identity, which turns over only at a search commit (initial submit / STA
+// area rerun / chip rerun — never a profile focus, never a plain bus republish). So a
+// drill-in profile does NOT move the origin, and a terminal dismiss short-circuits any
+// nested profile-camera chain straight back to the last search.
+//   One restore, committed through the CameraIntentArbiter at the exit write. Profile
+// pops keep their own savedCamera channel; on a terminal X with a profile open both
+// fire in one tick and the microtask defer below makes this restore the last word.
 export const useSearchSessionOriginCameraRuntime = ({
   searchRuntimeBus,
-  lastCameraStateRef,
+  viewportBoundsService,
   commitCameraViewport,
 }: {
   searchRuntimeBus: SearchRuntimeBus;
-  lastCameraStateRef: React.MutableRefObject<{ center: [number, number]; zoom: number } | null>;
+  viewportBoundsService: {
+    getCamera: () => { center: [number, number]; zoom: number } | null;
+  };
   commitCameraViewport: SearchRootCameraViewportRuntime['commitCameraViewport'];
 }): void => {
   const sessionOriginCameraRef = React.useRef<{
@@ -46,10 +37,8 @@ export const useSearchSessionOriginCameraRuntime = ({
     zoom: number;
   } | null>(null);
   const wasIdleRef = React.useRef(true);
-  // The committedBounds object we last captured the origin against. committedBounds gets
-  // a NEW object ONLY at a SEARCH commit (initial submit / STA area rerun / chip rerun —
-  // never a profile focus, never a plain bus republish), so a change here is exactly the
-  // "a new search was run at a location" signal.
+  // The committedBounds object we last captured the origin against — the "a new search
+  // ran at a location" signal (see the identity-keying note above).
   const lastCapturedBoundsRef = React.useRef<object | null>(null);
 
   React.useEffect(() => {
@@ -58,12 +47,12 @@ export const useSearchSessionOriginCameraRuntime = ({
       const isIdle = tuple.queryIdentity.kind === 'idle';
 
       if (isIdle) {
-        // Session EXIT (set → idle): glide the camera back to WHERE THE LATEST SEARCH WAS
-        // TRIGGERED FROM. Deferred one microtask so this commit lands AFTER any same-tick
-        // pop-side camera commit (a terminal X with a profile open fires the profile's
-        // savedCamera focus at pop commit — the search origin is the final destination and
-        // must be the last word). Arbiter semantics are last-write-wins, so ordering is the
-        // contract.
+        // Session EXIT (set → idle): glide the camera back to WHERE THE LATEST SEARCH
+        // WAS TRIGGERED FROM. Deferred one microtask so this commit lands AFTER any
+        // same-tick pop-side camera commit (a terminal X with a profile open fires the
+        // profile's savedCamera focus at pop commit — the search origin is the final
+        // destination and must be the last word). Arbiter semantics are
+        // last-write-wins, so ordering is the contract.
         if (!wasIdleRef.current) {
           wasIdleRef.current = true;
           const originCamera = sessionOriginCameraRef.current;
@@ -82,36 +71,27 @@ export const useSearchSessionOriginCameraRuntime = ({
       }
 
       wasIdleRef.current = false;
-      // Capture / REFRESH the origin on each SEARCH TRIGGER — keyed to the committedBounds
-      // object identity, which turns over only at a search commit. This is the resolution of
-      // "wherever you run the search, that's the map location to return to" (owner rule):
-      //   • a fresh search or an STA rerun writes a NEW committedBounds → the origin moves to
-      //     that viewport (STA dismiss returns to the STA area, not the pre-STA session start);
-      //   • a drill-in (tap a result → profile focus) does NOT write committedBounds → the
-      //     origin stays at the last search, so a terminal dismiss short-circuits any nested
-      //     profile-camera chain straight back to where the search was run.
-      // LOCATION comes from committedBounds (the search's own viewport — the SINGLE source of
-      // truth, identical to what the search resolved against, never stale). Zoom comes from
-      // the last-known camera (viewportBoundsService carries no zoom).
-      const triggerBounds = tuple.committedBounds?.bounds ?? null;
-      if (triggerBounds != null && triggerBounds !== lastCapturedBoundsRef.current) {
-        lastCapturedBoundsRef.current = triggerBounds;
-        const zoom = lastCameraStateRef.current?.zoom ?? null;
-        if (zoom != null) {
-          const center = getBoundsCenter(triggerBounds);
-          sessionOriginCameraRef.current = { center: [center.lng, center.lat], zoom };
+      const committed = tuple.committedBounds;
+      if (committed != null && committed.bounds !== lastCapturedBoundsRef.current) {
+        // A search commit landed: adopt ITS camera as the origin. `camera` is null only
+        // when no viewport event preceded the capture — fall back to the service's live
+        // camera (the same underlying source, read at observation instead of capture).
+        lastCapturedBoundsRef.current = committed.bounds;
+        const camera = committed.camera ?? viewportBoundsService.getCamera();
+        if (camera != null) {
+          sessionOriginCameraRef.current = {
+            center: [camera.center[0], camera.center[1]],
+            zoom: camera.zoom,
+          };
         }
-      } else if (sessionOriginCameraRef.current == null && triggerBounds == null) {
-        // Fallback: a session that entered without committedBounds yet — seed from the
-        // last-known camera so a dismiss before the first search commit still restores.
-        const liveCamera = lastCameraStateRef.current;
-        sessionOriginCameraRef.current = liveCamera
-          ? { center: [...liveCamera.center] as [number, number], zoom: liveCamera.zoom }
-          : null;
+      } else if (sessionOriginCameraRef.current == null && committed == null) {
+        // A session that entered without committedBounds yet — seed from the live
+        // camera so a dismiss before the first search commit still restores.
+        sessionOriginCameraRef.current = viewportBoundsService.getCamera();
       }
     };
     // Adopt the boot state without acting on it (a session may already be live on remount).
     wasIdleRef.current = searchRuntimeBus.getState().desiredTuple.queryIdentity.kind === 'idle';
     return searchRuntimeBus.subscribe(syncFromState);
-  }, [commitCameraViewport, lastCameraStateRef, searchRuntimeBus]);
+  }, [commitCameraViewport, searchRuntimeBus, viewportBoundsService]);
 };
