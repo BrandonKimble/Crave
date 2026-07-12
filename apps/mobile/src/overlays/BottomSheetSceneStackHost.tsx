@@ -553,6 +553,7 @@ const SceneStackBodyFrameHost = React.memo(
     sceneKey,
     reservedHeaderHeight,
     legRole,
+    bodyRuntimeAuthority,
     children,
   }: Pick<
     SceneStackBodyLayerHostProps,
@@ -562,9 +563,19 @@ const SceneStackBodyFrameHost = React.memo(
     | 'reservedHeaderHeight'
     | 'legRole'
   > & {
+    // Optional: the scene scroll stream source for the page frame's body-lane tug translate.
+    // The search leg's frame is rendered inside its own bundle host (already threaded there).
+    bodyRuntimeAuthority?: SceneStackBodyLayerHostProps['bodyRuntimeAuthority'];
     children: React.ReactNode;
   }) => {
     useSearchNavSwitchCommitAttribution(`SceneStackBodyFrameHost:${sceneKey}`);
+    // The scroll-stream SharedValue identity is host-stable; read it once per authority.
+    const bodyScrollOffset = React.useMemo(
+      () =>
+        bodyRuntimeAuthority?.getSceneBodyRuntimeAuthority(sceneKey).getSnapshot().bodyScrollRuntime
+          ?.scrollOffset,
+      [bodyRuntimeAuthority, sceneKey]
+    );
     const renderStartedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
     const onProfilerRender = useSearchOverlayProfilerRender();
     // legRole is now a PROP (synchronous-in-render, from the surface host) — no context role read.
@@ -697,6 +708,7 @@ const SceneStackBodyFrameHost = React.memo(
       </View>
     ) : (
       <BottomSheetSceneStackPageFrame
+        bodyScrollOffset={bodyScrollOffset}
         underlayComponent={
           <SceneStackChromeLayerHost
             legRole={legRole}
@@ -1038,6 +1050,7 @@ const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps)
       sceneStackSurfaceAuthority={props.sceneStackSurfaceAuthority}
       reservedHeaderHeight={props.reservedHeaderHeight}
       legRole={props.legRole}
+      bodyRuntimeAuthority={props.bodyRuntimeAuthority}
     >
       {contentLayer}
     </SceneStackBodyFrameHost>

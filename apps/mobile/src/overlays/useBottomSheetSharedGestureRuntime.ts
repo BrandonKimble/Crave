@@ -1,7 +1,12 @@
 import React from 'react';
 
 import { Gesture } from 'react-native-gesture-handler';
-import { useSharedValue, withSpring, type SharedValue } from 'react-native-reanimated';
+import {
+  cancelAnimation,
+  useSharedValue,
+  withSpring,
+  type SharedValue,
+} from 'react-native-reanimated';
 
 import type { BottomSheetSnapChangeSource } from './bottomSheetMotionTypes';
 import type { BottomSheetSharedRuntimeConfigSharedValues } from './bottomSheetSharedRuntimeContract';
@@ -9,7 +14,6 @@ import { overlaySheetEditLockValue } from './overlaySheetEditLockRuntime';
 import { overlaySheetSceneSnapLockValue } from './overlaySheetSceneSnapLockRuntime';
 import {
   overlaySheetBodyTugActiveValue,
-  overlaySheetBodyTugOffsetValue,
   overlaySheetContentFitsValue,
 } from './overlaySheetContentFitsRuntime';
 import {
@@ -22,6 +26,7 @@ import {
   GESTURE_OWNER_SCROLL,
   GESTURE_OWNER_SHEET,
   applyElasticBounds,
+  inverseRubberBandDistance,
   isAtScrollTop,
   rubberBandDistance,
 } from './bottomSheetSharedRuntimeUtils';
@@ -208,11 +213,15 @@ export const useBottomSheetSharedGestureRuntime = ({
       'worklet';
       if (overlaySheetBodyTugActiveValue.value === 1) {
         overlaySheetBodyTugActiveValue.value = 0;
-        overlaySheetBodyTugOffsetValue.value = withSpring(0, {
-          damping: 30,
-          stiffness: 320,
-          mass: 0.8,
-        });
+        // The tug lives in the NEGATIVE domain of the one scene scroll stream; only that region
+        // ever springs home (a real scroll offset is native-owned and never touched here).
+        if (scrollOffset.value < 0) {
+          scrollOffset.value = withSpring(0, {
+            damping: 30,
+            stiffness: 320,
+            mass: 0.8,
+          });
+        }
       }
     };
 
@@ -240,6 +249,14 @@ export const useBottomSheetSharedGestureRuntime = ({
         expandStartTouchY.value = touchY;
         expandStartSheetY.value = sheetY.value;
         expandTouchInHeader.value = touchY - sheetY.value <= headerHeight.value;
+        // A touch landing while the tug is displaced (mid-gesture spring-back) FREEZES it and
+        // re-enters tug mode, re-anchored in displacement space via the closed-form inverse of the
+        // rubber curve — the finger continues the same curve with no jump, in both directions.
+        if (scrollOffset.value < -0.5) {
+          cancelAnimation(scrollOffset);
+          overlaySheetBodyTugActiveValue.value = 1;
+          expandStartTouchY.value = touchY + inverseRubberBandDistance(-scrollOffset.value);
+        }
         const runtimeSnapValues = resolveRuntimeSnapValues();
         const startedBelowExpanded = sheetY.value > runtimeSnapValues.expanded + DRAG_EPSILON;
         expandStartedBelowExpanded.value = startedBelowExpanded;
@@ -294,6 +311,13 @@ export const useBottomSheetSharedGestureRuntime = ({
         const goingUp = dy < 0;
         const goingDown = dy > 0;
         if (!goingUp && !goingDown) {
+          return;
+        }
+        // Re-captured mid-spring tug (anchored in onTouchesDown): take the touch as soon as the
+        // axis resolves vertical — payback and deeper-tug both ride the tug onChange path.
+        if (overlaySheetBodyTugActiveValue.value === 1 && !expandPanActive.value) {
+          stateManager.activate();
+          expandPanActive.value = true;
           return;
         }
         const atExpanded = sheetY.value <= runtimeSnapValues.expanded + DRAG_EPSILON;
@@ -379,8 +403,19 @@ export const useBottomSheetSharedGestureRuntime = ({
           return;
         }
         if (overlaySheetBodyTugActiveValue.value === 1) {
-          const upDelta = Math.max(0, expandStartTouchY.value - event.absoluteY);
-          overlaySheetBodyTugOffsetValue.value = -rubberBandDistance(upDelta);
+          const rawUpDelta = expandStartTouchY.value - event.absoluteY;
+          if (rawUpDelta <= 0) {
+            // Zero-crossing handover: the payback reached the seam with the finger still moving
+            // down. Park the stream at 0, exit tug mode, and go inert — collapsePan re-evaluates
+            // every move and activates AT the seam with its own anchor: the same unbroken finger
+            // continues as the sheet collapse (the mirror of the up handoff).
+            scrollOffset.value = 0;
+            overlaySheetBodyTugActiveValue.value = 0;
+            expandPanActive.value = false;
+            syncDragging();
+            return;
+          }
+          scrollOffset.value = -rubberBandDistance(rawUpDelta);
           return;
         }
         const runtimeSnapValues = resolveRuntimeSnapValues();
@@ -491,7 +526,11 @@ export const useBottomSheetSharedGestureRuntime = ({
         }
         const atExpanded = sheetY.value <= runtimeSnapValues.expanded + DRAG_EPSILON;
         const atTop = isAtScrollTop(scrollOffset.value, scrollTopOffset.value);
-        if (atExpanded && atTop && !isInMomentum.value) {
+        // Tug-aware gate: while the stream is in its negative (rubber-band) domain or the tug pan
+        // owns the touch, the content has not been paid back to the seam — the collapse may not
+        // start (down symmetry: negative region → 0 → THEN the sheet).
+        const tugRepaid = overlaySheetBodyTugActiveValue.value !== 1 && scrollOffset.value >= -0.5;
+        if (atExpanded && atTop && tugRepaid && !isInMomentum.value) {
           stateManager.activate();
           collapsePanActive.value = true;
           beginDrag(sheetY.value);
