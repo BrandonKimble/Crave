@@ -122,6 +122,14 @@ No big-bang rewrite (ethos: ideal shape, sequenced strangler, all in git). The p
   semantics at session dismiss, the press-before-write ordering window, and that its readers
   include `restaurant-location-selection.ts` (foundation-session anchor-rule lane — readers
   must stay untouched; only the capture instant moves).
+  **RED-TEAMED 2026-07-11 (5 lenses, verdict clean; hardening shipped 2df804fc + a91946a9:**
+  bootstrap seeds the service camera pre-first-event; fresh-capture reads camera off the
+  same native snapshot as the fresh bounds; setBounds rejects explicit-null camera).
+  **WATCH ITEM** (unverified reachability, no action): the origin restore commits the raw
+  captured camera center with `padding: null` — if a tuple commit ever becomes reachable
+  while the profile lane's non-null `mapCameraPadding` is active, the captured center is the
+  padded-frame center and the restore lands offset ~half the padding. No such commit path
+  exists today (chips/STA occluded under the profile sheet); re-check if one appears.
 - **Camera-as-value + one choreographer (§E):** world-camera L1–L5 (foundation session).
 - **Entries-as-values (§F):** trigger-nav S-B (foundation session).
 
