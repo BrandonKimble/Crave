@@ -85,9 +85,11 @@ export class ViewportBoundsService {
     this.boundsRef = ref;
   }
 
-  public setBounds(nextBounds: MapBounds | null, camera?: ViewportCameraState | null): boolean {
+  public setBounds(nextBounds: MapBounds | null, camera?: ViewportCameraState): boolean {
     // The camera lands even when the bounds dedupe below short-circuits: it belongs to
     // this event, and subscribers key on bounds — no notify for a camera-only refresh.
+    // Deliberately NOT clearable here (no null): a bounds-only write keeps the last
+    // event's camera; nothing legitimately un-knows the camera mid-session.
     if (camera !== undefined) {
       this.camera = cloneCamera(camera);
     }

@@ -12,11 +12,16 @@ type FreshBoundsMapRef = {
   current: {
     getVisibleBounds?: () => Promise<unknown>;
     getCoordinateFromView?: (point: [number, number]) => Promise<unknown>;
+    getCenter?: () => Promise<unknown>;
+    getZoom?: () => Promise<unknown>;
   } | null;
 };
 
 type FreshBoundsViewportService = Parameters<typeof captureCommittedBounds>[0] & {
-  setBounds: (bounds: import('../../../../types').MapBounds) => void;
+  setBounds: (
+    bounds: import('../../../../types').MapBounds,
+    camera?: { center: [number, number]; zoom: number }
+  ) => void;
   captureSearchBaseline: (
     bounds: import('../../../../types').MapBounds,
     polygon: Array<[number, number]>
@@ -41,11 +46,11 @@ const FRESH_POLYGON_CAPTURE_TIMEOUT_MS = 250;
 
 /** Commit-moment adopt for triggers that must read the SETTLED camera off the native map
  *  (search-this-area, chip reruns after a pan/zoom): awaits the map's visible bounds +
- *  screen-accurate corner polygon, writes both into the viewport service, then returns the
- *  committed bounds. Every failure path falls back to the service's last-known bounds — a
- *  fresh capture is an accuracy upgrade, never a submit blocker (the hung-promise lesson
- *  from request preparation: getCoordinateFromView can hang on a cold map, so the polygon
- *  projection races a timeout). */
+ *  camera ({center, zoom} from the same settled snapshot) + screen-accurate corner
+ *  polygon, writes them into the viewport service, then returns the committed bounds.
+ *  Every failure path falls back to the service's last-known values — a fresh capture is
+ *  an accuracy upgrade, never a submit blocker (the hung-promise lesson from request
+ *  preparation: the native reads can hang on a cold map, so each races a timeout). */
 export const captureFreshCommittedBounds = async (env: {
   mapRef: FreshBoundsMapRef;
   viewportBoundsService: FreshBoundsViewportService;
@@ -54,7 +59,34 @@ export const captureFreshCommittedBounds = async (env: {
   try {
     const visible = map?.getVisibleBounds ? await map.getVisibleBounds() : null;
     if (Array.isArray(visible) && isLngLatPair(visible[0]) && isLngLatPair(visible[1])) {
-      env.viewportBoundsService.setBounds(boundsFromCornerPairs(visible[0], visible[1]));
+      // Read the camera off the SAME settled native snapshot as the bounds (raced
+      // against the polygon timeout, fail-open) so committedBounds.camera is atomic
+      // with the fresh bounds BY CONSTRUCTION — not "last event's camera" by
+      // convention. Any failure → undefined → the service keeps the last event's
+      // camera (sub-tick stale at a settled commit; the accepted fallback).
+      let freshCamera: { center: [number, number]; zoom: number } | undefined;
+      if (map?.getCenter && map?.getZoom) {
+        const cameraRead = Promise.all([
+          map.getCenter().catch(() => null),
+          map.getZoom().catch(() => null),
+        ]);
+        const settled = await Promise.race([
+          cameraRead,
+          new Promise<null>((resolve) => {
+            setTimeout(() => resolve(null), FRESH_POLYGON_CAPTURE_TIMEOUT_MS);
+          }),
+        ]);
+        if (settled != null) {
+          const [center, zoom] = settled;
+          if (isLngLatPair(center) && typeof zoom === 'number' && Number.isFinite(zoom)) {
+            freshCamera = { center: [center[0], center[1]], zoom };
+          }
+        }
+      }
+      env.viewportBoundsService.setBounds(
+        boundsFromCornerPairs(visible[0], visible[1]),
+        freshCamera
+      );
       if (map?.getCoordinateFromView) {
         const { width, height } = Dimensions.get('window');
         if (width > 0 && height > 0) {
