@@ -327,10 +327,6 @@ export const FrostCutout: React.FC<FrostCutoutProps> = ({ borderRadius = 0, styl
 const styles = StyleSheet.create({
   whiteLayerRoot: {
     ...StyleSheet.absoluteFillObject,
-    // Overdraw below the lane by the tug's maximum excursion (RUBBER_BAND_RANGE_PX): the Phase B
-    // body-lane tug translates this whole layer up, and without the pad the lane's bottom edge
-    // would flash frost mid-tug. Clipped by the sheet bundle's own overflow:hidden.
-    bottom: -96,
     overflow: 'hidden',
   },
   plainWhiteFill: {

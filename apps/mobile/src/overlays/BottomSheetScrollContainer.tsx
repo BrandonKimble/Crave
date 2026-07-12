@@ -6,11 +6,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reanimated';
 
 import { useSceneFrostCutoutContentLayoutSignal } from './SceneBodyFoundationSurface';
-import {
-  reportSheetBodyContentMetrics,
-  SheetSceneContentMetricsContext,
-} from './sceneScrollStateRegistry';
-import { SHEET_BODY_NO_OVERSCROLL } from './sheetBodyScrollDefaults';
+import { SHEET_BODY_NO_OVERSCROLL, SHORT_PAGE_SCROLL_ROOM_PX } from './sheetBodyScrollDefaults';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 const AnimatedNativeScrollView = AnimatedScrollView as unknown as React.ComponentType<
@@ -71,20 +67,26 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       return { scrollEnabled: shouldEnableScrollShared.value };
     }, [shouldEnableScrollShared]);
 
-    // Content-fits metrics for the Phase B tug (sceneScrollStateRegistry):
-    // the container is the one place that knows BOTH sizes. Scene-keyed via context so hidden
-    // co-mounted legs can't clobber the presented scene's flag; null outside a scene leg → no-op.
-    const contentMetricsSceneKey = React.useContext(SheetSceneContentMetricsContext);
+    // MINIMUM SCROLL ROOM (the "make every page a list anyway" law — owner, 2026-07-11):
+    // content pads to viewport + SHORT_PAGE_SCROLL_ROOM_PX, so a short page GENUINELY scrolls a
+    // little instead of being an immovable brick. That makes the one proven result-sheet handoff
+    // cover every page with zero special cases: the up-drag fails the pan into a REAL native
+    // scroll mid-finger, the divider fades on a REAL offset, and scroll-to-top hands back to the
+    // collapse pan. (This replaced the bespoke "tug" gesture mode, which fought the real
+    // machinery and caused the jitter/dead-handoff class — see plans/sheet-scroll-primitive.md.)
+    // A no-op for long content (minHeight loses to taller content).
+    const [viewportHeight, setViewportHeight] = React.useState(0);
     const handleLayout = React.useCallback(
       (event: Parameters<NonNullable<ScrollViewProps['onLayout']>>[0]) => {
-        if (contentMetricsSceneKey != null) {
-          reportSheetBodyContentMetrics(contentMetricsSceneKey, {
-            viewportHeight: event.nativeEvent.layout.height,
-          });
-        }
+        const nextHeight = Math.round(event.nativeEvent.layout.height);
+        setViewportHeight((prev) => (prev === nextHeight ? prev : nextHeight));
         onLayout?.(event);
       },
-      [contentMetricsSceneKey, onLayout]
+      [onLayout]
+    );
+    const minScrollRoomStyle = React.useMemo(
+      () => (viewportHeight > 0 ? { minHeight: viewportHeight + SHORT_PAGE_SCROLL_ROOM_PX } : null),
+      [viewportHeight]
     );
 
     // FrostCutout re-measure signal: content re-flow (a row above a cutout growing) changes the
@@ -94,12 +96,9 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
     const handleContentSizeChange = React.useCallback(
       (width: number, height: number) => {
         notifyCutoutContentLayout();
-        if (contentMetricsSceneKey != null) {
-          reportSheetBodyContentMetrics(contentMetricsSceneKey, { contentHeight: height });
-        }
         onContentSizeChange?.(width, height);
       },
-      [contentMetricsSceneKey, notifyCutoutContentLayout, onContentSizeChange]
+      [notifyCutoutContentLayout, onContentSizeChange]
     );
 
     return (
@@ -125,6 +124,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
           style={[style, transparent ? styles.transparentScrollView : null]}
           contentContainerStyle={[
             contentContainerStyle,
+            minScrollRoomStyle,
             transparent ? styles.transparentScrollContent : null,
           ]}
         />

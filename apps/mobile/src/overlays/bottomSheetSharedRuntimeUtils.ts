@@ -34,7 +34,7 @@ export const isAtScrollTop = (offsetY: number, scrollTopOffset: number): boolean
   return offsetY <= scrollTopOffset + TOP_EPSILON;
 };
 
-export const rubberBandDistance = (distanceFromBound: number): number => {
+const rubberBandDistance = (distanceFromBound: number): number => {
   'worklet';
   if (distanceFromBound <= 0) {
     return 0;
@@ -42,21 +42,6 @@ export const rubberBandDistance = (distanceFromBound: number): number => {
   return (
     (distanceFromBound * RUBBER_BAND_RANGE_PX * RUBBER_BAND_COEFFICIENT) /
     (RUBBER_BAND_RANGE_PX + RUBBER_BAND_COEFFICIENT * distanceFromBound)
-  );
-};
-
-// Closed-form inverse of rubberBandDistance (verified algebraically): given a damped
-// displacement r (< RANGE), returns the raw finger distance d that produced it —
-// d = r*R / (C*(R - r)). Used to re-anchor a touch that lands mid-tug so the finger
-// continues the SAME curve with no jump.
-export const inverseRubberBandDistance = (dampedDistance: number): number => {
-  'worklet';
-  if (dampedDistance <= 0) {
-    return 0;
-  }
-  const clamped = Math.min(dampedDistance, RUBBER_BAND_RANGE_PX - 0.5);
-  return (
-    (clamped * RUBBER_BAND_RANGE_PX) / (RUBBER_BAND_COEFFICIENT * (RUBBER_BAND_RANGE_PX - clamped))
   );
 };
 

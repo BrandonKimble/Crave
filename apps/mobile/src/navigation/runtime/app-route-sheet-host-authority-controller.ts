@@ -79,7 +79,6 @@ import {
 import { resolveAppRouteSheetScenePolicy } from './app-route-scene-policy-registry';
 import { getSceneFoundationSpec } from './scene-foundation-spec';
 import { setOverlaySheetSceneSnapLock } from '../../overlays/overlaySheetSceneSnapLockRuntime';
-import { setPresentedSceneForScrollState } from '../../overlays/sceneScrollStateRegistry';
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
@@ -1467,9 +1466,6 @@ class AppRouteSheetHostAuthorityController {
         setOverlaySheetSceneSnapLock(
           getSceneFoundationSpec(resolvedSurfaceInput.activeSemanticOverlayKey)?.snapLock ?? 'none'
         );
-        // Scene scroll-state presented pointer (fits flag + tug re-basing) rides the same
-        // presented-shell identity the snapLock does — ONE sync site for all scene-keyed flags.
-        setPresentedSceneForScrollState(resolvedSurfaceInput.activeSemanticOverlayKey ?? null);
         const nextSnapshot = this.createRuntimeConfigSnapshot(resolvedSurfaceInput);
         if (areRuntimeConfigSnapshotsEqual(this.runtimeConfigSnapshot, nextSnapshot)) {
           return false;

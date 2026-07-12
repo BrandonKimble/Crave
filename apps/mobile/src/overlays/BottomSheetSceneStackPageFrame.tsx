@@ -13,8 +13,6 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { overlaySheetBodyTugOffsetValue } from './sceneScrollStateRegistry';
-
 import { OVERLAY_TAB_HEADER_HEIGHT } from './overlaySheetStyles';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 
@@ -60,14 +58,7 @@ const DIVIDER_THICKNESS = 1;
 export const useHeaderScrollDividerOpacityStyle = (scrollOffset: SharedValue<number>) =>
   useAnimatedStyle(
     () => ({
-      // The divider fades for BOTH kinds of content motion under the header: real scroll
-      // (positive offset) and the short-content tug (the dedicated tug SV, <= 0) — same curve.
-      opacity: interpolate(
-        Math.max(scrollOffset.value, -overlaySheetBodyTugOffsetValue.value),
-        [0, 3, 14],
-        [0, 0.35, 1],
-        Extrapolation.CLAMP
-      ),
+      opacity: interpolate(scrollOffset.value, [0, 3, 14], [0, 0.35, 1], Extrapolation.CLAMP),
     }),
     [scrollOffset]
   );
@@ -126,17 +117,6 @@ export const BottomSheetSceneStackPageFrame = React.memo(
       ],
       [effectiveHeaderHeight, reserveHeaderLane]
     );
-    // Short-content tug (Phase B, plans/sheet-scroll-primitive.md §3.3): the captured up-drag
-    // translates the WHOLE body lane — content, white plate, and cutout holes move as one (the
-    // plate lives inside this layer), sliding under the stationary header like an iOS bottom
-    // over-scroll and springing back. Zero when no tug is active (the SV rests at 0), so every
-    // other page pays nothing.
-    const bodyTugStyle = useAnimatedStyle(() => {
-      'worklet';
-      return {
-        transform: [{ translateY: Math.min(overlaySheetBodyTugOffsetValue.value, 0) }],
-      };
-    });
 
     return (
       <View pointerEvents="box-none" style={styles.sceneStackPageBundle}>
@@ -169,7 +149,7 @@ export const BottomSheetSceneStackPageFrame = React.memo(
           ref={bodyViewportRef}
           pointerEvents="box-none"
           onLayout={handleBodyLayout}
-          style={[bodyLayerStyle, bodyTugStyle, bodyOpacityStyle]}
+          style={[bodyLayerStyle, bodyOpacityStyle]}
         >
           {bodyComponent}
         </Animated.View>

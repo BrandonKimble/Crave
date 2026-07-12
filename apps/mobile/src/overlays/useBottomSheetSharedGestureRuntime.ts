@@ -1,22 +1,12 @@
 import React from 'react';
 
 import { Gesture } from 'react-native-gesture-handler';
-import {
-  cancelAnimation,
-  useSharedValue,
-  withSpring,
-  type SharedValue,
-} from 'react-native-reanimated';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 
 import type { BottomSheetSnapChangeSource } from './bottomSheetMotionTypes';
 import type { BottomSheetSharedRuntimeConfigSharedValues } from './bottomSheetSharedRuntimeContract';
 import { overlaySheetEditLockValue } from './overlaySheetEditLockRuntime';
 import { overlaySheetSceneSnapLockValue } from './overlaySheetSceneSnapLockRuntime';
-import {
-  overlaySheetBodyTugActiveValue,
-  overlaySheetBodyTugOffsetValue,
-  overlaySheetContentFitsValue,
-} from './sceneScrollStateRegistry';
 import {
   AXIS_LOCK_HORIZONTAL,
   AXIS_LOCK_NONE,
@@ -27,9 +17,7 @@ import {
   GESTURE_OWNER_SCROLL,
   GESTURE_OWNER_SHEET,
   applyElasticBounds,
-  inverseRubberBandDistance,
   isAtScrollTop,
-  rubberBandDistance,
 } from './bottomSheetSharedRuntimeUtils';
 
 type HandoffOptions = {
@@ -210,20 +198,6 @@ export const useBottomSheetSharedGestureRuntime = ({
       stateManager.fail();
     };
 
-    const releaseBodyTug = () => {
-      'worklet';
-      if (overlaySheetBodyTugActiveValue.value === 1) {
-        overlaySheetBodyTugActiveValue.value = 0;
-        if (overlaySheetBodyTugOffsetValue.value < 0) {
-          overlaySheetBodyTugOffsetValue.value = withSpring(0, {
-            damping: 30,
-            stiffness: 320,
-            mass: 0.8,
-          });
-        }
-      }
-    };
-
     const failExpandGesturePassThrough = (stateManager: GestureStateManagerLike) => {
       'worklet';
       expandPanActive.value = false;
@@ -248,15 +222,6 @@ export const useBottomSheetSharedGestureRuntime = ({
         expandStartTouchY.value = touchY;
         expandStartSheetY.value = sheetY.value;
         expandTouchInHeader.value = touchY - sheetY.value <= headerHeight.value;
-        // A touch landing while the tug is displaced (mid-gesture spring-back) FREEZES it and
-        // re-enters tug mode, re-anchored in displacement space via the closed-form inverse of the
-        // rubber curve — the finger continues the same curve with no jump, in both directions.
-        if (overlaySheetBodyTugOffsetValue.value < -0.5) {
-          cancelAnimation(overlaySheetBodyTugOffsetValue);
-          overlaySheetBodyTugActiveValue.value = 1;
-          expandStartTouchY.value =
-            touchY + inverseRubberBandDistance(-overlaySheetBodyTugOffsetValue.value);
-        }
         const runtimeSnapValues = resolveRuntimeSnapValues();
         const startedBelowExpanded = sheetY.value > runtimeSnapValues.expanded + DRAG_EPSILON;
         expandStartedBelowExpanded.value = startedBelowExpanded;
@@ -313,13 +278,6 @@ export const useBottomSheetSharedGestureRuntime = ({
         if (!goingUp && !goingDown) {
           return;
         }
-        // Re-captured mid-spring tug (anchored in onTouchesDown): take the touch as soon as the
-        // axis resolves vertical — payback and deeper-tug both ride the tug onChange path.
-        if (overlaySheetBodyTugActiveValue.value === 1 && !expandPanActive.value) {
-          stateManager.activate();
-          expandPanActive.value = true;
-          return;
-        }
         const atExpanded = sheetY.value <= runtimeSnapValues.expanded + DRAG_EPSILON;
         const atTop = isAtScrollTop(scrollOffset.value, scrollTopOffset.value);
         const touchInHeader = expandTouchInHeader.value;
@@ -327,19 +285,6 @@ export const useBottomSheetSharedGestureRuntime = ({
           const shouldHandoffAtTop =
             expandStartedBelowExpanded.value || !expandAllowTopElastic.value;
           if (atExpanded && goingUp && shouldHandoffAtTop) {
-            // Phase B tug: content FITS the viewport → the scroll the handoff would surrender to
-            // cannot move (structural no-bounce). Keep the pan and switch to TUG mode: the
-            // continuing drag drives the body-lane translate (content slides under the stationary
-            // header and springs back) — never sheetY; lifting the sheet reads as a grab.
-            if (overlaySheetContentFitsValue.value === 1) {
-              if (overlaySheetBodyTugActiveValue.value !== 1) {
-                sheetY.value = runtimeSnapValues.expanded;
-                overlaySheetBodyTugActiveValue.value = 1;
-                // Re-anchor so the tug starts from zero at the switchover touch position.
-                expandStartTouchY.value = expandLastTouchY.value;
-              }
-              return;
-            }
             handoffExpandGestureToScroll(stateManager);
           }
           return;
@@ -360,19 +305,6 @@ export const useBottomSheetSharedGestureRuntime = ({
           return;
         }
         if (goingUp) {
-          // Phase B tug: at expanded + list at top + content fits → an up-drag in the BODY becomes
-          // a body-lane rubber-band (content slides up under the stationary header and springs
-          // back — the iOS bottom-over-scroll feel) instead of failing into a scroll that cannot
-          // move. sheetY is untouched: the sheet must not lift (that reads as a grab). atTop
-          // guards the (transiently stale) fits flag: a scrollable page mid-list can never be
-          // captured. Fails open: unknown scenes report nothing → flag 0 → old handoff path.
-          if (overlaySheetContentFitsValue.value === 1 && atTop && !isInMomentum.value) {
-            overlaySheetBodyTugActiveValue.value = 1;
-            stateManager.activate();
-            expandPanActive.value = true;
-            expandStartTouchY.value = touchY;
-            return;
-          }
           if (expandAllowTopElastic.value) {
             stateManager.activate();
             expandPanActive.value = true;
@@ -402,26 +334,6 @@ export const useBottomSheetSharedGestureRuntime = ({
         if (!expandPanActive.value || gestureEnabledValue.value !== 1) {
           return;
         }
-        if (overlaySheetBodyTugActiveValue.value === 1) {
-          const rawUpDelta = expandStartTouchY.value - event.absoluteY;
-          if (rawUpDelta <= 0) {
-            // Zero-crossing handover: the payback reached the seam with the finger still moving
-            // down. Park the tug at 0, exit tug mode, and mark the SAME handoff flags the
-            // up-handoff uses — the next touch-move FAILS this pan out (single owner per phase,
-            // the result-sheet shape). Without the fail-out the pan re-activated in sheet-drag
-            // mode while collapsePan was also driving sheetY — two writers, the v3 jitter.
-            overlaySheetBodyTugOffsetValue.value = 0;
-            overlaySheetBodyTugActiveValue.value = 0;
-            expandPanActive.value = false;
-            expandDidHandoffToScroll.value = true;
-            expandGestureOwner.value = GESTURE_OWNER_SCROLL;
-            expandHandoffLocked.value = true;
-            syncDragging();
-            return;
-          }
-          overlaySheetBodyTugOffsetValue.value = -rubberBandDistance(rawUpDelta);
-          return;
-        }
         const runtimeSnapValues = resolveRuntimeSnapValues();
         const rawNext = expandStartSheetY.value + (event.absoluteY - expandStartTouchY.value);
         const allowTopElastic = expandAllowTopElastic.value && !expandHandoffLocked.value;
@@ -443,10 +355,6 @@ export const useBottomSheetSharedGestureRuntime = ({
         'worklet';
         expandPanActive.value = false;
         syncDragging();
-        if (overlaySheetBodyTugActiveValue.value === 1) {
-          releaseBodyTug();
-          return;
-        }
         if (!success || expandDidHandoffToScroll.value) {
           return;
         }
@@ -461,7 +369,6 @@ export const useBottomSheetSharedGestureRuntime = ({
       })
       .onFinalize(() => {
         'worklet';
-        releaseBodyTug();
         expandPanActive.value = false;
         expandDidHandoffToScroll.value = false;
         expandAxisLock.value = AXIS_LOCK_NONE;
@@ -530,13 +437,7 @@ export const useBottomSheetSharedGestureRuntime = ({
         }
         const atExpanded = sheetY.value <= runtimeSnapValues.expanded + DRAG_EPSILON;
         const atTop = isAtScrollTop(scrollOffset.value, scrollTopOffset.value);
-        // Tug-aware gate: while the stream is in its negative (rubber-band) domain or the tug pan
-        // owns the touch, the content has not been paid back to the seam — the collapse may not
-        // start (down symmetry: negative region → 0 → THEN the sheet).
-        const tugRepaid =
-          overlaySheetBodyTugActiveValue.value !== 1 &&
-          overlaySheetBodyTugOffsetValue.value >= -0.5;
-        if (atExpanded && atTop && tugRepaid && !isInMomentum.value) {
+        if (atExpanded && atTop && !isInMomentum.value) {
           stateManager.activate();
           collapsePanActive.value = true;
           beginDrag(sheetY.value);
