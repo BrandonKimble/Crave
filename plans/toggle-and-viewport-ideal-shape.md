@@ -118,10 +118,19 @@ No big-bang rewrite (ethos: ideal shape, sequenced strangler, all in git). The p
   the tuple write. Its collapse (baseline becomes a mirror written from `committedBounds`
   at the tuple write; the async polygon refine stays a service-only accuracy upgrade and
   must NEVER write the tuple — the refined AABB differs slightly and would phantom-classify
-  `area_rerun`) is the REMAINING §D slice. Open questions for that slice: clear-owner null
-  semantics at session dismiss, the press-before-write ordering window, and that its readers
-  include `restaurant-location-selection.ts` (foundation-session anchor-rule lane — readers
-  must stay untouched; only the capture instant moves).
+  `area_rerun`) **SHIPPED 2026-07-11 (2e6a0e5c) — §D IS COMPLETE.** The baseline is a
+  movement-state mirror effect keyed to committedBounds.bounds object identity (same signal
+  as the origin runtime); `resetMapMoveFlag` is a pure flag reset; dismiss nulls the
+  baseline (null = don't-mark; seq bump cancels in-flight refines). Polygon provenance is
+  explicit: `captureCommittedBounds` no longer reads the service polygon (the stale-polygon
+  circularity is deleted); the fresh capture passes its projected polygon with the commit;
+  the refine stays service-only. Readers untouched (anchor rule, source-controller,
+  controller move-gating — all reads, sharper semantics). Open questions RESOLVED by code:
+  null baseline = don't-mark (`shouldMarkMapMovedForBounds` falls through); the
+  press-before-write window is sub-tick on sync paths and unmarked (no gesture mid-press);
+  clear-time/teardown re-baselines were pointing STA at unsearched viewports — a quiet
+  wrongness the mirror fixes. Rig-verified: search→no button; move→button; STA
+  press→rerun+hide; dismiss→clean+camera-restore-to-STA-area+null baseline.
   **RED-TEAMED 2026-07-11 (5 lenses, verdict clean; hardening shipped 2df804fc + a91946a9:**
   bootstrap seeds the service camera pre-first-event; fresh-capture reads camera off the
   same native snapshot as the fresh bounds; setBounds rejects explicit-null camera).
