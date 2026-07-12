@@ -13,6 +13,8 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { overlaySheetBodyTugOffsetValue } from './overlaySheetContentFitsRuntime';
+
 import { OVERLAY_TAB_HEADER_HEIGHT } from './overlaySheetStyles';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 
@@ -117,6 +119,14 @@ export const BottomSheetSceneStackPageFrame = React.memo(
       ],
       [effectiveHeaderHeight, reserveHeaderLane]
     );
+    // Short-content tug (Phase B, plans/sheet-scroll-primitive.md §3.3): the captured up-drag
+    // translates the WHOLE body lane — content, white plate, and cutout holes move as one (the
+    // plate lives inside this layer), sliding under the stationary header like an iOS bottom
+    // over-scroll and springing back. Zero when no tug is active (the SV rests at 0), so every
+    // other page pays nothing.
+    const bodyTugStyle = useAnimatedStyle(() => ({
+      transform: [{ translateY: overlaySheetBodyTugOffsetValue.value }],
+    }));
 
     return (
       <View pointerEvents="box-none" style={styles.sceneStackPageBundle}>
@@ -149,7 +159,7 @@ export const BottomSheetSceneStackPageFrame = React.memo(
           ref={bodyViewportRef}
           pointerEvents="box-none"
           onLayout={handleBodyLayout}
-          style={[bodyLayerStyle, bodyOpacityStyle]}
+          style={[bodyLayerStyle, bodyTugStyle, bodyOpacityStyle]}
         >
           {bodyComponent}
         </Animated.View>

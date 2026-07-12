@@ -19,6 +19,17 @@ import { makeMutable, type SharedValue } from 'react-native-reanimated';
 /** UI-thread flag: 1 while the PRESENTED scene's body content fits its viewport, else 0. */
 export const overlaySheetContentFitsValue: SharedValue<number> = makeMutable(0);
 
+// The tug OUTPUT (Phase B v2): the captured up-drag drives a BODY-LANE translate — the content
+// (plate + cutout holes + list, all inside the page-frame body layer) slides up under the
+// stationary header with rubber-band damping and springs back, exactly like an iOS bottom
+// over-scroll. The sheet itself (sheetY, header, grab handle) never moves — moving the whole
+// sheet reads as a grab, not a scroll (owner, 2026-07-11). Written by the expand pan's tug mode;
+// consumed by BottomSheetSceneStackPageFrame's body layer.
+/** UI-thread translateY (px, <= 0) applied to the presented scene's body lane during a tug. */
+export const overlaySheetBodyTugOffsetValue: SharedValue<number> = makeMutable(0);
+/** UI-thread flag: 1 while the expand pan is in tug mode (driving the body-lane translate). */
+export const overlaySheetBodyTugActiveValue: SharedValue<number> = makeMutable(0);
+
 type SheetBodyContentMetrics = {
   contentHeight: number | null;
   viewportHeight: number | null;

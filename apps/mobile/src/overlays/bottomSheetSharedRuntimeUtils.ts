@@ -34,7 +34,7 @@ export const isAtScrollTop = (offsetY: number, scrollTopOffset: number): boolean
   return offsetY <= scrollTopOffset + TOP_EPSILON;
 };
 
-const rubberBandDistance = (distanceFromBound: number): number => {
+export const rubberBandDistance = (distanceFromBound: number): number => {
   'worklet';
   if (distanceFromBound <= 0) {
     return 0;
