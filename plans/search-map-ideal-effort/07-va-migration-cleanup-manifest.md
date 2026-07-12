@@ -40,7 +40,7 @@ All are the code AFTER the `if pinsUseViewAnnotation {…; return}` early-return
 - `applyLabelOneOfFourSelector` (10382-10440) + the **`__lea_revealed__`** literal writes/swaps (NOT `__lea_lod__`)
 - `resetLabelObservationForDismissStart` (6698-6715) + the `labelObservation` state (`observationEnabled`, `movingAdaptiveRefreshMs`)
 - Debug log: `[labelva] roster`; **strip the `[pinva] hitTest CALLED` diagnostic** (8627)
-- **Verify then decide:** the label collision-twin (`labelPlacementQueryLayerIds`, `RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID`) — one finder said VA keeps it, but VA labels use `enableSymbolLayerCollision` not the twin; if only the (deleted) observation queried it, it's dead. **Grep after deleting the observation stack.**
+- **RESOLVED + DELETED (2026-07-11):** the label collision-twin (`RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID`) was dead as an observable AND actively harmful: its 4-candidates-per-on-screen-restaurant invisible boxes culled dots in phantom label-sized groups (the dense-then-thin fade-in bug + the dismiss density pop). VA labels carry their own collision via `enableSymbolLayerCollision` at the placed side only. Deleted from search-map.tsx (layer JSX, dorm/wake list, const); on-device verified: flat post-reveal dot density, no dismiss pop, dots still yield under visible labels, basemap still suppressed.
 
 ## DELETE — GL label JS (`search-map.tsx` + `use-direct-search-map-source-controller.ts`)
 

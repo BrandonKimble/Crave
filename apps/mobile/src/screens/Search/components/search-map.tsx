@@ -244,26 +244,15 @@ const renderSearchMapLabelLayers = ({
   sourceId: string;
   labelLayerStyle: MapboxGL.SymbolLayerStyle;
 }) => [
-  /* COLLISION-TWIN: same geometry (field/size/offset/anchor via the same style), constant-invisible,
-     collision flags ON — the sole label collider + basemap suppressor. Placement outcomes are observed
-     here (the label collider + basemap suppressor). Press targeting is a native VA hit-test
-     (labelVAHitTest), not a QRF of this layer.
+  /* The GL collision-twin is GONE (2026-07-11). It emitted an invisible, collision-ON text box for
+     ALL FOUR candidate sides of every on-screen restaurant, and after the observation-stack deletion
+     nothing read its placement — its only effect was culling dots in phantom label-sized groups
+     (the dense-then-thin fade-in bug). The label collider + basemap suppressor is the Label VA itself:
+     `enableSymbolLayerCollision = true` injects a collision box exactly at the placed side of each
+     VISIBLE label, minted at reveal start and removed at dismiss start (SearchMapRenderController
+     syncLabelVARoster / teardownLabelVA).
      NOTE: a keyed ARRAY, not a Fragment — rnmapbox introspects React.Children, and a Fragment hides the
      layers from that traversal (crashed Fabric mounting with a poisoned ShadowNode family). */
-  <MapboxGL.SymbolLayer
-    key={RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID}
-    id={RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID}
-    slot={undefined}
-    sourceID={sourceId}
-    belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
-    style={{
-      ...labelLayerStyle,
-      textOpacity: 0,
-      textAllowOverlap: false,
-      textIgnorePlacement: false,
-    }}
-    filter={LABEL_FEATURE_FILTER}
-  />,
   /* RENDER layer: OUT of the placement system — never culled, never placement-faded. Visibility is
      purely our opacity product (presentation x __lea_lod__ x __lea_revealed__ x base) = SNAP on
      collision changes, FADE only via LOD/presentation (the owner's standardized label policy). */
@@ -1020,7 +1009,6 @@ const RESTAURANT_LABEL_LAYER_ID = 'restaurant-labels-layer';
 // the presentation ramp) and only ever FADE via our own LOD/presentation machinery. Basemap keeps its
 // native placement fades. Opacity-0 symbols still place + collide + suppress (proven by the post-dismiss
 // suppression defect), so the twin is a constant-invisible, always-competing stand-in.
-const RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID = 'restaurant-labels-collision-twin';
 
 const RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID = 'restaurant-labels-pin-collision';
 
@@ -1791,12 +1779,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     // Both invisible collision-obstacle layers must dorm/wake together on dismiss/reveal — the native
     // setLabelCollisionObstacleLayersVisible loop toggles only the ids in this list, so omitting the
     // dot-body obstacle left it permanently in Mapbox's placement pipeline while the surface is hidden.
-    () => [
-      RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID,
-      RESTAURANT_PIN_DOT_COLLISION_LAYER_ID,
-      // The label collision-twin dorms/wakes with the obstacles (it IS the label obstacle now).
-      RESTAURANT_LABEL_COLLISION_TWIN_LAYER_ID,
-    ],
+    () => [RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID, RESTAURANT_PIN_DOT_COLLISION_LAYER_ID],
     []
   );
   const {
