@@ -114,9 +114,12 @@ container anyway).
 ## 4. Status
 
 - Root cause + model: verified 2026-07-11 (this doc).
-- Phase A (authorities 1+2, channel deletions, comparator comment truth-up):
-  implementation in flight.
-- Phase B (content-fits tug): designed above, build after A verifies on sim.
+- Phase A (authorities 1+2, channel deletions): BUILT + sim-verified,
+  commit 369ba518.
+- Phase B (content-fits tug): BUILT + sim-verified (screen recording: ~70px
+  damped rise on the short profile page, pixel-identical spring-back;
+  settings fits=0 unaffected). overlaySheetContentFitsRuntime +
+  SheetSceneContentMetricsContext + two arbiter branches. Committed same day.
 - RNGH facts pinned: relation OR semantics (Android orchestrator :740, iOS
   RNGestureHandler.mm delegate), FlashList v2 CompatView root, Reanimated
   PropsFilter initial-spread.
