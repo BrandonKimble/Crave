@@ -1675,13 +1675,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
     presentedPinSourceStore,
   ]);
   const highlightedMarkerKey = highlightedMarkerKeys[0] ?? null;
-  // Single resident label RENDER layer id — kept only so native can force-hide it (labels render as
-  // ViewAnnotations; the render layer never paints, but the collision-twin on the same source stays live).
   const labelCollisionLayerIds = React.useMemo(
-    // Both invisible collision-obstacle layers must dorm/wake together on dismiss/reveal — the native
-    // setLabelCollisionObstacleLayersVisible loop toggles only the ids in this list, so omitting the
-    // dot-body obstacle left it permanently in Mapbox's placement pipeline while the surface is hidden.
-    () => [RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID, RESTAURANT_PIN_DOT_COLLISION_LAYER_ID],
+    // EVERY colliding layer must dorm/wake together on dismiss/reveal — the native
+    // setLabelCollisionObstacleLayersVisible loop toggles exactly the ids in this list.
+    // Omitting one leaves it permanently in Mapbox's placement pipeline while the surface
+    // is hidden. That includes the VISIBLE dot layer: it collides (allowOverlap:false +
+    // ignorePlacement:false) and its features stay resident at opacity 0 across dismiss —
+    // an opacity-0 symbol still claims its collision box, which kept culling basemap labels
+    // after dismiss (partial basemap return, attributed 2026-07-11). Visibility flips at
+    // dismiss start and reveal preroll: collision leaves at the first frame of fade-out.
+    () => [
+      RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID,
+      RESTAURANT_PIN_DOT_COLLISION_LAYER_ID,
+      DOT_LAYER_ID,
+    ],
     []
   );
   const {

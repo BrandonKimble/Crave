@@ -6300,6 +6300,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     // release even if a stray participation write raced, and frees the views.
     teardownPinVA(instanceId: instanceId)
     teardownLabelVA(instanceId: instanceId)
+    // ROSTER TEARDOWN => SIGNATURE INVALID. The visible-set signature caches "this exact
+    // on-screen set has been projected AND decided"; tearing the VA rosters down voids that
+    // conclusion. Without this, an identical-viewport re-reveal hits the decide() signature
+    // guard (proj sigChanged=false), nothing re-promotes, and the second search shows dots
+    // only (attributed 2026-07-11 via [LODDBG]: reveal 1 decide promoted=30; reveal 2 no decide).
+    state.lastVisibleMarkerSetSignature = nil
     recordNativeApply(
       section: "presentation.hidden_marker_layer_dormancy",
       phase: state.lastPresentationBatchPhase,
