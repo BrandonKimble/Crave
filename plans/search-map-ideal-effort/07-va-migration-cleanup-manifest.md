@@ -209,3 +209,23 @@ the LABEL half of the lea writes. After Phase B its only outputs are counts/diag
 readiness gates (promotedRoleFamiliesAreComplete label clause) — reduce to counts-only or delete
 with the readiness gates rewritten. CAUTION: `onScreenMarkerKeys` gate is SHARED with the KEPT
 collision emit — do not delete. `guard let labelSourceId` at ~1267 is attach-required until then.
+
+## Label DATA family follow-up — CURRENT native site inventory (2026-07-11, post Phase B)
+
+The flagged pass, sized: ~23 sites in SearchMapRenderController.swift, all `state.labelSourceId`
+family reads/writes: decl 686; source-guard 1069; attach parse/init 1265/1294/1345; family reads
+2167/2527/2565/2690/4486/4818/6763/9110/9114; family MUTATIONS 3747→4110 (derived path) and 7558/7610
+(catalog drain); mutation summary 4981; contract emits 3656/6489; source revision 10433; naming map
+11304 ("labels"); helper param 11532; converge label feature-state writes 3937/4593 +
+"nativeLabelOpacity" in the transient lists 213/12473 (the JS reader expression is already deleted).
+JS side: labelBuilder 4-candidate emit + labelSourceStore threading + labels payload +
+RESTAURANT_LABEL_SOURCE_ID + expectedLabelCount/hasPinLabels/labelPerPinCandidateCount diagnostics +
+the promotedRoleFamiliesAreComplete label clause (readiness gate — REWRITE, don't delete blind).
+KEEP: collisionBuilder + onScreenMarkerKeys (shared loop), dot/pin lea writes, candidateCatalog
+(feeds the VA labels). Execute in a DEDICATED session: native family removal first (guards →
+family registration → mutations → emits), then the JS emit cut, full build + on-device re-verify.
+
+Space-in-path NOTE RESOLVED: repo moved to /Users/brandonkimble/CraveApp/Crave (space-free);
+"~/Crave" and "~/Crave App" are compat symlinks. The Pods-side quote patch is now unnecessary
+(and will wash out on the next pod install); the committed app-pbxproj quoting stays as a
+correct defensive fix.
