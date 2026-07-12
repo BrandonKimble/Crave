@@ -17,6 +17,9 @@ type UseSearchRootMapBootstrapRuntimeArgs = {
   commitCameraViewport: SearchRootSessionPrimitivesLane['primitives']['commitCameraViewport'];
   lastCameraStateRef: SearchRootSessionPrimitivesLane['primitives']['lastCameraStateRef'];
   lastPersistedCameraRef: SearchRootSessionPrimitivesLane['primitives']['lastPersistedCameraRef'];
+  viewportBoundsService: {
+    seedCamera: (camera: { center: [number, number]; zoom: number }) => void;
+  };
   mapState: Pick<
     SearchRootPrimitivesRuntime['mapState'],
     'setMapCenter' | 'setMapZoom' | 'setIsFollowingUser'
@@ -31,6 +34,7 @@ export const useSearchRootMapBootstrapRuntime = ({
   commitCameraViewport,
   lastCameraStateRef,
   lastPersistedCameraRef,
+  viewportBoundsService,
   mapState,
 }: UseSearchRootMapBootstrapRuntimeArgs): SearchRootMapBootstrapRuntime => {
   const [isInitialCameraReady, setIsInitialCameraReady] = React.useState(
@@ -79,6 +83,13 @@ export const useSearchRootMapBootstrapRuntime = ({
       center: startupCamera.center,
       zoom: startupCamera.zoom,
     };
+    // Seed the viewport service's camera too, so a commit-moment capture (e.g. a
+    // deep-link search) BEFORE the map's first camera event still carries a camera —
+    // the first real event overwrites (seedCamera never clobbers a non-null camera).
+    viewportBoundsService.seedCamera({
+      center: [startupCamera.center[0], startupCamera.center[1]],
+      zoom: startupCamera.zoom,
+    });
     lastPersistedCameraRef.current = JSON.stringify({
       center: startupCamera.center,
       zoom: startupCamera.zoom,
@@ -96,6 +107,7 @@ export const useSearchRootMapBootstrapRuntime = ({
     setMapCenter,
     setMapZoom,
     startupCamera,
+    viewportBoundsService,
   ]);
 
   return React.useMemo(

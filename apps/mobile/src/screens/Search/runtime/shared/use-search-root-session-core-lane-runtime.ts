@@ -39,6 +39,7 @@ export const useSearchRootSessionCoreLaneRuntime = ({
     commitCameraViewport: sessionPrimitivesLane.primitives.commitCameraViewport,
     lastCameraStateRef: sessionPrimitivesLane.primitives.lastCameraStateRef,
     lastPersistedCameraRef: sessionPrimitivesLane.primitives.lastPersistedCameraRef,
+    viewportBoundsService: sessionControlServices.viewportBoundsService,
     mapState: rootPrimitivesRuntime.mapState,
   });
 

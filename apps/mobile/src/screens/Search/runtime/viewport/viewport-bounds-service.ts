@@ -111,6 +111,16 @@ export class ViewportBoundsService {
     return cloneCamera(this.camera);
   }
 
+  /** Pre-first-event seed (bootstrap startup camera): fills the camera ONLY while no
+   *  viewport event has supplied one — a real event always wins. Closes the cold-start
+   *  window where a deep-link search could commit before the map's first camera event
+   *  (the commit-moment capture would otherwise carry a null camera). */
+  public seedCamera(camera: ViewportCameraState): void {
+    if (this.camera == null) {
+      this.camera = cloneCamera(camera);
+    }
+  }
+
   public captureSearchBaseline(
     bounds: MapBounds | null = this.bounds,
     polygon: LngLat[] | null = null
