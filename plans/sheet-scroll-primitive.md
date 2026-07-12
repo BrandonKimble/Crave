@@ -141,3 +141,31 @@ container anyway).
 - RNGH facts pinned: relation OR semantics (Android orchestrator :740, iOS
   RNGestureHandler.mm delegate), FlashList v2 CompatView root, Reanimated
   PropsFilter initial-spread.
+
+## v3 REGRESSION (owner, 2026-07-11 late) — jitter + broken mid-gesture up-handoff
+
+v3's fold wrote the tug into the SHARED scrollOffset SV without auditing every
+consumer for negative values (the ruling's Step 2 — skipped; that was the
+mistake). Symptoms: sheet jitters during drags; up-drag from a bottom snap no
+longer hands off to the tug mid-gesture (keeps pushing the sheet; requires a
+finger lift). Prime suspects (verify by code + runtime, then fix):
+1. Double release springs: the zero-crossing handover clears expandPanActive
+   but the RNGH gesture stays active — expandPan.onEnd is UNGUARDED (success &&
+   !didHandoff) and fires startSpring alongside collapsePan.onEnd → the shake.
+   Fix: a tugDidHandoff flag consulted in onEnd, or fail() via stateManager.
+2. Shared-stream side effects: scrollOffset feeds
+   useBottomSheetSharedAnimatedSurfaceRuntime, scroll-events listeners,
+   publications, save/restore — negative writes + native onScroll zeros
+   interleave → oscillation. Fix (Step-0 shape the ruling actually ordered):
+   keep the audited MECHANICS (tug-aware collapse gate, touch-down
+   cancelAnimation+inverse-rubber re-anchor, zero-crossing handover) but on a
+   DEDICATED tug SV again; derive divider as max(abs of tug, offset) and
+   PageFrame translate from the tug SV; defer the true one-value stream to the
+   sceneScrollStateRegistry rehousing (Step 4) where every consumer is
+   audited in one pass.
+3. Mid-gesture switchover: verify the sheet-drag→tug branch actually engages
+   (fits flag timing at bottom-snap entry; instrument [TUGDBG]-style with a JS
+   closure, NEVER runOnJS(console.log)).
+Also study WHY the result sheet's up-handoff feels right: it FAILS the pan into
+the native scroll (stateManager.fail()) — the tug switchover should mimic that
+cleanly (single owner per phase), not keep two active pans.
