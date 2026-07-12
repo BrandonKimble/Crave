@@ -29,7 +29,7 @@ import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyR
 import type { OverlayRouteParamsMap } from '../../navigation/runtime/app-overlay-route-types';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import { formatRelativeTime } from '../../utils/relative-time';
-import { publishSceneHeaderScrollOffset } from '../sceneHeaderScrollOffsetRegistry';
+import { publishSceneHeaderScrollOffset } from '../sceneScrollStateRegistry';
 
 // ─── W3 messaging scenes (plans/w3-messaging-design.md §4) ───────────────────────────────────
 // messagesInbox: child SINGLETON (no params); MVCP disabled on its transport (re-sorting list).
@@ -422,7 +422,7 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
     paddingBottom: bodyBasePaddingBottom + Math.max(0, keyboard.height.value - insets.bottom),
   }));
   const threadScrollRef = React.useRef<React.ComponentRef<typeof Reanimated.ScrollView>>(null);
-  // Header-divider publication (sceneHeaderScrollOffsetRegistry): the dm body is STATIC — the
+  // Header-divider publication (sceneScrollStateRegistry): the dm body is STATIC — the
   // shared sheet scroll container never scrolls, so the persistent header's scroll divider
   // reads THIS thread ScrollView's UI-thread offset instead. Stack registry semantics keep
   // multiple mounted dmSession entries honest (topmost = the active push).

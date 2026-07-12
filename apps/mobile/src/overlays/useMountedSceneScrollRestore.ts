@@ -1,7 +1,7 @@
 import React from 'react';
 import type { ScrollView } from 'react-native';
 
-import { consumePendingOverlayScrollRestore } from './overlayScrollOffsetRuntime';
+import { consumePendingOverlayScrollRestore } from './sceneScrollStateRegistry';
 
 // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Restore step 5/6).
 //

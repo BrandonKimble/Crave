@@ -1,7 +1,7 @@
 import React from 'react';
 import type { FlashListRef } from '@shopify/flash-list';
 
-import { getOverlayScrollOffset, setOverlayScrollOffset } from './overlayScrollOffsetRuntime';
+import { getOverlayScrollOffset, setOverlayScrollOffset } from './sceneScrollStateRegistry';
 import { isOverlayListContentSpec } from './types';
 import type {
   OverlaySheetListRuntime,

@@ -24,7 +24,7 @@ import {
   useIsScreenReaderEnabled,
   type ReorderScrollAdapter,
 } from '../../components/reorder';
-import { getOverlaySceneScrollHandle } from '../overlaySceneScrollHandleRegistry';
+import { getOverlaySceneScrollHandle } from '../sceneScrollStateRegistry';
 import { acquireOverlaySheetEditLock } from '../overlaySheetEditLockRuntime';
 import { Text } from '../../components';
 import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';

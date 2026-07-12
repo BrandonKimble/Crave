@@ -13,7 +13,7 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { overlaySheetBodyTugOffsetValue } from './overlaySheetContentFitsRuntime';
+import { overlaySheetBodyTugOffsetValue } from './sceneScrollStateRegistry';
 
 import { OVERLAY_TAB_HEADER_HEIGHT } from './overlaySheetStyles';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';

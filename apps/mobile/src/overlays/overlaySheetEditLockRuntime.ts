@@ -7,7 +7,7 @@ import { makeMutable, type SharedValue } from 'react-native-reanimated';
 // release destination) to the expanded snap — the exact `applyElasticBounds` behavior
 // that already guards the sheet's top edge, now applied to the bottom.
 //
-// Same registry ethos as overlaySceneScrollHandleRegistry: module-scope, panel-settable
+// Same registry ethos as sceneScrollStateRegistry: module-scope, panel-settable
 // at runtime (edit mode toggles it on/off dynamically — this is NOT static per scene),
 // token-keyed so overlapping acquire/release can't strand the lock, and INERT when
 // unset (value 0 ⇒ every read site falls through to its pre-existing expression).

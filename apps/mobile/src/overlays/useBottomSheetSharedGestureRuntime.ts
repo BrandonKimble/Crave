@@ -16,7 +16,7 @@ import {
   overlaySheetBodyTugActiveValue,
   overlaySheetBodyTugOffsetValue,
   overlaySheetContentFitsValue,
-} from './overlaySheetContentFitsRuntime';
+} from './sceneScrollStateRegistry';
 import {
   AXIS_LOCK_HORIZONTAL,
   AXIS_LOCK_NONE,

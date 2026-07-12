@@ -9,7 +9,7 @@ import { useSceneFrostCutoutContentLayoutSignal } from './SceneBodyFoundationSur
 import {
   reportSheetBodyContentMetrics,
   SheetSceneContentMetricsContext,
-} from './overlaySheetContentFitsRuntime';
+} from './sceneScrollStateRegistry';
 import { SHEET_BODY_NO_OVERSCROLL } from './sheetBodyScrollDefaults';
 
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
@@ -71,7 +71,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       return { scrollEnabled: shouldEnableScrollShared.value };
     }, [shouldEnableScrollShared]);
 
-    // Content-fits metrics for the Phase B sheet-elastic tug (overlaySheetContentFitsRuntime):
+    // Content-fits metrics for the Phase B tug (sceneScrollStateRegistry):
     // the container is the one place that knows BOTH sizes. Scene-keyed via context so hidden
     // co-mounted legs can't clobber the presented scene's flag; null outside a scene leg → no-op.
     const contentMetricsSceneKey = React.useContext(SheetSceneContentMetricsContext);

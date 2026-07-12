@@ -17,7 +17,7 @@ import type {
 //   • SCROLL (always) — the lane offset is read from the shared sheet scroll SharedValue
 //     (`sheetScrollOffset`, the live scroll of the currently-displayed scene-stack body). The lane
 //     is keyed by sceneIdentityKey (== overlayKey for the static mounted tabs), matching
-//     overlayScrollOffsetRuntime's seed key on the restore side so the offset flows back to the
+//     sceneScrollStateRegistry's seed key on the restore side so the offset flows back to the
 //     same lane on the cold re-mount.
 //   • SEGMENT (optional) — a segmented scene (profile) passes getSegment to publish its live
 //     active sub-tab; the restore stages it and the scene segment-selects first, scroll second.

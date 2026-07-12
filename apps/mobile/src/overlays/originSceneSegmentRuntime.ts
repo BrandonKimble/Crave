@@ -1,7 +1,7 @@
 // Return-to-origin foundation (plans/return-to-origin-foundation-design.md §Restore / P5).
 //
 // The SEGMENT axis for a segmented scene (profile's created|contributed|favorites sub-tab).
-// Mirrors overlayScrollOffsetRuntime's one-shot pending pattern: the dismiss restore stages a
+// Mirrors sceneScrollStateRegistry's one-shot pending pattern: the dismiss restore stages a
 // PENDING segment for the scene (keyed by sceneIdentityKey == sceneKey) BEFORE the scene
 // re-roots; the scene's segment owner (the profile body-model runtime) consumes the flag
 // EXACTLY ONCE on its first activation and applies it via its own segment setter, as the SOLE
@@ -26,9 +26,7 @@ export const stageOriginSceneSegmentRestore = (
   originSceneSegmentRestorePending.set(sceneIdentity, segment);
 };
 
-export const consumePendingOriginSceneSegmentRestore = (
-  sceneIdentity: string
-): string | null => {
+export const consumePendingOriginSceneSegmentRestore = (sceneIdentity: string): string | null => {
   const pending = originSceneSegmentRestorePending.get(sceneIdentity);
   if (pending == null) {
     return null;

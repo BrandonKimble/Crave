@@ -26,7 +26,7 @@ import {
 } from '../../components/reorder';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 import OverlayModalSheet from '../OverlayModalSheet';
-import { getOverlaySceneScrollHandle } from '../overlaySceneScrollHandleRegistry';
+import { getOverlaySceneScrollHandle } from '../sceneScrollStateRegistry';
 import { acquireOverlaySheetEditLock } from '../overlaySheetEditLockRuntime';
 import { overlaySheetStyles } from '../overlaySheetStyles';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';

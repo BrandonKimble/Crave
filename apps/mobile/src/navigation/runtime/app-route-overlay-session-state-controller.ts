@@ -4,7 +4,7 @@ import type {
   TabOverlaySnap,
 } from '../../overlays/searchRouteSessionTypes';
 import { getOriginSceneLiveState } from './origin-scene-live-state-registry';
-import { stageOverlayScrollRestore } from '../../overlays/overlayScrollOffsetRuntime';
+import { stageOverlayScrollRestore } from '../../overlays/sceneScrollStateRegistry';
 import { hasSearchSessionAboveRoot } from './app-overlay-route-stack-algebra';
 import {
   registerRouteEntryOriginCapturer,

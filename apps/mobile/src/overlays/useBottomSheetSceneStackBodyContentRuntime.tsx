@@ -14,12 +14,12 @@ import {
   createSceneEntryMountUnitKey,
   type SceneEntryMountUnit,
 } from '../navigation/runtime/app-route-scene-entry-mounts';
-import { getOverlayScrollOffset, setOverlayScrollOffset } from './overlayScrollOffsetRuntime';
+import { getOverlayScrollOffset, setOverlayScrollOffset } from './sceneScrollStateRegistry';
 import { notePremountChildBodyFirstCommit } from '../navigation/runtime/premount-violation-probe';
-import { registerOverlaySceneScrollHandle } from './overlaySceneScrollHandleRegistry';
+import { registerOverlaySceneScrollHandle } from './sceneScrollStateRegistry';
 import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
 import { getSceneFoundationSpec } from '../navigation/runtime/scene-foundation-spec';
-import { SheetSceneContentMetricsContext } from './overlaySheetContentFitsRuntime';
+import { SheetSceneContentMetricsContext } from './sceneScrollStateRegistry';
 import { SceneBodyFoundationSurface } from './SceneBodyFoundationSurface';
 import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneStackBodyActivityContext';
 
@@ -363,7 +363,7 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
       ?.bodySurface === 'white';
   return React.useMemo(() => {
     // Scene identity for the container's content-fits reports (Phase B tug — see
-    // overlaySheetContentFitsRuntime). Provided per leg so hidden co-mounted legs report under
+    // sceneScrollStateRegistry). Provided per leg so hidden co-mounted legs report under
     // their OWN key and can never clobber the presented scene's flag.
     const withSceneMetrics = (node: React.ReactNode) => (
       <SheetSceneContentMetricsContext.Provider value={sceneKey}>
