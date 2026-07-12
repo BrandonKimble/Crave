@@ -55,7 +55,6 @@ type SearchMapNativeRenderOwnerStatusArgs = {
   dotSourceId: string;
   labelSourceId: string;
   labelCollisionSourceId: string;
-  labelLayerIds: string[];
   labelCollisionLayerIds: string[];
   sourceFramePort?: SearchMapSourceFramePort | null;
   onExecutionBatchMountedHidden?: (payload: {
@@ -131,7 +130,6 @@ type SearchMapNativeRenderOwnerStatusResult = {
 };
 
 type SearchMapNativeLayerGroupConfig = {
-  labelLayerIds: string[];
   labelCollisionLayerIds: string[];
 };
 
@@ -1848,7 +1846,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
   dotSourceId,
   labelSourceId,
   labelCollisionSourceId,
-  labelLayerIds,
   labelCollisionLayerIds,
   sourceFramePort = null,
   onExecutionBatchMountedHidden,
@@ -1889,16 +1886,14 @@ const useSearchMapNativeRenderOwnerStatus = ({
   const instanceId = instanceIdRef.current;
   const isNativeAvailable = searchMapRenderController.isAvailable();
   const nativeLayerGroupConfigRef = React.useRef<SearchMapNativeLayerGroupConfig>({
-    labelLayerIds,
     labelCollisionLayerIds,
   });
 
   React.useEffect(() => {
     nativeLayerGroupConfigRef.current = {
-      labelLayerIds,
       labelCollisionLayerIds,
     };
-  }, [labelCollisionLayerIds, labelLayerIds]);
+  }, [labelCollisionLayerIds]);
 
   React.useEffect(() => {
     setAttachRetryNonce(0);
@@ -2063,7 +2058,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
           dotSourceId,
           labelSourceId,
           labelCollisionSourceId,
-          labelLayerIds: nativeLayerGroupConfig.labelLayerIds,
           labelCollisionLayerIds: nativeLayerGroupConfig.labelCollisionLayerIds,
         })
         .then(() => {
@@ -2128,7 +2122,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
     void searchMapRenderController
       .configureNativeLayerGroups({
         instanceId,
-        labelLayerIds,
         labelCollisionLayerIds,
       })
       .catch((error: unknown) => {
@@ -2142,7 +2135,7 @@ const useSearchMapNativeRenderOwnerStatus = ({
     return () => {
       isActive = false;
     };
-  }, [instanceId, isAttached, isNativeAvailable, labelCollisionLayerIds, labelLayerIds]);
+  }, [instanceId, isAttached, isNativeAvailable, labelCollisionLayerIds]);
 
   React.useEffect(() => {
     if (!isNativeAvailable) {

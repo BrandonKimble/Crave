@@ -17,7 +17,6 @@ type SearchMapRenderControllerNativeModule = {
     dotSourceId: string;
     labelSourceId: string;
     labelCollisionSourceId: string;
-    labelLayerIds: string[];
     labelCollisionLayerIds: string[];
   }) => Promise<void>;
   detach: (instanceId: string) => Promise<void>;
@@ -51,7 +50,6 @@ type SearchMapRenderControllerNativeModule = {
   }) => Promise<SearchMapNativeApplyAttributionSummary>;
   configureNativeLayerGroups: (payload: {
     instanceId: string;
-    labelLayerIds: string[];
     labelCollisionLayerIds: string[];
   }) => Promise<void>;
   configureNativePressTargeting: (payload: {
@@ -91,7 +89,6 @@ type SearchMapRenderControllerAttachPayload = {
   dotSourceId: string;
   labelSourceId: string;
   labelCollisionSourceId: string;
-  labelLayerIds: string[];
   labelCollisionLayerIds: string[];
 };
 
@@ -876,7 +873,6 @@ export const searchMapRenderController = {
     dotSourceId: string;
     labelSourceId: string;
     labelCollisionSourceId: string;
-    labelLayerIds: string[];
     labelCollisionLayerIds: string[];
   }): Promise<void> {
     if (!nativeModule) {
@@ -888,7 +884,6 @@ export const searchMapRenderController = {
 
   async configureNativeLayerGroups(payload: {
     instanceId: string;
-    labelLayerIds: string[];
     labelCollisionLayerIds: string[];
   }): Promise<void> {
     if (!nativeModule?.configureNativeLayerGroups) {

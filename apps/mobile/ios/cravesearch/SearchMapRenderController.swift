@@ -679,14 +679,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     // pinBundleSourceId. Kept separate so label add/remove on promote/demote re-layouts ONLY labels,
     // never the resident pins (the zoom wiggle). Distinct from labelSourceId, which stays the
     // JS-fed RAW label input the prepare path reads from.
-    var labelRenderSourceId: String { "\(pinSourceId)-label-render" }
     var mapTag: NSNumber
     var pinSourceId: String
     var pinInteractionSourceId: String
     var dotSourceId: String
     var labelSourceId: String
     var labelCollisionSourceId: String
-    var labelLayerIds: [String]
     var labelCollisionLayerIds: [String]
     var lastPinVisualGroupOrderSlots: [Int]
     var lastPinVisualGroupOrderSignature: String?
@@ -1270,10 +1268,8 @@ final class SearchMapRenderController: RCTEventEmitter {
         reject("search_map_render_controller_attach_invalid", "invalid attach payload", nil)
         return
       }
-      let labelLayerIds = Self.parseStringArray(payload["labelLayerIds"])
       let labelCollisionLayerIds = Self.parseStringArray(payload["labelCollisionLayerIds"])
       guard
-        !labelLayerIds.isEmpty,
         !labelCollisionLayerIds.isEmpty
       else {
         reject(
@@ -1297,7 +1293,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         dotSourceId: dotSourceId,
         labelSourceId: labelSourceId,
         labelCollisionSourceId: labelCollisionSourceId,
-        labelLayerIds: labelLayerIds,
         labelCollisionLayerIds: labelCollisionLayerIds,
         lastPinVisualGroupOrderSlots: [],
         lastPinVisualGroupOrderSignature: nil,
@@ -3393,10 +3388,8 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
         return
       }
-      let labelLayerIds = Self.parseStringArray(payload["labelLayerIds"])
       let labelCollisionLayerIds = Self.parseStringArray(payload["labelCollisionLayerIds"])
       guard
-        !labelLayerIds.isEmpty,
         !labelCollisionLayerIds.isEmpty
       else {
         reject(
@@ -3406,7 +3399,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         )
         return
       }
-      state.labelLayerIds = labelLayerIds
       state.labelCollisionLayerIds = labelCollisionLayerIds
       state.lastPinVisualGroupOrderSlots = []
       state.lastPinVisualGroupOrderSignature = nil
@@ -4144,32 +4136,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     promotedSlotFamilyState.collection.removedGroupIds =
       previousPromotedGroupIds.subtracting(Set(orderedMarkerKeys))
 
-    // UN-BUNDLED labels → their own render source, wrapped with nativeSlotFeatureKind=="label".
-    let nextLabelRecordsByMarkerKey = Self.recordsByMarkerKey(from: nextLabels)
-    var labelRenderRecordsByMarkerKey: [String: [ParsedTransportFeatureRecord]] = [:]
-    for markerKey in orderedMarkerKeys {
-      let labels = nextLabelRecordsByMarkerKey[markerKey] ?? []
-      guard !labels.isEmpty else { continue }
-      labelRenderRecordsByMarkerKey[markerKey] = labels.map {
-        Self.promotedSlotFeatureRecord($0, id: $0.id, kind: "label")
-      }
-    }
-    let labelRenderOrderedKeys = orderedMarkerKeys.filter { labelRenderRecordsByMarkerKey[$0] != nil }
-    let labelRenderCollection = Self.makeParsedFeatureCollection(
-      records: labelRenderOrderedKeys.flatMap { labelRenderRecordsByMarkerKey[$0] ?? [] }
-    )
-    var labelRenderFamilyState = Self.emptyDerivedFamilyState()
-    labelRenderFamilyState.collection = labelRenderCollection
-    let previousLabelRenderGroupIds = Set(
-      Self.derivedFamilyState(sourceId: state.labelRenderSourceId, state: state).collection.groupOrder
-    )
-    labelRenderFamilyState.collection.dirtyGroupIds =
-      dirtyLabelMarkerKeys
-      .union(previousLabelRenderGroupIds.symmetricDifference(Set(labelRenderOrderedKeys)))
-    labelRenderFamilyState.collection.orderChangedGroupIds =
-      labelRenderFamilyState.collection.dirtyGroupIds
-    labelRenderFamilyState.collection.removedGroupIds =
-      previousLabelRenderGroupIds.subtracting(Set(labelRenderOrderedKeys))
+    // GL label render source deleted (VA-cleanup Phase B): labels are ViewAnnotations.
 
     var plans: [ParsedCollectionApplyPlan] = []
     if let labelCollisionPlan = Self.buildDirectFamilyApplyPlan(
@@ -4185,13 +4152,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       recordAttribution: makeReplaceAttributionRecorder("promotedSlots")
     )
     plans.append(contentsOf: promotedSlotPlans)
-    let labelRenderPlans = try Self.buildSlotApplyPlans(
-      sourceId: state.labelRenderSourceId,
-      nextCollection: labelRenderFamilyState.collection,
-      state: &state,
-      recordAttribution: makeReplaceAttributionRecorder("labelRender")
-    )
-    plans.append(contentsOf: labelRenderPlans)
     return PreparedDerivedPinAndLabelOutput(
       plans: plans,
       pinSourceIds: [state.pinBundleSourceId],
@@ -4690,32 +4650,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       retainResidentDemotes: retainResidentDemotes,
       recordAttribution: makeScopedAttributionRecorder("promotedSlots")
     )
-    // Labels → their OWN render source, wrapped with nativeSlotFeatureKind=="label" (the layer
-    // filter). Isolated from the pin source so it never wiggles the pins.
-    // CHOPPY FIX (2026-06-22): this was retainResidentDemotes:false (always rebuild on promote/demote).
-    // Attributed the pan/zoom jank to the v4 driveNativeLod reconcile (since deleted) spiking to 30-53ms
-    // (cwork driveMs) on role flips — NOT the pin bundle (retained) or the dot output (feature-state only),
-    // but this label RENDER source rebuilding. Pass the same retainResidentDemotesFlag so demoted-marker
-    // labels stay resident (opacity-faded, never removed) while the viewport is moving — no per-flip source
-    // rebuild → no re-tile → smooth pan/zoom. The reveal preroll (not moving) is unaffected: the flag is
-    // false there, so the label render source still sees normal add/remove.
-    var labelRenderRecordsByMarkerKey: [String: [ParsedTransportFeatureRecord]] = [:]
-    for markerKey in directOrderedAffectedMarkerKeys {
-      let labels = directLabelRecordsByMarkerKey[markerKey] ?? []
-      guard !labels.isEmpty else { continue }
-      labelRenderRecordsByMarkerKey[markerKey] = labels.map {
-        Self.promotedSlotFeatureRecord($0, id: $0.id, kind: "label")
-      }
-    }
-    let labelRenderPlans = try Self.buildDirectSlotApplyPlans(
-      sourceId: state.labelRenderSourceId,
-      orderedAffectedMarkerKeys: directOrderedAffectedMarkerKeys,
-      recordsByMarkerKey: labelRenderRecordsByMarkerKey,
-      affectedMarkerKeys: affectedMarkerKeys,
-      state: &state,
-      retainResidentDemotes: retainResidentDemotes,
-      recordAttribution: makeScopedAttributionRecorder("labelRender")
-    )
+    // GL label render source deleted (VA-cleanup Phase B).
     var plans: [ParsedCollectionApplyPlan] = []
     if let labelCollisionPlan = try Self.buildScopedSingleFeatureFamilyApplyPlan(
       sourceId: state.labelCollisionSourceId,
@@ -4727,7 +4662,6 @@ final class SearchMapRenderController: RCTEventEmitter {
       plans.append(labelCollisionPlan)
     }
     plans.append(contentsOf: promotedSlotPlans)
-    plans.append(contentsOf: labelRenderPlans)
     emit([
       "type": "native_scoped_promoted_slot_contract",
       "instanceId": instanceId,
@@ -6080,7 +6014,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     // S4d-1: basemap collision flips at fade START — the twin wakes exactly as the
     // items begin fading in, so the basemap labels' own crossfade-out rides our
     // fade-in (previously: preroll, which could suppress the basemap seconds early).
-    setLabelRenderLayersVisible(true, for: state, instanceId: instanceId, reason: "reveal_ramp_start")
     // VA half: resident pin/label views (kept across a dismiss→re-enter of the same
     // world) re-join the collision pass exactly as they begin fading in.
     setOverlayCollisionParticipation(instanceId: instanceId, enabled: true)
@@ -6594,7 +6527,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       section: "presentation.reveal_preroll_collision_restore",
       phase: state.lastPresentationBatchPhase,
       durationMs: CACurrentMediaTime() * 1000 - collisionRestoreStartedAt,
-      operationCount: state.labelCollisionLayerIds.count + state.labelLayerIds.count
+      operationCount: state.labelCollisionLayerIds.count
     )
     state.visualSourceLifecycleState = .preparingReveal
     state.keepSourcesHiddenUntilEnter = false
@@ -6625,7 +6558,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     // fade begins, so the basemap street names crossfade back in DURING our fade-out
     // (previously: only at exit settle, leaving a ghost-town basemap for the whole
     // fade). Labels are ViewAnnotations; the GL twin has no visual of its own.
-    setLabelRenderLayersVisible(false, for: state, instanceId: instanceId, reason: "dismiss_ramp_start")
     // The VA half of the same directive: pins + label views stop colliding NOW (they
     // keep fading visually), releasing the mid-city basemap labels the GL twin never
     // owned. Without this the basemap stayed suppressed FOREVER after a dismiss.
@@ -6668,12 +6600,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     // (The queryRenderedFeatures placement gate, the label-observation re-arm, and the
     // reveal-deadlock watchdog that previously guarded this wake are all deleted — labels are
     // ViewAnnotations now and place synchronously, so there is no gate to open or stall on.)
-    setLabelRenderLayersVisible(
-      false,
-      for: state,
-      instanceId: instanceId,
-      reason: reason
-    )
     Self.clearDismissedHighlightState(&state)
     // The VA roster is torn down at the floor (views are invisible; the next reveal
     // rebuilds it from the level-triggered catalog drain). Guarantees the collision
@@ -6684,7 +6610,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       section: "presentation.hidden_marker_layer_dormancy",
       phase: state.lastPresentationBatchPhase,
       durationMs: CACurrentMediaTime() * 1000 - labelDormancyStartedAt,
-      operationCount: state.labelLayerIds.count + state.labelCollisionLayerIds.count
+      operationCount: state.labelCollisionLayerIds.count
     )
     state.pendingSourceCommitDataIdsBySourceId = [:]
     state.blockedEnterStartCommitFenceBySourceId.removeAll(keepingCapacity: true)
@@ -6743,51 +6669,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         "instanceId": instanceId,
         "message":
           "label_collision_obstacle_layer_visibility_failed reason=\(reason) visible=\(isVisible) error=\(error.localizedDescription)",
-      ])
-    }
-  }
-
-  /// Dormant-layers idle switch for the visible label (text) render layers. In the resident
-  /// end state the marker SOURCES stay populated across dismiss; idle cost is removed by making
-  /// the collision-bearing label symbols dormant via `visibility: none` (Mapbox drops a hidden
-  /// layer from the layout/placement pipeline entirely — unlike opacity 0). Pins/dots are
-  /// `ignorePlacement` so they cost ~nothing resident at opacity 0 and need no toggle. Mirrors
-  /// `setLabelCollisionObstacleLayersVisible`.
-  private func setLabelRenderLayersVisible(
-    _ isVisible: Bool,
-    for state: InstanceState,
-    instanceId: String,
-    reason: String
-  ) {
-    // Labels render as ViewAnnotations, so the GL label render layers ALWAYS stay HIDDEN — they don't
-    // double-render or contend with the VA's enableSymbolLayerCollision for basemap suppression. (The
-    // `isVisible` parameter is vestigial from the pre-VA A/B and is intentionally ignored.)
-    let isVisible = false
-    do {
-      try withMapboxMap(for: state.mapTag) { mapboxMap in
-        for layerId in state.labelLayerIds {
-          do {
-            try mapboxMap.setLayerProperty(
-              for: layerId,
-              property: "visibility",
-              value: isVisible ? "visible" : "none"
-            )
-          } catch {
-            emit([
-              "type": "error",
-              "instanceId": instanceId,
-              "message":
-                "label_render_layer_visibility_failed reason=\(reason) layer=\(layerId) visible=\(isVisible) error=\(error.localizedDescription)",
-            ])
-          }
-        }
-      }
-    } catch {
-      emit([
-        "type": "error",
-        "instanceId": instanceId,
-        "message":
-          "label_render_layer_visibility_failed reason=\(reason) visible=\(isVisible) error=\(error.localizedDescription)",
       ])
     }
   }
@@ -9250,11 +9131,11 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private func visualSourceIds(for state: InstanceState) -> [String] {
-    Self.uniqueSourceIds([state.pinBundleSourceId, state.labelRenderSourceId, state.dotSourceId, state.labelCollisionSourceId])
+    Self.uniqueSourceIds([state.pinBundleSourceId, state.dotSourceId, state.labelCollisionSourceId])
   }
 
   private func visualAndInteractionSourceIds(for state: InstanceState) -> [String] {
-    Self.uniqueSourceIds([state.pinBundleSourceId, state.labelRenderSourceId, state.dotSourceId, state.labelCollisionSourceId])
+    Self.uniqueSourceIds([state.pinBundleSourceId, state.dotSourceId, state.labelCollisionSourceId])
   }
 
   private static func uniqueSourceIds(_ sourceIds: [String]) -> [String] {
@@ -9397,7 +9278,7 @@ final class SearchMapRenderController: RCTEventEmitter {
   }
 
   private func managedSourceIds(for state: InstanceState) -> [String] {
-    Self.uniqueSourceIds([state.pinBundleSourceId, state.labelRenderSourceId, state.dotSourceId, state.labelCollisionSourceId])
+    Self.uniqueSourceIds([state.pinBundleSourceId, state.dotSourceId, state.labelCollisionSourceId])
   }
 
   private func requiredSourceIds(for state: InstanceState) -> [String] {

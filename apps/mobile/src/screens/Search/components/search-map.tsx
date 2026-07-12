@@ -135,7 +135,6 @@ const RESTAURANT_PIN_BUNDLE_SOURCE_ID = `${STYLE_PINS_SOURCE_ID}-bundle`;
 // UN-BUNDLED name-label render source. Derivation must match native
 // `"\(pinSourceId)-label-render"`. Holds the native-wrapped, promote-gated labels so label churn
 // re-layouts only labels, never the resident pins.
-const RESTAURANT_LABEL_RENDER_SOURCE_ID = `${STYLE_PINS_SOURCE_ID}-label-render`;
 const PIN_INTERACTION_SOURCE_ID = 'restaurant-pin-interaction-source';
 
 // Pin collision obstacle geometry.
@@ -281,11 +280,6 @@ const SearchMapMarkerScene = React.memo(
         />
         {/* UN-BUNDLED name-label render source: the label candidate layers read from here, not the
             pin bundle, so their promote/demote churn never re-snaps the resident pins. */}
-        <MapboxGL.ShapeSource
-          id={RESTAURANT_LABEL_RENDER_SOURCE_ID}
-          maxZoomLevel={13}
-          shape={EMPTY_POINT_FEATURES}
-        />
         <MapboxGL.ShapeSource
           id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
           maxZoomLevel={13}
@@ -941,13 +935,6 @@ const RESTAURANT_LABEL_COLLISION_SOURCE_ID = 'restaurant-label-collision-source'
 const RESTAURANT_PIN_DOT_COLLISION_LAYER_ID = 'restaurant-pin-dot-collision-layer';
 export type LabelCandidate = 'bottom' | 'right' | 'top' | 'left';
 
-// Layer emission order = Mapbox collision priority (earlier-added layers place first).
-// This preserves the exact order the old preferred=bottom family rendered in: the priority
-// list ['bottom','right','top','left'] reversed → ['left','top','right','bottom'].
-// Single resident label layer id (collapsed from 4 per-candidate layers + shared mutex). Native
-// press-targeting is a VA hit-test (labelVAHitTest); the label-observation stack is gone. The id
-// is not hardcoded native-side (JS sends it in labelLayerIds), so this is any stable string.
-const RESTAURANT_LABEL_LAYER_ID = 'restaurant-labels-layer';
 // COLLISION-TWIN (R-5, owner label policy): the invisible collider. It carries the label text geometry
 // through Mapbox placement (competes, gets culled, SUPPRESSES basemap under our labels) while the render
 // layer above leaves the placement system entirely (allowOverlap+ignorePlacement) — so our visible labels
@@ -1712,7 +1699,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const highlightedMarkerKey = highlightedMarkerKeys[0] ?? null;
   // Single resident label RENDER layer id — kept only so native can force-hide it (labels render as
   // ViewAnnotations; the render layer never paints, but the collision-twin on the same source stays live).
-  const labelVisualLayerIds = React.useMemo(() => [RESTAURANT_LABEL_LAYER_ID], []);
   const labelCollisionLayerIds = React.useMemo(
     // Both invisible collision-obstacle layers must dorm/wake together on dismiss/reveal — the native
     // setLabelCollisionObstacleLayersVisible loop toggles only the ids in this list, so omitting the
@@ -1739,7 +1725,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     dotSourceId: DOT_SOURCE_ID,
     labelSourceId: RESTAURANT_LABEL_SOURCE_ID,
     labelCollisionSourceId: RESTAURANT_LABEL_COLLISION_SOURCE_ID,
-    labelLayerIds: labelVisualLayerIds,
     labelCollisionLayerIds,
     pins: nativeDesiredPinFeatures,
     pinInteractions: nativeDesiredPinInteractionFeatures,
