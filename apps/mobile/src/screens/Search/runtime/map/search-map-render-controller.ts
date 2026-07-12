@@ -15,7 +15,6 @@ type SearchMapRenderControllerNativeModule = {
     pinSourceId: string;
     pinInteractionSourceId: string;
     dotSourceId: string;
-    labelSourceId: string;
     labelCollisionSourceId: string;
     labelCollisionLayerIds: string[];
   }) => Promise<void>;
@@ -87,7 +86,6 @@ type SearchMapRenderControllerAttachPayload = {
   pinSourceId: string;
   pinInteractionSourceId: string;
   dotSourceId: string;
-  labelSourceId: string;
   labelCollisionSourceId: string;
   labelCollisionLayerIds: string[];
 };
@@ -111,7 +109,6 @@ export type SearchMapRenderControllerEvent =
       ownerEpoch: number;
       pinCount: number;
       dotCount: number;
-      labelCount: number;
       sourceAdmissionOutcome: SearchMapVisualFrameSourceAdmissionOutcome;
       sourceFrameKey: string | null;
       sourceDataKey: string | null;
@@ -141,7 +138,6 @@ export type SearchMapRenderControllerEvent =
       executionBatchId: string | null;
       pinCount?: number;
       dotCount?: number;
-      labelCount?: number;
       startedAtMs: number;
     }
   | {
@@ -152,7 +148,6 @@ export type SearchMapRenderControllerEvent =
       executionBatchId: string | null;
       pinCount?: number;
       dotCount?: number;
-      labelCount?: number;
       settledAtMs: number;
     }
   | {
@@ -165,7 +160,6 @@ export type SearchMapRenderControllerEvent =
       requestKey: string | null;
       pinCount?: number;
       dotCount?: number;
-      labelCount?: number;
       overlayTileCount: number;
       promotedCount: number;
       degraded: boolean;
@@ -226,7 +220,6 @@ export type SearchMapRenderControllerEvent =
       frameGenerationId: string | null;
       pinCount?: number;
       dotCount?: number;
-      labelCount?: number;
       startedAtMs: number;
     }
   | {
@@ -236,7 +229,6 @@ export type SearchMapRenderControllerEvent =
       frameGenerationId: string | null;
       pinCount?: number;
       dotCount?: number;
-      labelCount?: number;
       settledAtMs: number;
     }
   | {
@@ -246,7 +238,6 @@ export type SearchMapRenderControllerEvent =
       frameGenerationId: string | null;
       pinCount?: number;
       dotCount?: number;
-      labelCount?: number;
       releasedAtMs: number;
     }
   | {
@@ -257,7 +248,6 @@ export type SearchMapRenderControllerEvent =
       frameGenerationId: string | null;
       pinCount?: number;
       dotCount?: number;
-      labelCount?: number;
       startedAtMs: number;
     }
   | {
@@ -531,12 +521,7 @@ type SearchMapRenderControllerNativeSetFrameTiming = {
   nativeDidSyncResidentFrame?: boolean;
 };
 
-export type SearchMapRenderSourceId =
-  | 'pins'
-  | 'pinInteractions'
-  | 'dots'
-  | 'labels'
-  | 'labelCollisions';
+export type SearchMapRenderSourceId = 'pins' | 'pinInteractions' | 'dots' | 'labelCollisions';
 
 type SearchMapRenderSourceTransportPayload = {
   effectiveChangedSourceIds: SearchMapRenderSourceId[];
@@ -553,7 +538,6 @@ export type SearchMapMarkerRoleRow = {
   pinFeature?: SearchMapSourceTransportFeature;
   pinInteractionFeature?: SearchMapSourceTransportFeature;
   dotFeature?: SearchMapSourceTransportFeature;
-  labelFeatures?: SearchMapSourceTransportFeature[];
   labelCollisionFeature?: SearchMapSourceTransportFeature;
 };
 
@@ -786,8 +770,6 @@ const toNativeSourceId = (
       return attachedSourceIds.pinInteractionSourceId;
     case 'dots':
       return attachedSourceIds.dotSourceId;
-    case 'labels':
-      return attachedSourceIds.labelSourceId;
     case 'labelCollisions':
       return attachedSourceIds.labelCollisionSourceId;
   }
@@ -871,7 +853,6 @@ export const searchMapRenderController = {
     pinSourceId: string;
     pinInteractionSourceId: string;
     dotSourceId: string;
-    labelSourceId: string;
     labelCollisionSourceId: string;
     labelCollisionLayerIds: string[];
   }): Promise<void> {

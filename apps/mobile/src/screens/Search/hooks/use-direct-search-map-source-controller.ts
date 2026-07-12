@@ -9,11 +9,7 @@ import MapboxGL from '@rnmapbox/maps';
 
 import { logger } from '../../../utils';
 import type { Coordinate, FoodResult, MapBounds, RestaurantResult } from '../../../types';
-import {
-  buildLabelCandidateFeatureId,
-  type LabelCandidate,
-  type RestaurantFeatureProperties,
-} from '../components/search-map';
+import { type RestaurantFeatureProperties } from '../components/search-map';
 import { ACTIVE_TAB_COLOR_DARK } from '../constants/search';
 import {
   buildSearchMapVisualIdentityKey,
@@ -180,7 +176,7 @@ const toCoverageReadinessStatus = (
 const buildSourceFrameDataReuseKey = ({
   activeTab,
   bounds,
-  labelDerivedSourceIdentityKey,
+  catalogCoverageIdentityKey,
   markersRenderKey,
   searchMode,
   selectedRestaurantId,
@@ -188,7 +184,7 @@ const buildSourceFrameDataReuseKey = ({
 }: {
   activeTab: string | null;
   bounds: MapBounds | null;
-  labelDerivedSourceIdentityKey: string;
+  catalogCoverageIdentityKey: string;
   markersRenderKey: string;
   searchMode: string | null;
   selectedRestaurantId: string | null;
@@ -201,7 +197,7 @@ const buildSourceFrameDataReuseKey = ({
     `bounds:${bounds == null ? 'none' : buildShortcutCoverageBoundsKey(bounds)}`,
     `selected:${selectedRestaurantId ?? 'none'}`,
     `markers:${markersRenderKey}`,
-    `labels:${labelDerivedSourceIdentityKey}`,
+    `catalog:${catalogCoverageIdentityKey}`,
     `visualProjector:${SEARCH_MAP_VISUAL_PROJECTOR_VERSION}`,
   ].join('|');
 
@@ -224,14 +220,9 @@ const buildShortcutCoverageBoundsKey = (bounds: MapBounds): string =>
   ].join(',');
 
 const hasNonEmptySearchMapSourceFrame = (
-  snapshot: Pick<
-    SearchMapSourceFrameSnapshot,
-    'pinSourceStore' | 'dotSourceStore' | 'labelSourceStore'
-  >
+  snapshot: Pick<SearchMapSourceFrameSnapshot, 'pinSourceStore' | 'dotSourceStore'>
 ): boolean =>
-  snapshot.pinSourceStore.idsInOrder.length > 0 ||
-  snapshot.dotSourceStore.idsInOrder.length > 0 ||
-  snapshot.labelSourceStore.idsInOrder.length > 0;
+  snapshot.pinSourceStore.idsInOrder.length > 0 || snapshot.dotSourceStore.idsInOrder.length > 0;
 
 const intersectStringSets = (left: ReadonlySet<string>, right: ReadonlySet<string>): string[] => {
   const overlap: string[] = [];
@@ -599,12 +590,10 @@ const collectDuplicateSourceStoreVisualIdentityKeys = (
 const assertProjectedVisualFrameInvariants = ({
   pinSourceStore,
   dotSourceStore,
-  labelSourceStore,
   labelCollisionSourceStore,
 }: {
   pinSourceStore: SearchMapSourceStore;
   dotSourceStore: SearchMapSourceStore;
-  labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
 }) => {
   const duplicatePinVisualIdentityKeys =
@@ -615,20 +604,10 @@ const assertProjectedVisualFrameInvariants = ({
     pinVisualIdentityKeys,
     dotVisualIdentityKeys
   );
-  // Labels + collision are ON-SCREEN-GATED (native owns promotion; JS builds labels only for the
-  // markers native reports on-screen). The structural invariant is per-marker: every labeled marker
-  // emits exactly LABEL_CANDIDATES_IN_ORDER.length name-labels plus 1 collision obstacle. Assert
-  // that relationship directly — keyed off the actual labeled-marker (collision) count — instead of
-  // the JS promoted-pin count, which is always 0 under the one-decider (native owns promotion), so
-  // the old `nativeLodOpacity > 0` count expected zero labels and tripped on every on-screen frame.
-  const labeledMarkerCount = labelCollisionSourceStore.idsInOrder.length;
-  const expectedLabelCount = labeledMarkerCount * LABEL_CANDIDATES_IN_ORDER.length;
-  const expectedCollisionCount = labeledMarkerCount;
-
-  if (
-    duplicatePinVisualIdentityKeys.length === 0 &&
-    labelSourceStore.idsInOrder.length === expectedLabelCount
-  ) {
+  // Label DATA family deleted (VA-cleanup): labels render as ViewAnnotations from the candidate
+  // catalog. The remaining structural invariant is pin uniqueness; the collision store is
+  // definitionally one obstacle per on-screen-gated marker (built in the same loop).
+  if (duplicatePinVisualIdentityKeys.length === 0) {
     return;
   }
 
@@ -639,10 +618,7 @@ const assertProjectedVisualFrameInvariants = ({
     residentDotPromotedVisualIdentityOverlapSamples: pinDotVisualIdentityOverlap.slice(0, 8),
     pinCount: pinSourceStore.idsInOrder.length,
     dotCount: dotSourceStore.idsInOrder.length,
-    labelCount: labelSourceStore.idsInOrder.length,
-    expectedLabelCount,
     labelCollisionCount: labelCollisionSourceStore.idsInOrder.length,
-    expectedCollisionCount,
   });
 };
 
@@ -842,33 +818,9 @@ type DirectMapSourceControllerResult = {
   handleMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
 };
 
-const LABEL_CANDIDATES_IN_ORDER: readonly LabelCandidate[] = ['bottom', 'right', 'top', 'left'];
-
 const buildLabelSourceFeatureDiffKey = (
   feature: Feature<Point, RestaurantFeatureProperties>
 ): string => getSearchMapSourceTransportFeature(feature).diffKey;
-
-const buildStableLabelBaseFeature = (
-  feature: Feature<Point, RestaurantFeatureProperties>,
-  markerKey: string
-): Feature<Point, RestaurantFeatureProperties> => {
-  const stableProperties = { ...feature.properties };
-  delete stableProperties.nativeLodOpacity;
-  delete stableProperties.nativeLodRankOpacity;
-  delete stableProperties.nativeLabelOpacity;
-  delete stableProperties.nativeDotOpacity;
-  delete stableProperties.nativePresentationOpacity;
-  delete stableProperties.labelOrder;
-  return {
-    type: 'Feature',
-    id: markerKey,
-    geometry: feature.geometry,
-    properties: {
-      ...stableProperties,
-      markerKey,
-    },
-  } satisfies Feature<Point, RestaurantFeatureProperties>;
-};
 
 const buildStableCollisionFeature = (
   feature: Feature<Point, RestaurantFeatureProperties>,
@@ -896,74 +848,35 @@ const buildStableCollisionFeature = (
 
 const buildDirectLabelStores = ({
   pinSourceStore,
-  previousLabelSourceStore,
   previousLabelCollisionSourceStore,
   onScreenMarkerKeys,
 }: {
   pinSourceStore: SearchMapSourceStore;
-  previousLabelSourceStore: SearchMapSourceStore;
   previousLabelCollisionSourceStore: SearchMapSourceStore;
   // Native's on-screen marker set (getNativeVisibleMarkerKeys), or null when native has not
-  // reported yet. Labels are built only for these keys (the set native promotes its top-N from).
+  // reported yet. Obstacles are built only for these keys (the set native promotes its top-N from).
   onScreenMarkerKeys: ReadonlySet<string> | null;
 }): {
-  labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
-  labelDerivedSourceIdentityKey: string;
 } => {
-  const labelBuilder = createSearchMapSourceStoreBuilder(previousLabelSourceStore);
   const collisionBuilder = createSearchMapSourceStoreBuilder(previousLabelCollisionSourceStore);
-  const labelIdentityParts: string[] = [];
   pinSourceStore.idsInOrder.forEach((markerKey) => {
     const feature = pinSourceStore.featureById.get(markerKey);
     if (!feature) {
       return;
     }
-    // Labels are ON-SCREEN-GATED. Under the one-decider model JS bakes EVERY pin demoted
-    // (nativeLodOpacity 0) and native owns promotion, so the old `pinOpacity <= 0.001` gate skipped
-    // EVERY marker → zero labels ever (the no-labels bug). Native owns the on-screen set, so JS
-    // builds name-labels only for the markers native reports on-screen — the exact set its promoted
-    // top-N is drawn from. Native's collision + the pin transition then show the promoted pins'
-    // labels (label opacity rides the pin's crossfade) and fade/cull the rest. Bounded by the
-    // viewport, NOT 4×all-candidates. When native has not reported a visible set yet (null,
-    // pre-projection at first reveal) we build all: non-promoted labels fade to 0 with their demoted
-    // pin so nothing extra shows, and the next publish (post auto-zoom projection) trims to on-screen.
+    // ON-SCREEN-GATED: native owns the on-screen set; JS builds obstacles only for the markers
+    // native reports on-screen (the set its promoted top-N is drawn from). When native has not
+    // reported a visible set yet (null, pre-projection at first reveal) we build all. (Label DATA
+    // family deleted — name labels render as ViewAnnotations from the candidate catalog.)
     if (onScreenMarkerKeys != null && !onScreenMarkerKeys.has(markerKey)) {
       return;
     }
-    const stableBaseFeature = buildStableLabelBaseFeature(feature, markerKey);
-    labelIdentityParts.push(
-      `${markerKey}:${getSearchMapSourceTransportFeature(stableBaseFeature).diffKey}`
-    );
-    LABEL_CANDIDATES_IN_ORDER.forEach((candidate) => {
-      const featureId = buildLabelCandidateFeatureId(markerKey, candidate);
-      const labelFeature = {
-        ...stableBaseFeature,
-        id: featureId,
-        properties: {
-          ...stableBaseFeature.properties,
-          markerKey,
-          labelCandidate: candidate,
-          nativeLabelOpacity: 1,
-          nativePresentationOpacity: 1,
-        },
-      } satisfies Feature<Point, RestaurantFeatureProperties>;
-      const semanticRevision = buildLabelSourceFeatureDiffKey(labelFeature);
-      labelBuilder.appendFeature(labelFeature, {
-        featureId,
-        semanticRevision,
-        transportFeature: createSearchMapSourceTransportFeature({
-          feature: labelFeature,
-          diffKey: semanticRevision,
-        }),
-      });
-    });
-    // COLLISION obstacle: ON-SCREEN-GATED, same set as the labels above (keeps the structural invariant
-    // labelCount == labelCollisionCount × LABEL_CANDIDATES). PROMOTION-INDEPENDENT: obstacle gating
-    // (0↔1 on the promoted set) is fully NATIVE — applyV5ObstacleReseed reseeds from the catalog
-    // coordinate on decide deltas AND re-asserts after every JS collision-source apply — so JS
-    // collision residency does NOT need to cover off-screen candidates, and promotion changes never
-    // re-enter the JS build (the D6e round-trip).
+    // COLLISION obstacle: PROMOTION-INDEPENDENT: obstacle gating (0↔1 on the promoted set) is fully
+    // NATIVE — applyV5ObstacleReseed reseeds from the catalog coordinate on decide deltas AND
+    // re-asserts after every JS collision-source apply — so JS collision residency does NOT need to
+    // cover off-screen candidates, and promotion changes never re-enter the JS build (the D6e
+    // round-trip).
     const collisionFeature = buildStableCollisionFeature(feature, markerKey);
     const collisionRevision = buildLabelSourceFeatureDiffKey(collisionFeature);
     collisionBuilder.appendFeature(collisionFeature, {
@@ -976,12 +889,8 @@ const buildDirectLabelStores = ({
     });
   });
 
-  const labelSourceStore = labelBuilder.finish();
-  const labelCollisionSourceStore = collisionBuilder.finish();
   return {
-    labelSourceStore,
-    labelCollisionSourceStore,
-    labelDerivedSourceIdentityKey: buildStableKeyFingerprint(labelIdentityParts),
+    labelCollisionSourceStore: collisionBuilder.finish(),
   };
 };
 
@@ -1070,9 +979,6 @@ export const useDirectSearchMapSourceController = ({
   const previousPinInteractionSourceStoreRef = React.useRef<SearchMapSourceStore>(
     EMPTY_SEARCH_MAP_SOURCE_STORE
   );
-  const previousLabelSourceStoreRef = React.useRef<SearchMapSourceStore>(
-    EMPTY_SEARCH_MAP_SOURCE_STORE
-  );
   const previousLabelCollisionSourceStoreRef = React.useRef<SearchMapSourceStore>(
     EMPTY_SEARCH_MAP_SOURCE_STORE
   );
@@ -1150,7 +1056,6 @@ export const useDirectSearchMapSourceController = ({
       previousPinSourceStoreRef.current = snapshot.pinSourceStore;
       previousDotSourceStoreRef.current = snapshot.dotSourceStore;
       previousPinInteractionSourceStoreRef.current = snapshot.pinInteractionSourceStore;
-      previousLabelSourceStoreRef.current = snapshot.labelSourceStore;
       previousLabelCollisionSourceStoreRef.current = snapshot.labelCollisionSourceStore;
 
       const pinnedState = collectResidentPinnedSourceStoreState(snapshot.pinSourceStore);
@@ -1504,7 +1409,7 @@ export const useDirectSearchMapSourceController = ({
     const preparedFrameFingerprint = buildSourceFrameDataReuseKey({
       activeTab,
       bounds: currentBounds,
-      labelDerivedSourceIdentityKey: [
+      catalogCoverageIdentityKey: [
         markerCatalogReadModel.primaryCount.toString(36),
         coverageEntry?.requestKey ?? 'coverage:none',
         coverageReadinessStatus,
@@ -1591,7 +1496,6 @@ export const useDirectSearchMapSourceController = ({
           didPublishReadinessState: true,
           pinCount: nextCachedSnapshot.pinSourceStore.idsInOrder.length,
           dotCount: nextCachedSnapshot.dotSourceStore.idsInOrder.length,
-          labelCount: nextCachedSnapshot.labelSourceStore.idsInOrder.length,
           labelCollisionCount: nextCachedSnapshot.labelCollisionSourceStore.idsInOrder.length,
           hasLabelCollisionSource:
             nextCachedSnapshot.labelCollisionSourceStore.idsInOrder.length > 0,
@@ -1610,13 +1514,11 @@ export const useDirectSearchMapSourceController = ({
           coalescedBeforeNativeEnter: preparedVisualCycleKey != null && !didPublishSourceFrame,
           hasVisualSources:
             nextCachedSnapshot.pinSourceStore.idsInOrder.length > 0 ||
-            nextCachedSnapshot.dotSourceStore.idsInOrder.length > 0 ||
-            nextCachedSnapshot.labelSourceStore.idsInOrder.length > 0,
+            nextCachedSnapshot.dotSourceStore.idsInOrder.length > 0,
           expectsPreparedVisualSources: true,
           mapSearchSurfaceResultsSourcesReady: pinInteractionSourcesComplete,
           pinCount: nextCachedSnapshot.pinSourceStore.idsInOrder.length,
           dotCount: nextCachedSnapshot.dotSourceStore.idsInOrder.length,
-          labelCount: nextCachedSnapshot.labelSourceStore.idsInOrder.length,
           labelCollisionCount: nextCachedSnapshot.labelCollisionSourceStore.idsInOrder.length,
           hasLabelCollisionSource:
             nextCachedSnapshot.labelCollisionSourceStore.idsInOrder.length > 0,
@@ -2252,17 +2154,14 @@ export const useDirectSearchMapSourceController = ({
     const nativeVisibleForLabels = sourceFramePort.getNativeVisibleMarkerKeys();
     const onScreenMarkerKeysForLabels =
       nativeVisibleForLabels != null ? new Set(nativeVisibleForLabels.markerKeys) : null;
-    const { labelSourceStore, labelCollisionSourceStore, labelDerivedSourceIdentityKey } =
-      buildDirectLabelStores({
-        pinSourceStore,
-        previousLabelSourceStore: previousLabelSourceStoreRef.current,
-        previousLabelCollisionSourceStore: previousLabelCollisionSourceStoreRef.current,
-        onScreenMarkerKeys: onScreenMarkerKeysForLabels,
-      });
+    const { labelCollisionSourceStore } = buildDirectLabelStores({
+      pinSourceStore,
+      previousLabelCollisionSourceStore: previousLabelCollisionSourceStoreRef.current,
+      onScreenMarkerKeys: onScreenMarkerKeysForLabels,
+    });
     assertProjectedVisualFrameInvariants({
       pinSourceStore,
       dotSourceStore,
-      labelSourceStore,
       labelCollisionSourceStore,
     });
     const pinsRenderKey = buildStableKeyFingerprint(pinSourceStore.idsInOrder);
@@ -2274,9 +2173,7 @@ export const useDirectSearchMapSourceController = ({
       !isPreparedEnterVisualCycle ||
       (hasCommittedResultState && committedMapSourceFrameKey != null);
     const hasVisualSources =
-      pinSourceStore.idsInOrder.length > 0 ||
-      dotSourceStore.idsInOrder.length > 0 ||
-      labelSourceStore.idsInOrder.length > 0;
+      pinSourceStore.idsInOrder.length > 0 || dotSourceStore.idsInOrder.length > 0;
     const expectsPreparedVisualSources =
       readinessKey != null &&
       hasCommittedDataForPreparedEnter &&
@@ -2303,7 +2200,6 @@ export const useDirectSearchMapSourceController = ({
         cat: markerCatalogEntries.length,
         pins: pinSourceStore.idsInOrder.length,
         dots: dotSourceStore.idsInOrder.length,
-        labels: labelSourceStore.idsInOrder.length,
         committedData: hasCommittedDataForPreparedEnter,
         cov: coverageReadyForPreparedEnter,
         pinInter: pinInteractionSourcesComplete,
@@ -2321,9 +2217,7 @@ export const useDirectSearchMapSourceController = ({
       pinSourceStore,
       dotSourceStore,
       pinInteractionSourceStore,
-      labelSourceStore,
       labelCollisionSourceStore,
-      labelDerivedSourceIdentityKey,
       markersRenderKey: `pins:${pinsRenderKey}:dots:${dotsRenderKey}`,
       visibleSortedRestaurantMarkersCount: pinSourceStore.idsInOrder.length,
       visibleDotRestaurantFeaturesCount: dotSourceStore.idsInOrder.length,
@@ -2355,7 +2249,6 @@ export const useDirectSearchMapSourceController = ({
           transportExecutionStage: activePresentationTransport.executionStage,
           retainedPinCount: previousSourceFrameSnapshot.pinSourceStore.idsInOrder.length,
           retainedDotCount: previousSourceFrameSnapshot.dotSourceStore.idsInOrder.length,
-          retainedLabelCount: previousSourceFrameSnapshot.labelSourceStore.idsInOrder.length,
           nextMarkersRenderKey: sourceFrameSnapshot.markersRenderKey,
         });
       }
@@ -2472,7 +2365,6 @@ export const useDirectSearchMapSourceController = ({
           activeTab,
           pinCount: pinSourceStore.idsInOrder.length,
           dotCount: dotSourceStore.idsInOrder.length,
-          labelCount: labelSourceStore.idsInOrder.length,
           collisionCount: labelCollisionSourceStore.idsInOrder.length,
           ...compactCoverageProof,
           hasVisualSources,
@@ -2493,7 +2385,6 @@ export const useDirectSearchMapSourceController = ({
           didPublishSourceFrame,
           pinCount: pinSourceStore.idsInOrder.length,
           dotCount: dotSourceStore.idsInOrder.length,
-          labelCount: labelSourceStore.idsInOrder.length,
           labelCollisionCount: labelCollisionSourceStore.idsInOrder.length,
           hasLabelCollisionSource: labelCollisionSourceStore.idsInOrder.length > 0,
           nativeMapLabelCollisionPreserved: labelCollisionSourceStore.idsInOrder.length > 0,
@@ -2513,7 +2404,6 @@ export const useDirectSearchMapSourceController = ({
           ...compactCoverageProof,
           pinCount: pinSourceStore.idsInOrder.length,
           dotCount: dotSourceStore.idsInOrder.length,
-          labelCount: labelSourceStore.idsInOrder.length,
           labelCollisionCount: labelCollisionSourceStore.idsInOrder.length,
           hasLabelCollisionSource: labelCollisionSourceStore.idsInOrder.length > 0,
           nativeMapLabelCollisionPreserved: labelCollisionSourceStore.idsInOrder.length > 0,
@@ -2540,7 +2430,6 @@ export const useDirectSearchMapSourceController = ({
             acceptedFeatureCount: coverageEntry.features?.length ?? 0,
             pinCount: pinSourceStore.idsInOrder.length,
             dotCount: dotSourceStore.idsInOrder.length,
-            labelCount: labelSourceStore.idsInOrder.length,
             mapSearchSurfaceResultsSourcesReady,
             terminalReason: coverageEntry.reason,
             resultRestaurantCount: restaurants.length,
@@ -2591,8 +2480,6 @@ export const useDirectSearchMapSourceController = ({
         });
         const promotedRoleFamiliesAreComplete =
           pinInteractionSourceStore.idsInOrder.length === pinSourceStore.idsInOrder.length &&
-          labelSourceStore.idsInOrder.length ===
-            pinSourceStore.idsInOrder.length * LABEL_CANDIDATES_IN_ORDER.length &&
           labelCollisionSourceStore.idsInOrder.length === pinSourceStore.idsInOrder.length;
         const promotedDotFeaturesAreResident = pinSourceStore.idsInOrder.every((markerKey) =>
           dotSourceStore.featureById.has(markerKey)
@@ -2628,7 +2515,6 @@ export const useDirectSearchMapSourceController = ({
           selectedPinCount: selectedPinVisualIdentityCount,
           selectedRestaurantId,
           pinInteractionCount: pinInteractionSourceStore.idsInOrder.length,
-          labelCount: labelSourceStore.idsInOrder.length,
           labelCollisionCount: labelCollisionSourceStore.idsInOrder.length,
           pinSourceMarkerKeyFingerprint: buildStableKeyFingerprint(pinSourceStore.idsInOrder),
           dotSourceMarkerKeyFingerprint: buildStableKeyFingerprint(dotSourceStore.idsInOrder),
@@ -2647,13 +2533,8 @@ export const useDirectSearchMapSourceController = ({
           demotedRoleFamiliesAreDotOnly,
           promotedPinInteractionCountMatchesPinCount:
             pinInteractionSourceStore.idsInOrder.length === pinSourceStore.idsInOrder.length,
-          labelPerPinCandidateCount:
-            pinSourceStore.idsInOrder.length > 0
-              ? labelSourceStore.idsInOrder.length / pinSourceStore.idsInOrder.length
-              : 0,
           hasPins: pinSourceStore.idsInOrder.length > 0,
           hasDots: dotSourceStore.idsInOrder.length > 0,
-          hasPinLabels: labelSourceStore.idsInOrder.length >= pinSourceStore.idsInOrder.length,
           hasLabelCollisionSource:
             pinSourceStore.idsInOrder.length === 0 ||
             labelCollisionSourceStore.idsInOrder.length >= pinSourceStore.idsInOrder.length,

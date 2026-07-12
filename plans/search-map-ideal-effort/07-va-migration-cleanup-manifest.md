@@ -229,3 +229,38 @@ Space-in-path NOTE RESOLVED: repo moved to /Users/brandonkimble/CraveApp/Crave (
 "~/Crave" and "~/Crave App" are compat symlinks. The Pods-side quote patch is now unnecessary
 (and will wash out on the next pod install); the committed app-pbxproj quoting stays as a
 correct defensive fix.
+
+## Label DATA family follow-up — EXECUTED (2026-07-11)
+
+The flagged dedicated pass landed: the dead label DATA family is deleted end-to-end.
+
+- **Native (SearchMapRenderController.swift, ~-390 lines):** `labelSourceId` (decl, attach
+  guard/parse/init, naming maps, source revisions, family registrations), the label derived-family
+  reads/mutations in both prepare paths (derived + scoped), the catalog-drain label third,
+  `MarkerFamilyRenderState.labelFeatures` + `ParsedMarkerRoleRow.labelFeatures` + every consumer
+  (`labelFeatures.count == 4` contracts, `dotCarriesPinBundle` rewritten to pin+interaction+collision),
+  `labelFeatureCount`, `desiredLabels` params + snapshot label-revision hashing + dirty-state label keys,
+  `lastLabelCount` + all count/diagnostic fields, `nativeLabelOpacity` writes + its entries in
+  transientVisualPropertyKeys / stepperOwnedRenderFeatureStateKeys / the snap-detector key list,
+  `retainedLabelFeatureState`, `existingFeatureIdsForMarker` (orphaned), `"labels"` dropped from
+  parseRenderSourceRevisions (JS payload cut in lockstep).
+- **JS:** labelBuilder 4-candidate emit + `buildStableLabelBaseFeature` + LABEL_CANDIDATES_IN_ORDER +
+  `buildLabelCandidateFeatureId` + RESTAURANT_LABEL_SOURCE_ID; `labelSourceStore` /
+  `labelDerivedSourceIdentityKey` deleted from the frame port (snapshot fields, equality, keyed lists,
+  spec), presentation-scene contract, engine empty snapshot, search-map.tsx threading, render owner
+  (`snapshot.labels`, role-row `labelFeatures` + signature, revision ack, `'labels'` source id,
+  labelCount plumbing), render-controller types (`labelSourceId` attach payload, `'labels'` union,
+  role-row labelFeatures); `nativeLabelOpacity` dropped from source-store transient keys; readiness
+  reduced to pins/dots (`hasVisualSources`) — `promotedRoleFamiliesAreComplete` now
+  pinInteraction+collision only; the frame invariant assert keeps the duplicate-pin check.
+- **KEEPS (called out, with live consumer):** the SHARED on-screen gate loop (`onScreenMarkerKeys` →
+  collisionBuilder in `buildDirectLabelStores`, now collision-only) — the collision family is the live
+  broad basemap/dot suppressor; `buildLabelSourceFeatureDiffKey` (collision diffKeys); candidateCatalog
+  `labelText`/`labelSubtext` (feeds Label VAs); dot/pin lea writes; `buildSourceFrameDataReuseKey`'s
+  identity param renamed `catalogCoverageIdentityKey` (it never carried the label store fingerprint —
+  it was already the catalog/coverage synth key).
+- **Gates:** tsc clean (only the two known errors), jest 186/186, full Xcode build BUILD SUCCEEDED
+  (0 error: lines, binary mtime > source), verified reload (bundle quiescent, boot clean), on-device:
+  shortcut reveal shows numbered pins + VA name labels (Texas Chili Parlor, H-E-B) + dense dots +
+  basemap suppressed near our labels; dismiss restores a clean home + basemap; Metro byte-delta zero
+  new ERROR lines (other-session sheet-file HMR errors excluded per work order).

@@ -7,9 +7,7 @@ export type SearchMapPresentationScene = {
   dotSourceStore: SearchMapSourceStore | null;
   pinInteractionSourceStore: SearchMapSourceStore;
   markersRenderKey: string;
-  labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
-  labelDerivedSourceIdentityKey: string;
 };
 
 export type MapSnapshotPresentationPolicy = {

@@ -49,9 +49,7 @@ const makeSnapshot = (): SearchMapSourceFrameSnapshot => ({
   pinSourceStore: makeStore({ sourceRevision: 'pin-rev-1' }),
   dotSourceStore: makeStore({ sourceRevision: 'dot-rev-1' }),
   pinInteractionSourceStore: makeStore({ sourceRevision: 'pin-interaction-rev-1' }),
-  labelSourceStore: makeStore({ sourceRevision: 'label-rev-1' }),
   labelCollisionSourceStore: makeStore({ sourceRevision: 'label-collision-rev-1' }),
-  labelDerivedSourceIdentityKey: 'label-derived-1',
   markersRenderKey: 'render-key-1',
   visibleSortedRestaurantMarkersCount: 3,
   visibleDotRestaurantFeaturesCount: 7,
@@ -71,9 +69,7 @@ const FRAME_KEYED_FIELDS = [
   'pinSourceStore',
   'dotSourceStore',
   'pinInteractionSourceStore',
-  'labelSourceStore',
   'labelCollisionSourceStore',
-  'labelDerivedSourceIdentityKey',
   'markersRenderKey',
   'candidateCatalog',
 ] as const satisfies readonly (keyof SearchMapSourceFrameSnapshot)[];
@@ -105,9 +101,7 @@ const FIELD_MUTATORS: {
   pinSourceStore: () => makeStore({ sourceRevision: 'pin-rev-2' }),
   dotSourceStore: () => makeStore({ sourceRevision: 'dot-rev-2' }),
   pinInteractionSourceStore: () => makeStore({ sourceRevision: 'pin-interaction-rev-2' }),
-  labelSourceStore: () => makeStore({ sourceRevision: 'label-rev-2' }),
   labelCollisionSourceStore: () => makeStore({ sourceRevision: 'label-collision-rev-2' }),
-  labelDerivedSourceIdentityKey: () => 'label-derived-2',
   markersRenderKey: () => 'render-key-2',
   visibleSortedRestaurantMarkersCount: (base) => base.visibleSortedRestaurantMarkersCount + 1,
   visibleDotRestaurantFeaturesCount: (base) => base.visibleDotRestaurantFeaturesCount + 1,
@@ -216,13 +210,12 @@ describe('areSearchMapSourceFrameSnapshotsEqual — source-store sub-field sensi
     expect(areSearchMapSourceFrameSnapshotsEqual(left, right)).toBe(true);
   });
 
-  it('every one of the five store slots is independently sensitive (not just pins)', () => {
+  it('every one of the four store slots is independently sensitive (not just pins)', () => {
     (
       [
         'pinSourceStore',
         'dotSourceStore',
         'pinInteractionSourceStore',
-        'labelSourceStore',
         'labelCollisionSourceStore',
       ] as const
     ).forEach((slot) => {

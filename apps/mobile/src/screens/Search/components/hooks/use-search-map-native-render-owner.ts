@@ -53,7 +53,6 @@ type SearchMapNativeRenderOwnerStatusArgs = {
   pinSourceId: string;
   pinInteractionSourceId: string;
   dotSourceId: string;
-  labelSourceId: string;
   labelCollisionSourceId: string;
   labelCollisionLayerIds: string[];
   sourceFramePort?: SearchMapSourceFramePort | null;
@@ -69,7 +68,6 @@ type SearchMapNativeRenderOwnerStatusArgs = {
     executionBatchId: string | null;
     pinCount?: number;
     dotCount?: number;
-    labelCount?: number;
     startedAtMs: number;
   }) => void;
   onMarkerEnterSettled?: (payload: {
@@ -78,7 +76,6 @@ type SearchMapNativeRenderOwnerStatusArgs = {
     executionBatchId: string | null;
     pinCount?: number;
     dotCount?: number;
-    labelCount?: number;
     settledAtMs: number;
   }) => void;
   // UNIFIED-FADE TOGGLE (map-LOD-v6): deterministic toggle cover-lift signal (latest-wins).
@@ -93,14 +90,12 @@ type SearchMapNativeRenderOwnerStatusArgs = {
     requestKey: string;
     pinCount?: number;
     dotCount?: number;
-    labelCount?: number;
     startedAtMs: number;
   }) => void;
   onMarkerExitSettled?: (payload: {
     requestKey: string;
     pinCount?: number;
     dotCount?: number;
-    labelCount?: number;
     settledAtMs: number;
   }) => void;
   onRecoveredAfterStyleReload?: (payload: { recoveredAtMs: number }) => void;
@@ -143,7 +138,6 @@ type SearchMapNativeRenderOwnerSyncArgs = {
   pins: SearchMapSourceStore;
   pinInteractions: SearchMapSourceStore;
   dots: SearchMapSourceStore;
-  labels: SearchMapSourceStore;
   labelCollisions: SearchMapSourceStore;
   sourceFramePort?: SearchMapSourceFramePort | null;
   viewportState: SearchMapRenderViewportState;
@@ -178,7 +172,6 @@ const SEARCH_MAP_RENDER_SOURCE_IDS: SearchMapRenderSourceId[] = [
   'pins',
   'pinInteractions',
   'dots',
-  'labels',
   'labelCollisions',
 ];
 
@@ -410,13 +403,12 @@ const searchMapNativeRenderOwnerEventDispatcher = (() => {
   };
 })();
 
-type SearchMapRenderSourceId = 'pins' | 'pinInteractions' | 'dots' | 'labels' | 'labelCollisions';
+type SearchMapRenderSourceId = 'pins' | 'pinInteractions' | 'dots' | 'labelCollisions';
 
 type SearchMapRenderSnapshot = {
   pins: SearchMapSourceStore;
   pinInteractions: SearchMapSourceStore;
   dots: SearchMapSourceStore;
-  labels: SearchMapSourceStore;
   labelCollisions: SearchMapSourceStore;
 };
 
@@ -428,7 +420,6 @@ const PRESENTATION_ONLY_SEARCH_MAP_RENDER_SOURCE_TRANSPORT: SearchMapRenderSourc
 type SearchMapRenderVisualSourceCounts = {
   pinCount: number;
   dotCount: number;
-  labelCount: number;
 };
 
 const searchMapNativeFrameVisualSourceCountsByKey = new Map<
@@ -526,9 +517,7 @@ const getSearchMapNativeFrameVisualSourceCounts = ({
 };
 
 const isSearchMapRenderVisualSnapshotEmpty = (snapshot: SearchMapRenderSnapshot): boolean =>
-  snapshot.pins.idsInOrder.length === 0 &&
-  snapshot.dots.idsInOrder.length === 0 &&
-  snapshot.labels.idsInOrder.length === 0;
+  snapshot.pins.idsInOrder.length === 0 && snapshot.dots.idsInOrder.length === 0;
 
 const deriveSearchMapNativePresentationState = ({
   resultsPresentationAuthority,
@@ -578,7 +567,6 @@ type SearchMapMarkerRoleRow = {
   pinFeature?: SearchMapSourceTransportFeature;
   pinInteractionFeature?: SearchMapSourceTransportFeature;
   dotFeature?: SearchMapSourceTransportFeature;
-  labelFeatures?: SearchMapSourceTransportFeature[];
   labelCollisionFeature?: SearchMapSourceTransportFeature;
 };
 
@@ -728,7 +716,6 @@ const areSearchMapRenderSourceRevisionStatesEqual = (
   left.pins === right.pins &&
   left.pinInteractions === right.pinInteractions &&
   left.dots === right.dots &&
-  left.labels === right.labels &&
   left.labelCollisions === right.labelCollisions;
 
 const doesNativeSourceAdmissionOutcomePublishResidentSnapshot = (
@@ -1186,8 +1173,6 @@ const getSnapshotSource = (
       return resolveSearchMapSourceStore(snapshot.pinInteractions);
     case 'dots':
       return resolveSearchMapSourceStore(snapshot.dots);
-    case 'labels':
-      return resolveSearchMapSourceStore(snapshot.labels);
     case 'labelCollisions':
       return resolveSearchMapSourceStore(snapshot.labelCollisions);
   }
@@ -1199,7 +1184,6 @@ const getSearchMapRenderSourceRevisions = (
   pins: resolveSearchMapSourceStore(snapshot.pins).sourceRevision,
   pinInteractions: resolveSearchMapSourceStore(snapshot.pinInteractions).sourceRevision,
   dots: resolveSearchMapSourceStore(snapshot.dots).sourceRevision,
-  labels: resolveSearchMapSourceStore(snapshot.labels).sourceRevision,
   labelCollisions: resolveSearchMapSourceStore(snapshot.labelCollisions).sourceRevision,
 });
 
@@ -1344,20 +1328,6 @@ const finiteSlotIndexFromFeature = (
   return typeof rawSlot === 'number' && Number.isFinite(rawSlot) ? rawSlot : null;
 };
 
-const collectTransportFeaturesForMarker = (
-  store: SearchMapSourceStore,
-  markerKey: string
-): SearchMapSourceTransportFeature[] => {
-  const features: SearchMapSourceTransportFeature[] = [];
-  store.idsInOrder.forEach((featureId) => {
-    const feature = store.transportFeatureById.get(featureId);
-    if (feature?.markerKey === markerKey) {
-      features.push(feature);
-    }
-  });
-  return features;
-};
-
 const buildMarkerRoleRow = (
   markerKey: string,
   nextSnapshot: SearchMapRenderSnapshot
@@ -1377,7 +1347,6 @@ const buildMarkerRoleRow = (
       pinFeature,
       pinInteractionFeature: nextSnapshot.pinInteractions.transportFeatureById.get(markerKey),
       dotFeature,
-      labelFeatures: collectTransportFeaturesForMarker(nextSnapshot.labels, markerKey),
       labelCollisionFeature: nextSnapshot.labelCollisions.transportFeatureById.get(markerKey),
     };
   }
@@ -1395,7 +1364,6 @@ const buildMarkerRoleRow = (
         pinFeature,
         pinInteractionFeature: nextSnapshot.pinInteractions.transportFeatureById.get(markerKey),
         dotFeature,
-        labelFeatures: collectTransportFeaturesForMarker(nextSnapshot.labels, markerKey),
         labelCollisionFeature: nextSnapshot.labelCollisions.transportFeatureById.get(markerKey),
       };
     }
@@ -1436,16 +1404,12 @@ const markerRoleRowSignature = (row: SearchMapMarkerRoleRow | null | undefined):
     return 'missing';
   }
   if (row.role === 'pin') {
-    const labelSignature = (row.labelFeatures ?? [])
-      .map((feature) => `${feature.id}:${feature.diffKey}`)
-      .join(',');
     return [
       'pin',
       row.slotIndex ?? '',
       row.pinFeature?.diffKey ?? '',
       row.pinInteractionFeature?.diffKey ?? '',
       row.dotFeature?.diffKey ?? '',
-      labelSignature,
       row.labelCollisionFeature?.diffKey ?? '',
     ].join('|');
   }
@@ -1831,7 +1795,6 @@ const acknowledgeSnapshotSourceRevisions = (
   snapshot.pins.acknowledgeTransportRevision(sourceRevisions.pins);
   snapshot.pinInteractions.acknowledgeTransportRevision(sourceRevisions.pinInteractions);
   snapshot.dots.acknowledgeTransportRevision(sourceRevisions.dots);
-  snapshot.labels.acknowledgeTransportRevision(sourceRevisions.labels);
   snapshot.labelCollisions.acknowledgeTransportRevision(sourceRevisions.labelCollisions);
 };
 
@@ -1844,7 +1807,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
   pinSourceId,
   pinInteractionSourceId,
   dotSourceId,
-  labelSourceId,
   labelCollisionSourceId,
   labelCollisionLayerIds,
   sourceFramePort = null,
@@ -1902,7 +1864,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
     isMapStyleReady,
     isNativeAvailable,
     labelCollisionSourceId,
-    labelSourceId,
     mapComponentInstanceId,
     pinInteractionSourceId,
     pinSourceId,
@@ -1949,17 +1910,13 @@ const useSearchMapNativeRenderOwnerStatus = ({
       coverState?: SearchMapRenderPresentationState['coverState'] | null;
       pinCount?: number;
       dotCount?: number;
-      labelCount?: number;
     }) => {
       const eventPinCount = typeof event.pinCount === 'number' ? event.pinCount : null;
       const eventDotCount = typeof event.dotCount === 'number' ? event.dotCount : null;
-      const eventLabelCount = typeof event.labelCount === 'number' ? event.labelCount : null;
-      if (eventPinCount != null && eventDotCount != null && eventLabelCount != null) {
+      if (eventPinCount != null && eventDotCount != null) {
         return {
           pinCount: eventPinCount,
           dotCount: eventDotCount,
-          labelCount: eventLabelCount,
-          pinsLabelsDotsFadeTogether: eventLabelCount >= eventPinCount,
         };
       }
       const queuedCounts = getSearchMapNativeFrameVisualSourceCounts({
@@ -1973,28 +1930,19 @@ const useSearchMapNativeRenderOwnerStatus = ({
         return {
           pinCount: 0,
           dotCount: 0,
-          labelCount: 0,
-          pinsLabelsDotsFadeTogether: false,
         };
       }
       const snapshot =
-        eventPinCount == null || eventDotCount == null || eventLabelCount == null
+        eventPinCount == null || eventDotCount == null
           ? (sourceFramePortRef.current?.getSnapshot() ?? null)
           : null;
       const pinCount =
         eventPinCount ?? queuedCounts?.pinCount ?? snapshot?.pinSourceStore.idsInOrder.length ?? 0;
       const dotCount =
         eventDotCount ?? queuedCounts?.dotCount ?? snapshot?.dotSourceStore.idsInOrder.length ?? 0;
-      const labelCount =
-        eventLabelCount ??
-        queuedCounts?.labelCount ??
-        snapshot?.labelSourceStore.idsInOrder.length ??
-        0;
       return {
         pinCount,
         dotCount,
-        labelCount,
-        pinsLabelsDotsFadeTogether: pinCount > 0 && dotCount > 0 && labelCount >= pinCount,
       };
     },
     [instanceId]
@@ -2056,7 +2004,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
           pinSourceId,
           pinInteractionSourceId,
           dotSourceId,
-          labelSourceId,
           labelCollisionSourceId,
           labelCollisionLayerIds: nativeLayerGroupConfig.labelCollisionLayerIds,
         })
@@ -2107,7 +2054,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
     isMapStyleReady,
     isNativeAvailable,
     labelCollisionSourceId,
-    labelSourceId,
     mapComponentInstanceId,
     pinInteractionSourceId,
     pinSourceId,
@@ -2470,7 +2416,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   executionBatchId: event.executionBatchId,
                   pinCount: sourceCounts.pinCount,
                   dotCount: sourceCounts.dotCount,
-                  labelCount: sourceCounts.labelCount,
                   startedAtMs: event.startedAtMs,
                 });
               });
@@ -2509,7 +2454,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   executionBatchId: event.executionBatchId,
                   pinCount: sourceCounts.pinCount,
                   dotCount: sourceCounts.dotCount,
-                  labelCount: sourceCounts.labelCount,
                   settledAtMs: event.settledAtMs,
                 });
               });
@@ -2548,7 +2492,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   requestKey: event.requestKey,
                   pinCount: sourceCounts.pinCount,
                   dotCount: sourceCounts.dotCount,
-                  labelCount: sourceCounts.labelCount,
                   startedAtMs: event.startedAtMs,
                 });
               });
@@ -2594,7 +2537,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   requestKey: event.requestKey,
                   pinCount: sourceCounts.pinCount,
                   dotCount: sourceCounts.dotCount,
-                  labelCount: sourceCounts.labelCount,
                   settledAtMs: event.settledAtMs,
                 });
               });
@@ -2638,7 +2580,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
     dotSourceId,
     instanceId,
     isNativeAvailable,
-    labelSourceId,
     onExecutionBatchMountedHidden,
     onMarkerExitSettled,
     onMarkerExitStarted,
@@ -2699,7 +2640,6 @@ const useSearchMapNativeRenderOwnerSync = ({
   pins,
   pinInteractions,
   dots,
-  labels,
   labelCollisions,
   sourceFramePort = null,
   viewportState,
@@ -2713,7 +2653,6 @@ const useSearchMapNativeRenderOwnerSync = ({
   const resolvedPins = resolveSearchMapSourceStore(pins);
   const resolvedPinInteractions = resolveSearchMapSourceStore(pinInteractions);
   const resolvedDots = resolveSearchMapSourceStore(dots);
-  const resolvedLabels = resolveSearchMapSourceStore(labels);
   const resolvedLabelCollisions = resolveSearchMapSourceStore(labelCollisions);
   const sourceFramePortRef = React.useRef(sourceFramePort);
   const resultsPresentationAuthorityRef = React.useRef(resultsPresentationAuthority);
@@ -2766,7 +2705,6 @@ const useSearchMapNativeRenderOwnerSync = ({
         pins: resolveSearchMapSourceStore(directSnapshot.pinSourceStore),
         pinInteractions: resolveSearchMapSourceStore(directSnapshot.pinInteractionSourceStore),
         dots: resolveSearchMapSourceStore(directSnapshot.dotSourceStore),
-        labels: resolveSearchMapSourceStore(directSnapshot.labelSourceStore),
         labelCollisions: resolveSearchMapSourceStore(directSnapshot.labelCollisionSourceStore),
       };
     }
@@ -2774,16 +2712,9 @@ const useSearchMapNativeRenderOwnerSync = ({
       pins: resolvedPins,
       pinInteractions: resolvedPinInteractions,
       dots: resolvedDots,
-      labels: resolvedLabels,
       labelCollisions: resolvedLabelCollisions,
     };
-  }, [
-    resolvedDots,
-    resolvedLabelCollisions,
-    resolvedLabels,
-    resolvedPinInteractions,
-    resolvedPins,
-  ]);
+  }, [resolvedDots, resolvedLabelCollisions, resolvedPinInteractions, resolvedPins]);
   const transportStateRef = React.useRef(
     createNativeRenderOwnerTransportState<NativeRenderOwnerFrameEnvelope>()
   );
@@ -2904,7 +2835,6 @@ const useSearchMapNativeRenderOwnerSync = ({
         durationMs: roundNativeRenderOwnerPerfMs(bridgeSettledAtMs - bridgeStartedAtMs),
         pinCount: effectiveDesiredFrame.snapshot.pins.idsInOrder.length,
         dotCount: effectiveDesiredFrame.snapshot.dots.idsInOrder.length,
-        labelCount: effectiveDesiredFrame.snapshot.labels.idsInOrder.length,
         selectedRestaurantId: selectedRestaurantIdRef.current,
         markerRoleSelectedPinnedCount: selectedPinnedMarkerCount,
         markerRoleNormalPinnedCount: Math.max(
@@ -3261,9 +3191,6 @@ const useSearchMapNativeRenderOwnerSync = ({
           sourceSyncBaselineRevisions?.dots !== preparedSourceSnapshot.dots.sourceRevision
             ? 'dots'
             : null,
-          sourceSyncBaselineRevisions?.labels !== preparedSourceSnapshot.labels.sourceRevision
-            ? 'labels'
-            : null,
           sourceSyncBaselineRevisions?.labelCollisions !==
           preparedSourceSnapshot.labelCollisions.sourceRevision
             ? 'labelCollisions'
@@ -3446,7 +3373,6 @@ const useSearchMapNativeRenderOwnerSync = ({
           counts: {
             pinCount: effectiveSourceSnapshot.pins.idsInOrder.length,
             dotCount: effectiveSourceSnapshot.dots.idsInOrder.length,
-            labelCount: effectiveSourceSnapshot.labels.idsInOrder.length,
           },
         });
         transportState.lastDesiredExecutionBatchId = executionBatchId;
@@ -3499,7 +3425,6 @@ const useSearchMapNativeRenderOwnerSync = ({
     dots,
     interactionMode,
     labelCollisions,
-    labels,
     pinInteractions,
     pins,
     mapMotionPressureController,
@@ -3541,9 +3466,7 @@ const useSearchMapNativeRenderOwnerSync = ({
         'pinSourceStore',
         'dotSourceStore',
         'pinInteractionSourceStore',
-        'labelSourceStore',
         'labelCollisionSourceStore',
-        'labelDerivedSourceIdentityKey',
         'markersRenderKey',
         'mapSearchSurfaceResultsSourcesReady',
         'mapSearchSurfaceResultsSourcesReadyKey',
@@ -3561,7 +3484,6 @@ export const useSearchMapNativeRenderOwner = (
     pins,
     pinInteractions,
     dots,
-    labels,
     labelCollisions,
     sourceFramePort,
     viewportState,
@@ -3586,7 +3508,6 @@ export const useSearchMapNativeRenderOwner = (
     pins,
     pinInteractions,
     dots,
-    labels,
     labelCollisions,
     sourceFramePort,
     viewportState,

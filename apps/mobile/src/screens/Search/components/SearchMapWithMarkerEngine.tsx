@@ -451,10 +451,7 @@ const SearchMapWithMarkerEngineInner: React.ForwardRefRenderFunction<
       dotSourceStore: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.dotSourceStore,
       pinInteractionSourceStore: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.pinInteractionSourceStore,
       markersRenderKey: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.markersRenderKey,
-      labelSourceStore: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.labelSourceStore,
       labelCollisionSourceStore: EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.labelCollisionSourceStore,
-      labelDerivedSourceIdentityKey:
-        EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT.labelDerivedSourceIdentityKey,
     }),
     [highlightedRestaurantId]
   );

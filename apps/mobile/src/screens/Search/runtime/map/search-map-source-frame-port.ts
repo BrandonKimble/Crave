@@ -12,9 +12,7 @@ export type SearchMapSourceFrameSnapshot = {
   pinSourceStore: SearchMapSourceStore;
   dotSourceStore: SearchMapSourceStore;
   pinInteractionSourceStore: SearchMapSourceStore;
-  labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
-  labelDerivedSourceIdentityKey: string;
   markersRenderKey: string;
   visibleSortedRestaurantMarkersCount: number;
   visibleDotRestaurantFeaturesCount: number;
@@ -125,9 +123,7 @@ export const EMPTY_SEARCH_MAP_SOURCE_FRAME_SNAPSHOT: SearchMapSourceFrameSnapsho
   pinSourceStore: EMPTY_SEARCH_MAP_SOURCE_STORE,
   dotSourceStore: EMPTY_SEARCH_MAP_SOURCE_STORE,
   pinInteractionSourceStore: EMPTY_SEARCH_MAP_SOURCE_STORE,
-  labelSourceStore: EMPTY_SEARCH_MAP_SOURCE_STORE,
   labelCollisionSourceStore: EMPTY_SEARCH_MAP_SOURCE_STORE,
-  labelDerivedSourceIdentityKey: '',
   markersRenderKey: 'pins:0:empty:empty:0:dots:0:empty:empty:0',
   visibleSortedRestaurantMarkersCount: 0,
   visibleDotRestaurantFeaturesCount: 0,
@@ -165,9 +161,7 @@ export const areSearchMapSourceFrameSnapshotsEqual = (
   areSourceStoreFramesEqual(left.pinSourceStore, right.pinSourceStore) &&
   areSourceStoreFramesEqual(left.dotSourceStore, right.dotSourceStore) &&
   areSourceStoreFramesEqual(left.pinInteractionSourceStore, right.pinInteractionSourceStore) &&
-  areSourceStoreFramesEqual(left.labelSourceStore, right.labelSourceStore) &&
   areSourceStoreFramesEqual(left.labelCollisionSourceStore, right.labelCollisionSourceStore) &&
-  left.labelDerivedSourceIdentityKey === right.labelDerivedSourceIdentityKey &&
   left.markersRenderKey === right.markersRenderKey &&
   // Catalog is deduped on its KEY only (a data-change fingerprint), so a camera-tick republish with an
   // unchanged catalog stays equal (no per-tick churn) while a real catalog change forces a republish that
@@ -180,9 +174,7 @@ const SOURCE_FRAME_KEYS: readonly SearchMapSourceFrameSnapshotKey[] = [
   'pinSourceStore',
   'dotSourceStore',
   'pinInteractionSourceStore',
-  'labelSourceStore',
   'labelCollisionSourceStore',
-  'labelDerivedSourceIdentityKey',
   'markersRenderKey',
 ];
 

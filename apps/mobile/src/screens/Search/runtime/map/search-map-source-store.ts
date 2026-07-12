@@ -12,7 +12,6 @@ const transportFeatureCache = new WeakMap<
 const TRANSIENT_VISUAL_PROPERTY_KEYS = new Set([
   'nativeDotOpacity',
   'nativeHighlighted',
-  'nativeLabelOpacity',
   'nativeLodOpacity',
   'nativeLodRankOpacity',
   'nativePresentationOpacity',
@@ -21,7 +20,6 @@ const TRANSIENT_VISUAL_PROPERTY_KEYS = new Set([
 type SearchMapSourceTransportFeatureState = {
   nativeDotOpacity?: number;
   nativeHighlighted?: number;
-  nativeLabelOpacity?: number;
   nativeLodOpacity?: number;
   nativeLodRankOpacity?: number;
   nativePresentationOpacity?: number;

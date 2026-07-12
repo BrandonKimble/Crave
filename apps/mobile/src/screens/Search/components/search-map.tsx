@@ -77,7 +77,6 @@ type DirectSourceFrameStores = {
   pinSourceStore: SearchMapSourceStore;
   dotSourceStore: SearchMapSourceStore;
   pinInteractionSourceStore: SearchMapSourceStore;
-  labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
 };
 
@@ -85,7 +84,6 @@ const DIRECT_SOURCE_FRAME_STORE_KEYS = [
   'pinSourceStore',
   'dotSourceStore',
   'pinInteractionSourceStore',
-  'labelSourceStore',
   'labelCollisionSourceStore',
 ] as const;
 
@@ -96,7 +94,6 @@ const areDirectSourceFrameStoresEqual = (
   left.pinSourceStore === right.pinSourceStore &&
   left.dotSourceStore === right.dotSourceStore &&
   left.pinInteractionSourceStore === right.pinInteractionSourceStore &&
-  left.labelSourceStore === right.labelSourceStore &&
   left.labelCollisionSourceStore === right.labelCollisionSourceStore;
 
 const STYLE_PIN_OUTLINE_IMAGE_ID = 'restaurant-pin-outline';
@@ -630,7 +627,6 @@ export type RestaurantFeatureProperties = {
   nativeLodZ?: number;
   nativeLodOpacity?: number;
   nativeLodRankOpacity?: number;
-  nativeLabelOpacity?: number;
   nativeDotOpacity?: number;
   nativePresentationOpacity?: number;
   rank: number;
@@ -929,7 +925,6 @@ const OVERLAY_Z_ANCHOR_STYLE: MapboxGL.SymbolLayerStyle = {
   textField: '',
   textOpacity: 0,
 } as MapboxGL.SymbolLayerStyle;
-export const RESTAURANT_LABEL_SOURCE_ID = 'restaurant-source';
 const RESTAURANT_LABEL_COLLISION_SOURCE_ID = 'restaurant-label-collision-source';
 // Full-pin-body obstacle layer that ONLY dots yield to (placed below the labels). See DOT_PIN_COLLISION_STYLE.
 const RESTAURANT_PIN_DOT_COLLISION_LAYER_ID = 'restaurant-pin-dot-collision-layer';
@@ -948,9 +943,6 @@ const RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID = 'restaurant-labels-pin-collision
 // Dot glyphs render notably smaller than `DOT_TEXT_SIZE` due to font metrics/line-height.
 // Keep the interaction target tight so it feels intentionally dot-sized (about ~2x visible dot).
 const DOT_TAP_INTENT_RADIUS_PX = Math.max(7, DOT_TEXT_SIZE * 0.42);
-
-export const buildLabelCandidateFeatureId = (markerKey: string, candidate: LabelCandidate) =>
-  `${markerKey}::label::${candidate}`;
 
 type SearchMapPressEvent = {
   type?: GeoJSON.Feature['type'];
@@ -1071,7 +1063,6 @@ type MapPresentedLabelScene = {
   mountedSourceCounts: {
     pinCount: number;
     dotCount: number;
-    labelCount: number;
   };
 };
 
@@ -1145,21 +1136,18 @@ const resolveMapPresentedLabelScene = ({
   shouldProjectSearchMarkerFamilies: _shouldProjectSearchMarkerFamilies,
   presentedPinSourceStore,
   presentedDotSourceStore,
-  labelSourceStore,
   labelCollisionSourceStore: _labelCollisionSourceStore,
 }: {
   shouldMountSearchMarkerLayers: boolean;
   shouldProjectSearchMarkerFamilies: boolean;
   presentedPinSourceStore: SearchMapSourceStore;
   presentedDotSourceStore: SearchMapSourceStore;
-  labelSourceStore: SearchMapSourceStore;
   labelCollisionSourceStore: SearchMapSourceStore;
 }): MapPresentedLabelScene => {
   return {
     mountedSourceCounts: {
       pinCount: shouldMountSearchMarkerLayers ? presentedPinSourceStore.idsInOrder.length : 0,
       dotCount: shouldMountSearchMarkerLayers ? presentedDotSourceStore.idsInOrder.length : 0,
-      labelCount: shouldMountSearchMarkerLayers ? labelSourceStore.idsInOrder.length : 0,
     },
   };
 };
@@ -1397,11 +1385,7 @@ type SearchMapProps = {
   }) => void;
   presentationLifecyclePort?: SearchMapPresentationLifecyclePort;
   onMarkerPress?: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
-  onNativeMountedSourceCountsChanged?: (counts: {
-    pinCount: number;
-    dotCount: number;
-    labelCount: number;
-  }) => void;
+  onNativeMountedSourceCountsChanged?: (counts: { pinCount: number; dotCount: number }) => void;
   sourceFramePort?: SearchMapSourceFramePort | null;
   resultsPresentationAuthority: ResultsPresentationAuthority;
   emptyMapSceneSnapshot: SearchMapPresentationScene;
@@ -1471,7 +1455,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     pinSourceStore,
     dotSourceStore,
     pinInteractionSourceStore,
-    labelSourceStore,
     labelCollisionSourceStore,
   } = emptyMapSceneSnapshot;
   const directSourceFrameStores = useSearchMapSourceFrameSelector(
@@ -1480,7 +1463,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
       pinSourceStore: snapshot.pinSourceStore,
       dotSourceStore: snapshot.dotSourceStore,
       pinInteractionSourceStore: snapshot.pinInteractionSourceStore,
-      labelSourceStore: snapshot.labelSourceStore,
       labelCollisionSourceStore: snapshot.labelCollisionSourceStore,
     }),
     areDirectSourceFrameStoresEqual,
@@ -1497,9 +1479,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const activePinInteractionSourceStore = sourceFrameIsAuthoritative
     ? directSourceFrameStores.pinInteractionSourceStore
     : pinInteractionSourceStore;
-  const activeLabelSourceStore = sourceFrameIsAuthoritative
-    ? directSourceFrameStores.labelSourceStore
-    : labelSourceStore;
   const activeLabelCollisionSourceStore = sourceFrameIsAuthoritative
     ? directSourceFrameStores.labelCollisionSourceStore
     : labelCollisionSourceStore;
@@ -1536,7 +1515,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const shouldMountSearchMarkerLayers = !shouldDisableMarkers;
   const directPinSourceCount = directSourceFrameStores.pinSourceStore.idsInOrder.length;
   const directDotSourceCount = directSourceFrameStores.dotSourceStore.idsInOrder.length;
-  const directLabelSourceCount = directSourceFrameStores.labelSourceStore.idsInOrder.length;
   const userLocationPuckProps = React.useMemo<{
     featureCollection: FeatureCollection<Point>;
     accuracyRingFeatureCollection: FeatureCollection<Polygon> | null;
@@ -1723,13 +1701,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
     pinSourceId: STYLE_PINS_SOURCE_ID,
     pinInteractionSourceId: PIN_INTERACTION_SOURCE_ID,
     dotSourceId: DOT_SOURCE_ID,
-    labelSourceId: RESTAURANT_LABEL_SOURCE_ID,
     labelCollisionSourceId: RESTAURANT_LABEL_COLLISION_SOURCE_ID,
     labelCollisionLayerIds,
     pins: nativeDesiredPinFeatures,
     pinInteractions: nativeDesiredPinInteractionFeatures,
     dots: nativeDesiredDotFeatures,
-    labels: activeLabelSourceStore,
     labelCollisions: activeLabelCollisionSourceStore,
     sourceFramePort,
     viewportState: {
@@ -1750,7 +1726,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
         markerEnterCommitId: null,
         pinCount: payload.pinCount,
         dotCount: payload.dotCount,
-        labelCount: payload.labelCount,
         settledAtMs: payload.settledAtMs,
       });
     },
@@ -1890,7 +1865,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     shouldProjectSearchMarkerFamilies,
     presentedPinSourceStore,
     presentedDotSourceStore,
-    labelSourceStore: activeLabelSourceStore,
     labelCollisionSourceStore: activeLabelCollisionSourceStore,
   });
 
@@ -1902,19 +1876,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
     logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
       event: 'map_pin_label_layer_mount_contract',
       directDotSourceCount,
-      directLabelSourceCount,
       directPinSourceCount,
       isNativeOwnedMarkerRuntimeReady,
-      labelSourceCount: activeLabelSourceStore.idsInOrder.length,
       shouldProjectSearchMarkerFamilies,
       markerLayerShellMounted: shouldMountSearchMarkerLayers,
     });
   }, [
     directDotSourceCount,
-    directLabelSourceCount,
     directPinSourceCount,
     isNativeOwnedMarkerRuntimeReady,
-    activeLabelSourceStore.idsInOrder.length,
     shouldProjectSearchMarkerFamilies,
     shouldMountSearchMarkerLayers,
   ]);
