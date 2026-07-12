@@ -156,6 +156,14 @@ docked — sheet rides to expanded, same finger rubber-bands the content under
 the stationary header, springs back; down-drag collapses rigidly, zero jitter.
 The one-value stream still arrives with the sceneScrollStateRegistry rehousing.
 
+## Registry rehousing DONE (same day): overlays/sceneScrollStateRegistry.ts —
+one record per scene (savedOffset+pendingRestore, content metrics,
+scrollHandle, publishedOffsets stack) + the presented pointer + the
+presented-scene UI-thread flags; four modules deleted, 15 consumers on one
+import. Live gesture SVs stay host-owned (deliberate — see v3 lesson).
+Runtime re-verification pending the map session's tree stabilizing; the
+housed behavior was sim-verified on v4.
+
 ## v3 REGRESSION (owner, 2026-07-11 late) — jitter + broken mid-gesture up-handoff
 
 v3's fold wrote the tug into the SHARED scrollOffset SV without auditing every
