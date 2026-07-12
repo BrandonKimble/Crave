@@ -14,6 +14,7 @@ import {
   shouldDeferMapMovementWork,
 } from '../runtime/map/map-motion-pressure';
 import type { ViewportBoundsService } from '../runtime/viewport/viewport-bounds-service';
+import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../runtime/native/search-chrome-scalar-surface-primitive-source-runtime';
 import { MAP_MOVE_MIN_DISTANCE_MILES } from '../constants/search';
 import {
@@ -34,6 +35,7 @@ type SearchInteractionState = {
 type UseSearchMapMovementStateArgs = {
   startupPollBounds: MapBounds | null;
   latestBoundsRef: React.MutableRefObject<MapBounds | null>;
+  searchRuntimeBus: Pick<SearchRuntimeBus, 'getState' | 'subscribe'>;
   viewportBoundsService: ViewportBoundsService;
   mapRef: React.RefObject<MapboxMapRef | null>;
   mapMotionPressureController: MapMotionPressureController;
@@ -131,6 +133,7 @@ const resolveMapMovedEnterAdmission = ({
 export const useSearchMapMovementState = ({
   startupPollBounds,
   latestBoundsRef,
+  searchRuntimeBus,
   viewportBoundsService,
   mapRef,
   mapMotionPressureController,
@@ -175,11 +178,13 @@ export const useSearchMapMovementState = ({
     setPollBounds(startupPollBounds);
   }, [latestBoundsRef, startupPollBounds, viewportBoundsService]);
 
-  // Refine the just-captured AABB baseline with the SCREEN-ACCURATE visible polygon:
+  // Refine the mirrored AABB baseline with the SCREEN-ACCURATE visible polygon:
   // project the 4 view corners to lng/lat (pitch/twist-aware) and re-capture, with the
-  // polygon as the single source of truth and its bbox as the derived AABB. Async +
-  // sequence-guarded so a superseding capture wins. The map is full-bleed, so the
-  // window corners are the map's visible corners.
+  // polygon as the single source of truth and its bbox as the derived AABB. An accuracy
+  // upgrade of the SAME submitted viewport — never written back to the tuple (the
+  // refined AABB differs slightly from the committed bounds and would phantom-classify
+  // an area_rerun). Async + sequence-guarded so a superseding capture wins. The map is
+  // full-bleed, so the window corners are the map's visible corners.
   const refineSubmittedPolygon = React.useCallback(
     (captureSeq: number) => {
       const map = mapRef.current;
@@ -218,46 +223,60 @@ export const useSearchMapMovementState = ({
     [lastSearchBoundsCaptureSeqRef, mapRef, viewportBoundsService]
   );
 
+  // PURE flag reset (the "map moved" boolean + its scalar mirror + the deferred-enter
+  // latch). The BASELINE is no longer captured here — it is a MIRROR of the desired
+  // tuple's committedBounds (the effect below), so "the area STA compares against" and
+  // "the area the search ran on" are one value by construction. The seq bump cancels
+  // any in-flight polygon refine for a superseded submit.
   const resetMapMoveFlag = React.useCallback(() => {
     pendingMapMovedEnterRef.current = false;
-    const captureSeq = ++lastSearchBoundsCaptureSeqRef.current;
-    const boundsSnapshot = viewportBoundsService.getBounds();
-    if (boundsSnapshot) {
-      // Sync AABB first (no regression for move-detection, which fires right after
-      // submit), then refine with the screen-accurate polygon a tick later.
-      viewportBoundsService.captureSearchBaseline(boundsSnapshot);
-      refineSubmittedPolygon(captureSeq);
-    } else {
-      const boundsCandidate = mapRef.current?.getVisibleBounds?.();
-      if (boundsCandidate) {
-        void boundsCandidate.then((visibleBounds) => {
-          if (lastSearchBoundsCaptureSeqRef.current !== captureSeq) {
-            return;
-          }
-          if (
-            !visibleBounds ||
-            visibleBounds.length < 2 ||
-            !isLngLatTuple(visibleBounds[0]) ||
-            !isLngLatTuple(visibleBounds[1])
-          ) {
-            return;
-          }
-          const bounds = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
-          viewportBoundsService.setBounds(bounds);
-          viewportBoundsService.captureSearchBaseline(bounds);
-          refineSubmittedPolygon(captureSeq);
-        });
-      }
-    }
+    ++lastSearchBoundsCaptureSeqRef.current;
     mapMovedSinceSearchRef.current = false;
     writeMapMovedScalarPrimitive(false);
     setMapMovedSinceSearch(false);
+  }, [lastSearchBoundsCaptureSeqRef, writeMapMovedScalarPrimitive]);
+
+  // THE BASELINE MIRROR (§D remaining slice): searchBaselineBounds+submittedPolygon are
+  // a PROJECTION of tuple.committedBounds — written here at every committedBounds
+  // change, never captured independently (the old resetMapMoveFlag capture was a second
+  // instant that could drift from the searched area: clear-time and results-teardown
+  // re-baselines pointed STA's "map moved" at a viewport no search ran on). Keyed to
+  // the committedBounds.bounds object identity (turns over only at a search commit —
+  // same key the origin-camera runtime uses). A null committedBounds (dismiss) clears
+  // the baseline: with no searched area there is nothing to have "moved since", and
+  // shouldMarkMapMovedForBounds treats a null baseline as don't-mark. When the commit
+  // carries no polygon (sync submits), the async corner-projection refine upgrades the
+  // service copy — service-only, seq-guarded, same viewport.
+  const lastMirroredCommittedBoundsRef = React.useRef<object | null>(null);
+  React.useEffect(() => {
+    const syncBaselineFromDesire = () => {
+      const committed = searchRuntimeBus.getState().desiredTuple.committedBounds;
+      const key = committed?.bounds ?? null;
+      if (key === lastMirroredCommittedBoundsRef.current) {
+        return;
+      }
+      lastMirroredCommittedBoundsRef.current = key;
+      const captureSeq = ++lastSearchBoundsCaptureSeqRef.current;
+      if (committed == null) {
+        viewportBoundsService.captureSearchBaseline(null);
+        return;
+      }
+      const polygon =
+        committed.viewportPolygon != null && committed.viewportPolygon.length >= 3
+          ? committed.viewportPolygon.map(([lng, lat]) => [lng, lat] as LngLat)
+          : null;
+      viewportBoundsService.captureSearchBaseline(committed.bounds, polygon);
+      if (polygon == null) {
+        refineSubmittedPolygon(captureSeq);
+      }
+    };
+    syncBaselineFromDesire();
+    return searchRuntimeBus.subscribe(syncBaselineFromDesire);
   }, [
     lastSearchBoundsCaptureSeqRef,
-    mapRef,
     refineSubmittedPolygon,
+    searchRuntimeBus,
     viewportBoundsService,
-    writeMapMovedScalarPrimitive,
   ]);
 
   const markMapMovedIfNeeded = React.useCallback(

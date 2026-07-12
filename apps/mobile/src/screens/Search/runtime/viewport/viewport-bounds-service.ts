@@ -55,11 +55,13 @@ export class ViewportBoundsService {
   // coincide. This is THE camera source for commit-moment captures; nothing downstream
   // may pair these bounds with a camera read from a second tracker.
   private camera: ViewportCameraState | null = null;
-  // The submitted search viewport, single source of truth: the visible polygon (4
-  // screen corners projected to lng/lat at submit — pitch/twist-accurate). The AABB
-  // (searchBaselineBounds) is its bounding box, derived for coarse consumers
-  // (move-detection, location anchor). The polygon arrives a tick after the sync AABB
-  // (async corner projection), so searchBaselineBounds is set first and refined.
+  // The submitted search viewport — a MIRROR of the desired tuple's committedBounds
+  // (written by the baseline-mirror effect at every committedBounds change; never an
+  // independent capture), read by the service-side consumers that lack bus access
+  // (move-detection, location anchor, overlap region). The polygon is the
+  // pitch/twist-accurate visible shape: the fresh capture supplies it with the commit;
+  // sync submits mirror null and the async corner-projection refine upgrades it a tick
+  // later (same viewport, service-only). Null after dismiss — no searched area.
   private searchBaselineBounds: MapBounds | null = null;
   private submittedPolygon: LngLat[] | null = null;
   // The frozen overlap-allowed region for the active search (viewport or radius). Pins

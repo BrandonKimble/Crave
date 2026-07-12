@@ -22,10 +22,6 @@ type FreshBoundsViewportService = Parameters<typeof captureCommittedBounds>[0] &
     bounds: import('../../../../types').MapBounds,
     camera?: { center: [number, number]; zoom: number }
   ) => void;
-  captureSearchBaseline: (
-    bounds: import('../../../../types').MapBounds,
-    polygon: Array<[number, number]>
-  ) => void;
 };
 
 const isLngLatPair = (value: unknown): value is [number, number] =>
@@ -47,7 +43,8 @@ const FRESH_POLYGON_CAPTURE_TIMEOUT_MS = 250;
 /** Commit-moment adopt for triggers that must read the SETTLED camera off the native map
  *  (search-this-area, chip reruns after a pan/zoom): awaits the map's visible bounds +
  *  camera ({center, zoom} from the same settled snapshot) + screen-accurate corner
- *  polygon, writes them into the viewport service, then returns the committed bounds.
+ *  polygon, writes bounds+camera into the viewport service, and returns the committed
+ *  snapshot carrying the polygon (the baseline mirror projects it back to the service).
  *  Every failure path falls back to the service's last-known values — a fresh capture is
  *  an accuracy upgrade, never a submit blocker (the hung-promise lesson from request
  *  preparation: the native reads can hang on a cold map, so each races a timeout). */
@@ -56,6 +53,10 @@ export const captureFreshCommittedBounds = async (env: {
   viewportBoundsService: FreshBoundsViewportService;
 }): Promise<SearchCommittedBounds | null> => {
   const map = env.mapRef.current;
+  // The pitch/twist-accurate polygon of the fresh viewport, projected below; flows into
+  // the committed snapshot EXPLICITLY (the tuple is the polygon's one home — the
+  // service baseline mirrors the tuple, never the reverse).
+  let freshPolygon: Array<[number, number]> | null = null;
   try {
     const visible = map?.getVisibleBounds ? await map.getVisibleBounds() : null;
     if (Array.isArray(visible) && isLngLatPair(visible[0]) && isLngLatPair(visible[1])) {
@@ -107,15 +108,7 @@ export const captureFreshCommittedBounds = async (env: {
           ]);
           const polygon = (positions ?? []).filter(isLngLatPair);
           if (polygon.length >= 3) {
-            const lngs = polygon.map(([lng]) => lng);
-            const lats = polygon.map(([, lat]) => lat);
-            env.viewportBoundsService.captureSearchBaseline(
-              boundsFromCornerPairs(
-                [Math.min(...lngs), Math.min(...lats)],
-                [Math.max(...lngs), Math.max(...lats)]
-              ),
-              polygon
-            );
+            freshPolygon = polygon;
           }
         }
       }
@@ -125,5 +118,5 @@ export const captureFreshCommittedBounds = async (env: {
       message: error instanceof Error ? error.message : 'unknown error',
     });
   }
-  return captureCommittedBounds(env.viewportBoundsService);
+  return captureCommittedBounds(env.viewportBoundsService, { viewportPolygon: freshPolygon });
 };

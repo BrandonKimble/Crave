@@ -22,25 +22,32 @@ import {
 } from './search-desired-state-contract';
 
 /** Adopt-viewport helper for commit-moment triggers: one synchronous read of the
- *  service's viewport — bounds + screen-accurate polygon + the camera riding the same
- *  event stream. The camera enters the snapshot HERE so the dismiss-restore is, by
- *  construction, the viewport this search ran against (never a second tracker —
- *  cd59e8a2's bug class). */
-export const captureCommittedBounds = (viewportBoundsService: {
-  getBounds: () => import('../../../../types').MapBounds | null;
-  getSubmittedPolygon: () => Array<[number, number]> | null | undefined;
-  getCamera: () => { center: [number, number]; zoom: number } | null;
-}): SearchCommittedBounds | null => {
+ *  service's viewport — bounds + the camera riding the same event stream. The camera
+ *  enters the snapshot HERE so the dismiss-restore is, by construction, the viewport
+ *  this search ran against (never a second tracker — cd59e8a2's bug class).
+ *  The screen-accurate polygon comes ONLY from the caller (the fresh native capture
+ *  projects one; sync submits have none and get the honest null). The service polygon
+ *  is deliberately NOT read: it describes the PREVIOUSLY submitted search, and adopting
+ *  it handed a new submit a stale polygon (the old resetMapMoveFlag pre-clear existed
+ *  solely to mask that circularity). */
+export const captureCommittedBounds = (
+  viewportBoundsService: {
+    getBounds: () => import('../../../../types').MapBounds | null;
+    getCamera: () => { center: [number, number]; zoom: number } | null;
+  },
+  options?: { viewportPolygon?: Array<[number, number]> | null }
+): SearchCommittedBounds | null => {
   const bounds = viewportBoundsService.getBounds();
   if (bounds == null) {
     return null;
   }
-  const polygon = viewportBoundsService.getSubmittedPolygon();
+  const polygon = options?.viewportPolygon;
   return {
     bounds,
-    viewportPolygon: Array.isArray(polygon)
-      ? polygon.map(([lng, lat]) => [lng, lat] as const)
-      : null,
+    viewportPolygon:
+      Array.isArray(polygon) && polygon.length >= 3
+        ? polygon.map(([lng, lat]) => [lng, lat] as const)
+        : null,
     camera: viewportBoundsService.getCamera(),
   };
 };

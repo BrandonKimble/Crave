@@ -22,7 +22,10 @@ type RootPrimitivesRuntime = {
 type UseSearchRootMapRuntimeLaneArgs = {
   startupPollBounds: Parameters<typeof useSearchMapMovementState>[0]['startupPollBounds'];
   rootPrimitivesRuntime: RootPrimitivesRuntime;
-  rootSessionCoreLane: Pick<SearchRootSessionCoreLane, 'latestBoundsRef' | 'viewportBoundsService'>;
+  rootSessionCoreLane: Pick<
+    SearchRootSessionCoreLane,
+    'latestBoundsRef' | 'viewportBoundsService' | 'searchRuntimeBus'
+  >;
   rootSessionPrimitivesLane: SearchRootSessionPrimitivesLane;
   shouldShowPollsSheetRef: React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
   searchChromeScalarSurfacePrimitiveSourceRuntime?: SearchChromeScalarSurfacePrimitiveSourceRuntime;
@@ -47,6 +50,7 @@ export const useSearchRootMapRuntimeLane = ({
     ...useSearchMapMovementState({
       startupPollBounds,
       latestBoundsRef: rootSessionCoreLane.latestBoundsRef,
+      searchRuntimeBus: rootSessionCoreLane.searchRuntimeBus,
       viewportBoundsService: rootSessionCoreLane.viewportBoundsService,
       mapRef: rootPrimitivesRuntime.mapState.mapRef,
       mapMotionPressureController,
