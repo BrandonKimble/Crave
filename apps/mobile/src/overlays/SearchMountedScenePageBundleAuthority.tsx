@@ -402,7 +402,6 @@ export const SearchResultsPageBundleHost = React.memo(
 
     return (
       <BottomSheetSceneStackPageFrame
-        bodyScrollOffset={bodyScrollRuntime?.scrollOffset}
         underlayComponent={pageBundle.underlayComponent}
         backgroundComponent={backgroundComponent}
         bodyComponent={

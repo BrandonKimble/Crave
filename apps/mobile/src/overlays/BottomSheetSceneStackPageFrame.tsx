@@ -13,6 +13,8 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { overlaySheetBodyTugOffsetValue } from './overlaySheetContentFitsRuntime';
+
 import { OVERLAY_TAB_HEADER_HEIGHT } from './overlaySheetStyles';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 
@@ -41,12 +43,6 @@ type BottomSheetSceneStackPageFrameProps = {
   chromeOpacityStyle?: StyleProp<ViewStyle>;
   bodyOpacityStyle?: StyleProp<ViewStyle>;
   onBodyFirstPaint?: (event: LayoutChangeEvent) => void;
-  // THE scene scroll stream (domain [-tugRange, contentMax]): the body lane translates by the
-  // NEGATIVE region (the short-content rubber-band), so content + white plate + cutout holes
-  // slide under the stationary header as one node. Positive values are ordinary scroll (no
-  // translate — the native list scrolls itself). Optional: frames without a stream (skeleton
-  // legs) render static.
-  bodyScrollOffset?: SharedValue<number>;
 };
 
 // The header/content seam is a SINGLE boundary at `headerHeight` — it is simultaneously the
@@ -64,10 +60,10 @@ const DIVIDER_THICKNESS = 1;
 export const useHeaderScrollDividerOpacityStyle = (scrollOffset: SharedValue<number>) =>
   useAnimatedStyle(
     () => ({
-      // abs(): the stream's NEGATIVE domain is the short-content tug — content visibly slides
-      // under the header there too, so the divider fades in for both regions symmetrically.
+      // The divider fades for BOTH kinds of content motion under the header: real scroll
+      // (positive offset) and the short-content tug (the dedicated tug SV, <= 0) — same curve.
       opacity: interpolate(
-        Math.abs(scrollOffset.value),
+        Math.max(scrollOffset.value, -overlaySheetBodyTugOffsetValue.value),
         [0, 3, 14],
         [0, 0.35, 1],
         Extrapolation.CLAMP
@@ -112,7 +108,6 @@ export const BottomSheetSceneStackPageFrame = React.memo(
     chromeOpacityStyle,
     bodyOpacityStyle,
     onBodyFirstPaint,
-    bodyScrollOffset,
   }: BottomSheetSceneStackPageFrameProps) => {
     // The body's onLayout fans out to the existing viewport-layout consumer AND the paint-ack
     // producer (onBodyFirstPaint) — both fire on the body's first real measured frame.
@@ -139,9 +134,9 @@ export const BottomSheetSceneStackPageFrame = React.memo(
     const bodyTugStyle = useAnimatedStyle(() => {
       'worklet';
       return {
-        transform: [{ translateY: bodyScrollOffset ? Math.min(bodyScrollOffset.value, 0) : 0 }],
+        transform: [{ translateY: Math.min(overlaySheetBodyTugOffsetValue.value, 0) }],
       };
-    }, [bodyScrollOffset]);
+    });
 
     return (
       <View pointerEvents="box-none" style={styles.sceneStackPageBundle}>

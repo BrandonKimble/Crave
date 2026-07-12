@@ -19,13 +19,17 @@ import { makeMutable, type SharedValue } from 'react-native-reanimated';
 /** UI-thread flag: 1 while the PRESENTED scene's body content fits its viewport, else 0. */
 export const overlaySheetContentFitsValue: SharedValue<number> = makeMutable(0);
 
-// The tug (Phase B v3, one-value fold): the captured up-drag writes the NEGATIVE domain of the
-// scene scroll stream (the shared bodyScrollRuntime.scrollOffset SV) — there is no separate tug
-// offset. Everything derives from that one value: the page frame translates the body lane by
-// min(offset, 0) (content + plate + cutout holes slide under the stationary header as one node),
-// the divider fades on abs(offset), and the collapse pan may not activate until the negative
-// region is repaid to the seam (down symmetry). Only the MODE flag lives here.
-/** UI-thread flag: 1 while the expand pan is in tug mode (writing the stream's negative domain). */
+// The tug (Phase B v4): a DEDICATED SV again. v3 folded the tug into the shared scrollOffset
+// stream and regressed hard — that stream has JS/animated listeners (active-list mux,
+// save/restore capture, surface runtime) that echo writes back, fighting the pan every frame
+// (jitter) and suppressing the visual tug. The audited MECHANICS stay (tug-aware collapse gate,
+// touch-down cancel + inverse-rubber re-anchor, zero-crossing handover that FAILS the pan out —
+// single owner per phase, the result-sheet shape); only the storage is dedicated. The true
+// one-value stream returns with the sceneScrollStateRegistry rehousing, where every consumer is
+// audited in one pass (plans/sheet-scroll-primitive.md §v3 REGRESSION).
+/** UI-thread translateY (px, <= 0) applied to the presented scene's body lane during a tug. */
+export const overlaySheetBodyTugOffsetValue: SharedValue<number> = makeMutable(0);
+/** UI-thread flag: 1 while the expand pan is in tug mode (writing the tug offset). */
 export const overlaySheetBodyTugActiveValue: SharedValue<number> = makeMutable(0);
 
 type SheetBodyContentMetrics = {
