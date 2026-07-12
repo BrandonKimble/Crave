@@ -1675,22 +1675,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
     presentedPinSourceStore,
   ]);
   const highlightedMarkerKey = highlightedMarkerKeys[0] ?? null;
-  const labelCollisionLayerIds = React.useMemo(
-    // EVERY colliding layer must dorm/wake together on dismiss/reveal — the native
-    // setLabelCollisionObstacleLayersVisible loop toggles exactly the ids in this list.
-    // Omitting one leaves it permanently in Mapbox's placement pipeline while the surface
-    // is hidden. That includes the VISIBLE dot layer: it collides (allowOverlap:false +
-    // ignorePlacement:false) and its features stay resident at opacity 0 across dismiss —
-    // an opacity-0 symbol still claims its collision box, which kept culling basemap labels
-    // after dismiss (partial basemap return, attributed 2026-07-11). Visibility flips at
-    // dismiss start and reveal preroll: collision leaves at the first frame of fade-out.
-    () => [
-      RESTAURANT_LABEL_PIN_COLLISION_LAYER_ID,
-      RESTAURANT_PIN_DOT_COLLISION_LAYER_ID,
-      DOT_LAYER_ID,
-    ],
-    []
-  );
+  // The dorm/wake participant set is DERIVED natively from the style (every layer on a
+  // world source) — no hand-maintained id list exists to forget an entry in
+  // (plans/map-presentation-epoch-and-participation.md).
   const {
     instanceId: resolvedNativeRenderOwnerInstanceId,
     isNativeAvailable: resolvedIsNativeRenderOwnerAvailable,
@@ -1709,7 +1696,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     pinInteractionSourceId: PIN_INTERACTION_SOURCE_ID,
     dotSourceId: DOT_SOURCE_ID,
     labelCollisionSourceId: RESTAURANT_LABEL_COLLISION_SOURCE_ID,
-    labelCollisionLayerIds,
     pins: nativeDesiredPinFeatures,
     pinInteractions: nativeDesiredPinInteractionFeatures,
     dots: nativeDesiredDotFeatures,

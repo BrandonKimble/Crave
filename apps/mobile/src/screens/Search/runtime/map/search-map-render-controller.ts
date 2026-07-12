@@ -16,7 +16,6 @@ type SearchMapRenderControllerNativeModule = {
     pinInteractionSourceId: string;
     dotSourceId: string;
     labelCollisionSourceId: string;
-    labelCollisionLayerIds: string[];
   }) => Promise<void>;
   detach: (instanceId: string) => Promise<void>;
   setRenderFrame: (payload: {
@@ -47,10 +46,6 @@ type SearchMapRenderControllerNativeModule = {
     reason?: string;
     reset?: boolean;
   }) => Promise<SearchMapNativeApplyAttributionSummary>;
-  configureNativeLayerGroups: (payload: {
-    instanceId: string;
-    labelCollisionLayerIds: string[];
-  }) => Promise<void>;
   configureNativePressTargeting: (payload: {
     instanceId: string;
     enabled: boolean;
@@ -87,7 +82,6 @@ type SearchMapRenderControllerAttachPayload = {
   pinInteractionSourceId: string;
   dotSourceId: string;
   labelCollisionSourceId: string;
-  labelCollisionLayerIds: string[];
 };
 
 export type SearchMapRenderControllerEvent =
@@ -854,36 +848,12 @@ export const searchMapRenderController = {
     pinInteractionSourceId: string;
     dotSourceId: string;
     labelCollisionSourceId: string;
-    labelCollisionLayerIds: string[];
   }): Promise<void> {
     if (!nativeModule) {
       return;
     }
     attachedPayloadByInstanceId.set(payload.instanceId, payload);
     await nativeModule.attach(payload);
-  },
-
-  async configureNativeLayerGroups(payload: {
-    instanceId: string;
-    labelCollisionLayerIds: string[];
-  }): Promise<void> {
-    if (!nativeModule?.configureNativeLayerGroups) {
-      throw new Error(
-        `SearchMapRenderController.configureNativeLayerGroups is required on ${Platform.OS}. Rebuild the native app so promoted slot layer ownership is available.`
-      );
-    }
-    try {
-      await nativeModule.configureNativeLayerGroups(payload);
-    } catch (error) {
-      const recoveredError = await recoverNativeRenderFrameSubmissionError(
-        payload.instanceId,
-        error
-      );
-      if (recoveredError.message !== 'stale owner epoch') {
-        throw recoveredError;
-      }
-      await nativeModule.configureNativeLayerGroups(payload);
-    }
   },
 
   async detach(instanceId: string): Promise<void> {

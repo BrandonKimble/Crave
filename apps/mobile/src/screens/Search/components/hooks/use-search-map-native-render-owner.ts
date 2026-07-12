@@ -54,7 +54,6 @@ type SearchMapNativeRenderOwnerStatusArgs = {
   pinInteractionSourceId: string;
   dotSourceId: string;
   labelCollisionSourceId: string;
-  labelCollisionLayerIds: string[];
   sourceFramePort?: SearchMapSourceFramePort | null;
   onExecutionBatchMountedHidden?: (payload: {
     requestKey: string;
@@ -122,10 +121,6 @@ type SearchMapNativeRenderOwnerStatusResult = {
   isNativeOwnerReady: boolean;
   nativeFatalErrorMessage: string | null;
   reportNativeFatalError: (message: string) => void;
-};
-
-type SearchMapNativeLayerGroupConfig = {
-  labelCollisionLayerIds: string[];
 };
 
 type SearchMapNativeRenderOwnerSyncArgs = {
@@ -1808,7 +1803,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
   pinInteractionSourceId,
   dotSourceId,
   labelCollisionSourceId,
-  labelCollisionLayerIds,
   sourceFramePort = null,
   onExecutionBatchMountedHidden,
   onMarkerEnterStarted,
@@ -1847,16 +1841,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
   }
   const instanceId = instanceIdRef.current;
   const isNativeAvailable = searchMapRenderController.isAvailable();
-  const nativeLayerGroupConfigRef = React.useRef<SearchMapNativeLayerGroupConfig>({
-    labelCollisionLayerIds,
-  });
-
-  React.useEffect(() => {
-    nativeLayerGroupConfigRef.current = {
-      labelCollisionLayerIds,
-    };
-  }, [labelCollisionLayerIds]);
-
   React.useEffect(() => {
     setAttachRetryNonce(0);
   }, [
@@ -1996,7 +1980,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
       if (!isActive) {
         return;
       }
-      const nativeLayerGroupConfig = nativeLayerGroupConfigRef.current;
       void searchMapRenderController
         .attach({
           instanceId,
@@ -2005,7 +1988,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
           pinInteractionSourceId,
           dotSourceId,
           labelCollisionSourceId,
-          labelCollisionLayerIds: nativeLayerGroupConfig.labelCollisionLayerIds,
         })
         .then(() => {
           if (!isActive) {
@@ -2059,29 +2041,6 @@ const useSearchMapNativeRenderOwnerStatus = ({
     pinSourceId,
     resolvedMapTag,
   ]);
-
-  React.useEffect(() => {
-    if (!isNativeAvailable || !isAttached) {
-      return;
-    }
-    let isActive = true;
-    void searchMapRenderController
-      .configureNativeLayerGroups({
-        instanceId,
-        labelCollisionLayerIds,
-      })
-      .catch((error: unknown) => {
-        if (!isActive) {
-          return;
-        }
-        const message = error instanceof Error ? error.message : String(error);
-        setAttachState('failed');
-        setNativeFatalErrorMessage(`SearchMap native layer group config failed: ${message}`);
-      });
-    return () => {
-      isActive = false;
-    };
-  }, [instanceId, isAttached, isNativeAvailable, labelCollisionLayerIds]);
 
   React.useEffect(() => {
     if (!isNativeAvailable) {

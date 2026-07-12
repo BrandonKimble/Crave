@@ -674,7 +674,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     var pinInteractionSourceId: String
     var dotSourceId: String
     var labelCollisionSourceId: String
-    var labelCollisionLayerIds: [String]
     var lastPinVisualGroupOrderSlots: [Int]
     var lastPinVisualGroupOrderSignature: String?
     var lastPinCount: Int
@@ -745,6 +744,12 @@ final class SearchMapRenderController: RCTEventEmitter {
     // Throttle signature so the native-visible-marker emit only fires when the
     // on-screen set actually changes (avoids redundant per-tick bridge traffic).
     var lastVisibleMarkerSetSignature: String?
+    // R3 (plans/map-presentation-epoch-and-participation.md): derived-state staleness is
+    // DETECTED by keying, never remembered by per-edge cleanup. The epoch bumps at every
+    // derivation-input boundary (invalidatePresentationDerivations); the decide guard
+    // compares BOTH the visible-set signature and the epoch it was decided under.
+    var presentationEpoch: UInt64 = 0
+    var lastDecidedPresentationEpoch: UInt64 = 0
     // GRANULAR LOD (native-owned, Phase 2): the promoted set the native projector decided
     // this frame (top-maxFullPins by rank among the on-screen set). The v5 LOD engine applies it
     // to the role table per camera frame so promote/demote happens per-pin natively, with no
@@ -1252,17 +1257,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         reject("search_map_render_controller_attach_invalid", "invalid attach payload", nil)
         return
       }
-      let labelCollisionLayerIds = Self.parseStringArray(payload["labelCollisionLayerIds"])
-      guard
-        !labelCollisionLayerIds.isEmpty
-      else {
-        reject(
-          "search_map_render_controller_attach_invalid",
-          "missing label source/layer ids",
-          nil
-        )
-        return
-      }
       // ROOT-CAUSE (task #16, half 2): attach re-binds the RENDER plane (sources/layers/
       // presentation registers reset). The DATA plane — candidateCatalog + LOD engine —
       // is world-keyed state owned by the catalog channel and must SURVIVE a re-attach:
@@ -1276,7 +1270,6 @@ final class SearchMapRenderController: RCTEventEmitter {
         pinInteractionSourceId: pinInteractionSourceId,
         dotSourceId: dotSourceId,
         labelCollisionSourceId: labelCollisionSourceId,
-        labelCollisionLayerIds: labelCollisionLayerIds,
         lastPinVisualGroupOrderSlots: [],
         lastPinVisualGroupOrderSignature: nil,
         lastPinCount: 0,
@@ -1465,7 +1458,7 @@ final class SearchMapRenderController: RCTEventEmitter {
         self?.prewarmPinSprites(imageIds: prewarmImageIds, mapTag: prewarmMapTag)
       }
       // Force the next camera tick to re-emit the on-screen set against the new catalog.
-      state.lastVisibleMarkerSetSignature = nil
+      Self.invalidatePresentationDerivations(&state, reason: "catalog_replace")
       // Feed the single-authority engine the ranked catalog (atomic full rebuild). The ranking must be
       // ascending by rank so prefix(budget) == the true top-N. (When the JS catalog is unified to sort by
       // Crave score, that rank == the badge — the one-rank decision; until then this verifies the mechanism.)
@@ -1625,7 +1618,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       "catalogCount": state.candidateCatalog.count,
       "nowMs": Self.nowMs(),
     ])
-    state.lastVisibleMarkerSetSignature = nil
+    Self.invalidatePresentationDerivations(&state, reason: "toggle_redecide")
     _ = projectAndEmitOnScreenMarkers(
       instanceId: instanceId, state: &state, handle: handle, reason: "toggle_redecide", isMoving: false)
     // FREEZE: snap the newly-decided set to its settled roles (after the decide set `want`). Drains engine
@@ -3225,7 +3218,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     // immediately. (A tapped pin is already promoted → decide is a no-op for it; only its color changes.) v5.
     if var nextState = instances[instanceId],
        let handle = currentResolvedMapHandle(for: nextState.mapTag) {
-      nextState.lastVisibleMarkerSetSignature = nil
+      Self.invalidatePresentationDerivations(&nextState, reason: "highlight_change")
       _ = projectAndEmitOnScreenMarkers(
         instanceId: instanceId, state: &nextState, handle: handle, reason: "highlight_change", isMoving: false)
       instances[instanceId] = nextState
@@ -3283,52 +3276,6 @@ final class SearchMapRenderController: RCTEventEmitter {
     }
   }
 
-
-  @objc
-  func configureNativeLayerGroups(
-    _ payload: NSDictionary,
-    resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else {
-        reject("search_map_render_controller_unavailable", "controller deallocated", nil)
-        return
-      }
-      guard let instanceId = payload["instanceId"] as? String else {
-        reject(
-          "search_map_render_controller_configure_native_layer_groups_invalid",
-          "missing instanceId",
-          nil
-        )
-        return
-      }
-      guard var state = self.instances[instanceId] else {
-        reject(
-          "search_map_render_controller_configure_native_layer_groups_invalid",
-          "unknown instance",
-          nil
-        )
-        return
-      }
-      let labelCollisionLayerIds = Self.parseStringArray(payload["labelCollisionLayerIds"])
-      guard
-        !labelCollisionLayerIds.isEmpty
-      else {
-        reject(
-          "search_map_render_controller_configure_native_layer_groups_invalid",
-          "missing label source/layer ids",
-          nil
-        )
-        return
-      }
-      state.labelCollisionLayerIds = labelCollisionLayerIds
-      state.lastPinVisualGroupOrderSlots = []
-      state.lastPinVisualGroupOrderSignature = nil
-      self.instances[instanceId] = state
-      resolve(nil)
-    }
-  }
 
   @objc
   func configureNativePressTargeting(
@@ -6204,7 +6151,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       reason: reason
     )
     let collisionRestoreStartedAt = CACurrentMediaTime() * 1000
-    setLabelCollisionObstacleLayersVisible(
+    let restoredWorldLayerCount = setPresentedWorldLayersVisible(
       true,
       for: state,
       instanceId: instanceId,
@@ -6221,7 +6168,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       section: "presentation.reveal_preroll_collision_restore",
       phase: state.lastPresentationBatchPhase,
       durationMs: CACurrentMediaTime() * 1000 - collisionRestoreStartedAt,
-      operationCount: state.labelCollisionLayerIds.count
+      operationCount: restoredWorldLayerCount
     )
     state.visualSourceLifecycleState = .preparingReveal
     state.keepSourcesHiddenUntilEnter = false
@@ -6235,7 +6182,7 @@ final class SearchMapRenderController: RCTEventEmitter {
     state: inout InstanceState
   ) {
     let collisionLayerStartedAt = CACurrentMediaTime() * 1000
-    setLabelCollisionObstacleLayersVisible(
+    let dormedWorldLayerCount = setPresentedWorldLayersVisible(
       false,
       for: state,
       instanceId: instanceId,
@@ -6246,7 +6193,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       section: "presentation.dismiss_start_collision_obstacle_layers",
       phase: state.lastPresentationBatchPhase,
       durationMs: CACurrentMediaTime() * 1000 - collisionLayerStartedAt,
-      operationCount: state.labelCollisionLayerIds.count
+      operationCount: dormedWorldLayerCount
     )
     // S4d-1: basemap collision flips at fade START — the twin dorms as the dismiss
     // fade begins, so the basemap street names crossfade back in DURING our fade-out
@@ -6278,8 +6225,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     // steppers, and label observation are all already gated off in `.hidden`. No source cache is
     // populated, so the enter-time restore naturally no-ops.
     let labelDormancyStartedAt = CACurrentMediaTime() * 1000
+    var dormedWorldLayerCount = 0
     if state.labelCollisionObstacleLayersVisible {
-      setLabelCollisionObstacleLayersVisible(
+      dormedWorldLayerCount = setPresentedWorldLayersVisible(
         false,
         for: state,
         instanceId: instanceId,
@@ -6300,17 +6248,15 @@ final class SearchMapRenderController: RCTEventEmitter {
     // release even if a stray participation write raced, and frees the views.
     teardownPinVA(instanceId: instanceId)
     teardownLabelVA(instanceId: instanceId)
-    // ROSTER TEARDOWN => SIGNATURE INVALID. The visible-set signature caches "this exact
-    // on-screen set has been projected AND decided"; tearing the VA rosters down voids that
-    // conclusion. Without this, an identical-viewport re-reveal hits the decide() signature
-    // guard (proj sigChanged=false), nothing re-promotes, and the second search shows dots
-    // only (attributed 2026-07-11 via [LODDBG]: reveal 1 decide promoted=30; reveal 2 no decide).
-    state.lastVisibleMarkerSetSignature = nil
+    // presentEnd (R3): roster teardown is a derivation-input boundary — everything decided
+    // for this presentation is stale by construction (the dots-only-second-search bug was
+    // this boundary missing its invalidation).
+    Self.invalidatePresentationDerivations(&state, reason: "dismiss_teardown")
     recordNativeApply(
       section: "presentation.hidden_marker_layer_dormancy",
       phase: state.lastPresentationBatchPhase,
       durationMs: CACurrentMediaTime() * 1000 - labelDormancyStartedAt,
-      operationCount: state.labelCollisionLayerIds.count
+      operationCount: dormedWorldLayerCount
     )
     state.pendingSourceCommitDataIdsBySourceId = [:]
     state.blockedEnterStartCommitFenceBySourceId.removeAll(keepingCapacity: true)
@@ -6337,15 +6283,40 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
   }
 
-  private func setLabelCollisionObstacleLayersVisible(
+  /// R2 (plans/map-presentation-epoch-and-participation.md): the presented world's GL
+  /// presence is DERIVED from the style — every layer reading one of the world's managed
+  /// sources — never a hand-maintained id list (the twin and resident-dot bugs were both
+  /// un-enrolled colliders). World hidden => world's layers hidden; an opacity-0 symbol
+  /// still claims its collision box, so dormancy must be `visibility`, flipped at the
+  /// presentation edges. Derived per call: edge-rare, and catches late-mounting layers.
+  private func presentedWorldLayerIds(state: InstanceState, mapboxMap: MapboxMap) -> [String] {
+    let worldSources: Set<String> = [
+      state.pinSourceId,
+      state.pinBundleSourceId,
+      state.pinInteractionSourceId,
+      state.dotSourceId,
+      state.labelCollisionSourceId,
+    ]
+    return mapboxMap.allLayerIdentifiers.compactMap { info in
+      let source = mapboxMap.layerProperty(for: info.id, property: "source").value as? String
+      guard let source, worldSources.contains(source) else { return nil }
+      return info.id
+    }
+  }
+
+  @discardableResult
+  private func setPresentedWorldLayersVisible(
     _ isVisible: Bool,
     for state: InstanceState,
     instanceId: String,
     reason: String
-  ) {
+  ) -> Int {
+    var flippedCount = 0
     do {
       try withMapboxMap(for: state.mapTag) { mapboxMap in
-        for layerId in state.labelCollisionLayerIds {
+        let layerIds = presentedWorldLayerIds(state: state, mapboxMap: mapboxMap)
+        flippedCount = layerIds.count
+        for layerId in layerIds {
           do {
             try mapboxMap.setLayerProperty(
               for: layerId,
@@ -6357,7 +6328,7 @@ final class SearchMapRenderController: RCTEventEmitter {
               "type": "error",
               "instanceId": instanceId,
               "message":
-                "label_collision_obstacle_layer_visibility_failed reason=\(reason) layer=\(layerId) visible=\(isVisible) error=\(error.localizedDescription)",
+                "presented_world_layer_visibility_failed reason=\(reason) layer=\(layerId) visible=\(isVisible) error=\(error.localizedDescription)",
             ])
           }
         }
@@ -6367,9 +6338,10 @@ final class SearchMapRenderController: RCTEventEmitter {
         "type": "error",
         "instanceId": instanceId,
         "message":
-          "label_collision_obstacle_layer_visibility_failed reason=\(reason) visible=\(isVisible) error=\(error.localizedDescription)",
+          "presented_world_layer_visibility_failed reason=\(reason) visible=\(isVisible) error=\(error.localizedDescription)",
       ])
     }
+    return flippedCount
   }
 
   private func scheduleDeferredDismissSourceCleanup(
@@ -9759,6 +9731,16 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   // Stage B (B2): project the resident candidate catalog to screen space against the
   // CURRENT camera and emit `map_native_visible_markers` when the on-screen set changed
+  /// THE one invalidation mechanism for presentation-derived state (epoch keying, R3).
+  /// Call at every derivation-input boundary: presentEnd (dismiss teardown), catalog
+  /// replace, explicit redecides (toggle, highlight). Never clear derived fields ad hoc.
+  private static func invalidatePresentationDerivations(
+    _ state: inout InstanceState, reason: String
+  ) {
+    state.presentationEpoch &+= 1
+    Self.lodLog("[LODDBG] presentationEpoch -> \(state.presentationEpoch) reason=\(reason)")
+  }
+
   // (mutating the stored signature). The single source of truth for "what is on screen
   // right now" — called both on every camera tick (handleNativeCameraChanged) AND
   // immediately after a fresh catalog/source frame arrives (setCandidateCatalog /
@@ -9815,7 +9797,10 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard !state.candidateCatalog.isEmpty else {
       return false
     }
-    let previousSignature = state.lastVisibleMarkerSetSignature ?? ""
+    let epochChanged = state.presentationEpoch != state.lastDecidedPresentationEpoch
+    // Across an epoch boundary the previous presentation's keys are not "previously
+    // visible" — hysteresis starts fresh, exactly as the old signature-nil reset behaved.
+    let previousSignature = epochChanged ? "" : (state.lastVisibleMarkerSetSignature ?? "")
     let previouslyVisible = previousSignature.isEmpty
       ? Set<String>()
       : Set(previousSignature.components(separatedBy: "|"))
@@ -9826,10 +9811,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
     let visibleSignature = onScreenKeys.sorted().joined(separator: "|")
     Self.lodLog("[LODDBG] proj reason=\(reason) onScreen=\(onScreenKeys.count) sigChanged=\(visibleSignature != (state.lastVisibleMarkerSetSignature ?? "")) forced=\(state.highlightedMarkerKeys.count)")
-    guard visibleSignature != state.lastVisibleMarkerSetSignature else {
+    guard epochChanged || visibleSignature != state.lastVisibleMarkerSetSignature else {
       return false
     }
     state.lastVisibleMarkerSetSignature = visibleSignature
+    state.lastDecidedPresentationEpoch = state.presentationEpoch
     // NATIVE-OWNED PROMOTION DECISION. A marker is a PIN iff it is in the top-`maxFullPins`
     // by rank among the on-screen markers (the native projection IS the visibility truth, with
     // spatial enter/exit hysteresis). Computed here per camera frame from data native already
