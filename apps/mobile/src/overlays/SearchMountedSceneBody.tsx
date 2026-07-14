@@ -104,8 +104,30 @@ const hasSearchSurfaceResultsBodyBundle = (
 ): bundle is SearchSurfaceResultsBodyBundle =>
   bundle?.sceneBodyContent != null && bundle.sceneBodyTransport != null;
 
+// SHEET-MOTION FENCE, list lane (eye-verified 2026-07-13): the press-up list-target
+// update (~28ms render + its Fabric mount, the widest press-up subtree) landed inside
+// the reveal slide's first frames and froze the UI-thread spring (newArch mounts block
+// the main thread). Same motion-keyed predicate as the map's structural-apply fence:
+// while the sheet is physically moving for the active redraw (sheetReady false), this
+// view keeps returning the HELD pre-motion snapshot — no re-render, no mount. The
+// surface-runtime subscription re-notifies on the sheetReady settle flip, and the lazy
+// getter re-reads the live authority then (latest-wins; intermediate updates coalesce).
+const isSearchSheetMotionFenceClosed = (): boolean => {
+  const redrawTransaction = getSearchSurfaceRuntime().getSnapshot().redrawTransaction;
+  return redrawTransaction != null && !redrawTransaction.readiness.sheetReady;
+};
+
+let motionFencedListDataSnapshot: SearchMountedResultsListDataSnapshot | null = null;
+
+const getMotionFencedListDataSnapshot = (): SearchMountedResultsListDataSnapshot => {
+  if (motionFencedListDataSnapshot == null || !isSearchSheetMotionFenceClosed()) {
+    motionFencedListDataSnapshot = getSearchMountedResultsListDataSnapshot();
+  }
+  return motionFencedListDataSnapshot;
+};
+
 const SEARCH_MOUNTED_RESULTS_LIST_DATA_AUTHORITY: SearchMountedResultsListDataAuthority = {
-  getSnapshot: getSearchMountedResultsListDataSnapshot,
+  getSnapshot: getMotionFencedListDataSnapshot,
   subscribe: (listener) => {
     const unsubscribe = subscribeSearchMountedResultsListDataSnapshot(() => {
       const startedAtMs = startSearchNavSwitchRuntimeAttributionSpan();
@@ -116,7 +138,13 @@ const SEARCH_MOUNTED_RESULTS_LIST_DATA_AUTHORITY: SearchMountedResultsListDataAu
         startedAtMs,
       });
     });
-    return unsubscribe;
+    // Fence-release leg: the sheetReady settle flip must re-notify so a data update
+    // held during the slide lands right after settle (the quiet window).
+    const unsubscribeFenceRelease = getSearchSurfaceRuntime().subscribe(listener);
+    return () => {
+      unsubscribe();
+      unsubscribeFenceRelease();
+    };
   },
 };
 
@@ -212,6 +240,11 @@ const getSearchMountedSceneBodySelectionSnapshot = (): SearchMountedSceneBodySel
   searchMountedSceneBodySelectionSnapshot;
 
 const publishSearchMountedSceneBodySelectionIfChanged = (): void => {
+  // NOTE (2026-07-13, tried-and-reverted): fencing THIS publish behind the sheet-motion
+  // fence deadlocks the whole presentation — the body bundle also feeds the scene
+  // shellSpec, which the sheet-motion target resolution needs (the motion executor sat
+  // in 'awaiting-target' forever and the reveal snap never dispatched). Any press-up
+  // diet here must split shell publication from body content first.
   const nextSnapshot = resolveSearchMountedSceneBodySelection();
   if (
     areSearchMountedSceneBodySelectionsEqual(searchMountedSceneBodySelectionSnapshot, nextSnapshot)
@@ -756,6 +789,45 @@ const SearchMountedResultsListTarget = React.memo(
         {listTarget}
       </React.Profiler>
     );
+  },
+  (previousProps, nextProps) => {
+    // Shallow compare (the default), instrumented: name the exact prop whose identity
+    // churn re-renders the LIST subtree (the measured 70ms/commit hot spot) so the
+    // churn source is provable from one scenario run.
+    let equal = true;
+    for (const key of [
+      'bodyDefaults',
+      'bodyScrollRuntime',
+      'listDataSnapshot',
+      'sceneBodyContent',
+      'sceneBodyTransport',
+    ] as const) {
+      if (!Object.is(previousProps[key], nextProps[key])) {
+        equal = false;
+        logPerfScenarioStackAttribution({
+          owner: 'search_mounted_results_list_target_props_diff',
+          path: `field:${key}`,
+        });
+        // Sub-field granularity for the composite specs: name the exact member whose
+        // identity churned so the producer's broken memo dep is provable in one run.
+        if (key === 'sceneBodyContent' || key === 'sceneBodyTransport') {
+          const previousValue = previousProps[key] as unknown as Record<string, unknown>;
+          const nextValue = nextProps[key] as unknown as Record<string, unknown>;
+          for (const subKey of new Set([
+            ...Object.keys(previousValue ?? {}),
+            ...Object.keys(nextValue ?? {}),
+          ])) {
+            if (!Object.is(previousValue?.[subKey], nextValue?.[subKey])) {
+              logPerfScenarioStackAttribution({
+                owner: 'search_mounted_results_list_target_props_diff',
+                path: `field:${key}.${subKey}`,
+              });
+            }
+          }
+        }
+      }
+    }
+    return equal;
   }
 );
 
@@ -846,9 +918,15 @@ const SearchMountedResultsListDataLeaf = React.memo(
       handleShowMoreExactDishes,
       handleShowMoreExactRestaurants,
     });
+    // IDENTITY-STABLE renderItem (perf attribution 2026-07-13): the admission-counter
+    // key used to ride the dep array, so EVERY rows re-prep minted a new renderItem →
+    // new sceneBodyContent → FlashList re-rendered every visible row even when the row
+    // data was snapshot-equal (~70ms/commit × 5 per cycle, the measured list-subtree
+    // cost center). The counter key is telemetry — read it through a ref.
+    const debugPreparationKeyRef = useLatestRef(listDataSnapshot.debugPreparationKey);
     const renderItem = React.useCallback(
       (info: { item: ResultsListItem; index: number }) => {
-        const admissionKey = listDataSnapshot.debugPreparationKey;
+        const admissionKey = debugPreparationKeyRef.current;
         markSearchResultsListAdmissionCounter(admissionKey, 'renderItemCount');
         if (isSearchResultCardRow(info.item)) {
           markSearchResultsListAdmissionCounter(admissionKey, 'restaurantCardRenderCount');
@@ -864,7 +942,7 @@ const SearchMountedResultsListDataLeaf = React.memo(
         }
         return baseRenderItem(info as never);
       },
-      [baseRenderItem, listDataSnapshot.debugPreparationKey]
+      [baseRenderItem, debugPreparationKeyRef]
     );
     const sceneBodyContent = React.useMemo<SearchMountedListBodyContentSpec>(
       () => ({

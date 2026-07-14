@@ -3,18 +3,34 @@ import { Prisma } from '@prisma/client';
 import { EntityScope, FilterClause, QueryPlan } from './dto/search-query.dto';
 import type { SearchExecutionDirectives } from './search-execution-directives';
 
-interface BuildRestaurantQueryOptions {
+// Open-now candidate depth. The lean candidate query (id + hours, no rich joins) fetches
+// the whole ranked set so JS openness evaluation runs BEFORE pagination — mirrors the map
+// coverage layer's depth (search-coverage.service.ts) so list openness == map openness.
+const OPEN_NOW_CANDIDATE_CAP = 50000;
+
+export interface BuildRestaurantQueryOptions {
   plan: QueryPlan;
   pagination: { skip: number; take: number };
   searchCenter?: { lat: number; lng: number } | null;
   topDishesLimit?: number;
   excludeRestaurantIds?: string[];
   directives?: SearchExecutionDirectives;
+  // PHASE 2 (open-now two-phase hydrate): restrict the rich query to a pre-selected page of
+  // restaurant ids, preserving their given order (array_position). When set, the caller has
+  // already computed the open page via the candidate query below, so the rich query just
+  // hydrates those rows. Undefined ⇒ the query is byte-identical to before.
+  restrictToRestaurantIds?: string[];
+  // PHASE 1 (open-now two-phase candidates): also emit a LEAN query (restaurant_id + hours,
+  // same conditions + ranking, NO page limit) so the executor can resolve openness over the
+  // full candidate set and paginate the OPEN subset. Off by default ⇒ zero overhead.
+  includeCandidateSql?: boolean;
 }
 
 interface BuildRestaurantQueryResult {
   dataSql: Prisma.Sql;
   countSql: Prisma.Sql;
+  // The Phase-1 lean candidate query — null unless includeCandidateSql was requested.
+  candidateSql: Prisma.Sql | null;
   preview: string;
   metadata: {
     boundsApplied: boolean;
@@ -101,7 +117,13 @@ export class SearchQueryBuilder {
       topDishesLimit = 3,
       excludeRestaurantIds = [],
       directives,
+      restrictToRestaurantIds,
+      includeCandidateSql = false,
     } = options;
+    const restrictIds =
+      restrictToRestaurantIds && restrictToRestaurantIds.length
+        ? restrictToRestaurantIds
+        : null;
     const filters = this.parseFilters(plan, directives);
     const activeMarketKey =
       typeof directives?.activeMarketKey === 'string' &&
@@ -169,9 +191,18 @@ export class SearchQueryBuilder {
         )}))`
       : '';
 
-    const combinedRestaurantWhereSql = Prisma.sql`${restaurantWhereSql} AND ${inventoryExistsSql} AND ${restaurantAttributeMatchSql} AND ${itemOrSignalMatchSql} ${excludeRestaurantsSql}`;
+    // PHASE 2: restrict eligibility to the pre-selected open page. The candidate query
+    // already applied every other condition, so this is a pure id membership narrow.
+    const restrictRestaurantsSql = restrictIds
+      ? Prisma.sql`AND (${this.buildInClause('r.entity_id', restrictIds)})`
+      : Prisma.sql``;
+    const restrictRestaurantsPreview = restrictIds
+      ? `AND (r.entity_id = ANY(${this.formatUuidArray(restrictIds)}))`
+      : '';
+
+    const combinedRestaurantWhereSql = Prisma.sql`${restaurantWhereSql} AND ${inventoryExistsSql} AND ${restaurantAttributeMatchSql} AND ${itemOrSignalMatchSql} ${excludeRestaurantsSql} ${restrictRestaurantsSql}`;
     const combinedRestaurantWherePreview =
-      `${restaurantWherePreview} AND ${inventoryExistsPreview} AND ${restaurantAttributeMatchPreview} AND ${itemOrSignalMatchPreview} ${excludeRestaurantsPreview}`.trim();
+      `${restaurantWherePreview} AND ${inventoryExistsPreview} AND ${restaurantAttributeMatchPreview} AND ${itemOrSignalMatchPreview} ${excludeRestaurantsPreview} ${restrictRestaurantsPreview}`.trim();
 
     // Build location conditions (bounds)
     const {
@@ -253,6 +284,15 @@ export class SearchQueryBuilder {
       plan.ranking.foodOrder,
     );
 
+    // PHASE 2: when hydrating a pre-selected page, preserve the order the candidate query
+    // ranked them in (array_position over the id list) rather than re-deriving the ranking.
+    const rankedRestaurantsOrderSql = restrictIds
+      ? Prisma.sql`array_position(${restrictIds}::uuid[], fr.entity_id)`
+      : Prisma.sql`${restTierOrder}${restaurantOrder.sql}`;
+    const rankedRestaurantsOrderPreview = restrictIds
+      ? `array_position('{...}'::uuid[], fr.entity_id)`
+      : `${restTierOrderPreview}${restaurantOrder.preview}`;
+
     // Build the ranked restaurants CTE with LATERAL JOIN for top dishes
     const rankedRestaurantsCte = Prisma.sql`
 ranked_restaurants AS (
@@ -299,7 +339,7 @@ ranked_restaurants AS (
   LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
 	  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
 	  ${minimumVotesWhereSql}
-	  ORDER BY ${restTierOrder}${restaurantOrder.sql}
+	  ORDER BY ${rankedRestaurantsOrderSql}
 	  OFFSET ${pagination.skip}
 	  LIMIT ${pagination.take}
 	)`;
@@ -320,7 +360,7 @@ ranked_restaurants AS (
   LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
 	  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
 	  ${minimumVotesWherePreview}
-	  ORDER BY ${restTierOrderPreview}${restaurantOrder.preview}
+	  ORDER BY ${rankedRestaurantsOrderPreview}
 	  OFFSET ${pagination.skip} LIMIT ${pagination.take}
 	)`.trim();
 
@@ -444,6 +484,37 @@ WITH
 	LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
 	${minimumVotesWhereSql}`;
 
+    // PHASE 1 (open-now): the LEAN candidate query. Same conditions, CTEs, and ranking as the
+    // rich list query, but selects only restaurant_id + hours (no LATERAL dish/tag joins) and
+    // is NOT page-limited (capped for safety). The executor evaluates openness over this full
+    // ranked set, then hydrates the open page via the rich query (restrictToRestaurantIds).
+    const candidateSql = includeCandidateSql
+      ? Prisma.sql`
+WITH
+  ${restaurantCte.sql},
+  ${geographicRestaurantsCte.sql},
+  ${filteredLocationsCte.sql},
+  ${selectedLocationsCte.sql},
+  ${restaurantVoteTotalsCte.sql},
+  ${publicRestaurantScoresCte.sql},
+  ranked_candidates AS (
+    SELECT
+      fr.entity_id AS restaurant_id,
+      sl.hours,
+      sl.utc_offset_minutes,
+      sl.time_zone
+    FROM filtered_restaurants fr
+    JOIN public_restaurant_scores prs ON prs.subject_id = fr.entity_id
+    JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
+    LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
+    ${minimumVotesWhereSql}
+    ORDER BY ${restTierOrder}${restaurantOrder.sql}
+    LIMIT ${OPEN_NOW_CANDIDATE_CAP}
+  )
+SELECT restaurant_id, hours, utc_offset_minutes, time_zone
+FROM ranked_candidates`
+      : null;
+
     const preview = `
 ${withPreview}
 SELECT rr.*, COALESCE(td.top_dishes, '[]') AS top_dishes, COALESCE(td.total_dish_count, 0) AS total_dish_count, COALESCE(tm.matched_tags, '[]') AS matched_tags, CASE WHEN ... THEN 'mixed' END AS match_evidence_type, (COALESCE(td.total_dish_count, 0) > 0) AS has_menu_items
@@ -456,6 +527,7 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
     return {
       dataSql,
       countSql,
+      candidateSql,
       preview,
       metadata: {
         boundsApplied,

@@ -1,9 +1,7 @@
 import type { BottomSheetSnap } from '../../overlays/bottomSheetMotionTypes';
 import type { OverlayKey } from '../../overlays/types';
-import { resolveAppOverlayRouteHeaderActionPolicy } from './app-overlay-route-types';
 import type {
   RouteSceneSwitchChromeVisibilityTarget,
-  RouteSceneSwitchHeaderActionModeTarget,
   RouteSceneSwitchSheetVisibilityTarget,
 } from './app-overlay-route-transition-contract';
 import { PRESERVE_ROUTE_SCENE_SWITCH_CHROME_TARGET } from './app-overlay-route-transition-contract';
@@ -16,7 +14,22 @@ export type AppRouteSheetScenePolicy = {
   allowedSnaps: readonly BottomSheetSnap[];
   requiresExpandedPresentation: boolean;
   canSwipeDismiss: boolean;
-  snapPersistence: 'none' | 'shared' | 'scene';
+  /**
+   * Per-scene `overlay:` snap persistence only. Root-page posture memory is NOT persistence —
+   * it lives in the two posture seats (`postureSeat` below); the old 'shared' lane was deleted
+   * with the dual shared-snap store collapse (plans/root-snap-law.md §Leg 4).
+   */
+  snapPersistence: 'none' | 'scene';
+  /**
+   * TWO-POSTURE LAW membership (plans/root-snap-law.md §Leg 2/§Leg 3): which posture seat this
+   * scene presents at when it is a NAV-PAGE (topLevelSwitch) target. 'home' = the search root's
+   * docked-polls posture; 'content' = the ONE shared posture of every other root page; null =
+   * not a root page (children/modals never resolve through a posture seat). This field is the
+   * SINGLE source of truth the seat resolver AND the descriptor table's topLevelSwitch rows
+   * derive from — a new root page declares its seat HERE (the exhaustive Record makes skipping
+   * the decision a compile error) and inherits the law by construction.
+   */
+  postureSeat: 'home' | 'content' | null;
 };
 
 type AppRouteScenePolicy = AppRouteSheetScenePolicy & {
@@ -33,6 +46,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: false,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: 'home',
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
   polls: {
@@ -46,7 +60,8 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     // `dismissDockedPolls`) still works since explicit snap targets aren't bounded by the
     // gesture upperBound.
     canSwipeDismiss: false,
-    snapPersistence: 'shared',
+    snapPersistence: 'none',
+    postureSeat: 'home',
     chromePolicy: { kind: 'search-chrome-from-snap' },
   },
   bookmarks: {
@@ -55,7 +70,8 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'shared',
+    snapPersistence: 'none',
+    postureSeat: 'content',
     chromePolicy: { kind: 'preserve' },
   },
   profile: {
@@ -64,7 +80,8 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
-    snapPersistence: 'shared',
+    snapPersistence: 'none',
+    postureSeat: 'content',
     chromePolicy: { kind: 'preserve' },
   },
   saveList: {
@@ -74,6 +91,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   pollCreation: {
@@ -83,6 +101,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   pollDetail: {
@@ -92,6 +111,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   restaurant: {
@@ -101,6 +121,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: false,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   sheetHost: {
@@ -109,7 +130,8 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     allowedSnaps: ['expanded', 'middle', 'collapsed', 'hidden'],
     requiresExpandedPresentation: false,
     canSwipeDismiss: false,
-    snapPersistence: 'shared',
+    snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   price: {
@@ -119,6 +141,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: false,
     canSwipeDismiss: true,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   // ── Stub-pass child scenes (plans/page-registry.md §1) — clone the saveList policy.
@@ -129,6 +152,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   listDetail: {
@@ -138,6 +162,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   followList: {
@@ -147,6 +172,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   notifications: {
@@ -156,6 +182,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   settings: {
@@ -165,6 +192,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   editProfile: {
@@ -174,6 +202,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   // W2 (page-registry §7.4): the post page — full-page child, same policy family.
@@ -184,6 +213,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   // W3 messaging (§4.1/§7.9): both full-page children — tapping Message/inbox
@@ -196,6 +226,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   dmSession: {
@@ -205,6 +236,7 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: true,
     canSwipeDismiss: false,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
   scoreInfo: {
@@ -214,9 +246,17 @@ const APP_ROUTE_SCENE_POLICY_BY_KEY: Record<OverlayKey, AppRouteScenePolicy> = {
     requiresExpandedPresentation: false,
     canSwipeDismiss: true,
     snapPersistence: 'none',
+    postureSeat: null,
     chromePolicy: { kind: 'preserve' },
   },
 };
+
+/**
+ * The runtime enumeration of every OverlayKey — derived from the exhaustive policy Record, so
+ * it grows with the type by construction (no parallel hand list). Consumers: descriptor-table
+ * row derivation, exhaustiveness sweeps.
+ */
+export const APP_ROUTE_SCENE_KEYS = Object.keys(APP_ROUTE_SCENE_POLICY_BY_KEY) as OverlayKey[];
 
 export const resolveAppRouteSheetScenePolicy = (sceneKey: OverlayKey): AppRouteSheetScenePolicy => {
   const {
@@ -226,6 +266,7 @@ export const resolveAppRouteSheetScenePolicy = (sceneKey: OverlayKey): AppRouteS
     requiresExpandedPresentation,
     canSwipeDismiss,
     snapPersistence,
+    postureSeat,
   } = APP_ROUTE_SCENE_POLICY_BY_KEY[sceneKey];
   return {
     sheetTargetGroup,
@@ -234,6 +275,7 @@ export const resolveAppRouteSheetScenePolicy = (sceneKey: OverlayKey): AppRouteS
     requiresExpandedPresentation,
     canSwipeDismiss,
     snapPersistence,
+    postureSeat,
   };
 };
 
@@ -276,16 +318,5 @@ export const resolveAppRouteSceneSheetVisibilityTarget = ({
   return snapTarget === 'hidden' ? 'hidden' : 'visible';
 };
 
-export const resolveAppRouteSceneHeaderActionModeTarget = (
-  targetSceneKey: OverlayKey
-): RouteSceneSwitchHeaderActionModeTarget => {
-  const sheetHostSceneKey = resolveAppRouteSceneSheetHostSceneKey(targetSceneKey);
-  if (sheetHostSceneKey == null) {
-    return 'preserve';
-  }
-  const headerActionPolicy = resolveAppOverlayRouteHeaderActionPolicy(targetSceneKey);
-  if (headerActionPolicy === 'follow-collapse') {
-    return 'follow-collapse';
-  }
-  return headerActionPolicy === 'fixed-close' ? 'fixed-close' : 'preserve';
-};
+// Leg 6 (§4): resolveAppRouteSceneHeaderActionModeTarget is DELETED — the header action is
+// host-owned and PF-derived (resolveHeaderNavAction); headerActionPolicy died with it.

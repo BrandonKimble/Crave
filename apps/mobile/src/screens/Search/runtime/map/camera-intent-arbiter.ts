@@ -124,6 +124,14 @@ export class CameraIntentArbiter {
       if (this.gestureActive && intent.allowDuringGesture !== true) {
         return false;
       }
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[CAMCOMMIT] center=${JSON.stringify(intent.center)} zoom=${intent.zoom?.toFixed?.(2)} ` +
+            `pad=${JSON.stringify(intent.padding ?? null)} mode=${intent.animationMode ?? 'none'} ` +
+            `token=${intent.requestToken ?? 'null'}`
+        );
+      }
       const animationMode = intent.animationMode ?? 'none';
       const animation = {
         mode: animationMode,

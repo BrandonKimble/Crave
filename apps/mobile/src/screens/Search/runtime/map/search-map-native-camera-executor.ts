@@ -103,7 +103,15 @@ export const useSearchMapNativeCameraExecutor = (): SearchMapNativeCameraExecuto
           hostKey: SEARCH_MAP_CAMERA_HOST_KEY,
           stop: buildNativeCameraStopPayload(command),
         })
-        .catch(() => {
+        .catch((error: unknown) => {
+          if (__DEV__) {
+            // eslint-disable-next-line no-console
+            console.log(
+              `[CAMCOMMIT] native executeCameraCommand REJECTED: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            );
+          }
           command.onCommandRejected?.(command.completionId ?? null);
         });
       return true;

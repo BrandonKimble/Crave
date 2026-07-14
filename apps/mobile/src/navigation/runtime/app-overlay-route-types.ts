@@ -25,7 +25,9 @@ export type AppOverlayRouteSheetPolicy =
 
 export type AppOverlayRouteChromePolicy = 'searchChrome' | 'preserve' | 'modal';
 
-export type AppOverlayRouteHeaderActionPolicy = 'fixed-close' | 'follow-collapse' | 'preserve';
+// Leg 6 (§4): headerActionPolicy is DELETED — the header action derives from route ROLE on the
+// PresentationFrame (resolveHeaderNavAction); 'follow-collapse' had been visually dead since
+// e9bd105a pinned the polls button.
 
 export type AppOverlayRouteMetadata = {
   role: AppOverlayRouteRole;
@@ -37,7 +39,6 @@ export type AppOverlayRouteMetadata = {
   staticSceneInput: boolean;
   sheetPolicy: AppOverlayRouteSheetPolicy;
   chromePolicy: AppOverlayRouteChromePolicy;
-  headerActionPolicy: AppOverlayRouteHeaderActionPolicy;
 };
 
 export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
@@ -51,7 +52,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: false,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'searchChrome',
-    headerActionPolicy: 'fixed-close',
   },
   sheetHost: {
     role: 'shell',
@@ -63,7 +63,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: false,
     sheetPolicy: 'routeShell',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   polls: {
     role: 'topLevel',
@@ -75,7 +74,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: false,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'searchChrome',
-    headerActionPolicy: 'follow-collapse',
   },
   bookmarks: {
     role: 'topLevel',
@@ -87,7 +85,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   profile: {
     role: 'topLevel',
@@ -99,7 +96,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   restaurant: {
     role: 'child',
@@ -111,7 +107,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: false,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   saveList: {
     role: 'child',
@@ -123,7 +118,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   price: {
     role: 'modalExtension',
@@ -135,7 +129,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: false,
     sheetPolicy: 'modalExtension',
     chromePolicy: 'modal',
-    headerActionPolicy: 'preserve',
   },
   scoreInfo: {
     role: 'modalExtension',
@@ -147,7 +140,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: false,
     sheetPolicy: 'modalExtension',
     chromePolicy: 'modal',
-    headerActionPolicy: 'preserve',
   },
   pollCreation: {
     role: 'child',
@@ -159,7 +151,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: false,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   pollDetail: {
     role: 'child',
@@ -171,7 +162,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: false,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   // ── Stub-pass child scenes (plans/page-registry.md §1) — metadata + policy only; no entry
   // points yet. requiresOwnerSceneKey is FALSE on all of them for now.
@@ -186,7 +176,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   listDetail: {
     role: 'child',
@@ -198,7 +187,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   followList: {
     role: 'child',
@@ -210,7 +198,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   notifications: {
     role: 'child',
@@ -222,7 +209,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   settings: {
     role: 'child',
@@ -234,7 +220,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   editProfile: {
     role: 'child',
@@ -246,7 +231,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   // W2 (§7.4): the post page — the photo funnel's terminal child scene.
   postPhotos: {
@@ -259,7 +243,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   // W3 messaging (plans/w3-messaging-design.md §4.1): the inbox — child with
   // SINGLETON semantics (no params; re-push pops-to-existing, standard child behavior).
@@ -273,7 +256,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
   // W3 messaging (§4.1): the DM thread — ENTRY-KEYED per conversation (RT-19:
   // child role ⇒ entry-keyed mounts; params flow FROM THE ENTRY as props, C2).
@@ -289,7 +271,6 @@ export const APP_OVERLAY_ROUTE_METADATA_BY_KEY = {
     staticSceneInput: true,
     sheetPolicy: 'sharedPhysicalSheet',
     chromePolicy: 'preserve',
-    headerActionPolicy: 'fixed-close',
   },
 } as const satisfies Record<OverlayKey, AppOverlayRouteMetadata>;
 
@@ -432,11 +413,6 @@ export const selectOverlayRouteKeysWhere = (
 export const isAppOverlayRouteSceneSwitchKey = (routeKey: OverlayKey): boolean =>
   APP_OVERLAY_ROUTE_SCENE_SWITCH_KEY_SET.has(routeKey);
 
-export const resolveAppOverlayRouteHeaderActionPolicy = (
-  routeKey: OverlayKey
-): AppOverlayRouteHeaderActionPolicy =>
-  APP_OVERLAY_ROUTE_METADATA_BY_KEY[routeKey].headerActionPolicy;
-
 export const createPollCreationChildRouteParams = (
   params?: OverlayRouteParamsMap['pollCreation']
 ): NonNullable<OverlayRouteParamsMap['pollCreation']> => ({
@@ -526,6 +502,13 @@ export type OverlayRouteParamsMap = {
     targetUserId?: string | null;
     /** True only when the entry came from an invite-intent link (crave://l/<slug>?join=1). */
     joinIntent?: boolean | null;
+    /** Leg 9 (listdetail-ideal §2a): warm-seed for the persistent-header title — the tap
+     *  label paints the list name at frame 1; slug opens resolve it at meta time. */
+    title?: string | null;
+    /** Wave-4 §3: TRUE when this entry rode the listWorld composite (the executor
+     *  dispatched the world half alongside the push) — the panel then reads the
+     *  presented world's results for the default slice instead of self-fetching. */
+    worldBacked?: boolean | null;
   };
   followList?: {
     userId?: string | null;

@@ -1,11 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useSharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
-import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
-import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
@@ -35,9 +32,20 @@ type ProfileIdentityChromeProps = {
   identityResolved: boolean;
   onOpenSettings: () => void;
   onOpenMessages: () => void;
+  onOpenFollowList: (mode: 'followers' | 'following') => void;
 };
 
-const PROFILE_STAT_LABELS = ['Polls created', 'Polls contributed', 'Followers', 'Following'];
+// Followers/Following are TAPPABLE (→ followList child push, same as UserProfilePanel's
+// StatCells); the poll counts are plain readouts.
+const PROFILE_STATS: ReadonlyArray<{
+  label: string;
+  followMode?: 'followers' | 'following';
+}> = [
+  { label: 'Polls created' },
+  { label: 'Polls contributed' },
+  { label: 'Followers', followMode: 'followers' },
+  { label: 'Following', followMode: 'following' },
+];
 
 const ProfileIdentityChrome = React.memo(
   ({
@@ -52,6 +60,7 @@ const ProfileIdentityChrome = React.memo(
     identityResolved,
     onOpenSettings,
     onOpenMessages,
+    onOpenFollowList,
   }: ProfileIdentityChromeProps) => {
     const statValues = [pollsCreatedCount, pollsContributedCount, followersCount, followingCount];
     return (
@@ -113,20 +122,38 @@ const ProfileIdentityChrome = React.memo(
         {/* Foundation cutout (first consumer): the metrics box is a HOLE in the scene's white
             layer — the shared frost shows through as its background (no opaque bg of its own). */}
         <FrostCutout borderRadius={16} style={styles.statsRow}>
-          {PROFILE_STAT_LABELS.map((label, index) => (
-            <View key={label} style={styles.statBlock}>
-              {!identityResolved ? (
-                <SkeletonBox width={28} height={18} style={styles.identitySkeletonStat} />
-              ) : (
-                <Text variant="subtitle" weight="bold" style={styles.statValue}>
-                  {statValues[index]}
+          {PROFILE_STATS.map(({ label, followMode }, index) => {
+            const statContent = (
+              <>
+                {!identityResolved ? (
+                  <SkeletonBox width={28} height={18} style={styles.identitySkeletonStat} />
+                ) : (
+                  <Text variant="subtitle" weight="bold" style={styles.statValue}>
+                    {statValues[index]}
+                  </Text>
+                )}
+                <Text variant="caption" style={styles.statLabel}>
+                  {label}
                 </Text>
-              )}
-              <Text variant="caption" style={styles.statLabel}>
-                {label}
-              </Text>
-            </View>
-          ))}
+              </>
+            );
+            return followMode != null ? (
+              <Pressable
+                key={label}
+                style={styles.statBlock}
+                onPress={() => onOpenFollowList(followMode)}
+                accessibilityRole="button"
+                accessibilityLabel={label}
+                testID={`profile-${followMode}`}
+              >
+                {statContent}
+              </Pressable>
+            ) : (
+              <View key={label} style={styles.statBlock}>
+                {statContent}
+              </View>
+            );
+          })}
         </FrostCutout>
       </>
     );
@@ -291,31 +318,12 @@ const ProfilePersistentHeaderTitle = React.memo(() => (
 
 ProfilePersistentHeaderTitle.displayName = 'ProfilePersistentHeaderTitle';
 
-const ProfilePersistentHeaderAction = React.memo(() => {
-  const { setRootRoute } = useAppOverlayRouteController();
-  const localHeaderActionProgress = useSharedValue(0);
-
-  const handleClose = React.useCallback(() => {
-    setRootRoute('search');
-  }, [setRootRoute]);
-
-  return (
-    <OverlayHeaderActionButton
-      progress={localHeaderActionProgress}
-      onPress={handleClose}
-      accessibilityLabel="Close profile"
-      accentColor={themeColors.primary}
-      closeColor="#000000"
-    />
-  );
-});
-
-ProfilePersistentHeaderAction.displayName = 'ProfilePersistentHeaderAction';
-
+// Leg 6 (§4 HeaderNavAction): the profile X is DELETED — parents are non-dismissable (the
+// host-owned plus sits in the seat; profile's catch-all create is OWNER-OPEN, a dev-bark stub
+// in the header host until the owner rules on the create-sheet contents).
 // Module-scope registration (house pattern — origin-scene-live-state-registry).
 registerPersistentHeaderDescriptor('profile', {
   Title: ProfilePersistentHeaderTitle,
-  Action: ProfilePersistentHeaderAction,
 });
 
 const styles = StyleSheet.create({

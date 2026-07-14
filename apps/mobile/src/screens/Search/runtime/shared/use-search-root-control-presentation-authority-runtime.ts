@@ -13,10 +13,7 @@ import { useSearchRootForegroundInputAuthorityRuntime } from './use-search-root-
 import { useSearchRootResultsInteractionAuthorityRuntime } from './use-search-root-results-interaction-authority-runtime';
 import { useSearchRootResultsPresentationAuthorityRuntime } from './use-search-root-results-presentation-authority-runtime';
 import type { SearchChromeScalarSurfaceRuntime } from '../native/search-chrome-scalar-surface-runtime';
-import type {
-  SearchRootClearRestoreAuthorityRuntime,
-  SearchRootMutationCancelAuthorityRuntime,
-} from './search-root-control-ports-runtime-contract';
+import type { SearchRootClearRestoreAuthorityRuntime } from './search-root-control-ports-runtime-contract';
 import type { SearchRootSessionCoreLane } from './use-search-root-session-runtime-contract';
 import type { ResultsSurfacePolicyController } from './results-surface-policy-controller';
 import type { SearchForegroundPolicyPublicationAuthority } from './search-foreground-policy-publication-authority';
@@ -25,10 +22,8 @@ type UseSearchRootControlPresentationAuthorityRuntimeArgs = {
   sessionCoreLane: SearchRootSessionCoreLane;
   stateFoundationLane: SearchRootStateFoundationLane;
   rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
-  mutationCancelAuthorityRuntime: SearchRootMutationCancelAuthorityRuntime;
   profileBridgeAuthorityRuntime: SearchRootProfileBridgeAuthorityRuntime;
   clearRestoreAuthorityRuntime: SearchRootClearRestoreAuthorityRuntime;
-  cancelActiveSearchRequest: () => void;
   autocompleteAuthorityRuntime: SearchRootAutocompleteAuthorityRuntime;
   resultsSurfacePolicyController?: ResultsSurfacePolicyController;
   foregroundPolicyPublicationAuthority?: SearchForegroundPolicyPublicationAuthority;
@@ -46,10 +41,8 @@ export const useSearchRootControlPresentationAuthorityRuntime = ({
   sessionCoreLane,
   stateFoundationLane,
   rootOverlayFoundationRuntime,
-  mutationCancelAuthorityRuntime,
   profileBridgeAuthorityRuntime,
   clearRestoreAuthorityRuntime,
-  cancelActiveSearchRequest,
   autocompleteAuthorityRuntime,
   resultsSurfacePolicyController,
   foregroundPolicyPublicationAuthority,
@@ -60,10 +53,8 @@ export const useSearchRootControlPresentationAuthorityRuntime = ({
     sessionCoreLane,
     stateFoundationLane,
     rootOverlayFoundationRuntime,
-    mutationCancelAuthorityRuntime,
     profileBridgeAuthorityRuntime,
     clearRestoreAuthorityRuntime,
-    cancelActiveSearchRequest,
     resultsSurfacePolicyController,
     foregroundPolicyPublicationAuthority,
     searchChromeScalarSurfaceRuntime,

@@ -529,19 +529,3 @@ It is a TRANSITIONAL HYBRID that must FOLD INTO the primitive, not evolve in pla
 5. **Micro-cruft for the leg-2 delete list**: unused `styles.stripSegment`
    (BookmarksPanel.tsx:1337-1339), dead `styles.listHeader` (PollsPanel.tsx:694-696),
    the fossil scrollHeader lanes (3.2).
-
-## Deliverable 4 — Header-mount design (+ git archaeology)
-
-(in progress)
-
-## Deliverable 5 — Content-only choreography foundation
-
-(in progress)
-
-## Deliverable 6 — Edit-mode readiness
-
-(in progress)
-
-## Deliverable 7 — Recommended build sequence
-
-(in progress)

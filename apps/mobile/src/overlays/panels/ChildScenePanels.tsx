@@ -1,13 +1,11 @@
 import React from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import Constants from 'expo-constants';
-import { X as LucideX } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Text } from '../../components';
 import { announceFailureIfOnline } from '../../components/app-modal-store';
 import { MANAGE_SUBSCRIPTIONS_URL, PRIVACY_URL, TERMS_URL } from '../../constants/legalLinks';
-import { overlaySheetStyles } from '../overlaySheetStyles';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useAccountActionsRuntime } from './runtime/use-account-actions-runtime';
@@ -20,6 +18,7 @@ import { EditProfilePanelBody } from './EditProfilePanel';
 import { ListDetailPanelBody } from './ListDetailPanel';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
+import SquircleSpinner from '../../components/SquircleSpinner';
 
 // ─── Child-scene panel hub ───────────────────────────────────────────────────────────────────
 // The Settings scene body lives here, plus the re-export + persistent-header registration seam
@@ -130,10 +129,11 @@ const BlockedUsersSection = () => {
   return (
     <View testID="settings-blocked-users">
       {blocksQuery.isPending ? (
-        // Settings root renders instantly (§7.7 — no skeleton); the one async slice keeps
-        // its footprint to a quiet inline spinner row.
+        // Settings root renders instantly (§7.7); the one async slice keeps a quiet inline
+        // squircle row (leg 6: raw ActivityIndicator banned — skeletons for bodies, squircle
+        // for inline/button loading).
         <View style={styles.blockedStateRow}>
-          <ActivityIndicator size="small" color="#94a3b8" />
+          <SquircleSpinner size={18} color="#94a3b8" />
         </View>
       ) : blocksQuery.isError ? (
         <View style={styles.blockedStateRow}>
@@ -301,33 +301,12 @@ const createChildPersistentHeaderTitle = (sceneKey: ChildSceneKey): React.Compon
   return ChildPersistentHeaderTitle;
 };
 
-const createChildPersistentHeaderAction = (sceneKey: ChildSceneKey): React.ComponentType => {
-  // Generic child-scene close — the same closeActiveRoute action the pollDetail/pollCreation
-  // persistent headers use (app-wide route controller).
-  const ChildPersistentHeaderAction = React.memo(() => {
-    const { closeActiveRoute } = useAppOverlayRouteController();
-    return (
-      <Pressable
-        onPress={closeActiveRoute}
-        accessibilityRole="button"
-        accessibilityLabel={`Close ${CHILD_SCENE_TITLES[sceneKey].toLowerCase()}`}
-        style={overlaySheetStyles.closeButton}
-        hitSlop={8}
-      >
-        <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
-          <LucideX size={20} color="#000000" strokeWidth={2.5} />
-        </View>
-      </Pressable>
-    );
-  });
-  ChildPersistentHeaderAction.displayName = `ChildPersistentHeaderAction(${sceneKey})`;
-  return ChildPersistentHeaderAction;
-};
-
+// Leg 6 (§4 HeaderNavAction): the per-scene close-X factory is DELETED — the persistent header
+// host owns the ONE plus↔X action control; child scenes get the X (and its close press) by
+// role derivation, no per-scene registration.
 const registerChildHeader = (sceneKey: ChildSceneKey): void => {
   registerPersistentHeaderDescriptor(sceneKey, {
     Title: createChildPersistentHeaderTitle(sceneKey),
-    Action: createChildPersistentHeaderAction(sceneKey),
   });
 };
 

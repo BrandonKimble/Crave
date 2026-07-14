@@ -81,13 +81,17 @@ function resolvePollModeFilter(
   }
 }
 
-const POLL_THIS_WEEK_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const POLL_TIME_WINDOW_MS: Partial<Record<PollListTime, number>> = {
+  // Rolling windows (wave-2 §3: Today / This week / This month under the Top sort).
+  [PollListTime.today]: 24 * 60 * 60 * 1000,
+  [PollListTime.this_week]: 7 * 24 * 60 * 60 * 1000,
+  [PollListTime.this_month]: 30 * 24 * 60 * 60 * 1000,
+};
 
-/** Map the §6 Time filter to a `launchedAt >=` cutoff (null = All Time = no filter). */
+/** Map the Time period to a `launchedAt >=` cutoff (null = All Time = no filter). */
 function resolvePollTimeCutoff(time: PollListTime | undefined): Date | null {
-  return time === PollListTime.this_week
-    ? new Date(Date.now() - POLL_THIS_WEEK_WINDOW_MS)
-    : null;
+  const windowMs = time != null ? POLL_TIME_WINDOW_MS[time] : undefined;
+  return windowMs != null ? new Date(Date.now() - windowMs) : null;
 }
 
 @Injectable()
@@ -1377,6 +1381,13 @@ export class PollsService {
       .sort((a, b) => b.distinctEndorsers - a.distinctEndorsers);
 
     await this.prisma.$transaction(async (tx) => {
+      // Serialize rebuilds PER POLL (2026-07-13): delete+createMany is not safe under
+      // concurrency — the hourly cron racing an interaction-time rebuild (or a second
+      // API process's cron) yields delete/delete/insert/insert → unique violation on
+      // (poll_id, subject_type, subject_id), which silently starved the leaderboard
+      // every hour. A transaction-scoped advisory lock makes concurrent rebuilds of
+      // the SAME poll queue instead of colliding; different polls stay parallel.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${pollId}))`;
       await tx.pollLeaderboardEntry.deleteMany({ where: { pollId } });
       if (ranked.length) {
         await tx.pollLeaderboardEntry.createMany({

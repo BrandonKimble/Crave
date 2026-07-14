@@ -15,6 +15,16 @@
 // detent (preserveLiveY when the shared sheet sat usable) to TRUE PER-PAGE memory — snapTo the
 // TARGET scene's own remembered detent when usable (middle/expanded), else the fallback. The
 // oracle's bookmarks/profile branch and the sweep's snap dimension were updated in-change.
+//
+// INTENTIONAL TUNE 2026-07-12 (owner ratified — THE TWO-POSTURE LAW, plans/root-snap-law.md
+// §Leg 2): topLevelSwitch now resolves to the TARGET side's posture seat ('postureSeat'):
+// home (search/polls) and content (all other root pages, ONE shared seat) each remember
+// wherever the user's finger last put the sheet — collapsed included — falling to the side's
+// cold-start seed (home 'collapsed', content 'expanded') only for hidden/unset. This replaced
+// the 2026-07-01 map-first `snapTo collapsed` home rows and the 2026-07-02 per-tab memory rows.
+// The oracle's topLevelSwitch branch was updated in-change. NOTE: the sweep feeds ONE remembered
+// value to every scene, which under seats is exact for the motion decision (the seat READ is the
+// resolver's job; seat aliasing/sharing is pinned by the snap-session runtime, not this oracle).
 
 import type { BottomSheetSnap } from '../../overlays/bottomSheetMotionTypes';
 import type { OverlayKey } from '../../overlays/types';
@@ -27,6 +37,11 @@ import {
   lookupDefaultSheetMotionDescriptorRow,
   SHEET_MOTION_DESCRIPTOR_TABLE,
 } from './app-route-sheet-motion-descriptor-table';
+import { APP_ROOT_NAV_ITEMS } from './app-route-root-nav-items';
+import {
+  HOME_SEAT_CARRIER_SCENE_KEY,
+  resolveNavTargetPostureSeat,
+} from './app-route-sheet-snap-session-runtime';
 
 // Exhaustiveness is COMPILE-TIME-TIED to the unions via `satisfies Record<Union, true>`:
 // adding a scene key or transition kind without extending these maps is a tsc error, so the
@@ -157,17 +172,23 @@ const legacyOracleSheetMotionPlan = ({
           : { kind: 'snapTo', snap: 'middle' };
       }
       return { kind: 'preserveLiveY' };
-    case 'topLevelSwitch':
-      if (targetSceneKey === 'search' || targetSceneKey === 'polls') {
-        return { kind: 'snapTo', snap: 'collapsed' };
-      }
-      if (targetSceneKey === 'bookmarks' || targetSceneKey === 'profile') {
-        // 2026-07-02 intentional tune: TRUE per-page memory (see header).
-        return rememberedSceneSnap === 'middle' || rememberedSceneSnap === 'expanded'
-          ? { kind: 'snapTo', snap: rememberedSceneSnap }
-          : { kind: 'snapTo', snap: 'expanded' };
+    case 'topLevelSwitch': {
+      // 2026-07-12 intentional tune (see header): the TWO-POSTURE LAW. Every root page snaps
+      // to its side's posture seat; collapsed is a first-class remembered posture; hidden/
+      // unset fall to the side's cold-start seed (home collapsed, content expanded).
+      const isHomeSide = targetSceneKey === 'search' || targetSceneKey === 'polls';
+      if (isHomeSide || targetSceneKey === 'bookmarks' || targetSceneKey === 'profile') {
+        const isUsableSeatSnap =
+          rememberedSceneSnap === 'collapsed' ||
+          rememberedSceneSnap === 'middle' ||
+          rememberedSceneSnap === 'expanded';
+        return {
+          kind: 'snapTo',
+          snap: isUsableSeatSnap ? rememberedSceneSnap : isHomeSide ? 'collapsed' : 'expanded',
+        };
       }
       return { kind: 'preserveLiveY' };
+    }
     case 'gesture':
     case 'modalClose':
     case 'bootstrap':
@@ -243,5 +264,32 @@ describe('sheet-motion descriptor table (P6 step 1)', () => {
       expect(seen.has(key)).toBe(false);
       seen.add(key);
     }
+  });
+});
+
+// ─── TWO-POSTURE-LAW EXHAUSTIVENESS SWEEP (root-snap-law.md §Leg 3) ─────────────────────────
+// The seat resolver and the topLevelSwitch rows are DERIVED from the scene-policy registry's
+// `postureSeat` field; this sweep pins the derivation against the REAL tab set: every root page
+// reachable by a nav press (APP_ROOT_NAV_ITEMS + the home carrier scene) must resolve a posture
+// seat and a 'postureSeat' descriptor rule. A fourth tab added without a `postureSeat`
+// declaration turns this RED instead of silently opting out of the law (RED-proven in-leg by
+// temporarily nulling profile's postureSeat: both expectations failed).
+describe('two-posture law exhaustiveness (nav tab set vs posture seats)', () => {
+  const navReachableSceneKeys: OverlayKey[] = [
+    ...APP_ROOT_NAV_ITEMS.map((item) => item.key),
+    HOME_SEAT_CARRIER_SCENE_KEY,
+  ];
+
+  it.each(navReachableSceneKeys)('%s resolves a posture seat', (sceneKey) => {
+    expect(resolveNavTargetPostureSeat(sceneKey)).not.toBeNull();
+  });
+
+  it.each(navReachableSceneKeys)('%s topLevelSwitch resolves the postureSeat rule', (sceneKey) => {
+    const row = lookupDefaultSheetMotionDescriptorRow({
+      fromSceneKey: 'settings',
+      toSceneKey: sceneKey,
+      transitionKind: 'topLevelSwitch',
+    });
+    expect(row.motion.kind).toBe('postureSeat');
   });
 });

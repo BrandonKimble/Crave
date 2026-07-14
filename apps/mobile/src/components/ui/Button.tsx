@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   PressableProps,
   PressableStateCallbackType,
@@ -12,6 +11,7 @@ import {
 } from 'react-native';
 import { colors as themeColors } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
+import SquircleSpinner from '../SquircleSpinner';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 
@@ -102,7 +102,9 @@ export const Button: React.FC<ButtonProps> = ({
       {...pressableProps}
     >
       {isLoading ? (
-        <ActivityIndicator color={variant === 'ghost' ? PRIMARY_BUTTON_COLOR : '#ffffff'} />
+        // The squircle is the ONE sanctioned button-loading affordance (wave-2 charter §1.6/§5);
+        // every Button consumer inherits it from this shared primitive.
+        <SquircleSpinner size={20} color={variant === 'ghost' ? PRIMARY_BUTTON_COLOR : '#ffffff'} />
       ) : (
         <Text style={[styles.label, labelVariants[variant], labelStyle]}>{label}</Text>
       )}

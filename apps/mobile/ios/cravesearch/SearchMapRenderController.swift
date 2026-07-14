@@ -744,6 +744,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     // Throttle signature so the native-visible-marker emit only fires when the
     // on-screen set actually changes (avoids redundant per-tick bridge traffic).
     var lastVisibleMarkerSetSignature: String?
+    // Patch-baseline proof (lens-transport contract 3): the last JS source revision
+    // ACTUALLY APPLIED per source id — the truth a patch's baseSourceRevision must match.
+    var appliedJsSourceRevisionBySourceId: [String: String] = [:]
     // R3 (plans/map-presentation-epoch-and-participation.md): derived-state staleness is
     // DETECTED by keying, never remembered by per-edge cleanup. The epoch bumps at every
     // derivation-input boundary (invalidatePresentationDerivations); the decide guard
@@ -1695,6 +1698,12 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
 
       let sourceDeltas = payload["sourceDeltas"] as? [[String: Any]]
+      // Lens transport S-1b (plans/map-world-lens-transport.md §7.2): when present, the
+      // frame ships ONLY the pins family; native synthesizes pinInteractions/dots/
+      // labelCollisions deltas from the pins delta + these per-feature diffKey/extras
+      // maps (diffKeys stay JS-computed — replicating JS float formatting in Swift is
+      // a trap; features materialize natively as pure functions of the pin bundle).
+      let derivedFamilyTransport = payload["derivedFamilyTransport"] as? [String: Any]
       let markerRoleFrame = payload["markerRoleFrame"] as? [String: Any]
       let highlightedMarkerKey = payload["highlightedMarkerKey"] as? String
       let highlightedMarkerKeys =
@@ -1802,6 +1811,7 @@ final class SearchMapRenderController: RCTEventEmitter {
               executionBatchId: executionBatchId,
               visualFrameTransaction: visualFrameTransaction,
               sourceDeltas: shouldApplySourcePayload ? sourceDeltas : nil,
+              derivedFamilyTransport: shouldApplySourcePayload ? derivedFamilyTransport : nil,
               markerRoleFrame: shouldApplySourcePayload ? markerRoleFrame : nil
             )
             attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
@@ -1914,10 +1924,26 @@ final class SearchMapRenderController: RCTEventEmitter {
         if didSyncResidentFrame, var state = self.instances[instanceId] {
           let emitStartedAt = CACurrentMediaTime() * 1000
           let mountedSourceRevisions = self.currentMountedSourceRevisions(state: state)
-          let sourceRevisions =
+          let publishesResidentSnapshot =
             Self.doesSourceAdmissionPublishResidentSnapshot(sourceAdmissionOutcome)
-              ? frameSourceRevisions
-              : mountedSourceRevisions
+          let sourceRevisions =
+            publishesResidentSnapshot ? frameSourceRevisions : mountedSourceRevisions
+          if publishesResidentSnapshot {
+            // Ledger honesty (wave-4 §3 root cause of the patch-baseline reject class): the
+            // revisions echoed in a resident-publishing ack ARE JS's next patch base — the
+            // applied ledger must equal what this ack asserts, including on reuse/short-circuit
+            // paths that never ran a delta (sources_reused_resident). A ledger that lags its
+            // own ack strands every later patch in a permanent baseline-mismatch reject loop.
+            state.appliedJsSourceRevisionBySourceId[state.pinSourceId] =
+              frameSourceRevisions["pins"] ?? ""
+            state.appliedJsSourceRevisionBySourceId[state.pinInteractionSourceId] =
+              frameSourceRevisions["pinInteractions"] ?? ""
+            state.appliedJsSourceRevisionBySourceId[state.dotSourceId] =
+              frameSourceRevisions["dots"] ?? ""
+            state.appliedJsSourceRevisionBySourceId[state.labelCollisionSourceId] =
+              frameSourceRevisions["labelCollisions"] ?? ""
+            self.instances[instanceId] = state
+          }
           self.emit([
             "type": "render_frame_synced",
             "instanceId": instanceId,
@@ -2231,6 +2257,19 @@ final class SearchMapRenderController: RCTEventEmitter {
       idsInOrder: nextFeatureIdsInOrder,
       markerKeyByFeatureId: nextMarkerKeyByFeatureId
     )
+    // TWO-WRITER TRUTH (lens-transport §9 follow-up, root-caused 2026-07-12): the
+    // marker-role lane REBUILDS family membership outside the JS delta chain. When it
+    // changes membership, the last-applied JS revision no longer describes native
+    // content — invalidate it so the NEXT JS patch fails the baseline proof loudly
+    // (one resync replace) instead of applying onto a diverged base and exploding
+    // frames later as "missing feature". The ideal fix — role lane never writes
+    // membership — is the role-lane redesign tracked with the toggle-strip journal work.
+    if Set(nextFeatureIdsInOrder) != Set(previousCollection.idsInOrder) {
+      state.appliedJsSourceRevisionBySourceId.removeValue(forKey: sourceId)
+      Self.lodLog(
+        "[BASELINE] marker-role membership write invalidated applied revision for \(sourceId): \(previousCollection.idsInOrder.count) -> \(nextFeatureIdsInOrder.count)"
+      )
+    }
     let previousGroupIds = Set(previousCollection.groupOrder)
     let nextGroupIds = Set(nextGroupOrder)
     let effectiveRemovedGroupIds = removedGroupIds.union(previousGroupIds.subtracting(nextGroupIds))
@@ -2510,6 +2549,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       executionBatchId: String,
       visualFrameTransaction: VisualFrameTransaction,
       sourceDeltas: [[String: Any]]?,
+      derivedFamilyTransport: [String: Any]? = nil,
       markerRoleFrame: [String: Any]?
     ) throws -> VisualFrameSnapshotApplyResult {
     guard var state = self.instances[instanceId] else {
@@ -2546,7 +2586,23 @@ final class SearchMapRenderController: RCTEventEmitter {
       visualFrameTransaction.kind == "live_update" &&
       visualFrameTransaction.presentationPhase == "live"
 
-    if let sourceDeltas {
+    // Lens transport S-1b: synthesize the three derived-family deltas from the pins
+    // delta when the frame rides the fan-out channel. Derived deltas append AFTER pins
+    // so the sequential apply loop applies pins first.
+    var effectiveSourceDeltas = sourceDeltas
+    if let derivedFamilyTransport,
+      let deltas = sourceDeltas,
+      let pinsDelta = deltas.first(where: { ($0["sourceId"] as? String) == state.pinSourceId }) {
+      let synthesized = try Self.synthesizeDerivedFamilyDeltaDicts(
+        pinsDelta: pinsDelta,
+        fanOut: derivedFamilyTransport,
+        pinInteractionSourceId: state.pinInteractionSourceId,
+        dotSourceId: state.dotSourceId,
+        labelCollisionSourceId: state.labelCollisionSourceId
+      )
+      effectiveSourceDeltas = deltas + synthesized
+    }
+    if let sourceDeltas = effectiveSourceDeltas {
       let parseStartedAt = CACurrentMediaTime() * 1000
       let parsedDeltas = try Self.parseSourceDeltas(sourceDeltas)
       self.recordNativeApply(
@@ -2557,12 +2613,34 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
       for delta in parsedDeltas {
         let deltaStartedAt = CACurrentMediaTime() * 1000
+        // Patch-baseline PROOF: a patch computed against a JS revision native never
+        // applied would corrupt silently (removes of absent ids no-op; assumed-resident
+        // ids explode frames later). Fail HERE, loudly — JS's resync answers with a
+        // replace. Deltas without a base claim (replaces, native-synthesized derived
+        // families) skip the check.
+        if delta.mode == "patch", let claimedBase = delta.baseSourceRevision {
+          let appliedBase = state.appliedJsSourceRevisionBySourceId[delta.sourceId]
+          if appliedBase != claimedBase {
+            throw NSError(
+              domain: "SearchMapRenderController",
+              code: 5,
+              userInfo: [
+                NSLocalizedDescriptionKey:
+                  "Patch baseline mismatch for \(delta.sourceId): "
+                  + "claims base \(claimedBase), native applied \(appliedBase ?? "nil")"
+              ]
+            )
+          }
+        }
         var familyState = Self.derivedFamilyState(sourceId: delta.sourceId, state: state)
         let mountedBaseCollection = Self.parsedCollectionBase(from: familyState.sourceState)
         familyState.desiredCollection = try Self.applyParsedCollectionDelta(
           delta,
           to: mountedBaseCollection
         )
+        if let nextSourceRevision = delta.nextSourceRevision {
+          state.appliedJsSourceRevisionBySourceId[delta.sourceId] = nextSourceRevision
+        }
         Self.setDerivedFamilyState(familyState, sourceId: delta.sourceId, state: &state)
         self.recordNativeApply(
           section: "snapshot.apply_parsed_delta",
@@ -9953,6 +10031,18 @@ final class SearchMapRenderController: RCTEventEmitter {
       let (promoted, membershipChanged) = engine.decide(onScreenKeys: Set(onScreenKeys), forcedKeys: forcedKeys)
       state.lodV5Engine = engine
       Self.lodLog("[LODDBG] decide onScreen=\(onScreenKeys.count) promoted=\(promoted.count) changed=\(membershipChanged) forced=\(forcedKeys.count)")
+      if Self.lodDebugLoggingEnabled && promoted.isEmpty && !onScreenKeys.isEmpty {
+        // Attribution for promoted=0: how many on-screen keys exist in the ranking at all,
+        // and how many of those are pin-eligible (not invisible residents).
+        let rankingByKey = Dictionary(
+          engine.ranking.map { ($0.markerKey, $0) }, uniquingKeysWith: { first, _ in first })
+        let onScreenInRanking = onScreenKeys.filter { rankingByKey[$0] != nil }
+        let eligible = onScreenInRanking.filter { rankingByKey[$0]?.isInvisibleResident == false }
+        let sampleOnScreen = onScreenKeys.prefix(2).joined(separator: ",")
+        let sampleRanking = engine.ranking.prefix(2).map { $0.markerKey }.joined(separator: ",")
+        Self.lodLog(
+          "[LODDBG] decideZERO rankingCount=\(engine.ranking.count) onScreenInRanking=\(onScreenInRanking.count) eligible=\(eligible.count) sampleOnScreen=\(sampleOnScreen) sampleRanking=\(sampleRanking)")
+      }
       nativePromotedKeys = promoted
       // FM#3 obstacle reseed on `membershipChanged` is a follow-up; the crossfade core is validated first.
       state.markerRoleTable.pinnedMarkerKeysInOrder = promoted
@@ -11244,6 +11334,9 @@ final class SearchMapRenderController: RCTEventEmitter {
   private struct ParsedFeatureCollectionDelta {
     let sourceId: String
     let mode: String
+    // Patch-baseline proof (lens-transport contract 3): present on JS journal patches.
+    let baseSourceRevision: String?
+    let nextSourceRevision: String?
     let nextFeatureIdsInOrder: [String]
     let removeIds: Set<String>
     let dirtyGroupIds: Set<String>
@@ -11653,6 +11746,178 @@ final class SearchMapRenderController: RCTEventEmitter {
     )
   }
 
+  // Lens transport S-1b (plans/map-world-lens-transport.md §7.2): synthesize the
+  // pinInteractions / dots / labelCollisions family deltas from the pins delta.
+  // pinInteractions and dots are 1:1 pure functions of the pin bundle (property
+  // subset / extension — mirrors of buildInteraction/dot builders in
+  // use-direct-search-map-source-controller.ts); labelCollisions is the pin geometry
+  // gated by NATIVE's own on-screen set (the set native already owns and promotes
+  // from). diffKeys ship from JS (opaque equality tokens — never re-derived here).
+  private static func synthesizeDerivedFamilyDeltaDicts(
+    pinsDelta: [String: Any],
+    fanOut: [String: Any],
+    pinInteractionSourceId: String,
+    dotSourceId: String,
+    labelCollisionSourceId: String
+  ) throws -> [[String: Any]] {
+    let mode = (pinsDelta["mode"] as? String) ?? "patch"
+    let nextIds = pinsDelta["nextFeatureIdsInOrder"] as? [String] ?? []
+    let removeIds = pinsDelta["removeIds"] as? [String] ?? []
+    let dirtyGroupIds = pinsDelta["dirtyGroupIds"] as? [String] ?? []
+    let orderChangedGroupIds = pinsDelta["orderChangedGroupIds"] as? [String] ?? []
+    let removedGroupIds = pinsDelta["removedGroupIds"] as? [String] ?? []
+    let pinUpserts = pinsDelta["upsertFeatures"] as? [[String: Any]] ?? []
+
+    func familyMaps(_ family: String) throws -> ([String: String], [String: Any]) {
+      guard let familyDict = fanOut[family] as? [String: Any],
+        let diffKeys = familyDict["diffKeyByFeatureId"] as? [String: String]
+      else {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [
+            NSLocalizedDescriptionKey:
+              "derivedFamilyTransport missing diffKeyByFeatureId for \(family)"
+          ]
+        )
+      }
+      return (diffKeys, familyDict)
+    }
+    func requireDiffKey(
+      _ diffKeys: [String: String], _ id: String, _ family: String
+    ) throws -> String {
+      guard let diffKey = diffKeys[id] else {
+        throw NSError(
+          domain: "SearchMapRenderController",
+          code: 5,
+          userInfo: [
+            NSLocalizedDescriptionKey:
+              "derivedFamilyTransport missing diffKey for feature \(id) in \(family)"
+          ]
+        )
+      }
+      return diffKey
+    }
+    func baseRecord(_ pinRecord: [String: Any], diffKey: String) -> [String: Any] {
+      var record: [String: Any] = [
+        "id": pinRecord["id"] ?? "",
+        "diffKey": diffKey,
+      ]
+      if let lng = pinRecord["lng"] { record["lng"] = lng }
+      if let lat = pinRecord["lat"] { record["lat"] = lat }
+      if let markerKey = pinRecord["markerKey"] { record["markerKey"] = markerKey }
+      return record
+    }
+    func baseDelta(_ sourceId: String, familyDict: [String: Any]) -> [String: Any] {
+      var delta: [String: Any] = [
+        "sourceId": sourceId,
+        "mode": mode,
+        "nextFeatureIdsInOrder": nextIds,
+        "removeIds": removeIds,
+        "dirtyGroupIds": dirtyGroupIds,
+        "orderChangedGroupIds": orderChangedGroupIds,
+        "removedGroupIds": removedGroupIds,
+      ]
+      // Ledger advancement: synthesized deltas carry the same base/next revision proof
+      // as legacy deltas so appliedJsSourceRevisionBySourceId advances per family.
+      if let baseRevision = familyDict["baseSourceRevision"] as? String {
+        delta["baseSourceRevision"] = baseRevision
+      }
+      if let nextRevision = familyDict["nextSourceRevision"] as? String {
+        delta["nextSourceRevision"] = nextRevision
+      }
+      return delta
+    }
+
+    // pinInteractions: 1:1 property-thinned clone of pins.
+    let (interactionDiffKeys, interactionFamilyDict) = try familyMaps("pinInteractions")
+    var interactionUpserts: [[String: Any]] = []
+    interactionUpserts.reserveCapacity(pinUpserts.count)
+    for pinRecord in pinUpserts {
+      guard let id = pinRecord["id"] as? String else { continue }
+      let pinProps = pinRecord["properties"] as? [String: Any] ?? [:]
+      var record = baseRecord(
+        pinRecord, diffKey: try requireDiffKey(interactionDiffKeys, id, "pinInteractions"))
+      var props: [String: Any] = ["markerKey": pinProps["markerKey"] ?? id]
+      for key in ["restaurantId", "rank", "lodZ", "nativeLodZ"] {
+        if let value = pinProps[key] { props[key] = value }
+      }
+      record["properties"] = props
+      interactionUpserts.append(record)
+    }
+    var interactionDelta = baseDelta(pinInteractionSourceId, familyDict: interactionFamilyDict)
+    if !interactionUpserts.isEmpty { interactionDelta["upsertFeatures"] = interactionUpserts }
+
+    // dots: pin bundle + dot extras (sprite id + role opacity, JS-computed).
+    let (dotDiffKeys, dotDict) = try familyMaps("dots")
+    let dotImageIdByFeatureId = dotDict["dotImageIdByFeatureId"] as? [String: String] ?? [:]
+    let dotOpacityByFeatureId = dotDict["nativeDotOpacityByFeatureId"] as? [String: NSNumber] ?? [:]
+    var dotUpserts: [[String: Any]] = []
+    dotUpserts.reserveCapacity(pinUpserts.count)
+    for pinRecord in pinUpserts {
+      guard let id = pinRecord["id"] as? String else { continue }
+      let pinProps = pinRecord["properties"] as? [String: Any] ?? [:]
+      var record = baseRecord(pinRecord, diffKey: try requireDiffKey(dotDiffKeys, id, "dots"))
+      var props = pinProps
+      // Parity with the JS dot builder (spreads the CANDIDATE feature, which never
+      // carries the pin bakes): strip pin-only baked keys so the dot GL feature's
+      // property surface matches the JS store's dot feature.
+      for pinBakeKey in [
+        "nativeLodOpacity", "nativeLodRankOpacity", "badgeImageId", "activeBadgeImageId",
+        "labelOrder", "inOverlapRegion",
+      ] {
+        props.removeValue(forKey: pinBakeKey)
+      }
+      props["markerKey"] = pinProps["markerKey"] ?? id
+      if let dotImageId = dotImageIdByFeatureId[id] { props["dotImageId"] = dotImageId }
+      let dotOpacity = dotOpacityByFeatureId[id] ?? NSNumber(value: 1)
+      props["nativeDotOpacity"] = dotOpacity
+      props["nativePresentationOpacity"] = NSNumber(value: 1)
+      record["properties"] = props
+      record["featureState"] = [
+        "nativeDotOpacity": dotOpacity,
+        "nativePresentationOpacity": NSNumber(value: 1),
+      ]
+      dotUpserts.append(record)
+    }
+    var dotDelta = baseDelta(dotSourceId, familyDict: dotDict)
+    if !dotUpserts.isEmpty { dotDelta["upsertFeatures"] = dotUpserts }
+
+    // labelCollisions: pin geometry, obstacle props, gated by native's on-screen set
+    // (nil = native has not projected yet → build all, mirroring the JS gate).
+    let (collisionDiffKeys, collisionDict) = try familyMaps("labelCollisions")
+    // UNGATED (red team 2026-07-12): collision membership mirrors pins exactly. The old
+    // JS on-screen gate was a PAYLOAD optimization (fewer features on the bridge) that
+    // the fan-out makes free — and gating here diverged native membership from the JS
+    // store's acked revisions (the synthesized/legacy alternation reject seam).
+    // Placement-equivalent: gated-out ids are off-screen, hence tile-culled; obstacle
+    // GATING (0↔1) stays native via the reseed, unchanged.
+    let collisionNextIds = nextIds
+    var collisionUpserts: [[String: Any]] = []
+    for pinRecord in pinUpserts {
+      guard let id = pinRecord["id"] as? String else { continue }
+      let pinProps = pinRecord["properties"] as? [String: Any] ?? [:]
+      var record = baseRecord(
+        pinRecord, diffKey: try requireDiffKey(collisionDiffKeys, id, "labelCollisions"))
+      var props: [String: Any] = [
+        "markerKey": pinProps["markerKey"] ?? id,
+        // PROMOTION-INDEPENDENT (D6e): every obstacle bakes demoted; native reseed owns gating.
+        "nativeLodOpacity": NSNumber(value: 0),
+      ]
+      for key in ["restaurantId", "nativeLodZ", "lodZ"] {
+        if let value = pinProps[key] { props[key] = value }
+      }
+      record["properties"] = props
+      record["featureState"] = ["nativeLodOpacity": NSNumber(value: 0)]
+      collisionUpserts.append(record)
+    }
+    var collisionDelta = baseDelta(labelCollisionSourceId, familyDict: collisionDict)
+    collisionDelta["nextFeatureIdsInOrder"] = collisionNextIds
+    if !collisionUpserts.isEmpty { collisionDelta["upsertFeatures"] = collisionUpserts }
+
+    return [interactionDelta, dotDelta, collisionDelta]
+  }
+
   private static func parseSourceDeltas(
     _ rawDeltas: [[String: Any]]
   ) throws -> [ParsedFeatureCollectionDelta] {
@@ -11695,6 +11960,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       return ParsedFeatureCollectionDelta(
         sourceId: sourceId,
         mode: mode,
+        baseSourceRevision: rawDelta["baseSourceRevision"] as? String,
+        nextSourceRevision: rawDelta["nextSourceRevision"] as? String,
         nextFeatureIdsInOrder: validatedNextFeatureIdsInOrder,
         removeIds: removeIds,
         dirtyGroupIds: dirtyGroupIds,
@@ -11892,10 +12159,21 @@ final class SearchMapRenderController: RCTEventEmitter {
         let diffKey = diffKeyById[featureId],
         let markerKey = markerKeyByFeatureId[featureId]
       else {
+        // Baseline-lie attribution (lens-transport §9 follow-up): a patch referencing a
+        // feature native does not hold means the JS baseline ledger and native residency
+        // disagree — include native's side of the story so the divergence is provable
+        // from the one rejection log instead of a repro session.
         throw NSError(
           domain: "SearchMapRenderController",
           code: 5,
-          userInfo: [NSLocalizedDescriptionKey: "Source delta missing feature \(featureId) for \(delta.sourceId)"]
+          userInfo: [
+            NSLocalizedDescriptionKey:
+              "Source delta missing feature \(featureId) for \(delta.sourceId) "
+              + "[nativeBase resident=\(base.idsInOrder.count) rev=\(base.sourceRevision) "
+              + "mode=\(delta.mode) next=\(delta.nextFeatureIdsInOrder.count) "
+              + "upserts=\(delta.upsertCollection?.idsInOrder.count ?? 0) "
+              + "hasFeatureInBase=\(base.featureById[featureId] != nil)]"
+          ]
         )
       }
       nextIdsInOrder.append(featureId)

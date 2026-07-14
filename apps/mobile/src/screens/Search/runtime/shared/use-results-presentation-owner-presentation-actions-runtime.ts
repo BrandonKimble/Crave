@@ -34,7 +34,6 @@ type UseResultsPresentationOwnerPresentationActionsRuntimeArgs = {
   shellLocalState: ResultsPresentationShellLocalState;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
   resultsPresentationAuthority: ResultsPresentationAuthority;
-  cancelCloseSearchCleanup: () => void;
   setPendingCloseIntentId: (intentId: string | null) => void;
   matchesPendingCloseIntentId: (intentId: string) => boolean;
   beginCloseTransition: (
@@ -59,7 +58,6 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
   shellLocalState,
   resultsRuntimeOwner,
   resultsPresentationAuthority,
-  cancelCloseSearchCleanup,
   setPendingCloseIntentId,
   matchesPendingCloseIntentId,
   beginCloseTransition,
@@ -76,7 +74,6 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
     isClearingSearchRef,
     resultsSheetRuntime,
     resultsRuntimeOwner,
-    cancelCloseSearchCleanup,
     setPendingCloseIntentId,
     matchesPendingCloseIntentId,
     beginCloseTransition,
@@ -94,7 +91,6 @@ export const useResultsPresentationOwnerPresentationActionsRuntime = ({
     resultsRuntimeOwner,
     resultsPresentationAuthority,
     cancelSearchSheetCloseTransition,
-    cancelCloseSearchCleanup,
     setPendingCloseIntentId,
     routeSceneVisibilityPolicyRuntime,
   });

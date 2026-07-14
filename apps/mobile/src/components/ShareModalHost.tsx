@@ -171,16 +171,18 @@ const ShareModalContent = ({ config }: { config: ShareModalConfig }) => {
     return `${SHARE_BASE_URL}${path}`;
   }, [config]);
 
-  // enableShare on a slug-less list FLIPS a private list publicly linkable —
-  // never do that silently on a "Copy link" tap. Owner confirms first; any
-  // link action on an already-linkable config runs straight through.
+  // enableShare on a slug-less list mints a LIVE link — anyone holding it can
+  // view until sharing is turned off. Visibility is untouched (visibility
+  // canon: the link is the access, Public/Private is only discovery). Never
+  // mint silently on a "Copy link" tap: owner confirms first; any link action
+  // on an already-linkable config runs straight through.
   const confirmEnableShareThen = React.useCallback(
     (run: () => void) => {
       if (config.kind === 'list' && !config.listShareSlug) {
         showAppModal({
           title: 'Share this list?',
           message:
-            'Sharing creates a public link — the list becomes visible to anyone with it. Share?',
+            'This creates a share link — anyone who has it can view the list until you turn sharing off. Your Public/Private setting stays as it is. Share?',
           actions: [
             { label: 'Cancel', style: 'cancel' },
             { label: 'Share', style: 'default', onPress: run },

@@ -102,6 +102,14 @@ type SearchSubmitOwnerUiPorts = {
     entrySurface: SearchSubmitEntrySurface;
   }) => void;
   onPresentationIntentAbort?: () => void;
+  /**
+   * Wave-4 §3: a LIST world presented — fire the fitAll camera (every list pin inside
+   * the safe region between the search bar and the mid-snap sheet top). Members are
+   * the world's tab-side coordinates; the port owner holds the arbiter + snap points.
+   */
+  onListWorldPresented?: (args: {
+    members: readonly { latitude: number; longitude: number }[];
+  }) => void;
 };
 
 type SearchSubmitOwnerRuntimePorts = {
@@ -169,6 +177,20 @@ type SearchSubmitOwner = {
     entityType: 'food' | 'food_attribute' | 'restaurant_attribute';
     submittedLabel: string;
   }) => Promise<void>;
+  /** Wave-4 §3: the list-world half of the listWorld composite (favorites-as-search). */
+  launchListSearchResults: (params: {
+    listId: string;
+    listType: import('../../../services/favorite-lists').FavoriteListType;
+    displayTitle: string;
+    targetUserId?: string | null;
+    shareSlug?: string | null;
+    slice?: {
+      sort?: 'custom' | 'best' | 'recent';
+      openNow?: boolean;
+      priceLevels?: number[];
+      marketKey?: string | null;
+    };
+  }) => Promise<void>;
 };
 
 const useSearchSubmitOwner = ({
@@ -188,6 +210,7 @@ const useSearchSubmitOwner = ({
     onPageOneResultsCommitted,
     onPresentationIntentStart,
     onPresentationIntentAbort,
+    onListWorldPresented,
   } = uiPorts;
   const {
     searchRuntimeBus,
@@ -285,6 +308,43 @@ const useSearchSubmitOwner = ({
         selectedEntityType: identity.entityType,
       });
       void loadRecentHistory();
+    }
+    // Wave-4 §3: a LIST world presented — fit ALL of the list's pins into the safe
+    // region (the owner's decree: exact fit, no exceptions). Members come from the
+    // world's tab side; finite-coordinate rows only.
+    if (identity.kind === 'list') {
+      const response = value.committedResponse;
+      const members = (
+        tuple.tab === 'dishes' ? (response.dishes ?? []) : (response.restaurants ?? [])
+      )
+        .map((row: { latitude?: number | null; longitude?: number | null }) => ({
+          latitude: row.latitude,
+          longitude: row.longitude,
+        }))
+        .filter(
+          (m): m is { latitude: number; longitude: number } =>
+            typeof m.latitude === 'number' &&
+            Number.isFinite(m.latitude) &&
+            typeof m.longitude === 'number' &&
+            Number.isFinite(m.longitude)
+        );
+      if (__DEV__) {
+        const rows =
+          tuple.tab === 'dishes' ? (response.dishes ?? []) : (response.restaurants ?? []);
+        // eslint-disable-next-line no-console
+        console.log(
+          `[FITALL] listWorldPresented rows=${rows.length} finiteMembers=${members.length} ` +
+            `sampleKeys=${rows[0] ? Object.keys(rows[0]).slice(0, 14).join(',') : 'none'}`
+        );
+      }
+      if (members.length > 0) {
+        onListWorldPresented?.({ members });
+      } else if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.error(
+          '[FITALL] list world presented with ZERO finite-coordinate members — fit skipped'
+        );
+      }
     }
     // Scroll policy at the present moment (the settled design, same rule as the
     // include-similar flip): a VARIANT rerun is a NEW result set — it reveals at top.
@@ -389,7 +449,7 @@ const useSearchSubmitOwner = ({
         onPresentationIntentAbortRef.current?.();
       },
     });
-    return { resolver, reconciler };
+    return { resolver, reconciler, seam };
   }, [searchRuntimeBus, resultsPresentationSurfaceAuthority, userLocationRef]);
   const worldResolver = worldResolutionDriver.resolver;
   // The reconciler's bus subscription lives in the effect lifecycle, not the memo —
@@ -397,18 +457,24 @@ const useSearchSubmitOwner = ({
   // stacked another live resolution driver (N resolve kicks per tuple write).
   React.useEffect(() => {
     const stopReconciler = worldResolutionDriver.reconciler.start();
-    return stopReconciler;
+    return () => {
+      stopReconciler();
+      // Same leak class as the reconciler note above: a recreated seam must not keep
+      // its world-commit-hold subscription firing on the singleton surface runtime.
+      worldResolutionDriver.seam.disposeWorldCommitHold();
+    };
   }, [worldResolutionDriver]);
   const resolveDesiredWorld = React.useCallback(
     (resolveArgs: SearchWorldResolveArgs) => worldResolver.resolve(resolveArgs),
     [worldResolver]
   );
-  const { runRestaurantEntitySearch, submitViewportShortcut } = useSearchStructuredSubmitOwner({
-    searchRuntimeBus,
-    viewportBoundsService,
-    captureFreshTupleBounds,
-    resetMapMoveFlag,
-  });
+  const { runRestaurantEntitySearch, submitViewportShortcut, launchListSearchResults } =
+    useSearchStructuredSubmitOwner({
+      searchRuntimeBus,
+      viewportBoundsService,
+      captureFreshTupleBounds,
+      resetMapMoveFlag,
+    });
   const { submitSearch } = useSearchNaturalSubmitOwner({
     prepareNaturalSearchEntry,
     resolveNaturalSearchAttemptConfig,
@@ -460,6 +526,7 @@ const useSearchSubmitOwner = ({
     rerunActiveSearch,
     loadMoreResults,
     launchEntitySearchResults,
+    launchListSearchResults,
   };
 };
 

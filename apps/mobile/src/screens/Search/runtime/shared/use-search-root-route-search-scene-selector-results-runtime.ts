@@ -2,18 +2,16 @@ import type { SearchResponse } from '../../../../types';
 import { useSearchResultsReadModelSelectors } from '../read-models/read-model-selectors';
 import type { SearchRouteResultsPolicyReadModelWriterFacets } from './search-route-results-policy-domain-contract';
 import type {
-  SearchRootRouteSearchSceneReadModelRuntimeArgs,
   SearchRootRuntimeRouteSearchSceneDataRuntime,
   SearchRootRuntimeRouteSearchSceneReadModelRuntime,
   SearchRootRuntimeRouteSearchSceneSelectorResultsRuntime,
 } from './route-search-scene-runtime-contract';
 
 export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
-  visualAssemblyRuntime,
   routeSearchSceneDataRuntime,
   routeSearchSceneCardRenderRuntime,
   readModelPolicyWriters,
-}: Pick<SearchRootRouteSearchSceneReadModelRuntimeArgs, 'visualAssemblyRuntime'> & {
+}: {
   routeSearchSceneDataRuntime: SearchRootRuntimeRouteSearchSceneDataRuntime;
   routeSearchSceneCardRenderRuntime: SearchRootRuntimeRouteSearchSceneReadModelRuntime['routeSearchSceneCardRenderRuntime'];
   readModelPolicyWriters: SearchRouteResultsPolicyReadModelWriterFacets;
@@ -53,8 +51,6 @@ export const useSearchRootRouteSearchSceneSelectorResultsRuntime = ({
     handleCloseResults: routeSearchSceneDataRuntime.routeSearchSceneHandleCloseResults,
     handleResultsHeaderLayout:
       routeSearchSceneDataRuntime.routeSearchSceneHeaderLayoutRuntime.handleResultsHeaderLayout,
-    overlayHeaderActionProgress:
-      visualAssemblyRuntime.sceneVisualRuntime.overlayHeaderActionProgress,
     shouldLogResultsViewability:
       routeSearchSceneDataRuntime.routeSearchSceneShouldLogResultsViewability,
     searchInteractionRef: routeSearchSceneDataRuntime.routeSearchSceneSearchInteractionRef,

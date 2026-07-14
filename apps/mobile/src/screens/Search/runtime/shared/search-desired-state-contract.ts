@@ -40,6 +40,15 @@ export type SearchQueryIdentity =
       listType: 'restaurant' | 'dish';
       /** Presentation title for the results header (the list name). */
       displayTitle: string;
+      /** The list OWNER when opened from ANOTHER user's surface (profile gallery).
+       *  Identity-relevant: it scopes virtual-All unions and viewer-role resolution —
+       *  the same virtual id under two owners is two different worlds. */
+      targetUserId?: string | null;
+      /** RT-18 ACCESS MATERIAL, never identity: the share slug IS the capability for
+       *  shared reads — presented on the server fetch, deliberately EXCLUDED from
+       *  identityKey and equality (same viewer + same list = same world regardless
+       *  of which capability opened it). */
+      shareSlug?: string | null;
     }
   | {
       kind: 'entity';
@@ -69,6 +78,15 @@ export type SearchFilterVariant = {
   rising: boolean;
   /** Session-scoped; page-1 flips are derivations, mid-pagination flips re-resolve. */
   includeSimilar: boolean;
+  /** LIST worlds only (wave-4 §3 strip 'world' flip): the saver-ranking sort axis. A
+   *  re-sort is a variant rerun of the SAME list identity — it re-ranks (badges renumber)
+   *  without changing membership, so it keys the world (cache) but never the identity.
+   *  Absent/undefined ⇒ the server applies the list's own defaultSort. */
+  listSort?: 'custom' | 'best' | 'recent';
+  /** LIST worlds only: the market (city) slice — virtual-All lists slice by city (§8.16).
+   *  A market flip changes MEMBERSHIP (map pins re-slice), so it keys the world. Absent/
+   *  null ⇒ all markets. */
+  marketKey?: string | null;
 };
 
 /** The viewport adopted at a commit moment — a frozen snapshot, never a live read.
@@ -108,6 +126,10 @@ export type SearchTupleWriteCause =
    *  writer rule: even the resolver's own adopt is a tuple write). */
   | 'response_tab_adopt'
   | 'favorites_launch'
+  /** A list world's strip re-slice (sort/open-now/price/market): same list identity,
+   *  new filterVariant → the reconciler classifies it variant_rerun (map + cards
+   *  re-slice together). Distinct from favorites_launch (the initial enter). */
+  | 'list_reslice'
   | 'entity_tap'
   | 'profile_seed'
   | 'deep_link'
@@ -154,7 +176,8 @@ export const areSearchQueryIdentitiesEqual = (
       return (
         a.displayTitle === other.displayTitle &&
         a.listId === other.listId &&
-        a.listType === other.listType
+        a.listType === other.listType &&
+        (a.targetUserId ?? null) === (other.targetUserId ?? null)
       );
     }
     case 'entity': {
@@ -192,6 +215,8 @@ export const areSearchFilterVariantsEqual = (
   a.openNow === b.openNow &&
   a.rising === b.rising &&
   a.includeSimilar === b.includeSimilar &&
+  (a.listSort ?? null) === (b.listSort ?? null) &&
+  (a.marketKey ?? null) === (b.marketKey ?? null) &&
   areNumberArraysEqual(a.priceLevels, b.priceLevels);
 
 export const areSearchDesiredTuplesEqual = (
@@ -213,14 +238,19 @@ export const buildSearchCardsWorldKey = (tuple: SearchDesiredTuple): string => {
       : identity.kind === 'shortcut'
         ? `shortcut:${identity.shortcutTab}`
         : identity.kind === 'list'
-          ? `list:${identity.listId}:${identity.listType}`
+          ? `list:${identity.listId}:${identity.listType}${identity.targetUserId != null ? `:u:${identity.targetUserId}` : ''}`
           : identity.kind === 'entity'
             ? `entity:${identity.entityType}:${identity.entityId}`
             : identity.kind === 'profileSeed'
               ? `profileSeed:${identity.restaurantId}`
               : 'idle';
   const filters = tuple.filterVariant;
-  const filtersKey = `open:${filters.openNow ? 1 : 0}|price:${filters.priceLevels.join(',')}|rising:${filters.rising ? 1 : 0}|similar:${filters.includeSimilar ? 1 : 0}`;
+  // listSort/marketKey are LIST-world variant axes — appended only when present so
+  // non-list worlds keep their exact historical key (empty suffix), and a list re-sort
+  // or market flip mints a distinct world (cache correctness: a different ordering /
+  // city is a different resolved result).
+  const listVariantKey = `${filters.listSort != null ? `|sort:${filters.listSort}` : ''}${filters.marketKey != null ? `|mkt:${filters.marketKey}` : ''}`;
+  const filtersKey = `open:${filters.openNow ? 1 : 0}|price:${filters.priceLevels.join(',')}|rising:${filters.rising ? 1 : 0}|similar:${filters.includeSimilar ? 1 : 0}${listVariantKey}`;
   const bounds = tuple.committedBounds;
   const boundsKey =
     bounds == null

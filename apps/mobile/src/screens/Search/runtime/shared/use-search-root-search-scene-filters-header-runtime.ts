@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { cloneSearchFiltersLayoutCache } from '../../components/SearchFilters';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { ACTIVE_TAB_COLOR, CONTENT_HORIZONTAL_PADDING } from '../../constants/search';
 import { useSearchFilterChipReadModel } from '../read-models/chip-read-model-builder';
@@ -67,10 +66,9 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
       onToggleSortSelector: filterModalControlLane.filterModalRuntime.toggleSortSelector,
       contentHorizontalPadding: CONTENT_HORIZONTAL_PADDING,
       accentColor: ACTIVE_TAB_COLOR,
-      initialLayoutCache: cloneSearchFiltersLayoutCache(
-        searchState.searchFiltersLayoutCacheRef.current
-      ),
-      onLayoutCacheChange: searchState.handleSearchFiltersLayoutCache,
+      // The strip engine seeds + writes layout AND settled scrollX through this ONE
+      // per-surface seat (leg 2) — the old initial/onChange cache join is engine-owned.
+      layoutCacheSeat: searchState.searchFiltersCacheSeat,
     }),
     [
       filterChipReadModel.isPriceSelectorVisible,
@@ -86,8 +84,7 @@ export const useSearchRootSearchSceneFiltersHeaderRuntime = ({
       filterModalControlLane.filterModalRuntime.toggleIncludeSimilar,
       filtersActiveTab,
       handleInteractionTabChange,
-      searchState.handleSearchFiltersLayoutCache,
-      searchState.searchFiltersLayoutCacheRef,
+      searchState.searchFiltersCacheSeat,
     ]
   );
 };

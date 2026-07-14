@@ -11,7 +11,6 @@ export const DEFAULT_PRESENTATION_STATE: SearchRouteSceneStackPresentationState 
 };
 
 export const DEFAULT_CHROME_VISUAL_STATE: SearchRouteSceneStackChromeVisualState = {
-  overlayHeaderActionProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.overlayHeaderActionProgress,
   searchSurfacePageBundleProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.searchSurfacePageBundleProgress,
   navBarCutoutHeight: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutHeight,
   navBarCutoutProgress: EMPTY_SEARCH_ROUTE_VISUAL_STATE.navBarCutoutProgress,

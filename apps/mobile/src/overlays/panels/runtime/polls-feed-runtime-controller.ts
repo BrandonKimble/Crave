@@ -16,7 +16,13 @@ import {
   type PollFeedType,
 } from '../../../services/polls';
 import type { Coordinate, MapBounds } from '../../../types';
-import { createToggleInteractionEngine } from '../../../toggles/toggle-interaction-engine';
+import { useContentToggle } from '../../../toggles/use-content-toggle';
+import {
+  getPollsFeedControlsSnapshot,
+  restorePollsFeedControls,
+  subscribeToPollsFeedControlChanges,
+  usePollsFeedControlsStore,
+} from './polls-feed-controls-store';
 import { subscribeToReconnect } from '../../../store/systemStatusStore';
 import { logger } from '../../../utils';
 
@@ -38,6 +44,19 @@ const logBootstrap = (data: Record<string, unknown>): void => {
   }
 };
 
+/**
+ * The honest resolution of one refresh (leg 5 failure path): the content-toggle
+ * runner must be able to FAIL when the slice it committed did not land — a runner
+ * that swallows its own error makes the engine's 'failed' edge unreachable and
+ * leaves the optimistically-flipped control lying over stale content.
+ * - 'applied'     — fetched and published (latest).
+ * - 'superseded'  — fetched but a newer refresh owns the feed; that one reads the
+ *                   live control refs, so it carries the slice (not a failure).
+ * - 'unavailable' — could not fetch at all (no market/bounds payload).
+ * - 'failed'      — the fetch threw (the retry ladder may still be running).
+ */
+export type PollFeedRefreshOutcome = 'applied' | 'superseded' | 'unavailable' | 'failed';
+
 type RefreshPollFeedOptions = {
   skipSpinner?: boolean;
   marketKeyOverride?: string | null;
@@ -56,7 +75,7 @@ type UsePollsFeedRuntimeControllerArgs = {
   /** Live (`active`) vs Results (`closed`) feed split (§4/§6). */
   feedState: 'active' | 'closed';
   /** Selected sort, or null for the silent demand-ranked default. */
-  feedSort: PollFeedSort | null;
+  feedSort: PollFeedSort;
   /** Type filter: all (no filter) | polls (ranked) | discussions (§6). */
   feedType: PollFeedType;
   /** Time filter: all_time (no filter) | this_week (§6). */
@@ -80,15 +99,20 @@ type UsePollsFeedRuntimeControllerArgs = {
 };
 
 export type PollsFeedRuntimeController = {
-  refreshPollFeed: (options?: RefreshPollFeedOptions) => Promise<void>;
+  refreshPollFeed: (options?: RefreshPollFeedOptions) => Promise<PollFeedRefreshOutcome>;
   /**
-   * The feed-query toggle commit (toggle-system v2.1): press handlers flip their
-   * state optimistically and call this; the shared toggle engine coalesces a burst
-   * of taps into ONE quiet background refresh ~300ms after the last tap (the old
-   * refetch-on-state-change effect fired per tap, undebounced). The refresh keeps
-   * skipSpinner semantics — rows swap in place, the list never empties.
+   * The feed-query toggle commit (leg 4 — useContentToggle, audit D5): a control
+   * write flips the strip optimistically and lands here; the content seam exits the
+   * old cards on the SAME press edge, coalesces a tap burst into ONE quiet refresh
+   * (~300ms after the last tap), and the refresh's resolution snaps the new slice in.
    */
   scheduleFeedQueryCommit: () => void;
+  /**
+   * 'awaiting' between press-up (old cards out) and content-ready (new slice in) —
+   * the body renders NOTHING during it: bare white under the header strip, never a
+   * skeleton, never a stale empty-state message.
+   */
+  isFeedSliceAwaiting: boolean;
 };
 
 export const usePollsFeedRuntimeController = ({
@@ -124,7 +148,7 @@ export const usePollsFeedRuntimeController = ({
   // a scheduled retry always runs with fresh bounds/market inputs.
   const retryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshPollFeedRef = React.useRef<
-    ((options?: RefreshPollFeedOptions) => Promise<void>) | null
+    ((options?: RefreshPollFeedOptions) => Promise<PollFeedRefreshOutcome>) | null
   >(null);
   const clearScheduledPollFeedRetry = React.useCallback(() => {
     if (retryTimeoutRef.current) {
@@ -166,6 +190,13 @@ export const usePollsFeedRuntimeController = ({
         lastResolvedMarketKeyRef.current = normalizedKey;
       }
       setPolls(snapshot.polls);
+      // Wave-2 §3 "Live · N": the body owns the count; chrome reads it from the
+      // controls store. Only an ACTIVE-state slice updates it (a Closed slice says
+      // nothing about how many polls are live); the last-known count is retained
+      // while browsing Closed.
+      if (feedStateRef.current === 'active') {
+        usePollsFeedControlsStore.getState().setLiveCount(snapshot.polls.length);
+      }
       setMarketKey(nextMarketKey);
       setMarketName(resolvedMarketName);
       setMarketStatus(
@@ -201,7 +232,7 @@ export const usePollsFeedRuntimeController = ({
   );
 
   const refreshPollFeed = React.useCallback(
-    async (options?: RefreshPollFeedOptions) => {
+    async (options?: RefreshPollFeedOptions): Promise<PollFeedRefreshOutcome> => {
       const refreshSeq = ++refreshSeqRef.current;
       const skipSpinner = options?.skipSpinner ?? false;
       const marketKeyOverride = options?.marketKeyOverride ?? null;
@@ -239,11 +270,15 @@ export const usePollsFeedRuntimeController = ({
       }
 
       const resolvedMarketKey = marketKeyOverride ?? marketOverride ?? null;
+      // Wave-2 §3: sort is never null (New is the stated default, not an omission);
+      // the time period is folded INTO Top — it is only sent when Top is the sort.
       const feedQuery = {
         state: feedStateRef.current,
-        ...(feedSortRef.current ? { sort: feedSortRef.current } : {}),
+        sort: feedSortRef.current,
         ...(feedTypeRef.current !== 'all' ? { type: feedTypeRef.current } : {}),
-        ...(feedTimeRef.current !== 'all_time' ? { time: feedTimeRef.current } : {}),
+        ...(feedSortRef.current === 'top' && feedTimeRef.current !== 'all_time'
+          ? { time: feedTimeRef.current }
+          : {}),
       };
       const payload = resolvedMarketKey
         ? { marketKey: resolvedMarketKey, ...feedQuery }
@@ -274,7 +309,7 @@ export const usePollsFeedRuntimeController = ({
             setLoading(false);
           }
         }
-        return;
+        return 'unavailable';
       }
 
       // Only a refresh that ACTUALLY fetches supersedes a pending backoff retry.
@@ -283,7 +318,7 @@ export const usePollsFeedRuntimeController = ({
       try {
         const response = await fetchPolls(payload);
         if (refreshSeq !== refreshSeqRef.current) {
-          return;
+          return 'superseded';
         }
         const snapshot = createNetworkPollBootstrapSnapshot(response);
         applyPollSnapshot(snapshot, marketNameFallback);
@@ -295,6 +330,7 @@ export const usePollsFeedRuntimeController = ({
         if (snapshot.marketKey && feedStateRef.current === 'active') {
           void writePollBootstrapSnapshot(snapshot);
         }
+        return 'applied';
       } catch (error) {
         // §9.4 retry ladder: only the LATEST refresh may schedule a retry; a superseded
         // request's failure is stale. While a retry is pending, hold the loading/refreshing
@@ -311,6 +347,7 @@ export const usePollsFeedRuntimeController = ({
           }
         }
         logger.error('Failed to load polls', error);
+        return 'failed';
       } finally {
         if (!retryScheduled) {
           if (refreshSeq === refreshSeqRef.current) {
@@ -356,35 +393,58 @@ export const usePollsFeedRuntimeController = ({
     []
   );
 
-  // Feed-query toggles ride the shared toggle engine (replaces the old
-  // refetch-on-state-change effect, which fired one undebounced network request per
-  // tap). The runner reads the live toggle values via refreshPollFeed's own refs and
-  // re-checks the visibility gate at commit time; refreshPollFeed's internal
-  // latest-wins seq guard drops a stale landing the engine's cancel can't abort. No
-  // lifecycle sinks: the feed has no interaction cover, and failure UX stays with
-  // the controller's retry ladder + deferred freshness error (never the modal).
+  // Feed-query toggles ride the CONTENT-TOGGLE SEAM (leg 4 — audit D5; this replaced
+  // the leg-3 bare-engine wiring). The runner reads the live toggle values via
+  // refreshPollFeed's own refs and re-checks the visibility gate at commit time;
+  // refreshPollFeed's internal latest-wins seq guard drops a stale landing the
+  // engine's cancel can't abort. Failure UX stays with the controller's retry ladder
+  // + deferred freshness error (never the modal); the seam settles the phase on the
+  // runner's resolution either way, so the surface can never park on bare white.
   const visibilityGateRef = React.useRef({ visible, isSystemUnavailable });
   visibilityGateRef.current = { visible, isSystemUnavailable };
-  const feedQueryToggleEngine = React.useMemo(
-    () => createToggleInteractionEngine<'feed_query'>({}),
-    []
-  );
-  React.useEffect(() => feedQueryToggleEngine.dispose, [feedQueryToggleEngine]);
+  const { seam: feedContentToggleSeam, phase: feedContentPhase } = useContentToggle<'feed_query'>({
+    surfaceName: 'polls-feed',
+    // Leg 5 failure path: the seam holds a restore to the last SETTLED control
+    // snapshot and fires it on the 'failed' edge — the optimistic pill snaps back so
+    // the control never lies over stale content. The restore write is suppressed
+    // from the press-edge subscription (no revert→commit loop); the retry ladder
+    // keeps running and reads the restored live refs, so it refreshes the OLD slice.
+    captureControlBaseline: () => {
+      const snapshot = getPollsFeedControlsSnapshot();
+      return () => restorePollsFeedControls(snapshot);
+    },
+  });
   const scheduleFeedQueryCommit = React.useCallback(() => {
-    feedQueryToggleEngine.begin(
+    feedContentToggleSeam.scheduleCommit(
       async () => {
         const gate = visibilityGateRef.current;
         if (!gate.visible || gate.isSystemUnavailable) {
           return;
         }
-        // Quiet background refresh: never empty the list (which would collapse the
-        // FlashList and scroll the filter strip out of view); the toggle/sort just
-        // swaps the rows in place when the new query resolves.
-        await refreshPollFeedRef.current?.({ skipSpinner: true });
+        // skipSpinner: no loading skeleton — the choreography's gap is the seam's
+        // 'awaiting' phase (old cards already out; new rows snap in on this
+        // resolution). The strip is header chrome since leg 3, so an empty body can
+        // no longer scroll the strip away.
+        const outcome = await refreshPollFeedRef.current?.({ skipSpinner: true });
+        // Honest runner (leg 5): the slice did not land → reject → engine 'failed' →
+        // the seam reverts the control baseline. 'superseded' is NOT a failure (the
+        // newer refresh reads the live refs and carries the slice).
+        if (outcome === 'failed' || outcome === 'unavailable') {
+          throw new Error(`poll feed slice did not land (${outcome})`);
+        }
       },
       { kind: 'feed_query' }
     );
-  }, [feedQueryToggleEngine]);
+  }, [feedContentToggleSeam]);
+  // The strip (persistent-header chrome) writes the feed-controls STORE; the
+  // consequence stays HERE, with its owner — a control-value change IS the press
+  // edge, and zustand notifies synchronously inside the press handler's stack, so
+  // the seam's 'awaiting' flip lands in the same React batch as the control's
+  // optimistic flip: old cards exit on press-up, by construction.
+  React.useEffect(
+    () => subscribeToPollsFeedControlChanges(scheduleFeedQueryCommit),
+    [scheduleFeedQueryCommit]
+  );
 
   React.useEffect(() => {
     if (!bootstrapMarketKey) {
@@ -609,7 +669,8 @@ export const usePollsFeedRuntimeController = ({
     () => ({
       refreshPollFeed,
       scheduleFeedQueryCommit,
+      isFeedSliceAwaiting: feedContentPhase === 'awaiting',
     }),
-    [refreshPollFeed, scheduleFeedQueryCommit]
+    [feedContentPhase, refreshPollFeed, scheduleFeedQueryCommit]
   );
 };

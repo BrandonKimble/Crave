@@ -27,7 +27,7 @@ export type {
 } from './results-presentation-shell-contract';
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 
-export type UseResultsPresentationOwnerArgs<Suggestion> = {
+export type UseResultsPresentationOwnerArgs = {
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
   clearTypedQuery: SearchClearOwner['clearTypedQuery'];
@@ -53,18 +53,6 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
     | 'markSharedSheetHidden'
     | 'sheetState'
   >;
-  cancelActiveSearchRequest: () => void;
-  cancelAutocomplete: () => void;
-  handleCancelPendingMutationWork: () => void;
-  resetSubmitTransitionHold: () => void;
-  setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
-  setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
-  setQuery: React.Dispatch<React.SetStateAction<string>>;
-  setError: React.Dispatch<React.SetStateAction<string | null>>;
-  setSuggestions: React.Dispatch<React.SetStateAction<Suggestion[]>>;
-  inputRef: React.RefObject<{ blur?: () => void } | null>;
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
   routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
@@ -78,7 +66,7 @@ export type UseResultsPresentationOwnerArgs<Suggestion> = {
   searchChromeScalarSurfacePresentationRuntime?: SearchChromeScalarSurfacePresentationRuntime;
 };
 
-export const useResultsPresentationOwner = <Suggestion>({
+export const useResultsPresentationOwner = ({
   setActiveTab,
   setActiveTabPreference,
   clearTypedQuery,
@@ -95,18 +83,6 @@ export const useResultsPresentationOwner = <Suggestion>({
   ignoreNextSearchBlurRef,
   isClearingSearchRef,
   resultsSheetRuntime,
-  cancelActiveSearchRequest,
-  cancelAutocomplete,
-  handleCancelPendingMutationWork,
-  resetSubmitTransitionHold,
-  setIsSearchFocused,
-  setIsSuggestionPanelActive,
-  setIsAutocompleteSuppressed,
-  setShowSuggestions,
-  setQuery,
-  setError,
-  setSuggestions,
-  inputRef,
   searchRuntimeBus,
   resultsPresentationAuthority,
   routeSceneSwitchAuthority,
@@ -118,7 +94,7 @@ export const useResultsPresentationOwner = <Suggestion>({
   routeSceneVisibilityPolicyRuntime,
   onSearchSheetContentLaneChanged,
   searchChromeScalarSurfacePresentationRuntime,
-}: UseResultsPresentationOwnerArgs<Suggestion>): ResultsPresentationOwner => {
+}: UseResultsPresentationOwnerArgs): ResultsPresentationOwner => {
   return useResultsPresentationOwnerCompositionRuntime({
     setActiveTab,
     setActiveTabPreference,
@@ -136,18 +112,6 @@ export const useResultsPresentationOwner = <Suggestion>({
     ignoreNextSearchBlurRef,
     isClearingSearchRef,
     resultsSheetRuntime,
-    cancelActiveSearchRequest,
-    cancelAutocomplete,
-    handleCancelPendingMutationWork,
-    resetSubmitTransitionHold,
-    setIsSearchFocused,
-    setIsSuggestionPanelActive,
-    setIsAutocompleteSuppressed,
-    setShowSuggestions,
-    setQuery,
-    setError,
-    setSuggestions,
-    inputRef,
     searchRuntimeBus,
     resultsPresentationAuthority,
     routeSceneSwitchAuthority,

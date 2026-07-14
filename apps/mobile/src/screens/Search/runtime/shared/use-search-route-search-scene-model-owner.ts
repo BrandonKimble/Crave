@@ -90,7 +90,6 @@ export const useSearchRouteSearchSceneModelOwner = ({
   });
   const routeSearchSceneReadModelRuntime = useSearchRootRouteSearchSceneReadModelRuntime({
     overlayFoundationAssemblyRuntime,
-    visualAssemblyRuntime,
     profileControlRuntime,
     filterModalControlLane,
     routeSearchSceneDataRuntime,

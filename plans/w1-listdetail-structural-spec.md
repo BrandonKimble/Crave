@@ -158,8 +158,11 @@ shareEnabled` (the RT-18 landmine).
    replace the `shareEnabled` boolean grant with: owner OR collaborator OR
    `shareSlug`-presented-and-matching. DTO: both endpoints accept optional
    `shareSlug?: string`; rotation = revocation falls out. Add share-event write dedupe
-   (per slug+ip/day or per slug+viewer). Private flip: `updateList(visibility:'private')`
-   also nulls `shareEnabled`, deletes collaborators, keeps the slug row dead → dead-slug GET
+   (per slug+ip/day or per slug+viewer). ~~Private flip: `updateList(visibility:'private')`
+   also nulls `shareEnabled`, deletes collaborators, keeps the slug row dead~~ —
+   **SUPERSEDED by the visibility canon (owner 2026-07-12, charter Part 8 / leg 6):
+   visibility = discovery only; private flips never touch shareEnabled or collaborators;
+   `enableShare` never mutates visibility.** Dead-slug GET (sharing turned OFF) still
    returns `410 {state:'private'}` (distinct from 404) so the client renders the §5.6 body.
 2. **Viewer role resolution.** Extend the list-detail DTO with
    `viewerRole: 'owner'|'collaborator'|'viewer'` + `defaultSort:

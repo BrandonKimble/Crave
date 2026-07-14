@@ -1,41 +1,45 @@
 import { serializeDesireLinkToPath } from '../../navigation/runtime/desire-url-codec';
 import React from 'react';
+import { type LayoutChangeEvent, Pressable, Share, StyleSheet, View } from 'react-native';
 import {
-  ActivityIndicator,
-  Pressable,
-  Share,
-  StyleSheet,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from 'react-native';
-import { Feather } from '@expo/vector-icons';
+  ChevronRight,
+  Ellipsis,
+  Eye,
+  EyeOff,
+  GripVertical,
+  Images,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Share2,
+  Trash2,
+} from 'lucide-react-native';
+import { GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { Image } from 'expo-image';
 import { useQueryClient } from '@tanstack/react-query';
-import Animated, {
-  FadeIn,
-  FadeOut,
-  LinearTransition,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
 import {
-  ReorderableRows,
-  useIsScreenReaderEnabled,
-  type ReorderScrollAdapter,
-} from '../../components/reorder';
-import { getOverlaySceneScrollHandle } from '../sceneScrollStateRegistry';
-import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
-import { acquireOverlaySheetEditLock } from '../overlaySheetEditLockRuntime';
-import {
-  FrostedFilterStrip,
   SelectorChip,
   Text,
   toggleOptionSelector,
   useOptionSelectorOpenKey,
 } from '../../components';
+import { ToggleStrip } from '../../toggles/ToggleStrip';
+import {
+  clearToggleStripCacheScrollX,
+  createToggleStripCacheSeat,
+} from '../../toggles/toggle-strip-layout-cache';
+import { buildEditModeActionRow } from '../../toggles/EditModeActionRow';
+import {
+  useBookmarksHomeControlsStore,
+  type BookmarksEditSeat,
+  type BookmarksSortMode,
+} from './runtime/bookmarks-home-controls-store';
+import { commitBookmarksHomeSliceToggle } from './runtime/bookmarks-home-content-toggle';
 import { announceFailureIfOnline, showAppModal } from '../../components/app-modal-store';
 import { SegmentedToggle } from '../../components/SegmentedToggle';
+import { showListEdit } from '../../components/list-edit-store';
 import { colors as themeColors } from '../../constants/theme';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
@@ -44,18 +48,24 @@ import {
   favoriteListsService,
   type FavoriteListSummary,
   type FavoriteListType,
-  type FavoriteListVisibility,
 } from '../../services/favorite-lists';
 import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lists';
-import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
+import { registerHeaderCreateAction } from '../../navigation/runtime/header-nav-action-registry';
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
 import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
+import { useEditModeSession } from '../edit-mode-session';
+import { getOverlaySceneScrollHandle } from '../sceneScrollStateRegistry';
+import {
+  ReorderableGrid,
+  useIsScreenReaderEnabled,
+  type ReorderGridRenderContext,
+  type ReorderScrollAdapter,
+} from '../../components/reorder';
 import { SceneLoadingSurface } from '../../components/skeletons';
-import { getCraveScoreColorFromScore } from '../../utils/quality-color';
+import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
 
-const ACTIVE_TAB_COLOR = themeColors.primary;
 const GRID_GAP = 12;
 const TILE_RADIUS = 16;
 const TILE_BORDER = '#e2e8f0';
@@ -63,68 +73,44 @@ const TILE_BG = '#f8fafc';
 const TILE_TEXT = '#0f172a';
 const TILE_SUBTEXT = themeColors.textBody;
 const SEGMENT_TEXT = themeColors.textBody;
-const FORM_BG = '#ffffff';
-const FORM_BORDER = '#e2e8f0';
-const FORM_PLACEHOLDER = themeColors.textBody;
-const FORM_TOGGLE_BG = '#f1f5f9';
-const FORM_TOGGLE_ACTIVE = '#0f172a';
+// §1.2 tile anatomy: 2x2 gallery (overall 4:3) + a fixed footer — a UNIFORM tile
+// height by construction, which is exactly what the edit grid's slot math needs.
+const TILE_GALLERY_RATIO = 0.75;
+const TILE_FOOTER_HEIGHT = 40;
+const TILE_GALLERY_CELL_GAP = 2;
+const TILE_PLACEHOLDER_BG = '#eef1f5';
 const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
 const EMPTY_FAVORITE_LISTS: ReadonlyArray<FavoriteListSummary> = [];
-
-type ListFormState = {
-  mode: 'hidden' | 'create' | 'edit';
-  list?: FavoriteListSummary | null;
-  name: string;
-  description: string;
-  visibility: FavoriteListVisibility;
-};
 
 const BOOKMARK_LIST_TYPE_OPTIONS = [
   { value: 'restaurant', label: 'Restaurants' },
   { value: 'dish', label: 'Dishes' },
 ] as const satisfies readonly { value: FavoriteListType; label: string }[];
 
-// ─── Edit mode (page-registry §8.11 — home half) ────────────────────────────────────
-type BookmarksSortMode = 'recent' | 'custom';
+// ─── Edit mode (page-registry §8.11 — home half; wave-3 §1.1 RESTORED) ──────────────
+// The owner never wanted home edit deleted — list CONTENTS aren't editable from home,
+// but reordering the LISTS THEMSELVES is. The session is the useEditModeSession
+// PRIMITIVE re-declared here with 2-col tile-grid geometry (ReorderableGrid); the
+// data surface declares it and publishes the edit seat the header strip renders.
 
+// Wave-3 §1.1 vocabulary: "My ranking" replaces "Custom rank" EVERYWHERE.
 const BOOKMARK_SORT_OPTIONS = [
   { value: 'recent', label: 'Recent' },
-  { value: 'custom', label: 'Custom' },
+  { value: 'custom', label: 'My ranking' },
 ] as const satisfies readonly { value: BookmarksSortMode; label: string }[];
+const BOOKMARK_SORT_LABEL_BY_VALUE: Record<BookmarksSortMode, string> = {
+  recent: 'Recent',
+  custom: 'My ranking',
+};
 
-const EDIT_ROW_HEIGHT = 64;
-const STRIP_MORPH_MS = 240;
-
-/** System default lists (§8.7) sort FIRST and are pinned (not draggable) in edit mode. */
+/** Wave-2 §2: system defaults are REGULAR lists — one uniform ordering, no pinned prefix. */
 const sortListsForDisplay = (
   lists: readonly FavoriteListSummary[],
   sortMode: BookmarksSortMode
-): FavoriteListSummary[] => {
-  const system = lists
-    .filter((list) => list.systemKind != null)
-    .sort((a, b) => a.position - b.position);
-  const user = lists.filter((list) => list.systemKind == null);
-  const sortedUser =
-    sortMode === 'custom'
-      ? [...user].sort((a, b) => a.position - b.position)
-      : [...user].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  return [...system, ...sortedUser];
-};
-
-type BookmarksEditSession = {
-  /** Full ordered listIds (system rows first — the pinned prefix). */
-  order: readonly string[];
-  /** Undo/Redo — in-memory order-history stack for THIS edit session. */
-  history: readonly (readonly string[])[];
-  historyIndex: number;
-};
-
-const applyMove = (order: readonly string[], from: number, to: number): string[] => {
-  const next = [...order];
-  const [moved] = next.splice(from, 1);
-  next.splice(to, 0, moved);
-  return next;
-};
+): FavoriteListSummary[] =>
+  sortMode === 'custom'
+    ? [...lists].sort((a, b) => a.position - b.position)
+    : [...lists].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 
 const chunkFavoriteLists = (
   lists: readonly FavoriteListSummary[]
@@ -136,613 +122,386 @@ const chunkFavoriteLists = (
   return rows;
 };
 
-type BookmarkPreviewRowProps = {
-  item: FavoriteListSummary['previewItems'][number];
-};
+// ─── §1.2: the home-tile 2x2 GALLERY (tileImages, TL(0)→TR(1)→BL(2)→BR(3)) ──────────
+// Sparse slots render as quiet placeholders; the API fills from the top-left.
+const TILE_GALLERY_SLOTS = [0, 1, 2, 3] as const;
 
-const BookmarkPreviewRow = React.memo(({ item }: BookmarkPreviewRowProps) => (
-  <View style={styles.previewRow}>
-    <View
-      style={[styles.previewDot, { backgroundColor: getCraveScoreColorFromScore(item.craveScore) }]}
-    />
-    <Text variant="caption" numberOfLines={1} style={styles.previewText}>
-      {item.label}
-      {item.subLabel ? ` • ${item.subLabel}` : ''}
-    </Text>
-  </View>
-));
+const BookmarksTileGallery = React.memo(({ item }: { item: FavoriteListSummary }) => {
+  const bySlot = new Map((item.tileImages ?? []).map((image) => [image.slot, image]));
+  return (
+    <View style={styles.tileGallery} accessibilityLabel={`${item.name} photos`}>
+      {[TILE_GALLERY_SLOTS.slice(0, 2), TILE_GALLERY_SLOTS.slice(2)].map((row, rowIndex) => (
+        <View key={`gallery-row-${rowIndex}`} style={styles.tileGalleryRow}>
+          {row.map((slot) => {
+            const image = bySlot.get(slot);
+            return image ? (
+              <Image
+                key={`slot-${slot}`}
+                source={{ uri: image.thumbUrl }}
+                recyclingKey={image.photoId}
+                transition={180}
+                contentFit="cover"
+                style={styles.tileGalleryCell}
+              />
+            ) : (
+              <View
+                key={`slot-${slot}`}
+                style={[styles.tileGalleryCell, styles.tileGalleryEmpty]}
+              />
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+});
 
-BookmarkPreviewRow.displayName = 'BookmarkPreviewRow';
+BookmarksTileGallery.displayName = 'BookmarksTileGallery';
 
 type BookmarksListTileProps = {
   item: FavoriteListSummary;
   onPress: (list: FavoriteListSummary) => void;
   onOpenMenu: (list: FavoriteListSummary) => void;
+  /** Fixed tile height (uniform grid geometry — read AND edit render the same tile). */
+  tileHeight: number;
+  /** Edit mode: the instant-lift handle gesture seated where the ellipsis lives. */
+  editHandleGesture?: ReorderGridRenderContext['handleGesture'];
+  isActiveDrag?: boolean;
 };
 
-const BookmarksListTile = React.memo(({ item, onPress, onOpenMenu }: BookmarksListTileProps) => (
-  <Pressable
-    onPress={() => onPress(item)}
-    style={({ pressed }) => [styles.tileWrapper, pressed && styles.tilePressed]}
-  >
-    <View style={styles.tile}>
-      <View style={styles.tileContent}>
-        {item.previewItems.length > 0 ? (
-          item.previewItems.map((previewItem) => (
-            <BookmarkPreviewRow key={previewItem.itemId} item={previewItem} />
-          ))
-        ) : (
-          <Text variant="caption" style={styles.previewEmpty}>
-            No items yet
-          </Text>
-        )}
-      </View>
-    </View>
-    <View style={styles.tileFooter}>
-      <Text variant="body" weight="semibold" style={styles.tileTitle} numberOfLines={1}>
-        {item.name}
-      </Text>
+const BookmarksListTile = React.memo(
+  ({
+    item,
+    onPress,
+    onOpenMenu,
+    tileHeight,
+    editHandleGesture = null,
+    isActiveDrag = false,
+  }: BookmarksListTileProps) => {
+    const isEditingTile = editHandleGesture != null;
+    // Edit mode: the ellipsis seat becomes the grab handle (§1.1 — center-right is
+    // the handle's home, wave-3 §3.2's freed region on cards).
+    // Ellipsis ↔ handle CROSSFADE, synced to the strip morph tempo (240ms — the
+    // leg-13 "ellipsis fade sync" item): keyed conditional siblings fade in/out via
+    // layout animations, so the seat swap rides the same beat as the action row.
+    const affordance = isEditingTile ? (
+      <Reanimated.View key="handle" entering={FadeIn.duration(240)} exiting={FadeOut.duration(240)}>
+        <GestureDetector gesture={editHandleGesture}>
+          <View
+            style={styles.tileMenuButton}
+            accessibilityLabel="Drag to reorder"
+            testID={`bookmarks-tile-handle-${item.listId}`}
+          >
+            <GripVertical size={18} color={SEGMENT_TEXT} />
+          </View>
+        </GestureDetector>
+      </Reanimated.View>
+    ) : (
+      <Reanimated.View key="menu" entering={FadeIn.duration(240)} exiting={FadeOut.duration(240)}>
+        <Pressable
+          onPress={() => onOpenMenu(item)}
+          accessibilityRole="button"
+          accessibilityLabel="List actions"
+          hitSlop={8}
+          style={styles.tileMenuButton}
+        >
+          <Ellipsis size={18} color={SEGMENT_TEXT} />
+        </Pressable>
+      </Reanimated.View>
+    );
+
+    return (
       <Pressable
-        onPress={() => onOpenMenu(item)}
-        accessibilityRole="button"
-        accessibilityLabel="List actions"
-        hitSlop={8}
-        style={styles.tileMenuButton}
+        onPress={() => onPress(item)}
+        disabled={isEditingTile}
+        style={({ pressed }) => [
+          styles.tileWrapper,
+          { height: tileHeight },
+          pressed && !isEditingTile && styles.tilePressed,
+          isActiveDrag && styles.tileActiveDrag,
+        ]}
       >
-        <Feather name="more-horizontal" size={18} color={SEGMENT_TEXT} />
+        <BookmarksTileGallery item={item} />
+        <View style={styles.tileFooter}>
+          <Text variant="body" weight="semibold" style={styles.tileTitle} numberOfLines={1}>
+            {item.name}
+          </Text>
+          {affordance}
+        </View>
       </Pressable>
-    </View>
-  </Pressable>
-));
+    );
+  }
+);
 
 BookmarksListTile.displayName = 'BookmarksListTile';
 
 // ─── §8.14: the pinned synthetic ALL tile (one per side, above the system lists) ─────
-// Virtual union of every list on this side — opens listDetail with the virtual id
-// ('all:restaurants' / 'all:dishes'); no stored row, never editable, never draggable.
 type BookmarksAllTileProps = {
   listType: FavoriteListType;
   onPress: (listType: FavoriteListType) => void;
+  /** Edit mode: rendered and pinned in place, but not a navigation target. */
+  disabled?: boolean;
 };
 
-const BookmarksAllTile = React.memo(({ listType, onPress }: BookmarksAllTileProps) => (
+const BookmarksAllTile = React.memo(({ listType, onPress, disabled }: BookmarksAllTileProps) => (
   <Pressable
     onPress={() => onPress(listType)}
+    disabled={disabled}
     accessibilityRole="button"
     accessibilityLabel={listType === 'restaurant' ? 'All restaurants' : 'All dishes'}
     testID="bookmarks-all-tile"
-    style={({ pressed }) => [styles.allTile, pressed && styles.tilePressed]}
+    style={({ pressed }) => [styles.allTile, pressed && !disabled && styles.tilePressed]}
   >
-    <View style={styles.allTileIcon}>
-      <Feather name="layers" size={18} color={TILE_TEXT} />
-    </View>
-    <View style={styles.allTileText}>
-      <Text variant="body" weight="semibold" style={styles.tileTitle} numberOfLines={1}>
-        {listType === 'restaurant' ? 'All restaurants' : 'All dishes'}
-      </Text>
-      <Text variant="caption" style={styles.previewEmpty}>
-        Everything you saved, in one place
-      </Text>
-    </View>
-    <Feather name="chevron-right" size={18} color={SEGMENT_TEXT} />
+    <Text variant="body" weight="semibold" style={styles.allTileTitle} numberOfLines={1}>
+      {listType === 'restaurant' ? 'All restaurants' : 'All dishes'}
+    </Text>
+    <ChevronRight size={18} color={SEGMENT_TEXT} />
   </Pressable>
 ));
 
 BookmarksAllTile.displayName = 'BookmarksAllTile';
 
-// ─── §8.11: the toggle strip IS the edit chrome ─────────────────────────────────────
-// Two layered strips in one clipped viewport. Tapping Edit slides the normal strip
-// fully out RIGHT while the edit-mode strip [Cancel | Undo Redo | Save] slides in
-// under it; leaving edit reverses the morph. The Edit chip itself slides in
-// immediately LEFT of the sort toggle when (and only when) sort = Custom.
-type BookmarksToggleStripProps = {
-  listType: FavoriteListType;
-  onSelectListType: (value: FavoriteListType) => void;
-  sortMode: BookmarksSortMode;
-  onSortModeChange: (value: BookmarksSortMode) => void;
-  isEditing: boolean;
-  onEnterEdit: () => void;
-  onCancelEdit: () => void;
-  onUndo: () => void;
-  onRedo: () => void;
-  onSaveEdit: () => void;
-  canUndo: boolean;
-  canRedo: boolean;
-  isSaving: boolean;
-};
+// ─── The home strip (leg 3 header mount): [Edit] · Sort · Restaurants/Dishes ────────
+// Wave-3 §1.1/§2.1: the Edit chip is BACK as a STRIP CITIZEN — a keyed conditional
+// child, so the engine's late-mount width-grow entry animates it in (pushing its
+// siblings by real layout — the snap was the chip not being a citizen at all), and
+// it reads as a CLEAN CUTOUT (no pill-in-a-window). The action row while editing is
+// the shared edit action row against the body-published seat.
+const bookmarksStripCacheSeat = createToggleStripCacheSeat();
 
-const BookmarksToggleStrip = React.memo(
-  ({
-    listType,
-    onSelectListType,
-    sortMode,
-    onSortModeChange,
-    isEditing,
-    onEnterEdit,
-    onCancelEdit,
-    onUndo,
-    onRedo,
-    onSaveEdit,
-    canUndo,
-    canRedo,
-    isSaving,
-  }: BookmarksToggleStripProps) => {
-    const { width: windowWidth } = useWindowDimensions();
-    const [stripWidth, setStripWidth] = React.useState(windowWidth);
-    const morphProgress = useSharedValue(0);
-    React.useEffect(() => {
-      morphProgress.value = withTiming(isEditing ? 1 : 0, { duration: STRIP_MORPH_MS });
-    }, [isEditing, morphProgress]);
-
-    const normalStripStyle = useAnimatedStyle(
-      () => ({
-        transform: [{ translateX: morphProgress.value * stripWidth }],
-      }),
-      [stripWidth]
-    );
-    const editStripStyle = useAnimatedStyle(
-      () => ({
-        transform: [{ translateX: (morphProgress.value - 1) * stripWidth }],
-      }),
-      [stripWidth]
-    );
-
-    const optionSelectorOpenKey = useOptionSelectorOpenKey();
-    return (
-      <View
-        style={styles.stripViewport}
-        onLayout={(event) => setStripWidth(event.nativeEvent.layout.width)}
-      >
-        {/* TOGGLE-STRIP PRIMITIVE (plans/toggle-strip-primitive.md): each morph layer is
-            a full FrostedFilterStrip — frost + masked cutouts + horizontal overflow ride
-            the sliding rows, so the edit morph keeps its choreography while every control
-            gets the standard cutout treatment. Sort is the house dropdown toggle. */}
-        <Animated.View
-          style={[styles.stripRow, normalStripStyle]}
-          pointerEvents={isEditing ? 'none' : 'auto'}
-        >
-          <FrostedFilterStrip testID="bookmarks-strip" style={styles.stripShell}>
-            {sortMode === 'custom' ? (
-              // §8.11: the Edit chip slides in immediately LEFT of the sort toggle
-              // when (and only when) sort = Custom.
-              <Animated.View
-                key="edit"
-                entering={FadeIn.duration(STRIP_MORPH_MS)}
-                exiting={FadeOut.duration(120)}
-                layout={LinearTransition.duration(STRIP_MORPH_MS)}
-              >
-                <Pressable
-                  onPress={onEnterEdit}
-                  accessibilityRole="button"
-                  accessibilityLabel="Edit list order"
-                  style={styles.editChip}
-                  testID="bookmarks-edit-toggle"
-                >
-                  <Feather name="edit-2" size={14} color="#0f172a" />
-                  <Text variant="caption" weight="semibold" style={styles.editChipText}>
-                    Edit
-                  </Text>
-                </Pressable>
-              </Animated.View>
-            ) : null}
-            <SelectorChip
-              key="sort"
-              label={sortMode === 'recent' ? 'Sort' : 'Custom'}
-              active={sortMode !== 'recent'}
-              expanded={optionSelectorOpenKey === 'bookmarks-sort'}
-              onPress={() =>
-                toggleOptionSelector({
-                  key: 'bookmarks-sort',
-                  title: 'Sort',
-                  options: BOOKMARK_SORT_OPTIONS,
-                  value: sortMode,
-                  onSelect: (value) => onSortModeChange(value),
-                  testID: 'bookmarks-sort-sheet',
-                })
-              }
-              accessibilityLabel="Sort lists"
-              testID="bookmarks-sort-toggle"
-            />
-            <SegmentedToggle
-              key="list-type"
-              options={BOOKMARK_LIST_TYPE_OPTIONS}
-              value={listType}
-              onChange={onSelectListType}
-              accessibilityLabel="Toggle between restaurant and dish lists"
-              testID="bookmarks-list-type-toggle"
-            />
-          </FrostedFilterStrip>
-        </Animated.View>
-        <Animated.View
-          style={[styles.stripRow, styles.stripRowOverlay, editStripStyle]}
-          pointerEvents={isEditing ? 'auto' : 'none'}
-        >
-          <FrostedFilterStrip testID="bookmarks-edit-strip" style={styles.stripShell}>
-            <Pressable
-              key="cancel"
-              onPress={onCancelEdit}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel reordering"
-              style={styles.editStripButton}
-              testID="bookmarks-edit-cancel"
-            >
-              <Text variant="caption" weight="semibold" style={styles.editStripCancelText}>
-                Cancel
-              </Text>
-            </Pressable>
-            <View key="history" style={styles.editStripMiddle}>
-              <Pressable
-                onPress={onUndo}
-                disabled={!canUndo}
-                accessibilityRole="button"
-                accessibilityLabel="Undo move"
-                hitSlop={6}
-                style={styles.editStripIconButton}
-                testID="bookmarks-edit-undo"
-              >
-                <Feather name="rotate-ccw" size={18} color={canUndo ? '#0f172a' : '#cbd5e1'} />
-              </Pressable>
-              <Pressable
-                onPress={onRedo}
-                disabled={!canRedo}
-                accessibilityRole="button"
-                accessibilityLabel="Redo move"
-                hitSlop={6}
-                style={styles.editStripIconButton}
-                testID="bookmarks-edit-redo"
-              >
-                <Feather name="rotate-cw" size={18} color={canRedo ? '#0f172a' : '#cbd5e1'} />
-              </Pressable>
-            </View>
-            <Pressable
-              key="save"
-              onPress={onSaveEdit}
-              disabled={isSaving}
-              accessibilityRole="button"
-              accessibilityLabel="Save list order"
-              style={styles.editStripSave}
-              testID="bookmarks-edit-save"
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color="#ffffff" />
-              ) : (
-                <Text variant="caption" weight="semibold" style={styles.editStripSaveText}>
-                  Save
-                </Text>
-              )}
-            </Pressable>
-          </FrostedFilterStrip>
-        </Animated.View>
-      </View>
-    );
-  }
+const BookmarksEditChip = ({ onPress }: { onPress: () => void }) => (
+  <Pressable
+    onPress={onPress}
+    accessibilityRole="button"
+    accessibilityLabel="Edit list order"
+    style={styles.editChip}
+    testID="bookmarks-edit-toggle"
+  >
+    <Pencil size={14} color={TILE_TEXT} strokeWidth={2} />
+    <Text variant="caption" weight="semibold" style={styles.editChipText}>
+      Edit
+    </Text>
+  </Pressable>
 );
 
-BookmarksToggleStrip.displayName = 'BookmarksToggleStrip';
+const BookmarksHomeStrip = React.memo(() => {
+  const listType = useBookmarksHomeControlsStore((state) => state.listType);
+  const sortMode = useBookmarksHomeControlsStore((state) => state.sortMode);
+  const setListType = useBookmarksHomeControlsStore((state) => state.setListType);
+  const setSortMode = useBookmarksHomeControlsStore((state) => state.setSortMode);
+  const editSeat = useBookmarksHomeControlsStore((state) => state.editSeat);
 
-// ─── §8.11: the 2-column grid LINEARIZES to one column in edit mode ─────────────────
-type BookmarksEditListProps = {
-  rows: readonly FavoriteListSummary[];
-  pinnedCount: number;
-  onReorder: (fromIndex: number, toIndex: number) => void;
-  onDragStateChange: (isDragging: boolean) => void;
-  accessibilityMode: boolean;
-};
+  // Owner decision (leg 3): scrollX resets on re-present — the header strip unmounts
+  // exactly when the scene stops being presented; layout stays warm.
+  React.useEffect(() => () => clearToggleStripCacheScrollX(bookmarksStripCacheSeat), []);
 
-const BookmarksEditList = React.memo(
-  ({
-    rows,
-    pinnedCount,
-    onReorder,
-    onDragStateChange,
-    accessibilityMode,
-  }: BookmarksEditListProps) => {
-    // Edge auto-scroll drives the SHARED sheet scroll container through the
-    // scene-scroll-handle registry seam (the mounted body does not own its scroller).
-    const scrollAdapter = React.useMemo<ReorderScrollAdapter | null>(() => {
-      const handle = getOverlaySceneScrollHandle('bookmarks');
-      if (handle == null) {
-        return null;
+  const optionSelectorOpenKey = useOptionSelectorOpenKey();
+
+  return (
+    <ToggleStrip
+      placement="header"
+      backdrop="chrome-frost"
+      cacheSeat={bookmarksStripCacheSeat}
+      actionRow={
+        editSeat != null && editSeat.isEditing
+          ? buildEditModeActionRow({
+              onCancelEdit: editSeat.cancelEdit,
+              onUndo: editSeat.undo,
+              onRedo: editSeat.redo,
+              onSaveEdit: editSeat.saveEdit,
+              canUndo: editSeat.canUndo,
+              canRedo: editSeat.canRedo,
+              hasEverEdited: editSeat.hasEverEdited,
+              isSaving: editSeat.isSaving,
+              testIDPrefix: 'bookmarks',
+            })
+          : null
       }
-      return {
-        scrollOffset: handle.scrollOffset,
-        scrollBy: (dy: number) => {
-          handle.scrollTo(Math.max(0, handle.scrollOffset.value + dy), false);
-        },
-      };
-    }, []);
-
-    const renderRowContent = React.useCallback(
-      (item: FavoriteListSummary, context: { isDraggable: boolean; isActiveDrag: boolean }) => (
-        <View
-          style={[
-            styles.editRow,
-            !context.isDraggable && styles.editRowPinned,
-            context.isActiveDrag && styles.editRowActive,
-          ]}
-        >
-          <View style={styles.editRowText}>
-            <Text variant="body" weight="semibold" style={styles.tileTitle} numberOfLines={1}>
-              {item.name}
-            </Text>
-            <Text variant="caption" style={styles.previewEmpty}>
-              {item.itemCount === 1 ? '1 item' : `${item.itemCount} items`}
-            </Text>
-          </View>
-          {!context.isDraggable ? (
-            <Feather name="lock" size={14} color="#94a3b8" style={styles.editRowLock} />
-          ) : null}
-        </View>
-      ),
-      []
-    );
-
-    return (
-      <ReorderableRows
-        items={rows}
-        keyExtractor={(item) => item.listId}
-        rowHeight={EDIT_ROW_HEIGHT}
-        pinnedLeadingCount={pinnedCount}
-        renderRowContent={renderRowContent}
-        onReorder={onReorder}
-        onDragStateChange={onDragStateChange}
-        accessibilityMode={accessibilityMode}
-        scrollAdapter={scrollAdapter}
-        testIDPrefix="bookmarks-edit"
+      actionProgress={editSeat?.actionProgress}
+      testID="bookmarks-strip"
+    >
+      {editSeat != null && editSeat.canEnterEdit && sortMode === 'custom' ? (
+        <BookmarksEditChip key="edit" onPress={editSeat.enterEdit} />
+      ) : null}
+      <SelectorChip
+        key="sort"
+        label={BOOKMARK_SORT_LABEL_BY_VALUE[sortMode]}
+        active={sortMode !== 'recent'}
+        expanded={optionSelectorOpenKey === 'bookmarks-sort'}
+        onPress={() =>
+          toggleOptionSelector({
+            key: 'bookmarks-sort',
+            title: 'Sort',
+            options: BOOKMARK_SORT_OPTIONS,
+            value: sortMode,
+            onSelect: (value) => {
+              // Leg 4: the store write IS the synchronous re-slice; the content seam
+              // (settleMs 0) adds the uniform declaration + gap instrumentation.
+              setSortMode(value);
+              commitBookmarksHomeSliceToggle('sort_mode');
+            },
+            testID: 'bookmarks-sort-sheet',
+          })
+        }
+        accessibilityLabel="Sort lists"
+        testID="bookmarks-sort-toggle"
       />
-    );
-  }
-);
+      <SegmentedToggle
+        key="list-type"
+        options={BOOKMARK_LIST_TYPE_OPTIONS}
+        value={listType}
+        onChange={(value) => {
+          setListType(value);
+          commitBookmarksHomeSliceToggle('list_type');
+        }}
+        accessibilityLabel="Toggle between restaurant and dish lists"
+        testID="bookmarks-list-type-toggle"
+      />
+    </ToggleStrip>
+  );
+});
 
-BookmarksEditList.displayName = 'BookmarksEditList';
-
-type BookmarksFormPanelProps = {
-  formState: ListFormState;
-  onOpenCreateForm: () => void;
-  onResetForm: () => void;
-  onNameChange: (value: string) => void;
-  onDescriptionChange: (value: string) => void;
-  onVisibilityChange: (value: FavoriteListVisibility) => void;
-  onSave: () => void;
-};
-
-const BookmarksFormPanel = React.memo(
-  ({
-    formState,
-    onOpenCreateForm,
-    onResetForm,
-    onNameChange,
-    onDescriptionChange,
-    onVisibilityChange,
-    onSave,
-  }: BookmarksFormPanelProps) => {
-    if (formState.mode === 'hidden') {
-      return (
-        <Pressable onPress={onOpenCreateForm} style={styles.newListCard}>
-          <View style={styles.newListIcon}>
-            <Feather name="plus" size={20} color={SEGMENT_TEXT} />
-          </View>
-          <Text variant="caption" style={styles.newListText}>
-            New list
-          </Text>
-        </Pressable>
-      );
-    }
-
-    return (
-      <View style={styles.formPanel}>
-        <Text variant="subtitle" weight="semibold" style={styles.formTitle}>
-          {formState.mode === 'create' ? 'Create list' : 'Edit list'}
-        </Text>
-        <TextInput
-          value={formState.name}
-          onChangeText={onNameChange}
-          placeholder="List name"
-          placeholderTextColor={FORM_PLACEHOLDER}
-          style={styles.formInput}
-        />
-        <TextInput
-          value={formState.description}
-          onChangeText={onDescriptionChange}
-          placeholder="Description (optional)"
-          placeholderTextColor={FORM_PLACEHOLDER}
-          style={[styles.formInput, styles.formInputMultiline]}
-          multiline
-        />
-        <View style={styles.visibilityRow}>
-          <Text variant="caption" style={styles.visibilityLabel}>
-            Visibility
-          </Text>
-          <View style={styles.visibilityToggle}>
-            {(['private', 'public'] as FavoriteListVisibility[]).map((value) => {
-              const isActive = formState.visibility === value;
-              return (
-                <Pressable
-                  key={value}
-                  onPress={() => onVisibilityChange(value)}
-                  style={[styles.visibilityOption, isActive && styles.visibilityOptionActive]}
-                >
-                  <Text
-                    variant="caption"
-                    weight="semibold"
-                    style={[
-                      styles.visibilityOptionText,
-                      isActive && styles.visibilityOptionTextActive,
-                    ]}
-                  >
-                    {value === 'private' ? 'Private' : 'Public'}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-        <View style={styles.formActions}>
-          <Pressable onPress={onResetForm} style={styles.formCancel}>
-            <Text variant="caption" weight="semibold" style={styles.formCancelText}>
-              Cancel
-            </Text>
-          </Pressable>
-          <Pressable onPress={onSave} style={styles.formSave}>
-            <Text variant="caption" weight="semibold" style={styles.formSaveText}>
-              Save
-            </Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-);
-
-BookmarksFormPanel.displayName = 'BookmarksFormPanel';
-
-type BookmarksListHeaderProps = {
-  sceneReady: boolean;
-  listType: FavoriteListType;
-  formState: ListFormState;
-  onSelectListType: (value: FavoriteListType) => void;
-  onOpenCreateForm: () => void;
-  onResetForm: () => void;
-  onNameChange: (value: string) => void;
-  onDescriptionChange: (value: string) => void;
-  onVisibilityChange: (value: FavoriteListVisibility) => void;
-  onSave: () => void;
-  stripProps: BookmarksToggleStripProps;
-};
-
-const BookmarksListHeader = React.memo(
-  ({
-    sceneReady,
-    formState,
-    onOpenCreateForm,
-    onResetForm,
-    onNameChange,
-    onDescriptionChange,
-    onVisibilityChange,
-    onSave,
-    stripProps,
-  }: BookmarksListHeaderProps) =>
-    sceneReady ? (
-      <View>
-        <View style={styles.segmentRow}>
-          <BookmarksToggleStrip {...stripProps} />
-        </View>
-        {stripProps.isEditing ? null : (
-          <BookmarksFormPanel
-            formState={formState}
-            onOpenCreateForm={onOpenCreateForm}
-            onResetForm={onResetForm}
-            onNameChange={onNameChange}
-            onDescriptionChange={onDescriptionChange}
-            onVisibilityChange={onVisibilityChange}
-            onSave={onSave}
-          />
-        )}
-      </View>
-    ) : (
-      <View style={styles.loadingState}>
-        <ActivityIndicator color={ACTIVE_TAB_COLOR} size="small" />
-      </View>
-    )
-);
-
-BookmarksListHeader.displayName = 'BookmarksListHeader';
+BookmarksHomeStrip.displayName = 'BookmarksHomeStrip';
 
 type BookmarksSceneBodyProps = {
   sceneReady: boolean;
   listType: FavoriteListType;
-  formState: ListFormState;
   lists: readonly FavoriteListSummary[];
   isListsLoading: boolean;
   isListsError: boolean;
-  onSelectListType: (value: FavoriteListType) => void;
-  onOpenCreateForm: () => void;
-  onResetForm: () => void;
-  onNameChange: (value: string) => void;
-  onDescriptionChange: (value: string) => void;
-  onVisibilityChange: (value: FavoriteListVisibility) => void;
-  onSave: () => void;
+  refetchLists: () => void;
+  isEditing: boolean;
+  editOrderedLists: readonly FavoriteListSummary[];
+  onReorder: (fromIndex: number, toIndex: number) => void;
+  onDragStateChange: (isDragging: boolean) => void;
+  isScreenReaderEnabled: boolean;
+  scrollAdapter: ReorderScrollAdapter | null;
+  onOpenCreate: () => void;
   onListPress: (list: FavoriteListSummary) => void;
   onOpenMenu: (list: FavoriteListSummary) => void;
   onOpenAll: (listType: FavoriteListType) => void;
-  stripProps: BookmarksToggleStripProps;
-  editListProps: BookmarksEditListProps | null;
 };
 
 const BookmarksSceneBody = React.memo(
   ({
     sceneReady,
     listType,
-    formState,
     lists,
     isListsLoading,
     isListsError,
-    onSelectListType,
-    onOpenCreateForm,
-    onResetForm,
-    onNameChange,
-    onDescriptionChange,
-    onVisibilityChange,
-    onSave,
+    refetchLists,
+    isEditing,
+    editOrderedLists,
+    onReorder,
+    onDragStateChange,
+    isScreenReaderEnabled,
+    scrollAdapter,
+    onOpenCreate,
     onListPress,
     onOpenMenu,
     onOpenAll,
-    stripProps,
-    editListProps,
   }: BookmarksSceneBodyProps) => {
     const onProfilerRender = useSearchOverlayProfilerRender();
     const listRows = React.useMemo(() => chunkFavoriteLists(lists), [lists]);
-    const listHeader = (
-      <BookmarksListHeader
-        sceneReady={sceneReady}
-        listType={listType}
-        formState={formState}
-        onSelectListType={onSelectListType}
-        onOpenCreateForm={onOpenCreateForm}
-        onResetForm={onResetForm}
-        onNameChange={onNameChange}
-        onDescriptionChange={onDescriptionChange}
-        onVisibilityChange={onVisibilityChange}
-        onSave={onSave}
-        stripProps={stripProps}
-      />
+
+    // §2.4 bleed + §1.1 grid geometry: the grid bleeds edge-to-edge (the toggle-strip
+    // law) and self-measures, so the edit grid's slot math uses the SAME cell rects
+    // the read grid renders.
+    const [gridWidth, setGridWidth] = React.useState(0);
+    const handleGridLayout = React.useCallback((event: LayoutChangeEvent) => {
+      const nextWidth = event.nativeEvent.layout.width;
+      setGridWidth((prev) => (Math.abs(prev - nextWidth) < 0.5 ? prev : nextWidth));
+    }, []);
+    const cellWidth = gridWidth > 0 ? Math.floor((gridWidth - GRID_GAP) / 2) : 0;
+    const tileHeight =
+      cellWidth > 0 ? Math.round(cellWidth * TILE_GALLERY_RATIO) + TILE_FOOTER_HEIGHT : 0;
+
+    const renderEditTile = React.useCallback(
+      (item: FavoriteListSummary, context: ReorderGridRenderContext) => (
+        <BookmarksListTile
+          item={item}
+          onPress={onListPress}
+          onOpenMenu={onOpenMenu}
+          tileHeight={tileHeight}
+          editHandleGesture={context.handleGesture}
+          isActiveDrag={context.isActiveDrag}
+        />
+      ),
+      [onListPress, onOpenMenu, tileHeight]
     );
-    const profiledListHeader = onProfilerRender ? (
-      <React.Profiler id="BookmarksSceneBody:header" onRender={onProfilerRender}>
-        {listHeader}
-      </React.Profiler>
-    ) : (
-      listHeader
-    );
+
     const listContent =
-      editListProps != null ? (
-        // §8.11 edit mode: the 2-up grid linearizes to ONE draggable column.
-        <BookmarksEditList {...editListProps} />
-      ) : !sceneReady || isListsLoading ? (
+      !sceneReady || isListsLoading ? (
         // The real grid inherits its 20px horizontal inset from the body transport's
         // contentContainer, so the skeleton holes must NOT re-inset (insetX={0}).
         <SceneLoadingSurface rowType="tile" insetX={0} />
       ) : lists.length ? (
-        <View style={styles.gridList}>
-          <BookmarksAllTile listType={listType} onPress={onOpenAll} />
-          {listRows.map((row, rowIndex) => (
-            <View key={`row-${rowIndex}`} style={styles.gridRow}>
-              {row.map((item) => (
-                <View key={item.listId} style={styles.gridCell}>
-                  <BookmarksListTile item={item} onPress={onListPress} onOpenMenu={onOpenMenu} />
+        <View onLayout={handleGridLayout}>
+          <BookmarksAllTile listType={listType} onPress={onOpenAll} disabled={isEditing} />
+          {isEditing && tileHeight > 0 ? (
+            // §1.1: the primitive re-declared with 2-col TILE geometry — the same
+            // tiles, now absolutely slotted by the grid's drag math.
+            <View style={styles.editGridBlock}>
+              <ReorderableGrid
+                items={editOrderedLists}
+                keyExtractor={(list) => list.listId}
+                cellWidth={cellWidth}
+                rowHeight={tileHeight}
+                gap={GRID_GAP}
+                columns={2}
+                renderTile={renderEditTile}
+                onReorder={onReorder}
+                onDragStateChange={onDragStateChange}
+                accessibilityMode={isScreenReaderEnabled}
+                scrollAdapter={scrollAdapter}
+                testIDPrefix="bookmarks-edit"
+              />
+            </View>
+          ) : (
+            <View style={styles.gridList}>
+              {listRows.map((row, rowIndex) => (
+                <View key={`row-${rowIndex}`} style={styles.gridRow}>
+                  {row.map((item) => (
+                    <View key={item.listId} style={styles.gridCell}>
+                      <BookmarksListTile
+                        item={item}
+                        onPress={onListPress}
+                        onOpenMenu={onOpenMenu}
+                        tileHeight={tileHeight > 0 ? tileHeight : 160}
+                      />
+                    </View>
+                  ))}
+                  {row.length === 1 ? <View style={styles.gridCell} /> : null}
                 </View>
               ))}
-              {row.length === 1 ? <View style={styles.gridCell} /> : null}
             </View>
-          ))}
+          )}
+          {/* §4: the home popup form is DEAD — every create path opens the ONE
+              listEdit panel. This compact row stays as the second entry point
+              (owner to ratify the redundancy with the header plus). */}
+          {isEditing ? null : (
+            <Pressable
+              onPress={onOpenCreate}
+              style={styles.newListCard}
+              accessibilityRole="button"
+              testID="bookmarks-new-list"
+            >
+              <Plus size={18} color={SEGMENT_TEXT} />
+              <Text variant="body" style={styles.newListText}>
+                New list
+              </Text>
+            </Pressable>
+          )}
         </View>
       ) : isListsError ? (
-        // A fetch error resolved to empty — don't claim 'No lists yet'; surface the failure.
-        <View style={styles.emptyState}>
-          <Text variant="body" style={styles.emptyText}>
-            Couldn&apos;t load your lists
-          </Text>
-        </View>
+        // Load-failure law (wave-4 §1, ROOT branch): the shared modal announces once and
+        // the load re-runs on the scene's next presentation; the body keeps its DECLARED
+        // skeleton — never a blank page, never a page-local retry.
+        <SceneBodyReadyGate
+          pending={false}
+          sceneKey="bookmarks"
+          failure={{ isError: true, what: 'your lists', retry: () => void refetchLists() }}
+        />
       ) : (
         <View style={styles.emptyState}>
           <Text variant="body" style={styles.emptyText}>
@@ -758,12 +517,7 @@ const BookmarksSceneBody = React.memo(
       listContent
     );
 
-    return (
-      <View style={styles.sceneBody}>
-        {profiledListHeader}
-        {profiledListContent}
-      </View>
-    );
+    return <View style={styles.sceneBody}>{profiledListContent}</View>;
   }
 );
 
@@ -793,13 +547,12 @@ const BookmarksDataSurface = React.memo(
     const isOffline = useSystemStatusStore((state) => state.isOffline);
     const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
     const isSystemUnavailable = isOffline || Boolean(serviceIssue);
-    const [listType, setListType] = React.useState<FavoriteListType>('restaurant');
-    const [formState, setFormState] = React.useState<ListFormState>({
-      mode: 'hidden',
-      name: '',
-      description: '',
-      visibility: 'private',
-    });
+    // Leg 3: control state (listType / sortMode) lives in the module store — the
+    // header strip (chrome) writes it, this body reads it.
+    const listType = useBookmarksHomeControlsStore((state) => state.listType);
+    const sortMode = useBookmarksHomeControlsStore((state) => state.sortMode);
+    const setSortMode = useBookmarksHomeControlsStore((state) => state.setSortMode);
+    const setEditSeat = useBookmarksHomeControlsStore((state) => state.setEditSeat);
     const queryEnabled = !isSystemUnavailable && shouldSubscribeDataLane;
     const listsQuery = useFavoriteLists({
       listType,
@@ -826,15 +579,11 @@ const BookmarksDataSurface = React.memo(
     // query does not falsely claim the user has no lists.
     const isListsLoading = !queryEnabled || (listsQuery.isLoading && lists.length === 0);
     const isListsError = listsQuery.isError && lists.length === 0;
+    const refetchLists = React.useCallback(() => {
+      void listsQuery.refetch();
+    }, [listsQuery]);
 
-    // ─── §8.11 edit mode state ────────────────────────────────────────────────────
-    const { promoteActiveSheet, pushRoute } = useAppOverlayRouteController();
-    const [sortMode, setSortMode] = React.useState<BookmarksSortMode>('recent');
-    const [editSession, setEditSession] = React.useState<BookmarksEditSession | null>(null);
-    const [isSavingOrder, setIsSavingOrder] = React.useState(false);
-    const isScreenReaderEnabled = useIsScreenReaderEnabled();
-    const isEditing = editSession != null;
-
+    const { promoteActiveSheet } = useAppOverlayRouteController();
     const sortedLists = React.useMemo(
       () => sortListsForDisplay(lists, sortMode),
       [lists, sortMode]
@@ -847,115 +596,54 @@ const BookmarksDataSurface = React.memo(
       return byId;
     }, [lists]);
 
-    const enterEditMode = React.useCallback(() => {
-      const baseline = sortListsForDisplay(lists, 'custom').map((list) => list.listId);
-      setEditSession({ order: baseline, history: [baseline], historyIndex: 0 });
-      // §8.11: simultaneously the sheet auto-glides to the TOP snap if not there.
-      promoteActiveSheet({ snap: 'expanded' });
-    }, [lists, promoteActiveSheet]);
+    // ─── Wave-3 §1.1/§1b: the home edit SESSION — the ONE primitive, re-declared ────
+    // onEnter promotes the sheet to FULL extension through the sanctioned seat-writing
+    // lane (§1b: a NAMED product intent — the posture seat is legitimately written to
+    // expanded, and exit performs NO restore; the sheet STAYS extended).
+    const editSession = useEditModeSession({
+      sceneKey: 'bookmarks',
+      entryId: null,
+      onEnter: () => promoteActiveSheet({ snap: 'expanded' }),
+      discardMessage: 'Your new list order has not been saved.',
+    });
+    const isEditing = editSession.isEditing;
+    const [isSavingOrder, setIsSavingOrder] = React.useState(false);
+    const isScreenReaderEnabled = useIsScreenReaderEnabled();
 
-    // §8.11: while editing, the sheet is edit-LOCKED to expanded — swipe-down rubber-bands
-    // and springs back instead of collapsing. Acquired from this effect so the cleanup
-    // clears the lock on BOTH edit-exit (Save/Cancel) and scene unmount.
-    React.useEffect(() => {
-      if (!isEditing) {
-        return undefined;
-      }
-      return acquireOverlaySheetEditLock('bookmarks-edit');
-    }, [isEditing]);
+    const enterEditMode = React.useCallback(() => {
+      editSession.enter(sortListsForDisplay(lists, 'custom').map((list) => list.listId));
+    }, [editSession, lists]);
 
     const exitEditMode = React.useCallback(() => {
-      setEditSession(null);
+      editSession.exit();
       setIsSavingOrder(false);
-    }, []);
+    }, [editSession]);
 
-    // LIVE reorder (fires per slot-crossing during a drag, and per-press in the
-    // accessibility path). Applies the move but does NOT push history — history
-    // commits once per completed gesture (drag end / a11y press below).
-    const handleReorder = React.useCallback((fromIndex: number, toIndex: number) => {
-      setEditSession((session) => {
-        if (session == null || fromIndex === toIndex) {
-          return session;
-        }
-        return { ...session, order: applyMove(session.order, fromIndex, toIndex) };
-      });
-    }, []);
+    React.useEffect(() => {
+      if (!isEditing) {
+        setIsSavingOrder(false);
+      }
+    }, [isEditing]);
 
-    const commitHistoryEntry = React.useCallback(() => {
-      setEditSession((session) => {
-        if (session == null) {
-          return session;
-        }
-        const settled = session.history[session.historyIndex];
-        if (settled != null && settled.join(' ') === session.order.join(' ')) {
-          return session; // no net change — nothing to record
-        }
-        const truncated = session.history.slice(0, session.historyIndex + 1);
-        return {
-          ...session,
-          history: [...truncated, session.order],
-          historyIndex: truncated.length,
-        };
-      });
-    }, []);
-
-    const handleDragStateChange = React.useCallback(
-      (isDragging: boolean) => {
-        if (isDragging) {
-          // The edit-lock (acquired above) pins the sheet at expanded for the whole edit
-          // session, so no promote-on-lift re-assert is needed — the sheet cannot drift.
-          return;
-        }
-        commitHistoryEntry();
-      },
-      [commitHistoryEntry]
-    );
-
-    // Accessibility path: each button press is one complete move — commit immediately.
-    const handleAccessibleReorder = React.useCallback(
-      (fromIndex: number, toIndex: number) => {
-        handleReorder(fromIndex, toIndex);
-        commitHistoryEntry();
-      },
-      [commitHistoryEntry, handleReorder]
-    );
-
-    const handleUndo = React.useCallback(() => {
-      setEditSession((session) => {
-        if (session == null || session.historyIndex === 0) {
-          return session;
-        }
-        const nextIndex = session.historyIndex - 1;
-        return { ...session, historyIndex: nextIndex, order: session.history[nextIndex] };
-      });
-    }, []);
-
-    const handleRedo = React.useCallback(() => {
-      setEditSession((session) => {
-        if (session == null || session.historyIndex >= session.history.length - 1) {
-          return session;
-        }
-        const nextIndex = session.historyIndex + 1;
-        return { ...session, historyIndex: nextIndex, order: session.history[nextIndex] };
-      });
-    }, []);
-
+    const editSessionRef = React.useRef(editSession);
+    editSessionRef.current = editSession;
+    const listsByIdRef = React.useRef(listsById);
+    listsByIdRef.current = listsById;
     const handleSaveOrder = React.useCallback(async () => {
-      if (editSession == null || isSavingOrder) {
+      const session = editSessionRef.current;
+      if (session.order == null || isSavingOrder) {
         return;
       }
       setIsSavingOrder(true);
       try {
-        // Persist via the existing home-order path (no batch endpoint exists for list
-        // positions): one PATCH per USER list whose position changed, in parallel.
-        // System lists keep their pinned server positions untouched.
-        const updates = editSession.order
-          .map((listId, index) => ({ list: listsById.get(listId), position: index }))
+        // Persist via the existing home-order path (no batch endpoint for list
+        // positions): one PATCH per list whose position changed, in parallel.
+        // Wave-2 §2 canon: system lists are REGULAR — they move like any other.
+        const updates = session.order
+          .map((listId, index) => ({ list: listsByIdRef.current.get(listId), position: index }))
           .filter(
             (entry): entry is { list: FavoriteListSummary; position: number } =>
-              entry.list != null &&
-              entry.list.systemKind == null &&
-              entry.list.position !== entry.position
+              entry.list != null && entry.list.position !== entry.position
           );
         await Promise.all(
           updates.map(({ list, position }) =>
@@ -970,153 +658,102 @@ const BookmarksDataSurface = React.memo(
       await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
       setSortMode('custom');
       exitEditMode();
-    }, [editSession, exitEditMode, isSavingOrder, listsById, queryClient]);
+    }, [exitEditMode, isSavingOrder, queryClient, setSortMode]);
 
-    const stripProps = React.useMemo<BookmarksToggleStripProps>(
-      () => ({
-        listType,
-        onSelectListType: (value: FavoriteListType) => setListType(value),
-        sortMode,
-        onSortModeChange: setSortMode,
+    // Publish the EDIT SEAT the header strip renders (body writes, chrome reads).
+    React.useEffect(() => {
+      const seat: BookmarksEditSeat = {
         isEditing,
-        onEnterEdit: enterEditMode,
-        onCancelEdit: exitEditMode, // Cancel restores the pre-edit order by discarding the session
-        onUndo: handleUndo,
-        onRedo: handleRedo,
-        onSaveEdit: () => void handleSaveOrder(),
-        canUndo: editSession != null && editSession.historyIndex > 0,
-        canRedo: editSession != null && editSession.historyIndex < editSession.history.length - 1,
+        canEnterEdit: lists.length > 0,
+        canUndo: editSession.canUndo,
+        canRedo: editSession.canRedo,
+        hasEverEdited: editSession.hasEverEdited,
         isSaving: isSavingOrder,
-      }),
-      [
-        editSession,
-        enterEditMode,
-        exitEditMode,
-        handleRedo,
-        handleSaveOrder,
-        handleUndo,
-        isEditing,
-        isSavingOrder,
-        listType,
-        sortMode,
-      ]
-    );
+        actionProgress: editSession.actionProgress,
+        enterEdit: enterEditMode,
+        cancelEdit: exitEditMode,
+        undo: editSession.undo,
+        redo: editSession.redo,
+        saveEdit: () => void handleSaveOrder(),
+      };
+      setEditSeat(seat);
+    }, [
+      editSession.actionProgress,
+      editSession.canRedo,
+      editSession.canUndo,
+      editSession.hasEverEdited,
+      editSession.redo,
+      editSession.undo,
+      enterEditMode,
+      exitEditMode,
+      handleSaveOrder,
+      isEditing,
+      isSavingOrder,
+      lists.length,
+      setEditSeat,
+    ]);
+    React.useEffect(() => () => setEditSeat(null), [setEditSeat]);
 
-    const editListProps = React.useMemo<BookmarksEditListProps | null>(() => {
-      if (editSession == null) {
+    // Edge auto-scroll drives the SHARED sheet scroll container (scene handle seam).
+    const scrollAdapter = React.useMemo<ReorderScrollAdapter | null>(() => {
+      if (!isEditing) {
         return null;
       }
-      const rows = editSession.order
+      const handle = getOverlaySceneScrollHandle('bookmarks');
+      if (handle == null) {
+        return null;
+      }
+      return {
+        scrollOffset: handle.scrollOffset,
+        scrollBy: (dy: number) => {
+          handle.scrollTo(Math.max(0, handle.scrollOffset.value + dy), false);
+        },
+      };
+    }, [isEditing]);
+
+    const editOrderedLists = React.useMemo<FavoriteListSummary[]>(() => {
+      if (editSession.order == null) {
+        return [];
+      }
+      return editSession.order
         .map((listId) => listsById.get(listId))
         .filter((list): list is FavoriteListSummary => list != null);
-      return {
-        rows,
-        pinnedCount: rows.filter((list) => list.systemKind != null).length,
-        onReorder: isScreenReaderEnabled ? handleAccessibleReorder : handleReorder,
-        onDragStateChange: handleDragStateChange,
-        accessibilityMode: isScreenReaderEnabled,
-      };
-    }, [
-      editSession,
-      handleAccessibleReorder,
-      handleDragStateChange,
-      handleReorder,
-      isScreenReaderEnabled,
-      listsById,
-    ]);
+    }, [editSession.order, listsById]);
 
-    const resetForm = React.useCallback(() => {
-      setFormState({
-        mode: 'hidden',
-        name: '',
-        description: '',
-        visibility: 'private',
-        list: null,
-      });
-    }, []);
-
-    const openCreateForm = React.useCallback(() => {
-      setFormState({
+    // §4: EVERY create path opens the ONE listEdit panel (create mode carries the
+    // active side). The header plus routes here via the header-create registry.
+    const openCreate = React.useCallback(() => {
+      showListEdit({
         mode: 'create',
-        name: '',
-        description: '',
-        visibility: 'private',
-        list: null,
+        listType: useBookmarksHomeControlsStore.getState().listType,
       });
     }, []);
-
-    const openEditForm = React.useCallback((list: FavoriteListSummary) => {
-      setFormState({
-        mode: 'edit',
-        name: list.name,
-        description: list.description ?? '',
-        visibility: list.visibility,
-        list,
-      });
-    }, []);
-
-    const handleListTypeChange = React.useCallback((value: FavoriteListType) => {
-      setListType(value);
-    }, []);
-
-    const handleFormNameChange = React.useCallback((value: string) => {
-      setFormState((prev) => ({ ...prev, name: value }));
-    }, []);
-
-    const handleFormDescriptionChange = React.useCallback((value: string) => {
-      setFormState((prev) => ({ ...prev, description: value }));
-    }, []);
-
-    const handleFormVisibilityChange = React.useCallback((value: FavoriteListVisibility) => {
-      setFormState((prev) => ({ ...prev, visibility: value }));
-    }, []);
-
-    const handleFormSave = React.useCallback(async () => {
-      if (!formState.name.trim()) {
-        return;
-      }
-      try {
-        if (formState.mode === 'create') {
-          await favoriteListsService.create({
-            name: formState.name,
-            description: formState.description,
-            listType,
-            visibility: formState.visibility,
-          });
-        }
-        if (formState.mode === 'edit' && formState.list) {
-          await favoriteListsService.update(formState.list.listId, {
-            name: formState.name,
-            description: formState.description,
-            visibility: formState.visibility,
-          });
-        }
-      } catch {
-        // The form stays open with the user's input intact — the uniform modal announces.
-        announceFailureIfOnline();
-        return;
-      }
-      await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
-      resetForm();
-    }, [formState, listType, queryClient, resetForm]);
+    React.useEffect(() => registerHeaderCreateAction('bookmarks', openCreate), [openCreate]);
 
     const handleOpenAll = React.useCallback(
       (side: FavoriteListType) => {
-        pushRoute('listDetail', {
-          listId: side === 'restaurant' ? 'all:restaurants' : 'all:dishes',
+        // Wave-4 §3 (audit mouth #2): the per-side All opens through THE policy — the
+        // listWorld composite (push + the list's search world), no more policy bypass.
+        executeEntityRefAction({
+          entityId: side === 'restaurant' ? 'all:restaurants' : 'all:dishes',
+          entityType: 'list',
+          label: side === 'restaurant' ? 'All restaurants' : 'All dishes',
+          listType: side,
         });
       },
-      [pushRoute]
+      [executeEntityRefAction]
     );
 
     const handleListPress = React.useCallback(
       (list: FavoriteListSummary) => {
-        // S-D.2: the tap's meaning resolves through THE entity policy (list tap = the
-        // listDetail child push). The byte-identical profile-panel copy routes the same way.
+        // S-D.2 + wave-4 §3: the tap's meaning resolves through THE entity policy —
+        // with listType present this is the listWorld COMPOSITE (push + the list's
+        // search world: map pins + choreography), the restored favorites-as-search.
         executeEntityRefAction({
           entityId: list.listId,
           entityType: 'list',
           label: list.name,
+          listType: list.listType,
         });
       },
       [executeEntityRefAction]
@@ -1148,6 +785,34 @@ const BookmarksDataSurface = React.memo(
       [queryClient]
     );
 
+    const handleToggleUseOwnPhotos = React.useCallback(
+      async (list: FavoriteListSummary) => {
+        try {
+          await favoriteListsService.update(list.listId, {
+            useOwnPhotos: list.useOwnPhotos !== true,
+          });
+        } catch {
+          announceFailureIfOnline();
+          return;
+        }
+        await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      },
+      [queryClient]
+    );
+
+    const handleTogglePin = React.useCallback(
+      async (list: FavoriteListSummary) => {
+        try {
+          await favoriteListsService.update(list.listId, { pinned: list.pinned !== true });
+        } catch {
+          announceFailureIfOnline();
+          return;
+        }
+        await queryClient.invalidateQueries({ queryKey: favoriteListKeys.all });
+      },
+      [queryClient]
+    );
+
     const handleDelete = React.useCallback(
       async (list: FavoriteListSummary) => {
         try {
@@ -1161,58 +826,90 @@ const BookmarksDataSurface = React.memo(
       [queryClient]
     );
 
+    // Wave-2 §2 ellipsis-menu restyle: left-aligned title; lucide icon + text rows,
+    // no color blocks, no separators, no Cancel row (swipe/backdrop dismisses).
+    // Wave-3 §4: the "Edit" row (list metadata) opens the ONE listEdit panel.
     const openListMenu = React.useCallback(
       (list: FavoriteListSummary) => {
+        const isPublic = list.visibility === 'public';
+        const usesOwnPhotos = list.useOwnPhotos === true;
+        const isPinned = list.pinned === true;
         showAppModal({
           title: list.name,
+          variant: 'menu',
           actions: [
             {
               label: 'Edit',
-              onPress: () => openEditForm(list),
+              icon: <Pencil size={19} color={TILE_TEXT} />,
+              onPress: () =>
+                showListEdit({
+                  mode: 'edit',
+                  listId: list.listId,
+                  name: list.name,
+                  description: list.description ?? null,
+                  visibility: list.visibility,
+                }),
             },
             {
               label: 'Share',
+              icon: <Share2 size={19} color={TILE_TEXT} />,
               onPress: () => void handleShare(list),
-            },
-            {
-              label: list.visibility === 'public' ? 'Make Private' : 'Make Public',
-              onPress: () => void handleToggleVisibility(list),
             },
             {
               label: 'Delete',
               style: 'destructive',
+              icon: <Trash2 size={19} color="#ef4444" />,
               onPress: () => void handleDelete(list),
             },
             {
-              label: 'Cancel',
-              style: 'cancel',
+              label: isPublic ? 'Remove from profile' : 'Add to profile',
+              icon: isPublic ? (
+                <EyeOff size={19} color={TILE_TEXT} />
+              ) : (
+                <Eye size={19} color={TILE_TEXT} />
+              ),
+              onPress: () => void handleToggleVisibility(list),
+            },
+            {
+              label: usesOwnPhotos ? 'Use Crave photos' : 'Use your photos',
+              icon: <Images size={19} color={TILE_TEXT} />,
+              onPress: () => void handleToggleUseOwnPhotos(list),
+            },
+            {
+              label: isPinned ? 'Unpin from profile' : 'Pin on profile',
+              icon: isPinned ? (
+                <PinOff size={19} color={TILE_TEXT} />
+              ) : (
+                <Pin size={19} color={TILE_TEXT} />
+              ),
+              onPress: () => void handleTogglePin(list),
             },
           ],
         });
       },
-      [handleDelete, handleShare, handleToggleVisibility, openEditForm]
+      [handleDelete, handleShare, handleTogglePin, handleToggleUseOwnPhotos, handleToggleVisibility]
     );
 
     const dataSurface = (
       <BookmarksSceneBody
         sceneReady={sceneReady}
         listType={listType}
-        formState={formState}
         lists={sortedLists}
         isListsLoading={isListsLoading}
         isListsError={isListsError}
-        onSelectListType={handleListTypeChange}
-        onOpenCreateForm={openCreateForm}
-        onResetForm={resetForm}
-        onNameChange={handleFormNameChange}
-        onDescriptionChange={handleFormDescriptionChange}
-        onVisibilityChange={handleFormVisibilityChange}
-        onSave={() => void handleFormSave()}
+        refetchLists={refetchLists}
+        isEditing={isEditing}
+        editOrderedLists={editOrderedLists}
+        onReorder={
+          isScreenReaderEnabled ? editSession.handleAccessibleReorder : editSession.handleReorder
+        }
+        onDragStateChange={editSession.handleDragStateChange}
+        isScreenReaderEnabled={isScreenReaderEnabled}
+        scrollAdapter={scrollAdapter}
+        onOpenCreate={openCreate}
         onListPress={handleListPress}
         onOpenMenu={openListMenu}
         onOpenAll={handleOpenAll}
-        stripProps={stripProps}
-        editListProps={editListProps}
       />
     );
 
@@ -1272,38 +969,18 @@ const BookmarksPersistentHeaderTitle = React.memo(() => (
       numberOfLines={1}
       ellipsizeMode="tail"
     >
-      Favorites
+      Lists
     </Text>
   </View>
 ));
 
 BookmarksPersistentHeaderTitle.displayName = 'BookmarksPersistentHeaderTitle';
 
-const BookmarksPersistentHeaderAction = React.memo(() => {
-  const { setRootRoute } = useAppOverlayRouteController();
-  const localHeaderActionProgress = useSharedValue(0);
-
-  const handleClose = React.useCallback(() => {
-    setRootRoute('search');
-  }, [setRootRoute]);
-
-  return (
-    <OverlayHeaderActionButton
-      progress={localHeaderActionProgress}
-      onPress={handleClose}
-      accessibilityLabel="Close favorites"
-      accentColor={ACTIVE_TAB_COLOR}
-      closeColor="#000000"
-    />
-  );
-});
-
-BookmarksPersistentHeaderAction.displayName = 'BookmarksPersistentHeaderAction';
-
-// Module-scope registration (house pattern — origin-scene-live-state-registry).
+// Module-scope registration (house pattern — origin-scene-live-state-registry). The header
+// action is the HOST-OWNED HeaderNavAction (leg 6 §4) — no per-scene Action slot.
 registerPersistentHeaderDescriptor('bookmarks', {
   Title: BookmarksPersistentHeaderTitle,
-  Action: BookmarksPersistentHeaderAction,
+  Strip: BookmarksHomeStrip,
 });
 
 const styles = StyleSheet.create({
@@ -1316,127 +993,29 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: '#0f172a',
   },
-  segmentRow: {
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  stripViewport: {
-    flex: 1,
-    overflow: 'hidden',
-  },
-  stripRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  stripShell: {
-    flex: 1,
-  },
-  stripRowOverlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  stripSegment: {
-    flex: 1,
-  },
-  editChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: TILE_BORDER,
-    backgroundColor: '#ffffff',
-  },
-  editChipText: {
-    color: TILE_TEXT,
-  },
-  editStripButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  editStripCancelText: {
-    color: TILE_SUBTEXT,
-  },
-  editStripMiddle: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 20,
-  },
-  editStripIconButton: {
-    padding: 6,
-  },
-  editStripSave: {
-    backgroundColor: TILE_TEXT,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    minWidth: 64,
-    alignItems: 'center',
-  },
-  editStripSaveText: {
-    color: '#ffffff',
-  },
-  editRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: TILE_BG,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: TILE_BORDER,
-    paddingHorizontal: 12,
-    marginVertical: 4,
-    minHeight: EDIT_ROW_HEIGHT - 8,
-  },
-  editRowPinned: {
-    backgroundColor: '#f1f5f9',
-    borderStyle: 'dashed',
-  },
-  editRowActive: {
-    backgroundColor: '#ffffff',
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  editRowText: {
-    flex: 1,
-    gap: 2,
-  },
-  editRowLock: {
-    marginLeft: 8,
-  },
+  // §2.4 CORRECTION (owner 2026-07-13): the content border applies to EVERYTHING —
+  // only SCROLLABLE image strips bleed past it. The grid keeps the transport inset.
   gridList: {
     gap: GRID_GAP,
+  },
+  editGridBlock: {
+    marginBottom: GRID_GAP,
   },
   allTile: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 12,
     backgroundColor: TILE_BG,
     borderRadius: TILE_RADIUS,
     borderWidth: 1,
     borderColor: TILE_BORDER,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: GRID_GAP,
   },
-  allTileIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: TILE_BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-  },
-  allTileText: {
-    flex: 1,
-    gap: 2,
+  allTileTitle: {
+    color: TILE_TEXT,
   },
   gridRow: {
     flexDirection: 'row',
@@ -1452,39 +1031,38 @@ const styles = StyleSheet.create({
   tilePressed: {
     opacity: 0.85,
   },
-  tile: {
-    backgroundColor: TILE_BG,
+  tileActiveDrag: {
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  // §1.2 gallery: 2x2 cells, TL→BR, rounded as one block.
+  tileGallery: {
+    aspectRatio: 1 / TILE_GALLERY_RATIO,
     borderRadius: TILE_RADIUS,
-    borderWidth: 1,
-    borderColor: TILE_BORDER,
-    padding: 12,
-    minHeight: 140,
+    overflow: 'hidden',
+    gap: TILE_GALLERY_CELL_GAP,
   },
-  tileContent: {
-    gap: 8,
-  },
-  previewRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  previewDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  previewText: {
-    color: TILE_TEXT,
+  tileGalleryRow: {
     flex: 1,
+    flexDirection: 'row',
+    gap: TILE_GALLERY_CELL_GAP,
   },
-  previewEmpty: {
-    color: TILE_SUBTEXT,
+  tileGalleryCell: {
+    flex: 1,
+    backgroundColor: TILE_PLACEHOLDER_BG,
+  },
+  tileGalleryEmpty: {
+    backgroundColor: TILE_PLACEHOLDER_BG,
   },
   tileFooter: {
-    marginTop: 8,
+    height: TILE_FOOTER_HEIGHT,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingHorizontal: 4,
   },
   tileTitle: {
     color: TILE_TEXT,
@@ -1492,112 +1070,40 @@ const styles = StyleSheet.create({
   },
   tileMenuButton: {
     paddingLeft: 8,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
   },
   newListCard: {
     backgroundColor: '#ffffff',
     borderRadius: TILE_RADIUS,
     borderWidth: 1,
     borderColor: TILE_BORDER,
-    paddingVertical: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 10,
+    marginTop: GRID_GAP,
     marginBottom: GRID_GAP,
-  },
-  newListIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: TILE_BORDER,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
   },
   newListText: {
     color: SEGMENT_TEXT,
   },
-  formPanel: {
-    backgroundColor: FORM_BG,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: FORM_BORDER,
-    padding: 16,
-    marginBottom: GRID_GAP,
-  },
-  formTitle: {
-    color: TILE_TEXT,
-    marginBottom: 12,
-  },
-  formInput: {
-    borderWidth: 1,
-    borderColor: FORM_BORDER,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: TILE_TEXT,
-    marginBottom: 10,
-  },
-  formInputMultiline: {
-    minHeight: 72,
-    textAlignVertical: 'top',
-  },
-  visibilityRow: {
-    marginTop: 4,
-    marginBottom: 12,
-  },
-  visibilityLabel: {
-    color: TILE_SUBTEXT,
-    marginBottom: 6,
-  },
-  visibilityToggle: {
+  // Wave-3 §2.1: the Edit chip is a CLEAN CUTOUT — no border, no white pill; the
+  // frosted window is the button shape (FilterChip composition).
+  editChip: {
     flexDirection: 'row',
-    backgroundColor: FORM_TOGGLE_BG,
-    borderRadius: 999,
-    padding: 4,
-  },
-  visibilityOption: {
-    flex: 1,
     alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  visibilityOptionActive: {
-    backgroundColor: FORM_TOGGLE_ACTIVE,
-  },
-  visibilityOptionText: {
-    color: TILE_SUBTEXT,
-  },
-  visibilityOptionTextActive: {
-    color: '#ffffff',
-  },
-  formActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  formCancel: {
-    paddingVertical: 8,
+    gap: 6,
     paddingHorizontal: 12,
-  },
-  formCancelText: {
-    color: TILE_SUBTEXT,
-  },
-  formSave: {
-    backgroundColor: TILE_TEXT,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingVertical: 7,
     borderRadius: 999,
   },
-  formSaveText: {
-    color: '#ffffff',
+  editChipText: {
+    color: TILE_TEXT,
   },
   emptyState: {
     paddingVertical: 24,
-  },
-  loadingState: {
-    paddingVertical: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   prewarmedMountedBodyHidden: {
     display: 'none',

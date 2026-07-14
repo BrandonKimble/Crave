@@ -13,6 +13,16 @@ export class MarketsController {
     private readonly ipLocation: IpLocationService,
   ) {}
 
+  // Leg 11 (strips/lists domain): the ListDetail Market chip's option vocabulary
+  // (§8.16 — the virtual All list is "sliced by city"). The markets TABLE is the
+  // self-provisioning source of truth: search rows carry no per-row market
+  // provenance (the executor's marketKey column is an echo of the active-market
+  // directive), so options come from the active markets themselves.
+  @Get('active')
+  listActive() {
+    return this.marketRegistry.listActiveMarkets();
+  }
+
   @Post('resolve')
   resolve(@Body() dto: MarketResolveDto) {
     return this.marketRegistry.resolveViewportCoverage({

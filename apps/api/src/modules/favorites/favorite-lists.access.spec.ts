@@ -146,6 +146,7 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
     new FavoriteListAccessPolicy(prisma as never, blocks as never),
     new ListResultsAssembler(executor as never),
     new FavoriteListMapper(prisma as never, logger as never),
+    { loadTileImages: () => Promise.resolve(new Map()) } as never,
   );
   return { service, prisma, shareEventCreate };
 }

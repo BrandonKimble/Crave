@@ -29,6 +29,17 @@ export interface PhotoStripProps {
   photos: PhotoStripPhoto[];
   /** Tile height in px; widths follow each photo's aspect. */
   height: number;
+  /**
+   * Default tile aspect (width / height) when a photo doesn't carry its own.
+   * Wave-3 §3.3: cards pass a narrower aspect so photos read bigger/less wide.
+   */
+  tileAspect?: number;
+  /**
+   * Edge-to-edge bleed (wave-3 §2.4, the toggle-strip law): the strip itself is
+   * full-bleed; the FIRST tile aligns with page content via this scrollable inset —
+   * photos slide under both screen edges, nothing clips them into a padded box.
+   */
+  contentInset?: number;
   /** 'add' prepends the owner-context "+" tile (own saved/favorites lists only). */
   leadTile?: 'add';
   onAddPress?: () => void;
@@ -47,43 +58,64 @@ const PLACEHOLDER_COLOR = FROST_GRAY.replace(')', ', 0.16)');
 const ADD_TILE_BORDER = FROST_GRAY.replace(')', ', 0.45)');
 const ADD_ICON_COLOR = CUTOUT_SKELETON_CONFIG.frostTintColor;
 
-const AddTile: React.FC<{ height: number; onPress?: () => void }> = ({ height, onPress }) => (
-  <Pressable
-    accessibilityRole="button"
-    accessibilityLabel="Add photo"
-    onPress={onPress}
-    style={({ pressed }) => [
-      styles.addTile,
-      { height, width: Math.round(height * 0.75), opacity: pressed ? 0.6 : 1 },
-    ]}
-  >
-    <Plus size={22} color={ADD_ICON_COLOR} strokeWidth={2.25} />
-  </Pressable>
-);
+// ─── The plus SLIVER (leg 10 step 4; listdetail-ideal §7 gallery seam) ───────────────────────
+// Decree: the "+" tile is a SLIVER — 1/6–1/8 of an image block's width, image height. At
+// today's strip heights the literal decree cannot hold the icon: an image block is
+// height·4/3 px wide (75px at h=56, 96px at h=72), so /6–/8 is 9–16px — no room for a plus
+// with tasteful padding. Closest tasteful geometry (⚠ OWNER FEEL-CHECK pending, bigger
+// gallery tiles would let the literal ratio land):
+//   sliverWidth = max(round(blockWidth / 6), 24px)  → 24px at h=56 (~1/3 block) and
+//   24px at h=72 (1/4 block); icon 14px, ~5px side padding.
+const DECREED_SLIVER_FRACTION = 1 / 6;
+const MIN_PLUS_SLIVER_WIDTH = 24;
+const PLUS_SLIVER_ICON_SIZE = 14;
+
+const AddTile: React.FC<{ height: number; onPress?: () => void }> = ({ height, onPress }) => {
+  const blockWidth = Math.round(height * DEFAULT_ASPECT);
+  const width = Math.max(Math.round(blockWidth * DECREED_SLIVER_FRACTION), MIN_PLUS_SLIVER_WIDTH);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Add photo"
+      onPress={onPress}
+      style={({ pressed }) => [styles.addTile, { height, width, opacity: pressed ? 0.6 : 1 }]}
+    >
+      <Plus size={PLUS_SLIVER_ICON_SIZE} color={ADD_ICON_COLOR} strokeWidth={2.5} />
+    </Pressable>
+  );
+};
 
 export const PhotoStrip: React.FC<PhotoStripProps> = ({
   photos,
   height,
+  tileAspect = DEFAULT_ASPECT,
+  contentInset = 0,
   leadTile,
   onAddPress,
   onPhotoPress,
   onPhotoLongPress,
 }) => {
   if (photos.length === 0 && leadTile !== 'add') {
-    // Display-only placeholder: one soft rectangle in the strip's shape.
-    return <View accessibilityLabel="No photos yet" style={[styles.placeholder, { height }]} />;
+    // Display-only placeholder: one soft rectangle in the strip's shape,
+    // aligned with page content when the strip itself bleeds.
+    return (
+      <View
+        accessibilityLabel="No photos yet"
+        style={[styles.placeholder, { height, marginHorizontal: contentInset }]}
+      />
+    );
   }
 
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingHorizontal: contentInset }]}
       style={{ height }}
     >
       {leadTile === 'add' ? <AddTile height={height} onPress={onAddPress} /> : null}
       {photos.map((photo, index) => {
-        const width = Math.round(height * (photo.aspect ?? DEFAULT_ASPECT));
+        const width = Math.round(height * (photo.aspect ?? tileAspect));
         return (
           <Pressable
             key={photo.id}

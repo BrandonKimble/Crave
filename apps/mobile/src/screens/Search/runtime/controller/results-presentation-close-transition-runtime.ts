@@ -9,8 +9,6 @@ type ResultsPresentationCloseTransitionRuntimeValue = {
       outgoingSheetSceneKey?: OverlayKey | null;
     }
   ) => void;
-  scheduleCloseSearchCleanup: (closeIntentId: string) => void;
-  cancelCloseSearchCleanup: () => void;
   setPendingCloseIntentId: (intentId: string | null) => void;
   matchesPendingCloseIntentId: (intentId: string) => boolean;
 };
@@ -18,15 +16,11 @@ type ResultsPresentationCloseTransitionRuntimeValue = {
 export const createResultsPresentationCloseTransitionRuntimeValue = ({
   closeTransitionActions,
   beginCloseTransition,
-  scheduleCloseSearchCleanup,
-  cancelCloseSearchCleanup,
   setPendingCloseIntentId,
   matchesPendingCloseIntentId,
 }: ResultsPresentationCloseTransitionRuntimeValue): ResultsPresentationCloseTransitionRuntimeValue => ({
   closeTransitionActions,
   beginCloseTransition,
-  scheduleCloseSearchCleanup,
-  cancelCloseSearchCleanup,
   setPendingCloseIntentId,
   matchesPendingCloseIntentId,
 });

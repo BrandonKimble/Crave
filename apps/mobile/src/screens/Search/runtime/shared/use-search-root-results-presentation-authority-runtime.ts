@@ -2,7 +2,6 @@ import React from 'react';
 
 import type {
   SearchRootClearRestoreAuthorityRuntime,
-  SearchRootMutationCancelAuthorityRuntime,
   SearchRootProfileBridgeAuthorityRuntime,
   SearchRootResultsPresentationAuthorityRuntime,
 } from './search-root-control-ports-runtime-contract';
@@ -20,10 +19,8 @@ type UseSearchRootResultsPresentationAuthorityRuntimeArgs = {
   sessionCoreLane: SearchRootSessionCoreLane;
   stateFoundationLane: SearchRootStateFoundationLane;
   rootOverlayFoundationRuntime: SearchRootOverlayFoundationRuntime;
-  mutationCancelAuthorityRuntime: SearchRootMutationCancelAuthorityRuntime;
   profileBridgeAuthorityRuntime: SearchRootProfileBridgeAuthorityRuntime;
   clearRestoreAuthorityRuntime: SearchRootClearRestoreAuthorityRuntime;
-  cancelActiveSearchRequest: () => void;
   resultsSurfacePolicyController?: ResultsSurfacePolicyController;
   foregroundPolicyPublicationAuthority?: SearchForegroundPolicyPublicationAuthority;
   searchChromeScalarSurfaceRuntime?: SearchChromeScalarSurfaceRuntime;
@@ -33,16 +30,13 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
   sessionCoreLane,
   stateFoundationLane,
   rootOverlayFoundationRuntime,
-  mutationCancelAuthorityRuntime,
   profileBridgeAuthorityRuntime,
   clearRestoreAuthorityRuntime,
-  cancelActiveSearchRequest,
   resultsSurfacePolicyController,
   foregroundPolicyPublicationAuthority,
   searchChromeScalarSurfaceRuntime,
 }: UseSearchRootResultsPresentationAuthorityRuntimeArgs): SearchRootResultsPresentationAuthorityRuntime => {
-  const { rootPrimitivesRuntime, rootDataPlaneRuntime, rootSuggestionRuntime } =
-    stateFoundationLane;
+  const { rootPrimitivesRuntime, rootDataPlaneRuntime } = stateFoundationLane;
   const {
     rootInstrumentationRuntime,
     rootOverlaySessionSurfaceRuntime,
@@ -50,9 +44,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
   } = rootOverlayFoundationRuntime;
 
   const logControlPresentationDiag = React.useCallback(() => {}, []);
-  const handleCancelPendingMutationWork = React.useCallback(() => {
-    mutationCancelAuthorityRuntime.mutationCancelPort.cancelPendingMutationWork();
-  }, [mutationCancelAuthorityRuntime.mutationCancelPort]);
   const handleSearchSheetContentLaneChanged = React.useCallback(
     (
       change: NonNullable<
@@ -117,16 +108,6 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
       !rootPrimitivesRuntime.searchState.shouldDisableSearchShortcutsRef.current,
     ignoreNextSearchBlurRef: rootPrimitivesRuntime.searchState.ignoreNextSearchBlurRef,
     isClearingSearchRef: rootPrimitivesRuntime.searchState.isClearingSearchRef,
-    cancelAutocomplete: rootDataPlaneRuntime.requestStatusRuntime.cancelAutocomplete,
-    resetSubmitTransitionHold: rootSuggestionRuntime.resetSubmitTransitionHold,
-    setIsSearchFocused: rootPrimitivesRuntime.searchState.setIsSearchFocused,
-    setIsSuggestionPanelActive: rootPrimitivesRuntime.searchState.setIsSuggestionPanelActive,
-    setIsAutocompleteSuppressed: rootPrimitivesRuntime.searchState.setIsAutocompleteSuppressed,
-    setShowSuggestions: rootPrimitivesRuntime.searchState.setShowSuggestions,
-    setQuery: rootPrimitivesRuntime.searchState.setQuery,
-    setError: rootPrimitivesRuntime.searchState.setError,
-    setSuggestions: rootPrimitivesRuntime.searchState.setSuggestions,
-    inputRef: rootPrimitivesRuntime.searchState.inputRef,
     searchRuntimeBus: sessionCoreLane.searchRuntimeBus,
     resultsPresentationAuthority: sessionCoreLane.resultsPresentationAuthority,
     routeSceneSwitchAuthority: rootOverlayFoundationRuntime.routeSceneRuntime.sceneSwitchAuthority,
@@ -138,10 +119,8 @@ export const useSearchRootResultsPresentationAuthorityRuntime = ({
       typeof useResultsPresentationOwner
     >[0]['emitRuntimeMechanismEvent'],
     resultsSheetRuntime: appRouteSharedSheetRuntimeOwner,
-    handleCancelPendingMutationWork,
     clearTypedQuery: clearRestoreAuthorityRuntime.clearOwner.clearTypedQuery,
     clearSearchState: clearRestoreAuthorityRuntime.clearOwner.clearSearchState,
-    cancelActiveSearchRequest,
     routeSceneVisibilityPolicyRuntime:
       foregroundPolicyPublicationAuthority?.routeSceneVisibilityPolicyRuntime ??
       rootOverlayFoundationRuntime.routeSceneRuntime.routeSceneVisibilityPolicyRuntime,

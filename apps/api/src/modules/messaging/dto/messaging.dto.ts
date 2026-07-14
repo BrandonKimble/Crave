@@ -146,6 +146,10 @@ export type SharePackagePreviewDto =
       /** comment kind only: the parent poll — the client's tap destination is
        *  pollDetail{pollId, commentAnchorId: id} (no public web link). */
       pollId?: string;
+      /** list kind only: the list's side — the client tap runs the full list
+       *  WORLD (favorites-as-search); absent ⇒ the client falls back to a plain
+       *  push with a loud dev bark. */
+      listType?: 'restaurant' | 'dish';
     };
 
 export type MessageDto = {

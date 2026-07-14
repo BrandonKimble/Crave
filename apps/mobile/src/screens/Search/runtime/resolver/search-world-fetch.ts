@@ -52,7 +52,16 @@ export type SearchWorldFetchEnv = {
    *  the results define the camera). */
   getFavoritesListResults: (
     listId: string,
-    options: { openNow?: boolean; userLocation?: Coordinate }
+    options: {
+      openNow?: boolean;
+      userLocation?: Coordinate;
+      targetUserId?: string | null;
+      shareSlug?: string | null;
+      /** Wave-4 §3 strip 'world' flip: the list-strip's full slice rides the world. */
+      sort?: 'custom' | 'best' | 'recent';
+      priceLevels?: number[];
+      marketKey?: string | null;
+    }
   ) => Promise<SearchResponse | null>;
 };
 
@@ -171,6 +180,18 @@ export const createSearchWorldFetcher =
       response = await env.getFavoritesListResults(identity.listId, {
         openNow: tuple.filterVariant.openNow || undefined,
         userLocation: userLocation ?? undefined,
+        // Virtual-All from ANOTHER user's surface: scope the union to the owner.
+        targetUserId: identity.targetUserId ?? undefined,
+        // RT-18: shared reads present the slug capability.
+        shareSlug: identity.shareSlug ?? undefined,
+        // Strip 'world' flip: the list-strip slice rides the tuple's filterVariant, so a
+        // sort/price/market chip re-resolves the WORLD (map pins + cards re-slice together).
+        sort: tuple.filterVariant.listSort,
+        priceLevels:
+          tuple.filterVariant.priceLevels.length > 0
+            ? [...tuple.filterVariant.priceLevels]
+            : undefined,
+        marketKey: tuple.filterVariant.marketKey ?? undefined,
       });
       if (__DEV__) {
         // eslint-disable-next-line no-console

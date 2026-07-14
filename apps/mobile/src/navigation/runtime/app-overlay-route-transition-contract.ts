@@ -3,7 +3,6 @@ import type {
   BottomSheetSnap,
 } from '../../overlays/bottomSheetMotionTypes';
 import type { OverlayKey } from '../../overlays/types';
-import type { OverlayHeaderActionMode } from '../../overlays/useOverlayHeaderActionController';
 import type { SearchFreezeClassification } from '../../screens/Search/runtime/shared/search-freeze-classification-runtime';
 import type { OverlayRouteParamsMap } from './app-overlay-route-types';
 import type { CameraSnapshot } from './app-route-profile-transition-state-contract';
@@ -29,8 +28,6 @@ export type RouteSceneSwitchChromeVisibilityTarget = {
 export type RouteSceneSwitchMotionPlane = 'sheet' | 'camera' | 'chrome' | 'content';
 
 export type RouteSceneSwitchSheetVisibilityTarget = 'visible' | 'hidden' | 'preserve';
-
-export type RouteSceneSwitchHeaderActionModeTarget = OverlayHeaderActionMode | 'preserve';
 
 export type RouteSceneSwitchPollsParams = OverlayRouteParamsMap['polls'];
 
@@ -127,7 +124,6 @@ export type RouteSceneSwitchTransitionContract = {
   sheetTransitionPlan: RouteSceneSwitchSheetTransitionPlan;
   cameraIntent: RouteSceneSwitchCameraIntent;
   chromeVisibilityTarget: RouteSceneSwitchChromeVisibilityTarget;
-  headerActionModeTarget: RouteSceneSwitchHeaderActionModeTarget;
   freezeClassification: SearchFreezeClassification;
   motionPlanes: readonly RouteSceneSwitchMotionPlane[];
   pollsParams: RouteSceneSwitchPollsParams | null;

@@ -19,13 +19,7 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import { io } from 'socket.io-client';
-import {
-  Heart,
-  MessageCircle,
-  Reply as ReplyIcon,
-  Sparkles,
-  X as LucideX,
-} from 'lucide-react-native';
+import { Heart, MessageCircle, Reply as ReplyIcon, Sparkles } from 'lucide-react-native';
 
 import { Feather } from '@expo/vector-icons';
 import { announceFailureIfOnline, showAppModal, Text } from '../../components';
@@ -42,8 +36,10 @@ import {
   overlaySheetStyles,
 } from '../overlaySheetStyles';
 import { resolveExpandedTop } from '../sheetUtils';
-import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
-import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
+import {
+  registerPersistentHeaderDescriptor,
+  type PersistentHeaderExtrasProps,
+} from '../../navigation/runtime/app-route-persistent-header-registry';
 import type { SnapPoints } from '../bottomSheetMotionTypes';
 import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
 import { normalizeSearchRouteSceneStackShellSpec } from '../searchOverlayRouteHostContract';
@@ -1362,15 +1358,26 @@ const PollDetailPersistentHeaderTitle = React.memo(() => (
 ));
 PollDetailPersistentHeaderTitle.displayName = 'PollDetailPersistentHeaderTitle';
 
-const PollDetailPersistentHeaderAction = React.memo(() => {
-  const { closeActiveRoute } = useAppOverlayRouteController();
-  // W3 universal share modal: polls are a shareable kind (§9b). The presented
-  // poll's id rides the topmost pollDetail route entry.
-  const pollEntry = useTopMostRouteEntryForScene('pollDetail');
-  const pollId = pollEntry?.params?.pollId ?? null;
-  return (
-    <View style={styles.headerActionsRow}>
-      {pollId ? (
+// Leg 6 (§4 HeaderNavAction): the close X is HOST-OWNED now (the one plus↔X control on
+// PersistentSheetHeaderHost) — the per-scene close factory died. The share affordance is
+// per-scene EXTRAS chrome: it rides the host's `transitionProgress` (the same 0→1 driving the
+// plus→X rotation), so it fades in synchronized with the rotation on the child push, starting
+// on press-up (the §3.5 seam; ListDetail's ellipsis will ride this same contract).
+const PollDetailPersistentHeaderExtras = React.memo(
+  ({ transitionProgress }: PersistentHeaderExtrasProps) => {
+    // W3 universal share modal: polls are a shareable kind (§9b). The presented
+    // poll's id rides the topmost pollDetail route entry.
+    const pollEntry = useTopMostRouteEntryForScene('pollDetail');
+    const pollId = pollEntry?.params?.pollId ?? null;
+    const extrasOpacityStyle = useAnimatedStyle(
+      () => ({ opacity: transitionProgress.value }),
+      [transitionProgress]
+    );
+    if (pollId == null) {
+      return null;
+    }
+    return (
+      <Reanimated.View style={extrasOpacityStyle}>
         <Pressable
           onPress={() => showShareModal({ kind: 'poll', id: pollId })}
           accessibilityRole="button"
@@ -1381,27 +1388,15 @@ const PollDetailPersistentHeaderAction = React.memo(() => {
         >
           <Feather name="share-2" size={18} color="#1f2937" />
         </Pressable>
-      ) : null}
-      <Pressable
-        onPress={closeActiveRoute}
-        accessibilityRole="button"
-        accessibilityLabel="Close poll"
-        testID="poll-detail-close"
-        style={overlaySheetStyles.closeButton}
-        hitSlop={8}
-      >
-        <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
-          <LucideX size={20} color="#000000" strokeWidth={2.5} />
-        </View>
-      </Pressable>
-    </View>
-  );
-});
-PollDetailPersistentHeaderAction.displayName = 'PollDetailPersistentHeaderAction';
+      </Reanimated.View>
+    );
+  }
+);
+PollDetailPersistentHeaderExtras.displayName = 'PollDetailPersistentHeaderExtras';
 
 registerPersistentHeaderDescriptor('pollDetail', {
   Title: PollDetailPersistentHeaderTitle,
-  Action: PollDetailPersistentHeaderAction,
+  Extras: PollDetailPersistentHeaderExtras,
 });
 
 const styles = StyleSheet.create({

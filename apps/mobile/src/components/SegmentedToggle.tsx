@@ -10,6 +10,10 @@ import Reanimated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
+import {
+  ToggleStripSlotKeyContext,
+  ToggleStripWarmRestoreContext,
+} from '../toggles/toggle-strip-warm-restore-context';
 import { Text } from './ui/Text';
 
 /**
@@ -24,6 +28,12 @@ import { Text } from './ui/Text';
  * Consumers: polls feed Live/Results, bookmarks Restaurants/Dishes, profile
  * Created/Contributed/Favorites. Every improvement to the toggle mechanism lands
  * HERE, once — pages never hand-roll segment rows.
+ *
+ * WARM RESTORE is the strip engine's (leg 2): inside a `ToggleStrip`, the pill
+ * self-seeds its measured segment geometry from the strip's warm-restore context
+ * (keyed by its hole-slot key) and self-reports live geometry back — so a remounted
+ * strip paints the pill correctly on its FIRST frame with zero consumer join code.
+ * Outside a strip the contexts are null and the pill simply measures on mount.
  */
 
 const SEGMENT_TRAVEL_MIN_MS = 34;
@@ -59,14 +69,6 @@ export type SegmentedToggleProps<T extends string> = {
   onChange: (value: T) => void;
   /** Pill fill color (defaults to the brand accent). */
   accentColor?: string;
-  /**
-   * Warm-restore (chrome-swap first frame): seed the measured segment geometry
-   * (index-aligned with `options`) so the pill is correctly placed and visible on
-   * the FIRST frame after a remount — before any onLayout fires. Pair with
-   * `onSegmentLayoutsChange`, which emits the live geometry for caching.
-   */
-  initialSegmentLayouts?: readonly (LayoutRectangle | undefined)[];
-  onSegmentLayoutsChange?: (layouts: (LayoutRectangle | undefined)[]) => void;
   accessibilityLabel?: string;
   accessibilityHint?: string;
   testID?: string;
@@ -129,8 +131,6 @@ export function SegmentedToggle<T extends string>({
   value,
   onChange,
   accentColor = DEFAULT_ACCENT,
-  initialSegmentLayouts,
-  onSegmentLayoutsChange,
   accessibilityLabel,
   accessibilityHint,
   testID,
@@ -143,6 +143,19 @@ export function SegmentedToggle<T extends string>({
       ),
     [options]
   );
+
+  // Strip-engine warm restore: inside a ToggleStrip both contexts are present and the
+  // pill seeds/reports through them; standalone (form contexts) both are null.
+  const stripSlotKey = React.useContext(ToggleStripSlotKeyContext);
+  const stripWarmRestore = React.useContext(ToggleStripWarmRestoreContext);
+  const initialSegmentLayoutsRef = React.useRef<
+    readonly (LayoutRectangle | undefined)[] | undefined
+  >(undefined);
+  if (initialSegmentLayoutsRef.current === undefined) {
+    initialSegmentLayoutsRef.current =
+      (stripSlotKey != null ? stripWarmRestore?.readControlSeed(stripSlotKey) : undefined) ?? [];
+  }
+  const initialSegmentLayouts = initialSegmentLayoutsRef.current;
 
   const selectionProgress = useSharedValue(indexFor(value));
   const targetProgress = useSharedValue(indexFor(value));
@@ -165,8 +178,6 @@ export function SegmentedToggle<T extends string>({
   const layoutsRef = React.useRef<(LayoutRectangle | undefined)[]>(
     options.map((_option, i) => initialSegmentLayouts?.[i])
   );
-  const onSegmentLayoutsChangeRef = React.useRef(onSegmentLayoutsChange);
-  onSegmentLayoutsChangeRef.current = onSegmentLayoutsChange;
   const interactionValueRef = React.useRef<T>(value);
   const hasSyncedRef = React.useRef(false);
 
@@ -207,9 +218,11 @@ export function SegmentedToggle<T extends string>({
       if (nextWidths.every((width) => width > 0)) {
         layoutReady.value = 1;
       }
-      onSegmentLayoutsChangeRef.current?.([...layoutsRef.current]);
+      if (stripSlotKey != null && stripWarmRestore != null) {
+        stripWarmRestore.reportControlLayouts(stripSlotKey, [...layoutsRef.current]);
+      }
     },
-    [segmentXs, segmentWidths, layoutReady]
+    [segmentXs, segmentWidths, layoutReady, stripSlotKey, stripWarmRestore]
   );
 
   // VoiceOver: double-tap advances to the next segment (wrapping) — parity with the

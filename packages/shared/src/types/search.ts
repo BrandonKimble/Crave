@@ -39,6 +39,42 @@ export interface OperatingStatus {
   nextOpenDisplay?: string | null;
 }
 
+/**
+ * A single open interval within a location's day, in local minutes-from-midnight.
+ * Overnight spillover is encoded by `end > 1440` (e.g. open 20:00 → close 02:00 next
+ * day = { start: 1200, end: 1560 }); the client engine rolls it into the next day when
+ * evaluating "open now". Splits (lunch/dinner break) are separate intervals on one day.
+ */
+export interface HoursInterval {
+  start: number;
+  end: number;
+}
+
+/**
+ * The IMMUTABLE weekly schedule for one location — the server normalizes the messy raw
+ * `hours` JSON (+ timezone + businessStatus) into this clean, typed shape ONCE, so the
+ * profile response is cacheable and the client can compute LIVE open/closed status from
+ * the device clock (timezone-correct) without any per-minute server recomputation, and
+ * can render the full expandable weekly card. `OperatingStatus` (server-computed strings)
+ * stays for legacy card surfaces; the profile hours card reads THIS.
+ */
+export interface StructuredWeeklyHours {
+  /** IANA zone, e.g. "America/Chicago". Preferred; DST-correct via Intl on the client. */
+  timeZone: string | null;
+  /** Fixed-offset fallback (minutes) when no IANA zone is known. Not DST-aware. */
+  utcOffsetMinutes: number | null;
+  /** Exactly 7 entries, index 0 = Sunday … 6 = Saturday. Empty intervals = closed that day. */
+  days: Array<{ intervals: HoursInterval[] }>;
+  /** True when the location is open the entire week (raw "00:00-23:59"/all-day collapses here). */
+  open24h: boolean;
+  /** Google `businessStatus === 'CLOSED_PERMANENTLY'` — must override any schedule. */
+  permanentlyClosed: boolean;
+  /** Google `businessStatus === 'CLOSED_TEMPORARILY'` — overrides schedule with a soft state. */
+  temporarilyClosed: boolean;
+  /** False ⇒ no usable schedule (render "Hours unavailable"), independent of the closed flags. */
+  hasSchedule: boolean;
+}
+
 export interface FoodResult {
   connectionId: string;
   foodId: string;
@@ -115,6 +151,9 @@ export interface RestaurantLocationResult {
   utcOffsetMinutes?: number | null;
   timeZone?: string | null;
   operatingStatus?: OperatingStatus | null;
+  /** Wave-4 profile revamp: the normalized, cacheable weekly schedule the client hours
+   *  engine computes live status from (Google-style compact line + expandable card). */
+  structuredHours?: StructuredWeeklyHours | null;
   isPrimary: boolean;
   lastPolledAt?: string | null;
   createdAt?: string | null;
@@ -165,6 +204,13 @@ export interface RestaurantResult {
   priceLevel?: number | null;
   priceSymbol?: string | null;
   priceText?: string | null;
+  /** Profile revamp (Google-parity): the REAL price range from Google Places
+   *  (`restaurantMetadata.priceRange.formattedText`, e.g. "$10–20"), preferred over
+   *  the fabricated priceLevel bucket when present. */
+  priceRangeText?: string | null;
+  /** Profile revamp: the Google primary-type display label, e.g. "Brunch restaurant"
+   *  (`restaurantMetadata.primaryTypeDisplayName`). The category subline under the name. */
+  categoryLabel?: string | null;
   priceLevelUpdatedAt?: string | null;
   topFood: RestaurantFoodSnippet[];
   totalDishCount: number;

@@ -22,7 +22,6 @@ const areChromeVisualStatesEqual = (
   left === right ||
   (left != null &&
     right != null &&
-    left.overlayHeaderActionProgress === right.overlayHeaderActionProgress &&
     left.searchSurfacePageBundleProgress === right.searchSurfacePageBundleProgress &&
     left.navBarCutoutHeight === right.navBarCutoutHeight &&
     left.navBarCutoutProgress === right.navBarCutoutProgress &&
@@ -42,7 +41,6 @@ const createChromeVisualState = ({
   routeSheetChromeGeometry == null || routeSheetChromeMotion == null
     ? null
     : {
-        overlayHeaderActionProgress: routeSheetChromeMotion.overlayHeaderActionProgress,
         searchSurfacePageBundleProgress: routeSheetChromeMotion.searchSurfacePageBundleProgress,
         navBarCutoutHeight: routeSheetChromeGeometry.navBarCutoutHeight,
         navBarCutoutProgress: routeSheetChromeMotion.navBarCutoutProgress,

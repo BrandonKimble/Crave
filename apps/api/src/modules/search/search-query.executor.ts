@@ -11,7 +11,10 @@ import {
   RestaurantResultDto,
   SearchQueryRequestDto,
 } from './dto/search-query.dto';
-import { SearchQueryBuilder } from './search-query.builder';
+import {
+  SearchQueryBuilder,
+  type BuildRestaurantQueryOptions,
+} from './search-query.builder';
 import type { SearchExecutionDirectives } from './search-execution-directives';
 import {
   buildOperatingMetadata as buildOperatingMetadataUtil,
@@ -21,6 +24,7 @@ import {
   evaluateOperatingStatus as evaluateOperatingStatusUtil,
   normalizeUserLocation as normalizeUserLocationUtil,
 } from './utils/restaurant-status';
+import { selectOpenNowRestaurantPage } from './utils/open-now-selection';
 
 const DAY_KEYS = [
   'sunday',
@@ -160,6 +164,18 @@ interface RestaurantQueryRow {
   matched_tags?: Prisma.JsonValue | null;
   match_evidence_type?: string | null;
   has_menu_items?: boolean | null;
+}
+
+/**
+ * Row type for the lean open-now candidate query (Phase 1): restaurant id + location hours
+ * only, ranked, no page limit. Openness is resolved in JS over the whole set before the page
+ * is chosen — see resolveRestaurantAxis.
+ */
+interface RestaurantOpenNowCandidateRow {
+  restaurant_id: string;
+  hours?: Prisma.JsonValue | null;
+  utc_offset_minutes?: Prisma.Decimal | number | string | null;
+  time_zone?: string | null;
 }
 
 /**
@@ -327,15 +343,23 @@ export class SearchQueryExecutor {
 
     // Build the enabled queries in parallel. A skipped axis stays null and its
     // SQL is never issued (see the conditional DB execution below).
+    const needsOpenFilter = Boolean(request.openNow);
+    // Shared restaurant-query options — reused for the Phase-2 hydrate so the open page runs
+    // through the identical conditions/ranking as the base list.
+    const restaurantQueryOptions: BuildRestaurantQueryOptions = {
+      plan,
+      pagination: effectiveRestaurantPagination,
+      searchCenter,
+      topDishesLimit,
+      excludeRestaurantIds,
+      directives,
+    };
     const buildStart = performance.now();
     const restaurantQuery = runRestaurant
       ? this.queryBuilder.buildRestaurantQuery({
-          plan,
-          pagination: effectiveRestaurantPagination,
-          searchCenter,
-          topDishesLimit,
-          excludeRestaurantIds,
-          directives,
+          ...restaurantQueryOptions,
+          // Open-now: also emit the lean candidate SQL so the axis can filter-before-paginate.
+          includeCandidateSql: needsOpenFilter,
         })
       : null;
     const dishQuery = runDish
@@ -356,22 +380,14 @@ export class SearchQueryExecutor {
     // rows + an empty count without touching the DB, so all downstream mapping
     // (contexts, open-now filter, map*) flows through unchanged and returns [].
     const dbStart = performance.now();
-    const [
-      [restaurantRows, restaurantCountResult],
-      [dishRows, dishCountResult],
-    ] = await Promise.all([
-      restaurantQuery
-        ? Promise.all([
-            this.prisma.$queryRaw<RestaurantQueryRow[]>(
-              restaurantQuery.dataSql,
-            ),
-            this.prisma.$queryRaw<Array<{ total_restaurants: bigint }>>(
-              restaurantQuery.countSql,
-            ),
-          ])
-        : Promise.resolve<
-            [RestaurantQueryRow[], Array<{ total_restaurants: bigint }>]
-          >([[], []]),
+    const [restaurantAxis, [dishRows, dishCountResult]] = await Promise.all([
+      this.resolveRestaurantAxis({
+        restaurantQuery,
+        needsOpenFilter,
+        baseOptions: restaurantQueryOptions,
+        pagination: effectiveRestaurantPagination,
+        referenceDate,
+      }),
       dishQuery
         ? Promise.all([
             this.prisma.$queryRaw<DishQueryRow[]>(dishQuery.dataSql),
@@ -386,6 +402,7 @@ export class SearchQueryExecutor {
             ]
           >([[], []]),
     ]);
+    const restaurantRows = restaurantAxis.rows;
     const dbQueryMs = performance.now() - dbStart;
 
     const postProcessStart = performance.now();
@@ -398,11 +415,13 @@ export class SearchQueryExecutor {
       userLocation,
     );
 
-    const needsOpenFilter = Boolean(request.openNow);
     let openNowFilterMs = 0;
-    let filteredRestaurantRows = restaurantRows;
+    // Restaurants are already open-filtered by resolveRestaurantAxis (filter-BEFORE-paginate,
+    // over the full candidate set — the fix for "22 open pins but 1 card"). Only dishes still
+    // need the legacy post-filter here.
+    const filteredRestaurantRows = restaurantRows;
     let filteredDishRows = dishRows;
-    let openNowApplied = false;
+    let openNowApplied = restaurantAxis.openNowPrefiltered;
     let openNowSupportedCount = 0;
     let openNowUnsupportedCount = 0;
     let openNowUnsupportedIds: string[] = [];
@@ -411,35 +430,18 @@ export class SearchQueryExecutor {
     if (needsOpenFilter) {
       const openFilterStart = performance.now();
 
-      // Filter restaurants
-      const restaurantFilter = this.filterRestaurantRowsByOpenNow(
-        restaurantRows,
-        allRestaurantContexts,
-      );
-      filteredRestaurantRows = restaurantFilter.rows;
-
-      // Filter dishes
+      // Filter dishes (restaurants were filtered in the axis)
       const dishFilter = this.filterDishRowsByOpenNow(
         dishRows,
         allRestaurantContexts,
       );
       filteredDishRows = dishFilter.rows;
 
-      openNowApplied = restaurantFilter.applied || dishFilter.applied;
-      openNowSupportedCount =
-        restaurantFilter.supportedCount + dishFilter.supportedCount;
-      openNowUnsupportedCount =
-        restaurantFilter.unsupportedCount + dishFilter.unsupportedCount;
-      openNowUnsupportedIds = [
-        ...new Set([
-          ...restaurantFilter.unsupportedIds,
-          ...dishFilter.unsupportedIds,
-        ]),
-      ];
-      openNowFilteredOut =
-        restaurantRows.length -
-        filteredRestaurantRows.length +
-        (dishRows.length - filteredDishRows.length);
+      openNowApplied = restaurantAxis.openNowPrefiltered || dishFilter.applied;
+      openNowSupportedCount = dishFilter.supportedCount;
+      openNowUnsupportedCount = dishFilter.unsupportedCount;
+      openNowUnsupportedIds = [...new Set(dishFilter.unsupportedIds)];
+      openNowFilteredOut = dishRows.length - filteredDishRows.length;
 
       openNowFilterMs = performance.now() - openFilterStart;
     }
@@ -496,9 +498,9 @@ export class SearchQueryExecutor {
       });
     }
 
-    const totalRestaurantCount = Number(
-      restaurantCountResult[0]?.total_restaurants ?? 0,
-    );
+    // Open-now: the true open total from the candidate pass (pagination spans the open set,
+    // not the post-filtered page). Otherwise the base count SQL.
+    const totalRestaurantCount = restaurantAxis.total;
     const totalDishCount = Number(dishCountResult[0]?.total_connections ?? 0);
 
     // Combine SQL previews if requested (only for the axes that actually ran)
@@ -2018,56 +2020,115 @@ export class SearchQueryExecutor {
     return contexts;
   }
 
-  private filterRestaurantRowsByOpenNow(
-    rows: RestaurantQueryRow[],
-    contexts: Map<string, RestaurantContext>,
-  ): {
+  // OPEN-NOW two-phase axis (the fix for "22 open pins but 1 card"). The legacy path fetched
+  // the page-1 rich rows and filtered them to open AFTER pagination — so open restaurants
+  // ranked below the page were invisible and the total was the post-filter page count. Here,
+  // when open-now is active, Phase 1 ranks + resolves openness over the WHOLE candidate set
+  // (lean id+hours query, same conditions), then Phase 2 hydrates ONLY the open page. Same
+  // evaluateOperatingStatus the map coverage uses ⇒ list open set == map open set.
+  private async resolveRestaurantAxis(params: {
+    restaurantQuery: {
+      dataSql: Prisma.Sql;
+      countSql: Prisma.Sql;
+      candidateSql: Prisma.Sql | null;
+    } | null;
+    needsOpenFilter: boolean;
+    baseOptions: BuildRestaurantQueryOptions;
+    pagination: { skip: number; take: number };
+    referenceDate: Date;
+  }): Promise<{
     rows: RestaurantQueryRow[];
-    applied: boolean;
-    supportedCount: number;
-    unsupportedCount: number;
-    unsupportedIds: string[];
-  } {
-    const filtered: RestaurantQueryRow[] = [];
-    let applied = false;
-    let supported = 0;
-    let unsupported = 0;
-    const unsupportedIds: string[] = [];
+    total: number;
+    openNowPrefiltered: boolean;
+  }> {
+    const {
+      restaurantQuery,
+      needsOpenFilter,
+      baseOptions,
+      pagination,
+      referenceDate,
+    } = params;
 
-    for (const row of rows) {
-      const status = contexts.get(row.restaurant_id)?.operatingStatus;
-
-      if (!status) {
-        unsupported += 1;
-        unsupportedIds.push(row.restaurant_id);
-        continue;
-      }
-
-      applied = true;
-      supported += 1;
-
-      if (status.isOpen) {
-        filtered.push(row);
-      }
+    if (!restaurantQuery) {
+      return { rows: [], total: 0, openNowPrefiltered: false };
     }
 
-    if (!applied) {
+    // Non-open path: the base rich page + its count, exactly as before.
+    const runBase = async (): Promise<{
+      rows: RestaurantQueryRow[];
+      total: number;
+      openNowPrefiltered: boolean;
+    }> => {
+      const [rows, countResult] = await Promise.all([
+        this.prisma.$queryRaw<RestaurantQueryRow[]>(restaurantQuery.dataSql),
+        this.prisma.$queryRaw<Array<{ total_restaurants: bigint }>>(
+          restaurantQuery.countSql,
+        ),
+      ]);
       return {
         rows,
-        applied: false,
-        supportedCount: 0,
-        unsupportedCount: unsupported,
-        unsupportedIds,
+        total: Number(countResult[0]?.total_restaurants ?? 0),
+        openNowPrefiltered: false,
       };
+    };
+
+    if (!needsOpenFilter || !restaurantQuery.candidateSql) {
+      return runBase();
     }
 
-    return {
-      rows: filtered,
-      applied: true,
-      supportedCount: supported,
-      unsupportedCount: unsupported,
-      unsupportedIds,
-    };
+    // PHASE 1: rank + openness over the full candidate set.
+    const candidateRows = await this.prisma.$queryRaw<
+      RestaurantOpenNowCandidateRow[]
+    >(restaurantQuery.candidateSql);
+    const candidates = candidateRows.map((row) => ({
+      restaurantId: row.restaurant_id,
+      isOpen: this.resolveCandidateOpenNow(row, referenceDate),
+    }));
+    const selection = selectOpenNowRestaurantPage(candidates, pagination);
+
+    // Graceful degradation: if NO candidate carries hours data, the open-now filter is
+    // inapplicable — fall back to the unfiltered page (matches the legacy "no supported row
+    // ⇒ don't filter" behavior) rather than showing an empty list.
+    if (selection.supportedCount === 0) {
+      return runBase();
+    }
+
+    if (selection.pageIds.length === 0) {
+      return { rows: [], total: selection.total, openNowPrefiltered: true };
+    }
+
+    // PHASE 2: hydrate the open page (rich query restricted to the page ids, order preserved).
+    const hydrateQuery = this.queryBuilder.buildRestaurantQuery({
+      ...baseOptions,
+      pagination: { skip: 0, take: selection.pageIds.length },
+      restrictToRestaurantIds: selection.pageIds,
+    });
+    const rows = await this.prisma.$queryRaw<RestaurantQueryRow[]>(
+      hydrateQuery.dataSql,
+    );
+    return { rows, total: selection.total, openNowPrefiltered: true };
+  }
+
+  // Resolve a candidate row's openness with the SAME machinery the map coverage layer uses:
+  // build operating metadata from the location's hours/tz/offset, then evaluateOperatingStatus.
+  // null = unsupported (no hours / no schedule) ⇒ never passes the open-now filter.
+  private resolveCandidateOpenNow(
+    row: RestaurantOpenNowCandidateRow,
+    referenceDate: Date,
+  ): boolean | null {
+    const metadata = this.buildOperatingMetadataFromLocation(
+      row.hours,
+      row.utc_offset_minutes,
+      row.time_zone,
+    );
+    if (!metadata) {
+      return null;
+    }
+    const status = this.evaluateOperatingStatus(metadata, referenceDate);
+    if (!status) {
+      return null;
+    }
+    return status.isOpen === true;
   }
 
   private filterDishRowsByOpenNow(

@@ -104,6 +104,34 @@ module.exports = {
         ],
       },
     },
+    {
+      // THE SKELETON LAW's RED contract (leg 6 — child-transition primitive §2.2 / wave-2
+      // charter §5): sheet-scene bodies render their DECLARED foundation skeleton while
+      // pending (SceneBodyReadyGate) and the shared Button primitive owns the squircle
+      // loading affordance — a raw ActivityIndicator in a panel (or in Button.tsx) is the
+      // spinner-first disease reintroduced. Banned at the import so a new spinner is a lint
+      // error that names the file.
+      files: ['src/overlays/panels/**/*.tsx', 'src/components/ui/Button.tsx'],
+      rules: {
+        'no-restricted-syntax': [
+          'error',
+          {
+            selector:
+              "ImportDeclaration[source.value='react-native'] ImportSpecifier[imported.name='Modal']",
+            message:
+              'Use OverlayModalSheet (the standard modal surface) instead of the native Modal.',
+          },
+          {
+            selector:
+              "ImportDeclaration[source.value='react-native'] ImportSpecifier[imported.name='ActivityIndicator']",
+            message:
+              'No spinners in sheet-scene bodies: pending content renders the declared ' +
+              'foundation skeleton (SceneBodyReadyGate); button loading is the SquircleSpinner ' +
+              'via the shared Button primitive.',
+          },
+        ],
+      },
+    },
   ],
   rules: {
     // Mobile-specific rules

@@ -5,7 +5,7 @@ import type { TextInput } from 'react-native';
 
 import type { AutocompleteMatch } from '../../../../services/autocomplete';
 import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../native/search-chrome-scalar-surface-primitive-source-runtime';
-import type { SearchFiltersLayoutCache } from '../../components/SearchFilters';
+import type { ToggleStripCacheSeat } from '../../../../toggles/toggle-strip-layout-cache';
 import type { SearchMapMarkerEngineHandle } from '../../components/SearchMapWithMarkerEngine';
 import type { MapboxMapRef } from '../../components/search-map';
 import type { ResultsListItem } from '../read-models/read-model-selectors';
@@ -50,8 +50,8 @@ export type SearchRootSearchStateRuntime = {
   inputRef: React.RefObject<TextInput | null>;
   ignoreNextSearchBlurRef: React.MutableRefObject<boolean>;
   resultsScrollRef: React.MutableRefObject<FlashListRef<ResultsListItem> | null>;
-  searchFiltersLayoutCacheRef: React.MutableRefObject<SearchFiltersLayoutCache | null>;
-  handleSearchFiltersLayoutCache: (cache: SearchFiltersLayoutCache) => void;
+  /** The strip engine's per-surface warm-restore seat (layout + settled scrollX). */
+  searchFiltersCacheSeat: ToggleStripCacheSeat;
   isSearchFiltersLayoutWarm: boolean;
   isSearchEditingRef: React.MutableRefObject<boolean>;
   allowSearchBlurExitRef: React.MutableRefObject<boolean>;

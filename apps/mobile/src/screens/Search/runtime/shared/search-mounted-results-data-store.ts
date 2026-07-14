@@ -1053,10 +1053,38 @@ export const publishSearchMountedResultsRowsSnapshot = (
     return false;
   }
 
+  const changedStructuralFields = [
+    rowsSnapshot.activeTab !== nextSnapshot.activeTab ? 'activeTab' : null,
+    !areSearchMountedResultsRowsAdmissionsStructurallyEqual(
+      rowsSnapshot.admission,
+      nextSnapshot.admission
+    )
+      ? 'admission'
+      : null,
+    !areSearchMountedResultsContentContainerStylesEqual(
+      rowsSnapshot.contentContainerStyle,
+      nextSnapshot.contentContainerStyle
+    )
+      ? 'contentContainerStyle'
+      : null,
+    rowsSnapshot.handleShowMoreExactDishes !== nextSnapshot.handleShowMoreExactDishes
+      ? 'handleShowMoreExactDishes'
+      : null,
+    rowsSnapshot.handleShowMoreExactRestaurants !== nextSnapshot.handleShowMoreExactRestaurants
+      ? 'handleShowMoreExactRestaurants'
+      : null,
+    rowsSnapshot.headerHeight !== nextSnapshot.headerHeight ? 'headerHeight' : null,
+    rowsSnapshot.resultsIdentityKey !== nextSnapshot.resultsIdentityKey
+      ? 'resultsIdentityKey'
+      : null,
+    rowsSnapshot.resultsRequestKey !== nextSnapshot.resultsRequestKey ? 'resultsRequestKey' : null,
+    rowsSnapshot.rowsByTab !== nextSnapshot.rowsByTab ? 'rowsByTab' : null,
+  ].filter((field): field is string => field != null);
   logPerfScenarioStackAttribution({
     owner: 'search_mounted_results_rows_snapshot_writer',
     path: `${rowsSnapshot.preparationKey ?? 'null'}->${nextSnapshot.preparationKey ?? 'null'}`,
     details: {
+      changedStructuralFields,
       activeList: nextSnapshot.admission.activeList,
       mode: nextSnapshot.admission.mode,
       primaryRowCount: nextSnapshot.admission.primaryRows.length,

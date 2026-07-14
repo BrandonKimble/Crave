@@ -1,4 +1,8 @@
 import { hasSearchSessionAboveRoot } from './app-overlay-route-stack-algebra';
+import {
+  DOCKED_POLLS_RESURRECT_SNAP,
+  HOME_SEAT_CARRIER_SCENE_KEY,
+} from './app-route-sheet-snap-session-runtime';
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
 import type { OverlayRouteParamsMap } from './app-overlay-route-types';
 import type { AppRouteSceneSwitchAuthority } from './app-route-scene-switch-authority';
@@ -15,9 +19,7 @@ export type AppSearchRouteCommandActions = {
     contentReadinessTransactionId?: string | null;
   }) => void;
   dismissAppSearchRouteResultsToHome: (args?: { sourceSceneKey?: OverlayKey }) => void;
-  returnAppSearchRouteToDockedSearch: (args?: {
-    snap?: Exclude<OverlaySheetSnap, 'hidden'>;
-  }) => void;
+  returnAppSearchRouteToDockedSearch: () => void;
   openAppSearchRoutePollsHome: (args?: {
     params?: OverlayRouteParamsMap['polls'];
     snap?: Exclude<OverlaySheetSnap, 'hidden'>;
@@ -36,11 +38,46 @@ export const primeDockedPollsForHomeLanding = (
     'recordRouteSceneSheetSettle' | 'setIsDockedPollsDismissed'
   >
 ): void => {
+  // NAMED product intent — one of the sanctioned HOME-seat writers (two-posture write
+  // contract): the results drag-to-bottom dismissal is a deliberate map-dominant moment.
   routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
     sceneKey: 'polls',
     snap: 'collapsed',
+    writer: 'named',
   });
   routeSheetSnapSessionActions.setIsDockedPollsDismissed(false);
+};
+
+/**
+ * NAV RE-TAP (wave-2 charter §4 / leg 6 — plans/root-snap-law.md writer category (c)):
+ * tapping the ACTIVE tab is a NAMED PRODUCT INTENT — extend the root's shared sheet to
+ * FULLY EXTENDED and remember it in the side's posture seat. EXTEND-ONLY by construction:
+ * the motion is promoteAtLeast('expanded') (inert at expanded) and the seat write is
+ * value-idempotent — a third tap does nothing; drag is the only way down (no slot-machine).
+ * The seat write rides the 'named' writer lane; routing it as 'programmatic' trips the
+ * [snap-law] contract bark (the RED proof).
+ */
+export const extendActiveRootFromNavReTap = ({
+  targetSceneKey,
+  promoteActiveSheet,
+  routeSheetSnapSessionActions,
+}: {
+  targetSceneKey: OverlayKey;
+  promoteActiveSheet: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
+  routeSheetSnapSessionActions: Pick<
+    AppRouteSheetSnapSessionActions,
+    'recordRouteSceneSheetSettle'
+  >;
+}): void => {
+  promoteActiveSheet({ snap: 'expanded' });
+  // Seat routing: home's carrier scene is 'polls' (the docked feed IS home's sheet); every
+  // other tab writes its own scene (bookmarks/profile → the content seat, polls → home seat).
+  const seatSceneKey = targetSceneKey === 'search' ? HOME_SEAT_CARRIER_SCENE_KEY : targetSceneKey;
+  routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
+    sceneKey: seatSceneKey,
+    snap: 'expanded',
+    writer: 'named',
+  });
 };
 
 export const createAppSearchRouteCommandActions = ({
@@ -131,17 +168,18 @@ export const createAppSearchRouteCommandActions = ({
     });
   };
 
-  const returnAppSearchRouteToDockedSearch = ({
-    snap = 'collapsed',
-  }: {
-    snap?: Exclude<OverlaySheetSnap, 'hidden'>;
-  } = {}): void => {
+  const returnAppSearchRouteToDockedSearch = (): void => {
+    // Two-posture law: dismissing a non-home page lands on HOME at home's remembered posture —
+    // no sheetMotion here; the descriptor table's 'postureSeat' rule reads the home seat (a
+    // dismissed/hidden docked feed falls to the sanctioned resurrect posture). The restore
+    // intent re-presents a dismissed docked lane, mirroring the nav-tab press.
+    const isPollsSheetPhysicallyHidden =
+      routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls') === 'hidden';
     routeSceneSwitchActions.requestOverlaySwitch({
       targetSceneKey: 'search',
       sheetTransitionKind: 'topLevelSwitch',
       sheetOpenerSource: 'routeCommand',
-      sheetMotion: { kind: 'snapTo', snap },
-      dockedPollsRestoreSnap: snap,
+      dockedPollsRestoreSnap: isPollsSheetPhysicallyHidden ? DOCKED_POLLS_RESURRECT_SNAP : null,
     });
   };
 

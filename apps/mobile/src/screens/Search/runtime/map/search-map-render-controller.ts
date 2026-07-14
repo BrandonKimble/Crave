@@ -26,6 +26,7 @@ type SearchMapRenderControllerNativeModule = {
     executionBatchId: string;
     visualFrameTransaction: SearchMapVisualFrameTransaction;
     sourceDeltas?: SearchMapRenderControllerNativeSourceDelta[];
+    derivedFamilyTransport?: SearchMapRenderDerivedFamilyTransport;
     markerRoleFrame?: SearchMapMarkerRoleFrame;
     presentationStateJson: string;
     highlightedRestaurantId: string | null;
@@ -519,9 +520,29 @@ type SearchMapRenderControllerNativeSetFrameTiming = {
 
 export type SearchMapRenderSourceId = 'pins' | 'pinInteractions' | 'dots' | 'labelCollisions';
 
+type SearchMapRenderDerivedFamilyRevisions = {
+  baseSourceRevision: string | null;
+  nextSourceRevision: string;
+};
+
+export type SearchMapRenderDerivedFamilyTransport = {
+  pinInteractions: {
+    diffKeyByFeatureId: Record<string, string>;
+  } & SearchMapRenderDerivedFamilyRevisions;
+  dots: {
+    diffKeyByFeatureId: Record<string, string>;
+    dotImageIdByFeatureId: Record<string, string>;
+    nativeDotOpacityByFeatureId: Record<string, number>;
+  } & SearchMapRenderDerivedFamilyRevisions;
+  labelCollisions: {
+    diffKeyByFeatureId: Record<string, string>;
+  } & SearchMapRenderDerivedFamilyRevisions;
+};
+
 type SearchMapRenderSourceTransportPayload = {
   effectiveChangedSourceIds: SearchMapRenderSourceId[];
   sourceDeltas?: SearchMapRenderSourceDelta[];
+  derivedFamilyTransport?: SearchMapRenderDerivedFamilyTransport;
   markerRoleFrame?: SearchMapMarkerRoleFrame;
 };
 
@@ -669,7 +690,10 @@ const isRecoverableNativeRenderOwnerFrameError = (error: unknown): boolean => {
     message.includes('unknown instance or frame') ||
     message.includes('invalid render frame payload') ||
     message.includes('Source delta missing feature') ||
-    message.includes('Source delta upsert missing feature')
+    message.includes('Source delta upsert missing feature') ||
+    // Patch-baseline proof (lens-transport contract 3): a baseline-mismatch reject is
+    // the DESIGNED convergence signal — recover via the same resync-replace path.
+    message.includes('Patch baseline mismatch')
   );
 };
 
@@ -720,6 +744,12 @@ type SearchMapRenderSourceDelta = {
   orderChangedGroupIds?: string[];
   removedGroupIds?: string[];
   upsertFeatures?: SearchMapSourceTransportFeature[];
+  // Patch-baseline proof (lens-transport contract 3): the journal revision this delta
+  // was computed AGAINST and the revision it produces. Native verifies base against its
+  // last-applied revision and loudly rejects a mismatched patch — a diverged baseline
+  // must fail at the divergence, never corrupt silently.
+  baseSourceRevision?: string;
+  nextSourceRevision?: string;
 };
 
 type SearchMapRenderControllerNativeSourceDelta = Omit<SearchMapRenderSourceDelta, 'sourceId'> & {
@@ -805,6 +835,9 @@ const createNativeRenderFramePayload = (
     ...(sourceDeltas ? { sourceDeltas } : {}),
     ...(payload.sourceTransport.markerRoleFrame
       ? { markerRoleFrame: payload.sourceTransport.markerRoleFrame }
+      : {}),
+    ...(payload.sourceTransport.derivedFamilyTransport
+      ? { derivedFamilyTransport: payload.sourceTransport.derivedFamilyTransport }
       : {}),
     presentationStateJson: serializePresentationState(payload.frame.presentation),
     highlightedRestaurantId: payload.frame.presentation.selectedRestaurantId,
@@ -937,6 +970,9 @@ export const searchMapRenderController = {
           presentationPhase: payload.visualFrameTransaction.presentationPhase,
           transactionKind: payload.visualFrameTransaction.kind,
           message: error instanceof Error ? error.message : String(error),
+          // Baseline-lie attribution: the revisions JS BELIEVED it was patching against
+          // (the shipped store revisions); the native message carries native's truth.
+          shippedSourceRevisions: payload.frame.sourceRevisions,
           deltas: (payload.sourceTransport.sourceDeltas ?? []).map((delta) => ({
             sourceId: delta.sourceId,
             mode: delta.mode,

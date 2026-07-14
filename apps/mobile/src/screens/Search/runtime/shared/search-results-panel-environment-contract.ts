@@ -1,11 +1,9 @@
 import type React from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
-import type { SharedValue } from 'react-native-reanimated';
 import type { FlashListRef } from '@shopify/flash-list';
 
 import type { SearchInteractionSnapshot } from '../../context/SearchInteractionContext';
 import type { RestaurantResult } from '../../../../types';
-import type { SearchFiltersLayoutCache } from '../../components/SearchFilters';
 import type { ResultsListItem } from '../read-models/read-model-selectors';
 import type { MapQueryBudget } from '../map/map-query-budget';
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
@@ -53,8 +51,6 @@ export type SearchResultsPanelEnvironment = {
   toggleIncludeSimilar: () => void;
   togglePriceSelector: () => void;
   shouldDisableSearchBlur: boolean;
-  searchFiltersLayoutCacheRef: React.MutableRefObject<SearchFiltersLayoutCache | null>;
-  handleSearchFiltersLayoutCache: (next: SearchFiltersLayoutCache) => void;
   getDishSaveHandler: (connectionId: string) => () => void;
   getRestaurantSaveHandler: (restaurantId: string) => () => void;
   stableOpenRestaurantProfileFromResults: (
@@ -70,7 +66,6 @@ export type SearchResultsPanelEnvironment = {
     polls: number | null | undefined;
   }) => void;
   mapQueryBudget: MapQueryBudget;
-  overlayHeaderActionProgress: SharedValue<number>;
   shouldLogResultsViewability: boolean;
   onRuntimeMechanismEvent?: RuntimeMechanismEmitter;
   phaseBMaterializerRef: React.MutableRefObject<PhaseBMaterializer>;

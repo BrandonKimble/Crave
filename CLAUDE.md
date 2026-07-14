@@ -27,8 +27,14 @@ query. When the broken query is in the AUTH path (per-request user load), EVERY
 authenticated endpoint 500s BEFORE the request logger, so the server log looks clean and
 empty while the app shows a flapping "Service temporarily unavailable" + banner-driven
 map/header jitter (tight client retry). Unauthenticated curl returns 401 and looks healthy.
-RECIPE: `npx prisma generate && yarn build && kill <pid> && nohup node --enable-source-maps
+RECIPE: `npx prisma generate && yarn build && lsof -ti tcp:3000 -sTCP:LISTEN | xargs kill -9 && sleep 1 && nohup node --enable-source-maps
 dist/main >> /tmp/crave-api.log 2>&1 &` from apps/api — the session that MIGRATES does this.
+⚠️ TWO traps, both cost hours on 2026-07-13: (1) kill ALL LISTEN pids (`xargs`, never
+`head -1`) and verify the newly bound pid is YOURS — a stale binary kept serving while
+the new one died on EADDRINUSE. (2) the `-sTCP:LISTEN` filter is LOAD-BEARING: bare
+`lsof -ti :3000` also returns processes with CLIENT connections to :3000 — including
+the SIMULATOR APP — and `kill -9` on that list silently SIGKILLs the app mid-test
+(no crash report; app just vanishes to springboard).
 Diagnose with byte-offset log DELTAS on /tmp/crave-api.log + /tmp/crave-metro.log around an
 app relaunch (0-byte API delta while the app 500s = requests dying pre-logger). Related
 gotcha fixed 2026-07-11: prompt .md files are nest-cli assets now; a clean `yarn build`

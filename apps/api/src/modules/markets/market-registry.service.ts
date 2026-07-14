@@ -104,6 +104,25 @@ export class MarketRegistryService {
     this.logger = loggerService.setContext('MarketRegistryService');
   }
 
+  /**
+   * Leg 11: the active-market vocabulary (ListDetail Market chip options —
+   * §8.16 "sliced by city"). Name-ordered; keys are the executor's
+   * activeMarketKey directive vocabulary.
+   */
+  async listActiveMarkets(): Promise<
+    Array<{
+      marketKey: string;
+      marketName: string | null;
+      marketShortName: string | null;
+    }>
+  > {
+    return this.prisma.market.findMany({
+      where: { isActive: true },
+      select: { marketKey: true, marketName: true, marketShortName: true },
+      orderBy: { marketName: 'asc' },
+    });
+  }
+
   async resolveOrEnsureForPollCreation(params: {
     bounds?: Bounds | null;
     userLocation?: Coordinate | null;

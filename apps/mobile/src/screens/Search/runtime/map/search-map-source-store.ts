@@ -726,12 +726,30 @@ const appendStableDiffValue = (
   parts.push(String(value));
 };
 
+// Lens transport S-1a (plans/map-world-lens-transport.md): the diffKey is an OPAQUE
+// equality token on both sides of the bridge (JS store dedupe, native diffKeyById) —
+// nothing parses it. It used to be the full stable-serialized feature (~800B per
+// feature, shipped ×4 families = ~half the measured 4.9MB frame). Hash it: dual
+// independent 32-bit hashes (djb2 + sdbm) over the stable serialization → 16 hex
+// chars. Collision odds across a ≤10k-feature world are negligible, and a collision's
+// worst case is one missed property update healed by the next publish.
+const hashStableDiffKeyString = (value: string): string => {
+  let djb2 = 5381;
+  let sdbm = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    djb2 = ((djb2 << 5) + djb2 + code) | 0;
+    sdbm = (code + (sdbm << 6) + (sdbm << 16) - sdbm) | 0;
+  }
+  return `${(djb2 >>> 0).toString(16)}${(sdbm >>> 0).toString(16)}`;
+};
+
 const buildSearchMapSourceFeatureDiffKey = (feature: SearchMapSourceFeature): string => {
   const parts: string[] = [];
   appendStableDiffValue(parts, feature as unknown as Record<string, unknown>, {
     isFeatureRoot: true,
   });
-  return parts.join('');
+  return hashStableDiffKeyString(parts.join(''));
 };
 
 export const getSearchMapSourceTransportFeature = (

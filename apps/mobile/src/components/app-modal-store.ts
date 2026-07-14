@@ -16,6 +16,8 @@ export type AppModalAction = {
   /** With a `prompt` on the config, receives the typed text (Alert.prompt parity). */
   onPress?: (promptText?: string) => void;
   style?: AppModalActionStyle;
+  /** Menu variant (wave-2 §2): a lucide icon rendered LEFT of the label. */
+  icon?: React.ReactNode;
   testID?: string;
 };
 
@@ -30,6 +32,13 @@ export type AppModalPrompt = {
 
 export type AppModalConfig = {
   title: string;
+  /**
+   * 'alert' (default): centered title, filled color-block buttons — the Alert.alert
+   * replacement. 'menu' (wave-2 §2, the list-ellipsis restyle): left-aligned title;
+   * actions are icon + text ROWS — left-aligned, no color blocks, no separators;
+   * dismissal is swipe/backdrop (no Cancel row).
+   */
+  variant?: 'alert' | 'menu';
   message?: string;
   /** Defaults to a single dismissing "OK" when omitted. */
   actions?: AppModalAction[];

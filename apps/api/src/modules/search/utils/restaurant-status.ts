@@ -1,5 +1,8 @@
 import { Prisma } from '@prisma/client';
-import type { OperatingStatus } from '@crave-search/shared';
+import type {
+  OperatingStatus,
+  StructuredWeeklyHours,
+} from '@crave-search/shared';
 
 const DAY_KEYS = [
   'sunday',
@@ -239,6 +242,60 @@ export const evaluateOperatingStatus = (
     closesAtDisplay: null,
     closesInMinutes: null,
     nextOpenDisplay,
+  };
+};
+
+/**
+ * Restaurant-profile revamp: normalize the messy raw hours (+ timezone + businessStatus)
+ * into the IMMUTABLE, typed `StructuredWeeklyHours` the client hours engine consumes.
+ * Reuses the same `buildDailySchedule` parse the live status uses (one parser, no
+ * divergence). Overnight segments are encoded as `end > 1440` (rolls to next day);
+ * "open 24 hours" (raw 00:00-23:59 every day) collapses to `open24h`. Returns null only
+ * when there is neither a schedule nor a closed flag to communicate.
+ */
+export const buildStructuredWeeklyHours = (
+  metadataValue: unknown,
+  businessStatus: string | null | undefined,
+): StructuredWeeklyHours | null => {
+  const permanentlyClosed = businessStatus === 'CLOSED_PERMANENTLY';
+  const temporarilyClosed = businessStatus === 'CLOSED_TEMPORARILY';
+  const metadata = coerceRecord(metadataValue) as RestaurantMetadata | null;
+  const schedule = metadata ? buildDailySchedule(metadata) : null;
+
+  const days = DAY_KEYS.map((dayKey) => {
+    const segments = schedule?.[dayKey] ?? [];
+    const intervals = segments
+      // drop the unparseable-time sentinel {0,0,false} the parser emits on bad input
+      .filter(
+        (seg) => !(seg.start === 0 && seg.end === 0 && !seg.crossesMidnight),
+      )
+      .map((seg) => ({
+        start: seg.start,
+        end: seg.crossesMidnight ? seg.end + 1440 : seg.end,
+      }));
+    return { intervals };
+  });
+
+  const hasSchedule = days.some((day) => day.intervals.length > 0);
+  // Raw "open 24 hours" is stored as 00:00-23:59 → a [0, >=1439] interval every day.
+  const open24h =
+    hasSchedule &&
+    days.every((day) =>
+      day.intervals.some((i) => i.start <= 0 && i.end >= 1439),
+    );
+
+  if (!hasSchedule && !permanentlyClosed && !temporarilyClosed) {
+    return null;
+  }
+
+  return {
+    timeZone: metadata ? extractTimeZone(metadata) : null,
+    utcOffsetMinutes: metadata ? extractUtcOffset(metadata) : null,
+    days,
+    open24h,
+    permanentlyClosed,
+    temporarilyClosed,
+    hasSchedule,
   };
 };
 

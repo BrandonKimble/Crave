@@ -1,76 +1,30 @@
 import React from 'react';
-import { type LayoutRectangle } from 'react-native';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { CONTROL_HORIZONTAL_PADDING, CONTROL_RADIUS } from '../constants/ui';
 import { SEGMENT_OPTIONS } from '../constants/search';
 
-import { type MaskedHole } from '../../../components/MaskedHoleOverlay';
 import { FilterChip } from '../../../components/FilterChip';
-import {
-  FrostedFilterStrip,
-  type FrostedFilterStripMeasuredLayout,
-} from '../../../components/FrostedFilterStrip';
 import { SegmentedToggle } from '../../../components/SegmentedToggle';
 import { SelectorChip } from '../../../components/SelectorChip';
+import { ToggleStrip } from '../../../toggles/ToggleStrip';
+import type { ToggleStripCacheSeat } from '../../../toggles/toggle-strip-layout-cache';
 import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { useSearchRuntimeBusSelector } from '../runtime/shared/use-search-runtime-bus-selector';
 
-// GATE 2 (plans/toggle-system-ideal.md): the search strip — the feel-checked
-// reference — now renders THROUGH the shared toggle primitives instead of mirroring
-// them: the restaurant⇄dish pill is `SegmentedToggle` (the primitive extracted from
-// this file's original pill; identical constants and mechanics) and the five chips
-// are `FilterChip`. Every toggle improvement lands in the primitives, once, and
-// reaches every strip. This file keeps only what is search's own: the live runtime-
-// bus chip-state read and the warm-restore layout-cache join.
+// THE REFERENCE STRIP, AS A DECLARATION (leg 2 — plans/toggle-strip-rebuild-ledger.md).
+// The results strip — the feel-checked reference every other strip must match — now
+// renders through the strip ENGINE (`ToggleStrip`): band geometry, frost + cutouts,
+// physics, and the layout+scrollX warm restore are all engine-owned. This file keeps
+// only what is genuinely search's: the control declaration and the live runtime-bus
+// chip-state read. The old shell/segment layout-cache join moved INTO the engine
+// (SegmentedToggle self-registers over the strip's warm-restore context); the cache
+// lives behind ONE seat owned by the search primitives runtime.
 
 const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS;
 const TOGGLE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING + 4;
 const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
 
 type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];
-
-export type SearchFiltersLayoutCache = {
-  viewportWidth: number;
-  rowHeight: number;
-  holeMap: Record<string, MaskedHole>;
-  /** Pill segment geometry, index-aligned with SEGMENT_OPTIONS (SegmentedToggle's
-   *  warm-restore schema — the pill paints correctly on the FIRST frame after a
-   *  chrome swap). */
-  segmentLayouts?: (LayoutRectangle | undefined)[];
-};
-
-const cloneLayoutRectangle = (layout: LayoutRectangle): LayoutRectangle => ({
-  x: layout.x,
-  y: layout.y,
-  width: layout.width,
-  height: layout.height,
-});
-
-const cloneMaskedHole = (hole: MaskedHole): MaskedHole => ({
-  x: hole.x,
-  y: hole.y,
-  width: hole.width,
-  height: hole.height,
-  borderRadius: hole.borderRadius,
-});
-
-export const cloneSearchFiltersLayoutCache = (
-  cache: SearchFiltersLayoutCache | null | undefined
-): SearchFiltersLayoutCache | null => {
-  if (!cache) {
-    return null;
-  }
-  return {
-    viewportWidth: cache.viewportWidth,
-    rowHeight: cache.rowHeight,
-    holeMap: Object.fromEntries(
-      Object.entries(cache.holeMap).map(([key, hole]) => [key, cloneMaskedHole(hole)])
-    ),
-    segmentLayouts: cache.segmentLayouts
-      ? cache.segmentLayouts.map((layout) => (layout ? cloneLayoutRectangle(layout) : layout))
-      : undefined,
-  };
-};
 
 export type SearchFiltersProps = {
   // LIVE chip-state source. The rendered strip element rides the mounted-results snapshot
@@ -98,9 +52,8 @@ export type SearchFiltersProps = {
   isPriceSelectorVisible: boolean;
   contentHorizontalPadding: number;
   accentColor: string;
-  disableBlur?: boolean;
-  initialLayoutCache?: SearchFiltersLayoutCache | null;
-  onLayoutCacheChange?: (cache: SearchFiltersLayoutCache) => void;
+  /** The surface's ONE warm-restore seat (layout + settled scrollX, engine-owned). */
+  layoutCacheSeat?: ToggleStripCacheSeat;
 };
 
 const SearchFilters: React.FC<SearchFiltersProps> = ({
@@ -120,9 +73,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   isPriceSelectorVisible,
   contentHorizontalPadding,
   accentColor,
-  disableBlur = false,
-  initialLayoutCache,
-  onLayoutCacheChange,
+  layoutCacheSeat,
 }) => {
   const liveChipState = useSearchRuntimeBusSelector(
     searchRuntimeBus,
@@ -168,72 +119,17 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   priceButtonLabel = liveChipState.priceButtonLabel;
   isPriceSelectorVisible = liveChipState.isPriceSelectorVisible;
 
-  // The frosted cutout shell (mask geometry, per-control hole registration, horizontal
-  // scroll) is the SHARED `FrostedFilterStrip`; the pill mechanics are the SHARED
-  // `SegmentedToggle`. We keep only the measured layouts each reports back, joined
-  // into the warm-restore cache.
-  const [shellLayout, setShellLayout] = React.useState<FrostedFilterStripMeasuredLayout | null>(
-    initialLayoutCache
-      ? {
-          holeMap: initialLayoutCache.holeMap,
-          viewportWidth: initialLayoutCache.viewportWidth,
-          rowHeight: initialLayoutCache.rowHeight,
-        }
-      : null
-  );
-  const handleShellLayout = React.useCallback((layout: FrostedFilterStripMeasuredLayout) => {
-    setShellLayout(layout);
-  }, []);
-  const segmentLayoutsRef = React.useRef<(LayoutRectangle | undefined)[]>(
-    initialLayoutCache?.segmentLayouts ? [...initialLayoutCache.segmentLayouts] : []
-  );
-  const [segmentLayoutsVersion, setSegmentLayoutsVersion] = React.useState(0);
-  const handleSegmentLayoutsChange = React.useCallback(
-    (layouts: (LayoutRectangle | undefined)[]) => {
-      segmentLayoutsRef.current = layouts;
-      setSegmentLayoutsVersion((prev) => prev + 1);
-    },
-    []
-  );
-  const initialSegmentLayouts = React.useRef(initialLayoutCache?.segmentLayouts ?? undefined);
-
-  // Warm-restore cache = the shell's measured layout (hole map + viewport + row height)
-  // joined with the pill's segment layouts (reported by SegmentedToggle).
-  React.useEffect(() => {
-    if (!onLayoutCacheChange || !shellLayout) {
-      return;
-    }
-    if (shellLayout.viewportWidth <= 0 || shellLayout.rowHeight <= 0) {
-      return;
-    }
-    onLayoutCacheChange({
-      viewportWidth: shellLayout.viewportWidth,
-      rowHeight: shellLayout.rowHeight,
-      holeMap: Object.fromEntries(
-        Object.entries(shellLayout.holeMap).map(([key, hole]) => [key, cloneMaskedHole(hole)])
-      ),
-      segmentLayouts: segmentLayoutsRef.current.map((layout) =>
-        layout ? cloneLayoutRectangle(layout) : layout
-      ),
-    });
-  }, [onLayoutCacheChange, segmentLayoutsVersion, shellLayout]);
-
   return (
-    <FrostedFilterStrip
-      disableBlur={disableBlur}
+    <ToggleStrip
+      placement="in-list"
+      // Search owns its canonical frost composition (excluded from the foundation
+      // plate) — the band's blur sees honest frost by the host's construction.
+      backdrop="chrome-frost"
       surfaceColor="#ffffff"
       contentInset={contentHorizontalPadding}
       holeBorderRadius={TOGGLE_BORDER_RADIUS}
-      initialHoleLayout={
-        initialLayoutCache
-          ? {
-              holeMap: initialLayoutCache.holeMap,
-              viewportWidth: initialLayoutCache.viewportWidth,
-              rowHeight: initialLayoutCache.rowHeight,
-            }
-          : null
-      }
-      onMeasuredLayoutChange={handleShellLayout}
+      cacheSeat={layoutCacheSeat}
+      testID="search-filters-strip"
     >
       {/* Sort dropdown (owner spec 2026-07-12): sits LEFT of the segment toggle — the
           resurrected Local/Global rank-chip pattern. 'Sort' at the silent Best default,
@@ -254,8 +150,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         value={activeTab}
         onChange={onTabChange}
         accentColor={accentColor}
-        initialSegmentLayouts={initialSegmentLayouts.current}
-        onSegmentLayoutsChange={handleSegmentLayoutsChange}
         accessibilityLabel="Toggle results between restaurants and dishes"
         accessibilityHint="Tap to switch result type"
         testID="search-segment-toggle"
@@ -320,7 +214,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           testID="search-similar-available-chip"
         />
       ) : null}
-    </FrostedFilterStrip>
+    </ToggleStrip>
   );
 };
 

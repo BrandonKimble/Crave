@@ -1304,6 +1304,9 @@ model FavoriteList {
   /// Profile-gallery curation (page-registry §8.12/§8.14): owner-pinned lists
   /// float first on the PROFILE Lists view. Never affects the own-home order.
   pinned       Boolean                  @default(false)
+  /// Wave-2 §2 "Use your photos": the list's tile gallery renders the owner's own
+  /// photos (sparse, placeholder-filled) instead of the top-ranked restaurant photos.
+  useOwnPhotos Boolean                  @default(false) @map("use_own_photos")
   createdAt    DateTime                 @default(now()) @map("created_at")
   updatedAt    DateTime                 @updatedAt @map("updated_at")
   owner         User                       @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)

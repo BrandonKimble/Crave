@@ -24,7 +24,6 @@ type UseResultsPresentationCloseActionsRuntimeArgs = {
   isClearingSearchRef: React.MutableRefObject<boolean>;
   resultsSheetRuntime: Pick<AppRouteSharedSheetRuntimeOwner, 'sheetState'>;
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
-  cancelCloseSearchCleanup: () => void;
   setPendingCloseIntentId: (intentId: string | null) => void;
   matchesPendingCloseIntentId: (intentId: string) => boolean;
   beginCloseTransition: (
@@ -54,7 +53,6 @@ export const useResultsPresentationCloseActionsRuntime = ({
   isClearingSearchRef,
   resultsSheetRuntime,
   resultsRuntimeOwner,
-  cancelCloseSearchCleanup,
   setPendingCloseIntentId,
   matchesPendingCloseIntentId,
   beginCloseTransition,
@@ -95,14 +93,12 @@ export const useResultsPresentationCloseActionsRuntime = ({
         return;
       }
       setPendingCloseIntentId(null);
-      cancelCloseSearchCleanup();
       isClearingSearchRef.current = false;
       resultsRuntimeOwner.clearStagedSearchSurfaceResultsTransaction(intentId);
       cancelSearchSheetCloseTransition(intentId);
       resultsRuntimeOwner.cancelPresentationIntent(intentId);
     },
     [
-      cancelCloseSearchCleanup,
       cancelSearchSheetCloseTransition,
       isClearingSearchRef,
       matchesPendingCloseIntentId,

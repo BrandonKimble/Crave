@@ -128,6 +128,10 @@ export type SearchWorldPresentationSeam = {
   }) => void;
   commitWorldToMountedState: (args: SearchWorldCommitArgs) => void;
   failResolution: (args: { generation: number; reason: string }) => void;
+  /** Teardown for the world-commit hold: drops any held commit and unsubscribes the
+   *  release listener (a recreated/unmounted seam must not keep firing on the
+   *  singleton surface runtime — the reconciler leak class). */
+  disposeWorldCommitHold: () => void;
 };
 
 export const createSearchWorldPresentationSeam = (
@@ -190,8 +194,14 @@ export const createSearchWorldPresentationSeam = (
     }
     commitWorldToMountedStateNow(args);
   };
+  const disposeWorldCommitHold = (): void => {
+    releaseUnsubscribe?.();
+    releaseUnsubscribe = null;
+    heldCommitArgs = null;
+  };
   return {
     getPresentedWorldId: () => presentedWorldId,
+    disposeWorldCommitHold,
     beginResolution: ({ generation, presentationIntentKind }) => {
       env.searchRuntimeBus.publish({
         presentingPhase: 'resolving',

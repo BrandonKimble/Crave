@@ -11,7 +11,6 @@ import { useAppRouteSceneRuntime } from './AppRouteSceneRuntimeProvider';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 import { createAppRoutePollsSceneInputController } from './app-route-polls-scene-input-controller';
 import { useAppRouteDynamicSceneInputWritersRuntime } from './use-app-route-dynamic-scene-input-writers-runtime';
-import { useAppRouteNavOutDerivationWriterRuntime } from './use-app-route-nav-out-derivation-writer-runtime';
 import { useAppRoutePollsSceneInputWriterRuntime } from './use-app-route-polls-scene-input-writer-runtime';
 import { usePerfScenarioOverlaySceneCommand } from '../../perf/use-perf-scenario-overlay-scene-command';
 
@@ -62,9 +61,8 @@ const AppRouteSceneInputWritersRuntimeHost = React.memo(
       routeSceneRuntime,
     });
 
-    useAppRouteNavOutDerivationWriterRuntime({
-      routeSceneRuntime,
-    });
+    // Nav-out is a PresentationFrame FIELD now (leg 6 — PF chrome clock, child-transition
+    // primitive §2.1); the separate nav-out derivation store + writer runtime are deleted.
 
     usePerfScenarioOverlaySceneCommand({
       routeSceneRuntime,

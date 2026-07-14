@@ -28,4 +28,9 @@ export class UpdateFavoriteListDto {
   @IsOptional()
   @IsBoolean()
   pinned?: boolean;
+
+  /** Wave-2 §2 "Use your photos": tile gallery renders the owner's own photos. */
+  @IsOptional()
+  @IsBoolean()
+  useOwnPhotos?: boolean;
 }

@@ -20,7 +20,7 @@ import type { SearchChromeScalarSurfacePresentationRuntime } from '../native/sea
 import type { ResultsPresentationPolicyFactsLaneChange } from './results-presentation-policy-facts-controller';
 import type { RouteSceneSwitchAuthority } from './route-authority-contract';
 
-export type UseResultsPresentationOwnerStateRuntimeArgs<Suggestion> = {
+export type UseResultsPresentationOwnerStateRuntimeArgs = {
   setActiveTab: (next: 'dishes' | 'restaurants') => void;
   setActiveTabPreference: (next: 'dishes' | 'restaurants') => void;
   query: string;
@@ -42,18 +42,6 @@ export type UseResultsPresentationOwnerStateRuntimeArgs<Suggestion> = {
     | 'sheetState'
   >;
   clearSearchState: () => void;
-  cancelActiveSearchRequest: () => void;
-  cancelAutocomplete: () => void;
-  handleCancelPendingMutationWork: () => void;
-  resetSubmitTransitionHold: () => void;
-  setIsSearchFocused: React.Dispatch<React.SetStateAction<boolean>>;
-  setIsSuggestionPanelActive: React.Dispatch<React.SetStateAction<boolean>>;
-  setIsAutocompleteSuppressed: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
-  setQuery: React.Dispatch<React.SetStateAction<string>>;
-  setError: React.Dispatch<React.SetStateAction<string | null>>;
-  setSuggestions: React.Dispatch<React.SetStateAction<Suggestion[]>>;
-  inputRef: React.RefObject<{ blur?: () => void } | null>;
   searchRuntimeBus: SearchRuntimeBus;
   resultsPresentationAuthority: ResultsPresentationAuthority;
   routeSceneSwitchAuthority: RouteSceneSwitchAuthority;
@@ -73,7 +61,7 @@ export type ResultsPresentationOwnerStateRuntime = {
   closeTransitionRuntime: ResultsPresentationOwnerStateTransitionRuntime['closeTransitionRuntime'];
 };
 
-export const useResultsPresentationOwnerStateRuntime = <Suggestion>({
+export const useResultsPresentationOwnerStateRuntime = ({
   setActiveTab,
   setActiveTabPreference,
   query,
@@ -86,18 +74,6 @@ export const useResultsPresentationOwnerStateRuntime = <Suggestion>({
   shouldEnableShortcutInteractions,
   resultsSheetRuntime,
   clearSearchState,
-  cancelActiveSearchRequest,
-  cancelAutocomplete,
-  handleCancelPendingMutationWork,
-  resetSubmitTransitionHold,
-  setIsSearchFocused,
-  setIsSuggestionPanelActive,
-  setIsAutocompleteSuppressed,
-  setShowSuggestions,
-  setQuery,
-  setError,
-  setSuggestions,
-  inputRef,
   searchRuntimeBus,
   resultsPresentationAuthority,
   routeSceneSwitchAuthority,
@@ -109,7 +85,7 @@ export const useResultsPresentationOwnerStateRuntime = <Suggestion>({
   routeSceneVisibilityPolicyRuntime,
   onSearchSheetContentLaneChanged,
   searchChromeScalarSurfacePresentationRuntime,
-}: UseResultsPresentationOwnerStateRuntimeArgs<Suggestion>): ResultsPresentationOwnerStateRuntime => {
+}: UseResultsPresentationOwnerStateRuntimeArgs): ResultsPresentationOwnerStateRuntime => {
   const sessionRuntime = useResultsPresentationOwnerStateSessionRuntime({
     setActiveTab,
     setActiveTabPreference,
@@ -134,21 +110,8 @@ export const useResultsPresentationOwnerStateRuntime = <Suggestion>({
     searchChromeScalarSurfacePresentationRuntime,
   });
 
-  const transitionRuntime = useResultsPresentationOwnerStateTransitionRuntime<Suggestion>({
-    searchRuntimeBus,
+  const transitionRuntime = useResultsPresentationOwnerStateTransitionRuntime({
     clearSearchState,
-    cancelActiveSearchRequest,
-    cancelAutocomplete,
-    handleCancelPendingMutationWork,
-    resetSubmitTransitionHold,
-    setIsSearchFocused,
-    setIsSuggestionPanelActive,
-    setIsAutocompleteSuppressed,
-    setShowSuggestions,
-    setQuery,
-    setError,
-    setSuggestions,
-    inputRef,
     sessionRuntime,
     routeSceneVisibilityPolicyRuntime,
   });

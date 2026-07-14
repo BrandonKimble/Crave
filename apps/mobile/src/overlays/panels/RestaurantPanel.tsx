@@ -1,7 +1,15 @@
 import React from 'react';
-import { Dimensions, Linking, Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
 import {
-  useSharedValue,
+  Dimensions,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+  type ViewStyle,
+} from 'react-native';
+import Animated, {
+  useAnimatedStyle,
   type AnimatedStyle as ReanimatedAnimatedStyle,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,15 +27,22 @@ import {
   OVERLAY_HORIZONTAL_PADDING,
   OVERLAY_TAB_HEADER_HEIGHT,
 } from '../overlaySheetStyles';
-import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import { CutoutSkeletonTitle, SceneLoadingSurface } from '../../components/skeletons';
 import { getPriceRangeLabel } from '../../constants/pricing';
 import { calculateSnapPoints } from '../sheetUtils';
 import type { OverlayContentSpec } from '../types';
-import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
-import { useRestaurantHeaderLiveState } from '../restaurant-header-live-state';
+import {
+  registerPersistentHeaderDescriptor,
+  type PersistentHeaderExtrasProps,
+} from '../../navigation/runtime/app-route-persistent-header-registry';
+import { registerHeaderCloseAction } from '../../navigation/runtime/header-nav-action-registry';
+import {
+  getRestaurantHeaderLiveState,
+  useRestaurantHeaderLiveState,
+} from '../restaurant-header-live-state';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 import CraveScoreText from '../../screens/Search/components/CraveScoreText';
+import { RestaurantHoursCard } from '../../features/restaurant-hours/RestaurantHoursCard';
 import {
   RestaurantMentionsView,
   RestaurantOverviewMentions,
@@ -126,11 +141,35 @@ export const useRestaurantPanelSpec = ({
 
   const emptyAreaMinHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle - headerHeight);
   const priceLabel = restaurant
-    ? (getPriceRangeLabel(restaurant.priceLevel) ??
+    ? // Prefer the REAL Google price range ("$10–20", revamp) over the fabricated
+      // priceLevel bucket, then the level bucket, then the word/symbol.
+      (restaurant.priceRangeText ??
+      getPriceRangeLabel(restaurant.priceLevel) ??
       restaurant.priceText ??
       restaurant.priceSymbol ??
       null)
     : null;
+  const categoryLabel = restaurant?.categoryLabel ?? null;
+  // Score evidence / receipts (product doc §"Score evidence"): the rating is auditable, not
+  // a black box — "Based on N mentions · M votes" near the rating.
+  const scoreEvidence = React.useMemo(() => {
+    if (!restaurant) {
+      return null;
+    }
+    const mentions = restaurant.mentionCount ?? 0;
+    const votes = restaurant.totalUpvotes ?? 0;
+    if (mentions <= 0 && votes <= 0) {
+      return null;
+    }
+    const parts: string[] = [];
+    if (mentions > 0) {
+      parts.push(`${mentions} ${mentions === 1 ? 'mention' : 'mentions'}`);
+    }
+    if (votes > 0) {
+      parts.push(`${votes} ${votes === 1 ? 'vote' : 'votes'}`);
+    }
+    return `Based on ${parts.join(' · ')}`;
+  }, [restaurant]);
   const locationCandidates = React.useMemo<RestaurantPanelLocation[]>(() => {
     if (!restaurant) {
       return [];
@@ -275,8 +314,6 @@ export const useRestaurantPanelSpec = ({
     void Linking.openURL(`http://maps.apple.com/?q=${encodeURIComponent(query)}`);
   }, [primaryDirectionsTarget, queryLabel, restaurantName]);
 
-  const hoursSummary =
-    formatOperatingStatus(restaurant?.displayLocation?.operatingStatus) ?? 'Hours unavailable';
   const locationsLabel =
     locationCandidates.length === 1 ? '1 location' : `${locationCandidates.length} locations`;
 
@@ -310,42 +347,51 @@ export const useRestaurantPanelSpec = ({
           <View style={styles.metricCard}>
             <Text style={styles.metricLabel}>Crave rating</Text>
             <CraveScoreText score={restaurant.craveScore} style={styles.metricValue} />
+            {scoreEvidence ? <Text style={styles.scoreEvidence}>{scoreEvidence}</Text> : null}
           </View>
         </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailText}>Price</Text>
-          <Text style={styles.detailValue}>{priceLabel ?? '—'}</Text>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailText}>Hours</Text>
-          <Text style={styles.detailValue}>{hoursSummary}</Text>
-        </View>
-        <View style={styles.actionsRow}>
+        {/* Google-style compact meta line: "Brunch restaurant · $10–20" (revamp). */}
+        {categoryLabel || priceLabel ? (
+          <Text style={styles.metaLine}>
+            {[categoryLabel, priceLabel].filter(Boolean).join(' · ')}
+          </Text>
+        ) : null}
+        {/* Hours: the Google-style live status + expandable weekly schedule (revamp).
+            Reads the immutable structured schedule; status is computed client-side. */}
+        <RestaurantHoursCard schedule={restaurant?.displayLocation?.structuredHours} />
+        {/* Google-style action pills: a horizontally scrollable row of compact pills —
+            each pill hugs its label (no flex squeeze/text wrapping). */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.actionsRow}
+          contentContainerStyle={styles.actionsRowContent}
+        >
           <Pressable
-            style={styles.primaryAction}
+            style={styles.actionPill}
             onPress={handleDirectionsPress}
             accessibilityRole="button"
             accessibilityLabel="Directions"
             testID="restaurant-directions"
           >
-            <Feather name="navigation" size={18} color="#0f172a" />
-            <Text style={styles.primaryActionText}>Directions</Text>
+            <Feather name="navigation" size={16} color="#0f172a" />
+            <Text style={styles.actionPillText}>Directions</Text>
           </Pressable>
           {sharedWebsiteUrl ? (
-            <Pressable style={styles.primaryAction} onPress={handleWebsitePress}>
-              <Feather name="globe" size={18} color="#0f172a" />
-              <Text style={styles.primaryActionText}>Website</Text>
+            <Pressable style={styles.actionPill} onPress={handleWebsitePress}>
+              <Feather name="globe" size={16} color="#0f172a" />
+              <Text style={styles.actionPillText}>Website</Text>
             </Pressable>
           ) : null}
-          <Pressable style={styles.primaryAction} onPress={handleCallPress}>
-            <Feather name="phone" size={18} color="#0f172a" />
-            <Text style={styles.primaryActionText}>Call</Text>
+          <Pressable style={styles.actionPill} onPress={handleCallPress}>
+            <Feather name="phone" size={16} color="#0f172a" />
+            <Text style={styles.actionPillText}>Call</Text>
           </Pressable>
-          {/* W2 (page-registry §7.4): the restaurant-profile add-photo entry — crude chip;
-              the real chip-row is W3's design pass. Plain-function funnel entry (this is a
-              spec hook — effects/hooks-with-effects are off the table here). */}
+          {/* W2 (page-registry §7.4): the restaurant-profile add-photo entry. Plain-function
+              funnel entry (this is a spec hook — effects/hooks-with-effects are off the
+              table here). */}
           <Pressable
-            style={styles.primaryAction}
+            style={styles.actionPill}
             onPress={() =>
               openPostPhotosFunnel({
                 restaurantId: restaurant.restaurantId,
@@ -356,10 +402,10 @@ export const useRestaurantPanelSpec = ({
             accessibilityLabel="Add photo"
             testID="restaurant-add-photo"
           >
-            <Feather name="camera" size={18} color="#0f172a" />
-            <Text style={styles.primaryActionText}>Add photo</Text>
+            <Feather name="camera" size={16} color="#0f172a" />
+            <Text style={styles.actionPillText}>Add photo</Text>
           </Pressable>
-        </View>
+        </ScrollView>
         {locationCandidates.length > 0 ? (
           <View style={styles.locationsSection}>
             <View style={styles.sectionHeader}>
@@ -460,9 +506,9 @@ export const useRestaurantPanelSpec = ({
     expandedLocations,
     formatOperatingStatus,
     formatHoursRows,
+    categoryLabel,
     handleCallPress,
     handleWebsitePress,
-    hoursSummary,
     isLoading,
     locationCandidates,
     locationsLabel,
@@ -471,8 +517,10 @@ export const useRestaurantPanelSpec = ({
     queryLabel,
     resolveLocationLabel,
     restaurant?.craveScore,
+    restaurant?.displayLocation?.structuredHours,
     restaurant?.restaurantId,
     restaurant?.restaurantName,
+    scoreEvidence,
     setActiveView,
     sharedWebsiteUrl,
     shouldShowPerLocationWebsite,
@@ -759,70 +807,73 @@ const RestaurantPersistentHeaderTitle = React.memo(() => {
 });
 RestaurantPersistentHeaderTitle.displayName = 'RestaurantPersistentHeaderTitle';
 
-const RestaurantPersistentHeaderAction = React.memo(() => {
-  const headerState = useRestaurantHeaderLiveState();
-  const closeButtonProgress = useSharedValue(0);
-  const data = headerState?.data ?? null;
-  const restaurant = data?.restaurant ?? null;
-  const isFavorite = data?.isFavorite ?? false;
-  const restaurantName = restaurant?.restaurantName ?? '';
-  const restaurantId = restaurant?.restaurantId ?? '';
-  const onToggleFavorite = headerState?.onToggleFavorite;
-  const onRequestClose = headerState?.onRequestClose;
+// Leg 6 (§4 HeaderNavAction): the bespoke headerCloseButton is DELETED — the persistent header
+// host owns the ONE plus↔X control. Restaurant's SESSION close (token-guarded
+// closeRestaurantRoute via the header live state) registers as the host's close OVERRIDE; the
+// heart + share affordances are per-scene EXTRAS chrome riding the host's transitionProgress
+// (the §3.5 seam — they fade in synchronized with the plus→X rotation, starting on press-up).
+const RestaurantPersistentHeaderExtras = React.memo(
+  ({ transitionProgress }: PersistentHeaderExtrasProps) => {
+    const headerState = useRestaurantHeaderLiveState();
+    const data = headerState?.data ?? null;
+    const restaurant = data?.restaurant ?? null;
+    const isFavorite = data?.isFavorite ?? false;
+    const restaurantName = restaurant?.restaurantName ?? '';
+    const restaurantId = restaurant?.restaurantId ?? '';
+    const onToggleFavorite = headerState?.onToggleFavorite;
+    const extrasOpacityStyle = useAnimatedStyle(
+      () => ({ opacity: transitionProgress.value }),
+      [transitionProgress]
+    );
 
-  const handleToggleFavorite = React.useCallback(() => {
-    if (!restaurantId) {
-      return;
-    }
-    onToggleFavorite?.(restaurantId);
-  }, [onToggleFavorite, restaurantId]);
+    const handleToggleFavorite = React.useCallback(() => {
+      if (!restaurantId) {
+        return;
+      }
+      onToggleFavorite?.(restaurantId);
+    }, [onToggleFavorite, restaurantId]);
 
-  // W3 universal share modal replaces the ad-hoc OS share sheet (the sheet is
-  // still reachable inside the modal as the "Share via…" row).
-  const handleShare = React.useCallback(() => {
-    if (!restaurantId) {
-      return;
-    }
-    showShareModal({ kind: 'restaurant', id: restaurantId, title: restaurantName });
-  }, [restaurantId, restaurantName]);
+    // W3 universal share modal replaces the ad-hoc OS share sheet (the sheet is
+    // still reachable inside the modal as the "Share via…" row).
+    const handleShare = React.useCallback(() => {
+      if (!restaurantId) {
+        return;
+      }
+      showShareModal({ kind: 'restaurant', id: restaurantId, title: restaurantName });
+    }, [restaurantId, restaurantName]);
 
-  const handleRequestClose = React.useCallback(() => {
-    onRequestClose?.();
-  }, [onRequestClose]);
-
-  return (
-    <View style={styles.headerActions}>
-      <Pressable
-        onPress={handleToggleFavorite}
-        style={styles.headerIconButton}
-        accessibilityLabel={isFavorite ? 'Unsave restaurant' : 'Save restaurant'}
-      >
-        <Feather
-          name="heart"
-          size={20}
-          color={isFavorite ? '#ef4444' : '#1f2937'}
-          {...(isFavorite ? { fill: '#ef4444' } : {})}
-        />
-      </Pressable>
-      <Pressable onPress={handleShare} style={styles.headerIconButton} accessibilityLabel="Share">
-        <Feather name="share-2" size={18} color="#1f2937" />
-      </Pressable>
-      <OverlayHeaderActionButton
-        progress={closeButtonProgress}
-        onPress={handleRequestClose}
-        accessibilityLabel="Close restaurant"
-        accentColor={themeColors.primary}
-        closeColor="#1f2937"
-        style={styles.headerCloseButton}
-      />
-    </View>
-  );
-});
-RestaurantPersistentHeaderAction.displayName = 'RestaurantPersistentHeaderAction';
+    return (
+      <Animated.View style={[styles.headerActions, extrasOpacityStyle]}>
+        <Pressable
+          onPress={handleToggleFavorite}
+          style={styles.headerIconButton}
+          accessibilityLabel={isFavorite ? 'Unsave restaurant' : 'Save restaurant'}
+        >
+          <Feather
+            name="heart"
+            size={20}
+            color={isFavorite ? '#ef4444' : '#1f2937'}
+            {...(isFavorite ? { fill: '#ef4444' } : {})}
+          />
+        </Pressable>
+        <Pressable onPress={handleShare} style={styles.headerIconButton} accessibilityLabel="Share">
+          <Feather name="share-2" size={18} color="#1f2937" />
+        </Pressable>
+      </Animated.View>
+    );
+  }
+);
+RestaurantPersistentHeaderExtras.displayName = 'RestaurantPersistentHeaderExtras';
 
 registerPersistentHeaderDescriptor('restaurant', {
   Title: RestaurantPersistentHeaderTitle,
-  Action: RestaurantPersistentHeaderAction,
+  Extras: RestaurantPersistentHeaderExtras,
+});
+
+// Restaurant's close is a SESSION verb (token-guarded closeRestaurantRoute), not the canonical
+// pop — registered as the host's close override, reading the live state at press time.
+registerHeaderCloseAction('restaurant', () => {
+  getRestaurantHeaderLiveState()?.onRequestClose();
 });
 
 const styles = StyleSheet.create({
@@ -871,42 +922,39 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     marginTop: 4,
   },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    marginTop: 16,
-  },
-  detailText: {
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
-    fontWeight: '600',
-    color: '#0f172a',
-  },
-  detailValue: {
+  metaLine: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
     color: themeColors.textBody,
+    marginTop: 12,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+  },
+  scoreEvidence: {
+    fontSize: FONT_SIZES.caption,
+    lineHeight: LINE_HEIGHTS.caption,
+    color: themeColors.textMuted,
+    marginTop: 6,
   },
   actionsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    marginTop: 20,
+    marginTop: 16,
   },
-  primaryAction: {
-    flex: 1,
+  actionsRowContent: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+  },
+  actionPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 16,
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
     backgroundColor: '#e0f2fe',
   },
-  primaryActionText: {
-    fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
+  actionPillText: {
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     fontWeight: '600',
     color: '#0f172a',
   },

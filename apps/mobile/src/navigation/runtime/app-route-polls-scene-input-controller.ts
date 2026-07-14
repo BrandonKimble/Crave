@@ -83,9 +83,9 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
       });
       return;
     }
-    this.routeSceneRuntime.routeSearchCommandActions.returnAppSearchRouteToDockedSearch({
-      snap: 'collapsed',
-    });
+    // Two-posture law: leaving the polls page for home lands at HOME's remembered posture
+    // (the verb derives the motion from the home seat; no forced collapsed).
+    this.routeSceneRuntime.routeSearchCommandActions.returnAppSearchRouteToDockedSearch();
   };
 
   private pollsRouteState: AppRoutePollsRouteStateRuntime;

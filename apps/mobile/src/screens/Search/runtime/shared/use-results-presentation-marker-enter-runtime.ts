@@ -104,6 +104,25 @@ export const useResultsPresentationMarkerEnterRuntime = ({
       if (executionBatch == null) {
         return;
       }
+      // S-0 (lens-transport plan §7.12): the reveal must gate on the world it will
+      // actually show. A mounted batch whose DATA identity is not the currently
+      // desired one (the preview world mounting after the enriched commit already
+      // changed the desire) is stale — skip it; the enriched frame's own
+      // mounted_hidden satisfies the gate. Frames with unknown identity (no ledger
+      // entry — e.g., pre-record attach races) fall through to today's behavior.
+      if (
+        payload.mountedSourceDataKey != null &&
+        payload.desiredSourceDataKey != null &&
+        payload.mountedSourceDataKey !== payload.desiredSourceDataKey
+      ) {
+        if (__DEV__) {
+          console.log('[S0GATE] stale mounted_hidden skipped', {
+            requestKey: payload.requestKey,
+            executionBatchId: payload.executionBatchId,
+          });
+        }
+        return;
+      }
       const didAcceptMountedHidden = runtimeMachineRef.current!.markEnterBatchMountedHidden(
         payload.requestKey,
         executionBatch

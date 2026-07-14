@@ -1,7 +1,6 @@
 import React from 'react';
 import type { LayoutChangeEvent } from 'react-native';
 import type { FlashListProps } from '@shopify/flash-list';
-import type { SharedValue } from 'react-native-reanimated';
 
 import type { FoodResult, RestaurantResult, SearchResponse } from '../../../../types';
 import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
@@ -57,7 +56,6 @@ type UseSearchResultsReadModelSelectorsArgs = {
   submittedQuery: string;
   handleCloseResults: () => void;
   handleResultsHeaderLayout: (event: LayoutChangeEvent) => void;
-  overlayHeaderActionProgress: SharedValue<number>;
   shouldLogResultsViewability: boolean;
   searchInteractionRef: React.MutableRefObject<{
     isResultsListScrolling: boolean;
@@ -135,7 +133,6 @@ export const useSearchResultsReadModelSelectors = (
     submittedQuery,
     handleCloseResults,
     handleResultsHeaderLayout,
-    overlayHeaderActionProgress,
     shouldLogResultsViewability,
     searchInteractionRef,
     renderDishCard,
@@ -308,7 +305,6 @@ export const useSearchResultsReadModelSelectors = (
   useSearchResultsPageHeaderRuntime({
     activeTabColor,
     handleCloseResults,
-    overlayHeaderActionProgress,
     headerTitle: listHeaderTitle,
     handleResultsHeaderLayout,
   });

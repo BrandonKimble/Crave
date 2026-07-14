@@ -19,15 +19,20 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * The favorite-list capability law (RT-18), in ONE home:
+ * The favorite-list capability law (RT-18 slug-as-capability + the
+ * visibility canon, owner 2026-07-12), in ONE home:
  *
  * - Read: owner OR collaborator OR presented-shareSlug-matches (the slug IS
  *   the capability; rotation = revocation). Fail-closed 404 otherwise; a
  *   matching slug on a share-disabled list is 410 {state:'private'}.
  * - Mutate: owner or collaborator only — never the slug.
+ * - Visibility is NEVER consulted here: it controls DISCOVERY (profile
+ *   presence), not ACCESS. Private = unlisted, not locked — link holders and
+ *   collaborators keep access across visibility flips until individually
+ *   revoked (disableShare / removeCollaborator).
  * - Blocked pairs (§8.6): a viewer in a blocked pair with the owner gets the
  *   same 410 {state:'private'} on slug-granted reads and cannot join as a
- *   collaborator — indistinguishable from the list having gone private.
+ *   collaborator — indistinguishable from sharing having been revoked.
  */
 @Injectable()
 export class FavoriteListAccessPolicy {
@@ -71,8 +76,8 @@ export class FavoriteListAccessPolicy {
     }
     if (presentedSlug && list.shareSlug === presentedSlug) {
       if (!list.shareEnabled) {
-        // Dead slug: the row is kept so the client can render the
-        // "this list is private" body instead of a generic not-found.
+        // Dead slug (sharing revoked): the row is kept so the client can
+        // render the "no longer shared" body instead of a generic not-found.
         throw new GoneException({ state: 'private' });
       }
       if (viewerUserId) {

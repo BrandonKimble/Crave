@@ -189,17 +189,26 @@ BOTH mounts and BOTH consequence classes? If not, say so and design the cutover.
 - Memory files: toggle-strip-primitive, page-foundation-standard,
   uncompromising-ideal-ethos, sheet-frost-architecture, testing-methodology.
 
-## Part 8 — Open owner decisions (surface, don't decide)
+## Part 8 — Owner decisions (updated 2026-07-12 evening)
 
-- Bookmarks inventory: visibility filter? All-list scope chip?
-- Ratify (from leg-1 audit): strip **scrollX warm-restore** — the charter's bar
-  exceeds the shipped reference (results strip resets its own scroll position on
-  every tab flip today; layout cache exists, adding scrollX is cheap). Jarvis rec: yes.
-- Ratify (from leg-1 audit): amend the page-foundation standard with a **backdrop
-  contract for strip bands** — the 2026-07-11 foundation white plate is the keystone
-  cause of broken strip fidelity on non-search scenes (frost blurs opaque white), and
-  the foundation's `strip:` field is a dead law (zero consumers; Bookmarks declares
-  `strip: 'none'` while rendering two strips). Make it load-bearing. Jarvis rec: yes.
+- **DECIDED — no Bookmarks visibility filter.** Visibility is a per-list SETTING,
+  not a consumption slice. **REFINED CANON (owner, 2026-07-12 late): visibility
+  controls DISCOVERY, never ACCESS.** PUBLIC = on your profile, discoverable.
+  PRIVATE = off your profile, unlisted — link holders and collaborators KEEP access
+  across flips until revoked individually in the modal; enableShare never changes
+  visibility; link view-vs-collaborate mode stays its own orthogonal toggle.
+  Supersedes RT-18. API conformance = leg 6.
+  The strip stays declarative, so a filter can be added later if list counts grow.
+- **DECIDED + MAJOR SHAPE CORRECTION — the All list NEVER mixes dishes and
+  restaurants.** There are TWO All lists, one per side of the list home page
+  (restaurants side has its All, dishes side has its All), mirroring the two-sided
+  page itself. Therefore NO scope chip is needed on All's detail page. VERIFY the
+  current data/UI shape matches this (per-side All); any deviation is flagged with
+  attribution and lands in the ListDetail design session — this correction is
+  binding on that session's inventory.
+- ~~Ratify scrollX warm-restore~~ — RATIFIED + BUILT (leg 2; reset-on-re-present
+  refinement built leg 3).
+- ~~Ratify foundation backdrop contract~~ — RATIFIED + BUILT (legs 2-3).
 - 4-way switchers (Profile, Restaurant views) + inline text sorts — explicitly
   parked as owner design decisions in the primitive plan.
 - Content-readiness strategy (pre-fetch permutations) — later, after the gap is
@@ -207,6 +216,71 @@ BOTH mounts and BOTH consequence classes? If not, say so and design the cutover.
 
 ## Status ledger
 
+- 2026-07-12 — LEG 5 COMPLETE (built + jest/sim-verified, UNCOMMITTED; owner
+  finger-tests legs 2-5 together): edit mode = the SAME content made editable
+  (Bookmarks). Content swap DELETED (BookmarksEditList / bare-row rendering /
+  EDIT_ROW_HEIGHT dead; ReorderableRows survives for ListDetail); slot-map drag
+  (computeDragFrame generalized to N columns — columns:1 reduces verbatim to the
+  shipped 1-D math — + ReorderableGrid on measured read-grid geometry w/
+  row-uniformity RED bark); ellipsis→handle in place (same footer slot/touch
+  target; pinned system + All tiles rendered handle-less); undo/redo/save/cancel
+  verified on the existing store session (pure history — no reshape needed).
+  Leg-4 red-team failure path BUILT at the seam: `captureControlBaseline`
+  (capture-at-settle, restore on 'failed' only) + polls runner honesty
+  (refreshPollFeed returns its outcome; runner throws on failed/unavailable) +
+  press-edge-suppressed store restore — control can never lie over stale content;
+  4+2 new jest specs. Part 8 verified: All list per-side CORRECT everywhere;
+  visibility canon recorded in product/favorites.md with TWO flagged shipped-code
+  contradictions (private-flip kills collaborators/share; enableShare force-flips
+  public). jest 263/263, tsc/lint green, sim evidence + walkthroughs in
+  [toggle-strip-rebuild-ledger.md](toggle-strip-rebuild-ledger.md) §Leg 5.
+- 2026-07-12 — LEG 4 COMPLETE (built + sim-verified, UNCOMMITTED, awaiting owner
+  finger-test of legs 2+3+4 together): content-only choreography per audit D5 —
+  the consequence seam's `'content'` class is real (contentPhase 'awaiting' flips
+  on press-up in the caller's stack → old cards exit NOW; resolution edge snaps new
+  cards in; NO skeleton), `useContentToggle` wired into polls
+  (feed controller + panel bare-white gap) and bookmarks (settleMs 0 degenerate,
+  provably same-frame); `[CONTENTTOGGLE] gap` instrumentation from day one —
+  measured: polls 337–655 ms (n=4), bookmarks 1 ms. Three defects resolved: dead
+  close-search-cleanup runtime root-caused (last caller lost in 9fa642d7;
+  clearSearchState is a strict superset) and DELETED with its arg-threading; stale
+  seeded strip holes made unrepresentable (seed pruned to rendered slot keys +
+  spec); morph exit-distance over-scaling fixed (exit = one viewport width — the
+  translation applies to the clipped viewport container; feel change: exit speed
+  now matches action-row entry). tsc/lint green, jest 242/242, verified-fresh-
+  bundle sim evidence + walkthroughs in
+  [toggle-strip-rebuild-ledger.md](toggle-strip-rebuild-ledger.md) §Leg 4.
+- 2026-07-12 — LEG 3 COMPLETE (built + sim-verified, UNCOMMITTED, awaiting owner
+  finger-test of legs 2+3 together): header-extension mount = `Strip` slot on the
+  persistent-header descriptor (measured chrome grows; divider + body lane follow);
+  polls + favorites migrated (snap gate + display:none strip gating dead; control
+  state in per-scene stores — chrome writes, body reads); favorites edit morph on
+  the engine action-row slot (flex-huddle dead); scrollX re-present reset built as
+  an engine facility (cache + LIVE retained instances) and wired at
+  clearSearchState + header-strip unmount; FrostedFilterStrip + polls negative-
+  margin folklore DELETED; inverse strip law barks both directions. jest 222/222,
+  tsc/lint green, all flows sim-verified. Fossil scrollHeader lanes explicitly
+  deferred to a focused pass (touches the scroll-handoff surface). Evidence:
+  [toggle-strip-rebuild-ledger.md](toggle-strip-rebuild-ledger.md) §Leg 3.
+- 2026-07-12 — LEG 3 LAUNCHED (resumed same agent, transcript intact): header
+  mount + polls/favorites migration + favorites edit morph onto the action-row
+  slot + delete list. Owner decisions folded in: scrollX RESETS on re-present
+  (persists across tab flips only). No commits until owner finger-tests 2+3.
+- 2026-07-12 — LEG 2 COMPLETE (built + sim-verified, UNCOMMITTED, awaiting owner
+  finger-test): ToggleStrip engine per D3.2 (band geometry by construction, backdrop
+  contract w/ auto-FrostCutout, layout+scrollX warm restore, action-row slot,
+  consequence seam w/ RED content stub), foundation strip law load-bearing
+  ('none'|'in-list'|'header'), results converted zero-regression + scrollX survives
+  tab flip. jest 218/218, barks proven RED on-device. Evidence:
+  [toggle-strip-rebuild-ledger.md](toggle-strip-rebuild-ledger.md). Open owner
+  calls: scrollX-on-re-present keep/reset; FrostedFilterStrip frozen shim = leg-3
+  delete. NOTE: unrelated map lens-transport work (4 files) now also uncommitted in
+  tree — do not co-attribute at commit.
+- 2026-07-12 — LEG 2 (engine + results conversion) LAUNCHED after owner go: both
+  ratifications YES (scrollX warm-restore joins the bar; foundation backdrop
+  contract structural), checkpoint 8ed123f3 committed as the fallback line. Build
+  ledger: [toggle-strip-rebuild-ledger.md](toggle-strip-rebuild-ledger.md). No
+  commits until owner finger-test.
 - 2026-07-12 — LEG 1 (read-only audit) COMPLETE: report + full mechanism/defect
   detail in [toggle-strip-audit-leg1.md](toggle-strip-audit-leg1.md). Verdict: keep
   controls + engine verbatim; strip layer = half-engine, needs the real rebuild

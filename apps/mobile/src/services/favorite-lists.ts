@@ -21,12 +21,14 @@ export interface FavoriteListSummary {
   position: number;
   /**
    * Auto-created default lists (page-registry §8.7): 'been' | 'want_to_go' |
-   * 'tried' | 'want_to_try'; null for user lists. System lists arrive pinned
-   * first in the server ordering and are not deletable.
+   * 'tried' | 'want_to_try'; null for user lists. Wave-2 §2: provenance ONLY —
+   * these are REGULAR lists (renamable, movable, deletable, no pinned prefix).
    */
   systemKind: string | null;
   /** Profile-gallery pin (§8.12/§8.14): owner curation; floats first on profiles. */
   pinned?: boolean;
+  /** Wave-2 §2 "Use your photos": tile gallery renders the owner's own photos. */
+  useOwnPhotos?: boolean;
   /** Majority market of the list's items (§8.15 city grouping) — only on the
    *  public profile read. */
   city?: string | null;
@@ -34,6 +36,19 @@ export interface FavoriteListSummary {
   shareSlug?: string | null;
   updatedAt: string;
   previewItems: FavoriteListPreviewItem[];
+  /**
+   * Wave-3 §1.2 (API live since wave-2 §7): the home-tile 2x2 gallery — top photo of
+   * each of the list's top-4 restaurants, slots TL(0)→TR(1)→BL(2)→BR(3), sparse at
+   * the end (client renders placeholders). Present on the owner home read.
+   */
+  tileImages?: FavoriteListTileImage[];
+}
+
+export interface FavoriteListTileImage {
+  slot: 0 | 1 | 2 | 3;
+  restaurantId: string;
+  photoId: string;
+  thumbUrl: string;
 }
 
 export type FavoriteListViewerRole = 'owner' | 'collaborator' | 'viewer';
@@ -108,6 +123,10 @@ export const favoriteListsService = {
     listId: string,
     opts?: {
       openNow?: boolean;
+      /** Leg 10 (defect #4): Google price_level values 0–4 — the strip's Price chip. */
+      priceLevels?: number[];
+      /** Leg 11: the strip's Market chip (§8.16, All lists) — executor market slice. */
+      marketKey?: string | null;
       userLocation?: Coordinate;
       pagination?: { page?: number; pageSize?: number };
       /** RT-18 slug-as-capability: shared reads present the slug. */
@@ -120,6 +139,8 @@ export const favoriteListsService = {
   ): Promise<SearchResponse> {
     const response = await api.post<SearchResponse>(`/favorites/lists/${listId}/results`, {
       openNow: opts?.openNow,
+      priceLevels: opts?.priceLevels?.length ? opts.priceLevels : undefined,
+      marketKey: opts?.marketKey ?? undefined,
       userLocation: opts?.userLocation
         ? { lat: opts.userLocation.lat, lng: opts.userLocation.lng }
         : undefined,
@@ -151,6 +172,8 @@ export const favoriteListsService = {
       visibility?: FavoriteListVisibility;
       /** §8.14 profile pin (owner-only). */
       pinned?: boolean;
+      /** Wave-2 §2 "Use your photos" (owner-only). */
+      useOwnPhotos?: boolean;
     }
   ): Promise<FavoriteListSummary> {
     const response = await api.patch<FavoriteListSummary>(`/favorites/lists/${listId}`, payload);

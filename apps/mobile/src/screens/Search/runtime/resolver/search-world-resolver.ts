@@ -182,6 +182,18 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
       if (__DEV__) {
         logger.info('[RESOLVE]', { generation, cause, cardsKey, coverageKey, tier: 'cache' });
       }
+      // UNIFORM ASYNC COMMIT (perf attribution 2026-07-12): a synchronous cache-tier
+      // present landed the entire world-commit composite (~200-450ms of store fan-out,
+      // row prep and frame build) in the SAME JS task as the press-up publish — the
+      // measured 656ms mega-stall that froze the sheet slide's first frames on every
+      // cached resubmit. Network commits always arrive in a later task; the cache tier
+      // now matches that contract with one macrotask hop, so press-up paints first.
+      // beginResolution/foreground effects stayed synchronous above — the press-up
+      // choreography (skeleton, covers, intents) is untouched.
+      await new Promise<void>((resolveYield) => setTimeout(resolveYield, 0));
+      if (!isTupleStillDesired(tuple)) {
+        return;
+      }
       presentEntry({
         entry: cached,
         tuple,
@@ -210,6 +222,11 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
           coverageKey,
           tier: derived.provisional ? 'derivation_provisional' : 'derivation',
         });
+      }
+      // Same uniform-async contract as the cache tier above.
+      await new Promise<void>((resolveYield) => setTimeout(resolveYield, 0));
+      if (!isTupleStillDesired(tuple)) {
+        return;
       }
       presentEntry({
         entry,

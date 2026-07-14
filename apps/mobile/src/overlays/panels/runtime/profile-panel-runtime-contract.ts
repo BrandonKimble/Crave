@@ -18,10 +18,14 @@ export type ProfileSceneHeaderProps = {
   onOpenSettings: () => void;
   // W3 messaging (§4.4 entry 2): own-profile header → messagesInbox child push.
   onOpenMessages: () => void;
+  // Followers/Following stat taps → followList child push (same push UserProfilePanel makes).
+  // No-op while the own profile is still resolving (no userId to query against yet).
+  onOpenFollowList: (mode: 'followers' | 'following') => void;
 };
 
 export type ProfilePanelActionsRuntime = {
   isSignedIn: boolean;
   handleOpenSettings: () => void;
   handleOpenMessages: () => void;
+  handleOpenFollowList: (userId: string, mode: 'followers' | 'following') => void;
 };

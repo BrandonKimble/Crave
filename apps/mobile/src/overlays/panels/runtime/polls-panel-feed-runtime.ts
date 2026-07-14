@@ -16,6 +16,7 @@ import type {
   PollsPanelInitialSnapPoint,
   UsePollsPanelSpecOptions,
 } from './polls-panel-runtime-contract';
+import { usePollsFeedControlsStore } from './polls-feed-controls-store';
 import { usePollsFeedRuntimeController } from './polls-feed-runtime-controller';
 import { buildPollsHeaderVisualModel } from '../pollsHeaderVisuals';
 
@@ -60,14 +61,16 @@ export type PollsPanelFeedRuntime = {
   shouldHoldFreshLiveContent: boolean;
   snapPoints: SnapPoints;
   visiblePolls: Poll[];
+  /**
+   * Leg 4 content choreography: true between a feed-toggle press-up (old cards out)
+   * and the new slice's arrival — the list body renders NOTHING (bare white under
+   * the header strip; no skeleton, no empty-state message).
+   */
+  isFeedSliceAwaiting: boolean;
   feedState: 'active' | 'closed';
-  setFeedState: React.Dispatch<React.SetStateAction<'active' | 'closed'>>;
-  feedSort: PollFeedSort | null;
-  setFeedSort: React.Dispatch<React.SetStateAction<PollFeedSort | null>>;
+  feedSort: PollFeedSort;
   feedType: PollFeedType;
-  setFeedType: React.Dispatch<React.SetStateAction<PollFeedType>>;
   feedTime: PollFeedTime;
-  setFeedTime: React.Dispatch<React.SetStateAction<PollFeedTime>>;
 };
 
 export const usePollsPanelFeedRuntime = ({
@@ -127,14 +130,13 @@ export const usePollsPanelFeedRuntime = ({
   );
   const [pollFeedFreshnessError, setPollFeedFreshnessError] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
-  // Live (active) vs Results (closed) split + sort (§4/§6). Sort null = silent
-  // demand-ranked default.
-  const [feedState, setFeedState] = React.useState<'active' | 'closed'>('active');
-  const [feedSort, setFeedSort] = React.useState<PollFeedSort | null>(null);
-  // Type filter (§6): all (default) | polls | discussions.
-  const [feedType, setFeedType] = React.useState<PollFeedType>('all');
-  // Time filter (§6): all_time (default) | this_week.
-  const [feedTime, setFeedTime] = React.useState<PollFeedTime>('all_time');
+  // Feed control state (Live/Results split, Type, Sort, Time) lives in the module
+  // store since leg 3 — the header-mounted strip (chrome) writes it, this runtime
+  // (body/query) reads it. See polls-feed-controls-store.ts for the write protocol.
+  const feedState = usePollsFeedControlsStore((state) => state.feedState);
+  const feedSort = usePollsFeedControlsStore((state) => state.feedSort);
+  const feedType = usePollsFeedControlsStore((state) => state.feedType);
+  const feedTime = usePollsFeedControlsStore((state) => state.feedTime);
 
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(
@@ -180,7 +182,7 @@ export const usePollsPanelFeedRuntime = ({
     ]
   );
 
-  const { scheduleFeedQueryCommit } = usePollsFeedRuntimeController({
+  const { isFeedSliceAwaiting } = usePollsFeedRuntimeController({
     visible,
     bounds,
     bootstrapSnapshot,
@@ -207,39 +209,11 @@ export const usePollsPanelFeedRuntime = ({
     interactionRef,
   });
 
-  // Feed-query toggle press handlers (toggle-system v2.1): the state write IS the
-  // optimistic flip (the pill/chip moves instantly); scheduleFeedQueryCommit hands
-  // the network consequence to the shared toggle engine, which coalesces a burst of
-  // taps into one quiet refresh. Exposed under the plain setter names so consumers
-  // (the strip) stay one-line — any future writer inherits the protocol.
-  const setFeedStateToggle = React.useCallback(
-    (value: React.SetStateAction<'active' | 'closed'>) => {
-      setFeedState(value);
-      scheduleFeedQueryCommit();
-    },
-    [scheduleFeedQueryCommit]
-  );
-  const setFeedSortToggle = React.useCallback(
-    (value: React.SetStateAction<PollFeedSort | null>) => {
-      setFeedSort(value);
-      scheduleFeedQueryCommit();
-    },
-    [scheduleFeedQueryCommit]
-  );
-  const setFeedTypeToggle = React.useCallback(
-    (value: React.SetStateAction<PollFeedType>) => {
-      setFeedType(value);
-      scheduleFeedQueryCommit();
-    },
-    [scheduleFeedQueryCommit]
-  );
-  const setFeedTimeToggle = React.useCallback(
-    (value: React.SetStateAction<PollFeedTime>) => {
-      setFeedTime(value);
-      scheduleFeedQueryCommit();
-    },
-    [scheduleFeedQueryCommit]
-  );
+  // Feed-query toggle presses (toggle-system v2.1, leg-3 shape): the header strip's
+  // store write IS the optimistic flip; the network consequence is wired inside the
+  // feed controller, which subscribes to the store's control keys and hands the
+  // refresh to the shared toggle engine (one quiet refresh per press burst). No
+  // setter wrappers remain here — any writer of the store inherits the protocol.
 
   const appliedBootstrapSnapshotAtRef = React.useRef<number>(bootstrapSnapshot?.resolvedAtMs ?? 0);
 
@@ -292,14 +266,11 @@ export const usePollsPanelFeedRuntime = ({
       shouldHoldFreshLiveContent,
       snapPoints,
       visiblePolls,
+      isFeedSliceAwaiting,
       feedState,
-      setFeedState: setFeedStateToggle,
       feedSort,
-      setFeedSort: setFeedSortToggle,
       feedType,
-      setFeedType: setFeedTypeToggle,
       feedTime,
-      setFeedTime: setFeedTimeToggle,
     }),
     [
       candidateLocalityName,
@@ -322,14 +293,11 @@ export const usePollsPanelFeedRuntime = ({
       shouldHoldFreshLiveContent,
       snapPoints,
       visiblePolls,
+      isFeedSliceAwaiting,
       feedState,
       feedSort,
       feedType,
       feedTime,
-      setFeedStateToggle,
-      setFeedSortToggle,
-      setFeedTypeToggle,
-      setFeedTimeToggle,
     ]
   );
 };

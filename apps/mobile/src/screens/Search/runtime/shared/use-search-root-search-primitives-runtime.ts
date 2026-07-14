@@ -8,14 +8,39 @@ import { normalizeActiveTab, type SearchActiveTab } from '../../../../store/sear
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import { useSearchRuntimeBusSelector } from './use-search-runtime-bus-selector';
 import {
-  cloneSearchFiltersLayoutCache,
-  type SearchFiltersLayoutCache,
-} from '../../components/SearchFilters';
+  clearToggleStripCacheScrollX,
+  cloneToggleStripLayoutCache,
+  type ToggleStripCacheSeat,
+  type ToggleStripLayoutCache,
+} from '../../../../toggles/toggle-strip-layout-cache';
 import type { ResultsListItem } from '../read-models/read-model-selectors';
 import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../native/search-chrome-scalar-surface-primitive-source-runtime';
 import type { SearchPrimitiveUiStateController } from './search-primitive-ui-state-controller';
 import type { SearchSuggestionPanelStateController } from './search-suggestion-panel-state-controller';
 import type { SearchRootSearchStateRuntime } from './search-root-primitives-runtime-contract';
+
+// THE SURFACE'S ONE STRIP WARM-RESTORE SLOT — module scope (leg 3). The backing store
+// moved out of the hook's ref so the close-search cleanup runtime (a different branch
+// of the search runtime tree) can apply the owner's re-present rule without threading
+// a callback through five arg contracts: ONE search surface exists per app (house
+// module-registry pattern), so module scope IS the surface scope. The React-visible
+// seat (clone-on-read/write) is still built inside the hook below.
+let searchFiltersLayoutCacheStore: ToggleStripLayoutCache | null = null;
+
+/**
+ * Owner decision (2026-07-12): strip scrollX RESETS when the results sheet is
+ * re-presented after a dismiss; it persists across tab flips only. Called by the
+ * close-search cleanup (the same chokepoint that resets query/suggestions). Layout
+ * stays warm — only the position resets.
+ */
+export const resetSearchFiltersStripScrollX = (): void => {
+  clearToggleStripCacheScrollX({
+    read: () => searchFiltersLayoutCacheStore,
+    write: (cache) => {
+      searchFiltersLayoutCacheStore = cache;
+    },
+  });
+};
 
 export const useSearchRootSearchPrimitivesRuntime = ({
   searchRuntimeBus,
@@ -203,12 +228,21 @@ export const useSearchRootSearchPrimitivesRuntime = ({
   const inputRef = primitiveUiStateController.inputRef;
   const ignoreNextSearchBlurRef = React.useRef(false);
   const resultsScrollRef = React.useRef<FlashListRef<ResultsListItem> | null>(null);
-  const searchFiltersLayoutCacheRef = React.useRef<SearchFiltersLayoutCache | null>(null);
+  // THE SURFACE'S ONE STRIP WARM-RESTORE SEAT (leg 2 — the strip engine owns cache
+  // semantics; this is just the storage slot). Shared by the presented results strip
+  // AND the hidden warmup render, so both hydrate/feed the same layout + scrollX.
+  // Backing store is module-scope (see resetSearchFiltersStripScrollX above).
   const [isSearchFiltersLayoutWarm, setIsSearchFiltersLayoutWarm] = React.useState(false);
-  const handleSearchFiltersLayoutCache = React.useCallback((cache: SearchFiltersLayoutCache) => {
-    searchFiltersLayoutCacheRef.current = cloneSearchFiltersLayoutCache(cache);
-    setIsSearchFiltersLayoutWarm(true);
-  }, []);
+  const searchFiltersCacheSeat = React.useMemo<ToggleStripCacheSeat>(
+    () => ({
+      read: () => cloneToggleStripLayoutCache(searchFiltersLayoutCacheStore),
+      write: (cache: ToggleStripLayoutCache) => {
+        searchFiltersLayoutCacheStore = cloneToggleStripLayoutCache(cache);
+        setIsSearchFiltersLayoutWarm(true);
+      },
+    }),
+    []
+  );
   const isSearchEditingRef = React.useRef(false);
   const allowSearchBlurExitRef = React.useRef(false);
 
@@ -246,15 +280,14 @@ export const useSearchRootSearchPrimitivesRuntime = ({
       inputRef,
       ignoreNextSearchBlurRef,
       resultsScrollRef,
-      searchFiltersLayoutCacheRef,
+      searchFiltersCacheSeat,
       isSearchFiltersLayoutWarm,
-      handleSearchFiltersLayoutCache,
       isSearchEditingRef,
       allowSearchBlurExitRef,
     }),
     [
       activeTab,
-      handleSearchFiltersLayoutCache,
+      searchFiltersCacheSeat,
       hasActiveTabPreference,
       isAutocompleteSuppressed,
       isSearchFiltersLayoutWarm,

@@ -30,6 +30,20 @@ export const useEntityRefActionExecutor = (): ((ref: EntityRef) => void) => {
         }
         return;
       }
+      if (action.kind === 'listWorld') {
+        // Wave-4 §3 COMPOSITE: push the child (title warm-seeds the header at frame 1)
+        // THEN dispatch the world half — the launch consumer writes the list-identity
+        // tuple; the reconciler presents the world INTO this pushed entry
+        // (preserveSheetState derives from the list identity, so no results takeover).
+        pushRoute('listDetail', {
+          listId: action.listId,
+          title: action.title,
+          worldBacked: true,
+          ...(action.targetUserId != null ? { targetUserId: action.targetUserId } : {}),
+        });
+        dispatchLaunchIntent({ type: 'entityAction', action });
+        return;
+      }
       dispatchLaunchIntent({ type: 'entityAction', action });
     },
     [dispatchLaunchIntent, pushRoute]

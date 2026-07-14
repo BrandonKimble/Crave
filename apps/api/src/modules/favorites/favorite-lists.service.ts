@@ -22,7 +22,6 @@ import { UpdateFavoriteListItemDto } from './dto/update-favorite-list-item.dto';
 import { ShareFavoriteListDto } from './dto/share-favorite-list.dto';
 import { ListFavoriteListsDto } from './dto/list-favorite-lists.dto';
 import { FavoriteListResultsDto } from './dto/favorite-list-results.dto';
-import { systemKindRank } from './favorite-list-provisioning.service';
 import {
   FavoriteListAccessPolicy,
   type FavoriteListViewerRole,
@@ -37,6 +36,7 @@ import {
   hasCustomOrder,
   type FavoriteListWithDetailItems,
 } from './favorite-list.mappers';
+import { FavoriteListTileGalleryService } from './favorite-list-tile-gallery.service';
 
 export type { FavoriteListViewerRole, FavoriteListSort };
 
@@ -77,6 +77,7 @@ export class FavoriteListsService {
     private readonly access: FavoriteListAccessPolicy,
     private readonly resultsAssembler: ListResultsAssembler,
     private readonly mapper: FavoriteListMapper,
+    private readonly tileGallery: FavoriteListTileGalleryService,
   ) {}
 
   async listForUser(userId: string, query: ListFavoriteListsDto) {
@@ -121,10 +122,20 @@ export class FavoriteListsService {
       },
     });
 
-    const previewScores = await this.mapper.loadPreviewScoreMaps(lists);
-    return this.orderHomeLists(lists).map((list) =>
-      this.mapper.buildListSummary(list, previewScores, 'owner'),
-    );
+    const [previewScores, tileImages] = await Promise.all([
+      this.mapper.loadPreviewScoreMaps(lists),
+      this.tileGallery.loadTileImages(
+        lists.map((list) => ({
+          listId: list.listId,
+          ownerUserId: list.ownerUserId,
+          useOwnPhotos: list.useOwnPhotos,
+        })),
+      ),
+    ]);
+    return this.orderHomeLists(lists).map((list) => ({
+      ...this.mapper.buildListSummary(list, previewScores, 'owner'),
+      tileImages: tileImages.get(list.listId) ?? [],
+    }));
   }
 
   /**
@@ -142,18 +153,16 @@ export class FavoriteListsService {
       'listId' | 'systemKind' | 'position' | 'createdAt' | 'updatedAt'
     >,
   >(lists: T[]): T[] {
-    const systemLists = lists
-      .filter((list) => list.systemKind != null)
-      .sort(
-        (a, b) => systemKindRank(a.systemKind) - systemKindRank(b.systemKind),
-      );
-    const userLists = lists.filter((list) => list.systemKind == null);
-    const byPosition = [...userLists].sort(
+    // Wave-2 §2: system defaults are REGULAR lists — no pinned prefix. Every list
+    // participates in the one ordering: the user's custom order when one exists
+    // (positions diverge from creation order), else recently updated. Provisioning
+    // assigns creation-ordered positions, so the divergence test holds unchanged.
+    const byPosition = [...lists].sort(
       (a, b) =>
         a.position - b.position ||
         a.createdAt.valueOf() - b.createdAt.valueOf(),
     );
-    const byCreated = [...userLists].sort(
+    const byCreated = [...lists].sort(
       (a, b) =>
         a.createdAt.valueOf() - b.createdAt.valueOf() ||
         a.position - b.position,
@@ -161,12 +170,11 @@ export class FavoriteListsService {
     const hasCustomHomeOrder = byPosition.some(
       (list, index) => list.listId !== byCreated[index].listId,
     );
-    const orderedUserLists = hasCustomHomeOrder
+    return hasCustomHomeOrder
       ? byPosition
-      : [...userLists].sort(
+      : [...lists].sort(
           (a, b) => b.updatedAt.valueOf() - a.updatedAt.valueOf(),
         );
-    return [...systemLists, ...orderedUserLists];
   }
 
   async listPublicForUser(userId: string, query: ListFavoriteListsDto) {
@@ -453,9 +461,10 @@ export class FavoriteListsService {
 
   async getSharedList(shareSlug: string) {
     const list = await this.prisma.favoriteList.findFirst({
-      // RT-18: match on the slug ALONE so a dead slug (sharing turned off /
-      // list flipped private) is distinguishable — 410 {state:'private'} vs
-      // a plain 404 for a slug that never existed / was rotated away.
+      // RT-18: match on the slug ALONE so a dead slug (sharing turned off)
+      // is distinguishable — 410 {state:'private'} vs a plain 404 for a slug
+      // that never existed / was rotated away. Visibility is never consulted:
+      // private = unlisted, not locked (visibility canon 2026-07-12).
       where: { shareSlug },
       include: {
         items: {
@@ -529,27 +538,23 @@ export class FavoriteListsService {
       throw new NotFoundException('Favorite list not found');
     }
 
-    // RT-18 private flip: going private also turns sharing off AND deletes
-    // every collaborator (the slug row stays, dead, so the share GET can
-    // answer 410 {state:'private'}).
-    const flippingPrivate = dto.visibility === FavoriteListVisibility.private;
-    return this.prisma.$transaction(async (tx) => {
-      if (flippingPrivate) {
-        await tx.favoriteListCollaborator.deleteMany({ where: { listId } });
-      }
-      return tx.favoriteList.update({
-        where: { listId },
-        data: {
-          name: dto.name?.trim() ?? undefined,
-          description:
-            dto.description !== undefined
-              ? dto.description?.trim() || null
-              : undefined,
-          visibility: dto.visibility ?? undefined,
-          pinned: dto.pinned ?? undefined,
-          shareEnabled: flippingPrivate ? false : undefined,
-        },
-      });
+    // Visibility canon (owner 2026-07-12, supersedes the RT-18 private-flip
+    // cascade): visibility controls DISCOVERY, never ACCESS. Flipping private
+    // only removes the list from the owner's profile — share links stay live
+    // and collaborator seats survive until the owner revokes them
+    // individually (disableShare / removeCollaborator).
+    return this.prisma.favoriteList.update({
+      where: { listId },
+      data: {
+        name: dto.name?.trim() ?? undefined,
+        description:
+          dto.description !== undefined
+            ? dto.description?.trim() || null
+            : undefined,
+        visibility: dto.visibility ?? undefined,
+        pinned: dto.pinned ?? undefined,
+        useOwnPhotos: dto.useOwnPhotos ?? undefined,
+      },
     });
   }
 
@@ -570,15 +575,15 @@ export class FavoriteListsService {
   async deleteList(userId: string, listId: string) {
     const list = await this.prisma.favoriteList.findFirst({
       where: { listId, ownerUserId: userId },
-      select: { listId: true, itemCount: true, systemKind: true },
+      select: { listId: true, itemCount: true },
     });
     if (!list) {
       throw new NotFoundException('Favorite list not found');
     }
-    if (list.systemKind != null) {
-      // Page-registry §8.7: the four auto-created defaults are permanent.
-      throw new BadRequestException('System default lists cannot be deleted');
-    }
+    // Wave-2 §2: Been/Want-to-go (and the dish-side pair) are REGULAR lists —
+    // default-CREATED per user, but renamable, movable, and deletable like any
+    // other list. The systemKind permanence guard is deleted; systemKind survives
+    // only as provisioning provenance (the once-ever (owner, systemKind) unique).
 
     await this.prisma.favoriteList.delete({
       where: { listId },
@@ -927,15 +932,14 @@ export class FavoriteListsService {
       shareSlug = await this.generateUniqueShareSlug();
     }
 
+    // Visibility canon: sharing mints/returns the link CAPABILITY and never
+    // mutates visibility (discovery) — a private (unlisted) list stays
+    // shareable without being flipped onto the profile.
     const updated = await this.prisma.favoriteList.update({
       where: { listId },
       data: {
         shareSlug,
         shareEnabled: true,
-        visibility:
-          list.visibility === FavoriteListVisibility.private
-            ? FavoriteListVisibility.public
-            : list.visibility,
       },
     });
 

@@ -1,9 +1,7 @@
 import React from 'react';
 import { View, Pressable, StyleSheet } from 'react-native';
 import { Sparkles, MessageCircle, Users, Clock } from 'lucide-react-native';
-import { useSharedValue } from 'react-native-reanimated';
 import {
-  FrostedFilterStrip,
   SegmentedToggle,
   SelectorChip,
   toggleOptionSelector,
@@ -11,6 +9,11 @@ import {
   showAppModal,
   Text,
 } from '../../components';
+import { ToggleStrip } from '../../toggles/ToggleStrip';
+import {
+  clearToggleStripCacheScrollX,
+  createToggleStripCacheSeat,
+} from '../../toggles/toggle-strip-layout-cache';
 import type {
   Poll,
   PollCreator,
@@ -33,10 +36,11 @@ import type {
 } from '../../navigation/runtime/app-route-scene-descriptor-contract';
 import SquircleSpinner from '../../components/SquircleSpinner';
 import { SceneLoadingSurface } from '../../components/skeletons';
-import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
+import { registerHeaderCreateAction } from '../../navigation/runtime/header-nav-action-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { PollCandidateBars } from './PollCandidateBars';
+import { usePollsFeedControlsStore } from './runtime/polls-feed-controls-store';
 import { usePollsPanelFeedRuntime } from './runtime/polls-panel-feed-runtime';
 import { usePollsPanelHeaderModelPublication } from './runtime/polls-panel-header-model-runtime';
 import { PollsHeaderTitleText } from './pollsHeaderVisuals';
@@ -48,43 +52,50 @@ const ACCENT = themeColors.primary;
 const BORDER = themeColors.border;
 const SURFACE = themeColors.surface;
 
-// Feed primary split (§4/§6): Live (open polls) ⇄ Results (closed/graduated).
-const FEED_STATE_OPTIONS = [
-  { label: 'Live', value: 'active' as const },
-  { label: 'Results', value: 'closed' as const },
-] as const;
+// Feed primary split (wave-2 §3): Live (open polls, with the live count in the
+// segment) <-> Closed (state-word symmetry; every poll has results, so "Results"
+// read ambiguously).
+const FEED_STATE_VALUES = ['active', 'closed'] as const;
 
-// Type filter (§6): exclusive, always one active (default All).
+// Type filter (§6): exclusive, always one active (default All). Chips display the
+// VALUE, never the axis name (§3) — 'All' at rest, accented value when overridden.
 const TYPE_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedType }> = [
   { label: 'All', value: 'all' },
   { label: 'Polls', value: 'polls' },
   { label: 'Discussions', value: 'discussions' },
 ];
+const TYPE_LABEL_BY_VALUE: Record<PollFeedType, string> = {
+  all: 'All',
+  polls: 'Polls',
+  discussions: 'Discussions',
+};
 
-// Sort overrides (§4/§6), now a DROPDOWN toggle (toggle-strip primitive, owner spec
-// 2026-07-12): 'default' = the silent demand-ranked order (maps to feedSort null).
-const SORT_SELECTOR_OPTIONS = [
-  { label: 'Default', value: 'default' },
+// MASTER sort (wave-2 §3): New (default — chronological; what the API always did
+// when the old "Default" omitted the param) | Trending | Top. Time folds INTO Top:
+// the period chip exists only while Top is the sort (a conditional strip citizen).
+const SORT_SELECTOR_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedSort }> = [
   { label: 'New', value: 'new' },
-  { label: 'Top', value: 'top' },
   { label: 'Trending', value: 'trending' },
-] as const;
-type PollSortSelectorValue = (typeof SORT_SELECTOR_OPTIONS)[number]['value'];
-const SORT_LABEL_BY_VALUE: Record<Exclude<PollSortSelectorValue, 'default'>, string> = {
+  { label: 'Top', value: 'top' },
+];
+const SORT_LABEL_BY_VALUE: Record<PollFeedSort, string> = {
   new: 'New',
   top: 'Top',
   trending: 'Trending',
 };
 
-// Time filter (§6): exclusive, always one active (default All Time).
+// Top's time period (§3): Today + This month join the set; only rendered under Top.
 const TIME_OPTIONS: ReadonlyArray<{ label: string; value: PollFeedTime }> = [
-  { label: 'All time', value: 'all_time' },
+  { label: 'Today', value: 'today' },
   { label: 'This week', value: 'this_week' },
+  { label: 'This month', value: 'this_month' },
+  { label: 'All time', value: 'all_time' },
 ];
-
-const TYPE_LABEL_BY_VALUE: Partial<Record<PollFeedType, string>> = {
-  polls: 'Polls',
-  discussions: 'Discussions',
+const TIME_LABEL_BY_VALUE: Record<PollFeedTime, string> = {
+  all_time: 'All time',
+  today: 'Today',
+  this_week: 'This week',
+  this_month: 'This month',
 };
 
 // The polls feed is RE-SORTABLE. FlashList's maintain-visible-content-position
@@ -294,6 +305,7 @@ const usePollsSceneHeaderModel = (): AppRoutePollsSceneHeaderModel => {
 // anywhere under the app providers). The grab-handle tap is the shared promote handler.
 
 const PollsPersistentHeaderTitle = React.memo(() => {
+  usePollsHeaderCreateActionRegistration();
   const headerModel = usePollsSceneHeaderModel();
   // Title renders SYNCHRONOUSLY — 'Polls' seeds the first frame when the header model is late.
   const headerTitle = headerModel?.title ?? 'Polls';
@@ -329,59 +341,182 @@ const PollsPersistentHeaderTitle = React.memo(() => {
 
 PollsPersistentHeaderTitle.displayName = 'PollsPersistentHeaderTitle';
 
-const PollsPersistentHeaderAction = React.memo(() => {
+// §4 header plus (leg 7): the host-owned HeaderNavAction fires the CREATE lane for parents;
+// polls' create is MARKET-GATED (market params + the "Pick a market" modal), so it registers on
+// the header-create registry from the header Title mount (a real committed component under the
+// app providers — the scene body-spec hooks never commit effects). Snapshots read at PRESS time.
+const usePollsHeaderCreateActionRegistration = () => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const { pushRoute } = useAppOverlayRouteController();
-  // The poll header action is ALWAYS the "+" create button (progress pinned to 1),
-  // regardless of sheet height — no dynamic close↔plus morph.
-  const headerActionProgress = useSharedValue(1);
+  React.useEffect(
+    () =>
+      registerHeaderCreateAction('polls', () => {
+        const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();
+        const headerModel =
+          routeSceneRuntime.routePollsSceneRuntime.headerModelAuthority.getSnapshot();
+        const params = sceneState.params;
+        const pinnedMarketOverride =
+          params?.pinnedMarket === true || Boolean(params?.pollId)
+            ? params?.marketKey?.trim() || null
+            : null;
+        const marketOverride = headerModel?.marketOverride ?? pinnedMarketOverride;
+        const marketKey = headerModel?.marketKey ?? params?.marketKey?.trim() ?? null;
 
-  const handleHeaderActionPress = React.useCallback(() => {
-    const sceneState = routeSceneRuntime.routePollsSceneRuntime.sceneAuthority.getSnapshot();
-    const headerModel = routeSceneRuntime.routePollsSceneRuntime.headerModelAuthority.getSnapshot();
-    const params = sceneState.params;
-    const pinnedMarketOverride =
-      params?.pinnedMarket === true || Boolean(params?.pollId)
-        ? params?.marketKey?.trim() || null
-        : null;
-    const marketOverride = headerModel?.marketOverride ?? pinnedMarketOverride;
-    const marketKey = headerModel?.marketKey ?? params?.marketKey?.trim() ?? null;
+        if (!sceneState.bounds && !marketKey && !marketOverride) {
+          showAppModal({
+            title: 'Pick a market',
+            message: 'Move the map to a local market before creating a poll.',
+          });
+          return;
+        }
 
-    if (!sceneState.bounds && !marketKey && !marketOverride) {
-      showAppModal({
-        title: 'Pick a market',
-        message: 'Move the map to a local market before creating a poll.',
-      });
-      return;
-    }
+        sceneState.onRequestPollCreationExpand?.();
+        pushRoute('pollCreation', {
+          marketKey: marketOverride ?? marketKey ?? null,
+          marketName:
+            headerModel?.marketName ??
+            params?.marketName ??
+            headerModel?.candidateLocalityName ??
+            null,
+          bounds: sceneState.bounds ?? null,
+        });
+      }),
+    [pushRoute, routeSceneRuntime]
+  );
+};
 
-    sceneState.onRequestPollCreationExpand?.();
-    pushRoute('pollCreation', {
-      marketKey: marketOverride ?? marketKey ?? null,
-      marketName:
-        headerModel?.marketName ?? params?.marketName ?? headerModel?.candidateLocalityName ?? null,
-      bounds: sceneState.bounds ?? null,
-    });
-  }, [pushRoute, routeSceneRuntime]);
+// THE POLLS FEED STRIP — HEADER-EXTENSION MOUNT (leg 3, audit D4.2). Mounted by the
+// persistent header host in the SAME committed frame as the title, so the strip exists
+// from the page's first paint by construction — the old snap gate (ListHeaderComponent
+// null until resolvedSnap reached middle/expanded — THE audited snap-in defect) is
+// deleted, not moved. Control state lives in the module store (chrome writes, the feed
+// runtime reads); the store write is the optimistic flip and the feed controller's
+// store subscription owns the network consequence.
+const pollsFeedStripCacheSeat = createToggleStripCacheSeat();
 
+const PollsFeedStrip = React.memo(() => {
+  const feedState = usePollsFeedControlsStore((state) => state.feedState);
+  const feedSort = usePollsFeedControlsStore((state) => state.feedSort);
+  const feedType = usePollsFeedControlsStore((state) => state.feedType);
+  const feedTime = usePollsFeedControlsStore((state) => state.feedTime);
+  const liveCount = usePollsFeedControlsStore((state) => state.liveCount);
+  const setFeedState = usePollsFeedControlsStore((state) => state.setFeedState);
+  const setFeedSort = usePollsFeedControlsStore((state) => state.setFeedSort);
+  const setFeedType = usePollsFeedControlsStore((state) => state.setFeedType);
+  const setFeedTime = usePollsFeedControlsStore((state) => state.setFeedTime);
+  // §3 "Live · N": dynamic live-poll count (metadata dot) inside the segment itself.
+  const feedStateOptions = React.useMemo(
+    () =>
+      FEED_STATE_VALUES.map((value) => ({
+        value,
+        label: value === 'active' ? (liveCount != null ? `Live · ${liveCount}` : 'Live') : 'Closed',
+      })),
+    [liveCount]
+  );
+  // Dropdown toggles ride the ROOT OptionSelectorHost (imperative store) — no local
+  // sheet mounting inside the header chrome.
+  const optionSelectorOpenKey = useOptionSelectorOpenKey();
+  // Owner decision (leg 3): scrollX RESETS on re-present. A header-mounted strip
+  // unmounts exactly when its scene stops being presented, so unmount IS the
+  // presentation-end chokepoint; the layout half stays warm for the next present.
+  React.useEffect(() => () => clearToggleStripCacheScrollX(pollsFeedStripCacheSeat), []);
   return (
-    <OverlayHeaderActionButton
-      progress={headerActionProgress}
-      onPress={handleHeaderActionPress}
-      accessibilityLabel="Create or close polls"
-      accentColor={ACCENT}
-      closeColor="#000000"
-    />
+    <ToggleStrip
+      placement="header"
+      backdrop="chrome-frost"
+      cacheSeat={pollsFeedStripCacheSeat}
+      testID="poll-feed-strip"
+    >
+      <SegmentedToggle
+        key="feed-state"
+        options={feedStateOptions}
+        value={feedState}
+        onChange={setFeedState}
+        accentColor={ACCENT}
+        accessibilityLabel="Toggle between live and closed polls"
+        testID="poll-feed-state-toggle"
+      />
+      {/* DROPDOWN toggles (toggle-strip primitive, owner spec 2026-07-12): each chip
+          group collapsed into one SelectorChip + OptionSelectorSheet — noun label at
+          the default, value + accent fill when overridden. */}
+      <SelectorChip
+        key="type"
+        label={TYPE_LABEL_BY_VALUE[feedType]}
+        active={feedType !== 'all'}
+        expanded={optionSelectorOpenKey === 'poll-feed-type'}
+        onPress={() =>
+          toggleOptionSelector({
+            key: 'poll-feed-type',
+            title: 'Type',
+            options: TYPE_OPTIONS,
+            value: feedType,
+            onSelect: (value) => setFeedType(value),
+            accentColor: ACCENT,
+            testID: 'poll-feed-type-sheet',
+          })
+        }
+        accentColor={ACCENT}
+        accessibilityLabel="Select feed type"
+        testID="poll-feed-type-toggle"
+      />
+      <SelectorChip
+        key="sort"
+        label={SORT_LABEL_BY_VALUE[feedSort]}
+        active={feedSort !== 'new'}
+        expanded={optionSelectorOpenKey === 'poll-feed-sort'}
+        onPress={() =>
+          toggleOptionSelector({
+            key: 'poll-feed-sort',
+            title: 'Sort',
+            options: SORT_SELECTOR_OPTIONS,
+            value: feedSort,
+            onSelect: (value) => setFeedSort(value),
+            accentColor: ACCENT,
+            testID: 'poll-feed-sort-sheet',
+          })
+        }
+        accentColor={ACCENT}
+        accessibilityLabel="Select feed sort"
+        testID="poll-feed-sort-toggle"
+      />
+      {feedSort === 'top' ? (
+        // §3: the period belongs to Top — a CONDITIONAL strip citizen (the engine
+        // animates its width-grow entry / collapse exit and pushes siblings).
+        <SelectorChip
+          key="time"
+          label={TIME_LABEL_BY_VALUE[feedTime]}
+          active={feedTime !== 'all_time'}
+          expanded={optionSelectorOpenKey === 'poll-feed-time'}
+          onPress={() =>
+            toggleOptionSelector({
+              key: 'poll-feed-time',
+              title: 'Top period',
+              options: TIME_OPTIONS.map((option) => ({
+                value: option.value,
+                label: option.label,
+              })),
+              value: feedTime,
+              onSelect: (value) => setFeedTime(value),
+              accentColor: ACCENT,
+              testID: 'poll-feed-time-sheet',
+            })
+          }
+          accentColor={ACCENT}
+          accessibilityLabel="Select Top time period"
+          testID="poll-feed-time-toggle"
+        />
+      ) : null}
+    </ToggleStrip>
   );
 });
 
-PollsPersistentHeaderAction.displayName = 'PollsPersistentHeaderAction';
+PollsFeedStrip.displayName = 'PollsFeedStrip';
 
 // Module-scope registration (house pattern — origin-scene-live-state-registry). The docked lane presents
 // 'polls' on the search root, so this one registration covers the polls page AND search-home.
 registerPersistentHeaderDescriptor('polls', {
   Title: PollsPersistentHeaderTitle,
-  Action: PollsPersistentHeaderAction,
+  Strip: PollsFeedStrip,
 });
 
 const POLLS_LIST_ESTIMATED_ITEM_SIZE = 190;
@@ -462,24 +597,12 @@ export const usePollsPanelListSceneParts = (): {
     marketStatus,
     candidateLocalityName,
     marketName,
-    feedState,
-    setFeedState,
-    feedSort,
-    setFeedSort,
-    feedType,
-    setFeedType,
-    feedTime,
-    setFeedTime,
+    isFeedSliceAwaiting,
   } = pollsPanelFeedRuntime;
 
   const shouldShowCollapsedSpinner = loading || (isSystemUnavailable && polls.length === 0);
   const hasVisiblePolls = visiblePolls.length > 0;
   const isExpandedSurface = resolvedSnap === 'middle' || resolvedSnap === 'expanded';
-
-  // Dropdown toggles ride the ROOT OptionSelectorHost (imperative store) — no local
-  // sheet mounting inside the list header, and no local state in this scene-spec hook
-  // (whose effects never commit — see the polls-lane memory note).
-  const optionSelectorOpenKey = useOptionSelectorOpenKey();
 
   const renderItem = React.useCallback(
     ({ item }: { item: unknown }) => <PollCard poll={item as Poll} onPress={handleOpenPoll} />,
@@ -487,112 +610,29 @@ export const usePollsPanelListSceneParts = (): {
   );
   const keyExtractor = React.useCallback((item: unknown) => (item as Poll).pollId, []);
 
+  // Leg 4 content choreography (useContentToggle): between a strip press-up and the
+  // new slice's arrival the OLD CARDS ARE OUT — the list is empty AND the empty
+  // component is suppressed below (bare white under the header strip; never a
+  // skeleton, never a "create the first poll" message mid-toggle).
   const listData: readonly Poll[] =
-    hasVisiblePolls && !shouldHoldFreshLiveContent && !shouldShowCollapsedSpinner
+    hasVisiblePolls &&
+    !isFeedSliceAwaiting &&
+    !shouldHoldFreshLiveContent &&
+    !shouldShowCollapsedSpinner
       ? visiblePolls
       : EMPTY_POLL_LIST;
 
-  // Feed toggle strip (Live ⇄ Results + Sort) — rendered through the shared
-  // FrostedFilterStrip foundation (frosted cutout + horizontal overflow, the same
-  // treatment as the search results filter row). Always shown on the expanded
-  // surface, even when the list is empty, so an empty Results feed can still switch
-  // back to Live.
-  const ListHeaderComponent = React.useMemo(() => {
-    if (!isExpandedSurface) {
-      return null;
-    }
-    return (
-      <FrostedFilterStrip testID="poll-feed-strip" style={styles.feedStrip}>
-        <SegmentedToggle
-          options={FEED_STATE_OPTIONS}
-          value={feedState}
-          onChange={setFeedState}
-          accentColor={ACCENT}
-          accessibilityLabel="Toggle between live and results polls"
-          testID="poll-feed-state-toggle"
-        />
-        {/* DROPDOWN toggles (toggle-strip primitive, owner spec 2026-07-12): each chip
-            group collapsed into one SelectorChip + OptionSelectorSheet — noun label at
-            the default, value + accent fill when overridden. */}
-        <SelectorChip
-          key="type"
-          label={feedType === 'all' ? 'Type' : (TYPE_LABEL_BY_VALUE[feedType] ?? 'Type')}
-          active={feedType !== 'all'}
-          expanded={optionSelectorOpenKey === 'poll-feed-type'}
-          onPress={() =>
-            toggleOptionSelector({
-              key: 'poll-feed-type',
-              title: 'Type',
-              options: TYPE_OPTIONS,
-              value: feedType,
-              onSelect: (value) => setFeedType(value),
-              accentColor: ACCENT,
-              testID: 'poll-feed-type-sheet',
-            })
-          }
-          accentColor={ACCENT}
-          accessibilityLabel="Select feed type"
-          testID="poll-feed-type-toggle"
-        />
-        <SelectorChip
-          key="sort"
-          label={feedSort == null ? 'Sort' : SORT_LABEL_BY_VALUE[feedSort]}
-          active={feedSort != null}
-          expanded={optionSelectorOpenKey === 'poll-feed-sort'}
-          onPress={() =>
-            toggleOptionSelector({
-              key: 'poll-feed-sort',
-              title: 'Sort',
-              options: SORT_SELECTOR_OPTIONS,
-              value: feedSort ?? 'default',
-              onSelect: (value) => setFeedSort(value === 'default' ? null : value),
-              accentColor: ACCENT,
-              testID: 'poll-feed-sort-sheet',
-            })
-          }
-          accentColor={ACCENT}
-          accessibilityLabel="Select feed sort"
-          testID="poll-feed-sort-toggle"
-        />
-        <SelectorChip
-          key="time"
-          label={feedTime === 'all_time' ? 'Time' : 'This week'}
-          active={feedTime !== 'all_time'}
-          expanded={optionSelectorOpenKey === 'poll-feed-time'}
-          onPress={() =>
-            toggleOptionSelector({
-              key: 'poll-feed-time',
-              title: 'Time',
-              options: TIME_OPTIONS.map((option) => ({
-                value: option.value,
-                label: option.label,
-              })),
-              value: feedTime,
-              onSelect: (value) => setFeedTime(value),
-              accentColor: ACCENT,
-              testID: 'poll-feed-time-sheet',
-            })
-          }
-          accentColor={ACCENT}
-          accessibilityLabel="Select feed time window"
-          testID="poll-feed-time-toggle"
-        />
-      </FrostedFilterStrip>
-    );
-  }, [
-    feedSort,
-    feedState,
-    feedType,
-    feedTime,
-    isExpandedSurface,
-    optionSelectorOpenKey,
-    setFeedSort,
-    setFeedState,
-    setFeedTime,
-    setFeedType,
-  ]);
+  // Leg 3: the feed toggle strip is HEADER CHROME now (PollsFeedStrip, mounted by the
+  // persistent header host from the page's first committed frame) — the list renders
+  // no header and the old snap gate is gone.
 
   const ListEmptyComponent = React.useMemo(() => {
+    if (isFeedSliceAwaiting) {
+      // The content-toggle gap: NOTHING renders — the gap is bare white under the
+      // strip by design (charter Part 3; Spotify/Reddit never show a skeleton
+      // between toggle slices). The new cards snap in on the seam's ready edge.
+      return null;
+    }
     if (shouldHoldFreshLiveContent) {
       return (
         <View style={styles.loaderCentered}>
@@ -630,6 +670,7 @@ export const usePollsPanelListSceneParts = (): {
   }, [
     candidateLocalityName,
     isExpandedSurface,
+    isFeedSliceAwaiting,
     marketName,
     marketStatus,
     pollFeedFreshnessError,
@@ -644,10 +685,9 @@ export const usePollsPanelListSceneParts = (): {
       renderItem,
       keyExtractor,
       estimatedItemSize: POLLS_LIST_ESTIMATED_ITEM_SIZE,
-      ListHeaderComponent,
       ListEmptyComponent,
     }),
-    [ListEmptyComponent, ListHeaderComponent, keyExtractor, listData, renderItem]
+    [ListEmptyComponent, keyExtractor, listData, renderItem]
   );
 
   const sceneBodyTransport = React.useMemo<AppRouteSceneBodyTransportSpec>(
@@ -663,9 +703,6 @@ export const usePollsPanelListSceneParts = (): {
       keyboardShouldPersistTaps: 'handled',
       // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (see
       // SHEET_BODY_NO_OVERSCROLL) so the continuous down-handoff works — no per-scene config.
-      // No opaque surface — the mounted-scene FrostedGlassBackground shows through so
-      // the feed sheet reads frosted like the search results sheet (and the strip's
-      // masked-hole cutouts reveal the blur).
       flashListProps: POLLS_FEED_FLASH_LIST_PROPS,
     }),
     [contentBottomPadding]
@@ -677,12 +714,6 @@ export const usePollsPanelListSceneParts = (): {
 export const POLLS_SCENE_LIST_BODY_ADMISSION_POLICY = POLLS_LIST_BODY_ADMISSION_POLICY;
 
 const styles = StyleSheet.create({
-  // The list content is inset by OVERLAY_HORIZONTAL_PADDING; the strip must be FULL-BLEED
-  // (white edge-to-edge, like the search results strip) so cancel that inset with a
-  // negative margin. The controls stay indented via the strip's own internal contentInset.
-  feedStrip: {
-    marginHorizontal: -OVERLAY_HORIZONTAL_PADDING,
-  },
   // Parity shim for the pre-hoist polls header rowStyle ({ gap: 10 } between title and action):
   // the persistent chrome owns the row now, so the 10px lives as paddingRight on the title group
   // (12px title marginRight + 10px = the same 22px title→button spacing as before).
@@ -690,9 +721,6 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     paddingRight: 10,
-  },
-  listHeader: {
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },
   loader: {
     marginTop: 12,

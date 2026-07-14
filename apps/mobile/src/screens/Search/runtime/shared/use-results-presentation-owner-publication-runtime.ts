@@ -60,7 +60,6 @@ export const useResultsPresentationOwnerPublicationRuntime = ({
     shellLocalState,
     resultsRuntimeOwner,
     resultsPresentationAuthority,
-    cancelCloseSearchCleanup: closeTransitionRuntime.cancelCloseSearchCleanup,
     setPendingCloseIntentId: closeTransitionRuntime.setPendingCloseIntentId,
     matchesPendingCloseIntentId: closeTransitionRuntime.matchesPendingCloseIntentId,
     beginCloseTransition: closeTransitionRuntime.beginCloseTransition,

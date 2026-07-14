@@ -1,6 +1,6 @@
 import React from 'react';
 
-import SearchFilters, { cloneSearchFiltersLayoutCache } from '../../components/SearchFilters';
+import SearchFilters from '../../components/SearchFilters';
 import { ACTIVE_TAB_COLOR, CONTENT_HORIZONTAL_PADDING } from '../../constants/search';
 import type { SearchOverlayChromeHiddenSearchFiltersWarmupProps } from './search-foreground-chrome-contract';
 import type { SearchRootFilterModalControlLane } from './use-search-root-control-plane-runtime-contract';
@@ -36,10 +36,9 @@ export const useSearchRootOverlayHeaderWarmupRuntime = ({
             risingActive: filterModalControlLane.filterModalRuntime.risingActive,
             priceButtonLabelText: filterModalControlLane.filterModalRuntime.priceButtonLabelText,
             priceButtonIsActive: filterModalControlLane.filterModalRuntime.priceButtonIsActive,
-            initialLayoutCache: cloneSearchFiltersLayoutCache(
-              searchState.searchFiltersLayoutCacheRef.current
-            ),
-            onLayoutCacheChange: searchState.handleSearchFiltersLayoutCache,
+            // Same seat as the presented strip — the warmup render pre-fills it so
+            // first presentation paints warm (holes + pill + scrollX on frame one).
+            layoutCacheSeat: searchState.searchFiltersCacheSeat,
           },
     [
       filterModalControlLane.filterModalRuntime.openNow,
@@ -48,9 +47,8 @@ export const useSearchRootOverlayHeaderWarmupRuntime = ({
       filterModalControlLane.filterModalRuntime.includeSimilarActive,
       filterModalControlLane.filterModalRuntime.risingActive,
       searchState.activeTab,
-      searchState.handleSearchFiltersLayoutCache,
       searchState.isSearchFiltersLayoutWarm,
-      searchState.searchFiltersLayoutCacheRef,
+      searchState.searchFiltersCacheSeat,
     ]
   );
 
@@ -75,8 +73,7 @@ export const useSearchRootOverlayHeaderWarmupRuntime = ({
       filtersWarmupSnapshot == null
         ? null
         : {
-            initialLayoutCache: filtersWarmupSnapshot.initialLayoutCache,
-            onLayoutCacheChange: filtersWarmupSnapshot.onLayoutCacheChange,
+            layoutCacheSeat: filtersWarmupSnapshot.layoutCacheSeat,
           },
     [filtersWarmupSnapshot]
   );

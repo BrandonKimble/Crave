@@ -33,6 +33,42 @@ describe('classifySearchWorldTransition', () => {
     });
   });
 
+  it('idle → LIST is a session_enter that PRESERVES the sheet (world presents into the pushed child)', () => {
+    // Wave-4 §3: a list enter never takes over the results scene — preserveSheetState=true
+    // nulls the target snap in resolveSearchSurfaceResultsSheetTargetSnap even from idle.
+    const t = classifySearchWorldTransition({
+      prev: idle,
+      next: shortcut({
+        queryIdentity: {
+          kind: 'list',
+          listId: 'list-1',
+          listType: 'restaurant',
+          displayTitle: 'Taco crawl',
+        },
+      }),
+      presentedCardsKey: null,
+    });
+    expect(t.class).toBe('session_enter');
+    expect(t.intent?.preserveSheetState).toBe(true);
+  });
+
+  it('in-session swap to a LIST also preserves the sheet', () => {
+    const t = classifySearchWorldTransition({
+      prev: shortcut(),
+      next: shortcut({
+        queryIdentity: {
+          kind: 'list',
+          listId: 'list-1',
+          listType: 'dish',
+          displayTitle: 'Best queso',
+        },
+      }),
+      presentedCardsKey: 'anything',
+    });
+    expect(t.class).toBe('session_replace');
+    expect(t.intent?.preserveSheetState).toBe(true);
+  });
+
   it('shortcut → natural is a session_replace that keeps the sheet', () => {
     const t = classifySearchWorldTransition({
       prev: shortcut(),

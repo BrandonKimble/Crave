@@ -3,11 +3,10 @@ import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyR
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
-import { useSharedValue } from 'react-native-reanimated';
 import { SegmentedToggle, Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
-import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
+import { registerHeaderCloseAction } from '../../navigation/runtime/header-nav-action-registry';
 import {
   favoriteListsService,
   type FavoriteListSummary,
@@ -91,6 +90,15 @@ const saveSheetSideStore = {
 
 const SaveListPersistentHeaderTitle = React.memo(() => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
+  // §4 header X (leg 7): saveList's close is a SESSION verb (handleCloseSaveSheet clears the
+  // save-sheet command state AND pops the route) — the canonical closeActiveRoute alone would
+  // leave saveSheetState.visible dangling. Registered as the host's close override, same as
+  // 'search'/'restaurant'.
+  const { handleCloseSaveSheet } = routeSceneRuntime.routeOverlayCommandActions;
+  React.useEffect(
+    () => registerHeaderCloseAction('saveList', handleCloseSaveSheet),
+    [handleCloseSaveSheet]
+  );
   const triggerListType = useRouteAuthoritySelector({
     subscribe: routeSceneRuntime.routeOverlayCommandAuthority.subscribe,
     getSnapshot: routeSceneRuntime.routeOverlayCommandAuthority.getSnapshot,
@@ -118,32 +126,10 @@ const SaveListPersistentHeaderTitle = React.memo(() => {
 
 SaveListPersistentHeaderTitle.displayName = 'SaveListPersistentHeaderTitle';
 
-const SaveListPersistentHeaderAction = React.memo(() => {
-  const routeSceneRuntime = useAppRouteSceneRuntime();
-  const { handleCloseSaveSheet } = routeSceneRuntime.routeOverlayCommandActions;
-  const headerActionProgress = useSharedValue(0);
-
-  const onClose = React.useCallback(() => {
-    handleCloseSaveSheet();
-  }, [handleCloseSaveSheet]);
-
-  return (
-    <OverlayHeaderActionButton
-      progress={headerActionProgress}
-      onPress={onClose}
-      accessibilityLabel="Close save sheet"
-      accentColor={ACTIVE_TAB_COLOR}
-      closeColor="#000000"
-    />
-  );
-});
-
-SaveListPersistentHeaderAction.displayName = 'SaveListPersistentHeaderAction';
-
-// Module-scope registration (house pattern — origin-scene-live-state-registry).
+// Module-scope registration (house pattern — origin-scene-live-state-registry). The header
+// action is the HOST-OWNED HeaderNavAction (leg 6 §4) — no per-scene Action slot.
 registerPersistentHeaderDescriptor('saveList', {
   Title: SaveListPersistentHeaderTitle,
-  Action: SaveListPersistentHeaderAction,
 });
 
 /**

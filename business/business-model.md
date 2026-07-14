@@ -1,137 +1,72 @@
-# Crave — Business Model
+# Crave — Business Model (decision record)
 
-> Last updated 2026-06-27. Decision-grade; built from a deep-research pass, an adversarial
-> red-team, a two-model bake-off, and a both-sides paywall-resurgence research pass.
-> Companion: [monetization-and-gating.md](monetization-and-gating.md) (the feature-level free/paid map).
+> Rewritten 2026-07-12 to match canon. Strategy, sequencing, and all distribution
+> decisions live in [signal/blueprint.md](signal/blueprint.md); this file holds
+> the model decision itself plus the durable operational facts that don't belong
+> in a strategy doc. History: an earlier version of this file recommended
+> freemium; the owner overrode it 2026-07-08 for capital-return speed, and the
+> full adversarial re-examination (signal/, panels P1) upheld the override.
+> The freemium reasoning is preserved in git history and in
+> signal/ledger/02-business-model-and-price.md.
 
-## Founder constraints & goals (the lens for every decision)
+## The model (owner decision, FINAL; re-validated by panel P1)
 
-- **Solo, bootstrapped, limited cash, no ad budget** → growth must be organic / word-of-mouth.
-- **Profitable early** matters more than scale. Happy anywhere from **$10–80k/mo up to ~$10M ARR**.
-- **Stay independent** (no VC pressure to chase a unicorn). Values personal happiness over scale.
-- **Integrity-first:** "no pay-to-rank, EVER." The objective ranking is the whole brand.
+- **Hard paywall, gate everything.** Card required at onboarding end. No free
+  tier, no thin shell.
+- **$7.99/mo pay-now** (no trial) or **$39.99/yr with a ~1-week store-managed
+  intro free trial** (annual only; Apple charges at trial end and sends the
+  pre-charge reminder).
+- Week-3 price-ceiling test cohort ($9.99/$59.99 on 10–20% of traffic) per
+  blueprint §2 — the price _level_ stays under honest test; the structure does
+  not.
+- **Freemium is the documented future pivot,** fully built and env-gated
+  (`@AllowUnentitled` on free surfaces + `BILLING_TRIAL_DAYS>0`), deliberately
+  one-commit-sized. The door swings loosen-only; we never plan the reverse.
+- The five-part argument for this model (capital velocity, annual churn math,
+  payers-as-honest-validation, one-way door, solo simplicity) is blueprint §0.
 
-## The model: freemium + trial
+## Shared-link exception (blueprint §5)
 
-**Freemium**, "AllTrails template" — give away the answer, charge for the defensible depth layer
-the free incumbent lacks.
+Shared slugs render their artifact fully and freely on the web — terminal
+pages, no outbound navigation. This is a sharing surface, not a free tier;
+the boundary is navigational, not informational.
 
-- **Free forever:** the objective restaurant ranking + Crave Score, restaurant search, map,
-  open-now/price filters, poll voting + discussion. (This is the trust asset + word-of-mouth engine.)
-- **Crave+ (paid):** the **dish** intelligence layer (the hero), rising/momentum + trending, and
-  power filter/sort on your own favorites lists. Full free/paid map → [monetization-and-gating.md](monetization-and-gating.md).
-- **Trial:** a soft, multi-step onboarding that lets people _feel_ the rankings, then a trial of
-  Crave+. The exact trial mechanic (reverse trial vs. honest time-limited trial vs. card-on-file vs.
-  no-trial direct-purchase) is a **launch A/B**, decided on 60-day revenue-per-install — not assumed.
-  Adapty's Lifestyle data shows trials can _reduce_ LTV ~21%, so "trial = good" is not a given.
+## Apple-proofing (non-negotiable from v1 — a pull is existential)
 
-### Pricing
+Cal AI was pulled April 2026 (Guidelines 3.1.2(c)/5.6) for four things. Avoid
+all of them, and the wider decline-cascade family this scene normalizes:
 
-- **$7.99/mo + $39.99/yr**, with **annual as the headline** (annual ≈ 5 months; ~58% off).
-- Push annual hard: annual retains ~44% at 12 months vs ~17.5% monthly (~2.5×), and front-loads cash.
-- **No weekly plan** — 65% of weekly subs churn in 30 days, and weekly "divide-down" framing is
-  exactly what got Cal AI pulled by Apple.
-- Don't underprice; the Lifestyle band is ~$7.99–9.99/mo, $29.99–39.99/yr. $7.99 reads premium-enough
-  without capping revenue-per-payer. Treat all prices as a **starting hypothesis to A/B**.
+1. Show the **real billed number** most prominently (never a per-week
+   divide-down bigger than the charge).
+2. Auto-renewal terms **inline** + a visual trial timeline (what you get, when
+   charged, how to cancel).
+3. **Never re-prompt a decliner** with a second, different offer. No fake
+   scarcity, no spin-the-wheel discounts, no abandonment counter-offers.
+4. **StoreKit IAP in-app only.** Web checkout is Apple-legal only out-of-app.
+   (Apple-native cancel-flow/win-back offers are compliant in principle but
+   stay dormant per the win-back-only design.)
 
-## Why freemium, not a hard paywall (the corrected reasoning)
+## Margin lever
 
-Earlier reasoning leaned on "a paywall would starve the network." The codebase audit showed the
-crowd is **~4/10 load-bearing, not existential** — the Score rebuilds from a founder-controlled
-Reddit-mining pipeline with zero live users, the vote model is deleted, and polls feed the Score
-only at close-time graduation. So the app is **day-one valuable to a single user** (no cold-start),
-which actually makes a paywall _more_ viable than for a typical network app. The real reasons to
-start freemium anyway:
-
-1. **Reversibility is asymmetric.** Tightening (freemium → paywall) is routine and grandfatherable
-   (Netflix removed its trial at scale with no churn spike). Loosening (paywall → freemium) is the
-   single most brand-destroying move available — it resets your price anchor to zero and burns your
-   earliest payers (Evernote, Heroku, Her 75, App.net, Vero all corroborate). **Start in the state
-   you can walk back; hold the harder gate as a data-earned later option.**
-2. **No ad budget → the free tier is the only reach engine.** You can't go viral behind a wall.
-
-### The paywall-"resurgence" verdict (so we don't get talked into the wrong thing)
-
-- The resurgence is **real but overstated, and concentrated in a category Crave is not in** —
-  acute-pain, single-session, GPU-costly AI utilities (Cal AI / Rizz / Umax, largely one promoter's
-  playbook; the failures are invisible).
-- "Hard converts 5× better" (10.7% vs 2.1%, RevenueCat) is a **survivorship/denominator artifact** —
-  Adapty's view-to-payment metric shows **soft beats hard ~50%** (4.85% vs 3.34%). Different denominators.
-- **1-year retention is model-independent (~27% vs ~28%)** — a paywall buys front-loaded cash, _not_ stickiness.
-- "86% of AI apps skip trials" = **busted / unverifiable. Do not cite.**
-- Every authoritative source names discovery / network / UGC apps as where **freemium stays correct**.
-- **Hard truth:** no Western pure-play food-discovery _consumer subscription_ has scaled. Beli ("no
-  coherent revenue model" after 4yr / 58M ratings), DoorDash's Zesty (dead in <5 months). The analogs
-  that work monetize a **utility the free incumbent lacks** (AllTrails: offline/nav) or a no-free-
-  alternative market (Tabelog/Japan — doesn't transfer to the US, where 62% discover via Google).
-- **Plan for ~2–7% conversion.** ~4.6% of new apps clear $10k/mo within 2 years; Lifestyle is ~98%
-  winner-take-all. This is a top-5% outcome contingent on the product being genuinely better, not on
-  pricing cleverness.
-
-## Sequencing & kill criterion
-
-1. Launch **one city**, freemium, with the trial A/B running from day one.
-2. **Pre-commit a kill criterion before launch:** e.g. if trial→paid is below ~5–6% after ~90 days
-   AND free users show no referral/word-of-mouth lift AND free support load is crushing solo bandwidth
-   → _tighten_ (move the gate earlier, thin the free tier; harder paywall only as a last resort,
-   grandfathering anyone who already paid). **Never run the reverse sequence (paywall → freemium).**
-3. **B2B is Phase 2** — claimed restaurant profiles, analytics, sponsored polls — only post-density,
-   and **never injected into the ranking** (see [monetization-and-gating.md](monetization-and-gating.md)
-   and [brd-extraction.md](brd-extraction.md)). Likely the bigger long-run revenue pool.
+Dual-rail billing is live in `apps/api/src/modules/billing`: RevenueCat iOS
+(~85% net under Small Business) + Stripe webhooks (web ~97% net; the web
+checkout _client_ rail was deleted 2026-07-09 and would need rebuilding).
+Steering renewals/returning users to Apple-legal out-of-app web checkout is a
+~12-point margin swing — a post-launch project, noted in blueprint §11's parked
+items alongside the web-to-app funnel pattern.
 
 ## Funding stance
 
-Stay **100% bootstrapped**; it's realistic here because solo opex is near-zero (so you can be
-"default alive" at a few hundred payers). If fuel is ever wanted, only **founder-friendly,
-non-dilutive-style** capital that doesn't force a unicorn: TinySeed ($120k + $60k/founder, dividend
-returns, frames $5–10M ARR as a win) or Calm Company Fund's SEAL (no equity/board at inception,
-returns capped at 2–5×, then nothing). Caveat: this capital is real but **thin and unstable** —
-Indie.vc shut down in 2021 when its own LPs balked. Don't bank the plan on it.
+100% bootstrapped; default-alive at a few hundred payers because solo opex is
+near-zero. If fuel is ever wanted: founder-friendly non-dilutive-style only
+(TinySeed, Calm Company SEAL) — real but thin capital; never bank the plan on
+it. No VC, no unicorn pressure. B2B (claimed profiles, analytics, sponsored
+polls) is Phase 2, post-density, and **never injected into the ranking**.
 
-## Apple-proofing (non-negotiable from v1 — a pull is existential for a solo founder)
+## Plan for reality
 
-Apple pulled Cal AI (April 2026, Guideline 3.1.2(c)/5.6) for four things — avoid all of them:
-
-1. Show the **real billed number** most prominently (never a per-week divide-down bigger than the charge).
-2. Auto-renewal terms **inline** + a visual trial timeline (what you get / when charged / how to cancel).
-3. **Never re-prompt a decliner** with a second, different offer.
-4. **StoreKit IAP in-app only.** The existing web Stripe rail is Apple-legal **only** for out-of-app
-   checkout — never embed Stripe inside the app.
-
-## Margin lever you already have
-
-`apps/api/src/modules/billing` already runs **dual-rail billing** (Stripe web + RevenueCat iOS,
-`UserEntitlement`, `SubscriptionStatus.trialing`). iOS nets ~85% (Apple Small Business, <$1M); web
-Stripe nets ~97%. **Steer renewals / returning users to web checkout** for a ~12-point margin swing
-(Apple-legal out-of-app). Use the existing notifications module for the trial-end reminder push;
-Clerk for end-placed sign-in.
-
-## Manifestos / reading list (the philosophy behind this path)
-
-- _Rework_ and _It Doesn't Have to Be Crazy at Work_ — Jason Fried & DHH (the calm-company bible)
-- _The Minimalist Entrepreneur_ — Sahil Lavingia (tried for the billion, nearly died, found better)
-- _The SaaS Playbook_ + the "stair-step approach" — Rob Walling (MicroConf)
-- "Default Alive or Default Dead" — Paul Graham
-- RevenueCat _State of Subscription Apps_, Adapty _State of In-App Subscriptions_, Airbridge
-  "Hard Paywall vs Freemium", RevenueCat's AllTrails product-channel piece (the template)
-
-## Open decisions
-
-- Exact trial mechanic (the launch A/B): reverse trial vs honest time-limited trial vs card-on-file vs no-trial.
-- The free-tier cap on number of lists (if any).
-- Whether/how to meter freeform (LLM-costed) search for cost control — see [monetization-and-gating.md](monetization-and-gating.md).
-
----
-
-## DECISION SUPERSEDING NOTE (2026-07-08)
-
-The launch model is a HARD PAYWALL at onboarding end (owner decision):
-monthly $7.99 / annual $39.99, store-managed introductory FREE TRIAL with
-card upfront on the annual product (Apple charges at trial end unless
-cancelled; Apple sends the pre-charge reminder). The freemium/reverse-trial
-recommendation above is retained as the documented FUTURE PIVOT (all
-machinery built and env-gated; see plans/payments-ideal-shape.md). The
-"never loosen a paywall" warning above was weighed and overridden for
-capital-return speed + solo simplicity; the pivot path is deliberately kept
-one-commit-sized. Gating scope for the hard paywall (gate-everything vs a
-thin free shell) is an OPEN owner decision.
+~4.6% of new apps clear $10k/mo within 2 years. Model conservatively: year-1
+annual renewal ~30% until RevenueCat's benchmark is verified first-party;
+install→paid 4–10% band; the kill board and instrumentation set is blueprint §8.
+This works if the product is genuinely better — pricing cleverness never
+rescues a product problem.

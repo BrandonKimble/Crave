@@ -230,6 +230,8 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     openRestaurantProfilePreview:
       profileControlRuntime.profileOwner.profileActions.openRestaurantProfilePreview,
     launchEntitySearchResults: submitRuntimeResult.launchEntitySearchResults,
+    // Wave-4 §3 — the list-world half of the listWorld composite.
+    launchListSearchResults: submitRuntimeResult.launchListSearchResults,
     // Phase 4 — the committed restaurant reveal lane (replaces the cold preview lane).
     runRestaurantEntitySearch: submitRuntimeResult.runRestaurantEntitySearch,
     submitSearch: submitRuntimeResult.submitSearch,

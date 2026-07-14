@@ -293,6 +293,14 @@ export type SearchSurfaceDismissMotionArmInput = {
 
 const nowMs = (): number => globalThis.performance?.now?.() ?? Date.now();
 
+// The polls page is ONE persistent scene — its identity never changes across search
+// sessions. Per-transaction bundle keys (poll:prewarm:<id> / poll:<id>) leaked dismiss
+// bookkeeping into PAGE IDENTITY, forcing a sheet-host runtime reseed (a full
+// overlay-chain re-render, measured 40-110ms/commit) at dismiss-arm AND handoff —
+// inside the dismiss choreography window (perf attribution 2026-07-12). Transaction
+// identity lives on the dismiss transaction, where it belongs.
+const POLL_PAGE_BUNDLE_KEY = 'poll:persistent';
+
 const createPollBundle = (bundleKey: string, prewarmed = true): PollPageBundle => ({
   kind: 'poll',
   bundleKey,
@@ -375,7 +383,7 @@ const isPollPageReleaseReadinessSource = (
 };
 
 const createInitialSnapshot = (): SearchSurfaceRuntimeSnapshot => {
-  const activeBundle = createPollBundle('poll:initial');
+  const activeBundle = createPollBundle(POLL_PAGE_BUNDLE_KEY);
   return {
     version: 0,
     activeBundle,
@@ -519,6 +527,10 @@ export class SearchSurfaceRuntime {
       Pick<BeginRedrawTransactionInput, 'transactionId'>;
   } | null = null;
 
+  // Issue-side sheet-motion expectation (markRedrawSheetMotionExpected): consumed by the
+  // next arm publish — that transaction is born sheetReady:false. Cleared on every arm.
+  private redrawSheetMotionExpectedTransactionId: string | null = null;
+
   public getSnapshot = (): SearchSurfaceRuntimeSnapshot => this.snapshot;
 
   public getActiveOrPendingRedrawTransactionId = (): string | null =>
@@ -639,7 +651,14 @@ export class SearchSurfaceRuntime {
           // redraws (toggle / search-this-area / variant rerun — staged at response
           // time) must not gate on a slide that will never run; the sheet host flips
           // this to pending at snap START and restores it at snap SETTLE.
-          sheetReady: true,
+          // EXCEPTION (eye-verified 2026-07-13): an enter that ISSUES a reveal snap marks
+          // the slide EXPECTED (markRedrawSheetMotionExpected) before staging — snap
+          // START's runOnJS roundtrip lands ~10-30ms after the command, and the resubmit
+          // lens apply (~113ms bridge slice) flushed through the still-born-true fence
+          // inside that gap, freezing the slide's first frames. Every snap-command path
+          // restores: spring settle, instant dispatch, and already-at-target all reach
+          // recordSharedSheetSnap — no stranding.
+          sheetReady: this.redrawSheetMotionExpectedTransactionId !== id,
           nativeMarkerFrameReady: false,
           nativeMarkerFrameBatch: null,
         },
@@ -649,6 +668,7 @@ export class SearchSurfaceRuntime {
       completedRedrawTransaction: null,
       dismissTransaction: null,
     });
+    this.redrawSheetMotionExpectedTransactionId = null;
     this.armRedrawCoverWatchdog(id);
   }
 
@@ -752,6 +772,24 @@ export class SearchSurfaceRuntime {
     this.patchActiveRedrawTransaction(transactionId, { sheetReady: false });
   };
 
+  // Transition-perf fence, ISSUE-side producer: the enter execution runtime calls this the
+  // JS-synchronous instant it issues a reveal snap command, BEFORE the transaction stages.
+  // The snap-START producer above is a UI-thread→runOnJS roundtrip that lands ~10-30ms after
+  // the command — structural applies flushed through that gap (eye-verified: the resubmit
+  // lens apply's ~113ms bridge slice froze the slide's first frames). If the transaction is
+  // already active, flip it directly; otherwise record the expectation so the arm publishes
+  // born sheetReady:false. Restore is unchanged (snap SETTLE via recordSharedSheetSnap).
+  public markRedrawSheetMotionExpected = (transactionId: string | null | undefined): void => {
+    if (transactionId == null) {
+      return;
+    }
+    if (this.snapshot.redrawTransaction?.id === transactionId) {
+      this.patchActiveRedrawTransaction(transactionId, { sheetReady: false });
+      return;
+    }
+    this.redrawSheetMotionExpectedTransactionId = transactionId;
+  };
+
   // UNIFIED-FADE TOGGLE (map-LOD-v6): the DETERMINISTIC resolver for the `nativeMarkerFrameReady` gate.
   // Driven by the native `presentation_toggle_settled` event, which fires on the fade-IN ramp completion
   // keyed to the LATEST request (`lastEnterRequestKey`) — so it ALWAYS lands on the active transaction
@@ -845,7 +883,7 @@ export class SearchSurfaceRuntime {
       markersReady: true,
       frozen: true,
     };
-    const pollBundle = createPollBundle(`poll:prewarm:${id}`, true);
+    const pollBundle = createPollBundle(POLL_PAGE_BUNDLE_KEY, true);
     this.pendingDismissMotionArm = { id };
     this.publish({
       ...this.snapshot,
@@ -1043,7 +1081,7 @@ export class SearchSurfaceRuntime {
     if (!canCompleteDismissHandoff) {
       return;
     }
-    const activeBundle = createPollBundle(`poll:${dismissTransaction.id}`, true);
+    const activeBundle = createPollBundle(POLL_PAGE_BUNDLE_KEY, true);
     this.publish({
       ...this.snapshot,
       activeBundle,

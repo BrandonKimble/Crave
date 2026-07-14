@@ -28,8 +28,19 @@ export type ReorderRowRenderContext = {
 export type ReorderableRowsProps<T> = {
   items: readonly T[];
   keyExtractor: (item: T) => string;
-  /** Uniform row height (px). The 60fps contract: slot math is `index * rowHeight` on the UI thread. */
+  /**
+   * Uniform row height (px). The 60fps contract: slot math is `index * rowHeight` on
+   * the UI thread. In `variableHeights` mode this is the pre-measure ESTIMATE only.
+   */
   rowHeight: number;
+  /**
+   * VARIABLE-HEIGHT slot map (leg 10 step 6): rows self-measure via onLayout and the
+   * slot positions become prefix sums of the measured heights (rowHeight = the
+   * pre-measure estimate). The drag hit-test runs against the lift-time geometry
+   * (see reorder-drag-math slotBoundaries — uniform stride reduces verbatim).
+   * Row spacing must live INSIDE the measured row (padding/border, never margin).
+   */
+  variableHeights?: boolean;
   /**
    * The first N rows are PINNED: they sort first, get no handle, and the drag range
    * clamps below them (§8.11 wave note: system default lists are not draggable).

@@ -2,7 +2,6 @@ import type { SharedValue } from 'react-native-reanimated';
 import type { useAnimatedStyle } from 'react-native-reanimated';
 
 export type AppRouteSceneChromeMotionRuntime = {
-  overlayHeaderActionProgress: SharedValue<number>;
   overlayChromeTransitionProgress: SharedValue<number>;
   overlayChromeVisibilityProgress: SharedValue<number>;
   overlayBackdropDimProgress: SharedValue<number>;

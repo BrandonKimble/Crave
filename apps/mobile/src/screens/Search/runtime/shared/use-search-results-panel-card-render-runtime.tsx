@@ -1,8 +1,7 @@
 import React from 'react';
 
 import type { FoodResult, RestaurantResult } from '../../../../types';
-import DishResultCard from '../../components/dish-result-card';
-import RestaurantResultCard from '../../components/restaurant-result-card';
+import { DishResultCard, RestaurantResultCard } from '../../../../components/cards/ResultCard';
 import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
 import { getMarkerColorForDish, getMarkerColorForRestaurant } from '../../utils/marker-lod';
 import {

@@ -18,7 +18,10 @@ import { getOverlayScrollOffset, setOverlayScrollOffset } from './sceneScrollSta
 import { notePremountChildBodyFirstCommit } from '../navigation/runtime/premount-violation-probe';
 import { registerOverlaySceneScrollHandle } from './sceneScrollStateRegistry';
 import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
-import { getSceneFoundationSpec } from '../navigation/runtime/scene-foundation-spec';
+import {
+  getSceneFoundationSpec,
+  type SheetSceneKey,
+} from '../navigation/runtime/scene-foundation-spec';
 import { SceneBodyFoundationSurface } from './SceneBodyFoundationSurface';
 import { useBottomSheetSceneStackBodyRenderActivity } from './BottomSheetSceneStackBodyActivityContext';
 
@@ -365,6 +368,8 @@ export const useBottomSheetSceneStackBodyContentRuntime = ({
       return (
         <SceneBodyFoundationSurface
           scrollOffset={bodyScrollRuntime.scrollOffset}
+          // hasFoundationWhiteLayer ⇒ a spec row exists ⇒ sceneKey IS a SheetSceneKey.
+          sceneKey={sceneKey as SheetSceneKey}
           style={sceneSurfaceStyle}
         >
           {sceneBodyInner}

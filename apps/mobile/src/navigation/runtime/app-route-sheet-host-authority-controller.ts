@@ -8,7 +8,7 @@ import type {
   BottomSheetSharedRuntimeConfigSnapshot,
 } from '../../overlays/bottomSheetSharedRuntimeContract';
 import {
-  ROUTE_SHARED_SNAP_PERSISTENCE_KEY,
+  resolveSheetPostureSeat,
   type AppRouteSheetSnapSessionAuthority,
   type AppRouteSheetSnapSessionActions,
   type AppRouteSheetSnapSessionSnapshot,
@@ -313,8 +313,6 @@ const resolveSnapPersistenceKey = ({
   const sceneSnapPersistence =
     resolveAppRouteSheetScenePolicy(activeSemanticOverlayKey).snapPersistence;
   switch (sceneSnapPersistence) {
-    case 'shared':
-      return ROUTE_SHARED_SNAP_PERSISTENCE_KEY;
     case 'scene':
       return `overlay:${resolvedShellIdentityKey}`;
     case 'none':
@@ -345,7 +343,7 @@ const isExplicitlyDismissedDockedPollsRoot = (
   resolvedSurfaceInput.rootOverlayKey === 'search' &&
   resolvedSurfaceInput.overlayRouteScope.overlayRouteStackLength <= 1 &&
   sheetSnapSessionSnapshot.isDockedPollsDismissed &&
-  sheetSnapSessionSnapshot.sceneSheetSnaps.polls === 'hidden';
+  sheetSnapSessionSnapshot.homeSeatSnap === 'hidden';
 
 const normalizePolicyInitialSnap = (
   snap: OverlaySheetSnap | null | undefined
@@ -1743,6 +1741,31 @@ class AppRouteSheetHostAuthorityController {
     });
   }
 
+  /**
+   * The posture-seat boot read (two-posture law, plans/root-snap-law.md §Leg 4): a seat scene
+   * seeds/bootstraps at ITS seat (home seat for the docked-polls carrier, the ONE content seat
+   * for tab pages). A hidden home seat (user-dismissed docked polls) and every seatless scene
+   * (children/modals/search results) return null — callers fall to the policy
+   * `defaultFirstEntrySnap`, which for home equals the resurrect posture ('collapsed').
+   */
+  private resolvePostureSeatSeedSnap(
+    sceneKey: OverlayKey | null
+  ): Exclude<OverlaySheetSnap, 'hidden'> | null {
+    if (sceneKey == null) {
+      return null;
+    }
+    const seat = resolveSheetPostureSeat(sceneKey);
+    if (seat == null) {
+      return null;
+    }
+    const sheetSnapSessionSnapshot = this.input.routeSheetSnapSessionAuthority.getSnapshot();
+    const seatSnap =
+      seat === 'home'
+        ? sheetSnapSessionSnapshot.homeSeatSnap
+        : sheetSnapSessionSnapshot.contentSeatSnap;
+    return seatSnap === 'hidden' ? null : seatSnap;
+  }
+
   private resolveSheetRuntimeRegistrationSeedSnap(
     resolvedSurfaceInput = this.getResolvedSurfaceInput()
   ): OverlaySheetSnap {
@@ -1753,11 +1776,9 @@ class AppRouteSheetHostAuthorityController {
     if (this.currentSnap !== 'hidden') {
       return this.currentSnap;
     }
-    const sheetSnapSessionSnapshot = this.input.routeSheetSnapSessionAuthority.getSnapshot();
-    if (sheetSnapSessionSnapshot.hasUserSharedSnap) {
-      return sheetSnapSessionSnapshot.sharedSnap;
-    }
-    return initialSnap;
+    return (
+      this.resolvePostureSeatSeedSnap(resolvedSurfaceInput.activeSemanticOverlayKey) ?? initialSnap
+    );
   }
 
   private resolveSheetRuntimeInitialSnap(
@@ -1820,7 +1841,9 @@ class AppRouteSheetHostAuthorityController {
           : null;
       const persistedSnap = rawPersistedSnap !== 'hidden' ? rawPersistedSnap : null;
       const desiredSnap =
-        persistedSnap ?? resolvePolicyInitialSnap(resolvedSurfaceInput.activeSemanticOverlayKey);
+        this.resolvePostureSeatSeedSnap(resolvedSurfaceInput.activeSemanticOverlayKey) ??
+        persistedSnap ??
+        resolvePolicyInitialSnap(resolvedSurfaceInput.activeSemanticOverlayKey);
       const initialVisibleSnapDispatchKey = [
         rootOverlayKey,
         resolvedShellIdentityKey,
@@ -1953,7 +1976,7 @@ class AppRouteSheetHostAuthorityController {
       this.initialVisibleSnapDispatchKey = null;
     }
     const resolvedSurfaceInput = this.getResolvedSurfaceInput();
-    const { activeSemanticOverlayKey, resolvedRuntimeModel, rootOverlayKey } = resolvedSurfaceInput;
+    const { resolvedRuntimeModel } = resolvedSurfaceInput;
     this.input.routeSharedSheetPresentationRuntime.recordSharedSheetSnap(snap);
     if (snap !== 'hidden') {
       this.markSearchSurfaceSheetReadyForVisibleSnap(resolvedSurfaceInput);
@@ -1980,9 +2003,9 @@ class AppRouteSheetHostAuthorityController {
 
     // A programmatic snap recorded during a forward-open PRE-PUBLISH hold is the transient
     // instant-COVER snap (e.g. openChild pollDetail snapping the sheet to 'expanded') mis-attributed
-    // to the held outgoing scene ('polls'). Persisting it would stickily force the SHARED docked-feed
-    // key (and search-home/bookmarks/profile, which share it) to re-open 'expanded'. Skip the persist;
-    // currentSnap / shared sheetState above still update for rendering.
+    // to the held outgoing scene. Persisting it would stickily force that scene's `overlay:` key
+    // to re-open 'expanded'. Skip the persist; currentSnap / shared sheetState above still update
+    // for rendering. (Root-page posture memory lives in the two seats, gesture-gated upstream.)
     const isTransientCoverSnap =
       meta?.source === 'programmatic' && resolvedSurfaceInput.isForwardOpenHold;
     const motionPersistenceInput = this.createMotionPersistenceInput(resolvedSurfaceInput);
@@ -1990,13 +2013,6 @@ class AppRouteSheetHostAuthorityController {
     if (resolvedSnapPersistenceKey != null && !isTransientCoverSnap) {
       this.input.routeSheetSnapSessionActions.recordPersistentSnap({
         key: resolvedSnapPersistenceKey,
-        snap,
-      });
-    }
-    if (meta?.source === 'gesture') {
-      this.input.routeSheetSnapSessionActions.recordUserSnap({
-        rootOverlay: rootOverlayKey,
-        activeOverlayKey: activeSemanticOverlayKey,
         snap,
       });
     }
@@ -2049,18 +2065,15 @@ class AppRouteSheetHostAuthorityController {
     if (activeSemanticOverlayKey === 'polls') {
       const transitionSnapshot = this.input.routeSceneTransitionAuthority.getSnapshot();
       const activeDockedRestoreIntent = transitionSnapshot.activeDockedPollsRestoreIntent;
-      // Skip the polls scene-snap settle for a transient instant-COVER snap (a programmatic snap
-      // during the forward-open hold, where 'polls' is only HELD as the outgoing) — recording it
-      // would force the docked feed to remember 'expanded'. See recordSharedSheetSnap.
-      const isTransientCoverSnap =
-        meta?.source === 'programmatic' && resolvedSurfaceInput.isForwardOpenHold;
-      if (!isTransientCoverSnap) {
-        this.input.routeSheetSnapSessionActions.settleRouteScenePollsSnap({
-          rootOverlayKey,
-          snap,
-          source: meta?.source,
-        });
-      }
+      // No transient-cover skip anymore (killed with the two-posture law): a forward-open
+      // cover snap is programmatic, and programmatic settles never write the HOME seat — the
+      // gesture gate inside settleRouteScenePollsSnap subsumes the old special case, and its
+      // flag arms are gesture/collapsed-gated so an expanded programmatic cover is a no-op.
+      this.input.routeSheetSnapSessionActions.settleRouteScenePollsSnap({
+        rootOverlayKey,
+        snap,
+        source: meta?.source,
+      });
       if (meta?.source === 'gesture' && snap !== 'hidden') {
         this.input.routeSceneSwitchActions.clearDockedPollsRestoreIntent();
       }
@@ -2077,15 +2090,23 @@ class AppRouteSheetHostAuthorityController {
       return;
     }
     if (activeSemanticOverlayKey === 'bookmarks' || activeSemanticOverlayKey === 'profile') {
-      this.input.routeSheetSnapSessionActions.settleRouteSceneTabSnap({
-        sceneKey: activeSemanticOverlayKey,
-        snap,
-      });
+      // Two-posture write contract (plans/root-snap-law.md §Leg 2): the CONTENT seat records
+      // only user-gesture settles. Programmatic arrivals (the postureSeat snapTo, search-flow
+      // hides) READ the seat, never write it — that gate is what makes the ledger-laundering
+      // class unrepeatable; the snap-session's __DEV__ assert backstops this gate.
+      if (meta?.source === 'gesture') {
+        this.input.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
+          sceneKey: activeSemanticOverlayKey,
+          snap,
+          writer: 'gesture',
+        });
+      }
       return;
     }
     this.input.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
       sceneKey: activeSemanticOverlayKey,
       snap,
+      writer: meta?.source ?? 'gesture',
     });
   }
 

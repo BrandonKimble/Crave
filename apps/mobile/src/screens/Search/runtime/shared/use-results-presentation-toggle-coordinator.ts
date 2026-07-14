@@ -1,13 +1,13 @@
-// THE SEARCH TOGGLE ADAPTER (toggle-system v2.1): the revise-protocol state machine
-// now lives in the generic engine (src/toggles/toggle-interaction-engine.ts — seq +
-// restarting quiet-window debounce + cancelable runner + visual-sync wait + lifecycle
-// events, engine-spec'd with fake timers). This file is search's adapter: the engine
-// wired to the search runtime bus (toggleInteraction mirror + the REACTIVE pending
-// selector consumers need) and to the interaction-cover lifecycle handler, plus the
-// search-rig concerns that deliberately stay OUT of the pure core (perf-scenario
-// attribution, [T1DBG] commit timing). Public API unchanged from the pre-extraction
-// coordinator. The U2 commit-phase semantics (commit-time mutation flush + D6c direct
-// enter-start) land HERE via the runner search hands the engine — never in the core.
+// THE SEARCH TOGGLE ADAPTER (leg 2 — plans/toggle-strip-rebuild-ledger.md): search
+// declares its consequence class through the strip package's DECLARATION SEAM
+// (`createToggleStripConsequenceSeam`) instead of constructing the interaction engine
+// itself — pages never touch the engine directly. Search is consequence:'world' (every
+// toggle swaps the presented map world), so every commit is floor-gated: quiet window
+// elapsed AND the presentation fade-out acked at ~0. The floor signal is the existing
+// native-fed module singleton (`search-presentation-floor-signal`). What stays HERE is
+// genuinely search's: the runtime-bus interaction-state mirror, the perf-scenario
+// attribution on press-up, the [T1DBG] commit timing, and the failure-routing choice
+// (search reports failures through its resolution seam, not the engine lifecycle).
 import React from 'react';
 
 import {
@@ -15,7 +15,7 @@ import {
   logPerfScenarioAttributionEvent,
 } from '../../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
-import { createToggleInteractionEngine } from '../../../../toggles/toggle-interaction-engine';
+import { createToggleStripConsequenceSeam } from '../../../../toggles/toggle-strip-consequence';
 import {
   isSearchPresentationAtFloor,
   subscribeSearchPresentationFloor,
@@ -48,7 +48,7 @@ export const useResultsPresentationToggleCoordinator = ({
   handleToggleInteractionLifecycle,
   notifyIntentCompleteRef,
 }: UseResultsPresentationToggleCoordinatorArgs): ResultsPresentationToggleCoordinator => {
-  // Consumers need the REACTIVE pending intent id; the bus (fed by the engine's
+  // Consumers need the REACTIVE pending intent id; the bus (fed by the seam's
   // interaction-state sink) stays its home.
   const pendingTogglePresentationIntentId = useSearchRuntimeBusSelector(
     searchRuntimeBus,
@@ -60,13 +60,18 @@ export const useResultsPresentationToggleCoordinator = ({
   const lifecycleRef = React.useRef(handleToggleInteractionLifecycle);
   lifecycleRef.current = handleToggleInteractionLifecycle;
 
-  const engine = React.useMemo(
+  const seam = React.useMemo(
     () =>
-      createToggleInteractionEngine<ToggleInteractionKind>({
+      createToggleStripConsequenceSeam<ToggleInteractionKind>({
         // T3 (plans/toggle-strip-primitive.md): every search toggle consequence swaps
-        // the presented map world, so the commit is gated on the presentation fade-out
-        // floor. The oracle covers the already-covered case (no ramp → no ack).
-        isAtVisualFloor: isSearchPresentationAtFloor,
+        // the presented map world → 'world' gates each commit on the presentation
+        // fade-out floor; the signal covers the already-covered case (no ramp → no ack).
+        consequence: 'world',
+        floorSignal: {
+          isAtFloor: isSearchPresentationAtFloor,
+          subscribeFloorAck: subscribeSearchPresentationFloor,
+        },
+        surfaceName: 'results',
         onInteractionState: (state) => {
           searchRuntimeBus.publish({ toggleInteraction: state });
         },
@@ -95,16 +100,11 @@ export const useResultsPresentationToggleCoordinator = ({
       }),
     [searchRuntimeBus]
   );
-  React.useEffect(() => engine.dispose, [engine]);
-  // The floor ack edge releases a gated commit the instant the fade-out bottoms out.
-  React.useEffect(
-    () => subscribeSearchPresentationFloor(() => engine.notifyVisualFloor()),
-    [engine]
-  );
+  React.useEffect(() => seam.dispose, [seam]);
 
   const scheduleToggleCommit = React.useCallback(
     (runner: ToggleCommitRunner, options: ToggleCommitOptions) => {
-      engine.begin(
+      seam.scheduleCommit(
         ({ intentId }) => {
           // [T1DBG] commit timing (adapter concern — the search reveal rig reads it).
           const commitStart = performance.now();
@@ -116,17 +116,17 @@ export const useResultsPresentationToggleCoordinator = ({
             );
           return outcome ?? undefined;
         },
-        { ...options, awaitVisualFloor: true }
+        { kind: options.kind }
       );
     },
-    [engine]
+    [seam]
   );
 
   const cancelToggleInteraction = React.useCallback(() => {
-    engine.cancel();
-  }, [engine]);
+    seam.cancel();
+  }, [seam]);
 
-  notifyIntentCompleteRef.current = engine.notifyIntentComplete;
+  notifyIntentCompleteRef.current = seam.notifyIntentComplete;
 
   return React.useMemo(
     () => ({

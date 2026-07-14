@@ -43,12 +43,8 @@ export const useSearchRootControlAuthorityRuntime = ({
     sessionCoreLane,
     stateFoundationLane,
     rootOverlayFoundationRuntime,
-    mutationCancelAuthorityRuntime: foundationAuthorityRuntime.mutationCancelAuthorityRuntime,
     profileBridgeAuthorityRuntime: foundationAuthorityRuntime.profileBridgeAuthorityRuntime,
     clearRestoreAuthorityRuntime: foundationAuthorityRuntime.clearRestoreAuthorityRuntime,
-    cancelActiveSearchRequest:
-      foundationAuthorityRuntime.requestExecutionAuthorityRuntime.searchRequestRuntimeOwner
-        .cancelActiveSearchRequest,
     autocompleteAuthorityRuntime: foundationAuthorityRuntime.autocompleteAuthorityRuntime,
     resultsSurfacePolicyController,
     foregroundPolicyPublicationAuthority,

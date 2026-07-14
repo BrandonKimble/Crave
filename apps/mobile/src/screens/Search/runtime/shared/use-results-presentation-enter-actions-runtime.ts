@@ -23,7 +23,6 @@ type UseResultsPresentationEnterActionsRuntimeArgs = {
   resultsRuntimeOwner: ResultsPresentationRuntimeOwner;
   resultsPresentationAuthority: ResultsPresentationAuthority;
   cancelSearchSheetCloseTransition: (closeIntentId?: string) => void;
-  cancelCloseSearchCleanup: () => void;
   setPendingCloseIntentId: (intentId: string | null) => void;
   routeSceneVisibilityPolicyRuntime: RouteSceneVisibilityPolicyRuntime;
 };
@@ -40,7 +39,6 @@ export const useResultsPresentationEnterActionsRuntime = ({
   resultsRuntimeOwner,
   resultsPresentationAuthority,
   cancelSearchSheetCloseTransition,
-  cancelCloseSearchCleanup,
   setPendingCloseIntentId,
   routeSceneVisibilityPolicyRuntime,
 }: UseResultsPresentationEnterActionsRuntimeArgs): ResultsPresentationEnterActionsRuntime => {
@@ -82,7 +80,6 @@ export const useResultsPresentationEnterActionsRuntime = ({
         resolveSearchSurfaceResultsEnterCoverState(preserveSheetState)
       );
 
-      cancelCloseSearchCleanup();
       setPendingCloseIntentId(null);
       applySurfaceTransactionShell(snapshot);
       return executeSurfaceEnterTransaction({
@@ -95,7 +92,6 @@ export const useResultsPresentationEnterActionsRuntime = ({
     },
     [
       applySurfaceTransactionShell,
-      cancelCloseSearchCleanup,
       executeSurfaceEnterTransaction,
       nextSearchSurfaceResultsTransactionId,
       setPendingCloseIntentId,

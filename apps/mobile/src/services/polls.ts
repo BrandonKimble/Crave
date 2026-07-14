@@ -127,7 +127,7 @@ export type PollQueryResponse = {
 
 export type PollFeedSort = 'new' | 'top' | 'trending';
 export type PollFeedType = 'all' | 'polls' | 'discussions';
-export type PollFeedTime = 'all_time' | 'this_week';
+export type PollFeedTime = 'all_time' | 'today' | 'this_week' | 'this_month';
 
 export type PollQueryPayload = {
   marketKey?: string;

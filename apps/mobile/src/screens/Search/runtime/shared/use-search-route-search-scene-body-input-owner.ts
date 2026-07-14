@@ -41,6 +41,8 @@ const useLatestRef = <TValue>(value: TValue): React.MutableRefObject<TValue> => 
   return valueRef;
 };
 
+let bodyInputOwnerInstanceSeq = 0;
+
 const nowMs = (): number => globalThis.performance?.now?.() ?? Date.now();
 
 const EMPTY_SECONDARY_LIST_ROWS: ReadonlyArray<unknown> = [];
@@ -98,6 +100,10 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
   const hydratedResultsKeyRef = useLatestRef(hydratedResultsKey);
   const rawSceneBodyContentRef = useLatestRef(rawSceneBodyContent);
   const rawSceneBodyTransportRef = useLatestRef(rawSceneBodyTransport);
+  const bodyInputOwnerInstanceIdRef = React.useRef<number | null>(null);
+  if (bodyInputOwnerInstanceIdRef.current == null) {
+    bodyInputOwnerInstanceIdRef.current = ++bodyInputOwnerInstanceSeq;
+  }
   const stableListHeaderComponent = React.useCallback(() => {
     const HeaderComponent = rawSceneBodyContentRef.current.ListHeaderComponent;
     if (HeaderComponent == null) {
@@ -356,6 +362,10 @@ export const useSearchRouteSearchSceneBodyInputOwner = ({
       path: 'structural',
       details: {
         activeList: stableSceneBodyTransport.activeList,
+        // Instance identity: distinguishes a hook REMOUNT (new instance ids) from two
+        // live instances PING-PONGING the latest-wins body bundle sync.
+        bodyInputOwnerInstanceId: bodyInputOwnerInstanceIdRef.current,
+        listKey: stableSceneBodyContent.listKey ?? null,
       },
     });
     getSearchSurfaceRuntime().syncResultsPageBodyBundle({

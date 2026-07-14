@@ -1,30 +1,34 @@
-# `business/` — Business Model & Monetization
+# `business/` — Business Model & Distribution
 
-Where we **iterate on the business model**: pricing, the free/paid split, the trial, onboarding,
-Stripe/RevenueCat setup, growth, and restaurant B2B. This is the home for business decisions
-the same way `plans/` is for engineering and `product/` is for feature ideas.
-
-`BRD.md` (repo root) was the original Business Requirements Doc — it's **stale** now; its still-good
-ideas have been mined into [`brd-extraction.md`](brd-extraction.md). Treat the files below as current.
+**Canon lives at [`signal/blueprint.md`](signal/blueprint.md)** — the decision
+document for the business model, pricing, launch shape, content/creator machine,
+sharing policy, paid instruments, metrics, and the 0–6 month calendar. Built
+2026-07-12 from a 64-transcript evidence corpus via extraction → cross-examined
+ledger → adversarial panels. Where any other file disagrees, the blueprint wins.
 
 ## Files
 
-| File | What it holds |
-|---|---|
-| [business-model.md](business-model.md) | The model decision: freemium + trial, pricing, sequencing, funding stance, the research verdict behind it |
-| [monetization-and-gating.md](monetization-and-gating.md) | The free vs paid feature map, the gating principles (taste-vs-crutch, discovery-vs-decision), and the open A/B decisions |
-| [brd-extraction.md](brd-extraction.md) | Raw business/growth/B2B/community ideas mined from the old BRD + PRD (seed material) |
+| File                                       | What it holds                                                                                                              |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| [signal/blueprint.md](signal/blueprint.md) | **THE canon.** Slim calls + the discard list + open owner decisions                                                        |
+| [signal/](signal/README.md)                | The evidence machine behind it: fact sheet, 64 testimony files, 11 spine close-reads, 11 ledger sections, 5 panel verdicts |
+| [business-model.md](business-model.md)     | Decision record for the model itself: hard paywall + prices, the why, Apple-proofing rules, margin lever, funding stance   |
+| [brd-extraction.md](brd-extraction.md)     | Raw business/growth/B2B ideas mined from the old BRD/PRD (seed material only)                                              |
+
+Removed 2026-07-12 (git history preserves them): `monetization-and-gating.md` —
+its free/paid feature map was superseded wholesale by the hard-paywall decision;
+the shared-link surface policy that partially replaces it is blueprint §5.
 
 ## The one-paragraph version
 
-Crave launches **freemium**: the objective restaurant ranking (better than Google) is free
-forever and is the trust + word-of-mouth engine; **Crave+** gates the things Google/Yelp/Beli
-can't do — the **dish** intelligence layer (the hero), trending/momentum, and power filters on
-your own lists. **~$7.99/mo + $39.99/yr, push annual.** Start freemium and only *tighten* toward
-a harder gate later if the data says so (you can always close a door; you can't reopen one).
-Stay bootstrapped; B2B (restaurant analytics) is the bigger long-run pool, held for Phase 2 and
-never injected into the ranking.
-
-> A fuller decision log also lives in agent memory at
-> `~/.claude/projects/-Users-brandonkimble-Crave/memory/crave-business-model.md`. When the two
-> disagree, **this folder is canonical** — update the memory pointer to match.
+Crave launches **hard-paywalled, gate-everything** in **Austin only**: $7.99/mo
+pay-now or $39.99/yr with a ~1-week intro trial (annual only), card required at
+onboarding end. Positioning claims the vertical ("the app that ranks dishes,
+not restaurants"); Austin lives in hooks and creators, never the category
+claim. Distribution = founder-led content (demo-wow + receipt-backed ranking
+controversy + a programmatic listicle ground game), then 1–2 local creator
+trials, then an earned "Crave ATX" anchor account — no agencies, no cold UA;
+ASA and DMA-geo-targeted Spark ads run as instruments only. Shared links render
+rich, terminal, free web artifacts (the dinner-table loop). Expansion beyond
+Austin fires on an engineered trigger, never vibes. Bootstrapped; B2B is Phase
+2 and never touches the ranking.

@@ -11,9 +11,17 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { SharedModule } from '../../shared/shared.module';
 import { IdentityModule } from '../identity/identity.module';
 import { SearchModule } from '../search/search.module';
+import { PhotosModule } from '../photos/photos.module';
+import { FavoriteListTileGalleryService } from './favorite-list-tile-gallery.service';
 
 @Module({
-  imports: [PrismaModule, SharedModule, IdentityModule, SearchModule],
+  imports: [
+    PrismaModule,
+    SharedModule,
+    IdentityModule,
+    SearchModule,
+    PhotosModule,
+  ],
   controllers: [
     FavoritesController,
     FavoritesPublicController,
@@ -25,6 +33,7 @@ import { SearchModule } from '../search/search.module';
     FavoriteListAccessPolicy,
     ListResultsAssembler,
     FavoriteListMapper,
+    FavoriteListTileGalleryService,
   ],
 })
 export class FavoritesModule {}

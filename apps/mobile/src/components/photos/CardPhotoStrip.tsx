@@ -24,6 +24,10 @@ export interface CardPhotoStripProps {
   /** Present = dish card (dish-linked photos only); absent = restaurant card. */
   connectionId?: string;
   height: number;
+  /** Wave-3 §3.3: default tile aspect override (bigger / less wide photos). */
+  tileAspect?: number;
+  /** Wave-3 §2.4: full-bleed strip; first tile aligns via this scrollable inset. */
+  contentInset?: number;
   /** 'add' = own-list context ONLY (§7.1: owner/collaborator lists). */
   leadTile?: 'add';
   onAddPress?: () => void;
@@ -73,6 +77,8 @@ export const CardPhotoStrip: React.FC<CardPhotoStripProps> = ({
   restaurantId,
   connectionId,
   height,
+  tileAspect,
+  contentInset,
   leadTile,
   onAddPress,
   onPhotoOpen,
@@ -115,6 +121,8 @@ export const CardPhotoStrip: React.FC<CardPhotoStripProps> = ({
     <PhotoStrip
       photos={photos}
       height={height}
+      tileAspect={tileAspect}
+      contentInset={contentInset}
       leadTile={leadTile}
       onAddPress={onAddPress}
       onPhotoPress={handlePhotoPress}

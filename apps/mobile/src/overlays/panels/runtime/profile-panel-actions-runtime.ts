@@ -18,12 +18,21 @@ export const useProfilePanelActionsRuntime = (): ProfilePanelActionsRuntime => {
     routeSceneRuntime.routeOverlayRouteCommandRuntime.pushRoute('messagesInbox');
   }, [routeSceneRuntime.routeOverlayRouteCommandRuntime]);
 
+  const handleOpenFollowList = React.useCallback(
+    (userId: string, mode: 'followers' | 'following') => {
+      // Followers/Following stat tap — the SAME followList child push UserProfilePanel makes.
+      routeSceneRuntime.routeOverlayRouteCommandRuntime.pushRoute('followList', { userId, mode });
+    },
+    [routeSceneRuntime.routeOverlayRouteCommandRuntime]
+  );
+
   return React.useMemo(
     () => ({
       isSignedIn: Boolean(isSignedIn),
       handleOpenSettings,
       handleOpenMessages,
+      handleOpenFollowList,
     }),
-    [handleOpenMessages, handleOpenSettings, isSignedIn]
+    [handleOpenFollowList, handleOpenMessages, handleOpenSettings, isSignedIn]
   );
 };

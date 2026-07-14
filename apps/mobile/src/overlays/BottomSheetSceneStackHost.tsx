@@ -49,6 +49,12 @@ import { areSceneEntryMountUnitArraysEqual } from '../navigation/runtime/app-rou
 import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { SearchResultsPageBundleHost } from './SearchMountedScenePageBundleAuthority';
 import { SceneLoadingSurface } from '../components/skeletons';
+import { SceneBodySceneKeyContext } from './SceneBodyReadyGate';
+import {
+  joinSceneChromeAck,
+  resolveSceneChromeHeight,
+  type ChromeAckJoinCancel,
+} from './scene-chrome-ack-runtime';
 import { getSceneFoundationSpec } from '../navigation/runtime/scene-foundation-spec';
 import { PersistentSheetHeaderHost } from './PersistentSheetHeaderHost';
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
@@ -901,15 +907,20 @@ const SceneStackBodyContentLayerHost = React.memo(
     }
 
     const contentLayerHost = (
-      <SceneStackBodyContentLayer
-        contentEntry={sceneBodySurfaceSelection.contentEntry}
-        transportEntry={sceneBodySurfaceSelection.transportEntry}
-        contentActivity={sceneBodySurfaceSelection.contentActivity}
-        bodyDefaults={sceneBodyRuntimeSelection.bodyDefaults}
-        bodyScrollRuntime={sceneBodyRuntimeSelection.bodyScrollRuntime}
-        mountedEntryUnits={sceneBodySurfaceSelection.mountedEntryUnits}
-        activeEntryId={sceneBodySurfaceSelection.activeEntryId}
-      />
+      // Leg 6 (SceneBodyReadyGate §2.2): the mounting scene's key rides context so any body's
+      // in-content pending gate resolves its DECLARED foundation skeleton with no per-call-site
+      // scene plumbing.
+      <SceneBodySceneKeyContext.Provider value={sceneKey}>
+        <SceneStackBodyContentLayer
+          contentEntry={sceneBodySurfaceSelection.contentEntry}
+          transportEntry={sceneBodySurfaceSelection.transportEntry}
+          contentActivity={sceneBodySurfaceSelection.contentActivity}
+          bodyDefaults={sceneBodyRuntimeSelection.bodyDefaults}
+          bodyScrollRuntime={sceneBodyRuntimeSelection.bodyScrollRuntime}
+          mountedEntryUnits={sceneBodySurfaceSelection.mountedEntryUnits}
+          activeEntryId={sceneBodySurfaceSelection.activeEntryId}
+        />
+      </SceneBodySceneKeyContext.Provider>
     );
 
     const profiledContentLayerHost = onProfilerRender ? (
@@ -1214,7 +1225,10 @@ const PersistentHeaderScrollDividerHost = ({
       key={`divider-${sceneKey}`}
       bodyRuntimeAuthority={bodyRuntimeAuthority}
       sceneKey={sceneKey}
-      headerHeight={headerHeight}
+      // §2.7: the divider sits on the chrome/body seam — it must move in the SAME committed
+      // frame as the chrome box, so it derives the presented scene's chrome height from the
+      // measured-chrome cache (the passed headerHeight is the retained-measurement fallback).
+      headerHeight={resolveSceneChromeHeight(sceneKey) ?? headerHeight}
     />
   );
 };
@@ -1398,6 +1412,28 @@ const ActiveSceneStackSurfaceHost = React.memo(
     }, []);
     // ── THE UI-THREAD SWAP LANE SV (SceneStackLiveSwapRoles doc above) ────────────────────────
     const liveSwapRoles = useSharedValue<SceneStackLiveSwapRoles | null>(null);
+    // ── THE JOINED REVEAL (leg 6 — child-transition primitive §2.3): every REVEAL flip (warm
+    // early flip, real paint-ack, synthetic warm ack) joins {paintAck, chromeAck} — the flip
+    // waits for the persistent header's post-commit chromeAck of the presented scene, so body
+    // opacity can NEVER lead the header/strip paint (the nav-page one-beat lag). HOLD writes
+    // (paintAck=0) stay immediate. One pending join at a time; a superseding reveal cancels its
+    // predecessor. The 2-frame watchdog inside joinSceneChromeAck degrades to today's behavior
+    // with a loud [JOINEDREVEAL] dev bark (provably RED by suppressing the header's ack).
+    const pendingChromeJoinCancelRef = React.useRef<ChromeAckJoinCancel | null>(null);
+    const joinRevealOnChromeAck = React.useCallback((scene: OverlayKey, flip: () => void) => {
+      pendingChromeJoinCancelRef.current?.();
+      pendingChromeJoinCancelRef.current = joinSceneChromeAck(scene, () => {
+        pendingChromeJoinCancelRef.current = null;
+        flip();
+      });
+    }, []);
+    React.useEffect(
+      () => () => {
+        pendingChromeJoinCancelRef.current?.();
+        pendingChromeJoinCancelRef.current = null;
+      },
+      []
+    );
     // EARLY WRITE: subscribePresentationFrame listeners run SYNCHRONOUSLY inside the controller's
     // dispatch flush — the same JS instant the scene-motion executor writes the sheet-motion
     // command — so a warm swap reaches the UI thread on the next frame, ~1 frame after the sheet
@@ -1445,36 +1481,44 @@ const ActiveSceneStackSurfaceHost = React.memo(
             // below flips it in the commit that paints its body/skeleton — the old timing.
             return;
           }
-          liveSwapRoles.value = { presented, outgoing: null };
-          player.seize();
-          player.paintAck.value = 1;
-          player.settleRamp.value = 1;
-          logPageSwitch('liveSwap', {
-            t: Math.round(performance.now()),
-            presented,
-            warm: true,
+          // Joined reveal (§2.3): the warm flip used to land on the UI thread a frame BEFORE
+          // the header/strip React commit — the exact one-beat lag. Join on the header's
+          // chromeAck: since the header commits in the same flush-fed React batch, the flip now
+          // lands in that commit's layout phase (same painted frame as the header/strip).
+          joinRevealOnChromeAck(presented, () => {
+            liveSwapRoles.value = { presented, outgoing: null };
+            player.seize();
+            player.paintAck.value = 1;
+            player.settleRamp.value = 1;
+            logPageSwitch('liveSwap', {
+              t: Math.round(performance.now()),
+              presented,
+              warm: true,
+            });
           });
         }),
-      [routeSceneSwitchRuntime, player, liveSwapRoles]
+      [routeSceneSwitchRuntime, player, liveSwapRoles, joinRevealOnChromeAck]
     );
     const reportScenePaint = React.useCallback(
       (sceneKey: OverlayKey) => {
         if (isTransitioningRef.current && sceneKey === effectiveIncomingRef.current) {
           logPageSwitch('realAck', { t: Math.round(performance.now()), scene: sceneKey });
-          player.markPaintAck();
-          // §9.1 R2: ALSO record the switchId-keyed PresentationFrame ack — a later supersede
-          // resolves its outgoing to this frame's presented leg only if this ack committed.
-          // Keyed to the ARMED switch's id (ACK EPOCH above — same commit as the identity refs
-          // this gate just read), NEVER a live getPresentationFrame() read: a post-supersede
-          // pre-re-render onLayout must ack the superseded id (rejected controller-side), not
-          // bless the new switch. Settled/idle switches self-ack controller-side, so the
-          // in-flight incoming paint is the only ack this host owns.
-          routeSceneSwitchRuntime.commitPresentationPaintAck(armedSwitchIdRef.current);
+          // Joined reveal (§2.3): the header's layout effect normally recorded the chromeAck in
+          // this same commit, so the join is synchronous; a missing ack defers ≤2 frames.
+          // Inside the join: markPaintAck reveals the content, and (§9.1 R2) the switchId-keyed
+          // PresentationFrame ack records — keyed to the ARMED switch's id (ACK EPOCH — the ref
+          // was written in the arming commit), never a live getPresentationFrame() read: a
+          // post-supersede pre-re-render onLayout must ack the superseded id (rejected
+          // controller-side), not bless the new switch.
+          joinRevealOnChromeAck(sceneKey, () => {
+            player.markPaintAck();
+            routeSceneSwitchRuntime.commitPresentationPaintAck(armedSwitchIdRef.current);
+          });
         }
         // A paint from an idle/outgoing/stale leg is ignored — only the live transition's
         // incoming scene may flip the paint-ack gate.
       },
-      [player, routeSceneSwitchRuntime]
+      [player, routeSceneSwitchRuntime, joinRevealOnChromeAck]
     );
     // COMMIT RECONCILE for the swap SV: converge it to the committed frame on every commit —
     // this is what flips a COLD leg (skipped by the warm gate above) in the exact commit that
@@ -1544,8 +1588,13 @@ const ActiveSceneStackSurfaceHost = React.memo(
         warm: hasPaintedSceneKeysRef.current.has(effectiveIncoming),
       });
       if (hasPaintedSceneKeysRef.current.has(effectiveIncoming)) {
-        player.markPaintAck();
-        routeSceneSwitchRuntime.commitPresentationPaintAck(armedSwitchIdRef.current);
+        // Joined reveal (§2.3): the synthetic warm ack joins the header's chromeAck too — this
+        // layout effect and the header's run in the same commit, so the join is synchronous in
+        // the healthy path (order-independent: whichever effect runs second completes it).
+        joinRevealOnChromeAck(effectiveIncoming, () => {
+          player.markPaintAck();
+          routeSceneSwitchRuntime.commitPresentationPaintAck(armedSwitchIdRef.current);
+        });
       }
     }, [
       contentTransitionToken,
@@ -1554,6 +1603,7 @@ const ActiveSceneStackSurfaceHost = React.memo(
       effectiveOutgoing,
       effectiveIncoming,
       routeSceneSwitchRuntime,
+      joinRevealOnChromeAck,
     ]);
     // STABLE PORTS: no volatile role fields → identity survives a switch → idle legs never
     // re-render from this context. (Roles ride the per-leg legRole prop; see the .map below.)
@@ -1619,7 +1669,13 @@ const ActiveSceneStackSurfaceHost = React.memo(
                     sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
                     routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
                     bodyRuntimeAuthority={bodyRuntimeAuthority}
-                    reservedHeaderHeight={persistentHeaderHeight ?? undefined}
+                    // §2.7: each leg's body-lane inset derives from ITS OWN scene's chrome
+                    // height SYNCHRONOUSLY (measured-chrome cache) — chrome box and body lane
+                    // move in the same committed frame; the retained shared measurement is only
+                    // the never-measured-composition fallback (onLayout corrects it next frame).
+                    reservedHeaderHeight={
+                      resolveSceneChromeHeight(sceneKey) ?? persistentHeaderHeight ?? undefined
+                    }
                     legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
                   />
                 )

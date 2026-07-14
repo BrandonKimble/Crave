@@ -8,7 +8,6 @@ export type SearchRouteHostVisualState = {
   sheetTranslateY: SharedValue<number>;
   sheetScrollOffset: SharedValue<number>;
   sheetMomentum: SharedValue<boolean>;
-  overlayHeaderActionProgress: SharedValue<number>;
   navBarHeight: number;
   navBarTopForSnaps: number;
   searchBarTop: number;

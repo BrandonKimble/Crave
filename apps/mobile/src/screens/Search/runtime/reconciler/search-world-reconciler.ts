@@ -104,12 +104,18 @@ export const classifySearchWorldTransition = (args: {
   }
   if (identityChanged) {
     const wasIdle = prev.queryIdentity.kind === 'idle';
+    // LIST WORLDS present INTO the pushed listDetail child (wave-4 §3 restoration):
+    // the child page owns the sheet, so a list enter NEVER takes over the results
+    // scene — preserve regardless of session state (preserveSheetState=true nulls the
+    // target snap in resolveSearchSurfaceResultsSheetTargetSnap, which is the ONE
+    // coupling to openAppSearchRouteResults). Every other identity keeps the rule:
+    // an in-session identity swap keeps the sheet; a fresh enter builds it.
+    const isListWorld = next.queryIdentity.kind === 'list';
     return {
       class: wasIdle ? 'session_enter' : 'session_replace',
       intent: {
         presentationIntentKind: undefined,
-        // An in-session identity swap keeps the sheet; a fresh enter builds it.
-        preserveSheetState: !wasIdle,
+        preserveSheetState: isListWorld || !wasIdle,
         entrySurface: deriveEntrySurface(next),
       },
       cardsKey,

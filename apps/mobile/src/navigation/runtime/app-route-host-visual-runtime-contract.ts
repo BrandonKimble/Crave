@@ -7,7 +7,6 @@ export type AppRouteHostVisualRuntime = {
   navBarHeight: number;
   navBarTop: number;
   bottomNavHiddenTranslateY: number;
-  overlayHeaderActionProgress: SharedValue<number>;
   searchSurfacePageBundleProgress: AnimatedNumberLike;
   navBarCutoutProgress: SharedValue<number> | DerivedValue<number>;
   navBarCutoutHidingProgress: SharedValue<number> | DerivedValue<number>;

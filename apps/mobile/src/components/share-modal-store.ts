@@ -29,9 +29,11 @@ export type ShareModalConfig = {
    *  long-press Share action). */
   listShareSlug?: string | null;
   /** Lists only: whether the VIEWER owns the list. Enable-on-demand is an
-   *  owner-only server path AND it flips a private list publicly linkable, so:
-   *  owner + no slug → copy-link asks for confirmation first; non-owner + no
-   *  slug → the link rows are hidden entirely (send-in-app remains). */
+   *  owner-only server path that mints a LIVE link capability (visibility is
+   *  untouched — visibility canon 2026-07-12: visibility = discovery, the
+   *  link = access), so: owner + no slug → copy-link asks for confirmation
+   *  before minting; non-owner + no slug → the link rows are hidden entirely
+   *  (send-in-app remains). */
   listOwnedByViewer?: boolean;
 };
 

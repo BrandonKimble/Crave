@@ -26,7 +26,23 @@ const AppRouteOverlayHostRuntimeBoundary = React.memo(function AppRouteOverlayHo
     authoritySurface.getSearchInteractionRefSnapshot
   );
 
-  if (searchInteractionRef == null) {
+  // BAIL-OUT FIX (perf attribution 2026-07-12): this merge used to be an inline spread
+  // minting a NEW routeSheetHostRuntime object on every boundary render — every host in
+  // the 12-level overlay chain memo-compares this prop (or its inline children) by
+  // identity, so one fresh object here cascaded a full-tree re-render (measured
+  // 40-112ms/commit) on every surface publish during submit/dismiss choreography.
+  const routeSheetHostRuntime = React.useMemo(
+    () =>
+      searchInteractionRef == null
+        ? null
+        : {
+            ...routeSheetHostRuntimeOwner,
+            searchInteractionRef,
+          },
+    [routeSheetHostRuntimeOwner, searchInteractionRef]
+  );
+
+  if (routeSheetHostRuntime == null) {
     return null;
   }
 
@@ -44,10 +60,7 @@ const AppRouteOverlayHostRuntimeBoundary = React.memo(function AppRouteOverlayHo
       routeOverlayTransitionActions={routeSceneRuntime.routeOverlayTransitionActions}
       routeSheetSnapSessionAuthority={routeSceneRuntime.routeSheetSnapSessionAuthority}
       routeSheetSnapSessionActions={routeSceneRuntime.routeSheetSnapSessionActions}
-      routeSheetHostRuntime={{
-        ...routeSheetHostRuntimeOwner,
-        searchInteractionRef,
-      }}
+      routeSheetHostRuntime={routeSheetHostRuntime}
     />
   );
 });

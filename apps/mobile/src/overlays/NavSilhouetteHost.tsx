@@ -10,6 +10,10 @@ import type {
   AppRouteSheetSnapSessionActions,
   AppRouteSheetSnapSessionAuthority,
 } from '../navigation/runtime/app-route-sheet-snap-session-runtime';
+import { DOCKED_POLLS_RESURRECT_SNAP } from '../navigation/runtime/app-route-sheet-snap-session-runtime';
+import { extendActiveRootFromNavReTap } from '../navigation/runtime/app-search-route-command-runtime';
+import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { APP_ROOT_NAV_ITEMS } from '../navigation/runtime/app-route-root-nav-items';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
 import SearchBottomNav from '../screens/Search/components/SearchBottomNav';
 import { SEARCH_BOTTOM_NAV_ICON_RENDERERS } from '../screens/Search/components/search-bottom-nav-icons';
@@ -31,11 +35,9 @@ import {
   resolveSearchBottomInset,
 } from '../screens/Search/runtime/shared/search-startup-geometry';
 
-const SEARCH_BOTTOM_NAV_ITEMS = [
-  { key: 'search', label: 'Search' },
-  { key: 'bookmarks', label: 'Favorites' },
-  { key: 'profile', label: 'Profile' },
-] as const;
+// The tab set lives in the pure app-route-root-nav-items module so the two-posture-law
+// exhaustiveness sweep can enumerate it (root-snap-law.md §Leg 3).
+const SEARCH_BOTTOM_NAV_ITEMS = APP_ROOT_NAV_ITEMS;
 
 type NavSilhouetteShellSnapshot = {
   isFocused: boolean;
@@ -161,6 +163,10 @@ export const NavSilhouetteHost = React.memo(function NavSilhouetteHost({
     ),
     isEqual: areProfilerSnapshotsEqual,
   });
+  // Leg 6 (§4 nav re-tap): the named-intent path needs the command runtime's promote verb and
+  // the FULL snap-session actions (seat write) — both live on the scene runtime context.
+  const { routeOverlayRouteCommandRuntime, routeSheetSnapSessionActions: fullSnapSessionActions } =
+    useAppRouteSceneRuntime();
   const handleOverlaySelect = React.useCallback(
     (targetSceneKey: OverlayKey) => {
       const snapSessionSnapshot = routeSheetSnapSessionAuthority.getSnapshot();
@@ -169,6 +175,25 @@ export const NavSilhouetteHost = React.memo(function NavSilhouetteHost({
       const shouldRestoreDockedPolls =
         targetSceneKey === 'search' &&
         (snapSessionSnapshot.isDockedPollsDismissed || isPollsSheetPhysicallyHidden);
+      // ─── NAV RE-TAP (wave-2 charter §4, leg 6): tapping the ACTIVE tab at its root is the
+      // named product intent extendActiveRootFromNavReTap — the sheet pulls to FULLY EXTENDED
+      // and the side's seat remembers it ('named' writer, snap-law category (c)). Extend-only:
+      // promoteAtLeast('expanded') is inert at expanded, so a third tap does NOTHING (drag is
+      // the only way down). The docked-polls RESURRECT lane takes precedence for that press
+      // (a dismissed/hidden feed re-presents at its declared posture, the existing flow below).
+      const routeState = routeOverlayRouteCommandRuntime.getRouteState();
+      const isActiveRootReTap =
+        !shouldRestoreDockedPolls &&
+        routeState.overlayRouteStackLength === 1 &&
+        routeState.activeOverlayRoute.key === targetSceneKey;
+      if (isActiveRootReTap) {
+        extendActiveRootFromNavReTap({
+          targetSceneKey,
+          promoteActiveSheet: routeOverlayRouteCommandRuntime.promoteActiveSheet,
+          routeSheetSnapSessionActions: fullSnapSessionActions,
+        });
+        return;
+      }
       if (shouldRestoreDockedPolls) {
         const scenarioConfig = usePerfScenarioRuntimeStore.getState().activeConfig;
         if (isPerfScenarioAttributionActive(scenarioConfig)) {
@@ -176,7 +201,7 @@ export const NavSilhouetteHost = React.memo(function NavSilhouetteHost({
             event: 'persistent_polls_restore_nav_contract',
             navTarget: targetSceneKey,
             restoreRequested: true,
-            targetSnap: 'collapsed',
+            targetSnap: DOCKED_POLLS_RESURRECT_SNAP,
             dismissedBeforePress: snapSessionSnapshot.isDockedPollsDismissed,
             physicalHiddenBeforePress: isPollsSheetPhysicallyHidden,
           });
@@ -186,10 +211,20 @@ export const NavSilhouetteHost = React.memo(function NavSilhouetteHost({
         targetSceneKey,
         sheetTransitionKind: 'topLevelSwitch',
         sheetOpenerSource: 'navTab',
-        dockedPollsRestoreSnap: shouldRestoreDockedPolls ? 'collapsed' : null,
+        // Two-posture law: the sheet MOTION is the descriptor table's derived 'postureSeat'
+        // rule (no sheetMotion here). The restore intent re-presents a dismissed docked lane
+        // at the ONE declared resurrect posture — which is also the home seat's fallback for
+        // a hidden seat, so intent and motion agree by construction.
+        dockedPollsRestoreSnap: shouldRestoreDockedPolls ? DOCKED_POLLS_RESURRECT_SNAP : null,
       });
     },
-    [routeOverlayTransitionActions, routeSheetSnapSessionActions, routeSheetSnapSessionAuthority]
+    [
+      routeOverlayTransitionActions,
+      routeSheetSnapSessionActions,
+      routeSheetSnapSessionAuthority,
+      routeOverlayRouteCommandRuntime,
+      fullSnapSessionActions,
+    ]
   );
   const handleProfilePress = React.useCallback(() => {
     handleOverlaySelect('profile');

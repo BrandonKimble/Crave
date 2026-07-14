@@ -4,7 +4,6 @@ import type {
   RouteSceneSwitchCameraIntent,
   RouteSceneSwitchChromeVisibilityTarget,
   RouteSceneSwitchDockedPollsRestoreIntent,
-  RouteSceneSwitchHeaderActionModeTarget,
   RouteSceneSwitchMotionPlane,
   RouteSceneSwitchPollsParams,
   RouteSceneSwitchRouteAction,
@@ -19,7 +18,6 @@ import type {
 } from './app-overlay-route-transition-contract';
 import { PRESERVE_ROUTE_SCENE_SWITCH_CAMERA_INTENT } from './app-overlay-route-transition-contract';
 import {
-  resolveAppRouteSceneHeaderActionModeTarget,
   resolveAppRouteSceneChromeVisibilityTarget,
   resolveAppRouteSceneSheetHostSceneKey,
   resolveAppRouteSceneSheetVisibilityTarget,
@@ -30,6 +28,7 @@ import {
   lookupMandateSheetMotionDescriptorRow,
   materializeSheetMotionDescriptorRule,
 } from './app-route-sheet-motion-descriptor-table';
+import { APP_ROOT_NAV_ITEMS } from './app-route-root-nav-items';
 import type { SearchFreezeClassification } from '../../screens/Search/runtime/shared/search-freeze-classification-runtime';
 
 export type AppRouteSceneTransitionPolicyInput = {
@@ -76,7 +75,6 @@ export type AppRouteSceneTransitionPlan = {
   sheetTransitionPlan: RouteSceneSwitchSheetTransitionPlan;
   cameraIntent: RouteSceneSwitchCameraIntent;
   chromeVisibilityTarget: RouteSceneSwitchChromeVisibilityTarget;
-  headerActionModeTarget: RouteSceneSwitchHeaderActionModeTarget;
   freezeClassification: SearchFreezeClassification;
   motionPlanes: readonly RouteSceneSwitchMotionPlane[];
   pollsParams: RouteSceneSwitchPollsParams | null;
@@ -313,8 +311,28 @@ export const resolveDefaultSheetMotionPlan = ({
       ? { kind: 'hide' }
       : { kind: 'snapTo', snap: explicitSnapTarget };
   }
+  const defaultRule = lookupDefaultSheetMotionDescriptorRow(descriptorQuery).motion;
+  // TWO-POSTURE LAW exhaustiveness (root-snap-law.md §Leg 3): a nav-page switch to a TAB
+  // target MUST resolve through a posture seat. Falling to any other rule means a root page
+  // reachable by tab has no `postureSeat` declaration in the scene-policy registry — it would
+  // silently opt out of the law (the old hardcoded-list failure mode). Bark loudly. (Scoped to
+  // the real tab set: the parity oracle sweeps topLevelSwitch across the FULL scene domain,
+  // where child targets legitimately fall to the catch-all.)
+  if (
+    typeof __DEV__ !== 'undefined' &&
+    __DEV__ &&
+    transitionKind === 'topLevelSwitch' &&
+    defaultRule.kind !== 'postureSeat' &&
+    APP_ROOT_NAV_ITEMS.some((item) => item.key === targetSceneKey)
+  ) {
+    console.error(
+      `[snap-law] CONTRACT VIOLATION: topLevelSwitch to '${targetSceneKey}' resolved to ` +
+        `'${defaultRule.kind}' instead of the posture seat — declare the scene's postureSeat ` +
+        `in app-route-scene-policy-registry.ts`
+    );
+  }
   return materializeSheetMotionDescriptorRule({
-    rule: lookupDefaultSheetMotionDescriptorRow(descriptorQuery).motion,
+    rule: defaultRule,
     toSceneKey: targetSceneKey,
     resolveSceneRememberedSnap,
   });
@@ -586,7 +604,6 @@ export const resolveAppRouteSceneTransitionPlan = ({
     sheetTransitionPlan: resolvedSheetTransitionPlan,
     cameraIntent,
     chromeVisibilityTarget: resolvedChromeVisibilityTarget,
-    headerActionModeTarget: resolveAppRouteSceneHeaderActionModeTarget(targetSceneKey),
     freezeClassification: 'none',
     motionPlanes: resolveMotionPlanes({
       sheetIntent: resolvedSheetIntent,

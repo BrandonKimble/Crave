@@ -27,8 +27,12 @@ export enum PollListType {
 export enum PollListTime {
   // no time filter (default)
   all_time = 'all_time',
+  // launched within the last 24 hours (wave-2 §3: Top's period set)
+  today = 'today',
   // launched within the last 7 days
   this_week = 'this_week',
+  // launched within the last 30 days (wave-2 §3)
+  this_month = 'this_month',
 }
 
 export class ListPollsQueryDto {

@@ -33,6 +33,12 @@ export type SearchForegroundLaunchEntitySearchResults = ReturnType<
   typeof useSearchSubmitOwner
 >['launchEntitySearchResults'];
 
+// Wave-4 §3: the list-world half of the listWorld composite (favorites-as-search
+// restored) — driven from the launch-intent runtime like the entity reveal above.
+export type SearchForegroundLaunchListSearchResults = ReturnType<
+  typeof useSearchSubmitOwner
+>['launchListSearchResults'];
+
 export type SearchForegroundHistoryRuntime = Pick<
   ReturnType<typeof useSearchHistory>,
   'updateLocalRecentSearches'
@@ -88,6 +94,7 @@ export type SearchForegroundLaunchIntentRuntimeArgs = {
   consumeActiveMainIntent: () => void;
   openRestaurantProfilePreview: SearchForegroundOpenRestaurantProfilePreview;
   launchEntitySearchResults: SearchForegroundLaunchEntitySearchResults;
+  launchListSearchResults: SearchForegroundLaunchListSearchResults;
   runRestaurantEntitySearch: SearchForegroundRunRestaurantEntitySearch;
   // S-E: the URL-addressable search desires (/q, /s) land through the intent channel.
   submitSearch: SearchForegroundSubmitRuntime['submitSearch'];

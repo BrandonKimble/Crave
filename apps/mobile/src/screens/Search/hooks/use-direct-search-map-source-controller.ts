@@ -818,11 +818,11 @@ type DirectMapSourceControllerResult = {
   handleMarkerPress: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
 };
 
-const buildLabelSourceFeatureDiffKey = (
+export const buildLabelSourceFeatureDiffKey = (
   feature: Feature<Point, RestaurantFeatureProperties>
 ): string => getSearchMapSourceTransportFeature(feature).diffKey;
 
-const buildStableCollisionFeature = (
+export const buildStableCollisionFeature = (
   feature: Feature<Point, RestaurantFeatureProperties>,
   markerKey: string
 ): Feature<Point, RestaurantFeatureProperties> =>
@@ -869,9 +869,12 @@ const buildDirectLabelStores = ({
     // native reports on-screen (the set its promoted top-N is drawn from). When native has not
     // reported a visible set yet (null, pre-projection at first reveal) we build all. (Label DATA
     // family deleted — name labels render as ViewAnnotations from the candidate catalog.)
-    if (onScreenMarkerKeys != null && !onScreenMarkerKeys.has(markerKey)) {
-      return;
-    }
+    // UNGATED (lens-transport red team 2026-07-12): membership mirrors pins exactly —
+    // the on-screen gate was a bridge-payload optimization the fan-out makes free, and
+    // it diverged JS store membership from native's synthesized collection (the
+    // alternation reject seam). Off-screen obstacles are tile-culled (placement-inert);
+    // obstacle gating (0↔1) stays native via the reseed.
+    void onScreenMarkerKeys;
     // COLLISION obstacle: PROMOTION-INDEPENDENT: obstacle gating (0↔1 on the promoted set) is fully
     // NATIVE — applyV5ObstacleReseed reseeds from the catalog coordinate on decide deltas AND
     // re-asserts after every JS collision-source apply — so JS collision residency does NOT need to

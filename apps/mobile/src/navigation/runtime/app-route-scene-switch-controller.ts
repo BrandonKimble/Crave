@@ -47,6 +47,8 @@ import type { RouteSceneVisibilityPolicyRuntime } from './app-route-scene-visibi
 import {
   arePresentationFramesEqual,
   EMPTY_PRESENTATION_FRAME,
+  resolveHeaderNavAction,
+  resolveIsChildSceneRevealed,
   resolvePresentationLaneKind,
   resolvePresentedSceneKey,
   resolveSupersededOutgoingEntryId,
@@ -55,6 +57,10 @@ import {
   type PresentationLaneInputs,
 } from './app-route-presentation-frame-contract';
 import { resolveActiveEntryIdForScene } from './app-route-scene-entry-mounts';
+import {
+  isEditSessionLiveOnScene,
+  subscribeEditSessionLiveness,
+} from './edit-session-liveness-contract';
 
 export type RouteSceneSwitchTransitionState = {
   activeSceneKey: OverlayKey | null;
@@ -398,7 +404,6 @@ const resolveRouteSceneSwitchNativeOverlayDispatchSelector = (
     state.activeSceneKey != null || state.transitionPhase !== 'idle',
     state.transitionContract?.committedRootRouteKey ?? null,
     state.transitionContract?.targetSceneKey ?? null,
-    state.transitionContract?.headerActionModeTarget ?? null,
     state.activeDockedPollsRestoreIntent,
     state.routeState.activeOverlayRoute,
     state.routeState.overlayRouteStack,
@@ -441,7 +446,6 @@ const createTransitionContract = ({
   sheetTransitionPlan: transitionPlan.sheetTransitionPlan,
   cameraIntent: transitionPlan.cameraIntent,
   chromeVisibilityTarget: transitionPlan.chromeVisibilityTarget,
-  headerActionModeTarget: transitionPlan.headerActionModeTarget,
   freezeClassification: transitionPlan.freezeClassification,
   motionPlanes: transitionPlan.motionPlanes,
   pollsParams: transitionPlan.pollsParams,
@@ -547,6 +551,15 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   private presentationLaneInputsProvider: (() => PresentationLaneInputs) | null = null;
 
   private presentationLaneInputsUnsubscribe: (() => void) | null = null;
+
+  // Leg 9 — edit-session liveness is a chrome-clock derivation input that mutates WITHOUT a
+  // switch (entering/exiting edit on the presented scene), so the controller subscribes to the
+  // liveness contract and RE-MINTS the frame on change — same one-writer law as the lane
+  // inputs (§9.1 R1). The contract module is dependency-free, so no wiring-layer indirection
+  // is needed; the session primitive publishes, this subscription consumes.
+  private editSessionLivenessUnsubscribe: (() => void) | null = subscribeEditSessionLiveness(() => {
+    this.remintPresentationFrame();
+  });
 
   private readonly listeners = new Set<RouteSceneSwitchTransitionListenerEntry>();
 
@@ -719,6 +732,8 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     this.presentationLaneInputsUnsubscribe?.();
     this.presentationLaneInputsUnsubscribe = null;
     this.presentationLaneInputsProvider = null;
+    this.editSessionLivenessUnsubscribe?.();
+    this.editSessionLivenessUnsubscribe = null;
     this.hasPendingPresentationFrameFlush = false;
   }
 
@@ -863,6 +878,20 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       activeEntryId,
       presentedEntryId,
       outgoingEntryId,
+      // ─── PF CHROME CLOCK (leg 6): nav-out + headerNavAction ride the frame so header
+      // title/strip, nav-out start and plus↔X rotation start share ONE commit. Nav-out keys
+      // on the top-of-stack ROUTE entry (parity with the deleted nav-out store's writer);
+      // the header action keys on the PRESENTED scene (docked-polls lane shows the polls plus).
+      // Leg 9: edit-session liveness is a derivation input — a live session makes its scene a
+      // child page (nav-out + close) wherever it lives; the liveness subscription re-mints.
+      isChildSceneRevealed: resolveIsChildSceneRevealed(
+        nextState.routeState.activeOverlayRoute.key,
+        isEditSessionLiveOnScene(nextState.routeState.activeOverlayRoute.key)
+      ),
+      headerNavAction: resolveHeaderNavAction(
+        presentedSceneKey,
+        isEditSessionLiveOnScene(presentedSceneKey)
+      ),
     };
   }
 

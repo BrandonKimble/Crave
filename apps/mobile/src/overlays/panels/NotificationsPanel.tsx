@@ -1,11 +1,12 @@
 import React from 'react';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import { ActivityIndicator, Image, Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components';
 import { notificationsService, type NotificationFeedItem } from '../../services/notifications';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
+import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
 
 // ─── notifications — the REAL page body (trigger-nav pages; product/notifications.md) ───────
 // The in-app feed over GET /notifications/feed. Opening the page marks the feed read (the
@@ -89,31 +90,14 @@ export const NotificationsPanelBody = React.memo((_props: MountedSceneBodyProps)
     [pushRoute]
   );
 
-  if (loadState.kind === 'loading') {
+  // Load-failure law (wave-4 §1): shared modal + pop; no page-local retry.
+  if (loadState.kind === 'loading' || loadState.kind === 'failed') {
     return (
-      <View style={styles.stateBody} testID="notifications-loading">
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
-  if (loadState.kind === 'failed') {
-    return (
-      <View style={styles.stateBody} testID="notifications-failed">
-        <Text variant="body" style={styles.stateText}>
-          We couldn’t load your notifications.
-        </Text>
-        <Pressable
-          onPress={load}
-          accessibilityRole="button"
-          accessibilityLabel="Retry loading notifications"
-          testID="notifications-retry"
-          style={styles.retryButton}
-        >
-          <Text variant="body" weight="semibold" style={styles.retryText}>
-            Retry
-          </Text>
-        </Pressable>
+      <View testID={loadState.kind === 'failed' ? 'notifications-failed' : 'notifications-loading'}>
+        <SceneBodyReadyGate
+          pending={loadState.kind === 'loading'}
+          failure={{ isError: loadState.kind === 'failed', what: 'your notifications' }}
+        />
       </View>
     );
   }
@@ -168,15 +152,6 @@ const styles = StyleSheet.create({
   stateText: {
     color: '#0f172a',
     textAlign: 'center',
-  },
-  retryButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#f1f5f9',
-  },
-  retryText: {
-    color: '#0f172a',
   },
   row: {
     flexDirection: 'row',

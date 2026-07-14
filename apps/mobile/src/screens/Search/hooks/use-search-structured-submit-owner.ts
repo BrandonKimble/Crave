@@ -71,6 +71,73 @@ export const useSearchStructuredSubmitOwner = ({
     [logSearchPhase, resetMapMoveFlag, searchRuntimeBus, viewportBoundsService]
   );
 
+  // Wave-4 §3 (favorites-as-search RESTORED): a list open IS a list-identity tuple
+  // write — the reconciler classifies it (list identities derive preserveSheetState,
+  // so the pushed listDetail child keeps the sheet; no results-scene takeover) and
+  // the resolver fetches by listId (identity-fetched membership — the committed
+  // bounds are only the camera's starting datum, NEVER a membership filter).
+  const launchListSearchResults = React.useCallback(
+    async (params: {
+      listId: string;
+      listType: FavoriteListType;
+      displayTitle: string;
+      /** The list owner when opened from ANOTHER user's surface — identity-relevant
+       *  (scopes virtual-All unions / viewer-role resolution). */
+      targetUserId?: string | null;
+      /** RT-18 access material for shared reads (slug opens) — never identity. */
+      shareSlug?: string | null;
+      /** Strip 'world' flip: a re-slice carries the new slice; absent = initial enter
+       *  (server defaults). Its presence flips the write cause to list_reslice, which
+       *  the reconciler classifies as a variant_rerun (same identity, new filters). */
+      slice?: {
+        sort?: 'custom' | 'best' | 'recent';
+        openNow?: boolean;
+        priceLevels?: number[];
+        marketKey?: string | null;
+      };
+    }): Promise<void> => {
+      const isReslice = params.slice != null;
+      logSearchPhase('launchListSearchResults:start', { reset: !isReslice });
+      // A re-slice keeps the user's map context (the world is bounds-independent; the
+      // map re-slice is driven by membership, not a fresh viewport). Only a fresh enter
+      // resets the move flag.
+      if (!isReslice) {
+        resetMapMoveFlag();
+      }
+      writeSearchDesiredTuple(
+        searchRuntimeBus,
+        {
+          queryIdentity: {
+            kind: 'list',
+            listId: params.listId,
+            listType: params.listType === 'dish' ? 'dish' : 'restaurant',
+            displayTitle: params.displayTitle,
+            targetUserId: params.targetUserId ?? null,
+            shareSlug: params.shareSlug ?? null,
+          },
+          tab: params.listType === 'dish' ? 'dishes' : 'restaurants',
+          filterVariant: {
+            includeSimilar: false,
+            openNow: params.slice?.openNow ?? false,
+            priceLevels: params.slice?.priceLevels ?? [],
+            rising: false,
+            ...(params.slice?.sort != null ? { listSort: params.slice.sort } : {}),
+            ...(params.slice?.marketKey != null ? { marketKey: params.slice.marketKey } : {}),
+          },
+          // A list world is BOUNDS-INDEPENDENT (the fetch arm is "no LLM, no
+          // bounds"; the camera derives from the members via fitAll). Carrying
+          // the live viewport here only polluted the worldKey — the same list
+          // opened from different viewports minted different worlds (junk
+          // continental bboxes in the key, sim-proven 2026-07-13) and defeated
+          // the world cache. null ⇒ boundsKey 'none', one world per list+filters.
+          committedBounds: null,
+        },
+        isReslice ? 'list_reslice' : 'favorites_launch'
+      );
+    },
+    [logSearchPhase, resetMapMoveFlag, searchRuntimeBus, viewportBoundsService]
+  );
+
   const submitViewportShortcut = React.useCallback(
     async (targetTab: SegmentValue, submittedLabel: string, options: RunBestHereOptions) => {
       logSearchPhase('runBestHere:start', { reset: true });
@@ -115,7 +182,8 @@ export const useSearchStructuredSubmitOwner = ({
     () => ({
       runRestaurantEntitySearch,
       submitViewportShortcut,
+      launchListSearchResults,
     }),
-    [submitViewportShortcut, runRestaurantEntitySearch]
+    [submitViewportShortcut, runRestaurantEntitySearch, launchListSearchResults]
   );
 };

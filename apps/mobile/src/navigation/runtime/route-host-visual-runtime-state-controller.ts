@@ -30,7 +30,6 @@ const areRouteHostVisualRuntimesEqual = (
     left.navBarHeight === right.navBarHeight &&
     left.navBarTop === right.navBarTop &&
     left.bottomNavHiddenTranslateY === right.bottomNavHiddenTranslateY &&
-    left.overlayHeaderActionProgress === right.overlayHeaderActionProgress &&
     left.searchSurfacePageBundleProgress === right.searchSurfacePageBundleProgress &&
     left.navBarCutoutProgress === right.navBarCutoutProgress &&
     left.navBarCutoutHidingProgress === right.navBarCutoutHidingProgress &&

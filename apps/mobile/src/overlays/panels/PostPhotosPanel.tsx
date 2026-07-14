@@ -1,20 +1,11 @@
 import React from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
-import { X as LucideX } from 'lucide-react-native';
+import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 import type { ImagePickerAsset } from 'expo-image-picker';
 
 import { Text } from '../../components';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import { overlaySheetStyles } from '../overlaySheetStyles';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
@@ -25,6 +16,7 @@ import { searchService } from '../../services/search';
 import { autocompleteService } from '../../services/autocomplete';
 import { openPhotoSourceForAssets } from '../PostPhotosFunnelHost';
 import type { FoodResult } from '../../types';
+import SquircleSpinner from '../../components/SquircleSpinner';
 
 // ─── postPhotos — THE post page (W2; plans/page-registry.md §7.4) ────────────────────────────
 // The funnel terminal: opens AFTER the 2-option modal + picker/camera produced assets (the
@@ -134,7 +126,9 @@ const RestaurantPickInline = ({
         testID="post-photos-restaurant-input"
       />
       {trimmed.length >= 2 && suggestionsQuery.isPending ? (
-        <ActivityIndicator style={styles.dishListSpinner} />
+        <View style={styles.dishListSpinner}>
+          <SquircleSpinner size={18} color="#94a3b8" />
+        </View>
       ) : null}
       {matches.map((match) => (
         <Pressable
@@ -221,7 +215,9 @@ const DishAssignList = ({
         testID="post-photos-dish-filter"
       />
       {dishesQuery.isPending ? (
-        <ActivityIndicator style={styles.dishListSpinner} />
+        <View style={styles.dishListSpinner}>
+          <SquircleSpinner size={18} color="#94a3b8" />
+        </View>
       ) : dishesQuery.isError ? (
         <Text variant="caption" style={styles.dishListEmptyText}>
           Couldn’t load this restaurant’s dishes.
@@ -692,7 +688,7 @@ export const PostPhotosPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         style={[styles.postButton, postDisabled && styles.postButtonBusy]}
       >
         {isPosting ? (
-          <ActivityIndicator size="small" color="#ffffff" />
+          <SquircleSpinner size={18} color="#ffffff" />
         ) : (
           <Text variant="body" weight="semibold" style={styles.postButtonText}>
             Post {totalCount === 1 ? '1 photo' : `${totalCount} photos`}
@@ -721,27 +717,10 @@ const PostPhotosPersistentHeaderTitle = React.memo(() => (
 ));
 PostPhotosPersistentHeaderTitle.displayName = 'PostPhotosPersistentHeaderTitle';
 
-const PostPhotosPersistentHeaderAction = React.memo(() => {
-  const { closeActiveRoute } = useAppOverlayRouteController();
-  return (
-    <Pressable
-      onPress={closeActiveRoute}
-      accessibilityRole="button"
-      accessibilityLabel="Close post"
-      style={overlaySheetStyles.closeButton}
-      hitSlop={8}
-    >
-      <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
-        <LucideX size={20} color="#000000" strokeWidth={2.5} />
-      </View>
-    </Pressable>
-  );
-});
-PostPhotosPersistentHeaderAction.displayName = 'PostPhotosPersistentHeaderAction';
-
+// Leg 6 (§4 HeaderNavAction): the per-scene close factory is DELETED — the persistent header
+// host owns the ONE plus↔X control; children get the X + the canonical close by role derivation.
 registerPersistentHeaderDescriptor('postPhotos', {
   Title: PostPhotosPersistentHeaderTitle,
-  Action: PostPhotosPersistentHeaderAction,
 });
 
 const styles = StyleSheet.create({

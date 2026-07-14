@@ -60,6 +60,14 @@ export const useSearchSessionOriginCameraRuntime = ({
           lastCapturedBoundsRef.current = null;
           if (originCamera != null) {
             queueMicrotask(() => {
+              // The origin glide is the final word ONLY while the session is still
+              // ended. A new session can enter between the exit and this microtask
+              // (dismiss list A → immediately open list B): the new world owns the
+              // camera and the stale origin must not stomp its fit (sim-proven
+              // 2026-07-13 — the Taco-crawl fitAll froze mid-flight under this write).
+              if (searchRuntimeBus.getState().desiredTuple.queryIdentity.kind !== 'idle') {
+                return;
+              }
               commitCameraViewport(
                 { center: originCamera.center, zoom: originCamera.zoom, padding: null },
                 { allowDuringGesture: true }

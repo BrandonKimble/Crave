@@ -101,7 +101,6 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
   middleSnap,
   sheetTranslateY,
 }: Omit<UseAppRouteSceneChromeTransitionRuntimeArgs, 'transitionProgressOverride'>) => {
-  const overlayHeaderActionProgress = useSharedValue(0);
   const overlayChromeTransitionProgress = useSharedValue(1);
   const overlayChromeVisibilityProgress = useSharedValue(1);
   const overlayBackdropDimProgress = useSharedValue(0);
@@ -153,7 +152,6 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
 
   return React.useMemo(
     () => ({
-      overlayHeaderActionProgress,
       overlayChromeTransitionProgress,
       overlayChromeVisibilityProgress,
       overlayBackdropDimProgress,
@@ -168,7 +166,6 @@ export const useAppRouteSceneChromeTransitionRuntime = ({
       overlayBackdropDimProgress,
       overlayChromeTransitionProgress,
       overlayChromeVisibilityProgress,
-      overlayHeaderActionProgress,
       routeChromeMotionProgress,
       overlayBackdropSheetTopY,
       searchBarInputAnimatedStyle,

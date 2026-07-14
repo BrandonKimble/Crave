@@ -30,7 +30,7 @@ Lists, items, reordering, sharing, and list detail are built — and the registr
 ## Save flow & list management
 
 - **Save Sheet** — a bottom sheet showing a list grid plus a "New list" placeholder tile that expands into a name / description / public-private / create panel. The same panel is reused for editing a list from the per-list ellipsis menu (Edit, Share, Make Private/Public, Delete).
-- **List configuration (the ⋯ ellipsis, Spotify-playlist-like)** — inside a list, an ellipsis opens the list's configuration surface: make public/private, edit name/details, share, and (future) download for offline. Modeled on Spotify's playlist config, including possibly its two distinct knobs: _private_ (only you and invitees can see it) vs _remove from profile_ (public by link but not displayed on your profile) — whether we keep that distinction or collapse to one toggle is still to decide. Expect this cluster to grow; the list page is the app's most involved surface.
+- **List configuration (the ⋯ ellipsis, Spotify-playlist-like)** — inside a list, an ellipsis opens the list's configuration surface: make public/private, edit name/details, share, and (future) download for offline. Modeled on Spotify's playlist config, collapsed to ONE visibility toggle (ratified 2026-07-12): our _private_ IS Spotify's "remove from profile" — unlisted but still viewable by link holders and invitees; a true lock is revoking those grants individually. Expect this cluster to grow; the list page is the app's most involved surface.
 - **Add places from inside a list** — an "add places" button opens search mode in **pick mode**: selecting a result adds it to the list and returns you to the list — no search flow, no page switch. Same search UI, different selection consequence.
 - **Offline lists (future)** — download a list (and its map region — see `map.md`) for offline use, e.g. travel.
 - **Reordering** — both lists and items within a list are manually reorderable by position.
@@ -86,12 +86,23 @@ Lists are a primary growth surface. A public list with a slug is a shareable art
 
 **Custom ranking is the social/personalization axis.** The Crave Score is crowd consensus; a user's _custom-ranked_ list is their personal opinion laid over it — the second axis the app otherwise lacks, and the seed of the friend graph. A ranked "my top 10 tacos in Austin" is a far more shareable artifact than an unordered save pile, and following a friend means browsing their ranked lists for trusted, taste-curated picks rather than only the crowd. When viewing anyone's custom-ranked list, the _order_ is their opinion while each row still shows the objective Crave Score dot — "their take vs. the canonical truth," side by side — and personal rank is always visually distinct from the Crave Score so the two never blur. (Friend-graph features — following, friends' picks on a place, your-circle's-consensus — live in `profile.md`.)
 
-- **Public / private visibility** — public lists show on the owner's profile "Lists" tab and are reachable by share slug; private lists are owner-only. Lists are the user's curatorial identity.
+- **Public / private visibility — OWNER CANON (ratified 2026-07-12)**: **visibility controls
+  DISCOVERY, never ACCESS.** One binary: PUBLIC = on the owner's profile "Lists" tab,
+  discoverable; PRIVATE = off the profile, unlisted. Access is a separate ledger entirely:
+  anyone holding the share link or a collaborator seat keeps access across visibility flips,
+  until the owner revokes them individually via the collaborator/share modal. The link's
+  view-vs-collaborate mode is its own orthogonal toggle. "Private" = unlisted, not locked; a
+  true lock = revoking everyone in the modal. Sharing never mutates visibility (`enableShare`
+  only mints/returns the link); flipping private only removes the list from the profile.
+  Visibility is a per-list SETTING, not a consumption slice (no Bookmarks visibility filter
+  chip). Lists are the user's curatorial identity. API conforms as of 2026-07-12 (leg 6):
+  profile auto-appear/disappear via `listPublicForUser`; access paths never consult
+  visibility.
 - **Shareable via slug** — a short URL-safe slug per list with a share toggle and rotate/revoke. App deep link plus universal link; if the app isn't installed, a web landing with a CTA.
 - **Share-event tracking** — created/opened/copied/revoked events to measure list virality.
 - **"Share your bookmarks" infographic** — a branded infographic of a user's top 5–10 saved dish/restaurant pairs for social posting.
 - **Share to community** — a pre-filled post template referencing the saved item and community.
-- **Collaborative lists (SHIPPED W1, registry run — invite v1 = copy-link, upgraded to the universal share modal in W3)** — collaborators have full owner parity (add/remove/reorder/invite); invite rides the universal share modal ("invite as collaborator" checkbox); collaborators can Leave; owner can kick (swipe/ellipsis in the collaborator modal); owner making the list private removes all collaborators and kills all share links (dead link → "this list is private" state). The list's stacked-avatars chip leads with a plus-circle add tile.
+- **Collaborative lists (SHIPPED W1, registry run — invite v1 = copy-link, upgraded to the universal share modal in W3)** — collaborators have full owner parity (add/remove/reorder/invite); invite rides the universal share modal ("invite as collaborator" checkbox); collaborators can Leave; owner can kick (swipe/ellipsis in the collaborator modal); visibility flips never touch collaborator seats or share links — revocation is individual (kick per seat, turn sharing off per link; a revoked link shows the "no longer shared" state). The list's stacked-avatars chip leads with a plus-circle add tile.
 
 ## Alerts on saved items
 
@@ -107,12 +118,9 @@ The area is "Favorites," not "Bookmarks." Screen title leans on the list framing
 - Is there a free cap on number of lists (with unlimited as a Crave+ unlock), or are lists uncapped for everyone?
 - What is the default filter set for the auto-"All" list on open (e.g. open-now off, all source lists included, sorted by Crave Score desc)?
 - Final wording for the recency sorts ("Recently added" for items, "Recently updated" for lists) — working labels, not locked.
-- Should sharing a private list auto-flip it to public, prompt, or block?
 - For dish-list items saved without an existing connection: create a connection or block the save?
 - Do per-item notes get shared when a public list is shared?
 - Is "map all saved" its own entry point or a mode of the All list?
-- List privacy semantics: keep Spotify's _private_ vs _remove-from-profile_ as two separate knobs, or collapse to one public/private toggle?
-- The "post to profile" analog: how do lists (the poll-posting analog) land on the profile — auto via public visibility (the Spotify model, current lean) or an explicit publish step?
 
 ## Save sheet toolkit + auto-created lists (current — SHIPPED W1, registry run)
 

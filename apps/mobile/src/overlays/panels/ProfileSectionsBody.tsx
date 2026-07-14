@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Feather } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,6 +22,8 @@ import { favoriteListKeys } from '../../hooks/use-favorite-lists';
 import { photosService, type FoodLogGroupDto } from '../../services/photos';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
+import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
+import SquircleSpinner from '../../components/SquircleSpinner';
 
 // ─── ProfileSectionsBody — THE shared segmented-page machine ────────────────
 // The W3 §7.3 four-section body (Polls / Comments / Lists / Photos) rendered by
@@ -65,9 +67,12 @@ const SectionEmpty = ({ text, testID }: { text: string; testID: string }) => (
   </View>
 );
 
+// Leg 6 spinner sweep: profile's section slices load under an instant page shell — inline
+// squircle (the sanctioned inline/button affordance); the page-level pending state is the
+// declared foundation skeleton via the shared skeleton leg.
 const SectionLoading = () => (
   <View style={styles.sectionEmpty}>
-    <ActivityIndicator />
+    <SquircleSpinner size={18} color="#94a3b8" />
   </View>
 );
 
@@ -182,6 +187,7 @@ export type ProfileSectionsBodyProps = {
 export const ProfileSectionsBody = React.memo(
   ({ userId, isOwnProfile, enabled, activeSection, onSelectSection }: ProfileSectionsBodyProps) => {
     const { pushRoute } = useAppOverlayRouteController();
+    const executeEntityRefAction = useEntityRefActionExecutor();
     const queryClient = useQueryClient();
 
     // Section data (lazy per section). Query keys are userId-scoped, so the root
@@ -300,15 +306,13 @@ export const ProfileSectionsBody = React.memo(
             onPress: () => handleShareList(list),
           },
         ];
-        // §8.7: the four system defaults are permanent — no Delete offered.
-        if (list.systemKind == null) {
-          actions.push({
-            label: 'Delete list',
-            style: 'destructive',
-            testID: 'user-profile-list-delete',
-            onPress: () => handleDeleteList(list),
-          });
-        }
+        // Wave-2 §2: system defaults are REGULAR lists — deletable like any other.
+        actions.push({
+          label: 'Delete list',
+          style: 'destructive',
+          testID: 'user-profile-list-delete',
+          onPress: () => handleDeleteList(list),
+        });
         actions.push({ label: 'Cancel', style: 'cancel' });
         showAppModal({ title: list.name, actions });
       },
@@ -316,15 +320,28 @@ export const ProfileSectionsBody = React.memo(
     );
 
     const openListTile = (tile: GalleryTile) => {
-      // The W1 listDetail page handles both roles (targetUserId scopes virtual
-      // All unions; concrete public lists resolve viewer role there).
-      const listId =
-        tile.kind === 'all'
-          ? tile.listType === 'restaurant'
-            ? 'all:restaurants'
-            : 'all:dishes'
-          : tile.list.listId;
-      pushRoute('listDetail', { listId, targetUserId: userId });
+      // Wave-4 §3 (audit mouth #3, the a48e96ef-era wiring restored): profile list
+      // taps route through THE policy — the listWorld composite (push + the list's
+      // search world). targetUserId scopes virtual-All unions + viewer role.
+      const isAll = tile.kind === 'all';
+      const listType = isAll ? tile.listType : tile.list.listType;
+      const listId = isAll
+        ? tile.listType === 'restaurant'
+          ? 'all:restaurants'
+          : 'all:dishes'
+        : tile.list.listId;
+      const label = isAll
+        ? tile.listType === 'restaurant'
+          ? 'All restaurants'
+          : 'All dishes'
+        : tile.list.name;
+      executeEntityRefAction({
+        entityId: listId,
+        entityType: 'list',
+        label,
+        listType,
+        targetUserId: userId,
+      });
     };
 
     const renderSectionBody = () => {

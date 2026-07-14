@@ -6,10 +6,12 @@ import type { ProfileSceneHeaderProps } from './profile-panel-runtime-contract';
 export const useProfilePanelIdentityRuntime = ({
   onOpenSettings,
   onOpenMessages,
+  onOpenFollowList,
   profile,
 }: {
   onOpenSettings: () => void;
   onOpenMessages: () => void;
+  onOpenFollowList: (mode: 'followers' | 'following') => void;
   profile: UserProfile | undefined;
 }): ProfileSceneHeaderProps => {
   const displayName = profile?.displayName?.trim() || profile?.username || 'Crave Explorer';
@@ -45,11 +47,13 @@ export const useProfilePanelIdentityRuntime = ({
       identityResolved,
       onOpenSettings,
       onOpenMessages,
+      onOpenFollowList,
     }),
     [
       displayName,
       identityResolved,
       initials,
+      onOpenFollowList,
       onOpenMessages,
       onOpenSettings,
       profile?.avatarUrl,

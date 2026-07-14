@@ -64,10 +64,13 @@ export class PhotoReadService {
   /** Batched STRIP lookup for result cards (cards always carry a
    *  horizontal strip — never a single slot): the first STRIP_SIZE photos
    *  per entity, quality-floor photos leading, then recency. Returns maps
-   *  keyed by restaurantId / connectionId plus total counts. */
+   *  keyed by restaurantId / connectionId plus total counts.
+   *  `userId` narrows the strips to ONE uploader's photos (the "Use your
+   *  photos" tile-gallery law) — same ordering policy, restricted pool. */
   async stripPhotos(params: {
     restaurantIds?: string[];
     connectionIds?: string[];
+    userId?: string;
   }): Promise<{
     byRestaurant: Map<string, PhotoStripItemDto[]>;
     byConnection: Map<string, PhotoStripItemDto[]>;
@@ -81,13 +84,16 @@ export class PhotoReadService {
 
     if (params.connectionIds?.length) {
       const [rows, counts] = await Promise.all([
-        this.windowedStrip('connection_id', params.connectionIds),
+        this.windowedStrip('connection_id', params.connectionIds, {
+          userId: params.userId,
+        }),
         this.prisma.photo.groupBy({
           by: ['connectionId'],
           where: {
             connectionId: { in: params.connectionIds },
             status: PhotoStatus.live,
             visibility: PhotoVisibility.public,
+            ...(params.userId ? { userId: params.userId } : {}),
           },
           _count: { photoId: true },
         }),
@@ -104,13 +110,16 @@ export class PhotoReadService {
     }
     if (params.restaurantIds?.length) {
       const [rows, counts] = await Promise.all([
-        this.windowedStrip('restaurant_id', params.restaurantIds),
+        this.windowedStrip('restaurant_id', params.restaurantIds, {
+          userId: params.userId,
+        }),
         this.prisma.photo.groupBy({
           by: ['restaurantId'],
           where: {
             restaurantId: { in: params.restaurantIds },
             status: PhotoStatus.live,
             visibility: PhotoVisibility.public,
+            ...(params.userId ? { userId: params.userId } : {}),
           },
           _count: { photoId: true },
         }),
@@ -178,9 +187,13 @@ export class PhotoReadService {
   private async windowedStrip(
     keyColumn: 'restaurant_id' | 'connection_id',
     ids: string[],
-    perKey = STRIP_SIZE,
+    options: { perKey?: number; userId?: string } = {},
   ): Promise<PhotoStripRow[]> {
+    const perKey = options.perKey ?? STRIP_SIZE;
     const column = Prisma.raw(keyColumn);
+    const uploaderFilter = options.userId
+      ? Prisma.sql`AND user_id = ${options.userId}::uuid`
+      : Prisma.empty;
     const rows = await this.prisma.$queryRaw<RawStripRow[]>`
       SELECT photo_id, user_id, restaurant_id, connection_id, public_id,
              caption, taken_at, uploaded_at, focus_score
@@ -193,6 +206,7 @@ export class PhotoReadService {
         FROM photos
         WHERE ${column} = ANY(${ids}::uuid[])
           AND status = 'live' AND visibility = 'public'
+          ${uploaderFilter}
       ) windowed
       WHERE rn <= ${perKey}
       ORDER BY rn ASC

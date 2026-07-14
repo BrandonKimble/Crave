@@ -1,6 +1,6 @@
 import React from 'react';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Text } from '../../components';
 import { usersService, type FollowListUser } from '../../services/users';
@@ -8,6 +8,7 @@ import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useQuery } from '@tanstack/react-query';
 import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
+import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
 
 // ─── followList — the REAL page body (trigger-nav pages) ────────────────────────────────────
 // Replaces the S-B drill-in practice body. Rows push userProfile — the same-key nesting loop
@@ -51,33 +52,16 @@ export const FollowListPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         ? usersService.listFollowing(ownerUserId as string)
         : usersService.listFollowers(ownerUserId as string),
   });
-  const load = listQuery.refetch;
-
-  if (ownerUserId != null && listQuery.isPending) {
+  // Load-failure law (wave-4 §1): shared modal + pop; no page-local retry.
+  const isLoadFailed =
+    ownerUserId == null || listQuery.isError || (!listQuery.isPending && listQuery.data == null);
+  if ((ownerUserId != null && listQuery.isPending) || isLoadFailed || listQuery.data == null) {
     return (
-      <View style={styles.stateBody} testID="follow-list-loading">
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
-  if (ownerUserId == null || listQuery.isError || listQuery.data == null) {
-    return (
-      <View style={styles.stateBody} testID="follow-list-failed">
-        <Text variant="body" style={styles.stateText}>
-          We couldn’t load this list.
-        </Text>
-        <Pressable
-          onPress={() => void load()}
-          accessibilityRole="button"
-          accessibilityLabel="Retry loading list"
-          testID="follow-list-retry"
-          style={styles.retryButton}
-        >
-          <Text variant="body" weight="semibold" style={styles.retryText}>
-            Retry
-          </Text>
-        </Pressable>
+      <View testID={isLoadFailed ? 'follow-list-failed' : 'follow-list-loading'}>
+        <SceneBodyReadyGate
+          pending={ownerUserId != null && listQuery.isPending}
+          failure={{ isError: isLoadFailed, what: 'this list' }}
+        />
       </View>
     );
   }
@@ -134,15 +118,6 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   stateText: {
-    color: '#0f172a',
-  },
-  retryButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#f1f5f9',
-  },
-  retryText: {
     color: '#0f172a',
   },
   contextLabel: {

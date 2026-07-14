@@ -3,8 +3,6 @@ import { Dimensions, Pressable, StyleSheet, TextInput, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 
-import { X as LucideX } from 'lucide-react-native';
-
 import { announceFailureIfOnline, showAppModal, Text } from '../../components';
 import {
   checkPollDuplicate,
@@ -432,29 +430,10 @@ const PollCreationPersistentHeaderTitle = React.memo(() => {
 });
 PollCreationPersistentHeaderTitle.displayName = 'PollCreationPersistentHeaderTitle';
 
-const PollCreationPersistentHeaderAction = React.memo(() => {
-  // Close re-sources the exact action the inline header used —
-  // routeOverlayRouteCommandRuntime.closeActiveRoute — via the app-wide route controller hook.
-  const { closeActiveRoute } = useAppOverlayRouteController();
-  return (
-    <Pressable
-      onPress={closeActiveRoute}
-      accessibilityRole="button"
-      accessibilityLabel="Close poll creation"
-      style={overlaySheetStyles.closeButton}
-      hitSlop={8}
-    >
-      <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
-        <LucideX size={20} color="#000000" strokeWidth={2.5} />
-      </View>
-    </Pressable>
-  );
-});
-PollCreationPersistentHeaderAction.displayName = 'PollCreationPersistentHeaderAction';
-
+// Leg 6 (§4 HeaderNavAction): the per-scene close factory is DELETED — the persistent header
+// host owns the ONE plus↔X control; children get the X + the canonical close by role derivation.
 registerPersistentHeaderDescriptor('pollCreation', {
   Title: PollCreationPersistentHeaderTitle,
-  Action: PollCreationPersistentHeaderAction,
 });
 
 const styles = StyleSheet.create({

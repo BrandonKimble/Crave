@@ -48,6 +48,7 @@ function makeService(lists: any[], cityRows: any[] = []) {
     new FavoriteListAccessPolicy(prisma, blocks as never),
     new ListResultsAssembler({} as never),
     new FavoriteListMapper(prisma, logger),
+    { loadTileImages: () => Promise.resolve(new Map()) } as never,
   );
   return { prisma, service };
 }

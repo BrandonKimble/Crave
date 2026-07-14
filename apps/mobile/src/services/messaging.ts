@@ -19,6 +19,9 @@ export type SharePackagePreview =
       /** comment kind only: the parent poll — tap destination is
        *  pollDetail{pollId, commentAnchorId: id}. */
       pollId?: string;
+      /** list kind only: the list's side — present ⇒ the tap runs the full
+       *  list WORLD (favorites-as-search). */
+      listType?: 'restaurant' | 'dish';
     };
 
 export interface DmMessage {

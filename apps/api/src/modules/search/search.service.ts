@@ -56,6 +56,7 @@ import {
 } from './utils/search-debug';
 import {
   buildOperatingMetadata,
+  buildStructuredWeeklyHours,
   evaluateOperatingStatus,
 } from './utils/restaurant-status';
 
@@ -1548,6 +1549,7 @@ export class SearchService {
             hours: true,
             utcOffsetMinutes: true,
             timeZone: true,
+            businessStatus: true,
             isPrimary: true,
             lastPolledAt: true,
             createdAt: true,
@@ -1635,6 +1637,10 @@ export class SearchService {
         utcOffsetMinutes: toOptionalNumber(location.utcOffsetMinutes),
         timeZone: location.timeZone ?? null,
         operatingStatus,
+        structuredHours: buildStructuredWeeklyHours(
+          metadata,
+          location.businessStatus,
+        ),
         isPrimary: Boolean(location.isPrimary),
         lastPolledAt: location.lastPolledAt?.toISOString() ?? null,
         createdAt: location.createdAt?.toISOString() ?? null,
@@ -1679,6 +1685,7 @@ export class SearchService {
         operatingStatus: fallbackMetadata
           ? evaluateOperatingStatus(fallbackMetadata, referenceDate)
           : null,
+        structuredHours: buildStructuredWeeklyHours(fallbackMetadata, null),
         isPrimary: true,
         lastPolledAt: null,
         createdAt: null,
@@ -1691,6 +1698,21 @@ export class SearchService {
       null;
     const parsedPriceLevel = toOptionalNumber(restaurant.priceLevel);
     const priceDetails = describePriceLevel(parsedPriceLevel);
+    // Profile revamp (Google-parity): the metadata is already selected — surface the REAL
+    // Google price range ("$10–20") and primary-type category ("Brunch restaurant") the
+    // profile previously dropped.
+    const restaurantMeta = asRecord(restaurant.restaurantMetadata);
+    const priceRangeMeta = asRecord(restaurantMeta?.priceRange);
+    const priceRangeText =
+      typeof priceRangeMeta?.formattedText === 'string' &&
+      priceRangeMeta.formattedText.trim()
+        ? priceRangeMeta.formattedText.trim()
+        : null;
+    const categoryLabel =
+      typeof restaurantMeta?.primaryTypeDisplayName === 'string' &&
+      restaurantMeta.primaryTypeDisplayName.trim()
+        ? restaurantMeta.primaryTypeDisplayName.trim()
+        : null;
     const topFood = dishes.slice(0, 10).map((dish) => ({
       connectionId: dish.connectionId,
       foodId: dish.foodId,
@@ -1731,6 +1753,8 @@ export class SearchService {
         priceLevel: parsedPriceLevel ?? null,
         priceSymbol: priceDetails.symbol,
         priceText: priceDetails.text,
+        priceRangeText,
+        categoryLabel,
         priceLevelUpdatedAt:
           restaurant.priceLevelUpdatedAt?.toISOString() ?? null,
         topFood,

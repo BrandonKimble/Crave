@@ -1,7 +1,4 @@
-import type {
-  SearchOverlaySheetSnap,
-  TabOverlaySnap,
-} from '../../overlays/searchRouteSessionTypes';
+import type { TabOverlaySnap } from '../../overlays/searchRouteSessionTypes';
 
 export type AppRouteSearchCloseRestoreOptions = {
   allowFallback?: boolean;
@@ -34,8 +31,3 @@ export type AppRouteOverlaySessionAuthority = {
 
 export type AppRouteOverlaySessionRuntime = AppRouteOverlaySessionSnapshot &
   AppRouteOverlaySessionActions;
-
-export type AppRouteOverlaySessionControllerSharedSnapState = {
-  hasUserSharedSnap: boolean;
-  sharedSnap: Exclude<SearchOverlaySheetSnap, 'hidden' | 'collapsed'>;
-};

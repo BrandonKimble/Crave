@@ -120,7 +120,11 @@ export const AppModalHost: React.FC = () => {
       minBottomPadding={18}
     >
       {renderedConfig?.title ? (
-        <Text variant="subtitle" weight="semibold" style={styles.title}>
+        <Text
+          variant="subtitle"
+          weight="semibold"
+          style={[styles.title, renderedConfig.variant === 'menu' ? styles.titleMenu : null]}
+        >
           {renderedConfig.title}
         </Text>
       ) : null}
@@ -144,38 +148,67 @@ export const AppModalHost: React.FC = () => {
           testID={renderedConfig.prompt.testID}
         />
       ) : null}
-      <View style={[styles.actions, isRow ? styles.actionsRow : styles.actionsStack]}>
-        {actions.map((action, index) => {
-          const isDestructive = action.style === 'destructive';
-          const isCancel = action.style === 'cancel';
-          return (
-            <Pressable
-              key={`${action.label}-${index}`}
-              onPress={() => handlePress(action)}
-              style={({ pressed }) => [
-                styles.button,
-                isRow ? styles.buttonFlex : null,
-                isCancel
-                  ? styles.buttonCancel
-                  : isDestructive
-                    ? styles.buttonDestructive
-                    : styles.buttonPrimary,
-                pressed ? styles.buttonPressed : null,
-              ]}
-              accessibilityRole="button"
-              testID={action.testID}
-            >
-              <Text
-                variant="body"
-                weight="semibold"
-                style={isCancel ? styles.buttonTextCancel : styles.buttonTextFilled}
+      {renderedConfig?.variant === 'menu' ? (
+        // MENU VARIANT (wave-2 §2 — the list-ellipsis restyle): icon + text rows,
+        // left-aligned, no color blocks, no separators; the sheet's own swipe/backdrop
+        // dismissal replaces a Cancel row.
+        <View style={styles.menuActions}>
+          {actions.map((action, index) => {
+            const isDestructive = action.style === 'destructive';
+            return (
+              <Pressable
+                key={`${action.label}-${index}`}
+                onPress={() => handlePress(action)}
+                style={({ pressed }) => [styles.menuRow, pressed ? styles.buttonPressed : null]}
+                accessibilityRole="button"
+                testID={action.testID}
               >
-                {action.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+                {action.icon != null ? <View style={styles.menuRowIcon}>{action.icon}</View> : null}
+                <Text
+                  variant="body"
+                  weight="medium"
+                  style={isDestructive ? styles.menuRowTextDestructive : styles.menuRowText}
+                >
+                  {action.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : (
+        <View style={[styles.actions, isRow ? styles.actionsRow : styles.actionsStack]}>
+          {actions.map((action, index) => {
+            const isDestructive = action.style === 'destructive';
+            const isCancel = action.style === 'cancel';
+            return (
+              <Pressable
+                key={`${action.label}-${index}`}
+                onPress={() => handlePress(action)}
+                style={({ pressed }) => [
+                  styles.button,
+                  isRow ? styles.buttonFlex : null,
+                  isCancel
+                    ? styles.buttonCancel
+                    : isDestructive
+                      ? styles.buttonDestructive
+                      : styles.buttonPrimary,
+                  pressed ? styles.buttonPressed : null,
+                ]}
+                accessibilityRole="button"
+                testID={action.testID}
+              >
+                <Text
+                  variant="body"
+                  weight="semibold"
+                  style={isCancel ? styles.buttonTextCancel : styles.buttonTextFilled}
+                >
+                  {action.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
     </OverlayModalSheet>
   );
 };
@@ -185,6 +218,29 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: themeColors.textPrimary,
     fontSize: 18,
+  },
+  titleMenu: {
+    textAlign: 'left',
+  },
+  menuActions: {
+    marginTop: 14,
+    flexDirection: 'column',
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 14,
+    paddingVertical: 13,
+  },
+  menuRowIcon: {
+    width: 22,
+    alignItems: 'center',
+  },
+  menuRowText: {
+    color: themeColors.textPrimary,
+  },
+  menuRowTextDestructive: {
+    color: DESTRUCTIVE,
   },
   message: {
     marginTop: 8,

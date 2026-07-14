@@ -1,6 +1,6 @@
 import React from 'react';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Text } from '../../components';
@@ -8,6 +8,8 @@ import { usersService, type UsernameAvailability } from '../../services/users';
 import { photosService } from '../../services/photos';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
+import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
+import SquircleSpinner from '../../components/SquircleSpinner';
 
 // ─── editProfile — the REAL page body (trigger-nav pages) ───────────────────────────────────
 // Display-name editing over PATCH /users/me + username claim over the existing
@@ -170,31 +172,14 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
     })();
   }, [avatarBusy]);
 
-  if (loadState.kind === 'loading') {
+  // Load-failure law (wave-4 §1): shared modal + pop; no page-local retry.
+  if (loadState.kind === 'loading' || loadState.kind === 'failed') {
     return (
-      <View style={styles.stateBody} testID="edit-profile-loading">
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
-  if (loadState.kind === 'failed') {
-    return (
-      <View style={styles.stateBody} testID="edit-profile-failed">
-        <Text variant="body" style={styles.stateText}>
-          We couldn’t load your profile.
-        </Text>
-        <Pressable
-          onPress={load}
-          accessibilityRole="button"
-          accessibilityLabel="Retry loading profile"
-          testID="edit-profile-retry"
-          style={styles.retryButton}
-        >
-          <Text variant="body" weight="semibold" style={styles.retryText}>
-            Retry
-          </Text>
-        </Pressable>
+      <View testID={loadState.kind === 'failed' ? 'edit-profile-failed' : 'edit-profile-loading'}>
+        <SceneBodyReadyGate
+          pending={loadState.kind === 'loading'}
+          failure={{ isError: loadState.kind === 'failed', what: 'your profile' }}
+        />
       </View>
     );
   }
@@ -219,7 +204,7 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
           style={styles.changePhotoButton}
         >
           {avatarBusy ? (
-            <ActivityIndicator />
+            <SquircleSpinner size={18} color="#64748b" />
           ) : (
             <Text variant="body" weight="semibold" style={styles.changePhotoText}>
               Change photo
@@ -288,7 +273,7 @@ export const EditProfilePanelBody = React.memo((_props: MountedSceneBodyProps) =
         style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
       >
         {busy ? (
-          <ActivityIndicator color="#ffffff" />
+          <SquircleSpinner size={18} color="#ffffff" />
         ) : (
           <Text variant="body" weight="semibold" style={styles.saveText}>
             Save
@@ -329,15 +314,6 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   stateText: {
-    color: '#0f172a',
-  },
-  retryButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: '#f1f5f9',
-  },
-  retryText: {
     color: '#0f172a',
   },
   fieldLabel: {

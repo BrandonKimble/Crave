@@ -4,7 +4,6 @@ type Listener = () => void;
 
 export type RouteSheetChromeMotionSnapshot = Pick<
   NonNullable<RouteHostVisualRuntime>,
-  | 'overlayHeaderActionProgress'
   | 'searchSurfacePageBundleProgress'
   | 'navBarCutoutProgress'
   | 'navBarCutoutHidingProgress'
@@ -25,7 +24,6 @@ const areChromeMotionSnapshotsEqual = (
   left === right ||
   (left != null &&
     right != null &&
-    left.overlayHeaderActionProgress === right.overlayHeaderActionProgress &&
     left.searchSurfacePageBundleProgress === right.searchSurfacePageBundleProgress &&
     left.navBarCutoutProgress === right.navBarCutoutProgress &&
     left.navBarCutoutHidingProgress === right.navBarCutoutHidingProgress &&
@@ -39,7 +37,6 @@ const resolveChromeMotionSnapshot = (
   routeHostVisualRuntime == null
     ? null
     : {
-        overlayHeaderActionProgress: routeHostVisualRuntime.overlayHeaderActionProgress,
         searchSurfacePageBundleProgress: routeHostVisualRuntime.searchSurfacePageBundleProgress,
         navBarCutoutProgress: routeHostVisualRuntime.navBarCutoutProgress,
         navBarCutoutHidingProgress: routeHostVisualRuntime.navBarCutoutHidingProgress,

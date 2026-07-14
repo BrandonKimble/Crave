@@ -23,10 +23,15 @@ export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
 }: UseResultsSurfaceEnterTransactionExecutionRuntimeArgs): ResultsSurfaceEnterTransactionExecutor => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const pendingSnapDisposeRef = React.useRef<(() => void) | null>(null);
+  // Commit-then-slide: cancels a snap dispatch already scheduled behind the press-up
+  // commit (two animation frames) when a newer enter supersedes it or the owner unmounts.
+  const scheduledSnapCancelRef = React.useRef<(() => void) | null>(null);
   React.useEffect(
     () => () => {
       pendingSnapDisposeRef.current?.();
       pendingSnapDisposeRef.current = null;
+      scheduledSnapCancelRef.current?.();
+      scheduledSnapCancelRef.current = null;
     },
     []
   );
@@ -88,7 +93,15 @@ export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
       // window — cancel the stale pending snap so we never replay an outdated target.
       pendingSnapDisposeRef.current?.();
       pendingSnapDisposeRef.current = null;
+      scheduledSnapCancelRef.current?.();
+      scheduledSnapCancelRef.current = null;
       if (targetSnap != null) {
+        // Transition-perf fence, issue-side: this enter WILL move the sheet — flip the
+        // redraw's sheetReady synchronously (born-false via the staged arm below) so the
+        // structural-apply fence holds from the first flush, not from the snap-START
+        // runOnJS roundtrip ~10-30ms later (the gap the resubmit lens apply slipped
+        // through, freezing the slide's first frames).
+        getSearchSurfaceRuntime().markRedrawSheetMotionExpected(snapshot.transactionId);
         // Cluster 6 chrome lane: stage the reveal-coupled sheet snap out of the visible
         // reveal/dismiss opacity window (allowSheetSnap === false). In the common case the
         // stage is idle/settled and this fires immediately; if a prior presentation is still
@@ -96,13 +109,36 @@ export const useResultsSurfaceEnterTransactionExecutionRuntime = ({
         pendingSnapDisposeRef.current = runResultsSheetSnapWhenLaneAllows(
           resultsPresentationAuthority,
           () => {
-            routeSceneRuntime.routeSearchCommandActions.openAppSearchRouteResults({
-              snap: targetSnap,
-              // Phase 2 — link the redraw transactionId (which the readiness gate
-              // marks carry) to the settleToken minted by this switch, so the
-              // collector can drive the 'content' plane to completion on real paint.
-              contentReadinessTransactionId: snapshot.transactionId,
+            // COMMIT-THEN-SLIDE (eye-verified 2026-07-13): the press-up skeleton commit
+            // (~70ms render + its Fabric mount, which BLOCKS the UI thread under the new
+            // architecture) landed inside the spring's first frames — the sheet froze ~4
+            // frames then teleported to middle. Sequence the reveal spring BEHIND the
+            // press-up commit: two animation frames put the dispatch after the current
+            // commit's mount has applied and painted, so the spring runs on a free UI
+            // thread. sheetReady is already pending (issue-side mark), so the
+            // structural-apply fence covers this pre-motion window too; the settle
+            // restore is unchanged. Cancelable via the same dispose slot a superseding
+            // enter already clears.
+            let cancelled = false;
+            const rafOuter = requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                if (cancelled) {
+                  return;
+                }
+                scheduledSnapCancelRef.current = null;
+                routeSceneRuntime.routeSearchCommandActions.openAppSearchRouteResults({
+                  snap: targetSnap,
+                  // Phase 2 — link the redraw transactionId (which the readiness gate
+                  // marks carry) to the settleToken minted by this switch, so the
+                  // collector can drive the 'content' plane to completion on real paint.
+                  contentReadinessTransactionId: snapshot.transactionId,
+                });
+              });
             });
+            scheduledSnapCancelRef.current = () => {
+              cancelled = true;
+              cancelAnimationFrame(rafOuter);
+            };
           },
           `enter:${snapshot.mutationKind}`
         );

@@ -1,7 +1,10 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
   IsIn,
+  IsInt,
   IsLatitude,
   IsLongitude,
   IsNumber,
@@ -54,6 +57,31 @@ export class FavoriteListResultsDto {
   @IsOptional()
   @IsBoolean()
   openNow?: boolean;
+
+  /**
+   * Leg 10 (primitive defect #4): the ListDetail strip's Price chip — the same
+   * vocabulary as the search DTO (Google price_level 0–4); rides the executor's
+   * existing price filter (priceFilterApplied metadata already flows through).
+   */
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(4, { each: true })
+  priceLevels?: number[];
+
+  /**
+   * Leg 11 (leg-9 primitive defect: Market chip had no data path): the
+   * ListDetail strip's Market chip (§8.16 — the virtual All list is "sliced by
+   * city"). Rides the executor's existing activeMarketKey directive (the
+   * core_markets geometry-covers filter) — same additive pattern as
+   * openNow/priceLevels above.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  marketKey?: string;
 
   @IsOptional()
   @ValidateNested()

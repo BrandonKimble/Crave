@@ -5,6 +5,7 @@ import type { SearchRuntimeBus } from '../runtime/shared/search-runtime-bus';
 import { writeSearchDesiredTuple } from '../runtime/shared/search-desired-state-writer';
 import { DEFAULT_SEARCH_FILTER_VARIANT } from '../runtime/shared/search-desired-state-contract';
 import { publishSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
+import { resetSearchFiltersStripScrollX } from '../runtime/shared/use-search-root-search-primitives-runtime';
 
 export type SearchClearOwner = {
   clearSearchAfterProfileDismiss: () => void;
@@ -138,6 +139,12 @@ export const useSearchClearOwner = <Suggestion>({
         'dismiss'
       );
       cancelToggleInteraction();
+      // Owner decision (leg 3): strip scrollX resets on re-present. The dismiss tuple
+      // write above already resets the FILTER VALUES to defaults; the strip's scroll
+      // POSITION resets in the same breath (cache scrollX → 0 + live retained
+      // instances scroll home), so the next presentation paints the strip at x=0.
+      // Tab-flip persistence within a presentation is untouched (nothing clears there).
+      resetSearchFiltersStripScrollX();
       if (!preserveForegroundEditing) {
         setIsSearchFocused(false);
         setIsSuggestionPanelActive(false);

@@ -20,6 +20,5 @@ export const useSearchRootRuntimeVisualAssemblyRuntime = ({
   }),
   sceneVisualRuntime: useSearchRootRuntimeSceneVisualRuntime({
     foregroundVisualRuntime,
-    appRouteSceneChromeMotionRuntime,
   }),
 });

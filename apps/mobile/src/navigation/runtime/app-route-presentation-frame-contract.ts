@@ -28,11 +28,18 @@ import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 // divergence is legal only via `outgoingSceneKey` during an in-flight switch, bounded by
 // switchId + settle.
 
-// S-B slice 2: the 'child' arm is DELETED (zero consumers; nav-out now derives from route
-// metadata in nav-out-derivation-store). Child targets resolve 'top-level'; the structural
+// S-B slice 2: the 'child' arm is DELETED. Child targets resolve 'top-level'; the structural
 // "a child target must never ride the docked-polls lane" rule lives as the explicit
-// isChildTarget deny inside the formula below.
+// isChildTarget deny inside the formula below. (Nav-out now rides the PF itself — the
+// `isChildSceneRevealed` field below; the separate nav-out-derivation-store is deleted.)
 export type PresentationLaneKind = 'top-level' | 'docked-polls';
+
+// ─── PF CHROME CLOCK (child-transition primitive §2.1, leg 6) ────────────────────────────────
+// The header's one host-owned action control: parents show the red plus ('create'),
+// children — and the search results session, role-wise a dismissable child of home —
+// show the black X ('close'). Derived from the PRESENTED scene so the docked-polls
+// lane (presented 'polls' under the search root) correctly shows the polls plus.
+export type PresentationHeaderNavAction = 'create' | 'close';
 
 export type PresentationFrame = {
   /** Monotonic per committed switch. Keys paint-acks, player starts, and readiness epochs. */
@@ -68,6 +75,14 @@ export type PresentationFrame = {
    * popped entry after settle).
    */
   outgoingEntryId: string | null;
+  // ─── PF CHROME CLOCK fields (child-transition primitive §2.1, leg 6). Nav-out and the
+  // header's plus/X mode are FRAME fields so the header title, strip, nav-out start and
+  // plus→X rotation start all commit in the ONE PF React commit — the old separate
+  // nav-out-derivation-store (its own subscription, its own commit) is deleted.
+  /** True when the top-of-stack route entry is a CHILD scene — the bottom nav leaves. */
+  isChildSceneRevealed: boolean;
+  /** The host-owned header action for this frame (see resolveHeaderNavAction). */
+  headerNavAction: PresentationHeaderNavAction;
 };
 
 /** The pre-first-commit frame — nothing presented yet (the native splash still covers). */
@@ -81,7 +96,57 @@ export const EMPTY_PRESENTATION_FRAME: PresentationFrame = {
   activeEntryId: null,
   presentedEntryId: null,
   outgoingEntryId: null,
+  isChildSceneRevealed: false,
+  headerNavAction: 'create',
 };
+
+/**
+ * THE headerNavAction derivation (child-transition primitive §3.2): keyed by the PRESENTED
+ * scene (matches the header host's own keying). 'search' presented = a results session — a
+ * dismissable child of home role-wise — keeps the X. Every topLevel presented scene rests at
+ * the red plus; child (and modal-extension, defensively) scenes show the black X. Null
+ * (pre-first-commit) rests at 'create' so the plus is the boot rest state.
+ *
+ * Leg 9 — `isEditSessionLiveOnPresented` (the edit-session-liveness contract, read for the
+ * presented scene): a live edit session makes the scene a CHILD PAGE wherever it lives
+ * (wave-2 §2), so the plus rotates to the X — which the session primitive's registered
+ * close-override then answers as CANCEL (discard-confirm when dirty). Without it, a topLevel
+ * edit surface (the home My-ranking edit on bookmarks) keeps a LIVE create plus mid-edit.
+ */
+export const resolveHeaderNavAction = (
+  presentedSceneKey: OverlayKey | null,
+  isEditSessionLiveOnPresented: boolean
+): PresentationHeaderNavAction => {
+  if (presentedSceneKey == null) {
+    return 'create';
+  }
+  if (isEditSessionLiveOnPresented) {
+    return 'close';
+  }
+  if (presentedSceneKey === 'search') {
+    return 'close';
+  }
+  return getAppOverlayRouteMetadata(presentedSceneKey).role === 'topLevel' ? 'create' : 'close';
+};
+
+/**
+ * Nav-out derivation (trigger-nav ideal §4.1/§5.5, now a PF field): the bottom nav leaves
+ * whenever the top-of-stack route entry is a CHILD scene — all child scenes inherit it by
+ * construction. Exact parity with the deleted nav-out-derivation-store writer's selector
+ * (it read routeOverlayNavigationAuthority's activeOverlayRoute.key).
+ *
+ * Leg 9 — `isEditSessionLiveOnTopOfStack`: a live edit session is CHILD-PAGE tenure on any
+ * scene (wave-2 §2 "nav bar transitions out … no tab-switching mid-edit"), so the nav also
+ * leaves while a topLevel scene (bookmarks' home edit) holds a live session. Role-child
+ * scenes are unaffected (already true). Exit restores the pure role derivation.
+ */
+export const resolveIsChildSceneRevealed = (
+  topOfStackSceneKey: OverlayKey | null,
+  isEditSessionLiveOnTopOfStack: boolean
+): boolean =>
+  topOfStackSceneKey != null &&
+  (isEditSessionLiveOnTopOfStack ||
+    getAppOverlayRouteMetadata(topOfStackSceneKey).role === 'child');
 
 // ─── Lane inputs (the docked-polls formula's mutable feeds) ──────────────────────────────────
 //
@@ -225,4 +290,8 @@ export const arePresentationFramesEqual = (
     // off them); the snapshot-equality landmine says a field the render reads MUST be here.
     left.activeEntryId === right.activeEntryId &&
     left.presentedEntryId === right.presentedEntryId &&
-    left.outgoingEntryId === right.outgoingEntryId);
+    left.outgoingEntryId === right.outgoingEntryId &&
+    // Leg 6 chrome-clock fields are render-read (header action + nav-out) — the
+    // snapshot-equality landmine says a field the render reads MUST be here.
+    left.isChildSceneRevealed === right.isChildSceneRevealed &&
+    left.headerNavAction === right.headerNavAction);

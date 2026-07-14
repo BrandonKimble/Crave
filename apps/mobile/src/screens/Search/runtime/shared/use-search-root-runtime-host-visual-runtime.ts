@@ -18,7 +18,6 @@ export const useSearchRootRuntimeHostVisualRuntime = ({
 }): SearchRootHostVisualRuntime => ({
   routeHostVisualRuntime: useSearchRootOverlayHostRouteVisualRuntime({
     foregroundVisualRuntime,
-    appRouteSceneChromeMotionRuntime,
     surfaceBundleVisualRuntime,
   }),
   overlayHostVisualRuntime: {

@@ -14,6 +14,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   consumeActiveMainIntent,
   openRestaurantProfilePreview,
   launchEntitySearchResults,
+  launchListSearchResults,
   runRestaurantEntitySearch,
   submitSearch,
   submitViewportShortcut,
@@ -31,6 +32,23 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     // resolveEntityRefAction produces; this consumer just routes each kind to its lane
     // (entityDesire → skip-LLM search; restaurantWorld → the committed single-restaurant
     // lifecycle below). pushScene never reaches the channel (the executor pushes directly).
+    // Wave-4 §3: the world half of the listWorld composite — the executor already
+    // pushed listDetail; this writes the list-identity tuple (the submit IS the tuple
+    // write) and the reconciler presents the world under the pushed child.
+    if (activeMainIntent.type === 'entityAction' && activeMainIntent.action.kind === 'listWorld') {
+      const action = activeMainIntent.action;
+      void launchListSearchResults({
+        listId: action.listId,
+        listType: action.listType,
+        displayTitle: action.title,
+        targetUserId: action.targetUserId ?? null,
+        shareSlug: action.shareSlug ?? null,
+        slice: action.slice,
+      });
+      consumeActiveMainIntent();
+      return;
+    }
+
     if (
       activeMainIntent.type === 'entityAction' &&
       activeMainIntent.action.kind === 'entityDesire'
@@ -66,7 +84,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
 
     // S-E: /l/<shareSlug> → the listDetail child page (W1 slice 4). The SLUG is the RT-18
     // capability, so it rides the entry params — the panel presents it on every server read
-    // and owns resolution + the failure/dead-slug ("this list is private") bodies (§5.6).
+    // and owns resolution + the failure/dead-slug ("no longer shared") bodies (§5.6).
     if (activeMainIntent.type === 'sharedList') {
       pushRoute('listDetail', {
         shareSlug: activeMainIntent.shareSlug,
@@ -202,6 +220,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     consumeActiveMainIntent,
     currentMarketKey,
     launchEntitySearchResults,
+    launchListSearchResults,
     navigation,
     openRestaurantProfilePreview,
     pendingRestaurantSelectionRef,

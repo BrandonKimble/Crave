@@ -158,7 +158,21 @@ const SearchOverlayRouteSheetFrameSurfaceHost = React.memo(
       previousProps.routeSheetHostRuntime,
       nextProps.routeSheetHostRuntime
     );
-    return previousProps.routeSheetHostRuntime === nextProps.routeSheetHostRuntime;
+    // BAIL-OUT (perf attribution 2026-07-12): field-compare — a fresh wrapper object
+    // with identical members must bail, not cascade the sheet-surface subtree.
+    const left = previousProps.routeSheetHostRuntime;
+    const right = nextProps.routeSheetHostRuntime;
+    return (
+      left === right ||
+      (left.searchInteractionRef === right.searchInteractionRef &&
+        left.routeSheetSurfaceAuthority === right.routeSheetSurfaceAuthority &&
+        left.routeSheetSurfaceBodyAuthority === right.routeSheetSurfaceBodyAuthority &&
+        left.routeSheetSurfaceFrameAuthority === right.routeSheetSurfaceFrameAuthority &&
+        left.routeSheetRuntimeConfigAuthority === right.routeSheetRuntimeConfigAuthority &&
+        left.sceneStackSurfaceAuthority === right.sceneStackSurfaceAuthority &&
+        left.routeSceneDisplayTargetRegistry === right.routeSceneDisplayTargetRegistry &&
+        left.routeHostVisualRuntimeAuthority === right.routeHostVisualRuntimeAuthority)
+    );
   }
 );
 

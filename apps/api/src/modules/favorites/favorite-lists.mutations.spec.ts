@@ -13,7 +13,8 @@ import { FavoriteListMapper } from './favorite-list.mappers';
 
 /**
  * W1 data-layer contracts beyond raw access (w1-listdetail spec B.1.2-B.1.6):
- * share-event dedupe, private-flip collateral, collaborator join/leave/kick
+ * share-event dedupe, the visibility canon (visibility = discovery, never
+ * access — owner 2026-07-12), collaborator join/leave/kick
  * idempotency, batch reorder set-equality, sort semantics, note projection,
  * and the virtual All-list union.
  */
@@ -186,6 +187,7 @@ function makeHarness(opts: {
     access,
     assembler,
     mapper,
+    { loadTileImages: () => Promise.resolve(new Map()) } as never,
   );
   return {
     service,
@@ -243,21 +245,77 @@ describe('share-event write dedupe (RT-18 flood fix)', () => {
   });
 });
 
-describe('private flip (spec B.1.1)', () => {
-  it('visibility->private disables sharing AND deletes collaborators in one transaction', async () => {
+describe('visibility canon (owner 2026-07-12): visibility = discovery, never access', () => {
+  // RED against the RT-18-era cascade: the old code deleted collaborators and
+  // disabled sharing on a private flip, and enableShare force-flipped a
+  // private list public. Every spec here fails against that behavior.
+
+  it('visibility->private touches ONLY visibility — no collaborator delete, no shareEnabled write', async () => {
     const { service, collaboratorDeleteMany, listUpdate } = makeHarness({
       collaboratorIds: [COLLABORATOR],
     });
     await service.updateList(OWNER, LIST_ID, {
       visibility: 'private',
     } as never);
-    expect(collaboratorDeleteMany).toHaveBeenCalledWith({
-      where: { listId: LIST_ID },
+    expect(collaboratorDeleteMany).not.toHaveBeenCalled();
+    const data = listUpdate.mock.calls[0][0].data;
+    expect(data.visibility).toBe('private');
+    expect(data.shareEnabled).toBeUndefined();
+  });
+
+  it('enableShare on a PRIVATE list never writes visibility (sharing mints the link, nothing else)', async () => {
+    const { service, listUpdate } = makeHarness({
+      lists: [makeList({ visibility: 'private', shareSlug: null })],
     });
-    expect(listUpdate.mock.calls[0][0].data).toMatchObject({
-      visibility: 'private',
-      shareEnabled: false,
+    const result = await service.enableShare(OWNER, LIST_ID, {} as never);
+    expect(result.shareSlug).toBeTruthy();
+    const data = listUpdate.mock.calls[0][0].data;
+    expect(data.shareEnabled).toBe(true);
+    expect(data.visibility).toBeUndefined();
+  });
+
+  it('a link holder keeps reading a list that went private (access survives the flip)', async () => {
+    const { service } = makeHarness({
+      lists: [makeList({ visibility: 'private' })],
     });
+    await expect(
+      service.getListResults(STRANGER, LIST_ID, { shareSlug: SLUG } as never),
+    ).resolves.toMatchObject({ format: 'dual_list' });
+  });
+
+  it('a collaborator keeps their seat and mutation grant on a PRIVATE list', async () => {
+    const { service, prisma } = makeHarness({
+      lists: [makeList({ visibility: 'private' })],
+      collaboratorIds: [COLLABORATOR],
+    });
+    prisma.entity = {
+      findUnique: jest.fn().mockResolvedValue({ entityId: R1 }),
+    };
+    prisma.favoriteListItem.create = jest
+      .fn()
+      .mockResolvedValue({ itemId: 'x' });
+    await expect(
+      service.addItem(COLLABORATOR, LIST_ID, { restaurantId: R1 } as never),
+    ).resolves.toMatchObject({ itemId: 'x' });
+  });
+
+  it('a PRIVATE list stays joinable as collaborator via its live slug', async () => {
+    const { service } = makeHarness({
+      lists: [makeList({ visibility: 'private' })],
+    });
+    await expect(
+      service.joinCollaborators(STRANGER, LIST_ID, SLUG),
+    ).resolves.toEqual({ listId: LIST_ID, role: 'collaborator' });
+  });
+
+  it('disableShare is the lock: it kills the link and touches nothing else', async () => {
+    const { service, listUpdate, collaboratorDeleteMany } = makeHarness({
+      lists: [makeList({ visibility: 'private' })],
+      collaboratorIds: [COLLABORATOR],
+    });
+    await service.disableShare(OWNER, LIST_ID);
+    expect(listUpdate.mock.calls[0][0].data).toEqual({ shareEnabled: false });
+    expect(collaboratorDeleteMany).not.toHaveBeenCalled();
   });
 });
 
@@ -527,6 +585,32 @@ describe('virtual All list (spec B.1.6)', () => {
     const filter =
       executor.executeSingle.mock.calls[0][0].plan.restaurantFilters[0];
     expect(filter.entityIds).toEqual([R2]);
+  });
+
+  it('priceLevels ride the PLAN clause payload (the executor reads the plan, not the request)', async () => {
+    const { service, executor } = makeHarness({ lists });
+    await service.getListResults(OWNER, 'all:restaurants', {
+      priceLevels: [2],
+    } as never);
+    const filter =
+      executor.executeSingle.mock.calls[0][0].plan.restaurantFilters[0];
+    expect(filter.payload).toEqual({ priceLevels: [2] });
+  });
+
+  it('marketKey rides the executor as the activeMarketKey directive (leg 11)', async () => {
+    const { service, executor } = makeHarness({ lists });
+    await service.getListResults(OWNER, 'all:restaurants', {
+      marketKey: 'austin',
+    } as never);
+    expect(executor.executeSingle.mock.calls[0][0].directives).toEqual({
+      activeMarketKey: 'austin',
+    });
+  });
+
+  it('omitted marketKey passes NO directives (no implicit market AND-filter)', async () => {
+    const { service, executor } = makeHarness({ lists });
+    await service.getListResults(OWNER, 'all:restaurants', {} as never);
+    expect(executor.executeSingle.mock.calls[0][0].directives).toBeUndefined();
   });
 
   it('custom sort on the virtual list is a loud BadRequest', async () => {

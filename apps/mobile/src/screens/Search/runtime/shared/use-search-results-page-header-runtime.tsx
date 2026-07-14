@@ -1,6 +1,5 @@
 import React from 'react';
 import type { LayoutChangeEvent } from 'react-native';
-import type { SharedValue } from 'react-native-reanimated';
 
 import {
   publishSearchResultsHeaderLiveState,
@@ -18,7 +17,6 @@ import { useSearchSurfaceRuntimeSelector } from '../surface/search-surface-runti
 type UseSearchResultsPageHeaderRuntimeArgs = {
   headerTitle: string;
   activeTabColor: string;
-  overlayHeaderActionProgress: SharedValue<number>;
   handleCloseResults: () => void;
   handleResultsHeaderLayout: (event: LayoutChangeEvent) => void;
 };
@@ -26,7 +24,6 @@ type UseSearchResultsPageHeaderRuntimeArgs = {
 export const useSearchResultsPageHeaderRuntime = ({
   headerTitle,
   activeTabColor,
-  overlayHeaderActionProgress,
   handleCloseResults,
   handleResultsHeaderLayout,
 }: UseSearchResultsPageHeaderRuntimeArgs): void => {
@@ -46,7 +43,6 @@ export const useSearchResultsPageHeaderRuntime = ({
     return {
       headerTitle: resolvedHeaderTitle,
       activeTabColor,
-      overlayHeaderActionProgress,
       handleCloseResults,
       handleResultsHeaderLayout,
     };
@@ -55,7 +51,6 @@ export const useSearchResultsPageHeaderRuntime = ({
     handleCloseResults,
     handleResultsHeaderLayout,
     headerTitle,
-    overlayHeaderActionProgress,
     shouldRetainResultsPage,
   ]);
   retainedTitleRef.current = liveState.headerTitle;

@@ -540,6 +540,30 @@ describe('SharePackageResolver author/owner block gate + comment pollId', () => 
     expect(dto.unavailable).toBe(true);
   });
 
+  it('list: an available preview carries listType (mouth 4 — the client runs the list WORLD)', async () => {
+    const { resolver } = makeResolver({
+      favoriteList: {
+        findUnique: jest.fn().mockResolvedValue({
+          name: 'Taco crawl',
+          itemCount: 8,
+          listType: 'restaurant',
+          visibility: 'public',
+          shareEnabled: true,
+          ownerUserId: THEM,
+          collaborators: [],
+        }),
+      },
+    });
+    const dto = await resolver.resolve('list' as any, POLL, ME);
+    expect(dto.unavailable).toBe(false);
+    if (!dto.unavailable) {
+      // Without listType the client falls back to a plain push and loses the world —
+      // this is the load-bearing mouth-4 field, RED if the resolver stops returning it.
+      expect(dto.listType).toBe('restaurant');
+      expect(dto.title).toBe('Taco crawl');
+    }
+  });
+
   it('restaurant/dish carry no author identity: never gated on blocks', async () => {
     const { resolver, prisma } = makeResolver({
       entity: {

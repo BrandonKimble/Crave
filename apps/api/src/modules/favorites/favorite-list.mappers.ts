@@ -38,6 +38,8 @@ export type FavoriteListSummary = {
   systemKind: string | null;
   /** Profile-gallery pin (§8.12/§8.14) — owner curation, floats first there. */
   pinned: boolean;
+  /** Wave-2 §2 "Use your photos": tile gallery renders the owner's own photos. */
+  useOwnPhotos: boolean;
   /** Majority market of the list's items (profile city grouping, §8.15).
    *  Only computed on the public profile read; null elsewhere. */
   city?: string | null;
@@ -52,6 +54,18 @@ export type FavoriteListSummary = {
     label: string;
     subLabel?: string | null;
     craveScore: number;
+  }>;
+  /** 2x2 home-tile gallery (wave2 §7): top photo of each of the list's
+   *  top-4 restaurants, slots TL(0)→TR(1)→BL(2)→BR(3), sparse at the end
+   *  (client fills placeholders). On a "Use your photos" list the pool is
+   *  the owner's own photos and un-shot restaurants keep their slot EMPTY —
+   *  sparse ANYWHERE, so clients must place by `slot`, never array index.
+   *  Present on the owner home read. */
+  tileImages?: Array<{
+    slot: 0 | 1 | 2 | 3;
+    restaurantId: string;
+    photoId: string;
+    thumbUrl: string;
   }>;
 };
 
@@ -206,6 +220,7 @@ export class FavoriteListMapper {
       position: list.position,
       systemKind: list.systemKind,
       pinned: list.pinned,
+      useOwnPhotos: list.useOwnPhotos,
       updatedAt: list.updatedAt,
       previewItems,
     };
@@ -319,7 +334,11 @@ export class FavoriteListMapper {
         CraveScoreSubjectType.connection,
         topFoods.map((food) => food.connectionId),
       );
+      // A connection with no PUBLIC score cannot be a "top food" — it is filtered,
+      // never fatal (2026-07-13: one unscored connection 500'd every list containing
+      // its restaurant). The SAVED item's own score (below) stays a loud invariant.
       const topFoodSnippets: RestaurantFoodSnippet[] = topFoods
+        .filter((food) => topFoodScores.has(food.connectionId))
         .map((food) => ({
           connectionId: food.connectionId,
           foodId: food.foodId,

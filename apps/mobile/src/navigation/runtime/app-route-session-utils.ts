@@ -1,51 +1,31 @@
-import type { SearchOverlaySheetSnap, TabOverlaySnap } from '../../overlays/searchRouteSessionTypes';
+import type {
+  SearchOverlaySheetSnap,
+  TabOverlaySnap,
+} from '../../overlays/searchRouteSessionTypes';
 import type { OverlayKey } from './app-overlay-route-types';
+import {
+  CONTENT_SEAT_SEED_SNAP,
+  DOCKED_POLLS_RESURRECT_SNAP,
+} from './app-route-sheet-snap-session-runtime';
 
+// Two-posture law (plans/root-snap-law.md §Leg 2): the launch-origin detent for a ROOT overlay
+// is simply its side's posture seat — home (search/polls → the home seat; 'hidden' means the
+// docked polls are dismissed, whose sanctioned landing is the resurrect posture) or content
+// (ONE shared seat for every other root page; never hidden). The old per-tab entries and their
+// hidden→sharedSnap fallback arms died with the seats.
 type ResolveSearchLaunchOriginSnapOptions = {
   overlay: OverlayKey;
-  pollsSheetSnap: SearchOverlaySheetSnap;
-  bookmarksSheetSnap: SearchOverlaySheetSnap;
-  profileSheetSnap: SearchOverlaySheetSnap;
-  isDockedPollsDismissed: boolean;
-  hasUserSharedSnap: boolean;
-  sharedSnap: Exclude<SearchOverlaySheetSnap, 'hidden' | 'collapsed'>;
+  homeSeatSnap: SearchOverlaySheetSnap;
+  contentSeatSnap: SearchOverlaySheetSnap;
 };
-
-const resolveSharedOverlaySnap = (
-  hasUserSharedSnap: boolean,
-  sharedSnap: Exclude<SearchOverlaySheetSnap, 'hidden' | 'collapsed'>
-): TabOverlaySnap => (hasUserSharedSnap ? sharedSnap : 'expanded');
 
 export const resolveSearchLaunchOriginSnap = ({
   overlay,
-  pollsSheetSnap,
-  bookmarksSheetSnap,
-  profileSheetSnap,
-  isDockedPollsDismissed,
-  hasUserSharedSnap,
-  sharedSnap,
+  homeSeatSnap,
+  contentSeatSnap,
 }: ResolveSearchLaunchOriginSnapOptions): TabOverlaySnap => {
-  if (overlay === 'polls') {
-    return pollsSheetSnap === 'hidden' ? 'collapsed' : pollsSheetSnap;
+  if (overlay === 'search' || overlay === 'polls') {
+    return homeSeatSnap === 'hidden' ? DOCKED_POLLS_RESURRECT_SNAP : homeSeatSnap;
   }
-  if (overlay === 'bookmarks') {
-    return bookmarksSheetSnap === 'hidden'
-      ? resolveSharedOverlaySnap(hasUserSharedSnap, sharedSnap)
-      : bookmarksSheetSnap;
-  }
-  if (overlay === 'profile') {
-    return profileSheetSnap === 'hidden'
-      ? resolveSharedOverlaySnap(hasUserSharedSnap, sharedSnap)
-      : profileSheetSnap;
-  }
-  if (overlay === 'search') {
-    if (pollsSheetSnap !== 'hidden') {
-      return pollsSheetSnap;
-    }
-    if (isDockedPollsDismissed) {
-      return 'collapsed';
-    }
-    return resolveSharedOverlaySnap(hasUserSharedSnap, sharedSnap);
-  }
-  return resolveSharedOverlaySnap(hasUserSharedSnap, sharedSnap);
+  return contentSeatSnap === 'hidden' ? CONTENT_SEAT_SEED_SNAP : contentSeatSnap;
 };

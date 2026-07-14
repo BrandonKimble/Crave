@@ -59,7 +59,6 @@ export type SearchRouteSceneStackPresentationState = {
 };
 
 export type SearchRouteSceneStackChromeVisualState = {
-  overlayHeaderActionProgress: SharedValue<number>;
   searchSurfacePageBundleProgress: AnimatedNumberLike;
   navBarCutoutHeight: number;
   navBarCutoutProgress: SharedValue<number> | DerivedValue<number>;

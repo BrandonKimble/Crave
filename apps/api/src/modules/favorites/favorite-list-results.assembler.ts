@@ -163,6 +163,14 @@ export class ListResultsAssembler {
     // executed (executeSingle below). Dish list: connectionFilters = favorited
     // connections AND restaurantFilters = those connections' distinct
     // restaurants (the restaurant axis feeds the map pins).
+    // Leg 11 (sim-caught): the executor's price filter reads priceLevels from a
+    // PLAN clause payload (SearchQueryBuilder.extractPriceLevels over
+    // plan.restaurantFilters) — request.priceLevels is inert on this path, so the
+    // leg-10 plumbing filtered nothing. The payload rides the axis clause here.
+    const priceFilterPayload = dto.priceLevels?.length
+      ? { priceLevels: dto.priceLevels }
+      : undefined;
+
     const restaurantFilters: FilterClause[] = isRestaurantAxis
       ? [
           {
@@ -170,6 +178,7 @@ export class ListResultsAssembler {
             description: 'Match favorited restaurant entities',
             entityType: 'restaurant',
             entityIds: explicitOrder ? pageAxisIds : restaurantIds,
+            payload: priceFilterPayload,
           },
         ]
       : [
@@ -178,6 +187,7 @@ export class ListResultsAssembler {
             description: "Match favorited connections' restaurants",
             entityType: 'restaurant',
             entityIds: dishListRestaurantIds,
+            payload: priceFilterPayload,
           },
         ];
     const connectionFilters: FilterClause[] = isRestaurantAxis
@@ -211,6 +221,7 @@ export class ListResultsAssembler {
     const request: SearchQueryRequestDto = {
       entities: {},
       openNow: dto.openNow,
+      priceLevels: dto.priceLevels,
       userLocation: dto.userLocation,
     };
 
@@ -218,7 +229,15 @@ export class ListResultsAssembler {
       ? { skip: 0, take: Math.max(pageAxisIds.length, 1) }
       : { skip, take: pageSize };
 
-    // NO bounds directives passed (directives omitted entirely).
+    // Leg 11 market slice (§8.16 "sliced by city"): an EXPLICIT user chip slice
+    // rides the executor's activeMarketKey directive (core_markets geometry
+    // Covers filter) — the same seam the Open now/Price slices use, never an
+    // implicit AND-filter. Omitted = no market condition.
+    const marketKey = dto.marketKey?.trim();
+    const directives = marketKey ? { activeMarketKey: marketKey } : undefined;
+
+    // NO bounds directives passed for geometry (v1 fits the map to the list
+    // extent); the market slice above is the only directive.
     //
     // A RESTAURANT list only consumes the restaurant axis (dishes are discarded
     // below), so run a single-axis query and skip the throwaway dish SQL. A DISH
@@ -232,11 +251,13 @@ export class ListResultsAssembler {
           plan,
           request,
           pagination,
+          directives,
         })
       : await this.searchQueryExecutor.executeDual({
           plan,
           request,
           pagination,
+          directives,
         });
 
     const requestedForRun = explicitOrder ? pageAxisIds : requestedIds;

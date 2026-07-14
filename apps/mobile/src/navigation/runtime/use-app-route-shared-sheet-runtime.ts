@@ -11,6 +11,7 @@ import type {
   AppRouteSharedSheetRuntimeOwner,
   AppRouteSharedSheetVisualBinding,
 } from './app-route-shared-sheet-runtime-contract';
+import { DOCKED_POLLS_RESURRECT_SNAP } from './app-route-sheet-snap-session-runtime';
 import type { AppRouteSceneRuntime } from './app-route-scene-runtime';
 import type { AppRouteOverlaySessionSnapshot } from './app-route-overlay-session-contract';
 import type { RouteOverlayRootSnapshot } from './route-overlay-display-snapshot-contract';
@@ -52,13 +53,9 @@ const getRouteHostOverlayGeometryInput = (
 const resolveInitialSharedSheetPosition = ({
   shouldShowDockedPollsTarget,
   currentPollsSheetSnap,
-  hasUserSharedSnap,
-  sharedSnap,
 }: {
   shouldShowDockedPollsTarget: boolean;
   currentPollsSheetSnap: OverlaySheetSnap;
-  hasUserSharedSnap: boolean;
-  sharedSnap: Exclude<OverlaySheetSnap, 'hidden'>;
 }): SheetPosition => {
   if (!shouldShowDockedPollsTarget) {
     return 'hidden';
@@ -66,7 +63,9 @@ const resolveInitialSharedSheetPosition = ({
   if (currentPollsSheetSnap !== 'hidden') {
     return currentPollsSheetSnap;
   }
-  return hasUserSharedSnap ? sharedSnap : 'collapsed';
+  // Home seat 'hidden' = user-dismissed docked polls; re-presenting is the ONE sanctioned
+  // resurrect product moment, always at the declared resurrect posture (two-posture law).
+  return DOCKED_POLLS_RESURRECT_SNAP;
 };
 
 export const useAppRouteSharedSheetRuntime = ({
@@ -95,15 +94,11 @@ export const useAppRouteSharedSheetRuntime = ({
       ),
     [routeSceneRuntime.routeHostOverlayGeometryAuthority]
   );
-  const initialSheetSnapSessionSnapshot =
-    routeSceneRuntime.routeSheetSnapSessionAuthority.getSnapshot();
   const initialSharedSheetPosition = resolveInitialSharedSheetPosition({
     shouldShowDockedPollsTarget:
       initialRouteSharedSheetOverlaySessionState.shouldShowDockedPollsTarget,
     currentPollsSheetSnap:
       routeSceneRuntime.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls'),
-    hasUserSharedSnap: initialSheetSnapSessionSnapshot.hasUserSharedSnap,
-    sharedSnap: initialSheetSnapSessionSnapshot.sharedSnap,
   });
   const initialSharedSheetVisible = initialSharedSheetPosition !== 'hidden';
 
@@ -173,15 +168,11 @@ export const useAppRouteSharedSheetRuntime = ({
             overlayTabHeaderHeight: OVERLAY_TAB_HEADER_HEIGHT,
           });
 
-          const overlaySheetPositionState =
-            routeSceneRuntime.routeSheetSnapSessionAuthority.getSnapshot();
           const nextInitialSharedSheetPosition = resolveInitialSharedSheetPosition({
             shouldShowDockedPollsTarget:
               routeSharedSheetOverlaySessionState.shouldShowDockedPollsTarget,
             currentPollsSheetSnap:
               routeSceneRuntime.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls'),
-            hasUserSharedSnap: overlaySheetPositionState.hasUserSharedSnap,
-            sharedSnap: overlaySheetPositionState.sharedSnap,
           });
 
           sharedSheetPresentationRuntime.syncInput({

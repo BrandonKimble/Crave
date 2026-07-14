@@ -82,9 +82,23 @@ export const useProfilePanelBodyModelRuntime = ({
     }
   }, [isActive, shouldRenderExpandedContent]);
 
+  // Followers/Following taps need the resolved own userId — bound here (the identity chrome
+  // stays a dumb presenter). Inert until getMe resolves; the stat values are skeletons then too.
+  const handleOpenFollowList = actionsRuntime.handleOpenFollowList;
+  const onOpenFollowList = React.useCallback(
+    (mode: 'followers' | 'following') => {
+      if (userId == null) {
+        return;
+      }
+      handleOpenFollowList(userId, mode);
+    },
+    [handleOpenFollowList, userId]
+  );
+
   const headerProps = useProfilePanelIdentityRuntime({
     onOpenSettings: actionsRuntime.handleOpenSettings,
     onOpenMessages: actionsRuntime.handleOpenMessages,
+    onOpenFollowList,
     profile,
   });
 

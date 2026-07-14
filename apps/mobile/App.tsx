@@ -22,6 +22,9 @@ import Reanimated, {
 import { RootNavigator } from './src/navigation';
 import { AppModalHost } from './src/components/AppModalHost';
 import { OptionSelectorHost } from './src/components/OptionSelectorHost';
+import { ScoreInfoHost } from './src/components/ScoreInfoHost';
+import { CollaboratorModalHost } from './src/components/CollaboratorModalHost';
+import { ListEditHost } from './src/components/ListEditHost';
 import { ShareModalHost } from './src/components/ShareModalHost';
 import {
   announceFailureIfOnline,
@@ -143,6 +146,15 @@ export default function App() {
             {/* Dropdown-toggle selector host (toggle-strip primitive): any strip's
                 SelectorChip opens its option sheet here via showOptionSelector. */}
             <OptionSelectorHost />
+            {/* Score-info sheet host (result cards' info button): viewport-anchored
+                mount for every non-search surface via showScoreInfo. */}
+            <ScoreInfoHost />
+            {/* Collaborator-roster modal host (list detail's avatar-stack chip):
+                viewport-anchored mount via showCollaboratorModal. */}
+            <CollaboratorModalHost />
+            {/* The ONE listEdit panel (wave-3 §4): create-vs-edit list metadata,
+                opened from the Lists home plus and per-list ellipsis "Edit". */}
+            <ListEditHost />
             {__DEV__ ? <CutoutSkeletonDevPreview /> : null}
             <StatusBar style={isBannerVisible ? 'light' : 'auto'} />
           </SafeAreaProvider>

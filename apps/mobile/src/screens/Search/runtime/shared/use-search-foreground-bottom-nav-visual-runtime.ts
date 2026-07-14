@@ -32,7 +32,8 @@ import {
   logPerfScenarioWorkSpan,
 } from '../../../../perf/perf-scenario-work-span';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
-import { useIsNavOutChildSceneRevealed } from '../../../../navigation/runtime/nav-out-derivation-store';
+import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { useIsChildSceneRevealed } from '../../../../navigation/runtime/use-presentation-frame';
 import {
   areSearchSurfaceVisualPoliciesEqual,
   getSearchSurfaceRuntime,
@@ -116,8 +117,11 @@ export const useSearchForegroundBottomNavVisualRuntime = ({
   const shouldHideBottomNavForSuggestionSurface = isSuggestionPanelActive;
   // Nav-out is DERIVED (trigger-nav ideal §4.1): the nav leaves whenever the top-of-stack
   // entry is a child scene — poll detail, restaurant, saveList, and every stub page inherit
-  // this motion + sheet-grow by construction, no per-scene opt-in.
-  const hasExternalNavHideIntent = useIsNavOutChildSceneRevealed();
+  // this motion + sheet-grow by construction, no per-scene opt-in. Leg 6 (PF chrome clock):
+  // the boolean is a PresentationFrame FIELD now — nav-out starts on the same PF commit as
+  // the header title/strip and the plus→X rotation, never a separate store's later beat.
+  const { routeSceneSwitchRuntime } = useAppRouteSceneRuntime();
+  const hasExternalNavHideIntent = useIsChildSceneRevealed(routeSceneSwitchRuntime);
   const shouldHideBottomNavForMotion =
     shouldHideBottomNavForSearchResultsMotion ||
     shouldHideBottomNavForSuggestionSurface ||

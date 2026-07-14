@@ -46,7 +46,7 @@ export class SharePackageResolverService {
       title: string,
       subtitle: string | null = null,
       imageUrl: string | null = null,
-      extra: { pollId?: string } = {},
+      extra: { pollId?: string; listType?: 'restaurant' | 'dish' } = {},
     ): SharePackagePreviewDto => ({
       unavailable: false,
       kind,
@@ -69,6 +69,7 @@ export class SharePackageResolverService {
           select: {
             name: true,
             itemCount: true,
+            listType: true,
             visibility: true,
             shareEnabled: true,
             ownerUserId: true,
@@ -86,7 +87,9 @@ export class SharePackageResolverService {
           list.shareEnabled ||
           list.collaborators.some((c) => c.userId === viewerUserId);
         if (!viewerCanSee) return unavailable;
-        return available(list.name, `${list.itemCount} places`);
+        return available(list.name, `${list.itemCount} places`, null, {
+          listType: list.listType,
+        });
       }
       case SharedEntityKind.restaurant:
       case SharedEntityKind.dish: {

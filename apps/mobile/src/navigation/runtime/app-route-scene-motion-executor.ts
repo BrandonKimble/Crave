@@ -315,6 +315,7 @@ export class AppRouteSceneMotionExecutor {
           scene: target.sceneKey,
           snapTo: request.snap,
           mode: request.mode,
+          snapPoints: shellSnapPoints,
         })}`
       );
     }

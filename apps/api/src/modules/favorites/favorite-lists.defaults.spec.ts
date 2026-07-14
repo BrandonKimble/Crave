@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import {
   FavoriteListProvisioningService,
   SYSTEM_DEFAULT_LISTS,
@@ -12,8 +12,8 @@ import { FavoriteListMapper } from './favorite-list.mappers';
 
 /**
  * Auto-created default lists (page-registry §8.7) + save-sheet flip
- * resolution (§8.8): provisioning idempotency, non-deletability, pinned-top
- * home ordering, and connection→restaurant target resolution.
+ * resolution (§8.8): provisioning idempotency, uniform home ordering (wave-2 §2:
+ * system defaults are regular lists), and connection→restaurant target resolution.
  */
 
 const OWNER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -146,6 +146,7 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
       new FavoriteListAccessPolicy(prisma as never, blocks as never),
       new ListResultsAssembler({} as never),
       new FavoriteListMapper(prisma as never, logger as never),
+      { loadTileImages: () => Promise.resolve(new Map()) } as never,
     );
     return { service, prisma, itemCreate };
   }
@@ -168,14 +169,12 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
     ...over,
   });
 
-  it('deleteList refuses a system default (loud, not silent)', async () => {
+  it('deleteList deletes a system default too (wave-2 §2: default-created, not special)', async () => {
     const { service, prisma } = makeService({
       lists: [baseList({ systemKind: 'been', name: 'Been' })],
     });
-    await expect(service.deleteList(OWNER, LIST_ID)).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    expect(prisma.favoriteList.delete).not.toHaveBeenCalled();
+    await service.deleteList(OWNER, LIST_ID);
+    expect(prisma.favoriteList.delete).toHaveBeenCalled();
   });
 
   it('deleteList still deletes a user list', async () => {
@@ -184,36 +183,74 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
     expect(prisma.favoriteList.delete).toHaveBeenCalled();
   });
 
-  it('listForUser pins system lists first (fixed rank), then recently-updated user lists when no custom order', async () => {
+  it('listForUser has NO pinned system prefix (wave-2 §2): recently-updated across ALL lists when no custom order', async () => {
     const mk = (listId: string, over: any) => baseList({ listId, ...over });
     const { service } = makeService({
       lists: [
-        // insertion order deliberately scrambled
+        // positions match creation order (no custom order); updatedAt decides.
+        mk('s1', {
+          systemKind: 'been',
+          name: 'Been',
+          position: 1,
+          createdAt: new Date('2026-06-01T00:00:00Z'),
+          updatedAt: new Date('2026-07-05T00:00:00Z'),
+        }),
+        mk('s2', {
+          systemKind: 'want_to_go',
+          name: 'Want to go',
+          position: 2,
+          createdAt: new Date('2026-06-01T00:01:00Z'),
+          updatedAt: new Date('2026-07-01T00:00:00Z'),
+        }),
         mk('u1', {
           name: 'Older',
-          position: 1,
+          position: 3,
           createdAt: new Date('2026-07-01T00:00:00Z'),
           updatedAt: new Date('2026-07-02T00:00:00Z'),
         }),
-        mk('s2', { systemKind: 'want_to_go', name: 'Want to go', position: 2 }),
         mk('u2', {
           name: 'Fresher',
-          position: 2,
+          position: 4,
           createdAt: new Date('2026-07-03T00:00:00Z'),
           updatedAt: new Date('2026-07-09T00:00:00Z'),
         }),
-        mk('s1', { systemKind: 'been', name: 'Been', position: 1 }),
       ],
     });
     const result = await service.listForUser(OWNER, {
       listType: 'restaurant',
     } as any);
     expect(result.map((row: any) => row.listId)).toEqual([
-      's1',
-      's2',
       'u2',
+      's1',
       'u1',
+      's2',
     ]);
+  });
+
+  it('listForUser: a moved SYSTEM list participates in the custom order (wave-2 §2)', async () => {
+    const mk = (listId: string, over: any) => baseList({ listId, ...over });
+    const { service } = makeService({
+      lists: [
+        // created s1 then u1, but s1 moved BELOW u1 = custom order set, and honored.
+        mk('s1', {
+          systemKind: 'been',
+          name: 'Been',
+          position: 2,
+          createdAt: new Date('2026-06-01T00:00:00Z'),
+          updatedAt: new Date('2026-07-09T00:00:00Z'),
+        }),
+        mk('u1', {
+          name: 'Mine first',
+          position: 1,
+          createdAt: new Date('2026-07-01T00:00:00Z'),
+          updatedAt: new Date('2026-07-02T00:00:00Z'),
+        }),
+      ],
+    });
+    const result = await service.listForUser(OWNER, {
+      listType: 'restaurant',
+    } as any);
+    expect(result.map((row: any) => row.listId)).toEqual(['u1', 's1']);
   });
 
   it('listForUser honors a custom home order (positions diverge from creation order)', async () => {

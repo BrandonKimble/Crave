@@ -29,7 +29,6 @@ const AppRouteSheetHostNativeRuntimeBinder = React.memo(
     const sharedSheetRuntimeOwner = useAppRouteSharedSheetRuntimeOwner();
     const sharedSheetRuntimeModel = sharedSheetRuntimeOwner.sharedSheetRuntimeModel;
     const routeSheetFrameHostAuthority = useAppRouteSheetFrameHostAuthority({
-      sharedSheetY: sharedSheetRuntimeModel.presentationState.sheetY,
       nativeAdapterAuthority: routeSheetHostAuthorityRuntime.nativeAdapterAuthority,
     });
 

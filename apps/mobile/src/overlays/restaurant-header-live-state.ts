@@ -39,7 +39,9 @@ export const publishRestaurantHeaderLiveState = (state: RestaurantHeaderLiveStat
   });
 };
 
-const getRestaurantHeaderLiveState = (): RestaurantHeaderLiveState | null =>
+// Exported (leg 6): the header host's close OVERRIDE for 'restaurant' reads the live state at
+// press time (registerHeaderCloseAction in RestaurantPanel).
+export const getRestaurantHeaderLiveState = (): RestaurantHeaderLiveState | null =>
   currentRestaurantHeaderLiveState;
 
 const subscribeRestaurantHeaderLiveState = (listener: Listener): (() => void) => {

@@ -19,7 +19,6 @@ import { type OverlayKey, getAppOverlayRouteMetadata } from './app-overlay-route
 import {
   type AppRouteOverlaySessionActions,
   type AppRouteOverlaySessionAuthority,
-  type AppRouteOverlaySessionControllerSharedSnapState,
   type AppRouteOverlaySessionSnapshot,
   type AppRouteSearchCloseRestoreOptions,
 } from './app-route-overlay-session-contract';
@@ -281,9 +280,12 @@ export class AppRouteOverlaySessionStateController {
       registerRouteEntryOriginRestorer((origin) => {
         // Detent first (the pop switch's motion plan reads the remembered-snap ledger), then
         // the one-shot scroll lanes the revealed leg consumes on its next active frame.
+        // Writer 'named': the origin-restore seam is a sanctioned seat writer (it restores the
+        // gesture-placed capture — two-posture write contract, plans/root-snap-law.md §Leg 2).
         this.routeSheetSnapSessionActions.recordRouteSceneSheetSettle({
           sceneKey: origin.sceneKey,
           snap: origin.detent,
+          writer: 'named',
         });
         origin.scroll?.forEach((lane) => {
           stageOverlayScrollRestore(lane.laneKey, lane.offset);
@@ -325,14 +327,6 @@ export class AppRouteOverlaySessionStateController {
     }
   }
 
-  private getSharedSnapState(): AppRouteOverlaySessionControllerSharedSnapState {
-    const overlaySheetPositionState = this.routeSheetSnapSessionAuthority.getSnapshot();
-    return {
-      hasUserSharedSnap: overlaySheetPositionState.hasUserSharedSnap,
-      sharedSnap: overlaySheetPositionState.sharedSnap,
-    };
-  }
-
   // Return-to-origin foundation — the (sceneKey, live detent) of the active origin at
   // trigger time. sceneKey stays the ROOT overlay key (the collapsed scene identity:
   // search|polls|bookmarks|profile), byte-equivalent to the old createCurrentOriginContext
@@ -340,20 +334,16 @@ export class AppRouteOverlaySessionStateController {
   // phase. The detent is the LIVE snap (resolveSearchLaunchOriginSnap), not hard-coded.
   private resolveLiveOriginIdentity(): { sceneKey: OverlayKey; detent: TabOverlaySnap } {
     const routeOverlayIdentitySnapshot = this.routeOverlayIdentityAuthority.getSnapshot();
-    const sessionSnapshot = this.routeSheetSnapSessionAuthority.getSnapshot();
-    const overlaySnap = this.getSharedSnapState();
     const sceneKey = routeOverlayIdentitySnapshot.rootOverlayKey;
     return {
       sceneKey,
+      // Two-posture seats: the live root detent IS the side's seat (home for search/polls,
+      // the ONE shared content seat otherwise) — read through the seat-routed ledger getter.
       detent: resolveSearchLaunchOriginSnap({
         overlay: sceneKey,
-        pollsSheetSnap: this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls'),
-        bookmarksSheetSnap:
+        homeSeatSnap: this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('polls'),
+        contentSeatSnap:
           this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('bookmarks'),
-        profileSheetSnap: this.routeSheetSnapSessionActions.getRouteSceneSwitchSceneSnap('profile'),
-        isDockedPollsDismissed: sessionSnapshot.isDockedPollsDismissed,
-        hasUserSharedSnap: overlaySnap.hasUserSharedSnap,
-        sharedSnap: overlaySnap.sharedSnap,
       }),
     };
   }

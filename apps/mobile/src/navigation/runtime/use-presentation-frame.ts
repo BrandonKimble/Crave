@@ -26,3 +26,40 @@ export const usePresentationFrame = (
   );
   return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 };
+
+// Field-selector bridge (leg 6 — PF chrome clock): subscribe to ONE frame field without
+// re-rendering on unrelated frame mutations (revision bumps, entry-id churn). Same
+// flush-cadence publication as usePresentationFrame.
+export const usePresentationFrameSelector = <TSelected>(
+  routeSceneSwitchRuntime: Pick<
+    AppRouteSceneSwitchRuntime,
+    'getPresentationFrame' | 'subscribePresentationFrame'
+  >,
+  selector: (frame: PresentationFrame) => TSelected
+): TSelected => {
+  const subscribe = React.useCallback(
+    (onStoreChange: () => void) =>
+      routeSceneSwitchRuntime.subscribePresentationFrame(onStoreChange),
+    [routeSceneSwitchRuntime]
+  );
+  const selectorRef = React.useRef(selector);
+  selectorRef.current = selector;
+  const getSnapshot = React.useCallback(
+    () => selectorRef.current(routeSceneSwitchRuntime.getPresentationFrame()),
+    [routeSceneSwitchRuntime]
+  );
+  return React.useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+};
+
+/**
+ * Nav-out consumer read (leg 6): the bottom nav leaves whenever the committed frame says the
+ * top-of-stack entry is a child scene. Replaces useIsNavOutChildSceneRevealed (the deleted
+ * nav-out-derivation-store) — same boolean, now on the PF commit clock.
+ */
+export const useIsChildSceneRevealed = (
+  routeSceneSwitchRuntime: Pick<
+    AppRouteSceneSwitchRuntime,
+    'getPresentationFrame' | 'subscribePresentationFrame'
+  >
+): boolean =>
+  usePresentationFrameSelector(routeSceneSwitchRuntime, (frame) => frame.isChildSceneRevealed);

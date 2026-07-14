@@ -35,6 +35,12 @@ import {
   type MotionPressureState,
 } from '../../runtime/map/map-motion-pressure';
 import { EMPTY_SEARCH_MAP_SOURCE_STORE } from '../../runtime/map/search-map-source-store';
+import { getSearchSurfaceRuntime } from '../../runtime/surface/search-surface-runtime';
+import {
+  buildLabelSourceFeatureDiffKey,
+  buildStableCollisionFeature,
+} from '../../hooks/use-direct-search-map-source-controller';
+import type { RestaurantFeatureProperties } from '../search-map';
 import type {
   SearchMapCommittedSourceDeltaJournal,
   SearchMapSourceStore,
@@ -64,6 +70,11 @@ type SearchMapNativeRenderOwnerStatusArgs = {
     frameGenerationId: string | null;
     executionBatchId: string | null;
     readyAtMs: number;
+    // S-0 (lens-transport plan §7.12): the DATA identity the mounted frame carried vs
+    // the data identity currently desired — lets the reveal gate reject a stale
+    // (preview) mount so the cover lifts only on the world it will actually show.
+    mountedSourceDataKey: string | null;
+    desiredSourceDataKey: string | null;
   }) => void;
   onMarkerEnterStarted?: (payload: {
     requestKey: string;
@@ -555,6 +566,12 @@ type SearchMapRenderSourceDelta = {
   orderChangedGroupIds?: string[];
   removedGroupIds?: string[];
   upsertFeatures?: SearchMapSourceTransportFeature[];
+  // Patch-baseline proof (lens-transport contract 3): the journal revision this delta
+  // was computed AGAINST and the revision it produces. Native verifies base against its
+  // last-applied revision and loudly rejects a mismatched patch — a diverged baseline
+  // must fail at the divergence, never corrupt silently.
+  baseSourceRevision?: string;
+  nextSourceRevision?: string;
 };
 
 type SearchMapMarkerRoleKind = 'pin' | 'dot';
@@ -579,9 +596,29 @@ type SearchMapMarkerRoleFrame = {
   upsertRoles: SearchMapMarkerRoleRow[];
 };
 
+type SearchMapRenderDerivedFamilyRevisions = {
+  baseSourceRevision: string | null;
+  nextSourceRevision: string;
+};
+
+type SearchMapRenderDerivedFamilyTransport = {
+  pinInteractions: {
+    diffKeyByFeatureId: Record<string, string>;
+  } & SearchMapRenderDerivedFamilyRevisions;
+  dots: {
+    diffKeyByFeatureId: Record<string, string>;
+    dotImageIdByFeatureId: Record<string, string>;
+    nativeDotOpacityByFeatureId: Record<string, number>;
+  } & SearchMapRenderDerivedFamilyRevisions;
+  labelCollisions: {
+    diffKeyByFeatureId: Record<string, string>;
+  } & SearchMapRenderDerivedFamilyRevisions;
+};
+
 type SearchMapRenderSourceTransportPayload = {
   effectiveChangedSourceIds: SearchMapRenderSourceId[];
   sourceDeltas?: SearchMapRenderSourceDelta[];
+  derivedFamilyTransport?: SearchMapRenderDerivedFamilyTransport;
   markerRoleFrame?: SearchMapMarkerRoleFrame;
 };
 
@@ -637,6 +674,35 @@ const serializeSearchMapNativeSourceFrameMatchState = (
     state.shortcutCoverageRequestKey ?? 'coverage:none',
     state.markersRenderKey ?? 'markers:none',
   ].join('|');
+
+// S-0 (lens-transport plan §7.12): per-frame data-identity ledger. Records which
+// sourceDataKey each submitted frameGenerationId carried (bounded), plus the latest
+// DESIRED data key per instance, so the mounted_hidden handler can distinguish a stale
+// preview mount from the world the reveal intends to show. Module-level: the frame
+// submit path and the native event dispatcher live in different hooks.
+const frameSourceDataKeyByGeneration = new Map<string, string>();
+const latestDesiredSourceDataKeyByInstance = new Map<string, string>();
+// frameGenerationIds are PER-INSTANCE sequences (frame:N) — key the ledger by
+// instance too, or two live map instances cross-contaminate the reveal gate
+// (red team 2026-07-12).
+const frameSourceDataKeyLedgerKey = (instanceId: string, frameGenerationId: string): string =>
+  `${instanceId}|${frameGenerationId}`;
+const recordFrameSourceDataKey = (
+  instanceId: string,
+  frameGenerationId: string,
+  sourceDataKey: string
+): void => {
+  frameSourceDataKeyByGeneration.set(
+    frameSourceDataKeyLedgerKey(instanceId, frameGenerationId),
+    sourceDataKey
+  );
+  if (frameSourceDataKeyByGeneration.size > 32) {
+    const oldestKey = frameSourceDataKeyByGeneration.keys().next().value;
+    if (oldestKey != null) {
+      frameSourceDataKeyByGeneration.delete(oldestKey);
+    }
+  }
+};
 
 const serializeSearchMapNativeSourceDataKey = (
   state: SearchMapNativeSourceFrameMatchState
@@ -1199,10 +1265,15 @@ const getSearchMapRenderSourceRevisions = (
 
 const toRenderSourceDelta = (
   sourceId: SearchMapRenderSourceId,
-  delta: SearchMapSourceStoreDelta
+  delta: SearchMapSourceStoreDelta,
+  revisions?: { baseSourceRevision: string | null; nextSourceRevision: string }
 ): SearchMapRenderSourceDelta => ({
   sourceId,
   mode: delta.mode,
+  ...(revisions?.baseSourceRevision != null && delta.mode === 'patch'
+    ? { baseSourceRevision: revisions.baseSourceRevision }
+    : {}),
+  ...(revisions ? { nextSourceRevision: revisions.nextSourceRevision } : {}),
   nextFeatureIdsInOrder: delta.nextFeatureIdsInOrder,
   removeIds: delta.removeIds,
   ...(delta.dirtyGroupIds ? { dirtyGroupIds: delta.dirtyGroupIds } : {}),
@@ -1299,52 +1370,221 @@ const buildReplayJournalDelta = (
 const buildSourceDelta = (
   sourceId: SearchMapRenderSourceId,
   acknowledgedSourceRevision: string | null,
-  nextSourceStore: SearchMapSourceStore
+  nextSourceStore: SearchMapSourceStore,
+  acknowledgedResidentIds: ReadonlySet<string> | null
 ): SearchMapRenderSourceDelta | null => {
   if (acknowledgedSourceRevision === nextSourceStore.sourceRevision) {
     return null;
   }
   const committedDeltaJournal: SearchMapCommittedSourceDeltaJournal | null =
     nextSourceStore.committedDeltaJournal;
-  const delta =
+  let delta =
     acknowledgedSourceRevision == null
       ? nextSourceStore.buildReplaceDelta()
       : committedDeltaJournal?.baseSourceRevision === acknowledgedSourceRevision
         ? committedDeltaJournal.delta
         : (buildReplayJournalDelta(acknowledgedSourceRevision, nextSourceStore) ??
           nextSourceStore.buildReplaceDelta());
-  return delta ? toRenderSourceDelta(sourceId, delta) : null;
+  // UPSERT-COMPLETENESS PROOF (lens-transport contract 3, root-caused 2026-07-12): a
+  // patch asserts every next id it does not upsert is ALREADY resident natively. Prove
+  // it against the acked snapshot's membership — a journal/replay composition that
+  // dropped an add otherwise applies silently-wrong (removes of absent ids no-op) and
+  // explodes frames later as "missing feature". Unprovable → replace, loudly.
+  if (delta != null && delta.mode === 'patch') {
+    const upsertIds = new Set((delta.upsertFeatures ?? []).map((feature) => feature.id));
+    const unprovableAssumedResidentId = delta.nextFeatureIdsInOrder.find(
+      (featureId) =>
+        !upsertIds.has(featureId) &&
+        (acknowledgedResidentIds == null || !acknowledgedResidentIds.has(featureId))
+    );
+    if (unprovableAssumedResidentId != null) {
+      reportSearchFlowContractViolation('map_patch_unprovable_assumed_resident', {
+        sourceId,
+        featureId: unprovableAssumedResidentId,
+        acknowledgedSourceRevision,
+        nextSourceRevision: nextSourceStore.sourceRevision,
+        ackedResidentCount: acknowledgedResidentIds?.size ?? null,
+      });
+      delta = nextSourceStore.buildReplaceDelta();
+    }
+  }
+  return delta
+    ? toRenderSourceDelta(sourceId, delta, {
+        baseSourceRevision: delta.mode === 'patch' ? acknowledgedSourceRevision : null,
+        nextSourceRevision: nextSourceStore.sourceRevision,
+      })
+    : null;
+};
+
+// Lens transport S-1b (plans/map-world-lens-transport.md §7.2): the three derived
+// families never cross the bridge as features — native synthesizes them from the pins
+// delta. JS ships only per-feature diffKeys (opaque equality tokens that must match
+// what the JS stores hold — replicating their derivation in Swift is a float-format
+// trap) plus the dot extras (sprite id + role opacity) that are JS-computed.
+const buildDerivedFamilyTransportForPinsDelta = (
+  pinsDelta: SearchMapRenderSourceDelta,
+  derivedDeltasBySourceId: Partial<
+    Record<SearchMapRenderSourceId, SearchMapRenderSourceDelta | null>
+  >,
+  nextSnapshot: SearchMapRenderSnapshot
+): SearchMapRenderDerivedFamilyTransport => {
+  const pinInteractionDiffKeys: Record<string, string> = {};
+  const dotDiffKeys: Record<string, string> = {};
+  const dotImageIdByFeatureId: Record<string, string> = {};
+  const nativeDotOpacityByFeatureId: Record<string, number> = {};
+  const collisionDiffKeys: Record<string, string> = {};
+  const diffKeysFromDelta = (
+    delta: SearchMapRenderSourceDelta | null | undefined
+  ): Map<string, string> => {
+    const byId = new Map<string, string>();
+    (delta?.upsertFeatures ?? []).forEach((feature) => byId.set(feature.id, feature.diffKey));
+    return byId;
+  };
+  const interactionDeltaKeys = diffKeysFromDelta(derivedDeltasBySourceId.pinInteractions);
+  const dotDeltaKeys = diffKeysFromDelta(derivedDeltasBySourceId.dots);
+  const collisionDeltaKeys = diffKeysFromDelta(derivedDeltasBySourceId.labelCollisions);
+  for (const pinFeature of pinsDelta.upsertFeatures ?? []) {
+    const featureId = pinFeature.id;
+    const interactionDiffKey =
+      interactionDeltaKeys.get(featureId) ??
+      nextSnapshot.pinInteractions.transportFeatureById.get(featureId)?.diffKey;
+    if (interactionDiffKey != null) {
+      pinInteractionDiffKeys[featureId] = interactionDiffKey;
+    }
+    const dotTransport = nextSnapshot.dots.transportFeatureById.get(featureId);
+    const dotDiffKey = dotDeltaKeys.get(featureId) ?? dotTransport?.diffKey;
+    if (dotDiffKey != null) {
+      dotDiffKeys[featureId] = dotDiffKey;
+    }
+    const dotImageId = dotTransport?.properties?.dotImageId;
+    if (typeof dotImageId === 'string' && dotImageId.length > 0) {
+      dotImageIdByFeatureId[featureId] = dotImageId;
+    }
+    const dotOpacity =
+      dotTransport?.featureState?.nativeDotOpacity ?? dotTransport?.properties?.nativeDotOpacity;
+    if (typeof dotOpacity === 'number' && Number.isFinite(dotOpacity)) {
+      nativeDotOpacityByFeatureId[featureId] = dotOpacity;
+    }
+    // Collisions: the JS store is on-screen-gated, so a pin-upserted id may have no
+    // store entry — compute the diffKey through the SAME pure builders the store uses
+    // (buildStableCollisionFeature → transport diffKey), byte-identical by construction.
+    const collisionDiffKey =
+      collisionDeltaKeys.get(featureId) ??
+      nextSnapshot.labelCollisions.transportFeatureById.get(featureId)?.diffKey ??
+      buildLabelSourceFeatureDiffKey(
+        buildStableCollisionFeature(
+          {
+            type: 'Feature',
+            id: featureId,
+            geometry: { type: 'Point', coordinates: [pinFeature.lng, pinFeature.lat] },
+            properties: (pinFeature.properties ?? {}) as RestaurantFeatureProperties,
+          },
+          pinFeature.markerKey
+        )
+      );
+    collisionDiffKeys[featureId] = collisionDiffKey;
+  }
+  const familyRevisions = (
+    delta: SearchMapRenderSourceDelta | null | undefined,
+    sourceId: SearchMapRenderSourceId
+  ) => ({
+    // Ledger advancement (final red team): synthesized deltas must carry the SAME
+    // base/next revision proof as legacy deltas, or native's applied-revision ledger
+    // stalls for derived families and every later legacy patch mismatches.
+    baseSourceRevision: delta?.baseSourceRevision ?? null,
+    nextSourceRevision:
+      delta?.nextSourceRevision ?? getSnapshotSource(nextSnapshot, sourceId).sourceRevision,
+  });
+  return {
+    pinInteractions: {
+      diffKeyByFeatureId: pinInteractionDiffKeys,
+      ...familyRevisions(derivedDeltasBySourceId.pinInteractions, 'pinInteractions'),
+    },
+    dots: {
+      diffKeyByFeatureId: dotDiffKeys,
+      dotImageIdByFeatureId,
+      nativeDotOpacityByFeatureId,
+      ...familyRevisions(derivedDeltasBySourceId.dots, 'dots'),
+    },
+    labelCollisions: {
+      diffKeyByFeatureId: collisionDiffKeys,
+      ...familyRevisions(derivedDeltasBySourceId.labelCollisions, 'labelCollisions'),
+    },
+  };
 };
 
 const buildSearchMapRenderSourceTransport = ({
   previousSourceRevisions,
   nextSnapshot,
   changedSourceIds,
+  acknowledgedSnapshot,
 }: {
   previousSourceRevisions: SearchMapRenderSourceRevisionState | null;
   nextSnapshot: SearchMapRenderSnapshot;
   changedSourceIds: SearchMapRenderSourceId[];
+  acknowledgedSnapshot: SearchMapRenderSnapshot | null;
 }): SearchMapRenderSourceTransportPayload => {
-  const sourceDeltas: SearchMapRenderSourceDelta[] = [];
+  const deltasBySourceId: Partial<
+    Record<SearchMapRenderSourceId, SearchMapRenderSourceDelta | null>
+  > = {};
   const effectiveChangedSourceIds: SearchMapRenderSourceId[] = [];
 
   for (const sourceId of changedSourceIds) {
     const nextCollection = getSnapshotSource(nextSnapshot, sourceId);
+    const acknowledgedCollection =
+      acknowledgedSnapshot == null ? null : getSnapshotSource(acknowledgedSnapshot, sourceId);
     const delta = buildSourceDelta(
       sourceId,
       previousSourceRevisions?.[sourceId] ?? null,
-      nextCollection
+      nextCollection,
+      acknowledgedCollection == null ? null : new Set(acknowledgedCollection.idsInOrder)
     );
     if (!delta) {
       continue;
     }
-    sourceDeltas.push(delta);
+    deltasBySourceId[sourceId] = delta;
     effectiveChangedSourceIds.push(sourceId);
+  }
+
+  const pinsDelta = deltasBySourceId.pins ?? null;
+  // Fan-out engages only when the pins family itself ships — derived-family-only
+  // deltas (no pins change) keep the legacy full-feature path so their standalone
+  // membership/content updates stay exact.
+  const shouldFanOutDerivedFamilies =
+    pinsDelta != null &&
+    (deltasBySourceId.pinInteractions != null ||
+      deltasBySourceId.dots != null ||
+      deltasBySourceId.labelCollisions != null);
+  const sourceDeltas: SearchMapRenderSourceDelta[] = shouldFanOutDerivedFamilies
+    ? [pinsDelta]
+    : (['pins', 'pinInteractions', 'dots', 'labelCollisions'] as const).flatMap((sourceId) => {
+        const delta = deltasBySourceId[sourceId];
+        return delta ? [delta] : [];
+      });
+  const derivedFamilyTransport = shouldFanOutDerivedFamilies
+    ? buildDerivedFamilyTransportForPinsDelta(pinsDelta, deltasBySourceId, nextSnapshot)
+    : null;
+
+  if (__DEV__ && (sourceDeltas.length > 0 || derivedFamilyTransport != null)) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[BASELEDGER] build fanOut=${shouldFanOutDerivedFamilies} ` +
+        (['pins', 'pinInteractions', 'dots', 'labelCollisions'] as const)
+          .map((sourceId) => {
+            const delta = deltasBySourceId[sourceId];
+            return delta == null
+              ? `${sourceId}:none(base=${JSON.stringify(previousSourceRevisions?.[sourceId] ?? null)})`
+              : `${sourceId}:${delta.mode}(base=${JSON.stringify(delta.baseSourceRevision ?? null)}->` +
+                  `${JSON.stringify(delta.nextSourceRevision ?? null)},n=${delta.nextFeatureIdsInOrder.length})`;
+          })
+          .join(' ')
+    );
   }
 
   return {
     effectiveChangedSourceIds,
     ...(sourceDeltas.length > 0 ? { sourceDeltas } : {}),
+    ...(derivedFamilyTransport ? { derivedFamilyTransport } : {}),
   };
 };
 
@@ -2350,6 +2590,14 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   frameGenerationId: event.frameGenerationId,
                   executionBatchId: event.executionBatchId,
                   readyAtMs: event.readyAtMs,
+                  mountedSourceDataKey:
+                    event.frameGenerationId != null
+                      ? (frameSourceDataKeyByGeneration.get(
+                          frameSourceDataKeyLedgerKey(event.instanceId, event.frameGenerationId)
+                        ) ?? null)
+                      : null,
+                  desiredSourceDataKey:
+                    latestDesiredSourceDataKeyByInstance.get(event.instanceId) ?? null,
                 });
               });
               return;
@@ -2755,6 +3003,7 @@ const useSearchMapNativeRenderOwnerSync = ({
       shouldIgnoreNativeSyncErrorsRef.current = true;
       isAttachedRef.current = false;
       forgetSearchMapNativeFrameVisualSourceCounts(instanceId);
+      latestDesiredSourceDataKeyByInstance.delete(instanceId);
       resetNativeRenderOwnerTransportState({
         state: transportStateRef.current,
         resetDesiredExecutionBatchId: true,
@@ -2773,14 +3022,77 @@ const useSearchMapNativeRenderOwnerSync = ({
       });
       return;
     }
-    const effectiveDesiredFrame = takeNextNativeRenderOwnerFrameForTransport({
+    // STRUCTURAL-APPLY FENCE (eye-verified 2026-07-13): the preview world's ~85ms
+    // main-thread GL apply landed mid-slide and ate the sheet spring's frames (the
+    // slide rendered ~4 positions instead of ~11). Same motion-keyed predicate as the
+    // seam's world-commit hold: while the sheet is physically moving for the active
+    // redraw, STRUCTURAL frames stay queued (latest-wins; presentation-only frames
+    // flow untouched); the settle publish re-flushes below. Deadlock-proof by
+    // construction — the fence only engages when motion actually started (snap-START
+    // producer), never on a deferred/no-op snap.
+    const pendingStructural =
+      transportState.queueState.pendingFrame?.sourceTransport?.effectiveChangedSourceIds?.length ??
+      0;
+    if (pendingStructural > 0) {
+      const activeRedrawTransaction = getSearchSurfaceRuntime().getSnapshot().redrawTransaction;
+      if (activeRedrawTransaction != null && !activeRedrawTransaction.readiness.sheetReady) {
+        return;
+      }
+    }
+    const takenDesiredFrame = takeNextNativeRenderOwnerFrameForTransport({
       transportState,
       ownerEpoch: ownerEpochRef.current,
     });
-    if (!effectiveDesiredFrame) {
+    if (!takenDesiredFrame) {
       return;
     }
+    // OPEN-A FIX (wave-4 §3, sim-attributed 2026-07-13): a queued frame's source deltas
+    // were computed against the ack at BUILD time. When a prior frame acks while this one
+    // waits (back-to-back enters, instance churn), those patch bases are stale BY
+    // CONSTRUCTION and native rightly rejects ("claims base v1, native applied v2") —
+    // stranding the enter's pins until the resync round-trip. The flush is the only
+    // moment that knows native's current truth: rebuild the delta transport against the
+    // LATEST ack when any patch base disagrees with it. Live role-frame transports
+    // (no sourceDeltas) are untouched.
+    let effectiveDesiredFrame = takenDesiredFrame;
+    {
+      const latestAckRevisions = transportState.lastNativeAck?.sourceRevisions ?? null;
+      const hasStaleBasedPatch = (takenDesiredFrame.sourceTransport.sourceDeltas ?? []).some(
+        (delta) =>
+          delta.mode === 'patch' &&
+          (delta.baseSourceRevision ?? null) !== (latestAckRevisions?.[delta.sourceId] ?? null)
+      );
+      if (hasStaleBasedPatch) {
+        const snapshotRevisions = getSearchMapRenderSourceRevisions(takenDesiredFrame.snapshot);
+        const changedSourceIds = SEARCH_MAP_RENDER_SOURCE_IDS.filter(
+          (sourceId) => (latestAckRevisions?.[sourceId] ?? null) !== snapshotRevisions[sourceId]
+        );
+        const rebuiltSourceTransport = buildSearchMapRenderSourceTransport({
+          previousSourceRevisions: latestAckRevisions,
+          acknowledgedSnapshot: transportState.lastNativeAckSnapshot,
+          nextSnapshot: takenDesiredFrame.snapshot,
+          changedSourceIds,
+        });
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[BASELEDGER] flush-rebuild stale patch bases → rebuilt against latest ack ` +
+              `(changed=${changedSourceIds.join(',') || 'none'} gen=${takenDesiredFrame.frameGenerationId})`
+          );
+        }
+        effectiveDesiredFrame = {
+          ...takenDesiredFrame,
+          sourceTransport: rebuiltSourceTransport,
+        };
+        transportState.queueState.inFlightFrame = effectiveDesiredFrame;
+      }
+    }
     mapMotionPressureController.applySourcePublishLifecycleEvent({ kind: 'started' });
+    recordFrameSourceDataKey(
+      instanceId,
+      effectiveDesiredFrame.frameGenerationId,
+      effectiveDesiredFrame.sourceDataKey
+    );
     if (__DEV__ && effectiveDesiredFrame.frame.presentation.startToken != null) {
       console.log(`[NGAPJS] tokenFlushed t=${performance.now().toFixed(1)}`);
     }
@@ -2919,6 +3231,17 @@ const useSearchMapNativeRenderOwnerSync = ({
         candidateCatalog.key !== lastPushedCandidateCatalogKeyRef.current
       ) {
         lastPushedCandidateCatalogKeyRef.current = candidateCatalog.key;
+        if (__DEV__) {
+          const invisible = candidateCatalog.entries.filter((e) => e.isInvisibleResident).length;
+          // eslint-disable-next-line no-console
+          console.log(
+            `[CATALOG] push n=${candidateCatalog.entries.length} invisible=${invisible} ` +
+              `first=${candidateCatalog.entries
+                .slice(0, 3)
+                .map((e) => `${e.markerKey}@r${e.rank}`)
+                .join(',')} inst=${instanceId.slice(-11)}`
+          );
+        }
         void searchMapRenderController.setCandidateCatalog({
           instanceId,
           entries: candidateCatalog.entries,
@@ -2973,7 +3296,7 @@ const useSearchMapNativeRenderOwnerSync = ({
             transportState,
             effectiveDesiredFrame.frameGenerationId
           );
-          if (message.includes('Source delta')) {
+          if (message.includes('Source delta') || message.includes('Patch baseline mismatch')) {
             // BASELINE RESYNC (2026-07-12): a native delta rejection is PROOF the ack
             // baseline no longer matches native's resident collection (and a partially
             // applied multi-source frame advances native state even as the frame
@@ -2987,7 +3310,7 @@ const useSearchMapNativeRenderOwnerSync = ({
             flushLatestDesiredFrame();
           }
           if (
-            message.includes('Source delta') &&
+            (message.includes('Source delta') || message.includes('Patch baseline mismatch')) &&
             !transportState.queueState.pendingFrame &&
             isAttachedRef.current
           ) {
@@ -3019,6 +3342,23 @@ const useSearchMapNativeRenderOwnerSync = ({
       }
     );
   }, [instanceId, isNativeAvailable, mapMotionPressureController]);
+
+  // Structural-apply fence release: when the sheet settles (sheetReady flips true) or
+  // the redraw transaction resolves, flush any structural frame the fence held.
+  React.useEffect(
+    () =>
+      getSearchSurfaceRuntime().subscribe(() => {
+        const transportState = transportStateRef.current;
+        if (transportState.queueState.pendingFrame == null) {
+          return;
+        }
+        const activeRedrawTransaction = getSearchSurfaceRuntime().getSnapshot().redrawTransaction;
+        if (activeRedrawTransaction == null || activeRedrawTransaction.readiness.sheetReady) {
+          flushLatestDesiredFrame();
+        }
+      }),
+    [flushLatestDesiredFrame]
+  );
 
   React.useEffect(() => {
     if (!isAttached) {
@@ -3104,6 +3444,15 @@ const useSearchMapNativeRenderOwnerSync = ({
             if (didPublishResidentSnapshot) {
               transportState.lastNativeAck = nativeAck;
             }
+            if (__DEV__) {
+              // eslint-disable-next-line no-console
+              console.log(
+                `[BASELEDGER] ack outcome=${event.sourceAdmissionOutcome} resident=${didPublishResidentSnapshot} ` +
+                  `revs=${JSON.stringify(event.sourceRevisions)} nativeRevs=${JSON.stringify(
+                    (event as { nativeSourceRevisions?: unknown }).nativeSourceRevisions ?? null
+                  )} gen=${event.frameGenerationId} inst=${instanceId.slice(-11)}`
+              );
+            }
             if (matchedFrame != null) {
               const didNativeEchoMatchedSourceSnapshot =
                 areSearchMapRenderSourceRevisionStatesEqual(
@@ -3185,6 +3534,7 @@ const useSearchMapNativeRenderOwnerSync = ({
         });
         const sourceFrameKey = serializeSearchMapNativeSourceFrameMatchState(sourceFrameMatchState);
         const sourceDataKey = serializeSearchMapNativeSourceDataKey(sourceFrameMatchState);
+        latestDesiredSourceDataKeyByInstance.set(instanceId, sourceDataKey);
         const isInitialNativeFrame =
           transportState.lastNativeAck == null &&
           transportState.queueState.inFlightFrame == null &&
@@ -3271,6 +3621,7 @@ const useSearchMapNativeRenderOwnerSync = ({
         const structuralSourceTransport = hasSerializableSourceSnapshot
           ? buildSearchMapRenderSourceTransport({
               previousSourceRevisions: sourceSyncBaselineRevisions,
+              acknowledgedSnapshot: transportState.lastNativeAckSnapshot,
               nextSnapshot: preparedSourceSnapshot,
               changedSourceIds:
                 sourceSyncBaselineRevisions == null

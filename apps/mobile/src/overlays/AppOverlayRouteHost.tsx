@@ -98,6 +98,23 @@ const markRouteSheetHostRuntimeDiffs = (
   );
 };
 
+// BAIL-OUT (perf attribution 2026-07-12): the runtime bundle is a MERGE object whose
+// wrapper identity can churn even when every field is stable — compare by FIELD so a
+// fresh wrapper with identical members bails instead of cascading the 12-level chain.
+const areRouteSheetHostRuntimesFieldEqual = (
+  left: AppRouteSheetHostRuntime,
+  right: AppRouteSheetHostRuntime
+): boolean =>
+  left === right ||
+  (left.searchInteractionRef === right.searchInteractionRef &&
+    left.routeSheetSurfaceAuthority === right.routeSheetSurfaceAuthority &&
+    left.routeSheetSurfaceBodyAuthority === right.routeSheetSurfaceBodyAuthority &&
+    left.routeSheetSurfaceFrameAuthority === right.routeSheetSurfaceFrameAuthority &&
+    left.routeSheetRuntimeConfigAuthority === right.routeSheetRuntimeConfigAuthority &&
+    left.sceneStackSurfaceAuthority === right.sceneStackSurfaceAuthority &&
+    left.routeSceneDisplayTargetRegistry === right.routeSceneDisplayTargetRegistry &&
+    left.routeHostVisualRuntimeAuthority === right.routeHostVisualRuntimeAuthority);
+
 const AppOverlayRouteHost = ({
   overlayChromeHostAuthority,
   overlayGateHostAuthority,
@@ -210,7 +227,10 @@ const areAppOverlayRouteHostPropsEqual = (
     previousProps.routeOverlayTransitionActions === nextProps.routeOverlayTransitionActions &&
     previousProps.routeSheetSnapSessionAuthority === nextProps.routeSheetSnapSessionAuthority &&
     previousProps.routeSheetSnapSessionActions === nextProps.routeSheetSnapSessionActions &&
-    previousProps.routeSheetHostRuntime === nextProps.routeSheetHostRuntime
+    areRouteSheetHostRuntimesFieldEqual(
+      previousProps.routeSheetHostRuntime,
+      nextProps.routeSheetHostRuntime
+    )
   );
 };
 

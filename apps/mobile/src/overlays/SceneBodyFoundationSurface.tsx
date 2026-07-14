@@ -9,6 +9,8 @@ import {
 import Reanimated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 
 import MaskedHoleOverlay, { type MaskedHole } from '../components/MaskedHoleOverlay';
+import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
+import { SceneStripLawContext } from '../toggles/toggle-strip-scene-law';
 
 /**
  * THE FOUNDATION WHITE LAYER (owner standard, 2026-07-11): every sheet scene's body sits on a
@@ -115,6 +117,14 @@ export const useSceneFrostCutoutContentLayoutSignal = (): (() => void) => {
   return context?.scheduleRemeasureAll ?? noop;
 };
 
+/**
+ * Backdrop probe for the toggle-strip engine's declared-backdrop assert: TRUE when the
+ * caller renders inside a foundation-plated scene body (a FrostCutout here punches the
+ * white plate), FALSE on chrome / the search sheet (honest frost by construction).
+ */
+export const useIsInsideSceneFoundationSurface = (): boolean =>
+  React.useContext(SceneFrostCutoutContext) != null;
+
 type SceneBodyWhitePlateProps = {
   store: FrostCutoutStore;
   scrollOffset: SharedValue<number>;
@@ -165,6 +175,12 @@ const SceneBodyWhitePlate: React.FC<SceneBodyWhitePlateProps> = ({
 export type SceneBodyFoundationSurfaceProps = {
   /** The scene body lane's live scroll offset (shared scroll container / list). */
   scrollOffset: SharedValue<number>;
+  /**
+   * The scene this lane paints — provided over `SceneStripLawContext` so strip
+   * components can assert the foundation's `strip:` declaration (the load-bearing
+   * strip law, toggle-strip-scene-law.ts).
+   */
+  sceneKey?: SheetSceneKey | null;
   /** The body-lane style (the caller's existing wrapper style — absolute fill). */
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
@@ -172,6 +188,7 @@ export type SceneBodyFoundationSurfaceProps = {
 
 export const SceneBodyFoundationSurface: React.FC<SceneBodyFoundationSurfaceProps> = ({
   scrollOffset,
+  sceneKey = null,
   style,
   children,
 }) => {
@@ -271,7 +288,7 @@ export const SceneBodyFoundationSurface: React.FC<SceneBodyFoundationSurfaceProp
         <SceneBodyWhitePlate store={store} scrollOffset={scrollOffset} frameHeight={frameHeight} />
       </View>
       <SceneFrostCutoutContext.Provider value={contextValue}>
-        {children}
+        <SceneStripLawContext.Provider value={sceneKey}>{children}</SceneStripLawContext.Provider>
       </SceneFrostCutoutContext.Provider>
     </View>
   );

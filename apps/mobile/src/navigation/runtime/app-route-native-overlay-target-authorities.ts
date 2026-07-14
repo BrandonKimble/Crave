@@ -21,7 +21,6 @@ import type {
   PresentationLaneInputs,
 } from './app-route-presentation-frame-contract';
 import { withSearchNavSwitchRuntimeAttribution } from '../../screens/Search/runtime/shared/search-nav-switch-runtime-attribution';
-import type { OverlayHeaderActionMode } from '../../overlays/useOverlayHeaderActionController';
 import type { AppRouteOverlayCommandAuthority } from './app-route-overlay-command-controller';
 import type { AppRouteSheetHostSurfaceSnapshot } from './app-route-sheet-host-surface-runtime-contract';
 import type { RouteScenePolicyAuthority } from './route-scene-policy-authority-contract';
@@ -307,18 +306,7 @@ const areSheetPolicySnapshotsEqual = (
     right.overlaySheetPolicy != null &&
     left.overlaySheetPolicy.overlaySheetVisible === right.overlaySheetPolicy.overlaySheetVisible &&
     left.overlaySheetPolicy.overlaySheetApplyNavBarCutout ===
-      right.overlaySheetPolicy.overlaySheetApplyNavBarCutout &&
-    left.overlaySheetPolicy.overlayHeaderActionMode ===
-      right.overlaySheetPolicy.overlayHeaderActionMode);
-
-const resolveSceneHeaderActionMode = (
-  routeActiveSceneKey: RouteSceneSwitchSnapshot['routeActiveSceneKey']
-): OverlayHeaderActionMode | null => {
-  if (routeActiveSceneKey == null) {
-    return null;
-  }
-  return routeActiveSceneKey === 'polls' ? 'follow-collapse' : 'fixed-close';
-};
+      right.overlaySheetPolicy.overlaySheetApplyNavBarCutout);
 
 const resolveRouteSceneSwitchSnapshotFromTransitionState = (
   state: RouteSceneSwitchTransitionState
@@ -347,10 +335,6 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
   routeOverlayCommandAuthority: AppRouteOverlayCommandAuthority;
   routeSheetSnapSessionAuthority: AppRouteSheetSnapSessionAuthority;
 }): NativeOverlayTargetAuthorities => {
-  let searchHeaderActionResetToken = 0;
-  let searchHeaderActionModeOverride: OverlayHeaderActionMode | null = null;
-  let closeHandoffOverlayHeaderActionMode: OverlayHeaderActionMode | null = null;
-
   const resolveSourceSnapshot = (
     transitionState = routeSceneSwitchRuntime.getTransitionState()
   ): NativeOverlayTargetSourceSnapshot => ({
@@ -493,7 +477,6 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     routeSceneSwitchSnapshot,
     surfaceVisualPolicy,
     routeScenePolicySnapshot,
-    commandSnapshot,
     sheetSessionSnapshot,
     presentationFrame,
   }: NativeOverlayTargetSourceSnapshot): NativeOverlayOutputSignature => [
@@ -501,7 +484,6 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     // + the empty-policy gate) — key it directly so a frame publish always re-resolves.
     presentationFrame.laneKind === 'docked-polls',
     routeSceneSwitchSnapshot.routeActiveSceneKey,
-    routeSceneSwitchSnapshot.transitionContract?.headerActionModeTarget ?? null,
     routeSceneSwitchSnapshot.routeState.rootOverlayKey,
     routeSceneSwitchSnapshot.activeDockedPollsRestoreIntent,
     routeScenePolicySnapshot.isPersistentPollLaneEligible,
@@ -512,7 +494,6 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     routeScenePolicySnapshot.closeHandoffFreezeClassification,
     surfaceVisualPolicy.canExposePersistentPolls,
     surfaceVisualPolicy.canReleasePersistentPolls,
-    commandSnapshot.searchHeaderActionResetToken,
     sheetSessionSnapshot.isDockedPollsDismissed,
   ];
 
@@ -652,57 +633,16 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
     );
   };
 
-  const resolveOverlayHeaderActionMode = (
-    sourceSnapshot: NativeOverlayTargetSourceSnapshot
-  ): OverlayHeaderActionMode | null => {
-    const { commandSnapshot, routeScenePolicySnapshot, routeSceneSwitchSnapshot } = sourceSnapshot;
-    const routeActiveSceneKey = routeSceneSwitchSnapshot.routeActiveSceneKey;
-    const sheetHeaderSceneKey = resolveIsPersistentPollLane(sourceSnapshot)
-      ? 'polls'
-      : routeActiveSceneKey;
-    const transitionHeaderActionModeTarget =
-      routeSceneSwitchSnapshot.transitionContract?.headerActionModeTarget;
-    const sceneHeaderActionMode =
-      transitionHeaderActionModeTarget != null && transitionHeaderActionModeTarget !== 'preserve'
-        ? transitionHeaderActionModeTarget
-        : resolveSceneHeaderActionMode(sheetHeaderSceneKey);
-
-    if (commandSnapshot.searchHeaderActionResetToken !== searchHeaderActionResetToken) {
-      searchHeaderActionResetToken = commandSnapshot.searchHeaderActionResetToken;
-      if (searchHeaderActionResetToken !== 0) {
-        searchHeaderActionModeOverride = 'follow-collapse';
-      }
-    }
-
-    const overlayHeaderActionMode =
-      sceneHeaderActionMode !== 'fixed-close'
-        ? sceneHeaderActionMode
-        : (searchHeaderActionModeOverride ?? sceneHeaderActionMode);
-    const isCloseHandoffFreezeActive =
-      routeScenePolicySnapshot.closeHandoffFreezeClassification === 'close-handoff';
-
-    closeHandoffOverlayHeaderActionMode =
-      !isCloseHandoffFreezeActive || closeHandoffOverlayHeaderActionMode == null
-        ? overlayHeaderActionMode
-        : closeHandoffOverlayHeaderActionMode;
-
-    if (overlayHeaderActionMode == null) {
-      return null;
-    }
-
-    return isCloseHandoffFreezeActive
-      ? (closeHandoffOverlayHeaderActionMode ?? overlayHeaderActionMode)
-      : overlayHeaderActionMode;
-  };
-
   const resolveSheetPolicySnapshot = (
     sourceSnapshot: NativeOverlayTargetSourceSnapshot
   ): RouteOverlaySheetPolicySnapshot => {
     const routeActiveSceneKey = sourceSnapshot.routeSceneSwitchSnapshot.routeActiveSceneKey;
     const isPersistentPollLane = resolveIsPersistentPollLane(sourceSnapshot);
-    const overlayHeaderActionMode = resolveOverlayHeaderActionMode(sourceSnapshot);
 
-    if ((!isPersistentPollLane && routeActiveSceneKey == null) || overlayHeaderActionMode == null) {
+    // Leg 6 (§4 HeaderNavAction): overlayHeaderActionMode is DELETED — the header action is
+    // host-owned, PF-derived. The null-scene gate is unchanged (the mode resolver's null arm
+    // was exactly this condition).
+    if (!isPersistentPollLane && routeActiveSceneKey == null) {
       return EMPTY_ROUTE_OVERLAY_SHEET_POLICY_SNAPSHOT;
     }
 
@@ -710,7 +650,6 @@ export const createAppRouteNativeOverlayTargetAuthorities = ({
       overlaySheetPolicy: {
         overlaySheetVisible: !shouldSuppressOverlaySheetVisibility(sourceSnapshot),
         overlaySheetApplyNavBarCutout: true,
-        overlayHeaderActionMode,
       },
     };
   };

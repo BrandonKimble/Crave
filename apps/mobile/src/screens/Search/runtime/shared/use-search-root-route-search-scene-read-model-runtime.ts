@@ -14,7 +14,6 @@ import type { SearchRootRuntimeRouteSearchSceneDataRuntime } from './route-searc
 
 export const useSearchRootRouteSearchSceneReadModelRuntime = ({
   overlayFoundationAssemblyRuntime,
-  visualAssemblyRuntime,
   profileControlRuntime,
   filterModalControlLane,
   routeSearchSceneDataRuntime,
@@ -22,7 +21,6 @@ export const useSearchRootRouteSearchSceneReadModelRuntime = ({
 }: Pick<
   SearchRootRouteSearchSceneReadModelRuntimeArgs,
   | 'overlayFoundationAssemblyRuntime'
-  | 'visualAssemblyRuntime'
   | 'profileControlRuntime'
   | 'filterModalControlLane'
   | 'readModelPolicyWriters'
@@ -65,7 +63,6 @@ export const useSearchRootRouteSearchSceneReadModelRuntime = ({
   });
   const routeSearchSceneSelectorResultsRuntime =
     useSearchRootRouteSearchSceneSelectorResultsRuntime({
-      visualAssemblyRuntime,
       routeSearchSceneDataRuntime,
       routeSearchSceneCardRenderRuntime,
       readModelPolicyWriters,

@@ -609,7 +609,14 @@ const SearchMapViewScene = React.memo(
     previousProps.mapZoom === nextProps.mapZoom &&
     previousProps.mapBearing === nextProps.mapBearing &&
     previousProps.mapPitch === nextProps.mapPitch &&
-    areCameraPaddingEqual(previousProps.cameraPadding, nextProps.cameraPadding) &&
+    (areCameraPaddingEqual(previousProps.cameraPadding, nextProps.cameraPadding) ||
+      (__DEV__ &&
+        // eslint-disable-next-line no-console
+        (console.log(
+          `[CAMPAD] controlled padding changed ${JSON.stringify(previousProps.cameraPadding)} -> ` +
+            `${JSON.stringify(nextProps.cameraPadding)} tMs=${Date.now() % 100000}`
+        ),
+        false))) &&
     previousProps.isFollowingUser === nextProps.isFollowingUser &&
     previousProps.markerSceneProps === nextProps.markerSceneProps &&
     previousProps.userLocationLayerProps === nextProps.userLocationLayerProps

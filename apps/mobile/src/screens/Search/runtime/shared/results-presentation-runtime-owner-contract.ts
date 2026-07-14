@@ -8,6 +8,10 @@ export type ExecutionBatchPayload = {
   requestKey: string;
   frameGenerationId: string | null;
   executionBatchId: string | null;
+  // S-0 (lens-transport plan §7.12): data identity of the mounted frame vs the data
+  // identity currently desired — the reveal gate rejects a stale (preview) mount.
+  mountedSourceDataKey?: string | null;
+  desiredSourceDataKey?: string | null;
 };
 
 export type MarkerEnterStartedPayload = ExecutionBatchPayload & {

@@ -202,6 +202,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
             style={styles.promptRow}
             onPress={stopNestedPressPropagation}
             onPressOut={handleSearchPressUp}
+            accessible={false}
           >
             <View style={styles.promptInner}>
               <Reanimated.View style={[styles.inputRow, inputAnimatedStyle]}>
@@ -357,6 +358,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                     }}
                     accessibilityRole="button"
                     accessibilityLabel="Clear search"
+                    testID="search-session-clear"
                     style={styles.trailingButton}
                     hitSlop={10}
                   >

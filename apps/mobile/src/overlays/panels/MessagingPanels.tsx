@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import Reanimated, {
   useAnimatedKeyboard,
   useAnimatedScrollHandler,
@@ -7,7 +7,6 @@ import Reanimated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X as LucideX } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Text } from '../../components';
@@ -18,7 +17,6 @@ import {
   type SharePackagePreview,
 } from '../../services/messaging';
 import { usersService } from '../../services/users';
-import { overlaySheetStyles } from '../overlaySheetStyles';
 import { resolveExpandedTop } from '../sheetUtils';
 import { getSearchStartupGeometrySeed } from '../../screens/Search/runtime/shared/search-startup-geometry';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
@@ -30,6 +28,7 @@ import type { OverlayRouteParamsMap } from '../../navigation/runtime/app-overlay
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import { formatRelativeTime } from '../../utils/relative-time';
 import { publishSceneHeaderScrollOffset } from '../sceneScrollStateRegistry';
+import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
 
 // ─── W3 messaging scenes (plans/w3-messaging-design.md §4) ───────────────────────────────────
 // messagesInbox: child SINGLETON (no params); MVCP disabled on its transport (re-sorting list).
@@ -129,30 +128,15 @@ export const MessagesInboxPanelBody = React.memo((_props: MountedSceneBodyProps)
     [pushRoute]
   );
 
-  if (inboxQuery.isPending) {
+  // Load-failure law (wave-4 §1): shared modal + pop; no page-local retry.
+  const inboxLoadFailed = inboxQuery.isError || (!inboxQuery.isPending && inboxQuery.data == null);
+  if (inboxQuery.isPending || inboxLoadFailed) {
     return (
-      <View style={styles.stateBody} testID="dm-inbox-loading">
-        <ActivityIndicator />
-      </View>
-    );
-  }
-  if (inboxQuery.isError || inboxQuery.data == null) {
-    return (
-      <View style={styles.stateBody} testID="dm-inbox-failed">
-        <Text variant="body" style={styles.stateText}>
-          We couldn’t load your messages.
-        </Text>
-        <Pressable
-          onPress={() => void inboxQuery.refetch()}
-          accessibilityRole="button"
-          accessibilityLabel="Retry loading messages"
-          testID="dm-inbox-retry"
-          style={styles.retryButton}
-        >
-          <Text variant="body" weight="semibold" style={styles.retryText}>
-            Retry
-          </Text>
-        </Pressable>
+      <View testID={inboxLoadFailed ? 'dm-inbox-failed' : 'dm-inbox-loading'}>
+        <SceneBodyReadyGate
+          pending={inboxQuery.isPending}
+          failure={{ isError: inboxLoadFailed, what: 'your messages' }}
+        />
       </View>
     );
   }
@@ -242,7 +226,15 @@ const SharedEntityCard = ({ shared }: { shared: SharePackagePreview }) => {
             })
         : refType != null
           ? () =>
-              executeEntityRef({ entityId: shared.id, entityType: refType, label: shared.title })
+              executeEntityRef({
+                entityId: shared.id,
+                entityType: refType,
+                label: shared.title,
+                // Wave-4 §3 mouth 4: a shared LIST runs the full list world.
+                ...(shared.kind === 'list' && shared.listType != null
+                  ? { listType: shared.listType }
+                  : {}),
+              })
           : null;
   return (
     <Pressable
@@ -447,34 +439,16 @@ export const DmSessionPanelBody = React.memo(({ entry }: MountedSceneBodyProps) 
     );
   }
 
-  if (messagesQuery.isPending || conversationQuery.isPending) {
+  // Load-failure law (wave-4 §1): shared modal + pop; no page-local retry.
+  const sessionPending = messagesQuery.isPending || conversationQuery.isPending;
+  const sessionLoadFailed = messagesQuery.isError || (!sessionPending && conversation == null);
+  if (sessionPending || sessionLoadFailed || conversation == null) {
     return (
-      <View style={styles.stateBody} testID="dm-session-loading">
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
-  if (messagesQuery.isError || conversation == null) {
-    return (
-      <View style={styles.stateBody} testID="dm-session-failed">
-        <Text variant="body" style={styles.stateText}>
-          We couldn’t load this conversation.
-        </Text>
-        <Pressable
-          onPress={() => {
-            void messagesQuery.refetch();
-            void conversationQuery.refetch();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Retry loading conversation"
-          testID="dm-session-retry"
-          style={styles.retryButton}
-        >
-          <Text variant="body" weight="semibold" style={styles.retryText}>
-            Retry
-          </Text>
-        </Pressable>
+      <View testID={sessionLoadFailed ? 'dm-session-failed' : 'dm-session-loading'}>
+        <SceneBodyReadyGate
+          pending={sessionPending}
+          failure={{ isError: sessionLoadFailed, what: 'this conversation' }}
+        />
       </View>
     );
   }
@@ -649,34 +623,13 @@ const DmSessionHeaderTitle = React.memo(() => (
 ));
 DmSessionHeaderTitle.displayName = 'DmSessionHeaderTitle';
 
-const createCloseHeaderAction = (label: string): React.ComponentType => {
-  const CloseHeaderAction = React.memo(() => {
-    const { closeActiveRoute } = useAppOverlayRouteController();
-    return (
-      <Pressable
-        onPress={closeActiveRoute}
-        accessibilityRole="button"
-        accessibilityLabel={label}
-        style={overlaySheetStyles.closeButton}
-        hitSlop={8}
-      >
-        <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
-          <LucideX size={20} color="#000000" strokeWidth={2.5} />
-        </View>
-      </Pressable>
-    );
-  });
-  CloseHeaderAction.displayName = `CloseHeaderAction(${label})`;
-  return CloseHeaderAction;
-};
-
+// Leg 6 (§4 HeaderNavAction): the per-scene close factory is DELETED — the persistent header
+// host owns the ONE plus↔X control; children get the X + the canonical close by role derivation.
 registerPersistentHeaderDescriptor('messagesInbox', {
   Title: MessagesInboxHeaderTitle,
-  Action: createCloseHeaderAction('Close messages'),
 });
 registerPersistentHeaderDescriptor('dmSession', {
   Title: DmSessionHeaderTitle,
-  Action: createCloseHeaderAction('Close conversation'),
 });
 
 const styles = StyleSheet.create({
@@ -708,15 +661,6 @@ const styles = StyleSheet.create({
   stateText: {
     color: '#64748b',
     textAlign: 'center',
-  },
-  retryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: '#f1f5f9',
-  },
-  retryText: {
-    color: '#0f172a',
   },
   sectionLabel: {
     color: '#64748b',

@@ -4,6 +4,8 @@ import { Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  FadeIn,
+  FadeOut,
   runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
@@ -17,12 +19,13 @@ import { useReorderDrag } from './useReorderDrag';
 import type { ReorderableRowsProps } from './reorder-types';
 
 // Reusable vertical drag-reorder rows (page-registry §8.11 + §8.14). NOT a list — a
-// fixed-height stack of absolutely-positioned rows meant to live inside a scroll
-// container the consumer owns (the shared sheet scroll). 60fps approach: uniform row
-// height ⇒ every slot position is `index * rowHeight`, finger tracking and slot
-// resolution are pure UI-thread worklets, and the ONLY JS-thread traffic during a drag
-// is the rare slot-crossing callback (consumer state swap) and edge auto-scroll steps.
-// Rows shuffle live via per-row withTiming toward their (JS-updated) slot index.
+// stack of absolutely-positioned rows meant to live inside a scroll container the
+// consumer owns (the shared sheet scroll). 60fps approach: uniform row height ⇒ every
+// slot position is `index * rowHeight`; VARIABLE-HEIGHT mode (leg 10 step 6) ⇒ rows
+// self-measure and slot positions are prefix sums mirrored to the UI thread. Finger
+// tracking and slot resolution are pure UI-thread worklets; the ONLY JS-thread traffic
+// during a drag is the rare slot-crossing callback (consumer state swap) and edge
+// auto-scroll steps. Rows shuffle live via per-row withTiming toward their slot offset.
 
 const SLOT_SHUFFLE_MS = 180;
 
@@ -33,6 +36,10 @@ type RowProps<T> = {
   rowKey: string;
   index: number;
   rowHeight: number;
+  variableHeights: boolean;
+  /** Live slot boundaries (variable-height mode; null in uniform mode). */
+  slotBoundaries: SharedValue<readonly number[] | null>;
+  onMeasureRow: (key: string, height: number) => void;
   isDraggable: boolean;
   accessibilityMode: boolean;
   itemCount: number;
@@ -48,6 +55,9 @@ const ReorderRowShell = <T,>({
   rowKey,
   index,
   rowHeight,
+  variableHeights,
+  slotBoundaries,
+  onMeasureRow,
   isDraggable,
   accessibilityMode,
   itemCount,
@@ -75,25 +85,38 @@ const ReorderRowShell = <T,>({
     const isActive = drag.activeKey.value === rowKey;
     if (isActive) {
       // Finger-pinned: lift-slot base + live finger/auto-scroll translate — pure
-      // UI-thread values, no JS in the frame loop.
+      // UI-thread values, no JS in the frame loop. liftTop is set at beginDrag
+      // (uniform: liftSlot·rowHeight; variable: the frozen boundary entry).
       return {
         transform: [
-          { translateY: drag.liftSlotIndex.value * rowHeight + drag.dragTranslateY.value },
+          { translateY: drag.liftTop.value + drag.dragTranslateY.value },
           { scale: ROW_ACTIVE_SCALE },
         ],
         zIndex: 10,
         elevation: 10,
       };
     }
+    const settledTop =
+      slotBoundaries.value != null
+        ? (slotBoundaries.value[rowIndexSV.value] ?? rowIndexSV.value * rowHeight)
+        : rowIndexSV.value * rowHeight;
     return {
       transform: [
-        { translateY: withTiming(rowIndexSV.value * rowHeight, { duration: SLOT_SHUFFLE_MS }) },
+        { translateY: withTiming(settledTop, { duration: SLOT_SHUFFLE_MS }) },
         { scale: withTiming(1, { duration: SLOT_SHUFFLE_MS }) },
       ],
       zIndex: 0,
       elevation: 0,
     };
-  }, [drag.activeKey, drag.dragTranslateY, drag.liftSlotIndex, rowHeight, rowIndexSV, rowKey]);
+  }, [
+    drag.activeKey,
+    drag.dragTranslateY,
+    drag.liftTop,
+    rowHeight,
+    rowIndexSV,
+    rowKey,
+    slotBoundaries,
+  ]);
 
   // Mirror the UI-thread active flag into React state so renderRowContent can style
   // the lifted row (shadow/tint). Only fires twice per drag — lift and drop.
@@ -186,19 +209,34 @@ const ReorderRowShell = <T,>({
       </View>
     ) : null
   ) : isDraggable && gestures != null ? (
-    <GestureDetector gesture={gestures.handleGesture}>
-      <View
-        style={styles.handle}
-        accessibilityLabel="Drag to reorder"
-        testID={testIDPrefix ? `${testIDPrefix}-handle-${rowKey}` : undefined}
-      >
-        <Feather name="menu" size={18} color="#475569" />
-      </View>
-    </GestureDetector>
+    // Handle fades in/out on the strip-morph tempo (leg-13 "ellipsis fade sync" —
+    // the overlay affordance rides the same 240ms beat as the action row).
+    <Animated.View
+      style={styles.handle}
+      entering={FadeIn.duration(240)}
+      exiting={FadeOut.duration(240)}
+    >
+      <GestureDetector gesture={gestures.handleGesture}>
+        <View
+          style={styles.handleTouchable}
+          accessibilityLabel="Drag to reorder"
+          testID={testIDPrefix ? `${testIDPrefix}-handle-${rowKey}` : undefined}
+        >
+          <Feather name="menu" size={18} color="#475569" />
+        </View>
+      </GestureDetector>
+    </Animated.View>
   ) : null;
 
   const rowInner = (
-    <View style={[styles.rowInner, { height: rowHeight }]}>
+    <View
+      style={[styles.rowInner, variableHeights ? null : { height: rowHeight }]}
+      onLayout={
+        variableHeights
+          ? (event) => onMeasureRow(rowKey, event.nativeEvent.layout.height)
+          : undefined
+      }
+    >
       <View style={styles.rowContent}>{content}</View>
       {rowAffordance}
     </View>
@@ -206,7 +244,7 @@ const ReorderRowShell = <T,>({
 
   return (
     <Animated.View
-      style={[styles.rowShell, { height: rowHeight }, animatedStyle]}
+      style={[styles.rowShell, variableHeights ? null : { height: rowHeight }, animatedStyle]}
       testID={testIDPrefix ? `${testIDPrefix}-row-${rowKey}` : undefined}
     >
       {gestures != null ? (
@@ -222,6 +260,7 @@ export const ReorderableRows = <T,>({
   items,
   keyExtractor,
   rowHeight,
+  variableHeights = false,
   pinnedLeadingCount = 0,
   renderRowContent,
   onReorder,
@@ -231,6 +270,38 @@ export const ReorderableRows = <T,>({
   testIDPrefix,
 }: ReorderableRowsProps<T>) => {
   const { height: windowHeight } = useWindowDimensions();
+
+  // ── Variable-height slot map (leg 10 step 6) ──────────────────────────────────────
+  // Rows self-measure (onLayout, spacing INSIDE the row); the slot boundaries are the
+  // prefix sums over the CURRENT order, recomputed on JS on the rare measure/order
+  // change and mirrored to the UI thread. The drag hook freezes its own copy at lift.
+  const [rowHeightsByKey, setRowHeightsByKey] = React.useState<Record<string, number>>({});
+  const handleMeasureRow = React.useCallback((key: string, height: number) => {
+    setRowHeightsByKey((previous) => {
+      const known = previous[key];
+      if (known != null && Math.abs(known - height) < 0.5) {
+        return previous;
+      }
+      return { ...previous, [key]: height };
+    });
+  }, []);
+  const slotBoundariesArray = React.useMemo<readonly number[] | null>(() => {
+    if (!variableHeights) {
+      return null;
+    }
+    const boundaries: number[] = [0];
+    let top = 0;
+    for (const item of items) {
+      top += rowHeightsByKey[keyExtractor(item)] ?? rowHeight;
+      boundaries.push(top);
+    }
+    return boundaries;
+  }, [items, keyExtractor, rowHeight, rowHeightsByKey, variableHeights]);
+  const slotBoundariesSV = useSharedValue<readonly number[] | null>(slotBoundariesArray);
+  React.useEffect(() => {
+    slotBoundariesSV.value = slotBoundariesArray;
+  }, [slotBoundariesArray, slotBoundariesSV]);
+
   const drag = useReorderDrag({
     rowHeight,
     itemCount: items.length,
@@ -241,10 +312,16 @@ export const ReorderableRows = <T,>({
     // Coarse viewport bands: below the persistent sheet header, above the home bar.
     viewportTopY: 120,
     viewportBottomY: windowHeight - 60,
+    slotBoundaries: variableHeights ? slotBoundariesSV : null,
   });
 
+  const stackHeight =
+    slotBoundariesArray != null
+      ? (slotBoundariesArray[items.length] ?? items.length * rowHeight)
+      : items.length * rowHeight;
+
   return (
-    <View style={{ height: items.length * rowHeight }}>
+    <View style={{ height: stackHeight }}>
       {items.map((item, index) => {
         const rowKey = keyExtractor(item);
         return (
@@ -254,6 +331,9 @@ export const ReorderableRows = <T,>({
             rowKey={rowKey}
             index={index}
             rowHeight={rowHeight}
+            variableHeights={variableHeights}
+            slotBoundaries={slotBoundariesSV}
+            onMeasureRow={handleMeasureRow}
             isDraggable={index >= pinnedLeadingCount}
             accessibilityMode={accessibilityMode}
             itemCount={items.length}
@@ -276,20 +356,34 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
+  // Wave-3 §2.8 root fix (the edit-mode layout squeeze): the handle is an OVERLAY on
+  // the row's center-right (§3.2 — the inline rank bubble frees that region), never a
+  // flex column beside the content. The content keeps its full read-mode width in edit
+  // mode by construction — entering edit cannot narrow (or "squeeze") the cards.
   rowInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    position: 'relative',
   },
   rowContent: {
-    flex: 1,
+    width: '100%',
   },
   handle: {
+    position: 'absolute',
+    right: 8,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  handleTouchable: {
+    flex: 1,
     paddingHorizontal: 12,
-    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
   },
   a11yControls: {
+    position: 'absolute',
+    right: 8,
+    top: 0,
+    bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,

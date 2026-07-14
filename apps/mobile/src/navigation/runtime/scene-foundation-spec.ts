@@ -19,8 +19,16 @@ export type SheetSceneKey = Exclude<OverlayKey, 'search' | 'sheetHost' | 'price'
 export type SceneFoundationSpec = {
   /** The cutout skeleton the shared loading leg renders for this scene. */
   skeleton: { rowType: SceneLoadingRowType; frostBacking?: boolean };
-  /** 'frosted-strip' = the page renders a FrostedFilterStrip toggle row. */
-  strip: 'none' | 'frosted-strip';
+  /**
+   * THE STRIP LAW (load-bearing since leg 2 — plans/toggle-strip-rebuild-ledger.md):
+   * whether this page renders a toggle/filter strip, and WHERE it mounts.
+   * 'in-list' = the strip rides the list content (results pattern); 'header' = the
+   * persistent-header extension mount (leg 3). Consumed by `useSceneStripLawAssert`
+   * (toggle-strip-scene-law.ts): a strip rendering on a scene declared 'none', or
+   * under a placement this row contradicts, is a dev CONTRACT bark — the declaration
+   * can show RED, it is not documentation.
+   */
+  strip: 'none' | 'in-list' | 'header';
   /** The uniform failure standard — a literal, so a silent exception is impossible. */
   failure: 'announcer';
   /** Every sheet scene registers a persistent-header descriptor (asserted in dev). */
@@ -58,7 +66,10 @@ export type SceneFoundationSpec = {
 export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> = {
   polls: {
     skeleton: { rowType: 'restaurant' },
-    strip: 'frosted-strip',
+    // Leg 3: migrated to the persistent-header extension mount (PollsFeedStrip,
+    // registered on the polls persistent-header descriptor) — the audited snap-in
+    // gate died with the in-list strip.
+    strip: 'header',
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
@@ -67,7 +78,10 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
   },
   bookmarks: {
     skeleton: { rowType: 'tile' },
-    strip: 'none',
+    // Leg 3: migrated to the persistent-header extension mount (BookmarksHomeStrip —
+    // ONE ToggleStrip whose action-row slot carries the edit morph). The leg-2
+    // 'in-list' row described the hand-rolled two-strip morph, deleted with it.
+    strip: 'header',
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',
@@ -132,7 +146,10 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
   },
   listDetail: {
     skeleton: { rowType: 'restaurant' },
-    strip: 'frosted-strip',
+    // Leg 9 (listdetail-ideal §2b): the real ToggleStrip in-list mount — the hand-rolled
+    // SortChips band is deleted; this declaration is load-bearing via the strip-law assert
+    // in ListDetailPanel's ToggleStrip.
+    strip: 'in-list',
     failure: 'announcer',
     header: 'persistent',
     grabHandle: 'visible',

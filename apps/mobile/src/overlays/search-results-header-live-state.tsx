@@ -1,11 +1,9 @@
 import React from 'react';
 import type { LayoutChangeEvent } from 'react-native';
-import { useSharedValue, type SharedValue } from 'react-native-reanimated';
-
 import { Text } from '../components';
-import OverlayHeaderActionButton from './OverlayHeaderActionButton';
 import styles from '../screens/Search/styles';
 import { registerPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
+import { registerHeaderCloseAction } from '../navigation/runtime/header-nav-action-registry';
 import { publishRetainedResultsHeaderHeight } from './SearchMountedScenePageBundleAuthority';
 
 // P5 persistent header (page-switch-master-plan.md §6-P5 / owner req 2e) — the SEARCH results
@@ -22,7 +20,6 @@ export type SearchResultsHeaderLiveState = {
   /** Resolved title — the submitted query text, retained across blanks; 'Results' seed. */
   headerTitle: string;
   activeTabColor: string;
-  overlayHeaderActionProgress: SharedValue<number>;
   handleCloseResults: () => void;
   /**
    * The search runtime's own header-height observer (results header height drives the wash/empty
@@ -91,24 +88,6 @@ const SearchResultsPersistentHeaderTitle: React.FC = () => {
   );
 };
 
-const SearchResultsPersistentHeaderAction: React.FC = () => {
-  const liveState = useSearchResultsHeaderLiveState();
-  // Stable fallback progress for the (transient) unpublished window — a settled close morph.
-  const fallbackProgress = useSharedValue(1);
-  const handlePress = React.useCallback(() => {
-    getSearchResultsHeaderLiveState()?.handleCloseResults();
-  }, []);
-  return (
-    <OverlayHeaderActionButton
-      progress={liveState?.overlayHeaderActionProgress ?? fallbackProgress}
-      onPress={handlePress}
-      accessibilityLabel="Close results"
-      accentColor={liveState?.activeTabColor ?? '#000000'}
-      closeColor="#000000"
-    />
-  );
-};
-
 const handleSearchResultsChromeLayout = (event: LayoutChangeEvent): void => {
   // Feed BOTH height consumers off the one hoisted chrome measurement: the page-bundle host's
   // reserved header lane, and the search runtime's internal header-height math.
@@ -120,6 +99,9 @@ const handleSearchResultsChromeLayout = (event: LayoutChangeEvent): void => {
 // Loaded with the search read-model runtime (its publisher imports this module), i.e. at boot.
 registerPersistentHeaderDescriptor('search', {
   Title: SearchResultsPersistentHeaderTitle,
-  Action: SearchResultsPersistentHeaderAction,
   onChromeLayout: handleSearchResultsChromeLayout,
 });
+
+// Leg 6 (§4 HeaderNavAction): the results X is the HOST-OWNED control now; the session close
+// (the exact user back-out) registers as the host's close OVERRIDE for the 'search' scene.
+registerHeaderCloseAction('search', closeSearchResultsSession);

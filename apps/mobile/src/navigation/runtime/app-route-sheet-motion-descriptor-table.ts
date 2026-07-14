@@ -20,12 +20,13 @@
 //   5. The ('*','*','*') catch-all guarantees every switch resolves to exactly one row
 //      (invariant T1, master-plan §2).
 //
-// OWNER DEFAULTS ENCODED (2026-07-01 decisions; rememberedDetent semantics upgraded 2026-07-02):
-//   • Nav switches (topLevelSwitch) = PER-PAGE REMEMBERED DETENT: bookmarks/profile return to
-//     THEIR OWN last-settled detent ('rememberedDetent' — the per-scene snap ledger, true
-//     per-page memory) and fall back to 'expanded' when that page has no usable memory yet
-//     (unvisited, or last left hidden/collapsed — a collapsed sheet would hide their content);
-//     search/polls dock at 'collapsed' (the map-first home posture).
+// OWNER DEFAULTS ENCODED (two-posture law ratified 2026-07-12, plans/root-snap-law.md §Leg 2;
+// supersedes the 2026-07-01 map-first rows and the 2026-07-02 per-tab memory rows):
+//   • Nav switches (topLevelSwitch) = the TWO-POSTURE SEATS ('postureSeat'): home (search/polls)
+//     and content (every other root page, ONE shared posture) each remember wherever the user's
+//     FINGER last put the sheet — collapsed included. Switching tabs never moves the sheet
+//     except when crossing between home and the rest; cold-start seeds: home collapsed,
+//     content expanded. Seat memory is gesture-written only (snap-session write contract).
 //   • Child opens keep the curated snaps: full-page children (saveList/pollCreation/pollDetail)
 //     open 'expanded'; restaurant promotes to at least 'middle'.
 //   • Dismiss rows mirror the pre-table behavior byte-identically: closeChild leaves the sheet
@@ -41,6 +42,13 @@ import type {
   RouteSceneSwitchSheetMotionPlan,
   RouteSceneSwitchSheetTransitionKind,
 } from './app-overlay-route-transition-contract';
+import {
+  CONTENT_SEAT_SEED_SNAP,
+  HOME_SEAT_CARRIER_SCENE_KEY,
+  HOME_SEAT_SEED_SNAP,
+  resolveNavTargetPostureSeat,
+} from './app-route-sheet-snap-session-runtime';
+import { APP_ROUTE_SCENE_KEYS } from './app-route-scene-policy-registry';
 
 export type SheetMotionDescriptorScene = OverlayKey | '*';
 export type SheetMotionDescriptorKind = RouteSceneSwitchSheetTransitionKind | '*';
@@ -48,8 +56,17 @@ export type SheetMotionDescriptorKind = RouteSceneSwitchSheetTransitionKind | '*
 /**
  * A row's motion rule. The static variants ARE the existing RouteSceneSwitchSheetMotionPlan
  * shapes (snapTo / promoteAtLeast / preserveLiveY / hide / none — the kept spring's vocabulary).
- * 'rememberedDetent' is the one derived rule: snap to the TARGET scene's own remembered detent
- * when usable (middle/expanded), else snap to `fallbackSnap`.
+ * Two derived rules:
+ *  - 'rememberedDetent' (child DISMISS restores): snap to the TARGET scene's own remembered
+ *    detent when usable (middle/expanded — a collapsed parent memory would hide the content
+ *    the child was opened from), else `fallbackSnap`.
+ *  - 'postureSeat' (THE two-posture law, owner 2026-07-12): every nav-page switch snaps to the
+ *    TARGET side's posture seat — home (search/polls → the docked-polls seat) or content (one
+ *    shared seat for every other root page). Same-side switches resolve to the detent the live
+ *    sheet already sits at (zero motion — content pages swap in place); home↔content crossings
+ *    restore the other side's remembered posture, collapsed included (it is a first-class home
+ *    posture). An unusable seat (hidden = dismissed docked polls, or unset) falls to the side's
+ *    cold-start seed: home 'collapsed', content 'expanded'. Zero per-row config by design.
  */
 export type SheetMotionDescriptorRule =
   | RouteSceneSwitchSheetMotionPlan
@@ -57,7 +74,8 @@ export type SheetMotionDescriptorRule =
       kind: 'rememberedDetent';
       fallbackSnap: Exclude<BottomSheetSnap, 'hidden'>;
       mode?: BottomSheetMotionCommand['mode'];
-    };
+    }
+  | { kind: 'postureSeat' };
 
 export type SheetMotionDescriptorRow = {
   from: SheetMotionDescriptorScene;
@@ -114,11 +132,15 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
     transitionKind: 'openChild',
     motion: { kind: 'snapTo', snap: 'expanded' },
   },
+  // listDetail is a WORLD-backed child (leg 10 step 2, owner decree): opening a list
+  // reveals its map world, so the sheet sits at MIDDLE — an expanded sheet DROPS to
+  // middle (snapTo is absolute; promoteAtLeast could never demote), a collapsed one
+  // rises. The step-2 fitAll camera fits the members above this mid-snap line.
   {
     from: '*',
     to: 'listDetail',
     transitionKind: 'openChild',
-    motion: { kind: 'snapTo', snap: 'expanded' },
+    motion: { kind: 'snapTo', snap: 'middle' },
   },
   {
     from: '*',
@@ -178,6 +200,19 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
     transitionKind: 'closeChild',
     motion: { kind: 'rememberedDetent', fallbackSnap: 'middle' },
   },
+  // listDetail closeChild (wave-3 §2.6, owner): listDetail is the child that MOVES the sheet on
+  // open (snapTo middle for its map world), so the catch-all preserveLiveY strands the return —
+  // exiting a list landed on Lists home with the sheet still down, a return-to-origin violation.
+  // Glide back to the parent's own remembered detent (same rule as pollDetail/settings; the
+  // origin-restore seam pre-writes the popped-to scene's captured posture, so this reads the
+  // exact origin). fallback expanded: list taps require a raised sheet, so an unusable memory
+  // only means the fact is missing — expanded is the content side's seed posture.
+  {
+    from: 'listDetail',
+    to: '*',
+    transitionKind: 'closeChild',
+    motion: { kind: 'rememberedDetent', fallbackSnap: 'expanded' },
+  },
   // settings closeChild: settings is the FULL-SNAP exception (its shell pins every live snap to
   // the safe-area top), so the catch-all preserveLiveY would strand the parent at the settings
   // top. Glide back to the parent's own remembered detent (origin-faithful, same rule as
@@ -199,33 +234,24 @@ export const SHEET_MOTION_DESCRIPTOR_TABLE: readonly SheetMotionDescriptorRow[] 
   //     motion: { kind: 'snapTo', snap: 'collapsed' } },
   // (replacing the current pair). The engine, the spring, and every other flow are untouched.
 
-  // NAV-PAGE SWITCHES (topLevelSwitch). search/polls dock collapsed (map-first home);
-  // bookmarks/profile return to the remembered detent, entering at expanded from a
-  // collapsed/hidden sheet.
-  {
-    from: '*',
-    to: 'search',
-    transitionKind: 'topLevelSwitch',
-    motion: { kind: 'snapTo', snap: 'collapsed' },
-  },
-  {
-    from: '*',
-    to: 'polls',
-    transitionKind: 'topLevelSwitch',
-    motion: { kind: 'snapTo', snap: 'collapsed' },
-  },
-  {
-    from: '*',
-    to: 'bookmarks',
-    transitionKind: 'topLevelSwitch',
-    motion: { kind: 'rememberedDetent', fallbackSnap: 'expanded' },
-  },
-  {
-    from: '*',
-    to: 'profile',
-    transitionKind: 'topLevelSwitch',
-    motion: { kind: 'rememberedDetent', fallbackSnap: 'expanded' },
-  },
+  // NAV-PAGE SWITCHES (topLevelSwitch) — THE TWO-POSTURE LAW (owner 2026-07-12). Every root
+  // page resolves to its side's posture seat; the boundary behavior (content pages never move
+  // the sheet between each other, home↔content crossings restore each side's memory) is
+  // DERIVED inside the one 'postureSeat' rule, not hand-written per transition. This replaced
+  // the 2026-07-01 `snapTo collapsed` map-first rows (the home-posture-loss bug) and the
+  // 2026-07-02 per-tab rememberedDetent rows (owner-ratified deletion: tabs now share ONE seat).
+  // The rows themselves are DERIVED from the scene-policy registry's exhaustive `postureSeat`
+  // field (root-snap-law.md §Leg 3): a new root page declared there gets its row by
+  // construction — no hand-maintained target list to forget (today: search/polls/bookmarks/
+  // profile).
+  ...APP_ROUTE_SCENE_KEYS.filter((sceneKey) => resolveNavTargetPostureSeat(sceneKey) != null).map(
+    (sceneKey): SheetMotionDescriptorRow => ({
+      from: '*',
+      to: sceneKey,
+      transitionKind: 'topLevelSwitch',
+      motion: { kind: 'postureSeat' },
+    })
+  ),
 
   // CATCH-ALL (T1 completeness): gesture / closeChild / modalClose / bootstrap / any unlisted
   // pairing → the sheet stays where it is. Future child scenes inherit these semantics until
@@ -298,12 +324,17 @@ export const lookupDefaultSheetMotionDescriptorRow = (
 
 /**
  * Materialize a row's rule into the kept spring's motion-plan vocabulary.
- * 'rememberedDetent' is TRUE PER-PAGE memory (owner decision 2026-07-02): the target scene's own
- * last-settled detent (the snap-session's per-scene `sceneSheetSnaps` ledger, written on every
- * settle by the sheet-host authority's recordRouteSceneSnapFact). A remembered middle/expanded is
- * honored even when the live shared sheet sits elsewhere — Favorites left at middle comes BACK at
- * middle after visiting an expanded Profile. hidden/collapsed/unvisited are unusable for a tab
- * (they'd hide its content) → the row's fallbackSnap.
+ *
+ * 'rememberedDetent' (child dismiss restores — pollDetail/settings closeChild): the target
+ * scene's own last-settled detent when usable (middle/expanded — a collapsed memory would hide
+ * the content the child was opened from), else the row's fallbackSnap.
+ *
+ * 'postureSeat' (two-posture law): snap to the TARGET side's seat. The seat read goes through
+ * resolveSceneRememberedSnap, whose snap-session backing routes polls → the HOME seat and
+ * bookmarks/profile → the ONE content seat ('search' as a nav target IS home — the docked-polls
+ * presentation — so it aliases to the polls seat here). Collapsed is a first-class remembered
+ * posture; only hidden (dismissed docked polls) / unset fall to the side's cold-start seed —
+ * which for home is also the sanctioned docked-polls resurrect posture.
  */
 export const materializeSheetMotionDescriptorRule = ({
   rule,
@@ -314,6 +345,19 @@ export const materializeSheetMotionDescriptorRule = ({
   toSceneKey: OverlayKey;
   resolveSceneRememberedSnap: (sceneKey: OverlayKey) => BottomSheetSnap | null;
 }): RouteSceneSwitchSheetMotionPlan => {
+  if (rule.kind === 'postureSeat') {
+    const isHomeSide = resolveNavTargetPostureSeat(toSceneKey) === 'home';
+    const seatSnap = resolveSceneRememberedSnap(
+      isHomeSide ? HOME_SEAT_CARRIER_SCENE_KEY : toSceneKey
+    );
+    const resolvedSnap =
+      seatSnap === 'collapsed' || seatSnap === 'middle' || seatSnap === 'expanded'
+        ? seatSnap
+        : isHomeSide
+          ? HOME_SEAT_SEED_SNAP
+          : CONTENT_SEAT_SEED_SNAP;
+    return { kind: 'snapTo', snap: resolvedSnap };
+  }
   if (rule.kind !== 'rememberedDetent') {
     return rule;
   }

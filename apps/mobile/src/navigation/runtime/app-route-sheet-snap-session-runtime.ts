@@ -2,18 +2,70 @@ import React from 'react';
 
 import type { OverlayKey, OverlaySheetSnap } from '../../overlays/types';
 import type { SearchRouteSceneSnapMeta } from '../../overlays/searchRouteSceneShellMotionContract';
+import { resolveAppRouteSheetScenePolicy } from './app-route-scene-policy-registry';
 
 type Listener = () => void;
 
-export type RouteSheetSharedSnap = Exclude<OverlaySheetSnap, 'hidden' | 'collapsed'>;
+// ─── THE TWO-POSTURE LAW (owner, 2026-07-12 — plans/root-snap-law.md §Leg 2) ─────────────────
+// The app has exactly TWO root sheet postures, each remembering wherever the user's FINGER
+// last put it: HOME's (the search root's docked-polls presentation) and ONE SHARED posture for
+// every other root page. Switching tabs never moves the sheet except when crossing between
+// home and the rest, where each side's remembered seat is restored (the descriptor table's
+// 'postureSeat' rule). Cold start: home collapsed, content seat expanded.
+//
+// WRITE CONTRACT (gesture-only memory): seat writers are exactly (a) user-gesture settles,
+// (b) the origin-restore seam, (c) named product intents (primeDockedPollsForHomeLanding /
+// dismissDockedPolls). Programmatic settles READ seats but never write them — a programmatic
+// writer reaching a seat write is a contract violation (loud __DEV__ error + dropped write),
+// which makes the 2026-07-12 ledger-laundering bug class structurally unrepeatable.
+export type RouteSheetSeatWriter = 'gesture' | 'named' | 'programmatic';
 
-export const ROUTE_SHARED_SNAP_PERSISTENCE_KEY = 'search-route-shared-snap';
+/** Cold-start seats: home at the bottom (map dominant), content pages fully extended. */
+export const HOME_SEAT_SEED_SNAP: Exclude<OverlaySheetSnap, 'hidden'> = 'collapsed';
+export const CONTENT_SEAT_SEED_SNAP: Exclude<OverlaySheetSnap, 'hidden'> = 'expanded';
+
+/** The ONE sanctioned resurrect posture for user-dismissed docked polls (product moment). */
+export const DOCKED_POLLS_RESURRECT_SNAP = 'collapsed' as const;
+
+/**
+ * STRUCTURAL FACT (declared once): home's sheet CARRIER is the docked-polls scene — when home
+ * is presented, the scene fronting the shared sheet is 'polls', never 'search' (the 'search'
+ * scene key is the results sheet, whose facts are search-session-scoped, not a root posture).
+ */
+export const HOME_SEAT_CARRIER_SCENE_KEY: OverlayKey = 'polls';
+
+/**
+ * Which posture seat a scene presents at as a NAV-PAGE (topLevelSwitch) target. DERIVED from
+ * the scene-policy registry's exhaustive `postureSeat` declaration — a new root page declares
+ * its seat there (compile-forced) and this resolver, the descriptor table's topLevelSwitch
+ * rows, and the seat storage below all follow. No hand-maintained scene list.
+ */
+export const resolveNavTargetPostureSeat = (sceneKey: OverlayKey): 'home' | 'content' | null =>
+  resolveAppRouteSheetScenePolicy(sceneKey).postureSeat;
+
+/**
+ * Which posture seat (if any) a scene's OWN snap facts live in (seat storage routing). Same
+ * derivation as the nav-target seat, with the one named structural exception: on the home side
+ * only the CARRIER scene ('polls') owns the home seat — 'search' settles are the results
+ * sheet's, recorded as search-session facts, never home posture.
+ */
+export const resolveSheetPostureSeat = (sceneKey: OverlayKey): 'home' | 'content' | null => {
+  const navSeat = resolveNavTargetPostureSeat(sceneKey);
+  if (navSeat === 'home') {
+    return sceneKey === HOME_SEAT_CARRIER_SCENE_KEY ? 'home' : null;
+  }
+  return navSeat;
+};
 
 export type AppRouteSheetSnapSessionSnapshot = Readonly<{
   isDockedPollsDismissed: boolean;
+  /** HOME's remembered posture ('hidden' = docked polls physically dismissed). */
+  homeSeatSnap: OverlaySheetSnap;
+  /** The ONE shared posture of every non-home root page (never hidden). */
+  contentSeatSnap: Exclude<OverlaySheetSnap, 'hidden'>;
+  /** Per-scene facts for CHILD scenes + the search session (closeChild/origin restores). */
   sceneSheetSnaps: Readonly<Partial<Record<OverlayKey, OverlaySheetSnap>>>;
-  hasUserSharedSnap: boolean;
-  sharedSnap: RouteSheetSharedSnap;
+  /** Per-scene `overlay:` snap persistence (`snapPersistence:'scene'` — no shared lane). */
   persistentSnaps: Readonly<Record<string, OverlaySheetSnap>>;
 }>;
 
@@ -25,10 +77,16 @@ export type AppRouteSheetSnapSessionAuthority = {
 export type AppRouteSheetSnapSessionActions = {
   setIsDockedPollsDismissed: (next: React.SetStateAction<boolean>) => void;
   dismissDockedPolls: () => void;
-  recordRouteSceneSheetSettle: (args: { sceneKey: OverlayKey; snap: OverlaySheetSnap }) => void;
-  settleRouteSceneTabSnap: (args: {
-    sceneKey: 'bookmarks' | 'profile';
+  /**
+   * The ONE snap-fact write. `writer` is REQUIRED so every call site declares which sanctioned
+   * seat writer it is; 'programmatic' targeting a posture seat is dropped with a __DEV__ error
+   * (the two-posture write contract). Non-seat (child/search-session) facts record for any
+   * writer — their sheet position is programmatic by construction.
+   */
+  recordRouteSceneSheetSettle: (args: {
+    sceneKey: OverlayKey;
     snap: OverlaySheetSnap;
+    writer: RouteSheetSeatWriter;
   }) => void;
   settleRouteScenePollsSnap: (args: {
     rootOverlayKey: OverlayKey;
@@ -38,12 +96,6 @@ export type AppRouteSheetSnapSessionActions = {
   getRouteSceneSwitchSceneSnap: (sceneKey: OverlayKey) => OverlaySheetSnap;
   getPersistentSnap: (key: string) => OverlaySheetSnap | null;
   recordPersistentSnap: (options: { key: string; snap: OverlaySheetSnap }) => void;
-  setSharedSnap: (snap: RouteSheetSharedSnap) => void;
-  recordUserSnap: (options: {
-    rootOverlay: OverlayKey;
-    activeOverlayKey: OverlayKey;
-    snap: OverlaySheetSnap;
-  }) => void;
 };
 
 export type AppRouteSheetSnapSessionRuntime = {
@@ -52,43 +104,16 @@ export type AppRouteSheetSnapSessionRuntime = {
   dispose: () => void;
 };
 
-const DEFAULT_SHARED_SNAP: RouteSheetSharedSnap = 'expanded';
-
 const createInitialSnapshot = (): AppRouteSheetSnapSessionSnapshot => ({
   isDockedPollsDismissed: false,
-  sceneSheetSnaps: {
-    polls: 'collapsed',
-  },
-  hasUserSharedSnap: false,
-  sharedSnap: DEFAULT_SHARED_SNAP,
+  homeSeatSnap: HOME_SEAT_SEED_SNAP,
+  contentSeatSnap: CONTENT_SEAT_SEED_SNAP,
+  sceneSheetSnaps: {},
   persistentSnaps: {},
 });
 
 const resolveStateUpdate = <TValue>(current: TValue, next: React.SetStateAction<TValue>): TValue =>
   typeof next === 'function' ? (next as (value: TValue) => TValue)(current) : next;
-
-// CURATED POLICY (intentionally NOT derived from metadata): the scenes whose
-// user-drag persists as the *shared* sheet snap (carried across scenes). This is
-// a product decision, not a structural property — it deliberately includes the
-// poll children (pollCreation/pollDetail) and restaurant-under-search but EXCLUDES
-// saveList (which opens at its own snap and doesn't write it
-// back) and search (own snap model). It does not align with `role`, `sheetPolicy`,
-// or `snapPersistence`, so it can't be derived without changing snap behavior.
-// Degrades gracefully: a forgotten scene simply won't persist its snap. When you
-// add a shared-sheet scene, decide here whether its drag should persist.
-const isSharedOverlaySnapOwner = ({
-  rootOverlay,
-  activeOverlayKey,
-}: {
-  rootOverlay: OverlayKey;
-  activeOverlayKey: OverlayKey;
-}): boolean =>
-  activeOverlayKey === 'polls' ||
-  activeOverlayKey === 'pollCreation' ||
-  activeOverlayKey === 'pollDetail' ||
-  activeOverlayKey === 'bookmarks' ||
-  activeOverlayKey === 'profile' ||
-  (rootOverlay === 'search' && activeOverlayKey === 'restaurant');
 
 export const useAppRouteSheetSnapSessionSelector = <TSelected>({
   authority,
@@ -135,9 +160,6 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     recordRouteSceneSheetSettle: (args) => {
       this.recordRouteSceneSheetSettle(args);
     },
-    settleRouteSceneTabSnap: (args) => {
-      this.settleRouteSceneTabSnap(args);
-    },
     settleRouteScenePollsSnap: (args) => {
       this.settleRouteScenePollsSnap(args);
     },
@@ -145,12 +167,6 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     getPersistentSnap: (key) => this.snapshot.persistentSnaps[key] ?? null,
     recordPersistentSnap: (options) => {
       this.recordPersistentSnap(options);
-    },
-    setSharedSnap: (snap) => {
-      this.setSharedSnap(snap);
-    },
-    recordUserSnap: (options) => {
-      this.recordUserSnap(options);
     },
   };
 
@@ -186,16 +202,57 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
   }
 
   private getRouteSceneSwitchSceneSnap(sceneKey: OverlayKey): OverlaySheetSnap {
+    const seat = resolveSheetPostureSeat(sceneKey);
+    if (seat === 'home') {
+      return this.snapshot.homeSeatSnap;
+    }
+    if (seat === 'content') {
+      return this.snapshot.contentSeatSnap;
+    }
     return this.snapshot.sceneSheetSnaps[sceneKey] ?? 'hidden';
   }
 
   private recordRouteSceneSheetSettle({
     sceneKey,
     snap,
+    writer,
   }: {
     sceneKey: OverlayKey;
     snap: OverlaySheetSnap;
+    writer: RouteSheetSeatWriter;
   }): void {
+    const seat = resolveSheetPostureSeat(sceneKey);
+    if (seat != null) {
+      // Two-posture write contract: programmatic settles read seats, never write them.
+      // A violation here means a settle hook lost its gesture gate — fix the caller.
+      if (writer === 'programmatic') {
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[snap-law] CONTRACT VIOLATION: programmatic settle attempted to write the ${seat} ` +
+              `posture seat (scene=${sceneKey}, snap=${snap}) — gesture/named writers only`
+          );
+        }
+        return;
+      }
+      if (seat === 'content') {
+        if (snap === 'hidden') {
+          // 'hidden' is not a content posture (the content seat has no dismissal concept).
+          if (typeof __DEV__ !== 'undefined' && __DEV__) {
+            // eslint-disable-next-line no-console
+            console.error(
+              `[snap-law] CONTRACT VIOLATION: 'hidden' written to the content posture seat ` +
+                `(scene=${sceneKey}, writer=${writer})`
+            );
+          }
+          return;
+        }
+        this.commit({ contentSeatSnap: snap });
+        return;
+      }
+      this.commit({ homeSeatSnap: snap });
+      return;
+    }
     if (this.snapshot.sceneSheetSnaps[sceneKey] === snap) {
       return;
     }
@@ -210,21 +267,12 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
   private dismissDockedPolls(): void {
     this.commit({
       isDockedPollsDismissed: true,
-      sceneSheetSnaps:
-        this.snapshot.sceneSheetSnaps.polls === 'hidden'
-          ? this.snapshot.sceneSheetSnaps
-          : {
-              ...this.snapshot.sceneSheetSnaps,
-              polls: 'hidden',
-            },
+      homeSeatSnap: 'hidden',
     });
   }
 
   private recordPersistentSnap({ key, snap }: { key: string; snap: OverlaySheetSnap }): void {
     if (snap === 'hidden') {
-      return;
-    }
-    if (key === ROUTE_SHARED_SNAP_PERSISTENCE_KEY && snap === 'collapsed') {
       return;
     }
     if (this.snapshot.persistentSnaps[key] === snap) {
@@ -238,62 +286,6 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     });
   }
 
-  private setSharedSnap(snap: RouteSheetSharedSnap): void {
-    const shouldUpdateSharedSnap =
-      !this.snapshot.hasUserSharedSnap || this.snapshot.sharedSnap !== snap;
-    const shouldUpdatePersistentSnap =
-      this.snapshot.persistentSnaps[ROUTE_SHARED_SNAP_PERSISTENCE_KEY] !== snap;
-    const partial: Partial<AppRouteSheetSnapSessionSnapshot> = {
-      ...(shouldUpdateSharedSnap
-        ? {
-            hasUserSharedSnap: true,
-            sharedSnap: snap,
-          }
-        : {}),
-      ...(shouldUpdatePersistentSnap
-        ? {
-            persistentSnaps: {
-              ...this.snapshot.persistentSnaps,
-              [ROUTE_SHARED_SNAP_PERSISTENCE_KEY]: snap,
-            },
-          }
-        : {}),
-    };
-    this.commit(partial);
-  }
-
-  private recordUserSnap({
-    rootOverlay,
-    activeOverlayKey,
-    snap,
-  }: {
-    rootOverlay: OverlayKey;
-    activeOverlayKey: OverlayKey;
-    snap: OverlaySheetSnap;
-  }): void {
-    // recordUserSnap persists only USER (gesture-sourced) snaps — the sole call site gates on
-    // meta.source==='gesture' (app-route-sheet-host-authority-controller.ts). A programmatic
-    // origin-restore morph emits a single snapTo to the CAPTURED detent and never reaches here, so
-    // it can't pollute the persisted shared snap; no restore-transaction guard is needed.
-    if (!isSharedOverlaySnapOwner({ rootOverlay, activeOverlayKey })) {
-      return;
-    }
-    if (snap === 'hidden' || snap === 'collapsed') {
-      return;
-    }
-    this.setSharedSnap(snap);
-  }
-
-  private settleRouteSceneTabSnap({
-    sceneKey,
-    snap,
-  }: {
-    sceneKey: 'bookmarks' | 'profile';
-    snap: OverlaySheetSnap;
-  }): void {
-    this.recordRouteSceneSheetSettle({ sceneKey, snap });
-  }
-
   private settleRouteScenePollsSnap({
     rootOverlayKey,
     snap,
@@ -303,10 +295,17 @@ class AppRouteSheetSnapSessionController implements AppRouteSheetSnapSessionRunt
     snap: OverlaySheetSnap;
     source?: SearchRouteSceneSnapMeta['source'];
   }): void {
-    this.recordRouteSceneSheetSettle({
-      sceneKey: 'polls',
-      snap,
-    });
+    // Gesture-only seat memory (two-posture law): the HOME seat records only what the user's
+    // finger did. The isDockedPollsDismissed flag arms below stay on EVERY settle — they are
+    // lane-dismissal semantics, not posture memory. This gate is what killed the laundering
+    // bug (a programmatic collapsed arrival used to overwrite the remembered posture).
+    if (source === 'gesture') {
+      this.recordRouteSceneSheetSettle({
+        sceneKey: 'polls',
+        snap,
+        writer: 'gesture',
+      });
+    }
     if (source === 'gesture' && snap !== 'hidden') {
       this.actions.setIsDockedPollsDismissed(false);
     }

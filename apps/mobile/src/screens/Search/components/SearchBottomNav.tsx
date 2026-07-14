@@ -84,7 +84,15 @@ const SearchBottomNavItem = React.memo(
     );
 
     return (
-      <TouchableOpacity style={styles.navButton} onPress={handlePress} activeOpacity={0.85}>
+      <TouchableOpacity
+        style={styles.navButton}
+        onPress={handlePress}
+        activeOpacity={0.85}
+        // Rig lever (CLAUDE.md maestro gotcha): stable per-tab id so the whole app is
+        // finger-test-drivable — coordinate taps on the nav row are unreliable next to the
+        // docked sheet. Serves the owner's per-permutation transition audit.
+        testID={`bottom-nav-${item.key}`}
+      >
         <Reanimated.View style={localStyles.itemVisualStack}>
           <Reanimated.View style={[localStyles.itemVisual, inactiveVisualStyle]}>
             <View style={styles.navIcon}>{renderIcon(themeColors.textBody, false)}</View>

@@ -69,6 +69,14 @@ const STUB_CHILD_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
   contentContainerStyle: { ...STATIC_SCENE_SCROLL_CONTENT_INSETS, paddingBottom: 72 },
 };
 
+// Leg 9 (listdetail-ideal §2b): listDetail hosts a FULL-BLEED in-list ToggleStrip — the
+// engine's edge-to-edge law forbids a horizontally-padded mount, so the scroll transport
+// carries NO horizontal inset; the panel owns per-block padding (strip full-bleed with
+// contentInset alignment, every other block padded to OVERLAY_HORIZONTAL_PADDING).
+const LIST_DETAIL_BODY_TRANSPORT: AppRouteSceneBodyTransportSpec = {
+  contentContainerStyle: { paddingBottom: 72 },
+};
+
 const STATIC_STUB_CHILD_SCENE_KEYS: readonly StaticStubChildSceneKey[] = [
   'userProfile',
   'listDetail',
@@ -210,7 +218,8 @@ class AppRouteStaticSceneDescriptorController {
         }),
         sceneChrome: createMountedChrome(sceneKey),
         sceneBodyContent: createMountedBody(sceneKey),
-        sceneBodyTransport: STUB_CHILD_BODY_TRANSPORT,
+        sceneBodyTransport:
+          sceneKey === 'listDetail' ? LIST_DETAIL_BODY_TRANSPORT : STUB_CHILD_BODY_TRANSPORT,
       });
     });
     sceneInputLane.publishRouteSceneDescriptor({

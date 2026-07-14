@@ -1,6 +1,6 @@
 import React from 'react';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Feather } from '@expo/vector-icons';
 import { Text } from '../../components';
@@ -11,6 +11,7 @@ import { messagingService } from '../../services/messaging';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
+import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
 import {
   ProfileSectionsBody,
   PROFILE_DEFAULT_SECTION,
@@ -271,33 +272,18 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
     });
   }, [isBlockedByMe, runBlockChange]);
 
-  const load = profileQuery.refetch;
-
-  if (userId != null && profileQuery.isPending) {
+  // Load-failure law (wave-4 §1): shared modal + pop; no page-local retry.
+  const isLoadFailed =
+    userId == null ||
+    profileQuery.isError ||
+    (!profileQuery.isPending && profileQuery.data == null);
+  if ((userId != null && profileQuery.isPending) || isLoadFailed || profileQuery.data == null) {
     return (
-      <View style={styles.stateBody} testID="user-profile-loading">
-        <ActivityIndicator />
-      </View>
-    );
-  }
-
-  if (userId == null || profileQuery.isError || profileQuery.data == null) {
-    return (
-      <View style={styles.stateBody} testID="user-profile-failed">
-        <Text variant="body" style={styles.stateText}>
-          We couldn’t load this profile.
-        </Text>
-        <Pressable
-          onPress={() => void load()}
-          accessibilityRole="button"
-          accessibilityLabel="Retry loading profile"
-          testID="user-profile-retry"
-          style={styles.retryButton}
-        >
-          <Text variant="body" weight="semibold" style={styles.retryText}>
-            Retry
-          </Text>
-        </Pressable>
+      <View testID={isLoadFailed ? 'user-profile-failed' : 'user-profile-loading'}>
+        <SceneBodyReadyGate
+          pending={userId != null && profileQuery.isPending}
+          failure={{ isError: isLoadFailed, what: 'this profile' }}
+        />
       </View>
     );
   }
@@ -322,9 +308,9 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
             accessibilityRole="button"
             accessibilityLabel="Unblock user"
             testID="user-profile-unblock"
-            style={styles.retryButton}
+            style={styles.actionPillButton}
           >
-            <Text variant="body" weight="semibold" style={styles.retryText}>
+            <Text variant="body" weight="semibold" style={styles.actionPillText}>
               Unblock
             </Text>
           </Pressable>
@@ -479,13 +465,13 @@ const styles = StyleSheet.create({
   stateText: {
     color: '#0f172a',
   },
-  retryButton: {
+  actionPillButton: {
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 999,
     backgroundColor: '#f1f5f9',
   },
-  retryText: {
+  actionPillText: {
     color: '#0f172a',
   },
   identityRow: {

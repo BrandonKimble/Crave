@@ -375,4 +375,34 @@ api.interceptors.response.use(
   }
 );
 
+// ─── Banner recovery probe (wave-4 §1) ───────────────────────────────────────────────────────
+// A reported service issue must clear when HEALTH RETURNS — not only when some later user
+// action happens to succeed (the old behavior left "Service temporarily unavailable."
+// stuck indefinitely on an idle screen). While an issue is live, probe the API's root
+// /health every 5s with a bare client (no interceptors — probes never re-report, never
+// log, never double-clear); the first healthy response clears the banner and stops the
+// loop. The loop exists ONLY while an issue is present, so the idle app makes no traffic.
+const HEALTH_PROBE_INTERVAL_MS = 5000;
+const HEALTH_URL = `${String(API_URL).replace(/\/api\/v1\/?$/, '')}/health`;
+let healthProbeTimer: ReturnType<typeof setInterval> | null = null;
+
+useSystemStatusStore.subscribe((state) => {
+  const hasIssue = state.serviceIssue != null;
+  if (hasIssue && healthProbeTimer == null) {
+    healthProbeTimer = setInterval(() => {
+      void axios
+        .get(HEALTH_URL, { timeout: 3000 })
+        .then(() => {
+          useSystemStatusStore.getState().clearServiceIssue();
+        })
+        .catch(() => {
+          // Still down — keep probing.
+        });
+    }, HEALTH_PROBE_INTERVAL_MS);
+  } else if (!hasIssue && healthProbeTimer != null) {
+    clearInterval(healthProbeTimer);
+    healthProbeTimer = null;
+  }
+});
+
 export default api;
