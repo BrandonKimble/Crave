@@ -120,6 +120,14 @@ const toReanimatedSpringConfig = (
 export type TransitionLanePlayer = {
   settleRamp: SharedValue<number>;
   paintAck: SharedValue<number>;
+  /**
+   * Leg 4 fix (owner-repro'd double header flip): the freeze-mode BOUNDARY gate is its
+   * own SV, composed by the lane worklets as max(paintAck, boundaryGate). The crossing
+   * worklet sets it 1 at the snap crossing; a post-boundary re-stage that pins
+   * paintAck=0 can no longer flip the visible content BACKWARD (the boundary gate holds
+   * until the NEXT transition starts). Reset in start() and the early-write hold path.
+   */
+  boundaryGate: SharedValue<number>;
   start: (descriptor: TransitionDescriptor, velocity: number, onSettle?: () => void) => void;
   markPaintAck: () => void;
   seize: () => void;
@@ -131,12 +139,16 @@ export const useTransitionLanePlayer = (): TransitionLanePlayer => {
   // The single paint-ack gate. 0 until the incoming scene emits its first real paint; 1 after.
   // Gates ONLY the content/header visible-commit; nothing reads the ramp for visuals.
   const paintAck = useSharedValue(0);
+  // The freeze-mode boundary gate (see the type doc). One-way per transition: 0 until the
+  // snap crossing, then 1 until the next transition resets it.
+  const boundaryGate = useSharedValue(0);
 
   const start = React.useCallback<TransitionLanePlayer['start']>(
     (descriptor, velocity, onSettle) => {
       // Press-up fan-out: reset the gate + ramp, then start the ONE spring whose ONLY effect is to
       // fire onSettle at ramp-end. The visible swap happens separately on the paint-ack.
       paintAck.value = 0;
+      boundaryGate.value = 0;
       cancelAnimation(settleRamp);
       settleRamp.value = 0;
       const config = toReanimatedSpringConfig(descriptor.clock.config, velocity);
@@ -169,7 +181,7 @@ export const useTransitionLanePlayer = (): TransitionLanePlayer => {
   // context (the scene-stack ports), a fresh object identity re-minted the context every switch and
   // re-rendered every context consumer. Memoize the container so its identity survives a re-render.
   return React.useMemo(
-    () => ({ settleRamp, paintAck, start, markPaintAck, seize }),
-    [settleRamp, paintAck, start, markPaintAck, seize]
+    () => ({ settleRamp, paintAck, boundaryGate, start, markPaintAck, seize }),
+    [settleRamp, paintAck, boundaryGate, start, markPaintAck, seize]
   );
 };

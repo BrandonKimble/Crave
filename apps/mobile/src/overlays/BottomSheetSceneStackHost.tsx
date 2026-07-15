@@ -598,11 +598,11 @@ const SceneStackBodyFrameHost = React.memo(
       if (player == null || contentMode == null || liveRole === 'idle') {
         return { opacity: liveRole === 'idle' ? 0 : 1 };
       }
-      const pair = resolveContentLaneOpacities(
-        player.settleRamp.value,
-        player.paintAck.value,
-        contentMode
-      );
+      // Leg 4: the visible gate composes the paint-ack with the freeze-mode boundary
+      // gate — one-way per transition, so a post-boundary re-stage (paintAck re-pinned
+      // 0) can never flip the committed content backward (the double-header-flip fix).
+      const swapGate = Math.max(player.paintAck.value, player.boundaryGate.value);
+      const pair = resolveContentLaneOpacities(player.settleRamp.value, swapGate, contentMode);
       return { opacity: pickLegOpacity(pair, liveRole) };
     }, [player, contentMode, legRole, liveSwapRoles, sceneKey]);
     const chromeSwapStyle = useAnimatedStyle(() => {
@@ -611,7 +611,8 @@ const SceneStackBodyFrameHost = React.memo(
       if (player == null || liveRole === 'idle') {
         return { opacity: liveRole === 'idle' ? 0 : 1 };
       }
-      const pair = resolveHeaderSwap(player.paintAck.value);
+      const swapGate = Math.max(player.paintAck.value, player.boundaryGate.value);
+      const pair = resolveHeaderSwap(swapGate);
       return { opacity: pickLegOpacity(pair, liveRole) };
     }, [player, legRole, liveSwapRoles, sceneKey]);
     // The leg WRAPPER's visibility AND stacking both ride the live-role SV (the UI-thread swap
@@ -1368,7 +1369,10 @@ const ActiveSceneStackSurfaceHost = React.memo(
     // Leg 3 (design §4.2): expose the live player's paintAck to the dismiss motion plane so the
     // snap-crossing worklet can flip the staged swap UI-thread-side in the crossing frame (the
     // freeze primitive). The trailing runOnJS commit remains the store/React cleanup.
-    React.useEffect(() => registerDismissBoundarySwapGate(player.paintAck), [player.paintAck]);
+    React.useEffect(
+      () => registerDismissBoundarySwapGate(player.boundaryGate),
+      [player.boundaryGate]
+    );
     // Stable, ref-backed bridge so the player's onSettle never re-fires the layout effect (and thus
     // never re-starts / wiggles) when the callback identity moves. The callback IS stable today
     // (bound once in the provider), but the ref keeps that guarantee local.
@@ -1472,6 +1476,7 @@ const ActiveSceneStackSurfaceHost = React.memo(
             liveSwapRoles.value = { presented, outgoing };
             player.seize();
             player.paintAck.value = 0;
+            player.boundaryGate.value = 0;
             player.settleRamp.value = 0;
             logPageSwitch('liveSwap', {
               t: Math.round(performance.now()),

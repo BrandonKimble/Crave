@@ -44,6 +44,14 @@ const SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT = 1;
 const SEARCH_DISMISS_VISUAL_HANDOFF_PROGRESS_MIN = 0.8;
 const SEARCH_DISMISS_MOTION_BOUNDARY_TIMEOUT_MS = 420;
 
+// TEMP Leg-4 attribution probe (strip after the owner feel-check passes).
+const logDismissBoundaryCrossing = (sheetY: number, targetY: number, velocity: number): void => {
+  // eslint-disable-next-line no-console
+  console.log(
+    `[BOUNDARY-CROSS] sheetY=${sheetY.toFixed(1)} targetY=${targetY.toFixed(1)} vel=${velocity.toFixed(2)}`
+  );
+};
+
 const clamp01 = (value: number): number => {
   'worklet';
   return Math.max(0, Math.min(1, value));
@@ -668,6 +676,14 @@ export const useSearchDismissMotionPlaneRuntime = ({
       // opaque) ON THE UI THREAD in the crossing frame. The JS half below
       // (commitDismissBoundary) remains the store/React cleanup and may trail.
       if (dismissBoundarySwapGate != null) {
+        if (dismissBoundarySwapGate.value < 0.5 && __DEV__) {
+          // TEMP Leg-4 attribution probe (strip after the owner feel-check passes).
+          runOnJS(logDismissBoundaryCrossing)(
+            currentY,
+            dismissMotionCollapsedY.value,
+            velocityPxPerFrame
+          );
+        }
         dismissBoundarySwapGate.value = 1;
       }
       return 1;
