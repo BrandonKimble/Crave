@@ -15,6 +15,15 @@ LIST_A="8a876fd8-3184-4d52-96cf-71937c3f5adf"   # Out-of-towner tour (15)
 LIST_B="e050f14f-71d2-44e2-9fc4-c882dc644557"   # Date night ATX (12)
 PASS=0; FAIL=0; XRED=0
 
+# PRECONDITION (own it, never assume it): every flow's assertions are written against
+# the cold-boot docked-polls home. A prior session's world (manual flows, an aborted
+# run) shifts stack depths and snaps -> phantom FAILs. Cold-relaunch = deterministic.
+APP_BUNDLE="com.brandonkimble.cravesearch"
+xcrun simctl terminate "$UDID" "$APP_BUNDLE" 2>/dev/null
+sleep 1
+xcrun simctl launch "$UDID" "$APP_BUNDLE" >/dev/null
+sleep 14
+
 enc() { python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$1"; }
 
 # send <verb> <id> <json-payload or ''> ; echoes the ack JSON line
