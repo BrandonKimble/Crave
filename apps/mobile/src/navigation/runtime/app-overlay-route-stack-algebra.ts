@@ -281,11 +281,13 @@ export type SessionDismissPlan =
   | { kind: 'terminalHome' };
 
 // Leg 4 (phase-1 design §1.3): a SESSION is any entry that presents a world — the
-// pushed 'search' results entry, OR a world-bearing child (a listDetail pushed by the
-// listWorld composite stamps `worldBacked: true`; the v2 end state is `desire` on the
-// entry). The old search-key-only scan classified [bookmarks, listDetail(world)] as
-// session-less and fell through to terminalHome — the owner-repro'd [NAV-CONTRACT]
-// bark and the home-shaped dismissal from a non-home origin.
+// pushed 'search' results entry, OR a world-bearing child. The old search-key-only scan
+// classified [bookmarks, listDetail(world)] as session-less and fell through to
+// terminalHome — the owner-repro'd [NAV-CONTRACT] bark.
+// ⚠️ MARKED INTERIM (philosophy audit 2026-07-15): reading `worldBacked` off params is
+// the autopsy's own param-sniffing leak class. The correct fact is `desire` ON the
+// entry (design §1.3); the Leg-4 entry cut replaces this predicate with
+// `entry.desire != null` and deletes the param read. Do not add consumers to this shape.
 const isWorldBearingEntry = (entry: OverlayRouteEntry | undefined): boolean =>
   entry != null &&
   (entry.key === 'search' ||

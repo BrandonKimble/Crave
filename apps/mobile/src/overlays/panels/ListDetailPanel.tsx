@@ -352,12 +352,13 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const [slugWorldLaunched, setSlugWorldLaunched] = React.useState(false);
   const worldBacked = worldBackedParam || slugWorldLaunched;
   // Leg 4 (phase-1 design C3/C6): while this page presents a WORLD, its header X is a
-  // SESSION close, not a bare route pop — the published results-session close runs the
-  // full back-out (tuple→idle, world/native teardown, pop to the captured origin). The
-  // registry override pattern is the same one 'search'/'restaurant' use; registration is
-  // dynamic because worldBacked is entry state (a plain-pushed listDetail keeps the
-  // host's default pop). Fixes the stale-pins class: X used to pop the route while the
-  // presented world survived (matrix FLOW 3's EXPECTED-RED).
+  // SESSION close, not a bare route pop. Fixes the stale-pins class (matrix FLOW 3).
+  // ⚠️ MARKED INTERIM (philosophy audit 2026-07-15): per-panel registration of a
+  // UNIVERSAL law ("a world-bearing entry's X is a session close") is per-surface
+  // wiring — the ideal is the HOST's close default DERIVING it from the stack fact
+  // (entry.desire != null → session close), zero registration. The Leg-4 entry cut
+  // moves this into the host default and deletes this effect. Do not copy this pattern
+  // to other world-bearing scenes.
   React.useEffect(() => {
     if (!worldBacked) {
       return undefined;

@@ -391,6 +391,22 @@ code path, the abstraction has failed (B2's law extended to choreography).
   are the only writers — RED-asserted); C7's dismissal restore rides the named
   origin-restore writer.
 
+## P. Owner feel-check round 1 additions (2026-07-15, post-freeze-primitive)
+
+- P-1. **Toggle-strip cutout plate is part of the chrome commit** (extends O-5): the white
+  cutout strip must be computed-before-reveal and land in the same committed frame as the
+  header/body — never snap in after the cards. One primitive, applied to EVERY strip
+  surface (the "buttons floating over frost" glitch class dies).
+- P-2. Reveal skeleton continuity: no gap between header bottom and skeleton top; the
+  skeleton may not visibly reconfigure mid-reveal (one declared skeleton per scene, O-5's
+  one-commit law covers its plate too).
+- P-3. Late-popping content (collaborator row, usernames) joins the reveal — content
+  that isn't ready rides the skeleton, never pops after the joint (N-1/O-5).
+- P-4. Map items must never snap in after cards on ANY mouth (N-2 joint enforcement is
+  per-mouth-verified in the harness trace, not assumed).
+- P-5. ATTRIBUTION ITEM: images look washed out for a frame at reveal, clearing on
+  settle (suspect fade-over-white compositing) — attribute before fixing.
+
 ## M. Owner decisions required before/during Phase 1
 
 - M-1. New-mouth-during-live-session: replace the session vs push a second (I-1) — and
