@@ -16,6 +16,10 @@ import {
 import { SceneStripLawContext } from '../toggles/toggle-strip-scene-law';
 import { useAppOverlayRouteController } from './useAppOverlayRouteController';
 import { closeSearchResultsSession } from './search-results-header-live-state';
+import {
+  getLiveTransitionTxn,
+  subscribeTransitionTxn,
+} from '../navigation/runtime/transition-engine/transition-transaction';
 import { recordSceneChromeAck, recordSceneChromeMeasuredHeight } from './scene-chrome-ack-runtime';
 import HeaderNavAction from './HeaderNavAction';
 import OverlaySheetHeaderChrome from './OverlaySheetHeaderChrome';
@@ -60,7 +64,19 @@ export const PersistentSheetHeaderHost: React.FC<{
   // The one legal steady divergence is the docked-polls lane — route/activeSceneKey is 'search'
   // while the sheet presents the polls feed — and presented-first is exactly what shows the polls
   // header there. activeSceneKey only backstops the frames where no presented key exists yet.
-  const sceneKey = frame.presentedSceneKey ?? frame.activeSceneKey;
+  // §Q redo T1d (ledger O-1/P-14): during a FREEZE-MODE dismissal the chrome is part of
+  // the frozen bundle — the header keeps the OUTGOING scene until the transaction's
+  // reveal (the boundary edge), so header/strip/body swap in ONE frame. Page switches
+  // keep the chrome-leads law (their plans never freeze).
+  const liveTxn = React.useSyncExternalStore(subscribeTransitionTxn, getLiveTransitionTxn);
+  const frozenChromeSceneKey =
+    liveTxn != null &&
+    liveTxn.plan.content.kind === 'freezeUntilSnap' &&
+    (liveTxn.phase === 'staged' || liveTxn.phase === 'committed' || liveTxn.phase === 'joining') &&
+    liveTxn.mutation.sourceSceneKey != null
+      ? liveTxn.mutation.sourceSceneKey
+      : null;
+  const sceneKey = frozenChromeSceneKey ?? frame.presentedSceneKey ?? frame.activeSceneKey;
   const descriptor = sceneKey != null ? getPersistentHeaderDescriptor(sceneKey) : undefined;
   // ─── HeaderNavAction driver (leg 6 — §4 plus↔X rotation, child-transition primitive §3.2).
   // ONE host-owned rotating control; the driver is the PF chrome clock (frame.headerNavAction,

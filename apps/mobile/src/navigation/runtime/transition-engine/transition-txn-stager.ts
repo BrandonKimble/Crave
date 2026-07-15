@@ -65,6 +65,12 @@ export const commitStagedTransitionTxn = (): void => {
   const live = getLiveTransitionTxn();
   if (live != null && live.phase === 'staged') {
     commitTransitionTxn(live);
+    // T1d: a freeze-dismiss's join is fully known at stage time (no host amendment
+    // applies — its plan is the source of truth): seal immediately so the boundary
+    // offer reveals AT the boundary edge, not at a later settle sweep.
+    if (live.plan.content.kind === 'freezeUntilSnap') {
+      sealTransitionTxnJoin(live);
+    }
   }
 };
 
@@ -79,6 +85,21 @@ export const commitStagedTransitionTxn = (): void => {
 const deriveTransitionTxnPlan = (
   transitionPlan: AppRouteSceneTransitionPlan
 ): Parameters<typeof stageTransitionTxn>[1] => {
+  // T1d (design N-3/N-4, ledger P-14): the FREEZE-MODE DISMISS — the outgoing bundle
+  // holds until the sheet reaches the boundary; the incoming is WARM, so the reveal
+  // joins on 'boundary' (the snap crossing), NOT {paint, chrome}. This is the one
+  // edge ALL owners (header host, leg lanes, surface bundle) gate on — the early
+  // chrome flip / partial-bundle / bottom double-flip classes die here.
+  const isFreezeDismiss =
+    transitionPlan.sheetTransitionPlan.transitionKind === 'terminalDismiss' &&
+    transitionPlan.sheetTransitionPlan.contentHandoff === 'preserveOutgoingUntilSettle';
+  if (isFreezeDismiss) {
+    return {
+      content: { kind: 'freezeUntilSnap' },
+      joinInputs: ['boundary'],
+      movesSheet: true,
+    };
+  }
   const holdsOutgoing =
     transitionPlan.sheetTransitionPlan.contentHandoff === 'preserveOutgoingUntilSettle';
   const joinInputs: ('paint' | 'chrome' | 'mapFrame')[] = holdsOutgoing

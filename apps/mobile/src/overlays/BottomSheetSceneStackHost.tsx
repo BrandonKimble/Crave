@@ -1487,8 +1487,13 @@ const ActiveSceneStackSurfaceHost = React.memo(
           // arriving mid-transaction (the dismissal's boundary content flip re-
           // presenting the destination) is a LATER stage of the SAME txn, not an
           // amendment (T1d models it as the freeze swap).
-          const liveTxnPhase = getLiveTransitionTxn()?.phase;
-          if (liveTxnPhase === 'staged' || liveTxnPhase === 'committed') {
+          const liveTxnForArm = getLiveTransitionTxn();
+          if (
+            (liveTxnForArm?.phase === 'staged' || liveTxnForArm?.phase === 'committed') &&
+            // T1d: freeze-dismiss plans join on 'boundary' by their OWN declaration —
+            // the page-switch {paint, chrome} arm does not apply to them.
+            liveTxnForArm.plan.content.kind !== 'freezeUntilSnap'
+          ) {
             amendTransitionTxnJoinInputs(['paint', 'chrome']);
             sealLiveTransitionTxnJoin();
           }

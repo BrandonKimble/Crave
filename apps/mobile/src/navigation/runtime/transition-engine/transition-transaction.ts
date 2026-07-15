@@ -36,7 +36,7 @@ export type TransitionContentPolicy =
   | { kind: 'holdOutgoingUntilSettle' }
   | { kind: 'freezeUntilSnap' };
 
-export type TransitionJoinInput = 'paint' | 'chrome' | 'mapFrame' | 'camera';
+export type TransitionJoinInput = 'paint' | 'chrome' | 'mapFrame' | 'camera' | 'boundary';
 
 export type TransitionMutation = {
   kind: 'push' | 'closeActive' | 'popToEntry' | 'popToRoot' | 'setRoot' | 'preserve' | 'revise';

@@ -1,6 +1,7 @@
 import React, { useSyncExternalStore } from 'react';
 import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
 
+import { offerTransitionJoinInput } from '../../../../navigation/runtime/transition-engine/transition-transaction';
 import {
   isPerfScenarioAttributionActive,
   logPerfScenarioAttributionEvent,
@@ -934,6 +935,9 @@ export class SearchSurfaceRuntime {
       activeDismissTransaction != null &&
       this.matchesTransaction(activeDismissTransaction.id, id)
     ) {
+      // §Q redo T1d: same boundary fact, inline commit branch — offer it here too
+      // (this branch bypasses markBottomBoundaryReached).
+      offerTransitionJoinInput('boundary');
       this.publishDismissTransaction({
         ...activeDismissTransaction,
         bottomBoundaryReached: true,
@@ -1029,6 +1033,10 @@ export class SearchSurfaceRuntime {
       }
       return;
     }
+    // §Q redo T1d: the boundary is a TRANSACTION join input — the one edge every
+    // content owner (header host, leg lanes, this bundle) gates on for freeze-mode
+    // dismissals. Offered here (the single JS commit point for the boundary fact).
+    offerTransitionJoinInput('boundary');
     this.publishDismissTransaction({
       ...dismissTransaction,
       bottomBoundaryReached: true,

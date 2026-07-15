@@ -420,6 +420,20 @@ code path, the abstraction has failed (B2's law extended to choreography).
 - P-10. Root-page switches obey the press-up content law too (observed: polls sheet
   slides up AS polls before switching to the list page — content must commit on
   press-up, motion carries the committed content).
+- P-12. Submit press-up STALL (owner, 2026-07-15 round 3): the nav-out fade + shortcut
+  buttons SNAP instead of fading at search submit — a JS frame drop in the press-up
+  window (L-1 task-law violation; measure with the harness samplers; suspect
+  world-commit/fan-out work inside the press-up task on the shortcut path).
+- P-13. The reveal cover lift must JOIN the ramp (owner round 3): skeleton lifted at
+  ~ramp start but cards weren't ready → blank frost body until cards popped in at
+  ramp-halfway. The T4 joint gates cover-lift AND card visibility on the same
+  ramp-start edge — a lifted cover with no content is a forbidden frame (extends O-1).
+- P-14. FOUR-OWNERS FACT (the T1d/T2/T4 conversion map, recorded): every visible sheet
+  is composed by (1) the persistent header host [PF-driven, swaps at press-up], (2) the
+  leg lanes [txn-gated since T1c], (3) the search surface bundle [boundary-driven], and
+  (4) the native ramp/cover [own clock]. The owner-visible dismiss bugs (early chrome
+  flip, partial-bundle frames, bottom double-flip) are owners 1+3 disagreeing with 2;
+  the reveal bugs are owner 4 disagreeing with everyone. One txn gates all four.
 - P-11. Home dismiss regression note (for the record): the freeze-primitive wiring into
   the OLD motion plane was reverted 2026-07-15 after two owner-caught regressions —
   the snap-crossing swap ships ONLY inside the transition-transaction engine (§Q).
