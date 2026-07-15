@@ -1,5 +1,6 @@
 import type { OverlayKey } from '../navigation/runtime/app-overlay-route-types';
 import { getSceneFoundationSpec } from '../navigation/runtime/scene-foundation-spec';
+import { offerTransitionJoinInput } from '../navigation/runtime/transition-engine/transition-transaction';
 
 // ─── THE CHROME-ACK (child-transition primitive §2.3, leg 6) ─────────────────────────────────
 //
@@ -24,6 +25,9 @@ export const recordSceneChromeAck = (sceneKey: OverlayKey): void => {
     return;
   }
   chromeAckSceneKey = sceneKey;
+  // §Q redo T1b: the chrome source OFFERS its input to the live transaction
+  // (consumed iff the txn's plan declared 'chrome').
+  offerTransitionJoinInput('chrome');
   listeners.forEach((listener) => {
     listener();
   });

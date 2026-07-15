@@ -50,15 +50,34 @@ export const stageTransitionTxnForCommittedSwitch = (
       sourceSceneKey: transitionPlan.sourceSceneKey ?? null,
       entryId: transitionPlan.committedRouteEntryId ?? null,
     },
-    {
-      // T1a: degenerate everywhere (shadow mode). T1b derives content/joinInputs from
-      // the resolved plan (motion planes → paint/chrome; readiness link → mapFrame).
-      content: { kind: 'swapImmediately' },
-      joinInputs: [],
-      movesSheet: transitionPlan.sheetSnapTarget != null,
-    }
+    deriveTransitionTxnPlan(transitionPlan)
   );
   commitTransitionTxn(txn);
+};
+
+/**
+ * T1b: the transaction's plan DERIVES from the resolved switch plan — same facts,
+ * one vocabulary. The reveal-join source is the CONTENT HANDOFF (the fact that
+ * actually gates today's visible swap — O-11): preserveOutgoingUntilSettle means the
+ * incoming reveals on the {paint, chrome} join (the child-transition primitive);
+ * a search content-readiness link adds the native world frame (mapFrame).
+ * swapImmediately (seeded scenes / zero-plane dismissals) = the degenerate class.
+ */
+const deriveTransitionTxnPlan = (
+  transitionPlan: AppRouteSceneTransitionPlan
+): Parameters<typeof stageTransitionTxn>[1] => {
+  const holdsOutgoing =
+    transitionPlan.sheetTransitionPlan.contentHandoff === 'preserveOutgoingUntilSettle';
+  const joinInputs: ('paint' | 'chrome' | 'mapFrame')[] = holdsOutgoing
+    ? transitionPlan.contentReadinessTransactionId != null
+      ? ['paint', 'chrome', 'mapFrame']
+      : ['paint', 'chrome']
+    : [];
+  return {
+    content: holdsOutgoing ? { kind: 'holdOutgoingUntilSettle' } : { kind: 'swapImmediately' },
+    joinInputs,
+    movesSheet: transitionPlan.sheetSnapTarget != null,
+  };
 };
 
 /** Settle the live transaction at the switch's idle-commit boundary. A txn still

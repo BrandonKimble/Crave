@@ -272,6 +272,26 @@ export const withLiveTransitionTxn = (
   return true;
 };
 
+/**
+ * T1b: ambient readiness sources OFFER inputs; the live transaction consumes the ones
+ * its plan DECLARED and ignores the rest (a paint ack during a no-join transition is
+ * normal life, not a violation). Returns true when the offer was consumed.
+ */
+export const offerTransitionJoinInput = (input: TransitionJoinInput): boolean => {
+  const live = liveTxn;
+  if (
+    live == null ||
+    (live.phase !== 'joining' && live.phase !== 'committed') ||
+    !live.plan.joinInputs.includes(input) ||
+    !live.pendingJoinInputs.has(input)
+  ) {
+    return false;
+  }
+  markTransitionJoinInput(live, input);
+  listeners.forEach((listener) => listener());
+  return true;
+};
+
 export const subscribeTransitionTxn = (listener: Listener): (() => void) => {
   listeners.add(listener);
   return () => {

@@ -171,10 +171,23 @@ must be impossible by construction (no market/key param left to mismatch).
   is never itself collectable (prevents structural demand double-count; today
   accidental).
 
-### 3.3 Reads never mint
-- Flip `ensureLocalityMarkets: false` at search's two call sites
-  (search.service.ts ~L2968; search-query-interpretation.service.ts ~L661).
-  (Leg 5 pre-seeding makes poll-creation minting unnecessary too.)
+### 3.3 Minting: containment-derived, not size-thresholded (owner-revised)
+- Minting STAYS (global app; pre-seeding the world is infeasible on the free tier —
+  see Leg 5). The defect was the anchor rule, not minting itself. New rule, derived
+  not thresholded: reverse-geocode the anchor's municipality, then mint ONLY if that
+  municipality's polygon dominantly covers the viewport (viewport ⊆ boundary bbox /
+  dominant overlap). A city-scale viewport over Jakarta mints Jakarta; a continental
+  viewport is never covered by one municipality → no mint. The boundary itself
+  supplies the scale — no mile constants. Applies at all read sites; poll creation
+  keeps unconditional resolve-or-mint (explicit local intent). Dedupe the two
+  per-search call sites into one resolution.
+
+### 3.5 Demand → polls cold-start (new, owner idea — design item)
+- Searches in non-collectable markets currently write null-lane ask events every
+  ranker ignores. Instead: record demand against the (possibly just-minted) market
+  so accumulating demand in an uncovered city can seed/prompt polls there — polls
+  being the proven data inlet for uncovered areas (poll-entity-seed + graduation).
+  Shape TBD with owner (auto-generated poll prompts? creator-ladder tie-in?).
 
 ### 3.4 Adjacent fix
 - Extraction-born restaurants in markets without a collection community currently
@@ -198,29 +211,36 @@ demand); ranker picks the genuinely deficient market first.
 - Header: "Polls in this area" branch in pollsHeaderVisuals (multi_market status
   already flows). Per-poll market labels already exist (attachMarketLabels — already
   multi-market capable).
-- Market slicer: fourth SelectorChip ("Market"), same primitive as Type/Sort/Time;
-  options = viewport markets grouped by state_code when count > ~20 (states are a
-  DISPLAY GROUPING from existing key metadata — NOT core_markets rows; a state
+- Market slicer: fourth SelectorChip ("Market"), same primitive as Type/Sort/Time.
+  Grouping level is DERIVED FROM GEOGRAPHY, not a count threshold: viewport markets
+  span one state → list cities; span multiple states → list states, tap a state to
+  drill into its cities (state_code / country-subdivision metadata already on every
+  market key — states are a DISPLAY GROUPING, never core_markets rows; a state
   market row would swallow city resolution via largest-covering-wins and mark whole
   states "covered", killing locality bootstrap). Pinned-market mode already wired
   (marketOverride).
 
 ---
 
-## Leg 5 — Market pre-seeding (owner idea, ratified direction)
+## Leg 5 — Market seeding strategy (DEMOTED: lazy minting is THE mechanism)
 
-- Offline batch: seed core_markets with all US municipalities (+ counties where
-  needed for regional unions) from TomTom geocode + additionalData, sourced from a
-  Census/GNIS gazetteer list (~19.5k incorporated places; TomTom has no
-  child-enumeration API — the gazetteer supplies names, TomTom supplies polygons;
-  use geometriesZoom to tame payloads). One-time throttled job + idempotent upserts
-  into geo_boundary_features/core_markets (933 census stubs pattern already exists).
-- Effect: runtime minting deleted EVERYWHERE (search already off per 3.3; poll
-  creation's ensure path becomes a plain resolve); header/poll bucket always resolves
-  instantly; the only unnamed areas are unincorporated land (header: "this area").
-- Open sub-questions: gazetteer source pick; active-vs-dormant seeding policy
-  (all active display markets vs activate-on-first-touch); TomTom ToS check for bulk
-  polygon storage; rate/cost of ~40k one-time calls.
+- TomTom free tier (verified 2026-07-14, docs.tomtom.com/pricing): freemium plan =
+  2,500 non-tile requests/DAY account-wide (owner-confirmed); the newer per-API
+  scheme lists Geocoding/Reverse-Geocoding 20K/month free but Search API (Legacy) —
+  which includes /search/2/additionalData (our polygon fetch) — at 2.5K/MONTH.
+  Either way the polygon endpoint is the binding constraint.
+- Math: US pre-seed (~19.5k incorporated places × 2 calls ≈ 39k) = ~16 days at
+  2.5K/day, ~8+ months if additionalData is 2.5K/month. Global (hundreds of
+  thousands of municipalities) = months-to-years at best. VERDICT: global pre-seed
+  infeasible on free tier → runtime containment-gated minting (3.3) is the one
+  mechanism worldwide; markets self-provision where users actually go.
+- Optional accelerant only: warm-seed launch geographies (e.g. Texas metros) as an
+  operator batch inside the daily budget. Gazetteer (Census/GNIS) supplies names
+  (TomTom has no child-enumeration API); geometriesZoom tames payloads; idempotent
+  upserts into geo_boundary_features/core_markets.
+- ToS: owner reviewed — storage is fine; no further check needed.
+- Runtime quota note: each mint costs ~2 non-tile calls; organic minting is
+  self-throttling (only city-scale viewports over uncovered ground).
 
 ---
 
@@ -259,3 +279,18 @@ demand); ranker picks the genuinely deficient market first.
 - Provisioning law: no collectable locality inside a collectable regional.
 - Poll-graduation geo-bias fix (3.4).
 - Score interleaving accepted UNTIL market #2 (then Leg 6 blocks).
+- Minting stays, containment-gated (3.3); demand→polls cold-start pipeline (3.5).
+- Slicer grouping derived from states-in-view, never a count constant.
+
+## Small residuals (fold in opportunistically, don't lose)
+
+- search_events totalResults/totalRestaurantResults change meaning post-Leg-1
+  (viewport-wide, not market-filtered) — note for any analytics reading them.
+- search-mounted-results-data-store identity key's `market:` segment becomes
+  vestigial (harmless) — drop during Leg 2 touch.
+- Threshold taxonomy sweep (owner ask): judgment-thresholds should be derived or
+  relative (per-market demand target — deleted in 3.1; state grouping — derived in
+  Leg 4; minting scale — derived in 3.3; polls take:25 — replaced by pagination in
+  Leg 4). Capacity constants are legit and stay (pin budget 30 = screen real estate,
+  page size 20/25 = payload, scheduler per-cycle budgets, cooldowns, half-lives,
+  5% market tie band).

@@ -1,4 +1,5 @@
 import React from 'react';
+import { offerTransitionJoinInput } from '../../../../navigation/runtime/transition-engine/transition-transaction';
 
 import {
   isPerfScenarioAttributionActive,
@@ -2575,6 +2576,9 @@ const useSearchMapNativeRenderOwnerStatus = ({
               return;
             }
             if (event.type === 'presentation_execution_batch_mounted_hidden') {
+              // §Q redo T1b: the native world frame is mounted hidden — the map source
+              // OFFERS its input to the live transaction (consumed iff declared).
+              offerTransitionJoinInput('mapFrame');
               withNativePresentationEventInnerSpan(event, 'visual_readiness_log', () => {
                 logNativePresentationReadinessEvent({
                   event: 'native_execution_batch_mounted_hidden_ready',

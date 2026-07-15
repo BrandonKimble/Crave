@@ -15,6 +15,7 @@ import {
 } from '../navigation/runtime/transition-engine/transition-lane-player';
 import type { ContentMode } from '../navigation/runtime/transition-engine/transition-descriptor-contract';
 import { deriveHostTokenDescriptor } from '../navigation/runtime/transition-engine/host-token-transition-adapter';
+import { offerTransitionJoinInput } from '../navigation/runtime/transition-engine/transition-transaction';
 
 import { SceneStackBodyContentLayer, SceneStackBodyFrame } from './BottomSheetSceneStackBodyLayer';
 import { SceneStackDecorLayer } from './BottomSheetSceneStackDecorLayers';
@@ -1488,6 +1489,8 @@ const ActiveSceneStackSurfaceHost = React.memo(
           joinRevealOnChromeAck(presented, () => {
             liveSwapRoles.value = { presented, outgoing: null };
             player.seize();
+            // §Q redo T1b: the warm flip is paint truth too — offer it.
+            offerTransitionJoinInput('paint');
             player.paintAck.value = 1;
             player.settleRamp.value = 1;
             logPageSwitch('liveSwap', {
@@ -1503,6 +1506,9 @@ const ActiveSceneStackSurfaceHost = React.memo(
       (sceneKey: OverlayKey) => {
         if (isTransitioningRef.current && sceneKey === effectiveIncomingRef.current) {
           logPageSwitch('realAck', { t: Math.round(performance.now()), scene: sceneKey });
+          // §Q redo T1b: the paint source OFFERS its input to the live transaction
+          // (the txn consumes it iff its plan declared 'paint').
+          offerTransitionJoinInput('paint');
           // Joined reveal (§2.3): the header's layout effect normally recorded the chromeAck in
           // this same commit, so the join is synchronous; a missing ack defers ≤2 frames.
           // Inside the join: markPaintAck reveals the content, and (§9.1 R2) the switchId-keyed
