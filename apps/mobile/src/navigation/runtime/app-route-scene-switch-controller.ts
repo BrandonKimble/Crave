@@ -22,6 +22,10 @@ import {
   captureRouteEntryOrigin,
   stageRouteEntryOriginRestore,
 } from './route-entry-origin-capture-delegate';
+import {
+  settleLiveTransitionTxnAtIdle,
+  stageTransitionTxnForCommittedSwitch,
+} from './transition-engine/transition-txn-stager';
 import type {
   RouteSceneSwitchDockedPollsRestoreIntent,
   RouteSceneSwitchMotionPlane,
@@ -1661,6 +1665,10 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
           dockedPollsRestoreIntent,
         })
     );
+    // §Q redo T1a: the transaction shadows this switch (stage+commit; trace only —
+    // consumers convert in T1b+). One switch = one transaction, staged at the same
+    // instant the route mutation commits.
+    stageTransitionTxnForCommittedSwitch(transitionPlan);
     const routeState = withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchTransition:applyRouteState',
@@ -1821,6 +1829,9 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
             snap: transitionPlan.dockedPollsRestoreSnap,
             token: nextToken,
           };
+    // §Q redo T1a: the idle-committed (zero-plane) switch stages its transaction too —
+    // the degenerate class as a first-class citizen, not an untracked path (Q-4).
+    stageTransitionTxnForCommittedSwitch(transitionPlan);
     const routeState = withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchIdleState:applyRouteState',
@@ -1924,6 +1935,8 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
       }
     );
     this.flushSceneStackTransitionDispatchTarget();
+    // §Q redo T1a: the switch settled — the transaction settles with it.
+    settleLiveTransitionTxnAtIdle();
   }
 
   private flushSettleCallbacks(transitionToken: number): void {
