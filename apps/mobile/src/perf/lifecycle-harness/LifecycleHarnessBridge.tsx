@@ -7,6 +7,7 @@ import type { EntityRef } from '../../navigation/runtime/entity-ref-action-polic
 import { getSearchSurfaceRuntime } from '../../screens/Search/runtime/surface/search-surface-runtime';
 import { readPerfScenarioCommandRegistry } from '../perf-scenario-command-registry';
 import { runHeaderCloseAction } from '../../navigation/runtime/header-nav-action-registry';
+import { closeSearchResultsSession } from '../../overlays/search-results-header-live-state';
 import type { OverlayKey } from '../../overlays/types';
 
 /**
@@ -106,14 +107,18 @@ export const LifecycleHarnessBridge: React.FC = () => {
         return readLifecycleState();
       }
       if (affordance === 'back') {
-        // Faithful to the real header X: session-close override first (the host's own
-        // protocol — runHeaderCloseAction), default pop only when no override is live.
-        const activeKey =
-          routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute.key;
-        if (!runHeaderCloseAction(activeKey)) {
-          routeSceneRuntime.routeOverlayRouteCommandRuntime.closeActiveRoute({
-            applyOriginDetent: true,
-          });
+        // Faithful to the real header X protocol: session-close override → the
+        // world-bearing derivation (entry.desire → session close) → default pop.
+        const activeEntry =
+          routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute;
+        if (!runHeaderCloseAction(activeEntry.key)) {
+          if (activeEntry.desire != null) {
+            closeSearchResultsSession();
+          } else {
+            routeSceneRuntime.routeOverlayRouteCommandRuntime.closeActiveRoute({
+              applyOriginDetent: true,
+            });
+          }
         }
         return readLifecycleState();
       }

@@ -15,6 +15,7 @@ import {
 } from '../navigation/runtime/scene-foundation-spec';
 import { SceneStripLawContext } from '../toggles/toggle-strip-scene-law';
 import { useAppOverlayRouteController } from './useAppOverlayRouteController';
+import { closeSearchResultsSession } from './search-results-header-live-state';
 import { recordSceneChromeAck, recordSceneChromeMeasuredHeight } from './scene-chrome-ack-runtime';
 import HeaderNavAction from './HeaderNavAction';
 import OverlaySheetHeaderChrome from './OverlaySheetHeaderChrome';
@@ -94,6 +95,15 @@ export const PersistentSheetHeaderHost: React.FC<{
       // 'restaurant' = its token-guarded session close); default = the canonical
       // pop-to-origin dismiss every child inherits.
       if (runHeaderCloseAction(sceneKey)) {
+        return;
+      }
+      // Leg 4 (design §1.3/C3): a WORLD-BEARING entry's X is a SESSION close by
+      // DERIVATION — the launch chokepoint stamped the desire onto the entry, so any
+      // scene presenting a world inherits the full back-out (tuple→idle, world/native
+      // teardown, pop to captured origin) with zero per-scene registration.
+      const activeEntry = routeSceneSwitchRuntime.getRouteState?.().activeOverlayRoute ?? null;
+      if (activeEntry?.desire != null) {
+        closeSearchResultsSession();
         return;
       }
       closeActiveRoute();

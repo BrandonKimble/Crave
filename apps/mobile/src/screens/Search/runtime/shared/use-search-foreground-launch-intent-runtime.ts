@@ -6,6 +6,7 @@ import { logger } from '../../../../utils';
 
 import type { SearchForegroundLaunchIntentRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
 import { useAppOverlayRouteController } from '../../../../overlays/useAppOverlayRouteController';
+import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRouteSceneRuntimeProvider';
 
 export const useSearchForegroundLaunchIntentRuntime = ({
   routeSearchCommandActions,
@@ -23,6 +24,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
 }: SearchForegroundLaunchIntentRuntimeArgs): void => {
   // W1 slice 4: the sharedList intent is a plain child push now (listDetail owns the slug).
   const { pushRoute } = useAppOverlayRouteController();
+  const routeSceneRuntime = useAppRouteSceneRuntime();
   React.useEffect(() => {
     if (__DEV__ && activeMainIntent.type !== 'none') {
       // eslint-disable-next-line no-console
@@ -41,6 +43,18 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     // write) and the reconciler presents the world under the pushed child.
     if (activeMainIntent.type === 'entityAction' && activeMainIntent.action.kind === 'listWorld') {
       const action = activeMainIntent.action;
+      // Leg 4 (design §1.3): THE launch chokepoint stamps the world identity onto the
+      // entry the world presents into (the active entry — the executor pushed it, or
+      // the slug lane resolved into it). Every mouth inherits the session fact with
+      // zero per-surface wiring; the dismiss algebra reads entry.desire.
+      routeSceneRuntime.routeSceneSwitchRuntime.stampActiveRouteEntryDesire({
+        kind: 'list',
+        listId: action.listId,
+        listType: action.listType,
+        displayTitle: action.title,
+        targetUserId: action.targetUserId ?? null,
+        shareSlug: action.shareSlug ?? null,
+      });
       void launchListSearchResults({
         listId: action.listId,
         listType: action.listType,
@@ -229,6 +243,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
     openRestaurantProfilePreview,
     pendingRestaurantSelectionRef,
     pushRoute,
+    routeSceneRuntime,
     routeSearchCommandActions,
     runRestaurantEntitySearch,
   ]);

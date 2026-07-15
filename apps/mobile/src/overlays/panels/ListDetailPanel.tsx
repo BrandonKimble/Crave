@@ -14,8 +14,6 @@ import {
   Trash2,
 } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { registerHeaderCloseAction } from '../../navigation/runtime/header-nav-action-registry';
-import { closeSearchResultsSession } from '../search-results-header-live-state';
 import axios from 'axios';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
@@ -351,20 +349,9 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const { dispatchLaunchIntent } = useAppRouteCoordinator();
   const [slugWorldLaunched, setSlugWorldLaunched] = React.useState(false);
   const worldBacked = worldBackedParam || slugWorldLaunched;
-  // Leg 4 (phase-1 design C3/C6): while this page presents a WORLD, its header X is a
-  // SESSION close, not a bare route pop. Fixes the stale-pins class (matrix FLOW 3).
-  // ⚠️ MARKED INTERIM (philosophy audit 2026-07-15): per-panel registration of a
-  // UNIVERSAL law ("a world-bearing entry's X is a session close") is per-surface
-  // wiring — the ideal is the HOST's close default DERIVING it from the stack fact
-  // (entry.desire != null → session close), zero registration. The Leg-4 entry cut
-  // moves this into the host default and deletes this effect. Do not copy this pattern
-  // to other world-bearing scenes.
-  React.useEffect(() => {
-    if (!worldBacked) {
-      return undefined;
-    }
-    return registerHeaderCloseAction('listDetail', closeSearchResultsSession);
-  }, [worldBacked]);
+  // Leg 4 (design §1.3): the world-bearing X-is-session-close law now DERIVES in the
+  // host's close default from entry.desire (stamped at the launch chokepoint) — the
+  // per-panel registration this file briefly carried is deleted.
   const warmTitle = typeof params?.title === 'string' && params.title.trim() ? params.title : null;
   const virtualListType =
     listIdParam != null ? (VIRTUAL_LIST_TYPE_BY_ID[listIdParam] ?? null) : null;

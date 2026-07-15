@@ -2,6 +2,7 @@ import type { OverlayKey } from '../../overlays/types';
 // Type-only import (erased at runtime — no module cycle): OriginSnapshot is the shared
 // captured-presentation payload; its value home moves nav-side with the S-C rename pass.
 import type { OriginSnapshot } from '../../overlays/searchRouteSessionTypes';
+import type { SearchQueryIdentity } from '../../screens/Search/runtime/shared/search-desired-state-contract';
 import type { MapBounds } from '../../types';
 
 export type { OverlayKey } from '../../overlays/types';
@@ -552,4 +553,13 @@ export type OverlayRouteEntry<K extends OverlayKey = OverlayKey> = {
    * reveals). Captured at push commit; null for roots/sentinels and non-push entries.
    */
   origin: OriginSnapshot | null;
+  /**
+   * Leg 4 (phase-1 design §1.3): the world identity this entry PRESENTS — present ⟺ the
+   * entry is world-backed. Stamped at the ONE launch chokepoint (the launch-intent
+   * consumer writes it onto the active entry alongside the tuple write), so every mouth
+   * — executor pushes, the slug lane, future mouths — inherits it with zero per-surface
+   * wiring. This is the honest session fact the dismiss algebra reads (the interim
+   * `worldBacked` param sniff and the per-panel close registration both die on it).
+   */
+  desire: SearchQueryIdentity | null;
 };

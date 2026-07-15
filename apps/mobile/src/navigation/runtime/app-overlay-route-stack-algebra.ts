@@ -36,6 +36,9 @@ export const createRouteEntry = (
     key,
     params,
     origin: origin ?? null,
+    // Entries are born world-less; the launch chokepoint stamps the desire when a world
+    // launches into this entry (stampRouteEntryDesire below).
+    desire: null,
   }) as OverlayRouteEntry;
 
 // Sentinel entries (module literals that predate any push — the boot root, inactive-slot
@@ -50,7 +53,32 @@ export const createSentinelRouteEntry = <K extends OverlayKey>(
     key,
     params: undefined,
     origin: null,
+    desire: null,
   }) as OverlayRouteEntry<K>;
+
+// Leg 4 (design §1.3): stamp the world identity onto the entry that PRESENTS it —
+// called from the launch chokepoint when a world launches into the active entry.
+// Entry identity is preserved (same entryId, same leg); only the desire fact lands.
+export const stampRouteEntryDesireState = (
+  currentRouteState: RouteSceneSwitchRouteStateSnapshot,
+  entryId: string,
+  desire: OverlayRouteEntry['desire']
+): RouteSceneSwitchRouteStateSnapshot => {
+  const currentStack = currentRouteState.overlayRouteStack;
+  const index = currentStack.findIndex((entry) => entry.entryId === entryId);
+  if (index === -1 || currentStack[index]?.desire === desire) {
+    return currentRouteState;
+  }
+  const nextEntry = { ...currentStack[index], desire } as OverlayRouteEntry;
+  const overlayRouteStack = currentStack.map((entry, i) => (i === index ? nextEntry : entry));
+  return createRouteStateSnapshot({
+    activeOverlayRoute:
+      currentRouteState.activeOverlayRoute.entryId === entryId
+        ? nextEntry
+        : currentRouteState.activeOverlayRoute,
+    overlayRouteStack,
+  });
+};
 
 export const ROOT_SEARCH_ROUTE_ENTRY: OverlayRouteEntry<'search'> = createSentinelRouteEntry(
   'search',
@@ -93,7 +121,14 @@ export const areOverlayRoutesEqual = (
   right: OverlayRouteEntry | null
 ): boolean =>
   left === right ||
-  (left != null && right != null && left.entryId === right.entryId && left.params === right.params);
+  (left != null &&
+    right != null &&
+    left.entryId === right.entryId &&
+    left.params === right.params &&
+    // Leg 4: desire participates in value identity — a desire-only stamp is a REAL
+    // state change; omitting it here silently swallowed the mutation (the classic
+    // "snapshot equality omits a load-bearing field" class).
+    left.desire === right.desire);
 
 export const areOverlayRouteStacksEqual = (
   left: readonly OverlayRouteEntry[],
@@ -281,17 +316,12 @@ export type SessionDismissPlan =
   | { kind: 'terminalHome' };
 
 // Leg 4 (phase-1 design §1.3): a SESSION is any entry that presents a world — the
-// pushed 'search' results entry, OR a world-bearing child. The old search-key-only scan
-// classified [bookmarks, listDetail(world)] as session-less and fell through to
-// terminalHome — the owner-repro'd [NAV-CONTRACT] bark.
-// ⚠️ MARKED INTERIM (philosophy audit 2026-07-15): reading `worldBacked` off params is
-// the autopsy's own param-sniffing leak class. The correct fact is `desire` ON the
-// entry (design §1.3); the Leg-4 entry cut replaces this predicate with
-// `entry.desire != null` and deletes the param read. Do not add consumers to this shape.
+// pushed 'search' results entry (session by scene identity), or any entry a world
+// identity was STAMPED onto at the launch chokepoint (entry.desire). The old
+// search-key-only scan classified [bookmarks, listDetail(world)] as session-less and
+// fell through to terminalHome — the owner-repro'd [NAV-CONTRACT] bark.
 const isWorldBearingEntry = (entry: OverlayRouteEntry | undefined): boolean =>
-  entry != null &&
-  (entry.key === 'search' ||
-    (entry.params as { worldBacked?: boolean } | undefined)?.worldBacked === true);
+  entry != null && (entry.key === 'search' || entry.desire != null);
 
 export const resolveSessionDismissPlan = (routeState: {
   overlayRouteStack: readonly OverlayRouteEntry[];

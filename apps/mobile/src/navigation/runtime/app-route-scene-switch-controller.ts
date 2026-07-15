@@ -14,6 +14,7 @@ import {
   pushRouteState,
   ROOT_SEARCH_ROUTE_ENTRY,
   setRootRouteState,
+  stampRouteEntryDesireState,
   updateRouteState,
   type RouteSceneSwitchRouteStateSnapshot,
 } from './app-overlay-route-stack-algebra';
@@ -186,6 +187,7 @@ export type AppRouteSceneSwitchRuntime = RouteSceneSwitchTransitionActions & {
   setRootRouteState: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   updateRouteState: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
   pushRouteState: <K extends OverlayKey>(overlay: K, params?: OverlayRouteParamsMap[K]) => void;
+  stampActiveRouteEntryDesire: (desire: OverlayRouteEntry['desire']) => void;
   closeActiveRouteState: () => void;
   popToEntryRouteState: (entryId: string) => void;
   popToRootRouteState: () => void;
@@ -977,6 +979,18 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
         overlay,
         params,
         captureRouteEntryOrigin(currentRouteState.activeOverlayRoute.key)
+      )
+    );
+  }
+
+  /** Leg 4 (design §1.3): stamp the world identity onto the ACTIVE entry — the launch
+   *  chokepoint's write when a world presents into the entry. Identity-preserving. */
+  public stampActiveRouteEntryDesire(desire: OverlayRouteEntry['desire']): void {
+    this.applyRouteStateMutation((currentRouteState) =>
+      stampRouteEntryDesireState(
+        currentRouteState,
+        currentRouteState.activeOverlayRoute.entryId,
+        desire
       )
     );
   }

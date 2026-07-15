@@ -265,7 +265,7 @@ const createEntry = <K extends OverlayKey>(
   entryId: string,
   key: K,
   params: OverlayRouteParamsMap[K]
-): OverlayRouteEntry<K> => ({ entryId, key, params, origin: null });
+): OverlayRouteEntry<K> => ({ entryId, key, params, origin: null, desire: null });
 
 describe('areOverlayRouteParamsEqualForKey (per-scene comparator table)', () => {
   it.each(PARAMS_EQUALITY_CASES.map((c) => [c.name, c] as const))('%s', (_name, c) => {
