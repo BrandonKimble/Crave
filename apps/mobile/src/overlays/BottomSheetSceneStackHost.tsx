@@ -15,6 +15,7 @@ import {
 } from '../navigation/runtime/transition-engine/transition-lane-player';
 import type { ContentMode } from '../navigation/runtime/transition-engine/transition-descriptor-contract';
 import { deriveHostTokenDescriptor } from '../navigation/runtime/transition-engine/host-token-transition-adapter';
+import { registerDismissBoundarySwapGate } from '../navigation/runtime/transition-engine/dismiss-boundary-swap-gate';
 
 import { SceneStackBodyContentLayer, SceneStackBodyFrame } from './BottomSheetSceneStackBodyLayer';
 import { SceneStackDecorLayer } from './BottomSheetSceneStackDecorLayers';
@@ -1364,6 +1365,10 @@ const ActiveSceneStackSurfaceHost = React.memo(
     // (reportScenePaint, flipped by the incoming body's first onLayout) gates the content
     // visible-commit — it is the content completer.
     const player = useTransitionLanePlayer();
+    // Leg 3 (design §4.2): expose the live player's paintAck to the dismiss motion plane so the
+    // snap-crossing worklet can flip the staged swap UI-thread-side in the crossing frame (the
+    // freeze primitive). The trailing runOnJS commit remains the store/React cleanup.
+    React.useEffect(() => registerDismissBoundarySwapGate(player.paintAck), [player.paintAck]);
     // Stable, ref-backed bridge so the player's onSettle never re-fires the layout effect (and thus
     // never re-starts / wiggles) when the callback identity moves. The callback IS stable today
     // (bound once in the provider), but the ref keeps that guarantee local.
