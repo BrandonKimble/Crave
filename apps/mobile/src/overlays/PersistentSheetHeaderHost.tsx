@@ -205,25 +205,43 @@ export const PersistentSheetHeaderHost: React.FC<{
   // Leg 6: descriptor.Action is a DEAD slot (host-owned HeaderNavAction below); the optional
   // Extras slot renders LEFT of the nav action, riding the same transitionProgress.
   const ExtrasContent = descriptor.Extras;
-  const StripContent = descriptor.Strip;
+  // §Q redo T2 (ledger P-1): THE STRIP RIDES THE BODY BUNDLE. Chrome-leads (O-5) is
+  // title + nav ONLY — during a HELD page switch the outgoing body stays visible, so
+  // unmounting ITS header-mounted strip at press-up left the strip band's plate holes
+  // exposed over the held body (the owner's "gaping hole to frost"). The strip slot
+  // resolves from the OUTGOING scene until the transaction reveals, swapping in the
+  // same frame as the body (O-1's bundle law applied to the strip region).
+  const heldUnrevealedSourceKey =
+    liveTxn != null &&
+    liveTxn.plan.content.kind === 'holdOutgoingUntilSettle' &&
+    (liveTxn.phase === 'staged' || liveTxn.phase === 'committed' || liveTxn.phase === 'joining') &&
+    liveTxn.mutation.sourceSceneKey != null
+      ? liveTxn.mutation.sourceSceneKey
+      : null;
+  const stripSceneKey = heldUnrevealedSourceKey ?? sceneKey;
+  const stripDescriptor =
+    stripSceneKey === sceneKey ? descriptor : getPersistentHeaderDescriptor(stripSceneKey);
+  const StripContent = stripDescriptor?.Strip;
   const foundationSpec = getSceneFoundationSpec(sceneKey);
   // THE INVERSE STRIP LAW (leg 3): `strip: 'header'` in the foundation table means THIS
   // host renders the scene's strip — a declared-but-missing Strip slot (or a Strip slot
-  // the table doesn't sanction) is a contract violation, not a styling nit.
-  if (__DEV__ && !barkedStripLawScenes.has(sceneKey)) {
-    const declaresHeaderStrip = foundationSpec?.strip === 'header';
+  // the table doesn't sanction) is a contract violation, not a styling nit. Judged on
+  // the STRIP's own scene (which trails the title during a held switch — P-1).
+  if (__DEV__ && !barkedStripLawScenes.has(stripSceneKey)) {
+    const stripFoundationSpec = getSceneFoundationSpec(stripSceneKey);
+    const declaresHeaderStrip = stripFoundationSpec?.strip === 'header';
     if (declaresHeaderStrip && StripContent == null) {
-      barkedStripLawScenes.add(sceneKey);
+      barkedStripLawScenes.add(stripSceneKey);
       console.error(
-        `[FOUNDATION] scene '${sceneKey}' declares strip: 'header' but registered no Strip` +
+        `[FOUNDATION] scene '${stripSceneKey}' declares strip: 'header' but registered no Strip` +
           ` slot on its persistent-header descriptor — the page presents with NO strip.` +
           ` Register Strip via registerPersistentHeaderDescriptor.`
       );
     } else if (!declaresHeaderStrip && StripContent != null) {
-      barkedStripLawScenes.add(sceneKey);
+      barkedStripLawScenes.add(stripSceneKey);
       console.error(
-        `[FOUNDATION] scene '${sceneKey}' registered a persistent-header Strip slot but its` +
-          ` foundation row declares strip: '${foundationSpec?.strip ?? 'none'}' — declaration` +
+        `[FOUNDATION] scene '${stripSceneKey}' registered a persistent-header Strip slot but its` +
+          ` foundation row declares strip: '${stripFoundationSpec?.strip ?? 'none'}' — declaration` +
           ` and registration must agree (scene-foundation-spec.ts).`
       );
     }
@@ -269,7 +287,7 @@ export const PersistentSheetHeaderHost: React.FC<{
         // PRESENTED scene. The 8px white spacer below the band mirrors the results
         // reference (resultsListHeaderBottomStrip) so the band-to-divider seam reads
         // identical across both mounts.
-        <SceneStripLawContext.Provider value={sceneKey as SheetSceneKey}>
+        <SceneStripLawContext.Provider value={stripSceneKey as SheetSceneKey}>
           <View pointerEvents="box-none">
             <StripContent />
             <View style={styles.headerStripBottomSpacer} />
