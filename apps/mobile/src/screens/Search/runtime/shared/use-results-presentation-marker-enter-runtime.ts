@@ -9,6 +9,7 @@ import type {
 } from './search-map-protocol-contract';
 import type { SearchSurfaceRedrawCoordinator } from '../controller/search-surface-redraw-coordinator';
 import { searchMapRenderController } from '../map/search-map-render-controller';
+import { recordWorldRevealAdmission } from './world-reveal-admission-store';
 import {
   getSearchSurfaceRuntime,
   selectSearchSurfaceVisualPolicy,
@@ -75,6 +76,12 @@ export const useResultsPresentationMarkerEnterRuntime = ({
       pending.requestKey,
       pending.executionBatch
     );
+    if (didRequestStart) {
+      // §Q redo T4: THE joint tick — record the admission so world-backed pages
+      // (listDetail's world-read seam) release their skeletons on the SAME tick the
+      // cards admit and the native ramp is commanded (N-2/P-13).
+      recordWorldRevealAdmission(pending.requestKey);
+    }
     if (__DEV__ && didRequestStart) {
       // [REVEALSYNC] Phase-1 attribution (plans/search-flow-plan.md D1): the cards-admit /
       // native-start-request tick. Pair with the rampStart emit below to measure the joint.
@@ -149,6 +156,9 @@ export const useResultsPresentationMarkerEnterRuntime = ({
       if (executionBatch == null) {
         return;
       }
+      // §Q redo T4: the ramp ACTUALLY started — admission truth regardless of which
+      // enter path led here (idempotent with the cardsAdmit-tick record).
+      recordWorldRevealAdmission(payload.requestKey);
       if (!canStartMarkerEnterForSurface(payload.requestKey)) {
         pendingMarkerEnterStartRef.current = {
           requestKey: payload.requestKey,

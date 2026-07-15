@@ -53,6 +53,11 @@ import { areOverlayRoutesEqual } from '../../navigation/runtime/app-overlay-rout
 import type { RouteOverlayNavigationSnapshot } from '../../navigation/runtime/route-overlay-navigation-snapshot-contract';
 import { favoriteListKeys } from '../../hooks/use-favorite-lists';
 import {
+  isWorldRevealAdmitted,
+  recordWorldRevealAdmission,
+  subscribeWorldRevealAdmission,
+} from '../../screens/Search/runtime/shared/world-reveal-admission-store';
+import {
   getSearchMountedResultsDataSnapshot,
   subscribeSearchMountedResultsDataSnapshot,
 } from '../../screens/Search/runtime/shared/search-mounted-results-data-store';
@@ -454,6 +459,42 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         : null;
     }
   );
+  // §Q redo T4 (the JOINT, N-2/P-13): world rows stay under the skeleton until THIS
+  // world's admit tick (cards admit + native ramp commanded in one place) — cards land
+  // as the pins begin their fade, never before (screenshot-proven violation: full
+  // cards, zero pins). Monotonic per key: a re-presented admitted world shows at once.
+  // BOUNDED LOUD FALLBACK (the D3 visual-floor precedent; screenshot-caught: the
+  // reused-resident re-enter path emits no batch events → the gate stranded the
+  // skeleton over fully-visible pins): 900ms after the world commits, admit anyway
+  // and bark — a joint miss is a defect to attribute, never a stuck page.
+  const worldRevealAdmitted = React.useSyncExternalStore(subscribeWorldRevealAdmission, () => {
+    if (!worldBacked || resolvedListId == null) {
+      return true;
+    }
+    const mountedKey = getSearchMountedResultsDataSnapshot().resultsRequestKey;
+    if (mountedKey == null || !mountedKey.startsWith(`favorites:${resolvedListId}:`)) {
+      return true; // no mounted world yet — the worldResults null gate owns pending
+    }
+    return isWorldRevealAdmitted(mountedKey);
+  });
+  React.useEffect(() => {
+    if (!worldBacked || worldResults == null || worldRevealAdmitted) {
+      return undefined;
+    }
+    const timeout = setTimeout(() => {
+      const mountedKey = getSearchMountedResultsDataSnapshot().resultsRequestKey;
+      if (mountedKey != null && !isWorldRevealAdmitted(mountedKey)) {
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[JOINT] world reveal admission FALLBACK for ${mountedKey} — no admit tick within 900ms of world commit (attribute the enter path)`
+          );
+        }
+        recordWorldRevealAdmission(mountedKey);
+      }
+    }, 900);
+    return () => clearTimeout(timeout);
+  }, [worldBacked, worldResults, worldRevealAdmitted]);
   // Strip 'world' flip (wave-4 §3): a world-backed list serves ALL slices from the
   // presented world — a strip chip re-slices the WORLD (map pins + cards together),
   // not just the panel's card list. The panel's own query survives only for
@@ -1248,7 +1289,8 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   // World-backed default slice: "pending" = the world hasn't presented yet (a failed
   // enter pops the page via the §1 failure policy before this ever strands).
   const isResultsPending =
-    resolvedListId != null && (worldServesResults ? worldResults == null : resultsQuery.isPending);
+    resolvedListId != null &&
+    (worldServesResults ? worldResults == null || !worldRevealAdmitted : resultsQuery.isPending);
   if (isMetaPending || isResultsPending || isLoadFailed) {
     return (
       <View testID={isLoadFailed ? 'list-detail-failed' : 'list-detail-loading'}>
