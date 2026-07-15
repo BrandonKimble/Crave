@@ -26,8 +26,30 @@ export const registerRouteEntryOriginCapturer = (
   };
 };
 
-export const captureRouteEntryOrigin = (departingSceneKey: OverlayKey): OriginSnapshot | null =>
-  currentOriginCapturer?.(departingSceneKey) ?? null;
+// Leg 2a (phase-1 design §1.3): capture is TOTAL — a pushed entry is BORN with its return
+// address, no nullable arm. The unregistered-capturer window (boot, before the session
+// controller mounts) degrades to the minimal degenerate origin of the departing scene and
+// barks: an un-restorable origin is a wiring defect, never a silent null.
+export const captureRouteEntryOrigin = (departingSceneKey: OverlayKey): OriginSnapshot => {
+  const captured = currentOriginCapturer?.(departingSceneKey);
+  if (captured != null) {
+    return captured;
+  }
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[ORIGIN-CONTRACT] push committed with no origin capturer registered (departing '${departingSceneKey}') — degenerate origin minted`
+    );
+  }
+  return {
+    sceneKey: departingSceneKey,
+    sceneParams: null,
+    detent: 'collapsed',
+    segment: null,
+    scroll: [],
+    anchor: null,
+  };
+};
 
 // Restore side of the same seam: the session-state controller owns the snap ledger + scroll
 // staging, so it registers the restorer; dismiss verbs call it with the POPPED entry's origin

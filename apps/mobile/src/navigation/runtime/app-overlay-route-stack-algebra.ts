@@ -161,6 +161,15 @@ export const pushRouteState = (
   params?: RouteSceneSwitchRouteParams,
   origin?: OriginSnapshot | null
 ): RouteSceneSwitchRouteStateSnapshot => {
+  // Leg 2a (phase-1 design §1.3): every PUSHED entry carries its return address. The
+  // capture seam is total (captureRouteEntryOrigin never returns null), so a null here
+  // means a push call site skipped capture entirely — a contract violation, not a state.
+  if (__DEV__ && origin == null) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[ORIGIN-CONTRACT] pushRouteState('${overlay}') committed WITHOUT an origin — this entry cannot restore its departure point on pop`
+    );
+  }
   const nextRoute = createRouteEntry(overlay, params, origin);
   const overlayRouteStack = [...currentRouteState.overlayRouteStack, nextRoute];
   return createRouteStateSnapshot({
