@@ -7,6 +7,8 @@ import { logger } from '../../../../utils';
 import type { SearchForegroundLaunchIntentRuntimeArgs } from './use-search-foreground-interaction-runtime-contract';
 import { useAppOverlayRouteController } from '../../../../overlays/useAppOverlayRouteController';
 import { useAppRouteSceneRuntime } from '../../../../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { resolveResidentWorldEntry } from '../../../../navigation/runtime/app-overlay-route-stack-algebra';
+import { getSearchMountedResultsDataSnapshot } from './search-mounted-results-data-store';
 
 export const useSearchForegroundLaunchIntentRuntime = ({
   routeSearchCommandActions,
@@ -165,6 +167,33 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       // name is absent (a raw deep link), fall back to fetching the profile for the name.
       const seededRestaurantName = activeMainIntent.action.restaurantName.trim() || null;
       const restaurantMarketKey = currentMarketKey ?? null;
+      // Leg 4 ADOPT/OWN (design §2): a restaurant already IN the resident world's
+      // presented set ADOPTS it — the profile opens as sheet content over the LIVE
+      // world (pin highlight derives from the selection; back pops to the world
+      // untouched). The committed replace below was the B3 violation: an in-world
+      // card/span tap nuked the session's world and desynced the chrome ("Tomoni").
+      // OWN (non-members: comment spans to elsewhere, deep links) keeps the committed
+      // single-restaurant lifecycle.
+      const residentEntry = resolveResidentWorldEntry(
+        routeSceneRuntime.routeSceneSwitchRuntime.getRouteState()
+      );
+      const mountedResults = getSearchMountedResultsDataSnapshot().results;
+      const adoptName =
+        seededRestaurantName ??
+        mountedResults?.restaurants?.find((row) => row.restaurantId === restaurantId)
+          ?.restaurantName ??
+        null;
+      const isMemberOfResidentWorld =
+        residentEntry != null &&
+        mountedResults != null &&
+        ((mountedResults.restaurants ?? []).some((row) => row.restaurantId === restaurantId) ||
+          (mountedResults.dishes ?? []).some((row) => row.restaurantId === restaurantId));
+      if (isMemberOfResidentWorld && adoptName != null) {
+        consumeActiveMainIntent();
+        pendingRestaurantSelectionRef.current = { restaurantId };
+        openRestaurantProfilePreview(restaurantId, adoptName);
+        return;
+      }
       consumeActiveMainIntent();
       // Prime the pending selection BEFORE the committed search lands so the auto-open
       // kickoff resolves to the warm-profile open for this exact restaurant.

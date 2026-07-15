@@ -5,6 +5,7 @@ import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneR
 import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
 import type { EntityRef } from '../../navigation/runtime/entity-ref-action-policy';
 import { getSearchSurfaceRuntime } from '../../screens/Search/runtime/surface/search-surface-runtime';
+import { getSearchMountedResultsDataSnapshot } from '../../screens/Search/runtime/shared/search-mounted-results-data-store';
 import { readPerfScenarioCommandRegistry } from '../perf-scenario-command-registry';
 import { runHeaderCloseAction } from '../../navigation/runtime/header-nav-action-registry';
 import { resolveResidentWorldEntry } from '../../navigation/runtime/app-overlay-route-stack-algebra';
@@ -64,6 +65,8 @@ export const LifecycleHarnessBridge: React.FC = () => {
           hasHeldBundle: surface.heldBundle != null,
           redrawTransactionId: surface.redrawTransaction?.id ?? null,
           dismissTransactionId: surface.dismissTransaction?.id ?? null,
+          // World IDENTITY truth (derive-not-mirror): which world's rows are mounted.
+          mountedResultsKey: getSearchMountedResultsDataSnapshot().resultsRequestKey,
         },
         sheetSnaps,
       };
