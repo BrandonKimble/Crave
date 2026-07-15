@@ -289,6 +289,7 @@ export const createSearchWorldFetcher =
         : undefined;
     const value = constructSearchWorldValue({
       response,
+      queryIdentity: identity,
       activeTab: adoptedTab ?? tuple.tab,
       bounds: tuple.committedBounds?.bounds ?? null,
       userLocation,
@@ -363,6 +364,7 @@ export const createSearchWorldNextPageFetcher =
     }
     const value = constructSearchWorldValue({
       response,
+      queryIdentity: identity,
       activeTab: tuple.tab,
       bounds: tuple.committedBounds?.bounds ?? null,
       userLocation,

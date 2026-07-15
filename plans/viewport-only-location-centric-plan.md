@@ -248,15 +248,86 @@ demand); ranker picks the genuinely deficient market first.
 
 ---
 
-## Leg 6 — Score depth-correction (referenced, NOT designed here)
+## Leg 6 — Score calibration: measured audience gain (DESIGN OF RECORD, ratified 2026-07-14)
 
-- Blocker before market #2 is user-visible. Live evidence: Austin avg display 4.07 vs
-  NY 7.02 — collection-depth artifact (global percentile of log-mass). Prior art:
-  plans/crave-score-cutover-plan.md Step 3/5 (marketReliability z-blend — repudiated
-  mechanism, useful fixtures); counter-argument: crave-score-v3 plan L38–42.
-  Owner + assistant to design the ideal (likely per-market percentile or
-  depth-corrected mass, NOT shrinkage). Placeholder only — expect this section to
-  change after that conversation.
+**Principle** (owner-ratified): effort is equalized physically (collect every market
+with the same effort — never over-collect one city to flatter it); audience size is
+equalized mathematically; passion-per-audience is the signal and is never touched.
+The score's user sentence: "an 8 means the people of this city, unprompted, can't
+stop bringing this place up" — true at every audience size. v3 philosophy fully
+retained: count IS the signal, no entity shrinkage, no rescaling, no fitted curves,
+uncertainty = absence.
+
+### The equation
+
+For each decay lane τ ∈ {365d stable, 21d fast} (lanes calibrated independently,
+matched clocks):
+
+- Room size:  A_M(τ) = Σ over gate-passing documents d from market M's sources:
+  0.5^(age_d/τ)
+- Gain:       g_M(τ) = max(A_M(τ), A_floor) / A_ref
+  (A_ref = pinned constant — Austin stable-lane A at calibration launch — so score
+  meaning never drifts as markets onboard; A_floor = measurement floor, capacity-
+  class constant; the clamp smoothly bounds amplification at A_ref/A_floor — no
+  activation branch, no blend curve)
+- Calibrated counts, PER MENTION, normalized by the mention's OWN source market:
+  m̃ = Σᵢ 0.5^(ageᵢ/τ)/g_{M(i)}(τ);  ũ = Σᵢ uᵢ·0.5^(ageᵢ/τ)/g_{M(i)}(τ)
+- Everything downstream is v3 UNCHANGED: e = log1p(m̃ + 0.7ũ); dishes atomic;
+  restaurant = Σ 0.5^i·dish_i + 2×praise; global percentile per subject type;
+  truncated-normal display; rising = fast − stable.
+
+### Design facts (why this exact shape)
+
+- Calibration is INSIDE log1p (count preprocessing), never post-log subtraction:
+  log1p(x/g) ≠ log1p(x) − log(g) at small x — post-log overcorrects sparse markets.
+- Per-mention normalization: chains praised in two rooms get each mention weighed by
+  its own room; scoring_market_key exits the math (stays provenance + fame-pin);
+  dish-vs-restaurant offsets dissolve (calibration precedes the subject split).
+- Source-complete rule (the multi-source answer): every mention-producing source
+  contributes its documents to A_M and its mentions to mass under the same decay.
+  Poll threads already conform (documents with community=marketKey); future sources
+  (more subreddits, FB groups) calibrate on arrival — zero per-source config.
+- Recency self-healing: archive backfill arrives pre-decayed in BOTH numerator and
+  denominator → collection-timing distortion cancels in the ratio. (Dev-DB
+  Austin-vs-NY gap is partly this artifact — archive vs fresh chronological slice.
+  Owner: at launch both cities get archive + ongoing chronological, same effort.)
+- Gain is measured, not inferred: A comes from document volume, never from
+  restaurant scores → no endogeneity, no trust curve. The only-game-in-town case
+  that survives (small-but-real audience adores a mediocre place) is the score's
+  sentence being true, not a lie — fixtures still gate it.
+
+### Build items
+
+1. **g_M(τ) primitive** at the aggregation layer — consumers: score calibration,
+   demand deficiency (Leg 3.2: a term's calibrated mass per market vs cross-market
+   norm becomes a one-liner), later popularity/trending normalization.
+2. **Mention provenance unification**: add source_document_id to
+   core_restaurant_item_mentions (events already carry it); extraction writes it;
+   retention invariant: every mention's source document persists forever.
+   Eliminates the "can't attribute this mention" class.
+
+### Fixture-gated decisions (empirical, not debate)
+
+- A-metric: gate-passing doc count vs distinct-author count vs upvote-volume —
+  compute all for the Austin/NY corpora, pick what makes cross-market anchors sane.
+- A_floor + A_ref values; upvote linearity check (bigger rooms may upvote more per
+  mention — start linear, revisit only with evidence).
+- Resurrect the old suite as acceptance tests: sparse_market_winner_not_fake_elite,
+  sparse_market_real_strength_can_escape_baseline, market_maturity_curve,
+  market_rollup_round_rock_austin.
+- KILL CONDITION: calibrated must beat raw v3 on the named scenarios or the
+  calibration is deleted and v3 stands.
+
+### Operational notes
+
+- Relevance-gate changes are corpus-affecting events (prompt_hash persisted —
+  detectable); re-gate or accept drift knowingly.
+- Timing: build with this wave (the distortion is already user-visible in the launch
+  city: dev DB Austin avg display 4.07 vs NY 7.02 with NY corpus in the pool);
+  hard-gate before market #2 regardless.
+- vs the deleted v1/v2: we keep centering-by-measured-gain only; rescaling (MAD/IQR
+  reshaping) and entity confidence shrinkage stay dead. Market-level trust curve
+  replaced by the measured clamp.
 
 ---
 

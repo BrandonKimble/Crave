@@ -1,4 +1,5 @@
 import React from 'react';
+import type { SearchQueryIdentity } from './search-desired-state-contract';
 import type { Feature, Point } from 'geojson';
 import { reportSearchFlowContractViolation } from './search-flow-contracts';
 
@@ -77,6 +78,9 @@ export type SearchMountedResultsDataSnapshot = {
   resultsDataIdentityKey: string | null;
   results: SearchResponse | null;
   resultsIdentityKey: string | null;
+  /** The mounted world's STRUCTURED identity (presenter dissolution) — same vocabulary
+   *  as entry.desire. World-backed consumers match on this, never by key-string parse. */
+  resultsQueryIdentity: SearchQueryIdentity | null;
   resultsRequestKey: string | null;
   version: number;
 };
@@ -202,6 +206,7 @@ const EMPTY_SEARCH_MOUNTED_RESULTS_DATA_SNAPSHOT: SearchMountedResultsDataSnapsh
   resultsDataIdentityKey: null,
   results: null,
   resultsIdentityKey: null,
+  resultsQueryIdentity: null,
   resultsRequestKey: null,
   version: 0,
 };
@@ -893,6 +898,7 @@ export const publishSearchMountedResultsDataSnapshot = (
     activeTab?: 'dishes' | 'restaurants' | null;
     markerProjectionByTab?: SearchMountedResultsMarkerProjectionByTab | null;
     resultsIdentityKey?: string | null;
+    resultsQueryIdentity?: SearchQueryIdentity | null;
   }
 ): boolean => {
   if (__DEV__ && results == null && snapshot.results != null) {
@@ -952,6 +958,7 @@ export const publishSearchMountedResultsDataSnapshot = (
     resultsDataIdentityKey: nextResultsDataIdentityKey,
     results,
     resultsIdentityKey: nextResultsIdentityKey,
+    resultsQueryIdentity: results == null ? null : (options?.resultsQueryIdentity ?? null),
     resultsRequestKey: nextResultsRequestKey,
     version: snapshot.version + 1,
   };

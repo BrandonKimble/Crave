@@ -451,9 +451,12 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         return null;
       }
       const snapshot = getSearchMountedResultsDataSnapshot();
-      // The mounted results' request key for list worlds is `favorites:<listId>:<ts>`
-      // (the favorites fetch lane's key vocabulary — sim-read 2026-07-13).
-      return snapshot.resultsRequestKey?.startsWith(`favorites:${resolvedListId}:`)
+      // Presenter dissolution: match the mounted world by its STRUCTURED identity (the
+      // same vocabulary as entry.desire) — the old `favorites:<id>:<ts>` key-prefix
+      // parse is dead. Guards the mismatch window (previous world's data still mounted
+      // under this panel while its own world resolves).
+      const identity = snapshot.resultsQueryIdentity;
+      return identity?.kind === 'list' && identity.listId === resolvedListId
         ? snapshot.results
         : null;
     }

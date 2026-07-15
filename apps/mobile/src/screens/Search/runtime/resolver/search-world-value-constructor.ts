@@ -6,6 +6,7 @@
 // owner's inline copy dies with its file in S3d.
 
 import type { Coordinate, MapBounds, SearchResponse } from '../../../../types';
+import type { SearchQueryIdentity } from '../shared/search-desired-state-contract';
 import { computeMarkerPipeline, type MarkerPipelineResult } from '../map/compute-marker-pipeline';
 import type {
   SearchMountedResultsMarkerProjection,
@@ -54,6 +55,8 @@ const retainMarkerPipelineCacheEntry = (cacheKey: string, result: MarkerPipeline
 
 export const constructSearchWorldValue = (args: {
   response: SearchResponse;
+  /** The world's structured identity — travels on the value into the mounted snapshot. */
+  queryIdentity: SearchQueryIdentity;
   activeTab: ResultsActiveTab;
   bounds: MapBounds | null;
   userLocation: Coordinate | null;
@@ -69,7 +72,15 @@ export const constructSearchWorldValue = (args: {
     prevIsPaginationExhausted: boolean;
   };
 }): SearchWorldValue => {
-  const { response, activeTab, bounds, userLocation, preserveRouteIdentity, appendTo } = args;
+  const {
+    response,
+    queryIdentity,
+    activeTab,
+    bounds,
+    userLocation,
+    preserveRouteIdentity,
+    appendTo,
+  } = args;
   const searchRequestId = response.metadata?.searchRequestId;
   if (typeof searchRequestId !== 'string' || searchRequestId.length === 0) {
     throw new Error('Search response missing required metadata.searchRequestId');
@@ -200,6 +211,7 @@ export const constructSearchWorldValue = (args: {
 
   return {
     committedResponse,
+    queryIdentity,
     markerProjectionByTab,
     resultsIdentityKey,
     searchRequestId,

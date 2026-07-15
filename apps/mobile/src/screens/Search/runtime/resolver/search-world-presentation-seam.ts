@@ -13,6 +13,7 @@
 // one structural frame per world, provable in the log.
 
 import type { SearchResponse } from '../../../../types';
+import type { SearchQueryIdentity } from '../shared/search-desired-state-contract';
 import { useSystemStatusStore } from '../../../../store/systemStatusStore';
 import { logger } from '../../../../utils';
 import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
@@ -50,6 +51,10 @@ export type SearchWorldPaginationMeta = {
  *  world without consulting any owner. Coverage rides per tab (coverageWorld ⊆ value). */
 export type SearchWorldValue = {
   committedResponse: SearchResponse;
+  /** The world's structured identity (presenter dissolution): the SAME vocabulary as
+   *  entry.desire — world-backed consumers match on THIS, never by parsing key strings
+   *  (the favorites:<id>:<ts> prefix-parse class, dead). */
+  queryIdentity: SearchQueryIdentity;
   markerProjectionByTab: SearchMountedResultsMarkerProjectionByTab;
   resultsIdentityKey: string | null;
   searchRequestId: string;
@@ -289,6 +294,7 @@ export const createSearchWorldPresentationSeam = (
           activeTab,
           markerProjectionByTab: value.markerProjectionByTab,
           resultsIdentityKey: value.resultsIdentityKey,
+          resultsQueryIdentity: value.queryIdentity,
         });
         if (!isVersionUpdateOfPresentedWorld) {
           for (const tab of ['restaurants', 'dishes'] as const) {

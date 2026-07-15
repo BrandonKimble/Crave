@@ -58,6 +58,7 @@ export const createSearchWorldDerivation =
         if (openResponse != null) {
           const value = constructSearchWorldValue({
             response: openResponse,
+            queryIdentity: tuple.queryIdentity,
             activeTab: tuple.tab,
             bounds: tuple.committedBounds?.bounds ?? null,
             userLocation: env.userLocationRef.current,
@@ -98,6 +99,7 @@ export const createSearchWorldDerivation =
     }
     const value = constructSearchWorldValue({
       response: variantResponse,
+      queryIdentity: tuple.queryIdentity,
       activeTab: tuple.tab,
       bounds: tuple.committedBounds?.bounds ?? null,
       userLocation: env.userLocationRef.current,
