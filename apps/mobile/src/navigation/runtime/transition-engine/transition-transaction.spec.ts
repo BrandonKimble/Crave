@@ -4,6 +4,7 @@ import {
   getLiveTransitionTxn,
   markTransitionJoinInput,
   resetTransitionTxnHolderForTest,
+  sealTransitionTxnJoin,
   setTransitionTxnViolationSink,
   settleTransitionTxn,
   stageTransitionTxn,
@@ -43,10 +44,12 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
     setTransitionTxnViolationSink(null);
   });
 
-  it('runs the full joined lifecycle: staged → committed → joining → revealed → settled', () => {
+  it('runs the full joined lifecycle: staged → committed → (seal) → joining → revealed → settled', () => {
     const txn = createTransitionTxn(MUTATION, JOINED_PLAN);
     expect(txn.phase).toBe('staged');
     commitTransitionTxn(txn);
+    expect(txn.phase).toBe('committed'); // holds for the arm-time amendment window
+    sealTransitionTxnJoin(txn);
     expect(txn.phase).toBe('joining');
     markTransitionJoinInput(txn, 'paint');
     markTransitionJoinInput(txn, 'chrome');
@@ -58,9 +61,11 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
     expect(violations).toHaveLength(0);
   });
 
-  it('Q-4: the DEGENERATE plan (no join inputs) reveals at commit — the zero-plane class is an output, not an exception', () => {
+  it('Q-4: the DEGENERATE plan (no join inputs) reveals at SEAL — the zero-plane class is an output, not an exception', () => {
     const txn = createTransitionTxn(MUTATION, DEGENERATE_PLAN);
     commitTransitionTxn(txn);
+    expect(txn.phase).toBe('committed');
+    sealTransitionTxnJoin(txn);
     expect(txn.phase).toBe('revealed');
     expect(violations).toHaveLength(0);
   });
@@ -68,6 +73,7 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
   it('barks on an undeclared join input and does NOT advance', () => {
     const txn = createTransitionTxn(MUTATION, DEGENERATE_PLAN);
     commitTransitionTxn(txn);
+    sealTransitionTxnJoin(txn);
     markTransitionJoinInput(txn, 'camera');
     expect(violations.map((violation) => violation.reason)).toContain('unknown_join_input');
     expect(txn.phase).toBe('revealed');
@@ -76,6 +82,7 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
   it('barks on a duplicate join input (each input lands exactly once)', () => {
     const txn = createTransitionTxn(MUTATION, JOINED_PLAN);
     commitTransitionTxn(txn);
+    sealTransitionTxnJoin(txn);
     markTransitionJoinInput(txn, 'paint');
     markTransitionJoinInput(txn, 'paint');
     expect(violations.map((violation) => violation.reason)).toContain('duplicate_join_input');
@@ -85,6 +92,7 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
   it('barks on an illegal phase edge (settle before reveal) and refuses it', () => {
     const txn = createTransitionTxn(MUTATION, JOINED_PLAN);
     commitTransitionTxn(txn);
+    sealTransitionTxnJoin(txn);
     settleTransitionTxn(txn);
     expect(violations.map((violation) => violation.reason)).toContain('illegal_phase_edge');
     expect(txn.phase).toBe('joining');
@@ -110,6 +118,7 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
   it('a settled txn is terminal — no further edges', () => {
     const txn = createTransitionTxn(MUTATION, DEGENERATE_PLAN);
     commitTransitionTxn(txn);
+    sealTransitionTxnJoin(txn);
     settleTransitionTxn(txn);
     commitTransitionTxn(txn);
     expect(txn.phase).toBe('settled');
@@ -122,7 +131,9 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
     const first = createTransitionTxn(MUTATION, JOINED_PLAN);
     const second = createTransitionTxn(MUTATION, JOINED_PLAN);
     commitTransitionTxn(first);
+    sealTransitionTxnJoin(first);
     commitTransitionTxn(second);
+    sealTransitionTxnJoin(second);
     // Both accept marks — the ambiguity the HOLDER exists to kill:
     markTransitionJoinInput(first, 'paint');
     markTransitionJoinInput(second, 'paint');

@@ -23,6 +23,7 @@ import {
   stageRouteEntryOriginRestore,
 } from './route-entry-origin-capture-delegate';
 import {
+  commitStagedTransitionTxn,
   settleLiveTransitionTxnAtIdle,
   stageTransitionTxnForCommittedSwitch,
 } from './transition-engine/transition-txn-stager';
@@ -1816,6 +1817,9 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
         this.evaluateContentReadinessForTransaction(linkedTransactionId, collectorState);
       }
     }
+    // §Q redo T1c: commit the staged transaction AFTER the synchronous flushes — the
+    // scene-stack host's arm-time amendment (cold-vs-warm join truth) has landed by now.
+    commitStagedTransitionTxn();
     return nextToken;
   }
 
@@ -1877,6 +1881,11 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
         );
       }
     );
+    // §Q redo T1c: the idle-committed switch commits its (typically degenerate) txn
+    // after its own flush; the same amendment window applies.
+    commitStagedTransitionTxn();
+    // Idle switches settle synchronously — there is no later boundary for them.
+    settleLiveTransitionTxnAtIdle();
     return nextToken;
   }
 

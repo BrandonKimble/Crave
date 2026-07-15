@@ -15,7 +15,11 @@ import {
 } from '../navigation/runtime/transition-engine/transition-lane-player';
 import type { ContentMode } from '../navigation/runtime/transition-engine/transition-descriptor-contract';
 import { deriveHostTokenDescriptor } from '../navigation/runtime/transition-engine/host-token-transition-adapter';
-import { offerTransitionJoinInput } from '../navigation/runtime/transition-engine/transition-transaction';
+import {
+  amendTransitionTxnJoinInputs,
+  offerTransitionJoinInput,
+  sealLiveTransitionTxnJoin,
+} from '../navigation/runtime/transition-engine/transition-transaction';
 
 import { SceneStackBodyContentLayer, SceneStackBodyFrame } from './BottomSheetSceneStackBodyLayer';
 import { SceneStackDecorLayer } from './BottomSheetSceneStackDecorLayers';
@@ -1460,6 +1464,12 @@ const ActiveSceneStackSurfaceHost = React.memo(
             return;
           }
           lastLiveSwapRolesRef.current = { presented, outgoing };
+          // §Q redo T1c (arm-time amendment): a GENUINE roles change means this switch's
+          // reveal joins {paint, chrome} — the host is the one place that knows it
+          // (held, warm-flip and cold branches below all gate the visible commit on
+          // those two acks). Amend then SEAL: the window closes at the arm.
+          amendTransitionTxnJoinInputs(['paint', 'chrome']);
+          sealLiveTransitionTxnJoin();
           if (outgoing != null) {
             // Held transition: relabel the roles now (invisible — outgoing keeps opacity 1 under
             // paintAck 0) AND pin the hold in the same write, so the flush→commit window can't

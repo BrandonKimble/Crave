@@ -76,8 +76,9 @@ export type TransitionTxn = {
 
 const TERMINAL_PHASES: ReadonlySet<TransitionTxnPhase> = new Set(['settled', 'superseded']);
 
-// Legal phase edges. Degenerate plans (no join inputs) skip 'joining' — committed
-// legally advances straight to 'revealed'.
+// Legal phase edges. 'committed' holds until the join is SEALED (the arm point — the
+// host's amendment window closes there); sealing a degenerate plan (no inputs)
+// advances straight to 'revealed'.
 const LEGAL_EDGES: Readonly<Record<TransitionTxnPhase, readonly TransitionTxnPhase[]>> = {
   staged: ['committed', 'superseded'],
   committed: ['joining', 'revealed', 'superseded'],
@@ -170,10 +171,19 @@ const advance = (txn: TransitionTxn, nextPhase: TransitionTxnPhase): boolean => 
   return true;
 };
 
-/** The press-up commit: the route mutation landed. Degenerate plans (no join inputs)
- *  advance straight to 'revealed' — the zero-plane class as a plan OUTPUT (Q-4). */
+/** The press-up commit: the route mutation landed. The txn HOLDS at 'committed' until
+ *  sealed — the PF dispatch (and with it the host's arm-time amendment) is deferred
+ *  past the controller's tail, so the join set is not authoritative yet. */
 export const commitTransitionTxn = (txn: TransitionTxn): void => {
-  if (!advance(txn, 'committed')) {
+  advance(txn, 'committed');
+};
+
+/** THE SEAL (the arm point): the amendment window closes; the authoritative join set
+ *  decides the path — degenerate (no inputs) reveals immediately (Q-4: the zero-plane
+ *  class as an output), else the join opens. Idempotent per txn (a second seal no-ops
+ *  once past 'committed'). */
+export const sealTransitionTxnJoin = (txn: TransitionTxn): void => {
+  if (txn.phase !== 'committed') {
     return;
   }
   if (txn.pendingJoinInputs.size === 0) {
@@ -273,6 +283,36 @@ export const withLiveTransitionTxn = (
 };
 
 /**
+ * T1c: THE ARM-TIME AMENDMENT (the K-2 re-plan class, sanctioned and singular): the
+ * scene-stack host — the one place that knows cold-vs-warm and hold-vs-flip — declares
+ * the AUTHORITATIVE join set when it arms the transition's presentation. Legal only
+ * before any input has landed (staged/committed/joining with a full pending set);
+ * later amendment is a loud violation. mapFrame declared at stage time survives
+ * (only the controller knows the readiness link).
+ */
+export const amendTransitionTxnJoinInputs = (inputs: readonly TransitionJoinInput[]): boolean => {
+  const live = liveTxn;
+  if (live == null) {
+    return false;
+  }
+  if (live.phase !== 'staged' && live.phase !== 'committed') {
+    reportViolation({
+      reason: 'illegal_phase_edge',
+      txnId: live.txnId,
+      detail: `amend in ${live.phase} (amendment window = staged|committed, pre-seal)`,
+    });
+    return false;
+  }
+  const preserved = live.plan.joinInputs.includes('mapFrame') ? (['mapFrame'] as const) : [];
+  const nextInputs = [...new Set([...inputs, ...preserved])];
+  (live.plan as { joinInputs: readonly TransitionJoinInput[] }).joinInputs = nextInputs;
+  live.pendingJoinInputs = new Set(nextInputs);
+  emitTrace(live, 'amended');
+  listeners.forEach((listener) => listener());
+  return true;
+};
+
+/**
  * T1b: ambient readiness sources OFFER inputs; the live transaction consumes the ones
  * its plan DECLARED and ignores the rest (a paint ack during a no-join transition is
  * normal life, not a violation). Returns true when the offer was consumed.
@@ -290,6 +330,14 @@ export const offerTransitionJoinInput = (input: TransitionJoinInput): boolean =>
   markTransitionJoinInput(live, input);
   listeners.forEach((listener) => listener());
   return true;
+};
+
+/** Holder-level seal for the ARMING consumer (the scene-stack host). */
+export const sealLiveTransitionTxnJoin = (): void => {
+  if (liveTxn != null) {
+    sealTransitionTxnJoin(liveTxn);
+    listeners.forEach((listener) => listener());
+  }
 };
 
 export const subscribeTransitionTxn = (listener: Listener): (() => void) => {

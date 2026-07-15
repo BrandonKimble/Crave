@@ -12,6 +12,7 @@
 import {
   commitTransitionTxn,
   getLiveTransitionTxn,
+  sealTransitionTxnJoin,
   settleTransitionTxn,
   stageTransitionTxn,
   type TransitionMutation,
@@ -39,11 +40,14 @@ const toMutationKind = (
   }
 };
 
-/** Stage + commit the transaction for a committed switch (both controller apply sites). */
+/** STAGE the transaction for a committing switch. Called BEFORE the route apply; the
+ *  commit (commitStagedTransitionTxn) runs AFTER the state flush so the scene-stack
+ *  host's arm-time amendment (the one place that knows cold-vs-warm) lands inside the
+ *  'staged' window. */
 export const stageTransitionTxnForCommittedSwitch = (
   transitionPlan: AppRouteSceneTransitionPlan
 ): void => {
-  const txn = stageTransitionTxn(
+  stageTransitionTxn(
     {
       kind: toMutationKind(transitionPlan.committedRouteAction),
       targetSceneKey: transitionPlan.targetSceneKey,
@@ -52,7 +56,16 @@ export const stageTransitionTxnForCommittedSwitch = (
     },
     deriveTransitionTxnPlan(transitionPlan)
   );
-  commitTransitionTxn(txn);
+};
+
+/** Commit the staged transaction. The txn HOLDS at 'committed' (amendable) until a
+ *  seal: the host's arm-time amendment seals it, or the settle boundary seals any
+ *  un-armed switch (no roles change → the derived plan stands). */
+export const commitStagedTransitionTxn = (): void => {
+  const live = getLiveTransitionTxn();
+  if (live != null && live.phase === 'staged') {
+    commitTransitionTxn(live);
+  }
 };
 
 /**
@@ -85,7 +98,14 @@ const deriveTransitionTxnPlan = (
  *  (the join never completed), not one to paper over. */
 export const settleLiveTransitionTxnAtIdle = (): void => {
   const live = getLiveTransitionTxn();
-  if (live != null && live.phase === 'revealed') {
+  if (live == null) {
+    return;
+  }
+  if (live.phase === 'committed') {
+    // Un-armed switch (no roles change reached the host): the derived plan stands.
+    sealTransitionTxnJoin(live);
+  }
+  if (live.phase === 'revealed') {
     settleTransitionTxn(live);
   }
 };

@@ -224,16 +224,20 @@ demand); ranker picks the genuinely deficient market first.
 
 ## Leg 5 — Market seeding strategy (DEMOTED: lazy minting is THE mechanism)
 
-- TomTom free tier (verified 2026-07-14, docs.tomtom.com/pricing): freemium plan =
-  2,500 non-tile requests/DAY account-wide (owner-confirmed); the newer per-API
-  scheme lists Geocoding/Reverse-Geocoding 20K/month free but Search API (Legacy) —
-  which includes /search/2/additionalData (our polygon fetch) — at 2.5K/MONTH.
-  Either way the polygon endpoint is the binding constraint.
-- Math: US pre-seed (~19.5k incorporated places × 2 calls ≈ 39k) = ~16 days at
-  2.5K/day, ~8+ months if additionalData is 2.5K/month. Global (hundreds of
-  thousands of municipalities) = months-to-years at best. VERDICT: global pre-seed
-  infeasible on free tier → runtime containment-gated minting (3.3) is the one
-  mechanism worldwide; markets self-provision where users actually go.
+- TomTom free tier (CONFIRMED from account dashboard 2026-07-14, per-API MONTHLY):
+  Search API — which includes /search/2/additionalData (our polygon fetch) —
+  **2,500/month** (current usage 126); Geocoding + Reverse Geocoding 20,000/month
+  each (usage 46 / 409). The polygon endpoint is the binding constraint.
+- Math: free-tier-only US pre-seed ≈ 8 months (infeasible). PAID: overage ≈
+  $0.75/1k geocoding (19.5k fits the free 20k/mo anyway) + ~$2.50/1k Search/
+  additionalData → ~17k paid polygon calls ≈ **$40–60 one-time for the whole US**
+  (third-party rates, verify ±2× in console before running). RECOMMENDED (owner
+  confirmation pending): HYBRID — pay to pre-seed the US once; containment-gated
+  lazy minting
+  (3.3) remains the universal mechanism (international + gazetteer gaps). Organic
+  minting (~1-2 Search calls per new city touched) is self-throttling; if a viral
+  month exhausts the quota, degrade gracefully (header "this area", retry next
+  month).
 - Optional accelerant only: warm-seed launch geographies (e.g. Texas metros) as an
   operator batch inside the daily budget. Gazetteer (Census/GNIS) supplies names
   (TomTom has no child-enumeration API); geometriesZoom tames payloads; idempotent
