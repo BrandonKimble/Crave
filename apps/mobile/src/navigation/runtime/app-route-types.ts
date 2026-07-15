@@ -1,6 +1,7 @@
 import type { MainSearchIntent } from '../../types/navigation';
 import type { EntityRefAction } from './entity-ref-action-policy';
 import { isPerfScenarioUrl } from '../../perf/perf-scenario-deep-link';
+import { isLifecycleHarnessUrl } from '../../perf/lifecycle-harness/lifecycle-harness-registry';
 import { parseDesireLink } from './desire-url-codec';
 
 export type AppRouteDestination = 'onboarding' | 'sign_in' | 'paywall' | 'main';
@@ -48,6 +49,10 @@ export const parseLaunchIntentFromUrl = (url: string | null): LaunchIntent => {
   }
 
   if (isPerfScenarioUrl(url)) {
+    return NO_LAUNCH_INTENT;
+  }
+
+  if (isLifecycleHarnessUrl(url)) {
     return NO_LAUNCH_INTENT;
   }
 

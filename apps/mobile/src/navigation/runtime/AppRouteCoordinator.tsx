@@ -168,7 +168,15 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
 
   React.useEffect(() => {
     const subscription = Linking.addEventListener('url', (event) => {
-      setQueuedLaunchIntent(parseLaunchIntentFromUrl(event.url));
+      const parsed = parseLaunchIntentFromUrl(event.url);
+      // Non-intent URLs (perf-scenario, lifecycle-harness, unrecognized) must not
+      // WRITE the single-slot queue — an unconditional write let a harness command
+      // URL overwrite a just-dispatched entityAction with 'none' (Leg-1 bring-up
+      // bug, second variant). 'external' intents still pass (they are meaningful).
+      if (parsed.type === 'none') {
+        return;
+      }
+      setQueuedLaunchIntent(parsed);
     });
     return () => {
       subscription.remove();
@@ -394,6 +402,10 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     }
     if (routeState.destination === 'main') {
       if (isMeaningfulIntent(queuedLaunchIntent)) {
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.log(`[LAUNCHDBG] transfer queued->active type=${queuedLaunchIntent.type}`);
+        }
         setActiveMainIntent(queuedLaunchIntent);
         setQueuedLaunchIntent(NO_LAUNCH_INTENT);
         return;
@@ -421,6 +433,10 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   const dispatchLaunchIntent = React.useCallback((intent: LaunchIntent) => {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log(`[LAUNCHDBG] dispatch type=${intent?.type ?? 'null'}`);
+    }
     setQueuedLaunchIntent(normalizeLaunchIntent(intent));
   }, []);
 

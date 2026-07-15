@@ -14,6 +14,21 @@
  * a silent no-op cannot pass.
  */
 
+export const LIFECYCLE_HARNESS_HOST = 'lifecycle-harness';
+
+/** True for crave://lifecycle-harness?... URLs — the app's launch-intent URL lane
+ *  must ignore these exactly like perf-scenario URLs (a harness command clobbering
+ *  the single-slot intent queue as {type:'external'} was the Leg-1 bring-up bug). */
+export const isLifecycleHarnessUrl = (rawUrl: string | null): boolean => {
+  if (!rawUrl) {
+    return false;
+  }
+  return (
+    rawUrl.includes(`://${LIFECYCLE_HARNESS_HOST}`) ||
+    rawUrl.includes(`/${LIFECYCLE_HARNESS_HOST}?`)
+  );
+};
+
 type JsonValue =
   | string
   | number

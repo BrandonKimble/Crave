@@ -24,6 +24,10 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   // W1 slice 4: the sharedList intent is a plain child push now (listDetail owns the slug).
   const { pushRoute } = useAppOverlayRouteController();
   React.useEffect(() => {
+    if (__DEV__ && activeMainIntent.type !== 'none') {
+      // eslint-disable-next-line no-console
+      console.log(`[LAUNCHDBG] consumer sees type=${activeMainIntent.type}`);
+    }
     if (activeMainIntent.type === 'none') {
       return;
     }

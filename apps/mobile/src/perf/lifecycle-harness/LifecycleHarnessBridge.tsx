@@ -113,10 +113,27 @@ export const LifecycleHarnessBridge: React.FC = () => {
       throw new Error(`unknown affordance '${affordance}' (searchBarX|back)`);
     });
 
+    const unregisterOpenScene = registerLifecycleHarnessVerb('open_scene', (payload) => {
+      const openOverlayScene = readPerfScenarioCommandRegistry().openOverlayScene;
+      if (!openOverlayScene) {
+        throw new Error('openOverlayScene not registered');
+      }
+      const accepted = openOverlayScene({
+        scene: String(payload.scene ?? ''),
+        routeParam: (payload.routeParam as string | undefined) ?? null,
+        label: 'lifecycle-harness',
+      });
+      if (!accepted) {
+        throw new Error(`open_scene rejected for '${String(payload.scene)}'`);
+      }
+      return readLifecycleState();
+    });
+
     return () => {
       unregisterState();
       unregisterTrigger();
       unregisterDismiss();
+      unregisterOpenScene();
     };
   }, [routeSceneRuntime]);
 

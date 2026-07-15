@@ -9,7 +9,9 @@ import { invokeLifecycleHarnessVerb } from './lifecycle-harness-registry';
  * Dev-only by mount site. Unlike the perf-scenario command channel, harness
  * verbs need NO active scenario — the harness is a standalone bus.
  */
-const HARNESS_HOST = 'lifecycle-harness';
+import { LIFECYCLE_HARNESS_HOST } from './lifecycle-harness-registry';
+
+const HARNESS_HOST = LIFECYCLE_HARNESS_HOST;
 
 const parseHarnessUrl = (
   url: string | null
