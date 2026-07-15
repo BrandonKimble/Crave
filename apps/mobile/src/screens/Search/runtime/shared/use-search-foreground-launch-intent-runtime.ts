@@ -28,10 +28,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   const { pushRoute } = useAppOverlayRouteController();
   const routeSceneRuntime = useAppRouteSceneRuntime();
   React.useEffect(() => {
-    if (__DEV__ && activeMainIntent.type !== 'none') {
-      // eslint-disable-next-line no-console
-      console.log(`[LAUNCHDBG] consumer sees type=${activeMainIntent.type}`);
-    }
     if (activeMainIntent.type === 'none') {
       return;
     }

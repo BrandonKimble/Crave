@@ -402,10 +402,6 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
     }
     if (routeState.destination === 'main') {
       if (isMeaningfulIntent(queuedLaunchIntent)) {
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.log(`[LAUNCHDBG] transfer queued->active type=${queuedLaunchIntent.type}`);
-        }
         setActiveMainIntent(queuedLaunchIntent);
         setQueuedLaunchIntent(NO_LAUNCH_INTENT);
         return;
@@ -433,10 +429,6 @@ export const AppRouteCoordinator: React.FC<{ children: React.ReactNode }> = ({ c
   }, []);
 
   const dispatchLaunchIntent = React.useCallback((intent: LaunchIntent) => {
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log(`[LAUNCHDBG] dispatch type=${intent?.type ?? 'null'}`);
-    }
     setQueuedLaunchIntent(normalizeLaunchIntent(intent));
   }, []);
 
