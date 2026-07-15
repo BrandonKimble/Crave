@@ -1,17 +1,13 @@
 import {
-  CHROME_ACK_WATCHDOG_MS,
   __resetSceneChromeAckForTest,
   getSceneChromeAckSceneKey,
-  joinSceneChromeAck,
   recordSceneChromeAck,
   recordSceneChromeMeasuredHeight,
   resolveSceneChromeHeight,
 } from './scene-chrome-ack-runtime';
 
-// THE JOINED REVEAL contract (leg 6 — child-transition primitive §2.3): the reveal flip joins
-// {paintAck, chromeAck}. These sweeps pin the join's three behaviors — synchronous when the
-// header already committed, deferred until it does, and the RED-provable watchdog degrade
-// (suppressing the header's ack MUST fire the loud bark; an always-green join would be lying).
+// The ack store (T5 — the join itself is engine-owned; see transition-transaction.spec.ts
+// for the {paint, chrome} join + the join_liveness_degrade RED proof).
 
 declare const global: { __DEV__?: boolean };
 
@@ -23,56 +19,6 @@ describe('scene-chrome-ack-runtime', () => {
   });
   afterEach(() => {
     jest.useRealTimers();
-  });
-
-  it('joins synchronously when the chromeAck already matches the presented scene', () => {
-    recordSceneChromeAck('polls');
-    const flip = jest.fn();
-    joinSceneChromeAck('polls', flip);
-    expect(flip).toHaveBeenCalledTimes(1);
-  });
-
-  it('defers the flip until the header records the matching ack, then fires exactly once', () => {
-    recordSceneChromeAck('polls');
-    const flip = jest.fn();
-    joinSceneChromeAck('bookmarks', flip);
-    expect(flip).not.toHaveBeenCalled();
-    recordSceneChromeAck('bookmarks');
-    expect(flip).toHaveBeenCalledTimes(1);
-    // A later ack / the (cleared) watchdog must not double-fire.
-    recordSceneChromeAck('bookmarks');
-    jest.advanceTimersByTime(CHROME_ACK_WATCHDOG_MS + 10);
-    expect(flip).toHaveBeenCalledTimes(1);
-  });
-
-  it('ignores a NON-matching ack while waiting', () => {
-    const flip = jest.fn();
-    joinSceneChromeAck('settings', flip);
-    recordSceneChromeAck('profile');
-    expect(flip).not.toHaveBeenCalled();
-    recordSceneChromeAck('settings');
-    expect(flip).toHaveBeenCalledTimes(1);
-  });
-
-  it('RED: a suppressed header ack degrades via the watchdog WITH the loud dev bark', () => {
-    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
-    const flip = jest.fn();
-    joinSceneChromeAck('messagesInbox', flip);
-    expect(flip).not.toHaveBeenCalled();
-    jest.advanceTimersByTime(CHROME_ACK_WATCHDOG_MS + 1);
-    expect(flip).toHaveBeenCalledTimes(1);
-    expect(consoleError).toHaveBeenCalledTimes(1);
-    expect(String(consoleError.mock.calls[0][0])).toContain('[JOINEDREVEAL]');
-    consoleError.mockRestore();
-  });
-
-  it('a cancelled join never fires (superseding switch)', () => {
-    const flip = jest.fn();
-    const cancel = joinSceneChromeAck('dmSession', flip);
-    cancel();
-    recordSceneChromeAck('dmSession');
-    jest.advanceTimersByTime(CHROME_ACK_WATCHDOG_MS + 10);
-    expect(flip).not.toHaveBeenCalled();
   });
 
   it('the store is single-valued (last committed scene wins)', () => {

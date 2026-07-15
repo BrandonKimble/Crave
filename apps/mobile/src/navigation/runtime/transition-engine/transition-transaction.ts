@@ -96,7 +96,12 @@ const now = (): number =>
 let nextTxnSeq = 1;
 
 export type TransitionTxnContractViolation = {
-  reason: 'illegal_phase_edge' | 'stale_txn_mark' | 'unknown_join_input' | 'duplicate_join_input';
+  reason:
+    | 'illegal_phase_edge'
+    | 'stale_txn_mark'
+    | 'unknown_join_input'
+    | 'duplicate_join_input'
+    | 'join_liveness_degrade';
   txnId: string;
   detail: string;
 };
@@ -191,6 +196,40 @@ export const sealTransitionTxnJoin = (txn: TransitionTxn): void => {
     return;
   }
   advance(txn, 'joining');
+  armJoinLivenessWatchdog(txn);
+};
+
+// ── Join liveness (T5): the ENGINE owns the degrade clock, not any host ceremony ──
+//
+// A joining transaction whose machine-paced offers (paint/chrome/mapFrame/camera) never
+// arrive would park the visible-commit gate forever — the app sticks on the outgoing
+// content with no bark. The engine force-reveals after JOIN_LIVENESS_MS with a LOUD
+// violation naming the missing inputs: a fire means a source is broken (a header that
+// never committed the presented scene, a suppressed paint ack) — a bug to attribute,
+// never a mechanism to rely on. Provably RED: suppress any declared offer and every
+// such switch barks. freezeUntilSnap plans are EXEMPT — their 'boundary' join is
+// USER-paced (a held drag legitimately outlasts any timeout); a canceled dismissal
+// supersedes the txn instead.
+const JOIN_LIVENESS_MS = 600;
+
+const armJoinLivenessWatchdog = (txn: TransitionTxn): void => {
+  if (txn.plan.content.kind === 'freezeUntilSnap') {
+    return;
+  }
+  setTimeout(() => {
+    if (txn.phase !== 'joining') {
+      return;
+    }
+    reportViolation({
+      reason: 'join_liveness_degrade',
+      txnId: txn.txnId,
+      detail: `forced reveal after ${JOIN_LIVENESS_MS}ms; missing [${[
+        ...txn.pendingJoinInputs,
+      ].join(',')}]`,
+    });
+    advance(txn, 'revealed');
+    listeners.forEach((listener) => listener());
+  }, JOIN_LIVENESS_MS);
 };
 
 /** A declared readiness input landed. Reveal fires when the LAST one lands. */

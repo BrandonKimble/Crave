@@ -57,11 +57,7 @@ import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { SearchResultsPageBundleHost } from './SearchMountedScenePageBundleAuthority';
 import { SceneLoadingSurface } from '../components/skeletons';
 import { SceneBodySceneKeyContext } from './SceneBodyReadyGate';
-import {
-  joinSceneChromeAck,
-  resolveSceneChromeHeight,
-  type ChromeAckJoinCancel,
-} from './scene-chrome-ack-runtime';
+import { resolveSceneChromeHeight } from './scene-chrome-ack-runtime';
 import { getSceneFoundationSpec } from '../navigation/runtime/scene-foundation-spec';
 import { PersistentSheetHeaderHost } from './PersistentSheetHeaderHost';
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
@@ -159,7 +155,7 @@ type SceneStackTransitionDisplayValue = {
   // set (player/SV/contentMode/callbacks) whose identity survives a switch, so idle legs never
   // re-render from it. See computeLegRole + the .map below.
   // Paint-ack producer sink: the incoming body's first onLayout reports here. The host honors it
-  // ONLY for the incoming scene of the live transition (markPaintAck), so an idle/outgoing leg's
+  // ONLY for the incoming scene of the live transition, so an idle/outgoing leg's
   // re-layout can never flip the gate (#1 correctness: gate flips on the RIGHT scene's paint).
   reportScenePaint: (sceneKey: OverlayKey) => void;
   // Painted-EVIDENCE recorders for the synthetic warm-leg ack (§9.1, pulled forward from P4): a
@@ -1414,7 +1410,7 @@ const ActiveSceneStackSurfaceHost = React.memo(
     );
     // Paint-ack producer SINK. The incoming body's first onLayout calls this; honor it ONLY for the
     // live transition's incoming scene (gate on identity), so an idle/outgoing re-layout — or a
-    // stale leg — can never flip the gate. markPaintAck reveals the content (#1 correctness).
+    // stale leg — can never flip the gate; the txn's 'revealed' edge reveals the content.
     const effectiveIncomingRef = React.useRef(effectiveIncoming);
     effectiveIncomingRef.current = effectiveIncoming;
     const isTransitioningRef = React.useRef(isTransitioning);
@@ -1434,39 +1430,13 @@ const ActiveSceneStackSurfaceHost = React.memo(
     }, []);
     // ── THE UI-THREAD SWAP LANE SV (SceneStackLiveSwapRoles doc above) ────────────────────────
     const liveSwapRoles = useSharedValue<SceneStackLiveSwapRoles | null>(null);
-    // ── THE JOINED REVEAL (leg 6 — child-transition primitive §2.3): every REVEAL flip (warm
-    // early flip, real paint-ack, synthetic warm ack) joins {paintAck, chromeAck} — the flip
-    // waits for the persistent header's post-commit chromeAck of the presented scene, so body
-    // opacity can NEVER lead the header/strip paint (the nav-page one-beat lag). HOLD writes
-    // (paintAck=0) stay immediate. One pending join at a time; a superseding reveal cancels its
-    // predecessor. The 2-frame watchdog inside joinSceneChromeAck degrades to today's behavior
-    // with a loud [JOINEDREVEAL] dev bark (provably RED by suppressing the header's ack).
-    const pendingChromeJoinCancelRef = React.useRef<ChromeAckJoinCancel | null>(null);
-    const joinRevealOnChromeAck = React.useCallback((scene: OverlayKey, flip: () => void) => {
-      // §Q redo T1d: a FREEZE-plan transition's chrome is DELIBERATELY frozen — the
-      // header will never ack the incoming scene, and the reveal is the txn's boundary
-      // edge, not this join. Run the callback immediately (its offers are quietly
-      // ignored by the boundary-joined txn; its PF bookkeeping still applies) instead
-      // of paying the watchdog degrade + bark on every dismissal.
-      if (getLiveTransitionTxn()?.plan.content.kind === 'freezeUntilSnap') {
-        pendingChromeJoinCancelRef.current?.();
-        pendingChromeJoinCancelRef.current = null;
-        flip();
-        return;
-      }
-      pendingChromeJoinCancelRef.current?.();
-      pendingChromeJoinCancelRef.current = joinSceneChromeAck(scene, () => {
-        pendingChromeJoinCancelRef.current = null;
-        flip();
-      });
-    }, []);
-    React.useEffect(
-      () => () => {
-        pendingChromeJoinCancelRef.current?.();
-        pendingChromeJoinCancelRef.current = null;
-      },
-      []
-    );
+    // ── THE JOINED REVEAL (T5 — engine-owned): body opacity can never lead the header/
+    // strip paint because the txn's plan declares {paint, chrome} and the REVEAL is the
+    // txn's edge — the header offers 'chrome' from its own post-commit layout effect
+    // (recordSceneChromeAck), the sites below offer 'paint', and the ENGINE joins them
+    // (with its own liveness degrade). The old host-side chromeAck join ceremony
+    // (joinRevealOnChromeAck + 34ms watchdog) duplicated exactly that sequencing and
+    // was deleted with the inversion; flips run inline now.
     // EARLY WRITE: subscribePresentationFrame listeners run SYNCHRONOUSLY inside the controller's
     // dispatch flush — the same JS instant the scene-motion executor writes the sheet-motion
     // command — so a warm swap reaches the UI thread on the next frame, ~1 frame after the sheet
@@ -1547,53 +1517,37 @@ const ActiveSceneStackSurfaceHost = React.memo(
             });
             return;
           }
-          // Joined reveal (§2.3): the warm flip used to land on the UI thread a frame BEFORE
-          // the header/strip React commit — the exact one-beat lag. Join on the header's
-          // chromeAck: since the header commits in the same flush-fed React batch, the flip now
-          // lands in that commit's layout phase (same painted frame as the header/strip).
-          joinRevealOnChromeAck(presented, () => {
-            liveSwapRoles.value = { presented, outgoing: null };
-            player.seize();
-            // §Q redo T1c (INVERSION): offer both inputs (see reportScenePaint) — the
-            // txn's 'revealed' edge writes the gate.
-            offerTransitionJoinInput('paint');
-            offerTransitionJoinInput('chrome');
-            player.settleRamp.value = 1;
-            logPageSwitch('liveSwap', {
-              t: Math.round(performance.now()),
-              presented,
-              warm: true,
-            });
+          // Warm early flip: roles + paint offer land immediately; the header's own
+          // commit offers 'chrome', and the TXN joins them — body opacity still can't
+          // lead the header paint because the gate write is the txn's 'revealed' edge.
+          liveSwapRoles.value = { presented, outgoing: null };
+          player.seize();
+          offerTransitionJoinInput('paint');
+          player.settleRamp.value = 1;
+          logPageSwitch('liveSwap', {
+            t: Math.round(performance.now()),
+            presented,
+            warm: true,
           });
         }),
-      [routeSceneSwitchRuntime, player, liveSwapRoles, joinRevealOnChromeAck]
+      [routeSceneSwitchRuntime, player, liveSwapRoles]
     );
     const reportScenePaint = React.useCallback(
       (sceneKey: OverlayKey) => {
         if (isTransitioningRef.current && sceneKey === effectiveIncomingRef.current) {
           logPageSwitch('realAck', { t: Math.round(performance.now()), scene: sceneKey });
-          // Joined reveal (§2.3): the header's layout effect normally recorded the chromeAck in
-          // this same commit, so the join is synchronous; a missing ack defers ≤2 frames.
-          // Inside the join: markPaintAck reveals the content, and (§9.1 R2) the switchId-keyed
-          // PresentationFrame ack records — keyed to the ARMED switch's id (ACK EPOCH — the ref
-          // was written in the arming commit), never a live getPresentationFrame() read: a
-          // post-supersede pre-re-render onLayout must ack the superseded id (rejected
-          // controller-side), not bless the new switch.
-          joinRevealOnChromeAck(sceneKey, () => {
-            // §Q redo T1c (INVERSION): the joined-reveal moment OFFERS both inputs —
-            // paint (this ack) and chrome (already acked, or the watchdog degraded:
-            // offering keeps the txn from parking on a missed chrome ack; a duplicate
-            // offer is quietly ignored). The GATE write moved to the txn subscription
-            // below — the transaction's 'revealed' edge is the ONE visible-commit owner.
-            offerTransitionJoinInput('paint');
-            offerTransitionJoinInput('chrome');
-            routeSceneSwitchRuntime.commitPresentationPaintAck(armedSwitchIdRef.current);
-          });
+          // §Q redo T1c (INVERSION) + T5: this real paint OFFERS 'paint'; the header's
+          // own commit offers 'chrome'; the txn's 'revealed' edge is the ONE
+          // visible-commit owner. The PF ack stays switchId-keyed (ACK EPOCH — §9.1 R2):
+          // a post-supersede pre-re-render onLayout must ack the superseded id
+          // (rejected controller-side), not bless the new switch.
+          offerTransitionJoinInput('paint');
+          routeSceneSwitchRuntime.commitPresentationPaintAck(armedSwitchIdRef.current);
         }
         // A paint from an idle/outgoing/stale leg is ignored — only the live transition's
         // incoming scene may flip the paint-ack gate.
       },
-      [player, routeSceneSwitchRuntime, joinRevealOnChromeAck]
+      [routeSceneSwitchRuntime]
     );
     // COMMIT RECONCILE for the swap SV: converge it to the committed frame on every commit —
     // this is what flips a COLD leg (skipped by the warm gate above) in the exact commit that
@@ -1663,15 +1617,10 @@ const ActiveSceneStackSurfaceHost = React.memo(
         warm: hasPaintedSceneKeysRef.current.has(effectiveIncoming),
       });
       if (hasPaintedSceneKeysRef.current.has(effectiveIncoming)) {
-        // Joined reveal (§2.3): the synthetic warm ack joins the header's chromeAck too — this
-        // layout effect and the header's run in the same commit, so the join is synchronous in
-        // the healthy path (order-independent: whichever effect runs second completes it).
-        joinRevealOnChromeAck(effectiveIncoming, () => {
-          // §Q redo T1c (INVERSION): offers only; the txn reveal writes the gate.
-          offerTransitionJoinInput('paint');
-          offerTransitionJoinInput('chrome');
-          routeSceneSwitchRuntime.commitPresentationPaintAck(armedSwitchIdRef.current);
-        });
+        // Synthetic warm ack (T5): offer 'paint' inline — the header's layout effect in
+        // this same commit offers 'chrome', and the txn joins them.
+        offerTransitionJoinInput('paint');
+        routeSceneSwitchRuntime.commitPresentationPaintAck(armedSwitchIdRef.current);
       }
     }, [
       contentTransitionToken,
@@ -1680,7 +1629,6 @@ const ActiveSceneStackSurfaceHost = React.memo(
       effectiveOutgoing,
       effectiveIncoming,
       routeSceneSwitchRuntime,
-      joinRevealOnChromeAck,
     ]);
     // STABLE PORTS: no volatile role fields → identity survives a switch → idle legs never
     // re-render from this context. (Roles ride the per-leg legRole prop; see the .map below.)

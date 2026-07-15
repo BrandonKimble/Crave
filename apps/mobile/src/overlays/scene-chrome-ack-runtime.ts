@@ -4,20 +4,16 @@ import { offerTransitionJoinInput } from '../navigation/runtime/transition-engin
 
 // ─── THE CHROME-ACK (child-transition primitive §2.3, leg 6) ─────────────────────────────────
 //
-// The joined reveal: a page switch's body reveal joins TWO marks — the incoming body's
-// paint-ack AND the persistent header's post-commit chromeAck for the presented scene. The
-// header host (a real component whose effects fire) records the ack in a useLayoutEffect after
-// its commit; the scene-stack host's swap-SV flip waits for BOTH. This is what kills the
-// nav-page one-beat header/strip lag (content opacity can never lead the header/strip paint)
-// and, together with the skeleton law, the child bare-frost gap.
+// The joined reveal (T5 — engine-owned): the header host records its post-commit ack here,
+// which OFFERS 'chrome' to the live TransitionTxn; the txn joins it with 'paint' and its
+// 'revealed' edge is the one visible-commit. This kills the nav-page one-beat header/strip
+// lag (content opacity can never lead the header paint). The old host-side
+// joinSceneChromeAck ceremony (34ms watchdog) was deleted with the inversion — the ENGINE
+// owns the liveness degrade now (join_liveness_degrade in transition-transaction.ts).
 //
-// Module-scope store (the house live-state pattern): ONE writer (PersistentSheetHeaderHost),
-// pull-read + subscribe consumers (BottomSheetSceneStackHost's join).
-
-type Listener = () => void;
+// Module-scope store (the house live-state pattern): ONE writer (PersistentSheetHeaderHost).
 
 let chromeAckSceneKey: OverlayKey | null = null;
-const listeners = new Set<Listener>();
 
 /** THE one writer: PersistentSheetHeaderHost, post-commit (useLayoutEffect on its sceneKey). */
 export const recordSceneChromeAck = (sceneKey: OverlayKey): void => {
@@ -28,93 +24,13 @@ export const recordSceneChromeAck = (sceneKey: OverlayKey): void => {
   // §Q redo T1b: the chrome source OFFERS its input to the live transaction
   // (consumed iff the txn's plan declared 'chrome').
   offerTransitionJoinInput('chrome');
-  listeners.forEach((listener) => {
-    listener();
-  });
 };
 
 export const getSceneChromeAckSceneKey = (): OverlayKey | null => chromeAckSceneKey;
 
-const subscribeSceneChromeAck = (listener: Listener): (() => void) => {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-};
-
-// ~2 frames at 60Hz. A missing chromeAck degrades to today's (paint-ack-only) behavior after
-// this window — with a LOUD dev bark, because a fire means the header never committed the
-// presented scene (a broken descriptor / a header host that unmounted): a bug to attribute,
-// never a mechanism to rely on. Provably RED: suppress the header's recordSceneChromeAck and
-// every switch barks.
-export const CHROME_ACK_WATCHDOG_MS = 34;
-
-export type ChromeAckJoinCancel = () => void;
-
-/**
- * Run `onJoin` once the chromeAck matches `sceneKey` — synchronously when it already does,
- * otherwise on the ack's arrival, degraded by the watchdog after CHROME_ACK_WATCHDOG_MS with
- * a __DEV__ bark. Returns a cancel (a superseding switch must cancel its predecessor's join).
- */
-export const joinSceneChromeAck = (
-  sceneKey: OverlayKey,
-  onJoin: () => void
-): ChromeAckJoinCancel => {
-  if (chromeAckSceneKey === sceneKey) {
-    onJoin();
-    return () => {};
-  }
-  let settled = false;
-  let unsubscribe: (() => void) | null = null;
-  let watchdog: ReturnType<typeof setTimeout> | null = null;
-  const settle = (viaWatchdog: boolean) => {
-    if (settled) {
-      return;
-    }
-    settled = true;
-    unsubscribe?.();
-    unsubscribe = null;
-    if (watchdog != null) {
-      clearTimeout(watchdog);
-      watchdog = null;
-    }
-    if (viaWatchdog && __DEV__) {
-      // eslint-disable-next-line no-console
-      console.error(
-        `[JOINEDREVEAL] chromeAck missing for presented scene '${sceneKey}' after ` +
-          `${CHROME_ACK_WATCHDOG_MS}ms (header ack = '${chromeAckSceneKey ?? 'none'}') — ` +
-          `revealing anyway (degraded). The persistent header never committed this scene: ` +
-          `attribute and fix (descriptor missing? header host unmounted?).`
-      );
-    }
-    onJoin();
-  };
-  unsubscribe = subscribeSceneChromeAck(() => {
-    if (chromeAckSceneKey === sceneKey) {
-      settle(false);
-    }
-  });
-  watchdog = setTimeout(() => {
-    settle(true);
-  }, CHROME_ACK_WATCHDOG_MS);
-  return () => {
-    if (settled) {
-      return;
-    }
-    settled = true;
-    unsubscribe?.();
-    unsubscribe = null;
-    if (watchdog != null) {
-      clearTimeout(watchdog);
-      watchdog = null;
-    }
-  };
-};
-
 /** Test seam (jest): reset the module store between cases. */
 export const __resetSceneChromeAckForTest = (): void => {
   chromeAckSceneKey = null;
-  listeners.clear();
   chromeHeightBySceneKey.clear();
 };
 

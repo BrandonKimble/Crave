@@ -127,6 +127,44 @@ describe('TransitionTransaction (§Q redo, T0)', () => {
 
   // RED backstop (testing methodology): a lifecycle WITHOUT supersession-by-staging —
   // the old world's shape — provably leaks the prior transaction's state.
+  it('T5 join liveness: a joining txn whose offers never arrive force-reveals after the degrade window WITH the loud violation', () => {
+    jest.useFakeTimers();
+    const txn = createTransitionTxn(MUTATION, JOINED_PLAN);
+    commitTransitionTxn(txn);
+    sealTransitionTxnJoin(txn);
+    expect(txn.phase).toBe('joining');
+    jest.advanceTimersByTime(700);
+    expect(txn.phase).toBe('revealed');
+    expect(violations.map((v) => v.reason)).toContain('join_liveness_degrade');
+    expect(violations.find((v) => v.reason === 'join_liveness_degrade')?.detail).toContain(
+      'mapFrame'
+    );
+    jest.useRealTimers();
+  });
+
+  it('T5 join liveness: a healthy join never fires the watchdog; a freeze plan (user-paced boundary) is exempt', () => {
+    jest.useFakeTimers();
+    const healthy = createTransitionTxn(MUTATION, JOINED_PLAN);
+    commitTransitionTxn(healthy);
+    sealTransitionTxnJoin(healthy);
+    markTransitionJoinInput(healthy, 'paint');
+    markTransitionJoinInput(healthy, 'chrome');
+    markTransitionJoinInput(healthy, 'mapFrame');
+    expect(healthy.phase).toBe('revealed');
+    const freeze = createTransitionTxn(MUTATION, {
+      content: { kind: 'freezeUntilSnap' as const },
+      joinInputs: ['boundary'] as const,
+      movesSheet: true,
+    });
+    commitTransitionTxn(freeze);
+    sealTransitionTxnJoin(freeze);
+    expect(freeze.phase).toBe('joining');
+    jest.advanceTimersByTime(5000);
+    expect(freeze.phase).toBe('joining'); // a held drag may outlast any timeout
+    expect(violations).toHaveLength(0);
+    jest.useRealTimers();
+  });
+
   it('RED backstop: without staging-supersession, two "live" transitions coexist (the old disease)', () => {
     const first = createTransitionTxn(MUTATION, JOINED_PLAN);
     const second = createTransitionTxn(MUTATION, JOINED_PLAN);

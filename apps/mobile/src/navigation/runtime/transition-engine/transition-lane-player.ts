@@ -115,13 +115,11 @@ const toReanimatedSpringConfig = (
 //     NOTE: `settleRamp` drives NO visible pixels — it only times `onSettle` via withSpring onFinish.
 //   • `start(descriptor, velocity, onSettle)` — the press-up fan-out: start the ONE ramp spring;
 //     onSettle runs on ramp-end (the morph's nominal settle).
-//   • `markPaintAck()` — the SINGLE paint-ack that gates the content/header visible-commit.
 //   • `seize()` — interruption: cancel the live ramp so a new gesture re-targets from where it is.
 export type TransitionLanePlayer = {
   settleRamp: SharedValue<number>;
   paintAck: SharedValue<number>;
   start: (descriptor: TransitionDescriptor, velocity: number, onSettle?: () => void) => void;
-  markPaintAck: () => void;
   seize: () => void;
 };
 
@@ -153,13 +151,6 @@ export const useTransitionLanePlayer = (): TransitionLanePlayer => {
     [settleRamp, paintAck]
   );
 
-  const markPaintAck = React.useCallback(() => {
-    // §Q redo T1c: DEPRECATED direct write — the transaction's 'revealed' edge owns the
-    // gate now (host subscription); sources offer. Kept for any straggler callers
-    // (grep shows none); T5 deletes it with the joinRevealOnChromeAck scaffolding.
-    paintAck.value = 1;
-  }, [paintAck]);
-
   const seize = React.useCallback(() => {
     // Interruption: freeze the live ramp so a new gesture re-targets from the current value rather
     // than the nominal endpoints. cancelAnimation leaves `settleRamp.value` where it is.
@@ -171,7 +162,7 @@ export const useTransitionLanePlayer = (): TransitionLanePlayer => {
   // context (the scene-stack ports), a fresh object identity re-minted the context every switch and
   // re-rendered every context consumer. Memoize the container so its identity survives a re-render.
   return React.useMemo(
-    () => ({ settleRamp, paintAck, start, markPaintAck, seize }),
-    [settleRamp, paintAck, start, markPaintAck, seize]
+    () => ({ settleRamp, paintAck, start, seize }),
+    [settleRamp, paintAck, start, seize]
   );
 };
