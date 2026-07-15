@@ -1,4 +1,6 @@
 import React from 'react';
+import { useAppRouteSceneRuntime } from '../../../navigation/runtime/AppRouteSceneRuntimeProvider';
+import { resolveResidentWorldEntry } from '../../../navigation/runtime/app-overlay-route-stack-algebra';
 import {
   selectSearchMode,
   selectSubmittedQuery,
@@ -941,6 +943,7 @@ export const useDirectSearchMapSourceController = ({
     isMapMoving,
     profileCommandPort,
   });
+  const routeSceneRuntimeForResidency = useAppRouteSceneRuntime();
   React.useEffect(() => {
     latestArgsRef.current = {
       resultsPresentationAuthority,
@@ -1070,11 +1073,27 @@ export const useDirectSearchMapSourceController = ({
 
   const commitResidentSourceFrameSnapshot = React.useCallback(
     (snapshot: SearchMapSourceFrameSnapshot) => {
+      // §Q redo — THE PRESENTER'S FIRST LAW (design §2, attributed live): the wire only
+      // shows RESIDENT worlds. The confirmed post-pop re-present (a stale subscriber
+      // re-publishing catalog/frames AFTER the session's exit — the owner's
+      // inconsistent "map items snap out") is unrepresentable behind this gate: with
+      // no world-bearing entry on the stack, no source frame may publish. The exit's
+      // own empty-frame publish is not snapshot-shaped and does not pass through here.
+      const residentEntry = resolveResidentWorldEntry(
+        routeSceneRuntimeForResidency.routeSceneSwitchRuntime.getRouteState()
+      );
+      if (residentEntry == null) {
+        if (__DEV__) {
+          // eslint-disable-next-line no-console
+          console.log('[PRESENTER] source-frame publish refused: no resident world entry');
+        }
+        return false;
+      }
       adoptResidentSourceFrameSnapshot(snapshot);
       const didPublishSourceFrame = sourceFramePort.publishSnapshot(snapshot);
       return didPublishSourceFrame;
     },
-    [adoptResidentSourceFrameSnapshot, sourceFramePort]
+    [adoptResidentSourceFrameSnapshot, sourceFramePort, routeSceneRuntimeForResidency]
   );
 
   const publishSourcesRef = React.useRef<() => void>(() => {});

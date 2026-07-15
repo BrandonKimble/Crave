@@ -1,5 +1,10 @@
 import React from 'react';
 import { offerTransitionJoinInput } from '../../../../navigation/runtime/transition-engine/transition-transaction';
+import { readCurrentResidentWorldEntry } from '../../../../navigation/runtime/resident-world-read-registry';
+import {
+  isSearchPresentationAtFloor,
+  subscribeSearchPresentationFloor,
+} from '../../runtime/map/search-presentation-floor-signal';
 
 import {
   isPerfScenarioAttributionActive,
@@ -3229,27 +3234,75 @@ const useSearchMapNativeRenderOwnerSync = ({
     // it changes (results change), so native can project it to screen space each
     // camera tick for LOD selection. Fire-and-forget; decoupled from the frame.
     {
-      const candidateCatalog = sourceFramePortRef.current?.getCandidateCatalog() ?? null;
+      // §Q redo — PRESENTER LAW (design §2): catalogs describe WORLD content; with no
+      // world-bearing entry resident, none may push. Kills the confirmed post-pop
+      // re-present: a fresh owner instance re-shipping the port's retained (dead)
+      // catalog re-synced the pin roster after the session's exit. Frame submits are
+      // NOT gated (exit frames ride them). `undefined` = decided-not-resident;
+      // `null` = no reader registered (boot) — do not gate.
+      const residentWorldEntry = readCurrentResidentWorldEntry();
+      const candidateCatalog =
+        residentWorldEntry === undefined
+          ? null
+          : (sourceFramePortRef.current?.getCandidateCatalog() ?? null);
+      if (__DEV__ && residentWorldEntry === undefined) {
+        const retained = sourceFramePortRef.current?.getCandidateCatalog() ?? null;
+        if (retained != null && retained.key !== lastPushedCandidateCatalogKeyRef.current) {
+          // eslint-disable-next-line no-console
+          console.log('[PRESENTER] catalog push refused: no resident world entry');
+        }
+      }
       if (
         candidateCatalog != null &&
         candidateCatalog.key !== lastPushedCandidateCatalogKeyRef.current
       ) {
-        lastPushedCandidateCatalogKeyRef.current = candidateCatalog.key;
-        if (__DEV__) {
-          const invisible = candidateCatalog.entries.filter((e) => e.isInvisibleResident).length;
-          // eslint-disable-next-line no-console
-          console.log(
-            `[CATALOG] push n=${candidateCatalog.entries.length} invisible=${invisible} ` +
-              `first=${candidateCatalog.entries
-                .slice(0, 3)
-                .map((e) => `${e.markerKey}@r${e.rank}`)
-                .join(',')} inst=${instanceId.slice(-11)}`
-          );
+        // §Q redo T3 (C6 — the owner's "map items snap out", attributed): the session
+        // teardown clears the bus, the EMPTY catalog shipped instantly (roster empties
+        // at opacity 1 — pins vanish), and the exit ramp then faded an already-empty
+        // roster. An EMPTYING catalog defers to the presentation fade FLOOR: the exit
+        // ramp fades real pins, the roster empties after. A superseding non-empty
+        // catalog (new world entering) cancels the deferred empty.
+        const shouldDeferEmptyingCatalog =
+          candidateCatalog.entries.length === 0 &&
+          lastPushedCandidateCatalogKeyRef.current != null &&
+          !isSearchPresentationAtFloor();
+        if (shouldDeferEmptyingCatalog) {
+          const emptyCatalogKey = candidateCatalog.key;
+          const unsubscribeFloor = subscribeSearchPresentationFloor(() => {
+            unsubscribeFloor();
+            const latest = sourceFramePortRef.current?.getCandidateCatalog() ?? null;
+            if (
+              isSearchPresentationAtFloor() &&
+              latest != null &&
+              latest.key === emptyCatalogKey &&
+              latest.key !== lastPushedCandidateCatalogKeyRef.current
+            ) {
+              lastPushedCandidateCatalogKeyRef.current = latest.key;
+              void searchMapRenderController.setCandidateCatalog({
+                instanceId,
+                entries: latest.entries,
+              });
+            }
+          });
         }
-        void searchMapRenderController.setCandidateCatalog({
-          instanceId,
-          entries: candidateCatalog.entries,
-        });
+        if (!shouldDeferEmptyingCatalog) {
+          lastPushedCandidateCatalogKeyRef.current = candidateCatalog.key;
+          if (__DEV__) {
+            const invisible = candidateCatalog.entries.filter((e) => e.isInvisibleResident).length;
+            // eslint-disable-next-line no-console
+            console.log(
+              `[CATALOG] push n=${candidateCatalog.entries.length} invisible=${invisible} ` +
+                `first=${candidateCatalog.entries
+                  .slice(0, 3)
+                  .map((e) => `${e.markerKey}@r${e.rank}`)
+                  .join(',')} inst=${instanceId.slice(-11)}`
+            );
+          }
+          void searchMapRenderController.setCandidateCatalog({
+            instanceId,
+            entries: candidateCatalog.entries,
+          });
+        }
       }
     }
     searchMapRenderController.submitRenderFrameFireAndObserve(
