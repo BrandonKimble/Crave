@@ -407,6 +407,58 @@ code path, the abstraction has failed (B2's law extended to choreography).
 - P-5. ATTRIBUTION ITEM: images look washed out for a frame at reveal, clearing on
   settle (suspect fade-over-white compositing) — attribute before fixing.
 
+## P (round 2, 2026-07-15 owner feel-check — new RED targets for the plan engine)
+
+- P-6. List open: NO double motion ever — one sheet movement per transition (observed:
+  slides down, snaps to TOP as the new sheet, slides down again). One clock, one motion.
+- P-7. Shadow/mask must track the sheet edge exactly during motion (observed lagging).
+- P-8. White cover must not outlive the reveal (observed lingering over strip cutouts on
+  a repeat list search, making cutouts read as white).
+- P-9. ADOPT-pop camera: dismissing an adopted profile restores the WORLD's camera
+  (zoom back out to the list viewport) via the one camera-restore owner (J-3) — the
+  warm-open path currently skips the restore wiring.
+- P-10. Root-page switches obey the press-up content law too (observed: polls sheet
+  slides up AS polls before switching to the list page — content must commit on
+  press-up, motion carries the committed content).
+- P-11. Home dismiss regression note (for the record): the freeze-primitive wiring into
+  the OLD motion plane was reverted 2026-07-15 after two owner-caught regressions —
+  the snap-crossing swap ships ONLY inside the transition-transaction engine (§Q).
+
+## Q. THE ROOT SMELL (recorded 2026-07-15; the rip-out-and-redo verdict)
+
+Why transitions keep failing here — six compounding structural facts, named so the
+redo can be judged against them:
+
+- Q-1. **No reified transition.** "A transition" exists only as a correlation of side
+  effects across ~6 authorities (route reducer, PF flush, scene-stack legs, lane-player
+  gates, sheet snap runtime, search surface transactions, motion planes, native
+  transport). Nothing anywhere IS the transition — so lifecycle facts (when to swap,
+  when to reset a gate, what supersedes what) have no home. The stale-boundaryGate bug
+  was not a bug; it was this fact expressing itself.
+- Q-2. **Search's parallel universe.** Search's transaction family (redraw/dismiss
+  transactions, cover-state transport, surface phases) predates the generic engine and
+  is BRIDGED to it by correlation ids and threading, not unified. Every non-home mouth
+  falls between the two systems — hence "not riding the abstraction at all."
+- Q-3. **Clock proliferation.** paintAck, chromeAck, settleRamp, boundary marks,
+  poll-page readiness, native acks, snap settles — each a pairwise sync added to fix
+  one desync; none compose; the readiness JOIN exists only for the home reveal.
+- Q-4. **Golden paths as exceptions.** The zero-plane home dismiss is byte-guarded as a
+  special case rather than the degenerate output of a general engine — so any general
+  mechanism breaks on it (it skips the general lifecycle entirely).
+- Q-5. **Keyless singleton state.** Surface runtime / mounted results / floor signal are
+  module globals; a transition cannot be per-instance because its state is global.
+- Q-6. **Choreography as implicit time.** Ordering lives in effect sequencing
+  (batchedUpdates blocks, raf chains, microtask re-checks) instead of declared plans —
+  correctness by coincidence of scheduling.
+
+THE VERDICT: no further mechanism may be wired into these structures. The redo = ONE
+reified TransitionTransaction per stack mutation — sole owner of plan, phase, gates
+(swap/boundary/join), sheet target, content policy, map transition, camera intent —
+with every consumer reading IT, search's transaction family dissolving into it, and
+gate-reset-by-construction (a new transaction is a new object; stale gates become
+unrepresentable). The golden home dismiss must fall out as the degenerate plan, not
+survive as an exception.
+
 ## M. Owner decisions required before/during Phase 1
 
 - M-1. New-mouth-during-live-session: replace the session vs push a second (I-1) — and

@@ -26,15 +26,6 @@ import {
   useSearchSurfaceRuntimeSelector,
 } from '../surface/search-surface-runtime';
 import type { SheetPosition } from '../../../../overlays/sheetUtils';
-import {
-  hasCrossedSnap,
-  DEFAULT_SNAP_CROSSING_BASE_EPSILON_PX,
-  DEFAULT_SNAP_CROSSING_MAX_EPSILON_PX,
-} from '../../../../navigation/runtime/transition-engine/snap-crossing-predicate';
-import {
-  readDismissBoundarySwapGate,
-  subscribeDismissBoundarySwapGate,
-} from '../../../../navigation/runtime/transition-engine/dismiss-boundary-swap-gate';
 
 const SEARCH_DISMISS_PROOF_EARLY_PROGRESS_MIN = 0.1;
 const SEARCH_DISMISS_PROOF_EARLY_PROGRESS_MAX = 0.4;
@@ -43,14 +34,6 @@ const SEARCH_DISMISS_PROOF_MID_PROGRESS_MAX = 0.7;
 const SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT = 1;
 const SEARCH_DISMISS_VISUAL_HANDOFF_PROGRESS_MIN = 0.8;
 const SEARCH_DISMISS_MOTION_BOUNDARY_TIMEOUT_MS = 420;
-
-// TEMP Leg-4 attribution probe (strip after the owner feel-check passes).
-const logDismissBoundaryCrossing = (sheetY: number, targetY: number, velocity: number): void => {
-  // eslint-disable-next-line no-console
-  console.log(
-    `[BOUNDARY-CROSS] sheetY=${sheetY.toFixed(1)} targetY=${targetY.toFixed(1)} vel=${velocity.toFixed(2)}`
-  );
-};
 
 const clamp01 = (value: number): number => {
   'worklet';
@@ -203,14 +186,6 @@ export const useSearchDismissMotionPlaneRuntime = ({
   const dismissMotionPollPageReadyForBoundary = useSharedValue(0);
   const dismissMotionPollPageReleasedForBoundary = useSharedValue(0);
   const dismissMotionWaitingForPollPageAtBoundary = useSharedValue(0);
-  // Leg 3: previous-frame sheet Y for the crossing predicate's velocity scaling.
-  const dismissMotionPrevSheetY = useSharedValue(Number.NaN);
-  // Leg 3: the live player's paintAck handle (staged swap gate) — re-captured whenever
-  // the host registers/unregisters it, so the crossing worklet holds a live SV.
-  const dismissBoundarySwapGate = React.useSyncExternalStore(
-    subscribeDismissBoundarySwapGate,
-    readDismissBoundarySwapGate
-  );
   const dismissMotionStartY = useSharedValue(collapsedSnap);
   const dismissMotionCollapsedY = useSharedValue(collapsedSnap);
   const dismissMotionRawStartY = useSharedValue(collapsedSnap);
@@ -643,26 +618,11 @@ export const useSearchDismissMotionPlaneRuntime = ({
   useAnimatedReaction(
     () => {
       if (dismissMotionActive.value < 0.5 || dismissMotionBoundaryReached.value >= 0.5) {
-        dismissMotionPrevSheetY.value = sheetTranslateY.value;
         return 0;
       }
-      // Leg 3 (design §4.2, ledger N-3/O-2): the crossing is the velocity-scaled
-      // snap-crossing predicate — the tolerance arms one frame of travel BEFORE the
-      // numeric collapsed Y (capped), so the frame rendered AT the snap already shows
-      // the destination bundle. The old constant 1pt epsilon armed too late and then
-      // paid the runOnJS→store→React round trip (the owner's "slightly late" switch).
-      const currentY = sheetTranslateY.value;
-      const velocityPxPerFrame = currentY - dismissMotionPrevSheetY.value;
-      dismissMotionPrevSheetY.value = currentY;
-      const reachedCollapsedBoundary = hasCrossedSnap(
-        {
-          targetY: dismissMotionCollapsedY.value,
-          baseEpsilonPx: DEFAULT_SNAP_CROSSING_BASE_EPSILON_PX,
-          maxEpsilonPx: DEFAULT_SNAP_CROSSING_MAX_EPSILON_PX,
-        },
-        currentY,
-        velocityPxPerFrame
-      );
+      const reachedCollapsedBoundary =
+        sheetTranslateY.value >=
+        dismissMotionCollapsedY.value - SEARCH_DISMISS_COLLAPSED_BOUNDARY_EPSILON_PT;
       if (!reachedCollapsedBoundary) {
         return 0;
       }
@@ -671,21 +631,6 @@ export const useSearchDismissMotionPlaneRuntime = ({
         return 0;
       }
       dismissMotionWaitingForPollPageAtBoundary.value = 0;
-      // THE FREEZE PRIMITIVE'S VISUAL HALF: flip the staged swap gate (the live
-      // player's paintAck — roles staged at dismiss-arm with the outgoing held
-      // opaque) ON THE UI THREAD in the crossing frame. The JS half below
-      // (commitDismissBoundary) remains the store/React cleanup and may trail.
-      if (dismissBoundarySwapGate != null) {
-        if (dismissBoundarySwapGate.value < 0.5 && __DEV__) {
-          // TEMP Leg-4 attribution probe (strip after the owner feel-check passes).
-          runOnJS(logDismissBoundaryCrossing)(
-            currentY,
-            dismissMotionCollapsedY.value,
-            velocityPxPerFrame
-          );
-        }
-        dismissBoundarySwapGate.value = 1;
-      }
       return 1;
     },
     (boundaryReached) => {
@@ -696,12 +641,10 @@ export const useSearchDismissMotionPlaneRuntime = ({
     },
     [
       commitDismissBoundary,
-      dismissBoundarySwapGate,
       dismissMotionActive,
       dismissMotionBoundaryReached,
       dismissMotionCollapsedY,
       dismissMotionPollPageReadyForBoundary,
-      dismissMotionPrevSheetY,
       dismissMotionWaitingForPollPageAtBoundary,
       sheetTranslateY,
     ]
