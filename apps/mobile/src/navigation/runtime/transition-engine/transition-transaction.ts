@@ -62,6 +62,10 @@ export type TransitionTxnPlan = {
   /** Whether this transition moves the sheet (data for consumers; the snap runtime
    *  stays the sole physical motion source — O-9). */
   movesSheet: boolean;
+  /** Join-liveness degrade window override (ms). PLAN DATA: a fade-paced world revise
+   *  legitimately joins at native-ramp pace (~2s measured); the default fits
+   *  machine-paced switch joins. The watchdog is a safety net either way. */
+  joinLivenessMs?: number;
 };
 
 export type TransitionTxnPhase =
@@ -225,6 +229,7 @@ const armJoinLivenessWatchdog = (txn: TransitionTxn): void => {
   if (txn.plan.content.kind === 'freezeUntilSnap') {
     return;
   }
+  const windowMs = txn.plan.joinLivenessMs ?? JOIN_LIVENESS_MS;
   setTimeout(() => {
     if (txn.phase !== 'joining') {
       return;
@@ -232,13 +237,11 @@ const armJoinLivenessWatchdog = (txn: TransitionTxn): void => {
     reportViolation({
       reason: 'join_liveness_degrade',
       txnId: txn.txnId,
-      detail: `forced reveal after ${JOIN_LIVENESS_MS}ms; missing [${[
-        ...txn.pendingJoinInputs,
-      ].join(',')}]`,
+      detail: `forced reveal after ${windowMs}ms; missing [${[...txn.pendingJoinInputs].join(',')}]`,
     });
     advance(txn, 'revealed');
     listeners.forEach((listener) => listener());
-  }, JOIN_LIVENESS_MS);
+  }, windowMs);
 };
 
 /** A declared readiness input landed. Reveal fires when the LAST one lands. */

@@ -101,6 +101,16 @@ export const LifecycleHarnessBridge: React.FC = () => {
         executeEntityRefActionRef.current(ref);
         return readLifecycleState();
       }
+      if (kind === 'toggleTab') {
+        const toggle = readPerfScenarioCommandRegistry().toggleTab;
+        if (!toggle) {
+          throw new Error('toggleTab not registered (results surface not mounted?)');
+        }
+        toggle({
+          tab: (payload.tab === 'dishes' ? 'dishes' : 'restaurants') as 'dishes' | 'restaurants',
+        });
+        return readLifecycleState();
+      }
       if (kind === 'shortcut') {
         const submit = readPerfScenarioCommandRegistry().submitShortcutRestaurants;
         if (!submit) {
@@ -109,7 +119,7 @@ export const LifecycleHarnessBridge: React.FC = () => {
         void submit();
         return readLifecycleState();
       }
-      throw new Error(`unknown mouth kind '${kind}' (list|restaurant|entity|shortcut)`);
+      throw new Error(`unknown mouth kind '${kind}' (list|restaurant|entity|shortcut|toggleTab)`);
     });
 
     const unregisterDismiss = registerLifecycleHarnessVerb('dismiss', (payload) => {

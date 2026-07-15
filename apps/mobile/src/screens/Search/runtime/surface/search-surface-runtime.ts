@@ -705,7 +705,12 @@ export class SearchSurfaceRuntime {
       liveTxn.phase !== 'superseded' &&
       liveTxn.phase !== 'revealed'
     ) {
-      this.q2ShadowTxnId = null;
+      // A RE-ARM of the same interaction while OUR shadow is joining (attributed live:
+      // toggles arm twice) keeps the shadow — nulling here orphaned it and every offer
+      // bounced. Only a ROUTE txn's window suppresses staging.
+      if (liveTxn.txnId !== this.q2ShadowTxnId) {
+        this.q2ShadowTxnId = null;
+      }
       return;
     }
     const bornSheetReady = this.snapshot.redrawTransaction?.readiness.sheetReady !== false;
@@ -713,9 +718,20 @@ export class SearchSurfaceRuntime {
       this.q2ShadowTxnId = null;
       return;
     }
+    // Plans differ by REASON (semantics measured on the trace, 2026-07-15):
+    // - toggle: a canonical swap — the cards swap IS the reveal ({paint}); the marker
+    //   crossfade completes on its own native clock (2-5s dev-lane) and lands as the
+    //   SETTLE, not a reveal input (declaring mapFrame parked reveal on a settle fact).
+    // - world revise (new data): the T4 joint — cards land as the pins begin their
+    //   fade, so reveal joins {paint, mapFrame} (measured 100-315ms).
+    const isToggle = this.snapshot.redrawTransaction?.reason === 'toggle';
     const txn = stageTransitionTxn(
       { kind: 'revise', targetSceneKey: 'search', sourceSceneKey: 'search', entryId: null },
-      { content: { kind: 'skeleton' }, joinInputs: ['paint', 'mapFrame'], movesSheet: false }
+      {
+        content: { kind: 'skeleton' },
+        joinInputs: isToggle ? ['paint'] : ['paint', 'mapFrame'],
+        movesSheet: false,
+      }
     );
     commitTransitionTxn(txn);
     sealTransitionTxnJoin(txn);
@@ -805,7 +821,6 @@ export class SearchSurfaceRuntime {
     // transaction-keyed readiness collector. OBSERVE-ONLY: this only logs/records
     // and does NOT change the existing reveal join above (still the sole driver).
     markActiveSceneContentGate('cards', transactionId);
-    this.offerQ2ShadowJoin('paint');
   };
 
   public markRedrawNativeMarkerFrameReady = (
@@ -818,14 +833,12 @@ export class SearchSurfaceRuntime {
     });
     // Phase 1 — dual-report (observe-only). See markRedrawCardsReady above.
     markActiveSceneContentGate('nativeMarkerFrame', transactionId);
-    this.offerQ2ShadowJoin('mapFrame');
   };
 
   public markRedrawSheetReady = (transactionId: string | null | undefined): void => {
     this.patchActiveRedrawTransaction(transactionId, { sheetReady: true });
     // Phase 1 — dual-report (observe-only). See markRedrawCardsReady above.
     markActiveSceneContentGate('sheet', transactionId);
-    this.offerQ2ShadowJoin('sheet');
   };
 
   // Transition-perf fence: `sheetReady` means "the sheet is not physically moving for
@@ -881,7 +894,6 @@ export class SearchSurfaceRuntime {
       );
     }
     this.patchActiveRedrawTransaction(transactionId, { nativeMarkerFrameReady: true });
-    this.offerQ2ShadowJoin('mapFrame');
   };
 
   public syncResultsPageBodyBundle = (bodyBundle: SearchSurfaceResultsBodyBundle | null): void => {
@@ -1201,6 +1213,19 @@ export class SearchSurfaceRuntime {
         dismissTransactionId: this.snapshot.dismissTransaction?.id ?? null,
       });
       return;
+    }
+    // Q-2 shadow offers live at THIS chokepoint — every readiness landing (public mark
+    // methods AND the toggle lane's internal patches) flows through here; the public
+    // wrappers are not total (attributed live: toggle readiness bypassed them and the
+    // shadow degraded at 600ms with the toggle visibly done in ~300ms).
+    if (patch.cardsReady === true) {
+      this.offerQ2ShadowJoin('paint');
+    }
+    if (patch.nativeMarkerFrameReady === true) {
+      this.offerQ2ShadowJoin('mapFrame');
+    }
+    if (patch.sheetReady === true) {
+      this.offerQ2ShadowJoin('sheet');
     }
     const nextRedrawTransaction = {
       ...redrawTransaction,
