@@ -116,7 +116,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     bodySurface: 'white',
   },
   pollDetail: {
-    skeleton: { rowType: 'comment', frostBacking: true },
+    skeleton: { rowType: 'comment' },
     strip: 'none',
     failure: 'announcer',
     header: 'persistent',
@@ -125,7 +125,7 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
     bodySurface: 'white',
   },
   pollCreation: {
-    skeleton: { rowType: 'comment', frostBacking: true },
+    skeleton: { rowType: 'comment' },
     strip: 'none',
     failure: 'announcer',
     header: 'persistent',

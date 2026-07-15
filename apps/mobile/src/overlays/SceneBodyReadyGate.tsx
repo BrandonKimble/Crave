@@ -47,8 +47,9 @@ export const SceneBodyReadyGate: React.FC<{
   if (!pending && failure?.isError !== true) {
     return <>{children ?? null}</>;
   }
-  const skeletonSpec =
-    resolvedSceneKey != null ? getSceneFoundationSpec(resolvedSceneKey)?.skeleton : undefined;
+  const foundationSpec =
+    resolvedSceneKey != null ? getSceneFoundationSpec(resolvedSceneKey) : undefined;
+  const skeletonSpec = foundationSpec?.skeleton;
   if (skeletonSpec == null) {
     if (__DEV__ && !barkedMissingSceneKey) {
       barkedMissingSceneKey = true;
@@ -65,7 +66,12 @@ export const SceneBodyReadyGate: React.FC<{
     <View pointerEvents="none" style={styles.pendingSurface}>
       <SceneLoadingSurface
         rowType={skeletonSpec.rowType}
-        frostBacking={skeletonSpec.frostBacking}
+        // §Q redo T2 (the white-on-white class, owner "white sheet no skeleton"):
+        // self-frost DERIVES from the scene's body surface — a frost-through skeleton
+        // over an opaque white body renders invisible holes (listDetail, caught by
+        // screenshot; 13 sibling rows shared the latent class). An explicit row value
+        // still wins; the derivation is the default the field should always have had.
+        frostBacking={skeletonSpec.frostBacking ?? foundationSpec?.bodySurface === 'white'}
       />
     </View>
   );
