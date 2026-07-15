@@ -43,6 +43,8 @@ import { PostPhotosFunnelHost } from './src/overlays/PostPhotosFunnelHost';
 import PollNotificationListener from './src/providers/PollNotificationListener';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
 import { PerfScenarioCoordinator } from './src/perf/PerfScenarioCoordinator';
+import { LifecycleHarnessCoordinator } from './src/perf/lifecycle-harness/LifecycleHarnessCoordinator';
+import { LifecycleHarnessBridge } from './src/perf/lifecycle-harness/LifecycleHarnessBridge';
 import { CutoutSkeletonDevPreview } from './src/components/skeletons/CutoutSkeletonDevPreview';
 import { useSystemStatusStore } from './src/store/systemStatusStore';
 import { OVERLAY_CORNER_RADIUS } from './src/overlays/overlaySheetStyles';
@@ -119,11 +121,13 @@ export default function App() {
           <SafeAreaProvider initialMetrics={initialWindowMetrics ?? undefined}>
             <NetworkStatusListener />
             <PerfScenarioCoordinator />
+            {__DEV__ ? <LifecycleHarnessCoordinator /> : null}
             <AuthProvider>
               <AppRouteCoordinator>
                 <MainLaunchCoordinator>
                   <AppRouteSceneRuntimeProvider>
                     <PollNotificationListener />
+                    {__DEV__ ? <LifecycleHarnessBridge /> : null}
                     <PurchasesProvider />
                     <EntitlementLapseHost />
                     {/* W2 photo funnel (page-registry §7.4): the app-wide 2-option modal host
