@@ -246,6 +246,60 @@ demand); ranker picks the genuinely deficient market first.
 - Runtime quota note: each mint costs ~2 non-tile calls; organic minting is
   self-throttling (only city-scale viewports over uncovered ground).
 
+### Minting mechanics — DESIGN OF RECORD (session 2026-07-14)
+
+Kept as-is (already-correct primitives, verified in code): negative cache
+(market_bootstrap_events no_boundary, 30-day TTL, ~1km radius) and single-flight
+dedupe (inFlightBootstraps keyed by ~100m cell). geo_boundary_features unique
+triple = idempotency.
+
+**M1 — Resolution ladder, ordered by cost (one resolution per request — collapse
+the two call sites):**
+  1. Stored polygons (DB, free) — with US pre-seed this is the ~100% domestic path.
+     Build check: GiST index on core_markets.geometry (~20k rows post-seed).
+  2. Negative cache hit → stop ("this area").
+  3. Reverse geocode the anchor (user-loc-if-in-viewport else viewport center) —
+     cheap pool (20K/mo). Returns municipality + country + the municipality's rough
+     bbox (TomTom response viewport field).
+  4. CONTAINMENT GATE, free: municipality bbox must dominantly cover the app
+     viewport. Continental viewport over one town's bbox → fail → no polygon spend,
+     "this area". This is the gate — derived from the boundary itself, no distance
+     constants.
+  5. Only then spend the scarce call: additionalData polygon fetch (2.5K/mo pool)
+     → upsert boundary + locality market (is_collectable=false, as today).
+
+**M2 — Caller-declared blocking (the snappiness fix):** minting is currently
+awaited inside the search request (two TomTom round trips in-path —
+market-registry.service.ts:344). New contract: resolveViewportCoverage takes
+mode-appropriate minting =
+  - 'await' — poll creation only (user explicitly needs the market; spinner OK);
+  - 'enqueue' — search + polls_read: fire-and-forget background mint; respond NOW
+    with status 'unresolved' ("this area" header); the market exists by the next
+    interaction. Reads never wait on TomTom.
+
+**M3 — International:** delete the US-only country gate
+(tomtom-boundary-bootstrap normalizeCountryCode). Key shape:
+locality-<countryCode>[-<subdivisionCode>]-<slug> — subdivision optional (not all
+countries have one; take TomTom's countrySubdivision when present). No regional
+markets abroad at mint time: ROLL-UP IS A COLLECTION-ONBOARDING ACT, not a minting
+act — when a metro is onboarded (operator), its regional polygon lands and the
+outermost-covering resolver nests existing localities automatically (that query is
+already type-agnostic and anticipates this).
+
+**M4 — US-seed gaps (unincorporated/CDP land the gazetteer misses):** lazy mint
+covers them — reverse geocode either returns a municipality anyway (mint) or
+nothing (negative-cache; header "this area"). No special path.
+
+**M5 — Seeding activation policy (RESOLVED):** pre-seeded municipalities are
+active display markets from day one — instant header/poll-bucket resolution with
+zero API calls is the point of the seed.
+
+**M6 — Quota degradation:** mint queue checks the monthly Search-API ledger; on
+exhaustion, mints defer (queue drains next month); reads are unaffected by
+construction (they never wait). Poll creation on an exhausted month: create against
+the reverse-geocoded name with polygon backfilled by the queue (boundary-pending
+market) — never block a user's poll on quota.
+
 ---
 
 ## Leg 6 — Score calibration: measured audience gain (DESIGN OF RECORD, ratified 2026-07-14)

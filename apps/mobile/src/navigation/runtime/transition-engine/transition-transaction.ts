@@ -36,7 +36,16 @@ export type TransitionContentPolicy =
   | { kind: 'holdOutgoingUntilSettle' }
   | { kind: 'freezeUntilSnap' };
 
-export type TransitionJoinInput = 'paint' | 'chrome' | 'mapFrame' | 'camera' | 'boundary';
+export type TransitionJoinInput =
+  | 'paint'
+  | 'chrome'
+  | 'mapFrame'
+  | 'camera'
+  | 'boundary'
+  // Q-2: the sheet-motion readiness axis (the redraw family's sheetReady — "the sheet is
+  // not physically moving for this transition"). Declared by in-place world revises whose
+  // arm expects a reveal slide.
+  | 'sheet';
 
 export type TransitionMutation = {
   kind: 'push' | 'closeActive' | 'popToEntry' | 'popToRoot' | 'setRoot' | 'preserve' | 'revise';

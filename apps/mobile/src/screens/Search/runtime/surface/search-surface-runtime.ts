@@ -1,7 +1,15 @@
 import React, { useSyncExternalStore } from 'react';
+import {
+  commitTransitionTxn,
+  getLiveTransitionTxn,
+  offerTransitionJoinInput,
+  sealTransitionTxnJoin,
+  settleTransitionTxn,
+  stageTransitionTxn,
+  type TransitionJoinInput,
+} from '../../../../navigation/runtime/transition-engine/transition-transaction';
 import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
 
-import { offerTransitionJoinInput } from '../../../../navigation/runtime/transition-engine/transition-transaction';
 import {
   isPerfScenarioAttributionActive,
   logPerfScenarioAttributionEvent,
@@ -522,6 +530,13 @@ export class SearchSurfaceRuntime {
     id: string;
   } | null = null;
 
+  // Q-2 SHADOW (§Q redo — dissolving the parallel redraw-transaction family into THE
+  // TransitionTxn): an IN-PLACE world redraw (toggle / re-slice / re-submit — no route
+  // mutation, so no txn exists today) stages a 'revise' transaction whose join inputs
+  // ARE the redraw's readiness marks. Shadow phase: trace-only — no consumer reads it;
+  // the redraw family stays the driver until the traces prove the joins coincide.
+  private q2ShadowTxnId: string | null = null;
+
   private pendingRedrawMotionArm: {
     id: string;
     input: Required<Omit<BeginRedrawTransactionInput, 'transactionId'>> &
@@ -671,6 +686,54 @@ export class SearchSurfaceRuntime {
     });
     this.redrawSheetMotionExpectedTransactionId = null;
     this.armRedrawCoverWatchdog(id);
+    this.stageQ2ShadowTransitionTxn(id);
+  }
+
+  // Q-2 shadow stager — STATIONARY in-place revises only. Two exclusions, both
+  // measured on the trace (2026-07-15): (1) a route txn in its window owns the reveal
+  // (staging would supersede it); (2) a born-motion-EXPECTED arm (sheetReady:false) is
+  // a reveal-ENTER flow whose route txn stages ~300ms later — the shadow staged there
+  // and was cleanly superseded by the push, so the arbitration answer (design §4.6) is
+  // that motion-expected redraws BELONG to their route transaction (the future real
+  // cut amends {mapFrame, sheet} into it); the shadow simply skips them.
+  private stageQ2ShadowTransitionTxn(id: string): void {
+    void id;
+    const liveTxn = getLiveTransitionTxn();
+    if (
+      liveTxn != null &&
+      liveTxn.phase !== 'settled' &&
+      liveTxn.phase !== 'superseded' &&
+      liveTxn.phase !== 'revealed'
+    ) {
+      this.q2ShadowTxnId = null;
+      return;
+    }
+    const bornSheetReady = this.snapshot.redrawTransaction?.readiness.sheetReady !== false;
+    if (!bornSheetReady) {
+      this.q2ShadowTxnId = null;
+      return;
+    }
+    const txn = stageTransitionTxn(
+      { kind: 'revise', targetSceneKey: 'search', sourceSceneKey: 'search', entryId: null },
+      { content: { kind: 'skeleton' }, joinInputs: ['paint', 'mapFrame'], movesSheet: false }
+    );
+    commitTransitionTxn(txn);
+    sealTransitionTxnJoin(txn);
+    this.q2ShadowTxnId = txn.txnId;
+  }
+
+  // Q-2 shadow offer: readiness marks OFFER their input iff the live txn is OUR shadow
+  // (never a route txn — a route push's 'paint' means the LEG painted, not cards-data).
+  private offerQ2ShadowJoin(input: TransitionJoinInput): void {
+    const liveTxn = getLiveTransitionTxn();
+    if (this.q2ShadowTxnId == null || liveTxn?.txnId !== this.q2ShadowTxnId) {
+      return;
+    }
+    offerTransitionJoinInput(input);
+    if (liveTxn.phase === 'revealed') {
+      settleTransitionTxn(liveTxn);
+      this.q2ShadowTxnId = null;
+    }
   }
 
   // Reset the deterministic cover-lift watchdog to THIS (latest) transaction. See the field doc above.
@@ -742,6 +805,7 @@ export class SearchSurfaceRuntime {
     // transaction-keyed readiness collector. OBSERVE-ONLY: this only logs/records
     // and does NOT change the existing reveal join above (still the sole driver).
     markActiveSceneContentGate('cards', transactionId);
+    this.offerQ2ShadowJoin('paint');
   };
 
   public markRedrawNativeMarkerFrameReady = (
@@ -754,12 +818,14 @@ export class SearchSurfaceRuntime {
     });
     // Phase 1 — dual-report (observe-only). See markRedrawCardsReady above.
     markActiveSceneContentGate('nativeMarkerFrame', transactionId);
+    this.offerQ2ShadowJoin('mapFrame');
   };
 
   public markRedrawSheetReady = (transactionId: string | null | undefined): void => {
     this.patchActiveRedrawTransaction(transactionId, { sheetReady: true });
     // Phase 1 — dual-report (observe-only). See markRedrawCardsReady above.
     markActiveSceneContentGate('sheet', transactionId);
+    this.offerQ2ShadowJoin('sheet');
   };
 
   // Transition-perf fence: `sheetReady` means "the sheet is not physically moving for
@@ -815,6 +881,7 @@ export class SearchSurfaceRuntime {
       );
     }
     this.patchActiveRedrawTransaction(transactionId, { nativeMarkerFrameReady: true });
+    this.offerQ2ShadowJoin('mapFrame');
   };
 
   public syncResultsPageBodyBundle = (bodyBundle: SearchSurfaceResultsBodyBundle | null): void => {
