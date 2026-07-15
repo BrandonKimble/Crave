@@ -53,10 +53,9 @@ import { areOverlayRoutesEqual } from '../../navigation/runtime/app-overlay-rout
 import type { RouteOverlayNavigationSnapshot } from '../../navigation/runtime/route-overlay-navigation-snapshot-contract';
 import { favoriteListKeys } from '../../hooks/use-favorite-lists';
 import {
-  isWorldRevealAdmitted,
-  recordWorldRevealAdmission,
-  subscribeWorldRevealAdmission,
-} from '../../screens/Search/runtime/shared/world-reveal-admission-store';
+  getSearchSurfaceRuntime,
+  selectSearchSurfaceVisualPolicy,
+} from '../../screens/Search/runtime/surface/search-surface-runtime';
 import {
   getSearchMountedResultsDataSnapshot,
   subscribeSearchMountedResultsDataSnapshot,
@@ -459,42 +458,41 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
         : null;
     }
   );
-  // §Q redo T4 (the JOINT, N-2/P-13): world rows stay under the skeleton until THIS
-  // world's admit tick (cards admit + native ramp commanded in one place) — cards land
-  // as the pins begin their fade, never before (screenshot-proven violation: full
-  // cards, zero pins). Monotonic per key: a re-presented admitted world shows at once.
-  // BOUNDED LOUD FALLBACK (the D3 visual-floor precedent; screenshot-caught: the
-  // reused-resident re-enter path emits no batch events → the gate stranded the
-  // skeleton over fully-visible pins): 900ms after the world commits, admit anyway
-  // and bark — a joint miss is a defect to attribute, never a stuck page.
-  const worldRevealAdmitted = React.useSyncExternalStore(subscribeWorldRevealAdmission, () => {
-    if (!worldBacked || resolvedListId == null) {
-      return true;
+  // §Q redo T4 (the JOINT, N-2/P-13) — REBUILT keyless (the first cut kept a SECOND
+  // admission store keyed by request strings, and the two sides minted DIFFERENT key
+  // vocabularies — presentation keys vs the API's `favorites:<id>:<ts>` — so the gate
+  // could only ever resolve via escape hatches and a 900ms fallback; attributed live).
+  // The ONE admission truth is the search surface's own reveal collector: a live
+  // redraw transaction admits its results body when {cards, nativeMarkerFrame, sheet}
+  // readiness joins (canAdmitResultsBody — the exact same gate the results cards and
+  // the native enter-start ride). The panel holds its rows while THE live world redraw
+  // is unjoined; there is exactly one world surface, so no identity key is needed.
+  const worldRevealAdmitted = React.useSyncExternalStore(
+    React.useCallback((listener: () => void) => getSearchSurfaceRuntime().subscribe(listener), []),
+    () => {
+      if (!worldBacked) {
+        return true;
+      }
+      const policy = selectSearchSurfaceVisualPolicy(getSearchSurfaceRuntime().getSnapshot());
+      return policy.phase !== 'results_redrawing' || policy.canAdmitResultsBody;
     }
-    const mountedKey = getSearchMountedResultsDataSnapshot().resultsRequestKey;
-    if (mountedKey == null || !mountedKey.startsWith(`favorites:${resolvedListId}:`)) {
-      return true; // no mounted world yet — the worldResults null gate owns pending
-    }
-    return isWorldRevealAdmitted(mountedKey);
-  });
+  );
+  // LOUD RED instrument (never a mechanism): with the shared seam a hold can only
+  // outlive the redraw if the surface itself is stuck — bark so it gets attributed.
   React.useEffect(() => {
     if (!worldBacked || worldResults == null || worldRevealAdmitted) {
       return undefined;
     }
     const timeout = setTimeout(() => {
-      const mountedKey = getSearchMountedResultsDataSnapshot().resultsRequestKey;
-      if (mountedKey != null && !isWorldRevealAdmitted(mountedKey)) {
-        if (__DEV__) {
-          // eslint-disable-next-line no-console
-          console.error(
-            `[JOINT] world reveal admission FALLBACK for ${mountedKey} — no admit tick within 900ms of world commit (attribute the enter path)`
-          );
-        }
-        recordWorldRevealAdmission(mountedKey);
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[JOINT] world reveal hold exceeded 1500ms for list ${resolvedListId ?? 'unknown'} — the live redraw transaction never joined (attribute the surface readiness, not this gate)`
+        );
       }
-    }, 900);
+    }, 1500);
     return () => clearTimeout(timeout);
-  }, [worldBacked, worldResults, worldRevealAdmitted]);
+  }, [worldBacked, worldResults, worldRevealAdmitted, resolvedListId]);
   // Strip 'world' flip (wave-4 §3): a world-backed list serves ALL slices from the
   // presented world — a strip chip re-slices the WORLD (map pins + cards together),
   // not just the panel's card list. The panel's own query survives only for
