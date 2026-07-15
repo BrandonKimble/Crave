@@ -7,6 +7,7 @@ import type { EntityRef } from '../../navigation/runtime/entity-ref-action-polic
 import { getSearchSurfaceRuntime } from '../../screens/Search/runtime/surface/search-surface-runtime';
 import { readPerfScenarioCommandRegistry } from '../perf-scenario-command-registry';
 import { runHeaderCloseAction } from '../../navigation/runtime/header-nav-action-registry';
+import { resolveResidentWorldEntry } from '../../navigation/runtime/app-overlay-route-stack-algebra';
 import { closeSearchResultsSession } from '../../overlays/search-results-header-live-state';
 import type { OverlayKey } from '../../overlays/types';
 
@@ -38,13 +39,25 @@ export const LifecycleHarnessBridge: React.FC = () => {
           sheetSnaps[scene] = null;
         }
       }
+      const residentEntry = resolveResidentWorldEntry(routeState);
       return {
         root: routeState.rootOverlayKey,
         activeKey: routeState.activeOverlayRoute.key,
         stack: routeState.overlayRouteStack.map((entry) => ({
           key: entry.key,
           entryId: entry.entryId ?? null,
+          desireKind: entry.desire?.kind ?? null,
         })),
+        // Residency composes at READ time (derive-not-mirror): the entry from the
+        // stack, world readiness from the mounted-results store truth.
+        resident:
+          residentEntry == null
+            ? null
+            : {
+                entryId: residentEntry.entryId,
+                key: residentEntry.key,
+                desireKind: residentEntry.desire?.kind ?? null,
+              },
         stackLength: routeState.overlayRouteStackLength,
         surface: {
           activeBundleKind: surface.activeBundle.kind,

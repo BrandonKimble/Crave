@@ -63,17 +63,20 @@ send open_scene "f1o$RUN" '{"scene":"search"}' >/dev/null; settle 3
 A=$(send trigger_mouth "f1t$RUN" '{"kind":"shortcut"}'); settle 6
 S=$(send read_lifecycle_state "f1s$RUN");
 check "shortcut presents results" "$S" "a['state']['surface']['activeBundleKind']=='results'"
+check "CONFORMANCE: resident entry exists when surface shows results" "$S" "a['state']['resident'] is not None"
 check "session entry pushed (depth 2)" "$S" "a['state']['stackLength']==2"
 check "sheet at middle on reveal" "$S" "a['state']['sheetSnaps']['search']=='middle'"
 D=$(send dismiss "f1d$RUN" '{"affordance":"searchBarX"}'); settle 5
 E=$(send read_lifecycle_state "f1e$RUN")
 check "dismiss lands home depth 1" "$E" "a['state']['stackLength']==1 and a['state']['root']=='search'"
 check "no residual results bundle" "$E" "a['state']['surface']['activeBundleKind']!='results'"
+check "CONFORMANCE: resident==root-only after dismiss (no desire above root)" "$E" "a['state']['resident'] is None or (a['state']['resident']['key']=='search' and a['state']['resident']['desireKind'] is None)"
 
 echo "=== FLOW 2: home list tile mouth -> searchBarX ==="
 A=$(send trigger_mouth "f2t$RUN" "{\"kind\":\"list\",\"entityId\":\"$LIST_A\",\"label\":\"Out-of-towner tour\",\"listType\":\"restaurant\"}"); settle 8
 S=$(send read_lifecycle_state "f2s$RUN")
 check "list world presents into listDetail" "$S" "a['state']['activeKey']=='listDetail' and a['state']['surface']['activeBundleKind']=='results'"
+check "CONFORMANCE: listDetail entry is resident w/ list desire" "$S" "a['state']['resident'] is not None and a['state']['resident']['key']=='listDetail' and a['state']['resident']['desireKind']=='list'"
 D=$(send dismiss "f2d$RUN" '{"affordance":"searchBarX"}'); settle 5
 E=$(send read_lifecycle_state "f2e$RUN")
 check "X returns to origin (home root, depth1)" "$E" "a['state']['stackLength']==1 and a['state']['root']=='search'"

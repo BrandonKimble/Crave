@@ -56,6 +56,25 @@ export const createSentinelRouteEntry = <K extends OverlayKey>(
     desire: null,
   }) as OverlayRouteEntry<K>;
 
+// Leg 4 (design §2): THE residency derivation — the nearest world-bearing entry at or
+// below top-of-stack. Pure; the stack's HALF of the presenter's input. World READINESS
+// is deliberately NOT mirrored onto entries: a stamped mirror proved ordering-sensitive
+// on the rig (present-before-push stamped the root; the conformance harness caught it
+// in one run) — readiness stays seam/store truth, composed with this entry at READ time.
+// Plain scenes (no desire, not 'search') are transparent by construction (E2).
+export const resolveResidentWorldEntry = (routeState: {
+  overlayRouteStack: readonly OverlayRouteEntry[];
+}): OverlayRouteEntry | null => {
+  const stack = routeState.overlayRouteStack;
+  for (let index = stack.length - 1; index >= 0; index -= 1) {
+    const entry = stack[index];
+    if (entry != null && (entry.key === 'search' || entry.desire != null)) {
+      return entry;
+    }
+  }
+  return null;
+};
+
 // Leg 4 (design §1.3): stamp the world identity onto the entry that PRESENTS it —
 // called from the launch chokepoint when a world launches into the active entry.
 // Entry identity is preserved (same entryId, same leg); only the desire fact lands.
@@ -125,9 +144,9 @@ export const areOverlayRoutesEqual = (
     right != null &&
     left.entryId === right.entryId &&
     left.params === right.params &&
-    // Leg 4: desire participates in value identity — a desire-only stamp is a REAL
-    // state change; omitting it here silently swallowed the mutation (the classic
-    // "snapshot equality omits a load-bearing field" class).
+    // Leg 4: desire participates in value identity — a stamp-only change is a REAL
+    // state change; omitting a field here silently swallows the mutation (the classic
+    // "snapshot equality omits a load-bearing field" class, hit live once).
     left.desire === right.desire);
 
 export const areOverlayRouteStacksEqual = (
