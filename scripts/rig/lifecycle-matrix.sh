@@ -103,6 +103,20 @@ check "X from bookmarks returns to bookmarks" "$E" "a['state']['root']=='bookmar
 check "world torn down" "$E" "a['state']['surface']['activeBundleKind']!='results'"
 send open_scene "f4z$RUN" '{"scene":"search"}' >/dev/null; settle 3
 
+echo "=== FLOW 5: drill-in gate (Leg 2d) — list world -> restaurant sub-mouth -> back ==="
+UROKO="fb6459cb-d05a-424c-9bce-f860dfaf1df2"
+A=$(send trigger_mouth "f5t$RUN" "{\"kind\":\"list\",\"entityId\":\"$LIST_A\",\"label\":\"Out-of-towner tour\",\"listType\":\"restaurant\"}"); settle 8
+S=$(send read_lifecycle_state "f5s$RUN")
+check "list world presented" "$S" "a['state']['activeKey']=='listDetail' and a['state']['surface']['activeBundleKind']=='results'"
+B=$(send trigger_mouth "f5r$RUN" "{\"kind\":\"restaurant\",\"entityId\":\"$UROKO\",\"label\":\"Uroko\"}"); settle 8
+S2=$(send read_lifecycle_state "f5u$RUN")
+check "restaurant pushed over list world (depth 3)" "$S2" "a['state']['activeKey']=='restaurant' and a['state']['stackLength']==3"
+D=$(send dismiss "f5b$RUN" '{"affordance":"back"}'); settle 5
+E=$(send read_lifecycle_state "f5e$RUN")
+check "back reveals listDetail (level restored)" "$E" "a['state']['activeKey']=='listDetail' and a['state']['stackLength']==2"
+check "list world SURVIVED the sub-mouth round trip (B3)" "$E" "a['state']['surface']['activeBundleKind']=='results'"
+send dismiss "f5c$RUN" '{"affordance":"searchBarX"}' >/dev/null; settle 4
+
 echo ""
 echo "=== MATRIX v0: PASS=$PASS FAIL=$FAIL EXPECTED-RED=$XRED ==="
 [ "$FAIL" -eq 0 ] && exit 0 || exit 1
