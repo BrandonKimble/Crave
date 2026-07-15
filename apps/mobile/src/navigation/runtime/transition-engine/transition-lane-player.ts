@@ -31,7 +31,6 @@ import type {
   TransitionDescriptor,
   TransitionSpringConfig,
 } from './transition-descriptor-contract';
-import { offerTransitionJoinInput } from './transition-transaction';
 
 // ── The single resolved spring config ─────────────────────────────────────────
 // Near-critical damping + overshootClamping. Since the ramp drives no visible pixels this only
@@ -155,9 +154,9 @@ export const useTransitionLanePlayer = (): TransitionLanePlayer => {
   );
 
   const markPaintAck = React.useCallback(() => {
-    // Flip the gate so the content + header lanes commit the incoming in one frame.
-    // §Q redo T1b: paint truth OFFERS to the live transaction wherever it lands.
-    offerTransitionJoinInput('paint');
+    // §Q redo T1c: DEPRECATED direct write — the transaction's 'revealed' edge owns the
+    // gate now (host subscription); sources offer. Kept for any straggler callers
+    // (grep shows none); T5 deletes it with the joinRevealOnChromeAck scaffolding.
     paintAck.value = 1;
   }, [paintAck]);
 

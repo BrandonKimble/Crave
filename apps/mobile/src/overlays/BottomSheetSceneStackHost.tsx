@@ -20,6 +20,7 @@ import {
   getLiveTransitionTxn,
   offerTransitionJoinInput,
   sealLiveTransitionTxnJoin,
+  subscribeTransitionTxn,
 } from '../navigation/runtime/transition-engine/transition-transaction';
 
 import { SceneStackBodyContentLayer, SceneStackBodyFrame } from './BottomSheetSceneStackBodyLayer';
@@ -1370,6 +1371,21 @@ const ActiveSceneStackSurfaceHost = React.memo(
     // (reportScenePaint, flipped by the incoming body's first onLayout) gates the content
     // visible-commit — it is the content completer.
     const player = useTransitionLanePlayer();
+    // §Q redo T1c (INVERSION — the one visible-commit owner): the transaction's
+    // 'revealed' edge writes the swap gate. Sources only OFFER; the joined-reveal
+    // policy lives in the txn's declared join. A superseded txn can never flip the
+    // gate (its reveal never fires); a new transition's hold re-pins 0 via the PF
+    // early-write exactly as before.
+    React.useEffect(
+      () =>
+        subscribeTransitionTxn(() => {
+          const live = getLiveTransitionTxn();
+          if (live != null && live.phase === 'revealed' && player.paintAck.value !== 1) {
+            player.paintAck.value = 1;
+          }
+        }),
+      [player]
+    );
     // Stable, ref-backed bridge so the player's onSettle never re-fires the layout effect (and thus
     // never re-starts / wiggles) when the callback identity moves. The callback IS stable today
     // (bound once in the provider), but the ref keeps that guarantee local.
@@ -1505,9 +1521,10 @@ const ActiveSceneStackSurfaceHost = React.memo(
           joinRevealOnChromeAck(presented, () => {
             liveSwapRoles.value = { presented, outgoing: null };
             player.seize();
-            // §Q redo T1b: the warm flip is paint truth too — offer it.
+            // §Q redo T1c (INVERSION): offer both inputs (see reportScenePaint) — the
+            // txn's 'revealed' edge writes the gate.
             offerTransitionJoinInput('paint');
-            player.paintAck.value = 1;
+            offerTransitionJoinInput('chrome');
             player.settleRamp.value = 1;
             logPageSwitch('liveSwap', {
               t: Math.round(performance.now()),
@@ -1522,9 +1539,6 @@ const ActiveSceneStackSurfaceHost = React.memo(
       (sceneKey: OverlayKey) => {
         if (isTransitioningRef.current && sceneKey === effectiveIncomingRef.current) {
           logPageSwitch('realAck', { t: Math.round(performance.now()), scene: sceneKey });
-          // §Q redo T1b: the paint source OFFERS its input to the live transaction
-          // (the txn consumes it iff its plan declared 'paint').
-          offerTransitionJoinInput('paint');
           // Joined reveal (§2.3): the header's layout effect normally recorded the chromeAck in
           // this same commit, so the join is synchronous; a missing ack defers ≤2 frames.
           // Inside the join: markPaintAck reveals the content, and (§9.1 R2) the switchId-keyed
@@ -1533,7 +1547,13 @@ const ActiveSceneStackSurfaceHost = React.memo(
           // post-supersede pre-re-render onLayout must ack the superseded id (rejected
           // controller-side), not bless the new switch.
           joinRevealOnChromeAck(sceneKey, () => {
-            player.markPaintAck();
+            // §Q redo T1c (INVERSION): the joined-reveal moment OFFERS both inputs —
+            // paint (this ack) and chrome (already acked, or the watchdog degraded:
+            // offering keeps the txn from parking on a missed chrome ack; a duplicate
+            // offer is quietly ignored). The GATE write moved to the txn subscription
+            // below — the transaction's 'revealed' edge is the ONE visible-commit owner.
+            offerTransitionJoinInput('paint');
+            offerTransitionJoinInput('chrome');
             routeSceneSwitchRuntime.commitPresentationPaintAck(armedSwitchIdRef.current);
           });
         }
@@ -1614,7 +1634,9 @@ const ActiveSceneStackSurfaceHost = React.memo(
         // layout effect and the header's run in the same commit, so the join is synchronous in
         // the healthy path (order-independent: whichever effect runs second completes it).
         joinRevealOnChromeAck(effectiveIncoming, () => {
-          player.markPaintAck();
+          // §Q redo T1c (INVERSION): offers only; the txn reveal writes the gate.
+          offerTransitionJoinInput('paint');
+          offerTransitionJoinInput('chrome');
           routeSceneSwitchRuntime.commitPresentationPaintAck(armedSwitchIdRef.current);
         });
       }
