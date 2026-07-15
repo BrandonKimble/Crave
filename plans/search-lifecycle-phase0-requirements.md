@@ -503,3 +503,14 @@ survive as an exception.
 - G2. Press-up response is instant; skeletons never flash-swap; no chrome from the old page
   ever paints over the new one.
 - G3. The eye is the oracle for feel; instruments gate regression only.
+
+- Q-2c. REVEAL-JOINT CENSUS (2026-07-15, probed live via the harness; the stager-side
+  absorption's blocking fact). The world-reveal joint is N bespoke lanes per mouth:
+  LIST enters complete BOTH the P5 readiness collector (cards+nativeMarkerFrame+sheet →
+  content-ready) AND the enter-lifecycle cardsAdmit tick; NATURAL revises complete
+  cardsAdmit; SHORTCUT/openNow (coverage-derived worlds) complete NEITHER (only 'sheet'
+  reaches the collector); TOGGLES complete via presentation_toggle_settled. Any design
+  that consumes "the world revealed" as one fact (route-txn settle absorption, consumer
+  inversion off canAdmitResultsBody) is BLOCKED until the reveal pipeline is unified:
+  ONE joint that every mouth completes. Falsified mechanisms (do not re-walk): deferred
+  second revise for route-coupled enters; settle-at-content-ready; settle-at-cardsAdmit.
