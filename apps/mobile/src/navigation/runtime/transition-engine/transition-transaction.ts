@@ -186,6 +186,13 @@ const advance = (txn: TransitionTxn, nextPhase: TransitionTxnPhase): boolean => 
   txn.phase = nextPhase;
   (txn.marks as Record<string, number>)[`${nextPhase}At`] = now();
   emitTrace(txn, nextPhase);
+  // EVERY edge of the LIVE transaction notifies subscribers — the pure advance fns
+  // (commit/seal/settle) are called directly by stagers, and a subscriber waiting on a
+  // phase (the Q-2 deferred revise waits for the route txn to terminate) must hear
+  // them, not only staged/offer edges.
+  if (txn === liveTxn) {
+    listeners.forEach((listener) => listener());
+  }
   return true;
 };
 

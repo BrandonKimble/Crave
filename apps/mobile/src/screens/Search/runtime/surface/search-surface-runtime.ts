@@ -6,7 +6,6 @@ import {
   sealTransitionTxnJoin,
   settleTransitionTxn,
   stageTransitionTxn,
-  subscribeTransitionTxn,
   type TransitionJoinInput,
 } from '../../../../navigation/runtime/transition-engine/transition-transaction';
 import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
@@ -538,15 +537,6 @@ export class SearchSurfaceRuntime {
   // the redraw family stays the driver until the traces prove the joins coincide.
   private q2ShadowTxnId: string | null = null;
 
-  // Q-2 route-coupled enters (the arbitration answer, phase 3): a reveal-enter's world
-  // is semantically a REVISE on the search scene that follows its route push — the push
-  // reveals the SKELETON (press-up law) and settles; the world's joint is its own txn.
-  // The redraw arms ~300ms BEFORE the push stages, so the revise is DEFERRED: staged
-  // when the route txn reaches a terminal phase, with already-landed readiness seeded
-  // as offers so response-before-settle timing can never park it.
-  private q2DeferredReviseRedrawId: string | null = null;
-  private q2TxnSubscriptionStarted = false;
-
   private pendingRedrawMotionArm: {
     id: string;
     input: Required<Omit<BeginRedrawTransactionInput, 'transactionId'>> &
@@ -725,11 +715,12 @@ export class SearchSurfaceRuntime {
     }
     const bornSheetReady = this.snapshot.redrawTransaction?.readiness.sheetReady !== false;
     if (!bornSheetReady) {
-      // Motion-expected arm = a route-coupled reveal enter. Defer the revise until the
-      // push txn terminates (see maybeStageQ2DeferredRevise).
+      // Motion-expected arm = a route-coupled reveal ENTER. Its world joint is OWNED
+      // by the route transaction's P5 readiness collector (probed live 2026-07-15:
+      // the redraw's cards/markerFrame marks structurally never fire on this lane —
+      // a deferred revise parks forever). The eventual unification is stager-side
+      // (the route txn absorbs the world join), not a second transaction here.
       this.q2ShadowTxnId = null;
-      this.q2DeferredReviseRedrawId = id;
-      this.ensureQ2TxnSubscription();
       return;
     }
     // Plans differ by REASON (semantics measured on the trace, 2026-07-15):
@@ -762,9 +753,12 @@ export class SearchSurfaceRuntime {
   // order can never park the join.
   private seedQ2ShadowOffersFromCurrentReadiness(): void {
     const readiness = this.snapshot.redrawTransaction?.readiness;
-    if (readiness == null) {
-      return;
+    if (readiness != null) {
+      this.seedQ2ShadowOffers(readiness);
     }
+  }
+
+  private seedQ2ShadowOffers(readiness: SearchSurfaceRedrawTransaction['readiness']): void {
     if (readiness.cardsReady) {
       this.offerQ2ShadowJoin('paint');
     }
@@ -774,51 +768,6 @@ export class SearchSurfaceRuntime {
     if (readiness.sheetReady) {
       this.offerQ2ShadowJoin('sheet');
     }
-  }
-
-  private ensureQ2TxnSubscription(): void {
-    if (this.q2TxnSubscriptionStarted) {
-      return;
-    }
-    this.q2TxnSubscriptionStarted = true;
-    subscribeTransitionTxn(() => {
-      this.maybeStageQ2DeferredRevise();
-    });
-  }
-
-  private maybeStageQ2DeferredRevise(): void {
-    const id = this.q2DeferredReviseRedrawId;
-    if (id == null) {
-      return;
-    }
-    const redraw = this.snapshot.redrawTransaction;
-    if (redraw == null || redraw.id !== id) {
-      // Superseded — the newer interaction owns its own transaction.
-      this.q2DeferredReviseRedrawId = null;
-      return;
-    }
-    // committedAtMs set = the world joined INSIDE the push window: stage anyway — the
-    // seeder below offers every landed input and the revise runs a DEGENERATE instant
-    // lifecycle. INVARIANT this buys: every world enter has a revise txn (consumers can
-    // invert onto "the world's revise revealed" without a route-window special case).
-    const live = getLiveTransitionTxn();
-    if (live != null && live.phase !== 'settled' && live.phase !== 'superseded') {
-      return; // the route txn still owns the window — keep waiting
-    }
-    this.q2DeferredReviseRedrawId = null;
-    const txn = stageTransitionTxn(
-      { kind: 'revise', targetSceneKey: 'search', sourceSceneKey: 'search', entryId: null },
-      {
-        content: { kind: 'skeleton' },
-        joinInputs: ['paint', 'mapFrame', 'sheet'],
-        movesSheet: true,
-        joinLivenessMs: 2000,
-      }
-    );
-    commitTransitionTxn(txn);
-    sealTransitionTxnJoin(txn);
-    this.q2ShadowTxnId = txn.txnId;
-    this.seedQ2ShadowOffersFromCurrentReadiness();
   }
 
   // Q-2 shadow offer: readiness marks OFFER their input iff the live txn is OUR shadow
