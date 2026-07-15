@@ -17,6 +17,7 @@ import type { ContentMode } from '../navigation/runtime/transition-engine/transi
 import { deriveHostTokenDescriptor } from '../navigation/runtime/transition-engine/host-token-transition-adapter';
 import {
   amendTransitionTxnJoinInputs,
+  getLiveTransitionTxn,
   offerTransitionJoinInput,
   sealLiveTransitionTxnJoin,
 } from '../navigation/runtime/transition-engine/transition-transaction';
@@ -1465,11 +1466,16 @@ const ActiveSceneStackSurfaceHost = React.memo(
           }
           lastLiveSwapRolesRef.current = { presented, outgoing };
           // §Q redo T1c (arm-time amendment): a GENUINE roles change means this switch's
-          // reveal joins {paint, chrome} — the host is the one place that knows it
-          // (held, warm-flip and cold branches below all gate the visible commit on
-          // those two acks). Amend then SEAL: the window closes at the arm.
-          amendTransitionTxnJoinInputs(['paint', 'chrome']);
-          sealLiveTransitionTxnJoin();
+          // reveal joins {paint, chrome} — the host is the one place that knows it.
+          // Amend then SEAL — but ONLY a txn still in its window: a roles change
+          // arriving mid-transaction (the dismissal's boundary content flip re-
+          // presenting the destination) is a LATER stage of the SAME txn, not an
+          // amendment (T1d models it as the freeze swap).
+          const liveTxnPhase = getLiveTransitionTxn()?.phase;
+          if (liveTxnPhase === 'staged' || liveTxnPhase === 'committed') {
+            amendTransitionTxnJoinInputs(['paint', 'chrome']);
+            sealLiveTransitionTxnJoin();
+          }
           if (outgoing != null) {
             // Held transition: relabel the roles now (invisible — outgoing keeps opacity 1 under
             // paintAck 0) AND pin the hold in the same write, so the flush→commit window can't
