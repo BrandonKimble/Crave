@@ -855,6 +855,22 @@ const SceneStackBodyContentLayerHost = React.memo(
       logPageSwitch('body', { scene: sceneKey, bodyNull: bodyIsNull });
       recordSceneBodyAttached?.(sceneKey, !bodyIsNull);
     }, [sceneKey, bodyIsNull, recordSceneBodyAttached]);
+    // T5 PAINT EVIDENCE, render-derived (attributed live: wrapper onLayout fires once per
+    // MOUNT, so a re-attached body / an already-mounted leg on a RE-OPEN never re-reports
+    // and the txn parks on 'paint' → 600ms join_liveness_degrade on every list re-open).
+    // The truth the join wants is "this presented leg is committing renderable content
+    // this frame" — real body OR lawful S2 skeleton — and THIS component knows it at
+    // render time. Report post-commit (layout effect) whenever the leg is presented with
+    // content; a duplicate offer is quietly ignored by the txn, and the offer is inert
+    // unless this scene is the live txn's target.
+    const rendersPresentedContent =
+      legRole !== 'idle' && (!bodyIsNull || getSceneFoundationSpec(sceneKey)?.skeleton != null);
+    const reportScenePaintForLeg = transitionDisplay?.reportScenePaint;
+    React.useLayoutEffect(() => {
+      if (rendersPresentedContent) {
+        reportScenePaintForLeg?.(sceneKey);
+      }
+    }, [rendersPresentedContent, reportScenePaintForLeg, sceneKey]);
 
     // Inline null-check kept (not `if (bodyIsNull)`) so TS narrows contentEntry/transportEntry below.
     if (
@@ -1477,6 +1493,14 @@ const ActiveSceneStackSurfaceHost = React.memo(
           ) {
             amendTransitionTxnJoinInputs(['paint', 'chrome']);
             sealLiveTransitionTxnJoin();
+            // T5 (evidence-based paint, the §9.1 synthetic-ack semantics at the ARM
+            // point): a WARM incoming leg — body attached, painted before — never
+            // re-fires onLayout, so the real-paint offer below it never comes. The
+            // evidence is already true when the join is armed: offer it now. A cold
+            // leg has no evidence and keeps its real onLayout-gated offer.
+            if (hasPaintedSceneKeysRef.current.has(presented)) {
+              offerTransitionJoinInput('paint');
+            }
           }
           if (outgoing != null) {
             // Held transition: relabel the roles now (invisible — outgoing keeps opacity 1 under
@@ -1534,14 +1558,21 @@ const ActiveSceneStackSurfaceHost = React.memo(
     );
     const reportScenePaint = React.useCallback(
       (sceneKey: OverlayKey) => {
+        // §Q redo T1c (INVERSION) + T5: this real paint OFFERS 'paint', keyed to the
+        // TXN's target — not the legacy isTransitioning window, which closes almost
+        // instantly for a seeded swapImmediately switch (no content plane) while a COLD
+        // incoming leg's first onLayout lands a few frames later. Pre-T5 that txn just
+        // parked silently in 'joining'; the engine watchdog made it loud. An offer from
+        // any other leg is inert (the txn only consumes its declared, pending inputs —
+        // and only this target's paint is evidence for it).
+        if (getLiveTransitionTxn()?.mutation.targetSceneKey === sceneKey) {
+          offerTransitionJoinInput('paint');
+        }
         if (isTransitioningRef.current && sceneKey === effectiveIncomingRef.current) {
           logPageSwitch('realAck', { t: Math.round(performance.now()), scene: sceneKey });
-          // §Q redo T1c (INVERSION) + T5: this real paint OFFERS 'paint'; the header's
-          // own commit offers 'chrome'; the txn's 'revealed' edge is the ONE
-          // visible-commit owner. The PF ack stays switchId-keyed (ACK EPOCH — §9.1 R2):
-          // a post-supersede pre-re-render onLayout must ack the superseded id
-          // (rejected controller-side), not bless the new switch.
-          offerTransitionJoinInput('paint');
+          // The PF ack stays switchId-keyed (ACK EPOCH — §9.1 R2): a post-supersede
+          // pre-re-render onLayout must ack the superseded id (rejected controller-
+          // side), not bless the new switch.
           routeSceneSwitchRuntime.commitPresentationPaintAck(armedSwitchIdRef.current);
         }
         // A paint from an idle/outgoing/stale leg is ignored — only the live transition's
