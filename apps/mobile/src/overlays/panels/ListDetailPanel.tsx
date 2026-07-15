@@ -14,6 +14,8 @@ import {
   Trash2,
 } from 'lucide-react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { registerHeaderCloseAction } from '../../navigation/runtime/header-nav-action-registry';
+import { closeSearchResultsSession } from '../search-results-header-live-state';
 import axios from 'axios';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
@@ -349,6 +351,19 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   const { dispatchLaunchIntent } = useAppRouteCoordinator();
   const [slugWorldLaunched, setSlugWorldLaunched] = React.useState(false);
   const worldBacked = worldBackedParam || slugWorldLaunched;
+  // Leg 4 (phase-1 design C3/C6): while this page presents a WORLD, its header X is a
+  // SESSION close, not a bare route pop — the published results-session close runs the
+  // full back-out (tuple→idle, world/native teardown, pop to the captured origin). The
+  // registry override pattern is the same one 'search'/'restaurant' use; registration is
+  // dynamic because worldBacked is entry state (a plain-pushed listDetail keeps the
+  // host's default pop). Fixes the stale-pins class: X used to pop the route while the
+  // presented world survived (matrix FLOW 3's EXPECTED-RED).
+  React.useEffect(() => {
+    if (!worldBacked) {
+      return undefined;
+    }
+    return registerHeaderCloseAction('listDetail', closeSearchResultsSession);
+  }, [worldBacked]);
   const warmTitle = typeof params?.title === 'string' && params.title.trim() ? params.title : null;
   const virtualListType =
     listIdParam != null ? (VIRTUAL_LIST_TYPE_BY_ID[listIdParam] ?? null) : null;

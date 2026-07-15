@@ -84,7 +84,7 @@ A=$(send trigger_mouth "f3t$RUN" "{\"kind\":\"list\",\"entityId\":\"$LIST_B\",\"
 D=$(send dismiss "f3d$RUN" '{"affordance":"back"}'); settle 4
 E=$(send read_lifecycle_state "f3e$RUN")
 check "route popped to depth 1" "$E" "a['state']['stackLength']==1"
-check "world torn down after sheet-X pop" "$E" "a['state']['surface']['activeBundleKind']!='results'" 1
+check "world torn down after sheet-X pop" "$E" "a['state']['surface']['activeBundleKind']!='results'"
 # cleanup residual world for next flow
 send dismiss "f3c$RUN" '{"affordance":"searchBarX"}' >/dev/null; settle 4
 
@@ -94,9 +94,9 @@ send open_scene "f4o$RUN" '{"scene":"bookmarks"}' >/dev/null; settle 3
 A=$(send trigger_mouth "f4t$RUN" "{\"kind\":\"list\",\"entityId\":\"$LIST_A\",\"label\":\"Out-of-towner tour\",\"listType\":\"restaurant\"}"); settle 8
 D=$(send dismiss "f4d$RUN" '{"affordance":"searchBarX"}'); settle 5
 if tail -c +"$SZ4" "$METRO_LOG" | grep -q "NAV-CONTRACT"; then
-  echo "  EXPECTED-RED (old-code defect): no NAV-CONTRACT bark on non-home dismiss"; XRED=$((XRED+1))
+  echo "  FAIL: NAV-CONTRACT bark fired on non-home dismiss (Leg-4 regression)"; FAIL=$((FAIL+1))
 else
-  echo "  UNEXPECTED-GREEN (fix landed? flip flag): no NAV-CONTRACT bark"; FAIL=$((FAIL+1))
+  echo "  PASS: no NAV-CONTRACT bark on non-home dismiss"; PASS=$((PASS+1))
 fi
 E=$(send read_lifecycle_state "f4e$RUN")
 check "X from bookmarks returns to bookmarks" "$E" "a['state']['root']=='bookmarks' and a['state']['stackLength']==1"

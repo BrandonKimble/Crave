@@ -6,6 +6,7 @@ import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-
 import type { EntityRef } from '../../navigation/runtime/entity-ref-action-policy';
 import { getSearchSurfaceRuntime } from '../../screens/Search/runtime/surface/search-surface-runtime';
 import { readPerfScenarioCommandRegistry } from '../perf-scenario-command-registry';
+import { runHeaderCloseAction } from '../../navigation/runtime/header-nav-action-registry';
 import type { OverlayKey } from '../../overlays/types';
 
 /**
@@ -105,9 +106,15 @@ export const LifecycleHarnessBridge: React.FC = () => {
         return readLifecycleState();
       }
       if (affordance === 'back') {
-        routeSceneRuntime.routeOverlayRouteCommandRuntime.closeActiveRoute({
-          applyOriginDetent: true,
-        });
+        // Faithful to the real header X: session-close override first (the host's own
+        // protocol — runHeaderCloseAction), default pop only when no override is live.
+        const activeKey =
+          routeSceneRuntime.routeSceneSwitchRuntime.getRouteState().activeOverlayRoute.key;
+        if (!runHeaderCloseAction(activeKey)) {
+          routeSceneRuntime.routeOverlayRouteCommandRuntime.closeActiveRoute({
+            applyOriginDetent: true,
+          });
+        }
         return readLifecycleState();
       }
       throw new Error(`unknown affordance '${affordance}' (searchBarX|back)`);

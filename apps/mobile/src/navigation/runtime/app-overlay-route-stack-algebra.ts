@@ -280,6 +280,17 @@ export type SessionDismissPlan =
   | { kind: 'popToRoot' }
   | { kind: 'terminalHome' };
 
+// Leg 4 (phase-1 design §1.3): a SESSION is any entry that presents a world — the
+// pushed 'search' results entry, OR a world-bearing child (a listDetail pushed by the
+// listWorld composite stamps `worldBacked: true`; the v2 end state is `desire` on the
+// entry). The old search-key-only scan classified [bookmarks, listDetail(world)] as
+// session-less and fell through to terminalHome — the owner-repro'd [NAV-CONTRACT]
+// bark and the home-shaped dismissal from a non-home origin.
+const isWorldBearingEntry = (entry: OverlayRouteEntry | undefined): boolean =>
+  entry != null &&
+  (entry.key === 'search' ||
+    (entry.params as { worldBacked?: boolean } | undefined)?.worldBacked === true);
+
 export const resolveSessionDismissPlan = (routeState: {
   overlayRouteStack: readonly OverlayRouteEntry[];
   overlayRouteStackLength: number;
@@ -287,7 +298,7 @@ export const resolveSessionDismissPlan = (routeState: {
 }): SessionDismissPlan => {
   let deepestSessionIndex = -1;
   for (let index = 1; index < routeState.overlayRouteStackLength; index += 1) {
-    if (routeState.overlayRouteStack[index]?.key === 'search') {
+    if (isWorldBearingEntry(routeState.overlayRouteStack[index])) {
       deepestSessionIndex = index;
       break;
     }
