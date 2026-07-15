@@ -1443,6 +1443,17 @@ const ActiveSceneStackSurfaceHost = React.memo(
     // with a loud [JOINEDREVEAL] dev bark (provably RED by suppressing the header's ack).
     const pendingChromeJoinCancelRef = React.useRef<ChromeAckJoinCancel | null>(null);
     const joinRevealOnChromeAck = React.useCallback((scene: OverlayKey, flip: () => void) => {
+      // §Q redo T1d: a FREEZE-plan transition's chrome is DELIBERATELY frozen — the
+      // header will never ack the incoming scene, and the reveal is the txn's boundary
+      // edge, not this join. Run the callback immediately (its offers are quietly
+      // ignored by the boundary-joined txn; its PF bookkeeping still applies) instead
+      // of paying the watchdog degrade + bark on every dismissal.
+      if (getLiveTransitionTxn()?.plan.content.kind === 'freezeUntilSnap') {
+        pendingChromeJoinCancelRef.current?.();
+        pendingChromeJoinCancelRef.current = null;
+        flip();
+        return;
+      }
       pendingChromeJoinCancelRef.current?.();
       pendingChromeJoinCancelRef.current = joinSceneChromeAck(scene, () => {
         pendingChromeJoinCancelRef.current = null;
@@ -1517,6 +1528,23 @@ const ActiveSceneStackSurfaceHost = React.memo(
           if (!hasPaintedSceneKeysRef.current.has(presented)) {
             // Cold incoming: no early flip (nothing painted to reveal). The commit reconcile
             // below flips it in the commit that paints its body/skeleton — the old timing.
+            return;
+          }
+          // §Q redo T1d: a FREEZE-plan transition's reveal is the txn's boundary edge —
+          // the header is DELIBERATELY frozen (it will never ack the incoming scene), so
+          // the chromeAck join ceremony below would only watchdog-degrade (34ms bark per
+          // dismissal, attributed live). Post-boundary roles changes flip immediately;
+          // the gate is already owned by the revealed txn.
+          const liveTxnForFlip = getLiveTransitionTxn();
+          if (liveTxnForFlip?.plan.content.kind === 'freezeUntilSnap') {
+            liveSwapRoles.value = { presented, outgoing: null };
+            player.seize();
+            logPageSwitch('liveSwap', {
+              t: Math.round(performance.now()),
+              presented,
+              warm: true,
+              freezeBoundary: true,
+            });
             return;
           }
           // Joined reveal (§2.3): the warm flip used to land on the UI thread a frame BEFORE
