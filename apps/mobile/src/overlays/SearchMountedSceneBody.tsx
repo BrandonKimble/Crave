@@ -104,23 +104,26 @@ const hasSearchSurfaceResultsBodyBundle = (
 ): bundle is SearchSurfaceResultsBodyBundle =>
   bundle?.sceneBodyContent != null && bundle.sceneBodyTransport != null;
 
-// SHEET-MOTION FENCE, list lane (eye-verified 2026-07-13): the press-up list-target
-// update (~28ms render + its Fabric mount, the widest press-up subtree) landed inside
-// the reveal slide's first frames and froze the UI-thread spring (newArch mounts block
-// the main thread). Same motion-keyed predicate as the map's structural-apply fence:
-// while the sheet is physically moving for the active redraw (sheetReady false), this
-// view keeps returning the HELD pre-motion snapshot — no re-render, no mount. The
-// surface-runtime subscription re-notifies on the sheetReady settle flip, and the lazy
-// getter re-reads the live authority then (latest-wins; intermediate updates coalesce).
-const isSearchSheetMotionFenceClosed = (): boolean => {
+// THE LIST-DATA FENCE (P-12 cut — the press-up stall's structural fix). Two closers,
+// one law: the list target renders NOTHING mid-episode.
+// - REDRAW LIVE (P-12, attributed 2026-07-15: SearchMountedResultsListTarget rendered
+//   10x/313ms inside the press-up window — every store write during the submit fan-out
+//   re-rendered rows that sat INVISIBLE under the cover/skeleton until the joint):
+//   while a redraw transaction is live (uncommitted — the episode's reveal commits and
+//   clears the slot), every intermediate write coalesces; the commit publish re-notifies
+//   and ONE render lands the final rows at the admission tick.
+// - SHEET MOVING (eye-verified 2026-07-13): a ~28ms render + Fabric mount inside the
+//   reveal slide's first frames froze the UI-thread spring.
+// The lazy getter re-reads the live authority when the fence opens (latest-wins).
+const isSearchListDataFenceClosed = (): boolean => {
   const snapshot = getSearchSurfaceRuntime().getSnapshot();
-  return snapshot.redrawTransaction != null && !snapshot.sheetMotionSettled;
+  return snapshot.redrawTransaction != null || !snapshot.sheetMotionSettled;
 };
 
 let motionFencedListDataSnapshot: SearchMountedResultsListDataSnapshot | null = null;
 
 const getMotionFencedListDataSnapshot = (): SearchMountedResultsListDataSnapshot => {
-  if (motionFencedListDataSnapshot == null || !isSearchSheetMotionFenceClosed()) {
+  if (motionFencedListDataSnapshot == null || !isSearchListDataFenceClosed()) {
     motionFencedListDataSnapshot = getSearchMountedResultsListDataSnapshot();
   }
   return motionFencedListDataSnapshot;

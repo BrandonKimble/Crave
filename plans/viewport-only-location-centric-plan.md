@@ -188,28 +188,44 @@ must be impossible by construction (no market/key param left to mismatch).
   so accumulating demand in an uncovered city can seed/prompt polls there — polls
   being the proven data inlet for uncovered areas (poll-entity-seed + graduation).
   Shape TBD with owner (auto-generated poll prompts? creator-ladder tie-in?).
-- **REDESIGNED (owner challenge, 2026-07-14 — supersedes the earlier subjects-
-  scoped demand rule, which was a write-time judgment violating "search observes,
-  scheduler judges"):** demand = ONE event per search at the scale the user
-  expressed it (term, viewport bounds, user, time). No fan-out, no per-market rows,
-  no scoping decision at write time — O(1) whether the viewport is a block or a
-  continent.
-- **Specificity weighting (derived, no constant):** a place's demand for term X =
-  Σ over events whose viewport contained it × 1/(places in that event's view).
-  City search over Waco ≈ 1; Texas search = 1/~1200 per town; US = 1/~20k.
-  1,200 statewide taco searches ≈ one Waco-specific search of Waco demand —
-  diffuse interest accumulates everywhere at honest strength. Uniform at all
-  zooms; no cliff; retroactive by construction (a newly minted/seeded town's
-  ledger query sees all history that covered it).
-- **All consumers = scale-appropriate reads over the same substrate:** poll
-  seeder (per-town weighted accumulation → RANKED QUEUE consumed by a capacity
-  budget, ~N poll prompts/cycle — same shape as the collection scheduler, no
-  demand threshold); collection ranker (per-collectable-market deficiency, as
-  3.1/3.2); expansion analytics (same aggregation grouped by state/metro).
-  Subjects rule retreats to minting + header only — it never touches demand.
-- Poll-seed self-regulation is arithmetic, not policy: rare US-wide searches ×
-  1/20k weight stay bottom-ranked unless genuinely massive — in which case they
-  should seed polls.
+- **THE PIPELINE ALREADY EXISTS (2026-07-14 audit — 3.5 is a DELTA, not a build):**
+  poll-scheduler.service.ts: nightly cron pulls top-demand markets (40-market
+  budget) from search-demand aggregation (15-min cron over search_events →
+  user_search_demand_daily, per-distinct-user weighted), scores candidate topics
+  (demand × 28-day gaussian cooldown since lastPolledAt × resurgence boost),
+  creates ≤3 PollTopics/city, and a Sunday-9am publisher creates SEEDED polls
+  directly (origin: seeded, bypasses the 2/user/market weekly cap) + notification.
+  Ranked queue + capacity + cooldown cycling = owner's described model, shipped.
+- **The delta — attribution breadth:** demand = ONE event per search at the scale
+  the user expressed (term, viewport bounds, user, time); attribution extends from
+  today's single-resolved-market to ALL named places the viewport contained,
+  computed at READ time by the existing aggregation cron. **Weight = 1 per place in
+  view (owner-ratified v1)** — the natural generalization of existing semantics
+  (today the one resolved market gets weight 1 at any zoom); consensus-first: a
+  town's first seeded poll = what many broad searches agree on (Best tacos), never
+  one wanderer's quirky term. Per-distinct-user damping + capacity + cooldowns
+  serialize ties (common before niche, everything eventually).
+- **REQUIRED SCHEMA ITEM: persist bounds/viewport on search_events** — today the
+  write path drops them (only resolved marketKey survives), so historical events
+  CANNOT be spatially re-attributed. Bounds persistence is the precondition for
+  the whole record-once/attribute-lazily model and for retroactive credit to
+  newly named places.
+- **Named risk + its instrument (decide by data, not debate):** cross-region
+  flooding — heavily broad-searched regions' never-visited towns could outrank
+  genuinely-attended towns elsewhere in the 40-market budget. The scheduler
+  already writes full factorBreakdown scoring traces (demand_scoring_candidates)
+  — a show-RED instrument. Ship weight=1, watch traces; 1/N (or similar) is a
+  one-line aggregator change IF the traces show seeded polls landing in
+  never-attended towns while attended ones wait.
+- Subjects rule touches minting + header only — never demand.
+- **Pan mints too (owner catch):** today pan-resolve has minting off (markets.
+  controller.ts ensureLocalityMarkets:false) — an unseeded/unminted area shows no
+  name indefinitely until a search. New: pan-resolve ENQUEUES the reconciler probe
+  (pan is attention); first-ever pan → "this area" for seconds → named forever.
+  Nice-to-have: show the probe's name provisionally before the polygon lands.
+- Surfacing option (existing dead plumbing): createPollPrompt CTA is plumbed to
+  mobile but rendered nowhere; poll_topics have no client API — a user-facing
+  "suggested poll" surface is available cheap if wanted later.
 - Rate-limit posture: demand machinery is inherently self-limiting (≤5 terms ×
   bounded markets per search, identity-key dedupe, 5-min cooldown, distinct-user
   log-damped ranking weights → single-user spam ≈ one ask). No bespoke limits;
