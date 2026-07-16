@@ -1,156 +1,200 @@
-# THE PAGE — a from-scratch composition system (owner directive 2026-07-16)
+# THE PAGE — a from-scratch composition system (v2, post-red-team)
 
-Status: DESIGN. Built from scratch against everything we now know; the current code was
-audited ONLY to extract fail points and nuances, never as a basis. Two philosophy-seeded
-adversaries red-team this before it reaches the owner.
+2026-07-16. v1 was attacked by two philosophy-seeded adversaries (A: abstraction purist;
+B: platform realist). 33 findings — 8+7 design-breaks — ALL resolved or converted into
+explicit gates below. v1's audit (§0) stands unchanged; v1's shape survives at L0–L2
+with amendments, L3 is now GATED on a measured prototype, and L4 was redesigned (the
+red-team's deepest cut: v1's L4 solved the transition edge and missed the case the
+release lane actually measured). Owner ratifies per level.
 
-## 0. The audit — every owner-named symptom, root-caused (2026-07-16)
+## 0. The audit — every owner-named symptom, root-caused (unchanged from v1)
 
-The census (greps in this session's log; verifiable):
+1. **≥4 skeleton implementations**: CutoutSkeletonSurface (correct), SkeletonBox
+   (solid-gray — ProfilePanel ×5 = the owner's "gray sheets"), CutoutSkeletonTitle,
+   two competing wrappers (host S2 fallback + SceneBodyReadyGate), per-panel pending
+   branches.
+2. **Cutout vs gray** = the second material existing.
+3. **"Just white"** = frostBacking hand-passed at 10+ sites; wrong backing over an
+   opaque body = invisible holes. Distributed decision ⇒ the class regenerates.
+4. **"Changes midway"** = up to THREE sequential skeleton owners per load; the visible
+   change IS the ownership handoff.
+5. **Header/skeleton gap** = body seam from a cross-scene measured cache (signature
+   fallback) — a scene inherits another scene's geometry until its own measure lands.
+6. **Previous page's strip leaks into the next** = same cache + the one persistent
+   header host whose layout persists across switches.
+7. **Strip/profile-stack a beat late** = persistent-host slots re-render after the
+   switch commit; frame starvation stretches the beat.
 
-1. **"Multiple skeleton implementations — should never be the case": CONFIRMED, ≥4.**
-   (a) `SceneLoadingSurface`→`CutoutSkeletonSurface` — the correct cutout-through-frost,
-   28 call sites. (b) `SkeletonBox` — SOLID GRAY boxes (`themeColors.border`);
-   ProfilePanel composes 5 of them by hand = the "solid gray regular skeleton sheet"
-   the owner sees. (c) `CutoutSkeletonTitle` — a third primitive for title bars
-   (ListDetail, Restaurant). (d) The scene-stack host's S2 fallback AND
-   SceneBodyReadyGate — two DIFFERENT wrappers that each decide skeleton presentation,
-   with different backing rules. Plus per-panel hand-rolled `isPending` branches.
-2. **"Sometimes cutout-through-frost, sometimes solid gray":** direct consequence of
-   (1b) — Profile's identity block is a different material. Not a bug in a component;
-   the existence of the second material is the bug.
-3. **"Sometimes just white / no skeleton":** `frostBacking` is a hand-passed boolean at
-   10+ call sites, with a derived default in ONLY ONE of the two wrappers. A cutout
-   plate with frost-through holes over an opaque white body = invisible holes = "just
-   white." We patched one wrapper; the class regenerates at every new call site
-   because THE DECISION IS DISTRIBUTED.
-4. **"Skeleton changes midway through":** up to THREE different skeleton owners can
-   show IN SEQUENCE for one loading page — the host's S2 fallback (pre-body), the
-   panel's own skeleton (post-mount, pre-data), the ready-gate's (query pending) —
-   each composed differently. The mid-load change is the ownership handoff, visible.
-5. **"Gap between header and skeleton":** the body's top seam comes from
-   `resolveSceneChromeHeight(sceneKey) ?? persistentHeaderHeight` — a MEASURED cache
-   with a cross-scene SIGNATURE FALLBACK. Until a scene's own measure lands, it
-   inherits another scene's height or the PREVIOUS page's live header height → gap or
-   overlap for the first frames.
-6. **"The previous page's strip positioning messes with the next page":** same
-   machinery + the strip lives in the ONE persistent header host whose layout persists
-   across switches. Cross-page leakage is the design, not a defect in it.
-7. **"Strip / profile stack appear a beat late":** the persistent header re-renders its
-   slots AFTER the switch commit (structurally one beat behind the body swap), and
-   under transition-window frame starvation (release-measured: 172–180ms UI frames in
-   the reveal burst) that beat is long and visible.
+**THE DISEASE: nothing owns the page as a single fact.**
 
-**THE DISEASE (one sentence):** a page's visible composition is assembled at runtime
-from N independently-owned, independently-timed, independently-styled layers — a
-persistent header host that swaps content, a page frame that positions the body off a
-cross-scene measured cache, two skeleton wrappers, three skeleton materials, and
-per-panel loading branches — and NOTHING owns "the page" as a single fact. Layers
-arriving at different times = beat-late strips and mid-load skeleton swaps; layers
-computing geometry independently = gaps and cross-page leaks; layers choosing style
-independently = cutout vs gray vs white. Every symptom is this one disease.
+## L0 — ONE MATERIAL (app-global)
 
-## 1. The from-scratch shape: A PAGE IS A VALUE
+Exactly one loading material exists anywhere in the app (sheet pages, modals, map
+overlays — the law is global even where residency is not; red-team A#18): **the cutout
+plate** — plate + holes + shimmer. SkeletonBox, CutoutSkeletonTitle, and hand-rolled
+pending branches are deleted; titles and identity blocks are hole SHAPES.
+**Backing is derived, never an argument** — with the honest scoping (B#10): the
+derivation input is the RESOLVED UNDERSTACK, computed by the residency manager and
+injected at reveal (a pushed child's backing depends on what it sits over — a runtime
+fact). Panel authors still cannot pass it; the one computer is the residency manager.
+Understack changes while resident (page beneath a modal switches) re-derive on the
+next reveal beat.
+*Honesty note (A#16): L0's derivation is defined in terms of L1's stack — L0 alone is
+the one-material decision; the derivation is ratified with L1.*
 
-Built bottom-up; each level must be ratified perfect before the next builds on it.
+## L1 — THE SURFACE STACK (geometry computed, with the laws that make it true)
 
-### L0 — ONE MATERIAL (the skeleton/loading vocabulary)
+A page declares `{ chrome: ChromeSpec, body: BodySpec, decor: DecorSpec }`.
 
-There is exactly one loading material in the app: **the cutout plate** — an opaque
-plate (the sheet surface) with holes whose backing shows through, shimmered while
-empty. `SkeletonBox`, `CutoutSkeletonTitle`, and every hand-rolled pending branch are
-DELETED as separate things; title bars and identity blocks are cutout SHAPES (row
-templates), not different materials.
-**Backing is never an argument.** What shows through a hole is DERIVED from the
-declared surface stack beneath it (L1): frost if the stack is frost, plate-tint if the
-stack is opaque. `frostBacking` as a hand-passed boolean ceases to exist — the
-white-on-white class and the gray class become unrepresentable, not guarded against.
+- **BodySpec is an ordered set of BODY BANDS with one active** (A#14, B#15 — decided,
+  not open): the search results page's dual-tab body is two bands in one shell; a tab
+  toggle is intra-shell band visibility, never a scene transition. One band is the
+  trivial case.
+- **THE TRUNCATION LAW (owner ratifies — product constraint, A#2/B#4):** all chrome
+  text is fixed-line-count at declared heights. TitleSlot's type is a branded
+  `SingleLineText` (produced only by an ellipsizing constructor) — multi-line chrome
+  text is unrepresentable at the type level. Heights then need only
+  lineHeight-per-token tables DERIVED from the design-token system (never hand-listed
+  — the type-list disease guard). Known truncation surfaces to ratify: listDetail's
+  user-authored titles, restaurant names in child headers.
+- **Geometry inputs are named**: ChromeSpec + device facts (safe area, dynamic type,
+  bold-text, orientation, RTL — A#13). **Staged invalidation** (B#13): a device-fact
+  change recomputes the visible shell synchronously and dirty-marks the rest (lazy
+  recompile on next reveal) — never a 20-shell burst.
+- **THE MORPH LAW (B#9):** chrome morphs (edit mode) interpolate between two COMPUTED
+  ChromeSpec heights on one named clock; the snap engine subscribes to that clock (one
+  writer); the body's top inset rides transform during the morph and commits layout
+  ONCE at the end. Animated layout is unrepresentable.
+- The measured-chrome cache, its signature fallback, and reservedHeaderHeight die.
 
-### L1 — THE SURFACE STACK (geometry + backing as one declaration)
+## L2 — THE SHELL (loading is the list with placeholder cells)
 
-A page declares its vertical composition as data:
-`{ chrome: ChromeSpec, body: BodySpec, decor: DecorSpec }` where ChromeSpec is
-`{ title: TitleSlot, strip?: StripSpec, actions: ActionSpec }` and BodySpec names its
-surface (`frost | plate`) and its content template (row shapes).
-**Geometry is COMPUTED, never measured-and-cached across scenes.** Chrome height is a
-pure function of the declared ChromeSpec + device facts (safe area, dynamic type) —
-deterministic before first paint. The header band and the body band are ONE layout
-tree owned by the page. The measured-height cache, its signature fallback, and the
-`reservedHeaderHeight` plumbing are deleted; the gap/leak classes die because no scene
-can ever read another scene's geometry.
-(Nuance carried: content-driven chrome — an async title — is a SLOT with declared
-height that fills; height never changes when content arrives.)
+The PageSpec is **the only render path** (A#5): PageSpec values are immutable
+module-scope constants containing their slot components inline — no registry, no
+separate descriptor to disagree with; "declared but not registered" is unconstructable.
+The shell is a runtime interpreter component keyed by PageSpec identity (A#17).
 
-### L2 — THE SHELL (loading is the same nodes as loaded)
+- **The virtualization truth (A#3 — v1's biggest lie, fixed):** for list bodies, the
+  shell's body IS the list, always mounted; **pending = placeholder items whose cells
+  render as cutouts** — the cutout is a CELL RENDERING MODE, not a separate surface.
+  Corollary laws: row templates declare fixed heights content must conform to (image
+  slots are fixed-aspect boxes — typed, so reflow-on-fill is unrepresentable); the
+  placeholder count is part of the template. Non-list bodies (forms, profiles) use
+  static hole templates where same-nodes holds literally.
+- **Slots carry DATA, not components-with-queries (A#4 — the load-bearing contract):**
+  slot components receive already-resolved values from the beat-writer; queries live
+  in the page controller, structurally unreachable from render code. A panel cannot
+  express a pending branch because the pending case never renders its slots.
+- **The body state enum is CLOSED AND TOTAL (A#10, B#3):**
+  `pending | present(content) | empty(declared empty-view) | error(class, declared
+  error material + retry, integrated with the wave-4 failure law) | appending(tail
+  placeholder rows)`. Empty and error are L0-material variants declared in the
+  PageSpec. A panel-level loading/error branch has no state left to express.
 
-The PageSpec compiles to ONE mounted subtree per scene — the shell: chrome band,
-strip (if declared), body plate with its cutout template, decor. The shell's body has
-exactly two states over the SAME nodes: **content-pending** (cutouts empty, shimmer)
-and **content-present** (cutouts filled). There is no skeleton component to swap in or
-out — the loading state IS the page with empty content. "Skeleton changes midway,"
-"skeleton missing," and ownership handoffs are unrepresentable: there is nothing to
-hand off.
+## L3 — SHELL RESIDENCY (GATED on a measured prototype)
 
-### L3 — SHELL RESIDENCY (nothing is built during motion — by construction)
+Every scene's shell mounts once and stays resident; switches retarget visibility.
+The red-team is right that "shells are cheap" is an unmeasured claim (A#7, B#6) —
+**L3 is not ratifiable until the prototype measures**: all shells mounted empty on the
+target sim/device — boot delta, resident memory, steady-state UI fps.
 
-Every scene's shell mounts ONCE and stays resident; a switch retargets which shell is
-visible. This is the toggle precedent (both tabs co-mounted — the ONE transition that
-measures perfectly smooth in release) made universal.
-**Strips are per-shell.** Each page owns its strip node inside its own shell; the
-"persistent header host with swapped slots" dissolves. The beat-late strip and the
-cross-page strip leak die because nothing is shared between pages to arrive late or to
-leak. (The strip ENGINE — the morphing/edit-mode primitive — survives as the component
-the shell mounts; its per-page instance is the change.)
-What stays genuinely shared: the sheet container, the gesture surface, the map.
-Memory nuance: shells without content are cheap (plates + slots); CONTENT residency is
-governed by the L-2 eviction laws (stack-pinned, budgeted) — shells keep their nodes,
-content evicts.
+Laws that are part of L3 regardless:
+- **The visibility fact has ONE writer** (A#13): the residency manager owns one
+  per-shell visibility bit that DERIVES pointerEvents, accessibility hiding
+  (`no-hide-descendants`), subscription liveness, AND animation liveness — a hidden
+  shell runs ZERO worklets (shimmer clocks paused, `display:'none'`/detached so layout
+  skips; B#6i). Half-right states are unrepresentable.
+- **Invisible shells subscribe to nothing** (A#9): freshness comes from the beat-writer
+  stamping chrome+content in the same pre-reveal batch that lands rows — "reveal = one
+  batched write to the target shell" covers first paint and re-entry identically. No
+  stale-then-correct flash; no 19-shell background render tax.
+- **THE EVICTION LAW lives HERE, now (A#11, B#7 — no dangling reference):** shells
+  never evict; CONTENT evicts under a budget with (a) stack-pinned scenes and the
+  last-N-visited exempt (back-navigation never crosses an evicted shell), (b) eviction
+  stores an anchor (item key + intra-item offset) + the data snapshot when small,
+  (c) re-entry to an evicted shell refetches BEFORE reveal (origin-restore seeks the
+  anchor; anchored item gone ⇒ top, by law). Return-to-origin stays exact.
+- **Warm-before-navigate (A#6, B#6iii):** first-visit shells compile at app-idle
+  (post-boot prewarm of the reachable set) or on press-down prediction — NEVER inside
+  the transition window. This is the one scheduling discipline the design carries,
+  named honestly; the residency manager owns it, and a shell compiled mid-transition
+  is a LOUD contract violation, not a fallback.
+- **Trans-page chrome is a real, tiny, enumerated layer (A#8, B#8):** the nav action
+  (plus↔X) and strip-morph continuity are owned by the TRANSITION, not by any shell —
+  a closed set. Strip STATE (selection, in-flight morph clock) lifts to a store keyed
+  by STRIP IDENTITY (not page); both shells render from it, so cross-page strip
+  continuity is shared-state-driven, deliberately — "nothing shared between pages"
+  amended to "nothing shared except the enumerated trans-page set."
+- The scene census is taken against the REAL key list (B#14): 20 OverlayKeys; `sheetHost`
+  (never dispatched) and `search` (bespoke dual-band body — becomes the two-band shell)
+  are named explicitly; every key gets a body kind (list/content/none) in the spec table.
 
-### L4 — TRANSITIONS REVEAL; DATA LANDS ON THE BEAT
+## L4 — REVEAL + THE CONTENT-LANDING CLOCK (redesigned; v1's weakest level)
 
-With L3, the transition engine's job collapses to what it already does well: reveal a
-pre-existing shell (the txn's phases gate visibility, never construction) and land
-content in ONE batch at the joint (the episode's `revealed` edge writes the content
-slots; late-arriving pieces — the collaborator-row class — join the NEXT declared
-beat, never dribble). The work-scheduler sketch survives only as the small executor
-that slices CONTENT preparation off the critical path; there is no shell construction
-left to schedule. The release-measured reveal burst shrinks structurally: the mount
-cost of a reveal is rows-into-resident-slots, not subtree construction.
+The red-team's deepest finding (B#1/#2): v1's "one beat at the joint" attacked the
+wrong term — the release-measured burst is ROW MOUNTING when the response lands
+seconds after the transition, outside any transition edge. L4 is now two laws:
 
-## 2. Why this is the from-scratch ideal and not a coordination patch
+- **Law 1 — transitions only reveal.** With L3 real, a switch is: retarget visibility
+  + run the animation + stamp the target shell (chrome + whatever content exists) in
+  one pre-reveal batch. **L4 is re-derived from L0–L3, not inherited (A#1):** the
+  transition object needed is `{from, to, animation, contentBeat}`. The existing
+  engine's cold-path vocabulary — paintAck production, warm gates, painted-evidence
+  records, synthetic acks, freeze bundles — exists to choreograph CONSTRUCTION during
+  motion; with no construction reachable, it reduces to constants and DIES (B#12 —
+  §gut-list, and its survival is the falsifier: if any ack is still needed, L3 was not
+  achieved). What survives of the engine: identity, supersession, the trace, and
+  progress semantics (below). Gesture transitions are functions of progress ∈ [0,1]
+  with content beats pinned to threshold crossings, idempotent under reversal (a
+  landed beat stays landed; reversal only retargets visibility — A#12).
+- **Law 2 — every shell owns a CONTENT-LANDING CLOCK** (B#2 — beats exist in steady
+  state, not just transitions): all slot writes — responses, pagination, live updates,
+  image loads, the collaborator-row class — coalesce through the shell's landing gate:
+  at most one content commit per beat window, above-the-fold first. **Row mounting is
+  sliced** (B#1): beat one lands the above-fold rows; the remainder mounts in
+  idle-frame slices (this — the mount-reduction arm — is the load-bearing fix for the
+  measured 172–180ms frames, promoted from v1's footnote to a named law).
+- **The slow-network law (B#11 — owner ratifies, product):** one-beat is a cap on
+  dribble, not a dam against partial content. Data arriving within one window lands
+  atomically; a late response lands above-fold progressively through the clock; shimmer
+  past a declared timeout resolves to the error material with retry. No 10-second
+  silent shimmer.
 
-Each symptom's cure is an *unrepresentability*, not a rule someone must follow:
-- Two skeleton materials CANNOT exist (L0 is the only material and panels receive
-  content SLOTS, not the ability to mount arbitrary pending branches).
-- Wrong backing CANNOT be passed (it is derived; there is no argument).
-- Skeletons CANNOT change mid-load (loading and loaded are the same nodes).
-- Geometry CANNOT leak across pages (no cross-scene cache exists to leak through).
-- Strips CANNOT arrive late relative to their page (they are part of the shell that
-  the transition reveals atomically).
-- New pages get all of this by declaring a PageSpec — the future-additions nuance the
-  owner named is the default path, not a discipline.
+## The migration bridge (B#5 — designed, not hand-waved)
 
-## 3. What gets gutted (the sweep)
+The strangler needs an explicit, budgeted-for-deletion bridge:
+- The persistent header host gains a **shell-owned-scene mode**: renders nothing and
+  occupies nothing for migrated scenes; the shell's chrome is part of the leg's atomic
+  reveal. Two-headers-fighting is unrepresentable because the host checks the shell
+  registry (one boolean per scene, deleted with the host).
+- The old measured-chrome cache is **frozen at migration start** (a snapshot donor
+  pool) so unmigrated scenes' first-frame geometry cannot degrade as migrated scenes
+  stop feeding it.
+- **First scene: NOT listDetail** (B#5 — it crosses the old/new seam on every
+  entry/exit). First = a self-contained leaf with both directions inside the new
+  system's control (candidate: `settings` or `notifications` — no strip, static body,
+  low blast radius), then `profile` (kills the SkeletonBox material), then the
+  listDetail/bookmarks PAIR in one slice (both sides of the owner's worst transition
+  cross together), then the search family last (the dual-band shell).
+- Gates per scene: matrix + eye + the L0/L2 grep invariants (zero SkeletonBox, zero
+  frostBacking arguments, zero panel pending branches in migrated scenes).
 
-PersistentSheetHeaderHost's slot-swapping (the strip/title/action machinery),
-BottomSheetSceneStackPageFrame's reservedHeaderHeight seam, the measured-chrome cache
-+ signature fallback, SceneBodyReadyGate AND the host's S2 skeleton fallback (both
-wrappers), SceneLoadingSurface/SkeletonBox/CutoutSkeletonTitle as public API (the
-cutout engine survives INSIDE the shell compiler), every per-panel isPending loading
-branch, and the scene-stack host's per-leg chrome/body layer hosts to the extent they
-re-implement composition the shell owns. The scene-stack HOST itself survives as the
-shell residency manager (it already holds legs; legs become shells).
+## Ratification structure (per the bottom-up law)
 
-## 4. Open design decisions (for the red-team + owner)
+- **L0 + L1**: ratifiable now, WITH the truncation law as an explicit owner call.
+- **L2**: ratifiable with the closed state enum + data-slots contract as written.
+- **L3**: ratifiable ONLY after the residency prototype measures (boot delta, memory,
+  steady fps with all shells mounted empty + paused). The prototype is the next
+  concrete artifact.
+- **L4**: ratifiable with Law 1/Law 2 as written, WITH the slow-network law as an
+  explicit owner call.
 
-- Shell count & memory ceiling: all ~19 scenes resident, or resident-on-first-visit
-  with an LRU floor? (Lean: first-visit residency; shells are cheap but not free.)
-- The search results page's dual-tab body (already two co-mounted lists) — one shell
-  with two body slots (the precedent formalized) or two shells?
-- Edit-mode strip morphs mutate chrome GEOMETRY (heights change) — L1 says geometry is
-  computed from the spec: edit mode is a second declared ChromeSpec state (computed,
-  not measured), verify the strip engine fits.
-- Map-dominant pages (search home) declare `body: none` — confirm the frost/map stack
-  needs no plate at all.
-- Migration: strangler per scene (compile ONE scene to a shell, matrix + eye, then
-  sweep) vs big-bang. Lean strangler with listDetail first (the owner's worst page).
+## Owner calls requested
+
+1. **The truncation law** (all chrome text fixed-line at declared heights — listDetail
+   titles ellipsize; this is what makes computed geometry true rather than aspirational).
+2. **The slow-network landing law** (progressive above-fold + timeout-to-error, one-beat
+   as the dribble cap — vs strict one-beat with long shimmer).
+3. **The residency-prototype gate** (L3 waits for its numbers — accept the sequencing).
+4. **The migration order** (settings/notifications → profile → listDetail+bookmarks
+   pair → search family).
