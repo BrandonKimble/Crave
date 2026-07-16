@@ -96,6 +96,27 @@ and the §8.8 invariant becomes grep/spec-assertable).
   slice cache), stack-pinned eviction (a world referenced by any live entry's desire is
   unevictable), memory budget (slice cache bounded per world; LRU across worlds).
 
+## 4b. S2 sizing facts (comprehension sweep, 2026-07-15 — post-S1)
+
+- The flat cache keyed by the full tuple key ALREADY IS `(worldKey, lensKey)`,
+  flattened: `cache[identity+lens]` ≡ `cache[identity].slices[lens]` for lookup
+  semantics. S2's real content is therefore NOT a cache restructure — it is (a) the
+  reconciler's LENS_FLIP class, (b) identity-grouped bookkeeping for L-2's
+  stack-pinned eviction, and (c) key-shape hygiene. Do not rebuild the cache topology
+  for its own sake.
+- `buildSearchCardsWorldKey` has exactly 3 consumer files (resolver ×2 call sites,
+  reconciler ×1, derivation ×2 — the derivation dies in S3). The sweep is small.
+- ⚠️ S3 LATENCY CONSEQUENCE (must be an explicit owner-visible tradeoff, not a silent
+  regression): the sibling derivation makes open-now flips INSTANT on natural/shortcut
+  worlds (client-derived from coverage features — which ARE full-world open truth for
+  the map). Deleting it makes those flips a network slice fetch. Options at S3:
+  (i) accept the fetch (with the episode skeleton covering it), (ii) keep a
+  COVERAGE-PROJECTION fast path as the lens's optimistic first paint with the slice
+  fetch as the settle — one world, no sibling identity, the derivation code shrinks to
+  a projection helper. Lean (ii): it preserves instant feel AND kills the
+  sibling-IDENTITY disease (the true-up machinery dies either way; what survives is a
+  pure projection over the presented world's coverage).
+
 ## 5. Migration (strangler)
 
 - **S1 vocabulary**: introduce `SearchLens` + the split tuple with a compatibility
