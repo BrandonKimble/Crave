@@ -17,9 +17,28 @@ Rosetta — absolute numbers conservative; the dev↔release multiplier is the h
 - UI thread during transitions: avgFps ~48–57, floorFps **25–30**, maxFrame 34–40ms,
   droppedFrameRatio up to 0.2 — the UI thread itself drops frames in dev transitions.
 
-## Release lane
+## Release lane (2026-07-15, runs baseline-rel-1784176936 / -1784177057, warm-binary)
 
-(to be filled by scripts/rig/release-baseline.sh — same flows, same windows)
+- JS task lag, steady-state: ≤15ms (within the law).
+- SUBMIT press-up: maxLag **~90ms** (one window) — a violation, but modest.
+- THE REVEAL BURST (response lands → rows + mounts + frame apply, ~7s post-submit on
+  the slow dev API): **~500ms of CO-STALLED threads** — JS 164/96/82ms tasks AND UI
+  frames of 172/104/180/56/90ms in one cluster. This is the release-lane jank.
+- TOGGLE: clean (≤ ~20ms p95 frames) — the episode joint + co-mounted tabs hold.
+- Steady-state UI: ~46-48fps floor (the Rosetta sim's map idle ceiling).
+
+## Verdict (2026-07-15)
+
+- KNOWN MULTIPLIER (H3): dev/release ≈ **3.3x** on JS transition tasks (543→164ms).
+  Use it for dev-lane triage; judge laws on release only.
+- L-1 status: PRESS-UP is a modest violation (~90ms vs 16ms); THE REVEAL BURST is the
+  real violation and it is BOTH-THREADS — JS scheduling alone cannot fix the 180ms UI
+  frames (Fabric mount cost). The transition-work-scheduler design proceeds with BOTH
+  arms: reveal-critical JS slicing AND mount reduction (pre-mounted shells +
+  progressive hydration, R2-C1 precedent).
+- The owner-felt sheet-switch jank = the reveal burst + dev's 3.3x inflation on top.
+- Caveat: x86_64/Rosetta sim — absolute numbers conservative; re-baseline on device
+  or arm64 sim before fine-tuning budgets.
 
 ## Judgment rules
 
