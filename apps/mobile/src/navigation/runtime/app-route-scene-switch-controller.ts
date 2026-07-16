@@ -649,34 +649,6 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
   // into an unrelated later switch.
   private lastRevealContentReadinessTransactionId: string | null = null;
 
-  // REVEAL-ACK ↔ SWITCH CORRELATION (final red-team mustFix). The readiness collector may
-  // re-evaluate a STALE fully-satisfied txn (the LRU keeps up to 16; a late gate re-mark
-  // re-runs the evaluation) while a NEW search switch is still on its skeleton — the
-  // presented==='search' check alone would then paint-ack a switch that never painted (the R2
-  // never-painted-hold failure class, reveal side). So each committed switch records WHICH
-  // redraw txn is its OWN reveal txn (the same plan-txn ?? lastReveal coalesce the
-  // content-plane link applies), keyed by switchId; the evaluator only acks when the evaluated
-  // txn is the LIVE switch's linked (settleToken-correlated) or recorded txn. Single-slot on
-  // purpose: only the live switch may ever be acked (commitPresentationPaintAck self-guards),
-  // so a superseded record is inert and needs no history.
-  private revealAckLinkBySwitchId: { switchId: number; transactionId: string } | null = null;
-
-  private recordRevealAckLink(switchId: number, transitionPlan: AppRouteSceneTransitionPlan): void {
-    // S-C.4 item 1: the 'sheetHost' shell key is never a dispatch target, so the old
-    // search||searchRoute pair check collapsed to the one real reveal-join scene.
-    const isSearchTarget = transitionPlan.targetSceneKey === 'search';
-    // S-C.4 item 2 AUDIT (2026-07-09, probe-proven LIVE — not dead code): the lastReveal
-    // fallback fired 8x across the submit-dismiss interrupt/repeat sweeps. A close-then-
-    // resubmit switch carries no txn of its own and correlates via the surviving reveal
-    // txn; deleting this arm would orphan that reveal ack. Same holds for the twin
-    // coalesce at the content-plane link below.
-    const transactionId = isSearchTarget
-      ? (transitionPlan.contentReadinessTransactionId ??
-        this.lastRevealContentReadinessTransactionId)
-      : null;
-    this.revealAckLinkBySwitchId = transactionId != null ? { switchId, transactionId } : null;
-  }
-
   private withDeferredDispatchFlush<T>(run: () => T): T {
     this.dispatchFlushDepth += 1;
     try {
@@ -725,7 +697,6 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     this.activeSettlePlanesByToken.clear();
     this.satisfiedReadinessGatesByTransaction.clear();
     this.clearAllContentPlaneTimeouts();
-    this.revealAckLinkBySwitchId = null;
     this.motionDispatchTarget = null;
     this.sceneStackTransitionDispatchTarget = null;
     this.nativeOverlayTransitionDispatchTarget = null;
@@ -1266,21 +1237,12 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     // commit (a seeded/swapImmediately search switch arms no content plane, so it has no
     // link). A stale fully-satisfied txn re-marked late fails both branches and can no longer
     // bless a NEW search switch still on its skeleton.
-    const presentedSceneKey = this.presentationFrame.presentedSceneKey;
-    if (presentedSceneKey === 'search') {
-      const liveSettleToken =
-        this.transitionState.transitionContract?.settleToken ??
-        this.transitionState.transitionToken;
-      const isLiveLinkedTransaction =
-        linkedSettleToken != null && linkedSettleToken === liveSettleToken;
-      const isLiveRecordedRevealTransaction =
-        this.revealAckLinkBySwitchId != null &&
-        this.revealAckLinkBySwitchId.switchId === this.presentationFrame.switchId &&
-        this.revealAckLinkBySwitchId.transactionId === transactionId;
-      if (isLiveLinkedTransaction || isLiveRecordedRevealTransaction) {
-        this.commitPresentationPaintAck(this.presentationFrame.switchId);
-      }
-    }
+    // S3 (reveal-pipeline unification §4): the search-switch PF paint-ack branch is
+    // DELETED — the search leg reports render-derived paint on every presented commit
+    // (BottomSheetSceneStackHost's search-leg layout effect), so the route txn's reveal
+    // owns the ack; this collector's residual duty is the content-plane completion
+    // below (motion-plane bookkeeping, ramp-co-completed — dies with the motion plane).
+    // Redundancy PROVEN live: full mouth soak + matrix 21/21 with the ack disabled.
     // DRIVER: complete the linked content plane on real paint. completeRouteSceneSwitchMotionPlane
     // token-guards (no-ops a superseded/already-completed token) so the ramp onFinish co-completer
     // and this driver are mutually idempotent — whichever fires first wins.
@@ -1768,8 +1730,6 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     );
     // Reveal-ack correlation (final red-team mustFix): stamp WHICH txn is THIS switch's own
     // reveal txn before the frame mints, so the collector's evaluator can refuse to ack the
-    // live switch off a stale txn (see recordRevealAckLink).
-    this.recordRevealAckLink(nextToken, transitionPlan);
     withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchTransition:setTransitionState',
@@ -1854,7 +1814,6 @@ export class AppRouteSceneSwitchController implements AppRouteSceneSwitchRuntime
     // (which nulls lastRevealContentReadinessTransactionId), so an idle-committed switch only
     // records a txn its own plan carried. Idle switches self-ack in setTransitionState anyway;
     // this keeps the single slot from pointing at a superseded switch's txn.
-    this.recordRevealAckLink(nextToken, transitionPlan);
     withSearchNavSwitchRuntimeAttribution(
       'routeSceneSwitchController',
       'commitRouteSceneSwitchIdleState:setTransitionState',

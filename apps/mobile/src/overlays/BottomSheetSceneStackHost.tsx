@@ -655,6 +655,19 @@ const SceneStackBodyFrameHost = React.memo(
       },
       [recordScenePainted, reportScenePaint, sceneKey]
     );
+    // S3 (reveal-pipeline unification §4): the SEARCH leg's render-derived paint evidence.
+    // The split legs got this in the content-layer host (T5); search bypasses it (renders
+    // `children` directly), so its only reporter was the mount-once onLayout above — on a
+    // RE-PRESENT of the always-mounted search leg no paint ever re-reported, and the P5
+    // collector's ack was silently load-bearing for the search switch. The search page is
+    // NEVER-NULL (P5: real skeleton page when the bundle hasn't published), so a presented
+    // commit is always renderable content.
+    const isSearchLegPresented = sceneKey === 'search' && legRole !== 'idle';
+    React.useLayoutEffect(() => {
+      if (isSearchLegPresented) {
+        reportScenePaint?.(sceneKey);
+      }
+    }, [isSearchLegPresented, reportScenePaint, sceneKey]);
     // Touch arbitration: ONLY the 'incoming' leg (the destination / settled displayed scene)
     // receives touches. Both crossfade legs render at the same zIndex:2 absolute-fill, so a
     // fully-transparent 'outgoing' leg whose DOM index is HIGHER than the incoming (e.g. a
