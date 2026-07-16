@@ -134,6 +134,17 @@ const reportViolation = (violation: TransitionTxnContractViolation): void => {
     return;
   }
   if (__DEV__) {
+    // SEVERITY (owner-reported 2026-07-15: the LogBox overlay fired on every slow-API
+    // run): join_liveness_degrade is a DEGRADE — expected, self-healing behavior on a
+    // slow network (the dev API ran >10s repeatedly; the forced reveal is the designed
+    // UX fallback), not a broken contract. It logs grep-ably but never throws a LogBox.
+    // The structural violations (illegal edges, stale marks, unknown/duplicate inputs)
+    // stay console.error — those are bugs to attribute.
+    if (violation.reason === 'join_liveness_degrade') {
+      // eslint-disable-next-line no-console
+      console.log(`[TXN-DEGRADE] ${violation.txnId}: ${violation.detail}`);
+      return;
+    }
     // eslint-disable-next-line no-console
     console.error(`[TXN-CONTRACT] ${violation.reason} ${violation.txnId}: ${violation.detail}`);
   }
