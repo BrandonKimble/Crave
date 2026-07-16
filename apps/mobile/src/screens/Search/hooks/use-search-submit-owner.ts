@@ -384,8 +384,8 @@ const useSearchSubmitOwner = ({
       // motion-only fact (snap completion / motion-plane settle), so release never
       // depends on the held commit — no cycle.
       shouldHoldWorldCommitForSheetMotion: () => {
-        const redrawTransaction = getSearchSurfaceRuntime().getSnapshot().redrawTransaction;
-        return redrawTransaction != null && !redrawTransaction.readiness.sheetReady;
+        const snapshot = getSearchSurfaceRuntime().getSnapshot();
+        return snapshot.redrawTransaction != null && !snapshot.sheetMotionSettled;
       },
       subscribeWorldCommitRelease: (listener) => getSearchSurfaceRuntime().subscribe(listener),
     });

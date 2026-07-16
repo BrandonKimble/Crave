@@ -130,10 +130,7 @@ export const useResultsPresentationMarkerEnterRuntime = ({
       if (!didAcceptMountedHidden) {
         return;
       }
-      getSearchSurfaceRuntime().markRedrawNativeMarkerFrameReady(payload.requestKey, {
-        frameGenerationId: payload.frameGenerationId ?? null,
-        executionBatchId: payload.executionBatchId ?? null,
-      });
+      getSearchSurfaceRuntime().markRedrawNativeMarkerFrameReady(payload.requestKey);
       pendingMarkerEnterStartRef.current = {
         requestKey: payload.requestKey,
         executionBatch,

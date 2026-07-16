@@ -4,9 +4,6 @@
 //   it pending at snap START and restores it at snap SETTLE.
 // - Persistent-poll release on dismiss requires the WHOLE choreography (bottom boundary
 //   AND nav return), and the commit stamp uses the same single derivation.
-jest.mock('../../../../navigation/runtime/app-route-scene-switch-controller', () => ({
-  markActiveSceneContentGate: jest.fn(),
-}));
 jest.mock('../../../../perf/perf-scenario-runtime-store', () => ({
   usePerfScenarioRuntimeStore: { getState: () => ({ activeConfig: null }) },
 }));
@@ -16,6 +13,13 @@ import {
   isDismissChoreographyComplete,
   selectSearchSurfaceVisualPolicy,
 } from './search-surface-runtime';
+import { resetTransitionTxnHolderForTest } from '../../../../navigation/runtime/transition-engine/transition-transaction';
+
+// The engine holder is module-scope; a prior test's live episode would make the next
+// test's staging DEFER (route-window semantics) and its offers bounce.
+beforeEach(() => {
+  resetTransitionTxnHolderForTest();
+});
 
 // The runtime arms real watchdog timers; fake them so the hermetic run exits cleanly.
 jest.useFakeTimers();
@@ -26,32 +30,33 @@ const markAllPollPartsReady = (runtime: SearchSurfaceRuntime, transactionId: str
   runtime.markPollPagePartReady('host', transactionId, 'sceneStack:persistent:host');
 };
 
-describe('SearchSurfaceRuntime sheetReady (sheet-motion fence)', () => {
-  it('redraw transactions are BORN sheet-ready (stationary redraws commit without a slide)', () => {
+describe('SearchSurfaceRuntime sheet-motion fence (redraw-object shrink: SURFACE state)', () => {
+  it('the surface is BORN fence-open (stationary redraws never gate on a slide that will not run)', () => {
     const runtime = new SearchSurfaceRuntime();
     const id = runtime.beginRedrawTransaction({ reason: 'toggle' });
     expect(runtime.getSnapshot().redrawTransaction?.id).toBe(id);
-    expect(runtime.getSnapshot().redrawTransaction?.readiness.sheetReady).toBe(true);
+    expect(runtime.getSnapshot().sheetMotionSettled).toBe(true);
   });
 
   it('snap START flips pending, snap SETTLE restores — the motion window is fenced', () => {
     const runtime = new SearchSurfaceRuntime();
     const id = runtime.beginRedrawTransaction({ reason: 'submit' });
     runtime.markRedrawSheetMotionPending(id);
-    expect(runtime.getSnapshot().redrawTransaction?.readiness.sheetReady).toBe(false);
+    expect(runtime.getSnapshot().sheetMotionSettled).toBe(false);
     runtime.markRedrawSheetReady(id);
-    expect(runtime.getSnapshot().redrawTransaction?.readiness.sheetReady).toBe(true);
+    expect(runtime.getSnapshot().sheetMotionSettled).toBe(true);
   });
 
-  it('the 3-gate reveal commit waits for sheet motion to settle', () => {
+  it('THE MID-SLIDE LAW: the episode-driven redraw commit defers while the sheet moves and lands at fence restore', () => {
     const runtime = new SearchSurfaceRuntime();
     const id = runtime.beginRedrawTransaction({ reason: 'submit' });
     runtime.markRedrawSheetMotionPending(id);
+    // The episode joins via the marks (paint + mapFrame offers ride them), but the
+    // commit must hold while the sheet is physically moving.
     runtime.markRedrawCardsReady(id);
     runtime.markRedrawNativeMarkerFrameReady(id);
     expect(runtime.getSnapshot().redrawTransaction?.committedAtMs ?? null).toBeNull();
     runtime.markRedrawSheetReady(id);
-    // All three gates satisfied → the redraw commits (transaction completes).
     const snapshot = runtime.getSnapshot();
     const stillPending = snapshot.redrawTransaction;
     expect(stillPending == null || stillPending.committedAtMs != null).toBe(true);

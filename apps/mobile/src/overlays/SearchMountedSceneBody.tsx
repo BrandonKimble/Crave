@@ -113,8 +113,8 @@ const hasSearchSurfaceResultsBodyBundle = (
 // surface-runtime subscription re-notifies on the sheetReady settle flip, and the lazy
 // getter re-reads the live authority then (latest-wins; intermediate updates coalesce).
 const isSearchSheetMotionFenceClosed = (): boolean => {
-  const redrawTransaction = getSearchSurfaceRuntime().getSnapshot().redrawTransaction;
-  return redrawTransaction != null && !redrawTransaction.readiness.sheetReady;
+  const snapshot = getSearchSurfaceRuntime().getSnapshot();
+  return snapshot.redrawTransaction != null && !snapshot.sheetMotionSettled;
 };
 
 let motionFencedListDataSnapshot: SearchMountedResultsListDataSnapshot | null = null;

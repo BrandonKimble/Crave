@@ -372,10 +372,9 @@ export const useResultsPresentationSurfaceTransactionRuntime = ({
         sourceFrameSnapshot.mapSearchSurfaceResultsSourcesReadyKey,
       resultsSnapshotKey: currentResultsSnapshotKey,
       visualRevealTransactionId: visualRevealTransaction?.id ?? null,
-      visualRevealCardsReady: visualRevealTransaction?.readiness.cardsReady ?? false,
-      visualRevealSheetReady: visualRevealTransaction?.readiness.sheetReady ?? false,
-      visualRevealNativeMarkerFrameReady:
-        visualRevealTransaction?.readiness.nativeMarkerFrameReady ?? false,
+      // Redraw-object shrink: the reveal fact is the COMMIT (the episode's reveal
+      // commits the redraw), not a readiness triple.
+      visualRevealCommitted: visualRevealTransaction?.committedAtMs != null,
       visualRevealSource,
     };
   }, [resultsPresentationSurfaceAuthority, searchMapSourceFramePort]);

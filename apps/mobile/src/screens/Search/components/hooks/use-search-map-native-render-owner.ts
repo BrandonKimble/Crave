@@ -3043,8 +3043,8 @@ const useSearchMapNativeRenderOwnerSync = ({
       transportState.queueState.pendingFrame?.sourceTransport?.effectiveChangedSourceIds?.length ??
       0;
     if (pendingStructural > 0) {
-      const activeRedrawTransaction = getSearchSurfaceRuntime().getSnapshot().redrawTransaction;
-      if (activeRedrawTransaction != null && !activeRedrawTransaction.readiness.sheetReady) {
+      const surfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
+      if (surfaceSnapshot.redrawTransaction != null && !surfaceSnapshot.sheetMotionSettled) {
         return;
       }
     }
@@ -3422,8 +3422,8 @@ const useSearchMapNativeRenderOwnerSync = ({
         if (transportState.queueState.pendingFrame == null) {
           return;
         }
-        const activeRedrawTransaction = getSearchSurfaceRuntime().getSnapshot().redrawTransaction;
-        if (activeRedrawTransaction == null || activeRedrawTransaction.readiness.sheetReady) {
+        const surfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
+        if (surfaceSnapshot.redrawTransaction == null || surfaceSnapshot.sheetMotionSettled) {
           flushLatestDesiredFrame();
         }
       }),

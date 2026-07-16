@@ -64,15 +64,6 @@ export type SearchSurfaceRedrawTransaction = {
   filters: unknown | null;
   targetTab: SearchSurfaceTargetTab | null;
   coverState: Exclude<ResultsPresentationCoverState, 'hidden'>;
-  readiness: {
-    cardsReady: boolean;
-    sheetReady: boolean;
-    nativeMarkerFrameReady: boolean;
-    nativeMarkerFrameBatch: {
-      frameGenerationId: string | null;
-      executionBatchId: string | null;
-    } | null;
-  };
   startedAtMs: number;
   committedAtMs: number | null;
 };
@@ -173,6 +164,11 @@ export type SearchSurfaceRuntimeSnapshot = {
   heldBundle: ResultsPageBundle | null;
   redrawTransaction: SearchSurfaceRedrawTransaction | null;
   completedRedrawTransaction: SearchSurfaceRedrawTransaction | null;
+  /** THE SHEET-MOTION FENCE (redraw-object shrink): true = the sheet is not physically
+   *  moving. SURFACE state, not transaction state — it flips per snap (start→false,
+   *  settle→true) and holds heavy work (world commits, list-data fanout) off the slide.
+   *  Previously smuggled inside redrawTransaction.readiness.sheetReady. */
+  sheetMotionSettled: boolean;
   dismissTransaction: SearchSurfaceDismissTransaction | null;
   navSilhouette: NavSilhouetteRuntimeProjection;
 };
@@ -216,9 +212,6 @@ export const selectSearchSurfaceVisualPolicy = (
 ): SearchSurfaceVisualPolicySnapshot => {
   const redrawTransaction = snapshot.redrawTransaction;
   if (redrawTransaction != null) {
-    const readiness = redrawTransaction.readiness;
-    const canCommitReveal =
-      readiness.cardsReady && readiness.nativeMarkerFrameReady && readiness.sheetReady;
     return {
       transactionId: redrawTransaction.id,
       phase: 'results_redrawing',
@@ -228,7 +221,9 @@ export const selectSearchSurfaceVisualPolicy = (
       pollHostReady: false,
       dismissBottomBoundaryReached: false,
       bottomNavReturnReady: false,
-      canAdmitResultsBody: canCommitReveal,
+      // Redraw-object shrink: a LIVE redraw = the episode is unjoined (its reveal
+      // commits the redraw and clears this slot) — the readiness triple is gone.
+      canAdmitResultsBody: false,
       shouldHoldResultsHeader: false,
       shouldHoldSearchDisplayForPollRestore: false,
       canExposePersistentPolls: false,
@@ -401,6 +396,7 @@ const createInitialSnapshot = (): SearchSurfaceRuntimeSnapshot => {
     redrawTransaction: null,
     completedRedrawTransaction: null,
     dismissTransaction: null,
+    sheetMotionSettled: true,
     navSilhouette: deriveNavSilhouetteProjection(activeBundle, null, null),
   };
 };
@@ -420,13 +416,6 @@ const areRedrawTransactionsEqual = (
     left.filters === right.filters &&
     left.targetTab === right.targetTab &&
     left.coverState === right.coverState &&
-    left.readiness.cardsReady === right.readiness.cardsReady &&
-    left.readiness.sheetReady === right.readiness.sheetReady &&
-    left.readiness.nativeMarkerFrameReady === right.readiness.nativeMarkerFrameReady &&
-    left.readiness.nativeMarkerFrameBatch?.frameGenerationId ===
-      right.readiness.nativeMarkerFrameBatch?.frameGenerationId &&
-    left.readiness.nativeMarkerFrameBatch?.executionBatchId ===
-      right.readiness.nativeMarkerFrameBatch?.executionBatchId &&
     left.committedAtMs === right.committedAtMs);
 
 const areResultsBundlesEqual = (
@@ -500,6 +489,7 @@ const areSearchSurfaceRuntimeSnapshotsEqual = (
   areRedrawTransactionsEqual(left.redrawTransaction, right.redrawTransaction) &&
   areRedrawTransactionsEqual(left.completedRedrawTransaction, right.completedRedrawTransaction) &&
   areDismissTransactionsEqual(left.dismissTransaction, right.dismissTransaction) &&
+  left.sheetMotionSettled === right.sheetMotionSettled &&
   areNavSilhouetteRuntimeProjectionsEqual(left.navSilhouette, right.navSilhouette);
 
 export class SearchSurfaceRuntime {
@@ -686,30 +676,21 @@ export class SearchSurfaceRuntime {
         filters,
         targetTab,
         coverState,
-        readiness: {
-          cardsReady: false,
-          // Born TRUE: sheetReady means "the sheet is not physically moving". Stationary
-          // redraws (toggle / search-this-area / variant rerun — staged at response
-          // time) must not gate on a slide that will never run; the sheet host flips
-          // this to pending at snap START and restores it at snap SETTLE.
-          // EXCEPTION (eye-verified 2026-07-13): an enter that ISSUES a reveal snap marks
-          // the slide EXPECTED (markRedrawSheetMotionExpected) before staging — snap
-          // START's runOnJS roundtrip lands ~10-30ms after the command, and the resubmit
-          // lens apply (~113ms bridge slice) flushed through the still-born-true fence
-          // inside that gap, freezing the slide's first frames. Every snap-command path
-          // restores: spring settle, instant dispatch, and already-at-target all reach
-          // recordSharedSheetSnap — no stranding.
-          sheetReady: this.redrawSheetMotionExpectedTransactionId !== id,
-          nativeMarkerFrameReady: false,
-          nativeMarkerFrameBatch: null,
-        },
         startedAtMs: nowMs(),
         committedAtMs: null,
       },
       completedRedrawTransaction: null,
       dismissTransaction: null,
+      // THE FENCE, born-value (redraw-object shrink): true = no slide will run for a
+      // stationary redraw (toggle / search-this-area / variant rerun); an enter that
+      // ISSUES a reveal snap marks the slide EXPECTED (markRedrawSheetMotionExpected,
+      // eye-verified 2026-07-13: snap START's runOnJS roundtrip lands ~10-30ms after
+      // the command and heavy applies froze the slide's first frames through the gap).
+      // Every snap-command path restores at settle (recordSharedSheetSnap).
+      sheetMotionSettled: this.redrawSheetMotionExpectedTransactionId !== id,
     });
     this.redrawSheetMotionExpectedTransactionId = null;
+    this.q2RedrawCommitPendingFenceRestore = false;
     this.stageQ2ShadowTransitionTxn(id);
   }
 
@@ -736,7 +717,7 @@ export class SearchSurfaceRuntime {
       }
       return;
     }
-    const bornSheetReady = this.snapshot.redrawTransaction?.readiness.sheetReady !== false;
+    const bornSheetReady = this.snapshot.sheetMotionSettled !== false;
     if (!bornSheetReady) {
       // Motion-expected arm = a route-coupled reveal ENTER (design §3): the push txn
       // reveals the skeleton; the world episode defers until it terminates.
@@ -781,20 +762,9 @@ export class SearchSurfaceRuntime {
   // txn's window — attributed live on the list-open enter) seeds as offers, so staging
   // order can never park the join.
   private seedQ2ShadowOffersFromCurrentReadiness(): void {
-    const readiness = this.snapshot.redrawTransaction?.readiness;
-    if (readiness != null) {
-      this.seedQ2ShadowOffers(readiness);
-    }
-  }
-
-  private seedQ2ShadowOffers(readiness: SearchSurfaceRedrawTransaction['readiness']): void {
-    if (readiness.cardsReady) {
-      this.offerQ2ShadowJoin('paint');
-    }
-    if (readiness.nativeMarkerFrameReady) {
-      this.offerQ2ShadowJoin('mapFrame');
-    }
-    if (readiness.sheetReady) {
+    // Redraw-object shrink: paint/mapFrame seed from the runtime's residency state
+    // (already offered by the callers above); the fence seeds 'sheet'.
+    if (this.snapshot.sheetMotionSettled) {
       this.offerQ2ShadowJoin('sheet');
     }
   }
@@ -811,10 +781,7 @@ export class SearchSurfaceRuntime {
   }
 
   // S2 INVERSION (design §4): the episode's 'revealed' edge DRIVES the redraw commit —
-  // canAdmitResultsBody becomes txn-derived underneath its unchanged selector. The old
-  // per-lane readiness marks still run in parallel (idempotent; S3 deletes them); for
-  // lanes that never completed them (the Q-2c shortcut), THIS is now the cover lift —
-  // the tier watchdogs stop being load-bearing.
+  // canAdmitResultsBody is txn-derived underneath its unchanged selector.
   private completeRedrawAtEpisodeReveal(): void {
     const liveTxn = getLiveTransitionTxn();
     if (
@@ -824,14 +791,30 @@ export class SearchSurfaceRuntime {
     ) {
       return;
     }
+    this.commitRevealedRedrawRespectingFence();
+  }
+
+  // THE MID-SLIDE LAW (preserved from the 3-gate era): the commit's publish is a
+  // fan-out trigger and must never land while the sheet is physically moving — even
+  // for an episode whose plan didn't declare 'sheet' (a user drag mid-toggle). The
+  // deferral is LATCHED (the episode may settle — and the shadow null — before the
+  // fence restores); markRedrawSheetReady retries.
+  private q2RedrawCommitPendingFenceRestore = false;
+
+  private commitRevealedRedrawRespectingFence(): void {
     const redraw = this.snapshot.redrawTransaction;
     if (redraw == null || redraw.committedAtMs != null) {
+      this.q2RedrawCommitPendingFenceRestore = false;
       return;
     }
-    this.patchActiveRedrawTransaction(redraw.id, {
-      cardsReady: true,
-      nativeMarkerFrameReady: true,
-      sheetReady: true,
+    if (!this.snapshot.sheetMotionSettled) {
+      this.q2RedrawCommitPendingFenceRestore = true;
+      return;
+    }
+    this.q2RedrawCommitPendingFenceRestore = false;
+    this.commitActiveRedrawTransactionWithoutRouteFanout({
+      ...redraw,
+      committedAtMs: nowMs(),
     });
   }
 
@@ -882,7 +865,7 @@ export class SearchSurfaceRuntime {
         this.offerQ2ShadowJoin('mapFrame');
       }
     }
-    if (redraw.readiness.sheetReady) {
+    if (this.snapshot.sheetMotionSettled) {
       this.offerQ2ShadowJoin('sheet');
     }
   }
@@ -907,63 +890,86 @@ export class SearchSurfaceRuntime {
   // reveal — forced or genuine — commits the redraw (completeRedrawAtEpisodeReveal).
   // One net, one owner, RED-provable by suppressing any producer.
 
+  // ── The mark family (redraw-object shrink): PURE EPISODE PRODUCERS + THE FENCE ──
+  // The readiness triple is gone; marks either OFFER a join input to the live episode
+  // (latest-wins via the active-redraw id match — a superseded interaction's late mark
+  // is a warned no-op) or write the surface-level sheet-motion fence.
+
+  private offerForActiveRedraw(
+    transactionId: string | null | undefined,
+    input: TransitionJoinInput,
+    readyPart: string
+  ): void {
+    const redrawTransaction = this.snapshot.redrawTransaction;
+    if (
+      redrawTransaction == null ||
+      !this.matchesTransaction(redrawTransaction.id, transactionId)
+    ) {
+      logger.warn('[PRESENTATION-WATCHDOG] surface redraw readiness ignored', {
+        readyPart,
+        requestedTransactionId: transactionId ?? null,
+        activeRedrawTransactionId: redrawTransaction?.id ?? null,
+      });
+      return;
+    }
+    this.offerQ2ShadowJoin(input);
+  }
+
   public markRedrawCardsReady = (transactionId: string | null | undefined): void => {
-    this.patchActiveRedrawTransaction(transactionId, { cardsReady: true });
+    this.offerForActiveRedraw(transactionId, 'paint', 'cards');
   };
 
-  public markRedrawNativeMarkerFrameReady = (
-    transactionId: string | null | undefined,
-    nativeMarkerFrameBatch: SearchSurfaceRedrawTransaction['readiness']['nativeMarkerFrameBatch'] = null
-  ): void => {
-    this.patchActiveRedrawTransaction(transactionId, {
-      nativeMarkerFrameReady: true,
-      nativeMarkerFrameBatch,
-    });
+  public markRedrawNativeMarkerFrameReady = (transactionId: string | null | undefined): void => {
+    this.offerForActiveRedraw(transactionId, 'mapFrame', 'native_marker_frame');
   };
 
   public markRedrawSheetReady = (transactionId: string | null | undefined): void => {
-    this.patchActiveRedrawTransaction(transactionId, { sheetReady: true });
+    void transactionId;
+    if (!this.snapshot.sheetMotionSettled) {
+      this.publish({ ...this.snapshot, sheetMotionSettled: true });
+    }
+    this.offerQ2ShadowJoin('sheet');
+    // Fence restore retries the mid-slide-deferred commit (latched — the episode may
+    // have settled while fenced).
+    if (this.q2RedrawCommitPendingFenceRestore) {
+      this.commitRevealedRedrawRespectingFence();
+    }
   };
 
-  // Transition-perf fence: `sheetReady` means "the sheet is not physically moving for
-  // this transaction". Redraws are born sheet-ready; the sheet HOST flips this at snap
-  // START and restores it at snap SETTLE (both in app-route-sheet-host-authority-
-  // controller) — motion-keyed on both sides, so a deferred/no-op snap (no motion) can
-  // never strand the bit, and a commit arriving before motion begins simply flows
-  // (markers mount, the presentation lane frees, the snap then runs fenced). World
-  // commits are held behind this bit so the hydration fan-out never lands mid-slide.
+  // THE FENCE: "the sheet is not physically moving". The sheet HOST flips this at snap
+  // START and restores it at snap SETTLE (app-route-sheet-host-authority-controller) —
+  // motion-keyed on both sides, so a deferred/no-op snap can never strand the bit.
+  // World commits + list-data fanout are held behind it (never land mid-slide).
   public markRedrawSheetMotionPending = (transactionId: string | null | undefined): void => {
-    this.patchActiveRedrawTransaction(transactionId, { sheetReady: false });
+    void transactionId;
+    if (this.snapshot.sheetMotionSettled) {
+      this.publish({ ...this.snapshot, sheetMotionSettled: false });
+    }
   };
 
-  // Transition-perf fence, ISSUE-side producer: the enter execution runtime calls this the
-  // JS-synchronous instant it issues a reveal snap command, BEFORE the transaction stages.
-  // The snap-START producer above is a UI-thread→runOnJS roundtrip that lands ~10-30ms after
-  // the command — structural applies flushed through that gap (eye-verified: the resubmit
-  // lens apply's ~113ms bridge slice froze the slide's first frames). If the transaction is
-  // already active, flip it directly; otherwise record the expectation so the arm publishes
-  // born sheetReady:false. Restore is unchanged (snap SETTLE via recordSharedSheetSnap).
+  // THE FENCE, ISSUE-side producer: called the JS-synchronous instant a reveal snap
+  // command is issued, BEFORE the redraw arms (the snap-START producer above is a
+  // UI-thread→runOnJS roundtrip landing ~10-30ms later; heavy applies froze the slide's
+  // first frames through that gap — eye-verified 2026-07-13). If the redraw is already
+  // active, close the fence directly; otherwise record the expectation so the arm
+  // publishes born sheetMotionSettled:false.
   public markRedrawSheetMotionExpected = (transactionId: string | null | undefined): void => {
     if (transactionId == null) {
       return;
     }
     if (this.snapshot.redrawTransaction?.id === transactionId) {
-      this.patchActiveRedrawTransaction(transactionId, { sheetReady: false });
+      if (this.snapshot.sheetMotionSettled) {
+        this.publish({ ...this.snapshot, sheetMotionSettled: false });
+      }
       return;
     }
     this.redrawSheetMotionExpectedTransactionId = transactionId;
   };
 
-  // UNIFIED-FADE TOGGLE (map-LOD-v6): the DETERMINISTIC resolver for the `nativeMarkerFrameReady` gate.
-  // Driven by the native `presentation_toggle_settled` event, which fires on the fade-IN ramp completion
-  // keyed to the LATEST request (`lastEnterRequestKey`) — so it ALWAYS lands on the active transaction
-  // (latest-wins) or is dropped by the match guard if superseded (the active one fires its own). This
-  // REPLACES the racy per-execution-batch `mounted_hidden` gate that silently dropped superseded rapid-tap
-  // intents, leaving the cover stuck forever. For a non-superseded single toggle the mounted_hidden path
-  // still resolves the gate FIRST (at markers-mount, before the fade-in) so its fast choreography is
-  // unchanged; this only matters when that path was dropped. `degraded` (roster failed) still lifts — never
-  // hang on a roster failure; we only log it. `patchActiveRedrawTransaction` does the latest-wins match +
-  // the 3-gate commit, so cards/sheet are still required (we never uncover before the cards data lands).
+  // UNIFIED-FADE TOGGLE: the deterministic resolver driven by the native
+  // `presentation_toggle_settled` event (fade-IN ramp completion, keyed to the LATEST
+  // request — latest-wins by construction). `degraded` (roster failed) still offers —
+  // never hang on a roster failure; we only log it.
   public markRedrawSettled = (
     transactionId: string | null | undefined,
     degraded: boolean = false
@@ -977,7 +983,7 @@ export class SearchSurfaceRuntime {
         }
       );
     }
-    this.patchActiveRedrawTransaction(transactionId, { nativeMarkerFrameReady: true });
+    this.offerForActiveRedraw(transactionId, 'mapFrame', 'native_marker_frame');
   };
 
   public syncResultsPageBodyBundle = (bodyBundle: SearchSurfaceResultsBodyBundle | null): void => {
@@ -1263,101 +1269,6 @@ export class SearchSurfaceRuntime {
     });
   };
 
-  private patchActiveRedrawTransaction(
-    transactionId: string | null | undefined,
-    patch: Partial<SearchSurfaceRedrawTransaction['readiness']>
-  ): void {
-    const readyPart =
-      patch.cardsReady === true
-        ? 'cards'
-        : patch.nativeMarkerFrameReady === true
-          ? 'native_marker_frame'
-          : patch.sheetReady === true
-            ? 'sheet'
-            : null;
-    const redrawTransaction = this.snapshot.redrawTransaction;
-    if (
-      redrawTransaction == null ||
-      !this.matchesTransaction(redrawTransaction.id, transactionId)
-    ) {
-      logger.warn('[PRESENTATION-WATCHDOG] surface redraw readiness ignored', {
-        readyPart,
-        requestedTransactionId: transactionId ?? null,
-        activeRedrawTransactionId: redrawTransaction?.id ?? null,
-        activeBundleKind: this.snapshot.activeBundle.kind,
-        activeResultsTransactionId:
-          this.snapshot.activeBundle.kind === 'results'
-            ? this.snapshot.activeBundle.transactionId
-            : null,
-        activeResultsCoverState:
-          this.snapshot.activeBundle.kind === 'results'
-            ? this.snapshot.activeBundle.coverState
-            : null,
-        heldResultsTransactionId: this.snapshot.heldBundle?.transactionId ?? null,
-        dismissTransactionId: this.snapshot.dismissTransaction?.id ?? null,
-      });
-      return;
-    }
-    // Q-2 shadow offers live at THIS chokepoint — every readiness landing (public mark
-    // methods AND the toggle lane's internal patches) flows through here; the public
-    // wrappers are not total (attributed live: toggle readiness bypassed them and the
-    // shadow degraded at 600ms with the toggle visibly done in ~300ms).
-    if (patch.cardsReady === true) {
-      this.offerQ2ShadowJoin('paint');
-    }
-    if (patch.nativeMarkerFrameReady === true) {
-      this.offerQ2ShadowJoin('mapFrame');
-    }
-    if (patch.sheetReady === true) {
-      this.offerQ2ShadowJoin('sheet');
-    }
-    const nextRedrawTransaction = {
-      ...redrawTransaction,
-      readiness: {
-        ...redrawTransaction.readiness,
-        ...patch,
-      },
-    };
-    const structuralRevealJoinProof =
-      nextRedrawTransaction.readiness.cardsReady &&
-      nextRedrawTransaction.readiness.nativeMarkerFrameReady &&
-      nextRedrawTransaction.readiness.sheetReady
-        ? {
-            coverState: 'hidden' as const,
-            cardsReady: true,
-            nativeMarkerFrameReady: true,
-          }
-        : null;
-    void structuralRevealJoinProof;
-    if (
-      nextRedrawTransaction.readiness.cardsReady &&
-      nextRedrawTransaction.readiness.nativeMarkerFrameReady &&
-      nextRedrawTransaction.readiness.sheetReady
-    ) {
-      const revealContractSnapshot = {
-        coverState: 'hidden' as const,
-        cardsReady: true,
-        nativeMarkerFrameReady: true,
-      };
-      void revealContractSnapshot;
-      this.commitActiveRedrawTransactionWithoutRouteFanout({
-        ...nextRedrawTransaction,
-        readiness: {
-          ...nextRedrawTransaction.readiness,
-          cardsReady: true,
-          nativeMarkerFrameReady: true,
-          sheetReady: true,
-        },
-        committedAtMs: nextRedrawTransaction.committedAtMs ?? nowMs(),
-      });
-      return;
-    }
-    this.publish({
-      ...this.snapshot,
-      redrawTransaction: nextRedrawTransaction,
-    });
-  }
-
   private commitActiveRedrawTransactionWithoutRouteFanout(
     redrawTransaction: SearchSurfaceRedrawTransaction
   ): void {
@@ -1385,10 +1296,7 @@ export class SearchSurfaceRuntime {
     logPerfScenarioAttributionEvent('VisualReadiness', scenarioConfig, {
       event: 'search_surface_redraw_commit_contract',
       transactionId: redrawTransaction.id,
-      cardsReady: redrawTransaction.readiness.cardsReady,
-      nativeMarkerFrameReady: redrawTransaction.readiness.nativeMarkerFrameReady,
-      nativeMarkerFrameBatch: redrawTransaction.readiness.nativeMarkerFrameBatch,
-      sheetReady: redrawTransaction.readiness.sheetReady,
+      committedAtMs: redrawTransaction.committedAtMs,
       activeBundleKind: activeBundle.kind,
       activeResultsCoverState: activeBundle.kind === 'results' ? activeBundle.coverState : null,
       activeResultsNextCoverState: 'hidden',

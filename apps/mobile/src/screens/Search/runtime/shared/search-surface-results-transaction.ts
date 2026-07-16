@@ -51,9 +51,7 @@ export type SearchSurfaceResultsTransactionGateInputs = {
   mapSearchSurfaceResultsSourcesReady: boolean;
   mapSearchSurfaceResultsSourcesReadyKey: string | null;
   visualRevealTransactionId: string | null;
-  visualRevealCardsReady: boolean;
-  visualRevealSheetReady: boolean;
-  visualRevealNativeMarkerFrameReady: boolean;
+  visualRevealCommitted: boolean;
   visualRevealSource: 'active' | 'completed' | null;
 };
 
@@ -190,9 +188,7 @@ export const isSearchSurfaceResultsTransactionReadyForCommit = (
   return (
     stagedTransaction.presentationCommitted &&
     inputs.visualRevealTransactionId === stagedTransaction.snapshot.transactionId &&
-    inputs.visualRevealCardsReady &&
-    inputs.visualRevealSheetReady &&
-    inputs.visualRevealNativeMarkerFrameReady
+    inputs.visualRevealCommitted
   );
 };
 

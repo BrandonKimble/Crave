@@ -24,9 +24,7 @@ const gateInputs = (
   mapSearchSurfaceResultsSourcesReady: false,
   mapSearchSurfaceResultsSourcesReadyKey: null,
   visualRevealTransactionId: null,
-  visualRevealCardsReady: false,
-  visualRevealSheetReady: false,
-  visualRevealNativeMarkerFrameReady: false,
+  visualRevealCommitted: false,
   visualRevealSource: null,
   ...overrides,
 });

@@ -24,6 +24,7 @@ const makeValue = (overrides: Partial<SearchWorldValue> = {}): SearchWorldValue 
     dishes: [],
     metadata: { searchRequestId: 'req-1', page: 1 },
   } as never,
+  queryIdentity: { kind: 'shortcut', shortcutTab: 'restaurants' },
   markerProjectionByTab: { dishes: null, restaurants: null },
   resultsIdentityKey: 'idkey-1',
   searchRequestId: 'req-1',
