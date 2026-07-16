@@ -195,6 +195,20 @@ must be impossible by construction (no market/key param left to mismatch).
   ≤~3) — a US-wide search writes zero display-only demand (no subjects), the
   two-town search feeds both towns. Prevents nationwide searches sprinkling false
   demand across thousands of municipalities.
+- **Nothing-is-lost guarantee (owner concern, resolved):** every search persists to
+  search_events (query, bounds, attributions) — lanes are eager views over a
+  complete ledger. Town-specific demand structurally cannot be missed: the first
+  subject-scale search over an unnamed town IS the event that mints it and records
+  its demand (same condition). Pre-mint searches touching a town are broad-scale
+  by definition — not town evidence.
+- **Broad demand consumed at its own scale:** state/US-wide search activity feeds
+  an EXPANSION ANALYTICS view over the existing ledger (which foods, which
+  geographies, which metro to onboard next) — a read view, not a new write path.
+  Never pushed down to towns (1/1200th of a bit each = manufactured noise).
+- **No optimistic polls in un-attended places:** polls are questions to a
+  community; seeding them off diffuse broad demand creates unanswered dead content
+  exactly where first visitors judge the app. Subject-scale demand seeds polls;
+  broad demand steers expansion.
 - Rate-limit posture: demand machinery is inherently self-limiting (≤5 terms ×
   bounded markets per search, identity-key dedupe, 5-min cooldown, distinct-user
   log-damped ranking weights → single-user spam ≈ one ask). No bespoke limits;

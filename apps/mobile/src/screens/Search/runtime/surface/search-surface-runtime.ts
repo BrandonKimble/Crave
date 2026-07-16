@@ -782,6 +782,7 @@ export class SearchSurfaceRuntime {
     commitTransitionTxn(txn);
     sealTransitionTxnJoin(txn);
     this.q2ShadowTxnId = txn.txnId;
+    this.ensureQ2TxnSubscription();
     if (this.q2RowsResident) {
       this.offerQ2ShadowJoin('paint');
       if (this.q2MapFrameClean) {
@@ -820,6 +821,32 @@ export class SearchSurfaceRuntime {
     this.q2TxnSubscriptionStarted = true;
     subscribeTransitionTxn(() => {
       this.maybeStageQ2DeferredRevise();
+      this.completeRedrawAtEpisodeReveal();
+    });
+  }
+
+  // S2 INVERSION (design §4): the episode's 'revealed' edge DRIVES the redraw commit —
+  // canAdmitResultsBody becomes txn-derived underneath its unchanged selector. The old
+  // per-lane readiness marks still run in parallel (idempotent; S3 deletes them); for
+  // lanes that never completed them (the Q-2c shortcut), THIS is now the cover lift —
+  // the tier watchdogs stop being load-bearing.
+  private completeRedrawAtEpisodeReveal(): void {
+    const liveTxn = getLiveTransitionTxn();
+    if (
+      this.q2ShadowTxnId == null ||
+      liveTxn?.txnId !== this.q2ShadowTxnId ||
+      liveTxn.phase !== 'revealed'
+    ) {
+      return;
+    }
+    const redraw = this.snapshot.redrawTransaction;
+    if (redraw == null || redraw.committedAtMs != null) {
+      return;
+    }
+    this.patchActiveRedrawTransaction(redraw.id, {
+      cardsReady: true,
+      nativeMarkerFrameReady: true,
+      sheetReady: true,
     });
   }
 
