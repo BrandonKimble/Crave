@@ -228,6 +228,66 @@ export const areSearchDesiredTuplesEqual = (
   areSearchFilterVariantsEqual(a.filterVariant, b.filterVariant) &&
   areSearchCommittedBoundsEqual(a.committedBounds, b.committedBounds);
 
+// ─── THE LENS AXIS (lens-exit design §1/§2 — S1 vocabulary, ratified 2026-07-15) ────
+//
+// Two axes today conflated inside filterVariant, now NAMED (S1 = selectors over the
+// existing shape, zero behavior change; S2 flips the worldKey and the resolver gains
+// the (worldKey, lensKey) slice table; S3 deletes the sibling-world machinery):
+//
+// - IDENTITY (what world is this?): queryIdentity + includeSimilar (retrieval-semantic
+//   — it changes what the search MEANS) + tab. What entry.desire stamps, dismiss
+//   preserves, sessions coerce on (M-1).
+// - LENS (how is this world viewed?): openNow / priceLevels / rising / listSort /
+//   marketKey — fact-projections and orderings over ONE world. Flips never mint
+//   worlds or sessions; fetch mechanics stay free to slice server-side (the
+//   2026-07-14 filter-before-paginate parity fix is the slice fetch — a client lens
+//   over loaded pages undercounts, which WAS the parity bug).
+//
+// `rising` is classified LENS by default (groups with open/price in the coverage
+// variant); `marketKey` changes membership but not identity — a city slice of the
+// same list (owner flags at ratification: both accepted as lens).
+
+export type SearchLens = {
+  openNow: boolean;
+  priceLevels: readonly number[];
+  rising: boolean;
+  listSort?: 'custom' | 'best' | 'recent';
+  marketKey?: string | null;
+};
+
+export const selectSearchLens = (tuple: SearchDesiredTuple): SearchLens => ({
+  openNow: tuple.filterVariant.openNow,
+  priceLevels: tuple.filterVariant.priceLevels,
+  rising: tuple.filterVariant.rising,
+  listSort: tuple.filterVariant.listSort,
+  marketKey: tuple.filterVariant.marketKey,
+});
+
+export const areSearchLensesEqual = (a: SearchLens, b: SearchLens): boolean =>
+  a.openNow === b.openNow &&
+  a.rising === b.rising &&
+  (a.listSort ?? null) === (b.listSort ?? null) &&
+  (a.marketKey ?? null) === (b.marketKey ?? null) &&
+  areNumberArraysEqual(a.priceLevels, b.priceLevels);
+
+/** The slice key (S2: `worldCache[worldKey].slices[lensKey]`). Stable serialization —
+ *  the DEFAULT lens serializes to the same token everywhere so the unlensed slice is
+ *  the canonical page-1 world. */
+export const buildSearchLensKey = (lens: SearchLens): string =>
+  `open:${lens.openNow ? 1 : 0}|price:${lens.priceLevels.join(',')}|rising:${lens.rising ? 1 : 0}${lens.listSort != null ? `|sort:${lens.listSort}` : ''}${lens.marketKey != null ? `|mkt:${lens.marketKey}` : ''}`;
+
+/** WORLD IDENTITY equality (M-1 session coercion + S2's identity-keyed cache): the
+ *  lens is EXCLUDED — a lens flip over a live session is a slice presentation, never
+ *  a new world/session. includeSimilar stays identity (retrieval-semantic). */
+export const areSearchWorldIdentitiesEqual = (
+  a: SearchDesiredTuple,
+  b: SearchDesiredTuple
+): boolean =>
+  a.tab === b.tab &&
+  areSearchQueryIdentitiesEqual(a.queryIdentity, b.queryIdentity) &&
+  a.filterVariant.includeSimilar === b.filterVariant.includeSimilar &&
+  areSearchCommittedBoundsEqual(a.committedBounds, b.committedBounds);
+
 /** Canonical serialized identity for cache keys and the append-only trace.
  *  cardsWorld key = tuple minus tab; coverageWorld key = full tuple (charter §3). */
 export const buildSearchCardsWorldKey = (tuple: SearchDesiredTuple): string => {

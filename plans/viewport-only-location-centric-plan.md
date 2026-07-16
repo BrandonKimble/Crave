@@ -221,8 +221,9 @@ must be impossible by construction (no market/key param left to mismatch).
 - **Pan mints too (owner catch):** today pan-resolve has minting off (markets.
   controller.ts ensureLocalityMarkets:false) — an unseeded/unminted area shows no
   name indefinitely until a search. New: pan-resolve ENQUEUES the reconciler probe
-  (pan is attention); first-ever pan → "this area" for seconds → named forever.
-  Nice-to-have: show the probe's name provisionally before the polygon lands.
+  (pan is attention); first-ever pan → named forever. REQUIRED (owner): show the
+  probe's reverse-geocoded name provisionally the moment it returns — header says
+  "Cancún" one cheap call in, polygon backfills seconds later.
 - Surfacing option (existing dead plumbing): createPollPrompt CTA is plumbed to
   mobile but rendered nowhere; poll_topics have no client API — a user-facing
   "suggested poll" surface is available cheap if wanted later.
