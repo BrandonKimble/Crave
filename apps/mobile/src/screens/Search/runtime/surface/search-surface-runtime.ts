@@ -17,7 +17,6 @@ import {
 } from '../../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import { logger } from '../../../../utils';
-import { markActiveSceneContentGate } from '../../../../navigation/runtime/app-route-scene-switch-controller';
 import type {
   SearchRouteSceneBodyContentSpec,
   SearchRouteSceneBodyTransportSpec,
@@ -910,10 +909,6 @@ export class SearchSurfaceRuntime {
 
   public markRedrawCardsReady = (transactionId: string | null | undefined): void => {
     this.patchActiveRedrawTransaction(transactionId, { cardsReady: true });
-    // Phase 1 (canonical-transition-finish-plan.md) — dual-report into the
-    // transaction-keyed readiness collector. OBSERVE-ONLY: this only logs/records
-    // and does NOT change the existing reveal join above (still the sole driver).
-    markActiveSceneContentGate('cards', transactionId);
   };
 
   public markRedrawNativeMarkerFrameReady = (
@@ -924,14 +919,10 @@ export class SearchSurfaceRuntime {
       nativeMarkerFrameReady: true,
       nativeMarkerFrameBatch,
     });
-    // Phase 1 — dual-report (observe-only). See markRedrawCardsReady above.
-    markActiveSceneContentGate('nativeMarkerFrame', transactionId);
   };
 
   public markRedrawSheetReady = (transactionId: string | null | undefined): void => {
     this.patchActiveRedrawTransaction(transactionId, { sheetReady: true });
-    // Phase 1 — dual-report (observe-only). See markRedrawCardsReady above.
-    markActiveSceneContentGate('sheet', transactionId);
   };
 
   // Transition-perf fence: `sheetReady` means "the sheet is not physically moving for
