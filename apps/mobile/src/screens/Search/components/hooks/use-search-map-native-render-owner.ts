@@ -3096,6 +3096,19 @@ const useSearchMapNativeRenderOwnerSync = ({
         transportState.queueState.inFlightFrame = effectiveDesiredFrame;
       }
     }
+    // S1 mapFrame DIRTY-MARK (reveal-pipeline unification §2): a frame whose source
+    // revisions differ from the last ack is going to the wire — the resident frame no
+    // longer proves the episode; the ack (or an equal-frame suppression) cleans it.
+    {
+      const submittedRevisions = getSearchMapRenderSourceRevisions(effectiveDesiredFrame.snapshot);
+      const ackedRevisions = transportState.lastNativeAck?.sourceRevisions ?? null;
+      if (
+        ackedRevisions == null ||
+        !areSearchMapRenderSourceRevisionStatesEqual(submittedRevisions, ackedRevisions)
+      ) {
+        getSearchSurfaceRuntime().markWorldMapFrameDirty();
+      }
+    }
     mapMotionPressureController.applySourcePublishLifecycleEvent({ kind: 'started' });
     recordFrameSourceDataKey(
       instanceId,
@@ -3500,6 +3513,11 @@ const useSearchMapNativeRenderOwnerSync = ({
             };
             if (didPublishResidentSnapshot) {
               transportState.lastNativeAck = nativeAck;
+              // S1 MAPFRAME PRODUCER (reveal-pipeline unification §2): the wire ACK —
+              // native holds a resident frame. Total across lanes: execution batches,
+              // coverage-derived frames, and toggle swaps all ride this one wire. The
+              // surface runtime scopes + time-latches the offer.
+              getSearchSurfaceRuntime().offerWorldMapFrameEvidence();
             }
             if (__DEV__) {
               // eslint-disable-next-line no-console

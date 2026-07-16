@@ -188,6 +188,17 @@ must be impossible by construction (no market/key param left to mismatch).
   so accumulating demand in an uncovered city can seed/prompt polls there — polls
   being the proven data inlet for uncovered areas (poll-entity-seed + graduation).
   Shape TBD with owner (auto-generated poll prompts? creator-ladder tie-in?).
+- **Scope rule (ratified): two demand kinds, two bounds.** Collection demand =
+  every COLLECTABLE market in view (bounded by capability, ~dozens at scale;
+  scheduler judges deficiency relatively). Poll-seeding demand for display-only
+  markets = only markets that are SUBJECTS of the viewport (attention-bounded,
+  ≤~3) — a US-wide search writes zero display-only demand (no subjects), the
+  two-town search feeds both towns. Prevents nationwide searches sprinkling false
+  demand across thousands of municipalities.
+- Rate-limit posture: demand machinery is inherently self-limiting (≤5 terms ×
+  bounded markets per search, identity-key dedupe, 5-min cooldown, distinct-user
+  log-damped ranking weights → single-user spam ≈ one ask). No bespoke limits;
+  a standard per-user gateway rate limit is generic infra, tracked separately.
 
 ### 3.4 Adjacent fix
 - Extraction-born restaurants in markets without a collection community currently
@@ -246,27 +257,61 @@ demand); ranker picks the genuinely deficient market first.
 - Runtime quota note: each mint costs ~2 non-tile calls; organic minting is
   self-throttling (only city-scale viewports over uncovered ground).
 
-### Minting mechanics — DESIGN OF RECORD (session 2026-07-14)
+### Market resolution — two primitives + reconciler (DESIGN OF RECORD, supersedes
+### the single-display-market resolver shape)
+
+The from-scratch abstraction (ratified after first-principles audit):
+
+- **placeAt(point) → market** — outermost-covering point query (exists, correct,
+  untouched). Consumers: restaurant stamping, poll creation at user location,
+  fame-pin.
+- **marketsInView(viewport) → { markets: [(market, share)], place }** — pure DB
+  read, the SET is the first-class answer; `place` is DERIVED, not elected: the one
+  market that dominantly covers the viewport, else null ("this area"). DELETES:
+  selectViewportDisplayMarket election, the 5% tie band, regional-priority
+  tiebreak, per-caller mode flags, mint-side-effects-in-read-path, anchor metadata
+  leakage. Header = place ?? "this area"; polls feed = the set; demand = collectable
+  subset; slicer = the set grouped by state.
+- **Minting reconciler** — the ONLY writer; consumes "subjectless-but-attended"
+  probes off the read path (background; poll creation is the sole awaiting caller).
+
+**The subjects rule (Option B, owner-ratified):** subjects(region):
+  1. Probe region's anchor (reverse geocode, cheap pool) → municipality m + bbox.
+  2. m covers ≥ ATTENTION_FRACTION of the region → accept m; recurse on region − m.
+  3. Else → stop (∅ for this branch).
+  Accepted set = the viewport's subjects (structurally ≤ ~3-4 — each must be a real
+  bite of what remains). Mint every unnamed subject. Multi-subject viewports keep
+  header "this area" while all subjects get names/poll buckets/demand lanes.
+
+**ATTENTION_FRACTION = 1/3 — derived, not tuned**: locked to the product sentence
+"a viewport attends to at most ~3 places" (fraction f ⇔ max ⌊1/f⌋ subjects) — a
+meaning-constant like the 365d half-life. Empirical backstop (metric that can show
+RED): post-launch, track immediate zoom-into-one-place right after a subjectless
+"this area" view — frequent occurrences = fraction too strict. It is the design's
+ONE named scale constant — it *defines* "attending to a place" (a meaning-constant like the 365d
+half-life, not a mechanism patch). It is load-bearing: below it the reconciler
+would degenerate into sliver enumeration; without multi-subject acceptance it
+would drop real two-town demand. It REPLACES the 5% tie band + dominance election
+(net constants decrease). Same constant serves the `place` dominance derivation.
+
+#### Mechanics (retained from prior draft, now organized under the reconciler)
 
 Kept as-is (already-correct primitives, verified in code): negative cache
 (market_bootstrap_events no_boundary, 30-day TTL, ~1km radius) and single-flight
 dedupe (inFlightBootstraps keyed by ~100m cell). geo_boundary_features unique
 triple = idempotency.
 
-**M1 — Resolution ladder, ordered by cost (one resolution per request — collapse
-the two call sites):**
-  1. Stored polygons (DB, free) — with US pre-seed this is the ~100% domestic path.
-     Build check: GiST index on core_markets.geometry (~20k rows post-seed).
-  2. Negative cache hit → stop ("this area").
-  3. Reverse geocode the anchor (user-loc-if-in-viewport else viewport center) —
-     cheap pool (20K/mo). Returns municipality + country + the municipality's rough
-     bbox (TomTom response viewport field).
-  4. CONTAINMENT GATE, free: municipality bbox must dominantly cover the app
-     viewport. Continental viewport over one town's bbox → fail → no polygon spend,
-     "this area". This is the gate — derived from the boundary itself, no distance
-     constants.
-  5. Only then spend the scarce call: additionalData polygon fetch (2.5K/mo pool)
-     → upsert boundary + locality market (is_collectable=false, as today).
+**M1 — Reconciler ladder, ordered by cost (one resolution per request — collapse
+the two call sites; reads never enter this ladder, they only enqueue):**
+  1. Stored polygons already answered the read (DB, free; GiST index on
+     core_markets.geometry — build check at ~20k rows post-seed).
+  2. Skip probe when the unnamed remainder of the viewport is below
+     ATTENTION_FRACTION (nothing attendable is unnamed).
+  3. Negative cache hit near the anchor → stop.
+  4. Run subjects() — reverse geocode probes (cheap pool, 20K/mo), bbox-vs-region
+     commensurability tests are free, recursion carves and repeats.
+  5. Per accepted unnamed subject, spend the scarce call: additionalData polygon
+     (2.5K/mo pool) → upsert boundary + locality market (is_collectable=false).
 
 **M2 — Caller-declared blocking (the snappiness fix):** minting is currently
 awaited inside the search request (two TomTom round trips in-path —
@@ -408,7 +453,11 @@ matched clocks):
 - Provisioning law: no collectable locality inside a collectable regional.
 - Poll-graduation geo-bias fix (3.4).
 - Score interleaving accepted UNTIL market #2 (then Leg 6 blocks).
-- Minting stays, containment-gated (3.3); demand→polls cold-start pipeline (3.5).
+- Minting stays, reconciler-owned with the subjects rule (see Leg 5 resolution
+  section); demand→polls cold-start pipeline (3.5).
+- Resolution = two pure primitives (placeAt, marketsInView) + background reconciler;
+  ATTENTION_FRACTION is the one named scale constant (replaces 5% tie band +
+  display-market election).
 - Slicer grouping derived from states-in-view, never a count constant.
 
 ## Small residuals (fold in opportunistically, don't lose)

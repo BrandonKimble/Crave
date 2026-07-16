@@ -1105,6 +1105,14 @@ export const publishSearchMountedResultsRowsSnapshot = (
     ...nextSnapshot,
     version: rowsSnapshot.version + 1,
   };
+  // S1 PAINT PRODUCER (reveal-pipeline unification §2): rows RESIDENCY for the mounted
+  // identity — resident iff identity non-null (full OR legitimately empty with results
+  // committed); the submit reset (shell/identity-null publish) marks non-resident. The
+  // surface runtime scopes offers to the live episode and seeds cached re-presents
+  // from this state.
+  getSearchSurfaceRuntime().setWorldRowsResidency(
+    nextSnapshot.resultsIdentityKey != null && snapshot.results != null
+  );
   stageSearchMountedResultsPreparedRowsTarget({
     activeRowCount: nextSnapshot.admission.renderRowCount,
     resultsIdentityKey: nextSnapshot.resultsIdentityKey ?? nextSnapshot.resultsRequestKey,

@@ -6,6 +6,7 @@ import {
   sealTransitionTxnJoin,
   settleTransitionTxn,
   stageTransitionTxn,
+  subscribeTransitionTxn,
   type TransitionJoinInput,
 } from '../../../../navigation/runtime/transition-engine/transition-transaction';
 import { reportSearchFlowContractViolation } from '../shared/search-flow-contracts';
@@ -537,6 +538,44 @@ export class SearchSurfaceRuntime {
   // the redraw family stays the driver until the traces prove the joins coincide.
   private q2ShadowTxnId: string | null = null;
 
+  // ── S1 (reveal-pipeline unification design §2/§6): the unified producers maintain
+  // RESIDENCY STATE with dirty-marking on divergence (probed live: a CACHED
+  // re-present publishes nothing and acks nothing — edge-only evidence stays silent
+  // while the pixels are already resident, so evidence must be state, edges notify):
+  // - rows: resident iff the mounted store last published with a non-null identity;
+  //   the submit reset (shell/identity-null publish) marks it non-resident.
+  // - mapFrame: CLEAN when the wire acked the current frame OR an equal frame was
+  //   dedupe-suppressed (native already holds it); DIRTY from the moment a differing
+  //   frame is submitted until its ack.
+  private q2RowsResident = false;
+  private q2MapFrameClean = false;
+  // S1 route-coupled enters (design §3): the world revise DEFERS until the route txn
+  // terminates (engine notifies every live edge).
+  private q2DeferredReviseArmId: string | null = null;
+  private q2TxnSubscriptionStarted = false;
+
+  /** Producer: the mounted store's rows-residency (identity non-null — full OR
+   *  legitimately empty). Total across mouths by construction (§2). */
+  public setWorldRowsResidency = (resident: boolean): void => {
+    this.q2RowsResident = resident;
+    if (resident) {
+      this.offerQ2ShadowJoin('paint');
+    }
+  };
+
+  /** Producer: native holds the episode's frame — the wire ACK, or an equal frame
+   *  dedupe-suppressed (cached re-present). Total across lanes (§2). */
+  public offerWorldMapFrameEvidence = (): void => {
+    this.q2MapFrameClean = true;
+    this.offerQ2ShadowJoin('mapFrame');
+  };
+
+  /** A differing frame went to the wire — the resident frame no longer proves the
+   *  episode; evidence returns with its ack. */
+  public markWorldMapFrameDirty = (): void => {
+    this.q2MapFrameClean = false;
+  };
+
   private pendingRedrawMotionArm: {
     id: string;
     input: Required<Omit<BeginRedrawTransactionInput, 'transactionId'>> &
@@ -689,15 +728,12 @@ export class SearchSurfaceRuntime {
     this.stageQ2ShadowTransitionTxn(id);
   }
 
-  // Q-2 shadow stager — STATIONARY in-place revises only. Two exclusions, both
-  // measured on the trace (2026-07-15): (1) a route txn in its window owns the reveal
-  // (staging would supersede it); (2) a born-motion-EXPECTED arm (sheetReady:false) is
-  // a reveal-ENTER flow whose route txn stages ~300ms later — the shadow staged there
-  // and was cleanly superseded by the push, so the arbitration answer (design §4.6) is
-  // that motion-expected redraws BELONG to their route transaction (the future real
-  // cut amends {mapFrame, sheet} into it); the shadow simply skips them.
+  // S1 episode stager (reveal-pipeline unification §2/§3): stationary in-place
+  // revises stage immediately; a route-txn window or a motion-expected arm (a
+  // route-coupled reveal ENTER) DEFERS the world episode until the route txn
+  // terminates — with the S1 unified producers the deferred join is total (Q-2c's
+  // falsification was the per-lane marks, not the two-txn shape).
   private stageQ2ShadowTransitionTxn(id: string): void {
-    void id;
     const liveTxn = getLiveTransitionTxn();
     if (
       liveTxn != null &&
@@ -707,20 +743,21 @@ export class SearchSurfaceRuntime {
     ) {
       // A RE-ARM of the same interaction while OUR shadow is joining (attributed live:
       // toggles arm twice) keeps the shadow — nulling here orphaned it and every offer
-      // bounced. Only a ROUTE txn's window suppresses staging.
+      // bounced. A ROUTE txn's window defers the episode instead (design §3).
       if (liveTxn.txnId !== this.q2ShadowTxnId) {
         this.q2ShadowTxnId = null;
+        this.q2DeferredReviseArmId = id;
+        this.ensureQ2TxnSubscription();
       }
       return;
     }
     const bornSheetReady = this.snapshot.redrawTransaction?.readiness.sheetReady !== false;
     if (!bornSheetReady) {
-      // Motion-expected arm = a route-coupled reveal ENTER. Its world joint is OWNED
-      // by the route transaction's P5 readiness collector (probed live 2026-07-15:
-      // the redraw's cards/markerFrame marks structurally never fire on this lane —
-      // a deferred revise parks forever). The eventual unification is stager-side
-      // (the route txn absorbs the world join), not a second transaction here.
+      // Motion-expected arm = a route-coupled reveal ENTER (design §3): the push txn
+      // reveals the skeleton; the world episode defers until it terminates.
       this.q2ShadowTxnId = null;
+      this.q2DeferredReviseArmId = id;
+      this.ensureQ2TxnSubscription();
       return;
     }
     // Plans differ by REASON (semantics measured on the trace, 2026-07-15):
@@ -739,12 +776,18 @@ export class SearchSurfaceRuntime {
         // World revises are network+native-paced (~780ms dev-lane measured on the list
         // enter); the redraw family's own tier-1/tier-2 watchdog ladder (800ms/+800ms)
         // is the real never-stuck guarantee — the engine backstop sits just outside it.
-        joinLivenessMs: isToggle ? undefined : 2000,
+        joinLivenessMs: isToggle ? undefined : 10000,
       }
     );
     commitTransitionTxn(txn);
     sealTransitionTxnJoin(txn);
     this.q2ShadowTxnId = txn.txnId;
+    if (this.q2RowsResident) {
+      this.offerQ2ShadowJoin('paint');
+      if (this.q2MapFrameClean) {
+        this.offerQ2ShadowJoin('mapFrame');
+      }
+    }
     this.seedQ2ShadowOffersFromCurrentReadiness();
   }
 
@@ -766,6 +809,68 @@ export class SearchSurfaceRuntime {
       this.offerQ2ShadowJoin('mapFrame');
     }
     if (readiness.sheetReady) {
+      this.offerQ2ShadowJoin('sheet');
+    }
+  }
+
+  private ensureQ2TxnSubscription(): void {
+    if (this.q2TxnSubscriptionStarted) {
+      return;
+    }
+    this.q2TxnSubscriptionStarted = true;
+    subscribeTransitionTxn(() => {
+      this.maybeStageQ2DeferredRevise();
+    });
+  }
+
+  private maybeStageQ2DeferredRevise(): void {
+    const id = this.q2DeferredReviseArmId;
+    if (id == null) {
+      return;
+    }
+    const active = this.snapshot.redrawTransaction;
+    const completed = this.snapshot.completedRedrawTransaction;
+    const redraw = active?.id === id ? active : completed?.id === id ? completed : null;
+    if (redraw == null) {
+      // Superseded — the newer interaction owns its own episode.
+      this.q2DeferredReviseArmId = null;
+      return;
+    }
+    const live = getLiveTransitionTxn();
+    if (live != null && live.phase !== 'settled' && live.phase !== 'superseded') {
+      // The route txn still owns the window. 'revealed' is NOT terminal here — staging
+      // at the push's reveal (+300ms) opened the episode ~1-2s before its world could
+      // exist and the watchdog degraded it before evidence arrived (probed live).
+      return;
+    }
+    this.q2DeferredReviseArmId = null;
+    const txn = stageTransitionTxn(
+      { kind: 'revise', targetSceneKey: 'search', sourceSceneKey: 'search', entryId: null },
+      {
+        content: { kind: 'skeleton' },
+        joinInputs: ['paint', 'mapFrame', 'sheet'],
+        movesSheet: true,
+        // STUCK-threshold, not choreography: world enters are network-paced (openNow
+        // measured >2.5s on the dev rig) — the degrade must never bark on a slow
+        // network, only on a broken producer.
+        joinLivenessMs: 10000,
+      }
+    );
+    commitTransitionTxn(txn);
+    sealTransitionTxnJoin(txn);
+    this.q2ShadowTxnId = txn.txnId;
+    // Seed from RESIDENCY STATE (design §2): only a CACHED re-present seeds — its rows
+    // are resident (a fresh world always publishes the shell reset at submit, so rows
+    // residency discriminates cached from fresh) and mapFrame seeds only under that
+    // discriminator (a stale clean frame — e.g. a dismissal's empty-frame ack — can
+    // never bless a fresh episode; fresh worlds get their guaranteed ack edge).
+    if (this.q2RowsResident) {
+      this.offerQ2ShadowJoin('paint');
+      if (this.q2MapFrameClean) {
+        this.offerQ2ShadowJoin('mapFrame');
+      }
+    }
+    if (redraw.readiness.sheetReady) {
       this.offerQ2ShadowJoin('sheet');
     }
   }
