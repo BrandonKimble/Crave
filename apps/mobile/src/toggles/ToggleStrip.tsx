@@ -20,6 +20,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
+import { TOGGLE_STRIP_BAND_HEIGHT } from './toggle-strip-metrics';
 import MaskedHoleOverlay from '../components/MaskedHoleOverlay';
 import {
   FrostCutout,
@@ -824,6 +825,11 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
     width: '100%',
+    // THE PAGE L1: the band DECLARES its height (toggle-strip-metrics) — citizens
+    // conform (a misbehaving control clips instead of moving page geometry). This is
+    // what makes computeSceneChromeHeight exact for header-mounted strips.
+    height: TOGGLE_STRIP_BAND_HEIGHT,
+    justifyContent: 'center',
   },
   viewport: {
     width: '100%',

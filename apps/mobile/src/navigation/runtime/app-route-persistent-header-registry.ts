@@ -1,5 +1,4 @@
 import type React from 'react';
-import type { LayoutChangeEvent } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 
 import type { OverlayKey } from '../../overlays/types';
@@ -53,11 +52,6 @@ export type PersistentHeaderDescriptor = {
   // load-bearing both ways: declared-'header' with no Strip barks, and a Strip on a
   // scene not declared 'header' barks (PersistentSheetHeaderHost).
   Strip?: React.ComponentType;
-  // P5 (search): optional per-scene observer of the persistent chrome's onLayout. The search
-  // runtime's internal layout math (results header height → cover/wash/list insets) was fed by
-  // its old in-frame header's measurement; with the header hoisted, the descriptor forwards the
-  // SAME chrome layout event back into the scene runtime (search-results-header-live-state).
-  onChromeLayout?: (event: LayoutChangeEvent) => void;
 };
 
 const persistentHeaderDescriptors = new Map<OverlayKey, PersistentHeaderDescriptor>();

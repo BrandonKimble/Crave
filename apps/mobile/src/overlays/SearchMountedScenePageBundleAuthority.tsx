@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { OVERLAY_TAB_HEADER_HEIGHT } from './overlaySheetStyles';
+import { computeSceneChromeHeight } from '../navigation/runtime/scene-chrome-geometry';
 import { getPerfScenarioWorkNow, logPerfScenarioWorkSpan } from '../perf/perf-scenario-work-span';
 import { useRouteAuthoritySelector } from '../navigation/runtime/use-route-authority-selector';
 import {
@@ -39,7 +39,6 @@ let partsSnapshot: SearchResultsPageBundlePartsSnapshot = {
   backgroundComponent: null,
   overlayComponent: null,
 };
-let retainedResultsHeaderHeight = OVERLAY_TAB_HEADER_HEIGHT;
 let deferredVisibleDismissPageBundleClear = false;
 let deferredVisibleDismissPageBundleClearLogKey: string | null = null;
 let visibleDismissPageBundleFrozenLogKey: string | null = null;
@@ -88,35 +87,11 @@ const SearchResultsPersistentBodyHost = React.memo(
 );
 SearchResultsPersistentBodyHost.displayName = 'SearchResultsPersistentBodyHost';
 
-const headerHeightListeners = new Set<Listener>();
-
-const searchResultsHeaderHeightAuthority = {
-  subscribe: (listener: Listener) => {
-    headerHeightListeners.add(listener);
-    return () => {
-      headerHeightListeners.delete(listener);
-    };
-  },
-  getSnapshot: () => retainedResultsHeaderHeight,
-};
-
-// P5: exported — the search results header now renders in the hoisted PersistentSheetHeaderHost
-// (persistent-header registry descriptor, search-results-header-live-state.tsx), so the retained
-// height is fed from THAT chrome's onLayout (descriptor onChromeLayout) instead of an in-frame
-// header layer. The retained value keeps seeding the reserved header lane for both the published
-// page and the pre-bundle skeleton page below.
-export const publishRetainedResultsHeaderHeight = (nextHeight: number): void => {
-  if (!Number.isFinite(nextHeight) || nextHeight <= 0) {
-    return;
-  }
-  if (Math.abs(retainedResultsHeaderHeight - nextHeight) < 0.5) {
-    return;
-  }
-  retainedResultsHeaderHeight = nextHeight;
-  headerHeightListeners.forEach((listener) => {
-    listener();
-  });
-};
+// L1 (THE PAGE): the retained measured-height authority is DEAD — search's sheet chrome
+// is the same persistent chrome row as every scene (its strip rides in-list), so its
+// chrome height is the COMPUTED constant; the geometry bark in PersistentSheetHeaderHost
+// falsifies this on every present.
+const SEARCH_SCENE_CHROME_HEIGHT = computeSceneChromeHeight('search');
 
 const searchResultsPageBundlePartsAuthority = {
   subscribe: (listener: Listener) => {
@@ -348,14 +323,6 @@ type SearchResultsPageBundleHostProps = {
 
 export const SearchResultsPageBundleHost = React.memo(
   ({ bodyDefaults, bodyScrollRuntime }: SearchResultsPageBundleHostProps) => {
-    const reservedHeaderHeight = useRouteAuthoritySelector({
-      subscribe: searchResultsHeaderHeightAuthority.subscribe,
-      getSnapshot: searchResultsHeaderHeightAuthority.getSnapshot,
-      selector: React.useCallback((nextHeight: number) => nextHeight, []),
-      isEqual: Object.is,
-      attributionOwner: 'SearchResultsPageBundleHost',
-      attributionOperation: 'headerHeightSelector',
-    });
     const pageBundle = useRouteAuthoritySelector({
       subscribe: searchResultsPageBundleAuthority.subscribe,
       getSnapshot: searchResultsPageBundleAuthority.getSnapshot,
@@ -385,13 +352,13 @@ export const SearchResultsPageBundleHost = React.memo(
       // renders a REAL results-skeleton page: the shared page frame (constant hoisted frost
       // behind it) + the cutout-shimmer results skeleton, frost-through (no opaque layer blocks
       // the map here — same contrast model as the scene-stack skeleton legs), with the header
-      // lane reserved at the persistent header's retained height. The old `return null` was the
+      // lane reserved at the COMPUTED chrome height. The old `return null` was the
       // frosty-blank hole this replaces.
       return (
         <BottomSheetSceneStackPageFrame
           bodyComponent={<SceneLoadingSurface rowType={skeletonRowType} />}
           reserveHeaderLane
-          reservedHeaderHeight={reservedHeaderHeight}
+          chromeHeight={SEARCH_SCENE_CHROME_HEIGHT}
         />
       );
     }
@@ -410,14 +377,13 @@ export const SearchResultsPageBundleHost = React.memo(
             bodyScrollRuntime={bodyScrollRuntime}
           />
         }
-        // P5: no in-frame header — the results header rides the hoisted PersistentSheetHeaderHost
-        // (persistent-header registry 'search' descriptor). The lane is reserved at the retained
-        // chrome height so the body top-inset is unchanged; the scroll divider is hoisted too
-        // (PersistentHeaderScrollDividerHost keys off the same descriptor), so the in-frame
+        // P5/L1: no in-frame header — the results header rides the hoisted
+        // PersistentSheetHeaderHost ('search' descriptor). The lane is reserved at the
+        // COMPUTED chrome height; the scroll divider is hoisted too, so the in-frame
         // headerDividerScrollOffset lane is gone — no double-draw.
         overlayComponent={pageBundle.overlayComponent}
         reserveHeaderLane
-        reservedHeaderHeight={reservedHeaderHeight}
+        chromeHeight={SEARCH_SCENE_CHROME_HEIGHT}
       />
     );
   }

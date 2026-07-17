@@ -30,7 +30,6 @@ import {
   HeaderScrollDivider,
 } from './BottomSheetSceneStackPageFrame';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
-import { OVERLAY_TAB_HEADER_HEIGHT } from './overlaySheetStyles';
 import type {
   BottomSheetSceneStackBodyRuntimeSnapshot,
   BottomSheetSceneStackChromeEntry,
@@ -57,7 +56,7 @@ import { useSearchOverlayProfilerRender } from './SearchOverlayProfilerContext';
 import { SearchResultsPageBundleHost } from './SearchMountedScenePageBundleAuthority';
 import { SceneLoadingSurface } from '../components/skeletons';
 import { SceneBodySceneKeyContext } from './SceneBodyReadyGate';
-import { resolveSceneChromeHeight } from './scene-chrome-ack-runtime';
+import { computeSceneChromeHeight } from '../navigation/runtime/scene-chrome-geometry';
 import { getSceneFoundationSpec } from '../navigation/runtime/scene-foundation-spec';
 import { PersistentSheetHeaderHost } from './PersistentSheetHeaderHost';
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
@@ -514,12 +513,9 @@ type SceneStackBodyLayerHostProps = Pick<
   // This leg's role for THIS render, computed synchronous-in-render by the surface host. Changes
   // only for the 2 legs a switch involves → the memo comparator below re-renders only those two.
   legRole: SceneStackLegRole;
-  // P3 body top-inset: the measured height of the ONE hoisted persistent header
-  // (PersistentSheetHeaderHost → ActiveSceneStackSurfaceHost state). With the per-leg header lane
-  // deleted, the page frame reserves the header lane off THIS height so every leg's body still
-  // starts below the header. undefined until first measure → the page frame falls back to
-  // OVERLAY_TAB_HEADER_HEIGHT (the same fallback the per-leg measurement path had).
-  reservedHeaderHeight?: number;
+  // L1: the scene's COMPUTED chrome height (scene-chrome-geometry.ts) — the body lane
+  // starts exactly under the chrome, in the same committed frame, by pure derivation.
+  chromeHeight?: number;
 };
 
 type SceneStackBodyContentLayerHostProps = Pick<
@@ -541,7 +537,7 @@ const areSceneStackBodyLayerHostPropsEqual = (
 
   return (
     previousProps.bodyRuntimeAuthority === nextProps.bodyRuntimeAuthority &&
-    previousProps.reservedHeaderHeight === nextProps.reservedHeaderHeight &&
+    previousProps.chromeHeight === nextProps.chromeHeight &&
     previousProps.legRole === nextProps.legRole
   );
 };
@@ -560,7 +556,7 @@ const SceneStackBodyFrameHost = React.memo(
     routeSceneDisplayTargetRegistry,
     sceneStackSurfaceAuthority,
     sceneKey,
-    reservedHeaderHeight,
+    chromeHeight,
     legRole,
     children,
   }: Pick<
@@ -568,7 +564,7 @@ const SceneStackBodyFrameHost = React.memo(
     | 'routeSceneDisplayTargetRegistry'
     | 'sceneStackSurfaceAuthority'
     | 'sceneKey'
-    | 'reservedHeaderHeight'
+    | 'chromeHeight'
     | 'legRole'
   > & {
     children: React.ReactNode;
@@ -747,15 +743,13 @@ const SceneStackBodyFrameHost = React.memo(
             surface="overlay"
           />
         }
-        // P3: NO per-leg headerComponent — the ONE persistent header (PersistentSheetHeaderHost)
-        // is hoisted above the legs. The body top-inset is preserved by reserving the header lane
-        // off the persistent header's measured height (undefined pre-measure → the page frame's
-        // own OVERLAY_TAB_HEADER_HEIGHT fallback — the same fallback the deleted per-leg
-        // measurement path bottomed out on). The leg's scroll divider is hoisted too
-        // (PersistentHeaderScrollDividerHost) — it must paint ABOVE the persistent header's
+        // P3/L1: NO per-leg headerComponent — the ONE persistent header
+        // (PersistentSheetHeaderHost) is hoisted above the legs; the body lane reserves
+        // the scene's COMPUTED chrome height. The leg's scroll divider is hoisted too
+        // (PersistentHeaderScrollDividerHost) — it paints ABOVE the persistent header's
         // opaque cutout plate, which sits above this whole leg.
         reserveHeaderLane
-        reservedHeaderHeight={reservedHeaderHeight}
+        chromeHeight={chromeHeight}
         chromeOpacityStyle={splitChromeOpacityStyle}
         bodyOpacityStyle={splitBodyOpacityStyle}
         onBodyFirstPaint={handleBodyFirstPaint}
@@ -791,7 +785,7 @@ const SceneStackBodyFrameHost = React.memo(
     previousProps.routeSceneDisplayTargetRegistry === nextProps.routeSceneDisplayTargetRegistry &&
     previousProps.sceneStackSurfaceAuthority === nextProps.sceneStackSurfaceAuthority &&
     previousProps.sceneKey === nextProps.sceneKey &&
-    previousProps.reservedHeaderHeight === nextProps.reservedHeaderHeight &&
+    previousProps.chromeHeight === nextProps.chromeHeight &&
     previousProps.legRole === nextProps.legRole &&
     previousProps.children === nextProps.children
 );
@@ -1079,7 +1073,7 @@ const SceneStackBodyLayerHost = React.memo((props: SceneStackBodyLayerHostProps)
       sceneKey={props.sceneKey}
       routeSceneDisplayTargetRegistry={props.routeSceneDisplayTargetRegistry}
       sceneStackSurfaceAuthority={props.sceneStackSurfaceAuthority}
-      reservedHeaderHeight={props.reservedHeaderHeight}
+      chromeHeight={props.chromeHeight}
       legRole={props.legRole}
     >
       {contentLayer}
@@ -1240,10 +1234,7 @@ const PersistentHeaderScrollDividerLane = ({
 
 const PersistentHeaderScrollDividerHost = ({
   bodyRuntimeAuthority,
-  headerHeight,
-}: Pick<BottomSheetSceneStackHostProps, 'bodyRuntimeAuthority'> & {
-  headerHeight: number;
-}) => {
+}: Pick<BottomSheetSceneStackHostProps, 'bodyRuntimeAuthority'>) => {
   const { routeSceneSwitchRuntime } = useAppRouteSceneRuntime();
   const frame = usePresentationFrame(routeSceneSwitchRuntime);
   // Same scene resolution as PersistentSheetHeaderHost, so divider and header always agree.
@@ -1257,10 +1248,9 @@ const PersistentHeaderScrollDividerHost = ({
       key={`divider-${sceneKey}`}
       bodyRuntimeAuthority={bodyRuntimeAuthority}
       sceneKey={sceneKey}
-      // §2.7: the divider sits on the chrome/body seam — it must move in the SAME committed
-      // frame as the chrome box, so it derives the presented scene's chrome height from the
-      // measured-chrome cache (the passed headerHeight is the retained-measurement fallback).
-      headerHeight={resolveSceneChromeHeight(sceneKey) ?? headerHeight}
+      // L1: the divider sits on the chrome/body seam — the presented scene's COMPUTED
+      // chrome height, same committed frame as the chrome box by construction.
+      headerHeight={computeSceneChromeHeight(sceneKey)}
     />
   );
 };
@@ -1340,31 +1330,10 @@ const ActiveSceneStackSurfaceHost = React.memo(
     );
     const armedSwitchIdRef = React.useRef(armedSwitchId);
     armedSwitchIdRef.current = armedSwitchId;
-    // ── P3 BODY TOP-INSET (persistent header) ──────────────────────────────────────────────────
-    // The per-leg header render lane is DELETED; the ONE hoisted PersistentSheetHeaderHost is now
-    // the measurement source. Capture its measured height HERE (it reports through the same
-    // onHeaderLayout prop the per-leg headers used — forwarded upstream unchanged for the sheet's
-    // headerHeight SharedValue) and thread it to every leg's page frame as reservedHeaderHeight,
-    // so each body still starts below the header at the same offset. null until the first measure
-    // → the page frame bottoms out on its OVERLAY_TAB_HEADER_HEIGHT fallback (same as before).
-    // The value RETAINS its last measurement across frames where the persistent host renders null
-    // (a scene missing its descriptor — dev-warned, should not exist post-P5) so leg insets never
-    // collapse.
-    const [persistentHeaderHeight, setPersistentHeaderHeight] = React.useState<number | null>(null);
-    const handlePersistentHeaderLayout = React.useCallback(
-      (event: LayoutChangeEvent) => {
-        const nextHeight = event.nativeEvent.layout.height;
-        if (nextHeight > 0) {
-          setPersistentHeaderHeight((previousHeight) =>
-            previousHeight != null && Math.abs(previousHeight - nextHeight) < 0.5
-              ? previousHeight
-              : nextHeight
-          );
-        }
-        onHeaderLayout(event);
-      },
-      [onHeaderLayout]
-    );
+    // ── P3→L1 BODY TOP-INSET: geometry is COMPUTED (scene-chrome-geometry.ts) — the
+    // per-leg inset and the divider read computeSceneChromeHeight synchronously; the
+    // persistent header's onLayout is forwarded upstream ONLY for the sheet's
+    // headerHeight SharedValue (scroll runtime) and the L1 geometry bark.
 
     // [pageswitch] HOST side of the race: which leg(s) the host makes PAINT (effectiveIncoming/
     // Outgoing) — now straight prop echoes of the PresentationFrame — per commit. Correlate with
@@ -1738,13 +1707,10 @@ const ActiveSceneStackSurfaceHost = React.memo(
                     sceneStackSurfaceAuthority={sceneStackSurfaceAuthority}
                     routeSceneDisplayTargetRegistry={routeSceneDisplayTargetRegistry}
                     bodyRuntimeAuthority={bodyRuntimeAuthority}
-                    // §2.7: each leg's body-lane inset derives from ITS OWN scene's chrome
-                    // height SYNCHRONOUSLY (measured-chrome cache) — chrome box and body lane
-                    // move in the same committed frame; the retained shared measurement is only
-                    // the never-measured-composition fallback (onLayout corrects it next frame).
-                    reservedHeaderHeight={
-                      resolveSceneChromeHeight(sceneKey) ?? persistentHeaderHeight ?? undefined
-                    }
+                    // THE PAGE L1: each leg's body-lane inset is ITS OWN scene's COMPUTED
+                    // chrome height — pure, exact, same committed frame as the chrome box.
+                    // No measurement, no guess, no retained fallback.
+                    chromeHeight={computeSceneChromeHeight(sceneKey)}
                     legRole={computeLegRole(sceneKey, effectiveIncoming, effectiveOutgoing)}
                   />
                 )
@@ -1756,7 +1722,7 @@ const ActiveSceneStackSurfaceHost = React.memo(
                   search-results-header-live-state); a scene missing one renders null and
                   dev-warns. Its onLayout is the ONE measurement source for every leg's body
                   top-inset (handlePersistentHeaderLayout above). */}
-              <PersistentSheetHeaderHost onHeaderLayout={handlePersistentHeaderLayout} />
+              <PersistentSheetHeaderHost onHeaderLayout={onHeaderLayout} />
               {/* THE HOISTED SCROLL DIVIDER (P3) — the header/body seam line. It lived in each
                   leg's page frame (zIndex 41, above that leg's in-frame header at 40); with the
                   header hoisted to zIndex 60 the in-frame divider would paint UNDER the opaque
@@ -1764,10 +1730,7 @@ const ActiveSceneStackSurfaceHost = React.memo(
                   header, same measured boundary height, faded by the PRESENTED scene's scroll
                   offset. Renders only for scenes with a persistent-header descriptor (post-P5:
                   every sheet scene). */}
-              <PersistentHeaderScrollDividerHost
-                bodyRuntimeAuthority={bodyRuntimeAuthority}
-                headerHeight={persistentHeaderHeight ?? OVERLAY_TAB_HEADER_HEIGHT}
-              />
+              <PersistentHeaderScrollDividerHost bodyRuntimeAuthority={bodyRuntimeAuthority} />
             </View>
           </Animated.View>
         </View>

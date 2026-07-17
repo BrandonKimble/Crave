@@ -82,5 +82,17 @@ echo "=== THE PAGE L0 — one loading material ==="
 check_eq "SkeletonBox import/usage sites" 0 \
   "$(grep -rlE "from '.*/SkeletonBox'|<SkeletonBox" $SRC --include='*.ts' --include='*.tsx' 2>/dev/null | grep -v '\.spec\.' | wc -l | tr -d ' ')"
 
+echo "=== THE PAGE L1 — geometry computed, never measured ==="
+# The measured-chrome cache + signature guess + retained fallback are DEAD classes.
+check_eq "measured-chrome cache references" 0 \
+  "$(file_count 'resolveSceneChromeHeight\|recordSceneChromeMeasuredHeight' $SRC)"
+check_eq "reservedHeaderHeight references (renamed chromeHeight, computed)" 0 \
+  "$(file_count 'reservedHeaderHeight' $SRC)"
+check_eq "retained results header-height authority references" 0 \
+  "$(file_count 'publishRetainedResultsHeaderHeight' $SRC)"
+# Guard-presence: the geometry bark is the L1 RED instrument — it must exist.
+check_eq "CHROME-GEOMETRY bark present (host)" 1 \
+  "$(file_count 'CHROME-GEOMETRY' $SRC/overlays/PersistentSheetHeaderHost.tsx)"
+
 echo "=== RESULT: PASS=$PASS FAIL=$FAIL ==="
 [ "$FAIL" -eq 0 ]

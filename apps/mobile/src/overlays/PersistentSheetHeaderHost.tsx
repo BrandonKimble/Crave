@@ -20,7 +20,11 @@ import {
   getLiveTransitionTxn,
   subscribeTransitionTxn,
 } from '../navigation/runtime/transition-engine/transition-transaction';
-import { recordSceneChromeAck, recordSceneChromeMeasuredHeight } from './scene-chrome-ack-runtime';
+import { recordSceneChromeAck } from './scene-chrome-ack-runtime';
+import {
+  computeSceneChromeHeight,
+  HEADER_STRIP_BOTTOM_SPACER_HEIGHT,
+} from '../navigation/runtime/scene-chrome-geometry';
 import HeaderNavAction from './HeaderNavAction';
 import OverlaySheetHeaderChrome from './OverlaySheetHeaderChrome';
 
@@ -160,19 +164,27 @@ export const PersistentSheetHeaderHost: React.FC<{
   // presented scene's optional observer (search feeds its internal header-height math off the
   // same measurement its old in-frame header produced). Plain function — descriptor identity is
   // stable at module scope and onHeaderLayout is host-stable.
-  const descriptorOnChromeLayout = descriptor?.onChromeLayout;
   const handleChromeLayout = React.useCallback(
     (event: LayoutChangeEvent) => {
-      // §2.7 measured-chrome cache: record THIS scene's chrome height so the next presentation
-      // of it (and of any same-composition scene) derives the body-lane inset synchronously in
-      // the PF commit — the chrome box and the body lane move in the same committed frame.
-      if (sceneKey != null) {
-        recordSceneChromeMeasuredHeight(sceneKey, event.nativeEvent.layout.height);
+      // THE PAGE L1 — THE GEOMETRY BARK (the RED instrument): chrome height is COMPUTED
+      // (scene-chrome-geometry.ts); the measurement survives only to FALSIFY the
+      // computation. Any chrome edit that changes real height without updating the
+      // declared constants barks here on first present — computed geometry can show RED.
+      if (__DEV__ && sceneKey != null) {
+        const computed = computeSceneChromeHeight(sceneKey);
+        const measured = event.nativeEvent.layout.height;
+        if (Math.abs(computed - measured) > 0.5) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[CHROME-GEOMETRY] scene '${sceneKey}' measured ${measured}px but ` +
+              `computeSceneChromeHeight says ${computed}px — a chrome constant is stale ` +
+              `(scene-chrome-geometry.ts inputs) or a citizen broke conformance.`
+          );
+        }
       }
       onHeaderLayout?.(event);
-      descriptorOnChromeLayout?.(event);
     },
-    [sceneKey, onHeaderLayout, descriptorOnChromeLayout]
+    [sceneKey, onHeaderLayout]
   );
   if (descriptor == null || sceneKey == null) {
     // A presented scene with NO registered descriptor unmounts the ENTIRE persistent chrome
@@ -313,7 +325,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerStripBottomSpacer: {
-    height: 8,
+    height: HEADER_STRIP_BOTTOM_SPACER_HEIGHT,
     width: '100%',
     backgroundColor: '#ffffff',
   },

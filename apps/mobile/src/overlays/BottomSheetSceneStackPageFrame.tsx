@@ -23,13 +23,13 @@ type BottomSheetSceneStackPageFrameProps = {
   overlayComponent?: React.ReactNode;
   bodyViewportRef?: React.Ref<View>;
   onBodyViewportLayout?: (event: LayoutChangeEvent) => void;
-  // P3/P5 (page-switch-master-plan.md §6): the per-leg header lane is GONE — every page's header
-  // (scene-stack legs AND the search results bundle) rides the ONE hoisted persistent header
-  // (PersistentSheetHeaderHost). The frame only RESERVES the header lane: the body top-inset comes
-  // from the hoisted header's measured height (reservedHeaderHeight; OVERLAY_TAB_HEADER_HEIGHT
-  // fallback pre-measure).
+  // P3/P5→L1 (THE PAGE): the per-leg header lane is GONE — every page's header rides the
+  // ONE hoisted persistent header (PersistentSheetHeaderHost). The frame only RESERVES the
+  // header lane: the body top-inset is the scene's COMPUTED chrome height
+  // (scene-chrome-geometry.ts) — measurement-free; OVERLAY_TAB_HEADER_HEIGHT is the
+  // degenerate default for callers outside the scene system.
   reserveHeaderLane?: boolean;
-  reservedHeaderHeight?: number;
+  chromeHeight?: number;
   // Four-lane split (sheet-frost-architecture). The host-owned player drives per-region opacities
   // applied HERE, at the page-frame's own z-layers:
   //   • chromeOpacityStyle → the CHROME regions (underlay / plate / overlay): an INSTANT
@@ -95,7 +95,7 @@ export const BottomSheetSceneStackPageFrame = React.memo(
     bodyViewportRef,
     onBodyViewportLayout,
     reserveHeaderLane = false,
-    reservedHeaderHeight,
+    chromeHeight,
     chromeOpacityStyle,
     bodyOpacityStyle,
     onBodyFirstPaint,
@@ -109,7 +109,7 @@ export const BottomSheetSceneStackPageFrame = React.memo(
       },
       [onBodyViewportLayout, onBodyFirstPaint]
     );
-    const effectiveHeaderHeight = reservedHeaderHeight ?? OVERLAY_TAB_HEADER_HEIGHT;
+    const effectiveHeaderHeight = chromeHeight ?? OVERLAY_TAB_HEADER_HEIGHT;
     const bodyLayerStyle = React.useMemo(
       () => [
         styles.sceneStackPageBodyLayer,

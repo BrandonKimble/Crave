@@ -4,7 +4,6 @@ import { Text } from '../components';
 import styles from '../screens/Search/styles';
 import { registerPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
 import { registerHeaderCloseAction } from '../navigation/runtime/header-nav-action-registry';
-import { publishRetainedResultsHeaderHeight } from './SearchMountedScenePageBundleAuthority';
 
 // P5 persistent header (page-switch-master-plan.md §6-P5 / owner req 2e) — the SEARCH results
 // header's live-state publication, completing the P3 header standardization for the last scene.
@@ -88,18 +87,13 @@ const SearchResultsPersistentHeaderTitle: React.FC = () => {
   );
 };
 
-const handleSearchResultsChromeLayout = (event: LayoutChangeEvent): void => {
-  // Feed BOTH height consumers off the one hoisted chrome measurement: the page-bundle host's
-  // reserved header lane, and the search runtime's internal header-height math.
-  publishRetainedResultsHeaderHeight(event.nativeEvent.layout.height);
-  getSearchResultsHeaderLiveState()?.handleResultsHeaderLayout(event);
-};
-
 // Module-scope registration (house pattern — mirrors PollsPanel/RestaurantRouteSceneInputHost).
 // Loaded with the search read-model runtime (its publisher imports this module), i.e. at boot.
+// L1: the onChromeLayout measurement feed is DEAD — the page-bundle host reserves the
+// COMPUTED chrome height (scene-chrome-geometry.ts) and the search runtime's internal
+// header math reads the same computed fact via its own layout runtime.
 registerPersistentHeaderDescriptor('search', {
   Title: SearchResultsPersistentHeaderTitle,
-  onChromeLayout: handleSearchResultsChromeLayout,
 });
 
 // Leg 6 (§4 HeaderNavAction): the results X is the HOST-OWNED control now; the session close

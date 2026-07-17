@@ -67,6 +67,21 @@ A page declares `{ chrome: ChromeSpec, body: BodySpec, decor: DecorSpec }`.
   ONCE at the end. Animated layout is unrepresentable.
 - The measured-chrome cache, its signature fallback, and reservedHeaderHeight die.
 
+**L1 STATUS 2026-07-16: THE GEOMETRY CORE IS EXECUTED.** computeSceneChromeHeight
+(scene-chrome-geometry.ts, RN-free) = chrome-row constant + (strip:'header' ? declared
+band + spacer : 0); the strip band DECLARES its height (toggle-strip-metrics, derived
+from CONTROL_HEIGHT — citizens conform physically); the measured cache + signature
+fallback + reservedHeaderHeight (→ chromeHeight, computed) + search's retained
+header-height authority + the descriptor onChromeLayout feed are ALL DELETED. The
+[CHROME-GEOMETRY] dev bark is the RED instrument — computed↔measured on every present
+(proven RED via a 3px conformance drift: named scene, exact delta; zero barks clean).
+Gates: 366/366 suites, invariants 22/22 (+4 L1), matrix 21/21. Sim truths recorded:
+strip-less chrome 68.33̄ (raw sum 68.25 grid-rounded), strip chrome 108.33̄.
+Deliberately NOT built (no consumer exists): the morph-clock machinery (the strip's
+edit morph is absolute-fill inside the constant band — no chrome-height morph in the
+app); BodySpec bands + SingleLineText brand land with L2's PageSpec (the truncation
+law's box side is already physical: fixedHeight chrome row + fixed band, ratified).
+
 ## L2 — THE SHELL (loading is the list with placeholder cells)
 
 The PageSpec is **the only render path** (A#5): PageSpec values are immutable
