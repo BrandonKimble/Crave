@@ -183,9 +183,18 @@ The strangler needs an explicit, budgeted-for-deletion bridge:
 
 - **L0 + L1**: ratifiable now, WITH the truncation law as an explicit owner call.
 - **L2**: ratifiable with the closed state enum + data-slots contract as written.
-- **L3**: ratifiable ONLY after the residency prototype measures (boot delta, memory,
-  steady fps with all shells mounted empty + paused). The prototype is the next
-  concrete artifact.
+- **L3**: PROTOTYPE MEASURED (2026-07-16, ShellResidencyProbe — dev harness verb
+  `shell_probe`, 20 shell facsimiles = chrome band + the real cutout material, 4 rows):
+  · **LAW pole** (1 visible + 19 `display:none`): mount 134ms TOTAL (~6.7ms/shell —
+    trivially schedulable at idle, won't even need slicing), RSS delta lost in GC noise,
+    steady **60fps with 17–19ms max frames — indistinguishable from baseline**.
+  · **ANTI-LAW pole** (20 live stacked, shimmer running): mount 707ms, **+96MB RSS**,
+    UI thread COLLAPSES to 15–40fps with 60–425ms frames, sustained until turned off
+    (instant recovery after). The visibility law is not hygiene — it is THE load-bearing
+    law, now RED-proven: violating it reproduces the exact measured disease.
+  · Caveats: facsimile fidelity (no strips/decor — the anti-law pole bounds the worst
+    case), Rosetta sim, `display:none` as the pause approximation (the real L0 adds a
+    true shimmer-off + detach). **L3 is ratifiable on these numbers.**
 - **L4**: ratifiable with Law 1/Law 2 as written, WITH the slow-network law as an
   explicit owner call.
 

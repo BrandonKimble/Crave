@@ -93,8 +93,8 @@ const SearchShortcutsRow = ({
         }}
       >
         <Reanimated.View style={[styles.searchShortcutContent, contentAnimatedStyle]}>
-          <Store size={18} color="#0f172a" strokeWidth={2} />
-          <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
+          <Store size={16} color="#111827" strokeWidth={2} />
+          <Text variant="caption" weight="semibold" style={styles.searchShortcutChipText}>
             Best restaurants
           </Text>
         </Reanimated.View>
@@ -111,8 +111,8 @@ const SearchShortcutsRow = ({
         }}
       >
         <Reanimated.View style={[styles.searchShortcutContent, contentAnimatedStyle]}>
-          <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
-          <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
+          <HandPlatter size={16} color="#111827" strokeWidth={2} />
+          <Text variant="caption" weight="semibold" style={styles.searchShortcutChipText}>
             Best dishes
           </Text>
         </Reanimated.View>

@@ -1,6 +1,13 @@
 # Viewport-Only Search + Location-Centric Interaction — Execution Plan
 
-Status: DRAFT for owner ratification (2026-07-14). Supersedes the market-scoped result
+Status: PARTIALLY SUPERSEDED (2026-07-14). Legs 1, 2, and 6 (viewport-only cutover,
+location-centric interaction, score calibration) remain RATIFIED and current. Legs
+3/3.5/4/5 and all market-resolution/minting/demand/poll-scheduling sections are
+SUPERSEDED by plans/geo-demand-foundation-rebuild.md (the from-scratch Place
+Catalog + Signals Ledger design) — read that document first; sections below are
+kept for the audit trail of how the design evolved.
+
+Original status: DRAFT for owner ratification (2026-07-14). Supersedes the market-scoped result
 filter established in the Apr-2026 coverage cutover (plans/polls-coverage-resolution-cutover-plan.md,
 now historical for that aspect).
 

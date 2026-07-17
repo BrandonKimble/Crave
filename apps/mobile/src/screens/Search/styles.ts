@@ -164,11 +164,14 @@ const styles = StyleSheet.create({
     zIndex: 55,
   },
   searchShortcutChip: {
-    borderRadius: 12,
+    // Mirrors the toggle-strip control box (SegmentedToggle option: 32-high,
+    // radius-8, 12/5 padding) so the shortcuts and the strip cutouts read as one family.
+    borderRadius: 8,
     borderWidth: 0,
     backgroundColor: '#ffffff',
-    paddingHorizontal: 11,
-    paddingVertical: 8,
+    height: 32,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     justifyContent: 'center',
     alignSelf: 'flex-start',
     marginRight: 0,
@@ -199,7 +202,8 @@ const styles = StyleSheet.create({
     color: SEARCH_THIS_AREA_COLOR,
   },
   searchShortcutChipText: {
-    color: '#0f172a',
+    // Matches the SegmentedToggle inactive label color.
+    color: '#111827',
   },
   promptCardTopShadow: {
     borderRadius: 0,

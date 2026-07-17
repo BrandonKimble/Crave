@@ -1,4 +1,9 @@
 import React from 'react';
+import {
+  ShellResidencyProbe,
+  setShellProbeState,
+  type ShellProbeMode,
+} from './ShellResidencyProbe';
 
 import { registerLifecycleHarnessVerb } from './lifecycle-harness-registry';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
@@ -111,6 +116,20 @@ export const LifecycleHarnessBridge: React.FC = () => {
         });
         return readLifecycleState();
       }
+      if (kind === 'shell_probe') {
+        const mode = (payload.mode ?? 'off') as ShellProbeMode;
+        const count = Number(payload.count ?? 20);
+        const t0 = performance.now();
+        setShellProbeState(mode, count);
+        // Ack after the mount commits (two rAFs = committed + painted).
+        return new Promise((resolve) => {
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() =>
+              resolve({ mode, count, mountMs: Number((performance.now() - t0).toFixed(1)) })
+            )
+          );
+        });
+      }
       if (kind === 'shortcut') {
         const submit = readPerfScenarioCommandRegistry().submitShortcutRestaurants;
         if (!submit) {
@@ -175,5 +194,5 @@ export const LifecycleHarnessBridge: React.FC = () => {
     };
   }, [routeSceneRuntime]);
 
-  return null;
+  return <ShellResidencyProbe />;
 };
