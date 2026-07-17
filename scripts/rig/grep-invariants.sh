@@ -77,5 +77,10 @@ check_eq "search-open-now-variant references (file renamed to -projection)" 0 \
 check_eq "lens tokens inside buildSearchCardsWorldKey body" 0 \
   "$(sed -n '/buildSearchCardsWorldKey = /,/^};/p' $SRC/screens/Search/runtime/shared/search-desired-state-contract.ts | grep -c 'open:' || true)"
 
+echo "=== THE PAGE L0 — one loading material ==="
+# The gray second material is DELETED: no import path, no JSX usage may return.
+check_eq "SkeletonBox import/usage sites" 0 \
+  "$(grep -rlE "from '.*/SkeletonBox'|<SkeletonBox" $SRC --include='*.ts' --include='*.tsx' 2>/dev/null | grep -v '\.spec\.' | wc -l | tr -d ' ')"
+
 echo "=== RESULT: PASS=$PASS FAIL=$FAIL ==="
 [ "$FAIL" -eq 0 ]

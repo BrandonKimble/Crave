@@ -7,7 +7,7 @@ import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
 import { FrostCutout } from '../SceneBodyFoundationSurface';
-import { SceneLoadingSurface, SkeletonBox } from '../../components/skeletons';
+import { CutoutSkeletonShape, SceneLoadingSurface } from '../../components/skeletons';
 import { useProfilePanelBodyModelRuntime } from './runtime/profile-panel-body-model-runtime';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import { ProfileSectionsBody, type ProfileSectionKey } from './ProfileSectionsBody';
@@ -70,7 +70,7 @@ const ProfileIdentityChrome = React.memo(
             {!identityResolved ? (
               // Profile still loading — pulse a circle so the seeded header doesn't flash the
               // 'C' initials fallback before the real avatar/initials resolve.
-              <SkeletonBox width="100%" height={64} borderRadius={32} />
+              <CutoutSkeletonShape width={64} height={64} borderRadius={32} />
             ) : (
               <MonogramAvatar
                 seed={usernameLabel}
@@ -85,8 +85,8 @@ const ProfileIdentityChrome = React.memo(
           <View style={styles.headerText}>
             {!identityResolved ? (
               <>
-                <SkeletonBox width={160} height={20} style={styles.identitySkeletonName} />
-                <SkeletonBox width={100} height={12} style={styles.identitySkeletonUsername} />
+                <CutoutSkeletonShape width={160} height={20} style={styles.identitySkeletonName} />
+                <CutoutSkeletonShape width={100} height={12} style={styles.identitySkeletonUsername} />
               </>
             ) : (
               <>
@@ -126,7 +126,7 @@ const ProfileIdentityChrome = React.memo(
             const statContent = (
               <>
                 {!identityResolved ? (
-                  <SkeletonBox width={28} height={18} style={styles.identitySkeletonStat} />
+                  <CutoutSkeletonShape width={28} height={18} style={styles.identitySkeletonStat} />
                 ) : (
                   <Text variant="subtitle" weight="bold" style={styles.statValue}>
                     {statValues[index]}

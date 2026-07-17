@@ -41,7 +41,7 @@ import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyR
 import { getOverlaySceneScrollHandle } from '../sceneScrollStateRegistry';
 import { useEditModeSession } from '../edit-mode-session';
 import { OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
-import { CutoutSkeletonTitle } from '../../components/skeletons';
+import { CutoutSkeletonShape } from '../../components/skeletons';
 import {
   registerPersistentHeaderDescriptor,
   type PersistentHeaderExtrasProps,
@@ -1512,7 +1512,7 @@ const ListDetailPersistentHeaderTitle = React.memo(() => {
     typeof entryParams?.title === 'string' && entryParams.title.trim() ? entryParams.title : null;
   const name = seat?.name ?? warmTitle;
   if (!name) {
-    return <CutoutSkeletonTitle width={150} height={18} />;
+    return <CutoutSkeletonShape width={150} height={18} />;
   }
   return (
     <View style={styles.headerTextGroup}>

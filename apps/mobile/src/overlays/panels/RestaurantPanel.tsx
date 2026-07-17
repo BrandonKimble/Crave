@@ -27,7 +27,7 @@ import {
   OVERLAY_HORIZONTAL_PADDING,
   OVERLAY_TAB_HEADER_HEIGHT,
 } from '../overlaySheetStyles';
-import { CutoutSkeletonTitle, SceneLoadingSurface } from '../../components/skeletons';
+import { CutoutSkeletonShape, SceneLoadingSurface } from '../../components/skeletons';
 import { getPriceRangeLabel } from '../../constants/pricing';
 import { calculateSnapPoints } from '../sheetUtils';
 import type { OverlayContentSpec } from '../types';
@@ -797,7 +797,7 @@ const RestaurantPersistentHeaderTitle = React.memo(() => {
   if (!restaurantName) {
     // Title not yet resolved (e.g. a deep-link open with no seeded name) — skeletonize
     // ONLY the title; the grab handle + close button stay live for cancel.
-    return <CutoutSkeletonTitle width={150} height={18} />;
+    return <CutoutSkeletonShape width={150} height={18} />;
   }
   return (
     <Text style={styles.restaurantName} numberOfLines={1} ellipsizeMode="tail">
