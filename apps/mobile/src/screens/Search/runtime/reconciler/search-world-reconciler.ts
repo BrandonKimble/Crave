@@ -21,14 +21,19 @@ import {
   areSearchCommittedBoundsEqual,
   areSearchFilterVariantsEqual,
   areSearchQueryIdentitiesEqual,
-  buildSearchCardsWorldKey,
+  buildSearchWorldSliceKey,
   type SearchDesiredTuple,
 } from '../shared/search-desired-state-contract';
 
 export type SearchWorldTransitionClass =
   | 'session_enter'
   | 'session_replace'
+  /** IDENTITY revise within a session: includeSimilar (retrieval-semantic). */
   | 'variant_rerun'
+  /** LENS flip (lens exit §2): openNow/price/rising/listSort/marketKey — a new VIEW of
+   *  the SAME world. Never a session/world event: the slice presents through the
+   *  toggle-revise choreography ({paint, mapFrame} episode), identity untouched. */
+  | 'lens_flip'
   | 'area_rerun'
   | 'tab_switch'
   | 'retoggle_reversal'
@@ -80,7 +85,7 @@ export const classifySearchWorldTransition = (args: {
   presentedCardsKey: string | null;
 }): SearchWorldTransition => {
   const { prev, next, presentedCardsKey } = args;
-  const cardsKey = buildSearchCardsWorldKey(next);
+  const cardsKey = buildSearchWorldSliceKey(next);
   const identityChanged = !areSearchQueryIdentitiesEqual(prev.queryIdentity, next.queryIdentity);
   const filtersChanged = !areSearchFilterVariantsEqual(prev.filterVariant, next.filterVariant);
   const boundsChanged = !areSearchCommittedBoundsEqual(prev.committedBounds, next.committedBounds);
@@ -123,9 +128,14 @@ export const classifySearchWorldTransition = (args: {
   }
   if (filtersChanged) {
     // Bounds may co-change (chip commits adopt the settled camera) — the filter delta
-    // is the classifying fact.
+    // is the classifying fact. AXIS SPLIT (lens exit §2): a lens-only delta is a
+    // LENS_FLIP (same world, new slice); an includeSimilar delta is an identity revise
+    // (variant_rerun). Both ride the toggle-coordinator choreography — the class is
+    // the session-vocabulary fact (a lens_flip can never coerce/mint sessions, M-1).
+    const identityFilterChanged =
+      prev.filterVariant.includeSimilar !== next.filterVariant.includeSimilar;
     return {
-      class: 'variant_rerun',
+      class: identityFilterChanged ? 'variant_rerun' : 'lens_flip',
       intent: {
         presentationIntentKind: 'variant_rerun',
         preserveSheetState: true,
@@ -339,6 +349,7 @@ export const createSearchWorldReconciler = (
         return;
       }
       case 'variant_rerun':
+      case 'lens_flip':
       case 'retoggle_reversal': {
         // A reversal rides the same rerun path: the resolver cache-hits and the seam's
         // represent-noop completes the armed choreography (the S4c statechart replaces

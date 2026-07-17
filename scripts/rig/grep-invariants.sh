@@ -67,5 +67,15 @@ check_eq "stageTransitionTxn caller files (2 stagers)" 2 \
 check_eq "paintAck writer files (host + player)" 2 \
   "$(file_count 'paintAck.value = ' $SRC)"
 
+echo "=== LENS EXIT (S2/S3) — dead classes stay dead ==="
+# The sibling-world vocabulary is GONE: open-now is a projection over one world.
+check_eq "search-open-now-variant references (file renamed to -projection)" 0 \
+  "$(file_count 'search-open-now-variant' $SRC)"
+# The worldKey builder is PURE IDENTITY — no lens token may re-enter it. The lens
+# tokens live ONLY in buildSearchLensKey; the builder body carrying 'open:' again
+# would re-mint the sibling-identity disease.
+check_eq "lens tokens inside buildSearchCardsWorldKey body" 0 \
+  "$(sed -n '/buildSearchCardsWorldKey = /,/^};/p' $SRC/screens/Search/runtime/shared/search-desired-state-contract.ts | grep -c 'open:' || true)"
+
 echo "=== RESULT: PASS=$PASS FAIL=$FAIL ==="
 [ "$FAIL" -eq 0 ]

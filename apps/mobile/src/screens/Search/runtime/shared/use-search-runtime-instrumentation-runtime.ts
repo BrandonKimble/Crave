@@ -8,6 +8,7 @@ import {
 import { registerOverlapAutoZoomHandler } from '../map/overlap-auto-zoom-bridge';
 import { zoomToFitRadiusMiles } from '../../utils/overlap-region';
 import { registerPerfScenarioCommands } from '../../../../perf/perf-scenario-command-registry';
+import { writeSearchDesiredTuple } from './search-desired-state-writer';
 import { usePerfScenarioRuntimeStore } from '../../../../perf/perf-scenario-runtime-store';
 import {
   SCALE_PROBE_MAX_MARKERS,
@@ -140,6 +141,14 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   const toggleTabPerfCommand = React.useCallback(({ tab }: { tab: 'dishes' | 'restaurants' }) => {
     tabToggleScenarioCommandRef.current(tab);
   }, []);
+  // The harness's lens-flip lever IS the chip's one setter (lens exit §6: every openNow
+  // caller flows through this exact write) — byte-identical cause and patch.
+  const flipOpenNowPerfCommand = React.useCallback(
+    ({ openNow }: { openNow: boolean }) => {
+      writeSearchDesiredTuple(searchRuntimeBus, { filterVariant: { openNow } }, 'chip_open_now');
+    },
+    [searchRuntimeBus]
+  );
   const setMapCameraPerfCommand = React.useCallback(
     ({
       lat,
@@ -337,6 +346,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
         moveMapForSearchThisArea: moveMapForSearchThisAreaPerfCommand,
         submitShortcutRestaurants: submitShortcutRestaurantsPerfCommand,
         toggleTab: toggleTabPerfCommand,
+        flipOpenNow: flipOpenNowPerfCommand,
         setScaleProbeMarkers: setScaleProbeMarkersPerfCommand,
       }),
     [
@@ -346,6 +356,7 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       setMapCameraPerfCommand,
       submitShortcutRestaurantsPerfCommand,
       toggleTabPerfCommand,
+      flipOpenNowPerfCommand,
       setScaleProbeMarkersPerfCommand,
     ]
   );

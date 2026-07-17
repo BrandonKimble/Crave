@@ -12,8 +12,9 @@
 import { logger } from '../../../../utils';
 import type { SearchRuntimeBus } from '../shared/search-runtime-bus';
 import {
-  buildSearchCardsWorldKey,
   buildSearchCoverageWorldKey,
+  buildSearchWorldSliceKey,
+  searchWorldGroupOfSliceKey,
   areSearchDesiredTuplesEqual,
   type SearchDesiredTuple,
   type SearchTupleWriteCause,
@@ -68,7 +69,7 @@ export type SearchWorldResolverEnv = {
    *  null when no derivation applies and the ladder falls through to network. */
   deriveWorldForTuple?: (args: {
     tuple: SearchDesiredTuple;
-    cardsKey: string;
+    sliceKey: string;
     cache: SearchWorldCache<SearchWorldValue>;
   }) => SearchWorldNetworkFetchResult | null;
   now: () => number;
@@ -127,9 +128,13 @@ export type SearchWorldResolver = {
 };
 
 export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWorldResolver => {
+  // S2 (lens exit §2/§4b): the cache keys RESOLVED SLICES — `worldKey##lensKey`. The
+  // flat table IS the design's per-world slice table (lookup-equivalent); pins and
+  // eviction group by the worldKey half so a pinned world keeps all its lens slices.
   const cache = createSearchWorldCache<SearchWorldValue>({
     maxUnpinnedWorlds: WORLD_CACHE_MAX_UNPINNED,
     staleAfterMs: WORLD_CACHE_STALE_AFTER_MS,
+    groupOf: searchWorldGroupOfSliceKey,
   });
   const core = createResolverCore();
 
@@ -169,7 +174,7 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
 
   const resolve = async (args: SearchWorldResolveArgs): Promise<void> => {
     const { tuple, generation, cause, presentationIntentKind, onResolutionBegan } = args;
-    const cardsKey = buildSearchCardsWorldKey(tuple);
+    const sliceKey = buildSearchWorldSliceKey(tuple);
     const coverageKey = buildSearchCoverageWorldKey(tuple);
     core.observeGeneration(generation);
     env.onResolveKick?.({ generation, presentationIntentKind });
@@ -177,10 +182,10 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
     onResolutionBegan?.();
 
     // Tier 1 — cache.
-    const cached = cache.get(cardsKey);
+    const cached = cache.get(sliceKey);
     if (cached != null && isEntryFresh(cached, tuple.filterVariant.openNow)) {
       if (__DEV__) {
-        logger.info('[RESOLVE]', { generation, cause, cardsKey, coverageKey, tier: 'cache' });
+        logger.info('[RESOLVE]', { generation, cause, sliceKey, coverageKey, tier: 'cache' });
       }
       // UNIFORM ASYNC COMMIT (perf attribution 2026-07-12): a synchronous cache-tier
       // present landed the entire world-commit composite (~200-450ms of store fan-out,
@@ -206,10 +211,10 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
     }
 
     // Tier 2 — derivation (recompose from a resolved sibling world; zero network).
-    const derived = env.deriveWorldForTuple?.({ tuple, cardsKey, cache });
+    const derived = env.deriveWorldForTuple?.({ tuple, sliceKey, cache });
     if (derived != null) {
       const entry = cache.commit({
-        worldKey: cardsKey,
+        worldKey: sliceKey,
         status: { kind: 'ready' },
         value: derived.value,
         resolvedAt: env.now(),
@@ -218,7 +223,7 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         logger.info('[RESOLVE]', {
           generation,
           cause,
-          cardsKey,
+          sliceKey,
           coverageKey,
           tier: derived.provisional ? 'derivation_provisional' : 'derivation',
         });
@@ -245,13 +250,13 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
           try {
             const fetched = await env.fetchWorldForTuple({ tuple, generation, cause });
             const trueEntry = cache.commit({
-              worldKey: cardsKey,
+              worldKey: sliceKey,
               status: { kind: 'ready' },
               value: fetched.value,
               resolvedAt: env.now(),
             });
             if (__DEV__) {
-              logger.info('[RESOLVE] provisional true-up landed', { cardsKey });
+              logger.info('[RESOLVE] provisional true-up landed', { sliceKey });
             }
             if (isTupleStillDesired(tuple)) {
               env.seam.commitWorldToMountedState({
@@ -277,13 +282,13 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
 
     // Tier 3 — network. In-flight dedupe by key; superseded landings commit into cache
     // without presenting (A→B→A retoggle finds both cached).
-    const startedFetch = core.begin({ generation, worldKey: cardsKey });
+    const startedFetch = core.begin({ generation, worldKey: sliceKey });
     if (!startedFetch) {
       if (__DEV__) {
         logger.info('[RESOLVE]', {
           generation,
           cause,
-          cardsKey,
+          sliceKey,
           coverageKey,
           tier: 'network',
           dedupedInFlight: true,
@@ -292,7 +297,7 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
       return;
     }
     if (__DEV__) {
-      logger.info('[RESOLVE]', { generation, cause, cardsKey, coverageKey, tier: 'network' });
+      logger.info('[RESOLVE]', { generation, cause, sliceKey, coverageKey, tier: 'network' });
     }
     try {
       const fetched = await env.fetchWorldForTuple({
@@ -302,12 +307,12 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         requestDecoration: args.requestDecoration,
       });
       const entry = cache.commit({
-        worldKey: cardsKey,
+        worldKey: sliceKey,
         status: { kind: 'ready' },
         value: fetched.value,
         resolvedAt: env.now(),
       });
-      const disposition = core.land({ generation, worldKey: cardsKey }, () =>
+      const disposition = core.land({ generation, worldKey: sliceKey }, () =>
         isTupleStillDesired(tuple)
       );
       if (disposition === 'present') {
@@ -333,11 +338,11 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         });
       } else if (__DEV__) {
         // The superseded-completion trace — proves A→B→A lands from cache.
-        logger.info('[RESOLVE] superseded landing cached', { generation, cardsKey });
+        logger.info('[RESOLVE] superseded landing cached', { generation, sliceKey });
       }
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'unknown error';
-      core.fail({ generation, worldKey: cardsKey });
+      core.fail({ generation, worldKey: sliceKey });
       // Failure is an episode OUTCOME and honors the same currency gate as landing:
       // a rejection for a tuple that is no longer desired must not touch presentation
       // state — publishing it would kill the CURRENT resolution's phase/loading levels
@@ -345,7 +350,7 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
       // trace, not state.
       if (!isTupleStillDesired(tuple)) {
         if (__DEV__) {
-          logger.info('[RESOLVE] superseded failure dropped', { generation, cardsKey, reason });
+          logger.info('[RESOLVE] superseded failure dropped', { generation, sliceKey, reason });
         }
         return;
       }
@@ -364,8 +369,8 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
   const resolveNextPage = async (): Promise<void> => {
     const state = env.searchRuntimeBus.getState();
     const tuple = state.desiredTuple;
-    const cardsKey = buildSearchCardsWorldKey(tuple);
-    const entry = cache.get(cardsKey);
+    const sliceKey = buildSearchWorldSliceKey(tuple);
+    const entry = cache.get(sliceKey);
     if (entry == null || entry.status.kind !== 'ready' || env.fetchNextPageForTuple == null) {
       return;
     }
@@ -375,13 +380,13 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
     }
     // In-flight dedupe on a per-identity append key: a second load-more while page N is
     // in flight attaches (returns) instead of double-fetching.
-    const appendKey = `${cardsKey}#append`;
+    const appendKey = `${sliceKey}#append`;
     if (!core.begin({ generation: state.desiredTupleGeneration, worldKey: appendKey })) {
       return;
     }
     env.searchRuntimeBus.publish({ isLoadingMore: true });
     if (__DEV__) {
-      logger.info('[RESOLVE] next-page', { cardsKey, targetPage: meta.page + 1 });
+      logger.info('[RESOLVE] next-page', { sliceKey, targetPage: meta.page + 1 });
     }
     try {
       const fetched = await env.fetchNextPageForTuple({
@@ -390,7 +395,7 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         targetPage: meta.page + 1,
       });
       const nextEntry = cache.commit({
-        worldKey: cardsKey,
+        worldKey: sliceKey,
         status: { kind: 'ready' },
         value: fetched.value,
         resolvedAt: env.now(),
@@ -412,7 +417,7 @@ export const createSearchWorldResolver = (env: SearchWorldResolverEnv): SearchWo
         // the world's return; nothing presents.
         env.searchRuntimeBus.publish({ isLoadingMore: false });
         if (__DEV__) {
-          logger.info('[RESOLVE] next-page superseded, cached', { cardsKey });
+          logger.info('[RESOLVE] next-page superseded, cached', { sliceKey });
         }
       }
     } catch (error) {

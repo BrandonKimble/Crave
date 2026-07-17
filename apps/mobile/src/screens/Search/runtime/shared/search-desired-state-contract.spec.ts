@@ -14,6 +14,7 @@ import {
   areSearchFilterVariantsEqual,
   areSearchQueryIdentitiesEqual,
   buildSearchCardsWorldKey,
+  buildSearchWorldSliceKey,
   DEFAULT_SEARCH_FILTER_VARIANT,
   IDLE_SEARCH_DESIRED_TUPLE,
   type SearchDesiredTuple,
@@ -108,18 +109,20 @@ describe('buildSearchCardsWorldKey — list variant + access-material key rules'
     expect(key).not.toContain('mkt:');
   });
 
-  it('INCLUDES sort/market only when present', () => {
-    const key = buildSearchCardsWorldKey(
-      listTuple({}, { listSort: 'recent', marketKey: 'austin' })
-    );
-    expect(key).toContain('sort:recent');
-    expect(key).toContain('mkt:austin');
+  it('sort/market are LENS axes (S2): they key the SLICE, never the world', () => {
+    const base = listTuple();
+    const sliced = listTuple({}, { listSort: 'recent', marketKey: 'austin' });
+    expect(buildSearchCardsWorldKey(sliced)).toBe(buildSearchCardsWorldKey(base));
+    const sliceKey = buildSearchWorldSliceKey(sliced);
+    expect(sliceKey).toContain('sort:recent');
+    expect(sliceKey).toContain('mkt:austin');
   });
 
-  it('a market flip mints a DISTINCT world (membership changes ⇒ different cache entry)', () => {
-    expect(buildSearchCardsWorldKey(listTuple({}, { marketKey: 'austin' }))).not.toBe(
-      buildSearchCardsWorldKey(listTuple({}, { marketKey: 'nyc' }))
-    );
+  it('a market flip mints a DISTINCT slice (membership changes ⇒ different cache entry) of the SAME world', () => {
+    const austin = listTuple({}, { marketKey: 'austin' });
+    const nyc = listTuple({}, { marketKey: 'nyc' });
+    expect(buildSearchWorldSliceKey(austin)).not.toBe(buildSearchWorldSliceKey(nyc));
+    expect(buildSearchCardsWorldKey(austin)).toBe(buildSearchCardsWorldKey(nyc));
   });
 
   it('targetUserId KEYS the world (:u: segment) — same list, two owners = two worlds', () => {

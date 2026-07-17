@@ -288,8 +288,10 @@ export const areSearchWorldIdentitiesEqual = (
   a.filterVariant.includeSimilar === b.filterVariant.includeSimilar &&
   areSearchCommittedBoundsEqual(a.committedBounds, b.committedBounds);
 
-/** Canonical serialized identity for cache keys and the append-only trace.
- *  cardsWorld key = tuple minus tab; coverageWorld key = full tuple (charter §3). */
+/** Canonical serialized WORLD IDENTITY (S2: the lens is OUT — this key names what the
+ *  search MEANS: query identity + includeSimilar + bounds). Everything session-scoped
+ *  (entry.desire, M-1 coercion, L-2 stack pins) speaks this key; a lens flip never
+ *  changes it. cardsWorld key = identity minus tab; coverage adds the tab. */
 export const buildSearchCardsWorldKey = (tuple: SearchDesiredTuple): string => {
   const identity = tuple.queryIdentity;
   const identityKey =
@@ -304,13 +306,7 @@ export const buildSearchCardsWorldKey = (tuple: SearchDesiredTuple): string => {
             : identity.kind === 'profileSeed'
               ? `profileSeed:${identity.restaurantId}`
               : 'idle';
-  const filters = tuple.filterVariant;
-  // listSort/marketKey are LIST-world variant axes — appended only when present so
-  // non-list worlds keep their exact historical key (empty suffix), and a list re-sort
-  // or market flip mints a distinct world (cache correctness: a different ordering /
-  // city is a different resolved result).
-  const listVariantKey = `${filters.listSort != null ? `|sort:${filters.listSort}` : ''}${filters.marketKey != null ? `|mkt:${filters.marketKey}` : ''}`;
-  const filtersKey = `open:${filters.openNow ? 1 : 0}|price:${filters.priceLevels.join(',')}|rising:${filters.rising ? 1 : 0}|similar:${filters.includeSimilar ? 1 : 0}${listVariantKey}`;
+  const filtersKey = `similar:${tuple.filterVariant.includeSimilar ? 1 : 0}`;
   const bounds = tuple.committedBounds;
   const boundsKey =
     bounds == null
@@ -319,5 +315,19 @@ export const buildSearchCardsWorldKey = (tuple: SearchDesiredTuple): string => {
   return `${identityKey}||${filtersKey}||${boundsKey}`;
 };
 
+/** The RESOLVED-SLICE key (S2): `worldKey##lensKey` — one lens view of one world. This
+ *  is what the resolver caches, what worldIds embed, what the presented comparison and
+ *  the reveal episode key on. The flat cache keyed by this IS the design's
+ *  `worldCache[worldKey].slices[lensKey]` (lookup-equivalent; §4b — no topology
+ *  rebuild). The `##` separator is the group boundary the cache's identity-grouped
+ *  pinning splits on. */
+export const buildSearchWorldSliceKey = (tuple: SearchDesiredTuple): string =>
+  `${buildSearchCardsWorldKey(tuple)}##${buildSearchLensKey(selectSearchLens(tuple))}`;
+
+/** A slice key's identity group (the worldKey half) — L-2's stack-pinned eviction pins
+ *  GROUPS: pinning a world pins every lens slice under it. */
+export const searchWorldGroupOfSliceKey = (sliceKey: string): string =>
+  sliceKey.split('##')[0] ?? sliceKey;
+
 export const buildSearchCoverageWorldKey = (tuple: SearchDesiredTuple): string =>
-  `${buildSearchCardsWorldKey(tuple)}||tab:${tuple.tab}`;
+  `${buildSearchWorldSliceKey(tuple)}||tab:${tuple.tab}`;

@@ -5,7 +5,7 @@ jest.mock('../../../../utils', () => ({
 
 import { classifySearchWorldTransition } from './search-world-reconciler';
 import {
-  buildSearchCardsWorldKey,
+  buildSearchWorldSliceKey,
   IDLE_SEARCH_DESIRED_TUPLE,
   type SearchDesiredTuple,
 } from '../shared/search-desired-state-contract';
@@ -80,7 +80,7 @@ describe('classifySearchWorldTransition', () => {
     expect(t.intent?.entrySurface).toBe('search_mode');
   });
 
-  it('filter delta (with co-changed bounds — the chip adopt) is a variant_rerun', () => {
+  it('a LENS delta (with co-changed bounds — the chip adopt) is a lens_flip, never a session event (M-1)', () => {
     const prev = shortcut();
     const next = shortcut({
       filterVariant: { ...prev.filterVariant, openNow: true },
@@ -94,8 +94,29 @@ describe('classifySearchWorldTransition', () => {
       },
     });
     const t = classifySearchWorldTransition({ prev, next, presentedCardsKey: null });
-    expect(t.class).toBe('variant_rerun');
+    expect(t.class).toBe('lens_flip');
     expect(t.intent?.presentationIntentKind).toBe('variant_rerun');
+  });
+
+  it('an includeSimilar delta is an IDENTITY revise (variant_rerun) — the axis split', () => {
+    const prev = shortcut();
+    const next = shortcut({
+      filterVariant: { ...prev.filterVariant, includeSimilar: true },
+    });
+    const t = classifySearchWorldTransition({ prev, next, presentedCardsKey: null });
+    expect(t.class).toBe('variant_rerun');
+  });
+
+  it('a lens flip mid-flight back to the presented SLICE is a retoggle_reversal (slice-granular)', () => {
+    // open ON then OFF while ON is still resolving: the OFF desire equals the slice on
+    // screen — a reversal at slice granularity, proving presented keys are slice keys.
+    const presented = shortcut();
+    const t = classifySearchWorldTransition({
+      prev: shortcut({ filterVariant: { ...presented.filterVariant, openNow: true } }),
+      next: presented,
+      presentedCardsKey: buildSearchWorldSliceKey(presented),
+    });
+    expect(t.class).toBe('retoggle_reversal');
   });
 
   it('bounds-only delta is an area_rerun (search-this-area)', () => {
@@ -129,7 +150,7 @@ describe('classifySearchWorldTransition', () => {
     const t = classifySearchWorldTransition({
       prev: away,
       next: presented,
-      presentedCardsKey: buildSearchCardsWorldKey(presented),
+      presentedCardsKey: buildSearchWorldSliceKey(presented),
     });
     expect(t.class).toBe('retoggle_reversal');
     expect(t.intent).toBeNull();

@@ -36,8 +36,10 @@ export type SearchWorldCache<TValue> = {
     value: TValue;
     resolvedAt: number;
   }) => SearchWorldEntry<TValue>;
-  /** Pin/unpin for scene-stack residency. Pins are counted (nested entries may pin the
-   *  same world); a pinned world is never evicted. */
+  /** Pin/unpin for scene-stack residency (L-2, lens-exit §4). Pins are counted (nested
+   *  entries may pin the same world) and IDENTITY-GROUPED: pinning pins the entry's
+   *  GROUP (via `groupOf`), so a world referenced by a live entry's desire keeps every
+   *  lens slice resident — a mid-session lens flip can never evict the base slice. */
   pin: (worldKey: string) => void;
   unpin: (worldKey: string) => void;
   isEntryStale: (entry: SearchWorldEntry<TValue>, nowMs: number) => boolean;
@@ -51,9 +53,13 @@ export const createSearchWorldCache = <TValue>(options: {
   maxUnpinnedWorlds: number;
   /** Wall-clock TTL after which a hit is stale (present-stale + revalidate). */
   staleAfterMs: number;
+  /** Identity group of a key (default: the key itself). Slice-keyed caches pass the
+   *  worldKey extractor so pins/eviction operate per IDENTITY, not per lens slice. */
+  groupOf?: (key: string) => string;
 }): SearchWorldCache<TValue> => {
   const entries = new Map<string, SearchWorldEntry<TValue>>();
   const pinCounts = new Map<string, number>();
+  const groupOf = options.groupOf ?? ((key: string) => key);
   // Map iteration order is insertion order; re-inserting on touch gives LRU for free.
   const touch = (worldKey: string): void => {
     const entry = entries.get(worldKey);
@@ -62,10 +68,11 @@ export const createSearchWorldCache = <TValue>(options: {
       entries.set(worldKey, entry);
     }
   };
+  const isPinned = (key: string): boolean => (pinCounts.get(groupOf(key)) ?? 0) > 0;
   const evictBeyondBudget = (): void => {
     let unpinned = 0;
     for (const key of entries.keys()) {
-      if ((pinCounts.get(key) ?? 0) === 0) {
+      if (!isPinned(key)) {
         unpinned += 1;
       }
     }
@@ -76,7 +83,7 @@ export const createSearchWorldCache = <TValue>(options: {
       if (unpinned <= options.maxUnpinnedWorlds) {
         break;
       }
-      if ((pinCounts.get(key) ?? 0) === 0) {
+      if (!isPinned(key)) {
         entries.delete(key);
         unpinned -= 1;
       }
@@ -107,16 +114,18 @@ export const createSearchWorldCache = <TValue>(options: {
       return entry;
     },
     pin: (worldKey) => {
-      pinCounts.set(worldKey, (pinCounts.get(worldKey) ?? 0) + 1);
+      const group = groupOf(worldKey);
+      pinCounts.set(group, (pinCounts.get(group) ?? 0) + 1);
     },
     unpin: (worldKey) => {
-      const current = pinCounts.get(worldKey) ?? 0;
+      const group = groupOf(worldKey);
+      const current = pinCounts.get(group) ?? 0;
       if (current <= 1) {
-        pinCounts.delete(worldKey);
+        pinCounts.delete(group);
         evictBeyondBudget();
         return;
       }
-      pinCounts.set(worldKey, current - 1);
+      pinCounts.set(group, current - 1);
     },
     isEntryStale: (entry, nowMs) => nowMs - entry.resolvedAt > options.staleAfterMs,
     size: () => entries.size,

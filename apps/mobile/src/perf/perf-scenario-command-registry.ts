@@ -29,6 +29,8 @@ type PerfScenarioCommandRegistrySnapshot = {
   // (scheduleTabToggleCommit) so a deep link can validate the canonical-swap toggle without the
   // GestureDetector that Maestro can't tap.
   toggleTab: ((input: { tab: 'dishes' | 'restaurants' }) => void) | null;
+  /** Lens-exit S2 proof lever: the REAL open-now chip write (cause 'chip_open_now'). */
+  flipOpenNow: ((input: { openNow: boolean }) => void) | null;
   setScaleProbeMarkers:
     | ((input: {
         count: number;
@@ -60,6 +62,7 @@ const commandRegistry: PerfScenarioCommandRegistrySnapshot = {
   moveMapForSearchThisArea: null,
   submitShortcutRestaurants: null,
   toggleTab: null,
+  flipOpenNow: null,
   setScaleProbeMarkers: null,
   openOverlayScene: null,
   pushChildScene: null,
@@ -93,6 +96,7 @@ export type PerfScenarioCommandRegistration = {
   }) => boolean;
   submitShortcutRestaurants?: () => Promise<void>;
   toggleTab?: (input: { tab: 'dishes' | 'restaurants' }) => void;
+  flipOpenNow?: (input: { openNow: boolean }) => void;
   setScaleProbeMarkers?: (input: {
     count: number;
     lat: number;
@@ -117,6 +121,7 @@ export const registerPerfScenarioCommands = ({
   moveMapForSearchThisArea,
   submitShortcutRestaurants,
   toggleTab,
+  flipOpenNow,
   setScaleProbeMarkers,
   openOverlayScene,
   pushChildScene,
@@ -139,6 +144,9 @@ export const registerPerfScenarioCommands = ({
   }
   if (toggleTab) {
     commandRegistry.toggleTab = toggleTab;
+  }
+  if (flipOpenNow) {
+    commandRegistry.flipOpenNow = flipOpenNow;
   }
   if (setScaleProbeMarkers) {
     commandRegistry.setScaleProbeMarkers = setScaleProbeMarkers;
@@ -178,6 +186,9 @@ export const registerPerfScenarioCommands = ({
     if (toggleTab && commandRegistry.toggleTab === toggleTab) {
       commandRegistry.toggleTab = null;
     }
+    if (flipOpenNow && commandRegistry.flipOpenNow === flipOpenNow) {
+      commandRegistry.flipOpenNow = null;
+    }
     if (setScaleProbeMarkers && commandRegistry.setScaleProbeMarkers === setScaleProbeMarkers) {
       commandRegistry.setScaleProbeMarkers = null;
     }
@@ -200,6 +211,7 @@ export const readPerfScenarioCommandRegistry = (): PerfScenarioCommandRegistrySn
   moveMapForSearchThisArea: commandRegistry.moveMapForSearchThisArea,
   submitShortcutRestaurants: commandRegistry.submitShortcutRestaurants,
   toggleTab: commandRegistry.toggleTab,
+  flipOpenNow: commandRegistry.flipOpenNow,
   setScaleProbeMarkers: commandRegistry.setScaleProbeMarkers,
   openOverlayScene: commandRegistry.openOverlayScene,
   pushChildScene: commandRegistry.pushChildScene,

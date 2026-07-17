@@ -1,18 +1,21 @@
 import type { SearchResponse } from '../../../../types';
 import type { SearchMountedResultsCoverageEntry } from './search-mounted-results-data-store';
 
-// OPEN-NOW variant DERIVATION (the toggle-data ideal shape, owner-directed 2026-07-07):
-// open-now is a PURE FILTER over the score-ranked base rows (verified on live data — the
-// filtered order equals the base order), and every row + coverage feature carries its
-// openness (rows: operatingStatus.isOpen; coverage: the API's per-feature isOpen). So the
-// open-now page-1 world derives CLIENT-SIDE from the base sibling — instant toggle — and
-// the resolver trues it up from the network in the background (a version update, no second
-// reveal choreography). Rows/features WITHOUT openness data are DROPPED, matching the
-// server's open-now post-filter semantics exactly.
+// OPEN-NOW coverage PROJECTION (lens exit §4b option ii, S3 2026-07-16 — formerly the
+// "sibling-world variant" file): open-now is a LENS — a pure fact-projection over the
+// score-ranked base slice of the SAME world (verified on live data — the filtered order
+// equals the base order). Every row + coverage feature carries its openness (rows:
+// operatingStatus.isOpen; coverage: the API's per-feature isOpen), so the lens's
+// OPTIMISTIC FIRST PAINT projects the warm base slice client-side — instant flip — and
+// the resolver settles it with the honest server slice fetch (filter-before-paginate,
+// the 2026-07-14 parity law) as a version update, no second reveal choreography. There
+// is no sibling IDENTITY anywhere: base and open are two lensKeys under one worldKey.
+// Rows/features WITHOUT openness data are DROPPED, matching the server's open-now
+// post-filter semantics exactly.
 
-/** Filter the base page-1 response down to open rows. Null when the base isn't usable
- *  (no rows to filter — the caller falls through to the network tier). */
-export const buildOpenNowVariantResponse = (base: SearchResponse): SearchResponse | null => {
+/** Project the base page-1 response down to open rows. Null when the base isn't usable
+ *  (no rows to filter — the caller falls through to the slice fetch). */
+export const projectOpenNowResponseSlice = (base: SearchResponse): SearchResponse | null => {
   const restaurants = (base.restaurants ?? []).filter(
     (restaurant) => restaurant.operatingStatus?.isOpen === true
   );
@@ -28,8 +31,9 @@ export const buildOpenNowVariantResponse = (base: SearchResponse): SearchRespons
     dishes,
     metadata: {
       ...base.metadata,
-      // PROVISIONAL totals: the filtered page-1 counts. The background true-up brings the
-      // real totals (and any backfill rows); until then pagination is off by construction.
+      // PROVISIONAL totals: the projected page-1 counts. The settling slice fetch brings
+      // the real totals (and any backfill rows); until then pagination is off by
+      // construction.
       totalRestaurantResults: restaurants.length,
       totalFoodResults: dishes.length,
     },
@@ -37,7 +41,7 @@ export const buildOpenNowVariantResponse = (base: SearchResponse): SearchRespons
 };
 
 /** Does this coverage carry per-feature openness? (Version-skew safety: an older API
- *  omits isOpen — deriving would empty the coverage. The derivation declines instead.) */
+ *  omits isOpen — projecting would empty the coverage. The projection declines instead.) */
 export const coverageCarriesOpenness = (
   entry: SearchMountedResultsCoverageEntry | null
 ): boolean => {
@@ -49,9 +53,9 @@ export const coverageCarriesOpenness = (
   );
 };
 
-/** Filter a coverage entry's features to open ones, re-indexing rank (the client source
+/** Project a coverage entry's features to open ones, re-indexing rank (the client source
  *  builder rebakes badges from rank, so re-indexed ranks render correctly). */
-export const buildOpenNowCoverageEntry = (
+export const projectOpenNowCoverageEntry = (
   entry: SearchMountedResultsCoverageEntry | null
 ): SearchMountedResultsCoverageEntry | null => {
   if (entry == null || entry.features == null) {

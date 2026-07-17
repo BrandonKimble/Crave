@@ -1,10 +1,12 @@
-// THE LENS AXIS (lens-exit design S1) — the vocabulary's RED contracts.
+// THE LENS AXIS (lens-exit design S1 vocabulary + S2 key laws) — the RED contracts.
 import {
   IDLE_SEARCH_DESIRED_TUPLE,
   areSearchLensesEqual,
   areSearchWorldIdentitiesEqual,
   buildSearchCardsWorldKey,
   buildSearchLensKey,
+  buildSearchWorldSliceKey,
+  searchWorldGroupOfSliceKey,
   selectSearchLens,
   type SearchDesiredTuple,
 } from './search-desired-state-contract';
@@ -41,8 +43,9 @@ describe('the lens axis (S1 vocabulary)', () => {
     expect(buildSearchLensKey(selectSearchLens(makeTuple()))).toBe('open:0|price:|rising:0');
   });
 
-  it('S1 DECOMPOSITION IS LOSSLESS: the current worldKey filters segment IS lensKey + the identity-side similar axis', () => {
-    // Guards S2: dropping the lens from the worldKey must lose EXACTLY the lens bits.
+  it('S2 DECOMPOSITION IS LOSSLESS: sliceKey = worldKey ## lensKey carries every axis the flat key carried', () => {
+    // The S1 guard's successor: the worldKey is now PURE IDENTITY (no lens tokens);
+    // the slice key composes the two axes and must lose NOTHING the old flat key held.
     const tuple = makeTuple({
       filterVariant: {
         openNow: true,
@@ -55,11 +58,29 @@ describe('the lens axis (S1 vocabulary)', () => {
     });
     const worldKey = buildSearchCardsWorldKey(tuple);
     const lensKey = buildSearchLensKey(selectSearchLens(tuple));
-    expect(worldKey).toContain('open:1|price:2|rising:0');
+    const sliceKey = buildSearchWorldSliceKey(tuple);
+    // Identity side: similar only — no lens token may appear in the worldKey.
     expect(worldKey).toContain('similar:1');
-    expect(worldKey).toContain('sort:best');
-    expect(worldKey).toContain('mkt:region-us-tx-austin');
+    expect(worldKey).not.toContain('open:');
+    expect(worldKey).not.toContain('rising:');
+    expect(worldKey).not.toContain('sort:');
+    expect(worldKey).not.toContain('mkt:');
+    // Lens side carries the rest, and the slice key is the exact composition.
     expect(lensKey).toBe('open:1|price:2|rising:0|sort:best|mkt:region-us-tx-austin');
+    expect(sliceKey).toBe(`${worldKey}##${lensKey}`);
+    expect(searchWorldGroupOfSliceKey(sliceKey)).toBe(worldKey);
+  });
+
+  it('a lens flip keeps the worldKey (group) and changes only the slice', () => {
+    const base = makeTuple();
+    const lensed = makeTuple({
+      filterVariant: { ...base.filterVariant, openNow: true },
+    });
+    expect(buildSearchCardsWorldKey(base)).toBe(buildSearchCardsWorldKey(lensed));
+    expect(buildSearchWorldSliceKey(base)).not.toBe(buildSearchWorldSliceKey(lensed));
+    expect(searchWorldGroupOfSliceKey(buildSearchWorldSliceKey(lensed))).toBe(
+      buildSearchCardsWorldKey(base)
+    );
   });
 
   it('identity equality still respects bounds and tab (world-key facts)', () => {

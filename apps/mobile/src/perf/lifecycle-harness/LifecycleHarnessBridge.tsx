@@ -130,6 +130,14 @@ export const LifecycleHarnessBridge: React.FC = () => {
           );
         });
       }
+      if (kind === 'flip_open_now') {
+        const flip = readPerfScenarioCommandRegistry().flipOpenNow;
+        if (!flip) {
+          throw new Error('flipOpenNow not registered (search runtime not mounted?)');
+        }
+        flip({ openNow: payload.openNow === true || payload.openNow === 'true' });
+        return readLifecycleState();
+      }
       if (kind === 'shortcut') {
         const submit = readPerfScenarioCommandRegistry().submitShortcutRestaurants;
         if (!submit) {

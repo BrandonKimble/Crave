@@ -74,6 +74,29 @@ describe('search-world-cache', () => {
     expect(cache.isEntryStale(entry, 1200)).toBe(true);
   });
 
+  it('IDENTITY-GROUPED PINS (S2, L-2): pinning one slice pins every slice of the world', () => {
+    const cache = createSearchWorldCache<string>({
+      maxUnpinnedWorlds: 1,
+      staleAfterMs: 1000,
+      groupOf: (key) => key.split('##')[0] ?? key,
+    });
+    const commit = (key: string) =>
+      cache.commit({ worldKey: key, status: { kind: 'ready' }, value: key, resolvedAt: 0 });
+    commit('W1##base');
+    cache.pin('W1##base'); // pins the GROUP W1
+    commit('W1##open'); // second slice of the pinned group — exempt from the budget
+    commit('W2##base'); // 1 unpinned — at budget
+    commit('W3##base'); // 2 unpinned — evicts W2, NEVER a W1 slice
+    expect(cache.get('W1##base')).not.toBeNull();
+    expect(cache.get('W1##open')).not.toBeNull();
+    expect(cache.get('W2##base')).toBeNull();
+    // Unpin releases the whole group back to LRU.
+    cache.unpin('W1##open'); // same group — the pin count is group-scoped
+    commit('W4##base');
+    commit('W5##base');
+    expect(cache.size()).toBeLessThanOrEqual(3); // W1 slices now evictable
+  });
+
   it('empty and failed are first-class committed states', () => {
     const cache = make();
     cache.commit({

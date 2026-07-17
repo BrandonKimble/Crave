@@ -1,5 +1,16 @@
 # The Lens Exit (Leg 5 / A2-S2) — clean-room design
 
+**STATUS 2026-07-16: S1+S2+S3 EXECUTED AND PROVEN.** Vocabulary (S1), key split +
+slice cache + LENS_FLIP class + identity-grouped pins (S2), and the option-(ii)
+projection fast path with sibling-IDENTITY vocabulary deleted (S3 — file renamed
+search-open-now-projection.ts) are live. Proof: 253/253 suites, grep-invariants 17/17
+(2 new lens checks), lifecycle matrix 21/21, and a live sim proof 6/6 via the new
+`flip_open_now` harness verb — flip ON = lens_flip + derivation_provisional (instant
+projection + slice-fetch settle), flip OFF = lens_flip + warm cache, one worldKey /
+two lensKeys with the identity key lens-free, M-1 stack/entryIds byte-stable across
+flips. Open (owner feel-pass): dismiss-restore lens default (shipped: lens survives
+within-session; §4's reset-on-exit call), rising classification ratification.
+
 2026-07-15. Input: ledger A1/A2 (lens laws), the phase-2 verdict §2 (resolver KEEP+EXTEND;
 sibling-world + true-up machinery DELETES), the open-now list⇄map parity constraint
 (2026-07-14: open filtering for paginated worlds is SERVER-side filter-before-paginate —
