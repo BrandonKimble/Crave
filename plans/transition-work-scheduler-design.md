@@ -1,4 +1,12 @@
-# The Transition Work Scheduler (the screen-switching chain) — design sketch
+# [SUPERSEDED 2026-07-16] The Transition Work Scheduler — absorbed into THE PAGE v2
+
+**Do not execute this document.** The owner rejected the coordination-layer framing;
+the from-scratch replacement is plans/page-composition-from-scratch-design.md (THE PAGE
+v2), which absorbs this sketch's valid parts: work classes → L4's reveal-only law +
+the per-shell CONTENT-LANDING CLOCK; mount reduction → L3 shell residency; the frame-
+budgeted executor survives only as L4's sliced above-fold row mounting.
+
+# (original sketch below, for the record)
 
 2026-07-15. Status: QUEUED — sketch written at owner request; the release-lane baseline
 (in flight) prices the work classes before this hardens into a ratifiable design (H3:
