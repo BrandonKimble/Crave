@@ -49,6 +49,7 @@ const PageListBody = <TItem,>({
           count={spec.placeholder.count}
           insetX={spec.placeholder.insetX}
           frostBacking={material.frostBacking}
+          style={pendingMaterialFillStyle}
         />
       </View>
     );
@@ -73,8 +74,19 @@ const PageListBody = <TItem,>({
   );
 };
 
-// The shell fills the body lane it replaces (mirrors the old gate's pending surface).
-const pendingSurfaceStyle = { flex: 1, minHeight: 320 } as const;
+// THE LENGTH LAW (skeleton-sheet spec §4, owner 2026-07-18): the pending face FILLS
+// the body's floored scroll box (BottomSheetScrollContainer's short-page floor =
+// viewport + SHORT_PAGE_SCROLL_ROOM_PX) and never extends past it — the material
+// renders absolutely inside and CLIPS, so its row count can never lengthen the
+// scroll. A pending page scrolls exactly like any short page: bounded, normal.
+const pendingSurfaceStyle = { flex: 1, alignSelf: 'stretch', overflow: 'hidden' } as const;
+const pendingMaterialFillStyle = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+} as const;
 
 /** List/collection/content bodies require their state; static bodies cannot carry
  *  one — every mismatch is a compile error, not a runtime surprise. */
@@ -103,6 +115,7 @@ const PageCollectionBody = <TItem,>({
           count={spec.placeholder.count}
           insetX={spec.placeholder.insetX}
           frostBacking={material.frostBacking}
+          style={pendingMaterialFillStyle}
         />
       </View>
     );
@@ -142,7 +155,11 @@ const PageContentBody = <TData,>({
   }
   return (
     <View pointerEvents="none" style={pendingSurfaceStyle} testID={`page-body-pending-${spec.scene}`}>
-      <SceneLoadingSurface rowType={material.rowType} frostBacking={material.frostBacking} />
+      <SceneLoadingSurface
+        rowType={material.rowType}
+        frostBacking={material.frostBacking}
+        style={pendingMaterialFillStyle}
+      />
     </View>
   );
 };

@@ -181,6 +181,28 @@ The one-gesture snap↔scroll handoff currently suppresses ALL edge bounce. Want
 - Method: from-scratch deep dive of the gesture/scroll handoff with zero preconceptions
   from the current implementation; the handoff behavior as-is is the constraint to
   preserve, bounce is the capability to add.
+- **THE TWO NAMED FAILURE MODES any design must solve** (why the earlier direction-gated
+  bounce was REVERTED — sheetBodyScrollDefaults.ts): (1) top over-scroll translated the
+  list PAST the pinned header during the down-handoff; (2) the FrostCutout plate
+  translates by -scrollOffset and cannot follow a NEGATIVE over-scroll offset (plate
+  desync). A from-scratch design must make both impossible (e.g. the plate and header
+  clip riding the same clamped/derived offset the bounce lane composes over).
+
+**FAMILY EXECUTION STATUS 2026-07-18:**
+- LENGTH LAW LANDED for shell pending faces (PageBodyShell): the pending face fills the
+  floored scroll box (BottomSheetScrollContainer short-page floor = viewport +
+  SHORT_PAGE_SCROLL_ROOM_PX) with the material ABSOLUTE + CLIPPED inside — a skeleton's
+  row count can never lengthen the scroll; a pending page scrolls exactly like any
+  short page. (The results skeleton inherits this when it migrates onto the shell.)
+- THE BASELINE FINDING: the app's short-page floor is SHORT_PAGE_SCROLL_ROOM_PX = 96
+  (viewport + 96). The owner's "baseline too long" almost certainly meant the
+  SKELETONS' arbitrary row-count lengths (now law-bound), not the 96px floor — reducing
+  the 96 much further makes short pages unscrollable. Flag at the owner eye pass.
+- DIVIDER-LINE ATTRIBUTION: the hairline over the skeleton = HeaderScrollDivider
+  reading a STALE scroll-offset SharedValue while the skeleton is up. Dies structurally
+  under §1 (skeleton on the real scroll enters at offset 0); no patch now.
+- STRIP-PILL header skeleton: dies WITH the strip-outside-the-list restructure (per §3
+  — deleting it before the real strip can render leaves a blank band).
 
 **SEARCH-FAMILY OPENING ATTRIBUTION (2026-07-17):** the owner's "splotchy results
 skeleton" REPRODUCED + root-caused: the results skeleton was frost-through to the
