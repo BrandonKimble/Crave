@@ -140,6 +140,16 @@ rendering mode lands with the true FlashList bodies (results/polls) in the searc
 family. Remaining L2 surface: the search family (bands + SingleLineText + FlashList
 cell mode + listDetail's full spec).
 
+**SEARCH-FAMILY OPENING ATTRIBUTION (2026-07-17):** the owner's "splotchy results
+skeleton" REPRODUCED + root-caused: the results skeleton was frost-through to the
+live map (deliberate 2026-07-07 directive) — over light map areas the holes washed
+out/tinted, which also read as "sparse" (most holes invisible) and "not flush"
+(the visible subset looked scattered). FIXED NOW (owner revision supersedes): all
+three results-skeleton sites self-frost — uniform bars, full card anatomy, flush
+under the header. The family slice still owes: results onto the ONE declared
+material + template geometry (kill the bespoke three-site composition), bands,
+SingleLineText, FlashList cell mode, listDetail full spec, transport seam.
+
 ## L3 — SHELL RESIDENCY (GATED on a measured prototype)
 
 Every scene's shell mounts once and stays resident; switches retarget visibility.
