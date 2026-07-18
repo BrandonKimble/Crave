@@ -1,4 +1,4 @@
-import { resolvePageBodyListState } from './page-body-contract';
+import { resolvePageBodyListState, resolvePageContentBodyState } from './page-body-contract';
 import { resolveSceneLoadingMaterial } from '../navigation/runtime/scene-foundation-spec';
 
 // ─── THE PAGE L2 — the closed body-state enum + the one material derivation ──────────
@@ -56,5 +56,31 @@ describe('resolveSceneLoadingMaterial (L0 — backing DERIVED, never an argument
 
   it('spec-less scenes have no material (search owns its composition)', () => {
     expect(resolveSceneLoadingMaterial('search')).toBeNull();
+  });
+});
+
+describe('resolvePageContentBodyState (the content-body subset)', () => {
+  const base = { what: 'this profile', data: null, isPending: false, isError: false };
+
+  it('is TOTAL over the three content arms', () => {
+    expect(resolvePageContentBodyState({ ...base, isPending: true }).kind).toBe('pending');
+    expect(resolvePageContentBodyState({ ...base, isError: true }).kind).toBe('error');
+    expect(resolvePageContentBodyState({ ...base, data: { id: 1 } }).kind).toBe('present');
+  });
+
+  it('a SETTLED query with null data is an ERROR by law (an entity page with nothing failed)', () => {
+    // The old hand-rolled `!isPending && data == null` gate, now unrepresentable to
+    // get wrong at a call site.
+    const state = resolvePageContentBodyState({ ...base, data: null });
+    expect(state.kind).toBe('error');
+    if (state.kind === 'error') {
+      expect(state.failure.what).toBe('this profile');
+    }
+  });
+
+  it('error wins over pending', () => {
+    expect(resolvePageContentBodyState({ ...base, isPending: true, isError: true }).kind).toBe(
+      'error'
+    );
   });
 });

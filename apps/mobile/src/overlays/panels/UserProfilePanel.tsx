@@ -11,7 +11,11 @@ import { messagingService } from '../../services/messaging';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
-import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
+import { PageBodyShell } from '../PageBodyShell';
+import {
+  resolvePageContentBodyState,
+  type PageContentBodySpec,
+} from '../page-body-contract';
 import {
   ProfileSectionsBody,
   PROFILE_DEFAULT_SECTION,
@@ -82,31 +86,19 @@ const StatCell = ({
   );
 };
 
-// W1 slice 1 (C2): the ENTRY arrives as a prop from the entry-keyed mount unit — with two
-// live userProfile entries (the drill loop) the topmost-per-key read renders the wrong one.
-export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps) => {
+type UserProfilePageData = {
+  userId: string;
+  profile: PublicUserProfile;
+  edge: Awaited<ReturnType<typeof usersService.getFollowEdge>>;
+};
+
+// THE CONTENT SLOT (THE PAGE L2): receives the RESOLVED page data — the query edge
+// never reaches here, so a pending/failed branch has no state left to express. The
+// blocked "unavailable" body below is resolved-data rendering, not a load state.
+const UserProfileContent = React.memo(({ data }: { data: UserProfilePageData }) => {
+  const { userId, profile, edge } = data;
   const { pushRoute } = useAppOverlayRouteController();
   const queryClient = useQueryClient();
-  const params =
-    entry?.key === 'userProfile'
-      ? (entry.params as import('../../navigation/runtime/app-overlay-route-types').OverlayRouteParamsMap['userProfile'])
-      : null;
-  const userId = typeof params?.userId === 'string' ? params.userId : null;
-
-  // RT-19 (state-loss half): page data rides the query CACHE keyed by userId — the drill
-  // loop's pop back to A re-renders instantly from cache instead of a spinner refetch.
-  const profileQuery = useQuery({
-    queryKey: ['userProfile', userId],
-    enabled: userId != null,
-    staleTime: 60_000,
-    queryFn: async () => {
-      const [profile, edge] = await Promise.all([
-        usersService.getPublicProfile(userId as string),
-        usersService.getFollowEdge(userId as string),
-      ]);
-      return { profile, edge };
-    },
-  });
   const [followOverride, setFollowOverride] = React.useState<{
     forUserId: string;
     value: boolean;
@@ -115,7 +107,7 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
   const [blockBusy, setBlockBusy] = React.useState(false);
   const [activeSection, setActiveSection] =
     React.useState<ProfileSectionKey>(PROFILE_DEFAULT_SECTION);
-  const serverFollowed = profileQuery.data?.edge.isFollowedByMe ?? false;
+  const serverFollowed = edge.isFollowedByMe ?? false;
   React.useEffect(() => {
     if (followOverride != null && followOverride.value === serverFollowed) {
       setFollowOverride(null);
@@ -126,17 +118,15 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
       ? followOverride.value
       : serverFollowed;
 
-  const edge = profileQuery.data?.edge ?? null;
   // §8.6: either direction of block renders the unavailable body.
-  const isBlockedByMe = edge?.isBlockedByMe === true;
-  const hasBlockedMe = edge?.hasBlockedMe === true;
+  const isBlockedByMe = edge.isBlockedByMe === true;
+  const hasBlockedMe = edge.hasBlockedMe === true;
   // The server-side profile read is also honest now (unavailable: true on a
   // blocked pair) — fold it in so the body can never render leaked data.
-  const blockedEitherWay =
-    isBlockedByMe || hasBlockedMe || profileQuery.data?.profile.unavailable === true;
+  const blockedEitherWay = isBlockedByMe || hasBlockedMe || profile.unavailable === true;
 
   // Sections gate: a loaded, unblocked profile (the shared body fetches its own per-section data).
-  const sectionsEnabled = userId != null && profileQuery.data != null && !blockedEitherWay;
+  const sectionsEnabled = !blockedEitherWay;
 
   // ── §8.14 owner long-press modal + §7.4 add-photos live inside ProfileSectionsBody now;
   //    isOwnProfile unlocks them there.
@@ -272,23 +262,6 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
     });
   }, [isBlockedByMe, runBlockChange]);
 
-  // Load-failure law (wave-4 §1): shared modal + pop; no page-local retry.
-  const isLoadFailed =
-    userId == null ||
-    profileQuery.isError ||
-    (!profileQuery.isPending && profileQuery.data == null);
-  if ((userId != null && profileQuery.isPending) || isLoadFailed || profileQuery.data == null) {
-    return (
-      <View testID={isLoadFailed ? 'user-profile-failed' : 'user-profile-loading'}>
-        <SceneBodyReadyGate
-          pending={userId != null && profileQuery.isPending}
-          failure={{ isError: isLoadFailed, what: 'this profile' }}
-        />
-      </View>
-    );
-  }
-
-  const { profile } = profileQuery.data;
   const followersDelta =
     edge != null && !edge.isMe && isFollowedByMe !== serverFollowed ? (isFollowedByMe ? 1 : -1) : 0;
   const title = resolveDisplayTitle(profile);
@@ -450,6 +423,52 @@ export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps
       ) : null}
     </View>
   );
+});
+UserProfileContent.displayName = 'UserProfileContent';
+
+// THE DECLARATION (L2): userProfile is a query-backed CONTENT body — the controller
+// below owns the query; the shell paints the material for pending/error and hands the
+// content slot only resolved data.
+const USER_PROFILE_PAGE_BODY: PageContentBodySpec<UserProfilePageData> = {
+  kind: 'content',
+  scene: 'userProfile',
+  Content: UserProfileContent,
+};
+
+// W1 slice 1 (C2): the ENTRY arrives as a prop from the entry-keyed mount unit — with two
+// live userProfile entries (the drill loop) the topmost-per-key read renders the wrong one.
+export const UserProfilePanelBody = React.memo(({ entry }: MountedSceneBodyProps) => {
+  const params =
+    entry?.key === 'userProfile'
+      ? (entry.params as import('../../navigation/runtime/app-overlay-route-types').OverlayRouteParamsMap['userProfile'])
+      : null;
+  const userId = typeof params?.userId === 'string' ? params.userId : null;
+
+  // THE PAGE CONTROLLER. RT-19 (state-loss half): page data rides the query CACHE
+  // keyed by userId — the drill loop's pop back to A re-renders instantly from cache
+  // instead of a spinner refetch.
+  const profileQuery = useQuery({
+    queryKey: ['userProfile', userId],
+    enabled: userId != null,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const [profile, edge] = await Promise.all([
+        usersService.getPublicProfile(userId as string),
+        usersService.getFollowEdge(userId as string),
+      ]);
+      return { profile, edge };
+    },
+  });
+  const state = resolvePageContentBodyState<UserProfilePageData>({
+    // A missing route param is a load failure (the old hand-rolled gate's userId==null
+    // arm), folded into the one derivation.
+    isPending: userId != null && profileQuery.isPending,
+    isError: userId == null || profileQuery.isError,
+    what: 'this profile',
+    data:
+      userId != null && profileQuery.data != null ? { userId, ...profileQuery.data } : null,
+  });
+  return <PageBodyShell spec={USER_PROFILE_PAGE_BODY} state={state} />;
 });
 UserProfilePanelBody.displayName = 'UserProfilePanelBody';
 

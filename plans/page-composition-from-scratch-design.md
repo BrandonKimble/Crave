@@ -114,8 +114,19 @@ resolveSceneLoadingMaterial (the ONE frost/rowType derivation home — the gate 
 shares it). Migrated: notifications (list — LoadState machine/ready-gate/hand-rolled
 branches DELETED) + settings (static — page skeleton unrepresentable). Gates: 6 new
 hermetic contracts, invariants 24/24 (+2), matrix 21/21, on-sim eye proof both scenes.
-Remaining L2 surface (lands per migration slice): FlashList bodies (bookmarks/
-listDetail — placeholder ITEMS as a cell rendering mode), profile (content body),
+**PROFILE SLICE EXECUTED 2026-07-17:** profile (own tab) = ONE always-visible tree —
+the dual-tree (full-body transition skeleton OVER a display:none prewarmed body,
+skeleton owner #1 of the three-owner handoff) is DELETED; identity blocks are L0
+same-node shapes, the sections band keeps the one in-place material (from the one
+derivation home), activation is a STATE input. userProfile = the vocabulary's third
+body kind: PageContentBodySpec + PageContentBodyState (pending|present(data)|error —
+a settled-null entity is an ERROR by law) with the controller/content split (query in
+the controller; Content receives resolved data; blocked-unavailable renders from
+resolved data). Gates: 9 contracts, invariants 24/24 (migrated-panel check covers
+notifications+profile+userProfile + dead prewarm/transition-shell tokens), matrix
+21/21, sim eye proof (profile tab warm re-entry zero-flicker; userProfile full
+foreign tree via push_child_scene+routeParamsJson). Remaining L2 surface: FlashList
+bodies (bookmarks/listDetail — placeholder ITEMS as a cell rendering mode),
 BodySpec bands + SingleLineText at the search family.
 
 ## L3 — SHELL RESIDENCY (GATED on a measured prototype)

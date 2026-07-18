@@ -9,7 +9,10 @@ import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext'
 import { FrostCutout } from '../SceneBodyFoundationSurface';
 import { CutoutSkeletonShape, SceneLoadingSurface } from '../../components/skeletons';
 import { useProfilePanelBodyModelRuntime } from './runtime/profile-panel-body-model-runtime';
+import { PageBodyShell } from '../PageBodyShell';
+import type { PageStaticBodySpec } from '../page-body-contract';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
+import { resolveSceneLoadingMaterial } from '../../navigation/runtime/scene-foundation-spec';
 import { ProfileSectionsBody, type ProfileSectionKey } from './ProfileSectionsBody';
 import type { ProfileSceneHeaderProps } from './runtime/profile-panel-runtime-contract';
 
@@ -19,6 +22,9 @@ import type { ProfileSceneHeaderProps } from './runtime/profile-panel-runtime-co
 // isOwnProfile. The root keeps only its own chrome — the identity header (avatar / name / inbox +
 // settings) and the metrics FrostCutout (frost-through stats) — while the sections, list curation
 // (pin / share / delete) and the "Add photos" entry all come from the one shared machine.
+
+// Non-null by construction: 'profile' has a foundation row.
+const PROFILE_LOADING_MATERIAL = resolveSceneLoadingMaterial('profile')!;
 
 type ProfileIdentityChromeProps = {
   avatarUrl?: string | null;
@@ -210,7 +216,9 @@ const ProfileSceneBody = React.memo(
           onSelectSection={onSelectSection}
         />
       ) : (
-        <SceneLoadingSurface rowType="restaurant" frostBacking />
+        // The sections band's pending face — the ONE in-place material, from the one
+        // derivation home (never a call-site rowType/frost choice).
+        <SceneLoadingSurface {...PROFILE_LOADING_MATERIAL} />
       );
     const profiledSections = onProfilerRender ? (
       <React.Profiler id="ProfileSceneBody:sections" onRender={onProfilerRender}>
@@ -230,14 +238,6 @@ const ProfileSceneBody = React.memo(
 );
 
 ProfileSceneBody.displayName = 'ProfileSceneBody';
-
-const ProfileTransitionShell = React.memo(() => (
-  <View style={styles.contentContainer}>
-    <SceneLoadingSurface rowType="restaurant" frostBacking />
-  </View>
-));
-
-ProfileTransitionShell.displayName = 'ProfileTransitionShell';
 
 type ProfileDataSurfaceProps = {
   shouldSubscribeDataLane: boolean;
@@ -277,24 +277,39 @@ const ProfileDataSurface = React.memo(
 
 ProfileDataSurface.displayName = 'ProfileDataSurface';
 
-export const ProfileMountedSceneBody = React.memo(() => {
-  const onProfilerRender = useSearchOverlayProfilerRender();
+// THE PAGE L2: ONE tree, always visible — the old dual-tree (a full-body transition
+// skeleton OVER a display:none prewarmed body) was skeleton owner #1 of the audit's
+// three-sequential-owners handoff, and the visible swap between them WAS the owner's
+// "skeleton changes midway". Now the identity chrome renders immediately (its blocks
+// are L0 same-node hole shapes until identityResolved) and the sections band keeps the
+// one in-place material until the machine lands (sceneReady still gates the section
+// machine's mount + the data-lane subscription — activation is a STATE input, never a
+// tree swap).
+const ProfilePageContent = React.memo(() => {
   const { shouldSubscribeDataLane, hasActivatedExpandedContent, isActive } =
     useBottomSheetSceneStackBodyRenderActivity();
-
-  const mountedBody = (
-    <>
-      {hasActivatedExpandedContent ? null : <ProfileTransitionShell />}
-      <View style={hasActivatedExpandedContent ? null : styles.prewarmedMountedBodyHidden}>
-        <ProfileDataSurface
-          shouldSubscribeDataLane={shouldSubscribeDataLane}
-          sceneReady={hasActivatedExpandedContent}
-          isActive={isActive}
-        />
-      </View>
-    </>
+  return (
+    <ProfileDataSurface
+      shouldSubscribeDataLane={shouldSubscribeDataLane}
+      sceneReady={hasActivatedExpandedContent}
+      isActive={isActive}
+    />
   );
+});
+ProfilePageContent.displayName = 'ProfilePageContent';
 
+// THE DECLARATION (L2): profile is a static PageBodySpec — no page-level query edge
+// (own profile always exists; band-level readiness is same-node state above). A
+// page-level skeleton owner has nowhere to exist.
+const PROFILE_PAGE_BODY: PageStaticBodySpec = {
+  kind: 'static',
+  scene: 'profile',
+  Content: ProfilePageContent,
+};
+
+export const ProfileMountedSceneBody = React.memo(() => {
+  const onProfilerRender = useSearchOverlayProfilerRender();
+  const mountedBody = <PageBodyShell spec={PROFILE_PAGE_BODY} />;
   return onProfilerRender ? (
     <React.Profiler id="ProfileMountedSceneBody" onRender={onProfilerRender}>
       {mountedBody}
@@ -399,8 +414,5 @@ const styles = StyleSheet.create({
   statLabel: {
     color: themeColors.textBody,
     textAlign: 'center',
-  },
-  prewarmedMountedBodyHidden: {
-    display: 'none',
   },
 });

@@ -43,6 +43,21 @@ export type PageListBodySpec<TItem> = {
   Empty: React.ComponentType;
 };
 
+/** A single-entity QUERY-backed body (userProfile): the content slot receives the
+ *  RESOLVED data — pending/error never render it. Its state enum is the content
+ *  subset of the closed enum: a single entity has no empty/appending arm (a settled
+ *  query with no entity is a load FAILURE, not an empty list). */
+export type PageContentBodyState<TData> =
+  | { kind: 'pending' }
+  | { kind: 'present'; data: TData }
+  | { kind: 'error'; failure: SceneLoadFailure };
+
+export type PageContentBodySpec<TData> = {
+  kind: 'content';
+  scene: SheetSceneKey;
+  Content: React.ComponentType<{ data: TData }>;
+};
+
 export type PageStaticBodySpec = {
   kind: 'static';
   scene: SheetSceneKey;
@@ -52,7 +67,10 @@ export type PageStaticBodySpec = {
   Content: React.ComponentType;
 };
 
-export type PageBodySpec<TItem> = PageListBodySpec<TItem> | PageStaticBodySpec;
+export type PageBodySpec<TItem> =
+  | PageListBodySpec<TItem>
+  | PageContentBodySpec<TItem>
+  | PageStaticBodySpec;
 
 /**
  * THE canonical query-edge → body-state derivation, so controllers never hand-roll the
@@ -82,4 +100,24 @@ export const resolvePageBodyListState = <TItem,>(args: {
   return args.isAppending === true
     ? { kind: 'appending', items: args.items }
     : { kind: 'present', items: args.items };
+};
+
+/** The content-body twin of resolvePageBodyListState: error wins; a SETTLED query
+ *  with null data is an error by law (an entity page with nothing to show failed —
+ *  this is exactly the old hand-rolled `!isPending && data == null` gate, now
+ *  unrepresentable to get wrong). */
+export const resolvePageContentBodyState = <TData,>(args: {
+  isPending: boolean;
+  isError: boolean;
+  what: string;
+  data: TData | null | undefined;
+  retry?: () => void;
+}): PageContentBodyState<TData> => {
+  if (args.isError || (!args.isPending && args.data == null)) {
+    return { kind: 'error', failure: { isError: true, what: args.what, retry: args.retry } };
+  }
+  if (args.isPending || args.data == null) {
+    return { kind: 'pending' };
+  }
+  return { kind: 'present', data: args.data };
 };

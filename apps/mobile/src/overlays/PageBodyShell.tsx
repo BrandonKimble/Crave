@@ -6,6 +6,8 @@ import { resolveSceneLoadingMaterial } from '../navigation/runtime/scene-foundat
 import { useSceneLoadFailurePolicy } from './scene-load-failure-policy';
 import type {
   PageBodyState,
+  PageContentBodySpec,
+  PageContentBodyState,
   PageListBodySpec,
   PageStaticBodySpec,
 } from './page-body-contract';
@@ -71,34 +73,67 @@ const PageListBody = <TItem,>({
 // The shell fills the body lane it replaces (mirrors the old gate's pending surface).
 const pendingSurfaceStyle = { flex: 1, minHeight: 320 } as const;
 
-/** List bodies require a state; static bodies cannot carry one — both mismatches are
- *  compile errors, not runtime surprises. */
+/** List/content bodies require their state; static bodies cannot carry one — every
+ *  mismatch is a compile error, not a runtime surprise. */
 export type PageBodyShellProps<TItem> =
   | { spec: PageListBodySpec<TItem>; state: PageBodyState<TItem> }
+  | { spec: PageContentBodySpec<TItem>; state: PageContentBodyState<TItem> }
   | { spec: PageStaticBodySpec; state?: undefined };
+
+const PageContentBody = <TData,>({
+  spec,
+  state,
+}: {
+  spec: PageContentBodySpec<TData>;
+  state: PageContentBodyState<TData>;
+}): React.ReactElement | null => {
+  if (state.kind === 'present') {
+    return <spec.Content data={state.data} />;
+  }
+  // pending + error-hold — the one full-body material (same law as list bodies).
+  const material = resolveSceneLoadingMaterial(spec.scene);
+  if (material == null) {
+    return null;
+  }
+  return (
+    <View pointerEvents="none" style={pendingSurfaceStyle} testID={`page-body-pending-${spec.scene}`}>
+      <SceneLoadingSurface rowType={material.rowType} frostBacking={material.frostBacking} />
+    </View>
+  );
+};
 
 export const PageBodyShell = <TItem,>(
   props: PageBodyShellProps<TItem>
 ): React.ReactElement | null => {
   // TS cannot narrow a union by a NESTED discriminant (spec.kind), so the split is
-  // localized to this one cast; the union type keeps call sites honest.
+  // localized to these casts; the union type keeps call sites honest.
   const listProps =
     props.spec.kind === 'list'
       ? (props as { spec: PageListBodySpec<TItem>; state: PageBodyState<TItem> })
       : null;
+  const contentProps =
+    props.spec.kind === 'content'
+      ? (props as { spec: PageContentBodySpec<TItem>; state: PageContentBodyState<TItem> })
+      : null;
+  const failure =
+    listProps?.state.kind === 'error'
+      ? listProps.state.failure
+      : contentProps?.state.kind === 'error'
+        ? contentProps.state.failure
+        : undefined;
   // THE failure-law chokepoint: every migrated page inherits the app-wide behavior
   // from this one call — a page-local retry/error view has nowhere to exist.
-  useSceneLoadFailurePolicy(
-    props.spec.scene,
-    listProps != null && listProps.state.kind === 'error' ? listProps.state.failure : undefined
-  );
-  if (listProps == null) {
-    // A static body has no page-level query: present by construction — the declared
-    // content IS the body.
-    const StaticContent = (props.spec as PageStaticBodySpec).Content;
-    return <StaticContent />;
+  useSceneLoadFailurePolicy(props.spec.scene, failure);
+  if (listProps != null) {
+    return <PageListBody spec={listProps.spec} state={listProps.state} />;
   }
-  return <PageListBody spec={listProps.spec} state={listProps.state} />;
+  if (contentProps != null) {
+    return <PageContentBody spec={contentProps.spec} state={contentProps.state} />;
+  }
+  // A static body has no page-level query: present by construction — the declared
+  // content IS the body.
+  const StaticContent = (props.spec as PageStaticBodySpec).Content;
+  return <StaticContent />;
 };
 
 export default PageBodyShell;
