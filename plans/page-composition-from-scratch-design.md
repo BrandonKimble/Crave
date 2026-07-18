@@ -140,6 +140,48 @@ rendering mode lands with the true FlashList bodies (results/polls) in the searc
 family. Remaining L2 surface: the search family (bands + SingleLineText + FlashList
 cell mode + listDetail's full spec).
 
+## THE SKELETON SHEET — owner spec 2026-07-18 (the search family's design core)
+
+Owner-worded laws for EVERY skeleton sheet app-wide; the search family lands them for
+results first, then they roll back over the migrated scenes:
+
+1. **A skeleton sheet IS a real sheet body**: a ONE-ITEM LIST — a single full-bleed
+   pending block — mounted in the SAME list/scroll/snap mechanics as the resolved body.
+   Moving the sheet while pending behaves normally; scrolling behaves normally. Never a
+   separate overlay surface with its own physics.
+2. **TRUE CUTOUTS through to the frost**: the block is the L0 plate with holes that see
+   through to the HOISTED FROSTY LAYER — no self-frost fake, no white sheet behind the
+   plate. (The 2026-07-17 self-frost flip is an INTERIM patch: the owner confirms the
+   blocks now read as "grayer blocks on the sheet," not cutouts. The original splotch
+   disease was the frost reading as raw map — the fix belongs at the FROST layer's look
+   (blur/tint that reads unmistakably frosty), never per-skeleton backing choices.
+   Owner-eye iteration required on the frost look.)
+3. **NO header skeleton**: chrome changes IMMEDIATELY (the chrome-leads law) — header
+   title, nav action, AND the strip render real from the first frame. The strip-pill
+   hole block (`withFilterStripHoles`) dies WITH the restructure that lets the real
+   strip exist outside the hidden list (the band geometry work). Do not delete the
+   pills before the real strip can render — a blank band is worse.
+4. **THE LENGTH LAW**: the pending block's height = THE SHEET BASELINE — exactly enough
+   to fill the viewport at the HIGHEST snap; scrollable but bounded (no infinite
+   repeat, no long dead scroll). The baseline floor itself is REDUCED app-wide (the
+   current floor scrolls too long — owner). One floor mechanism (the profile-page floor
+   pattern) shared by every sheet.
+5. **The divider is honest by construction**: it derives from the real scroll offset;
+   a skeleton mounted on the real scroll enters at offset 0, so the hairline the owner
+   sees today (stale-offset artifact over the pill row) is structurally impossible.
+
+## THE SCROLL HANDOFF + RUBBER-BAND ARC (owner spec 2026-07-18 — separate deep dive)
+
+The one-gesture snap↔scroll handoff currently suppresses ALL edge bounce. Wanted:
+- **Top of list**: momentum flick (finger UP) hitting the top → rubber-band rebound.
+  Finger DOWN reaching the top → the existing handoff to sheet-grab (no bounce).
+- **Bottom of list**: sheet AT top snap + finger down hitting the end → overscroll +
+  rebound. Sheet NOT at top snap → finger-down scroll-up keeps moving the sheet
+  (grabber), as today.
+- Method: from-scratch deep dive of the gesture/scroll handoff with zero preconceptions
+  from the current implementation; the handoff behavior as-is is the constraint to
+  preserve, bounce is the capability to add.
+
 **SEARCH-FAMILY OPENING ATTRIBUTION (2026-07-17):** the owner's "splotchy results
 skeleton" REPRODUCED + root-caused: the results skeleton was frost-through to the
 live map (deliberate 2026-07-07 directive) — over light map areas the holes washed
