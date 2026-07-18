@@ -37,9 +37,26 @@ export type PageListBodySpec<TItem> = {
   };
   /** THE ROW TEMPLATE's pending face: how many rows of the scene's declared L0
    *  material (foundation table rowType) the shell paints while pending/appending —
-   *  part of the template, never chosen at a call site. */
-  placeholder: { count: number };
+   *  part of the template, never chosen at a call site. `insetX` is template GEOMETRY:
+   *  0 when the body renders inside a transport-inset container (the holes must not
+   *  re-inset — the double-inset skeleton-vs-content jump class); omitted = the
+   *  material's full-width default. */
+  placeholder: { count: number; insetX?: number };
   /** The DECLARED empty view (an L2 spec slot, not a panel branch). */
+  Empty: React.ComponentType;
+};
+
+/** A COLLECTION body (bookmarks): the full closed enum over one resolved collection,
+ *  but the present face is a COMPOSITION (tile grid, edit-mode reorder, interleaved
+ *  affordances) rather than per-row slots — the Content slot receives the resolved
+ *  items and owns the arrangement; load states never reach it. */
+export type PageCollectionBodySpec<TItem> = {
+  kind: 'collection';
+  scene: SheetSceneKey;
+  Content: React.ComponentType<{ items: readonly TItem[] }>;
+  /** THE pending face template (see PageListBodySpec.placeholder — same geometry law). */
+  placeholder: { count: number; insetX?: number };
+  /** The DECLARED empty view — only correct once the collection RESOLVES empty. */
   Empty: React.ComponentType;
 };
 
@@ -69,6 +86,7 @@ export type PageStaticBodySpec = {
 
 export type PageBodySpec<TItem> =
   | PageListBodySpec<TItem>
+  | PageCollectionBodySpec<TItem>
   | PageContentBodySpec<TItem>
   | PageStaticBodySpec;
 

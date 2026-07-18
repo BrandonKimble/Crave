@@ -84,6 +84,7 @@ import {
 } from '../../components/collaborator-modal-store';
 import { showListEdit } from '../../components/list-edit-store';
 import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
+import { resolvePageContentBodyState } from '../page-body-contract';
 import SquircleSpinner from '../../components/SquircleSpinner';
 // Leg 11 (§2d): rows ARE the ResultCard primitive — the results card with the
 // listDetail/read-only slot bundles (note · add-photo); ListDetailRow is deleted.
@@ -1272,32 +1273,32 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     return <StateBody message="This list is no longer shared." testID="list-detail-private" />;
   }
 
-  // THE LOAD-FAILURE LAW (wave-4 §1): no page-local failure UI — the gate announces the
-  // one shared modal and pops back to the trigger screen on dismissal. The body keeps
-  // its declared skeleton meanwhile.
-  const isLoadFailed =
-    !hasIdentity ||
-    metaQuery.isError ||
-    resultsQuery.isError ||
-    ((!isVirtualAll ? !metaQuery.isPending : true) &&
-      (resolvedListId != null
-        ? worldServesResults
-          ? worldResults != null
-          : !resultsQuery.isPending
-        : true) &&
-      (listType == null || response == null));
+  // THE LOAD-FAILURE LAW (wave-4 §1) through THE canonical L2 classification
+  // (resolvePageContentBodyState): pending until every source lands (meta, results or
+  // the presented world slice + its reveal admission); a SETTLED load with no
+  // listType/response is an ERROR by the settled-null law — the old hand-rolled
+  // hand-rolled failure derivation is gone. The gate render survives only until this panel's
+  // full spec migration (the search-family slice owns its world-transport seam).
   const isMetaPending = !isVirtualAll && metaQuery.isPending;
   // World-backed default slice: "pending" = the world hasn't presented yet (a failed
   // enter pops the page via the §1 failure policy before this ever strands).
   const isResultsPending =
     resolvedListId != null &&
     (worldServesResults ? worldResults == null || !worldRevealAdmitted : resultsQuery.isPending);
-  if (isMetaPending || isResultsPending || isLoadFailed) {
+  const bodyState = resolvePageContentBodyState<true>({
+    isPending: isMetaPending || isResultsPending,
+    isError: !hasIdentity || metaQuery.isError || resultsQuery.isError,
+    what: 'this list',
+    data: listType != null && response != null ? true : null,
+  });
+  if (bodyState.kind !== 'present') {
     return (
-      <View testID={isLoadFailed ? 'list-detail-failed' : 'list-detail-loading'}>
+      <View testID={bodyState.kind === 'error' ? 'list-detail-failed' : 'list-detail-loading'}>
         <SceneBodyReadyGate
-          pending={isMetaPending || isResultsPending}
-          failure={{ isError: isLoadFailed, what: 'this list' }}
+          pending={bodyState.kind === 'pending'}
+          failure={
+            bodyState.kind === 'error' ? bodyState.failure : { isError: false, what: 'this list' }
+          }
         />
       </View>
     );

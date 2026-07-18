@@ -98,8 +98,13 @@ echo "=== THE PAGE L2 — one body interpreter; migrated scenes cannot branch ==
 # Migrated panels may not express pending/error/empty branches — the shell owns the
 # closed enum. SceneBodyReadyGate + hand-rolled LoadState machines are dead classes
 # IN MIGRATED FILES (the gate survives for unmigrated panels until their slices).
-check_eq "SceneBodyReadyGate/LoadState in MIGRATED panels (notifications+profile+userProfile)" 0 \
-  "$(cat $SRC/overlays/panels/NotificationsPanel.tsx $SRC/overlays/panels/ProfilePanel.tsx $SRC/overlays/panels/UserProfilePanel.tsx | grep -cE 'SceneBodyReadyGate|LoadState|TransitionShell|prewarmedMountedBodyHidden' || true)"
+check_eq "SceneBodyReadyGate/LoadState in MIGRATED panels (notif+profile+userProfile+bookmarks)" 0 \
+  "$(cat $SRC/overlays/panels/NotificationsPanel.tsx $SRC/overlays/panels/ProfilePanel.tsx $SRC/overlays/panels/UserProfilePanel.tsx $SRC/overlays/panels/BookmarksPanel.tsx | grep -cE 'SceneBodyReadyGate|LoadState|TransitionShell|prewarmedMountedBodyHidden' || true)"
+# listDetail: classification is canonical even where the gate render survives (its
+# full spec migration rides the search-family slice) — the hand-rolled derivation
+# may not return.
+check_eq "hand-rolled isLoadFailed in listDetail" 0 \
+  "$(grep -c 'isLoadFailed' $SRC/overlays/panels/ListDetailPanel.tsx || true)"
 # One derivation home: nobody but scene-foundation-spec derives frostBacking from
 # bodySurface (the distributed-decision disease that caused "just white" sheets).
 check_eq "frostBacking-from-bodySurface derivation sites (foundation only)" 1 \

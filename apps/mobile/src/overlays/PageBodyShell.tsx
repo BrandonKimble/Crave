@@ -6,6 +6,7 @@ import { resolveSceneLoadingMaterial } from '../navigation/runtime/scene-foundat
 import { useSceneLoadFailurePolicy } from './scene-load-failure-policy';
 import type {
   PageBodyState,
+  PageCollectionBodySpec,
   PageContentBodySpec,
   PageContentBodyState,
   PageListBodySpec,
@@ -46,6 +47,7 @@ const PageListBody = <TItem,>({
         <SceneLoadingSurface
           rowType={material.rowType}
           count={spec.placeholder.count}
+          insetX={spec.placeholder.insetX}
           frostBacking={material.frostBacking}
         />
       </View>
@@ -63,6 +65,7 @@ const PageListBody = <TItem,>({
         <SceneLoadingSurface
           rowType={material.rowType}
           count={APPENDING_TAIL_ROWS}
+          insetX={spec.placeholder.insetX}
           frostBacking={material.frostBacking}
         />
       ) : null}
@@ -73,12 +76,54 @@ const PageListBody = <TItem,>({
 // The shell fills the body lane it replaces (mirrors the old gate's pending surface).
 const pendingSurfaceStyle = { flex: 1, minHeight: 320 } as const;
 
-/** List/content bodies require their state; static bodies cannot carry one — every
- *  mismatch is a compile error, not a runtime surprise. */
+/** List/collection/content bodies require their state; static bodies cannot carry
+ *  one — every mismatch is a compile error, not a runtime surprise. */
 export type PageBodyShellProps<TItem> =
   | { spec: PageListBodySpec<TItem>; state: PageBodyState<TItem> }
+  | { spec: PageCollectionBodySpec<TItem>; state: PageBodyState<TItem> }
   | { spec: PageContentBodySpec<TItem>; state: PageContentBodyState<TItem> }
   | { spec: PageStaticBodySpec; state?: undefined };
+
+const PageCollectionBody = <TItem,>({
+  spec,
+  state,
+}: {
+  spec: PageCollectionBodySpec<TItem>;
+  state: PageBodyState<TItem>;
+}): React.ReactElement | null => {
+  const material = resolveSceneLoadingMaterial(spec.scene);
+  if (state.kind === 'pending' || state.kind === 'error') {
+    if (material == null) {
+      return null;
+    }
+    return (
+      <View pointerEvents="none" style={pendingSurfaceStyle} testID={`page-body-pending-${spec.scene}`}>
+        <SceneLoadingSurface
+          rowType={material.rowType}
+          count={spec.placeholder.count}
+          insetX={spec.placeholder.insetX}
+          frostBacking={material.frostBacking}
+        />
+      </View>
+    );
+  }
+  if (state.kind === 'empty') {
+    return <spec.Empty />;
+  }
+  return (
+    <>
+      <spec.Content items={state.items} />
+      {state.kind === 'appending' && material != null ? (
+        <SceneLoadingSurface
+          rowType={material.rowType}
+          count={APPENDING_TAIL_ROWS}
+          insetX={spec.placeholder.insetX}
+          frostBacking={material.frostBacking}
+        />
+      ) : null}
+    </>
+  );
+};
 
 const PageContentBody = <TData,>({
   spec,
@@ -111,6 +156,10 @@ export const PageBodyShell = <TItem,>(
     props.spec.kind === 'list'
       ? (props as { spec: PageListBodySpec<TItem>; state: PageBodyState<TItem> })
       : null;
+  const collectionProps =
+    props.spec.kind === 'collection'
+      ? (props as { spec: PageCollectionBodySpec<TItem>; state: PageBodyState<TItem> })
+      : null;
   const contentProps =
     props.spec.kind === 'content'
       ? (props as { spec: PageContentBodySpec<TItem>; state: PageContentBodyState<TItem> })
@@ -118,14 +167,19 @@ export const PageBodyShell = <TItem,>(
   const failure =
     listProps?.state.kind === 'error'
       ? listProps.state.failure
-      : contentProps?.state.kind === 'error'
-        ? contentProps.state.failure
-        : undefined;
+      : collectionProps?.state.kind === 'error'
+        ? collectionProps.state.failure
+        : contentProps?.state.kind === 'error'
+          ? contentProps.state.failure
+          : undefined;
   // THE failure-law chokepoint: every migrated page inherits the app-wide behavior
   // from this one call — a page-local retry/error view has nowhere to exist.
   useSceneLoadFailurePolicy(props.spec.scene, failure);
   if (listProps != null) {
     return <PageListBody spec={listProps.spec} state={listProps.state} />;
+  }
+  if (collectionProps != null) {
+    return <PageCollectionBody spec={collectionProps.spec} state={collectionProps.state} />;
   }
   if (contentProps != null) {
     return <PageContentBody spec={contentProps.spec} state={contentProps.state} />;

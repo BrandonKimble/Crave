@@ -63,8 +63,12 @@ import {
   type ReorderGridRenderContext,
   type ReorderScrollAdapter,
 } from '../../components/reorder';
-import { SceneLoadingSurface } from '../../components/skeletons';
-import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
+import { PageBodyShell } from '../PageBodyShell';
+import {
+  resolvePageBodyListState,
+  type PageBodyState,
+  type PageCollectionBodySpec,
+} from '../page-body-contract';
 
 const GRID_GAP = 12;
 const TILE_RADIUS = 16;
@@ -80,7 +84,6 @@ const TILE_FOOTER_HEIGHT = 40;
 const TILE_GALLERY_CELL_GAP = 2;
 const TILE_PLACEHOLDER_BG = '#eef1f5';
 const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
-const EMPTY_FAVORITE_LISTS: ReadonlyArray<FavoriteListSummary> = [];
 
 const BOOKMARK_LIST_TYPE_OPTIONS = [
   { value: 'restaurant', label: 'Restaurants' },
@@ -364,12 +367,8 @@ const BookmarksHomeStrip = React.memo(() => {
 BookmarksHomeStrip.displayName = 'BookmarksHomeStrip';
 
 type BookmarksSceneBodyProps = {
-  sceneReady: boolean;
   listType: FavoriteListType;
   lists: readonly FavoriteListSummary[];
-  isListsLoading: boolean;
-  isListsError: boolean;
-  refetchLists: () => void;
   isEditing: boolean;
   editOrderedLists: readonly FavoriteListSummary[];
   onReorder: (fromIndex: number, toIndex: number) => void;
@@ -384,12 +383,8 @@ type BookmarksSceneBodyProps = {
 
 const BookmarksSceneBody = React.memo(
   ({
-    sceneReady,
     listType,
     lists,
-    isListsLoading,
-    isListsError,
-    refetchLists,
     isEditing,
     editOrderedLists,
     onReorder,
@@ -430,12 +425,9 @@ const BookmarksSceneBody = React.memo(
       [onListPress, onOpenMenu, tileHeight]
     );
 
-    const listContent =
-      !sceneReady || isListsLoading ? (
-        // The real grid inherits its 20px horizontal inset from the body transport's
-        // contentContainer, so the skeleton holes must NOT re-inset (insetX={0}).
-        <SceneLoadingSurface rowType="tile" insetX={0} />
-      ) : lists.length ? (
+    // THE PAGE L2: no load branches here — the shell owns pending/error/empty; this
+    // component renders RESOLVED items only (present/appending by construction).
+    const listContent = (
         <View onLayout={handleGridLayout}>
           <BookmarksAllTile listType={listType} onPress={onOpenAll} disabled={isEditing} />
           {isEditing && tileHeight > 0 ? (
@@ -493,21 +485,6 @@ const BookmarksSceneBody = React.memo(
             </Pressable>
           )}
         </View>
-      ) : isListsError ? (
-        // Load-failure law (wave-4 §1, ROOT branch): the shared modal announces once and
-        // the load re-runs on the scene's next presentation; the body keeps its DECLARED
-        // skeleton — never a blank page, never a page-local retry.
-        <SceneBodyReadyGate
-          pending={false}
-          sceneKey="bookmarks"
-          failure={{ isError: true, what: 'your lists', retry: () => void refetchLists() }}
-        />
-      ) : (
-        <View style={styles.emptyState}>
-          <Text variant="body" style={styles.emptyText}>
-            No lists yet
-          </Text>
-        </View>
       );
     const profiledListContent = onProfilerRender ? (
       <React.Profiler id="BookmarksSceneBody:list" onRender={onProfilerRender}>
@@ -523,65 +500,20 @@ const BookmarksSceneBody = React.memo(
 
 BookmarksSceneBody.displayName = 'BookmarksSceneBody';
 
-const BookmarksTransitionShell = React.memo(() => (
-  <View style={styles.sceneBody}>
-    {/* Bookmarks content is always a 2-up tile grid — match it so the shell→body loading transition
-        doesn't reflow restaurant rows into tiles. Full-width here (sceneBody, no transport inset),
-        so the default insetX=20 aligns these holes with the inset body-loading tiles. */}
-    <SceneLoadingSurface rowType="tile" />
-  </View>
-));
-
-BookmarksTransitionShell.displayName = 'BookmarksTransitionShell';
-
-type BookmarksDataSurfaceProps = {
-  shouldSubscribeDataLane: boolean;
-  sceneReady: boolean;
-};
-
-const BookmarksDataSurface = React.memo(
-  ({ shouldSubscribeDataLane, sceneReady }: BookmarksDataSurfaceProps) => {
+// THE CONTENT SLOT (THE PAGE L2 collection body): receives the RESOLVED lists — the
+// query edge never reaches here. Interaction machinery (edit session, menus, create)
+// operates on resolved data by construction.
+const BookmarksContent = React.memo(({ items }: { items: readonly FavoriteListSummary[] }) => {
+    const lists = items;
     const onProfilerRender = useSearchOverlayProfilerRender();
     const executeEntityRefAction = useEntityRefActionExecutor();
     const queryClient = useQueryClient();
-    const isOffline = useSystemStatusStore((state) => state.isOffline);
-    const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
-    const isSystemUnavailable = isOffline || Boolean(serviceIssue);
     // Leg 3: control state (listType / sortMode) lives in the module store — the
     // header strip (chrome) writes it, this body reads it.
     const listType = useBookmarksHomeControlsStore((state) => state.listType);
     const sortMode = useBookmarksHomeControlsStore((state) => state.sortMode);
     const setSortMode = useBookmarksHomeControlsStore((state) => state.setSortMode);
     const setEditSeat = useBookmarksHomeControlsStore((state) => state.setEditSeat);
-    const queryEnabled = !isSystemUnavailable && shouldSubscribeDataLane;
-    const listsQuery = useFavoriteLists({
-      listType,
-      enabled: queryEnabled,
-      subscribed: queryEnabled,
-    });
-    const retainedListsRef = React.useRef<Partial<Record<FavoriteListType, FavoriteListSummary[]>>>(
-      {}
-    );
-    const cachedLists = queryClient.getQueryData<FavoriteListSummary[]>(
-      favoriteListKeys.list(listType)
-    );
-    const lists =
-      listsQuery.data ?? cachedLists ?? retainedListsRef.current[listType] ?? EMPTY_FAVORITE_LISTS;
-    React.useEffect(() => {
-      if (listsQuery.data != null) {
-        retainedListsRef.current[listType] = listsQuery.data;
-      }
-    }, [listType, listsQuery.data]);
-    // Hard-swap + skeleton (mirror of SaveListPanel's gate): while the data lane is held off
-    // (queryEnabled false) or the favorites fetch is in flight with no data to show yet, paint
-    // the tile-grid skeleton — NOT the 'No lists yet' empty state, which is only correct once
-    // the query RESOLVES empty. A fetch error with no data is reported separately so an errored
-    // query does not falsely claim the user has no lists.
-    const isListsLoading = !queryEnabled || (listsQuery.isLoading && lists.length === 0);
-    const isListsError = listsQuery.isError && lists.length === 0;
-    const refetchLists = React.useCallback(() => {
-      void listsQuery.refetch();
-    }, [listsQuery]);
 
     const { promoteActiveSheet } = useAppOverlayRouteController();
     const sortedLists = React.useMemo(
@@ -892,12 +824,8 @@ const BookmarksDataSurface = React.memo(
 
     const dataSurface = (
       <BookmarksSceneBody
-        sceneReady={sceneReady}
         listType={listType}
         lists={sortedLists}
-        isListsLoading={isListsLoading}
-        isListsError={isListsError}
-        refetchLists={refetchLists}
         isEditing={isEditing}
         editOrderedLists={editOrderedLists}
         onReorder={
@@ -914,36 +842,91 @@ const BookmarksDataSurface = React.memo(
     );
 
     return onProfilerRender ? (
-      <React.Profiler id="BookmarksDataSurface" onRender={onProfilerRender}>
+      <React.Profiler id="BookmarksContent" onRender={onProfilerRender}>
         {dataSurface}
       </React.Profiler>
     ) : (
       dataSurface
     );
-  }
+});
+
+BookmarksContent.displayName = 'BookmarksContent';
+
+// The DECLARED empty view — only correct once the collection RESOLVES empty.
+const BookmarksEmpty = () => (
+  <View style={styles.emptyState}>
+    <Text variant="body" style={styles.emptyText}>
+      No lists yet
+    </Text>
+  </View>
 );
 
-BookmarksDataSurface.displayName = 'BookmarksDataSurface';
+// THE DECLARATION (L2): bookmarks is a COLLECTION body — the full closed enum over
+// the favorites collection; the grid/edit composition owns only resolved items.
+const BOOKMARKS_PAGE_BODY: PageCollectionBodySpec<FavoriteListSummary> = {
+  kind: 'collection',
+  scene: 'bookmarks',
+  Content: BookmarksContent,
+  // insetX 0: the mounted body renders inside the transport's 20px-inset container —
+  // the holes must not re-inset (the double-inset jump class).
+  placeholder: { count: 3, insetX: 0 },
+  Empty: BookmarksEmpty,
+};
+
+// THE PAGE CONTROLLER — the query + the state derivation; slots never see the edge.
+const useBookmarksPageBody = (): PageBodyState<FavoriteListSummary> => {
+  const queryClient = useQueryClient();
+  const { shouldSubscribeDataLane, hasActivatedExpandedContent } =
+    useBottomSheetSceneStackBodyRenderActivity();
+  const isOffline = useSystemStatusStore((state) => state.isOffline);
+  const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
+  const isSystemUnavailable = isOffline || Boolean(serviceIssue);
+  const listType = useBookmarksHomeControlsStore((state) => state.listType);
+  const queryEnabled = !isSystemUnavailable && shouldSubscribeDataLane;
+  const listsQuery = useFavoriteLists({
+    listType,
+    enabled: queryEnabled,
+    subscribed: queryEnabled,
+  });
+  // Retained-data law (kept from the old surface): an in-flight refetch or an errored
+  // refetch with RETAINED data keeps presenting the data — pending/error only with
+  // nothing to show; 'No lists yet' only once the query RESOLVES empty.
+  const retainedListsRef = React.useRef<Partial<Record<FavoriteListType, FavoriteListSummary[]>>>(
+    {}
+  );
+  const cachedLists = queryClient.getQueryData<FavoriteListSummary[]>(
+    favoriteListKeys.list(listType)
+  );
+  const lists = listsQuery.data ?? cachedLists ?? retainedListsRef.current[listType] ?? null;
+  React.useEffect(() => {
+    if (listsQuery.data != null) {
+      retainedListsRef.current[listType] = listsQuery.data;
+    }
+  }, [listType, listsQuery.data]);
+  const hasData = lists != null && lists.length > 0;
+  const refetchLists = React.useCallback(() => {
+    void listsQuery.refetch();
+  }, [listsQuery]);
+  return resolvePageBodyListState<FavoriteListSummary>({
+    // Activation (hasActivatedExpandedContent) is a STATE input: until the scene
+    // expands the body paints the material — never a tree swap (the old dual-tree).
+    isPending: !hasActivatedExpandedContent || !queryEnabled || (listsQuery.isLoading && !hasData),
+    isError: listsQuery.isError && !hasData,
+    what: 'your lists',
+    retry: refetchLists,
+    items: hasData ? lists : listsQuery.data != null ? [] : null,
+  });
+};
 
 export const BookmarksMountedSceneBody = React.memo(() => {
   const onProfilerRender = useSearchOverlayProfilerRender();
   // P3 return-to-origin: publish the bookmarks scene's live scroll lane so a favorites-from-
   // bookmarks reveal captures the scroll offset to return to on dismiss.
   useOriginSceneScrollPublication('bookmarks');
-  const { shouldSubscribeDataLane, hasActivatedExpandedContent } =
-    useBottomSheetSceneStackBodyRenderActivity();
-
-  const mountedBody = (
-    <>
-      {hasActivatedExpandedContent ? null : <BookmarksTransitionShell />}
-      <View style={hasActivatedExpandedContent ? null : styles.prewarmedMountedBodyHidden}>
-        <BookmarksDataSurface
-          shouldSubscribeDataLane={shouldSubscribeDataLane}
-          sceneReady={hasActivatedExpandedContent}
-        />
-      </View>
-    </>
-  );
+  // THE PAGE L2: ONE tree, always visible — the dual-tree (full-body transition
+  // skeleton OVER a display:none prewarmed body) is DELETED; the shell paints the
+  // closed states in place.
+  const mountedBody = <PageBodyShell spec={BOOKMARKS_PAGE_BODY} state={useBookmarksPageBody()} />;
 
   return onProfilerRender ? (
     <React.Profiler id="BookmarksMountedSceneBody" onRender={onProfilerRender}>
@@ -1104,9 +1087,6 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     paddingVertical: 24,
-  },
-  prewarmedMountedBodyHidden: {
-    display: 'none',
   },
   emptyText: {
     color: TILE_SUBTEXT,

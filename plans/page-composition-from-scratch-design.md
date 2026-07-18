@@ -125,9 +125,20 @@ the controller; Content receives resolved data; blocked-unavailable renders from
 resolved data). Gates: 9 contracts, invariants 24/24 (migrated-panel check covers
 notifications+profile+userProfile + dead prewarm/transition-shell tokens), matrix
 21/21, sim eye proof (profile tab warm re-entry zero-flicker; userProfile full
-foreign tree via push_child_scene+routeParamsJson). Remaining L2 surface: FlashList
-bodies (bookmarks/listDetail — placeholder ITEMS as a cell rendering mode),
-BodySpec bands + SingleLineText at the search family.
+foreign tree via push_child_scene+routeParamsJson). **PAIR SLICE EXECUTED 2026-07-17:** bookmarks = the vocabulary's COLLECTION kind
+(full closed enum over one resolved collection; Content owns the grid/edit
+composition) — dual-tree transition shell + prewarm DELETED (profile pattern);
+controller keeps the retained-data law (stale lists over skeleton on refetch/error);
+placeholder template gains insetX (template GEOMETRY — kills the double-inset jump
+class). listDetail: load CLASSIFICATION is canonical (resolvePageContentBodyState —
+the hand-rolled isLoadFailed derivation is gone; settled-null law covers its
+listType/response arm); its FULL spec migration deliberately rides the search-family
+slice — its world-backed transport IS that slice's content-transport seam (migrating
+it twice would be waste, not caution). NOTE: neither bookmarks nor listDetail is a
+FlashList body (both are mounted scroll bodies) — placeholder ITEMS as a cell
+rendering mode lands with the true FlashList bodies (results/polls) in the search
+family. Remaining L2 surface: the search family (bands + SingleLineText + FlashList
+cell mode + listDetail's full spec).
 
 ## L3 — SHELL RESIDENCY (GATED on a measured prototype)
 
