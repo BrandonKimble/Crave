@@ -23,24 +23,27 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
 }) => {
   const resultsMetadata = (resolvedResults?.metadata ?? {}) as { emptyQueryMessage?: string };
 
-  // Owner directive (2026-07-07): EVERY loading state is a TRUE CUTOUT — the skeleton's
-  // white plate is the cover and its holes are transparent down to the hoisted frosted
-  // map. The rows beneath hide via the rows-visibility level (same frame as the cover),
-  // so the holes never show stale content and no self-frost fallback exists here.
-  // TWO DESIGNS by mode (owner): the INITIAL/reveal skeleton carries static pill holes
-  // where the toggle strip sits (the real strip is hidden then); the INTERACTION skeleton
-  // omits them — the live strip renders above that cover and stays tappable.
+  // OWNER REVISION 2026-07-17 (supersedes the 2026-07-07 true-cutout directive): the
+  // results skeleton is SELF-FROST. Frost-through-to-the-map made the bars wash out
+  // and pick up map colors over light areas (the attributed "splotchy" loading state,
+  // screenshots in the search-family slice notes) — the skeleton must read as uniform
+  // bars like every other scene's material. The rows beneath still hide via the
+  // rows-visibility level; the two designs by mode (strip pills on the initial
+  // skeleton, none on the interaction skeleton) are unchanged.
   const initialLoadingContent = React.useMemo(
     () => (
       <SceneLoadingSurface
         rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'}
         withFilterStripHoles
+        frostBacking
       />
     ),
     [activeTab]
   );
   const loadingContent = React.useMemo(
-    () => <SceneLoadingSurface rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'} />,
+    () => (
+      <SceneLoadingSurface rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'} frostBacking />
+    ),
     [activeTab]
   );
 
