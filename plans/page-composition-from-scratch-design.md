@@ -188,6 +188,41 @@ The one-gesture snap↔scroll handoff currently suppresses ALL edge bounce. Want
   desync). A from-scratch design must make both impossible (e.g. the plate and header
   clip riding the same clamped/derived offset the bounce lane composes over).
 
+## THE RESULTS PENDING BLOCK — design (2026-07-18, from the attributed mechanism)
+
+Today's results loading face is a PINNED OVERLAY COVER (resultsLoadingCoverSurface:
+absolute below the header, opacity-driven, pointerEvents none) over the REAL list
+whose rows premount HIDDEN beneath it (setResultsRowsHiddenForLoading — the TR5-N
+choreography: rows mount+measure under the cover so the reveal joint only lifts
+opacity). Consequences, all owner-felt: scroll during load moves the hidden list
+under a static skeleton (not sheet-like), the divider reads the list's stale offset
+(the hairline), and the cover needs its own animated top math (header + strip
+offsets — a second geometry).
+
+THE DESIGN: the pending face becomes LIST CONTENT — the list's data while pending is
+ONE full-viewport cutout block (the one-item-list law). The cover overlay, its
+animated top math, and the rows-visibility level DIE. Scroll/drag during pending is
+the real sheet behaving; the divider is honest; geometry is the list's own.
+
+THE TRADEOFF, named honestly: [block]-as-data kills the under-cover row PREMOUNT —
+rows would mount AT the reveal joint, which is the release-measured REVEAL BURST
+(172-180ms UI frames). The premount-under-cover trick exists ONLY because there is
+no content-landing clock. So the pending-block cut and L4's sliced landing
+(above-fold first, idle-slice remainder) are ONE arc: land the block + the landing
+clock TOGETHER, and the burst is governed instead of hidden. (Interim option if
+sequencing demands: block-as-data with rows premounting in the L3 shell once
+residency lands — same clock, different home.)
+
+**OWNER DIRECTIVE 2026-07-18 (the global surface abstraction — AFTER the family):**
+the owner's one-item-list model is a SKETCH, not the law — the target is one global
+abstraction for how EVERY sheet surface behaves at any content length: small content
+(≤ one page) rubber-bands per the overscroll spec with NO hardcoded length
+buffers/padding (SHORT_PAGE_SCROLL_ROOM_PX and the floor mechanism are named CRUDE —
+they die in this redesign; the length law's floor lean is INTERIM); more content =
+identical behavior with scroll. From scratch, first principles, throw away the
+current implementation if needed. Sequencing: only after the family/foundational
+work completes.
+
 **FAMILY EXECUTION STATUS 2026-07-18:**
 - LENGTH LAW LANDED for shell pending faces (PageBodyShell): the pending face fills the
   floored scroll box (BottomSheetScrollContainer short-page floor = viewport +
