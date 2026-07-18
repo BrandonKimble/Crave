@@ -106,6 +106,18 @@ The shell is a runtime interpreter component keyed by PageSpec identity (A#17).
   placeholder rows)`. Empty and error are L0-material variants declared in the
   PageSpec. A panel-level loading/error branch has no state left to express.
 
+**L2 STATUS 2026-07-17: THE INTERPRETER + FIRST MIGRATIONS EXECUTED.** page-body-
+contract.ts (PageBodySpec with inline slots; the closed enum + the one query-edge
+derivation) + PageBodyShell (one interpreter; one failure-law chokepoint; pending/error
+= the L0 material at the scene's declared row; slots receive data only) +
+resolveSceneLoadingMaterial (the ONE frost/rowType derivation home — the gate now
+shares it). Migrated: notifications (list — LoadState machine/ready-gate/hand-rolled
+branches DELETED) + settings (static — page skeleton unrepresentable). Gates: 6 new
+hermetic contracts, invariants 24/24 (+2), matrix 21/21, on-sim eye proof both scenes.
+Remaining L2 surface (lands per migration slice): FlashList bodies (bookmarks/
+listDetail — placeholder ITEMS as a cell rendering mode), profile (content body),
+BodySpec bands + SingleLineText at the search family.
+
 ## L3 — SHELL RESIDENCY (GATED on a measured prototype)
 
 Every scene's shell mounts once and stays resident; switches retarget visibility.
