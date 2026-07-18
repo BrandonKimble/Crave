@@ -17,6 +17,8 @@ import { NotificationsPanelBody } from './NotificationsPanel';
 import { EditProfilePanelBody } from './EditProfilePanel';
 import { ListDetailPanelBody } from './ListDetailPanel';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import { PageBodyShell } from '../PageBodyShell';
+import type { PageStaticBodySpec } from '../page-body-contract';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import SquircleSpinner from '../../components/SquircleSpinner';
 
@@ -207,7 +209,9 @@ const SubscriptionStatusLine = () => {
   );
 };
 
-const SettingsSceneBody = React.memo((_props: MountedSceneBodyProps) => {
+// The settings CONTENT slot (THE PAGE L2 static body — no page-level query; the
+// blocked-users squircle row is the sanctioned inline-SECTION class, not page loading).
+const SettingsContent = React.memo(() => {
   const { pushRoute } = useAppOverlayRouteController();
   const { handleSignOut, handleReplayOnboarding, handleDeleteAccount } = useAccountActionsRuntime();
   // "My public profile" is gone: the profile TAB (root page) now IS that page — same shared
@@ -280,6 +284,19 @@ const SettingsSceneBody = React.memo((_props: MountedSceneBodyProps) => {
     </View>
   );
 });
+SettingsContent.displayName = 'SettingsContent';
+
+// THE DECLARATION (L2): settings is a static PageBodySpec — always present by
+// construction; a page-level skeleton for settings is unrepresentable.
+const SETTINGS_PAGE_BODY: PageStaticBodySpec = {
+  kind: 'static',
+  scene: 'settings',
+  Content: SettingsContent,
+};
+
+const SettingsSceneBody = React.memo((_props: MountedSceneBodyProps) => (
+  <PageBodyShell spec={SETTINGS_PAGE_BODY} />
+));
 SettingsSceneBody.displayName = 'SettingsSceneBody';
 
 const createChildPersistentHeaderTitle = (sceneKey: ChildSceneKey): React.ComponentType => {

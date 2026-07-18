@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { SceneLoadingSurface } from '../components/skeletons';
-import { getSceneFoundationSpec } from '../navigation/runtime/scene-foundation-spec';
+import { resolveSceneLoadingMaterial } from '../navigation/runtime/scene-foundation-spec';
 import type { OverlayKey } from '../navigation/runtime/app-overlay-route-types';
 import { useSceneLoadFailurePolicy, type SceneLoadFailure } from './scene-load-failure-policy';
 
@@ -47,10 +47,8 @@ export const SceneBodyReadyGate: React.FC<{
   if (!pending && failure?.isError !== true) {
     return <>{children ?? null}</>;
   }
-  const foundationSpec =
-    resolvedSceneKey != null ? getSceneFoundationSpec(resolvedSceneKey) : undefined;
-  const skeletonSpec = foundationSpec?.skeleton;
-  if (skeletonSpec == null) {
+  const material = resolvedSceneKey != null ? resolveSceneLoadingMaterial(resolvedSceneKey) : null;
+  if (material == null) {
     if (__DEV__ && !barkedMissingSceneKey) {
       barkedMissingSceneKey = true;
       // eslint-disable-next-line no-console
@@ -64,15 +62,10 @@ export const SceneBodyReadyGate: React.FC<{
   }
   return (
     <View pointerEvents="none" style={styles.pendingSurface}>
-      <SceneLoadingSurface
-        rowType={skeletonSpec.rowType}
-        // §Q redo T2 (the white-on-white class, owner "white sheet no skeleton"):
-        // self-frost DERIVES from the scene's body surface — a frost-through skeleton
-        // over an opaque white body renders invisible holes (listDetail, caught by
-        // screenshot; 13 sibling rows shared the latent class). An explicit row value
-        // still wins; the derivation is the default the field should always have had.
-        frostBacking={skeletonSpec.frostBacking ?? foundationSpec?.bodySurface === 'white'}
-      />
+      {/* L2: rowType + backing come from the ONE derivation home
+          (resolveSceneLoadingMaterial) — the gate no longer re-decides the §Q redo T2
+          white-on-white rule; it shares the exact derivation PageBodyShell uses. */}
+      <SceneLoadingSurface rowType={material.rowType} frostBacking={material.frostBacking} />
     </View>
   );
 };

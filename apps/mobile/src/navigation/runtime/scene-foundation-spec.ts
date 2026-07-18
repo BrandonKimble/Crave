@@ -228,3 +228,23 @@ export const SCENE_FOUNDATION_SPECS: Record<SheetSceneKey, SceneFoundationSpec> 
 
 export const getSceneFoundationSpec = (sceneKey: OverlayKey): SceneFoundationSpec | undefined =>
   (SCENE_FOUNDATION_SPECS as Partial<Record<OverlayKey, SceneFoundationSpec>>)[sceneKey];
+
+/**
+ * THE loading-material derivation (THE PAGE L0/L2 — one home): the scene's declared
+ * cutout row + the DERIVED backing. Self-frost derives from the body surface — a
+ * frost-through skeleton over an opaque white body renders invisible holes (the owner's
+ * "just white" sheets; §Q redo T2 caught 13 sibling rows sharing the latent class). An
+ * explicit row value still wins; nobody re-decides this at a call site.
+ */
+export const resolveSceneLoadingMaterial = (
+  sceneKey: OverlayKey
+): { rowType: SceneLoadingRowType; frostBacking: boolean } | null => {
+  const spec = getSceneFoundationSpec(sceneKey);
+  if (spec == null) {
+    return null;
+  }
+  return {
+    rowType: spec.skeleton.rowType,
+    frostBacking: spec.skeleton.frostBacking ?? spec.bodySurface === 'white',
+  };
+};

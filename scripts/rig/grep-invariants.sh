@@ -94,5 +94,16 @@ check_eq "retained results header-height authority references" 0 \
 check_eq "CHROME-GEOMETRY bark present (host)" 1 \
   "$(file_count 'CHROME-GEOMETRY' $SRC/overlays/PersistentSheetHeaderHost.tsx)"
 
+echo "=== THE PAGE L2 — one body interpreter; migrated scenes cannot branch ==="
+# Migrated panels may not express pending/error/empty branches — the shell owns the
+# closed enum. SceneBodyReadyGate + hand-rolled LoadState machines are dead classes
+# IN MIGRATED FILES (the gate survives for unmigrated panels until their slices).
+check_eq "SceneBodyReadyGate/LoadState in MIGRATED panels (notifications)" 0 \
+  "$(grep -cE 'SceneBodyReadyGate|LoadState' $SRC/overlays/panels/NotificationsPanel.tsx || true)"
+# One derivation home: nobody but scene-foundation-spec derives frostBacking from
+# bodySurface (the distributed-decision disease that caused "just white" sheets).
+check_eq "frostBacking-from-bodySurface derivation sites (foundation only)" 1 \
+  "$(grep -rlE "frostBacking.*bodySurface|bodySurface.*frostBacking" $SRC --include='*.ts' --include='*.tsx' 2>/dev/null | grep -v '\.spec\.' | wc -l | tr -d ' ')"
+
 echo "=== RESULT: PASS=$PASS FAIL=$FAIL ==="
 [ "$FAIL" -eq 0 ]
