@@ -102,7 +102,6 @@ export interface FoodResult {
   rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
-  marketName?: string | null;
   mentionCount: number;
   totalUpvotes: number;
   lastMentionedAt?: string | null;
@@ -194,7 +193,6 @@ export interface RestaurantResult {
   rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
-  marketName?: string | null;
   mentionCount?: number;
   totalUpvotes?: number;
   latitude?: number | null;
@@ -280,7 +278,6 @@ export interface DishResult {
   rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
   marketKey?: string;
-  marketName?: string | null;
   mentionCount: number;
   totalUpvotes: number;
   lastMentionedAt?: string | null;

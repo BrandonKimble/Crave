@@ -3,7 +3,7 @@ import { getPriceRangeLabel } from '../../../constants/pricing';
 import type { RestaurantFoodSnippet, RestaurantMatchedTag, RestaurantResult } from '../../../types';
 import { TOP_FOOD_RENDER_LIMIT } from '../constants/search';
 import type { CachedTopFoodLayout } from '../hooks/use-top-food-measurement';
-import { formatDistanceMiles, resolveMarketDisplayLabel } from '../utils/format';
+import { formatDistanceMiles } from '../utils/format';
 import { formatRankLabel, getRankFontSize } from '../utils/rank-badge';
 
 const MAX_MATCHED_TAGS = 3;
@@ -31,7 +31,6 @@ export type RestaurantResultCardDescriptor = {
   distanceLabel: string | null;
   hasStatus: boolean;
   matchedTags: RestaurantResultCardMatchedTagDescriptor[];
-  marketLabel: string | null;
   priceRangeLabel: string | null;
   primaryFoodHighlight: RestaurantResultCardPrimaryFoodHighlight | null;
   primaryFoodTerm: string | null;
@@ -156,19 +155,15 @@ export const formatRestaurantCardMatchedTagLabel = (tag: RestaurantMatchedTag): 
 
 export const buildRestaurantResultCardDescriptor = ({
   primaryFoodTerm,
-  primaryMarketKey,
   qualityColor,
   rank,
   restaurant,
-  showMarketLabel,
   topFoodLayout = null,
 }: {
   primaryFoodTerm: string | null | undefined;
-  primaryMarketKey: string | null | undefined;
   qualityColor: string;
   rank: number;
   restaurant: RestaurantResult;
-  showMarketLabel: boolean;
   topFoodLayout?: CachedTopFoodLayout | null;
 }): RestaurantResultCardDescriptor => {
   const topFoodItems = restaurant.topFood ?? [];
@@ -188,10 +183,6 @@ export const buildRestaurantResultCardDescriptor = ({
   const hasStatus =
     restaurant.operatingStatus?.isOpen === true || restaurant.operatingStatus?.isOpen === false;
   const distanceLabel = formatDistanceMiles(restaurant.distanceMiles);
-  const marketLabel =
-    showMarketLabel && restaurant.marketKey && restaurant.marketKey !== primaryMarketKey
-      ? resolveMarketDisplayLabel(restaurant.marketName, restaurant.marketKey ?? null)
-      : null;
   const matchedTags = (restaurant.matchedTags ?? [])
     .filter((tag) => typeof tag.name === 'string' && tag.name.trim().length > 0)
     .slice(0, MAX_MATCHED_TAGS)
@@ -208,7 +199,6 @@ export const buildRestaurantResultCardDescriptor = ({
     distanceLabel,
     hasStatus,
     matchedTags,
-    marketLabel,
     priceRangeLabel: getPriceRangeLabel(restaurant.priceLevel) ?? null,
     primaryFoodHighlight,
     primaryFoodTerm: primaryFoodHighlight?.term ?? null,

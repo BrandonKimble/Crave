@@ -27,10 +27,7 @@ import {
   SECONDARY_METRIC_ICON_SIZE,
   TOP_FOOD_RENDER_LIMIT,
 } from '../../../screens/Search/constants/search';
-import {
-  formatDistanceMiles,
-  resolveMarketDisplayLabel,
-} from '../../../screens/Search/utils/format';
+import { formatDistanceMiles } from '../../../screens/Search/utils/format';
 import { formatRankLabel, getRankFontSize } from '../../../screens/Search/utils/rank-badge';
 import CraveScoreText from '../../../screens/Search/components/CraveScoreText';
 import { formatCraveScoreMovement } from '../../../screens/Search/utils/quality';
@@ -90,8 +87,6 @@ type RestaurantResultCardProps = {
   qualityColor: string;
   preparedDescriptor?: RestaurantResultCardDescriptor | null;
   isLiked: boolean;
-  primaryMarketKey?: string | null;
-  showMarketLabel?: boolean;
   onSavePress: () => void;
   openRestaurantProfile: (
     restaurant: RestaurantResult,
@@ -116,8 +111,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   qualityColor,
   preparedDescriptor: maybePreparedDescriptor = null,
   isLiked,
-  primaryMarketKey = null,
-  showMarketLabel = false,
   onSavePress,
   openRestaurantProfile,
   openScoreInfo,
@@ -159,11 +152,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       ? restaurant.craveScore
       : null;
   }, [preparedDescriptor, restaurant.craveScore]);
-  const marketLabel =
-    preparedDescriptor?.marketLabel ??
-    (showMarketLabel && restaurant.marketKey && restaurant.marketKey !== primaryMarketKey
-      ? resolveMarketDisplayLabel(restaurant.marketName, restaurant.marketKey ?? null)
-      : null);
 
   const candidateTopFoods = React.useMemo(
     () => preparedDescriptor?.candidateTopFoods ?? topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT),
@@ -331,9 +319,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     'left',
     undefined,
     true,
-    true,
-    undefined,
-    hasStatus ? marketLabel : null
+    true
   );
 
   // W3 universal share modal replaces the ad-hoc OS share sheet.
@@ -464,20 +450,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                             >
                               {distanceLabel ?? ''}
                             </Text>
-                            {marketLabel ? (
-                              <>
-                                <Text variant="body" style={styles.metricDot}>
-                                  {'·'}
-                                </Text>
-                                <Text
-                                  variant="body"
-                                  style={styles.resultMetaDistance}
-                                  numberOfLines={1}
-                                >
-                                  {marketLabel}
-                                </Text>
-                              </>
-                            ) : null}
                           </>
                         ) : null}
                       </View>

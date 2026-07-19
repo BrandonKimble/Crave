@@ -47,7 +47,6 @@ export type SearchWorldFetchEnv = {
   /** Shortcut identities fetch coverage (both tabs) in PARALLEL with the cards — the
    *  world lands atomic (S1 invariant) and the frame never waits on a relay. */
   shortcutCoverage: ShortcutCoverageService;
-  getMarketKey: () => string;
   /** Favorites-as-search: the list identity's fetch (no LLM, no bounds —
    *  the results define the camera). */
   getFavoritesListResults: (
@@ -131,38 +130,23 @@ export const createSearchWorldFetcher =
         includeSqlPreview: false,
       };
       attachTupleScopeToPayload(payload, tuple, userLocation);
-      const fetchBothTabCoverage = async (marketKey: string) => {
-        const [restaurantsCoverage, dishesCoverage] = await Promise.all([
-          fetchShortcutCoverageWorldEntry({
-            shortcutCoverage: env.shortcutCoverage,
-            tuple,
-            tab: 'restaurants',
-            marketKey,
-          }),
-          fetchShortcutCoverageWorldEntry({
-            shortcutCoverage: env.shortcutCoverage,
-            tuple,
-            tab: 'dishes',
-            marketKey,
-          }),
-        ]);
-        return { restaurants: restaurantsCoverage, dishes: dishesCoverage };
-      };
-      const knownMarketKey = env.getMarketKey();
-      if (knownMarketKey) {
-        // Market known (rerun / STA in the same market): coverage rides in PARALLEL.
-        const [cardsResponse, coverage] = await Promise.all([
-          env.runSearch({ kind: 'structured', payload, onCacheStatus }),
-          fetchBothTabCoverage(knownMarketKey),
-        ]);
-        response = cardsResponse;
-        coverageByTab = coverage;
-      } else {
-        // First submit in a market: the cards response resolves the market, coverage
-        // follows — the same serialization the legacy post-response lane had.
-        response = await env.runSearch({ kind: 'structured', payload, onCacheStatus });
-        coverageByTab = await fetchBothTabCoverage(response?.metadata?.marketKey ?? '');
-      }
+      // Viewport-only coverage (Leg 1): no market gate — coverage ALWAYS rides in
+      // PARALLEL with the cards, first submit included.
+      const [cardsResponse, restaurantsCoverage, dishesCoverage] = await Promise.all([
+        env.runSearch({ kind: 'structured', payload, onCacheStatus }),
+        fetchShortcutCoverageWorldEntry({
+          shortcutCoverage: env.shortcutCoverage,
+          tuple,
+          tab: 'restaurants',
+        }),
+        fetchShortcutCoverageWorldEntry({
+          shortcutCoverage: env.shortcutCoverage,
+          tuple,
+          tab: 'dishes',
+        }),
+      ]);
+      response = cardsResponse;
+      coverageByTab = { restaurants: restaurantsCoverage, dishes: dishesCoverage };
     } else if (identity.kind === 'natural') {
       const payload: NaturalSearchRequest = {
         query: identity.query,

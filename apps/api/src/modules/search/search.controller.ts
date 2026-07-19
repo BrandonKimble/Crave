@@ -102,21 +102,18 @@ export class SearchController {
   async restaurantDishes(
     @Param('restaurantId', new ParseUUIDPipe({ version: '4' }))
     restaurantId: string,
-    @Query('marketKey') marketKey?: string,
   ): Promise<FoodResultDto[]> {
-    return this.searchService.listRestaurantDishes(restaurantId, marketKey);
+    return this.searchService.listRestaurantDishes(restaurantId);
   }
 
   @Get('restaurants/:restaurantId/profile')
   async restaurantProfile(
     @Param('restaurantId', new ParseUUIDPipe({ version: '4' }))
     restaurantId: string,
-    @Query('marketKey') marketKey?: string,
   ): Promise<RestaurantProfileDto> {
-    const profile = await this.searchService.getRestaurantProfile(
-      restaurantId,
-      marketKey ?? null,
-    );
+    // NOTE: clients may still send ?marketKey= during the Leg 2 mobile
+    // transition — unknown query params are ignored here by design.
+    const profile = await this.searchService.getRestaurantProfile(restaurantId);
     if (!profile) {
       throw new NotFoundException('Restaurant profile not found');
     }

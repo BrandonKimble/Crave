@@ -180,7 +180,13 @@ function makeHarness(opts: {
     ),
   };
   const access = new FavoriteListAccessPolicy(prisma as never, blocks as never);
-  const assembler = new ListResultsAssembler(executor as never);
+  const assemblerPrisma = {
+    $queryRaw: jest.fn(() => Promise.resolve([{ restaurantId: R1 }])),
+  };
+  const assembler = new ListResultsAssembler(
+    executor as never,
+    assemblerPrisma as never,
+  );
   const mapper = new FavoriteListMapper(prisma as never, logger as never);
   const service = new FavoriteListsService(
     prisma as never,
@@ -192,6 +198,7 @@ function makeHarness(opts: {
   return {
     service,
     prisma,
+    assemblerPrisma,
     blocks,
     executor,
     shareEventCreate,
@@ -597,19 +604,23 @@ describe('virtual All list (spec B.1.6)', () => {
     expect(filter.payload).toEqual({ priceLevels: [2] });
   });
 
-  it('marketKey rides the executor as the activeMarketKey directive (leg 11)', async () => {
-    const { service, executor } = makeHarness({ lists });
+  it('marketKey slices by geometry as an id PRE-FILTER — the search engine carries no market conditions (master plan §7)', async () => {
+    const { service, executor, assemblerPrisma } = makeHarness({ lists });
     await service.getListResults(OWNER, 'all:restaurants', {
       marketKey: 'austin',
     } as never);
-    expect(executor.executeSingle.mock.calls[0][0].directives).toEqual({
-      activeMarketKey: 'austin',
-    });
+    // The slice ran one geometry query over the list's candidate restaurants…
+    expect(assemblerPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+    // …and the executor received only the in-market ids, with NO directives.
+    const call = executor.executeSingle.mock.calls[0][0];
+    expect(call.plan.restaurantFilters[0].entityIds).toEqual([R1]);
+    expect(call.directives).toBeUndefined();
   });
 
-  it('omitted marketKey passes NO directives (no implicit market AND-filter)', async () => {
-    const { service, executor } = makeHarness({ lists });
+  it('omitted marketKey runs no geometry query and passes no directives', async () => {
+    const { service, executor, assemblerPrisma } = makeHarness({ lists });
     await service.getListResults(OWNER, 'all:restaurants', {} as never);
+    expect(assemblerPrisma.$queryRaw).not.toHaveBeenCalled();
     expect(executor.executeSingle.mock.calls[0][0].directives).toBeUndefined();
   });
 

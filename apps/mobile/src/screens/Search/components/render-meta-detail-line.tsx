@@ -16,7 +16,6 @@ export const renderMetaDetailLine = (
   showLocationDetails = true,
   statusFirst = false,
   locationCount?: number | null,
-  marketLabel?: string | null,
   textStyle?: StyleProp<TextStyle>
 ): React.ReactNode => {
   const segments: React.ReactNode[] = [];
@@ -147,13 +146,6 @@ export const renderMetaDetailLine = (
       pushSegment(
         <Text key="distance" variant="body" style={applyTextStyle(styles.resultMetaDistance)}>
           {distanceLabel}
-        </Text>
-      );
-    }
-    if (marketLabel) {
-      pushSegment(
-        <Text key="coverage" variant="body" style={applyTextStyle(styles.resultMetaDistance)}>
-          {marketLabel}
         </Text>
       );
     }

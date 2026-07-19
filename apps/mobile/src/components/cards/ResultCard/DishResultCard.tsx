@@ -17,7 +17,6 @@ import styles from '../../../screens/Search/styles';
 import { SECONDARY_METRIC_ICON_SIZE } from '../../../screens/Search/constants/search';
 import { InfoCircleIcon } from '../../../screens/Search/components/metric-icons';
 import { renderMetaDetailLine } from '../../../screens/Search/components/render-meta-detail-line';
-import { resolveMarketDisplayLabel } from '../../../screens/Search/utils/format';
 import { formatRankLabel, getRankFontSize } from '../../../screens/Search/utils/rank-badge';
 import CraveScoreText from '../../../screens/Search/components/CraveScoreText';
 import { formatCraveScoreMovement } from '../../../screens/Search/utils/quality';
@@ -62,8 +61,6 @@ type DishResultCardProps = {
   index: number;
   qualityColor: string;
   isLiked: boolean;
-  primaryMarketKey?: string | null;
-  showMarketLabel?: boolean;
   restaurantForDish?: RestaurantResult;
   onSavePress: () => void;
   openRestaurantProfile: (
@@ -86,8 +83,6 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   index,
   qualityColor,
   isLiked,
-  primaryMarketKey = null,
-  showMarketLabel = false,
   restaurantForDish,
   onSavePress,
   openRestaurantProfile,
@@ -123,10 +118,6 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
       ? item.craveScore
       : null;
   }, [item.craveScore]);
-  const marketLabel =
-    showMarketLabel && item.marketKey && item.marketKey !== primaryMarketKey
-      ? resolveMarketDisplayLabel(item.marketName, item.marketKey ?? null)
-      : null;
 
   // W3 universal share modal (dish share id = the food entityId).
   const handleShare = React.useCallback(() => {
@@ -260,13 +251,6 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                 <Text variant="caption" style={styles.similarMatchLabel}>
                   Similar match
                 </Text>
-              ) : null}
-              {marketLabel ? (
-                <View style={styles.coverageBadge}>
-                  <Text variant="body" style={styles.coverageBadgeText}>
-                    {marketLabel}
-                  </Text>
-                </View>
               ) : null}
             </View>
           </View>

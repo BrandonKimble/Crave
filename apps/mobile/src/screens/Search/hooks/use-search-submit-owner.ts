@@ -44,7 +44,6 @@ import { getSearchReconcilerViewInputs } from '../runtime/reconciler/search-reco
 import { Keyboard } from 'react-native';
 import { logger } from '../../../utils';
 import { searchService } from '../../../services/search';
-import { getSearchMountedResultsDataSnapshot } from '../runtime/shared/search-mounted-results-data-store';
 import { useSearchSubmitActionOwner } from './use-search-submit-action-owner';
 type SearchSubmitOwnerReadModel = {
   query: string;
@@ -396,10 +395,6 @@ const useSearchSubmitOwner = ({
         runSearch: (request) => runSearchForWorldRef.current(request),
         userLocationRef,
         shortcutCoverage: (params, options) => searchService.shortcutCoverage(params, options),
-        // Chip reruns never move the camera, so the presented world's market is the
-        // rerun's market; initial submits carry their own market resolution (S3b).
-        getMarketKey: () =>
-          getSearchMountedResultsDataSnapshot().results?.metadata?.marketKey ?? '',
         getFavoritesListResults: (listId, options) =>
           favoriteListsService.getListResults(listId, options),
       }),
@@ -409,8 +404,6 @@ const useSearchSubmitOwner = ({
         runSearch: (request) => runSearchForWorldRef.current(request),
         userLocationRef,
         shortcutCoverage: (params, options) => searchService.shortcutCoverage(params, options),
-        getMarketKey: () =>
-          getSearchMountedResultsDataSnapshot().results?.metadata?.marketKey ?? '',
         getFavoritesListResults: (listId, options) =>
           favoriteListsService.getListResults(listId, options),
       }),

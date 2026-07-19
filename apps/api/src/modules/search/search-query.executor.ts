@@ -84,7 +84,6 @@ interface QueryResultRow {
   restaurant_total_mentions: Prisma.Decimal | number | string;
   restaurant_name: string;
   restaurant_aliases: string[];
-  restaurant_market_key?: string | null;
   restaurant_crave_score?: Prisma.Decimal | number | string | null;
   restaurant_rising?: Prisma.Decimal | number | string | null;
   restaurant_score_info?: Prisma.JsonValue | null;
@@ -127,7 +126,6 @@ interface RestaurantQueryRow {
   restaurant_id: string;
   restaurant_name: string;
   restaurant_aliases: string[];
-  market_key?: string | null;
   restaurant_metadata?: Prisma.JsonValue | null;
   price_level?: Prisma.Decimal | number | string | null;
   price_level_updated_at?: Date | null;
@@ -199,7 +197,6 @@ interface DishQueryRow {
   score_subject_id?: string | null;
   food_name: string;
   food_aliases: string[];
-  market_key?: string | null;
   // Restaurant data for map pins
   restaurant_entity_id: string;
   restaurant_name: string;
@@ -465,8 +462,6 @@ export class SearchQueryExecutor {
     );
     const mapDishMs = performance.now() - mapDishStart;
 
-    await this.attachMarketNames({ restaurants, dishes });
-
     const postProcessMs = performance.now() - postProcessStart;
     const executeMs = performance.now() - executeStart;
 
@@ -539,120 +534,6 @@ export class SearchQueryExecutor {
       sqlPreview,
       timings,
     };
-  }
-
-  private resolveMarketName(row: {
-    marketName?: string | null;
-    marketShortName?: string | null;
-    marketKey?: string | null;
-  }): string | null {
-    const shortName = row.marketShortName?.trim();
-    if (shortName) {
-      return shortName;
-    }
-    const marketName = row.marketName?.trim();
-    if (marketName) {
-      return marketName;
-    }
-    const key = row.marketKey?.trim();
-    if (key) {
-      return key;
-    }
-    return null;
-  }
-
-  private async attachMarketNames(payload: {
-    restaurants: RestaurantResultDto[];
-    dishes: FoodResultDto[];
-  }): Promise<void> {
-    const marketKeys = new Set<string>();
-
-    payload.dishes.forEach((dish) => {
-      const key =
-        typeof dish.marketKey === 'string' ? dish.marketKey.trim() : '';
-      if (key) {
-        marketKeys.add(key);
-      }
-    });
-    payload.restaurants.forEach((restaurant) => {
-      const key =
-        typeof restaurant.marketKey === 'string'
-          ? restaurant.marketKey.trim()
-          : '';
-      if (key) {
-        marketKeys.add(key);
-      }
-    });
-
-    if (!marketKeys.size) {
-      return;
-    }
-
-    const rows = await this.prisma.market.findMany({
-      where: {
-        marketKey: { in: Array.from(marketKeys) },
-        isActive: true,
-      },
-      orderBy: {
-        updatedAt: 'desc',
-      },
-      select: {
-        marketKey: true,
-        marketName: true,
-        marketShortName: true,
-      },
-    });
-
-    const marketNameByKey = new Map<string, string>();
-    rows.forEach((row) => {
-      const key = row.marketKey?.trim();
-      if (!key) {
-        return;
-      }
-      if (marketNameByKey.has(key)) {
-        return;
-      }
-      const marketName = this.resolveMarketName(row);
-      if (marketName) {
-        marketNameByKey.set(key, marketName);
-      }
-    });
-
-    if (!marketNameByKey.size) {
-      return;
-    }
-
-    payload.dishes.forEach((dish) => {
-      if (dish.marketName) {
-        return;
-      }
-      const key =
-        typeof dish.marketKey === 'string' ? dish.marketKey.trim() : '';
-      if (!key) {
-        return;
-      }
-      const marketName = marketNameByKey.get(key);
-      if (marketName) {
-        dish.marketName = marketName;
-      }
-    });
-
-    payload.restaurants.forEach((restaurant) => {
-      if (restaurant.marketName) {
-        return;
-      }
-      const key =
-        typeof restaurant.marketKey === 'string'
-          ? restaurant.marketKey.trim()
-          : '';
-      if (!key) {
-        return;
-      }
-      const marketName = marketNameByKey.get(key);
-      if (marketName) {
-        restaurant.marketName = marketName;
-      }
-    });
   }
 
   private normalizeUserLocation(
@@ -870,7 +751,6 @@ export class SearchQueryExecutor {
         craveScore,
         rising: this.toOptionalNumber(connection.connection_rising),
         scoreInfo: this.parseScoreInfo(connection.connection_score_info),
-        marketKey: connection.restaurant_market_key ?? undefined,
         mentionCount: connection.mention_count,
         totalUpvotes: connection.total_upvotes,
         lastMentionedAt: connection.last_mentioned_at
@@ -1022,9 +902,6 @@ export class SearchQueryExecutor {
         ) {
           existing.locationCount = connection.location_count;
         }
-        if (!existing.marketKey && connection.restaurant_market_key) {
-          existing.marketKey = connection.restaurant_market_key;
-        }
       } else {
         const parsedPrice = this.toOptionalNumber(
           connection.restaurant_price_level,
@@ -1042,7 +919,6 @@ export class SearchQueryExecutor {
           restaurantScoreInfo: this.parseScoreInfo(
             connection.restaurant_score_info,
           ),
-          marketKey: connection.restaurant_market_key ?? null,
           latitude: connection.latitude,
           longitude: connection.longitude,
           address: connection.address,
@@ -2277,8 +2153,6 @@ export class SearchQueryExecutor {
           this.toOptionalNumber(row.crave_score_exact) ?? undefined,
         rising: this.toOptionalNumber(row.rising),
         scoreInfo: this.parseScoreInfo(row.score_info),
-        marketKey: row.market_key ?? undefined,
-        marketName: null,
         mentionCount: totalMentions,
         totalUpvotes,
         latitude,
@@ -2362,8 +2236,6 @@ export class SearchQueryExecutor {
           this.toOptionalNumber(row.connection_crave_score_exact) ?? undefined,
         rising: this.toOptionalNumber(row.connection_rising),
         scoreInfo: this.parseScoreInfo(row.connection_score_info),
-        marketKey: row.market_key ?? undefined,
-        marketName: null,
         mentionCount: row.mention_count,
         totalUpvotes: row.total_upvotes,
         lastMentionedAt: row.last_mentioned_at?.toISOString() ?? null,

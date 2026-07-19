@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { FavoriteListType } from '@prisma/client';
+import { FavoriteListType, Prisma } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
 import type {
   FilterClause,
   QueryPlan,
@@ -43,7 +44,10 @@ export type ListResultsSource = {
  */
 @Injectable()
 export class ListResultsAssembler {
-  constructor(private readonly searchQueryExecutor: SearchQueryExecutor) {}
+  constructor(
+    private readonly searchQueryExecutor: SearchQueryExecutor,
+    private readonly prisma: PrismaService,
+  ) {}
 
   async run(
     source: ListResultsSource,
@@ -106,7 +110,71 @@ export class ListResultsAssembler {
           ),
         );
 
-    const requestedIds = isRestaurantAxis ? restaurantIds : connectionIds;
+    // ListDetail "sliced by city" (§8.16): an EXPLICIT user chip slice. The
+    // search engine carries no market conditions (master plan §7), so the
+    // slice is an id PRE-FILTER here — same shape as the favorites scoping
+    // itself, applied before pagination. Order-preserving.
+    const marketSliceKey = dto.marketKey?.trim().toLowerCase() || null;
+    let sliceAllow: Set<string> | null = null;
+    if (marketSliceKey) {
+      const candidateRestaurantIds = Array.from(
+        new Set([...restaurantIds, ...dishListRestaurantIds]),
+      );
+      if (candidateRestaurantIds.length) {
+        const rows = await this.prisma.$queryRaw<
+          Array<{ restaurantId: string }>
+        >(Prisma.sql`
+          SELECT DISTINCT rl.restaurant_id AS "restaurantId"
+          FROM core_restaurant_locations rl
+          JOIN core_markets m
+            ON m.market_key = ${marketSliceKey}
+           AND m.is_active = true
+           AND m.geometry IS NOT NULL
+          WHERE rl.restaurant_id = ANY(${candidateRestaurantIds}::uuid[])
+            AND rl.latitude IS NOT NULL
+            AND rl.longitude IS NOT NULL
+            AND ST_Covers(
+              m.geometry,
+              ST_SetSRID(
+                ST_MakePoint(
+                  rl.longitude::double precision,
+                  rl.latitude::double precision
+                ),
+                4326
+              )
+            )
+        `);
+        sliceAllow = new Set(rows.map((row) => row.restaurantId));
+      } else {
+        sliceAllow = new Set();
+      }
+    }
+    const restaurantIdByConnectionId = new Map<string, string>();
+    for (const item of source.items) {
+      const connectionId = item.connection?.connectionId;
+      const restaurantIdForItem = item.connection?.restaurantId;
+      if (connectionId && restaurantIdForItem) {
+        restaurantIdByConnectionId.set(connectionId, restaurantIdForItem);
+      }
+    }
+    const slicedRestaurantIds = sliceAllow
+      ? restaurantIds.filter((id) => sliceAllow.has(id))
+      : restaurantIds;
+    const slicedDishListRestaurantIds = sliceAllow
+      ? dishListRestaurantIds.filter((id) => sliceAllow.has(id))
+      : dishListRestaurantIds;
+    const slicedConnectionIds = sliceAllow
+      ? connectionIds.filter((id) => {
+          const restaurantIdForConnection = restaurantIdByConnectionId.get(id);
+          return restaurantIdForConnection
+            ? sliceAllow.has(restaurantIdForConnection)
+            : false;
+        })
+      : connectionIds;
+
+    const requestedIds = isRestaurantAxis
+      ? slicedRestaurantIds
+      : slicedConnectionIds;
 
     // The saver's note projects onto the axis rows (spec B.1.5) — first-wins
     // across the virtual union.
@@ -131,7 +199,7 @@ export class ListResultsAssembler {
     // must return an EMPTY result set, never the whole DB — short-circuit before executeDual.
     if (
       requestedIds.length === 0 ||
-      (!isRestaurantAxis && dishListRestaurantIds.length === 0)
+      (!isRestaurantAxis && slicedDishListRestaurantIds.length === 0)
     ) {
       return this.buildEmptyListResponse(source, requestedIds.length);
     }
@@ -177,7 +245,7 @@ export class ListResultsAssembler {
             scope: 'restaurant',
             description: 'Match favorited restaurant entities',
             entityType: 'restaurant',
-            entityIds: explicitOrder ? pageAxisIds : restaurantIds,
+            entityIds: explicitOrder ? pageAxisIds : slicedRestaurantIds,
             payload: priceFilterPayload,
           },
         ]
@@ -186,7 +254,7 @@ export class ListResultsAssembler {
             scope: 'restaurant',
             description: "Match favorited connections' restaurants",
             entityType: 'restaurant',
-            entityIds: dishListRestaurantIds,
+            entityIds: slicedDishListRestaurantIds,
             payload: priceFilterPayload,
           },
         ];
@@ -197,7 +265,7 @@ export class ListResultsAssembler {
             scope: 'connection',
             description: 'Match favorited connections',
             entityType: 'connection',
-            entityIds: explicitOrder ? pageAxisIds : connectionIds,
+            entityIds: explicitOrder ? pageAxisIds : slicedConnectionIds,
           },
         ];
 
@@ -229,15 +297,8 @@ export class ListResultsAssembler {
       ? { skip: 0, take: Math.max(pageAxisIds.length, 1) }
       : { skip, take: pageSize };
 
-    // Leg 11 market slice (§8.16 "sliced by city"): an EXPLICIT user chip slice
-    // rides the executor's activeMarketKey directive (core_markets geometry
-    // Covers filter) — the same seam the Open now/Price slices use, never an
-    // implicit AND-filter. Omitted = no market condition.
-    const marketKey = dto.marketKey?.trim();
-    const directives = marketKey ? { activeMarketKey: marketKey } : undefined;
-
-    // NO bounds directives passed for geometry (v1 fits the map to the list
-    // extent); the market slice above is the only directive.
+    // NO directives: the market slice is the id pre-filter above; v1 fits the
+    // map to the list extent (no bounds).
     //
     // A RESTAURANT list only consumes the restaurant axis (dishes are discarded
     // below), so run a single-axis query and skip the throwaway dish SQL. A DISH
@@ -251,13 +312,11 @@ export class ListResultsAssembler {
           plan,
           request,
           pagination,
-          directives,
         })
       : await this.searchQueryExecutor.executeDual({
           plan,
           request,
           pagination,
-          directives,
         });
 
     const requestedForRun = explicitOrder ? pageAxisIds : requestedIds;

@@ -150,7 +150,8 @@ export class PaginationDto {
   @Type(() => Number)
   @IsNumber()
   @Min(1)
-  @Max(200)
+  // Page-size bound lives HERE, at the API boundary — the only clamp (§7).
+  @Max(100)
   pageSize?: number;
 }
 

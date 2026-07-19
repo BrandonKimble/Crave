@@ -730,7 +730,6 @@ export const searchService = {
       // by it (on top of the bounds bbox pre-filter) so the dots layer is exactly the visible viewport.
       viewportPolygon?: Array<[number, number]>;
       includeTopDish?: boolean;
-      marketKey?: string | null;
       // TR5-N: the coverage layer applies the ACTIVE filter variant (map follows the cards).
       openNow?: boolean;
       priceLevels?: number[];

@@ -1282,10 +1282,6 @@ const prepareRestaurantCardDescriptorsById = ({
 
   const startedAtMs = nowMs();
   const descriptorsById = new Map<string, RestaurantResultCardDescriptor>();
-  const primaryMarketKey =
-    typeof results?.metadata?.marketKey === 'string' && results.metadata.marketKey.trim().length
-      ? results.metadata.marketKey
-      : null;
   const primaryFoodTerm = results?.metadata?.primaryFoodTerm ?? null;
   restaurants.forEach((row) => {
     if (!isRestaurantResultRow(row)) {
@@ -1299,11 +1295,9 @@ const prepareRestaurantCardDescriptorsById = ({
       row.restaurantId,
       buildRestaurantResultCardDescriptor({
         primaryFoodTerm,
-        primaryMarketKey,
         qualityColor: getMarkerColorForRestaurant(row),
         rank,
         restaurant: row,
-        showMarketLabel: false,
       })
     );
   });

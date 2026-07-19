@@ -178,12 +178,7 @@ export class SearchCoverageService {
           )`
         : Prisma.sql``;
 
-    const maxRestaurants = 50000;
     const includeTopDish = request.includeTopDish === true;
-    const activeMarketKey =
-      typeof request.marketKey === 'string' && request.marketKey.trim().length
-        ? request.marketKey.trim().toLowerCase()
-        : null;
     const topDishJoinSql = includeTopDish
       ? this.buildTopDishJoinSql({
           foodEntityIds,
@@ -208,28 +203,6 @@ export class SearchCoverageService {
       : risingActive
         ? Prisma.sql`prs.rising DESC NULLS LAST, prs.percentile_rank DESC, prs.display_score DESC, e.entity_id ASC`
         : Prisma.sql`prs.percentile_rank DESC, prs.display_score DESC, e.entity_id ASC`;
-    const marketLocationFilterSql = activeMarketKey
-      ? Prisma.sql`
-          AND EXISTS (
-            SELECT 1
-            FROM core_markets m
-              WHERE m.market_key = ${activeMarketKey}
-                AND m.is_active = true
-                AND m.geometry IS NOT NULL
-                AND m.geometry && ST_SetSRID(
-                  ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
-                  4326
-                )
-                AND ST_Covers(
-                  m.geometry,
-                  ST_SetSRID(
-                  ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
-                  4326
-                )
-              )
-          )
-        `
-      : Prisma.sql``;
     const startedAt = Date.now();
     const rows = await this.prisma.$queryRaw<
       CoverageRestaurantRow[]
@@ -257,7 +230,6 @@ export class SearchCoverageService {
           AND rl.longitude BETWEEN ${minLng} AND ${maxLng}
           AND rl.latitude BETWEEN ${minLat} AND ${maxLat}
           ${viewportPolygonFilterSql}
-          ${marketLocationFilterSql}
       ),
       selected_locations AS (
         SELECT DISTINCT ON (cl.restaurant_id)
@@ -306,8 +278,7 @@ export class SearchCoverageService {
         ON prs.subject_id = e.entity_id
       ${topDishJoinSql}
       WHERE ${Prisma.join(conditions, ' AND ')}
-      ORDER BY ${coverageOrderSql}
-      LIMIT ${maxRestaurants};
+      ORDER BY ${coverageOrderSql};
     `);
 
     // TR5-N: open-now post-filter — the exact machinery the ranked lane uses

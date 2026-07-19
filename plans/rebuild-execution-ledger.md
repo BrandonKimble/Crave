@@ -56,6 +56,20 @@ agent in flight at turn end so completion notifications chain turns.
   shortcut-coverage-world.ts L91/L174-221; search-world-fetch.ts L125-157;
   services/search.ts L726-748.
 
+## Progress detail
+
+- Leg 1 server DONE (build green, 283/283): builder market EXISTS deleted +
+  signatures collapsed; aggregates CTE forced global (market branch deleted);
+  coverage marketKey filter + 50k LIMIT deleted (dto field ACCEPT-AND-IGNORED
+  until mobile drop lands); pagination clamp → DTO @Max(100) (service clamp
+  machinery deleted); attachMarketNames + resolveMarketName + marketName seeds
+  purged from executor + service (kept: displayMarketName resolution metadata).
+- SEQUENCED BEHIND MOBILE AGENT: per-location dots (DISTINCT ON drop changes
+  feature cardinality — must verify mobile read-model grouping in same change);
+  coverage dto marketKey field removal; notice copy (mobile file).
+- Leg 2 SERVER starting while agent owns apps/mobile: profile decoupling,
+  aggregates cap-30-nearest, row market_key stamps + directives cleanup.
+
 ## Decisions log (append as made)
 
 - 2026-07-16: interpreted owner's "recorded in git and recoverable" as

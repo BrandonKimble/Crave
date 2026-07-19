@@ -125,11 +125,6 @@ export class SearchQueryBuilder {
         ? restrictToRestaurantIds
         : null;
     const filters = this.parseFilters(plan, directives);
-    const activeMarketKey =
-      typeof directives?.activeMarketKey === 'string' &&
-      directives.activeMarketKey.trim().length
-        ? directives.activeMarketKey.trim().toLowerCase()
-        : null;
 
     // Build restaurant conditions (restaurant IDs / restaurant attributes / price)
     const { sql: restaurantWhereSql, preview: restaurantWherePreview } =
@@ -209,7 +204,7 @@ export class SearchQueryBuilder {
       sql: locationWhereSql,
       preview: locationWherePreview,
       boundsApplied,
-    } = this.buildLocationConditions(filters, activeMarketKey);
+    } = this.buildLocationConditions(filters);
 
     // Build minimum votes condition for restaurant totals
     const minimumVotesApplied = filters.minimumVotes !== null;
@@ -243,8 +238,7 @@ export class SearchQueryBuilder {
     const publicRestaurantScoresCte = this.buildPublicRestaurantScoresCte();
     const publicConnectionScoresCte = this.buildPublicConnectionScoresCte();
 
-    const locationAggregatesCte =
-      this.buildLocationAggregatesCte(activeMarketKey);
+    const locationAggregatesCte = this.buildLocationAggregatesCte();
 
     // Build minimum votes where clause for main query
     const minimumVotesWhereSql = filters.minimumVotes
@@ -301,7 +295,6 @@ ranked_restaurants AS (
     ${restTierSelect}
     fr.name AS restaurant_name,
     fr.aliases AS restaurant_aliases,
-    ${activeMarketKey}::varchar(255) AS market_key,
     fr.restaurant_metadata,
     fr.price_level,
     fr.price_level_updated_at,
@@ -347,7 +340,7 @@ ranked_restaurants AS (
     const rankedRestaurantsCtePreview = `
 ranked_restaurants AS (
   SELECT fr.entity_id AS restaurant_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
-         ${activeMarketKey ? `'${activeMarketKey}'` : 'NULL'}::varchar(255) AS market_key, fr.restaurant_metadata,
+         fr.restaurant_metadata,
          fr.price_level, fr.price_level_updated_at,
          prs.display_score AS crave_score, prs.percentile_rank AS crave_score_exact, prs.rising, prs.score_info,
          'restaurant'::text AS score_subject_type, fr.entity_id AS score_subject_id,
@@ -549,11 +542,6 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
       directives,
     } = options;
     const filters = this.parseFilters(plan, directives);
-    const activeMarketKey =
-      typeof directives?.activeMarketKey === 'string' &&
-      directives.activeMarketKey.trim().length
-        ? directives.activeMarketKey.trim().toLowerCase()
-        : null;
 
     // For dish query, we apply restaurant constraints (IDs, restaurant attributes, price) and connection constraints.
     const { sql: restaurantWhereSql, preview: restaurantWherePreview } =
@@ -564,7 +552,7 @@ LEFT JOIN LATERAL (...matched tags subquery with LIMIT 5...) tm ON ${
       sql: locationWhereSql,
       preview: locationWherePreview,
       boundsApplied,
-    } = this.buildLocationConditions(filters, activeMarketKey);
+    } = this.buildLocationConditions(filters);
 
     // Build connection conditions (food entity search)
     const {
@@ -654,7 +642,6 @@ filtered_connections AS (
     c.connection_id AS score_subject_id,
     f.name AS food_name,
     f.aliases AS food_aliases,
-    ${activeMarketKey}::varchar(255) AS market_key,
     -- Restaurant data for map pins
     fr.entity_id AS restaurant_entity_id,
     fr.name AS restaurant_name,
@@ -692,9 +679,7 @@ filtered_connections AS (
   SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.last_mentioned_at,
          pcs.display_score AS connection_crave_score, pcs.percentile_rank AS connection_crave_score_exact, pcs.rising AS connection_rising, pcs.score_info AS connection_score_info,
          'connection'::text AS score_subject_type, c.connection_id AS score_subject_id,
-         f.name AS food_name, f.aliases AS food_aliases, ${
-           activeMarketKey ? `'${activeMarketKey}'` : 'NULL'
-         }::varchar(255) AS market_key,
+         f.name AS food_name, f.aliases AS food_aliases,
          fr.entity_id AS restaurant_entity_id, fr.name AS restaurant_name, fr.aliases AS restaurant_aliases,
          prs.display_score AS restaurant_crave_score, prs.percentile_rank AS restaurant_crave_score_exact, prs.rising AS restaurant_rising, prs.score_info AS restaurant_score_info,
          fr.price_level AS restaurant_price_level, fr.price_level_updated_at AS restaurant_price_level_updated_at,
@@ -912,10 +897,7 @@ LIMIT ${pagination.take};`.trim();
     };
   }
 
-  private buildLocationConditions(
-    filters: ParsedFilters,
-    activeMarketKey: string | null,
-  ): {
+  private buildLocationConditions(filters: ParsedFilters): {
     sql: Prisma.Sql;
     preview: string;
     boundsApplied: boolean;
@@ -976,37 +958,8 @@ LIMIT ${pagination.take};`.trim();
       boundsApplied = true;
     }
 
-    if (activeMarketKey) {
-      conditions.push(Prisma.sql`
-        EXISTS (
-          SELECT 1
-          FROM core_markets m
-          WHERE m.market_key = ${activeMarketKey}
-            AND m.is_active = true
-            AND m.geometry IS NOT NULL
-            AND m.geometry && ST_SetSRID(
-              ST_MakePoint(
-                rl.longitude::double precision,
-                rl.latitude::double precision
-              ),
-              4326
-            )
-            AND ST_Covers(
-              m.geometry,
-              ST_SetSRID(
-                ST_MakePoint(
-                  rl.longitude::double precision,
-                  rl.latitude::double precision
-                ),
-                4326
-              )
-            )
-        )
-      `);
-      conditionPreview.push(
-        `EXISTS (SELECT 1 FROM core_markets m WHERE m.market_key = '${activeMarketKey}' AND m.is_active = true AND m.geometry IS NOT NULL AND m.geometry && ST_SetSRID(ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision), 4326) AND ST_Covers(m.geometry, ST_SetSRID(ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision), 4326)))`,
-      );
-    }
+    // The viewport IS the geographic query (master plan §7): no market filter
+    // exists here — results are whatever the polygon/bounds admit, worldwide.
 
     return {
       sql: this.combineSqlClauses(conditions),
@@ -1610,50 +1563,20 @@ public_connection_scores AS (
     return { sql, preview };
   }
 
-  private buildLocationAggregatesCte(activeMarketKey: string | null): {
+  private buildLocationAggregatesCte(): {
     sql: Prisma.Sql;
     preview: string;
   } {
-    const marketFilterSql = activeMarketKey
-      ? Prisma.sql`
-        JOIN core_markets m
-          ON m.market_key = ${activeMarketKey}
-         AND m.is_active = true
-         AND m.geometry IS NOT NULL
-        WHERE rl.latitude IS NOT NULL
-          AND rl.longitude IS NOT NULL
-          AND rl.google_place_id IS NOT NULL
-          AND rl.address IS NOT NULL
-          AND m.geometry && ST_SetSRID(
-            ST_MakePoint(
-              rl.longitude::double precision,
-              rl.latitude::double precision
-            ),
-            4326
-          )
-          AND ST_Covers(
-            m.geometry,
-            ST_SetSRID(
-              ST_MakePoint(
-                rl.longitude::double precision,
-                rl.latitude::double precision
-              ),
-              4326
-            )
-          )
-      `
-      : Prisma.sql`
+    // Locations are a fact about the restaurant, not the viewport or any
+    // market (master plan §7): the aggregate is GLOBAL. The map's off-screen
+    // sibling machinery depends on this being wider than the viewport.
+    const marketFilterSql = Prisma.sql`
         WHERE rl.latitude IS NOT NULL
           AND rl.longitude IS NOT NULL
           AND rl.google_place_id IS NOT NULL
           AND rl.address IS NOT NULL
       `;
-    const marketFilterPreview = activeMarketKey
-      ? `JOIN core_markets m ON m.market_key = '${activeMarketKey}' AND m.is_active = true AND m.geometry IS NOT NULL
-  WHERE rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL AND rl.google_place_id IS NOT NULL AND rl.address IS NOT NULL
-    AND m.geometry && ST_SetSRID(ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision), 4326)
-    AND ST_Covers(m.geometry, ST_SetSRID(ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision), 4326))`
-      : `WHERE rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL AND rl.google_place_id IS NOT NULL AND rl.address IS NOT NULL`;
+    const marketFilterPreview = `WHERE rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL AND rl.google_place_id IS NOT NULL AND rl.address IS NOT NULL`;
     const sql = Prisma.sql`
 location_aggregates AS (
   SELECT

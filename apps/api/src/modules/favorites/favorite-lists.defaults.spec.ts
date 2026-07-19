@@ -144,7 +144,7 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
     const service = new FavoriteListsService(
       prisma as never,
       new FavoriteListAccessPolicy(prisma as never, blocks as never),
-      new ListResultsAssembler({} as never),
+      new ListResultsAssembler({} as never, {} as never),
       new FavoriteListMapper(prisma as never, logger as never),
       { loadTileImages: () => Promise.resolve(new Map()) } as never,
     );

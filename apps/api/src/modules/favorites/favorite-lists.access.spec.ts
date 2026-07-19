@@ -144,7 +144,7 @@ function makeHarness(list: ListRow, collaboratorIds: string[] = []) {
   const service = new FavoriteListsService(
     prisma as never,
     new FavoriteListAccessPolicy(prisma as never, blocks as never),
-    new ListResultsAssembler(executor as never),
+    new ListResultsAssembler(executor as never, {} as never),
     new FavoriteListMapper(prisma as never, logger as never),
     { loadTileImages: () => Promise.resolve(new Map()) } as never,
   );

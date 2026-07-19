@@ -9,7 +9,7 @@ import {
   getSearchMountedResultsRowsSnapshot,
 } from './search-mounted-results-data-store';
 import type { SearchResultsPanelEnvironment } from './search-results-panel-environment-contract';
-import type { useSearchResultsPanelCardMarketRuntime } from './use-search-results-panel-card-market-runtime';
+import type { useSearchResultsPanelCardMetadataRuntime } from './use-search-results-panel-card-metadata-runtime';
 import type { useSearchResultsPanelDishCardMetricsRuntime } from './use-search-results-panel-dish-card-metrics-runtime';
 import type { useSearchResultsPanelRestaurantCardMetricsRuntime } from './use-search-results-panel-restaurant-card-metrics-runtime';
 
@@ -20,7 +20,7 @@ type UseSearchResultsPanelCardRenderRuntimeArgs = Pick<
   | 'stableOpenRestaurantProfileFromResults'
   | 'openScoreInfo'
 > & {
-  cardMarketRuntime: ReturnType<typeof useSearchResultsPanelCardMarketRuntime>;
+  cardMetadataRuntime: ReturnType<typeof useSearchResultsPanelCardMetadataRuntime>;
   dishCardMetricsRuntime: ReturnType<typeof useSearchResultsPanelDishCardMetricsRuntime>;
   restaurantCardMetricsRuntime: ReturnType<
     typeof useSearchResultsPanelRestaurantCardMetricsRuntime
@@ -57,7 +57,7 @@ export const useSearchResultsPanelCardRenderRuntime = ({
   getRestaurantSaveHandler,
   stableOpenRestaurantProfileFromResults,
   openScoreInfo,
-  cardMarketRuntime,
+  cardMetadataRuntime,
   dishCardMetricsRuntime,
   restaurantCardMetricsRuntime,
 }: UseSearchResultsPanelCardRenderRuntimeArgs): SearchResultsPanelCardRenderRuntime => {
@@ -105,15 +105,12 @@ export const useSearchResultsPanelCardRenderRuntime = ({
         dishCardMetricsRuntime.dishQualityColorByConnectionId.get(item.connectionId) ??
         mountedMetrics.dishQualityColorByConnectionId.get(item.connectionId) ??
         getMarkerColorForDish(item);
-      const mountedResultsMetadata = getSearchMountedResultsDataSnapshot().results?.metadata;
       return (
         <DishResultCard
           item={item}
           index={index}
           qualityColor={qualityColor}
           isLiked={false}
-          primaryMarketKey={cardMarketRuntime.primaryMarketKey ?? mountedResultsMetadata?.marketKey}
-          showMarketLabel={false}
           restaurantForDish={restaurantForDish}
           onSavePress={getDishSaveHandler(item.connectionId)}
           openRestaurantProfile={stableOpenRestaurantProfileFromResults}
@@ -122,7 +119,6 @@ export const useSearchResultsPanelCardRenderRuntime = ({
       );
     },
     [
-      cardMarketRuntime.primaryMarketKey,
       dishCardMetricsRuntime.dishQualityColorByConnectionId,
       getDishSaveHandler,
       getMountedMetrics,
@@ -159,11 +155,8 @@ export const useSearchResultsPanelCardRenderRuntime = ({
         getMarkerColorForRestaurant(restaurant);
       const mountedResultsMetadata =
         preparedDescriptor == null ? getSearchMountedResultsDataSnapshot().results?.metadata : null;
-      const primaryMarketKey =
-        cardMarketRuntime.primaryMarketKey ??
-        (preparedDescriptor != null ? null : mountedResultsMetadata?.marketKey);
       const primaryFoodTerm =
-        cardMarketRuntime.primaryFoodTerm ??
+        cardMetadataRuntime.primaryFoodTerm ??
         preparedDescriptor?.primaryFoodTerm ??
         mountedResultsMetadata?.primaryFoodTerm ??
         null;
@@ -175,8 +168,6 @@ export const useSearchResultsPanelCardRenderRuntime = ({
           qualityColor={qualityColor}
           preparedDescriptor={preparedDescriptor}
           isLiked={false}
-          primaryMarketKey={primaryMarketKey}
-          showMarketLabel={false}
           onSavePress={getRestaurantSaveHandler(restaurant.restaurantId)}
           openRestaurantProfile={stableOpenRestaurantProfileFromResults}
           openScoreInfo={openScoreInfo}
@@ -185,8 +176,7 @@ export const useSearchResultsPanelCardRenderRuntime = ({
       );
     },
     [
-      cardMarketRuntime.primaryFoodTerm,
-      cardMarketRuntime.primaryMarketKey,
+      cardMetadataRuntime.primaryFoodTerm,
       getRestaurantSaveHandler,
       getMountedMetrics,
       openScoreInfo,

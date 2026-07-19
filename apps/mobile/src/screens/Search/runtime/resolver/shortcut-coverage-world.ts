@@ -85,10 +85,9 @@ const buildFiltersKey = (tuple: SearchDesiredTuple): string => {
 export const buildShortcutCoverageWorldRequestKey = (args: {
   tuple: SearchDesiredTuple;
   tab: 'restaurants' | 'dishes';
-  marketKey: string;
 }): string => {
   const bounds = args.tuple.committedBounds?.bounds ?? null;
-  return `entities:${buildEntitiesKey({})}|tab:${args.tab}|market:${args.marketKey}|bounds:${
+  return `entities:${buildEntitiesKey({})}|tab:${args.tab}|bounds:${
     bounds == null ? 'unavailable' : buildBoundsKey(bounds)
   }|filters:${buildFiltersKey(args.tuple)}`;
 };
@@ -177,7 +176,6 @@ export type ShortcutCoverageService = (
     bounds: MapBounds;
     viewportPolygon?: Array<[number, number]>;
     includeTopDish: boolean;
-    marketKey: string;
     openNow?: boolean;
     priceLevels?: number[];
     rising?: boolean;
@@ -191,10 +189,9 @@ export const fetchShortcutCoverageWorldEntry = async (args: {
   shortcutCoverage: ShortcutCoverageService;
   tuple: SearchDesiredTuple;
   tab: 'restaurants' | 'dishes';
-  marketKey: string;
 }): Promise<SearchMountedResultsCoverageEntry> => {
-  const { shortcutCoverage, tuple, tab, marketKey } = args;
-  const requestKey = buildShortcutCoverageWorldRequestKey({ tuple, tab, marketKey });
+  const { shortcutCoverage, tuple, tab } = args;
+  const requestKey = buildShortcutCoverageWorldRequestKey({ tuple, tab });
   const bounds = tuple.committedBounds?.bounds ?? null;
   const now = (): number => globalThis.performance?.now?.() ?? Date.now();
   if (bounds == null) {
@@ -217,7 +214,6 @@ export const fetchShortcutCoverageWorldEntry = async (args: {
           ([lng, lat]) => [lng, lat] as [number, number]
         ),
         includeTopDish,
-        marketKey,
         openNow: filters.openNow || undefined,
         priceLevels: filters.priceLevels.length ? [...filters.priceLevels] : undefined,
         rising: filters.rising || undefined,

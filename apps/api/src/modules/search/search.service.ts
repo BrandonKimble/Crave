@@ -82,7 +82,6 @@ type RestaurantDishRow = {
 
 const DEFAULT_RESULT_LIMIT = 100;
 const DEFAULT_PAGE_SIZE = 25;
-const MAX_PAGE_SIZE = 100;
 const METERS_PER_MILE = 1609.34;
 interface PaginationState {
   page: number;
@@ -202,7 +201,6 @@ export class SearchService {
   private readonly logger: LoggerService;
   private readonly resultLimit: number;
   private readonly defaultPageSize: number;
-  private readonly maxPageSize: number;
   private readonly isDevEnvironment: boolean;
   private readonly alwaysIncludeSqlPreview: boolean;
   private readonly onDemandMinResults: number;
@@ -236,7 +234,6 @@ export class SearchService {
     this.logger = loggerService.setContext('SearchService');
     this.resultLimit = this.resolveResultLimit();
     this.defaultPageSize = this.resolveDefaultPageSize();
-    this.maxPageSize = this.resolveMaxPageSize();
     this.isDevEnvironment = this.resolveIsDevEnvironment();
     this.alwaysIncludeSqlPreview = this.resolveAlwaysIncludeSqlPreview();
     this.onDemandMinResults = this.resolveOnDemandMinResults();
@@ -456,7 +453,6 @@ export class SearchService {
           request,
           stage: params.stage,
           planExpansion,
-          activeMarketKey: resolvedMarket.marketKey,
           pagination,
           restaurantPagination: params.restaurantPagination,
           dishPagination: params.dishPagination,
@@ -872,7 +868,6 @@ export class SearchService {
           response,
           request,
           planExpansion,
-          activeMarketKey: resolvedMarket.marketKey,
           pagination,
           topDishesLimit: TOP_DISHES_LIMIT,
         });
@@ -1244,7 +1239,6 @@ export class SearchService {
         response,
         request,
         planExpansion,
-        activeMarketKey: resolvedMarket.marketKey,
         pagination,
         topDishesLimit: TOP_DISHES_LIMIT,
       });
@@ -1344,10 +1338,7 @@ export class SearchService {
     };
   }
 
-  async listRestaurantDishes(
-    restaurantId: string,
-    activeMarketKey?: string | null,
-  ): Promise<FoodResultDto[]> {
+  async listRestaurantDishes(restaurantId: string): Promise<FoodResultDto[]> {
     const toNumber = (value: unknown): number | null => {
       if (typeof value === 'number' && Number.isFinite(value)) {
         return value;
@@ -1386,7 +1377,6 @@ export class SearchService {
 	        prs.display_score AS restaurant_crave_score,
 	        r.name AS restaurant_name,
         r.aliases AS restaurant_aliases,
-        ${activeMarketKey ?? null}::varchar(255) AS market_key,
         r.price_level AS restaurant_price_level,
         f.name AS food_name,
         f.aliases AS food_aliases
@@ -1433,8 +1423,6 @@ export class SearchService {
         scoreSubjectId: row.connection_id,
         craveScore,
         rising: toNumber(row.rising),
-        marketKey: row.market_key ?? undefined,
-        marketName: null,
         mentionCount: row.mention_count ?? 0,
         totalUpvotes: row.total_upvotes ?? 0,
         lastMentionedAt: row.last_mentioned_at
@@ -1463,7 +1451,6 @@ export class SearchService {
 
   async getRestaurantProfile(
     restaurantId: string,
-    activeMarketKey?: string | null,
   ): Promise<RestaurantProfileDto | null> {
     const startedAt = Date.now();
     const referenceDate = new Date();
@@ -1573,37 +1560,24 @@ export class SearchService {
       return null;
     }
 
-    const normalizedActiveMarketKey =
-      typeof activeMarketKey === 'string' && activeMarketKey.trim().length
-        ? activeMarketKey.trim().toLowerCase()
-        : null;
-
-    const [publicScore, aggregate, dishes, activeMarketLocationIds] =
-      await Promise.all([
-        this.getPublicRestaurantScore(restaurant.entityId),
-        this.prisma.connection.aggregate({
-          where: {
-            restaurantId: restaurant.entityId,
-          },
-          _sum: {
-            mentionCount: true,
-            totalUpvotes: true,
-          },
-          _count: {
-            _all: true,
-          },
-        }),
-        this.listRestaurantDishes(
-          restaurant.entityId,
-          normalizedActiveMarketKey,
-        ),
-        normalizedActiveMarketKey
-          ? this.listRestaurantLocationIdsInMarket(
-              restaurant.entityId,
-              normalizedActiveMarketKey,
-            )
-          : Promise.resolve<string[] | null>(null),
-      ]);
+    // A restaurant's locations are a fact about the restaurant, not the
+    // caller's market/camera (master plan §7): the profile is ALWAYS global.
+    const [publicScore, aggregate, dishes] = await Promise.all([
+      this.getPublicRestaurantScore(restaurant.entityId),
+      this.prisma.connection.aggregate({
+        where: {
+          restaurantId: restaurant.entityId,
+        },
+        _sum: {
+          mentionCount: true,
+          totalUpvotes: true,
+        },
+        _count: {
+          _all: true,
+        },
+      }),
+      this.listRestaurantDishes(restaurant.entityId),
+    ]);
 
     type RestaurantProfileLocation = NonNullable<
       RestaurantProfileDto['restaurant']['locations']
@@ -1648,20 +1622,12 @@ export class SearchService {
       };
     };
 
-    const allowedLocationIds = activeMarketLocationIds
-      ? new Set(activeMarketLocationIds)
-      : null;
-    const filteredLocations = allowedLocationIds
-      ? restaurant.locations.filter((location) =>
-          allowedLocationIds.has(location.locationId),
-        )
-      : restaurant.locations;
     const locationResults: RestaurantProfileLocation[] =
-      filteredLocations.map(mapLocation);
+      restaurant.locations.map(mapLocation);
     const fallbackMetadata = buildOperatingMetadata({
       restaurantMetadataValue: restaurant.restaurantMetadata,
     });
-    if (locationResults.length === 0 && !normalizedActiveMarketKey) {
+    if (locationResults.length === 0) {
       locationResults.push({
         locationId: restaurant.primaryLocationId ?? restaurant.entityId,
         googlePlaceId: null,
@@ -1740,8 +1706,6 @@ export class SearchService {
           `restaurant:${restaurant.entityId}`,
         ),
         rising: publicScore?.rising ?? null,
-        marketKey: normalizedActiveMarketKey ?? undefined,
-        marketName: null,
         mentionCount: aggregate._sum.mentionCount ?? 0,
         totalUpvotes: aggregate._sum.totalUpvotes ?? 0,
         latitude:
@@ -1764,11 +1728,9 @@ export class SearchService {
         displayLocation: displayLocation ?? undefined,
         locations: locationResults,
         locationCount:
-          allowedLocationIds !== null
-            ? locationResults.length
-            : typeof restaurant._count.locations === 'number'
-              ? restaurant._count.locations
-              : locationResults.length,
+          typeof restaurant._count.locations === 'number'
+            ? restaurant._count.locations
+            : locationResults.length,
       },
       dishes,
     };
@@ -1780,44 +1742,6 @@ export class SearchService {
     });
 
     return profile;
-  }
-
-  private async listRestaurantLocationIdsInMarket(
-    restaurantId: string,
-    marketKey: string,
-  ): Promise<string[]> {
-    const normalizedMarketKey = marketKey.trim().toLowerCase();
-    if (!normalizedMarketKey.length) {
-      return [];
-    }
-
-    const rows = await this.prisma.$queryRaw<Array<{ locationId: string }>>(
-      Prisma.sql`
-        SELECT rl.location_id AS "locationId"
-        FROM core_restaurant_locations rl
-        JOIN core_markets m
-          ON m.market_key = ${normalizedMarketKey}
-         AND m.geometry IS NOT NULL
-         AND m.is_active = true
-        WHERE rl.restaurant_id = ${restaurantId}::uuid
-          AND rl.latitude IS NOT NULL
-          AND rl.longitude IS NOT NULL
-          AND ST_Covers(
-            m.geometry,
-            ST_SetSRID(
-              ST_MakePoint(rl.longitude::double precision, rl.latitude::double precision),
-              4326
-            )
-          )
-      `,
-    );
-
-    return rows
-      .map((row) => row.locationId)
-      .filter(
-        (value): value is string =>
-          typeof value === 'string' && value.length > 0,
-      );
   }
 
   private async getPublicRestaurantScore(restaurantId: string): Promise<{
@@ -1876,13 +1800,10 @@ export class SearchService {
     request: SearchQueryRequestDto,
     constraints: SearchConstraints,
     planExpansion: PlanExpansionState | null,
-    activeMarketKey: string | null,
   ): SearchExecutionDirectives | undefined {
     const textFoodIds =
       planExpansion?.foodIdsFromPrimaryFoodAttributeText ?? [];
     const hasPrimaryFoodAttributeQuery = constraints.primaryFoodAttributeQuery;
-    const hasActiveMarketKey =
-      typeof activeMarketKey === 'string' && activeMarketKey.trim().length > 0;
     // Sectioned ranking: tier 0 = the resolved query foods PLUS their canonical
     // category MEMBERS (is-a instances — "neapolitan pizza" IS the pizza you
     // asked for); tier 1 = dense siblings + lexical fuzzy adds (similar, not
@@ -1902,12 +1823,11 @@ export class SearchService {
       exactFoodIds.length > 0 &&
       constraints.ids.foodIds.length > exactFoodIds.length;
 
-    if (!hasPrimaryFoodAttributeQuery && !hasActiveMarketKey && !widened) {
+    if (!hasPrimaryFoodAttributeQuery && !widened) {
       return undefined;
     }
 
     return {
-      activeMarketKey: hasActiveMarketKey ? activeMarketKey : undefined,
       primaryFoodAttributeQuery: hasPrimaryFoodAttributeQuery || undefined,
       primaryFoodAttributeTextFoodIds:
         hasPrimaryFoodAttributeQuery && textFoodIds.length
@@ -1922,7 +1842,6 @@ export class SearchService {
     request: SearchQueryRequestDto;
     stage: RelaxationStage;
     planExpansion: PlanExpansionState | null;
-    activeMarketKey: string | null;
     pagination: PaginationState;
     restaurantPagination: { skip: number; take: number };
     dishPagination: { skip: number; take: number };
@@ -1953,7 +1872,6 @@ export class SearchService {
       params.request,
       constraints,
       params.planExpansion,
-      params.activeMarketKey,
     );
 
     const executeStart = performance.now();
@@ -2013,7 +1931,6 @@ export class SearchService {
     response: SearchResponseDto;
     request: SearchQueryRequestDto;
     planExpansion: PlanExpansionState | null;
-    activeMarketKey: string | null;
     pagination: PaginationState;
     topDishesLimit: number;
   }): Promise<void> {
@@ -2053,7 +1970,6 @@ export class SearchService {
         request,
         stage: 'strict',
         planExpansion: widened,
-        activeMarketKey: params.activeMarketKey,
         pagination,
         restaurantPagination: pageOne,
         dishPagination: pageOne,
@@ -3456,16 +3372,9 @@ export class SearchService {
   }
 
   private resolvePagination(pagination?: PaginationDto): PaginationState {
-    const page = pagination?.page && pagination.page > 0 ? pagination.page : 1;
-    const rawPageSize =
-      pagination?.pageSize && pagination.pageSize > 0
-        ? pagination.pageSize
-        : this.defaultPageSize;
-    const pageSize = Math.min(
-      Math.max(rawPageSize, 1),
-      this.maxPageSize,
-      this.resultLimit,
-    );
+    // Bounds are the DTO's job (@Min/@Max on PaginationDto) — no service clamps.
+    const page = pagination?.page ?? 1;
+    const pageSize = pagination?.pageSize ?? this.defaultPageSize;
     const skip = (page - 1) * pageSize;
 
     return {
@@ -3481,10 +3390,6 @@ export class SearchService {
   // env lines restated these constants).
   private resolveDefaultPageSize(): number {
     return DEFAULT_PAGE_SIZE;
-  }
-
-  private resolveMaxPageSize(): number {
-    return MAX_PAGE_SIZE;
   }
 
   private resolveResultLimit(): number {

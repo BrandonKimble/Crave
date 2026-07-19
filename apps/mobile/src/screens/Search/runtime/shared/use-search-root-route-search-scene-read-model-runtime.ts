@@ -4,7 +4,7 @@ import type {
   SearchRootRouteSearchSceneReadModelRuntimeArgs,
   SearchRootRuntimeRouteSearchSceneReadModelRuntime,
 } from './route-search-scene-runtime-contract';
-import { useSearchResultsPanelCardMarketRuntime } from './use-search-results-panel-card-market-runtime';
+import { useSearchResultsPanelCardMetadataRuntime } from './use-search-results-panel-card-metadata-runtime';
 import { useSearchResultsPanelCardRenderRuntime } from './use-search-results-panel-card-render-runtime';
 import { useSearchResultsPanelDishCardMetricsRuntime } from './use-search-results-panel-dish-card-metrics-runtime';
 import { useSearchResultsPanelRestaurantCardMetricsRuntime } from './use-search-results-panel-restaurant-card-metrics-runtime';
@@ -27,7 +27,7 @@ export const useSearchRootRouteSearchSceneReadModelRuntime = ({
 > & {
   routeSearchSceneDataRuntime: SearchRootRuntimeRouteSearchSceneDataRuntime;
 }): SearchRootRuntimeRouteSearchSceneReadModelRuntime => {
-  const routeSearchSceneCardMarketRuntime = useSearchResultsPanelCardMarketRuntime({
+  const routeSearchSceneCardMetadataRuntime = useSearchResultsPanelCardMetadataRuntime({
     resolvedResults:
       routeSearchSceneDataRuntime.routeSearchSceneResolvedResultsRuntime.resolvedResults,
   });
@@ -35,7 +35,7 @@ export const useSearchRootRouteSearchSceneReadModelRuntime = ({
     useSearchResultsPanelRestaurantCardMetricsRuntime({
       dishes: routeSearchSceneDataRuntime.routeSearchSceneResolvedResultsRuntime.dishes,
       restaurants: routeSearchSceneDataRuntime.routeSearchSceneResolvedResultsRuntime.restaurants,
-      searchRequestId: routeSearchSceneCardMarketRuntime.searchRequestId,
+      searchRequestId: routeSearchSceneCardMetadataRuntime.searchRequestId,
     });
   const routeSearchSceneDishCardMetricsRuntime = useSearchResultsPanelDishCardMetricsRuntime({
     dishes: routeSearchSceneDataRuntime.routeSearchSceneResolvedResultsRuntime.dishes,
@@ -50,7 +50,7 @@ export const useSearchRootRouteSearchSceneReadModelRuntime = ({
     stableOpenRestaurantProfileFromResults:
       profileControlRuntime.profilePresentationControlLane.stableOpenRestaurantProfileFromResults,
     openScoreInfo: filterModalControlLane.filterModalRuntime.openScoreInfo,
-    cardMarketRuntime: routeSearchSceneCardMarketRuntime,
+    cardMetadataRuntime: routeSearchSceneCardMetadataRuntime,
     dishCardMetricsRuntime: routeSearchSceneDishCardMetricsRuntime,
     restaurantCardMetricsRuntime: routeSearchSceneRestaurantCardMetricsRuntime,
   });

@@ -278,7 +278,6 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
       true,
       true,
       statusPreview?.locationCount ?? null,
-      null,
       styles.metaLineText
     );
     return statusLine ?? null;
@@ -325,7 +324,6 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
         item.restaurantName,
         false,
         false,
-        null,
         null,
         styles.metaLineText
       );
