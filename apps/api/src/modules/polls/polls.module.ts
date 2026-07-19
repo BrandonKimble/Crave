@@ -4,7 +4,6 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { ModerationModule } from '../moderation/moderation.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SearchModule } from '../search/search.module';
-import { AnalyticsModule } from '../analytics/analytics.module';
 import { IdentityModule } from '../identity/identity.module';
 import { RestaurantEnrichmentModule } from '../restaurant-enrichment/restaurant-enrichment.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
@@ -17,12 +16,16 @@ import { SignalsModule } from '../signals/signals.module';
 import { PollsService } from './polls.service';
 import { PollsController } from './polls.controller';
 import { PollsGateway } from './polls.gateway';
-import { PollSchedulerService } from './poll-scheduler.service';
 import { PollAggregationService } from './poll-aggregation.service';
 import { PollLifecycleService } from './poll-lifecycle.service';
 import { PollGraduationService } from './poll-graduation.service';
 import { PollEntitySeedService } from './poll-entity-seed.service';
 import { RestaurantMentionsService } from './restaurant-mentions.service';
+import { DemandMassReader } from './supply/demand-mass.reader';
+import { PollSupplyEstimators } from './supply/poll-supply-estimators';
+import { PollWeeklyRitualService } from './supply/poll-weekly-ritual.service';
+import { PollSurfaceSourceService } from './supply/poll-surface-source.service';
+import { PollBallotMentionService } from './supply/poll-ballot-mention.service';
 
 @Module({
   imports: [
@@ -31,7 +34,6 @@ import { RestaurantMentionsService } from './restaurant-mentions.service';
     ModerationModule,
     NotificationsModule,
     forwardRef(() => SearchModule),
-    AnalyticsModule,
     IdentityModule,
     RestaurantEnrichmentModule,
     EntityResolverModule,
@@ -48,10 +50,15 @@ import { RestaurantMentionsService } from './restaurant-mentions.service';
     RestaurantMentionsService,
     PollEntitySeedService,
     PollsGateway,
-    PollSchedulerService,
     PollAggregationService,
     PollLifecycleService,
     PollGraduationService,
+    // §22 item 4 — the poll SUPPLY cut (§4 controller + weekly ritual + K6).
+    DemandMassReader,
+    PollSupplyEstimators,
+    PollWeeklyRitualService,
+    PollSurfaceSourceService,
+    PollBallotMentionService,
   ],
   exports: [PollsService],
 })

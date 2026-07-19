@@ -621,6 +621,10 @@ model PollTopic {
   marketKey                   String?         @map("market_key") @db.VarChar(255)
   region                      String?         @db.VarChar(255)
   country                     String?         @db.VarChar(2)
+  /// §22 item 4 re-key: new supply attaches topics to the place catalog.
+  /// Old rows keep marketKey; new rows carry placeId (marketKey best-effort
+  /// shim for the item-5 feed).
+  placeId                     String?         @map("place_id") @db.Uuid
   categoryEntityIds           String[]        @default([]) @map("category_entity_ids") @db.Uuid
   seedEntityIds               String[]        @default([]) @map("seed_entity_ids") @db.Uuid
   status                      PollTopicStatus @default(draft)
@@ -640,6 +644,7 @@ model PollTopic {
   polls                       Poll[]
 
   @@index([marketKey], map: "idx_poll_topics_market_key")
+  @@index([placeId], map: "idx_poll_topics_place_id")
   @@index([createdByUserId], map: "idx_poll_topics_created_by_user")
   @@index([status], map: "idx_poll_topics_status")
   @@map("poll_topics")
@@ -654,6 +659,9 @@ model Poll {
   mode               PollMode               @default(ranked)
   axis               Json?
   marketKey          String?                @map("market_key") @db.VarChar(255)
+  /// §22 item 4 re-key: new supply-published polls attach to placeId (place
+  /// catalog). Existing polls carry marketKey; old rows untouched.
+  placeId            String?                @map("place_id") @db.Uuid
   region             String?                @db.VarChar(255)
   scheduledFor       DateTime?              @map("scheduled_for")
   launchedAt         DateTime?              @map("launched_at")
@@ -673,6 +681,7 @@ model Poll {
   @@index([topicId], map: "idx_polls_topic_id")
   @@index([state], map: "idx_polls_state")
   @@index([marketKey], map: "idx_polls_market_key")
+  @@index([placeId], map: "idx_polls_place_id")
   @@index([createdByUserId], map: "idx_polls_created_by_user")
   @@index([scheduledFor], map: "idx_polls_scheduled_for")
   @@map("polls")
@@ -1911,6 +1920,9 @@ enum PollTopicType {
   what_to_order
   best_dish_attribute
   best_restaurant_attribute
+  /// §4 structural bootstrap poll ("Best restaurants in {place}") — published
+  /// when a place has credit but no ranked subject.
+  best_restaurants
 
   @@map("poll_topic_type")
 }
@@ -2201,4 +2213,56 @@ model EntityRedirect {
 
   @@index([toEntityId])
   @@map("entity_redirects")
+}
+
+// ============ §5 Sources + §4 poll supply (§22 item 4) ============
+
+/// §5 sources: the calibration room. Every place's poll surface IS a source
+/// (platform 'poll_surface', handle = placeId, anchorPlaceId = the place).
+/// poll_surface rows carry NO engineId — the field is reddit-class only (§5:
+/// poll evidence reaches collection only as demand through the ledger, never
+/// as corpus).
+model Source {
+  sourceId      String   @id @default(dbgenerated("gen_random_uuid()")) @map("source_id") @db.Uuid
+  platform      String   @db.VarChar(32)
+  handle        String   @db.VarChar(255)
+  anchorPlaceId String?  @map("anchor_place_id") @db.Uuid
+  engineId      String?  @map("engine_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@unique([platform, handle], map: "sources_platform_handle_key")
+  @@index([anchorPlaceId], map: "idx_sources_anchor_place")
+  @@map("sources")
+}
+
+/// §4 supply-controller state per place: the learned frontier, its phase
+/// (warm_start until the first cohort closes, then learned), and the credit
+/// warrant accumulator (accrues at creditRate, decays 14d half-life, spent by
+/// publishing). No caps exist anywhere in this row's semantics.
+model PollPlaceSupply {
+  placeId         String    @id @map("place_id") @db.Uuid
+  frontier        Int
+  phase           String    @db.VarChar(16)
+  credit          Decimal   @default(0) @db.Decimal(18, 6)
+  creditUpdatedAt DateTime? @map("credit_updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("poll_place_supply")
+}
+
+/// §4 weekly-ritual publish ledger. The UNIQUE (placeId, weekOf-local) IS the
+/// idempotency key: publish is atomic with this row, so the same local Sunday
+/// can never double-publish.
+model PollWeeklyTick {
+  tickId         String   @id @default(dbgenerated("gen_random_uuid()")) @map("tick_id") @db.Uuid
+  placeId        String   @map("place_id") @db.Uuid
+  /// Local calendar date (YYYY-MM-DD) of the place's Sunday.
+  weekOf         String   @map("week_of") @db.VarChar(10)
+  publishedCount Int      @map("published_count")
+  factors        Json?
+  publishedAt    DateTime @default(now()) @map("published_at")
+
+  @@unique([placeId, weekOf], map: "poll_weekly_ticks_place_week_key")
+  @@map("poll_weekly_ticks")
 }

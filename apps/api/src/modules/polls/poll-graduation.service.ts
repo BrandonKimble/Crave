@@ -10,6 +10,11 @@ import { LoggerService } from '../../shared';
 import { ExtractionPipelineService } from '../content-processing/reddit-collector/extraction-pipeline.service';
 import { LLMComment, LLMPost } from '../external-integrations/llm/llm.types';
 import { PollsService } from './polls.service';
+import { PollBallotMentionService } from './supply/poll-ballot-mention.service';
+import {
+  PollSurfaceSourceService,
+  pollSurfaceHandle,
+} from './supply/poll-surface-source.service';
 
 /**
  * Phase 5C — close-time poll graduation (master plan §6.3).
@@ -43,6 +48,8 @@ export class PollGraduationService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly extractionPipeline: ExtractionPipelineService,
     private readonly pollsService: PollsService,
+    private readonly ballotMentions: PollBallotMentionService,
+    private readonly pollSurfaceSources: PollSurfaceSourceService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PollGraduationService');
@@ -86,6 +93,7 @@ export class PollGraduationService implements OnModuleInit {
         state: true,
         question: true,
         marketKey: true,
+        placeId: true,
         launchedAt: true,
         createdAt: true,
         graduatedAt: true,
@@ -147,6 +155,13 @@ export class PollGraduationService implements OnModuleInit {
       });
     }
 
+    // 1b. K6 vote→mention (§4, definitional): the BALLOT bypasses LLM
+    // extraction — each distinct voter mints ONE structured mention for
+    // their choice. Idempotent; a failure THROWS so the daily lifecycle
+    // cron retries the whole graduation (graduatedAt is still unset) —
+    // ballot mentions can never be silently lost.
+    await this.ballotMentions.mintForPoll(pollId);
+
     // 2. Load the authoritative thread (approved, non-deleted), oldest-first so the
     //    flattened document reads like the discussion unfolded.
     const comments = await this.prisma.pollComment.findMany({
@@ -200,7 +215,19 @@ export class PollGraduationService implements OnModuleInit {
     // 3. Flatten the thread into the collection pipeline's post+comments shape.
     //    The poll question is context only (`extract_from_post: false`) — it frames
     //    the discussion but is a prompt, not an endorsement.
+    //
+    //    §5 source law: a place-keyed poll's thread is a document of the
+    //    place's poll_surface SOURCE (lazily created, NO engineId). The
+    //    source handle stamps the documents' community; legacy market-keyed
+    //    polls keep the marketKey community until their Phase B cutover.
     const marketKey = poll.marketKey ?? 'global';
+    let community = marketKey;
+    let pollSurfaceSourceId: string | null = null;
+    if (poll.placeId) {
+      const source = await this.pollSurfaceSources.ensureForPlace(poll.placeId);
+      community = pollSurfaceHandle(poll.placeId);
+      pollSurfaceSourceId = source.sourceId;
+    }
     const llmComments: LLMComment[] = [
       ...(descriptionUnit ? [descriptionUnit] : []),
       ...comments.map((comment) => ({
@@ -238,12 +265,16 @@ export class PollGraduationService implements OnModuleInit {
     const result = await this.extractionPipeline.processPosts({
       pipeline: 'poll-thread',
       platform: 'poll',
-      community: marketKey,
+      community,
       llmPosts: [llmPost],
       batchId,
       collectionRunScopeKey: `poll:${pollId}`,
       activateDocumentsBeforeProcessing: true,
-      runMetadata: { pollId, marketKey },
+      runMetadata: {
+        pollId,
+        marketKey,
+        ...(poll.placeId ? { placeId: poll.placeId, pollSurfaceSourceId } : {}),
+      },
     });
 
     if (result.deferredBatchJobId) {
