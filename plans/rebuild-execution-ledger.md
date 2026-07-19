@@ -273,9 +273,24 @@ agent in flight at turn end so completion notifications chain turns.
       for ratification: uniform kind-weight 1.0 K2; market scoping removed
       from those lanes; suggestion text lowercased; intersection (not
       containment-tiling) attribution + global tile. API restarted.
-- [>] AGENT in flight: red-team d0764df3 (late-arriving signals vs the
-  today+yesterday window, torn reads, cross-day retry dedupe, reader
-  parity edges, per-search union cost, subject-widening double-count).
+- [x] red-team d0764df3 CONFIRMED findings → fix agent IN FLIGHT:
+      1a tz corruption LIVE (naive-UTC MAX into timestamptz = +5h shift;
+      1,628/4,206 rows out-of-day; fix SET LOCAL TIME ZONE UTC + full
+      rebuild) · 1b closed days unrecoverable (today+yesterday window has no
+      watermark; late occurredAt lost — watermark-driven range) · 1c retry
+      dedupe per-day + geo-grained (cross-midnight/nudged-viewport retries
+      double-count — window-wide, geo-free grain) · 2a /search/recent STILL
+      reads search_events (claim was false — cut it) · 2b merge blindness
+      (recentlyViewedFoods joins dead meta.connectionId; merges delete loser
+      connections — redirect-resolved join) · 3a fan-out unbounded (§3 says
+      containment-TILING O(few)/signal; current intersection mints ~19,435
+      rows per continental signal — implement §3 storage law, read-time
+      expansion) · 3b rebuild is unindexed O(signals×places), dies ~55k/day ·
+      3c non-sargable redirect COALESCE per keystroke (expand-ids app-side) ·
+      2d cached reveals now count in global suggestions (OWNER-RATIFY note).
+      Clean verdicts: torn reads none (MVCC single-tx); anonymous reads fine;
+      subject-widening no double-count; DI intact; backfill idempotent
+      (sequential).
 - [>] AGENT in flight: §22 item 7 collector at priors (§9-§12:
   source-centric model mapped from existing Austin engine, due-times +
   governor dispatch (reddit pool K4 1000/100-min), two portfolio floor
