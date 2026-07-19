@@ -473,7 +473,6 @@ export class PollWeeklyRitualService {
     const useBootstrap = selection.length === 0 && decision.cohortTarget >= 1;
     const publishCount = useBootstrap ? 1 : selection.length;
 
-    const marketKeyShim = await this.resolveMarketKeyShim(placeId);
     const controllerFactors = this.controllerFactors(decision, readings);
 
     const publishedPollIds = await this.prisma.$transaction(async (tx) => {
@@ -506,7 +505,6 @@ export class PollWeeklyRitualService {
             title: input.title,
             description: input.description,
             placeId,
-            marketKey: marketKeyShim,
             topicType: input.topicType,
             targetDishId: input.targetDishId ?? null,
             targetRestaurantId: input.targetRestaurantId ?? null,
@@ -526,7 +524,6 @@ export class PollWeeklyRitualService {
             topicId: topic.topicId,
             question: input.title,
             placeId,
-            marketKey: marketKeyShim,
             state: PollState.active,
             origin: PollOrigin.seeded,
             mode: PollMode.ranked,
@@ -642,11 +639,12 @@ export class PollWeeklyRitualService {
       return pollIds;
     });
 
-    if (publishedPollIds.length && marketKeyShim) {
-      // Item-5 shim: notification targeting still keys on the legacy device
-      // city registration; §4's home-place targeting lands with the feed cut.
-      await this.notifications.queuePollReleaseNotification({
-        city: marketKeyShim,
+    if (publishedPollIds.length) {
+      // §4 place-keyed notification moment: targeting (home-place subtree,
+      // big-place never-push) lives entirely in NotificationsService.
+      await this.notifications.queuePollReleaseForPlace({
+        placeId,
+        placeName: params.placeName,
         pollIds: publishedPollIds,
         scheduledFor: now,
       });
@@ -691,52 +689,5 @@ export class PollWeeklyRitualService {
           : null,
       },
     };
-  }
-
-  /**
-   * Item-5 SHIM (marked for deletion with the feed cut): the live feed and
-   * notifications still key on marketKey, so a place-keyed poll gets the
-   * smallest active legacy market whose bbox contains the place centroid,
-   * when one exists. New supply TRUTH is placeId.
-   */
-  private async resolveMarketKeyShim(placeId: string): Promise<string | null> {
-    const place = await this.prisma.place.findUnique({
-      where: { placeId },
-      select: { centroidLat: true, centroidLng: true },
-    });
-    if (place?.centroidLat == null || place.centroidLng == null) {
-      return null;
-    }
-    const lat = Number(place.centroidLat);
-    const lng = Number(place.centroidLng);
-    const markets = await this.prisma.market.findMany({
-      where: {
-        isActive: true,
-        bboxSwLat: { lte: lat },
-        bboxNeLat: { gte: lat },
-        bboxSwLng: { lte: lng },
-        bboxNeLng: { gte: lng },
-      },
-      select: {
-        marketKey: true,
-        bboxSwLat: true,
-        bboxNeLat: true,
-        bboxSwLng: true,
-        bboxNeLng: true,
-      },
-    });
-    if (!markets.length) {
-      return null;
-    }
-    let best: { marketKey: string; area: number } | null = null;
-    for (const market of markets) {
-      const area =
-        (Number(market.bboxNeLat) - Number(market.bboxSwLat)) *
-        (Number(market.bboxNeLng) - Number(market.bboxSwLng));
-      if (!best || area < best.area) {
-        best = { marketKey: market.marketKey, area };
-      }
-    }
-    return best?.marketKey ?? null;
   }
 }

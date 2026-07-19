@@ -106,19 +106,27 @@ export class NotificationDispatcherService {
 
     if (notification.type === 'poll_release') {
       const payload = notification.payload as {
+        placeId?: string | null;
+        placeName?: string | null;
+        // Legacy already-queued rows (pre §4 place re-key) carried `city`.
         city?: string | null;
         pollIds?: string[];
       } | null;
-      const city = payload?.city;
+      const placeLabel = payload?.placeName ?? payload?.city ?? null;
       return {
         to: notification.device.expoPushToken,
         sound: 'default',
-        title: city ? `📊 ${city} polls are live` : '📊 Weekly polls are live',
+        title: placeLabel
+          ? `📊 ${placeLabel} polls are live`
+          : '📊 Weekly polls are live',
         body: 'Vote on this week’s dishes and see what’s trending now.',
         data: {
           type: 'poll_release',
           pollIds: payload?.pollIds ?? [],
-          city,
+          placeId: payload?.placeId ?? null,
+          placeName: placeLabel,
+          // Legacy field pre-cut mobile push handlers read.
+          city: placeLabel,
         },
       };
     }

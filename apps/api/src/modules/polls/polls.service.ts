@@ -21,12 +21,7 @@ import { LoggerService, TextSanitizerService } from '../../shared';
 import { ModerationService } from '../moderation/moderation.service';
 import { SignalsService } from '../signals/signals.service';
 import { PollsGateway } from './polls.gateway';
-import {
-  ListPollsQueryDto,
-  PollListSort,
-  PollListTime,
-  PollListType,
-} from './dto/list-polls.dto';
+import { PollListSort, PollListTime, PollListType } from './dto/list-polls.dto';
 import { ListUserPollsDto, UserPollActivity } from './dto/list-user-polls.dto';
 import { CreateCommentDto, EditCommentDto } from './dto/create-comment.dto';
 import {
@@ -51,6 +46,22 @@ import {
   extractCloseWindowDays,
   resolvePollClosesAt,
 } from './poll-timing';
+import { PlacesCatalogService } from '../places/places-catalog.service';
+import {
+  descendantPlaceIds,
+  isSubdivisionOrBigger,
+} from '../places/place-dag-read';
+import { GeoBbox, bboxArea } from '../places/place-geo';
+import { isTooBigForView } from '../places/subjects';
+import {
+  FeedPlaceCandidate,
+  resolveFeedMembership,
+} from './poll-feed-membership';
+import {
+  PollFeedCursor,
+  decodePollFeedCursor,
+  encodePollFeedCursor,
+} from './poll-feed-cursor';
 
 // Stage-1 dedup threshold: high (precision-favoring) so only obvious duplicate
 // questions are surfaced — "best tacos" vs "best taco truck" should NOT collide;
@@ -67,6 +78,12 @@ const POLL_USER_WEEKLY_CAP_WINDOW_DAYS = 7;
 // half-life "heat" model used elsewhere for trending. Each distinct engager counts
 // once at their most-recent engagement (spam-resistant), weighted e^(−ln2/halfLife·age).
 const POLL_TRENDING_HALF_LIFE_DAYS = 3;
+
+// §6/§16: page size is a DTO-validated client choice (QueryPollsDto.limit,
+// @Max like search's PaginationDto). This default only serves clients that
+// omit `limit` — the same value as search's DEFAULT_PAGE_SIZE, preserving the
+// pre-cursor page-1 shape for pre-cut mobile builds.
+const POLL_FEED_DEFAULT_PAGE_SIZE = 25;
 
 /** Map the §6 Type filter to a `PollMode` where-filter (null = All = no filter). */
 function resolvePollModeFilter(
@@ -111,6 +128,7 @@ export class PollsService {
     private readonly llmService: LLMService,
     private readonly entityTextSearch: EntityTextSearchService,
     private readonly signals: SignalsService,
+    private readonly placesCatalog: PlacesCatalogService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -141,43 +159,329 @@ export class PollsService {
     return term.length ? { term } : null;
   }
 
-  async listPolls(query: ListPollsQueryDto, viewerUserId?: string | null) {
+  /**
+   * §6 POLLS FEED — polls of places in view (+ descendants of the
+   * commensurate subject), keyset CURSOR pagination (the take-25 hard limit
+   * is dead), §2 header verdict in the response metadata.
+   *
+   * Membership: placesInView(bounds) → the §2 subjecthood judgment
+   * (resolveHeaderPlace — the SAME derivation search's displayMarketName
+   * uses) → feed members = in-view places (minus over-scale subdivision+
+   * places, §4's feed-at-that-zoom boundary) ∪ descendants of the
+   * commensurate subject(s). Legacy marketKey-only poll rows join via their
+   * market's bbox intersecting the view — an INTERIM seam until Phase C
+   * purges marketKey from polls entirely.
+   *
+   * Response carries BOTH the new contract (header / promise / nextCursor /
+   * per-poll placeName) and the legacy envelope fields pre-cut mobile
+   * renders (marketName = the header verdict, polls array) — the mobile cut
+   * lands next and deletes the legacy block.
+   */
+  async queryPolls(query: QueryPollsDto, viewerUserId?: string | null) {
+    const sort = query.sort ?? PollListSort.new;
+    const limit = query.limit ?? POLL_FEED_DEFAULT_PAGE_SIZE;
     const targetState =
       (query.state as PollState | undefined) ?? PollState.active;
-    const targetMarketKey = query.marketKey ?? null;
-    const sort = query.sort ?? PollListSort.new;
     // Type filter (§6): All = no mode filter; Polls = ranked; Discussions = discussion.
     const targetMode = resolvePollModeFilter(query.type);
     // Time filter (§6): This Week = launched within 7d; All Time = no cutoff.
     const launchedAfter = resolvePollTimeCutoff(query.time);
+    const cursor = query.cursor
+      ? decodePollFeedCursor(query.cursor, sort)
+      : null;
 
-    // Top/Trending are engagement-ordered (computed in SQL); New keeps the simple
-    // chronological orderBy. For the engagement sorts we resolve the ordered poll ids
-    // first, then hydrate them preserving that order.
-    const orderedPollIds =
-      sort === PollListSort.new
-        ? null
-        : await this.resolveEngagementOrderedPollIds(
-            targetState,
-            targetMarketKey,
-            sort,
-            targetMode,
-            launchedAfter,
-          );
+    const view = await this.resolveFeedView(query);
+    if (!view) {
+      return this.buildFeedResponse({
+        headerPlaceName: null,
+        polls: [],
+        nextCursor: null,
+        promiseEligible: false,
+      });
+    }
 
-    const polls = await this.prisma.poll.findMany({
-      where: {
-        marketKey: targetMarketKey
-          ? { equals: targetMarketKey, mode: 'insensitive' }
-          : undefined,
-        state: targetState,
-        ...(targetMode ? { mode: targetMode } : {}),
-        ...(launchedAfter ? { launchedAt: { gte: launchedAfter } } : {}),
-        ...(orderedPollIds ? { pollId: { in: orderedPollIds } } : {}),
+    const membership = await this.resolveViewportMembership(view);
+    const legacyMarketKeys = await this.legacyMarketKeysInView(view);
+
+    const page = await this.queryFeedPage({
+      state: targetState,
+      mode: targetMode,
+      launchedAfter,
+      placeIds: membership.placeIds,
+      marketKeys: legacyMarketKeys,
+      sort,
+      limit,
+      cursor,
+    });
+    const polls = await this.hydrateFeedPolls(page.pollIds, viewerUserId);
+
+    return this.buildFeedResponse({
+      headerPlaceName: membership.headerPlaceName,
+      polls,
+      nextCursor: page.nextCursor,
+      // §6 cold-start promise: first page, zero polls, but the viewport DOES
+      // resolve to a place (a seeded town) — the copy is mobile's.
+      promiseEligible: cursor === null && polls.length === 0,
+    });
+  }
+
+  /**
+   * The feed view. `bounds` is the contract; the marketKey arm serves
+   * PRE-CUT mobile builds that send a cached marketKey instead (their
+   * market's stored bbox becomes the view) — dies with the mobile feed cut.
+   */
+  private async resolveFeedView(query: QueryPollsDto): Promise<GeoBbox | null> {
+    const bounds = query.bounds;
+    if (bounds?.northEast && bounds.southWest) {
+      const { northEast, southWest } = bounds;
+      if (
+        [northEast.lat, northEast.lng, southWest.lat, southWest.lng].every(
+          (value) => typeof value === 'number' && Number.isFinite(value),
+        )
+      ) {
+        // Wrap-aware mapping (place-geo R1): SW/NE longitudes map DIRECTLY —
+        // minLng > maxLng encodes an antimeridian-crossing viewport.
+        return {
+          minLat: Math.min(southWest.lat, northEast.lat),
+          maxLat: Math.max(southWest.lat, northEast.lat),
+          minLng: southWest.lng,
+          maxLng: northEast.lng,
+        };
+      }
+    }
+    const marketKey = query.marketKey?.trim();
+    if (!marketKey) {
+      return null;
+    }
+    const market = await this.prisma.market.findFirst({
+      where: { marketKey: { equals: marketKey, mode: 'insensitive' } },
+      select: {
+        bboxSwLat: true,
+        bboxSwLng: true,
+        bboxNeLat: true,
+        bboxNeLng: true,
       },
-      orderBy: orderedPollIds
-        ? undefined
-        : [{ launchedAt: 'desc' }, { scheduledFor: 'desc' }],
+    });
+    if (
+      !market ||
+      market.bboxSwLat == null ||
+      market.bboxSwLng == null ||
+      market.bboxNeLat == null ||
+      market.bboxNeLng == null
+    ) {
+      return null;
+    }
+    return {
+      minLat: Number(market.bboxSwLat),
+      minLng: Number(market.bboxSwLng),
+      maxLat: Number(market.bboxNeLat),
+      maxLng: Number(market.bboxNeLng),
+    };
+  }
+
+  /** §6/§2/§4: in-view membership + header verdict + descendant expansion. */
+  private async resolveViewportMembership(view: GeoBbox): Promise<{
+    placeIds: string[];
+    headerPlaceName: string | null;
+  }> {
+    const placesInView = await this.placesCatalog.placesInView(view);
+    const candidates: FeedPlaceCandidate[] = placesInView.map((entry) => ({
+      placeId: entry.place.placeId,
+      name: entry.place.name,
+      bbox: entry.bbox,
+      coverageOfView: entry.coverageOfView,
+      placeArea: entry.placeArea,
+    }));
+    // §4 feed half: only OVER-SCALE candidates ever need the structural
+    // subdivision+ judgment (a handful of ancestors per view).
+    const viewArea = bboxArea(view);
+    const bigPlaceIds = new Set<string>();
+    for (const candidate of candidates) {
+      if (
+        isTooBigForView(viewArea, candidate.placeArea) &&
+        (await isSubdivisionOrBigger(this.prisma, candidate.placeId))
+      ) {
+        bigPlaceIds.add(candidate.placeId);
+      }
+    }
+    const membership = resolveFeedMembership(view, candidates, bigPlaceIds);
+    const descendants = membership.subjectPlaceIds.length
+      ? await descendantPlaceIds(this.prisma, membership.subjectPlaceIds)
+      : [];
+    return {
+      placeIds: [...new Set([...membership.memberPlaceIds, ...descendants])],
+      headerPlaceName: membership.headerPlaceName,
+    };
+  }
+
+  /**
+   * INTERIM (Phase C removes): legacy marketKey-only poll rows are fed by
+   * their market's bbox intersecting the view. Legacy markets are plain
+   * (non-antimeridian) US metros, so the btree range test is exact here.
+   */
+  private async legacyMarketKeysInView(view: GeoBbox): Promise<string[]> {
+    const markets = await this.prisma.market.findMany({
+      where: {
+        isActive: true,
+        bboxSwLat: { lte: view.maxLat },
+        bboxNeLat: { gte: view.minLat },
+        bboxSwLng: { lte: view.maxLng },
+        bboxNeLng: { gte: view.minLng },
+      },
+      select: { marketKey: true },
+    });
+    return markets.map((market) => market.marketKey.toLowerCase());
+  }
+
+  /**
+   * One keyset page of poll ids for the feed, ordered per sort. The keyset
+   * tuple always closes with the immutable (created_at, poll_id) pair — see
+   * poll-feed-cursor.ts for the stability contract (rows inserting
+   * mid-pagination can neither skip nor duplicate).
+   */
+  private async queryFeedPage(params: {
+    state: PollState;
+    mode: PollMode | null;
+    launchedAfter: Date | null;
+    placeIds: string[];
+    marketKeys: string[];
+    sort: PollListSort;
+    limit: number;
+    cursor: PollFeedCursor | null;
+  }): Promise<{ pollIds: string[]; nextCursor: string | null }> {
+    const { state, mode, launchedAfter, placeIds, marketKeys, sort, limit } =
+      params;
+    if (!placeIds.length && !marketKeys.length) {
+      return { pollIds: [], nextCursor: null };
+    }
+    // §6 membership: place-keyed rows by placeId; legacy marketKey-only rows
+    // via their in-view market (placeId is the truth when both exist).
+    const filters = Prisma.sql`
+      p.state::text = ${state}
+      AND (${mode}::text IS NULL OR p.mode::text = ${mode}::text)
+      AND (${launchedAfter}::timestamptz IS NULL OR p.launched_at >= ${launchedAfter}::timestamptz)
+      AND (
+        p.place_id = ANY(${placeIds}::uuid[])
+        OR (
+          p.place_id IS NULL
+          AND p.market_key IS NOT NULL
+          AND LOWER(p.market_key) = ANY(${marketKeys}::text[])
+        )
+      )
+    `;
+
+    if (sort === PollListSort.new) {
+      const cursor =
+        params.cursor?.sort === PollListSort.new ? params.cursor : null;
+      const keyset = cursor
+        ? Prisma.sql`AND (p.created_at, p.poll_id) < (${new Date(cursor.createdAtMs)}, ${cursor.pollId}::uuid)`
+        : Prisma.empty;
+      const rows = await this.prisma.$queryRaw<
+        Array<{ poll_id: string; created_at: Date }>
+      >(Prisma.sql`
+        SELECT p.poll_id, p.created_at
+        FROM polls p
+        WHERE ${filters} ${keyset}
+        ORDER BY p.created_at DESC, p.poll_id DESC
+        LIMIT ${limit + 1}
+      `);
+      const page = rows.slice(0, limit);
+      const last = rows.length > limit ? page[page.length - 1] : null;
+      return {
+        pollIds: page.map((row) => row.poll_id),
+        nextCursor: last
+          ? encodePollFeedCursor({
+              sort: PollListSort.new,
+              createdAtMs: last.created_at.getTime(),
+              pollId: last.poll_id,
+            })
+          : null,
+      };
+    }
+
+    // Top/Trending: distinct-user engagement (a vote OR comment, once per
+    // user at their most-recent action). Trending weights by recency against
+    // the CURSOR'S reference epoch (decay-invariant paging — see
+    // poll-feed-cursor.ts).
+    const trending = sort === PollListSort.trending;
+    const refMs =
+      params.cursor?.sort === PollListSort.trending
+        ? params.cursor.refMs
+        : Date.now();
+    const metricExpr = trending
+      ? Prisma.sql`COALESCE(
+          SUM(
+            EXP(
+              -LN(2) / ${POLL_TRENDING_HALF_LIFE_DAYS}::float8
+              * (EXTRACT(EPOCH FROM (${new Date(refMs)}::timestamptz - en.last_ts)) / 86400.0)
+            )
+          ),
+          0
+        )`
+      : Prisma.sql`COUNT(en.user_id)::float8`;
+    const cursor =
+      params.cursor && params.cursor.sort !== PollListSort.new
+        ? params.cursor
+        : null;
+    const keyset = cursor
+      ? Prisma.sql`HAVING (${metricExpr}, p.created_at, p.poll_id) < (${cursor.metric}::float8, ${new Date(cursor.createdAtMs)}, ${cursor.pollId}::uuid)`
+      : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<
+      Array<{ poll_id: string; created_at: Date; metric: number }>
+    >(Prisma.sql`
+      WITH engagement AS (
+        SELECT poll_id, user_id, MAX(ts) AS last_ts
+        FROM (
+          SELECT poll_id, user_id, created_at AS ts FROM poll_endorsements
+          UNION ALL
+          SELECT poll_id, user_id, logged_at AS ts FROM poll_comments WHERE deleted_at IS NULL
+        ) events
+        GROUP BY poll_id, user_id
+      )
+      SELECT p.poll_id, p.created_at, ${metricExpr} AS metric
+      FROM polls p
+      LEFT JOIN engagement en ON en.poll_id = p.poll_id
+      WHERE ${filters}
+      GROUP BY p.poll_id, p.created_at
+      ${keyset}
+      ORDER BY metric DESC, p.created_at DESC, p.poll_id DESC
+      LIMIT ${limit + 1}
+    `);
+    const page = rows.slice(0, limit);
+    const last = rows.length > limit ? page[page.length - 1] : null;
+    return {
+      pollIds: page.map((row) => row.poll_id),
+      nextCursor: last
+        ? encodePollFeedCursor(
+            trending
+              ? {
+                  sort: PollListSort.trending,
+                  refMs,
+                  metric: Number(last.metric),
+                  createdAtMs: last.created_at.getTime(),
+                  pollId: last.poll_id,
+                }
+              : {
+                  sort: PollListSort.top,
+                  metric: Number(last.metric),
+                  createdAtMs: last.created_at.getTime(),
+                  pollId: last.poll_id,
+                },
+          )
+        : null,
+    };
+  }
+
+  /** Hydrate a feed page preserving SQL order, with labels + card stats. */
+  private async hydrateFeedPolls(
+    pollIds: string[],
+    viewerUserId?: string | null,
+  ) {
+    if (!pollIds.length) {
+      return [];
+    }
+    const polls = await this.prisma.poll.findMany({
+      where: { pollId: { in: pollIds } },
       include: {
         topic: {
           select: {
@@ -193,156 +497,94 @@ export class PollsService {
           },
         },
       },
-      take: 25,
     });
-
-    const ordered = orderedPollIds
-      ? orderedPollIds
-          .map((id) => polls.find((poll) => poll.pollId === id))
-          .filter((poll): poll is (typeof polls)[number] => poll != null)
-      : polls;
-
-    const enriched = await this.attachMarketLabels(ordered, targetMarketKey);
-    return this.attachPollStats(enriched, viewerUserId);
+    const byId = new Map(polls.map((poll) => [poll.pollId, poll]));
+    const ordered = pollIds
+      .map((id) => byId.get(id))
+      .filter((poll): poll is (typeof polls)[number] => poll != null);
+    const labeled = await this.attachPlaceLabels(
+      await this.attachMarketLabels(ordered),
+    );
+    return this.attachPollStats(labeled, viewerUserId);
   }
 
   /**
-   * Engagement-ordered poll ids for the Top/Trending sorts. Both build on distinct-
-   * user engagement (a vote OR comment), counted once per user at their most-recent
-   * action — so one user can't inflate a poll. Top = total distinct engagers;
-   * Trending = the same engagers weighted by recency ("heat", half-life
-   * POLL_TRENDING_HALF_LIFE_DAYS) so recent momentum dominates. Polls with no
-   * engagement fall to the bottom (heat/engagers = 0).
+   * §6 per-poll place labels: ONE batch place lookup for the page. Legacy
+   * marketKey rows keep their attachMarketLabels name; place-keyed rows also
+   * mirror placeName into marketName so pre-cut mobile renders a label.
    */
-  private async resolveEngagementOrderedPollIds(
-    state: PollState,
-    marketKey: string | null,
-    sort: PollListSort,
-    mode: PollMode | null,
-    launchedAfter: Date | null,
-  ): Promise<string[]> {
-    const orderExpr =
-      sort === PollListSort.trending
-        ? Prisma.sql`heat DESC, p.launched_at DESC NULLS LAST`
-        : Prisma.sql`engagers DESC, p.launched_at DESC NULLS LAST`;
-    const rows = await this.prisma.$queryRaw<
-      Array<{ poll_id: string }>
-    >(Prisma.sql`
-      WITH engagement AS (
-        SELECT poll_id, user_id, MAX(ts) AS last_ts
-        FROM (
-          SELECT poll_id, user_id, created_at AS ts FROM poll_endorsements
-          UNION ALL
-          SELECT poll_id, user_id, logged_at AS ts FROM poll_comments WHERE deleted_at IS NULL
-        ) events
-        GROUP BY poll_id, user_id
-      )
-      SELECT p.poll_id,
-             COALESCE(
-               SUM(
-                 EXP(
-                   -LN(2) / ${POLL_TRENDING_HALF_LIFE_DAYS}::float8
-                   * (EXTRACT(EPOCH FROM (NOW() - en.last_ts)) / 86400.0)
-                 )
-               ),
-               0
-             ) AS heat,
-             COUNT(en.user_id) AS engagers
-      FROM polls p
-      LEFT JOIN engagement en ON en.poll_id = p.poll_id
-      WHERE p.state::text = ${state}
-        AND (${marketKey}::text IS NULL OR p.market_key ILIKE ${marketKey})
-        AND (${mode}::text IS NULL OR p.mode::text = ${mode}::text)
-        AND (${launchedAfter}::timestamptz IS NULL OR p.launched_at >= ${launchedAfter}::timestamptz)
-      GROUP BY p.poll_id, p.launched_at
-      ORDER BY ${orderExpr}
-      LIMIT 25
-    `);
-    return rows.map((row) => row.poll_id);
+  private async attachPlaceLabels<
+    T extends { placeId?: string | null; marketName?: string | null },
+  >(polls: T[]): Promise<Array<T & { placeName: string | null }>> {
+    const placeIds = [
+      ...new Set(
+        polls
+          .map((poll) => poll.placeId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const places = placeIds.length
+      ? await this.prisma.place.findMany({
+          where: { placeId: { in: placeIds } },
+          select: { placeId: true, name: true },
+        })
+      : [];
+    const nameById = new Map(
+      places.map((place) => [place.placeId, place.name]),
+    );
+    return polls.map((poll) => {
+      const placeName = poll.placeId
+        ? (nameById.get(poll.placeId) ?? null)
+        : null;
+      return {
+        ...poll,
+        placeName,
+        marketName: poll.marketName ?? placeName,
+      };
+    });
   }
 
-  async queryPolls(query: QueryPollsDto, viewerUserId?: string | null) {
-    let resolvedMarket: Awaited<
-      ReturnType<MarketRegistryService['resolveViewportCoverage']>
-    > | null = null;
-    let marketKey = query.marketKey ?? null;
-    if (!marketKey && query.bounds) {
-      resolvedMarket = await this.marketRegistry.resolveViewportCoverage({
-        bounds: query.bounds,
-        userLocation: query.userLocation
-          ? {
-              lat: query.userLocation.lat,
-              lng: query.userLocation.lng,
-            }
-          : null,
-        mode: 'polls_read',
-        ensureLocalityMarkets: false,
-      });
-      marketKey = resolvedMarket.market?.marketKey ?? null;
-    } else if (!marketKey && query.userLocation) {
-      resolvedMarket = await this.marketRegistry.resolveViewportCoverage({
-        userLocation: {
-          lat: query.userLocation.lat,
-          lng: query.userLocation.lng,
-        },
-        mode: 'polls_read',
-        ensureLocalityMarkets: false,
-      });
-      marketKey = resolvedMarket.market?.marketKey ?? null;
-    }
-    if (!marketKey) {
-      return {
-        marketKey: null,
-        marketName: null,
-        marketStatus: resolvedMarket?.status ?? ('no_market' as const),
-        candidateLocalityName:
-          resolvedMarket?.resolution.candidateLocalityName ?? null,
-        candidateBoundaryProvider:
-          resolvedMarket?.resolution.candidateBoundaryProvider ?? null,
-        candidateBoundaryId:
-          resolvedMarket?.resolution.candidateBoundaryId ?? null,
-        candidateBoundaryType:
-          resolvedMarket?.resolution.candidateBoundaryType ?? null,
-        cta: resolvedMarket?.cta ?? {
-          kind: 'none' as const,
-          label: null,
-          prompt: null,
-        },
-        polls: [],
-      };
-    }
-    const polls = await this.listPolls(
-      {
-        marketKey: marketKey ?? undefined,
-        state: query.state,
-        sort: query.sort,
-        type: query.type,
-        time: query.time,
-      },
-      viewerUserId,
-    );
-    const marketName =
-      polls[0]?.marketName ??
-      resolvedMarket?.market?.marketShortName ??
-      resolvedMarket?.market?.marketName ??
-      (marketKey ? await this.resolveMarketNameForKey(marketKey) : null);
-
+  /**
+   * Feed response envelope. New contract: header (§2 verdict; null renders
+   * "Polls in this area"), typed cold-start promise (§6), nextCursor. The
+   * legacy fields exist ONLY for pre-cut mobile (marketName carries the
+   * header verdict; marketKey is dead) and are deleted with the mobile cut.
+   */
+  private buildFeedResponse(params: {
+    headerPlaceName: string | null;
+    polls: unknown[];
+    nextCursor: string | null;
+    promiseEligible: boolean;
+  }) {
+    const { headerPlaceName, polls, nextCursor } = params;
+    const promise =
+      params.promiseEligible && headerPlaceName
+        ? // Typed state only — "Polls drop Sundays — this town's first
+          // unlocks as people search and vote." is MOBILE copy (§6).
+          { kind: 'weekly_drop_pending' as const, placeName: headerPlaceName }
+        : null;
     return {
-      marketKey,
-      marketName,
-      marketStatus: resolvedMarket?.status ?? 'resolved',
+      header: { placeName: headerPlaceName },
+      promise,
+      polls,
+      nextCursor,
+      // ─── legacy envelope (pre-cut mobile; dies with the mobile cut) ───
+      marketKey: null,
+      marketName: headerPlaceName,
+      marketStatus: 'resolved' as const,
       candidateLocalityName: null,
       candidateBoundaryProvider: null,
       candidateBoundaryId: null,
       candidateBoundaryType: null,
-      cta: resolvedMarket?.cta ?? {
+      cta: {
         kind: 'create_poll' as const,
-        label: marketName ? `Create a poll for ${marketName}` : 'Create a poll',
-        prompt: marketName
-          ? `Create a poll for ${marketName}`
+        label: headerPlaceName
+          ? `Create a poll for ${headerPlaceName}`
+          : 'Create a poll',
+        prompt: headerPlaceName
+          ? `Create a poll for ${headerPlaceName}`
           : 'Create a poll',
       },
-      polls,
     };
   }
 
@@ -2161,32 +2403,6 @@ export class PollsService {
         },
       };
     });
-  }
-
-  private async resolveMarketNameForKey(
-    marketKey: string,
-  ): Promise<string | null> {
-    const normalized = marketKey.trim().toLowerCase();
-    if (!normalized) {
-      return null;
-    }
-
-    const market = await this.prisma.market.findFirst({
-      where: {
-        marketKey: { equals: normalized, mode: 'insensitive' },
-      },
-      select: {
-        marketKey: true,
-        marketName: true,
-        marketShortName: true,
-      },
-    });
-
-    if (market) {
-      return this.resolveMarketLabel(market);
-    }
-
-    return null;
   }
 
   private resolveMarketLabel(row: {

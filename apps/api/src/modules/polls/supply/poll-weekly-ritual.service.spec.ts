@@ -104,7 +104,7 @@ function createHarness(
     subjectDemandMass: jest.fn().mockResolvedValue(options.subjects ?? []),
   };
   const notifications = {
-    queuePollReleaseNotification: jest.fn().mockResolvedValue(undefined),
+    queuePollReleaseForPlace: jest.fn().mockResolvedValue(undefined),
   };
   const service = new PollWeeklyRitualService(
     prisma as never,

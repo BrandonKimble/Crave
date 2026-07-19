@@ -14,7 +14,6 @@ import type { User } from '@prisma/client';
 import { PollsService } from './polls.service';
 import { RestaurantMentionsService } from './restaurant-mentions.service';
 import { RestaurantMentionsQueryDto } from './dto/restaurant-mentions.dto';
-import { ListPollsQueryDto } from './dto/list-polls.dto';
 import { ListUserPollsDto } from './dto/list-user-polls.dto';
 import {
   CreateCommentDto,
@@ -40,15 +39,8 @@ export class PollsController {
     private readonly blocks: UserBlockService,
   ) {}
 
-  @Get()
-  @UseGuards(OptionalClerkAuthGuard)
-  listPolls(
-    @Query() query: ListPollsQueryDto,
-    @CurrentUser() user?: User | null,
-  ) {
-    return this.pollsService.listPolls(query, user?.userId ?? null);
-  }
-
+  // The legacy market-keyed GET / feed is DEAD (§22 item 5): the feed is the
+  // viewport-scoped POST /polls/query below (places-in-view + cursor).
   @Post('query')
   @UseGuards(OptionalClerkAuthGuard)
   queryPolls(@Body() body: QueryPollsDto, @CurrentUser() user?: User | null) {

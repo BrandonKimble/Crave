@@ -13,6 +13,7 @@ import { LLMModule } from '../external-integrations/llm/llm.module';
 import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 import { SignalsModule } from '../signals/signals.module';
+import { PlacesModule } from '../places/places.module';
 import { PollsService } from './polls.service';
 import { PollsController } from './polls.controller';
 import { PollsGateway } from './polls.gateway';
@@ -43,6 +44,8 @@ import { PollBallotMentionService } from './supply/poll-ballot-mention.service';
     EntityTextSearchModule,
     RedditCollectorModule,
     SignalsModule,
+    // §22 item 5: the feed reads the place catalog (placesInView + §2 law).
+    PlacesModule,
   ],
   controllers: [PollsController],
   providers: [

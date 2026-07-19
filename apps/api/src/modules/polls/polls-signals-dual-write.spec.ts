@@ -98,6 +98,7 @@ function createHarness(options: { alreadyEndorsed?: boolean } = {}) {
     {} as never, // llmService
     {} as never, // entityTextSearch
     signals, // signals ledger (§3 dual-write)
+    {} as never, // placesCatalog (feed-only; unused in this spec)
   );
   const internals = service as unknown as {
     rebuildPollLeaderboard: (pollId: string) => Promise<void>;

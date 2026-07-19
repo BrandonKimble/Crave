@@ -1,5 +1,3 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
-
 export enum PollListState {
   active = 'active',
   scheduled = 'scheduled',
@@ -35,24 +33,5 @@ export enum PollListTime {
   this_month = 'this_month',
 }
 
-export class ListPollsQueryDto {
-  @IsOptional()
-  @IsString()
-  marketKey?: string;
-
-  @IsOptional()
-  @IsEnum(PollListState)
-  state?: PollListState;
-
-  @IsOptional()
-  @IsEnum(PollListSort)
-  sort?: PollListSort;
-
-  @IsOptional()
-  @IsEnum(PollListType)
-  type?: PollListType;
-
-  @IsOptional()
-  @IsEnum(PollListTime)
-  time?: PollListTime;
-}
+// The legacy market-keyed ListPollsQueryDto died with the §22 item-5 feed
+// cut — the feed request is QueryPollsDto (viewport bounds + cursor).
