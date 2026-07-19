@@ -4,7 +4,6 @@ import {
   IsBoolean,
   IsInt,
   IsOptional,
-  IsString,
   Max,
   Min,
   ValidateNested,
@@ -31,10 +30,6 @@ export class ShortcutCoverageRequestDto {
   @IsOptional()
   @IsBoolean()
   includeTopDish?: boolean;
-
-  @IsOptional()
-  @IsString()
-  marketKey?: string;
 
   // TR5-N (map follows the active variant): the coverage/dots layer applies the SAME filter
   // state as the ranked results, so a filtered rerun (open-now / price / rising) re-shapes the

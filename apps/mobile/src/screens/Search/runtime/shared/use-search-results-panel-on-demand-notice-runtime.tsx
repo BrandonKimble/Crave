@@ -49,7 +49,12 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
           etaText = hours === 1 ? 'about 1 hour' : `about ${hours} hours`;
         }
       }
-      const areaLabel = displayName ?? candidateLocalityName ?? 'this area';
+      // Name the market only when exactly one collectable market is in play;
+      // several -> "this area" (collection fans out; naming one would lie).
+      const areaLabel =
+        collectableMarketCount > 1
+          ? 'this area'
+          : (displayName ?? candidateLocalityName ?? 'this area');
       const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
       const suffix = etaText ? ` Check back in ${etaText}.` : ' Check back soon.';
       noticeText = `Your search${searchLabel} is helping us grow coverage in ${areaLabel}. More searches like this help us learn what people want here.${suffix} Create a poll to get answers faster.`;

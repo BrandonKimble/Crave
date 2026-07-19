@@ -14,6 +14,7 @@ import {
 } from './utils/restaurant-status';
 
 type CoverageRestaurantRow = {
+  location_id?: string | null;
   restaurant_id: string;
   restaurant_name: string;
   longitude: unknown;
@@ -139,8 +140,6 @@ export class SearchCoverageService {
     const maxLng = Math.max(swLng, neLng);
     const minLat = Math.min(swLat, neLat);
     const maxLat = Math.max(swLat, neLat);
-    const centerLng = (minLng + maxLng) / 2;
-    const centerLat = (minLat + maxLat) / 2;
 
     // SCREEN-ACCURATE viewport polygon (same as /search/run): the bounds BETWEEN above is the cheap
     // bbox pre-filter (mobile sends bounds = the polygon's bbox), and this ST_Covers trims the
@@ -232,7 +231,10 @@ export class SearchCoverageService {
           ${viewportPolygonFilterSql}
       ),
       selected_locations AS (
-        SELECT DISTINCT ON (cl.restaurant_id)
+        -- Dots are PER LOCATION (master plan §7): every eligible in-view
+        -- location is a dot; the mobile LOD group budget (keyed restaurantId)
+        -- owns pin-vs-dot demotion for multi-location restaurants.
+        SELECT
           cl.restaurant_id,
           cl.location_id,
           cl.longitude,
@@ -241,10 +243,6 @@ export class SearchCoverageService {
           cl.utc_offset_minutes,
           cl.time_zone
         FROM candidate_locations cl
-        ORDER BY
-          cl.restaurant_id,
-          POWER(cl.latitude - ${centerLat}, 2) + POWER(cl.longitude - ${centerLng}, 2) ASC,
-          cl.updated_at DESC
       ),
       geographic_restaurants AS (
         SELECT DISTINCT restaurant_id
@@ -262,6 +260,7 @@ export class SearchCoverageService {
       )
       SELECT
         e.entity_id AS restaurant_id,
+        pl.location_id AS location_id,
         e.name AS restaurant_name,
         pl.longitude AS longitude,
         pl.latitude AS latitude,
@@ -377,12 +376,22 @@ export class SearchCoverageService {
           const publicScoreExact = includeTopDish
             ? topFoodCraveScoreExact
             : craveScoreExact;
+          const locationId =
+            typeof row.location_id === 'string' && row.location_id.length
+              ? row.location_id
+              : null;
           return {
             type: 'Feature',
-            id: row.restaurant_id,
+            // Per-location identity: one dot per LOCATION (multi-location
+            // restaurants emit N features sharing restaurantId — the mobile
+            // visual-identity key is restaurantId:lng:lat, so they coexist).
+            id: locationId
+              ? `${row.restaurant_id}:${locationId}`
+              : row.restaurant_id,
             geometry: { type: 'Point', coordinates: [longitude, latitude] },
             properties: {
               restaurantId: row.restaurant_id,
+              locationId: locationId ?? undefined,
               restaurantName: row.restaurant_name,
               craveScore: publicScore,
               craveScoreExact: publicScoreExact ?? undefined,
