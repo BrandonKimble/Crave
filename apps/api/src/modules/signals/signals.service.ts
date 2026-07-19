@@ -251,7 +251,44 @@ export class SignalsService {
     }
   }
 
+  /**
+   * Zero-area bbox for a FOOD entity: the food's most-evidenced restaurant
+   * connection resolves the restaurant, whose location provides the point.
+   * Never rejects — safe to pass un-awaited as RecordSignalInput.geo.
+   */
+  async bboxFromFoodLocation(foodId: string): Promise<SignalBbox | null> {
+    try {
+      const connection = await this.prisma.connection.findFirst({
+        where: { foodId },
+        orderBy: { mentionCount: 'desc' },
+        select: { restaurantId: true },
+      });
+      if (!connection) {
+        return null;
+      }
+      return await this.bboxFromRestaurantLocation({
+        restaurantId: connection.restaurantId,
+      });
+    } catch (error) {
+      this.logger.debug('Food connection bbox lookup failed', {
+        foodId,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return null;
+    }
+  }
+
   private async persist(input: RecordSignalInput): Promise<void> {
+    // Normalize geo BEFORE any early return: a caller-supplied geo promise
+    // that rejects must never become an unhandled rejection just because an
+    // early return (e.g. no actor) skipped the await. Rejection -> null,
+    // matching the never-reject law of the bbox helpers.
+    const geoPromise = Promise.resolve(input.geo).catch(
+      (): SignalBbox | null => null,
+    );
+
     const actorId = await this.resolveActorId(
       input.userId ?? null,
       input.deviceKey ?? null,
@@ -263,7 +300,7 @@ export class SignalsService {
       return;
     }
 
-    const geo = await Promise.resolve(input.geo);
+    const geo = await geoPromise;
     if (!geo) {
       this.skipOnce(`${input.kind}:no-geo`, 'Signal skipped: no geo bbox', {
         kind: input.kind,

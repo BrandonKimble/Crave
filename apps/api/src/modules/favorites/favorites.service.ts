@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { FavoriteEventKind, Prisma } from '@prisma/client';
+import { EntityType, FavoriteEventKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { SignalsService } from '../signals/signals.service';
@@ -151,8 +151,11 @@ export class FavoritesService {
     if (createdNew) {
       // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
       // §3 signals: the favorite_added act beside userFavoriteEvent above.
-      // Geo = the saved location's point, else the entity's primary location
-      // (restaurants only — a food favorite without a location skips).
+      // Geo = the saved location's point, else the entity's primary
+      // restaurant location (a FOOD favorite resolves its restaurant via the
+      // food's most-evidenced connection — a food entityId is not a
+      // restaurantId, and the ledger is append-only: a favorite written
+      // without geo can never be backfilled).
       this.signals.record({
         kind: 'favorite_added',
         userId,
@@ -162,9 +165,11 @@ export class FavoritesService {
               validatedLocationPoint.lat,
               validatedLocationPoint.lng,
             )
-          : this.signals.bboxFromRestaurantLocation({
-              restaurantId: entity.entityId,
-            }),
+          : entity.type === EntityType.food
+            ? this.signals.bboxFromFoodLocation(entity.entityId)
+            : this.signals.bboxFromRestaurantLocation({
+                restaurantId: entity.entityId,
+              }),
         meta: { locationId: validatedLocationId ?? undefined },
       });
     }

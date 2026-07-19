@@ -1713,13 +1713,20 @@ export class PollsService {
       // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
       // §3 signals: an endorsement IS the poll vote act (append-only ledger —
       // un-endorsing removes the endorsement row, never the signal). Geo =
-      // the poll market's bbox (skip-with-debug when unresolvable).
+      // the poll market's bbox (skip-with-debug when unresolvable). Meta
+      // carries the endorsed candidate itself: the mutable pollEndorsement
+      // row can be deleted, so the ledger must hold WHAT was voted for, not
+      // just which poll.
       this.signals.record({
         kind: 'poll_vote',
         userId,
         subject: this.pollSignalSubject(poll),
         geo: this.signals.bboxFromMarketKey(poll.marketKey),
-        meta: { pollId },
+        meta: {
+          pollId,
+          endorsedSubjectId: subjectId,
+          endorsedSubjectType: subjectType,
+        },
       });
     }
 

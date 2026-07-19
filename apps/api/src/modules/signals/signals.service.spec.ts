@@ -31,6 +31,7 @@ function createPrisma() {
     },
     market: { findFirst: jest.fn().mockResolvedValue(null) },
     restaurantLocation: { findFirst: jest.fn().mockResolvedValue(null) },
+    connection: { findFirst: jest.fn().mockResolvedValue(null) },
   };
 }
 
@@ -199,6 +200,40 @@ describe('SignalsService write shape', () => {
     await flush();
     expect(prisma.signal.create).toHaveBeenCalledTimes(1);
   });
+
+  it('a rejecting geo promise NEVER becomes an unhandled rejection — even on the no-actor early return', async () => {
+    const unhandled: unknown[] = [];
+    const listener = (reason: unknown) => {
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', listener);
+    try {
+      const { service, prisma } = createService();
+
+      // No-actor path: persist() returns before the geo await — the geo
+      // promise must already be normalized or its rejection goes unhandled.
+      service.record({
+        kind: 'search',
+        geo: Promise.reject(new Error('geo lookup exploded')),
+      });
+      await flush();
+
+      // With-actor path: the rejection normalizes to null -> no-geo skip.
+      service.record({
+        kind: 'search',
+        userId: USER_ID,
+        geo: Promise.reject(new Error('geo lookup exploded')),
+      });
+      await flush();
+      expect(prisma.signal.create).not.toHaveBeenCalled();
+
+      // Let the event loop surface any unhandled rejections.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.removeListener('unhandledRejection', listener);
+    }
+  });
 });
 
 describe('SignalsService fire-and-forget law (a write failure never fails the act)', () => {
@@ -310,5 +345,47 @@ describe('SignalsService restaurant-location bbox lookup', () => {
         restaurantId: RESTAURANT_ID,
       }),
     ).toBeNull();
+  });
+});
+
+describe('SignalsService food-location bbox lookup (via connection)', () => {
+  it('resolves the food -> most-evidenced connection -> restaurant location', async () => {
+    const { service, prisma } = createService();
+    prisma.connection.findFirst.mockResolvedValue({
+      restaurantId: RESTAURANT_ID,
+    });
+    prisma.restaurantLocation.findFirst.mockResolvedValue({
+      latitude: '30.25',
+      longitude: '-97.75',
+    });
+
+    expect(await service.bboxFromFoodLocation(ENTITY_ID)).toEqual({
+      minLat: 30.25,
+      maxLat: 30.25,
+      minLng: -97.75,
+      maxLng: -97.75,
+    });
+    expect(prisma.connection.findFirst).toHaveBeenCalledWith({
+      where: { foodId: ENTITY_ID },
+      orderBy: { mentionCount: 'desc' },
+      select: { restaurantId: true },
+    });
+    expect(prisma.restaurantLocation.findFirst).toHaveBeenCalledWith({
+      where: {
+        restaurantId: RESTAURANT_ID,
+        latitude: { not: null },
+        longitude: { not: null },
+      },
+      orderBy: { isPrimary: 'desc' },
+      select: { latitude: true, longitude: true },
+    });
+  });
+
+  it('returns null (never rejects) when the food has no connection or the DB fails', async () => {
+    const { service, prisma } = createService();
+    expect(await service.bboxFromFoodLocation(ENTITY_ID)).toBeNull();
+
+    prisma.connection.findFirst.mockRejectedValue(new Error('db down'));
+    expect(await service.bboxFromFoodLocation(ENTITY_ID)).toBeNull();
   });
 });

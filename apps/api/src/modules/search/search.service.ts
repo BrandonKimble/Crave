@@ -2558,6 +2558,7 @@ export class SearchService {
   private recordSearchSignals(
     request: SearchQueryRequestDto,
     context: {
+      searchRequestId: string;
       totalResults: number;
       totalRestaurantResults: number;
     },
@@ -2566,6 +2567,9 @@ export class SearchService {
     const geo = this.signals.bboxFromBounds(request.bounds ?? null);
     const primaryEntityId = targets[0]?.entityId ?? null;
     const queryText = request.sourceQuery?.trim() ?? '';
+    // meta.searchRequestId: the client-suppliable submit id (the old writer's
+    // idempotency key). The ledger is append-only, so a client retry writes a
+    // second row — readers dedupe on this id (§3 judge-at-read).
     this.signals.record({
       kind: 'search',
       userId: request.userId ?? null,
@@ -2576,6 +2580,7 @@ export class SearchService {
           : null,
       geo,
       meta: {
+        searchRequestId: context.searchRequestId,
         resultCount: context.totalResults,
         restaurantCount: context.totalRestaurantResults,
         cached: false,
@@ -2591,6 +2596,7 @@ export class SearchService {
         userId: request.userId ?? null,
         subject: { entityId: selectedEntityId },
         geo,
+        meta: { searchRequestId: context.searchRequestId },
       });
     }
   }
@@ -2832,7 +2838,6 @@ export class SearchService {
   ): Promise<{ inserted: number }> {
     const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
     if (
-      !this.searchLogEnabled ||
       !normalizedUserId ||
       dto.originalBackendSearchRequestId === dto.cacheRevealRequestId
     ) {
@@ -2846,9 +2851,8 @@ export class SearchService {
       throw new BadRequestException('cacheRevealRequestId is required');
     }
 
-    // Clone the server-owned backend event (and its attribution rows) into a
-    // fresh cache-reveal event. Never trust client-supplied attribution.
-    // Idempotent on retry: if this reveal id was already cloned, do nothing.
+    // Idempotent on retry (both writers): if this reveal id was already
+    // cloned into a search event, the reveal is already on record.
     const alreadyRevealed = await this.prisma.searchEvent.findUnique({
       where: { searchRequestId: cacheRevealRequestId },
       select: { eventId: true },
@@ -2866,7 +2870,46 @@ export class SearchService {
       include: { entities: true },
     });
 
-    if (!original || original.entities.length === 0) {
+    if (!original) {
+      return { inserted: 0 };
+    }
+
+    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+    // §3 signals: a cache reveal is the same search ACT with meta.cached=true.
+    // The ledger is append-only — a reveal never written can never be
+    // backfilled — so this fires for ANY successful reveal: with a term
+    // subject when the original carried no entity attribution, and NEVER
+    // gated on the legacy searchLogEnabled flag (that flag governs only the
+    // old writer below). The reveal request carries no viewport bounds
+    // server-side, so geo falls back to the original event's primary-market
+    // bbox (skip-with-debug when the market is unknown).
+    // meta.cacheRevealRequestId identifies this reveal, so concurrent
+    // duplicate reveals are read-time dedupable (§3 judge-at-read).
+    const cacheSubjectEntityId = original.entities[0]?.entityId ?? null;
+    const cacheQueryText = original.queryText?.trim() ?? '';
+    this.signals.record({
+      kind: 'search',
+      userId: normalizedUserId,
+      subject: cacheSubjectEntityId
+        ? { entityId: cacheSubjectEntityId }
+        : cacheQueryText.length
+          ? { term: cacheQueryText }
+          : null,
+      geo: this.signals.bboxFromMarketKey(original.primaryMarketKey),
+      meta: {
+        cacheRevealRequestId,
+        originalBackendSearchRequestId: dto.originalBackendSearchRequestId,
+        resultCount: original.totalResults,
+        restaurantCount: original.totalRestaurantResults,
+        cached: true,
+        resolvedEntityId: cacheSubjectEntityId ?? undefined,
+      },
+    });
+
+    // OLD WRITER (its own gates, behavior unchanged): clone the server-owned
+    // backend event (and its attribution rows) into a fresh cache-reveal
+    // event. Never trust client-supplied attribution.
+    if (!this.searchLogEnabled || original.entities.length === 0) {
       return { inserted: 0 };
     }
 
@@ -2930,30 +2973,6 @@ export class SearchService {
             })),
           },
         },
-      },
-    });
-
-    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
-    // §3 signals: a cache reveal is the same search ACT with meta.cached=true.
-    // The reveal request carries no viewport bounds server-side, so geo falls
-    // back to the original event's primary-market bbox (skip-with-debug when
-    // the market is unknown).
-    const cacheSubjectEntityId = original.entities[0]?.entityId ?? null;
-    const cacheQueryText = original.queryText?.trim() ?? '';
-    this.signals.record({
-      kind: 'search',
-      userId: normalizedUserId,
-      subject: cacheSubjectEntityId
-        ? { entityId: cacheSubjectEntityId }
-        : cacheQueryText.length
-          ? { term: cacheQueryText }
-          : null,
-      geo: this.signals.bboxFromMarketKey(original.primaryMarketKey),
-      meta: {
-        resultCount: original.totalResults,
-        restaurantCount: original.totalRestaurantResults,
-        cached: true,
-        resolvedEntityId: cacheSubjectEntityId ?? undefined,
       },
     });
 
