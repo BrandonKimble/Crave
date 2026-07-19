@@ -238,7 +238,7 @@ export class SearchQueryBuilder {
     const publicRestaurantScoresCte = this.buildPublicRestaurantScoresCte();
     const publicConnectionScoresCte = this.buildPublicConnectionScoresCte();
 
-    const locationAggregatesCte = this.buildLocationAggregatesCte();
+    const locationAggregatesCte = this.buildLocationAggregatesCte(searchCenter);
 
     // Build minimum votes where clause for main query
     const minimumVotesWhereSql = filters.minimumVotes
@@ -1563,61 +1563,81 @@ public_connection_scores AS (
     return { sql, preview };
   }
 
-  private buildLocationAggregatesCte(): {
+  private buildLocationAggregatesCte(
+    searchCenter?: { lat: number; lng: number } | null,
+  ): {
     sql: Prisma.Sql;
     preview: string;
   } {
     // Locations are a fact about the restaurant, not the viewport or any
-    // market (master plan §7): the aggregate is GLOBAL. The map's off-screen
-    // sibling machinery depends on this being wider than the viewport.
-    const marketFilterSql = Prisma.sql`
-        WHERE rl.latitude IS NOT NULL
-          AND rl.longitude IS NOT NULL
-          AND rl.google_place_id IS NOT NULL
-          AND rl.address IS NOT NULL
-      `;
-    const marketFilterPreview = `WHERE rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL AND rl.google_place_id IS NOT NULL AND rl.address IS NOT NULL`;
+    // market (master plan §7): the aggregate is GLOBAL — the map's off-screen
+    // sibling machinery depends on it being wider than the viewport — but the
+    // ARRAY is capped at the nearest ~30 to the search center so a national
+    // chain's row doesn't ship 100KB of JSON. location_count stays the TRUE
+    // global count (the suggestions chip semantics).
+    const hasCenter =
+      !!searchCenter &&
+      Number.isFinite(searchCenter.lat) &&
+      Number.isFinite(searchCenter.lng);
+    const proximityOrderSql = hasCenter
+      ? Prisma.sql`(POWER(rl.latitude - ${searchCenter.lat}, 2) + POWER(rl.longitude - ${searchCenter.lng}, 2)) ASC, rl.updated_at DESC`
+      : Prisma.sql`rl.updated_at DESC`;
     const sql = Prisma.sql`
 location_aggregates AS (
   SELECT
-    rl.restaurant_id,
-    COUNT(*) AS location_count,
+    ranked_locations.restaurant_id,
+    MAX(ranked_locations.total_location_count) AS location_count,
     json_agg(
       jsonb_build_object(
-        'locationId', rl.location_id,
-        'googlePlaceId', rl.google_place_id,
-        'latitude', rl.latitude,
-        'longitude', rl.longitude,
-        'address', rl.address,
-        'city', rl.city,
-        'region', rl.region,
-        'country', rl.country,
-        'postalCode', rl.postal_code,
-        'phoneNumber', rl.phone_number,
-        'websiteUrl', rl.website_url,
-        'hours', rl.hours,
-        'utcOffsetMinutes', rl.utc_offset_minutes,
-        'timeZone', rl.time_zone,
-        'isPrimary', rl.is_primary,
-        'lastPolledAt', rl.last_polled_at,
-        'createdAt', rl.created_at,
-        'updatedAt', rl.updated_at
+        'locationId', ranked_locations.location_id,
+        'googlePlaceId', ranked_locations.google_place_id,
+        'latitude', ranked_locations.latitude,
+        'longitude', ranked_locations.longitude,
+        'address', ranked_locations.address,
+        'city', ranked_locations.city,
+        'region', ranked_locations.region,
+        'country', ranked_locations.country,
+        'postalCode', ranked_locations.postal_code,
+        'phoneNumber', ranked_locations.phone_number,
+        'websiteUrl', ranked_locations.website_url,
+        'hours', ranked_locations.hours,
+        'utcOffsetMinutes', ranked_locations.utc_offset_minutes,
+        'timeZone', ranked_locations.time_zone,
+        'isPrimary', ranked_locations.is_primary,
+        'lastPolledAt', ranked_locations.last_polled_at,
+        'createdAt', ranked_locations.created_at,
+        'updatedAt', ranked_locations.updated_at
       )
-      ORDER BY rl.updated_at DESC
-    ) AS locations_json
-  FROM core_restaurant_locations rl
-  JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
-  ${marketFilterSql}
-  GROUP BY rl.restaurant_id
+      ORDER BY ranked_locations.location_rank ASC
+    ) FILTER (WHERE ranked_locations.location_rank <= 30) AS locations_json
+  FROM (
+    SELECT
+      rl.*,
+      ROW_NUMBER() OVER (
+        PARTITION BY rl.restaurant_id
+        ORDER BY ${proximityOrderSql}
+      ) AS location_rank,
+      COUNT(*) OVER (PARTITION BY rl.restaurant_id) AS total_location_count
+    FROM core_restaurant_locations rl
+    JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
+    WHERE rl.latitude IS NOT NULL
+      AND rl.longitude IS NOT NULL
+      AND rl.google_place_id IS NOT NULL
+      AND rl.address IS NOT NULL
+  ) ranked_locations
+  GROUP BY ranked_locations.restaurant_id
 )`;
 
     const preview = `
 location_aggregates AS (
-  SELECT rl.restaurant_id, COUNT(*) AS location_count, json_agg(...) AS locations_json
-  FROM core_restaurant_locations rl
-  JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
-  ${marketFilterPreview}
-  GROUP BY rl.restaurant_id
+  SELECT restaurant_id, MAX(total_location_count) AS location_count,
+         json_agg(...) FILTER (WHERE location_rank <= 30) AS locations_json
+  FROM (SELECT rl.*, ROW_NUMBER() OVER (PARTITION BY rl.restaurant_id ORDER BY ${
+    hasCenter ? 'proximity-to-search-center' : 'updated_at DESC'
+  }) AS location_rank, COUNT(*) OVER (PARTITION BY rl.restaurant_id) AS total_location_count
+        FROM core_restaurant_locations rl JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
+        WHERE lat/lng/place/address NOT NULL) ranked_locations
+  GROUP BY restaurant_id
 )`.trim();
 
     return { sql, preview };

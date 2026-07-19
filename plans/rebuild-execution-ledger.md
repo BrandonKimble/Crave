@@ -70,6 +70,29 @@ agent in flight at turn end so completion notifications chain turns.
 - Leg 2 SERVER starting while agent owns apps/mobile: profile decoupling,
   aggregates cap-30-nearest, row market_key stamps + directives cleanup.
 
+## Leg 2 breakdown + status
+
+- [x] Server: profile+dishes decoupled; row stamps + directives deleted;
+      city slice = assembler pre-filter (test updated) — in 372dc415.
+- [x] Server: locations array capped 30-nearest-to-searchCenter, count stays
+      global (windowed CTE) — uncommitted with this batch.
+- [x] Leg 1 tail in efe845c5: per-location dots (feature id
+      restaurantId:locationId), coverage dto marketKey deleted, notice rule.
+- [ ] AGENT: mobile profile decouple (drop marketKey from restaurantProfile
+      service + cache key + profile-open/preview/runtime-action-execution +
+      panel-seed + hydration + contracts + launch intents; shared row-level
+      marketKey fields die) + RestaurantPanel all-locations UI (distance-
+      sorted-to-tap, nearest ~3 expanded, "N more" collapsed).
+- [ ] ME (precious map surface): single-location selection —
+      search-map.tsx highlightedMarkerKeys → tapped key only;
+      map-read-model-builder shouldRenderAllLocations branch deleted.
+- [ ] Favorites/history locationId (prisma migration + save flows + list
+      detail single pin) — own commit; migration => API rebuild+restart.
+- [ ] See-locations mode (server variant + "See locations" chip) — after.
+- [ ] Fame-pin interim (scoring territory preference) in
+      restaurant-location-selection.ts + server display-location order.
+- Red team on 372dc415 in flight — fold findings when it lands.
+
 ## Decisions log (append as made)
 
 - 2026-07-16: interpreted owner's "recorded in git and recoverable" as
