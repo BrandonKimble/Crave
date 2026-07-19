@@ -93,6 +93,34 @@ agent in flight at turn end so completion notifications chain turns.
       restaurant-location-selection.ts + server display-location order.
 - Red team on 372dc415 in flight — fold findings when it lands.
 
+## COMMIT LOG (recovery points)
+
+- 95b7f10b baseline (plans+ledger) · 372dc415 Leg1+Leg2-server ·
+  efe845c5 Leg1 tail (per-location dots, dto field, notice) ·
+  afae0e37 cap-30 aggregates · 47b81105 slice explicitOrder fix (red team) ·
+  b1f773cf Leg 2 core (profile decouple, single-location selection,
+  favorites locationId schema+flows+saved-pin projection).
+
+## REMAINING Leg 2 (then Phase A per §22)
+
+- [ ] Mobile save flows PASS locationId (favorites add + list add-item call
+      sites — the dto accepts it; find mobile save actions and thread the
+      in-context locationId from row/profile displayLocation).
+- [ ] Recently-viewed locationId + address labels (history records + display;
+      earned address suggestions come with See-locations work).
+- [ ] See-locations mode: server lean variant (restaurantId+viewport →
+      locations as pins) + autocomplete chip relabel "See locations" +
+      tap = run mode. (Suggestion chip file: SearchSuggestions.tsx;
+      autocomplete locationCount plumbing deletion comes with it.)
+- [ ] Fame-pin interim: prefer locations inside scoring_market_key territory
+      (server display-location DISTINCT ON order + mobile
+      restaurant-location-selection.ts) — re-keyed to source anchor in
+      Phase B.
+- [ ] Red team b1f773cf (spawned) — fold findings.
+- NOTE: migration applied via manual SQL + migrate resolve (dev DB has known
+  drift; prisma migrate dev wants reset — do NOT reset, corpus is expensive).
+  API on :3000 restarted with new binary at 05:34.
+
 ## Decisions log (append as made)
 
 - 2026-07-16: interpreted owner's "recorded in git and recoverable" as
