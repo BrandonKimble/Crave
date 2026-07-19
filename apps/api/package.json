@@ -53,7 +53,6 @@
     "polls:seed-fixtures": "ts-node scripts/seed-poll-fixtures.ts",
     "places:seed-us": "ts-node scripts/seed-us-places.ts",
     "search-demand:rebuild": "ts-node scripts/rebuild-search-demand-daily.ts",
-    "search-demand:fixtures": "ts-node scripts/validate-demand-scoring-fixtures.ts",
     "replay:extraction": "ts-node scripts/replay-extraction-run.ts"
   },
   "dependencies": {
