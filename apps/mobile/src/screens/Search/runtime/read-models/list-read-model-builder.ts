@@ -23,12 +23,22 @@ export type ResultsMountedRestaurantCardRow = {
   preparedDescriptor: RestaurantResultCardDescriptor;
 };
 
+/** THE PENDING BLOCK (skeleton-sheet law §1): while a redraw episode is live the list's
+ *  data IS this one full-viewport cutout item — the sheet scrolls/drag normally over it,
+ *  and the reveal is a data swap in the same fence-release commit that lands the rows. */
+export type ResultsPendingBlockRow = {
+  kind: 'results_pending_block';
+  key: string;
+  rowType: 'restaurant' | 'dish';
+};
+
 export type ResultsListItem =
   | FoodResult
   | RestaurantResult
   | ResultsMountedRestaurantCardRow
   | ResultsSectionRow
-  | ResultsShowMoreRow;
+  | ResultsShowMoreRow
+  | ResultsPendingBlockRow;
 
 const EMPTY_DISHES: FoodResult[] = [];
 const EMPTY_RESTAURANTS: RestaurantResult[] = [];

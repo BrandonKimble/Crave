@@ -110,5 +110,14 @@ check_eq "hand-rolled isLoadFailed in listDetail" 0 \
 check_eq "frostBacking-from-bodySurface derivation sites (foundation only)" 1 \
   "$(grep -rlE "frostBacking.*bodySurface|bodySurface.*frostBacking" $SRC --include='*.ts' --include='*.tsx' 2>/dev/null | grep -v '\.spec\.' | wc -l | tr -d ' ')"
 
+echo "=== THE PENDING BLOCK (search family) — the cover classes stay dead ==="
+check_eq "pinned results loading cover references" 0 \
+  "$(file_count 'resultsLoadingCoverSurface\|results-loading-cover' $SRC)"
+check_eq "rows-visibility level references" 0 \
+  "$(file_count 'setResultsRowsHiddenForLoading\|resultsRowsVisibleValue' $SRC)"
+# Guard-presence: the pending block is the ONE loading face of the results list.
+check_eq "results_pending_block kind present (builder+cell+fence)" 3 \
+  "$(file_count "'results_pending_block'" $SRC)"
+
 echo "=== RESULT: PASS=$PASS FAIL=$FAIL ==="
 [ "$FAIL" -eq 0 ]

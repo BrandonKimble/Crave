@@ -223,6 +223,25 @@ identical behavior with scroll. From scratch, first principles, throw away the
 current implementation if needed. Sequencing: only after the family/foundational
 work completes.
 
+**PENDING BLOCK EXECUTED 2026-07-18 (the arc's structural core):** the ATTRIBUTION
+overturned the charter's premise — the P-12 fence ALREADY coalesces row landing to ONE
+render at the reveal commit (the "premount under cover" claim was stale; the cover
+existed only to hide the PREVIOUS world's fenced rows). So the cut was clean: while a
+redraw episode is live, the motion fence presents [ONE full-viewport cutout item] as
+the list's data (ResultsPendingBlockRow + ResultsPendingBlockCell, height = one
+window, count-clipped — the length law); the reveal is the same one-render data swap.
+DELETED: the pinned loading cover + its animated header/strip top math + the
+rows-visibility level + the strip-pill header skeleton + the initial/interaction
+loading contents. Proven on sim: the block renders flush under the header with NO
+divider hairline (real offset 0 — died structurally as predicted), full card anatomy,
+reveal swap lands pins+strip+cards; the open-now flip settles through the lens
+projection fast path. Gates: tsc clean, 138 suites, invariants 28/28 (+3), matrix
+21/21. LANDING-CLOCK STATUS: the fence IS the coalescer (one commit); FlashList's
+virtualization + initialDrawBatchSize are the slicing levers already in place — a
+release-lane burst re-measure decides whether more slicing is needed (L4 follow-up,
+not speculative machinery now). Sheet-drag/scroll-during-pending: structural by
+construction (the block is list content); owner finger-test to confirm feel.
+
 **FAMILY EXECUTION STATUS 2026-07-18:**
 - LENGTH LAW LANDED for shell pending faces (PageBodyShell): the pending face fills the
   floored scroll box (BottomSheetScrollContainer short-page floor = viewport +

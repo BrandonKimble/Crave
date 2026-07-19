@@ -1,27 +1,33 @@
 import React from 'react';
-import { Pressable, View } from 'react-native';
-import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
+import { Pressable, useWindowDimensions, View } from 'react-native';
 import type { FlashListProps } from '@shopify/flash-list';
 
 import { Text } from '../../../../components';
+import { SceneLoadingSurface } from '../../../../components/skeletons';
 import { colors as themeColors } from '../../../../constants/theme';
 import type { FoodResult, RestaurantResult } from '../../../../types';
 import { logger } from '../../../../utils';
 import styles from '../../styles';
 import type { ResultsListItem, ResultsMountedRestaurantCardRow } from './list-read-model-builder';
 import type { RestaurantResultCardDescriptor } from '../../components/restaurant-result-card-descriptor';
-import { resultsRowsVisibleValue } from '../../runtime/shared/search-results-rows-visibility';
 
-// Every results ROW rides the rows-visibility level (owner directive: loading covers are
-// TRUE CUTOUTS — rows hide under the cover so its holes reach the hoisted frost). Opacity
-// only: rows keep mounting/measuring, and the list HEADER (the toggle strip) is not a row,
-// so it stays live through an interaction reload.
-const ResultsRowLoadingVisibility: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: resultsRowsVisibleValue.value,
-  }));
-  return <Reanimated.View style={animatedStyle}>{children}</Reanimated.View>;
-};
+// THE PENDING BLOCK CELL (skeleton-sheet law §1 + §4, pending-block arc 2026-07-18):
+// while a redraw episode is live the list's ONLY item is this full-viewport cutout
+// block, so the sheet drags and the list scrolls normally over the pending face and
+// the reveal is a plain data swap. Height = one window (THE LENGTH LAW: fills the
+// sheet at the highest snap, bounded scroll, no repeat). The old pinned overlay
+// cover + the rows-visibility level died with this — there are no stale rows in the
+// tree to hide. frostBacking stays the INTERIM look until the frost-layer tuning
+// (owner-eye) restores true cutouts that read frosty.
+const ResultsPendingBlockCell = React.memo(({ rowType }: { rowType: 'restaurant' | 'dish' }) => {
+  const { height: windowHeight } = useWindowDimensions();
+  return (
+    <View pointerEvents="none" style={{ height: windowHeight, overflow: 'hidden' }}>
+      <SceneLoadingSurface rowType={rowType} count={8} frostBacking />
+    </View>
+  );
+});
+ResultsPendingBlockCell.displayName = 'ResultsPendingBlockCell';
 
 type SearchResultsListRenderItemRuntimeArgs = {
   renderDishCard: (item: FoodResult, index: number) => React.ReactElement | null;
@@ -46,23 +52,22 @@ export const useSearchResultsListRenderItemRuntime = ({
         logger.error('FlashList renderItem received nullish item', { index });
         return null;
       }
-      const wrapRow = (row: React.ReactElement | null): React.ReactElement | null =>
-        row == null ? row : <ResultsRowLoadingVisibility>{row}</ResultsRowLoadingVisibility>;
-
       if (item && typeof item === 'object' && 'kind' in item) {
+        if (item.kind === 'results_pending_block') {
+          return <ResultsPendingBlockCell rowType={item.rowType} />;
+        }
+
         if (item.kind === 'mounted_restaurant_card') {
           const mountedRestaurantRow = item as ResultsMountedRestaurantCardRow;
-          return wrapRow(
-            renderRestaurantCard(
-              mountedRestaurantRow.restaurant,
-              index,
-              mountedRestaurantRow.preparedDescriptor
-            )
+          return renderRestaurantCard(
+            mountedRestaurantRow.restaurant,
+            index,
+            mountedRestaurantRow.preparedDescriptor
           );
         }
 
         if (item.kind === 'section') {
-          return wrapRow(
+          return (
             <View style={[styles.resultItem, index === 0 && styles.firstResultItem]}>
               <Text style={[styles.resultMetaText, { color: themeColors.textMuted }]}>
                 {item.label}
@@ -78,7 +83,7 @@ export const useSearchResultsListRenderItemRuntime = ({
             item.hiddenCount === 1
               ? 'Show 1 more exact match'
               : `Show ${item.hiddenCount} more exact matches`;
-          return wrapRow(
+          return (
             <Pressable
               onPress={onPress}
               style={[styles.resultItem, index === 0 && styles.firstResultItem]}
@@ -91,11 +96,9 @@ export const useSearchResultsListRenderItemRuntime = ({
         }
       }
 
-      return wrapRow(
-        'foodId' in item
-          ? renderDishCard(item as FoodResult, index)
-          : renderRestaurantCard(item as RestaurantResult, index)
-      );
+      return 'foodId' in item
+        ? renderDishCard(item as FoodResult, index)
+        : renderRestaurantCard(item as RestaurantResult, index);
     },
     [
       handleShowMoreExactDishes,

@@ -32,6 +32,7 @@ import {
 import { usePerfScenarioRuntimeStore } from '../perf/perf-scenario-runtime-store';
 import { useSearchResultsListRenderItemRuntime } from '../screens/Search/runtime/read-models/use-search-results-list-render-item-runtime';
 import type { ResultsListItem } from '../screens/Search/runtime/read-models/list-read-model-builder';
+// (ResultsListItem now includes the pending-block row — see list-read-model-builder.)
 import {
   getSearchMountedResultsDataSnapshot,
   getSearchMountedResultsListDataSnapshot,
@@ -122,8 +123,46 @@ const isSearchListDataFenceClosed = (): boolean => {
 
 let motionFencedListDataSnapshot: SearchMountedResultsListDataSnapshot | null = null;
 
+// THE PENDING BLOCK (pending-block arc 2026-07-18, skeleton-sheet law §1): while a
+// REDRAW EPISODE is live, the fence no longer freezes the PREVIOUS world's rows (the
+// stale content the old pinned cover + rows-visibility level existed to hide) — it
+// presents ONE full-viewport cutout item per list. The sheet drags and the list
+// scrolls normally over the pending face (real offset ⇒ the header divider is honest
+// by construction), and the reveal is a plain data swap: the fence-release commit
+// lands the resolved rows in the same ONE render it always did (P-12 coalescing —
+// row-landing timing is UNCHANGED). A sheet-motion-only fence (no live txn) still
+// freezes the previous snapshot — mid-drag holds are not pending states.
+const PENDING_BLOCK_PRIMARY: ResultsListItem[] = [
+  { kind: 'results_pending_block', key: 'results-pending-block-primary', rowType: 'restaurant' },
+];
+const PENDING_BLOCK_SECONDARY: ResultsListItem[] = [
+  { kind: 'results_pending_block', key: 'results-pending-block-secondary', rowType: 'dish' },
+];
+let pendingBlockListDataSnapshot: SearchMountedResultsListDataSnapshot | null = null;
+let pendingBlockListDataSnapshotBase: SearchMountedResultsListDataSnapshot | null = null;
+
+const getPendingBlockListDataSnapshot = (): SearchMountedResultsListDataSnapshot => {
+  const base = getSearchMountedResultsListDataSnapshot();
+  if (pendingBlockListDataSnapshot == null || pendingBlockListDataSnapshotBase !== base) {
+    pendingBlockListDataSnapshotBase = base;
+    pendingBlockListDataSnapshot = {
+      ...base,
+      primaryData: PENDING_BLOCK_PRIMARY,
+      primaryExtraData: 'results-pending-block',
+      secondaryData: PENDING_BLOCK_SECONDARY,
+      secondaryExtraData: 'results-pending-block',
+      primaryListFooterComponent: null,
+    };
+  }
+  return pendingBlockListDataSnapshot;
+};
+
 const getMotionFencedListDataSnapshot = (): SearchMountedResultsListDataSnapshot => {
-  if (motionFencedListDataSnapshot == null || !isSearchListDataFenceClosed()) {
+  const surfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
+  if (surfaceSnapshot.redrawTransaction != null) {
+    return getPendingBlockListDataSnapshot();
+  }
+  if (motionFencedListDataSnapshot == null || surfaceSnapshot.sheetMotionSettled) {
     motionFencedListDataSnapshot = getSearchMountedResultsListDataSnapshot();
   }
   return motionFencedListDataSnapshot;

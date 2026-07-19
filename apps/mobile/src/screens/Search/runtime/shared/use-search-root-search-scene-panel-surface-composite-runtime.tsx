@@ -10,10 +10,8 @@ import type { useSearchResultsPanelRetainedResultsRuntime } from './use-search-r
 
 type SearchRootSearchScenePanelSurfaceCompositeRuntimeArgs = {
   resolvedResultsHeaderHeightForRender: number;
-  filtersHeaderHeight: number;
   shouldDisableSearchBlur?: boolean;
   shouldShowResultsSurface: boolean;
-  surfaceActive: boolean;
   surfaceMode: 'none' | 'initial_loading' | 'empty' | 'interaction_loading' | 'results';
   activeTab: ReturnType<typeof useSearchResultsPanelResultsRuntimeState>['activeTab'];
   resolvedResults: ReturnType<
@@ -27,10 +25,8 @@ type SearchRootSearchScenePanelSurfaceCompositeRuntimeArgs = {
 
 export const useSearchRootSearchScenePanelSurfaceCompositeRuntime = ({
   resolvedResultsHeaderHeightForRender,
-  filtersHeaderHeight,
   shouldDisableSearchBlur,
   shouldShowResultsSurface,
-  surfaceActive,
   surfaceMode,
   activeTab,
   resolvedResults,
@@ -51,8 +47,6 @@ export const useSearchRootSearchScenePanelSurfaceCompositeRuntime = ({
   });
   const surfaceOverlay = useSearchRootSearchScenePanelSurfaceOverlayRuntime({
     resolvedResultsHeaderHeightForRender,
-    filtersHeaderHeight,
-    surfaceActive,
     surfaceMode,
     surfaceContentRuntime: surfaceContent,
   });

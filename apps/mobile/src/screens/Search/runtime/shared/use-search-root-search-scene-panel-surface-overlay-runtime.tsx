@@ -1,9 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
-import Reanimated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 import styles from '../../styles';
-import { setResultsRowsHiddenForLoading } from './search-results-rows-visibility';
 import type { useSearchRootSearchScenePanelSurfaceContentRuntime } from './use-search-root-search-scene-panel-surface-content-runtime';
 
 // The results-surface overlays, reduced to their ideal shape (2026-07-06 owner directive):
@@ -16,70 +14,21 @@ import type { useSearchRootSearchScenePanelSurfaceContentRuntime } from './use-s
 // — nothing here. The empty-state surface is unchanged.
 export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
   resolvedResultsHeaderHeightForRender,
-  filtersHeaderHeight,
-  surfaceActive,
   surfaceMode,
   surfaceContentRuntime,
 }: {
   resolvedResultsHeaderHeightForRender: number;
-  filtersHeaderHeight: number;
-  surfaceActive: boolean;
   surfaceMode: 'none' | 'initial_loading' | 'empty' | 'interaction_loading' | 'results';
   surfaceContentRuntime: ReturnType<typeof useSearchRootSearchScenePanelSurfaceContentRuntime>;
 }) => {
-  const headerTopValue = useSharedValue(resolvedResultsHeaderHeightForRender);
-  // The toggle-strip (filters) height. On an INTERACTION (toggle) reload the skeleton surface
-  // sits just below the strip so the strip stays visible + tappable.
-  const filtersHeaderHeightValue = useSharedValue(filtersHeaderHeight);
-  const surfaceActiveValue = useSharedValue(surfaceActive ? 1 : 0);
-  const interactionLoadingModeValue = useSharedValue(surfaceMode === 'interaction_loading' ? 1 : 0);
-  // TR5-N (initial reveal parity, owner-reported): the INITIAL load needs this cover too. The
-  // transition leg's skeleton page ends when the scene settles, but page-1 rows hydrate into the
-  // live list BEFORE the reveal joint (cards visibly swapped in ~0.5-1s before the strip+pins;
-  // measured rowsAdmission shell->full 483ms ahead of cardsAdmit). Holding the cutout skeleton
-  // over the body for the WHOLE initial_loading mode lets the rows mount+measure beneath it
-  // (readiness still commits from the list layoutEffect), and the joint then lifts the cover,
-  // reveals the strip, and starts the pin ramp on the same tick — the toggle choreography.
-  // Full-body offset: the strip is HIDDEN during initial_loading, so no filters-height inset.
-  const initialLoadingModeValue = useSharedValue(surfaceMode === 'initial_loading' ? 1 : 0);
-  const shouldExposeLoadingCover =
-    surfaceMode === 'interaction_loading' || surfaceMode === 'initial_loading';
-  // RENDER-TIME, not animated (proven 2026-07-08 on the empty-favorites blank sheet):
-  // this hook renders in the scene body-spec family where React effects may never
-  // commit — an effect-written shared value stayed 0 while the surface re-rendered 25×
-  // with surfaceMode 'empty'. The empty surface mounts/unmounts by render like the
-  // loading cover, and its top offset is the render-time prop.
+  // THE PINNED LOADING COVER IS DEAD (pending-block arc 2026-07-18, skeleton-sheet law
+  // §1): while a redraw episode is live the LIST'S OWN DATA is the pending block (the
+  // motion fence in SearchMountedSceneBody presents it), so there are no stale rows to
+  // hide, no cover to position (its animated header/strip top math died with it), and
+  // no rows-visibility level. The loading face scrolls and drags as the real sheet.
+  // The EMPTY surface remains: render-time mount (proven 2026-07-08 — this hook renders
+  // in the scene body-spec family where React effects may never commit).
   const shouldExposeEmptySurface = surfaceMode === 'empty';
-
-  React.useEffect(() => {
-    headerTopValue.value = resolvedResultsHeaderHeightForRender;
-  }, [headerTopValue, resolvedResultsHeaderHeightForRender]);
-  React.useEffect(() => {
-    filtersHeaderHeightValue.value = filtersHeaderHeight;
-  }, [filtersHeaderHeight, filtersHeaderHeightValue]);
-  React.useEffect(() => {
-    surfaceActiveValue.value = surfaceActive ? 1 : 0;
-  }, [surfaceActive, surfaceActiveValue]);
-  React.useEffect(() => {
-    interactionLoadingModeValue.value = surfaceMode === 'interaction_loading' ? 1 : 0;
-    initialLoadingModeValue.value = surfaceMode === 'initial_loading' ? 1 : 0;
-    // TRUE CUTOUTS (owner directive): while EITHER loading cover is up, the rows beneath
-    // hide (same write, same frame) so the skeleton's holes are real windows to the
-    // hoisted frost — no self-frost fallback, no stale rows through the holes.
-    setResultsRowsHiddenForLoading(
-      surfaceMode === 'interaction_loading' || surfaceMode === 'initial_loading'
-    );
-  }, [initialLoadingModeValue, interactionLoadingModeValue, surfaceMode]);
-  const loadingSurfaceAnimatedStyle = useAnimatedStyle(() => ({
-    opacity:
-      surfaceActiveValue.value *
-      Math.max(interactionLoadingModeValue.value, initialLoadingModeValue.value),
-    // Interaction reload: start below the toggle strip so it stays uncovered. Initial
-    // load: the strip is hidden, so the cover is full-body. Both are TRANSPARENT behind
-    // the skeleton's own white plate — its holes are real windows down to the hoisted
-    // frost (the rows beneath hide via the rows-visibility level, same frame).
-    top: headerTopValue.value + filtersHeaderHeightValue.value * interactionLoadingModeValue.value,
-  }));
 
   return React.useMemo(
     () => (
@@ -94,37 +43,12 @@ export const useSearchRootSearchScenePanelSurfaceOverlayRuntime = ({
             {surfaceContentRuntime.emptyContent}
           </View>
         ) : null}
-        {shouldExposeLoadingCover ? (
-          <Reanimated.View
-            pointerEvents="none"
-            style={[styles.resultsLoadingCoverSurface, loadingSurfaceAnimatedStyle]}
-          >
-            <View
-              accessible
-              accessibilityLabel="Results loading cover"
-              importantForAccessibility="yes"
-              pointerEvents="none"
-              style={styles.resultsLoadingCoverAccessibilityTarget}
-              testID="results-loading-cover"
-            />
-            <View pointerEvents="none" style={styles.resultsLoadingCoverContent}>
-              {surfaceMode === 'initial_loading'
-                ? surfaceContentRuntime.initialLoadingContent
-                : surfaceContentRuntime.loadingContent}
-            </View>
-          </Reanimated.View>
-        ) : null}
       </>
     ),
     [
-      loadingSurfaceAnimatedStyle,
       resolvedResultsHeaderHeightForRender,
       shouldExposeEmptySurface,
-      shouldExposeLoadingCover,
-      surfaceMode,
       surfaceContentRuntime.emptyContent,
-      surfaceContentRuntime.initialLoadingContent,
-      surfaceContentRuntime.loadingContent,
     ]
   );
 };

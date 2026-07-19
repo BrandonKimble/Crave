@@ -2,7 +2,6 @@ import React from 'react';
 import { View } from 'react-native';
 
 import EmptyState from '../../components/empty-state';
-import { SceneLoadingSurface } from '../../../../components/skeletons';
 import styles from '../../styles';
 
 export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
@@ -23,29 +22,12 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
 }) => {
   const resultsMetadata = (resolvedResults?.metadata ?? {}) as { emptyQueryMessage?: string };
 
-  // OWNER REVISION 2026-07-17 (supersedes the 2026-07-07 true-cutout directive): the
-  // results skeleton is SELF-FROST. Frost-through-to-the-map made the bars wash out
-  // and pick up map colors over light areas (the attributed "splotchy" loading state,
-  // screenshots in the search-family slice notes) — the skeleton must read as uniform
-  // bars like every other scene's material. The rows beneath still hide via the
-  // rows-visibility level; the two designs by mode (strip pills on the initial
-  // skeleton, none on the interaction skeleton) are unchanged.
-  const initialLoadingContent = React.useMemo(
-    () => (
-      <SceneLoadingSurface
-        rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'}
-        withFilterStripHoles
-        frostBacking
-      />
-    ),
-    [activeTab]
-  );
-  const loadingContent = React.useMemo(
-    () => (
-      <SceneLoadingSurface rowType={activeTab === 'dishes' ? 'dish' : 'restaurant'} frostBacking />
-    ),
-    [activeTab]
-  );
+  // The loading faces are GONE from this runtime (pending-block arc 2026-07-18): the
+  // list's own data is the pending block while a redraw episode is live — see
+  // ResultsPendingBlockCell (the one cell) and the motion fence in
+  // SearchMountedSceneBody. The strip-pill header skeleton died with the cover (the
+  // owner's no-header-skeleton call); the in-list strip is the list HEADER and keeps
+  // its existing visibility choreography.
 
   const emptyContent = React.useMemo(() => {
     // FAILURE variant — a transient resting surface, not an announcement (owner spec
@@ -76,12 +58,5 @@ export const useSearchRootSearchScenePanelSurfaceContentRuntime = ({
     );
   }, [activeTab, onDemandNotice, resolutionFailure, resultsMetadata.emptyQueryMessage]);
 
-  return React.useMemo(
-    () => ({
-      emptyContent,
-      loadingContent,
-      initialLoadingContent,
-    }),
-    [emptyContent, initialLoadingContent, loadingContent]
-  );
+  return React.useMemo(() => ({ emptyContent }), [emptyContent]);
 };

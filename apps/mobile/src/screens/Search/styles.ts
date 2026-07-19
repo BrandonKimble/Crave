@@ -572,29 +572,8 @@ const styles = StyleSheet.create({
   },
   // The skeleton loading surface (the ONE interaction-loading visual): the white background is
   // the skeleton's sheet plate — it hides the stale rows; the cutout holes self-frost inside.
-  resultsLoadingCoverSurface: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 20,
-    elevation: 20,
-    // No backgroundColor: the cutout skeleton's own white plate is the cover — its
-    // holes must stay transparent down to the hoisted frost (the rows beneath hide
-    // during loading modes; see the body-hide keyed to the same surfaceMode).
-  },
-  resultsLoadingCoverAccessibilityTarget: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-  },
   // The skeleton content must FILL the loading surface (an unsized wrapper collapses to zero
   // and only the plate paints).
-  resultsLoadingCoverContent: {
-    ...StyleSheet.absoluteFillObject,
-  },
   resultsHeaderSurface: {
     position: 'relative',
     overflow: 'hidden',
