@@ -610,6 +610,16 @@ Every scheduler trace has a reader; every heartbeat is staging-proven RED.
    (b) a LONE commensurate but non-covering place (one town at 40%, rest
    unnamed countryside) IS the header — 'this area' stays reserved for
    multi-place straddles/unnamed ground. Ratify or amend both.
+8. §1 identity-law AMENDMENT needed (red-team 7aaa66d9, proven on real data):
+   the tuple (country, subdivision, level, name) collides genuinely distinct
+   same-name municipalities in one state (17 gazetteer groups, e.g. two TX
+   "Lakeside"s 4.7° apart) — the merge law minted phantom bboxes that
+   poisoned containing-fallback headers. INTERIM (shipped 43b8a26c):
+   disjoint-bbox observations refuse the union (distinct-place suspect log);
+   the seed skips collision groups. WAVE-5 DESIGN: a distinctness
+   discriminator in the identity law (candidate: countrySecondarySubdivision
+   when the provider chain carries it) so both places can exist as rows —
+   requires index + merge-law rework; decide with owner.
 
 # §19 Projection record (2026-07-16; Austin ~250 DAU vs Waco ~8 DAU, year 1)
 

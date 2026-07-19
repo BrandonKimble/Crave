@@ -152,18 +152,36 @@ agent in flight at turn end so completion notifications chain turns.
   (plain table for now); §3 anonymous deviceKey plumbing dormant (no call
   sites); FIFO-not-LRU actor cache accepted.
 
-## TASK #5 STATUS (live)
+## TASK #5 STATUS — COMPLETE
 
-- [x] US seed executed (above).
-- [>] AGENT in flight: header/resolution cut — search metadata
-  displayMarketName VALUE now derived from placesInView+resolveHeaderPlace
-  (contract shape unchanged, mobile untouched); reconciler noteViewport
-  wired at search-with-bounds chokepoint (§2 growth machine LIVE — probes
-  on unknown ground, neighborhoods enter on attention); dead resolver
-  outputs deleted per grep. Collection/CTA/marketKey machinery stays for
-  #6/#7/Phase C cuts.
-- [ ] After: poll system cut (#6) then aggregate/readers/collector/score (#7),
-      Phase C purges, wave-5 final red team + reassessment.
+- [x] US seed executed; re-run after collision purge: 19,430 municipality
+      rows, zero phantom spans, 35 collision munis skipped (organic entry).
+- [x] 7aaa66d9 header cut: displayMarketName from catalog (§2 subjects law),
+      noteViewport at runQuery — growth machine LIVE. Contract tripwire spec.
+- [x] 43b8a26c red-team fixes: asked-ground memory (over-scale chains no
+      longer re-spend 3 draws per settle — view-region observation, 30d TTL,
+      spec-proven) + distinct-place guard (disjoint bboxes never union) +
+      seed collision skip + purge/reseed. §18 item 8 = identity-law
+      discriminator amendment for wave-5.
+- KNOWN GAPS (recorded, deliberate): PoolRegistry windows are IN-MEMORY —
+  monthly ledgers reset on API restart (durable store = later phase);
+  mobile on-demand notice falls back to candidateLocalityName (old election
+  output) when catalog says null — dies with the mobile-side cut;
+  continental-zoom search hydrates all ~19.5k place rows twice (fine today).
+
+## TASK #6 STATUS (live)
+
+- [>] AGENT in flight: poll SUPPLY cut (§22 item 4) — demand-mass reader
+  (direct SQL, weight-1 bbox-intersect attribution), estimators via
+  registry (conversion/concentration/viability prior 15 self-erasing/
+  answerYield), controller (creditRate, warm start max(1,predicted),
+  first-cohort JUMP, median test ±1 dither, no caps), weekly ritual cron
+  (Sunday 09:00 local, atomic birth-certificate publish, idempotency
+  placeId+weekOf), K6 vote→mention at graduation into per-place
+  poll_surface source, KILL list (ready pool, topic crons, caps). Polls
+  re-key to placeId; drift-path migrations allowed.
+- [ ] After: item 5 polls feed cursor-pagination+slicer, then #7, Phase C
+      purges, wave-5 final red team + reassessment.
 - deferred-in-leg-2: See-locations (only remaining Leg 2 item).
 
 ## Decisions log (append as made)
