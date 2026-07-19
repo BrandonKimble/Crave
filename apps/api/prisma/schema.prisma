@@ -2134,8 +2134,11 @@ model Place {
   createdAt         DateTime  @default(now()) @map("created_at")
   promotedAt        DateTime? @map("promoted_at")
 
-  // Identity law: silent-fork prevention.
-  @@unique([countryCode, subdivisionCode, providerLevelCode, name], map: "uq_places_identity")
+  // Identity law: silent-fork prevention. The REAL unique constraint is a raw
+  // expression index (migration 20260719062500): UNIQUE (country_code,
+  // subdivision_code, provider_level_code, lower(name)) NULLS NOT DISTINCT —
+  // case-insensitive names + NULL subdivision treated as equal, neither of
+  // which Prisma's @@unique can express. Do not re-add @@unique here.
   @@index([countryCode, subdivisionCode])
   @@index([providerPlaceId])
   @@map("places")
