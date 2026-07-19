@@ -123,6 +123,16 @@ agent in flight at turn end so completion notifications chain turns.
 
 ## Decisions log (append as made)
 
+- 2026-07-19: recently-viewed locationId ships via SIGNALS (entity_view meta),
+  NOT via columns on user_entity_view_events/restaurant_views — those tables
+  are on the §21 kill path; migrating dying tables violates the philosophy.
+  Display upgrade lands with the ledger readers.
+- 2026-07-19: See-locations = the ONLY remaining Leg 2 item; additive, no
+  dependency on Phase A — scheduled after the Phase A substrate.
+- Commits: a2ecce22 Leg2 tail (agent: dish-axis projection fix, sibling
+  highlight subscribe fix, save-flow locationId, fame-pin interim, 299 green)
+  · f27a2d03 Estimator · 19480d57 PoolRegistry · a709ce4f staged schema.
+
 - 2026-07-16: interpreted owner's "recorded in git and recoverable" as
   authorization for leg-boundary commits to main (his standing solo workflow).
 - Fame-pin interim (Leg 2 before Phase A): keep scoring_market_key-based

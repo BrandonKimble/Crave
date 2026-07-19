@@ -2107,3 +2107,95 @@ enum DemandScoringDecisionState {
 
   @@map("demand_scoring_decision_state")
 }
+
+// ============ PHASE A (master plan §1/§3): Place Catalog + Signals ============
+
+// §1 Place Catalog: containment DAG, open level codes, two-tier geometry.
+model Place {
+  placeId           String    @id @default(dbgenerated("gen_random_uuid()")) @map("place_id") @db.Uuid
+  name              String    @db.VarChar(255)
+  localScriptAlias  String?   @map("local_script_alias") @db.VarChar(255)
+  /// OPEN vocabulary (municipality, municipalitySubdivision, neighbourhood,
+  /// county, subdivision, country, …) — stored, never switched on.
+  providerLevelCode String    @map("provider_level_code") @db.VarChar(64)
+  countryCode       String    @map("country_code") @db.VarChar(2)
+  subdivisionCode   String?   @map("subdivision_code") @db.VarChar(8)
+  /// DAG edges captured from the reverse-geocode chain at creation.
+  parentPlaceIds    String[]  @default([]) @map("parent_place_ids") @db.Uuid
+  centroidLat       Decimal?  @map("centroid_lat") @db.Decimal(10, 8)
+  centroidLng       Decimal?  @map("centroid_lng") @db.Decimal(11, 8)
+  bboxMinLat        Decimal?  @map("bbox_min_lat") @db.Decimal(10, 8)
+  bboxMinLng        Decimal?  @map("bbox_min_lng") @db.Decimal(11, 8)
+  bboxMaxLat        Decimal?  @map("bbox_max_lat") @db.Decimal(10, 8)
+  bboxMaxLng        Decimal?  @map("bbox_max_lng") @db.Decimal(11, 8)
+  timeZone          String?   @map("time_zone") @db.VarChar(64)
+  provider          String    @default("tomtom") @db.VarChar(32)
+  providerPlaceId   String?   @map("provider_place_id") @db.VarChar(128)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  promotedAt        DateTime? @map("promoted_at")
+
+  // Identity law: silent-fork prevention.
+  @@unique([countryCode, subdivisionCode, providerLevelCode, name], map: "uq_places_identity")
+  @@index([countryCode, subdivisionCode])
+  @@index([providerPlaceId])
+  @@map("places")
+}
+
+// Tier-2 geometry side table (hot naming row stays lean). geometry column is
+// PostGIS — added via raw SQL in the migration (Unsupported in prisma):
+//   geometry geometry(MultiPolygon, 4326), GiST index.
+model PlaceGeometry {
+  placeId            String   @id @map("place_id") @db.Uuid
+  providerBoundaryId String?  @map("provider_boundary_id") @db.VarChar(128)
+  fetchedAt          DateTime @default(now()) @map("fetched_at")
+
+  @@map("place_geometries")
+}
+
+// §3 Signals Ledger: append-only, immutable, geo ALWAYS a bbox (point =
+// zero-area), actorId pseudonymous. Monthly partitioning applied at the SQL
+// layer later (native partitioning is a follow-up; the table is append-only
+// so re-partitioning is cheap).
+model Signal {
+  signalId    String   @id @default(dbgenerated("gen_random_uuid()")) @map("signal_id") @db.Uuid
+  /// ACT kinds only; qualifiers live in meta (judged at read):
+  /// search | autocomplete_selection | entity_view | favorite_added |
+  /// poll_vote | poll_comment | poll_created | viewport_dwell
+  kind        String   @db.VarChar(32)
+  subjectType String   @map("subject_type") @db.VarChar(16) // entity | term | none
+  subjectId   String?  @map("subject_id") @db.Uuid
+  subjectText String?  @map("subject_text") @db.VarChar(255)
+  geoMinLat   Decimal  @map("geo_min_lat") @db.Decimal(10, 8)
+  geoMinLng   Decimal  @map("geo_min_lng") @db.Decimal(11, 8)
+  geoMaxLat   Decimal  @map("geo_max_lat") @db.Decimal(10, 8)
+  geoMaxLng   Decimal  @map("geo_max_lng") @db.Decimal(11, 8)
+  actorId     String   @map("actor_id") @db.Uuid
+  occurredAt  DateTime @map("occurred_at")
+  meta        Json?
+
+  @@index([occurredAt])
+  @@index([kind, occurredAt])
+  @@index([subjectId])
+  @@map("signals")
+}
+
+// Pseudonymous actor mapping — the severable deletion story (§3).
+model SignalActor {
+  actorId   String   @id @default(dbgenerated("gen_random_uuid()")) @map("actor_id") @db.Uuid
+  userId    String?  @unique @map("user_id") @db.Uuid
+  deviceKey String?  @unique @map("device_key") @db.VarChar(128)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("signal_actors")
+}
+
+// Identity is a judgment (§3): merges write redirects; readers resolve at
+// read. The ledger is never rekeyed.
+model EntityRedirect {
+  fromEntityId String   @id @map("from_entity_id") @db.Uuid
+  toEntityId   String   @map("to_entity_id") @db.Uuid
+  redirectedAt DateTime @default(now()) @map("redirected_at")
+
+  @@index([toEntityId])
+  @@map("entity_redirects")
+}
