@@ -19,7 +19,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { ModerationService } from '../moderation/moderation.service';
-import { SignalsService } from '../signals/signals.service';
+import { SignalBbox, SignalsService } from '../signals/signals.service';
 import { PollsGateway } from './polls.gateway';
 import { PollListSort, PollListTime, PollListType } from './dto/list-polls.dto';
 import { ListUserPollsDto, UserPollActivity } from './dto/list-user-polls.dto';
@@ -157,6 +157,22 @@ export class PollsService {
     }
     const term = poll.question.trim();
     return term.length ? { term } : null;
+  }
+
+  /**
+   * §3 signal geo for poll acts (red-team 3e): a PLACE-keyed poll attributes
+   * to its place's bbox — the closed loop that feeds poll_vote back into the
+   * place's demand mass and answerYield. Only legacy market-keyed polls
+   * (placeId null) still walk the marketKey path; both helpers never reject,
+   * so the promise is safe un-awaited as RecordSignalInput.geo.
+   */
+  private pollSignalGeo(poll: {
+    placeId: string | null;
+    marketKey: string | null;
+  }): Promise<SignalBbox | null> {
+    return poll.placeId
+      ? this.signals.bboxFromPlace(poll.placeId)
+      : this.signals.bboxFromMarketKey(poll.marketKey);
   }
 
   /**
@@ -886,7 +902,7 @@ export class PollsService {
       kind: 'poll_created',
       userId,
       subject: this.pollSignalSubject(poll),
-      geo: this.signals.bboxFromMarketKey(marketKey),
+      geo: this.pollSignalGeo(poll),
       meta: { pollId: poll.pollId },
     });
     // W4: no pollsCreatedCount counter bump — the profile "Polls" stat is a
@@ -1068,7 +1084,7 @@ export class PollsService {
       kind: 'poll_created',
       userId,
       subject: this.pollSignalSubject(poll),
-      geo: this.signals.bboxFromMarketKey(marketKey),
+      geo: this.pollSignalGeo(poll),
       meta: { pollId: poll.pollId },
     });
     // W4: no counter bump — the stat is a live count (UserService.countCreatedPolls).
@@ -1139,6 +1155,7 @@ export class PollsService {
         pollId: true,
         state: true,
         marketKey: true,
+        placeId: true,
         question: true,
         topic: {
           select: {
@@ -1209,7 +1226,7 @@ export class PollsService {
       kind: 'poll_comment',
       userId,
       subject: this.pollSignalSubject(poll),
-      geo: this.signals.bboxFromMarketKey(poll.marketKey),
+      geo: this.pollSignalGeo(poll),
       meta: { pollId },
     });
     return comment;
@@ -1901,6 +1918,7 @@ export class PollsService {
         state: true,
         question: true,
         marketKey: true,
+        placeId: true,
         topic: {
           select: {
             targetDishId: true,
@@ -1955,7 +1973,8 @@ export class PollsService {
       // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
       // §3 signals: an endorsement IS the poll vote act (append-only ledger —
       // un-endorsing removes the endorsement row, never the signal). Geo =
-      // the poll market's bbox (skip-with-debug when unresolvable). Meta
+      // the poll PLACE's bbox for place-keyed polls, the legacy market bbox
+      // otherwise (skip-with-debug when unresolvable) — red-team 3e. Meta
       // carries the endorsed candidate itself: the mutable pollEndorsement
       // row can be deleted, so the ledger must hold WHAT was voted for, not
       // just which poll.
@@ -1963,7 +1982,7 @@ export class PollsService {
         kind: 'poll_vote',
         userId,
         subject: this.pollSignalSubject(poll),
-        geo: this.signals.bboxFromMarketKey(poll.marketKey),
+        geo: this.pollSignalGeo(poll),
         meta: {
           pollId,
           endorsedSubjectId: subjectId,

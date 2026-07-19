@@ -8,7 +8,12 @@
  *   predicted frontier = attention mass × conversion × tail-concentration
  *   ÷ viability. No "launch city" concept — big places warm-start because
  *   their mass justifies it; small places predict <1 and start at the
- *   exploration slot (1, K6).
+ *   exploration slot (1, K6). THE FLOOR IS ON THE FRONTIER, NEVER THE
+ *   CREDIT (red-team 2a): the exploration slot is capacity, not a warrant.
+ *   Warm-start credit is exactly one cycle's accrual at creditRate — a place
+ *   whose demonstrated demand rates under 1 poll/week publishes nothing and
+ *   (holding no state) leaves no trace, so one searcher can never seed a
+ *   town and a continental viewport can never seed thousands (§17).
  *
  * First-cohort correction: when the first cohort has closed, the SAME
  *   prediction re-runs against readings that now include the cohort's
@@ -139,6 +144,9 @@ export function medianTestProbability(
   );
 }
 
+/** Number.EPSILON as a divisor floor is DEFINITIONAL (§16): a pure numeric
+ *  guard against division by zero, below any representable estimate — not a
+ *  tunable and never a behavior knob. */
 function predictFrontier(readings: SupplyReadings): number {
   const viability = Math.max(readings.viability.estimate, Number.EPSILON);
   return (
@@ -151,20 +159,25 @@ function predictFrontier(readings: SupplyReadings): number {
 
 export function decideSupply(input: SupplyDecisionInput): SupplyDecision {
   const { now, state, readings, lastClosedCohortAnswerCounts } = input;
+  // Definitional epsilon clamp (see predictFrontier) — a zero-division guard.
   const viability = Math.max(readings.viability.estimate, Number.EPSILON);
   const creditRate =
     (readings.weeklyDemandMass * readings.answerYield) / viability;
   const predicted = predictFrontier(readings);
 
   if (!state) {
-    // Warm start: the prediction IS the warrant — it both sets the frontier
-    // and mints the first cohort's credit (there is no accrual history yet).
+    // Warm start (red-team 2a): the prediction sizes the FRONTIER (floored
+    // at the exploration slot — capacity), but the WARRANT is minted only by
+    // creditRate — one cycle's accrual, exactly what the steady-state law
+    // would have accrued over the first week. floor(credit) < 1 ⇒ publish
+    // nothing: the §17 "one searcher never seeds" fixture is this line.
     const frontier = Math.max(EXPLORATION_SLOT, Math.round(predicted));
+    const credit = creditRate;
     return {
       frontier,
       phase: 'warm_start',
-      credit: frontier,
-      cohortTarget: frontier,
+      credit,
+      cohortTarget: Math.min(frontier, Math.floor(credit)),
       creditRate,
       predictedFrontier: predicted,
     };

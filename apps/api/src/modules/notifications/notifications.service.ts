@@ -32,9 +32,18 @@ export class NotificationsService {
    * §4 boundary (enforced HERE, in targeting): big-place (subdivision+)
    * polls are feed-at-that-zoom only — NEVER push. Bigness is the
    * structural DAG judgment (place-dag-read), not a vocabulary switch.
+   *
+   * DURABILITY (red-team 1c): the notification ROW is the durable dispatch
+   * queue — NotificationDispatcherService's minute cron sends pending rows
+   * with retry. Callers with an atomic publish (the weekly ritual) pass their
+   * transaction client as `db` so the rows commit WITH the polls: a crash
+   * can then never publish polls while losing their push (nor push polls
+   * that were rolled back). Targeting READS stay on the base client — only
+   * the insert needs the transaction.
    */
   async queuePollReleaseForPlace(
     payload: PollReleaseForPlacePayload,
+    db: Pick<Prisma.TransactionClient, 'notification'> = this.prisma,
   ): Promise<void> {
     if (await isSubdivisionOrBigger(this.prisma, payload.placeId)) {
       this.logger.info(
@@ -76,7 +85,7 @@ export class NotificationsService {
       deviceId: device.deviceId,
     }));
 
-    await this.prisma.notification.createMany({ data });
+    await db.notification.createMany({ data });
 
     this.logger.info('Queued poll release notifications', {
       placeId: payload.placeId,

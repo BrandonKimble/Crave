@@ -5,7 +5,10 @@ import { PollSupplyEstimators } from './poll-supply-estimators';
 
 // §4 weekly ritual: one tick per place at Sunday 09:00 LOCAL; publish is
 // ATOMIC (tick + poll rows + archived birth-certificate topics + supply
-// state) with (placeId, weekOf-local) as the idempotency key.
+// state + notification queue rows) with (placeId, weekOf-local) as the
+// idempotency key. Cohort closure + evidence consumption are judged on
+// weekOf LABELS (red-team 1a/2b); cooldowns GATE, not just rank (2d); a
+// place with no state and no warrant leaves no rows (1c/2a).
 
 const PLACE_ID = '99999999-9999-9999-9999-999999999999';
 const DISH_ID = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
@@ -14,6 +17,8 @@ const SUNDAY_0930_LOCAL = new Date('2026-07-19T14:30:00Z');
 // Wednesday 2026-07-15 09:30 local.
 const WEDNESDAY = new Date('2026-07-15T14:30:00Z');
 const WEEK_OF = '2026-07-19';
+const LAST_WEEK_OF = '2026-07-12';
+const TWO_WEEKS_AGO_OF = '2026-07-05';
 
 function createLogger() {
   const logger = {
@@ -33,22 +38,28 @@ function uniqueViolation(): Prisma.PrismaClientKnownRequestError {
   });
 }
 
-function createHarness(
-  options: {
-    existingTicks?: { placeId: string; weekOf: string }[];
-    subjects?: {
-      placeId: string;
-      subjectId: string;
-      entityType: 'food' | 'restaurant';
-      entityName: string;
-      mass: number;
-      currentMass: number;
-      baselineWeeklyMass: number;
-    }[];
-    mass?: number;
-    tickCreateRejects?: boolean;
-  } = {},
-) {
+interface HarnessOptions {
+  existingTicks?: { placeId: string; weekOf: string }[];
+  subjects?: {
+    placeId: string;
+    subjectId: string;
+    entityType: 'food' | 'restaurant';
+    entityName: string;
+    mass: number;
+    currentMass: number;
+    baselineWeeklyMass: number;
+  }[];
+  mass?: number;
+  tickCreateRejects?: boolean;
+  /** Rows for prisma.poll.findMany (the cohort harvest). */
+  harvestPolls?: Record<string, unknown>[];
+  /** Rows for prisma.pollTopic.findMany (the cooldown memory). */
+  cooldownTopics?: Record<string, unknown>[];
+  /** Row for prisma.pollPlaceSupply.findMany (existing supply state). */
+  supplyState?: Record<string, unknown> | null;
+}
+
+function createHarness(options: HarnessOptions = {}) {
   const tx = {
     pollWeeklyTick: {
       create: options.tickCreateRejects
@@ -56,19 +67,19 @@ function createHarness(
         : jest.fn().mockResolvedValue({}),
     },
     pollTopic: {
-      create: jest
-        .fn()
-        .mockResolvedValue({ topicId: '10101010-1010-1010-1010-101010101010' }),
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     poll: {
-      create: jest
-        .fn()
-        .mockResolvedValue({ pollId: '20202020-2020-2020-2020-202020202020' }),
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     pollPlaceSupply: { upsert: jest.fn().mockResolvedValue({}) },
   };
   const prisma = {
-    pollPlaceSupply: { findMany: jest.fn().mockResolvedValue([]) },
+    pollPlaceSupply: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue(options.supplyState ? [options.supplyState] : []),
+    },
     place: {
       findMany: jest.fn().mockResolvedValue([
         {
@@ -87,8 +98,10 @@ function createHarness(
     pollWeeklyTick: {
       findMany: jest.fn().mockResolvedValue(options.existingTicks ?? []),
     },
-    poll: { findMany: jest.fn().mockResolvedValue([]) },
-    pollTopic: { findMany: jest.fn().mockResolvedValue([]) },
+    poll: { findMany: jest.fn().mockResolvedValue(options.harvestPolls ?? []) },
+    pollTopic: {
+      findMany: jest.fn().mockResolvedValue(options.cooldownTopics ?? []),
+    },
     pollComment: { groupBy: jest.fn().mockResolvedValue([]) },
     market: { findMany: jest.fn().mockResolvedValue([]) },
     $queryRaw: jest.fn().mockResolvedValue([]),
@@ -101,6 +114,17 @@ function createHarness(
     placeDemandMass: jest
       .fn()
       .mockResolvedValue([{ placeId: PLACE_ID, mass: options.mass ?? 120 }]),
+    placeDemandMassAt: jest
+      .fn()
+      .mockImplementation((requests: { placeId: string; at: Date }[]) =>
+        Promise.resolve(
+          requests.map((request) => ({
+            placeId: request.placeId,
+            at: request.at,
+            mass: options.mass ?? 120,
+          })),
+        ),
+      ),
     subjectDemandMass: jest.fn().mockResolvedValue(options.subjects ?? []),
   };
   const notifications = {
@@ -117,6 +141,22 @@ function createHarness(
   return { service, prisma, tx, demandMass, notifications };
 }
 
+function topicCreateManyRows(
+  tx: ReturnType<typeof createHarness>['tx'],
+): Record<string, unknown>[] {
+  return tx.pollTopic.createMany.mock.calls.flatMap(
+    ([args]: [{ data: Record<string, unknown>[] }]) => args.data,
+  );
+}
+
+function pollCreateManyRows(
+  tx: ReturnType<typeof createHarness>['tx'],
+): Record<string, unknown>[] {
+  return tx.poll.createMany.mock.calls.flatMap(
+    ([args]: [{ data: Record<string, unknown>[] }]) => args.data,
+  );
+}
+
 const SUBJECT = {
   placeId: PLACE_ID,
   subjectId: DISH_ID,
@@ -127,9 +167,22 @@ const SUBJECT = {
   baselineWeeklyMass: 4,
 };
 
+function harvestPoll(overrides: Record<string, unknown> = {}) {
+  return {
+    pollId: '30303030-3030-3030-3030-303030303030',
+    placeId: PLACE_ID,
+    launchedAt: new Date('2026-07-12T14:30:30Z'),
+    graduatedAt: null,
+    metadata: { weekOf: LAST_WEEK_OF },
+    ...overrides,
+  };
+}
+
 describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
-  it('publishes ATOMICALLY through one transaction: tick row + archived birth-certificate topic + active poll + supply state', async () => {
-    const { service, prisma, tx } = createHarness({ subjects: [SUBJECT] });
+  it('publishes ATOMICALLY through one transaction: tick row + archived birth-certificate topics + active polls + supply state + notification rows', async () => {
+    const { service, prisma, tx, notifications } = createHarness({
+      subjects: [SUBJECT],
+    });
     await service.runTick(SUNDAY_0930_LOCAL);
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
@@ -140,9 +193,7 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
     expect(tickData.placeId).toBe(PLACE_ID);
     expect(tickData.weekOf).toBe(WEEK_OF);
     // Birth certificate: written AT publish, ALREADY archived (no ready pool).
-    const [{ data: topicData }] = tx.pollTopic.create.mock.calls[0] as [
-      { data: Record<string, unknown> },
-    ];
+    const [topicData] = topicCreateManyRows(tx);
     expect(topicData.status).toBe('archived');
     expect(topicData.placeId).toBe(PLACE_ID);
     expect(
@@ -153,17 +204,27 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
       cooldownAvailability: 1,
     });
     // The poll itself: place-keyed, active, 7-day window (K1).
-    const [{ data: pollData }] = tx.poll.create.mock.calls[0] as [
-      { data: Record<string, unknown> },
-    ];
+    const [pollData] = pollCreateManyRows(tx);
     expect(pollData.placeId).toBe(PLACE_ID);
     expect(pollData.state).toBe('active');
     expect(
       (pollData.metadata as { closeWindowDays: number }).closeWindowDays,
     ).toBe(7);
     expect((pollData.metadata as { weekOf: string }).weekOf).toBe(WEEK_OF);
+    // The poll row references its topic through the client-minted id pair.
+    expect(pollData.topicId).toBe(topicCreateManyRows(tx)[0].topicId);
     // Supply state (spend included) committed in the same transaction.
     expect(tx.pollPlaceSupply.upsert).toHaveBeenCalledTimes(1);
+    // Red-team 1c: the notification queue rows are written THROUGH the same
+    // transaction client — a crash can never publish polls but lose the push.
+    expect(notifications.queuePollReleaseForPlace).toHaveBeenCalledTimes(1);
+    const [payload, dbClient] = notifications.queuePollReleaseForPlace.mock
+      .calls[0] as [{ placeId: string; pollIds: string[] }, unknown];
+    expect(payload).toMatchObject({ placeId: PLACE_ID });
+    expect(payload.pollIds).toEqual(
+      pollCreateManyRows(tx).map((row) => row.pollId),
+    );
+    expect(dbClient).toBe(tx);
   });
 
   it('IDEMPOTENT (pre-filter): an existing (placeId, weekOf) tick publishes nothing', async () => {
@@ -181,8 +242,8 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
       tickCreateRejects: true,
     });
     await expect(service.runTick(SUNDAY_0930_LOCAL)).resolves.toBeUndefined();
-    expect(tx.pollTopic.create).not.toHaveBeenCalled();
-    expect(tx.poll.create).not.toHaveBeenCalled();
+    expect(tx.pollTopic.createMany).not.toHaveBeenCalled();
+    expect(tx.poll.createMany).not.toHaveBeenCalled();
     expect(tx.pollPlaceSupply.upsert).not.toHaveBeenCalled();
   });
 
@@ -192,18 +253,23 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it('skips the candidate scan entirely in hours where NO zone on earth is inside the Sunday window (red-team 3a)', async () => {
+    const { service, demandMass, prisma } = createHarness({
+      subjects: [SUBJECT],
+    });
+    await service.runTick(WEDNESDAY);
+    expect(demandMass.placesWithAnySignal).not.toHaveBeenCalled();
+    expect(prisma.place.findMany).not.toHaveBeenCalled();
+  });
+
   it('credit with NO ranked subject publishes the structural bootstrap poll', async () => {
     const { service, tx } = createHarness({ subjects: [], mass: 30 });
     await service.runTick(SUNDAY_0930_LOCAL);
 
-    const [{ data: topicData }] = tx.pollTopic.create.mock.calls[0] as [
-      { data: Record<string, unknown> },
-    ];
+    const [topicData] = topicCreateManyRows(tx);
     expect(topicData.topicType).toBe('best_restaurants');
     expect(topicData.title).toBe('Best restaurants in Austin');
-    const [{ data: pollData }] = tx.poll.create.mock.calls[0] as [
-      { data: Record<string, unknown> },
-    ];
+    const [pollData] = pollCreateManyRows(tx);
     expect(pollData.axis).toMatchObject({
       targetType: 'restaurant',
       marketHint: 'Austin',
@@ -218,11 +284,226 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
     }));
     const { service, tx } = createHarness({ subjects, mass: 120 });
     await service.runTick(SUNDAY_0930_LOCAL);
-    expect(tx.poll.create).toHaveBeenCalledTimes(8);
+    expect(pollCreateManyRows(tx)).toHaveLength(8);
     // Highest-scoring subject first (demandMass × cooldown × resurgence).
-    const firstTopic = (
-      tx.pollTopic.create.mock.calls[0] as [{ data: { metadata: unknown } }]
-    )[0].data.metadata as { birthCertificate: { rank: number } };
+    const firstTopic = topicCreateManyRows(tx)[0].metadata as {
+      birthCertificate: { rank: number };
+    };
     expect(firstTopic.birthCertificate.rank).toBe(1);
+  });
+
+  it('§17 ONE SEARCHER NEVER SEEDS (red-team 2a/1c): a stateless place with sub-1 creditRate writes NO rows at all — no tick, no supply state, no polls', async () => {
+    // mass 1 = a single actor's single act; creditRate = 1/15 << 1.
+    const { service, prisma, notifications } = createHarness({
+      subjects: [SUBJECT],
+      mass: 1,
+    });
+    await service.runTick(SUNDAY_0930_LOCAL);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(notifications.queuePollReleaseForPlace).not.toHaveBeenCalled();
+  });
+
+  describe('cohort closure is a weekOf-LABEL judgment (red-team 1a)', () => {
+    it('a cohort launched last Sunday closes at this Sunday tick even when < 7·24h of wall-clock has elapsed', async () => {
+      const { service } = createHarness({
+        // Launched 30s AFTER this tick's wall-clock hour ⇒ elapsed
+        // 6d23h59m30s < 7d — the old wall-clock close missed this forever.
+        harvestPolls: [
+          harvestPoll({ launchedAt: new Date('2026-07-12T14:30:30Z') }),
+        ],
+      });
+      const outcomes = await (
+        service as unknown as {
+          harvestCohortOutcomes: (
+            now: Date,
+          ) => Promise<{ placeId: string; weekOf: string }[]>;
+        }
+      ).harvestCohortOutcomes(SUNDAY_0930_LOCAL);
+      expect(outcomes).toHaveLength(1);
+      expect(outcomes[0]).toMatchObject({
+        placeId: PLACE_ID,
+        weekOf: LAST_WEEK_OF,
+      });
+    });
+
+    it('DST spring-forward Sunday still closes the cohort (labels are calendar math, not ms)', async () => {
+      // US spring-forward 2026-03-08: the wall-clock week is 6d23h.
+      const { service } = createHarness({
+        harvestPolls: [
+          harvestPoll({
+            launchedAt: new Date('2026-03-01T15:00:00Z'), // 09:00 CST
+            metadata: { weekOf: '2026-03-01' },
+          }),
+        ],
+      });
+      const outcomes = await (
+        service as unknown as {
+          harvestCohortOutcomes: (now: Date) => Promise<{ weekOf: string }[]>;
+        }
+      ).harvestCohortOutcomes(new Date('2026-03-08T14:30:00Z')); // 09:30 CDT
+      expect(outcomes).toHaveLength(1);
+      expect(outcomes[0].weekOf).toBe('2026-03-01');
+    });
+
+    it('a cohort launched THIS ritual week is not closed yet', async () => {
+      const { service } = createHarness({
+        harvestPolls: [
+          harvestPoll({
+            launchedAt: new Date('2026-07-19T14:30:10Z'),
+            metadata: { weekOf: WEEK_OF },
+          }),
+        ],
+      });
+      const outcomes = await (
+        service as unknown as {
+          harvestCohortOutcomes: (now: Date) => Promise<unknown[]>;
+        }
+      ).harvestCohortOutcomes(SUNDAY_0930_LOCAL);
+      expect(outcomes).toHaveLength(0);
+    });
+  });
+
+  it('median-test evidence is consumed ONCE: five tick cycles with no NEW cohort hold the frontier (red-team 2b)', async () => {
+    // One stale cohort (weekOf 2026-07-05) that the 2026-07-12 tick already
+    // consumed (creditUpdatedAt in week 2026-07-12). Every later tick must
+    // treat it as old news: frontier held at 4 for five straight weeks.
+    let state: Record<string, unknown> = {
+      placeId: PLACE_ID,
+      frontier: 4,
+      phase: 'learned',
+      credit: new Prisma.Decimal(10),
+      creditUpdatedAt: new Date('2026-07-12T14:30:00Z'),
+    };
+    const subjects = Array.from({ length: 6 }, (_, i) => ({
+      ...SUBJECT,
+      subjectId: `${i}`.padStart(8, '0') + '-0000-0000-0000-000000000000',
+    }));
+    const frontiers: number[] = [];
+    for (let week = 0; week < 5; week += 1) {
+      const { service, tx, prisma } = createHarness({
+        subjects,
+        mass: 100,
+        harvestPolls: [
+          harvestPoll({
+            launchedAt: new Date('2026-07-05T14:30:00Z'),
+            metadata: { weekOf: TWO_WEEKS_AGO_OF },
+          }),
+        ],
+        supplyState: state,
+      });
+      const now = new Date(
+        SUNDAY_0930_LOCAL.getTime() + week * 7 * 24 * 60 * 60 * 1000,
+      );
+      await service.runTick(now);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      const [{ where, create, update }] = tx.pollPlaceSupply.upsert.mock
+        .calls[0] as [
+        {
+          where: { placeId: string };
+          create: Record<string, unknown>;
+          update: Record<string, unknown>;
+        },
+      ];
+      expect(where.placeId).toBe(PLACE_ID);
+      frontiers.push(update.frontier as number);
+      expect(create.frontier).toBe(update.frontier);
+      state = {
+        placeId: PLACE_ID,
+        frontier: update.frontier,
+        phase: update.phase,
+        credit: update.credit,
+        creditUpdatedAt: now,
+      };
+    }
+    expect(frontiers).toEqual([4, 4, 4, 4, 4]);
+  });
+
+  describe('the cooldown GATES, not just ranks (red-team 2d)', () => {
+    const lastWeekTopic = {
+      placeId: PLACE_ID,
+      topicType: 'best_dish',
+      targetDishId: DISH_ID,
+      targetRestaurantId: null,
+      createdAt: new Date('2026-07-12T14:30:00Z'),
+      metadata: { weekOf: LAST_WEEK_OF },
+    };
+
+    it('a subject-pool-of-1 place does NOT re-poll the same subject the next week (falls to bootstrap)', async () => {
+      const { service, tx } = createHarness({
+        subjects: [SUBJECT],
+        mass: 30,
+        cooldownTopics: [lastWeekTopic],
+      });
+      await service.runTick(SUNDAY_0930_LOCAL);
+      const topics = topicCreateManyRows(tx);
+      expect(topics).toHaveLength(1);
+      expect(topics[0].topicType).toBe('best_restaurants'); // not the subject
+    });
+
+    it('the subject becomes available again once the ramp recovers (one full window past close — two weeks at weekly cadence)', async () => {
+      const { service, tx } = createHarness({
+        subjects: [SUBJECT],
+        mass: 30,
+        cooldownTopics: [
+          {
+            ...lastWeekTopic,
+            createdAt: new Date('2026-07-05T14:30:00Z'),
+            metadata: { weekOf: TWO_WEEKS_AGO_OF },
+          },
+        ],
+      });
+      await service.runTick(SUNDAY_0930_LOCAL);
+      const topics = topicCreateManyRows(tx);
+      expect(topics).toHaveLength(1);
+      expect(topics[0].topicType).toBe('best_dish');
+      expect(topics[0].targetDishId).toBe(DISH_ID);
+    });
+
+    it('the bootstrap obeys the SAME gate: no weekly re-publish while the prior bootstrap window just closed', async () => {
+      const { service, tx, notifications } = createHarness({
+        subjects: [],
+        mass: 30,
+        cooldownTopics: [
+          {
+            placeId: PLACE_ID,
+            topicType: 'best_restaurants',
+            targetDishId: null,
+            targetRestaurantId: null,
+            createdAt: new Date('2026-07-12T14:30:00Z'),
+            metadata: { weekOf: LAST_WEEK_OF },
+          },
+        ],
+      });
+      await service.runTick(SUNDAY_0930_LOCAL);
+      // Publish 0 — but the tick + supply bookkeeping still commit.
+      expect(tx.pollTopic.createMany).not.toHaveBeenCalled();
+      expect(tx.poll.createMany).not.toHaveBeenCalled();
+      expect(notifications.queuePollReleaseForPlace).not.toHaveBeenCalled();
+      const [{ data: tickData }] = tx.pollWeeklyTick.create.mock.calls[0] as [
+        { data: Record<string, unknown> },
+      ];
+      expect(tickData.publishedCount).toBe(0);
+    });
+
+    it('the bootstrap re-publishes once ITS ramp recovers', async () => {
+      const { service, tx } = createHarness({
+        subjects: [],
+        mass: 30,
+        cooldownTopics: [
+          {
+            placeId: PLACE_ID,
+            topicType: 'best_restaurants',
+            targetDishId: null,
+            targetRestaurantId: null,
+            createdAt: new Date('2026-07-05T14:30:00Z'),
+            metadata: { weekOf: TWO_WEEKS_AGO_OF },
+          },
+        ],
+      });
+      await service.runTick(SUNDAY_0930_LOCAL);
+      const topics = topicCreateManyRows(tx);
+      expect(topics).toHaveLength(1);
+      expect(topics[0].topicType).toBe('best_restaurants');
+    });
   });
 });

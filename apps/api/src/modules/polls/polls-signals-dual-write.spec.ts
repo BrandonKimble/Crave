@@ -32,7 +32,9 @@ async function flush(): Promise<void> {
 
 type SignalCreateArgs = [{ data: Record<string, unknown> }];
 
-function createHarness(options: { alreadyEndorsed?: boolean } = {}) {
+function createHarness(
+  options: { alreadyEndorsed?: boolean; pollPlaceId?: string | null } = {},
+) {
   const signalsPrisma = {
     signal: {
       create: jest
@@ -52,6 +54,16 @@ function createHarness(options: { alreadyEndorsed?: boolean } = {}) {
         centerLongitude: '-97.74',
       }),
     },
+    place: {
+      findUnique: jest.fn().mockResolvedValue({
+        bboxMinLat: '29.5',
+        bboxMinLng: '-98.2',
+        bboxMaxLat: '30.9',
+        bboxMaxLng: '-97.2',
+        centroidLat: '30.27',
+        centroidLng: '-97.74',
+      }),
+    },
   };
   const signals = new SignalsService(
     signalsPrisma as never,
@@ -63,6 +75,7 @@ function createHarness(options: { alreadyEndorsed?: boolean } = {}) {
         state: 'active',
         question: 'Best birria in Austin?',
         marketKey: 'austin',
+        placeId: options.pollPlaceId ?? null,
         topic: {
           targetDishId: TARGET_DISH_ID,
           targetRestaurantId: null,
@@ -138,6 +151,36 @@ describe('poll endorsement dual-write (§3 poll_vote signal)', () => {
       pollId: POLL_ID,
       endorsedSubjectId: ENDORSED_SUBJECT_ID,
       endorsedSubjectType: PollLeaderboardSubjectType.entity,
+    });
+  });
+
+  it('a vote on a PLACE-keyed poll writes the signal with the PLACE bbox (red-team 3e: the closed loop for the 98.8% of places with no market)', async () => {
+    const PLACE_ID = '99999999-9999-9999-9999-999999999999';
+    const { service, signalsPrisma } = createHarness({
+      pollPlaceId: PLACE_ID,
+    });
+
+    await service.togglePollEndorsement(
+      POLL_ID,
+      ENDORSED_SUBJECT_ID,
+      USER_ID,
+      PollLeaderboardSubjectType.entity,
+    );
+    await flush();
+
+    expect(signalsPrisma.place.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { placeId: PLACE_ID } }),
+    );
+    // The legacy market path is never consulted for a placeId poll.
+    expect(signalsPrisma.market.findFirst).not.toHaveBeenCalled();
+    expect(signalsPrisma.signal.create).toHaveBeenCalledTimes(1);
+    const data = signalsPrisma.signal.create.mock.calls[0][0].data;
+    expect(data.kind).toBe('poll_vote');
+    expect(data).toMatchObject({
+      geoMinLat: 29.5,
+      geoMinLng: -98.2,
+      geoMaxLat: 30.9,
+      geoMaxLng: -97.2,
     });
   });
 

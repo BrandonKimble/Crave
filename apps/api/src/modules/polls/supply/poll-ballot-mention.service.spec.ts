@@ -36,7 +36,8 @@ function createHarness(options: {
     documentId: string;
     activeExtractionRunId: string | null;
   } | null;
-  existingEventCount?: number;
+  /** Distinct restaurantIds already minted under the existing active run. */
+  existingEventRestaurantIds?: string[];
   redirects?: { fromEntityId: string; toEntityId: string }[];
 }) {
   const tx = {
@@ -79,10 +80,14 @@ function createHarness(options: {
       findUnique: jest.fn().mockResolvedValue(options.existingDocument ?? null),
     },
     restaurantEvent: {
-      count: jest.fn().mockResolvedValue(options.existingEventCount ?? 0),
+      findMany: jest.fn().mockResolvedValue(
+        (options.existingEventRestaurantIds ?? []).map((restaurantId) => ({
+          restaurantId,
+        })),
+      ),
     },
     restaurantEntityEvent: {
-      count: jest.fn().mockResolvedValue(0),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     $transaction: jest.fn(
       async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx),
@@ -205,8 +210,8 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
     expect(data.restaurantId).toBe(REST_B);
   });
 
-  it('is idempotent: a document whose active run already carries events never re-mints', async () => {
-    const { service, prisma, tx } = createHarness({
+  it('is idempotent: a document whose active run already carries events never re-mints — but STILL rebuilds the projection (red-team 4b: crash between mint-commit and rebuild must self-heal)', async () => {
+    const { service, prisma, tx, projectionRebuild } = createHarness({
       endorsements: [
         endorsement(
           USER_1,
@@ -216,11 +221,16 @@ describe('PollBallotMentionService — K6 vote→mention at graduation', () => {
         ),
       ],
       existingDocument: { documentId: DOC_ID, activeExtractionRunId: RUN_ID },
-      existingEventCount: 1,
+      existingEventRestaurantIds: [REST_A],
     });
     await service.mintForPoll(POLL_ID);
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(tx.restaurantEvent.create).not.toHaveBeenCalled();
+    // The early-return path runs the (idempotent) rebuild too — evidence can
+    // never stay committed-but-invisible.
+    expect(projectionRebuild.rebuildForRestaurants).toHaveBeenCalledWith([
+      REST_A,
+    ]);
   });
 
   it('skips legacy market-keyed polls (no placeId — no poll_surface room yet)', async () => {

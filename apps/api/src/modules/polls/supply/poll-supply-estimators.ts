@@ -56,6 +56,10 @@ export const ESTIMATOR_NAMES = {
 
 export interface CohortOutcome {
   placeId: string;
+  /** The cohort's weekOf LABEL (local Sunday calendar date, YYYY-MM-DD) —
+   *  cohort closure and once-only evidence consumption are judged in label
+   *  space (red-team 1a/2b), never by wall-clock elapsed ms. */
+  weekOf: string;
   /** Attention mass of the place at the cohort's launch. */
   attentionMass: number;
   /** Distinct-voter answer counts per poll in the cohort. */

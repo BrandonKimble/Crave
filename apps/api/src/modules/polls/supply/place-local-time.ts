@@ -9,9 +9,11 @@
  * deliberately DERIVE AT READ and DO NOT persist the derived zone: the
  * catalog's merge law only gap-fills NULL scalars, so persisting the nautical
  * approximation would permanently block a later provider-derived political
- * timezone from landing. The approximation is at most ~1h off political time,
- * well inside the ritual's tolerance (the tick fires on the local Sunday
- * either way).
+ * timezone from landing. The approximation can be 2h+ off political time
+ * (DST plus wide political zones — Austin in summer is UTC-5 while its
+ * nautical zone is UTC-7), which is still well inside the ritual's tolerance:
+ * the tick fires anywhere in the local Sunday 09:00-23:59 window (~15h), so
+ * the derived zone still lands on the SAME local Sunday.
  */
 
 export const DEGREES_PER_HOUR = 15; // definitional: 360° / 24h
@@ -101,7 +103,8 @@ export function localParts(at: Date, timeZone: string): LocalParts {
 /**
  * Deterministic per-place jitter within the ritual minute (§4: "per-place
  * jitter within the minute"). Pure hash of the placeId — stable across runs,
- * spread across [0, 60s).
+ * spread across [0, 60s). The 60_000 is K1: "within the minute" is a fact of
+ * the ratified ritual sentence (§16), not a tunable.
  */
 export function ritualJitterMs(placeId: string): number {
   let hash = 0;
@@ -109,4 +112,59 @@ export function ritualJitterMs(placeId: string): number {
     hash = (hash * 31 + placeId.charCodeAt(i)) >>> 0;
   }
   return hash % 60_000;
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * The CURRENT ritual cycle's weekOf label in `timeZone`: the local calendar
+ * date of the most recent `ritualDayOfWeek` (today when today IS that day).
+ * Label arithmetic is pure calendar math on the local date — immune to DST
+ * transitions and wall-clock ms drift, which is why cohort closure compares
+ * weekOf LABELS, never elapsed milliseconds (§4 red-team 1a).
+ */
+export function currentWeekOfLabel(
+  at: Date,
+  timeZone: string,
+  ritualDayOfWeek: number,
+): string {
+  const local = localParts(at, timeZone);
+  const [year, month, day] = local.date.split('-').map(Number);
+  const daysSinceRitualDay = (local.dayOfWeek - ritualDayOfWeek + 7) % 7;
+  const label = new Date(
+    Date.UTC(year, month - 1, day) - daysSinceRitualDay * MS_PER_DAY,
+  );
+  return label.toISOString().slice(0, 10);
+}
+
+/** Exact day count between two YYYY-MM-DD labels (later − earlier). */
+export function labelDayDiff(laterLabel: string, earlierLabel: string): number {
+  const parse = (label: string) => {
+    const [year, month, day] = label.split('-').map(Number);
+    return Date.UTC(year, month - 1, day);
+  };
+  return Math.round((parse(laterLabel) - parse(earlierLabel)) / MS_PER_DAY);
+}
+
+/**
+ * True when ANY timezone on earth is currently inside the local window
+ * (dayOfWeek, hour >= minHour). Political UTC offsets live inside the IANA
+ * envelope UTC-12:00 … UTC+14:00 in 15-minute steps (an earthly/vendor fact,
+ * not a tunable) — scanning that envelope is a pure derivation from the UTC
+ * instant, so hours in which NO zone can be in its Sunday ritual window are
+ * skipped without touching the database (§4 red-team 3a).
+ */
+export function anyZoneInsideLocalWindow(
+  at: Date,
+  dayOfWeek: number,
+  minHour: number,
+): boolean {
+  const MS_PER_MINUTE = 60 * 1000;
+  for (let offset = -12 * 60; offset <= 14 * 60; offset += 15) {
+    const shifted = new Date(at.getTime() + offset * MS_PER_MINUTE);
+    if (shifted.getUTCDay() === dayOfWeek && shifted.getUTCHours() >= minHour) {
+      return true;
+    }
+  }
+  return false;
 }

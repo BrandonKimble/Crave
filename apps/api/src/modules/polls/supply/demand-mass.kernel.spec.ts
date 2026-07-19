@@ -1,6 +1,12 @@
-import { demandMassFromActorActs, recencyWeight } from './demand-mass.reader';
+import {
+  demandMassFromActorActs,
+  lngIntervalsIntersect,
+  recencyWeight,
+} from './demand-mass.reader';
 import {
   DEMAND_HALF_LIFE_DAYS,
+  DEMAND_KERNEL_HORIZON_DAYS,
+  NEGLIGIBLE_CONTRIBUTION_EPSILON,
   RECENCY_FLAT_DAYS,
 } from './poll-supply.constants';
 
@@ -52,6 +58,58 @@ describe('demand-mass kernel (§4: the curve kernel carried throughout)', () => 
     it('zero acts contribute zero mass', () => {
       expect(demandMassFromActorActs([0, 0])).toBe(0);
       expect(demandMassFromActorActs([])).toBe(0);
+    });
+  });
+
+  describe('derived kernel horizon (3a: bound scans, never behavior)', () => {
+    it('is flat + 10 half-lives, where a signal weighs under epsilon', () => {
+      expect(DEMAND_KERNEL_HORIZON_DAYS).toBe(
+        RECENCY_FLAT_DAYS + 10 * DEMAND_HALF_LIFE_DAYS,
+      );
+      expect(recencyWeight(DEMAND_KERNEL_HORIZON_DAYS)).toBeLessThanOrEqual(
+        NEGLIGIBLE_CONTRIBUTION_EPSILON,
+      );
+    });
+  });
+
+  describe('wrap-aware longitude intersection (red-team 3c)', () => {
+    // Austin place: a plain interval well west of the seam.
+    const AUSTIN: [number, number] = [-97.9, -97.6];
+    // Fiji viewport: 176°E → 178°W — CROSSES the antimeridian (min > max).
+    const FIJI_VIEW: [number, number] = [176, -178];
+    // Fiji place row (also crossing).
+    const FIJI_PLACE: [number, number] = [175, -179];
+
+    it('a Fiji (crossing) signal does NOT attribute to Austin', () => {
+      expect(lngIntervalsIntersect(...FIJI_VIEW, ...AUSTIN)).toBe(false);
+      // …which is exactly what min/max normalization broke: the normalized
+      // near-world band [-178, 176] would have swallowed Austin.
+      expect(
+        lngIntervalsIntersect(
+          Math.min(...FIJI_VIEW),
+          Math.max(...FIJI_VIEW),
+          ...AUSTIN,
+        ),
+      ).toBe(true);
+    });
+
+    it('a Fiji signal DOES attribute to a Fiji place (both crossing)', () => {
+      expect(lngIntervalsIntersect(...FIJI_VIEW, ...FIJI_PLACE)).toBe(true);
+    });
+
+    it('one-sided crossings test both arcs', () => {
+      // Crossing signal vs plain place near the east arc.
+      expect(lngIntervalsIntersect(...FIJI_VIEW, 177, 179)).toBe(true);
+      // Crossing signal vs plain place near the west arc.
+      expect(lngIntervalsIntersect(...FIJI_VIEW, -180, -179)).toBe(true);
+      // Plain signal vs crossing place (symmetric case).
+      expect(lngIntervalsIntersect(177, 179, ...FIJI_PLACE)).toBe(true);
+      expect(lngIntervalsIntersect(...AUSTIN, ...FIJI_PLACE)).toBe(false);
+    });
+
+    it('plain intervals keep plain range semantics', () => {
+      expect(lngIntervalsIntersect(-98, -97, -97.5, -96)).toBe(true);
+      expect(lngIntervalsIntersect(-98, -97, -96, -95)).toBe(false);
     });
   });
 });

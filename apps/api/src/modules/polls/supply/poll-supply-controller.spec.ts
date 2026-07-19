@@ -55,11 +55,13 @@ describe('decideSupply — warm start (§4)', () => {
     });
     expect(decision.frontier).toBe(8);
     expect(decision.phase).toBe('warm_start');
-    // The prediction mints the first cohort's credit — warm start publishes.
+    // Warm-start credit = ONE cycle's accrual at creditRate (red-team 2a) —
+    // here rate 8/week warrants the full predicted cohort.
+    expect(decision.credit).toBeCloseTo(decision.creditRate, 9);
     expect(decision.cohortTarget).toBe(8);
   });
 
-  it('small places predict <1 and start at the exploration slot (1, K6)', () => {
+  it('small places predict <1: the FRONTIER floors at the exploration slot (1, K6) but the CREDIT does not — no warrant, no publish (red-team 2a)', () => {
     const decision = decideSupply({
       now: NOW,
       state: null,
@@ -67,7 +69,37 @@ describe('decideSupply — warm start (§4)', () => {
       lastClosedCohortAnswerCounts: null,
     });
     expect(decision.frontier).toBe(1);
-    expect(decision.cohortTarget).toBe(1);
+    // creditRate = 2/15 < 1 ⇒ floor(credit) = 0: the exploration slot is
+    // CAPACITY, never a minted warrant.
+    expect(decision.credit).toBeCloseTo(2 / 15, 9);
+    expect(decision.cohortTarget).toBe(0);
+  });
+
+  it('§17 fixture: ONE SEARCHER NEVER SEEDS — a single search act cannot warrant a poll', () => {
+    // One actor, one signal: place mass = log2(1 + 1) = 1.
+    const decision = decideSupply({
+      now: NOW,
+      state: null,
+      readings: readings({ weeklyDemandMass: 1 }),
+      lastClosedCohortAnswerCounts: null,
+    });
+    expect(decision.frontier).toBe(1); // capacity exists…
+    expect(decision.cohortTarget).toBe(0); // …but no credit is minted
+    expect(decision.credit).toBeLessThan(1);
+  });
+
+  it('§17 corollary: a continental viewport dwell over thousands of towns mints credit in NONE of them', () => {
+    // Each grazed town sees the same single-actor mass ≈ 1; none can
+    // publish — seeding scales with demonstrated demand, not visibility.
+    for (const mass of [0.3, 1, 2, 7]) {
+      const decision = decideSupply({
+        now: NOW,
+        state: null,
+        readings: readings({ weeklyDemandMass: mass }),
+        lastClosedCohortAnswerCounts: null,
+      });
+      expect(decision.cohortTarget).toBe(0);
+    }
   });
 });
 

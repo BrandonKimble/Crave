@@ -30,6 +30,7 @@ function createPrisma() {
       upsert: jest.fn().mockResolvedValue({ actorId: ACTOR_ID }),
     },
     market: { findFirst: jest.fn().mockResolvedValue(null) },
+    place: { findUnique: jest.fn().mockResolvedValue(null) },
     restaurantLocation: { findFirst: jest.fn().mockResolvedValue(null) },
     connection: { findFirst: jest.fn().mockResolvedValue(null) },
   };
@@ -53,20 +54,37 @@ const GEO = { minLat: 30.1, minLng: -97.9, maxLat: 30.4, maxLng: -97.6 };
 describe('SignalsService bbox helpers (geo is ALWAYS a bbox — §3)', () => {
   const { service } = createService();
 
-  it('bboxFromBounds normalizes any corner ordering', () => {
+  it('bboxFromBounds: latitude normalizes by min/max; longitude is role-based (west = southWest.lng, east = northEast.lng)', () => {
     expect(
       service.bboxFromBounds({
         northEast: { lat: 30.4, lng: -97.6 },
         southWest: { lat: 30.1, lng: -97.9 },
       }),
     ).toEqual(GEO);
-    // Swapped corners still yield min <= max.
+    // Swapped LATITUDES still yield minLat <= maxLat.
     expect(
       service.bboxFromBounds({
-        northEast: { lat: 30.1, lng: -97.9 },
-        southWest: { lat: 30.4, lng: -97.6 },
+        northEast: { lat: 30.1, lng: -97.6 },
+        southWest: { lat: 30.4, lng: -97.9 },
       }),
     ).toEqual(GEO);
+  });
+
+  it('bboxFromBounds PRESERVES antimeridian wrap (red-team 3c): west > east stores as-is, never min/max-normalized', () => {
+    // Fiji viewport: 176°E → 178°W, a 6°-wide crossing view.
+    const fiji = service.bboxFromBounds({
+      northEast: { lat: -15, lng: -178 },
+      southWest: { lat: -19, lng: 176 },
+    });
+    expect(fiji).toEqual({
+      minLat: -19,
+      maxLat: -15,
+      minLng: 176, // > maxLng ⇒ crossing representation
+      maxLng: -178,
+    });
+    // min/max normalization would have produced the near-world band
+    // [-178, 176] that attributes to every place on earth — Austin included.
+    expect(fiji!.minLng).toBeGreaterThan(fiji!.maxLng);
   });
 
   it('bboxFromBounds returns null for missing/invalid bounds', () => {
@@ -88,6 +106,49 @@ describe('SignalsService bbox helpers (geo is ALWAYS a bbox — §3)', () => {
       maxLng: -97.74,
     });
     expect(service.bboxFromPoint(Number.NaN, 0)).toBeNull();
+  });
+});
+
+describe('SignalsService.bboxFromPlace (red-team 3e: place-keyed poll geo)', () => {
+  it('returns the place bbox, cached, and passes crossing rows through as-is', async () => {
+    const { service, prisma } = createService();
+    prisma.place.findUnique.mockResolvedValue({
+      bboxMinLat: '30.1',
+      bboxMinLng: '-97.9',
+      bboxMaxLat: '30.4',
+      bboxMaxLng: '-97.6',
+      centroidLat: '30.27',
+      centroidLng: '-97.74',
+    });
+    const placeId = '99999999-9999-9999-9999-999999999999';
+    await expect(service.bboxFromPlace(placeId)).resolves.toEqual(GEO);
+    await expect(service.bboxFromPlace(placeId)).resolves.toEqual(GEO);
+    expect(prisma.place.findUnique).toHaveBeenCalledTimes(1); // cached
+  });
+
+  it('falls back to the centroid point for un-sketched-bbox places, null when nothing resolves, and never rejects', async () => {
+    const { service, prisma } = createService();
+    prisma.place.findUnique.mockResolvedValueOnce({
+      bboxMinLat: null,
+      bboxMinLng: null,
+      bboxMaxLat: null,
+      bboxMaxLng: null,
+      centroidLat: '30.27',
+      centroidLng: '-97.74',
+    });
+    await expect(
+      service.bboxFromPlace('88888888-8888-8888-8888-888888888888'),
+    ).resolves.toEqual({
+      minLat: 30.27,
+      maxLat: 30.27,
+      minLng: -97.74,
+      maxLng: -97.74,
+    });
+    await expect(service.bboxFromPlace(null)).resolves.toBeNull();
+    prisma.place.findUnique.mockRejectedValueOnce(new Error('db down'));
+    await expect(
+      service.bboxFromPlace('77777777-7777-7777-7777-777777777777'),
+    ).resolves.toBeNull();
   });
 });
 

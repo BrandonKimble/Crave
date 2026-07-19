@@ -46,6 +46,7 @@ describe('PollSupplyEstimators (§4 via the §21.1 Estimator primitive)', () => 
     for (let i = 0; i < 10; i += 1) {
       estimators.observeCohort(registry, {
         placeId: PLACE_A,
+        weekOf: '2026-07-12',
         attentionMass: 100,
         answerCounts: [30, 30],
         viableAnswerCounts: [30, 30],
@@ -67,6 +68,7 @@ describe('PollSupplyEstimators (§4 via the §21.1 Estimator primitive)', () => 
     for (let i = 0; i < 8; i += 1) {
       estimators.observeCohort(registry, {
         placeId: PLACE_A,
+        weekOf: '2026-07-12',
         attentionMass: 200,
         answerCounts: [50],
         viableAnswerCounts: [50],
@@ -90,6 +92,7 @@ describe('PollSupplyEstimators (§4 via the §21.1 Estimator primitive)', () => 
     for (let i = 0; i < 8; i += 1) {
       estimators.observeCohort(registry, {
         placeId: PLACE_A,
+        weekOf: '2026-07-12',
         attentionMass: 200,
         answerCounts: [50],
         viableAnswerCounts: [50],
@@ -100,6 +103,7 @@ describe('PollSupplyEstimators (§4 via the §21.1 Estimator primitive)', () => 
     for (let i = 0; i < 8; i += 1) {
       estimators.observeCohort(registry, {
         placeId: PLACE_B,
+        weekOf: '2026-07-12',
         attentionMass: 20,
         answerCounts: [10],
         viableAnswerCounts: [10],
@@ -122,6 +126,7 @@ describe('PollSupplyEstimators (§4 via the §21.1 Estimator primitive)', () => 
     const registry = estimators.buildRegistry();
     estimators.observeCohort(registry, {
       placeId: PLACE_A,
+      weekOf: '2026-07-12',
       attentionMass: 100,
       answerCounts: [20, 10], // total 30 → conversion obs 0.3; tail 10/15
       viableAnswerCounts: [],
@@ -149,6 +154,7 @@ describe('PollSupplyEstimators (§4 via the §21.1 Estimator primitive)', () => 
     const registry2 = estimators.buildRegistry();
     estimators.observeCohort(registry2, {
       placeId: PLACE_A,
+      weekOf: '2026-07-12',
       attentionMass: 100,
       answerCounts: [20],
       viableAnswerCounts: [],
@@ -167,6 +173,7 @@ describe('PollSupplyEstimators (§4 via the §21.1 Estimator primitive)', () => 
     const registry = estimators.buildRegistry();
     estimators.observeCohort(registry, {
       placeId: PLACE_A,
+      weekOf: '2026-07-12',
       attentionMass: 0,
       answerCounts: [5],
       viableAnswerCounts: [],

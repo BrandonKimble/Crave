@@ -28,7 +28,10 @@ export type SignalKind =
   | 'poll_created'
   | 'viewport_dwell';
 
-/** Geo is ALWAYS a bbox; a point is a zero-area bbox (§3). */
+/** Geo is ALWAYS a bbox; a point is a zero-area bbox (§3). Longitude is
+ *  WRAP-AWARE: minLng > maxLng means the bbox CROSSES the antimeridian and
+ *  covers [minLng, 180] ∪ [-180, maxLng] (the places-catalog representation;
+ *  readers OR-split crossing rows — demand-mass reader red-team 3c). */
 export interface SignalBbox {
   minLat: number;
   minLng: number;
@@ -58,6 +61,7 @@ export interface RecordSignalInput {
 
 const ACTOR_CACHE_MAX = 10_000;
 const MARKET_BBOX_CACHE_MAX = 1_000;
+const PLACE_BBOX_CACHE_MAX = 1_000;
 
 @Injectable()
 export class SignalsService {
@@ -66,6 +70,8 @@ export class SignalsService {
   private readonly actorIdCache = new Map<string, string>();
   /** lowercased marketKey -> bbox (null cached too: known-missing markets) */
   private readonly marketBboxCache = new Map<string, SignalBbox | null>();
+  /** placeId -> bbox (null cached too: un-sketched places) */
+  private readonly placeBboxCache = new Map<string, SignalBbox | null>();
   /** Skip conditions log once per key per process — never spam the hot path. */
   private readonly loggedSkips = new Set<string>();
 
@@ -102,7 +108,15 @@ export class SignalsService {
     }
   }
 
-  /** Bbox from a map-bounds pair; normalizes any corner ordering. */
+  /**
+   * Bbox from a map-bounds pair. Latitude normalizes by min/max (corner
+   * ordering carries no meaning there). Longitude is ROLE-BASED and
+   * wrap-preserving (red-team 3c): west = southWest.lng, east =
+   * northEast.lng; west > east means the viewport CROSSES the antimeridian
+   * (Fiji) and is stored AS-IS (minLng > maxLng), never min/max-normalized —
+   * normalizing would invert a 6°-wide Fiji viewport into a ~354° near-world
+   * band that attributes to every place on earth.
+   */
   bboxFromBounds(
     bounds:
       | {
@@ -126,8 +140,8 @@ export class SignalsService {
     return {
       minLat: Math.min(southWest.lat, northEast.lat),
       maxLat: Math.max(southWest.lat, northEast.lat),
-      minLng: Math.min(southWest.lng, northEast.lng),
-      maxLng: Math.max(southWest.lng, northEast.lng),
+      minLng: southWest.lng,
+      maxLng: northEast.lng,
     };
   }
 
@@ -198,6 +212,68 @@ export class SignalsService {
     } catch (error) {
       this.logger.debug('Market bbox lookup failed', {
         marketKey: key,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Place bbox via the places catalog (§1 DAG rows) — the geo for signals on
+   * place-keyed polls (red-team 3e: a vote on a placeId poll attributes to
+   * the PLACE bbox; the marketKey path is legacy-poll-only). Crossing place
+   * rows (minLng > maxLng) pass through as-is — SignalBbox is wrap-aware.
+   * Falls back to the centroid as a zero-area bbox for un-sketched-bbox rows.
+   * Never rejects — safe to pass un-awaited as RecordSignalInput.geo.
+   */
+  async bboxFromPlace(
+    placeId: string | null | undefined,
+  ): Promise<SignalBbox | null> {
+    if (!placeId) {
+      return null;
+    }
+    const cached = this.placeBboxCache.get(placeId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    try {
+      const place = await this.prisma.place.findUnique({
+        where: { placeId },
+        select: {
+          bboxMinLat: true,
+          bboxMinLng: true,
+          bboxMaxLat: true,
+          bboxMaxLng: true,
+          centroidLat: true,
+          centroidLng: true,
+        },
+      });
+      let bbox: SignalBbox | null = null;
+      if (
+        place?.bboxMinLat != null &&
+        place.bboxMinLng != null &&
+        place.bboxMaxLat != null &&
+        place.bboxMaxLng != null
+      ) {
+        bbox = {
+          minLat: Number(place.bboxMinLat),
+          minLng: Number(place.bboxMinLng),
+          maxLat: Number(place.bboxMaxLat),
+          maxLng: Number(place.bboxMaxLng),
+        };
+      } else if (place?.centroidLat != null && place.centroidLng != null) {
+        bbox = this.bboxFromPoint(
+          Number(place.centroidLat),
+          Number(place.centroidLng),
+        );
+      }
+      this.cachePut(this.placeBboxCache, placeId, bbox, PLACE_BBOX_CACHE_MAX);
+      return bbox;
+    } catch (error) {
+      this.logger.debug('Place bbox lookup failed', {
+        placeId,
         error: {
           message: error instanceof Error ? error.message : String(error),
         },

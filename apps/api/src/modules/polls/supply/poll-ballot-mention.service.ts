@@ -98,13 +98,28 @@ export class PollBallotMentionService {
       select: { documentId: true, activeExtractionRunId: true },
     });
     if (existingDocument?.activeExtractionRunId) {
-      const minted = await this.prisma.restaurantEvent.count({
-        where: { extractionRunId: existingDocument.activeExtractionRunId },
-      });
-      const mintedEntity = await this.prisma.restaurantEntityEvent.count({
-        where: { extractionRunId: existingDocument.activeExtractionRunId },
-      });
-      if (minted > 0 || mintedEntity > 0) {
+      const [minted, mintedEntity] = await Promise.all([
+        this.prisma.restaurantEvent.findMany({
+          where: { extractionRunId: existingDocument.activeExtractionRunId },
+          select: { restaurantId: true },
+          distinct: ['restaurantId'],
+        }),
+        this.prisma.restaurantEntityEvent.findMany({
+          where: { extractionRunId: existingDocument.activeExtractionRunId },
+          select: { restaurantId: true },
+          distinct: ['restaurantId'],
+        }),
+      ]);
+      if (minted.length > 0 || mintedEntity.length > 0) {
+        // Red-team 4b: the mint completed before, but a crash BETWEEN the
+        // mint commit and the projection rebuild would otherwise leave the
+        // evidence invisible forever (this early return was the only path
+        // that skipped the rebuild). Rebuild is idempotent — run it here too.
+        await this.projectionRebuild.rebuildForRestaurants([
+          ...new Set(
+            [...minted, ...mintedEntity].map((event) => event.restaurantId),
+          ),
+        ]);
         return;
       }
     }
