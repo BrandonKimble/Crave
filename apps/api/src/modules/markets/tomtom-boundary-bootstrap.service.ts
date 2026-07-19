@@ -7,6 +7,7 @@ import { firstValueFrom } from 'rxjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UsageLedgerService } from '../external-integrations/shared/usage-ledger.service';
 import { LoggerService } from '../../shared';
+import { GovernanceService } from '../external-integrations/governance/governance.service';
 import { MarketBootstrapMetricsService } from './market-bootstrap-metrics.service';
 
 type Coordinate = { lat: number; lng: number };
@@ -157,6 +158,7 @@ export class TomTomBoundaryBootstrapService {
     private readonly bootstrapMetrics: MarketBootstrapMetricsService,
     loggerService: LoggerService,
     private readonly usageLedger: UsageLedgerService,
+    private readonly governance: GovernanceService,
   ) {
     this.logger = loggerService.setContext('TomTomBoundaryBootstrapService');
     this.reverseGeocodeBaseUrl =
@@ -522,13 +524,24 @@ export class TomTomBoundaryBootstrapService {
       params.apiVersion = this.apiVersion;
     }
 
-    const response = await firstValueFrom(
-      this.httpService.get<TomTomReverseGeocodeResponse>(url, {
-        params,
-        headers: this.buildTrackingHeaders(requestId),
-        timeout: this.timeoutMs,
-      }),
+    // Governed draw (master plan §14/§22): the cheap pool. A denial is a
+    // typed not-now — the probe simply doesn't happen this month; sketches
+    // and headers degrade to "this area" and retry later.
+    const response = await this.governance.draw(
+      'tomtom.cheapGeocode',
+      'boundary-probe',
+      () =>
+        firstValueFrom(
+          this.httpService.get<TomTomReverseGeocodeResponse>(url, {
+            params,
+            headers: this.buildTrackingHeaders(requestId),
+            timeout: this.timeoutMs,
+          }),
+        ),
     );
+    if (!response) {
+      return null;
+    }
 
     const matches = Array.isArray(response.data?.addresses)
       ? response.data.addresses
@@ -596,16 +609,26 @@ export class TomTomBoundaryBootstrapService {
       params.apiVersion = this.apiVersion;
     }
 
-    const response = await firstValueFrom(
-      this.httpService.get<TomTomAdditionalDataResponse>(
-        this.additionalDataUrl,
-        {
-          params,
-          headers: this.buildTrackingHeaders(requestId),
-          timeout: this.timeoutMs,
-        },
-      ),
+    // Governed draw (master plan §14/§22): the SCARCE polygon pool. A denial
+    // defers the polygon (sketch/name keeps working; backfill next month).
+    const response = await this.governance.draw(
+      'tomtom.scarcePolygons',
+      'boundary-geometry',
+      () =>
+        firstValueFrom(
+          this.httpService.get<TomTomAdditionalDataResponse>(
+            this.additionalDataUrl,
+            {
+              params,
+              headers: this.buildTrackingHeaders(requestId),
+              timeout: this.timeoutMs,
+            },
+          ),
+        ),
     );
+    if (!response) {
+      return null;
+    }
 
     const items = Array.isArray(response.data?.additionalData)
       ? response.data.additionalData

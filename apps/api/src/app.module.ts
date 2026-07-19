@@ -12,6 +12,7 @@ import { ExternalIntegrationsModule } from './modules/external-integrations/exte
 import { RedditCollectorModule } from './modules/content-processing/reddit-collector/reddit-collector.module';
 import { AppController } from './app.controller';
 import { SharedModule } from './shared/shared.module';
+import { GovernanceModule } from './modules/external-integrations/governance/governance.module';
 import { SearchModule } from './modules/search/search.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { IdentityModule } from './modules/identity/identity.module';
@@ -47,6 +48,7 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     ...(runtimeWithSchedulers ? [ScheduleModule.forRoot()] : []),
     DiscoveryModule,
     SharedModule,
+    GovernanceModule,
     // Production readiness: Sentry for error tracking (must be early in imports)
     SentryModule,
     RedisModule.forRootAsync({

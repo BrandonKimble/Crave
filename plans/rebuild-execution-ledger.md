@@ -121,6 +121,23 @@ agent in flight at turn end so completion notifications chain turns.
   drift; prisma migrate dev wants reset — do NOT reset, corpus is expensive).
   API on :3000 restarted with new binary at 05:34.
 
+## PHASE A STATUS (live)
+
+- [x] d231c31d places/signals/actors/redirects schema+migration (API restarted)
+- [x] f27a2d03 Estimator primitive · 19480d57 PoolRegistry (specs green)
+- [x] TomTom governed (this commit) — cheap+scarce pools live via draw()
+- [>] AGENT in flight: signals dual-write (search/autocomplete/views/favorites/
+  polls call sites; fire-and-forget; DUAL-WRITE markers w/ deletion note)
+- [ ] NEXT (me): catalog resolution module — placeAt (outermost engine /
+      smallest containing place), marketsInView (set + derived commensurate
+      place, §2 laws incl. containing-fallback + hysteresis inputs),
+      subjects() recursive probe gate, reconciler lane (sketch-everything,
+      region negative obs, provisional names), US seed script (gazetteer +
+      governed TomTom draws, proposal+price-tag path).
+- [ ] Then: header/resolution consumers cut (polls header re-resolve, search
+      metadata naming) → old resolver election dies (Phase C per-consumer).
+- deferred-in-leg-2: See-locations (only remaining Leg 2 item).
+
 ## Decisions log (append as made)
 
 - 2026-07-19: recently-viewed locationId ships via SIGNALS (entity_view meta),
