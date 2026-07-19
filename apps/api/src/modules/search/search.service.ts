@@ -46,6 +46,7 @@ import {
 } from './on-demand-request.service';
 import { SearchMetricsService } from './search-metrics.service';
 import { MarketRegistryService } from '../markets/market-registry.service';
+import { SignalsService } from '../signals/signals.service';
 import { RestaurantStatusService } from './restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from './dto/restaurant-status-preview.dto';
 import {
@@ -230,6 +231,7 @@ export class SearchService {
     private readonly prisma: PrismaService,
     private readonly marketRegistry: MarketRegistryService,
     private readonly restaurantStatusService: RestaurantStatusService,
+    private readonly signals: SignalsService,
   ) {
     this.logger = loggerService.setContext('SearchService');
     this.resultLimit = this.resolveResultLimit();
@@ -2519,6 +2521,13 @@ export class SearchService {
     marketKeys?: SearchMarketContext,
   ): Promise<void> {
     const targets = this.gatherEntityImpressionTargets(request);
+
+    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+    // §3 signals ledger: the page-1 backend search act (+ autocomplete
+    // selection) recorded beside the search_events writers below. Fires even
+    // when the old attribution has no entity target (term subject).
+    this.recordSearchSignals(request, context, targets);
+
     if (!targets.length) {
       return;
     }
@@ -2535,6 +2544,55 @@ export class SearchService {
       context,
       resolvedMarketKeys,
     );
+  }
+
+  /**
+   * DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+   * §3 signals for a page-1 backend search submit: a 'search' signal whose
+   * subject mirrors the old attribution's primary entity target (term =
+   * queryText when no entity resolved), plus an 'autocomplete_selection'
+   * signal when the submit carried a selected autocomplete entity. Geo is the
+   * request viewport bbox; without bounds the signal is skipped (logged once
+   * inside SignalsService). Fire-and-forget by construction.
+   */
+  private recordSearchSignals(
+    request: SearchQueryRequestDto,
+    context: {
+      totalResults: number;
+      totalRestaurantResults: number;
+    },
+    targets: { entityId: string; entityType: EntityType }[],
+  ): void {
+    const geo = this.signals.bboxFromBounds(request.bounds ?? null);
+    const primaryEntityId = targets[0]?.entityId ?? null;
+    const queryText = request.sourceQuery?.trim() ?? '';
+    this.signals.record({
+      kind: 'search',
+      userId: request.userId ?? null,
+      subject: primaryEntityId
+        ? { entityId: primaryEntityId }
+        : queryText.length
+          ? { term: queryText }
+          : null,
+      geo,
+      meta: {
+        resultCount: context.totalResults,
+        restaurantCount: context.totalRestaurantResults,
+        cached: false,
+        resolvedEntityId: primaryEntityId ?? undefined,
+      },
+    });
+
+    const selectedEntityId =
+      request.submissionContext?.selectedEntityId ?? null;
+    if (selectedEntityId) {
+      this.signals.record({
+        kind: 'autocomplete_selection',
+        userId: request.userId ?? null,
+        subject: { entityId: selectedEntityId },
+        geo,
+      });
+    }
   }
 
   private normalizePriceLevels(levels?: number[]): number[] {
@@ -2872,6 +2930,30 @@ export class SearchService {
             })),
           },
         },
+      },
+    });
+
+    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+    // §3 signals: a cache reveal is the same search ACT with meta.cached=true.
+    // The reveal request carries no viewport bounds server-side, so geo falls
+    // back to the original event's primary-market bbox (skip-with-debug when
+    // the market is unknown).
+    const cacheSubjectEntityId = original.entities[0]?.entityId ?? null;
+    const cacheQueryText = original.queryText?.trim() ?? '';
+    this.signals.record({
+      kind: 'search',
+      userId: normalizedUserId,
+      subject: cacheSubjectEntityId
+        ? { entityId: cacheSubjectEntityId }
+        : cacheQueryText.length
+          ? { term: cacheQueryText }
+          : null,
+      geo: this.signals.bboxFromMarketKey(original.primaryMarketKey),
+      meta: {
+        resultCount: original.totalResults,
+        restaurantCount: original.totalRestaurantResults,
+        cached: true,
+        resolvedEntityId: cacheSubjectEntityId ?? undefined,
       },
     });
 

@@ -27,6 +27,11 @@ function makeService(items: any[]) {
     new ListResultsAssembler({} as never, {} as never),
     new FavoriteListMapper(prisma, logger),
     { loadTileImages: () => Promise.resolve(new Map()) } as never,
+    {
+      record: () => undefined,
+      bboxFromPoint: () => null,
+      bboxFromRestaurantLocation: () => Promise.resolve(null),
+    } as never,
   );
   return { prisma, service };
 }

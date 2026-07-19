@@ -6,6 +6,7 @@ import {
 import { FavoriteEventKind, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { SignalsService } from '../signals/signals.service';
 import { CreateFavoriteDto } from './dto/create-favorite.dto';
 
 @Injectable()
@@ -15,6 +16,7 @@ export class FavoritesService {
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
+    private readonly signals: SignalsService,
   ) {
     this.logger = loggerService.setContext('FavoritesService');
   }
@@ -55,10 +57,16 @@ export class FavoritesService {
     // real location OF this restaurant; silently dropping a mismatch would
     // mis-pin the save, so it's a loud 400.
     let validatedLocationId: string | null = null;
+    let validatedLocationPoint: { lat: number; lng: number } | null = null;
     if (dto.locationId) {
       const location = await this.prisma.restaurantLocation.findUnique({
         where: { locationId: dto.locationId },
-        select: { locationId: true, restaurantId: true },
+        select: {
+          locationId: true,
+          restaurantId: true,
+          latitude: true,
+          longitude: true,
+        },
       });
       if (!location || location.restaurantId !== entity.entityId) {
         throw new BadRequestException(
@@ -66,8 +74,15 @@ export class FavoritesService {
         );
       }
       validatedLocationId = location.locationId;
+      if (location.latitude != null && location.longitude != null) {
+        validatedLocationPoint = {
+          lat: Number(location.latitude),
+          lng: Number(location.longitude),
+        };
+      }
     }
 
+    let createdNew = false;
     const favorite = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.userFavorite.findUnique({
         where: {
@@ -129,8 +144,30 @@ export class FavoritesService {
         },
       });
 
+      createdNew = true;
       return created;
     });
+
+    if (createdNew) {
+      // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+      // §3 signals: the favorite_added act beside userFavoriteEvent above.
+      // Geo = the saved location's point, else the entity's primary location
+      // (restaurants only — a food favorite without a location skips).
+      this.signals.record({
+        kind: 'favorite_added',
+        userId,
+        subject: { entityId: entity.entityId },
+        geo: validatedLocationPoint
+          ? this.signals.bboxFromPoint(
+              validatedLocationPoint.lat,
+              validatedLocationPoint.lng,
+            )
+          : this.signals.bboxFromRestaurantLocation({
+              restaurantId: entity.entityId,
+            }),
+        meta: { locationId: validatedLocationId ?? undefined },
+      });
+    }
 
     this.logger.debug('Added user favorite', {
       userId,

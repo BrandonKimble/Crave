@@ -12,6 +12,7 @@ import { ListRestaurantViewsDto } from './dto/list-restaurant-views.dto';
 import { ListFoodViewsDto } from './dto/list-food-views.dto';
 import { RestaurantStatusService } from '../search/restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from '../search/dto/restaurant-status-preview.dto';
+import { SignalsService } from '../signals/signals.service';
 
 @Injectable()
 export class HistoryService {
@@ -22,6 +23,7 @@ export class HistoryService {
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
     private readonly restaurantStatusService: RestaurantStatusService,
+    private readonly signals: SignalsService,
   ) {
     this.logger = loggerService.setContext('HistoryService');
     this.viewCooldownMs = this.resolveViewCooldownMs();
@@ -108,6 +110,26 @@ export class HistoryService {
         });
       }
     });
+
+    if (shouldIncrement) {
+      // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+      // §3 signals: the entity_view act beside userEntityViewEvent above. Geo
+      // is the viewed location's point bbox (dto.locationId when supplied,
+      // else the restaurant's primary location; skip-with-debug when none).
+      this.signals.record({
+        kind: 'entity_view',
+        userId,
+        subject: { entityId: restaurant.entityId },
+        geo: this.signals.bboxFromRestaurantLocation({
+          restaurantId: restaurant.entityId,
+          locationId: dto.locationId ?? null,
+        }),
+        meta: {
+          contextRestaurantId: restaurant.entityId,
+          locationId: dto.locationId ?? undefined,
+        },
+      });
+    }
 
     this.logger.debug('Recorded restaurant view', {
       userId,
@@ -211,6 +233,26 @@ export class HistoryService {
         });
       }
     });
+
+    if (shouldIncrement) {
+      // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+      // §3 signals: the entity_view act beside userEntityViewEvent above,
+      // subject = the viewed food, context = the serving restaurant.
+      this.signals.record({
+        kind: 'entity_view',
+        userId,
+        subject: { entityId: food.entityId },
+        geo: this.signals.bboxFromRestaurantLocation({
+          restaurantId: connection.restaurantId,
+          locationId: dto.locationId ?? null,
+        }),
+        meta: {
+          contextRestaurantId: connection.restaurantId,
+          connectionId: connection.connectionId,
+          locationId: dto.locationId ?? undefined,
+        },
+      });
+    }
 
     this.logger.debug('Recorded food view', {
       userId,

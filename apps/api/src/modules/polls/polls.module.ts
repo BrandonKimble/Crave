@@ -13,6 +13,7 @@ import { MarketsModule } from '../markets/markets.module';
 import { LLMModule } from '../external-integrations/llm/llm.module';
 import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
+import { SignalsModule } from '../signals/signals.module';
 import { PollsService } from './polls.service';
 import { PollsController } from './polls.controller';
 import { PollsGateway } from './polls.gateway';
@@ -39,6 +40,7 @@ import { RestaurantMentionsService } from './restaurant-mentions.service';
     LLMModule,
     EntityTextSearchModule,
     RedditCollectorModule,
+    SignalsModule,
   ],
   controllers: [PollsController],
   providers: [

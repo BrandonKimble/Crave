@@ -19,6 +19,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { ModerationService } from '../moderation/moderation.service';
+import { SignalsService } from '../signals/signals.service';
 import { PollsGateway } from './polls.gateway';
 import {
   ListPollsQueryDto,
@@ -109,8 +110,35 @@ export class PollsService {
     private readonly userEventService: UserEventService,
     private readonly llmService: LLMService,
     private readonly entityTextSearch: EntityTextSearchService,
+    private readonly signals: SignalsService,
   ) {
     this.logger = loggerService.setContext('PollsService');
+  }
+
+  /**
+   * §3 signal subject for a poll act: the poll's single target entity when it
+   * has exactly one, else the (normalized) poll question as a term subject.
+   */
+  private pollSignalSubject(poll: {
+    question: string;
+    topic?: {
+      targetDishId: string | null;
+      targetRestaurantId: string | null;
+      targetFoodAttributeId: string | null;
+      targetRestaurantAttributeId: string | null;
+    } | null;
+  }): { entityId: string } | { term: string } | null {
+    const targets = [
+      poll.topic?.targetDishId,
+      poll.topic?.targetRestaurantId,
+      poll.topic?.targetFoodAttributeId,
+      poll.topic?.targetRestaurantAttributeId,
+    ].filter((value): value is string => Boolean(value));
+    if (targets.length === 1) {
+      return { entityId: targets[0] };
+    }
+    const term = poll.question.trim();
+    return term.length ? { term } : null;
   }
 
   async listPolls(query: ListPollsQueryDto, viewerUserId?: string | null) {
@@ -610,6 +638,15 @@ export class PollsService {
         topicType: dto.topicType,
       },
     });
+    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+    // §3 signals: the poll_created act beside the userEventService writer.
+    this.signals.record({
+      kind: 'poll_created',
+      userId,
+      subject: this.pollSignalSubject(poll),
+      geo: this.signals.bboxFromMarketKey(marketKey),
+      meta: { pollId: poll.pollId },
+    });
     // W4: no pollsCreatedCount counter bump — the profile "Polls" stat is a
     // live count over polls.createdByUserId (see UserService.countCreatedPolls).
     // §2 Option A: seed the leaderboard from the creator's description immediately,
@@ -782,6 +819,16 @@ export class PollsService {
         mode: PollMode.discussion,
       },
     });
+    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+    // §3 signals: the poll_created act (discussion polls are topic-less —
+    // subject falls through to the question term).
+    this.signals.record({
+      kind: 'poll_created',
+      userId,
+      subject: this.pollSignalSubject(poll),
+      geo: this.signals.bboxFromMarketKey(marketKey),
+      meta: { pollId: poll.pollId },
+    });
     // W4: no counter bump — the stat is a live count (UserService.countCreatedPolls).
     const [enriched] = await this.attachMarketLabels([poll], marketKey);
     return enriched;
@@ -846,7 +893,20 @@ export class PollsService {
   async postComment(pollId: string, dto: CreateCommentDto, userId: string) {
     const poll = await this.prisma.poll.findUnique({
       where: { pollId },
-      select: { pollId: true, state: true, marketKey: true },
+      select: {
+        pollId: true,
+        state: true,
+        marketKey: true,
+        question: true,
+        topic: {
+          select: {
+            targetDishId: true,
+            targetRestaurantId: true,
+            targetFoodAttributeId: true,
+            targetRestaurantAttributeId: true,
+          },
+        },
+      },
     });
     if (!poll) {
       throw new NotFoundException('Poll not found');
@@ -900,6 +960,15 @@ export class PollsService {
       userId,
       eventType: 'poll_comment_posted',
       eventData: { pollId, commentId: comment.commentId },
+    });
+    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+    // §3 signals: the poll_comment act beside the userEventService writer.
+    this.signals.record({
+      kind: 'poll_comment',
+      userId,
+      subject: this.pollSignalSubject(poll),
+      geo: this.signals.bboxFromMarketKey(poll.marketKey),
+      meta: { pollId },
     });
     return comment;
   }
@@ -1586,7 +1655,19 @@ export class PollsService {
   ) {
     const poll = await this.prisma.poll.findUnique({
       where: { pollId },
-      select: { state: true },
+      select: {
+        state: true,
+        question: true,
+        marketKey: true,
+        topic: {
+          select: {
+            targetDishId: true,
+            targetRestaurantId: true,
+            targetFoodAttributeId: true,
+            targetRestaurantAttributeId: true,
+          },
+        },
+      },
     });
     if (!poll) {
       throw new NotFoundException('poll not found');
@@ -1628,6 +1709,18 @@ export class PollsService {
         data: { pollId, subjectType, subjectId, userId },
       });
       endorsed = true;
+
+      // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+      // §3 signals: an endorsement IS the poll vote act (append-only ledger —
+      // un-endorsing removes the endorsement row, never the signal). Geo =
+      // the poll market's bbox (skip-with-debug when unresolvable).
+      this.signals.record({
+        kind: 'poll_vote',
+        userId,
+        subject: this.pollSignalSubject(poll),
+        geo: this.signals.bboxFromMarketKey(poll.marketKey),
+        meta: { pollId },
+      });
     }
 
     await this.rebuildPollLeaderboard(pollId);

@@ -37,6 +37,7 @@ import {
   type FavoriteListWithDetailItems,
 } from './favorite-list.mappers';
 import { FavoriteListTileGalleryService } from './favorite-list-tile-gallery.service';
+import { SignalsService } from '../signals/signals.service';
 
 export type { FavoriteListViewerRole, FavoriteListSort };
 
@@ -78,6 +79,7 @@ export class FavoriteListsService {
     private readonly resultsAssembler: ListResultsAssembler,
     private readonly mapper: FavoriteListMapper,
     private readonly tileGallery: FavoriteListTileGalleryService,
+    private readonly signals: SignalsService,
   ) {}
 
   async listForUser(userId: string, query: ListFavoriteListsDto) {
@@ -668,10 +670,16 @@ export class FavoriteListsService {
     // Location-centric saves (master plan §7): validate the saved location
     // belongs to the item's restaurant (directly, or via the connection).
     let validatedLocationId: string | null = null;
+    let validatedLocationPoint: { lat: number; lng: number } | null = null;
     if (dto.locationId) {
       const location = await this.prisma.restaurantLocation.findUnique({
         where: { locationId: dto.locationId },
-        select: { locationId: true, restaurantId: true },
+        select: {
+          locationId: true,
+          restaurantId: true,
+          latitude: true,
+          longitude: true,
+        },
       });
       const expectedRestaurantId = restaurantId ?? connectionRestaurantId;
       if (
@@ -684,6 +692,12 @@ export class FavoriteListsService {
         );
       }
       validatedLocationId = location.locationId;
+      if (location.latitude != null && location.longitude != null) {
+        validatedLocationPoint = {
+          lat: Number(location.latitude),
+          lng: Number(location.longitude),
+        };
+      }
     }
 
     const maxPosition = await this.prisma.favoriteListItem.aggregate({
@@ -718,6 +732,28 @@ export class FavoriteListsService {
       where: { listId },
       data: { itemCount: { increment: 1 } },
     });
+
+    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
+    // §3 signals: a list add is the favorite_added act. Subject = the saved
+    // restaurant (a connection item resolves to its restaurant). Geo = the
+    // saved location's point, else the restaurant's primary location.
+    const signalRestaurantId = restaurantId ?? connectionRestaurantId;
+    if (signalRestaurantId) {
+      this.signals.record({
+        kind: 'favorite_added',
+        userId,
+        subject: { entityId: signalRestaurantId },
+        geo: validatedLocationPoint
+          ? this.signals.bboxFromPoint(
+              validatedLocationPoint.lat,
+              validatedLocationPoint.lng,
+            )
+          : this.signals.bboxFromRestaurantLocation({
+              restaurantId: signalRestaurantId,
+            }),
+        meta: { locationId: validatedLocationId ?? undefined },
+      });
+    }
 
     return item;
   }

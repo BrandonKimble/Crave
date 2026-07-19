@@ -194,6 +194,11 @@ function makeHarness(opts: {
     assembler,
     mapper,
     { loadTileImages: () => Promise.resolve(new Map()) } as never,
+    {
+      record: () => undefined,
+      bboxFromPoint: () => null,
+      bboxFromRestaurantLocation: () => Promise.resolve(null),
+    } as never,
   );
   return {
     service,

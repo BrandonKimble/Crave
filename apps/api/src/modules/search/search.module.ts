@@ -11,6 +11,7 @@ import { IdentityModule } from '../identity/identity.module';
 import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
+import { SignalsModule } from '../signals/signals.module';
 import { SearchController } from './search.controller';
 import { SearchService } from './search.service';
 import { SearchCoverageService } from './search-coverage.service';
@@ -42,6 +43,7 @@ import { SearchSiblingExpansionService } from './search-sibling-expansion.servic
     EntityTextSearchModule,
     AnalyticsModule,
     PublicCraveScoreModule,
+    SignalsModule,
   ],
   controllers: [SearchController],
   providers: [

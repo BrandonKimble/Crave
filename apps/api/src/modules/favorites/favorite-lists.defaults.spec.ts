@@ -147,6 +147,11 @@ describe('system-default guards + home ordering (FavoriteListsService)', () => {
       new ListResultsAssembler({} as never, {} as never),
       new FavoriteListMapper(prisma as never, logger as never),
       { loadTileImages: () => Promise.resolve(new Map()) } as never,
+      {
+        record: () => undefined,
+        bboxFromPoint: () => null,
+        bboxFromRestaurantLocation: () => Promise.resolve(null),
+      } as never,
     );
     return { service, prisma, itemCreate };
   }

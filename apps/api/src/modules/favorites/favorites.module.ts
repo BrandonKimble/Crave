@@ -12,6 +12,7 @@ import { SharedModule } from '../../shared/shared.module';
 import { IdentityModule } from '../identity/identity.module';
 import { SearchModule } from '../search/search.module';
 import { PhotosModule } from '../photos/photos.module';
+import { SignalsModule } from '../signals/signals.module';
 import { FavoriteListTileGalleryService } from './favorite-list-tile-gallery.service';
 
 @Module({
@@ -21,6 +22,7 @@ import { FavoriteListTileGalleryService } from './favorite-list-tile-gallery.ser
     IdentityModule,
     SearchModule,
     PhotosModule,
+    SignalsModule,
   ],
   controllers: [
     FavoritesController,
