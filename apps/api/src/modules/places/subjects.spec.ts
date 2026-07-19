@@ -5,7 +5,7 @@
  * (parent/child), containing-fallback, and the probe-anchor budget.
  * All pure — the fixtures ARE the law's spec.
  */
-import { GeoBbox } from './place-geo';
+import { GeoBbox, bboxArea } from './place-geo';
 import {
   ATTENTION_FRACTION,
   MAX_PROBE_ANCHORS,
@@ -173,6 +173,32 @@ describe('resolveHeaderPlace — §2 symmetric commensurability', () => {
     );
     expect(isCommensurate(3, town)).toBe(true);
   });
+
+  it('antimeridian: commensurability judges sanely for crossing views and places (Fiji)', () => {
+    // Seam-straddling street-ish view inside a seam-straddling archipelago
+    // bbox: the view must read as TOO SMALL relative to the big place
+    // (descend), not degenerate to area 0 / coverage 1 for everything.
+    const view: GeoBbox = {
+      minLat: -19,
+      minLng: 178,
+      maxLat: -17,
+      maxLng: -179,
+    };
+    const viewArea = bboxArea(view); // 3° lng × 2° lat, wrap-aware
+    const archipelago = candidate(
+      'Fiji',
+      { minLat: -21, minLng: 176, maxLat: -12, maxLng: -178 },
+      1.0, // covers the view…
+    );
+    expect(isCommensurate(viewArea, archipelago)).toBe(false); // …but too big
+
+    const island = candidate(
+      'Taveuni',
+      { minLat: -19.5, minLng: 177, maxLat: -16.5, maxLng: -179 },
+      1.0, // covers the view; 4°×3° vs the 3°×2° view → commensurate
+    );
+    expect(isCommensurate(viewArea, island)).toBe(true);
+  });
 });
 
 describe('probeAnchors — §2 probe budget', () => {
@@ -191,22 +217,58 @@ describe('probeAnchors — §2 probe budget', () => {
     }
   });
 
-  it('a fully-known view needs no probes at all', () => {
+  it('a view fully answered by a COMMENSURATE place needs no probes at all', () => {
+    // 1.7×1.7 bbox over the 1×1 view: covering, and not too-big (area 2.89 ≤
+    // 3 × viewArea) — it legitimately answers every anchor.
     const anchors = probeAnchors(view, [
-      { minLat: -1, minLng: -1, maxLat: 2, maxLng: 2 },
+      { minLat: -0.35, minLng: -0.35, maxLat: 1.35, maxLng: 1.35 },
     ]);
     expect(anchors).toEqual([]);
   });
 
-  it('known bboxes suppress their anchors; only uncovered ground is probed', () => {
-    // Left half known → all anchors land in the uncovered right half.
+  it('known commensurate bboxes suppress their anchors; only unanswered ground is probed', () => {
+    // Commensurate-scale bbox over the left ~0.6 of the view → all anchors
+    // land in the unanswered right side.
     const anchors = probeAnchors(view, [
-      { minLat: -1, minLng: -1, maxLat: 2, maxLng: 0.6 },
+      { minLat: -0.1, minLng: -0.1, maxLat: 1.1, maxLng: 0.6 },
     ]);
     expect(anchors.length).toBeGreaterThan(0);
     expect(anchors.length).toBeLessThanOrEqual(3);
     for (const anchor of anchors) {
       expect(anchor.lng).toBeGreaterThan(0.6);
     }
+  });
+
+  it('scale law (§1/§2): over-scale known ground answers NOTHING — country+city sketched, street zoom still probes', () => {
+    // The permanent-starvation defect: once "United States" (or the city) is
+    // sketched with a bbox, point-in-bbox marked every future anchor inside
+    // it answered forever, so neighborhoods could never enter lazily and the
+    // Chongqing street-zoom descent starved. The answered test is now
+    // scale-aware: both sketched regions are too-big for this view, so the
+    // full anchor budget still probes.
+    const streetView: GeoBbox = {
+      minLat: 0.5,
+      minLng: 0.5,
+      maxLat: 0.502,
+      maxLng: 0.502,
+    };
+    const city: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
+    const country: GeoBbox = {
+      minLat: -30,
+      minLng: -30,
+      maxLat: 30,
+      maxLng: 30,
+    };
+    const anchors = probeAnchors(streetView, [city, country]);
+    expect(anchors).toHaveLength(MAX_PROBE_ANCHORS);
+    // A commensurate neighborhood over the same ground DOES answer
+    // (0.003° square: area 9e-6 ≤ 3 × the view's 4e-6 → not too-big).
+    const ward: GeoBbox = {
+      minLat: 0.4995,
+      minLng: 0.4995,
+      maxLat: 0.5025,
+      maxLng: 0.5025,
+    };
+    expect(probeAnchors(streetView, [city, country, ward])).toEqual([]);
   });
 });

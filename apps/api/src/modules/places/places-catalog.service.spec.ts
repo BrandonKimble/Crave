@@ -9,6 +9,7 @@
 import {
   PlacesCatalogService,
   PlaceSketchNode,
+  placeParentIds,
 } from './places-catalog.service';
 
 const logger: any = {
@@ -65,9 +66,33 @@ function makeHarness(
       Promise.resolve(makePlaceRow(args.data)),
     );
   const findMany = jest.fn().mockResolvedValue([]);
-  const prisma: any = { place: { findFirst, create, update, findMany } };
+  const findUniqueOrThrow = jest
+    .fn()
+    .mockImplementation(() => Promise.resolve(makePlaceRow()));
+  const executeRaw = jest.fn().mockResolvedValue(1);
+  const prisma: any = {
+    place: {
+      findFirst,
+      create,
+      update,
+      findMany,
+      findUniqueOrThrow,
+      // Prisma field-reference stub (crossing-row branch of the WHEREs).
+      fields: { bboxMaxLng: Symbol('bboxMaxLng') },
+    },
+    $executeRaw: executeRaw,
+  };
   const service = new PlacesCatalogService(prisma, logger);
-  return { service, prisma, findFirst, create, update, findMany };
+  return {
+    service,
+    prisma,
+    findFirst,
+    create,
+    update,
+    findMany,
+    findUniqueOrThrow,
+    executeRaw,
+  };
 }
 
 const austinNode: PlaceSketchNode = {
@@ -144,14 +169,15 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     });
   });
 
-  it('bbox MERGES on conflict: widens to the union hull, never shrinks', async () => {
+  it('bbox MERGES on conflict: ATOMIC LEAST/GREATEST widen against the live row, never shrinks (finding 1c)', async () => {
     const existing = makePlaceRow({
       bboxMinLat: 30.2,
       bboxMinLng: -97.9,
       bboxMaxLat: 30.4,
       bboxMaxLng: -97.6,
     });
-    const { service, update, create } = makeHarness([existing]);
+    const { service, update, create, executeRaw, findUniqueOrThrow } =
+      makeHarness([existing]);
 
     await service.sketchChain([
       {
@@ -162,13 +188,54 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     ]);
 
     expect(create).not.toHaveBeenCalled();
-    expect(update).toHaveBeenCalledTimes(1);
-    expect(update.mock.calls[0][0].data).toMatchObject({
-      bboxMinLat: 30.1, // widened down
-      bboxMinLng: -97.95, // widened west
-      bboxMaxLat: 30.4, // kept (never shrinks)
-      bboxMaxLng: -97.6, // kept (never shrinks)
+    // The widen is raw SQL (LEAST/GREATEST composes concurrent widenings —
+    // a plain read-modify-write update would let one merge shrink another's).
+    expect(update).not.toHaveBeenCalled();
+    expect(executeRaw).toHaveBeenCalledTimes(1);
+    const [template, ...values] = executeRaw.mock.calls[0];
+    const sql = (template as string[]).join('?');
+    expect(sql).toContain('LEAST(COALESCE(bbox_min_lat');
+    expect(sql).toContain('LEAST(COALESCE(bbox_min_lng');
+    expect(sql).toContain('GREATEST(COALESCE(bbox_max_lat');
+    expect(sql).toContain('GREATEST(COALESCE(bbox_max_lng');
+    // The OBSERVED bounds ride into LEAST/GREATEST (each appears twice:
+    // once inside COALESCE, once as the comparand), plus the row id.
+    expect(values).toEqual([
+      30.1,
+      30.1,
+      -97.95,
+      -97.95,
+      30.3,
+      30.3,
+      -97.7,
+      -97.7,
+      existing.placeId,
+    ]);
+    // Bbox-only merge re-reads the row for the post-widen truth.
+    expect(findUniqueOrThrow).toHaveBeenCalledWith({
+      where: { placeId: existing.placeId },
     });
+  });
+
+  it('an observation already inside the stored bbox writes nothing (contained ⇒ no-op, race-safe)', async () => {
+    const existing = makePlaceRow({
+      bboxMinLat: 30.1,
+      bboxMinLng: -97.95,
+      bboxMaxLat: 30.52,
+      bboxMaxLng: -97.56,
+    });
+    const { service, update, executeRaw } = makeHarness([existing]);
+
+    await service.sketchChain([
+      {
+        ...austinNode,
+        providerPlaceId: null,
+        bbox: { minLat: 30.2, minLng: -97.9, maxLat: 30.4, maxLng: -97.6 },
+      },
+    ]);
+
+    expect(update).not.toHaveBeenCalled();
+    expect(executeRaw).not.toHaveBeenCalled();
   });
 
   it('adopts providerPlaceId as an alias when the stored row has none', async () => {
@@ -183,7 +250,7 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     );
   });
 
-  it('unions a new parent edge into an existing row (DAG edges accrete)', async () => {
+  it('appends a new parent edge ATOMICALLY (Prisma push — concurrent merges cannot drop each other, finding 1c)', async () => {
     const priorParent = '11111111-1111-4111-8111-111111111111';
     const texasRow = makePlaceRow({
       name: 'Texas',
@@ -203,10 +270,18 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     ]);
 
     expect(update).toHaveBeenCalledTimes(1);
-    expect(update.mock.calls[0][0].data.parentPlaceIds).toEqual([
-      priorParent,
-      texasRow.placeId,
-    ]);
+    // Atomic append, NOT a read-modify-write array replace: a stale-read
+    // rewrite silently drops edges pushed by a concurrent merge.
+    expect(update.mock.calls[0][0].data.parentPlaceIds).toEqual({
+      push: texasRow.placeId,
+    });
+  });
+
+  it('duplicate edges from concurrent pushes collapse at the read chokepoint (placeParentIds)', () => {
+    const parent = '11111111-1111-4111-8111-111111111111';
+    const other = '22222222-2222-4222-8222-222222222222';
+    const row = makePlaceRow({ parentPlaceIds: [parent, other, parent] });
+    expect(placeParentIds(row as any)).toEqual([parent, other]);
   });
 });
 
@@ -227,7 +302,11 @@ describe('PlacesCatalogService.placesInView — §2 coverage shares', () => {
 
     expect(results).toHaveLength(1);
     expect(results[0].coverageOfView).toBeCloseTo(0.5, 9);
-    expect(results[0].placeArea).toBeCloseTo(1, 9);
+    // Cos-weighted area (place-geo): 1° × 1° × cos(midLat 0.5°).
+    expect(results[0].placeArea).toBeCloseTo(
+      Math.cos((0.5 * Math.PI) / 180),
+      9,
+    );
   });
 });
 

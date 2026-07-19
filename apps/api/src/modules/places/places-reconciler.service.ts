@@ -23,10 +23,21 @@
  */
 import { Inject, Injectable } from '@nestjs/common';
 import { LoggerService } from '../../shared';
-import { GeoBbox, bboxContainsPoint } from './place-geo';
-import { PlacesCatalogService, placeBbox } from './places-catalog.service';
-import { probeAnchors, MAX_PROBE_ANCHORS, viewCenter } from './subjects';
 import {
+  GeoBbox,
+  METERS_PER_DEGREE_LAT,
+  bboxArea,
+  bboxLngSpan,
+} from './place-geo';
+import { PlacesCatalogService, placeBbox } from './places-catalog.service';
+import {
+  bboxAnswersAnchor,
+  probeAnchors,
+  MAX_PROBE_ANCHORS,
+  viewCenter,
+} from './subjects';
+import {
+  PROBE_SPEAKS_FOR_METERS,
   TOMTOM_CHAIN_PROBE,
   TomtomChainProbe,
 } from './tomtom-chain-probe.port';
@@ -40,13 +51,30 @@ interface NegativeObservation {
 }
 
 /**
+ * §16 DERIVED cell-level ceiling: the deepest meaningful single-flight cell
+ * is where the cell's lng quantum (360/2^level degrees ≈ meters at the
+ * equator) shrinks to the ~100 m a probe already speaks for (K4 vendor fact,
+ * PROBE_SPEAKS_FOR_METERS) — below that scale every settle is asking the
+ * same ground the same question. 360° × 111320 m/° ÷ 100 m → log2 ≈ 18.6 →
+ * 19.
+ */
+export const MAX_CELL_LEVEL = Math.ceil(
+  Math.log2((360 * METERS_PER_DEGREE_LAT) / PROBE_SPEAKS_FOR_METERS),
+);
+
+/**
  * §2 single-flight cell key: quantize the view's center on a grid sized by
- * the view's own span, bucketed by power-of-two "zoom level" so nearby
- * settles at the same scale coalesce while different zooms stay distinct.
+ * the view's own span (wrap-aware), bucketed by power-of-two "zoom level" so
+ * nearby settles at the same scale coalesce while different zooms stay
+ * distinct. A zero-span (degenerate) view falls to the deepest level via the
+ * MAX_CELL_LEVEL cap — no span floor needed.
  */
 export function viewportCellKey(view: GeoBbox): string {
-  const lngSpan = Math.max(view.maxLng - view.minLng, 1e-6);
-  const level = Math.max(0, Math.min(24, Math.round(Math.log2(360 / lngSpan))));
+  const lngSpan = bboxLngSpan(view);
+  const level = Math.max(
+    0,
+    Math.min(MAX_CELL_LEVEL, Math.round(Math.log2(360 / lngSpan))),
+  );
   const quantum = 360 / 2 ** level;
   const center = viewCenter(view);
   const cellLat = Math.floor(center.lat / quantum);
@@ -121,8 +149,15 @@ export class PlacesReconcilerService {
 
   private async reconcile(view: GeoBbox): Promise<void> {
     // Step 1 (§2): what already answers? Stored place bboxes plus fresh
-    // negative region observations both count as "known ground".
+    // negative region observations both count as "known ground" — but only
+    // at COMMENSURATE-OR-SMALLER scale: probeAnchors applies the same
+    // too-big disqualifier as isCommensurate (bboxAnswersAnchor), so a
+    // sketched country/state never marks street-zoom ground "answered" and
+    // lazy neighborhood entry (§1) stays alive. Symmetric for negative
+    // observations (in practice ~200 m regions, so the scale arm rarely
+    // bites there — but the law is one law).
     const inView = await this.catalog.placesInView(view);
+    const viewArea = bboxArea(view);
     const knownBboxes: GeoBbox[] = [
       ...inView.map((entry) => entry.bbox),
       ...this.freshNegativeBboxes(),
@@ -136,11 +171,14 @@ export class PlacesReconcilerService {
 
     // Step 3 (§2): probe sequentially — an early result can answer a later
     // anchor (anchor 1's city bbox, or its "no place here" region, may cover
-    // anchors 2–3) — and WRITE every result. Budget is structural: `anchors`
-    // is already capped at MAX_PROBE_ANCHORS.
+    // anchors 2–3, scale-judged like any other known ground) — and WRITE
+    // every result. Budget is structural: `anchors` is already capped at
+    // MAX_PROBE_ANCHORS.
     let answeredBboxes: GeoBbox[] = [];
     for (const anchor of anchors) {
-      if (answeredBboxes.some((bbox) => bboxContainsPoint(bbox, anchor))) {
+      if (
+        answeredBboxes.some((bbox) => bboxAnswersAnchor(viewArea, bbox, anchor))
+      ) {
         continue; // answered by an earlier probe in this same pass
       }
       const result = await this.probe.probe(anchor);

@@ -84,25 +84,71 @@ describe('PlacesReconcilerService — §2 background naming', () => {
     expect(probe.probe.mock.calls.length).toBeGreaterThan(0);
   });
 
-  it('stored places that answer every anchor mean zero probes (reads answered from the catalog)', async () => {
+  it('a stored COMMENSURATE place answering every anchor means zero probes (reads answered from the catalog)', async () => {
+    // 1.7×1.7 bbox over the 1×1 view: covering AND commensurate-or-smaller
+    // (area 2.89 ≤ 3 × viewArea) — known ground that legitimately answers.
+    const bbox: GeoBbox = {
+      minLat: -0.35,
+      minLng: -0.35,
+      maxLat: 1.35,
+      maxLng: 1.35,
+    };
     const { service, probe } = makeHarness({
       placesInView: [
         {
-          place: makePlaceRow('Coverall', {
-            minLat: -1,
-            minLng: -1,
-            maxLat: 2,
-            maxLng: 2,
-          }),
-          bbox: { minLat: -1, minLng: -1, maxLat: 2, maxLng: 2 },
+          place: makePlaceRow('Township', bbox),
+          bbox,
           coverageOfView: 1,
-          placeArea: 9,
+          placeArea: 2.89,
         },
       ],
     });
     service.noteViewport(VIEW);
     await service.whenIdle();
     expect(probe.probe).not.toHaveBeenCalled();
+  });
+
+  it('scale law (§1/§2): an over-scale sketch never marks ground answered — country+city sketched, street zoom still probes', async () => {
+    // The permanent-starvation defect: once a country/state/city bbox
+    // existed, every anchor inside it read as answered forever — zero probes,
+    // so neighborhoods could never enter lazily and the Chongqing street-zoom
+    // descent starved. The answered test is scale-aware now: both sketched
+    // regions are TOO BIG for this view (the same isCommensurate
+    // disqualifier), so the full anchor budget probes.
+    const streetView: GeoBbox = {
+      minLat: 0.5,
+      minLng: 0.5,
+      maxLat: 0.502,
+      maxLng: 0.502,
+    };
+    const city: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
+    const country: GeoBbox = {
+      minLat: -30,
+      minLng: -30,
+      maxLat: 30,
+      maxLng: 30,
+    };
+    const { service, probe } = makeHarness({
+      placesInView: [
+        {
+          place: makePlaceRow('Bigcity', city),
+          bbox: city,
+          coverageOfView: 1,
+          placeArea: 1,
+        },
+        {
+          place: makePlaceRow('Broadland', country),
+          bbox: country,
+          coverageOfView: 1,
+          placeArea: 3600,
+        },
+      ],
+    });
+    service.noteViewport(streetView);
+    await service.whenIdle();
+    // Default harness probes return tiny negative regions that answer no
+    // other anchor → every budgeted anchor is spent.
+    expect(probe.probe).toHaveBeenCalledTimes(3);
   });
 
   it('sketch-everything: the FULL chain is written, including nodes a read-time judgment would reject', async () => {
@@ -115,7 +161,9 @@ describe('PlacesReconcilerService — §2 background naming', () => {
         providerLevelCode: 'neighbourhood',
         countryCode: 'US',
         subdivisionCode: 'TX',
-        bbox: { minLat: -1, minLng: -1, maxLat: 2, maxLng: 2 },
+        // Commensurate with the view (area 2.89 ≤ 3 × viewArea) so this one
+        // sketch legitimately answers the pass's remaining anchors.
+        bbox: { minLat: -0.35, minLng: -0.35, maxLat: 1.35, maxLng: 1.35 },
       },
       {
         name: 'United States',
@@ -143,11 +191,19 @@ describe('PlacesReconcilerService — §2 background naming', () => {
   });
 
   it('negative observations are region-scale with a TTL: "no place here" answers the next viewport', async () => {
+    // The negative region is commensurate with the view — the scale law is
+    // SYMMETRIC, so an over-scale negative region would answer nothing, same
+    // as an over-scale place.
     const { service, probe } = makeHarness({
       probeImpl: () =>
         Promise.resolve({
           chain: [], // no place here
-          probedBbox: { minLat: -1, minLng: -1, maxLat: 2, maxLng: 2 },
+          probedBbox: {
+            minLat: -0.35,
+            minLng: -0.35,
+            maxLat: 1.35,
+            maxLng: 1.35,
+          },
         }),
     });
 
@@ -182,7 +238,9 @@ describe('PlacesReconcilerService — §2 background naming', () => {
 
     resolveProbe({
       chain: [],
-      probedBbox: { minLat: -1, minLng: -1, maxLat: 2, maxLng: 2 },
+      // Commensurate region → answers the pass's remaining anchors so the
+      // flight drains.
+      probedBbox: { minLat: -0.35, minLng: -0.35, maxLat: 1.35, maxLng: 1.35 },
     });
     await service.whenIdle();
   });

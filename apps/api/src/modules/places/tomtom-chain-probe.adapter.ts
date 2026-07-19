@@ -39,9 +39,15 @@ import { firstValueFrom } from 'rxjs';
 import { LoggerService } from '../../shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { GovernanceService } from '../external-integrations/governance/governance.service';
-import { GeoBbox, GeoPoint, normalizePlaceName } from './place-geo';
+import {
+  GeoBbox,
+  GeoPoint,
+  METERS_PER_DEGREE_LAT,
+  normalizePlaceName,
+} from './place-geo';
 import { PlaceSketchNode } from './places-catalog.service';
 import {
+  PROBE_SPEAKS_FOR_METERS,
   TomtomChainProbe,
   TomtomChainProbeResult,
 } from './tomtom-chain-probe.port';
@@ -76,10 +82,12 @@ const LEVEL_LADDER: ReadonlyArray<{
 /** §16 definitional: 6-rung ladder, most-specific rung free with reverse. */
 const MAX_FORWARD_GEOCODES_PER_PROBE = LEVEL_LADDER.length - 1;
 
-/** Vendor fact: reverse geocode's default search radius is 100 meters. */
-const REVERSE_GEOCODE_RADIUS_METERS = 100;
-/** WGS-84 meters per degree of latitude (definitional constant). */
-const METERS_PER_DEGREE_LAT = 111_320;
+/**
+ * Vendor fact: reverse geocode's default search radius — the ground a probe
+ * speaks for. Lives on the PORT (shared with the reconciler's cell-level
+ * derivation); this alias keeps the adapter reading in vendor terms.
+ */
+const REVERSE_GEOCODE_RADIUS_METERS = PROBE_SPEAKS_FOR_METERS;
 
 type TomtomAddress = {
   countryCode?: string;

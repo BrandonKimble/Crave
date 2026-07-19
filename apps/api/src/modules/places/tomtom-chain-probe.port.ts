@@ -22,6 +22,14 @@
 import { GeoBbox, GeoPoint } from './place-geo';
 import { PlaceSketchNode } from './places-catalog.service';
 
+/**
+ * §16 K4 vendor fact: a probe speaks for ~100 m of ground — the vendor's
+ * default reverse-geocode search radius. The adapter sizes `probedBbox` from
+ * it, and the reconciler derives its deepest meaningful single-flight cell
+ * level from it (below that scale every settle asks the same question).
+ */
+export const PROBE_SPEAKS_FOR_METERS = 100;
+
 export interface TomtomChainProbeResult {
   /**
    * Reverse-geocode chain, MOST SPECIFIC FIRST (neighbourhood → … → country),

@@ -30,6 +30,8 @@ import {
   bboxCenter,
   bboxContains,
   bboxContainsPoint,
+  bboxLngSpan,
+  normalizeLng,
   pointDistance,
   pointToBboxDistance,
 } from './place-geo';
@@ -43,13 +45,17 @@ export const ATTENTION_FRACTION = 1 / 3;
  * Derived from the same constant so the law stays one-knobbed. Two towns at
  * ~half the view each are both subjects but neither covers → straddle; a
  * city at 90% with border slivers covers → the city is the header.
+ * OWNER-RATIFY(§18): the 2/3 covering threshold value awaits ratification.
  */
 export const COVERING_FRACTION = 1 - ATTENTION_FRACTION;
 
 /** §2 probe budget: ≤ ⌊1/ATTENTION_FRACTION⌋ = 3 anchors per view. */
 export const MAX_PROBE_ANCHORS = Math.floor(1 / ATTENTION_FRACTION);
 
-/** Float guard so exact-boundary fixtures (coverage == 1/3) judge stably. */
+/**
+ * §16 K6 DEFINITIONAL — float tolerance so exact-boundary fixtures
+ * (coverage == 1/3) judge stably; nothing changes it.
+ */
 const EPSILON = 1e-9;
 
 /** What the judgment needs to know about a place in view (bbox-level, §1). */
@@ -85,6 +91,19 @@ export type HeaderResolution =
     };
 
 /**
+ * The §2 "too big" disqualifier, shared VERBATIM by isCommensurate and the
+ * reconciler's answered test: a region is over-scale for the view when the
+ * view is < ATTENTION_FRACTION of it. Sharing the exact test is load-bearing
+ * — a known region may only ANSWER an anchor at scales the view could accept
+ * as a subject (see bboxAnswersAnchor), so a sketched country can never
+ * permanently starve street-zoom probing (§1 lazy neighborhood entry, §2
+ * Chongqing descent).
+ */
+export function isTooBigForView(viewArea: number, regionArea: number): boolean {
+  return regionArea > 0 && viewArea + EPSILON < ATTENTION_FRACTION * regionArea;
+}
+
+/**
  * §2 symmetric commensurability test for one candidate against the view.
  * Exported so the reconciler/spec fixtures can assert the disqualifiers
  * independently of the full resolution.
@@ -99,11 +118,26 @@ export function isCommensurate(
   }
   // Too big: the view is < 1/3 of the place → descend (§2). A zero-area
   // place (degenerate sketch) can only fail the too-small arm above.
-  const placeArea = bboxArea(candidate.bbox);
-  if (placeArea > 0 && viewArea + EPSILON < ATTENTION_FRACTION * placeArea) {
-    return false;
-  }
-  return true;
+  return !isTooBigForView(viewArea, bboxArea(candidate.bbox));
+}
+
+/**
+ * Does a KNOWN region (stored place bbox or negative observation) answer a
+ * probe anchor for THIS view? Point-in-bbox alone is not enough: an
+ * over-scale region (a sketched country under a street-zoom view) knows
+ * nothing about the commensurate places the view actually needs, so it must
+ * not suppress the probe. The scale test is the same too-big disqualifier as
+ * isCommensurate, applied SYMMETRICALLY to places and negative observations.
+ */
+export function bboxAnswersAnchor(
+  viewArea: number,
+  bbox: GeoBbox,
+  anchor: GeoPoint,
+): boolean {
+  return (
+    !isTooBigForView(viewArea, bboxArea(bbox)) &&
+    bboxContainsPoint(bbox, anchor)
+  );
 }
 
 /**
@@ -136,6 +170,9 @@ export function resolveHeaderPlace(
     ) {
       // The commensurate covering place (or the lone subject — with a single
       // subject there is no straddle to reserve "this area" for).
+      // OWNER-RATIFY(§18): the lone-commensurate-NON-covering header behavior
+      // (naming the single subject even below COVERING_FRACTION) awaits
+      // ratification.
       return {
         kind: 'place',
         place: top,
@@ -171,60 +208,76 @@ export function resolveHeaderPlace(
 }
 
 /**
+ * §16 DERIVED: the probe-candidate lattice is the interior grid at
+ * k / (⌊1/ATTENTION_FRACTION⌋ + 1) for k = 1..⌊1/ATTENTION_FRACTION⌋ — one
+ * candidate row/column per attention slot, placed strictly interior. At
+ * ATTENTION_FRACTION = 1/3 this is the quarter lattice [0.25, 0.5, 0.75].
+ * Coarse on purpose; §2 wants cheap candidates, not an optimizer.
+ */
+const GRID_FRACTIONS: readonly number[] = Array.from(
+  { length: MAX_PROBE_ANCHORS },
+  (_, index) => (index + 1) / (MAX_PROBE_ANCHORS + 1),
+);
+
+/**
  * §2 probe anchors for the naming reconciler: ≤ MAX_PROBE_ANCHORS (=3)
  * candidates per view — "center + largest-uncovered-region candidates",
  * approximated (per the §2 sketch mechanics' cheapness stance) as fixed
- * interior candidate points NOT covered by any known bbox (stored places ∪
- * fresh negative observations). Anchors a known bbox already answers are not
- * probe-worthy — when the whole grid is covered the answer is [] and the
- * reconciler is done without spending anything.
+ * interior candidate points NOT answered by any known bbox (stored places ∪
+ * fresh negative observations). "Answered" is SCALE-AWARE (bboxAnswersAnchor):
+ * only regions that are not over-scale for the view count — a sketched
+ * country or state covers every point inside it but answers nothing at
+ * street zoom, so probing (and lazy neighborhood entry, §1) continues there.
+ * When the whole grid is answered the result is [] and the reconciler is
+ * done without spending anything.
  *
- * Selection: the center leads when uncovered (it is where attention is);
- * remaining slots fill greedily with the uncovered candidate farthest from
- * every known bbox AND every already-picked anchor (max-min distance — the
- * "largest uncovered region" proxy).
+ * Selection: the center leads when unanswered (it is where attention is);
+ * remaining slots fill greedily with the unanswered candidate farthest from
+ * every answering bbox AND every already-picked anchor (max-min distance —
+ * the "largest uncovered region" proxy).
  */
 export function probeAnchors(
   view: GeoBbox,
   knownBboxes: GeoBbox[],
   maxAnchors: number = MAX_PROBE_ANCHORS,
 ): GeoPoint[] {
+  const viewArea = bboxArea(view);
+  // Over-scale regions neither answer anchors nor repel them.
+  const answering = knownBboxes.filter(
+    (bbox) => !isTooBigForView(viewArea, bboxArea(bbox)),
+  );
+
   const latSpan = view.maxLat - view.minLat;
-  const lngSpan = view.maxLng - view.minLng;
+  const lngSpan = bboxLngSpan(view); // wrap-aware for antimeridian views
   const at = (fLat: number, fLng: number): GeoPoint => ({
     lat: view.minLat + latSpan * fLat,
-    lng: view.minLng + lngSpan * fLng,
+    lng: normalizeLng(view.minLng + lngSpan * fLng),
   });
 
   const center = at(0.5, 0.5);
-  // Interior grid: quarter-point lattice (quadrant centers + edge midpoints)
-  // — coarse on purpose; §2 wants cheap candidates, not an optimizer.
-  const gridFractions = [0.25, 0.5, 0.75];
   const candidates: GeoPoint[] = [];
-  for (const fLat of gridFractions) {
-    for (const fLng of gridFractions) {
+  for (const fLat of GRID_FRACTIONS) {
+    for (const fLng of GRID_FRACTIONS) {
       if (fLat === 0.5 && fLng === 0.5) continue; // center handled first
       candidates.push(at(fLat, fLng));
     }
   }
 
-  const isCovered = (point: GeoPoint): boolean =>
-    knownBboxes.some((bbox) => bboxContainsPoint(bbox, point));
+  const isAnswered = (point: GeoPoint): boolean =>
+    answering.some((bbox) => bboxContainsPoint(bbox, point));
 
   const anchors: GeoPoint[] = [];
-  if (!isCovered(center)) {
+  if (!isAnswered(center)) {
     anchors.push(center);
   }
 
-  const remaining = candidates.filter((point) => !isCovered(point));
+  const remaining = candidates.filter((point) => !isAnswered(point));
   while (anchors.length < maxAnchors && remaining.length > 0) {
     let bestIndex = 0;
     let bestScore = -1;
     for (let i = 0; i < remaining.length; i += 1) {
       const point = remaining[i];
-      const toKnown = knownBboxes.map((bbox) =>
-        pointToBboxDistance(point, bbox),
-      );
+      const toKnown = answering.map((bbox) => pointToBboxDistance(point, bbox));
       const toChosen = anchors.map((anchor) => pointDistance(point, anchor));
       const score = Math.min(...toKnown, ...toChosen, Number.POSITIVE_INFINITY);
       if (score > bestScore) {
