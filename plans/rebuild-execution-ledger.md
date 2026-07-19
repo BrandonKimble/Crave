@@ -261,15 +261,27 @@ agent in flight at turn end so completion notifications chain turns.
 
 ## TASK #7 STATUS (live)
 
-- [>] AGENT in flight: §22 item 6 aggregate + readers — incremental tiled
-  rollup (placeId,subjectId,window) from signals (rebuildable derived
-  read model; wrap-aware weight-1 attribution; signals geo/time
-  indexes via drift migration), readers cut to ledger: recently-viewed
-  (entity_view + locationId meta — delivers the recorded locationId
-  display decision), recent searches (kind=search), demand inputs to
-  aggregate. Old writers keep writing until Phase C.
-- [ ] Then: collector at priors (§9-§12: source-centric, due-times, two
-      floors, persist-first admission, liar purge, singleton rescorer).
+- [x] d0764df3 aggregate + readers COMMITTED (agent, 21 specs, 493 green):
+      signal_demand_daily (day×actor×place×subject×kind + GLOBAL tile;
+      15-min today+yesterday rebuild under advisory lock; checksum-equal
+      rebuilds; Fiji≠Austin RED live), readers cut (recently-viewed +
+      locationId, recent searches, suggestions, autocomplete lanes;
+      marketKey params deleted), search signal subject = entity+term,
+      legacy backfill executed (idempotent). Old writers alive until
+      Phase C; view/search event tables product-reader-less. Poll supply
+      COEXISTS on direct SQL (arbitrary-time reads; swap later). Deltas
+      for ratification: uniform kind-weight 1.0 K2; market scoping removed
+      from those lanes; suggestion text lowercased; intersection (not
+      containment-tiling) attribution + global tile. API restarted.
+- [>] AGENT in flight: red-team d0764df3 (late-arriving signals vs the
+  today+yesterday window, torn reads, cross-day retry dedupe, reader
+  parity edges, per-search union cost, subject-widening double-count).
+- [>] AGENT in flight: §22 item 7 collector at priors (§9-§12:
+  source-centric model mapped from existing Austin engine, due-times +
+  governor dispatch (reddit pool K4 1000/100-min), two portfolio floor
+  FRACTIONS as OWNER-RATIFY K2 priors, persist-first admission, liar
+  purge, singleton rescorer, keyword-slice demand reads → substrate,
+  §21 kills).
 - [ ] Then: score cut (per-source g, ONE scoreVersion, after seeder).
 - [ ] Then: Phase C purges (old event tables/writers, markets machinery
       per-consumer, user poll creation re-key, home-place registration).
