@@ -14,7 +14,6 @@ export type ResultsPresentationPanelState = {
   surfaceMode: ResultsPresentationPanelSurfaceMode;
   shouldShowResultsSurface: boolean;
   surfaceActive: boolean;
-  shouldHideScrollHeaderForSurface: boolean;
 };
 
 export const resolveResultsPresentationPanelState = ({
@@ -73,6 +72,11 @@ export const resolveResultsPresentationPanelState = ({
     surfaceMode,
     shouldShowResultsSurface: surfaceMode !== 'none',
     surfaceActive: surfaceMode !== 'none',
-    shouldHideScrollHeaderForSurface: surfaceMode === 'initial_loading',
+    // THE STRIP RENDERS REAL FROM THE FIRST FRAME (owner skeleton-sheet law §3,
+    // 2026-07-18): the initial-loading strip hide existed only because the old pinned
+    // cover painted strip-pill HOLES where the strip sits (double-render). The cover
+    // and its pills are dead (the pending block carries no header skeleton), so the
+    // hide field died as a class — chrome changes immediately; the chips read the
+    // live desired tuple, so their state is correct before the world lands.
   };
 };

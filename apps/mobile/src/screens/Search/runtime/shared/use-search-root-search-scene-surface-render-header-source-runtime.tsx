@@ -23,29 +23,17 @@ export const useSearchRootSearchSceneSurfaceRenderHeaderSourceRuntime = ({
   const activeScenarioConfig = usePerfScenarioRuntimeStore((state) => state.activeConfig);
   const lastQuietContractKeyRef = React.useRef<string | null>(null);
   const runtime = React.useMemo(() => {
-    // The strip is CHROME, not content (2026-07-06, owner-reported "toggles stopped accepting
-    // touch"): an EMPTY commit (e.g. open-now at 3AM legitimately filters every row out) used to
-    // land in a surface mode where neither `shouldShowInteractionLoadingState` nor
-    // `shouldShowResultsSurface` held, unmounting the strip WITH the rows — trapping the user
-    // with no way to untoggle the filter that emptied the results. The strip now renders for the
-    // scene's whole life; the only hide is the initial-load skeleton page (which paints its own
-    // full-body skeleton where a header would double-render).
-    const shouldHideListHeader =
-      searchSceneSurfacePanelStateRuntime.shouldHideScrollHeaderForSurface;
-    const resultsToggleStripForRenderBase = shouldHideListHeader ? null : listHeader;
-    const effectiveFiltersHeaderHeightForRenderLive = shouldHideListHeader
-      ? 0
-      : effectiveFiltersHeaderHeightBase;
-
+    // The strip is CHROME, not content (2026-07-06, owner-reported "toggles stopped
+    // accepting touch"): the strip renders for the scene's WHOLE life — including
+    // initial loading (owner law §3, 2026-07-18: chrome changes immediately; the old
+    // initial-load hide existed only to avoid double-rendering with the dead pinned
+    // cover's strip-pill holes). The chips read the live desired tuple, so their
+    // state is correct before the world lands.
     return {
-      effectiveFiltersHeaderHeightForRenderLive,
-      resultsToggleStripForRenderLive: resultsToggleStripForRenderBase,
+      effectiveFiltersHeaderHeightForRenderLive: effectiveFiltersHeaderHeightBase,
+      resultsToggleStripForRenderLive: listHeader,
     };
-  }, [
-    effectiveFiltersHeaderHeightBase,
-    listHeader,
-    searchSceneSurfacePanelStateRuntime.shouldHideScrollHeaderForSurface,
-  ]);
+  }, [effectiveFiltersHeaderHeightBase, listHeader]);
   React.useEffect(() => {
     if (!isPerfScenarioAttributionActive(activeScenarioConfig)) {
       return;
@@ -66,8 +54,6 @@ export const useSearchRootSearchSceneSurfaceRenderHeaderSourceRuntime = ({
       renderRowCount: null,
       shouldForceListHeaderForInteraction:
         searchSceneSurfacePanelStateRuntime.shouldShowInteractionLoadingState,
-      shouldHideScrollHeaderForSurface:
-        searchSceneSurfacePanelStateRuntime.shouldHideScrollHeaderForSurface,
       shouldShowResultsSurface: searchSceneSurfacePanelStateRuntime.shouldShowResultsSurface,
       surfaceMode: searchSceneSurfacePanelStateRuntime.surfaceMode,
     };
@@ -97,7 +83,6 @@ export const useSearchRootSearchSceneSurfaceRenderHeaderSourceRuntime = ({
     listHeader,
     runtime.effectiveFiltersHeaderHeightForRenderLive,
     runtime.resultsToggleStripForRenderLive,
-    searchSceneSurfacePanelStateRuntime.shouldHideScrollHeaderForSurface,
     searchSceneSurfacePanelStateRuntime.shouldShowInteractionLoadingState,
     searchSceneSurfacePanelStateRuntime.shouldShowResultsSurface,
     searchSceneSurfacePanelStateRuntime.surfaceMode,

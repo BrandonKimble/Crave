@@ -223,6 +223,17 @@ identical behavior with scroll. From scratch, first principles, throw away the
 current implementation if needed. Sequencing: only after the family/foundational
 work completes.
 
+**STRIP-BAND RESTRUCTURE EXECUTED 2026-07-18 (owner law §3 — chrome changes
+immediately):** `shouldHideScrollHeaderForSurface` DIED AS A CLASS — the strip's
+initial-loading hide existed only to avoid double-rendering with the dead cover's
+strip-pill holes. The results strip (the list header) now renders REAL for the
+scene's whole life, including initial loading: the chips read the live desired
+tuple so their state is correct before the world lands, and the strip is byte-
+identical between the pending block and the revealed rows (zero chrome shift at
+the reveal — sim-proven: pending shot shows the live strip over the block; settled
+shot shows the same strip untouched over cards). No header skeleton exists
+anywhere on the results page now.
+
 **PENDING BLOCK EXECUTED 2026-07-18 (the arc's structural core):** the ATTRIBUTION
 overturned the charter's premise — the P-12 fence ALREADY coalesces row landing to ONE
 render at the reveal commit (the "premount under cover" claim was stale; the cover
