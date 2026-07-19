@@ -135,24 +135,35 @@ agent in flight at turn end so completion notifications chain turns.
 - [x] bc2ed912 identity index hardened: raw expression index
       (country, subdivision, level, lower(name)) NULLS NOT DISTINCT;
       @@unique REMOVED from Prisma model (can't express it) — do not re-add.
-- [>] AGENT in flight: signals red-team FIXES (A searchRequestId meta,
-  B cached-reveal signal ungated from searchLogEnabled + reveal id meta,
-  D poll_vote endorsed-subject meta, E geo-promise rejection guard,
-  F food-favorite geo via connection restaurant) + specs.
-- [>] AGENT in flight: catalog red-team FIXES (4a scale-aware anchor
-  answering — over-scale bbox never answers, fixture rewritten;
-  1c atomic parent-edge push + LEAST/GREATEST bbox widen;
-  2a antimeridian wrap in place-geo + split WHERE; 2b cos-weighted area;
-  §16 reclassification of cell clamp/EPSILON/gridFractions).
-- [ ] When BOTH land: verify, commit each batch, then me: US seed script
-      (gazetteer + governed TomTom draws, proposal+price-tag path).
+- [x] dde7fe79 signals red-team fixes A-F (searchRequestId meta, cached-reveal
+      ungated + reveal-id meta, poll_vote endorsed subject, geo-rejection
+      guard RED-proven, food-favorite geo via connection).
+- [x] b9dbeb4e catalog red-team fixes (4a scale-aware answering RED-proven,
+      1c atomic push + LEAST/GREATEST widen, 2a antimeridian wrap-aware
+      place-geo + split WHEREs, 2b cos-weighted area, §16 reclassifications).
+- [x] dd3c7e72 US seed script + EXECUTED: 19,447 municipalities + 49 states +
+      country live in places (18 same-name identity merges, logged; Austin/
+      Waco verified; sqrt(ALAND) bboxes; DC/HI/PR/territories organic-only).
+- [x] 082323e0 Gemini pool #1: gemini.tokens ledger mirror (Redis limiter
+      keeps admission; mirrorDraw records declared-vs-actual). PHASE A DONE.
 - OWNER-RATIFY added to master §18 item 7: COVERING_FRACTION=2/3 derivation +
   lone-commensurate-non-covering-is-header (red-team 5a).
 - Red-team verdicts NOT fixed (recorded): signals monthly partitions deferred
   (plain table for now); §3 anonymous deviceKey plumbing dormant (no call
   sites); FIFO-not-LRU actor cache accepted.
-- [ ] Then: header/resolution consumers cut (polls header re-resolve, search
-      metadata naming) → old resolver election dies (Phase C per-consumer).
+
+## TASK #5 STATUS (live)
+
+- [x] US seed executed (above).
+- [>] AGENT in flight: header/resolution cut — search metadata
+  displayMarketName VALUE now derived from placesInView+resolveHeaderPlace
+  (contract shape unchanged, mobile untouched); reconciler noteViewport
+  wired at search-with-bounds chokepoint (§2 growth machine LIVE — probes
+  on unknown ground, neighborhoods enter on attention); dead resolver
+  outputs deleted per grep. Collection/CTA/marketKey machinery stays for
+  #6/#7/Phase C cuts.
+- [ ] After: poll system cut (#6) then aggregate/readers/collector/score (#7),
+      Phase C purges, wave-5 final red team + reassessment.
 - deferred-in-leg-2: See-locations (only remaining Leg 2 item).
 
 ## Decisions log (append as made)
