@@ -41,15 +41,13 @@ interface InterpretationResult {
   phaseTimings?: Record<string, number>;
 }
 
+// What interpretation actually READS from the old market resolver: the
+// restaurant-scoping marketKey and the on-demand collection scope. The
+// naming/header outputs died with master plan §22 cut 3 (the header derives
+// from the Place Catalog in SearchService); the remaining fields die with
+// the collection-trigger cuts (§22 items 6–7).
 type SearchInterpretationMarketContext = {
   marketKey: string | null;
-  displayMarketName: string | null;
-  marketResolutionStatus: 'resolved' | 'multi_market' | 'no_market' | 'error';
-  candidateLocalityName: string | null;
-  candidateBoundaryProvider: string | null;
-  candidateBoundaryId: string | null;
-  candidateBoundaryType: string | null;
-  attributionMarketKeys: string[];
   collectableMarketKeys: string[];
 };
 
@@ -667,21 +665,6 @@ export class SearchQueryInterpretationService {
 
       return {
         marketKey: resolved.market?.marketKey ?? null,
-        displayMarketName:
-          resolved.market?.marketShortName ??
-          resolved.market?.marketName ??
-          null,
-        marketResolutionStatus: resolved.status,
-        candidateLocalityName:
-          resolved.resolution.candidateLocalityName ?? null,
-        candidateBoundaryProvider:
-          resolved.resolution.candidateBoundaryProvider ?? null,
-        candidateBoundaryId: resolved.resolution.candidateBoundaryId ?? null,
-        candidateBoundaryType:
-          resolved.resolution.candidateBoundaryType ?? null,
-        attributionMarketKeys: resolved.markets.map(
-          (market) => market.marketKey,
-        ),
         collectableMarketKeys: resolved.collectableMarketKeys,
       };
     } catch (error) {
@@ -693,13 +676,6 @@ export class SearchQueryInterpretationService {
       });
       return {
         marketKey: null,
-        displayMarketName: null,
-        marketResolutionStatus: 'error',
-        candidateLocalityName: null,
-        candidateBoundaryProvider: null,
-        candidateBoundaryId: null,
-        candidateBoundaryType: null,
-        attributionMarketKeys: [],
         collectableMarketKeys: [],
       };
     }

@@ -47,6 +47,10 @@ import {
 import { SearchMetricsService } from './search-metrics.service';
 import { MarketRegistryService } from '../markets/market-registry.service';
 import { SignalsService } from '../signals/signals.service';
+import { PlacesCatalogService } from '../places/places-catalog.service';
+import { PlacesReconcilerService } from '../places/places-reconciler.service';
+import { resolveHeaderPlace } from '../places/subjects';
+import type { GeoBbox } from '../places/place-geo';
 import { RestaurantStatusService } from './restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from './dto/restaurant-status-preview.dto';
 import {
@@ -150,7 +154,6 @@ interface StageExecutionResult {
 
 type SearchMarketContext = {
   marketKey: string | null;
-  displayMarketName: string | null;
   marketResolutionStatus: 'resolved' | 'multi_market' | 'no_market' | 'error';
   candidateLocalityName: string | null;
   candidateBoundaryProvider: string | null;
@@ -232,6 +235,8 @@ export class SearchService {
     private readonly marketRegistry: MarketRegistryService,
     private readonly restaurantStatusService: RestaurantStatusService,
     private readonly signals: SignalsService,
+    private readonly placesCatalog: PlacesCatalogService,
+    private readonly placesReconciler: PlacesReconcilerService,
   ) {
     this.logger = loggerService.setContext('SearchService');
     this.resultLimit = this.resolveResultLimit();
@@ -346,7 +351,19 @@ export class SearchService {
     const start = Date.now();
     const searchRequestId = request.searchRequestId ?? randomUUID();
     request.searchRequestId = searchRequestId;
-    const resolvedMarket = await this.resolveSearchMarketContext(request);
+    const view = this.geoBboxFromBounds(request.bounds ?? null);
+    if (view) {
+      // §2 growth machine (master plan §22 cut 3): a submitted search's bounds
+      // ARE the settled viewport — hand it to the naming reconciler. Sync
+      // return, never throws by construction (failures log inside and self-
+      // heal on a later settle); unknown ground gets probed on the governed
+      // cheap pool, neighborhoods enter the catalog on first attention.
+      this.placesReconciler.noteViewport(view);
+    }
+    const [resolvedMarket, displayPlaceName] = await Promise.all([
+      this.resolveSearchMarketContext(request),
+      this.resolveDisplayPlaceName(view),
+    ]);
 
     let plan: QueryPlan | undefined;
     const phaseTimings: Record<string, number> = {};
@@ -741,7 +758,10 @@ export class SearchService {
           resultCoverageStatus,
           primaryFoodTerm: primaryFoodTerm || undefined,
           marketKey: resolvedMarket.marketKey,
-          displayMarketName: resolvedMarket.displayMarketName,
+          // §2 header law (master plan §22 cut 3): the VALUE now comes from
+          // the Place Catalog (resolveDisplayPlaceName); the FIELD name is the
+          // frozen wire contract until the mobile-side cut.
+          displayMarketName: displayPlaceName,
           marketResolutionStatus: resolvedMarket.marketResolutionStatus,
           candidateLocalityName: resolvedMarket.candidateLocalityName,
           candidateBoundaryProvider: resolvedMarket.candidateBoundaryProvider,
@@ -1088,7 +1108,9 @@ export class SearchService {
         resultCoverageStatus,
         primaryFoodTerm: primaryFoodTerm || undefined,
         marketKey: resolvedMarket.marketKey,
-        displayMarketName: resolvedMarket.displayMarketName,
+        // §2 header law: catalog-derived value, frozen field name (see the
+        // no-relaxation metadata site).
+        displayMarketName: displayPlaceName,
         marketResolutionStatus: resolvedMarket.marketResolutionStatus,
         candidateLocalityName: resolvedMarket.candidateLocalityName,
         candidateBoundaryProvider: resolvedMarket.candidateBoundaryProvider,
@@ -3015,10 +3037,6 @@ export class SearchService {
 
       return {
         marketKey: resolved.market?.marketKey ?? null,
-        displayMarketName:
-          resolved.market?.marketShortName ??
-          resolved.market?.marketName ??
-          null,
         marketResolutionStatus: resolved.status,
         candidateLocalityName:
           resolved.resolution.candidateLocalityName ?? null,
@@ -3041,7 +3059,6 @@ export class SearchService {
       });
       return {
         marketKey: null,
-        displayMarketName: null,
         marketResolutionStatus: 'error',
         candidateLocalityName: null,
         candidateBoundaryProvider: null,
@@ -3050,6 +3067,68 @@ export class SearchService {
         attributionMarketKeys: [],
         collectableMarketKeys: [],
       };
+    }
+  }
+
+  /**
+   * Request viewport bounds → wrap-aware GeoBbox (place-geo R1: minLng >
+   * maxLng means the viewport crosses the antimeridian). SW/NE longitudes map
+   * DIRECTLY — a min/max reshuffle would destroy the crossing encoding.
+   */
+  private geoBboxFromBounds(bounds?: MapBoundsDto | null): GeoBbox | null {
+    if (!bounds?.northEast || !bounds.southWest) {
+      return null;
+    }
+    const { northEast, southWest } = bounds;
+    if (
+      ![northEast.lat, northEast.lng, southWest.lat, southWest.lng].every(
+        (value) => typeof value === 'number' && Number.isFinite(value),
+      )
+    ) {
+      return null;
+    }
+    return {
+      minLat: Math.min(southWest.lat, northEast.lat),
+      maxLat: Math.max(southWest.lat, northEast.lat),
+      minLng: southWest.lng,
+      maxLng: northEast.lng,
+    };
+  }
+
+  /**
+   * §2 header naming (master plan §22 cut 3): the search header's display
+   * name comes from the Place Catalog — every place intersecting the view,
+   * judged by the read-time subjecthood law (resolveHeaderPlace). "this
+   * area" verdicts (multi-place straddle, unnamed ground) surface as null;
+   * the client renders its own fallback for null. Never throws — a naming
+   * failure must not affect the search response (reads never wait on
+   * naming, §2).
+   */
+  private async resolveDisplayPlaceName(
+    view: GeoBbox | null,
+  ): Promise<string | null> {
+    if (!view) {
+      return null;
+    }
+    try {
+      const placesInView = await this.placesCatalog.placesInView(view);
+      const resolution = resolveHeaderPlace(
+        view,
+        placesInView.map((entry) => ({
+          placeId: entry.place.placeId,
+          name: entry.place.name,
+          bbox: entry.bbox,
+          coverageOfView: entry.coverageOfView,
+        })),
+      );
+      return resolution.kind === 'place' ? resolution.place.name : null;
+    } catch (error) {
+      this.logger.debug('Unable to resolve header place name', {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return null;
     }
   }
 

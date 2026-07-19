@@ -12,6 +12,7 @@ import { EntityTextSearchModule } from '../entity-text-search/entity-text-search
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
 import { SignalsModule } from '../signals/signals.module';
+import { PlacesModule } from '../places/places.module';
 import { SearchController } from './search.controller';
 import { SearchService } from './search.service';
 import { SearchCoverageService } from './search-coverage.service';
@@ -44,6 +45,9 @@ import { SearchSiblingExpansionService } from './search-sibling-expansion.servic
     AnalyticsModule,
     PublicCraveScoreModule,
     SignalsModule,
+    // §22 cut 3: the search header names from the Place Catalog, and the §2
+    // naming reconciler goes live at the search viewport chokepoint.
+    PlacesModule,
   ],
   controllers: [SearchController],
   providers: [
