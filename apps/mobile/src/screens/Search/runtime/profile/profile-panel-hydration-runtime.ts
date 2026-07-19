@@ -15,7 +15,7 @@ import { publishMapMarkerSource } from '../shared/search-mounted-results-data-st
 import { focusSeededMarkerCamera } from './profile-seeded-camera-focus-handler';
 
 export type ProfilePanelHydrationRuntime = {
-  hydrateRestaurantProfileById: (restaurantId: string, marketKey?: string | null) => void;
+  hydrateRestaurantProfileById: (restaurantId: string) => void;
 };
 
 type UseProfilePanelHydrationRuntimeArgs = {
@@ -75,17 +75,13 @@ export const useProfilePanelHydrationRuntime = ({
   const { getCachedRestaurantProfile, loadRestaurantProfileData } = hydrationRequestRuntime;
 
   const hydrateRestaurantProfileById = React.useCallback(
-    (restaurantId: string, marketKey?: string | null) => {
+    (restaurantId: string) => {
       if (!restaurantId) {
         return;
       }
 
       const requestSeq = beginRestaurantProfileHydrationIntent(restaurantId);
-      const normalizedMarketKey =
-        typeof marketKey === 'string' && marketKey.trim().length
-          ? marketKey.trim().toLowerCase()
-          : null;
-      const cachedProfile = getCachedRestaurantProfile(restaurantId, normalizedMarketKey);
+      const cachedProfile = getCachedRestaurantProfile(restaurantId);
 
       if (cachedProfile) {
         setRestaurantPanelSnapshot((prev) =>
@@ -113,7 +109,7 @@ export const useProfilePanelHydrationRuntime = ({
         })
       );
 
-      void loadRestaurantProfileData(restaurantId, normalizedMarketKey)
+      void loadRestaurantProfileData(restaurantId)
         .then((loadedProfile) => {
           if (!isRestaurantProfileRequestCurrent(requestSeq)) {
             return;

@@ -14,14 +14,8 @@ import {
 } from './profile-mutable-state-record';
 
 export type ProfileHydrationRequestRuntime = {
-  getCachedRestaurantProfile: (
-    restaurantId: string,
-    marketKey?: string | null
-  ) => HydratedRestaurantProfile | undefined;
-  loadRestaurantProfileData: (
-    restaurantId: string,
-    marketKey?: string | null
-  ) => Promise<HydratedRestaurantProfile>;
+  getCachedRestaurantProfile: (restaurantId: string) => HydratedRestaurantProfile | undefined;
+  loadRestaurantProfileData: (restaurantId: string) => Promise<HydratedRestaurantProfile>;
 };
 
 type UseProfileHydrationRequestRuntimeArgs = {
@@ -32,41 +26,29 @@ export const useProfileHydrationRequestRuntime = ({
   profileControllerStateRef,
 }: UseProfileHydrationRequestRuntimeArgs): ProfileHydrationRequestRuntime => {
   const getCachedRestaurantProfile = React.useCallback(
-    (restaurantId: string, marketKey?: string | null) =>
-      getRestaurantProfileCacheEntryFromRecord(
-        profileControllerStateRef.current,
-        restaurantId,
-        marketKey
-      ),
+    (restaurantId: string) =>
+      getRestaurantProfileCacheEntryFromRecord(profileControllerStateRef.current, restaurantId),
     [profileControllerStateRef]
   );
 
   const loadRestaurantProfileData = React.useCallback(
-    (restaurantId: string, marketKey?: string | null): Promise<HydratedRestaurantProfile> => {
-      const normalizedMarketKey =
-        typeof marketKey === 'string' && marketKey.trim().length
-          ? marketKey.trim().toLowerCase()
-          : null;
+    (restaurantId: string): Promise<HydratedRestaurantProfile> => {
       const cached = getRestaurantProfileCacheEntryFromRecord(
         profileControllerStateRef.current,
-        restaurantId,
-        normalizedMarketKey
+        restaurantId
       );
       if (cached) {
         return Promise.resolve(cached);
       }
       const inFlight = getRestaurantProfileRequestByIdFromRecord(
         profileControllerStateRef.current,
-        restaurantId,
-        normalizedMarketKey
+        restaurantId
       );
       if (inFlight) {
         return inFlight;
       }
       const request = searchService
-        .restaurantProfile(restaurantId, {
-          marketKey: normalizedMarketKey,
-        })
+        .restaurantProfile(restaurantId)
         .then((profile) => {
           const payload = profile as RestaurantProfile | null;
           const restaurant = payload?.restaurant;
@@ -81,7 +63,6 @@ export const useProfileHydrationRequestRuntime = ({
           setRestaurantProfileCacheEntryOnRecord(
             profileControllerStateRef.current,
             restaurantId,
-            normalizedMarketKey,
             normalized
           );
           return normalized;
@@ -96,14 +77,12 @@ export const useProfileHydrationRequestRuntime = ({
         .finally(() => {
           deleteRestaurantProfileRequestByIdOnRecord(
             profileControllerStateRef.current,
-            restaurantId,
-            normalizedMarketKey
+            restaurantId
           );
         });
       setRestaurantProfileRequestByIdOnRecord(
         profileControllerStateRef.current,
         restaurantId,
-        normalizedMarketKey,
         request
       );
       return request;

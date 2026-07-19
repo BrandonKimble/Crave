@@ -100,7 +100,6 @@ export type SearchForegroundLaunchIntentRuntimeArgs = {
   submitSearch: SearchForegroundSubmitRuntime['submitSearch'];
   submitViewportShortcut: SearchForegroundSubmitRuntime['submitViewportShortcut'];
   pendingRestaurantSelectionRef: React.MutableRefObject<{ restaurantId: string } | null>;
-  currentMarketKey?: string | null;
 };
 
 export type SearchForegroundSubmitRuntimeArgs = {

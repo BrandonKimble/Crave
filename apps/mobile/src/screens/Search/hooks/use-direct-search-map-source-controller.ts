@@ -19,6 +19,7 @@ import {
   type SearchMapVisualIdentityKey,
 } from '../utils/search-map-visual-identity';
 import { buildMarkerCatalogReadModel } from '../runtime/map/map-read-model-builder';
+import { setSearchMapSelectionFocus } from '../runtime/map/search-map-selection-focus-store';
 import { type MapMotionPressureController } from '../runtime/map/map-motion-pressure';
 import {
   createSearchMapSourceTransportFeature,
@@ -1001,6 +1002,7 @@ export const useDirectSearchMapSourceController = ({
   React.useEffect(() => {
     if (highlightedRestaurantId == null) {
       lastMarkerPressTargetRef.current = null;
+      setSearchMapSelectionFocus(null);
     }
   }, [highlightedRestaurantId]);
   const markerCandidatesRef = React.useRef<Array<Feature<Point, RestaurantFeatureProperties>>>([]);
@@ -2754,6 +2756,12 @@ export const useDirectSearchMapSourceController = ({
         restaurantId,
         coordinate: pressedCoordinate ?? null,
       };
+      // Location-centric selection (master plan §7): record the tapped
+      // coordinate so the highlight picks the ONE nearest marker.
+      setSearchMapSelectionFocus({
+        restaurantId,
+        coordinate: pressedCoordinate ?? null,
+      });
       const worldSnapshot = getSearchMountedResultsDataSnapshot();
       const worldCoverageFeatures =
         worldSnapshot.coverage != null

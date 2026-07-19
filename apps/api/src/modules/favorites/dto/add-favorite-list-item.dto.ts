@@ -17,6 +17,12 @@ export class AddFavoriteListItemDto {
   @IsUUID()
   connectionId?: string;
 
+  /** Location-centric saves (master plan §7): the SPECIFIC saved location —
+   *  ListDetail renders exactly this pin. */
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
   @IsOptional()
   @IsInt()
   @Min(0)

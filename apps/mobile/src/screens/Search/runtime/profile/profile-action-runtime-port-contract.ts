@@ -46,7 +46,7 @@ export type ProfileActionExecutionPorts = {
     queryLabel: string,
     options?: { selectedLocationId?: string | null }
   ) => void;
-  hydrateRestaurantProfileById: (restaurantId: string, marketKey?: string | null) => void;
+  hydrateRestaurantProfileById: (restaurantId: string) => void;
   deferRecentlyViewedTrack: (restaurantId: string, restaurantName: string) => void;
   recordRestaurantView: (restaurantId: string, source: SearchProfileSource) => Promise<void>;
   prepareForProfileClose: () => void;
@@ -60,7 +60,7 @@ export type ProfileRefreshSelectionExecutionPorts = {
     options?: { selectedLocationId?: string | null }
   ) => void;
   focusRestaurantProfileCamera: (restaurant: RestaurantResult, source: SearchProfileSource) => void;
-  hydrateRestaurantProfileById: (restaurantId: string, marketKey?: string | null) => void;
+  hydrateRestaurantProfileById: (restaurantId: string) => void;
 };
 
 export type ProfileAutoOpenActionExecutionPorts = {

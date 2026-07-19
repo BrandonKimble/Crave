@@ -310,6 +310,7 @@ export class FavoriteListsService {
         items: {
           orderBy: { position: 'asc' },
           include: {
+            location: true,
             restaurant: {
               include: { primaryLocation: true },
             },
@@ -372,6 +373,7 @@ export class FavoriteListsService {
         items: {
           orderBy: { position: 'asc' },
           include: {
+            location: true,
             restaurant: {
               include: { primaryLocation: true },
             },
@@ -427,6 +429,7 @@ export class FavoriteListsService {
         items: {
           orderBy: { position: 'asc' },
           include: {
+            location: true,
             restaurant: {
               include: { primaryLocation: true },
             },
@@ -470,6 +473,7 @@ export class FavoriteListsService {
         items: {
           orderBy: { position: 'asc' },
           include: {
+            location: true,
             restaurant: {
               include: { primaryLocation: true },
             },
@@ -657,6 +661,36 @@ export class FavoriteListsService {
       }
     }
 
+    // Location-centric saves (master plan §7): validate the saved location
+    // belongs to the item's restaurant (directly, or via the connection).
+    let validatedLocationId: string | null = null;
+    if (dto.locationId) {
+      const location = await this.prisma.restaurantLocation.findUnique({
+        where: { locationId: dto.locationId },
+        select: { locationId: true, restaurantId: true },
+      });
+      const expectedRestaurantId =
+        restaurantId ??
+        (connectionId
+          ? (
+              await this.prisma.connection.findUnique({
+                where: { connectionId },
+                select: { restaurantId: true },
+              })
+            )?.restaurantId
+          : null);
+      if (
+        !location ||
+        !expectedRestaurantId ||
+        location.restaurantId !== expectedRestaurantId
+      ) {
+        throw new BadRequestException(
+          'locationId does not belong to the saved restaurant',
+        );
+      }
+      validatedLocationId = location.locationId;
+    }
+
     const maxPosition = await this.prisma.favoriteListItem.aggregate({
       where: { listId },
       _max: { position: true },
@@ -670,6 +704,7 @@ export class FavoriteListsService {
           addedByUserId: userId,
           restaurantId,
           connectionId,
+          locationId: validatedLocationId,
           note: dto.note?.slice(0, 512) ?? null,
           position: dto.position ?? (maxPosition._max.position ?? 0) + 1,
         },

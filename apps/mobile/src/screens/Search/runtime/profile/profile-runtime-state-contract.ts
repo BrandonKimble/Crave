@@ -27,7 +27,7 @@ export type ProfileHydrationRuntimeState = {
     }
   ) => void;
   seedRestaurantProfile: (restaurant: RestaurantProfileSeed, queryLabel: string) => void;
-  hydrateRestaurantProfileById: (restaurantId: string, marketKey?: string | null) => void;
+  hydrateRestaurantProfileById: (restaurantId: string) => void;
 };
 
 export type ProfileRuntimeStateOwner = {

@@ -101,7 +101,6 @@ export interface FoodResult {
   craveScoreExact?: number;
   rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
-  marketKey?: string;
   mentionCount: number;
   totalUpvotes: number;
   lastMentionedAt?: string | null;
@@ -192,7 +191,6 @@ export interface RestaurantResult {
   craveScoreExact?: number;
   rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
-  marketKey?: string;
   mentionCount?: number;
   totalUpvotes?: number;
   latitude?: number | null;
@@ -277,7 +275,6 @@ export interface DishResult {
   craveScore: number;
   rising?: number | null;
   scoreInfo?: ScoreInfoSummary;
-  marketKey?: string;
   mentionCount: number;
   totalUpvotes: number;
   lastMentionedAt?: string | null;

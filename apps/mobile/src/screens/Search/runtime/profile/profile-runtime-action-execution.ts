@@ -44,7 +44,7 @@ export const executeProfileRefreshSelectionAction = ({
   ports.setMapHighlightedRestaurantId(restaurant.restaurantId);
   ports.seedRestaurantProfile(restaurant, queryLabel);
   ports.focusRestaurantProfileCamera(restaurant, 'autocomplete');
-  ports.hydrateRestaurantProfileById(restaurant.restaurantId, restaurant.marketKey ?? null);
+  ports.hydrateRestaurantProfileById(restaurant.restaurantId);
 };
 
 export const executeProfileAutoOpenAction = ({

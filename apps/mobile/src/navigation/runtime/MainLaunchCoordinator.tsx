@@ -844,19 +844,9 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
 
     const launchIntent = routeState.launchIntent;
     const startupLocation = resolveSemanticUserLocation(startupLocationSnapshot);
-    const startupMarketKey =
-      typeof startupPollsSnapshot?.marketKey === 'string' &&
-      startupPollsSnapshot.marketKey.trim().length
-        ? startupPollsSnapshot.marketKey.trim().toLowerCase()
-        : startupLocationSnapshot?.ipMarketKey
-          ? normalizePollMarketKey(startupLocationSnapshot.ipMarketKey)
-          : null;
     if (launchIntent.type === 'entityAction' && launchIntent.action.kind === 'restaurantWorld') {
-      void searchService
-        .restaurantProfile(launchIntent.action.restaurantId, {
-          marketKey: startupMarketKey ?? null,
-        })
-        .catch(() => undefined);
+      // Leg 2 (geo-demand rebuild §7): the profile is restaurant-scoped — no market slice.
+      void searchService.restaurantProfile(launchIntent.action.restaurantId).catch(() => undefined);
       return;
     }
 
@@ -950,7 +940,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     routeState?.launchIntent,
     startupCamera?.source,
     startupLocationSnapshot?.coordinate,
-    startupPollsSnapshot?.marketKey,
     startupPollBounds,
   ]);
 

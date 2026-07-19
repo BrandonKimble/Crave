@@ -183,6 +183,13 @@ export class ListResultsAssembler {
     // it (first-wins across the virtual union, same law as the note) so the
     // client can build the drag-save's orderedItemIds without a second read.
     const itemIdByAxisId = new Map<string, string>();
+    // Location-centric saves (master plan §7): the saved location projects
+    // onto the axis rows — ListDetail renders exactly the saved pin, never
+    // the search-center-selected sibling. First-wins, same law as the note.
+    const savedLocationByAxisId = new Map<
+      string,
+      NonNullable<FavoriteListItemDetail['location']>
+    >();
     for (const item of source.items) {
       const id = axisIdOf(item);
       if (id && item.note != null && !noteByAxisId.has(id)) {
@@ -190,6 +197,9 @@ export class ListResultsAssembler {
       }
       if (id && !itemIdByAxisId.has(id)) {
         itemIdByAxisId.set(id, item.itemId);
+      }
+      if (id && item.location && !savedLocationByAxisId.has(id)) {
+        savedLocationByAxisId.set(id, item.location);
       }
     }
 
@@ -353,14 +363,20 @@ export class ListResultsAssembler {
     const dishes = isRestaurantAxis
       ? []
       : orderExplicitly(exec.dishes, (d) => d.connectionId).map((dish) => ({
-          ...dish,
+          ...this.projectSavedLocation(
+            dish,
+            savedLocationByAxisId.get(dish.connectionId),
+          ),
           note: noteByAxisId.get(dish.connectionId) ?? null,
           favoriteListItemId: itemIdByAxisId.get(dish.connectionId) ?? null,
         }));
     const restaurants = isRestaurantAxis
       ? orderExplicitly(exec.restaurants, (r) => r.restaurantId).map(
           (restaurant) => ({
-            ...restaurant,
+            ...this.projectSavedLocation(
+              restaurant,
+              savedLocationByAxisId.get(restaurant.restaurantId),
+            ),
             note: noteByAxisId.get(restaurant.restaurantId) ?? null,
             favoriteListItemId:
               itemIdByAxisId.get(restaurant.restaurantId) ?? null,
@@ -417,6 +433,66 @@ export class ListResultsAssembler {
       restaurants,
       sqlPreview: null,
       metadata,
+    };
+  }
+
+  /** Location-centric saves (master plan §7): the saved location REPLACES the
+   *  row's display location + array — ListDetail shows exactly the saved pin. */
+  private projectSavedLocation<
+    T extends {
+      restaurantId: string;
+      latitude?: number | null;
+      longitude?: number | null;
+      address?: string | null;
+      restaurantLocationId?: string | null;
+      displayLocation?: unknown;
+      locations?: unknown[];
+      locationCount?: number | null;
+    },
+  >(
+    row: T,
+    saved:
+      | {
+          locationId: string;
+          latitude: unknown;
+          longitude: unknown;
+          address: string | null;
+          googlePlaceId: string | null;
+        }
+      | undefined,
+  ): T {
+    if (!saved) {
+      return row;
+    }
+    const lat = saved.latitude != null ? Number(saved.latitude) : null;
+    const lng = saved.longitude != null ? Number(saved.longitude) : null;
+    if (
+      lat == null ||
+      lng == null ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng)
+    ) {
+      return row;
+    }
+    const savedDisplayLocation = {
+      ...(typeof row.displayLocation === 'object' && row.displayLocation
+        ? row.displayLocation
+        : {}),
+      locationId: saved.locationId,
+      googlePlaceId: saved.googlePlaceId ?? null,
+      latitude: lat,
+      longitude: lng,
+      address: saved.address ?? null,
+    };
+    return {
+      ...row,
+      latitude: lat,
+      longitude: lng,
+      address: saved.address ?? row.address ?? null,
+      restaurantLocationId: saved.locationId,
+      displayLocation: savedDisplayLocation,
+      locations: [savedDisplayLocation],
+      locationCount: 1,
     };
   }
 

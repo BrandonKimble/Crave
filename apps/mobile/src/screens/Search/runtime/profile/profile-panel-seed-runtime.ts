@@ -42,7 +42,7 @@ export const useProfilePanelSeedRuntime = ({
       options?: { selectedLocationId?: string | null }
     ) => {
       const restaurantId = restaurant.restaurantId;
-      const cachedProfile = getCachedRestaurantProfile(restaurantId, restaurant.marketKey ?? null);
+      const cachedProfile = getCachedRestaurantProfile(restaurantId);
       profileControllerStateRef.current.runtime.transition;
 
       setRestaurantPanelSnapshot((prev) =>

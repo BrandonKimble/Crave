@@ -81,6 +81,7 @@ export type FavoriteListScoreMaps = {
 
 export type FavoriteListItemDetail = Prisma.FavoriteListItemGetPayload<{
   include: {
+    location: true;
     restaurant: { include: { primaryLocation: true } };
     connection: {
       include: {
@@ -390,7 +391,6 @@ export class FavoriteListMapper {
         ),
         craveScoreExact: this.toPublicScoreExact(restaurantScore),
         rising: this.toPublicScoreDelta(restaurantScore),
-        marketKey: undefined,
         mentionCount: undefined,
         totalUpvotes: restaurant.generalPraiseUpvotes ?? undefined,
         latitude: primaryLocation?.latitude
@@ -463,7 +463,6 @@ export class FavoriteListMapper {
         ),
         craveScoreExact: this.toPublicScoreExact(connectionScore),
         rising: this.toPublicScoreDelta(connectionScore),
-        marketKey: undefined,
         mentionCount: connection.mentionCount ?? 0,
         totalUpvotes: connection.totalUpvotes ?? 0,
         lastMentionedAt: connection.lastMentionedAt?.toISOString() ?? null,

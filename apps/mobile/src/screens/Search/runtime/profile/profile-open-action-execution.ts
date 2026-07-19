@@ -58,7 +58,7 @@ export const executeProfileOpenPresentationPlan = ({
   });
   ports.openPreparedProfilePresentation(restaurant.restaurantId, plan.targetCamera);
   ports.capturePreviousForegroundUiRestoreStateIfAbsent(savedForegroundUiState);
-  ports.hydrateRestaurantProfileById(restaurant.restaurantId, restaurant.marketKey ?? null);
+  ports.hydrateRestaurantProfileById(restaurant.restaurantId);
   if (plan.shouldTrackRestaurantView) {
     ports.deferRecentlyViewedTrack(restaurant.restaurantId, restaurant.restaurantName);
     void ports.recordRestaurantView(restaurant.restaurantId, source);

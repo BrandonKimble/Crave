@@ -51,6 +51,23 @@ export class FavoritesService {
       throw new BadRequestException('Entity type mismatch for favorite');
     }
 
+    // Location-centric saves (master plan §7): a supplied locationId must be a
+    // real location OF this restaurant; silently dropping a mismatch would
+    // mis-pin the save, so it's a loud 400.
+    let validatedLocationId: string | null = null;
+    if (dto.locationId) {
+      const location = await this.prisma.restaurantLocation.findUnique({
+        where: { locationId: dto.locationId },
+        select: { locationId: true, restaurantId: true },
+      });
+      if (!location || location.restaurantId !== entity.entityId) {
+        throw new BadRequestException(
+          'locationId does not belong to the favorited restaurant',
+        );
+      }
+      validatedLocationId = location.locationId;
+    }
+
     const favorite = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.userFavorite.findUnique({
         where: {
@@ -65,7 +82,10 @@ export class FavoritesService {
       if (existing) {
         return tx.userFavorite.update({
           where: { favoriteId: existing.favoriteId },
-          data: { entityType: entity.type },
+          data: {
+            entityType: entity.type,
+            ...(validatedLocationId ? { locationId: validatedLocationId } : {}),
+          },
           include: {
             entity: {
               select: {
@@ -84,6 +104,7 @@ export class FavoritesService {
           userId,
           entityId: entity.entityId,
           entityType: entity.type,
+          locationId: validatedLocationId,
         },
         include: {
           entity: {

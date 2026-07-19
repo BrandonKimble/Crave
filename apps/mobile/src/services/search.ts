@@ -750,28 +750,19 @@ export const searchService = {
     const { data } = await api.get<FoodResult[]>(`/search/restaurants/${restaurantId}/dishes`);
     return data;
   },
-  restaurantProfile: async (
-    restaurantId: string,
-    options: { marketKey?: string | null } = {}
-  ): Promise<RestaurantProfile> => {
-    const normalizedMarketKey =
-      typeof options.marketKey === 'string' && options.marketKey.trim().length
-        ? options.marketKey.trim().toLowerCase()
-        : null;
+  restaurantProfile: async (restaurantId: string): Promise<RestaurantProfile> => {
+    // Leg 2 (geo-demand rebuild §7): the profile is restaurant-scoped — ALL locations,
+    // no market slice. Cache key = restaurantId only.
     const cacheKey = buildSearchCacheKey({
       kind: 'restaurant-profile',
       restaurantId,
-      marketKey: normalizedMarketKey,
     });
     return getCachedRequest(
       restaurantProfileCache,
       cacheKey,
       async () => {
         const { data } = await api.get<RestaurantProfile>(
-          `/search/restaurants/${restaurantId}/profile`,
-          {
-            params: normalizedMarketKey ? { marketKey: normalizedMarketKey } : undefined,
-          }
+          `/search/restaurants/${restaurantId}/profile`
         );
         return data;
       },

@@ -210,23 +210,12 @@ export const useSearchRootRuntimeControlStageRuntime = ({
     effectsRuntimeArgs: foregroundEffectsRegistrationArgs,
   });
 
-  const currentMarketKey =
-    typeof stateAssemblyRuntime.stateFoundationLane.rootDataPlaneRuntime.resultsArrivalState
-      .currentResults?.metadata?.marketKey === 'string' &&
-    stateAssemblyRuntime.stateFoundationLane.rootDataPlaneRuntime.resultsArrivalState.currentResults.metadata.marketKey.trim()
-      .length
-      ? stateAssemblyRuntime.stateFoundationLane.rootDataPlaneRuntime.resultsArrivalState.currentResults.metadata.marketKey
-          .trim()
-          .toLowerCase()
-      : null;
-
   useSearchForegroundLaunchIntentRuntime({
     routeSearchCommandActions:
       overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.routeSearchCommandActions,
     navigation: appEntryPlaneRuntime.navigation,
     activeMainIntent: appEntryPlaneRuntime.activeMainIntent,
     consumeActiveMainIntent: appEntryPlaneRuntime.consumeActiveMainIntent,
-    currentMarketKey,
     openRestaurantProfilePreview:
       profileControlRuntime.profileOwner.profileActions.openRestaurantProfilePreview,
     launchEntitySearchResults: submitRuntimeResult.launchEntitySearchResults,

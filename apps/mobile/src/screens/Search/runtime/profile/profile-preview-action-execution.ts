@@ -29,7 +29,7 @@ export const executeProfilePreviewPresentationPlan = ({
   ports.setMapHighlightedRestaurantId(restaurantId);
   ports.seedRestaurantProfile(plan.seededRestaurant, plan.seededRestaurant.restaurantName);
   ports.openPreparedProfilePresentation(restaurantId, plan.targetCamera);
-  ports.hydrateRestaurantProfileById(restaurantId, plan.seededRestaurant.marketKey ?? null);
+  ports.hydrateRestaurantProfileById(restaurantId);
 };
 
 export const executeProfilePreviewAction = ({

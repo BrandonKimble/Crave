@@ -46,6 +46,7 @@ import { isLngLatTuple } from '../utils/geo';
 import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
 import { useSearchMapNativeRenderOwner } from './hooks/use-search-map-native-render-owner';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
+import { getSearchMapSelectionFocus } from '../runtime/map/search-map-selection-focus-store';
 import type { SearchMapPresentationScene } from '../runtime/map/map-presentation-runtime-contract';
 import type { MapMotionPressureController } from '../runtime/map/map-motion-pressure';
 import {
@@ -1159,7 +1160,13 @@ const resolveMapPresentedLabelScene = ({
   };
 };
 
-const collectPresentedMarkerKeysForRestaurantId = ({
+type PresentedMarkerForRestaurant = {
+  markerKey: string;
+  lng: number;
+  lat: number;
+};
+
+const collectPresentedMarkersForRestaurantId = ({
   sourceStore,
   restaurantId,
   buildMarkerKey,
@@ -1167,8 +1174,8 @@ const collectPresentedMarkerKeysForRestaurantId = ({
   sourceStore: SearchMapPresentationScene['pinSourceStore'];
   restaurantId: string;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
-}): string[] => {
-  const markerKeys: string[] = [];
+}): PresentedMarkerForRestaurant[] => {
+  const markers: PresentedMarkerForRestaurant[] = [];
   const seenMarkerKeys = new Set<string>();
   for (const featureId of sourceStore.idsInOrder) {
     const feature = sourceStore.featureById.get(featureId);
@@ -1179,12 +1186,13 @@ const collectPresentedMarkerKeysForRestaurantId = ({
           : buildMarkerKey(feature);
       if (!seenMarkerKeys.has(markerKey)) {
         seenMarkerKeys.add(markerKey);
-        markerKeys.push(markerKey);
+        const [lng, lat] = feature.geometry.coordinates;
+        markers.push({ markerKey, lng, lat });
       }
     }
   }
 
-  return markerKeys;
+  return markers;
 };
 
 const useSearchMapInteractionRuntime = ({
@@ -1642,38 +1650,62 @@ const SearchMap: React.FC<SearchMapProps> = ({
     if (!effectiveSelectedRestaurantId) {
       return [];
     }
-    const orderedMarkerKeys = [
-      ...collectPresentedMarkerKeysForRestaurantId({
+    // Location-centric selection (master plan §7): selection is ONE location.
+    // Collect the restaurant's presented markers (pins first — the
+    // representative leads when no tap coordinate exists), then pick exactly
+    // one: the marker nearest the tapped coordinate, else the first.
+    const orderedMarkers = [
+      ...collectPresentedMarkersForRestaurantId({
         sourceStore: directSourceFrameStores.pinSourceStore,
         restaurantId: effectiveSelectedRestaurantId,
         buildMarkerKey,
       }),
-      ...collectPresentedMarkerKeysForRestaurantId({
+      ...collectPresentedMarkersForRestaurantId({
         sourceStore: directSourceFrameStores.dotSourceStore,
         restaurantId: effectiveSelectedRestaurantId,
         buildMarkerKey,
       }),
-      ...collectPresentedMarkerKeysForRestaurantId({
+      ...collectPresentedMarkersForRestaurantId({
         sourceStore: presentedPinSourceStore,
         restaurantId: effectiveSelectedRestaurantId,
         buildMarkerKey,
       }),
-      ...collectPresentedMarkerKeysForRestaurantId({
+      ...collectPresentedMarkersForRestaurantId({
         sourceStore: presentedDotSourceStore,
         restaurantId: effectiveSelectedRestaurantId,
         buildMarkerKey,
       }),
     ];
+    if (!orderedMarkers.length) {
+      return [];
+    }
     const seenMarkerKeys = new Set<string>();
-    const markerKeys: string[] = [];
-    for (const markerKey of orderedMarkerKeys) {
-      if (seenMarkerKeys.has(markerKey)) {
+    const dedupedMarkers: PresentedMarkerForRestaurant[] = [];
+    for (const marker of orderedMarkers) {
+      if (seenMarkerKeys.has(marker.markerKey)) {
         continue;
       }
-      seenMarkerKeys.add(markerKey);
-      markerKeys.push(markerKey);
+      seenMarkerKeys.add(marker.markerKey);
+      dedupedMarkers.push(marker);
     }
-    return markerKeys;
+    const focus = getSearchMapSelectionFocus();
+    const focusCoordinate =
+      focus && focus.restaurantId === effectiveSelectedRestaurantId ? focus.coordinate : null;
+    if (!focusCoordinate) {
+      return [dedupedMarkers[0].markerKey];
+    }
+    let nearest = dedupedMarkers[0];
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const marker of dedupedMarkers) {
+      const dLng = marker.lng - focusCoordinate.lng;
+      const dLat = marker.lat - focusCoordinate.lat;
+      const distance = dLng * dLng + dLat * dLat;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = marker;
+      }
+    }
+    return [nearest.markerKey];
   }, [
     buildMarkerKey,
     directSourceFrameStores,

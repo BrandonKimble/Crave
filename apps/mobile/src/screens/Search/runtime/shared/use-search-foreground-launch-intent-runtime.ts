@@ -22,7 +22,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   submitSearch,
   submitViewportShortcut,
   pendingRestaurantSelectionRef,
-  currentMarketKey,
 }: SearchForegroundLaunchIntentRuntimeArgs): void => {
   // W1 slice 4: the sharedList intent is a plain child push now (listDetail owns the slug).
   const { pushRoute } = useAppOverlayRouteController();
@@ -162,7 +161,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
       // the committed runRestaurantEntitySearch then provides the results / auto-open. When the
       // name is absent (a raw deep link), fall back to fetching the profile for the name.
       const seededRestaurantName = activeMainIntent.action.restaurantName.trim() || null;
-      const restaurantMarketKey = currentMarketKey ?? null;
       // Leg 4 ADOPT/OWN (design §2): a restaurant already IN the resident world's
       // presented set ADOPTS it — the profile opens as sheet content over the LIVE
       // world (pin highlight derives from the selection; back pops to the world
@@ -215,7 +213,7 @@ export const useSearchForegroundLaunchIntentRuntime = ({
         return;
       }
       void searchService
-        .restaurantProfile(restaurantId, { marketKey: restaurantMarketKey })
+        .restaurantProfile(restaurantId)
         .then((profile) => {
           const restaurant = profile?.restaurant;
           if (!restaurant?.restaurantId || !restaurant.restaurantName) {
@@ -261,7 +259,6 @@ export const useSearchForegroundLaunchIntentRuntime = ({
   }, [
     activeMainIntent,
     consumeActiveMainIntent,
-    currentMarketKey,
     launchEntitySearchResults,
     launchListSearchResults,
     navigation,

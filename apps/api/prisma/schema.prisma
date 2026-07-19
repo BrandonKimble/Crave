@@ -131,6 +131,9 @@ model RestaurantLocation {
   restaurant       Entity    @relation("RestaurantLocations", fields: [restaurantId], references: [entityId], onDelete: Cascade)
   primaryFor       Entity?   @relation("PrimaryLocation")
 
+  savedFavorites UserFavorite[]
+  savedListItems FavoriteListItem[]
+
   @@index([restaurantId], map: "idx_restaurant_locations_restaurant")
   @@index([restaurantId, isPrimary], map: "idx_restaurant_locations_primary")
   @@index([restaurantId, websiteDomain], map: "idx_restaurant_locations_restaurant_domain")
@@ -1030,14 +1033,19 @@ model UserEntityViewEvent {
 }
 
 model UserFavorite {
-  favoriteId String     @id @default(dbgenerated("gen_random_uuid()")) @map("favorite_id") @db.Uuid
-  userId     String     @map("user_id") @db.Uuid
-  entityId   String     @map("entity_id") @db.Uuid
-  entityType EntityType @map("entity_type")
-  createdAt  DateTime   @default(now()) @map("created_at")
-  updatedAt  DateTime   @updatedAt @map("updated_at")
-  user       User       @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  entity     Entity     @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
+  favoriteId String              @id @default(dbgenerated("gen_random_uuid()")) @map("favorite_id") @db.Uuid
+  userId     String              @map("user_id") @db.Uuid
+  entityId   String              @map("entity_id") @db.Uuid
+  entityType EntityType          @map("entity_type")
+  /// Location-centric interaction (master plan §7): a favorite saves the
+  /// SPECIFIC location it was saved from. Save flows always supply it;
+  /// null degrades to the nearest-in-view location at render.
+  locationId String?             @map("location_id") @db.Uuid
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+  user       User                @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  entity     Entity              @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
+  location   RestaurantLocation? @relation(fields: [locationId], references: [locationId], onDelete: SetNull)
 
   @@unique([userId, entityId], map: "user_favorites_user_entity_unique")
   @@index([userId], map: "idx_user_favorites_user")
@@ -1064,60 +1072,60 @@ model UserFavoriteEvent {
 }
 
 model User {
-  userId                 String                  @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
-  email                  String                  @unique @db.VarChar(255)
-  username               String?                 @unique(map: "users_username_key") @db.Citext
-  displayName            String?                 @map("display_name") @db.VarChar(255)
-  avatarUrl              String?                 @map("avatar_url") @db.VarChar(2048)
-  usernameStatus         UsernameStatus          @default(unset) @map("username_status")
-  usernameUpdatedAt      DateTime?               @map("username_updated_at")
-  onboardingStatus       OnboardingStatus        @default(not_started) @map("onboarding_status")
-  onboardingCompletedAt  DateTime?               @map("onboarding_completed_at")
-  onboardingVersion      Int                     @default(1) @map("onboarding_version")
-  onboardingSelectedCity String?                 @map("onboarding_selected_city") @db.VarChar(255)
-  onboardingPreviewCity  String?                 @map("onboarding_preview_city") @db.VarChar(255)
-  onboardingResponses    Json?                   @map("onboarding_responses")
-  createdAt              DateTime                @default(now()) @map("created_at")
-  stripeCustomerId       String?                 @map("stripe_customer_id") @db.VarChar(255)
-  authProvider           AuthProvider            @default(clerk) @map("auth_provider")
-  authProviderUserId     String?                 @unique @map("auth_provider_user_id") @db.VarChar(255)
-  deletedAt              DateTime?               @map("deleted_at")
-  lastSignInAt           DateTime?               @map("last_sign_in_at")
-  revenueCatAppUserId    String?                 @unique @map("revenuecat_app_user_id") @db.VarChar(255)
-  updatedAt              DateTime                @updatedAt @map("updated_at")
-  subscriptions          Subscription[]
-  accessGrants           AccessGrant[]
-  photos                 Photo[]
-  photoReports           PhotoReport[]
-  events                 UserEvent[]
-  favorites              UserFavorite[]
-  favoriteEvents         UserFavoriteEvent[]
-  favoriteLists          FavoriteList[]
-  favoriteListItems      FavoriteListItem[]
-  listCollaborations     FavoriteListCollaborator[] @relation("FavoriteListCollaboratorUser")
-  listCollaboratorInvites FavoriteListCollaborator[] @relation("FavoriteListCollaboratorInviter")
-  userNotifications      UserNotification[]
-  searchEvents           SearchEvent[]
-  searchDemandDailyRows  UserSearchDemandDaily[]
-  restaurantViews        RestaurantView[]
-  foodViews              FoodView[]
-  entityViewEvents       UserEntityViewEvent[]
-  onDemandRequestUsers   OnDemandRequestUser[]
-  onDemandAskEvents      OnDemandAskEvent[]
-  stats                  UserStats?
-  follows                UserFollow[]            @relation("UserFollows")
-  followers              UserFollow[]            @relation("UserFollowers")
-  blocksAuthored         UserBlock[]             @relation("UserBlocksAuthored")
-  blocksReceived         UserBlock[]             @relation("UserBlocksReceived")
-  userReportsAuthored    UserReport[]            @relation("UserReportsAuthored")
-  userReportsReceived    UserReport[]            @relation("UserReportsReceived")
-  pollCommentReports     PollCommentReport[]     @relation("PollCommentReportsAuthored")
-  usernameHistory        UsernameHistory[]
-  pollComments           PollComment[]
-  pollCommentLikes       PollCommentLike[]
-  pollEndorsements       PollEndorsement[]
+  userId                   String                     @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
+  email                    String                     @unique @db.VarChar(255)
+  username                 String?                    @unique(map: "users_username_key") @db.Citext
+  displayName              String?                    @map("display_name") @db.VarChar(255)
+  avatarUrl                String?                    @map("avatar_url") @db.VarChar(2048)
+  usernameStatus           UsernameStatus             @default(unset) @map("username_status")
+  usernameUpdatedAt        DateTime?                  @map("username_updated_at")
+  onboardingStatus         OnboardingStatus           @default(not_started) @map("onboarding_status")
+  onboardingCompletedAt    DateTime?                  @map("onboarding_completed_at")
+  onboardingVersion        Int                        @default(1) @map("onboarding_version")
+  onboardingSelectedCity   String?                    @map("onboarding_selected_city") @db.VarChar(255)
+  onboardingPreviewCity    String?                    @map("onboarding_preview_city") @db.VarChar(255)
+  onboardingResponses      Json?                      @map("onboarding_responses")
+  createdAt                DateTime                   @default(now()) @map("created_at")
+  stripeCustomerId         String?                    @map("stripe_customer_id") @db.VarChar(255)
+  authProvider             AuthProvider               @default(clerk) @map("auth_provider")
+  authProviderUserId       String?                    @unique @map("auth_provider_user_id") @db.VarChar(255)
+  deletedAt                DateTime?                  @map("deleted_at")
+  lastSignInAt             DateTime?                  @map("last_sign_in_at")
+  revenueCatAppUserId      String?                    @unique @map("revenuecat_app_user_id") @db.VarChar(255)
+  updatedAt                DateTime                   @updatedAt @map("updated_at")
+  subscriptions            Subscription[]
+  accessGrants             AccessGrant[]
+  photos                   Photo[]
+  photoReports             PhotoReport[]
+  events                   UserEvent[]
+  favorites                UserFavorite[]
+  favoriteEvents           UserFavoriteEvent[]
+  favoriteLists            FavoriteList[]
+  favoriteListItems        FavoriteListItem[]
+  listCollaborations       FavoriteListCollaborator[] @relation("FavoriteListCollaboratorUser")
+  listCollaboratorInvites  FavoriteListCollaborator[] @relation("FavoriteListCollaboratorInviter")
+  userNotifications        UserNotification[]
+  searchEvents             SearchEvent[]
+  searchDemandDailyRows    UserSearchDemandDaily[]
+  restaurantViews          RestaurantView[]
+  foodViews                FoodView[]
+  entityViewEvents         UserEntityViewEvent[]
+  onDemandRequestUsers     OnDemandRequestUser[]
+  onDemandAskEvents        OnDemandAskEvent[]
+  stats                    UserStats?
+  follows                  UserFollow[]               @relation("UserFollows")
+  followers                UserFollow[]               @relation("UserFollowers")
+  blocksAuthored           UserBlock[]                @relation("UserBlocksAuthored")
+  blocksReceived           UserBlock[]                @relation("UserBlocksReceived")
+  userReportsAuthored      UserReport[]               @relation("UserReportsAuthored")
+  userReportsReceived      UserReport[]               @relation("UserReportsReceived")
+  pollCommentReports       PollCommentReport[]        @relation("PollCommentReportsAuthored")
+  usernameHistory          UsernameHistory[]
+  pollComments             PollComment[]
+  pollCommentLikes         PollCommentLike[]
+  pollEndorsements         PollEndorsement[]
   conversationParticipants ConversationParticipant[]
-  messagesSent           Message[]               @relation("MessagesSent")
+  messagesSent             Message[]                  @relation("MessagesSent")
 
   @@index([email], map: "idx_users_email")
   @@index([username], map: "idx_users_username")
@@ -1130,9 +1138,9 @@ model User {
 }
 
 model UserStats {
-  userId                String   @id @map("user_id") @db.Uuid
-  updatedAt             DateTime @updatedAt @map("updated_at")
-  user                  User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  userId    String   @id @map("user_id") @db.Uuid
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
   @@map("user_stats")
 }
@@ -1240,12 +1248,12 @@ model ConversationParticipant {
 }
 
 model Message {
-  messageId      String            @id @default(dbgenerated("gen_random_uuid()")) @map("message_id") @db.Uuid
-  conversationId String            @map("conversation_id") @db.Uuid
-  senderUserId   String            @map("sender_user_id") @db.Uuid
-  kind           MessageKind
+  messageId        String            @id @default(dbgenerated("gen_random_uuid()")) @map("message_id") @db.Uuid
+  conversationId   String            @map("conversation_id") @db.Uuid
+  senderUserId     String            @map("sender_user_id") @db.Uuid
+  kind             MessageKind
   /// text kind: the message. entity_share kind: optional caption.
-  body           String?           @db.VarChar(2000)
+  body             String?           @db.VarChar(2000)
   /// entity_share only — typed ref, NO snapshot (bubble hydrates live).
   /// LOUD CONTRACT (DB CHECK ck_messages_kind_shape in the migration):
   ///   kind = entity_share ⇔ (sharedEntityKind AND sharedEntityId NOT NULL)
@@ -1254,8 +1262,8 @@ model Message {
   sharedEntityId   String?           @map("shared_entity_id")
   /// Client-supplied idempotency key; unique per (conversation, sender) so a
   /// retried send replays the SAME row instead of duplicating.
-  clientDedupeId String?           @map("client_dedupe_id") @db.VarChar(64)
-  createdAt      DateTime          @default(now()) @map("created_at")
+  clientDedupeId   String?           @map("client_dedupe_id") @db.VarChar(64)
+  createdAt        DateTime          @default(now()) @map("created_at")
 
   conversation Conversation @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
   sender       User         @relation("MessagesSent", fields: [senderUserId], references: [userId], onDelete: Cascade)
@@ -1286,29 +1294,29 @@ model UsernameHistory {
 }
 
 model FavoriteList {
-  listId       String                   @id @default(dbgenerated("gen_random_uuid()")) @map("list_id") @db.Uuid
-  ownerUserId  String                   @map("owner_user_id") @db.Uuid
-  name         String                   @db.VarChar(120)
-  description  String?                  @db.VarChar(500)
-  listType     FavoriteListType         @map("list_type")
-  visibility   FavoriteListVisibility   @default(private) @map("visibility")
-  itemCount    Int                      @default(0) @map("item_count")
-  position     Int                      @default(0) @map("position")
-  shareSlug    String?                  @unique(map: "favorite_lists_share_slug_key") @map("share_slug") @db.VarChar(64)
-  shareEnabled Boolean                  @default(false) @map("share_enabled")
+  listId        String                     @id @default(dbgenerated("gen_random_uuid()")) @map("list_id") @db.Uuid
+  ownerUserId   String                     @map("owner_user_id") @db.Uuid
+  name          String                     @db.VarChar(120)
+  description   String?                    @db.VarChar(500)
+  listType      FavoriteListType           @map("list_type")
+  visibility    FavoriteListVisibility     @default(private) @map("visibility")
+  itemCount     Int                        @default(0) @map("item_count")
+  position      Int                        @default(0) @map("position")
+  shareSlug     String?                    @unique(map: "favorite_lists_share_slug_key") @map("share_slug") @db.VarChar(64)
+  shareEnabled  Boolean                    @default(false) @map("share_enabled")
   /// Auto-created default lists (page-registry §8.7): 'been' | 'want_to_go'
   /// (restaurant side), 'tried' | 'want_to_try' (dish side). NULL = a normal
   /// user list. System lists pin to the top of the home ordering and are
   /// NOT deletable. The (owner, systemKind) unique is the once-ever contract.
-  systemKind   String?                  @map("system_kind") @db.VarChar(16)
+  systemKind    String?                    @map("system_kind") @db.VarChar(16)
   /// Profile-gallery curation (page-registry §8.12/§8.14): owner-pinned lists
   /// float first on the PROFILE Lists view. Never affects the own-home order.
-  pinned       Boolean                  @default(false)
+  pinned        Boolean                    @default(false)
   /// Wave-2 §2 "Use your photos": the list's tile gallery renders the owner's own
   /// photos (sparse, placeholder-filled) instead of the top-ranked restaurant photos.
-  useOwnPhotos Boolean                  @default(false) @map("use_own_photos")
-  createdAt    DateTime                 @default(now()) @map("created_at")
-  updatedAt    DateTime                 @updatedAt @map("updated_at")
+  useOwnPhotos  Boolean                    @default(false) @map("use_own_photos")
+  createdAt     DateTime                   @default(now()) @map("created_at")
+  updatedAt     DateTime                   @updatedAt @map("updated_at")
   owner         User                       @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)
   items         FavoriteListItem[]
   shareEvents   FavoriteListShareEvent[]
@@ -1324,21 +1332,25 @@ model FavoriteList {
 }
 
 model FavoriteListItem {
-  itemId        String       @id @default(dbgenerated("gen_random_uuid()")) @map("item_id") @db.Uuid
-  listId        String       @map("list_id") @db.Uuid
-  addedByUserId String?      @map("added_by_user_id") @db.Uuid
-  restaurantId  String?      @map("restaurant_id") @db.Uuid
-  connectionId  String?      @map("connection_id") @db.Uuid
+  itemId        String              @id @default(dbgenerated("gen_random_uuid()")) @map("item_id") @db.Uuid
+  listId        String              @map("list_id") @db.Uuid
+  addedByUserId String?             @map("added_by_user_id") @db.Uuid
+  restaurantId  String?             @map("restaurant_id") @db.Uuid
+  connectionId  String?             @map("connection_id") @db.Uuid
+  /// Location-centric interaction (master plan §7): the SPECIFIC saved
+  /// location — ListDetail renders exactly this pin, never the sibling set.
+  locationId    String?             @map("location_id") @db.Uuid
   /// Save-funnel toolkit (product/favorites.md): the owner's personal note —
   /// what makes shared lists feel authored.
-  note          String?      @db.VarChar(512)
-  position      Int          @default(0) @map("position")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
-  list          FavoriteList @relation(fields: [listId], references: [listId], onDelete: Cascade)
-  addedByUser   User?        @relation(fields: [addedByUserId], references: [userId], onDelete: SetNull)
-  restaurant    Entity?      @relation(fields: [restaurantId], references: [entityId], onDelete: Cascade)
-  connection    Connection?  @relation(fields: [connectionId], references: [connectionId], onDelete: Cascade)
+  note          String?             @db.VarChar(512)
+  position      Int                 @default(0) @map("position")
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  list          FavoriteList        @relation(fields: [listId], references: [listId], onDelete: Cascade)
+  addedByUser   User?               @relation(fields: [addedByUserId], references: [userId], onDelete: SetNull)
+  restaurant    Entity?             @relation(fields: [restaurantId], references: [entityId], onDelete: Cascade)
+  connection    Connection?         @relation(fields: [connectionId], references: [connectionId], onDelete: Cascade)
+  location      RestaurantLocation? @relation(fields: [locationId], references: [locationId], onDelete: SetNull)
 
   @@unique([listId, restaurantId], map: "favorite_list_items_list_restaurant")
   @@unique([listId, connectionId], map: "favorite_list_items_list_connection")
@@ -1448,36 +1460,36 @@ model BillingEventLog {
 /// (failed moderation) | hidden (report threshold). Bytes live in Cloudinary
 /// (publicId); delivery URLs are built server-side only.
 model Photo {
-  photoId         String      @id @default(dbgenerated("gen_random_uuid()")) @map("photo_id") @db.Uuid
-  userId          String      @map("user_id") @db.Uuid
-  restaurantId    String      @map("restaurant_id") @db.Uuid
-  connectionId    String?     @map("connection_id") @db.Uuid
+  photoId         String          @id @default(dbgenerated("gen_random_uuid()")) @map("photo_id") @db.Uuid
+  userId          String          @map("user_id") @db.Uuid
+  restaurantId    String          @map("restaurant_id") @db.Uuid
+  connectionId    String?         @map("connection_id") @db.Uuid
   /// Cloudinary public_id (crave/{env}/photos/{photoId}); set at ticket time.
-  publicId        String      @unique @map("public_id") @db.VarChar(256)
-  mediaType       String      @default("photo") @map("media_type") @db.VarChar(16)
-  status          PhotoStatus @default(pending)
+  publicId        String          @unique @map("public_id") @db.VarChar(256)
+  mediaType       String          @default("photo") @map("media_type") @db.VarChar(16)
+  status          PhotoStatus     @default(pending)
   /// Uploader-chosen audience: private photos surface ONLY to the uploader
   /// (own food log / own reads); every public read path excludes them.
   visibility      PhotoVisibility @default(public)
-  caption         String?     @db.VarChar(512)
+  caption         String?         @db.VarChar(512)
   /// EXIF DateTimeOriginal (capture time) — GPS is NEVER persisted.
-  takenAt         DateTime?   @map("taken_at")
-  uploadedAt      DateTime    @default(now()) @map("uploaded_at")
+  takenAt         DateTime?       @map("taken_at")
+  uploadedAt      DateTime        @default(now()) @map("uploaded_at")
   /// Cloudinary quality_analysis focus score 0..1 (blur<->sharp).
-  focusScore      Float?      @map("focus_score")
+  focusScore      Float?          @map("focus_score")
   width           Int?
   height          Int?
   bytes           Int?
-  reportCount     Int         @default(0) @map("report_count")
+  reportCount     Int             @default(0) @map("report_count")
   /// Unmatched dish name from the "Other..." free text — demand signal;
   /// re-linkable when the dish materializes.
-  pendingDishName String?     @map("pending_dish_name") @db.VarChar(256)
-  moderatedAt     DateTime?   @map("moderated_at")
-  createdAt       DateTime    @default(now()) @map("created_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
-  user            User        @relation(fields: [userId], references: [userId], onDelete: Cascade)
-  restaurant      Entity      @relation("RestaurantPhotos", fields: [restaurantId], references: [entityId], onDelete: Cascade)
-  connection      Connection? @relation(fields: [connectionId], references: [connectionId], onDelete: SetNull)
+  pendingDishName String?         @map("pending_dish_name") @db.VarChar(256)
+  moderatedAt     DateTime?       @map("moderated_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  user            User            @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  restaurant      Entity          @relation("RestaurantPhotos", fields: [restaurantId], references: [entityId], onDelete: Cascade)
+  connection      Connection?     @relation(fields: [connectionId], references: [connectionId], onDelete: SetNull)
 
   reports PhotoReport[]
 

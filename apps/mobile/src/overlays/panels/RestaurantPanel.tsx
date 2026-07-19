@@ -78,6 +78,22 @@ const WEBSITE_FALLBACK_SEARCH = 'website';
 
 const CARD_GAP = 4;
 const EMPTY_RESTAURANT_DISHES: FoodResult[] = [];
+// Leg 2 (geo-demand rebuild §7): the profile carries ALL locations, distance-sorted to the
+// focus target (the tapped/selected location = displayLocation); the nearest few render
+// inline and the tail collapses behind an "N more locations" expander.
+const NEARBY_LOCATION_ROW_COUNT = 3;
+const APPROX_METERS_PER_LAT_DEGREE = 111_320;
+
+const approximateDistanceMeters = (
+  first: { lat: number; lng: number },
+  second: { lat: number; lng: number }
+): number => {
+  const averageLatRadians = (((first.lat + second.lat) / 2) * Math.PI) / 180;
+  const metersPerLngDegree = APPROX_METERS_PER_LAT_DEGREE * Math.cos(averageLatRadians);
+  const dx = (first.lng - second.lng) * metersPerLngDegree;
+  const dy = (first.lat - second.lat) * APPROX_METERS_PER_LAT_DEGREE;
+  return Math.sqrt(dx * dx + dy * dy);
+};
 const DAY_LABELS: Array<{ key: string; label: string }> = [
   { key: 'sunday', label: 'Sun' },
   { key: 'monday', label: 'Mon' },
@@ -109,6 +125,12 @@ export const useRestaurantPanelSpec = ({
     [headerHeight, insets.top, navBarOffset, searchBarTop]
   );
   const [expandedLocations, setExpandedLocations] = React.useState<Record<string, boolean>>({});
+  // Collapsed-tail expander state (render-time keyed by restaurantId — the useEffect reset
+  // pattern is dead code in these spec hooks, CLAUDE.md).
+  const [locationsTailState, setLocationsTailState] = React.useState<{
+    restaurantId: string;
+    expanded: boolean;
+  }>({ restaurantId: '', expanded: false });
 
   const restaurant = data?.restaurant ?? null;
   const dishes = data?.dishes ?? [];
@@ -191,6 +213,54 @@ export const useRestaurantPanelSpec = ({
     });
   }, [restaurant]);
 
+  // The profile's focus target: the tapped/selected location — the seed/hydration snapshot
+  // stamps it into displayLocation (profile-panel-hydration-snapshot-runtime).
+  const focusCoordinate = React.useMemo(() => {
+    const display = restaurant?.displayLocation;
+    return display && typeof display.latitude === 'number' && typeof display.longitude === 'number'
+      ? { lat: display.latitude, lng: display.longitude }
+      : null;
+  }, [restaurant?.displayLocation]);
+
+  // ALL locations, distance-sorted to the focus target; without a coordinate context the
+  // order degrades to isPrimary-then-address (never crashes on missing geometry).
+  const sortedLocations = React.useMemo<RestaurantPanelLocation[]>(() => {
+    if (locationCandidates.length <= 1) {
+      return locationCandidates;
+    }
+    const fallbackCompare = (a: RestaurantPanelLocation, b: RestaurantPanelLocation): number => {
+      const primaryDelta = Number(b.isPrimary === true) - Number(a.isPrimary === true);
+      if (primaryDelta !== 0) {
+        return primaryDelta;
+      }
+      return (a.address ?? '').localeCompare(b.address ?? '');
+    };
+    if (!focusCoordinate) {
+      return [...locationCandidates].sort(fallbackCompare);
+    }
+    const distanceTo = (location: RestaurantPanelLocation): number =>
+      typeof location.latitude === 'number' && typeof location.longitude === 'number'
+        ? approximateDistanceMeters(focusCoordinate, {
+            lat: location.latitude,
+            lng: location.longitude,
+          })
+        : Number.POSITIVE_INFINITY;
+    return [...locationCandidates].sort((a, b) => {
+      const delta = distanceTo(a) - distanceTo(b);
+      return delta !== 0 ? delta : fallbackCompare(a, b);
+    });
+  }, [focusCoordinate, locationCandidates]);
+
+  const showAllLocations =
+    locationsTailState.restaurantId === restaurantId && locationsTailState.expanded;
+  const visibleLocations = showAllLocations
+    ? sortedLocations
+    : sortedLocations.slice(0, NEARBY_LOCATION_ROW_COUNT);
+  const collapsedLocationCount = sortedLocations.length - visibleLocations.length;
+  const expandLocationsTail = React.useCallback(() => {
+    setLocationsTailState({ restaurantId, expanded: true });
+  }, [restaurantId]);
+
   const normalizeWebsiteUrl = React.useCallback((value?: string | null): string | null => {
     if (typeof value !== 'string') {
       return null;
@@ -216,7 +286,7 @@ export const useRestaurantPanelSpec = ({
   const sharedWebsiteUrl = uniqueWebsiteUrls.length === 1 ? uniqueWebsiteUrls[0] : null;
   const shouldShowPerLocationWebsite = uniqueWebsiteUrls.length > 1;
   const primaryPhone =
-    restaurant?.displayLocation?.phoneNumber ?? locationCandidates[0]?.phoneNumber ?? null;
+    restaurant?.displayLocation?.phoneNumber ?? sortedLocations[0]?.phoneNumber ?? null;
 
   const formatOperatingStatus = React.useCallback((status?: OperatingStatus | null) => {
     if (!status) {
@@ -289,7 +359,7 @@ export const useRestaurantPanelSpec = ({
   // primary location — coords when we have them, else the address, else a
   // name query (same hide-nothing fallback ethos as Website/Call).
   const primaryDirectionsTarget = React.useMemo(() => {
-    const candidates = [restaurant?.displayLocation, ...locationCandidates];
+    const candidates = [restaurant?.displayLocation, ...sortedLocations];
     for (const location of candidates) {
       if (location?.latitude != null && location?.longitude != null) {
         return `${location.latitude},${location.longitude}`;
@@ -301,7 +371,7 @@ export const useRestaurantPanelSpec = ({
       }
     }
     return null;
-  }, [locationCandidates, restaurant?.displayLocation]);
+  }, [restaurant?.displayLocation, sortedLocations]);
 
   const handleDirectionsPress = React.useCallback(() => {
     if (primaryDirectionsTarget) {
@@ -314,8 +384,11 @@ export const useRestaurantPanelSpec = ({
     void Linking.openURL(`http://maps.apple.com/?q=${encodeURIComponent(query)}`);
   }, [primaryDirectionsTarget, queryLabel, restaurantName]);
 
+  // The server caps the locations ARRAY (~30 nearest) but the COUNT stays global —
+  // prefer locationCount for the label when present.
+  const totalLocationCount = restaurant?.locationCount ?? locationCandidates.length;
   const locationsLabel =
-    locationCandidates.length === 1 ? '1 location' : `${locationCandidates.length} locations`;
+    totalLocationCount === 1 ? '1 location' : `${totalLocationCount} locations`;
 
   // connectionId → { name, rank } for the Photos view's ranked dish slices.
   const dishByConnectionId = React.useMemo(() => {
@@ -406,13 +479,13 @@ export const useRestaurantPanelSpec = ({
             <Text style={styles.actionPillText}>Add photo</Text>
           </Pressable>
         </ScrollView>
-        {locationCandidates.length > 0 ? (
+        {sortedLocations.length > 0 ? (
           <View style={styles.locationsSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Locations</Text>
               <Text style={styles.sectionSubtitle}>{locationsLabel}</Text>
             </View>
-            {locationCandidates.map((location, index) => {
+            {visibleLocations.map((location, index) => {
               const locationId = location.locationId ?? `${restaurant.restaurantId}-${index}`;
               const isExpanded = Boolean(expandedLocations[locationId]);
               const statusLabel = formatOperatingStatus(location.operatingStatus);
@@ -487,6 +560,23 @@ export const useRestaurantPanelSpec = ({
                 </View>
               );
             })}
+            {collapsedLocationCount > 0 ? (
+              <Pressable
+                style={[styles.locationCard, styles.locationsTailExpander]}
+                onPress={expandLocationsTail}
+                accessibilityRole="button"
+                accessibilityLabel={`Show ${collapsedLocationCount} more ${
+                  collapsedLocationCount === 1 ? 'location' : 'locations'
+                }`}
+                testID="restaurant-locations-expander"
+              >
+                <Text style={styles.locationsTailExpanderText}>
+                  {collapsedLocationCount} more{' '}
+                  {collapsedLocationCount === 1 ? 'location' : 'locations'}
+                </Text>
+                <Feather name="chevron-down" size={16} color={themeColors.textBody} />
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
         {/* §8.4 Overview extras: mention-tag collage + top discussions,
@@ -503,16 +593,19 @@ export const useRestaurantPanelSpec = ({
       </View>
     );
   }, [
+    collapsedLocationCount,
     expandedLocations,
+    expandLocationsTail,
     formatOperatingStatus,
     formatHoursRows,
     categoryLabel,
     handleCallPress,
     handleWebsitePress,
     isLoading,
-    locationCandidates,
     locationsLabel,
     normalizeWebsiteUrl,
+    sortedLocations,
+    visibleLocations,
     priceLabel,
     queryLabel,
     resolveLocationLabel,
@@ -995,6 +1088,20 @@ const styles = StyleSheet.create({
     lineHeight: LINE_HEIGHTS.body,
     color: themeColors.textBody,
     maxWidth: 160,
+  },
+  locationsTailExpander: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  locationsTailExpanderText: {
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
+    fontWeight: '600',
+    color: themeColors.textBody,
   },
   locationDetails: {
     borderTopWidth: 1,
