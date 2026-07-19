@@ -229,8 +229,29 @@ agent in flight at turn end so completion notifications chain turns.
       · 6a estimator half-life mislabeled K1-derived (own K2 inventory
       line). · 6b classify 60s jitter + EPSILON clamps. · 1b nautical-tz
       comment claims ~1h max error (Austin = 2h in summer).
-- [ ] After fixes: mobile feed leg (slicer chip, promise copy, header),
-      then #7, Phase C purges, wave-5 final red team + reassessment.
+- [x] e84ce0b6 SERVER feed cut (agent, 23 specs, 442 green): feed =
+      placesInView ∪ commensurate-subject descendants (recursive CTE) minus
+      subdivision+ (structural DAG-depth bigness); keyset cursor
+      (created_at, poll_id) w/ decay-invariant trending epoch; take-25
+      DEAD; §2 header verdict + promise state + batch place labels in
+      response (legacy envelope still renderable); notifications big-place
+      never-push + home-place seam (quarantined market fallback, LOUD TODO:
+      registration→placeAt→homePlaceId lands later); resolveMarketKeyShim
+      DEAD; GET /polls deleted. User poll creation still market-shaped
+      (own re-key leg later).
+- [x] 4c418c81 MOBILE feed cut (agent, −418 lines, 375 green): bounds+
+      cursor infinite scroll (transport scroll-activity primary trigger),
+      'Polls in this area' header, promise card, per-poll place labels,
+      place SelectorChip (client-side slice; searchable/sectioned sheet
+      deferred until the sheet primitive grows it), marketKey cache +
+      resolveMarket round-trip + pinned-market + bootstrap snapshot
+      plumbing DELETED. OWNER-EYE on sim: pan-refresh cadence, two "All"
+      chips ambiguity, promise-card styling. Loose ends recorded:
+      notification deep-link params inert until home-place leg;
+      perf harness renderedPollHeaderMarketKey→PlaceName field rename.
+- [>] AGENT in flight: supply red-team fixes (list above).
+- [ ] After fixes commit: #7 (aggregate+readers, collector at priors,
+      score cut, Phase C purges), wave-5 final red team + reassessment.
 - deferred-in-leg-2: See-locations (only remaining Leg 2 item).
 
 ## Decisions log (append as made)
