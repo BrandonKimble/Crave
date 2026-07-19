@@ -249,9 +249,32 @@ agent in flight at turn end so completion notifications chain turns.
       chips ambiguity, promise-card styling. Loose ends recorded:
       notification deep-link params inert until home-place leg;
       perf harness renderedPollHeaderMarketKey→PlaceName field rename.
-- [>] AGENT in flight: supply red-team fixes (list above).
-- [ ] After fixes commit: #7 (aggregate+readers, collector at priors,
-      score cut, Phase C purges), wave-5 final red team + reassessment.
+- [x] c7bdcd75 supply red-team fixes — ALL 11 folded (30 new specs, 472
+      green, tsc clean): warm-start floors frontier not credit (§17
+      one-searcher law spec-proven), place-bbox poll signals (loop
+      restored), weekOf-label cohort close (DST-proven), no evidence
+      replay, both cooldown gates (ramp ≥ ramp(window) derivation),
+      atomic batched publish + notification rows in-tx, bounded scans
+      (147d/280d derived horizons + global Sunday-window gate),
+      antimeridian wrap end-to-end, ballot-mint rebuild on retry.
+      TASK #6 COMPLETE. API restarted.
+
+## TASK #7 STATUS (live)
+
+- [>] AGENT in flight: §22 item 6 aggregate + readers — incremental tiled
+  rollup (placeId,subjectId,window) from signals (rebuildable derived
+  read model; wrap-aware weight-1 attribution; signals geo/time
+  indexes via drift migration), readers cut to ledger: recently-viewed
+  (entity_view + locationId meta — delivers the recorded locationId
+  display decision), recent searches (kind=search), demand inputs to
+  aggregate. Old writers keep writing until Phase C.
+- [ ] Then: collector at priors (§9-§12: source-centric, due-times, two
+      floors, persist-first admission, liar purge, singleton rescorer).
+- [ ] Then: score cut (per-source g, ONE scoreVersion, after seeder).
+- [ ] Then: Phase C purges (old event tables/writers, markets machinery
+      per-consumer, user poll creation re-key, home-place registration).
+- [ ] Then: wave-5 final red team + REASSESSMENT (owner's 'reassess only
+      when done').
 - deferred-in-leg-2: See-locations (only remaining Leg 2 item).
 
 ## Decisions log (append as made)
