@@ -2592,13 +2592,18 @@ export class SearchService {
     // meta.searchRequestId: the client-suppliable submit id (the old writer's
     // idempotency key). The ledger is append-only, so a client retry writes a
     // second row — readers dedupe on this id (§3 judge-at-read).
+    // Subject carries BOTH halves of the act (§3): the resolved entity (when
+    // any) AND the query term — recent-search readers consume the term,
+    // entity-demand readers the entity, from the same row.
     this.signals.record({
       kind: 'search',
       userId: request.userId ?? null,
-      subject: primaryEntityId
-        ? { entityId: primaryEntityId }
-        : queryText.length
-          ? { term: queryText }
+      subject:
+        primaryEntityId || queryText.length
+          ? {
+              entityId: primaryEntityId,
+              term: queryText.length ? queryText : null,
+            }
           : null,
       geo,
       meta: {
@@ -2912,10 +2917,12 @@ export class SearchService {
     this.signals.record({
       kind: 'search',
       userId: normalizedUserId,
-      subject: cacheSubjectEntityId
-        ? { entityId: cacheSubjectEntityId }
-        : cacheQueryText.length
-          ? { term: cacheQueryText }
+      subject:
+        cacheSubjectEntityId || cacheQueryText.length
+          ? {
+              entityId: cacheSubjectEntityId,
+              term: cacheQueryText.length ? cacheQueryText : null,
+            }
           : null,
       geo: this.signals.bboxFromMarketKey(original.primaryMarketKey),
       meta: {

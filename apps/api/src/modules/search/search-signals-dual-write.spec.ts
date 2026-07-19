@@ -163,6 +163,9 @@ describe('search submit dual-write (§3 signals beside the old search log)', () 
     expect(searchSignal).toBeDefined();
     expect(searchSignal?.subjectType).toBe('entity');
     expect(searchSignal?.subjectId).toBe(FOOD_ID);
+    // §22 item 6: the search act carries BOTH subject halves — the resolved
+    // entity AND the query term (recent-search readers consume the term).
+    expect(searchSignal?.subjectText).toBe('birria tacos');
     expect(searchSignal?.geoMinLat).toBe(30.1);
     expect(searchSignal?.geoMaxLat).toBe(30.4);
     expect(searchSignal?.geoMinLng).toBe(-97.9);

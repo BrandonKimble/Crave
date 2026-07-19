@@ -39,8 +39,17 @@ export interface SignalBbox {
   maxLng: number;
 }
 
-/** Subject: a catalog entity, a free term (normalized), or none. */
-export type SignalSubject = { entityId: string } | { term: string } | null;
+/**
+ * Subject: a catalog entity, a free term (normalized), or none. An act may
+ * carry BOTH (a search whose text resolved to an entity records subjectId =
+ * the entity AND subjectText = the query term) — subjectType is 'entity'
+ * whenever an entity is present; the term column still serves term readers
+ * (recent searches, query suggestions) without a second row.
+ */
+export type SignalSubject = {
+  entityId?: string | null;
+  term?: string | null;
+} | null;
 
 export interface RecordSignalInput {
   kind: SignalKind;
@@ -385,12 +394,10 @@ export class SignalsService {
     }
 
     const subject = input.subject ?? null;
-    const subjectId =
-      subject && 'entityId' in subject ? subject.entityId : null;
-    const term =
-      subject && 'term' in subject
-        ? subject.term.trim().toLowerCase().slice(0, 255)
-        : null;
+    const subjectId = subject?.entityId ?? null;
+    const term = subject?.term
+      ? subject.term.trim().toLowerCase().slice(0, 255)
+      : null;
     const subjectText = term?.length ? term : null;
 
     await this.prisma.signal.create({

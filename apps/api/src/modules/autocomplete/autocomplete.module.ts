@@ -9,7 +9,7 @@ import { EntitySearchService } from './entity-search.service';
 import { IdentityModule } from '../identity/identity.module';
 import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 import { MarketsModule } from '../markets/markets.module';
-import { AnalyticsModule } from '../analytics/analytics.module';
+import { SignalsModule } from '../signals/signals.module';
 
 @Module({
   imports: [
@@ -20,7 +20,7 @@ import { AnalyticsModule } from '../analytics/analytics.module';
     IdentityModule,
     EntityTextSearchModule,
     MarketsModule,
-    AnalyticsModule,
+    SignalsModule,
   ],
   controllers: [AutocompleteController],
   providers: [AutocompleteService, EntitySearchService],

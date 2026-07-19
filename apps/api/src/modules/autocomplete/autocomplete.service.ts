@@ -1,10 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  DemandSignalKind,
-  DemandSourceKind,
-  EntityType,
-  Prisma,
-} from '@prisma/client';
+import { EntityType, Prisma } from '@prisma/client';
 import { Counter, Histogram } from 'prom-client';
 import type { Redis } from 'ioredis';
 import { RedisService } from '@liaoliaots/nestjs-redis';
@@ -26,7 +21,12 @@ import { SearchPopularityService } from '../search/search-popularity.service';
 import { RestaurantStatusService } from '../search/restaurant-status.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { MarketRegistryService } from '../markets/market-registry.service';
-import { SearchDemandAggregationService } from '../analytics/search-demand-aggregation.service';
+import {
+  SignalDemandReadService,
+  type RestaurantViewStatsRow,
+  type ViewedRestaurantNameMatch,
+} from '../signals/signal-demand-read.service';
+import type { SignalKind } from '../signals/signals.service';
 
 const DEFAULT_LIMIT = 8;
 const MIN_QUERY_LENGTH = 1;
@@ -37,7 +37,6 @@ const ATTRIBUTE_SUPPORT_WINDOW_DAYS = 90;
 const ATTRIBUTE_TYPED_SEARCH_WEIGHT = 0.6;
 const ATTRIBUTE_SELECTION_WEIGHT = 0.3;
 const ATTRIBUTE_CORPUS_WEIGHT = 0.1;
-const ATTRIBUTE_GLOBAL_SUPPORT_BACKSTOP_WEIGHT = 0.25;
 const ATTRIBUTE_LANE_RUNTIME_READY = true;
 // Poll lane (§8.1): polls compete in the OVERFLOW pool — zero reserved slots, so
 // they surface only when they out-score leftover entity/query candidates. Gated to
@@ -112,7 +111,7 @@ export class AutocompleteService {
     private readonly searchPopularityService: SearchPopularityService,
     private readonly restaurantStatusService: RestaurantStatusService,
     private readonly marketRegistry: MarketRegistryService,
-    private readonly demandAggregation: SearchDemandAggregationService,
+    private readonly signalDemandRead: SignalDemandReadService,
     metricsService: MetricsService,
   ) {
     this.logger = loggerService.setContext('AutocompleteService');
@@ -241,7 +240,6 @@ export class AutocompleteService {
             normalizedQuery,
             Math.min(10, Math.max(this.querySuggestionMax * 2, 6)),
             user?.userId,
-            marketKey,
           ),
         (seconds) => {
           totalDbDurationSeconds += seconds;
@@ -513,29 +511,15 @@ export class AutocompleteService {
     tasks.push(favoritesTask);
 
     const includeRestaurants = entityTypes.includes(EntityType.restaurant);
+    // READER CUT (§22 item 6): "viewed" suggestions read the signals ledger
+    // (kind = entity_view), not the dying user_restaurant_views table.
     const viewedTask = includeRestaurants
-      ? this.prisma.restaurantView.findMany({
-          where: {
-            userId: user.userId,
-            restaurant: {
-              is: {
-                name: { startsWith: normalizedQuery, mode: 'insensitive' },
-              },
-            },
-          },
-          select: {
-            restaurantId: true,
-            restaurant: { select: { name: true, aliases: true } },
-          },
-          orderBy: { lastViewedAt: 'desc' },
-          take: 20,
-        })
-      : Promise.resolve(
-          [] as Array<{
-            restaurantId: string;
-            restaurant: { name: string; aliases: string[] };
-          }>,
-        );
+      ? this.signalDemandRead.viewedRestaurantNameMatches(
+          user.userId,
+          normalizedQuery,
+          20,
+        )
+      : Promise.resolve([] as ViewedRestaurantNameMatch[]);
     tasks.push(viewedTask);
 
     const [favoriteRows, viewedRows] = (await Promise.all(tasks)) as [
@@ -544,10 +528,7 @@ export class AutocompleteService {
         entityType: EntityType;
         entity: { name: string; aliases: string[] };
       }>,
-      Array<{
-        restaurantId: string;
-        restaurant: { name: string; aliases: string[] };
-      }>,
+      ViewedRestaurantNameMatch[],
     ];
 
     const favorites: AutocompleteMatchDto[] = favoriteRows.map((row) => ({
@@ -563,9 +544,9 @@ export class AutocompleteService {
     const viewed: AutocompleteMatchDto[] = viewedRows.map((row) => ({
       entityId: row.restaurantId,
       entityType: EntityType.restaurant,
-      name: row.restaurant.name,
+      name: row.name,
       confidence: 0.65,
-      aliases: row.restaurant.aliases ?? [],
+      aliases: row.aliases ?? [],
       matchType: 'entity',
       badges: { viewed: true },
     }));
@@ -604,12 +585,12 @@ export class AutocompleteService {
       .filter((match) => match.entityType === EntityType.restaurant)
       .map((match) => match.entityId);
 
+    // READER CUT (§22 item 6): popularity/affinity read the signals substrate
+    // and the view-affinity stats read the ledger (kind = entity_view) — the
+    // user_restaurant_views read is dead.
     const [globalScores, affinityScores, favorites, views] = await Promise.all([
       entityIds.length
-        ? this.searchPopularityService.getEntityPopularityScores(
-            entityIds,
-            params.marketKey ?? null,
-          )
+        ? this.searchPopularityService.getEntityPopularityScores(entityIds)
         : Promise.resolve(new Map<string, number>()),
       user?.userId && entityIds.length
         ? this.searchPopularityService.getUserEntityAffinity(
@@ -624,20 +605,8 @@ export class AutocompleteService {
           })
         : Promise.resolve([] as { entityId: string }[]),
       user?.userId && restaurantIds.length
-        ? this.prisma.restaurantView.findMany({
-            where: {
-              userId: user.userId,
-              restaurantId: { in: restaurantIds },
-            },
-            select: { restaurantId: true, lastViewedAt: true, viewCount: true },
-          })
-        : Promise.resolve(
-            [] as Array<{
-              restaurantId: string;
-              lastViewedAt: Date;
-              viewCount: number;
-            }>,
-          ),
+        ? this.signalDemandRead.restaurantViewStats(user.userId, restaurantIds)
+        : Promise.resolve([] as RestaurantViewStatsRow[]),
     ]);
 
     const favoriteSet = new Set(favorites.map((fav) => fav.entityId));
@@ -1041,37 +1010,14 @@ export class AutocompleteService {
       return new Map();
     }
 
-    const [
-      typedScopedRows,
-      selectedScopedRows,
-      typedGlobalRows,
-      selectedGlobalRows,
-      corpusRows,
-    ] = await Promise.all([
-      this.loadAttributeDemandSupport({
-        attributeIds,
-        marketKey,
-        signalKinds: [DemandSignalKind.backend, DemandSignalKind.cache],
-      }),
-      this.loadAttributeDemandSupport({
-        attributeIds,
-        marketKey,
-        signalKinds: [DemandSignalKind.autocomplete_selection],
-      }),
-      marketKey
-        ? this.loadAttributeDemandSupport({
-            attributeIds,
-            marketKey: null,
-            signalKinds: [DemandSignalKind.backend, DemandSignalKind.cache],
-          })
-        : Promise.resolve(new Map<string, number>()),
-      marketKey
-        ? this.loadAttributeDemandSupport({
-            attributeIds,
-            marketKey: null,
-            signalKinds: [DemandSignalKind.autocomplete_selection],
-          })
-        : Promise.resolve(new Map<string, number>()),
+    // READER CUT (§22 item 6): attribute demand support reads the signals
+    // substrate — typed-search support = 'search' acts on the attribute,
+    // selection support = 'autocomplete_selection' acts. Demand is global
+    // (market scoping died with the market model; the old scoped-plus-
+    // backstop split collapses away). The corpus lane below is unchanged.
+    const [typedRows, selectedRows, corpusRows] = await Promise.all([
+      this.loadAttributeDemandSupport(attributeIds, ['search']),
+      this.loadAttributeDemandSupport(attributeIds, ['autocomplete_selection']),
       this.prisma.$queryRaw<
         Array<{
           attributeId: string;
@@ -1143,14 +1089,8 @@ export class AutocompleteService {
     const supportById = new Map<string, AttributeSupportScore>();
 
     for (const attributeId of attributeIds) {
-      const typedDemand =
-        (typedScopedRows.get(attributeId) ?? 0) +
-        (typedGlobalRows.get(attributeId) ?? 0) *
-          ATTRIBUTE_GLOBAL_SUPPORT_BACKSTOP_WEIGHT;
-      const selectedDemand =
-        (selectedScopedRows.get(attributeId) ?? 0) +
-        (selectedGlobalRows.get(attributeId) ?? 0) *
-          ATTRIBUTE_GLOBAL_SUPPORT_BACKSTOP_WEIGHT;
+      const typedDemand = typedRows.get(attributeId) ?? 0;
+      const selectedDemand = selectedRows.get(attributeId) ?? 0;
       const corpus = corpusById.get(attributeId) ?? {
         connectionCount: 0,
         totalRestaurantCount: 0,
@@ -1181,35 +1121,15 @@ export class AutocompleteService {
     return supportById;
   }
 
-  private async loadAttributeDemandSupport(params: {
-    attributeIds: string[];
-    marketKey: string | null;
-    signalKinds: DemandSignalKind[];
-  }): Promise<Map<string, number>> {
-    const since = new Date(
-      Date.now() - ATTRIBUTE_SUPPORT_WINDOW_DAYS * 24 * 60 * 60 * 1000,
-    );
-    const rows = await this.demandAggregation.listEntityDemand({
-      since,
-      entityIds: params.attributeIds,
-      entityTypes: [EntityType.food_attribute, EntityType.restaurant_attribute],
-      marketKey: params.marketKey,
-      scopeMode: params.marketKey ? 'scoped' : 'global',
-      sourceKinds: [DemandSourceKind.search_log],
-      signalKinds: params.signalKinds,
-      limit: Math.max(params.attributeIds.length * 10, 100),
+  private async loadAttributeDemandSupport(
+    attributeIds: string[],
+    kinds: SignalKind[],
+  ): Promise<Map<string, number>> {
+    return this.signalDemandRead.entityDemandScores({
+      entityIds: attributeIds,
+      kinds,
+      windowDays: ATTRIBUTE_SUPPORT_WINDOW_DAYS,
     });
-    const scores = new Map<string, number>();
-    for (const row of rows) {
-      if (!row.entityId) {
-        continue;
-      }
-      scores.set(
-        row.entityId,
-        (scores.get(row.entityId) ?? 0) + row.demandScore,
-      );
-    }
-    return scores;
   }
 
   private normalizeAttributeDemandSupport(score: number): number {

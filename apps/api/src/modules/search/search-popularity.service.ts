@@ -1,24 +1,32 @@
 import { Injectable } from '@nestjs/common';
-import {
-  DemandSignalKind,
-  DemandSourceKind,
-  Prisma,
-  SearchEventKind,
-} from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import { SearchDemandAggregationService } from '../analytics/search-demand-aggregation.service';
+import {
+  SignalDemandReadService,
+  EntityDemandParams,
+} from '../signals/signal-demand-read.service';
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_POPULARITY_WINDOW_DAYS = 30;
+
+/**
+ * READER CUT (§22 item 6): entity popularity + per-user affinity read the
+ * signals substrate (signal_demand_daily aggregate + fresh ledger today) —
+ * the old user_search_demand_daily / search_events reads are dead here.
+ *
+ * Demand semantics: EVERY entity-subject act of EVERY kind counts (no kind
+ * list — §3 self-provisioning; a new signal kind participates automatically)
+ * at the uniform K2 kind-weight prior 1.0. The old hand-set per-kind weights
+ * (1.5 / 0.6 / 0.35) died with the rollup; per-kind measurement arrives via
+ * the estimator registry. Market scoping died with the market model: demand
+ * is global (Austin-only launch makes scoped ≡ global; geo-scoped reads come
+ * with place-tile readers when a consumer needs them).
+ */
 
 @Injectable()
 export class SearchPopularityService {
   private readonly logger: LoggerService;
 
   constructor(
-    private readonly demandAggregation: SearchDemandAggregationService,
-    private readonly prisma: PrismaService,
+    private readonly signalDemandRead: SignalDemandReadService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchPopularityService');
@@ -26,44 +34,14 @@ export class SearchPopularityService {
 
   async getEntityPopularityScores(
     entityIds: string[],
-    marketKey?: string | null,
   ): Promise<Map<string, number>> {
     if (!entityIds.length) {
       return new Map();
     }
-
     try {
-      const rows = await this.demandAggregation.listEntityDemand({
-        since: this.defaultSince(),
-        until: this.startOfUtcDay(new Date()),
-        entityIds,
-        marketKey,
-        scopeMode: marketKey ? 'scoped' : 'global',
-        sourceKinds: [
-          DemandSourceKind.search_log,
-          DemandSourceKind.restaurant_view,
-          DemandSourceKind.food_view,
-          DemandSourceKind.favorite,
-        ],
-        signalKinds: [
-          DemandSignalKind.backend,
-          DemandSignalKind.cache,
-          DemandSignalKind.autocomplete_selection,
-          DemandSignalKind.restaurant_view,
-          DemandSignalKind.food_view,
-          DemandSignalKind.favorite,
-        ],
-        limit: Math.max(entityIds.length * 20, 1000),
-      });
-      const scores = this.mergeDemandScoresByEntity(rows);
-      const freshScores = await this.loadFreshSearchLogPopularity(entityIds, {
-        marketKey,
-        cacheWeight: 0.35,
-      });
-      for (const [entityId, score] of freshScores) {
-        scores.set(entityId, (scores.get(entityId) ?? 0) + score);
-      }
-      return scores;
+      return await this.signalDemandRead.entityDemandScores(
+        this.demandParams({ entityIds }),
+      );
     } catch (error) {
       this.logger.warn('Failed to load entity popularity scores', {
         entityCount: entityIds.length,
@@ -76,95 +54,6 @@ export class SearchPopularityService {
     }
   }
 
-  private async loadFreshSearchLogPopularity(
-    entityIds: string[],
-    options?:
-      | string
-      | null
-      | { marketKey?: string | null; userId?: string; cacheWeight?: number },
-  ): Promise<Map<string, number>> {
-    const marketKey =
-      typeof options === 'string' || options === null
-        ? options
-        : options?.marketKey;
-    const normalizedMarketKey =
-      typeof marketKey === 'string' ? marketKey.trim().toLowerCase() : '';
-    const userId =
-      typeof options === 'object' && options !== null ? options.userId : null;
-    const cacheWeight =
-      typeof options === 'object' &&
-      options !== null &&
-      Number.isFinite(options.cacheWeight)
-        ? Math.max(0, Number(options.cacheWeight))
-        : 0.35;
-    const todayKey = this.formatDateKey(this.startOfUtcDay(new Date()));
-    const filters: Prisma.Sql[] = [
-      Prisma.sql`see.entity_id IN (${Prisma.join(
-        entityIds.map((id) => Prisma.sql`${id}::uuid`),
-      )})`,
-      Prisma.sql`see.event_kind IN (${Prisma.join(
-        [SearchEventKind.backend, SearchEventKind.cache].map(
-          (kind) => Prisma.sql`${kind}::search_event_kind`,
-        ),
-      )})`,
-      Prisma.sql`see.logged_at >= ${todayKey}::date`,
-    ];
-
-    if (userId) {
-      filters.push(Prisma.sql`see.user_id = ${userId}::uuid`);
-    }
-
-    if (normalizedMarketKey) {
-      filters.push(Prisma.sql`LOWER(see.market_key) = ${normalizedMarketKey}`);
-    }
-
-    const rows = await this.prisma.$queryRaw<
-      Array<{ entityId: string; demandScore: number }>
-    >(Prisma.sql`
-      WITH event_rows AS (
-        SELECT DISTINCT
-          see.entity_id::text AS "entityId",
-          see.user_id::text AS "userId",
-          see.event_id::text AS "eventKey",
-          see.event_kind AS "eventKind",
-          (
-            ev.metadata->>'submissionSource' = 'autocomplete'
-            AND ev.metadata#>>'{submissionContext,matchType}' = 'entity'
-            AND ev.metadata#>>'{submissionContext,selectedEntityId}' = see.entity_id::text
-            AND ev.metadata#>>'{submissionContext,selectedEntityType}' = see.entity_type::text
-          ) AS "isAutocompleteSelection"
-        FROM search_event_entities see
-        JOIN search_events ev ON ev.event_id = see.event_id
-        WHERE ${Prisma.join(filters, ' AND ')}
-      ),
-      weighted_by_user AS (
-        SELECT
-          "entityId",
-          "userId",
-          SUM(
-            CASE
-              WHEN "isAutocompleteSelection" THEN 1.5
-              WHEN "eventKind" = 'cache'::search_event_kind THEN ${cacheWeight}
-              ELSE 1.0
-            END
-          )::double precision AS "weightedEventCount"
-        FROM event_rows
-        GROUP BY "entityId", "userId"
-      )
-      SELECT
-        "entityId",
-        SUM(LN(1 + "weightedEventCount") / LN(2))::double precision AS "demandScore"
-      FROM weighted_by_user
-      GROUP BY "entityId"
-    `);
-
-    const scores = new Map<string, number>();
-    for (const row of rows) {
-      scores.set(row.entityId, Number(row.demandScore));
-    }
-    return scores;
-  }
-
   async getUserEntityAffinity(
     userId: string,
     entityIds: string[],
@@ -172,40 +61,10 @@ export class SearchPopularityService {
     if (!userId || !entityIds.length) {
       return new Map();
     }
-
     try {
-      const rows = await this.demandAggregation.listEntityDemand({
-        since: this.defaultSince(),
-        until: this.startOfUtcDay(new Date()),
-        userId,
-        entityIds,
-        scopeMode: 'global',
-        sourceKinds: [
-          DemandSourceKind.search_log,
-          DemandSourceKind.restaurant_view,
-          DemandSourceKind.food_view,
-          DemandSourceKind.favorite,
-        ],
-        signalKinds: [
-          DemandSignalKind.backend,
-          DemandSignalKind.cache,
-          DemandSignalKind.autocomplete_selection,
-          DemandSignalKind.restaurant_view,
-          DemandSignalKind.food_view,
-          DemandSignalKind.favorite,
-        ],
-        cacheWeight: 1,
-        limit: Math.max(entityIds.length * 20, 1000),
-      });
-      const scores = this.mergeDemandScoresByEntity(rows);
-      const freshScores = await this.loadFreshSearchLogPopularity(entityIds, {
-        userId,
-        cacheWeight: 1,
-      });
-      for (const [entityId, score] of freshScores) {
-        scores.set(entityId, (scores.get(entityId) ?? 0) + score);
-      }
-      return scores;
+      return await this.signalDemandRead.entityDemandScores(
+        this.demandParams({ entityIds, userId }),
+      );
     } catch (error) {
       this.logger.warn('Failed to load user affinity scores', {
         userId,
@@ -219,38 +78,21 @@ export class SearchPopularityService {
     }
   }
 
-  private defaultSince(): Date {
+  private demandParams(params: {
+    entityIds: string[];
+    userId?: string;
+  }): EntityDemandParams {
+    return {
+      entityIds: params.entityIds,
+      userId: params.userId ?? null,
+      windowDays: this.windowDays(),
+    };
+  }
+
+  private windowDays(): number {
     const raw = Number(process.env.SEARCH_POPULARITY_WINDOW_DAYS);
-    const windowDays =
-      Number.isFinite(raw) && raw > 0
-        ? Math.min(Math.floor(raw), 365)
-        : DEFAULT_POPULARITY_WINDOW_DAYS;
-    return new Date(Date.now() - windowDays * MS_PER_DAY);
-  }
-
-  private mergeDemandScoresByEntity(
-    rows: Array<{ entityId: string | null; demandScore: number }>,
-  ): Map<string, number> {
-    const scores = new Map<string, number>();
-    for (const row of rows) {
-      if (!row.entityId) {
-        continue;
-      }
-      scores.set(
-        row.entityId,
-        (scores.get(row.entityId) ?? 0) + row.demandScore,
-      );
-    }
-    return scores;
-  }
-
-  private startOfUtcDay(date: Date): Date {
-    return new Date(
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-    );
-  }
-
-  private formatDateKey(date: Date): string {
-    return date.toISOString().slice(0, 10);
+    return Number.isFinite(raw) && raw > 0
+      ? Math.min(Math.floor(raw), 365)
+      : DEFAULT_POPULARITY_WINDOW_DAYS;
   }
 }

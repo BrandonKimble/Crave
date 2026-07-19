@@ -2191,7 +2191,38 @@ model Signal {
   @@index([occurredAt])
   @@index([kind, occurredAt])
   @@index([subjectId])
+  // Per-actor reader lane (§22 item 6): recently-viewed + recent-searches read
+  // one actor's acts of one kind newest-first.
+  @@index([actorId, kind, occurredAt])
   @@map("signals")
+}
+
+// §3 aggregate: day × actor × place × subject × kind — a DERIVED read model
+// over the signals ledger (rebuildable from scratch; only recent days rebuild
+// incrementally; redirects applied AT READ, never baked in). place_id NULL is
+// the GLOBAL tile (every signal exactly once); non-NULL rows carry weight-1
+// attribution to every place whose bbox intersects the signal geo (§22 item 4
+// wording, wrap-aware). Rows are only ever written by whole-day
+// delete-and-reinsert under an advisory lock (SignalDemandAggregateService),
+// so no unique constraint is declared; rowId is a Prisma-required surrogate.
+model SignalDemandDaily {
+  rowId          String   @id @default(dbgenerated("gen_random_uuid()")) @map("row_id") @db.Uuid
+  day            DateTime @db.Date
+  placeId        String?  @map("place_id") @db.Uuid
+  actorId        String   @map("actor_id") @db.Uuid
+  kind           String   @db.VarChar(32)
+  subjectType    String   @map("subject_type") @db.VarChar(16)
+  subjectId      String?  @map("subject_id") @db.Uuid
+  subjectText    String?  @map("subject_text") @db.VarChar(255)
+  signalCount    Int      @map("signal_count")
+  lastOccurredAt DateTime @map("last_occurred_at")
+
+  @@index([day])
+  @@index([subjectId, day])
+  @@index([subjectText, day])
+  @@index([actorId, day])
+  @@index([placeId, day])
+  @@map("signal_demand_daily")
 }
 
 // Pseudonymous actor mapping — the severable deletion story (§3).

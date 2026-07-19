@@ -13,6 +13,7 @@ import { ListFoodViewsDto } from './dto/list-food-views.dto';
 import { RestaurantStatusService } from '../search/restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from '../search/dto/restaurant-status-preview.dto';
 import { SignalsService } from '../signals/signals.service';
+import { SignalDemandReadService } from '../signals/signal-demand-read.service';
 
 @Injectable()
 export class HistoryService {
@@ -24,6 +25,7 @@ export class HistoryService {
     loggerService: LoggerService,
     private readonly restaurantStatusService: RestaurantStatusService,
     private readonly signals: SignalsService,
+    private readonly signalDemandRead: SignalDemandReadService,
   ) {
     this.logger = loggerService.setContext('HistoryService');
     this.viewCooldownMs = this.resolveViewCooldownMs();
@@ -263,6 +265,12 @@ export class HistoryService {
     });
   }
 
+  /**
+   * READER CUT (§22 item 6): recently-viewed lists read the signals ledger
+   * (kind = entity_view), NOT the dying user_restaurant_views /
+   * user_food_views tables. The response contract is frozen, plus the
+   * locationId the dual-write records (the recently-viewed location display).
+   */
   async listRecentlyViewedRestaurants(
     userId: string,
     query: ListRestaurantViewsDto,
@@ -274,40 +282,19 @@ export class HistoryService {
       region?: string | null;
       lastViewedAt: Date;
       viewCount: number;
+      locationId?: string | null;
       statusPreview?: RestaurantStatusPreviewDto | null;
     }>
   > {
     const take = Math.max(1, Math.min(query.limit ?? 10, 50));
     const prefix = query.prefix?.trim();
 
-    const rows = await this.prisma.restaurantView.findMany({
-      where: {
-        userId,
-        ...(prefix
-          ? {
-              restaurant: {
-                is: {
-                  name: { startsWith: prefix, mode: 'insensitive' },
-                },
-              },
-            }
-          : {}),
-      },
-      orderBy: { lastViewedAt: 'desc' },
-      take,
-      include: {
-        restaurant: {
-          select: {
-            entityId: true,
-            name: true,
-            city: true,
-            region: true,
-          },
-        },
-      },
+    const rows = await this.signalDemandRead.recentlyViewedRestaurants(userId, {
+      prefix,
+      limit: take,
     });
 
-    const restaurantIds = rows.map((row) => row.restaurant.entityId);
+    const restaurantIds = rows.map((row) => row.restaurantId);
     const previews =
       restaurantIds.length > 0
         ? await this.restaurantStatusService.getStatusPreviews({
@@ -319,13 +306,14 @@ export class HistoryService {
     );
 
     return rows.map((row) => ({
-      restaurantId: row.restaurant.entityId,
-      restaurantName: row.restaurant.name,
-      city: row.restaurant.city,
-      region: row.restaurant.region,
+      restaurantId: row.restaurantId,
+      restaurantName: row.restaurantName,
+      city: row.city,
+      region: row.region,
       lastViewedAt: row.lastViewedAt,
       viewCount: row.viewCount,
-      statusPreview: previewMap.get(row.restaurant.entityId) ?? null,
+      locationId: row.locationId,
+      statusPreview: previewMap.get(row.restaurantId) ?? null,
     }));
   }
 
@@ -341,50 +329,19 @@ export class HistoryService {
       restaurantName: string;
       lastViewedAt: Date;
       viewCount: number;
+      locationId?: string | null;
       statusPreview?: RestaurantStatusPreviewDto | null;
     }>
   > {
     const take = Math.max(1, Math.min(query.limit ?? 10, 50));
     const prefix = query.prefix?.trim();
 
-    const rows = await this.prisma.foodView.findMany({
-      where: {
-        userId,
-        ...(prefix
-          ? {
-              food: {
-                is: {
-                  name: { startsWith: prefix, mode: 'insensitive' },
-                },
-              },
-            }
-          : {}),
-      },
-      orderBy: { lastViewedAt: 'desc' },
-      take,
-      include: {
-        food: {
-          select: {
-            entityId: true,
-            name: true,
-          },
-        },
-        connection: {
-          select: {
-            connectionId: true,
-            restaurantId: true,
-            restaurant: {
-              select: {
-                entityId: true,
-                name: true,
-              },
-            },
-          },
-        },
-      },
+    const rows = await this.signalDemandRead.recentlyViewedFoods(userId, {
+      prefix,
+      limit: take,
     });
 
-    const restaurantIds = rows.map((row) => row.connection.restaurantId);
+    const restaurantIds = rows.map((row) => row.restaurantId);
     const previews =
       restaurantIds.length > 0
         ? await this.restaurantStatusService.getStatusPreviews({
@@ -396,14 +353,15 @@ export class HistoryService {
     );
 
     return rows.map((row) => ({
-      connectionId: row.connection.connectionId,
-      foodId: row.food.entityId,
-      foodName: row.food.name,
-      restaurantId: row.connection.restaurantId,
-      restaurantName: row.connection.restaurant.name,
+      connectionId: row.connectionId,
+      foodId: row.foodId,
+      foodName: row.foodName,
+      restaurantId: row.restaurantId,
+      restaurantName: row.restaurantName,
       lastViewedAt: row.lastViewedAt,
       viewCount: row.viewCount,
-      statusPreview: previewMap.get(row.connection.restaurantId) ?? null,
+      locationId: row.locationId,
+      statusPreview: previewMap.get(row.restaurantId) ?? null,
     }));
   }
 

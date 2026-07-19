@@ -9,7 +9,6 @@ import { ExternalIntegrationsModule } from '../external-integrations/external-in
 import { RestaurantEnrichmentModule } from '../restaurant-enrichment';
 import { IdentityModule } from '../identity/identity.module';
 import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
-import { AnalyticsModule } from '../analytics/analytics.module';
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
 import { SignalsModule } from '../signals/signals.module';
 import { PlacesModule } from '../places/places.module';
@@ -42,7 +41,6 @@ import { SearchSiblingExpansionService } from './search-sibling-expansion.servic
     RestaurantEnrichmentModule,
     IdentityModule,
     EntityTextSearchModule,
-    AnalyticsModule,
     PublicCraveScoreModule,
     SignalsModule,
     // §22 cut 3: the search header names from the Place Catalog, and the §2
