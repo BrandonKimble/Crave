@@ -125,19 +125,32 @@ agent in flight at turn end so completion notifications chain turns.
 
 - [x] d231c31d places/signals/actors/redirects schema+migration (API restarted)
 - [x] f27a2d03 Estimator primitive · 19480d57 PoolRegistry (specs green)
-- [x] TomTom governed (this commit) — cheap+scarce pools live via draw()
 - [x] 81314ca8 TomTom governed — cheap+scarce pools live via draw()
-- [>] AGENT in flight: signals dual-write (search/autocomplete/views/favorites/
-  polls call sites; fire-and-forget; DUAL-WRITE markers w/ deletion note)
-- [>] AGENT in flight: places catalog module (src/modules/places/ ONLY —
-  sketchChain identity-law upsert w/ bbox merge, placesInView coverage shares,
-  smallestContaining, subjects.ts §2 commensurability + containing-fallback +
-  probeAnchors ≤3, reconciler w/ TomtomChainProbe PORT (adapter stubbed for
-  Phase-B cutover), §17 fixture specs). Does NOT touch search/history/
-  favorites/polls (signals agent's tree) — disjoint by construction.
-- [ ] When BOTH land: verify (build+test+lint), commit each batch separately,
-      red-team the commits, THEN me: US seed script (gazetteer + governed TomTom
-      draws, proposal+price-tag path) + wire the real TomtomChainProbe adapter.
+- [x] 0cdfc544 signals dual-write at all 5 act families (331 green)
+- [x] d2da636d places catalog module (§1/§2 laws, 22 specs)
+- [x] 1ae7d7ae REAL TomtomChainProbe adapter (vendor shapes live-probed:
+      reverse = most-specific entity + "lat,lng" string bbox + chain names
+      inline; forward = topLeft/btmRight objects; reverse denial THROWS so
+      no false negative obs; ≤5 forward, once-ever via catalog bbox check)
+- [x] bc2ed912 identity index hardened: raw expression index
+      (country, subdivision, level, lower(name)) NULLS NOT DISTINCT;
+      @@unique REMOVED from Prisma model (can't express it) — do not re-add.
+- [>] AGENT in flight: signals red-team FIXES (A searchRequestId meta,
+  B cached-reveal signal ungated from searchLogEnabled + reveal id meta,
+  D poll_vote endorsed-subject meta, E geo-promise rejection guard,
+  F food-favorite geo via connection restaurant) + specs.
+- [>] AGENT in flight: catalog red-team FIXES (4a scale-aware anchor
+  answering — over-scale bbox never answers, fixture rewritten;
+  1c atomic parent-edge push + LEAST/GREATEST bbox widen;
+  2a antimeridian wrap in place-geo + split WHERE; 2b cos-weighted area;
+  §16 reclassification of cell clamp/EPSILON/gridFractions).
+- [ ] When BOTH land: verify, commit each batch, then me: US seed script
+      (gazetteer + governed TomTom draws, proposal+price-tag path).
+- OWNER-RATIFY added to master §18 item 7: COVERING_FRACTION=2/3 derivation +
+  lone-commensurate-non-covering-is-header (red-team 5a).
+- Red-team verdicts NOT fixed (recorded): signals monthly partitions deferred
+  (plain table for now); §3 anonymous deviceKey plumbing dormant (no call
+  sites); FIFO-not-LRU actor cache accepted.
 - [ ] Then: header/resolution consumers cut (polls header re-resolve, search
       metadata naming) → old resolver election dies (Phase C per-consumer).
 - deferred-in-leg-2: See-locations (only remaining Leg 2 item).

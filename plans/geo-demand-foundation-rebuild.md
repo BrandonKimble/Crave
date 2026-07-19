@@ -603,6 +603,13 @@ Every scheduler trace has a reader; every heartbeat is staging-proven RED.
    API contract evaluation before ~40).
 6. WEEK-ONE BUILD PRIORITY: instrument conversion + concentration from
    Austin's first Sundays (the warm-start predictor's direct inputs).
+7. §2 gap-fills discovered at build time (red-team d2da636d; code ships the
+   flagged reading, marked `OWNER-RATIFY(§18)` in subjects.ts):
+   (a) "covering" quantified as COVERING_FRACTION = 1 − ATTENTION_FRACTION
+   = 2/3 — "what a covering place leaves uncovered is itself sub-attention";
+   (b) a LONE commensurate but non-covering place (one town at 40%, rest
+   unnamed countryside) IS the header — 'this area' stays reserved for
+   multi-place straddles/unnamed ground. Ratify or amend both.
 
 # §19 Projection record (2026-07-16; Austin ~250 DAU vs Waco ~8 DAU, year 1)
 
