@@ -28,6 +28,7 @@ import { FavoritesModule } from './modules/favorites/favorites.module';
 import { MessagingModule } from './modules/messaging/messaging.module';
 import { HistoryModule } from './modules/history/history.module';
 import { MarketsModule } from './modules/markets/markets.module';
+import { PlacesModule } from './modules/places/places.module';
 // Production readiness modules
 import { HealthModule } from './modules/health/health.module';
 import { SentryModule } from './sentry/sentry.module';
@@ -95,6 +96,8 @@ const runtimeWithSchedulers = isSchedulerRuntime();
     MessagingModule,
     HistoryModule,
     MarketsModule,
+    // Place Catalog DAG + naming reconciler (geo-demand rebuild §1/§2)
+    PlacesModule,
     // Production readiness: Health checks for Railway/container orchestration
     HealthModule,
     // Production readiness: Rate limiting to prevent abuse
