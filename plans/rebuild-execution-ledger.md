@@ -194,8 +194,43 @@ agent in flight at turn end so completion notifications chain turns.
   in feed metadata, batch place labels, cold-start promise state,
   home-place notification targeting seam (big-place never push), shim
   dies. Mobile leg lands AFTER (contract report first).
-- [ ] After: mobile feed leg (slicer chip, promise copy, header), then #7,
-      Phase C purges, wave-5 final red team + reassessment.
+- [x] 30e534a2 killed validate-demand-scoring-fixtures.ts (red-team 5a:
+      imported deleted scheduler; committed tree typechecks again).
+- [ ] SUPPLY RED-TEAM FIX LIST (run fix agent AFTER feed cut lands — feed
+      agent owns polls files). All CONFIRMED on 1ac21b70:
+      CRITICAL · 2a warm-start mints credit unconditionally (one searcher
+      seeds a town; continental viewport seeds thousands) — gate warm-start
+      credit on creditRate ≥ 1 (floor the FRONTIER, not the warrant).
+      · 3e poll_vote signal geo still marketKey-keyed → NULL shim skips the
+      signal for 98.8% of places (closed loop severed; zero-cohorts poison
+      GLOBAL estimator streams) — when poll.placeId set, geo = place bbox.
+      · 1a cohort close uses wall-clock launchedAt ≤ now−7d (knife-edge
+      each Sunday; guaranteed miss on DST spring-forward) — close by weekOf
+      label (cohort.weekOf < current weekOf).
+      HIGH · 2b median test replays the same stale cohort weekly (frontier
+      +1/wk on zero new evidence) — only pass cohorts with observedAt >
+      state.creditUpdatedAt. · 2d cooldown never GATES (rank multiplier
+      only; subject pool ≤ cohortTarget → same subjects every week) AND
+      bootstrapByPlace is loaded but never consulted → identical bootstrap
+      poll re-published weekly with last week's still open — wire both
+      gates. · 1c queuePollReleaseNotification outside tx (crash loses the
+      push forever) + O(cohort) inserts vs 5s tx timeout (172-poll Austin
+      warm start aborts all Sunday) + tick/supply rows written even at
+      publish 0 with no candidacy expiry. · 3a hourly placesWithAnySignal =
+      unbounded places×signals nested loop (no geo index, no time bound) —
+      bound occurred_at + gate to Sunday-window hours. · 3b
+      harvestCohortOutcomes replays ALL history serially — lower-bound
+      launchedAt (28d half-life makes older ≈ 0).
+      MEDIUM · 3c signals bboxFromBounds min/max-normalizes an
+      antimeridian-crossing viewport into a near-world bbox (attributes to
+      every place on earth) — wrap representation + reader OR-split.
+      · 4b ballot-mint early-return skips projection rebuild after
+      crash-between-commit-and-rebuild — run rebuild on early-return too.
+      · 6a estimator half-life mislabeled K1-derived (own K2 inventory
+      line). · 6b classify 60s jitter + EPSILON clamps. · 1b nautical-tz
+      comment claims ~1h max error (Austin = 2h in summer).
+- [ ] After fixes: mobile feed leg (slicer chip, promise copy, header),
+      then #7, Phase C purges, wave-5 final red team + reassessment.
 - deferred-in-leg-2: See-locations (only remaining Leg 2 item).
 
 ## Decisions log (append as made)
