@@ -126,14 +126,18 @@ agent in flight at turn end so completion notifications chain turns.
 - [x] d231c31d places/signals/actors/redirects schema+migration (API restarted)
 - [x] f27a2d03 Estimator primitive · 19480d57 PoolRegistry (specs green)
 - [x] TomTom governed (this commit) — cheap+scarce pools live via draw()
+- [x] 81314ca8 TomTom governed — cheap+scarce pools live via draw()
 - [>] AGENT in flight: signals dual-write (search/autocomplete/views/favorites/
   polls call sites; fire-and-forget; DUAL-WRITE markers w/ deletion note)
-- [ ] NEXT (me): catalog resolution module — placeAt (outermost engine /
-      smallest containing place), marketsInView (set + derived commensurate
-      place, §2 laws incl. containing-fallback + hysteresis inputs),
-      subjects() recursive probe gate, reconciler lane (sketch-everything,
-      region negative obs, provisional names), US seed script (gazetteer +
-      governed TomTom draws, proposal+price-tag path).
+- [>] AGENT in flight: places catalog module (src/modules/places/ ONLY —
+  sketchChain identity-law upsert w/ bbox merge, placesInView coverage shares,
+  smallestContaining, subjects.ts §2 commensurability + containing-fallback +
+  probeAnchors ≤3, reconciler w/ TomtomChainProbe PORT (adapter stubbed for
+  Phase-B cutover), §17 fixture specs). Does NOT touch search/history/
+  favorites/polls (signals agent's tree) — disjoint by construction.
+- [ ] When BOTH land: verify (build+test+lint), commit each batch separately,
+      red-team the commits, THEN me: US seed script (gazetteer + governed TomTom
+      draws, proposal+price-tag path) + wire the real TomtomChainProbe adapter.
 - [ ] Then: header/resolution consumers cut (polls header re-resolve, search
       metadata naming) → old resolver election dies (Phase C per-consumer).
 - deferred-in-leg-2: See-locations (only remaining Leg 2 item).
