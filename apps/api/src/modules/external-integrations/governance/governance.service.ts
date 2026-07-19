@@ -38,6 +38,64 @@ export class GovernanceService {
       failPolicy: { kind: 'hardClosed' },
       reservationTtlMs: 120_000,
     });
+    // Gemini pool #1 (§22 Phase-A minimum; §14.2 "absorbing the existing TPM
+    // reservation engine as the gemini pool's implementation"): the Redis
+    // CentralizedRateLimiter REMAINS the multi-process admission authority;
+    // this registry entry is the pool's LEDGER — SmartLLMProcessor mirrors
+    // every live draw's declared-vs-actual token pair here (the §14.2
+    // estimator-drift instrument). Limit = the same per-project vendor fact
+    // the limiter reads (AI Studio shows the live limits; published Tier-2
+    // floor 4M TPM is safe for this Tier-3 account, env-overridable — never
+    // guessed). emergencyFraction mirrors the limiter's 0.95 quota headroom.
+    const envMaxTpm = parseInt(process.env.LLM_MAX_TPM || '', 10);
+    this.pools.register({
+      name: 'gemini.tokens',
+      credential: 'default',
+      window: {
+        kind: 'perMinute',
+        limit:
+          Number.isFinite(envMaxTpm) && envMaxTpm > 0 ? envMaxTpm : 4_000_000,
+      },
+      failPolicy: { kind: 'emergencyFraction', fraction: 0.95 },
+      reservationTtlMs: 60_000,
+    });
+  }
+
+  /**
+   * Ledger-only mirror for a pool whose ADMISSION lives elsewhere (Phase-A
+   * gemini absorption): records a declared-vs-actual draw pair without ever
+   * gating the caller. A mirror "denial" is pure divergence telemetry — the
+   * external authority admitted what this process-local window would not —
+   * and is logged, never surfaced.
+   */
+  mirrorDraw(
+    poolName: string,
+    workClass: string,
+    declared: number,
+    actual: number,
+  ): void {
+    try {
+      const reservation = this.pools.reserve(poolName, declared, workClass);
+      if (!reservation.admitted) {
+        this.logger.warn(
+          'Ledger mirror divergence (external authority admitted; local window would deny)',
+          { poolName, workClass, declared, reason: reservation.reason },
+        );
+        return;
+      }
+      this.pools.reconcile(reservation.reservationId, actual);
+    } catch (error) {
+      this.logger.warn(
+        'Ledger mirror failed (telemetry only, caller unaffected)',
+        {
+          poolName,
+          workClass,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+    }
   }
 
   /**

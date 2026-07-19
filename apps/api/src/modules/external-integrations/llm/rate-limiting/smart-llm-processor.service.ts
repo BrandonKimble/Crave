@@ -8,6 +8,7 @@ import {
   ReservationResult,
 } from './centralized-rate-limiter.service';
 import { LlmRateLimiterMetricsService } from './llm-rate-limiter-metrics.service';
+import { GovernanceService } from '../../governance/governance.service';
 import { RateLimitMetrics, TokenUsage } from './rate-limiting.types';
 import {
   LLMModelInput,
@@ -78,6 +79,7 @@ export class SmartLLMProcessor implements OnModuleInit {
     @Inject(CentralizedRateLimiter)
     private readonly centralizedRateLimiter: CentralizedRateLimiter,
     private readonly llmRateLimiterMetrics: LlmRateLimiterMetricsService,
+    private readonly governance: GovernanceService,
   ) {
     const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '').trim();
     const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
@@ -186,6 +188,18 @@ export class SmartLLMProcessor implements OnModuleInit {
         // 6. Extract and record token usage
         const tokenUsage = this.extractTokenUsage(result);
         let tpmUtilization = 0;
+        // Gemini pool #1 ledger mirror (§14.2/§22 Phase-A): the Redis
+        // limiter above stays the admission authority; the governance
+        // registry records every draw's declared-vs-actual token pair —
+        // the estimator-drift instrument. Never gates, never throws.
+        this.governance.mirrorDraw(
+          'gemini.tokens',
+          'live-generate',
+          estimatedTokens,
+          tokenUsage
+            ? tokenUsage.inputTokens + tokenUsage.outputTokens
+            : estimatedTokens,
+        );
         if (tokenUsage) {
           await this.rateLimiter.recordTokenUsage(
             tokenUsage.inputTokens,
