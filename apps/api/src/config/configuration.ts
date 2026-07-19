@@ -379,6 +379,9 @@ export default () => {
       reverseGeocodeBaseUrl:
         process.env.TOMTOM_REVERSE_GEOCODE_BASE_URL ||
         'https://api.tomtom.com/search/2/reverseGeocode',
+      geocodeBaseUrl:
+        process.env.TOMTOM_GEOCODE_BASE_URL ||
+        'https://api.tomtom.com/search/2/geocode',
       additionalDataUrl:
         process.env.TOMTOM_ADDITIONAL_DATA_URL ||
         'https://api.tomtom.com/search/2/additionalData.json',

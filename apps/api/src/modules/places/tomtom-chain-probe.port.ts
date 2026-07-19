@@ -19,7 +19,6 @@
  * "TomTom pools governed FIRST — the one ungoverned money"), which is exactly
  * why it is NOT built here: governance wiring belongs to the Phase-B cutover.
  */
-import { Injectable } from '@nestjs/common';
 import { GeoBbox, GeoPoint } from './place-geo';
 import { PlaceSketchNode } from './places-catalog.service';
 
@@ -43,21 +42,3 @@ export interface TomtomChainProbe {
 
 /** Nest injection token for the port. */
 export const TOMTOM_CHAIN_PROBE = Symbol('TOMTOM_CHAIN_PROBE');
-
-/**
- * TODO(Phase-B cutover): replace with the real TomTom adapter (reverse
- * geocode + per-unknown-node forward geocode, drawing on the governed cheap
- * pool per §14/§22). Until then the reconciler is wired but inert in
- * production — noteViewport() swallows this error by design (§2: reads NEVER
- * wait, and a probe failure never blocks a caller).
- */
-@Injectable()
-export class TomtomChainProbeNotWiredAdapter implements TomtomChainProbe {
-  probe(): Promise<TomtomChainProbeResult> {
-    return Promise.reject(
-      new Error(
-        'TomtomChainProbe not wired — real adapter lands with the Phase-B cutover',
-      ),
-    );
-  }
-}

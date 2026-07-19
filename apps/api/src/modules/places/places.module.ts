@@ -4,28 +4,28 @@
  * the go-forward geography surface; src/modules/markets/ is the superseded
  * market model (§20) and nothing here may depend on it.
  */
+import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { SharedModule } from '../../shared/shared.module';
 import { PlacesCatalogService } from './places-catalog.service';
 import { PlacesReconcilerService } from './places-reconciler.service';
-import {
-  TOMTOM_CHAIN_PROBE,
-  TomtomChainProbeNotWiredAdapter,
-} from './tomtom-chain-probe.port';
+import { TomtomChainProbeAdapter } from './tomtom-chain-probe.adapter';
+import { TOMTOM_CHAIN_PROBE } from './tomtom-chain-probe.port';
 
 @Module({
-  imports: [PrismaModule, SharedModule],
+  imports: [PrismaModule, SharedModule, HttpModule],
   providers: [
     PlacesCatalogService,
     PlacesReconcilerService,
-    // TODO(Phase-B cutover): swap in the real governed TomTom adapter
-    // (reverse geocode + once-ever forward geocode per unknown node, drawing
-    // on the cheap pool per §14/§22). The not-wired stub keeps the reconciler
-    // inert-but-safe: noteViewport() logs and self-heals, never throws.
+    // The real governed adapter (§2 sketch mechanics on the cheap pool).
+    // Pool denials and config faults THROW — the reconciler logs and skips,
+    // and crucially does NOT write a negative observation for ground the
+    // vendor was never actually asked about (only an empty CHAIN means
+    // "no place here").
     {
       provide: TOMTOM_CHAIN_PROBE,
-      useClass: TomtomChainProbeNotWiredAdapter,
+      useClass: TomtomChainProbeAdapter,
     },
   ],
   exports: [PlacesCatalogService, PlacesReconcilerService],
