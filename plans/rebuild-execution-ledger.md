@@ -171,17 +171,31 @@ agent in flight at turn end so completion notifications chain turns.
 
 ## TASK #6 STATUS (live)
 
-- [>] AGENT in flight: poll SUPPLY cut (§22 item 4) — demand-mass reader
-  (direct SQL, weight-1 bbox-intersect attribution), estimators via
-  registry (conversion/concentration/viability prior 15 self-erasing/
-  answerYield), controller (creditRate, warm start max(1,predicted),
-  first-cohort JUMP, median test ±1 dither, no caps), weekly ritual cron
-  (Sunday 09:00 local, atomic birth-certificate publish, idempotency
-  placeId+weekOf), K6 vote→mention at graduation into per-place
-  poll_surface source, KILL list (ready pool, topic crons, caps). Polls
-  re-key to placeId; drift-path migrations allowed.
-- [ ] After: item 5 polls feed cursor-pagination+slicer, then #7, Phase C
-      purges, wave-5 final red team + reassessment.
+- [x] 1ac21b70 poll SUPPLY cut COMMITTED (agent, 42 specs, 419 green):
+      supply/ module = demand-mass kernel+SQL (RED-proven vs live DB),
+      estimators via registry (viability 15 self-erasing; conversion/
+      concentration unit priors OWNER-RATIFY), controller (warm start,
+      JUMP, median test ±1 dither, no caps), weekly ritual hourly cron
+      (Sunday 09:00 local; tz = stored else nautical-from-centroid AT READ,
+      deliberately unpersisted; atomic tick+topics+polls+spend in one tx;
+      idempotency placeId+weekOf), K6 ballot mint at graduation (one per
+      distinct voter, m=1, poll_surface source, no engineId), scheduler/
+      ready-pool/draft states DELETED. New polls placeId + marketKey SHIM
+      (resolveMarketKeyShim — dies in item 5). Migration
+      20260719120000_poll_supply_place_rekey applied via drift path; API
+      restarted on new client. Agent ambiguity flags recorded in its
+      code comments (OWNER-RATIFY markers).
+- [>] AGENT in flight: red-team 1ac21b70 (ritual time math/DST, controller
+  degenerate cases, demand SQL vs kernel divergence, K6 idempotency,
+  kill completeness, §16 audit).
+- [>] AGENT in flight: item 5 SERVER feed cut — feed = places-in-view (+
+  commensurate-subject descendants; legacy market rows via bbox
+  interim), keyset cursor pagination (take-25 dies), §2 header verdict
+  in feed metadata, batch place labels, cold-start promise state,
+  home-place notification targeting seam (big-place never push), shim
+  dies. Mobile leg lands AFTER (contract report first).
+- [ ] After: mobile feed leg (slicer chip, promise copy, header), then #7,
+      Phase C purges, wave-5 final red team + reassessment.
 - deferred-in-leg-2: See-locations (only remaining Leg 2 item).
 
 ## Decisions log (append as made)
