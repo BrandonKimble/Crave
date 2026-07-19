@@ -74,7 +74,7 @@ export class FavoriteListResultsDto {
   /**
    * Leg 11 (leg-9 primitive defect: Market chip had no data path): the
    * ListDetail strip's Market chip (§8.16 — the virtual All list is "sliced by
-   * city"). Rides the executor's existing activeMarketKey directive (the
+   * city"). Applied as a geometry id pre-filter in the assembler (the search engine carries no market conditions) (the
    * core_markets geometry-covers filter) — same additive pattern as
    * openNow/priceLevels above.
    */

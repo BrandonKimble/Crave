@@ -217,8 +217,11 @@ export class ListResultsAssembler {
     // the executor can only order by score. 'best' keeps the executor's
     // score pagination untouched.
     const explicitOrder = sort !== 'best';
+    // requestedIds is the SLICED ordered axis list (the city pre-filter is
+    // order-preserving) — explicit-order pagination must page over it, never
+    // the unsliced ordering (red-team finding on 372dc415).
     const pageAxisIds = explicitOrder
-      ? orderedAxisIds.slice(skip, skip + pageSize)
+      ? requestedIds.slice(skip, skip + pageSize)
       : requestedIds;
     if (explicitOrder && pageAxisIds.length === 0) {
       // Page past the end: never hand the executor an empty id array (the
@@ -368,11 +371,11 @@ export class ListResultsAssembler {
     const totalFoodResults = isRestaurantAxis
       ? 0
       : explicitOrder
-        ? orderedAxisIds.length
+        ? requestedIds.length
         : exec.totalDishCount;
     const totalRestaurantResults =
       isRestaurantAxis && explicitOrder
-        ? orderedAxisIds.length
+        ? requestedIds.length
         : exec.totalRestaurantCount;
 
     const searchRequestId = `favorites:${source.labelId}:${source.updatedAtMs}`;

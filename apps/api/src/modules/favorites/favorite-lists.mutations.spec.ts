@@ -617,6 +617,28 @@ describe('virtual All list (spec B.1.6)', () => {
     expect(call.directives).toBeUndefined();
   });
 
+  it('marketKey slice applies on the explicit-order (custom sort) path — pages over SLICED ids with sliced totals (red-team regression)', async () => {
+    const { service, executor, assemblerPrisma } = makeHarness({
+      lists: [
+        makeList({
+          items: [
+            makeItem({ itemId: 'a1', restaurantId: R1, position: 1 }),
+            makeItem({ itemId: 'a2', restaurantId: R2, position: 2 }),
+          ],
+        }),
+      ],
+    });
+    // Slice mock allows only R1; custom sort forces the explicitOrder path.
+    await service.getListResults(OWNER, LIST_ID, {
+      marketKey: 'austin',
+      sort: 'custom',
+    } as never);
+    expect(assemblerPrisma.$queryRaw).toHaveBeenCalledTimes(1);
+    const call = executor.executeSingle.mock.calls[0][0];
+    // The page the executor receives is the sliced ordering, not the raw one.
+    expect(call.plan.restaurantFilters[0].entityIds).toEqual([R1]);
+  });
+
   it('omitted marketKey runs no geometry query and passes no directives', async () => {
     const { service, executor, assemblerPrisma } = makeHarness({ lists });
     await service.getListResults(OWNER, 'all:restaurants', {} as never);

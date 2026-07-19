@@ -790,7 +790,6 @@ export class SearchQueryExecutor {
         restaurantCraveScore: number;
         restaurantRising: number | null;
         restaurantScoreInfo?: ScoreInfoSummary;
-        marketKey?: string | null;
         latitude?: Prisma.Decimal | number | string | null;
         longitude?: Prisma.Decimal | number | string | null;
         address?: string | null;
@@ -965,7 +964,6 @@ export class SearchQueryExecutor {
           restaurantCraveScore,
           restaurantRising,
           restaurantScoreInfo,
-          marketKey,
           latitude,
           longitude,
           address,
@@ -1069,7 +1067,6 @@ export class SearchQueryExecutor {
             craveScore: restaurantCraveScore,
             rising: restaurantRising,
             scoreInfo: restaurantScoreInfo,
-            marketKey: marketKey ?? undefined,
             mentionCount:
               totalMentions === undefined || totalMentions === null
                 ? undefined
