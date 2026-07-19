@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Pressable, StyleSheet } from 'react-native';
-import { Sparkles, MessageCircle, Users, Clock } from 'lucide-react-native';
+import { Sparkles, MessageCircle, Users, Clock, MapPin } from 'lucide-react-native';
 import {
   SegmentedToggle,
   SelectorChip,
@@ -17,6 +17,7 @@ import {
 import type {
   Poll,
   PollCreator,
+  PollFeedPromise,
   PollFeedSort,
   PollFeedTime,
   PollFeedType,
@@ -40,7 +41,10 @@ import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app
 import { registerHeaderCreateAction } from '../../navigation/runtime/header-nav-action-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { PollCandidateBars } from './PollCandidateBars';
-import { usePollsFeedControlsStore } from './runtime/polls-feed-controls-store';
+import {
+  POLL_FEED_PLACE_FILTER_ALL,
+  usePollsFeedControlsStore,
+} from './runtime/polls-feed-controls-store';
 import { usePollsPanelFeedRuntime } from './runtime/polls-panel-feed-runtime';
 import { usePollsPanelHeaderModelPublication } from './runtime/polls-panel-header-model-runtime';
 import { PollsHeaderTitleText } from './pollsHeaderVisuals';
@@ -217,6 +221,16 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
             {poll.endorserCount ?? 0}
           </Text>
         </View>
+        {poll.placeName ? (
+          // §6 per-poll place label — the viewport feed spans places, so each card
+          // says whose town it is (same metadata-line pattern as the counts).
+          <View style={styles.metric}>
+            <MapPin size={13} color={themeColors.textMuted} strokeWidth={2} />
+            <Text variant="caption" style={styles.metricText} numberOfLines={1}>
+              {poll.placeName}
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.pollCardHeaderSpacer} />
         {isActive ? (
           daysLeft ? (
@@ -239,11 +253,34 @@ const PollCard = React.memo(({ poll, onPress }: PollCardProps) => {
 
 PollCard.displayName = 'PollCard';
 
+const formatPossessivePlace = (value: string): string =>
+  value.endsWith('s') ? `${value}'` : `${value}'s`;
+
+/**
+ * §6 cold-start promise card — the ratified copy: "Polls drop Sundays — this
+ * town's first unlocks as people search and vote." (placeName-aware phrasing).
+ * ONE card, matching the feed's card surface language, shown only when the
+ * server's typed promise state arrives on an empty seeded town.
+ */
+const PollFeedPromiseCard = ({ promise }: { promise: PollFeedPromise }) => (
+  <View style={styles.promiseCard}>
+    <View style={styles.promiseCardHeader}>
+      <Sparkles size={16} color={ACCENT} strokeWidth={2.2} />
+      <Text variant="subtitle" weight="semibold" style={styles.promiseCardTitle}>
+        Polls drop Sundays
+      </Text>
+    </View>
+    <Text variant="body" style={styles.promiseCardBody}>
+      {`${formatPossessivePlace(promise.placeName)} first poll unlocks as people search and vote.`}
+    </Text>
+  </View>
+);
+
 type PollsSceneBodyState = AppRoutePollsSceneBodySnapshot;
 
 type PollsSceneBodyRenderState = Pick<
   AppRoutePollsSceneBodySnapshot,
-  'bounds' | 'bootstrapSnapshot' | 'userLocation' | 'params' | 'currentSnap' | 'interactionRef'
+  'bounds' | 'params' | 'currentSnap' | 'interactionRef'
 >;
 
 const arePollsSceneBodyRenderStatesEqual = (
@@ -251,8 +288,6 @@ const arePollsSceneBodyRenderStatesEqual = (
   right: PollsSceneBodyRenderState
 ): boolean =>
   left.bounds === right.bounds &&
-  left.bootstrapSnapshot === right.bootstrapSnapshot &&
-  left.userLocation === right.userLocation &&
   left.params === right.params &&
   left.currentSnap === right.currentSnap &&
   left.interactionRef === right.interactionRef;
@@ -261,8 +296,6 @@ const selectPollsSceneBodyRenderState = (
   snapshot: AppRoutePollsSceneBodySnapshot
 ): PollsSceneBodyRenderState => ({
   bounds: snapshot.bounds,
-  bootstrapSnapshot: snapshot.bootstrapSnapshot,
-  userLocation: snapshot.userLocation,
   params: snapshot.params,
   currentSnap: snapshot.currentSnap,
   interactionRef: snapshot.interactionRef,
@@ -312,25 +345,16 @@ const PollsPersistentHeaderTitle = React.memo(() => {
 
   // Perf-contract attribution: scripts/perf-scenario-market-demand-contracts.js matches
   // source 'polls.mountedHeader' + phase 'poll_header_rendered' — keep the strings stable.
+  // (The market fields died with the §22 item-5 cut; the header verdict is placeName now.)
   React.useEffect(() => {
     logPerfScenarioSearchRequestLifecycle({
       source: 'polls.mountedHeader',
       phase: 'poll_header_rendered',
       renderedPollHeaderAction: headerModel?.headerAction ?? null,
-      renderedPollHeaderCandidateLocalityName: headerModel?.candidateLocalityName ?? null,
-      renderedPollHeaderMarketKey: headerModel?.marketKey ?? null,
-      renderedPollHeaderMarketName: headerModel?.marketName ?? null,
-      renderedPollHeaderMarketOverride: headerModel?.marketOverride ?? null,
+      renderedPollHeaderPlaceName: headerModel?.placeName ?? null,
       renderedPollHeaderTitle: headerTitle,
     });
-  }, [
-    headerModel?.candidateLocalityName,
-    headerModel?.headerAction,
-    headerModel?.marketKey,
-    headerModel?.marketName,
-    headerModel?.marketOverride,
-    headerTitle,
-  ]);
+  }, [headerModel?.headerAction, headerModel?.placeName, headerTitle]);
 
   return (
     <View style={styles.persistentHeaderTitleGroup}>
@@ -342,9 +366,12 @@ const PollsPersistentHeaderTitle = React.memo(() => {
 PollsPersistentHeaderTitle.displayName = 'PollsPersistentHeaderTitle';
 
 // §4 header plus (leg 7): the host-owned HeaderNavAction fires the CREATE lane for parents;
-// polls' create is MARKET-GATED (market params + the "Pick a market" modal), so it registers on
-// the header-create registry from the header Title mount (a real committed component under the
-// app providers — the scene body-spec hooks never commit effects). Snapshots read at PRESS time.
+// polls' create is VIEWPORT-GATED (creation needs bounds — or a legacy marketKey param — to
+// anchor the poll), so it registers on the header-create registry from the header Title mount
+// (a real committed component under the app providers — the scene body-spec hooks never commit
+// effects). Snapshots read at PRESS time. The creation flow itself is NOT rearchitected this
+// leg: it still takes marketKey/marketName params; the feed hands it the §2 place verdict as
+// the display name and bounds as the anchor.
 const usePollsHeaderCreateActionRegistration = () => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const { pushRoute } = useAppOverlayRouteController();
@@ -355,29 +382,20 @@ const usePollsHeaderCreateActionRegistration = () => {
         const headerModel =
           routeSceneRuntime.routePollsSceneRuntime.headerModelAuthority.getSnapshot();
         const params = sceneState.params;
-        const pinnedMarketOverride =
-          params?.pinnedMarket === true || Boolean(params?.pollId)
-            ? params?.marketKey?.trim() || null
-            : null;
-        const marketOverride = headerModel?.marketOverride ?? pinnedMarketOverride;
-        const marketKey = headerModel?.marketKey ?? params?.marketKey?.trim() ?? null;
+        const legacyMarketKey = params?.marketKey?.trim() || null;
 
-        if (!sceneState.bounds && !marketKey && !marketOverride) {
+        if (!sceneState.bounds && !legacyMarketKey) {
           showAppModal({
-            title: 'Pick a market',
-            message: 'Move the map to a local market before creating a poll.',
+            title: 'Move the map',
+            message: 'Move the map to a local area before creating a poll.',
           });
           return;
         }
 
         sceneState.onRequestPollCreationExpand?.();
         pushRoute('pollCreation', {
-          marketKey: marketOverride ?? marketKey ?? null,
-          marketName:
-            headerModel?.marketName ??
-            params?.marketName ??
-            headerModel?.candidateLocalityName ??
-            null,
+          marketKey: legacyMarketKey,
+          marketName: headerModel?.placeName ?? params?.marketName ?? null,
           bounds: sceneState.bounds ?? null,
         });
       }),
@@ -400,10 +418,24 @@ const PollsFeedStrip = React.memo(() => {
   const feedType = usePollsFeedControlsStore((state) => state.feedType);
   const feedTime = usePollsFeedControlsStore((state) => state.feedTime);
   const liveCount = usePollsFeedControlsStore((state) => state.liveCount);
+  const placeFilter = usePollsFeedControlsStore((state) => state.placeFilter);
+  const placeOptions = usePollsFeedControlsStore((state) => state.placeOptions);
   const setFeedState = usePollsFeedControlsStore((state) => state.setFeedState);
   const setFeedSort = usePollsFeedControlsStore((state) => state.setFeedSort);
   const setFeedType = usePollsFeedControlsStore((state) => state.setFeedType);
   const setFeedTime = usePollsFeedControlsStore((state) => state.setFeedTime);
+  const setPlaceFilter = usePollsFeedControlsStore((state) => state.setPlaceFilter);
+  // §6 place slicer options: 'All' + the places present in the LOADED pages, ranked
+  // by content contribution (the body computes + writes them; chrome only renders).
+  const placeSelectorOptions = React.useMemo(
+    () => [
+      { value: POLL_FEED_PLACE_FILTER_ALL, label: 'All' },
+      ...placeOptions.map((option) => ({ value: option.placeId, label: option.placeName })),
+    ],
+    [placeOptions]
+  );
+  const selectedPlaceLabel =
+    placeOptions.find((option) => option.placeId === placeFilter)?.placeName ?? 'All';
   // §3 "Live · N": dynamic live-poll count (metadata dot) inside the segment itself.
   const feedStateOptions = React.useMemo(
     () =>
@@ -459,6 +491,35 @@ const PollsFeedStrip = React.memo(() => {
         accessibilityLabel="Select feed type"
         testID="poll-feed-type-toggle"
       />
+      {placeOptions.length >= 2 ? (
+        // §6 place slicer (same SelectorChip primitive): slices the LOADED pages
+        // client-side (server-side slicing is a later leg — the filter then joins
+        // the control diff and the seam baseline). A conditional strip citizen:
+        // with fewer than two contributing places there is nothing to slice.
+        // NOTE: the ratified spec's searchable sheet + subdivision section headers
+        // need sheet machinery OptionSelectorSheet does not have (flat option
+        // cards, no search, no sections) — deferred with the sheet upgrade.
+        <SelectorChip
+          key="place"
+          label={selectedPlaceLabel}
+          active={placeFilter !== POLL_FEED_PLACE_FILTER_ALL}
+          expanded={optionSelectorOpenKey === 'poll-feed-place'}
+          onPress={() =>
+            toggleOptionSelector({
+              key: 'poll-feed-place',
+              title: 'Place',
+              options: placeSelectorOptions,
+              value: placeFilter,
+              onSelect: (value) => setPlaceFilter(value),
+              accentColor: ACCENT,
+              testID: 'poll-feed-place-sheet',
+            })
+          }
+          accentColor={ACCENT}
+          accessibilityLabel="Slice polls by place"
+          testID="poll-feed-place-toggle"
+        />
+      ) : null}
       <SelectorChip
         key="sort"
         label={SORT_LABEL_BY_VALUE[feedSort]}
@@ -522,6 +583,13 @@ registerPersistentHeaderDescriptor('polls', {
 const POLLS_LIST_ESTIMATED_ITEM_SIZE = 190;
 const EMPTY_POLL_LIST: readonly Poll[] = [];
 
+// §6 pagination trigger thresholds (mirrors the search results load-more runtime):
+// a real user scroll takes the offset past the floor (mount/reveal resets sit at
+// ~0, so layout-time endReached stays blocked); ~half a viewport from the bottom
+// fires the page.
+const POLLS_FEED_SCROLL_ACTIVITY_MIN_OFFSET_PX = 100;
+const POLLS_FEED_END_PROXIMITY_PX = 400;
+
 const POLLS_LIST_BODY_ADMISSION_POLICY = {
   retainMountedBodyDuringTransition: true,
   keepDataSubscribedAfterActivation: true,
@@ -551,8 +619,6 @@ export const usePollsPanelListSceneParts = (): {
   );
   const {
     bounds,
-    bootstrapSnapshot,
-    userLocation,
     params,
     initialSnapPoint,
     mode = 'docked',
@@ -568,8 +634,6 @@ export const usePollsPanelListSceneParts = (): {
   const pollsPanelFeedRuntime = usePollsPanelFeedRuntime({
     visible: shouldSubscribeDataLane,
     bounds,
-    bootstrapSnapshot,
-    userLocation,
     params,
     mode,
     currentSnap,
@@ -592,11 +656,10 @@ export const usePollsPanelListSceneParts = (): {
     polls,
     visiblePolls,
     resolvedSnap,
-    shouldHoldFreshLiveContent,
-    pollFeedFreshnessError,
-    marketStatus,
-    candidateLocalityName,
-    marketName,
+    pollFeedLoadFailed,
+    headerPlaceName,
+    promise,
+    loadMorePolls,
     isFeedSliceAwaiting,
   } = pollsPanelFeedRuntime;
 
@@ -615,12 +678,36 @@ export const usePollsPanelListSceneParts = (): {
   // component is suppressed below (bare white under the header strip; never a
   // skeleton, never a "create the first poll" message mid-toggle).
   const listData: readonly Poll[] =
-    hasVisiblePolls &&
-    !isFeedSliceAwaiting &&
-    !shouldHoldFreshLiveContent &&
-    !shouldShowCollapsedSpinner
+    hasVisiblePolls && !isFeedSliceAwaiting && !shouldShowCollapsedSpinner
       ? visiblePolls
       : EMPTY_POLL_LIST;
+
+  // §6 cursor pagination trigger. FlashList's onEndReached never fires under the
+  // gesture-handoff scroll container (see searchOverlayRouteHostContract), so the
+  // PRIMARY trigger is the transport's live scroll-activity signal: a real user
+  // scroll past the offset floor arms it, end proximity fires it. The controller's
+  // single-flight + cursor state make redundant calls harmless; onEndReached stays
+  // wired as the harmless secondary path (same pattern as search results).
+  const loadMorePollsRef = React.useRef(loadMorePolls);
+  loadMorePollsRef.current = loadMorePolls;
+  const hasUserScrolledFeedRef = React.useRef(false);
+  const handleFeedEndReached = React.useCallback(() => {
+    if (!hasUserScrolledFeedRef.current) {
+      return;
+    }
+    loadMorePollsRef.current();
+  }, []);
+  const handleFeedUserScrollActivity = React.useCallback(
+    (offsetY: number, distanceFromEnd: number) => {
+      if (offsetY >= POLLS_FEED_SCROLL_ACTIVITY_MIN_OFFSET_PX) {
+        hasUserScrolledFeedRef.current = true;
+      }
+      if (distanceFromEnd < POLLS_FEED_END_PROXIMITY_PX) {
+        handleFeedEndReached();
+      }
+    },
+    [handleFeedEndReached]
+  );
 
   // Leg 3: the feed toggle strip is HEADER CHROME now (PollsFeedStrip, mounted by the
   // persistent header host from the page's first committed frame) — the list renders
@@ -632,16 +719,6 @@ export const usePollsPanelListSceneParts = (): {
       // strip by design (charter Part 3; Spotify/Reddit never show a skeleton
       // between toggle slices). The new cards snap in on the seam's ready edge.
       return null;
-    }
-    if (shouldHoldFreshLiveContent) {
-      return (
-        <View style={styles.loaderCentered}>
-          {pollFeedFreshnessError ? null : <SquircleSpinner size={22} color={ACCENT} />}
-          <Text variant="body" style={styles.emptyState}>
-            {pollFeedFreshnessError ? 'Unable to refresh live polls.' : 'Updating live polls...'}
-          </Text>
-        </View>
-      );
     }
     if (shouldShowCollapsedSpinner) {
       // Expanded surface: paint the structure-matched skeleton (poll cards ≈ restaurant rows)
@@ -656,25 +733,36 @@ export const usePollsPanelListSceneParts = (): {
         </View>
       );
     }
-    let emptyMessage = 'No polls available yet.';
-    if (marketStatus === 'no_market' && candidateLocalityName) {
-      emptyMessage = `Create the first poll in ${candidateLocalityName} and start surfacing local favorites.`;
-    } else if (marketName) {
-      emptyMessage = `Create the first poll in ${marketName} and start surfacing local favorites.`;
+    if (pollFeedLoadFailed && polls.length === 0) {
+      // Retry-ladder give-up with nothing loaded: a quiet failure note (the ladder
+      // already retried; a toggle press, socket update, reconnect, or map move
+      // re-arms a fresh refresh — no dead-end).
+      return (
+        <Text variant="body" style={styles.emptyState}>
+          Couldn&apos;t load polls.
+        </Text>
+      );
     }
+    if (promise && polls.length === 0) {
+      // §6 cold-start promise: an empty SEEDED town gets the weekly-drop promise
+      // card (ratified copy) instead of a dead-end empty state.
+      return <PollFeedPromiseCard promise={promise} />;
+    }
+    const emptyMessage = headerPlaceName
+      ? `Create the first poll in ${headerPlaceName} and start surfacing local favorites.`
+      : 'No polls available yet.';
     return (
       <Text variant="body" style={styles.emptyState}>
         {isExpandedSurface ? emptyMessage : 'No polls available yet.'}
       </Text>
     );
   }, [
-    candidateLocalityName,
+    headerPlaceName,
     isExpandedSurface,
     isFeedSliceAwaiting,
-    marketName,
-    marketStatus,
-    pollFeedFreshnessError,
-    shouldHoldFreshLiveContent,
+    pollFeedLoadFailed,
+    polls.length,
+    promise,
     shouldShowCollapsedSpinner,
   ]);
 
@@ -686,8 +774,10 @@ export const usePollsPanelListSceneParts = (): {
       keyExtractor,
       estimatedItemSize: POLLS_LIST_ESTIMATED_ITEM_SIZE,
       ListEmptyComponent,
+      onEndReached: handleFeedEndReached,
+      onEndReachedThreshold: 0.5,
     }),
-    [ListEmptyComponent, keyExtractor, listData, renderItem]
+    [ListEmptyComponent, handleFeedEndReached, keyExtractor, listData, renderItem]
   );
 
   const sceneBodyTransport = React.useMemo<AppRouteSceneBodyTransportSpec>(
@@ -701,11 +791,14 @@ export const usePollsPanelListSceneParts = (): {
         paddingBottom: contentBottomPadding,
       },
       keyboardShouldPersistTaps: 'handled',
+      // §6 pagination's PRIMARY trigger — the handoff scroll container produces no
+      // native drag events and never fires onEndReached (see the contract note).
+      onUserListScrollActivity: handleFeedUserScrollActivity,
       // Over-scroll is enforced no-bounce structurally by BottomSheetScrollContainer (see
       // SHEET_BODY_NO_OVERSCROLL) so the continuous down-handoff works — no per-scene config.
       flashListProps: POLLS_FEED_FLASH_LIST_PROPS,
     }),
-    [contentBottomPadding]
+    [contentBottomPadding, handleFeedUserScrollActivity]
   );
 
   return { sceneBodyContent, sceneBodyTransport };
@@ -811,5 +904,27 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 32,
     color: ACCENT,
+  },
+  promiseCard: {
+    marginTop: 24,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  promiseCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  promiseCardTitle: {
+    color: themeColors.textPrimary,
+  },
+  promiseCardBody: {
+    color: themeColors.textBody,
+    lineHeight: 21,
   },
 });

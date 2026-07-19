@@ -4,7 +4,6 @@ import type {
   SearchForegroundLaunchIntentRuntimeArgs,
   SearchForegroundOverlayRuntimeArgs,
 } from './use-search-foreground-interaction-runtime-contract';
-import type { UsePollsPanelSpecOptions } from '../../../../overlays/panels/runtime/polls-panel-runtime-contract';
 import type { UseSearchRootSessionRuntimeArgs } from './use-search-root-session-runtime-contract';
 
 export type SearchRootInsets = {
@@ -19,7 +18,6 @@ export type SearchRootEnvironment = {
   isSignedIn: boolean;
   accessToken: string | null | undefined;
   startupLocationSnapshot: SearchMapWithMarkerEngineProps['userLocationSnapshot'];
-  startupPollsSnapshot: UsePollsPanelSpecOptions['bootstrapSnapshot'];
   userLocation: SearchMapWithMarkerEngineProps['userLocation'];
   userLocationRef: Parameters<typeof useSearchSubmitOwner>[0]['runtimePorts']['userLocationRef'];
   activeMainIntent: SearchForegroundLaunchIntentRuntimeArgs['activeMainIntent'];
@@ -30,17 +28,12 @@ export type SearchRootEnvironment = {
 
 export type SearchRootRenderEnvironment = Pick<
   SearchRootEnvironment,
-  'insets' | 'accessToken' | 'startupLocationSnapshot' | 'startupPollsSnapshot' | 'userLocation'
+  'insets' | 'accessToken' | 'startupLocationSnapshot' | 'userLocation'
 >;
 
 export type SearchRootMapPresentationEnvironment = Pick<
   SearchRootRenderEnvironment,
   'accessToken' | 'startupLocationSnapshot' | 'userLocation'
->;
-
-export type SearchRootOverlayPublicationEnvironment = Pick<
-  SearchRootRenderEnvironment,
-  'startupPollsSnapshot'
 >;
 
 export type SearchRootBootstrapEnvironment = {

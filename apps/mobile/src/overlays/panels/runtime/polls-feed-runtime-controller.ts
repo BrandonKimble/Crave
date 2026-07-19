@@ -3,25 +3,25 @@ import { InteractionManager } from 'react-native';
 import { io, type Socket } from 'socket.io-client';
 
 import { API_BASE_URL } from '../../../services/api';
-import { resolveMarket } from '../../../services/markets';
 import {
-  createNetworkPollBootstrapSnapshot,
   fetchPolls,
-  readPollBootstrapSnapshotForMarket,
-  writePollBootstrapSnapshot,
   type Poll,
-  type PollBootstrapSnapshot,
+  type PollFeedPromise,
   type PollFeedSort,
   type PollFeedTime,
   type PollFeedType,
+  type PollQueryPayload,
+  type PollQueryResponse,
 } from '../../../services/polls';
-import type { Coordinate, MapBounds } from '../../../types';
+import type { MapBounds } from '../../../types';
 import { useContentToggle } from '../../../toggles/use-content-toggle';
 import {
   getPollsFeedControlsSnapshot,
   restorePollsFeedControls,
   subscribeToPollsFeedControlChanges,
   usePollsFeedControlsStore,
+  POLL_FEED_PLACE_FILTER_ALL,
+  type PollFeedPlaceOption,
 } from './polls-feed-controls-store';
 import { subscribeToReconnect } from '../../../store/systemStatusStore';
 import { logger } from '../../../utils';
@@ -29,10 +29,9 @@ import { logger } from '../../../utils';
 type InteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
 
 // §9.4 (page-switch-master-plan.md) startup-polls retry policy: this controller is the SINGLE
-// owner of poll fetching (the startup coordinator only seeds a cached snapshot — it never
-// fetches). On a failed load, retry quietly with backoff, then give up to the skeleton /
-// manual-refresh state. Any explicit refresh (pull, toggle, socket, market change) supersedes a
-// pending retry and resets the ladder.
+// owner of poll fetching. On a failed load, retry quietly with backoff, then give up to the
+// skeleton / manual-refresh state. Any explicit refresh (pull, toggle, socket, bounds change)
+// supersedes a pending retry and resets the ladder.
 const POLL_FEED_RETRY_BACKOFF_MS = [2_000, 5_000, 10_000] as const;
 
 // [pageswitch] P1-addendum bootstrap probe — same JSONL family as the coordinator's bootstrap
@@ -45,6 +44,33 @@ const logBootstrap = (data: Record<string, unknown>): void => {
 };
 
 /**
+ * §6 slicer options: places present in the LOADED feed pages, ranked by content
+ * contribution (count of polls contributed), name as the deterministic tiebreak.
+ */
+const derivePlaceOptions = (polls: readonly Poll[]): PollFeedPlaceOption[] => {
+  const byPlaceId = new Map<string, PollFeedPlaceOption>();
+  for (const poll of polls) {
+    if (!poll.placeId || !poll.placeName) {
+      continue;
+    }
+    const existing = byPlaceId.get(poll.placeId);
+    if (existing) {
+      existing.pollCount += 1;
+    } else {
+      byPlaceId.set(poll.placeId, {
+        placeId: poll.placeId,
+        placeName: poll.placeName,
+        pollCount: 1,
+      });
+    }
+  }
+  return [...byPlaceId.values()].sort(
+    (left, right) =>
+      right.pollCount - left.pollCount || left.placeName.localeCompare(right.placeName)
+  );
+};
+
+/**
  * The honest resolution of one refresh (leg 5 failure path): the content-toggle
  * runner must be able to FAIL when the slice it committed did not land — a runner
  * that swallows its own error makes the engine's 'failed' edge unreachable and
@@ -52,15 +78,13 @@ const logBootstrap = (data: Record<string, unknown>): void => {
  * - 'applied'     — fetched and published (latest).
  * - 'superseded'  — fetched but a newer refresh owns the feed; that one reads the
  *                   live control refs, so it carries the slice (not a failure).
- * - 'unavailable' — could not fetch at all (no market/bounds payload).
+ * - 'unavailable' — could not fetch at all (no bounds yet).
  * - 'failed'      — the fetch threw (the retry ladder may still be running).
  */
 export type PollFeedRefreshOutcome = 'applied' | 'superseded' | 'unavailable' | 'failed';
 
 type RefreshPollFeedOptions = {
   skipSpinner?: boolean;
-  marketKeyOverride?: string | null;
-  marketNameFallback?: string | null;
   /** Internal (retry ladder only): which backoff attempt this call is. External callers omit it. */
   retryAttempt?: number;
 };
@@ -68,10 +92,6 @@ type RefreshPollFeedOptions = {
 type UsePollsFeedRuntimeControllerArgs = {
   visible: boolean;
   bounds?: MapBounds | null;
-  bootstrapSnapshot?: PollBootstrapSnapshot | null;
-  userLocation?: Coordinate | null;
-  marketOverride?: string | null;
-  pollFeedRequiresFreshNetwork: boolean;
   /** Live (`active`) vs Results (`closed`) feed split (§4/§6). */
   feedState: 'active' | 'closed';
   /** Selected sort, or null for the silent demand-ranked default. */
@@ -81,18 +101,11 @@ type UsePollsFeedRuntimeControllerArgs = {
   /** Time filter: all_time (no filter) | this_week (§6). */
   feedTime: PollFeedTime;
   setPolls: React.Dispatch<React.SetStateAction<Poll[]>>;
-  setMarketKey: React.Dispatch<React.SetStateAction<string | null>>;
-  setMarketName: React.Dispatch<React.SetStateAction<string | null>>;
-  setMarketStatus: React.Dispatch<
-    React.SetStateAction<'resolved' | 'multi_market' | 'no_market' | 'error' | null>
-  >;
-  setCandidateLocalityName: React.Dispatch<React.SetStateAction<string | null>>;
-  setCreatePollPrompt: React.Dispatch<React.SetStateAction<string | null>>;
+  setHeaderPlaceName: React.Dispatch<React.SetStateAction<string | null>>;
+  setPromise: React.Dispatch<React.SetStateAction<PollFeedPromise | null>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setPollFeedRefreshing: React.Dispatch<React.SetStateAction<boolean>>;
-  setPollFeedRequiresFreshNetwork: React.Dispatch<React.SetStateAction<boolean>>;
-  setPollFeedFreshnessError: React.Dispatch<React.SetStateAction<boolean>>;
-  setPersistedCity: (city: string) => void;
+  setPollFeedLoadFailed: React.Dispatch<React.SetStateAction<boolean>>;
   isSystemUnavailable: boolean;
   pollIdParam?: string | null;
   interactionRef?: InteractionRef;
@@ -100,6 +113,12 @@ type UsePollsFeedRuntimeControllerArgs = {
 
 export type PollsFeedRuntimeController = {
   refreshPollFeed: (options?: RefreshPollFeedOptions) => Promise<PollFeedRefreshOutcome>;
+  /**
+   * Cursor pagination (§6 — CURSOR PAGINATION is a prerequisite; the take-25 is
+   * dead): fetch the next keyset page when the list nears its end and APPEND it.
+   * Single-flight; a refresh (toggle/bounds/socket) supersedes an in-flight page.
+   */
+  loadMorePolls: () => void;
   /**
    * The feed-query toggle commit (leg 4 — useContentToggle, audit D5): a control
    * write flips the strip optimistically and lands here; the content seam exits the
@@ -118,38 +137,35 @@ export type PollsFeedRuntimeController = {
 export const usePollsFeedRuntimeController = ({
   visible,
   bounds,
-  bootstrapSnapshot,
-  userLocation,
-  marketOverride,
-  pollFeedRequiresFreshNetwork,
   feedState,
   feedSort,
   feedType,
   feedTime,
   setPolls,
-  setMarketKey,
-  setMarketName,
-  setMarketStatus,
-  setCandidateLocalityName,
-  setCreatePollPrompt,
+  setHeaderPlaceName,
+  setPromise,
   setLoading,
   setPollFeedRefreshing,
-  setPollFeedRequiresFreshNetwork,
-  setPollFeedFreshnessError,
-  setPersistedCity,
+  setPollFeedLoadFailed,
   isSystemUnavailable,
   pollIdParam,
   interactionRef,
 }: UsePollsFeedRuntimeControllerArgs): PollsFeedRuntimeController => {
   const socketRef = React.useRef<Socket | null>(null);
-  const lastResolvedMarketKeyRef = React.useRef<string | null>(null);
   const refreshSeqRef = React.useRef(0);
   // §9.4 retry ladder: the pending backoff timer + a live ref to the latest refresh callback so
-  // a scheduled retry always runs with fresh bounds/market inputs.
+  // a scheduled retry always runs with fresh bounds inputs.
   const retryTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshPollFeedRef = React.useRef<
     ((options?: RefreshPollFeedOptions) => Promise<PollFeedRefreshOutcome>) | null
   >(null);
+  // Cursor pagination state: the loaded pages + the next keyset cursor. Refs, not
+  // state — the CONTROLLER owns append mechanics; the runtime's `polls` state is the
+  // published composite.
+  const loadedPollsRef = React.useRef<Poll[]>([]);
+  const nextCursorRef = React.useRef<string | null>(null);
+  const isLoadingMoreRef = React.useRef(false);
+  const hasEverAppliedSliceRef = React.useRef(false);
   const clearScheduledPollFeedRetry = React.useCallback(() => {
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
@@ -157,7 +173,7 @@ export const usePollsFeedRuntimeController = ({
     }
   }, []);
   // Read inside refreshPollFeed so every fetch uses the live toggle values without
-  // re-creating the callback (which would re-trigger the market/bounds effects).
+  // re-creating the callback (which would re-trigger the bounds effect).
   const feedStateRef = React.useRef(feedState);
   feedStateRef.current = feedState;
   const feedSortRef = React.useRef(feedSort);
@@ -166,77 +182,76 @@ export const usePollsFeedRuntimeController = ({
   feedTypeRef.current = feedType;
   const feedTimeRef = React.useRef(feedTime);
   feedTimeRef.current = feedTime;
-  const bootstrapMarketKey =
-    typeof bootstrapSnapshot?.marketKey === 'string' && bootstrapSnapshot.marketKey.trim()
-      ? bootstrapSnapshot.marketKey.trim().toLowerCase()
-      : null;
-  const hasBootstrapSnapshot = Boolean(
-    bootstrapSnapshot &&
-      (bootstrapSnapshot.polls.length > 0 || bootstrapSnapshot.marketName || bootstrapMarketKey)
-  );
+  // Live visibility gate for commit-time / page-time re-checks (render-phase ref
+  // write, same pattern as the feed*Refs above).
+  const visibilityGateRef = React.useRef({ visible, isSystemUnavailable });
+  visibilityGateRef.current = { visible, isSystemUnavailable };
 
-  const applyPollSnapshot = React.useCallback(
-    (snapshot: PollBootstrapSnapshot, marketNameFallback?: string | null) => {
-      const nextMarketKey = snapshot.marketKey;
-      const normalizedKey =
-        typeof nextMarketKey === 'string' ? nextMarketKey.trim().toLowerCase() : null;
-      const resolvedMarketName =
-        typeof snapshot.marketName === 'string' && snapshot.marketName.trim()
-          ? snapshot.marketName.trim()
-          : typeof marketNameFallback === 'string' && marketNameFallback.trim()
-            ? marketNameFallback.trim()
-            : null;
-      if (normalizedKey) {
-        lastResolvedMarketKeyRef.current = normalizedKey;
-      }
-      setPolls(snapshot.polls);
+  /**
+   * Publish one settled slice composite: the list, the §2 header verdict, the §6
+   * promise state, the "Live · N" count, and the slicer options (places present in
+   * the loaded pages). Also reconciles a stale place filter — a selected place that
+   * left the loaded set snaps the slicer back to All.
+   */
+  const publishFeedSlice = React.useCallback(
+    (params: {
+      polls: Poll[];
+      headerPlaceName: string | null;
+      promise: PollFeedPromise | null;
+      nextCursor: string | null;
+    }) => {
+      loadedPollsRef.current = params.polls;
+      nextCursorRef.current = params.nextCursor;
+      hasEverAppliedSliceRef.current = true;
+      setPolls(params.polls);
+      setHeaderPlaceName(params.headerPlaceName);
+      setPromise(params.promise);
+      setPollFeedLoadFailed(false);
       // Wave-2 §3 "Live · N": the body owns the count; chrome reads it from the
       // controls store. Only an ACTIVE-state slice updates it (a Closed slice says
       // nothing about how many polls are live); the last-known count is retained
       // while browsing Closed.
+      const controls = usePollsFeedControlsStore.getState();
       if (feedStateRef.current === 'active') {
-        usePollsFeedControlsStore.getState().setLiveCount(snapshot.polls.length);
+        controls.setLiveCount(params.polls.length);
       }
-      setMarketKey(nextMarketKey);
-      setMarketName(resolvedMarketName);
-      setMarketStatus(
-        snapshot.marketStatus === 'resolved' ||
-          snapshot.marketStatus === 'multi_market' ||
-          snapshot.marketStatus === 'no_market' ||
-          snapshot.marketStatus === 'error'
-          ? snapshot.marketStatus
-          : nextMarketKey
-            ? 'resolved'
-            : null
-      );
-      setCandidateLocalityName(snapshot.candidateLocalityName ?? null);
-      setCreatePollPrompt(snapshot.cta?.prompt ?? snapshot.cta?.label ?? null);
-      setPollFeedRequiresFreshNetwork(snapshot.source !== 'network');
-      setPollFeedFreshnessError(false);
-      if (nextMarketKey && !marketOverride) {
-        setPersistedCity(nextMarketKey);
+      const placeOptions = derivePlaceOptions(params.polls);
+      controls.setPlaceOptions(placeOptions);
+      if (
+        controls.placeFilter !== POLL_FEED_PLACE_FILTER_ALL &&
+        !placeOptions.some((option) => option.placeId === controls.placeFilter)
+      ) {
+        controls.setPlaceFilter(POLL_FEED_PLACE_FILTER_ALL);
       }
     },
-    [
-      marketOverride,
-      setCandidateLocalityName,
-      setCreatePollPrompt,
-      setMarketKey,
-      setMarketName,
-      setMarketStatus,
-      setPersistedCity,
-      setPollFeedFreshnessError,
-      setPollFeedRequiresFreshNetwork,
-      setPolls,
-    ]
+    [setHeaderPlaceName, setPollFeedLoadFailed, setPolls, setPromise]
+  );
+
+  const buildFeedQueryPayload = React.useCallback(
+    (cursor?: string | null): PollQueryPayload | null => {
+      if (!bounds) {
+        return null;
+      }
+      // Wave-2 §3: sort is never null (New is the stated default, not an omission);
+      // the time period is folded INTO Top — it is only sent when Top is the sort.
+      return {
+        bounds,
+        state: feedStateRef.current,
+        sort: feedSortRef.current,
+        ...(feedTypeRef.current !== 'all' ? { type: feedTypeRef.current } : {}),
+        ...(feedSortRef.current === 'top' && feedTimeRef.current !== 'all_time'
+          ? { time: feedTimeRef.current }
+          : {}),
+        ...(cursor ? { cursor } : {}),
+      };
+    },
+    [bounds]
   );
 
   const refreshPollFeed = React.useCallback(
     async (options?: RefreshPollFeedOptions): Promise<PollFeedRefreshOutcome> => {
       const refreshSeq = ++refreshSeqRef.current;
       const skipSpinner = options?.skipSpinner ?? false;
-      const marketKeyOverride = options?.marketKeyOverride ?? null;
-      const marketNameFallback = options?.marketNameFallback ?? null;
       const retryAttempt = options?.retryAttempt ?? 0;
       let retryScheduled = false;
       const scheduleRetry = (nextAttempt: number, reason: string) => {
@@ -263,32 +278,15 @@ export const usePollsFeedRuntimeController = ({
         );
       };
 
-      setPollFeedFreshnessError(false);
+      setPollFeedLoadFailed(false);
       setPollFeedRefreshing(true);
       if (!skipSpinner) {
         setLoading(true);
       }
 
-      const resolvedMarketKey = marketKeyOverride ?? marketOverride ?? null;
-      // Wave-2 §3: sort is never null (New is the stated default, not an omission);
-      // the time period is folded INTO Top — it is only sent when Top is the sort.
-      const feedQuery = {
-        state: feedStateRef.current,
-        sort: feedSortRef.current,
-        ...(feedTypeRef.current !== 'all' ? { type: feedTypeRef.current } : {}),
-        ...(feedSortRef.current === 'top' && feedTimeRef.current !== 'all_time'
-          ? { time: feedTimeRef.current }
-          : {}),
-      };
-      const payload = resolvedMarketKey
-        ? { marketKey: resolvedMarketKey, ...feedQuery }
-        : bounds
-          ? {
-              bounds,
-              ...(userLocation ? { userLocation } : {}),
-              ...feedQuery,
-            }
-          : null;
+      // The §22 contract: bounds ALWAYS (the viewport IS the request); a refresh is
+      // a first-page read, so no cursor.
+      const payload = buildFeedQueryPayload(null);
 
       if (!payload) {
         // §9.4: a call that CANNOT fetch must never silently kill a live recovery ladder (this
@@ -316,35 +314,30 @@ export const usePollsFeedRuntimeController = ({
       clearScheduledPollFeedRetry();
 
       try {
-        const response = await fetchPolls(payload);
+        const response: PollQueryResponse = await fetchPolls(payload);
         if (refreshSeq !== refreshSeqRef.current) {
           return 'superseded';
         }
-        const snapshot = createNetworkPollBootstrapSnapshot(response);
-        applyPollSnapshot(snapshot, marketNameFallback);
+        publishFeedSlice({
+          polls: response.polls,
+          headerPlaceName: response.header.placeName,
+          promise: response.promise,
+          nextCursor: response.nextCursor,
+        });
         if (retryAttempt > 0) {
           logBootstrap({ phase: 'feed-retry-recovered', attempt: retryAttempt });
-        }
-        // Only the Live feed seeds the bootstrap cache; Results (closed) must not
-        // overwrite the Live snapshot read on next launch.
-        if (snapshot.marketKey && feedStateRef.current === 'active') {
-          void writePollBootstrapSnapshot(snapshot);
         }
         return 'applied';
       } catch (error) {
         // §9.4 retry ladder: only the LATEST refresh may schedule a retry; a superseded
         // request's failure is stale. While a retry is pending, hold the loading/refreshing
-        // state (the skeleton stays up) and defer the freshness error to the final give-up.
+        // state (the skeleton stays up) and defer the failure verdict to the final give-up.
         const isLatestRefresh = refreshSeq === refreshSeqRef.current;
         if (isLatestRefresh && retryAttempt < POLL_FEED_RETRY_BACKOFF_MS.length) {
           scheduleRetry(retryAttempt + 1, 'fetch-failed');
-        } else {
-          if (isLatestRefresh && retryAttempt >= POLL_FEED_RETRY_BACKOFF_MS.length) {
-            logBootstrap({ phase: 'feed-retry-give-up', attempts: retryAttempt });
-          }
-          if (pollFeedRequiresFreshNetwork) {
-            setPollFeedFreshnessError(true);
-          }
+        } else if (isLatestRefresh) {
+          logBootstrap({ phase: 'feed-retry-give-up', attempts: retryAttempt });
+          setPollFeedLoadFailed(true);
         }
         logger.error('Failed to load polls', error);
         return 'failed';
@@ -360,18 +353,63 @@ export const usePollsFeedRuntimeController = ({
       }
     },
     [
-      applyPollSnapshot,
-      bounds,
+      buildFeedQueryPayload,
       clearScheduledPollFeedRetry,
-      marketOverride,
-      pollFeedRequiresFreshNetwork,
+      publishFeedSlice,
       setLoading,
-      setPollFeedFreshnessError,
+      setPollFeedLoadFailed,
       setPollFeedRefreshing,
-      userLocation,
     ]
   );
   refreshPollFeedRef.current = refreshPollFeed;
+
+  // §6 cursor pagination: append the next keyset page. Latest-wins against
+  // refreshes — a refresh bumps refreshSeq, so a page that resolves after a
+  // supersession is DROPPED (its cursor belongs to the replaced list).
+  const loadMorePolls = React.useCallback(() => {
+    const cursor = nextCursorRef.current;
+    if (!cursor || isLoadingMoreRef.current) {
+      return;
+    }
+    const gate = visibilityGateRef.current;
+    if (!gate.visible || gate.isSystemUnavailable) {
+      return;
+    }
+    const payload = buildFeedQueryPayload(cursor);
+    if (!payload) {
+      return;
+    }
+    const refreshSeqAtRequest = refreshSeqRef.current;
+    isLoadingMoreRef.current = true;
+    void (async () => {
+      try {
+        const response = await fetchPolls(payload);
+        if (refreshSeqRef.current !== refreshSeqAtRequest) {
+          return;
+        }
+        const loadedIds = new Set(loadedPollsRef.current.map((poll) => poll.pollId));
+        const appended = [
+          ...loadedPollsRef.current,
+          ...response.polls.filter((poll) => !loadedIds.has(poll.pollId)),
+        ];
+        publishFeedSlice({
+          polls: appended,
+          headerPlaceName: response.header.placeName,
+          // The promise is a FIRST-PAGE cold-start state; an append never creates one.
+          promise: null,
+          nextCursor: response.nextCursor,
+        });
+      } catch (error) {
+        // A failed page is quiet: the loaded list stands, the cursor stands, the next
+        // end-proximity pass retries. No ladder — pagination is user-re-triggerable.
+        logger.warn('Failed to load more polls', {
+          message: error instanceof Error ? error.message : 'unknown',
+        });
+      } finally {
+        isLoadingMoreRef.current = false;
+      }
+    })();
+  }, [buildFeedQueryPayload, publishFeedSlice]);
 
   // Never let a scheduled retry outlive the controller.
   React.useEffect(() => clearScheduledPollFeedRetry, [clearScheduledPollFeedRetry]);
@@ -398,10 +436,8 @@ export const usePollsFeedRuntimeController = ({
   // refreshPollFeed's own refs and re-checks the visibility gate at commit time;
   // refreshPollFeed's internal latest-wins seq guard drops a stale landing the
   // engine's cancel can't abort. Failure UX stays with the controller's retry ladder
-  // + deferred freshness error (never the modal); the seam settles the phase on the
-  // runner's resolution either way, so the surface can never park on bare white.
-  const visibilityGateRef = React.useRef({ visible, isSystemUnavailable });
-  visibilityGateRef.current = { visible, isSystemUnavailable };
+  // + deferred load-failed verdict (never the modal); the seam settles the phase on
+  // the runner's resolution either way, so the surface can never park on bare white.
   const { seam: feedContentToggleSeam, phase: feedContentPhase } = useContentToggle<'feed_query'>({
     surfaceName: 'polls-feed',
     // Leg 5 failure path: the seam holds a restore to the last SETTLED control
@@ -446,170 +482,16 @@ export const usePollsFeedRuntimeController = ({
     [scheduleFeedQueryCommit]
   );
 
+  // THE VIEWPORT EDGE (§22 item 5): the feed is bounds-scoped, so a settled-viewport
+  // change IS the fetch trigger — no market resolution round-trip, no cached-market
+  // arm. First-ever slice shows the skeleton; every later bounds change swaps
+  // in-place (skipSpinner — the old slice stands until the new one lands).
   React.useEffect(() => {
-    if (!bootstrapMarketKey) {
+    if (!visible || isSystemUnavailable || !bounds) {
       return;
     }
-    lastResolvedMarketKeyRef.current = bootstrapMarketKey;
-  }, [bootstrapMarketKey]);
-
-  React.useEffect(() => {
-    if (!visible || isSystemUnavailable || !marketOverride) {
-      return;
-    }
-    const normalizedOverride = marketOverride.trim().toLowerCase();
-    let cancelled = false;
-
-    void (async () => {
-      const activeMarketKey = lastResolvedMarketKeyRef.current ?? bootstrapMarketKey;
-      if (normalizedOverride !== activeMarketKey) {
-        const cachedSnapshot = await readPollBootstrapSnapshotForMarket(normalizedOverride);
-        if (cancelled) {
-          return;
-        }
-        if (cachedSnapshot) {
-          applyPollSnapshot(cachedSnapshot);
-          setPollFeedRefreshing(true);
-        }
-      }
-
-      if (!cancelled) {
-        void refreshPollFeed({
-          marketKeyOverride: marketOverride,
-          skipSpinner: hasBootstrapSnapshot && normalizedOverride === bootstrapMarketKey,
-        });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    applyPollSnapshot,
-    bootstrapMarketKey,
-    hasBootstrapSnapshot,
-    isSystemUnavailable,
-    marketOverride,
-    refreshPollFeed,
-    setPollFeedRefreshing,
-    visible,
-  ]);
-
-  React.useEffect(() => {
-    if (!visible || isSystemUnavailable || marketOverride || !bounds) {
-      return;
-    }
-    const activeMarketKey = lastResolvedMarketKeyRef.current ?? bootstrapMarketKey;
-    if (!activeMarketKey || !hasBootstrapSnapshot) {
-      void refreshPollFeed({ skipSpinner: hasBootstrapSnapshot });
-      return;
-    }
-
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await resolveMarket(bounds, userLocation ?? null);
-        if (cancelled) {
-          return;
-        }
-        const nextKey =
-          typeof response.market?.marketKey === 'string'
-            ? response.market.marketKey.trim().toLowerCase()
-            : '';
-        const nextName =
-          typeof response.market?.marketShortName === 'string' &&
-          response.market.marketShortName.trim()
-            ? response.market.marketShortName.trim()
-            : typeof response.market?.marketName === 'string' && response.market.marketName.trim()
-              ? response.market.marketName.trim()
-              : null;
-        const nextStatus =
-          response.status === 'resolved' ||
-          response.status === 'multi_market' ||
-          response.status === 'no_market' ||
-          response.status === 'error'
-            ? response.status
-            : null;
-        const nextCandidateLocalityName =
-          typeof response.resolution?.candidateLocalityName === 'string' &&
-          response.resolution.candidateLocalityName.trim()
-            ? response.resolution.candidateLocalityName.trim()
-            : null;
-        const nextPrompt =
-          typeof response.cta?.prompt === 'string' && response.cta.prompt.trim()
-            ? response.cta.prompt.trim()
-            : typeof response.cta?.label === 'string' && response.cta.label.trim()
-              ? response.cta.label.trim()
-              : null;
-
-        if (nextKey && nextKey === activeMarketKey) {
-          if (nextName) {
-            setMarketName(nextName);
-          }
-          setMarketStatus(nextStatus);
-          setCandidateLocalityName(nextCandidateLocalityName);
-          setCreatePollPrompt(nextPrompt);
-          if (pollFeedRequiresFreshNetwork) {
-            void refreshPollFeed({
-              marketKeyOverride: nextKey || null,
-              marketNameFallback: nextName,
-              skipSpinner: true,
-            });
-          }
-          return;
-        }
-
-        setMarketKey(nextKey || null);
-        setMarketName(nextName);
-        setMarketStatus(nextStatus);
-        setCandidateLocalityName(nextCandidateLocalityName);
-        setCreatePollPrompt(nextPrompt);
-
-        if (nextKey) {
-          const cachedSnapshot = await readPollBootstrapSnapshotForMarket(nextKey);
-          if (cancelled) {
-            return;
-          }
-          if (cachedSnapshot) {
-            applyPollSnapshot(cachedSnapshot, nextName);
-            setPollFeedRefreshing(true);
-          }
-        }
-
-        void refreshPollFeed({
-          marketKeyOverride: nextKey || null,
-          marketNameFallback: nextName,
-          skipSpinner: true,
-        });
-      } catch (error) {
-        logger.warn('Market revalidation failed', {
-          message: error instanceof Error ? error.message : 'unknown',
-        });
-        void refreshPollFeed({ skipSpinner: hasBootstrapSnapshot });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    applyPollSnapshot,
-    bootstrapMarketKey,
-    bounds,
-    hasBootstrapSnapshot,
-    isSystemUnavailable,
-    marketOverride,
-    pollFeedRequiresFreshNetwork,
-    refreshPollFeed,
-    setCandidateLocalityName,
-    setCreatePollPrompt,
-    setMarketKey,
-    setMarketName,
-    setMarketStatus,
-    setPollFeedRefreshing,
-    userLocation,
-    visible,
-  ]);
+    void refreshPollFeed({ skipSpinner: hasEverAppliedSliceRef.current });
+  }, [bounds, isSystemUnavailable, refreshPollFeed, visible]);
 
   React.useEffect(() => {
     if (!pollIdParam) {
@@ -668,9 +550,10 @@ export const usePollsFeedRuntimeController = ({
   return React.useMemo(
     () => ({
       refreshPollFeed,
+      loadMorePolls,
       scheduleFeedQueryCommit,
       isFeedSliceAwaiting: feedContentPhase === 'awaiting',
     }),
-    [feedContentPhase, refreshPollFeed, scheduleFeedQueryCommit]
+    [feedContentPhase, loadMorePolls, refreshPollFeed, scheduleFeedQueryCommit]
   );
 };

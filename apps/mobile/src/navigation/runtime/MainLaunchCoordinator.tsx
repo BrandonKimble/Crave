@@ -4,11 +4,6 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Location from 'expo-location';
 import { AppState, Dimensions } from 'react-native';
 import type { Coordinate, MapBounds } from '../../types';
-import {
-  normalizePollMarketKey,
-  readPollBootstrapSnapshotForMarket,
-  type PollBootstrapSnapshot,
-} from '../../services/polls';
 import { searchService } from '../../services/search';
 import { resolveIpLocation } from '../../services/markets';
 import { logger } from '../../utils';
@@ -27,16 +22,6 @@ const BOOT_LOCATION_STORAGE_KEY = 'boot:lastKnownLocation';
 const STARTUP_LOCATION_MAX_WAIT_MS = 1_500;
 const MAX_STORED_LOCATION_AGE_MS = 6 * 60 * 60 * 1000;
 const MAIN_LAUNCH_READY_TIMEOUT_MS = 10_000;
-
-// [pageswitch] P1-addendum bootstrap-lifecycle probe (page-switch-master-plan.md §9.4). Same JSONL
-// family as the BottomSheetSceneStackHost probe so the startup-polls bootstrap lifecycle is
-// greppable in /tmp/crave-metro.log. __DEV__-only.
-const logBootstrap = (data: Record<string, unknown>): void => {
-  if (__DEV__) {
-    // eslint-disable-next-line no-console
-    console.log(`[pageswitch] bootstrap ${JSON.stringify(data)}`);
-  }
-};
 
 export type StartupLocationSnapshot = {
   coordinate: Coordinate | null;
@@ -92,7 +77,6 @@ type MainLaunchContextValue = {
   startupCamera: StartupCameraSpec | null;
   startupLocationSnapshot: StartupLocationSnapshot | null;
   startupPollBounds: MapBounds | null;
-  startupPollsSnapshot: PollBootstrapSnapshot | null;
   userLocation: Coordinate | null;
   userLocationState: UserLocationState;
   userLocationRef: React.MutableRefObject<Coordinate | null>;
@@ -440,8 +424,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
   const [startupCamera, setStartupCamera] = React.useState<StartupCameraSpec | null>(null);
   const [startupLocationSnapshot, setStartupLocationSnapshot] =
     React.useState<StartupLocationSnapshot | null>(null);
-  const [startupPollsSnapshot, setStartupPollsSnapshot] =
-    React.useState<PollBootstrapSnapshot | null>(null);
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
   const [userLocationState, setUserLocationState] =
     React.useState<UserLocationState>('unavailable');
@@ -456,8 +438,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     React.useRef<StartupLocationSnapshot>(defaultLocationSnapshot());
   const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
   const startupResolutionSeqRef = React.useRef(0);
-  const startupPollBootstrapSeqRef = React.useRef(0);
-  const lastStartupPollBootstrapKeyRef = React.useRef<string | null>(null);
   const splashHiddenRef = React.useRef(false);
   const hasCompletedInitialMainLaunchRef = React.useRef(false);
   const mainMapReadinessAuthorityRef = React.useRef(createMainMapReadinessAuthority());
@@ -629,8 +609,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     publishMainMapReadinessSignal(() => mainMapReadinessAuthorityRef.current.reset());
     setIsStartupResolved(false);
     setIsMainLaunchReady(false);
-    setStartupPollsSnapshot(null);
-    lastStartupPollBootstrapKeyRef.current = null;
     const seq = ++startupResolutionSeqRef.current;
     let cancelled = false;
 
@@ -770,72 +748,9 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
     startLocationWatch,
   ]);
 
-  // §9.4: dep on the DERIVED market-key STRING, never launchIntent object identity — a routeState
-  // republish carrying an identical intent must not re-run (and cancel) the bootstrap effect.
-  const routeLaunchIntent = routeState?.launchIntent ?? null;
-  const launchIntentMarketKey =
-    routeLaunchIntent?.type === 'polls' && typeof routeLaunchIntent.marketKey === 'string'
-      ? routeLaunchIntent.marketKey.trim().toLowerCase()
-      : null;
-  const startupIpMarketKey = startupLocationSnapshot?.ipMarketKey ?? null;
-
-  // STARTUP-POLLS CACHE SEED (page-switch-master-plan.md §9.4). This effect ONLY seeds the docked
-  // feed's bootstrap snapshot from the LOCAL cache (instant content for launch-intent / IP-market
-  // launches). All NETWORK fetching + retry for startup polls is owned by the polls feed runtime
-  // (polls-feed-runtime-controller — single writer). A failed or slow polls load can NEVER hold
-  // the splash: home reveals on map readiness and the docked feed shows its own skeleton until
-  // polls resolve.
-  React.useEffect(() => {
-    if (!isRouteReady || routeDestination !== 'main' || !isStartupResolved) {
-      return;
-    }
-    const startupCacheMarketKey =
-      launchIntentMarketKey ??
-      (startupIpMarketKey ? normalizePollMarketKey(startupIpMarketKey) : null);
-    logBootstrap({ phase: 'entry', marketKey: startupCacheMarketKey });
-    if (!startupCacheMarketKey) {
-      return;
-    }
-    // §9.4: latch-return ONLY once a COMPLETED read committed this key — never while the work is
-    // still unresolved. (The old latch-before-work is what wedged the splash: a dep-identity
-    // re-run's cleanup cancelled the in-flight load and the latch swallowed every later attempt.)
-    if (lastStartupPollBootstrapKeyRef.current === startupCacheMarketKey) {
-      logBootstrap({ phase: 'latch-return', marketKey: startupCacheMarketKey });
-      return;
-    }
-
-    const seq = ++startupPollBootstrapSeqRef.current;
-    let cancelled = false;
-
-    void (async () => {
-      const cachedSnapshot = await readPollBootstrapSnapshotForMarket(startupCacheMarketKey).catch(
-        () => null
-      );
-      if (cancelled || seq !== startupPollBootstrapSeqRef.current) {
-        return;
-      }
-      lastStartupPollBootstrapKeyRef.current = startupCacheMarketKey;
-      if (cachedSnapshot) {
-        setStartupPollsSnapshot(cachedSnapshot);
-      }
-      logBootstrap({
-        phase: 'resolve',
-        marketKey: startupCacheMarketKey,
-        cached: Boolean(cachedSnapshot),
-      });
-    })();
-
-    return () => {
-      cancelled = true;
-      logBootstrap({ phase: 'cleanup', marketKey: startupCacheMarketKey });
-    };
-  }, [
-    isRouteReady,
-    isStartupResolved,
-    launchIntentMarketKey,
-    routeDestination,
-    startupIpMarketKey,
-  ]);
+  // The startup-polls CACHE SEED is DEAD (§22 item-5 cut): the feed is viewport-
+  // scoped now, and a viewport has no stable cache key — the docked feed skeletons
+  // until its own bounds-driven fetch resolves (which never holds the splash).
 
   React.useEffect(() => {
     if (!isRouteReady || routeState?.destination !== 'main' || !isStartupResolved) {
@@ -1104,7 +1019,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       startupCamera,
       startupLocationSnapshot,
       startupPollBounds,
-      startupPollsSnapshot,
       userLocation,
       userLocationState,
       userLocationRef,
@@ -1120,7 +1034,6 @@ export const MainLaunchCoordinator: React.FC<{ children: React.ReactNode }> = ({
       startupCamera,
       startupLocationSnapshot,
       startupPollBounds,
-      startupPollsSnapshot,
       userLocation,
       userLocationState,
     ]

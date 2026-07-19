@@ -44,8 +44,6 @@ export type SearchResultsPanelEnvironment = {
   resultsSheetInteractionModel: ResultsSheetInteractionModel;
   resultsPanelVisualRuntimeModel: ResultsPanelVisualRuntimeModel;
   pollBounds: UsePollsPanelSpecOptions['bounds'];
-  startupPollsSnapshot: UsePollsPanelSpecOptions['bootstrapSnapshot'];
-  userLocation: UsePollsPanelSpecOptions['userLocation'];
   searchInteractionRef: React.MutableRefObject<SearchInteractionSnapshot>;
   toggleOpenNow: () => void;
   toggleIncludeSimilar: () => void;

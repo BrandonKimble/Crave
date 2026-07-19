@@ -22,6 +22,17 @@ import type { PollFeedSort, PollFeedTime, PollFeedType } from '../../../services
  * Lifetime: module scope ≈ the old behavior (the polls scene body is retain-mounted,
  * so its useState already lived for the app session).
  */
+/** One §6 slicer option: a place present in the loaded feed pages, ranked by contribution. */
+export type PollFeedPlaceOption = {
+  placeId: string;
+  placeName: string;
+  /** Content contribution: how many loaded polls this place contributed. */
+  pollCount: number;
+};
+
+/** The place slicer's rest value — no slice applied. */
+export const POLL_FEED_PLACE_FILTER_ALL = 'all';
+
 export type PollsFeedControlsState = {
   feedState: 'active' | 'closed';
   /**
@@ -40,11 +51,28 @@ export type PollsFeedControlsState = {
    * Writes here never fire the press-edge subscription.
    */
   liveCount: number | null;
+  /**
+   * §6 place slicer (SelectorChip): 'all' or a placeId from `placeOptions`.
+   * CLIENT-SIDE slice this leg — selecting filters the LOADED pages in the feed
+   * runtime, so this key is deliberately EXCLUDED from the press-edge
+   * subscription's control diff (no network refresh). Server-side slicing is a
+   * later leg; when it lands, placeFilter joins the control diff (and the seam's
+   * baseline snapshot) and the client filter dies.
+   */
+  placeFilter: string;
+  /**
+   * Slicer options — NOT a control: the BODY (feed controller) writes them when a
+   * slice lands/appends (places present in the loaded pages, ranked by content
+   * contribution); the chrome reads them. Writes never fire the press edge.
+   */
+  placeOptions: PollFeedPlaceOption[];
   setFeedState: (value: 'active' | 'closed') => void;
   setFeedSort: (value: PollFeedSort) => void;
   setFeedType: (value: PollFeedType) => void;
   setFeedTime: (value: PollFeedTime) => void;
   setLiveCount: (value: number | null) => void;
+  setPlaceFilter: (value: string) => void;
+  setPlaceOptions: (value: PollFeedPlaceOption[]) => void;
 };
 
 export const usePollsFeedControlsStore = create<PollsFeedControlsState>((set) => ({
@@ -53,11 +81,15 @@ export const usePollsFeedControlsStore = create<PollsFeedControlsState>((set) =>
   feedType: 'all',
   feedTime: 'all_time',
   liveCount: null,
+  placeFilter: POLL_FEED_PLACE_FILTER_ALL,
+  placeOptions: [],
   setFeedState: (value) => set({ feedState: value }),
   setFeedSort: (value) => set({ feedSort: value }),
   setFeedType: (value) => set({ feedType: value }),
   setFeedTime: (value) => set({ feedTime: value }),
   setLiveCount: (value) => set({ liveCount: value }),
+  setPlaceFilter: (value) => set({ placeFilter: value }),
+  setPlaceOptions: (value) => set({ placeOptions: value }),
 }));
 
 /** Snapshot selector for non-React readers (the feed controller's commit runner). */
@@ -96,6 +128,8 @@ export const subscribeToPollsFeedControlChanges = (listener: () => void): (() =>
     if (isRestoringControls) {
       return;
     }
+    // placeFilter is deliberately absent: it slices the loaded pages client-side
+    // (§6 slicer, this leg) and must not schedule a network commit.
     if (
       state.feedState !== previous.feedState ||
       state.feedSort !== previous.feedSort ||

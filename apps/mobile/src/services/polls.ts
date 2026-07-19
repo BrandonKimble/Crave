@@ -1,6 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from './api';
-import type { Coordinate, MapBounds } from '../types';
+import type { MapBounds } from '../types';
 
 // ─── Live model (comment + endorsement + leaderboard) ────────────────────────
 
@@ -91,6 +90,10 @@ export interface Poll {
   state: string;
   mode?: string | null;
   axis?: unknown;
+  /** §6 place-keyed feed: the poll's place + its batch-resolved label. */
+  placeId?: string | null;
+  placeName?: string | null;
+  /** Legacy market fields — still present on non-feed reads (getPoll, topic); the feed renders placeName. */
   marketKey?: string | null;
   marketName?: string | null;
   createdByUserId?: string | null;
@@ -109,20 +112,23 @@ export interface Poll {
   topic?: PollTopic | null;
 }
 
+/** §6 cold-start promise: typed state from the server; the COPY is mobile's. */
+export type PollFeedPromise = {
+  kind: 'weekly_drop_pending';
+  placeName: string;
+};
+
+/**
+ * §22 item-5 feed contract (POST /polls/query): viewport-scoped feed with keyset
+ * cursor pagination. The header carries the §2 subjecthood verdict — null renders
+ * the first-class "Polls in this area". marketKey/marketName/marketStatus are DEAD.
+ */
 export type PollQueryResponse = {
-  marketKey?: string | null;
-  marketName?: string | null;
-  marketStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error' | null;
-  candidateLocalityName?: string | null;
-  candidateBoundaryProvider?: string | null;
-  candidateBoundaryId?: string | null;
-  candidateBoundaryType?: string | null;
-  cta?: {
-    kind?: 'create_poll' | 'none' | null;
-    label?: string | null;
-    prompt?: string | null;
-  } | null;
+  header: { placeName: string | null };
+  promise: PollFeedPromise | null;
   polls: Poll[];
+  /** Opaque keyset cursor for the next page; null = end of feed. */
+  nextCursor: string | null;
 };
 
 export type PollFeedSort = 'new' | 'top' | 'trending';
@@ -130,46 +136,16 @@ export type PollFeedType = 'all' | 'polls' | 'discussions';
 export type PollFeedTime = 'all_time' | 'today' | 'this_week' | 'this_month';
 
 export type PollQueryPayload = {
-  marketKey?: string;
-  bounds?: MapBounds | null;
-  userLocation?: Coordinate | null;
+  /** The request's real subject: the map viewport. Always sent. */
+  bounds: MapBounds;
+  /** Opaque `nextCursor` from the previous page (omit for the first page). */
+  cursor?: string;
+  /** Page size (server-validated, ≤100). Omit for the server default. */
+  limit?: number;
   state?: string;
   sort?: PollFeedSort;
   type?: PollFeedType;
   time?: PollFeedTime;
-};
-
-export type PollFeedSource = 'cache' | 'network';
-
-export type PollBootstrapSnapshot = {
-  marketKey: string | null;
-  marketName: string | null;
-  marketStatus?: 'resolved' | 'multi_market' | 'no_market' | 'error' | null;
-  candidateLocalityName?: string | null;
-  candidateBoundaryProvider?: string | null;
-  candidateBoundaryId?: string | null;
-  candidateBoundaryType?: string | null;
-  cta?: {
-    kind?: 'create_poll' | 'none' | null;
-    label?: string | null;
-    prompt?: string | null;
-  } | null;
-  polls: Poll[];
-  resolvedAtMs: number;
-  source: PollFeedSource;
-};
-
-type PersistedPollBootstrapCache = {
-  byMarketKey: Record<
-    string,
-    {
-      marketKey: string;
-      marketName: string | null;
-      polls: Poll[];
-      resolvedAtMs: number;
-    }
-  >;
-  lastMarketKey: string | null;
 };
 
 export type CreatePollPayload = {
@@ -215,6 +191,21 @@ const normalizePollList = (payload: unknown): Poll[] => {
   return [];
 };
 
+const normalizePollFeedPromise = (value: unknown): PollFeedPromise | null => {
+  if (
+    value &&
+    typeof value === 'object' &&
+    (value as { kind?: unknown }).kind === 'weekly_drop_pending' &&
+    typeof (value as { placeName?: unknown }).placeName === 'string'
+  ) {
+    return {
+      kind: 'weekly_drop_pending',
+      placeName: (value as { placeName: string }).placeName,
+    };
+  }
+  return null;
+};
+
 const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
   if (payload && typeof payload === 'object') {
     const anyPayload = payload as Record<string, unknown>;
@@ -222,53 +213,26 @@ const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
       return normalizePollQueryResponse(anyPayload.data);
     }
     if (Array.isArray(anyPayload.polls)) {
-      const marketKey = typeof anyPayload.marketKey === 'string' ? anyPayload.marketKey : null;
-      const marketName = typeof anyPayload.marketName === 'string' ? anyPayload.marketName : null;
+      const header = anyPayload.header as { placeName?: unknown } | undefined;
       return {
-        marketKey,
-        marketName,
-        marketStatus:
-          anyPayload.marketStatus === 'resolved' ||
-          anyPayload.marketStatus === 'multi_market' ||
-          anyPayload.marketStatus === 'no_market' ||
-          anyPayload.marketStatus === 'error'
-            ? anyPayload.marketStatus
-            : null,
-        candidateLocalityName:
-          typeof anyPayload.candidateLocalityName === 'string'
-            ? anyPayload.candidateLocalityName
-            : null,
-        candidateBoundaryProvider:
-          typeof anyPayload.candidateBoundaryProvider === 'string'
-            ? anyPayload.candidateBoundaryProvider
-            : null,
-        candidateBoundaryId:
-          typeof anyPayload.candidateBoundaryId === 'string'
-            ? anyPayload.candidateBoundaryId
-            : null,
-        candidateBoundaryType:
-          typeof anyPayload.candidateBoundaryType === 'string'
-            ? anyPayload.candidateBoundaryType
-            : null,
-        cta:
-          anyPayload.cta && typeof anyPayload.cta === 'object'
-            ? (anyPayload.cta as PollQueryResponse['cta'])
-            : null,
+        header: {
+          placeName:
+            header && typeof header.placeName === 'string' && header.placeName.trim()
+              ? header.placeName.trim()
+              : null,
+        },
+        promise: normalizePollFeedPromise(anyPayload.promise),
         polls: normalizePollList(anyPayload.polls),
+        nextCursor: typeof anyPayload.nextCursor === 'string' ? anyPayload.nextCursor : null,
       };
     }
   }
 
   return {
-    marketKey: null,
-    marketName: null,
-    marketStatus: null,
-    candidateLocalityName: null,
-    candidateBoundaryProvider: null,
-    candidateBoundaryId: null,
-    candidateBoundaryType: null,
-    cta: null,
+    header: { placeName: null },
+    promise: null,
     polls: normalizePollList(payload),
+    nextCursor: null,
   };
 };
 
@@ -288,154 +252,12 @@ const normalizePoll = (payload: unknown): Poll | null => {
   return null;
 };
 
-const POLL_BOOTSTRAP_CACHE_STORAGE_KEY = 'polls:bootstrap-cache:v1';
-const POLL_BOOTSTRAP_CACHE_TTL_MS = 30 * 60 * 1000;
-const POLL_BOOTSTRAP_CACHE_MAX_ENTRIES = 12;
-let pollBootstrapCacheMemory: PersistedPollBootstrapCache | null = null;
-
-export const normalizePollMarketKey = (value: string | null | undefined): string | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : null;
-};
-
-export const createNetworkPollBootstrapSnapshot = (
-  response: PollQueryResponse,
-  resolvedAtMs: number = Date.now()
-): PollBootstrapSnapshot => ({
-  marketKey: normalizePollMarketKey(response.marketKey),
-  marketName:
-    typeof response.marketName === 'string' && response.marketName.trim()
-      ? response.marketName.trim()
-      : null,
-  marketStatus: typeof response.marketStatus === 'string' ? response.marketStatus : null,
-  candidateLocalityName:
-    typeof response.candidateLocalityName === 'string' && response.candidateLocalityName.trim()
-      ? response.candidateLocalityName.trim()
-      : null,
-  candidateBoundaryProvider:
-    typeof response.candidateBoundaryProvider === 'string' &&
-    response.candidateBoundaryProvider.trim()
-      ? response.candidateBoundaryProvider.trim()
-      : null,
-  candidateBoundaryId:
-    typeof response.candidateBoundaryId === 'string' && response.candidateBoundaryId.trim()
-      ? response.candidateBoundaryId.trim()
-      : null,
-  candidateBoundaryType:
-    typeof response.candidateBoundaryType === 'string' && response.candidateBoundaryType.trim()
-      ? response.candidateBoundaryType.trim()
-      : null,
-  cta: response.cta ?? null,
-  polls: response.polls ?? [],
-  resolvedAtMs,
-  source: 'network',
-});
-
-const buildPollBootstrapSnapshot = (entry: {
-  marketKey: string;
-  marketName: string | null;
-  polls: Poll[];
-  resolvedAtMs: number;
-}): PollBootstrapSnapshot => ({
-  marketKey: normalizePollMarketKey(entry.marketKey),
-  marketName: entry.marketName ?? null,
-  marketStatus: 'resolved',
-  candidateLocalityName: null,
-  candidateBoundaryProvider: null,
-  candidateBoundaryId: null,
-  candidateBoundaryType: null,
-  cta: null,
-  polls: entry.polls,
-  resolvedAtMs: entry.resolvedAtMs,
-  source: 'cache',
-});
-
-const readPollBootstrapCache = async (): Promise<PersistedPollBootstrapCache> => {
-  if (pollBootstrapCacheMemory) {
-    return pollBootstrapCacheMemory;
-  }
-
-  try {
-    const raw = await AsyncStorage.getItem(POLL_BOOTSTRAP_CACHE_STORAGE_KEY);
-    if (!raw) {
-      pollBootstrapCacheMemory = { byMarketKey: {}, lastMarketKey: null };
-      return pollBootstrapCacheMemory;
-    }
-    const parsed = JSON.parse(raw) as PersistedPollBootstrapCache;
-    const nextByMarketKey: PersistedPollBootstrapCache['byMarketKey'] = {
-      ...(parsed?.byMarketKey ?? {}),
-    };
-    pollBootstrapCacheMemory = {
-      byMarketKey: nextByMarketKey,
-      lastMarketKey: normalizePollMarketKey(parsed?.lastMarketKey) ?? null,
-    };
-    return pollBootstrapCacheMemory;
-  } catch {
-    pollBootstrapCacheMemory = { byMarketKey: {}, lastMarketKey: null };
-    return pollBootstrapCacheMemory;
-  }
-};
-
-const persistPollBootstrapCache = async (cache: PersistedPollBootstrapCache): Promise<void> => {
-  pollBootstrapCacheMemory = cache;
-  try {
-    await AsyncStorage.setItem(POLL_BOOTSTRAP_CACHE_STORAGE_KEY, JSON.stringify(cache));
-  } catch {
-    // ignore cache persistence failures
-  }
-};
-
-export const readPollBootstrapSnapshotForMarket = async (
-  marketKey: string
-): Promise<PollBootstrapSnapshot | null> => {
-  const normalizedKey = normalizePollMarketKey(marketKey);
-  if (!normalizedKey) {
-    return null;
-  }
-  const cache = await readPollBootstrapCache();
-  const entry = cache.byMarketKey[normalizedKey];
-  if (!entry) {
-    return null;
-  }
-  if (Date.now() - entry.resolvedAtMs > POLL_BOOTSTRAP_CACHE_TTL_MS) {
-    delete cache.byMarketKey[normalizedKey];
-    if (cache.lastMarketKey === normalizedKey) {
-      cache.lastMarketKey = null;
-    }
-    await persistPollBootstrapCache(cache);
-    return null;
-  }
-  return buildPollBootstrapSnapshot(entry);
-};
-
-export const writePollBootstrapSnapshot = async (
-  snapshot: PollBootstrapSnapshot
-): Promise<void> => {
-  const normalizedKey = normalizePollMarketKey(snapshot.marketKey);
-  if (!normalizedKey) {
-    return;
-  }
-  const cache = await readPollBootstrapCache();
-  cache.byMarketKey[normalizedKey] = {
-    marketKey: normalizedKey,
-    marketName: snapshot.marketName ?? null,
-    polls: snapshot.polls,
-    resolvedAtMs: snapshot.resolvedAtMs,
-  };
-  cache.lastMarketKey = normalizedKey;
-
-  const sortedKeys = Object.keys(cache.byMarketKey).sort((left, right) => {
-    return cache.byMarketKey[right]!.resolvedAtMs - cache.byMarketKey[left]!.resolvedAtMs;
-  });
-  for (const staleKey of sortedKeys.slice(POLL_BOOTSTRAP_CACHE_MAX_ENTRIES)) {
-    delete cache.byMarketKey[staleKey];
-  }
-
-  await persistPollBootstrapCache(cache);
-};
+// The marketKey-keyed bootstrap cache is DEAD with the §22 item-5 cut. Its whole
+// value was instant launch content under a STABLE key (the market); the viewport
+// feed has no stable key — startup bounds differ on every launch, so a
+// bounds-hash cache would essentially never hit, and a "nearest bucket" key
+// would serve another viewport's polls under a place-verdict header it doesn't
+// match. Caching adds nothing now: the feed skeletons for one fast query.
 
 export const fetchPolls = async (payload: PollQueryPayload): Promise<PollQueryResponse> => {
   const response = await api.post('/polls/query', payload);

@@ -22,29 +22,20 @@ export const usePollsPanelHeaderModelPublication = ({
     const headerModel = {
       title: pollsPanelFeedRuntime.headerVisualModel.title,
       headerAction: pollsPanelFeedRuntime.headerAction,
-      marketKey: pollsPanelFeedRuntime.marketKey,
-      marketName: pollsPanelFeedRuntime.marketName,
-      candidateLocalityName: pollsPanelFeedRuntime.candidateLocalityName,
-      marketOverride: pollsPanelFeedRuntime.marketOverride,
+      placeName: pollsPanelFeedRuntime.headerPlaceName,
     };
     pollsSceneActions.publishHeaderModel(headerModel);
     logPerfScenarioSearchRequestLifecycle({
       source: 'polls.headerModel',
       phase: 'poll_header_model',
       pollHeaderTitle: headerModel.title,
-      pollHeaderMarketKey: headerModel.marketKey,
-      pollHeaderMarketName: headerModel.marketName,
-      pollHeaderCandidateLocalityName: headerModel.candidateLocalityName,
-      pollHeaderMarketOverride: headerModel.marketOverride,
+      pollHeaderPlaceName: headerModel.placeName,
       pollHeaderAction: headerModel.headerAction,
     });
   }, [
-    pollsPanelFeedRuntime.candidateLocalityName,
     pollsPanelFeedRuntime.headerAction,
     pollsPanelFeedRuntime.headerVisualModel.title,
-    pollsPanelFeedRuntime.marketKey,
-    pollsPanelFeedRuntime.marketName,
-    pollsPanelFeedRuntime.marketOverride,
+    pollsPanelFeedRuntime.headerPlaceName,
     pollsSceneActions,
     activePerfScenarioRunId,
   ]);

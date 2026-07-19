@@ -19,7 +19,6 @@ export const useSearchScreenAppEntryPlaneRuntime = () => {
     startupLocationSnapshot,
     startupCamera,
     startupPollBounds,
-    startupPollsSnapshot,
     markMainMapLoaded,
     markMainMapReady,
   } = useMainLaunchCoordinator();
@@ -39,7 +38,6 @@ export const useSearchScreenAppEntryPlaneRuntime = () => {
       startupLocationSnapshot,
       startupCamera,
       startupPollBounds,
-      startupPollsSnapshot,
       markMainMapLoaded,
       markMainMapReady,
       activeMainIntent,
@@ -61,7 +59,6 @@ export const useSearchScreenAppEntryPlaneRuntime = () => {
       startupCamera,
       startupLocationSnapshot,
       startupPollBounds,
-      startupPollsSnapshot,
       userLocation,
       userLocationRef,
     ]

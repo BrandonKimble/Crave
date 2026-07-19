@@ -7,15 +7,11 @@ import type { UsePollsPanelSpecOptions } from '../../overlays/panels/runtime/pol
 
 export type AppRouteDynamicSceneInputRuntime = {
   pollBounds: UsePollsPanelSpecOptions['bounds'];
-  startupPollsSnapshot: UsePollsPanelSpecOptions['bootstrapSnapshot'];
-  userLocation: UsePollsPanelSpecOptions['userLocation'];
   searchInteractionRef: UsePollsPanelSpecOptions['interactionRef'];
 };
 
 export const EMPTY_APP_ROUTE_DYNAMIC_SCENE_INPUT_RUNTIME: AppRouteDynamicSceneInputRuntime = {
   pollBounds: null,
-  startupPollsSnapshot: null,
-  userLocation: null,
   searchInteractionRef: undefined,
 };
 
@@ -23,18 +19,13 @@ export const areAppRouteDynamicSceneInputRuntimesEqual = (
   left: AppRouteDynamicSceneInputRuntime,
   right: AppRouteDynamicSceneInputRuntime
 ): boolean =>
-  left.pollBounds === right.pollBounds &&
-  left.startupPollsSnapshot === right.startupPollsSnapshot &&
-  left.userLocation === right.userLocation &&
-  left.searchInteractionRef === right.searchInteractionRef;
+  left.pollBounds === right.pollBounds && left.searchInteractionRef === right.searchInteractionRef;
 
 export type AppRoutePollsDynamicSceneInputRuntime = AppRouteDynamicSceneInputRuntime;
 
 export const EMPTY_APP_ROUTE_POLLS_DYNAMIC_SCENE_INPUT_RUNTIME: AppRoutePollsDynamicSceneInputRuntime =
   {
     pollBounds: null,
-    startupPollsSnapshot: null,
-    userLocation: null,
     searchInteractionRef: undefined,
   };
 
@@ -42,17 +33,12 @@ export const areAppRoutePollsDynamicSceneInputRuntimesEqual = (
   left: AppRoutePollsDynamicSceneInputRuntime,
   right: AppRoutePollsDynamicSceneInputRuntime
 ): boolean =>
-  left.pollBounds === right.pollBounds &&
-  left.startupPollsSnapshot === right.startupPollsSnapshot &&
-  left.userLocation === right.userLocation &&
-  left.searchInteractionRef === right.searchInteractionRef;
+  left.pollBounds === right.pollBounds && left.searchInteractionRef === right.searchInteractionRef;
 
 export const selectAppRoutePollsDynamicSceneInputRuntime = (
   runtime: AppRouteDynamicSceneInputRuntime
 ): AppRoutePollsDynamicSceneInputRuntime => ({
   pollBounds: runtime.pollBounds,
-  startupPollsSnapshot: runtime.startupPollsSnapshot,
-  userLocation: runtime.userLocation,
   searchInteractionRef: runtime.searchInteractionRef,
 });
 

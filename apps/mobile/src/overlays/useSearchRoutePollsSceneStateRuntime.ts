@@ -22,16 +22,12 @@ type UseSearchRoutePollsSceneStateRuntimeArgs = {
     isPersistentPollLane: boolean;
   };
   pollBounds: UsePollsPanelSpecOptions['bounds'];
-  startupPollsSnapshot: UsePollsPanelSpecOptions['bootstrapSnapshot'];
-  userLocation: UsePollsPanelSpecOptions['userLocation'];
   interactionRef: UsePollsPanelSpecOptions['interactionRef'];
 };
 
 export type SearchRoutePollsSceneStateRuntime = {
   visible: boolean;
   bounds: UsePollsPanelSpecOptions['bounds'];
-  bootstrapSnapshot: UsePollsPanelSpecOptions['bootstrapSnapshot'];
-  userLocation: UsePollsPanelSpecOptions['userLocation'];
   interactionRef: UsePollsPanelSpecOptions['interactionRef'];
   params: UseSearchRoutePollsSceneStateRuntimeArgs['pollOverlayParams'];
   mode: PollsPanelMode;
@@ -50,8 +46,6 @@ export const createSearchRoutePollsSceneStateRuntime = ({
   dockedPollsRestoreIntent,
   overlayVisibilityState,
   pollBounds,
-  startupPollsSnapshot,
-  userLocation,
   interactionRef,
 }: UseSearchRoutePollsSceneStateRuntimeArgs): SearchRoutePollsSceneStateRuntime => {
   const mode: PollsPanelMode = 'docked';
@@ -72,8 +66,6 @@ export const createSearchRoutePollsSceneStateRuntime = ({
   return {
     visible: isPersistentPollsVisible,
     bounds: pollBounds,
-    bootstrapSnapshot: startupPollsSnapshot,
-    userLocation,
     interactionRef,
     params: pollOverlayParams,
     mode,
@@ -93,8 +85,6 @@ export const useSearchRoutePollsSceneStateRuntime = ({
   dockedPollsRestoreIntent,
   overlayVisibilityState,
   pollBounds,
-  startupPollsSnapshot,
-  userLocation,
   interactionRef,
 }: UseSearchRoutePollsSceneStateRuntimeArgs): SearchRoutePollsSceneStateRuntime => {
   return React.useMemo(
@@ -106,8 +96,6 @@ export const useSearchRoutePollsSceneStateRuntime = ({
         dockedPollsRestoreIntent,
         overlayVisibilityState,
         pollBounds,
-        startupPollsSnapshot,
-        userLocation,
         interactionRef,
       }),
     [
@@ -118,8 +106,6 @@ export const useSearchRoutePollsSceneStateRuntime = ({
       pollBounds,
       pollOverlayParams,
       sceneLayout,
-      startupPollsSnapshot,
-      userLocation,
     ]
   );
 };

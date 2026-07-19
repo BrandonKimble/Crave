@@ -209,14 +209,10 @@ export const useSearchRootRuntimeStageRuntime = ({
       pollBounds:
         overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootSharedSheetRuntimeLane
           .pollBounds,
-      startupPollsSnapshot: appEntryPlaneRuntime.startupPollsSnapshot,
-      userLocation: appEntryPlaneRuntime.userLocation,
       searchInteractionRef:
         sessionAssemblyRuntime.sessionRuntime.sessionPrimitivesLane.primitives.searchInteractionRef,
     }),
     [
-      appEntryPlaneRuntime.startupPollsSnapshot,
-      appEntryPlaneRuntime.userLocation,
       overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootSharedSheetRuntimeLane
         .pollBounds,
       sessionAssemblyRuntime.sessionRuntime.sessionPrimitivesLane.primitives.searchInteractionRef,

@@ -9,8 +9,6 @@ export type AppRoutePollsSceneState = UsePollsPanelSpecOptions;
 export type AppRoutePollsSceneBodySnapshot = Pick<
   AppRoutePollsSceneState,
   | 'bounds'
-  | 'bootstrapSnapshot'
-  | 'userLocation'
   | 'params'
   | 'initialSnapPoint'
   | 'mode'
@@ -25,10 +23,8 @@ export type AppRoutePollsSceneBodySnapshot = Pick<
 export type AppRoutePollsSceneHeaderModel = {
   title: string;
   headerAction: PollsPanelFeedRuntime['headerAction'];
-  marketKey: string | null;
-  marketName: string | null;
-  candidateLocalityName: string | null;
-  marketOverride: string | null;
+  /** §2 header verdict (null = "Polls in this area"); feeds creation's place label. */
+  placeName: string | null;
 } | null;
 
 export type AppRoutePollsSceneRuntime = {
@@ -67,8 +63,6 @@ export const arePollsSceneStatesEqual = (
 ): boolean =>
   left.visible === right.visible &&
   left.bounds === right.bounds &&
-  left.bootstrapSnapshot === right.bootstrapSnapshot &&
-  left.userLocation === right.userLocation &&
   left.params === right.params &&
   left.initialSnapPoint === right.initialSnapPoint &&
   left.mode === right.mode &&
@@ -94,10 +88,7 @@ export const arePollsSceneHeaderModelsEqual = (
   return (
     left.title === right.title &&
     left.headerAction === right.headerAction &&
-    left.marketKey === right.marketKey &&
-    left.marketName === right.marketName &&
-    left.candidateLocalityName === right.candidateLocalityName &&
-    left.marketOverride === right.marketOverride
+    left.placeName === right.placeName
   );
 };
 
@@ -111,13 +102,7 @@ const arePollsSceneHeaderContentModelsEqual = (
   if (!left || !right) {
     return false;
   }
-  return (
-    left.title === right.title &&
-    left.marketKey === right.marketKey &&
-    left.marketName === right.marketName &&
-    left.candidateLocalityName === right.candidateLocalityName &&
-    left.marketOverride === right.marketOverride
-  );
+  return left.title === right.title && left.placeName === right.placeName;
 };
 
 const markPollsSceneStateFieldDiff = (field: string, left: unknown, right: unknown): void => {
@@ -130,8 +115,6 @@ const resolvePollsSceneBodySnapshot = (
   snapshot: AppRoutePollsSceneState
 ): AppRoutePollsSceneBodySnapshot => ({
   bounds: snapshot.bounds,
-  bootstrapSnapshot: snapshot.bootstrapSnapshot,
-  userLocation: snapshot.userLocation,
   params: snapshot.params,
   initialSnapPoint: snapshot.initialSnapPoint,
   mode: snapshot.mode,
@@ -148,8 +131,6 @@ const arePollsSceneBodyRenderSnapshotsEqual = (
   right: AppRoutePollsSceneBodySnapshot
 ): boolean =>
   left.bounds === right.bounds &&
-  left.bootstrapSnapshot === right.bootstrapSnapshot &&
-  left.userLocation === right.userLocation &&
   left.params === right.params &&
   left.initialSnapPoint === right.initialSnapPoint &&
   left.mode === right.mode &&
@@ -220,16 +201,6 @@ class AppRoutePollsSceneController implements AppRoutePollsSceneRuntime {
     }
     markPollsSceneStateFieldDiff('visible', this.sceneSnapshot.visible, snapshot.visible);
     markPollsSceneStateFieldDiff('bounds', this.sceneSnapshot.bounds, snapshot.bounds);
-    markPollsSceneStateFieldDiff(
-      'bootstrapSnapshot',
-      this.sceneSnapshot.bootstrapSnapshot,
-      snapshot.bootstrapSnapshot
-    );
-    markPollsSceneStateFieldDiff(
-      'userLocation',
-      this.sceneSnapshot.userLocation,
-      snapshot.userLocation
-    );
     markPollsSceneStateFieldDiff('params', this.sceneSnapshot.params, snapshot.params);
     markPollsSceneStateFieldDiff(
       'initialSnapPoint',
