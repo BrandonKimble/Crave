@@ -919,12 +919,17 @@ const RestaurantPersistentHeaderExtras = React.memo(
       [transitionProgress]
     );
 
+    // Location-centric saves (master plan §7): the profile's focus target is
+    // its displayLocation (the tapped/selected location the hydration stamps) —
+    // the heart save carries that location so ListDetail pins exactly it.
+    const focusedLocationId =
+      restaurant?.displayLocation?.locationId ?? restaurant?.restaurantLocationId ?? null;
     const handleToggleFavorite = React.useCallback(() => {
       if (!restaurantId) {
         return;
       }
-      onToggleFavorite?.(restaurantId);
-    }, [onToggleFavorite, restaurantId]);
+      onToggleFavorite?.(restaurantId, focusedLocationId);
+    }, [focusedLocationId, onToggleFavorite, restaurantId]);
 
     // W3 universal share modal replaces the ad-hoc OS share sheet (the sheet is
     // still reachable inside the modal as the "Share via…" row).

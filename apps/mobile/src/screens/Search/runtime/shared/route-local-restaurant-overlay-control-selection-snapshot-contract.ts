@@ -11,7 +11,7 @@ export type RouteLocalRestaurantOverlayControlSelectionSnapshot = {
   shouldSuppressRestaurantOverlay: boolean;
   shouldFreezeRestaurantPanelContent: boolean;
   shouldEnableRestaurantOverlayInteraction: boolean;
-  onToggleFavorite: (id: string) => void;
+  onToggleFavorite: (id: string, locationId?: string | null) => void;
   closeRestaurantProfile: () => void;
 };
 

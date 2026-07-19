@@ -14,6 +14,11 @@ export type AppOverlaySaveListType = 'restaurant' | 'dish';
 export type AppOverlaySaveListTarget = {
   restaurantId?: string;
   connectionId?: string;
+  /** Location-centric saves (master plan §7): the IN-CONTEXT location the save
+   *  was triggered from (row displayLocation / dish restaurantLocationId /
+   *  profile focus). Rides the addItem/favorite payload so ListDetail renders
+   *  exactly the saved pin. */
+  locationId?: string | null;
 };
 
 export type AppOverlayRouteRole = 'topLevel' | 'child' | 'modalExtension' | 'shell';

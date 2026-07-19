@@ -187,10 +187,17 @@ export const favoriteListsService = {
   },
   // Save-sheet toolkit: `note` rides the add. A `connectionId` sent to a
   // RESTAURANT list is resolved server-side to that connection's restaurant
-  // (the §8.8 dish→restaurant side flip).
+  // (the §8.8 dish→restaurant side flip). `locationId` (master plan §7) is the
+  // in-context saved location — the API validates it belongs to the item's
+  // restaurant and ListDetail renders exactly that pin.
   async addItem(
     listId: string,
-    payload: { restaurantId?: string; connectionId?: string; note?: string }
+    payload: {
+      restaurantId?: string;
+      connectionId?: string;
+      locationId?: string;
+      note?: string;
+    }
   ) {
     const response = await api.post(`/favorites/lists/${listId}/items`, payload);
     return response.data;

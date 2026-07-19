@@ -21,8 +21,18 @@ export const favoritesService = {
     const response = await api.get<Favorite[]>('/favorites', { signal: options.signal });
     return response.data;
   },
-  async add(entityId: string, entityType: FavoriteEntityType): Promise<Favorite> {
-    const response = await api.post<Favorite>('/favorites', { entityId, entityType });
+  // locationId (master plan §7): the in-context saved location for RESTAURANT
+  // favorites — the API validates it belongs to the favorited restaurant.
+  async add(
+    entityId: string,
+    entityType: FavoriteEntityType,
+    locationId?: string | null
+  ): Promise<Favorite> {
+    const response = await api.post<Favorite>('/favorites', {
+      entityId,
+      entityType,
+      ...(locationId ? { locationId } : {}),
+    });
     return response.data;
   },
   async remove(favoriteId: string): Promise<void> {

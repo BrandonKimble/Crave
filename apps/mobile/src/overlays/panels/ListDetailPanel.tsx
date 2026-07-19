@@ -1039,7 +1039,10 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
               rank={index + 1}
               qualityColor={getMarkerColorForRestaurant(restaurant)}
               isLiked={false}
-              onSavePress={getRestaurantSaveHandler(restaurant.restaurantId)}
+              onSavePress={getRestaurantSaveHandler(
+                restaurant.restaurantId,
+                restaurant.restaurantLocationId ?? restaurant.displayLocation?.locationId ?? null
+              )}
               openRestaurantProfile={openRestaurantProfileFromList}
               openScoreInfo={openScoreInfo}
               primaryFoodTerm={null}
@@ -1066,7 +1069,7 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
             qualityColor={getMarkerColorForDish(dish)}
             isLiked={false}
             restaurantForDish={restaurantsByIdForDishRows.get(dish.restaurantId)}
-            onSavePress={getDishSaveHandler(dish.connectionId)}
+            onSavePress={getDishSaveHandler(dish.connectionId, dish.restaurantLocationId ?? null)}
             openRestaurantProfile={openRestaurantProfileFromList}
             openScoreInfo={openScoreInfo}
             note={dish.note ?? null}

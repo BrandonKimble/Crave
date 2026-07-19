@@ -363,7 +363,7 @@ export class ListResultsAssembler {
     const dishes = isRestaurantAxis
       ? []
       : orderExplicitly(exec.dishes, (d) => d.connectionId).map((dish) => ({
-          ...this.projectSavedLocation(
+          ...this.projectSavedLocationOntoDishRow(
             dish,
             savedLocationByAxisId.get(dish.connectionId),
           ),
@@ -373,7 +373,7 @@ export class ListResultsAssembler {
     const restaurants = isRestaurantAxis
       ? orderExplicitly(exec.restaurants, (r) => r.restaurantId).map(
           (restaurant) => ({
-            ...this.projectSavedLocation(
+            ...this.projectSavedLocationOntoRestaurantRow(
               restaurant,
               savedLocationByAxisId.get(restaurant.restaurantId),
             ),
@@ -436,9 +436,39 @@ export class ListResultsAssembler {
     };
   }
 
+  /** Shared coordinate parse for the saved-pin projections: null unless the
+   *  saved location has finite lat/lng. */
+  private resolveSavedCoordinate(
+    saved:
+      | {
+          latitude: unknown;
+          longitude: unknown;
+        }
+      | undefined,
+  ): { lat: number; lng: number } | null {
+    if (!saved) {
+      return null;
+    }
+    const lat = saved.latitude != null ? Number(saved.latitude) : null;
+    const lng = saved.longitude != null ? Number(saved.longitude) : null;
+    if (
+      lat == null ||
+      lng == null ||
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lng)
+    ) {
+      return null;
+    }
+    return { lat, lng };
+  }
+
   /** Location-centric saves (master plan §7): the saved location REPLACES the
-   *  row's display location + array — ListDetail shows exactly the saved pin. */
-  private projectSavedLocation<
+   *  restaurant row's display location + array — ListDetail shows exactly the
+   *  saved pin. Skipped when the saved location lacks coordinates OR a
+   *  googlePlaceId: the mobile pin resolver (resolveRestaurantMapLocations →
+   *  isValidMapLocation) rejects placeId-less locations, so projecting one
+   *  would ERASE the row's pin instead of moving it. */
+  private projectSavedLocationOntoRestaurantRow<
     T extends {
       restaurantId: string;
       latitude?: number | null;
@@ -461,17 +491,8 @@ export class ListResultsAssembler {
         }
       | undefined,
   ): T {
-    if (!saved) {
-      return row;
-    }
-    const lat = saved.latitude != null ? Number(saved.latitude) : null;
-    const lng = saved.longitude != null ? Number(saved.longitude) : null;
-    if (
-      lat == null ||
-      lng == null ||
-      !Number.isFinite(lat) ||
-      !Number.isFinite(lng)
-    ) {
+    const coordinate = this.resolveSavedCoordinate(saved);
+    if (!saved || !coordinate || !saved.googlePlaceId) {
       return row;
     }
     const savedDisplayLocation = {
@@ -479,20 +500,53 @@ export class ListResultsAssembler {
         ? row.displayLocation
         : {}),
       locationId: saved.locationId,
-      googlePlaceId: saved.googlePlaceId ?? null,
-      latitude: lat,
-      longitude: lng,
+      googlePlaceId: saved.googlePlaceId,
+      latitude: coordinate.lat,
+      longitude: coordinate.lng,
       address: saved.address ?? null,
     };
     return {
       ...row,
-      latitude: lat,
-      longitude: lng,
+      latitude: coordinate.lat,
+      longitude: coordinate.lng,
       address: saved.address ?? row.address ?? null,
       restaurantLocationId: saved.locationId,
       displayLocation: savedDisplayLocation,
       locations: [savedDisplayLocation],
       locationCount: 1,
+    };
+  }
+
+  /** Dish-axis twin of the projection. FoodResult rows carry their map pin as
+   *  restaurantLatitude/restaurantLongitude (+ restaurantLocationId) — NOT
+   *  latitude/longitude/displayLocation — so the override targets those fields
+   *  (the mobile dish-pin read model consumes exactly them). */
+  private projectSavedLocationOntoDishRow<
+    T extends {
+      connectionId: string;
+      restaurantLocationId?: string | null;
+      restaurantLatitude?: number | null;
+      restaurantLongitude?: number | null;
+    },
+  >(
+    row: T,
+    saved:
+      | {
+          locationId: string;
+          latitude: unknown;
+          longitude: unknown;
+        }
+      | undefined,
+  ): T {
+    const coordinate = this.resolveSavedCoordinate(saved);
+    if (!saved || !coordinate) {
+      return row;
+    }
+    return {
+      ...row,
+      restaurantLocationId: saved.locationId,
+      restaurantLatitude: coordinate.lat,
+      restaurantLongitude: coordinate.lng,
     };
   }
 

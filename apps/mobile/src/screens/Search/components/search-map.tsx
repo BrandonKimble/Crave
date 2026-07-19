@@ -46,7 +46,10 @@ import { isLngLatTuple } from '../utils/geo';
 import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
 import { useSearchMapNativeRenderOwner } from './hooks/use-search-map-native-render-owner';
 import type { MapQueryBudget } from '../runtime/map/map-query-budget';
-import { getSearchMapSelectionFocus } from '../runtime/map/search-map-selection-focus-store';
+import {
+  getSearchMapSelectionFocus,
+  subscribeSearchMapSelectionFocus,
+} from '../runtime/map/search-map-selection-focus-store';
 import type { SearchMapPresentationScene } from '../runtime/map/map-presentation-runtime-contract';
 import type { MapMotionPressureController } from '../runtime/map/map-motion-pressure';
 import {
@@ -1646,6 +1649,14 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const nativeDesiredDotFeatures = presentedDotSourceStore;
   const authoritativeSelectedRestaurantId = selectedRestaurantId;
   const effectiveSelectedRestaurantId = authoritativeSelectedRestaurantId;
+  // Subscribed read (red-team b1f773cf): a sibling-pin tap on the ALREADY
+  // selected restaurant updates the focus without changing
+  // selectedRestaurantId — useSyncExternalStore makes the highlight memo
+  // recompute on that store write instead of serving the stale nearest pick.
+  const selectionFocus = React.useSyncExternalStore(
+    subscribeSearchMapSelectionFocus,
+    getSearchMapSelectionFocus
+  );
   const highlightedMarkerKeys = React.useMemo(() => {
     if (!effectiveSelectedRestaurantId) {
       return [];
@@ -1688,9 +1699,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
       seenMarkerKeys.add(marker.markerKey);
       dedupedMarkers.push(marker);
     }
-    const focus = getSearchMapSelectionFocus();
     const focusCoordinate =
-      focus && focus.restaurantId === effectiveSelectedRestaurantId ? focus.coordinate : null;
+      selectionFocus && selectionFocus.restaurantId === effectiveSelectedRestaurantId
+        ? selectionFocus.coordinate
+        : null;
     if (!focusCoordinate) {
       return [dedupedMarkers[0].markerKey];
     }
@@ -1712,6 +1724,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     effectiveSelectedRestaurantId,
     presentedDotSourceStore,
     presentedPinSourceStore,
+    selectionFocus,
   ]);
   const highlightedMarkerKey = highlightedMarkerKeys[0] ?? null;
   // The dorm/wake participant set is DERIVED natively from the style (every layer on a

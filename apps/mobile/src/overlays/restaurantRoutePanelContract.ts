@@ -10,12 +10,12 @@ type AnimatedStyle = ReanimatedAnimatedStyle<ViewStyle>;
 export type RestaurantRoutePanelContract = {
   data: RestaurantOverlayData | null;
   onRequestClose: () => void;
-  onToggleFavorite: (id: string) => void;
+  onToggleFavorite: (id: string, locationId?: string | null) => void;
 };
 
 export type RestaurantRoutePanelDraft = {
   data: RestaurantOverlayData | null;
-  onToggleFavorite: (id: string) => void;
+  onToggleFavorite: (id: string, locationId?: string | null) => void;
 };
 
 export type GlobalRestaurantRouteDraft = {
@@ -34,7 +34,7 @@ export const createRestaurantRoutePanelDraft = ({
   onToggleFavorite,
 }: {
   data: RestaurantOverlayData | null;
-  onToggleFavorite: (id: string) => void;
+  onToggleFavorite: (id: string, locationId?: string | null) => void;
 }): RestaurantRoutePanelDraft => ({
   data,
   onToggleFavorite,

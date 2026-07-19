@@ -651,14 +651,18 @@ export class FavoriteListsService {
       }
     }
 
+    // The existence check doubles as the restaurant resolution for the
+    // locationId validation below — one query, not two.
+    let connectionRestaurantId: string | null = null;
     if (connectionId) {
-      const exists = await this.prisma.connection.findUnique({
+      const connection = await this.prisma.connection.findUnique({
         where: { connectionId },
-        select: { connectionId: true },
+        select: { connectionId: true, restaurantId: true },
       });
-      if (!exists) {
+      if (!connection) {
         throw new NotFoundException('Connection not found');
       }
+      connectionRestaurantId = connection.restaurantId;
     }
 
     // Location-centric saves (master plan §7): validate the saved location
@@ -669,16 +673,7 @@ export class FavoriteListsService {
         where: { locationId: dto.locationId },
         select: { locationId: true, restaurantId: true },
       });
-      const expectedRestaurantId =
-        restaurantId ??
-        (connectionId
-          ? (
-              await this.prisma.connection.findUnique({
-                where: { connectionId },
-                select: { restaurantId: true },
-              })
-            )?.restaurantId
-          : null);
+      const expectedRestaurantId = restaurantId ?? connectionRestaurantId;
       if (
         !location ||
         !expectedRestaurantId ||

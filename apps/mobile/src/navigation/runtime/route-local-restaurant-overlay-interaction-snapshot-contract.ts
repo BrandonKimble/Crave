@@ -2,7 +2,7 @@ const NOOP = (): void => undefined;
 const NOOP_TOGGLE_FAVORITE = (_id: string): void => undefined;
 
 export type RouteLocalRestaurantOverlayInteractionSnapshot = {
-  onToggleFavorite: (id: string) => void;
+  onToggleFavorite: (id: string, locationId?: string | null) => void;
   closeRestaurantProfile: () => void;
 };
 

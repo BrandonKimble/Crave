@@ -38,9 +38,11 @@ export type AppRouteOverlayCommandActions = {
   setSaveSheetState: (next: React.SetStateAction<AppRouteSaveSheetState>) => void;
   restoreSaveSheetState: (state: AppRouteSaveSheetState) => void;
   restoreDockedPolls: (args?: { snap?: Exclude<OverlaySheetSnap, 'hidden'> }) => void;
-  getDishSaveHandler: (connectionId: string) => () => void;
-  getRestaurantSaveHandler: (restaurantId: string) => () => void;
-  handleRestaurantSavePress: (restaurantId: string) => void;
+  // locationId = the in-context location the save trigger rendered (master
+  // plan §7) — rides the save-sheet target into the add payloads.
+  getDishSaveHandler: (connectionId: string, locationId?: string | null) => () => void;
+  getRestaurantSaveHandler: (restaurantId: string, locationId?: string | null) => () => void;
+  handleRestaurantSavePress: (restaurantId: string, locationId?: string | null) => void;
   handleCloseSaveSheet: () => void;
 };
 
@@ -145,33 +147,38 @@ class AppRouteOverlayCommandController {
       const resolvedSnap = snap ?? 'collapsed';
       this.routeOverlayRouteCommandRuntime.restoreDockedPolls({ snap: resolvedSnap });
     },
-    getDishSaveHandler: (connectionId) => {
-      let handler = this.dishSaveHandlers.get(connectionId);
+    getDishSaveHandler: (connectionId, locationId) => {
+      // Cache key includes the location: the same connection can render at a
+      // different in-context location across worlds, and a stale cached
+      // handler would save the wrong pin.
+      const handlerKey = `${connectionId}|${locationId ?? ''}`;
+      let handler = this.dishSaveHandlers.get(handlerKey);
       if (!handler) {
         handler = () => {
           this.openSaveSheetRoute({
             listType: 'dish',
-            target: { connectionId },
+            target: { connectionId, locationId: locationId ?? null },
           });
         };
-        this.dishSaveHandlers.set(connectionId, handler);
+        this.dishSaveHandlers.set(handlerKey, handler);
       }
       return handler;
     },
-    getRestaurantSaveHandler: (restaurantId) => {
-      let handler = this.restaurantSaveHandlers.get(restaurantId);
+    getRestaurantSaveHandler: (restaurantId, locationId) => {
+      const handlerKey = `${restaurantId}|${locationId ?? ''}`;
+      let handler = this.restaurantSaveHandlers.get(handlerKey);
       if (!handler) {
         handler = () => {
-          this.actions.handleRestaurantSavePress(restaurantId);
+          this.actions.handleRestaurantSavePress(restaurantId, locationId);
         };
-        this.restaurantSaveHandlers.set(restaurantId, handler);
+        this.restaurantSaveHandlers.set(handlerKey, handler);
       }
       return handler;
     },
-    handleRestaurantSavePress: (restaurantId) => {
+    handleRestaurantSavePress: (restaurantId, locationId) => {
       this.openSaveSheetRoute({
         listType: 'restaurant',
-        target: { restaurantId },
+        target: { restaurantId, locationId: locationId ?? null },
       });
     },
     handleCloseSaveSheet: () => {

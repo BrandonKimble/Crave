@@ -51,8 +51,8 @@ export type SearchResultsPanelEnvironment = {
   toggleIncludeSimilar: () => void;
   togglePriceSelector: () => void;
   shouldDisableSearchBlur: boolean;
-  getDishSaveHandler: (connectionId: string) => () => void;
-  getRestaurantSaveHandler: (restaurantId: string) => () => void;
+  getDishSaveHandler: (connectionId: string, locationId?: string | null) => () => void;
+  getRestaurantSaveHandler: (restaurantId: string, locationId?: string | null) => () => void;
   stableOpenRestaurantProfileFromResults: (
     restaurant: RestaurantResult,
     source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'

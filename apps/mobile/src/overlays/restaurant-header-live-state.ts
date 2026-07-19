@@ -20,7 +20,7 @@ import type { RestaurantOverlayData } from './restaurantRoutePanelContract';
 export type RestaurantHeaderLiveState = {
   /** The winner's (freeze-retained) panel data — null on the pre-data seed frame. */
   data: RestaurantOverlayData | null;
-  onToggleFavorite: (id: string) => void;
+  onToggleFavorite: (id: string, locationId?: string | null) => void;
   onRequestClose: () => void;
 };
 

@@ -112,7 +112,7 @@ export const useSearchResultsPanelCardRenderRuntime = ({
           qualityColor={qualityColor}
           isLiked={false}
           restaurantForDish={restaurantForDish}
-          onSavePress={getDishSaveHandler(item.connectionId)}
+          onSavePress={getDishSaveHandler(item.connectionId, item.restaurantLocationId ?? null)}
           openRestaurantProfile={stableOpenRestaurantProfileFromResults}
           openScoreInfo={openScoreInfo}
         />
@@ -168,7 +168,10 @@ export const useSearchResultsPanelCardRenderRuntime = ({
           qualityColor={qualityColor}
           preparedDescriptor={preparedDescriptor}
           isLiked={false}
-          onSavePress={getRestaurantSaveHandler(restaurant.restaurantId)}
+          onSavePress={getRestaurantSaveHandler(
+            restaurant.restaurantId,
+            restaurant.restaurantLocationId ?? restaurant.displayLocation?.locationId ?? null
+          )}
           openRestaurantProfile={stableOpenRestaurantProfileFromResults}
           openScoreInfo={openScoreInfo}
           primaryFoodTerm={primaryFoodTerm}

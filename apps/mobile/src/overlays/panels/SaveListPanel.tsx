@@ -144,20 +144,24 @@ registerPersistentHeaderDescriptor('saveList', {
 const resolveTargetForSide = (
   side: FavoriteListType,
   target: AppOverlaySaveListTarget | null
-): { restaurantId?: string; connectionId?: string } | null => {
+): { restaurantId?: string; connectionId?: string; locationId?: string } | null => {
   if (!target) {
     return null;
   }
+  // Location-centric saves (master plan §7): the trigger's in-context location
+  // rides EVERY resolved target — the dish→restaurant side flip preserves it
+  // (the dish's location IS a location of its restaurant; the API validates).
+  const locationId = target.locationId ?? undefined;
   if (side === 'restaurant') {
     if (target.restaurantId) {
-      return { restaurantId: target.restaurantId };
+      return { restaurantId: target.restaurantId, locationId };
     }
     if (target.connectionId) {
-      return { connectionId: target.connectionId };
+      return { connectionId: target.connectionId, locationId };
     }
     return null;
   }
-  return target.connectionId ? { connectionId: target.connectionId } : null;
+  return target.connectionId ? { connectionId: target.connectionId, locationId } : null;
 };
 
 type SaveListRowProps = {

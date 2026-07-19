@@ -60,8 +60,8 @@ export class SearchOverlayLocalRestaurantSheetControlSelectionStateController {
 
   public readonly outputAuthority: SearchOverlayLocalRestaurantSheetControlSelectionAuthority;
 
-  private readonly onToggleFavorite = (id: string): void => {
-    this.interactionSelectionSnapshot.onToggleFavorite(id);
+  private readonly onToggleFavorite = (id: string, locationId?: string | null): void => {
+    this.interactionSelectionSnapshot.onToggleFavorite(id, locationId);
   };
 
   private readonly closeRestaurantProfile = (): void => {

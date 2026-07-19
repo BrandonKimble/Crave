@@ -224,12 +224,12 @@ export class SearchQueryBuilder {
       locationWherePreview,
     );
 
-    const { sql: selectedOrderSql, preview: distanceOrderPreview } =
+    const { sql: selectedOrderSql, preview: selectedOrderPreview } =
       this.buildDistanceOrder(searchCenter, 'fl');
 
     const selectedLocationsCte = this.buildSelectedLocationsCte(
       selectedOrderSql,
-      distanceOrderPreview,
+      selectedOrderPreview,
     );
 
     const restaurantVoteTotalsCte = this.buildRestaurantVoteTotalsCte();
@@ -608,12 +608,12 @@ filtered_restaurants AS (
       locationWherePreview,
     );
 
-    const { sql: selectedOrderSql, preview: distanceOrderPreview } =
+    const { sql: selectedOrderSql, preview: selectedOrderPreview } =
       this.buildDistanceOrder(searchCenter, 'fl');
 
     const selectedLocationsCte = this.buildSelectedLocationsCte(
       selectedOrderSql,
-      distanceOrderPreview,
+      selectedOrderPreview,
     );
 
     const restaurantVoteTotalsCte = this.buildRestaurantVoteTotalsCte();
@@ -1400,20 +1400,50 @@ geographic_restaurants AS (
     return { sql, preview };
   }
 
+  /**
+   * The DISTINCT ON (restaurant_id) representative-location order. Fame-pin
+   * interim (master plan §7 / ledger Leg 2): a location INSIDE the
+   * restaurant's scoring territory (core_public_entity_scores.scoring_market_key
+   * → core_markets geometry) is preferred BEFORE distance-to-center — the pin
+   * that earned the score leads; distance stays the tiebreak, updated_at the
+   * final determinism anchor. Re-keyed to the source anchor in Phase B.
+   */
   private buildDistanceOrder(
     searchCenter: { lat: number; lng: number } | null | undefined,
     alias: string,
-  ): { sql: Prisma.Sql; preview: string | null } {
+  ): { sql: Prisma.Sql; preview: string } {
+    const scoringTerritorySql = Prisma.sql`EXISTS (
+    SELECT 1
+    FROM core_public_entity_scores pes
+    JOIN core_markets m ON m.market_key = pes.scoring_market_key
+    WHERE pes.subject_type = 'restaurant'
+      AND pes.subject_id = ${Prisma.raw(alias)}.restaurant_id
+      AND m.geometry IS NOT NULL
+      AND ST_Covers(
+        m.geometry,
+        ST_SetSRID(
+          ST_MakePoint(
+            ${Prisma.raw(alias)}.longitude::double precision,
+            ${Prisma.raw(alias)}.latitude::double precision
+          ),
+          4326
+        )
+      )
+  ) DESC`;
+    const scoringTerritoryPreview = `EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN core_markets m ON m.market_key = pes.scoring_market_key WHERE pes.subject_type = 'restaurant' AND pes.subject_id = ${alias}.restaurant_id AND m.geometry IS NOT NULL AND ST_Covers(m.geometry, ST_SetSRID(ST_MakePoint(${alias}.longitude::double precision, ${alias}.latitude::double precision), 4326))) DESC`;
+
     if (
       !searchCenter ||
       !Number.isFinite(searchCenter.lat) ||
       !Number.isFinite(searchCenter.lng)
     ) {
       return {
-        sql: Prisma.sql`${Prisma.raw(alias)}.restaurant_id, ${Prisma.raw(
+        sql: Prisma.sql`${Prisma.raw(
+          alias,
+        )}.restaurant_id, ${scoringTerritorySql}, ${Prisma.raw(
           alias,
         )}.updated_at DESC`,
-        preview: null,
+        preview: `${alias}.restaurant_id, ${scoringTerritoryPreview}, ${alias}.updated_at DESC`,
       };
     }
 
@@ -1425,16 +1455,16 @@ geographic_restaurants AS (
     return {
       sql: Prisma.sql`${Prisma.raw(
         alias,
-      )}.restaurant_id, ${distanceSql} ASC, ${Prisma.raw(
+      )}.restaurant_id, ${scoringTerritorySql}, ${distanceSql} ASC, ${Prisma.raw(
         alias,
       )}.updated_at DESC`,
-      preview: distancePreview,
+      preview: `${alias}.restaurant_id, ${scoringTerritoryPreview}, ${distancePreview} ASC, ${alias}.updated_at DESC`,
     };
   }
 
   private buildSelectedLocationsCte(
     orderSql: Prisma.Sql,
-    distanceOrderPreview: string | null,
+    orderPreview: string,
   ): { sql: Prisma.Sql; preview: string } {
     const sql = Prisma.sql`
 selected_locations AS (
@@ -1448,9 +1478,7 @@ selected_locations AS (
 selected_locations AS (
   SELECT DISTINCT ON (fl.restaurant_id) fl.*
   FROM filtered_locations fl
-  ORDER BY fl.restaurant_id${
-    distanceOrderPreview ? `, ${distanceOrderPreview} ASC` : ''
-  }, fl.updated_at DESC
+  ORDER BY ${orderPreview}
 )`.trim();
 
     return { sql, preview };
