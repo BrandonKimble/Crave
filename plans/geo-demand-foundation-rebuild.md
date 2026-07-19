@@ -1,595 +1,770 @@
-# Geo/Demand Foundation Rebuild — From-Scratch Design of Record (v3)
+# Geo/Demand Foundation Rebuild — Design of Record (CONSOLIDATED EDITION)
 
-Status: **RATIFIED (owner, 2026-07-16)** — v3 red-teamed (2 independent agents +
-synthesizer pass), dispositions in §14. §13 resolved: (1) localized display +
-local-script alias kept; (2) big-place polls feed-only at that zoom, no push;
-(3) VOTERS_NEEDED = 15 ratified; (4) dual-write = one milestone, hard deletion
-date. Derived from requirements only;
-no decision preserves existing code; all data trashable. SUPERSEDES the market/
-demand/minting/poll-scheduling sections of plans/viewport-only-location-centric-
-plan.md; its Legs 1, 2, 6 are ratified inputs restated in §7–§8.
+Status: **RATIFIED (owner)** — consolidated 2026-07-16 from the wave-1/2/3
+design ledger (11 red-team passes, 3 exhaustive audits, cohesion pass,
+year-one projection). Base text below IS current truth; the amendment history
+is compacted in §20 (full ledger edition preserved in git history and the
+session archive). Derived from requirements only; no decision preserves
+existing code; all data trashable. SUPERSEDES the market/demand/minting/
+poll-scheduling design everywhere; plans/viewport-only-location-centric-plan.md
+survives ONLY as the execution spec for search-side Legs 1–2 (referenced §7).
 
-## §0 The story (requirements)
+## §0 Requirements
 
 R1. The map is the query — whatever is in view, any zoom, anywhere on earth.
-R2. The header always names where you look, or honestly says "this area"; never
-    waits on a vendor; never confidently wrong.
+R2. The header always names where you look at the scale you're thinking, or
+honestly says "this area"; never waits on a vendor; never confidently wrong.
 R3. Nothing a user does is wasted — every act (including a paid vendor probe)
-    permanently improves the app's knowledge. Retroactively.
+permanently improves the app's knowledge. Retroactively.
 R4. Polls bootstrap any place; Engines collect where attached. Same laws
-    everywhere on earth.
-R5. A place's first content is consensus content — and it must be content that
-    gets ANSWERED, not just wanted (ghost polls are worse than none).
+everywhere on earth.
+R5. A place's first content is consensus content — content that gets ANSWERED,
+not just wanted (ghost polls are worse than none).
 R6. No single act is loud; influence accumulates across distinct people.
 R7. Equal collection effort; audience equalized by math; passion-per-audience
-    is the signal.
-R8. Solo-dev economics: TomTom cheap pool ~20k/mo (reverse/geocode), scarce pool
-    ~2.5k/mo (polygons); Google Places per-verification; LLM costs; heavy work
-    scheduled, never in-request.
-R9. No arbitrary thresholds. Capacity + queues + control loops; constants are
-    meaning-constants (scale-free statements about the product).
-R10. Observe at write; judge at read — for judgments AND for identity. History
-    survives every future re-weighting, re-definition, and merge.
+is the signal.
+R8. Solo-dev economics: TomTom cheap pool ~20k/mo, scarce polygon pool
+~2.5k/mo; Google Places per-verification; LLM costs; heavy work scheduled,
+never in-request.
+R9. No chosen numbers. Every quantity is classified by the Constants
+Constitution (§16); capacity + queues + control loops, never thresholds.
+R10. Observe at write; judge at read — for judgments AND identity. History
+survives every future re-weighting, re-definition, and merge. Corollary
+(closed-loop measurement law, §16): any estimate whose consumer gates its
+own observations must carry an exploration mechanism.
 
 ---
 
-## §1 Place Catalog: a containment DAG (no level enum)
+# PART I — Geography, Demand, Polls
 
-**places**: { placeId, name (+localized alias policy §13.1), providerLevelCode
-(OPEN vocabulary string: municipality, municipalitySubdivision, county,
-subdivision, country, … — stored, never switched on), parentPlaceIds[] (edges
-captured from the reverse-geocode response chain at creation — geometry is
-never used to derive hierarchy), countryCode, subdivisionCode?, centroid, bbox,
-timeZone (offline centroid→tz lookup at creation — load-bearing for §4 ticks),
-provider, providerPlaceId?, createdAt }. Tier-2 geometry lives in a side table
-**place_geometries** { placeId, polygon, providerBoundaryId, fetchedAt } — tier
-is explicit, the hot naming row stays lean.
+## §1 Place Catalog: a containment DAG
 
-- **Identity law** (silent-fork prevention): placeKey = (countryCode,
-  subdivisionCode?, providerLevelCode, normalized name); conflicting sketch
-  upserts bbox-merge; the provider's stable boundary id becomes an alias at
-  tier-2. Idempotent on placeKey.
-- **Roles are attachments**: any place hosts polls; every place accrues demand;
-  some places anchor sources/engines (§5). No place types, no capability flags.
-- Neighborhoods/boroughs/wards are first-class (the geocode chain supplies
-  them). Brooklyn exists. Chongqing's counties exist. French communes exist,
-  and their near-zero audience is handled by §4's yield loop, not by excluding
-  them.
-- US pre-seed (~19.5k municipalities, ~$50): tier-2 entries + parent edges;
-  ratified accelerant. The universal growth mechanism is §2.
+**places**: { placeId, name (localized display + local-script alias),
+providerLevelCode (OPEN string vocabulary — stored, never switched on),
+parentPlaceIds[] (edges from the reverse-geocode response chain at creation;
+geometry never derives hierarchy), countryCode, subdivisionCode?, centroid,
+bbox, timeZone (offline centroid→tz at creation), provider, providerPlaceId?,
+createdAt }. Tier-2 geometry in side table **place_geometries** { placeId,
+polygon, providerBoundaryId, fetchedAt }.
+
+- **Identity law**: placeKey = (countryCode, subdivisionCode?,
+  providerLevelCode, normalized name); sketch conflicts bbox-merge; the
+  provider's stable geometry id becomes an alias (LIVE-VALIDATED: identical id
+  returned by reverse and forward geocode for the same neighborhood).
+- **Roles are attachments**: any place hosts polls; every place accrues
+  demand; some anchor sources/engines (§5). No types, no capability flags.
+- Neighborhoods/boroughs/wards are first-class. LIVE-PROVEN: TomTom returns
+  the full chain (neighbourhood "Upper West Side"/"Hells Kitchen"/
+  "Williamsburg" → borough → city → county → state) with names, bboxes (via
+  forward geocode), and stable geometry ids.
+- US pre-seed: ~19.5k municipalities, ~$50 one-time (gazetteer names + TomTom
+  polygons, geometriesZoom-tamed) — an accelerant; §2 is the universal growth
+  mechanism. Neighborhoods are NOT in the seed; they enter lazily on first
+  attention.
 
 ## §2 Naming: observe every probe; judge subjecthood at read
 
-**Probes are observations — every probe result is written.** (Red-team fix: the
-old design discarded paid answers that failed the dominance test, causing
-unbounded re-probing over rural/ocean/region-zoom views.)
-
-- Reconciler, per settled viewport (background; reads NEVER wait):
-  1. If stored places / no-place observations already answer the anchors → done.
-  2. Probe budget: at most ⌊1/ATTENTION_FRACTION⌋ = 3 anchors per view (anchor
-     candidates: center + largest-uncovered-region points; the "remainder" is
-     approximated by candidate anchors not covered by known bboxes — stated,
-     not improvised).
-  3. Each probe (cheap pool) returns the full chain (neighborhood → city →
-     subdivision → country) + bboxes: **sketch every node in the chain
-     unconditionally** (name+bbox+parents+tz). "No place here" is recorded as a
-     region-scale observation (the probed viewport's bbox, 30d TTL) — not a
-     1km disc.
-- **Subjecthood is a read-time judgment** with SYMMETRIC commensurability:
-  - too small (covers < ATTENTION_FRACTION of the view) → not the subject;
-  - too big (view covers < ATTENTION_FRACTION of the place) → not the subject
-    either — descend the DAG to the commensurate node (street-zoom inside
-    Chongqing names the county/ward, not the 82,000km² municipality).
-  - Header: commensurate covering place's name, else "this area". Hysteresis:
-    commit on settle+dwell; enter/exit asymmetry so boundary zooms don't flap
-    (sim eye-check case in §12).
-- **Tier-2 promotion (polygon, scarce pool) — earned moments:** (a) poll
-  created there (the ONE blocking caller — spinner OK; in a cheap-pool drought
-  the poll is created against "this area near (lat,lng)" or a creator-typed
-  name, backfilled later — never blocked); (b) source/engine attached;
-  (c) DERIVED pre-fetch: credit + creditRate × Δt_to_next_tick ≥ 1 (no 0.8
-  constant); (d) batch seed; (e) frequent header-answering by a sketch joins
-  the promotion queue (the most-shown names earn precision first; until then,
-  when bbox dominance and the probe's point-answer disagree, prefer the
-  point-answer).
-- Negative cache regions, single-flight per cell, idempotent upserts, quota
-  ledger, graceful scarce-pool degradation (sketches keep working) carry over.
-- Viral stampede property: first probe sketches; all later resolves hit the
-  catalog. Self-extinguishing at every zoom by construction.
+- Reconciler per settled viewport (background; reads NEVER wait):
+  1. Stored places / no-place observations answer the anchors → done.
+  2. Probe budget: ≤ ⌊1/ATTENTION_FRACTION⌋ = 3 anchors per view (center +
+     largest-uncovered-region candidates).
+  3. **Sketch mechanics (live-verified)**: 1 reverse geocode returns the full
+     chain of names + geometry ids; +1 cheap forward geocode per
+     PREVIOUSLY-UNKNOWN node supplies its bbox (≤5, once ever per node
+     globally; all cheap pool). Every probe result is written — "no place
+     here" is a region-scale observation (probed bbox, 30d TTL).
+- **Subjecthood = read-time SYMMETRIC commensurability** (ATTENTION_FRACTION
+  = 1/3, "a view attends to ≤ ~3 places"): too small (< 1/3 of view) → not
+  the subject; too big (view < 1/3 of place) → descend the DAG to the
+  commensurate node (street zoom in Chongqing names the ward); equal-
+  commensurability descent tiebreak = coverage-of-view, then name-stability.
+- **Header** = commensurate covering place's name; when no commensurate node
+  exists, the smallest CONTAINING node (even over-scale); "this area" is
+  reserved for multi-place straddles and unnamed ground. Hysteresis: commit
+  on settle+dwell, enter/exit asymmetry (sim eye-check fixture).
+- **Tier-2 polygon promotion (scarce pool) — earned moments**: (a) poll
+  created there — the ONE blocking caller (spinner OK; in a cheap-pool
+  drought the poll is created against "this area near (lat,lng)" or a
+  creator-typed name, backfilled — never blocked); (b) source/engine
+  attached; (c) derived pre-fetch: credit + creditRate × Δt_to_tick ≥ 1;
+  (d) batch seed; (e) frequent header-answering joins the promotion queue
+  (until promoted, the probe's point-answer beats bbox dominance on
+  disagreement).
+- **The reconciler is a registered pacer lane** (dueAt = viewport settle,
+  latenessTolerance: "a header answer a day late is fine, a week is not" —
+  K1; single-flight cell = batch key) — its probe volume rides the same draw
+  ledger as everything else (no exceptions to one-pool-one-ledger).
+- Negative region cache, single-flight per cell, idempotent upserts,
+  graceful scarce-pool degradation. Viral stampede self-extinguishes:
+  first probe sketches; later resolves hit the catalog.
 
 ## §3 The Signals Ledger
 
-**signals**: { signalId, kind, subjectType (entity | term | none), subjectId?,
-subjectText?, geo bbox (ALWAYS a bbox; a point is a zero-area bbox), actorId
-(pseudonymous; the actorId→user mapping is a separate severable table — the
-deletion story), occurredAt, meta }. Append-only, IMMUTABLE (never updated,
-never rekeyed), permanent, monthly partitions.
+**signals**: { signalId, kind, subjectType (entity|term|none), subjectId?,
+subjectText?, geo bbox (ALWAYS a bbox; point = zero-area), actorId
+(pseudonymous; actorId→user mapping is a separate severable table = the
+deletion story), occurredAt, meta }. Append-only, IMMUTABLE, permanent,
+monthly partitions. A write failure never fails the user action.
 
-- **Kinds are ACTS, qualifiers are meta** (red-team fix — judgments were frozen
-  into the enum): search {resultCount, restaurantCount, cached, resolvedEntity},
-  autocomplete_selection, entity_view, favorite_added, poll_vote, poll_comment,
-  poll_created, **viewport_dwell** (subjectless attention — browsing IS demand;
-  geo + actor + dwell time). "Unresolved/low-result" are read-time derivations
-  from meta, re-definable forever.
-- **Identity is a judgment too**: entity merges never touch the ledger; readers
-  resolve subjectId through entity_redirects at read (merge-reversible, R10).
-- **Attribution law (written down, one law):** each signal is attributed to
-  (i) the smallest place CONTAINING its geo (you're inside it — plus nothing
-  else from the containment chain; ancestors get their mass via inherit-down,
-  not duplicate rows), and (ii) the coarsest catalog level(s) that TILE the
-  places CONTAINED in its geo (a US bbox → one `US` row; a Texas bbox → one
-  `TX` row; a metro bbox → its handful of towns). Containment, never
-  intersection — partial bbox clips credit nothing (kills sliver showers).
-- **Read-time inheritance (owner-ratified weight-1 semantics, made cheap):**
-  a place's demand = its own rows + ancestor rows at weight 1 (Waco = Waco
-  rows + TX rows + US rows). Every town in a statewide search's view is
-  influenced at full weight; storage is O(few) per signal; a place accrues
-  OWN-level rows only from attention at its own scale (Texas-scale polls only
-  from genuine Texas-scale attention — the hierarchy bomb is dead).
-- **Aggregate**: day × actor × place × subject × kind rollup, **incrementally
-  built** (append-only ledger ⇒ historical days immutable; only today rebuilds;
-  redirects applied at read) — the 15-min full-window delete+insert dies.
-- Ported readers (substrate swap, behavior kept): recent searches, autocomplete
-  popularity/affinity, query suggestions. Signal writes are fire-and-forget
-  (never fail the user action). Retention: permanent BY DESIGN; deletion =
-  severing the actor mapping.
+- **Kinds are ACTS; qualifiers are meta**: search {resultCount,
+  restaurantCount, cached, resolvedEntity}, autocomplete_selection,
+  entity_view, favorite_added, poll_vote, poll_comment, poll_created,
+  viewport_dwell (subjectless attention — browsing IS demand). "Unresolved/
+  low-result" are read-time derivations, re-definable forever.
+- **Identity is a judgment**: merges never touch the ledger; readers resolve
+  subjectId through entity_redirects at read.
+- **Attribution law**: each signal attributes to (i) the smallest place
+  CONTAINING its geo, and (ii) the coarsest catalog level(s) TILING the
+  places contained in its geo (US bbox → one US row; Texas bbox → one TX
+  row; metro bbox → its towns). Containment, never intersection.
+- **Read-time inheritance (weight-1 semantics)**: a place's demand = own rows
+  - ancestor rows at weight 1 (Waco = Waco + TX + US rows). Every town in a
+    statewide search is influenced at full weight; storage O(few) per signal. **The demand read is
+    a CONTAINMENT read with SET semantics**: a place's demand = its own rows +
+    its descendants' own rows + each DISTINCT ancestor row counted once
+    (multi-parent DAG paths never double-count; lazily minting a neighborhood
+    never steals its ancestor's stream — fixture: mint mid-window, city mass
+    invariant). **The engine read** treats the territory as one derived place:
+    Σ members' (own + descendants) + each distinct ancestor row ONCE for the
+    whole engine (engines at different DAG levels stay comparable — golden:
+    two engines, one statewide signal).
+- **Aggregate**: day × actor × place × subject × kind, INCREMENTAL (only
+  today rebuilds; history immutable; redirects applied at read). Recent
+  searches, autocomplete popularity/affinity, and query suggestions are
+  readers of this substrate. Anonymous actors: per-device actorIds.
 
-## §4 Demand readers
+## §4 The poll system (final form)
 
 **Demand mass** per (place, subject, window): Σ_actors log2(1 + Σ signals ·
-kindWeight · recencyWeight); kind weights = one read-side config (carried
-initial values; viewport_dwell starts small); recency 7d flat + 14d half-life.
-Curve kernel carried (saturating log per actor, gaussian cooldown recovery,
-surge-over-baseline). Anonymous actors: bucketed per-device actorIds.
+kindWeight · recencyWeight); recency 7d flat + 14d half-life; curve kernel
+(saturating per-actor log, 28d gaussian cooldown recovery, surge-over-
+baseline) carries throughout §4/§11.
 
-**Reader 1 — Poll seeder (per-place credit; a CONTROL LOOP, not a gate):**
-- The meaning-constant: **VOTERS_NEEDED ≈ 15** — "a poll is consensus when ~15
-  people answer it." Scale-free product sentence.
-- creditRate(place) = weeklyDemandMass × answerYield(place) / VOTERS_NEEDED ×
-  conversionPrior, where **answerYield** is the observed answers-per-attention
-  for THIS place with the global conversion rate as prior (poll_vote signals
-  close the loop — the seeder reads outcomes, not just wants). A demand-rich,
-  audience-dead place (remote trip-planner demand) asymptotes to zero seeding
-  automatically; an answering town accelerates. Ghost-poll factories are
-  structurally impossible — and it self-scales with any traffic volume (the
-  conversion is measured, never tuned). No POLL_COST constant exists.
-- credit decays (14d half-life); bank cap 3.
-- **Daily tick at the place's local 09:00, spend ≤ 1 credit per tick** (rhythm
-  is real, not a Sunday burst; ≤3/week emerges from cap + daily spend).
-  Publish = atomic (spend + poll row + archived topic birth-certificate with
-  factor breakdown) with idempotency key (placeId, localDate); per-place jitter
-  within the minute. Subject choice: demandMass × cooldown(28d gaussian) ×
-  resurgence (kernel constants §9). Credit with NO ranked subject publishes the
-  structural bootstrap poll ("Best restaurants in {place}") — browse-only towns
-  cold-start (viewport_dwell feeds their mass).
-- Seeded polls: 7-day window stored; origin seeded; allowUserAdditions (options
-  are user-added and Google-verified per-add — engagement-priced, no publish-
-  time vendor spend). User poll creation unchanged (2/user/place/week).
-- Notifications: devices whose home place (placeAt of device location) is the
-  poll's place or a descendant — never a city-string match; big-place (state+)
-  polls notify nobody by default (§13.2).
-- Traces (factor breakdowns incl. answerYield) written AND readable (ops
-  endpoint) from day one.
+**Credit (warranting)**: creditRate(place) = weeklyDemandMass ×
+answerYield(place) ÷ viability(place).
 
-**Reader 2 — Engine collector:** slices as capacity allocation (unmet 5 /
-refresh 10 / demand 8 / explore 2 per community tick; hot-spike hourly ≤10).
-Unmet input: read-time-derived unresolved/low-result signals attributed to
-member places. **Deficiency**: rep(term, engine) = calibrated term mass ÷
-engine's aggregate room (per-source g, §8); deficiency = max(0,
-median_over_engines(rep) − rep) × askerBreadth × recency. **Degenerate law at
-n=1 engine (launch state): deficiency falls back to raw attributed demand mass
-+ result-count severity** — the ranking is alive from day one. Attempt ledger
-(cooldowns, 45d no-results recovery ramp) is collector state.
+- **answerYield**: observed answers-per-attention for the place, global
+  conversion rate as prior. Demand-rich/audience-dead places asymptote to
+  zero seeding (ghost towns structurally impossible); the poll_vote signals
+  close the loop. Contraction-to-zero is its desired fixpoint (exempt from
+  the exploration law).
+- **viability(place)**: the participation level at which polls demonstrably
+  produce strong content (graduation richness, discussion depth,
+  settledness-at-close vs answer count) — measured globally, refined
+  per-place (hierarchical prior). Day-one prior = 15, SELF-ERASING. Fixes
+  the commune-vs-metro asymmetry at steady state; YEAR-ONE HONESTY: for
+  ~2–4 quarters viability ≈ global ≈ prior — projections must model this.
+  Bound by the closed-loop law: time-widening uncertainty + the controller's
+  frontier dither supply below-bar observations.
+- **Settledness** (per-poll, derived): leader stability vs trailing swing.
+  Governs DISPLAY ("N votes · settled") and closure semantics — NEVER supply
+  (a contested high-participation poll is engagement, not failure).
+  Settled-but-nonviable displays honestly, never as consensus.
+- Credit decays (14d half-life). Poll-only entities render "Community pick ·
+  N votes" until they accrue any calibrated non-poll mention (a K6
+  existence gate: one engine-corpus mention ends the badge).
+- **Vote→mention mapping (K6, definitional)**: at graduation the BALLOT
+  bypasses LLM extraction — each distinct voter mints ONE structured mention
+  (m=1, no upvote term) for their choice, composing R6 into the score
+  exactly as into demand; the discussion THREAD flows through standard
+  extraction. Answers land as subjectText signals at vote time; the §13
+  3-tier resolves them against the GLOBAL catalog immediately (T1/alias =
+  free); unresolved winners mint at poll close via the enumerated
+  verification draw (§14.4).
 
-**Reader 3 — Expansion analytics:** same aggregate at subdivision/country rows
-(native under the tiling law): which subjects, which geographies, which place
-gets the next source/engine. First-class ops view.
+**Supply (the controller)**:
 
-## §5 Sources and Engines (source = the calibration room)
+- **Warm start**: every place starts at max(1, predicted frontier), where
+  predicted frontier = measured attention mass × conversion [prior→measured]
+  × tail-concentration [prior→measured] ÷ viability. No "launch city"
+  concept — big places warm-start because their mass justifies it; small
+  places predict <1 and start at the exploration slot (1).
+- **First-cohort correction**: re-run the prediction with the cohort's
+  measured conversion/concentration and JUMP to the re-estimate (overshoot
+  costs 1–2 Sundays of honestly-displayed sub-viability tails).
+- **Steady state — the median test**: expand when P(weakest poll ≥
+  viability) > ½, contract when < ½ (½ is definitional). NO dead zone; the
+  frontier oscillates ±1 by design — bounded dither IS the exploration
+  excitation. ±1/week is the slew limit for a LEARNED frontier only.
+- **No caps exist.** Supply is bounded by demonstrated answering, never by a
+  constant. (Deleted: flat 3/week, bank cap, 40-market budget, per-city
+  topic caps, POLL_COST.)
 
-**sources**: { sourceId, platform (reddit | poll_surface | facebook | …),
-handle, anchorPlaceId, engineId?, cadence, createdAt }. **A(τ) and g are
-per-SOURCE** (a room is a room): each mention divides by ITS OWN source's g.
-Adding a source never re-weights other sources' mentions (monotone).
-- **Every place's poll surface IS a source** (platform poll_surface, anchored
-  to the place): graduated threads are its documents; its A is its poll
-  audience. Poll-sourced mentions are calibrated from day one — the old
-  "deferred poll-A" item does not exist. Rule: poll threads ALWAYS belong to
-  the place's poll source, never to a territory engine's Reddit sources.
-- **engines**: { engineId, memberPlaceIds[], sources[] }. Territory = derived
-  union (read-time / materialized view), never stored fact. Overlap is a
-  discrete membership question (default: disjoint membership enforced).
-  Operator-attached (collection costs money). Everything "collectable" keys
-  off engines; scoring provenance + fame-pin derive from membership.
+**The weekly ritual**: one tick per place at Sunday 09:00 LOCAL (timeZone on
+the catalog row), publishing the controller-approved cohort TOGETHER — a
+deliberate product ritual (appointment behavior, one notification moment,
+concentrated same-cohort participation; 7-day windows close together =
+weekly results day). Publish = atomic (spend + poll rows + archived topic
+birth-certificates carrying factor breakdowns) with idempotency key
+(placeId, weekOf-local); per-place jitter within the minute. Subject choice:
+demandMass × cooldownAvailability × resurgenceBoost. Credit with no ranked
+subject publishes the structural bootstrap poll ("Best restaurants in
+{place}") — browse-only towns cold-start via viewport_dwell.
 
-## §6 Polls surface (carried, restated)
+**Topics are birth certificates written AT publish, already archived** — no
+ready pool, no draft state, no nightly refresh cron.
+
+**Boundaries**: user poll creation unchanged (2/user/place/week anti-spam —
+a per-USER rule, deliberately separate from place supply). Notifications
+target devices whose home place (placeAt) is the poll's place or a
+descendant; big-place (subdivision+) polls are feed-at-that-zoom only, never
+push. Graduation: the closed thread flows through the standard extraction
+pipeline as a document of the place's poll_surface source (§5); durable
+retry via the daily lifecycle cron.
+
+## §5 Sources and Engines
+
+**sources**: { sourceId, platform (reddit | poll_surface | …), handle,
+anchorPlaceId, engineId?, createdAt } — **the source is the calibration
+room**: A(τ) and g are per-source; every source's documents feed its A and
+its mentions feed mass (source-complete rule). Every place's poll surface IS
+a source (graduated threads = its documents; its poll audience = its A).
+Poll threads always belong to the place's poll_surface source, never to a
+territory engine's Reddit sources.
+
+**engines**: { engineId, memberPlaceIds[], sources[] } — operator-attached
+(collection costs money; a deliberate act). Territory = derived union, never
+stored. Overlap is a membership question (default: disjoint). Deficiency and
+slices key off engines. **Scoring provenance and the fame-pin key off
+SOURCES** (anchorPlaceId; an engine territory is the derived-union case) —
+one law covering engineless poll-bootstrapped towns and engine metros alike.
+poll_surface rows carry NO engineId (the field is reddit-class only): poll
+evidence reaches collection ONLY as demand through the ledger (C3), never as
+corpus — so §11's rep numerator and denominator always draw from the SAME
+source set. A place inside a territory still has its own poll credit (polls
+are place-scoped; collection engine-scoped; the two never sum over each
+other).
+
+## §6 Polls surface
 
 Feed = polls of places in view (+ descendants of the commensurate subject);
-CURSOR PAGINATION prerequisite. Header per §2 dominance ("Polls in this area"
-multi-place state). Slicer chip: options ranked by feed contribution,
-searchable sheet, subdivision section headers. Per-poll place labels: batch
-lookup. Graduation + poll option entity-creation carried (geo-bias from place
-geometry). **Cold-start promise state** (empty poll feed in a seeded town):
-"Polls drop daily at 9 — this town's first unlocks as people search and vote"
-— dead reads pre-natal, not abandoned. Poll-only entities render as
-**"Community pick · N votes"** (no score number) until they accrue calibrated
-corpus — uncertainty = absence, honestly.
+CURSOR PAGINATION is a prerequisite (kills the hard take-25). Header per §2
+("Polls in this area" is a first-class multi-place state — no tie band, no
+display-market election exists). Slicer chip (same SelectorChip primitive):
+options ranked by CONTENT CONTRIBUTION to the current feed, searchable sheet
+for the tail, subdivisions as section headers only — geography is never
+enumerated, so state-wide views cannot overwhelm the control. Per-poll place
+labels via batch lookup. Cold-start promise state on an empty seeded town:
+"Polls drop Sundays — this town's first unlocks as people search and vote."
 
-## §7 Search-side interfaces (ratified inputs; unchanged)
+## §7 Search-side ratified inputs (execution spec: old plan Legs 1–2)
 
-Viewport-only search + coverage (no market filter anywhere; dots
-one-per-location; 50k LIMIT deleted; DTO page-size validation; label purge +
-attachMarketNames deletion; 3-step coverage-dto deploy). Location-centric
-interaction (single-location selection; profile = all locations distance-
-sorted collapsed; cache key restaurantId; locations array ~30 nearest;
-See-locations mode; favorites/history locationId hard cutover; fame-pin =
-location inside score-provenance territory). Search needs nothing synchronous
-from the catalog.
+Viewport-only search + coverage: no market filter anywhere; dots
+one-per-location; 50k LIMIT deleted; DTO page-size validation; market-label
+UI + attachMarketNames deleted; 3-step lockstep deploy for the coverage dto
+field. Location-centric interaction: location = unit of interaction
+(restaurant = unit of data); single-location selection; profile = ALL
+locations, distance-sorted, collapsed tail, cache key = restaurantId;
+row locations array ~30 nearest; See-locations autocomplete mode ("See
+locations", never a count); favorites + recently-viewed carry locationId
+(hard cutover, no backfill); representative pin = fame rule (a location
+inside the score-provenance territory, anchor tiebreak). Search needs
+nothing synchronous from the catalog.
 
-## §8 Score calibration (ratified, upgraded to per-source rooms)
+## §8 Score calibration (per-source rooms)
 
-A_source(τ) = Σ its gate-passing documents · 0.5^(age/τ), lanes {365d, 21d};
-g_source = max(A, A_floor)/A_ref (pinned A_ref; floor clamp). Calibrated
-counts: each mention ÷ g of ITS source, inside log1p; v3 pipeline unchanged
-downstream. Build items: g primitive (shared with §4 deficiency);
-source_document_id on item mentions; retention invariant. Fixture-gated +
-kill condition; old fixture suite resurrected. Timing: with this wave.
+A_source(τ) = Σ its gate-passing documents · 0.5^(age/τ), lanes {365d, 21d},
+**normalized per OBSERVED day within τ** (coverage intervals, §10 — cadence
+variability cannot masquerade as room size; for push-complete poll_surface
+sources the lane row's coveredThrough = the closed-poll watermark, advanced
+at graduation extraction-run creation, observed days = watermarked existence
+days, heartbeat = graduated-docs-per-closing-poll — C8 holds for zero-pull
+sources). g_source = max(A, A_floor) /
+A_ref — **A_ref and A_floor are PER-LANE constants**, pinned per
+scoreVersion epoch (re-pin only with a version bump). Calibrated counts:
+each mention ÷ g of ITS OWN source, INSIDE log1p; v3 downstream unchanged
+(log1p(m + 0.7u) → geometric dish discount 0.5 → praise 2× → global
+percentile per subject type → truncated-normal display; rising = fast −
+stable). One global pool per subject type — the purpose of calibration.
 
-## §9 Meaning-constants (complete; anything else is derived, measured, or a
-## capacity allocation)
-
-365d/21d mention half-lives · 7d cycle + 14d demand half-life · 28d poll
-cooldown gaussian · 21d/0.35 resurgence credit · 0.7/+0.5 resurgence boost ·
-baseline floor 3 · surge knee 1 doubling · 45d no-results recovery ramp ·
-ATTENTION_FRACTION 1/3 (probe budget 3 + commensurability, both directions) ·
-VOTERS_NEEDED ≈ 15 · bank cap 3 + daily spend ≤1 (⇒ ≤3/place/week) ·
-2 user-polls/place/week · 7-day poll window · slice portfolio 5/10/8/2 +
-hot-spike 10 · A_floor/A_ref (fixture-set) · no-place observation TTL 30d ·
-kind weights (read-side config). POLL_COST does not exist; the 0.8 pre-fetch
-does not exist (derived); the 40 and flat-3-eligibility do not exist.
-
-## §10 Kill list
-
-Market model + type enum + raw-SQL type lists · level enum (open codes + DAG) ·
-minted/named/collectable vocabulary · display-market election + 5% tie band ·
-mint-in-read-path + blob anchor + US-only gate + write-gating subjects test ·
-1km negative-cache discs (region observations) · 40 budget · flat-3
-eligibility · ready-topic pool + draft + nightly cron · server-local tz gate ·
-4-day seeded-window accident · per-kind demand tables + 15-leg aggregation +
-full-window rebuild + dead term legs/methods · on_demand request/cooldown
-tables · ledger rekeying on merge (redirects) · raw userId on ledger rows
-(actor mapping) · notification city string-match · geo union type · POLL_COST ·
-marketKey on rows/profile/coverage (Legs 1–2) · write-only traces.
-
-## §11 Migration (tear-down; data trashable)
-
-Phase A — substrate: places DAG + signals + redirects + actor mapping; signal
-writes on all acts (dual-write beside old logging for ONE milestone, deletion
-date set); US seed import; g primitive + mention provenance.
-Phase B — consumers, one at a time with fixtures: resolution/header →
-catalog + read-time subjects; aggregate → incremental tiled rollup;
-autocomplete/recent/suggestions → ledger readers; poll seeder → credit control
-loop (both old crons + ready pool die); collector → slices/deficiency;
-expansion view; score calibration with per-source g.
-Phase C — drop everything in §10. Old-plan Legs 1–2 execute independently
-(search-side) and may precede or parallel Phase A.
-
-## §12 Verification stance
-
-RED-provable fixtures: ghost-town yield loop (demand-rich/audience-dead place
-stops seeding); one-searcher town never seeds; modest town monthly; Austin
-≤3/wk; ×50-traffic supply sanity; retroactive-credit golden (late-sketched
-place); tiling/inheritance goldens (US/TX/metro/point signals); subjects cases
-(two towns / continental / city+slivers / street-zoom-in-Chongqing / enclave);
-boundary-zoom header hysteresis (sim eye-check); region-zoom stampede
-self-extinguishing; quota-drought degradation incl. poll-creation fallback;
-score suite + kill condition; deficiency n=1 law. Every scheduler trace has a
-reader.
-
-## §13 Owner decisions still open
-
-1. Name locale policy: store local script + request app-locale alias (same
-   free call) — display which? (Recommend localized display, local alias kept.)
-2. Big-place polls (subdivision/country level): seedable at genuine state-scale
-   attention — but who gets notified/sees them by default? (Recommend: feed
-   at that zoom only, no push notifications.)
-3. VOTERS_NEEDED ≈ 15 — ratify the number.
-4. Dual-write milestone length (recommend: one milestone, hard deletion date).
-
-## §14 Red-team disposition (for the audit trail)
-
-Adopted from abstractions lens: DAG + open level codes (Brooklyn/Chongqing/
-communes) · kind=act+meta · per-source rooms (dissolves poll-A deferral) ·
-engine=member set · sketch identity law · VOTERS_NEEDED derivation · dwell
-kind + bootstrap poll · redirects + actor severing · geo-always-bbox · daily
-tick spend ≤1 · deficiency n=1 law · header point-answer preference +
-promotion-by-header-frequency · derived pre-fetch · §9 completeness fixes.
-Adopted from behavior lens: answer-yield control loop · observe-every-probe +
-region-scale no-place observations + probe budget · symmetric commensurability
-· publish atomicity + tz sourcing + jitter · geo-join predicate written down ·
-header hysteresis · cheap-drought poll-creation fallback · poll-source
-identity rule · cold-start promise state · community-pick badge.
-REJECTED (owner-ratified grounds): attribution-by-subjects-only (would reverse
-weight-1-everywhere; replaced by tiling + inherit-down which achieves the same
-hygiene) · global poll-seeding capacity queue (the 40-budget reborn; replaced
-by the per-place yield loop which self-scales without starvation). Corrected:
-"Google spend at publish" claim (options are user-added, priced per
-engagement).
+- **sourceClassInfluence**: read-side per platform class, DEFAULT 1.0 —
+  launch = a poll vote ≈ a Reddit mention; the Reddit→polls transition
+  happens by decay + accumulation (owner's design). The floor clamp means
+  only "refuse amplification of unmeasurable rooms," never a boost.
+- Conditions (fixture-gated, with the kill condition — calibrated must beat
+  raw v3 on the named scenarios or calibration is deleted): per-lane
+  constants + rising-flap fixture · fake-elite closure
+  (sparse_market_winner_not_fake_elite pins the poll-vote exchange at the
+  1.0 default) · upvote-linearity named gate (adoption path pre-agreed:
+  u_i/ū_source, measured share, never a fitted exponent) · Phase-0 dial
+  re-probe (praise 2×, ρ=0.5) on CALIBRATED masses · author-concentration
+  fixture for doc-count A · two-cadence coverage-normalization fixture.
+- Outcome observations carry a FEED-ALGORITHM VERSION binding (a feed deploy
+  shifts capacity/viability readings; version-bind them like model probes).
+- Build items: the g primitive (shared with §11 deficiency);
+  source_document_id on item mentions (provenance unification); retention
+  invariant (every mention's document persists). Scoring runs via the
+  singleton rescorer (§12).
 
 ---
----
 
-# PART II — Collection & Score (v2, red-teamed 2026-07-16; dispositions §25;
-# RATIFIED by owner 2026-07-16)
+# PART II — Collection
 
-## §15 Collection story (extending §0)
+## §9 Collection laws
 
-C1. An engine keeps its territory's corpus fresh, complete, demand-responsive,
-    at equal effort per source, inside API budgets.
-C2. Sources are first-class rooms; collection behaviors attach to sources via
-    PLATFORM ADAPTERS (each platform declares its lanes, cadences, costs).
+C1. An engine keeps its territory's corpus fresh, complete, and
+demand-responsive, at equal effort per source, inside pools.
+C2. Platform ADAPTERS declare each platform's lanes, cadences, and costs;
+collection behaviors attach to sources.
 C3. Demand reaches collection only through the signals ledger/aggregate.
-C4. Selection judgments are scheduler-side reads; per-source OBSERVED-COVERAGE
-    INTERVALS are first-class facts (the primitive under cursoring, archive
-    sweeps, and score normalization).
+C4. Per-source OBSERVED-COVERAGE INTERVALS are first-class facts — the one
+primitive under cursoring, archive coverage, gap recovery, and score
+normalization.
 C5. Evidence = event-sourced projections (documents → runs → events →
-    active-pointer projections). RE-DERIVED AND KEPT.
-C6. Extraction machinery (chunking, batch leases/cache, quarantine) KEPT with
-    §18 fixes.
-C7. **Money is gated wherever it is committed** (LLM spend gets the same
-    budget-object treatment Part I gave TomTom): preflight estimates, approval
-    states, monthly budget line, degradation instead of silent commitment.
-C8. **Every lane has an output-derived heartbeat that can show RED** — proven
-    RED in staging (kill credentials, wipe a queue) before being trusted.
-    Legit-zero and broken-zero must be distinguishable.
+active-pointer projections). Re-derived and kept.
+C6. Extraction machinery kept with §12 fixes.
+C7. Money is gated where committed: preflight price tags + explicit operator
+approval (NO caps, NO auto-approve lines — owner ruling); routine
+baseline spend is METERED against the projection model, never gated.
+C8. Every lane has an output-derived heartbeat that can show RED, proven RED
+in staging before being trusted. Legit-zero ≠ broken-zero.
 
-## §16 The source-centric collector (v2)
+## §10 The source-centric collector
 
-- **Platform adapters declare lanes.** reddit: chronological (unbiased sample),
-  keyword (biased/pull), archive (backfill). poll_surface: push-complete, zero
-  pull lanes (no cadence rows — no exemption needed). Future platforms declare
-  theirs. The planner iterates cadence rows knowing nothing about kinds; the
-  closed KIND_COST map and the '__global__' sentinel row die.
-- **Cadence rows per (sourceId, lane)**, seeded by the adapter at attachment.
-  Lane state lives ON the lane row (chronological cursor is chronological-lane
-  state).
-- **Observed-coverage intervals** per (source, lane): the chronological cursor
-  advances AT EXTRACTION-RUN CREATION (the honest "this window entered the
-  evidence system" fact — enqueue-time advance recorded intent as outcome);
-  archiveCoveredThrough is a fact, and archive sweeps are DERIVED whenever the
-  archive index extends past it (never "once at attachment"); a coverage-gap
-  reconciler (expectedBatches per parent vs extraction-run rows, hourly)
-  alarms on shortfall — it is also the migration drain-check.
-- **Planner reads measured budget**: cycle capacity = rate-coordinator headroom
-  over the horizon; each dispatch declares its expected request count (keyword:
-  terms × sorts; chronological: listing pages + observedDocsPerDay detail
-  fetches). Static budget-12/KIND_COST die. Deferred-by-budget is a counted,
-  alarmed condition, not a log line.
-- **docsPerDay sampling-frame law**: derived only from adapter-declared
-  unbiased lanes (chronological pull, push-complete). Keyword hits never feed
-  it. Cold start: archive sweep or adapter prior. And it is computed over
-  COVERED days (coverage intervals), so a dead lane cannot masquerade as a
-  quiet room (kills the safeInterval self-soothing loop).
-- **Archive sweeps are money-gated (C7)**: onboarding returns a preflight
-  estimate (doc count × measured per-doc cost from the usage ledger); the
-  sweep enqueues as `proposed` and requires explicit spend approval above the
-  monthly LLM budget line; chronological runs regardless (degradation, not
-  blockage).
-- Onboarding verb = engine (member places) + sources + adapter-seeded lanes +
-  proposed archive sweep with its price tag.
+- **Adapters declare lanes**: reddit → chronological (unbiased sample),
+  keyword (pull, biased), archive (one-shot backfill); poll_surface →
+  push-complete, zero pull lanes. Cadence rows per (sourceId, lane); lane
+  state (e.g. the chronological cursor) lives on the lane row.
+- **Coverage intervals**: the chronological cursor advances AT EXTRACTION-RUN
+  CREATION ("this window entered the evidence system" — a fact, not intent).
+  archiveCoveredThrough is a recorded fact. An hourly expectedBatches
+  reconciler (parents record expected fan-out; extraction runs prove it)
+  alarms on shortfall — also the migration drain instrument.
+- **Saturation law**: near-miss trigger = fill fraction at cursor-reach (act
+  BEFORE loss); interval headroom = measured per-source burst variance (K2);
+  AIMD as outer loop; a detected miss writes a first-class C4 COVERAGE GAP,
+  which spawns a derived, money-gated recovery task (targeted window sweep —
+  honoring the no-standing-resweeps ruling at gap granularity). Detector:
+  timestamp semantics with ≥1 strictly-older overlap confirmation, never
+  fullname anchoring; coveredThrough means visible-at-fetch-time
+  (mod-approved backfill caveat stated).
+- **docsPerDay sampling law**: derived only from adapter-declared unbiased
+  lanes, computed over COVERED days (a dead lane cannot read as a quiet
+  room). Keyword hits never feed it. Cold start: archive sweep or adapter
+  prior. Cadence clamps 7–60d are pacing bounds (K1-able sentences).
+- **Archive = one-shot seeding per source, EVER** (pre-launch bulk; per-city
+  at engine onboarding), enqueued as a `proposed` sweep with a preflight
+  price tag (doc count × measured per-doc cost from the usage ledger)
+  requiring explicit approval (C7). No exclusive mode exists — archive makes
+  ZERO Reddit calls (pushshift files; audit-verified); its Gemini/internal
+  demands interleave through the governor at seeding-class lateness
+  tolerance. Chronological runs regardless.
+- Onboarding verb = engine (member places) + sources + adapter-seeded lanes
+  - proposed archive sweep with its price tag.
 
-## §17 Selection (v2): term due-times are the schedulable unit
+## §11 Selection: term due-times
 
-- **The unit is (engine, term) with a nextDueAt**, written by the judgment
-  families as due-time writers under portfolio capacity: unmet/deficiency,
-  refresh (staleness), demand, explore, and SURGE (hourly reader over the
-  aggregate — the hot-spike lane, its sentinel row, and its ≤10 cap dissolve
-  into surge-written due-times). Cooldowns become due-time arithmetic
-  (success → +7d, error → +1d, no_results → gaussian-recovering horizon).
-  The planner batches due terms per source into dispatches (1200ms spacing,
-  limit=1 mechanics unchanged — ratified cost levers).
-- Slice quotas (5/10/8/2 of 25) remain the portfolio CAPACITY; backfill
-  weights (1.2/1.1/1/0.65) are demoted to PRIORS PENDING MEASUREMENT (each
-  gets a meaning sentence; measured per-slice yield — new calibrated mentions
-  per dispatched term — may drift them within guardrails later).
-- **Deficiency is one continuous formula**: deficiency = localDemand × (1 +
+- **The schedulable unit is (engine, term) with a nextDueAt.** Judgment
+  families are due-time WRITERS: unmet, refresh, demand, explore, and SURGE
+  (an hourly reader over the aggregate — no hot-spike lane, sentinel row, or
+  job cap exists; urgency is ordering). The pacer (§14) batches due terms
+  per source into dispatches.
+- **Merge law**: families PROPOSE due-times; the expected-new-content model
+  floor-CLAMPS; renewed demand may PIERCE the clamp (world-changed
+  evidence).
+- **Expected-new-content model** (replaces the cooldown constants, which
+  survive as its cold-start priors): revisit when expected new matching
+  content ≥ 1, from the source's measured arrival rate × the term's measured
+  hit rate; dead terms' hit rates drift toward the MEASURED global
+  term-resurrection base rate (no Beta-prior back door). Attempt ledger =
+  collector state.
+- **Portfolio**: TWO floors only, each a K1 sentence — UNMET ("user-expressed
+  gaps always get attention," a product promise independent of yield) and
+  EXPLORE ("insurance for the unmeasurable"). Refresh + demand compete for
+  all remaining capacity by measured yield via within-family percentile
+  normalization (cross-family weights do not exist). Family yield under
+  competition is bound by the closed-loop law (optimistic selection).
+- **Deficiency (continuous)**: deficiency = localDemand × (1 +
   crossEngineGap × evidenceWeight), evidenceWeight growing with peer count
-  and peer corpus maturity (0 at n=1 — the launch behavior falls out as the
-  zero-evidence limit; an empty engine #2 barely perturbs #1; no branch).
-  The ×askerBreadth local factor is load-bearing (it is what prevents
-  cross-market taste homogenization) — stated, not decorative.
+  and corpus maturity (0 at n=1 — launch behavior falls out; an empty engine
+  #2 barely perturbs #1). The ×askerBreadth factor is load-bearing (prevents
+  cross-market taste homogenization). rep(term, engine) = calibrated term
+  mass ÷ engine's per-source-summed room (the §8 g primitive).
+- Keyword recall limit = a RECALL parameter (~25–100, fixture-set): one
+  search request returns up to ~100 ids regardless; cost is bounded by
+  UNCOVERED posts only (coverage makes covered results free; post-archive
+  most results are covered — deep recall is cheap BECAUSE archive seeded
+  first). The planner prices dispatches by estimated uncovered fetches.
 
-## §18 Evidence & extraction (v2)
+## §12 Evidence & extraction
 
-KEEP: source documents, prompt-hash extraction coverage + thread trimming,
-SRC-ref chunking (35k/80), batch machinery (leases, 5-min poller, 30h cache,
-purpose registry — best crash-safety in the codebase), per-chunk quarantine,
-stale-run reconciler, one-generation compaction + replay, mentionKey dedupe,
-active-run pointer, projection full-replace, usage/decision ledgers (each
-gains a minimal ops reader).
+KEEP (re-derived): source-document persistence; prompt-hash extraction
+coverage + thread trimming; SRC-ref chunking (35k/80 — K5, model-bound);
+batch machinery (leases, 5-min poller, 30h = SLA + measured-overrun cache,
+purpose-keyed ingest registry); per-chunk quarantine; stale-run reconcilers
+(EXTENDED to crave-score runs); one-generation compaction + replay;
+mentionKey dedupe; projection full-replace; usage + decision ledgers WITH
+minimal ops readers.
 
-FIXES (all red-team-driven; dispositions §25):
-1. **Persist first, gate as ADMISSION.** Every fetched document is stored
-   (the fetch was paid for); the relevance verdict becomes an extraction-
-   admission judgment keyed by promptHash, consulted at chunk-plan time,
-   re-derivable via replay. The one destructive write-time judgment in the
-   system dies. Prompt changes re-judge lazily on re-encounter, PLUS a
-   money-gated backfill queue (capped N docs/day) with a preflight count.
-2. **The CHUNK is the coverage/commit unit** (run = provenance/reporting).
-   Whole-run failure discarded nine good chunks' coverage and re-billed them;
-   correctness never needed run atomicity (mentionKey + quarantine already
-   hold it). The reconciler re-enqueues exactly the missing chunks.
-3. **Rate-limit results are ERROR OUTCOMES, never empty successes.** The
-   getChronologicalPosts/searchByKeyword swallows die; a rate-limited fetch
-   fails the Bull job (dead-letter alarm for free); pages already fetched are
-   kept, not discarded. A rate-limit can never brand a term no_results (60d
-   cooldown) — only error (1d).
-4. **Always-green liars purged**: worker success:false-as-completed →
-   real job failures; getHealthStatus's hardcoded 100% success → measured;
-   mentionsExtracted-never-updated → expectedBatches reconciler (C8);
-   planner deferred count → alarmed; surge-reader input-liveness check
-   (ledger rows > 0 while app traffic > 0, else RED).
-5. **Reddit client**: retry loop implemented THROUGH the rate coordinator
-   (retryAfter honored globally, no per-call stampedes); searchEntityKeywords
-   routed through makeRequest; **token minted only on expiry** (per-call
-   authenticate dies — the account-suspension signature); per-source daily
-   request ledgers (TomTom-quota analog); at ≥10 engines, sources shard
-   across multiple registered apps with per-app coordinators (one suspension
-   degrades, not kills). Owner item: honest official-API contract evaluation
-   before 40 engines (§24.4).
-6. **Scoring decoupled from collection completion**: collection sets a dirty
-   flag; a SINGLETON debounced scheduled rescorer (hourly-if-dirty, advisory
-   lock) owns global rebuilds. Kills: 50–100 racing unserialized rebuilds/day
-   at scale, the final-batch-is-a-proxy bug (batch 12/12 completing while 7
-   retries), swallowed rebuild errors, and it creates the scoreVersion seam
-   §20/§23 require. Crave-score runs get the stale-run reaper.
-7. Dead code purge (unchanged from v1) + ContentRetrievalMonitoring deleted
-   only after its signal has a replacement reader.
+FIXES (all ratified):
 
-## §19 Resolution & graph (v2)
+1. **Persist first; relevance is an ADMISSION judgment** — every fetched
+   document is stored (the fetch was paid); the verdict is promptHash-scoped,
+   consulted at chunk-plan time, re-derivable by replay. Prompt changes
+   re-judge lazily on re-encounter plus a money-gated, preflight-counted
+   backfill queue. (The one destructive write-time judgment is dead.)
+2. **The CHUNK is the coverage/commit unit**; the run is provenance. The
+   reconciler re-enqueues exactly the missing chunks. Active-run pointer
+   advances only on coverage-superset (monotone, completion-order-proof).
+   Stage handoff is DERIVED from persisted state (docs lacking verdicts;
+   admitted chunks lacking coverage; succeeded batches lacking ingestion) —
+   completion events are a fast path, never the guarantee.
+3. **Rate-limit results are ERROR outcomes, never empty successes** — fetched
+   pages are kept; a rate limit can never brand a term no_results.
+   Governance denial is a third, distinct outcome ("not now" — requeue;
+   never a cooldown; never trips a fail-open judgment layer — staging
+   fixture: close the gate pool, assert zero ungated passes, lane goes
+   late-not-dead).
+4. **Always-green liar purge**: success:false-as-completed → real job
+   failures; hardcoded-green health → measured; mentionsExtracted fiction →
+   expectedBatches reconciler; deferred-by-capacity → alarmed; surge-reader
+   input-liveness check; per-(source, lane) OUTPUT-DERIVED heartbeats (new
+   documents per due-tick vs own baseline; freshness = post occurredAt →
+   mention-row latency) — each proven RED in staging (C8).
+5. **Reddit client**: retry loop THROUGH the governor (retryAfter honored
+   globally); single makeRequest path; token minted on expiry only; durable
+   per-source request ledgers; at ≥10 engines, sources shard across multiple
+   registered apps ((vendor, credential) pools); owner item: official-API
+   contract evaluation before ~40 engines.
+6. **Scoring decoupled from collection**: collection sets a dirty flag; a
+   SINGLETON debounced rescorer (hourly-if-dirty, advisory-locked) owns
+   global rebuilds — kills racing rebuilds, the final-batch proxy bug, and
+   swallowed rescore errors; creates the scoreVersion seam.
+7. Dead code purge: legacy hardcoded-subreddit client methods,
+   RedditDataExtractor, ContentRetrievalMonitoring (after its signal has a
+   replacement reader), 'on-demand' collectionType ghost, volume-tracking
+   lane (stats derive from documents), community↔market link columns, env
+   fail-policy switch, dead coordinator LLM config, requestsPerSecond field,
+   in-memory costMetrics, per-call authenticate.
 
-- **Identity is GLOBAL; territory is a retrieval PRIOR, never a filter.**
-  T1 exact/alias lookup unscoped (name+geo already discriminative); recall
-  ranks with geo-bias from the source's territory; creation anchors to the
-  geocode/verification result, source-territory anchor only as the
-  zero-evidence provisional. Resolution lanes key on GEOMETRIC PRESENCE
-  (where the restaurant is), not creation market. The Dallas-restaurant-in-
-  r/austinfood case creates one entity, correctly anchored — cross-territory
-  duplicates and every-engine-attachment merge-debt waves die as a class.
-- Everything else KEPT as v1 (3-tier + tombstones + overlay judge + ontology
-  quarantine + merges + dish knowledge; ledger immutability shrinks merge
-  rehome to projections + product tables).
+## §13 Entity resolution & graph
 
-## §20 Score — RE-RATIFIED with SIX conditions
+3-tier resolution (exact → alias → recall K=8 [K5, probe-bound] + LLM
+judge), tombstone sink, intra-batch overlay judge, attribute 'pending'
+quarantine + ontology adjudication, alias banking, merge machinery, dish
+knowledge: KEPT. Changes: **identity is GLOBAL; territory is a retrieval
+PRIOR, never a filter** — T1/alias unscoped; recall geo-biased by the
+source's territory; creation anchors to the geocode/verification result
+(source territory = zero-evidence provisional); lanes key on GEOMETRIC
+presence. Cross-territory duplicates and engine-attachment merge-debt waves
+die as a class. Enrichment bias from place geometry. The immutable ledger
+(redirects at read) shrinks merge rehome to projections + product tables.
 
-Conditions 1–5 as v1 (per-lane A_ref/A_floor; poll fake-elite closure +
-vote↔upvote exchange-rate ratification; upvote-linearity named gate with
-u/ū_source path; Phase-0 dial re-probe on calibrated masses; author-
-concentration fixture). NEW:
-6. **A is coverage-normalized** — activity per OBSERVED day within τ
-   (documents ÷ covered days from §16's coverage intervals), so per-source
-   cadence variability cannot masquerade as room size; fixture: two synthetic
-   rooms with identical activity at 1d vs 60d cadence must calibrate equal.
-Stated for the record: poll_surface documents are gate-exempt and count in A
-by construction (food-framed); the denominator definition is platform-declared,
-not implicit.
+---
 
-## §21 Kill list (Part II, v2)
+# PART III — Resource Governance
 
-v1 list PLUS: KIND_COST + static cycle budget · '__global__' sentinel +
-ensureGlobalHotSpikeRow + the hot-spike lane as a lane · the n=1 deficiency
-branch · gate-before-persist ordering · rate-limit empty-success swallows ·
-hardcoded-green getHealthStatus · per-final-batch rescore trigger ·
-per-call authenticate · collectableMarketKey in collector job payloads +
-attempt-history keys (verify the Legs 1–2 purge covers collector-side) ·
-"capacity" labeling on the backfill judgment weights.
+## §14 The Resource Governor
 
-## §22 Constants (v2 corrections)
+1. **Adapter-registered pools** (no enum): vendor adapters declare their
+   client CHOKEPOINT (lint boundary — the SDK is importable only inside its
+   adapter) and their POOLS (windows, units, fail policy), keyed
+   (vendor, credential). Provider status/poll calls are enumerated draws.
+   INTERNAL capacity is pooled too: db.ingest, host.cpu — the seeding
+   campaign binds there, so the registry sees there.
+2. **The draw primitive: reserve → act → reconcile** (absorbing the existing
+   TPM reservation engine as the gemini pool's implementation). Admission =
+   TTL-bounded reservation of declared demand; chokepoints record actuals;
+   reconcile refunds/debits; leaks expire. Declared-vs-actual pairs are
+   PERSISTED — the estimator-drift instrument; the estimator-refresher has
+   its own heartbeat.
+3. **Pull-model pacer — the sole dispatcher**: selects the highest-priority
+   job whose declared pools all reserve; workers never consult the governor.
+   **Priority = normalized lateness = (now − dueAt) ÷ latenessTolerance
+   (lane)** — the owner's "days late is fine, months is not" as the
+   scheduler; chronological declares ≈ its cadence, seeding declares months
+   → bulk archive yields to live lanes structurally while consuming all idle
+   capacity. **Ordering applies at EVERY stage boundary** (dispatch, batch
+   submit-resume, status-poll, ingest — no FIFO funnels; poller take-N caps
+   become paced, ordered selections). Pacer due-queue state lives in
+   Postgres; Bull is transport only.
+4. **The second admission surface** (enumerated, never general): synchronous
+   user-facing draws — poll-creation TomTom promotion, moderation LLM,
+   poll-winner entity verification at close (Places) — via
+   synchronous reserve-draw with the emergency window as their fail-closed
+   customer.
+5. **Per-pool fail policy** (declared in the registry): minute-window pools →
+   bounded per-replica emergency fraction (derived share of the window),
+   duration-capped, journaled to PG for ledger replay; day/month/dollar/
+   enqueued pools → hard closed. Upstream-429 window poisoning kept.
+6. **Money = grants, vendor-agnostic**: each approval mints a bounded pool
+   instance covering LLM sweeps, gate re-judge backfills, Places
+   verification campaigns, TomTom scarce draws; chunk-granular draws via the
+   same primitive (refund-on-failure free; mid-grant exhaustion = ordinary
+   backpressure). Routine baseline spend metered vs the projection model,
+   alarmed on divergence, never gated.
+7. **Governor RED taxonomy** (each staging-proven): exhaustion (zero headroom
+   - rising lateness + zero 429s) / misconfiguration (429s despite headroom,
+     or chronic-full-never-429) / estimator drift (actual÷declared outside
+     guardrails). Root-cause RED for governance-store-down annotates the
+     heartbeat cascade.
+8. Migration race rule #4: **one pool, one ledger, at every instant** —
+   shadow mode first, ungoverned clients cut first (gate, embeddings, batch
+   submit, TomTom — governance where none existed), per-pool atomic cutover
+   with 429-reporting moved in the same deploy, LLM interactive last.
+9. **Gemini batch quota discovery** (owner-approved procedure): console
+   first; if empirical, pre-campaign ramp on sacrificial jobs in a quiet
+   window (enqueue 429 is harmless by construction), disambiguate the axis
+   (jobs vs tokens vs bytes; ~20MB inline cap), register measured × safety
+   with provenance; never probe mid-campaign.
 
-750 = Reddit 1000-post ceiling × 0.75 safety (stated as derived) · the two
-21d constants (chrono freshness / fast score lane) are UNRELATED — renamed
-distinctly · 5/3 delta probe + boost ≤2.5 get meaning sentences or priors
-labels · slice quotas = capacity; backfill weights = priors (see §17) ·
-everything else per v1 inventory.
+---
 
-## §23 Migration (v2 — the race rules)
+# §15 Migration
 
-1. **Ledger-window rule**: dual-WRITE runs ≥ the longest read window (21d)
-   before any reader cuts over; readers cut one at a time with old-vs-new
-   comparison fixtures on the same window.
-2. **Cadence rekey rule**: pause planner → drain parents AND batch fans
-   (expectedBatches reconciler is the drain instrument) → snapshot cursors
-   into lane rows → atomic swap → resume. Poll graduation cutover is
-   sequenced WITH poll_surface source creation, not after.
-3. **Score cut rule**: freeze the rescorer; ship per-source g + per-lane
-   A_ref/A_floor + re-pin as ONE scoreVersion bump; one global rebuild;
-   unfreeze. (The §18.6 decoupling is what makes this possible.)
-4. Stated RPO: signals-ledger rows between backup and failure are
-   non-re-derivable observations — pin the backup cadence accordingly.
-   Batch double-submission after restore = bounded duplicate spend (ingest
-   registry holds correctness).
-Safe order: A (substrate + dual-write) → 21d soak → B readers one-by-one →
-drain+rekey → score as one versioned cut → C drops.
+Phase A — substrate: places DAG + signals + redirects + actor mapping;
+signal writes on all acts (dual-write beside old logging for ONE milestone
+with a hard deletion date); US seed; g primitive + mention provenance;
+governor in shadow mode.
+Phase B — consumers cut one at a time, each with old-vs-new fixtures:
+resolution/header → catalog primitives; aggregate → incremental tiled
+rollup; autocomplete/recent/suggestions → ledger readers; poll seeder →
+§4 (both old crons + ready pool die); collector → §11; expansion view;
+score with per-source g as ONE frozen scoreVersion cut (freeze the
+rescorer, ship g + per-lane constants + re-pin together, one global
+rebuild, unfreeze) — SEQUENCED AFTER the poll-seeder cut so poll_surface
+sources + their coverage watermarks exist inside the pinned epoch;
+fame-pin/provenance re-key (market → source anchor) is an explicit Phase B
+line; governor per-pool cutovers per §14.8.
+Phase C — drop everything superseded (the union of all kill decisions in
+§4–§14).
+Race rules: (1) dual-WRITE ≥ the longest read window (21d) before any
+dual-READ cutover; (2) cadence rekey = pause planner → drain (expectedBatches
+reconciler is the instrument) → snapshot cursors → atomic swap; poll
+graduation cutover sequenced WITH poll_surface source creation; (3) the
+score cut as above; (4) one pool, one ledger, at every instant. Stated RPO:
+signal rows between backup and failure are non-re-derivable — pin backup
+cadence accordingly. Old-plan Legs 1–2 execute independently (search-side),
+before or parallel to Phase A.
 
-## §24 Part II owner items
+# §16 The Constants Constitution
 
-1. Vote↔upvote exchange-rate sentence (§20.2) — ratify when fixtures propose.
-2. Keyword limit=1 — re-affirm or raise with load evidence.
-3. **Monthly LLM budget line** (the C7 budget object) — set the number; archive
-   sweeps and gate re-judge backfills draw against it via approval.
-4. **Reddit strategy** — two separate decisions (owner-corrected framing
-   2026-07-16): (a) THROUGHPUT: multi-app sharding around ~10 engines (per-
-   client rate limits parallelize per-minute contention; isolates client-level
-   failures; one account, multiple registered apps = normal practice). Sharding
-   is NOT an enforcement shield — same IP/fingerprint/behavior correlates, and
-   multi-account evasion converts a rate problem into ban-with-cause.
-   (b) ENFORCEMENT (the existential one, earlier): official API contract
-   evaluation (paid tier/data terms) and/or source-mix diversification via the
-   platform-adapter design, so Reddit is not a single point of existential
-   dependence.
-5. Ops readers for usage/decision ledgers — minimal query endpoints ok?
+**The law: every number is exactly one of six kinds, defined by WHAT CHANGES
+IT. Unclassifiable numbers are not allowed to exist.**
 
-## §25 Disposition record (wave-2 red team)
+- K1 (owner ratification) — falsifiable product sentences: 365d/21d mention
+  half-lives; 7d cycle + 14d demand half-life; 28d cooldown gaussian; 45d
+  no-results recovery (as prior, see K2); ATTENTION_FRACTION 1/3;
+  the two portfolio floors (unmet promise, explore insurance); 2 user-polls/
+  place/week; 7-day poll window; cadence clamps ("no source unvisited
+  longer than 60d"); 30d no-place TTL; controller gains stated as
+  mini-sentences.
+- K2 (data; self-erasing priors; closed-loop law applies where the consumer
+  gates its own observations): viability(place) [prior 15]; answerYield;
+  conversion + tail-concentration [warm-start inputs — instrument from the
+  FIRST Sundays]; expected-new-content model [cooldown constants as priors];
+  per-source thread-activity half-life [21d as prior]; per-reader kind
+  weights; per-source burst variance; measured overruns; prior strengths &
+  shrinkage (inventoried).
+- K3 (controller cycles): poll supply (warm-start → cohort re-estimate →
+  ±1 median test); saturation-adaptive chronological cadence; pacer-derived
+  dispatch sizes and worker counts.
+- K4 (vendor facts): Reddit 1000/100-per-min; Gemini 24h SLA + TPM; Places
+  quotas; TomTom pools.
+- K5 (version re-probe): matcher K=8; chunk 35k/80; gate pack 20k/25 —
+  model-version-bound with auto re-probe flags; settledness window
+  (feed-version-bound); outcome observations carry feed-algorithm versions.
+- K6 (definitional — nothing changes them): majority = ½ (median test,
+  3-of-5 delta probe); minimal step ±1; the exploration slot (+1 / start
+  floor 1).
+  **Closed-loop measurement law**: any K2/K3 quantity whose consumer gates the
+  observations that update it carries exploration — time-widening uncertainty,
+  optimistic selection, frontier dither. (Bound: viability knee, term hit
+  rates, kind weights, family yield. Exempt: answerYield.)
 
-Adopted (systems lens): persist-first admission gate (F1) · global identity /
-territory-as-prior (F2, converged w/ synthesizer) · coverage-normalized A =
-condition 6 (F3) · cursor at extraction-run creation (F4a) · platform
-adapters + lane rows + sentinel death (F5) · derived archive sweeps +
-coverage-intervals primitive (F6) · continuous deficiency (F7) · planner
-reads coordinator headroom (F8) · docsPerDay sampling law (F9, converged) ·
-chunk-as-coverage-unit (F10) · weights demoted to priors (F11) · term
-due-times dissolve hot-spike (F12, drastic-adopted per owner mandate) ·
-constants sweep (F13) · kill-list additions + instrument-replacement caution
-(F14). Adopted (ops lens): rate-limit-as-error + heartbeat + liar purge
-(SEV-1a) · archive money gate (SEV-1b, converged w/ synthesizer) · singleton
-scheduled rescorer (SEV-1c, converged) · Reddit account plan + request
-ledgers + token reuse (SEV-2a) · three migration race rules (SEV-2b) ·
-re-judge budget (SEV-2c) · expectedBatches reconciler (SEV-3a) · RPO + restore
-statements (SEV-3b) · graduation sequencing note (SEV-3c). Adopted
-(synthesizer): docsPerDay scope, scheduled rescorer, archive money gate,
-geometric-presence lanes, poll-A-by-construction sentence, deficiency-flip
-concern (superseded by F7's continuous form). Rejected this wave: nothing —
-the three passes converged or complemented on every finding; one correction
-recorded (ops agent's Google-at-publish cost claim from wave 1 does not
-apply to seeded polls — options are user-added, priced per engagement).
+# §17 Verification stance
 
-## §26 Owner session addendum (2026-07-16, ratified rulings + redesigns)
+Fixtures first, RED-provable, eye = oracle for feel. The suite (union of all
+waves): credit/supply (warm-start overshoot recovers in ≤2 Sundays; Waco
+invariance; one-searcher never seeds; ghost-town yield termination; seasonal
+regain; capacity ramp; frontier dither samples the bar), attribution
+goldens (tiling + inherit-down + retroactive credit), subjects/header cases
+(two towns / continental / city+slivers / Chongqing descent / boundary-zoom
+hysteresis sim check), quota-drought degradation + poll-creation fallback,
+score suite + kill condition + per-lane rising-flap + two-cadence
+normalization + fake-elite at influence 1.0 + author concentration,
+deficiency n-growth continuity, saturation-adaptive recovery + gap-recovery,
+expected-new-content vs old cooldowns on the Austin corpus, governance
+denial vs fail-open (zero ungated passes), estimator-drift injection (2× →
+alarm fires), Redis-down walks (root-cause RED; graduation completes after
+recovery), ×50-traffic supply sanity, projection re-run at each fleet step.
+Every scheduler trace has a reader; every heartbeat is staging-proven RED.
 
-1. **Document structure**: this doc = THE master. The old plan survives only as
-   the execution spec for search-side Legs 1–2 (§7); its Leg 6 is superseded
-   by §20. Implementation order stands (§11/§23; Legs 1–2 parallel to Phase A).
-2. **C7 revised (owner)**: no budget cap / no auto-approve line. EVERY archive
-   seeding and gate-re-judge backfill arrives as preflight price tag +
-   explicit operator approval. Careful cost projection replaces caps.
-3. **Archive = one-shot seeding MODE (owner correction, supersedes §16's
-   derived re-sweeps)**: runs once per source EVER (pre-launch bulk; per-city
-   at engine onboarding), in an EXCLUSIVE mode owning the full Reddit budget
-   while all other lanes pause. archiveCoveredThrough remains a recorded fact,
-   not a trigger.
-4. **Keyword limit=1 REPLACED (owner: inherited overreaction)**: limit becomes
-   a RECALL parameter (~25–100, fixture-set). Cost is bounded by UNCOVERED
-   posts only (freshness-gate coverage makes covered results free), and
-   post-archive most results are covered — deep recall is cheap BECAUSE
-   archive seeded first. The planner prices dispatches by estimated uncovered
-   fetches, not by the limit.
-5. **Deadline-free paced scheduler (the scaling strategy, owner insight
-   "nothing is actually on-demand")**: due-times are targets, not deadlines.
-   One global pacer drains the due queue at a smoothed steady request rate
-   (well under 100/min), degrades by lateness (days = non-event), catches up
-   when idle, never bursts. Urgency = ordering, never bursting.
-6. **Projection model = named build item**: real per-sub post-rate data →
-   requests/day at 10/100/500 sources → fixture proving the free tier holds;
-   re-run at each fleet growth step. First-order math recorded: modest sub
-   ≈ 40 req/day; 500 sources ≈ 14% of the 144k/day ceiling; keyword recall
-   adds search requests + uncovered fetches only.
-7. **§24.1 candidate sentence (owner's time-decay vision)**: "a poll vote
-   counts like a Reddit mention — no room amplification for poll surfaces"
-   (poll-source g clamps to 1). Reddit dominance fades by decay; poll
-   influence rises by volume + freshness; no constant pushes. Fixture:
-   sparse_market_winner_not_fake_elite should pass trivially. Ratify after
-   fixtures confirm.
-8. Clarifications recorded: ranking is NOT removed — judgment families rank
-   candidates and ranks map to due-time proximity; hot-spike dissolution =
-   urgency as ordering in one queue; historical Reddit rate-limit denials are
-   unknowable (no durable instrument existed) — the heartbeat closes that
-   permanently.
+# §18 Owner items (current, complete)
+
+1. Fixture-gated values to ratify when proposed: keyword recall limit;
+   viability day-one prior (15) confirmation; sourceClassInfluence 1.0
+   confirmation via the fake-elite fixture; the two portfolio floor
+   FRACTIONS (unmet promise + explore insurance shares of each dispatch).
+2. Per-pool fail-policy TABLE ratification (§14.5).
+3. Gemini batch quota discovery — approved procedure, run pre-campaign.
+4. Ops readers for usage/decision ledgers (minimal endpoints) — confirm.
+5. Reddit account strategy before ~10 engines (multi-app sharding; official
+   API contract evaluation before ~40).
+6. WEEK-ONE BUILD PRIORITY: instrument conversion + concentration from
+   Austin's first Sundays (the warm-start predictor's direct inputs).
+
+# §19 Projection record (2026-07-16; Austin ~250 DAU vs Waco ~8 DAU, year 1)
+
+Model survives real numbers: Reddit ~0.01% of ceiling; ~$3/mo steady LLM;
+Austin warm-starts ≈8 polls and corrects off cohort 1; Waco first poll wk
+2–3 then oscillates at the bar (the median test is load-bearing exactly at
+this size — a band rule would have frozen it); ~150–250 community-pick
+restaurants/yr at zero collection spend; viability coarsely measured Q2–Q3;
+year-one honesty clause holds. Re-run the projection at each expansion step.
+
+# §20 Changelog (compacted; full ledger in git history + session archive)
+
+Wave 1 (Part I): places DAG replaced the market model; observe-every-probe;
+signals ledger with tiled weight-1 attribution (owner overruled 1/N);
+credit/yield seeding replaced the 40-market budget (rejected: global
+capacity queue; subjects-scoped demand — both would have reversed owner
+laws). Wave 2 (Part II+score): platform adapters; coverage intervals;
+persist-first gate; chunk commit unit; global identity; per-source rooms;
+score re-ratified w/ six conditions. Wave 3 (Part III): governor
+(pools/reserve-reconcile/normalized lateness); archive-exclusive-mode
+retracted (audit: archive = zero Reddit calls); money = grants (no caps —
+owner). Constants constitution + amendments (closed-loop law; median test
+replaced the uncertainty band ratchet; six kinds). Poll-supply evolution:
+flat 3 → capacity formula → min-clears controller → viability dissolution
+(VOTERS_NEEDED=15 → self-erasing prior) → weekly ritual restored (owner;
+deliberate clumping) → warm-start (launch-crawl resolved). Header fallback +
+neighborhood naming live-proven (probe mechanics corrected: +1 geocode per
+unknown node). Superseded-and-dead vocabulary (grep-clean in this edition
+outside this section): market types, minted/collectable flags, display-
+market election + 5% tie band, hot-spike lane, ready topics, POLL_COST,
+bank cap, KIND_COST/budget-12, backfill weights, VOTERS_NEEDED-as-constant.
+
+---
+
+# §21 Build Primitives (wave-4 unification — the patterns become code once)
+
+1. **Estimator** — THE primitive behind all ~14 adaptive quantities:
+   registerEstimator(name, { statistic, prior{value,strength}|{parent},
+   hierarchy (none | placesDAG | sourcePlatform | termGlobal), observe
+   (ledger/aggregate query, coverage-normalized denominator?), decay,
+   exploration (none | dither | optimisticSelection | timeWidening),
+   versionBindings[] }) → read(name, subject) = { estimate, uncertainty,
+   nEffective, priorWeight }. Consequences: the closed-loop law is enforced
+   at registration (no excitation source → cannot register when the consumer
+   gates its own observations); C8 heartbeats and version-widening are
+   uniform properties, not per-estimator code; **the places DAG IS the
+   shrinkage tree** for place-keyed estimators. Library + registry (hot
+   consumers read local caches, never a service call). Quantile-shaped
+   estimators (burst variance, overruns) may be a second config family under
+   the same registry/heartbeat/version contract. First clients: conversion +
+   tail-concentration (§18.6). **The registry is also the staging surface:
+   estimators register with readers ON or OFF (§23).**
+2. **Pacer lanes are the ONLY recurring-verb mechanism.** Every background
+   verb — expectedBatches reconciler, rescorer (dirty-flag debounce), surge
+   reader, graduation retry, stale-run reapers, promotion queue, gap
+   recovery, re-judge backfill, §2 naming reconciler, and THE WEEKLY POLL
+   TICK (minutes-tolerance lane: normalized lateness explodes at due+ε, so
+   the ritual structurally preempts months-tolerance seeding; clumping +
+   jitter are job-row properties) — is a self-rescheduling pacer job. No
+   crons. One dispatcher, one trace reader, one RED taxonomy.
+3. **Reconciler registry**: { expectationQuery, observationQuery, comparator,
+   action: enqueueRecovery | alarm | correct }, each a pacer lane
+   auto-carrying a staging-proven heartbeat — C8 becomes a property of
+   registration; an unreconciled lane fails lint.
+4. **One draw ledger**: the governor's persisted (declared, actual, pool,
+   credential, job, class-dimensions) pairs ARE the quota ledger, usage
+   ledger, and per-source request ledgers (preflight price tags read
+   measured per-unit costs from it). Kept separate: attempt ledger
+   (collector state), decision ledger (judgment record).
+5. **Two immutable fact stores, by law**: user acts (signals) and paid
+   documents (evidence); everything else — demand mass, mentions, scores —
+   is a re-derivable judgment over one of them. (A poll vote is a fact in
+   signals AND later part of a document; demand reads the signal, scoring
+   reads the mention — not double-counting.) Shared components: ONE
+   redirect-resolver library; ONE dirty-flag→debounced-singleton-rebuilder
+   (clients: signals aggregate, global rescore).
+6. **One coverage CONTRACT over separate mechanics** (time intervals / geo
+   regions / promptHash verdicts / chunk coverage): coverage is a fact
+   written transactionally with the act it claims; a detected gap is a
+   first-class row spawning a recovery pacer job; every domain has a
+   registered reconciler.
+7. **One "proposed sweep" verb** (archive seeding, re-judge backfill, gap
+   recovery, Places verification campaigns): proposed item + count × measured
+   per-unit cost + price tag + owner approval → grant mint → jobs under the
+   grant pool. One at-most-once-by-natural-key helper serves single-flight /
+   weekOf / mentionKey / ingest / rescorer-lock.
+
+# §22 Staged execution (wave-4 — supersedes §15's internal sequencing; the
+
+# phases and race rules stand)
+
+**The deferral law (R10 cashed): defer ESTIMATOR READERS, never
+observations.** Launch = the priors edition: every K2 quantity at its
+inventoried prior with its observation stream RECORDING; each deferred
+reader carries an explicit turn-on trigger so deferral cannot rot into
+deletion. Behaviorally identical for ~2–4 quarters by §19's own math.
+
+Launch-critical measurements (write-side, all cheap): signals + attribution;
+coverage intervals + poll_surface watermarks; conversion + tail-concentration
+(§18.6); poll_vote yield inputs; declared-vs-actual pairs; the draw ledger.
+Deferred readers (trigger): per-place viability shrinkage (Q2 viability
+data); measured expected-new-content (engine cadence data); crossEngineGap
+(engine #2 attached); saturation AIMD live trigger (volume near clamps);
+estimator-refresher + drift alarms (estimates stop being hand-set); surge
+lane (a fixture shows a missed surge); promotion paths (c)/(e) (fleet
+pressure); every-boundary pacer ordering (first real cross-class
+contention); grant-minting flow (manual pool rows until a fleet);
+multi-app sharding (≥10 engines).
+
+**Value-ordered cut**: 1. search Legs 1–2 (parallel, start now) · 2. Phase A
+minimum: places DAG + US seed + signals dual-write + redirects/actors +
+Estimator registry (readers off) + TomTom pools governed FIRST (the one
+ungoverned money) + existing Gemini reservation engine registered as pool #1
+· 3. header/resolution → catalog · 4. poll seeder at priors + weekly ritual
+(old crons + ready pool die) · 5. polls feed + cursor pagination + basic
+slicer · 6. aggregate + autocomplete/recent/suggestions readers · 7.
+collector at priors (4 writer families, dispatch-level pacer) · 8. score cut
+(after 4; own fixture gate; weeks post-launch OK). Archive-campaign flow =
+an engine-#2 onboarding deliverable.
+
+**Fixture triage** — launch-blocking RED set (8 families): attribution
+goldens (tiling + inherit + retroactive + mid-window mint invariance + CDP
+set-semantics + two-engine read golden); one-searcher-never-seeds +
+ghost-town termination + warm-start-overshoot-recovers; quota-drought
+degradation + poll-creation fallback; governance-denial-never-fail-open;
+header straddle/containment-fallback + hysteresis eye-check; live-lane
+heartbeat RED-proofs. All other §17 families travel WITH their deferred
+machinery (they gate the deferred code, not the launch).
+
+**Alarm hierarchy** (makes 50+ RED conditions solo-operable): THREE pageable
+roots — (1) money leaking (spend diverges from projection, or any ungated
+draw), (2) a user-blocking path failing (poll-creation promotion; header
+probe lane lateness), (3) worst-lane normalized lateness > its tolerance
+(one number summarizing every heartbeat — the §14.3 primitive as the
+universal severity scale). Everything else → daily digest, drill-down after
+a root fires. Root-cause governance-store-down RED annotates/suppresses the
+cascade.
+
+# §23 Wave-4 disposition record
+
+Adopted (simplicity lens): deferral law + priors edition w/ turn-on
+triggers · value-ordered cut · fixture triage · 3-root alarm hierarchy ·
+bought-complexity cuts (surge lane, promotion (c)/(e), every-boundary
+ordering, grant flow — all trigger-deferred, none deleted). Adopted
+(unification lens): Estimator primitive (+DAG-as-shrinkage-tree) · all
+recurring verbs = pacer lanes incl. the poll tick (minutes tolerance) ·
+draw-ledger collapse (quota/usage/request) · reconciler registry ·
+facts-vs-judgments law + redirect resolver + singleton rebuilder ·
+coverage contract · proposal verb + idempotency helper. Adopted (seams
+lens, base-text patched): vote→mention K6 mapping (one distinct voter = one
+mention; ballot bypasses LLM) · poll_surface coverage watermark (A defined
+for push-complete sources) · containment demand read w/ DAG set semantics
+(mint-invariance) · engine read law (distinct ancestors once) ·
+vote-time global resolution + close-time verification draw (enumerated) ·
+provenance/fame-pin re-keyed to SOURCES (engineless towns covered) · rep
+same-source-set rule (poll evidence = demand only, no engineId on
+poll_surface) · reconciler probe lane registration · descent tiebreak ·
+badge gate = K6 existence · Phase B order (seeder before score cut) +
+fame-pin re-key line. Adopted (synthesizer): registry-as-staging-surface
+synthesis (unification × simplicity). Rejected this wave: nothing — the
+three lenses were complementary by construction. Convergences with the
+synthesizer's pre-registered pass: estimator zoo, tick/pacer overlap, DAG
+plural-parent leak, two-store question (resolved KEEP by the
+facts-vs-judgments argument), operability concern (resolved by staging, not
+redesign).
