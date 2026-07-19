@@ -219,6 +219,45 @@ describe('PlacesReconcilerService — §2 background naming', () => {
     expect(probe.probe).toHaveBeenCalledTimes(1);
   });
 
+  it('asked-ground memory: an OVER-SCALE chain result still stops re-probing the same view (red-team: recurring-spend hole)', async () => {
+    // The vendor's finest rung here is a country — over-scale for the view,
+    // so the sketched bbox can never answer these anchors. Without the
+    // asked-ground view observation, every future settle of this ground
+    // would re-spend 3 governed draws forever.
+    const country: GeoBbox = {
+      minLat: -60,
+      minLng: -120,
+      maxLat: 60,
+      maxLng: 120,
+    };
+    const { service, probe } = makeHarness({
+      probeImpl: () =>
+        Promise.resolve({
+          chain: [
+            {
+              name: 'Bigland',
+              providerLevelCode: 'Country',
+              countryCode: 'US',
+              subdivisionCode: null,
+              bbox: country,
+            },
+          ],
+          probedBbox: { minLat: 0, minLng: 0, maxLat: 0.001, maxLng: 0.001 },
+        }),
+    });
+
+    service.noteViewport(VIEW);
+    await service.whenIdle();
+    const firstPassProbes = probe.probe.mock.calls.length;
+    expect(firstPassProbes).toBeGreaterThan(0);
+
+    // Second settle of the same ground: the view-region asked observation
+    // answers (commensurate scale by construction) — zero new spend.
+    service.noteViewport(VIEW);
+    await service.whenIdle();
+    expect(probe.probe.mock.calls.length).toBe(firstPassProbes);
+  });
+
   it('single-flight per cell: a second settle while the cell is in flight does not double-probe', async () => {
     let resolveProbe: (result: TomtomChainProbeResult) => void = () =>
       undefined;

@@ -42,9 +42,22 @@ import {
   TomtomChainProbe,
 } from './tomtom-chain-probe.port';
 
-/** §2: negative region observations live 30 days. */
+/** §2: region observations live 30 days. */
 export const NEGATIVE_OBSERVATION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * Asked-ground memory (§2's "negative region cache", generalized — red-team
+ * 7aaa66d9 finding 2): TWO kinds of region observation share this store and
+ * TTL. (a) "no place here" — an empty chain's probedBbox. (b) "already asked
+ * at this scale" — after a pass that probed, the VIEW region itself: the
+ * vendor's finest rung there is now sketched, and when that rung is
+ * over-scale for the view (the near-universal US street-zoom case) NOTHING
+ * finer can ever be learned — without this memory the same 3 anchors
+ * re-spend governed draws on every future settle of the same ground,
+ * forever. The scale gate (bboxAnswersAnchor) still applies on read, so an
+ * asked region answers commensurate-or-coarser future views and a genuinely
+ * finer zoom re-asks once per scale band per TTL.
+ */
 interface NegativeObservation {
   bbox: GeoBbox;
   observedAtMs: number;
@@ -202,6 +215,16 @@ export class PlacesReconcilerService {
           .filter((bbox): bbox is GeoBbox => bbox !== null),
       ];
     }
+
+    // Asked-ground memory: this pass probed and sketched everything the
+    // vendor has for this view — remember the VIEW region so the same
+    // ground doesn't re-spend draws every settle when its finest chain is
+    // over-scale (see NegativeObservation doc). Recorded only when a probe
+    // actually fired (a fully-answered pass costs nothing to repeat).
+    this.negativeObservations.push({
+      bbox: view,
+      observedAtMs: Date.now(),
+    });
   }
 
   private freshNegativeBboxes(): GeoBbox[] {

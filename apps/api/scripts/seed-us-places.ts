@@ -169,8 +169,41 @@ async function main(): Promise<void> {
     }
   }
 
-  const municipalities = parseGazetteer(PLACES_FILE);
+  const allMunicipalities = parseGazetteer(PLACES_FILE);
   const stateNames = parseStateNames(STATES_FILE);
+
+  // Identity-collision guard (red-team 7aaa66d9 finding 3): the §1 identity
+  // tuple (country, subdivision, level, name) cannot distinguish two REAL
+  // same-name municipalities in one state (18 groups in the gazetteer, e.g.
+  // the two Texas "Lakeside"s 4.7° apart). Seeding both would merge them
+  // into one phantom-bbox row that poisons containing-fallback headers.
+  // SKIP every member of a duplicate group, loudly — they enter organically
+  // via §2 probes, where the catalog's disjoint-bbox guard refuses the
+  // phantom union. The identity-law discriminator amendment is flagged for
+  // wave-5.
+  const byIdentity = new Map<string, GazetteerRow[]>();
+  for (const muni of allMunicipalities) {
+    const key = `${muni.usps}|${stripLsadDescriptor(muni.name).toLowerCase()}`;
+    byIdentity.set(key, [...(byIdentity.get(key) ?? []), muni]);
+  }
+  const collisionGroups = [...byIdentity.values()].filter(
+    (group) => group.length > 1,
+  );
+  const collided = new Set(collisionGroups.flat().map((muni) => muni.geoid));
+  const municipalities = allMunicipalities.filter(
+    (muni) => !collided.has(muni.geoid),
+  );
+  if (collisionGroups.length > 0) {
+    console.log(
+      `SKIPPED ${collided.size} municipalities in ${collisionGroups.length} same-name-same-state identity collisions (organic §2 entry): ` +
+        collisionGroups
+          .map(
+            (g) =>
+              `${stripLsadDescriptor(g[0].name)} (${g[0].usps} ×${g.length})`,
+          )
+          .join(', '),
+    );
+  }
   const missingStates = [
     ...new Set(
       municipalities.map((m) => m.usps).filter((usps) => !stateNames.has(usps)),

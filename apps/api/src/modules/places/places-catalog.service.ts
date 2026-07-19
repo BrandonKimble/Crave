@@ -317,7 +317,30 @@ export class PlacesCatalogService {
     parentPlaceId: string | undefined,
   ): Promise<Place> {
     const existingBbox = placeBbox(existing);
-    const merged = bboxUnion(existingBbox, node.bbox);
+    // Distinct-place guard (red-team 7aaa66d9 finding 3, the Lakeside-TX
+    // phantom): when both bboxes exist and are DISJOINT (no intersection —
+    // definitional, no threshold), the identity tuple has collided two
+    // genuinely different places (same name, same subdivision — e.g. two
+    // Texas "Lakeside"s 4.7° apart). Unioning them mints a phantom region
+    // that poisons containing-fallback headers for everything in between,
+    // and §1's grow-only law makes the poison permanent. Refuse the widen,
+    // log the suspect; the identity-law discriminator amendment is flagged
+    // in the master plan (wave-5).
+    const disjoint =
+      existingBbox &&
+      node.bbox &&
+      bboxIntersectionParts(existingBbox, node.bbox).length === 0;
+    if (disjoint) {
+      this.logger.warn(
+        'distinct-place suspect: disjoint bbox on identity match',
+        {
+          placeId: existing.placeId,
+          stored: existingBbox,
+          observed: node.bbox,
+        },
+      );
+    }
+    const merged = disjoint ? null : bboxUnion(existingBbox, node.bbox);
     // Skip-if-contained is race-safe: bboxes only ever grow, so an
     // observation that adds nothing against our read adds nothing against
     // any concurrent state either.
