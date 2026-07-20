@@ -178,3 +178,22 @@ true threading arc — inout-state split); defer the live_update frame (53ms mid
 behind enter-settled; the 160ms canonical fade + STEP-3 re-anchor mean the snap
 verdict now needs the OWNER'S EYE on device — sim video at 50ms sampling cannot
 adjudicate a 160ms ramp under recording load.
+
+### Release verdict with the dedup (2026-07-19, warm-binary protocol, same rig)
+
+First STRUCTURAL drop in the release lane (prior runs moved within variance):
+
+| lane | pre-clock | clock v1 | clock v2 | **dedup** |
+|---|---|---|---|---|
+| JS maxLag worst/2nd (ms) | 174.8/131.1 | 153.4/109.3 | 155.3/117.6 | **45.4/27.4** |
+| UI p95Frame worst/2nd (ms) | 189.8/169.3 | 184.7/101.1 | 170.3/162.7 | **80.7/53.0** |
+
+The reveal burst as a class is ~gone from the JS lane (45ms worst lag ≈ three
+dropped frames, down from ~10) and the UI lane's worst p95 window halved. This is
+exactly what deleting ~110ms of duplicated main-thread native apply from the
+reveal cluster predicts — the instrument and the fix agree.
+
+Residual UI worst window (80.7ms p95 / floorFps 8 in the worst window) =
+the remaining one-time preroll reconcile (~99ms) + mid-ramp live_update apply
+(~53ms); those are the recorded next levers. Fade/snap verdict on the pins now
+belongs to the owner's eye on device.
