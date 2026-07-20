@@ -21,7 +21,10 @@ import {
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
-import { PublicCraveScoreService } from '../content-processing/public-crave-score';
+import {
+  PublicCraveScoreService,
+  RescoreCoordinatorService,
+} from '../content-processing/public-crave-score';
 import { MarketRegistryService } from '../markets/market-registry.service';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
@@ -461,6 +464,7 @@ export class RestaurantLocationEnrichmentService {
     private readonly restaurantEntityMergeService: RestaurantEntityMergeService,
     private readonly marketRegistry: MarketRegistryService,
     private readonly publicCraveScoreService: PublicCraveScoreService,
+    private readonly rescoreCoordinator: RescoreCoordinatorService,
     private readonly cuisineExtractionQueue: RestaurantCuisineExtractionQueueService,
     private readonly secondaryLocationExpansionQueue: RestaurantSecondaryLocationExpansionQueueService,
     private readonly configService: ConfigService,
@@ -4929,7 +4933,9 @@ export class RestaurantLocationEnrichmentService {
     if (!hasMarketContext) {
       return;
     }
-    await this.publicCraveScoreService.rebuildAllScores();
+    // §12.6 singleton rescorer: mark dirty (durable flag) — never a direct
+    // rebuild from a collection/enrichment path (red-team 1ac21b70 follow-up).
+    await this.rescoreCoordinator.markDirty('location-enrichment');
   }
 
   private toNumberValue(value: unknown): number | undefined {
