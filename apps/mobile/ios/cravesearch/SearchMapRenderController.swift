@@ -914,6 +914,18 @@ final class SearchMapRenderController: RCTEventEmitter {
   // recordNativeApply is callable from the preroll prepare queue; the buckets are main-owned
   // dictionaries, so cross-thread records serialize through this lock.
   private let nativeApplyAttributionLock = NSLock()
+  // MODULE-QUEUE PREPARSE (deep half step 3): setRenderFrame's entry runs on the RN module's
+  // serial background queue before its main hop — the pure source-delta parse runs there for
+  // latency-tolerant frame kinds. The synthesize step needs the family source ids without
+  // touching main-owned InstanceState, so attach snapshots them here (lock-guarded).
+  private struct PreparseSourceIds {
+    let pin: String
+    let pinInteraction: String
+    let dot: String
+    let labelCollision: String
+  }
+  private let attachedSourceIdsLock = NSLock()
+  private var attachedSourceIdsByInstanceId: [String: PreparseSourceIds] = [:]
   private var resolvedMapHandles: [String: ResolvedMapHandle] = [:]
   private var enterSettleWorkItems: [String: DispatchWorkItem] = [:]
   private var deferredDismissSourceCleanupWorkItems: [String: DispatchWorkItem] = [:]
@@ -1268,6 +1280,22 @@ final class SearchMapRenderController: RCTEventEmitter {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
+    // Module-queue snapshot for the frame preparse (see PreparseSourceIds). Written before
+    // the main hop so a frame following this attach on the serial module queue sees it.
+    if let instanceId = payload["instanceId"] as? String,
+       let pinSourceId = payload["pinSourceId"] as? String,
+       let pinInteractionSourceId = payload["pinInteractionSourceId"] as? String,
+       let dotSourceId = payload["dotSourceId"] as? String,
+       let labelCollisionSourceId = payload["labelCollisionSourceId"] as? String {
+      attachedSourceIdsLock.lock()
+      attachedSourceIdsByInstanceId[instanceId] = PreparseSourceIds(
+        pin: pinSourceId,
+        pinInteraction: pinInteractionSourceId,
+        dot: dotSourceId,
+        labelCollision: labelCollisionSourceId
+      )
+      attachedSourceIdsLock.unlock()
+    }
     DispatchQueue.main.async { [weak self] in
       guard let self else {
         reject("search_map_render_controller_unavailable", "controller deallocated", nil)
@@ -1401,6 +1429,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
+    attachedSourceIdsLock.lock()
+    attachedSourceIdsByInstanceId.removeValue(forKey: instanceId)
+    attachedSourceIdsLock.unlock()
     DispatchQueue.main.async { [weak self] in
       self?.enterSettleWorkItems[instanceId]?.cancel()
       self?.enterSettleWorkItems[instanceId] = nil
@@ -1684,6 +1715,51 @@ final class SearchMapRenderController: RCTEventEmitter {
   ) {
     let nativeModuleReceivedAtMs = CACurrentMediaTime() * 1000
     let nativeModuleReceivedAtEpochMs = Date().timeIntervalSince1970 * 1000
+    // MODULE-QUEUE PREPARSE (deep half step 3): parseSourceDeltas is a pure function of the
+    // payload, and this entry runs on the module's serial background queue BEFORE the main
+    // hop — the covered frame's ~39ms parse costs main nothing and ordering is free (the
+    // queue is serial, main hops preserve submit order). Latency-TOLERANT kinds only: an
+    // enter frame must hop immediately (its redundant deltas are dedup-skipped on main
+    // anyway) and live frames are small or no-op. Any preparse failure leaves
+    // preparsedSourceDeltas nil → the main-side parse path runs exactly as before.
+    var preparsedSourceDeltas: [ParsedFeatureCollectionDelta]?
+    let preparseKind =
+      ((payload["visualFrameTransaction"] as? [String: Any])?["kind"] as? String) ?? ""
+    if preparseKind == "hidden_preload" || preparseKind == "bootstrap",
+       let rawDeltas = payload["sourceDeltas"] as? [[String: Any]],
+       !rawDeltas.isEmpty {
+      let preparseStartedAt = CACurrentMediaTime() * 1000
+      var effectiveDeltas: [[String: Any]]? = rawDeltas
+      if let fanOut = payload["derivedFamilyTransport"] as? [String: Any] {
+        attachedSourceIdsLock.lock()
+        let sourceIds = (payload["instanceId"] as? String)
+          .flatMap { attachedSourceIdsByInstanceId[$0] }
+        attachedSourceIdsLock.unlock()
+        if let sourceIds,
+           let pinsDelta = rawDeltas.first(where: { ($0["sourceId"] as? String) == sourceIds.pin }),
+           let synthesized = try? Self.synthesizeDerivedFamilyDeltaDicts(
+             pinsDelta: pinsDelta,
+             fanOut: fanOut,
+             pinInteractionSourceId: sourceIds.pinInteraction,
+             dotSourceId: sourceIds.dot,
+             labelCollisionSourceId: sourceIds.labelCollision
+           ) {
+          effectiveDeltas = rawDeltas + synthesized
+        } else {
+          // Ids unknown or synthesis failed — a HALF-preparsed set would apply as complete.
+          effectiveDeltas = nil
+        }
+      }
+      if let effectiveDeltas {
+        preparsedSourceDeltas = try? Self.parseSourceDeltas(effectiveDeltas)
+        self.recordNativeApply(
+          section: "preparse.parse_source_deltas",
+          phase: preparseKind,
+          durationMs: CACurrentMediaTime() * 1000 - preparseStartedAt,
+          operationCount: preparsedSourceDeltas?.count ?? 0
+        )
+      }
+    }
     DispatchQueue.main.async { [weak self] in
       let nativeMainStartedAtMs = CACurrentMediaTime() * 1000
       let nativeMainStartedAtEpochMs = Date().timeIntervalSince1970 * 1000
@@ -1839,7 +1915,8 @@ final class SearchMapRenderController: RCTEventEmitter {
               visualFrameTransaction: visualFrameTransaction,
               sourceDeltas: shouldApplySourcePayload ? sourceDeltas : nil,
               derivedFamilyTransport: shouldApplySourcePayload ? derivedFamilyTransport : nil,
-              markerRoleFrame: shouldApplySourcePayload ? markerRoleFrame : nil
+              markerRoleFrame: shouldApplySourcePayload ? markerRoleFrame : nil,
+              preparsedDeltas: shouldApplySourcePayload ? preparsedSourceDeltas : nil
             )
             attributionPhase = self.instances[instanceId]?.lastPresentationBatchPhase ?? attributionPhase
             self.recordNativeApply(
@@ -2606,7 +2683,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       visualFrameTransaction: VisualFrameTransaction,
       sourceDeltas: [[String: Any]]?,
       derivedFamilyTransport: [String: Any]? = nil,
-      markerRoleFrame: [String: Any]?
+      markerRoleFrame: [String: Any]?,
+      preparsedDeltas: [ParsedFeatureCollectionDelta]? = nil
     ) throws -> VisualFrameSnapshotApplyResult {
     guard var state = self.instances[instanceId] else {
       throw NSError(
@@ -2646,7 +2724,8 @@ final class SearchMapRenderController: RCTEventEmitter {
     // delta when the frame rides the fan-out channel. Derived deltas append AFTER pins
     // so the sequential apply loop applies pins first.
     var effectiveSourceDeltas = sourceDeltas
-    if let derivedFamilyTransport,
+    if preparsedDeltas == nil,
+      let derivedFamilyTransport,
       let deltas = sourceDeltas,
       let pinsDelta = deltas.first(where: { ($0["sourceId"] as? String) == state.pinSourceId }) {
       let synthesized = try Self.synthesizeDerivedFamilyDeltaDicts(
@@ -2658,9 +2737,11 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
       effectiveSourceDeltas = deltas + synthesized
     }
-    if let sourceDeltas = effectiveSourceDeltas {
+    if preparsedDeltas != nil || effectiveSourceDeltas != nil {
       let parseStartedAt = CACurrentMediaTime() * 1000
-      let parsedDeltas = try Self.parseSourceDeltas(sourceDeltas)
+      // Preparsed on the module queue (synthesis included) when available — this main-side
+      // section then records ~0 and the preparse.parse_source_deltas section holds the cost.
+      let parsedDeltas = try preparsedDeltas ?? Self.parseSourceDeltas(effectiveSourceDeltas ?? [])
       self.recordNativeApply(
         section: "snapshot.parse_source_deltas",
         phase: state.lastPresentationBatchPhase,
@@ -2760,6 +2841,17 @@ final class SearchMapRenderController: RCTEventEmitter {
         allowNewTransitions: true,
         reason: "live_marker_role_frame"
       )
+    } else if sourceAdmissionOutcome == "sources_reused_resident" {
+      // NO-OP FRAME DEDUP (deep half step 3, [FRAMEDBG]-attributed): the live_update frame
+      // that flips entering→live carries ZERO deltas at unchanged revisions — yet its
+      // follow-up full reconcile recomputed ~31ms of identical outputs MID-RAMP. A frame
+      // that mutated no family input has nothing to reconcile: the phase flip is
+      // presentation-side, and every real input path (deltas, role frames, catalog decide,
+      // toggle redecide, recovery replay) runs its own reconcile. Same disease and cure as
+      // the enter-frame revision dedup.
+      NSLog(
+        "[applydedup] no-op frame reconcile skipped kind=%@ gen=%@",
+        visualFrameTransaction.kind, generationId)
     } else {
       try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
     }
