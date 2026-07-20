@@ -138,3 +138,47 @@ describe('buildSearchCardsWorldKey — list variant + access-material key rules'
     expect(withSlug).toBe(buildSearchCardsWorldKey(listTuple()));
   });
 });
+
+// SEE-LOCATIONS mode (Leg 2 tail): the mode is IDENTITY-relevant on the entity
+// kind — the same restaurant with/without it is two different worlds (the lean
+// in-view-locations variant vs the ranked single-entity search).
+describe('entity query-identity — seeLocations is identity', () => {
+  const entityIdentity = (
+    overrides: Partial<Extract<SearchQueryIdentity, { kind: 'entity' }>> = {}
+  ): Extract<SearchQueryIdentity, { kind: 'entity' }> => ({
+    kind: 'entity',
+    entityType: 'restaurant',
+    entityId: 'rest-1',
+    displayName: "Torchy's Tacos",
+    ...overrides,
+  });
+
+  it('seeLocations flips identity equality', () => {
+    expect(
+      areSearchQueryIdentitiesEqual(entityIdentity(), entityIdentity({ seeLocations: true }))
+    ).toBe(false);
+    expect(
+      areSearchQueryIdentitiesEqual(
+        entityIdentity({ seeLocations: true }),
+        entityIdentity({ seeLocations: true })
+      )
+    ).toBe(true);
+    // absent and explicit-false are the SAME world
+    expect(
+      areSearchQueryIdentitiesEqual(entityIdentity(), entityIdentity({ seeLocations: false }))
+    ).toBe(true);
+  });
+
+  it('seeLocations KEYS the world (:seelocations segment)', () => {
+    const plain: SearchDesiredTuple = {
+      ...IDLE_SEARCH_DESIRED_TUPLE,
+      queryIdentity: entityIdentity(),
+    };
+    const mode: SearchDesiredTuple = {
+      ...IDLE_SEARCH_DESIRED_TUPLE,
+      queryIdentity: entityIdentity({ seeLocations: true }),
+    };
+    expect(buildSearchCardsWorldKey(mode)).toContain(':seelocations');
+    expect(buildSearchCardsWorldKey(mode)).not.toBe(buildSearchCardsWorldKey(plain));
+  });
+});

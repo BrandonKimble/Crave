@@ -180,6 +180,8 @@ export class HistoryService {
       lastViewedAt: Date;
       viewCount: number;
       locationId?: string | null;
+      /** Earned address suggestion: the viewed location's address label. */
+      locationAddress?: string | null;
       statusPreview?: RestaurantStatusPreviewDto | null;
     }>
   > {
@@ -192,12 +194,12 @@ export class HistoryService {
     });
 
     const restaurantIds = rows.map((row) => row.restaurantId);
-    const previews =
+    const [previews, addressByLocationId] = await Promise.all([
       restaurantIds.length > 0
-        ? await this.restaurantStatusService.getStatusPreviews({
-            restaurantIds,
-          })
-        : [];
+        ? this.restaurantStatusService.getStatusPreviews({ restaurantIds })
+        : Promise.resolve([]),
+      this.loadLocationAddresses(rows.map((row) => row.locationId ?? null)),
+    ]);
     const previewMap = new Map(
       previews.map((preview) => [preview.restaurantId, preview]),
     );
@@ -210,6 +212,9 @@ export class HistoryService {
       lastViewedAt: row.lastViewedAt,
       viewCount: row.viewCount,
       locationId: row.locationId,
+      locationAddress: row.locationId
+        ? (addressByLocationId.get(row.locationId) ?? null)
+        : null,
       statusPreview: previewMap.get(row.restaurantId) ?? null,
     }));
   }
@@ -227,6 +232,8 @@ export class HistoryService {
       lastViewedAt: Date;
       viewCount: number;
       locationId?: string | null;
+      /** Earned address suggestion: the viewed location's address label. */
+      locationAddress?: string | null;
       statusPreview?: RestaurantStatusPreviewDto | null;
     }>
   > {
@@ -239,12 +246,12 @@ export class HistoryService {
     });
 
     const restaurantIds = rows.map((row) => row.restaurantId);
-    const previews =
+    const [previews, addressByLocationId] = await Promise.all([
       restaurantIds.length > 0
-        ? await this.restaurantStatusService.getStatusPreviews({
-            restaurantIds,
-          })
-        : [];
+        ? this.restaurantStatusService.getStatusPreviews({ restaurantIds })
+        : Promise.resolve([]),
+      this.loadLocationAddresses(rows.map((row) => row.locationId ?? null)),
+    ]);
     const previewMap = new Map(
       previews.map((preview) => [preview.restaurantId, preview]),
     );
@@ -258,8 +265,30 @@ export class HistoryService {
       lastViewedAt: row.lastViewedAt,
       viewCount: row.viewCount,
       locationId: row.locationId,
+      locationAddress: row.locationId
+        ? (addressByLocationId.get(row.locationId) ?? null)
+        : null,
       statusPreview: previewMap.get(row.restaurantId) ?? null,
     }));
+  }
+
+  /** Batch address labels for the viewed locations (earned address display). */
+  private async loadLocationAddresses(
+    locationIds: Array<string | null>,
+  ): Promise<Map<string, string | null>> {
+    const distinctIds = Array.from(
+      new Set(locationIds.filter((id): id is string => Boolean(id))),
+    );
+    if (distinctIds.length === 0) {
+      return new Map();
+    }
+    const locations = await this.prisma.restaurantLocation.findMany({
+      where: { locationId: { in: distinctIds } },
+      select: { locationId: true, address: true },
+    });
+    return new Map(
+      locations.map((location) => [location.locationId, location.address]),
+    );
   }
 
   private resolveViewCooldownMs(): number {

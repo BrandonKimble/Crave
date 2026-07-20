@@ -18,6 +18,9 @@ type RunRestaurantEntitySearchParams = {
   restaurantName: string;
   submissionSource: NaturalSearchRequest['submissionSource'];
   typedPrefix?: string;
+  /** SEE-LOCATIONS mode: the world = this restaurant's in-viewport locations
+   *  as pins (the "See locations" autocomplete chip's search). */
+  seeLocations?: boolean;
 };
 
 type RunBestHereOptions = {
@@ -60,6 +63,7 @@ export const useSearchStructuredSubmitOwner = ({
             entityType: 'restaurant',
             entityId: params.restaurantId,
             displayName: trimmedName,
+            ...(params.seeLocations ? { seeLocations: true } : null),
           },
           tab: 'restaurants',
           filterVariant: { includeSimilar: false },

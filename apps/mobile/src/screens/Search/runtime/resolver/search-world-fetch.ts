@@ -218,6 +218,10 @@ export const createSearchWorldFetcher =
           sourceQuery: identity.displayName,
           submissionSource: 'autocomplete',
           submissionContext,
+          // SEE-LOCATIONS mode: the identity's discriminator rides the SAME
+          // structured wire — the server answers the lean in-view-locations
+          // variant instead of the ranked pipeline.
+          ...(identity.seeLocations ? { seeLocations: true } : null),
         };
         attachTupleScopeToPayload(payload, tuple, userLocation);
         response = await env.runSearch({ kind: 'structured', payload, onCacheStatus });
@@ -327,6 +331,11 @@ export const createSearchWorldNextPageFetcher =
             : {},
         pagination: { page: targetPage, pageSize: DEFAULT_PAGE_SIZE },
         includeSqlPreview: false,
+        // See-locations worlds are single-response (one restaurant) so this arm
+        // never runs for them in practice; carry the discriminator anyway so a
+        // hypothetical page-N request could never silently rerun the RANKED
+        // pipeline under the mode's identity.
+        ...(identity.kind === 'entity' && identity.seeLocations ? { seeLocations: true } : null),
       };
       attachTupleScopeToPayload(payload, tuple, userLocation);
       response = await env.runSearch({ kind: 'structured', payload, onCacheStatus });

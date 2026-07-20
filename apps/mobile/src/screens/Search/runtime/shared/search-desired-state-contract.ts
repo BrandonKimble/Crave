@@ -57,6 +57,10 @@ export type SearchQueryIdentity =
       entityType: 'restaurant' | 'food' | 'food_attribute' | 'restaurant_attribute';
       entityId: string;
       displayName: string;
+      /** SEE-LOCATIONS mode (restaurant only): the world = this restaurant's
+       *  in-viewport locations as pins (server lean variant). Identity-relevant:
+       *  the same restaurant with/without the mode is two different worlds. */
+      seeLocations?: boolean;
     }
   | {
       kind: 'profileSeed';
@@ -182,7 +186,11 @@ export const areSearchQueryIdentitiesEqual = (
     }
     case 'entity': {
       const other = b as Extract<SearchQueryIdentity, { kind: 'entity' }>;
-      return a.entityType === other.entityType && a.entityId === other.entityId;
+      return (
+        a.entityType === other.entityType &&
+        a.entityId === other.entityId &&
+        (a.seeLocations ?? false) === (other.seeLocations ?? false)
+      );
     }
     case 'profileSeed':
       return (
@@ -302,7 +310,7 @@ export const buildSearchCardsWorldKey = (tuple: SearchDesiredTuple): string => {
         : identity.kind === 'list'
           ? `list:${identity.listId}:${identity.listType}${identity.targetUserId != null ? `:u:${identity.targetUserId}` : ''}`
           : identity.kind === 'entity'
-            ? `entity:${identity.entityType}:${identity.entityId}`
+            ? `entity:${identity.entityType}:${identity.entityId}${identity.seeLocations ? ':seelocations' : ''}`
             : identity.kind === 'profileSeed'
               ? `profileSeed:${identity.restaurantId}`
               : 'idle';

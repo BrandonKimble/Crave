@@ -167,6 +167,16 @@ export class SearchQueryRequestDto {
   @IsBoolean()
   includeSimilar?: boolean;
 
+  /**
+   * SEE-LOCATIONS mode (Leg 2 tail): the lean single-restaurant variant. When
+   * true (with exactly one restaurant entity id), the pipeline skips ranking
+   * entirely and answers with that restaurant's locations INSIDE the request
+   * bounds as pin-ready rows — the "See locations" autocomplete chip's search.
+   */
+  @IsOptional()
+  @IsBoolean()
+  seeLocations?: boolean;
+
   @ValidateNested()
   @Type(() => QueryEntityGroupDto)
   entities!: QueryEntityGroupDto;

@@ -34,7 +34,9 @@ export type AutocompleteMatch = {
     recentQuery?: boolean;
   };
   querySuggestionSource?: 'personal' | 'global';
-  locationCount?: number;
+  // See-locations cut: the per-match locationCount field is DEAD — the
+  // multi-location fact (the "See locations" chip decision) derives from
+  // statusPreview.locationCount, which the pipeline already carries.
   statusPreview?: RestaurantStatusPreview | null;
 };
 

@@ -349,6 +349,13 @@ export class SearchService {
       // cheap pool, neighborhoods enter the catalog on first attention.
       this.placesReconciler.noteViewport(view);
     }
+    if (request.seeLocations) {
+      // SEE-LOCATIONS mode: the lean single-restaurant variant answers here —
+      // no ranking pipeline, no market/place resolution (a collapse world
+      // never renders a header verdict). noteViewport above still fired: the
+      // submit is real viewport attention.
+      return this.runSeeLocationsQuery(request, searchRequestId, start);
+    }
     const [resolvedMarket, displayPlaceName] = await Promise.all([
       this.resolveSearchMarketContext(request),
       this.resolveDisplayPlaceName(view),
@@ -2511,6 +2518,92 @@ export class SearchService {
     return Array.from(new Set(ids));
   }
 
+  /**
+   * SEE-LOCATIONS mode (Leg 2 tail): the lean single-restaurant variant.
+   * Request = one restaurant entity id + viewport bounds; response = that
+   * restaurant's IN-VIEW locations as pin-ready rows on one RestaurantResult
+   * (locations ordered nearest-to-viewport-center; [0] = display location),
+   * riding the ordinary SearchResponse wire so the world/phase pipeline
+   * renders it like any search. The act is a real search in the signals
+   * ledger, meta-stamped with the mode + subject restaurant.
+   */
+  private async runSeeLocationsQuery(
+    request: SearchQueryRequestDto,
+    searchRequestId: string,
+    startedAt: number,
+  ): Promise<SearchResponseDto> {
+    const restaurantIds = this.collectEntityIds(request.entities?.restaurants);
+    if (restaurantIds.length !== 1) {
+      throw new BadRequestException(
+        'seeLocations requires exactly one restaurant entity id',
+      );
+    }
+    const restaurantId = restaurantIds[0];
+    const bounds = request.bounds ?? null;
+    const { restaurant, inViewLocationCount } =
+      await this.queryExecutor.executeSeeLocations({
+        restaurantId,
+        bounds,
+        userLocation: request.userLocation ?? null,
+      });
+    const queryExecutionTimeMs = Date.now() - startedAt;
+    // Membership law: a restaurant with ZERO in-view locations yields an empty
+    // world (the map has nothing of it to pin), not a zero-location row.
+    const restaurants =
+      restaurant != null && inViewLocationCount > 0 ? [restaurant] : [];
+
+    const plan: QueryPlan = {
+      format: 'single_list',
+      restaurantFilters: [
+        {
+          scope: 'restaurant',
+          description: 'See locations: in-view locations of one restaurant',
+          entityType: 'restaurant',
+          entityIds: [restaurantId],
+        },
+      ],
+      connectionFilters: [],
+      ranking: { foodOrder: 'none', restaurantOrder: 'none' },
+      diagnostics: { missingEntities: [], notes: ['see_locations'] },
+    };
+
+    this.recordSearchSignals(
+      request,
+      {
+        searchRequestId,
+        totalResults: restaurants.length,
+        totalRestaurantResults: restaurants.length,
+      },
+      [{ entityId: restaurantId, entityType: EntityType.restaurant }],
+      { mode: 'see_locations', restaurantId, inViewLocationCount },
+    );
+
+    return {
+      format: 'single_list',
+      plan,
+      dishes: [],
+      restaurants,
+      metadata: {
+        totalFoodResults: 0,
+        totalRestaurantResults: restaurants.length,
+        queryExecutionTimeMs,
+        boundsApplied: bounds != null,
+        openNowApplied: false,
+        openNowSupportedRestaurants: 0,
+        openNowUnsupportedRestaurants: 0,
+        openNowFilteredOut: 0,
+        page: 1,
+        pageSize: restaurants.length,
+        resultCoverageStatus: 'full',
+        sourceQuery: request.sourceQuery,
+        searchRequestId,
+        analysisMetadata: {
+          seeLocations: { restaurantId, inViewLocationCount },
+        },
+      },
+    };
+  }
+
   private recordQueryImpressions(
     request: SearchQueryRequestDto,
     context: {
@@ -2544,6 +2637,8 @@ export class SearchService {
       totalRestaurantResults: number;
     },
     targets: { entityId: string; entityType: EntityType }[],
+    /** Mode variants (see-locations) stamp their discriminator here. */
+    extraMeta?: Record<string, unknown>,
   ): void {
     const geo = this.signals.bboxFromBounds(request.bounds ?? null);
     const primaryEntityId = targets[0]?.entityId ?? null;
@@ -2571,6 +2666,7 @@ export class SearchService {
         restaurantCount: context.totalRestaurantResults,
         cached: false,
         resolvedEntityId: primaryEntityId ?? undefined,
+        ...(extraMeta ?? {}),
       },
     });
 

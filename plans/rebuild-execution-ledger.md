@@ -108,10 +108,31 @@ agent in flight at turn end so completion notifications chain turns.
       in-context locationId from row/profile displayLocation).
 - [ ] Recently-viewed locationId + address labels (history records + display;
       earned address suggestions come with See-locations work).
-- [ ] See-locations mode: server lean variant (restaurantId+viewport →
-      locations as pins) + autocomplete chip relabel "See locations" +
-      tap = run mode. (Suggestion chip file: SearchSuggestions.tsx;
-      autocomplete locationCount plumbing deletion comes with it.)
+- [x] See-locations mode EXECUTED 2026-07-20 (uncommitted): transport =
+      /search/run + `seeLocations` dto discriminator (ONE search pipeline —
+      runQuery routes to runSeeLocationsQuery → lean
+      SearchQueryExecutor.executeSeeLocations, 2 indexed reads, wrap-aware
+      bbox; locations array = IN-VIEW only, ordered nearest-to-center,
+      locationCount stays global; zero-in-view = empty world). Signal =
+      real kind='search' w/ meta.mode='see_locations'+restaurantId (+
+      selection echo). Mobile: entity identity grew `seeLocations`
+      (identity-relevant, equality+worldKey ':seelocations'), fetch attaches
+      the flag, chip tap = pending-selection + profile preview +
+      runRestaurantEntitySearch({seeLocations}) — the recently-viewed
+      committed-entity lane; pins = existing selected-restaurant
+      all-locations spread reading row.locations (map surface UNTOUCHED).
+      Chip renders on multi-location restaurant suggestions ONLY (decision
+      = statusPreview.locationCount>1). locationCount plumbing DEAD:
+      autocomplete attachLocationCounts + dto/mobile match field +
+      render-meta-detail-line count param/"N locations" label (suggestion
+      surfaces never show a count per §7). Earned address labels:
+      history.service batch-joins locationAddress; recently-viewed rows
+      (SearchSuggestions + RecentHistoryView) show it as meta prefix.
+      Perf-harness renderedPollHeaderPlaceName rename done. Specs:
+      search-see-locations.spec (7) + contract spec (+2) + history spec
+      updated. API 642 green/build/tsc/lint clean; mobile 377 green, tsc =
+      2 pre-existing errors only. OWNER SIM-EYE: chip styling/placement,
+      collapse-open feel, address-prefix line. LEG 2 COMPLETE.
 - [ ] Fame-pin interim: prefer locations inside scoring_market_key territory
       (server display-location DISTINCT ON order + mobile
       restaurant-location-selection.ts) — re-keyed to source anchor in
@@ -448,14 +469,15 @@ agent in flight at turn end so completion notifications chain turns.
     /markets/resolve is down to the perf harness — NOT reader-less yet
     (see markets.module.ts survivor ledger). legacy-poll expiry (kills
     bboxFromMarketKey + legacy feed
-    arm); See-locations (Leg 2 tail); §10 advance-at-extraction +
+    arm); ~~See-locations~~ DONE 2026-07-20; §10 advance-at-extraction +
     expectedBatches reconciler; §12.5 reddit client rewrite (per-request
     draws); engine-coverage re-key of
     resolveViewportCoverage consumers; ListDetail Market chip → city-slice
-    re-key; durable PoolRegistry store; signals monthly partitions; mobile
-    perf-harness renderedPollHeaderPlaceName rename; owner sim-feel items
+    re-key; durable PoolRegistry store; signals monthly partitions; ~~perf-harness
+    rename~~ DONE 2026-07-20; owner sim-feel items
     (feed pan cadence, two-All chips, promise card styling).
-- deferred-in-leg-2: See-locations (only remaining Leg 2 item).
+- deferred-in-leg-2: NONE — See-locations executed 2026-07-20 (see Leg 2
+  breakdown); Leg 2 fully closed.
 
 ## Decisions log (append as made)
 

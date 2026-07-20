@@ -1609,7 +1609,7 @@ public_connection_scores AS (
     // sibling machinery depends on it being wider than the viewport — but the
     // ARRAY is capped at the nearest ~30 to the search center so a national
     // chain's row doesn't ship 100KB of JSON. location_count stays the TRUE
-    // global count (the suggestions chip semantics).
+    // global count (the RestaurantPanel "N locations" label semantics).
     const hasCenter =
       !!searchCenter &&
       Number.isFinite(searchCenter.lat) &&

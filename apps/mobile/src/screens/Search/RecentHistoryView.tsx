@@ -268,16 +268,20 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
     [navigation]
   );
 
-  const renderStatusLine = (statusPreview?: RecentSearch['statusPreview'] | null) => {
+  // §7 (see-locations): history rows never show a location count; a specific
+  // viewed location earns its ADDRESS label in the prefix slot instead.
+  const renderStatusLine = (
+    statusPreview?: RecentSearch['statusPreview'] | null,
+    prefix?: React.ReactNode
+  ) => {
     const statusLine = renderMetaDetailLine(
       statusPreview?.operatingStatus ?? null,
       null,
       null,
       'left',
-      undefined,
+      prefix,
       true,
       true,
-      statusPreview?.locationCount ?? null,
       styles.metaLineText
     );
     return statusLine ?? null;
@@ -324,7 +328,6 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
         item.restaurantName,
         false,
         false,
-        null,
         styles.metaLineText
       );
       const hasMetaLine = Boolean(statusLine);
@@ -353,7 +356,11 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
     }
 
     const item = entry.item;
-    const statusLine = renderStatusLine(item.statusPreview ?? null);
+    // Earned address suggestion: the viewed location's address label.
+    const statusLine = renderStatusLine(
+      item.statusPreview ?? null,
+      item.locationAddress ?? undefined
+    );
     const hasMetaLine = Boolean(statusLine);
     return (
       <TouchableOpacity

@@ -245,7 +245,14 @@ export type SearchForegroundInteractionRuntime = {
   handleBestDishesHere: () => void;
   handleBestRestaurantsHere: () => void;
   handleSearchThisArea: () => void;
-  handleSuggestionPress: (match: AutocompleteMatch) => void;
+  handleSuggestionPress: (
+    match: AutocompleteMatch,
+    options?: {
+      /** "See locations" chip: run the see-locations search world instead of
+       *  the profile fast-path (multi-location restaurant suggestions only). */
+      seeLocations?: boolean;
+    }
+  ) => void;
   handleClear: () => void;
   handleSearchFocus: () => void;
   handleSearchBlur: () => void;

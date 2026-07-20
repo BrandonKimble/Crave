@@ -154,6 +154,9 @@ type SearchSubmitOwner = {
     restaurantName: string;
     submissionSource: NaturalSearchRequest['submissionSource'];
     typedPrefix?: string;
+    /** SEE-LOCATIONS mode: the world = this restaurant's in-viewport
+     *  locations as pins (the "See locations" chip's search). */
+    seeLocations?: boolean;
   }) => Promise<void>;
   submitViewportShortcut: (
     targetTab: SegmentValue,

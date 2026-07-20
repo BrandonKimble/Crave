@@ -32,7 +32,7 @@ type SearchSuggestionsProps = {
   recentSearches: RecentSearch[];
   recentlyViewedRestaurants: RecentlyViewedRestaurant[];
   recentlyViewedFoods: RecentlyViewedFood[];
-  onSelectSuggestion: (match: AutocompleteMatch) => void;
+  onSelectSuggestion: (match: AutocompleteMatch, options?: { seeLocations?: boolean }) => void;
   onSelectRecent: (term: RecentSearch) => void;
   onSelectRecentlyViewed: (restaurant: RecentlyViewedRestaurant) => void;
   onSelectRecentlyViewedFood: (food: RecentlyViewedFood) => void;
@@ -165,12 +165,14 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
     showAutocomplete ? styles.recentSectionGap : null,
   ];
 
+  // §7 (see-locations): the suggestion surface NEVER shows a location count —
+  // multi-location restaurants get the "See locations" chip instead; earned
+  // address labels ride the prefix slot (recently-viewed rows).
   const renderStatusLine = (
     statusPreview?: RecentSearch['statusPreview'] | null,
-    locationCountHint?: number | null
+    prefix?: React.ReactNode
   ) => {
-    const locationCount = statusPreview?.locationCount ?? locationCountHint ?? null;
-    if (!statusPreview?.operatingStatus && !locationCount) {
+    if (!statusPreview?.operatingStatus && !prefix) {
       return null;
     }
     const statusLine = renderMetaDetailLine(
@@ -178,10 +180,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
       null,
       null,
       'left',
-      undefined,
+      prefix,
       true,
       true,
-      locationCount,
       styles.metaLineText
     );
     return statusLine ?? null;
@@ -198,30 +199,26 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
             const confidenceKey = Number.isFinite(match.confidence)
               ? match.confidence.toFixed(3)
               : 'unknown';
-            const locationCountKey =
-              typeof match.locationCount === 'number' ? `${match.locationCount}` : 'unknown';
             const itemKey = normalizedEntityId
               ? `${match.entityType}:${normalizedEntityId}:${normalizedName}`
               : `${match.entityType}:${match.matchType ?? 'unknown'}:${
                   match.querySuggestionSource ?? 'unknown'
-                }:${normalizedName}:${confidenceKey}:${locationCountKey}`;
+                }:${normalizedName}:${confidenceKey}`;
             const isQuery = match.matchType === 'query' || match.entityType === 'query';
             const isPoll = match.matchType === 'poll' || match.entityType === 'poll';
             const isUser = match.matchType === 'user' || match.entityType === 'user';
-            const locationCount =
-              typeof match.locationCount === 'number'
-                ? match.locationCount
-                : (match.statusPreview?.locationCount ?? null);
-            const shouldShowLocationCount =
-              match.entityType === 'restaurant' && locationCount !== null && locationCount > 1;
+            // "See locations" chip decision (§7: the chip label, NEVER a
+            // count): multi-location fact from the status preview the
+            // pipeline already carries.
+            const isMultiLocationRestaurant =
+              match.entityType === 'restaurant' &&
+              Boolean(match.entityId) &&
+              (match.statusPreview?.locationCount ?? 0) > 1;
             const isRecentQuery = Boolean(match.badges?.recentQuery);
             const isViewed = Boolean(match.badges?.viewed);
             const statusLine =
               match.entityType === 'restaurant'
-                ? renderStatusLine(
-                    match.statusPreview ?? null,
-                    shouldShowLocationCount ? locationCount : null
-                  )
+                ? renderStatusLine(match.statusPreview ?? null)
                 : null;
             // Person rows (user lane): the handle is the meta line.
             const userHandleLine =
@@ -271,6 +268,18 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     ) : null}
                   </View>
                   <View style={styles.autocompleteBadges}>
+                    {isMultiLocationRestaurant ? (
+                      <TouchableOpacity
+                        onPress={() => onSelectSuggestion(match, { seeLocations: true })}
+                        style={styles.seeLocationsChip}
+                        accessibilityRole="button"
+                        accessibilityLabel={`See locations of ${match.name}`}
+                        testID={`autocomplete-see-locations-${testIdSafeName(match.name)}`}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.seeLocationsChipText}>See locations</Text>
+                      </TouchableOpacity>
+                    ) : null}
                     {match.badges?.favorite ? (
                       <Heart size={16} color={ICON_COLOR} strokeWidth={2} />
                     ) : null}
@@ -351,7 +360,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     item.restaurantName,
                     false,
                     false,
-                    null,
                     styles.metaLineText
                   );
                   const hasMetaLine = Boolean(statusLine);
@@ -377,7 +385,12 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                 }
 
                 const item = entry.item;
-                const statusLine = renderStatusLine(item.statusPreview ?? null);
+                // Earned address suggestion: a specific viewed location shows
+                // its address label ahead of the status.
+                const statusLine = renderStatusLine(
+                  item.statusPreview ?? null,
+                  item.locationAddress ?? undefined
+                );
                 const hasMetaLine = Boolean(statusLine);
                 return (
                   <TouchableOpacity
@@ -476,6 +489,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  seeLocationsChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    backgroundColor: '#f8fafc',
+  },
+  seeLocationsChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0f172a',
   },
   recentSection: {
     paddingHorizontal: 0,

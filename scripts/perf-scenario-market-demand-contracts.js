@@ -406,18 +406,20 @@ const assertPollHeaderMarketAfterLine = (
   }
 };
 
-const assertRenderedPollHeaderMarketAfterLine = (
-  label,
-  expectedMarketKey,
-  expectedNameFragment,
-  afterLine
-) => {
+// §22 item-5 cut: the mounted header logs renderedPollHeaderPlaceName (the
+// market fields are dead) — the rendered-header contract asserts on it.
+const assertRenderedPollHeaderPlaceAfterLine = (label, expectedNameFragment, afterLine) => {
+  const normalizedFragment = String(expectedNameFragment ?? '').toLowerCase();
   const matchingHeaders = renderedPollHeaderEvents.filter(
-    (event) => event.line > afterLine && event.renderedPollHeaderMarketKey === expectedMarketKey
+    (event) =>
+      event.line > afterLine &&
+      String(event.renderedPollHeaderPlaceName ?? '')
+        .toLowerCase()
+        .includes(normalizedFragment)
   );
   if (matchingHeaders.length === 0) {
-    fail(`${label} did not render the expected poll header market after the triggering event.`, {
-      expectedMarketKey,
+    fail(`${label} did not render the expected poll header place after the triggering event.`, {
+      expectedNameFragment,
       afterLine,
       lastRenderedPollHeaderEvent,
       renderedPollHeaderEvents: renderedPollHeaderEvents.slice(-8),
@@ -425,9 +427,9 @@ const assertRenderedPollHeaderMarketAfterLine = (
     return;
   }
   if (expectedNameFragment) {
-    const normalizedName = expectedNameFragment.toLowerCase();
+    const normalizedName = normalizedFragment;
     const hasName = matchingHeaders.some((event) =>
-      String(event.renderedPollHeaderMarketName ?? event.renderedPollHeaderTitle ?? '')
+      String(event.renderedPollHeaderPlaceName ?? event.renderedPollHeaderTitle ?? '')
         .toLowerCase()
         .includes(normalizedName)
     );
@@ -629,9 +631,8 @@ switch (scenarioName) {
       'Duluth',
       headerTriggerLine
     );
-    assertRenderedPollHeaderMarketAfterLine(
+    assertRenderedPollHeaderPlaceAfterLine(
       'Passive off-region scenario',
-      'locality-us-mn-duluth',
       'Duluth',
       headerTriggerLine
     );

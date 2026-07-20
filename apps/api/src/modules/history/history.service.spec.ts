@@ -5,7 +5,8 @@ import { HistoryService } from './history.service';
  * §22 item 6 reader-cut parity: the recently-viewed list paths read the
  * signals substrate, and the RESPONSE CONTRACT IS FROZEN — the same fields
  * the user_restaurant_views / user_food_views reads returned, plus the
- * locationId the dual-write records (the recently-viewed location display).
+ * locationId the dual-write records (the recently-viewed location display)
+ * and its earned locationAddress label (see-locations leg).
  */
 
 const USER_ID = '11111111-1111-1111-1111-111111111111';
@@ -53,14 +54,29 @@ function createHarness() {
       .fn()
       .mockResolvedValue([{ restaurantId: 'r-1', isOpen: true }]),
   };
+  const prisma = {
+    // Earned address labels: the ONE prisma touch on the list paths — the
+    // batch address lookup for the viewed locationIds.
+    restaurantLocation: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue([{ locationId: 'loc-1', address: '900 E 11th St' }]),
+    },
+  };
   const service = new HistoryService(
-    {} as never, // prisma (list paths never touch it anymore)
+    prisma as never,
     createLogger() as never,
     restaurantStatusService as never,
     {} as never, // signals writer (unused on list paths)
     signalDemandRead as never,
   );
-  return { service, signalDemandRead, restaurantStatusService, lastViewedAt };
+  return {
+    service,
+    prisma,
+    signalDemandRead,
+    restaurantStatusService,
+    lastViewedAt,
+  };
 }
 
 describe('HistoryService list paths — signals substrate, frozen contract', () => {
@@ -84,6 +100,7 @@ describe('HistoryService list paths — signals substrate, frozen contract', () 
         lastViewedAt,
         viewCount: 4,
         locationId: 'loc-1',
+        locationAddress: '900 E 11th St',
         statusPreview: { restaurantId: 'r-1', isOpen: true },
       },
     ]);
@@ -105,6 +122,7 @@ describe('HistoryService list paths — signals substrate, frozen contract', () 
         lastViewedAt,
         viewCount: 2,
         locationId: null,
+        locationAddress: null,
         statusPreview: { restaurantId: 'r-1', isOpen: true },
       },
     ]);

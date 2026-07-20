@@ -53,10 +53,10 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
   openPollDetail,
   openUserProfile,
 }: UseSearchForegroundSuggestionSubmitRuntimeArgs): SearchForegroundSuggestionSubmitRuntime => {
-  const { submitSearch } = submitRuntime;
+  const { submitSearch, runRestaurantEntitySearch } = submitRuntime;
 
   const handleSuggestionPress = React.useCallback(
-    (match: AutocompleteMatch) => {
+    (match: AutocompleteMatch, options?: { seeLocations?: boolean }) => {
       if (match.matchType === 'user' || match.entityType === 'user') {
         // Person row (user lane): not a search — tear down the suggestion surface and
         // PUSH the userProfile page (the follow-drill child push; origin capture and
@@ -106,6 +106,24 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       if (!shouldDeferSuggestionClear) {
         setShowSuggestions(false);
         setSuggestions([]);
+      }
+      // "See locations" chip (multi-location restaurants): a committed
+      // see-locations search — the server's lean variant returns the
+      // restaurant's IN-VIEW locations as pins, the single-restaurant collapse
+      // opens the profile panel (its all-locations rows), and the pending-
+      // selection ref primes the warm auto-open — the same committed-entity
+      // lane the recently-viewed tap uses, with the mode discriminator.
+      if (options?.seeLocations && match.entityType === 'restaurant' && match.entityId) {
+        pendingRestaurantSelectionRef.current = { restaurantId: match.entityId };
+        openRestaurantProfilePreview(match.entityId, match.name);
+        void runRestaurantEntitySearch({
+          restaurantId: match.entityId,
+          restaurantName: nextQuery,
+          submissionSource: 'autocomplete',
+          typedPrefix,
+          seeLocations: true,
+        });
+        return;
       }
       // Restaurant fast-path: we already know the exact entity, so open the profile DIRECTLY and
       // skip the results search entirely. Profile content comes from hydration; the map pin comes
@@ -157,6 +175,7 @@ export const useSearchForegroundSuggestionSubmitRuntime = ({
       openRestaurantProfilePreview,
       pendingRestaurantSelectionRef,
       query,
+      runRestaurantEntitySearch,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
       setQuery,

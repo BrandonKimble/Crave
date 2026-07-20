@@ -311,6 +311,230 @@ export class SearchQueryExecutor {
   }
 
   /**
+   * SEE-LOCATIONS lean variant (Leg 2 tail): one restaurant + its locations
+   * INSIDE the viewport as pin-ready rows. Skips the ranking pipeline entirely
+   * — two indexed reads (restaurant identity/score/locations + top snippets).
+   * Membership law: the locations array contains ONLY in-view locations of
+   * THIS restaurant (ordered nearest-to-viewport-center, so [0] is the
+   * display location); `locationCount` stays the TRUE global count.
+   * Null bounds (no committed viewport yet) degrades to all locations.
+   */
+  async executeSeeLocations(params: {
+    restaurantId: string;
+    bounds: {
+      northEast: { lat: number; lng: number };
+      southWest: { lat: number; lng: number };
+    } | null;
+    userLocation?: { lat?: number; lng?: number } | null;
+  }): Promise<{
+    restaurant: RestaurantResultDto | null;
+    inViewLocationCount: number;
+  }> {
+    const { restaurantId, bounds } = params;
+    const referenceDate = new Date();
+    const centerLat =
+      bounds == null ? null : (bounds.northEast.lat + bounds.southWest.lat) / 2;
+    const centerLng =
+      bounds == null ? null : (bounds.northEast.lng + bounds.southWest.lng) / 2;
+    const proximityOrderSql =
+      centerLat != null && centerLng != null
+        ? Prisma.sql`(POWER(rl.latitude - ${centerLat}, 2) + POWER(rl.longitude - ${centerLng}, 2)) ASC, rl.updated_at DESC`
+        : Prisma.sql`rl.updated_at DESC`;
+    // Wrap-aware longitude membership (west > east = antimeridian viewport).
+    const boundsFilterSql =
+      bounds == null
+        ? Prisma.empty
+        : bounds.southWest.lng <= bounds.northEast.lng
+          ? Prisma.sql`
+      AND rl.latitude BETWEEN ${bounds.southWest.lat} AND ${bounds.northEast.lat}
+      AND rl.longitude BETWEEN ${bounds.southWest.lng} AND ${bounds.northEast.lng}`
+          : Prisma.sql`
+      AND rl.latitude BETWEEN ${bounds.southWest.lat} AND ${bounds.northEast.lat}
+      AND (rl.longitude >= ${bounds.southWest.lng} OR rl.longitude <= ${bounds.northEast.lng})`;
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        entity_id: string;
+        name: string;
+        aliases: string[];
+        price_level: number | null;
+        price_level_updated_at: Date | null;
+        restaurant_crave_score: Prisma.Decimal | number | string | null;
+        restaurant_crave_score_exact: Prisma.Decimal | number | string | null;
+        restaurant_rising: Prisma.Decimal | number | string | null;
+        restaurant_score_info: Prisma.JsonValue | null;
+        location_count: number;
+        dish_count: number;
+        locations_json: Prisma.JsonValue | null;
+      }>
+    >(Prisma.sql`
+SELECT
+  e.entity_id,
+  e.name,
+  e.aliases,
+  e.price_level,
+  e.price_level_updated_at,
+  prs.display_score AS restaurant_crave_score,
+  prs.percentile_rank AS restaurant_crave_score_exact,
+  prs.rising AS restaurant_rising,
+  CASE WHEN prs.subject_id IS NULL THEN NULL
+       ELSE jsonb_build_object('evidenceCopy', 'Based on community evidence.')
+  END AS restaurant_score_info,
+  (
+    SELECT COUNT(*)::int
+    FROM core_restaurant_locations rlc
+    WHERE rlc.restaurant_id = e.entity_id
+      AND rlc.latitude IS NOT NULL
+      AND rlc.longitude IS NOT NULL
+      AND rlc.google_place_id IS NOT NULL
+      AND rlc.address IS NOT NULL
+  ) AS location_count,
+  (
+    SELECT COUNT(*)::int
+    FROM core_restaurant_items ci
+    WHERE ci.restaurant_id = e.entity_id
+  ) AS dish_count,
+  (
+    SELECT json_agg(
+      jsonb_build_object(
+        'locationId', rl.location_id,
+        'googlePlaceId', rl.google_place_id,
+        'latitude', rl.latitude,
+        'longitude', rl.longitude,
+        'address', rl.address,
+        'city', rl.city,
+        'region', rl.region,
+        'country', rl.country,
+        'postalCode', rl.postal_code,
+        'phoneNumber', rl.phone_number,
+        'websiteUrl', rl.website_url,
+        'hours', rl.hours,
+        'utcOffsetMinutes', rl.utc_offset_minutes,
+        'timeZone', rl.time_zone,
+        'isPrimary', rl.is_primary,
+        'lastPolledAt', rl.last_polled_at,
+        'createdAt', rl.created_at,
+        'updatedAt', rl.updated_at
+      )
+      ORDER BY ${proximityOrderSql}
+    )
+    FROM core_restaurant_locations rl
+    WHERE rl.restaurant_id = e.entity_id
+      AND rl.latitude IS NOT NULL
+      AND rl.longitude IS NOT NULL
+      AND rl.google_place_id IS NOT NULL
+      AND rl.address IS NOT NULL${boundsFilterSql}
+  ) AS locations_json
+FROM core_entities e
+LEFT JOIN core_public_entity_scores prs
+  ON prs.subject_type = 'restaurant' AND prs.subject_id = e.entity_id
+WHERE e.entity_id = ${restaurantId}::uuid
+  AND e.type = 'restaurant'
+`);
+
+    const row = rows[0];
+    if (!row) {
+      return { restaurant: null, inViewLocationCount: 0 };
+    }
+
+    const locations = this.parseLocationsJson(
+      row.locations_json,
+      referenceDate,
+    );
+    const displayLocation = locations[0] ?? null;
+
+    const snippetRows = await this.prisma.$queryRaw<
+      Array<{
+        connection_id: string;
+        food_id: string;
+        food_name: string;
+        connection_crave_score: Prisma.Decimal | number | string | null;
+        connection_rising: Prisma.Decimal | number | string | null;
+        connection_score_info: Prisma.JsonValue | null;
+      }>
+    >(Prisma.sql`
+SELECT
+  c.connection_id,
+  c.food_id,
+  f.name AS food_name,
+  pcs.display_score AS connection_crave_score,
+  pcs.rising AS connection_rising,
+  jsonb_build_object('evidenceCopy', 'Based on community evidence.') AS connection_score_info
+FROM core_restaurant_items c
+JOIN core_entities f ON f.entity_id = c.food_id
+JOIN core_public_entity_scores pcs
+  ON pcs.subject_type = 'connection' AND pcs.subject_id = c.connection_id
+WHERE c.restaurant_id = ${restaurantId}::uuid
+ORDER BY pcs.display_score DESC
+LIMIT 3
+`);
+
+    const topFood: RestaurantFoodSnippetDto[] = snippetRows.map((snippet) => ({
+      connectionId: snippet.connection_id,
+      foodId: snippet.food_id,
+      foodName: snippet.food_name,
+      scoreSubjectType: 'connection' as const,
+      scoreSubjectId: snippet.connection_id,
+      craveScore: this.toRequiredPublicScore(
+        snippet.connection_crave_score,
+        `connection:${snippet.connection_id}`,
+      ),
+      rising: this.toOptionalNumber(snippet.connection_rising),
+      scoreInfo: this.parseScoreInfo(snippet.connection_score_info),
+    }));
+
+    const priceLevel = this.toOptionalNumber(row.price_level);
+    const priceDetails = this.describePriceLevel(priceLevel);
+    const userLocation = normalizeUserLocationUtil(params.userLocation ?? null);
+    const distanceMiles =
+      userLocation != null &&
+      displayLocation?.latitude != null &&
+      displayLocation?.longitude != null
+        ? computeDistanceMilesUtil(
+            userLocation,
+            displayLocation.latitude,
+            displayLocation.longitude,
+          )
+        : null;
+
+    const restaurant: RestaurantResultDto = {
+      restaurantId: row.entity_id,
+      restaurantName: row.name,
+      restaurantAliases: row.aliases || [],
+      rank: 1,
+      scoreSubjectType: 'restaurant' as const,
+      scoreSubjectId: row.entity_id,
+      // Autocomplete admits unscored restaurants; the lean variant keeps the
+      // mode total for them (neutral pin) instead of throwing like the ranked
+      // pipeline's toRequiredPublicScore would.
+      craveScore: this.toOptionalNumber(row.restaurant_crave_score) ?? 0,
+      craveScoreExact:
+        this.toOptionalNumber(row.restaurant_crave_score_exact) ?? undefined,
+      rising: this.toOptionalNumber(row.restaurant_rising),
+      scoreInfo: this.parseScoreInfo(row.restaurant_score_info),
+      latitude: displayLocation?.latitude ?? null,
+      longitude: displayLocation?.longitude ?? null,
+      address: displayLocation?.address ?? null,
+      restaurantLocationId: displayLocation?.locationId ?? null,
+      priceLevel,
+      priceSymbol: priceDetails.symbol,
+      priceText: priceDetails.text,
+      priceLevelUpdatedAt: row.price_level_updated_at
+        ? row.price_level_updated_at.toISOString()
+        : null,
+      operatingStatus: displayLocation?.operatingStatus ?? null,
+      distanceMiles,
+      displayLocation,
+      locations,
+      locationCount: this.toNumber(row.location_count),
+      topFood,
+      totalDishCount: this.toNumber(row.dish_count),
+    };
+
+    return { restaurant, inViewLocationCount: locations.length };
+  }
+
+  /**
    * Execute dual parallel queries - one for restaurants, one for dishes
    * This returns independent lists that don't share the same limit.
    */

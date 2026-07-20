@@ -37,6 +37,10 @@ export interface StructuredSearchRequest {
   // Always sent explicitly — false suppresses the server's silent dense widening.
   includeSimilar?: boolean;
   risingActive?: boolean;
+  /** SEE-LOCATIONS mode discriminator: with exactly one restaurant entity id,
+   *  the server answers the lean variant — that restaurant's in-view locations
+   *  as pin-ready rows on the ordinary SearchResponse wire. */
+  seeLocations?: boolean;
   submissionSource?: NaturalSearchRequest['submissionSource'];
   submissionContext?: NaturalSearchRequest['submissionContext'];
   sourceQuery?: string;
@@ -59,6 +63,10 @@ export type RecentlyViewedRestaurant = {
   region?: string | null;
   lastViewedAt: string;
   viewCount: number;
+  /** The specific viewed location (recently-viewed rows carry locationId). */
+  locationId?: string | null;
+  /** Earned address suggestion: the viewed location's address label. */
+  locationAddress?: string | null;
   statusPreview?: RestaurantStatusPreview | null;
 };
 
@@ -70,6 +78,10 @@ export type RecentlyViewedFood = {
   restaurantName: string;
   lastViewedAt: string;
   viewCount: number;
+  /** The specific viewed location (recently-viewed rows carry locationId). */
+  locationId?: string | null;
+  /** Earned address suggestion: the viewed location's address label. */
+  locationAddress?: string | null;
   statusPreview?: RestaurantStatusPreview | null;
 };
 

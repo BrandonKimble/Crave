@@ -76,7 +76,6 @@ export class AutocompleteMatchDto {
     recentQuery?: boolean;
   };
   querySuggestionSource?: 'personal' | 'global';
-  locationCount?: number;
   statusPreview?: RestaurantStatusPreviewDto | null;
 }
 
