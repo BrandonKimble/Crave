@@ -309,9 +309,30 @@ agent in flight at turn end so completion notifications chain turns.
       per-request draws (§12.5 client rewrite later).
 - [x] 62c23681 enrichment refresh → rescorer markDirty (last direct
       rebuild call site cut).
-- [>] AGENT in flight: §22 item 8 SCORE CUT (per-source A/g calibration,
-  provenance + fame-pin re-key to source anchorPlaceId, ONE
-  scoreVersion, rebuild through coordinator, before/after stats).
+- [x] 8049afef SCORE CUT (agent, 29 specs, 561 green): §8 A_source per
+      observed day (365d/21d lanes), g=max(A,floor)/ref pinned per
+      scoreVersion epoch (crave_score_calibration_epochs; re-pin = bump),
+      calibrated counts in log1p, influence 1.0; ballot parity spec-proven;
+      provenance sourceId on score rows; fame-pin re-keyed to source
+      anchor/engine territory (Leg-2 interim DEAD); ONE version
+      crave-score-v4 w/ birth-certificate snapshot; scoringMarketKey
+      nulled (column drops Phase C); market CTEs out of scorer. Rebuild
+      ran: Austin top-10 8/10 stable (7-Eleven out). OWNER-RATIFY: pin
+      quantiles median/p10; v4 epoch reddit-only n=2 (re-pin when poll
+      rooms exist); coverage-gap interim; g=1 unattributable rooms.
+      Data repair: 7-Eleven dangling restaurant_attributes stripped.
+      API restarted (fame-pin live).
+- [>] AGENT in flight: PHASE C purges (old event writers+tables dropped,
+  scoring_market_key drop, on_demand_ask → ledger, user poll creation
+  re-key to placeId + per-place anti-spam, markets machinery
+  per-consumer sweep w/ survivor dispositions).
+- [ ] REMAINING after Phase C: wave-5 final red team + REASSESSMENT;
+      follow-up legs recorded: home-place registration (device→placeAt→
+      homePlaceId; kills notification market fallback), See-locations
+      (Leg 2 tail), §10 advance-at-extraction + expectedBatches,
+      §12.5 reddit client rewrite (per-request draws), poll-supply swap
+      onto aggregate, mobile perf-harness field rename, owner sim-feel
+      items (feed cadence, two-All chips, promise card).
 - [ ] Then: Phase C purges (old event tables/writers, markets machinery
       per-consumer, user poll creation re-key, home-place registration).
 - [ ] Then: wave-5 final red team + REASSESSMENT (owner's 'reassess only
