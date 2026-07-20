@@ -12,6 +12,9 @@ import {
 import { LLMPost } from '../../external-integrations/llm/llm.types';
 import { MarketRegistryService } from '../../markets/market-registry.service';
 import { ExtractionPipelineService } from './extraction-pipeline.service';
+import { CollectorSourceRegistryService } from './collector-source-registry.service';
+import { CollectionEvidenceService } from './collection-evidence.service';
+import { RedditGovernanceDenialError } from '../../external-integrations/reddit/reddit.exceptions';
 
 const DEFAULT_MARKET_KEY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const DEFAULT_MARKET_KEY_CACHE_MAX_ENTRIES = 512;
@@ -40,6 +43,8 @@ export class RedditBatchProcessingService implements OnModuleInit {
     private readonly marketRegistry: MarketRegistryService,
     private readonly rescoreCoordinator: RescoreCoordinatorService,
     private readonly extractionPipelineService: ExtractionPipelineService,
+    private readonly sourceRegistry: CollectorSourceRegistryService,
+    private readonly collectionEvidence: CollectionEvidenceService,
   ) {
     this.marketKeyCacheTtlMs =
       this.parsePositiveInt(process.env.REDDIT_BATCH_COVERAGE_CACHE_TTL_MS) ??
@@ -119,6 +124,14 @@ export class RedditBatchProcessingService implements OnModuleInit {
             skippedDueToDeltaThreshold,
           },
         );
+
+        // A covered-skip creates no extraction run by construction — the
+        // skip verdict IS derived from persisted extraction coverage, so the
+        // window's evidence already exists: count the skip for the §10
+        // expectedBatches reconciler and commit the pending window.
+        await this.recordChronologicalBatchProof(job, {
+          skipped: true,
+        });
 
         return {
           batchId: job.batchId,
@@ -269,6 +282,13 @@ export class RedditBatchProcessingService implements OnModuleInit {
       await this.rescoreCoordinator
         .markDirty(`collection batch ${job.batchId}`)
         .catch(() => undefined);
+      // §10 advance-at-extraction: this batch's window evidence is durable —
+      // either an extraction run was CREATED (pipelineResult.extractionRunId)
+      // or every post proved already covered (fully-covered stub). Commit the
+      // parent's staged cursor (idempotent; only the first proof commits).
+      await this.recordChronologicalBatchProof(job, {
+        skipped: pipelineResult.extractionRunId === '',
+      });
       return result;
     } catch (error) {
       this.logStage(
@@ -283,6 +303,64 @@ export class RedditBatchProcessingService implements OnModuleInit {
       );
 
       throw error;
+    }
+  }
+
+  /**
+   * §10 advance-at-extraction, batch side: a chronological batch that either
+   * CREATED an extraction run or proved its candidates already covered is
+   * durable evidence that the parent's window entered the evidence system —
+   * commit the staged lane cursor (idempotent two-step; the run/coverage is
+   * the watermark) and, for covered-skips, count the batch for the
+   * expectedBatches reconciler. Best-effort: bookkeeping must never fail the
+   * batch it describes.
+   */
+  private async recordChronologicalBatchProof(
+    job: BatchJob,
+    options: { skipped: boolean },
+  ): Promise<void> {
+    if (job.collectionType !== 'chronological' || !job.parentJobId) {
+      return;
+    }
+    try {
+      if (options.skipped) {
+        await this.collectionEvidence.recordSkippedBatch(
+          `collection:${job.parentJobId}`,
+        );
+      }
+      const source = await this.sourceRegistry.findRedditSourceByHandle(
+        job.subreddit,
+      );
+      if (!source) {
+        return;
+      }
+      const committed = await this.sourceRegistry.commitPendingWindow(
+        source.sourceId,
+        'chronological',
+        job.parentJobId,
+      );
+      if (committed) {
+        this.logger.info(
+          'Committed chronological cursor at extraction proof (§10)',
+          {
+            batchId: job.batchId,
+            parentJobId: job.parentJobId,
+            subreddit: job.subreddit,
+            viaSkippedCoverage: options.skipped,
+          },
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        'Chronological window bookkeeping failed (batch unaffected)',
+        {
+          batchId: job.batchId,
+          parentJobId: job.parentJobId,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
     }
   }
 
@@ -382,6 +460,12 @@ export class RedditBatchProcessingService implements OnModuleInit {
         post.comments = comments;
         llmPosts.push(post);
       } catch (error) {
+        if (error instanceof RedditGovernanceDenialError) {
+          // §12.3 typed not-now: abort the REMAINING requests of this batch
+          // cleanly — the worker requeues the whole batch (no per-post
+          // silent drops, no error branding).
+          throw error;
+        }
         this.logger.error(`Failed to retrieve post ${postId}`, {
           correlationId,
           postId,
@@ -568,6 +652,11 @@ export class RedditBatchProcessingService implements OnModuleInit {
 
       return newCount >= minNewComments;
     } catch (error) {
+      if (error instanceof RedditGovernanceDenialError) {
+        // Typed not-now propagates (never "default to fetch" — the fetch
+        // would be denied too); the worker requeues the batch.
+        throw error;
+      }
       this.logger.warn('Delta probe failed - defaulting to fetch', {
         correlationId,
         postId,

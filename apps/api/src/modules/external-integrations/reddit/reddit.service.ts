@@ -11,17 +11,24 @@ import {
   RedditApiError,
   RedditAuthenticationError,
   RedditConfigurationError,
+  RedditGovernanceDenialError,
   RedditRateLimitError,
   RedditNetworkError,
 } from './reddit.exceptions';
 
 import {
   RetryOptions,
-  ExternalApiService,
-  RateLimitRequest,
   RateLimitResponse,
 } from '../shared/external-integrations.types';
-import { RateLimitCoordinatorService } from '../shared/rate-limit-coordinator.service';
+import { GovernanceService } from '../governance/governance.service';
+import type { PoolDenial } from '../governance/pool-registry';
+
+/**
+ * §14.1: the reddit vendor adapter's pool, declared at the client chokepoint
+ * (registered in GovernanceService; the collector adapter re-exports this
+ * name). ONE pool, ONE ledger for every reddit request (§14.8).
+ */
+export const REDDIT_REQUESTS_POOL = 'reddit.requests';
 
 export interface RedditConfig {
   clientId: string;
@@ -256,6 +263,12 @@ export interface CollectionMethodResult<T = Record<string, unknown>> {
     costIncurred: number;
     timeDepth?: string;
     completenessRatio?: number;
+    /** §10 saturation detector input (chronological only): true when the
+     *  fetch saw ≥1 non-sticky post at/older than the cursor — timestamp
+     *  overlap CONFIRMS the window reached back to covered ground. false =
+     *  the listing's reach ended before the cursor (a potential miss).
+     *  undefined when no cursor was provided. */
+    overlapConfirmed?: boolean;
   };
   performance: {
     responseTime: number;
@@ -290,8 +303,8 @@ export class RedditService implements OnModuleInit {
   constructor(
     @Inject(HttpService) private readonly httpService: HttpService,
     @Inject(ConfigService) private readonly configService: ConfigService,
-    @Inject(RateLimitCoordinatorService)
-    private readonly rateLimitCoordinator: RateLimitCoordinatorService,
+    @Inject(GovernanceService)
+    private readonly governance: GovernanceService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -392,21 +405,26 @@ export class RedditService implements OnModuleInit {
       const credentials = `${this.redditConfig.clientId}:${this.redditConfig.clientSecret}`;
       const encodedCredentials = Buffer.from(credentials).toString('base64');
 
-      const response = await firstValueFrom(
-        this.httpService.post(
-          'https://www.reddit.com/api/v1/access_token',
-          new URLSearchParams({
-            grant_type: 'password',
-            username: this.redditConfig.username,
-            password: this.redditConfig.password,
-          }),
-          {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              Authorization: `Basic ${encodedCredentials}`,
-              'User-Agent': this.redditConfig.userAgent,
+      // §12.5: token minted on EXPIRY only; the mint is itself an enumerated
+      // draw on the one reddit pool (§14.1 — provider auth/status calls are
+      // enumerated draws, never free side-channels).
+      const response = await this.governedAct('reddit.auth', () =>
+        firstValueFrom(
+          this.httpService.post(
+            'https://www.reddit.com/api/v1/access_token',
+            new URLSearchParams({
+              grant_type: 'password',
+              username: this.redditConfig.username,
+              password: this.redditConfig.password,
+            }),
+            {
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                Authorization: `Basic ${encodedCredentials}`,
+                'User-Agent': this.redditConfig.userAgent,
+              },
             },
-          },
+          ),
         ),
       );
 
@@ -422,6 +440,11 @@ export class RedditService implements OnModuleInit {
     } catch (error) {
       this.accessToken = null;
       this.tokenExpiresAt = null;
+
+      if (error instanceof RedditGovernanceDenialError) {
+        // Typed not-now — never rebranded as an auth/API failure (§12.3).
+        throw error;
+      }
 
       const axiosError = error as AxiosError;
       this.logger.error(
@@ -462,20 +485,13 @@ export class RedditService implements OnModuleInit {
   async validateAuthentication(): Promise<boolean> {
     this.assertEnabled();
     try {
-      if (!this.isTokenValid()) {
-        await this.authenticate();
-      }
-
-      const response = await firstValueFrom(
-        this.httpService.get('https://oauth.reddit.com/api/v1/me', {
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-            'User-Agent': this.redditConfig.userAgent,
-          },
-        }),
+      // Routed through the ONE makeRequest chokepoint (§12.5) — /me is an
+      // enumerated provider-status draw like any other request.
+      const userData = await this.makeRequest<Record<string, unknown>>(
+        'GET',
+        'https://oauth.reddit.com/api/v1/me',
+        'validate_authentication',
       );
-
-      const userData = response.data as Record<string, unknown>;
       const username =
         typeof userData.name === 'string' ? userData.name : 'unknown';
       this.logger.info('Authentication validated for user', {
@@ -485,6 +501,10 @@ export class RedditService implements OnModuleInit {
       });
       return true;
     } catch (error) {
+      if (error instanceof RedditGovernanceDenialError) {
+        // Not an auth verdict — the governor said not-now (§12.3).
+        throw error;
+      }
       const axiosError = error as AxiosError;
       this.logger.error(
         'Authentication validation failed',
@@ -603,16 +623,20 @@ export class RedditService implements OnModuleInit {
   }
 
   async getRateLimitStatus(): Promise<RateLimitResponse> {
-    const status = await this.rateLimitCoordinator.getStatus(
-      ExternalApiService.REDDIT,
-    );
-    return {
-      allowed: !status.isAtLimit,
-      retryAfter: status.retryAfter,
-      currentUsage: status.currentRequests,
-      limit: 100, // Reddit API limit
-      resetTime: status.resetTime,
-    };
+    // ONE window: the governor's reddit.requests pool (§14.8). This is a
+    // read-only snapshot — admission happens per request inside makeRequest.
+    const status = this.governance.pools.poolStatus(REDDIT_REQUESTS_POOL);
+    const atLimit =
+      status.used + status.reservedOutstanding >= status.limit ||
+      status.poisonedForMs !== null;
+    const resetMs = status.poisonedForMs ?? status.resetMs ?? 60_000;
+    return Promise.resolve({
+      allowed: !atLimit,
+      retryAfter: atLimit ? Math.ceil(resetMs / 1000) : undefined,
+      currentUsage: status.used,
+      limit: status.limit,
+      resetTime: new Date(Date.now() + resetMs),
+    });
   }
 
   /**
@@ -661,6 +685,49 @@ export class RedditService implements OnModuleInit {
     );
   }
 
+  /**
+   * §12.5: every vendor HTTP call is exactly ONE governed draw on the
+   * reddit.requests pool. A denial is retried THROUGH the governor — each
+   * retry is a NEW draw and the denial's retryAfter is honored (the §12.5
+   * retry-loop-through-the-governor law); exhausted attempts surface the
+   * typed not-now (RedditGovernanceDenialError), never an API error and
+   * never an empty success.
+   */
+  private async governedAct<T>(
+    workClass: string,
+    act: () => Promise<T>,
+  ): Promise<T> {
+    // §16: K3-shaped operational bounds (pacing, not product numbers).
+    // 3 attempts rides out one per-minute window roll; the wait cap 65s is
+    // one full minute window plus scheduling slack. Pacer-derived values
+    // replace them when the estimator-refresher turns on (§22).
+    const MAX_DRAW_ATTEMPTS = 3;
+    const MAX_DENIAL_WAIT_MS = 65_000;
+    let lastDenial: PoolDenial | null = null;
+    for (let attempt = 0; attempt < MAX_DRAW_ATTEMPTS; attempt += 1) {
+      if (attempt > 0) {
+        const waitMs = Math.min(
+          lastDenial?.retryAfterMs ?? 60_000,
+          MAX_DENIAL_WAIT_MS,
+        );
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+      const outcome = await this.governance.drawWithOutcome(
+        REDDIT_REQUESTS_POOL,
+        workClass,
+        act,
+      );
+      if (outcome.admitted) {
+        return outcome.value;
+      }
+      lastDenial = outcome.denial;
+    }
+    throw new RedditGovernanceDenialError(
+      `reddit.requests draw denied for '${workClass}' after ${MAX_DRAW_ATTEMPTS} attempts (${lastDenial?.reason ?? 'unknown'})`,
+      lastDenial?.retryAfterMs ?? null,
+    );
+  }
+
   private async makeRequest<T>(
     method: 'GET' | 'POST',
     url: string,
@@ -668,78 +735,65 @@ export class RedditService implements OnModuleInit {
     data?: any,
     customHeaders?: Record<string, string>,
   ): Promise<T> {
-    // Check rate limit before making request
-    const rateLimitRequest: RateLimitRequest = {
-      service: ExternalApiService.REDDIT,
-      operation,
-      priority: 'medium',
-    };
-
-    const rateLimitResponse =
-      await this.rateLimitCoordinator.requestPermission(rateLimitRequest);
-
-    if (!rateLimitResponse.allowed) {
-      const retryAfter = rateLimitResponse.retryAfter || 60;
-      this.updateRateLimitMetrics(retryAfter);
-      throw new RedditRateLimitError(
-        `Rate limited by coordinator: ${rateLimitResponse.currentUsage}/${rateLimitResponse.limit} requests used`,
-        retryAfter,
-      );
-    }
-
-    const startTime = Date.now();
+    // Auth first (its own enumerated draw), OUTSIDE this request's draw.
     const headers = await this.getAuthenticatedHeaders();
     const requestHeaders = { ...headers, ...customHeaders };
 
-    try {
-      const response = await firstValueFrom(
-        method === 'GET'
-          ? this.httpService.get(url, { headers: requestHeaders })
-          : this.httpService.post(url, data, { headers: requestHeaders }),
-      );
-
-      const responseTime = Date.now() - startTime;
-      this.recordPerformanceMetrics(responseTime);
-
-      return response.data as T;
-    } catch (error) {
-      const responseTime = Date.now() - startTime;
-      this.recordPerformanceMetrics(responseTime);
-
-      const axiosError = error as AxiosError;
-      if (axiosError.response?.status === 429) {
-        const retryAfter = parseInt(
-          String(axiosError.response.headers?.['retry-after'] || '60'),
+    // The ONE chokepoint (§12.5): per-request admission + actuals recording
+    // happen inside this governed draw — no second window exists (§14.8).
+    return this.governedAct(operation, async () => {
+      const startTime = Date.now();
+      try {
+        const response = await firstValueFrom(
+          method === 'GET'
+            ? this.httpService.get(url, { headers: requestHeaders })
+            : this.httpService.post(url, data, { headers: requestHeaders }),
         );
 
-        // Report rate limit hit to coordinator
-        await this.rateLimitCoordinator.reportRateLimitHit(
-          ExternalApiService.REDDIT,
-          retryAfter,
-          operation,
-        );
+        const responseTime = Date.now() - startTime;
+        this.recordPerformanceMetrics(responseTime);
 
-        this.updateRateLimitMetrics(retryAfter);
-        throw new RedditRateLimitError(
-          'Rate limited by Reddit API',
-          retryAfter,
-        );
-      } else if (
-        axiosError.code === 'ENOTFOUND' ||
-        axiosError.code === 'ECONNREFUSED'
-      ) {
-        throw new RedditNetworkError(
-          'Network error during API request',
-          error as Error,
-        );
-      } else {
-        throw new RedditApiError(
-          'API request failed',
-          axiosError.response?.status,
-          JSON.stringify(axiosError.response?.data),
-        );
+        return response.data as T;
+      } catch (error) {
+        const responseTime = Date.now() - startTime;
+        this.recordPerformanceMetrics(responseTime);
+
+        const axiosError = error as AxiosError;
+        if (axiosError.response?.status === 429) {
+          const retryAfter = parseInt(
+            String(axiosError.response.headers?.['retry-after'] || '60'),
+          );
+
+          // §14.5/§14.8: the upstream 429 poisons the ONE pool window —
+          // retryAfter is honored globally through the governor, and any
+          // retry of this request is a new (denied-until-reset) draw.
+          this.governance.pools.poisonWindow(
+            REDDIT_REQUESTS_POOL,
+            retryAfter * 1000,
+          );
+
+          this.updateRateLimitMetrics(retryAfter);
+          throw new RedditRateLimitError(
+            'Rate limited by Reddit API',
+            retryAfter,
+          );
+        } else if (
+          axiosError.code === 'ENOTFOUND' ||
+          axiosError.code === 'ECONNREFUSED'
+        ) {
+          throw new RedditNetworkError(
+            'Network error during API request',
+            error as Error,
+          );
+        } else {
+          throw new RedditApiError(
+            'API request failed',
+            axiosError.response?.status,
+            JSON.stringify(axiosError.response?.data),
+          );
+        }
       }
-    }
+    });
   }
 
   /**
@@ -771,110 +825,115 @@ export class RedditService implements OnModuleInit {
     let allPosts: RedditPostData[] = [];
     let after: string | null = null;
     let apiCallsUsed = 0;
+    // §10 overlap detector: a non-sticky post at/older than the cursor
+    // proves the fetch reached covered ground (stickies pin OLD posts to the
+    // top of /new and must never fake an overlap).
+    let overlapConfirmed = false;
 
-    try {
-      for (let page = 0; page < totalPages; page++) {
-        // Build URL with pagination
-        const pageLimit = Math.min(postsPerPage, limit - allPosts.length);
-        let url = `https://oauth.reddit.com/r/${subreddit}/new?limit=${pageLimit}`;
-        if (after) {
-          url += `&after=${after}`;
-        }
+    // §12.3: a rate limit or governance denial mid-pagination PROPAGATES —
+    // it is an error/not-now outcome, never an empty success (an empty
+    // success here would let a rate limit brand a window as covered).
+    for (let page = 0; page < totalPages; page++) {
+      // Build URL with pagination
+      const pageLimit = Math.min(postsPerPage, limit - allPosts.length);
+      let url = `https://oauth.reddit.com/r/${subreddit}/new?limit=${pageLimit}`;
+      if (after) {
+        url += `&after=${after}`;
+      }
 
-        const response = await this.makeRequest<
-          RedditListingResponse<RedditPostData>
-        >('GET', url, 'chronological_collection');
+      const response = await this.makeRequest<
+        RedditListingResponse<RedditPostData>
+      >('GET', url, 'chronological_collection');
 
-        apiCallsUsed++;
-        const pagePosts =
-          response.data?.children
-            ?.map((child) => extractChildData(child))
-            .filter((post): post is RedditPostData => post !== null) ?? [];
+      apiCallsUsed++;
+      const pagePosts =
+        response.data?.children
+          ?.map((child) => extractChildData(child))
+          .filter((post): post is RedditPostData => post !== null) ?? [];
 
-        if (pagePosts.length === 0) {
-          // No more posts available
+      if (pagePosts.length === 0) {
+        // No more posts available
+        break;
+      }
+
+      // Filter posts by timestamp if provided
+      const filteredPosts = lastProcessedTimestamp
+        ? pagePosts.filter((post) => {
+            const postTime = post.created_utc;
+            return (
+              typeof postTime === 'number' && postTime > lastProcessedTimestamp
+            );
+          })
+        : pagePosts;
+
+      allPosts.push(...filteredPosts);
+
+      if (lastProcessedTimestamp) {
+        overlapConfirmed =
+          overlapConfirmed ||
+          pagePosts.some(
+            (post) =>
+              post.stickied !== true &&
+              typeof post.created_utc === 'number' &&
+              post.created_utc <= lastProcessedTimestamp,
+          );
+        if (overlapConfirmed) {
+          // /new is newest-first: everything past the overlap is already
+          // covered ground — stop paying for pages we will filter out.
           break;
-        }
-
-        // Filter posts by timestamp if provided
-        const filteredPosts = lastProcessedTimestamp
-          ? pagePosts.filter((post) => {
-              const postTime = post.created_utc;
-              return (
-                typeof postTime === 'number' &&
-                postTime > lastProcessedTimestamp
-              );
-            })
-          : pagePosts;
-
-        allPosts.push(...filteredPosts);
-
-        // Check if we've collected enough posts
-        if (allPosts.length >= limit) {
-          allPosts = allPosts.slice(0, limit);
-          break;
-        }
-
-        // Get the "after" token for next page
-        after = response.data?.after || null;
-
-        if (!after) {
-          // No more pages available
-          break;
-        }
-
-        // Add a small delay between requests to be respectful
-        if (page < totalPages - 1) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
         }
       }
 
-      const responseTime = Date.now() - startTime;
-
-      // Transform Reddit API response to flatten the data structure
-      const transformedPosts = allPosts;
-
-      this.logger.info('Chronological collection completed', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        subreddit,
-        requestedLimit: limit,
-        actualRetrieved: transformedPosts.length,
-        pagesUsed: apiCallsUsed,
-        responseTime,
-      });
-
-      return {
-        data: transformedPosts,
-        metadata: {
-          totalRetrieved: transformedPosts.length,
-          rateLimitStatus,
-          costIncurred: 0, // Reddit is free within rate limits
-          completenessRatio: transformedPosts.length / Math.min(limit, 1000),
-        },
-        performance: {
-          responseTime,
-          apiCallsUsed,
-          rateLimitHit: false,
-        },
-      };
-    } catch (error) {
-      if (error instanceof RedditRateLimitError) {
-        return {
-          data: [],
-          metadata: {
-            totalRetrieved: 0,
-            rateLimitStatus,
-            costIncurred: 0,
-          },
-          performance: {
-            responseTime: Date.now() - startTime,
-            apiCallsUsed,
-            rateLimitHit: true,
-          },
-        };
+      // Check if we've collected enough posts
+      if (allPosts.length >= limit) {
+        allPosts = allPosts.slice(0, limit);
+        break;
       }
-      throw error;
+
+      // Get the "after" token for next page
+      after = response.data?.after || null;
+
+      if (!after) {
+        // No more pages available
+        break;
+      }
+
+      // Add a small delay between requests to be respectful
+      if (page < totalPages - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
     }
+
+    const responseTime = Date.now() - startTime;
+
+    // Transform Reddit API response to flatten the data structure
+    const transformedPosts = allPosts;
+
+    this.logger.info('Chronological collection completed', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      subreddit,
+      requestedLimit: limit,
+      actualRetrieved: transformedPosts.length,
+      pagesUsed: apiCallsUsed,
+      overlapConfirmed: lastProcessedTimestamp ? overlapConfirmed : undefined,
+      responseTime,
+    });
+
+    return {
+      data: transformedPosts,
+      metadata: {
+        totalRetrieved: transformedPosts.length,
+        rateLimitStatus,
+        costIncurred: 0, // Reddit is free within rate limits
+        completenessRatio: transformedPosts.length / Math.min(limit, 1000),
+        ...(lastProcessedTimestamp ? { overlapConfirmed } : {}),
+      },
+      performance: {
+        responseTime,
+        apiCallsUsed,
+        rateLimitHit: false,
+      },
+    };
   }
 
   /**
@@ -912,49 +971,32 @@ export class RedditService implements OnModuleInit {
 
     const rateLimitStatus = await this.getRateLimitStatus();
 
-    try {
-      const response = await this.makeRequest<
-        RedditListingResponse<RedditPostData>
-      >('GET', url, 'keyword_entity_search');
+    // §12.3: rate limits/denials PROPAGATE — a rate limit can never brand a
+    // term no_results via an empty success.
+    const response = await this.makeRequest<
+      RedditListingResponse<RedditPostData>
+    >('GET', url, 'keyword_entity_search');
 
-      const posts =
-        response.data?.children
-          ?.map((child) => extractChildData(child))
-          .filter((post): post is RedditPostData => post !== null) ?? [];
-      const responseTime = Date.now() - startTime;
+    const posts =
+      response.data?.children
+        ?.map((child) => extractChildData(child))
+        .filter((post): post is RedditPostData => post !== null) ?? [];
+    const responseTime = Date.now() - startTime;
 
-      return {
-        data: posts,
-        metadata: {
-          totalRetrieved: posts.length,
-          rateLimitStatus,
-          costIncurred: 0, // Reddit is free within rate limits
-          completenessRatio: posts.length >= limit ? 1.0 : posts.length / limit,
-        },
-        performance: {
-          responseTime,
-          apiCallsUsed: 1,
-          rateLimitHit: false,
-        },
-      };
-    } catch (error) {
-      if (error instanceof RedditRateLimitError) {
-        return {
-          data: [],
-          metadata: {
-            totalRetrieved: 0,
-            rateLimitStatus,
-            costIncurred: 0,
-          },
-          performance: {
-            responseTime: Date.now() - startTime,
-            apiCallsUsed: 1,
-            rateLimitHit: true,
-          },
-        };
-      }
-      throw error;
-    }
+    return {
+      data: posts,
+      metadata: {
+        totalRetrieved: posts.length,
+        rateLimitStatus,
+        costIncurred: 0, // Reddit is free within rate limits
+        completenessRatio: posts.length >= limit ? 1.0 : posts.length / limit,
+      },
+      performance: {
+        responseTime,
+        apiCallsUsed: 1,
+        rateLimitHit: false,
+      },
+    };
   }
 
   /**
@@ -1006,60 +1048,41 @@ export class RedditService implements OnModuleInit {
 
     const rateLimitStatus = await this.getRateLimitStatus();
 
-    try {
-      const response = await this.makeRequest<any[]>(
-        'GET',
-        url,
-        'get_raw_post_with_comments',
-      );
+    // §12.3: rate limits/denials PROPAGATE — an empty rawResponse success
+    // would silently drop a paid-for thread.
+    const response = await this.makeRequest<any[]>(
+      'GET',
+      url,
+      'get_raw_post_with_comments',
+    );
 
-      if (!response || !Array.isArray(response) || response.length < 2) {
-        throw new RedditApiError('Invalid response format for post retrieval');
-      }
-
-      const responseTime = Date.now() - startTime;
-
-      // Extract post permalink for URL generation
-      const postData = response[0]?.data?.children?.[0]?.data;
-      const postUrl = `https://reddit.com${
-        postData?.permalink || `/r/${subreddit}/comments/${postId}`
-      }`;
-
-      return {
-        rawResponse: response,
-        metadata: {
-          retrievalMethod: 'reddit_api_raw_response',
-          rateLimitStatus,
-        },
-        performance: {
-          responseTime,
-          apiCallsUsed: 1,
-          rateLimitHit: false,
-        },
-        attribution: {
-          postUrl,
-        },
-      };
-    } catch (error) {
-      if (error instanceof RedditRateLimitError) {
-        return {
-          rawResponse: [],
-          metadata: {
-            retrievalMethod: 'reddit_api_raw_response',
-            rateLimitStatus,
-          },
-          performance: {
-            responseTime: Date.now() - startTime,
-            apiCallsUsed: 1,
-            rateLimitHit: true,
-          },
-          attribution: {
-            postUrl: '',
-          },
-        };
-      }
-      throw error;
+    if (!response || !Array.isArray(response) || response.length < 2) {
+      throw new RedditApiError('Invalid response format for post retrieval');
     }
+
+    const responseTime = Date.now() - startTime;
+
+    // Extract post permalink for URL generation
+    const postData = response[0]?.data?.children?.[0]?.data;
+    const postUrl = `https://reddit.com${
+      postData?.permalink || `/r/${subreddit}/comments/${postId}`
+    }`;
+
+    return {
+      rawResponse: response,
+      metadata: {
+        retrievalMethod: 'reddit_api_raw_response',
+        rateLimitStatus,
+      },
+      performance: {
+        responseTime,
+        apiCallsUsed: 1,
+        rateLimitHit: false,
+      },
+      attribution: {
+        postUrl,
+      },
+    };
   }
 
   /**
@@ -1201,28 +1224,6 @@ export class RedditService implements OnModuleInit {
     });
 
     try {
-      // §12.5: token minted on EXPIRY only, never per call.
-      if (!this.isTokenValid()) {
-        await this.authenticate();
-      }
-
-      // Request rate limiting permission
-      const rateLimitRequest: RateLimitRequest = {
-        service: 'reddit' as ExternalApiService,
-        operation: 'search_entity_keywords',
-        priority: 'medium',
-      };
-
-      const rateLimitResponse: RateLimitResponse =
-        await this.rateLimitCoordinator.requestPermission(rateLimitRequest);
-
-      if (!rateLimitResponse.allowed) {
-        throw new RedditRateLimitError(
-          `Rate limit exceeded. Retry after: ${rateLimitResponse.retryAfter}ms`,
-          rateLimitResponse.retryAfter || 60000,
-        );
-      }
-
       // Build search URL per PRD 5.1.2 specification
       const searchUrl = `https://oauth.reddit.com/r/${subreddit}/search`;
       const searchParams = new URLSearchParams({
@@ -1240,18 +1241,17 @@ export class RedditService implements OnModuleInit {
         searchParams: Object.fromEntries(searchParams.entries()),
       });
 
-      // Execute search request
-      const response = await firstValueFrom(
-        this.httpService.get(`${searchUrl}?${searchParams.toString()}`, {
-          headers: {
-            Authorization: `Bearer ${this.accessToken}`,
-            'User-Agent': this.redditConfig.userAgent,
-          },
-          timeout: this.redditConfig.timeout,
-        }),
+      // §12.5: through the ONE makeRequest chokepoint — token minted on
+      // expiry only inside it, admission = this request's governed draw.
+      const response = await this.makeRequest<{
+        data?: { children?: any[] };
+      }>(
+        'GET',
+        `${searchUrl}?${searchParams.toString()}`,
+        'search_entity_keywords',
       );
 
-      const searchData = response.data?.data?.children || [];
+      const searchData = response?.data?.children || [];
       const posts: RedditPost[] = [];
 
       // Process search results
@@ -1333,6 +1333,7 @@ export class RedditService implements OnModuleInit {
       });
 
       if (
+        error instanceof RedditGovernanceDenialError ||
         error instanceof RedditRateLimitError ||
         error instanceof RedditApiError
       ) {
@@ -1427,6 +1428,12 @@ export class RedditService implements OnModuleInit {
             await new Promise((resolve) => setTimeout(resolve, delay));
           }
         } catch (entityError: unknown) {
+          if (entityError instanceof RedditGovernanceDenialError) {
+            // §12.3 typed not-now: abort the REMAINING requests of this
+            // dispatch cleanly — never recorded as a term error (no
+            // branding), the work item stays due at the caller.
+            throw entityError;
+          }
           const errorMessage =
             entityError instanceof Error
               ? entityError.message
@@ -1532,6 +1539,11 @@ export class RedditService implements OnModuleInit {
         },
       };
     } catch (error: unknown) {
+      if (error instanceof RedditGovernanceDenialError) {
+        // Typed not-now propagates unwrapped (§12.3) — never rebranded as an
+        // API failure.
+        throw error;
+      }
       const duration = Date.now() - startTime;
       this.logger.error('Batch keyword entity search failed', {
         correlationId,
@@ -1540,6 +1552,12 @@ export class RedditService implements OnModuleInit {
         duration,
         error: error instanceof Error ? error.message : String(error),
       });
+
+      if (error instanceof RedditRateLimitError) {
+        // §12.3: a rate limit is an ERROR outcome — surfaced as itself, not
+        // rebranded, so no caller can read it as no_results.
+        throw error;
+      }
 
       throw new RedditApiError(
         `Failed to perform batch entity keyword search: ${

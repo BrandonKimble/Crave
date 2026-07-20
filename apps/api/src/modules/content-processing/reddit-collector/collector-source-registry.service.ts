@@ -42,10 +42,39 @@ export interface CollectorHeartbeat {
   outputCollapsed: boolean;
   lastOutputDocs: number | null;
   outputDocsBaseline: number | null;
+  /** §10 advance-at-extraction: a staged window older than the reconcile
+   *  grace that never committed = the lane FETCHED but no extraction run
+   *  entered the evidence system — RED. */
+  pendingWindowStale: boolean;
+  /** §10 expectedBatches reconciler verdict (written by the hourly pass):
+   *  expected fan-out minus proven (created runs + covered-skip batches).
+   *  > 0 = RED. null until the reconciler has judged a window. */
+  expectedBatchesShortfall: number | null;
+  /** §10 saturation detector: an uncleared C4 coverage-gap fact on the lane
+   *  (fetch reach ended before the cursor) — RED until recovered. */
+  coverageGapDetected: boolean;
+}
+
+/** §10 pending window: staged at fetch, committed (into lastProcessedAt) only
+ *  when the window's extraction evidence is durably created. */
+export interface PendingWindowState {
+  parentJobId: string;
+  /** visible-at-fetch coveredThrough (ISO) — the value the cursor takes when
+   *  the window commits. */
+  coveredThrough: string;
+  expectedBatches: number;
+  stagedAt: string;
 }
 
 /** EWMA weight for the output baseline — a K2-shaped smoothing prior. */
 const OUTPUT_BASELINE_ALPHA = 0.3;
+/** §16: K3-shaped operational bound — how long a staged §10 window may sit
+ *  uncommitted (fetch happened, no extraction run yet) before it reads RED.
+ *  Sized to the slowest honest fetch→run path (batch enqueue delays are
+ *  seconds; gating + persistence minutes); pacer-derived refinement replaces
+ *  it when the estimator-refresher lands (§22). Shared by the heartbeat
+ *  reader and the hourly expectedBatches reconciler. */
+export const PENDING_WINDOW_GRACE_HOURS = 2;
 /** A tick producing under this fraction of baseline reads collapsed (§12.4).
  *  Applied only once a baseline exists — first ticks can never false-RED.
  *  §16 K2 (per-source burst variance family): 0.2 is the prior alarm
@@ -200,6 +229,68 @@ export class CollectorSourceRegistryService {
     `;
   }
 
+  /** Re-arm a lane as due NOW (governance-denial mid-dispatch: the pacer
+   *  advanced dueAt at dispatch, but the work never ran — a typed not-now
+   *  leaves the work item DUE, never errored). LEAST() never pushes a lane
+   *  later than it already is. */
+  async markLaneDue(
+    sourceId: string,
+    lane: string,
+    now: Date = new Date(),
+  ): Promise<void> {
+    await this.prisma.$executeRaw`
+      UPDATE source_collection_lanes
+      SET due_at = LEAST(due_at, ${now}::timestamp),
+          updated_at = now()
+      WHERE source_id = ${sourceId}::uuid AND lane = ${lane}
+    `;
+  }
+
+  /**
+   * §10 advance-at-extraction, step 1 of the idempotent two-step: the FETCH
+   * stages the window (visible-at-fetch coveredThrough + expected fan-out)
+   * WITHOUT moving the cursor. A crash between fetch and extraction-run
+   * creation leaves the cursor untouched → the next dispatch re-fetches the
+   * window (persist-first upserts make the re-fetch idempotent) instead of
+   * losing it. A newer dispatch overwrites the stage — its wider window
+   * subsumes the old one.
+   */
+  async stagePendingWindow(
+    sourceId: string,
+    lane: string,
+    window: PendingWindowState,
+  ): Promise<void> {
+    await this.mergeLaneState(sourceId, lane, {
+      pendingWindow: window as unknown as Record<string, unknown>,
+    });
+  }
+
+  /**
+   * §10 advance-at-extraction, step 2: the cursor moves ONLY when the
+   * window's extraction evidence is durably created ("this window entered
+   * the evidence system" — a fact, not intent). Conditional on the staged
+   * parentJobId, so it is idempotent (later batches of the same parent
+   * no-op) and race-safe (a stale parent can never commit over a newer
+   * stage). Returns true when this call performed the commit.
+   */
+  async commitPendingWindow(
+    sourceId: string,
+    lane: string,
+    parentJobId: string,
+  ): Promise<boolean> {
+    const updated = await this.prisma.$executeRaw`
+      UPDATE source_collection_lanes
+      SET state = (COALESCE(state, '{}'::jsonb) - 'pendingWindow')
+            || jsonb_build_object(
+                 'lastProcessedAt', state->'pendingWindow'->'coveredThrough'
+               ),
+          updated_at = now()
+      WHERE source_id = ${sourceId}::uuid AND lane = ${lane}
+        AND state->'pendingWindow'->>'parentJobId' = ${parentJobId}
+    `;
+    return updated > 0;
+  }
+
   /** Merge lane-kind state (cursor, heavy-sort watermark) into the lane row. */
   async mergeLaneState(
     sourceId: string,
@@ -255,11 +346,12 @@ export class CollectorSourceRegistryService {
         lateness_tolerance_days: number;
         last_output_docs: number | null;
         output_docs_baseline: number | null;
+        state: Record<string, unknown> | null;
       }>
     >`
       SELECT l.source_id, s.handle, l.lane, l.due_at,
              l.lateness_tolerance_days, l.last_output_docs,
-             l.output_docs_baseline
+             l.output_docs_baseline, l.state
       FROM source_collection_lanes l
       JOIN sources s ON s.source_id = l.source_id
       WHERE l.enabled
@@ -281,6 +373,29 @@ export class CollectorSourceRegistryService {
         baseline > 0 &&
         row.last_output_docs !== null &&
         row.last_output_docs < baseline * OUTPUT_COLLAPSE_FRACTION;
+      const state = row.state ?? {};
+      // §10 fetched-but-no-runs RED: a staged window past the grace with no
+      // extraction-run commit.
+      const pendingWindow = state.pendingWindow as
+        | Partial<PendingWindowState>
+        | undefined;
+      const stagedAtMs =
+        typeof pendingWindow?.stagedAt === 'string'
+          ? Date.parse(pendingWindow.stagedAt)
+          : NaN;
+      const pendingWindowStale =
+        Number.isFinite(stagedAtMs) &&
+        now.getTime() - stagedAtMs >
+          PENDING_WINDOW_GRACE_HOURS * 60 * 60 * 1000;
+      // §10 reconciler verdict (written hourly by the pacer's pass).
+      const reconciler = state.reconciler as
+        | { shortfall?: unknown }
+        | undefined;
+      const expectedBatchesShortfall =
+        typeof reconciler?.shortfall === 'number' &&
+        Number.isFinite(reconciler.shortfall)
+          ? reconciler.shortfall
+          : null;
       return {
         sourceId: row.source_id,
         handle: row.handle,
@@ -289,6 +404,9 @@ export class CollectorSourceRegistryService {
         outputCollapsed,
         lastOutputDocs: row.last_output_docs,
         outputDocsBaseline: baseline,
+        pendingWindowStale,
+        expectedBatchesShortfall,
+        coverageGapDetected: state.coverageGap != null,
       };
     });
   }

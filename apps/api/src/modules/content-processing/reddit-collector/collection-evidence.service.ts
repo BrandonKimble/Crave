@@ -129,6 +129,63 @@ export class CollectionEvidenceService implements OnModuleInit {
   }
 
   /**
+   * §10 "parents record expected fan-out; extraction runs prove it": the
+   * PARENT collection job registers its collection-run row UP FRONT with the
+   * expected batch fan-out (+ the lane identity the reconciler folds RED
+   * back onto), before any batch is enqueued. The hourly expectedBatches
+   * reconciler compares this expectation against actually-created extraction
+   * runs (+ covered-skip batches) and alarms on shortfall.
+   */
+  async registerExpectedFanOut(params: {
+    scopeKey: string;
+    pipeline: string;
+    platform?: string | null;
+    community?: string | null;
+    sourceId: string;
+    lane: string;
+    expectedBatches: number;
+    coveredThrough: Date;
+  }): Promise<void> {
+    const collectionRunId = await this.ensureCollectionRun({
+      scopeKey: params.scopeKey,
+      pipeline: params.pipeline,
+      platform: params.platform ?? null,
+      community: params.community ?? null,
+      metadata: {},
+    });
+    // Merge (never replace) so re-registration on a retried parent keeps
+    // any batch-side skip counts already recorded.
+    await this.prismaService.$executeRaw`
+      UPDATE collection_runs
+      SET metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({
+        sourceId: params.sourceId,
+        lane: params.lane,
+        expectedBatches: params.expectedBatches,
+        coveredThrough: params.coveredThrough.toISOString(),
+      })}::jsonb
+      WHERE collection_run_id = ${collectionRunId}::uuid
+    `;
+  }
+
+  /**
+   * A batch whose every candidate was already covered creates NO extraction
+   * run by construction — the coverage facts already exist. Recording the
+   * skip keeps the expectedBatches reconciler honest (proven = created runs
+   * + covered skips). Atomic jsonb increment — batch workers race.
+   */
+  async recordSkippedBatch(scopeKey: string): Promise<void> {
+    await this.prismaService.$executeRaw`
+      UPDATE collection_runs
+      SET metadata = jsonb_set(
+        COALESCE(metadata, '{}'::jsonb),
+        '{skippedBatches}',
+        to_jsonb(COALESCE((metadata->>'skippedBatches')::int, 0) + 1)
+      )
+      WHERE scope_key = ${scopeKey.trim()}
+    `;
+  }
+
+  /**
    * PRE-LLM DEDUPE (duplication red-team 2026-07-11): source ids already
    * COVERED by extraction, so the caller can skip them BEFORE chunking and
    * paying Gemini. 68% of the stage-2 load's duplicate spend was posts whose

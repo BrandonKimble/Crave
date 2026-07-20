@@ -11,11 +11,23 @@
  * "not now" — the lane simply STAYS DUE and is retried next tick, it never
  * becomes an error, never brands a cooldown (§12.3).
  *
- * Dispatch-level draw semantics (priors edition): the pacer reserves and
- * immediately reconciles the adapter's declared ESTIMATE (admission consumes
- * the estimate); workers mirror the ACTUAL request count on completion —
- * the declared-vs-actual pair is the §14.2 drift instrument. Per-request
- * chokepoint draws arrive with the §12.5 client rewrite.
+ * Draw semantics after the §12.5 client rewrite — THE DOCUMENTED READING of
+ * §12.5 × §14 (option (a), declared-estimate reservation): §14.3 keeps the
+ * pacer as the sole dispatcher "select[ing] the highest-priority job whose
+ * declared pools all reserve", while §14.2 puts actuals at the chokepoint
+ * ("chokepoints record actuals") and §14.8 allows only ONE window. So:
+ *   - the pacer RESERVES the adapter's declared estimate per dispatch — the
+ *     dispatch-grain admission/backpressure peek (§14.3) — and RELEASES the
+ *     hold once the dispatch is enqueued (no window consumption here: work
+ *     runs async, often in a later minute window, so consuming now would be
+ *     fiction);
+ *   - every vendor HTTP call is a per-REQUEST draw at the client's single
+ *     makeRequest chokepoint (reserve 1 → act → reconcile 1) — the ONE
+ *     window and ledger, truthful to the minute the request happens;
+ *   - workers close the dispatch-grain declared-vs-actual pair via
+ *     recordActualPair — the §14.2 drift instrument on the estimate.
+ * A pool denial (either grain) is a typed "not now" — the work item simply
+ * STAYS DUE, never an error, never a cooldown (§12.3).
  */
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -25,6 +37,7 @@ import {
   CollectorSourceRegistryService,
   CollectorLane,
   normalizedLateness,
+  PENDING_WINDOW_GRACE_HOURS,
 } from './collector-source-registry.service';
 import {
   REDDIT_POOL_NAME,
@@ -87,6 +100,42 @@ export class CollectorPacerService implements OnModuleInit {
 
     let dispatched = 0;
     let denied = 0;
+    // Dispatch-grain reservations are HELD for the whole tick so admission
+    // is honest ACROSS lanes within it (releasing per-lane would let every
+    // lane see full headroom), then released together — the per-request
+    // chokepoint draws own the real window accounting (reading (a) above).
+    this.tickReservationIds = [];
+    try {
+      await this.dispatchDueLanes(dueLanes, now, correlationId, (kind) => {
+        if (kind === 'dispatched') dispatched += 1;
+        else denied += 1;
+      });
+    } finally {
+      for (const reservationId of this.tickReservationIds) {
+        this.governance.pools.release(reservationId);
+      }
+      this.tickReservationIds = [];
+    }
+    this.logger.info('Pacer tick complete', {
+      correlationId,
+      due: dueLanes.length,
+      dispatched,
+      denied,
+      worstNormalizedLateness: dueLanes.length
+        ? normalizedLateness(dueLanes[0], now)
+        : 0,
+    });
+    return { dispatched, denied };
+  }
+
+  private tickReservationIds: string[] = [];
+
+  private async dispatchDueLanes(
+    dueLanes: CollectorLane[],
+    now: Date,
+    correlationId: string,
+    count: (kind: 'dispatched' | 'denied') => void,
+  ): Promise<void> {
     for (const lane of dueLanes) {
       if (lane.platform !== 'reddit') {
         // poll_surface is push-complete (zero pull lanes, §10) — an unknown
@@ -111,13 +160,13 @@ export class CollectorPacerService implements OnModuleInit {
       try {
         const outcome = await this.dispatchLane(lane, now);
         if (outcome === 'denied') {
-          denied += 1;
+          count('denied');
           // Typed 'not now': the lane stays due; normalized lateness rises
           // and it wins admission next tick. Minute windows refill fast —
           // later lanes may still fit, so keep scanning.
           continue;
         }
-        dispatched += 1;
+        count('dispatched');
         await this.registry.advanceLane(lane.sourceId, lane.lane, now);
       } catch (error) {
         // Loud, and the lane stays due so the next tick retries.
@@ -132,16 +181,6 @@ export class CollectorPacerService implements OnModuleInit {
         });
       }
     }
-    this.logger.info('Pacer tick complete', {
-      correlationId,
-      due: dueLanes.length,
-      dispatched,
-      denied,
-      worstNormalizedLateness: dueLanes.length
-        ? normalizedLateness(dueLanes[0], now)
-        : 0,
-    });
-    return { dispatched, denied };
   }
 
   private async dispatchLane(
@@ -241,8 +280,10 @@ export class CollectorPacerService implements OnModuleInit {
     return 'dispatched';
   }
 
-  /** Reserve→reconcile the declared estimate on the reddit pool. Returns
-   *  false on denial (typed not-now). */
+  /** Dispatch-grain admission peek (§14.3, reading (a) above): reserve the
+   *  declared estimate and HOLD it until the tick ends (released in tick()'s
+   *  finally) — the per-request chokepoint draws do the real window
+   *  accounting. Returns false on denial (typed not-now). */
   private drawEstimate(declared: number, workClass: string): boolean {
     const reservation = this.governance.pools.reserve(
       REDDIT_POOL_NAME,
@@ -258,8 +299,104 @@ export class CollectorPacerService implements OnModuleInit {
       });
       return false;
     }
-    this.governance.pools.reconcile(reservation.reservationId, declared);
+    this.tickReservationIds.push(reservation.reservationId);
     return true;
+  }
+
+  /**
+   * §10 hourly expectedBatches RECONCILER — "parents record expected
+   * fan-out; extraction runs prove it": for each lane's most recent
+   * chronological parent past the grace window, compare the registered
+   * expectedBatches against PROVEN batches (extraction runs actually created
+   * under the parent's collection run + covered-skip batches, which create
+   * no run by construction). The verdict is folded onto the lane row
+   * (state.reconciler), where collectorHeartbeats reads it — divergence IS
+   * the RED heartbeat signal, not a parallel alarm. A lane that fetched but
+   * created no runs goes RED here within one pass (shortfall = expected),
+   * and independently via the stale pending-window read. Also the §15
+   * migration drain instrument.
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async runExpectedBatchesReconciler(): Promise<void> {
+    if (!this.enabled) return;
+    try {
+      await this.reconcileExpectedBatches();
+    } catch (error) {
+      this.logger.error('expectedBatches reconciler pass failed', {
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+    }
+  }
+
+  /** Exposed for probes/specs; the hourly cron calls this. */
+  async reconcileExpectedBatches(now: Date = new Date()): Promise<void> {
+    // §16: K3-shaped operational bounds. Grace = PENDING_WINDOW_GRACE_HOURS
+    // (shared with the heartbeat's stale-window read — one number, one law);
+    // 48h lookback covers the slowest honest batch path (Gemini batch SLA
+    // 24h + reconciler cadence) without rescanning history forever.
+    const LOOKBACK_HOURS = 48;
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        scope_key: string;
+        started_at: Date;
+        source_id: string;
+        expected_batches: number;
+        skipped_batches: number;
+        proven_runs: bigint | number;
+      }>
+    >`
+      SELECT DISTINCT ON (cr.metadata->>'sourceId')
+        cr.scope_key,
+        cr.started_at,
+        cr.metadata->>'sourceId' AS source_id,
+        COALESCE((cr.metadata->>'expectedBatches')::int, 0)
+          AS expected_batches,
+        COALESCE((cr.metadata->>'skippedBatches')::int, 0)
+          AS skipped_batches,
+        (SELECT COUNT(*) FROM collection_extraction_runs er
+          WHERE er.collection_run_id = cr.collection_run_id) AS proven_runs
+      FROM collection_runs cr
+      WHERE cr.pipeline = 'chronological'
+        AND cr.metadata ? 'expectedBatches'
+        AND cr.metadata ? 'sourceId'
+        AND cr.started_at >= ${now}::timestamp - (${LOOKBACK_HOURS} * interval '1 hour')
+        AND cr.started_at <= ${now}::timestamp - (${PENDING_WINDOW_GRACE_HOURS} * interval '1 hour')
+      ORDER BY cr.metadata->>'sourceId', cr.started_at DESC
+    `;
+    for (const row of rows) {
+      const provenRuns = Number(row.proven_runs);
+      const shortfall = Math.max(
+        0,
+        row.expected_batches - provenRuns - row.skipped_batches,
+      );
+      await this.registry.mergeLaneState(row.source_id, 'chronological', {
+        reconciler: {
+          checkedAt: now.toISOString(),
+          parentScopeKey: row.scope_key,
+          expectedBatches: row.expected_batches,
+          provenRuns,
+          skippedBatches: row.skipped_batches,
+          shortfall,
+        },
+      });
+      if (shortfall > 0) {
+        // The RED signal (§10/C8) — read via collectorHeartbeats.
+        this.logger.error(
+          'expectedBatches shortfall: fetched window under-proven (RED)',
+          {
+            scopeKey: row.scope_key,
+            sourceId: row.source_id,
+            expectedBatches: row.expected_batches,
+            provenRuns,
+            skippedBatches: row.skipped_batches,
+            shortfall,
+          },
+        );
+      }
+    }
   }
 
   /** Saturation-adaptive cadence is trigger-deferred (§22); the measured

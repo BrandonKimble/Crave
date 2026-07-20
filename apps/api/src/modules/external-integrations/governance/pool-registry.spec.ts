@@ -63,6 +63,64 @@ describe('PoolRegistry (master plan §14 v2)', () => {
     }
   });
 
+  it('release frees a hold with ZERO consumption and ZERO ledger rows (pacer admission peek)', () => {
+    const registry = new PoolRegistry();
+    registry.register(minutePool());
+    const res = registry.reserve('reddit.requests', 40, 'dispatch-peek', t0);
+    expect(res.admitted).toBe(true);
+    if (res.admitted) {
+      registry.release(res.reservationId);
+    }
+    // Full capacity is back — nothing was consumed by the peek.
+    const after = registry.reserve('reddit.requests', 100, 'keyword', t0);
+    expect(after.admitted).toBe(true);
+    expect(registry.readDrawLedger()).toHaveLength(0);
+  });
+
+  it('an upstream 429 poisons the window: every draw denied until retryAfter elapses (§14.5)', () => {
+    const registry = new PoolRegistry();
+    registry.register(minutePool());
+    registry.poisonWindow('reddit.requests', 30_000, t0);
+    const denied = registry.reserve('reddit.requests', 1, 'chronological', t0);
+    expect(denied.admitted).toBe(false);
+    if (!denied.admitted) {
+      expect(denied.reason).toBe('upstreamRateLimited');
+      expect(denied.retryAfterMs).toBe(30_000);
+    }
+    // Poison never shortens: a smaller later retryAfter does not un-poison.
+    registry.poisonWindow('reddit.requests', 1_000, t0);
+    const still = registry.reserve(
+      'reddit.requests',
+      1,
+      'chronological',
+      new Date(t0.getTime() + 20_000),
+    );
+    expect(still.admitted).toBe(false);
+    // After the retry-after elapses the pool admits again.
+    const later = registry.reserve(
+      'reddit.requests',
+      1,
+      'chronological',
+      new Date(t0.getTime() + 31_000),
+    );
+    expect(later.admitted).toBe(true);
+  });
+
+  it('poolStatus is a read-only snapshot (never admission)', () => {
+    const registry = new PoolRegistry();
+    registry.register(minutePool());
+    const res = registry.reserve('reddit.requests', 2, 'x', t0);
+    if (res.admitted) registry.reconcile(res.reservationId, 2, t0);
+    const status = registry.poolStatus('reddit.requests', t0);
+    expect(status).toMatchObject({
+      limit: 100,
+      used: 2,
+      reservedOutstanding: 0,
+      poisonedForMs: null,
+    });
+    expect(status.resetMs).toBeGreaterThan(0);
+  });
+
   it('leaked reservations expire by TTL and release capacity', () => {
     const registry = new PoolRegistry();
     registry.register(minutePool({ reservationTtlMs: 1_000 }));

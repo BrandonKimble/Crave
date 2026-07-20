@@ -317,9 +317,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
         case 'google-places':
           resolved.add(ExternalApiService.GOOGLE_PLACES);
           break;
-        case 'reddit':
-          resolved.add(ExternalApiService.REDDIT);
-          break;
         case 'llm':
           resolved.add(ExternalApiService.LLM);
           break;
@@ -873,14 +870,10 @@ export class RateLimitCoordinatorService implements OnModuleInit {
       );
     });
 
-    // Reddit API - 100 requests per minute (as per PRD section 2.5)
-    const redditRequestsPerMinute =
-      this.configService.get<number>('reddit.requestsPerMinute') || 100;
-    this.registerRateLimitConfig(ExternalApiService.REDDIT, {
-      requestsPerMinute: redditRequestsPerMinute,
-      requestsPerHour: redditRequestsPerMinute * 60,
-      requestsPerDay: redditRequestsPerMinute * 60 * 24,
-    });
+    // §12.5/§14.8: the reddit window MOVED into the governor's
+    // reddit.requests pool atomically with the client's per-request draws —
+    // this coordinator has ZERO reddit admission authority (one pool, one
+    // ledger). Nothing reddit-shaped registers or draws here anymore.
 
     // §12.7: the dead LLM registration is gone — LLM admission lives in the
     // Redis CentralizedRateLimiter (gemini.tokens pool mirrors it, §14.2);

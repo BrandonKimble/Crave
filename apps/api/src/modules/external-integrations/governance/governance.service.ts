@@ -65,14 +65,15 @@ export class GovernanceService {
       failPolicy: { kind: 'emergencyFraction', fraction: 0.95 },
       reservationTtlMs: 60_000,
     });
-    // Reddit pool (§22 item 7 — collector cut): vendor fact K4 is
+    // Reddit pool (§12.5 client rewrite executed): vendor fact K4 is
     // 1000-per-10-minutes / 100-per-minute; the per-minute window is the
-    // binding constraint and is what the pacer's dispatch-level draws are
-    // enumerated against. The legacy RateLimitCoordinator remains the
-    // per-request throttle inside the client; this pool is the governor's
-    // admission + draw ledger for dispatches (one pool, one ledger — §14.8:
-    // the coordinator's window moves here atomically when the client's
-    // makeRequest path is unified in §12.5's client rewrite).
+    // binding constraint. This pool is THE one reddit window and ledger
+    // (§14.8: the RateLimitCoordinator's reddit window moved here atomically
+    // — the coordinator has ZERO reddit admission authority). Admission is
+    // per-REQUEST at the client's single makeRequest chokepoint
+    // (governance.draw); the pacer's dispatch-grain reserve is an ordering/
+    // backpressure peek of declared demand (reserve → release), and the
+    // declared-vs-actual dispatch pair remains the §14.2 drift instrument.
     this.pools.register({
       name: 'reddit.requests',
       credential: 'default',
@@ -134,15 +135,32 @@ export class GovernanceService {
     workClass: string,
     act: () => Promise<T>,
   ): Promise<T | null> {
+    const outcome = await this.drawWithOutcome(poolName, workClass, act);
+    return outcome.admitted ? outcome.value : null;
+  }
+
+  /**
+   * Same draw primitive, but a denial returns its typed details (retryAfter)
+   * instead of a bare null — the §12.5 per-request chokepoint needs them to
+   * retry THROUGH the governor (each retry is a NEW draw) and to surface a
+   * typed not-now when attempts exhaust.
+   */
+  async drawWithOutcome<T>(
+    poolName: string,
+    workClass: string,
+    act: () => Promise<T>,
+  ): Promise<
+    { admitted: true; value: T } | { admitted: false; denial: PoolDenial }
+  > {
     const reservation = this.pools.reserve(poolName, 1, workClass);
     if (!reservation.admitted) {
       this.logDenial(poolName, workClass, reservation);
-      return null;
+      return { admitted: false, denial: reservation };
     }
     try {
       const result = await act();
       this.pools.reconcile(reservation.reservationId, 1);
-      return result;
+      return { admitted: true, value: result };
     } catch (error) {
       // The call failed — no vendor budget was necessarily consumed, but we
       // conservatively debit 1 (the request likely reached the vendor).

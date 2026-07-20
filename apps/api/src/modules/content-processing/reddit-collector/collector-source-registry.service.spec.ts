@@ -106,5 +106,67 @@ describe('collectorHeartbeats (§12.4 — must be able to show RED)', () => {
     const [beat] = await h.service.collectorHeartbeats(NOW);
     expect(beat.outputCollapsed).toBe(false);
     expect(beat.normalizedLateness).toBeLessThanOrEqual(0);
+    expect(beat.pendingWindowStale).toBe(false);
+    expect(beat.expectedBatchesShortfall).toBeNull();
+    expect(beat.coverageGapDetected).toBe(false);
+  });
+
+  it('shows RED on a stale pending window (§10: fetched but no run committed)', async () => {
+    const h = buildWithRows([
+      {
+        ...baseRow,
+        state: {
+          pendingWindow: {
+            parentJobId: 'job-1',
+            coveredThrough: NOW.toISOString(),
+            expectedBatches: 4,
+            stagedAt: new Date(
+              NOW.getTime() - 3 * 60 * 60 * 1000,
+            ).toISOString(),
+          },
+        },
+      },
+    ]);
+    const [beat] = await h.service.collectorHeartbeats(NOW);
+    expect(beat.pendingWindowStale).toBe(true);
+  });
+
+  it('a freshly staged window (inside the grace) is NOT red', async () => {
+    const h = buildWithRows([
+      {
+        ...baseRow,
+        state: {
+          pendingWindow: {
+            parentJobId: 'job-1',
+            coveredThrough: NOW.toISOString(),
+            expectedBatches: 4,
+            stagedAt: new Date(NOW.getTime() - 10 * 60 * 1000).toISOString(),
+          },
+        },
+      },
+    ]);
+    const [beat] = await h.service.collectorHeartbeats(NOW);
+    expect(beat.pendingWindowStale).toBe(false);
+  });
+
+  it('surfaces the reconciler shortfall verdict (§10 expectedBatches RED)', async () => {
+    const h = buildWithRows([
+      { ...baseRow, state: { reconciler: { shortfall: 3 } } },
+    ]);
+    const [beat] = await h.service.collectorHeartbeats(NOW);
+    expect(beat.expectedBatchesShortfall).toBe(3);
+  });
+
+  it('shows RED on an uncleared coverage gap (§10 saturation miss fact)', async () => {
+    const h = buildWithRows([
+      {
+        ...baseRow,
+        state: {
+          coverageGap: { detectedAt: NOW.toISOString(), windowStart: null },
+        },
+      },
+    ]);
+    const [beat] = await h.service.collectorHeartbeats(NOW);
+    expect(beat.coverageGapDetected).toBe(true);
   });
 });

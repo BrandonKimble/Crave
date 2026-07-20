@@ -4,8 +4,10 @@ import { OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { RedditService } from '../../../external-integrations/reddit/reddit.service';
+import { RedditGovernanceDenialError } from '../../../external-integrations/reddit/reddit.exceptions';
 import { GovernanceService } from '../../../external-integrations/governance/governance.service';
 import { CollectorSourceRegistryService } from '../collector-source-registry.service';
+import { CollectionEvidenceService } from '../collection-evidence.service';
 import { REDDIT_POOL_NAME } from '../reddit-collection-adapter';
 import { BatchJob } from '../batch-processing-queue.types';
 
@@ -33,6 +35,9 @@ export interface ChronologicalCollectionJobResult {
   mentionsExtracted: number;
   processingTime: number;
   error?: string;
+  /** §12.3 typed not-now: the governor denied mid-dispatch — the work item
+   *  was re-armed as due; NOT a failure. */
+  deferredByGovernance?: boolean;
   nextScheduledCollection?: Date;
   latestTimestamp?: number;
   componentProcessing?: {
@@ -92,6 +97,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
     @Inject(RedditService) private readonly redditService: RedditService,
     private readonly sourceRegistry: CollectorSourceRegistryService,
     private readonly governance: GovernanceService,
+    private readonly collectionEvidence: CollectionEvidenceService,
     @InjectQueue('chronological-batch-processing-queue')
     private readonly batchQueue: Queue<BatchJob>,
   ) {}
@@ -224,14 +230,61 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
 
       // Process all collected posts - async queue handles batching and rate limiting
 
+      // §10 saturation MISS DETECTOR (observation — the deferral law forbids
+      // deferring observations): overlap semantics, never fullname anchoring.
+      // A fetch whose reach ended WITHOUT one strictly-older confirmation
+      // means posts between the cursor and the listing's reach are beyond
+      // recall — a C4 COVERAGE GAP fact, recorded on the lane and RED on the
+      // heartbeat. The money-gated recovery sweep (targeted window sweep via
+      // the §21.7 proposed-sweep verb) and the AIMD cadence controller are
+      // TRIGGER-DEFERRED (§22: "saturation AIMD live trigger (volume near
+      // clamps)"; grant flow = manual until a fleet) — until then the
+      // operator clears the gap with a manual sweep.
+      if (
+        sourceId &&
+        allPosts.length > 0 &&
+        postsResult.metadata.overlapConfirmed === false
+      ) {
+        const oldestFetched = allPosts.reduce<number | null>((oldest, post) => {
+          const created = this.extractCreatedUtc(post);
+          return created !== null && (oldest === null || created < oldest)
+            ? created
+            : oldest;
+        }, null);
+        this.logger.error(
+          'Chronological reach miss: fetch never overlapped the cursor (§10 C4 coverage gap)',
+          {
+            correlationId,
+            subreddit,
+            windowStart: new Date(effectiveLastProcessed * 1000).toISOString(),
+            oldestFetched:
+              oldestFetched !== null
+                ? new Date(oldestFetched * 1000).toISOString()
+                : null,
+          },
+        );
+        await this.sourceRegistry.mergeLaneState(sourceId, 'chronological', {
+          coverageGap: {
+            detectedAt: new Date().toISOString(),
+            windowStart: new Date(effectiveLastProcessed * 1000).toISOString(),
+            oldestFetched:
+              oldestFetched !== null
+                ? new Date(oldestFetched * 1000).toISOString()
+                : null,
+          },
+        });
+      }
+
       if (posts.length === 0) {
-        // Legit zero still COVERS through the collection start (§10:
-        // coveredThrough means visible-at-fetch-time) and still writes the
-        // output heartbeat — legit-zero vs broken-zero is judged against the
-        // lane's own baseline, never by skipping the write.
+        // Legit zero: the window was OBSERVED empty at fetch — there is no
+        // extraction evidence to await, so the cursor advances here (§10's
+        // advance-at-extraction degenerates to advance-at-observation for an
+        // empty window). Output heartbeat still writes — legit-zero vs
+        // broken-zero is judged against the lane's own baseline.
         await this.recordSourceFacts({
           sourceId,
           collectionStartTime,
+          advanceCursor: true,
           outputDocs: 0,
           declaredRequests: job.data.declaredRequests,
         });
@@ -250,6 +303,37 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       // PHASE 2: Queue batches for async processing
       const batches = chunk(ids, this.BATCH_SIZE);
       let latestTimestamp = 0;
+
+      // §10 advance-at-extraction, BEFORE any batch is enqueued:
+      // (1) the parent records its expected fan-out on the collection-run
+      //     row (the hourly expectedBatches reconciler's expectation side);
+      // (2) the window is STAGED on the lane (visible-at-fetch
+      //     coveredThrough) — the cursor itself moves only when a batch
+      //     durably creates this window's extraction run (or proves it
+      //     already covered). A crash between here and run-creation leaves
+      //     the cursor untouched → re-fetch, never a lost window.
+      if (sourceId) {
+        await this.collectionEvidence.registerExpectedFanOut({
+          scopeKey: `collection:${jobId}`,
+          pipeline: 'chronological',
+          platform: 'reddit',
+          community: subreddit,
+          sourceId,
+          lane: 'chronological',
+          expectedBatches: batches.length,
+          coveredThrough: new Date(collectionStartTime * 1000),
+        });
+        await this.sourceRegistry.stagePendingWindow(
+          sourceId,
+          'chronological',
+          {
+            parentJobId: jobId,
+            coveredThrough: new Date(collectionStartTime * 1000).toISOString(),
+            expectedBatches: batches.length,
+            stagedAt: new Date().toISOString(),
+          },
+        );
+      }
 
       // Queue all batches for async processing
       const batchJobs: Promise<Job<BatchJob>>[] = [];
@@ -301,22 +385,23 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         latestTimestamp = Math.max(...timestamps);
       }
 
-      // Advance the lane cursor + output heartbeat + declared-vs-actual
-      // mirror. CRITICAL: cursor = collection START time (visible-at-fetch)
-      // so posts arriving during processing are never skipped. §10's stricter
-      // advance-at-extraction-run-creation + the expectedBatches reconciler
-      // are the remaining C4 pieces (recorded in the plan ledger).
+      // Output heartbeat + declared-vs-actual mirror. The CURSOR does NOT
+      // advance here (§10): it is staged above and commits with the first
+      // durable extraction-run write for this window (the batch side calls
+      // commitPendingWindow). coveredThrough stays the collection START time
+      // (visible-at-fetch) so posts arriving during processing are never
+      // skipped.
       await this.recordSourceFacts({
         sourceId,
         collectionStartTime,
+        advanceCursor: false,
         outputDocs: posts.length,
         declaredRequests: job.data.declaredRequests,
       });
-      this.logger.info('Advanced lane cursor after queuing batches', {
+      this.logger.info('Staged pending window after queuing batches', {
         correlationId,
         subreddit,
-        lastProcessedTimestamp: collectionStartTime,
-        lastProcessedDate: new Date(collectionStartTime * 1000).toISOString(),
+        coveredThrough: new Date(collectionStartTime * 1000).toISOString(),
         batchesQueued: batches.length,
         latestPostTimestamp: latestTimestamp,
         processingDurationMinutes: Math.round(
@@ -349,6 +434,43 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
 
       return result;
     } catch (error) {
+      if (error instanceof RedditGovernanceDenialError) {
+        // §12.3 typed not-now MID-DISPATCH: abort the remaining requests
+        // cleanly. The pacer advanced this lane at dispatch, so re-arm it as
+        // due — the work item STAYS DUE, with zero error branding (no Bull
+        // failure, no retryCount, no cursor movement; any partially fetched
+        // pages are simply re-fetched next tick via the persist-first
+        // upsert).
+        const sourceId =
+          job.data.sourceId ??
+          (await this.sourceRegistry.findRedditSourceByHandle(subreddit))
+            ?.sourceId;
+        if (sourceId) {
+          await this.sourceRegistry
+            .markLaneDue(sourceId, 'chronological')
+            .catch(() => undefined);
+        }
+        this.logger.info(
+          'Chronological dispatch deferred by governance (lane re-armed due)',
+          {
+            correlationId,
+            jobId,
+            subreddit,
+            retryAfterMs: error.retryAfterMs,
+          },
+        );
+        return {
+          success: true,
+          jobId,
+          subreddit,
+          postsProcessed: 0,
+          batchesProcessed: 0,
+          mentionsExtracted: 0,
+          processingTime: Date.now() - startTime,
+          deferredByGovernance: true,
+        };
+      }
+
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       const retryCount = options.retryCount || 0;
@@ -382,14 +504,16 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
     }
   }
 
-  /** §10/§12.4/§14.2 durable source facts after a fetch: lane cursor
-   *  (visible-at-fetch coveredThrough), output heartbeat, and the
-   *  declared-vs-actual reddit-draw mirror (~1 listing request per 100
-   *  posts, minimum 1). Best-effort: fact recording must never fail the
-   *  collection it describes. */
+  /** §10/§12.4/§14.2 durable source facts after a fetch: output heartbeat
+   *  and the declared-vs-actual reddit-draw mirror (~1 listing request per
+   *  100 posts, minimum 1). The cursor advances here ONLY on the legit-zero
+   *  path (advanceCursor) — a non-empty window's cursor is staged and
+   *  commits at extraction-run creation (§10). Best-effort: fact recording
+   *  must never fail the collection it describes. */
   private async recordSourceFacts(params: {
     sourceId: string | undefined;
     collectionStartTime: number;
+    advanceCursor: boolean;
     outputDocs: number;
     declaredRequests?: number;
   }): Promise<void> {
@@ -397,15 +521,17 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       return;
     }
     try {
-      await this.sourceRegistry.mergeLaneState(
-        params.sourceId,
-        'chronological',
-        {
-          lastProcessedAt: new Date(
-            params.collectionStartTime * 1000,
-          ).toISOString(),
-        },
-      );
+      if (params.advanceCursor) {
+        await this.sourceRegistry.mergeLaneState(
+          params.sourceId,
+          'chronological',
+          {
+            lastProcessedAt: new Date(
+              params.collectionStartTime * 1000,
+            ).toISOString(),
+          },
+        );
+      }
       await this.sourceRegistry.recordLaneOutput(
         params.sourceId,
         'chronological',

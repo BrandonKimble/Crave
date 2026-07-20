@@ -10,7 +10,11 @@
  * with ZERO pull lanes and therefore has no adapter entry at all.
  */
 
-export const REDDIT_POOL_NAME = 'reddit.requests';
+import { REDDIT_REQUESTS_POOL } from '../../external-integrations/reddit/reddit.service';
+
+/** ONE name for the one reddit pool — declared at the client chokepoint
+ *  (§14.1), re-exported here for collector-side draws/pairs. */
+export const REDDIT_POOL_NAME = REDDIT_REQUESTS_POOL;
 
 export interface RedditLaneDeclaration {
   lane: 'chronological' | 'keyword';

@@ -47,8 +47,10 @@ export type PoolConfig = {
 export type PoolDenial = {
   admitted: false;
   /** Typed 'not now' (§14.7/§12.3): requeue; NEVER an error outcome, never a
-   *  term cooldown, never a fail-open pass-through. */
-  reason: 'exhausted' | 'storeFailure';
+   *  term cooldown, never a fail-open pass-through. 'upstreamRateLimited' =
+   *  the window is POISONED by a vendor 429 (§14.5 upstream-429 window
+   *  poisoning kept) — retryAfter is honored globally through the pool. */
+  reason: 'exhausted' | 'storeFailure' | 'upstreamRateLimited';
   retryAfterMs: number | null;
 };
 
@@ -91,6 +93,8 @@ export class PoolRegistry {
   private readonly reservations = new Map<string, ActiveReservation>();
   private readonly drawLedger: DrawRecord[] = [];
   private reservationCounter = 0;
+  /** §14.5 upstream-429 window poisoning: pool → poisoned-until instant. */
+  private readonly poisonedUntil = new Map<string, number>();
 
   register(config: PoolConfig): void {
     if (this.pools.has(config.name)) {
@@ -133,6 +137,17 @@ export class PoolRegistry {
   ): PoolReservation | PoolDenial {
     const pool = this.requirePool(poolName);
     this.expireLeaks(at);
+    const poisoned = this.poisonedUntil.get(poolName);
+    if (poisoned !== undefined) {
+      if (poisoned > at.getTime()) {
+        return {
+          admitted: false,
+          reason: 'upstreamRateLimited',
+          retryAfterMs: poisoned - at.getTime(),
+        };
+      }
+      this.poisonedUntil.delete(poolName);
+    }
     const capacity = this.windowCapacity(pool);
     const used = this.windowUsed(pool, at) + this.reservedOutstanding(poolName);
     if (used + declared > capacity) {
@@ -153,6 +168,64 @@ export class PoolRegistry {
       workClass,
     });
     return { admitted: true, reservationId: id, poolName, declared };
+  }
+
+  /**
+   * Free a reservation WITHOUT consuming capacity or writing a ledger row —
+   * the pacer's dispatch-grain admission peek (§14.3 "whose declared pools
+   * all reserve") releases its hold once the dispatch is enqueued; the
+   * per-request chokepoint draws (§12.5) do the real window accounting when
+   * the requests actually happen, and the dispatch-grain declared-vs-actual
+   * pair is ledgered separately via recordActualPair.
+   */
+  release(reservationId: string): void {
+    this.reservations.delete(reservationId);
+  }
+
+  /**
+   * §14.5 (kept): an upstream 429 poisons the pool's window — every reserve
+   * is denied ('upstreamRateLimited') until now + retryAfter, so a vendor
+   * retry-after is honored GLOBALLY through the one pool (§12.5), never per
+   * caller. Extends, never shortens, an existing poison.
+   */
+  poisonWindow(
+    poolName: string,
+    retryAfterMs: number,
+    at: Date = new Date(),
+  ): void {
+    this.requirePool(poolName);
+    const until = at.getTime() + Math.max(0, retryAfterMs);
+    const existing = this.poisonedUntil.get(poolName);
+    if (existing === undefined || until > existing) {
+      this.poisonedUntil.set(poolName, until);
+    }
+  }
+
+  /** Read-only window snapshot (ops/status readers — never admission). */
+  poolStatus(
+    poolName: string,
+    at: Date = new Date(),
+  ): {
+    limit: number;
+    used: number;
+    reservedOutstanding: number;
+    /** ms until the window rolls (null for grants). */
+    resetMs: number | null;
+    poisonedForMs: number | null;
+  } {
+    const pool = this.requirePool(poolName);
+    this.expireLeaks(at);
+    const poisoned = this.poisonedUntil.get(poolName);
+    return {
+      limit: this.windowCapacity(pool),
+      used: this.windowUsed(pool, at),
+      reservedOutstanding: this.reservedOutstanding(poolName),
+      resetMs: this.retryHintMs(pool, at),
+      poisonedForMs:
+        poisoned !== undefined && poisoned > at.getTime()
+          ? poisoned - at.getTime()
+          : null,
+    };
   }
 
   /** Record actuals + release the reservation (refund/debit falls out). */

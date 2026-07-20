@@ -33,6 +33,24 @@ export class RedditRateLimitError extends RedditApiError {
   }
 }
 
+/**
+ * §12.3/§14.7 typed governance denial — the THIRD outcome, distinct from both
+ * success and error: the governor said "not now" for a reddit.requests draw.
+ * Deliberately NOT a RedditApiError subclass so no generic API-error catch can
+ * brand it as a failure (it must never become a term error, a cooldown, or an
+ * empty success). Callers abort the remaining requests of the dispatch and
+ * leave the work item due.
+ */
+export class RedditGovernanceDenialError extends Error {
+  constructor(
+    message: string,
+    public readonly retryAfterMs: number | null = null,
+  ) {
+    super(message);
+    this.name = 'RedditGovernanceDenialError';
+  }
+}
+
 export class RedditNetworkError extends RedditApiError {
   constructor(
     message: string,

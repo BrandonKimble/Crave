@@ -2,13 +2,14 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import { SharedModule } from '../../../shared/shared.module';
-import { SharedServicesModule } from '../shared/shared-services.module';
 import { RedditService } from './reddit.service';
 
+// Admission lives in the global GovernanceModule's reddit.requests pool
+// (§12.5) — the RateLimitCoordinator (SharedServicesModule) is no longer a
+// reddit dependency.
 @Module({
   imports: [
     SharedModule, // Import SharedModule first for LoggerService
-    SharedServicesModule, // Import SharedServicesModule for RateLimitCoordinatorService
     HttpModule.register({
       timeout: 10000,
       maxRedirects: 5,

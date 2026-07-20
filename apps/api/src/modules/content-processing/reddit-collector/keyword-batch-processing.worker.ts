@@ -1,12 +1,17 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
-import { Processor, Process } from '@nestjs/bull';
-import { Job } from 'bull';
+import { Processor, Process, InjectQueue } from '@nestjs/bull';
+import { Job, Queue } from 'bull';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import {
   BatchJob,
   BatchProcessingResult,
 } from './batch-processing-queue.types';
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
+import { RedditGovernanceDenialError } from '../../external-integrations/reddit/reddit.exceptions';
+
+/** §16: K3-shaped operational bound — requeue delay for a governance-denied
+ *  batch when the denial carries no retryAfter (one minute window roll). */
+const GOVERNANCE_REQUEUE_DELAY_MS = 60_000;
 
 /**
  * Keyword Batch Processing Worker
@@ -27,6 +32,8 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     private readonly redditBatchProcessingService: RedditBatchProcessingService,
+    @InjectQueue('keyword-batch-processing-queue')
+    private readonly batchQueue: Queue<BatchJob>,
   ) {}
 
   onModuleInit(): void {
@@ -82,6 +89,52 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
           });
           return result;
         } catch (error) {
+          if (error instanceof RedditGovernanceDenialError) {
+            // §12.3 typed not-now mid-batch: requeue the whole batch under a
+            // new jobId after the governor's retry hint — the work item
+            // stays due, with zero error branding.
+            const delay = Math.max(
+              error.retryAfterMs ?? GOVERNANCE_REQUEUE_DELAY_MS,
+              1_000,
+            );
+            await this.batchQueue.add('process-keyword-batch', batch, {
+              jobId: `${batch.batchId}-gov-${Date.now()}`,
+              attempts: 3,
+              backoff: { type: 'exponential', delay: 2000 },
+              delay,
+            });
+            this.logger.info(
+              'Collection batch deferred by governance (requeued)',
+              {
+                cycleId,
+                correlationId: cycleId,
+                batchId: batch.batchId,
+                subreddit: batch.subreddit,
+                requeueDelayMs: delay,
+              },
+            );
+            return {
+              batchId: batch.batchId,
+              parentJobId: batch.parentJobId,
+              collectionType: batch.collectionType,
+              success: true,
+              metrics: {
+                postsProcessed: 0,
+                mentionsExtracted: 0,
+                entitiesCreated: 0,
+                connectionsCreated: 0,
+                processingTimeMs: 0,
+                llmProcessingTimeMs: 0,
+                dbProcessingTimeMs: 0,
+              },
+              completedAt: new Date(),
+              details: {
+                warnings: [
+                  'governance not-now: batch requeued (typed deferral)',
+                ],
+              },
+            };
+          }
           this.logger.error('Collection batch failed', {
             cycleId,
             correlationId: cycleId,

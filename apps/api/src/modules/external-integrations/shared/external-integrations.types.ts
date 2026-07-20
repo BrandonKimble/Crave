@@ -81,7 +81,8 @@ export interface ApiHealthStatus {
  */
 export enum ExternalApiService {
   GOOGLE_PLACES = 'google-places',
-  REDDIT = 'reddit',
+  // 'reddit' REMOVED (§12.5/§14.8): reddit admission lives solely in the
+  // governor's reddit.requests pool — no second window may exist here.
   LLM = 'llm',
 }
 

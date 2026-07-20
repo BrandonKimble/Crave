@@ -46,6 +46,7 @@ function build(options: { lanes?: CollectorLane[]; admit?: boolean } = {}) {
   const registry = {
     listDueLanes: jest.fn().mockResolvedValue(options.lanes ?? []),
     advanceLane: jest.fn().mockResolvedValue(undefined),
+    mergeLaneState: jest.fn().mockResolvedValue(undefined),
     getEngine: jest.fn().mockResolvedValue({
       engineId: 'engine-austin',
       name: 'region-us-tx-austin',
@@ -70,6 +71,7 @@ function build(options: { lanes?: CollectorLane[]; admit?: boolean } = {}) {
             };
       }),
       reconcile: jest.fn(),
+      release: jest.fn(),
     },
   };
   const chronologicalScheduler = {
@@ -166,11 +168,15 @@ describe('CollectorPacerService', () => {
         dedupeKey: expect.any(String) as string,
       }),
     );
-    // The dispatch was an enumerated draw on the reddit pool.
+    // The dispatch was an enumerated admission peek on the reddit pool —
+    // reading (a): reserve declared → hold through the tick → RELEASE (the
+    // per-request chokepoint draws own the window; reconcile here would
+    // double-count the estimate against the actuals).
     expect(h.reservations).toEqual([
       expect.objectContaining({ workClass: 'collector.chronological' }),
     ]);
-    expect(h.governance.pools.reconcile).toHaveBeenCalled();
+    expect(h.governance.pools.release).toHaveBeenCalledWith('res-1');
+    expect(h.governance.pools.reconcile).not.toHaveBeenCalled();
   });
 
   it('keyword dispatch selects per SOURCE with the derived engine territory and stamps engine identity', async () => {
@@ -241,6 +247,93 @@ describe('CollectorPacerService', () => {
       'Lane for unknown collection platform',
       expect.objectContaining({ platform: 'poll_surface' }),
     );
+  });
+
+  it('holds dispatch reservations for the whole tick, then releases them all', async () => {
+    const lanes = [
+      makeLane({ sourceId: 'src-1', lane: 'chronological' }),
+      makeLane({
+        sourceId: 'src-1',
+        lane: 'keyword',
+        cadenceDays: 7,
+        latenessToleranceDays: 7,
+      }),
+    ];
+    const h = build({ lanes });
+    await h.service.tick(NOW);
+    // Two admissions, two releases — none reconciled (no window consumption
+    // at dispatch grain).
+    expect(h.governance.pools.release).toHaveBeenCalledTimes(2);
+    expect(h.governance.pools.reconcile).not.toHaveBeenCalled();
+  });
+
+  describe('expectedBatches reconciler (§10 — divergence IS the RED heartbeat)', () => {
+    function reconcilerRow(overrides: Record<string, unknown> = {}) {
+      return {
+        scope_key: 'collection:job-1',
+        started_at: new Date(NOW.getTime() - 3 * 60 * 60 * 1000),
+        source_id: 'src-1',
+        expected_batches: 4,
+        skipped_batches: 0,
+        proven_runs: 0n,
+        ...overrides,
+      };
+    }
+
+    it('a lane that fetched but created no runs goes RED within one pass', async () => {
+      const h = build();
+      (h.prisma as Record<string, unknown>).$queryRaw = jest
+        .fn()
+        .mockResolvedValue([reconcilerRow()]);
+      await h.service.reconcileExpectedBatches(NOW);
+      expect(h.registry.mergeLaneState).toHaveBeenCalledWith(
+        'src-1',
+        'chronological',
+        {
+          reconciler: expect.objectContaining({
+            expectedBatches: 4,
+            provenRuns: 0,
+            shortfall: 4,
+          }) as unknown,
+        },
+      );
+      expect(h.logger.error).toHaveBeenCalledWith(
+        'expectedBatches shortfall: fetched window under-proven (RED)',
+        expect.objectContaining({ shortfall: 4 }),
+      );
+    });
+
+    it('created runs + covered-skip batches PROVE the fan-out (green, no alarm)', async () => {
+      const h = build();
+      (h.prisma as Record<string, unknown>).$queryRaw = jest
+        .fn()
+        .mockResolvedValue([
+          reconcilerRow({ proven_runs: 3n, skipped_batches: 1 }),
+        ]);
+      await h.service.reconcileExpectedBatches(NOW);
+      expect(h.registry.mergeLaneState).toHaveBeenCalledWith(
+        'src-1',
+        'chronological',
+        {
+          reconciler: expect.objectContaining({ shortfall: 0 }) as unknown,
+        },
+      );
+      expect(h.logger.error).not.toHaveBeenCalled();
+    });
+
+    it('partial shortfall (runs vanished mid-fan-out) still alarms', async () => {
+      const h = build();
+      (h.prisma as Record<string, unknown>).$queryRaw = jest
+        .fn()
+        .mockResolvedValue([
+          reconcilerRow({ expected_batches: 40, proven_runs: 3n }),
+        ]);
+      await h.service.reconcileExpectedBatches(NOW);
+      expect(h.logger.error).toHaveBeenCalledWith(
+        'expectedBatches shortfall: fetched window under-proven (RED)',
+        expect.objectContaining({ shortfall: 37 }),
+      );
+    });
   });
 
   it('a dispatch failure leaves the lane due (retried next tick), loudly', async () => {

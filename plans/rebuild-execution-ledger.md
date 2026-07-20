@@ -469,9 +469,58 @@ agent in flight at turn end so completion notifications chain turns.
     /markets/resolve is down to the perf harness — NOT reader-less yet
     (see markets.module.ts survivor ledger). legacy-poll expiry (kills
     bboxFromMarketKey + legacy feed
-    arm); ~~See-locations~~ DONE 2026-07-20; §10 advance-at-extraction +
+    arm); ~~See-locations~~ DONE 2026-07-20; ~~§10 advance-at-extraction +
     expectedBatches reconciler; §12.5 reddit client rewrite (per-request
-    draws); engine-coverage re-key of
+    draws)~~ EXECUTED 2026-07-20 (agent, uncommitted; 644 green,
+    build+tsc+eslint clean; NO schema changes — all state in JSONB):
+    · §10 cursor law = idempotent two-step (lane state.pendingWindow staged
+    at fetch BEFORE batch enqueue; commitPendingWindow moves
+    lastProcessedAt only on durable extraction proof — run created OR
+    covered-skip — parentJobId-conditional, race-safe; legit-zero fetch
+    advances immediately; crash between fetch and run = re-fetch, never a
+    lost window).
+    · expectedBatches reconciler = hourly pacer pass (parents
+    registerExpectedFanOut on collection_runs up-front; proven = created
+    extraction runs + recordSkippedBatch covered-skips; shortfall verdict
+    folded onto lane state.reconciler → collectorHeartbeats RED — no
+    parallel alarm; grace = PENDING_WINDOW_GRACE_HOURS 2h shared with the
+    stale-pending-window heartbeat read).
+    · saturation verdict: AIMD cadence + money-gated recovery task =
+    trigger-deferred per §22 (named triggers in code); the MISS DETECTOR
+    is an OBSERVATION (deferral law) and was BUILT — chronological fetch
+    returns overlapConfirmed (≥1 strictly-older non-sticky post; stickies
+    can't fake overlap; early-break saves covered pages), worker writes
+    lane state.coverageGap C4 fact + heartbeat RED.
+    · §12.5 reading documented in collector-pacer header = option (a):
+    pacer reserve = dispatch-grain admission peek (§14.3), held through
+    the tick then RELEASED (new PoolRegistry.release — no consumption/
+    ledger); per-REQUEST draws inside reddit.service makeRequest =
+    governance.drawWithOutcome on reddit.requests (ONE chokepoint: auth
+    token mint 'reddit.auth', /me, search, listings, thread fetches all
+    via makeRequest); recordActualPair stays the §14.2 drift pair.
+    · RateLimitCoordinator reddit window DEAD (registration removed,
+    ExternalApiService.REDDIT enum member removed, zero reddit call
+    sites) — 429-reporting moved same-deploy: PoolRegistry.poisonWindow
+    (upstream 429 poisons the ONE window; denial reason
+    'upstreamRateLimited').
+    · Denial semantics: retry-through-governor in makeRequest (3 draws,
+    retryAfter honored) then typed RedditGovernanceDenialError (NOT a
+    RedditApiError subclass); chronological/keyword workers re-arm the
+    lane due (markLaneDue LEAST()) + return clean (no branding); batch
+    workers requeue the whole batch delayed; batchEntityKeywordSearch
+    aborts remaining terms un-branded; §12.3 empty-success swallows in
+    getChronologicalPosts/searchByKeyword/getRawPostWithComments DELETED
+    (rate limit now propagates — could previously brand a window
+    covered).
+    · Specs: reddit.service.spec (draw-per-request, retry-through-governor,
+    429-poison-not-empty-success, overlap/sticky), chronological worker
+    cursor-law spec, batch commit/abort spec, pool-registry
+    release/poison/status, pacer hold-release + reconciler RED specs,
+    heartbeat 3 new RED reads.
+    ⚠️ pre-existing (flagged, unchanged): chronological-batch worker still
+    returns success:false on REAL errors (§12.4 liar — Bull marks
+    completed); recommend its own micro-leg.
+    engine-coverage re-key of
     resolveViewportCoverage consumers; ListDetail Market chip → city-slice
     re-key; durable PoolRegistry store; signals monthly partitions; ~~perf-harness
     rename~~ DONE 2026-07-20; owner sim-feel items

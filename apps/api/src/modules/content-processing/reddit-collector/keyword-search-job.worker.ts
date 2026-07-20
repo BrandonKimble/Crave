@@ -9,6 +9,7 @@ import {
 import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
 import { CollectorSourceRegistryService } from './collector-source-registry.service';
 import { GovernanceService } from '../../external-integrations/governance/governance.service';
+import { RedditGovernanceDenialError } from '../../external-integrations/reddit/reddit.exceptions';
 import { REDDIT_POOL_NAME } from './reddit-collection-adapter';
 
 @Processor('keyword-search-execution')
@@ -120,6 +121,32 @@ export class KeywordSearchJobWorker {
             processedTerms: result.metadata.processedTerms,
           });
         } catch (error) {
+          if (error instanceof RedditGovernanceDenialError) {
+            // §12.3 typed not-now mid-dispatch: abort cleanly, re-arm the
+            // keyword lane as due (the pacer advanced it at dispatch) — no
+            // failure metric, no error branding, no attempt records (terms
+            // simply stay due in selection).
+            const sourceId =
+              job.data.sourceId ??
+              (await this.sourceRegistry.findRedditSourceByHandle(subreddit))
+                ?.sourceId;
+            if (sourceId) {
+              await this.sourceRegistry
+                .markLaneDue(sourceId, 'keyword')
+                .catch(() => undefined);
+            }
+            this.logger.info(
+              'Keyword dispatch deferred by governance (lane re-armed due)',
+              {
+                cycleId,
+                correlationId: cycleId,
+                jobId: job.id,
+                subreddit,
+                retryAfterMs: error.retryAfterMs,
+              },
+            );
+            return;
+          }
           this.keywordSearchMetrics.recordJobFailure({
             source,
             subreddit,
