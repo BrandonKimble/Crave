@@ -119,5 +119,11 @@ check_eq "rows-visibility level references" 0 \
 check_eq "results_pending_block kind present (builder+cell+fence)" 3 \
   "$(file_count "'results_pending_block'" $SRC)"
 
+echo "=== TRUNCATION LAW — title style forks stay dead ==="
+# Every persistent-header title renders ChromeTitleText; the per-panel sheetTitle
+# style fork family may not regrow (headerTitle/restaurantName forks died with it).
+check_eq "sheetTitle style forks in overlays" 0 \
+  "$(grep -rc 'sheetTitle: {' $SRC/overlays --include='*.tsx' 2>/dev/null | grep -v ':0' | wc -l | tr -d ' ')"
+
 echo "=== RESULT: PASS=$PASS FAIL=$FAIL ==="
 [ "$FAIL" -eq 0 ]
