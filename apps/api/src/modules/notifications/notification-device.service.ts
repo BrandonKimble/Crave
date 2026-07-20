@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { PlacesCatalogService } from '../places/places-catalog.service';
 import { RegisterDeviceDto } from './dto/register-device.dto';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class NotificationDeviceService {
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
+    private readonly places: PlacesCatalogService,
   ) {
     this.logger = loggerService.setContext('NotificationDeviceService');
   }
@@ -20,6 +22,25 @@ export class NotificationDeviceService {
       typeof dto.city === 'string' && dto.city.trim().length
         ? dto.city.trim()
         : null;
+
+    // §4 home-place registration: the client sends ground truth (a coordinate,
+    // never a place id); the server judges placeAt = smallestContaining(point).
+    // {lat,lng} → resolve (a point outside the catalog honestly resolves to
+    // null); explicit null → clear (the user revoked location); absent →
+    // leave the stored value untouched (people move — re-registration with a
+    // coordinate updates it).
+    const homePlaceId =
+      dto.homeLocation === undefined
+        ? undefined
+        : dto.homeLocation === null
+          ? null
+          : ((
+              await this.places.smallestContaining({
+                lat: dto.homeLocation.lat,
+                lng: dto.homeLocation.lng,
+              })
+            )?.placeId ?? null);
+
     await this.prisma.notificationDevice.upsert({
       where: { expoPushToken: normalizedToken },
       create: {
@@ -29,6 +50,7 @@ export class NotificationDeviceService {
         appVersion: dto.appVersion ?? null,
         locale: dto.locale ?? null,
         city: normalizedCity,
+        homePlaceId: homePlaceId ?? null,
       },
       update: {
         userId: dto.userId ?? null,
@@ -36,6 +58,7 @@ export class NotificationDeviceService {
         appVersion: dto.appVersion ?? null,
         locale: dto.locale ?? null,
         city: normalizedCity,
+        ...(homePlaceId !== undefined ? { homePlaceId } : {}),
         updatedAt: new Date(),
       },
     });
@@ -43,17 +66,22 @@ export class NotificationDeviceService {
     this.logger.debug('Registered notification device', {
       hasUser: Boolean(dto.userId),
       platform: dto.platform,
-      city: dto.city,
+      hasHomeLocation: dto.homeLocation != null,
+      homePlaceResolved: typeof homePlaceId === 'string',
     });
   }
 
-  async findDevices(filter?: { city?: string | null }) {
+  /**
+   * §4 targeting read: devices whose home place is one of the given place ids
+   * (the caller passes a poll place's subtree). SQL IN semantics exclude
+   * NULL homePlaceId by construction — unknown-home devices are never pushed.
+   */
+  async findDevices(filter: { homePlaceIdIn: string[] }) {
+    if (!filter.homePlaceIdIn.length) {
+      return [];
+    }
     return this.prisma.notificationDevice.findMany({
-      where: {
-        city: filter?.city
-          ? { equals: filter.city, mode: 'insensitive' }
-          : undefined,
-      },
+      where: { homePlaceId: { in: filter.homePlaceIdIn } },
     });
   }
 

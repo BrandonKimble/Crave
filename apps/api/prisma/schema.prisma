@@ -836,6 +836,13 @@ model NotificationDevice {
   appVersion    String?              @map("app_version") @db.VarChar(32)
   locale        String?              @db.VarChar(16)
   city          String?              @db.VarChar(255)
+  // §4 home-place registration: placeAt(home location) — the smallest catalog
+  // place containing the coordinate the device registered with. NULL = we
+  // honestly don't know where this device lives (no location at registration,
+  // or the user revoked it) → the device receives NO poll pushes. Bare uuid
+  // (no FK): catalog places can merge/expire; a dangling id simply matches no
+  // subtree, which is the same honest no-push.
+  homePlaceId   String?              @map("home_place_id") @db.Uuid
   metadata      Json?                @default("{}")
   createdAt     DateTime             @default(now()) @map("created_at")
   updatedAt     DateTime             @updatedAt @map("updated_at")
@@ -843,6 +850,7 @@ model NotificationDevice {
 
   @@index([userId], map: "idx_notification_devices_user_id")
   @@index([city], map: "idx_notification_devices_city")
+  @@index([homePlaceId], map: "idx_notification_devices_home_place_id")
   @@map("notification_devices")
 }
 

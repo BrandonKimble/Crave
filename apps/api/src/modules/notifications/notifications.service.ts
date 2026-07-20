@@ -2,7 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, $Enums } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
-import { isSubdivisionOrBigger } from '../places/place-dag-read';
+import {
+  descendantPlaceIds,
+  isSubdivisionOrBigger,
+} from '../places/place-dag-read';
 import { NotificationDeviceService } from './notification-device.service';
 
 export interface PollReleaseForPlacePayload {
@@ -96,64 +99,15 @@ export class NotificationsService {
   }
 
   /**
-   * THE §4 TARGETING SEAM — devices whose home place is inside the poll
-   * place's subtree.
-   *
-   * WHAT FEEDS IT (not built yet — do NOT invent an estimator here): device
-   * registration must carry a home location; placeAt(home) =
-   * PlacesCatalogService.smallestContaining(point) resolves it to a
-   * homePlaceId stored on notification_devices; this seam then matches
-   * homePlaceId ∈ descendantPlaceIds(poll place). That lands with the
-   * mobile leg of the cut (registration DTO + column + backfill-on-register).
-   *
-   * TODO(geo-rebuild §4 — LOUD, NOTIFICATION-ONLY SHIM): until home-place
-   * registration exists, targeting falls back to the LEGACY device `city`
-   * registration keyed by the smallest active market whose bbox contains the
-   * poll place's centroid — the old marketKey shim, quarantined HERE (polls
-   * and the feed no longer touch marketKey anywhere). Delete this fallback
-   * (and the legacy `city` device field read) when homePlaceId lands.
+   * THE §4 TARGETING SEAM — devices whose home place (placeAt of the home
+   * location resolved at registration; see NotificationDeviceService) is
+   * inside the poll place's subtree: homePlaceId ∈ descendantPlaceIds(poll
+   * place, roots included). Devices with NULL homePlaceId are excluded by
+   * the IN read — we honestly don't know where they live, so they get no
+   * poll push. NO market/centroid fallback: this path never reads markets.
    */
   private async resolveHomePlaceDevices(placeId: string) {
-    const place = await this.prisma.place.findUnique({
-      where: { placeId },
-      select: { centroidLat: true, centroidLng: true },
-    });
-    if (place?.centroidLat == null || place.centroidLng == null) {
-      return [];
-    }
-    const lat = Number(place.centroidLat);
-    const lng = Number(place.centroidLng);
-    const markets = await this.prisma.market.findMany({
-      where: {
-        isActive: true,
-        bboxSwLat: { lte: lat },
-        bboxNeLat: { gte: lat },
-        bboxSwLng: { lte: lng },
-        bboxNeLng: { gte: lng },
-      },
-      select: {
-        marketKey: true,
-        bboxSwLat: true,
-        bboxNeLat: true,
-        bboxSwLng: true,
-        bboxNeLng: true,
-      },
-    });
-    if (!markets.length) {
-      return [];
-    }
-    let best: { marketKey: string; area: number } | null = null;
-    for (const market of markets) {
-      const area =
-        (Number(market.bboxNeLat) - Number(market.bboxSwLat)) *
-        (Number(market.bboxNeLng) - Number(market.bboxSwLng));
-      if (!best || area < best.area) {
-        best = { marketKey: market.marketKey, area };
-      }
-    }
-    if (!best) {
-      return [];
-    }
-    return this.devices.findDevices({ city: best.marketKey });
+    const subtree = await descendantPlaceIds(this.prisma, [placeId]);
+    return this.devices.findDevices({ homePlaceIdIn: subtree });
   }
 }

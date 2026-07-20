@@ -437,16 +437,24 @@ agent in flight at turn end so completion notifications chain turns.
       binary still serves kind-blind aggregate cron + lacks the
       viewport-dwell route), REASSESSMENT to owner (wave-5 verdict: with
       F1-F3 + score fixture gate closed, rebuild is honestly complete).
-- FOLLOW-UP LEGS (recorded): home-place registration (device→placeAt→
-  homePlaceId; kills notification market fallback + mobile launch-intent
-  markets); legacy-poll expiry (kills bboxFromMarketKey + legacy feed
-  arm); See-locations (Leg 2 tail); §10 advance-at-extraction +
-  expectedBatches reconciler; §12.5 reddit client rewrite (per-request
-  draws); engine-coverage re-key of
-  resolveViewportCoverage consumers; ListDetail Market chip → city-slice
-  re-key; durable PoolRegistry store; signals monthly partitions; mobile
-  perf-harness renderedPollHeaderPlaceName rename; owner sim-feel items
-  (feed pan cadence, two-All chips, promise card styling).
+- FOLLOW-UP LEGS (recorded): ~~home-place registration~~ EXECUTED
+  2026-07-19 (uncommitted; migration 20260720060000 applied, :3000 NOT
+  restarted): device→placeAt→homePlaceId (registration DTO homeLocation
+  {lat,lng}|null; server judges smallestContaining), targeting =
+  homePlaceId ∈ descendantPlaceIds(poll place), market/centroid fallback
+  - city read DELETED, mobile registrar sends current-location-≈-home
+    (v1) + 24h foreground staleness re-send. NOTE: /markets/resolve-ip
+    still serves the mobile launch ladder (MainLaunchCoordinator IP rung);
+    /markets/resolve is down to the perf harness — NOT reader-less yet
+    (see markets.module.ts survivor ledger). legacy-poll expiry (kills
+    bboxFromMarketKey + legacy feed
+    arm); See-locations (Leg 2 tail); §10 advance-at-extraction +
+    expectedBatches reconciler; §12.5 reddit client rewrite (per-request
+    draws); engine-coverage re-key of
+    resolveViewportCoverage consumers; ListDetail Market chip → city-slice
+    re-key; durable PoolRegistry store; signals monthly partitions; mobile
+    perf-harness renderedPollHeaderPlaceName rename; owner sim-feel items
+    (feed pan cadence, two-All chips, promise card styling).
 - deferred-in-leg-2: See-locations (only remaining Leg 2 item).
 
 ## Decisions log (append as made)

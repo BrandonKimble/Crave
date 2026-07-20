@@ -7,6 +7,12 @@ export interface RegisterDeviceRequest {
   appVersion?: string;
   locale?: string;
   city?: string;
+  /**
+   * §4 home-place registration — GROUND TRUTH home coordinate; the server
+   * judges placeAt. {lat,lng} = set/refresh; explicit null = location revoked,
+   * clear the stored home place; absent = no signal, server keeps its value.
+   */
+  homeLocation?: { lat: number; lng: number } | null;
 }
 
 export const notificationsService = {
