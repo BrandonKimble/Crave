@@ -786,6 +786,14 @@ final class SearchMapRenderController: RCTEventEmitter {
     // camera handler drains it to reseed the invisible label-collision obstacle (so labels yield to the LIVE
     // promoted pins). Carried on state because decide() runs with `state` inout; applied after commit.
     var lodV5ObstacleReseedKeys: Set<String> = []
+    // ASYNC PREROLL PREPARE (catalog arc, deep half): the reveal's preroll reconcile runs its
+    // pure prepare pipeline on a background queue. This token is BOTH the enter-start fence
+    // (the ramp cannot begin while it is non-nil) and the staleness epoch: every competing
+    // family-state writer (sync reconcile, live-role reconcile, derivation invalidation)
+    // clears it, so a completion whose token no longer matches discards its prepared outputs
+    // instead of applying over fresher truth. No writer inventory can silently rot — a missed
+    // clear falls back to the sync reconcile at completion, never to a stale apply.
+    var pendingAsyncPrerollPrepareToken: UInt64?
   }
 
   private struct SlowActionWindowState {
@@ -897,6 +905,15 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private var hasListeners = false
   private var instances: [String: InstanceState] = [:]
+  // Async preroll prepare: token mint + the serial queue the pure prepare pipeline runs on.
+  private var nextAsyncPrerollPrepareToken: UInt64 = 0
+  private let prerollPrepareQueue = DispatchQueue(
+    label: "com.cravesearch.map.preroll-prepare",
+    qos: .userInitiated
+  )
+  // recordNativeApply is callable from the preroll prepare queue; the buckets are main-owned
+  // dictionaries, so cross-thread records serialize through this lock.
+  private let nativeApplyAttributionLock = NSLock()
   private var resolvedMapHandles: [String: ResolvedMapHandle] = [:]
   private var enterSettleWorkItems: [String: DispatchWorkItem] = [:]
   private var deferredDismissSourceCleanupWorkItems: [String: DispatchWorkItem] = [:]
@@ -1009,14 +1026,20 @@ final class SearchMapRenderController: RCTEventEmitter {
     if durationMs > 30 {
       // LOUD CONTRACT (red-team 2026-07-10): any instrumented section blocking main >30ms
       // logs in EVERY configuration — a frame-budget violation must never be silent.
+      // THREAD HONESTY: a section running on the preroll prepare queue does NOT block main —
+      // it logs under [applybg] so the [applyslow] instrument stays a true main-stall record.
       NSLog(
-        "[applyslow] %@|%@|%@ ms=%.1f ops=%d", section, phase, source, durationMs, operationCount)
+        "[%@] %@|%@|%@ ms=%.1f ops=%d",
+        Thread.isMainThread ? "applyslow" : "applybg",
+        section, phase, source, durationMs, operationCount)
       Self.lodLog(
         "[applyslow] \(section)|\(phase)|\(source) ms=\(Self.round3(durationMs)) ops=\(operationCount)")
     }
     guard nativeApplyAttributionEnabled else {
       return
     }
+    nativeApplyAttributionLock.lock()
+    defer { nativeApplyAttributionLock.unlock() }
     let key = nativeApplyAttributionKey(section: section, phase: phase, source: source)
     var bucket = nativeApplyAttributionBuckets[key] ?? NativeApplyAttributionBucket(
       section: section,
@@ -1143,6 +1166,8 @@ final class SearchMapRenderController: RCTEventEmitter {
 
   private func flushNativeApplyAttributionSummary(reason: String, reset: Bool) -> [String: Any] {
     let flushedAtMs = Self.nowMs()
+    nativeApplyAttributionLock.lock()
+    defer { nativeApplyAttributionLock.unlock() }
     let buckets = nativeApplyAttributionBuckets.values.sorted {
       if $0.totalMs == $1.totalMs {
         return $0.count > $1.count
@@ -1188,8 +1213,10 @@ final class SearchMapRenderController: RCTEventEmitter {
       }
       self.nativeApplyAttributionEnabled = true
       self.nativeApplyAttributionStartedAtMs = Self.nowMs()
+      self.nativeApplyAttributionLock.lock()
       self.nativeApplyAttributionBuckets.removeAll(keepingCapacity: true)
       self.nativeApplyAttributionContextBuckets.removeAll(keepingCapacity: true)
+      self.nativeApplyAttributionLock.unlock()
       self.nativeApplyAttributionCurrentContext = nil
       resolve(nil)
     }
@@ -2977,11 +3004,15 @@ final class SearchMapRenderController: RCTEventEmitter {
             durationMs: 0
           )
         } else {
+          // ASYNC PREROLL (catalog arc, deep half): the prepare pipeline — the reveal
+          // burst's remaining main-thread bulk — runs on the preroll queue; the enter
+          // start holds on the token fence until the completion's main-side apply lands.
+          // Correctness is unchanged: the sources still reconcile fully under cover
+          // before the ramp; only the thread doing the pure compute moved.
           let reconcileStartedAt = CACurrentMediaTime() * 1000
-          try self.reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
-          state = self.instances[instanceId] ?? state
+          self.beginAsyncPrerollReconcile(instanceId: instanceId, state: &state)
           self.recordNativeApply(
-            section: "presentation.reveal_preroll_reconcile",
+            section: "presentation.reveal_preroll_dispatch",
             phase: state.lastPresentationBatchPhase,
             durationMs: CACurrentMediaTime() * 1000 - reconcileStartedAt
           )
@@ -2999,7 +3030,10 @@ final class SearchMapRenderController: RCTEventEmitter {
           durationMs: CACurrentMediaTime() * 1000 - opacityStartedAt
         )
         let commitFence = self.capturePendingVisualSourceCommitFence(state: state)
-        if self.hasPendingCommitFence(commitFence) {
+        // The async preroll token holds the enter start exactly like a pending source
+        // commit: resident sources read "ready" the whole time, so without this the
+        // direct-token path could start the ramp before the prepared frame applies.
+        if self.hasPendingCommitFence(commitFence) || state.pendingAsyncPrerollPrepareToken != nil {
           state.blockedEnterStartRequestKey = revealRequestKey
           state.blockedEnterStartCommitFenceStartedAtMs = Self.nowMs()
           state.blockedEnterStartCommitFenceBySourceId = commitFence
@@ -4630,6 +4664,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard var state = instances[instanceId] else {
       return
     }
+    // ASYNC PREROLL SUPERSEDE: a full sync reconcile recomputes everything an in-flight
+    // background preroll prepare captured, so its prepared outputs are stale by construction.
+    // Clearing the token makes the completion discard them (and, if the world is still
+    // current, re-sync cheaply against this freshly-applied truth).
+    state.pendingAsyncPrerollPrepareToken = nil
     if Self.isVisualSourceInactiveOrDismissing(state) {
       cancelLivePinTransitionAnimation(instanceId: instanceId)
       state.isAwaitingSourceRecovery = false
@@ -4642,6 +4681,78 @@ final class SearchMapRenderController: RCTEventEmitter {
       instances[instanceId] = state
       return
     }
+    let stageInputs = computeReconcileStageInputs(
+      instanceId: instanceId,
+      allowNewTransitions: allowNewTransitions,
+      state: &state
+    )
+    guard let mapboxMap = try readyMapboxMap(
+      for: state.mapTag,
+      instanceId: instanceId,
+      state: &state,
+      sourceIds: visualAndInteractionSourceIds(for: state),
+      reason: "reconcile_outputs"
+    ) else {
+      instances[instanceId] = state
+      return
+    }
+    let pinLabelStartedAt = CACurrentMediaTime() * 1000
+    let preparedPinAndLabelOutput = try prepareDerivedPinAndLabelOutput(
+      desiredPinSnapshot: stageInputs.desiredPinSnapshot,
+      dirtyState: stageInputs.desiredPinDirtyState,
+      desiredPayloads: stageInputs.desiredMarkerFamilyPayloads,
+      nowMs: stageInputs.nowMs,
+      state: &state
+    )
+    self.recordNativeApply(
+      section: "reconcile.prepare_pin_label_output",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - pinLabelStartedAt
+    )
+    let dotOutputStartedAt = CACurrentMediaTime() * 1000
+    let preparedDotOutput = try prepareDerivedDotOutput(
+      desiredDots: stageInputs.desiredDots,
+      nowMs: stageInputs.nowMs,
+      state: &state
+    )
+    self.recordNativeApply(
+      section: "reconcile.prepare_dot_output",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - dotOutputStartedAt
+    )
+    try applyPreparedReconcileOutputs(
+      instanceId: instanceId,
+      mapboxMap: mapboxMap,
+      preparedPinAndLabelOutput: preparedPinAndLabelOutput,
+      preparedDotOutput: preparedDotOutput,
+      desiredPinSnapshot: stageInputs.desiredPinSnapshot,
+      desiredDots: stageInputs.desiredDots,
+      state: &state
+    )
+    self.recordNativeApply(
+      section: "reconcile.total",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - attributionStartedAt
+    )
+  }
+
+  // Stage 1 of the reconcile pipeline (MAIN THREAD — reads the live LodEngine through
+  // updateMarkerRenderState): desired collections → pin snapshot (reuse-guarded) → family
+  // payloads → dirty sets → marker render state → snap detector. Body moved verbatim from
+  // reconcileAndApplyCurrentFrameSnapshots for the async preroll split.
+  private struct ReconcileStageInputs {
+    let desiredPinSnapshot: DesiredPinSnapshotState
+    let desiredPinDirtyState: DesiredPinSnapshotDirtyState
+    let desiredMarkerFamilyPayloads: DesiredMarkerFamilyPayloads
+    let desiredDots: ParsedFeatureCollection
+    let nowMs: Double
+  }
+
+  private func computeReconcileStageInputs(
+    instanceId: String,
+    allowNewTransitions: Bool,
+    state: inout InstanceState
+  ) -> ReconcileStageInputs {
     let desiredPins = Self.derivedFamilyState(sourceId: state.pinSourceId, state: state).desiredCollection
     let desiredPinInteractions =
       Self.derivedFamilyState(sourceId: state.pinInteractionSourceId, state: state).desiredCollection
@@ -4732,40 +4843,27 @@ final class SearchMapRenderController: RCTEventEmitter {
         "emittedAtMs": Self.nowMs(),
       ])
     }
-    guard let mapboxMap = try readyMapboxMap(
-      for: state.mapTag,
-      instanceId: instanceId,
-      state: &state,
-      sourceIds: visualAndInteractionSourceIds(for: state),
-      reason: "reconcile_outputs"
-    ) else {
-      instances[instanceId] = state
-      return
-    }
-    let pinLabelStartedAt = CACurrentMediaTime() * 1000
-    let preparedPinAndLabelOutput = try prepareDerivedPinAndLabelOutput(
+    return ReconcileStageInputs(
       desiredPinSnapshot: desiredPinSnapshot,
-      dirtyState: desiredPinDirtyState,
-      desiredPayloads: desiredMarkerFamilyPayloads,
-      nowMs: nowMs,
-      state: &state
-    )
-    self.recordNativeApply(
-      section: "reconcile.prepare_pin_label_output",
-      phase: state.lastPresentationBatchPhase,
-      durationMs: CACurrentMediaTime() * 1000 - pinLabelStartedAt
-    )
-    let dotOutputStartedAt = CACurrentMediaTime() * 1000
-    let preparedDotOutput = try prepareDerivedDotOutput(
+      desiredPinDirtyState: desiredPinDirtyState,
+      desiredMarkerFamilyPayloads: desiredMarkerFamilyPayloads,
       desiredDots: desiredDots,
-      nowMs: nowMs,
-      state: &state
+      nowMs: nowMs
     )
-    self.recordNativeApply(
-      section: "reconcile.prepare_dot_output",
-      phase: state.lastPresentationBatchPhase,
-      durationMs: CACurrentMediaTime() * 1000 - dotOutputStartedAt
-    )
+  }
+
+  // Stage 3 of the reconcile pipeline (MAIN THREAD — Mapbox applies + ledger + engine).
+  // Body moved verbatim from reconcileAndApplyCurrentFrameSnapshots for the async preroll
+  // split; the sync path and the async completion both land here.
+  private func applyPreparedReconcileOutputs(
+    instanceId: String,
+    mapboxMap: MapboxMap,
+    preparedPinAndLabelOutput: PreparedDerivedPinAndLabelOutput,
+    preparedDotOutput: PreparedDerivedDotOutput,
+    desiredPinSnapshot: DesiredPinSnapshotState,
+    desiredDots: ParsedFeatureCollection,
+    state: inout InstanceState
+  ) throws {
     let batchStartedAt = CACurrentMediaTime() * 1000
     let mutationSummaryBySourceId = try applyParsedCollectionBatch(
       instanceId: instanceId,
@@ -4860,11 +4958,177 @@ final class SearchMapRenderController: RCTEventEmitter {
       phase: state.lastPresentationBatchPhase,
       durationMs: CACurrentMediaTime() * 1000 - animationStartedAt
     )
-    self.recordNativeApply(
-      section: "reconcile.total",
-      phase: state.lastPresentationBatchPhase,
-      durationMs: CACurrentMediaTime() * 1000 - attributionStartedAt
+  }
+
+  // ASYNC PREROLL RECONCILE (catalog arc, deep half — off-main the prepare pipeline).
+  // Stage 1 runs here on main (it reads the live LodEngine through updateMarkerRenderState);
+  // the pure prepare stage (the reveal burst's remaining main-thread bulk at n≈700) runs on
+  // prerollPrepareQueue against a VALUE COPY of the instance state; the Mapbox apply +
+  // finalize hop back to main in completeAsyncPrerollReconcile. The minted token is both the
+  // enter-start fence and the staleness epoch (see InstanceState.pendingAsyncPrerollPrepareToken).
+  private func beginAsyncPrerollReconcile(instanceId: String, state: inout InstanceState) {
+    let stage1StartedAt = CACurrentMediaTime() * 1000
+    let stageInputs = computeReconcileStageInputs(
+      instanceId: instanceId,
+      allowNewTransitions: true,
+      state: &state
     )
+    self.recordNativeApply(
+      section: "preroll_async.stage1_inputs",
+      phase: state.lastPresentationBatchPhase,
+      durationMs: CACurrentMediaTime() * 1000 - stage1StartedAt
+    )
+    nextAsyncPrerollPrepareToken &+= 1
+    let token = nextAsyncPrerollPrepareToken
+    state.pendingAsyncPrerollPrepareToken = token
+    let capturedWorldId = state.currentWorldId
+    let capturedGenerationId = state.activeFrameGenerationId
+    let stateCopy = state
+    prerollPrepareQueue.async { [weak self] in
+      guard let self else { return }
+      var bgState = stateCopy
+      let prepareStartedAt = CACurrentMediaTime() * 1000
+      var preparedPinAndLabelOutput: PreparedDerivedPinAndLabelOutput?
+      var preparedDotOutput: PreparedDerivedDotOutput?
+      do {
+        preparedPinAndLabelOutput = try self.prepareDerivedPinAndLabelOutput(
+          desiredPinSnapshot: stageInputs.desiredPinSnapshot,
+          dirtyState: stageInputs.desiredPinDirtyState,
+          desiredPayloads: stageInputs.desiredMarkerFamilyPayloads,
+          nowMs: stageInputs.nowMs,
+          state: &bgState
+        )
+        preparedDotOutput = try self.prepareDerivedDotOutput(
+          desiredDots: stageInputs.desiredDots,
+          nowMs: stageInputs.nowMs,
+          state: &bgState
+        )
+        self.recordNativeApply(
+          section: "preroll_async.prepare",
+          phase: bgState.lastPresentationBatchPhase,
+          durationMs: CACurrentMediaTime() * 1000 - prepareStartedAt
+        )
+      } catch {
+        preparedPinAndLabelOutput = nil
+        preparedDotOutput = nil
+        NSLog(
+          "[applyasync] preroll prepare FAILED err=%@ — completion falls back to sync",
+          "\(error)")
+      }
+      let preparedFamilyStates = preparedPinAndLabelOutput != nil ? bgState.derivedFamilyStates : nil
+      let pinLabelOutput = preparedPinAndLabelOutput
+      let dotOutput = preparedDotOutput
+      DispatchQueue.main.async {
+        self.completeAsyncPrerollReconcile(
+          instanceId: instanceId,
+          token: token,
+          capturedWorldId: capturedWorldId,
+          capturedGenerationId: capturedGenerationId,
+          preparedFamilyStates: preparedFamilyStates,
+          preparedPinAndLabelOutput: pinLabelOutput,
+          preparedDotOutput: dotOutput,
+          stageInputs: stageInputs
+        )
+      }
+    }
+  }
+
+  private func completeAsyncPrerollReconcile(
+    instanceId: String,
+    token: UInt64,
+    capturedWorldId: String?,
+    capturedGenerationId: String?,
+    preparedFamilyStates: [String: DerivedFamilyState]?,
+    preparedPinAndLabelOutput: PreparedDerivedPinAndLabelOutput?,
+    preparedDotOutput: PreparedDerivedDotOutput?,
+    stageInputs: ReconcileStageInputs
+  ) {
+    guard var state = instances[instanceId] else {
+      return
+    }
+    let liveToken = state.pendingAsyncPrerollPrepareToken
+    if liveToken != nil && liveToken != token {
+      // A newer reveal's prepare owns the fence now; this completion is history.
+      return
+    }
+    state.pendingAsyncPrerollPrepareToken = nil
+    instances[instanceId] = state
+    let worldIsCurrent =
+      capturedWorldId != nil &&
+      state.currentWorldId == capturedWorldId &&
+      state.activeFrameGenerationId == capturedGenerationId &&
+      !Self.isVisualSourceInactiveOrDismissing(state) &&
+      !Self.isSourceRecoveryActive(state)
+    let applyStartedAt = CACurrentMediaTime() * 1000
+    var outcome = "discarded_stale_world"
+    if liveToken == token,
+       worldIsCurrent,
+       var preparedFamilyStates,
+       let preparedPinAndLabelOutput,
+       let preparedDotOutput {
+      // No family-state writer intervened (the token survived), so the live family baseline
+      // is exactly the one the background copy patched — adopt its family states wholesale
+      // and run the main-side apply tail against the live truth.
+      swap(&state.derivedFamilyStates, &preparedFamilyStates)
+      do {
+        if let mapboxMap = try readyMapboxMap(
+          for: state.mapTag,
+          instanceId: instanceId,
+          state: &state,
+          sourceIds: visualAndInteractionSourceIds(for: state),
+          reason: "preroll_async_apply"
+        ) {
+          try applyPreparedReconcileOutputs(
+            instanceId: instanceId,
+            mapboxMap: mapboxMap,
+            preparedPinAndLabelOutput: preparedPinAndLabelOutput,
+            preparedDotOutput: preparedDotOutput,
+            desiredPinSnapshot: stageInputs.desiredPinSnapshot,
+            desiredDots: stageInputs.desiredDots,
+            state: &state
+          )
+          outcome = "applied"
+        } else {
+          instances[instanceId] = state
+          outcome = "map_unavailable"
+        }
+      } catch {
+        instances[instanceId] = state
+        NSLog("[applyasync] preroll apply FAILED err=%@ — sync fallback", "\(error)")
+        try? reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
+        outcome = "apply_error_sync_fallback"
+      }
+    } else if worldIsCurrent {
+      // Superseded (a competing family-state writer cleared the token) or the background
+      // prepare errored: the sync reconcile is the always-correct fallback; its reuse guards
+      // make the re-run cheap when the superseding writer already did the work.
+      try? reconcileAndApplyCurrentFrameSnapshots(for: instanceId)
+      outcome = liveToken == token ? "fallback_sync" : "superseded_sync"
+    }
+    self.recordNativeApply(
+      section: "preroll_async.complete_apply",
+      phase: instances[instanceId]?.lastPresentationBatchPhase ?? "unknown",
+      durationMs: CACurrentMediaTime() * 1000 - applyStartedAt
+    )
+    NSLog(
+      "[applyasync] preroll completion outcome=%@ ms=%.1f world=%@",
+      outcome,
+      CACurrentMediaTime() * 1000 - applyStartedAt,
+      capturedWorldId ?? "nil")
+    // The blocked enter fence was recorded before the async applies registered their source
+    // commits — refresh it to the live pending set, then run the standard release check.
+    guard var postState = instances[instanceId] else {
+      return
+    }
+    if postState.blockedEnterStartRequestKey != nil {
+      postState.blockedEnterStartCommitFenceBySourceId =
+        capturePendingVisualSourceCommitFence(state: postState)
+      if postState.blockedEnterStartCommitFenceStartedAtMs == nil {
+        postState.blockedEnterStartCommitFenceStartedAtMs = Self.nowMs()
+      }
+    }
+    promoteBlockedCommitFencesIfReady(instanceId: instanceId, state: &postState)
+    instances[instanceId] = postState
   }
 
   private func prepareDerivedDotOutput(
@@ -5053,6 +5317,11 @@ final class SearchMapRenderController: RCTEventEmitter {
     guard var state = instances[instanceId] else {
       return
     }
+    // ASYNC PREROLL SUPERSEDE: the scoped live-role reconcile patches family state on top of
+    // the live baseline — an in-flight background preroll prepare captured a baseline that is
+    // stale the moment this runs. Clear the token; its completion falls back to a cheap sync
+    // reconcile so the full desired output still lands before the ramp.
+    state.pendingAsyncPrerollPrepareToken = nil
     if Self.isVisualSourceInactiveOrDismissing(state) {
       cancelLivePinTransitionAnimation(instanceId: instanceId)
       instances[instanceId] = state
@@ -9959,6 +10228,9 @@ final class SearchMapRenderController: RCTEventEmitter {
     _ state: inout InstanceState, reason: String
   ) {
     state.presentationEpoch &+= 1
+    // Any derivation-input boundary also invalidates an in-flight async preroll prepare —
+    // its captured inputs are from before this boundary (completion falls back to sync).
+    state.pendingAsyncPrerollPrepareToken = nil
     Self.lodLog("[LODDBG] presentationEpoch -> \(state.presentationEpoch) reason=\(reason)")
   }
 
@@ -10262,6 +10534,7 @@ final class SearchMapRenderController: RCTEventEmitter {
       )
     }
     if state.blockedEnterStartRequestKey != nil,
+       state.pendingAsyncPrerollPrepareToken == nil,
        !hasPendingCommitFence(state.blockedEnterStartCommitFenceBySourceId) {
       let blockedWaitMs = state.blockedEnterStartCommitFenceStartedAtMs.map { max(0, Int((Self.nowMs() - $0).rounded())) }
       emitVisualDiag(
