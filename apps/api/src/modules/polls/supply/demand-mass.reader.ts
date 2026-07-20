@@ -30,12 +30,33 @@
  * with minLng > maxLng CROSSES the antimeridian and covers
  * [minLng, 180] ∪ [-180, maxLng]; the SQL intersect OR-splits crossing rows
  * instead of range-testing them (a btree range test on a crossing row is
- * meaningless). The canonical predicate is stated once in TS below
- * (lngIntervalsIntersect); the SQL implements exactly it.
+ * meaningless). The canonical predicate lives in the signals module
+ * (lng-intersect.ts, wave-5 F4 convergence) — one statement, every consumer.
+ *
+ * ACT-GRAIN DEDUPE (wave-5 F2): one user act can write SEVERAL ledger rows
+ * that deliberately share an idempotency id — a selected search writes
+ * 'search' + 'autocomplete_selection' under meta.searchRequestId, and a
+ * failing search ALSO writes 'on_demand_ask' rows whose
+ * meta.askSearchRequestId carries the SAME originating searchRequestId.
+ * For MASS purposes those are ONE act of attention: the subjectless /
+ * kind-unfiltered mass reads below collapse rows to act grain on
+ * COALESCE(searchRequestId, cacheRevealRequestId, askSearchRequestId,
+ * signal_id) per actor BEFORE the kernel sums (the ask's key value = the
+ * originating searchRequestId, so the echo collapses for free). Kind-
+ * FILTERED readers (e.g. territoryUnmetAsks) keep reading ask rows directly
+ * — there the ask IS the act. First occurrence wins (MIN occurred_at),
+ * matching the aggregate's dedupe law.
  */
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import {
+  lngIntervalsIntersect,
+  lngIntersectSql,
+  placeLngColumns,
+  SIGNAL_LNG_COLUMNS,
+} from '../../signals/lng-intersect';
+import { utcInstantSql } from '../../signals/sql-instant';
 import {
   COOLDOWN_GAUSSIAN_DAYS,
   DEMAND_HALF_LIFE_DAYS,
@@ -44,8 +65,14 @@ import {
   RECENCY_FLAT_DAYS,
 } from './poll-supply.constants';
 
+/** Canonical TS predicate re-exported for existing consumers/specs. */
+export { lngIntervalsIntersect };
+
 /** K2 prior: all signal kinds weigh 1.0 at launch (see module doc). */
 export const KIND_WEIGHT_PRIOR = 1.0;
+
+/** SQL: the per-actor ACT identity key (wave-5 F2 — see module doc). */
+const ACT_KEY_SQL = Prisma.sql`COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId', s.meta->>'askSearchRequestId', s.signal_id::text)`;
 
 /**
  * The recency curve, stated once in TS as the CANONICAL kernel (the SQL below
@@ -71,37 +98,6 @@ export function demandMassFromActorActs(actsPerActor: number[]): number {
     (sum, acts) => sum + Math.log2(1 + Math.max(0, acts)),
     0,
   );
-}
-
-/**
- * CANONICAL wrap-aware longitude-interval intersection (red-team 3c). An
- * interval with min > max crosses the antimeridian and covers
- * [min, 180] ∪ [-180, max]. Four cases, exhaustively:
- * - neither crosses: plain range overlap;
- * - both cross: both contain the antimeridian ⇒ always intersect;
- * - exactly one crosses: the crossing side's two arcs are tested against the
- *   plain side (an OR of the two half-range comparisons).
- * The SQL fragment in `lngIntersectSql` implements exactly this. Fixture law:
- * a Fiji viewport signal (crossing) must NOT attribute to Austin.
- */
-export function lngIntervalsIntersect(
-  aMin: number,
-  aMax: number,
-  bMin: number,
-  bMax: number,
-): boolean {
-  const aCrosses = aMin > aMax;
-  const bCrosses = bMin > bMax;
-  if (!aCrosses && !bCrosses) {
-    return aMin <= bMax && aMax >= bMin;
-  }
-  if (aCrosses && bCrosses) {
-    return true;
-  }
-  if (aCrosses) {
-    return aMin <= bMax || aMax >= bMin;
-  }
-  return bMin <= aMax || bMax >= aMin;
 }
 
 export interface PlaceDemandMass {
@@ -141,19 +137,10 @@ export class DemandMassReader {
       END`;
   }
 
-  /** SQL statement of lngIntervalsIntersect (the canonical TS predicate) for
+  /** The canonical wrap-aware intersect (signals lng-intersect.ts) for
    *  signal row s vs place-box row pb. */
   private lngIntersectSql(): Prisma.Sql {
-    return Prisma.sql`
-      CASE
-        WHEN s.geo_min_lng <= s.geo_max_lng AND pb.bbox_min_lng <= pb.bbox_max_lng
-          THEN s.geo_min_lng <= pb.bbox_max_lng AND s.geo_max_lng >= pb.bbox_min_lng
-        WHEN s.geo_min_lng > s.geo_max_lng AND pb.bbox_min_lng > pb.bbox_max_lng
-          THEN TRUE
-        WHEN s.geo_min_lng > s.geo_max_lng
-          THEN s.geo_min_lng <= pb.bbox_max_lng OR s.geo_max_lng >= pb.bbox_min_lng
-        ELSE pb.bbox_min_lng <= s.geo_max_lng OR pb.bbox_max_lng >= s.geo_min_lng
-      END`;
+    return lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('pb'));
   }
 
   /**
@@ -169,7 +156,7 @@ export class DemandMassReader {
     }
     const placeIds = requests.map((request) => request.placeId);
     const ats = requests.map((request) => request.at.toISOString());
-    const age = Prisma.sql`(EXTRACT(EPOCH FROM (pb.at - s.occurred_at)) / 86400.0)`;
+    const actAge = Prisma.sql`(EXTRACT(EPOCH FROM (pa.at - pa.occurred_at)) / 86400.0)`;
     const rows = await this.prisma.$queryRaw<
       { place_id: string; at: Date; mass: number }[]
     >`
@@ -177,26 +164,47 @@ export class DemandMassReader {
         SELECT * FROM unnest(${placeIds}::uuid[], ${ats}::timestamptz[]) AS r(place_id, at)
       ),
       place_box AS (
-        SELECT r.place_id, r.at,
+        -- AT TIME ZONE 'UTC': signals.occurred_at is NAIVE-UTC (aggregate
+        -- red-team 1a); coerce the request instant to naive UTC ONCE so
+        -- every comparison/age below is naive-vs-naive in every session
+        -- time zone (live-proven wave-5: the bare timestamptz comparison
+        -- silently excluded the last UTC-offset hours of signals).
+        SELECT r.place_id, (r.at AT TIME ZONE 'UTC') AS at,
                p.bbox_min_lat, p.bbox_min_lng, p.bbox_max_lat, p.bbox_max_lng
         FROM req r
         JOIN places p ON p.place_id = r.place_id
         WHERE p.bbox_min_lat IS NOT NULL
       ),
-      per_actor AS (
+      per_act AS (
+        -- Wave-5 F2: collapse the ledger rows of ONE act (search +
+        -- autocomplete_selection + on_demand_ask echo sharing an
+        -- idempotency id) to act grain per actor BEFORE the kernel;
+        -- first occurrence wins (MIN occurred_at, the aggregate's law).
         SELECT
           pb.place_id,
           pb.at,
           s.actor_id,
-          SUM(${this.recencyKernel(age)} * ${KIND_WEIGHT_PRIOR}) AS acts
+          ${ACT_KEY_SQL} AS act_key,
+          MIN(s.occurred_at) AS occurred_at
         FROM place_box pb
         JOIN signals s
           ON s.geo_min_lat <= pb.bbox_max_lat
          AND s.geo_max_lat >= pb.bbox_min_lat
          AND (${this.lngIntersectSql()})
          AND s.occurred_at <= pb.at
-         AND s.occurred_at >= pb.at - make_interval(days => ${DEMAND_KERNEL_HORIZON_DAYS})
-        GROUP BY pb.place_id, pb.at, s.actor_id
+         -- ::int — Prisma binds JS integers as int8; make_interval has no
+         -- bigint overload (live-proven wave-5).
+         AND s.occurred_at >= pb.at - make_interval(days => ${DEMAND_KERNEL_HORIZON_DAYS}::int)
+        GROUP BY pb.place_id, pb.at, s.actor_id, ${ACT_KEY_SQL}
+      ),
+      per_actor AS (
+        SELECT
+          pa.place_id,
+          pa.at,
+          pa.actor_id,
+          SUM(${this.recencyKernel(actAge)} * ${KIND_WEIGHT_PRIOR}) AS acts
+        FROM per_act pa
+        GROUP BY pa.place_id, pa.at, pa.actor_id
       )
       SELECT place_id, at, SUM(ln(1 + acts) / ln(2))::float8 AS mass
       FROM per_actor
@@ -236,7 +244,7 @@ export class DemandMassReader {
     if (!placeIds.length) {
       return [];
     }
-    const age = Prisma.sql`(EXTRACT(EPOCH FROM (${at} - s.occurred_at)) / 86400.0)`;
+    const actAge = Prisma.sql`(EXTRACT(EPOCH FROM (${utcInstantSql(at)} - pa.occurred_at)) / 86400.0)`;
     const baselineEndDays = RECENCY_FLAT_DAYS;
     const baselineStartDays = RECENCY_FLAT_DAYS + COOLDOWN_GAUSSIAN_DAYS;
     const baselineWeeks = COOLDOWN_GAUSSIAN_DAYS / RECENCY_FLAT_DAYS;
@@ -257,30 +265,44 @@ export class DemandMassReader {
         WHERE place_id = ANY(${placeIds}::uuid[])
           AND bbox_min_lat IS NOT NULL
       ),
-      per_actor AS (
+      per_act AS (
+        -- Wave-5 F2: act-grain dedupe per (place, subject, actor) — the
+        -- search + selection rows of one submit (shared searchRequestId)
+        -- count as ONE act of attention on their subject; first occurrence
+        -- wins (MIN occurred_at).
         SELECT
           pb.place_id,
           COALESCE(r.to_entity_id, s.subject_id) AS subject_id,
           s.actor_id,
-          SUM(${this.recencyKernel(age)} * ${KIND_WEIGHT_PRIOR}) AS acts,
-          SUM(CASE WHEN ${age} <= ${baselineEndDays} THEN 1.0 ELSE 0 END) AS current_acts,
-          SUM(
-            CASE
-              WHEN ${age} > ${baselineEndDays} AND ${age} <= ${baselineStartDays}
-              THEN 1.0 ELSE 0
-            END
-          ) AS baseline_acts
+          ${ACT_KEY_SQL} AS act_key,
+          MIN(s.occurred_at) AS occurred_at
         FROM place_box pb
         JOIN signals s
           ON s.geo_min_lat <= pb.bbox_max_lat
          AND s.geo_max_lat >= pb.bbox_min_lat
          AND (${this.lngIntersectSql()})
-         AND s.occurred_at <= ${at}
-         AND s.occurred_at >= ${new Date(at.getTime() - DEMAND_KERNEL_HORIZON_DAYS * MS_PER_DAY)}
+         AND s.occurred_at <= ${utcInstantSql(at)}
+         AND s.occurred_at >= ${utcInstantSql(new Date(at.getTime() - DEMAND_KERNEL_HORIZON_DAYS * MS_PER_DAY))}
          AND s.subject_type = 'entity'
          AND s.subject_id IS NOT NULL
         LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
-        GROUP BY pb.place_id, COALESCE(r.to_entity_id, s.subject_id), s.actor_id
+        GROUP BY pb.place_id, COALESCE(r.to_entity_id, s.subject_id), s.actor_id, ${ACT_KEY_SQL}
+      ),
+      per_actor AS (
+        SELECT
+          pa.place_id,
+          pa.subject_id,
+          pa.actor_id,
+          SUM(${this.recencyKernel(actAge)} * ${KIND_WEIGHT_PRIOR}) AS acts,
+          SUM(CASE WHEN ${actAge} <= ${baselineEndDays} THEN 1.0 ELSE 0 END) AS current_acts,
+          SUM(
+            CASE
+              WHEN ${actAge} > ${baselineEndDays} AND ${actAge} <= ${baselineStartDays}
+              THEN 1.0 ELSE 0
+            END
+          ) AS baseline_acts
+        FROM per_act pa
+        GROUP BY pa.place_id, pa.subject_id, pa.actor_id
       ),
       per_subject AS (
         SELECT
@@ -339,8 +361,8 @@ export class DemandMassReader {
         ON s.geo_min_lat <= pb.bbox_max_lat
        AND s.geo_max_lat >= pb.bbox_min_lat
        AND (${this.lngIntersectSql()})
-       AND s.occurred_at >= ${horizonStart}
-       AND s.occurred_at <= ${now}
+       AND s.occurred_at >= ${utcInstantSql(horizonStart)}
+       AND s.occurred_at <= ${utcInstantSql(now)}
     `;
     return rows.map((row) => row.place_id);
   }

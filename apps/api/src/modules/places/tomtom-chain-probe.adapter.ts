@@ -157,6 +157,10 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       configService.get<string>('tomtom.geocodeBaseUrl') ??
       'https://api.tomtom.com/search/2/geocode'
     ).replace(/\/$/, '');
+    // §16: the 10s fallback is K3-shaped operational plumbing (HTTP client
+    // timeout when tomtom.timeout config is absent), not a product number —
+    // a timed-out probe throws and retries on a later settle; no observation
+    // is fabricated. Config-overridable; never judged at read.
     this.timeoutMs =
       Number(configService.get<number>('tomtom.timeout')) || 10000;
   }

@@ -60,6 +60,7 @@ function createHarness(options: { priorPollCount?: number } = {}) {
   };
   const placesCatalog = {
     smallestContaining: jest.fn().mockResolvedValue(PLACE),
+    sketchChain: jest.fn().mockResolvedValue([PLACE]),
   };
   const sanitizer = {
     sanitizeOrThrow: jest.fn((value: string) => value),
@@ -112,16 +113,48 @@ describe('poll creation place re-key (Phase C)', () => {
     expect(data).not.toHaveProperty('marketKey');
   });
 
-  it('no containing place -> creation is rejected honestly', async () => {
+  it('no containing place -> §2 quota-drought fallback: the poll is created against a minted "this area near (lat, lng)" place — creation NEVER blocks (wave-5 §17c)', async () => {
+    const { service, placesCatalog, prisma } = createHarness();
+    placesCatalog.smallestContaining.mockResolvedValue(null);
+    const fallbackPlace = {
+      ...PLACE,
+      placeId: '55555555-5555-5555-5555-555555555555',
+      name: 'this area near (30.50, -97.70)',
+      providerLevelCode: 'areaFallback',
+      countryCode: 'ZZ',
+    };
+    placesCatalog.sketchChain.mockResolvedValue([fallbackPlace]);
+
+    await service.createPoll(
+      { question: 'Best tacos?', bounds: BOUNDS } as never,
+      USER_ID,
+    );
+
+    // The mint goes through the ordinary sketch path: identity-law dedupe,
+    // bbox = the creation viewport, ~1km-rounded center in the name.
+    expect(placesCatalog.sketchChain).toHaveBeenCalledWith([
+      expect.objectContaining({
+        name: 'this area near (30.50, -97.70)',
+        providerLevelCode: 'areaFallback',
+        countryCode: 'ZZ',
+        provider: 'fallback',
+        bbox: { minLat: 30.45, maxLat: 30.55, minLng: -97.75, maxLng: -97.65 },
+      }),
+    ]);
+    expect(prisma.poll.create).toHaveBeenCalledTimes(1);
+    expect(prisma.poll.create.mock.calls[0][0].data.placeId).toBe(
+      fallbackPlace.placeId,
+    );
+  });
+
+  it('NO resolvable geo at all (no bounds, no legacy market) -> still rejected: nothing to anchor to', async () => {
     const { service, placesCatalog, prisma } = createHarness();
     placesCatalog.smallestContaining.mockResolvedValue(null);
 
     await expect(
-      service.createPoll(
-        { question: 'Best tacos?', bounds: BOUNDS } as never,
-        USER_ID,
-      ),
+      service.createPoll({ question: 'Best tacos?' } as never, USER_ID),
     ).rejects.toThrow(BadRequestException);
+    expect(placesCatalog.sketchChain).not.toHaveBeenCalled();
     expect(prisma.poll.create).not.toHaveBeenCalled();
   });
 

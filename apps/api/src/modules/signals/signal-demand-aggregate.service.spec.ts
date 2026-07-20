@@ -137,6 +137,13 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
     expect(insert).toContain('ROW_NUMBER() OVER');
     expect(insert).toContain('NOT EXISTS');
     expect(insert).toContain('p.occurred_at <');
+    // Wave-5 F1: the act's identity is (kind, request-id) — search and
+    // autocomplete_selection share meta.searchRequestId by design (one
+    // submit = two acts), so BOTH the in-day window partition and the
+    // cross-day anti-join must be kind-aware or one kind of every selected
+    // search silently vanishes from the aggregate.
+    expect(insert).toContain('PARTITION BY s.kind,');
+    expect(insert).toContain('AND p.kind = d.kind');
 
     // Day bounds: [day, day+1) — the DELETE and the INSERT govern the SAME
     // whole UTC day.
@@ -202,6 +209,45 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
       .toISOString()
       .slice(0, 10);
     expect(result?.endDayExclusive).toBe(tomorrow);
+  });
+
+  it('mid-window mint/now-invariance golden (wave-5 §17b): rebuilds at two different "now"s yield byte-identical non-today slices', async () => {
+    // §3's mint-invariance law at the statement level: a day slice's rebuild
+    // is a pure function of (day, ledger) — the wall clock NEVER enters a
+    // day's statements. Rebuilding the same window at two different "now"s
+    // (e.g. before and after a mid-window neighborhood mint re-triggers the
+    // watermark pass) must emit identical SQL for every completed day; only
+    // WHICH days rebuild may differ (today's slice appears when now moves).
+    const minOccurredAt = new Date('2026-07-10T05:00:00Z');
+    const nowSpy = jest.spyOn(Date, 'now');
+    try {
+      nowSpy.mockReturnValue(new Date('2026-07-19T08:00:00Z').getTime());
+      const early = createHarness({ minOccurredAt });
+      await early.service.rebuildAll();
+      const earlyStatements = early.statements.map(flatten);
+
+      nowSpy.mockReturnValue(new Date('2026-07-19T23:59:00Z').getTime());
+      const late = createHarness({ minOccurredAt });
+      await late.service.rebuildAll();
+      const lateStatements = late.statements.map(flatten);
+
+      // Same day within the window: the two rebuilds are byte-identical.
+      expect(lateStatements).toEqual(earlyStatements);
+
+      // Now crosses midnight: every shared (non-today) day slice is STILL
+      // byte-identical; the only delta is the new day's own slice.
+      nowSpy.mockReturnValue(new Date('2026-07-20T00:05:00Z').getTime());
+      const nextDay = createHarness({ minOccurredAt });
+      await nextDay.service.rebuildAll();
+      const nextDayStatements = nextDay.statements.map(flatten);
+      expect(nextDayStatements.slice(0, earlyStatements.length)).toEqual(
+        earlyStatements,
+      );
+      // Exactly one extra day slice (4 statements per day).
+      expect(nextDayStatements.length - earlyStatements.length).toBe(4);
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it('the watermark refresh rebuilds EXACTLY the days with newly-recorded rows — closed days included (1b)', async () => {

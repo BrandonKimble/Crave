@@ -22,6 +22,10 @@ export function buildKeywordSortPlan(params: {
     Number.isFinite(params.safeIntervalDays) && params.safeIntervalDays > 0
       ? params.safeIntervalDays
       : 0;
+  // §16: the 60 is K1 — the owner's cadence-clamp sentence ("no source
+  // unvisited longer than 60d", plan §16 K1 list) as the heavy-pass floor;
+  // the ×3 multiplier is K3 (controller cycle: heavy passes ride every third
+  // saturation-adaptive interval, re-derived as cadence adapts).
   const thresholdDays = Math.max(safeIntervalDays * 3, 60);
   const thresholdMs = thresholdDays * MS_PER_DAY;
 

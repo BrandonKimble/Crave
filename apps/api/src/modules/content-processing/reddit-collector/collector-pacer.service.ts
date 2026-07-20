@@ -270,6 +270,10 @@ export class CollectorPacerService implements OnModuleInit {
       select: { safeIntervalDays: true },
     });
     const raw = community?.safeIntervalDays;
+    // §16: the 7d fallback is K3-as-prior — the chronological-cadence
+    // controller's start value for a source with no measured safe interval
+    // yet (one 7d cycle, plan §16 K1's cycle length); the measured
+    // safeIntervalDays replaces it per source as saturation data accrues.
     return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : 7;
   }
 }

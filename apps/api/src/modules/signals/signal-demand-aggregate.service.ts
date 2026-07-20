@@ -33,14 +33,19 @@ import { LoggerService } from '../../shared';
  *   (place_id NULL) so unscoped readers never see attribution fan-out.
  * - Redirects are applied AT READ (the aggregate stores raw subjectIds;
  *   history stays immutable under identity merges).
- * - Retry dedupe is WINDOW-wide and geo-free (red-team 1c): the FIRST
- *   occurrence of a client idempotency id (meta.searchRequestId /
- *   meta.cacheRevealRequestId) wins — its day, its geo, its act weight.
- *   Later rows with the same id (nudged-viewport retries, cross-midnight
- *   retries) never count: within a day the first row is picked by window
- *   function; across days an indexed anti-join excludes ids first seen on an
- *   earlier day. Backfilled legacy rows carry meta.eventCount (the old
- *   tables' pre-dedup counters); it weighs into signalCount.
+ * - Retry dedupe is WINDOW-wide, geo-free, and PER-KIND (red-team 1c +
+ *   wave-5 F1): the FIRST occurrence of a (kind, client idempotency id)
+ *   pair (meta.searchRequestId / meta.cacheRevealRequestId) wins — its day,
+ *   its geo, its act weight. Later rows with the same (kind, id) (nudged-
+ *   viewport retries, cross-midnight retries) never count: within a day the
+ *   first row is picked by window function; across days an indexed anti-join
+ *   excludes (kind, id) pairs first seen on an earlier day. The KIND is part
+ *   of the act's identity by design: 'search' and 'autocomplete_selection'
+ *   deliberately SHARE meta.searchRequestId (one submit = two distinct acts
+ *   — search.service recordSearchSignals), so a kind-blind key would drop
+ *   one act of every selected search. Backfilled legacy rows carry
+ *   meta.eventCount (the old tables' pre-dedup counters); it weighs into
+ *   signalCount.
  * - TIME ZONE LAW (red-team 1a): signals.occurred_at is a NAIVE-UTC
  *   timestamp; signal_demand_daily.last_occurred_at is timestamptz. Every
  *   rebuild transaction runs under SET LOCAL TIME ZONE 'UTC' so the coercion
@@ -51,7 +56,10 @@ import { LoggerService } from '../../shared';
  *   timezone the rebuild runs.
  */
 
-/** SQL: the per-signal act-dedupe key (§3 judge-at-read). */
+/** SQL: the per-signal act-dedupe key (§3 judge-at-read). Always paired with
+ *  s.kind — an act's identity is (kind, request-id): 'search' and
+ *  'autocomplete_selection' share meta.searchRequestId on purpose (wave-5
+ *  F1) and must both survive dedupe. */
 const DEDUPE_KEY_SQL = Prisma.sql`COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId', s.signal_id::text)`;
 
 /** SQL: per-row act weight (backfilled legacy rows carry meta.eventCount). */
@@ -254,7 +262,7 @@ export class SignalDemandAggregateService {
             ${EVENT_COUNT_SQL} AS acts,
             COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId') AS request_id,
             ROW_NUMBER() OVER (
-              PARTITION BY ${DEDUPE_KEY_SQL}
+              PARTITION BY s.kind, ${DEDUPE_KEY_SQL}
               ORDER BY s.occurred_at ASC, s.signal_id ASC
             ) AS rn
           FROM signals s
@@ -262,10 +270,12 @@ export class SignalDemandAggregateService {
             AND s.occurred_at < ${nextDayKey}::date
         ),
         day_signals AS (
-          -- Red-team 1c: retry dedupe is window-wide and geo-free — the
-          -- FIRST occurrence of a request-id wins (rn = 1 within the day;
-          -- the anti-join, one probe on Signal_dedupeRequestId_occurredAt_idx,
-          -- excludes ids first seen on an EARLIER day).
+          -- Red-team 1c + wave-5 F1: retry dedupe is window-wide, geo-free,
+          -- and PER-KIND — the FIRST occurrence of a (kind, request-id) pair
+          -- wins (rn = 1 within the day; the anti-join, one probe on
+          -- Signal_dedupeRequestId_occurredAt_idx, excludes pairs first seen
+          -- on an EARLIER day). Kind-blind matching would collapse the
+          -- search + autocomplete_selection acts of one submit.
           SELECT d.*
           FROM day_first d
           WHERE d.rn = 1
@@ -277,6 +287,7 @@ export class SignalDemandAggregateService {
                 WHERE (p.meta->>'searchRequestId' IS NOT NULL
                        OR p.meta->>'cacheRevealRequestId' IS NOT NULL)
                   AND COALESCE(p.meta->>'searchRequestId', p.meta->>'cacheRevealRequestId') = d.request_id
+                  AND p.kind = d.kind
                   AND p.occurred_at < ${dayKey}::date
               )
             )

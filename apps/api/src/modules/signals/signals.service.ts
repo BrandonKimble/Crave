@@ -72,6 +72,10 @@ export interface RecordSignalInput {
   meta?: Record<string, unknown> | null;
 }
 
+// §16: process-local cache caps — K3-shaped capacity bounds (memory ceiling
+// per replica; FIFO eviction just re-fetches), NOT behavior constants: no
+// read changes meaning at any cap value. Sized to corpus reality (actors ≫
+// markets/places); pacer-derived sizing replaces them if they ever bind.
 const ACTOR_CACHE_MAX = 10_000;
 const MARKET_BBOX_CACHE_MAX = 1_000;
 const PLACE_BBOX_CACHE_MAX = 1_000;
@@ -399,6 +403,9 @@ export class SignalsService {
 
     const subject = input.subject ?? null;
     const subjectId = subject?.entityId ?? null;
+    // §16: 255 is K6-definitional plumbing — the subject_text column width
+    // (schema VarChar(255)); the slice guards the INSERT, never judges the
+    // term (qualifiers are judged at read, §3).
     const term = subject?.term
       ? subject.term.trim().toLowerCase().slice(0, 255)
       : null;

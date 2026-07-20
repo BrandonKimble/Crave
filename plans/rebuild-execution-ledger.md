@@ -383,9 +383,30 @@ agent in flight at turn end so completion notifications chain turns.
       fixture script coverage vs §8 named conditions, add mint-invariance
       golden + poll-creation quota-drought fallback spec (§2: creation
       never blocks).
-- [ ] After fix agent: commit, restart, REASSESSMENT to owner (wave-5
-      verdict: with F1-F3 + score fixture gate closed, rebuild is
-      honestly complete).
+- [x] WAVE-5 FIX AGENT COMPLETE (2026-07-19, uncommitted): F1 aggregate +
+      fresh-lane dedupe kind-aware, FULL rebuild run + live-proven (both
+      kinds land); F2 act-grain COALESCE dedupe (incl. askSearchRequestId)
+      in both mass paths, live-proven (3-row act = 1.000000, genuine 2nd
+      act = 1.584962); F3 POST /signals/viewport-dwell built (auth-gated,
+      DTO-bounded, fire-and-forget; MOBILE WIRING lands with the
+      home-place-registration leg — until then the endpoint is live but
+      uncalled); F4 one canonical wrap-aware lng predicate
+      (signals/lng-intersect.ts) consumed by demand-mass reader + both
+      fresh arms; §16 comments placed (values untouched); §17: fixture
+      script grown to 21 checks (kill condition, fake-elite + RED
+      backstop, upvote-linearity, dial re-probe on calibrated masses,
+      author-concentration, two-cadence, rising-flap) + mint/now-
+      invariance golden + poll-creation quota-drought fallback (creation
+      never blocks — mints "this area near (lat, lng)" via sketchChain,
+      countryCode ZZ / providerLevelCode areaFallback). Retroactive-credit
+      golden SKIPPED: its machinery (§2 promotion backfill) is genuinely
+      deferred; travels with that leg. BONUS: two latent live defects in
+      the poll-supply/fresh readers found by the live proof and fixed —
+      see Gotchas. 582 tests green (567 baseline +15); build+tsc+lint clean.
+- [ ] After fix agent: commit, restart :3000 (REQUIRED: the running
+      binary still serves kind-blind aggregate cron + lacks the
+      viewport-dwell route), REASSESSMENT to owner (wave-5 verdict: with
+      F1-F3 + score fixture gate closed, rebuild is honestly complete).
 - FOLLOW-UP LEGS (recorded): home-place registration (device→placeAt→
   homePlaceId; kills notification market fallback + mobile launch-intent
   markets); legacy-poll expiry (kills bboxFromMarketKey + legacy feed
@@ -418,4 +439,14 @@ agent in flight at turn end so completion notifications chain turns.
 
 ## Gotchas discovered (append)
 
-- (none yet)
+- 2026-07-19 (wave-5 live proof): Prisma binds JS Dates as TIMESTAMPTZ and
+  the dev session TZ is America/Chicago — a naive-UTC signals.occurred_at
+  compared against a bound Date coerces through the SESSION zone: every
+  "now"-anchored reader window silently shifted 5-6h (place mass showed a
+  ZERO delta for fresh signals). The aggregate was immune (SET LOCAL TIME
+  ZONE 'UTC'); plain reads were not. Law: every bound instant vs
+  occurred_at goes through signals/sql-instant.ts utcInstantSql()
+  (AT TIME ZONE 'UTC'); spec-pinned in both reader spec files.
+- 2026-07-19: make_interval(days => <bound number>) fails live — Prisma binds JS
+  integers as int8 and make_interval has no bigint overload. Cast ::int.
+  Symptom class: SQL that only specs ever ran; the live proof caught it.

@@ -23,6 +23,21 @@ interface CapturedQuery {
   values: unknown[];
 }
 
+/** Fold nested Prisma.sql fragment text into the statement (fragments ride
+ *  in as template VALUES at the mocked $queryRaw boundary). */
+function flattenFragments(query: CapturedQuery): string {
+  const parts = [query.text];
+  const walk = (value: unknown) => {
+    if (value && typeof value === 'object' && 'strings' in value) {
+      const fragment = value as { strings: string[]; values?: unknown[] };
+      parts.push((fragment.strings ?? []).join('¤'));
+      (fragment.values ?? []).forEach(walk);
+    }
+  };
+  query.values.forEach(walk);
+  return parts.join('¤');
+}
+
 function createHarness(rows: unknown[] = []) {
   const queries: CapturedQuery[] = [];
   const prisma = {
@@ -137,6 +152,54 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
     expect(demandSql).not.toMatch(/a\.kind\s*=/);
   });
 
+  it('the fresh TODAY arm is wrap-aware (wave-5 F4): the canonical crossing CASE, never a plain lng range test', async () => {
+    const h = createHarness();
+    await h.service.territoryEntityDemand({
+      placeIds: [PLACE_A],
+      windowDays: 30,
+      limit: 10,
+      entityTypes: ['restaurant'],
+    });
+    const query = h.queries.find((q) =>
+      q.text.includes('signal_demand_daily'),
+    )!;
+    const sql = flattenFragments(query);
+    // A crossing-geo signal (min > max) reaches its place through the
+    // canonical lng-intersect CASE (signals/lng-intersect.ts).
+    expect(sql).toContain('s.geo_min_lng > s.geo_max_lng');
+    expect(sql).toContain('THEN TRUE');
+  });
+
+  it('the fresh cross-day dedupe is KIND-aware (wave-5 F1): search and autocomplete_selection share a request-id but are distinct acts', async () => {
+    const h = createHarness();
+    await h.service.territoryEntityDemand({
+      placeIds: [PLACE_A],
+      windowDays: 30,
+      limit: 10,
+      entityTypes: ['restaurant'],
+    });
+    const query = h.queries.find((q) =>
+      q.text.includes('signal_demand_daily'),
+    )!;
+    expect(flattenFragments(query)).toContain('prior.kind = s.kind');
+  });
+
+  it('fresh-lane instants are coerced to naive UTC (wave-5, live-proven session-TZ skew)', async () => {
+    const h = createHarness();
+    await h.service.territoryEntityDemand({
+      placeIds: [PLACE_A],
+      windowDays: 30,
+      limit: 10,
+      entityTypes: ['restaurant'],
+    });
+    const query = h.queries.find((q) =>
+      q.text.includes('signal_demand_daily'),
+    )!;
+    // occurred_at is naive UTC; Dates bind as timestamptz — comparisons must
+    // pass through AT TIME ZONE 'UTC' or the session TZ shifts "today".
+    expect(flattenFragments(query)).toContain("AT TIME ZONE 'UTC'");
+  });
+
   it('empty territory returns [] without querying', async () => {
     const h = createHarness();
     const result = await h.service.territoryEntityDemand({
@@ -174,6 +237,23 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
       distinctActors: 3,
       lastSeenAt: new Date('2026-07-18T00:00:00Z'),
     });
+  });
+});
+
+describe('territoryUnmetAsks (kind-filtered ask read)', () => {
+  it('reads ask rows DIRECTLY (the ask IS the act here) with the wrap-aware lng intersect (wave-5 F4)', async () => {
+    const h = createHarness();
+    await h.service.territoryUnmetAsks({
+      placeIds: [PLACE_A],
+      since: new Date('2026-07-01T00:00:00Z'),
+      limit: 10,
+    });
+    const query = h.queries.find((q) => q.text.includes('on_demand_ask'))!;
+    const sql = flattenFragments(query);
+    expect(sql).toContain('s.geo_min_lng > s.geo_max_lng');
+    expect(sql).toContain('THEN TRUE');
+    // The two ask sites of one search still collapse per (request, term).
+    expect(sql).toContain('askSearchRequestId');
   });
 });
 

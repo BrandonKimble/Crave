@@ -4,6 +4,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import type { SignalKind } from './signals.service';
 import {
+  lngIntersectSql,
+  placeLngColumns,
+  SIGNAL_LNG_COLUMNS,
+} from './lng-intersect';
+import { utcInstantSql } from './sql-instant';
+import {
   DEMAND_HALF_LIFE_DAYS,
   RECENCY_FLAT_DAYS,
 } from '../polls/supply/poll-supply.constants';
@@ -51,10 +57,12 @@ const DEDUPE_KEY_SQL = Prisma.sql`COALESCE(s.meta->>'searchRequestId', s.meta->>
 /** SQL: per-act weight (backfilled legacy rows carry meta.eventCount). */
 const EVENT_COUNT_SQL = Prisma.sql`GREATEST(1, COALESCE((s.meta->>'eventCount')::int, 1))`;
 
-/** SQL (red-team 1c): exclude fresh-lane acts whose request-id FIRST occurred
- *  before today — the aggregate already counted them on their first day
- *  (window-wide first-occurrence-wins dedupe; one probe on
- *  Signal_dedupeRequestId_occurredAt_idx). */
+/** SQL (red-team 1c + wave-5 F1): exclude fresh-lane acts whose
+ *  (kind, request-id) pair FIRST occurred before today — the aggregate
+ *  already counted them on their first day (window-wide first-occurrence-
+ *  wins dedupe; one probe on Signal_dedupeRequestId_occurredAt_idx). The
+ *  KIND is part of the act's identity: search + autocomplete_selection
+ *  share meta.searchRequestId by design and are DISTINCT acts. */
 function freshFirstOccurrenceSql(todayStart: Date): Prisma.Sql {
   return Prisma.sql`AND (
         COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId') IS NULL
@@ -64,7 +72,8 @@ function freshFirstOccurrenceSql(todayStart: Date): Prisma.Sql {
                  OR prior.meta->>'cacheRevealRequestId' IS NOT NULL)
             AND COALESCE(prior.meta->>'searchRequestId', prior.meta->>'cacheRevealRequestId')
                 = COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId')
-            AND prior.occurred_at < ${todayStart}
+            AND prior.kind = s.kind
+            AND prior.occurred_at < ${utcInstantSql(todayStart)}
         )
       )`;
 }
@@ -258,7 +267,7 @@ export class SignalDemandReadService {
         FROM signals s
         LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
         WHERE s.subject_id = ANY(${expandedIds}::uuid[])
-          AND s.occurred_at >= ${todayStart}
+          AND s.occurred_at >= ${utcInstantSql(todayStart)}
           ${kindFilterFresh}
           ${actorFilterFresh}
           ${freshFirstOccurrenceSql(todayStart)}
@@ -355,7 +364,7 @@ export class SignalDemandReadService {
         FROM signals s
         WHERE s.kind = 'search'
           AND s.subject_text IS NOT NULL
-          AND s.occurred_at >= ${todayStart}
+          AND s.occurred_at >= ${utcInstantSql(todayStart)}
           ${freshTextFilter}
           ${freshFirstOccurrenceSql(todayStart)}
         GROUP BY 1, 2, 3
@@ -422,7 +431,7 @@ export class SignalDemandReadService {
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'search'
         AND s.subject_text IS NOT NULL
-        AND s.occurred_at >= ${since}
+        AND s.occurred_at >= ${utcInstantSql(since)}
         AND s.subject_text LIKE ${`${this.escapeLike(prefix)}%`}
       GROUP BY s.subject_text
       ORDER BY last_used DESC, signal_count DESC
@@ -462,7 +471,7 @@ export class SignalDemandReadService {
       WHERE s.actor_id = ${actorId}::uuid
         AND s.kind = 'search'
         AND s.subject_text = ANY(${normalizedKeys}::text[])
-        AND s.occurred_at >= ${since}
+        AND s.occurred_at >= ${utcInstantSql(since)}
       GROUP BY s.subject_text
     `;
     return new Map(
@@ -908,9 +917,11 @@ export class SignalDemandReadService {
         LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
         JOIN places p ON p.place_id = ANY(${params.placeIds}::uuid[])
         WHERE s.subject_id IS NOT NULL
-          AND s.occurred_at >= ${todayStart}
+          AND s.occurred_at >= ${utcInstantSql(todayStart)}
           AND s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
-          AND s.geo_min_lng <= p.bbox_max_lng AND s.geo_max_lng >= p.bbox_min_lng
+          -- Wave-5 F4: wrap-aware longitude intersect (the ONE canonical
+          -- predicate) — a crossing-geo signal reaches its place here too.
+          AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})
           ${freshFirstOccurrenceSql(todayStart)}
         GROUP BY 1, 2
       ),
@@ -1004,11 +1015,12 @@ export class SignalDemandReadService {
         LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
         JOIN places p ON p.place_id = ANY(${params.placeIds}::uuid[])
         WHERE s.kind = 'on_demand_ask'
-          AND s.occurred_at >= ${params.since}
+          AND s.occurred_at >= ${utcInstantSql(params.since)}
           AND s.subject_text IS NOT NULL
           AND s.meta->>'reason' IN ('unresolved', 'low_result')
           AND s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
-          AND s.geo_min_lng <= p.bbox_max_lng AND s.geo_max_lng >= p.bbox_min_lng
+          -- Wave-5 F4: wrap-aware longitude intersect (canonical helper).
+          AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})
       ),
       per_request AS (
         -- One ask per (request, term, ...): the two ask sites of a single

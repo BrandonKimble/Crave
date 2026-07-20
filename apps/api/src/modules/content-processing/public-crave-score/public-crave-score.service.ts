@@ -69,13 +69,28 @@ const DEFAULT_CONFIG: PublicCraveScoreConfig = {
   // changing calibration inputs requires bumping it (a new epoch).
   scoreVersion: 'crave-score-v4',
   displayCurveVersion: 'crave-score-display-v6',
+  // §16 classifications (master plan constants constitution — values are
+  // classified in the plan's inventory; do not change without its process):
+  // displayMin/displayMax — K1 (owner-ratified product sentence: scores
+  // display on a 0–10 scale; part of the DONE Crave Score redesign).
   displayMin: 0,
   displayMax: 10,
+  // bellK — K5 (display-curve-version-bound: the truncated-normal display
+  // shape; re-probe rides a displayCurveVersion bump, never a live edit).
   bellK: 3.0,
+  // discountRho — K5 (§8 Phase-0 dial re-probe on CALIBRATED masses: the
+  // geometric dish-acclaim discount 0.5, scoreVersion-epoch-bound).
   discountRho: 0.5,
   dishWeight: 1.0,
+  // praiseWeight — K5 (§8 Phase-0 dial re-probe pair of discountRho:
+  // praise 2×, re-probed per scoreVersion epoch on calibrated masses).
   praiseWeight: 2.0,
+  // upvoteWeight — K5 with a pre-agreed K2 adoption path (§8 upvote-
+  // linearity named gate: 0.7 stands until the measured u_i/ū_source share
+  // replaces it — measured share, never a fitted exponent).
   upvoteWeight: 0.7,
+  // endorsementHalfLifeDays / risingHalfLifeDays — K1 (owner-ratified
+  // product sentences: 365d stable / 21d rising mention half-lives).
   endorsementHalfLifeDays: 365,
   risingHalfLifeDays: 21,
   // §8: default 1.0 per platform class (a poll vote ≈ a Reddit mention);

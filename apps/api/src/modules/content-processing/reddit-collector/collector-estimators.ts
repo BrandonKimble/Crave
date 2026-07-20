@@ -35,7 +35,11 @@ export const COLLECTOR_ESTIMATOR_NAMES = {
 } as const;
 
 /** K2 priors (self-erasing; OWNER-RATIFY §18): a reddit source arrives ~10
- *  docs/day until measured; a term hits half its attempts until measured. */
+ *  docs/day until measured; a term hits half its attempts until measured.
+ *  §16: the STRENGTHS are part of the K2 "prior strengths & shrinkage"
+ *  inventory — a strength is the prior's pseudo-observation count (7 ≈ one
+ *  week of daily arrivals; 4 ≈ four attempts), erased by real data at the
+ *  same rate. */
 const ARRIVAL_RATE_PRIOR_DOCS_PER_DAY = 10;
 const ARRIVAL_RATE_PRIOR_STRENGTH = 7;
 const TERM_HIT_RATE_PRIOR = 0.5;
@@ -63,6 +67,8 @@ export class CollectorEstimators {
         strength: ARRIVAL_RATE_PRIOR_STRENGTH,
       },
       hierarchy: 'sourcePlatform',
+      // §16 K2 (as prior): per-source thread-activity half-life — the plan's
+      // inventoried 21d prior, refined by measurement per source.
       halfLifeDays: 21,
       consumerGatesObservations: false,
       exploration: 'none',
@@ -77,6 +83,8 @@ export class CollectorEstimators {
         strength: TERM_HIT_RATE_PRIOR_STRENGTH,
       },
       hierarchy: 'termGlobal',
+      // §16 K1-as-K2-prior: the 45d no-results recovery sentence enters the
+      // hit-rate estimator as its decay prior (plan §16 K1 list, "as prior").
       halfLifeDays: 45,
       consumerGatesObservations: true,
       exploration: 'optimisticSelection',

@@ -24,6 +24,12 @@ export class GovernanceService {
     // Search API (polygons) 2,500/month — the scarce pool; geocode +
     // reverse geocode 20,000/month each — the cheap pool. Month windows are
     // hard-closed on store failure by law (§14.5).
+    // §16 on reservationTtlMs (all pools below): K3-shaped operational
+    // bounds, not product numbers — a TTL is "how long a leaked reservation
+    // may hold capacity before expiry reclaims it" (§14.2 leaks expire).
+    // Sized to the slowest honest act per pool (60s ≈ one synchronous call;
+    // 120s ≈ a paged/batched dispatch); pacer-derived refinement replaces
+    // them when the estimator-refresher lands (§22 deferred reader).
     this.pools.register({
       name: 'tomtom.cheapGeocode',
       credential: 'default',
@@ -70,7 +76,12 @@ export class GovernanceService {
     this.pools.register({
       name: 'reddit.requests',
       credential: 'default',
+      // §16 K4 (vendor fact): Reddit 100/min.
       window: { kind: 'perMinute', limit: 100 },
+      // §16: 0.1 is §14.5's "bounded per-replica emergency fraction (derived
+      // share of the window)" for minute-window pools — 10 req/min of
+      // emergency headroom when the governance store is down; part of the
+      // §18.2 per-pool fail-policy TABLE awaiting owner ratification.
       failPolicy: { kind: 'emergencyFraction', fraction: 0.1 },
       reservationTtlMs: 120_000,
     });

@@ -2,12 +2,20 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
-import { PublicCraveScoreService } from '../src/modules/content-processing/public-crave-score';
+import {
+  PublicCraveScoreService,
+  buildCalibrationIndex,
+  laneActivity,
+  neutralCalibrationIndex,
+  observedDays,
+} from '../src/modules/content-processing/public-crave-score';
 import type {
+  CalibrationIndex,
   CraveScoreCandidates,
   DishCandidate,
   RestaurantCandidate,
   ScoredCraveSubject,
+  SourceContribution,
 } from '../src/modules/content-processing/public-crave-score';
 
 // ---------------------------------------------------------------------------
@@ -309,6 +317,369 @@ function runInMemoryChecks(): void {
   );
 }
 
+// ── §8 calibration condition suite (wave-5 §17 gap-close) ───────────────────
+//
+// COVERAGE MAP — §8's fixture-gated conditions vs this script:
+// - kill condition (calibrated beats raw v3 on the named scenarios)……… HERE
+//   ('calibrated surfaces the sparse-market winner raw v3 is blind to').
+// - fake-elite closure / sparse_market_winner_not_fake_elite………………… HERE
+//   (floor-clamp check + provable-RED unfloored reversal).
+// - upvote-linearity named gate…………………………………………………………………… HERE (exact
+//   linear pooling; the u_i/ū_source adoption path replaces the weight
+//   by MEASURED SHARE, never a fitted exponent — asserting no exponent).
+// - Phase-0 dial re-probe (praise 2×, ρ = 0.5) on CALIBRATED masses…… HERE
+//   (the v3 ordering sentences re-proven under non-neutral g).
+// - author-concentration fixture for doc-count A……………………………………… HERE
+//   (room size is DOCUMENT mass — mention volume cannot inflate g).
+// - two-cadence coverage-normalization……………………………………………………… HERE
+//   (per-observed-day normalization: cadence ≠ room size).
+// - per-lane constants + rising-flap fixture………………………………………………… HERE
+//   (steady-state world through per-lane indices ⇒ rising ≡ 0).
+// Already covered by the v3 suite above (mapping): endorsement pooling /
+// peak-vs-breadth / weak-never-drags / dishless-praise / inclusion floor /
+// spread + bounds; the in-memory suite's neutral index IS the raw-v3
+// baseline the kill condition compares against.
+
+function runCalibrationChecks(): void {
+  const roomOf = (
+    sourceId: string,
+    platform: string,
+    m: number,
+    u: number,
+  ): SourceContribution[] => [{ sourceId, platform, mentions: m, upvotes: u }];
+
+  // Rooms: a reference metro room (A = ref → g = 1) and a nearly-dead sparse
+  // room. Floor clamp: amplification capped at ref/floor = 10×.
+  const constants = { aRef: 5, aFloor: 0.5 };
+  const sources = [
+    {
+      sourceId: 'src-metro',
+      platform: 'reddit',
+      anchorPlaceId: null,
+      engineId: null,
+      activity: { stable: 5, fast: 5 },
+    },
+    {
+      sourceId: 'src-sparse',
+      platform: 'reddit',
+      anchorPlaceId: null,
+      engineId: null,
+      activity: { stable: 0.001, fast: 0.001 },
+    },
+  ];
+  const calibrated = buildCalibrationIndex('stable', constants, sources);
+  // Provable-RED backstop: the SAME corpus without the floor.
+  const unfloored = buildCalibrationIndex(
+    'stable',
+    { aRef: 5, aFloor: 0 },
+    sources,
+  );
+
+  const buildCandidates = (): CraveScoreCandidates => {
+    const dishes: DishCandidate[] = [];
+    const restaurants: RestaurantCandidate[] = [];
+    for (let i = 0; i < 24; i += 1) {
+      const id = `cal-filler-${i}`;
+      restaurants.push({ restaurantId: id, praiseContributions: [] });
+      dishes.push({
+        connectionId: `${id}-dish`,
+        restaurantId: id,
+        contributions: roomOf('src-metro', 'reddit', i + 1, (i + 1) * 5),
+      });
+    }
+    const add = (rid: string, sourceId: string, m: number, u: number): void => {
+      restaurants.push({ restaurantId: rid, praiseContributions: [] });
+      dishes.push({
+        connectionId: `${rid}-d1`,
+        restaurantId: rid,
+        contributions: roomOf(sourceId, 'reddit', m, u),
+      });
+    };
+    add('metroElite', 'src-metro', 40, 300);
+    add('sparseWinner', 'src-sparse', 2, 4);
+    add('metroTwin', 'src-metro', 2, 4); // identical raw counts, metro room
+    return { dishes, restaurants };
+  };
+
+  const displayUnder = (index: CalibrationIndex): ((id: string) => number) => {
+    const scored = scorer.scoreCandidates(buildCandidates(), config, index);
+    const byId = new Map(
+      scored
+        .filter((r) => r.subjectType === 'restaurant')
+        .map((r) => [r.subjectId, r.displayScore]),
+    );
+    return (id: string) => byId.get(id) ?? -1;
+  };
+
+  const raw = displayUnder(neutralCalibrationIndex('stable'));
+  const cal = displayUnder(calibrated);
+  const noFloor = displayUnder(unfloored);
+
+  // KILL CONDITION (§8): calibrated must beat raw v3 on the named scenario —
+  // raw v3 is blind to rooms (sparseWinner == metroTwin); calibration
+  // surfaces the sparse market's genuine winner.
+  expectCheck(
+    'kill condition: raw v3 is room-blind (sparseWinner == metroTwin)',
+    Math.abs(raw('sparseWinner') - raw('metroTwin')) < 1e-9,
+    'identical raw display',
+    { sparseWinner: raw('sparseWinner'), metroTwin: raw('metroTwin') },
+  );
+  expectCheck(
+    'kill condition: calibrated surfaces the sparse-market winner raw v3 cannot',
+    cal('sparseWinner') > cal('metroTwin'),
+    'calibrated sparseWinner > metroTwin',
+    { sparseWinner: cal('sparseWinner'), metroTwin: cal('metroTwin') },
+  );
+
+  // sparse_market_winner_not_fake_elite: the floor clamp caps amplification —
+  // the sparse winner surfaces WITHOUT leapfrogging the metro elite…
+  expectCheck(
+    'sparse_market_winner_not_fake_elite: floor-capped amplification keeps metroElite on top',
+    cal('metroElite') > cal('sparseWinner'),
+    'calibrated metroElite > sparseWinner',
+    { metroElite: cal('metroElite'), sparseWinner: cal('sparseWinner') },
+  );
+  // …and the check can go RED: remove the floor and the dead room mints a
+  // fake elite (proves the assertion is load-bearing, not always-green).
+  expectCheck(
+    'fake-elite RED backstop: WITHOUT the floor the dead room out-scores the metro elite',
+    noFloor('sparseWinner') > noFloor('metroElite'),
+    'unfloored sparseWinner > metroElite',
+    {
+      sparseWinner: noFloor('sparseWinner'),
+      metroElite: noFloor('metroElite'),
+    },
+  );
+
+  // Upvote-linearity named gate: upvotes pool LINEARLY at upvoteWeight —
+  // doubling upvotes exactly doubles pooled mass (never a fitted exponent;
+  // the pre-agreed adoption path swaps the WEIGHT for measured u_i/ū_source).
+  {
+    const linDishes: DishCandidate[] = [
+      {
+        connectionId: 'lin-u10',
+        restaurantId: 'lin-host',
+        contributions: roomOf('src-metro', 'reddit', 0, 10),
+      },
+      {
+        connectionId: 'lin-u20',
+        restaurantId: 'lin-host',
+        contributions: roomOf('src-metro', 'reddit', 0, 20),
+      },
+    ];
+    const scored = scorer.scoreCandidates(
+      {
+        dishes: linDishes,
+        restaurants: [{ restaurantId: 'lin-host', praiseContributions: [] }],
+      },
+      config,
+      calibrated,
+    );
+    const pooled = new Map(
+      scored
+        .filter((r) => r.subjectType === 'connection')
+        .map((r) => [r.subjectId, Math.expm1(r.endorsementRaw)]),
+    );
+    const u10 = pooled.get('lin-u10') ?? NaN;
+    const u20 = pooled.get('lin-u20') ?? NaN;
+    // endorsementRaw is stored rounded (6dp) — compare at 1e-3 relative,
+    // far tighter than any exponent (u^0.9 would miss by ~25% here).
+    expectCheck(
+      'upvote-linearity: pooled mass is exactly linear in upvotes (weight, no exponent)',
+      Math.abs(u20 - 2 * u10) / (2 * u10) < 1e-3 &&
+        Math.abs(u10 - config.upvoteWeight * 10) / u10 < 1e-3,
+      'pooled(2u) == 2·pooled(u) == 2·upvoteWeight·u (±0.1%)',
+      { u10, u20, upvoteWeight: config.upvoteWeight },
+    );
+  }
+
+  // Phase-0 dial re-probe (praise 2×, ρ = 0.5) on CALIBRATED masses: the v3
+  // ordering sentences must survive non-neutral g (rooms mixed on purpose).
+  {
+    const dishes: DishCandidate[] = [];
+    const restaurants: RestaurantCandidate[] = [];
+    for (let i = 0; i < 24; i += 1) {
+      const id = `dial-filler-${i}`;
+      restaurants.push({ restaurantId: id, praiseContributions: [] });
+      dishes.push({
+        connectionId: `${id}-dish`,
+        restaurantId: id,
+        contributions: roomOf('src-metro', 'reddit', i + 1, (i + 1) * 5),
+      });
+    }
+    const addDish = (
+      rid: string,
+      suffix: string,
+      sourceId: string,
+      m: number,
+      u: number,
+    ): void => {
+      dishes.push({
+        connectionId: `${rid}-${suffix}`,
+        restaurantId: rid,
+        contributions: roomOf(sourceId, 'reddit', m, u),
+      });
+    };
+    const addRestaurant = (
+      rid: string,
+      praise: SourceContribution[] = [],
+    ): void => {
+      restaurants.push({ restaurantId: rid, praiseContributions: praise });
+    };
+    addRestaurant('dial-peak');
+    addDish('dial-peak', 'd1', 'src-metro', 40, 300);
+    addRestaurant('dial-mediocre');
+    addDish('dial-mediocre', 'd1', 'src-sparse', 1, 1);
+    addDish('dial-mediocre', 'd2', 'src-metro', 1, 1);
+    addDish('dial-mediocre', 'd3', 'src-metro', 1, 1);
+    addRestaurant('dial-broad');
+    addDish('dial-broad', 'd1', 'src-metro', 40, 300);
+    addDish('dial-broad', 'd2', 'src-sparse', 3, 20);
+    addDish('dial-broad', 'd3', 'src-metro', 20, 120);
+    addRestaurant('dial-peakWeak');
+    addDish('dial-peakWeak', 'd1', 'src-metro', 40, 300);
+    addDish('dial-peakWeak', 'd2', 'src-sparse', 1, 1);
+    addRestaurant(
+      'dial-dishlessStrong',
+      roomOf('src-metro', 'reddit', 25, 400),
+    );
+    const scored = scorer.scoreCandidates(
+      { dishes, restaurants },
+      config,
+      calibrated,
+    );
+    const byId = new Map(
+      scored
+        .filter((r) => r.subjectType === 'restaurant')
+        .map((r) => [r.subjectId, r.displayScore]),
+    );
+    const d = (id: string) => byId.get(id) ?? -1;
+    expectCheck(
+      'dial re-probe on calibrated masses: ρ=0.5 + praise 2× ordering sentences hold under non-neutral g',
+      d('dial-broad') > d('dial-peak') &&
+        d('dial-peak') > d('dial-mediocre') &&
+        d('dial-peakWeak') >= d('dial-peak') &&
+        d('dial-dishlessStrong') > d('dial-peak'),
+      'broad > peak > mediocre; peak+weak >= peak; dishlessStrong > peak',
+      {
+        broad: d('dial-broad'),
+        peak: d('dial-peak'),
+        mediocre: d('dial-mediocre'),
+        peakWeak: d('dial-peakWeak'),
+        dishlessStrong: d('dial-dishlessStrong'),
+      },
+    );
+  }
+
+  // Author-concentration (doc-count A): a room's activity A is gate-passing
+  // DOCUMENT mass — mention volume inside the documents cannot inflate the
+  // room, so g is identical for a mention-dense and a mention-light room of
+  // the same document output; the mention side saturates through log1p.
+  {
+    const sameDocMassA = laneActivity(3, 10);
+    const sameDocMassB = laneActivity(3, 10);
+    const concIndex = buildCalibrationIndex('stable', constants, [
+      {
+        ...sources[0],
+        sourceId: 'src-dense',
+        activity: { stable: sameDocMassA, fast: sameDocMassA },
+      },
+      {
+        ...sources[0],
+        sourceId: 'src-light',
+        activity: { stable: sameDocMassB, fast: sameDocMassB },
+      },
+    ]);
+    const scored = scorer.scoreCandidates(
+      {
+        dishes: [
+          {
+            connectionId: 'conc-dense',
+            restaurantId: 'conc-host',
+            contributions: roomOf('src-dense', 'reddit', 100, 0),
+          },
+          {
+            connectionId: 'conc-light',
+            restaurantId: 'conc-host',
+            contributions: roomOf('src-light', 'reddit', 10, 0),
+          },
+        ],
+        restaurants: [{ restaurantId: 'conc-host', praiseContributions: [] }],
+      },
+      config,
+      concIndex,
+    );
+    const raw = new Map(
+      scored
+        .filter((r) => r.subjectType === 'connection')
+        .map((r) => [r.subjectId, r.endorsementRaw]),
+    );
+    const dense = raw.get('conc-dense') ?? NaN;
+    const light = raw.get('conc-light') ?? NaN;
+    expectCheck(
+      'author-concentration: doc-count A (equal g for equal doc mass) + log1p damps mention flooding',
+      sameDocMassA === sameDocMassB && dense < 2 * light,
+      '10× the mentions in an equal-doc room gains < 2× endorsement',
+      { dense, light, gEqual: sameDocMassA === sameDocMassB },
+    );
+  }
+
+  // Two-cadence coverage normalization: A is per OBSERVED day — the same
+  // decayed doc mass over 10 observed days measures 10× the room of one
+  // spread over 100; and observation never exceeds the lane window.
+  {
+    const now = new Date();
+    const dayMs = 86_400_000;
+    const clamped = observedDays(
+      { from: new Date(now.getTime() - 200 * dayMs), through: now },
+      100,
+      now,
+    );
+    expectCheck(
+      'two-cadence coverage normalization: per-observed-day A + window clamp',
+      Math.abs(laneActivity(30, 10) - 10 * laneActivity(30, 100)) < 1e-9 &&
+        Math.abs(clamped - 100) < 1e-6,
+      'A(30 mass, 10d) == 10 × A(30 mass, 100d); observedDays clamps to τ',
+      {
+        aDense: laneActivity(30, 10),
+        aSparse: laneActivity(30, 100),
+        clampedDays: clamped,
+      },
+    );
+  }
+
+  // Per-lane rising-flap: a STEADY world (identical activity in both lanes,
+  // per-subject masses in fixed proportion) through the per-lane indices must
+  // produce rising ≡ 0 — lane constants alone can never manufacture a flap.
+  {
+    const stableIndex = buildCalibrationIndex('stable', constants, sources);
+    const fastIndex = buildCalibrationIndex('fast', constants, sources);
+    const candidates = buildCandidates();
+    const stableScored = scorer.scoreCandidates(
+      candidates,
+      config,
+      stableIndex,
+    );
+    const fastScored = scorer.scoreCandidates(candidates, config, fastIndex);
+    const fastByKey = new Map(
+      fastScored.map((r) => [`${r.subjectType}:${r.subjectId}`, r.rawDisplay]),
+    );
+    let maxFlap = 0;
+    for (const row of stableScored) {
+      const fast = fastByKey.get(`${row.subjectType}:${row.subjectId}`);
+      if (fast != null) {
+        maxFlap = Math.max(maxFlap, Math.abs(fast - row.rawDisplay));
+      }
+    }
+    expectCheck(
+      'per-lane rising-flap: steady-state world ⇒ rising ≡ 0 through both lane indices',
+      maxFlap < 1e-9,
+      'max |fast − stable| rawDisplay == 0',
+      { maxFlap },
+    );
+  }
+}
+
 // ── Real-DB rebuild smoke check ─────────────────────────────────────────────
 
 async function runDbSmokeCheck(): Promise<void> {
@@ -427,6 +798,7 @@ async function runDbSmokeCheck(): Promise<void> {
 
 async function main(): Promise<void> {
   runInMemoryChecks();
+  runCalibrationChecks();
   await runDbSmokeCheck();
 
   const failedChecks = checks.filter((check) => check.status === 'fail');

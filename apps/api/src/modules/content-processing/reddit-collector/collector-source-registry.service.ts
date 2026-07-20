@@ -47,7 +47,10 @@ export interface CollectorHeartbeat {
 /** EWMA weight for the output baseline — a K2-shaped smoothing prior. */
 const OUTPUT_BASELINE_ALPHA = 0.3;
 /** A tick producing under this fraction of baseline reads collapsed (§12.4).
- *  Applied only once a baseline exists — first ticks can never false-RED. */
+ *  Applied only once a baseline exists — first ticks can never false-RED.
+ *  §16 K2 (per-source burst variance family): 0.2 is the prior alarm
+ *  threshold; measured per-source output variance refines it when the
+ *  estimator-refresher turns on (§22 trigger-deferred reader). */
 const OUTPUT_COLLAPSE_FRACTION = 0.2;
 
 export function normalizedLateness(
