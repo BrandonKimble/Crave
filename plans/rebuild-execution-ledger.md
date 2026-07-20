@@ -291,13 +291,27 @@ agent in flight at turn end so completion notifications chain turns.
       Clean verdicts: torn reads none (MVCC single-tx); anonymous reads fine;
       subject-widening no double-count; DI intact; backfill idempotent
       (sequential).
-- [>] AGENT in flight: §22 item 7 collector at priors (§9-§12:
-  source-centric model mapped from existing Austin engine, due-times +
-  governor dispatch (reddit pool K4 1000/100-min), two portfolio floor
-  FRACTIONS as OWNER-RATIFY K2 priors, persist-first admission, liar
-  purge, singleton rescorer, keyword-slice demand reads → substrate,
-  §21 kills).
-- [ ] Then: score cut (per-source g, ONE scoreVersion, after seeder).
+- [x] 082e8e3b collector at priors + aggregate red-team fixes (MERGED legs,
+      532 green, tsc clean): source-centric collector (engines + lanes +
+      pacer by normalized lateness + reddit.requests pool + heartbeats;
+      persist-first admission; singleton rescorer; floors 0.2/0.08
+      OWNER-RATIFY; hot-spike/volume-tracking/schedulers KILLED; liar-purge
+      throw fix) + ALL 9 aggregate findings (UTC rebuild tx — 1,634 corrupt
+      rows→0 proven; watermark rebuild via signals.recorded_at; window-wide
+      geo-free dedupe; /search/recent cut; merges now WRITE entity_redirects
+      — zero-row table before! + redirect-resolved connection fallback;
+      §3 containment-TILING verbatim — CONUS 19,480 rows/127s → 49/57ms,
+      GiST envelope index, state-bbox catalog repair; sargable redirect
+      expansion). 3 migrations drift-applied; API restarted (old corrupting
+      cron dead). Remaining recorded gaps: §10 advance-at-extraction +
+      expectedBatches reconciler unbuilt; unmet family still reads
+      collection_on_demand_ask_events (Phase C); dispatch-level not
+      per-request draws (§12.5 client rewrite later).
+- [x] 62c23681 enrichment refresh → rescorer markDirty (last direct
+      rebuild call site cut).
+- [>] AGENT in flight: §22 item 8 SCORE CUT (per-source A/g calibration,
+  provenance + fame-pin re-key to source anchorPlaceId, ONE
+  scoreVersion, rebuild through coordinator, before/after stats).
 - [ ] Then: Phase C purges (old event tables/writers, markets machinery
       per-consumer, user poll creation re-key, home-place registration).
 - [ ] Then: wave-5 final red team + REASSESSMENT (owner's 'reassess only
