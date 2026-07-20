@@ -49,3 +49,14 @@ Rosetta — absolute numbers conservative; the dev↔release multiplier is the h
   hydration) joins the plan; JS scheduling alone won't fix it.
 - If release JS maxLag ≤ ~50ms in the submit window → the remaining dev jank is
   dev-lane-only; the scheduler deprioritizes to hygiene.
+
+## Dev-lane re-measure after the pending-block cut (2026-07-18, run pb-dev)
+
+Same protocol/sim as the 2026-07-15 dev baseline. Submit-window JS chunks:
+**342 / 286 / 139ms** vs the baseline's **543 / 423 / 240ms** — the worst window
+dropped ~37%. Consistent with the cut's deletions (pinned cover mount, per-row
+rows-visibility Reanimated wrappers, stale-row renders under the cover). ONE run,
+dev lane — directional only. UI maxFrame ~350ms still shows the reveal Fabric mount
+cost: the L4 slicing decision still requires the RELEASE-lane burst re-measure with
+a fresh Release build carrying the pending-block code (the installed Release binary
+predates it).
