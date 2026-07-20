@@ -246,12 +246,37 @@ panel's useSyncExternalStore world-read, today's shape) or through the BEAT-WRIT
   controllers, never a second data path (a push store beside the pull store would be
   the two-ways-to-know-one-fact disease).
 
-**listDetail execution plan (from this verdict — the userProfile pattern, bigger):**
-controller hook = params + meta query + the identity-matched world read + reveal
-admission + the non-world resultsQuery fallback + slice state, folded through
-resolvePageContentBodyState (already canonical there) into a composite data payload;
-Content = the render + interaction hooks (edit session, sort, share, reorder) over
-resolved data; the gate render dies; grep invariant extends to ListDetailPanel.
+**listDetail execution plan (from this verdict — the userProfile pattern, bigger).**
+THE EDIT MAP (cataloged 2026-07-18 — the exact partition, so the split is mechanical):
+- CONTROLLER (stays in ListDetailPanelBody; produces the composite data + commands):
+  params parsing (listId/shareSlug/targetUserId/joinIntent/worldBacked/warmTitle),
+  virtual-All derivation, metaQuery, slug world-launch effect, SLICE STATE
+  (sortOverride/openNow/priceLevel/marketKey + applySlice + sliceRef + the
+  contentSeam/useContentToggle pair — query inputs AND world re-slice writers),
+  world reads (worldResults + worldRevealAdmitted + the JOINT bark), resultsQuery,
+  response resolution (world vs query), activeMarketsQuery (market options feed the
+  slice vocabulary), collaboratorsQuery + meQuery + roster, resolvedName. Data
+  payload = {listId/resolvedListId, listType, viewerRole, defaultSort, isVirtualAll,
+  response, roster, meta, resolvedName, canEdit/canAddPhoto, slice: {effectiveSort,
+  openNow, priceLevel, marketKey, marketOptions, marketChipLabel, applySlice},
+  collaborator commands (join/kick/leave/invite/openProfile), list commands
+  (runListUpdate/handleDeleteList/invalidateListReads)}.
+- CONTENT (new ListDetailContent({data})): row derivations (restaurantRows/dishRows/
+  richRows/richRowsByKey/restaurantsByIdForDishRows), render callbacks
+  (renderRichRowCard/renderEditRowContent), save handlers, entity-ref executor,
+  openRestaurantProfileFromList, openScoreInfo, EDIT SESSION (useEditModeSession +
+  enter/exit + handleSaveOrder + scrollAdapter + orderedEditRows/editIndexByKey +
+  isSavingOrder), collaborator MODAL locals (visible/inviteState/isJoining +
+  payload memo + effects), header menu (openHeaderMenu + ref + registration?
+  — the header-menu REGISTRATION effect must stay mounted while content is pending:
+  if it registers the ⋯ menu for the chrome, it belongs CONTROLLER-side; verify at
+  execution), openListEdit, strip/sort UI derivations (sortOptions/sortChipLabel/
+  countLabel/ownerHandle).
+- WATCH-OUTS: (1) the header ⋯/title SEAT registrations (useTopMostListDetailHeaderSeat
+  writer side) must survive pending — controller-side; (2) the contentSeam/phase
+  (useContentToggle) choreographs slice flips — controller-side (drives query+world);
+  (3) entryId-keyed effects (line ~1262 region) — verify which side; (4) the gate's
+  testIDs (list-detail-loading/failed) move to the shell's pending testID vocabulary.
 
 **TRUNCATION LAW TEXT SIDE EXECUTED 2026-07-18 (L1 completion):** ChromeTitleText =
 THE one chrome title (single-line + title tokens + the ink token) and — the load-
