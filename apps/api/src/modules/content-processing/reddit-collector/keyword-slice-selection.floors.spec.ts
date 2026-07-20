@@ -8,7 +8,7 @@ import {
 
 /**
  * §11 portfolio specs: TWO floors only — unmet + explore FRACTIONS of each
- * dispatch (K2 priors, OWNER-RATIFY §18.1) — with refresh + demand competing
+ * dispatch (K2 priors RATIFIED 2026-07-19, owner docket item 5) — with refresh + demand competing
  * for all remaining capacity via WITHIN-FAMILY percentile normalization
  * (cross-family weights do not exist). Floors guarantee attention when real
  * candidates exist; slack returns to the competitive pool.

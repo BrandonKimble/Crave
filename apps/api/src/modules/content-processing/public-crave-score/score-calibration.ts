@@ -96,9 +96,9 @@ export function laneActivity(
  *             unmeasurable rooms," §8).
  * Empty/immeasurable corpus → neutral pins (1, 1): g = 1 everywhere, i.e.
  * raw v3 behavior until rooms exist to measure.
- * The exact statistics (median / p10) are flagged OWNER-RATIFY(§18.1-style):
- * the plan pins WHERE the constants live (per-lane, per-epoch, measured),
- * not the quantile choices.
+ * The exact statistics (median / p10) were RATIFIED 2026-07-19 (owner
+ * docket item 6): scale-free, whale-resistant, self-updating at each epoch
+ * pin; quiet-room amplification bounded at ~p90/p10.
  */
 export function deriveLaneConstants(activities: number[]): {
   constants: LaneCalibrationConstants;
@@ -127,7 +127,7 @@ export function deriveLaneConstants(activities: number[]): {
   return {
     constants: { aRef, aFloor },
     derivation: {
-      statistic: 'aRef=median(A>0); aFloor=p10(A>0) — OWNER-RATIFY quantiles',
+      statistic: 'aRef=median(A>0); aFloor=p10(A>0) — ratified 2026-07-19',
       sampleSize: measured.length,
       sample: measured.map((value) => Number(value.toPrecision(6))),
     },

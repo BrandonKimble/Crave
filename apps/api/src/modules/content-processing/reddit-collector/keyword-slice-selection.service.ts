@@ -4,7 +4,7 @@
  * The four judgment FAMILIES — unmet, refresh, demand, explore — propose
  * candidates; the §11 portfolio applies:
  * - TWO floors only, each a fraction of the dispatch (K1 sentences; the
- *   FRACTIONS are K2 priors marked OWNER-RATIFY §18.1): UNMET ("user-expressed
+ *   FRACTIONS RATIFIED 2026-07-19, owner docket item 5): UNMET ("user-expressed
  *   gaps always get attention" — a product promise independent of yield) and
  *   EXPLORE ("insurance for the unmeasurable").
  * - Refresh + demand compete for ALL remaining capacity via WITHIN-FAMILY
@@ -45,10 +45,11 @@ import { SignalDemandReadService } from '../../signals/signal-demand-read.servic
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /** §11 keyword recall / dispatch size — fixture-set ~25–100; 25 is the
- *  standing prior (OWNER-RATIFY §18.1). */
+ *  standing prior (§11 recall prior — standing owner item, unchanged). */
 const MAX_TERMS_PER_CYCLE = 25;
 
-/** §11 portfolio floor FRACTIONS of each dispatch — K2 priors, OWNER-RATIFY
+/** §11 portfolio floor FRACTIONS of each dispatch — K2 priors carried from
+ * the old 5/25 + 2/25 quotas; RATIFIED 2026-07-19 (owner docket item 5).
  *  (§18.1). Derived from the pre-cut quotas (5/25, 2/25) so the priors
  *  edition is behaviorally continuous. */
 export const UNMET_FLOOR_FRACTION = 0.2;

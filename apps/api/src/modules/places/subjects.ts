@@ -45,7 +45,7 @@ export const ATTENTION_FRACTION = 1 / 3;
  * Derived from the same constant so the law stays one-knobbed. Two towns at
  * ~half the view each are both subjects but neither covers → straddle; a
  * city at 90% with border slivers covers → the city is the header.
- * OWNER-RATIFY(§18): the 2/3 covering threshold value awaits ratification.
+ * RATIFIED 2026-07-19 (owner docket item 1): the one-knob derivation is law.
  */
 export const COVERING_FRACTION = 1 - ATTENTION_FRACTION;
 
@@ -170,9 +170,9 @@ export function resolveHeaderPlace(
     ) {
       // The commensurate covering place (or the lone subject — with a single
       // subject there is no straddle to reserve "this area" for).
-      // OWNER-RATIFY(§18): the lone-commensurate-NON-covering header behavior
-      // (naming the single subject even below COVERING_FRACTION) awaits
-      // ratification.
+      // RATIFIED 2026-07-19 (owner docket item 2): a lone commensurate
+      // subject names the header even below COVERING_FRACTION — "this area"
+      // stays reserved for genuine straddles/unnamed ground.
       return {
         kind: 'place',
         place: top,

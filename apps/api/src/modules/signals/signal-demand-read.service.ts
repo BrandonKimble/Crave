@@ -303,12 +303,10 @@ export class SignalDemandReadService {
    * Global (unscoped) query demand for search-term subjects — the query-
    * suggestion substrate. Aggregate for completed days + fresh ledger today.
    *
-   * OWNER-RATIFY (red-team 2d): this lane counts CACHED reveals — a 'search'
-   * signal with meta.cached/cacheRevealRequestId weighs the same as a backend
-   * search. §3 says qualifiers ("cached") are judged at read and does not
-   * exclude them here, so counting stands; flagging because the OLD suggestion
-   * substrate counted backend+cache event kinds too, but the owner has not
-   * explicitly ratified cached reveals as suggestion demand.
+   * RATIFIED 2026-07-19 (owner docket item 8): CACHED reveals COUNT — demand
+   * measures people, not serving tiers; meta.cached stays a read-time
+   * qualifier any future reader may judge differently, and act-identity
+   * dedupe guards the replay path.
    */
   async queryDemand(params: QueryDemandParams): Promise<QueryDemandRow[]> {
     const prefix = params.prefix?.trim().toLowerCase() ?? '';
@@ -846,13 +844,14 @@ export class SignalDemandReadService {
    * MAX-dedupes acts per (actor, subject, day) across all matched places (a
    * signal stored at both an ancestor and a member counts once; §3 SET
    * semantics at aggregate grain).
-   * OWNER-RATIFY (read algebra): §3's inheritance text gives ancestors weight
-   * 1 for the whole territory, so a coarse signal whose geo does NOT overlap
-   * a member (a West-Texas-wide search, stored at TX) now reaches an
-   * Austin-anchored engine through the TX row, where the old intersection
-   * storage would not have counted it. That is the ratified §3 wording
-   * ("every town in a statewide search is influenced at full weight") but IS
-   * a delta from the intersection behavior this reader shipped with.
+   * RATIFIED 2026-07-19 (owner docket item 7): containment + ancestors at
+   * weight 1 is THE territory read algebra. A coarse signal (West-Texas-wide
+   * search stored at TX — no finer containing node yet) reaches an
+   * Austin-anchored engine through the TX row; the imprecision is accepted
+   * as SELF-HEALING (organic probes grow finer nodes, coarse signals tile
+   * finer). Consequence: the poll-supply swap onto this algebra is a
+   * MANDATED unification leg, not an optimization — the intersection reader
+   * retires there.
    *
    * Kinds are deliberately unfiltered (self-provisioning, uniform K2 weight
    * 1.0); the kernel is the ONE §4 demand-mass law. Entity identity resolves

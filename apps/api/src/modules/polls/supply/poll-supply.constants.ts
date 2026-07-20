@@ -35,7 +35,8 @@ export const RITUAL_LOCAL_HOUR = 9;
 /** K2 (data; self-erasing prior): viability(place) day-one prior = 15
  *  answers — the participation level at which polls demonstrably produce
  *  strong content. SELF-ERASING via the estimator registry; measured
- *  globally, refined per-place (hierarchical). OWNER-RATIFY(§18.1). */
+ *  globally, refined per-place (hierarchical). Prior value 15 is in the
+ *  ratified §4 text; self-erasure RATIFIED with the priors docket 2026-07-19. */
 export const VIABILITY_PRIOR = 15;
 
 /** K2 (prior strength, inventoried): one pseudo-observation — the weakest
@@ -46,13 +47,13 @@ export const SUPPLY_PRIOR_STRENGTH = 1;
 /** K2 (self-erasing prior): global conversion (answers-per-attention) prior
  *  = 1.0 — "one unit of attention mass converts to about one answer". Neutral
  *  unit prior; §18.6 instruments the real value from the FIRST Sundays.
- *  OWNER-RATIFY(§18.1). */
+ *  RATIFIED 2026-07-19 (owner docket item 4). */
 export const CONVERSION_PRIOR = 1.0;
 
 /** K2 (self-erasing prior): tail-concentration prior = 1.0 (neutral — a flat
  *  answering tail). Measured per cohort as weakest/mean answers; scales the
  *  warm-start prediction down when answering concentrates at the top.
- *  OWNER-RATIFY(§18.1). */
+ *  RATIFIED 2026-07-19 (owner docket item 4). */
 export const TAIL_CONCENTRATION_PRIOR = 1.0;
 
 /** K2 (data; own inventory line): supply-estimator observation half-life =

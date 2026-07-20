@@ -603,23 +603,23 @@ Every scheduler trace has a reader; every heartbeat is staging-proven RED.
    API contract evaluation before ~40).
 6. WEEK-ONE BUILD PRIORITY: instrument conversion + concentration from
    Austin's first Sundays (the warm-start predictor's direct inputs).
-7. §2 gap-fills discovered at build time (red-team d2da636d; code ships the
-   flagged reading, marked `OWNER-RATIFY(§18)` in subjects.ts):
-   (a) "covering" quantified as COVERING_FRACTION = 1 − ATTENTION_FRACTION
-   = 2/3 — "what a covering place leaves uncovered is itself sub-attention";
-   (b) a LONE commensurate but non-covering place (one town at 40%, rest
-   unnamed countryside) IS the header — 'this area' stays reserved for
-   multi-place straddles/unnamed ground. Ratify or amend both.
-8. §1 identity-law AMENDMENT needed (red-team 7aaa66d9, proven on real data):
-   the tuple (country, subdivision, level, name) collides genuinely distinct
-   same-name municipalities in one state (17 gazetteer groups, e.g. two TX
-   "Lakeside"s 4.7° apart) — the merge law minted phantom bboxes that
-   poisoned containing-fallback headers. INTERIM (shipped 43b8a26c):
-   disjoint-bbox observations refuse the union (distinct-place suspect log);
-   the seed skips collision groups. WAVE-5 DESIGN: a distinctness
-   discriminator in the identity law (candidate: countrySecondarySubdivision
-   when the provider chain carries it) so both places can exist as rows —
-   requires index + merge-law rework; decide with owner.
+7. RATIFIED 2026-07-19 (owner docket, one-by-one): (a) COVERING_FRACTION =
+   1 − ATTENTION_FRACTION = 2/3 (one-knob law); (b) lone commensurate
+   non-covering place IS the header ('this area' reserved for genuine
+   straddles/unnamed ground). Both are now §2 law.
+8. §1 identity-law amendment — DESIGN RATIFIED 2026-07-19 (owner docket):
+   the discriminator is the COUNTY AXIS — the tuple grows optional
+   countrySecondarySubdivision (NULLS-NOT-DISTINCT index treatment), fed
+   organically by the provider chain, seed-side via the Census county file
+   join. Follow-up leg builds it (index + merge-law rework + seed join).
+   Until then the 43b8a26c interim holds (disjoint-bbox guard + seed
+   skip-list, 35 towns organic-only).
+9. RATIFIED 2026-07-19 (owner docket, one-by-one): conversion 1.0 +
+   tail-concentration 1.0 warm-start priors (strength 1, self-erasing);
+   portfolio floors 0.20 unmet / 0.08 explore; score pins aRef=median(A>0),
+   aFloor=p10(A>0) per epoch; containment + ancestors-at-weight-1 is THE
+   territory read algebra (poll-supply swap onto it = MANDATED unification
+   leg); cached reveals COUNT in suggestion demand (judge-at-read).
 
 # §19 Projection record (2026-07-16; Austin ~250 DAU vs Waco ~8 DAU, year 1)
 

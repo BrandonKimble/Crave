@@ -450,3 +450,27 @@ agent in flight at turn end so completion notifications chain turns.
 - 2026-07-19: make_interval(days => <bound number>) fails live — Prisma binds JS
   integers as int8 and make_interval has no bigint overload. Cast ::int.
   Symptom class: SQL that only specs ever ran; the live proof caught it.
+
+## RATIFICATION DOCKET — RESOLVED 2026-07-19 (owner, one-by-one)
+
+All 8 items ruled; markers updated in code; master plan §18 items 7-9:
+
+1. COVERING_FRACTION = 2/3 (one-knob derivation) — RATIFIED.
+2. Lone commensurate non-covering place = header — RATIFIED.
+3. Identity-law discriminator = COUNTY AXIS (design of record for the
+   amendment leg; interim guard holds until then) — RATIFIED.
+4. Warm-start priors conversion 1.0 / tail-concentration 1.0 — RATIFIED.
+5. Portfolio floors 0.20 unmet / 0.08 explore — RATIFIED.
+6. Score pins median/p10 per epoch — RATIFIED.
+7. Containment + ancestors-at-weight-1 = THE territory read algebra;
+   poll-supply swap onto the aggregate is now a MANDATED unification leg
+   (intersection reader retires there) — RATIFIED.
+8. Cached reveals count in suggestion demand — RATIFIED.
+
+Still-open markers (future docket, deliberately not ruled today): viability
+"strong content" launch proxy (poll-weekly-ritual.service.ts), reddit lane
+cadences (reddit-collection-adapter.ts), source arrival-rate prior 10
+(collector-estimators.ts), score coverage-derivation interim
+(score-calibration.ts). Plus standing §18 items 1-6 (dispatch-25 recall
+prior, §18.2 fail-policy table, batch quota discovery, ops readers, reddit
+account strategy, week-one instrumentation).
