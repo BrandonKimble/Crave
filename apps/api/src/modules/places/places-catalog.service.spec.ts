@@ -1,11 +1,14 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-call */
 /**
- * §1 identity-law fixtures (plans/geo-demand-foundation-rebuild.md §1, §17):
- * no silent forks — re-sketching the same placeKey (countryCode,
- * subdivisionCode?, providerLevelCode, normalized name) MERGES (bbox widens
- * to union, providerPlaceId adopted as alias, parent edges union) instead of
- * creating a twin row; chain order supplies the DAG's parent edges.
+ * §1 identity-law fixtures (plans/geo-demand-foundation-rebuild.md §1, §17,
+ * §18 item 8): no silent forks — re-sketching the same placeKey (countryCode,
+ * subdivisionCode?, county?, providerLevelCode, normalized name) MERGES (bbox
+ * widens to union, providerPlaceId adopted as alias, parent edges union)
+ * instead of creating a twin row; chain order supplies the DAG's parent
+ * edges. The COUNTY-AXIS decision table (rules c / b′ / a / b / u1–u4) has a
+ * dedicated describe block below.
  */
+import { Prisma } from '@prisma/client';
 import {
   PlacesCatalogService,
   PlaceSketchNode,
@@ -31,6 +34,7 @@ function makePlaceRow(overrides: Record<string, unknown> = {}) {
     providerLevelCode: 'municipality',
     countryCode: 'US',
     subdivisionCode: 'TX',
+    county: null as string | null,
     parentPlaceIds: [],
     centroidLat: null,
     centroidLng: null,
@@ -48,13 +52,18 @@ function makePlaceRow(overrides: Record<string, unknown> = {}) {
 }
 
 function makeHarness(
-  existingByCall: Array<ReturnType<typeof makePlaceRow> | null>,
+  // Candidate rows the identity findMany returns, per sketch-node call.
+  // A bare row is shorthand for a one-candidate set; null for no candidates.
+  existingByCall: Array<
+    ReturnType<typeof makePlaceRow> | ReturnType<typeof makePlaceRow>[] | null
+  >,
 ) {
-  const findFirst = jest.fn();
-  for (const row of existingByCall) {
-    findFirst.mockResolvedValueOnce(row);
+  const findMany = jest.fn();
+  for (const entry of existingByCall) {
+    const rows = entry === null ? [] : Array.isArray(entry) ? entry : [entry];
+    findMany.mockResolvedValueOnce(rows);
   }
-  findFirst.mockResolvedValue(null);
+  findMany.mockResolvedValue([]);
   const create = jest
     .fn()
     .mockImplementation((args: any) =>
@@ -65,16 +74,16 @@ function makeHarness(
     .mockImplementation((args: any) =>
       Promise.resolve(makePlaceRow(args.data)),
     );
-  const findMany = jest.fn().mockResolvedValue([]);
+  const updateMany = jest.fn().mockResolvedValue({ count: 1 });
   const findUniqueOrThrow = jest
     .fn()
     .mockImplementation(() => Promise.resolve(makePlaceRow()));
   const executeRaw = jest.fn().mockResolvedValue(1);
   const prisma: any = {
     place: {
-      findFirst,
       create,
       update,
+      updateMany,
       findMany,
       findUniqueOrThrow,
       // Prisma field-reference stub (crossing-row branch of the WHEREs).
@@ -86,9 +95,9 @@ function makeHarness(
   return {
     service,
     prisma,
-    findFirst,
     create,
     update,
+    updateMany,
     findMany,
     findUniqueOrThrow,
     executeRaw,
@@ -154,7 +163,7 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
       bboxMaxLng: -97.56,
       providerPlaceId: 'tomtom-geom-austin',
     });
-    const { service, create, update, findFirst } = makeHarness([existing]);
+    const { service, create, update, findMany } = makeHarness([existing]);
 
     await service.sketchChain([
       { ...austinNode, name: '  AUSTIN  ' }, // trim/collapse + case-insensitive match
@@ -163,7 +172,7 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     expect(create).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled(); // identical observation → idempotent no-op
     // The identity lookup normalized the name and compared case-insensitively.
-    expect(findFirst.mock.calls[0][0].where.name).toEqual({
+    expect(findMany.mock.calls[0][0].where.name).toEqual({
       equals: 'AUSTIN',
       mode: 'insensitive',
     });
@@ -282,6 +291,318 @@ describe('PlacesCatalogService.sketchChain — §1 identity law', () => {
     const other = '22222222-2222-4222-8222-222222222222';
     const row = makePlaceRow({ parentPlaceIds: [parent, other, parent] });
     expect(placeParentIds(row as any)).toEqual([parent, other]);
+  });
+});
+
+describe('PlacesCatalogService — §1 COUNTY-AXIS decision table (§18 item 8)', () => {
+  // The real Lakeside-TX pair: same name, same subdivision, 4.7° apart.
+  const tarrantLakeside = () =>
+    makePlaceRow({
+      name: 'Lakeside',
+      providerLevelCode: 'Municipality',
+      county: 'Tarrant',
+      bboxMinLat: 32.8,
+      bboxMinLng: -97.53,
+      bboxMaxLat: 32.85,
+      bboxMaxLng: -97.46,
+      createdAt: new Date('2026-07-01T00:00:00Z'),
+    });
+  const sanPatricioLakeside = () =>
+    makePlaceRow({
+      name: 'Lakeside',
+      providerLevelCode: 'Municipality',
+      county: 'San Patricio',
+      bboxMinLat: 28.08,
+      bboxMinLng: -97.89,
+      bboxMaxLat: 28.13,
+      bboxMaxLng: -97.83,
+      createdAt: new Date('2026-07-02T00:00:00Z'),
+    });
+  const nearSanPatricio = {
+    minLat: 28.09,
+    minLng: -97.88,
+    maxLat: 28.12,
+    maxLng: -97.84,
+  };
+  const lakesideNode = (
+    county: string | null,
+    bbox: typeof nearSanPatricio | null,
+  ): PlaceSketchNode => ({
+    name: 'Lakeside',
+    providerLevelCode: 'Municipality',
+    countryCode: 'US',
+    subdivisionCode: 'TX',
+    county,
+    bbox,
+  });
+
+  it('(c) both counties known and SAME → identity match, merges (case-insensitive county)', async () => {
+    const existing = tarrantLakeside();
+    const { service, create, executeRaw } = makeHarness([[existing]]);
+
+    const [place] = await service.sketchChain([
+      lakesideNode('TARRANT', {
+        minLat: 32.81,
+        minLng: -97.52,
+        maxLat: 32.84,
+        maxLng: -97.47,
+      }),
+    ]);
+
+    expect(create).not.toHaveBeenCalled();
+    expect(executeRaw).not.toHaveBeenCalled(); // contained bbox → no widen
+    expect(place.placeId).toBe(existing.placeId);
+  });
+
+  it('(b) both counties known and DIFFERENT with no bbox overlap → distinct place, sibling row created', async () => {
+    const existing = tarrantLakeside();
+    const { service, create, update, updateMany } = makeHarness([[existing]]);
+
+    await service.sketchChain([lakesideNode('San Patricio', nearSanPatricio)]);
+
+    expect(update).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][0].data.county).toBe('San Patricio');
+    expect(create.mock.calls[0][0].data.name).toBe('Lakeside');
+  });
+
+  it('Lakeside-TX fixture: with both siblings stored, an observation resolves to the NEAR (same-county) one', async () => {
+    const tarrant = tarrantLakeside();
+    const sanPatricio = sanPatricioLakeside();
+    const { service, create } = makeHarness([[tarrant, sanPatricio]]);
+
+    const [place] = await service.sketchChain([
+      lakesideNode('San Patricio', nearSanPatricio),
+    ]);
+
+    expect(create).not.toHaveBeenCalled();
+    expect(place.placeId).toBe(sanPatricio.placeId);
+  });
+
+  it('(a) stored county UNKNOWN, observed county, overlapping bbox → row ADOPTS the county (gap-fill, no fork)', async () => {
+    const existing = makePlaceRow({
+      name: 'Lakeside',
+      providerLevelCode: 'Municipality',
+      county: null,
+      bboxMinLat: 28.08,
+      bboxMinLng: -97.89,
+      bboxMaxLat: 28.13,
+      bboxMaxLng: -97.83,
+    });
+    const { service, create, updateMany } = makeHarness([[existing]]);
+
+    const [place] = await service.sketchChain([
+      lakesideNode('San Patricio', nearSanPatricio),
+    ]);
+
+    expect(create).not.toHaveBeenCalled();
+    // Race-safe conditional adoption: only a STILL-county-unknown row adopts.
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { placeId: existing.placeId, county: null },
+      data: { county: 'San Patricio' },
+    });
+    expect(place.placeId).toBe(existing.placeId);
+  });
+
+  it('(a-veto) stored county UNKNOWN but bboxes DISJOINT → no adoption, distinct sibling created', async () => {
+    const existing = makePlaceRow({
+      name: 'Lakeside',
+      providerLevelCode: 'Municipality',
+      county: null, // pre-amendment organic row of the OTHER Lakeside
+      bboxMinLat: 32.8,
+      bboxMinLng: -97.53,
+      bboxMaxLat: 32.85,
+      bboxMaxLng: -97.46,
+    });
+    const { service, create, updateMany } = makeHarness([[existing]]);
+
+    await service.sketchChain([lakesideNode('San Patricio', nearSanPatricio)]);
+
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][0].data.county).toBe('San Patricio');
+  });
+
+  it('(b′) different county but OVERLAPPING bbox → multi-county ground: merges, stored county WINS, disagreement logged', async () => {
+    // Houston law: probes from different parts of one city report different
+    // counties — geometry overrides the county mismatch.
+    const existing = makePlaceRow({
+      name: 'Houston',
+      providerLevelCode: 'Municipality',
+      county: 'Harris',
+      bboxMinLat: 29.5,
+      bboxMinLng: -95.8,
+      bboxMaxLat: 30.1,
+      bboxMaxLng: -95.0,
+    });
+    const { service, create, update, updateMany } = makeHarness([[existing]]);
+    logger.warn.mockClear();
+
+    const [place] = await service.sketchChain([
+      {
+        name: 'Houston',
+        providerLevelCode: 'Municipality',
+        countryCode: 'US',
+        subdivisionCode: 'TX',
+        county: 'Fort Bend',
+        bbox: { minLat: 29.55, minLng: -95.75, maxLat: 29.7, maxLng: -95.6 },
+      },
+    ]);
+
+    expect(create).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled(); // stored county untouched
+    expect(place.placeId).toBe(existing.placeId);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('county disagreement'),
+      expect.objectContaining({ stored: 'Harris', observed: 'Fort Bend' }),
+    );
+  });
+
+  it("(b′ beats a) NULL-county row present but a DIFFERENT-county sibling sits on the observation's ground → sibling absorbs, no adoption", async () => {
+    const nullRow = makePlaceRow({
+      name: 'Lakeside',
+      providerLevelCode: 'Municipality',
+      county: null,
+      bboxMinLat: null,
+      bboxMinLng: null,
+      bboxMaxLat: null,
+      bboxMaxLng: null,
+      createdAt: new Date('2026-06-01T00:00:00Z'),
+    });
+    const sanPatricio = sanPatricioLakeside();
+    const { service, create, updateMany } = makeHarness([
+      [nullRow, sanPatricio],
+    ]);
+
+    const [place] = await service.sketchChain([
+      lakesideNode('Nueces', nearSanPatricio), // disagreeing county, same ground
+    ]);
+
+    expect(create).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(place.placeId).toBe(sanPatricio.placeId);
+  });
+
+  it('(gap-fill race) losing the conditional adoption re-resolves against the settled truth', async () => {
+    const nullRow = makePlaceRow({
+      name: 'Lakeside',
+      providerLevelCode: 'Municipality',
+      county: null,
+      bboxMinLat: 28.08,
+      bboxMinLng: -97.89,
+      bboxMaxLat: 28.13,
+      bboxMaxLng: -97.83,
+    });
+    // A concurrent observer adopted 'San Patricio' into the same row first.
+    const settled = { ...nullRow, county: 'San Patricio' };
+    const { service, create, updateMany, findMany } = makeHarness([
+      [nullRow],
+      [settled],
+    ]);
+    updateMany.mockResolvedValueOnce({ count: 0 }); // lost the race
+
+    const [place] = await service.sketchChain([
+      lakesideNode('San Patricio', nearSanPatricio),
+    ]);
+
+    expect(findMany).toHaveBeenCalledTimes(2); // re-resolved
+    expect(create).not.toHaveBeenCalled(); // rule (c) on the settled row
+    expect(place.placeId).toBe(nullRow.placeId);
+  });
+
+  it('(create race) P2002 on the county-shaped index re-resolves and merges with the winner', async () => {
+    const winner = sanPatricioLakeside();
+    const { service, create, findMany } = makeHarness([null, [winner]]);
+    const p2002 = Object.assign(
+      Object.create(Prisma.PrismaClientKnownRequestError.prototype),
+      { code: 'P2002', message: 'unique violation' },
+    );
+    create.mockRejectedValueOnce(p2002);
+
+    const [place] = await service.sketchChain([
+      lakesideNode('San Patricio', nearSanPatricio),
+    ]);
+
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(place.placeId).toBe(winner.placeId);
+  });
+
+  it('(u1) county-less observation prefers the county-unknown row over county-carrying siblings', async () => {
+    const nullRow = makePlaceRow({
+      name: 'Lakeside',
+      providerLevelCode: 'Municipality',
+      county: null,
+      createdAt: new Date('2026-07-03T00:00:00Z'),
+    });
+    const { service, create } = makeHarness([[tarrantLakeside(), nullRow]]);
+
+    const [place] = await service.sketchChain([lakesideNode(null, null)]);
+
+    expect(create).not.toHaveBeenCalled();
+    expect(place.placeId).toBe(nullRow.placeId);
+  });
+
+  it('(u2) county-less observation with only county-carrying siblings: geometry picks; county untouched', async () => {
+    const tarrant = tarrantLakeside();
+    const sanPatricio = sanPatricioLakeside();
+    const { service, create, updateMany } = makeHarness([
+      [tarrant, sanPatricio],
+    ]);
+
+    const [place] = await service.sketchChain([
+      lakesideNode(null, nearSanPatricio),
+    ]);
+
+    expect(create).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(place.placeId).toBe(sanPatricio.placeId);
+  });
+
+  it('(u4) county-less, several county-carrying siblings, no geometry → deterministic oldest, loudly, NEVER a new row', async () => {
+    const tarrant = tarrantLakeside(); // oldest (2026-07-01)
+    const sanPatricio = sanPatricioLakeside();
+    const { service, create } = makeHarness([[tarrant, sanPatricio]]);
+    logger.warn.mockClear();
+
+    const [place] = await service.sketchChain([lakesideNode(null, null)]);
+
+    expect(create).not.toHaveBeenCalled();
+    expect(place.placeId).toBe(tarrant.placeId);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('ambiguous county-less observation'),
+      expect.objectContaining({ siblingCount: 2 }),
+    );
+  });
+
+  it('county is stored NORMALIZED on create (whitespace collapsed)', async () => {
+    const { service, create } = makeHarness([null]);
+
+    await service.sketchChain([
+      lakesideNode('  San   Patricio ', nearSanPatricio),
+    ]);
+
+    expect(create.mock.calls[0][0].data.county).toBe('San Patricio');
+  });
+
+  it('(c + disjoint) same county but disjoint bboxes → merge refused the widen (defense-in-depth guard stays)', async () => {
+    const existing = tarrantLakeside();
+    const { service, create, executeRaw } = makeHarness([[existing]]);
+    logger.warn.mockClear();
+
+    const [place] = await service.sketchChain([
+      lakesideNode('Tarrant', nearSanPatricio), // same-county homonym defect
+    ]);
+
+    expect(create).not.toHaveBeenCalled();
+    expect(executeRaw).not.toHaveBeenCalled(); // no phantom union
+    expect(place.placeId).toBe(existing.placeId);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('distinct-place suspect'),
+      expect.anything(),
+    );
   });
 });
 

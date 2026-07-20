@@ -79,6 +79,20 @@ const LEVEL_LADDER: ReadonlyArray<{
   { levelCode: 'Country', nameOf: (a) => a.country },
 ];
 
+/**
+ * The county rung's position in the ladder. Nodes FINER than this rung
+ * (Municipality, MunicipalitySubdivision, Neighbourhood) carry the reverse
+ * response's inline countrySecondarySubdivision as their §1 county axis —
+ * the response carries it even when the returned entity is finer (best
+ * effort: some responses omit it; the gap-fill law absorbs late arrivals).
+ * The county rung itself and everything broader get NULL: a county is not
+ * discriminated by itself (county names are unique within a subdivision),
+ * and a state/country is not inside a county.
+ */
+const COUNTY_RUNG_INDEX = LEVEL_LADDER.findIndex(
+  (rung) => rung.levelCode === 'CountrySecondarySubdivision',
+);
+
 /** §16 definitional: 6-rung ladder, most-specific rung free with reverse. */
 const MAX_FORWARD_GEOCODES_PER_PROBE = LEVEL_LADDER.length - 1;
 
@@ -190,10 +204,12 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       address.countrySubdivision?.trim() ||
       null;
 
+    const countyName = address.countrySecondarySubdivision?.trim() || null;
+
     // Build the chain (most specific first) from whatever rungs the response
     // actually names — §2 sketches what was OBSERVED, never a padded ladder.
     const chain: PlaceSketchNode[] = [];
-    for (const rung of LEVEL_LADDER) {
+    for (const [rungIndex, rung] of LEVEL_LADDER.entries()) {
       const name = rung.nameOf(address)?.trim();
       if (!name) {
         continue;
@@ -204,6 +220,9 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
         countryCode,
         // A country is not inside a subdivision — identity stops at itself.
         subdivisionCode: rung.levelCode === 'Country' ? null : subdivisionCode,
+        // County axis only on nodes FINER than the county rung (see
+        // COUNTY_RUNG_INDEX doc).
+        county: rungIndex < COUNTY_RUNG_INDEX ? countyName : null,
         provider: 'tomtom',
       });
     }
@@ -282,10 +301,15 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     centroid: GeoPoint | null;
     providerPlaceId: string | null;
   } | null> {
+    // County-qualified query (§1 county axis): "Lakeside, Tarrant, TX" makes
+    // the limit=1 lookup land on THE observed same-name municipality instead
+    // of whichever the vendor ranks first. Residual wrong-twin bboxes (vendor
+    // ignoring the qualifier) are caught downstream by the merge law's
+    // disjoint-bbox guard.
     const query = encodeURIComponent(
-      node.subdivisionCode
-        ? `${node.name}, ${node.subdivisionCode}`
-        : node.name,
+      [node.name, node.county, node.subdivisionCode]
+        .filter((part): part is string => Boolean(part))
+        .join(', '),
     );
     const url = `${this.geocodeBaseUrl}/${query}.json`;
     const response = await this.governance.draw(
@@ -331,7 +355,14 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     };
   }
 
-  /** Does the catalog already hold a bbox for this identity tuple? */
+  /**
+   * Does the catalog already hold a bbox for this identity tuple? County-axis
+   * aware: a county-carrying node can only be absorbed by its exact-county
+   * row or by a county-unknown row (gap-fill target) — a DIFFERENT-county
+   * same-name sibling's bbox must not suppress the forward geocode, or the
+   * observed twin would stay bbox-less forever. A county-less node keeps the
+   * county-blind read (any candidate's bbox counts, mirroring rules u1–u4).
+   */
   private async catalogKnowsBbox(node: PlaceSketchNode): Promise<boolean> {
     const existing = await this.prisma.place.findFirst({
       where: {
@@ -339,6 +370,20 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
         subdivisionCode: node.subdivisionCode ?? null,
         providerLevelCode: node.providerLevelCode,
         name: { equals: normalizePlaceName(node.name), mode: 'insensitive' },
+        ...(node.county
+          ? {
+              OR: [
+                { county: null },
+                {
+                  county: {
+                    equals: normalizePlaceName(node.county),
+                    mode: 'insensitive',
+                  },
+                },
+              ],
+            }
+          : {}),
+        bboxMinLat: { not: null },
       },
       select: { bboxMinLat: true },
     });

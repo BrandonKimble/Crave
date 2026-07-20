@@ -8,10 +8,15 @@
  * place_geometries (whose PostGIS geometry column lives OUTSIDE the prisma
  * model; any polygon-precise op must go through $queryRaw).
  *
- * §1 identity law: placeKey = (countryCode, subdivisionCode?,
- * providerLevelCode, normalized name). Sketch conflicts NEVER fork a place —
- * they bbox-MERGE (widen to union) and adopt the provider's stable geometry
- * id as an alias when present.
+ * §1 identity law (COUNTY-AXIS amendment, §18 item 8 ratified 2026-07-19):
+ * placeKey = (countryCode, subdivisionCode?, county?, providerLevelCode,
+ * normalized name). The optional COUNTY axis discriminates genuinely
+ * distinct same-name municipalities within one subdivision (the two TX
+ * "Lakeside"s). Sketch conflicts NEVER fork a place — they bbox-MERGE
+ * (widen to union) and adopt the provider's stable geometry id as an alias
+ * when present; whether a county-carrying observation MATCHES a stored row,
+ * GAP-FILLS a county-unknown row, or mints a genuinely distinct sibling is
+ * the resolveIdentity decision table.
  */
 import { Injectable } from '@nestjs/common';
 import { Place, Prisma } from '@prisma/client';
@@ -43,6 +48,14 @@ export interface PlaceSketchNode {
   providerLevelCode: string;
   countryCode: string;
   subdivisionCode?: string | null;
+  /**
+   * COUNTY AXIS (§1 amendment): the provider's county-axis NAME for nodes
+   * FINER than the county rung (a county axis on a county/state/country node
+   * is meaningless — a state is not inside a county — so providers leave it
+   * null there). Optional and best-effort: reverse responses don't always
+   * carry it; the gap-fill law adopts it when it arrives.
+   */
+  county?: string | null;
   bbox?: GeoBbox | null;
   centroid?: GeoPoint | null;
   /** Offline centroid→tz at creation (§1); optional at sketch time. */
@@ -113,9 +126,11 @@ export class PlacesCatalogService {
    * broader node. We therefore process broadest-first so every parent's
    * placeId exists before its child is written.
    *
-   * Identity law per node: match on (countryCode, subdivisionCode?,
-   * providerLevelCode, normalized name), case-INSENSITIVELY on the name (case
-   * is display; identity is not). On conflict: bbox-merge (widen to union),
+   * Identity law per node: match on (countryCode, subdivisionCode?, county?,
+   * providerLevelCode, normalized name), case-INSENSITIVELY on name and
+   * county (case is display; identity is not); the county axis follows the
+   * resolveIdentity decision table (match / gap-fill / distinct sibling).
+   * On conflict: bbox-merge (widen to union),
    * adopt providerPlaceId as alias when ours is absent, union parent edges,
    * and fill still-unknown scalars (centroid/timeZone/localScriptAlias) —
    * never fork, never shrink.
@@ -232,19 +247,141 @@ export class PlacesCatalogService {
     return smallest;
   }
 
-  /** Identity-law lookup: exact tuple, case-insensitive on normalized name. */
-  private findByIdentity(
+  /**
+   * All rows sharing the county-BLIND identity tuple (country, subdivision,
+   * level, lower(name)) — the candidate set the county-axis decision table
+   * (resolveIdentity) chooses among. Deterministically ordered (oldest
+   * first) so ties resolve the same way on every node.
+   */
+  private findIdentityCandidates(
     node: PlaceSketchNode,
     name: string,
-  ): Promise<Place | null> {
-    return this.prisma.place.findFirst({
+  ): Promise<Place[]> {
+    return this.prisma.place.findMany({
       where: {
         countryCode: node.countryCode,
         subdivisionCode: node.subdivisionCode ?? null,
         providerLevelCode: node.providerLevelCode,
         name: { equals: name, mode: 'insensitive' },
       },
+      orderBy: [{ createdAt: 'asc' }, { placeId: 'asc' }],
     });
+  }
+
+  /**
+   * The §1 COUNTY-AXIS decision table (ratified 2026-07-19). Given the
+   * county-blind candidate rows and one observation, decide MATCH / GAP-FILL
+   * / DISTINCT. County comparison is case-insensitive on the normalized name
+   * (same law as place names). Rows, observed county K:
+   *
+   *  (c) K known, candidate county == K            → MATCH, merge.
+   *  (b′) K known, candidate county != K (non-null) BUT its bbox INTERSECTS
+   *       the observation → MATCH into that candidate, stored county WINS,
+   *       disagreement logged. This is the multi-county-municipality law
+   *       (Houston spans Harris/Fort Bend/Montgomery: probes from different
+   *       parts of ONE city report different counties — rule (b) without
+   *       this geometry override would fork every multi-county city). It
+   *       also implements the ratified "UNLESS a sibling row already carries
+   *       a DIFFERENT county with a bbox near the observation" clause: the
+   *       near sibling absorbs the observation instead of the NULL row
+   *       adopting a contested county.
+   *  (a) K known, a county-UNKNOWN candidate exists whose bbox is NOT
+   *      disjoint from the observation (unknown-bbox counts as not-disjoint)
+   *      → GAP-FILL: merge into it and ADOPT K (no fork). Disjoint bboxes
+   *      veto adoption — that NULL row is the OTHER same-name town observed
+   *      before counties existed.
+   *  (b) K known, no candidate passed (c)/(b′)/(a) → genuinely DISTINCT
+   *      place: create a sibling row carrying K (the new index shape admits
+   *      it — counties differ, or NULL vs K).
+   *
+   *  K UNKNOWN (county-less observation — county-rung-and-above nodes,
+   *  fallback mints, providers without county data):
+   *  (u1) a county-unknown candidate exists → MATCH it (the legacy tuple;
+   *       mergeSketch's disjoint-bbox guard still refuses phantom widening).
+   *  (u2) else a candidate whose bbox intersects the observation → MATCH it
+   *       (geometry picks among county-carrying same-name siblings; county
+   *       untouched).
+   *  (u3) else exactly one candidate → MATCH it (pre-amendment behavior;
+   *       the widen guard protects the disjoint case).
+   *  (u4) else (several county-carrying siblings, no geometry to arbitrate)
+   *       → MATCH the deterministic oldest, loudly. NEVER create here: a
+   *       fresh NULL-county row beside county-carrying siblings is pure
+   *       adoption bait for the wrong county later.
+   */
+  private resolveIdentity(
+    candidates: Place[],
+    node: PlaceSketchNode,
+  ): { row: Place; adoptCounty?: string } | { row: null } {
+    if (candidates.length === 0) {
+      return { row: null };
+    }
+    const observedCounty = node.county ? normalizePlaceName(node.county) : null;
+    const sameCounty = (row: Place) =>
+      row.county !== null &&
+      observedCounty !== null &&
+      row.county.toLowerCase() === observedCounty.toLowerCase();
+    const bboxNear = (row: Place) => {
+      const rowBbox = placeBbox(row);
+      return (
+        rowBbox !== null &&
+        node.bbox != null &&
+        bboxIntersectionParts(rowBbox, node.bbox).length > 0
+      );
+    };
+
+    if (observedCounty !== null) {
+      const exact = candidates.find(sameCounty); // (c)
+      if (exact) {
+        return { row: exact };
+      }
+      const contested = candidates.find(
+        (row) => row.county !== null && bboxNear(row),
+      ); // (b′)
+      if (contested) {
+        this.logger.warn(
+          'county disagreement on identity match (multi-county ground) — stored county wins',
+          {
+            placeId: contested.placeId,
+            stored: contested.county,
+            observed: observedCounty,
+          },
+        );
+        return { row: contested };
+      }
+      const adoptable = candidates.find((row) => {
+        if (row.county !== null) return false;
+        const rowBbox = placeBbox(row);
+        const disjoint =
+          rowBbox !== null &&
+          node.bbox != null &&
+          bboxIntersectionParts(rowBbox, node.bbox).length === 0;
+        return !disjoint; // (a)
+      });
+      if (adoptable) {
+        return { row: adoptable, adoptCounty: observedCounty };
+      }
+      return { row: null }; // (b): distinct sibling
+    }
+
+    const countyless = candidates.find((row) => row.county === null); // (u1)
+    if (countyless) {
+      return { row: countyless };
+    }
+    const near = candidates.find(bboxNear); // (u2)
+    if (near) {
+      return { row: near };
+    }
+    if (candidates.length > 1) {
+      // (u4) — candidates are oldest-first; log the unarbitrable ambiguity.
+      this.logger.warn(
+        'ambiguous county-less observation across county-carrying siblings — merging into oldest',
+        {
+          placeId: candidates[0].placeId,
+          siblingCount: candidates.length,
+        },
+      );
+    }
+    return { row: candidates[0] }; // (u3)/(u4)
   }
 
   private async upsertSketch(
@@ -252,46 +389,69 @@ export class PlacesCatalogService {
     parentPlaceId: string | undefined,
   ): Promise<Place> {
     const name = normalizePlaceName(node.name);
-    const existing = await this.findByIdentity(node, name);
-    if (existing) {
-      return this.mergeSketch(existing, node, parentPlaceId);
-    }
-    try {
-      return await this.prisma.place.create({
-        data: {
-          name,
-          providerLevelCode: node.providerLevelCode,
-          countryCode: node.countryCode,
-          subdivisionCode: node.subdivisionCode ?? null,
-          parentPlaceIds: parentPlaceId ? [parentPlaceId] : [],
-          centroidLat: node.centroid?.lat,
-          centroidLng: node.centroid?.lng,
-          bboxMinLat: node.bbox?.minLat,
-          bboxMinLng: node.bbox?.minLng,
-          bboxMaxLat: node.bbox?.maxLat,
-          bboxMaxLng: node.bbox?.maxLng,
-          timeZone: node.timeZone ?? null,
-          localScriptAlias: node.localScriptAlias ?? null,
-          ...(node.provider ? { provider: node.provider } : {}),
-          providerPlaceId: node.providerPlaceId ?? null,
-        },
-      });
-    } catch (error) {
-      // Two concurrent first-sketches of the same node: the DB's identity
-      // constraint (uq_places_identity) makes the fork impossible; the loser
-      // re-reads and MERGES instead. (The reconciler's single-flight makes
-      // this rare; the constraint makes it safe.)
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        const raced = await this.findByIdentity(node, name);
-        if (raced) {
-          return this.mergeSketch(raced, node, parentPlaceId);
+    // Bounded re-resolution loop: every race (create-vs-create P2002,
+    // adopt-vs-adopt on the same NULL-county row) settles by re-reading the
+    // candidates — rows and counties only ever ACCRUE, so a re-run of the
+    // decision table lands on the settled truth.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const candidates = await this.findIdentityCandidates(node, name);
+      const resolved = this.resolveIdentity(candidates, node);
+      if (resolved.row) {
+        if ('adoptCounty' in resolved && resolved.adoptCounty) {
+          // Gap-fill (rule a) must be RACE-SAFE: adopt only if the row is
+          // STILL county-unknown (a concurrent observer may have adopted a
+          // different county first — then the decision table must re-run
+          // against the new truth, possibly minting a distinct sibling).
+          const adopted = await this.prisma.place.updateMany({
+            where: { placeId: resolved.row.placeId, county: null },
+            data: { county: resolved.adoptCounty },
+          });
+          if (adopted.count === 0) {
+            continue; // lost the adoption race — re-resolve
+          }
+          resolved.row.county = resolved.adoptCounty;
         }
+        return this.mergeSketch(resolved.row, node, parentPlaceId);
       }
-      throw error;
+      try {
+        return await this.prisma.place.create({
+          data: {
+            name,
+            providerLevelCode: node.providerLevelCode,
+            countryCode: node.countryCode,
+            subdivisionCode: node.subdivisionCode ?? null,
+            county: node.county ? normalizePlaceName(node.county) : null,
+            parentPlaceIds: parentPlaceId ? [parentPlaceId] : [],
+            centroidLat: node.centroid?.lat,
+            centroidLng: node.centroid?.lng,
+            bboxMinLat: node.bbox?.minLat,
+            bboxMinLng: node.bbox?.minLng,
+            bboxMaxLat: node.bbox?.maxLat,
+            bboxMaxLng: node.bbox?.maxLng,
+            timeZone: node.timeZone ?? null,
+            localScriptAlias: node.localScriptAlias ?? null,
+            ...(node.provider ? { provider: node.provider } : {}),
+            providerPlaceId: node.providerPlaceId ?? null,
+          },
+        });
+      } catch (error) {
+        // Two concurrent first-sketches of the same tuple: the DB identity
+        // index (uq_places_identity, county axis included) makes the fork
+        // impossible; the loser re-resolves and MERGES instead.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          continue; // re-resolve against the winner's row
+        }
+        throw error;
+      }
     }
+    throw new Error(
+      `place identity resolution did not settle after 3 attempts: ` +
+        `${node.countryCode}/${node.subdivisionCode ?? '∅'}/${node.county ?? '∅'}/` +
+        `${node.providerLevelCode}/${name}`,
+    );
   }
 
   /**
@@ -319,13 +479,15 @@ export class PlacesCatalogService {
     const existingBbox = placeBbox(existing);
     // Distinct-place guard (red-team 7aaa66d9 finding 3, the Lakeside-TX
     // phantom): when both bboxes exist and are DISJOINT (no intersection —
-    // definitional, no threshold), the identity tuple has collided two
-    // genuinely different places (same name, same subdivision — e.g. two
-    // Texas "Lakeside"s 4.7° apart). Unioning them mints a phantom region
+    // definitional, no threshold), the identity match has collided two
+    // genuinely different places. Unioning them mints a phantom region
     // that poisons containing-fallback headers for everything in between,
     // and §1's grow-only law makes the poison permanent. Refuse the widen,
-    // log the suspect; the identity-law discriminator amendment is flagged
-    // in the master plan (wave-5).
+    // log the suspect. The COUNTY-AXIS amendment (resolveIdentity) resolves
+    // most of this class upstream, but the guard STAYS as defense in depth:
+    // same-county homonyms, county-less providers, and county-less
+    // observations (rules u1–u4) can still land a disjoint observation on
+    // the wrong row.
     const disjoint =
       existingBbox &&
       node.bbox &&

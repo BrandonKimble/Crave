@@ -487,7 +487,14 @@ All 8 items ruled; markers updated in code; master plan §18 items 7-9:
 1. COVERING_FRACTION = 2/3 (one-knob derivation) — RATIFIED.
 2. Lone commensurate non-covering place = header — RATIFIED.
 3. Identity-law discriminator = COUNTY AXIS (design of record for the
-   amendment leg; interim guard holds until then) — RATIFIED.
+   amendment leg; interim guard holds until then) — RATIFIED. → BUILT
+   2026-07-19: migration 20260720050000_place_county_axis (drift-path
+   applied; :3000 NOT restarted — restart choreography is the owner's),
+   resolveIdentity decision table + race-safe adoption in
+   places-catalog.service.ts, adapter county threading, seed county join
+   (national_place_by_county2020.txt + geocoder principal-county cache in
+   ~/crave-data/gazetteer). 19,496→19,526 places, 19,424 county-filled,
+   Lakeside-TX pair distinct; 606 tests green. See master plan §18 item 8.
 4. Warm-start priors conversion 1.0 / tail-concentration 1.0 — RATIFIED.
 5. Portfolio floors 0.20 unmet / 0.08 explore — RATIFIED.
 6. Score pins median/p10 per epoch — RATIFIED.

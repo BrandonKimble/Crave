@@ -149,6 +149,68 @@ describe('TomtomChainProbeAdapter', () => {
     expect(state?.bbox ?? null).toBeNull();
   });
 
+  it('threads the inline county onto nodes FINER than the county rung ONLY (§1 county axis)', async () => {
+    // Live-verified shape (2026-07-19, Lakeside TX probes): the reverse
+    // response carries countrySecondarySubdivision inline as the BARE county
+    // name even when the returned entity is finer.
+    const { adapter } = buildAdapter({
+      reverseAddresses: [
+        {
+          ...UWS_REVERSE_ENTRY,
+          address: {
+            ...UWS_REVERSE_ENTRY.address,
+            countrySecondarySubdivision: 'New York',
+            municipalitySubdivision: 'Manhattan',
+          },
+        },
+      ],
+      knownBboxIdentities: true,
+    });
+    const result = await adapter.probe(ANCHOR);
+    const countyOf = (level: string) =>
+      result.chain.find((n) => n.providerLevelCode === level)?.county ?? null;
+    // Finer than the county rung: county threaded.
+    expect(countyOf('Neighbourhood')).toBe('New York');
+    expect(countyOf('MunicipalitySubdivision')).toBe('New York');
+    expect(countyOf('Municipality')).toBe('New York');
+    // The county rung itself and broader: a county is not discriminated by
+    // itself, and a state/country is not inside a county — NULL.
+    expect(countyOf('CountrySecondarySubdivision')).toBeNull();
+    expect(countyOf('CountrySubdivision')).toBeNull();
+    expect(countyOf('Country')).toBeNull();
+  });
+
+  it('county-qualifies the forward-geocode query so limit=1 lands on the observed same-name twin', async () => {
+    const { adapter, calls } = buildAdapter({
+      reverseAddresses: [
+        {
+          ...UWS_REVERSE_ENTRY,
+          address: {
+            ...UWS_REVERSE_ENTRY.address,
+            countrySecondarySubdivision: 'New York',
+          },
+        },
+      ],
+      forwardResults: [],
+      knownBboxIdentities: false,
+    });
+    await adapter.probe(ANCHOR);
+    const forward = calls.filter((c) => !c.url.includes('/reverseGeocode/'));
+    const urlFor = (entityTypeSet: string) =>
+      decodeURIComponent(
+        forward.find((c) => c.params.entityTypeSet === entityTypeSet)?.url ??
+          '',
+      );
+    // Municipality (below the county rung) carries the county qualifier…
+    expect(
+      urlFor('Municipality').endsWith('/New York, New York, NY.json'),
+    ).toBe(true);
+    // …while the state rung stays unqualified (no county axis there).
+    expect(urlFor('CountrySubdivision').endsWith('/New York, NY.json')).toBe(
+      true,
+    );
+  });
+
   it('returns an empty chain (a first-class negative observation) when the vendor names nothing', async () => {
     const { adapter } = buildAdapter({ reverseAddresses: [] });
     const result = await adapter.probe(ANCHOR);

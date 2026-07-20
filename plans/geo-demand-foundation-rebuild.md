@@ -607,13 +607,24 @@ Every scheduler trace has a reader; every heartbeat is staging-proven RED.
    1 − ATTENTION_FRACTION = 2/3 (one-knob law); (b) lone commensurate
    non-covering place IS the header ('this area' reserved for genuine
    straddles/unnamed ground). Both are now §2 law.
-8. §1 identity-law amendment — DESIGN RATIFIED 2026-07-19 (owner docket):
-   the discriminator is the COUNTY AXIS — the tuple grows optional
-   countrySecondarySubdivision (NULLS-NOT-DISTINCT index treatment), fed
-   organically by the provider chain, seed-side via the Census county file
-   join. Follow-up leg builds it (index + merge-law rework + seed join).
-   Until then the 43b8a26c interim holds (disjoint-bbox guard + seed
-   skip-list, 35 towns organic-only).
+8. §1 identity-law amendment — BUILT 2026-07-19 (county-axis leg): places
+   grew `county` (provider county NAME, normalized — no stable cross-provider
+   code exists); identity index rebuilt as UNIQUE (country_code,
+   subdivision_code, lower(county), provider_level_code, lower(name)) NULLS
+   NOT DISTINCT (migration 20260720050000); merge law = the resolveIdentity
+   decision table in places-catalog.service.ts (c exact-county match / b′
+   county-disagreement-on-overlapping-ground merges with stored county
+   winning — the multi-county-Houston law / a gap-fill adoption, disjoint-
+   veto, race-safe conditional update / b distinct sibling / u1–u4
+   county-less rules); TomTom adapter threads countrySecondarySubdivision
+   onto below-county-rung nodes and county-qualifies forward geocodes; seed
+   joins Census national_place_by_county2020.txt + a geocoder-resolved
+   principal-county cache (internal-point county for the 1,110 multi-county
+   places). 30 of the 35 skip-listed towns now seeded distinct; 5 remain
+   organic-only (WI city/village twins Pewaukee ×2, Superior ×2 sharing
+   name+state+county, and Waukesha village — county unknown in the 2020
+   relationship, inc. 2021). Disjoint-bbox guard RETAINED as defense in
+   depth.
 9. RATIFIED 2026-07-19 (owner docket, one-by-one): conversion 1.0 +
    tail-concentration 1.0 warm-start priors (strength 1, self-erasing);
    portfolio floors 0.20 unmet / 0.08 explore; score pins aRef=median(A>0),

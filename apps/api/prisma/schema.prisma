@@ -1965,6 +1965,15 @@ model Place {
   providerLevelCode String    @map("provider_level_code") @db.VarChar(64)
   countryCode       String    @map("country_code") @db.VarChar(2)
   subdivisionCode   String?   @map("subdivision_code") @db.VarChar(8)
+  /// COUNTY AXIS (§18 item 8, ratified 2026-07-19): the identity-law
+  /// discriminator for same-name municipalities within one subdivision.
+  /// Stores the provider's county-axis NAME normalized (TomTom
+  /// countrySecondarySubdivision "Tarrant"; Census county name with the
+  /// designator stripped, "Tarrant County" → "Tarrant") — a NAME, not a
+  /// code, because no stable cross-provider county code exists. NULL =
+  /// county unknown (gap-filled by later observations) or meaningless
+  /// (nodes at/above the county rung — a state is not inside a county).
+  county            String?   @db.VarChar(128)
   /// DAG edges captured from the reverse-geocode chain at creation.
   parentPlaceIds    String[]  @default([]) @map("parent_place_ids") @db.Uuid
   centroidLat       Decimal?  @map("centroid_lat") @db.Decimal(10, 8)
@@ -1980,10 +1989,16 @@ model Place {
   promotedAt        DateTime? @map("promoted_at")
 
   // Identity law: silent-fork prevention. The REAL unique constraint is a raw
-  // expression index (migration 20260719062500): UNIQUE (country_code,
-  // subdivision_code, provider_level_code, lower(name)) NULLS NOT DISTINCT —
-  // case-insensitive names + NULL subdivision treated as equal, neither of
-  // which Prisma's @@unique can express. Do not re-add @@unique here.
+  // expression index (migration 20260720050000): UNIQUE (country_code,
+  // subdivision_code, lower(county), provider_level_code, lower(name))
+  // NULLS NOT DISTINCT — case-insensitive names/counties + NULLs treated as
+  // equal, neither of which Prisma's @@unique can express. Do not re-add
+  // @@unique here. NULLS NOT DISTINCT means at most ONE county-unknown row
+  // per (country, subdivision, level, name); a county-carrying row may
+  // coexist with it — whether that coexistence is legitimate (genuinely
+  // distinct places) or a gap-fill (the NULL row adopts the county) is the
+  // MERGE LAW's decision (PlacesCatalogService.resolveIdentity), not the
+  // index's.
   @@index([countryCode, subdivisionCode])
   @@index([providerPlaceId])
   @@map("places")

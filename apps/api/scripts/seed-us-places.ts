@@ -40,10 +40,29 @@ import {
  *  - GEOID becomes providerPlaceId (provider 'census') — a stable alias, per
  *    the §1 alias-adoption law.
  *
+ * COUNTY AXIS (§1 amendment, ratified 2026-07-19): every municipality seeds
+ * with its PRINCIPAL county on the identity tuple, so the 17 same-name-same-
+ * state collision groups (35 towns, previously skip-listed) seed as DISTINCT
+ * rows. County names are normalized to the provider-facing bare form
+ * (probed live 2026-07-19: TomTom countrySecondarySubdivision = "Tarrant",
+ * no designator) — see countyAxisName. For multi-county places (1,110 active
+ * places span 2–5 counties) the principal county = the county containing the
+ * place's Census INTERNAL POINT (resolved once via the Census geocoder into
+ * the cache file below; fallback = first-listed county in FIPS order).
+ * Residual cross-provider county-name disagreements are absorbed at merge by
+ * the county decision table's overlap rule (stored county wins, logged) —
+ * they can not fork.
+ *
  * Inputs (downloaded once to ~/crave-data/gazetteer/, outside git):
  *  - 2024_Gaz_place_national.txt (tab-separated; census.gov gazetteer)
  *  - state.txt (pipe-separated FIPS reference; census.gov) — state display
  *    names come from DATA, not a hardcoded list.
+ *  - place_principal_county2020.txt (pipe-separated, derived 2026-07-19:
+ *    PLACEGEOID|COUNTYGEOID|COUNTYNAME|METHOD). Sources: place→county set
+ *    from www2.census.gov/geo/docs/reference/codes2020/
+ *    national_place_by_county2020.txt; principal pick for multi-county
+ *    places via geocoding.geo.census.gov point-in-county on the gazetteer
+ *    internal point (METHOD=intpt; single|first otherwise).
  *
  * Usage:
  *   yarn places:seed-us            # dry-run: counts + samples, writes nothing
@@ -54,6 +73,10 @@ const GAZETTEER_DIR =
   process.env.GAZETTEER_DIR ?? path.join(os.homedir(), 'crave-data/gazetteer');
 const PLACES_FILE = path.join(GAZETTEER_DIR, '2024_Gaz_place_national.txt');
 const STATES_FILE = path.join(GAZETTEER_DIR, 'state.txt');
+const COUNTIES_FILE = path.join(
+  GAZETTEER_DIR,
+  'place_principal_county2020.txt',
+);
 
 /** WGS-84 meters per degree of latitude (definitional). */
 const METERS_PER_DEGREE_LAT = 111_320;
@@ -84,6 +107,23 @@ export function stripLsadDescriptor(name: string): string {
     }
   }
   return tokens.join(' ');
+}
+
+/** Census county name → the provider-facing county-axis form. TomTom's
+ *  countrySecondarySubdivision is the BARE name (live-probed 2026-07-19:
+ *  "Tarrant", "San Patricio"); Census appends a designator ("Tarrant
+ *  County", "Richmond city"). Reuse the self-deriving lowercase-run strip
+ *  (LSAD descriptors are lowercase: "city", "municipio"), then strip one
+ *  trailing CAPITALIZED designator token from the two dominant families
+ *  (County ~3,000 of ~3,143; Parish = Louisiana). Alaska/PR oddballs
+ *  ("Juneau City and Borough") keep their full form — if TomTom names them
+ *  differently, the merge law's overlap rule absorbs the disagreement
+ *  (logged, no fork), so this stays a best-effort normalization, not a
+ *  correctness gate. */
+export function countyAxisName(censusCountyName: string): string {
+  const stripped = stripLsadDescriptor(censusCountyName);
+  const withoutDesignator = stripped.replace(/\s+(County|Parish)$/, '');
+  return withoutDesignator.length > 0 ? withoutDesignator : stripped;
 }
 
 /** sqrt(ALAND) square centered on the internal point (measured under-estimate). */
@@ -148,6 +188,18 @@ function parseGazetteer(filePath: string): GazetteerRow[] {
   return rows;
 }
 
+/** PLACEGEOID → county-axis name (normalized bare form; see countyAxisName). */
+function parsePrincipalCounties(filePath: string): Map<string, string> {
+  const byGeoid = new Map<string, string>();
+  for (const line of fs.readFileSync(filePath, 'utf8').split('\n')) {
+    const cells = line.trim().split('|');
+    if (cells.length >= 3 && cells[0] && cells[2]) {
+      byGeoid.set(cells[0], countyAxisName(cells[2]));
+    }
+  }
+  return byGeoid;
+}
+
 function parseStateNames(filePath: string): Map<string, string> {
   const byUsps = new Map<string, string>();
   for (const line of fs.readFileSync(filePath, 'utf8').split('\n').slice(1)) {
@@ -161,7 +213,7 @@ function parseStateNames(filePath: string): Map<string, string> {
 
 async function main(): Promise<void> {
   const execute = process.argv.includes('--execute');
-  for (const file of [PLACES_FILE, STATES_FILE]) {
+  for (const file of [PLACES_FILE, STATES_FILE, COUNTIES_FILE]) {
     if (!fs.existsSync(file)) {
       throw new Error(
         `Missing ${file} — download the Census gazetteer inputs first (see header comment).`,
@@ -171,37 +223,69 @@ async function main(): Promise<void> {
 
   const allMunicipalities = parseGazetteer(PLACES_FILE);
   const stateNames = parseStateNames(STATES_FILE);
+  const principalCounties = parsePrincipalCounties(COUNTIES_FILE);
 
-  // Identity-collision guard (red-team 7aaa66d9 finding 3): the §1 identity
-  // tuple (country, subdivision, level, name) cannot distinguish two REAL
-  // same-name municipalities in one state (18 groups in the gazetteer, e.g.
-  // the two Texas "Lakeside"s 4.7° apart). Seeding both would merge them
-  // into one phantom-bbox row that poisons containing-fallback headers.
-  // SKIP every member of a duplicate group, loudly — they enter organically
-  // via §2 probes, where the catalog's disjoint-bbox guard refuses the
-  // phantom union. The identity-law discriminator amendment is flagged for
-  // wave-5.
-  const byIdentity = new Map<string, GazetteerRow[]>();
+  // Identity-collision guard, COUNTY-AXIS edition (§1 amendment, ratified
+  // 2026-07-19): the amended tuple (country, subdivision, COUNTY, level,
+  // name) distinguishes the real same-name-same-state municipalities (17
+  // groups incl. the two Texas "Lakeside"s), so they now seed as distinct
+  // rows. Within a same-name-same-state group, a member is UNSEEDABLE only
+  // when the county axis cannot discriminate it: (i) it shares its principal
+  // county with a sibling (the WI city/village twins — Pewaukee, Superior),
+  // or (ii) its county is UNKNOWN (2020-relationship gap, e.g. Waukesha
+  // village inc. 2021) — a county-less seed row beside a same-name sibling
+  // would merge into it under the county-less rules (u2/u3). Skipped members
+  // enter organically via §2 probes, where the merge law's disjoint-bbox
+  // guard (retained as defense in depth) refuses the phantom union.
+  const byName = new Map<string, GazetteerRow[]>();
   for (const muni of allMunicipalities) {
     const key = `${muni.usps}|${stripLsadDescriptor(muni.name).toLowerCase()}`;
-    byIdentity.set(key, [...(byIdentity.get(key) ?? []), muni]);
+    byName.set(key, [...(byName.get(key) ?? []), muni]);
   }
-  const collisionGroups = [...byIdentity.values()].filter(
-    (group) => group.length > 1,
-  );
-  const collided = new Set(collisionGroups.flat().map((muni) => muni.geoid));
+  const collided = new Set<string>();
+  const collisionNotes: string[] = [];
+  for (const group of byName.values()) {
+    if (group.length < 2) {
+      continue;
+    }
+    const countyOf = (muni: GazetteerRow) =>
+      principalCounties.get(muni.geoid)?.toLowerCase();
+    const unseedable = group.filter((muni) => {
+      const county = countyOf(muni);
+      if (!county) {
+        return true; // (ii) undiscriminable — county unknown
+      }
+      return group.some(
+        (other) => other !== muni && countyOf(other) === county,
+      ); // (i) county shared with a sibling
+    });
+    for (const muni of unseedable) {
+      collided.add(muni.geoid);
+    }
+    if (unseedable.length > 0) {
+      collisionNotes.push(
+        `${stripLsadDescriptor(group[0].name)} (${group[0].usps} ×${unseedable.length}/${group.length})`,
+      );
+    }
+  }
   const municipalities = allMunicipalities.filter(
     (muni) => !collided.has(muni.geoid),
   );
-  if (collisionGroups.length > 0) {
+  if (collided.size > 0) {
     console.log(
-      `SKIPPED ${collided.size} municipalities in ${collisionGroups.length} same-name-same-state identity collisions (organic §2 entry): ` +
-        collisionGroups
-          .map(
-            (g) =>
-              `${stripLsadDescriptor(g[0].name)} (${g[0].usps} ×${g.length})`,
-          )
-          .join(', '),
+      `SKIPPED ${collided.size} municipalities the county axis cannot discriminate from a same-name sibling (organic §2 entry): ` +
+        collisionNotes.join(', '),
+    );
+  }
+  const countyless = municipalities.filter(
+    (muni) => !principalCounties.get(muni.geoid),
+  );
+  if (countyless.length > 0) {
+    // 2024 gazetteer places absent from the 2020 relationship file (new
+    // incorporations): seed with county UNKNOWN — the §1 gap-fill law adopts
+    // the county from the first organic probe.
+    console.log(
+      `${countyless.length} municipalities lack a 2020 principal county (seed county-unknown; organic gap-fill).`,
     );
   }
   const missingStates = [
@@ -258,6 +342,10 @@ async function main(): Promise<void> {
           providerLevelCode: 'Municipality',
           countryCode: 'US',
           subdivisionCode: muni.usps,
+          // §1 county axis: principal county (bare provider-facing form).
+          // State/country nodes below carry none — a state is not inside a
+          // county.
+          county: principalCounties.get(muni.geoid) ?? null,
           centroid: { lat: muni.lat, lng: muni.lng },
           bbox: bboxFromLandArea(muni.lat, muni.lng, muni.landAreaM2),
           provider: 'census',
