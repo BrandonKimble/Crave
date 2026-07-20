@@ -153,3 +153,28 @@ prepare pipeline (parse_source_deltas / prepare_pin_label_output / prepare_dot_o
 leaving only the Mapbox apply calls on main; plus coalescing the covered/enter/live
 triple-apply. Build the mach-clock event log as part of that change per the map
 methodology. Release re-measure rides that change, not this one.
+
+## Catalog arc, deep half step 1: THE ENTER-FRAME DEDUP (2026-07-19)
+
+[FRAMEDBG] (new dev probe in the render controller) proved the mechanism: the
+hidden_preload|covered frame applies the sources (rev v1 across all four families),
+then the enter frame RE-CARRIES the identical delta at identical revisions — the
+217ms enter block was a byte-duplicate re-apply. The pre-staging design ALREADY
+EXISTED (hidden_preload); the enter frame just couldn't know its sources were
+resident.
+
+LANDED (Swift): a revision-dedup gate in the enter case — when every family's
+incoming revision is non-empty and equals the applied-revision ledger, the enter
+frame rides the existing battle-tested resident-unchanged fast path
+([applydedup] NSLog in every configuration, mirroring [applyslow]).
+
+MEASURED (dev, n=713): enter block **217.5 → 111.4ms (-49%)**; reveal cluster total
+**362 → 250ms (-31%)**. The remaining 111ms = presentation.reveal_preroll_reconcile
+(~99ms pin/label/dot output prep — the legitimate ONE-TIME roster work, no longer
+duplicated). Matrix 21/21; pins/badges/dots/cards content-verified on screen.
+
+REMAINING LEVERS (recorded, not built): off-main the preroll prepare pipeline (the
+true threading arc — inout-state split); defer the live_update frame (53ms mid-ramp)
+behind enter-settled; the 160ms canonical fade + STEP-3 re-anchor mean the snap
+verdict now needs the OWNER'S EYE on device — sim video at 50ms sampling cannot
+adjudicate a 160ms ramp under recording load.

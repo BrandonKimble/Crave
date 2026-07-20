@@ -825,6 +825,14 @@ const createNativeRenderFramePayload = (
   );
   const nativePayloadSourceDeltaMapDurationMs =
     resolveRenderControllerPerfNow() - sourceDeltaMapStartedAtMs;
+  if (__DEV__) {
+    // [FRAMEDBG] attribution probe (catalog deep-half): which submits carry deltas,
+    // and do revisions repeat across the covered/enter/live triple?
+    // eslint-disable-next-line no-console
+    console.log(
+      `[FRAMEDBG] submit kind=${payload.visualFrameTransaction.kind} phase=${payload.visualFrameTransaction.presentationPhase ?? 'nil'} gen=${payload.frameGenerationId} deltas=${sourceDeltas?.length ?? 0} rev=${JSON.stringify(payload.frame.sourceRevisions)}`
+    );
+  }
   const nativePayload = {
     instanceId: payload.instanceId,
     ownerEpoch: payload.ownerEpoch,

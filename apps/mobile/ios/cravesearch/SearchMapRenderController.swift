@@ -1846,11 +1846,40 @@ final class SearchMapRenderController: RCTEventEmitter {
             didSyncResidentFrame = true
             sourceAdmissionOutcome = hasSourcePayload ? "sources_cleared_hidden" : "presentation_only_clear_hidden"
           case "enter":
+            // CATALOG DEEP-HALF DEDUP (2026-07-19; attributed via [FRAMEDBG] + [applyslow]):
+            // the enter frame re-carries the SAME source deltas the covered hidden_preload
+            // frame already applied — identical revisions across all four families — and
+            // re-ran the full parse+reconcile (~217ms on main, n=713) on the frames
+            // immediately before the pin fade ramp (the owner's "pins snap in" regression).
+            // The applied-revision ledger is the truth of what is resident: when every
+            // family's incoming revision is NON-EMPTY and equals the ledger, the payload is
+            // a byte-duplicate — ride the resident-unchanged fast path below. Ledger honesty
+            // (wave-4 §3) guarantees the ledger equals the last resident-publishing ack,
+            // including reuse/short-circuit paths, so a match can never be stale.
+            let sourcesAlreadyResident: Bool = {
+              guard shouldApplySourcePayload, let dedupState = self.instances[instanceId] else {
+                return false
+              }
+              let familyRevisions: [(String, String)] = [
+                (dedupState.pinSourceId, frameSourceRevisions["pins"] ?? ""),
+                (dedupState.pinInteractionSourceId, frameSourceRevisions["pinInteractions"] ?? ""),
+                (dedupState.dotSourceId, frameSourceRevisions["dots"] ?? ""),
+                (dedupState.labelCollisionSourceId, frameSourceRevisions["labelCollisions"] ?? ""),
+              ]
+              return familyRevisions.allSatisfy { sourceId, revision in
+                !revision.isEmpty && dedupState.appliedJsSourceRevisionBySourceId[sourceId] == revision
+              }
+            }()
+            if sourcesAlreadyResident {
+              // Attribution honesty: the skip logs in every configuration, like [applyslow].
+              NSLog("[applydedup] enter sources already resident — snapshot skipped gen=%@", frameGenerationId)
+            }
             try markFrameSourceAdmission(sourceReady: false)
             try applyPresentation(
-              deferPrerollReconcileToSnapshot: sourceFrameIsReady && shouldApplySourcePayload
+              deferPrerollReconcileToSnapshot:
+                sourceFrameIsReady && shouldApplySourcePayload && !sourcesAlreadyResident
             )
-            if sourceFrameIsReady && shouldApplySourcePayload {
+            if sourceFrameIsReady && shouldApplySourcePayload && !sourcesAlreadyResident {
               // Real new/changed source data → apply the delta. applySnapshot sets source
               // readiness SYNCHRONOUSLY (applyRenderFrameSnapshotPayload assigns
               // sourceReadyFrameGenerationId = generationId). Readiness is NOT gated on any async
