@@ -77,3 +77,24 @@ reveal), and FlashList virtualization does not govern the visible-window mount c
 WARRANTED — it is the load-bearing fix for this burst**, not optional polish. The
 dev-lane press-up improvement (543→342ms) was real but was the COVER's cost, not the
 mount's. Rosetta-sim caveat unchanged (absolute numbers conservative).
+
+## Landing-clock release verification (2026-07-19, builds 2+3)
+
+Three warm-binary release runs, one submit each (marks did not capture — window
+attribution by shape; single-run variance is REAL, judge by the spread):
+
+| | pre-clock | clock v1 (2 beats) | clock v2 (progressive 4/+6) |
+|---|---|---|---|
+| JS worst / 2nd | 174.8 / 131.1 | 153.4 / 109.3 | 155.3 / 117.6 |
+| UI p95 worst / 2nd | 189.8 / 169.3 | 184.7 / 101.1 | 170.3 / 162.7 |
+| floorFps worst | 5.3 | 5.4 | 5.9 |
+
+HONEST VERDICT: the clock delivered a MODEST, consistent improvement over pre-clock
+(JS worst -11%, UI worst -10%; one run showed a burst window halved) — but v1 vs v2
+cannot be discriminated at n=1 (101 vs 162 on window 2 = variance), and the residual
+~160-185ms UI windows + floorFps 5-9 persist across ALL runs. ROW-MOUNT SLICING IS
+SATURATED as a lever: the remaining burst is likely NOT the list (candidates: the
+MARKER/pin reveal ramp + camera work on the native side — which connects to the
+owner's known "pins SNAP instead of fading" reveal regression — and the world-commit
+fan-out). NEXT: attribute the residual window (map-side instrumentation) BEFORE any
+further slicing; do not add clock complexity on an unattributed cost.
