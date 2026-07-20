@@ -157,15 +157,89 @@ const getPendingBlockListDataSnapshot = (): SearchMountedResultsListDataSnapshot
   return pendingBlockListDataSnapshot;
 };
 
+// ─── THE CONTENT-LANDING CLOCK (L4 law 2 — release-measured 2026-07-19: the reveal
+// burst is the VISIBLE-WINDOW row mount landing in ONE commit, ~175ms JS + ~190ms UI
+// p95; FlashList virtualization does not govern it). The fence release is now TWO
+// BEATS: beat one lands the ABOVE-FOLD slice (readiness joins there — the reveal
+// proceeds; at the middle snap the fold covers what the slice shows), and the full
+// set lands on the next frame pair. One long frame becomes two short ones; the
+// remaining rows are below the fold for the ~32ms gap. Only a NEW world landing
+// slices (the fence's episode-open transition) — pagination appends bypass the fence
+// (no live txn) and land whole, as before.
+const LANDING_ABOVE_FOLD_ROWS = 4;
+let landingSliceBase: SearchMountedResultsListDataSnapshot | null = null;
+let landingSliceSnapshot: SearchMountedResultsListDataSnapshot | null = null;
+let landingSliceTimer: ReturnType<typeof requestAnimationFrame> | null = null;
+const landingClockListeners = new Set<() => void>();
+
+const scheduleLandingClockFullBeat = (): void => {
+  if (landingSliceTimer != null) {
+    return;
+  }
+  landingSliceTimer = requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      landingSliceTimer = null;
+      landingSliceBase = null;
+      landingSliceSnapshot = null;
+      if (__DEV__) {
+        console.log(`[LANDING] full beat t=${performance.now().toFixed(1)}`);
+      }
+      landingClockListeners.forEach((listener) => {
+        listener();
+      });
+    });
+  });
+};
+
+const getLandingSlicedSnapshot = (
+  base: SearchMountedResultsListDataSnapshot
+): SearchMountedResultsListDataSnapshot => {
+  if (landingSliceSnapshot == null || landingSliceBase !== base) {
+    landingSliceBase = base;
+    landingSliceSnapshot = {
+      ...base,
+      primaryData: base.primaryData.slice(0, LANDING_ABOVE_FOLD_ROWS),
+      primaryExtraData: 'landing-above-fold',
+      secondaryData: base.secondaryData.slice(0, LANDING_ABOVE_FOLD_ROWS),
+      secondaryExtraData: 'landing-above-fold',
+    };
+    if (__DEV__) {
+      console.log(
+        `[LANDING] above-fold beat rows=${landingSliceSnapshot.primaryData.length}/${base.primaryData.length} t=${performance.now().toFixed(1)}`
+      );
+    }
+    scheduleLandingClockFullBeat();
+  }
+  return landingSliceSnapshot;
+};
+
+let wasRedrawEpisodeLive = false;
+
 const getMotionFencedListDataSnapshot = (): SearchMountedResultsListDataSnapshot => {
   const surfaceSnapshot = getSearchSurfaceRuntime().getSnapshot();
   if (surfaceSnapshot.redrawTransaction != null) {
+    wasRedrawEpisodeLive = true;
     return getPendingBlockListDataSnapshot();
   }
-  if (motionFencedListDataSnapshot == null || surfaceSnapshot.sheetMotionSettled) {
-    motionFencedListDataSnapshot = getSearchMountedResultsListDataSnapshot();
+  const base =
+    motionFencedListDataSnapshot == null || surfaceSnapshot.sheetMotionSettled
+      ? (motionFencedListDataSnapshot = getSearchMountedResultsListDataSnapshot())
+      : motionFencedListDataSnapshot;
+  // Episode just released → the landing clock's above-fold beat. The slice arms once
+  // per landing (keyed by base identity) and self-clears on the full beat.
+  if (wasRedrawEpisodeLive) {
+    wasRedrawEpisodeLive = false;
+    if (base.primaryData.length > LANDING_ABOVE_FOLD_ROWS) {
+      return getLandingSlicedSnapshot(base);
+    }
+    return base;
   }
-  return motionFencedListDataSnapshot;
+  if (landingSliceBase === base && landingSliceSnapshot != null) {
+    // Mid-landing re-reads (other subscribers notifying) stay on the sliced beat
+    // until the full beat fires — one clock, no interleaved full renders.
+    return landingSliceSnapshot;
+  }
+  return base;
 };
 
 const SEARCH_MOUNTED_RESULTS_LIST_DATA_AUTHORITY: SearchMountedResultsListDataAuthority = {
@@ -183,9 +257,13 @@ const SEARCH_MOUNTED_RESULTS_LIST_DATA_AUTHORITY: SearchMountedResultsListDataAu
     // Fence-release leg: the sheetReady settle flip must re-notify so a data update
     // held during the slide lands right after settle (the quiet window).
     const unsubscribeFenceRelease = getSearchSurfaceRuntime().subscribe(listener);
+    // Landing-clock leg: the full beat re-notifies so the remainder lands one frame
+    // pair after the above-fold slice.
+    landingClockListeners.add(listener);
     return () => {
       unsubscribe();
       unsubscribeFenceRelease();
+      landingClockListeners.delete(listener);
     };
   },
 };
