@@ -126,3 +126,30 @@ buys seconds of idle), so the reveal joint applies no native mutations and the r
 is opacity-only — the exact co-mounted-toggle precedent (toggle reveals measure
 clean for exactly this reason). Confirmation step when that arc opens: flip
 lodDebugLoggingEnabled for the native-side timing narrative.
+
+## Catalog arc, step 1: THE RAMP HOLD (2026-07-19) + the native decomposition
+
+Native truth via the always-on [applyslow] instrument (no rebuild needed — any
+main-thread section >30ms logs in every configuration), canonical Austin run (n=713):
+- `covered` frame apply: 83ms (parse_source_deltas 39.7)
+- `enter_requested` frame apply: **217.5ms** (parse 39.2 + prepare_pin_label_output
+  57.2 + prepare_dot_output 32.6 + reconcile rest) — ends ~130ms BEFORE
+  directEnterStart (the ramp)
+- `live` frame apply: 62ms, landing ~390ms into the ramp
+Total ≈ 360ms of main-thread native work clustered at the reveal.
+
+LANDED: the landing clock's post-above-fold beats now hold on the map's
+presentation_enter_settled signal (one producer in the render owner; 700ms bounded
+fallback for map-less episodes) — Fabric row mounts can no longer land during the pin
+fade. Dev-proven: above-fold at reveal → "ramp hold released (enter_settled)" at
++676ms → remaining beats after. Matrix 21/21.
+
+HONEST VISUAL VERDICT: the fade is still front-compressed (0→~68% of plateau in one
+50ms video sample — marginally better than pre-hold, not fixed). The dominant frame
+eater is the 217ms enter_requested apply block adjacent to the ramp, NOT the row
+mounts. THE REMAINING LEVER (the arc's deep half, a concerted map change): split the
+prepare pipeline (parse_source_deltas / prepare_pin_label_output / prepare_dot_output
+— pure data transforms currently taking `inout state` on main) off the main thread,
+leaving only the Mapbox apply calls on main; plus coalescing the covered/enter/live
+triple-apply. Build the mach-clock event log as part of that change per the map
+methodology. Release re-measure rides that change, not this one.

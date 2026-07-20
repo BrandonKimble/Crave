@@ -1,5 +1,6 @@
 import React from 'react';
 import { offerTransitionJoinInput } from '../../../../navigation/runtime/transition-engine/transition-transaction';
+import { notifyMapEnterSettled } from '../../runtime/map/search-map-enter-settled-signal';
 import { readCurrentResidentWorldEntry } from '../../../../navigation/runtime/resident-world-read-registry';
 import {
   isSearchPresentationAtFloor,
@@ -2727,6 +2728,10 @@ const useSearchMapNativeRenderOwnerStatus = ({
                   settledAtMs: event.settledAtMs,
                 });
               });
+              // Landing-clock ramp hold (catalog arc): release the results list's
+              // post-above-fold beats — the pin fade just finished, the main thread
+              // is free for Fabric row mounts.
+              notifyMapEnterSettled();
               return;
             }
             if (event.type === 'presentation_toggle_settled') {

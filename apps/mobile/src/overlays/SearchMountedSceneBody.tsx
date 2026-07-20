@@ -42,6 +42,7 @@ import {
   type SearchMountedResultsListDataSnapshot,
 } from '../screens/Search/runtime/shared/search-mounted-results-data-store';
 import { markSearchResultsListAdmissionCounter } from '../screens/Search/runtime/shared/search-results-list-admission-attribution';
+import { subscribeMapEnterSettled } from '../screens/Search/runtime/map/search-map-enter-settled-signal';
 import {
   getSearchSurfaceRuntime,
   type SearchSurfaceResultsBodyBundle,
@@ -172,11 +173,45 @@ const LANDING_ABOVE_FOLD_ROWS = 4;
 // +LANDING_SLICE_STEP rows per free frame pair until complete (idle-frame SLICES,
 // plural — the design's words).
 const LANDING_SLICE_STEP = 6;
+// THE RAMP HOLD (catalog arc 2026-07-19 — the attributed snap mechanism): the pin
+// fade ramp starts right after the reveal, and the frames it runs on are NOT idle —
+// the live frame apply + Fabric row mounts were eating them (the owner's "pins snap
+// in"). The clock's post-above-fold beats therefore wait for the map's
+// enter-settled signal; episodes with no map enter release via the bounded fallback.
+const LANDING_RAMP_HOLD_FALLBACK_MS = 700;
 let landingSliceBase: SearchMountedResultsListDataSnapshot | null = null;
 let landingSliceSnapshot: SearchMountedResultsListDataSnapshot | null = null;
 let landingSliceCount = 0;
 let landingSliceTimer: ReturnType<typeof requestAnimationFrame> | null = null;
+let landingRampHoldRelease: (() => void) | null = null;
 const landingClockListeners = new Set<() => void>();
+
+const armLandingRampHold = (): void => {
+  if (landingRampHoldRelease != null) {
+    return;
+  }
+  let released = false;
+  let unsubscribe: (() => void) | null = null;
+  let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  const release = (reason: string): void => {
+    if (released) {
+      return;
+    }
+    released = true;
+    landingRampHoldRelease = null;
+    unsubscribe?.();
+    if (fallbackTimer != null) {
+      clearTimeout(fallbackTimer);
+    }
+    if (__DEV__) {
+      console.log(`[LANDING] ramp hold released (${reason}) t=${performance.now().toFixed(1)}`);
+    }
+    scheduleLandingClockNextBeat();
+  };
+  landingRampHoldRelease = () => release('teardown');
+  unsubscribe = subscribeMapEnterSettled(() => release('enter_settled'));
+  fallbackTimer = setTimeout(() => release('fallback'), LANDING_RAMP_HOLD_FALLBACK_MS);
+};
 
 const scheduleLandingClockNextBeat = (): void => {
   if (landingSliceTimer != null) {
@@ -239,7 +274,9 @@ const getLandingSlicedSnapshot = (
         `[LANDING] above-fold beat rows=${landingSliceSnapshot.primaryData.length}/${base.primaryData.length} t=${performance.now().toFixed(1)}`
       );
     }
-    scheduleLandingClockNextBeat();
+    // The remainder waits for the pin fade (or the fallback) — ramp frames are not
+    // idle frames.
+    armLandingRampHold();
   }
   return landingSliceSnapshot;
 };
