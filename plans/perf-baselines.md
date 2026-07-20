@@ -197,3 +197,27 @@ Residual UI worst window (80.7ms p95 / floorFps 8 in the worst window) =
 the remaining one-time preroll reconcile (~99ms) + mid-ramp live_update apply
 (~53ms); those are the recorded next levers. Fade/snap verdict on the pins now
 belongs to the owner's eye on device.
+
+## Catalog arc, deep half step 2: OFF-MAIN PREROLL PREPARE (2026-07-19)
+
+The preroll reconcile split into three stages: stage 1 (main — inputs + marker
+render state, reads the live LodEngine), the pure PREPARE stage on a background
+queue (value-copy InstanceState), and the apply tail (main — Mapbox + ledger).
+pendingAsyncPrerollPrepareToken = BOTH the enter-start fence and the staleness
+epoch (every family-state writer clears it; a dead token falls back to the
+always-correct sync reconcile).
+
+NATIVE MAIN-THREAD PROOF (identical in dev and Release [applyslow]):
+enter-block main sections >30ms = ZERO (was 111ms post-dedup / 217ms pre-dedup).
+[applybg] preroll_async.prepare ~45-52ms rides the background queue; the
+completion applies on main in ~1.2ms. Reveal main work remaining: covered source
+parse ~46ms + mid-ramp live apply ~31ms (the recorded next levers).
+
+RELEASE LANE (warm-binary, 3 runs): JS maxLag worst 107.8 / 42.6 / (dedup-run
+45.4) — holds at the dedup level, burst class stays dead. UI p95 worst window:
+175.4 / 157.1 vs the dedup run's 80.7 — HONEST FLAG: this window is
+UNATTRIBUTED (native main sections identical across runs), varies wildly, and
+its floorFps ~6 profile smells like startup/tile-raster or the same UI work now
+packed tighter because the reveal no longer serializes behind the 99ms stall.
+Needs mark-aligned window attribution before any conclusion; do NOT read it as
+a regression claim. The fade/snap feel verdict = OWNER'S EYE on device.
