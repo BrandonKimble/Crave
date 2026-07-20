@@ -98,3 +98,31 @@ MARKER/pin reveal ramp + camera work on the native side — which connects to th
 owner's known "pins SNAP instead of fading" reveal regression — and the world-commit
 fan-out). NEXT: attribute the residual window (map-side instrumentation) BEFORE any
 further slicing; do not add clock complexity on an unattributed cost.
+
+## THE RESIDUAL BURST — ATTRIBUTED (2026-07-19, map-side attribution run)
+
+One dev run, samplers + full timeline logs + 10fps video. The ONE bad UI window
+(maxFrame **255.3ms**, window ending now=9140729) contains, in order:
+`[CATALOG] push n=713 invisible=43` → the txn's `join:mapFrame` ack (t=9140458) →
+`revealed` (t=9140458.6) → the landing clock's above-fold beat (t=9140461). JS worst
+windows (384/285/215ms) bracket the same instant (submit fan-out + landing beats).
+
+**VERDICT: the residual reveal burst is the NATIVE APPLICATION OF THE 713-ENTRY
+CANDIDATE CATALOG + frame at the reveal joint** — not row mounting (saturated, as
+measured). The catalog legitimately carries the full coverage set (dots need it);
+the cost is applying it in one transaction ON the reveal frame.
+
+**THE FADE REGRESSION IS THE SAME ROOT**: the pin ramp starts inside that ~255ms
+stall — most of the fade's frames drop, so pins read as SNAPPING in. Video: green-px
+series 0→138→500→617→648 at 100ms samples — the ramp's first half compressed into
+one step. Explains the owner's "occasionally fades on back-to-back searches" (warm
+resubmits have small native deltas → no stall → visible fade).
+
+**FIX DIRECTION (the next map arc — NOT executed; the map is a concerted-effort
+surface and the proper mach-clock instrument gets built as part of it):** the
+invisible-resident machinery already exists (43/713 were warm this run) — pre-stage
+the FULL catalog as invisible residents DURING THE PENDING WINDOW (the pending block
+buys seconds of idle), so the reveal joint applies no native mutations and the ramp
+is opacity-only — the exact co-mounted-toggle precedent (toggle reveals measure
+clean for exactly this reason). Confirmation step when that arc opens: flip
+lodDebugLoggingEnabled for the native-side timing narrative.
