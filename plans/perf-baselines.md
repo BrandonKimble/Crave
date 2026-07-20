@@ -60,3 +60,20 @@ dev lane — directional only. UI maxFrame ~350ms still shows the reveal Fabric 
 cost: the L4 slicing decision still requires the RELEASE-lane burst re-measure with
 a fresh Release build carrying the pending-block code (the installed Release binary
 predates it).
+
+## Release-lane re-measure with the pending-block code (2026-07-19, run baseline-rel-1784508888)
+
+Fresh Release build (pending block + strip-immediate + truncation law), warm-binary +
+fresh-session protocol. JS windows: **174.8 / 131.1 / 100.1ms**; UI p95Frame:
+**189.8 / 169.3ms**; floorFps **5.3-9.3** in the burst windows. (Marks did not land in
+the os_log capture this run — window attribution is by shape, matching the 7-15
+baseline's reveal-burst signature.)
+
+**VERDICT — THE L4 DECISION INPUT:** the reveal burst PERSISTS in release, essentially
+unchanged (7-15: JS 164 + UI 172-180). Expected: the pending-block cut deliberately
+did not move row-landing timing (the fence still lands ALL rows in one commit at the
+reveal), and FlashList virtualization does not govern the visible-window mount cost.
+**L4 law 2's sliced content landing (above-fold rows first, idle-slice remainder) is
+WARRANTED — it is the load-bearing fix for this burst**, not optional polish. The
+dev-lane press-up improvement (543→342ms) was real but was the COVER's cost, not the
+mount's. Rosetta-sim caveat unchanged (absolute numbers conservative).
