@@ -183,6 +183,31 @@ export class PoolRegistry {
     return this.drawLedger;
   }
 
+  /**
+   * Ledger-only declared-vs-actual pair for a draw whose WINDOW was already
+   * consumed elsewhere (dispatch-level admission consumed the estimate;
+   * actuals arrive at async completion). Never consumes capacity — it feeds
+   * the §14.2 drift instrument only.
+   */
+  recordActualPair(
+    poolName: string,
+    workClass: string,
+    declared: number,
+    actual: number,
+    at: Date = new Date(),
+  ): void {
+    const pool = this.requirePool(poolName);
+    this.drawLedger.push({
+      poolName,
+      credential: pool.credential,
+      declared,
+      actual,
+      reservedAt: at,
+      reconciledAt: at,
+      workClass,
+    });
+  }
+
   /** Measured drift per work class: actual ÷ declared (1 = perfect). */
   measureDrift(workClass: string): number | null {
     const rows = this.drawLedger.filter(

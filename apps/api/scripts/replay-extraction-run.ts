@@ -13,7 +13,7 @@ type CliOptions = {
   community?: string;
   start?: string;
   end?: string;
-  pipeline?: 'chronological' | 'keyword' | 'archive' | 'on-demand';
+  pipeline?: 'chronological' | 'keyword' | 'archive';
   activate: boolean;
 };
 
@@ -124,13 +124,8 @@ function parseArgs(argv: string[]): CliOptions {
 
 function normalizePipelineArg(
   value?: string,
-): 'chronological' | 'keyword' | 'archive' | 'on-demand' | undefined {
-  if (
-    value === 'chronological' ||
-    value === 'keyword' ||
-    value === 'archive' ||
-    value === 'on-demand'
-  ) {
+): 'chronological' | 'keyword' | 'archive' | undefined {
+  if (value === 'chronological' || value === 'keyword' || value === 'archive') {
     return value;
   }
   return undefined;

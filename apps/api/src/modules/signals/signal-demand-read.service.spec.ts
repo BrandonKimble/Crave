@@ -33,7 +33,14 @@ interface CapturedQuery {
   values: unknown[];
 }
 
-function createHarness(options: { rows?: unknown[]; actor?: boolean } = {}) {
+function createHarness(
+  options: {
+    rows?: unknown[];
+    actor?: boolean;
+    /** entity_redirects sources returned by the 3c app-side expansion. */
+    redirectSources?: string[];
+  } = {},
+) {
   const queries: CapturedQuery[] = [];
   const prisma = {
     $queryRaw: jest.fn(
@@ -45,6 +52,15 @@ function createHarness(options: { rows?: unknown[]; actor?: boolean } = {}) {
     signalActor: {
       findUnique: jest.fn(() =>
         Promise.resolve(options.actor === false ? null : { actorId: ACTOR_ID }),
+      ),
+    },
+    entityRedirect: {
+      findMany: jest.fn(() =>
+        Promise.resolve(
+          (options.redirectSources ?? []).map((fromEntityId) => ({
+            fromEntityId,
+          })),
+        ),
       ),
     },
   };
@@ -155,6 +171,44 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
         }),
       ).resolves.toEqual(new Map());
       expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('SARGABLE redirect filter (red-team 3c): raw subject_id probes the app-expanded id set; COALESCE folds back to the REQUESTED ids only', async () => {
+      const source = '44444444-4444-4444-4444-444444444444';
+      const { service, prisma, queries } = createHarness({
+        redirectSources: [source],
+      });
+      await service.entityDemandScores({
+        entityIds: [ENTITY_ID],
+        windowDays: 30,
+      });
+      // One indexed entity_redirects lookup expands the requested survivors
+      // with their redirect sources.
+      expect(prisma.entityRedirect.findMany).toHaveBeenCalledWith({
+        where: { toEntityId: { in: [ENTITY_ID] } },
+        select: { fromEntityId: true },
+      });
+      const sql = flatten(queries[0]);
+      // Sargable probes on BOTH lanes...
+      expect(sql).toContain('a.subject_id = ANY(');
+      expect(sql).toContain('s.subject_id = ANY(');
+      // ...bound to the EXPANDED set, while the fold-back COALESCE stays on
+      // the requested ids (exact old semantics).
+      const arrays = allValues(queries[0]).filter(Array.isArray);
+      expect(arrays).toContainEqual([ENTITY_ID, source]);
+      expect(arrays).toContainEqual([ENTITY_ID]);
+      expect(sql).toContain('COALESCE(r.to_entity_id, a.subject_id) = ANY(');
+    });
+
+    it('fresh TODAY lane excludes request-ids first seen on an earlier day (red-team 1c — cross-midnight retries count once)', async () => {
+      const { service, queries } = createHarness();
+      await service.entityDemandScores({
+        entityIds: [ENTITY_ID],
+        windowDays: 30,
+      });
+      const sql = flatten(queries[0]);
+      expect(sql).toContain('NOT EXISTS');
+      expect(sql).toContain('prior.occurred_at <');
     });
   });
 
@@ -316,6 +370,25 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       expect(sql).toContain('core_restaurant_items');
     });
 
+    it('foods survive entity merges (red-team 2b): a dead connectionId re-resolves through entity_redirects to the SURVIVING connection', async () => {
+      const { service, queries } = createHarness();
+      await service.recentlyViewedFoods(USER_ID, { limit: 10 });
+      const sql = flatten(queries[0]);
+      // The recorded connection joins LEFT (merges DELETE folded losers)...
+      expect(sql).toContain('LEFT JOIN core_restaurant_items direct');
+      // ...and the fallback resolves the signal's food subject + serving
+      // restaurant through redirects to the survivor's current connection.
+      expect(sql).toContain('rf.from_entity_id = a.subject_id');
+      expect(sql).toContain("s.meta->>'contextRestaurantId'");
+      expect(sql).toContain('direct.connection_id IS NULL');
+      expect(sql).toContain(
+        'survivor.food_id = COALESCE(rf.to_entity_id, a.subject_id)',
+      );
+      expect(sql).toContain(
+        'survivor.restaurant_id = COALESCE(rr.to_entity_id, a.ctx_restaurant_id)',
+      );
+    });
+
     it('view stats + viewed-name matches serve the autocomplete lanes from the ledger', async () => {
       const stats = createHarness({
         rows: [
@@ -351,6 +424,52 @@ describe('SignalDemandReadService — substrate readers (§22 item 6)', () => {
       ).resolves.toEqual([
         { restaurantId: ENTITY_ID, name: 'Franklin Barbecue', aliases: [] },
       ]);
+    });
+  });
+
+  describe('recentSearches (/search/recent reader cut — red-team 2a)', () => {
+    it('reads the actor search ledger, resolves the selection through redirects, and flags explicit autocomplete selections', async () => {
+      const lastSearchedAt = new Date('2026-07-19T03:00:00Z');
+      const { service, queries } = createHarness({
+        rows: [
+          {
+            query_text: 'franklin barbecue',
+            last_searched_at: lastSearchedAt,
+            resolved_entity_id: ENTITY_ID,
+            resolved_entity_type: 'restaurant',
+            resolved_entity_name: 'Franklin Barbecue',
+            explicit_selection: true,
+          },
+        ],
+      });
+      const rows = await service.recentSearches(USER_ID, 8);
+      expect(rows).toEqual([
+        {
+          queryText: 'franklin barbecue',
+          lastSearchedAt,
+          resolvedEntityId: ENTITY_ID,
+          resolvedEntityType: 'restaurant',
+          resolvedEntityName: 'Franklin Barbecue',
+          explicitSelection: true,
+        },
+      ]);
+      const sql = flatten(queries[0]);
+      // The ledger, not the dying search_events tables.
+      expect(sql).toContain('FROM signals s');
+      expect(sql).not.toContain('search_events');
+      // Distinct terms, newest entity-resolved act supplies the selection,
+      // redirect-resolved; explicitness = companion autocomplete_selection
+      // act on the same searchRequestId.
+      expect(sql).toContain('GROUP BY s.subject_text');
+      expect(sql).toContain('r.from_entity_id = l.subject_id');
+      expect(sql).toContain("a.kind = 'autocomplete_selection'");
+      expect(sql).toContain("a.meta->>'searchRequestId' = l.request_id");
+    });
+
+    it('no actor row reads as empty without querying', async () => {
+      const { service, prisma } = createHarness({ actor: false });
+      await expect(service.recentSearches(USER_ID, 8)).resolves.toEqual([]);
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
     });
   });
 });

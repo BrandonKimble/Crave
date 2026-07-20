@@ -80,6 +80,27 @@ export class RestaurantEntityMergeService {
         data: { status: 'archived' },
       });
 
+      // Identity is a judgment (§3, red-team 2b): merges WRITE redirects; the
+      // signals ledger is never rekeyed — readers resolve duplicate
+      // subjectIds to the canonical at read. Chains are flattened so the
+      // readers' one-hop COALESCE stays complete (A→B then B→C rewrites
+      // A→C), and any stale redirect FROM the live canonical is dropped.
+      await tx.entityRedirect.updateMany({
+        where: { toEntityId: duplicate.entityId },
+        data: { toEntityId: canonical.entityId },
+      });
+      await tx.entityRedirect.deleteMany({
+        where: { fromEntityId: canonical.entityId },
+      });
+      await tx.entityRedirect.upsert({
+        where: { fromEntityId: duplicate.entityId },
+        update: { toEntityId: canonical.entityId },
+        create: {
+          fromEntityId: duplicate.entityId,
+          toEntityId: canonical.entityId,
+        },
+      });
+
       return updatedCanonical;
     });
 

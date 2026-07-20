@@ -237,11 +237,22 @@ export class ExtractionPipelineService implements OnModuleInit {
   async processPosts(
     params: ExtractionPipelinePostsParams,
   ): Promise<ExtractionPipelineResult> {
-    // Universal relevance gate: cheap title+body admission BEFORE anything is
-    // persisted, chunked, or billed at extraction rates. Fail-open inside.
-    // Poll threads are exempt: the gate filters UNCURATED external content,
-    // and poll threads are first-party food-framed questions — gating them is
-    // a wasted call plus a silent-drop risk with no upside.
+    // §12.1 PERSIST FIRST: every fetched document is stored — the fetch was
+    // paid; a rejected document is still evidence (its verdict row is the
+    // audit trail and re-judgable by replay). The one destructive write-time
+    // judgment is dead.
+    const allDocumentIdsBySourceKey =
+      await this.collectionEvidenceService.persistSourceDocuments({
+        platform: 'reddit',
+        community: params.community,
+        posts: params.llmPosts,
+      });
+    // Relevance is an ADMISSION judgment into the scored corpus (§12.1):
+    // cheap title+body verdicts decide what proceeds to chunking/extraction —
+    // AFTER persistence, never before. Fail-open inside. Poll threads are
+    // exempt: the gate filters UNCURATED external content, and poll threads
+    // are first-party food-framed questions — gating them is a wasted call
+    // plus a silent-drop risk with no upside.
     if (this.relevanceGateEnabled && params.pipeline !== 'poll-thread') {
       const gated = await this.relevanceGate.filterPosts(
         params.platform ?? 'reddit',
@@ -249,12 +260,21 @@ export class ExtractionPipelineService implements OnModuleInit {
       );
       params = { ...params, llmPosts: gated.kept };
     }
-    const sourceDocumentIdBySourceKey =
-      await this.collectionEvidenceService.persistSourceDocuments({
-        platform: 'reddit',
-        community: params.community,
-        posts: params.llmPosts,
-      });
+    // Downstream (chunk plan, activation) sees only ADMITTED documents; the
+    // full fetched set is already durable above.
+    const admittedSourceKeys = new Set(
+      params.llmPosts.flatMap((post) => [
+        buildSourceDocumentKey('post', post.id),
+        ...post.comments.map((comment) =>
+          buildSourceDocumentKey('comment', comment.id),
+        ),
+      ]),
+    );
+    const sourceDocumentIdBySourceKey = new Map(
+      Array.from(allDocumentIdsBySourceKey.entries()).filter(([key]) =>
+        admittedSourceKeys.has(key),
+      ),
+    );
 
     // PRE-LLM DEDUPE GATE (duplication red-team 2026-07-11; thread-level
     // refinement same day): skip posts whose every source is already covered
@@ -1035,7 +1055,7 @@ export class ExtractionPipelineService implements OnModuleInit {
       pushshift_archive: pipeline === 'archive' ? postCount : 0,
       reddit_api_chronological: pipeline === 'chronological' ? postCount : 0,
       reddit_api_keyword_search: pipeline === 'keyword' ? postCount : 0,
-      reddit_api_on_demand: pipeline === 'on-demand' ? postCount : 0,
+      reddit_api_on_demand: 0, // 'on-demand' pipeline ghost is dead (§12.7)
     };
   }
 

@@ -718,8 +718,7 @@ export class ReplayService implements OnModuleInit {
     if (
       pipeline === 'chronological' ||
       pipeline === 'keyword' ||
-      pipeline === 'archive' ||
-      pipeline === 'on-demand'
+      pipeline === 'archive'
     ) {
       return pipeline;
     }

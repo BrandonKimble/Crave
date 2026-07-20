@@ -2,13 +2,20 @@ import 'reflect-metadata';
 import { SignalDemandAggregateService } from './signal-demand-aggregate.service';
 
 /**
- * §22 item 6 aggregate specs: the rebuild unit is a whole UTC day
- * (delete-and-reinsert from the ledger), so INCREMENTAL maintenance and a
- * FROM-SCRATCH rebuild are the same operation applied to different day sets —
- * the equivalence and idempotency laws are proven here at the statement
- * level (identical SQL per day), and the wrap-aware attribution predicate is
- * the canonical lngIntervalsIntersect (proven in the polls kernel spec; the
- * SQL restates it verbatim — asserted structurally below).
+ * §22 item 6 aggregate specs — the red-teamed rebuild laws:
+ * - 1a: every day rebuild runs under SET LOCAL TIME ZONE 'UTC' (naive-UTC
+ *   occurred_at → timestamptz last_occurred_at coerces AS UTC, DST-free).
+ * - 1b: the cron is WATERMARK-driven — it rebuilds exactly the days that
+ *   have ledger rows recorded since the last pass (closed days included),
+ *   then advances the watermark monotonically.
+ * - 1c: retry dedupe is window-wide and geo-free — first occurrence of a
+ *   request-id wins (in-day window function + prior-day anti-join).
+ * - 3a/3b: place attribution is §3 containment-TILING (smallest containing
+ *   place + coarsest contained tiling via envelope operators on the places
+ *   GiST index), never bbox intersection.
+ * The rebuild unit stays a whole UTC day (delete-and-reinsert), so
+ * incremental maintenance and a from-scratch rebuild are the same operation
+ * applied to different day sets — proven at the statement level.
  */
 
 function createLogger() {
@@ -27,76 +34,116 @@ interface CapturedStatement {
   values: unknown[];
 }
 
-function createHarness(options: { minOccurredAt?: Date | null } = {}) {
+function createHarness(
+  options: {
+    minOccurredAt?: Date | null;
+    watermark?: Date | null;
+    rebuildDays?: string[];
+  } = {},
+) {
   const statements: CapturedStatement[] = [];
+  const queries: CapturedStatement[] = [];
   const capture =
-    () =>
+    (sink: CapturedStatement[]) =>
     (strings: TemplateStringsArray, ...values: unknown[]) => {
-      statements.push({ text: strings.join('¤'), values });
+      sink.push({ text: strings.join('¤'), values });
       return Promise.resolve(0);
     };
-  const tx = { $executeRaw: jest.fn(capture()) };
+  const tx = { $executeRaw: jest.fn(capture(statements)) };
   const prisma = {
     $transaction: jest.fn((fn: (client: typeof tx) => Promise<unknown>) =>
       fn(tx),
     ),
-    $queryRaw: jest.fn(() =>
-      Promise.resolve([{ min_occurred: options.minOccurredAt ?? null }]),
+    $executeRaw: jest.fn(capture(statements)),
+    $queryRaw: jest.fn(
+      (strings: TemplateStringsArray, ...values: unknown[]) => {
+        queries.push({ text: strings.join('¤'), values });
+        const text = strings.join(' ');
+        if (text.includes('signal_demand_rebuild_state')) {
+          return Promise.resolve([
+            {
+              watermark: options.watermark ?? null,
+              next_watermark: new Date('2026-07-19T12:00:00Z'),
+            },
+          ]);
+        }
+        if (text.includes('DISTINCT (s.occurred_at::date)')) {
+          return Promise.resolve(
+            (options.rebuildDays ?? []).map((day) => ({ day })),
+          );
+        }
+        return Promise.resolve([
+          { min_occurred: options.minOccurredAt ?? null },
+        ]);
+      },
     ),
   };
   const service = new SignalDemandAggregateService(
     prisma as never,
     createLogger() as never,
   );
-  return { service, prisma, tx, statements };
+  return { service, prisma, tx, statements, queries };
 }
 
 function flatten(statement: CapturedStatement): string {
   // Nested Prisma.sql fragments arrive as values; fold their text in so the
   // full statement is assertable.
   const parts = [statement.text];
-  for (const value of statement.values) {
+  const walk = (value: unknown) => {
     if (value && typeof value === 'object' && 'strings' in value) {
-      parts.push(((value as { strings: string[] }).strings ?? []).join('¤'));
+      const fragment = value as { strings: string[]; values?: unknown[] };
+      parts.push((fragment.strings ?? []).join('¤'));
+      (fragment.values ?? []).forEach(walk);
     }
-  }
+  };
+  statement.values.forEach(walk);
   return parts.join('¤');
 }
 
 describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
-  it('rebuildDay = advisory lock + whole-day DELETE + single re-derive INSERT (global tile ∪ place tiles)', async () => {
+  it('rebuildDay = UTC session + advisory lock + whole-day DELETE + single re-derive INSERT (global tile ∪ containment tiling)', async () => {
     const { service, statements } = createHarness();
     await service.rebuildDay(new Date('2026-07-19T13:45:00Z'));
 
-    expect(statements).toHaveLength(3);
-    const [lock, del, insert] = statements.map(flatten);
+    expect(statements).toHaveLength(4);
+    const [utc, lock, del, insert] = statements.map(flatten);
+    // Red-team 1a: the coercion law.
+    expect(utc).toContain("SET LOCAL TIME ZONE 'UTC'");
     expect(lock).toContain('pg_advisory_xact_lock');
     expect(del).toContain('DELETE FROM signal_demand_daily WHERE day =');
     expect(insert).toContain('INSERT INTO signal_demand_daily');
     // The two tilings of the same day slice, in one statement.
     expect(insert).toContain('UNION ALL');
     expect(insert).toContain('NULL, d.actor_id'); // global tile (place NULL)
-    expect(insert).toContain('JOIN places p'); // place tiles
-    // Wrap-aware longitude intersection: the canonical 4-case predicate
-    // (both-cross ⇒ TRUE arm; one-cross ⇒ OR-split arms).
-    expect(insert).toContain('THEN TRUE');
-    expect(insert).toContain(
-      'd.geo_min_lng <= p.bbox_max_lng OR d.geo_max_lng >= p.bbox_min_lng',
-    );
-    expect(insert).toContain(
-      'p.bbox_min_lng <= d.geo_max_lng OR p.bbox_max_lng >= d.geo_min_lng',
-    );
-    // §3 judge-at-read dedupe folded into the day slice.
+    // Red-team 3a: containment-tiling storage — envelope containment
+    // operators (GiST-indexed), smallest-containing pick, coarsest tiling —
+    // and NO bbox-intersection join.
+    expect(insert).toContain('ST_MakeEnvelope');
+    expect(insert).toMatch(/~\s*¤?\s*ST_MakeEnvelope/); // place CONTAINS geo
+    expect(insert).toMatch(/@\s*¤?\s*ST_MakeEnvelope/); // place CONTAINED in geo
+    expect(insert).toContain('ORDER BY area ASC, place_id ASC'); // smallest
+    // Coarsest tiling: parent-domination via per-row PK probe (never a
+    // contained×contained self-join — the proven O(N²) planner trap).
+    expect(insert).toContain('unnest(c.parent_place_ids)');
+    expect(insert).toContain('pp.place_id = parent.place_id');
+    expect(insert).not.toContain('d.geo_min_lat <= p.bbox_max_lat'); // no intersection join
+    // Wrap-awareness: crossing geos split into two segments.
+    expect(insert).toContain('geo_min_lng > geo_max_lng');
+    expect(insert).toContain('180::numeric');
+    // Red-team 1c: window-wide, geo-free retry dedupe — first occurrence
+    // wins in-day, prior days excluded by anti-join.
     expect(insert).toContain("s.meta->>'searchRequestId'");
     expect(insert).toContain("s.meta->>'cacheRevealRequestId'");
+    expect(insert).toContain('ROW_NUMBER() OVER');
+    expect(insert).toContain('NOT EXISTS');
+    expect(insert).toContain('p.occurred_at <');
 
     // Day bounds: [day, day+1) — the DELETE and the INSERT govern the SAME
     // whole UTC day.
-    expect(del.includes('day =')).toBe(true);
-    const delDay = statements[1].values.find((v) => v === '2026-07-19');
+    const delDay = statements[2].values.find((v) => v === '2026-07-19');
     expect(delDay).toBe('2026-07-19');
-    expect(statements[2].values).toContain('2026-07-19');
-    expect(statements[2].values).toContain('2026-07-20');
+    expect(statements[3].values).toContain('2026-07-19');
+    expect(statements[3].values).toContain('2026-07-20');
   });
 
   it('rebuild is idempotent by construction: re-running a day issues byte-identical statements', async () => {
@@ -157,29 +204,60 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
     expect(result?.endDayExclusive).toBe(tomorrow);
   });
 
-  it('the cron refresh rebuilds today + yesterday only, and the kill switch stops it', async () => {
-    const { service, statements } = createHarness();
-    await service.refreshRecentDays();
+  it('the watermark refresh rebuilds EXACTLY the days with newly-recorded rows — closed days included (1b)', async () => {
+    // A late write into a long-closed day (2026-06-05) plus a fresh one:
+    // both days rebuild; nothing else does.
+    const { service, statements, queries } = createHarness({
+      watermark: new Date('2026-07-19T10:00:00Z'),
+      rebuildDays: ['2026-06-05', '2026-07-19'],
+    });
+    await service.refreshFromWatermark();
+
+    // The day scan filters on recorded_at > watermark.
+    const dayScan = queries.find((q) =>
+      q.text.includes('DISTINCT (s.occurred_at::date)'),
+    );
+    expect(dayScan).toBeDefined();
+    expect(flatten(dayScan!)).toContain('s.recorded_at >');
+
     const dayScalars = statements
       .flatMap((s) => s.values)
       .filter(
         (v): v is string =>
           typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v),
       );
-    const today = new Date().toISOString().slice(0, 10);
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-    expect(dayScalars).toContain(today);
-    expect(dayScalars).toContain(yesterday);
-    // Exactly two day-slices rebuilt (3 statements each).
-    expect(statements).toHaveLength(6);
+    expect(dayScalars).toContain('2026-06-05');
+    expect(dayScalars).toContain('2026-07-19');
+    // Two day-slices (4 statements each) + the watermark upsert.
+    expect(statements).toHaveLength(9);
+    const upsert = flatten(statements[statements.length - 1]);
+    expect(upsert).toContain('signal_demand_rebuild_state');
+    expect(upsert).toContain('GREATEST'); // monotone watermark
+  });
 
-    statements.splice(0);
+  it('a NULL watermark (first pass) scans the whole ledger; no new rows means no day rebuilds but the watermark still advances', async () => {
+    const first = createHarness({ watermark: null, rebuildDays: [] });
+    await first.service.refreshFromWatermark();
+    const dayScan = first.queries.find((q) =>
+      q.text.includes('DISTINCT (s.occurred_at::date)'),
+    );
+    expect(flatten(dayScan!)).not.toContain('s.recorded_at >');
+    // No day rebuilds — only the watermark upsert.
+    expect(first.statements).toHaveLength(1);
+    expect(flatten(first.statements[0])).toContain(
+      'signal_demand_rebuild_state',
+    );
+  });
+
+  it('the kill switch stops the watermark refresh', async () => {
+    const { service, statements, queries } = createHarness({
+      rebuildDays: ['2026-07-19'],
+    });
     process.env.SIGNAL_DEMAND_AGGREGATE_REFRESH_ENABLED = 'false';
     try {
-      await service.refreshRecentDays();
+      await service.refreshFromWatermark();
       expect(statements).toHaveLength(0);
+      expect(queries).toHaveLength(0);
     } finally {
       delete process.env.SIGNAL_DEMAND_AGGREGATE_REFRESH_ENABLED;
     }

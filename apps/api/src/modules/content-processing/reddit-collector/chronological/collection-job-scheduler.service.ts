@@ -65,6 +65,12 @@ export class CollectionJobSchedulerService implements OnModuleInit {
       triggeredBy?: 'scheduled' | 'manual' | 'gap_detection';
       limit?: number;
       lastProcessedTimestamp?: number;
+      /** §10 source identity: the worker reads/advances the lane-row cursor
+       *  and reports its output heartbeat against this source. */
+      sourceId?: string;
+      /** The pacer's reserved reddit-pool estimate — the worker mirrors the
+       *  actual request count against it (§14.2 declared-vs-actual). */
+      declaredRequests?: number;
       /** Deterministic per-cadence-tick key (the planner passes the row's
        *  due time). Duplicate dispatches of the same tick — crash between
        *  enqueue and row-advance, or a second planner instance — dedupe at
@@ -94,6 +100,8 @@ export class CollectionJobSchedulerService implements OnModuleInit {
         subreddit, // Single subreddit per job for better isolation
         jobId,
         triggeredBy,
+        sourceId: options?.sourceId,
+        declaredRequests: options?.declaredRequests,
         options: {
           limit:
             typeof options?.limit === 'number' && options.limit > 0

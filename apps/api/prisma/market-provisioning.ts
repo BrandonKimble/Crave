@@ -808,16 +808,49 @@ export async function provisionCollectionCommunity(
     select: { marketKey: true },
   });
 
-  // Seed the durable collection cadence rows (the consolidated scheduler
-  // plans from collection_schedules; a new community starts collecting with
-  // zero further configuration).
-  await prisma.collectionSchedule.createMany({
-    data: [
-      { community: communityName, workKind: 'chronological', intervalDays: 1 },
-      { community: communityName, workKind: 'keyword', intervalDays: 7 },
-    ],
-    skipDuplicates: true,
+  // §10 onboarding verb: engine (member places) + source + adapter-seeded
+  // lanes. Engine name = the legacy market key during Phase B/C. Member place
+  // = the municipality matched from the community's location name (organic
+  // catalog entry covers the miss case — operator attaches later).
+  const cityName = locationName.split(',')[0]?.trim() ?? '';
+  const stateCode = locationName.split(',')[1]?.trim().toUpperCase() ?? '';
+  const memberPlace = await prisma.place.findFirst({
+    where: {
+      name: { equals: cityName, mode: 'insensitive' },
+      subdivisionCode: stateCode || undefined,
+      providerLevelCode: 'Municipality',
+    },
+    select: { placeId: true },
   });
+  const engine = await prisma.engine.upsert({
+    where: { name: marketKey },
+    update: memberPlace ? { memberPlaceIds: [memberPlace.placeId] } : {},
+    create: {
+      name: marketKey,
+      memberPlaceIds: memberPlace ? [memberPlace.placeId] : [],
+    },
+  });
+  const source = await prisma.source.upsert({
+    where: { platform_handle: { platform: 'reddit', handle: communityName } },
+    update: { engineId: engine.engineId },
+    create: {
+      platform: 'reddit',
+      handle: communityName,
+      anchorPlaceId: memberPlace?.placeId ?? null,
+      engineId: engine.engineId,
+    },
+  });
+  // Adapter-declared lanes (reddit → chronological + keyword; tolerance ≈
+  // cadence per §14.3). A new source starts collecting with zero further
+  // configuration.
+  await prisma.$executeRaw`
+    INSERT INTO source_collection_lanes
+      (source_id, lane, cadence_days, lateness_tolerance_days)
+    VALUES
+      (${source.sourceId}::uuid, 'chronological', 1, 1),
+      (${source.sourceId}::uuid, 'keyword', 7, 7)
+    ON CONFLICT (source_id, lane) DO NOTHING
+  `;
 }
 
 export interface GeocodedCity {

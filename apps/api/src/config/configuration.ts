@@ -343,10 +343,6 @@ export default () => {
       // reading the project's actual per-method quota at
       // console.cloud.google.com/google/maps-apis/quotas. Env override kept
       // because the real quota is a per-project (per-env) fact.
-      requestsPerSecond: parseInt(
-        process.env.GOOGLE_PLACES_REQUESTS_PER_SECOND || '10',
-        10,
-      ),
       requestsPerMinute: parseInt(
         process.env.GOOGLE_PLACES_REQUESTS_PER_MINUTE || '600',
         10,
@@ -428,7 +424,7 @@ export default () => {
       gateLookbackDays: 21, // recency window for gate decisions
       commentSampleLimit: 5, // comments sampled per candidate thread
       minNewComments: 3, // skip threads with fewer new comments
-      pipelineScope: ['chronological', 'archive', 'keyword', 'on-demand'],
+      pipelineScope: ['chronological', 'archive', 'keyword'],
     },
     unifiedProcessing: {
       dryRun: process.env.UNIFIED_PROCESSING_DRY_RUN === 'true',

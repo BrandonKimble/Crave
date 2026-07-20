@@ -47,6 +47,7 @@ import {
 import { SearchMetricsService } from './search-metrics.service';
 import { MarketRegistryService } from '../markets/market-registry.service';
 import { SignalsService } from '../signals/signals.service';
+import { SignalDemandReadService } from '../signals/signal-demand-read.service';
 import { PlacesCatalogService } from '../places/places-catalog.service';
 import { PlacesReconcilerService } from '../places/places-reconciler.service';
 import { resolveHeaderPlace } from '../places/subjects';
@@ -235,6 +236,7 @@ export class SearchService {
     private readonly marketRegistry: MarketRegistryService,
     private readonly restaurantStatusService: RestaurantStatusService,
     private readonly signals: SignalsService,
+    private readonly signalDemandRead: SignalDemandReadService,
     private readonly placesCatalog: PlacesCatalogService,
     private readonly placesReconciler: PlacesReconcilerService,
   ) {
@@ -3139,6 +3141,17 @@ export class SearchService {
     }
   }
 
+  /**
+   * READER CUT (§22 item 6, red-team 2a): recent searches read the signals
+   * LEDGER (kind = 'search'), not the dying search_events tables. Response
+   * contract is frozen (SearchHistoryEntry). The old selection judgment is
+   * reproduced at read: an EXPLICIT autocomplete selection (companion
+   * autocomplete_selection act on the same searchRequestId) always shows;
+   * otherwise only a restaurant whose name equals the query text does (the
+   * old resolveSelectionFromSearchLogRow rule). CASING: subject_text is
+   * normalized (lowercased) at write, so queryText returns lowercased — the
+   * raw casing is not in the ledger (consistent with the suggestion lanes).
+   */
   async listRecentSearches(
     userId: string,
     limit?: number,
@@ -3147,98 +3160,35 @@ export class SearchService {
       return [];
     }
     const take = Math.max(1, Math.min(limit ?? 8, 50));
-    const rows = await this.prisma.$queryRaw<
-      Array<{
-        queryText: string;
-        loggedAt: Date;
-        metadata: Prisma.JsonValue | null;
-        entityId: string;
-        entityType: EntityType;
-        entityName: string | null;
-      }>
-    >(Prisma.sql`
-      WITH latest_query_events AS (
-        SELECT DISTINCT ON (LOWER(TRIM(query_text)))
-          event_id,
-          TRIM(query_text) AS query_text,
-          logged_at,
-          metadata
-        FROM search_events
-        WHERE user_id = ${userId}::uuid
-          AND event_kind IN (${Prisma.join(
-            [SearchEventKind.backend, SearchEventKind.cache].map(
-              (kind) => Prisma.sql`${kind}::search_event_kind`,
-            ),
-          )})
-          AND query_text IS NOT NULL
-          AND TRIM(query_text) <> ''
-        ORDER BY LOWER(TRIM(query_text)), logged_at DESC
-      )
-      SELECT
-        lqe.query_text AS "queryText",
-        lqe.logged_at AS "loggedAt",
-        lqe.metadata AS "metadata",
-        see.entity_id::text AS "entityId",
-        see.entity_type AS "entityType",
-        e.name AS "entityName"
-      FROM latest_query_events lqe
-      JOIN LATERAL (
-        SELECT see.*
-        FROM search_event_entities see
-        WHERE see.event_id = lqe.event_id
-        ORDER BY
-          CASE
-            WHEN lqe.metadata#>>'{submissionContext,selectedEntityId}' = see.entity_id::text THEN 0
-            ELSE 1
-          END,
-          see.logged_at DESC
-        LIMIT 1
-      ) see ON TRUE
-      LEFT JOIN core_entities e ON e.entity_id = see.entity_id
-      ORDER BY lqe.logged_at DESC
-      LIMIT ${take}
-    `);
+    const rows = await this.signalDemandRead.recentSearches(userId, take);
 
-    const fallbackTimestamp = new Date().toISOString();
-    const entries: SearchHistoryEntry[] = [];
-    const entriesByQuery = new Map<string, SearchHistoryEntry>();
+    const entries: SearchHistoryEntry[] = rows.map((row) => {
+      const entityType =
+        row.resolvedEntityType &&
+        Object.values(EntityType).includes(row.resolvedEntityType as EntityType)
+          ? (row.resolvedEntityType as EntityType)
+          : null;
+      const nameMatchesQuery =
+        (row.resolvedEntityName ?? '').trim().toLowerCase() ===
+        row.queryText.trim().toLowerCase();
+      const selected =
+        row.resolvedEntityId &&
+        entityType &&
+        (row.explicitSelection ||
+          (entityType === EntityType.restaurant && nameMatchesQuery))
+          ? { entityId: row.resolvedEntityId, entityType }
+          : null;
+      return {
+        queryText: row.queryText,
+        lastSearchedAt: row.lastSearchedAt.toISOString(),
+        selectedEntityId: selected?.entityId ?? null,
+        selectedEntityType: selected?.entityType ?? null,
+      };
+    });
 
-    for (const row of rows) {
-      const queryText =
-        typeof row.queryText === 'string' ? row.queryText.trim() : '';
-      if (!queryText) {
-        continue;
-      }
-      const normalizedQuery = queryText.toLowerCase();
-      const selection =
-        this.extractSelectedEntity(row.metadata) ??
-        this.resolveSelectionFromSearchLogRow({
-          queryText,
-          entityId: row.entityId,
-          entityType: row.entityType,
-          entityName: row.entityName ?? null,
-        });
-
-      const existing = entriesByQuery.get(normalizedQuery);
-      if (!existing) {
-        const entry: SearchHistoryEntry = {
-          queryText,
-          lastSearchedAt: row.loggedAt?.toISOString() ?? fallbackTimestamp,
-          selectedEntityId: selection?.entityId ?? null,
-          selectedEntityType: selection?.entityType ?? null,
-        };
-        entriesByQuery.set(normalizedQuery, entry);
-        entries.push(entry);
-      } else if (!existing.selectedEntityId && selection) {
-        existing.selectedEntityId = selection.entityId;
-        existing.selectedEntityType = selection.entityType;
-      }
-    }
-
-    const trimmedEntries = entries.slice(0, take);
     const restaurantIds = Array.from(
       new Set(
-        trimmedEntries
+        entries
           .filter(
             (entry) =>
               entry.selectedEntityType === EntityType.restaurant &&
@@ -3250,7 +3200,7 @@ export class SearchService {
     );
 
     if (restaurantIds.length === 0) {
-      return trimmedEntries;
+      return entries;
     }
 
     const previews = await this.restaurantStatusService.getStatusPreviews({
@@ -3260,7 +3210,7 @@ export class SearchService {
       previews.map((preview) => [preview.restaurantId, preview]),
     );
 
-    return trimmedEntries.map((entry) => {
+    return entries.map((entry) => {
       if (
         entry.selectedEntityType !== EntityType.restaurant ||
         !entry.selectedEntityId
@@ -3272,68 +3222,6 @@ export class SearchService {
         statusPreview: previewMap.get(entry.selectedEntityId) ?? null,
       };
     });
-  }
-
-  private extractSelectedEntity(
-    metadataValue: unknown,
-  ): { entityId: string; entityType: EntityType } | null {
-    if (
-      !metadataValue ||
-      typeof metadataValue !== 'object' ||
-      Array.isArray(metadataValue)
-    ) {
-      return null;
-    }
-    const metadata = metadataValue as Record<string, unknown>;
-    const submissionContextValue = metadata.submissionContext;
-    if (
-      !submissionContextValue ||
-      typeof submissionContextValue !== 'object' ||
-      Array.isArray(submissionContextValue)
-    ) {
-      return null;
-    }
-    const submissionContext = submissionContextValue as Record<string, unknown>;
-    const selectedEntityId =
-      typeof submissionContext.selectedEntityId === 'string'
-        ? submissionContext.selectedEntityId
-        : null;
-    const selectedEntityType =
-      typeof submissionContext.selectedEntityType === 'string'
-        ? submissionContext.selectedEntityType
-        : null;
-    if (!selectedEntityId || !selectedEntityType) {
-      return null;
-    }
-    const entityType = Object.values(EntityType).includes(
-      selectedEntityType as EntityType,
-    )
-      ? (selectedEntityType as EntityType)
-      : null;
-    if (!entityType) {
-      return null;
-    }
-    return { entityId: selectedEntityId, entityType };
-  }
-
-  private resolveSelectionFromSearchLogRow(params: {
-    queryText: string;
-    entityId: string;
-    entityType: EntityType;
-    entityName?: string | null;
-  }): { entityId: string; entityType: EntityType } | null {
-    if (params.entityType !== EntityType.restaurant) {
-      return null;
-    }
-    const queryText = params.queryText.trim().toLowerCase();
-    const entityName =
-      typeof params.entityName === 'string'
-        ? params.entityName.trim().toLowerCase()
-        : '';
-    if (!queryText || !entityName || queryText !== entityName) {
-      return null;
-    }
-    return { entityId: params.entityId, entityType: EntityType.restaurant };
   }
 
   private calculateCoverageStatus(params: {

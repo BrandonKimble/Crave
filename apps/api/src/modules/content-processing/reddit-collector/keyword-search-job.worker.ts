@@ -6,8 +6,10 @@ import {
   KeywordSearchOrchestratorService,
   KeywordSearchJobData,
 } from './keyword-search-orchestrator.service';
-import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
 import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
+import { CollectorSourceRegistryService } from './collector-source-registry.service';
+import { GovernanceService } from '../../external-integrations/governance/governance.service';
+import { REDDIT_POOL_NAME } from './reddit-collection-adapter';
 
 @Processor('keyword-search-execution')
 @Injectable()
@@ -17,7 +19,8 @@ export class KeywordSearchJobWorker {
   constructor(
     @Inject(LoggerService) loggerService: LoggerService,
     private readonly orchestrator: KeywordSearchOrchestratorService,
-    private readonly keywordScheduler: KeywordSearchSchedulerService,
+    private readonly sourceRegistry: CollectorSourceRegistryService,
+    private readonly governance: GovernanceService,
     private readonly keywordSearchMetrics: KeywordSearchMetricsService,
   ) {
     this.logger = loggerService.setContext('KeywordSearchJobWorker');
@@ -30,6 +33,7 @@ export class KeywordSearchJobWorker {
       terms,
       source,
       collectableMarketKey,
+      engineId,
       safeIntervalDays,
       sortPlan,
     } = job.data;
@@ -45,6 +49,7 @@ export class KeywordSearchJobWorker {
           jobId: job.id,
           subreddit,
           collectableMarketKey,
+          engineId,
           source,
           termCount: terms.length,
           sortsPlanned: sortPlan?.map((entry) => entry.sort) ?? undefined,
@@ -54,24 +59,51 @@ export class KeywordSearchJobWorker {
           const result = await this.orchestrator.executeKeywordSearchCycle(
             subreddit,
             terms,
-            { source, collectableMarketKey, safeIntervalDays, sortPlan },
+            {
+              source,
+              collectableMarketKey,
+              engineId,
+              safeIntervalDays,
+              sortPlan,
+            },
           );
 
-          // Cadence advances in CollectionSchedulerService at dispatch time
-          // (collection_schedules rows). lastTopRelevanceRunAt is stamped HERE,
-          // post-success, as the SINGLE writer — recording it at enqueue would
-          // record intent as outcome (a failed job would suppress heavy sorts
-          // for the full 60d window).
-          const ranHeavySorts =
-            sortPlan?.some(
-              (entry) => entry.sort === 'top' || entry.sort === 'relevance',
-            ) ?? false;
-
-          if (ranHeavySorts) {
-            await this.keywordScheduler.recordTopRelevanceRun(
-              subreddit,
-              result.metadata.executionStartTime,
+          const sourceId =
+            job.data.sourceId ??
+            (await this.sourceRegistry.findRedditSourceByHandle(subreddit))
+              ?.sourceId;
+          if (sourceId) {
+            // Cadence advances in CollectorPacerService at dispatch time.
+            // lastTopRelevanceRunAt is stamped HERE on the lane row,
+            // post-success, as the SINGLE writer — recording it at enqueue
+            // would record intent as outcome (a failed job would suppress
+            // heavy sorts for the full 60d window).
+            const ranHeavySorts =
+              sortPlan?.some(
+                (entry) => entry.sort === 'top' || entry.sort === 'relevance',
+              ) ?? false;
+            if (ranHeavySorts) {
+              await this.sourceRegistry.recordTopRelevanceRun(
+                sourceId,
+                result.metadata.executionStartTime,
+              );
+            }
+            // §12.4 output-derived heartbeat (documents produced this tick)
+            // + the §14.2 declared-vs-actual pair against the pacer's
+            // reserved estimate.
+            await this.sourceRegistry.recordLaneOutput(
+              sourceId,
+              'keyword',
+              result.metadata.totalItems,
             );
+            if (typeof job.data.declaredRequests === 'number') {
+              this.governance.pools.recordActualPair(
+                REDDIT_POOL_NAME,
+                'collector.keyword',
+                job.data.declaredRequests,
+                result.performance.totalApiCalls,
+              );
+            }
           }
 
           this.keywordSearchMetrics.recordJobCompletion({

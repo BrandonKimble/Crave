@@ -40,7 +40,6 @@ export interface BasePerformanceMetrics {
  * Rate limiting configuration per API service
  */
 export interface RateLimitConfig {
-  requestsPerSecond: number;
   requestsPerMinute: number;
   requestsPerHour: number;
   requestsPerDay: number;

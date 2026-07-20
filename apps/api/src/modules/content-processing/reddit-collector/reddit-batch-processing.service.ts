@@ -4,7 +4,7 @@ import { LoggerService } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
 import { filterAndTransformToLLM } from '../../external-integrations/reddit/reddit-data-filter';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { PublicCraveScoreService } from '../public-crave-score';
+import { RescoreCoordinatorService } from '../public-crave-score';
 import {
   BatchJob,
   BatchProcessingResult,
@@ -38,7 +38,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
     private readonly configService: ConfigService,
     @Inject(PrismaService) private readonly prismaService: PrismaService,
     private readonly marketRegistry: MarketRegistryService,
-    private readonly publicCraveScoreService: PublicCraveScoreService,
+    private readonly rescoreCoordinator: RescoreCoordinatorService,
     private readonly extractionPipelineService: ExtractionPipelineService,
   ) {
     this.marketKeyCacheTtlMs =
@@ -263,7 +263,12 @@ export class RedditBatchProcessingService implements OnModuleInit {
           connectionsCreated: pipelineResult.dbResult.connectionsCreated,
         },
       );
-      await this.refreshPublicScoresIfFinalBatch(job, correlationId);
+      // §12.6: collection never rebuilds scores — it marks the singleton
+      // rescorer dirty; the debounced coordinator owns the global rebuild
+      // (kills the final-batch proxy + racing rebuilds + swallowed errors).
+      await this.rescoreCoordinator
+        .markDirty(`collection batch ${job.batchId}`)
+        .catch(() => undefined);
       return result;
     } catch (error) {
       this.logStage(
@@ -614,7 +619,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
       ? keywordProcessing.pipelineScope
           .map((value) => value.trim().toLowerCase())
           .filter((value) => value.length > 0)
-      : ['chronological', 'archive', 'keyword', 'on-demand'];
+      : ['chronological', 'archive', 'keyword'];
 
     return {
       lookbackMs: Math.max(0, lookbackDays) * 24 * 60 * 60 * 1000,
@@ -689,17 +694,6 @@ export class RedditBatchProcessingService implements OnModuleInit {
       subreddit: job.subreddit,
       ...metadata,
     });
-  }
-
-  private shouldRefreshPublicScores(job: BatchJob): boolean {
-    if (!job.totalBatches || job.batchNumber !== job.totalBatches) {
-      return false;
-    }
-    return (
-      job.collectionType === 'chronological' ||
-      job.collectionType === 'keyword' ||
-      job.collectionType === 'archive'
-    );
   }
 
   private async resolveMarketKeyForCommunity(
@@ -779,38 +773,6 @@ export class RedditBatchProcessingService implements OnModuleInit {
         break;
       }
       this.marketKeyCache.delete(oldestKey);
-    }
-  }
-
-  private async refreshPublicScoresIfFinalBatch(
-    job: BatchJob,
-    correlationId: string,
-  ): Promise<void> {
-    if (!this.shouldRefreshPublicScores(job)) {
-      return;
-    }
-
-    const marketKey = await this.resolveMarketKeyForCommunity(job.subreddit);
-
-    try {
-      await this.publicCraveScoreService.rebuildAllScores();
-      this.logger.info('Crave Scores refreshed after collection completion', {
-        correlationId,
-        parentJobId: job.parentJobId,
-        collectionType: job.collectionType,
-        marketKey,
-      });
-    } catch (error) {
-      this.logger.error(
-        'Crave Score refresh failed after collection completion',
-        {
-          correlationId,
-          parentJobId: job.parentJobId,
-          collectionType: job.collectionType,
-          marketKey,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
     }
   }
 }

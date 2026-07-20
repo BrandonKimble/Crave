@@ -353,24 +353,62 @@ model AccessGrant {
   @@map("access_grants")
 }
 
-/// Durable per-(community, workKind) collection cadence — the single source
-/// of WHEN we talk to Reddit (plans/collection-scheduler-consolidation.md).
-/// chronological | keyword | on_demand_hot_spike are job VARIANTS planned by
-/// one loop under one Reddit budget; restart resumes from here.
-model CollectionSchedule {
-  community    String             @db.VarChar(255)
-  workKind     CollectionWorkKind @map("work_kind")
-  enabled      Boolean            @default(true)
-  intervalDays Float              @map("interval_days")
-  nextDueAt    DateTime           @default(now()) @map("next_due_at")
-  lastRanAt    DateTime?          @map("last_ran_at")
-  metadata     Json?
-  createdAt    DateTime           @default(now()) @map("created_at")
-  updatedAt    DateTime           @default(now()) @map("updated_at")
+/// §10 source-centric collector: durable per-(source, lane) cadence rows.
+/// Lanes are ADAPTER-DECLARED per platform (reddit → chronological | keyword;
+/// poll_surface → push-complete, zero pull lanes; archive is a one-shot
+/// proposed sweep, never a standing lane). Lane STATE (e.g. the chronological
+/// cursor) lives on the lane row — the collection_communities cursor is dead.
+/// Dispatch priority = normalized lateness = (now − dueAt) ÷ tolerance (§14.3).
+model SourceCollectionLane {
+  sourceId              String    @map("source_id") @db.Uuid
+  lane                  String    @db.VarChar(32)
+  enabled               Boolean   @default(true)
+  cadenceDays           Float     @map("cadence_days")
+  /// §14.3 lateness tolerance — the K1 sentence "days late is fine, months is
+  /// not" as a number. Chronological declares ≈ its cadence.
+  latenessToleranceDays Float     @map("lateness_tolerance_days")
+  dueAt                 DateTime  @default(now()) @map("due_at")
+  lastRanAt             DateTime? @map("last_ran_at")
+  /// Lane-kind state: chronological {lastProcessedAt}, keyword
+  /// {lastTopRelevanceRunAt}. Cursor advance semantics per §10.
+  state                 Json?
+  /// §12.4 output-derived heartbeat: documents produced by the last due-tick
+  /// plus an EWMA baseline — a lane whose output collapses vs its own
+  /// baseline reads RED (legit-zero ≠ broken-zero via the baseline).
+  lastOutputDocs        Int?      @map("last_output_docs")
+  outputDocsBaseline    Float?    @map("output_docs_baseline")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @default(now()) @map("updated_at")
 
-  @@id([community, workKind])
-  @@index([enabled, nextDueAt], map: "idx_collection_schedules_due")
-  @@map("collection_schedules")
+  @@id([sourceId, lane])
+  @@index([enabled, dueAt], map: "idx_source_collection_lanes_due")
+  @@map("source_collection_lanes")
+}
+
+/// §5 engines: operator-attached collection units. Territory = derived union
+/// of memberPlaceIds (+ DAG descendants at read), NEVER stored. Deficiency
+/// and keyword slices key off engines; scoring provenance keys off SOURCES.
+model Engine {
+  engineId       String   @id @default(dbgenerated("gen_random_uuid()")) @map("engine_id") @db.Uuid
+  /// Stable natural key. Backfilled engines carry the legacy market_key as
+  /// their name so the ask-event unmet lane keeps reading during Phase B/C.
+  name           String   @unique @db.VarChar(255)
+  memberPlaceIds String[] @default([]) @map("member_place_ids") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("engines")
+}
+
+/// §12.6 singleton rescorer state: collection sets dirty; ONE debounced,
+/// advisory-locked rescorer owns global rebuilds (kills racing rebuilds and
+/// the final-batch proxy). Single row by CHECK (id = 1).
+model RescoreState {
+  id            Int       @id @default(1)
+  dirty         Boolean   @default(false)
+  dirtySince    DateTime? @map("dirty_since")
+  lastRescoreAt DateTime? @map("last_rescore_at")
+
+  @@map("rescore_state")
 }
 
 model RestaurantItemMention {
@@ -1764,6 +1802,9 @@ model OnDemandAskEvent {
 model KeywordAttemptHistory {
   collectableMarketKey String                 @map("collectable_market_key") @db.VarChar(255)
   normalizedTerm       String                 @map("normalized_term") @db.VarChar(255)
+  /// §11 attempt ledger re-key: the schedulable unit is (engine, term).
+  /// Backfilled from the legacy market_key; the old PK column dies in Phase C.
+  engineId             String?                @map("engine_id") @db.Uuid
   lastAttemptAt        DateTime?              @map("last_attempt_at")
   lastSuccessAt        DateTime?              @map("last_success_at")
   lastOutcome          KeywordAttemptOutcome? @map("last_outcome")
@@ -1774,16 +1815,8 @@ model KeywordAttemptHistory {
   @@id([collectableMarketKey, normalizedTerm])
   @@index([collectableMarketKey], map: "idx_collection_keyword_attempt_history_collectable_market_key")
   @@index([cooldownUntil], map: "idx_collection_keyword_attempt_history_cooldown_until")
+  @@index([engineId, normalizedTerm], map: "idx_collection_keyword_attempt_history_engine_term")
   @@map("collection_keyword_attempt_history")
-}
-
-/// Work kinds the collection planner can dispatch. Enum (not String) so an
-/// unknown kind is unrepresentable at the DB layer — the planner's runtime
-/// check is the exhaustiveness net, this is the wall.
-enum CollectionWorkKind {
-  chronological
-  keyword
-  on_demand_hot_spike
 }
 
 enum MarketType {
@@ -2186,6 +2219,11 @@ model Signal {
   geoMaxLng   Decimal  @map("geo_max_lng") @db.Decimal(11, 8)
   actorId     String   @map("actor_id") @db.Uuid
   occurredAt  DateTime @map("occurred_at")
+  /// WHEN the ledger learned of the act (occurredAt = when it happened).
+  /// Drives the aggregate's watermark rebuild (red-team 1b): late/backfilled
+  /// writes are picked up by recorded-at, so every signal eventually lands in
+  /// its occurred-at day slice.
+  recordedAt  DateTime @default(now()) @map("recorded_at") @db.Timestamptz(6)
   meta        Json?
 
   @@index([occurredAt])
@@ -2194,17 +2232,25 @@ model Signal {
   // Per-actor reader lane (§22 item 6): recently-viewed + recent-searches read
   // one actor's acts of one kind newest-first.
   @@index([actorId, kind, occurredAt])
+  @@index([recordedAt])
+  // Raw-SQL partial expression index (migration 20260719235000):
+  // (COALESCE(meta->>'searchRequestId', meta->>'cacheRevealRequestId'),
+  // occurred_at) WHERE either id present — the ledger-wide retry-dedupe probe
+  // (red-team 1c). Not expressible in Prisma; do not re-add here.
   @@map("signals")
 }
 
 // §3 aggregate: day × actor × place × subject × kind — a DERIVED read model
-// over the signals ledger (rebuildable from scratch; only recent days rebuild
-// incrementally; redirects applied AT READ, never baked in). place_id NULL is
-// the GLOBAL tile (every signal exactly once); non-NULL rows carry weight-1
-// attribution to every place whose bbox intersects the signal geo (§22 item 4
-// wording, wrap-aware). Rows are only ever written by whole-day
-// delete-and-reinsert under an advisory lock (SignalDemandAggregateService),
-// so no unique constraint is declared; rowId is a Prisma-required surrogate.
+// over the signals ledger (rebuildable from scratch; days rebuild via the
+// recorded-at watermark; redirects applied AT READ, never baked in). place_id
+// NULL is the GLOBAL tile (every signal exactly once); non-NULL rows are the
+// §3 containment-TILING attribution — the smallest place CONTAINING the
+// signal geo plus the coarsest catalog level(s) TILING the places contained
+// in it (containment, never intersection; storage O(few) per signal) — with
+// read-time inheritance supplying the "every place in view at weight 1"
+// semantics. Rows are only ever written by whole-day delete-and-reinsert
+// under an advisory lock (SignalDemandAggregateService), so no unique
+// constraint is declared; rowId is a Prisma-required surrogate.
 model SignalDemandDaily {
   rowId          String   @id @default(dbgenerated("gen_random_uuid()")) @map("row_id") @db.Uuid
   day            DateTime @db.Date
@@ -2223,6 +2269,18 @@ model SignalDemandDaily {
   @@index([actorId, day])
   @@index([placeId, day])
   @@map("signal_demand_daily")
+}
+
+// Single-row watermark state for the aggregate rebuild cron (red-team 1b):
+// each pass rebuilds every day carrying signals recorded since the watermark.
+// The id=1 CHECK constraint (raw SQL, migration 20260719235000) pins it to
+// one row.
+model SignalDemandRebuildState {
+  id        Int       @id @default(1)
+  watermark DateTime? @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("signal_demand_rebuild_state")
 }
 
 // Pseudonymous actor mapping — the severable deletion story (§3).

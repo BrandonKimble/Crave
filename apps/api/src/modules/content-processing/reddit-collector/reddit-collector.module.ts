@@ -11,17 +11,12 @@ import { ArchiveStreamProcessorService } from './archive/archive-stream-processo
 import { ArchiveZstdDecompressor } from './archive/archive-zstd-decompressor.service';
 import { ArchiveIngestionService } from './archive/archive-ingestion.service';
 import { ArchiveProcessingMetricsService } from './archive/archive-processing-metrics.service';
-import { RedditDataExtractorService } from './reddit-data-extractor.service';
 import { ChronologicalCollectionWorker } from './chronological/chronological-collection.worker';
-import { ContentRetrievalMonitoringService } from './chronological/content-retrieval-monitoring.service';
 import { CollectionJobSchedulerService } from './chronological/collection-job-scheduler.service';
-import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
 import { KeywordSliceSelectionService } from './keyword-slice-selection.service';
 import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
 import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.service';
 import { UnifiedProcessingService } from './unified-processing.service';
-import { SubredditVolumeTrackingService } from './chronological/subreddit-volume-tracking.service';
-import { VolumeTrackingProcessor } from './chronological/volume-tracking.processor';
 import { ChronologicalBatchProcessingWorker } from './chronological/chronological-batch.worker';
 import { KeywordBatchProcessingWorker } from './keyword-batch-processing.worker';
 import { KeywordSearchJobWorker } from './keyword-search-job.worker';
@@ -32,12 +27,15 @@ import { RedditBatchProcessingService } from './reddit-batch-processing.service'
 import { CollectionEvidenceService } from './collection-evidence.service';
 import { ExtractionPipelineService } from './extraction-pipeline.service';
 import { RelevanceGateService } from './relevance-gate.service';
-import { CollectionSchedulerService } from './collection-scheduler.service';
+import { CollectorPacerService } from './collector-pacer.service';
+import { CollectorSourceRegistryService } from './collector-source-registry.service';
+import { CollectorEstimators } from './collector-estimators';
 import { ProjectionRebuildService } from './projection-rebuild.service';
 import { ReplayService } from './replay.service';
 import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
 import { AnalyticsModule } from '../../analytics/analytics.module';
 import { MarketsModule } from '../../markets/markets.module';
+import { SignalsModule } from '../../signals/signals.module';
 import { AttributeOntologyModule } from '../../attribute-ontology/attribute-ontology.module';
 import { BullQueueMetricsService } from './bull-queue-metrics.service';
 import { isWorkerRuntime } from '../../../shared/utils/process-role';
@@ -57,8 +55,7 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       ArchiveStreamProcessorService,
       ArchiveIngestionService,
       ArchiveProcessingMetricsService,
-      RedditDataExtractorService,
-      // Chronological Collection components (PRD Section 5.1.2)
+      // Chronological Collection components
       ChronologicalCollectionWorker,
       ChronologicalBatchProcessingWorker,
       RedditBatchProcessingService,
@@ -68,22 +65,17 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       ArchiveCollectionWorker,
       KeywordSearchMetricsService,
       BullQueueMetricsService,
-      // Content Retrieval Pipeline components (PRD Section 5.1.2 & 6.1)
-      ContentRetrievalMonitoringService,
-      // Scheduled Collection Jobs components (PRD Section 5.1.2).
-      // CollectionSchedulerService is THE planning loop (cron) — worker-only
-      // by module composition; the api role must not instantiate any
-      // collection scheduling machinery.
-      CollectionSchedulerService,
+      // §10 source-centric collector: CollectorPacerService is THE dispatch
+      // loop (cron) — worker-only by module composition; the api role must
+      // not instantiate any collection scheduling machinery.
+      CollectorPacerService,
+      CollectorSourceRegistryService,
+      CollectorEstimators,
       CollectionJobSchedulerService,
-      KeywordSearchSchedulerService,
-      // Keyword Entity Search components (PRD Section 5.1.2)
+      // Keyword Entity Search components
       KeywordSliceSelectionService,
       KeywordAttemptHistoryService,
       KeywordSearchOrchestratorService,
-      // Volume Tracking components (PRD Section 5.1.2)
-      SubredditVolumeTrackingService,
-      VolumeTrackingProcessor,
     ]
   : [];
 
@@ -143,9 +135,6 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
       name: 'chronological-collection',
     }),
     BullModule.registerQueue({
-      name: 'volume-tracking',
-    }),
-    BullModule.registerQueue({
       name: 'chronological-batch-processing-queue',
     }),
     BullModule.registerQueue({
@@ -163,6 +152,7 @@ const redditCollectorWorkerProviders = isWorkerRuntime()
     forwardRef(() => RestaurantEnrichmentModule),
     AnalyticsModule,
     MarketsModule,
+    SignalsModule, // §11/C3: collector demand reads the signals substrate
   ],
   providers: [
     ...redditCollectorCoreProviders,

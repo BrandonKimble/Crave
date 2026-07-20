@@ -59,6 +59,21 @@ export class GovernanceService {
       failPolicy: { kind: 'emergencyFraction', fraction: 0.95 },
       reservationTtlMs: 60_000,
     });
+    // Reddit pool (§22 item 7 — collector cut): vendor fact K4 is
+    // 1000-per-10-minutes / 100-per-minute; the per-minute window is the
+    // binding constraint and is what the pacer's dispatch-level draws are
+    // enumerated against. The legacy RateLimitCoordinator remains the
+    // per-request throttle inside the client; this pool is the governor's
+    // admission + draw ledger for dispatches (one pool, one ledger — §14.8:
+    // the coordinator's window moves here atomically when the client's
+    // makeRequest path is unified in §12.5's client rewrite).
+    this.pools.register({
+      name: 'reddit.requests',
+      credential: 'default',
+      window: { kind: 'perMinute', limit: 100 },
+      failPolicy: { kind: 'emergencyFraction', fraction: 0.1 },
+      reservationTtlMs: 120_000,
+    });
   }
 
   /**

@@ -21,7 +21,7 @@ export interface BatchJob {
   cycleId?: string;
 
   /** Type of collection this batch belongs to */
-  collectionType: 'chronological' | 'archive' | 'keyword' | 'on-demand';
+  collectionType: 'chronological' | 'archive' | 'keyword';
 
   /** Subreddit being processed */
   subreddit: string;

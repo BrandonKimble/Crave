@@ -26,6 +26,9 @@ export class KeywordAttemptHistoryService {
 
   async recordAttempt(params: {
     collectableMarketKey: string;
+    /** §11 attempt-ledger key: (engine, term). The legacy market-key PK
+     *  column survives until Phase C; both are stamped. */
+    engineId?: string;
     normalizedTerm: string;
     outcome: KeywordAttemptOutcome;
     safeIntervalDays: number;
@@ -61,6 +64,7 @@ export class KeywordAttemptHistoryService {
         },
         create: {
           collectableMarketKey,
+          engineId: params.engineId ?? null,
           normalizedTerm,
           lastAttemptAt: attemptedAt,
           lastOutcome: params.outcome,
@@ -70,6 +74,7 @@ export class KeywordAttemptHistoryService {
             : {}),
         },
         update: {
+          ...(params.engineId ? { engineId: params.engineId } : {}),
           lastAttemptAt: attemptedAt,
           lastOutcome: params.outcome,
           cooldownUntil,

@@ -127,6 +127,7 @@ function createHarness(options: {
     createMarketRegistry() as never, // marketRegistry
     {} as never, // restaurantStatusService
     signals as never, // signals
+    {} as never, // signalDemandRead (recent-searches reader; unused here)
     placesCatalog as never, // placesCatalog (§22 cut 3)
     placesReconciler as never, // placesReconciler (§2 live)
   );

@@ -4,12 +4,19 @@ import { OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { RedditService } from '../../../external-integrations/reddit/reddit.service';
+import { GovernanceService } from '../../../external-integrations/governance/governance.service';
+import { CollectorSourceRegistryService } from '../collector-source-registry.service';
+import { REDDIT_POOL_NAME } from '../reddit-collection-adapter';
 import { BatchJob } from '../batch-processing-queue.types';
 
 export interface ChronologicalCollectionJobData {
   subreddit: string; // Changed from subreddits array to single subreddit
   jobId: string;
   triggeredBy: 'scheduled' | 'manual' | 'gap_detection';
+  /** §10 source identity (lane-row cursor + output heartbeat). */
+  sourceId?: string;
+  /** Pacer's reserved estimate for the §14.2 declared-vs-actual mirror. */
+  declaredRequests?: number;
   options?: {
     lastProcessedTimestamp?: number;
     limit?: number;
@@ -83,6 +90,8 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RedditService) private readonly redditService: RedditService,
+    private readonly sourceRegistry: CollectorSourceRegistryService,
+    private readonly governance: GovernanceService,
     @InjectQueue('chronological-batch-processing-queue')
     private readonly batchQueue: Queue<BatchJob>,
   ) {}
@@ -118,35 +127,41 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
     // Services injected via constructor - no ModuleRef resolution needed
 
     try {
-      // PHASE 1: Determine lastProcessed timestamp with safe fallback when not provided
-      // Use DB as source of truth so delayed jobs/retries remain correct
+      // Resolve the SOURCE (§10: collection work keys off source rows). The
+      // pacer passes sourceId; manual/script dispatches resolve by handle.
+      const sourceId =
+        job.data.sourceId ??
+        (await this.sourceRegistry.findRedditSourceByHandle(subreddit))
+          ?.sourceId;
+
+      // PHASE 1: Determine lastProcessed timestamp with safe fallback when
+      // not provided. The LANE ROW is the cursor's home (§10: lane state
+      // lives on the lane row) so delayed jobs/retries remain correct.
       let effectiveLastProcessed = options.lastProcessedTimestamp;
-      if (typeof effectiveLastProcessed !== 'number') {
-        const sr = await this.prisma.collectionCommunity.findFirst({
-          where: {
-            communityName: subreddit.toLowerCase(),
-          },
-          select: { lastProcessed: true, safeIntervalDays: true },
-        });
-        if (sr) {
-          const fallbackMs = sr.lastProcessed
-            ? sr.lastProcessed.getTime()
-            : Date.now() - (sr.safeIntervalDays || 1) * 24 * 60 * 60 * 1000;
-          effectiveLastProcessed = Math.floor(fallbackMs / 1000);
+      if (typeof effectiveLastProcessed !== 'number' && sourceId) {
+        const lane = await this.sourceRegistry.getLane(
+          sourceId,
+          'chronological',
+        );
+        const cursorRaw =
+          typeof lane?.state.lastProcessedAt === 'string'
+            ? Date.parse(lane.state.lastProcessedAt)
+            : NaN;
+        if (Number.isFinite(cursorRaw)) {
+          effectiveLastProcessed = Math.floor(cursorRaw / 1000);
           await job.log(
-            `Using computed lastProcessed fallback: ${new Date(
-              fallbackMs,
-            ).toISOString()}`,
-          );
-        } else {
-          const defaultFallbackMs = Date.now() - 24 * 60 * 60 * 1000; // 24h default
-          effectiveLastProcessed = Math.floor(defaultFallbackMs / 1000);
-          await job.log(
-            `Subreddit not found; using 24h fallback: ${new Date(
-              defaultFallbackMs,
-            ).toISOString()}`,
+            `Using lane cursor: ${new Date(cursorRaw).toISOString()}`,
           );
         }
+      }
+      if (typeof effectiveLastProcessed !== 'number') {
+        const defaultFallbackMs = Date.now() - 24 * 60 * 60 * 1000; // 24h default
+        effectiveLastProcessed = Math.floor(defaultFallbackMs / 1000);
+        await job.log(
+          `No lane cursor; using 24h fallback: ${new Date(
+            defaultFallbackMs,
+          ).toISOString()}`,
+        );
       }
 
       // CRITICAL: Capture collection start time BEFORE Reddit API call
@@ -210,6 +225,16 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       // Process all collected posts - async queue handles batching and rate limiting
 
       if (posts.length === 0) {
+        // Legit zero still COVERS through the collection start (§10:
+        // coveredThrough means visible-at-fetch-time) and still writes the
+        // output heartbeat — legit-zero vs broken-zero is judged against the
+        // lane's own baseline, never by skipping the write.
+        await this.recordSourceFacts({
+          sourceId,
+          collectionStartTime,
+          outputDocs: 0,
+          declaredRequests: job.data.declaredRequests,
+        });
         return {
           success: true,
           jobId,
@@ -269,45 +294,39 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       // Results will be aggregated by async batch processing workers
       // No synchronous processing needed - batches handle their own LLM processing and database operations
 
-      // Update last processed timestamp in database for async queue approach
       const timestamps = posts
         .map((post) => this.extractCreatedUtc(post) ?? 0)
         .filter((timestamp) => timestamp > 0);
       if (timestamps.length > 0) {
         latestTimestamp = Math.max(...timestamps);
-
-        // For async queue approach, we update the timestamp immediately after queuing
-        // The actual LLM processing will happen asynchronously
-        // CRITICAL: Use collection start time to prevent missing posts during processing
-        await this.prisma.collectionCommunity.update({
-          where: { communityName: subreddit.toLowerCase() },
-          data: {
-            lastProcessed: new Date(collectionStartTime * 1000),
-          },
-        });
-
-        this.logger.info(
-          'Updated lastProcessed timestamp after queuing batches',
-          {
-            correlationId,
-            subreddit,
-            lastProcessedTimestamp: collectionStartTime,
-            lastProcessedDate: new Date(
-              collectionStartTime * 1000,
-            ).toISOString(),
-            batchesQueued: batches.length,
-            latestPostTimestamp: latestTimestamp,
-            latestPostDate: new Date(latestTimestamp * 1000).toISOString(),
-            processingDurationMinutes: Math.round(
-              (Date.now() - startTime) / (1000 * 60),
-            ),
-          },
-        );
       }
 
-      // Cadence is owned solely by CollectionSchedulerService
-      // (collection_schedules rows) — the worker must NOT self-schedule a
-      // successor job, or two planners run in parallel and double-collect.
+      // Advance the lane cursor + output heartbeat + declared-vs-actual
+      // mirror. CRITICAL: cursor = collection START time (visible-at-fetch)
+      // so posts arriving during processing are never skipped. §10's stricter
+      // advance-at-extraction-run-creation + the expectedBatches reconciler
+      // are the remaining C4 pieces (recorded in the plan ledger).
+      await this.recordSourceFacts({
+        sourceId,
+        collectionStartTime,
+        outputDocs: posts.length,
+        declaredRequests: job.data.declaredRequests,
+      });
+      this.logger.info('Advanced lane cursor after queuing batches', {
+        correlationId,
+        subreddit,
+        lastProcessedTimestamp: collectionStartTime,
+        lastProcessedDate: new Date(collectionStartTime * 1000).toISOString(),
+        batchesQueued: batches.length,
+        latestPostTimestamp: latestTimestamp,
+        processingDurationMinutes: Math.round(
+          (Date.now() - startTime) / (1000 * 60),
+        ),
+      });
+
+      // Cadence is owned solely by CollectorPacerService (source lane rows) —
+      // the worker must NOT self-schedule a successor job, or two planners
+      // run in parallel and double-collect.
 
       const result: ChronologicalCollectionJobResult = {
         success: true,
@@ -354,20 +373,60 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
           ...options,
           retryCount: retryCount + 1,
         };
-
-        throw error; // Trigger Bull's retry mechanism
       }
 
-      return {
-        success: false,
-        jobId,
-        subreddit,
-        postsProcessed: 0,
-        batchesProcessed: 0,
-        mentionsExtracted: 0,
-        processingTime: Date.now() - startTime,
-        error: errorMessage,
-      };
+      // §12.4 liar purge: exhausted retries used to RETURN {success:false} —
+      // Bull marked the job COMPLETED and the failure vanished (always-green).
+      // A failed collection is a REAL job failure, always thrown.
+      throw error;
+    }
+  }
+
+  /** §10/§12.4/§14.2 durable source facts after a fetch: lane cursor
+   *  (visible-at-fetch coveredThrough), output heartbeat, and the
+   *  declared-vs-actual reddit-draw mirror (~1 listing request per 100
+   *  posts, minimum 1). Best-effort: fact recording must never fail the
+   *  collection it describes. */
+  private async recordSourceFacts(params: {
+    sourceId: string | undefined;
+    collectionStartTime: number;
+    outputDocs: number;
+    declaredRequests?: number;
+  }): Promise<void> {
+    if (!params.sourceId) {
+      return;
+    }
+    try {
+      await this.sourceRegistry.mergeLaneState(
+        params.sourceId,
+        'chronological',
+        {
+          lastProcessedAt: new Date(
+            params.collectionStartTime * 1000,
+          ).toISOString(),
+        },
+      );
+      await this.sourceRegistry.recordLaneOutput(
+        params.sourceId,
+        'chronological',
+        params.outputDocs,
+      );
+      if (typeof params.declaredRequests === 'number') {
+        const actualRequests = Math.max(1, Math.ceil(params.outputDocs / 100));
+        this.governance.pools.recordActualPair(
+          REDDIT_POOL_NAME,
+          'collector.chronological',
+          params.declaredRequests,
+          actualRequests,
+        );
+      }
+    } catch (error) {
+      this.logger.warn('Source fact recording failed (collection unaffected)', {
+        sourceId: params.sourceId,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
     }
   }
 

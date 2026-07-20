@@ -29,7 +29,6 @@ export class BullQueueMetricsService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @InjectQueue('chronological-collection')
     private readonly chronologicalCollectionQueue: Queue,
-    @InjectQueue('volume-tracking') private readonly volumeTrackingQueue: Queue,
     @InjectQueue('chronological-batch-processing-queue')
     private readonly chronologicalBatchQueue: Queue,
     @InjectQueue('keyword-batch-processing-queue')
@@ -101,7 +100,6 @@ export class BullQueueMetricsService implements OnModuleInit, OnModuleDestroy {
         name: 'chronological-collection',
         queue: this.chronologicalCollectionQueue,
       },
-      { name: 'volume-tracking', queue: this.volumeTrackingQueue },
       {
         name: 'chronological-batch-processing-queue',
         queue: this.chronologicalBatchQueue,

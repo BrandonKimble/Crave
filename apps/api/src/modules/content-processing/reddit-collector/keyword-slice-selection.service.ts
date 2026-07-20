@@ -1,3 +1,28 @@
+/**
+ * §11 term selection for one SOURCE's keyword dispatch, at priors (§22 item 7).
+ *
+ * The four judgment FAMILIES — unmet, refresh, demand, explore — propose
+ * candidates; the §11 portfolio applies:
+ * - TWO floors only, each a fraction of the dispatch (K1 sentences; the
+ *   FRACTIONS are K2 priors marked OWNER-RATIFY §18.1): UNMET ("user-expressed
+ *   gaps always get attention" — a product promise independent of yield) and
+ *   EXPLORE ("insurance for the unmeasurable").
+ * - Refresh + demand compete for ALL remaining capacity via WITHIN-FAMILY
+ *   percentile normalization — cross-family weights do not exist (the old
+ *   SLICE_QUOTAS + SLICE_BACKFILL_WEIGHT machinery is dead).
+ *
+ * Demand inputs (C3): territory demand is read from the signals ledger /
+ * signal_demand_daily aggregate via SignalDemandReadService — the old
+ * user_search_demand_daily reads are DEAD. Territory = the engine's member
+ * places + DAG descendants (derived, never stored). The unmet family still
+ * reads the on-demand ask-event gap record keyed by the engine's legacy
+ * market-key name; that table moves onto the ledger in Phase C.
+ *
+ * Expected-new-content model (§11) at priors: the attempt-history cooldown
+ * constants ARE its cold-start priors (the measured arrival × hit reader is
+ * trigger-deferred per §22 — see collector-estimators.ts); unmet demand may
+ * PIERCE the clamp via the smooth no-results recovery (§11 merge law).
+ */
 import { Inject, Injectable } from '@nestjs/common';
 import {
   DemandScoringConsumerKind,
@@ -12,29 +37,25 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { normalizeKeywordTerm } from './keyword-term-normalization';
 import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
-import { MarketRegistryService } from '../../markets/market-registry.service';
 import { DemandScoringTraceService } from '../../analytics/demand-scoring-trace.service';
 import * as curves from '../../analytics/demand-scoring/curves';
 import { ON_DEMAND_MIN_RESULTS } from '../../search/on-demand-tuning.constants';
+import { SignalDemandReadService } from '../../signals/signal-demand-read.service';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
+/** §11 keyword recall / dispatch size — fixture-set ~25–100; 25 is the
+ *  standing prior (OWNER-RATIFY §18.1). */
 const MAX_TERMS_PER_CYCLE = 25;
 
-const SLICE_QUOTAS = {
-  unmet: 5,
-  refresh: 10,
-  demand: 8,
-  explore: 2,
-} as const;
+/** §11 portfolio floor FRACTIONS of each dispatch — K2 priors, OWNER-RATIFY
+ *  (§18.1). Derived from the pre-cut quotas (5/25, 2/25) so the priors
+ *  edition is behaviorally continuous. */
+export const UNMET_FLOOR_FRACTION = 0.2;
+export const EXPLORE_FLOOR_FRACTION = 0.08;
 
-const SLICE_BACKFILL_WEIGHT: Record<KeywordSlice, number> = {
-  unmet: 1.2,
-  refresh: 1.1,
-  demand: 1,
-  explore: 0.65,
-};
-
+/** Score-quality gates per family (a floor guarantees ATTENTION when real
+ *  candidates exist — it never manufactures busywork). */
 const MIN_SELECTABLE_SCORE_BY_SLICE: Record<KeywordSlice, number> = {
   unmet: 1,
   refresh: 0.2,
@@ -42,37 +63,39 @@ const MIN_SELECTABLE_SCORE_BY_SLICE: Record<KeywordSlice, number> = {
   explore: 0.2,
 };
 
+/** Dedupe priority: floor families first, then the competitive families. */
 const SLICE_PRIORITY: KeywordSlice[] = [
   'unmet',
+  'explore',
   'refresh',
   'demand',
-  'explore',
 ];
 
 const DEFAULT_WINDOW_DAYS = 30;
 const DEFAULT_TREND_WINDOW_DAYS = 7;
-const DEFAULT_SAFE_INTERVAL_DAYS = 7;
-const KEYWORD_COLLECTION_SCORER_VERSION = 'keyword-collection-v1';
+const KEYWORD_COLLECTION_SCORER_VERSION = 'keyword-collection-v2';
 const UNMET_CURRENT_CYCLE_DAYS = 7;
 const UNMET_HALF_LIFE_DAYS = 14;
 
-const DEMAND_WEIGHT_FAVORITES = 1.5;
-const DEMAND_WEIGHT_CARD_ENGAGEMENT = 0.6;
-const DEMAND_WEIGHT_EXPLICIT_SELECTION = 1.5;
-const DEMAND_WEIGHT_QUERY_PRIMARY = 1;
-
+/** 45d no-results recovery — K2 prior of the expected-new-content model
+ *  (§16: the cooldown constants survive as its cold-start priors). */
 const NO_RESULTS_RECOVERY_DAYS = 45;
 
 const REFRESH_STALENESS_SATURATION_DAYS = 90;
 
 const EXPLORE_RECENT_ATTEMPT_DAYS = 30;
 
-const EXPLORE_SIGNAL_CARD_ENGAGEMENT_FLOOR = 2;
-const EXPLORE_SIGNAL_EXPLICIT_SELECTION_FLOOR = 2;
-const EXPLORE_SIGNAL_FAVORITE_FLOOR = 1;
-const EXPLORE_SIGNAL_UNMET_FLOOR = 2;
+/** Explore admission floor: distinct territory actors (K2 prior). */
+const EXPLORE_DISTINCT_ACTOR_FLOOR = 2;
 
 const ENTITY_SIGNAL_CANDIDATE_LIMIT = MAX_TERMS_PER_CYCLE * 50;
+
+const COLLECTIBLE_ENTITY_TYPES = [
+  'restaurant',
+  'food',
+  'food_attribute',
+  'restaurant_attribute',
+];
 
 function clamp01(value: number): number {
   if (!Number.isFinite(value) || value <= 0) {
@@ -93,6 +116,19 @@ function shouldTraceAllDemandCandidates(): boolean {
 
 export type KeywordSlice = 'unmet' | 'refresh' | 'demand' | 'explore';
 
+/** The source under selection — §10: work keys off SOURCE rows. */
+export interface KeywordSelectionSource {
+  sourceId: string;
+  /** Platform handle (subreddit). */
+  handle: string;
+  engineId: string;
+  /** Engine natural key — the legacy collectable market key during Phase B/C
+   *  (the ask-event unmet lane and attempt-history legacy PK read by it). */
+  engineName: string;
+  territoryPlaceIds: string[];
+  safeIntervalDays: number;
+}
+
 export interface KeywordTermCandidate {
   term: string;
   normalizedTerm: string;
@@ -106,7 +142,6 @@ export interface KeywordSliceSelectionStats {
   candidatesBySlice: Record<KeywordSlice, number>;
   eligibleBySlice: Record<KeywordSlice, number>;
   selectedBySlice: Record<KeywordSlice, number>;
-  underfilledBySlice: Record<KeywordSlice, number>;
   dropped: {
     invalid: number;
     cooldown: number;
@@ -115,20 +150,12 @@ export interface KeywordSliceSelectionStats {
 }
 
 export interface KeywordSliceSelectionResult {
-  subreddit: string;
-  collectableMarketKey: string;
-  safeIntervalDays: number;
+  source: KeywordSelectionSource;
   windowDays: number;
   maxTerms: number;
-  quotas: Record<KeywordSlice, number>;
+  floors: { unmet: number; explore: number };
   terms: KeywordTermCandidate[];
   stats: KeywordSliceSelectionStats;
-}
-
-interface SoftReservationSelection {
-  selected: KeywordTermCandidate[];
-  selectedBySlice: Record<KeywordSlice, KeywordTermCandidate[]>;
-  underfilledBySlice: Record<KeywordSlice, number>;
 }
 
 interface KeywordGateRejectTrace {
@@ -137,39 +164,22 @@ interface KeywordGateRejectTrace {
   decisionReason: string;
 }
 
-type CommunityLookup = {
-  safeIntervalDays: number | null;
-} | null;
-
 @Injectable()
 export class KeywordSliceSelectionService {
   private readonly logger: LoggerService;
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly marketRegistry: MarketRegistryService,
+    private readonly signalDemand: SignalDemandReadService,
     private readonly scoringTrace: DemandScoringTraceService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('KeywordSliceSelectionService');
   }
 
-  async selectTermsForSubreddit(
-    subreddit: string,
+  async selectTermsForSource(
+    source: KeywordSelectionSource,
   ): Promise<KeywordSliceSelectionResult> {
-    const normalizedSubreddit = subreddit.trim();
-    const community = await this.lookupCommunity(normalizedSubreddit);
-    const mappedMarketKey =
-      await this.marketRegistry.resolveMarketKeyForCommunity(
-        normalizedSubreddit,
-      );
-    if (!mappedMarketKey) {
-      throw new Error(
-        `No marketKey configured for collection community "${normalizedSubreddit}"`,
-      );
-    }
-    const collectableMarketKey = mappedMarketKey;
-    const safeIntervalDays = this.resolveSafeIntervalDays(community);
     const now = new Date();
     const windowDays = this.resolveWindowDays(
       process.env.KEYWORD_DEMAND_WINDOW_DAYS,
@@ -185,20 +195,39 @@ export class KeywordSliceSelectionService {
       candidatesBySlice: { unmet: 0, refresh: 0, demand: 0, explore: 0 },
       eligibleBySlice: { unmet: 0, refresh: 0, demand: 0, explore: 0 },
       selectedBySlice: { unmet: 0, refresh: 0, demand: 0, explore: 0 },
-      underfilledBySlice: { unmet: 0, refresh: 0, demand: 0, explore: 0 },
       dropped: { invalid: 0, cooldown: 0, deduped: 0 },
     };
     const gateRejects: KeywordGateRejectTrace[] = [];
 
+    const territoryDemand = await this.signalDemand.territoryEntityDemand({
+      placeIds: source.territoryPlaceIds,
+      windowDays,
+      limit: ENTITY_SIGNAL_CANDIDATE_LIMIT,
+      entityTypes: COLLECTIBLE_ENTITY_TYPES,
+    });
+
     const candidatesBySlice: Record<KeywordSlice, KeywordTermCandidate[]> = {
-      unmet: await this.loadUnmetCandidates(collectableMarketKey, since, now),
-      refresh: await this.loadRefreshCandidates(collectableMarketKey, now),
-      demand: await this.loadDemandCandidates(collectableMarketKey, since),
+      unmet: await this.loadUnmetCandidates(source.engineName, since, now),
+      refresh: await this.loadRefreshCandidates(source.engineId, now),
+      demand: territoryDemand.map((row) => ({
+        term: row.entityName,
+        normalizedTerm: '',
+        slice: 'demand' as const,
+        score: row.demandScore,
+        entityType: row.entityType as EntityType,
+        origin: {
+          entityId: row.entityId,
+          demandScore: row.demandScore,
+          distinctActors: row.distinctActors,
+          lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
+        },
+      })),
       explore: await this.loadExploreCandidates({
-        collectableMarketKey,
+        source,
+        territoryDemand,
         since,
-        now,
         trendWindowDays,
+        windowDays,
       }),
     };
 
@@ -218,7 +247,7 @@ export class KeywordSliceSelectionService {
     }
 
     const attemptHistoryMap = await this.loadAttemptHistoryByTerm({
-      collectableMarketKey,
+      engineId: source.engineId,
       normalizedTerms: Array.from(
         new Set(
           SLICE_PRIORITY.flatMap((slice) =>
@@ -234,6 +263,9 @@ export class KeywordSliceSelectionService {
       const filtered: KeywordTermCandidate[] = [];
       for (const candidate of candidatesBySlice[slice]) {
         const history = attemptHistoryMap.get(candidate.normalizedTerm);
+        // §11 merge law: the expected-new-content clamp (cooldown priors) may
+        // be PIERCED by renewed user-expressed demand — unmet no-results
+        // candidates recover smoothly instead of hard-gating.
         const shouldApplySmoothNoResultsRecovery =
           candidate.slice === 'unmet' &&
           history?.lastOutcome === KeywordAttemptOutcome.no_results;
@@ -246,7 +278,7 @@ export class KeywordSliceSelectionService {
           gateRejects.push({
             candidate,
             decisionState: DemandScoringDecisionState.gate_reject,
-            decisionReason: 'attempt_cooldown_active',
+            decisionReason: 'expected_new_content_clamp',
           });
           continue;
         }
@@ -285,32 +317,28 @@ export class KeywordSliceSelectionService {
       stats.eligibleBySlice[slice] = dedupedBySlice[slice].length;
     }
 
-    const quotas: Record<KeywordSlice, number> = {
-      unmet: SLICE_QUOTAS.unmet,
-      refresh: SLICE_QUOTAS.refresh,
-      demand: SLICE_QUOTAS.demand,
-      explore: SLICE_QUOTAS.explore,
-    };
-
     const maxTerms = MAX_TERMS_PER_CYCLE;
-    const softSelection = this.selectWithSoftReservationsAndBackfill({
+    const floors = {
+      unmet: Math.round(UNMET_FLOOR_FRACTION * maxTerms),
+      explore: Math.round(EXPLORE_FLOOR_FRACTION * maxTerms),
+    };
+    const selection = this.selectWithFloorsAndCompetition({
       candidatesBySlice: dedupedBySlice,
-      reservations: quotas,
+      floors,
       maxTerms,
     });
 
     for (const slice of SLICE_PRIORITY) {
-      stats.selectedBySlice[slice] =
-        softSelection.selectedBySlice[slice].length;
-      stats.underfilledBySlice[slice] = softSelection.underfilledBySlice[slice];
+      stats.selectedBySlice[slice] = selection.selectedBySlice[slice].length;
     }
-    const finalSelection = softSelection.selected;
+    const finalSelection = selection.selected;
 
-    this.logger.debug('Selected keyword terms for cycle', {
-      subreddit: normalizedSubreddit,
-      collectableMarketKey,
+    this.logger.debug('Selected keyword terms for dispatch', {
+      sourceId: source.sourceId,
+      handle: source.handle,
+      engineId: source.engineId,
       maxTerms,
-      quotas,
+      floors,
       stats,
       sample: finalSelection.slice(0, 10).map((term) => ({
         slice: term.slice,
@@ -321,22 +349,21 @@ export class KeywordSliceSelectionService {
     });
 
     await this.traceKeywordSelection({
-      collectableMarketKey,
+      engineName: source.engineName,
       cycleStartAt: since,
       cycleEndAt: now,
       candidatesBySlice: dedupedBySlice,
       gateRejects,
       selected: finalSelection,
       maxTerms,
+      floors,
     });
 
     return {
-      subreddit: normalizedSubreddit,
-      collectableMarketKey,
-      safeIntervalDays,
+      source,
       windowDays,
       maxTerms,
-      quotas,
+      floors,
       terms: finalSelection,
       stats,
     };
@@ -410,125 +437,119 @@ export class KeywordSliceSelectionService {
     return Array.from(byTerm.values());
   }
 
-  private selectWithSoftReservationsAndBackfill(params: {
+  /**
+   * §11 portfolio selection: two FLOORS (fractions of the dispatch) for unmet
+   * and explore; refresh + demand compete for everything else via
+   * within-family PERCENTILE normalization (a family's #1 is comparable to
+   * the other family's #1 regardless of score units — cross-family weights
+   * do not exist). A floor family with fewer real candidates than its floor
+   * returns the slack to the competitive pool.
+   */
+  private selectWithFloorsAndCompetition(params: {
     candidatesBySlice: Record<KeywordSlice, KeywordTermCandidate[]>;
-    reservations: Record<KeywordSlice, number>;
+    floors: { unmet: number; explore: number };
     maxTerms: number;
-  }): SoftReservationSelection {
+  }): {
+    selected: KeywordTermCandidate[];
+    selectedBySlice: Record<KeywordSlice, KeywordTermCandidate[]>;
+  } {
     const selectedBySlice: Record<KeywordSlice, KeywordTermCandidate[]> = {
       unmet: [],
       refresh: [],
       demand: [],
       explore: [],
     };
-    const underfilledBySlice: Record<KeywordSlice, number> = {
-      unmet: 0,
-      refresh: 0,
-      demand: 0,
-      explore: 0,
-    };
     const selectedTerms = new Set<string>();
-    const leftovers: Array<{
+    const selected: KeywordTermCandidate[] = [];
+
+    const take = (candidate: KeywordTermCandidate, slice: KeywordSlice) => {
+      selected.push(candidate);
+      selectedBySlice[slice].push(candidate);
+      selectedTerms.add(candidate.normalizedTerm);
+    };
+
+    // 1. Floors — filled by score, quality-gated.
+    for (const slice of ['unmet', 'explore'] as const) {
+      const floor = params.floors[slice];
+      for (const candidate of params.candidatesBySlice[slice]) {
+        if (selectedBySlice[slice].length >= floor) break;
+        if (selected.length >= params.maxTerms) break;
+        if (!this.isSelectableCandidate(candidate)) continue;
+        if (selectedTerms.has(candidate.normalizedTerm)) continue;
+        take(candidate, slice);
+      }
+    }
+
+    // 2. Refresh + demand compete for the remainder by within-family
+    //    percentile (rank position inside its own family).
+    const competitors: Array<{
       candidate: KeywordTermCandidate;
       slice: KeywordSlice;
-      rankQuality: number;
+      percentile: number;
     }> = [];
-
-    for (const slice of SLICE_PRIORITY) {
-      const candidates = params.candidatesBySlice[slice];
-      const reservation = Math.max(0, params.reservations[slice] ?? 0);
-      const naturalLimit = this.naturalReservationLimit(
-        candidates,
-        reservation,
+    for (const slice of ['refresh', 'demand'] as const) {
+      const family = params.candidatesBySlice[slice].filter(
+        (candidate) =>
+          this.isSelectableCandidate(candidate) &&
+          !selectedTerms.has(candidate.normalizedTerm),
       );
-      const reserved = candidates.slice(0, naturalLimit);
-
-      for (const candidate of reserved) {
-        if (selectedTerms.size >= params.maxTerms) {
-          break;
-        }
-        selectedBySlice[slice].push(candidate);
-        selectedTerms.add(candidate.normalizedTerm);
-      }
-
-      underfilledBySlice[slice] = Math.max(
-        0,
-        reservation - selectedBySlice[slice].length,
-      );
-
-      const topScore = candidates[0]?.score ?? 0;
-      for (let index = naturalLimit; index < candidates.length; index += 1) {
-        const candidate = candidates[index];
-        if (selectedTerms.has(candidate.normalizedTerm)) {
-          continue;
-        }
-        if (!this.isSelectableCandidate(candidate)) {
-          continue;
-        }
-        const rankQuality =
-          topScore > 0 && Number.isFinite(candidate.score)
-            ? clamp01(candidate.score / topScore)
-            : 0;
-        if (rankQuality <= 0) {
-          continue;
-        }
-        leftovers.push({ candidate, slice, rankQuality });
-      }
-    }
-
-    const selected = SLICE_PRIORITY.flatMap((slice) => selectedBySlice[slice]);
-    const remaining = Math.max(0, params.maxTerms - selected.length);
-    if (remaining > 0) {
-      leftovers.sort((a, b) => {
-        const aScore = a.rankQuality * SLICE_BACKFILL_WEIGHT[a.slice];
-        const bScore = b.rankQuality * SLICE_BACKFILL_WEIGHT[b.slice];
-        return bScore - aScore || b.candidate.score - a.candidate.score;
+      family.forEach((candidate, index) => {
+        competitors.push({
+          candidate,
+          slice,
+          percentile: 1 - index / Math.max(1, family.length),
+        });
       });
+    }
+    competitors.sort(
+      (a, b) =>
+        b.percentile - a.percentile || b.candidate.score - a.candidate.score,
+    );
+    for (const { candidate, slice } of competitors) {
+      if (selected.length >= params.maxTerms) break;
+      if (selectedTerms.has(candidate.normalizedTerm)) continue;
+      take(candidate, slice);
+    }
 
-      for (const { candidate, slice } of leftovers) {
-        if (selected.length >= params.maxTerms) {
-          break;
-        }
-        if (selectedTerms.has(candidate.normalizedTerm)) {
-          continue;
-        }
-        selected.push(candidate);
-        selectedBySlice[slice].push(candidate);
-        selectedTerms.add(candidate.normalizedTerm);
+    // 3. Floor-family overflow backfills any remaining capacity (floors are
+    //    minimums, not caps).
+    for (const slice of ['unmet', 'explore'] as const) {
+      for (const candidate of params.candidatesBySlice[slice]) {
+        if (selected.length >= params.maxTerms) break;
+        if (!this.isSelectableCandidate(candidate)) continue;
+        if (selectedTerms.has(candidate.normalizedTerm)) continue;
+        take(candidate, slice);
       }
     }
 
-    for (const slice of SLICE_PRIORITY) {
-      underfilledBySlice[slice] = Math.max(
-        0,
-        (params.reservations[slice] ?? 0) - selectedBySlice[slice].length,
-      );
-    }
-
-    return { selected, selectedBySlice, underfilledBySlice };
+    return { selected, selectedBySlice };
   }
 
   private async traceKeywordSelection(params: {
-    collectableMarketKey: string;
+    engineName: string;
     cycleStartAt: Date;
     cycleEndAt: Date;
     candidatesBySlice: Record<KeywordSlice, KeywordTermCandidate[]>;
     gateRejects?: KeywordGateRejectTrace[];
     selected: KeywordTermCandidate[];
     maxTerms: number;
+    floors: { unmet: number; explore: number };
   }): Promise<void> {
     try {
       const runId = await this.scoringTrace.createRun({
         consumerKind: DemandScoringConsumerKind.keyword_collection,
-        collectableMarketKey: params.collectableMarketKey,
+        collectableMarketKey: params.engineName,
         cycleStartAt: params.cycleStartAt,
         cycleEndAt: params.cycleEndAt,
         scorerVersion: KEYWORD_COLLECTION_SCORER_VERSION,
         traceAllCandidates: shouldTraceAllDemandCandidates(),
         metadata: {
           maxTerms: params.maxTerms,
-          reservations: SLICE_QUOTAS,
-          backfillWeights: SLICE_BACKFILL_WEIGHT,
+          floors: params.floors,
+          floorFractions: {
+            unmet: UNMET_FLOOR_FRACTION,
+            explore: EXPLORE_FLOOR_FRACTION,
+          },
         },
       });
 
@@ -540,12 +561,12 @@ export class KeywordSliceSelectionService {
       );
       const selectedTraces = params.selected.map((candidate, index) =>
         this.buildKeywordTraceCandidate({
-          collectableMarketKey: params.collectableMarketKey,
+          engineName: params.engineName,
           candidate,
           rank: index + 1,
           selected: true,
           decisionState: DemandScoringDecisionState.selected,
-          decisionReason: 'selected_by_soft_reservation_or_backfill',
+          decisionReason: 'selected_by_floor_or_competition',
         }),
       );
 
@@ -558,7 +579,7 @@ export class KeywordSliceSelectionService {
         return traced.map((candidate, index) => {
           const isDebugOnlyCandidate = traceAllCandidates && index >= 5;
           return this.buildKeywordTraceCandidate({
-            collectableMarketKey: params.collectableMarketKey,
+            engineName: params.engineName,
             candidate,
             selected: false,
             decisionState: isDebugOnlyCandidate
@@ -566,7 +587,7 @@ export class KeywordSliceSelectionService {
               : DemandScoringDecisionState.near_miss,
             decisionReason: isDebugOnlyCandidate
               ? 'trace_all_not_selected'
-              : 'strong_leftover_after_budget',
+              : 'strong_leftover_after_dispatch',
             traceScope: isDebugOnlyCandidate ? 'all_candidate' : 'near_miss',
           });
         });
@@ -577,7 +598,7 @@ export class KeywordSliceSelectionService {
         ...nearMisses,
         ...(params.gateRejects ?? []).map((reject) =>
           this.buildKeywordTraceCandidate({
-            collectableMarketKey: params.collectableMarketKey,
+            engineName: params.engineName,
             candidate: reject.candidate,
             selected: false,
             decisionState: reject.decisionState,
@@ -588,7 +609,7 @@ export class KeywordSliceSelectionService {
       await this.scoringTrace.finishRun(runId);
     } catch (error) {
       this.logger.warn('Failed to trace keyword collection selection', {
-        collectableMarketKey: params.collectableMarketKey,
+        engineName: params.engineName,
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack }
@@ -598,7 +619,7 @@ export class KeywordSliceSelectionService {
   }
 
   private buildKeywordTraceCandidate(params: {
-    collectableMarketKey: string;
+    engineName: string;
     candidate: KeywordTermCandidate;
     rank?: number;
     selected: boolean;
@@ -615,7 +636,7 @@ export class KeywordSliceSelectionService {
       candidateKind: `${params.candidate.slice}_term`,
       subjectKind: DemandSubjectKind.term,
       subjectKey: params.candidate.normalizedTerm,
-      collectableMarketKey: params.collectableMarketKey,
+      collectableMarketKey: params.engineName,
       entityId:
         typeof origin.entityId === 'string' ? origin.entityId : undefined,
       entityType: params.candidate.entityType ?? null,
@@ -638,65 +659,9 @@ export class KeywordSliceSelectionService {
     return JSON.parse(JSON.stringify(value ?? {})) as Prisma.InputJsonValue;
   }
 
-  private naturalReservationLimit(
-    candidates: KeywordTermCandidate[],
-    reservation: number,
-  ): number {
-    if (!candidates.length || reservation <= 0) {
-      return 0;
-    }
-    const positiveCandidates = candidates.filter((candidate) =>
-      this.isSelectableCandidate(candidate),
-    );
-    if (!positiveCandidates.length) {
-      return 0;
-    }
-
-    const reservationCap = Math.min(reservation, positiveCandidates.length);
-    const scores = positiveCandidates.map((candidate) => candidate.score);
-    const median = this.median(scores);
-    const mad = this.median(scores.map((score) => Math.abs(score - median)));
-    const robustScale = curves.robustScale(mad);
-
-    let limit = 0;
-    for (let index = 0; index < reservationCap; index += 1) {
-      const score = scores[index];
-      const rank = index + 1;
-      const robustZ = (score - median) / robustScale;
-      const eligible = rank === 1 || robustZ >= -0.75;
-      if (!eligible) {
-        break;
-      }
-      limit = rank;
-      const nextScore = scores[index + 1];
-      if (rank >= 2 && nextScore !== undefined && score > 0) {
-        const dropRatio = nextScore / score;
-        if (dropRatio < 0.55) {
-          break;
-        }
-      }
-    }
-
-    return Math.max(1, limit);
-  }
-
   private isSelectableCandidate(candidate: KeywordTermCandidate): boolean {
     const score = Number.isFinite(candidate.score) ? candidate.score : 0;
     return score >= MIN_SELECTABLE_SCORE_BY_SLICE[candidate.slice];
-  }
-
-  private median(values: number[]): number {
-    const sorted = values
-      .filter((value) => Number.isFinite(value))
-      .sort((a, b) => a - b);
-    if (!sorted.length) {
-      return 0;
-    }
-    const mid = Math.floor(sorted.length / 2);
-    if (sorted.length % 2 === 1) {
-      return sorted[mid];
-    }
-    return (sorted[mid - 1] + sorted[mid]) / 2;
   }
 
   private formatDateKey(value: Date): string {
@@ -709,29 +674,6 @@ export class KeywordSliceSelectionService {
     }
     const parsed = Number.parseInt(raw, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-  }
-
-  private calculateDemandScore(params: {
-    favoriteUsers: number;
-    cardEngagementUsers: number;
-    explicitSelectionUsers: number;
-    queryUsersPrimary: number;
-  }): number {
-    const favoriteScore = this.normalizeDemandUnit(params.favoriteUsers);
-    const cardEngagementScore = this.normalizeDemandUnit(
-      params.cardEngagementUsers,
-    );
-    const explicitSelectionScore = this.normalizeDemandUnit(
-      params.explicitSelectionUsers,
-    );
-    const queryScore = this.normalizeDemandUnit(params.queryUsersPrimary);
-
-    return (
-      DEMAND_WEIGHT_FAVORITES * favoriteScore +
-      DEMAND_WEIGHT_CARD_ENGAGEMENT * cardEngagementScore +
-      DEMAND_WEIGHT_EXPLICIT_SELECTION * explicitSelectionScore +
-      DEMAND_WEIGHT_QUERY_PRIMARY * queryScore
-    );
   }
 
   private calculateUnmetScore(params: {
@@ -788,10 +730,6 @@ export class KeywordSliceSelectionService {
     return curves.inverseCoverage(coverage, 1.2);
   }
 
-  private normalizeDemandUnit(value: number): number {
-    return Number.isFinite(value) ? Math.max(0, value) : 0;
-  }
-
   private applyAttemptHistoryAdjustments(
     candidate: KeywordTermCandidate,
     history:
@@ -841,26 +779,22 @@ export class KeywordSliceSelectionService {
         candidate.origin && typeof candidate.origin === 'object'
           ? candidate.origin
           : {};
-      const queryUsers7d =
-        typeof origin.queryUsers7d === 'number' ? origin.queryUsers7d : 0;
-      const queryUsersPrev7d =
-        typeof origin.queryUsersPrev7d === 'number'
-          ? origin.queryUsersPrev7d
-          : 0;
-      const localQueryUsers =
-        typeof origin.localQueryUsers === 'number' ? origin.localQueryUsers : 0;
-      const globalQueryUsers =
-        typeof origin.globalQueryUsers === 'number'
-          ? origin.globalQueryUsers
-          : 0;
+      const currentActs =
+        typeof origin.currentActs === 'number' ? origin.currentActs : 0;
+      const previousActs =
+        typeof origin.previousActs === 'number' ? origin.previousActs : 0;
+      const localDemand =
+        typeof origin.localDemand === 'number' ? origin.localDemand : 0;
+      const globalDemand =
+        typeof origin.globalDemand === 'number' ? origin.globalDemand : 0;
 
       const trend = clamp01(
-        (queryUsers7d - queryUsersPrev7d) / Math.max(1, queryUsersPrev7d),
+        (currentActs - previousActs) / Math.max(1, previousActs),
       );
 
-      const otherUsers = Math.max(0, globalQueryUsers - localQueryUsers);
+      const otherDemand = Math.max(0, globalDemand - localDemand);
       const localSpecialization = clamp01(
-        (localQueryUsers + 1) / (otherUsers + 1) / 3,
+        (localDemand + 1) / (otherDemand + 1) / 3,
       );
 
       const novelty = (() => {
@@ -896,8 +830,13 @@ export class KeywordSliceSelectionService {
     return candidate;
   }
 
+  /**
+   * UNMET family — the user-expressed-gap record (on-demand ask events),
+   * keyed by the engine's legacy market-key name until the gap record moves
+   * onto the signals ledger (Phase C).
+   */
   private async loadUnmetCandidates(
-    marketKey: string,
+    engineName: string,
     since: Date,
     now: Date,
   ): Promise<KeywordTermCandidate[]> {
@@ -930,7 +869,7 @@ export class KeywordSliceSelectionService {
         FROM collection_on_demand_ask_events
         WHERE asked_at >= (${this.formatDateKey(since)}::date::timestamp AT TIME ZONE 'UTC')
           AND collectable_market_key IS NOT NULL
-          AND LOWER(collectable_market_key) = LOWER(${marketKey})
+          AND LOWER(collectable_market_key) = LOWER(${engineName})
           AND reason IN ('unresolved'::"OnDemandReason", 'low_result'::"OnDemandReason")
           AND NULLIF(LOWER(TRIM(term)), '') IS NOT NULL
         GROUP BY
@@ -984,454 +923,75 @@ export class KeywordSliceSelectionService {
     }));
   }
 
-  private async loadDemandCandidates(
-    collectableMarketKey: string,
-    since: Date,
-  ): Promise<KeywordTermCandidate[]> {
-    const rows = await this.loadEntityDemandSignalRows({
-      collectableMarketKey,
-      since,
-      limit: ENTITY_SIGNAL_CANDIDATE_LIMIT,
-    });
+  /**
+   * EXPLORE family — territory entities with a minimal distinct-actor
+   * footprint scored by novelty + local specialization + trend, all read
+   * from the signals substrate.
+   */
+  private async loadExploreCandidates(params: {
+    source: KeywordSelectionSource;
+    territoryDemand: Array<{
+      entityId: string;
+      entityType: string;
+      entityName: string;
+      demandScore: number;
+      distinctActors: number;
+      lastSeenAt: Date | null;
+    }>;
+    since: Date;
+    trendWindowDays: number;
+    windowDays: number;
+  }): Promise<KeywordTermCandidate[]> {
+    const eligible = params.territoryDemand.filter(
+      (row) => row.distinctActors >= EXPLORE_DISTINCT_ACTOR_FLOOR,
+    );
+    if (!eligible.length) {
+      return [];
+    }
+    const entityIds = eligible.map((row) => row.entityId);
+    const [trendByEntity, globalDemandByEntity] = await Promise.all([
+      this.signalDemand.territoryEntityTrend({
+        placeIds: params.source.territoryPlaceIds,
+        entityIds,
+        trendWindowDays: params.trendWindowDays,
+      }),
+      this.signalDemand.globalEntityDemand({
+        entityIds,
+        windowDays: params.windowDays,
+      }),
+    ]);
 
-    return rows.map((row) => {
-      const demandScore = this.calculateDemandScore({
-        favoriteUsers: row.favoriteUsers,
-        cardEngagementUsers: row.viewUsers,
-        explicitSelectionUsers: row.autocompleteUsers,
-        queryUsersPrimary: row.queryUsersPrimary,
-      });
-
+    return eligible.map((row) => {
+      const trend = trendByEntity.get(row.entityId) ?? {
+        currentActs: 0,
+        previousActs: 0,
+      };
       return {
         term: row.entityName,
         normalizedTerm: '',
-        slice: 'demand',
-        score: demandScore,
-        entityType: row.entityType,
-        origin: {
-          entityId: row.entityId,
-          favoriteUsers: row.favoriteUsers,
-          cardEngagementUsers: row.viewUsers,
-          explicitSelectionUsers: row.autocompleteUsers,
-          queryUsersPrimary: row.queryUsersPrimary,
-          viewUsers: row.viewUsers,
-          autocompleteUsers: row.autocompleteUsers,
-          lastQueryAt: row.lastQueryAt?.toISOString() ?? null,
-          lastViewAt: row.lastViewAt?.toISOString() ?? null,
-        },
-      };
-    });
-  }
-
-  private async loadExploreCandidates(params: {
-    collectableMarketKey: string;
-    since: Date;
-    now: Date;
-    trendWindowDays: number;
-  }): Promise<KeywordTermCandidate[]> {
-    const rows = await this.loadEntityDemandSignalRows({
-      collectableMarketKey: params.collectableMarketKey,
-      since: params.since,
-      limit: ENTITY_SIGNAL_CANDIDATE_LIMIT,
-    });
-
-    if (!rows.length) {
-      return [];
-    }
-
-    const unmetRequests = await this.prisma.$queryRaw<
-      Array<{ term: string; demandScore: number }>
-    >(Prisma.sql`
-      WITH user_counts AS (
-        SELECT
-          LOWER(TRIM(term)) AS normalized_term,
-          MIN(term) AS term,
-          COALESCE(user_id::text, 'anonymous:' || ask_event_id::text) AS user_key,
-          COUNT(*)::float AS ask_count,
-          MAX(asked_at) AS last_seen_at
-        FROM collection_on_demand_ask_events
-        WHERE asked_at >= (${this.formatDateKey(params.since)}::date::timestamp AT TIME ZONE 'UTC')
-          AND collectable_market_key IS NOT NULL
-          AND LOWER(collectable_market_key) = LOWER(${params.collectableMarketKey})
-          AND reason IN ('unresolved'::"OnDemandReason", 'low_result'::"OnDemandReason")
-          AND NULLIF(LOWER(TRIM(term)), '') IS NOT NULL
-        GROUP BY
-          LOWER(TRIM(term)),
-          COALESCE(user_id::text, 'anonymous:' || ask_event_id::text)
-      )
-      SELECT
-        MIN(term) AS term,
-        SUM(LN(1 + ask_count) / LN(2))::float AS "demandScore"
-      FROM user_counts
-      GROUP BY normalized_term
-      ORDER BY "demandScore" DESC, MAX(last_seen_at) DESC
-      LIMIT ${ENTITY_SIGNAL_CANDIDATE_LIMIT}
-    `);
-
-    const unmetByNormalizedTerm = new Map<string, number>();
-    for (const request of unmetRequests) {
-      const stripped = stripGenericTokens(request.term);
-      if (!stripped.text.length || stripped.isGenericOnly) {
-        continue;
-      }
-      const normalized = normalizeKeywordTerm(stripped.text);
-      if (!normalized.length) {
-        continue;
-      }
-      unmetByNormalizedTerm.set(
-        normalized,
-        Math.max(
-          unmetByNormalizedTerm.get(normalized) ?? 0,
-          request.demandScore,
-        ),
-      );
-    }
-
-    const trendSince = new Date(
-      params.now.getTime() - params.trendWindowDays * MS_PER_DAY,
-    );
-    const prevTrendSince = new Date(
-      params.now.getTime() - params.trendWindowDays * 2 * MS_PER_DAY,
-    );
-
-    const entityIds = Array.from(new Set(rows.map((row) => row.entityId)));
-    const trendByEntityId = await this.loadTrendCountsByEntity({
-      collectableMarketKey: params.collectableMarketKey,
-      entityIds,
-      since: prevTrendSince,
-      trendSince,
-    });
-
-    const termKeys = Array.from(
-      new Set(
-        rows
-          .map((row) => row.entityName.trim().toLowerCase())
-          .filter((name) => name.length),
-      ),
-    );
-    const entityTypes = Array.from(new Set(rows.map((row) => row.entityType)));
-
-    const globalQueryUsersByTerm = await this.loadGlobalQueryCountsByTerm({
-      since: params.since,
-      termKeys,
-      entityTypes,
-    });
-
-    const candidates: KeywordTermCandidate[] = [];
-
-    for (const row of rows) {
-      const stripped = stripGenericTokens(row.entityName);
-      const normalized = stripped.text.length
-        ? normalizeKeywordTerm(stripped.text)
-        : '';
-      const unmetDistinctUsers = normalized.length
-        ? (unmetByNormalizedTerm.get(normalized) ?? 0)
-        : 0;
-
-      const signalFloorMet =
-        row.viewUsers >= EXPLORE_SIGNAL_CARD_ENGAGEMENT_FLOOR ||
-        row.autocompleteUsers >= EXPLORE_SIGNAL_EXPLICIT_SELECTION_FLOOR ||
-        row.favoriteUsers >= EXPLORE_SIGNAL_FAVORITE_FLOOR ||
-        unmetDistinctUsers >= EXPLORE_SIGNAL_UNMET_FLOOR;
-
-      if (!signalFloorMet) {
-        continue;
-      }
-
-      const termKey = row.entityName.trim().toLowerCase();
-      const globalQueryUsers =
-        globalQueryUsersByTerm.get(`${row.entityType}:${termKey}`) ?? 0;
-
-      const trend = trendByEntityId.get(row.entityId) ?? {
-        queryUsers7d: 0,
-        queryUsersPrev7d: 0,
-      };
-
-      candidates.push({
-        term: row.entityName,
-        normalizedTerm: '',
-        slice: 'explore',
+        slice: 'explore' as const,
         score: 0,
-        entityType: row.entityType,
+        entityType: row.entityType as EntityType,
         origin: {
           entityId: row.entityId,
-          favoriteUsers: row.favoriteUsers,
-          cardEngagementUsers: row.viewUsers,
-          explicitSelectionUsers: row.autocompleteUsers,
-          queryUsersPrimary: row.queryUsersPrimary,
-          unmetDistinctUsers,
-          viewUsers: row.viewUsers,
-          autocompleteUsers: row.autocompleteUsers,
-          lastQueryAt: row.lastQueryAt?.toISOString() ?? null,
-          lastViewAt: row.lastViewAt?.toISOString() ?? null,
-          queryUsers7d: trend.queryUsers7d,
-          queryUsersPrev7d: trend.queryUsersPrev7d,
-          localQueryUsers: row.queryUsersPrimary,
-          globalQueryUsers,
+          distinctActors: row.distinctActors,
+          localDemand: row.demandScore,
+          globalDemand: globalDemandByEntity.get(row.entityId) ?? 0,
+          currentActs: trend.currentActs,
+          previousActs: trend.previousActs,
+          lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
         },
-      });
-    }
-
-    return candidates;
+      };
+    });
   }
 
-  private async loadEntityDemandSignalRows(params: {
-    collectableMarketKey: string;
-    since: Date;
-    limit: number;
-  }): Promise<
-    Array<{
-      entityId: string;
-      entityType: EntityType;
-      entityName: string;
-      favoriteUsers: number;
-      viewUsers: number;
-      autocompleteUsers: number;
-      queryUsersPrimary: number;
-      lastQueryAt: Date | null;
-      lastViewAt: Date | null;
-    }>
-  > {
-    const limit =
-      Number.isFinite(params.limit) && params.limit > 0
-        ? Math.floor(params.limit)
-        : ENTITY_SIGNAL_CANDIDATE_LIMIT;
-    const sinceKey = this.formatDateKey(params.since);
-
-    if (!params.collectableMarketKey.trim()) {
-      return [];
-    }
-
-    return await this.prisma.$queryRaw<
-      Array<{
-        entityId: string;
-        entityType: EntityType;
-        entityName: string;
-        favoriteUsers: number;
-        viewUsers: number;
-        autocompleteUsers: number;
-        queryUsersPrimary: number;
-        lastQueryAt: Date | null;
-        lastViewAt: Date | null;
-      }>
-    >(Prisma.sql`
-      WITH local_query_user AS (
-        SELECT
-          entity_id,
-          entity_type,
-          user_id,
-          SUM(signal_count * CASE WHEN signal_kind = 'cache' THEN 0.35 ELSE 1.0 END)::float AS user_signal_count,
-          MAX(last_seen_at) AS last_query_at
-        FROM user_search_demand_daily
-        WHERE demand_date >= ${sinceKey}::date
-          AND subject_kind = 'entity'
-          AND source_kind = 'search_log'
-          AND signal_kind IN ('backend', 'cache')
-          AND user_id IS NOT NULL
-          AND entity_id IS NOT NULL
-          AND entity_type IS NOT NULL
-          AND market_key IS NULL
-          AND collectable_market_key IS NOT NULL
-          AND LOWER(collectable_market_key) = LOWER(${params.collectableMarketKey})
-        GROUP BY entity_id, entity_type, user_id
-      ),
-      local_query AS (
-        SELECT
-          entity_id,
-          entity_type,
-          SUM(LN(1 + user_signal_count) / LN(2))::float AS query_users_primary,
-          MAX(last_query_at) AS last_query_at
-        FROM local_query_user
-        GROUP BY entity_id, entity_type
-        ORDER BY query_users_primary DESC, last_query_at DESC
-        LIMIT ${limit}
-      ),
-      local_autocomplete_user AS (
-        SELECT
-          entity_id,
-          entity_type,
-          user_id,
-          SUM(signal_count * 1.5)::float AS user_signal_count
-        FROM user_search_demand_daily
-        WHERE demand_date >= ${sinceKey}::date
-          AND subject_kind = 'entity'
-          AND source_kind = 'search_log'
-          AND signal_kind = 'autocomplete_selection'
-          AND user_id IS NOT NULL
-          AND entity_id IS NOT NULL
-          AND entity_type IS NOT NULL
-          AND market_key IS NULL
-          AND collectable_market_key IS NOT NULL
-          AND LOWER(collectable_market_key) = LOWER(${params.collectableMarketKey})
-        GROUP BY entity_id, entity_type, user_id
-      ),
-      local_autocomplete AS (
-        SELECT
-          entity_id,
-          entity_type,
-          SUM(LN(1 + user_signal_count) / LN(2))::float AS autocomplete_users
-        FROM local_autocomplete_user
-        GROUP BY entity_id, entity_type
-        ORDER BY autocomplete_users DESC
-        LIMIT ${limit}
-      ),
-      candidate_ids AS (
-        SELECT entity_id, entity_type FROM local_query
-        UNION
-        SELECT entity_id, entity_type FROM local_autocomplete
-      )
-      SELECT
-        e.entity_id AS "entityId",
-        e.type AS "entityType",
-        e.name AS "entityName",
-        0::float AS "favoriteUsers",
-        0::float AS "viewUsers",
-        NULL::timestamp AS "lastViewAt",
-        COALESCE(la.autocomplete_users, 0)::float AS "autocompleteUsers",
-        COALESCE(lq.query_users_primary, 0)::float AS "queryUsersPrimary",
-        lq.last_query_at AS "lastQueryAt"
-      FROM candidate_ids c
-      JOIN core_entities e ON e.entity_id = c.entity_id
-      LEFT JOIN local_autocomplete la
-        ON la.entity_id = c.entity_id AND la.entity_type = c.entity_type
-      LEFT JOIN local_query lq
-        ON lq.entity_id = c.entity_id AND lq.entity_type = c.entity_type
-      WHERE e.type IN ('restaurant', 'food', 'food_attribute', 'restaurant_attribute')
-      ORDER BY
-        (
-          COALESCE(la.autocomplete_users, 0) * 2
-          + COALESCE(lq.query_users_primary, 0)
-        ) DESC,
-        COALESCE(lq.last_query_at, 'epoch'::timestamp) DESC
-      LIMIT ${limit}
-    `);
-  }
-
-  private async loadTrendCountsByEntity(params: {
-    collectableMarketKey: string;
-    entityIds: string[];
-    since: Date;
-    trendSince: Date;
-  }): Promise<Map<string, { queryUsers7d: number; queryUsersPrev7d: number }>> {
-    if (!params.entityIds.length) {
-      return new Map();
-    }
-    const sinceKey = this.formatDateKey(params.since);
-    const trendSinceKey = this.formatDateKey(params.trendSince);
-
-    const rows = await this.prisma.$queryRaw<
-      Array<{
-        entityId: string;
-        queryUsers7d: number;
-        queryUsersPrev7d: number;
-      }>
-    >(Prisma.sql`
-      WITH user_counts AS (
-        SELECT
-          entity_id,
-          user_id,
-          SUM(signal_count * CASE WHEN signal_kind = 'cache' THEN 0.35 ELSE 1.0 END)
-            FILTER (WHERE demand_date >= ${trendSinceKey}::date)::float AS current_signal_count,
-          SUM(signal_count * CASE WHEN signal_kind = 'cache' THEN 0.35 ELSE 1.0 END)
-            FILTER (
-              WHERE demand_date >= ${sinceKey}::date
-                AND demand_date < ${trendSinceKey}::date
-            )::float AS previous_signal_count
-        FROM user_search_demand_daily
-        WHERE demand_date >= ${sinceKey}::date
-          AND subject_kind = 'entity'
-          AND source_kind = 'search_log'
-          AND signal_kind IN ('backend', 'cache')
-          AND user_id IS NOT NULL
-          AND market_key IS NULL
-          AND collectable_market_key IS NOT NULL
-          AND LOWER(collectable_market_key) = LOWER(${
-            params.collectableMarketKey
-          })
-          AND entity_id IN (${Prisma.join(
-            params.entityIds.map((id) => Prisma.sql`${id}::uuid`),
-          )})
-        GROUP BY entity_id, user_id
-      )
-      SELECT
-        entity_id AS "entityId",
-        COALESCE(SUM(LN(1 + COALESCE(current_signal_count, 0)) / LN(2)), 0)::float AS "queryUsers7d",
-        COALESCE(SUM(LN(1 + COALESCE(previous_signal_count, 0)) / LN(2)), 0)::float AS "queryUsersPrev7d"
-      FROM user_counts
-      GROUP BY entity_id
-    `);
-
-    return new Map(
-      rows.map((row) => [
-        row.entityId,
-        {
-          queryUsers7d: row.queryUsers7d,
-          queryUsersPrev7d: row.queryUsersPrev7d,
-        },
-      ]),
-    );
-  }
-
-  private async loadGlobalQueryCountsByTerm(params: {
-    since: Date;
-    termKeys: string[];
-    entityTypes: EntityType[];
-  }): Promise<Map<string, number>> {
-    if (!params.termKeys.length || !params.entityTypes.length) {
-      return new Map();
-    }
-    const sinceKey = this.formatDateKey(params.since);
-
-    const rows = await this.prisma.$queryRaw<
-      Array<{
-        entityType: EntityType;
-        termKey: string;
-        globalQueryUsers: number;
-      }>
-    >(Prisma.sql`
-      WITH user_counts AS (
-        SELECT
-          e.type AS entity_type,
-          LOWER(e.name) AS term_key,
-          d.user_id,
-          SUM(d.signal_count * CASE WHEN d.signal_kind = 'cache' THEN 0.35 ELSE 1.0 END)::float AS user_signal_count
-        FROM user_search_demand_daily d
-        JOIN core_entities e ON e.entity_id = d.entity_id
-        WHERE d.demand_date >= ${sinceKey}::date
-          AND d.subject_kind = 'entity'
-          AND d.source_kind = 'search_log'
-          AND d.signal_kind IN ('backend', 'cache')
-          AND d.market_key IS NULL
-          AND d.collectable_market_key IS NULL
-          AND d.user_id IS NOT NULL
-          AND LOWER(e.name) IN (${Prisma.join(params.termKeys)})
-          AND e.type IN (${Prisma.join(
-            params.entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
-          )})
-        GROUP BY e.type, LOWER(e.name), d.user_id
-      )
-      SELECT
-        entity_type AS "entityType",
-        term_key AS "termKey",
-        COALESCE(SUM(LN(1 + user_signal_count) / LN(2)), 0)::float AS "globalQueryUsers"
-      FROM user_counts
-      GROUP BY entity_type, term_key
-    `);
-
-    return new Map(
-      rows.map((row) => [
-        `${row.entityType}:${row.termKey}`,
-        row.globalQueryUsers,
-      ]),
-    );
-  }
-
+  /** REFRESH family — the (engine, term) attempt ledger, staleness-scored. */
   private async loadRefreshCandidates(
-    collectableMarketKey: string,
+    engineId: string,
     now: Date,
   ): Promise<KeywordTermCandidate[]> {
     const rows = await this.prisma.keywordAttemptHistory.findMany({
-      where: { collectableMarketKey },
+      where: { engineId },
       orderBy: [{ lastSuccessAt: 'asc' }, { lastAttemptAt: 'asc' }],
       take: MAX_TERMS_PER_CYCLE * 10,
     });
@@ -1479,7 +1039,7 @@ export class KeywordSliceSelectionService {
   }
 
   private async loadAttemptHistoryByTerm(params: {
-    collectableMarketKey: string;
+    engineId: string;
     normalizedTerms: string[];
   }): Promise<
     Map<
@@ -1497,7 +1057,7 @@ export class KeywordSliceSelectionService {
 
     const rows = await this.prisma.keywordAttemptHistory.findMany({
       where: {
-        collectableMarketKey: params.collectableMarketKey,
+        engineId: params.engineId,
         normalizedTerm: { in: params.normalizedTerms },
       },
       select: {
@@ -1518,29 +1078,5 @@ export class KeywordSliceSelectionService {
         },
       ]),
     );
-  }
-
-  private async lookupCommunity(subreddit: string): Promise<CommunityLookup> {
-    if (!subreddit.length) {
-      return null;
-    }
-
-    return (await this.prisma.collectionCommunity.findFirst({
-      where: {
-        communityName: { equals: subreddit, mode: 'insensitive' },
-      },
-      select: { safeIntervalDays: true },
-    })) as CommunityLookup;
-  }
-
-  private resolveSafeIntervalDays(community: CommunityLookup): number {
-    const raw =
-      typeof community?.safeIntervalDays === 'number'
-        ? community.safeIntervalDays
-        : null;
-    if (raw && Number.isFinite(raw) && raw > 0) {
-      return raw;
-    }
-    return DEFAULT_SAFE_INTERVAL_DAYS;
   }
 }

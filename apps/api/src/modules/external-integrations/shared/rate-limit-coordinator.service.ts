@@ -825,16 +825,12 @@ export class RateLimitCoordinatorService implements OnModuleInit {
       this.configService.get<number>('googlePlaces.requestsPerMinute') || 600;
     const googleRequestsPerDay =
       this.configService.get<number>('googlePlaces.requestsPerDay') || 0;
-    const googleRequestsPerSecond =
-      this.configService.get<number>('googlePlaces.requestsPerSecond') ||
-      this.computePerSecond(googleRequestsPerMinute);
     const googleRequestsPerHour = this.computePerHour(
       googleRequestsPerMinute,
       googleRequestsPerDay,
     );
 
     this.registerRateLimitConfig(ExternalApiService.GOOGLE_PLACES, {
-      requestsPerSecond: googleRequestsPerSecond,
       requestsPerMinute: googleRequestsPerMinute,
       requestsPerHour: googleRequestsPerHour,
       requestsPerDay: googleRequestsPerDay,
@@ -864,13 +860,11 @@ export class RateLimitCoordinatorService implements OnModuleInit {
         typeof value?.requestsPerDay === 'number'
           ? value.requestsPerDay
           : googleRequestsPerDay;
-      const perSecond = this.computePerSecond(perMinute);
       const perHour = this.computePerHour(perMinute, perDay);
 
       this.registerRateLimitConfig(
         ExternalApiService.GOOGLE_PLACES,
         {
-          requestsPerSecond: perSecond,
           requestsPerMinute: perMinute,
           requestsPerHour: perHour,
           requestsPerDay: perDay,
@@ -883,21 +877,14 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     const redditRequestsPerMinute =
       this.configService.get<number>('reddit.requestsPerMinute') || 100;
     this.registerRateLimitConfig(ExternalApiService.REDDIT, {
-      requestsPerSecond: 1,
       requestsPerMinute: redditRequestsPerMinute,
       requestsPerHour: redditRequestsPerMinute * 60,
       requestsPerDay: redditRequestsPerMinute * 60 * 24,
     });
 
-    // LLM API - Conservative limits to manage costs
-    const llmRequestsPerMinute =
-      this.configService.get<number>('llm.requestsPerMinute') || 60;
-    this.registerRateLimitConfig(ExternalApiService.LLM, {
-      requestsPerSecond: 2,
-      requestsPerMinute: llmRequestsPerMinute,
-      requestsPerHour: llmRequestsPerMinute * 60,
-      requestsPerDay: llmRequestsPerMinute * 60 * 24,
-    });
+    // §12.7: the dead LLM registration is gone — LLM admission lives in the
+    // Redis CentralizedRateLimiter (gemini.tokens pool mirrors it, §14.2);
+    // nothing draws LLM through this coordinator.
 
     this.logger.info('Rate limit configurations initialized', {
       scopes: Array.from(this.rateLimitConfigs.keys()),

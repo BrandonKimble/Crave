@@ -82,6 +82,7 @@ function createHarness(options: { searchLogEnabled?: boolean } = {}) {
       {} as never, // marketRegistry
       {} as never, // restaurantStatusService
       signals, // signals ledger (§3 dual-write)
+      {} as never, // signalDemandRead (recent-searches reader; unused here)
       {} as never, // placesCatalog (§22 cut 3 — unused on these paths)
       {} as never, // placesReconciler
     );

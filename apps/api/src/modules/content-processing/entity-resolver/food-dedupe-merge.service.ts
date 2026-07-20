@@ -228,6 +228,24 @@ export class FoodDedupeMergeService {
         where: { entityId: loser.entityId },
         data: { status: EntityStatus.archived },
       });
+
+      // Identity is a judgment (§3, red-team 2b): merges WRITE redirects; the
+      // signals ledger is never rekeyed — readers resolve loser subjectIds to
+      // the survivor at read. Chains are flattened so the readers' one-hop
+      // COALESCE stays complete (A→B then B→C rewrites A→C), and any stale
+      // redirect FROM the live winner is dropped.
+      await tx.entityRedirect.updateMany({
+        where: { toEntityId: loser.entityId },
+        data: { toEntityId: winner.entityId },
+      });
+      await tx.entityRedirect.deleteMany({
+        where: { fromEntityId: winner.entityId },
+      });
+      await tx.entityRedirect.upsert({
+        where: { fromEntityId: loser.entityId },
+        update: { toEntityId: winner.entityId },
+        create: { fromEntityId: loser.entityId, toEntityId: winner.entityId },
+      });
     });
 
     this.logger.info('Merged duplicate foods', {

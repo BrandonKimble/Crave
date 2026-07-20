@@ -133,9 +133,12 @@ async function main(): Promise<void> {
     `;
     console.log(`entity_view signals backfilled: ${viewSignals}`);
 
-    // 3. search acts (term subject; the legacy row's entity attribution list
-    // is many-per-event and stays behind — the ledger's search subject law
-    // binds ONE resolved entity, which the legacy rows cannot name reliably).
+    // 3. search acts. Subject carries BOTH halves of the act (§3, matching
+    // the live writer): the query term ALWAYS, plus the legacy event's
+    // primary resolved entity when one exists — the submissionContext
+    // selection first, else the newest attributed entity (the old
+    // /search/recent endpoint's exact preference order; red-team 2a — the
+    // recent-searches reader is unservable without it).
     // Geo = primary market bbox, center-point fallback (the live cache-reveal
     // writer's law).
     const searchSignals = await prisma.$executeRaw`
@@ -144,6 +147,20 @@ async function main(): Promise<void> {
           (SELECT MIN(occurred_at) FROM signals WHERE kind = 'search' AND meta->>'backfill' IS NULL),
           NOW()
         ) AS at
+      ),
+      primary_entity AS (
+        SELECT ev.event_id,
+          (SELECT see.entity_id
+           FROM search_event_entities see
+           WHERE see.event_id = ev.event_id
+           ORDER BY
+             CASE
+               WHEN ev.metadata#>>'{submissionContext,selectedEntityId}' = see.entity_id::text THEN 0
+               ELSE 1
+             END,
+             see.logged_at DESC
+           LIMIT 1) AS entity_id
+        FROM search_events ev
       )
       INSERT INTO signals (
         kind, subject_type, subject_id, subject_text,
@@ -152,8 +169,8 @@ async function main(): Promise<void> {
       )
       SELECT
         'search',
-        'term',
-        NULL,
+        CASE WHEN pe.entity_id IS NOT NULL THEN 'entity' ELSE 'term' END,
+        pe.entity_id,
         LEFT(LOWER(TRIM(ev.query_text)), 255),
         COALESCE(m.bbox_sw_latitude, m.center_latitude),
         COALESCE(m.bbox_sw_longitude, m.center_longitude),
@@ -171,6 +188,7 @@ async function main(): Promise<void> {
         ))
       FROM search_events ev
       JOIN signal_actors a ON a.user_id = ev.user_id
+      LEFT JOIN primary_entity pe ON pe.event_id = ev.event_id
       JOIN core_markets m
         ON LOWER(m.market_key) = LOWER(TRIM(ev.primary_market_key))
        AND (m.center_latitude IS NOT NULL OR m.bbox_sw_latitude IS NOT NULL)

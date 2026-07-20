@@ -2271,8 +2271,6 @@ export class UnifiedProcessingService implements OnModuleInit {
       case 'chronological':
       case 'archive':
       case 'keyword':
-      case 'on-demand':
-      case 'on_demand':
       case 'poll-thread':
       case 'poll_thread':
         return normalized.replace('_', '-');
