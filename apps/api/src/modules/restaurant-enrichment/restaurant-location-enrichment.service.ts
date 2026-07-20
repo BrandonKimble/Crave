@@ -833,7 +833,6 @@ export class RestaurantLocationEnrichmentService {
 
   async buildRestaurantCreateInput(params: {
     name: string;
-    marketKey: string;
     place: GooglePlacesV1Place;
     matchMetadata: MatchMetadata;
     alias?: string | null;
@@ -875,6 +874,14 @@ export class RestaurantLocationEnrichmentService {
       placeTypeAttributeIds,
     );
 
+    // Phase C: the presence marketKey derives from the VERIFIED place itself
+    // (lookup only, never a bootstrap — §13: creation anchors to the
+    // verification result). A place outside every legacy market simply has no
+    // presence row.
+    const presenceMarketKey = await this.resolveMarketKeyFromPlace(
+      params.place,
+    );
+
     return {
       ...createUpdateData,
       name: displayName,
@@ -882,13 +889,13 @@ export class RestaurantLocationEnrichmentService {
       canonicalDomain:
         this.normalizeWebsiteDomain(params.place.websiteUri) ?? undefined,
       aliases: alias,
-      marketPresences: {
-        create: [
-          {
-            marketKey: this.normalizeRequiredMarketKey(params.marketKey),
-          },
-        ],
-      },
+      ...(presenceMarketKey
+        ? {
+            marketPresences: {
+              create: [{ marketKey: presenceMarketKey }],
+            },
+          }
+        : {}),
       restaurantAttributes: mergedRestaurantAttributes,
       generalPraiseUpvotes: 0,
     };
@@ -2556,14 +2563,6 @@ export class RestaurantLocationEnrichmentService {
     }
     const normalized = value.trim().toLowerCase();
     return normalized.length ? normalized : null;
-  }
-
-  private normalizeRequiredMarketKey(value?: string | null): string {
-    const normalized = this.normalizeMarketKey(value);
-    if (!normalized) {
-      throw new Error('Restaurant market key is required');
-    }
-    return normalized;
   }
 
   private async resolveMarketKeyFromPlace(

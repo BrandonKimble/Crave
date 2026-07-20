@@ -184,14 +184,9 @@ export class FoodDedupeMergeService {
           where: { connectionId: connection.connectionId },
           data: { connectionId: surviving.connectionId },
         });
-        await tx.foodView.updateMany({
-          where: { connectionId: connection.connectionId },
-          data: { connectionId: surviving.connectionId },
-        });
-        await tx.userEntityViewEvent.updateMany({
-          where: { connectionId: connection.connectionId },
-          data: { connectionId: surviving.connectionId },
-        });
+        // Phase C: view history lives in the signals ledger — the reader
+        // resolves the dead connectionId to the survivor at read (via
+        // entity_redirects + (food, restaurant)); no rekey.
         await tx.connection.update({
           where: { connectionId: surviving.connectionId },
           data: {

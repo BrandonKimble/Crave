@@ -33,11 +33,14 @@ async function main(): Promise<void> {
        FROM core_entities
        WHERE status = 'active' AND name_embedding IS NOT NULL`,
     );
+    // Phase C: search history lives on the signals ledger (kind='search',
+    // subject_text = the normalized query term).
     const queryRows = await prisma.$queryRawUnsafe<{ query_text: string }[]>(
-      `SELECT query_text
-       FROM search_events
-       WHERE query_text IS NOT NULL AND length(trim(query_text)) >= 3
-       GROUP BY query_text
+      `SELECT subject_text AS query_text
+       FROM signals
+       WHERE kind = 'search'
+         AND subject_text IS NOT NULL AND length(trim(subject_text)) >= 3
+       GROUP BY subject_text
        ORDER BY count(*) DESC
        LIMIT $1`,
       topQueries,

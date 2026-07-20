@@ -207,7 +207,11 @@ export class KeywordSliceSelectionService {
     });
 
     const candidatesBySlice: Record<KeywordSlice, KeywordTermCandidate[]> = {
-      unmet: await this.loadUnmetCandidates(source.engineName, since, now),
+      unmet: await this.loadUnmetCandidates(
+        source.territoryPlaceIds,
+        since,
+        now,
+      ),
       refresh: await this.loadRefreshCandidates(source.engineId, now),
       demand: territoryDemand.map((row) => ({
         term: row.entityName,
@@ -664,10 +668,6 @@ export class KeywordSliceSelectionService {
     return score >= MIN_SELECTABLE_SCORE_BY_SLICE[candidate.slice];
   }
 
-  private formatDateKey(value: Date): string {
-    return value.toISOString().slice(0, 10);
-  }
-
   private resolveWindowDays(raw: string | undefined, fallback: number): number {
     if (!raw) {
       return fallback;
@@ -831,96 +831,51 @@ export class KeywordSliceSelectionService {
   }
 
   /**
-   * UNMET family — the user-expressed-gap record (on-demand ask events),
-   * keyed by the engine's legacy market-key name until the gap record moves
-   * onto the signals ledger (Phase C).
+   * UNMET family — user-expressed collection gaps read from the signals
+   * ledger (kind = 'on_demand_ask'), scoped by the engine's TERRITORY (C3:
+   * demand reaches collection only through the ledger; the legacy
+   * collection_on_demand_ask_events read died in Phase C).
    */
   private async loadUnmetCandidates(
-    engineName: string,
+    territoryPlaceIds: string[],
     since: Date,
     now: Date,
   ): Promise<KeywordTermCandidate[]> {
-    const rows = await this.prisma.$queryRaw<
-      Array<{
-        term: string;
-        entityType: EntityType;
-        entityId: string | null;
-        reason: OnDemandReason;
-        distinctUserCount: number;
-        demandScore: number;
-        resultRestaurantCount: number | null;
-        resultFoodCount: number | null;
-        lastSeenAt: Date;
-        askCount: number;
-      }>
-    >(Prisma.sql`
-      WITH user_counts AS (
-        SELECT
-          LOWER(TRIM(term)) AS normalized_term,
-          MIN(term) AS term,
-          entity_type,
-          entity_id,
-          reason,
-          COALESCE(user_id::text, 'anonymous:' || ask_event_id::text) AS user_key,
-          COUNT(*)::float AS ask_count,
-          MIN(result_restaurant_count) AS result_restaurant_count,
-          MIN(result_food_count) AS result_food_count,
-          MAX(asked_at) AS last_seen_at
-        FROM collection_on_demand_ask_events
-        WHERE asked_at >= (${this.formatDateKey(since)}::date::timestamp AT TIME ZONE 'UTC')
-          AND collectable_market_key IS NOT NULL
-          AND LOWER(collectable_market_key) = LOWER(${engineName})
-          AND reason IN ('unresolved'::"OnDemandReason", 'low_result'::"OnDemandReason")
-          AND NULLIF(LOWER(TRIM(term)), '') IS NOT NULL
-        GROUP BY
-          LOWER(TRIM(term)),
-          entity_type,
-          entity_id,
-          reason,
-          COALESCE(user_id::text, 'anonymous:' || ask_event_id::text)
-      )
-      SELECT
-        MIN(term) AS "term",
-        entity_type AS "entityType",
-        entity_id AS "entityId",
-        reason,
-        COUNT(*)::int AS "distinctUserCount",
-        SUM(LN(1 + ask_count) / LN(2))::float AS "demandScore",
-        MIN(result_restaurant_count)::int AS "resultRestaurantCount",
-        MIN(result_food_count)::int AS "resultFoodCount",
-        MAX(last_seen_at) AS "lastSeenAt",
-        SUM(ask_count)::int AS "askCount"
-      FROM user_counts
-      GROUP BY normalized_term, entity_type, entity_id, reason
-      ORDER BY "demandScore" DESC, "lastSeenAt" DESC
-      LIMIT ${MAX_TERMS_PER_CYCLE * 10}
-    `);
+    const rows = await this.signalDemand.territoryUnmetAsks({
+      placeIds: territoryPlaceIds,
+      since,
+      limit: MAX_TERMS_PER_CYCLE * 10,
+    });
 
-    return rows.map((request) => ({
-      term: request.term,
-      normalizedTerm: '',
-      slice: 'unmet',
-      score: this.calculateUnmetScore({
-        distinctUsers: request.distinctUserCount,
-        demandScore: request.demandScore,
-        reason: request.reason,
-        resultRestaurantCount: request.resultRestaurantCount,
-        resultFoodCount: request.resultFoodCount,
-        lastSeenAt: request.lastSeenAt,
-        now,
-      }),
-      entityType: request.entityType,
-      origin: {
-        reason: request.reason,
-        distinctUserCount: request.distinctUserCount,
-        demandScore: request.demandScore,
-        askCount: request.askCount,
-        entityId: request.entityId,
-        resultRestaurantCount: request.resultRestaurantCount ?? 0,
-        resultFoodCount: request.resultFoodCount ?? 0,
-        lastSeenAt: request.lastSeenAt.toISOString(),
-      },
-    }));
+    return rows
+      .filter((row): row is typeof row & { entityType: EntityType } =>
+        (Object.values(EntityType) as string[]).includes(row.entityType),
+      )
+      .map((request) => ({
+        term: request.term,
+        normalizedTerm: '',
+        slice: 'unmet',
+        score: this.calculateUnmetScore({
+          distinctUsers: request.distinctUserCount,
+          demandScore: request.demandScore,
+          reason: request.reason as OnDemandReason,
+          resultRestaurantCount: request.resultRestaurantCount,
+          resultFoodCount: request.resultFoodCount,
+          lastSeenAt: request.lastSeenAt,
+          now,
+        }),
+        entityType: request.entityType,
+        origin: {
+          reason: request.reason,
+          distinctUserCount: request.distinctUserCount,
+          demandScore: request.demandScore,
+          askCount: request.askCount,
+          entityId: request.entityId,
+          resultRestaurantCount: request.resultRestaurantCount ?? 0,
+          resultFoodCount: request.resultFoodCount ?? 0,
+          lastSeenAt: request.lastSeenAt.toISOString(),
+        },
+      }));
   }
 
   /**

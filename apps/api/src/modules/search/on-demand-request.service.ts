@@ -3,6 +3,7 @@ import { EntityType, OnDemandReason, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
+import { SignalsService } from '../signals/signals.service';
 
 export interface OnDemandRequestInput {
   term: string;
@@ -28,6 +29,7 @@ export class OnDemandRequestService {
   constructor(
     private readonly prisma: PrismaService,
     @Inject(LoggerService) loggerService: LoggerService,
+    private readonly signals: SignalsService,
   ) {
     this.logger = loggerService.setContext('OnDemandRequestService');
     this.cooldownMs = this.resolveCooldownMs();
@@ -82,11 +84,8 @@ export class OnDemandRequestService {
           context.restaurantCount,
         );
         const resultFoodCount = this.extractInteger(context.foodCount);
-        const marketKey = this.normalizeMarketKey(request.marketKey);
         const queueTargets = this.expandCollectableQueueTargets(request);
         const metadata = this.buildMetadata(request.metadata, context);
-        let firstRequestId: string | null = null;
-        const requestIdByCollectableMarketKey = new Map<string, string>();
 
         for (const queueTarget of queueTargets) {
           const requestIsQueueable = queueableKeys.has(
@@ -160,12 +159,6 @@ export class OnDemandRequestService {
             select: { requestId: true },
           });
 
-          firstRequestId ??= record.requestId;
-          requestIdByCollectableMarketKey.set(
-            queueTarget.collectableMarketKey,
-            record.requestId,
-          );
-
           if (userId) {
             await tx.onDemandRequestUser.upsert({
               where: {
@@ -198,48 +191,36 @@ export class OnDemandRequestService {
           }
         }
 
-        const askEventCollectableMarketKeys =
-          queueTargets.length > 0
-            ? queueTargets.map((target) => target.collectableMarketKey)
-            : [null];
-
-        for (const collectableMarketKey of askEventCollectableMarketKeys) {
-          if (searchRequestId) {
-            // Request-scoped idempotency: if THIS search request already logged
-            // an ask for this demand lane (the other signal site fired first),
-            // don't double-count the ask.
-            const existing = await tx.onDemandAskEvent.findFirst({
-              where: {
-                searchRequestId,
-                term: request.term,
-                entityType: request.entityType,
-                collectableMarketKey,
-              },
-              select: { askEventId: true },
-            });
-            if (existing) continue;
-          }
-          await tx.onDemandAskEvent.create({
-            data: {
-              requestId: collectableMarketKey
-                ? (requestIdByCollectableMarketKey.get(collectableMarketKey) ??
-                  firstRequestId)
-                : firstRequestId,
-              userId: userId ?? null,
-              term: request.term,
-              entityType: request.entityType,
-              entityId: request.entityId ?? null,
-              reason: request.reason,
-              marketKey,
-              collectableMarketKey,
-              resultRestaurantCount,
-              resultFoodCount,
-              askedAt: seenAt,
-              searchRequestId,
-              metadata,
-            },
-          });
-        }
+        // Phase C: the gap record IS a signal (kind = 'on_demand_ask',
+        // replacing collection_on_demand_ask_events). Subject carries the
+        // asked term (+ resolved entity for low-result asks); geo is the
+        // searcher's viewport bounds — the same bbox as the search act, so
+        // the §11 unmet family reads asks by TERRITORY, not engine name.
+        // Fire-and-forget by law; the two ask sites of one search share
+        // meta.askSearchRequestId and are deduped AT READ (deliberately NOT
+        // meta.searchRequestId — that key is the ledger-wide act-dedupe key
+        // and would collapse the ask into its originating search act).
+        this.signals.record({
+          kind: 'on_demand_ask',
+          userId,
+          subject: {
+            entityId: request.entityId ?? null,
+            term: request.term,
+          },
+          geo: this.signals.bboxFromBounds(
+            this.extractBounds(context.bounds) ?? null,
+          ),
+          occurredAt: seenAt,
+          meta: {
+            askSearchRequestId: searchRequestId ?? undefined,
+            reason: request.reason,
+            entityType: request.entityType,
+            resultRestaurantCount: resultRestaurantCount ?? undefined,
+            resultFoodCount: resultFoodCount ?? undefined,
+            source:
+              typeof context.source === 'string' ? context.source : undefined,
+          },
+        });
       }
     });
 
@@ -460,6 +441,35 @@ export class OnDemandRequestService {
       };
     }
     return Object.keys(base).length ? (base as Prisma.JsonObject) : undefined;
+  }
+
+  /** The ask sites pass the search viewport as context.bounds (see the two
+   *  recordRequests call sites) — the on_demand_ask signal's geo. */
+  private extractBounds(value: unknown): {
+    northEast: { lat: number; lng: number };
+    southWest: { lat: number; lng: number };
+  } | null {
+    if (!value || typeof value !== 'object') {
+      return null;
+    }
+    const bounds = value as {
+      northEast?: { lat?: unknown; lng?: unknown };
+      southWest?: { lat?: unknown; lng?: unknown };
+    };
+    const ne = bounds.northEast;
+    const sw = bounds.southWest;
+    if (
+      typeof ne?.lat !== 'number' ||
+      typeof ne.lng !== 'number' ||
+      typeof sw?.lat !== 'number' ||
+      typeof sw.lng !== 'number'
+    ) {
+      return null;
+    }
+    return {
+      northEast: { lat: ne.lat, lng: ne.lng },
+      southWest: { lat: sw.lat, lng: sw.lng },
+    };
   }
 
   private extractInteger(value: unknown): number | null {

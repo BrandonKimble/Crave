@@ -123,27 +123,9 @@ export class MarketRegistryService {
     });
   }
 
-  async resolveOrEnsureForPollCreation(params: {
-    bounds?: Bounds | null;
-    userLocation?: Coordinate | null;
-  }): Promise<EnsuredMarketResult | null> {
-    const coverage = await this.resolveViewportCoverage({
-      bounds: params.bounds ?? null,
-      userLocation: params.userLocation ?? null,
-      mode: 'polls_create',
-      ensureLocalityMarkets: true,
-    });
-    return coverage.market
-      ? {
-          marketKey: coverage.market.marketKey,
-          marketName: coverage.market.marketName,
-          marketShortName: coverage.market.marketShortName,
-          marketType: coverage.market.marketType,
-          isCollectable: coverage.market.isCollectable,
-          wasCreated: false,
-        }
-      : null;
-  }
+  // Phase C: resolveOrEnsureForPollCreation is DEAD — poll creation attaches
+  // to the place catalog (PollsService.resolveCreationPlace); no market is
+  // ever minted for a poll.
 
   async resolveOrEnsureForLocation(params: {
     bounds?: Bounds | null;

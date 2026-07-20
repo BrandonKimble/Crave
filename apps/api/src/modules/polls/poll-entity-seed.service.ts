@@ -6,8 +6,9 @@ import { AliasManagementService } from '../content-processing/entity-resolver/al
 import { RestaurantCuisineExtractionQueueService } from '../restaurant-enrichment/restaurant-cuisine-extraction-queue.service';
 import { RestaurantLocationEnrichmentService } from '../restaurant-enrichment/restaurant-location-enrichment.service';
 
-export type MarketContext = {
-  marketKey: string | null;
+/** Phase C re-key: entity seeding is biased by the creation PLACE (centroid +
+ *  region hints) — the old market context is dead. */
+export type PollPlaceContext = {
   center?: { lat: number; lng: number };
   city?: string | null;
   region?: string | null;
@@ -119,7 +120,7 @@ export class PollEntitySeedService {
   async resolveRestaurant(params: {
     entityId?: string | null;
     name?: string | null;
-    market: MarketContext;
+    place: PollPlaceContext;
     sessionToken?: string;
   }): Promise<ResolvedEntity> {
     if (params.entityId) {
@@ -133,10 +134,10 @@ export class PollEntitySeedService {
 
     const match = await this.restaurantEnrichment.resolvePlaceForInput({
       name,
-      city: params.market.city ?? undefined,
-      region: params.market.region ?? undefined,
-      countryCode: params.market.countryCode ?? undefined,
-      locationBias: params.market.center,
+      city: params.place.city ?? undefined,
+      region: params.place.region ?? undefined,
+      countryCode: params.place.countryCode ?? undefined,
+      locationBias: params.place.center,
       sessionToken: params.sessionToken,
     });
 
@@ -162,10 +163,12 @@ export class PollEntitySeedService {
       };
     }
 
+    // Market presence (when any legacy market contains the VERIFIED place)
+    // is derived inside buildRestaurantCreateInput from the Google place
+    // itself — §13: creation anchors to the verification result.
     const entityData =
       await this.restaurantEnrichment.buildRestaurantCreateInput({
         name,
-        marketKey: this.normalizeMarketKey(params.market.marketKey),
         place: match.place,
         matchMetadata: match.matchMetadata,
         alias: name,
@@ -192,7 +195,6 @@ export class PollEntitySeedService {
     this.logger.info('Created restaurant from poll input', {
       entityId: created.entityId,
       name: created.name,
-      marketKey: params.market.marketKey,
     });
 
     await this.cuisineExtractionQueue.queueExtraction(created.entityId, {
@@ -305,14 +307,5 @@ export class PollEntitySeedService {
     }
     const trimmed = value.trim().replace(/\s+/g, ' ');
     return trimmed.length ? trimmed : null;
-  }
-
-  private normalizeMarketKey(value: string | null | undefined): string {
-    const normalized =
-      typeof value === 'string' ? value.trim().toLowerCase() : '';
-    if (!normalized) {
-      throw new BadRequestException('Restaurant market is required');
-    }
-    return normalized;
   }
 }

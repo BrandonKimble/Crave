@@ -202,118 +202,17 @@ export class RestaurantEntityMergeService {
     canonicalId: string,
     duplicateId: string,
   ): Promise<void> {
-    await this.rehomeSearchLogs(tx, canonicalId, duplicateId);
-    await this.rehomeRestaurantViews(tx, canonicalId, duplicateId);
-    await this.rehomeUserEntityViewEvents(tx, canonicalId, duplicateId);
+    // Phase C: the dead event tables (search_event_entities,
+    // user_restaurant_views, user_entity_view_events, user_search_demand_daily,
+    // collection_on_demand_ask_events) need NO rekey — user-act history lives
+    // in the immutable signals ledger, resolved through entity_redirects at
+    // read (the redirect row is written by the merge flow itself).
     await this.rehomeUserFavorites(tx, canonicalId, duplicateId);
     await this.rehomeUserFavoriteEvents(tx, canonicalId, duplicateId);
     await this.rehomeFavoriteListRestaurantItems(tx, canonicalId, duplicateId);
     await this.rehomePollTopicRestaurantTargets(tx, canonicalId, duplicateId);
     await this.rehomeOnDemandRequestEntities(tx, canonicalId, duplicateId);
-    await this.rehomeOnDemandAskEventEntities(tx, canonicalId, duplicateId);
-    await this.rehomeSearchDemandDailyRows(tx, canonicalId, duplicateId);
     await this.rehomeDemandScoringCandidates(tx, canonicalId, duplicateId);
-  }
-
-  private async rehomeSearchLogs(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    // Per-entity attribution rows carry only the entity reference; query-level
-    // totals live on the parent SearchEvent. There is no (event, entity) unique
-    // constraint, so rekeying is a plain reassignment — any duplicate (event,
-    // canonical) rows are deduped downstream via COUNT(DISTINCT event_id).
-    await tx.searchEventEntity.updateMany({
-      where: { entityId: duplicateId },
-      data: { entityId: canonicalId },
-    });
-  }
-
-  private async rehomeRestaurantViews(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    const duplicateViews = await tx.restaurantView.findMany({
-      where: { restaurantId: duplicateId },
-      select: {
-        userId: true,
-        restaurantId: true,
-        viewCount: true,
-        lastViewedAt: true,
-      },
-    });
-
-    for (const view of duplicateViews) {
-      const conflicting = await tx.restaurantView.findUnique({
-        where: {
-          userId_restaurantId: {
-            userId: view.userId,
-            restaurantId: canonicalId,
-          },
-        },
-        select: {
-          userId: true,
-          restaurantId: true,
-          viewCount: true,
-          lastViewedAt: true,
-        },
-      });
-
-      if (!conflicting) {
-        await tx.restaurantView.update({
-          where: {
-            userId_restaurantId: {
-              userId: view.userId,
-              restaurantId: view.restaurantId,
-            },
-          },
-          data: { restaurantId: canonicalId },
-        });
-        continue;
-      }
-
-      await tx.restaurantView.update({
-        where: {
-          userId_restaurantId: {
-            userId: conflicting.userId,
-            restaurantId: conflicting.restaurantId,
-          },
-        },
-        data: {
-          viewCount: conflicting.viewCount + view.viewCount,
-          lastViewedAt:
-            this.maxDate(conflicting.lastViewedAt, view.lastViewedAt) ??
-            conflicting.lastViewedAt,
-        },
-      });
-
-      await tx.restaurantView.delete({
-        where: {
-          userId_restaurantId: {
-            userId: view.userId,
-            restaurantId: view.restaurantId,
-          },
-        },
-      });
-    }
-  }
-
-  private async rehomeUserEntityViewEvents(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    await tx.userEntityViewEvent.updateMany({
-      where: { entityId: duplicateId },
-      data: { entityId: canonicalId },
-    });
-
-    await tx.userEntityViewEvent.updateMany({
-      where: { contextRestaurantId: duplicateId },
-      data: { contextRestaurantId: canonicalId },
-    });
   }
 
   private async rehomeUserFavorites(
@@ -496,14 +395,6 @@ export class RestaurantEntityMergeService {
           });
         }
 
-        await tx.onDemandAskEvent.updateMany({
-          where: { requestId: request.requestId },
-          data: {
-            requestId: canonicalRequest.requestId,
-            entityId: canonicalId,
-          },
-        });
-
         await tx.onDemandRequest.update({
           where: { requestId: canonicalRequest.requestId },
           data: {
@@ -543,11 +434,6 @@ export class RestaurantEntityMergeService {
       touchedRequestIds.add(request.requestId);
     }
 
-    await tx.onDemandAskEvent.updateMany({
-      where: { entityId: duplicateId },
-      data: { entityId: canonicalId },
-    });
-
     for (const requestId of touchedRequestIds) {
       const distinctUserCount = await tx.onDemandRequestUser.count({
         where: { requestId },
@@ -555,77 +441,6 @@ export class RestaurantEntityMergeService {
       await tx.onDemandRequest.update({
         where: { requestId },
         data: { distinctUserCount },
-      });
-    }
-  }
-
-  private async rehomeOnDemandAskEventEntities(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    await tx.onDemandAskEvent.updateMany({
-      where: { entityId: duplicateId },
-      data: { entityId: canonicalId },
-    });
-  }
-
-  private async rehomeSearchDemandDailyRows(
-    tx: Prisma.TransactionClient,
-    canonicalId: string,
-    duplicateId: string,
-  ): Promise<void> {
-    const duplicateRows = await tx.userSearchDemandDaily.findMany({
-      where: { entityId: duplicateId },
-    });
-
-    for (const row of duplicateRows) {
-      const subjectKey = this.rehomeSubjectKey({
-        subjectKind: row.subjectKind,
-        subjectKey: row.subjectKey,
-        canonicalId,
-      });
-      const canonicalRow = await tx.userSearchDemandDaily.findFirst({
-        where: {
-          demandDate: row.demandDate,
-          userId: row.userId,
-          marketKey: row.marketKey,
-          collectableMarketKey: row.collectableMarketKey,
-          subjectKind: row.subjectKind,
-          subjectKey,
-          entityId: canonicalId,
-          entityType: row.entityType,
-          sourceKind: row.sourceKind,
-          signalKind: row.signalKind,
-          reason: row.reason,
-        },
-      });
-
-      if (canonicalRow) {
-        await tx.userSearchDemandDaily.update({
-          where: { demandDailyId: canonicalRow.demandDailyId },
-          data: {
-            signalCount: canonicalRow.signalCount + row.signalCount,
-            firstSeenAt:
-              this.minDate(canonicalRow.firstSeenAt, row.firstSeenAt) ??
-              canonicalRow.firstSeenAt,
-            lastSeenAt:
-              this.maxDate(canonicalRow.lastSeenAt, row.lastSeenAt) ??
-              canonicalRow.lastSeenAt,
-          },
-        });
-        await tx.userSearchDemandDaily.delete({
-          where: { demandDailyId: row.demandDailyId },
-        });
-        continue;
-      }
-
-      await tx.userSearchDemandDaily.update({
-        where: { demandDailyId: row.demandDailyId },
-        data: {
-          entityId: canonicalId,
-          subjectKey,
-        },
       });
     }
   }
@@ -831,7 +646,6 @@ export class RestaurantEntityMergeService {
           tx,
           connection.connectionId,
           conflicting.connectionId,
-          conflicting.foodId,
         );
         await tx.connection.delete({
           where: { connectionId: connection.connectionId },
@@ -849,24 +663,15 @@ export class RestaurantEntityMergeService {
     tx: Prisma.TransactionClient,
     sourceConnectionId: string,
     targetConnectionId: string,
-    targetFoodId: string,
   ): Promise<void> {
+    // Phase C: view history lives in the signals ledger; the recently-viewed
+    // reader resolves dead connections to the survivor via entity_redirects +
+    // (food, restaurant) at read (SignalDemandReadService.recentlyViewedFoods)
+    // — no per-merge rekey of view rows exists anymore.
     await this.rehomeFavoriteListItemConnections(
       tx,
       sourceConnectionId,
       targetConnectionId,
-    );
-    await this.rehomeUserEntityViewEventConnections(
-      tx,
-      sourceConnectionId,
-      targetConnectionId,
-      targetFoodId,
-    );
-    await this.rehomeFoodViews(
-      tx,
-      sourceConnectionId,
-      targetConnectionId,
-      targetFoodId,
     );
   }
 
@@ -903,96 +708,6 @@ export class RestaurantEntityMergeService {
       await tx.favoriteListItem.update({
         where: { itemId: item.itemId },
         data: { connectionId: targetConnectionId },
-      });
-    }
-  }
-
-  private async rehomeUserEntityViewEventConnections(
-    tx: Prisma.TransactionClient,
-    sourceConnectionId: string,
-    targetConnectionId: string,
-    targetFoodId: string,
-  ): Promise<void> {
-    await tx.userEntityViewEvent.updateMany({
-      where: { connectionId: sourceConnectionId },
-      data: {
-        connectionId: targetConnectionId,
-        entityId: targetFoodId,
-      },
-    });
-  }
-
-  private async rehomeFoodViews(
-    tx: Prisma.TransactionClient,
-    sourceConnectionId: string,
-    targetConnectionId: string,
-    targetFoodId: string,
-  ): Promise<void> {
-    const sourceViews = await tx.foodView.findMany({
-      where: { connectionId: sourceConnectionId },
-      select: {
-        userId: true,
-        connectionId: true,
-        viewCount: true,
-        lastViewedAt: true,
-      },
-    });
-
-    for (const view of sourceViews) {
-      const conflicting = await tx.foodView.findUnique({
-        where: {
-          userId_connectionId: {
-            userId: view.userId,
-            connectionId: targetConnectionId,
-          },
-        },
-        select: {
-          userId: true,
-          connectionId: true,
-          viewCount: true,
-          lastViewedAt: true,
-        },
-      });
-
-      if (conflicting) {
-        await tx.foodView.update({
-          where: {
-            userId_connectionId: {
-              userId: conflicting.userId,
-              connectionId: conflicting.connectionId,
-            },
-          },
-          data: {
-            viewCount: conflicting.viewCount + view.viewCount,
-            lastViewedAt:
-              this.maxDate(conflicting.lastViewedAt, view.lastViewedAt) ??
-              conflicting.lastViewedAt,
-            foodId: targetFoodId,
-          },
-        });
-
-        await tx.foodView.delete({
-          where: {
-            userId_connectionId: {
-              userId: view.userId,
-              connectionId: view.connectionId,
-            },
-          },
-        });
-        continue;
-      }
-
-      await tx.foodView.update({
-        where: {
-          userId_connectionId: {
-            userId: view.userId,
-            connectionId: view.connectionId,
-          },
-        },
-        data: {
-          connectionId: targetConnectionId,
-          foodId: targetFoodId,
-        },
       });
     }
   }

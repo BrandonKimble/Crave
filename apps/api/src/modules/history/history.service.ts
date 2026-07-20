@@ -48,76 +48,22 @@ export class HistoryService {
       throw new BadRequestException('Entity is not a restaurant');
     }
 
+    // Phase C: signals is the ONE write path (the old user_entity_view_events /
+    // user_restaurant_views writers are dead). The 2-min repeat-view valve is
+    // now a ledger read: the latest entity_view act on this subject.
     const now = new Date();
-    const existing = await this.prisma.restaurantView.findUnique({
-      where: {
-        userId_restaurantId: {
-          userId,
-          restaurantId: restaurant.entityId,
-        },
-      },
-      select: {
-        lastViewedAt: true,
-        viewCount: true,
-        metadata: true,
-      },
+    const lastViewedAt = await this.signalDemandRead.lastEntityViewAt(userId, {
+      entityId: restaurant.entityId,
     });
 
     const shouldIncrement =
-      !existing ||
-      now.getTime() - existing.lastViewedAt.getTime() >= this.viewCooldownMs;
-
-    const metadata = {
-      ...(typeof existing?.metadata === 'object' && existing?.metadata
-        ? (existing.metadata as Record<string, unknown>)
-        : {}),
-      lastSource: dto.source ?? null,
-      lastSearchRequestId: dto.searchRequestId ?? null,
-    };
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.restaurantView.upsert({
-        where: {
-          userId_restaurantId: {
-            userId,
-            restaurantId: restaurant.entityId,
-          },
-        },
-        create: {
-          userId,
-          restaurantId: restaurant.entityId,
-          lastViewedAt: now,
-          viewCount: 1,
-          metadata,
-        },
-        update: {
-          lastViewedAt: now,
-          viewCount: shouldIncrement ? { increment: 1 } : undefined,
-          metadata,
-        },
-      });
-
-      if (shouldIncrement) {
-        await tx.userEntityViewEvent.create({
-          data: {
-            userId,
-            entityId: restaurant.entityId,
-            entityType: EntityType.restaurant,
-            contextRestaurantId: restaurant.entityId,
-            source: dto.source ?? null,
-            searchRequestId: dto.searchRequestId ?? null,
-            viewedAt: now,
-            metadata,
-          },
-        });
-      }
-    });
+      !lastViewedAt ||
+      now.getTime() - lastViewedAt.getTime() >= this.viewCooldownMs;
 
     if (shouldIncrement) {
-      // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
-      // §3 signals: the entity_view act beside userEntityViewEvent above. Geo
-      // is the viewed location's point bbox (dto.locationId when supplied,
-      // else the restaurant's primary location; skip-with-debug when none).
+      // §3 signals: the entity_view act. Geo is the viewed location's point
+      // bbox (dto.locationId when supplied, else the restaurant's primary
+      // location; skip-with-debug when none).
       this.signals.record({
         kind: 'entity_view',
         userId,
@@ -129,6 +75,11 @@ export class HistoryService {
         meta: {
           contextRestaurantId: restaurant.entityId,
           locationId: dto.locationId ?? undefined,
+          source: dto.source ?? undefined,
+          // NOT meta.searchRequestId: that key is the read-side act-dedupe key
+          // (DEDUPE_KEY_SQL) — a view act must never collapse into its
+          // originating search act.
+          originSearchRequestId: dto.searchRequestId ?? undefined,
         },
       });
     }
@@ -168,78 +119,22 @@ export class HistoryService {
       throw new BadRequestException('Entity is not a food');
     }
 
+    // Phase C: signals is the ONE write path (see recordRestaurantView). The
+    // repeat-view valve keys on the viewed CONNECTION (the dish at a
+    // restaurant — the same grain the dead user_food_views table kept).
     const now = new Date();
-    const existing = await this.prisma.foodView.findUnique({
-      where: {
-        userId_connectionId: {
-          userId,
-          connectionId: connection.connectionId,
-        },
-      },
-      select: {
-        lastViewedAt: true,
-        viewCount: true,
-        metadata: true,
-      },
+    const lastViewedAt = await this.signalDemandRead.lastEntityViewAt(userId, {
+      entityId: food.entityId,
+      connectionId: connection.connectionId,
     });
 
     const shouldIncrement =
-      !existing ||
-      now.getTime() - existing.lastViewedAt.getTime() >= this.viewCooldownMs;
-
-    const metadata = {
-      ...(typeof existing?.metadata === 'object' && existing?.metadata
-        ? (existing.metadata as Record<string, unknown>)
-        : {}),
-      lastSource: dto.source ?? null,
-      lastSearchRequestId: dto.searchRequestId ?? null,
-    };
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.foodView.upsert({
-        where: {
-          userId_connectionId: {
-            userId,
-            connectionId: connection.connectionId,
-          },
-        },
-        create: {
-          userId,
-          connectionId: connection.connectionId,
-          foodId: food.entityId,
-          lastViewedAt: now,
-          viewCount: 1,
-          metadata,
-        },
-        update: {
-          foodId: food.entityId,
-          lastViewedAt: now,
-          viewCount: shouldIncrement ? { increment: 1 } : undefined,
-          metadata,
-        },
-      });
-
-      if (shouldIncrement) {
-        await tx.userEntityViewEvent.create({
-          data: {
-            userId,
-            entityId: food.entityId,
-            entityType: EntityType.food,
-            contextRestaurantId: connection.restaurantId,
-            connectionId: connection.connectionId,
-            source: dto.source ?? null,
-            searchRequestId: dto.searchRequestId ?? null,
-            viewedAt: now,
-            metadata,
-          },
-        });
-      }
-    });
+      !lastViewedAt ||
+      now.getTime() - lastViewedAt.getTime() >= this.viewCooldownMs;
 
     if (shouldIncrement) {
-      // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
-      // §3 signals: the entity_view act beside userEntityViewEvent above,
-      // subject = the viewed food, context = the serving restaurant.
+      // §3 signals: the entity_view act — subject = the viewed food, context =
+      // the serving restaurant.
       this.signals.record({
         kind: 'entity_view',
         userId,
@@ -252,6 +147,8 @@ export class HistoryService {
           contextRestaurantId: connection.restaurantId,
           connectionId: connection.connectionId,
           locationId: dto.locationId ?? undefined,
+          source: dto.source ?? undefined,
+          originSearchRequestId: dto.searchRequestId ?? undefined,
         },
       });
     }

@@ -977,9 +977,6 @@ export class PublicCraveScoreService {
           ON CONFLICT (subject_type, subject_id) DO UPDATE SET
             score_run_id = EXCLUDED.score_run_id,
             provenance_source_id = EXCLUDED.provenance_source_id,
-            -- Dead market key (§5 re-key): explicitly nulled so no stale
-            -- territory survives on re-scored rows. Column dies in Phase C.
-            scoring_market_key = NULL,
             endorsement_raw = EXCLUDED.endorsement_raw,
             percentile_rank = EXCLUDED.percentile_rank,
             display_score = EXCLUDED.display_score,

@@ -1,11 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { performance } from 'perf_hooks';
-import {
-  EntityType,
-  OnDemandReason,
-  Prisma,
-  SearchEventKind,
-} from '@prisma/client';
+import { EntityType, OnDemandReason, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
@@ -22,7 +17,6 @@ import {
   SearchResponseMetadataDto,
   PaginationDto,
   SearchCacheAttributionDto,
-  SearchSubmissionContextDto,
   SearchPlanResponseDto,
   MapBoundsDto,
 } from './dto/search-query.dto';
@@ -164,11 +158,6 @@ type SearchMarketContext = {
   collectableMarketKeys: string[];
 };
 
-type SearchLogAttributionScope = {
-  marketKey: string | null;
-  collectableMarketKey: string | null;
-};
-
 type SearchExplainInput = {
   request: SearchQueryRequestDto;
   pagination: PaginationState;
@@ -210,7 +199,6 @@ export class SearchService {
   private readonly alwaysIncludeSqlPreview: boolean;
   private readonly onDemandMinResults: number;
   private readonly openNowFetchMultiplier: number;
-  private readonly searchLogEnabled: boolean;
   private readonly includePhaseTimings: boolean;
   private readonly explainEnabled: boolean;
   private readonly debugMode: SearchDebugMode;
@@ -247,7 +235,6 @@ export class SearchService {
     this.alwaysIncludeSqlPreview = this.resolveAlwaysIncludeSqlPreview();
     this.onDemandMinResults = this.resolveOnDemandMinResults();
     this.openNowFetchMultiplier = this.resolveOpenNowFetchMultiplier();
-    this.searchLogEnabled = this.resolveSearchLogEnabled();
     this.includePhaseTimings = this.resolveIncludePhaseTimings();
     this.explainEnabled = this.resolveExplainEnabled();
     this.debugMode = resolveSearchDebugMode();
@@ -815,18 +802,14 @@ export class SearchService {
 
         if (pagination.page === 1) {
           try {
-            await this.recordQueryImpressions(
-              request,
-              {
-                searchRequestId,
-                totalResults,
-                totalFoodResults,
-                totalRestaurantResults,
-                queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-                resultCoverageStatus,
-              },
-              resolvedMarket,
-            );
+            this.recordQueryImpressions(request, {
+              searchRequestId,
+              totalResults,
+              totalFoodResults,
+              totalRestaurantResults,
+              queryExecutionTimeMs: metadata.queryExecutionTimeMs,
+              resultCoverageStatus,
+            });
           } catch (error) {
             this.logger.warn('Failed to record search query impressions', {
               error: {
@@ -1183,18 +1166,14 @@ export class SearchService {
 
       if (pagination.page === 1) {
         try {
-          await this.recordQueryImpressions(
-            request,
-            {
-              searchRequestId,
-              totalResults,
-              totalFoodResults,
-              totalRestaurantResults,
-              queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-              resultCoverageStatus,
-            },
-            resolvedMarket,
-          );
+          this.recordQueryImpressions(request, {
+            searchRequestId,
+            totalResults,
+            totalFoodResults,
+            totalRestaurantResults,
+            queryExecutionTimeMs: metadata.queryExecutionTimeMs,
+            resultCoverageStatus,
+          });
         } catch (error) {
           this.logger.warn('Failed to record search query impressions', {
             error: {
@@ -2532,7 +2511,7 @@ export class SearchService {
     return Array.from(new Set(ids));
   }
 
-  private async recordQueryImpressions(
+  private recordQueryImpressions(
     request: SearchQueryRequestDto,
     context: {
       searchRequestId: string;
@@ -2542,36 +2521,14 @@ export class SearchService {
       queryExecutionTimeMs: number;
       resultCoverageStatus: 'full' | 'partial' | 'unresolved';
     },
-    marketKeys?: SearchMarketContext,
-  ): Promise<void> {
+  ): void {
+    // Phase C: signals is the ONE write path — the search_events /
+    // search_event_entities writers are dead, the tables dropped.
     const targets = this.gatherEntityImpressionTargets(request);
-
-    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
-    // §3 signals ledger: the page-1 backend search act (+ autocomplete
-    // selection) recorded beside the search_events writers below. Fires even
-    // when the old attribution has no entity target (term subject).
     this.recordSearchSignals(request, context, targets);
-
-    if (!targets.length) {
-      return;
-    }
-
-    const now = new Date();
-    const resolvedMarketKeys =
-      marketKeys ?? (await this.resolveSearchMarketContext(request));
-
-    await this.recordSearchLogEntries(
-      request,
-      targets,
-      now,
-      request.userId,
-      context,
-      resolvedMarketKeys,
-    );
   }
 
   /**
-   * DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
    * §3 signals for a page-1 backend search submit: a 'search' signal whose
    * subject mirrors the old attribution's primary entity target (term =
    * queryText when no entity resolved), plus an 'autocomplete_selection'
@@ -2716,151 +2673,6 @@ export class SearchService {
     return [{ entityId: primary.entityId, entityType: primary.entityType }];
   }
 
-  private async recordSearchLogEntries(
-    request: SearchQueryRequestDto,
-    targets: { entityId: string; entityType: EntityType }[],
-    loggedAt: Date,
-    userId?: string,
-    context?: {
-      searchRequestId: string;
-      totalResults: number;
-      totalFoodResults: number;
-      totalRestaurantResults: number;
-      queryExecutionTimeMs: number;
-      resultCoverageStatus: 'full' | 'partial' | 'unresolved';
-    },
-    marketKeys?: SearchMarketContext,
-  ): Promise<void> {
-    if (
-      !this.searchLogEnabled ||
-      !targets.length ||
-      !context?.searchRequestId
-    ) {
-      return;
-    }
-
-    try {
-      const primaryMarketKey = marketKeys?.marketKey ?? null;
-      const attributedMarketKeys =
-        marketKeys?.attributionMarketKeys.length &&
-        Array.isArray(marketKeys.attributionMarketKeys)
-          ? marketKeys.attributionMarketKeys
-          : [];
-      const collectableMarketKeys = marketKeys?.collectableMarketKeys ?? [];
-      const filtersApplied = {
-        openNow: Boolean(request.openNow),
-        priceLevels: this.normalizePriceLevels(request.priceLevels),
-        minimumVotes:
-          typeof request.minimumVotes === 'number'
-            ? request.minimumVotes
-            : null,
-      };
-      const metadata = {
-        filtersApplied,
-        submissionSource: request.submissionSource ?? null,
-        submissionContext: this.normalizeSearchSubmissionContext(
-          request.submissionContext,
-        ),
-      };
-      const attributionScopes = this.buildSearchLogAttributionScopes(
-        attributedMarketKeys,
-        collectableMarketKeys,
-      );
-      const entityRows = targets.flatMap(({ entityId, entityType }) =>
-        attributionScopes.map((scope) => ({
-          entityId,
-          entityType,
-          userId: userId ?? null,
-          marketKey: scope.marketKey,
-          collectableMarketKey: scope.collectableMarketKey,
-          eventKind: SearchEventKind.backend,
-          loggedAt,
-        })),
-      );
-
-      // One event row per search (idempotent on searchRequestId for retries),
-      // with one attribution row per (entity x market scope).
-      await this.prisma.searchEvent.upsert({
-        where: { searchRequestId: context.searchRequestId },
-        update: {},
-        create: {
-          searchRequestId: context.searchRequestId,
-          userId: userId ?? null,
-          queryText: request.sourceQuery ?? null,
-          eventKind: SearchEventKind.backend,
-          primaryMarketKey,
-          totalResults: context.totalResults,
-          totalFoodResults: context.totalFoodResults,
-          totalRestaurantResults: context.totalRestaurantResults,
-          queryExecutionTimeMs: context.queryExecutionTimeMs,
-          marketStatus: context.resultCoverageStatus,
-          submissionSource: request.submissionSource ?? null,
-          metadata,
-          loggedAt,
-          entities: { createMany: { data: entityRows } },
-        },
-      });
-    } catch (error) {
-      this.logger.warn('Failed to log search impressions', {
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-    }
-  }
-
-  private buildSearchLogAttributionScopes(
-    attributedMarketKeys: string[],
-    collectableMarketKeys: string[],
-  ): SearchLogAttributionScope[] {
-    const collectableMarketKeyValues = Array.from(
-      new Set(
-        collectableMarketKeys
-          .map((marketKey) => marketKey.trim().toLowerCase())
-          .filter((marketKey) => marketKey.length > 0),
-      ),
-    );
-    const collectableMarketKeySet = new Set(collectableMarketKeyValues);
-    const scopedMarketKeys = Array.from(
-      new Set(
-        attributedMarketKeys
-          .map((marketKey) => marketKey.trim().toLowerCase())
-          .filter((marketKey) => marketKey.length > 0),
-      ),
-    );
-    const marketKeys = scopedMarketKeys.length > 0 ? scopedMarketKeys : [null];
-    const scopes: SearchLogAttributionScope[] = [];
-    const seen = new Set<string>();
-
-    for (const marketKey of marketKeys) {
-      const nextScopes =
-        marketKey && collectableMarketKeySet.has(marketKey)
-          ? [{ marketKey, collectableMarketKey: marketKey }]
-          : collectableMarketKeyValues.length > 0
-            ? collectableMarketKeyValues.map((collectableMarketKey) => ({
-                marketKey,
-                collectableMarketKey,
-              }))
-            : [{ marketKey, collectableMarketKey: null }];
-
-      for (const scope of nextScopes) {
-        const key = `${scope.marketKey ?? ''}:${
-          scope.collectableMarketKey ?? ''
-        }`;
-        if (seen.has(key)) {
-          continue;
-        }
-        seen.add(key);
-        scopes.push(scope);
-      }
-    }
-
-    return scopes.length > 0
-      ? scopes
-      : [{ marketKey: null, collectableMarketKey: null }];
-  }
-
   async recordCacheAttribution(
     dto: SearchCacheAttributionDto,
     userId?: string | null,
@@ -2880,134 +2692,91 @@ export class SearchService {
       throw new BadRequestException('cacheRevealRequestId is required');
     }
 
-    // Idempotent on retry (both writers): if this reveal id was already
-    // cloned into a search event, the reveal is already on record.
-    const alreadyRevealed = await this.prisma.searchEvent.findUnique({
-      where: { searchRequestId: cacheRevealRequestId },
-      select: { eventId: true },
-    });
-    if (alreadyRevealed) {
+    // Phase C: the ledger is the ONE record. The original backend search act
+    // lives in signals (meta.searchRequestId); the reveal clones ITS subject,
+    // geo, and counts — never trusting client-supplied attribution.
+    //
+    // Idempotent on retry: if this reveal id already has a signal row, the
+    // reveal is on record (concurrent duplicates additionally collapse at
+    // read on meta.cacheRevealRequestId — §3 judge-at-read).
+    // Both probes ride the Signal_dedupeRequestId_occurredAt_idx expression
+    // index (COALESCE(meta->>'searchRequestId', meta->>'cacheRevealRequestId')).
+    const [revealRows, originalRows] = await Promise.all([
+      this.prisma.$queryRaw<{ signal_id: string }[]>`
+        SELECT s.signal_id
+        FROM signals s
+        WHERE COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId')
+              = ${cacheRevealRequestId}
+          AND s.meta->>'cacheRevealRequestId' = ${cacheRevealRequestId}
+        LIMIT 1
+      `,
+      this.prisma.$queryRaw<
+        {
+          subject_id: string | null;
+          subject_text: string | null;
+          geo_min_lat: number;
+          geo_min_lng: number;
+          geo_max_lat: number;
+          geo_max_lng: number;
+          meta: Prisma.JsonValue;
+        }[]
+      >`
+        SELECT s.subject_id, s.subject_text,
+               s.geo_min_lat::float8 AS geo_min_lat,
+               s.geo_min_lng::float8 AS geo_min_lng,
+               s.geo_max_lat::float8 AS geo_max_lat,
+               s.geo_max_lng::float8 AS geo_max_lng,
+               s.meta
+        FROM signals s
+        JOIN signal_actors a ON a.actor_id = s.actor_id
+        WHERE COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId')
+              = ${dto.originalBackendSearchRequestId}
+          AND s.kind = 'search'
+          AND s.meta->>'searchRequestId' = ${dto.originalBackendSearchRequestId}
+          AND a.user_id = ${normalizedUserId}::uuid
+        ORDER BY s.occurred_at DESC
+        LIMIT 1
+      `,
+    ]);
+    const original = originalRows[0];
+    if (revealRows.length > 0 || !original) {
       return { inserted: 0 };
     }
 
-    const original = await this.prisma.searchEvent.findFirst({
-      where: {
-        searchRequestId: dto.originalBackendSearchRequestId,
-        userId: normalizedUserId,
-        eventKind: SearchEventKind.backend,
-      },
-      include: { entities: true },
-    });
-
-    if (!original) {
-      return { inserted: 0 };
-    }
-
-    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
-    // §3 signals: a cache reveal is the same search ACT with meta.cached=true.
-    // The ledger is append-only — a reveal never written can never be
-    // backfilled — so this fires for ANY successful reveal: with a term
-    // subject when the original carried no entity attribution, and NEVER
-    // gated on the legacy searchLogEnabled flag (that flag governs only the
-    // old writer below). The reveal request carries no viewport bounds
-    // server-side, so geo falls back to the original event's primary-market
-    // bbox (skip-with-debug when the market is unknown).
-    // meta.cacheRevealRequestId identifies this reveal, so concurrent
-    // duplicate reveals are read-time dedupable (§3 judge-at-read).
-    const cacheSubjectEntityId = original.entities[0]?.entityId ?? null;
-    const cacheQueryText = original.queryText?.trim() ?? '';
+    // §3: a cache reveal is the same search ACT with meta.cached=true. Geo is
+    // the ORIGINAL act's bbox (the reveal request carries no viewport bounds
+    // server-side).
+    const originalMeta = this.toJsonObject(original.meta);
     this.signals.record({
       kind: 'search',
       userId: normalizedUserId,
       subject:
-        cacheSubjectEntityId || cacheQueryText.length
-          ? {
-              entityId: cacheSubjectEntityId,
-              term: cacheQueryText.length ? cacheQueryText : null,
-            }
+        original.subject_id || original.subject_text
+          ? { entityId: original.subject_id, term: original.subject_text }
           : null,
-      geo: this.signals.bboxFromMarketKey(original.primaryMarketKey),
+      geo: {
+        minLat: original.geo_min_lat,
+        minLng: original.geo_min_lng,
+        maxLat: original.geo_max_lat,
+        maxLng: original.geo_max_lng,
+      },
       meta: {
         cacheRevealRequestId,
         originalBackendSearchRequestId: dto.originalBackendSearchRequestId,
-        resultCount: original.totalResults,
-        restaurantCount: original.totalRestaurantResults,
+        resultCount:
+          typeof originalMeta.resultCount === 'number'
+            ? originalMeta.resultCount
+            : undefined,
+        restaurantCount:
+          typeof originalMeta.restaurantCount === 'number'
+            ? originalMeta.restaurantCount
+            : undefined,
         cached: true,
-        resolvedEntityId: cacheSubjectEntityId ?? undefined,
+        resolvedEntityId: original.subject_id ?? undefined,
       },
     });
 
-    // OLD WRITER (its own gates, behavior unchanged): clone the server-owned
-    // backend event (and its attribution rows) into a fresh cache-reveal
-    // event. Never trust client-supplied attribution.
-    if (!this.searchLogEnabled || original.entities.length === 0) {
-      return { inserted: 0 };
-    }
-
-    const loggedAt = new Date();
-    const originalMetadata = this.toJsonObject(original.metadata);
-    const originalSubmissionSource =
-      typeof originalMetadata.submissionSource === 'string'
-        ? originalMetadata.submissionSource
-        : null;
-    const originalSubmissionContext =
-      originalMetadata.submissionContext ?? null;
-
-    await this.prisma.searchEvent.upsert({
-      where: { searchRequestId: cacheRevealRequestId },
-      update: {},
-      create: {
-        searchRequestId: cacheRevealRequestId,
-        userId: normalizedUserId,
-        queryText: original.queryText,
-        eventKind: SearchEventKind.cache,
-        primaryMarketKey: original.primaryMarketKey,
-        totalResults: original.totalResults,
-        totalFoodResults: original.totalFoodResults,
-        totalRestaurantResults: original.totalRestaurantResults,
-        queryExecutionTimeMs: original.queryExecutionTimeMs,
-        marketStatus: original.marketStatus,
-        submissionSource: dto.submissionSource ?? null,
-        metadata: {
-          ...originalMetadata,
-          submissionSource: dto.submissionSource ?? null,
-          submissionContext: this.normalizeSearchSubmissionContext(
-            dto.submissionContext,
-          ),
-          cache: {
-            originalBackendSearchRequestId: dto.originalBackendSearchRequestId,
-            cacheRevealRequestId,
-            cacheAgeMs:
-              typeof dto.cacheAgeMs === 'number' &&
-              Number.isFinite(dto.cacheAgeMs)
-                ? Math.max(0, Math.floor(dto.cacheAgeMs))
-                : null,
-            resultsDataKey:
-              typeof dto.resultsDataKey === 'string'
-                ? dto.resultsDataKey.trim() || null
-                : null,
-            originalSubmissionSource,
-            originalSubmissionContext,
-          },
-        },
-        loggedAt,
-        entities: {
-          createMany: {
-            data: original.entities.map((row) => ({
-              entityId: row.entityId,
-              entityType: row.entityType,
-              userId: normalizedUserId,
-              marketKey: row.marketKey,
-              collectableMarketKey: row.collectableMarketKey,
-              eventKind: SearchEventKind.cache,
-              loggedAt,
-            })),
-          },
-        },
-      },
-    });
-
-    return { inserted: original.entities.length };
+    return { inserted: 1 };
   }
 
   private toJsonObject(
@@ -3017,20 +2786,6 @@ export class SearchService {
       return {};
     }
     return { ...value };
-  }
-
-  private normalizeSearchSubmissionContext(
-    context: SearchSubmissionContextDto | null | undefined,
-  ): Prisma.JsonObject | null {
-    if (!context) {
-      return null;
-    }
-    return {
-      typedPrefix: context.typedPrefix ?? null,
-      matchType: context.matchType ?? null,
-      selectedEntityId: context.selectedEntityId ?? null,
-      selectedEntityType: context.selectedEntityType ?? null,
-    };
   }
 
   private async resolveSearchMarketContext(
@@ -3484,14 +3239,6 @@ export class SearchService {
     }
     const raw = process.env.SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW || '';
     if (raw) {
-      return raw.toLowerCase() === 'true';
-    }
-    return true;
-  }
-
-  private resolveSearchLogEnabled(): boolean {
-    const raw = process.env.SEARCH_LOG_ENABLED;
-    if (typeof raw === 'string' && raw.length > 0) {
       return raw.toLowerCase() === 'true';
     }
     return true;

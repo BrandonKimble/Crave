@@ -15,6 +15,7 @@ import {
   PollTopicStatus,
   PollTopicType,
   Prisma,
+  type Place,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
@@ -26,9 +27,8 @@ import { ListUserPollsDto, UserPollActivity } from './dto/list-user-polls.dto';
 import { CreateCommentDto, EditCommentDto } from './dto/create-comment.dto';
 import {
   PollEntitySeedService,
-  type MarketContext,
+  type PollPlaceContext,
 } from './poll-entity-seed.service';
-import { MarketRegistryService } from '../markets/market-registry.service';
 import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
 import { CheckPollDuplicateDto } from './dto/check-poll-duplicate.dto';
@@ -123,7 +123,6 @@ export class PollsService {
     private readonly moderation: ModerationService,
     private readonly pollEntitySeedService: PollEntitySeedService,
     private readonly gateway: PollsGateway,
-    private readonly marketRegistry: MarketRegistryService,
     private readonly userEventService: UserEventService,
     private readonly llmService: LLMService,
     private readonly entityTextSearch: EntityTextSearchService,
@@ -331,9 +330,12 @@ export class PollsService {
   }
 
   /**
-   * INTERIM (Phase C removes): legacy marketKey-only poll rows are fed by
+   * INTERIM legacy feed arm: legacy marketKey-only poll rows are fed by
    * their market's bbox intersecting the view. Legacy markets are plain
    * (non-antimeridian) US metros, so the btree range test is exact here.
+   * Phase C kept this deliberately (only NEW writes re-keyed to placeId);
+   * it dies with the LEGACY-POLL-EXPIRY leg (all legacy rows closed/expired),
+   * which also purges polls.market_key + this market bbox read.
    */
   private async legacyMarketKeysInView(view: GeoBbox): Promise<string[]> {
     const markets = await this.prisma.market.findMany({
@@ -605,17 +607,67 @@ export class PollsService {
   }
 
   /**
+   * Phase C re-key: user poll creation attaches to the PLACE CATALOG — the
+   * poll's place = smallestContaining(creation-context bbox) (§3 attribution
+   * law over the creator's viewport bounds). Legacy pre-cut clients that
+   * send only a marketKey resolve through that market's stored bbox. No
+   * market is ever minted for a poll again.
+   */
+  private async resolveCreationPlace(dto: {
+    bounds?: {
+      northEast: { lat: number; lng: number };
+      southWest: { lat: number; lng: number };
+    } | null;
+    marketKey?: string | null;
+  }): Promise<Place | null> {
+    const view = await this.resolveFeedView({
+      bounds: dto.bounds ?? undefined,
+      marketKey: dto.marketKey ?? undefined,
+    } as QueryPollsDto);
+    if (!view) {
+      return null;
+    }
+    return this.placesCatalog.smallestContaining(view);
+  }
+
+  /** Entity-seeding bias derived from the creation place (verification
+   *  location bias + region hints — the old market context's role). */
+  private buildPlaceSeedContext(place: Place): PollPlaceContext {
+    const centroidLat =
+      place.centroidLat != null ? Number(place.centroidLat) : null;
+    const centroidLng =
+      place.centroidLng != null ? Number(place.centroidLng) : null;
+    return {
+      center:
+        centroidLat != null &&
+        centroidLng != null &&
+        Number.isFinite(centroidLat) &&
+        Number.isFinite(centroidLng)
+          ? { lat: centroidLat, lng: centroidLng }
+          : undefined,
+      city: place.name,
+      region: place.subdivisionCode ?? null,
+      countryCode: place.countryCode ?? null,
+    };
+  }
+
+  /**
    * Stage-1 creation dedup (the volume valve): a fast `word_similarity` match of the
-   * free-text question against ACTIVE polls in the same market — no LLM. Precision-
+   * free-text question against ACTIVE polls of the same PLACE — no LLM. Precision-
    * favoring (high threshold) so only obvious duplicates surface; the precise
    * entity-level dedup happens post-resolution inside createPoll (stage 3).
+   * Legacy market-keyed rows (place_id NULL) join via the legacy marketKey arm.
    */
   async checkDuplicate(dto: CheckPollDuplicateDto): Promise<{
     matches: Array<{ pollId: string; question: string; similarity: number }>;
   }> {
     const question = dto.question.trim();
-    const marketKey = dto.marketKey?.trim() ?? null;
-    if (!marketKey || question.length < 3) {
+    if (question.length < 3) {
+      return { matches: [] };
+    }
+    const place = await this.resolveCreationPlace(dto);
+    const legacyMarketKey = dto.marketKey?.trim() ?? null;
+    if (!place && !legacyMarketKey) {
       return { matches: [] };
     }
     const rows = await this.prisma.$queryRaw<
@@ -625,7 +677,14 @@ export class PollsService {
              word_similarity(${question}, question) AS sim
       FROM polls
       WHERE state::text = 'active'
-        AND market_key = ${marketKey}
+        AND (
+          place_id = ${place?.placeId ?? null}::uuid
+          OR (
+            place_id IS NULL
+            AND ${legacyMarketKey}::text IS NOT NULL
+            AND market_key = ${legacyMarketKey}
+          )
+        )
         AND word_similarity(${question}, question) >= ${POLL_DUPLICATE_SIMILARITY_THRESHOLD}
       ORDER BY sim DESC, launched_at DESC NULLS LAST
       LIMIT 3
@@ -640,52 +699,58 @@ export class PollsService {
   }
 
   /**
-   * Per-user soft cap (§5): block a creator who has already started
-   * `POLL_USER_WEEKLY_CAP` polls in this market within the rolling window. Scoped by
-   * market; skipped when no market is provided (can't scope the cap). Throws a clear
-   * BadRequest so the client can show the "you've used your polls this week" message.
+   * Per-user soft cap: 2/user/PLACE/week (§4 boundaries — a per-USER rule,
+   * deliberately separate from place supply). Throws a clear BadRequest so
+   * the client can show the "you've used your polls this week" message.
    */
   private async enforceWeeklyPollCap(
     userId: string,
-    marketKey: string | null,
+    placeId: string,
   ): Promise<void> {
-    if (!marketKey) {
-      return;
-    }
     const windowStart = new Date(
       Date.now() - POLL_USER_WEEKLY_CAP_WINDOW_DAYS * MS_PER_DAY,
     );
     const recentCount = await this.prisma.poll.count({
       where: {
         createdByUserId: userId,
-        marketKey: { equals: marketKey, mode: 'insensitive' },
+        placeId,
         launchedAt: { gte: windowStart },
       },
     });
     if (recentCount >= POLL_USER_WEEKLY_CAP) {
       throw new BadRequestException(
-        `You've used your ${POLL_USER_WEEKLY_CAP} polls this week in this market. ` +
+        `You've used your ${POLL_USER_WEEKLY_CAP} polls this week in this area. ` +
           `Try again in a few days, or jump into an existing discussion.`,
       );
     }
   }
 
   async createPoll(dto: CreatePollDto, userId: string) {
-    await this.enforceWeeklyPollCap(userId, dto.marketKey?.trim() ?? null);
+    const place = await this.resolveCreationPlace(dto);
+    if (!place) {
+      throw new BadRequestException('Unable to resolve a place for this poll');
+    }
+    await this.enforceWeeklyPollCap(userId, place.placeId);
     if (dto.question?.trim()) {
-      return this.createPollFromQuestion(dto.question.trim(), dto, userId);
+      return this.createPollFromQuestion(
+        dto.question.trim(),
+        dto,
+        userId,
+        place,
+      );
     }
     if (!dto.topicType) {
       throw new BadRequestException(
         'A poll question or a topicType is required',
       );
     }
-    return this.createStructuredPoll(dto, userId);
+    return this.createStructuredPoll(dto, userId, place);
   }
 
   private async createStructuredPoll(
     dto: CreatePollDto,
     userId: string,
+    place: Place,
     opts: {
       axis?: Prisma.InputJsonValue;
       sourceQuestion?: string;
@@ -714,28 +779,9 @@ export class PollsService {
       }
     }
 
-    let marketKey = dto.marketKey?.trim() || null;
-    if (!marketKey) {
-      const resolved = await this.marketRegistry.resolveOrEnsureForPollCreation(
-        {
-          bounds: dto.bounds ?? null,
-        },
-      );
-      marketKey = resolved?.marketKey ?? null;
-    }
-    if (!marketKey) {
-      throw new BadRequestException('Unable to resolve poll market');
-    }
-
-    const marketContext =
-      (await this.resolveMarketContext(marketKey)) ??
-      ({
-        marketKey,
-        center: undefined,
-        city: null,
-        region: null,
-        countryCode: null,
-      } satisfies MarketContext);
+    // Phase C re-key: the poll belongs to its PLACE (resolved once in
+    // createPoll); marketKey is never written on new rows.
+    const placeContext = this.buildPlaceSeedContext(place);
 
     const topicType = dto.topicType;
     if (!topicType) {
@@ -762,7 +808,7 @@ export class PollsService {
         const restaurant = await this.pollEntitySeedService.resolveRestaurant({
           entityId: dto.targetRestaurantId ?? null,
           name: dto.targetRestaurantName ?? null,
-          market: marketContext,
+          place: placeContext,
           sessionToken: dto.sessionToken,
         });
         targetRestaurantId = restaurant.entityId;
@@ -814,7 +860,7 @@ export class PollsService {
         data: {
           title: question,
           description,
-          marketKey,
+          placeId: place.placeId,
           topicType,
           createdByUserId: userId,
           targetDishId,
@@ -845,7 +891,7 @@ export class PollsService {
         data: {
           topicId: topic.topicId,
           question,
-          marketKey,
+          placeId: place.placeId,
           state: PollState.active,
           mode: PollMode.ranked,
           axis: opts.axis ?? Prisma.JsonNull,
@@ -892,12 +938,11 @@ export class PollsService {
       eventData: {
         pollId: poll.pollId,
         topicId: poll.topicId,
-        marketKey: poll.marketKey,
+        placeId: poll.placeId,
         topicType: dto.topicType,
       },
     });
-    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
-    // §3 signals: the poll_created act beside the userEventService writer.
+    // §3 signals: the poll_created act.
     this.signals.record({
       kind: 'poll_created',
       userId,
@@ -911,7 +956,9 @@ export class PollsService {
     // so a ranked poll ranks the creator's organic suggestion from frame one.
     // (No-op for discussion polls — rebuildPollLeaderboard early-returns.)
     await this.rebuildPollLeaderboard(poll.pollId);
-    const [enriched] = await this.attachMarketLabels([poll], marketKey);
+    const [enriched] = await this.attachPlaceLabels(
+      await this.attachMarketLabels([poll]),
+    );
     return enriched;
   }
 
@@ -924,6 +971,7 @@ export class PollsService {
     rawQuestion: string,
     dto: CreatePollDto,
     userId: string,
+    place: Place,
   ) {
     const question = this.sanitizer
       .sanitizeOrThrow(rawQuestion, { maxLength: 280, allowEmpty: false })
@@ -947,7 +995,7 @@ export class PollsService {
 
     // Discussion, or a ranked axis we cannot map onto a structured topic type.
     if (!mapped || !subject.axis) {
-      return this.createDiscussionPoll(question, dto, userId);
+      return this.createDiscussionPoll(question, dto, userId, place);
     }
 
     return this.createStructuredPoll(
@@ -961,6 +1009,7 @@ export class PollsService {
         targetRestaurantAttributeName: mapped.targetRestaurantAttributeName,
       },
       userId,
+      place,
       {
         axis: subject.axis as unknown as Prisma.InputJsonValue,
         sourceQuestion: question,
@@ -1016,25 +1065,13 @@ export class PollsService {
     question: string,
     dto: CreatePollDto,
     userId: string,
+    place: Place,
   ) {
-    let marketKey = dto.marketKey?.trim() || null;
-    if (!marketKey) {
-      const resolved = await this.marketRegistry.resolveOrEnsureForPollCreation(
-        {
-          bounds: dto.bounds ?? null,
-        },
-      );
-      marketKey = resolved?.marketKey ?? null;
-    }
-    if (!marketKey) {
-      throw new BadRequestException('Unable to resolve poll market');
-    }
-
     const now = new Date();
     const poll = await this.prisma.poll.create({
       data: {
         question,
-        marketKey,
+        placeId: place.placeId,
         state: PollState.active,
         mode: PollMode.discussion,
         allowUserAdditions: false,
@@ -1073,11 +1110,10 @@ export class PollsService {
       eventType: 'poll_created',
       eventData: {
         pollId: poll.pollId,
-        marketKey: poll.marketKey,
+        placeId: poll.placeId,
         mode: PollMode.discussion,
       },
     });
-    // DUAL-WRITE (delete with old logging — master plan §22, one-milestone hard deletion)
     // §3 signals: the poll_created act (discussion polls are topic-less —
     // subject falls through to the question term).
     this.signals.record({
@@ -1088,7 +1124,9 @@ export class PollsService {
       meta: { pollId: poll.pollId },
     });
     // W4: no counter bump — the stat is a live count (UserService.countCreatedPolls).
-    const [enriched] = await this.attachMarketLabels([poll], marketKey);
+    const [enriched] = await this.attachPlaceLabels(
+      await this.attachMarketLabels([poll]),
+    );
     return enriched;
   }
 
@@ -2454,82 +2492,5 @@ export class PollsService {
       default:
         return targetName;
     }
-  }
-
-  private async resolveMarketContext(
-    marketKey: string | null,
-  ): Promise<MarketContext | null> {
-    if (!marketKey || !marketKey.trim()) {
-      return null;
-    }
-
-    const normalized = marketKey.trim().toLowerCase();
-    const market = await this.prisma.market.findFirst({
-      where: {
-        marketKey: { equals: normalized, mode: 'insensitive' },
-      },
-      select: {
-        marketKey: true,
-        marketName: true,
-        marketShortName: true,
-        countryCode: true,
-        centerLatitude: true,
-        centerLongitude: true,
-      },
-    });
-
-    if (market) {
-      const centerLat = this.toNumber(market.centerLatitude);
-      const centerLng = this.toNumber(market.centerLongitude);
-      const center =
-        centerLat !== null && centerLng !== null
-          ? { lat: centerLat, lng: centerLng }
-          : undefined;
-
-      return {
-        marketKey: market.marketKey.toLowerCase(),
-        center,
-        city:
-          market.marketShortName?.trim() ||
-          market.marketName?.split(',')[0]?.trim() ||
-          null,
-        region: market.marketName?.match(/,\s*([A-Z]{2})(?:\s|$)/)?.[1] ?? null,
-        countryCode: market.countryCode ?? null,
-      };
-    }
-
-    return {
-      marketKey: normalized,
-    };
-  }
-
-  private extractCountryCode(value: string | null): string | null {
-    if (!value) {
-      return null;
-    }
-    const parts = value.split(',').map((part) => part.trim());
-    const last = parts[parts.length - 1];
-    if (!last) {
-      return null;
-    }
-    if (last.length === 2) {
-      return last.toUpperCase();
-    }
-    if (last.toLowerCase() === 'usa' || last.toLowerCase() === 'us') {
-      return 'US';
-    }
-    return null;
-  }
-
-  private toNumber(value: Prisma.Decimal | number | null): number | null {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-    if (value && typeof value === 'object' && 'toNumber' in value) {
-      const asDecimal = value;
-      const numeric = asDecimal.toNumber();
-      return Number.isFinite(numeric) ? numeric : null;
-    }
-    return null;
   }
 }

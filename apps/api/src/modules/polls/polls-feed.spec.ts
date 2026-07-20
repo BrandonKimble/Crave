@@ -213,7 +213,6 @@ function createHarness(options: {
     {} as never, // moderation
     {} as never, // pollEntitySeedService
     {} as never, // gateway
-    {} as never, // marketRegistry
     {} as never, // userEventService
     {} as never, // llmService
     {} as never, // entityTextSearch

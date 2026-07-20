@@ -163,6 +163,19 @@ export interface TerritoryEntityTrendRow {
   previousActs: number;
 }
 
+export interface TerritoryUnmetAskRow {
+  term: string;
+  entityType: string;
+  entityId: string | null;
+  reason: string;
+  distinctUserCount: number;
+  demandScore: number;
+  resultRestaurantCount: number | null;
+  resultFoodCount: number | null;
+  lastSeenAt: Date;
+  askCount: number;
+}
+
 export interface ViewedRestaurantNameMatch {
   restaurantId: string;
   name: string;
@@ -700,6 +713,35 @@ export class SignalDemandReadService {
     }));
   }
 
+  /**
+   * Phase C (history writer cut): the 2-min repeat-view dedupe valve reads the
+   * LEDGER — the latest entity_view act by this user on this subject (for
+   * foods, on this connection via meta.connectionId). The old
+   * user_restaurant_views/user_food_views rows that used to carry
+   * lastViewedAt are dropped.
+   */
+  async lastEntityViewAt(
+    userId: string,
+    params: { entityId: string; connectionId?: string | null },
+  ): Promise<Date | null> {
+    const actorId = await this.resolveActorId(userId);
+    if (!actorId) {
+      return null;
+    }
+    const connectionFilter = params.connectionId
+      ? Prisma.sql`AND s.meta->>'connectionId' = ${params.connectionId}`
+      : Prisma.empty;
+    const rows = await this.prisma.$queryRaw<{ last_viewed_at: Date }[]>`
+      SELECT MAX(s.occurred_at) AS last_viewed_at
+      FROM signals s
+      WHERE s.actor_id = ${actorId}::uuid
+        AND s.kind = 'entity_view'
+        AND s.subject_id = ${params.entityId}::uuid
+        ${connectionFilter}
+    `;
+    return rows[0]?.last_viewed_at ?? null;
+  }
+
   /** Per-restaurant view stats for a candidate set (autocomplete affinity). */
   async restaurantViewStats(
     userId: string,
@@ -911,6 +953,111 @@ export class SignalDemandReadService {
       demandScore: Number(row.demand_score),
       distinctActors: Number(row.distinct_actors),
       lastSeenAt: row.last_seen_at,
+    }));
+  }
+
+  /**
+   * §11 UNMET family input — user-expressed collection gaps
+   * (kind = 'on_demand_ask') read by ENGINE TERRITORY (Phase C: replaced the
+   * engine-name-keyed collection_on_demand_ask_events read). Territory
+   * membership is the signal-geo ∩ member-place-bbox overlap — the same
+   * fresh-arm shape as territoryEntityDemand. Meta qualifiers (reason,
+   * entityType, result counts) are judged at read; the two ask sites of one
+   * search share meta.askSearchRequestId and collapse to one ask per
+   * (request, term). Entity identity resolves through redirects at read.
+   */
+  async territoryUnmetAsks(params: {
+    placeIds: string[];
+    since: Date;
+    limit: number;
+  }): Promise<TerritoryUnmetAskRow[]> {
+    if (!params.placeIds.length) {
+      return [];
+    }
+    const rows = await this.prisma.$queryRaw<
+      {
+        term: string;
+        entity_type: string;
+        entity_id: string | null;
+        reason: string;
+        distinct_user_count: bigint;
+        demand_score: number;
+        result_restaurant_count: number | null;
+        result_food_count: number | null;
+        last_seen_at: Date;
+        ask_count: bigint;
+      }[]
+    >`
+      WITH asks AS (
+        SELECT DISTINCT
+          s.signal_id,
+          s.subject_text AS term,
+          COALESCE(s.meta->>'entityType', '') AS entity_type,
+          COALESCE(r.to_entity_id, s.subject_id) AS entity_id,
+          COALESCE(s.meta->>'reason', '') AS reason,
+          s.actor_id,
+          COALESCE(s.meta->>'askSearchRequestId', s.signal_id::text) AS ask_key,
+          (s.meta->>'resultRestaurantCount')::int AS result_restaurant_count,
+          (s.meta->>'resultFoodCount')::int AS result_food_count,
+          s.occurred_at
+        FROM signals s
+        LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
+        JOIN places p ON p.place_id = ANY(${params.placeIds}::uuid[])
+        WHERE s.kind = 'on_demand_ask'
+          AND s.occurred_at >= ${params.since}
+          AND s.subject_text IS NOT NULL
+          AND s.meta->>'reason' IN ('unresolved', 'low_result')
+          AND s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
+          AND s.geo_min_lng <= p.bbox_max_lng AND s.geo_max_lng >= p.bbox_min_lng
+      ),
+      per_request AS (
+        -- One ask per (request, term, ...): the two ask sites of a single
+        -- search collapse here (§3 judge-at-read).
+        SELECT
+          term, entity_type, entity_id, reason, actor_id, ask_key,
+          MIN(result_restaurant_count) AS result_restaurant_count,
+          MIN(result_food_count) AS result_food_count,
+          MAX(occurred_at) AS last_seen_at
+        FROM asks
+        GROUP BY 1, 2, 3, 4, 5, 6
+      ),
+      per_actor AS (
+        SELECT
+          term, entity_type, entity_id, reason, actor_id,
+          COUNT(*)::float8 AS ask_count,
+          MIN(result_restaurant_count) AS result_restaurant_count,
+          MIN(result_food_count) AS result_food_count,
+          MAX(last_seen_at) AS last_seen_at
+        FROM per_request
+        GROUP BY 1, 2, 3, 4, 5
+      )
+      SELECT
+        term,
+        entity_type,
+        entity_id,
+        reason,
+        COUNT(*)::bigint AS distinct_user_count,
+        SUM(LN(1 + ask_count) / LN(2))::float8 AS demand_score,
+        MIN(result_restaurant_count)::int AS result_restaurant_count,
+        MIN(result_food_count)::int AS result_food_count,
+        MAX(last_seen_at) AS last_seen_at,
+        SUM(ask_count)::bigint AS ask_count
+      FROM per_actor
+      GROUP BY term, entity_type, entity_id, reason
+      ORDER BY demand_score DESC, last_seen_at DESC
+      LIMIT ${Math.max(1, params.limit)}
+    `;
+    return rows.map((row) => ({
+      term: row.term,
+      entityType: row.entity_type,
+      entityId: row.entity_id,
+      reason: row.reason,
+      distinctUserCount: Number(row.distinct_user_count),
+      demandScore: Number(row.demand_score),
+      resultRestaurantCount: row.result_restaurant_count,
+      resultFoodCount: row.result_food_count,
+      lastSeenAt: row.last_seen_at,
+      askCount: Number(row.ask_count),
     }));
   }
 

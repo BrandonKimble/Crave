@@ -26,7 +26,11 @@ export type SignalKind =
   | 'poll_vote'
   | 'poll_comment'
   | 'poll_created'
-  | 'viewport_dwell';
+  | 'viewport_dwell'
+  /** A user-expressed collection gap (unresolved / low-result search term) —
+   *  the §11 UNMET family's input. Replaced collection_on_demand_ask_events
+   *  (Phase C). */
+  | 'on_demand_ask';
 
 /** Geo is ALWAYS a bbox; a point is a zero-area bbox (§3). Longitude is
  *  WRAP-AWARE: minLng > maxLng means the bbox CROSSES the antimeridian and

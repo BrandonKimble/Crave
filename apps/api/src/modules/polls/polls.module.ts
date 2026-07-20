@@ -8,7 +8,6 @@ import { IdentityModule } from '../identity/identity.module';
 import { RestaurantEnrichmentModule } from '../restaurant-enrichment/restaurant-enrichment.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { PublicCraveScoreModule } from '../content-processing/public-crave-score';
-import { MarketsModule } from '../markets/markets.module';
 import { LLMModule } from '../external-integrations/llm/llm.module';
 import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
@@ -39,7 +38,6 @@ import { PollBallotMentionService } from './supply/poll-ballot-mention.service';
     RestaurantEnrichmentModule,
     EntityResolverModule,
     PublicCraveScoreModule,
-    MarketsModule,
     LLMModule,
     EntityTextSearchModule,
     RedditCollectorModule,

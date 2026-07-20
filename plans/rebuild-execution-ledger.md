@@ -322,10 +322,46 @@ agent in flight at turn end so completion notifications chain turns.
       rooms exist); coverage-gap interim; g=1 unattributable rooms.
       Data repair: 7-Eleven dangling restaurant_attributes stripped.
       API restarted (fame-pin live).
-- [>] AGENT in flight: PHASE C purges (old event writers+tables dropped,
-  scoring_market_key drop, on_demand_ask → ledger, user poll creation
-  re-key to placeId + per-place anti-spam, markets machinery
-  per-consumer sweep w/ survivor dispositions).
+- [x] PHASE C PURGE executed (agent, uncommitted; 567 green = 561 base + 6
+      new; tsc/build/eslint/prettier clean; migration
+      20260720030000_phase_c_purge drift-applied via db execute + resolve +
+      generate; drops DB-verified):
+      · signals SINGLE-WRITE: history view writers dead (2-min valve = ledger
+      read lastEntityViewAt; view meta gains source/originSearchRequestId —
+      deliberately NOT meta.searchRequestId, the ledger-wide dedupe key);
+      search old upsert + searchLogEnabled dead; cache reveal clones the
+      ORIGINAL search SIGNAL (subject/geo/counts from ledger, idempotent on
+      cacheRevealRequestId via the dedupe expression index).
+      · old rollup DEAD: search-demand-aggregation (15-min cron was STILL
+      firing) + search-demand.service + rebuild/backfill scripts deleted;
+      AnalyticsModule = DemandScoringTraceService + curves only;
+      warm-query-embedding-cache re-pointed to signals.
+      · TABLES DROPPED: search_events, search_event_entities,
+      user_search_demand_daily, user_restaurant_views, user_food_views,
+      user_entity_view_events, collection_on_demand_ask_events; enums
+      SearchEventKind/DemandSourceKind/DemandSignalKind;
+      core_public_entity_scores.scoring_market_key (+index).
+      · merge rekeys into dead tables deleted (both merge services) —
+      redirects-at-read is the law.
+      · on_demand_ask → LEDGER: new kind written at the ask site (geo =
+      searcher viewport; meta.askSearchRequestId); unmet family reads
+      territoryUnmetAsks (territory geo overlap + per-request dedupe);
+      ask-event prune deleted from cleanup service.
+      · poll creation RE-KEYED: placeId = smallestContaining(creation
+      bounds); 2/user/PLACE/week; checkDuplicate place-scoped (dto grew
+      bounds; legacy marketKey arm kept for pre-cut clients);
+      resolveOrEnsureForPollCreation DELETED; seeding context =
+      PollPlaceContext; presence derives from the VERIFIED Google place
+      (lookup-only, optional).
+      · markets survivor ledger in markets.module.ts (per-survivor kill leg
+      named); polls legacy feed arm comment re-pointed to the
+      legacy-poll-expiry leg.
+      · specs: search-signals-write.spec (single-write), on-demand-ask-signal
+      .spec, polls-creation-place-rekey.spec.
+      ⚠️ :3000 NOT restarted (per instruction) — the RUNNING binary still has
+      the OLD writers against DROPPED tables (history record endpoints 500;
+      search event log warn-only). CLAUDE.md rebuild+restart recipe REQUIRED
+      before any app testing/commit.
 - [ ] REMAINING after Phase C: wave-5 final red team + REASSESSMENT;
       follow-up legs recorded: home-place registration (device→placeAt→
       homePlaceId; kills notification market fallback), See-locations
@@ -333,8 +369,6 @@ agent in flight at turn end so completion notifications chain turns.
       §12.5 reddit client rewrite (per-request draws), poll-supply swap
       onto aggregate, mobile perf-harness field rename, owner sim-feel
       items (feed cadence, two-All chips, promise card).
-- [ ] Then: Phase C purges (old event tables/writers, markets machinery
-      per-consumer, user poll creation re-key, home-place registration).
 - [ ] Then: wave-5 final red team + REASSESSMENT (owner's 'reassess only
       when done').
 - deferred-in-leg-2: See-locations (only remaining Leg 2 item).
