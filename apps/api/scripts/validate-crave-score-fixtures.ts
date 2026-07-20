@@ -99,7 +99,12 @@ let calibrationSummary: Record<string, unknown> = {};
 function runInMemoryChecks(): void {
   const dishes: DishCandidate[] = [];
   const restaurants: RestaurantCandidate[] = [];
-  const market = 'fixture-market';
+  // §8: candidates carry per-source contributions; with no calibration index
+  // (this in-memory suite) every room is neutral (g = 1) — raw v3 math, i.e.
+  // the kill-condition baseline these named scenarios pin.
+  const room = (m: number, u: number) => [
+    { sourceId: null, platform: null, mentions: m, upvotes: u },
+  ];
 
   // Spread fillers: 24 restaurants each with one increasingly-endorsed dish, so
   // the global percentile has a real population to spread across all buckets.
@@ -107,16 +112,12 @@ function runInMemoryChecks(): void {
     const id = `filler-${i}`;
     restaurants.push({
       restaurantId: id,
-      scoringMarketKey: market,
-      praiseMentions: 0,
-      praiseUpvotes: 0,
+      praiseContributions: room(0, 0),
     });
     dishes.push({
       connectionId: `${id}-dish`,
       restaurantId: id,
-      scoringMarketKey: market,
-      mentions: i + 1,
-      upvotes: (i + 1) * 5,
+      contributions: room(i + 1, (i + 1) * 5),
     });
   }
 
@@ -128,18 +129,14 @@ function runInMemoryChecks(): void {
   ): void => {
     restaurants.push({
       restaurantId: id,
-      scoringMarketKey: market,
-      praiseMentions: praiseM,
-      praiseUpvotes: praiseU,
+      praiseContributions: room(praiseM, praiseU),
     });
   };
   const addDish = (rid: string, suffix: string, m: number, u: number): void => {
     dishes.push({
       connectionId: `${rid}-${suffix}`,
       restaurantId: rid,
-      scoringMarketKey: market,
-      mentions: m,
-      upvotes: u,
+      contributions: room(m, u),
     });
   };
 

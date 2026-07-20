@@ -4,13 +4,16 @@ import type { QueryPlan } from './dto/search-query.dto';
 
 const RESTAURANT_ID = '44444444-4444-4444-4444-444444444444';
 
-// Fame-pin interim (master plan §7 / ledger Leg 2): the DISTINCT ON
+// Fame pin re-keyed to SOURCES (master §5/§7, Phase B line): the DISTINCT ON
 // representative-location order must prefer locations covered by the
-// restaurant's scoring territory (core_public_entity_scores.scoring_market_key
-// → core_markets geometry ST_Covers) BEFORE distance-to-center, with distance
-// kept as the tiebreak and updated_at as the determinism anchor.
+// restaurant's score-provenance territory — provenance_source_id → the
+// source's engine member places (derived-union territory) or its anchor
+// place (engineless case) — BEFORE distance-to-center, with distance kept as
+// the tiebreak and updated_at as the determinism anchor. The bbox test is
+// antimeridian wrap-aware. The old scoring_market_key → core_markets
+// ST_Covers key is DEAD.
 const TERRITORY_ORDER_SNIPPET =
-  "EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN core_markets m ON m.market_key = pes.scoring_market_key WHERE pes.subject_type = 'restaurant' AND pes.subject_id = fl.restaurant_id AND m.geometry IS NOT NULL AND ST_Covers(m.geometry, ST_SetSRID(ST_MakePoint(fl.longitude::double precision, fl.latitude::double precision), 4326))) DESC";
+  "EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN sources src ON src.source_id = pes.provenance_source_id LEFT JOIN engines eng ON eng.engine_id = src.engine_id JOIN places p ON p.place_id = ANY(CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids ELSE ARRAY[src.anchor_place_id] END) WHERE pes.subject_type = 'restaurant' AND pes.subject_id = fl.restaurant_id AND p.bbox_min_lat IS NOT NULL AND fl.latitude::numeric BETWEEN p.bbox_min_lat AND p.bbox_max_lat AND ((p.bbox_min_lng <= p.bbox_max_lng AND fl.longitude::numeric BETWEEN p.bbox_min_lng AND p.bbox_max_lng) OR (p.bbox_min_lng > p.bbox_max_lng AND (fl.longitude::numeric >= p.bbox_min_lng OR fl.longitude::numeric <= p.bbox_max_lng)))) DESC";
 
 function buildPlan(): QueryPlan {
   return {

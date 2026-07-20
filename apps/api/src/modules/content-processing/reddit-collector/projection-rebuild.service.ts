@@ -21,6 +21,7 @@ type ActiveRestaurantEvent = {
 type ActiveRestaurantEntityEvent = {
   extractionRunId: string;
   restaurantId: string;
+  sourceDocumentId: string;
   mentionKey: string;
   entityId: string;
   entityType: EntityType;
@@ -45,6 +46,8 @@ type ItemSupportMention = {
   categoryIds: string[];
   mentionedAt: Date;
   sourceUpvotes: number;
+  /** §8 provenance unification — the calibration room this support came from. */
+  sourceDocumentId: string | null;
   foodAttributeIds: string[];
 };
 
@@ -66,6 +69,8 @@ type RestaurantItemProjection = {
     kind: 'direct' | 'support';
     mentionedAt: Date;
     sourceUpvotes: number;
+    /** §8 provenance unification — resolved to a SOURCE room by the scorer. */
+    sourceDocumentId: string | null;
   }[];
 };
 
@@ -226,6 +231,7 @@ export class ProjectionRebuildService implements OnModuleInit {
       select: {
         extractionRunId: true,
         restaurantId: true,
+        sourceDocumentId: true,
         mentionKey: true,
         entityId: true,
         entityType: true,
@@ -315,6 +321,10 @@ export class ProjectionRebuildService implements OnModuleInit {
           foodEvent?.mentionedAt ?? group.events[0]?.mentionedAt ?? new Date(0),
         sourceUpvotes:
           foodEvent?.sourceUpvotes ?? group.events[0]?.sourceUpvotes ?? 0,
+        sourceDocumentId:
+          foodEvent?.sourceDocumentId ??
+          group.events[0]?.sourceDocumentId ??
+          null,
         foodAttributeIds,
       });
     });
@@ -398,6 +408,7 @@ export class ProjectionRebuildService implements OnModuleInit {
         aggregate,
         foodEvent.mentionedAt,
         foodEvent.sourceUpvotes ?? 0,
+        foodEvent.sourceDocumentId,
       );
 
       items.set(key, aggregate);
@@ -446,6 +457,7 @@ export class ProjectionRebuildService implements OnModuleInit {
           aggregate,
           support.mentionedAt,
           support.sourceUpvotes,
+          support.sourceDocumentId,
         );
       });
     });
@@ -457,6 +469,7 @@ export class ProjectionRebuildService implements OnModuleInit {
     aggregate: RestaurantItemProjection,
     mentionedAt: Date,
     upvotes: number,
+    sourceDocumentId: string | null,
   ): void {
     aggregate.mentionCount += 1;
     aggregate.totalUpvotes += Math.max(0, upvotes);
@@ -464,6 +477,7 @@ export class ProjectionRebuildService implements OnModuleInit {
       kind: 'direct',
       mentionedAt,
       sourceUpvotes: Math.max(0, upvotes),
+      sourceDocumentId,
     });
 
     if (
@@ -484,6 +498,7 @@ export class ProjectionRebuildService implements OnModuleInit {
     aggregate: RestaurantItemProjection,
     mentionedAt: Date,
     upvotes: number,
+    sourceDocumentId: string | null,
   ): void {
     aggregate.supportMentionCount += 1;
     aggregate.supportTotalUpvotes += Math.max(0, upvotes);
@@ -491,6 +506,7 @@ export class ProjectionRebuildService implements OnModuleInit {
       kind: 'support',
       mentionedAt,
       sourceUpvotes: Math.max(0, upvotes),
+      sourceDocumentId,
     });
 
     if (
@@ -628,6 +644,7 @@ export class ProjectionRebuildService implements OnModuleInit {
       kind: string;
       mentionedAt: Date;
       sourceUpvotes: number;
+      sourceDocumentId: string | null;
     }[] = [];
     const now = new Date();
 
@@ -681,6 +698,7 @@ export class ProjectionRebuildService implements OnModuleInit {
           kind: mention.kind,
           mentionedAt: mention.mentionedAt,
           sourceUpvotes: mention.sourceUpvotes,
+          sourceDocumentId: mention.sourceDocumentId,
         });
       }
     }

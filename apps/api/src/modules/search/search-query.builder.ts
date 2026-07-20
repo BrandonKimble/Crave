@@ -1401,12 +1401,17 @@ geographic_restaurants AS (
   }
 
   /**
-   * The DISTINCT ON (restaurant_id) representative-location order. Fame-pin
-   * interim (master plan §7 / ledger Leg 2): a location INSIDE the
-   * restaurant's scoring territory (core_public_entity_scores.scoring_market_key
-   * → core_markets geometry) is preferred BEFORE distance-to-center — the pin
-   * that earned the score leads; distance stays the tiebreak, updated_at the
-   * final determinism anchor. Re-keyed to the source anchor in Phase B.
+   * The DISTINCT ON (restaurant_id) representative-location order. Fame pin
+   * (master §5/§7): a location INSIDE the restaurant's score-provenance
+   * territory is preferred BEFORE distance-to-center — the pin that earned
+   * the score leads; distance stays the tiebreak, updated_at the final
+   * determinism anchor. Provenance keys off SOURCES (§5): the score row's
+   * provenance_source_id resolves to territory places — the source's
+   * engine's member places when it has an engine (territory = derived
+   * union; a member's bbox geometrically covers its DAG descendants for a
+   * point test), else its anchor place (engineless poll-bootstrapped towns).
+   * Bbox test is antimeridian wrap-aware (min > max = wrapped), matching
+   * the catalog convention.
    */
   private buildDistanceOrder(
     searchCenter: { lat: number; lng: number } | null | undefined,
@@ -1415,22 +1420,24 @@ geographic_restaurants AS (
     const scoringTerritorySql = Prisma.sql`EXISTS (
     SELECT 1
     FROM core_public_entity_scores pes
-    JOIN core_markets m ON m.market_key = pes.scoring_market_key
+    JOIN sources src ON src.source_id = pes.provenance_source_id
+    LEFT JOIN engines eng ON eng.engine_id = src.engine_id
+    JOIN places p ON p.place_id = ANY(
+      CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids
+           ELSE ARRAY[src.anchor_place_id] END)
     WHERE pes.subject_type = 'restaurant'
       AND pes.subject_id = ${Prisma.raw(alias)}.restaurant_id
-      AND m.geometry IS NOT NULL
-      AND ST_Covers(
-        m.geometry,
-        ST_SetSRID(
-          ST_MakePoint(
-            ${Prisma.raw(alias)}.longitude::double precision,
-            ${Prisma.raw(alias)}.latitude::double precision
-          ),
-          4326
-        )
+      AND p.bbox_min_lat IS NOT NULL
+      AND ${Prisma.raw(alias)}.latitude::numeric BETWEEN p.bbox_min_lat AND p.bbox_max_lat
+      AND (
+        (p.bbox_min_lng <= p.bbox_max_lng
+          AND ${Prisma.raw(alias)}.longitude::numeric BETWEEN p.bbox_min_lng AND p.bbox_max_lng)
+        OR (p.bbox_min_lng > p.bbox_max_lng
+          AND (${Prisma.raw(alias)}.longitude::numeric >= p.bbox_min_lng
+            OR ${Prisma.raw(alias)}.longitude::numeric <= p.bbox_max_lng))
       )
   ) DESC`;
-    const scoringTerritoryPreview = `EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN core_markets m ON m.market_key = pes.scoring_market_key WHERE pes.subject_type = 'restaurant' AND pes.subject_id = ${alias}.restaurant_id AND m.geometry IS NOT NULL AND ST_Covers(m.geometry, ST_SetSRID(ST_MakePoint(${alias}.longitude::double precision, ${alias}.latitude::double precision), 4326))) DESC`;
+    const scoringTerritoryPreview = `EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN sources src ON src.source_id = pes.provenance_source_id LEFT JOIN engines eng ON eng.engine_id = src.engine_id JOIN places p ON p.place_id = ANY(CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids ELSE ARRAY[src.anchor_place_id] END) WHERE pes.subject_type = 'restaurant' AND pes.subject_id = ${alias}.restaurant_id AND p.bbox_min_lat IS NOT NULL AND ${alias}.latitude::numeric BETWEEN p.bbox_min_lat AND p.bbox_max_lat AND ((p.bbox_min_lng <= p.bbox_max_lng AND ${alias}.longitude::numeric BETWEEN p.bbox_min_lng AND p.bbox_max_lng) OR (p.bbox_min_lng > p.bbox_max_lng AND (${alias}.longitude::numeric >= p.bbox_min_lng OR ${alias}.longitude::numeric <= p.bbox_max_lng)))) DESC`;
 
     if (
       !searchCenter ||

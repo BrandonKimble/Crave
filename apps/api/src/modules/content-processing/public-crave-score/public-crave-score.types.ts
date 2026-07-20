@@ -19,30 +19,42 @@ export interface PublicCraveScoreConfig {
   // conviction + origination of writing, while still counting agreement as a strong signal.
   upvoteWeight: number;
   // exponential decay half-life (days) applied to each mention by Reddit post date.
-  // The STABLE/all-time axis.
+  // The STABLE/all-time axis. Doubles as the stable calibration lane's τ (§8).
   endorsementHalfLifeDays: number;
   // fast half-life (days) for the recency-weighted second pass whose display delta
-  // vs the stable pass is `rising`.
+  // vs the stable pass is `rising`. Doubles as the fast calibration lane's τ (§8).
   risingHalfLifeDays: number;
+  // §8 sourceClassInfluence: read-side multiplier per platform class,
+  // DEFAULT 1.0 for every class — launch = a poll vote ≈ a Reddit mention;
+  // the Reddit→polls transition happens by decay + accumulation. Only
+  // deviations from 1.0 are listed here.
+  sourceClassInfluence: Record<string, number>;
 }
 
-// A dish (connection): its own endorsement, plus the restaurant it rolls up into.
-// `mentions`/`upvotes` are decayed masses for a SINGLE pass (the caller supplies the
-// stable or the fast masses); pooled in `endorse` as mentions + upvoteWeight·upvotes.
+// One source room's decayed masses for a subject in a SINGLE lane (§8: the
+// mention is calibrated by the g of ITS OWN source). sourceId null = the
+// mention could not be attributed to a source row (unmeasurable room → g 1).
+export interface SourceContribution {
+  sourceId: string | null;
+  platform: string | null;
+  mentions: number; // decayed mention mass in this room
+  upvotes: number; // decayed upvote mass in this room
+}
+
+// A dish (connection): its per-source endorsement, plus the restaurant it
+// rolls up into. The caller supplies the stable or the fast lane's masses;
+// scoreCandidates pools them as Σ influence·(m + upvoteWeight·u)/g, then log1p.
 export interface DishCandidate {
   connectionId: string;
   restaurantId: string;
-  scoringMarketKey: string | null;
-  mentions: number; // direct + support mention count (decayed)
-  upvotes: number; // direct + support upvote mass (decayed)
+  contributions: SourceContribution[];
 }
 
-// A restaurant: its by-name endorsement (general praise / name mentions).
+// A restaurant: its by-name endorsement (general praise / name mentions),
+// per source room.
 export interface RestaurantCandidate {
   restaurantId: string;
-  scoringMarketKey: string | null;
-  praiseMentions: number;
-  praiseUpvotes: number;
+  praiseContributions: SourceContribution[];
 }
 
 export interface CraveScoreCandidates {
@@ -53,7 +65,8 @@ export interface CraveScoreCandidates {
 export interface ScoredCraveSubject {
   subjectType: CraveScoreSubjectType;
   subjectId: string;
-  scoringMarketKey: string | null;
+  /** §5 scoring provenance: the source with the dominant calibrated mass. */
+  provenanceSourceId: string | null;
   endorsementRaw: number;
   percentileRank: number;
   // Un-rounded display value (displayMin..displayMax, i.e. 0..10). Carried so the dual

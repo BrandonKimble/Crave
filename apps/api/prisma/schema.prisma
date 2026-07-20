@@ -417,6 +417,10 @@ model RestaurantItemMention {
   kind          String     @db.VarChar(16)
   mentionedAt   DateTime   @map("mentioned_at")
   sourceUpvotes Int        @default(0) @map("source_upvotes")
+  /// §8 provenance unification: the document this contribution came from —
+  /// the scorer resolves it to a SOURCE (the calibration room) at read.
+  /// Nullable, no FK: this is a full-replace projection over evidence rows.
+  sourceDocumentId String? @map("source_document_id") @db.Uuid
   connection    Connection @relation(fields: [connectionId], references: [connectionId], onDelete: Cascade)
 
   @@index([connectionId])
@@ -427,7 +431,15 @@ model PublicEntityScore {
   subjectType         CraveScoreSubjectType @map("subject_type")
   subjectId           String                @map("subject_id") @db.Uuid
   scoreRunId          String                @map("score_run_id") @db.Uuid
+  /// DEAD (unwritten since crave-score-v4): superseded by provenanceSourceId
+  /// (§5 provenance keys off SOURCES). Column survives only so the running
+  /// v3 binary's raw reads don't break mid-deploy — dies with Phase C.
   scoringMarketKey    String?               @map("scoring_market_key") @db.VarChar(255)
+  /// §5 scoring provenance: the SOURCE (calibration room) that contributed
+  /// the dominant calibrated mass. Fame-pin territory derives from it —
+  /// engine member places (derived union) when the source has an engine,
+  /// else its anchor place.
+  provenanceSourceId  String?               @map("provenance_source_id") @db.Uuid
   endorsementRaw      Decimal               @map("endorsement_raw") @db.Decimal(18, 6)
   percentileRank      Decimal               @map("percentile_rank") @db.Decimal(6, 5)
   displayScore        Decimal               @map("display_score") @db.Decimal(4, 2)
@@ -446,6 +458,22 @@ model PublicEntityScore {
   @@index([subjectType, rising(sort: Desc)], map: "idx_public_entity_scores_subject_rising")
   @@index([scoreRunId], map: "idx_public_entity_scores_run")
   @@map("core_public_entity_scores")
+}
+
+/// §8: A_ref and A_floor are PER-LANE constants, pinned per scoreVersion
+/// EPOCH — measured from the corpus once when a version first rebuilds, then
+/// frozen (re-pin only with a version bump). `derivation` is the birth
+/// certificate: statistic names, sample size, and the measured inputs.
+model CraveScoreCalibrationEpoch {
+  scoreVersion String   @map("score_version") @db.VarChar(64)
+  lane         String   @db.VarChar(16)
+  aRef         Float    @map("a_ref")
+  aFloor       Float    @map("a_floor")
+  derivation   Json     @default("{}")
+  pinnedAt     DateTime @default(now()) @map("pinned_at") @db.Timestamptz(6)
+
+  @@id([scoreVersion, lane])
+  @@map("crave_score_calibration_epochs")
 }
 
 model CraveScoreRun {

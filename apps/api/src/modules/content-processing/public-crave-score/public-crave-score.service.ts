@@ -10,14 +10,30 @@ import {
   PublicCraveScoreConfig,
   RestaurantCandidate,
   ScoredCraveSubject,
+  SourceContribution,
 } from './public-crave-score.types';
+import {
+  CALIBRATION_LANES,
+  CalibrationIndex,
+  CalibrationLane,
+  LaneCalibrationConstants,
+  SourceActivity,
+  buildCalibrationIndex,
+  calibrationG,
+  calibrationInfluence,
+  deriveLaneConstants,
+  laneActivity,
+  neutralCalibrationIndex,
+  observedDays,
+} from './score-calibration';
 
 type NumericLike = number | string | Prisma.Decimal | null | undefined;
 
 type DishRow = {
   connection_id: string;
   restaurant_id: string;
-  scoring_market_key: string | null;
+  source_id: string | null;
+  platform: string | null;
   mentions: NumericLike;
   upvotes: NumericLike;
   mentions_fast: NumericLike;
@@ -26,15 +42,32 @@ type DishRow = {
 
 type RestaurantRow = {
   restaurant_id: string;
-  scoring_market_key: string | null;
+  source_id: string | null;
+  platform: string | null;
   praise_mentions: NumericLike;
   praise_upvotes: NumericLike;
   praise_mentions_fast: NumericLike;
   praise_upvotes_fast: NumericLike;
 };
 
+type SourceActivityRow = {
+  source_id: string;
+  platform: string;
+  anchor_place_id: string | null;
+  engine_id: string | null;
+  created_at: Date;
+  first_doc: Date | null;
+  last_doc: Date | null;
+  mass_stable: NumericLike;
+  mass_fast: NumericLike;
+  last_ran_at: Date | null;
+};
+
 const DEFAULT_CONFIG: PublicCraveScoreConfig = {
-  scoreVersion: 'crave-score-v3',
+  // ONE scoreVersion (§8/§15): v4 = v3 math over per-source-calibrated
+  // masses. The per-lane A_ref/A_floor pins are keyed by THIS string —
+  // changing calibration inputs requires bumping it (a new epoch).
+  scoreVersion: 'crave-score-v4',
   displayCurveVersion: 'crave-score-display-v6',
   displayMin: 0,
   displayMax: 10,
@@ -45,27 +78,10 @@ const DEFAULT_CONFIG: PublicCraveScoreConfig = {
   upvoteWeight: 0.7,
   endorsementHalfLifeDays: 365,
   risingHalfLifeDays: 21,
+  // §8: default 1.0 per platform class (a poll vote ≈ a Reddit mention);
+  // only deviations are listed, so {} = every class at 1.0.
+  sourceClassInfluence: {},
 };
-
-// Reusable: each restaurant's single scoring market (most-regional wins).
-const RESTAURANT_MARKETS_CTE = Prisma.sql`
-  restaurant_markets AS (
-    SELECT DISTINCT ON (emp.entity_id)
-      emp.entity_id,
-      emp.market_key
-    FROM core_entity_market_presence emp
-    LEFT JOIN core_markets m ON m.market_key = emp.market_key
-    ORDER BY
-      emp.entity_id,
-      CASE m.market_type
-        WHEN 'regional' THEN 0
-        WHEN 'manual' THEN 1
-        WHEN 'locality' THEN 2
-        ELSE 3
-      END,
-      emp.market_key ASC
-  )
-`;
 
 @Injectable()
 export class PublicCraveScoreService {
@@ -92,7 +108,30 @@ export class PublicCraveScoreService {
     const scoreRunId = randomUUID();
     const startedAt = Date.now();
 
-    await this.createRun(scoreRunId, config, recencyReferenceDate, params);
+    // §8 per-source calibration: measure every source's room (A per lane),
+    // resolve the epoch's pinned per-lane constants (pin them on first use
+    // of this scoreVersion), and build the g lookups.
+    const sources = await this.loadSourceActivities(config);
+    const calibration = await this.resolveCalibration(config, sources);
+
+    await this.createRun(scoreRunId, config, recencyReferenceDate, {
+      fixtureRunId: params?.fixtureRunId,
+      calibration: {
+        stable: {
+          ...calibration.stable.constants,
+          lane: 'stable',
+        },
+        fast: { ...calibration.fast.constants, lane: 'fast' },
+        sources: sources.map((source) => ({
+          sourceId: source.sourceId,
+          platform: source.platform,
+          anchorPlaceId: source.anchorPlaceId,
+          engineId: source.engineId,
+          aStable: Number(source.activity.stable.toPrecision(6)),
+          aFast: Number(source.activity.fast.toPrecision(6)),
+        })),
+      },
+    });
 
     try {
       // Dual pass inside ONE run: one SQL pass emits BOTH decayed masses (stable
@@ -101,8 +140,12 @@ export class PublicCraveScoreService {
       // NOT issue a second run/write/prune — the keyed upsert + stale-prune would
       // wipe the first pass.
       const { stable, fast } = await this.loadCandidates(config, params);
-      const stableScored = this.scoreCandidates(stable, config);
-      const fastScored = this.scoreCandidates(fast, config);
+      const stableScored = this.scoreCandidates(
+        stable,
+        config,
+        calibration.stable,
+      );
+      const fastScored = this.scoreCandidates(fast, config, calibration.fast);
 
       const fastDisplayByKey = new Map<string, number>();
       for (const row of fastScored) {
@@ -147,40 +190,100 @@ export class PublicCraveScoreService {
     }
   }
 
-  // ── Scoring (v3): endorsement strength → global percentile → display ──────
+  // ── Scoring (v4): per-source calibration → endorsement → percentile ───────
   //
-  // A single pass over ONE set of decayed masses. Dishes are atomic: a dish's
+  // A single pass over ONE lane's decayed masses. Dishes are atomic: a dish's
   // score is its own endorsement strength. Restaurants are composite: a discounted
   // aggregate of their dishes' endorsement (best dish counts fully, each next one
   // less) plus a by-name praise term (which alone carries dishless restaurants).
-  // Each subject type is normalized by GLOBAL percentile → one stable meaning.
+  // Each subject type is normalized by GLOBAL percentile → one stable meaning
+  // (one global pool per subject type — the PURPOSE of calibration, §8).
   //
-  // `endorse` pools mentions + upvotes (a written mention counts as 1; an upvote / poll-like
-  // counts as config.upvoteWeight = 0.7 — a gentle premium for the conviction + origination of
-  // writing, while still treating agreement as a strong signal) and keeps log1p: for a single
-  // dish mass the log is rank-irrelevant, but it holds the restaurant composite's operands on the
-  // scale its rho/weights are tuned for. `rising` is left null here and filled by the dual pass
-  // in rebuildAllScores.
+  // §8 calibration happens INSIDE log1p: pooled = Σ over source rooms of
+  // influence(platform) · (m + upvoteWeight·u) / g(source), endorsement =
+  // log1p(pooled). A written mention counts 1, an upvote/poll-like counts
+  // upvoteWeight = 0.7; g divides the mention by the size of ITS OWN room, so
+  // one global percentile pool stays meaningful across rooms of wildly
+  // different activity. v3 downstream (log1p → rho discount → praise 2× →
+  // percentile → truncated-normal display) is unchanged. With no calibration
+  // index (fixtures) g = 1 everywhere and the math IS raw v3.
   scoreCandidates(
     candidates: CraveScoreCandidates,
     config: PublicCraveScoreConfig = DEFAULT_CONFIG,
+    calibration: CalibrationIndex = neutralCalibrationIndex('stable'),
   ): ScoredCraveSubject[] {
-    const endorse = (mentions: number, upvotes: number): number =>
+    const pooledOne = (contribution: SourceContribution): number =>
+      (calibrationInfluence(calibration, contribution.platform) *
+        (Math.max(0, contribution.mentions) +
+          config.upvoteWeight * Math.max(0, contribution.upvotes))) /
+      calibrationG(calibration, contribution.sourceId);
+    const endorse = (contributions: SourceContribution[]): number =>
       Math.log1p(
-        Math.max(0, mentions) + config.upvoteWeight * Math.max(0, upvotes),
+        Math.max(
+          0,
+          contributions.reduce((sum, c) => sum + pooledOne(c), 0),
+        ),
       );
+    const rawEndorsers = (contributions: SourceContribution[]): number =>
+      contributions.reduce(
+        (sum, c) => sum + Math.max(0, c.mentions) + Math.max(0, c.upvotes),
+        0,
+      );
+
+    // §5 scoring provenance: per subject, the source with the dominant
+    // calibrated pooled mass (unattributed mass can never be provenance).
+    const accumulateProvenance = (
+      map: Map<string, number>,
+      contributions: SourceContribution[],
+    ): void => {
+      for (const contribution of contributions) {
+        if (!contribution.sourceId) continue;
+        map.set(
+          contribution.sourceId,
+          (map.get(contribution.sourceId) ?? 0) + pooledOne(contribution),
+        );
+      }
+    };
+    const dominantSource = (map: Map<string, number>): string | null => {
+      let best: string | null = null;
+      let bestMass = 0;
+      for (const [sourceId, mass] of map) {
+        if (
+          mass > bestMass ||
+          (mass === bestMass && best !== null && sourceId < best)
+        ) {
+          best = sourceId;
+          bestMass = mass;
+        }
+      }
+      return bestMass > 0 ? best : null;
+    };
 
     // 1. Dish endorsement + group by restaurant.
     const dishEndorsement = new Map<string, number>();
     const dishesByRestaurant = new Map<string, number[]>();
+    const dishContributionsByRestaurant = new Map<
+      string,
+      SourceContribution[]
+    >();
     for (const dish of candidates.dishes) {
-      const value = endorse(dish.mentions, dish.upvotes);
+      const value = endorse(dish.contributions);
       dishEndorsement.set(dish.connectionId, value);
       const bucket = dishesByRestaurant.get(dish.restaurantId);
       if (bucket) {
         bucket.push(value);
       } else {
         dishesByRestaurant.set(dish.restaurantId, [value]);
+      }
+      const contributionBucket = dishContributionsByRestaurant.get(
+        dish.restaurantId,
+      );
+      if (contributionBucket) {
+        contributionBucket.push(...dish.contributions);
+      } else {
+        dishContributionsByRestaurant.set(dish.restaurantId, [
+          ...dish.contributions,
+        ]);
       }
     }
 
@@ -193,6 +296,7 @@ export class PublicCraveScoreService {
         praise: number;
         dishCount: number;
         bestDish: number;
+        provenanceSourceId: string | null;
       }
     >();
     for (const restaurant of candidates.restaurants) {
@@ -203,9 +307,15 @@ export class PublicCraveScoreService {
       for (let i = 0; i < dishes.length; i += 1) {
         acclaim += Math.pow(config.discountRho, i) * dishes[i];
       }
-      const praise = endorse(
-        restaurant.praiseMentions,
-        restaurant.praiseUpvotes,
+      const praise = endorse(restaurant.praiseContributions);
+      // Provenance pools the restaurant's OWN praise rooms with its dishes'
+      // rooms on raw calibrated mass (the composite's rho/praise weighting is
+      // a ranking shape, not a provenance question).
+      const provenanceMass = new Map<string, number>();
+      accumulateProvenance(provenanceMass, restaurant.praiseContributions);
+      accumulateProvenance(
+        provenanceMass,
+        dishContributionsByRestaurant.get(restaurant.restaurantId) ?? [],
       );
       restaurantAggregate.set(restaurant.restaurantId, {
         endorsement: config.dishWeight * acclaim + config.praiseWeight * praise,
@@ -213,6 +323,7 @@ export class PublicCraveScoreService {
         praise,
         dishCount: dishes.length,
         bestDish: dishes[0] ?? 0,
+        provenanceSourceId: dominantSource(provenanceMass),
       });
     }
 
@@ -229,17 +340,20 @@ export class PublicCraveScoreService {
       dishEntries.map((e) => e.endorsement),
     );
     dishEntries.forEach((entry, i) => {
+      const provenanceMass = new Map<string, number>();
+      accumulateProvenance(provenanceMass, entry.dish.contributions);
       scored.push(
         this.buildScored(
           'connection',
           entry.dish.connectionId,
-          entry.dish.scoringMarketKey,
+          dominantSource(provenanceMass),
           entry.endorsement,
           dishRanks[i],
           config,
+          calibration,
           {
             kind: 'dish',
-            endorsers: this.round(entry.dish.mentions + entry.dish.upvotes),
+            endorsers: this.round(rawEndorsers(entry.dish.contributions)),
           },
         ),
       );
@@ -260,10 +374,11 @@ export class PublicCraveScoreService {
         this.buildScored(
           'restaurant',
           entry.restaurant.restaurantId,
-          entry.restaurant.scoringMarketKey,
+          entry.agg.provenanceSourceId,
           entry.agg.endorsement,
           restRanks[i],
           config,
+          calibration,
           {
             kind: 'restaurant',
             dishCount: entry.agg.dishCount,
@@ -281,17 +396,18 @@ export class PublicCraveScoreService {
   private buildScored(
     subjectType: CraveScoreSubjectType,
     subjectId: string,
-    scoringMarketKey: string | null,
+    provenanceSourceId: string | null,
     endorsementRaw: number,
     percentile: number,
     config: PublicCraveScoreConfig,
+    calibration: CalibrationIndex,
     endorsementTrace: Record<string, unknown>,
   ): ScoredCraveSubject {
     const rawDisplay = this.displayFromPercentile(percentile, config);
     return {
       subjectType,
       subjectId,
-      scoringMarketKey,
+      provenanceSourceId,
       endorsementRaw: this.round(endorsementRaw),
       percentileRank: this.round(percentile, 5),
       rawDisplay,
@@ -300,6 +416,12 @@ export class PublicCraveScoreService {
       factorTrace: {
         endorsement: endorsementTrace,
         percentileRank: this.round(percentile, 5),
+        calibration: {
+          lane: calibration.lane,
+          aRef: calibration.constants.aRef,
+          aFloor: calibration.constants.aFloor,
+          provenanceSourceId,
+        },
         config: {
           scoreVersion: config.scoreVersion,
           discountRho: config.discountRho,
@@ -417,12 +539,180 @@ export class PublicCraveScoreService {
     return ranks;
   }
 
+  // ── §8 calibration measurement + epoch pins ────────────────────────────────
+
+  /**
+   * Measure every source's room: A(τ) per lane = decayed gate-passing
+   * document mass ÷ observed days within τ. A document is gate-passing when
+   * its thread's admission verdict is not keep=false — documents with NO
+   * verdict count (the legacy corpus survived the old destructive write-time
+   * gate, so persistence itself was the pass; poll_surface graduation/ballot
+   * documents are admitted by construction and never judged).
+   */
+  async loadSourceActivities(
+    config: PublicCraveScoreConfig,
+    now: Date = new Date(),
+  ): Promise<SourceActivity[]> {
+    const halfLife = Prisma.raw(
+      `(${Math.max(0.0001, Number(config.endorsementHalfLifeDays) || 0)})::numeric`,
+    );
+    const halfLifeFast = Prisma.raw(
+      `(${Math.max(0.0001, Number(config.risingHalfLifeDays) || 0)})::numeric`,
+    );
+    const rows = await this.prisma.$queryRaw<SourceActivityRow[]>`
+      SELECT
+        s.source_id,
+        s.platform,
+        s.anchor_place_id,
+        s.engine_id,
+        s.created_at,
+        d.first_doc,
+        d.last_doc,
+        COALESCE(d.mass_stable, 0)::numeric AS mass_stable,
+        COALESCE(d.mass_fast, 0)::numeric AS mass_fast,
+        l.last_ran_at
+      FROM sources s
+      LEFT JOIN LATERAL (
+        SELECT
+          MIN(sd.source_created_at) AS first_doc,
+          MAX(sd.source_created_at) AS last_doc,
+          SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - sd.source_created_at)))/86400.0/${halfLife})) AS mass_stable,
+          SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - sd.source_created_at)))/86400.0/${halfLifeFast})) AS mass_fast
+        FROM collection_source_documents sd
+        WHERE sd.platform = s.platform
+          AND lower(sd.community) = lower(s.handle)
+          AND NOT EXISTS (
+            SELECT 1 FROM collection_relevance_verdicts v
+            WHERE v.platform = sd.platform
+              AND v.post_id = COALESCE(sd.parent_source_id, sd.source_id)
+              AND v.keep = false
+          )
+      ) d ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT MAX(lr.last_ran_at) AS last_ran_at
+        FROM source_collection_lanes lr
+        WHERE lr.source_id = s.source_id
+      ) l ON TRUE
+    `;
+
+    const tauByLane: Record<CalibrationLane, number> = {
+      stable: Math.max(0.0001, Number(config.endorsementHalfLifeDays) || 0),
+      fast: Math.max(0.0001, Number(config.risingHalfLifeDays) || 0),
+    };
+    return rows.map((row) => {
+      const from = this.earliest(row.first_doc, row.created_at);
+      const through = this.latest(
+        row.last_doc,
+        row.last_ran_at,
+        row.created_at,
+      );
+      const massByLane: Record<CalibrationLane, number> = {
+        stable: this.toNumber(row.mass_stable),
+        fast: this.toNumber(row.mass_fast),
+      };
+      const activity = {} as Record<CalibrationLane, number>;
+      for (const lane of CALIBRATION_LANES) {
+        activity[lane] = laneActivity(
+          massByLane[lane],
+          observedDays({ from, through }, tauByLane[lane], now),
+        );
+      }
+      return {
+        sourceId: row.source_id,
+        platform: row.platform,
+        anchorPlaceId: row.anchor_place_id,
+        engineId: row.engine_id,
+        activity,
+      };
+    });
+  }
+
+  /**
+   * Resolve the epoch's per-lane constants: read the pin for this
+   * scoreVersion; on first use, derive from the measured corpus and pin it
+   * (ON CONFLICT DO NOTHING + re-read keeps concurrent pinners consistent).
+   * Re-pinning requires a scoreVersion bump (§8) — an existing pin is NEVER
+   * recomputed here.
+   */
+  private async resolveCalibration(
+    config: PublicCraveScoreConfig,
+    sources: SourceActivity[],
+  ): Promise<Record<CalibrationLane, CalibrationIndex>> {
+    const result = {} as Record<CalibrationLane, CalibrationIndex>;
+    for (const lane of CALIBRATION_LANES) {
+      const constants = await this.resolveLaneConstants(
+        config.scoreVersion,
+        lane,
+        sources.map((source) => source.activity[lane]),
+      );
+      result[lane] = buildCalibrationIndex(
+        lane,
+        constants,
+        sources,
+        config.sourceClassInfluence,
+      );
+    }
+    return result;
+  }
+
+  private async resolveLaneConstants(
+    scoreVersion: string,
+    lane: CalibrationLane,
+    activities: number[],
+  ): Promise<LaneCalibrationConstants> {
+    const read = async (): Promise<LaneCalibrationConstants | null> => {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ a_ref: number; a_floor: number }>
+      >`
+        SELECT a_ref, a_floor FROM crave_score_calibration_epochs
+        WHERE score_version = ${scoreVersion} AND lane = ${lane}
+      `;
+      return rows[0]
+        ? { aRef: Number(rows[0].a_ref), aFloor: Number(rows[0].a_floor) }
+        : null;
+    };
+
+    const existing = await read();
+    if (existing) {
+      return existing;
+    }
+    const { constants, derivation } = deriveLaneConstants(activities);
+    await this.prisma.$executeRaw`
+      INSERT INTO crave_score_calibration_epochs
+        (score_version, lane, a_ref, a_floor, derivation)
+      VALUES (${scoreVersion}, ${lane}, ${constants.aRef}, ${constants.aFloor},
+              ${JSON.stringify(derivation)}::jsonb)
+      ON CONFLICT (score_version, lane) DO NOTHING
+    `;
+    this.logger.info('Pinned score-calibration epoch constants', {
+      scoreVersion,
+      lane,
+      ...constants,
+    });
+    return (await read()) ?? constants;
+  }
+
+  private earliest(...dates: Array<Date | null>): Date | null {
+    const valid = dates.filter((d): d is Date => d != null);
+    if (!valid.length) return null;
+    return valid.reduce((min, d) => (d < min ? d : min));
+  }
+
+  private latest(...dates: Array<Date | null>): Date | null {
+    const valid = dates.filter((d): d is Date => d != null);
+    if (!valid.length) return null;
+    return valid.reduce((max, d) => (d > max ? d : max));
+  }
+
+  // ── run bookkeeping ────────────────────────────────────────────────────────
+
   private async createRun(
     scoreRunId: string,
     config: PublicCraveScoreConfig,
     recencyReferenceDate: Date,
-    params?: {
+    extras: {
       fixtureRunId?: string;
+      calibration: Record<string, unknown>;
     },
   ): Promise<void> {
     await this.prisma.$executeRaw`
@@ -445,9 +735,9 @@ export class PublicCraveScoreService {
         ${config.displayMax},
         'running',
         ${recencyReferenceDate}::date,
-        ${JSON.stringify(config)}::jsonb,
+        ${JSON.stringify({ ...config, calibration: extras.calibration })}::jsonb,
         ${JSON.stringify({
-          fixtureRunId: params?.fixtureRunId ?? null,
+          fixtureRunId: extras.fixtureRunId ?? null,
           rebuildScope: 'global',
         })}::jsonb
       )
@@ -477,9 +767,12 @@ export class PublicCraveScoreService {
     `;
   }
 
-  // Loads candidates with BOTH decayed masses in one scan per table: the stable
-  // (endorsementHalfLifeDays) and fast (risingHalfLifeDays) half-lives. Returns two
-  // candidate views over the same subjects so scoreCandidates can run once per axis.
+  // Loads candidates with BOTH decayed masses in one scan per table, GROUPED
+  // BY SOURCE ROOM (§8): mention → its document → the (platform, handle)
+  // source row. Mentions whose document has no source row surface as a
+  // sourceId-null contribution (unmeasurable room → g = 1). Returns two
+  // candidate views over the same subjects so scoreCandidates can run once
+  // per lane.
   private async loadCandidates(
     config: PublicCraveScoreConfig,
     params?: {
@@ -505,90 +798,134 @@ export class PublicCraveScoreService {
     );
 
     const dishRows = await this.prisma.$queryRaw<DishRow[]>`
-      WITH ${RESTAURANT_MARKETS_CTE}
       SELECT
         c.connection_id,
         c.restaurant_id,
-        rm.market_key AS scoring_market_key,
-        COALESCE(d.mentions, 0)::numeric AS mentions,
-        COALESCE(d.upvotes, 0)::numeric AS upvotes,
-        COALESCE(d.mentions_fast, 0)::numeric AS mentions_fast,
-        COALESCE(d.upvotes_fast, 0)::numeric AS upvotes_fast
+        src.source_id,
+        src.platform,
+        COALESCE(SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLife})), 0)::numeric AS mentions,
+        COALESCE(SUM(m.source_upvotes * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLife})), 0)::numeric AS upvotes,
+        COALESCE(SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLifeFast})), 0)::numeric AS mentions_fast,
+        COALESCE(SUM(m.source_upvotes * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLifeFast})), 0)::numeric AS upvotes_fast
       FROM core_restaurant_items c
       JOIN core_entities r ON r.entity_id = c.restaurant_id
-      LEFT JOIN restaurant_markets rm ON rm.entity_id = c.restaurant_id
-      LEFT JOIN LATERAL (
-        SELECT
-          COALESCE(SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLife})), 0) AS mentions,
-          COALESCE(SUM(m.source_upvotes * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLife})), 0) AS upvotes,
-          COALESCE(SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLifeFast})), 0) AS mentions_fast,
-          COALESCE(SUM(m.source_upvotes * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - m.mentioned_at)))/86400.0/${halfLifeFast})), 0) AS upvotes_fast
-        FROM core_restaurant_item_mentions m
-        WHERE m.connection_id = c.connection_id
-      ) d ON TRUE
+      JOIN core_restaurant_item_mentions m ON m.connection_id = c.connection_id
+      LEFT JOIN collection_source_documents d ON d.document_id = m.source_document_id
+      LEFT JOIN sources src
+        ON src.platform = d.platform AND lower(src.handle) = lower(d.community)
       WHERE ${dishFixtureFilter}
+      GROUP BY c.connection_id, c.restaurant_id, src.source_id, src.platform
     `;
 
     const restRows = await this.prisma.$queryRaw<RestaurantRow[]>`
-      WITH ${RESTAURANT_MARKETS_CTE},
-      restaurant_praise AS (
+      WITH praise_dedup AS (
+        -- general_praise is a RESTAURANT-level fact riding dish-scoped
+        -- mention keys: dedupe per (restaurant, mention_key) so one praising
+        -- source counts once. The newest event's document carries the
+        -- provenance for the whole group.
         SELECT
           restaurant_id,
-          SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - mentioned_at)))/86400.0/${halfLife}))::numeric AS praise_mentions,
-          SUM(upv * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - mentioned_at)))/86400.0/${halfLife}))::numeric AS praise_upvotes,
-          SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - mentioned_at)))/86400.0/${halfLifeFast}))::numeric AS praise_mentions_fast,
-          SUM(upv * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - mentioned_at)))/86400.0/${halfLifeFast}))::numeric AS praise_upvotes_fast
-        FROM (
-          SELECT
-            restaurant_id,
-            mention_key,
-            MAX(mentioned_at) AS mentioned_at,
-            MAX(source_upvotes) AS upv
-          FROM core_restaurant_events
-          GROUP BY restaurant_id, mention_key
-        ) dedup
-        GROUP BY restaurant_id
+          mention_key,
+          MAX(mentioned_at) AS mentioned_at,
+          MAX(source_upvotes) AS upv,
+          (array_agg(source_document_id ORDER BY mentioned_at DESC))[1] AS source_document_id
+        FROM core_restaurant_events
+        GROUP BY restaurant_id, mention_key
       )
       SELECT
         e.entity_id AS restaurant_id,
-        rm.market_key AS scoring_market_key,
-        COALESCE(rp.praise_mentions, 0)::numeric AS praise_mentions,
-        COALESCE(rp.praise_upvotes, 0)::numeric AS praise_upvotes,
-        COALESCE(rp.praise_mentions_fast, 0)::numeric AS praise_mentions_fast,
-        COALESCE(rp.praise_upvotes_fast, 0)::numeric AS praise_upvotes_fast
+        src.source_id,
+        src.platform,
+        COALESCE(SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - pd.mentioned_at)))/86400.0/${halfLife})), 0)::numeric AS praise_mentions,
+        COALESCE(SUM(pd.upv * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - pd.mentioned_at)))/86400.0/${halfLife})), 0)::numeric AS praise_upvotes,
+        COALESCE(SUM(power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - pd.mentioned_at)))/86400.0/${halfLifeFast})), 0)::numeric AS praise_mentions_fast,
+        COALESCE(SUM(pd.upv * power(0.5, GREATEST(0, EXTRACT(EPOCH FROM (now() - pd.mentioned_at)))/86400.0/${halfLifeFast})), 0)::numeric AS praise_upvotes_fast
       FROM core_entities e
-      LEFT JOIN restaurant_markets rm ON rm.entity_id = e.entity_id
-      LEFT JOIN restaurant_praise rp ON rp.restaurant_id = e.entity_id
+      LEFT JOIN praise_dedup pd ON pd.restaurant_id = e.entity_id
+      LEFT JOIN collection_source_documents d ON d.document_id = pd.source_document_id
+      LEFT JOIN sources src
+        ON src.platform = d.platform AND lower(src.handle) = lower(d.community)
       WHERE e.type = 'restaurant'
         AND ${restFixtureFilter}
+      GROUP BY e.entity_id, src.source_id, src.platform
     `;
 
-    const stableDishes: DishCandidate[] = dishRows.map((row) => ({
-      connectionId: row.connection_id,
-      restaurantId: row.restaurant_id,
-      scoringMarketKey: row.scoring_market_key,
-      mentions: this.toNumber(row.mentions),
-      upvotes: this.toNumber(row.upvotes),
-    }));
-    const fastDishes: DishCandidate[] = dishRows.map((row) => ({
-      connectionId: row.connection_id,
-      restaurantId: row.restaurant_id,
-      scoringMarketKey: row.scoring_market_key,
-      mentions: this.toNumber(row.mentions_fast),
-      upvotes: this.toNumber(row.upvotes_fast),
-    }));
-    const stableRestaurants: RestaurantCandidate[] = restRows.map((row) => ({
-      restaurantId: row.restaurant_id,
-      scoringMarketKey: row.scoring_market_key,
-      praiseMentions: this.toNumber(row.praise_mentions),
-      praiseUpvotes: this.toNumber(row.praise_upvotes),
-    }));
-    const fastRestaurants: RestaurantCandidate[] = restRows.map((row) => ({
-      restaurantId: row.restaurant_id,
-      scoringMarketKey: row.scoring_market_key,
-      praiseMentions: this.toNumber(row.praise_mentions_fast),
-      praiseUpvotes: this.toNumber(row.praise_upvotes_fast),
-    }));
+    // Assemble per-subject contribution lists for each lane.
+    const dishByConnection = new Map<
+      string,
+      {
+        restaurantId: string;
+        stable: SourceContribution[];
+        fast: SourceContribution[];
+      }
+    >();
+    for (const row of dishRows) {
+      let entry = dishByConnection.get(row.connection_id);
+      if (!entry) {
+        entry = { restaurantId: row.restaurant_id, stable: [], fast: [] };
+        dishByConnection.set(row.connection_id, entry);
+      }
+      entry.stable.push({
+        sourceId: row.source_id,
+        platform: row.platform,
+        mentions: this.toNumber(row.mentions),
+        upvotes: this.toNumber(row.upvotes),
+      });
+      entry.fast.push({
+        sourceId: row.source_id,
+        platform: row.platform,
+        mentions: this.toNumber(row.mentions_fast),
+        upvotes: this.toNumber(row.upvotes_fast),
+      });
+    }
+
+    const restaurantById = new Map<
+      string,
+      { stable: SourceContribution[]; fast: SourceContribution[] }
+    >();
+    for (const row of restRows) {
+      let entry = restaurantById.get(row.restaurant_id);
+      if (!entry) {
+        entry = { stable: [], fast: [] };
+        restaurantById.set(row.restaurant_id, entry);
+      }
+      entry.stable.push({
+        sourceId: row.source_id,
+        platform: row.platform,
+        mentions: this.toNumber(row.praise_mentions),
+        upvotes: this.toNumber(row.praise_upvotes),
+      });
+      entry.fast.push({
+        sourceId: row.source_id,
+        platform: row.platform,
+        mentions: this.toNumber(row.praise_mentions_fast),
+        upvotes: this.toNumber(row.praise_upvotes_fast),
+      });
+    }
+
+    const stableDishes: DishCandidate[] = [];
+    const fastDishes: DishCandidate[] = [];
+    for (const [connectionId, entry] of dishByConnection) {
+      stableDishes.push({
+        connectionId,
+        restaurantId: entry.restaurantId,
+        contributions: entry.stable,
+      });
+      fastDishes.push({
+        connectionId,
+        restaurantId: entry.restaurantId,
+        contributions: entry.fast,
+      });
+    }
+    const stableRestaurants: RestaurantCandidate[] = [];
+    const fastRestaurants: RestaurantCandidate[] = [];
+    for (const [restaurantId, entry] of restaurantById) {
+      stableRestaurants.push({
+        restaurantId,
+        praiseContributions: entry.stable,
+      });
+      fastRestaurants.push({ restaurantId, praiseContributions: entry.fast });
+    }
 
     return {
       stable: { dishes: stableDishes, restaurants: stableRestaurants },
@@ -613,7 +950,7 @@ export class PublicCraveScoreService {
             subject_type,
             subject_id,
             score_run_id,
-            scoring_market_key,
+            provenance_source_id,
             endorsement_raw,
             percentile_rank,
             display_score,
@@ -627,7 +964,7 @@ export class PublicCraveScoreService {
             ${row.subjectType}::crave_score_subject_type,
             ${row.subjectId}::uuid,
             ${scoreRunId}::uuid,
-            ${row.scoringMarketKey},
+            ${row.provenanceSourceId}::uuid,
             ${row.endorsementRaw},
             ${row.percentileRank},
             ${row.displayScore},
@@ -639,7 +976,10 @@ export class PublicCraveScoreService {
           )
           ON CONFLICT (subject_type, subject_id) DO UPDATE SET
             score_run_id = EXCLUDED.score_run_id,
-            scoring_market_key = EXCLUDED.scoring_market_key,
+            provenance_source_id = EXCLUDED.provenance_source_id,
+            -- Dead market key (§5 re-key): explicitly nulled so no stale
+            -- territory survives on re-scored rows. Column dies in Phase C.
+            scoring_market_key = NULL,
             endorsement_raw = EXCLUDED.endorsement_raw,
             percentile_rank = EXCLUDED.percentile_rank,
             display_score = EXCLUDED.display_score,
