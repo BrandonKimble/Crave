@@ -183,6 +183,16 @@ describe('search submit single-write (§3 signals are the ONE record)', () => {
     expect(selectionSignal?.meta).toEqual({
       searchRequestId: SEARCH_REQUEST_ID,
     });
+    // ECHO-KIND WRITER INVARIANT (poll-supply swap): the selection is by
+    // construction an ECHO of its parent search act — it ALWAYS carries the
+    // parent's searchRequestId and the parent 'search' row is written in the
+    // same flow. ECHO_SIGNAL_KINDS (signals.service) derives from exactly
+    // this; a standalone selection write would break the aggregate mass law.
+    expect(
+      (selectionSignal?.meta as { searchRequestId?: string }).searchRequestId,
+    ).toBe(
+      (searchSignal?.meta as { searchRequestId?: string }).searchRequestId,
+    );
   });
 
   it('a signals-ledger failure never affects the search response path', async () => {

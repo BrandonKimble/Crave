@@ -1,8 +1,5 @@
-import {
-  demandMassFromActorActs,
-  lngIntervalsIntersect,
-  recencyWeight,
-} from './demand-mass.reader';
+import { demandMassFromActorActs, recencyWeight } from './demand-mass.reader';
+import { lngIntervalsIntersect } from '../../signals/lng-intersect';
 import {
   DEMAND_HALF_LIFE_DAYS,
   DEMAND_KERNEL_HORIZON_DAYS,

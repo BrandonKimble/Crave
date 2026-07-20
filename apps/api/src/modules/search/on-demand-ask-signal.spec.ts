@@ -120,6 +120,14 @@ describe('on_demand_ask signal write (Phase C ask-event replacement)', () => {
       resultFoodCount: 0,
       source: 'low_result',
     });
+    // ECHO-KIND WRITER INVARIANT (poll-supply swap): the ask is by
+    // construction an ECHO of its parent search act — meta.askSearchRequestId
+    // carries the originating searchRequestId (both call sites mint/reuse it
+    // before asking). ECHO_SIGNAL_KINDS (signals.service) derives from
+    // exactly this; a standalone ask write would break the aggregate mass law.
+    expect(
+      (data.meta as { askSearchRequestId?: string }).askSearchRequestId,
+    ).toBe(SEARCH_REQUEST_ID);
   });
 
   it('an entity-resolved low-result ask carries the entity subject', async () => {

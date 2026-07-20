@@ -32,6 +32,49 @@ export type SignalKind =
    *  (Phase C). */
   | 'on_demand_ask';
 
+/**
+ * ECHO KINDS — the act-grain law (wave-5 F2) restated at kind granularity for
+ * the AGGREGATE mass readers (poll-supply swap leg, owner-ratified docket
+ * item 7).
+ *
+ * One user ACT weighs exactly 1 in demand mass, but one act deliberately
+ * writes SEVERAL ledger rows: a selected failing search mints 'search' +
+ * 'autocomplete_selection' (sharing meta.searchRequestId) + 'on_demand_ask'
+ * rows (meta.askSearchRequestId carrying the SAME originating
+ * searchRequestId). The aggregate keeps every kind (per-kind rows are the
+ * point — kind-filtered readers need them), so summing aggregate rows would
+ * weigh that act 2–6×.
+ *
+ * The kinds listed here are BY CONSTRUCTION echoes of a parent 'search' act —
+ * their writers ALWAYS attach the parent's request id and the parent row is
+ * always written in the same flow:
+ * - autocomplete_selection: written only inside recordSearchSignals
+ *   (search.service), immediately after the 'search' row, always with
+ *   meta.searchRequestId = the parent's id.
+ * - on_demand_ask: written only by on-demand-request.service with
+ *   meta.askSearchRequestId = context.searchRequestId; both call sites
+ *   (interpretation-time 'unresolved' + search-time 'low_result') mint/reuse
+ *   the searchRequestId before asking, and the parent 'search' signal records
+ *   for every submit.
+ *
+ * Consequence: excluding these kinds from subjectless place MASS reads is
+ * EXACTLY act-grain dedupe restated per kind — the parent 'search' row
+ * carries the act's weight-1 and its subject halves. Every OTHER kind
+ * ('search' incl. cached reveals per docket item 8, entity_view,
+ * favorite_added, poll_vote, poll_comment, poll_created, viewport_dwell) is a
+ * standalone act and weighs 1. Kind-FILTERED readers (territoryUnmetAsks,
+ * autocomplete lanes) keep reading echo rows directly — there the echo IS the
+ * act being asked about.
+ *
+ * INVARIANT (spec-asserted at the writers): a kind belongs here iff its
+ * writer always attaches a parent act's request id. A hypothetical standalone
+ * selection/ask writer would break the law — the writer specs pin it shut.
+ */
+export const ECHO_SIGNAL_KINDS = [
+  'autocomplete_selection',
+  'on_demand_ask',
+] as const satisfies readonly SignalKind[];
+
 /** Geo is ALWAYS a bbox; a point is a zero-area bbox (§3). Longitude is
  *  WRAP-AWARE: minLng > maxLng means the bbox CROSSES the antimeridian and
  *  covers [minLng, 180] ∪ [-180, maxLng] (the places-catalog representation;

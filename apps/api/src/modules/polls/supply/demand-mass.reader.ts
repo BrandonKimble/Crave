@@ -1,61 +1,66 @@
 /**
- * §4 demand-mass reader — the minimal DIRECT read over the signals ledger
- * (the incremental tiled rollup is §22 item 6; this reader is deliberately a
- * straight SQL derivation so the rollup can replace it without changing any
- * consumer).
+ * §4 demand-mass reader — the AGGREGATE-BACKED poll-supply demand read
+ * (owner-ratified docket item 7, 2026-07-19: containment + ancestors at
+ * weight 1 is THE territory read algebra; the old intersection reader retired
+ * in this swap — ONE read surface for demand).
  *
- * Demand mass per (place[, subject], window ending at `at`):
- *   Σ over actors of log2(1 + Σ over that actor's signals of
+ * Demand mass per (place[, subject]) at the current instant:
+ *   Σ over actors of log2(1 + Σ over that actor's acts of
  *     kindWeight · recencyWeight)
- * for signals whose geo bbox INTERSECTS the place bbox (§22 item 4 wording;
- * weight-1 attribution — every intersecting signal counts at full weight).
+ * read as TWO ARMS (mirroring SignalDemandReadService):
+ * - CLOSED DAYS from signal_demand_daily — the §3 containment-tiling
+ *   aggregate. A place's tiles are its LINEAGE: itself + DAG descendants
+ *   (a signal contained in a neighborhood is stored there and belongs to the
+ *   city) + DAG ancestors at weight 1 (a coarse West-Texas-wide search stored
+ *   at TX reaches Austin through the TX row — ratified as self-healing
+ *   imprecision). MAX set-semantics across the lineage tiles per
+ *   (actor, day, kind, subject): a signal stored at both a member and an
+ *   ancestor counts ONCE (§3 SET semantics at aggregate grain — the same law
+ *   territoryEntityDemand reads by).
+ * - FRESH TODAY from the ledger (flat weight — day age 0 is inside the flat
+ *   cycle), with TRUE act-grain dedupe (the wave-5 F2 COALESCE including
+ *   askSearchRequestId) and the canonical wrap-aware lng predicate; a
+ *   cross-midnight retry is excluded by a first-occurrence anti-join (the
+ *   aggregate already counted the act on its first day).
  *
- * Kernel facts (§16 classifications):
- * - recencyWeight: flat for RECENCY_FLAT_DAYS (K1: 7d cycle), then halving
- *   every DEMAND_HALF_LIFE_DAYS (K1: 14d demand half-life). The kernel
- *   itself extinguishes old signals; the occurred_at scan is bounded by the
- *   kernel's OWN derived horizon (DEMAND_KERNEL_HORIZON_DAYS: flat + 10
- *   half-lives ⇒ weight < epsilon, sub-resolution for every consumer) — an
- *   efficiency bound derived from the kernel, not a new behavior constant.
- * - kindWeight: uniformly 1.0 — the K2 per-reader kind-weight PRIOR
- *   (sourceClassInfluence launch default 1.0, §8: a poll vote ≈ a mention).
- *   Applying one prior to ALL kinds is deliberate self-provisioning: a new
- *   signal kind automatically participates at the prior (no hardcoded kind
- *   list to rot — type-list disease guard). Per-kind measurement arrives via
- *   the estimator registry when the aggregate readers land (item 6).
- * - per-actor log2 saturation: §4's "no single act is loud" (R6) — an
- *   actor's acts saturate logarithmically before actors sum.
+ * ACT IDENTITY ON THE AGGREGATE (the core subtlety of the swap): the
+ * post-wave-5 aggregate deliberately keeps ALL kinds, and one user act writes
+ * several rows — 'search' + 'autocomplete_selection' + 'on_demand_ask' echoes
+ * sharing one request id. Summing aggregate rows would weigh that act 2–6×.
+ * The aggregate-compatible statement of the act-grain law is the ECHO-KIND
+ * RULE (ECHO_SIGNAL_KINDS, signals.service): kinds that are by construction
+ * echoes of a parent 'search' act weigh 0 in mass reads — the parent row
+ * carries the act's weight 1 AND both subject halves (the search row stores
+ * subjectId + subjectText on ONE row; the ledger never fans one act's subject
+ * across rows, and the aggregate's per-(kind, request-id) first-occurrence
+ * dedupe keeps exactly one base act per (kind, act) per window). Standalone
+ * kinds — search (cached reveals count, docket item 8), entity_view,
+ * favorite_added, poll_vote, poll_comment, poll_created, viewport_dwell —
+ * weigh 1.
  *
- * Longitude is WRAP-AWARE (red-team 3c, mirroring places-catalog): a bbox
- * with minLng > maxLng CROSSES the antimeridian and covers
- * [minLng, 180] ∪ [-180, maxLng]; the SQL intersect OR-splits crossing rows
- * instead of range-testing them (a btree range test on a crossing row is
- * meaningless). The canonical predicate lives in the signals module
- * (lng-intersect.ts, wave-5 F4 convergence) — one statement, every consumer.
+ * DAY QUANTIZATION (documented delta): closed days weight at DAY grain —
+ * recency(todayKey − day) instead of the old per-signal fractional age. A
+ * signal 7.5 days old used to weigh 0.976 and now weighs by its day bucket
+ * (flat 1.0 at day-age ≤ 7, then halving). Bounded by one day of kernel
+ * drift; the supply estimators re-learn conversion/yield through the
+ * re-based mass (K2 self-erasing priors).
  *
- * ACT-GRAIN DEDUPE (wave-5 F2): one user act can write SEVERAL ledger rows
- * that deliberately share an idempotency id — a selected search writes
- * 'search' + 'autocomplete_selection' under meta.searchRequestId, and a
- * failing search ALSO writes 'on_demand_ask' rows whose
- * meta.askSearchRequestId carries the SAME originating searchRequestId.
- * For MASS purposes those are ONE act of attention: the subjectless /
- * kind-unfiltered mass reads below collapse rows to act grain on
- * COALESCE(searchRequestId, cacheRevealRequestId, askSearchRequestId,
- * signal_id) per actor BEFORE the kernel sums (the ask's key value = the
- * originating searchRequestId, so the echo collapses for free). Kind-
- * FILTERED readers (e.g. territoryUnmetAsks) keep reading ask rows directly
- * — there the ask IS the act. First occurrence wins (MIN occurred_at),
- * matching the aggregate's dedupe law.
+ * Kernel facts (§16 classifications) are unchanged: flat RECENCY_FLAT_DAYS,
+ * DEMAND_HALF_LIFE_DAYS halving, kernel-derived horizon, K2 kind-weight prior
+ * 1.0 (self-provisioning — a NEW kind participates automatically; only the
+ * documented echo kinds are excluded, and only because they are restatements
+ * of an already-counted act, not because of a kind-weight judgment), and §4
+ * per-actor log2 saturation before actors sum.
  */
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import {
-  lngIntervalsIntersect,
   lngIntersectSql,
   placeLngColumns,
   SIGNAL_LNG_COLUMNS,
 } from '../../signals/lng-intersect';
+import { ECHO_SIGNAL_KINDS } from '../../signals/signals.service';
 import { utcInstantSql } from '../../signals/sql-instant';
 import {
   COOLDOWN_GAUSSIAN_DAYS,
@@ -65,20 +70,25 @@ import {
   RECENCY_FLAT_DAYS,
 } from './poll-supply.constants';
 
-/** Canonical TS predicate re-exported for existing consumers/specs. */
-export { lngIntervalsIntersect };
-
 /** K2 prior: all signal kinds weigh 1.0 at launch (see module doc). */
 export const KIND_WEIGHT_PRIOR = 1.0;
 
-/** SQL: the per-actor ACT identity key (wave-5 F2 — see module doc). */
+/** SQL: the per-actor ACT identity key (wave-5 F2) for the FRESH ledger arm.
+ *  The ask's key value = the originating searchRequestId, so the echo rows of
+ *  one act collapse into one group for free. */
 const ACT_KEY_SQL = Prisma.sql`COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId', s.meta->>'askSearchRequestId', s.signal_id::text)`;
 
+/** SQL: per-act weight (backfilled legacy rows carry meta.eventCount). */
+const EVENT_COUNT_SQL = Prisma.sql`GREATEST(1, COALESCE((s.meta->>'eventCount')::int, 1))`;
+
+/** The echo kinds as a bindable text[] (see ECHO_SIGNAL_KINDS doc). */
+const ECHO_KINDS: string[] = [...ECHO_SIGNAL_KINDS];
+
 /**
- * The recency curve, stated once in TS as the CANONICAL kernel (the SQL below
- * implements exactly this; the item-6 incremental rollup consumes the TS
- * kernel directly): flat 1.0 through the current 7d cycle, then halving
- * every 14 days. Negative ages (future signals) clamp to flat.
+ * The recency curve, stated once in TS as the CANONICAL kernel (the SQL
+ * day-grain statement implements exactly this over integer day ages): flat
+ * 1.0 through the current 7d cycle, then halving every 14 days. Negative ages
+ * (future signals / clock skew) clamp to flat.
  */
 export function recencyWeight(ageDays: number): number {
   if (ageDays <= RECENCY_FLAT_DAYS) {
@@ -105,10 +115,6 @@ export interface PlaceDemandMass {
   mass: number;
 }
 
-export interface PlaceDemandMassAt extends PlaceDemandMass {
-  at: Date;
-}
-
 export interface SubjectDemandMass {
   placeId: string;
   subjectId: string;
@@ -128,126 +134,221 @@ export interface SubjectDemandMass {
 export class DemandMassReader {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** The recency kernel as a SQL fragment over an `age_days` expression. */
-  private recencyKernel(ageDays: Prisma.Sql): Prisma.Sql {
+  /** The §4 recency kernel at DAY granularity over an integer age-in-days
+   *  expression (the same statement SignalDemandReadService uses). */
+  private dayRecencySql(ageDays: Prisma.Sql): Prisma.Sql {
     return Prisma.sql`
       CASE
-        WHEN ${ageDays} <= ${RECENCY_FLAT_DAYS} THEN 1.0
-        ELSE power(0.5, (${ageDays} - ${RECENCY_FLAT_DAYS}) / ${DEMAND_HALF_LIFE_DAYS}::float8)
+        WHEN GREATEST(0, ${ageDays}) <= ${RECENCY_FLAT_DAYS} THEN 1.0
+        ELSE power(0.5, (GREATEST(0, ${ageDays}) - ${RECENCY_FLAT_DAYS}) / ${DEMAND_HALF_LIFE_DAYS}::float8)
       END`;
   }
 
   /** The canonical wrap-aware intersect (signals lng-intersect.ts) for
-   *  signal row s vs place-box row pb. */
+   *  signal row s vs place-box row pb — the FRESH arm's geo predicate. */
   private lngIntersectSql(): Prisma.Sql {
     return lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('pb'));
   }
 
   /**
-   * Place-level (subjectless) demand mass, each request at its OWN `at`
-   * (batched — the harvest reads every cohort's launch-time mass in one
-   * query, red-team 3b). Places without a sketched bbox return no row.
+   * FRESH-arm first-occurrence gate at ACT grain (mirrors the aggregate's
+   * window-wide dedupe): exclude today's rows of an act whose request id
+   * FIRST occurred before today — the aggregate already counted that act on
+   * its first day. The prior-probe matches on the 2-way parent key
+   * (searchRequestId / cacheRevealRequestId — the indexed expression): an
+   * ask's 3-way key IS its parent's searchRequestId, and by the echo
+   * invariant the parent 'search' row exists whenever any prior echo does,
+   * so the 2-way probe is complete at act grain.
    */
-  async placeDemandMassAt(
-    requests: { placeId: string; at: Date }[],
-  ): Promise<PlaceDemandMassAt[]> {
-    if (!requests.length) {
+  private freshActFirstOccurrenceSql(todayStart: Date): Prisma.Sql {
+    return Prisma.sql`AND (
+        COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId', s.meta->>'askSearchRequestId') IS NULL
+        OR NOT EXISTS (
+          SELECT 1 FROM signals prior
+          WHERE (prior.meta->>'searchRequestId' IS NOT NULL
+                 OR prior.meta->>'cacheRevealRequestId' IS NOT NULL)
+            AND COALESCE(prior.meta->>'searchRequestId', prior.meta->>'cacheRevealRequestId')
+                = COALESCE(s.meta->>'searchRequestId', s.meta->>'cacheRevealRequestId', s.meta->>'askSearchRequestId')
+            AND prior.occurred_at < ${utcInstantSql(todayStart)}
+        )
+      )`;
+  }
+
+  /**
+   * The LINEAGE CTE chain (§3 containment read): per requested root place,
+   * every aggregate tile whose rows belong to it — itself, its DAG
+   * DESCENDANTS (own + descendants' rows), and its DAG ANCESTORS at weight 1
+   * (each distinct ancestor row once; the MAX at the consumer supplies the
+   * count-once set semantics). Emitted as the leading CTEs of a
+   * WITH RECURSIVE statement: roots(root), up/down walks, lineage(root, tile).
+   */
+  private lineageCtesSql(placeIds: string[]): Prisma.Sql {
+    return Prisma.sql`
+      roots AS (
+        SELECT unnest(${placeIds}::uuid[]) AS root
+      ),
+      up AS (
+        SELECT r.root, r.root AS tile FROM roots r
+        UNION
+        SELECT u.root, parent.place_id
+        FROM up u
+        JOIN places p ON p.place_id = u.tile
+        CROSS JOIN LATERAL unnest(p.parent_place_ids) AS parent(place_id)
+      ),
+      down AS (
+        SELECT r.root, r.root AS tile FROM roots r
+        UNION
+        SELECT d.root, p.place_id
+        FROM down d
+        JOIN places p ON d.tile = ANY(p.parent_place_ids)
+      ),
+      lineage AS (
+        SELECT root, tile FROM up
+        UNION
+        SELECT root, tile FROM down
+      )`;
+  }
+
+  private windowKeys(now: Date): {
+    todayKey: string;
+    horizonKey: string;
+    todayStart: Date;
+  } {
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const horizon = new Date(
+      todayStart.getTime() - DEMAND_KERNEL_HORIZON_DAYS * MS_PER_DAY,
+    );
+    return {
+      todayKey: todayStart.toISOString().slice(0, 10),
+      horizonKey: horizon.toISOString().slice(0, 10),
+      todayStart,
+    };
+  }
+
+  /**
+   * Place-level (subjectless) demand mass at the CURRENT instant for each
+   * requested place — aggregate closed days (echo kinds weigh 0; lineage
+   * tiles MAX-deduped) + fresh-today ledger arm (act-grain dedupe; wrap-aware
+   * intersect against the place bbox). Places with no acts return no row.
+   */
+  async placeDemandMass(
+    placeIds: string[],
+    now: Date = new Date(),
+  ): Promise<PlaceDemandMass[]> {
+    if (!placeIds.length) {
       return [];
     }
-    const placeIds = requests.map((request) => request.placeId);
-    const ats = requests.map((request) => request.at.toISOString());
-    const actAge = Prisma.sql`(EXTRACT(EPOCH FROM (pa.at - pa.occurred_at)) / 86400.0)`;
+    const { todayKey, horizonKey, todayStart } = this.windowKeys(now);
     const rows = await this.prisma.$queryRaw<
-      { place_id: string; at: Date; mass: number }[]
+      { place_id: string; mass: number }[]
     >`
-      WITH req AS (
-        SELECT * FROM unnest(${placeIds}::uuid[], ${ats}::timestamptz[]) AS r(place_id, at)
-      ),
-      place_box AS (
-        -- AT TIME ZONE 'UTC': signals.occurred_at is NAIVE-UTC (aggregate
-        -- red-team 1a); coerce the request instant to naive UTC ONCE so
-        -- every comparison/age below is naive-vs-naive in every session
-        -- time zone (live-proven wave-5: the bare timestamptz comparison
-        -- silently excluded the last UTC-offset hours of signals).
-        SELECT r.place_id, (r.at AT TIME ZONE 'UTC') AS at,
-               p.bbox_min_lat, p.bbox_min_lng, p.bbox_max_lat, p.bbox_max_lng
-        FROM req r
-        JOIN places p ON p.place_id = r.place_id
-        WHERE p.bbox_min_lat IS NOT NULL
-      ),
-      per_act AS (
-        -- Wave-5 F2: collapse the ledger rows of ONE act (search +
-        -- autocomplete_selection + on_demand_ask echo sharing an
-        -- idempotency id) to act grain per actor BEFORE the kernel;
-        -- first occurrence wins (MIN occurred_at, the aggregate's law).
+      WITH RECURSIVE ${this.lineageCtesSql(placeIds)},
+      day_acts AS (
+        -- Closed days over the containment tiles. Echo kinds weigh 0 (the
+        -- act-grain law at kind granularity — ECHO_SIGNAL_KINDS); MAX across
+        -- a root's lineage tiles counts a signal stored at both a member and
+        -- an ancestor ONCE (§3 set semantics at aggregate grain).
         SELECT
-          pb.place_id,
-          pb.at,
+          l.root,
+          a.actor_id,
+          a.day,
+          a.kind,
+          a.subject_type,
+          a.subject_id,
+          a.subject_text,
+          MAX(a.signal_count) AS acts
+        FROM lineage l
+        JOIN signal_demand_daily a ON a.place_id = l.tile
+        WHERE a.day >= ${horizonKey}::date
+          AND a.day < ${todayKey}::date
+          AND a.kind <> ALL(${ECHO_KINDS}::text[])
+        GROUP BY l.root, a.actor_id, a.day, a.kind,
+                 a.subject_type, a.subject_id, a.subject_text
+      ),
+      agg_actor AS (
+        SELECT
+          root,
+          actor_id,
+          SUM(
+            acts * ${this.dayRecencySql(Prisma.sql`(${todayKey}::date - day)`)}
+              * ${KIND_WEIGHT_PRIOR}
+          )::float8 AS acts
+        FROM day_acts
+        GROUP BY 1, 2
+      ),
+      fresh_acts AS (
+        -- TODAY from the ledger: true act-grain dedupe (echo rows collapse
+        -- into their parent act's key group), first-occurrence gate against
+        -- earlier days, canonical wrap-aware lng intersect. AT TIME ZONE
+        -- 'UTC' law: occurred_at is naive UTC (live-proven wave-5).
+        SELECT
+          pb.place_id AS root,
           s.actor_id,
           ${ACT_KEY_SQL} AS act_key,
-          MIN(s.occurred_at) AS occurred_at
-        FROM place_box pb
+          MAX(${EVENT_COUNT_SQL})::float8 AS acts
+        FROM places pb
         JOIN signals s
           ON s.geo_min_lat <= pb.bbox_max_lat
          AND s.geo_max_lat >= pb.bbox_min_lat
          AND (${this.lngIntersectSql()})
-         AND s.occurred_at <= pb.at
-         -- ::int — Prisma binds JS integers as int8; make_interval has no
-         -- bigint overload (live-proven wave-5).
-         AND s.occurred_at >= pb.at - make_interval(days => ${DEMAND_KERNEL_HORIZON_DAYS}::int)
-        GROUP BY pb.place_id, pb.at, s.actor_id, ${ACT_KEY_SQL}
+        WHERE pb.place_id = ANY(${placeIds}::uuid[])
+          AND pb.bbox_min_lat IS NOT NULL
+          AND s.occurred_at >= ${utcInstantSql(todayStart)}
+          ${this.freshActFirstOccurrenceSql(todayStart)}
+        GROUP BY 1, 2, 3
       ),
-      per_actor AS (
-        SELECT
-          pa.place_id,
-          pa.at,
-          pa.actor_id,
-          SUM(${this.recencyKernel(actAge)} * ${KIND_WEIGHT_PRIOR}) AS acts
-        FROM per_act pa
-        GROUP BY pa.place_id, pa.at, pa.actor_id
+      fresh_actor AS (
+        SELECT root, actor_id, SUM(acts * ${KIND_WEIGHT_PRIOR}) AS acts
+        FROM fresh_acts
+        GROUP BY 1, 2
+      ),
+      by_actor AS (
+        SELECT root, actor_id, SUM(acts) AS acts
+        FROM (
+          SELECT * FROM agg_actor
+          UNION ALL
+          SELECT * FROM fresh_actor
+        ) u
+        GROUP BY 1, 2
       )
-      SELECT place_id, at, SUM(ln(1 + acts) / ln(2))::float8 AS mass
-      FROM per_actor
-      GROUP BY place_id, at
+      SELECT root AS place_id, SUM(ln(1 + acts) / ln(2))::float8 AS mass
+      FROM by_actor
+      GROUP BY 1
     `;
     return rows.map((row) => ({
       placeId: row.place_id,
-      at: new Date(row.at),
       mass: Number(row.mass),
     }));
   }
 
   /**
-   * Place-level (subjectless) demand mass at `at` for each requested place.
-   * Places without a sketched bbox return no row (they cannot attribute).
-   */
-  async placeDemandMass(
-    placeIds: string[],
-    at: Date = new Date(),
-  ): Promise<PlaceDemandMass[]> {
-    const rows = await this.placeDemandMassAt(
-      placeIds.map((placeId) => ({ placeId, at })),
-    );
-    return rows.map((row) => ({ placeId: row.placeId, mass: row.mass }));
-  }
-
-  /**
    * Per-(place, subject) demand mass for entity subjects — the §4 subject-
-   * choice input. Subject identity resolves through entity_redirects AT READ
-   * (§3: identity is a judgment; the ledger is never rekeyed), and only
-   * rankable poll subjects (food | restaurant entities) survive the join.
+   * choice input, over the same two arms and the same lineage/echo/dedupe
+   * laws as placeDemandMass. Subject identity resolves through
+   * entity_redirects AT READ (the aggregate stores raw ids); only rankable
+   * poll subjects (food | restaurant entities) survive the final join.
+   *
+   * Echo note for subjects: the parent 'search' row carries the act's
+   * resolved entity (the writer stores the selected/primary entity ON the
+   * search row), so excluding echo kinds keeps one act = one unit of subject
+   * attention. An ask's NON-primary entity (a low-result secondary term)
+   * reaches collection through the kind-filtered territoryUnmetAsks reader —
+   * mass follows the act's primary subject by law.
    */
   async subjectDemandMass(
     placeIds: string[],
-    at: Date = new Date(),
+    now: Date = new Date(),
   ): Promise<SubjectDemandMass[]> {
     if (!placeIds.length) {
       return [];
     }
-    const actAge = Prisma.sql`(EXTRACT(EPOCH FROM (${utcInstantSql(at)} - pa.occurred_at)) / 86400.0)`;
+    const { todayKey, horizonKey, todayStart } = this.windowKeys(now);
     const baselineEndDays = RECENCY_FLAT_DAYS;
     const baselineStartDays = RECENCY_FLAT_DAYS + COOLDOWN_GAUSSIAN_DAYS;
     const baselineWeeks = COOLDOWN_GAUSSIAN_DAYS / RECENCY_FLAT_DAYS;
+    const dayAge = Prisma.sql`(${todayKey}::date - day)`;
     const rows = await this.prisma.$queryRaw<
       {
         place_id: string;
@@ -259,60 +360,114 @@ export class DemandMassReader {
         baseline_weekly_mass: number;
       }[]
     >`
-      WITH place_box AS (
-        SELECT place_id, bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng
-        FROM places
-        WHERE place_id = ANY(${placeIds}::uuid[])
-          AND bbox_min_lat IS NOT NULL
-      ),
-      per_act AS (
-        -- Wave-5 F2: act-grain dedupe per (place, subject, actor) — the
-        -- search + selection rows of one submit (shared searchRequestId)
-        -- count as ONE act of attention on their subject; first occurrence
-        -- wins (MIN occurred_at).
+      WITH RECURSIVE ${this.lineageCtesSql(placeIds)},
+      day_acts AS (
+        -- Tile MAX first, at RAW subject grain (two raw ids folding into one
+        -- survivor are distinct acts and must SUM, not MAX).
         SELECT
-          pb.place_id,
+          l.root,
+          a.actor_id,
+          a.day,
+          a.kind,
+          a.subject_id,
+          MAX(a.signal_count) AS acts
+        FROM lineage l
+        JOIN signal_demand_daily a ON a.place_id = l.tile
+        WHERE a.day >= ${horizonKey}::date
+          AND a.day < ${todayKey}::date
+          AND a.subject_type = 'entity'
+          AND a.subject_id IS NOT NULL
+          AND a.kind <> ALL(${ECHO_KINDS}::text[])
+        GROUP BY l.root, a.actor_id, a.day, a.kind, a.subject_id
+      ),
+      resolved AS (
+        SELECT
+          d.root,
+          COALESCE(r.to_entity_id, d.subject_id) AS subject_id,
+          d.actor_id,
+          d.day,
+          SUM(d.acts) AS acts
+        FROM day_acts d
+        LEFT JOIN entity_redirects r ON r.from_entity_id = d.subject_id
+        GROUP BY 1, 2, 3, 4
+      ),
+      agg_actor AS (
+        SELECT
+          root,
+          subject_id,
+          actor_id,
+          SUM(
+            acts * ${this.dayRecencySql(dayAge)} * ${KIND_WEIGHT_PRIOR}
+          )::float8 AS acts,
+          COALESCE(
+            SUM(acts) FILTER (WHERE ${dayAge} <= ${baselineEndDays}), 0
+          )::float8 AS current_acts,
+          COALESCE(
+            SUM(acts) FILTER (
+              WHERE ${dayAge} > ${baselineEndDays}
+                AND ${dayAge} <= ${baselineStartDays}
+            ), 0
+          )::float8 AS baseline_acts
+        FROM resolved
+        GROUP BY 1, 2, 3
+      ),
+      fresh_acts AS (
+        SELECT
+          pb.place_id AS root,
           COALESCE(r.to_entity_id, s.subject_id) AS subject_id,
           s.actor_id,
           ${ACT_KEY_SQL} AS act_key,
-          MIN(s.occurred_at) AS occurred_at
-        FROM place_box pb
+          MAX(${EVENT_COUNT_SQL})::float8 AS acts
+        FROM places pb
         JOIN signals s
           ON s.geo_min_lat <= pb.bbox_max_lat
          AND s.geo_max_lat >= pb.bbox_min_lat
          AND (${this.lngIntersectSql()})
-         AND s.occurred_at <= ${utcInstantSql(at)}
-         AND s.occurred_at >= ${utcInstantSql(new Date(at.getTime() - DEMAND_KERNEL_HORIZON_DAYS * MS_PER_DAY))}
-         AND s.subject_type = 'entity'
-         AND s.subject_id IS NOT NULL
         LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
-        GROUP BY pb.place_id, COALESCE(r.to_entity_id, s.subject_id), s.actor_id, ${ACT_KEY_SQL}
+        WHERE pb.place_id = ANY(${placeIds}::uuid[])
+          AND pb.bbox_min_lat IS NOT NULL
+          AND s.subject_type = 'entity'
+          AND s.subject_id IS NOT NULL
+          AND s.occurred_at >= ${utcInstantSql(todayStart)}
+          ${this.freshActFirstOccurrenceSql(todayStart)}
+        GROUP BY 1, 2, 3, 4
       ),
-      per_actor AS (
+      fresh_actor AS (
+        -- Today is inside the flat cycle: full weight AND current-cycle acts.
         SELECT
-          pa.place_id,
-          pa.subject_id,
-          pa.actor_id,
-          SUM(${this.recencyKernel(actAge)} * ${KIND_WEIGHT_PRIOR}) AS acts,
-          SUM(CASE WHEN ${actAge} <= ${baselineEndDays} THEN 1.0 ELSE 0 END) AS current_acts,
-          SUM(
-            CASE
-              WHEN ${actAge} > ${baselineEndDays} AND ${actAge} <= ${baselineStartDays}
-              THEN 1.0 ELSE 0
-            END
-          ) AS baseline_acts
-        FROM per_act pa
-        GROUP BY pa.place_id, pa.subject_id, pa.actor_id
+          root,
+          subject_id,
+          actor_id,
+          SUM(acts * ${KIND_WEIGHT_PRIOR}) AS acts,
+          SUM(acts) AS current_acts,
+          0::float8 AS baseline_acts
+        FROM fresh_acts
+        GROUP BY 1, 2, 3
+      ),
+      by_actor AS (
+        SELECT
+          root,
+          subject_id,
+          actor_id,
+          SUM(acts) AS acts,
+          SUM(current_acts) AS current_acts,
+          SUM(baseline_acts) AS baseline_acts
+        FROM (
+          SELECT * FROM agg_actor
+          UNION ALL
+          SELECT * FROM fresh_actor
+        ) u
+        GROUP BY 1, 2, 3
       ),
       per_subject AS (
         SELECT
-          place_id,
+          root AS place_id,
           subject_id,
           SUM(ln(1 + acts) / ln(2)) AS mass,
           SUM(ln(1 + current_acts) / ln(2)) AS current_mass,
           SUM(ln(1 + baseline_acts) / ln(2)) / ${baselineWeeks} AS baseline_weekly_mass
-        FROM per_actor
-        GROUP BY place_id, subject_id
+        FROM by_actor
+        GROUP BY 1, 2
       )
       SELECT
         ps.place_id,
@@ -340,29 +495,46 @@ export class DemandMassReader {
   }
 
   /**
-   * placeIds that have ANY signal still inside the kernel's derived horizon
-   * (red-team 3a) — the ritual's cheap candidate filter. A signal older than
-   * DEMAND_KERNEL_HORIZON_DAYS carries < epsilon weight and cannot create
-   * mass, creditRate, or work; bounding occurred_at makes the scan's cost
-   * track LIVE attention, not ledger history.
+   * placeIds that can carry ANY demand mass under the containment algebra —
+   * the ritual's cheap candidate filter, aggregate-backed: the distinct PLACE
+   * tiles with rows inside the kernel's derived horizon (the GLOBAL tile —
+   * place_id NULL — deliberately does NOT seed candidates: mass needs
+   * place-attributed rows), expanded to every place whose lineage reaches a
+   * tile (ancestors of a tile read it as a descendant row; descendants read
+   * it as an ancestor row at weight 1).
+   *
+   * Freshness note: today's slice of the aggregate rebuilds every 15 minutes
+   * (watermark cron), so a signal younger than the cron lag may miss ONE
+   * hourly ritual pass — the ≥-hour Sunday window catches it on the next
+   * tick. The mass reads themselves still see it through their fresh arm.
    */
   async placesWithAnySignal(now: Date = new Date()): Promise<string[]> {
-    const horizonStart = new Date(
-      now.getTime() - DEMAND_KERNEL_HORIZON_DAYS * MS_PER_DAY,
-    );
+    const { horizonKey } = this.windowKeys(now);
     const rows = await this.prisma.$queryRaw<{ place_id: string }[]>`
-      SELECT DISTINCT pb.place_id
-      FROM (
-        SELECT place_id, bbox_min_lat, bbox_min_lng, bbox_max_lat, bbox_max_lng
-        FROM places
-        WHERE bbox_min_lat IS NOT NULL
-      ) pb
-      JOIN signals s
-        ON s.geo_min_lat <= pb.bbox_max_lat
-       AND s.geo_max_lat >= pb.bbox_min_lat
-       AND (${this.lngIntersectSql()})
-       AND s.occurred_at >= ${utcInstantSql(horizonStart)}
-       AND s.occurred_at <= ${utcInstantSql(now)}
+      WITH RECURSIVE tiles AS (
+        SELECT DISTINCT a.place_id
+        FROM signal_demand_daily a
+        WHERE a.place_id IS NOT NULL
+          AND a.day >= ${horizonKey}::date
+      ),
+      up AS (
+        SELECT t.place_id FROM tiles t
+        UNION
+        SELECT parent.place_id
+        FROM up u
+        JOIN places p ON p.place_id = u.place_id
+        CROSS JOIN LATERAL unnest(p.parent_place_ids) AS parent(place_id)
+      ),
+      down AS (
+        SELECT t.place_id FROM tiles t
+        UNION
+        SELECT p.place_id
+        FROM down d
+        JOIN places p ON d.place_id = ANY(p.parent_place_ids)
+      )
+      SELECT place_id FROM up
+      UNION
+      SELECT place_id FROM down
     `;
     return rows.map((row) => row.place_id);
   }

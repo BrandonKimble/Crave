@@ -444,17 +444,16 @@ export class PollWeeklyRitualService {
     }
 
     // Attention mass AT LAUNCH — the demand that warranted each cohort —
-    // read for ALL cohorts in one batched query (red-team 3b).
+    // read from the BIRTH CERTIFICATE the publish stamped (poll-supply swap
+    // leg: history is never re-evaluated; the stamp IS the launch-time fact,
+    // immune to ledger backfills and reader-algebra changes). Every seeded
+    // poll since the rebuild carries controller.weeklyDemandMass in its
+    // birthCertificate; a stampless cohort cannot exist in live data (proven
+    // 2026-07-19: zero pre-stamp seeded polls) — if one ever appears it
+    // observes attentionMass 0, which SKIPS the conversion/yield observation
+    // (estimators never learn from a fabricated mass) and ages out of the
+    // 280d evidence horizon.
     const cohortList = [...cohorts.values()];
-    const massRows = await this.demandMass.placeDemandMassAt(
-      cohortList.map((cohort) => ({
-        placeId: cohort.placeId,
-        at: cohort.launchedAt,
-      })),
-    );
-    const massByCohort = new Map(
-      massRows.map((row) => [`${row.placeId}:${row.at.getTime()}`, row.mass]),
-    );
 
     const outcomes: CohortOutcome[] = [];
     for (const cohort of cohortList) {
@@ -476,10 +475,7 @@ export class PollWeeklyRitualService {
       outcomes.push({
         placeId: cohort.placeId,
         weekOf: cohort.weekOf,
-        attentionMass:
-          massByCohort.get(
-            `${cohort.placeId}:${cohort.launchedAt.getTime()}`,
-          ) ?? 0,
+        attentionMass: this.stampedLaunchMass(cohort.polls),
         answerCounts,
         viableAnswerCounts,
         // Evidence timestamp for registry decay: the window's nominal end,
@@ -496,6 +492,27 @@ export class PollWeeklyRitualService {
     return outcomes.sort(
       (a, b) => a.observedAt.getTime() - b.observedAt.getTime(),
     );
+  }
+
+  /**
+   * The cohort's launch-time place attention mass, read back from the
+   * birth certificate stamped AT publish (controllerFactors →
+   * birthCertificate.controller.weeklyDemandMass — the same value on every
+   * poll of the cohort; the first finite stamp wins). Returns 0 for a
+   * stampless (impossible-in-live-data) cohort — see harvestCohortOutcomes.
+   */
+  private stampedLaunchMass(polls: { metadata: unknown }[]): number {
+    for (const poll of polls) {
+      const mass = (
+        poll.metadata as {
+          birthCertificate?: { controller?: { weeklyDemandMass?: unknown } };
+        } | null
+      )?.birthCertificate?.controller?.weeklyDemandMass;
+      if (typeof mass === 'number' && Number.isFinite(mass)) {
+        return mass;
+      }
+    }
+    return 0;
   }
 
   /**

@@ -403,6 +403,36 @@ agent in flight at turn end so completion notifications chain turns.
       deferred; travels with that leg. BONUS: two latent live defects in
       the poll-supply/fresh readers found by the live proof and fixed —
       see Gotchas. 582 tests green (567 baseline +15); build+tsc+lint clean.
+- [x] POLL-SUPPLY SWAP LEG COMPLETE (2026-07-19, uncommitted; docket item 7
+      MANDATE): the intersection reader RETIRED — DemandMassReader is now
+      aggregate-backed (containment lineage self+ancestors+descendants at
+      weight 1, MAX set-semantics per (actor, day, kind, subject) across a
+      root's tiles) + a fresh-today ledger arm (true F2 act-grain COALESCE
+      dedupe, canonical wrap-aware lng, act-grain first-occurrence anti-join
+      on the indexed 2-way parent key). ECHO-KIND RULE derived + documented
+      (ECHO_SIGNAL_KINDS in signals.service): autocomplete_selection +
+      on_demand_ask are by-construction echoes of a parent 'search' act
+      (writers verified: both always attach the parent request id; the search
+      row carries BOTH subject halves on ONE row — no subject fan in the
+      ledger, only kind fan) → they weigh 0 in mass reads; every other kind
+      (incl. cached reveals, item 8) weighs 1. placeDemandMassAt DELETED —
+      harvestCohortOutcomes reads attentionMass from the birth-certificate
+      stamp (controller.weeklyDemandMass; stampless legacy cohorts = ZERO in
+      live data, proven — they'd observe mass 0, skipping conversion/yield,
+      and age out at 280d). placesWithAnySignal = aggregate tiles ∪
+      ancestors ∪ descendants (GLOBAL tile never seeds; ≤15-min cron-lag
+      note documented). PARITY PROVEN live (Austin TX + Wolfe City TX):
+      minus-ancestors variant vs old reader = EXACT on Wolfe (1.000=1.000),
+      −0.25% on Austin (day quantization + MAX set semantics); full new
+      algebra = Austin 9.756→12.126, Wolfe 1.0→11.40 — the whole uplift is
+      the RATIFIED coarse-signal ancestor reach (127-act NYC two-state
+      viewport stored at the US tile + 30 central-TX acts at TX); echo
+      restatement delta = 0 (no echo kinds in the live ledger yet). NO
+      unexplained deltas, NO migration. Specs: echo-kind rule + writer
+      invariants, tile-MAX count-once, two-arm seam, day-quantization bound,
+      harvest-reads-stamps(+stampless-0), reader-retirement (no
+      make_interval ledger scans). 590 tests green (582 +8);
+      build+tsc+eslint clean.
 - [ ] After fix agent: commit, restart :3000 (REQUIRED: the running
       binary still serves kind-blind aggregate cron + lacks the
       viewport-dwell route), REASSESSMENT to owner (wave-5 verdict: with
@@ -412,8 +442,7 @@ agent in flight at turn end so completion notifications chain turns.
   markets); legacy-poll expiry (kills bboxFromMarketKey + legacy feed
   arm); See-locations (Leg 2 tail); §10 advance-at-extraction +
   expectedBatches reconciler; §12.5 reddit client rewrite (per-request
-  draws); poll-supply swap onto aggregate (fixes remaining read-algebra
-  divergence per OWNER-RATIFY); engine-coverage re-key of
+  draws); engine-coverage re-key of
   resolveViewportCoverage consumers; ListDetail Market chip → city-slice
   re-key; durable PoolRegistry store; signals monthly partitions; mobile
   perf-harness renderedPollHeaderPlaceName rename; owner sim-feel items

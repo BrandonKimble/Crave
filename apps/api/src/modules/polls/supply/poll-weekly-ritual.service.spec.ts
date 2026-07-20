@@ -114,17 +114,6 @@ function createHarness(options: HarnessOptions = {}) {
     placeDemandMass: jest
       .fn()
       .mockResolvedValue([{ placeId: PLACE_ID, mass: options.mass ?? 120 }]),
-    placeDemandMassAt: jest
-      .fn()
-      .mockImplementation((requests: { placeId: string; at: Date }[]) =>
-        Promise.resolve(
-          requests.map((request) => ({
-            placeId: request.placeId,
-            at: request.at,
-            mass: options.mass ?? 120,
-          })),
-        ),
-      ),
     subjectDemandMass: jest.fn().mockResolvedValue(options.subjects ?? []),
   };
   const notifications = {
@@ -167,13 +156,24 @@ const SUBJECT = {
   baselineWeeklyMass: 4,
 };
 
+/** The launch-time mass every fixture cohort was published with — the value
+ *  the birth certificate stamped (poll-supply swap: harvest reads the stamp,
+ *  never re-evaluates history). */
+const STAMPED_LAUNCH_MASS = 100;
+
 function harvestPoll(overrides: Record<string, unknown> = {}) {
   return {
     pollId: '30303030-3030-3030-3030-303030303030',
     placeId: PLACE_ID,
     launchedAt: new Date('2026-07-12T14:30:30Z'),
     graduatedAt: null,
-    metadata: { weekOf: LAST_WEEK_OF },
+    metadata: {
+      weekOf: LAST_WEEK_OF,
+      birthCertificate: {
+        kind: 'subject',
+        controller: { weeklyDemandMass: STAMPED_LAUNCH_MASS },
+      },
+    },
     ...overrides,
   };
 }
@@ -345,6 +345,40 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
       expect(outcomes[0].weekOf).toBe('2026-03-01');
     });
 
+    it('HARVEST READS STAMPS, NOT HISTORY (poll-supply swap): attentionMass comes from the birth certificate; no launch-time mass re-evaluation', async () => {
+      const { service, demandMass } = createHarness({
+        harvestPolls: [harvestPoll()],
+      });
+      const outcomes = await (
+        service as unknown as {
+          harvestCohortOutcomes: (
+            now: Date,
+          ) => Promise<{ attentionMass: number }[]>;
+        }
+      ).harvestCohortOutcomes(SUNDAY_0930_LOCAL);
+      expect(outcomes[0].attentionMass).toBe(STAMPED_LAUNCH_MASS);
+      // The retired historical read is GONE from the reader surface — the
+      // harvest cannot re-evaluate history even by accident.
+      expect(
+        (demandMass as Record<string, unknown>).placeDemandMassAt,
+      ).toBeUndefined();
+      expect(demandMass.placeDemandMass).not.toHaveBeenCalled();
+    });
+
+    it('a stampless legacy cohort observes attentionMass 0 (conversion/yield observation skipped, never fabricated)', async () => {
+      const { service } = createHarness({
+        harvestPolls: [harvestPoll({ metadata: { weekOf: LAST_WEEK_OF } })],
+      });
+      const outcomes = await (
+        service as unknown as {
+          harvestCohortOutcomes: (
+            now: Date,
+          ) => Promise<{ attentionMass: number }[]>;
+        }
+      ).harvestCohortOutcomes(SUNDAY_0930_LOCAL);
+      expect(outcomes[0].attentionMass).toBe(0);
+    });
+
     it('a cohort launched THIS ritual week is not closed yet', async () => {
       const { service } = createHarness({
         harvestPolls: [
@@ -386,7 +420,12 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
         harvestPolls: [
           harvestPoll({
             launchedAt: new Date('2026-07-05T14:30:00Z'),
-            metadata: { weekOf: TWO_WEEKS_AGO_OF },
+            metadata: {
+              weekOf: TWO_WEEKS_AGO_OF,
+              birthCertificate: {
+                controller: { weeklyDemandMass: STAMPED_LAUNCH_MASS },
+              },
+            },
           }),
         ],
         supplyState: state,
