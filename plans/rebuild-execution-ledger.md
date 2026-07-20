@@ -362,15 +362,41 @@ agent in flight at turn end so completion notifications chain turns.
       the OLD writers against DROPPED tables (history record endpoints 500;
       search event log warn-only). CLAUDE.md rebuild+restart recipe REQUIRED
       before any app testing/commit.
-- [ ] REMAINING after Phase C: wave-5 final red team + REASSESSMENT;
-      follow-up legs recorded: home-place registration (device→placeAt→
-      homePlaceId; kills notification market fallback), See-locations
-      (Leg 2 tail), §10 advance-at-extraction + expectedBatches,
-      §12.5 reddit client rewrite (per-request draws), poll-supply swap
-      onto aggregate, mobile perf-harness field rename, owner sim-feel
-      items (feed cadence, two-All chips, promise card).
-- [ ] Then: wave-5 final red team + REASSESSMENT (owner's 'reassess only
-      when done').
+- [x] Phase C committed b548e895; API restarted healthy on purged binary.
+- [x] WAVE-5 FINAL RED TEAM ran (whole-system seam pass). VERDICT:
+      structurally §-faithful — kill sweep complete repo-wide, boot clean,
+      tiling/intersection algebras provably agree in contained cases (MAX
+      set-semantics), time+restart seams hold. FOUR confirmed defects at
+      the act-identity seam → fix agent IN FLIGHT: F1 CRITICAL aggregate
+      dedupe key kind-blind (search+autocomplete_selection share
+      searchRequestId → one kind of every selected search dropped; fix =
+      partition by (kind, key) + full rebuild); F2 HIGH poll-supply reader
+      has NO act dedupe (search+selection+ask = 3 rows → one act weighs
+      2.0 in poll credit vs 1.585 aggregate vs 1-2 intended; fix =
+      act-grain COALESCE dedupe incl. askSearchRequestId); F3 MEDIUM
+      viewport_dwell declared but ZERO writers (browse-only cold-start
+      dead; deferral law forbids deferring observations; fix = POST
+      /signals/viewport-dwell endpoint, mobile wiring w/ home-place leg);
+      F4 fresh read arms not wrap-aware (converge on one canonical lng
+      predicate). Plus: §16 classification comments sweep (score service
+      constants et al — values unchanged); §17 gaps — verify score
+      fixture script coverage vs §8 named conditions, add mint-invariance
+      golden + poll-creation quota-drought fallback spec (§2: creation
+      never blocks).
+- [ ] After fix agent: commit, restart, REASSESSMENT to owner (wave-5
+      verdict: with F1-F3 + score fixture gate closed, rebuild is
+      honestly complete).
+- FOLLOW-UP LEGS (recorded): home-place registration (device→placeAt→
+  homePlaceId; kills notification market fallback + mobile launch-intent
+  markets); legacy-poll expiry (kills bboxFromMarketKey + legacy feed
+  arm); See-locations (Leg 2 tail); §10 advance-at-extraction +
+  expectedBatches reconciler; §12.5 reddit client rewrite (per-request
+  draws); poll-supply swap onto aggregate (fixes remaining read-algebra
+  divergence per OWNER-RATIFY); engine-coverage re-key of
+  resolveViewportCoverage consumers; ListDetail Market chip → city-slice
+  re-key; durable PoolRegistry store; signals monthly partitions; mobile
+  perf-harness renderedPollHeaderPlaceName rename; owner sim-feel items
+  (feed pan cadence, two-All chips, promise card styling).
 - deferred-in-leg-2: See-locations (only remaining Leg 2 item).
 
 ## Decisions log (append as made)
