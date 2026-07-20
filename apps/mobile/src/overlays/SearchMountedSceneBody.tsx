@@ -167,22 +167,52 @@ const getPendingBlockListDataSnapshot = (): SearchMountedResultsListDataSnapshot
 // slices (the fence's episode-open transition) — pagination appends bypass the fence
 // (no live txn) and land whole, as before.
 const LANDING_ABOVE_FOLD_ROWS = 4;
+// Release-measured (2026-07-19, clock v1): two beats halved ONE burst window but the
+// 16-row remainder still landed in one ~185ms commit — the clock is PROGRESSIVE now:
+// +LANDING_SLICE_STEP rows per free frame pair until complete (idle-frame SLICES,
+// plural — the design's words).
+const LANDING_SLICE_STEP = 6;
 let landingSliceBase: SearchMountedResultsListDataSnapshot | null = null;
 let landingSliceSnapshot: SearchMountedResultsListDataSnapshot | null = null;
+let landingSliceCount = 0;
 let landingSliceTimer: ReturnType<typeof requestAnimationFrame> | null = null;
 const landingClockListeners = new Set<() => void>();
 
-const scheduleLandingClockFullBeat = (): void => {
+const scheduleLandingClockNextBeat = (): void => {
   if (landingSliceTimer != null) {
     return;
   }
   landingSliceTimer = requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       landingSliceTimer = null;
-      landingSliceBase = null;
-      landingSliceSnapshot = null;
-      if (__DEV__) {
-        console.log(`[LANDING] full beat t=${performance.now().toFixed(1)}`);
+      const base = landingSliceBase;
+      if (base == null) {
+        return;
+      }
+      landingSliceCount += LANDING_SLICE_STEP;
+      const complete =
+        landingSliceCount >= base.primaryData.length &&
+        landingSliceCount >= base.secondaryData.length;
+      if (complete) {
+        landingSliceBase = null;
+        landingSliceSnapshot = null;
+        if (__DEV__) {
+          console.log(`[LANDING] final beat t=${performance.now().toFixed(1)}`);
+        }
+      } else {
+        landingSliceSnapshot = {
+          ...base,
+          primaryData: base.primaryData.slice(0, landingSliceCount),
+          primaryExtraData: `landing-slice-${landingSliceCount}`,
+          secondaryData: base.secondaryData.slice(0, landingSliceCount),
+          secondaryExtraData: `landing-slice-${landingSliceCount}`,
+        };
+        if (__DEV__) {
+          console.log(
+            `[LANDING] slice beat rows=${Math.min(landingSliceCount, base.primaryData.length)}/${base.primaryData.length} t=${performance.now().toFixed(1)}`
+          );
+        }
+        scheduleLandingClockNextBeat();
       }
       landingClockListeners.forEach((listener) => {
         listener();
@@ -196,6 +226,7 @@ const getLandingSlicedSnapshot = (
 ): SearchMountedResultsListDataSnapshot => {
   if (landingSliceSnapshot == null || landingSliceBase !== base) {
     landingSliceBase = base;
+    landingSliceCount = LANDING_ABOVE_FOLD_ROWS;
     landingSliceSnapshot = {
       ...base,
       primaryData: base.primaryData.slice(0, LANDING_ABOVE_FOLD_ROWS),
@@ -208,7 +239,7 @@ const getLandingSlicedSnapshot = (
         `[LANDING] above-fold beat rows=${landingSliceSnapshot.primaryData.length}/${base.primaryData.length} t=${performance.now().toFixed(1)}`
       );
     }
-    scheduleLandingClockFullBeat();
+    scheduleLandingClockNextBeat();
   }
   return landingSliceSnapshot;
 };
