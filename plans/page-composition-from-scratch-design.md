@@ -223,6 +223,36 @@ identical behavior with scroll. From scratch, first principles, throw away the
 current implementation if needed. Sequencing: only after the family/foundational
 work completes.
 
+## THE CONTENT-TRANSPORT SEAM — verdict (2026-07-18, the reserved design moment)
+
+The question the migration bridge reserved: for WORLD-BACKED pages (listDetail today;
+results itself), does content reach the shell through the MOUNTED STORE (pull — the
+panel's useSyncExternalStore world-read, today's shape) or through the BEAT-WRITER
+(push — L3/L4's "reveal = one batched write to the target shell")?
+
+**Verdict: they are the same seam at different levels, not competitors.**
+- The mounted store IS the presented world's residency — the one content truth. The
+  page CONTROLLER subscribes to it (pull), identity-matches, and derives the closed
+  PageBodyState — exactly the L2 law (stores/queries live in controllers; slots get
+  resolved data).
+- The BEAT quality ("at most one content commit per reveal") is owned by the FENCE
+  (the P-12 pattern, proven by the pending-block arc: coalesce while an episode is
+  live; one render lands the swap at the reveal commit). A controller over a fenced
+  store IS beat-committed — no separate push machinery exists at L2.
+- The beat-writer becomes REAL machinery only at L3 residency, where N shells exist
+  and "stamp chrome+content to the TARGET shell pre-reveal" needs an addressee. Its
+  ideal form THEN: the residency manager triggers the target shell's CONTROLLER to
+  re-derive inside the reveal batch — the beat-writer is a SCHEDULING discipline over
+  controllers, never a second data path (a push store beside the pull store would be
+  the two-ways-to-know-one-fact disease).
+
+**listDetail execution plan (from this verdict — the userProfile pattern, bigger):**
+controller hook = params + meta query + the identity-matched world read + reveal
+admission + the non-world resultsQuery fallback + slice state, folded through
+resolvePageContentBodyState (already canonical there) into a composite data payload;
+Content = the render + interaction hooks (edit session, sort, share, reorder) over
+resolved data; the gate render dies; grep invariant extends to ListDetailPanel.
+
 **TRUNCATION LAW TEXT SIDE EXECUTED 2026-07-18 (L1 completion):** ChromeTitleText =
 THE one chrome title (single-line + title tokens + the ink token) and — the load-
 bearing half — the WIDTH BOUND moved to the host's title SLOT (OverlaySheetHeaderChrome
