@@ -83,8 +83,8 @@ import {
   type CollaboratorModalPayload,
 } from '../../components/collaborator-modal-store';
 import { showListEdit } from '../../components/list-edit-store';
-import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
-import { resolvePageContentBodyState } from '../page-body-contract';
+import { resolvePageContentBodyState, type PageContentBodySpec } from '../page-body-contract';
+import { PageBodyShell } from '../PageBodyShell';
 import { ChromeTitleText } from '../ChromeTitleText';
 import SquircleSpinner from '../../components/SquircleSpinner';
 // Leg 11 (§2d): rows ARE the ResultCard primitive — the results card with the
@@ -314,7 +314,7 @@ const ListDetailEditChip = ({ onPress }: { onPress: () => void }) => (
 // wave-3 §1.1 re-declared the same primitive on the Lists home, so the row is built once.
 
 // Page-local retry is BANNED (wave-4 §1 load-failure law) — generic load failures go
-// through SceneBodyReadyGate's failure input (shared modal + pop). StateBody remains
+// through the shell's failure chokepoint (shared modal + pop). StateBody remains
 // only for HONEST terminal states like the revoked-share 410 body.
 const StateBody = ({ message, testID }: { message: string; testID: string }) => (
   <View style={styles.stateBody} testID={testID}>
@@ -335,14 +335,524 @@ type ListDetailRichRow = {
   itemId: string | null;
 } & ({ kind: 'restaurant'; restaurant: RestaurantResult } | { kind: 'dish'; dish: FoodResult });
 
+// ─── THE CONTENT SLOT (THE PAGE L2 — the listDetail split, edit map 2026-07-19) ─────
+// Receives the RESOLVED composite from the controller below; the query edge, slice
+// state, world reads, and collaborator/list commands live controller-side and arrive
+// as data + commands. A pending/failed branch has no state left to express here.
+type ListDetailSliceData = {
+  effectiveSort: FavoriteListSort;
+  openNow: boolean;
+  priceLevel: number | null;
+  marketKey: string | null;
+  marketOptions: Array<{ value: string; label: string }>;
+  marketChipLabel: string;
+  applySlice: (
+    patch: {
+      sort?: FavoriteListSort;
+      openNow?: boolean;
+      priceLevel?: number | null;
+      marketKey?: string | null;
+    },
+    kind: 'sort' | 'open_now' | 'price' | 'market'
+  ) => void;
+  contentPhase: string;
+};
+
+type ListDetailReadyData = {
+  kind: 'ready';
+  resolvedListId: string;
+  listType: FavoriteListType;
+  viewerRole: FavoriteListViewerRole | undefined;
+  defaultSort: FavoriteListSort;
+  isVirtualAll: boolean;
+  canEdit: boolean;
+  canAddPhoto: boolean;
+  response: SearchResponse;
+  roster: FavoriteListCollaborators | null;
+  entryId: string | null;
+  showJoinAffordance: boolean;
+  isJoining: boolean;
+  onJoin: () => Promise<void>;
+  openCollaboratorRoster: () => void;
+  onOrderSaved: () => Promise<void>;
+  slice: ListDetailSliceData;
+};
+
+/** Private-gone (410 sharing revoked) is a RESOLVED answer, not a load failure. */
+type ListDetailPageData = { kind: 'privateGone' } | ListDetailReadyData;
+
+// Hook-free dispatcher: data.kind can flip live (revocation mid-view), so the ready
+// half is its own component — no conditional hooks.
+const ListDetailContent = ({ data }: { data: ListDetailPageData }) =>
+  data.kind === 'privateGone' ? (
+    <StateBody message="This list is no longer shared." testID="list-detail-private" />
+  ) : (
+    <ListDetailReadyContent data={data} />
+  );
+
+const ListDetailReadyContent = React.memo(({ data }: { data: ListDetailReadyData }) => {
+  const { promoteActiveSheet } = useAppOverlayRouteController();
+  const optionSelectorOpenKey = useOptionSelectorOpenKey();
+  const [isSavingOrder, setIsSavingOrder] = React.useState(false);
+  const isScreenReaderEnabled = useIsScreenReaderEnabled();
+
+  const restaurantRows: RestaurantResult[] =
+    data.listType === 'restaurant' ? (data.response?.restaurants ?? []) : [];
+  const dishRows: FoodResult[] = data.listType === 'dish' ? (data.response?.dishes ?? []) : [];
+
+  // The ONE rich-row model — read mode maps it directly; edit mode reorders its keys.
+  const richRows = React.useMemo<ListDetailRichRow[]>(
+    () =>
+      data.listType === 'restaurant'
+        ? restaurantRows.map((restaurant) => ({
+            key: restaurant.restaurantId,
+            itemId: restaurant.favoriteListItemId ?? null,
+            kind: 'restaurant' as const,
+            restaurant,
+          }))
+        : dishRows.map((dish) => ({
+            key: dish.connectionId,
+            itemId: dish.favoriteListItemId ?? null,
+            kind: 'dish' as const,
+            dish,
+          })),
+    [dishRows, data.listType, restaurantRows]
+  );
+  const richRowsByKey = React.useMemo(() => {
+    const byKey = new Map<string, ListDetailRichRow>();
+    for (const row of richRows) {
+      byKey.set(row.key, row);
+    }
+    return byKey;
+  }, [richRows]);
+
+  // ─── ResultCard wiring (leg 11 §2d): the primitive's environment on this surface ───────────
+  // Heart = the house save sheet (the SAME command-controller handlers results use);
+  // card press = the entity-ref executor's restaurantWorld lane; score-info = a panel-owned
+  // instance of the ONE score sheet (the search-scene copy is scene-focused chrome).
+  const routeSceneRuntime = useAppRouteSceneRuntime();
+  const { getRestaurantSaveHandler, getDishSaveHandler } =
+    routeSceneRuntime.routeOverlayCommandActions;
+  const executeEntityRef = useEntityRefActionExecutor();
+  const openRestaurantProfileFromList = React.useCallback(
+    (restaurant: RestaurantResult) => {
+      executeEntityRef({
+        entityId: restaurant.restaurantId,
+        entityType: 'restaurant',
+        label: restaurant.restaurantName,
+      });
+    },
+    [executeEntityRef]
+  );
+  // Dish cards resolve their restaurant from the data.response's restaurant axis (a dish-list
+  // results data.response carries it for the map pins — same source results uses).
+  const restaurantsByIdForDishRows = React.useMemo(() => {
+    const byId = new Map<string, RestaurantResult>();
+    for (const restaurant of data.response?.restaurants ?? []) {
+      byId.set(restaurant.restaurantId, restaurant);
+    }
+    return byId;
+  }, [data.response]);
+  // Score info rides the ROOT ScoreInfoHost (imperative store): a panel-local
+  // OverlayModalSheet mount anchors to the scrollable body's content box and
+  // lands offscreen (leg-11 sim RED).
+  const openScoreInfo = React.useCallback((payload: ScoreInfoPayload) => {
+    showScoreInfo(payload);
+  }, []);
+
+  // ─── Edit = the DECLARED mode session (leg 10 step 6; useEditModeSession owns the
+  // order/history session, the sheet edit lock, the header X = CANCEL discard-confirm and
+  // the action-row morph progress; §8.11 promote-to-top rides onEnter).
+  const editSession = useEditModeSession({
+    sceneKey: 'listDetail',
+    entryId: data.entryId,
+    onEnter: () => promoteActiveSheet({ snap: 'expanded' }),
+  });
+  const isEditing = editSession.isEditing;
+
+  const enterEditMode = React.useCallback(() => {
+    editSession.enter(richRows.map((row) => row.key));
+  }, [editSession, richRows]);
+
+  const exitEditMode = React.useCallback(() => {
+    editSession.exit();
+    setIsSavingOrder(false);
+  }, [editSession]);
+
+  // The primitive can end the session itself (header X = Cancel) — clear the local
+  // save flag on ANY session end, not just the strip's Cancel path.
+  React.useEffect(() => {
+    if (!isEditing) {
+      setIsSavingOrder(false);
+    }
+  }, [isEditing]);
+
+  const handleSaveOrder = React.useCallback(async () => {
+    if (editSession.order == null || isSavingOrder || data.resolvedListId == null) {
+      return;
+    }
+    // Batch order PATCH vocabulary = itemIds, built from the RENDERED rows — which can be
+    // a SUBSET of full membership (the executor drops score-less items). The API accepts a
+    // subset (reordered rows are placed, unlisted members keep relative order after them),
+    // so we send the rendered order as-is. A row missing its itemId projection is still a
+    // loud local failure — that id can't be expressed at all.
+    const orderedItemIds = editSession.order.map((key) => richRowsByKey.get(key)?.itemId ?? null);
+    if (orderedItemIds.some((itemId) => itemId == null)) {
+      announceFailureIfOnline();
+      return;
+    }
+    setIsSavingOrder(true);
+    try {
+      await favoriteListsService.reorderItems(data.resolvedListId, orderedItemIds as string[]);
+    } catch {
+      setIsSavingOrder(false);
+      // Honest copy: the visible rows can be a subset of the list's membership, so a
+      // failed save may have left the order partially applied — say so, and that
+      // retrying is safe (the PATCH is idempotent over the same ordered subset).
+      announceFailureIfOnline({
+        message:
+          "We couldn't save the new order — it may have only partially applied. It's safe to try saving again.",
+      });
+      return;
+    }
+    // Re-query on the saver's ranking (CONTROLLER command — invalidations + the
+    // sort-override flip live with the slice state): the custom order is now the
+    // list's default.
+    await data.onOrderSaved();
+    exitEditMode();
+  }, [data, editSession.order, exitEditMode, isSavingOrder, richRowsByKey]);
+
+  // Edge auto-scroll drives the SHARED sheet scroll container through the
+  // scene-scroll-handle registry seam (the mounted body does not own its scroller).
+  const scrollAdapter = React.useMemo<ReorderScrollAdapter | null>(() => {
+    if (!isEditing) {
+      return null;
+    }
+    const handle = getOverlaySceneScrollHandle('listDetail');
+    if (handle == null) {
+      return null;
+    }
+    return {
+      scrollOffset: handle.scrollOffset,
+      scrollBy: (dy: number) => {
+        handle.scrollTo(Math.max(0, handle.scrollOffset.value + dy), false);
+      },
+    };
+  }, [isEditing]);
+
+  // Rich rows stay rich WHILE DRAGGING (listdetail-ideal §2c): the edit surface renders
+  // the SAME ResultCard rows inside the variable-height slot map; the lifted row gets a
+  // white card treatment so it reads as picked up over its siblings.
+  const canAddPhotoRef = React.useRef(data.canAddPhoto);
+  canAddPhotoRef.current = data.canAddPhoto;
+  const renderRichRowCard = React.useCallback(
+    (row: ListDetailRichRow, index: number) => {
+      const canAdd = canAddPhotoRef.current;
+      if (row.kind === 'restaurant') {
+        const { restaurant } = row;
+        return (
+          <View testID={`list-detail-row-${row.key}`}>
+            <RestaurantResultCard
+              restaurant={restaurant}
+              index={index}
+              rank={index + 1}
+              qualityColor={getMarkerColorForRestaurant(restaurant)}
+              isLiked={false}
+              onSavePress={getRestaurantSaveHandler(
+                restaurant.restaurantId,
+                restaurant.restaurantLocationId ?? restaurant.displayLocation?.locationId ?? null
+              )}
+              openRestaurantProfile={openRestaurantProfileFromList}
+              openScoreInfo={openScoreInfo}
+              primaryFoodTerm={null}
+              note={restaurant.note ?? null}
+              onAddPhoto={
+                canAdd
+                  ? () =>
+                      openPostPhotosFunnel({
+                        restaurantId: restaurant.restaurantId,
+                        restaurantName: restaurant.restaurantName,
+                      })
+                  : undefined
+              }
+            />
+          </View>
+        );
+      }
+      const { dish } = row;
+      return (
+        <View testID={`list-detail-row-${row.key}`}>
+          <DishResultCard
+            item={dish}
+            index={index}
+            qualityColor={getMarkerColorForDish(dish)}
+            isLiked={false}
+            restaurantForDish={restaurantsByIdForDishRows.get(dish.restaurantId)}
+            onSavePress={getDishSaveHandler(dish.connectionId, dish.restaurantLocationId ?? null)}
+            openRestaurantProfile={openRestaurantProfileFromList}
+            openScoreInfo={openScoreInfo}
+            note={dish.note ?? null}
+            onAddPhoto={
+              canAdd
+                ? () =>
+                    openPostPhotosFunnel({
+                      restaurantId: dish.restaurantId,
+                      restaurantName: dish.restaurantName,
+                      dishId: dish.connectionId,
+                      dishName: dish.foodName,
+                    })
+                : undefined
+            }
+          />
+        </View>
+      );
+    },
+    [
+      getDishSaveHandler,
+      getRestaurantSaveHandler,
+      openRestaurantProfileFromList,
+      openScoreInfo,
+      restaurantsByIdForDishRows,
+    ]
+  );
+  // The reorder shell renders by ITEM (no index in its render context) — the live rank
+  // badge derives from the session's current order.
+  const editIndexByKey = React.useMemo(() => {
+    const byKey = new Map<string, number>();
+    (editSession.order ?? []).forEach((key, index) => byKey.set(key, index));
+    return byKey;
+  }, [editSession.order]);
+  const renderEditRowContent = React.useCallback(
+    (row: ListDetailRichRow, context: { isDraggable: boolean; isActiveDrag: boolean }) => (
+      <View style={context.isActiveDrag ? styles.richRowActive : null}>
+        {renderRichRowCard(row, editIndexByKey.get(row.key) ?? 0)}
+      </View>
+    ),
+    [editIndexByKey, renderRichRowCard]
+  );
+
+  const orderedEditRows = React.useMemo<ListDetailRichRow[]>(() => {
+    if (editSession.order == null) {
+      return [];
+    }
+    return editSession.order
+      .map((key) => richRowsByKey.get(key))
+      .filter((row): row is ListDetailRichRow => row != null);
+  }, [editSession.order, richRowsByKey]);
+
+
+  const rowCount = data.listType === 'restaurant' ? restaurantRows.length : dishRows.length;
+  const hasCustomSortOption = !data.isVirtualAll && (data.defaultSort === 'custom' || data.canEdit);
+  const customSortLabel = resolveCustomSortLabel(data.viewerRole);
+  const sortChipLabel = data.slice.effectiveSort === 'custom' ? customSortLabel : SORT_LABELS[data.slice.effectiveSort];
+  const sortOptions: Array<{ value: FavoriteListSort; label: string }> = [
+    ...(hasCustomSortOption ? [{ value: 'custom' as const, label: customSortLabel }] : []),
+    { value: 'best' as const, label: SORT_LABELS.best },
+    { value: 'recent' as const, label: SORT_LABELS.recent },
+  ];
+  // §2a: username · metadata dot · TYPED count ("N dishes"/"N restaurants").
+  const countLabel =
+    data.listType === 'restaurant'
+      ? `${rowCount} ${rowCount === 1 ? 'restaurant' : 'restaurants'}`
+      : `${rowCount} ${rowCount === 1 ? 'dish' : 'dishes'}`;
+  const ownerHandle = data.roster?.owner
+    ? data.roster.owner.username?.trim() || data.roster.owner.displayName?.trim() || null
+    : null;
+
+  return (
+    <View style={styles.body} testID="list-detail-body">
+      {/* §2a meta block — avatar stack FLUSH under the header, username · dot · typed count. */}
+      <View style={styles.pageBlock}>
+        <View style={styles.metaRow}>
+          {data.roster != null ? (
+            <CollaboratorStackChip
+              roster={data.roster}
+              onPress={data.openCollaboratorRoster}
+            />
+          ) : null}
+          <Text
+            variant="caption"
+            style={styles.metaText}
+            numberOfLines={1}
+            testID="list-detail-meta-line"
+          >
+            {ownerHandle ? `${ownerHandle} · ${countLabel}` : countLabel}
+          </Text>
+        </View>
+
+        {data.showJoinAffordance ? (
+          <Pressable
+            onPress={() => void data.onJoin()}
+            disabled={data.isJoining}
+            accessibilityRole="button"
+            accessibilityLabel="Join this list as a collaborator"
+            testID="list-detail-join"
+            style={styles.joinBanner}
+          >
+            {data.isJoining ? (
+              <SquircleSpinner size={16} color="#ffffff" />
+            ) : (
+              <Text variant="caption" weight="semibold" style={styles.joinBannerText}>
+                Join as collaborator
+              </Text>
+            )}
+          </Pressable>
+        ) : null}
+      </View>
+
+      {/* §2b: the strip PRIMITIVE's in-list mount — full-bleed band, content aligned by
+          contentInset (the transport carries no horizontal inset for this scene). */}
+      <View style={styles.stripBlock}>
+        <ToggleStrip
+          placement="in-list"
+          backdrop="plated-body"
+          cacheSeat={listDetailStripCacheSeat}
+          contentInset={OVERLAY_HORIZONTAL_PADDING}
+          actionRow={
+            isEditing
+              ? buildEditModeActionRow({
+                  onCancelEdit: exitEditMode,
+                  onUndo: editSession.undo,
+                  onRedo: editSession.redo,
+                  onSaveEdit: () => void handleSaveOrder(),
+                  canUndo: editSession.canUndo,
+                  canRedo: editSession.canRedo,
+                  hasEverEdited: editSession.hasEverEdited,
+                  isSaving: isSavingOrder,
+                  testIDPrefix: 'list-detail',
+                })
+              : null
+          }
+          actionProgress={editSession.actionProgress}
+          testID="list-detail-strip"
+        >
+          {data.canEdit && rowCount > 0 && data.slice.effectiveSort === 'custom' ? (
+            <ListDetailEditChip key="edit" onPress={enterEditMode} />
+          ) : null}
+          <SelectorChip
+            key="sort"
+            label={sortChipLabel}
+            active={data.slice.effectiveSort !== data.defaultSort}
+            expanded={optionSelectorOpenKey === LIST_DETAIL_SORT_SELECTOR_KEY}
+            onPress={() =>
+              toggleOptionSelector({
+                key: LIST_DETAIL_SORT_SELECTOR_KEY,
+                title: 'Sort',
+                options: sortOptions,
+                value: data.slice.effectiveSort,
+                onSelect: (value) => data.slice.applySlice({ sort: value }, 'sort'),
+                testID: 'list-detail-sort-sheet',
+              })
+            }
+            testID="list-detail-sort-chip"
+          />
+          <FilterChip
+            key="open-now"
+            label="Open now"
+            active={data.slice.openNow}
+            onPress={() => data.slice.applySlice({ openNow: !data.slice.openNow }, 'open_now')}
+            testID="list-detail-open-now-chip"
+          />
+          {/* Leg 10 (defect #4): Price — VALUE-displayed when overridden (§2 chip law). */}
+          <SelectorChip
+            key="price"
+            label={data.slice.priceLevel != null ? (PRICE_LEVEL_SYMBOLS[data.slice.priceLevel] ?? 'Price') : 'Price'}
+            active={data.slice.priceLevel != null}
+            expanded={optionSelectorOpenKey === LIST_DETAIL_PRICE_SELECTOR_KEY}
+            onPress={() =>
+              toggleOptionSelector({
+                key: LIST_DETAIL_PRICE_SELECTOR_KEY,
+                title: 'Price',
+                options: PRICE_OPTIONS,
+                value: data.slice.priceLevel == null ? 'any' : String(data.slice.priceLevel),
+                onSelect: (value) =>
+                  data.slice.applySlice({ priceLevel: value === 'any' ? null : Number(value) }, 'price'),
+                testID: 'list-detail-price-sheet',
+              })
+            }
+            testID="list-detail-price-chip"
+          />
+
+          {data.isVirtualAll ? (
+            // Leg 11 (§8.16 "sliced by city"): Market — VALUE-displayed when overridden
+            // (§2 chip law); options derived from the unsliced rows (self-provisioning).
+            <SelectorChip
+              key="market"
+              label={data.slice.marketChipLabel}
+              active={data.slice.marketKey != null}
+              expanded={optionSelectorOpenKey === LIST_DETAIL_MARKET_SELECTOR_KEY}
+              onPress={() =>
+                toggleOptionSelector({
+                  key: LIST_DETAIL_MARKET_SELECTOR_KEY,
+                  title: 'Market',
+                  options: [{ value: 'any', label: 'All markets' }, ...data.slice.marketOptions],
+                  value: data.slice.marketKey ?? 'any',
+                  onSelect: (value) =>
+                    data.slice.applySlice({ marketKey: value === 'any' ? null : value }, 'market'),
+                  testID: 'list-detail-market-sheet',
+                })
+              }
+              testID="list-detail-market-chip"
+            />
+          ) : null}
+        </ToggleStrip>
+      </View>
+
+      {/* Wave-3 §2.8 root fix: the rows are the ResultCard primitive, which carries its
+          own 20px gutter (styles.resultItem) — wrapping them in pageBlock DOUBLED the
+          inset (20+20) and edit mode narrowed further. Rows ride full-bleed in BOTH
+          modes; the card's own padding is THE single gutter (results parity), and the
+          reorder handle overlays center-right instead of narrowing the content. */}
+      <View>
+        {isEditing ? (
+          // In-place rich-row edit: the SAME rows, now inside the variable-height slot
+          // map (measured per-row heights; the drag handle is the shell affordance).
+          <ReorderableRows
+            items={orderedEditRows}
+            keyExtractor={(row) => row.key}
+            rowHeight={EDIT_ROW_HEIGHT_ESTIMATE}
+            variableHeights
+            renderRowContent={renderEditRowContent}
+            onReorder={
+              isScreenReaderEnabled
+                ? editSession.handleAccessibleReorder
+                : editSession.handleReorder
+            }
+            onDragStateChange={editSession.handleDragStateChange}
+            accessibilityMode={isScreenReaderEnabled}
+            scrollAdapter={scrollAdapter}
+            testIDPrefix="list-detail-edit"
+          />
+        ) : data.slice.contentPhase === 'awaiting' ? null : rowCount === 0 ? (
+          <StateBody message="Nothing saved here yet." testID="list-detail-empty" />
+        ) : (
+          richRows.map((row, index) => (
+            <React.Fragment key={row.key}>{renderRichRowCard(row, index)}</React.Fragment>
+          ))
+        )}
+      </View>
+
+      {/* The collaborator modal renders through the ROOT CollaboratorModalHost
+          (collaborator-modal-store sync above) — no panel-local mount. */}
+    </View>
+  );
+});
+ListDetailReadyContent.displayName = 'ListDetailReadyContent';
+
+// THE DECLARATION (L2): listDetail is a query+world-backed CONTENT body.
+const LIST_DETAIL_PAGE_BODY: PageContentBodySpec<ListDetailPageData> = {
+  kind: 'content',
+  scene: 'listDetail',
+  Content: ListDetailContent,
+};
+
 // W1 slice 1 (C2): the ENTRY arrives as a prop from the entry-keyed mount unit — with two
 // live listDetail entries (list A → profile → list B) the topmost-per-key read is wrong.
 export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps) => {
   const queryClient = useQueryClient();
-  const { pushRoute, promoteActiveSheet, closeActiveRoute } = useAppOverlayRouteController();
+  const { pushRoute, closeActiveRoute } = useAppOverlayRouteController();
   const params: ListDetailParams | null =
     entry?.key === 'listDetail' ? ((entry.params ?? {}) as ListDetailParams) : null;
-  const optionSelectorOpenKey = useOptionSelectorOpenKey();
   const listIdParam = typeof params?.listId === 'string' ? params.listId : null;
   const shareSlug = typeof params?.shareSlug === 'string' ? params.shareSlug : null;
   const targetUserId = typeof params?.targetUserId === 'string' ? params.targetUserId : null;
@@ -840,8 +1350,6 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
   // §7.1: add-tile on the photo strip exists only in the viewer's OWN lists —
   // role-based, and the virtual All list (role 'owner') qualifies too.
   const canAddPhoto = viewerRole === 'owner' || viewerRole === 'collaborator';
-  const [isSavingOrder, setIsSavingOrder] = React.useState(false);
-  const isScreenReaderEnabled = useIsScreenReaderEnabled();
 
   const response = worldServesResults ? worldResults : (resultsQuery.data ?? null);
 
@@ -867,261 +1375,6 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     marketKey != null
       ? (marketOptions.find((option) => option.value === marketKey)?.label ?? 'Market')
       : 'Market';
-  const restaurantRows: RestaurantResult[] =
-    listType === 'restaurant' ? (response?.restaurants ?? []) : [];
-  const dishRows: FoodResult[] = listType === 'dish' ? (response?.dishes ?? []) : [];
-
-  // The ONE rich-row model — read mode maps it directly; edit mode reorders its keys.
-  const richRows = React.useMemo<ListDetailRichRow[]>(
-    () =>
-      listType === 'restaurant'
-        ? restaurantRows.map((restaurant) => ({
-            key: restaurant.restaurantId,
-            itemId: restaurant.favoriteListItemId ?? null,
-            kind: 'restaurant' as const,
-            restaurant,
-          }))
-        : dishRows.map((dish) => ({
-            key: dish.connectionId,
-            itemId: dish.favoriteListItemId ?? null,
-            kind: 'dish' as const,
-            dish,
-          })),
-    [dishRows, listType, restaurantRows]
-  );
-  const richRowsByKey = React.useMemo(() => {
-    const byKey = new Map<string, ListDetailRichRow>();
-    for (const row of richRows) {
-      byKey.set(row.key, row);
-    }
-    return byKey;
-  }, [richRows]);
-
-  // ─── ResultCard wiring (leg 11 §2d): the primitive's environment on this surface ───────────
-  // Heart = the house save sheet (the SAME command-controller handlers results use);
-  // card press = the entity-ref executor's restaurantWorld lane; score-info = a panel-owned
-  // instance of the ONE score sheet (the search-scene copy is scene-focused chrome).
-  const routeSceneRuntime = useAppRouteSceneRuntime();
-  const { getRestaurantSaveHandler, getDishSaveHandler } =
-    routeSceneRuntime.routeOverlayCommandActions;
-  const executeEntityRef = useEntityRefActionExecutor();
-  const openRestaurantProfileFromList = React.useCallback(
-    (restaurant: RestaurantResult) => {
-      executeEntityRef({
-        entityId: restaurant.restaurantId,
-        entityType: 'restaurant',
-        label: restaurant.restaurantName,
-      });
-    },
-    [executeEntityRef]
-  );
-  // Dish cards resolve their restaurant from the response's restaurant axis (a dish-list
-  // results response carries it for the map pins — same source results uses).
-  const restaurantsByIdForDishRows = React.useMemo(() => {
-    const byId = new Map<string, RestaurantResult>();
-    for (const restaurant of response?.restaurants ?? []) {
-      byId.set(restaurant.restaurantId, restaurant);
-    }
-    return byId;
-  }, [response]);
-  // Score info rides the ROOT ScoreInfoHost (imperative store): a panel-local
-  // OverlayModalSheet mount anchors to the scrollable body's content box and
-  // lands offscreen (leg-11 sim RED).
-  const openScoreInfo = React.useCallback((payload: ScoreInfoPayload) => {
-    showScoreInfo(payload);
-  }, []);
-
-  // ─── Edit = the DECLARED mode session (leg 10 step 6; useEditModeSession owns the
-  // order/history session, the sheet edit lock, the header X = CANCEL discard-confirm and
-  // the action-row morph progress; §8.11 promote-to-top rides onEnter).
-  const editSession = useEditModeSession({
-    sceneKey: 'listDetail',
-    entryId: entry?.entryId ?? null,
-    onEnter: () => promoteActiveSheet({ snap: 'expanded' }),
-  });
-  const isEditing = editSession.isEditing;
-
-  const enterEditMode = React.useCallback(() => {
-    editSession.enter(richRows.map((row) => row.key));
-  }, [editSession, richRows]);
-
-  const exitEditMode = React.useCallback(() => {
-    editSession.exit();
-    setIsSavingOrder(false);
-  }, [editSession]);
-
-  // The primitive can end the session itself (header X = Cancel) — clear the local
-  // save flag on ANY session end, not just the strip's Cancel path.
-  React.useEffect(() => {
-    if (!isEditing) {
-      setIsSavingOrder(false);
-    }
-  }, [isEditing]);
-
-  const handleSaveOrder = React.useCallback(async () => {
-    if (editSession.order == null || isSavingOrder || resolvedListId == null) {
-      return;
-    }
-    // Batch order PATCH vocabulary = itemIds, built from the RENDERED rows — which can be
-    // a SUBSET of full membership (the executor drops score-less items). The API accepts a
-    // subset (reordered rows are placed, unlisted members keep relative order after them),
-    // so we send the rendered order as-is. A row missing its itemId projection is still a
-    // loud local failure — that id can't be expressed at all.
-    const orderedItemIds = editSession.order.map((key) => richRowsByKey.get(key)?.itemId ?? null);
-    if (orderedItemIds.some((itemId) => itemId == null)) {
-      announceFailureIfOnline();
-      return;
-    }
-    setIsSavingOrder(true);
-    try {
-      await favoriteListsService.reorderItems(resolvedListId, orderedItemIds as string[]);
-    } catch {
-      setIsSavingOrder(false);
-      // Honest copy: the visible rows can be a subset of the list's membership, so a
-      // failed save may have left the order partially applied — say so, and that
-      // retrying is safe (the PATCH is idempotent over the same ordered subset).
-      announceFailureIfOnline({
-        message:
-          "We couldn't save the new order — it may have only partially applied. It's safe to try saving again.",
-      });
-      return;
-    }
-    // Re-query on the saver's ranking: the custom order is now the list's default.
-    await queryClient.invalidateQueries({ queryKey: ['listDetailResults', resolvedListId] });
-    await queryClient.invalidateQueries({
-      queryKey: ['listDetail', listIdParam ?? `slug:${shareSlug}`],
-    });
-    setSortOverride('custom');
-    exitEditMode();
-  }, [
-    editSession.order,
-    exitEditMode,
-    isSavingOrder,
-    listIdParam,
-    queryClient,
-    resolvedListId,
-    richRowsByKey,
-    shareSlug,
-  ]);
-
-  // Edge auto-scroll drives the SHARED sheet scroll container through the
-  // scene-scroll-handle registry seam (the mounted body does not own its scroller).
-  const scrollAdapter = React.useMemo<ReorderScrollAdapter | null>(() => {
-    if (!isEditing) {
-      return null;
-    }
-    const handle = getOverlaySceneScrollHandle('listDetail');
-    if (handle == null) {
-      return null;
-    }
-    return {
-      scrollOffset: handle.scrollOffset,
-      scrollBy: (dy: number) => {
-        handle.scrollTo(Math.max(0, handle.scrollOffset.value + dy), false);
-      },
-    };
-  }, [isEditing]);
-
-  // Rich rows stay rich WHILE DRAGGING (listdetail-ideal §2c): the edit surface renders
-  // the SAME ResultCard rows inside the variable-height slot map; the lifted row gets a
-  // white card treatment so it reads as picked up over its siblings.
-  const canAddPhotoRef = React.useRef(canAddPhoto);
-  canAddPhotoRef.current = canAddPhoto;
-  const renderRichRowCard = React.useCallback(
-    (row: ListDetailRichRow, index: number) => {
-      const canAdd = canAddPhotoRef.current;
-      if (row.kind === 'restaurant') {
-        const { restaurant } = row;
-        return (
-          <View testID={`list-detail-row-${row.key}`}>
-            <RestaurantResultCard
-              restaurant={restaurant}
-              index={index}
-              rank={index + 1}
-              qualityColor={getMarkerColorForRestaurant(restaurant)}
-              isLiked={false}
-              onSavePress={getRestaurantSaveHandler(
-                restaurant.restaurantId,
-                restaurant.restaurantLocationId ?? restaurant.displayLocation?.locationId ?? null
-              )}
-              openRestaurantProfile={openRestaurantProfileFromList}
-              openScoreInfo={openScoreInfo}
-              primaryFoodTerm={null}
-              note={restaurant.note ?? null}
-              onAddPhoto={
-                canAdd
-                  ? () =>
-                      openPostPhotosFunnel({
-                        restaurantId: restaurant.restaurantId,
-                        restaurantName: restaurant.restaurantName,
-                      })
-                  : undefined
-              }
-            />
-          </View>
-        );
-      }
-      const { dish } = row;
-      return (
-        <View testID={`list-detail-row-${row.key}`}>
-          <DishResultCard
-            item={dish}
-            index={index}
-            qualityColor={getMarkerColorForDish(dish)}
-            isLiked={false}
-            restaurantForDish={restaurantsByIdForDishRows.get(dish.restaurantId)}
-            onSavePress={getDishSaveHandler(dish.connectionId, dish.restaurantLocationId ?? null)}
-            openRestaurantProfile={openRestaurantProfileFromList}
-            openScoreInfo={openScoreInfo}
-            note={dish.note ?? null}
-            onAddPhoto={
-              canAdd
-                ? () =>
-                    openPostPhotosFunnel({
-                      restaurantId: dish.restaurantId,
-                      restaurantName: dish.restaurantName,
-                      dishId: dish.connectionId,
-                      dishName: dish.foodName,
-                    })
-                : undefined
-            }
-          />
-        </View>
-      );
-    },
-    [
-      getDishSaveHandler,
-      getRestaurantSaveHandler,
-      openRestaurantProfileFromList,
-      openScoreInfo,
-      restaurantsByIdForDishRows,
-    ]
-  );
-  // The reorder shell renders by ITEM (no index in its render context) — the live rank
-  // badge derives from the session's current order.
-  const editIndexByKey = React.useMemo(() => {
-    const byKey = new Map<string, number>();
-    (editSession.order ?? []).forEach((key, index) => byKey.set(key, index));
-    return byKey;
-  }, [editSession.order]);
-  const renderEditRowContent = React.useCallback(
-    (row: ListDetailRichRow, context: { isDraggable: boolean; isActiveDrag: boolean }) => (
-      <View style={context.isActiveDrag ? styles.richRowActive : null}>
-        {renderRichRowCard(row, editIndexByKey.get(row.key) ?? 0)}
-      </View>
-    ),
-    [editIndexByKey, renderRichRowCard]
-  );
-
-  const orderedEditRows = React.useMemo<ListDetailRichRow[]>(() => {
-    if (editSession.order == null) {
-      return [];
-    }
-    return editSession.order
-      .map((key) => richRowsByKey.get(key))
-      .filter((row): row is ListDetailRichRow => row != null);
-  }, [editSession.order, richRowsByKey]);
-
   // ─── Header seat (leg 9 §2a/§2 charter): name-as-header + the ellipsis menu ────────────────
   const resolvedName = isVirtualAll
     ? listType === 'restaurant'
@@ -1270,239 +1523,72 @@ export const ListDetailPanelBody = React.memo(({ entry }: MountedSceneBodyProps)
     });
   }, [entryId, hasHeaderMenu, resolvedName]);
 
-  // Dead slug (sharing revoked — the only way link access dies; visibility flips never
-  // kill links, visibility canon 2026-07-12): 410 {state:'private'} on either read → the
-  // honest "no longer shared" body — distinct from the generic failure (§5.6).
-  if (isPrivateGoneError(metaQuery.error) || isPrivateGoneError(resultsQuery.error)) {
-    return <StateBody message="This list is no longer shared." testID="list-detail-private" />;
-  }
 
-  // THE LOAD-FAILURE LAW (wave-4 §1) through THE canonical L2 classification
-  // (resolvePageContentBodyState): pending until every source lands (meta, results or
-  // the presented world slice + its reveal admission); a SETTLED load with no
-  // listType/response is an ERROR by the settled-null law — the old hand-rolled
-  // hand-rolled failure derivation is gone. The gate render survives only until this panel's
-  // full spec migration (the search-family slice owns its world-transport seam).
+  // ─── Controller commands crossing the data seam ────────────────────────────────────
+  const openCollaboratorRoster = React.useCallback(() => {
+    setCollaboratorModalVisible(true);
+  }, []);
+  const onOrderSaved = React.useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['listDetailResults', resolvedListId] });
+    await queryClient.invalidateQueries({
+      queryKey: ['listDetail', listIdParam ?? `slug:${shareSlug}`],
+    });
+    setSortOverride('custom');
+  }, [listIdParam, queryClient, resolvedListId, shareSlug]);
+  // Dead slug (sharing revoked — the only way link access dies): 410 {state:'private'}
+  // on either read → a RESOLVED private-gone answer, excluded from the error edge.
+  const isPrivateGone =
+    isPrivateGoneError(metaQuery.error) || isPrivateGoneError(resultsQuery.error);
+
   const isMetaPending = !isVirtualAll && metaQuery.isPending;
   // World-backed default slice: "pending" = the world hasn't presented yet (a failed
   // enter pops the page via the §1 failure policy before this ever strands).
   const isResultsPending =
     resolvedListId != null &&
     (worldServesResults ? worldResults == null || !worldRevealAdmitted : resultsQuery.isPending);
-  const bodyState = resolvePageContentBodyState<true>({
+  const listDetailData: ListDetailPageData | null = isPrivateGone
+    ? { kind: 'privateGone' }
+    : listType != null && response != null && resolvedListId != null
+      ? {
+          kind: 'ready',
+          resolvedListId,
+          listType,
+          viewerRole,
+          defaultSort,
+          isVirtualAll,
+          canEdit,
+          canAddPhoto,
+          response,
+          roster,
+          entryId,
+          showJoinAffordance,
+          isJoining,
+          onJoin: handleJoin,
+          openCollaboratorRoster,
+          onOrderSaved,
+          slice: {
+            effectiveSort,
+            openNow,
+            priceLevel,
+            marketKey,
+            marketOptions,
+            marketChipLabel,
+            applySlice,
+            contentPhase,
+          },
+        }
+      : null;
+  const bodyState = resolvePageContentBodyState<ListDetailPageData>({
     isPending: isMetaPending || isResultsPending,
-    isError: !hasIdentity || metaQuery.isError || resultsQuery.isError,
+    isError:
+      !hasIdentity ||
+      (metaQuery.isError && !isPrivateGone) ||
+      (resultsQuery.isError && !isPrivateGone),
     what: 'this list',
-    data: listType != null && response != null ? true : null,
+    data: listDetailData,
   });
-  if (bodyState.kind !== 'present') {
-    return (
-      <View testID={bodyState.kind === 'error' ? 'list-detail-failed' : 'list-detail-loading'}>
-        <SceneBodyReadyGate
-          pending={bodyState.kind === 'pending'}
-          failure={
-            bodyState.kind === 'error' ? bodyState.failure : { isError: false, what: 'this list' }
-          }
-        />
-      </View>
-    );
-  }
+  return <PageBodyShell spec={LIST_DETAIL_PAGE_BODY} state={bodyState} />;
 
-  const rowCount = listType === 'restaurant' ? restaurantRows.length : dishRows.length;
-  const hasCustomSortOption = !isVirtualAll && (defaultSort === 'custom' || canEdit);
-  const customSortLabel = resolveCustomSortLabel(viewerRole);
-  const sortChipLabel = effectiveSort === 'custom' ? customSortLabel : SORT_LABELS[effectiveSort];
-  const sortOptions: Array<{ value: FavoriteListSort; label: string }> = [
-    ...(hasCustomSortOption ? [{ value: 'custom' as const, label: customSortLabel }] : []),
-    { value: 'best' as const, label: SORT_LABELS.best },
-    { value: 'recent' as const, label: SORT_LABELS.recent },
-  ];
-  // §2a: username · metadata dot · TYPED count ("N dishes"/"N restaurants").
-  const countLabel =
-    listType === 'restaurant'
-      ? `${rowCount} ${rowCount === 1 ? 'restaurant' : 'restaurants'}`
-      : `${rowCount} ${rowCount === 1 ? 'dish' : 'dishes'}`;
-  const ownerHandle = roster?.owner
-    ? roster.owner.username?.trim() || roster.owner.displayName?.trim() || null
-    : null;
-
-  return (
-    <View style={styles.body} testID="list-detail-body">
-      {/* §2a meta block — avatar stack FLUSH under the header, username · dot · typed count. */}
-      <View style={styles.pageBlock}>
-        <View style={styles.metaRow}>
-          {roster != null ? (
-            <CollaboratorStackChip
-              roster={roster}
-              onPress={() => setCollaboratorModalVisible(true)}
-            />
-          ) : null}
-          <Text
-            variant="caption"
-            style={styles.metaText}
-            numberOfLines={1}
-            testID="list-detail-meta-line"
-          >
-            {ownerHandle ? `${ownerHandle} · ${countLabel}` : countLabel}
-          </Text>
-        </View>
-
-        {showJoinAffordance ? (
-          <Pressable
-            onPress={() => void handleJoin()}
-            disabled={isJoining}
-            accessibilityRole="button"
-            accessibilityLabel="Join this list as a collaborator"
-            testID="list-detail-join"
-            style={styles.joinBanner}
-          >
-            {isJoining ? (
-              <SquircleSpinner size={16} color="#ffffff" />
-            ) : (
-              <Text variant="caption" weight="semibold" style={styles.joinBannerText}>
-                Join as collaborator
-              </Text>
-            )}
-          </Pressable>
-        ) : null}
-      </View>
-
-      {/* §2b: the strip PRIMITIVE's in-list mount — full-bleed band, content aligned by
-          contentInset (the transport carries no horizontal inset for this scene). */}
-      <View style={styles.stripBlock}>
-        <ToggleStrip
-          placement="in-list"
-          backdrop="plated-body"
-          cacheSeat={listDetailStripCacheSeat}
-          contentInset={OVERLAY_HORIZONTAL_PADDING}
-          actionRow={
-            isEditing
-              ? buildEditModeActionRow({
-                  onCancelEdit: exitEditMode,
-                  onUndo: editSession.undo,
-                  onRedo: editSession.redo,
-                  onSaveEdit: () => void handleSaveOrder(),
-                  canUndo: editSession.canUndo,
-                  canRedo: editSession.canRedo,
-                  hasEverEdited: editSession.hasEverEdited,
-                  isSaving: isSavingOrder,
-                  testIDPrefix: 'list-detail',
-                })
-              : null
-          }
-          actionProgress={editSession.actionProgress}
-          testID="list-detail-strip"
-        >
-          {canEdit && rowCount > 0 && effectiveSort === 'custom' ? (
-            <ListDetailEditChip key="edit" onPress={enterEditMode} />
-          ) : null}
-          <SelectorChip
-            key="sort"
-            label={sortChipLabel}
-            active={effectiveSort !== defaultSort}
-            expanded={optionSelectorOpenKey === LIST_DETAIL_SORT_SELECTOR_KEY}
-            onPress={() =>
-              toggleOptionSelector({
-                key: LIST_DETAIL_SORT_SELECTOR_KEY,
-                title: 'Sort',
-                options: sortOptions,
-                value: effectiveSort,
-                onSelect: (value) => applySlice({ sort: value }, 'sort'),
-                testID: 'list-detail-sort-sheet',
-              })
-            }
-            testID="list-detail-sort-chip"
-          />
-          <FilterChip
-            key="open-now"
-            label="Open now"
-            active={openNow}
-            onPress={() => applySlice({ openNow: !openNow }, 'open_now')}
-            testID="list-detail-open-now-chip"
-          />
-          {/* Leg 10 (defect #4): Price — VALUE-displayed when overridden (§2 chip law). */}
-          <SelectorChip
-            key="price"
-            label={priceLevel != null ? (PRICE_LEVEL_SYMBOLS[priceLevel] ?? 'Price') : 'Price'}
-            active={priceLevel != null}
-            expanded={optionSelectorOpenKey === LIST_DETAIL_PRICE_SELECTOR_KEY}
-            onPress={() =>
-              toggleOptionSelector({
-                key: LIST_DETAIL_PRICE_SELECTOR_KEY,
-                title: 'Price',
-                options: PRICE_OPTIONS,
-                value: priceLevel == null ? 'any' : String(priceLevel),
-                onSelect: (value) =>
-                  applySlice({ priceLevel: value === 'any' ? null : Number(value) }, 'price'),
-                testID: 'list-detail-price-sheet',
-              })
-            }
-            testID="list-detail-price-chip"
-          />
-
-          {isVirtualAll ? (
-            // Leg 11 (§8.16 "sliced by city"): Market — VALUE-displayed when overridden
-            // (§2 chip law); options derived from the unsliced rows (self-provisioning).
-            <SelectorChip
-              key="market"
-              label={marketChipLabel}
-              active={marketKey != null}
-              expanded={optionSelectorOpenKey === LIST_DETAIL_MARKET_SELECTOR_KEY}
-              onPress={() =>
-                toggleOptionSelector({
-                  key: LIST_DETAIL_MARKET_SELECTOR_KEY,
-                  title: 'Market',
-                  options: [{ value: 'any', label: 'All markets' }, ...marketOptions],
-                  value: marketKey ?? 'any',
-                  onSelect: (value) =>
-                    applySlice({ marketKey: value === 'any' ? null : value }, 'market'),
-                  testID: 'list-detail-market-sheet',
-                })
-              }
-              testID="list-detail-market-chip"
-            />
-          ) : null}
-        </ToggleStrip>
-      </View>
-
-      {/* Wave-3 §2.8 root fix: the rows are the ResultCard primitive, which carries its
-          own 20px gutter (styles.resultItem) — wrapping them in pageBlock DOUBLED the
-          inset (20+20) and edit mode narrowed further. Rows ride full-bleed in BOTH
-          modes; the card's own padding is THE single gutter (results parity), and the
-          reorder handle overlays center-right instead of narrowing the content. */}
-      <View>
-        {isEditing ? (
-          // In-place rich-row edit: the SAME rows, now inside the variable-height slot
-          // map (measured per-row heights; the drag handle is the shell affordance).
-          <ReorderableRows
-            items={orderedEditRows}
-            keyExtractor={(row) => row.key}
-            rowHeight={EDIT_ROW_HEIGHT_ESTIMATE}
-            variableHeights
-            renderRowContent={renderEditRowContent}
-            onReorder={
-              isScreenReaderEnabled
-                ? editSession.handleAccessibleReorder
-                : editSession.handleReorder
-            }
-            onDragStateChange={editSession.handleDragStateChange}
-            accessibilityMode={isScreenReaderEnabled}
-            scrollAdapter={scrollAdapter}
-            testIDPrefix="list-detail-edit"
-          />
-        ) : contentPhase === 'awaiting' ? null : rowCount === 0 ? (
-          <StateBody message="Nothing saved here yet." testID="list-detail-empty" />
-        ) : (
-          richRows.map((row, index) => (
-            <React.Fragment key={row.key}>{renderRichRowCard(row, index)}</React.Fragment>
-          ))
-        )}
-      </View>
-
-      {/* The collaborator modal renders through the ROOT CollaboratorModalHost
-          (collaborator-modal-store sync above) — no panel-local mount. */}
-    </View>
-  );
 });
 ListDetailPanelBody.displayName = 'ListDetailPanelBody';
 

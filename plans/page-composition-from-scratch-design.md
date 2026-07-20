@@ -278,6 +278,20 @@ THE EDIT MAP (cataloged 2026-07-18 — the exact partition, so the split is mech
   (3) entryId-keyed effects (line ~1262 region) — verify which side; (4) the gate's
   testIDs (list-detail-loading/failed) move to the shell's pending testID vocabulary.
 
+**LISTDETAIL SPLIT EXECUTED 2026-07-19 (per the edit map — the last non-search L2
+migration):** ListDetailPanelBody = the CONTROLLER (params, meta/results/collaborator/
+market queries, slug world-launch, slice state + applySlice + content-toggle seam,
+world reads + admission, list/collaborator commands, header seat) producing ONE
+composite data payload; ListDetailContent = a hook-free dispatcher (private-gone is a
+RESOLVED answer: {kind:'privateGone'} union arm renders the honest 410 body — no
+conditional hooks, the ready half is its own component) over ListDetailReadyContent
+(rows, ResultCard wiring, edit session, strip chips, render). The gate render DIED —
+listDetail joins the shell (pending/error = the one material; failure law through the
+one chokepoint). onOrderSaved + openCollaboratorRoster cross the seam as controller
+commands (invalidations + sort-override stay with slice state). Gates: tsc+lint
+clean, 138 suites, invariants 29/29 (migrated-panels check covers listDetail), matrix
+21/21 (flows 2-5 ARE the listDetail lifecycle), sim eye full page.
+
 **TRUNCATION LAW TEXT SIDE EXECUTED 2026-07-18 (L1 completion):** ChromeTitleText =
 THE one chrome title (single-line + title tokens + the ink token) and — the load-
 bearing half — the WIDTH BOUND moved to the host's title SLOT (OverlaySheetHeaderChrome
