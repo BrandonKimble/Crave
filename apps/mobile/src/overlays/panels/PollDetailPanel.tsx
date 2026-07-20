@@ -75,6 +75,7 @@ import {
 import { createProfileQueryOptions } from './profileSceneQueryOptions';
 import { API_BASE_URL } from '../../services/api';
 import { formatRelativeTime } from '../../utils/relative-time';
+import { ChromeTitleText } from '../ChromeTitleText';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACCENT = themeColors.primary;
@@ -1352,9 +1353,7 @@ export const usePollDetailPanelSpec = ({
 // (PersistentSheetHeaderHost) — not per-scene; dismiss is the close (X) button here only.
 
 const PollDetailPersistentHeaderTitle = React.memo(() => (
-  <Text variant="title" weight="semibold" style={styles.sheetTitle} numberOfLines={1}>
-    Poll
-  </Text>
+  <ChromeTitleText>Poll</ChromeTitleText>
 ));
 PollDetailPersistentHeaderTitle.displayName = 'PollDetailPersistentHeaderTitle';
 
@@ -1418,12 +1417,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: '#ffffff',
-  },
-  sheetTitle: {
-    color: themeColors.text,
-    flex: 1,
-    marginRight: 12,
-    minWidth: 0,
   },
   pollHeader: {
     marginBottom: 16,

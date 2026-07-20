@@ -234,7 +234,13 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
         style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced, rowStyle]}
         collapsable={false}
       >
-        {title}
+        {/* THE TITLE SLOT BOUND (truncation law): the slot — not each panel's text —
+            owns the width bound that makes single-line ellipsis physical. Without it
+            a long title pushed the action button (space-between with an overflowing
+            child); panels used to hand-roll flex:1 bounds inconsistently. */}
+        <View style={overlaySheetStyles.headerTitleSlot} collapsable={false}>
+          {title}
+        </View>
         {actionButton}
       </View>
       {afterRow ?? null}

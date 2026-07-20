@@ -24,6 +24,7 @@ import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useEntityRefActionExecutor } from '../../navigation/runtime/use-entity-ref-action-executor';
 import type { EntityRefType } from '../../navigation/runtime/entity-ref-action-policy';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import { ChromeTitleText } from '../ChromeTitleText';
 import type { OverlayRouteParamsMap } from '../../navigation/runtime/app-overlay-route-types';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import { formatRelativeTime } from '../../utils/relative-time';
@@ -603,11 +604,7 @@ DmSessionPanelBody.displayName = 'DmSessionPanelBody';
 // ─── Persistent headers ──────────────────────────────────────────────────────────────────────
 
 const MessagesInboxHeaderTitle = React.memo(() => (
-  <View style={styles.headerTextGroup}>
-    <Text variant="title" weight="semibold" style={styles.headerTitle} numberOfLines={1}>
-      Messages
-    </Text>
-  </View>
+  <ChromeTitleText>Messages</ChromeTitleText>
 ));
 MessagesInboxHeaderTitle.displayName = 'MessagesInboxHeaderTitle';
 
@@ -615,11 +612,7 @@ MessagesInboxHeaderTitle.displayName = 'MessagesInboxHeaderTitle';
 // C2 entry-keyed rule keeps per-entry reads out of shared chrome) — the peer name renders
 // at the body top instead. Per-entry header text = a later shared dynamic-header pass.
 const DmSessionHeaderTitle = React.memo(() => (
-  <View style={styles.headerTextGroup}>
-    <Text variant="title" weight="semibold" style={styles.headerTitle} numberOfLines={1}>
-      Chat
-    </Text>
-  </View>
+  <ChromeTitleText>Chat</ChromeTitleText>
 ));
 DmSessionHeaderTitle.displayName = 'DmSessionHeaderTitle';
 
@@ -837,12 +830,5 @@ const styles = StyleSheet.create({
   },
   sendButtonText: {
     color: '#ffffff',
-  },
-  headerTextGroup: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  headerTitle: {
-    color: '#0f172a',
   },
 });

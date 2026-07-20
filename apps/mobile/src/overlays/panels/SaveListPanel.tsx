@@ -1,5 +1,6 @@
 import React from 'react';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
+import { ChromeTitleText } from '../ChromeTitleText';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -110,17 +111,9 @@ const SaveListPersistentHeaderTitle = React.memo(() => {
   );
   const listType = sideOverride ?? triggerListType;
   return (
-    <View style={styles.headerTextGroup}>
-      <Text
-        variant="title"
-        weight="semibold"
-        style={styles.headerTitle}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-      >
-        Save to {listType === 'restaurant' ? 'Restaurants' : 'Dishes'}
-      </Text>
-    </View>
+    <ChromeTitleText>
+      Save to {listType === 'restaurant' ? 'Restaurants' : 'Dishes'}
+    </ChromeTitleText>
   );
 });
 
@@ -493,13 +486,6 @@ SaveListMountedSceneBody.displayName = 'SaveListMountedSceneBody';
 const styles = StyleSheet.create({
   sceneBody: {
     gap: ROW_GAP,
-  },
-  headerTextGroup: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  headerTitle: {
-    color: '#0f172a',
   },
   sideHint: {
     color: ROW_SUBTEXT,

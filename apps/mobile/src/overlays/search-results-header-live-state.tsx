@@ -1,7 +1,6 @@
 import React from 'react';
 import type { LayoutChangeEvent } from 'react-native';
-import { Text } from '../components';
-import styles from '../screens/Search/styles';
+import { ChromeTitleText } from './ChromeTitleText';
 import { registerPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
 import { registerHeaderCloseAction } from '../navigation/runtime/header-nav-action-registry';
 
@@ -74,17 +73,7 @@ const useSearchResultsHeaderLiveState = (): SearchResultsHeaderLiveState | null 
 
 const SearchResultsPersistentHeaderTitle: React.FC = () => {
   const liveState = useSearchResultsHeaderLiveState();
-  return (
-    <Text
-      variant="title"
-      weight="semibold"
-      style={styles.submittedQueryLabel}
-      numberOfLines={1}
-      ellipsizeMode="tail"
-    >
-      {liveState?.headerTitle ?? 'Results'}
-    </Text>
-  );
+  return <ChromeTitleText>{liveState?.headerTitle ?? 'Results'}</ChromeTitleText>;
 };
 
 // Module-scope registration (house pattern — mirrors PollsPanel/RestaurantRouteSceneInputHost).

@@ -89,6 +89,15 @@ export const overlaySheetStyles = StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: OVERLAY_HEADER_ROW_MARGIN_TOP,
   },
+  // The truncation law's width bound (see OverlaySheetHeaderChrome): the title slot
+  // takes the row's free width and clips; every ChromeTitleText inside ellipsizes.
+  headerTitleSlot: {
+    flex: 1,
+    minWidth: 0,
+    marginRight: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   headerRowSpaced: {
     marginBottom: OVERLAY_HEADER_ROW_SPACED_MARGIN_BOTTOM,
   },

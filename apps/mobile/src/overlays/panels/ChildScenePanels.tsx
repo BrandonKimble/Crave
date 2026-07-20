@@ -18,6 +18,7 @@ import { EditProfilePanelBody } from './EditProfilePanel';
 import { ListDetailPanelBody } from './ListDetailPanel';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
 import { PageBodyShell } from '../PageBodyShell';
+import { ChromeTitleText } from '../ChromeTitleText';
 import type { PageStaticBodySpec } from '../page-body-contract';
 import { MonogramAvatar } from '../../components/MonogramAvatar';
 import SquircleSpinner from '../../components/SquircleSpinner';
@@ -303,15 +304,7 @@ const createChildPersistentHeaderTitle = (sceneKey: ChildSceneKey): React.Compon
   // Static text → synchronous first-frame render (same contract as SaveListPanel's title).
   const ChildPersistentHeaderTitle = React.memo(() => (
     <View style={styles.headerTextGroup}>
-      <Text
-        variant="title"
-        weight="semibold"
-        style={styles.headerTitle}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-      >
-        {CHILD_SCENE_TITLES[sceneKey]}
-      </Text>
+      <ChromeTitleText>{CHILD_SCENE_TITLES[sceneKey]}</ChromeTitleText>
     </View>
   ));
   ChildPersistentHeaderTitle.displayName = `ChildPersistentHeaderTitle(${sceneKey})`;
@@ -409,8 +402,5 @@ const styles = StyleSheet.create({
   headerTextGroup: {
     flex: 1,
     paddingRight: 12,
-  },
-  headerTitle: {
-    color: '#0f172a',
   },
 });

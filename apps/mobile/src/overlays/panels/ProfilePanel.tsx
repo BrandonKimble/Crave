@@ -7,6 +7,7 @@ import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
 import { FrostCutout } from '../SceneBodyFoundationSurface';
+import { ChromeTitleText } from '../ChromeTitleText';
 import { CutoutSkeletonShape, SceneLoadingSurface } from '../../components/skeletons';
 import { useProfilePanelBodyModelRuntime } from './runtime/profile-panel-body-model-runtime';
 import { PageBodyShell } from '../PageBodyShell';
@@ -326,9 +327,7 @@ ProfileMountedSceneBody.displayName = 'ProfileMountedSceneBody';
 // come from the overlay route controller (reachable anywhere under the app providers). The
 // grab-handle tap is the shared promote handler.
 const ProfilePersistentHeaderTitle = React.memo(() => (
-  <Text variant="title" weight="semibold" style={styles.sheetTitle}>
-    Profile
-  </Text>
+  <ChromeTitleText>Profile</ChromeTitleText>
 ));
 
 ProfilePersistentHeaderTitle.displayName = 'ProfilePersistentHeaderTitle';
@@ -348,9 +347,6 @@ const styles = StyleSheet.create({
   sceneListHeader: {
     gap: 20,
     marginBottom: 20,
-  },
-  sheetTitle: {
-    color: '#0f172a',
   },
   header: {
     flexDirection: 'row',

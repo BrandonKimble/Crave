@@ -64,6 +64,7 @@ import {
   type ReorderScrollAdapter,
 } from '../../components/reorder';
 import { PageBodyShell } from '../PageBodyShell';
+import { ChromeTitleText } from '../ChromeTitleText';
 import {
   resolvePageBodyListState,
   type PageBodyState,
@@ -945,15 +946,7 @@ BookmarksMountedSceneBody.displayName = 'BookmarksMountedSceneBody';
 // grab-handle tap is the shared promote handler.
 const BookmarksPersistentHeaderTitle = React.memo(() => (
   <View style={styles.headerTextGroup}>
-    <Text
-      variant="title"
-      weight="semibold"
-      style={styles.headerTitle}
-      numberOfLines={1}
-      ellipsizeMode="tail"
-    >
-      Lists
-    </Text>
+    <ChromeTitleText>Lists</ChromeTitleText>
   </View>
 ));
 
@@ -972,9 +965,6 @@ const styles = StyleSheet.create({
   headerTextGroup: {
     flex: 1,
     paddingRight: 12,
-  },
-  headerTitle: {
-    color: '#0f172a',
   },
   // §2.4 CORRECTION (owner 2026-07-13): the content border applies to EVERYTHING —
   // only SCROLLABLE image strips bleed past it. The grid keeps the transport inset.

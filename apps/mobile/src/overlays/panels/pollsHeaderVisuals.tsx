@@ -1,4 +1,5 @@
 import React from 'react';
+import { ChromeTitleText } from '../ChromeTitleText';
 import { StyleSheet } from 'react-native';
 
 import { Text } from '../../components';
@@ -39,26 +40,10 @@ export const buildPollsHeaderVisualModel = ({
 };
 
 export const PollsHeaderTitleText: React.FC<{ title: string }> = ({ title }) => (
-  <Text
-    variant="title"
-    weight="semibold"
-    style={styles.sheetTitle}
-    numberOfLines={1}
-    ellipsizeMode="tail"
-  >
-    {title}
-  </Text>
+  <ChromeTitleText>{title}</ChromeTitleText>
 );
 
 const styles = StyleSheet.create({
-  sheetTitle: {
-    fontSize: FONT_SIZES.title,
-    lineHeight: LINE_HEIGHTS.title,
-    color: themeColors.text,
-    flex: 1,
-    marginRight: 12,
-    minWidth: 0,
-  },
 });
 
 export const pollsHeaderVisualStyles = styles;

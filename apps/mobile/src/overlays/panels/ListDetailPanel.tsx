@@ -85,6 +85,7 @@ import {
 import { showListEdit } from '../../components/list-edit-store';
 import { SceneBodyReadyGate } from '../SceneBodyReadyGate';
 import { resolvePageContentBodyState } from '../page-body-contract';
+import { ChromeTitleText } from '../ChromeTitleText';
 import SquircleSpinner from '../../components/SquircleSpinner';
 // Leg 11 (§2d): rows ARE the ResultCard primitive — the results card with the
 // listDetail/read-only slot bundles (note · add-photo); ListDetailRow is deleted.
@@ -1518,20 +1519,7 @@ const ListDetailPersistentHeaderTitle = React.memo(() => {
   if (!name) {
     return <CutoutSkeletonShape width={150} height={18} />;
   }
-  return (
-    <View style={styles.headerTextGroup}>
-      <Text
-        variant="title"
-        weight="semibold"
-        style={styles.headerTitle}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-        testID="list-detail-name"
-      >
-        {name}
-      </Text>
-    </View>
-  );
+  return <ChromeTitleText testID="list-detail-name">{name}</ChromeTitleText>;
 });
 ListDetailPersistentHeaderTitle.displayName = 'ListDetailPersistentHeaderTitle';
 
@@ -1675,13 +1663,6 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   stateText: {
-    color: '#0f172a',
-  },
-  headerTextGroup: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  headerTitle: {
     color: '#0f172a',
   },
 });

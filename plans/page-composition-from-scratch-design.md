@@ -223,6 +223,18 @@ identical behavior with scroll. From scratch, first principles, throw away the
 current implementation if needed. Sequencing: only after the family/foundational
 work completes.
 
+**TRUNCATION LAW TEXT SIDE EXECUTED 2026-07-18 (L1 completion):** ChromeTitleText =
+THE one chrome title (single-line + title tokens + the ink token) and — the load-
+bearing half — the WIDTH BOUND moved to the host's title SLOT (OverlaySheetHeaderChrome
+headerTitleSlot: flex:1/minWidth:0/marginRight:12). The old per-panel forks
+(sheetTitle ×4 / headerTitle ×7 / restaurantName / submittedQueryLabel — some with
+hand-rolled flex bounds, some silently UNBOUNDED so a long title pushed the nav
+action) are DELETED across 12 registration sites; single-line ellipsis is physical
+for every present and future title by construction. NOTE for the owner eye pass: ink
+unified on themeColors.text (#1A1A1A) — a few titles were #0f172a (slate-900), a
+subtle darkening on those. Gates: tsc clean, 138 suites, matrix 21/21, eye
+(listDetail user-authored title renders + testID preserved).
+
 **STRIP-BAND RESTRUCTURE EXECUTED 2026-07-18 (owner law §3 — chrome changes
 immediately):** `shouldHideScrollHeaderForSurface` DIED AS A CLASS — the strip's
 initial-loading hide existed only to avoid double-rendering with the dead cover's

@@ -42,6 +42,7 @@ import {
 } from '../restaurant-header-live-state';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 import CraveScoreText from '../../screens/Search/components/CraveScoreText';
+import { ChromeTitleText } from '../ChromeTitleText';
 import { RestaurantHoursCard } from '../../features/restaurant-hours/RestaurantHoursCard';
 import {
   RestaurantMentionsView,
@@ -892,11 +893,7 @@ const RestaurantPersistentHeaderTitle = React.memo(() => {
     // ONLY the title; the grab handle + close button stay live for cancel.
     return <CutoutSkeletonShape width={150} height={18} />;
   }
-  return (
-    <Text style={styles.restaurantName} numberOfLines={1} ellipsizeMode="tail">
-      {restaurantName}
-    </Text>
-  );
+  return <ChromeTitleText>{restaurantName}</ChromeTitleText>;
 });
 RestaurantPersistentHeaderTitle.displayName = 'RestaurantPersistentHeaderTitle';
 
@@ -977,14 +974,6 @@ registerHeaderCloseAction('restaurant', () => {
 const styles = StyleSheet.create({
   headerCloseButton: {
     marginLeft: 2,
-  },
-  restaurantName: {
-    flex: 1,
-    marginRight: 12,
-    fontSize: FONT_SIZES.title,
-    lineHeight: LINE_HEIGHTS.title,
-    fontWeight: '700',
-    color: '#0f172a',
   },
   headerActions: {
     flexDirection: 'row',

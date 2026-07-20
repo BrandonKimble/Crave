@@ -26,6 +26,7 @@ import type { SnapPoints } from '../bottomSheetMotionTypes';
 import type { MapBounds } from '../../types';
 import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
 import { normalizeSearchRouteSceneStackShellSpec } from '../searchOverlayRouteHostContract';
+import { ChromeTitleText } from '../ChromeTitleText';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -422,11 +423,7 @@ const PollCreationPersistentHeaderTitle = React.memo(() => {
     : marketKey
       ? 'Add a poll'
       : 'Add a poll near here';
-  return (
-    <Text variant="title" weight="semibold" style={styles.sheetTitle} numberOfLines={1}>
-      {headerTitle}
-    </Text>
-  );
+  return <ChromeTitleText>{headerTitle}</ChromeTitleText>;
 });
 PollCreationPersistentHeaderTitle.displayName = 'PollCreationPersistentHeaderTitle';
 
@@ -446,12 +443,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: '#ffffff',
-  },
-  sheetTitle: {
-    color: themeColors.text,
-    flex: 1,
-    marginRight: 12,
-    minWidth: 0,
   },
   section: {
     marginBottom: 16,
