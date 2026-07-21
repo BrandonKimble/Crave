@@ -221,3 +221,25 @@ its floorFps ~6 profile smells like startup/tile-raster or the same UI work now
 packed tighter because the reveal no longer serializes behind the 99ms stall.
 Needs mark-aligned window attribution before any conclusion; do NOT read it as
 a regression claim. The fade/snap feel verdict = OWNER'S EYE on device.
+
+## Catalog arc, deep half step 3: COVERED PREPARSE + NO-OP FRAME SKIP (2026-07-19)
+
+Two levers, [FRAMEDBG]-attributed: (1) the covered frame's pure source-delta
+parse (+fan-out synthesis) moved to the RN module's serial background queue —
+setRenderFrame's entry runs there BEFORE its main hop, so ordering is free;
+latency-tolerant kinds only (hidden_preload/bootstrap). (2) the live_update
+frame that flips entering→live carries ZERO deltas at unchanged revisions —
+its ~31ms mid-ramp full reconcile recomputed identical outputs; a frame that
+mutated no family input now skips it ([applydedup]).
+
+RELEASE NATIVE VERDICT — THE ARC'S GOAL: **zero [applyslow] sections in the
+entire search reveal.** No >30ms main-thread map work remains anywhere in the
+window: preparse 33.7ms [applybg] + preroll prepare 46.4ms [applybg] both ride
+background queues; enter + live frames dedup-skip; completion applies in 1.3ms.
+(Journey: 217ms enter + 83 covered + 62 live all-on-main → nothing over 30ms.)
+
+LANE MEASURES: too noisy to certify (JS worst swung 42—186 across same-binary
+runs; UI worst window 80—180 across the day with IDENTICAL native profiles) —
+single-sample windows cannot adjudicate; the flagged mark-aligned window
+attribution remains the follow-up. Gates: matrix 21/21, invariants 29/29,
+content verified. Fade/snap feel = owner's eye on device.
