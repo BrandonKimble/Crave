@@ -322,53 +322,6 @@ describe('SignalsService fire-and-forget law (a write failure never fails the ac
   });
 });
 
-describe('SignalsService market bbox lookup (cached)', () => {
-  it('resolves the market bbox once and serves the cache after', async () => {
-    const { service, prisma } = createService();
-    prisma.market.findFirst.mockResolvedValue({
-      bboxNeLat: '30.516863',
-      bboxNeLng: '-97.568420',
-      bboxSwLat: '30.098659',
-      bboxSwLng: '-97.928960',
-      centerLatitude: '30.27',
-      centerLongitude: '-97.74',
-    });
-
-    const first = await service.bboxFromMarketKey('Austin');
-    const second = await service.bboxFromMarketKey('austin');
-    expect(first).toEqual({
-      minLat: 30.098659,
-      maxLat: 30.516863,
-      minLng: -97.92896,
-      maxLng: -97.56842,
-    });
-    expect(second).toEqual(first);
-    expect(prisma.market.findFirst).toHaveBeenCalledTimes(1);
-  });
-
-  it('falls back to the market center as a zero-area bbox, and never rejects', async () => {
-    const { service, prisma } = createService();
-    prisma.market.findFirst.mockResolvedValue({
-      bboxNeLat: null,
-      bboxNeLng: null,
-      bboxSwLat: null,
-      bboxSwLng: null,
-      centerLatitude: '30.27',
-      centerLongitude: '-97.74',
-    });
-    expect(await service.bboxFromMarketKey('waco')).toEqual({
-      minLat: 30.27,
-      maxLat: 30.27,
-      minLng: -97.74,
-      maxLng: -97.74,
-    });
-
-    prisma.market.findFirst.mockRejectedValue(new Error('db down'));
-    expect(await service.bboxFromMarketKey('elsewhere')).toBeNull();
-    expect(await service.bboxFromMarketKey(null)).toBeNull();
-  });
-});
-
 describe('SignalsService restaurant-location bbox lookup', () => {
   it('prefers the given locationId, else the primary location; never rejects', async () => {
     const { service, prisma } = createService();

@@ -835,7 +835,6 @@ model NotificationDevice {
   platform      String?              @db.VarChar(50)
   appVersion    String?              @map("app_version") @db.VarChar(32)
   locale        String?              @db.VarChar(16)
-  city          String?              @db.VarChar(255)
   // §4 home-place registration: placeAt(home location) — the smallest catalog
   // place containing the coordinate the device registered with. NULL = we
   // honestly don't know where this device lives (no location at registration,
@@ -849,7 +848,6 @@ model NotificationDevice {
   notifications Notification[]
 
   @@index([userId], map: "idx_notification_devices_user_id")
-  @@index([city], map: "idx_notification_devices_city")
   @@index([homePlaceId], map: "idx_notification_devices_home_place_id")
   @@map("notification_devices")
 }
@@ -2027,6 +2025,14 @@ model PlaceGeometry {
 // zero-area), actorId pseudonymous. Monthly partitioning applied at the SQL
 // layer later (native partitioning is a follow-up; the table is append-only
 // so re-partitioning is cheap).
+/// §3: MONTHLY RANGE-PARTITIONED on occurred_at (raw-SQL migration
+/// 20260720110000). The DB primary key is COMPOSITE (signal_id, occurred_at)
+/// — Postgres law: a unique constraint on a partitioned table must include
+/// the partition key. Prisma cannot express partitioning, so this model
+/// deliberately keeps the simple @id (signal_id is still globally unique in
+/// practice — gen_random_uuid); the ledger is append-only + raw-SQL-read, so
+/// no findUnique/update/delete ever runs against the composite key. Future
+/// partitions are created ahead by SignalPartitionMaintenanceService.
 model Signal {
   signalId    String   @id @default(dbgenerated("gen_random_uuid()")) @map("signal_id") @db.Uuid
   /// ACT kinds only; qualifiers live in meta (judged at read):
@@ -2177,4 +2183,34 @@ model PollWeeklyTick {
 
   @@unique([placeId, weekOf], map: "poll_weekly_ticks_place_week_key")
   @@map("poll_weekly_ticks")
+}
+
+/// §14.5 durable window store (durability leg, 2026-07-20): the WINDOW
+/// CONSUMPTION of pools whose windows outlive a process. §16 classification
+/// of the durability split (design of record):
+///  - perMonth / perDay / grant pools (the money — TomTom 2,500 + 20,000/mo)
+///    are DURABLE: consumption is written through on every reconcile (they
+///    are low-rate; a synchronous durable increment is correct-first) and
+///    loaded at boot — a restart can never reset a month ledger.
+///  - perMinute pools (reddit 100/min, gemini TPM mirror) stay IN-MEMORY by
+///    design: a restart loses ≤1 minute of window, which is harmless, and
+///    putting DB I/O on the per-request hot path buys nothing. Their
+///    declared-vs-actual LEDGER pairs likewise stay in-memory (drift is a
+///    statistical instrument; restart loss is noise) — a durable draw ledger
+///    is the §18.5 ops-readers leg, not this one.
+/// Reservations are NEVER stored: they are seconds-scale and TTL-expiring
+/// (§14.2 leaks expire) — only confirmed consumption is durable.
+model PoolWindowConsumption {
+  /// PoolConfig.name, e.g. 'tomtom.scarcePolygons'.
+  poolName  String   @map("pool_name") @db.VarChar(128)
+  /// Canonical UTC window label: perMonth 'YYYY-MM', perDay 'YYYY-MM-DD',
+  /// grant 'grant' (grants never roll).
+  windowKey String   @map("window_key") @db.VarChar(32)
+  consumed  Float    @default(0)
+  /// Grant pools only: owner-minted capacity on top of the registered base.
+  granted   Float    @default(0)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@id([poolName, windowKey])
+  @@map("pool_window_consumption")
 }

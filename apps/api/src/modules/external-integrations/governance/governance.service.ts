@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import { PoolRegistry, type PoolDenial } from './pool-registry';
+import { PrismaPoolConsumptionStore } from './pool-consumption.store';
 
 /**
  * The Resource Governor's runtime seam (master plan §14 v2, Phase-A minimum):
@@ -14,12 +15,17 @@ import { PoolRegistry, type PoolDenial } from './pool-registry';
  * judgment layer.
  */
 @Injectable()
-export class GovernanceService {
-  readonly pools = new PoolRegistry();
+export class GovernanceService implements OnModuleInit {
+  readonly pools: PoolRegistry;
   private readonly logger: LoggerService;
 
-  constructor(loggerService: LoggerService) {
+  constructor(loggerService: LoggerService, store: PrismaPoolConsumptionStore) {
     this.logger = loggerService;
+    // §14.5 durable window store: month/grant window consumption is written
+    // through to Postgres and loaded at boot — a restart can never reset the
+    // TomTom month ledgers. perMinute pools stay memory-only (see the
+    // registry header for the §16-classified split).
+    this.pools = new PoolRegistry(store);
     // TomTom pool facts (owner dashboard, master plan §26.6/Leg-5 record):
     // Search API (polygons) 2,500/month — the scarce pool; geocode +
     // reverse geocode 20,000/month each — the cheap pool. Month windows are
@@ -89,6 +95,33 @@ export class GovernanceService {
   }
 
   /**
+   * Boot hydration (§14.5): load each durable pool's current window from the
+   * store so month-to-date consumption survives the restart. A failed load
+   * leaves the window unconfirmed — hardClosed pools deny until the store
+   * recovers (ensureWindow retries on every draw). Boot itself never fails.
+   */
+  async onModuleInit(): Promise<void> {
+    await Promise.all(
+      this.pools.listRegistered().map(async (pool) => {
+        await this.pools.ensureWindow(pool.name);
+        const status = this.pools.poolStatus(pool.name);
+        if (status.storeConfirmed === false) {
+          this.logger.warn(
+            'Durable pool window not store-confirmed at boot (fail-closed until the store recovers)',
+            { poolName: pool.name },
+          );
+        } else if (status.storeConfirmed === true) {
+          this.logger.info('Durable pool window hydrated from store', {
+            poolName: pool.name,
+            used: status.used,
+            limit: status.limit,
+          });
+        }
+      }),
+    );
+  }
+
+  /**
    * Ledger-only mirror for a pool whose ADMISSION lives elsewhere (Phase-A
    * gemini absorption): records a declared-vs-actual draw pair without ever
    * gating the caller. A mirror "denial" is pure divergence telemetry — the
@@ -110,7 +143,9 @@ export class GovernanceService {
         );
         return;
       }
-      this.pools.reconcile(reservation.reservationId, actual);
+      // Mirror pools are perMinute (memory-only) — the reconcile promise is a
+      // no-op write-through and never rejects.
+      void this.pools.reconcile(reservation.reservationId, actual);
     } catch (error) {
       this.logger.warn(
         'Ledger mirror failed (telemetry only, caller unaffected)',
@@ -152,6 +187,10 @@ export class GovernanceService {
   ): Promise<
     { admitted: true; value: T } | { admitted: false; denial: PoolDenial }
   > {
+    // Durable pools: confirm the current window against the store before
+    // admission (no-op for perMinute; heals a boot-time load failure and
+    // loads a freshly-rolled month). Fail-closed denial follows in reserve().
+    await this.pools.ensureWindow(poolName);
     const reservation = this.pools.reserve(poolName, 1, workClass);
     if (!reservation.admitted) {
       this.logDenial(poolName, workClass, reservation);
@@ -159,12 +198,14 @@ export class GovernanceService {
     }
     try {
       const result = await act();
-      this.pools.reconcile(reservation.reservationId, 1);
+      // Synchronous durable increment for month/grant pools (§14.5 —
+      // correctness first; they are low-rate money draws).
+      await this.pools.reconcile(reservation.reservationId, 1);
       return { admitted: true, value: result };
     } catch (error) {
       // The call failed — no vendor budget was necessarily consumed, but we
       // conservatively debit 1 (the request likely reached the vendor).
-      this.pools.reconcile(reservation.reservationId, 1);
+      await this.pools.reconcile(reservation.reservationId, 1);
       throw error;
     }
   }

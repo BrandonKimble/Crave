@@ -522,8 +522,49 @@ agent in flight at turn end so completion notifications chain turns.
     completed); recommend its own micro-leg.
     engine-coverage re-key of
     resolveViewportCoverage consumers; ListDetail Market chip → city-slice
-    re-key; durable PoolRegistry store; signals monthly partitions; ~~perf-harness
-    rename~~ DONE 2026-07-20; owner sim-feel items
+    re-key; ~~durable PoolRegistry store; signals monthly partitions;
+    legacy-poll expiry; chronological-batch liar~~ ALL FOUR EXECUTED
+    2026-07-20 (durability+legacy-expiry leg, uncommitted; 655 green;
+    3 migrations drift-applied: 20260720100000_pool_window_consumption,
+    20260720110000_signals_monthly_partitions,
+    20260720120000_drop_notification_device_city; ⚠️ :3000 NOT restarted —
+    running binary still writes notification_devices.city → device
+    registration 500s until the CLAUDE.md rebuild+restart recipe runs):
+    · PoolRegistry durable store (§14.5/§16 split): perMonth/perDay/grant
+    consumption write-through on reconcile + boot/rollover load via
+    ensureWindow (GovernanceService.onModuleInit + before every draw);
+    unconfirmed window ⇒ hardClosed pools deny 'storeFailure' (fail closed,
+    RED-spec'd); perMinute (reddit/gemini) stays memory-only BY DESIGN;
+    draw ledger stays in-memory (§18.5 leg). Restart survival live-proven
+    (two registries over real PG: 60 consumed → second instance denies
+    at 41, admits 40).
+    · signals monthly partitions (§3): raw-SQL swap to RANGE(occurred_at)
+    parent, PK (signal_id, occurred_at), partitions p_pre + 2026_06..10,
+    all 7 indexes as partitioned indexes (incl. partial dedupe expression
+    idx); 282/282 rows survived (121+161 by month); prisma create routes
+    to the right partition (proven, 2026-08 insert); full aggregate
+    rebuild checksum-stable over the partitioned table (double-run
+    identical); SignalPartitionMaintenanceService daily cron keeps
+    [current..+2] (§16 K6 lead).
+    · legacy-poll expiry: ALL 94 legacy market-keyed polls (13 markets,
+    all CLOSED) backfilled to catalog places — name+bbox identity match
+    (11) else smallest SAME-STATE containing place (North Bergen,
+    Weehawken → New Jersey); 0 null-place rows remain; feed marketKeys
+    arm + legacyMarketKeysInView + resolveFeedView market arm +
+    QueryPollsDto/ListUserPollsDto marketKey + checkDuplicate legacy arm +
+    SignalsService.bboxFromMarketKey ALL DELETED; create/check-duplicate
+    dto marketKey kept ACCEPTED-IGNORED (mobile still sends);
+    notification_devices.city column+index DROPPED (dto field
+    accepted-ignored; mobile field removal = next mobile touch); markets
+    survivor ledger updated (survivors: resolve-ip launch ladder,
+    /markets/resolve perf harness, /markets/active ListDetail chip,
+    resolveViewportCoverage, resolveOrEnsureForLocation+bootstrap,
+    resolveMarketKeyForCommunity, polls.market_key label/gazetteer
+    column → §13 re-key; core_markets last).
+    · chronological-batch.worker §12.4 fix: real errors now THROW (Bull
+    retries/fails visibly); covered-skip + governance not-now stay
+    completed; spec'd.
+    owner sim-feel items
     (feed pan cadence, two-All chips, promise card styling).
 - deferred-in-leg-2: NONE — See-locations executed 2026-07-20 (see Leg 2
   breakdown); Leg 2 fully closed.

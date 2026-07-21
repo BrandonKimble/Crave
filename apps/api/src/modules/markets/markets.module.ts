@@ -34,11 +34,18 @@ import { IpLocationService } from './ip-location.service';
  *    re-key (presence → place geometry).
  *  - resolveMarketKeyForCommunity (unified-processing / batch): mention
  *    market provenance — same §13 re-key.
- *  - SignalsService.bboxFromMarketKey + the polls legacy feed arm: legacy
- *    market-keyed poll rows — die with the LEGACY-POLL-EXPIRY leg.
+ *  - SignalsService.bboxFromMarketKey + the polls legacy feed arm: KILLED
+ *    2026-07-20 (LEGACY-POLL-EXPIRY leg) — all 94 legacy market-keyed polls
+ *    backfilled to catalog places (name+bbox identity match, else smallest
+ *    same-state containing place); the feed/dedupe/signal-geo market arms and
+ *    the feed dto marketKey are deleted. polls.market_key still EXISTS as a
+ *    display/label column (attachMarketLabels) and the comment-highlight
+ *    gazetteer scope (entityTextSearch { marketKey }) — both die with the
+ *    §13 territory re-key, which then also drops the column.
  *  - NotificationsService market fallback: KILLED 2026-07-19 (home-place
  *    registration leg) — poll-release targeting is homePlaceId subtree
- *    membership; the dispatch path reads no markets.
+ *    membership; the dispatch path reads no markets. notification_devices
+ *    .city column DROPPED 2026-07-20 (legacy-poll-expiry leg).
  * core_markets itself drops only after ALL of the above are gone.
  */
 @Module({

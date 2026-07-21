@@ -128,7 +128,11 @@ function createHarness(
 
 describe('poll endorsement dual-write (§3 poll_vote signal)', () => {
   it('meta carries the endorsed candidate (pollId + endorsedSubjectId/Type), subject stays the poll topic', async () => {
-    const { service, signalsPrisma } = createHarness();
+    // Every poll is place-keyed (legacy-poll expiry backfill) — the signal's
+    // geo comes from the poll's place bbox.
+    const { service, signalsPrisma } = createHarness({
+      pollPlaceId: '88888888-8888-8888-8888-888888888888',
+    });
 
     const result = await service.togglePollEndorsement(
       POLL_ID,

@@ -6,6 +6,7 @@ import { SignalsService } from './signals.service';
 import { SignalsController } from './signals.controller';
 import { SignalDemandAggregateService } from './signal-demand-aggregate.service';
 import { SignalDemandReadService } from './signal-demand-read.service';
+import { SignalPartitionMaintenanceService } from './signal-partition-maintenance.service';
 
 /**
  * The Signals Ledger (master plan §3): the append-only write path
@@ -22,6 +23,7 @@ import { SignalDemandReadService } from './signal-demand-read.service';
     SignalsService,
     SignalDemandAggregateService,
     SignalDemandReadService,
+    SignalPartitionMaintenanceService,
   ],
   exports: [
     SignalsService,

@@ -120,7 +120,6 @@ export interface RecordSignalInput {
 // read changes meaning at any cap value. Sized to corpus reality (actors ≫
 // markets/places); pacer-derived sizing replaces them if they ever bind.
 const ACTOR_CACHE_MAX = 10_000;
-const MARKET_BBOX_CACHE_MAX = 1_000;
 const PLACE_BBOX_CACHE_MAX = 1_000;
 
 @Injectable()
@@ -128,8 +127,6 @@ export class SignalsService {
   private readonly logger: LoggerService;
   /** cacheKey ("u:<userId>" | "d:<deviceKey>") -> actorId */
   private readonly actorIdCache = new Map<string, string>();
-  /** lowercased marketKey -> bbox (null cached too: known-missing markets) */
-  private readonly marketBboxCache = new Map<string, SignalBbox | null>();
   /** placeId -> bbox (null cached too: un-sketched places) */
   private readonly placeBboxCache = new Map<string, SignalBbox | null>();
   /** Skip conditions log once per key per process — never spam the hot path. */
@@ -214,76 +211,10 @@ export class SignalsService {
   }
 
   /**
-   * Market bbox via core_markets (cached; nulls cached too). Falls back to the
-   * market's center as a zero-area bbox when it has no stored bbox. Never
-   * rejects — safe to pass un-awaited as RecordSignalInput.geo.
-   */
-  async bboxFromMarketKey(
-    marketKey: string | null | undefined,
-  ): Promise<SignalBbox | null> {
-    const key = marketKey?.trim().toLowerCase();
-    if (!key) {
-      return null;
-    }
-    const cached = this.marketBboxCache.get(key);
-    if (cached !== undefined) {
-      return cached;
-    }
-    try {
-      const market = await this.prisma.market.findFirst({
-        where: { marketKey: { equals: key, mode: 'insensitive' } },
-        select: {
-          bboxNeLat: true,
-          bboxNeLng: true,
-          bboxSwLat: true,
-          bboxSwLng: true,
-          centerLatitude: true,
-          centerLongitude: true,
-        },
-      });
-      let bbox: SignalBbox | null = null;
-      if (
-        market?.bboxNeLat != null &&
-        market.bboxNeLng != null &&
-        market.bboxSwLat != null &&
-        market.bboxSwLng != null
-      ) {
-        bbox = this.bboxFromBounds({
-          northEast: {
-            lat: Number(market.bboxNeLat),
-            lng: Number(market.bboxNeLng),
-          },
-          southWest: {
-            lat: Number(market.bboxSwLat),
-            lng: Number(market.bboxSwLng),
-          },
-        });
-      } else if (
-        market?.centerLatitude != null &&
-        market.centerLongitude != null
-      ) {
-        bbox = this.bboxFromPoint(
-          Number(market.centerLatitude),
-          Number(market.centerLongitude),
-        );
-      }
-      this.cachePut(this.marketBboxCache, key, bbox, MARKET_BBOX_CACHE_MAX);
-      return bbox;
-    } catch (error) {
-      this.logger.debug('Market bbox lookup failed', {
-        marketKey: key,
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-        },
-      });
-      return null;
-    }
-  }
-
-  /**
    * Place bbox via the places catalog (§1 DAG rows) — the geo for signals on
    * place-keyed polls (red-team 3e: a vote on a placeId poll attributes to
-   * the PLACE bbox; the marketKey path is legacy-poll-only). Crossing place
+   * the PLACE bbox; the legacy marketKey path died with legacy-poll expiry).
+   * Crossing place
    * rows (minLng > maxLng) pass through as-is — SignalBbox is wrap-aware.
    * Falls back to the centroid as a zero-area bbox for un-sketched-bbox rows.
    * Never rejects — safe to pass un-awaited as RecordSignalInput.geo.

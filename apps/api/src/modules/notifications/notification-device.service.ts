@@ -18,10 +18,6 @@ export class NotificationDeviceService {
 
   async registerDevice(dto: RegisterDeviceDto): Promise<void> {
     const normalizedToken = dto.token.trim();
-    const normalizedCity =
-      typeof dto.city === 'string' && dto.city.trim().length
-        ? dto.city.trim()
-        : null;
 
     // §4 home-place registration: the client sends ground truth (a coordinate,
     // never a place id); the server judges placeAt = smallestContaining(point).
@@ -49,7 +45,6 @@ export class NotificationDeviceService {
         platform: dto.platform ?? null,
         appVersion: dto.appVersion ?? null,
         locale: dto.locale ?? null,
-        city: normalizedCity,
         homePlaceId: homePlaceId ?? null,
       },
       update: {
@@ -57,7 +52,6 @@ export class NotificationDeviceService {
         platform: dto.platform ?? null,
         appVersion: dto.appVersion ?? null,
         locale: dto.locale ?? null,
-        city: normalizedCity,
         ...(homePlaceId !== undefined ? { homePlaceId } : {}),
         updatedAt: new Date(),
       },

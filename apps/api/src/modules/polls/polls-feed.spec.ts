@@ -1,7 +1,7 @@
 /**
  * §22 item 5 — the polls FEED cut (plans/geo-demand-foundation-rebuild.md §6):
- * places-in-view membership (+ descendants of the commensurate subject,
- * + legacy in-view markets interim), §2 header verdict stamped, keyset
+ * places-in-view membership (+ descendants of the commensurate subject),
+ * §2 header verdict stamped, keyset
  * cursor stability under mid-pagination inserts, batch place labels, and
  * the cold-start promise state.
  *
@@ -74,17 +74,13 @@ function createHarness(options: {
       if (sql.includes('ORDER BY p.created_at DESC')) {
         // The 'new'-sort page query. Filter template param order:
         // state, mode, mode, launchedAfter, launchedAfter, placeIds,
-        // marketKeys, [cursorDate, cursorId], limit+1.
+        // [cursorDate, cursorId], limit+1. (The legacy marketKeys arm died
+        // with the legacy-poll-expiry leg — every row is place-keyed.)
         const placeIds = values[5] as string[];
-        const marketKeys = values[6] as string[];
         const limit = values[values.length - 1] as number;
         const hasCursor = sql.includes('(p.created_at, p.poll_id) <');
         let rows = options.pollTable.filter(
-          (row) =>
-            (row.place_id !== null && placeIds.includes(row.place_id)) ||
-            (row.place_id === null &&
-              row.market_key !== null &&
-              marketKeys.includes(row.market_key.toLowerCase())),
+          (row) => row.place_id !== null && placeIds.includes(row.place_id),
         );
         rows = [...rows].sort(
           (a, b) =>
@@ -174,7 +170,6 @@ function createHarness(options: {
               })),
           );
         }
-        // legacyMarketKeysInView (isActive + bbox intersect).
         return Promise.resolve(keys.map((marketKey) => ({ marketKey })));
       }),
       findFirst: jest.fn().mockResolvedValue(null),
@@ -236,7 +231,7 @@ const STATE_IN_VIEW = {
 };
 
 describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
-  it('feed = in-view places + descendants of the commensurate subject + legacy in-view markets; over-scale subdivision+ places excluded', async () => {
+  it('feed = in-view places + descendants of the commensurate subject; over-scale subdivision+ places excluded; place-keying is the ONLY membership (backfilled legacy rows join via their place)', async () => {
     const now = Date.now();
     const table: FakePollRow[] = [
       {
@@ -259,16 +254,19 @@ describe('PollsService.queryPolls — the §6 places-in-view feed', () => {
         market_key: null,
         created_at: new Date(now - 3000),
       },
-      // Legacy marketKey-only rows: in-view market included, foreign market not.
+      // BACKFILLED legacy row (legacy-poll expiry): market_key still stamped
+      // but place-keyed like every other row — joins via its place, and only
+      // when that place is a member.
       {
         poll_id: pollId(4),
-        place_id: null,
+        place_id: TOWN,
         market_key: 'Austin-Metro',
         created_at: new Date(now - 4000),
       },
+      // A place outside the view's membership never joins, market_key or not.
       {
         poll_id: pollId(5),
-        place_id: null,
+        place_id: '99999999-9999-9999-9999-999999999999',
         market_key: 'elsewhere',
         created_at: new Date(now - 5000),
       },

@@ -45,6 +45,12 @@ export class CreatePollDto {
   @IsEnum(PollTopicType)
   topicType?: PollTopicType;
 
+  /**
+   * ACCEPTED-IGNORED (legacy-poll expiry, 2026-07-20): the running mobile
+   * client may still serialize a marketKey; forbidNonWhitelisted would 400
+   * it, so the field stays declared but the server reads ONLY `bounds`.
+   * Delete with the next mobile touch (field removal on the client).
+   */
   @IsOptional()
   @IsString()
   marketKey?: string;

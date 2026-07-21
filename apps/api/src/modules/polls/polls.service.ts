@@ -159,19 +159,20 @@ export class PollsService {
   }
 
   /**
-   * §3 signal geo for poll acts (red-team 3e): a PLACE-keyed poll attributes
-   * to its place's bbox — the closed loop that feeds poll_vote back into the
-   * place's demand mass and answerYield. Only legacy market-keyed polls
-   * (placeId null) still walk the marketKey path; both helpers never reject,
-   * so the promise is safe un-awaited as RecordSignalInput.geo.
+   * §3 signal geo for poll acts (red-team 3e): a poll attributes to its
+   * PLACE's bbox — the closed loop that feeds poll_vote back into the
+   * place's demand mass and answerYield. Every poll is place-keyed since the
+   * legacy-poll-expiry backfill (2026-07-20: all 94 legacy market-keyed rows
+   * re-keyed to catalog places; new rows are place-keyed at creation);
+   * bboxFromPlace never rejects, so the promise is safe un-awaited as
+   * RecordSignalInput.geo.
    */
   private pollSignalGeo(poll: {
     placeId: string | null;
-    marketKey: string | null;
   }): Promise<SignalBbox | null> {
     return poll.placeId
       ? this.signals.bboxFromPlace(poll.placeId)
-      : this.signals.bboxFromMarketKey(poll.marketKey);
+      : Promise.resolve(null);
   }
 
   /**
@@ -183,9 +184,8 @@ export class PollsService {
    * (resolveHeaderPlace — the SAME derivation search's displayMarketName
    * uses) → feed members = in-view places (minus over-scale subdivision+
    * places, §4's feed-at-that-zoom boundary) ∪ descendants of the
-   * commensurate subject(s). Legacy marketKey-only poll rows join via their
-   * market's bbox intersecting the view — an INTERIM seam until Phase C
-   * purges marketKey from polls entirely.
+   * commensurate subject(s). Every poll row is place-keyed (legacy-poll
+   * expiry, 2026-07-20) — the market-bbox interim arm is gone.
    *
    * Response carries BOTH the new contract (header / promise / nextCursor /
    * per-poll placeName) and the legacy envelope fields pre-cut mobile
@@ -205,7 +205,7 @@ export class PollsService {
       ? decodePollFeedCursor(query.cursor, sort)
       : null;
 
-    const view = await this.resolveFeedView(query);
+    const view = this.resolveFeedView(query);
     if (!view) {
       return this.buildFeedResponse({
         headerPlaceName: null,
@@ -216,14 +216,12 @@ export class PollsService {
     }
 
     const membership = await this.resolveViewportMembership(view);
-    const legacyMarketKeys = await this.legacyMarketKeysInView(view);
 
     const page = await this.queryFeedPage({
       state: targetState,
       mode: targetMode,
       launchedAfter,
       placeIds: membership.placeIds,
-      marketKeys: legacyMarketKeys,
       sort,
       limit,
       cursor,
@@ -241,11 +239,12 @@ export class PollsService {
   }
 
   /**
-   * The feed view. `bounds` is the contract; the marketKey arm serves
-   * PRE-CUT mobile builds that send a cached marketKey instead (their
-   * market's stored bbox becomes the view) — dies with the mobile feed cut.
+   * The feed view. `bounds` IS the contract (the legacy marketKey→market-bbox
+   * arm died with the legacy-poll-expiry leg — no market is ever read here).
    */
-  private async resolveFeedView(query: QueryPollsDto): Promise<GeoBbox | null> {
+  private resolveFeedView(query: {
+    bounds?: QueryPollsDto['bounds'];
+  }): GeoBbox | null {
     const bounds = query.bounds;
     if (bounds?.northEast && bounds.southWest) {
       const { northEast, southWest } = bounds;
@@ -264,34 +263,7 @@ export class PollsService {
         };
       }
     }
-    const marketKey = query.marketKey?.trim();
-    if (!marketKey) {
-      return null;
-    }
-    const market = await this.prisma.market.findFirst({
-      where: { marketKey: { equals: marketKey, mode: 'insensitive' } },
-      select: {
-        bboxSwLat: true,
-        bboxSwLng: true,
-        bboxNeLat: true,
-        bboxNeLng: true,
-      },
-    });
-    if (
-      !market ||
-      market.bboxSwLat == null ||
-      market.bboxSwLng == null ||
-      market.bboxNeLat == null ||
-      market.bboxNeLng == null
-    ) {
-      return null;
-    }
-    return {
-      minLat: Number(market.bboxSwLat),
-      minLng: Number(market.bboxSwLng),
-      maxLat: Number(market.bboxNeLat),
-      maxLng: Number(market.bboxNeLng),
-    };
+    return null;
   }
 
   /** §6/§2/§4: in-view membership + header verdict + descendant expansion. */
@@ -330,28 +302,6 @@ export class PollsService {
   }
 
   /**
-   * INTERIM legacy feed arm: legacy marketKey-only poll rows are fed by
-   * their market's bbox intersecting the view. Legacy markets are plain
-   * (non-antimeridian) US metros, so the btree range test is exact here.
-   * Phase C kept this deliberately (only NEW writes re-keyed to placeId);
-   * it dies with the LEGACY-POLL-EXPIRY leg (all legacy rows closed/expired),
-   * which also purges polls.market_key + this market bbox read.
-   */
-  private async legacyMarketKeysInView(view: GeoBbox): Promise<string[]> {
-    const markets = await this.prisma.market.findMany({
-      where: {
-        isActive: true,
-        bboxSwLat: { lte: view.maxLat },
-        bboxNeLat: { gte: view.minLat },
-        bboxSwLng: { lte: view.maxLng },
-        bboxNeLng: { gte: view.minLng },
-      },
-      select: { marketKey: true },
-    });
-    return markets.map((market) => market.marketKey.toLowerCase());
-  }
-
-  /**
    * One keyset page of poll ids for the feed, ordered per sort. The keyset
    * tuple always closes with the immutable (created_at, poll_id) pair — see
    * poll-feed-cursor.ts for the stability contract (rows inserting
@@ -362,30 +312,20 @@ export class PollsService {
     mode: PollMode | null;
     launchedAfter: Date | null;
     placeIds: string[];
-    marketKeys: string[];
     sort: PollListSort;
     limit: number;
     cursor: PollFeedCursor | null;
   }): Promise<{ pollIds: string[]; nextCursor: string | null }> {
-    const { state, mode, launchedAfter, placeIds, marketKeys, sort, limit } =
-      params;
-    if (!placeIds.length && !marketKeys.length) {
+    const { state, mode, launchedAfter, placeIds, sort, limit } = params;
+    if (!placeIds.length) {
       return { pollIds: [], nextCursor: null };
     }
-    // §6 membership: place-keyed rows by placeId; legacy marketKey-only rows
-    // via their in-view market (placeId is the truth when both exist).
+    // §6 membership: every poll row is place-keyed (legacy-poll expiry).
     const filters = Prisma.sql`
       p.state::text = ${state}
       AND (${mode}::text IS NULL OR p.mode::text = ${mode}::text)
       AND (${launchedAfter}::timestamptz IS NULL OR p.launched_at >= ${launchedAfter}::timestamptz)
-      AND (
-        p.place_id = ANY(${placeIds}::uuid[])
-        OR (
-          p.place_id IS NULL
-          AND p.market_key IS NOT NULL
-          AND LOWER(p.market_key) = ANY(${marketKeys}::text[])
-        )
-      )
+      AND p.place_id = ANY(${placeIds}::uuid[])
     `;
 
     if (sort === PollListSort.new) {
@@ -609,8 +549,8 @@ export class PollsService {
   /**
    * Phase C re-key: user poll creation attaches to the PLACE CATALOG — the
    * poll's place = smallestContaining(creation-context bbox) (§3 attribution
-   * law over the creator's viewport bounds). Legacy pre-cut clients that
-   * send only a marketKey resolve through that market's stored bbox. No
+   * law over the creator's viewport bounds). `bounds` is the only geo input
+   * (the legacy marketKey→market-bbox arm died with legacy-poll expiry). No
    * market is ever minted for a poll again.
    */
   private async resolveCreationPlace(dto: {
@@ -618,12 +558,8 @@ export class PollsService {
       northEast: { lat: number; lng: number };
       southWest: { lat: number; lng: number };
     } | null;
-    marketKey?: string | null;
   }): Promise<Place | null> {
-    const view = await this.resolveFeedView({
-      bounds: dto.bounds ?? undefined,
-      marketKey: dto.marketKey ?? undefined,
-    } as QueryPollsDto);
+    const view = this.resolveFeedView({ bounds: dto.bounds ?? undefined });
     if (!view) {
       return null;
     }
@@ -644,12 +580,8 @@ export class PollsService {
       northEast: { lat: number; lng: number };
       southWest: { lat: number; lng: number };
     } | null;
-    marketKey?: string | null;
   }): Promise<Place | null> {
-    const view = await this.resolveFeedView({
-      bounds: dto.bounds ?? undefined,
-      marketKey: dto.marketKey ?? undefined,
-    } as QueryPollsDto);
+    const view = this.resolveFeedView({ bounds: dto.bounds ?? undefined });
     if (!view) {
       return null;
     }
@@ -711,7 +643,7 @@ export class PollsService {
    * free-text question against ACTIVE polls of the same PLACE — no LLM. Precision-
    * favoring (high threshold) so only obvious duplicates surface; the precise
    * entity-level dedup happens post-resolution inside createPoll (stage 3).
-   * Legacy market-keyed rows (place_id NULL) join via the legacy marketKey arm.
+   * Place-scoped only — every poll row is place-keyed (legacy-poll expiry).
    */
   async checkDuplicate(dto: CheckPollDuplicateDto): Promise<{
     matches: Array<{ pollId: string; question: string; similarity: number }>;
@@ -721,8 +653,7 @@ export class PollsService {
       return { matches: [] };
     }
     const place = await this.resolveCreationPlace(dto);
-    const legacyMarketKey = dto.marketKey?.trim() ?? null;
-    if (!place && !legacyMarketKey) {
+    if (!place) {
       return { matches: [] };
     }
     const rows = await this.prisma.$queryRaw<
@@ -732,14 +663,7 @@ export class PollsService {
              word_similarity(${question}, question) AS sim
       FROM polls
       WHERE state::text = 'active'
-        AND (
-          place_id = ${place?.placeId ?? null}::uuid
-          OR (
-            place_id IS NULL
-            AND ${legacyMarketKey}::text IS NOT NULL
-            AND market_key = ${legacyMarketKey}
-          )
-        )
+        AND place_id = ${place.placeId}::uuid
         AND word_similarity(${question}, question) >= ${POLL_DUPLICATE_SIMILARITY_THRESHOLD}
       ORDER BY sim DESC, launched_at DESC NULLS LAST
       LIMIT 3
@@ -785,8 +709,8 @@ export class PollsService {
     // When no catalog place contains the creation viewport (unseeded ground,
     // cheap-pool drought), the poll is created against a minted
     // "this area near (lat, lng)" place, backfilled by later naming probes.
-    // Only a request with NO resolvable geo at all (no bounds, no legacy
-    // market bbox) still 400s — there is nothing to anchor the poll to.
+    // Only a request with NO bounds at all still 400s — there is nothing to
+    // anchor the poll to.
     const place =
       (await this.resolveCreationPlace(dto)) ??
       (await this.mintFallbackCreationPlace(dto));
@@ -2138,16 +2062,12 @@ export class PollsService {
     const activity = query.activity ?? UserPollActivity.participated;
     const limit = query.limit ?? 25;
     const offset = query.offset ?? 0;
-    const marketKey = query.marketKey?.trim();
     const state = query.state;
 
     if (activity === UserPollActivity.created) {
       const polls = await this.prisma.poll.findMany({
         where: {
           createdByUserId: userId,
-          marketKey: marketKey
-            ? { equals: marketKey, mode: 'insensitive' }
-            : undefined,
           state,
         },
         orderBy: [{ launchedAt: 'desc' }, { scheduledFor: 'desc' }],
@@ -2170,7 +2090,7 @@ export class PollsService {
         },
       });
 
-      const enriched = await this.attachMarketLabels(polls, marketKey);
+      const enriched = await this.attachMarketLabels(polls);
       return {
         activity,
         polls: enriched,
@@ -2206,9 +2126,6 @@ export class PollsService {
         ? await this.prisma.poll.findMany({
             where: {
               pollId: { in: Array.from(pollIds.values()) },
-              marketKey: marketKey
-                ? { equals: marketKey, mode: 'insensitive' }
-                : undefined,
               state,
             },
             orderBy: [{ launchedAt: 'desc' }, { scheduledFor: 'desc' }],
@@ -2233,7 +2150,7 @@ export class PollsService {
         : [];
 
     const enriched = await this.attachPollStats(
-      await this.attachMarketLabels(polls, marketKey),
+      await this.attachMarketLabels(polls),
       userId,
     );
     return {
@@ -2247,14 +2164,10 @@ export class PollsService {
       marketKey?: string | null;
       topic?: { marketKey?: string | null } | null;
     },
-  >(
-    polls: T[],
-    fallbackMarketKey?: string | null,
-  ): Promise<Array<T & { marketName?: string | null }>> {
+  >(polls: T[]): Promise<Array<T & { marketName?: string | null }>> {
     const marketKeys = new Set<string>();
     for (const poll of polls) {
-      const rawKey =
-        poll.marketKey ?? poll.topic?.marketKey ?? fallbackMarketKey ?? null;
+      const rawKey = poll.marketKey ?? poll.topic?.marketKey ?? null;
       if (typeof rawKey === 'string' && rawKey.trim()) {
         marketKeys.add(rawKey.trim().toLowerCase());
       }
@@ -2286,8 +2199,7 @@ export class PollsService {
     }
 
     return polls.map((poll) => {
-      const rawKey =
-        poll.marketKey ?? poll.topic?.marketKey ?? fallbackMarketKey ?? null;
+      const rawKey = poll.marketKey ?? poll.topic?.marketKey ?? null;
       const key = typeof rawKey === 'string' ? rawKey.trim().toLowerCase() : '';
       const marketName = key ? (labelByKey.get(key) ?? null) : null;
       return {

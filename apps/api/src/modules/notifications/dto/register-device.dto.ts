@@ -40,6 +40,13 @@ export class RegisterDeviceDto {
   @MaxLength(16)
   locale?: string | null;
 
+  /**
+   * ACCEPTED-IGNORED (legacy-poll-expiry leg, 2026-07-20): the running mobile
+   * client still sends `city` at registration; forbidNonWhitelisted would 400
+   * the request if the field vanished, so it stays declared — but the column
+   * is DROPPED and the server never reads it (home-place registration is the
+   * §4 targeting truth). Delete with the next mobile touch.
+   */
   @IsOptional()
   @IsString()
   @MaxLength(255)

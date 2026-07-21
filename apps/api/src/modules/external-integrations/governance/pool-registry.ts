@@ -14,6 +14,22 @@
  * minute-window pools may declare a bounded per-replica emergency fraction;
  * day/month/dollar/enqueued pools are hard-closed on store failure (an
  * in-memory counter cannot know month-to-date).
+ *
+ * DURABILITY (§14.5/§16 split — durability leg, 2026-07-20): window
+ * CONSUMPTION for perMonth/perDay/grant pools is written through to a
+ * PoolConsumptionStore on every reconcile and loaded at boot/rollover — a
+ * process restart can never reset a month ledger (the recorded over-spend
+ * gap). perMinute pools stay in-memory by design (restart loses ≤1 minute of
+ * window — harmless; no DB I/O on the per-request hot path), and the
+ * declared-vs-actual draw ledger stays in-memory too (drift is statistical;
+ * a durable ledger is the §18.5 ops-readers leg). Reservations are never
+ * stored — seconds-scale, TTL-expiring (§14.2).
+ *
+ * Store-failure law (§14.5): a durable pool whose window the store cannot
+ * CONFIRM (boot load failed, write-through failed, or the window rolled and
+ * no load has succeeded yet) fails CLOSED — reserve() denies with the typed
+ * 'storeFailure' reason. Durable pools are hardClosed by construction (the
+ * constitutional check already forbids emergencyFraction off perMinute).
  */
 
 export type PoolWindow =
@@ -84,6 +100,38 @@ type ActiveReservation = {
 
 export class PoolRegistrationError extends Error {}
 
+/**
+ * Durable window-consumption store (§14.5): one row per (pool, window).
+ * `add` must be an ATOMIC increment (concurrent processes compose); `load`
+ * returns null for a window with no row yet. Implementations may only throw —
+ * the registry translates every failure into fail-closed window state.
+ */
+export interface PoolConsumptionStore {
+  load(
+    poolName: string,
+    windowKey: string,
+  ): Promise<{ consumed: number; granted: number } | null>;
+  add(
+    poolName: string,
+    windowKey: string,
+    delta: { consumed?: number; granted?: number },
+  ): Promise<void>;
+}
+
+/**
+ * Per-durable-pool window state. `confirmed` is set ONLY by a successful
+ * store load for the current window ("memory agrees with the store");
+ * a failed write-through or a window roll clears it → fail closed until the
+ * next successful ensureWindow. `unpersisted` is consumption applied in
+ * memory whose write-through hasn't succeeded yet — flushed before the next
+ * load so the stored row is monotonically ≥ everything this process admitted.
+ */
+type DurableWindowState = {
+  windowKey: string;
+  confirmed: boolean;
+  unpersisted: number;
+};
+
 export class PoolRegistry {
   private readonly pools = new Map<string, PoolConfig>();
   private readonly usage = new Map<
@@ -95,6 +143,11 @@ export class PoolRegistry {
   private reservationCounter = 0;
   /** §14.5 upstream-429 window poisoning: pool → poisoned-until instant. */
   private readonly poisonedUntil = new Map<string, number>();
+  private readonly durable = new Map<string, DurableWindowState>();
+  /** Grant pools: capacity registered at boot; store `granted` adds on top. */
+  private readonly grantBase = new Map<string, number>();
+
+  constructor(private readonly store?: PoolConsumptionStore) {}
 
   register(config: PoolConfig): void {
     if (this.pools.has(config.name)) {
@@ -114,17 +167,103 @@ export class PoolRegistry {
       );
     }
     this.pools.set(config.name, config);
+    if (config.window.kind === 'grant') {
+      this.grantBase.set(config.name, config.window.amount);
+    }
+  }
+
+  /** perMonth/perDay/grant + a store present → window consumption is durable. */
+  private isDurable(pool: PoolConfig): boolean {
+    return this.store !== undefined && pool.window.kind !== 'perMinute';
+  }
+
+  /** Canonical UTC window label: 'YYYY-MM' / 'YYYY-MM-DD' / 'grant'. */
+  private windowKeyString(pool: PoolConfig, at: Date): string {
+    switch (pool.window.kind) {
+      case 'perMonth':
+        return at.toISOString().slice(0, 7);
+      case 'perDay':
+        return at.toISOString().slice(0, 10);
+      case 'grant':
+        return 'grant';
+      case 'perMinute':
+        throw new PoolRegistrationError(
+          `Pool '${pool.name}' is perMinute — never durable`,
+        );
+    }
+  }
+
+  /**
+   * Load (and confirm) a durable pool's current window from the store —
+   * called at boot and awaited by GovernanceService.draw before reserve (so
+   * the first draw after a restart or a month roll sees month-to-date truth).
+   * Flushes any unpersisted local consumption FIRST, then loads: the stored
+   * row ends monotonically ≥ everything this process admitted. Never throws;
+   * failure leaves the window unconfirmed → reserve() fails closed (§14.5).
+   * No-op for perMinute pools and for already-confirmed windows.
+   */
+  async ensureWindow(poolName: string, at: Date = new Date()): Promise<void> {
+    const pool = this.requirePool(poolName);
+    if (!this.isDurable(pool) || this.store === undefined) {
+      return;
+    }
+    const key = this.windowKeyString(pool, at);
+    const state = this.durable.get(pool.name);
+    if (
+      state &&
+      state.windowKey === key &&
+      state.confirmed &&
+      state.unpersisted === 0
+    ) {
+      return;
+    }
+    const carried = state && state.windowKey === key ? state.unpersisted : 0;
+    try {
+      if (carried > 0) {
+        await this.store.add(pool.name, key, { consumed: carried });
+      }
+      const loaded = await this.store.load(pool.name, key);
+      this.usage.set(pool.name, {
+        windowStart: this.windowKeyStart(pool, at),
+        used: loaded?.consumed ?? 0,
+      });
+      if (pool.window.kind === 'grant') {
+        pool.window = {
+          kind: 'grant',
+          amount: (this.grantBase.get(pool.name) ?? 0) + (loaded?.granted ?? 0),
+        };
+      }
+      this.durable.set(pool.name, {
+        windowKey: key,
+        confirmed: true,
+        unpersisted: 0,
+      });
+    } catch {
+      this.durable.set(pool.name, {
+        windowKey: key,
+        confirmed: false,
+        unpersisted: carried,
+      });
+    }
   }
 
   listRegistered(): PoolConfig[] {
     return Array.from(this.pools.values());
   }
 
-  /** Mint a grant top-up (owner approval → capacity; §14.6). */
-  mintGrant(poolName: string, amount: number): void {
+  /**
+   * Mint a grant top-up (owner approval → capacity; §14.6). Durable pools
+   * persist the mint (a money grant must survive restart); a store failure
+   * THROWS — an owner mint that didn't durably land must be retried, never
+   * silently in-memory-only.
+   */
+  async mintGrant(poolName: string, amount: number): Promise<void> {
     const pool = this.requirePool(poolName);
     if (pool.window.kind !== 'grant') {
       throw new PoolRegistrationError(`Pool '${poolName}' is not grant-backed`);
+    }
+    if (this.isDurable(pool) && this.store !== undefined) {
+      await this.store.add(poolName, 'grant', { granted: amount });
     }
     pool.window = { kind: 'grant', amount: pool.window.amount + amount };
   }
@@ -147,6 +286,24 @@ export class PoolRegistry {
         };
       }
       this.poisonedUntil.delete(poolName);
+    }
+    // §14.5 store-failure law: a durable pool whose current window the store
+    // has not CONFIRMED fails closed. Durable pools are hardClosed by
+    // construction; a typed 'not now' — never an error, never fail-open.
+    if (this.isDurable(pool)) {
+      const key = this.windowKeyString(pool, at);
+      const durableState = this.durable.get(pool.name);
+      if (
+        !durableState ||
+        durableState.windowKey !== key ||
+        !durableState.confirmed
+      ) {
+        return {
+          admitted: false,
+          reason: 'storeFailure',
+          retryAfterMs: null,
+        };
+      }
     }
     const capacity = this.windowCapacity(pool);
     const used = this.windowUsed(pool, at) + this.reservedOutstanding(poolName);
@@ -212,10 +369,15 @@ export class PoolRegistry {
     /** ms until the window rolls (null for grants). */
     resetMs: number | null;
     poisonedForMs: number | null;
+    /** Durable pools: is the current window store-confirmed? null = not durable. */
+    storeConfirmed: boolean | null;
   } {
     const pool = this.requirePool(poolName);
     this.expireLeaks(at);
     const poisoned = this.poisonedUntil.get(poolName);
+    const durableState = this.isDurable(pool)
+      ? this.durable.get(pool.name)
+      : undefined;
     return {
       limit: this.windowCapacity(pool),
       used: this.windowUsed(pool, at),
@@ -225,18 +387,31 @@ export class PoolRegistry {
         poisoned !== undefined && poisoned > at.getTime()
           ? poisoned - at.getTime()
           : null,
+      storeConfirmed: this.isDurable(pool)
+        ? (durableState?.confirmed ?? false) &&
+          durableState?.windowKey === this.windowKeyString(pool, at)
+        : null,
     };
   }
 
-  /** Record actuals + release the reservation (refund/debit falls out). */
+  /**
+   * Record actuals + release the reservation (refund/debit falls out).
+   * In-memory bookkeeping happens SYNCHRONOUSLY before the returned promise
+   * settles; the promise is the durable write-through for perMonth/perDay/
+   * grant pools (a synchronous durable increment — they are low-rate money).
+   * The write-through never rejects: a store failure marks the window
+   * unconfirmed, so the NEXT reserve fails closed (§14.5).
+   */
   reconcile(
     reservationId: string,
     actual: number,
     at: Date = new Date(),
-  ): void {
+  ): Promise<void> {
     const reservation = this.reservations.get(reservationId);
     if (!reservation) {
-      return; // Expired leak — TTL already released it; actuals still ledger below.
+      // Expired leak — TTL already released it; nothing to consume or ledger
+      // (the declared/actual pair died with the leak).
+      return Promise.resolve();
     }
     this.reservations.delete(reservationId);
     this.consume(reservation.poolName, actual, at);
@@ -249,6 +424,30 @@ export class PoolRegistry {
       reconciledAt: at,
       workClass: reservation.workClass,
     });
+    return this.flushDurable(reservation.poolName);
+  }
+
+  /**
+   * Write through this process's unpersisted consumption for a durable pool.
+   * Success on an already-confirmed window keeps it confirmed; failure clears
+   * confirmation (fail closed). Never throws.
+   */
+  private async flushDurable(poolName: string): Promise<void> {
+    const pool = this.requirePool(poolName);
+    if (!this.isDurable(pool) || this.store === undefined) {
+      return;
+    }
+    const state = this.durable.get(poolName);
+    if (!state || state.unpersisted <= 0) {
+      return;
+    }
+    const delta = state.unpersisted;
+    try {
+      await this.store.add(poolName, state.windowKey, { consumed: delta });
+      state.unpersisted -= delta;
+    } catch {
+      state.confirmed = false;
+    }
   }
 
   /** The persisted declared-vs-actual stream — the drift instrument (§14.7). */
@@ -341,12 +540,29 @@ export class PoolRegistry {
     const entry = this.usage.get(poolName);
     if (!entry || entry.windowStart !== windowStart) {
       this.usage.set(poolName, { windowStart, used: amount });
-      return;
+    } else {
+      entry.used += amount;
+      if (pool.window.kind === 'grant') {
+        // Grants deplete permanently (windowStart never rolls).
+        entry.windowStart = windowStart;
+      }
     }
-    entry.used += amount;
-    if (pool.window.kind === 'grant') {
-      // Grants deplete permanently (windowStart never rolls).
-      entry.windowStart = windowStart;
+    // Durable pools: track the not-yet-persisted delta for write-through.
+    // A reconcile that lands AFTER the window rolled (reservation straddled
+    // the boundary) re-keys the state unconfirmed — the new window must be
+    // loaded before it can admit again.
+    if (this.isDurable(pool)) {
+      const key = this.windowKeyString(pool, at);
+      const state = this.durable.get(poolName);
+      if (state && state.windowKey === key) {
+        state.unpersisted += amount;
+      } else {
+        this.durable.set(poolName, {
+          windowKey: key,
+          confirmed: false,
+          unpersisted: amount,
+        });
+      }
     }
   }
 

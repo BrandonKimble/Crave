@@ -39,19 +39,10 @@ class BoundsDto {
 /**
  * §6 polls feed request: the feed is VIEWPORT-scoped (polls of places in
  * view + descendants of the commensurate subject) with keyset cursor
- * pagination. `bounds` is the request's real subject; the legacy fields
- * below are accepted for pre-cut mobile clients only.
+ * pagination. `bounds` is the request's real subject (the legacy marketKey
+ * arm died with the legacy-poll-expiry leg; post-cut mobile sends bounds).
  */
 export class QueryPollsDto {
-  /**
-   * LEGACY (pre-cut mobile): a cached marketKey sent INSTEAD of bounds.
-   * Served by treating the market's stored bbox as the view (one interim
-   * seam — dies with the mobile feed cut + the Phase C market purge).
-   */
-  @IsOptional()
-  @IsString()
-  marketKey?: string;
-
   @IsOptional()
   @ValidateNested()
   @Type(() => BoundsDto)

@@ -28,9 +28,8 @@ class BoundsDto {
 
 /**
  * Stage-1 dedup at creation: a fast `word_similarity` check of the free-text
- * question against active polls of the same PLACE (Phase C re-key — the place
- * resolves from `bounds`; `marketKey` survives only for pre-cut clients),
- * BEFORE any LLM resolution. Favors precision (high threshold) so only
+ * question against active polls of the same PLACE (the place resolves from
+ * `bounds`; the legacy marketKey arm is dead), BEFORE any LLM resolution. Favors precision (high threshold) so only
  * obvious duplicates are surfaced.
  */
 export class CheckPollDuplicateDto {
@@ -44,6 +43,11 @@ export class CheckPollDuplicateDto {
   @Type(() => BoundsDto)
   bounds?: BoundsDto;
 
+  /**
+   * ACCEPTED-IGNORED (legacy-poll expiry): the running mobile client still
+   * sends marketKey when it has one; forbidNonWhitelisted would 400 it.
+   * Never read. Delete with the next mobile touch.
+   */
   @IsOptional()
   @IsString()
   marketKey?: string;

@@ -146,23 +146,13 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
         stack: error instanceof Error ? error.stack : undefined,
       });
 
-      return {
-        batchId,
-        parentJobId,
-        collectionType,
-        success: false,
-        error: errorMessage,
-        metrics: {
-          postsProcessed: postIds.length,
-          mentionsExtracted: 0,
-          entitiesCreated: 0,
-          connectionsCreated: 0,
-          processingTimeMs: processingTime,
-          llmProcessingTimeMs: 0,
-          dbProcessingTimeMs: 0,
-        },
-        completedAt: new Date(),
-      };
+      // §12.4 honest-outcome law: a REAL error must THROW so Bull retries and,
+      // on exhaustion, marks the job FAILED — visibly. Returning a
+      // success:false result here was an always-green liar (Bull records the
+      // job "completed"; nothing downstream ever read the flag). Legitimate
+      // non-error verdicts (covered-skip, governance not-now) return
+      // completed results above; only genuine failures reach this throw.
+      throw error;
     }
   }
 }

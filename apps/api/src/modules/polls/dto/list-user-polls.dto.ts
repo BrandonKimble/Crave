@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
 import { PollState } from '@prisma/client';
 
 export enum UserPollActivity {
@@ -16,10 +16,6 @@ export class ListUserPollsDto {
   @IsOptional()
   @IsEnum(PollState)
   state?: PollState;
-
-  @IsOptional()
-  @IsString()
-  marketKey?: string;
 
   @IsOptional()
   @Type(() => Number)
