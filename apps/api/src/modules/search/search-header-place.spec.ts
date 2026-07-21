@@ -110,6 +110,10 @@ function createHarness(options: {
       : jest.fn().mockResolvedValue(options.placesInView ?? []),
   };
   const placesReconciler = options.reconciler ?? { noteViewport: jest.fn() };
+  const placesPromotions = {
+    enqueue: jest.fn().mockResolvedValue(undefined),
+    noteHeaderAnswer: jest.fn(),
+  };
   const signals = {
     bboxFromBounds: jest.fn().mockReturnValue(null),
     record: jest.fn(),
@@ -130,8 +134,9 @@ function createHarness(options: {
     {} as never, // signalDemandRead (recent-searches reader; unused here)
     placesCatalog as never, // placesCatalog (§22 cut 3)
     placesReconciler as never, // placesReconciler (§2 live)
+    placesPromotions as never, // placesPromotions (§2 tier-2 promotion)
   );
-  return { service, placesCatalog, placesReconciler };
+  return { service, placesCatalog, placesReconciler, placesPromotions };
 }
 
 function buildRequest(overrides: Record<string, unknown> = {}) {
@@ -160,6 +165,19 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
     });
     const response = await service.runQuery(buildRequest());
     expect(response.metadata.displayMarketName).toBe('Austin');
+  });
+
+  it('§2(e) tier-2 promotion: a place-kind header verdict reports a header answer; "this area" does not', async () => {
+    const { service, placesPromotions } = createHarness({
+      placesInView: [placeInView('Austin', VIEW, 1)],
+    });
+    const response = await service.runQuery(buildRequest());
+    expect(response.metadata.displayMarketName).toBe('Austin');
+    expect(placesPromotions.noteHeaderAnswer).toHaveBeenCalledTimes(1);
+
+    const empty = createHarness({ placesInView: [] });
+    await empty.service.runQuery(buildRequest());
+    expect(empty.placesPromotions.noteHeaderAnswer).not.toHaveBeenCalled();
   });
 
   it('a multi-place straddle yields null (mobile renders its own fallback)', async () => {

@@ -851,6 +851,25 @@ export async function provisionCollectionCommunity(
       (${source.sourceId}::uuid, 'keyword', 7, 7)
     ON CONFLICT (source_id, lane) DO NOTHING
   `;
+
+  // §2(b) tier-2 promotion: a source/engine attaching to a place is an
+  // earned moment for its scarce-pool polygon. Same idempotent guarded
+  // insert as PlacesPromotionService.enqueue (script context — no Nest DI
+  // here); the hourly governed drain does the actual vendor work.
+  if (memberPlace) {
+    await prisma.$executeRaw`
+      INSERT INTO place_geometry_promotions (place_id, trigger)
+      SELECT p.place_id, 'source_attached'
+      FROM places p
+      WHERE p.place_id = ${memberPlace.placeId}::uuid
+        AND p.provider <> 'fallback'
+        AND NOT EXISTS (
+          SELECT 1 FROM place_geometries g
+          WHERE g.place_id = p.place_id AND g.geometry IS NOT NULL
+        )
+      ON CONFLICT (place_id) DO NOTHING
+    `;
+  }
 }
 
 export interface GeocodedCity {

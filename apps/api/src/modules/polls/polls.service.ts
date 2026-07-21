@@ -47,6 +47,7 @@ import {
   resolvePollClosesAt,
 } from './poll-timing';
 import { PlacesCatalogService } from '../places/places-catalog.service';
+import { PlacesPromotionService } from '../places/places-promotion.service';
 import {
   descendantPlaceIds,
   isSubdivisionOrBigger,
@@ -128,6 +129,7 @@ export class PollsService {
     private readonly entityTextSearch: EntityTextSearchService,
     private readonly signals: SignalsService,
     private readonly placesCatalog: PlacesCatalogService,
+    private readonly placesPromotions: PlacesPromotionService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -292,6 +294,13 @@ export class PollsService {
       }
     }
     const membership = resolveFeedMembership(view, candidates, bigPlaceIds);
+    if (membership.resolution.kind === 'place') {
+      // §2(e) tier-2 promotion: the polls feed header answering from this
+      // place counts toward its "frequent header-answering" earned moment.
+      this.placesPromotions.noteHeaderAnswer(
+        membership.resolution.place.placeId,
+      );
+    }
     const descendants = membership.subjectPlaceIds.length
       ? await descendantPlaceIds(this.prisma, membership.subjectPlaceIds)
       : [];
@@ -717,6 +726,11 @@ export class PollsService {
     if (!place) {
       throw new BadRequestException('Unable to resolve a place for this poll');
     }
+    // §2(a) tier-2 promotion: a poll created here is an earned moment for the
+    // place's scarce-pool polygon. Fire-and-forget — the §2 "blocking caller"
+    // nuance is about NAME resolution (handled above, never blocks); the
+    // polygon enqueue must never touch the creation path's latency/outcome.
+    void this.placesPromotions.enqueue(place.placeId, 'poll_created');
     await this.enforceWeeklyPollCap(userId, place.placeId);
     if (dto.question?.trim()) {
       return this.createPollFromQuestion(

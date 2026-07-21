@@ -74,6 +74,10 @@ function createHarness(options: { priorPollCount?: number } = {}) {
       .fn()
       .mockResolvedValue({ mode: 'discussion', axis: null }),
   };
+  const placesPromotions = {
+    enqueue: jest.fn().mockResolvedValue(undefined),
+    noteHeaderAnswer: jest.fn(),
+  };
   const service = new PollsService(
     prisma as never,
     createLogger() as never,
@@ -86,8 +90,9 @@ function createHarness(options: { priorPollCount?: number } = {}) {
     {} as never, // entityTextSearch
     { record: jest.fn(), bboxFromPlace: jest.fn() } as never, // signals
     placesCatalog as never,
+    placesPromotions as never,
   );
-  return { service, prisma, placesCatalog };
+  return { service, prisma, placesCatalog, placesPromotions };
 }
 
 describe('poll creation place re-key (Phase C)', () => {
@@ -111,6 +116,18 @@ describe('poll creation place re-key (Phase C)', () => {
     const data = prisma.poll.create.mock.calls[0][0].data;
     expect(data.placeId).toBe(PLACE_ID);
     expect(data).not.toHaveProperty('marketKey');
+  });
+
+  it("§2(a) tier-2 promotion: creating a poll enqueues the place's earned polygon moment (fire-and-forget)", async () => {
+    const { service, placesPromotions } = createHarness();
+    await service.createPoll(
+      { question: 'Where should I eat tonight?', bounds: BOUNDS } as never,
+      USER_ID,
+    );
+    expect(placesPromotions.enqueue).toHaveBeenCalledWith(
+      PLACE_ID,
+      'poll_created',
+    );
   });
 
   it('no containing place -> §2 quota-drought fallback: the poll is created against a minted "this area near (lat, lng)" place — creation NEVER blocks (wave-5 §17c)', async () => {

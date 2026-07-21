@@ -47,6 +47,9 @@ import {
 } from './place-geo';
 import { PlaceSketchNode } from './places-catalog.service';
 import {
+  GeometryIdResolution,
+  GeometryIdentityNode,
+  PolygonFetchResult,
   PROBE_SPEAKS_FOR_METERS,
   TomtomChainProbe,
   TomtomChainProbeResult,
@@ -146,12 +149,30 @@ type TomtomGeocodeResponse = {
   results?: TomtomGeocodeResult[];
 };
 
+/** Additional Data (polygon) response shape — mirrors the live-proven parse
+ *  in the legacy markets bootstrap (tomtom-boundary-bootstrap.service.ts). */
+type TomtomAdditionalDataItem = {
+  providerID?: string;
+  providerId?: string;
+  error?: string;
+  geometryData?: {
+    type?: string;
+    features?: Array<{ type: string; geometry?: { type?: string } | null }>;
+  } | null;
+};
+
+type TomtomAdditionalDataResponse = {
+  additionalData?: TomtomAdditionalDataItem[];
+};
+
 @Injectable()
 export class TomtomChainProbeAdapter implements TomtomChainProbe {
   private readonly logger: LoggerService;
   private readonly apiKey: string | undefined;
   private readonly reverseBaseUrl: string;
   private readonly geocodeBaseUrl: string;
+  private readonly additionalDataUrl: string;
+  private readonly geometryZoom: number | null;
   private readonly timeoutMs: number;
 
   constructor(
@@ -171,6 +192,17 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       configService.get<string>('tomtom.geocodeBaseUrl') ??
       'https://api.tomtom.com/search/2/geocode'
     ).replace(/\/$/, '');
+    this.additionalDataUrl =
+      configService.get<string>('tomtom.additionalDataUrl') ??
+      'https://api.tomtom.com/search/2/additionalData.json';
+    // Vendor knob (K4-adjacent): geometriesZoom tames polygon vertex counts —
+    // same config the US-seed boundary fetches used ("geometriesZoom-tamed").
+    const configuredGeometryZoom = Number(
+      configService.get<number>('tomtom.geometryZoom'),
+    );
+    this.geometryZoom = Number.isFinite(configuredGeometryZoom)
+      ? configuredGeometryZoom
+      : null;
     // §16: the 10s fallback is K3-shaped operational plumbing (HTTP client
     // timeout when tomtom.timeout config is absent), not a product number —
     // a timed-out probe throws and retries on a later settle; no observation
@@ -301,11 +333,58 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     centroid: GeoPoint | null;
     providerPlaceId: string | null;
   } | null> {
-    // County-qualified query (§1 county axis): "Lakeside, Tarrant, TX" makes
-    // the limit=1 lookup land on THE observed same-name municipality instead
-    // of whichever the vendor ranks first. Residual wrong-twin bboxes (vendor
-    // ignoring the qualifier) are caught downstream by the merge law's
-    // disjoint-bbox guard.
+    const outcome = await this.forwardGeocodeMatch(node, 'chain-probe');
+    if (outcome.kind !== 'ok') {
+      return null; // denial: bbox-less until a later probe; miss: logged below
+    }
+    const result = outcome.result;
+    return {
+      bbox: parseForwardBoundingBox(result.boundingBox),
+      centroid:
+        result.position?.lat !== undefined && result.position?.lon !== undefined
+          ? { lat: result.position.lat, lng: result.position.lon }
+          : null,
+      providerPlaceId: result.dataSources?.geometry?.id?.trim() || null,
+    };
+  }
+
+  /**
+   * §2 promotion two-step, step 1: cheap-pool forward geocode → the stable
+   * TomTom geometry id for a place the catalog knows only by a non-tomtom
+   * alias (census GEOID). Same county-qualified mechanics as the probe path;
+   * distinct workClass so the draw ledger attributes the spend honestly.
+   */
+  async resolveGeometryId(
+    node: GeometryIdentityNode,
+  ): Promise<GeometryIdResolution> {
+    const outcome = await this.forwardGeocodeMatch(node, 'promotion');
+    if (outcome.kind !== 'ok') {
+      return { kind: outcome.kind };
+    }
+    const geometryId = outcome.result.dataSources?.geometry?.id?.trim();
+    return geometryId
+      ? { kind: 'ok', geometryId }
+      : { kind: 'miss' /* matched entity carries no geometry id */ };
+  }
+
+  /**
+   * The one governed forward-geocode call, shared by the probe's bbox fill
+   * and the promotion drain's geometry-id resolution. County-qualified query
+   * (§1 county axis): "Lakeside, Tarrant, TX" makes the limit=1 lookup land
+   * on THE observed same-name municipality instead of whichever the vendor
+   * ranks first. Residual wrong-twin answers (vendor ignoring the qualifier)
+   * are caught downstream by the merge law's disjoint-bbox guard.
+   * `denied` = pool not-now; `miss` = admitted but wrong-entity/no result —
+   * a wrong-entity or wrong-country match must not donate its answer to this
+   * identity (§1's merge would widen a place with foreign geometry it can
+   * never shed — bboxes only ever grow).
+   */
+  private async forwardGeocodeMatch(
+    node: GeometryIdentityNode,
+    workClass: string,
+  ): Promise<
+    { kind: 'ok'; result: TomtomGeocodeResult } | { kind: 'denied' | 'miss' }
+  > {
     const query = encodeURIComponent(
       [node.name, node.county, node.subdivisionCode]
         .filter((part): part is string => Boolean(part))
@@ -314,7 +393,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     const url = `${this.geocodeBaseUrl}/${query}.json`;
     const response = await this.governance.draw(
       'tomtom.cheapGeocode',
-      'chain-probe',
+      workClass,
       () =>
         firstValueFrom(
           this.httpService.get<TomtomGeocodeResponse>(url, {
@@ -329,7 +408,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
         ),
     );
     if (!response) {
-      return null; // pool denial: this node stays bbox-less until a later probe
+      return { kind: 'denied' };
     }
     const result = response.data?.results?.[0];
     if (
@@ -337,21 +416,77 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
       result.entityType !== node.providerLevelCode ||
       result.address?.countryCode?.toUpperCase() !== node.countryCode
     ) {
-      // A wrong-entity or wrong-country match must not donate its bbox to
-      // this identity — §1's merge would then widen a place with foreign
-      // geometry it can never shed (bboxes only ever grow).
       this.logger.debug(
-        `forward geocode mismatch for ${node.providerLevelCode} "${node.name}" — skipping bbox`,
+        `forward geocode mismatch for ${node.providerLevelCode} "${node.name}" — skipping`,
       );
-      return null;
+      return { kind: 'miss' };
+    }
+    return { kind: 'ok', result };
+  }
+
+  /**
+   * §2 promotion step 2 — the SCARCE draw: geometry id → Additional Data
+   * polygon (parse mirrors the live-proven legacy bootstrap). `denied` =
+   * typed not-now (item stays queued for the next month window); `miss` =
+   * the draw was consumed but the vendor had no Polygon/MultiPolygon for
+   * this id. Transport errors throw (consumed draw, systemic).
+   */
+  async fetchPolygon(geometryId: string): Promise<PolygonFetchResult> {
+    if (!this.apiKey) {
+      throw new Error('tomtom_config_missing');
+    }
+    const params: Record<string, string | number> = {
+      key: this.apiKey,
+      geometries: geometryId,
+    };
+    if (this.geometryZoom !== null) {
+      params.geometriesZoom = this.geometryZoom;
+    }
+    const response = await this.governance.draw(
+      'tomtom.scarcePolygons',
+      'promotion',
+      () =>
+        firstValueFrom(
+          this.httpService.get<TomtomAdditionalDataResponse>(
+            this.additionalDataUrl,
+            { params, timeout: this.timeoutMs },
+          ),
+        ),
+    );
+    if (!response) {
+      return { kind: 'denied' };
+    }
+    const items = Array.isArray(response.data?.additionalData)
+      ? response.data.additionalData
+      : [];
+    const item = items.find(
+      (entry) => (entry.providerID ?? entry.providerId) === geometryId,
+    );
+    if (item?.error) {
+      this.logger.warn('TomTom additional data geometry error', {
+        geometryId,
+        tomTomError: item.error,
+      });
+      return { kind: 'miss' };
+    }
+    const geometryData = item?.geometryData ?? null;
+    if (
+      !geometryData ||
+      geometryData.type !== 'FeatureCollection' ||
+      !Array.isArray(geometryData.features)
+    ) {
+      return { kind: 'miss' };
+    }
+    const polygonFeatures = geometryData.features.filter((feature) => {
+      const geometryType = feature.geometry?.type;
+      return geometryType === 'Polygon' || geometryType === 'MultiPolygon';
+    });
+    if (!polygonFeatures.length) {
+      return { kind: 'miss' };
     }
     return {
-      bbox: parseForwardBoundingBox(result.boundingBox),
-      centroid:
-        result.position?.lat !== undefined && result.position?.lon !== undefined
-          ? { lat: result.position.lat, lng: result.position.lon }
-          : null,
-      providerPlaceId: result.dataSources?.geometry?.id?.trim() || null,
+      kind: 'ok',
+      geojson: { type: 'FeatureCollection', features: polygonFeatures },
     };
   }
 

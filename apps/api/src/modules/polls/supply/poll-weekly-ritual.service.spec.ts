@@ -119,15 +119,20 @@ function createHarness(options: HarnessOptions = {}) {
   const notifications = {
     queuePollReleaseForPlace: jest.fn().mockResolvedValue(undefined),
   };
+  const placesPromotions = {
+    enqueue: jest.fn().mockResolvedValue(undefined),
+    noteHeaderAnswer: jest.fn(),
+  };
   const service = new PollWeeklyRitualService(
     prisma as never,
     demandMass as never,
     new PollSupplyEstimators(),
     notifications as never,
+    placesPromotions as never,
     createLogger() as never,
   );
   service.sleep = jest.fn().mockResolvedValue(undefined);
-  return { service, prisma, tx, demandMass, notifications };
+  return { service, prisma, tx, demandMass, notifications, placesPromotions };
 }
 
 function topicCreateManyRows(
@@ -225,6 +230,23 @@ describe('PollWeeklyRitualService — the §4 weekly ritual', () => {
       pollCreateManyRows(tx).map((row) => row.pollId),
     );
     expect(dbClient).toBe(tx);
+  });
+
+  it('§2(c) tier-2 promotion pre-fetch: a place warranting a poll (credit + creditRate ≥ 1) enqueues credit_prefetch; one searcher never does', async () => {
+    const { service, placesPromotions } = createHarness({
+      subjects: [SUBJECT],
+    });
+    await service.runTick(SUNDAY_0930_LOCAL);
+    expect(placesPromotions.enqueue).toHaveBeenCalledWith(
+      PLACE_ID,
+      'credit_prefetch',
+    );
+
+    // §17 one-searcher law: the stateless sub-1-creditRate place leaves no
+    // residue — including no promotion enqueue.
+    const lone = createHarness({ subjects: [SUBJECT], mass: 1 });
+    await lone.service.runTick(SUNDAY_0930_LOCAL);
+    expect(lone.placesPromotions.enqueue).not.toHaveBeenCalled();
   });
 
   it('IDEMPOTENT (pre-filter): an existing (placeId, weekOf) tick publishes nothing', async () => {

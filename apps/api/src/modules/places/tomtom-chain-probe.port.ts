@@ -44,8 +44,54 @@ export interface TomtomChainProbeResult {
   probedBbox: GeoBbox;
 }
 
+/**
+ * §2 promotion-drain vendor outcomes. `denied` = a governed pool said typed
+ * not-now (the item stays queued, NOT an attempt); `miss` = the pool admitted
+ * and the vendor had no usable answer (a draw was consumed — attempts++).
+ * Transport/vendor ERRORS still throw (the drain treats a throw as a
+ * consumed-draw systemic fault and ends the pass).
+ */
+export type GeometryIdResolution =
+  | { kind: 'ok'; geometryId: string }
+  | { kind: 'denied' }
+  | { kind: 'miss' };
+
+export type PolygonFetchResult =
+  | { kind: 'ok'; geojson: GeoJsonFeatureCollection }
+  | { kind: 'denied' }
+  | { kind: 'miss' };
+
+/** GeoJSON FeatureCollection of Polygon/MultiPolygon features (vendor
+ *  Additional Data shape, filtered) — persisted verbatim into PostGIS via
+ *  ST_GeomFromGeoJSON, so the port never needs to model coordinates. */
+export interface GeoJsonFeatureCollection {
+  type: 'FeatureCollection';
+  features: Array<{
+    type: string;
+    geometry?: { type?: string } | null;
+  }>;
+}
+
+/** The identity tuple a county-qualified forward geocode needs (§1). */
+export type GeometryIdentityNode = Pick<
+  PlaceSketchNode,
+  'name' | 'county' | 'subdivisionCode' | 'countryCode' | 'providerLevelCode'
+>;
+
 export interface TomtomChainProbe {
   probe(anchor: GeoPoint): Promise<TomtomChainProbeResult>;
+  /**
+   * §2 promotion two-step, step 1 (census-seeded places only): ONE cheap-pool
+   * county-qualified forward geocode to learn the place's stable TomTom
+   * geometry id (a tomtom-provider place already carries it as
+   * providerPlaceId — §1 identity law, live-validated).
+   */
+  resolveGeometryId(node: GeometryIdentityNode): Promise<GeometryIdResolution>;
+  /**
+   * §2 promotion step 2: the SCARCE-pool Additional Data polygon fetch
+   * (geometry id → Polygon/MultiPolygon FeatureCollection).
+   */
+  fetchPolygon(geometryId: string): Promise<PolygonFetchResult>;
 }
 
 /** Nest injection token for the port. */

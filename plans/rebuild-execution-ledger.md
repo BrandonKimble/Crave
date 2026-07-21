@@ -454,6 +454,36 @@ agent in flight at turn end so completion notifications chain turns.
       harvest-reads-stamps(+stampless-0), reader-retirement (no
       make_interval ledger scans). 590 tests green (582 +8);
       build+tsc+eslint clean.
+- [x] TIER-2 POLYGON PROMOTION QUEUE (2026-07-20, uncommitted; migration
+      20260720130000*place_geometry_promotions drift-applied via db execute +
+      resolve + generate; ⚠️ :3000 NOT restarted — running binary predates
+      the table + the drain cron): place_geometry_promotions (placeId PK =
+      idempotent enqueue; open trigger vocab; attempts no-cap; lastAttemptAt
+      month-window backoff = the K4 pool window, no invented constant;
+      providerBoundaryId caches the cheap-resolved geometry id).
+      PlacesPromotionService (places module): guarded enqueue (fallback-mint + already-promoted no-ops), hourly governed drain (oldest-first; scarce
+      denial = typed not-now, row untouched, pass stops; consumed-draw miss =
+      attempts++; success = ST* persist into place_geometries mirroring the
+      legacy bootstrap SQL + promoted_at stamped on queue row AND places).
+      Vendor flow lives in TomtomChainProbeAdapter (port grew
+      resolveGeometryId cheap/county-qualified + fetchPolygon scarce
+      additionalData, workClass 'promotion'). Triggers wired: (a)
+      createPoll → 'poll_created' fire-and-forget; (b) §10 onboarding verb
+      (market-provisioning.ts) → 'source_attached' (poll_surface NOT wired —
+      covered by (a)/(c) by construction, documented); (c) ritual publish →
+      'credit_prefetch' when credit + creditRate ≥ 1 (behind the no-residue
+      early return — one searcher never promotes); (d) NO mass seed enqueue —
+      OWNER-RATIFY reading in service header (19.5k seed = 8 months of pool,
+      zero attention evidence; seeded places earn via other triggers); (e)
+      search + polls-feed header verdicts → noteHeaderAnswer (2nd answer in
+      30d TTL = 'header_answers'; in-memory, reconciler interim stance).
+      Point-answer-beats-bbox recorded as documented NO-OP (header read is
+      bbox-only today; no disagreement seam exists — citation in service
+      header). Live dry-run: Austin enqueue idempotency + drain due-read
+      proven on real DB, stopped at the draw boundary (would spend: 1 cheap
+      forward 'Austin, Travis, TX' + 1 scarce additionalData), row cleaned
+      up so no unapproved spend on restart. 674 green (655 +19);
+      build/tsc/eslint/prettier clean.
 - [ ] After fix agent: commit, restart :3000 (REQUIRED: the running
       binary still serves kind-blind aggregate cron + lacks the
       viewport-dwell route), REASSESSMENT to owner (wave-5 verdict: with

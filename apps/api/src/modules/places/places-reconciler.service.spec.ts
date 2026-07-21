@@ -70,6 +70,9 @@ function makeHarness(options: {
             probedBbox: { minLat: 0, minLng: 0, maxLat: 0.001, maxLng: 0.001 },
           })),
     ),
+    // Promotion-drain port methods (unused by the reconciler).
+    resolveGeometryId: jest.fn().mockResolvedValue({ kind: 'miss' as const }),
+    fetchPolygon: jest.fn().mockResolvedValue({ kind: 'miss' as const }),
   };
   const service = new PlacesReconcilerService(catalog, probe, logger);
   return { service, catalog, probe };

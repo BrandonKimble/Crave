@@ -103,6 +103,10 @@ function createServiceHarness(options: { inViewLocationCount?: number } = {}) {
     {} as never, // signalDemandRead
     {} as never, // placesCatalog
     { noteViewport: jest.fn() } as never, // placesReconciler
+    {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+      noteHeaderAnswer: jest.fn(),
+    } as never, // placesPromotions
   );
   return { service, signalsPrisma, executeSeeLocations, executeDual };
 }

@@ -42,25 +42,33 @@ type HttpCall = { url: string; params: Record<string, unknown> };
 function buildAdapter(options: {
   reverseAddresses?: unknown[];
   forwardResults?: unknown[];
+  additionalData?: unknown[];
   denyPool?: boolean;
   knownBboxIdentities?: boolean;
 }) {
   const calls: HttpCall[] = [];
+  const drawCalls: Array<{ pool: string; workClass: string }> = [];
   const httpService = {
     get: (url: string, config: { params: Record<string, unknown> }) => {
       calls.push({ url, params: config.params });
       if (url.includes('/reverseGeocode/')) {
         return of({ data: { addresses: options.reverseAddresses ?? [] } });
       }
+      if (url.includes('additionalData')) {
+        return of({ data: { additionalData: options.additionalData ?? [] } });
+      }
       return of({ data: { results: options.forwardResults ?? [] } });
     },
   };
   const governance = {
     draw: async (
-      _pool: string,
-      _workClass: string,
+      pool: string,
+      workClass: string,
       act: () => Promise<unknown>,
-    ) => (options.denyPool ? null : act()),
+    ) => {
+      drawCalls.push({ pool, workClass });
+      return options.denyPool ? null : act();
+    },
   };
   const prisma = {
     place: {
@@ -85,7 +93,7 @@ function buildAdapter(options: {
     configService as never,
     loggerService as never,
   );
-  return { adapter, calls };
+  return { adapter, calls, drawCalls };
 }
 
 const ANCHOR = { lat: 40.787, lng: -73.9754 };
@@ -228,5 +236,93 @@ describe('TomtomChainProbeAdapter', () => {
       denyPool: true,
     });
     await expect(adapter.probe(ANCHOR)).rejects.toThrow('tomtom_pool_denied');
+  });
+});
+
+const IDENTITY_NODE = {
+  name: 'Wolfe City',
+  county: 'Hunt',
+  subdivisionCode: 'TX',
+  countryCode: 'US',
+  providerLevelCode: 'Municipality',
+};
+
+describe('TomtomChainProbeAdapter — §2 promotion vendor flow', () => {
+  it('resolveGeometryId rides the CHEAP pool with the promotion workClass and county-qualified query', async () => {
+    const { adapter, calls, drawCalls } = buildAdapter({
+      forwardResults: [
+        {
+          entityType: 'Municipality',
+          address: { countryCode: 'US' },
+          dataSources: { geometry: { id: 'geo-wolfe' } },
+        },
+      ],
+    });
+    const result = await adapter.resolveGeometryId(IDENTITY_NODE);
+    expect(result).toEqual({ kind: 'ok', geometryId: 'geo-wolfe' });
+    expect(drawCalls).toEqual([
+      { pool: 'tomtom.cheapGeocode', workClass: 'promotion' },
+    ]);
+    expect(calls[0].url).toContain(encodeURIComponent('Wolfe City, Hunt, TX'));
+  });
+
+  it('resolveGeometryId: denial is typed not-now; a wrong-entity match is a miss', async () => {
+    const denied = buildAdapter({ denyPool: true });
+    expect(await denied.adapter.resolveGeometryId(IDENTITY_NODE)).toEqual({
+      kind: 'denied',
+    });
+    const wrongEntity = buildAdapter({
+      forwardResults: [
+        {
+          entityType: 'Neighbourhood',
+          address: { countryCode: 'US' },
+          dataSources: { geometry: { id: 'geo-x' } },
+        },
+      ],
+    });
+    expect(await wrongEntity.adapter.resolveGeometryId(IDENTITY_NODE)).toEqual({
+      kind: 'miss',
+    });
+  });
+
+  it('fetchPolygon rides the SCARCE pool and returns only Polygon/MultiPolygon features', async () => {
+    const { adapter, drawCalls } = buildAdapter({
+      additionalData: [
+        {
+          providerID: 'geo-wolfe',
+          geometryData: {
+            type: 'FeatureCollection',
+            features: [
+              { type: 'Feature', geometry: { type: 'MultiPolygon' } },
+              { type: 'Feature', geometry: { type: 'Point' } },
+            ],
+          },
+        },
+      ],
+    });
+    const result = await adapter.fetchPolygon('geo-wolfe');
+    expect(drawCalls).toEqual([
+      { pool: 'tomtom.scarcePolygons', workClass: 'promotion' },
+    ]);
+    expect(result.kind).toBe('ok');
+    if (result.kind === 'ok') {
+      expect(result.geojson.features).toHaveLength(1);
+      expect(result.geojson.features[0].geometry?.type).toBe('MultiPolygon');
+    }
+  });
+
+  it('fetchPolygon: scarce denial is typed not-now; a no-polygon answer is a consumed-draw miss', async () => {
+    const denied = buildAdapter({ denyPool: true });
+    expect(await denied.adapter.fetchPolygon('geo-wolfe')).toEqual({
+      kind: 'denied',
+    });
+    const empty = buildAdapter({
+      additionalData: [
+        { providerID: 'geo-wolfe', error: 'geometry not found' },
+      ],
+    });
+    expect(await empty.adapter.fetchPolygon('geo-wolfe')).toEqual({
+      kind: 'miss',
+    });
   });
 });

@@ -2021,6 +2021,26 @@ model PlaceGeometry {
   @@map("place_geometries")
 }
 
+// §2 Tier-2 polygon promotion queue (scarce pool, "earned moments"): placeId
+// PK ⇒ enqueue is idempotent (queued OR promoted = conflict no-op). trigger
+// is OPEN vocabulary (§1 stance: stored, never switched on). attempts counts
+// draw-consuming misses (no cap — the pool bounds spend); lastAttemptAt gates
+// retry to the next MONTH window (the K4 monthly pool is the backoff clock);
+// providerBoundaryId caches a cheap-resolved TomTom geometry id across
+// windows. See PlacesPromotionService.
+model PlaceGeometryPromotion {
+  placeId            String    @id @map("place_id") @db.Uuid
+  trigger            String    @db.VarChar(32)
+  enqueuedAt         DateTime  @default(now()) @map("enqueued_at")
+  promotedAt         DateTime? @map("promoted_at")
+  attempts           Int       @default(0)
+  lastAttemptAt      DateTime? @map("last_attempt_at")
+  providerBoundaryId String?   @map("provider_boundary_id") @db.VarChar(128)
+
+  @@index([promotedAt, enqueuedAt], map: "idx_place_geometry_promotions_drain")
+  @@map("place_geometry_promotions")
+}
+
 // §3 Signals Ledger: append-only, immutable, geo ALWAYS a bbox (point =
 // zero-area), actorId pseudonymous. Monthly partitioning applied at the SQL
 // layer later (native partitioning is a follow-up; the table is append-only

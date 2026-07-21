@@ -100,6 +100,10 @@ function createHarness(
     {} as never, // signalDemandRead (recent-searches reader; unused here)
     {} as never, // placesCatalog (§22 cut 3 — unused on these paths)
     {} as never, // placesReconciler
+    {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+      noteHeaderAnswer: jest.fn(),
+    } as never, // placesPromotions
   );
   return { service, signals, signalsPrisma, searchPrisma };
 }

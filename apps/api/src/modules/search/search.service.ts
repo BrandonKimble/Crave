@@ -43,6 +43,7 @@ import { MarketRegistryService } from '../markets/market-registry.service';
 import { SignalsService } from '../signals/signals.service';
 import { SignalDemandReadService } from '../signals/signal-demand-read.service';
 import { PlacesCatalogService } from '../places/places-catalog.service';
+import { PlacesPromotionService } from '../places/places-promotion.service';
 import { PlacesReconcilerService } from '../places/places-reconciler.service';
 import { resolveHeaderPlace } from '../places/subjects';
 import type { GeoBbox } from '../places/place-geo';
@@ -227,6 +228,7 @@ export class SearchService {
     private readonly signalDemandRead: SignalDemandReadService,
     private readonly placesCatalog: PlacesCatalogService,
     private readonly placesReconciler: PlacesReconcilerService,
+    private readonly placesPromotions: PlacesPromotionService,
   ) {
     this.logger = loggerService.setContext('SearchService');
     this.resultLimit = this.resolveResultLimit();
@@ -2981,7 +2983,14 @@ export class SearchService {
           coverageOfView: entry.coverageOfView,
         })),
       );
-      return resolution.kind === 'place' ? resolution.place.name : null;
+      if (resolution.kind === 'place') {
+        // §2(e) tier-2 promotion: answering the header from this place
+        // counts toward its "frequent header-answering" earned moment
+        // (second answer within the memory TTL joins the queue).
+        this.placesPromotions.noteHeaderAnswer(resolution.place.placeId);
+        return resolution.place.name;
+      }
+      return null;
     } catch (error) {
       this.logger.debug('Unable to resolve header place name', {
         error: {

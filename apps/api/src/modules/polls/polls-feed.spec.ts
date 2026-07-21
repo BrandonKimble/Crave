@@ -213,6 +213,10 @@ function createHarness(options: {
     {} as never, // entityTextSearch
     { record: jest.fn() } as never, // signals
     placesCatalog as never,
+    {
+      enqueue: jest.fn().mockResolvedValue(undefined),
+      noteHeaderAnswer: jest.fn(),
+    } as never, // placesPromotions
   );
   return { service, prisma, placesCatalog };
 }

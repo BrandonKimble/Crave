@@ -55,6 +55,7 @@ import {
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { PlacesPromotionService } from '../../places/places-promotion.service';
 import { gaussianRamp } from '../../analytics/demand-scoring/curves';
 import { DemandMassReader, SubjectDemandMass } from './demand-mass.reader';
 import { PollSupplyEstimators, CohortOutcome } from './poll-supply-estimators';
@@ -133,6 +134,7 @@ export class PollWeeklyRitualService {
     private readonly demandMass: DemandMassReader,
     private readonly estimators: PollSupplyEstimators,
     private readonly notifications: NotificationsService,
+    private readonly placesPromotions: PlacesPromotionService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PollWeeklyRitualService');
@@ -657,6 +659,16 @@ export class PollWeeklyRitualService {
         creditRate: decision.creditRate,
       });
       return;
+    }
+
+    // §2(c) tier-2 promotion — derived pre-fetch: credit + creditRate ×
+    // Δt_to_tick ≥ 1. creditRate is PER-WEEK and the tick is weekly, so the
+    // formula is credit + creditRate ≥ 1: this place will warrant a poll by
+    // the next tick — earn its polygon ahead of the moment. Fire-and-forget;
+    // sits behind the no-residue early return above so one searcher still
+    // never promotes (§17 one-searcher law).
+    if (decision.credit + decision.creditRate >= 1) {
+      void this.placesPromotions.enqueue(placeId, 'credit_prefetch');
     }
 
     const ranked = this.rankSubjects({
