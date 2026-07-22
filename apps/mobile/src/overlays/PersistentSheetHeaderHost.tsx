@@ -4,6 +4,7 @@ import { Easing, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import { useAppRouteSceneRuntime } from '../navigation/runtime/AppRouteSceneRuntimeProvider';
 import { usePresentationFrame } from '../navigation/runtime/use-presentation-frame';
+import { setVisibleResidentScene } from './shell-residency-manager';
 import { getPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
 import {
   runHeaderCloseAction,
@@ -81,6 +82,13 @@ export const PersistentSheetHeaderHost: React.FC<{
       ? liveTxn.mutation.sourceSceneKey
       : null;
   const sceneKey = frozenChromeSceneKey ?? frame.presentedSceneKey ?? frame.activeSceneKey;
+  // L3 residency (slice 1): the presentation frame is the ONE driver of the shell
+  // visibility bit — presented truth (what the sheet paints) IS the visible shell.
+  // Riding the header's existing frame subscription keeps exactly one reader chain.
+  const residencySceneKey = frame.presentedSceneKey ?? frame.activeSceneKey ?? null;
+  React.useEffect(() => {
+    setVisibleResidentScene(residencySceneKey);
+  }, [residencySceneKey]);
   const descriptor = sceneKey != null ? getPersistentHeaderDescriptor(sceneKey) : undefined;
   // ─── HeaderNavAction driver (leg 6 — §4 plus↔X rotation, child-transition primitive §3.2).
   // ONE host-owned rotating control; the driver is the PF chrome clock (frame.headerNavAction,

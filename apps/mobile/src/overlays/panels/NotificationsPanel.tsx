@@ -7,6 +7,7 @@ import { notificationsService, type NotificationFeedItem } from '../../services/
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
 import { PageBodyShell } from '../PageBodyShell';
+import { useShellLiveness } from '../ShellVisibilityBoundary';
 import {
   defineListBand,
   resolvePageBodyListState,
@@ -100,8 +101,21 @@ const useNotificationsPageBody = (): PageBodyState<NotificationFeedItem> => {
     items: NotificationFeedItem[] | null;
   }>({ isPending: true, isError: false, items: null });
   const loadSeqRef = React.useRef(0);
+  // L3 residency (A#9 — invisible shells subscribe to nothing; freshness = re-derive
+  // at reveal): the retained hidden body holds its tree but fetches NOTHING; every
+  // become-visible edge re-derives — which also restores the page-open semantics
+  // (fetch + mark-read per VISIT) that mount-once retention silently broke: the old
+  // [] effect fetched on first mount only, so re-entries showed stale data forever.
+  const live = useShellLiveness();
 
   React.useEffect(() => {
+    if (!live) {
+      return;
+    }
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log('[SHELL-RESIDENCY] re-derive on become-visible scene=notifications');
+    }
     const seq = ++loadSeqRef.current;
     void notificationsService
       .getFeed()
@@ -120,7 +134,7 @@ const useNotificationsPageBody = (): PageBodyState<NotificationFeedItem> => {
         }
         setEdge({ isPending: false, isError: true, items: null });
       });
-  }, []);
+  }, [live]);
 
   return resolvePageBodyListState({
     isPending: edge.isPending,

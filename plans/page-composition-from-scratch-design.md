@@ -453,6 +453,36 @@ Laws that are part of L3 regardless:
   (never dispatched) and `search` (bespoke dual-band body — becomes the two-band shell)
   are named explicitly; every key gets a body kind (list/content/none) in the spec table.
 
+**L3 BUILD SLICE 1 EXECUTED 2026-07-22 (the liveness law, notifications+settings).**
+THE MACHINERY FINDING that reshaped the build: the STRUCTURAL half of L3 already
+exists — every persistent scene is a co-mounted absolute-fill sibling that never
+unmounts (BottomSheetSceneStackHost .map over PERSISTENT_ROUTE_SCENE_STACK_KEYS),
+hidden via leg opacity/zIndex worklets + entry-level display:'none' + attach gates,
+with ONE persistent header host. What did NOT exist: the LAW — those are SEVERAL
+writers of display facts with NO liveness derivation; a retained hidden body keeps
+its subscriptions, and (the exposed bug) notifications fetched once on first mount
+and showed STALE DATA FOREVER on re-entry.
+
+LANDED: shell-residency-manager (the visible bit driven by the presentation frame
+via the header host's existing subscription — presented truth IS the visible shell;
+visit-order + commitment ledger = the eviction seam; warm-before-navigate contract
+LOUD + RED-proven on sim, then quieted by the app-root prewarm) +
+ShellLivenessBoundary (liveness context ONLY — deliberately NOT a second display
+writer beside the leg machinery; that would create the two-writers disease) + the
+L0 material's three shimmer clocks freeze on the same bit + notifications
+re-derives on every become-visible edge (fetch + mark-read per VISIT restored).
+Sim-proven: re-derive fires per re-entry; contract quiet after prewarm; page
+correct. Gates: jest 383/383, invariants 29/29, matrix 21/21.
+
+RECORDED FOR THE NEXT SLICES: (1) THE ONE-WRITER CONSOLIDATION — display/pointer/
+a11y derived from the manager's bit, the leg opacity/attach patchwork gutted; this
+is surgery on the host's worklet machinery and must compose with transition
+crossfades (both participants live mid-transition). (2) settle-gate the visibility
+driver (the live bit flickers once mid-transition — benign under seq guards, but
+the settled frame is the honest edge). (3) the eviction budget activates when
+content-heavy scenes join. (4) grow the managed set per the bridge order (profile
+→ listDetail/bookmarks pair → search family last).
+
 ## L4 — REVEAL + THE CONTENT-LANDING CLOCK (redesigned; v1's weakest level)
 
 The red-team's deepest finding (B#1/#2): v1's "one beat at the joint" attacked the

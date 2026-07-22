@@ -15,6 +15,7 @@ import {
   SettingsMountedSceneBody,
   UserProfileMountedSceneBody,
 } from './panels/ChildScenePanels';
+import { ShellLivenessBoundary } from './ShellVisibilityBoundary';
 
 /**
  * W1 slice 1 (C2): a mounted CHILD body receives ITS route entry as a prop — entryId + params
@@ -46,10 +47,21 @@ export const BottomSheetSceneStackMountedBody = React.memo(
         return <ListDetailMountedSceneBody entry={entry} />;
       case 'followList':
         return <FollowListMountedSceneBody entry={entry} />;
+      // L3 residency slice 1: the residency-managed leaves render under the liveness
+      // boundary — their controllers re-derive on become-visible and their material's
+      // clocks freeze when hidden (the retained-body stale-forever bug dies here).
       case 'notifications':
-        return <NotificationsMountedSceneBody entry={entry} />;
+        return (
+          <ShellLivenessBoundary scene="notifications">
+            <NotificationsMountedSceneBody entry={entry} />
+          </ShellLivenessBoundary>
+        );
       case 'settings':
-        return <SettingsMountedSceneBody entry={entry} />;
+        return (
+          <ShellLivenessBoundary scene="settings">
+            <SettingsMountedSceneBody entry={entry} />
+          </ShellLivenessBoundary>
+        );
       case 'editProfile':
         return <EditProfileMountedSceneBody entry={entry} />;
       case 'postPhotos':

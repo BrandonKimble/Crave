@@ -19,6 +19,7 @@ import Reanimated, {
 import Svg, { Defs, G, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { FrostedGlassBackground } from '../FrostedGlassBackground';
+import { useShellLiveness } from '../../overlays/ShellVisibilityBoundary';
 import MaskedHoleOverlay, { type MaskedHole } from '../MaskedHoleOverlay';
 import { CUTOUT_SKELETON_CONFIG, type CutoutShimmerMode } from './cutout-skeleton-config';
 import { buildPresetHoles, type CutoutSkeletonRowType } from './cutout-skeleton-presets';
@@ -180,6 +181,11 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
 
   // Honor reduce-motion: render the skeleton STATIC (no infinite shimmer loop) for users who opt out.
   const [reduceMotion, setReduceMotion] = React.useState(false);
+  // L3 visibility law: a HIDDEN resident shell runs ZERO animation work — its
+  // material's shimmer clocks freeze exactly like reduce-motion. One derivation
+  // gates all three clocks; the bit comes from the one visibility writer.
+  const shellLive = useShellLiveness();
+  const shimmerFrozen = reduceMotion || !shellLive;
   React.useEffect(() => {
     let mounted = true;
     AccessibilityInfo.isReduceMotionEnabled()
@@ -221,7 +227,7 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
       return undefined;
     }
     cancelAnimation(pulse);
-    if (reduceMotion) {
+    if (shimmerFrozen) {
       pulse.value = (PULSE_MIN_OPACITY + PULSE_MAX_OPACITY) / 2;
       return undefined;
     }
@@ -235,7 +241,7 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
       true
     );
     return () => cancelAnimation(pulse);
-  }, [pulse, shimmerMode, shimmerDurationMs, reduceMotion]);
+  }, [pulse, shimmerMode, shimmerDurationMs, shimmerFrozen]);
 
   const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value * shimmerIntensity }));
 
@@ -246,7 +252,7 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
       return undefined;
     }
     cancelAnimation(sweep);
-    if (reduceMotion) {
+    if (shimmerFrozen) {
       sweep.value = 0.5;
       return undefined;
     }
@@ -257,7 +263,7 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
       false
     );
     return () => cancelAnimation(sweep);
-  }, [sweep, shimmerMode, shimmerDurationMs, reduceMotion]);
+  }, [sweep, shimmerMode, shimmerDurationMs, shimmerFrozen]);
 
   const cx = size.width / 2;
   const cy = size.height / 2;
@@ -276,7 +282,7 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
       return undefined;
     }
     cancelAnimation(dominoClock);
-    if (reduceMotion) {
+    if (shimmerFrozen) {
       dominoClock.value = 0;
       return undefined;
     }
@@ -287,7 +293,7 @@ export const CutoutSkeletonSurface: React.FC<CutoutSkeletonSurfaceProps> = ({
       false
     );
     return () => cancelAnimation(dominoClock);
-  }, [dominoClock, shimmerMode, shimmerDurationMs, reduceMotion]);
+  }, [dominoClock, shimmerMode, shimmerDurationMs, shimmerFrozen]);
 
   const dominoPhases = React.useMemo(() => {
     const denom = size.width + size.height || 1;

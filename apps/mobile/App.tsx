@@ -44,6 +44,7 @@ import PollNotificationListener from './src/providers/PollNotificationListener';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
 import { PerfScenarioCoordinator } from './src/perf/PerfScenarioCoordinator';
 import { ResidentShellPrototype } from './src/perf/ResidentShellPrototype';
+import { scheduleResidentShellPrewarm } from './src/overlays/shell-residency-manager';
 import { LifecycleHarnessCoordinator } from './src/perf/lifecycle-harness/LifecycleHarnessCoordinator';
 import { LifecycleHarnessBridge } from './src/perf/lifecycle-harness/LifecycleHarnessBridge';
 import { CutoutSkeletonDevPreview } from './src/components/skeletons/CutoutSkeletonDevPreview';
@@ -110,6 +111,11 @@ export default function App() {
     });
   }, [bannerProgress, isBannerVisible]);
 
+  // L3 warm-before-navigate: mount the residency-managed shells at app-idle so a
+  // navigation never compiles one (the [SHELL-RESIDENCY][CONTRACT] RED stays quiet).
+  React.useEffect(() => {
+    scheduleResidentShellPrewarm();
+  }, []);
   const contentAnimatedStyle = useAnimatedStyle(() => ({
     paddingTop: SYSTEM_BANNER_PUSH_HEIGHT * bannerProgress.value,
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS * bannerProgress.value,
