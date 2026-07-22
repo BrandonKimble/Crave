@@ -1,4 +1,4 @@
-import { GeoBbox } from '../places/place-geo';
+import { GeoBbox } from '@crave-search/shared';
 import {
   FeedPlaceCandidate,
   resolveFeedMembership,

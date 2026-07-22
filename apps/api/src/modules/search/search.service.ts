@@ -45,8 +45,7 @@ import { SignalDemandReadService } from '../signals/signal-demand-read.service';
 import { PlacesCatalogService } from '../places/places-catalog.service';
 import { PlacesPromotionService } from '../places/places-promotion.service';
 import { PlacesReconcilerService } from '../places/places-reconciler.service';
-import { resolveHeaderPlace } from '../places/subjects';
-import type { GeoBbox } from '../places/place-geo';
+import { resolveHeaderPlace, type GeoBbox } from '@crave-search/shared';
 import { RestaurantStatusService } from './restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from './dto/restaurant-status-preview.dto';
 import {

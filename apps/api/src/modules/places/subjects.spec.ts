@@ -4,16 +4,25 @@
  * continental-no-subject, city+slivers→city, street-zoom descent
  * (parent/child), containing-fallback, and the probe-anchor budget.
  * All pure — the fixtures ARE the law's spec.
+ *
+ * The law LIVES in @crave-search/shared (header subject-store design: the
+ * client runs the same law over its sliding catalog slice). These fixtures
+ * run against the shared import — jest maps @crave-search/shared to the
+ * package SOURCE, so a stale dist can never green a broken law.
  */
-import { GeoBbox, bboxArea } from './place-geo';
 import {
   ATTENTION_FRACTION,
+  GeoBbox,
   MAX_PROBE_ANCHORS,
+  PlaceLike,
   SubjectCandidate,
+  bboxArea,
+  coverageOfView,
   isCommensurate,
   probeAnchors,
   resolveHeaderPlace,
-} from './subjects';
+  subjectCandidatesInView,
+} from '@crave-search/shared';
 
 function candidate(
   name: string,
@@ -270,5 +279,68 @@ describe('probeAnchors — §2 probe budget', () => {
       maxLng: 0.5025,
     };
     expect(probeAnchors(streetView, [city, country, ward])).toEqual([]);
+  });
+});
+
+describe('subjectCandidatesInView — the client-side slice read (subject-store)', () => {
+  const placeLike = (name: string, bbox: GeoBbox): PlaceLike => ({
+    placeId: `id-${name}`,
+    name,
+    bbox,
+    providerLevelCode: 'municipality',
+    parentPlaceIds: [],
+  });
+
+  it('derives the SAME candidates the server read feeds resolveHeaderPlace: intersecting places in, disjoint out, exact coverage shares', () => {
+    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 2 };
+    const half = placeLike('Halftown', {
+      minLat: 0,
+      minLng: 0,
+      maxLat: 1,
+      maxLng: 1,
+    });
+    const disjoint = placeLike('Elsewhere', {
+      minLat: 10,
+      minLng: 10,
+      maxLat: 11,
+      maxLng: 11,
+    });
+    const candidates = subjectCandidatesInView(view, [half, disjoint]);
+    expect(candidates.map((c) => c.name)).toEqual(['Halftown']);
+    expect(candidates[0].coverageOfView).toBeCloseTo(0.5, 6);
+    // …and the derived candidates ARE valid resolveHeaderPlace input.
+    const result = resolveHeaderPlace(view, candidates);
+    expect(result.kind).toBe('place');
+  });
+
+  it('coverageOfView: null when disjoint; a zero-area (point) view degenerates to coverage 1', () => {
+    const view: GeoBbox = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
+    const far: GeoBbox = { minLat: 5, minLng: 5, maxLat: 6, maxLng: 6 };
+    expect(coverageOfView(view, bboxArea(view), far)).toBeNull();
+    const point: GeoBbox = {
+      minLat: 0.5,
+      minLng: 0.5,
+      maxLat: 0.5,
+      maxLng: 0.5,
+    };
+    expect(coverageOfView(point, bboxArea(point), view)).toBe(1);
+  });
+
+  it('wrap-aware: a crossing (Fiji) view derives full coverage from a crossing place bbox', () => {
+    const view: GeoBbox = {
+      minLat: -19,
+      minLng: 178,
+      maxLat: -17,
+      maxLng: -179,
+    };
+    const fiji = placeLike('Fiji', {
+      minLat: -21,
+      minLng: 176,
+      maxLat: -12,
+      maxLng: -178,
+    });
+    const candidates = subjectCandidatesInView(view, [fiji]);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].coverageOfView).toBeCloseTo(1, 6);
   });
 });

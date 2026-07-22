@@ -27,15 +27,13 @@ import {
   GeoBbox,
   METERS_PER_DEGREE_LAT,
   bboxArea,
-  bboxLngSpan,
-} from './place-geo';
-import { PlacesCatalogService, placeBbox } from './places-catalog.service';
-import {
   bboxAnswersAnchor,
+  bboxLngSpan,
   probeAnchors,
   MAX_PROBE_ANCHORS,
   viewCenter,
-} from './subjects';
+} from '@crave-search/shared';
+import { PlacesCatalogService, placeBbox } from './places-catalog.service';
 import {
   PROBE_SPEAKS_FOR_METERS,
   TOMTOM_CHAIN_PROBE,

@@ -22,6 +22,13 @@
  *     nothing containing — the continental view over sparse catalog).
  * Hysteresis (commit on settle+dwell, enter/exit asymmetry) is the CALLER's
  * concern — this function is the memoryless judgment it hysteresis-wraps.
+ *
+ * SHARED HOME (header subject-store design, ratified 2026-07-21): this law
+ * lives in @crave-search/shared because the header is a pure function of
+ * (viewport, catalog) and BOTH sides run it — the server (search header,
+ * polls membership, reconciler, promotion) and the client (against its
+ * sliding catalog slice, GET /places/in-view). One law, two runtimes; no
+ * Nest, no Prisma, no IO may ever enter this module.
  */
 import {
   GeoBbox,
@@ -30,6 +37,7 @@ import {
   bboxCenter,
   bboxContains,
   bboxContainsPoint,
+  bboxIntersectionParts,
   bboxLngSpan,
   normalizeLng,
   pointDistance,
@@ -63,8 +71,69 @@ export interface SubjectCandidate {
   placeId: string;
   name: string;
   bbox: GeoBbox;
-  /** area(place bbox ∩ view) / area(view) — from PlacesCatalogService. */
+  /** area(place bbox ∩ view) / area(view) — see coverageOfView below. */
   coverageOfView: number;
+}
+
+/**
+ * The lean catalog-row shape the subjects law accepts from EITHER runtime —
+ * the server's Prisma Place row projects onto it, and the slice endpoint
+ * (GET /places/in-view) ships exactly this (minus `area`, which derives from
+ * bbox via bboxArea and is never wire data). Deliberately storage-agnostic:
+ * no Prisma types may appear in this module.
+ */
+export interface PlaceLike {
+  placeId: string;
+  name: string;
+  bbox: GeoBbox;
+  /** OPEN vocabulary (§1) — stored verbatim, never switched on. */
+  providerLevelCode: string;
+  /** DAG parent edges (dedupe is the reader's concern, §1). */
+  parentPlaceIds: string[];
+  /** Optional cached bboxArea(bbox); recomputed when absent. */
+  area?: number;
+}
+
+/**
+ * THE per-row coverage law — area(bbox ∩ view) / area(view) — shared by the
+ * server catalog read (PlacesCatalogService.placesInView) and the client's
+ * local slice evaluation, so both sides feed resolveHeaderPlace identical
+ * numbers. Returns null when the bbox does not intersect the view at all
+ * (not a candidate). A zero-area (point) view degenerates to coverage 1:
+ * any place whose bbox admits the point fully covers the attention there.
+ * `viewArea` is passed in (callers already hold bboxArea(view)) so a slice
+ * of N places computes it once.
+ */
+export function coverageOfView(view: GeoBbox, viewArea: number, bbox: GeoBbox): number | null {
+  const parts = bboxIntersectionParts(bbox, view);
+  if (parts.length === 0) {
+    return null;
+  }
+  const intersectionArea = parts.reduce((sum, part) => sum + bboxArea(part), 0);
+  return viewArea > 0 ? intersectionArea / viewArea : 1;
+}
+
+/**
+ * Catalog rows → subject candidates for one view: keep every place whose
+ * bbox intersects the view, with its coverage share. This is the pure core
+ * of the server's placesInView (which merely adds the DB prefilter) and the
+ * WHOLE of the client's read over its slice — feed the result straight to
+ * resolveHeaderPlace.
+ */
+export function subjectCandidatesInView(view: GeoBbox, places: PlaceLike[]): SubjectCandidate[] {
+  const viewArea = bboxArea(view);
+  const candidates: SubjectCandidate[] = [];
+  for (const place of places) {
+    const coverage = coverageOfView(view, viewArea, place.bbox);
+    if (coverage === null) continue;
+    candidates.push({
+      placeId: place.placeId,
+      name: place.name,
+      bbox: place.bbox,
+      coverageOfView: coverage,
+    });
+  }
+  return candidates;
 }
 
 export type HeaderResolution =
@@ -108,10 +177,7 @@ export function isTooBigForView(viewArea: number, regionArea: number): boolean {
  * Exported so the reconciler/spec fixtures can assert the disqualifiers
  * independently of the full resolution.
  */
-export function isCommensurate(
-  viewArea: number,
-  candidate: SubjectCandidate,
-): boolean {
+export function isCommensurate(viewArea: number, candidate: SubjectCandidate): boolean {
   // Too small: covers < 1/3 of the view.
   if (candidate.coverageOfView + EPSILON < ATTENTION_FRACTION) {
     return false;
@@ -129,15 +195,8 @@ export function isCommensurate(
  * not suppress the probe. The scale test is the same too-big disqualifier as
  * isCommensurate, applied SYMMETRICALLY to places and negative observations.
  */
-export function bboxAnswersAnchor(
-  viewArea: number,
-  bbox: GeoBbox,
-  anchor: GeoPoint,
-): boolean {
-  return (
-    !isTooBigForView(viewArea, bboxArea(bbox)) &&
-    bboxContainsPoint(bbox, anchor)
-  );
+export function bboxAnswersAnchor(viewArea: number, bbox: GeoBbox, anchor: GeoPoint): boolean {
+  return !isTooBigForView(viewArea, bboxArea(bbox)) && bboxContainsPoint(bbox, anchor);
 }
 
 /**
@@ -149,7 +208,7 @@ export function bboxAnswersAnchor(
  */
 export function resolveHeaderPlace(
   view: GeoBbox,
-  placesInView: SubjectCandidate[],
+  placesInView: SubjectCandidate[]
 ): HeaderResolution {
   const viewArea = bboxArea(view);
 
@@ -157,17 +216,11 @@ export function resolveHeaderPlace(
     .filter((candidate) => isCommensurate(viewArea, candidate))
     // §2 tiebreak: "equal-commensurability descent tiebreak = coverage-of-
     // view, then name-stability" — deterministic lexicographic close.
-    .sort(
-      (a, b) =>
-        b.coverageOfView - a.coverageOfView || a.name.localeCompare(b.name),
-    );
+    .sort((a, b) => b.coverageOfView - a.coverageOfView || a.name.localeCompare(b.name));
 
   if (commensurate.length > 0) {
     const top = commensurate[0];
-    if (
-      commensurate.length === 1 ||
-      top.coverageOfView + EPSILON >= COVERING_FRACTION
-    ) {
+    if (commensurate.length === 1 || top.coverageOfView + EPSILON >= COVERING_FRACTION) {
       // The commensurate covering place (or the lone subject — with a single
       // subject there is no straddle to reserve "this area" for).
       // RATIFIED 2026-07-19 (owner docket item 2): a lone commensurate
@@ -189,10 +242,7 @@ export function resolveHeaderPlace(
   // the fallback names the containing place, NOT "this area").
   const containing = placesInView
     .filter((candidate) => bboxContains(candidate.bbox, view))
-    .sort(
-      (a, b) =>
-        bboxArea(a.bbox) - bboxArea(b.bbox) || a.name.localeCompare(b.name),
-    );
+    .sort((a, b) => bboxArea(a.bbox) - bboxArea(b.bbox) || a.name.localeCompare(b.name));
   if (containing.length > 0) {
     return {
       kind: 'place',
@@ -216,7 +266,7 @@ export function resolveHeaderPlace(
  */
 const GRID_FRACTIONS: readonly number[] = Array.from(
   { length: MAX_PROBE_ANCHORS },
-  (_, index) => (index + 1) / (MAX_PROBE_ANCHORS + 1),
+  (_, index) => (index + 1) / (MAX_PROBE_ANCHORS + 1)
 );
 
 /**
@@ -239,13 +289,11 @@ const GRID_FRACTIONS: readonly number[] = Array.from(
 export function probeAnchors(
   view: GeoBbox,
   knownBboxes: GeoBbox[],
-  maxAnchors: number = MAX_PROBE_ANCHORS,
+  maxAnchors: number = MAX_PROBE_ANCHORS
 ): GeoPoint[] {
   const viewArea = bboxArea(view);
   // Over-scale regions neither answer anchors nor repel them.
-  const answering = knownBboxes.filter(
-    (bbox) => !isTooBigForView(viewArea, bboxArea(bbox)),
-  );
+  const answering = knownBboxes.filter((bbox) => !isTooBigForView(viewArea, bboxArea(bbox)));
 
   const latSpan = view.maxLat - view.minLat;
   const lngSpan = bboxLngSpan(view); // wrap-aware for antimeridian views

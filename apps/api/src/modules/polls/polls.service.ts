@@ -52,8 +52,12 @@ import {
   descendantPlaceIds,
   isSubdivisionOrBigger,
 } from '../places/place-dag-read';
-import { GeoBbox, bboxArea, bboxCenter } from '../places/place-geo';
-import { isTooBigForView } from '../places/subjects';
+import {
+  GeoBbox,
+  bboxArea,
+  bboxCenter,
+  isTooBigForView,
+} from '@crave-search/shared';
 import {
   FeedPlaceCandidate,
   resolveFeedMembership,

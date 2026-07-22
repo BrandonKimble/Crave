@@ -8,14 +8,17 @@ import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { SharedModule } from '../../shared/shared.module';
+import { IdentityModule } from '../identity/identity.module';
 import { PlacesCatalogService } from './places-catalog.service';
+import { PlacesController } from './places.controller';
 import { PlacesPromotionService } from './places-promotion.service';
 import { PlacesReconcilerService } from './places-reconciler.service';
 import { TomtomChainProbeAdapter } from './tomtom-chain-probe.adapter';
 import { TOMTOM_CHAIN_PROBE } from './tomtom-chain-probe.port';
 
 @Module({
-  imports: [PrismaModule, SharedModule, HttpModule],
+  imports: [PrismaModule, SharedModule, HttpModule, IdentityModule],
+  controllers: [PlacesController],
   providers: [
     PlacesCatalogService,
     PlacesPromotionService,

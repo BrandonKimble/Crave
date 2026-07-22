@@ -44,7 +44,7 @@ import {
   GeoPoint,
   METERS_PER_DEGREE_LAT,
   normalizePlaceName,
-} from './place-geo';
+} from '@crave-search/shared';
 import { PlaceSketchNode } from './places-catalog.service';
 import {
   GeometryIdResolution,

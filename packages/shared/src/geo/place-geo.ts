@@ -158,7 +158,7 @@ export function bboxIntersectionParts(a: GeoBbox, b: GeoBbox): GeoBbox[] {
  */
 export function bboxUnion(
   a: GeoBbox | null | undefined,
-  b: GeoBbox | null | undefined,
+  b: GeoBbox | null | undefined
 ): GeoBbox | null {
   if (!a) return b ?? null;
   if (!b) return a;
@@ -172,10 +172,7 @@ export function bboxUnion(
 }
 
 /** Smaller-enclosing-arc hull of the two boxes' lng coverage. */
-function lngHullUnion(
-  a: GeoBbox,
-  b: GeoBbox,
-): { minLng: number; maxLng: number } {
+function lngHullUnion(a: GeoBbox, b: GeoBbox): { minLng: number; maxLng: number } {
   const spanA = bboxLngSpan(a);
   const spanB = bboxLngSpan(b);
   // Candidate hulls start at either box's west edge and extend east to cover
@@ -187,12 +184,9 @@ function lngHullUnion(
   if (Math.min(spanFromA, spanFromB) >= 360) {
     return { minLng: -180, maxLng: 180 }; // hull wraps the whole circle
   }
-  const [start, span] =
-    spanFromA <= spanFromB ? [a.minLng, spanFromA] : [b.minLng, spanFromB];
+  const [start, span] = spanFromA <= spanFromB ? [a.minLng, spanFromA] : [b.minLng, spanFromB];
   const end = start + span;
-  return end <= 180
-    ? { minLng: start, maxLng: end }
-    : { minLng: start, maxLng: normalizeLng(end) }; // crossing representation
+  return end <= 180 ? { minLng: start, maxLng: end } : { minLng: start, maxLng: normalizeLng(end) }; // crossing representation
 }
 
 /** True when `outer` fully contains `inner` (closed-interval, wrap-aware). */
@@ -205,7 +199,7 @@ export function bboxContains(outer: GeoBbox, inner: GeoBbox): boolean {
   // maximal non-crossing pieces; an interval can't span the gap between
   // them).
   return bboxLngArcs(inner).every((arc) =>
-    outerArcs.some((o) => o.start <= arc.start && o.end >= arc.end),
+    outerArcs.some((o) => o.start <= arc.start && o.end >= arc.end)
   );
 }
 
@@ -213,9 +207,7 @@ export function bboxContainsPoint(bbox: GeoBbox, point: GeoPoint): boolean {
   if (point.lat < bbox.minLat || point.lat > bbox.maxLat) {
     return false;
   }
-  return bboxLngArcs(bbox).some(
-    (arc) => arc.start <= point.lng && arc.end >= point.lng,
-  );
+  return bboxLngArcs(bbox).some((arc) => arc.start <= point.lng && arc.end >= point.lng);
 }
 
 /** Signed shortest angular difference a − b, wrapped into [-180, 180). */
@@ -233,14 +225,12 @@ export function circularLngDelta(a: number, b: number): number {
  */
 export function pointToBboxDistance(point: GeoPoint, bbox: GeoBbox): number {
   const dLat = Math.max(bbox.minLat - point.lat, 0, point.lat - bbox.maxLat);
-  const inside = bboxLngArcs(bbox).some(
-    (arc) => arc.start <= point.lng && arc.end >= point.lng,
-  );
+  const inside = bboxLngArcs(bbox).some((arc) => arc.start <= point.lng && arc.end >= point.lng);
   const dLng = inside
     ? 0
     : Math.min(
         Math.abs(circularLngDelta(point.lng, bbox.minLng)),
-        Math.abs(circularLngDelta(point.lng, bbox.maxLng)),
+        Math.abs(circularLngDelta(point.lng, bbox.maxLng))
       );
   return Math.sqrt(dLat * dLat + dLng * dLng);
 }

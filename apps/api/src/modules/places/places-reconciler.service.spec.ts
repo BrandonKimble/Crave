@@ -6,7 +6,7 @@
  * observations (30d TTL) answer later viewports; single-flight per cell;
  * noteViewport never blocks and never throws.
  */
-import { GeoBbox } from './place-geo';
+import { GeoBbox } from '@crave-search/shared';
 import { PlacesReconcilerService } from './places-reconciler.service';
 import { TomtomChainProbeResult } from './tomtom-chain-probe.port';
 

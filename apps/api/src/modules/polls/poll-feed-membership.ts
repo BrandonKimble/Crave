@@ -15,13 +15,14 @@
  * — its polls are that ground's polls; only subdivision+ places gate on
  * commensurability. (The never-push half lives in notification targeting.)
  */
-import { GeoBbox, bboxArea } from '../places/place-geo';
 import {
+  GeoBbox,
   HeaderResolution,
   SubjectCandidate,
+  bboxArea,
   isTooBigForView,
   resolveHeaderPlace,
-} from '../places/subjects';
+} from '@crave-search/shared';
 
 export interface FeedPlaceCandidate extends SubjectCandidate {
   /** area(place bbox), same squared-degree metric as the view's. */

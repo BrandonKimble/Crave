@@ -31,10 +31,11 @@ import {
   bboxIntersectionParts,
   bboxLngArcs,
   bboxUnion,
+  coverageOfView,
   isGeoPoint,
   normalizePlaceName,
   pointToBbox,
-} from './place-geo';
+} from '@crave-search/shared';
 
 /**
  * One node of a reverse-geocode chain, as handed to sketchChain. Everything
@@ -184,18 +185,15 @@ export class PlacesCatalogService {
     for (const place of rows) {
       const bbox = placeBbox(place);
       if (!bbox) continue;
-      const parts = bboxIntersectionParts(bbox, view);
-      if (parts.length === 0) continue;
-      const intersectionArea = parts.reduce(
-        (sum, part) => sum + bboxArea(part),
-        0,
-      );
+      // THE per-row coverage law is shared (coverageOfView) so the client's
+      // slice evaluation and this server read feed resolveHeaderPlace
+      // identical numbers (header subject-store design).
+      const coverage = coverageOfView(view, viewArea, bbox);
+      if (coverage === null) continue;
       results.push({
         place,
         bbox,
-        // Zero-area view (a point) degenerates to coverage 1: any place whose
-        // bbox admits the point fully covers the attention there.
-        coverageOfView: viewArea > 0 ? intersectionArea / viewArea : 1,
+        coverageOfView: coverage,
         placeArea: bboxArea(bbox),
       });
     }

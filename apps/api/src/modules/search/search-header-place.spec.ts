@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { SearchService } from './search.service';
 import { PlacesReconcilerService } from '../places/places-reconciler.service';
-import { bboxArea, type GeoBbox } from '../places/place-geo';
+import { bboxArea, type GeoBbox } from '@crave-search/shared';
 import type { PlaceInView } from '../places/places-catalog.service';
 
 // §22 cut 3 (plans/geo-demand-foundation-rebuild.md): the search HEADER names

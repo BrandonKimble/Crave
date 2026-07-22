@@ -3,6 +3,8 @@
  * "anywhere on earth"): wrap-aware longitude (a bbox with minLng > maxLng
  * crosses the antimeridian — Fiji/Chukotka must judge like anywhere else)
  * and cos(midLat)-weighted areas (Norway must not distort the 1/3 law).
+ * The primitives LIVE in @crave-search/shared (header subject-store design);
+ * these fixtures run against the shared import (jest maps it to source).
  */
 import {
   GeoBbox,
@@ -14,7 +16,7 @@ import {
   bboxLngSpan,
   bboxUnion,
   pointToBboxDistance,
-} from './place-geo';
+} from '@crave-search/shared';
 
 /** Fiji-flavored crossing bbox: 176°E → 178°W (lng span 6°). */
 const FIJI: GeoBbox = { minLat: -21, minLng: 176, maxLat: -12, maxLng: -178 };

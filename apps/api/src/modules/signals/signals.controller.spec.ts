@@ -17,7 +17,9 @@ import { RecordViewportDwellDto } from './dto/record-viewport-dwell.dto';
  * - fire-and-forget: the handler returns without awaiting persistence.
  */
 
-function createController() {
+function createController(reconciler?: {
+  noteViewport: (view: never) => void;
+}) {
   const recorded: RecordSignalInput[] = [];
   const record = jest.fn((input: RecordSignalInput) => {
     recorded.push(input);
@@ -33,8 +35,12 @@ function createController() {
     bboxFromBounds: (bounds: Parameters<SignalsService['bboxFromBounds']>[0]) =>
       realService.bboxFromBounds(bounds),
   };
-  const controller = new SignalsController(signals as never);
-  return { controller, record, recorded };
+  const noteViewport = jest.fn();
+  const controller = new SignalsController(
+    signals as never,
+    (reconciler ?? { noteViewport }) as never,
+  );
+  return { controller, record, recorded, noteViewport };
 }
 
 const AUSTIN_BOUNDS = {
@@ -102,5 +108,61 @@ describe('SignalsController POST /signals/viewport-dwell (wave-5 F3)', () => {
       dwellMs: 4200,
     });
     expect(validateSync(good)).toHaveLength(0);
+  });
+});
+
+describe('viewport-dwell → naming reconciler settle seam (header subject-store)', () => {
+  it('a dwell IS a settle: noteViewport fires exactly once with the wrap-preserved viewport bbox', () => {
+    const { controller, record, noteViewport } = createController();
+    controller.recordViewportDwell(
+      {
+        bounds: {
+          northEast: { lat: -16, lng: -179 },
+          southWest: { lat: -19, lng: 177 },
+        },
+        dwellMs: 1000,
+      } as RecordViewportDwellDto,
+      { userId: 'user-1' } as never,
+    );
+    expect(noteViewport).toHaveBeenCalledTimes(1);
+    expect(noteViewport).toHaveBeenCalledWith({
+      minLat: -19,
+      maxLat: -16,
+      minLng: 177, // crossing bbox preserved — west > east
+      maxLng: -179,
+    });
+    expect(record).toHaveBeenCalledTimes(1); // ledger write unaffected
+  });
+
+  it('failure isolation: a reconciler whose async pass fails never touches the 202 or the ledger write', async () => {
+    // REAL PlacesReconcilerService over a catalog that rejects: noteViewport
+    // must return synchronously (never throws — the §2 law), the handler
+    // must still record + accept, and the failure resolves into a logged
+    // warning on the in-flight pass.
+    const { PlacesReconcilerService } = await import(
+      '../places/places-reconciler.service'
+    );
+    const warn = jest.fn();
+    const logger = {
+      setContext: () => ({ warn, info: jest.fn(), debug: jest.fn() }),
+    } as never;
+    const reconciler = new PlacesReconcilerService(
+      {
+        placesInView: jest.fn().mockRejectedValue(new Error('db down')),
+      } as never,
+      { probe: jest.fn() } as never,
+      logger,
+    );
+    const { controller, record } = createController(reconciler);
+
+    const result = controller.recordViewportDwell(
+      { bounds: AUSTIN_BOUNDS, dwellMs: 500 } as RecordViewportDwellDto,
+      { userId: 'user-1' } as never,
+    );
+
+    expect(result).toEqual({ accepted: true });
+    expect(record).toHaveBeenCalledTimes(1);
+    await reconciler.whenIdle();
+    expect(warn).toHaveBeenCalledTimes(1); // failed pass logged, not thrown
   });
 });

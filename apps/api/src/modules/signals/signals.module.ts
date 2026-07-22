@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SharedModule } from '../../shared/shared.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { IdentityModule } from '../identity/identity.module';
+import { PlacesModule } from '../places/places.module';
 import { SignalsService } from './signals.service';
 import { SignalsController } from './signals.controller';
 import { SignalDemandAggregateService } from './signal-demand-aggregate.service';
@@ -17,7 +18,9 @@ import { SignalPartitionMaintenanceService } from './signal-partition-maintenanc
  * (SignalsController: viewport_dwell — wave-5 F3).
  */
 @Module({
-  imports: [SharedModule, PrismaModule, IdentityModule],
+  // PlacesModule: the viewport-dwell settle also feeds the naming
+  // reconciler (header subject-store design — settles are observations).
+  imports: [SharedModule, PrismaModule, IdentityModule, PlacesModule],
   controllers: [SignalsController],
   providers: [
     SignalsService,

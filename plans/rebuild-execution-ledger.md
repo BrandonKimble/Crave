@@ -484,6 +484,41 @@ agent in flight at turn end so completion notifications chain turns.
       forward 'Austin, Travis, TX' + 1 scarce additionalData), row cleaned
       up so no unapproved spend on restart. 674 green (655 +19);
       build/tsc/eslint/prettier clean.
+- [x] HEADER SUBJECT-STORE LEG 1 (2026-07-21, agent, uncommitted; :3000 NOT
+      restarted; owner-ratified design: header = pure function of (viewport,
+      catalog); client will hold a sliding catalog slice and run THE SAME
+      subjects law locally; server = slice read + settled-viewport seam.
+      Leg 2 = mobile, untouched):
+      · SHARED-LAW EXTRACTION: subjects.ts + place-geo.ts moved VERBATIM to
+      packages/shared/src/geo/ (place-geo, subjects, slice + index; exported
+      from the package root; no Nest/Prisma — new lean PlaceLike
+      {placeId,name,bbox,providerLevelCode,parentPlaceIds,area?}). New pure
+      functions: coverageOfView (THE per-row coverage law — server
+      placesInView now calls it, client slice will) +
+      subjectCandidatesInView (rows→SubjectCandidate[], the whole client
+      read). All 11 api call sites re-import from @crave-search/shared;
+      law specs run against the shared import; api jest moduleNameMapper
+      pins @crave-search/shared → package SOURCE (stale dist can't green a
+      broken law).
+      · SLICE ENDPOINT: GET /places/in-view?minLat&minLng&maxLat&maxLng
+      (ClerkAuthGuard + paywall, wrap-aware west>east, minLat>maxLat 400)
+      → { marginBox, places: PlaceLike[] }. Margin = view expanded
+      ×PLACES_SLICE_MARGIN_FACTOR (3; §16 DERIVED — the sliding-cache
+      re-fetch hysteresis: pan-within-margin needs no network); marginBox
+      echoed = client cache-validity region. NO containing-chain field:
+      containment implies intersection, so over-scale containing nodes are
+      already slice members (spec-pinned); bbox-less ancestors can never
+      pass bboxContains so they can't name a fallback header anyway. Reads
+      never probe — slices are reads, settles are observations.
+      · SETTLE SEAM: POST /signals/viewport-dwell now also fire-and-forgets
+      placesReconciler.noteViewport(bbox) (SignalsModule imports
+      PlacesModule); search submit keeps its own call — both mouths are
+      settles. noteViewport stays sync-return/never-throws (spec: real
+      reconciler over rejecting catalog → 202 + ledger write unaffected,
+      warn logged).
+      689 green (674 +15); api build/tsc/eslint/prettier clean; shared
+      builds+lints; mobile tsc still EXACTLY the 2 pre-existing errors
+      (search-map nativeHostKey L543, camera-intent L79).
 - [ ] After fix agent: commit, restart :3000 (REQUIRED: the running
       binary still serves kind-blind aggregate cron + lacks the
       viewport-dwell route), REASSESSMENT to owner (wave-5 verdict: with

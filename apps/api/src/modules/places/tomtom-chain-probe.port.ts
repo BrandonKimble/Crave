@@ -19,7 +19,7 @@
  * "TomTom pools governed FIRST — the one ungoverned money"), which is exactly
  * why it is NOT built here: governance wiring belongs to the Phase-B cutover.
  */
-import { GeoBbox, GeoPoint } from './place-geo';
+import { GeoBbox, GeoPoint } from '@crave-search/shared';
 import { PlaceSketchNode } from './places-catalog.service';
 
 /**
