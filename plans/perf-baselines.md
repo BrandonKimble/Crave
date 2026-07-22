@@ -262,3 +262,25 @@ release-lane burst is ONE JS-thread stall at the reveal commit — the row-landi
 / P-12 coalesced commit territory (deliberately one render; the landing clock's
 above-fold beat + world-read + commit ≈ this stall). The next lever, if wanted,
 lives in JS-land, not the map.
+
+## JS reveal-stall arc, step 1: ONLY THE VISIBLE TAB LANDS (2026-07-21)
+
+[RevealCommit] (new stage-mark span inside the reveal-commit task, release-visible
+via the UIFrameSampler os_log sink) decomposed the 164ms: base_build 0.0ms (the
+world-read is FREE) — and the task rendered BOTH tabs' above-fold rows; the
+hidden inactive tab was ~half the stall, all invisible. FIX: the landing clock's
+above-fold beat slices ONLY the active tab; the inactive tab lands with the held
+post-ramp beats (tab-flip mid-hold releases the hold immediately).
+
+RELEASE VERDICT (split-sampler baseline + [RevealCommit]):
+- reveal-commit task: **~164ms → 57.6/60.8ms** (marks: last renderItem +28-33,
+  ~29ms card-body+Fabric tail)
+- JS windows AT THE REVEAL: worst p95 ≤ 24.3ms — the reveal stall class is done
+- UI lane worst p95: 43.3ms
+
+RESIDUAL (new attribution, separate arc): the protocol's worst JS windows
+(117.7/117.2 p95, stallLongest 193ms) land BEFORE the submit — a SESSION-START /
+scenario-arm stall, not the reveal. Flagged for a launch-window arc if wanted.
+CAVEAT: [RevealCommit] taskEnd is only honest when its setTimeout(0) fires
+promptly — a cold-start line (taskEnd=880 with a 460ms mark gap) shows the span
+leaking across tasks under launch load; read spans with above_fold_slice marks.
