@@ -15,11 +15,13 @@ import type { MapBounds } from '../types';
  * effects FIRE, never a scene body-spec hook); readers are the mouths (polls
  * header, on-demand notice, poll-creation title) via useViewportSubjectState.
  *
- * verdict semantics:
- *   - { kind: 'place' }     → a §2-commensurate (or containing-fallback) named
- *                             place — "Polls in Austin".
- *   - { kind: 'this-area' } → the §2 reservation: multi-place straddle or
- *                             unnamed ground — "Polls in this area".
+ * verdict semantics (§2.5 polygon-native header law, ratified 2026-07-22):
+ *   - { kind: 'place' }     → the finest dominator: the smallest place whose
+ *                             real ground (or honest bbox fallback) covers
+ *                             ≥ 2/3 of the view — "Polls in Austin".
+ *   - { kind: 'this-area' } → the §2.5 reservation: a genuine multi-place
+ *                             straddle or unnamed ground — "Polls in this
+ *                             area".
  *   - null                  → UNKNOWN: no commit yet (cold start before the
  *                             first slice + settle). Mouths keep their legacy
  *                             fallback (server header.placeName, route params)
