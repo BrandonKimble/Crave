@@ -12,6 +12,7 @@ import {
   SEARCH_SUBMIT_DISMISS_REPEAT_SCENARIO,
 } from './perf-scenario-attribution';
 import { readPerfScenarioCommandRegistry } from './perf-scenario-command-registry';
+import { setResidentShellPrototype } from './ResidentShellPrototype';
 import {
   type RuntimePerfScenarioConfig,
   usePerfScenarioRuntimeStore,
@@ -579,6 +580,22 @@ export const PerfScenarioCoordinator: React.FC = () => {
         action: event.action,
         step: 'set_system_offline',
         routeParam: event.routeParam,
+      });
+      return;
+    }
+
+    if (event.action === 'mount_shell_prototype') {
+      // L3 residency prototype (measurement harness): markerCount = shell count,
+      // routeParam = rows per shell ('0' = the empty-shell floor). 0 shells unmounts.
+      const shellCount = event.count ?? 0;
+      const rowsPerShell = Number.parseInt(event.routeParam ?? '0', 10) || 0;
+      setResidentShellPrototype({ shellCount, rowsPerShell });
+      logPayload({
+        event: 'perf_scenario_command_executed',
+        action: event.action,
+        step: 'mount_shell_prototype',
+        shellCount,
+        rowsPerShell,
       });
       return;
     }

@@ -402,6 +402,26 @@ The red-team is right that "shells are cheap" is an unmeasured claim (A#7, B#6) 
 **L3 is not ratifiable until the prototype measures**: all shells mounted empty on the
 target sim/device — boot delta, resident memory, steady-state UI fps.
 
+**THE PROTOTYPE MEASURED (2026-07-21 — perf/ResidentShellPrototype.tsx, a runtime
+harness driven by `action=mount_shell_prototype&markerCount=<shells>&routeParam=
+<rowsPerShell>`; hidden per the visibility law: display:'none', zero animation).
+Dev lane, iPhone 17 Pro sim, PageBodyShell shells with a synthetic band:**
+- **EMPTY SHELLS ARE FREE — the claim HOLDS:** 20 empty shells mount in ~11-13ms
+  (one commit; the boot-delta proxy), RSS delta ≈ 0 (within noise), steady-state
+  60fps untouched (worst JS p95 25.7 one window, UI worst 18.5 — idle-normal).
+- **CONTENT is the real budget:** 20 shells × 12 representative rows (240 rows,
+  Views/Text only — NO images) mount in ~186-192ms (one commit — must be sliced,
+  which warm-before-navigate already mandates) and cost ~+40MB RSS at mount
+  (~170KB/row of tree+shadow-node structure). RSS is STICKY on unmount (Hermes/OS
+  page retention) — eviction budgeting must count commitment, not expect reclaim.
+- **Verdict: the measure RATIFIES L3's shape** — resident shell STRUCTURE is free;
+  the eviction law (content evicts under a budget, shells never do) is confirmed as
+  the load-bearing companion, not a nice-to-have. NAMED UNKNOWN for the budget
+  pass: image-bearing rows (real results cards carry photos; decoded surfaces live
+  mostly in the shared image cache, but the per-shell figure here excludes them) —
+  measure when the content budget is set. Harness stays in the tree (null when
+  idle; release-capable via the os_log sink).**
+
 Laws that are part of L3 regardless:
 - **The visibility fact has ONE writer** (A#13): the residency manager owns one
   per-shell visibility bit that DERIVES pointerEvents, accessibility hiding

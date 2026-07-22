@@ -43,6 +43,7 @@ import { PostPhotosFunnelHost } from './src/overlays/PostPhotosFunnelHost';
 import PollNotificationListener from './src/providers/PollNotificationListener';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
 import { PerfScenarioCoordinator } from './src/perf/PerfScenarioCoordinator';
+import { ResidentShellPrototype } from './src/perf/ResidentShellPrototype';
 import { LifecycleHarnessCoordinator } from './src/perf/lifecycle-harness/LifecycleHarnessCoordinator';
 import { LifecycleHarnessBridge } from './src/perf/lifecycle-harness/LifecycleHarnessBridge';
 import { CutoutSkeletonDevPreview } from './src/components/skeletons/CutoutSkeletonDevPreview';
@@ -126,6 +127,9 @@ export default function App() {
               <AppRouteCoordinator>
                 <MainLaunchCoordinator>
                   <AppRouteSceneRuntimeProvider>
+                    {/* L3 residency prototype (measurement harness): must sit INSIDE the
+                        scene runtime provider — PageBodyShell's failure-law hook reads it. */}
+                    <ResidentShellPrototype />
                     <PollNotificationListener />
                     {__DEV__ ? <LifecycleHarnessBridge /> : null}
                     <PurchasesProvider />
