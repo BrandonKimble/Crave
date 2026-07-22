@@ -284,6 +284,7 @@ export class PollsService {
       bbox: entry.bbox,
       coverageOfView: entry.coverageOfView,
       placeArea: entry.placeArea,
+      parentPlaceIds: entry.parentPlaceIds,
     }));
     // §4 feed half: only OVER-SCALE candidates ever need the structural
     // subdivision+ judgment (a handful of ancestors per view).
@@ -308,8 +309,16 @@ export class PollsService {
     const descendants = membership.subjectPlaceIds.length
       ? await descendantPlaceIds(this.prisma, membership.subjectPlaceIds)
       : [];
+    // §4 feed half holds through descendant expansion too: a §2.5 subject
+    // can itself be an over-scale subdivision+ dominator (state-scale zoom),
+    // and the subtree read echoes its roots — subtract the structurally big
+    // over-scale places from the final membership so their polls stay
+    // feed-at-that-zoom only.
+    const placeIds = [
+      ...new Set([...membership.memberPlaceIds, ...descendants]),
+    ].filter((placeId) => !bigPlaceIds.has(placeId));
     return {
-      placeIds: [...new Set([...membership.memberPlaceIds, ...descendants])],
+      placeIds,
       headerPlaceName: membership.headerPlaceName,
     };
   }

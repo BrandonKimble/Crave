@@ -18,24 +18,52 @@
  * GAP-FILLS a county-unknown row, or mints a genuinely distinct sibling is
  * the resolveIdentity decision table.
  */
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { Place, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import {
   GeoBbox,
   GeoPoint,
+  PlaceGround,
   bboxArea,
   bboxContains,
   bboxCrossesAntimeridian,
   bboxIntersectionParts,
+  bboxLatSpan,
   bboxLngArcs,
+  bboxLngSpan,
   bboxUnion,
-  coverageOfView,
   isGeoPoint,
   normalizePlaceName,
   pointToBbox,
+  resolvePlaceCoverage,
 } from '@crave-search/shared';
+
+/**
+ * §2.5(d) POLYGON AT BIRTH: every newly sketched place immediately earns its
+ * outline through the governed promotion lane — the queue is the ordinary
+ * intake now, and the hourly drain's cadence is the only latency
+ * (birth→outline within the hour is fine; the pool bounds spend). The
+ * listener is the PlacesPromotionService behind a token because the module
+ * import graph is cyclic (promotion → probe port → catalog types); optional
+ * so bare-constructed test/script instances stay valid.
+ */
+export interface PlaceBirthListener {
+  enqueue(placeId: string, trigger: string): Promise<void>;
+}
+export const PLACE_BIRTH_LISTENER = Symbol('PLACE_BIRTH_LISTENER');
+
+/**
+ * §16 DERIVED — simplification resolution: served/judged ground is
+ * simplified with tolerance = viewSpan / GROUND_SIMPLIFY_VIEW_FRACTION.
+ * 512 is a definitional screen-resolution factor: a phone viewport renders
+ * ~400–800 px across, so span/512 keeps every simplification artifact at or
+ * below one device pixel at the scale the view (or margin box) is looked at
+ * — sub-pixel error can never move a coverage judgment visibly. What
+ * changes it: display-resolution physics, never tuning.
+ */
+export const GROUND_SIMPLIFY_VIEW_FRACTION = 512;
 
 /**
  * One node of a reverse-geocode chain, as handed to sketchChain. Everything
@@ -67,14 +95,24 @@ export interface PlaceSketchNode {
   providerPlaceId?: string | null;
 }
 
-/** placesInView row: the place plus its §2 coverage share of the view. */
+/** placesInView row: the place plus its §2.5 coverage share of the view. */
 export interface PlaceInView {
   place: Place;
   bbox: GeoBbox;
-  /** area(place bbox ∩ view) / area(view) — the §2 "coverage of view". */
+  /**
+   * §2.5 coverage: polygon-clip share when the place's real ground is known
+   * (`ground` set), bbox-intersection share as the honest fallback (§2.5(f)).
+   */
   coverageOfView: number;
-  /** area(place bbox), same squared-degree metric as the view's. */
+  /**
+   * The finest-ranking key: real-ground area when known, bbox area
+   * otherwise — same cos-weighted degrees² metric as the view's.
+   */
   placeArea: number;
+  /** Deduped DAG parent edges (placeParentIds) — the straddle reservation. */
+  parentPlaceIds: string[];
+  /** Simplified real ground (§2.5), absent where no polygon has landed. */
+  ground?: PlaceGround;
 }
 
 /** Read a Place row's decimal bbox as a GeoBbox, or null when un-sketched. */
@@ -96,6 +134,32 @@ export function placeBbox(place: Place): GeoBbox | null {
 }
 
 /**
+ * PostGIS GeoJSON → shared PlaceGround: MultiPolygon/Polygon flattened to
+ * OUTER rings ([lng, lat] positions; holes dropped — see shared ground.ts).
+ * Returns null on any unexpected shape (the caller falls back to bbox).
+ */
+export function parseGroundGeoJson(geojson: string): PlaceGround | null {
+  try {
+    const parsed = JSON.parse(geojson) as {
+      type?: string;
+      coordinates?: unknown;
+    };
+    if (parsed.type === 'MultiPolygon' && Array.isArray(parsed.coordinates)) {
+      return (parsed.coordinates as number[][][][])
+        .map((polygon) => polygon[0])
+        .filter((ring) => Array.isArray(ring) && ring.length >= 3);
+    }
+    if (parsed.type === 'Polygon' && Array.isArray(parsed.coordinates)) {
+      const outer = (parsed.coordinates as number[][][])[0];
+      return Array.isArray(outer) && outer.length >= 3 ? [outer] : null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The DAG-edge READ chokepoint. Parent edges are appended ATOMICALLY on merge
  * (Prisma `push` — see mergeSketch) so concurrent merges can't drop each
  * other's edges; the price is that storage may hold duplicates. Every
@@ -113,6 +177,9 @@ export class PlacesCatalogService {
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
+    @Optional()
+    @Inject(PLACE_BIRTH_LISTENER)
+    private readonly birthListener?: PlaceBirthListener,
   ) {
     this.logger = loggerService.setContext('PlacesCatalogService');
   }
@@ -151,19 +218,21 @@ export class PlacesCatalogService {
   }
 
   /**
-   * All places whose bbox intersects the view, with §2 coverage shares.
-   * Bbox-level btree predicate on the decimal columns — cheap and correct at
-   * catalog scale; polygon-precise intersection is a tier-2/$queryRaw concern
-   * for later (§1). Rows without a sketched bbox drop out (NULL fails every
-   * comparison), which is right: a bbox-less sketch can't answer coverage.
+   * All places whose bbox intersects the view, judged by the §2.5 coverage
+   * law: polygon-clip coverage where real ground is known, bbox coverage as
+   * the honest fallback (§2.5(f)). The bbox predicate is INDEX ONLY
+   * (§2.5(c)) — it finds candidates and never judges them; a candidate whose
+   * polygon clips to zero inside the view is dropped (the bbox lied). Rows
+   * without a sketched bbox drop out (NULL fails every comparison), which is
+   * right: an unindexed sketch can't be found.
    *
    * Antimeridian handling (wrap-aware, R1): a crossing VIEW splits into its
    * two non-crossing lng ranges (OR of two plain range predicates — btree
    * columns can't wrap); crossing PLACE rows (bbox_min_lng > bbox_max_lng)
    * can't be range-tested at all, so they are prefetched wholesale (they are
    * a handful of seam-straddling entities) and the exact wrap-aware
-   * intersection below decides. The DB predicate only needs to never DROP a
-   * true candidate; precision lives in bboxIntersectionParts.
+   * coverage below decides. The DB predicate only needs to never DROP a
+   * true candidate; precision lives in resolvePlaceCoverage.
    */
   async placesInView(view: GeoBbox): Promise<PlaceInView[]> {
     const rows = await this.prisma.place.findMany({
@@ -180,24 +249,86 @@ export class PlacesCatalogService {
         ],
       },
     });
+    const grounds = await this.loadSimplifiedGrounds(
+      rows.map((place) => place.placeId),
+      view,
+    );
     const viewArea = bboxArea(view);
     const results: PlaceInView[] = [];
     for (const place of rows) {
       const bbox = placeBbox(place);
       if (!bbox) continue;
-      // THE per-row coverage law is shared (coverageOfView) so the client's
-      // slice evaluation and this server read feed resolveHeaderPlace
-      // identical numbers (header subject-store design).
-      const coverage = coverageOfView(view, viewArea, bbox);
+      const ground = grounds.get(place.placeId);
+      // THE per-row coverage law is shared (resolvePlaceCoverage) so the
+      // client's slice evaluation and this server read feed
+      // resolveHeaderPlace identical numbers (header subject-store design).
+      const coverage = resolvePlaceCoverage(view, viewArea, { bbox, ground });
       if (coverage === null) continue;
       results.push({
         place,
         bbox,
-        coverageOfView: coverage,
-        placeArea: bboxArea(bbox),
+        coverageOfView: coverage.coverageOfView,
+        placeArea: coverage.placeArea,
+        parentPlaceIds: placeParentIds(place),
+        ...(ground ? { ground } : {}),
       });
     }
     return results;
+  }
+
+  /**
+   * §2.5 tier-2 hydration: simplified real ground for the candidate rows
+   * that have a place_geometries polygon. Simplification runs IN the
+   * database (ST_SimplifyPreserveTopology) at tolerance = viewSpan /
+   * GROUND_SIMPLIFY_VIEW_FRACTION (§16 derived, see the constant) — full
+   * detail never leaves place_geometries; every read is view-appropriate.
+   * The GeoJSON is flattened to OUTER rings (holes dropped — see
+   * @crave-search/shared ground.ts for why that is honest).
+   *
+   * Failure posture: ground hydration failing degrades to the §2.5(f) bbox
+   * fallback for THIS read (warn logged) — the header law's own legal
+   * degradation, never an error surface.
+   */
+  private async loadSimplifiedGrounds(
+    placeIds: string[],
+    view: GeoBbox,
+  ): Promise<Map<string, PlaceGround>> {
+    const grounds = new Map<string, PlaceGround>();
+    if (placeIds.length === 0) {
+      return grounds;
+    }
+    const viewSpan = Math.max(bboxLatSpan(view), bboxLngSpan(view));
+    const tolerance = viewSpan / GROUND_SIMPLIFY_VIEW_FRACTION;
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ placeId: string; geojson: string | null }>
+      >(Prisma.sql`
+        SELECT place_id AS "placeId",
+               ST_AsGeoJSON(
+                 ST_SimplifyPreserveTopology(geometry, ${tolerance})
+               ) AS "geojson"
+        FROM place_geometries
+        WHERE geometry IS NOT NULL
+          AND place_id = ANY(${placeIds}::uuid[])
+      `);
+      for (const row of rows) {
+        if (!row.geojson) continue;
+        const ground = parseGroundGeoJson(row.geojson);
+        if (ground && ground.length > 0) {
+          grounds.set(row.placeId, ground);
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        'Ground hydration failed — §2.5(f) bbox fallback for this read',
+        {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+    }
+    return grounds;
   }
 
   /**
@@ -412,7 +543,7 @@ export class PlacesCatalogService {
         return this.mergeSketch(resolved.row, node, parentPlaceId);
       }
       try {
-        return await this.prisma.place.create({
+        const created = await this.prisma.place.create({
           data: {
             name,
             providerLevelCode: node.providerLevelCode,
@@ -432,6 +563,14 @@ export class PlacesCatalogService {
             providerPlaceId: node.providerPlaceId ?? null,
           },
         });
+        // §2.5(d) POLYGON AT BIRTH: every new place enters the governed
+        // promotion queue immediately (fire-and-forget; the enqueue itself
+        // filters fallback mints and already-promoted ground). The hourly
+        // drain turns it into an outline within the hour — fine by law.
+        if (this.birthListener) {
+          void this.birthListener.enqueue(created.placeId, 'birth');
+        }
+        return created;
       } catch (error) {
         // Two concurrent first-sketches of the same tuple: the DB identity
         // index (uq_places_identity, county axis included) makes the fork

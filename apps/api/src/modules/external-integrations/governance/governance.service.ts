@@ -26,10 +26,9 @@ export class GovernanceService implements OnModuleInit {
     // TomTom month ledgers. perMinute pools stay memory-only (see the
     // registry header for the §16-classified split).
     this.pools = new PoolRegistry(store);
-    // TomTom pool facts (owner dashboard, master plan §26.6/Leg-5 record):
-    // Search API (polygons) 2,500/month — the scarce pool; geocode +
-    // reverse geocode 20,000/month each — the cheap pool. Month windows are
-    // hard-closed on store failure by law (§14.5).
+    // TomTom pool facts: geocode + reverse geocode 20,000/month each — the
+    // cheap pool (free-tier vendor fact, K4). Month windows are hard-closed
+    // on store failure by law (§14.5).
     // §16 on reservationTtlMs (all pools below): K3-shaped operational
     // bounds, not product numbers — a TTL is "how long a leaked reservation
     // may hold capacity before expiry reclaims it" (§14.2 leaks expire).
@@ -43,10 +42,15 @@ export class GovernanceService implements OnModuleInit {
       failPolicy: { kind: 'hardClosed' },
       reservationTtlMs: 60_000,
     });
+    // §16 K1 (owner price-tag): the scarce polygon pool is a PAID monthly
+    // budget, not a free-tier fact — ratified 2026-07-22 "off the free tier"
+    // (master plan §2.5(a)). 10,000/mo ≈ a ~$25/mo ceiling at ~$2.5/1k
+    // Search-API polygon draws; the pool stays hardClosed + durably stored,
+    // so the ceiling is structural. Adjusting the number = owner re-ratify.
     this.pools.register({
       name: 'tomtom.scarcePolygons',
       credential: 'default',
-      window: { kind: 'perMonth', limit: 2_500 },
+      window: { kind: 'perMonth', limit: 10_000 },
       failPolicy: { kind: 'hardClosed' },
       reservationTtlMs: 120_000,
     });

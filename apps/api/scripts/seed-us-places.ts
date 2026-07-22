@@ -8,6 +8,7 @@ import {
   PlacesCatalogService,
   PlaceSketchNode,
 } from '../src/modules/places/places-catalog.service';
+import { countyAxisName, stripLsadDescriptor } from './lib/gazetteer-names';
 
 /**
  * US pre-seed (plans/geo-demand-foundation-rebuild.md §1): sketch every
@@ -90,41 +91,8 @@ type GazetteerRow = {
   lng: number;
 };
 
-/** Strip the trailing LSAD descriptor: the run of tokens that are entirely
- *  lowercase (optionally parenthesized). "Abbeville city" → "Abbeville";
- *  "Nashville-Davidson metropolitan government (balance)" →
- *  "Nashville-Davidson"; "Carson City" and "Village of the Branch" untouched
- *  (trailing token capitalized). */
-export function stripLsadDescriptor(name: string): string {
-  const tokens = name.trim().split(/\s+/);
-  while (tokens.length > 1) {
-    const last = tokens[tokens.length - 1];
-    const bare = last.replace(/^\(|\)$/g, '');
-    if (bare.length > 0 && bare === bare.toLowerCase()) {
-      tokens.pop();
-    } else {
-      break;
-    }
-  }
-  return tokens.join(' ');
-}
-
-/** Census county name → the provider-facing county-axis form. TomTom's
- *  countrySecondarySubdivision is the BARE name (live-probed 2026-07-19:
- *  "Tarrant", "San Patricio"); Census appends a designator ("Tarrant
- *  County", "Richmond city"). Reuse the self-deriving lowercase-run strip
- *  (LSAD descriptors are lowercase: "city", "municipio"), then strip one
- *  trailing CAPITALIZED designator token from the two dominant families
- *  (County ~3,000 of ~3,143; Parish = Louisiana). Alaska/PR oddballs
- *  ("Juneau City and Borough") keep their full form — if TomTom names them
- *  differently, the merge law's overlap rule absorbs the disagreement
- *  (logged, no fork), so this stays a best-effort normalization, not a
- *  correctness gate. */
-export function countyAxisName(censusCountyName: string): string {
-  const stripped = stripLsadDescriptor(censusCountyName);
-  const withoutDesignator = stripped.replace(/\s+(County|Parish)$/, '');
-  return withoutDesignator.length > 0 ? withoutDesignator : stripped;
-}
+// Name normalization lives in scripts/lib/gazetteer-names.ts (shared with
+// seed-coarse-polygons.ts — one idiom, one home; §1 identity is name-based).
 
 /** sqrt(ALAND) square centered on the internal point (measured under-estimate). */
 function bboxFromLandArea(

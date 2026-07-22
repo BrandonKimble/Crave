@@ -52,9 +52,12 @@ export function expandBboxByFactor(view: GeoBbox, factor: number): GeoBbox {
  * Wire contract of GET /places/in-view. `marginBox` is the region the rows
  * cover — the client's cache-validity region: while the live view stays
  * inside it (bboxContains), no re-fetch is needed and the local subjects law
- * is authoritative. Rows are lean PlaceLike (bbox + identity + DAG edges);
- * areas/coverages are DERIVED client-side with the same shared functions —
- * derivable data never ships.
+ * is authoritative. Rows are lean PlaceLike (bbox + identity + DAG edges,
+ * plus §2.5 `ground` — simplified real-ground rings, present only where a
+ * polygon has landed); areas/coverages are DERIVED client-side with the same
+ * shared functions — derivable data never ships. Ground simplification
+ * tolerance is derived from the MARGIN box span server-side (§16), so a
+ * slice ships exactly the detail its own scale can render.
  */
 export interface PlacesInViewSliceResponse {
   marginBox: GeoBbox;

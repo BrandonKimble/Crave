@@ -5,5 +5,6 @@
  * apps/mobile — no Nest, no Prisma, no IO, ever.
  */
 export * from './place-geo';
+export * from './ground';
 export * from './subjects';
 export * from './slice';

@@ -280,6 +280,16 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       expect(persist!.sql).toContain('ON CONFLICT (place_id) DO UPDATE');
       expect(persist!.values).toContain(JSON.stringify(POLYGON_GEOJSON));
 
+      // §2.5(c): the index derives from truth — the places bbox widens to
+      // the landed polygon's envelope (grow-only; COALESCE seeds a bbox-less
+      // coarse row's first index presence).
+      const widen = executeRawCalls.find((call) =>
+        call.sql.includes('ST_XMin'),
+      );
+      expect(widen).toBeDefined();
+      expect(widen!.sql).toContain('GREATEST');
+      expect(widen!.sql).toContain('LEAST');
+
       // Promotion stamped on the queue row AND places.promoted_at.
       expect(prisma.placeGeometryPromotion.update).toHaveBeenCalledWith({
         where: { placeId: PLACE_ID },

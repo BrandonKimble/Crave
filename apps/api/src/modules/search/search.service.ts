@@ -2980,6 +2980,8 @@ export class SearchService {
           name: entry.place.name,
           bbox: entry.bbox,
           coverageOfView: entry.coverageOfView,
+          placeArea: entry.placeArea,
+          parentPlaceIds: entry.parentPlaceIds,
         })),
       );
       if (resolution.kind === 'place') {

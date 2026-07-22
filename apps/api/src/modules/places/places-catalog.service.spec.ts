@@ -79,6 +79,7 @@ function makeHarness(
     .fn()
     .mockImplementation(() => Promise.resolve(makePlaceRow()));
   const executeRaw = jest.fn().mockResolvedValue(1);
+  const queryRaw = jest.fn().mockResolvedValue([]);
   const prisma: any = {
     place: {
       create,
@@ -90,8 +91,11 @@ function makeHarness(
       fields: { bboxMaxLng: Symbol('bboxMaxLng') },
     },
     $executeRaw: executeRaw,
+    // §2.5 ground hydration read (place_geometries); [] = no polygons yet.
+    $queryRaw: queryRaw,
   };
-  const service = new PlacesCatalogService(prisma, logger);
+  const birthListener = { enqueue: jest.fn().mockResolvedValue(undefined) };
+  const service = new PlacesCatalogService(prisma, logger, birthListener);
   return {
     service,
     prisma,
@@ -101,6 +105,8 @@ function makeHarness(
     findMany,
     findUniqueOrThrow,
     executeRaw,
+    queryRaw,
+    birthListener,
   };
 }
 
@@ -606,14 +612,15 @@ describe('PlacesCatalogService — §1 COUNTY-AXIS decision table (§18 item 8)'
   });
 });
 
-describe('PlacesCatalogService.placesInView — §2 coverage shares', () => {
-  it('returns intersecting places with coverage-of-view shares', async () => {
+describe('PlacesCatalogService.placesInView — §2.5 coverage', () => {
+  it('bbox fallback (§2.5(f)): no polygon yet → bbox coverage + bbox area + deduped parent edges', async () => {
     const half = makePlaceRow({
       name: 'West Town',
       bboxMinLat: 0,
       bboxMinLng: 0,
       bboxMaxLat: 1,
       bboxMaxLng: 1,
+      parentPlaceIds: ['p-1', 'p-1', 'p-2'],
     });
     const { service, findMany } = makeHarness([]);
     findMany.mockResolvedValue([half]);
@@ -628,6 +635,92 @@ describe('PlacesCatalogService.placesInView — §2 coverage shares', () => {
       Math.cos((0.5 * Math.PI) / 180),
       9,
     );
+    expect(results[0].parentPlaceIds).toEqual(['p-1', 'p-2']);
+    expect(results[0].ground).toBeUndefined();
+  });
+
+  it('polygon = truth (§2.5(c)): a landed geometry judges coverage; the lying index bbox is demoted to candidate-finding', async () => {
+    const liar = makePlaceRow({
+      name: 'Mexico-ish',
+      bboxMinLat: -10,
+      bboxMinLng: -10,
+      bboxMaxLat: 10,
+      bboxMaxLng: 10, // bbox CONTAINS the view (coverage would be 1)
+    });
+    const { service, findMany, queryRaw } = makeHarness([]);
+    findMany.mockResolvedValue([liar]);
+    // Real ground: only the view's west half.
+    queryRaw.mockResolvedValue([
+      {
+        placeId: liar.placeId,
+        geojson: JSON.stringify({
+          type: 'Polygon',
+          coordinates: [
+            [
+              [-10, -10],
+              [0.5, -10],
+              [0.5, 10],
+              [-10, 10],
+              [-10, -10],
+            ],
+          ],
+        }),
+      },
+    ]);
+
+    const view = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
+    const results = await service.placesInView(view);
+    expect(results).toHaveLength(1);
+    expect(results[0].coverageOfView).toBeCloseTo(0.5, 6);
+    expect(results[0].ground).toBeDefined();
+    // The simplification tolerance is derived from the VIEW span (§16):
+    // span 1° / 512.
+    const [query] = queryRaw.mock.calls[queryRaw.mock.calls.length - 1];
+    expect(query.values).toContain(1 / 512);
+  });
+
+  it('ground hydration failure degrades to the bbox fallback (legal §2.5(f) degradation, never an error)', async () => {
+    const row = makePlaceRow({
+      name: 'Town',
+      bboxMinLat: 0,
+      bboxMinLng: 0,
+      bboxMaxLat: 1,
+      bboxMaxLng: 1,
+    });
+    const { service, findMany, queryRaw } = makeHarness([]);
+    findMany.mockResolvedValue([row]);
+    queryRaw.mockRejectedValue(new Error('postgis down'));
+
+    const view = { minLat: 0, minLng: 0, maxLat: 1, maxLng: 1 };
+    const results = await service.placesInView(view);
+    expect(results).toHaveLength(1);
+    expect(results[0].coverageOfView).toBeCloseTo(1, 6);
+  });
+});
+
+describe('PlacesCatalogService — §2.5(d) polygon at birth', () => {
+  it('a CREATED place fires the birth enqueue (fire-and-forget)', async () => {
+    const { service, birthListener, create } = makeHarness([null]);
+    const [created] = await service.sketchChain([austinNode]);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(birthListener.enqueue).toHaveBeenCalledWith(
+      created.placeId,
+      'birth',
+    );
+  });
+
+  it('a MERGED re-sketch never re-fires birth (the queue is for new ground)', async () => {
+    const existing = makePlaceRow({
+      bboxMinLat: 30.1,
+      bboxMinLng: -97.95,
+      bboxMaxLat: 30.52,
+      bboxMaxLng: -97.56,
+      providerPlaceId: 'tomtom-geom-austin',
+    });
+    const { service, birthListener, create } = makeHarness([existing]);
+    await service.sketchChain([austinNode]);
+    expect(create).not.toHaveBeenCalled();
+    expect(birthListener.enqueue).not.toHaveBeenCalled();
   });
 });
 

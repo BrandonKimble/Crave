@@ -5,11 +5,12 @@ import { bboxArea, type GeoBbox } from '@crave-search/shared';
 import type { PlaceInView } from '../places/places-catalog.service';
 
 // §22 cut 3 (plans/geo-demand-foundation-rebuild.md): the search HEADER names
-// from the Place Catalog (§2 subjecthood law), NOT the old market-resolver
-// election, and the §2 naming reconciler goes live at the search viewport
-// chokepoint. Three families here:
-//   (a) header derivation — covering city names the header, straddle → null,
-//       containing-fallback names the containing place;
+// from the Place Catalog (§2.5 polygon-native law), NOT the old
+// market-resolver election, and the §2 naming reconciler goes live at the
+// search viewport chokepoint. Three families here:
+//   (a) header derivation — the finest dominator names the header,
+//       straddle → null, over-scale containing places dominate only when
+//       nothing finer does;
 //   (b) reconciler wiring — a submitted search with bounds hands the viewport
 //       to noteViewport exactly once, and a reconcile failure cannot affect
 //       the search response;
@@ -49,6 +50,7 @@ function placeInView(
     bbox,
     coverageOfView,
     placeArea: bboxArea(bbox),
+    parentPlaceIds: [],
   };
 }
 
@@ -150,7 +152,7 @@ function buildRequest(overrides: Record<string, unknown> = {}) {
 }
 
 describe('§2 header derivation (the catalog names the header, not the resolver)', () => {
-  it('a commensurate COVERING city names the header', async () => {
+  it('the FINEST dominator (the covering city, not its covering ancestor) names the header', async () => {
     const { service } = createHarness({
       placesInView: [
         placeInView('Austin', VIEW, 1),
@@ -205,7 +207,7 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
     expect(response.metadata.displayMarketName).toBeNull();
   });
 
-  it('no commensurate node → the smallest CONTAINING place names the header (never "this area")', async () => {
+  it('only over-scale containing places in view → the FINEST of them names the header (never "this area")', async () => {
     const texas: GeoBbox = {
       minLat: 25.8,
       minLng: -106.7,
@@ -219,8 +221,8 @@ describe('§2 header derivation (the catalog names the header, not the resolver)
       maxLng: -66.9,
     };
     const { service } = createHarness({
-      // Both contain the view and both are over-scale (too big) → the SMALLER
-      // containing node (Texas) wins the fallback.
+      // Both cover the view (coverage 1 → both dominate); the FINER one
+      // (Texas) is named — the old too-big/containing-fallback arms are dead.
       placesInView: [
         placeInView('Texas', texas, 1),
         placeInView('USA', usa, 1),

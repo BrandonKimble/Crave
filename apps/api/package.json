@@ -52,6 +52,7 @@
     "crave-score:backfill-mentions": "ts-node scripts/backfill-item-mention-records.ts",
     "polls:seed-fixtures": "ts-node scripts/seed-poll-fixtures.ts",
     "places:seed-us": "ts-node scripts/seed-us-places.ts",
+    "places:seed-coarse-polygons": "ts-node scripts/seed-coarse-polygons.ts",
     "search-demand:rebuild": "ts-node scripts/rebuild-search-demand-daily.ts",
     "replay:extraction": "ts-node scripts/replay-extraction-run.ts"
   },

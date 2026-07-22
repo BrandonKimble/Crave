@@ -9,7 +9,10 @@ import { Module, forwardRef } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { SharedModule } from '../../shared/shared.module';
 import { IdentityModule } from '../identity/identity.module';
-import { PlacesCatalogService } from './places-catalog.service';
+import {
+  PLACE_BIRTH_LISTENER,
+  PlacesCatalogService,
+} from './places-catalog.service';
 import { PlacesController } from './places.controller';
 import { PlacesPromotionService } from './places-promotion.service';
 import { PlacesReconcilerService } from './places-reconciler.service';
@@ -39,6 +42,14 @@ import { TOMTOM_CHAIN_PROBE } from './tomtom-chain-probe.port';
     {
       provide: TOMTOM_CHAIN_PROBE,
       useClass: TomtomChainProbeAdapter,
+    },
+    // §2.5(d) polygon at birth: the catalog's create chokepoint enqueues
+    // every new place into the promotion queue through this token (a token,
+    // not a class dep, because promotion → probe port → catalog types is a
+    // module-level import cycle).
+    {
+      provide: PLACE_BIRTH_LISTENER,
+      useExisting: PlacesPromotionService,
     },
   ],
   exports: [

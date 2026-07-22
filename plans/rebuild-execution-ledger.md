@@ -519,6 +519,45 @@ agent in flight at turn end so completion notifications chain turns.
       689 green (674 +15); api build/tsc/eslint/prettier clean; shared
       builds+lints; mobile tsc still EXACTLY the 2 pre-existing errors
       (search-map nativeHostKey L543, camera-intent L79).
+- [x] §2.5 POLYGON-NATIVE HEADER — LEG A (2026-07-22, uncommitted; :3000 NOT
+      restarted; mobile untouched = leg B): shared law REWRITTEN to the
+      ratified §2.5 — new packages/shared/src/geo/ground.ts (PlaceGround =
+      outer rings number[][][], Sutherland–Hodgman clip + shoelace, wrap-aware
+      view split, point-in-ground degenerate, cos-weighted metric matching
+      bboxArea); subjects.ts resolveHeaderPlace = finest dominator (coverage
+      ≥ 2/3, smallest placeArea) + DAG straddle reservation (≥2 children each
+      ≥ 1/3 → 'this-area'); too-big/lone-commensurate/containing-fallback arms
+      DEAD (isCommensurate deleted; isTooBigForView survives for §4 feed
+      boundary + probe answering); resolvePlaceCoverage = the one coverage
+      chokepoint (polygon truth, bbox honest fallback; ground-clips-to-zero
+      drops the candidate — the Mexico-bbox lie). SPEC-PROVEN: bbox-only
+      fallback ALREADY fixes the owner bug (Texas 89% finer beats
+      view-containing Mexico bbox — both dominate, finest wins). SERVER:
+      placesInView hydrates ST_SimplifyPreserveTopology ground at tolerance
+      viewSpan/512 (§16 derived, sub-pixel), PlaceInView grew
+      parentPlaceIds+ground; slice endpoint ships optional `ground` (margin-
+      box-span simplification by construction); search header + polls feed + membership all through the one law; polls feed subtracts subdivision+
+      over-scale ids AFTER descendant expansion (new §2.5 subjects can be
+      over-scale dominators). GOVERNANCE: tomtom.scarcePolygons 2,500→10,000
+      /mo (§16 K1 owner price-tag ~$25/mo at ~$2.5/1k, ratified 2026-07-22
+      'off the free tier'; hardClosed + durable). POLYGON AT BIRTH:
+      catalog create path fires PLACE_BIRTH_LISTENER.enqueue('birth')
+      (token breaks the promotion→port→catalog import cycle); drain widens
+      places bbox from the landed polygon envelope (index derives from
+      truth; bbox-less coarse rows gain first index presence); drain LIMIT
+      10,000 rows/tick (§16 derived = the month budget; pool is the real
+      limiter). SEED: scripts/seed-coarse-polygons.ts (+yarn
+      places:seed-coarse-polygons; name idioms extracted to
+      scripts/lib/gazetteer-names.ts shared with seed-us-places): US/MX/CA
+      countries (reuse-else-mint bbox-less) + states + 3,222 county-layer
+      rows (CountrySecondarySubdivision, bare countyAxisName, county NULL,
+      sqrt(ALAND) bbox, census GEOID) then batch paid_seed enqueue coarse-
+      first + all municipalities — zero vendor calls in-script, drain does
+      everything governed. DRY-RUN ONLY (--execute NOT run). 705 green (689
+      +16); api build/tsc/eslint/prettier clean; shared build/lint clean;
+      mobile tsc = the same 2 pre-existing errors. LEG B (mobile): consume
+      `ground` in the slice store; nothing else needed — law signatures
+      unchanged (subjectCandidatesInView/resolveHeaderPlace).
 - [ ] After fix agent: commit, restart :3000 (REQUIRED: the running
       binary still serves kind-blind aggregate cron + lacks the
       viewport-dwell route), REASSESSMENT to owner (wave-5 verdict: with

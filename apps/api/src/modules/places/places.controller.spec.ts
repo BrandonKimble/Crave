@@ -73,12 +73,17 @@ function placeRow(name: string, bbox: GeoBbox, overrides: any = {}) {
  * the in-memory wrap-aware intersection is the authority, and THAT is what
  * membership must be proven against).
  */
-function createController(rows: any[]) {
+function createController(
+  rows: any[],
+  geometryRows: Array<{ placeId: string; geojson: string }> = [],
+) {
   const prisma: any = {
     place: {
       findMany: jest.fn().mockResolvedValue(rows),
       fields: { bboxMaxLng: 'bboxMaxLng' },
     },
+    // §2.5 ground hydration read (place_geometries, simplified in-DB).
+    $queryRaw: jest.fn().mockResolvedValue(geometryRows),
   };
   const catalog = new PlacesCatalogService(prisma, logger);
   return new PlacesController(catalog);
@@ -159,6 +164,44 @@ describe('GET /places/in-view — slice membership + margin law', () => {
         parentPlaceIds: ['p-1', 'p-2'],
       },
     ]);
+  });
+
+  it('§2.5 ground ships on the wire when a polygon has landed; polygon-less rows stay lean', async () => {
+    const grounded = placeRow('Coreville', {
+      minLat: 30.2,
+      minLng: -97.8,
+      maxLat: 30.6,
+      maxLng: -97.4,
+    });
+    const lean = placeRow('Barefort', {
+      minLat: 30.3,
+      minLng: -97.7,
+      maxLat: 30.5,
+      maxLng: -97.5,
+    });
+    const ring = [
+      [-97.8, 30.2],
+      [-97.4, 30.2],
+      [-97.4, 30.6],
+      [-97.8, 30.6],
+      [-97.8, 30.2],
+    ];
+    const controller = createController(
+      [grounded, lean],
+      [
+        {
+          placeId: grounded.placeId,
+          geojson: JSON.stringify({
+            type: 'MultiPolygon',
+            coordinates: [[ring]],
+          }),
+        },
+      ],
+    );
+    const response = await controller.placesInView(query(view));
+    const byName = new Map(response.places.map((p) => [p.name, p]));
+    expect(byName.get('Coreville')?.ground).toEqual([ring]);
+    expect(byName.get('Barefort')?.ground).toBeUndefined();
   });
 
   it('containing chain needs no separate field: over-scale CONTAINING nodes (state, country) are slice members because containment implies intersection', async () => {

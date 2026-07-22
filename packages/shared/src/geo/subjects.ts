@@ -1,27 +1,43 @@
 /**
- * §2 read-time subjecthood law (plans/geo-demand-foundation-rebuild.md §2,
- * consolidating the old §35.2 header rule). PURE functions — no IO, no
- * service state; the catalog service supplies the candidates, this file
- * judges them. Naming OBSERVES at write time (sketch everything); SUBJECTHOOD
- * is judged here, at read, and is re-definable forever.
+ * §2.5 POLYGON-NATIVE HEADER LAW (plans/geo-demand-foundation-rebuild.md
+ * §2.5, RATIFIED 2026-07-22 — supersedes §2's symmetric-commensurability
+ * header arms). PURE functions — no IO, no service state; the catalog
+ * service (server) or the sliding slice (client) supplies the candidates,
+ * this file judges them. Naming OBSERVES at write time (sketch everything);
+ * the header is judged here, at read, and is re-definable forever.
  *
- * The law — SYMMETRIC commensurability at ATTENTION_FRACTION = 1/3 ("a view
- * attends to ≤ ~3 places"):
- *   - too small: place covers < 1/3 of the view → not a subject;
- *   - too big:   view is < 1/3 of the place    → not the subject either —
- *     descend the DAG to the commensurate node (street zoom in Chongqing
- *     names the ward, not Chongqing).
- * A place is COMMENSURATE with the view iff neither disqualifier fires.
+ * THE LAW (owner ruling, verbatim):
+ *   - The header = the FINEST place whose REAL GROUND covers
+ *     ≥ COVERING_FRACTION (2/3) of the view. "Finest" = smallest place area
+ *     among the covering candidates (the dominators) — descent needs no DAG
+ *     walk: a covering city always out-fines its covering state.
+ *   - STRADDLE RESERVATION: if ≥ 2 of that dominator's CHILDREN (DAG edges —
+ *     candidates whose parentPlaceIds include it) each hold
+ *     ≥ ATTENTION_FRACTION (1/3) of the view, the view genuinely straddles
+ *     them → 'this area'.
+ *   - Nothing covers 2/3 → 'this area' (straddle when ≥2 places each hold
+ *     attention, unnamed ground otherwise).
  *
- * Header (§2):
- *   - the commensurate COVERING place's name when one exists;
- *   - when NO commensurate node exists, the smallest CONTAINING node — even
- *     over-scale (containing-fallback names the city, NOT "this area");
- *   - "this area" is RESERVED for multi-place straddles (several commensurate
- *     subjects, none covering) and unnamed ground (nothing commensurate,
- *     nothing containing — the continental view over sparse catalog).
+ * §2.5(c) polygon = truth, bbox = INDEX only: a candidate's coverage is the
+ * POLYGON-clip share when its real ground is known (ground.ts), and the
+ * bbox-intersection share ONLY as the honest fallback where no polygon has
+ * landed yet (§2.5(f) — degradation, never a judge where a polygon exists).
+ * This kills the Mexico-bbox lie: a country whose rectangular index box
+ * contains the view but whose real ground touches 5% of it can never name
+ * the header once its polygon is known — and even bbox-only, the FINEST
+ * dominator rule already prefers the state over the country.
+ *
+ * DEAD (per the ratification): the too-big arm (descent-to-finest-dominator
+ * does its job), the lone-commensurate branch, and the containing-fallback
+ * branch (a containing place covers the view entirely, so it IS a dominator
+ * — the fallback is subsumed, not lost).
+ *
+ * KEPT: probeAnchors / bboxAnswersAnchor / isTooBigForView — they are about
+ * PROBE coverage (§2 sketch mechanics) and the §4 feed-at-that-zoom
+ * boundary, not headers; the reconciler still runs on them.
+ *
  * Hysteresis (commit on settle+dwell, enter/exit asymmetry) is the CALLER's
- * concern — this function is the memoryless judgment it hysteresis-wraps.
+ * concern — this function is the memoryless judgment hysteresis wraps.
  *
  * SHARED HOME (header subject-store design, ratified 2026-07-21): this law
  * lives in @crave-search/shared because the header is a pure function of
@@ -35,7 +51,6 @@ import {
   GeoPoint,
   bboxArea,
   bboxCenter,
-  bboxContains,
   bboxContainsPoint,
   bboxIntersectionParts,
   bboxLngSpan,
@@ -43,17 +58,16 @@ import {
   pointDistance,
   pointToBboxDistance,
 } from './place-geo';
+import { PlaceGround, groundArea, groundCoverageOfView } from './ground';
 
 /** §2: "a view attends to ≤ ~3 places". */
 export const ATTENTION_FRACTION = 1 / 3;
 
 /**
- * A commensurate place is COVERING when what it leaves uncovered is itself
- * sub-attention (< ATTENTION_FRACTION of the view): coverage ≥ 1 − 1/3.
- * Derived from the same constant so the law stays one-knobbed. Two towns at
- * ~half the view each are both subjects but neither covers → straddle; a
- * city at 90% with border slivers covers → the city is the header.
- * RATIFIED 2026-07-19 (owner docket item 1): the one-knob derivation is law.
+ * §2.5 dominator threshold: a place claims the view when its real ground
+ * covers all but a sub-attention remainder — coverage ≥ 1 − 1/3 = 2/3.
+ * One-knob derivation RATIFIED 2026-07-19 (owner docket item 1) and
+ * re-ratified inside the §2.5 header law 2026-07-22.
  */
 export const COVERING_FRACTION = 1 - ATTENTION_FRACTION;
 
@@ -62,25 +76,41 @@ export const MAX_PROBE_ANCHORS = Math.floor(1 / ATTENTION_FRACTION);
 
 /**
  * §16 K6 DEFINITIONAL — float tolerance so exact-boundary fixtures
- * (coverage == 1/3) judge stably; nothing changes it.
+ * (coverage == 2/3) judge stably; nothing changes it.
  */
 const EPSILON = 1e-9;
 
-/** What the judgment needs to know about a place in view (bbox-level, §1). */
+/** What the §2.5 judgment needs to know about a candidate place. */
 export interface SubjectCandidate {
   placeId: string;
   name: string;
   bbox: GeoBbox;
-  /** area(place bbox ∩ view) / area(view) — see coverageOfView below. */
+  /**
+   * §2.5 coverage: area(real ground ∩ view)/area(view) when the polygon is
+   * known; area(bbox ∩ view)/area(view) as the honest fallback otherwise.
+   * Build it with resolvePlaceCoverage so both runtimes feed identical
+   * numbers.
+   */
   coverageOfView: number;
+  /**
+   * The "finest" ranking key: real-ground area when known, bbox area
+   * otherwise — same cos-weighted degrees² metric either way.
+   */
+  placeArea: number;
+  /**
+   * DAG parent edges (§1) — the straddle reservation reads children through
+   * these. Optional so bbox-era callers/fixtures stay valid (absent = no
+   * known children ⇒ no reservation can fire through this candidate).
+   */
+  parentPlaceIds?: string[];
 }
 
 /**
  * The lean catalog-row shape the subjects law accepts from EITHER runtime —
  * the server's Prisma Place row projects onto it, and the slice endpoint
  * (GET /places/in-view) ships exactly this (minus `area`, which derives from
- * bbox via bboxArea and is never wire data). Deliberately storage-agnostic:
- * no Prisma types may appear in this module.
+ * bbox/ground and is never wire data). Deliberately storage-agnostic: no
+ * Prisma types may appear in this module.
  */
 export interface PlaceLike {
   placeId: string;
@@ -92,17 +122,27 @@ export interface PlaceLike {
   parentPlaceIds: string[];
   /** Optional cached bboxArea(bbox); recomputed when absent. */
   area?: number;
+  /**
+   * §2.5 real ground: simplified boundary rings (view-appropriate
+   * simplification is the SERVER's concern; full detail never ships).
+   * Absent = polygon not landed yet → bbox fallback (§2.5(f)).
+   */
+  ground?: PlaceGround | null;
+}
+
+/** resolvePlaceCoverage result: the two §2.5 judgment inputs per candidate. */
+export interface PlaceCoverage {
+  coverageOfView: number;
+  placeArea: number;
+  /** True when the polygon (not the bbox fallback) produced the numbers. */
+  groundKnown: boolean;
 }
 
 /**
- * THE per-row coverage law — area(bbox ∩ view) / area(view) — shared by the
- * server catalog read (PlacesCatalogService.placesInView) and the client's
- * local slice evaluation, so both sides feed resolveHeaderPlace identical
- * numbers. Returns null when the bbox does not intersect the view at all
- * (not a candidate). A zero-area (point) view degenerates to coverage 1:
- * any place whose bbox admits the point fully covers the attention there.
- * `viewArea` is passed in (callers already hold bboxArea(view)) so a slice
- * of N places computes it once.
+ * Bbox-fallback coverage — area(bbox ∩ view) / area(view). §2.5(f): legal
+ * ONLY where no polygon exists. Returns null when the bbox misses the view
+ * entirely. A zero-area (point) view degenerates to coverage 1: any place
+ * whose bbox admits the point fully covers the attention there.
  */
 export function coverageOfView(view: GeoBbox, viewArea: number, bbox: GeoBbox): number | null {
   const parts = bboxIntersectionParts(bbox, view);
@@ -114,23 +154,62 @@ export function coverageOfView(view: GeoBbox, viewArea: number, bbox: GeoBbox): 
 }
 
 /**
+ * THE per-candidate coverage law (§2.5(c)/(f)) shared by the server catalog
+ * read (PlacesCatalogService.placesInView) and the client's slice
+ * evaluation: polygon-clip coverage + real-ground area when `ground` is
+ * present; bbox coverage + bbox area otherwise. Returns null when the place
+ * is NOT a candidate for this view at all — bbox disjoint, or (the index
+ * lied) ground present but clipping to zero: the bbox found it, the polygon
+ * disqualifies it.
+ */
+export function resolvePlaceCoverage(
+  view: GeoBbox,
+  viewArea: number,
+  place: { bbox: GeoBbox; ground?: PlaceGround | null }
+): PlaceCoverage | null {
+  if (place.ground && place.ground.length > 0) {
+    const coverage = groundCoverageOfView(view, viewArea, place.ground);
+    if (coverage <= 0) {
+      return null; // real ground never touches the view — the bbox was index noise
+    }
+    return {
+      coverageOfView: coverage,
+      placeArea: groundArea(place.ground),
+      groundKnown: true,
+    };
+  }
+  const bboxCoverage = coverageOfView(view, viewArea, place.bbox);
+  if (bboxCoverage === null) {
+    return null;
+  }
+  return {
+    coverageOfView: bboxCoverage,
+    placeArea: bboxArea(place.bbox),
+    groundKnown: false,
+  };
+}
+
+/**
  * Catalog rows → subject candidates for one view: keep every place whose
- * bbox intersects the view, with its coverage share. This is the pure core
- * of the server's placesInView (which merely adds the DB prefilter) and the
- * WHOLE of the client's read over its slice — feed the result straight to
- * resolveHeaderPlace.
+ * ground (or fallback bbox) genuinely touches the view, with its §2.5
+ * coverage share and finest-ranking area. This is the pure core of the
+ * server's placesInView (which merely adds the DB prefilter and geometry
+ * hydration) and the WHOLE of the client's read over its slice — feed the
+ * result straight to resolveHeaderPlace.
  */
 export function subjectCandidatesInView(view: GeoBbox, places: PlaceLike[]): SubjectCandidate[] {
   const viewArea = bboxArea(view);
   const candidates: SubjectCandidate[] = [];
   for (const place of places) {
-    const coverage = coverageOfView(view, viewArea, place.bbox);
+    const coverage = resolvePlaceCoverage(view, viewArea, place);
     if (coverage === null) continue;
     candidates.push({
       placeId: place.placeId,
       name: place.name,
       bbox: place.bbox,
-      coverageOfView: coverage,
+      coverageOfView: coverage.coverageOfView,
+      placeArea: coverage.placeArea,
+      parentPlaceIds: place.parentPlaceIds,
     });
   }
   return candidates;
@@ -140,121 +219,107 @@ export type HeaderResolution =
   | {
       kind: 'place';
       place: SubjectCandidate;
+      /** §2.5: the finest dominator named the header (the only place arm). */
+      reason: 'finest-dominator';
       /**
-       * 'commensurate'         → the §2 primary rule chose it;
-       * 'containing-fallback'  → no commensurate node existed; smallest
-       *                          CONTAINING node named even over-scale.
+       * The named subject — descendant expansion (§6 feed) keys off this.
+       * Always exactly [place] for the place verdict.
        */
-      reason: 'commensurate' | 'containing-fallback';
-      /** All commensurate places, coverage-desc (the view's subjects). */
       subjects: SubjectCandidate[];
     }
   | {
       kind: 'this-area';
       /**
-       * 'straddle'       → several commensurate subjects, none covering;
-       * 'unnamed-ground' → nothing commensurate AND nothing containing.
+       * 'straddle'       → ≥2 places each hold ≥ ATTENTION_FRACTION of the
+       *                    view (the dominator's children reservation, or —
+       *                    with no dominator — the attention holders
+       *                    themselves);
+       * 'unnamed-ground' → nothing claims the view and at most one place
+       *                    even holds attention (sparse catalog, open
+       *                    water).
        */
       reason: 'straddle' | 'unnamed-ground';
+      /** The places genuinely holding attention (coverage-desc). */
       subjects: SubjectCandidate[];
     };
 
 /**
- * The §2 "too big" disqualifier, shared VERBATIM by isCommensurate and the
- * reconciler's answered test: a region is over-scale for the view when the
- * view is < ATTENTION_FRACTION of it. Sharing the exact test is load-bearing
- * — a known region may only ANSWER an anchor at scales the view could accept
- * as a subject (see bboxAnswersAnchor), so a sketched country can never
- * permanently starve street-zoom probing (§1 lazy neighborhood entry, §2
- * Chongqing descent).
+ * The §2 "too big" scale disqualifier — NO LONGER a header arm (§2.5 killed
+ * it) but still the law behind (a) the reconciler's answered test
+ * (bboxAnswersAnchor: an over-scale sketched country must not suppress
+ * street-zoom probing) and (b) the §4 feed-at-that-zoom boundary
+ * (poll-feed-membership). A region is over-scale for the view when the view
+ * is < ATTENTION_FRACTION of it.
  */
 export function isTooBigForView(viewArea: number, regionArea: number): boolean {
   return regionArea > 0 && viewArea + EPSILON < ATTENTION_FRACTION * regionArea;
 }
 
 /**
- * §2 symmetric commensurability test for one candidate against the view.
- * Exported so the reconciler/spec fixtures can assert the disqualifiers
- * independently of the full resolution.
- */
-export function isCommensurate(viewArea: number, candidate: SubjectCandidate): boolean {
-  // Too small: covers < 1/3 of the view.
-  if (candidate.coverageOfView + EPSILON < ATTENTION_FRACTION) {
-    return false;
-  }
-  // Too big: the view is < 1/3 of the place → descend (§2). A zero-area
-  // place (degenerate sketch) can only fail the too-small arm above.
-  return !isTooBigForView(viewArea, bboxArea(candidate.bbox));
-}
-
-/**
  * Does a KNOWN region (stored place bbox or negative observation) answer a
  * probe anchor for THIS view? Point-in-bbox alone is not enough: an
  * over-scale region (a sketched country under a street-zoom view) knows
- * nothing about the commensurate places the view actually needs, so it must
- * not suppress the probe. The scale test is the same too-big disqualifier as
- * isCommensurate, applied SYMMETRICALLY to places and negative observations.
+ * nothing about the finer places the view actually needs, so it must not
+ * suppress the probe. Applied SYMMETRICALLY to places and negative
+ * observations.
  */
 export function bboxAnswersAnchor(viewArea: number, bbox: GeoBbox, anchor: GeoPoint): boolean {
   return !isTooBigForView(viewArea, bboxArea(bbox)) && bboxContainsPoint(bbox, anchor);
 }
 
 /**
- * The §2 header judgment. `placesInView` is EVERY catalog place whose bbox
- * intersects the view (the catalog service's placesInView read) — this
- * includes ancestors, so DAG "descent" needs no traversal here: a too-big
- * ancestor simply fails commensurability while its commensurate descendant
- * passes, and the descendant wins by construction.
+ * The §2.5 header judgment. `placesInView` is EVERY candidate whose ground
+ * (or fallback bbox) touches the view — including ancestors, so "finest"
+ * needs no DAG traversal: a covering city simply out-fines its covering
+ * state. The straddle reservation is the ONE DAG read: the dominator's
+ * children are the candidates whose parentPlaceIds include it.
  */
 export function resolveHeaderPlace(
   view: GeoBbox,
   placesInView: SubjectCandidate[]
 ): HeaderResolution {
-  const viewArea = bboxArea(view);
-
-  const commensurate = placesInView
-    .filter((candidate) => isCommensurate(viewArea, candidate))
-    // §2 tiebreak: "equal-commensurability descent tiebreak = coverage-of-
-    // view, then name-stability" — deterministic lexicographic close.
+  // Attention holders: places genuinely holding ≥ 1/3 of the view —
+  // straddle material and the feed's subject set. Coverage-desc, then
+  // name-stability (deterministic lexicographic close).
+  const attentionHolders = placesInView
+    .filter((candidate) => candidate.coverageOfView + EPSILON >= ATTENTION_FRACTION)
     .sort((a, b) => b.coverageOfView - a.coverageOfView || a.name.localeCompare(b.name));
 
-  if (commensurate.length > 0) {
-    const top = commensurate[0];
-    if (commensurate.length === 1 || top.coverageOfView + EPSILON >= COVERING_FRACTION) {
-      // The commensurate covering place (or the lone subject — with a single
-      // subject there is no straddle to reserve "this area" for).
-      // RATIFIED 2026-07-19 (owner docket item 2): a lone commensurate
-      // subject names the header even below COVERING_FRACTION — "this area"
-      // stays reserved for genuine straddles/unnamed ground.
-      return {
-        kind: 'place',
-        place: top,
-        reason: 'commensurate',
-        subjects: commensurate,
-      };
-    }
-    // Multi-place straddle: several subjects, none covering → "this area"
-    // (§2/§35.2 reservation), subjects listed for the caller.
-    return { kind: 'this-area', reason: 'straddle', subjects: commensurate };
-  }
+  // §2.5 dominators: real ground covers ≥ 2/3 of the view. FINEST first —
+  // smallest placeArea; area ties close on name for determinism.
+  const dominators = placesInView
+    .filter((candidate) => candidate.coverageOfView + EPSILON >= COVERING_FRACTION)
+    .sort((a, b) => a.placeArea - b.placeArea || a.name.localeCompare(b.name));
 
-  // No commensurate node → smallest CONTAINING node, even over-scale (§2:
-  // the fallback names the containing place, NOT "this area").
-  const containing = placesInView
-    .filter((candidate) => bboxContains(candidate.bbox, view))
-    .sort((a, b) => bboxArea(a.bbox) - bboxArea(b.bbox) || a.name.localeCompare(b.name));
-  if (containing.length > 0) {
+  if (dominators.length === 0) {
+    // Nothing claims the view. ≥2 attention holders = a genuine straddle
+    // (two towns at ~half the view each); otherwise unnamed ground.
     return {
-      kind: 'place',
-      place: containing[0],
-      reason: 'containing-fallback',
-      subjects: [],
+      kind: 'this-area',
+      reason: attentionHolders.length >= 2 ? 'straddle' : 'unnamed-ground',
+      subjects: attentionHolders,
     };
   }
 
-  // Unnamed ground: nothing commensurate, nothing containing (continental
-  // view over a sparse catalog, open water, …).
-  return { kind: 'this-area', reason: 'unnamed-ground', subjects: [] };
+  const dominator = dominators[0];
+
+  // Straddle reservation (§2.5(b)): ≥2 of the dominator's CHILDREN each
+  // hold ≥ 1/3 of the view → the view is genuinely split between them.
+  const straddlingChildren = attentionHolders.filter(
+    (candidate) =>
+      candidate.placeId !== dominator.placeId &&
+      (candidate.parentPlaceIds ?? []).includes(dominator.placeId)
+  );
+  if (straddlingChildren.length >= 2) {
+    return { kind: 'this-area', reason: 'straddle', subjects: straddlingChildren };
+  }
+
+  return {
+    kind: 'place',
+    place: dominator,
+    reason: 'finest-dominator',
+    subjects: [dominator],
+  };
 }
 
 /**

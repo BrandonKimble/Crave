@@ -30,16 +30,16 @@ import { PlacesCatalogService, placeParentIds } from './places-catalog.service';
  * served, which is the client's cache-validity region.
  *
  * CONTAINING-CHAIN REASONING (why there is no separate "containing chain"
- * field): the §2 containing-fallback needs places whose bbox CONTAINS the
- * view — and containment implies intersection, so every such place (however
+ * field): the §2.5 law's dominators include every place whose ground covers
+ * the view — and covering implies intersecting, so every such place (however
  * over-scale: city, state, country) already intersects the margin box and is
  * already in `places`. placesInView's DB prefilter keeps crossing rows and
- * both lat/lng arms over-inclusive, so no containing node can be dropped.
- * The only rows it excludes are bbox-LESS places — and a bbox-less place can
- * never pass bboxContains, so it could never name a containing-fallback
- * header anyway. Shipping a second "smallestContaining + ancestors" list
- * would be redundant derivable data; the slice rows are sufficient for the
- * whole header law.
+ * both lat/lng arms over-inclusive, so no covering node can be dropped. The
+ * only rows it excludes are bbox-LESS places — and a bbox-less place has no
+ * index presence at all (its polygon, once landed, widens the bbox at the
+ * drain). Shipping a second "smallestContaining + ancestors" list would be
+ * redundant derivable data; the slice rows are sufficient for the whole
+ * header law.
  */
 @Controller('places')
 @UseGuards(ClerkAuthGuard)
@@ -62,15 +62,18 @@ export class PlacesController {
     const rows = await this.catalog.placesInView(marginBox);
     return {
       marginBox,
-      // Lean PlaceLike rows only: bbox + identity + DAG edges. Areas and
-      // coverages are DERIVED client-side with the same shared functions —
-      // derivable data never ships.
-      places: rows.map(({ place, bbox }) => ({
+      // Lean PlaceLike rows: bbox + identity + DAG edges, plus §2.5 `ground`
+      // where a polygon has landed (simplified to the MARGIN box span inside
+      // placesInView — view-appropriate detail, full geometry never ships).
+      // Areas and coverages are DERIVED client-side with the same shared
+      // functions — derivable data never ships.
+      places: rows.map(({ place, bbox, ground }) => ({
         placeId: place.placeId,
         name: place.name,
         bbox,
         providerLevelCode: place.providerLevelCode,
         parentPlaceIds: placeParentIds(place),
+        ...(ground ? { ground } : {}),
       })),
     };
   }

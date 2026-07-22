@@ -51,18 +51,43 @@ describe('poll-feed-membership — §6 members + §2 header + §4 feed-at-that-z
     expect(result.headerPlaceName).toBe('Round Rock');
   });
 
-  it('a merely over-scale TOWN-CLASS place (street zoom inside a city) KEEPS membership', () => {
+  it('a merely over-scale TOWN-CLASS place (street zoom inside a city) KEEPS membership and IS the subject (§2.5: covering ⇒ dominator)', () => {
     const city = candidate(CITY, 'Austin', 1, 400); // over-scale but not subdivision+
     const result = resolveFeedMembership(VIEW, [city], new Set());
     expect(result.memberPlaceIds).toEqual([CITY]);
-    // No commensurate node; the containing city names the header (§2 fallback).
+    // §2.5: the city covers the view → it IS the finest dominator (the old
+    // containing-fallback arm is subsumed) — and as the named subject its
+    // descendants join the feed (street zoom shows the city's ground).
     expect(result.headerPlaceName).toBe('Austin');
     expect(result.resolution.kind).toBe('place');
     expect(
       result.resolution.kind === 'place' ? result.resolution.reason : null,
-    ).toBe('containing-fallback');
-    // Containing-fallback has NO commensurate subject → no descendant expansion.
-    expect(result.subjectPlaceIds).toEqual([]);
+    ).toBe('finest-dominator');
+    expect(result.subjectPlaceIds).toEqual([CITY]);
+  });
+
+  it('§2.5 straddle reservation: the covering dominator with TWO attention-holding CHILDREN yields "this area" with the children as subjects', () => {
+    const cityWide = candidate(CITY, 'Metroburg', 1, 2);
+    const west = {
+      ...candidate(TOWN, 'Westside', 0.5, 0.6),
+      parentPlaceIds: [CITY],
+    };
+    const east = {
+      ...candidate(TOWN_B, 'Eastside', 0.5, 0.6),
+      parentPlaceIds: [CITY],
+    };
+    const result = resolveFeedMembership(
+      VIEW,
+      [cityWide, west, east],
+      new Set(),
+    );
+    expect(result.headerPlaceName).toBeNull();
+    expect(result.resolution.kind).toBe('this-area');
+    expect(new Set(result.subjectPlaceIds)).toEqual(new Set([TOWN, TOWN_B]));
+    // All three stay members (none is subdivision+).
+    expect(new Set(result.memberPlaceIds)).toEqual(
+      new Set([CITY, TOWN, TOWN_B]),
+    );
   });
 
   it('multi-place straddle: header null ("Polls in this area"), BOTH subjects expand descendants', () => {

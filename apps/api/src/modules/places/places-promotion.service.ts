@@ -6,10 +6,15 @@
  * (place_geometry_promotions, placeId PK) records the earned moment; a
  * governed hourly drain turns queued places into place_geometries rows.
  *
- * TRIGGERS (§2 a–e), all fire-and-forget — the §2 "ONE blocking caller"
+ * TRIGGERS (§2/§2.5), all fire-and-forget — the §2 "ONE blocking caller"
  * nuance is about NAME resolution at poll creation (which already never
  * blocks, wave-5 §17c fallback mint); the polygon enqueue itself never
  * blocks anything:
+ *   (0) birth            — §2.5(d) POLYGON AT BIRTH (ratified 2026-07-22):
+ *       the catalog's create chokepoint (PlacesCatalogService.upsertSketch,
+ *       via PLACE_BIRTH_LISTENER) enqueues EVERY newly sketched place; the
+ *       promotion queue is the ORDINARY intake now, and the hourly drain
+ *       cadence is the only latency (birth→outline within the hour is fine);
  *   (a) poll_created     — polls.service createPoll after place resolution;
  *   (b) source_attached  — the §10 onboarding verb (prisma/
  *       market-provisioning.ts) for the source's anchor place. The lazy
@@ -19,33 +24,30 @@
  *   (c) credit_prefetch  — the weekly ritual's §2 derived pre-fetch:
  *       credit + creditRate × Δt_to_tick ≥ 1 (creditRate is per-week, the
  *       tick is weekly, so the formula is credit + creditRate ≥ 1);
- *   (d) batch seed       — NOT a mass enqueue. OWNER-RATIFY (reading of
- *       record): §2(d) reads as seed-batches EARNING promotion, not the
- *       19.5k-row US seed pre-spending ~8 months of the 2,500/mo scarce
- *       pool with zero attention evidence. Seeded places therefore enter
- *       the queue through the OTHER triggers when attention arrives; a
- *       future paid seed campaign (§14.6 money grant) would enqueue its
- *       batch explicitly through enqueue() with its own trigger word;
- *   (e) header_answers   — a place that answers the §2 header more than
- *       once within the memory TTL joins the queue (noteHeaderAnswer;
- *       in-memory, same interim stance as the reconciler's negative-region
- *       cache).
+ *   (d) paid_seed        — §2.5(e) SEED ORDER: the coarse seed campaign
+ *       (scripts/seed-coarse-polygons.ts) batch-enqueues border countries +
+ *       states + counties (the diagonal-shape class that lies about its
+ *       ground) first, municipalities paced behind, organic forever-lazy —
+ *       ratified 2026-07-22 with the PAID scarce budget (§16 K1 in
+ *       governance.service);
+ *   (e) header_answers   — a place that answers the header more than once
+ *       within the memory TTL joins the queue (noteHeaderAnswer; in-memory,
+ *       same interim stance as the reconciler's negative-region cache).
+ *       Under birth-intake (0) this is a belt-and-suspenders re-entry for
+ *       pre-§2.5 rows and consumed-draw misses.
  *
- * POINT-ANSWER-BEATS-BBOX (§2 parenthetical, documented no-op): "until
- * promoted, the probe's point-answer beats bbox dominance on disagreement."
- * Today the subjects/header read (subjects.ts resolveHeaderPlace) is
- * bbox-only — polygons are not consulted at read and a probe's point-answer
- * exists only transiently inside the reconciler before being sketched into
- * the same bboxes, so no bbox-vs-point disagreement SEAM exists to arbitrate.
- * The rule becomes live machinery when a polygon-precise header read lands;
- * building it now would be machinery without a caller.
+ * POINT-ANSWER-BEATS-BBOX: resolved by construction under §2.5 — the header
+ * read is polygon-native (resolvePlaceCoverage: polygon = truth, bbox =
+ * index-only fallback), so bbox dominance can no longer out-vote real
+ * ground; the old interim parenthetical has no seam left to arbitrate.
  *
  * DRAIN (governed lane):
  *   - Hourly cadence: §16 K3-shaped operational plumbing (same clock as the
  *     ritual tick; "a polygon an hour late is fine" — the queue itself is the
  *     lateness buffer). §21.2: destined to be a registered pacer lane.
- *   - Oldest-first; the SCARCE POOL bounds spend (hardClosed 2,500/mo) — no
- *     invented batch cap.
+ *   - Oldest-first; the SCARCE POOL bounds spend (hardClosed, owner-priced
+ *     monthly budget — §16 K1 in governance.service) — no invented batch
+ *     cap; the per-tick row LIMIT below is churn-bounding only.
  *   - Two-step vendor flow: a tomtom-provider place's providerPlaceId IS the
  *     stable geometry id (§1, live-validated); a census-seeded place (GEOID
  *     alias) first spends ONE cheap forward geocode (county-qualified) to
@@ -79,6 +81,17 @@ import {
  * minimal honest reading: the smallest count that is a repeat).
  */
 export const HEADER_ANSWER_MEMORY_TTL_MS = NEGATIVE_OBSERVATION_TTL_MS;
+
+/**
+ * §16 DERIVED — per-tick drain read bound: the scarce pool's monthly budget
+ * (tomtom.scarcePolygons, §16 K1 owner price-tag in governance.service) is
+ * the REAL spend limiter; a single tick can never usefully touch more rows
+ * than the whole month admits, so the row LIMIT equals that budget. It
+ * exists only to bound per-tick row churn on a deeply backlogged queue
+ * (paid_seed enqueues ~23k rows at once) — it is not a pacing knob. What
+ * changes it: the owner re-pricing the scarce pool, never tuning.
+ */
+export const DRAIN_BATCH_LIMIT_PER_TICK = 10_000;
 
 /** Per-item drain outcome (see promoteOne). 'stop' ends the whole pass. */
 type DrainOutcome = 'promoted' | 'skipped' | 'attempted' | 'stop';
@@ -213,6 +226,7 @@ export class PlacesPromotionService {
                  OR date_trunc('month', last_attempt_at)
                     < date_trunc('month', ${utcInstantSql(now)}))
           ORDER BY enqueued_at ASC
+          LIMIT ${DRAIN_BATCH_LIMIT_PER_TICK}
         `,
       );
       for (const item of due) {
@@ -367,6 +381,24 @@ export class PlacesPromotionService {
         provider_boundary_id = EXCLUDED.provider_boundary_id,
         fetched_at = EXCLUDED.fetched_at,
         geometry = EXCLUDED.geometry
+    `);
+    // §2.5(c): bbox = INDEX only, and the index DERIVES from truth when
+    // truth lands — widen the places bbox to the polygon's envelope
+    // (grow-only, LEAST/GREATEST like the §1 merge law; COALESCE lets a
+    // bbox-less coarse-seed row — a country created purely for its polygon —
+    // gain its first index presence here). An over-wide envelope (a
+    // seam-straddling country) is safe by construction: the index only
+    // FINDS candidates, the polygon judges them.
+    await this.prisma.$executeRaw(Prisma.sql`
+      UPDATE places p SET
+        bbox_min_lat = LEAST(COALESCE(p.bbox_min_lat, ST_YMin(g.geometry)), ST_YMin(g.geometry)),
+        bbox_min_lng = LEAST(COALESCE(p.bbox_min_lng, ST_XMin(g.geometry)), ST_XMin(g.geometry)),
+        bbox_max_lat = GREATEST(COALESCE(p.bbox_max_lat, ST_YMax(g.geometry)), ST_YMax(g.geometry)),
+        bbox_max_lng = GREATEST(COALESCE(p.bbox_max_lng, ST_XMax(g.geometry)), ST_XMax(g.geometry))
+      FROM place_geometries g
+      WHERE g.place_id = p.place_id
+        AND p.place_id = ${placeId}::uuid
+        AND g.geometry IS NOT NULL
     `);
   }
 
