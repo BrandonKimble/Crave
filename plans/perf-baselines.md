@@ -243,3 +243,22 @@ runs; UI worst window 80—180 across the day with IDENTICAL native profiles) �
 single-sample windows cannot adjudicate; the flagged mark-aligned window
 attribution remains the follow-up. Gates: matrix 21/21, invariants 29/29,
 content verified. Fade/snap feel = owner's eye on device.
+
+## RELEASE-LANE ATTRIBUTION FIX — the samplers were mixed (2026-07-21)
+
+The baseline script's combined grep let JsFrameSampler windows masquerade as
+"UI worst" — EVERY cross-build "UI p95 worst" comparison above was contaminated
+(script fixed: samplers now reported separately + worst-window timestamp).
+
+THE TRUE PICTURE (step-3 binary, 2 warm runs, timestamp-aligned):
+- **UI (render) lane: worst p95 = 34.9-37.2ms** — clean; the native main-thread
+  work no longer punches holes in the render cadence. Worst floorFps 18.9.
+- **JS lane: exactly ONE ~164ms stall at the reveal** (163.9/164.5 across runs
+  — REPRODUCIBLE; window lands ~2s after submit = the reveal commit). The
+  next-worst JS window is 25-27ms. maxLagMs worst (95-124) is the same event.
+
+VERDICT: the native catalog arc is complete and clean; the entire remaining
+release-lane burst is ONE JS-thread stall at the reveal commit — the row-landing
+/ P-12 coalesced commit territory (deliberately one render; the landing clock's
+above-fold beat + world-read + commit ≈ this stall). The next lever, if wanted,
+lives in JS-land, not the map.

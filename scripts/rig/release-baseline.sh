@@ -33,8 +33,17 @@ echo "RUN=$RUN"
 echo "OUT=$OUT"
 echo "--- JS task windows (maxLagMs):"
 grep -oE '"maxLagMs":[0-9.]+' "$OUT" | sort -t: -k2 -rn | head -8
-echo "--- UI frame windows (worst p95FrameMs / floorFps):"
-grep -oE '"p95FrameMs":[0-9.]+' "$OUT" | sort -t: -k2 -rn | head -5
-grep -oE '"floorFps":[0-9.]+' "$OUT" | sort -t: -k2 -n | head -5
+# SAMPLER SPLIT (2026-07-21 attribution fix): p95FrameMs/floorFps exist in BOTH the
+# JsFrameSampler and UiFrameSampler lines — the old combined grep let a JS-thread
+# stall masquerade as the "UI worst window" and contaminated every cross-build
+# comparison. Report the two threads separately, with timestamps for the worst.
+echo "--- JS frame windows (JsFrameSampler worst p95FrameMs):"
+grep "JsFrameSampler" "$OUT" | grep -oE '"p95FrameMs":[0-9.]+' | sort -t: -k2 -rn | head -4
+echo "--- UI frame windows (UiFrameSampler worst p95FrameMs / floorFps):"
+grep "UiFrameSampler" "$OUT" | grep -oE '"p95FrameMs":[0-9.]+' | sort -t: -k2 -rn | head -4
+grep "UiFrameSampler" "$OUT" | grep -oE '"floorFps":[0-9.]+' | sort -t: -k2 -n | head -3
+echo "--- worst JS window line (timestamp for phase alignment):"
+WORST_JS=$(grep "JsFrameSampler" "$OUT" | grep -oE '"p95FrameMs":[0-9.]+' | sort -t: -k2 -rn | head -1 | cut -d: -f2)
+grep "JsFrameSampler" "$OUT" | grep "\"p95FrameMs\":$WORST_JS" | head -1 | cut -c1-60
 echo "--- marks:"
 grep -oE '"event":"scenario_mark"[^}]*' "$OUT" | head -6
