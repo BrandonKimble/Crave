@@ -98,6 +98,28 @@ polygon, providerBoundaryId, fetchedAt }.
   graceful scarce-pool degradation. Viral stampede self-extinguishes:
   first probe sketches; later resolves hit the catalog.
 
+## §2.5 POLYGON-NATIVE HEADER LAW (RATIFIED 2026-07-22 — supersedes §2's
+
+symmetric-commensurability header arms)
+
+Owner rulings: (a) OFF the TomTom free tier — polygons are a paid, capped,
+once-ever spend; the scarce pool becomes a price-tagged monthly budget
+(governed, ledgered, typed denials at the owner's ceiling). (b) THE HEADER
+LAW: **the header = the FINEST place whose real ground (polygon) covers
+≥ COVERING_FRACTION (2/3) of the view; RESERVATION: if ≥2 of that place's
+children each hold ≥ ATTENTION_FRACTION (1/3) of the view, it is a genuine
+straddle → 'this area'.** Both knobs pre-ratified; the too-big arm DIES
+(descent-to-finest-dominator does its job). (c) Polygon = truth, bbox =
+INDEX only (DB prefilter + candidate finding; never judgment). (d) Polygon
+AT BIRTH: every newly sketched place fetches its outline immediately
+through the governed lane (the promotion queue is the ordinary intake now).
+(e) SEED ORDER: coarse first (border countries + states + counties — the
+diagonal-shape class that lies), municipalities paced behind, organic
+forever-lazy. (f) Bbox coverage remains the honest fallback for places
+whose polygon has not landed yet (degradation, never a judge where a
+polygon exists). Slices serve view-appropriate SIMPLIFIED geometry; full
+detail stays server-side in place_geometries.
+
 ## §3 The Signals Ledger
 
 **signals**: { signalId, kind, subjectType (entity|term|none), subjectId?,
