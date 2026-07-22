@@ -7,6 +7,7 @@ import { SceneLoadingSurface } from '../../../../components/skeletons';
 import { colors as themeColors } from '../../../../constants/theme';
 import type { FoodResult, RestaurantResult } from '../../../../types';
 import { markRevealCommitRowRender } from '../../../../perf/reveal-commit-attribution';
+import { SEARCH_RESULTS_BANDS } from '../shared/search-results-page-bands';
 import { logger } from '../../../../utils';
 import styles from '../../styles';
 import type { ResultsListItem, ResultsMountedRestaurantCardRow } from './list-read-model-builder';
@@ -22,9 +23,10 @@ import type { RestaurantResultCardDescriptor } from '../../components/restaurant
 // (owner-eye) restores true cutouts that read frosty.
 const ResultsPendingBlockCell = React.memo(({ rowType }: { rowType: 'restaurant' | 'dish' }) => {
   const { height: windowHeight } = useWindowDimensions();
+  const band = rowType === 'dish' ? SEARCH_RESULTS_BANDS.dishes : SEARCH_RESULTS_BANDS.restaurants;
   return (
     <View pointerEvents="none" style={{ height: windowHeight, overflow: 'hidden' }}>
-      <SceneLoadingSurface rowType={rowType} count={8} frostBacking />
+      <SceneLoadingSurface rowType={rowType} count={band.placeholder.count} frostBacking />
     </View>
   );
 });

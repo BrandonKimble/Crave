@@ -11,11 +11,23 @@ import { colors as themeColors } from '../constants/theme';
 // here and never per panel — the old per-panel sheetTitle/headerTitle/restaurantName/
 // submittedQueryLabel forks (some with hand-rolled flex bounds, some silently
 // unbounded) died with this pair.
+
+// THE BRAND (truncation law, type side — L1 completion): chrome title text is a
+// branded string producible ONLY by toSingleLineText, whose constructor collapses
+// line breaks — a multi-line chrome title is unrepresentable at the type level, not
+// merely clipped at render. The ellipsis itself stays physical (numberOfLines=1 +
+// the host slot's width bound); the brand closes the remaining hole (embedded
+// newlines rendering as a squashed glyph line).
+declare const SINGLE_LINE_TEXT_BRAND: unique symbol;
+export type SingleLineText = string & { readonly [SINGLE_LINE_TEXT_BRAND]: true };
+export const toSingleLineText = (raw: string): SingleLineText =>
+  raw.replace(/\s*[\r\n]+\s*/g, ' ').trim() as SingleLineText;
+
 export const ChromeTitleText = ({
   children,
   testID,
 }: {
-  children: React.ReactNode;
+  children: SingleLineText;
   testID?: string;
 }) => (
   <Text

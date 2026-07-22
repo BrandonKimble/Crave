@@ -30,14 +30,29 @@ import type {
 
 const APPENDING_TAIL_ROWS = 2;
 
-const PageListBody = <TItem,>({
+// A list body is an ordered band set with ONE ACTIVE (L1 A#14/B#15) — the shell
+// interprets exactly the active band: its row template, its pending face, its empty
+// view, its OWN closed state. Bands are item-type-erased in the spec (defineListBand
+// checks agreement at the declaration site), so the interpreter renders items as the
+// band's opaque vocabulary.
+type ErasedBandRowComponent = React.ComponentType<{ item: unknown }>;
+
+const PageListBody = ({
   spec,
-  state,
+  bandStates,
+  activeBandKey,
 }: {
-  spec: PageListBodySpec<TItem>;
-  state: PageBodyState<TItem>;
+  spec: PageListBodySpec;
+  bandStates: Readonly<Record<string, PageBodyState<unknown>>>;
+  activeBandKey?: string;
 }): React.ReactElement | null => {
+  const band =
+    (activeBandKey != null ? spec.bands.find((candidate) => candidate.key === activeBandKey) : null) ??
+    spec.bands[0];
+  const state = bandStates[band.key] ?? { kind: 'pending' as const };
   const material = resolveSceneLoadingMaterial(spec.scene);
+  const RowComponent = band.row.Component as ErasedBandRowComponent;
+  const keyOf = band.keyOf as (item: unknown, index: number) => string;
   if (state.kind === 'pending' || state.kind === 'error') {
     if (material == null) {
       return null;
@@ -45,9 +60,9 @@ const PageListBody = <TItem,>({
     return (
       <View pointerEvents="none" style={pendingSurfaceStyle} testID={`page-body-pending-${spec.scene}`}>
         <SceneLoadingSurface
-          rowType={material.rowType}
-          count={spec.placeholder.count}
-          insetX={spec.placeholder.insetX}
+          rowType={band.materialRowType ?? material.rowType}
+          count={band.placeholder.count}
+          insetX={band.placeholder.insetX}
           frostBacking={material.frostBacking}
           style={pendingMaterialFillStyle}
         />
@@ -55,18 +70,18 @@ const PageListBody = <TItem,>({
     );
   }
   if (state.kind === 'empty') {
-    return <spec.Empty />;
+    return <band.Empty />;
   }
   return (
     <View testID={`page-body-list-${spec.scene}`}>
-      {state.items.map((item) => (
-        <spec.row.Component key={spec.row.keyOf(item)} item={item} />
+      {state.items.map((item, index) => (
+        <RowComponent key={keyOf(item, index)} item={item} />
       ))}
       {state.kind === 'appending' && material != null ? (
         <SceneLoadingSurface
-          rowType={material.rowType}
+          rowType={band.materialRowType ?? material.rowType}
           count={APPENDING_TAIL_ROWS}
-          insetX={spec.placeholder.insetX}
+          insetX={band.placeholder.insetX}
           frostBacking={material.frostBacking}
         />
       ) : null}
@@ -89,9 +104,16 @@ const pendingMaterialFillStyle = {
 } as const;
 
 /** List/collection/content bodies require their state; static bodies cannot carry
- *  one — every mismatch is a compile error, not a runtime surprise. */
+ *  one — every mismatch is a compile error, not a runtime surprise. List bodies carry
+ *  PER-BAND states keyed by band key (one band = one entry) plus the active-band
+ *  input (omitted = the first declared band). */
 export type PageBodyShellProps<TItem> =
-  | { spec: PageListBodySpec<TItem>; state: PageBodyState<TItem> }
+  | {
+      spec: PageListBodySpec;
+      bandStates: Readonly<Record<string, PageBodyState<unknown>>>;
+      activeBandKey?: string;
+      state?: undefined;
+    }
   | { spec: PageCollectionBodySpec<TItem>; state: PageBodyState<TItem> }
   | { spec: PageContentBodySpec<TItem>; state: PageContentBodyState<TItem> }
   | { spec: PageStaticBodySpec; state?: undefined };
@@ -171,7 +193,11 @@ export const PageBodyShell = <TItem,>(
   // localized to these casts; the union type keeps call sites honest.
   const listProps =
     props.spec.kind === 'list'
-      ? (props as { spec: PageListBodySpec<TItem>; state: PageBodyState<TItem> })
+      ? (props as {
+          spec: PageListBodySpec;
+          bandStates: Readonly<Record<string, PageBodyState<unknown>>>;
+          activeBandKey?: string;
+        })
       : null;
   const collectionProps =
     props.spec.kind === 'collection'
@@ -181,9 +207,19 @@ export const PageBodyShell = <TItem,>(
     props.spec.kind === 'content'
       ? (props as { spec: PageContentBodySpec<TItem>; state: PageContentBodyState<TItem> })
       : null;
+  const activeListBandState = (() => {
+    if (listProps == null) {
+      return null;
+    }
+    const band =
+      (listProps.activeBandKey != null
+        ? listProps.spec.bands.find((candidate) => candidate.key === listProps.activeBandKey)
+        : null) ?? listProps.spec.bands[0];
+    return listProps.bandStates[band.key] ?? null;
+  })();
   const failure =
-    listProps?.state.kind === 'error'
-      ? listProps.state.failure
+    activeListBandState?.kind === 'error'
+      ? activeListBandState.failure
       : collectionProps?.state.kind === 'error'
         ? collectionProps.state.failure
         : contentProps?.state.kind === 'error'
@@ -193,7 +229,13 @@ export const PageBodyShell = <TItem,>(
   // from this one call — a page-local retry/error view has nowhere to exist.
   useSceneLoadFailurePolicy(props.spec.scene, failure);
   if (listProps != null) {
-    return <PageListBody spec={listProps.spec} state={listProps.state} />;
+    return (
+      <PageListBody
+        spec={listProps.spec}
+        bandStates={listProps.bandStates}
+        activeBandKey={listProps.activeBandKey}
+      />
+    );
   }
   if (collectionProps != null) {
     return <PageCollectionBody spec={collectionProps.spec} state={collectionProps.state} />;

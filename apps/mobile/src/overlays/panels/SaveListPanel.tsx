@@ -1,6 +1,6 @@
 import React from 'react';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import { ChromeTitleText } from '../ChromeTitleText';
+import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
@@ -112,7 +112,7 @@ const SaveListPersistentHeaderTitle = React.memo(() => {
   const listType = sideOverride ?? triggerListType;
   return (
     <ChromeTitleText>
-      Save to {listType === 'restaurant' ? 'Restaurants' : 'Dishes'}
+      {toSingleLineText(`Save to ${listType === 'restaurant' ? 'Restaurants' : 'Dishes'}`)}
     </ChromeTitleText>
   );
 });

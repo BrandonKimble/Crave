@@ -42,7 +42,7 @@ import {
 } from '../restaurant-header-live-state';
 import { openPostPhotosFunnel } from '../PostPhotosFunnelHost';
 import CraveScoreText from '../../screens/Search/components/CraveScoreText';
-import { ChromeTitleText } from '../ChromeTitleText';
+import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import { RestaurantHoursCard } from '../../features/restaurant-hours/RestaurantHoursCard';
 import {
   RestaurantMentionsView,
@@ -893,7 +893,7 @@ const RestaurantPersistentHeaderTitle = React.memo(() => {
     // ONLY the title; the grab handle + close button stay live for cancel.
     return <CutoutSkeletonShape width={150} height={18} />;
   }
-  return <ChromeTitleText>{restaurantName}</ChromeTitleText>;
+  return <ChromeTitleText>{toSingleLineText(restaurantName)}</ChromeTitleText>;
 });
 RestaurantPersistentHeaderTitle.displayName = 'RestaurantPersistentHeaderTitle';
 

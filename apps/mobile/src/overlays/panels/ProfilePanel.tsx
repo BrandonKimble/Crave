@@ -7,7 +7,7 @@ import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app
 import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
 import { FrostCutout } from '../SceneBodyFoundationSurface';
-import { ChromeTitleText } from '../ChromeTitleText';
+import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import { CutoutSkeletonShape, SceneLoadingSurface } from '../../components/skeletons';
 import { useProfilePanelBodyModelRuntime } from './runtime/profile-panel-body-model-runtime';
 import { PageBodyShell } from '../PageBodyShell';
@@ -327,7 +327,7 @@ ProfileMountedSceneBody.displayName = 'ProfileMountedSceneBody';
 // come from the overlay route controller (reachable anywhere under the app providers). The
 // grab-handle tap is the shared promote handler.
 const ProfilePersistentHeaderTitle = React.memo(() => (
-  <ChromeTitleText>Profile</ChromeTitleText>
+  <ChromeTitleText>{toSingleLineText('Profile')}</ChromeTitleText>
 ));
 
 ProfilePersistentHeaderTitle.displayName = 'ProfilePersistentHeaderTitle';

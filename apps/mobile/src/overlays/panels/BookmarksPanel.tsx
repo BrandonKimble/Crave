@@ -64,7 +64,7 @@ import {
   type ReorderScrollAdapter,
 } from '../../components/reorder';
 import { PageBodyShell } from '../PageBodyShell';
-import { ChromeTitleText } from '../ChromeTitleText';
+import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import {
   resolvePageBodyListState,
   type PageBodyState,
@@ -946,7 +946,7 @@ BookmarksMountedSceneBody.displayName = 'BookmarksMountedSceneBody';
 // grab-handle tap is the shared promote handler.
 const BookmarksPersistentHeaderTitle = React.memo(() => (
   <View style={styles.headerTextGroup}>
-    <ChromeTitleText>Lists</ChromeTitleText>
+    <ChromeTitleText>{toSingleLineText('Lists')}</ChromeTitleText>
   </View>
 ));
 

@@ -8,6 +8,7 @@ import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useOriginSceneScrollPublication } from '../useOriginSceneScrollPublication';
 import { PageBodyShell } from '../PageBodyShell';
 import {
+  defineListBand,
   resolvePageBodyListState,
   type PageBodyState,
   type PageListBodySpec,
@@ -131,20 +132,24 @@ const useNotificationsPageBody = (): PageBodyState<NotificationFeedItem> => {
 
 // THE DECLARATION — immutable module-scope spec with its slots inline (no registry to
 // disagree with; "declared but not registered" is unconstructable).
-const NOTIFICATIONS_PAGE_BODY: PageListBodySpec<NotificationFeedItem> = {
+const NOTIFICATIONS_PAGE_BODY: PageListBodySpec = {
   kind: 'list',
   scene: 'notifications',
-  row: {
-    Component: NotificationRow,
-    keyOf: (item) => item.userNotificationId,
-  },
-  placeholder: { count: 8 },
-  Empty: NotificationsEmpty,
+  // The one-band trivial case of the band law (A#14/B#15).
+  bands: [
+    defineListBand<NotificationFeedItem>({
+      key: 'all',
+      keyOf: (item) => item.userNotificationId,
+      row: { Component: NotificationRow },
+      placeholder: { count: 8 },
+      Empty: NotificationsEmpty,
+    }),
+  ],
 };
 
 export const NotificationsPanelBody = React.memo((_props: MountedSceneBodyProps) => {
   useOriginSceneScrollPublication('notifications');
-  return <PageBodyShell spec={NOTIFICATIONS_PAGE_BODY} state={useNotificationsPageBody()} />;
+  return <PageBodyShell spec={NOTIFICATIONS_PAGE_BODY} bandStates={{ all: useNotificationsPageBody() }} />;
 });
 NotificationsPanelBody.displayName = 'NotificationsPanelBody';
 

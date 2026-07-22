@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChromeTitleText } from '../ChromeTitleText';
+import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import { StyleSheet } from 'react-native';
 
 import { Text } from '../../components';
@@ -40,7 +40,7 @@ export const buildPollsHeaderVisualModel = ({
 };
 
 export const PollsHeaderTitleText: React.FC<{ title: string }> = ({ title }) => (
-  <ChromeTitleText>{title}</ChromeTitleText>
+  <ChromeTitleText>{toSingleLineText(title)}</ChromeTitleText>
 );
 
 const styles = StyleSheet.create({

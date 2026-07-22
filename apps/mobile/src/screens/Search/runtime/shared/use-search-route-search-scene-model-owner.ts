@@ -30,12 +30,13 @@ import { useSearchRootSearchSceneShellSpecPublicationRuntime } from './use-searc
 import { useSearchRootSearchSceneSurfacePanelStateRuntime } from './use-search-root-search-scene-surface-panel-state-runtime';
 import type { SearchRouteResultsPolicyReadModelWriterFacets } from './search-route-results-policy-domain-contract';
 import { SceneLoadingSurface } from '../../../../components/skeletons';
+import { SEARCH_RESULTS_BANDS } from './search-results-page-bands';
 
 // Stable element (reference-equal across renders so the snapshot equality check holds): the
 // results-list skeleton shown when the list is empty during a hard-swap reveal, before the first
 // results row paints. Same surface the body-input-owner uses — coalesced via ?? at the consumer.
 const RESULTS_LOADING_EMPTY_COMPONENT = React.createElement(SceneLoadingSurface, {
-  rowType: 'restaurant',
+  rowType: SEARCH_RESULTS_BANDS.restaurants.materialRowType,
 });
 
 type SearchRouteSearchSceneModelOwnerParams = {

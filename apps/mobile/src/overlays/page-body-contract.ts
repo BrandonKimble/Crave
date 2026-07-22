@@ -1,5 +1,6 @@
 import type React from 'react';
 
+import type { SceneLoadingRowType } from '../components/skeletons';
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
 import type { SceneLoadFailure } from './scene-load-failure-policy';
 
@@ -27,23 +28,89 @@ export type PageBodyState<TItem> =
   | { kind: 'error'; failure: SceneLoadFailure }
   | { kind: 'appending'; items: readonly TItem[] };
 
-export type PageListBodySpec<TItem> = {
-  kind: 'list';
-  scene: SheetSceneKey;
+/** ONE BODY BAND's TEMPLATE (L1 A#14/B#15 — BodySpec is an ordered set of body bands
+ *  with one active): band identity + row identity/geometry + the pending-face
+ *  template. This is the vocabulary BOTH interpreters share — PageBodyShell list
+ *  bodies (whose bands additionally declare the row Component + Empty inline, below)
+ *  and transport-hosted FlashList bodies (the search family), whose row render is the
+ *  sanctioned controller-closure slot but whose TEMPLATE FACTS (keys, keyOf, row
+ *  geometry, material shape, placeholder) live here so there is exactly one home.
+ *  Bands are ITEM-TYPE-ERASED in specs (each band's items are its own vocabulary —
+ *  restaurants vs dishes); type safety lives at the constructors below. */
+export type PageBandTemplate = {
+  /** Band identity — the active-band input and the bandStates key. */
+  key: string;
+  keyOf: (item: never, index: number) => string;
+  /** Row-template GEOMETRY for virtualized (FlashList) interpreters — the declared
+   *  estimated row height (the old per-site 240/270 literals). */
+  estimatedRowHeight?: number;
+  /** Per-band material row SHAPE for the pending face — a dish band's holes are
+   *  dish-shaped even when the scene-level material says restaurant. Omitted = the
+   *  scene's declared material rowType. */
+  materialRowType?: SceneLoadingRowType;
+  /** THE ROW TEMPLATE's pending face: how many rows of the material the interpreter
+   *  paints while pending/appending — part of the template, never chosen at a call
+   *  site. `insetX` is template GEOMETRY: 0 when the body renders inside a
+   *  transport-inset container (the holes must not re-inset — the double-inset
+   *  skeleton-vs-content jump class); omitted = the material's full-width default. */
+  placeholder: { count: number; insetX?: number };
+  /** The DECLARED empty view. Optional at the template level: a transport band whose
+   *  empty surface composes runtime data (the results empty carries metadata copy +
+   *  notices) keeps that surface controller-side; shell bands require it (below). */
+  Empty?: React.ComponentType;
+};
+
+/** A SHELL-interpreted band: the template plus the inline row slot and the required
+ *  empty view — everything PageBodyShell renders is declared here. */
+export type PageListBandSpec = PageBandTemplate & {
   row: {
     /** The row slot — receives a resolved item, nothing else. */
-    Component: React.ComponentType<{ item: TItem }>;
-    keyOf: (item: TItem) => string;
+    Component: React.ComponentType<{ item: never }>;
   };
-  /** THE ROW TEMPLATE's pending face: how many rows of the scene's declared L0
-   *  material (foundation table rowType) the shell paints while pending/appending —
-   *  part of the template, never chosen at a call site. `insetX` is template GEOMETRY:
-   *  0 when the body renders inside a transport-inset container (the holes must not
-   *  re-inset — the double-inset skeleton-vs-content jump class); omitted = the
-   *  material's full-width default. */
-  placeholder: { count: number; insetX?: number };
-  /** The DECLARED empty view (an L2 spec slot, not a panel branch). */
   Empty: React.ComponentType;
+};
+
+/** THE legal shell-band constructor: checks Component/keyOf against the band's item
+ *  type at the declaration site, then erases — a band whose row component disagrees
+ *  with its keyOf is a compile error where the band is written. */
+export const defineListBand = <TItem,>(band: {
+  key: string;
+  keyOf: (item: TItem, index: number) => string;
+  estimatedRowHeight?: number;
+  materialRowType?: SceneLoadingRowType;
+  placeholder: { count: number; insetX?: number };
+  row: { Component: React.ComponentType<{ item: TItem }> };
+  Empty: React.ComponentType;
+}): PageListBandSpec => band as unknown as PageListBandSpec;
+
+/** THE legal transport-band-template constructor (FlashList bodies hosted by the
+ *  scene transport — the search family): declares the template facts; the row render
+ *  stays the family's runtime slot, so there is no component to cross-check keyOf
+ *  against here — a TYPED keyOf function carries its own item vocabulary
+ *  (contravariance makes it assignable to the erased slot). The return type keeps
+ *  every declared field NARROW: a band that declares estimatedRowHeight exports
+ *  `number`, not `number | undefined`. */
+type PageBandTemplateInput = {
+  key: string;
+  keyOf: (item: never, index: number) => string;
+  estimatedRowHeight?: number;
+  materialRowType?: SceneLoadingRowType;
+  placeholder: { count: number; insetX?: number };
+  Empty?: React.ComponentType;
+};
+
+export const defineBandTemplate = <TBand extends PageBandTemplateInput>(band: TBand): TBand =>
+  band;
+
+export type PageListBodySpec = {
+  kind: 'list';
+  scene: SheetSceneKey;
+  /** ORDERED BODY BANDS, exactly one active at a time (A#14/B#15 — decided): the
+   *  search results dual-tab body is two bands in one shell; a tab toggle is
+   *  intra-shell band visibility, never a scene transition. One band is the trivial
+   *  case (most pages). Each band carries its OWN closed PageBodyState — restaurants
+   *  can be present while dishes is still pending. */
+  bands: readonly [PageListBandSpec, ...PageListBandSpec[]];
 };
 
 /** A COLLECTION body (bookmarks): the full closed enum over one resolved collection,
@@ -85,7 +152,7 @@ export type PageStaticBodySpec = {
 };
 
 export type PageBodySpec<TItem> =
-  | PageListBodySpec<TItem>
+  | PageListBodySpec
   | PageCollectionBodySpec<TItem>
   | PageContentBodySpec<TItem>
   | PageStaticBodySpec;

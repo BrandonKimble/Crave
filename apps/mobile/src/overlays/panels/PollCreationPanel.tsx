@@ -26,7 +26,7 @@ import type { SnapPoints } from '../bottomSheetMotionTypes';
 import type { MapBounds } from '../../types';
 import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
 import { normalizeSearchRouteSceneStackShellSpec } from '../searchOverlayRouteHostContract';
-import { ChromeTitleText } from '../ChromeTitleText';
+import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import { useViewportSubjectState } from '../../store/viewport-subject-store';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -434,7 +434,7 @@ const PollCreationPersistentHeaderTitle = React.memo(() => {
       : marketKey
         ? 'Add a poll'
         : 'Add a poll near here';
-  return <ChromeTitleText>{headerTitle}</ChromeTitleText>;
+  return <ChromeTitleText>{toSingleLineText(headerTitle)}</ChromeTitleText>;
 });
 PollCreationPersistentHeaderTitle.displayName = 'PollCreationPersistentHeaderTitle';
 

@@ -6,7 +6,7 @@ import type { ImagePickerAsset } from 'expo-image-picker';
 
 import { Text } from '../../components';
 import type { MountedSceneBodyProps } from '../BottomSheetSceneStackMountedBodyRegistry';
-import { ChromeTitleText } from '../ChromeTitleText';
+import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { useAppRouteSceneRuntime } from '../../navigation/runtime/AppRouteSceneRuntimeProvider';
@@ -705,7 +705,7 @@ PostPhotosPanelBody.displayName = 'PostPhotosPanelBody';
 // ─── Persistent header (house pattern: static synchronous title + fixed-close action) ───────
 const PostPhotosPersistentHeaderTitle = React.memo(() => (
   <View style={styles.headerTextGroup}>
-    <ChromeTitleText>Post photos</ChromeTitleText>
+    <ChromeTitleText>{toSingleLineText('Post photos')}</ChromeTitleText>
   </View>
 ));
 PostPhotosPersistentHeaderTitle.displayName = 'PostPhotosPersistentHeaderTitle';

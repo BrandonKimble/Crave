@@ -360,6 +360,41 @@ under the header. The family slice still owes: results onto the ONE declared
 material + template geometry (kill the bespoke three-site composition), bands,
 SingleLineText, FlashList cell mode, listDetail full spec, transport seam.
 
+**RESULTS PageSpec/BAND LEG EXECUTED 2026-07-21 (bands + SingleLineText + template
+declaration):**
+- **BANDS ARE THE GENERAL FORM (A#14/B#15 landed in the contract):** PageListBodySpec
+  = `{ kind:'list', scene, bands: [PageListBandSpec, ...] }` — an ordered band set
+  with ONE active; one band is the trivial case (notifications migrated to it; the
+  old single-row-template form is gone). Each band carries its OWN closed
+  PageBodyState (`bandStates` keyed by band key + `activeBandKey` on the shell) —
+  restaurants can be present while dishes is pending. `PageBandTemplate` is the
+  vocabulary BOTH interpreters share: shell bands (defineListBand — row Component +
+  Empty required inline) and transport-hosted FlashList bands (defineBandTemplate —
+  template facts only; the row render stays the family's sanctioned controller
+  slot; the constructor preserves declared-field narrowness).
+- **THE RESULTS BAND DECLARATION** (search-results-page-bands.ts): restaurants
+  (primary lane) + dishes (secondary lane) — the ONE home of the formerly scattered
+  facts: estimatedRowHeight 270/240 (was per-site literals), materialRowType per
+  band (kills a LIVE BUG: both empty-face twins hardcoded 'restaurant' for the
+  dishes tab), placeholder.count (the pending block's rows), keyOf (module-scope,
+  was a per-render useCallback). Consumers now read the declaration: the list-item
+  content runtime, both RESULTS_LOADING_EMPTY_COMPONENT twins, the pending-block
+  rows + cell. The empty surface stays controller-side DELIBERATELY (it composes
+  runtime data — metadata copy, notices, failure variants).
+- **SingleLineText brand (truncation law, type side — L1 complete):** ChromeTitleText
+  children is the branded type; `toSingleLineText` (newline-collapsing) is the only
+  producer; all 13 title sites wrapped — multi-line chrome text is now
+  unrepresentable at the type level.
+- **RECORDED FOLLOW-UP (the family's remaining row-slot inversion):** the results
+  renderItem is still runtime-built (closures over resolved descriptors + commands).
+  The end state per A#4 — rows carrying resolved data + module-scope command verbs,
+  the band declaring its row Component inline — is its own leg (the card-render
+  chain inversion), after which defineBandTemplate collapses into defineListBand.
+- Gates: tsc clean (2 known Camera), jest 383/383, invariants 29/29, matrix 21/21,
+  sim eye (pending face w/ live strip + flush block; reveal correct under declared
+  facts). Remaining L2 family surface: polls (PARKED — parallel session owns the
+  polls feed), then L3 residency prototype + L4 completion.
+
 ## L3 — SHELL RESIDENCY (GATED on a measured prototype)
 
 Every scene's shell mounts once and stays resident; switches retarget visibility.

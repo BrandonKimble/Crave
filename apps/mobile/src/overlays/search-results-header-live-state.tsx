@@ -1,6 +1,6 @@
 import React from 'react';
 import type { LayoutChangeEvent } from 'react-native';
-import { ChromeTitleText } from './ChromeTitleText';
+import { ChromeTitleText, toSingleLineText } from './ChromeTitleText';
 import { registerPersistentHeaderDescriptor } from '../navigation/runtime/app-route-persistent-header-registry';
 import { registerHeaderCloseAction } from '../navigation/runtime/header-nav-action-registry';
 
@@ -73,7 +73,7 @@ const useSearchResultsHeaderLiveState = (): SearchResultsHeaderLiveState | null 
 
 const SearchResultsPersistentHeaderTitle: React.FC = () => {
   const liveState = useSearchResultsHeaderLiveState();
-  return <ChromeTitleText>{liveState?.headerTitle ?? 'Results'}</ChromeTitleText>;
+  return <ChromeTitleText>{toSingleLineText(liveState?.headerTitle ?? 'Results')}</ChromeTitleText>;
 };
 
 // Module-scope registration (house pattern — mirrors PollsPanel/RestaurantRouteSceneInputHost).

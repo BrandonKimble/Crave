@@ -47,6 +47,7 @@ import {
 } from '../screens/Search/runtime/shared/search-mounted-results-data-store';
 import { markSearchResultsListAdmissionCounter } from '../screens/Search/runtime/shared/search-results-list-admission-attribution';
 import { subscribeMapEnterSettled } from '../screens/Search/runtime/map/search-map-enter-settled-signal';
+import { SEARCH_RESULTS_BANDS } from '../screens/Search/runtime/shared/search-results-page-bands';
 import {
   getSearchSurfaceRuntime,
   type SearchSurfaceResultsBodyBundle,
@@ -137,11 +138,21 @@ let motionFencedListDataSnapshot: SearchMountedResultsListDataSnapshot | null = 
 // lands the resolved rows in the same ONE render it always did (P-12 coalescing —
 // row-landing timing is UNCHANGED). A sheet-motion-only fence (no live txn) still
 // freezes the previous snapshot — mid-drag holds are not pending states.
+// Row shapes come from the band DECLARATIONS (search-results-page-bands): primary =
+// the restaurants band, secondary = the dishes band.
 const PENDING_BLOCK_PRIMARY: ResultsListItem[] = [
-  { kind: 'results_pending_block', key: 'results-pending-block-primary', rowType: 'restaurant' },
+  {
+    kind: 'results_pending_block',
+    key: 'results-pending-block-primary',
+    rowType: SEARCH_RESULTS_BANDS.restaurants.materialRowType,
+  },
 ];
 const PENDING_BLOCK_SECONDARY: ResultsListItem[] = [
-  { kind: 'results_pending_block', key: 'results-pending-block-secondary', rowType: 'dish' },
+  {
+    kind: 'results_pending_block',
+    key: 'results-pending-block-secondary',
+    rowType: SEARCH_RESULTS_BANDS.dishes.materialRowType,
+  },
 ];
 let pendingBlockListDataSnapshot: SearchMountedResultsListDataSnapshot | null = null;
 let pendingBlockListDataSnapshotBase: SearchMountedResultsListDataSnapshot | null = null;
