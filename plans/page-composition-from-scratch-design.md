@@ -528,6 +528,26 @@ matrix 21/21. Watch item for the owner finger-test: profile scroll/segment resto
 across the display:none hide (the P3 restore machinery re-applies on activation —
 structurally covered, feel unverified).
 
+**L3 SLICE 4 EXECUTED 2026-07-22 (the listDetail/bookmarks pair — identity-keyed
+residency).** bookmarks = the root-tab shape (boundary wrap, singleton path).
+listDetail = the FIRST MULTI-ENTRY managed scene, which generalized the resident
+unit: units are keyed by CONTENT IDENTITY (residentUnitIdentityOf — `listId` +
+targetUserId scope; shareSlug is ACCESS MATERIAL, never identity per RT-18, so
+slug-only entries fall back to entryId with no cross-entry reuse), with the stable
+unitKey `resident:<scene>:<identity>` as React's key — a re-push of the SAME list
+reuses the resident tree with the entry updated in place; different lists are
+different units; popped identities retain up to RESIDENT_UNIT_RETENTION_LIMIT (3)
+beyond the live stack, oldest dropped first — **the eviction law's first live
+budget** (last-N exemption; stack always exempt). Per-unit activity (entry
+boundary) + the scene bit (visibility boundary) compose the display exactly as the
+slice-2 fact factoring prescribed. Spec-tested (same-list unitKey stability,
+distinct lists, retention cap ordering, slug fallback); jest 393/393, invariants
+29/29, matrix 21/21 (flows 2-5 ARE the listDetail lifecycle, now over resident
+units); sim: pair crossing clean (bookmarks↔profile↔bookmarks bit flips, return
+grid intact, zero contract errors). L3 REMAINING: the runtime-governance merge
+(activity flags → the manager's bit, A#9's real home), commitment-based eviction
+budget beyond last-N, search family residency (with L4).
+
 ## L4 — REVEAL + THE CONTENT-LANDING CLOCK (redesigned; v1's weakest level)
 
 The red-team's deepest finding (B#1/#2): v1's "one beat at the joint" attacked the

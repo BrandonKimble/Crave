@@ -36,7 +36,12 @@ export const BottomSheetSceneStackMountedBody = React.memo(
   ({ mountedBodyKey, entry }: BottomSheetSceneStackMountedBodyProps) => {
     switch (mountedBodyKey) {
       case 'bookmarks':
-        return <BookmarksMountedSceneBody />;
+        // L3 slice 4 (the pair): the lists root tab under the visibility boundary.
+        return (
+          <ShellVisibilityBoundary scene="bookmarks">
+            <BookmarksMountedSceneBody />
+          </ShellVisibilityBoundary>
+        );
       case 'profile':
         // L3 slice 3: the root own-tab under the visibility boundary (root scenes
         // have no entry units — the singleton path; the boundary is the display
@@ -51,7 +56,14 @@ export const BottomSheetSceneStackMountedBody = React.memo(
       case 'userProfile':
         return <UserProfileMountedSceneBody entry={entry} />;
       case 'listDetail':
-        return <ListDetailMountedSceneBody entry={entry} />;
+        // L3 slice 4 (the pair): the first MULTI-ENTRY managed scene — identity-keyed
+        // resident units (listId) mean this body's tree survives pops and re-pushes of
+        // the same list; per-unit activity + the scene bit compose the visibility.
+        return (
+          <ShellVisibilityBoundary scene="listDetail">
+            <ListDetailMountedSceneBody entry={entry} />
+          </ShellVisibilityBoundary>
+        );
       case 'followList':
         return <FollowListMountedSceneBody entry={entry} />;
       // L3 residency slice 1: the residency-managed leaves render under the liveness

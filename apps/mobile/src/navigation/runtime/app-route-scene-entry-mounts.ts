@@ -3,7 +3,11 @@ import {
   type OverlayKey,
   type OverlayRouteEntry,
 } from './app-overlay-route-types';
-import { isResidencyManagedScene } from '../../overlays/shell-residency-registry';
+import {
+  isResidencyManagedScene,
+  RESIDENT_UNIT_RETENTION_LIMIT,
+  residentUnitIdentityOf,
+} from '../../overlays/shell-residency-registry';
 
 // ─── W1 slice 1 — entry-keyed mounts (plans/w1-listdetail-structural-spec.md §A.1 C1) ────────
 //
@@ -40,10 +44,11 @@ export const isEntryKeyedMountSceneKey = (sceneKey: OverlayKey): boolean =>
 export const createSceneEntryMountUnitKey = (sceneKey: OverlayKey, entryId: string): string =>
   `${sceneKey}#${entryId}`;
 
-/** L3 residency: the ONE scene-keyed unit of a residency-managed leaf — stable across
- *  entry pushes/pops so the shell tree never remounts. */
-export const createResidentSceneUnitKey = (sceneKey: OverlayKey): string =>
-  `resident:${sceneKey}`;
+/** L3 residency: a managed scene's resident-unit key — scene + CONTENT identity
+ *  (residentUnitIdentityOf), stable across entry pushes/pops so the resident tree
+ *  never remounts. */
+export const createResidentSceneUnitKey = (sceneKey: OverlayKey, identity: string): string =>
+  `resident:${sceneKey}:${identity}`;
 
 /** The unit that should be VISIBLE for a scene key = its topmost in-stack entry. */
 export const resolveActiveEntryIdForScene = (
@@ -121,38 +126,51 @@ export const resolveMountedSceneEntryUnits = ({
     }
   }
 
-  // L3 RESIDENCY (one-writer consolidation slice): a residency-managed LEAF has ONE
-  // SCENE-KEYED unit — a stable unitKey means React NEVER remounts the shell tree:
-  // a re-push updates the entry prop in place, and a pop keeps the last entry (the
-  // shell is resident; dismissal changes visibility — the manager's bit — never the
-  // mount). Riding the unit list keeps the attach fact true through
-  // hasRetainedEntryUnits with no second attach writer. Sim-caught bug this shape
-  // fixes: entry-keyed units gave a re-push a SECOND unit of the same scene, and the
-  // scene-level visibility boundary displayed both. Multi-entry managed scenes
-  // (listDetail, when it migrates) need ENTRY-aware residency — recorded.
+  // L3 RESIDENCY: a managed scene's resident units are keyed by CONTENT IDENTITY
+  // (residentUnitIdentityOf — listId for listDetail, one-per-scene for leaves), with
+  // a STABLE unitKey so React never remounts the resident tree: a re-push of the
+  // same content updates the entry prop in place; a pop keeps the unit resident (the
+  // eviction law's last-N exemption — RESIDENT_UNIT_RETENTION_LIMIT beyond the live
+  // stack, oldest dropped first). Attach rides hasRetainedEntryUnits — no second
+  // attach writer. Dismissal changes visibility (the manager's bit + per-unit
+  // activity), never the mount.
   if (isResidencyManagedScene(sceneKey)) {
-    const latestEntry = units.length > 0 ? units[units.length - 1].entry : null;
-    const previousResident = previousUnits?.find(
-      (unit) => unit.unitKey === createResidentSceneUnitKey(sceneKey)
-    );
-    const residentEntry = latestEntry ?? previousResident?.entry ?? null;
-    if (residentEntry == null) {
-      return [];
-    }
-    if (
-      previousResident != null &&
-      previousResident.entry === residentEntry
-    ) {
-      return [previousResident];
-    }
-    return [
-      {
-        unitKey: createResidentSceneUnitKey(sceneKey),
-        sceneKey,
-        entryId: residentEntry.entryId,
-        entry: residentEntry,
-      },
-    ];
+    const previousResidentByKey = new Map<string, SceneEntryMountUnit>();
+    previousUnits?.forEach((unit) => {
+      if (unit.unitKey.startsWith('resident:')) {
+        previousResidentByKey.set(unit.unitKey, unit);
+      }
+    });
+    // Latest live entry per identity wins (stack order — later entries supersede).
+    const liveEntryByIdentity = new Map<string, OverlayRouteEntry>();
+    units.forEach((unit) => {
+      liveEntryByIdentity.set(residentUnitIdentityOf(unit.entry), unit.entry);
+    });
+    const nextUnits: SceneEntryMountUnit[] = [];
+    liveEntryByIdentity.forEach((liveEntry, identity) => {
+      const unitKey = createResidentSceneUnitKey(sceneKey, identity);
+      const previous = previousResidentByKey.get(unitKey);
+      nextUnits.push(
+        previous != null && previous.entry === liveEntry
+          ? previous
+          : { unitKey, sceneKey, entryId: liveEntry.entryId, entry: liveEntry }
+      );
+    });
+    // Retained (popped) identities — most-recently-resident first (previousUnits keeps
+    // live-then-retained order, so earlier retained entries are more recent).
+    let retainedCount = 0;
+    previousUnits?.forEach((unit) => {
+      if (
+        !unit.unitKey.startsWith('resident:') ||
+        nextUnits.some((next) => next.unitKey === unit.unitKey) ||
+        retainedCount >= RESIDENT_UNIT_RETENTION_LIMIT
+      ) {
+        return;
+      }
+      retainedCount += 1;
+      nextUnits.push(unit);
+    });
+    return nextUnits;
   }
 
   return units;

@@ -107,6 +107,70 @@ describe('entry-keyed mounts (W1 slice 1 contract)', () => {
     ).toHaveLength(0);
   });
 
+  test('L3 residency: listDetail resident units are IDENTITY-keyed — same list re-push reuses the unitKey; popped lists retain up to the limit', () => {
+    const root = entry('search');
+    const listA1 = entry('listDetail', { listDetail: { listId: 'list-a' } });
+    const unitsA = resolveMountedSceneEntryUnits({
+      sceneKey: 'listDetail',
+      overlayRouteStack: [root, listA1],
+      outgoingEntryId: null,
+      previousUnits: null,
+    });
+    expect(unitsA).toHaveLength(1);
+    expect(unitsA?.[0].unitKey).toBe('resident:listDetail:list:list-a:self');
+    // Pop, then RE-PUSH the same list with a NEW entryId: SAME unitKey (the resident
+    // tree survives — React key stability), entry updated in place.
+    const poppedUnits = resolveMountedSceneEntryUnits({
+      sceneKey: 'listDetail',
+      overlayRouteStack: [root],
+      outgoingEntryId: null,
+      previousUnits: unitsA,
+    });
+    expect(poppedUnits).toHaveLength(1);
+    expect(poppedUnits?.[0]).toBe(unitsA?.[0]);
+    const listA2 = entry('listDetail', { listDetail: { listId: 'list-a' } });
+    const repushedUnits = resolveMountedSceneEntryUnits({
+      sceneKey: 'listDetail',
+      overlayRouteStack: [root, listA2],
+      outgoingEntryId: null,
+      previousUnits: poppedUnits,
+    });
+    expect(repushedUnits).toHaveLength(1);
+    expect(repushedUnits?.[0].unitKey).toBe('resident:listDetail:list:list-a:self');
+    expect(repushedUnits?.[0].entryId).toBe(listA2.entryId);
+    // Different lists = different units; the retention cap drops the OLDEST beyond N.
+    let previous = repushedUnits;
+    const pushedIds = ['list-b', 'list-c', 'list-d', 'list-e'];
+    pushedIds.forEach((listId) => {
+      const pushed = entry('listDetail', { listDetail: { listId } });
+      previous = resolveMountedSceneEntryUnits({
+        sceneKey: 'listDetail',
+        overlayRouteStack: [root, pushed],
+        outgoingEntryId: null,
+        previousUnits: previous,
+      });
+    });
+    // Live: list-e; retained: the LIMIT most-recent popped (d, c, b) — list-a evicted.
+    expect(previous?.map((unit) => unit.unitKey)).toEqual([
+      'resident:listDetail:list:list-e:self',
+      'resident:listDetail:list:list-d:self',
+      'resident:listDetail:list:list-c:self',
+      'resident:listDetail:list:list-b:self',
+    ]);
+  });
+
+  test('L3 residency: slug-only listDetail entries fall back to entryId identity (no cross-entry reuse — RT-18)', () => {
+    const root = entry('search');
+    const slugEntry = entry('listDetail', { listDetail: { shareSlug: 'abc' } });
+    const units = resolveMountedSceneEntryUnits({
+      sceneKey: 'listDetail',
+      overlayRouteStack: [root, slugEntry],
+      outgoingEntryId: null,
+      previousUnits: null,
+    });
+    expect(units?.[0].unitKey).toBe(`resident:listDetail:${slugEntry.entryId}`);
+  });
+
   test('(a) a child scene mounts per key#entryId', () => {
     const { follow, stack } = drillStack();
     const units = resolveMountedSceneEntryUnits({
