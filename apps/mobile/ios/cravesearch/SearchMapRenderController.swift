@@ -10508,6 +10508,26 @@ final class SearchMapRenderController: RCTEventEmitter {
     handle.lastNativeCameraDiagSignature = signature
     Self.lodLog("[LODDBG] camGo moving=\(isMoving) zoom=\(Int((cameraState.zoom * 100).rounded())) instances=\(instances.count)")
     for (instanceId, state) in instances where state.mapTag == mapTag {
+      // CAMERA IS ALWAYS MEANINGFUL (viewport subject store, 2026-07-22): the
+      // header law consumes camera_changed as its ONLY real-map feed, and it
+      // must flow even with no active search visual source (plain browsing —
+      // the "pan to Dallas, header frozen" repro). Emit BEFORE the visual-
+      // source guard; the LOD/marker work below stays gated as before.
+      emit([
+        "type": "camera_changed",
+        "instanceId": instanceId,
+        "centerLat": center.latitude,
+        "centerLng": center.longitude,
+        "zoom": cameraState.zoom,
+        "bearing": cameraState.bearing,
+        "pitch": cameraState.pitch,
+        "northEastLat": visibleBounds.northeast.latitude,
+        "northEastLng": visibleBounds.northeast.longitude,
+        "southWestLat": visibleBounds.southwest.latitude,
+        "southWestLng": visibleBounds.southwest.longitude,
+        "isGestureActive": handle.gestureObserver.isGestureActive,
+        "isMoving": isMoving,
+      ])
       guard !Self.isVisualSourceInactiveOrDismissing(state) else {
         Self.lodLog("[LODDBG] camInst \(instanceId) SKIP inactive/dismissing")
         continue
@@ -10569,21 +10589,8 @@ final class SearchMapRenderController: RCTEventEmitter {
       // PIN OVERLAY: reconcile the non-tiled overlay tile roster to the engine's promoted set
       // (decide just ran). The overlay's own display link repositions every frame thereafter.
       syncOverlayRoster(instanceId: instanceId, handle: handle)
-      emit([
-        "type": "camera_changed",
-        "instanceId": instanceId,
-        "centerLat": center.latitude,
-        "centerLng": center.longitude,
-        "zoom": cameraState.zoom,
-        "bearing": cameraState.bearing,
-        "pitch": cameraState.pitch,
-        "northEastLat": visibleBounds.northeast.latitude,
-        "northEastLng": visibleBounds.northeast.longitude,
-        "southWestLat": visibleBounds.southwest.latitude,
-        "southWestLng": visibleBounds.southwest.longitude,
-        "isGestureActive": handle.gestureObserver.isGestureActive,
-        "isMoving": isMoving,
-      ])
+      // camera_changed emission moved ABOVE the visual-source guard (top of
+      // this loop) — the viewport subject store needs it unconditionally.
     }
   }
 
