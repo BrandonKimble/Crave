@@ -483,6 +483,35 @@ the settled frame is the honest edge). (3) the eviction budget activates when
 content-heavy scenes join. (4) grow the managed set per the bridge order (profile
 → listDetail/bookmarks pair → search family last).
 
+**L3 SLICE 2 EXECUTED 2026-07-22 (the one-writer display consolidation, managed set).**
+- **THE SCENE-KEYED RESIDENT UNIT:** a residency-managed LEAF has ONE unit with a
+  STABLE key (`resident:<scene>`) — React never remounts the shell tree: a re-push
+  updates the entry prop in place; a pop keeps the last entry (dismissal changes
+  visibility, never the mount; attach rides hasRetainedEntryUnits — no second attach
+  writer). SIM-CAUGHT on the way: entry-keyed units gave a re-push a SECOND unit of
+  the same scene and the scene-level boundary displayed BOTH (the double-empty-state
+  shot) — the scene-keyed unit is the fix, spec-tested (managed unit survives pop as
+  the same object; unmanaged units still drop).
+- **FACT FACTORING (the law refined):** one writer PER FACT. Unit-ACTIVITY (the
+  entry boundary's per-unit hider) and scene-VISIBILITY (the manager's bit, derived
+  by ShellVisibilityBoundary: display/pointerEvents/a11y/liveness) are different
+  facts and both apply; the transition engine's opacity worklets own PAINT.
+- **TRANSITION COMPOSITION:** displayed = visible ∪ transition-outgoing. The driver
+  reads the FRAME's outgoingSceneKey (held leg during preserveOutgoingUntilSettle;
+  null republishes at settle — the collapse edge always renders). THE TRAP, named:
+  the txn store is NOT a legal driver source — the txn object mutates phase in
+  place, so a settled txn never re-renders subscribers (sim-caught: stuck-displayed
+  hidden shell, no re-derive edge on re-entry).
+- **The registry split:** shell-residency-registry.ts (pure — consulted by the
+  hermetic entry-unit resolver) apart from the manager (imports react-native).
+- Sim-proven: visible-bit flips clean (notifications→settings→notifications, txnLive
+  collapses at settle), re-derive fires per re-entry, ONE empty state, attach:true
+  across dismiss (tree retained). Gates: jest 391/391 (37 suites — entry-mounts spec
+  now collected + the residency case), invariants 29/29, matrix 21/21.
+- REMAINING L3: entry-aware residency for multi-entry scenes (listDetail), eviction
+  budget activation, managed-set growth (profile next), beat-writer scheduling at
+  reveal (L4's seam).
+
 ## L4 — REVEAL + THE CONTENT-LANDING CLOCK (redesigned; v1's weakest level)
 
 The red-team's deepest finding (B#1/#2): v1's "one beat at the joint" attacked the

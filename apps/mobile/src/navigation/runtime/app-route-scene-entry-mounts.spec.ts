@@ -67,6 +67,46 @@ describe('entry-keyed mounts (W1 slice 1 contract)', () => {
     });
   });
 
+  test('L3 residency: a managed scene\'s LAST unit survives its entry popping (resident, not remounted)', () => {
+    const root = entry('search');
+    const notif = entry('notifications');
+    const withNotif = [root, notif];
+    const unitsWhileStacked = resolveMountedSceneEntryUnits({
+      sceneKey: 'notifications',
+      overlayRouteStack: withNotif,
+      outgoingEntryId: null,
+      previousUnits: null,
+    });
+    expect(unitsWhileStacked).toHaveLength(1);
+    // The entry pops (and the settle window has passed — no outgoingEntryId): the
+    // unit SURVIVES, same object (never rebuilt) — the shell is resident and only
+    // visibility changes at dismissal (ShellVisibilityBoundary owns display).
+    const unitsAfterPop = resolveMountedSceneEntryUnits({
+      sceneKey: 'notifications',
+      overlayRouteStack: [root],
+      outgoingEntryId: null,
+      previousUnits: unitsWhileStacked,
+    });
+    expect(unitsAfterPop).toHaveLength(1);
+    expect(unitsAfterPop?.[0]).toBe(unitsWhileStacked?.[0]);
+    // An UNMANAGED child scene's units still drop after its entry pops (legacy law).
+    const user = entry('userProfile', { userId: 'u-a' });
+    const userUnits = resolveMountedSceneEntryUnits({
+      sceneKey: 'userProfile',
+      overlayRouteStack: [root, user],
+      outgoingEntryId: null,
+      previousUnits: null,
+    });
+    expect(
+      resolveMountedSceneEntryUnits({
+        sceneKey: 'userProfile',
+        overlayRouteStack: [root],
+        outgoingEntryId: null,
+        previousUnits: userUnits,
+      })
+    ).toHaveLength(0);
+  });
+
   test('(a) a child scene mounts per key#entryId', () => {
     const { follow, stack } = drillStack();
     const units = resolveMountedSceneEntryUnits({

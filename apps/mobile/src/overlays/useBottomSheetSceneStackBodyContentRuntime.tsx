@@ -72,6 +72,11 @@ const SceneEntryMountBoundary = React.memo(
     isActiveUnit: boolean;
     children: React.ReactNode;
   }) => {
+    // L3 note: unit-ACTIVITY (this hider's fact) and scene-VISIBILITY (the residency
+    // manager's fact, derived by ShellVisibilityBoundary inside the body) are
+    // DIFFERENT facts — both apply uniformly. A residency-managed leaf has one
+    // scene-keyed unit whose entryId tracks the latest entry, so this hider shows it
+    // exactly while its scene has a live entry.
     return (
       <View style={isActiveUnit ? sceneEntryMountActiveStyle : sceneEntryMountHiddenStyle}>
         {children}

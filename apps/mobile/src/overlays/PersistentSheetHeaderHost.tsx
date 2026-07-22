@@ -86,9 +86,19 @@ export const PersistentSheetHeaderHost: React.FC<{
   // visibility bit — presented truth (what the sheet paints) IS the visible shell.
   // Riding the header's existing frame subscription keeps exactly one reader chain.
   const residencySceneKey = frame.presentedSceneKey ?? frame.activeSceneKey ?? null;
+  // Transition composition: the frame's OUTGOING leg stays displayed while the
+  // switch holds it (preserveOutgoingUntilSettle — it must fade real pixels), and the
+  // frame republishes with outgoing=null at settle, so the collapse edge is
+  // guaranteed to render. (The txn store is NOT a legal source here: the txn object
+  // mutates phase in place, so a settled txn never re-renders subscribers — the
+  // sim-caught stuck-displayed bug.) Both facts flow through the ONE writer.
+  const transitionOutgoingSceneKey = frame.outgoingSceneKey ?? null;
   React.useEffect(() => {
-    setVisibleResidentScene(residencySceneKey);
-  }, [residencySceneKey]);
+    setVisibleResidentScene(
+      residencySceneKey,
+      transitionOutgoingSceneKey != null ? [transitionOutgoingSceneKey] : []
+    );
+  }, [residencySceneKey, transitionOutgoingSceneKey]);
   const descriptor = sceneKey != null ? getPersistentHeaderDescriptor(sceneKey) : undefined;
   // ─── HeaderNavAction driver (leg 6 — §4 plus↔X rotation, child-transition primitive §3.2).
   // ONE host-owned rotating control; the driver is the PF chrome clock (frame.headerNavAction,

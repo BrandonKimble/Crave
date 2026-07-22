@@ -3,6 +3,7 @@ import {
   type OverlayKey,
   type OverlayRouteEntry,
 } from './app-overlay-route-types';
+import { isResidencyManagedScene } from '../../overlays/shell-residency-registry';
 
 // ─── W1 slice 1 — entry-keyed mounts (plans/w1-listdetail-structural-spec.md §A.1 C1) ────────
 //
@@ -38,6 +39,11 @@ export const isEntryKeyedMountSceneKey = (sceneKey: OverlayKey): boolean =>
 
 export const createSceneEntryMountUnitKey = (sceneKey: OverlayKey, entryId: string): string =>
   `${sceneKey}#${entryId}`;
+
+/** L3 residency: the ONE scene-keyed unit of a residency-managed leaf — stable across
+ *  entry pushes/pops so the shell tree never remounts. */
+export const createResidentSceneUnitKey = (sceneKey: OverlayKey): string =>
+  `resident:${sceneKey}`;
 
 /** The unit that should be VISIBLE for a scene key = its topmost in-stack entry. */
 export const resolveActiveEntryIdForScene = (
@@ -113,6 +119,40 @@ export const resolveMountedSceneEntryUnits = ({
     if (retained != null) {
       units.push(retained);
     }
+  }
+
+  // L3 RESIDENCY (one-writer consolidation slice): a residency-managed LEAF has ONE
+  // SCENE-KEYED unit — a stable unitKey means React NEVER remounts the shell tree:
+  // a re-push updates the entry prop in place, and a pop keeps the last entry (the
+  // shell is resident; dismissal changes visibility — the manager's bit — never the
+  // mount). Riding the unit list keeps the attach fact true through
+  // hasRetainedEntryUnits with no second attach writer. Sim-caught bug this shape
+  // fixes: entry-keyed units gave a re-push a SECOND unit of the same scene, and the
+  // scene-level visibility boundary displayed both. Multi-entry managed scenes
+  // (listDetail, when it migrates) need ENTRY-aware residency — recorded.
+  if (isResidencyManagedScene(sceneKey)) {
+    const latestEntry = units.length > 0 ? units[units.length - 1].entry : null;
+    const previousResident = previousUnits?.find(
+      (unit) => unit.unitKey === createResidentSceneUnitKey(sceneKey)
+    );
+    const residentEntry = latestEntry ?? previousResident?.entry ?? null;
+    if (residentEntry == null) {
+      return [];
+    }
+    if (
+      previousResident != null &&
+      previousResident.entry === residentEntry
+    ) {
+      return [previousResident];
+    }
+    return [
+      {
+        unitKey: createResidentSceneUnitKey(sceneKey),
+        sceneKey,
+        entryId: residentEntry.entryId,
+        entry: residentEntry,
+      },
+    ];
   }
 
   return units;

@@ -2,6 +2,9 @@ import { InteractionManager } from 'react-native';
 
 import type { OverlayKey } from '../navigation/runtime/app-overlay-route-types';
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
+import { isResidencyManagedScene, RESIDENCY_MANAGED_SCENES } from './shell-residency-registry';
+
+export { isResidencyManagedScene } from './shell-residency-registry';
 
 // ─── THE SHELL RESIDENCY MANAGER (THE PAGE L3) ──────────────────────────────────────
 //
@@ -35,18 +38,18 @@ type ShellResidencyState = {
   residentScenes: readonly SheetSceneKey[];
   /** THE visible bit's owner — at most one resident scene is visible. */
   visibleScene: SheetSceneKey | null;
+  /** Transition participants (the outgoing leg during a live transition): DISPLAYED so
+   *  the crossfade never fades a blank, back to hidden at settle. Written by the same
+   *  driver as visibleScene — one writer, two coordinated facts. */
+  transitionLiveScenes: readonly SheetSceneKey[];
   /** Most-recent-first visit order (the eviction law's last-N exemption input). */
   visitOrder: readonly SheetSceneKey[];
 };
 
-// The residency-managed set (the strangler's registry). Slice 1: the self-contained
-// leaves per the migration bridge. Grows per-slice; the census table in the design
-// doc names every key's target.
-const RESIDENCY_MANAGED_SCENES: readonly SheetSceneKey[] = ['notifications', 'settings'];
-
 let state: ShellResidencyState = {
   residentScenes: [],
   visibleScene: null,
+  transitionLiveScenes: [],
   visitOrder: [],
 };
 
@@ -57,9 +60,6 @@ const notify = (): void => {
     listener();
   });
 };
-
-export const isResidencyManagedScene = (scene: OverlayKey): boolean =>
-  (RESIDENCY_MANAGED_SCENES as readonly string[]).includes(scene);
 
 export const subscribeShellResidency = (listener: () => void): (() => void) => {
   listeners.add(listener);
@@ -98,19 +98,36 @@ export const ensureShellResident = (
 /** THE ONE VISIBILITY WRITER. Passing null hides every resident shell (the scene in
  *  front is legacy-hosted or none). Also mounts the target if somehow cold (loud,
  *  via ensureShellResident's navigation contract). */
-export const setVisibleResidentScene = (scene: OverlayKey | null): void => {
+export const setVisibleResidentScene = (
+  scene: OverlayKey | null,
+  transitionLiveScenes: readonly (OverlayKey | null | undefined)[] = []
+): void => {
   const managedScene =
     scene != null && isResidencyManagedScene(scene) ? (scene as SheetSceneKey) : null;
   if (managedScene != null) {
     ensureShellResident(managedScene, 'navigation');
   }
   const nextVisible = managedScene;
-  if (state.visibleScene === nextVisible) {
+  const nextTransitionLive = transitionLiveScenes.filter(
+    (candidate): candidate is SheetSceneKey =>
+      candidate != null && isResidencyManagedScene(candidate) && candidate !== nextVisible
+  );
+  const transitionLiveUnchanged =
+    nextTransitionLive.length === state.transitionLiveScenes.length &&
+    nextTransitionLive.every((candidate, index) => state.transitionLiveScenes[index] === candidate);
+  if (state.visibleScene === nextVisible && transitionLiveUnchanged) {
     return;
+  }
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[SHELL-RESIDENCY] visible=${nextVisible ?? 'none'} txnLive=[${nextTransitionLive.join(',')}] (was ${state.visibleScene ?? 'none'})`
+    );
   }
   state = {
     ...state,
     visibleScene: nextVisible,
+    transitionLiveScenes: nextTransitionLive,
     visitOrder:
       nextVisible == null
         ? state.visitOrder

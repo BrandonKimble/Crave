@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet, View } from 'react-native';
 
 import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec';
 import {
@@ -6,24 +7,22 @@ import {
   subscribeShellResidency,
 } from './shell-residency-manager';
 
-// ─── THE SHELL LIVENESS BOUNDARY (L3 slice 1 — the liveness half of the visibility law)
+// ─── THE SHELL VISIBILITY BOUNDARY (L3 — the one-writer derivation surface) ─────────
 //
-// The machinery map (2026-07-21) found the STRUCTURAL half of L3 already exists: every
-// persistent scene is a co-mounted sibling that never unmounts, hidden via the leg
-// opacity/zIndex worklets + the entry-level display:'none' + the attach gates. What
-// does NOT exist is the LAW: those are several writers of display facts, and NOTHING
-// derives subscription/animation liveness — a retained hidden body keeps its queries
-// and clocks, and (the exposed freshness bug) never re-derives on re-entry.
+// Wraps ONE residency-managed shell. Reads the manager's visibility facts and derives
+// EVERYTHING a hidden shell must be: display:'none' (layout detached), pointerEvents
+// 'none', accessibility-hidden, and — through ShellLivenessContext — subscription and
+// animation liveness (controllers gate fetches on it; the L0 material freezes its
+// shimmer clocks on it). One writer, four derivations, zero half-states.
 //
-// Slice 1 therefore lands LIVENESS ONLY: this boundary provides the one bit
-// (derived from the residency manager, which the presentation frame drives) that
-// query controllers gate fetches on and the L0 material freezes its shimmer clocks
-// on. It deliberately does NOT write display/pointerEvents/accessibility — adding a
-// second display mechanism beside the leg machinery would CREATE the two-writers
-// disease the law forbids. The full one-writer consolidation (display + pointer +
-// a11y derived from this same bit, the leg patchwork gutted) is the recorded later
-// slice — it is surgery on BottomSheetSceneStackHost's worklet machinery and must
-// compose with transition crossfades (both participants live mid-transition).
+// TRANSITION COMPOSITION (the crossfade law): DISPLAY = visible OR transition-live —
+// during a live transition both participants stay displayed (the outgoing leg fades
+// real pixels, never a blank); the transition engine's opacity worklets own the PAINT
+// fact (a different fact — one writer PER FACT). At settle the display bit collapses
+// to exactly the presented shell.
+//
+// The legacy display writers step aside for managed scenes (the strangler): the
+// entry-level mount boundary renders managed scenes un-hidden and defers here.
 
 const ShellLivenessContext = React.createContext<boolean>(true);
 
@@ -31,20 +30,48 @@ const ShellLivenessContext = React.createContext<boolean>(true);
  *  legacy world — everything mounted is visible). */
 export const useShellLiveness = (): boolean => React.useContext(ShellLivenessContext);
 
+const isShellDisplayed = (scene: SheetSceneKey): boolean => {
+  const snapshot = getShellResidencySnapshot();
+  return snapshot.visibleScene === scene || snapshot.transitionLiveScenes.includes(scene);
+};
+
 export const useShellVisibility = (scene: SheetSceneKey): boolean =>
   React.useSyncExternalStore(
     subscribeShellResidency,
-    () => getShellResidencySnapshot().visibleScene === scene,
-    () => getShellResidencySnapshot().visibleScene === scene
+    () => isShellDisplayed(scene),
+    () => isShellDisplayed(scene)
   );
 
-export const ShellLivenessBoundary = ({
+export const ShellVisibilityBoundary = ({
   scene,
   children,
 }: {
   scene: SheetSceneKey;
   children: React.ReactNode;
 }): React.ReactElement => {
-  const visible = useShellVisibility(scene);
-  return <ShellLivenessContext.Provider value={visible}>{children}</ShellLivenessContext.Provider>;
+  const displayed = useShellVisibility(scene);
+  return (
+    <View
+      style={displayed ? styles.displayedShell : styles.hiddenShell}
+      pointerEvents={displayed ? 'auto' : 'none'}
+      accessibilityElementsHidden={!displayed}
+      importantForAccessibility={displayed ? 'auto' : 'no-hide-descendants'}
+      testID={`resident-shell-${scene}-${displayed ? 'displayed' : 'hidden'}`}
+    >
+      <ShellLivenessContext.Provider value={displayed}>{children}</ShellLivenessContext.Provider>
+    </View>
+  );
 };
+
+/** Back-compat alias from slice 1 (liveness-only era) — same component now that the
+ *  display fact consolidated here. */
+export const ShellLivenessBoundary = ShellVisibilityBoundary;
+
+const styles = StyleSheet.create({
+  displayedShell: {
+    flexGrow: 1,
+  },
+  hiddenShell: {
+    display: 'none',
+  },
+});
