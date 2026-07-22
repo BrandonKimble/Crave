@@ -24,6 +24,7 @@ import type {
 import { POLL_FEED_PLACE_FILTER_ALL, usePollsFeedControlsStore } from './polls-feed-controls-store';
 import { usePollsFeedRuntimeController } from './polls-feed-runtime-controller';
 import { buildPollsHeaderVisualModel } from '../pollsHeaderVisuals';
+import { useViewportSubjectState } from '../../../store/viewport-subject-store';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -137,13 +138,27 @@ export const usePollsPanelFeedRuntime = ({
         : polls.filter((poll) => poll.placeId === placeFilter),
     [placeFilter, polls]
   );
+  // HEADER SUBJECT-STORE (ratified 2026-07-21): the client subject store is the
+  // TITLE AUTHORITY — the same §2 law run on-device against the sliding catalog
+  // slice, committed via settle+dwell hysteresis. The feed response's
+  // header.placeName survives ONLY as the initial-paint fallback until the
+  // store's first commit (verdict null); after that the store wins, so the
+  // title tracks the live viewport instead of the last-fetched feed bounds.
+  const viewportSubject = useViewportSubjectState();
+  const effectivePlaceName =
+    viewportSubject.verdict != null
+      ? viewportSubject.verdict.kind === 'place'
+        ? viewportSubject.verdict.placeName
+        : null
+      : headerPlaceName;
   const headerVisualModel = React.useMemo(
     () =>
       buildPollsHeaderVisualModel({
-        placeName: headerPlaceName,
-        isResolvingPlace: loading && !headerPlaceName && polls.length === 0,
+        placeName: effectivePlaceName,
+        isResolvingPlace:
+          viewportSubject.verdict == null && loading && !effectivePlaceName && polls.length === 0,
       }),
-    [headerPlaceName, loading, polls.length]
+    [effectivePlaceName, loading, polls.length, viewportSubject.verdict]
   );
 
   const { loadMorePolls, isFeedSliceAwaiting } = usePollsFeedRuntimeController({
@@ -175,7 +190,9 @@ export const usePollsPanelFeedRuntime = ({
       dismissThreshold,
       headerAction,
       headerVisualModel,
-      headerPlaceName,
+      // The published place verdict is the STORE's once committed (see above);
+      // downstream mouths (header model → creation label) read one authority.
+      headerPlaceName: effectivePlaceName,
       initialSnap,
       isPollFeedRefreshing,
       isSystemUnavailable,
@@ -198,7 +215,7 @@ export const usePollsPanelFeedRuntime = ({
       dismissThreshold,
       headerAction,
       headerVisualModel,
-      headerPlaceName,
+      effectivePlaceName,
       initialSnap,
       isPollFeedRefreshing,
       isSystemUnavailable,

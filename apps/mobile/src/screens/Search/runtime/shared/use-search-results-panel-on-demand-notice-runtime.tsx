@@ -3,6 +3,7 @@ import { View } from 'react-native';
 
 import { Text } from '../../../../components';
 import styles from '../../styles';
+import { useViewportSubjectState } from '../../../../store/viewport-subject-store';
 import type { SearchResultsPayload } from './search-results-panel-runtime-state-contract';
 
 type UseSearchResultsPanelOnDemandNoticeRuntimeArgs = {
@@ -14,6 +15,12 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
   resolvedResults,
   onDemandNoticeQuery,
 }: UseSearchResultsPanelOnDemandNoticeRuntimeArgs) => {
+  // HEADER SUBJECT-STORE (ratified 2026-07-21): the area label reads the ONE
+  // client subject verdict once committed; the response-metadata market names
+  // are only the pre-first-commit fallback (chain simplifies to: store →
+  // metadata names → 'this area').
+  const viewportSubject = useViewportSubjectState();
+  const subjectVerdict = viewportSubject.verdict;
   return React.useMemo(() => {
     const metadata = (resolvedResults?.metadata ?? {}) as {
       onDemandQueued?: boolean;
@@ -49,10 +56,16 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
           etaText = hours === 1 ? 'about 1 hour' : `about ${hours} hours`;
         }
       }
-      // Name the market only when exactly one collectable market is in play;
-      // several -> "this area" (collection fans out; naming one would lie).
-      const areaLabel =
-        collectableMarketCount > 1
+      // The subject store's §2 verdict is the area authority when committed
+      // (it already reserves 'this area' for straddles/unnamed ground); before
+      // the first commit, keep the legacy metadata chain — name the market
+      // only when exactly one collectable market is in play; several ->
+      // "this area" (collection fans out; naming one would lie).
+      const areaLabel = subjectVerdict
+        ? subjectVerdict.kind === 'place'
+          ? subjectVerdict.placeName
+          : 'this area'
+        : collectableMarketCount > 1
           ? 'this area'
           : (displayName ?? candidateLocalityName ?? 'this area');
       const searchLabel = onDemandNoticeQuery ? ` for ${onDemandNoticeQuery}` : '';
@@ -82,5 +95,5 @@ export const useSearchResultsPanelOnDemandNoticeRuntime = ({
         </Text>
       </View>
     );
-  }, [onDemandNoticeQuery, resolvedResults]);
+  }, [onDemandNoticeQuery, resolvedResults, subjectVerdict]);
 };

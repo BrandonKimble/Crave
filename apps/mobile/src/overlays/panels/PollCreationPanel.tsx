@@ -27,6 +27,7 @@ import type { MapBounds } from '../../types';
 import type { SearchRoutePublishedSceneParts } from '../searchOverlayRouteHostContract';
 import { normalizeSearchRouteSceneStackShellSpec } from '../searchOverlayRouteHostContract';
 import { ChromeTitleText } from '../ChromeTitleText';
+import { useViewportSubjectState } from '../../store/viewport-subject-store';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -418,11 +419,21 @@ const usePollCreationHeaderMarket = (): PollCreationHeaderMarket => {
 
 const PollCreationPersistentHeaderTitle = React.memo(() => {
   const { marketKey, marketName } = usePollCreationHeaderMarket();
-  const headerTitle = marketName?.trim()
-    ? `Add a poll in ${marketName.trim()}`
-    : marketKey
-      ? 'Add a poll'
-      : 'Add a poll near here';
+  // HEADER SUBJECT-STORE (ratified 2026-07-21): the creation place label reads
+  // the ONE client subject verdict once committed — the route-param
+  // marketName (creation-context snapshot) is only the pre-first-commit
+  // fallback, so the title names where the map actually IS, not where the
+  // feed last fetched.
+  const { verdict: subjectVerdict } = useViewportSubjectState();
+  const headerTitle = subjectVerdict
+    ? subjectVerdict.kind === 'place'
+      ? `Add a poll in ${subjectVerdict.placeName}`
+      : 'Add a poll near here'
+    : marketName?.trim()
+      ? `Add a poll in ${marketName.trim()}`
+      : marketKey
+        ? 'Add a poll'
+        : 'Add a poll near here';
   return <ChromeTitleText>{headerTitle}</ChromeTitleText>;
 });
 PollCreationPersistentHeaderTitle.displayName = 'PollCreationPersistentHeaderTitle';

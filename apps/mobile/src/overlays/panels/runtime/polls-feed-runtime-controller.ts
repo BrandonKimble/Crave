@@ -487,6 +487,20 @@ export const usePollsFeedRuntimeController = ({
   // arm. First-ever slice shows the skeleton; every later bounds change swaps
   // in-place (skipSpinner — the old slice stands until the new one lands).
   React.useEffect(() => {
+    // [SUBJECT-STORE] marker: THE polls-feed bounds edge. If a pan produces NO
+    // 'polls-feed bounds-edge' line here, pollBounds never turned over (see
+    // use-search-map-movement-state / map-interaction-controller gating) — the
+    // feed then refetches the OLD viewport and the stale-header repro follows.
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SUBJECT-STORE] polls-feed bounds-edge ${JSON.stringify({
+          bounds: bounds ?? null,
+          visible,
+          isSystemUnavailable,
+        })}`
+      );
+    }
     if (!visible || isSystemUnavailable || !bounds) {
       return;
     }

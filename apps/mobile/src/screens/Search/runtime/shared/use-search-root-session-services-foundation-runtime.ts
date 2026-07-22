@@ -11,6 +11,7 @@ import { useSearchRuntimeCameraIntentRuntime } from '../../hooks/use-search-runt
 import { useSearchRuntimeMapServicesRuntime } from '../../hooks/use-search-runtime-map-services-runtime';
 import { useSearchRuntimeSessionServicesRuntime } from '../../hooks/use-search-runtime-session-services-runtime';
 import { useSearchRuntimeWorkCoordinationRuntime } from '../../hooks/use-search-runtime-work-coordination-runtime';
+import { useViewportSubjectStoreControllerRuntime } from '../viewport/use-viewport-subject-store-controller-runtime';
 import type { SearchRuntimeBus } from './search-runtime-bus';
 import type { ResultsPresentationAuthority } from './results-presentation-authority';
 import type { ResultsPresentationSurfaceAuthority } from './results-presentation-surface-authority';
@@ -41,6 +42,13 @@ export const useSearchRootSessionServicesFoundationRuntime = ({
   });
   const mapServicesRuntime = useSearchRuntimeMapServicesRuntime({
     startupPollBounds,
+  });
+  // Header subject-store controller (ratified 2026-07-21): rides the viewport
+  // stream here in the ROOT runtime layer (effects fire), never in a scene
+  // body-spec hook. Writes the module-scope viewport-subject-store that every
+  // place-name mouth reads.
+  useViewportSubjectStoreControllerRuntime({
+    viewportBoundsService: mapServicesRuntime.viewportBoundsService,
   });
   const cameraIntentRuntime = useSearchRuntimeCameraIntentRuntime({
     cameraRef: rootPrimitivesRuntime.mapState.cameraRef,
