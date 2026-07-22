@@ -91,7 +91,10 @@ export const HEADER_ANSWER_MEMORY_TTL_MS = NEGATIVE_OBSERVATION_TTL_MS;
  * (paid_seed enqueues ~23k rows at once) — it is not a pacing knob. What
  * changes it: the owner re-pricing the scarce pool, never tuning.
  */
-export const DRAIN_BATCH_LIMIT_PER_TICK = 10_000;
+export /** §16 K4-derived: 2 vendor calls per item ÷ ~5 QPS vendor window → 500ms. */
+const VENDOR_QPS_SPACING_MS = 500;
+
+const DRAIN_BATCH_LIMIT_PER_TICK = 10_000;
 
 /** Per-item drain outcome (see promoteOne). 'stop' ends the whole pass. */
 type DrainOutcome = 'promoted' | 'skipped' | 'attempted' | 'stop';
@@ -234,6 +237,14 @@ export class PlacesPromotionService {
         if (outcome === 'stop') {
           break;
         }
+        // §16 K4 (vendor fact): TomTom pay-as-you-go allows ~5 QPS on the
+        // Search endpoints; each promotion spends up to 2 calls. Space items
+        // so the drain can never out-run the vendor's per-second window (the
+        // month pool bounds VOLUME; this bounds RATE — observed 429s on the
+        // 2026-07-22 seed run without it).
+        await new Promise((resolve) =>
+          setTimeout(resolve, VENDOR_QPS_SPACING_MS),
+        );
       }
     } finally {
       this.draining = false;
