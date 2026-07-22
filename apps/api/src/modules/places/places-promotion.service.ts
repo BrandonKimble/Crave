@@ -371,12 +371,32 @@ export class PlacesPromotionService {
             )
           ) AS geometry
         FROM source_geometries
+      ),
+      bounded AS (
+        -- STORAGE BOUND (§16 DERIVED, 2026-07-22 seed run): vendor zoom
+        -- semantics are not trusted to bound row size (observed 1.5-3.5MB
+        -- county/state rows). Simplify at WRITE to tolerance =
+        -- placeSpan/1024: the polygon's only consumer is coverage judgment
+        -- at viewport scales where the place is a candidate, and slices
+        -- re-simplify to viewSpan/512 at read — sub-0.1%-of-span fidelity
+        -- is invisible to every consumer while bounding rows to ~KB.
+        SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid(
+                 ST_SimplifyPreserveTopology(
+                   merged.geometry,
+                   GREATEST(
+                     ST_XMax(merged.geometry) - ST_XMin(merged.geometry),
+                     ST_YMax(merged.geometry) - ST_YMin(merged.geometry)
+                   ) / 1024.0
+                 )
+               ), 3)) AS geometry
+        FROM merged
+        WHERE merged.geometry IS NOT NULL
       )
       INSERT INTO place_geometries
         (place_id, provider_boundary_id, fetched_at, geometry)
-      SELECT ${placeId}::uuid, ${geometryId}, ${now}, merged.geometry
-      FROM merged
-      WHERE merged.geometry IS NOT NULL
+      SELECT ${placeId}::uuid, ${geometryId}, ${now}, bounded.geometry
+      FROM bounded
+      WHERE bounded.geometry IS NOT NULL
       ON CONFLICT (place_id) DO UPDATE SET
         provider_boundary_id = EXCLUDED.provider_boundary_id,
         fetched_at = EXCLUDED.fetched_at,

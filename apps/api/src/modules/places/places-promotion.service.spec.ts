@@ -284,7 +284,7 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
       // the landed polygon's envelope (grow-only; COALESCE seeds a bbox-less
       // coarse row's first index presence).
       const widen = executeRawCalls.find((call) =>
-        call.sql.includes('ST_XMin'),
+        call.sql.includes('UPDATE places p SET'),
       );
       expect(widen).toBeDefined();
       expect(widen!.sql).toContain('GREATEST');
