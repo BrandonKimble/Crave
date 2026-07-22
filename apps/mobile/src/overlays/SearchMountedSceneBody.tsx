@@ -9,6 +9,10 @@ import type {
   BottomSheetSceneStackBodyDefaults,
   BottomSheetSceneStackBodyScrollRuntime,
 } from './bottomSheetSceneStackHostContract';
+import {
+  beginRevealCommitSpan,
+  markRevealCommitStage,
+} from '../perf/reveal-commit-attribution';
 import type { ScrollEvent } from './bottomSheetSceneStackBodyLayerContract';
 import { bottomSheetSceneStackHostStyles as styles } from './bottomSheetSceneStackHostStyles';
 import { resolveListContentContainerStyle } from './bottomSheetSurfaceStyleUtils';
@@ -256,22 +260,34 @@ const scheduleLandingClockNextBeat = (): void => {
   });
 };
 
+let landingSliceActiveTab: 'dishes' | 'restaurants' | null = null;
+
 const getLandingSlicedSnapshot = (
   base: SearchMountedResultsListDataSnapshot
 ): SearchMountedResultsListDataSnapshot => {
   if (landingSliceSnapshot == null || landingSliceBase !== base) {
     landingSliceBase = base;
     landingSliceCount = LANDING_ABOVE_FOLD_ROWS;
+    // ONLY THE VISIBLE TAB LANDS AT THE REVEAL ([RevealCommit]-attributed 2026-07-21:
+    // the reveal-commit task rendered BOTH tabs' above-fold rows — the second, hidden
+    // list was ~half the ~164ms release stall, all of it invisible). The inactive
+    // tab's rows are pure post-ramp work: they land with the held beats (or instantly
+    // via the tab-flip release below). primary = restaurants, secondary = dishes.
+    landingSliceActiveTab = getSearchMountedResultsRowsSnapshot().activeTab;
+    const primaryAboveFold =
+      landingSliceActiveTab === 'restaurants' ? LANDING_ABOVE_FOLD_ROWS : 0;
+    const secondaryAboveFold =
+      landingSliceActiveTab === 'dishes' ? LANDING_ABOVE_FOLD_ROWS : 0;
     landingSliceSnapshot = {
       ...base,
-      primaryData: base.primaryData.slice(0, LANDING_ABOVE_FOLD_ROWS),
+      primaryData: base.primaryData.slice(0, primaryAboveFold),
       primaryExtraData: 'landing-above-fold',
-      secondaryData: base.secondaryData.slice(0, LANDING_ABOVE_FOLD_ROWS),
+      secondaryData: base.secondaryData.slice(0, secondaryAboveFold),
       secondaryExtraData: 'landing-above-fold',
     };
     if (__DEV__) {
       console.log(
-        `[LANDING] above-fold beat rows=${landingSliceSnapshot.primaryData.length}/${base.primaryData.length} t=${performance.now().toFixed(1)}`
+        `[LANDING] above-fold beat activeTab=${landingSliceActiveTab} rows=${Math.max(primaryAboveFold, secondaryAboveFold)}/${base.primaryData.length} t=${performance.now().toFixed(1)}`
       );
     }
     // The remainder waits for the pin fade (or the fallback) — ramp frames are not
@@ -289,6 +305,13 @@ const getMotionFencedListDataSnapshot = (): SearchMountedResultsListDataSnapshot
     wasRedrawEpisodeLive = true;
     return getPendingBlockListDataSnapshot();
   }
+  // [RevealCommit] span: the episode-release read is the first work of the stalled
+  // reveal-commit task the release JsFrameSampler window reports (~164ms) — open the
+  // attribution span here so its stage marks decompose that task from the inside.
+  if (wasRedrawEpisodeLive) {
+    beginRevealCommitSpan('episode_release');
+  }
+  const baseBuildStartedAtMs = performance.now();
   const base =
     motionFencedListDataSnapshot == null || surfaceSnapshot.sheetMotionSettled
       ? (motionFencedListDataSnapshot = getSearchMountedResultsListDataSnapshot())
@@ -297,12 +320,25 @@ const getMotionFencedListDataSnapshot = (): SearchMountedResultsListDataSnapshot
   // per landing (keyed by base identity) and self-clears on the full beat.
   if (wasRedrawEpisodeLive) {
     wasRedrawEpisodeLive = false;
+    markRevealCommitStage('base_build', performance.now() - baseBuildStartedAtMs);
     if (base.primaryData.length > LANDING_ABOVE_FOLD_ROWS) {
-      return getLandingSlicedSnapshot(base);
+      const sliced = getLandingSlicedSnapshot(base);
+      markRevealCommitStage('above_fold_slice');
+      return sliced;
     }
     return base;
   }
   if (landingSliceBase === base && landingSliceSnapshot != null) {
+    // TAB FLIP MID-LANDING: the inactive tab holds zero rows until the held beats —
+    // if the user flips to it inside the ramp hold, release the hold NOW so its rows
+    // land on the next frame pair instead of a blank list waiting out the fallback.
+    if (
+      landingSliceActiveTab != null &&
+      getSearchMountedResultsRowsSnapshot().activeTab !== landingSliceActiveTab
+    ) {
+      landingSliceActiveTab = null;
+      landingRampHoldRelease?.();
+    }
     // Mid-landing re-reads (other subscribers notifying) stay on the sliced beat
     // until the full beat fires — one clock, no interleaved full renders.
     return landingSliceSnapshot;

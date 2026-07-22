@@ -6,6 +6,7 @@ import { Text } from '../../../../components';
 import { SceneLoadingSurface } from '../../../../components/skeletons';
 import { colors as themeColors } from '../../../../constants/theme';
 import type { FoodResult, RestaurantResult } from '../../../../types';
+import { markRevealCommitRowRender } from '../../../../perf/reveal-commit-attribution';
 import { logger } from '../../../../utils';
 import styles from '../../styles';
 import type { ResultsListItem, ResultsMountedRestaurantCardRow } from './list-read-model-builder';
@@ -52,6 +53,8 @@ export const useSearchResultsListRenderItemRuntime = ({
         logger.error('FlashList renderItem received nullish item', { index });
         return null;
       }
+      // [RevealCommit] timeline: inert unless the reveal-commit span is open.
+      markRevealCommitRowRender(String(index));
       if (item && typeof item === 'object' && 'kind' in item) {
         if (item.kind === 'results_pending_block') {
           return <ResultsPendingBlockCell rowType={item.rowType} />;
