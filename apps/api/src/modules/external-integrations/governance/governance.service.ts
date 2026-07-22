@@ -38,7 +38,11 @@ export class GovernanceService implements OnModuleInit {
     this.pools.register({
       name: 'tomtom.cheapGeocode',
       credential: 'default',
-      window: { kind: 'perMonth', limit: 20_000 },
+      // SEED MONTH (owner-ratified 2026-07-22, off the free tier): raised to
+      // cover the one-time US polygon seed's ~22.7k geometry-id lookups on
+      // top of normal probe traffic. RETURN to 20_000 once the promotion
+      // backlog reads 0 (follow-up commit; K1 re-ratify).
+      window: { kind: 'perMonth', limit: 45_000 },
       failPolicy: { kind: 'hardClosed' },
       reservationTtlMs: 60_000,
     });
@@ -50,7 +54,10 @@ export class GovernanceService implements OnModuleInit {
     this.pools.register({
       name: 'tomtom.scarcePolygons',
       credential: 'default',
-      window: { kind: 'perMonth', limit: 10_000 },
+      // SEED MONTH (owner-ratified 2026-07-22): one-time raise to drain the
+      // ~22.7k-row US polygon seed backlog THIS month. RETURN to 10_000
+      // (the standing ~\$25/mo price-tag) once the backlog reads 0.
+      window: { kind: 'perMonth', limit: 25_000 },
       failPolicy: { kind: 'hardClosed' },
       reservationTtlMs: 120_000,
     });
