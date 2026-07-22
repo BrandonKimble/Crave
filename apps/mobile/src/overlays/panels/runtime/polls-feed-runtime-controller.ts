@@ -23,7 +23,12 @@ import {
   POLL_FEED_PLACE_FILTER_ALL,
   type PollFeedPlaceOption,
 } from './polls-feed-controls-store';
+import { shouldRefetchPollsFeedForSettledBounds } from './polls-feed-refetch-edge';
 import { subscribeToReconnect } from '../../../store/systemStatusStore';
+import {
+  getViewportSubjectState,
+  subscribeViewportSubjectState,
+} from '../../../store/viewport-subject-store';
 import { logger } from '../../../utils';
 
 type InteractionRef = React.MutableRefObject<{ isInteracting: boolean }>;
@@ -91,7 +96,6 @@ type RefreshPollFeedOptions = {
 
 type UsePollsFeedRuntimeControllerArgs = {
   visible: boolean;
-  bounds?: MapBounds | null;
   /** Live (`active`) vs Results (`closed`) feed split (§4/§6). */
   feedState: 'active' | 'closed';
   /** Selected sort, or null for the silent demand-ranked default. */
@@ -136,7 +140,6 @@ export type PollsFeedRuntimeController = {
 
 export const usePollsFeedRuntimeController = ({
   visible,
-  bounds,
   feedState,
   feedSort,
   feedType,
@@ -166,6 +169,11 @@ export const usePollsFeedRuntimeController = ({
   const nextCursorRef = React.useRef<string | null>(null);
   const isLoadingMoreRef = React.useRef(false);
   const hasEverAppliedSliceRef = React.useRef(false);
+  // Leg 3 refetch-edge state: the bounds of the last fetch this controller
+  // REQUESTED (recorded at payload-build time — the retry ladder, not the
+  // edge, owns failure recovery). Compared by exact value against the subject
+  // store's settledBounds to decide a refetch.
+  const lastRequestedBoundsRef = React.useRef<MapBounds | null>(null);
   const clearScheduledPollFeedRetry = React.useCallback(() => {
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
@@ -229,9 +237,16 @@ export const usePollsFeedRuntimeController = ({
 
   const buildFeedQueryPayload = React.useCallback(
     (cursor?: string | null): PollQueryPayload | null => {
+      // Leg 3: THE bounds source is the subject store's settled viewport — the
+      // settle+dwell primitive's 240ms-quiescent bounds, updated globally on
+      // every camera move regardless of which sheet is open. The old gated
+      // pollBounds thread (map-idle + shouldShowPollsSheet + significance gate
+      // + motion-pressure parking) is dead.
+      const bounds = getViewportSubjectState().settledBounds;
       if (!bounds) {
         return null;
       }
+      lastRequestedBoundsRef.current = bounds;
       // Wave-2 §3: sort is never null (New is the stated default, not an omission);
       // the time period is folded INTO Top — it is only sent when Top is the sort.
       return {
@@ -245,7 +260,7 @@ export const usePollsFeedRuntimeController = ({
         ...(cursor ? { cursor } : {}),
       };
     },
-    [bounds]
+    []
   );
 
   const refreshPollFeed = React.useCallback(
@@ -482,30 +497,65 @@ export const usePollsFeedRuntimeController = ({
     [scheduleFeedQueryCommit]
   );
 
-  // THE VIEWPORT EDGE (§22 item 5): the feed is bounds-scoped, so a settled-viewport
-  // change IS the fetch trigger — no market resolution round-trip, no cached-market
-  // arm. First-ever slice shows the skeleton; every later bounds change swaps
-  // in-place (skipSpinner — the old slice stands until the new one lands).
+  // THE VIEWPORT EDGE (§22 item 5, re-pointed by leg 3 of the header
+  // subject-store design): the feed is bounds-scoped, so the SUBJECT STORE's
+  // settle tick is the fetch trigger — the store subscribes to the viewport
+  // stream globally (sheet open or closed) and its settledBounds reference
+  // turns over exactly at settle. Two causes fire a refetch, both through the
+  // same exact-inequality edge (shouldRefetchPollsFeedForSettledBounds):
+  //   - 'settle-edge'      — the camera settled on different bounds while the
+  //                          feed is active.
+  //   - 'activation-diff'  — the feed just became active (sheet open / scene
+  //                          activation / mount) and the world moved while it
+  //                          was not: compare last-requested vs the store's
+  //                          CURRENT settled bounds. This closes the owner's
+  //                          repro: pan to San Antonio with the sheet closed →
+  //                          open the sheet → fresh feed.
+  // While the feed is INACTIVE (visible false) this effect is torn down — no
+  // wasted network — but the store keeps settling underneath it.
+  // First-ever slice shows the skeleton; every later refetch swaps in-place
+  // (skipSpinner — the old slice stands until the new one lands).
   React.useEffect(() => {
-    // [SUBJECT-STORE] marker: THE polls-feed bounds edge. If a pan produces NO
-    // 'polls-feed bounds-edge' line here, pollBounds never turned over (see
-    // use-search-map-movement-state / map-interaction-controller gating) — the
-    // feed then refetches the OLD viewport and the stale-header repro follows.
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[SUBJECT-STORE] polls-feed bounds-edge ${JSON.stringify({
-          bounds: bounds ?? null,
-          visible,
-          isSystemUnavailable,
-        })}`
-      );
-    }
-    if (!visible || isSystemUnavailable || !bounds) {
+    if (!visible || isSystemUnavailable) {
       return;
     }
-    void refreshPollFeed({ skipSpinner: hasEverAppliedSliceRef.current });
-  }, [bounds, isSystemUnavailable, refreshPollFeed, visible]);
+    const refetchIfSettledBoundsDiffer = (cause: 'settle-edge' | 'activation-diff') => {
+      const settledBounds = getViewportSubjectState().settledBounds;
+      const shouldRefetch = shouldRefetchPollsFeedForSettledBounds({
+        settledBounds,
+        lastRequestedBounds: lastRequestedBoundsRef.current,
+      });
+      // [SUBJECT-STORE] marker: THE polls-feed refetch edge. A pan-then-open
+      // repro must show an 'activation-diff' line; a pan with the feed active
+      // must show 'settle-edge' lines. No line = the settle never reached the
+      // store (look at the controller's 'settle' markers first).
+      if (__DEV__) {
+        // eslint-disable-next-line no-console
+        console.log(
+          `[SUBJECT-STORE] polls-feed refetch ${JSON.stringify({
+            cause,
+            shouldRefetch,
+            settledBounds,
+          })}`
+        );
+      }
+      if (!shouldRefetch) {
+        return;
+      }
+      void refreshPollFeed({ skipSpinner: hasEverAppliedSliceRef.current });
+    };
+    refetchIfSettledBoundsDiffer('activation-diff');
+    let lastSeenSettledBounds = getViewportSubjectState().settledBounds;
+    return subscribeViewportSubjectState(() => {
+      const settledBounds = getViewportSubjectState().settledBounds;
+      if (settledBounds === lastSeenSettledBounds) {
+        // A verdict/slice commit, not a settle tick — not this consumer's edge.
+        return;
+      }
+      lastSeenSettledBounds = settledBounds;
+      refetchIfSettledBoundsDiffer('settle-edge');
+    });
+  }, [isSystemUnavailable, refreshPollFeed, visible]);
 
   React.useEffect(() => {
     if (!pollIdParam) {

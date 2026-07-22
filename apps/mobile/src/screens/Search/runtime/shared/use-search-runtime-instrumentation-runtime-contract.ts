@@ -97,7 +97,6 @@ export type UseSearchRuntimeInstrumentationRuntimeArgs = {
     options?: { fallbackBaselineBounds?: MapBounds | null }
   ) => boolean;
   scheduleMapIdleEnter: (options?: { releaseGestureGate?: boolean }) => void;
-  schedulePollBoundsUpdate: (bounds: MapBounds) => void;
   ensureInitialCameraReady: () => void;
   isSearchOverlay: boolean;
   resultsPage: number | null;

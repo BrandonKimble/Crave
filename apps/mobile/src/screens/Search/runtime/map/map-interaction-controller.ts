@@ -122,15 +122,12 @@ type UseMapInteractionControllerArgs = {
   mapMotionPressureController: MapMotionPressureController;
   cameraIntentArbiter: CameraIntentArbiter;
   viewportBoundsService: ViewportBoundsService;
-  cancelPendingMapMovementUpdates: () => void;
   markMapMovedIfNeeded: (
     bounds: MapBounds,
     options?: { fallbackBaselineBounds?: MapBounds | null }
   ) => boolean;
   scheduleMapIdleEnter: (options?: { releaseGestureGate?: boolean }) => void;
   isSearchOverlay: boolean;
-  shouldShowPollsSheet: boolean;
-  schedulePollBoundsUpdate: (bounds: MapBounds) => void;
   lastCameraStateRef: React.MutableRefObject<{ center: [number, number]; zoom: number } | null>;
   lastPersistedCameraRef: React.MutableRefObject<string | null>;
 };
@@ -170,12 +167,9 @@ export const useMapInteractionController = (
     mapMotionPressureController,
     cameraIntentArbiter,
     viewportBoundsService,
-    cancelPendingMapMovementUpdates,
     markMapMovedIfNeeded,
     scheduleMapIdleEnter,
     isSearchOverlay,
-    shouldShowPollsSheet,
-    schedulePollBoundsUpdate,
     lastCameraStateRef,
     lastPersistedCameraRef,
   } = args;
@@ -337,7 +331,6 @@ export const useMapInteractionController = (
           pressureState: mapMotionPressureController.getState(),
         })
       ) {
-        cancelPendingMapMovementUpdates();
         return;
       }
       if (isUserViewportGestureActive) {
@@ -417,7 +410,6 @@ export const useMapInteractionController = (
     },
     [
       cameraIntentArbiter,
-      cancelPendingMapMovementUpdates,
       isSearchOverlay,
       isSearchSessionActive,
       mapInteractionDiagnostics,
@@ -444,9 +436,6 @@ export const useMapInteractionController = (
       const isBusy = shouldDeferMapMovementWork({
         pressureState: mapMotionPressureController.getState(),
       });
-      if (isBusy) {
-        cancelPendingMapMovementUpdates();
-      }
       const bounds = mapStateBoundsToMapBounds(state);
       if (bounds) {
         const zoomCandidate = state?.properties?.zoom as unknown;
@@ -464,9 +453,6 @@ export const useMapInteractionController = (
           phase: 'settled',
           nowMs: Date.now(),
         });
-        if (shouldShowPollsSheet) {
-          schedulePollBoundsUpdate(bounds);
-        }
         const settledCenter = state?.properties?.center as unknown;
         viewportBoundsService.setBounds(
           bounds,
@@ -567,7 +553,6 @@ export const useMapInteractionController = (
     },
     [
       cameraIntentArbiter,
-      cancelPendingMapMovementUpdates,
       isSearchOverlay,
       isSearchSessionActive,
       isProfilePresentationActive,
@@ -576,10 +561,8 @@ export const useMapInteractionController = (
       mapMotionPressureController,
       persistSettledCameraViewport,
       scheduleMapIdleEnter,
-      schedulePollBoundsUpdate,
       searchInteractionRef,
       shouldLogMapEventRates,
-      shouldShowPollsSheet,
       viewportBoundsService,
     ]
   );

@@ -10,7 +10,6 @@ import type {
   SearchRootSessionCoreLane,
   SearchRootSessionPrimitivesLane,
 } from './use-search-root-session-runtime-contract';
-import type { AppRouteOverlaySessionSnapshot } from '../../../../navigation/runtime/app-route-overlay-session-contract';
 import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../native/search-chrome-scalar-surface-primitive-source-runtime';
 
 type RootPrimitivesRuntime = {
@@ -27,7 +26,6 @@ type UseSearchRootMapRuntimeLaneArgs = {
     'latestBoundsRef' | 'viewportBoundsService' | 'searchRuntimeBus'
   >;
   rootSessionPrimitivesLane: SearchRootSessionPrimitivesLane;
-  shouldShowPollsSheetRef: React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
   searchChromeScalarSurfacePrimitiveSourceRuntime?: SearchChromeScalarSurfacePrimitiveSourceRuntime;
 };
 
@@ -36,7 +34,6 @@ export const useSearchRootMapRuntimeLane = ({
   rootPrimitivesRuntime,
   rootSessionCoreLane,
   rootSessionPrimitivesLane,
-  shouldShowPollsSheetRef,
   searchChromeScalarSurfacePrimitiveSourceRuntime,
 }: UseSearchRootMapRuntimeLaneArgs): SearchRootResultsSheetRuntimeLane => {
   const mapMotionPressureControllerRef = React.useRef<MapMotionPressureController | null>(null);
@@ -58,7 +55,6 @@ export const useSearchRootMapRuntimeLane = ({
       anySheetDraggingRef: rootSessionPrimitivesLane.primitives.anySheetDraggingRef,
       lastSearchBoundsCaptureSeqRef:
         rootSessionPrimitivesLane.primitives.lastSearchBoundsCaptureSeqRef,
-      shouldShowPollsSheetRef,
       searchChromeScalarSurfacePrimitiveSourceRuntime,
     }),
   };

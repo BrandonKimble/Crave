@@ -31,7 +31,6 @@ export const createSearchRootMapInteractionControllerArgs = ({
   const {
     rootInstrumentationRuntime: instrumentationRuntime,
     rootOverlayStoreRuntime,
-    routeOverlaySessionSnapshot,
     rootSharedSheetRuntimeLane,
   } = rootOverlayFoundationRuntime;
 
@@ -63,12 +62,9 @@ export const createSearchRootMapInteractionControllerArgs = ({
     mapGestureActiveRef: rootSharedSheetRuntimeLane.mapGestureActiveRef,
     suppressMapMovedRef: primitivesRuntime.mapState.suppressMapMovedRef,
     mapMotionPressureController: rootSharedSheetRuntimeLane.mapMotionPressureController,
-    cancelPendingMapMovementUpdates: rootSharedSheetRuntimeLane.cancelPendingMapMovementUpdates,
     markMapMovedIfNeeded: rootSharedSheetRuntimeLane.markMapMovedIfNeeded,
     scheduleMapIdleEnter: rootSharedSheetRuntimeLane.scheduleMapIdleEnter,
     isSearchOverlay: rootOverlayStoreRuntime.isSearchOverlay,
-    shouldShowPollsSheet: routeOverlaySessionSnapshot.shouldShowPollsSheet,
-    schedulePollBoundsUpdate: rootSharedSheetRuntimeLane.schedulePollBoundsUpdate,
     lastCameraStateRef: sessionPrimitivesLane.primitives.lastCameraStateRef,
     lastPersistedCameraRef: sessionPrimitivesLane.primitives.lastPersistedCameraRef,
     cameraIntentArbiter: sessionCoreLane.cameraIntentArbiter,

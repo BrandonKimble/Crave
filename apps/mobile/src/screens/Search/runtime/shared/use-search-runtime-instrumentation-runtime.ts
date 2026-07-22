@@ -89,7 +89,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
   viewportBoundsService,
   markMapMovedIfNeeded,
   scheduleMapIdleEnter,
-  schedulePollBoundsUpdate,
   ensureInitialCameraReady,
   isSearchOverlay,
   resultsPage,
@@ -176,8 +175,9 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       });
       if (accepted) {
         const bounds = buildScenarioCameraBounds({ lat, lng, zoom });
+        // Leg 3: viewportBoundsService.setBounds IS the poll-feed feed line now —
+        // the subject store settles from the same stream; no direct poke needed.
         viewportBoundsService.setBounds(bounds, { center: [lng, lat], zoom });
-        schedulePollBoundsUpdate(bounds);
         emitRuntimeMechanismEvent('perf_scenario_camera_bounds_seeded', {
           bearing: bearing ?? null,
           pitch: pitch ?? null,
@@ -191,7 +191,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       cameraIntentArbiter,
       emitRuntimeMechanismEvent,
       ensureInitialCameraReady,
-      schedulePollBoundsUpdate,
       viewportBoundsService,
     ]
   );
@@ -255,7 +254,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       }
       const bounds = buildScenarioCameraBounds({ lat, lng, zoom });
       viewportBoundsService.setBounds(bounds, { center: [lng, lat], zoom });
-      schedulePollBoundsUpdate(bounds);
       const didMarkMapMoved =
         isSearchOverlay && isSearchSessionActive
           ? markMapMovedIfNeeded(bounds, { fallbackBaselineBounds: previousBounds })
@@ -291,7 +289,6 @@ export const useSearchRuntimeInstrumentationRuntime = ({
       isSearchSessionActive,
       markMapMovedIfNeeded,
       scheduleMapIdleEnter,
-      schedulePollBoundsUpdate,
       ensureInitialCameraReady,
       viewportBoundsService,
     ]

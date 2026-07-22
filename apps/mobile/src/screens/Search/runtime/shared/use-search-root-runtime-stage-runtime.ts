@@ -206,17 +206,10 @@ export const useSearchRootRuntimeStageRuntime = ({
   });
   const routeDynamicSceneInputRuntime = React.useMemo(
     () => ({
-      pollBounds:
-        overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootSharedSheetRuntimeLane
-          .pollBounds,
       searchInteractionRef:
         sessionAssemblyRuntime.sessionRuntime.sessionPrimitivesLane.primitives.searchInteractionRef,
     }),
-    [
-      overlayFoundationAssemblyRuntime.rootOverlayFoundationRuntime.rootSharedSheetRuntimeLane
-        .pollBounds,
-      sessionAssemblyRuntime.sessionRuntime.sessionPrimitivesLane.primitives.searchInteractionRef,
-    ]
+    [sessionAssemblyRuntime.sessionRuntime.sessionPrimitivesLane.primitives.searchInteractionRef]
   );
   usePublishAppRouteDynamicSceneInputRuntime({
     routeSceneRuntime,

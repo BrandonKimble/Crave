@@ -31,7 +31,6 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 type UsePollsPanelFeedRuntimeArgs = Pick<
   UsePollsPanelSpecOptions,
   | 'visible'
-  | 'bounds'
   | 'params'
   | 'mode'
   | 'currentSnap'
@@ -79,7 +78,6 @@ export type PollsPanelFeedRuntime = {
 
 export const usePollsPanelFeedRuntime = ({
   visible,
-  bounds,
   params,
   mode = 'docked',
   currentSnap,
@@ -163,7 +161,6 @@ export const usePollsPanelFeedRuntime = ({
 
   const { loadMorePolls, isFeedSliceAwaiting } = usePollsFeedRuntimeController({
     visible,
-    bounds,
     feedState,
     feedSort,
     feedType,

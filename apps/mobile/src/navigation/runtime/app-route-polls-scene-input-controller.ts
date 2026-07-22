@@ -279,7 +279,6 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
         isSearchOverlay: this.pollsRouteState.isSearchOverlay,
         isPersistentPollLane: this.pollsRouteState.isPersistentPollLane,
       },
-      pollBounds: this.dynamicSceneInputRuntime.pollBounds,
       interactionRef: this.dynamicSceneInputRuntime.searchInteractionRef,
     });
     this.publishPollsSceneState({
@@ -296,7 +295,6 @@ class AppRoutePollsSceneInputRuntimeController implements AppRoutePollsSceneInpu
   }): void {
     const reactSceneState: AppRoutePollsSceneState = {
       visible: pollsSceneStateRuntime.visible,
-      bounds: pollsSceneStateRuntime.bounds,
       params: pollsSceneStateRuntime.params,
       initialSnapPoint: pollsSceneStateRuntime.initialSnapPoint,
       mode: pollsSceneStateRuntime.mode,

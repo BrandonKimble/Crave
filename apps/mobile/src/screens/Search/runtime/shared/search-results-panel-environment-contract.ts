@@ -7,7 +7,6 @@ import type { RestaurantResult } from '../../../../types';
 import type { ResultsListItem } from '../read-models/read-model-selectors';
 import type { MapQueryBudget } from '../map/map-query-budget';
 import type { PhaseBMaterializer } from '../scheduler/phase-b-materializer';
-import type { UsePollsPanelSpecOptions } from '../../../../overlays/panels/runtime/polls-panel-runtime-contract';
 import type { ResultsPresentationOwner } from './results-presentation-owner-contract';
 import type { ResultsSheetInteractionModel } from './results-sheet-interaction-contract';
 import type { AppRouteSharedSheetRuntimeOwner } from '../../../../navigation/runtime/app-route-shared-sheet-runtime-contract';
@@ -43,7 +42,6 @@ export type SearchResultsPanelEnvironment = {
   resultsSheetRuntime: ResultsPanelSheetRuntimeModel;
   resultsSheetInteractionModel: ResultsSheetInteractionModel;
   resultsPanelVisualRuntimeModel: ResultsPanelVisualRuntimeModel;
-  pollBounds: UsePollsPanelSpecOptions['bounds'];
   searchInteractionRef: React.MutableRefObject<SearchInteractionSnapshot>;
   toggleOpenNow: () => void;
   toggleIncludeSimilar: () => void;

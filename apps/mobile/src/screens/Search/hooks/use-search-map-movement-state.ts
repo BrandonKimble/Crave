@@ -7,7 +7,6 @@ import {
 } from '../../../perf/perf-scenario-attribution';
 import { usePerfScenarioRuntimeStore } from '../../../perf/perf-scenario-runtime-store';
 import type { MapBounds } from '../../../types';
-import type { AppRouteOverlaySessionSnapshot } from '../../../navigation/runtime/app-route-overlay-session-contract';
 import type { MapboxMapRef } from '../components/search-map';
 import {
   type MapMotionPressureController,
@@ -19,7 +18,6 @@ import type { SearchChromeScalarSurfacePrimitiveSourceRuntime } from '../runtime
 import { MAP_MOVE_MIN_DISTANCE_MILES } from '../constants/search';
 import {
   boundsFromCoordinates,
-  boundsFromPairs,
   getBoundsCenter,
   hasBoundsMovedSignificantly,
   haversineDistanceMiles,
@@ -42,25 +40,19 @@ type UseSearchMapMovementStateArgs = {
   searchInteractionRef: React.MutableRefObject<SearchInteractionState>;
   anySheetDraggingRef: React.MutableRefObject<boolean>;
   lastSearchBoundsCaptureSeqRef: React.MutableRefObject<number>;
-  shouldShowPollsSheetRef: React.MutableRefObject<AppRouteOverlaySessionSnapshot>;
   searchChromeScalarSurfacePrimitiveSourceRuntime?: SearchChromeScalarSurfacePrimitiveSourceRuntime;
 };
 
 type UseSearchMapMovementStateResult = {
-  pollBounds: MapBounds | null;
   mapMovedSinceSearch: boolean;
   mapGestureActiveRef: React.MutableRefObject<boolean>;
-  pollBoundsRef: React.MutableRefObject<MapBounds | null>;
-  cancelPendingMapMovementUpdates: () => void;
   resetMapMoveFlag: () => void;
   markMapMovedIfNeeded: (
     bounds: MapBounds,
     options?: { fallbackBaselineBounds?: MapBounds | null }
   ) => boolean;
   scheduleMapIdleEnter: (options?: { releaseGestureGate?: boolean }) => void;
-  schedulePollBoundsUpdate: (bounds: MapBounds) => void;
   flushDeferredMapMovementState: () => void;
-  resolveCurrentMapBounds: () => Promise<MapBounds | null>;
 };
 
 const shouldMarkMapMovedForBounds = ({
@@ -91,16 +83,6 @@ const shouldMarkMapMovedForBounds = ({
     return true;
   }
   return false;
-};
-
-const shouldPublishPollBoundsUpdate = ({
-  currentPollBounds,
-  nextBounds,
-}: {
-  currentPollBounds: MapBounds | null;
-  nextBounds: MapBounds;
-}): boolean => {
-  return currentPollBounds == null || hasBoundsMovedSignificantly(currentPollBounds, nextBounds);
 };
 
 const resolveMapMovedEnterAdmission = ({
@@ -140,16 +122,12 @@ export const useSearchMapMovementState = ({
   searchInteractionRef,
   anySheetDraggingRef,
   lastSearchBoundsCaptureSeqRef,
-  shouldShowPollsSheetRef,
   searchChromeScalarSurfacePrimitiveSourceRuntime,
 }: UseSearchMapMovementStateArgs): UseSearchMapMovementStateResult => {
-  const [pollBounds, setPollBounds] = React.useState<MapBounds | null>(() => startupPollBounds);
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
   const mapMovedSinceSearchRef = React.useRef(false);
   const pendingMapMovedEnterRef = React.useRef(false);
   const mapGestureActiveRef = React.useRef(false);
-  const pollBoundsRef = React.useRef<MapBounds | null>(startupPollBounds);
-  const pendingPollBoundsRef = React.useRef<MapBounds | null>(null);
 
   const writeMapMovedScalarPrimitive = React.useCallback(
     (mapMovedNext: boolean) => {
@@ -160,10 +138,11 @@ export const useSearchMapMovementState = ({
     [searchChromeScalarSurfacePrimitiveSourceRuntime]
   );
 
-  const cancelPendingMapMovementUpdates = React.useCallback(() => {
-    pendingPollBoundsRef.current = null;
-  }, []);
-
+  // Startup viewport seed: before the first native camera event, the bootstrap
+  // camera's derived bounds fill the ViewportBoundsService so every settled-
+  // viewport consumer (subject store, feed, dwell) has a world to judge. The
+  // old pollBounds mirror died in leg 3 — the subject store's settledBounds is
+  // the one settled-viewport authority now.
   React.useEffect(() => {
     if (!startupPollBounds) {
       return;
@@ -171,11 +150,6 @@ export const useSearchMapMovementState = ({
     if (!latestBoundsRef.current) {
       viewportBoundsService.setBounds(startupPollBounds);
     }
-    if (pollBoundsRef.current) {
-      return;
-    }
-    pollBoundsRef.current = startupPollBounds;
-    setPollBounds(startupPollBounds);
   }, [latestBoundsRef, startupPollBounds, viewportBoundsService]);
 
   // Refine the mirrored AABB baseline with the SCREEN-ACCURATE visible polygon:
@@ -353,93 +327,16 @@ export const useSearchMapMovementState = ({
     scheduleMapIdleEnter();
   }, [scheduleMapIdleEnter]);
 
-  const flushPendingPollBoundsUpdate = React.useCallback(() => {
-    const nextPollBounds = pendingPollBoundsRef.current;
-    if (!nextPollBounds) {
-      return;
-    }
-    if (
-      shouldDeferMapMovementWork({
-        pressureState: mapMotionPressureController.getState(),
-      })
-    ) {
-      return;
-    }
-    pendingPollBoundsRef.current = null;
-    pollBoundsRef.current = nextPollBounds;
-    setPollBounds(nextPollBounds);
-  }, [mapMotionPressureController]);
-
   const flushDeferredMapMovementState = React.useCallback(() => {
-    flushPendingPollBoundsUpdate();
     flushPendingMapMovedEnter();
-  }, [flushPendingMapMovedEnter, flushPendingPollBoundsUpdate]);
-
-  const schedulePollBoundsUpdate = React.useCallback(
-    (bounds: MapBounds) => {
-      if (
-        !shouldPublishPollBoundsUpdate({
-          currentPollBounds: pollBoundsRef.current,
-          nextBounds: bounds,
-        })
-      ) {
-        pendingPollBoundsRef.current = null;
-        return;
-      }
-      pendingPollBoundsRef.current = bounds;
-      flushDeferredMapMovementState();
-    },
-    [flushDeferredMapMovementState]
-  );
-
-  const resolveCurrentMapBounds = React.useCallback(async (): Promise<MapBounds | null> => {
-    const currentBounds = viewportBoundsService.getBounds();
-    if (currentBounds) {
-      return currentBounds;
-    }
-    const rawBounds = await mapRef.current?.getVisibleBounds?.();
-    if (!rawBounds || rawBounds.length < 2) {
-      return null;
-    }
-    const first = rawBounds[0] as unknown;
-    const second = rawBounds[1] as unknown;
-    if (!isLngLatTuple(first) || !isLngLatTuple(second)) {
-      return null;
-    }
-    const bounds = boundsFromPairs(first, second);
-    viewportBoundsService.setBounds(bounds);
-    return bounds;
-  }, [mapRef, viewportBoundsService]);
-
-  React.useEffect(() => {
-    if (!shouldShowPollsSheetRef.current.shouldShowPollsSheet) {
-      return;
-    }
-    if (latestBoundsRef.current) {
-      pollBoundsRef.current = latestBoundsRef.current;
-      setPollBounds(latestBoundsRef.current);
-      return;
-    }
-    void resolveCurrentMapBounds().then((bounds) => {
-      if (!bounds) {
-        return;
-      }
-      pollBoundsRef.current = bounds;
-      setPollBounds(bounds);
-    });
-  }, [latestBoundsRef, resolveCurrentMapBounds, shouldShowPollsSheetRef]);
+  }, [flushPendingMapMovedEnter]);
 
   return {
-    pollBounds,
     mapMovedSinceSearch,
     mapGestureActiveRef,
-    pollBoundsRef,
-    cancelPendingMapMovementUpdates,
     resetMapMoveFlag,
     markMapMovedIfNeeded,
     scheduleMapIdleEnter,
-    schedulePollBoundsUpdate,
     flushDeferredMapMovementState,
-    resolveCurrentMapBounds,
   };
 };

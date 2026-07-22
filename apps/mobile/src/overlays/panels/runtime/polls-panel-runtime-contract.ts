@@ -1,6 +1,5 @@
 import type React from 'react';
 
-import type { MapBounds } from '../../../types';
 import type { SnapPoints } from '../../bottomSheetMotionTypes';
 import type { OverlaySheetSnap } from '../../types';
 import type { SearchRouteSceneSnapMeta } from '../../searchRouteSceneShellMotionContract';
@@ -28,7 +27,6 @@ export type PollsPanelInteractionRef = React.MutableRefObject<{ isInteracting: b
 
 export type UsePollsPanelSpecOptions = {
   visible: boolean;
-  bounds?: MapBounds | null;
   params?: PollsPanelParams;
   initialSnapPoint?: PollsPanelInitialSnapPoint;
   mode?: PollsPanelMode;

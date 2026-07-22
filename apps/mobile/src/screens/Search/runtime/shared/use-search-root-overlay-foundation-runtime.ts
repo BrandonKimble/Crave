@@ -95,7 +95,6 @@ export const useSearchRootOverlayFoundationRuntime = ({
     rootPrimitivesRuntime,
     rootSessionCoreLane: sessionCoreLane,
     rootSessionPrimitivesLane: sessionPrimitivesLane,
-    shouldShowPollsSheetRef: routeOverlaySessionSnapshotRef,
     searchChromeScalarSurfacePrimitiveSourceRuntime:
       searchChromeScalarSurfaceRuntime?.primitiveSourceRuntime,
   });

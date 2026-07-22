@@ -8,7 +8,6 @@ export type AppRoutePollsSceneState = UsePollsPanelSpecOptions;
 
 export type AppRoutePollsSceneBodySnapshot = Pick<
   AppRoutePollsSceneState,
-  | 'bounds'
   | 'params'
   | 'initialSnapPoint'
   | 'mode'
@@ -62,7 +61,6 @@ export const arePollsSceneStatesEqual = (
   right: AppRoutePollsSceneState
 ): boolean =>
   left.visible === right.visible &&
-  left.bounds === right.bounds &&
   left.params === right.params &&
   left.initialSnapPoint === right.initialSnapPoint &&
   left.mode === right.mode &&
@@ -114,7 +112,6 @@ const markPollsSceneStateFieldDiff = (field: string, left: unknown, right: unkno
 const resolvePollsSceneBodySnapshot = (
   snapshot: AppRoutePollsSceneState
 ): AppRoutePollsSceneBodySnapshot => ({
-  bounds: snapshot.bounds,
   params: snapshot.params,
   initialSnapPoint: snapshot.initialSnapPoint,
   mode: snapshot.mode,
@@ -130,7 +127,6 @@ const arePollsSceneBodyRenderSnapshotsEqual = (
   left: AppRoutePollsSceneBodySnapshot,
   right: AppRoutePollsSceneBodySnapshot
 ): boolean =>
-  left.bounds === right.bounds &&
   left.params === right.params &&
   left.initialSnapPoint === right.initialSnapPoint &&
   left.mode === right.mode &&
@@ -200,7 +196,6 @@ class AppRoutePollsSceneController implements AppRoutePollsSceneRuntime {
       return;
     }
     markPollsSceneStateFieldDiff('visible', this.sceneSnapshot.visible, snapshot.visible);
-    markPollsSceneStateFieldDiff('bounds', this.sceneSnapshot.bounds, snapshot.bounds);
     markPollsSceneStateFieldDiff('params', this.sceneSnapshot.params, snapshot.params);
     markPollsSceneStateFieldDiff(
       'initialSnapPoint',

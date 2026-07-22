@@ -314,6 +314,11 @@ export const useViewportSubjectStoreControllerRuntime = ({
           mapBounds,
           settledAtMs: Date.now(),
         };
+        // Leg 3: publish THE settled viewport. A settle only follows a real
+        // bounds change (ViewportBoundsService dedupes byte-equal writes), so
+        // this reference turnover is the store's settle event — the polls feed
+        // subscribes to it as its refetch edge.
+        setViewportSubjectState({ settledBounds: mapBounds });
         resolveAtSettle();
       }, VIEWPORT_SETTLE_QUIESCENCE_MS);
     };

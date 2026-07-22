@@ -39,6 +39,7 @@ import SquircleSpinner from '../../components/SquircleSpinner';
 import { SceneLoadingSurface } from '../../components/skeletons';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
 import { registerHeaderCreateAction } from '../../navigation/runtime/header-nav-action-registry';
+import { getViewportSubjectState } from '../../store/viewport-subject-store';
 import { useAppOverlayRouteController } from '../useAppOverlayRouteController';
 import { PollCandidateBars } from './PollCandidateBars';
 import {
@@ -280,14 +281,13 @@ type PollsSceneBodyState = AppRoutePollsSceneBodySnapshot;
 
 type PollsSceneBodyRenderState = Pick<
   AppRoutePollsSceneBodySnapshot,
-  'bounds' | 'params' | 'currentSnap' | 'interactionRef'
+  'params' | 'currentSnap' | 'interactionRef'
 >;
 
 const arePollsSceneBodyRenderStatesEqual = (
   left: PollsSceneBodyRenderState,
   right: PollsSceneBodyRenderState
 ): boolean =>
-  left.bounds === right.bounds &&
   left.params === right.params &&
   left.currentSnap === right.currentSnap &&
   left.interactionRef === right.interactionRef;
@@ -295,7 +295,6 @@ const arePollsSceneBodyRenderStatesEqual = (
 const selectPollsSceneBodyRenderState = (
   snapshot: AppRoutePollsSceneBodySnapshot
 ): PollsSceneBodyRenderState => ({
-  bounds: snapshot.bounds,
   params: snapshot.params,
   currentSnap: snapshot.currentSnap,
   interactionRef: snapshot.interactionRef,
@@ -371,7 +370,8 @@ PollsPersistentHeaderTitle.displayName = 'PollsPersistentHeaderTitle';
 // (a real committed component under the app providers — the scene body-spec hooks never commit
 // effects). Snapshots read at PRESS time. The creation flow itself is NOT rearchitected this
 // leg: it still takes marketKey/marketName params; the feed hands it the §2 place verdict as
-// the display name and bounds as the anchor.
+// the display name and the SUBJECT STORE's settled viewport as the anchor (leg 3 — the old
+// scene-threaded pollBounds is dead; the store's settledBounds is the one bounds authority).
 const usePollsHeaderCreateActionRegistration = () => {
   const routeSceneRuntime = useAppRouteSceneRuntime();
   const { pushRoute } = useAppOverlayRouteController();
@@ -383,8 +383,9 @@ const usePollsHeaderCreateActionRegistration = () => {
           routeSceneRuntime.routePollsSceneRuntime.headerModelAuthority.getSnapshot();
         const params = sceneState.params;
         const legacyMarketKey = params?.marketKey?.trim() || null;
+        const settledBounds = getViewportSubjectState().settledBounds;
 
-        if (!sceneState.bounds && !legacyMarketKey) {
+        if (!settledBounds && !legacyMarketKey) {
           showAppModal({
             title: 'Move the map',
             message: 'Move the map to a local area before creating a poll.',
@@ -396,7 +397,7 @@ const usePollsHeaderCreateActionRegistration = () => {
         pushRoute('pollCreation', {
           marketKey: legacyMarketKey,
           marketName: headerModel?.placeName ?? params?.marketName ?? null,
-          bounds: sceneState.bounds ?? null,
+          bounds: settledBounds,
         });
       }),
     [pushRoute, routeSceneRuntime]
@@ -618,7 +619,6 @@ export const usePollsPanelListSceneParts = (): {
     [pushRoute]
   );
   const {
-    bounds,
     params,
     initialSnapPoint,
     mode = 'docked',
@@ -633,7 +633,6 @@ export const usePollsPanelListSceneParts = (): {
 
   const pollsPanelFeedRuntime = usePollsPanelFeedRuntime({
     visible: shouldSubscribeDataLane,
-    bounds,
     params,
     mode,
     currentSnap,

@@ -62,7 +62,6 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
       sessionPrimitivesLane.primitives.anySheetDraggingRef.current = isDragging;
       updateSearchInteractionRef({ isResultsSheetDragging: isDragging });
       if (isDragging) {
-        rootSharedSheetRuntimeLane.cancelPendingMapMovementUpdates();
         return;
       }
       rootSharedSheetRuntimeLane.flushDeferredMapMovementState();
@@ -98,7 +97,6 @@ export const useSearchRootResultsSheetInteractionStateRuntime = ({
       resultsSheetSettlingRef.current = isSettling;
       updateSearchInteractionRef({ isResultsSheetSettling: isSettling });
       if (isSettling) {
-        rootSharedSheetRuntimeLane.cancelPendingMapMovementUpdates();
         return;
       }
       if (resultsSheetDraggingRef.current) {

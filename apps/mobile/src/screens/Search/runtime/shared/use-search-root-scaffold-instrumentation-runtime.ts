@@ -62,7 +62,6 @@ export const useSearchRootScaffoldInstrumentationRuntime = ({
     viewportBoundsService: rootSessionCoreLane.viewportBoundsService,
     markMapMovedIfNeeded: rootSharedSheetRuntimeLane.markMapMovedIfNeeded,
     scheduleMapIdleEnter: rootSharedSheetRuntimeLane.scheduleMapIdleEnter,
-    schedulePollBoundsUpdate: rootSharedSheetRuntimeLane.schedulePollBoundsUpdate,
     ensureInitialCameraReady: rootSessionCoreLane.mapBootstrapRuntime.ensureInitialCameraReady,
     isSearchOverlay: rootOverlayStoreRuntime.isSearchOverlay,
     resultsPage: rootDataPlaneRuntime.resultsArrivalState.resultsPage,

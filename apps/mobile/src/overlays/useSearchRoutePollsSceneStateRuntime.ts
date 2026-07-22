@@ -21,13 +21,11 @@ type UseSearchRoutePollsSceneStateRuntimeArgs = {
     isSearchOverlay: boolean;
     isPersistentPollLane: boolean;
   };
-  pollBounds: UsePollsPanelSpecOptions['bounds'];
   interactionRef: UsePollsPanelSpecOptions['interactionRef'];
 };
 
 export type SearchRoutePollsSceneStateRuntime = {
   visible: boolean;
-  bounds: UsePollsPanelSpecOptions['bounds'];
   interactionRef: UsePollsPanelSpecOptions['interactionRef'];
   params: UseSearchRoutePollsSceneStateRuntimeArgs['pollOverlayParams'];
   mode: PollsPanelMode;
@@ -45,7 +43,6 @@ export const createSearchRoutePollsSceneStateRuntime = ({
   commandState,
   dockedPollsRestoreIntent,
   overlayVisibilityState,
-  pollBounds,
   interactionRef,
 }: UseSearchRoutePollsSceneStateRuntimeArgs): SearchRoutePollsSceneStateRuntime => {
   const mode: PollsPanelMode = 'docked';
@@ -65,7 +62,6 @@ export const createSearchRoutePollsSceneStateRuntime = ({
 
   return {
     visible: isPersistentPollsVisible,
-    bounds: pollBounds,
     interactionRef,
     params: pollOverlayParams,
     mode,
@@ -84,7 +80,6 @@ export const useSearchRoutePollsSceneStateRuntime = ({
   commandState,
   dockedPollsRestoreIntent,
   overlayVisibilityState,
-  pollBounds,
   interactionRef,
 }: UseSearchRoutePollsSceneStateRuntimeArgs): SearchRoutePollsSceneStateRuntime => {
   return React.useMemo(
@@ -95,7 +90,6 @@ export const useSearchRoutePollsSceneStateRuntime = ({
         commandState,
         dockedPollsRestoreIntent,
         overlayVisibilityState,
-        pollBounds,
         interactionRef,
       }),
     [
@@ -103,7 +97,6 @@ export const useSearchRoutePollsSceneStateRuntime = ({
       dockedPollsRestoreIntent,
       interactionRef,
       overlayVisibilityState,
-      pollBounds,
       pollOverlayParams,
       sceneLayout,
     ]

@@ -2,6 +2,8 @@ import React from 'react';
 
 import type { GeoBbox, PlaceLike } from '@crave-search/shared';
 
+import type { MapBounds } from '../types';
+
 /**
  * THE client subject store (header subject-store design, ratified 2026-07-21):
  * every place-name mouth in the app reads ONE verdict — computed ON DEVICE from
@@ -37,6 +39,15 @@ export type ViewportSubjectState = {
   slice: PlaceLike[] | null;
   marginBox: GeoBbox | null;
   lastCommittedAt: number | null;
+  /**
+   * THE settled viewport (leg 3): the exact bounds the settle+dwell primitive
+   * judged at its last settle edge (240ms stream quiescence). Written ONLY by
+   * the controller's settle tick, so a store notification where this reference
+   * turned over IS the settle event — bounds-scoped consumers (the polls feed)
+   * subscribe to it instead of running their own idle/significance machinery.
+   * Null until the first settle (cold start).
+   */
+  settledBounds: MapBounds | null;
 };
 
 type Listener = () => void;
@@ -46,6 +57,7 @@ const INITIAL_STATE: ViewportSubjectState = {
   slice: null,
   marginBox: null,
   lastCommittedAt: null,
+  settledBounds: null,
 };
 
 let currentState: ViewportSubjectState = INITIAL_STATE;
@@ -64,7 +76,8 @@ export const setViewportSubjectState = (partial: Partial<ViewportSubjectState>):
     next.verdict === currentState.verdict &&
     next.slice === currentState.slice &&
     next.marginBox === currentState.marginBox &&
-    next.lastCommittedAt === currentState.lastCommittedAt
+    next.lastCommittedAt === currentState.lastCommittedAt &&
+    next.settledBounds === currentState.settledBounds
   ) {
     return;
   }
