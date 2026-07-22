@@ -9,7 +9,16 @@ import type { SheetSceneKey } from '../navigation/runtime/scene-foundation-spec'
 // the migration bridge order; the census table in the design doc names every key's
 // target. Deleted-with-the-strangler when every scene is managed.
 
-export const RESIDENCY_MANAGED_SCENES: readonly SheetSceneKey[] = ['notifications', 'settings'];
+export const RESIDENCY_MANAGED_SCENES: readonly SheetSceneKey[] = [
+  'notifications',
+  'settings',
+  // Slice 3 (bridge order): profile — the root own-tab. Already retained-never-
+  // unmounted by the tab machinery; residency adds the display/a11y/clock
+  // consolidation (a hidden profile's L0 shimmer dies; layout detaches). Its DATA
+  // lane stays with the central activity flags for now: folding those into the
+  // manager's bit is the runtime-governance slice (one merge for every scene).
+  'profile',
+];
 
 export const isResidencyManagedScene = (scene: OverlayKey): boolean =>
   (RESIDENCY_MANAGED_SCENES as readonly string[]).includes(scene);

@@ -15,7 +15,7 @@ import {
   SettingsMountedSceneBody,
   UserProfileMountedSceneBody,
 } from './panels/ChildScenePanels';
-import { ShellLivenessBoundary } from './ShellVisibilityBoundary';
+import { ShellVisibilityBoundary } from './ShellVisibilityBoundary';
 
 /**
  * W1 slice 1 (C2): a mounted CHILD body receives ITS route entry as a prop — entryId + params
@@ -38,7 +38,14 @@ export const BottomSheetSceneStackMountedBody = React.memo(
       case 'bookmarks':
         return <BookmarksMountedSceneBody />;
       case 'profile':
-        return <ProfileMountedSceneBody />;
+        // L3 slice 3: the root own-tab under the visibility boundary (root scenes
+        // have no entry units — the singleton path; the boundary is the display
+        // fact's one home).
+        return (
+          <ShellVisibilityBoundary scene="profile">
+            <ProfileMountedSceneBody />
+          </ShellVisibilityBoundary>
+        );
       case 'saveList':
         return <SaveListMountedSceneBody entry={entry} />;
       case 'userProfile':
@@ -52,15 +59,15 @@ export const BottomSheetSceneStackMountedBody = React.memo(
       // clocks freeze when hidden (the retained-body stale-forever bug dies here).
       case 'notifications':
         return (
-          <ShellLivenessBoundary scene="notifications">
+          <ShellVisibilityBoundary scene="notifications">
             <NotificationsMountedSceneBody entry={entry} />
-          </ShellLivenessBoundary>
+          </ShellVisibilityBoundary>
         );
       case 'settings':
         return (
-          <ShellLivenessBoundary scene="settings">
+          <ShellVisibilityBoundary scene="settings">
             <SettingsMountedSceneBody entry={entry} />
-          </ShellLivenessBoundary>
+          </ShellVisibilityBoundary>
         );
       case 'editProfile':
         return <EditProfileMountedSceneBody entry={entry} />;

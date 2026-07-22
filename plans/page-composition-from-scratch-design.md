@@ -512,6 +512,22 @@ content-heavy scenes join. (4) grow the managed set per the bridge order (profil
   budget activation, managed-set growth (profile next), beat-writer scheduling at
   reveal (L4's seam).
 
+**L3 SLICE 3 EXECUTED 2026-07-22 (profile joins the managed set).** profile = the
+root own-tab, already retained-never-unmounted by the tab machinery; residency adds
+the display/a11y/clock consolidation (a hidden profile detaches from layout and its
+L0 identity-shape shimmer dies on the manager's bit; root scenes take the singleton
+path — no entry units). ITS DATA LANE DELIBERATELY STAYS with the central activity
+flags (shouldSubscribeDataLane et al. — activation as a state input, the L2 shape):
+those flags are a SYSTEM-WIDE liveness mechanism, so folding them into the manager's
+bit is the RUNTIME-GOVERNANCE slice (one merge for every scene at once, the A#9
+subscribe-nothing law's real home), not a per-scene fork here. The slice-1 alias
+ShellLivenessBoundary died (one name: ShellVisibilityBoundary). Sim-proven: clean
+flips profile→notifications→profile, return render fully intact (identity, stats,
+sections, polls), zero contract errors. Gates: jest 391/391, invariants 29/29,
+matrix 21/21. Watch item for the owner finger-test: profile scroll/segment restore
+across the display:none hide (the P3 restore machinery re-applies on activation —
+structurally covered, feel unverified).
+
 ## L4 — REVEAL + THE CONTENT-LANDING CLOCK (redesigned; v1's weakest level)
 
 The red-team's deepest finding (B#1/#2): v1's "one beat at the joint" attacked the

@@ -63,10 +63,6 @@ export const ShellVisibilityBoundary = ({
   );
 };
 
-/** Back-compat alias from slice 1 (liveness-only era) — same component now that the
- *  display fact consolidated here. */
-export const ShellLivenessBoundary = ShellVisibilityBoundary;
-
 const styles = StyleSheet.create({
   displayedShell: {
     flexGrow: 1,
