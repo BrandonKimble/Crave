@@ -8,6 +8,7 @@ import type {
 import {
   BottomSheetSceneStackBodyDataActivityContext,
   BottomSheetSceneStackBodyRenderActivityContext,
+  BottomSheetSceneStackBodyIsActiveContext,
 } from './BottomSheetSceneStackBodyActivityContext';
 import { isSceneBodyDataActivityKey } from '../navigation/runtime/app-route-scene-input-registry';
 import { areSceneEntryMountUnitArraysEqual } from '../navigation/runtime/app-route-scene-entry-mounts';
@@ -229,6 +230,8 @@ export const SceneStackBodyContentLayer = React.memo(
         shouldAttachMountedContent,
       ]
     );
+    // L4 context-volatility split: TRANSITION-STABLE object (no isActive — that
+    // churner has its own primitive context so this identity survives transitions).
     const bodyRenderActivity = React.useMemo(
       () => ({
         sceneKey: contentEntry.sceneKey,
@@ -236,14 +239,12 @@ export const SceneStackBodyContentLayer = React.memo(
         shouldSubscribeDataLane: contentActivity.shouldSubscribeDataLane,
         shouldRenderExpandedContent: contentActivity.shouldRenderExpandedContent,
         hasActivatedExpandedContent: contentActivity.hasActivatedExpandedContent,
-        isActive: contentActivity.isActive,
       }),
       [
         contentEntry.sceneKey,
         contentActivity.hasActivatedExpandedContent,
         contentActivity.shouldRenderExpandedContent,
         contentActivity.shouldSubscribeDataLane,
-        contentActivity.isActive,
         shouldAttachMountedContent,
       ]
     );
@@ -275,13 +276,17 @@ export const SceneStackBodyContentLayer = React.memo(
       shouldPublishRenderActivity && shouldPublishSceneBodyDataActivity(contentEntry.sceneKey);
     const bodyContentLayer = shouldPublishDataActivity ? (
       <BottomSheetSceneStackBodyRenderActivityContext.Provider value={bodyRenderActivity}>
-        <BottomSheetSceneStackBodyDataActivityContext.Provider value={bodyDataActivity}>
-          {bodyContent}
-        </BottomSheetSceneStackBodyDataActivityContext.Provider>
+        <BottomSheetSceneStackBodyIsActiveContext.Provider value={contentActivity.isActive}>
+          <BottomSheetSceneStackBodyDataActivityContext.Provider value={bodyDataActivity}>
+            {bodyContent}
+          </BottomSheetSceneStackBodyDataActivityContext.Provider>
+        </BottomSheetSceneStackBodyIsActiveContext.Provider>
       </BottomSheetSceneStackBodyRenderActivityContext.Provider>
     ) : shouldPublishRenderActivity ? (
       <BottomSheetSceneStackBodyRenderActivityContext.Provider value={bodyRenderActivity}>
-        {bodyContent}
+        <BottomSheetSceneStackBodyIsActiveContext.Provider value={contentActivity.isActive}>
+          {bodyContent}
+        </BottomSheetSceneStackBodyIsActiveContext.Provider>
       </BottomSheetSceneStackBodyRenderActivityContext.Provider>
     ) : (
       bodyContent

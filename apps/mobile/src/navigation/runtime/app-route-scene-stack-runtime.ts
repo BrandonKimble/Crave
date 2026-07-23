@@ -1144,6 +1144,7 @@ class AppRouteSceneStackLayerStateController {
     this.deferredBodySurfaceTxnUnsubscribe?.();
     this.deferredBodySurfaceTxnUnsubscribe = null;
     this.deferredBodySurfaceNotifySceneKeys.clear();
+    this.pendingDeferredBodySurfaceSnapshots.clear();
     this.sceneBodySurfaceSnapshots.clear();
     this.sceneEntryMountStateByKey.clear();
     this.deferredSceneBodyInputKeys.clear();
@@ -1956,6 +1957,21 @@ class AppRouteSceneStackLayerStateController {
     return isEqual;
   }
 
+  // L4 DEFERRED PUBLICATION (the deferral's honest completion, [COMMITDBG]-driven):
+  // deferring only the NOTIFY was bypassed by prop-driven re-renders re-reading the
+  // fresh snapshot synchronously (useSyncExternalStore's contract) — the activation
+  // render still landed inside the chrome-ack commit on return-from-child. So for
+  // managed scenes an ACTIVITY-ONLY change holds the PUBLICATION itself: getSnapshot
+  // keeps serving the pre-flip snapshot until the reveal-gated flush commits it.
+  // STRUCTURAL changes (contentEntry/transport/units — cold mounts, entry swaps)
+  // always publish synchronously: the premount law (C4) needs the incoming body in
+  // the pre-reveal commit. Internal admission truth is untouched — the ACTIVITY
+  // snapshot map stays synchronous; only the UI-facing body-surface projection waits.
+  private pendingDeferredBodySurfaceSnapshots = new Map<
+    OverlayKey,
+    AppRouteSceneStackBodySurfaceSnapshot
+  >();
+
   private syncSceneBodySurfaceSnapshot(sceneKey: OverlayKey): boolean {
     const nextSnapshot = this.createSceneBodySurfaceSnapshot({
       sceneKey,
@@ -1964,8 +1980,21 @@ class AppRouteSceneStackLayerStateController {
     });
     const previousSnapshot = this.getSceneBodySurfaceSnapshot(sceneKey);
     if (this.areSceneBodySurfaceSnapshotsEqual(previousSnapshot, nextSnapshot)) {
+      // State returned to the published truth — drop any pending unpublished flip.
+      this.pendingDeferredBodySurfaceSnapshots.delete(sceneKey);
       return false;
     }
+    const isActivityOnlyChange =
+      isResidencyManagedScene(sceneKey) &&
+      previousSnapshot.contentEntry === nextSnapshot.contentEntry &&
+      previousSnapshot.transportEntry === nextSnapshot.transportEntry &&
+      previousSnapshot.mountedEntryUnits === nextSnapshot.mountedEntryUnits &&
+      previousSnapshot.activeEntryId === nextSnapshot.activeEntryId;
+    if (isActivityOnlyChange) {
+      this.pendingDeferredBodySurfaceSnapshots.set(sceneKey, nextSnapshot);
+      return true;
+    }
+    this.pendingDeferredBodySurfaceSnapshots.delete(sceneKey);
     if (nextSnapshot === EMPTY_APP_ROUTE_SCENE_STACK_BODY_SURFACE_SNAPSHOT) {
       this.sceneBodySurfaceSnapshots.delete(sceneKey);
     } else {
@@ -2051,6 +2080,14 @@ class AppRouteSceneStackLayerStateController {
     }
     const sceneKeys = [...this.deferredBodySurfaceNotifySceneKeys];
     this.deferredBodySurfaceNotifySceneKeys.clear();
+    // Commit held publications first — the flush IS the beat's snapshot commit.
+    sceneKeys.forEach((sceneKey) => {
+      const pending = this.pendingDeferredBodySurfaceSnapshots.get(sceneKey);
+      if (pending != null) {
+        this.pendingDeferredBodySurfaceSnapshots.delete(sceneKey);
+        this.sceneBodySurfaceSnapshots.set(sceneKey, pending);
+      }
+    });
     withSearchNavSwitchRuntimeAttribution('sceneStack', 'notify:sceneBodySurface:deferred', () => {
       sceneKeys.forEach((sceneKey) => {
         this.sceneBodySurfaceListeners.get(sceneKey)?.forEach((listener) => {

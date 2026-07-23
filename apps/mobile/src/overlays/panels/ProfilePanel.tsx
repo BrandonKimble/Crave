@@ -4,7 +4,8 @@ import { Feather } from '@expo/vector-icons';
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import { registerPersistentHeaderDescriptor } from '../../navigation/runtime/app-route-persistent-header-registry';
-import { useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
+import { useBottomSheetSceneStackBodyIsActive,
+  useBottomSheetSceneStackBodyRenderActivity } from '../BottomSheetSceneStackBodyActivityContext';
 import { useSearchOverlayProfilerRender } from '../SearchOverlayProfilerContext';
 import { FrostCutout } from '../SceneBodyFoundationSurface';
 import { ChromeTitleText, toSingleLineText } from '../ChromeTitleText';
@@ -287,8 +288,9 @@ ProfileDataSurface.displayName = 'ProfileDataSurface';
 // machine's mount + the data-lane subscription — activation is a STATE input, never a
 // tree swap).
 const ProfilePageContent = React.memo(() => {
-  const { shouldSubscribeDataLane, hasActivatedExpandedContent, isActive } =
+  const { shouldSubscribeDataLane, hasActivatedExpandedContent } =
     useBottomSheetSceneStackBodyRenderActivity();
+  const isActive = useBottomSheetSceneStackBodyIsActive();
   return (
     <ProfileDataSurface
       shouldSubscribeDataLane={shouldSubscribeDataLane}

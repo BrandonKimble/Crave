@@ -682,6 +682,31 @@ probe (both stripped after reading):
 Gates: jest 390/390, invariants 29/29, matrix 21/21 (fresh app; the 20/21
 warm-app pollution pattern reconfirmed the rig lore).
 
+**L4 SLICE 5 EXECUTED 2026-07-23 (the return-from-child diet LANDS — two cuts).**
+The bisection probe named both diseases and both are dead:
+- **THE CONTEXT-VOLATILITY SPLIT:** the render-activity context bundled `isActive`
+  (flips on EVERY transition for both participants) with the stable data-lane
+  flags — every consumer re-rendered its full body per transition, including
+  transitions that never involved the scene (the ~75ms bookmarks grid tax).
+  isActive now lives in its OWN primitive-valued context
+  (useBottomSheetSceneStackBodyIsActive — profile's segment/scroll-restore edge
+  keeps it); the render-activity object is TRANSITION-STABLE.
+- **DEFERRED PUBLICATION (the deferral's honest completion):** deferring only the
+  notify was BYPASSED by prop-driven re-renders re-reading fresh snapshots
+  synchronously (useSyncExternalStore's contract) — the activation render still
+  landed inside the chrome-ack commit on return-from-child. For managed scenes an
+  ACTIVITY-ONLY change now holds the PUBLICATION itself (getSnapshot serves the
+  pre-flip snapshot until the reveal-gated flush commits it); STRUCTURAL changes
+  (contentEntry/transport/units — cold mounts) publish synchronously so the
+  premount law (C4) holds. Internal admission truth (the activity map) stays
+  synchronous — only the UI-facing projection waits.
+**[L4STAMP] VERDICT: return-from-child ~90-112ms → ~34ms.** Every managed
+transition now reveals in 20-35ms — the residual IS the header commit. The
+activation renders land in the post-reveal beat by construction. Gates: jest
+390/390, invariants 29/29, matrix 21/21 cold, bookmarks return grid eye-verified.
+L4 Law 1 is now REAL for the managed set: reveal batch = chrome + visibility;
+content = beats after.
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:
