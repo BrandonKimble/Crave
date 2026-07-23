@@ -348,6 +348,31 @@ describe('TomtomChainProbeAdapter — §2 promotion vendor flow', () => {
     expect(calls[0].params.limit).toBe(5);
   });
 
+  it('resolveGeometryId with a place bbox: a vendor bbox far WIDER than the census bbox still agrees (containment, not size-ratio)', async () => {
+    // Live-proven (Brunswick GA): the RIGHT record's vendor bbox is ~6× the
+    // census bbox (water/metro extent) — it must be chosen, because it fully
+    // CONTAINS the place's own extent.
+    const { adapter } = buildAdapter({
+      forwardResults: [
+        {
+          entityType: 'Municipality',
+          address: { countryCode: 'US' },
+          boundingBox: {
+            topLeftPoint: { lat: 31.4, lon: -81.7 },
+            btmRightPoint: { lat: 30.98, lon: -81.3 },
+          },
+          dataSources: { geometry: { id: 'geo-wide-but-right' } },
+        },
+      ],
+    });
+    expect(
+      await adapter.resolveGeometryId({
+        ...IDENTITY_NODE,
+        bbox: { minLat: 31.11, minLng: -81.53, maxLat: 31.17, maxLng: -81.46 },
+      }),
+    ).toEqual({ kind: 'ok', geometryId: 'geo-wide-but-right' });
+  });
+
   it('resolveGeometryId with a place bbox: NO agreeing candidate = miss (sketch truth beats a wrong twin)', async () => {
     const { adapter } = buildAdapter({
       forwardResults: [

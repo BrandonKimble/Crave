@@ -669,45 +669,54 @@ function parseReverseBoundingBox(
 const GEOMETRY_ID_CANDIDATE_LIMIT = 5;
 
 /**
+ * §16 DERIVED: the agreement floor — a candidate must cover at least half of
+ * the place's own bbox. A true record CONTAINS the place bbox (~100%
+ * coverage, even when the vendor box is much wider — observed Brunswick GA:
+ * vendor bbox 6× the census bbox, still full containment); a duplicate-record
+ * fragment covers almost none of it (San Antonio's 0.012° twin ≈ 0.04%).
+ * Majority is the loosest threshold that still separates those two clusters.
+ */
+const CANDIDATE_PLACE_COVERAGE_FLOOR = 0.5;
+
+/**
  * Pick the candidate whose vendor bbox AGREES with the place's own known
- * extent: spans ≥20% of the place bbox on both axes (same wrong-entity
- * threshold as the drain's persist guard) and center inside the (10%-padded)
- * place bbox. Among qualifiers, largest area wins — the duplicate-record
- * failure mode is always a fragment, never an over-wide twin (bboxes only
- * ever grow, §1). Null = nothing agrees (caller treats as miss).
+ * extent, measured as INTERSECTION-over-PLACE-area: how much of the place's
+ * bbox the candidate's bbox covers. Deliberately NOT symmetric IoU and NOT a
+ * center/span test — vendor bboxes for the RIGHT record are often far wider
+ * than census bounds (water/metro extent), which a center-inside or
+ * size-ratio test wrongly rejects (live-proven: Brunswick GA), while a
+ * wrong-twin fragment can never cover the majority of the true extent.
+ * Highest coverage wins; below the floor = null (caller treats as miss).
  */
 function pickBboxAgreeingCandidate(
   candidates: TomtomGeocodeResult[],
   placeBbox: GeoBbox,
 ): TomtomGeocodeResult | null {
-  const lngSpan = placeBbox.maxLng - placeBbox.minLng;
-  const latSpan = placeBbox.maxLat - placeBbox.minLat;
-  const padLng = 0.1 * lngSpan;
-  const padLat = 0.1 * latSpan;
+  const placeArea =
+    (placeBbox.maxLng - placeBbox.minLng) *
+    (placeBbox.maxLat - placeBbox.minLat);
+  if (!(placeArea > 0)) {
+    return candidates[0] ?? null; // degenerate index bbox judges nothing
+  }
   let best: TomtomGeocodeResult | null = null;
-  let bestArea = -Infinity;
+  let bestCoverage = 0;
   for (const candidate of candidates) {
     const bbox = parseForwardBoundingBox(candidate.boundingBox);
     if (!bbox) {
       continue;
     }
-    const cLngSpan = bbox.maxLng - bbox.minLng;
-    const cLatSpan = bbox.maxLat - bbox.minLat;
-    const centerLng = (bbox.minLng + bbox.maxLng) / 2;
-    const centerLat = (bbox.minLat + bbox.maxLat) / 2;
-    if (
-      cLngSpan < 0.2 * lngSpan ||
-      cLatSpan < 0.2 * latSpan ||
-      centerLng < placeBbox.minLng - padLng ||
-      centerLng > placeBbox.maxLng + padLng ||
-      centerLat < placeBbox.minLat - padLat ||
-      centerLat > placeBbox.maxLat + padLat
-    ) {
+    const overlapLng =
+      Math.min(bbox.maxLng, placeBbox.maxLng) -
+      Math.max(bbox.minLng, placeBbox.minLng);
+    const overlapLat =
+      Math.min(bbox.maxLat, placeBbox.maxLat) -
+      Math.max(bbox.minLat, placeBbox.minLat);
+    if (overlapLng <= 0 || overlapLat <= 0) {
       continue;
     }
-    const area = cLngSpan * cLatSpan;
-    if (area > bestArea) {
-      bestArea = area;
+    const coverage = (overlapLng * overlapLat) / placeArea;
+    if (coverage >= CANDIDATE_PLACE_COVERAGE_FLOOR && coverage > bestCoverage) {
+      bestCoverage = coverage;
       best = candidate;
     }
   }

@@ -1115,3 +1115,19 @@ Specs: adapter — rank-1 tiny twin loses to the bbox-agreeing candidate
 (limit widened to 5 asserted); no agreeing candidate = miss. Promotion —
 identity tuple now carries bbox (null when the row has none). Full api
 suite 734/734 green, build 0 errors, API restarted.
+
+### Leg 4 follow-up 4 — the agreement rule corrected to coverage-of-place (2026-07-23)
+
+The first drain pass under the twin-disambiguation fix missed 621/4,504
+resolutions (14%) — too high to be vendor gaps. Live replay of the rule on
+the missed names showed why: the RIGHT record's vendor bbox is routinely
+far WIDER than the census bbox (Brunswick GA: 6×, water/metro extent), so
+the center-inside-10%-padded-bbox test rejected true records. The rule is
+now INTERSECTION-over-PLACE-area: a candidate agrees when its bbox covers
+≥50% of the place's own bbox (CANDIDATE_PLACE_COVERAGE_FLOOR) — a true
+record contains the place bbox (~100%) even when much wider; a wrong-twin
+fragment covers ~0% (San Antonio's 0.012° twin: 0.04%). Highest coverage
+wins; no size/center tests. Spec added (wide-but-right candidate chosen);
+the SA twin + no-agreement specs unchanged and green. Tonight's missed
+pending rows reset (attempts=0) so the next hourly pass retries them
+under the corrected rule. Suite green, API restarted.
