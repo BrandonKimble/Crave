@@ -1027,3 +1027,13 @@ REMAINING in this arc: delete search's vestigial measured-header lanes
 (effectiveResultsHeaderHeight onLayout thread); owner-eye on the listDetail pending
 face + pre-bundle search face; then the rubber-band overscroll deep dive on this
 foundation.
+
+### Strip-band seam law — slice 2 SHIPPED (2026-07-23): the measured lane is dead
+The vestigial results-header measured thread is DELETED end-to-end: the unfed
+handleResultsHeaderLayout contract field (live-state, page-header runtime, read-model
+selectors, selector-results), the effectiveResultsHeaderHeight state + its freeze
+passthrough (chrome-freeze controller + hook, header-policy threading), and the magic
+`|| 64` fallback in panel-parts — the ONE consumer now reads
+computeSceneChromeHeight('search') directly (§4: no measured lanes). Filters header
+keeps its genuinely content-driven measured height. Gates: jest 396/396, matrix 21/21,
+results eye-verified flush.

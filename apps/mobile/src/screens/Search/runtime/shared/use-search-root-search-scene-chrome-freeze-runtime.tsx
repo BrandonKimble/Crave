@@ -16,9 +16,6 @@ type UseSearchRootSearchSceneChromeFreezeRuntimeArgs = {
   effectiveFiltersHeaderHeight: ReturnType<
     typeof useSearchRootSearchSceneHeaderLayoutRuntime
   >['effectiveFiltersHeaderHeight'];
-  effectiveResultsHeaderHeight: ReturnType<
-    typeof useSearchRootSearchSceneHeaderLayoutRuntime
-  >['effectiveResultsHeaderHeight'];
 };
 
 export const useSearchRootSearchSceneChromeFreezeRuntime = ({
@@ -27,7 +24,6 @@ export const useSearchRootSearchSceneChromeFreezeRuntime = ({
   resolvedResultsRuntime,
   filtersHeaderRuntime,
   effectiveFiltersHeaderHeight,
-  effectiveResultsHeaderHeight,
 }: UseSearchRootSearchSceneChromeFreezeRuntimeArgs) => {
   const hasResolvedResults = resolvedResultsRuntime.resolvedResults != null;
   const shouldFreezeResultsChrome =
@@ -54,20 +50,16 @@ export const useSearchRootSearchSceneChromeFreezeRuntime = ({
       optimisticActiveTab: searchResultsRuntimeState.desiredTab,
     }),
     effectiveFiltersHeaderHeight,
-    effectiveResultsHeaderHeight,
   });
 
   return React.useMemo(
     () => ({
       effectiveFiltersHeaderHeightBase: freezeRuntimeValue.effectiveFiltersHeaderHeightBase,
-      effectiveResultsHeaderHeightForRender:
-        freezeRuntimeValue.effectiveResultsHeaderHeightForRender,
       filtersHeaderRuntimeForReadModel: freezeRuntimeValue.filtersHeaderRuntimeForReadModel,
       submittedQueryForReadModel: freezeRuntimeValue.submittedQueryForReadModel,
     }),
     [
       freezeRuntimeValue.effectiveFiltersHeaderHeightBase,
-      freezeRuntimeValue.effectiveResultsHeaderHeightForRender,
       freezeRuntimeValue.filtersHeaderRuntimeForReadModel,
       freezeRuntimeValue.submittedQueryForReadModel,
     ]

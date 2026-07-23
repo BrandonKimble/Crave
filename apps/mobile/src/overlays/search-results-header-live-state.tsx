@@ -24,7 +24,6 @@ export type SearchResultsHeaderLiveState = {
    * placement + list insets). Fed from the persistent chrome's onLayout via the descriptor's
    * onChromeLayout — the SAME measurement the old in-frame results header produced.
    */
-  handleResultsHeaderLayout: (event: LayoutChangeEvent) => void;
 };
 
 type Listener = () => void;

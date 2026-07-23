@@ -55,7 +55,6 @@ type UseSearchResultsReadModelSelectorsArgs = {
   activeTabColor: string;
   submittedQuery: string;
   handleCloseResults: () => void;
-  handleResultsHeaderLayout: (event: LayoutChangeEvent) => void;
   shouldLogResultsViewability: boolean;
   searchInteractionRef: React.MutableRefObject<{
     isResultsListScrolling: boolean;
@@ -132,7 +131,6 @@ export const useSearchResultsReadModelSelectors = (
     activeTabColor,
     submittedQuery,
     handleCloseResults,
-    handleResultsHeaderLayout,
     shouldLogResultsViewability,
     searchInteractionRef,
     renderDishCard,
@@ -306,7 +304,6 @@ export const useSearchResultsReadModelSelectors = (
     activeTabColor,
     handleCloseResults,
     headerTitle: listHeaderTitle,
-    handleResultsHeaderLayout,
   });
   const listFooterComponent = useSearchResultsListFooterRuntime({
     activeSafeResultsCount: resultsProjectionRuntime.activeSafeResultsData.length,

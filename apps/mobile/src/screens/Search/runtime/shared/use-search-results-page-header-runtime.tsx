@@ -18,14 +18,12 @@ type UseSearchResultsPageHeaderRuntimeArgs = {
   headerTitle: string;
   activeTabColor: string;
   handleCloseResults: () => void;
-  handleResultsHeaderLayout: (event: LayoutChangeEvent) => void;
 };
 
 export const useSearchResultsPageHeaderRuntime = ({
   headerTitle,
   activeTabColor,
   handleCloseResults,
-  handleResultsHeaderLayout,
 }: UseSearchResultsPageHeaderRuntimeArgs): void => {
   // Retained-page signal kept from the pre-P5 header: while the results page is live OR held
   // (dismiss freeze), the title must not blank — the retained fallback below covers the gap.
@@ -44,12 +42,10 @@ export const useSearchResultsPageHeaderRuntime = ({
       headerTitle: resolvedHeaderTitle,
       activeTabColor,
       handleCloseResults,
-      handleResultsHeaderLayout,
     };
   }, [
     activeTabColor,
     handleCloseResults,
-    handleResultsHeaderLayout,
     headerTitle,
     shouldRetainResultsPage,
   ]);

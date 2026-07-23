@@ -4,7 +4,6 @@ type SearchRootSearchSceneChromeFreezeSnapshot = {
   filtersHeaderRuntime: ReturnType<typeof useSearchRootSearchSceneFiltersHeaderRuntime>;
   submittedQuery: string;
   effectiveFiltersHeaderHeight: number;
-  effectiveResultsHeaderHeight: number;
 };
 
 type SearchRootSearchSceneChromeFreezeInput = {
@@ -12,7 +11,6 @@ type SearchRootSearchSceneChromeFreezeInput = {
   filtersHeaderRuntime: SearchRootSearchSceneChromeFreezeSnapshot['filtersHeaderRuntime'];
   submittedQuery: string;
   effectiveFiltersHeaderHeight: number;
-  effectiveResultsHeaderHeight: number;
 };
 
 export const createSearchRootSearchSceneChromeFreezeRuntime = () => {
@@ -24,14 +22,12 @@ export const createSearchRootSearchSceneChromeFreezeRuntime = () => {
       filtersHeaderRuntime,
       submittedQuery,
       effectiveFiltersHeaderHeight,
-      effectiveResultsHeaderHeight,
     }: SearchRootSearchSceneChromeFreezeInput) => {
       if (!shouldFreezeResultsChrome || !frozenResultsChromeSnapshot) {
         frozenResultsChromeSnapshot = {
           filtersHeaderRuntime,
           submittedQuery,
           effectiveFiltersHeaderHeight,
-          effectiveResultsHeaderHeight,
         };
       }
 
@@ -40,10 +36,6 @@ export const createSearchRootSearchSceneChromeFreezeRuntime = () => {
           ? (frozenResultsChromeSnapshot?.effectiveFiltersHeaderHeight ??
             effectiveFiltersHeaderHeight)
           : effectiveFiltersHeaderHeight,
-        effectiveResultsHeaderHeightForRender: shouldFreezeResultsChrome
-          ? (frozenResultsChromeSnapshot?.effectiveResultsHeaderHeight ??
-            effectiveResultsHeaderHeight)
-          : effectiveResultsHeaderHeight,
         filtersHeaderRuntimeForReadModel: shouldFreezeResultsChrome
           ? {
               ...(frozenResultsChromeSnapshot?.filtersHeaderRuntime ?? filtersHeaderRuntime),

@@ -1,3 +1,4 @@
+import { computeSceneChromeHeight } from '../../../../navigation/runtime/scene-chrome-geometry';
 import type {
   SearchRootRouteSearchSceneResultsSurfaceRuntimeArgs,
   SearchRootRuntimeRouteSearchSceneDataRuntime,
@@ -16,9 +17,9 @@ export const useSearchRootRouteSearchSceneSurfacePanelPartsRuntime = ({
 }) => {
   const routeSearchScenePanelSurfaceCompositeRuntime =
     useSearchRootSearchScenePanelSurfaceCompositeRuntime({
-      resolvedResultsHeaderHeightForRender:
-        routeSearchSceneDataRuntime.routeSearchSceneChromeFreezeRuntime
-          .effectiveResultsHeaderHeightForRender || 64,
+      // The COMPUTED chrome fact (strip-band seam law §4) — the measured lane and its
+      // magic 64 fallback are deleted.
+      resolvedResultsHeaderHeightForRender: computeSceneChromeHeight('search'),
       shouldShowResultsSurface:
         routeSearchSceneSurfaceStateRuntime.routeSearchSceneSurfacePanelStateRuntime
           .shouldShowResultsSurface,

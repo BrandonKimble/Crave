@@ -41,7 +41,6 @@ export const useSearchRootRouteSearchSceneHeaderPolicyRuntime = ({
     resolvedResultsRuntime: routeSearchSceneDataStateRuntime.routeSearchSceneResolvedResultsRuntime,
     filtersHeaderRuntime: routeSearchSceneFiltersHeaderRuntime,
     effectiveFiltersHeaderHeight: routeSearchSceneHeaderLayoutRuntime.effectiveFiltersHeaderHeight,
-    effectiveResultsHeaderHeight: routeSearchSceneHeaderLayoutRuntime.effectiveResultsHeaderHeight,
   });
   const routeSearchSceneAllowsInteractionLoadingState =
     useSearchRootSearchSceneInteractionLoadingPolicyRuntime({
