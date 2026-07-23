@@ -13,6 +13,8 @@ type UseBottomSheetSharedScrollEventsRuntimeArgs = {
   onMomentumEndJS?: () => void;
   onScrollOffsetChange?: (offsetY: number) => void;
   scrollOffset: SharedValue<number>;
+  /** Boundary-physics: the ACTIVE list's max interior offset (contentSize − viewport, ≥0). */
+  maxScrollOffset: SharedValue<number>;
   scrollTopOffset: SharedValue<number>;
   primaryScrollOffset: SharedValue<number>;
   secondaryScrollOffset: SharedValue<number>;
@@ -34,6 +36,7 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
   onScrollOffsetChange,
   scrollOffset,
   scrollTopOffset,
+  maxScrollOffset,
   primaryScrollOffset,
   secondaryScrollOffset,
   primaryScrollTopOffset,
@@ -52,6 +55,10 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
             scrollTopOffset.value = nextTopOffset;
           }
           scrollOffset.value = event.contentOffset.y;
+          maxScrollOffset.value = Math.max(
+            0,
+            (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
+          );
         }
       },
       onBeginDrag: () => {
@@ -108,6 +115,10 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
             scrollTopOffset.value = nextTopOffset;
           }
           scrollOffset.value = event.contentOffset.y;
+          maxScrollOffset.value = Math.max(
+            0,
+            (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
+          );
         }
       },
       onBeginDrag: () => {
@@ -164,6 +175,10 @@ export const useBottomSheetSharedScrollEventsRuntime = ({
             scrollTopOffset.value = nextTopOffset;
           }
           scrollOffset.value = event.contentOffset.y;
+          maxScrollOffset.value = Math.max(
+            0,
+            (event.contentSize?.height ?? 0) - (event.layoutMeasurement?.height ?? 0)
+          );
         }
       },
       onBeginDrag: () => {

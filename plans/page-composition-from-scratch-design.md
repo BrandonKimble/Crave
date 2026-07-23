@@ -1112,3 +1112,19 @@ inner wrapper in BottomSheetScrollContainer), with the plate already following. 
 iteration required on what the revealed region shows per scene (frost by
 construction — nothing opaque may paint there; that is the true-cutout law's
 guarantee).
+
+### Boundary-physics slice 2 SHIPPED (2026-07-23): the bottom-overscroll pan
+The collapsePan mirror: `overscrollPanGesture` (manual activation, simultaneous with
+the container's native scroll) activates on up-drag + atExpanded + atBottom
+(`maxScrollOffset` now published by every onScroll: contentSize − viewport, ≥0) +
+!momentum; drives `contentOverscroll = rubberBandDistance(pull)` (the ONE shared
+curve) and spring-releases to 0 (OVERSCROLL_REBOUND_SPRING, snap-family feel). The
+content translate: the scroll container applies translateY: -contentOverscroll (the
+plate already carries the same term — holes track). Threaded: gesture runtime →
+shared runtime → container runtime (mount-stable refs) → BottomSheetScrollContainer
+(native gesture gains the simultaneous relation).
+VERIFICATION STATE: tsc/jest 396, invariants 30/30, matrix 21/21 cold; regression-eye
+clean (normal scrolls unchanged). The rubber-band FEEL is NOT yet eye-verified — the
+results list paginates so its true bottom is impractical in the rig; the deterministic
+surface is a short page's bottom, which is slice 4's territory (short-page floor) —
+verify both together with the owner's eye.

@@ -286,6 +286,7 @@ export const useBottomSheetSharedRuntime = ({
   // beyond a boundary. Slice 1 mints the value and signs consumers up (plate follows a
   // negative offset); the physics writers (pans + momentum edge) land in later slices.
   const contentOverscroll = useSharedValue(0);
+  const maxScrollOffset = useSharedValue(0);
   const scrollTopOffset = useSharedValue(0);
   const primaryScrollOffset = useSharedValue(0);
   const secondaryScrollOffset = useSharedValue(0);
@@ -327,6 +328,7 @@ export const useBottomSheetSharedRuntime = ({
 
   const { primaryListOnScroll, secondaryListOnScroll, primaryScrollViewOnScroll } =
     useBottomSheetSharedScrollEventsRuntime({
+      maxScrollOffset,
       activePrimaryList,
       isInMomentum,
       onMomentumBeginJS,
@@ -403,6 +405,8 @@ export const useBottomSheetSharedRuntime = ({
 
   const gestures = useBottomSheetSharedGestureRuntime({
     gestureEnabled,
+    contentOverscroll,
+    maxScrollOffset,
     preventSwipeDismiss,
     expandedSnap,
     middleSnap,
@@ -447,6 +451,8 @@ export const useBottomSheetSharedRuntime = ({
   const scrollContainerRuntime = useBottomSheetSharedScrollContainerRuntime({
     expandPanGesture: gestures.expandPan,
     collapsePanGesture: gestures.collapsePan,
+    overscrollPanGesture: gestures.overscrollPan,
+    contentOverscroll,
     shouldEnableScrollShared: runtimeConfigValues.shouldEnableScroll,
     scrollHeaderComponent,
   });

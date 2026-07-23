@@ -9,6 +9,8 @@ import BottomSheetScrollContainer from './BottomSheetScrollContainer';
 type UseBottomSheetSharedScrollContainerRuntimeArgs = {
   expandPanGesture: GestureType;
   collapsePanGesture: GestureType;
+  overscrollPanGesture: GestureType;
+  contentOverscroll: SharedValue<number>;
   shouldEnableScrollShared: SharedValue<boolean>;
   scrollHeaderComponent?: React.ReactNode;
 };
@@ -28,6 +30,8 @@ type UseBottomSheetSharedScrollContainerRuntimeResult = {
 export const useBottomSheetSharedScrollContainerRuntime = ({
   expandPanGesture,
   collapsePanGesture,
+  overscrollPanGesture,
+  contentOverscroll,
   shouldEnableScrollShared,
   scrollHeaderComponent,
 }: UseBottomSheetSharedScrollContainerRuntimeArgs): UseBottomSheetSharedScrollContainerRuntimeResult => {
@@ -37,6 +41,10 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
   expandPanRef.current = expandPanGesture;
   const collapsePanRef = React.useRef(collapsePanGesture);
   collapsePanRef.current = collapsePanGesture;
+  const overscrollPanRef = React.useRef(overscrollPanGesture);
+  overscrollPanRef.current = overscrollPanGesture;
+  const contentOverscrollRef = React.useRef(contentOverscroll);
+  contentOverscrollRef.current = contentOverscroll;
   const shouldEnableScrollSharedRef = React.useRef(shouldEnableScrollShared);
   shouldEnableScrollSharedRef.current = shouldEnableScrollShared;
   const transparentRef = React.useRef(transparent);
@@ -49,6 +57,8 @@ export const useBottomSheetSharedScrollContainerRuntime = ({
         ref={ref}
         expandPanGesture={expandPanRef.current}
         collapsePanGesture={collapsePanRef.current}
+        overscrollPanGesture={overscrollPanRef.current}
+        contentOverscroll={contentOverscrollRef.current}
         shouldEnableScrollShared={shouldEnableScrollSharedRef.current}
         transparent={transparentRef.current}
       />

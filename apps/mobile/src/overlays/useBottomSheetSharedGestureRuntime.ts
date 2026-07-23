@@ -1,7 +1,9 @@
 import React from 'react';
 
 import { Gesture } from 'react-native-gesture-handler';
-import { useSharedValue, type SharedValue } from 'react-native-reanimated';
+import { useSharedValue, type SharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 
 import type { BottomSheetSnapChangeSource } from './bottomSheetMotionTypes';
 import type { BottomSheetSharedRuntimeConfigSharedValues } from './bottomSheetSharedRuntimeContract';
@@ -18,6 +20,7 @@ import {
   GESTURE_OWNER_SHEET,
   applyElasticBounds,
   isAtScrollTop,
+  rubberBandDistance,
 } from './bottomSheetSharedRuntimeUtils';
 
 type HandoffOptions = {
@@ -29,8 +32,16 @@ type GestureStateManagerLike = {
   fail: () => void;
 };
 
+// The rebound spring (boundary-physics law §2 — one physics vocabulary): tuned to the
+// snap-spring family's feel; the release always lands exactly at 0.
+const OVERSCROLL_REBOUND_SPRING = { damping: 28, stiffness: 300, mass: 0.6 } as const;
+
 type UseBottomSheetSharedGestureRuntimeArgs = {
   gestureEnabled: boolean;
+  /** Boundary-physics law: the runtime-owned overscroll value + the active list's max
+   *  interior offset (the atBottom fact). */
+  contentOverscroll: SharedValue<number>;
+  maxScrollOffset: SharedValue<number>;
   preventSwipeDismiss: boolean;
   expandedSnap: number;
   middleSnap: number;
@@ -80,6 +91,8 @@ type UseBottomSheetSharedGestureRuntimeArgs = {
 
 export const useBottomSheetSharedGestureRuntime = ({
   gestureEnabled,
+  contentOverscroll,
+  maxScrollOffset,
   preventSwipeDismiss,
   expandedSnap,
   middleSnap,
@@ -123,6 +136,11 @@ export const useBottomSheetSharedGestureRuntime = ({
 }: UseBottomSheetSharedGestureRuntimeArgs) => {
   const ownedGestureEnabledValue = useSharedValue(gestureEnabled ? 1 : 0);
   const gestureEnabledValue = runtimeConfigValues?.gestureEnabled ?? ownedGestureEnabledValue;
+  // Boundary-physics local state (the bottom-overscroll pan's touch bookkeeping).
+  const overscrollPanActive = useSharedValue(false);
+  const overscrollAxisLock = useSharedValue(0);
+  const overscrollStartTouchY = useSharedValue(0);
+  const overscrollLastTouchY = useSharedValue(0);
 
   React.useEffect(() => {
     if (runtimeConfigValues != null) {
@@ -481,6 +499,81 @@ export const useBottomSheetSharedGestureRuntime = ({
         syncDragging();
       });
 
+    // THE BOTTOM-OVERSCROLL PAN (boundary-physics law §3, case: bottom boundary + sheet
+    // at top snap + finger drag → runtime overscroll + rebound). Mirror of collapsePan's
+    // at-top ownership: a simultaneous pan owns the boundary while native scroll is live.
+    // The failed expandPan can't do this (it already handed off to scroll at expanded) —
+    // this pan activates only when the list is PINNED at its bottom (bounces are off) and
+    // the sheet has no higher snap to move to, and drives contentOverscroll with the ONE
+    // shared rubber curve; release springs it home with the snap-spring family's feel.
+    const overscrollPanGesture = Gesture.Pan()
+      .manualActivation(true)
+      .cancelsTouchesInView(false)
+      .onTouchesDown((event) => {
+        'worklet';
+        overscrollPanActive.value = false;
+        overscrollAxisLock.value = AXIS_LOCK_NONE;
+        const touchY = event.allTouches[0]?.absoluteY ?? 0;
+        overscrollLastTouchY.value = touchY;
+        overscrollStartTouchY.value = touchY;
+      })
+      .onTouchesMove((event, stateManager) => {
+        'worklet';
+        if (!stateManager || overscrollPanActive.value) {
+          return;
+        }
+        if (gestureEnabledValue.value !== 1) {
+          stateManager.fail();
+          return;
+        }
+        const touchY = event.allTouches[0]?.absoluteY ?? overscrollLastTouchY.value;
+        const dy = touchY - overscrollLastTouchY.value;
+        overscrollLastTouchY.value = touchY;
+        if (overscrollAxisLock.value !== AXIS_LOCK_VERTICAL) {
+          const totalDy = Math.abs(touchY - overscrollStartTouchY.value);
+          if (totalDy >= AXIS_LOCK_SLOP_PX) {
+            overscrollAxisLock.value = AXIS_LOCK_VERTICAL;
+          } else if (dy !== 0) {
+            return;
+          }
+        }
+        const goingUp = dy < 0;
+        if (!goingUp) {
+          return;
+        }
+        const runtimeSnapValues = resolveRuntimeSnapValues();
+        const atExpanded = sheetY.value <= runtimeSnapValues.expanded + DRAG_EPSILON;
+        const atBottom =
+          maxScrollOffset.value > 0 &&
+          scrollOffset.value >= maxScrollOffset.value - DRAG_EPSILON;
+        if (atExpanded && atBottom && !isInMomentum.value) {
+          stateManager.activate();
+          overscrollPanActive.value = true;
+          overscrollStartTouchY.value = touchY;
+        }
+      })
+      .onChange((event) => {
+        'worklet';
+        if (!overscrollPanActive.value || gestureEnabledValue.value !== 1) {
+          return;
+        }
+        const pulled = overscrollStartTouchY.value - event.absoluteY;
+        contentOverscroll.value = pulled > 0 ? rubberBandDistance(pulled) : 0;
+      })
+      .onEnd(() => {
+        'worklet';
+        overscrollPanActive.value = false;
+        contentOverscroll.value = withSpring(0, OVERSCROLL_REBOUND_SPRING);
+      })
+      .onFinalize(() => {
+        'worklet';
+        overscrollPanActive.value = false;
+        overscrollAxisLock.value = AXIS_LOCK_NONE;
+        if (contentOverscroll.value !== 0) {
+          contentOverscroll.value = withSpring(0, OVERSCROLL_REBOUND_SPRING);
+        }
+      });
+
     // Global affordance: tapping a sheet that's resting at its docked (lowest)
     // snap springs it up to the middle snap — so a docked lane opens on a tap, not
     // only a swipe. Only fires on a clean no-move tap in the header, so it never
@@ -512,9 +605,15 @@ export const useBottomSheetSharedGestureRuntime = ({
     // about scroll gestures here — any number of co-mounted scroll containers get correct
     // arbitration without the old shared-instance one-detector landmine.
     return {
-      sheet: Gesture.Simultaneous(expandPanGesture, collapsePanGesture, tapToMiddleGesture),
+      sheet: Gesture.Simultaneous(
+        expandPanGesture,
+        collapsePanGesture,
+        overscrollPanGesture,
+        tapToMiddleGesture
+      ),
       expandPan: expandPanGesture,
       collapsePan: collapsePanGesture,
+      overscrollPan: overscrollPanGesture,
     };
   }, [
     collapsedSnap,
@@ -526,6 +625,12 @@ export const useBottomSheetSharedGestureRuntime = ({
     collapseStartTouchX,
     collapseStartTouchY,
     collapseTouchInHeader,
+    contentOverscroll,
+    maxScrollOffset,
+    overscrollAxisLock,
+    overscrollLastTouchY,
+    overscrollPanActive,
+    overscrollStartTouchY,
     dragStartY,
     expandAllowTopElastic,
     expandAxisLock,

@@ -3,7 +3,11 @@ import type { ScrollViewProps } from 'react-native';
 import { ScrollView, StyleSheet } from 'react-native';
 import type { GestureType } from 'react-native-gesture-handler';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { useAnimatedProps, type SharedValue } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedProps,
+  useAnimatedStyle,
+  type SharedValue,
+} from 'react-native-reanimated';
 
 import { useSceneFrostCutoutContentLayoutSignal } from './SceneBodyFoundationSurface';
 import { SHEET_BODY_NO_OVERSCROLL, SHORT_PAGE_SCROLL_ROOM_PX } from './sheetBodyScrollDefaults';
@@ -24,6 +28,10 @@ type BottomSheetScrollContainerProps = ScrollViewProps & {
   // native-side declarations suffice and any number of container instances can coexist.
   expandPanGesture: GestureType;
   collapsePanGesture: GestureType;
+  /** Boundary-physics law §3: the bottom-boundary pan (simultaneous, like collapse). */
+  overscrollPanGesture: GestureType;
+  /** Boundary-physics law §1: runtime-owned overscroll — translates the content. */
+  contentOverscroll: SharedValue<number>;
   // UI-thread scrollEnabled authority (plans/sheet-scroll-primitive.md §3.1): the authority-synced
   // SharedValue mirror of visible && listScrollEnabled && interactionEnabled. Driven via
   // useAnimatedProps on THIS real ScrollView, so a child leg that first commits mid page-switch
@@ -37,6 +45,8 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
     {
       expandPanGesture,
       collapsePanGesture,
+      overscrollPanGesture,
+      contentOverscroll,
       shouldEnableScrollShared,
       transparent = false,
       style,
@@ -58,8 +68,16 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
       () =>
         Gesture.Native()
           .requireExternalGestureToFail(expandPanGesture)
-          .simultaneousWithExternalGesture(collapsePanGesture),
-      [collapsePanGesture, expandPanGesture]
+          .simultaneousWithExternalGesture(collapsePanGesture)
+          .simultaneousWithExternalGesture(overscrollPanGesture),
+      [collapsePanGesture, expandPanGesture, overscrollPanGesture]
+    );
+
+    // The visual rubber-band (law §4): the runtime-owned overscroll translates the whole
+    // scroll viewport; the scene plate applies the same term, so FrostCutout holes track.
+    const overscrollTranslateStyle = useAnimatedStyle(
+      () => ({ transform: [{ translateY: -contentOverscroll.value }] }),
+      [contentOverscroll]
     );
 
     const scrollEnabledAnimatedProps = useAnimatedProps(() => {
@@ -121,7 +139,7 @@ const BottomSheetScrollContainer = React.forwardRef<ScrollView, BottomSheetScrol
           animatedProps={scrollEnabledAnimatedProps}
           onLayout={handleLayout}
           onContentSizeChange={handleContentSizeChange}
-          style={[style, transparent ? styles.transparentScrollView : null]}
+          style={[style, overscrollTranslateStyle, transparent ? styles.transparentScrollView : null]}
           contentContainerStyle={[
             contentContainerStyle,
             minScrollRoomStyle,
