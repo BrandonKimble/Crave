@@ -642,6 +642,23 @@ perf attribution, on the return-from-child commit. Gates: jest 390/390 (the
 393→390 delta predates this slice — concurrent wave-6 session commits),
 invariants 29/29, matrix 21/21 cold.
 
+**L4 SLICE 3 EXECUTED 2026-07-23 (beats flush at the reveal — and the second honest
+miss).** The slice-2 task-deferral could still RACE into the pre-reveal window (a
+setTimeout(0) flush lands before a chrome commit that is itself a later task — the
+in-window notify spans proved it). REFINED: while a txn is pre-reveal (staged/
+committed/joining) the managed flush HOLDS and releases on the txn's REVEALED edge
++1 task — Law 1's beat discipline is now guaranteed, not raced (deadlock-free: the
+reveal joins paint [instant-warm] + chrome [frame-driven header], neither consumes
+body-surface notifies; the engine's forced-reveal contract bounds the hold).
+MEASURED, the second miss: return-from-child STILL ~93-105ms (root→root stays
+~30-37) — the weight is NOT the managed notify cascade at all; it is the
+unmanaged return-path machinery (stack unwind + child leg teardown + sheet-lane
+re-derivation) outside this chokepoint. NEXT TOOL NAMED: the Hermes sampling
+profiler (EXPO_PUBLIC_PERF_SCENARIO_HERMES_PROFILE=1 at Metro start — the
+scenario system already carries start/stop/dump) on the return-from-child window;
+selector-diff WorkSpans are all 0ms noise and Profiler render events don't arm on
+this scenario. Gates: jest 390/390, invariants 29/29, matrix 21/21 cold.
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:

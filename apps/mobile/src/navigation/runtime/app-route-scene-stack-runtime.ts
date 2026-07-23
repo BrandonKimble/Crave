@@ -1,5 +1,9 @@
 import { getAppOverlayRouteMetadata } from './app-overlay-route-types';
 import { isResidencyManagedScene } from '../../overlays/shell-residency-registry';
+import {
+  getLiveTransitionTxn,
+  subscribeTransitionTxn,
+} from './transition-engine/transition-transaction';
 import type { OverlayRouteEntry } from './app-overlay-route-types';
 import {
   areSceneEntryMountUnitArraysEqual,
@@ -1137,6 +1141,8 @@ class AppRouteSceneStackLayerStateController {
       clearTimeout(this.deferredBodySurfaceNotifyHandle);
       this.deferredBodySurfaceNotifyHandle = null;
     }
+    this.deferredBodySurfaceTxnUnsubscribe?.();
+    this.deferredBodySurfaceTxnUnsubscribe = null;
     this.deferredBodySurfaceNotifySceneKeys.clear();
     this.sceneBodySurfaceSnapshots.clear();
     this.sceneEntryMountStateByKey.clear();
@@ -1992,6 +1998,51 @@ class AppRouteSceneStackLayerStateController {
   // subscribers are covered by useSyncExternalStore's subscribe-time re-read.
   private deferredBodySurfaceNotifySceneKeys = new Set<OverlayKey>();
   private deferredBodySurfaceNotifyHandle: ReturnType<typeof setTimeout> | null = null;
+  private deferredBodySurfaceTxnUnsubscribe: (() => void) | null = null;
+
+  // BEATS FLUSH AT THE REVEAL (L4 Law 1, refined after the first cut raced): a
+  // task-deferred flush can still land BEFORE the chrome commit when that commit is
+  // itself a later task — so while a transition is pre-reveal (staged/committed/
+  // joining), the managed flush HOLDS and releases on the txn's revealed edge (+one
+  // task, so the beat lands after the reveal commit paints). The engine's forced-
+  // reveal contract guarantees the phase always advances — no held-forever risk.
+  // Deadlock-free by construction: the reveal joins paint (instant for warm legs)
+  // and chrome (frame-driven header) — neither consumes body-surface notifies.
+  private scheduleDeferredBodySurfaceFlush(): void {
+    if (
+      this.deferredBodySurfaceNotifyHandle != null ||
+      this.deferredBodySurfaceTxnUnsubscribe != null
+    ) {
+      return;
+    }
+    const liveTxn = getLiveTransitionTxn();
+    if (
+      liveTxn != null &&
+      (liveTxn.phase === 'staged' || liveTxn.phase === 'committed' || liveTxn.phase === 'joining')
+    ) {
+      this.deferredBodySurfaceTxnUnsubscribe = subscribeTransitionTxn(() => {
+        const current = getLiveTransitionTxn();
+        if (
+          current == null ||
+          current.phase === 'revealed' ||
+          current.phase === 'settled' ||
+          current.phase === 'superseded'
+        ) {
+          this.deferredBodySurfaceTxnUnsubscribe?.();
+          this.deferredBodySurfaceTxnUnsubscribe = null;
+          if (this.deferredBodySurfaceNotifyHandle == null) {
+            this.deferredBodySurfaceNotifyHandle = setTimeout(() => {
+              this.flushDeferredBodySurfaceNotifies();
+            }, 0);
+          }
+        }
+      });
+      return;
+    }
+    this.deferredBodySurfaceNotifyHandle = setTimeout(() => {
+      this.flushDeferredBodySurfaceNotifies();
+    }, 0);
+  }
 
   private flushDeferredBodySurfaceNotifies(): void {
     this.deferredBodySurfaceNotifyHandle = null;
@@ -2018,13 +2069,8 @@ class AppRouteSceneStackLayerStateController {
         syncSceneKeys.push(sceneKey);
       }
     });
-    if (
-      this.deferredBodySurfaceNotifySceneKeys.size > 0 &&
-      this.deferredBodySurfaceNotifyHandle == null
-    ) {
-      this.deferredBodySurfaceNotifyHandle = setTimeout(() => {
-        this.flushDeferredBodySurfaceNotifies();
-      }, 0);
+    if (this.deferredBodySurfaceNotifySceneKeys.size > 0) {
+      this.scheduleDeferredBodySurfaceFlush();
     }
     if (syncSceneKeys.length === 0) {
       return;
