@@ -1597,7 +1597,7 @@ model OnDemandRequest {
   /// engine's engine_id. Column still NAMED market_key in the DB — the
   /// rename migration rides the next drift-path migration window (a live
   /// column rename requires the shared-API restart this leg may not do).
-  engineId              String                @map("market_key") @db.VarChar(255)
+  engineId              String                @map("engine_id") @db.VarChar(255)
   distinctUserCount     Int                   @default(0) @map("distinct_user_count")
   lastSeenAt            DateTime              @default(now()) @map("last_seen_at")
   lastQueuedAt          DateTime?             @map("last_queued_at")
