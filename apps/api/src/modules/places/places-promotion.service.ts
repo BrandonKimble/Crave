@@ -386,6 +386,20 @@ export class PlacesPromotionService {
         subdivisionCode: place.subdivisionCode,
         countryCode: place.countryCode,
         providerLevelCode: place.providerLevelCode,
+        // §2.5 resolve-time validation: the place's own extent disambiguates
+        // vendor duplicate records (rank order is not identity).
+        bbox:
+          place.bboxMinLat != null &&
+          place.bboxMinLng != null &&
+          place.bboxMaxLat != null &&
+          place.bboxMaxLng != null
+            ? {
+                minLat: Number(place.bboxMinLat),
+                minLng: Number(place.bboxMinLng),
+                maxLat: Number(place.bboxMaxLat),
+                maxLng: Number(place.bboxMaxLng),
+              }
+            : null,
       });
       if (resolved.kind === 'denied') {
         return 'stop'; // cheap pool not-now — NOT an attempt; next window

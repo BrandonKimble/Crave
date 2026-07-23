@@ -75,7 +75,17 @@ export interface GeoJsonFeatureCollection {
 export type GeometryIdentityNode = Pick<
   PlaceSketchNode,
   'name' | 'county' | 'subdivisionCode' | 'countryCode' | 'providerLevelCode'
->;
+> & {
+  /**
+   * The place's own known extent (bbox index columns). When present, the
+   * adapter VALIDATES candidate geocode results against it and picks the
+   * best-agreeing candidate — the vendor keeps duplicate same-name records
+   * (observed: "San Antonio, TX" Municipality twice, one 0.66° and one
+   * 0.012° wide) and rank order is not trustworthy. Null/absent = legacy
+   * first-result behavior.
+   */
+  bbox?: GeoBbox | null;
+};
 
 export interface TomtomChainProbe {
   probe(anchor: GeoPoint): Promise<TomtomChainProbeResult>;

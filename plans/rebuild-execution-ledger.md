@@ -1088,3 +1088,30 @@ bbox at RESOLVE time (or filter the geocode by municipality entity type).
 Verified: build 0 errors, places suite green, API restarted, cold-launch
 sim drive re-run (Austin commit correct; Bexar-over-SA is the documented
 lawful interim).
+
+### Leg 4 follow-up 3 — resolve-time twin disambiguation (the ROOT fix, 2026-07-22)
+
+Live vendor probe pinned the wrong-entity root cause: TomTom keeps
+DUPLICATE same-name Municipality records — "San Antonio, TX" exists twice
+(0.66°-wide real city, geomId e5aa5b8c…; 0.012°-wide fragment, geomId
+8598c1de…) — and QUERY PHRASING decides rank: the county-qualified
+"San Antonio, Bexar, TX" ranks the fragment FIRST while the plain query
+ranks the real record first. Rank is not identity.
+
+Fix (the from-scratch ideal — validate the CHOICE, not just the outcome):
+`resolveGeometryId` now takes the place's own bbox
+(`GeometryIdentityNode.bbox`, passed by the drain from the index
+columns). With a bbox, the geocode draws a candidate LIST (limit 5, still
+one cheap call, entityType/country filter unchanged) and
+`pickBboxAgreeingCandidate` selects the candidate whose vendor bbox spans
+≥20% of the place bbox on both axes with center inside the 10%-padded
+bbox — largest qualifying area wins (the duplicate failure mode is always
+a fragment; bboxes only grow, §1). No qualifier = MISS with a warn —
+sketch truth beats a confident wrong twin. No bbox on the node = legacy
+first-result behavior (probe path unchanged). The persist-time
+wrong-entity guard and the landed check stay as belt-and-suspenders.
+
+Specs: adapter — rank-1 tiny twin loses to the bbox-agreeing candidate
+(limit widened to 5 asserted); no agreeing candidate = miss. Promotion —
+identity tuple now carries bbox (null when the row has none). Full api
+suite 734/734 green, build 0 errors, API restarted.

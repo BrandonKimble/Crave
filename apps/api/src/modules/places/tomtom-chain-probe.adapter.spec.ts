@@ -306,6 +306,75 @@ describe('TomtomChainProbeAdapter — §2 promotion vendor flow', () => {
     });
   });
 
+  it('resolveGeometryId with a place bbox: picks the bbox-AGREEING candidate, not the vendor rank-1 twin (§2.5)', async () => {
+    // The San Antonio defect: the vendor keeps two same-name Municipality
+    // records and ranks the 0.012°-wide fragment first for the
+    // county-qualified query. The place's own extent must decide.
+    const { adapter, calls } = buildAdapter({
+      forwardResults: [
+        {
+          entityType: 'Municipality',
+          address: { countryCode: 'US' },
+          boundingBox: {
+            topLeftPoint: { lat: 29.385, lon: -98.604 },
+            btmRightPoint: { lat: 29.368, lon: -98.592 },
+          },
+          dataSources: { geometry: { id: 'geo-tiny-twin' } },
+        },
+        {
+          entityType: 'Municipality',
+          address: { countryCode: 'US' },
+          boundingBox: {
+            topLeftPoint: { lat: 29.761, lon: -98.886 },
+            btmRightPoint: { lat: 29.103, lon: -98.223 },
+          },
+          dataSources: { geometry: { id: 'geo-real' } },
+        },
+      ],
+    });
+    const result = await adapter.resolveGeometryId({
+      ...IDENTITY_NODE,
+      name: 'San Antonio',
+      county: 'Bexar',
+      bbox: {
+        minLat: 29.103,
+        minLng: -98.886,
+        maxLat: 29.761,
+        maxLng: -98.223,
+      },
+    });
+    expect(result).toEqual({ kind: 'ok', geometryId: 'geo-real' });
+    // A validation bbox widens the draw to a candidate LIST (still one call).
+    expect(calls[0].params.limit).toBe(5);
+  });
+
+  it('resolveGeometryId with a place bbox: NO agreeing candidate = miss (sketch truth beats a wrong twin)', async () => {
+    const { adapter } = buildAdapter({
+      forwardResults: [
+        {
+          entityType: 'Municipality',
+          address: { countryCode: 'US' },
+          boundingBox: {
+            topLeftPoint: { lat: 29.385, lon: -98.604 },
+            btmRightPoint: { lat: 29.368, lon: -98.592 },
+          },
+          dataSources: { geometry: { id: 'geo-tiny-twin' } },
+        },
+      ],
+    });
+    expect(
+      await adapter.resolveGeometryId({
+        ...IDENTITY_NODE,
+        bbox: {
+          minLat: 29.103,
+          minLng: -98.886,
+          maxLat: 29.761,
+          maxLng: -98.223,
+        },
+      }),
+    ).toEqual({ kind: 'miss' });
+  });
+
   it('fetchPolygon rides the SCARCE pool and returns only Polygon/MultiPolygon features', async () => {
     const { adapter, drawCalls } = buildAdapter({
       additionalData: [

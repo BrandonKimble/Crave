@@ -409,14 +409,36 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   async resolveGeometryId(
     node: GeometryIdentityNode,
   ): Promise<GeometryIdResolution> {
-    const outcome = await this.forwardGeocodeMatch(node, 'promotion');
+    // BBOX-VALIDATED SELECTION (§2.5): the vendor keeps duplicate same-name
+    // records ("San Antonio, TX" Municipality exists twice — 0.66° wide and
+    // 0.012° wide) and query phrasing decides which ranks first, so rank is
+    // not identity. Fetch several candidates and pick by agreement with the
+    // place's own known extent; if none agree, that is a MISS — sketch truth
+    // beats a confident wrong twin.
+    const outcome = await this.forwardGeocodeMatch(
+      node,
+      'promotion',
+      node.bbox ? GEOMETRY_ID_CANDIDATE_LIMIT : 1,
+    );
     if (outcome.kind !== 'ok') {
       return { kind: outcome.kind };
     }
-    const geometryId = outcome.result.dataSources?.geometry?.id?.trim();
-    return geometryId
-      ? { kind: 'ok', geometryId }
-      : { kind: 'miss' /* matched entity carries no geometry id */ };
+    const candidates = outcome.results.filter((result) =>
+      result.dataSources?.geometry?.id?.trim(),
+    );
+    const chosen = node.bbox
+      ? pickBboxAgreeingCandidate(candidates, node.bbox)
+      : (candidates[0] ?? null);
+    if (!chosen) {
+      this.logger.warn(
+        `resolveGeometryId: no bbox-agreeing candidate for "${node.name}" (${candidates.length} candidates) — miss`,
+      );
+      return { kind: 'miss' };
+    }
+    return {
+      kind: 'ok',
+      geometryId: chosen.dataSources!.geometry!.id!.trim(),
+    };
   }
 
   /**
@@ -434,8 +456,14 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
   private async forwardGeocodeMatch(
     node: GeometryIdentityNode,
     workClass: string,
+    limit = 1,
   ): Promise<
-    { kind: 'ok'; result: TomtomGeocodeResult } | { kind: 'denied' | 'miss' }
+    | {
+        kind: 'ok';
+        result: TomtomGeocodeResult;
+        results: TomtomGeocodeResult[];
+      }
+    | { kind: 'denied' | 'miss' }
   > {
     const query = encodeURIComponent(
       [node.name, node.county, node.subdivisionCode]
@@ -455,7 +483,7 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
                 key: this.apiKey as string,
                 entityTypeSet: node.providerLevelCode,
                 countrySet: node.countryCode,
-                limit: 1,
+                limit,
               },
               timeout: this.timeoutMs,
             }),
@@ -470,18 +498,18 @@ export class TomtomChainProbeAdapter implements TomtomChainProbe {
     if (!response) {
       return { kind: 'denied' };
     }
-    const result = response.data?.results?.[0];
-    if (
-      !result ||
-      result.entityType !== node.providerLevelCode ||
-      result.address?.countryCode?.toUpperCase() !== node.countryCode
-    ) {
+    const results = (response.data?.results ?? []).filter(
+      (candidate) =>
+        candidate.entityType === node.providerLevelCode &&
+        candidate.address?.countryCode?.toUpperCase() === node.countryCode,
+    );
+    if (results.length === 0) {
       this.logger.debug(
         `forward geocode mismatch for ${node.providerLevelCode} "${node.name}" — skipping`,
       );
       return { kind: 'miss' };
     }
-    return { kind: 'ok', result };
+    return { kind: 'ok', result: results[0], results };
   }
 
   /**
@@ -631,6 +659,59 @@ function parseReverseBoundingBox(
     maxLat: Math.max(ne.lat, sw.lat),
     maxLng: Math.max(ne.lng, sw.lng),
   };
+}
+
+/**
+ * §2.5 resolve-time twin disambiguation: how many geocode candidates to draw
+ * when the caller supplies a validation bbox. Vendor duplicate sets observed
+ * so far are 2-4 records deep; 5 is headroom, still one cheap draw.
+ */
+const GEOMETRY_ID_CANDIDATE_LIMIT = 5;
+
+/**
+ * Pick the candidate whose vendor bbox AGREES with the place's own known
+ * extent: spans ≥20% of the place bbox on both axes (same wrong-entity
+ * threshold as the drain's persist guard) and center inside the (10%-padded)
+ * place bbox. Among qualifiers, largest area wins — the duplicate-record
+ * failure mode is always a fragment, never an over-wide twin (bboxes only
+ * ever grow, §1). Null = nothing agrees (caller treats as miss).
+ */
+function pickBboxAgreeingCandidate(
+  candidates: TomtomGeocodeResult[],
+  placeBbox: GeoBbox,
+): TomtomGeocodeResult | null {
+  const lngSpan = placeBbox.maxLng - placeBbox.minLng;
+  const latSpan = placeBbox.maxLat - placeBbox.minLat;
+  const padLng = 0.1 * lngSpan;
+  const padLat = 0.1 * latSpan;
+  let best: TomtomGeocodeResult | null = null;
+  let bestArea = -Infinity;
+  for (const candidate of candidates) {
+    const bbox = parseForwardBoundingBox(candidate.boundingBox);
+    if (!bbox) {
+      continue;
+    }
+    const cLngSpan = bbox.maxLng - bbox.minLng;
+    const cLatSpan = bbox.maxLat - bbox.minLat;
+    const centerLng = (bbox.minLng + bbox.maxLng) / 2;
+    const centerLat = (bbox.minLat + bbox.maxLat) / 2;
+    if (
+      cLngSpan < 0.2 * lngSpan ||
+      cLatSpan < 0.2 * latSpan ||
+      centerLng < placeBbox.minLng - padLng ||
+      centerLng > placeBbox.maxLng + padLng ||
+      centerLat < placeBbox.minLat - padLat ||
+      centerLat > placeBbox.maxLat + padLat
+    ) {
+      continue;
+    }
+    const area = cLngSpan * cLatSpan;
+    if (area > bestArea) {
+      bestArea = area;
+      best = candidate;
+    }
+  }
+  return best;
 }
 
 /** Forward-shape bbox: {topLeftPoint,btmRightPoint} as {lat,lon} objects. */

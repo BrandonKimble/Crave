@@ -230,6 +230,9 @@ describe('PlacesPromotionService — §2 earned-moment queue', () => {
         subdivisionCode: 'TX',
         countryCode: 'US',
         providerLevelCode: 'Municipality',
+        // §2.5 resolve-time validation: the fixture row carries no bbox, so
+        // the drain passes null (adapter falls back to first-result).
+        bbox: null,
       });
       // The resolved id is cached on the queue row (a later scarce denial
       // never re-spends the cheap draw).
