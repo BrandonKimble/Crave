@@ -332,16 +332,29 @@ export class PlacesCatalogService {
   }
 
   /**
-   * Smallest-area place whose bbox CONTAINS the target (§3 attribution's
+   * Smallest place whose GROUND contains the target (§3 attribution's
    * "smallest place containing its geo"; also the §2 header fallback's
    * containment read). Points are the zero-area bbox degenerate case.
+   *
+   * §2.5(c) — polygon = truth, bbox = index/prefilter + geometry-null
+   * fallback ONLY. The bbox prefilter finds candidates (a place whose
+   * ground contains the target has a bbox containing it too, so the
+   * prefilter never drops a true container); then real ground JUDGES
+   * wherever it exists:
+   * a candidate with geometry must ST_Covers the target or it is refused
+   * (a target inside a neighbor's bbox overhang but outside its ground
+   * resolves to the true container), and polygon-covered candidates rank by
+   * real ground area BEFORE every geometry-null bbox candidate (bbox area).
+   * Consumers (poll placeAt, home-place registration) persist this verdict —
+   * which is exactly why it must be ground-true at write.
    */
   async smallestContaining(target: GeoPoint | GeoBbox): Promise<Place | null> {
     const box = isGeoPoint(target) ? pointToBbox(target) : target;
     // Wrap-aware prefilter (see placesInView): the plain range branch is the
     // exact containment test for non-crossing rows against a non-crossing
     // target (and merely over-inclusive otherwise); crossing rows are
-    // prefetched and judged in memory. bboxContains below is authoritative.
+    // prefetched and judged in memory. bboxContains below screens the
+    // candidates; ground judges them.
     const rows = await this.prisma.place.findMany({
       where: {
         bboxMinLat: { lte: box.minLat },
@@ -355,25 +368,103 @@ export class PlacesCatalogService {
         ],
       },
     });
-    let smallest: Place | null = null;
-    let smallestArea = Number.POSITIVE_INFINITY;
-    for (const place of rows) {
+    const candidates = rows.filter((place) => {
       const bbox = placeBbox(place);
-      if (!bbox) continue;
-      if (!bboxContains(bbox, box)) continue;
-      const area = bboxArea(bbox);
+      return bbox !== null && bboxContains(bbox, box);
+    });
+    if (candidates.length === 0) {
+      return null;
+    }
+    const verdicts = await this.loadGroundContainmentVerdicts(
+      candidates.map((place) => place.placeId),
+      box,
+    );
+    let smallest: Place | null = null;
+    // Rank key: [tier, area] — tier 0 = polygon-covered (area = real ground
+    // area), tier 1 = geometry-null bbox fallback (area = bbox area). Every
+    // polygon-covered candidate outranks every bbox-only one.
+    let smallestKey: [number, number] | null = null;
+    for (const place of candidates) {
+      const verdict = verdicts.get(place.placeId);
+      let key: [number, number];
+      if (verdict) {
+        if (!verdict.covers) {
+          // Real ground refuses the target: the bbox overhang lied.
+          continue;
+        }
+        key = [0, verdict.groundArea];
+      } else {
+        key = [1, bboxArea(placeBbox(place) as GeoBbox)];
+      }
       if (
-        area < smallestArea ||
-        // Deterministic tiebreak on equal area (name-stability flavor, §2).
-        (area === smallestArea &&
+        smallestKey === null ||
+        key[0] < smallestKey[0] ||
+        (key[0] === smallestKey[0] && key[1] < smallestKey[1]) ||
+        // Deterministic tiebreak on equal rank (name-stability flavor, §2).
+        (key[0] === smallestKey[0] &&
+          key[1] === smallestKey[1] &&
           smallest !== null &&
           place.name.localeCompare(smallest.name) < 0)
       ) {
         smallest = place;
-        smallestArea = area;
+        smallestKey = key;
       }
     }
     return smallest;
+  }
+
+  /**
+   * §2.5(c) ground verdicts for smallestContaining's candidates: ONE query
+   * over place_geometries (mirrors loadSimplifiedGrounds' shape — but NO
+   * simplification: ST_Covers on the full stored geometry is exact and
+   * cheap at candidate cardinalities). Wrap-aware target envelope (a
+   * crossing target box becomes the union of its two arms).
+   *
+   * Failure posture: an error degrades THIS read to the §2.5(f) bbox
+   * fallback (empty map, warn logged) — the law's own legal degradation.
+   */
+  private async loadGroundContainmentVerdicts(
+    placeIds: string[],
+    box: GeoBbox,
+  ): Promise<Map<string, { covers: boolean; groundArea: number }>> {
+    const verdicts = new Map<string, { covers: boolean; groundArea: number }>();
+    if (placeIds.length === 0) {
+      return verdicts;
+    }
+    const envelope =
+      box.minLng <= box.maxLng
+        ? Prisma.sql`ST_MakeEnvelope(${box.minLng}::float8, ${box.minLat}::float8, ${box.maxLng}::float8, ${box.maxLat}::float8, 4326)`
+        : Prisma.sql`ST_Union(
+            ST_MakeEnvelope(${box.minLng}::float8, ${box.minLat}::float8, 180::float8, ${box.maxLat}::float8, 4326),
+            ST_MakeEnvelope((-180)::float8, ${box.minLat}::float8, ${box.maxLng}::float8, ${box.maxLat}::float8, 4326))`;
+    try {
+      const rows = await this.prisma.$queryRaw<
+        Array<{ placeId: string; covers: boolean; groundArea: number }>
+      >(Prisma.sql`
+        SELECT place_id AS "placeId",
+               ST_Covers(geometry, ${envelope}) AS "covers",
+               ST_Area(geometry)::float8 AS "groundArea"
+        FROM place_geometries
+        WHERE geometry IS NOT NULL
+          AND place_id = ANY(${placeIds}::uuid[])
+      `);
+      for (const row of rows) {
+        verdicts.set(row.placeId, {
+          covers: row.covers,
+          groundArea: Number(row.groundArea),
+        });
+      }
+    } catch (error) {
+      this.logger.warn(
+        'Ground containment verdicts failed — §2.5(f) bbox fallback for this read',
+        {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+    }
+    return verdicts;
   }
 
   /**

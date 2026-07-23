@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { geoEnvelopeSql } from './ground-containment';
 
 /**
  * §3 signals aggregate (§22 item 6): day × actor × place × subject × kind — a
@@ -25,10 +26,18 @@ import { LoggerService } from '../../shared';
  *   Containment, never intersection — storage is O(few) rows per signal; the
  *   "every place in view at weight 1" semantics is supplied at READ time by
  *   inheritance (own rows + descendants' rows + each distinct ancestor row
- *   once — SignalDemandReadService). Longitude is wrap-aware (min_lng >
- *   max_lng crosses the antimeridian): crossing geos split into two segments
- *   for the indexed containment probes; crossing PLACES (none in the current
- *   catalog) take explicit non-indexed branches over that tiny set.
+ *   once — SignalDemandReadService). Containment is judged POLYGON-FIRST
+ *   (§2.5(c): polygon = truth, bbox = index/prefilter + geometry-null
+ *   fallback only): where a place has real ground in place_geometries, the
+ *   `containing` pick requires ST_Covers(ground, geo) and ranks by real
+ *   ground area (polygon-covered candidates before every bbox-only one), and
+ *   the `contained` tiling prefers ground-⊆-geo through the geometry GiST
+ *   index; bbox containment judges only geometry-null rows. Longitude is
+ *   wrap-aware (min_lng > max_lng crosses the antimeridian): crossing geos
+ *   split into two segments for the indexed containment probes (a crossing
+ *   geo's polygon envelope is the union of its two arms); crossing PLACES
+ *   (none in the current catalog) take explicit non-indexed branches over
+ *   that tiny set.
  *   Additionally every signal lands EXACTLY ONCE on the GLOBAL tile
  *   (place_id NULL) so unscoped readers never see attribution fan-out.
  * - Redirects are applied AT READ (the aggregate stores raw subjectIds;
@@ -322,15 +331,26 @@ export class SignalDemandAggregateService {
           FROM geos WHERE geo_min_lng > geo_max_lng
         ),
         containing AS (
-          -- §3 (i): the SMALLEST place whose bbox CONTAINS the whole geo —
-          -- at most ONE row per geo (read-time inheritance walks the
-          -- ancestor chain; storing the chain would double-count).
+          -- §3 (i) under §2.5(c): the SMALLEST place whose GROUND contains
+          -- the whole geo — at most ONE row per geo (read-time inheritance
+          -- walks the ancestor chain; storing the chain would double-count).
+          -- POLYGON JUDGES where real ground exists (bbox is only the GiST
+          -- prefilter): a candidate with geometry must ST_Covers the geo
+          -- envelope or it is REFUSED (its bbox lied — the El Paso act
+          -- inside a Juárez-class overhanging rectangle never attributes
+          -- across the border), and polygon-covered candidates rank by real
+          -- ground area BEFORE every geometry-null bbox candidate.
           SELECT geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng, place_id
           FROM (
-            SELECT x.*,
+            SELECT x.geo_min_lat, x.geo_min_lng, x.geo_max_lat, x.geo_max_lng,
+                   x.place_id,
                    ROW_NUMBER() OVER (
-                     PARTITION BY geo_min_lat, geo_min_lng, geo_max_lat, geo_max_lng
-                     ORDER BY area ASC, place_id ASC
+                     PARTITION BY x.geo_min_lat, x.geo_min_lng, x.geo_max_lat, x.geo_max_lng
+                     ORDER BY (pg.geometry IS NOT NULL) DESC,
+                              CASE WHEN pg.geometry IS NOT NULL
+                                   THEN ST_Area(pg.geometry)
+                                   ELSE x.area END ASC,
+                              x.place_id ASC
                    ) AS pick
             FROM (
               -- Indexed fast path: non-crossing geo × non-crossing place.
@@ -364,11 +384,28 @@ export class SignalDemandAggregateService {
                      ELSE p.bbox_min_lng <= g.geo_min_lng AND g.geo_max_lng <= p.bbox_max_lng
                    END
             ) x
+            LEFT JOIN place_geometries pg
+              ON pg.place_id = x.place_id AND pg.geometry IS NOT NULL
+            WHERE pg.geometry IS NULL
+               OR ST_Covers(pg.geometry, ${geoEnvelopeSql('x')})
           ) ranked
           WHERE pick = 1
         ),
         contained AS (
-          -- §3 (ii) step 1: every place whose bbox is CONTAINED in the geo.
+          -- §3 (ii) step 1 under §2.5(c): every place INSIDE the geo.
+          -- Polygon arm first: where real ground exists it JUDGES
+          -- (ground ⊆ geo via the place_geometries GiST index — a place
+          -- whose bbox overhangs the geo but whose ground sits inside is
+          -- FOUND, and an overhanging ground under a contained bbox is
+          -- REFUSED); the bbox arms survive only for geometry-null places.
+          SELECT g.geo_min_lat, g.geo_min_lng, g.geo_max_lat, g.geo_max_lng,
+                 p.place_id, p.parent_place_ids
+          FROM geos g
+          JOIN place_geometries pg
+            ON pg.geometry IS NOT NULL
+           AND ST_CoveredBy(pg.geometry, ${geoEnvelopeSql('g')})
+          JOIN places p ON p.place_id = pg.place_id
+          UNION
           SELECT DISTINCT sg.geo_min_lat, sg.geo_min_lng, sg.geo_max_lat, sg.geo_max_lng,
                  p.place_id, p.parent_place_ids
           FROM segments sg
@@ -378,6 +415,10 @@ export class SignalDemandAggregateService {
            AND ${PLACE_ENVELOPE_SQL}
                @ ST_MakeEnvelope(sg.seg_min_lng::float8, sg.geo_min_lat::float8,
                                  sg.seg_max_lng::float8, sg.geo_max_lat::float8, 4326)
+          WHERE NOT EXISTS (
+            SELECT 1 FROM place_geometries pg
+            WHERE pg.place_id = p.place_id AND pg.geometry IS NOT NULL
+          )
           UNION
           -- Crossing place inside a crossing geo: both arms nested.
           SELECT g.geo_min_lat, g.geo_min_lng, g.geo_max_lat, g.geo_max_lng,
@@ -389,6 +430,10 @@ export class SignalDemandAggregateService {
            AND p.bbox_max_lat <= g.geo_max_lat
            AND p.bbox_min_lng >= g.geo_min_lng
            AND p.bbox_max_lng <= g.geo_max_lng
+          WHERE NOT EXISTS (
+            SELECT 1 FROM place_geometries pg
+            WHERE pg.place_id = p.place_id AND pg.geometry IS NOT NULL
+          )
         ),
         tiling AS (
           -- §3 (ii) step 2: keep only the COARSEST contained places — drop
@@ -398,16 +443,25 @@ export class SignalDemandAggregateService {
           -- (per-row unnest + index probe) — NEVER a contained×contained
           -- self-join, which the planner turns into an O(N²) merge on the
           -- low-cardinality geo columns (the 3b timeout, proven live).
+          -- Parent containment speaks the SAME §2.5(c) law as the
+          -- contained CTE: the parent's ground judges when it exists; bbox
+          -- containment only for geometry-null parents.
           SELECT c.geo_min_lat, c.geo_min_lng, c.geo_max_lat, c.geo_max_lng, c.place_id
           FROM contained c
           WHERE NOT EXISTS (
             SELECT 1
             FROM unnest(c.parent_place_ids) AS parent(place_id)
             JOIN places pp ON pp.place_id = parent.place_id
-            WHERE pp.bbox_min_lat IS NOT NULL
-              AND pp.bbox_min_lat >= c.geo_min_lat
-              AND pp.bbox_max_lat <= c.geo_max_lat
-              AND CASE
+            LEFT JOIN place_geometries ppg
+              ON ppg.place_id = pp.place_id AND ppg.geometry IS NOT NULL
+            WHERE CASE
+                    WHEN ppg.geometry IS NOT NULL
+                      THEN ST_CoveredBy(ppg.geometry, ${geoEnvelopeSql('c')})
+                    ELSE
+                      pp.bbox_min_lat IS NOT NULL
+                      AND pp.bbox_min_lat >= c.geo_min_lat
+                      AND pp.bbox_max_lat <= c.geo_max_lat
+                      AND CASE
                     -- parent and geo both non-crossing
                     WHEN c.geo_min_lng <= c.geo_max_lng AND pp.bbox_min_lng <= pp.bbox_max_lng
                       THEN pp.bbox_min_lng >= c.geo_min_lng AND pp.bbox_max_lng <= c.geo_max_lng
@@ -417,8 +471,9 @@ export class SignalDemandAggregateService {
                     -- both crossing: arms nested
                     WHEN c.geo_min_lng > c.geo_max_lng AND pp.bbox_min_lng > pp.bbox_max_lng
                       THEN pp.bbox_min_lng >= c.geo_min_lng AND pp.bbox_max_lng <= c.geo_max_lng
-                    -- crossing parent can't fit a non-crossing geo
-                    ELSE FALSE
+                        -- crossing parent can't fit a non-crossing geo
+                        ELSE FALSE
+                      END
                   END
           )
         ),

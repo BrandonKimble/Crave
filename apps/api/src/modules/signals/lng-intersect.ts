@@ -64,6 +64,61 @@ export function lngIntersectSql(
       END`;
 }
 
+/**
+ * Wrap-aware longitude-interval CONTAINMENT (outer ⊇ inner) — the TS twin of
+ * lngContainsSql. §3's attribution law is containment, never intersection;
+ * this is the longitude half of a bbox containment judgment, exhaustive over
+ * the crossing cases (same representation law as lngIntervalsIntersect):
+ * - neither crosses: plain range nesting;
+ * - outer crosses, inner doesn't: the inner interval fits one of the outer's
+ *   two arcs ([min, 180] or [-180, max]);
+ * - both cross: both contain the antimeridian, so nesting is plain range
+ *   nesting on the crossed representation (outer.min <= inner.min AND
+ *   outer.max >= inner.max);
+ * - outer doesn't cross but inner does: impossible (a non-crossing interval
+ *   never contains the antimeridian) — FALSE.
+ */
+export function lngIntervalContains(
+  outerMin: number,
+  outerMax: number,
+  innerMin: number,
+  innerMax: number,
+): boolean {
+  const outerCrosses = outerMin > outerMax;
+  const innerCrosses = innerMin > innerMax;
+  if (!outerCrosses && !innerCrosses) {
+    return outerMin <= innerMin && outerMax >= innerMax;
+  }
+  if (outerCrosses && !innerCrosses) {
+    return innerMin >= outerMin || innerMax <= outerMax;
+  }
+  if (outerCrosses && innerCrosses) {
+    return outerMin <= innerMin && outerMax >= innerMax;
+  }
+  return false;
+}
+
+/**
+ * SQL statement of lngIntervalContains over two column pairs — the ONE
+ * generator for wrap-aware longitude containment predicates (the bbox
+ * fallback arm of every polygon-first containment judgment).
+ */
+export function lngContainsSql(
+  outer: LngIntervalColumns,
+  inner: LngIntervalColumns,
+): Prisma.Sql {
+  return Prisma.sql`
+      CASE
+        WHEN ${outer.min} <= ${outer.max} AND ${inner.min} <= ${inner.max}
+          THEN ${outer.min} <= ${inner.min} AND ${outer.max} >= ${inner.max}
+        WHEN ${outer.min} > ${outer.max} AND ${inner.min} <= ${inner.max}
+          THEN ${inner.min} >= ${outer.min} OR ${inner.max} <= ${outer.max}
+        WHEN ${outer.min} > ${outer.max} AND ${inner.min} > ${inner.max}
+          THEN ${outer.min} <= ${inner.min} AND ${outer.max} >= ${inner.max}
+        ELSE FALSE
+      END`;
+}
+
 /** The signals-ledger geo columns (alias `s`) as an interval reference. */
 export const SIGNAL_LNG_COLUMNS: LngIntervalColumns = {
   min: Prisma.sql`s.geo_min_lng`,

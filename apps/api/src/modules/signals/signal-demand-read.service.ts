@@ -8,6 +8,7 @@ import {
   placeLngColumns,
   SIGNAL_LNG_COLUMNS,
 } from './lng-intersect';
+import { freshSignalAttributionSql } from './ground-containment';
 import { utcInstantSql } from './sql-instant';
 import {
   DEMAND_HALF_LIFE_DAYS,
@@ -919,8 +920,11 @@ export class SignalDemandReadService {
           AND s.occurred_at >= ${utcInstantSql(todayStart)}
           AND s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
           -- Wave-5 F4: wrap-aware longitude intersect (the ONE canonical
-          -- predicate) — a crossing-geo signal reaches its place here too.
+          -- predicate) as the PREFILTER; attribution itself is the
+          -- aggregate's §2.5(c) containment law — polygon-judged where
+          -- ground exists, geometry-null bbox fallback (C3 cut).
           AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})
+          AND (${freshSignalAttributionSql('p')})
           ${freshFirstOccurrenceSql(todayStart)}
         GROUP BY 1, 2
       ),
@@ -970,8 +974,9 @@ export class SignalDemandReadService {
    * §11 UNMET family input — user-expressed collection gaps
    * (kind = 'on_demand_ask') read by ENGINE TERRITORY (Phase C: replaced the
    * engine-name-keyed collection_on_demand_ask_events read). Territory
-   * membership is the signal-geo ∩ member-place-bbox overlap — the same
-   * fresh-arm shape as territoryEntityDemand. Meta qualifiers (reason,
+   * membership is the §2.5(c) containment law against the member places
+   * (polygon-judged where ground exists; bbox intersect is only the
+   * prefilter) — the same fresh-arm shape as territoryEntityDemand. Meta qualifiers (reason,
    * entityType, result counts) are judged at read; the two ask sites of one
    * search share meta.askSearchRequestId and collapse to one ask per
    * (request, term). Entity identity resolves through redirects at read.
@@ -1018,8 +1023,11 @@ export class SignalDemandReadService {
           AND s.subject_text IS NOT NULL
           AND s.meta->>'reason' IN ('unresolved', 'low_result')
           AND s.geo_min_lat <= p.bbox_max_lat AND s.geo_max_lat >= p.bbox_min_lat
-          -- Wave-5 F4: wrap-aware longitude intersect (canonical helper).
+          -- Wave-5 F4: wrap-aware longitude intersect (canonical helper) as
+          -- the PREFILTER; membership judged by the §2.5(c) containment law
+          -- (polygon-first, geometry-null bbox fallback — C3 cut).
           AND (${lngIntersectSql(SIGNAL_LNG_COLUMNS, placeLngColumns('p'))})
+          AND (${freshSignalAttributionSql('p')})
       ),
       per_request AS (
         -- One ask per (request, term, ...): the two ask sites of a single

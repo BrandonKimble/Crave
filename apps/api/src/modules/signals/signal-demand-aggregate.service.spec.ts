@@ -121,7 +121,23 @@ describe('SignalDemandAggregateService — the §3 day-slice rebuild', () => {
     expect(insert).toContain('ST_MakeEnvelope');
     expect(insert).toMatch(/~\s*¤?\s*ST_MakeEnvelope/); // place CONTAINS geo
     expect(insert).toMatch(/@\s*¤?\s*ST_MakeEnvelope/); // place CONTAINED in geo
-    expect(insert).toContain('ORDER BY area ASC, place_id ASC'); // smallest
+    // §2.5(c) polygon-first (C1/C5 cut): where real ground exists it JUDGES —
+    // the containing pick requires ST_Covers(ground, geo) and ranks
+    // polygon-covered candidates (by real ground area) BEFORE geometry-null
+    // bbox candidates (by bbox area); bbox containment survives only for
+    // geometry-null rows.
+    expect(insert).toContain('ST_Covers(pg.geometry,');
+    expect(insert).toContain('pg.geometry IS NULL');
+    expect(insert).toContain('(pg.geometry IS NOT NULL) DESC');
+    expect(insert).toContain('ST_Area(pg.geometry)');
+    expect(insert).toContain('ELSE x.area END ASC');
+    expect(insert).toContain('x.place_id ASC'); // deterministic pick anchor
+    // Tiling direction: ground-⊆-geo through the geometry GiST index; the
+    // bbox arms are fenced to geometry-null places, and parent domination
+    // speaks the same law (parent ground judges when present).
+    expect(insert).toContain('ST_CoveredBy(pg.geometry,');
+    expect(insert).toContain('ST_CoveredBy(ppg.geometry,');
+    expect(insert).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM place_geometries pg/);
     // Coarsest tiling: parent-domination via per-row PK probe (never a
     // contained×contained self-join — the proven O(N²) planner trap).
     expect(insert).toContain('unnest(c.parent_place_ids)');

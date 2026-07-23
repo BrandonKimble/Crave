@@ -19,9 +19,12 @@
  *   territoryEntityDemand reads by).
  * - FRESH TODAY from the ledger (flat weight — day age 0 is inside the flat
  *   cycle), with TRUE act-grain dedupe (the wave-5 F2 COALESCE including
- *   askSearchRequestId) and the canonical wrap-aware lng predicate; a
- *   cross-midnight retry is excluded by a first-occurrence anti-join (the
- *   aggregate already counted the act on its first day).
+ *   askSearchRequestId) and the aggregate's OWN attribution law
+ *   (freshSignalAttributionSql: containment in either direction, polygon-
+ *   judged where ground exists, geometry-null bbox fallback; the canonical
+ *   wrap-aware lng predicate survives as the prefilter); a cross-midnight
+ *   retry is excluded by a first-occurrence anti-join (the aggregate already
+ *   counted the act on its first day).
  *
  * ACT IDENTITY ON THE AGGREGATE (the core subtlety of the swap): the
  * post-wave-5 aggregate deliberately keeps ALL kinds, and one user act writes
@@ -60,6 +63,7 @@ import {
   placeLngColumns,
   SIGNAL_LNG_COLUMNS,
 } from '../../signals/lng-intersect';
+import { freshSignalAttributionSql } from '../../signals/ground-containment';
 import { ECHO_SIGNAL_KINDS } from '../../signals/signals.service';
 import { utcInstantSql } from '../../signals/sql-instant';
 import {
@@ -281,8 +285,12 @@ export class DemandMassReader {
       fresh_acts AS (
         -- TODAY from the ledger: true act-grain dedupe (echo rows collapse
         -- into their parent act's key group), first-occurrence gate against
-        -- earlier days, canonical wrap-aware lng intersect. AT TIME ZONE
-        -- 'UTC' law: occurred_at is naive UTC (live-proven wave-5).
+        -- earlier days. Attribution speaks the aggregate's §2.5(c) law
+        -- (freshSignalAttributionSql): CONTAINMENT in either direction,
+        -- polygon-judged where real ground exists, bbox only as the
+        -- geometry-null fallback — the wrap-aware lng intersect stays as
+        -- the cheap PREFILTER (containment implies intersection). AT TIME
+        -- ZONE 'UTC' law: occurred_at is naive UTC (live-proven wave-5).
         SELECT
           pb.place_id AS root,
           s.actor_id,
@@ -293,6 +301,7 @@ export class DemandMassReader {
           ON s.geo_min_lat <= pb.bbox_max_lat
          AND s.geo_max_lat >= pb.bbox_min_lat
          AND (${this.lngIntersectSql()})
+         AND (${freshSignalAttributionSql('pb')})
         WHERE pb.place_id = ANY(${placeIds}::uuid[])
           AND pb.bbox_min_lat IS NOT NULL
           AND s.occurred_at >= ${utcInstantSql(todayStart)}
@@ -412,6 +421,8 @@ export class DemandMassReader {
         GROUP BY 1, 2, 3
       ),
       fresh_acts AS (
+        -- Same §2.5(c) fresh-arm attribution law as placeDemandMass
+        -- (containment, polygon-first; lng intersect = prefilter only).
         SELECT
           pb.place_id AS root,
           COALESCE(r.to_entity_id, s.subject_id) AS subject_id,
@@ -423,6 +434,7 @@ export class DemandMassReader {
           ON s.geo_min_lat <= pb.bbox_max_lat
          AND s.geo_max_lat >= pb.bbox_min_lat
          AND (${this.lngIntersectSql()})
+         AND (${freshSignalAttributionSql('pb')})
         LEFT JOIN entity_redirects r ON r.from_entity_id = s.subject_id
         WHERE pb.place_id = ANY(${placeIds}::uuid[])
           AND pb.bbox_min_lat IS NOT NULL

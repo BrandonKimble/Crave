@@ -746,4 +746,78 @@ describe('PlacesCatalogService.smallestContaining — §2/§3 containment read',
     const smallest = await service.smallestContaining({ lat: 0.5, lng: 0.5 });
     expect(smallest?.name).toBe('City');
   });
+
+  it('§2.5(c) C2 cut: real ground JUDGES — a target inside a neighbor bbox overhang but outside its ground resolves to the true container', async () => {
+    // The border case (El Paso / Juárez class): Overhang's bbox contains the
+    // target, but its GROUND (polygon) refuses it; True Town's ground covers
+    // it. Bbox-smallest would pick Overhang (smaller rectangle) — the
+    // polygon law must refuse it.
+    const overhang = makePlaceRow({
+      name: 'Overhang',
+      bboxMinLat: 0.4,
+      bboxMinLng: 0.4,
+      bboxMaxLat: 0.6,
+      bboxMaxLng: 0.6,
+    });
+    const trueTown = makePlaceRow({
+      name: 'TrueTown',
+      bboxMinLat: 0,
+      bboxMinLng: 0,
+      bboxMaxLat: 1,
+      bboxMaxLng: 1,
+    });
+    const { service, findMany, queryRaw } = makeHarness([]);
+    findMany.mockResolvedValue([overhang, trueTown]);
+    queryRaw.mockResolvedValue([
+      { placeId: overhang.placeId, covers: false, groundArea: 0.01 },
+      { placeId: trueTown.placeId, covers: true, groundArea: 0.8 },
+    ]);
+
+    const smallest = await service.smallestContaining({ lat: 0.5, lng: 0.5 });
+    expect(smallest?.name).toBe('TrueTown');
+  });
+
+  it('§2.5(c) rank law: polygon-covered candidates outrank geometry-null bbox candidates; geometry-null rows stay judgeable (honest fallback)', async () => {
+    const covered = makePlaceRow({
+      name: 'CoveredCounty',
+      bboxMinLat: -1,
+      bboxMinLng: -1,
+      bboxMaxLat: 2,
+      bboxMaxLng: 2,
+    });
+    const bboxOnly = makePlaceRow({
+      name: 'BboxTown',
+      bboxMinLat: 0.45,
+      bboxMinLng: 0.45,
+      bboxMaxLat: 0.55,
+      bboxMaxLng: 0.55,
+    });
+    const { service, findMany, queryRaw } = makeHarness([]);
+    findMany.mockResolvedValue([covered, bboxOnly]);
+    // Only the county has landed ground; the town is geometry-null.
+    queryRaw.mockResolvedValue([
+      { placeId: covered.placeId, covers: true, groundArea: 6 },
+    ]);
+
+    const smallest = await service.smallestContaining({ lat: 0.5, lng: 0.5 });
+    // Polygon truth beats a smaller—but unproven—bbox (§2.5(c): bbox never
+    // judges where a judged polygon candidate exists at the pick).
+    expect(smallest?.name).toBe('CoveredCounty');
+  });
+
+  it('ground-verdict failure degrades THIS read to the bbox fallback (§2.5(f) posture, never an error)', async () => {
+    const city = makePlaceRow({
+      name: 'City',
+      bboxMinLat: 0,
+      bboxMinLng: 0,
+      bboxMaxLat: 1,
+      bboxMaxLng: 1,
+    });
+    const { service, findMany, queryRaw } = makeHarness([]);
+    findMany.mockResolvedValue([city]);
+    queryRaw.mockRejectedValue(new Error('postgis down'));
+
+    const smallest = await service.smallestContaining({ lat: 0.5, lng: 0.5 });
+    expect(smallest?.name).toBe('City');
+  });
 });

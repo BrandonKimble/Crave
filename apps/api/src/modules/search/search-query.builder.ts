@@ -1408,10 +1408,13 @@ geographic_restaurants AS (
    * determinism anchor. Provenance keys off SOURCES (§5): the score row's
    * provenance_source_id resolves to territory places — the source's
    * engine's member places when it has an engine (territory = derived
-   * union; a member's bbox geometrically covers its DAG descendants for a
+   * union; a member's ground geometrically covers its DAG descendants for a
    * point test), else its anchor place (engineless poll-bootstrapped towns).
-   * Bbox test is antimeridian wrap-aware (min > max = wrapped), matching
-   * the catalog convention.
+   * §2.5(c) polygon-first (C4 cut): the wrap-aware bbox test (min > max =
+   * wrapped, catalog convention) is the PREFILTER; where the place has real
+   * ground in place_geometries, ST_Covers(geometry, point) judges — a
+   * location inside a member's bbox overhang but outside its ground never
+   * wins the pin. Geometry-null places keep the bbox verdict (§2.5(f)).
    */
   private buildDistanceOrder(
     searchCenter: { lat: number; lng: number } | null | undefined,
@@ -1436,8 +1439,15 @@ geographic_restaurants AS (
           AND (${Prisma.raw(alias)}.longitude::numeric >= p.bbox_min_lng
             OR ${Prisma.raw(alias)}.longitude::numeric <= p.bbox_max_lng))
       )
+      AND COALESCE(
+        (SELECT ST_Covers(pgm.geometry,
+                 ST_SetSRID(ST_MakePoint(${Prisma.raw(alias)}.longitude::float8,
+                                         ${Prisma.raw(alias)}.latitude::float8), 4326))
+           FROM place_geometries pgm
+          WHERE pgm.place_id = p.place_id AND pgm.geometry IS NOT NULL),
+        TRUE)
   ) DESC`;
-    const scoringTerritoryPreview = `EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN sources src ON src.source_id = pes.provenance_source_id LEFT JOIN engines eng ON eng.engine_id = src.engine_id JOIN places p ON p.place_id = ANY(CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids ELSE ARRAY[src.anchor_place_id] END) WHERE pes.subject_type = 'restaurant' AND pes.subject_id = ${alias}.restaurant_id AND p.bbox_min_lat IS NOT NULL AND ${alias}.latitude::numeric BETWEEN p.bbox_min_lat AND p.bbox_max_lat AND ((p.bbox_min_lng <= p.bbox_max_lng AND ${alias}.longitude::numeric BETWEEN p.bbox_min_lng AND p.bbox_max_lng) OR (p.bbox_min_lng > p.bbox_max_lng AND (${alias}.longitude::numeric >= p.bbox_min_lng OR ${alias}.longitude::numeric <= p.bbox_max_lng)))) DESC`;
+    const scoringTerritoryPreview = `EXISTS (SELECT 1 FROM core_public_entity_scores pes JOIN sources src ON src.source_id = pes.provenance_source_id LEFT JOIN engines eng ON eng.engine_id = src.engine_id JOIN places p ON p.place_id = ANY(CASE WHEN eng.engine_id IS NOT NULL THEN eng.member_place_ids ELSE ARRAY[src.anchor_place_id] END) WHERE pes.subject_type = 'restaurant' AND pes.subject_id = ${alias}.restaurant_id AND p.bbox_min_lat IS NOT NULL AND ${alias}.latitude::numeric BETWEEN p.bbox_min_lat AND p.bbox_max_lat AND ((p.bbox_min_lng <= p.bbox_max_lng AND ${alias}.longitude::numeric BETWEEN p.bbox_min_lng AND p.bbox_max_lng) OR (p.bbox_min_lng > p.bbox_max_lng AND (${alias}.longitude::numeric >= p.bbox_min_lng OR ${alias}.longitude::numeric <= p.bbox_max_lng))) AND COALESCE((SELECT ST_Covers(pgm.geometry, ST_SetSRID(ST_MakePoint(${alias}.longitude::float8, ${alias}.latitude::float8), 4326)) FROM place_geometries pgm WHERE pgm.place_id = p.place_id AND pgm.geometry IS NOT NULL), TRUE)) DESC`;
 
     if (
       !searchCenter ||

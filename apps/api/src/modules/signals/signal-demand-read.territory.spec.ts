@@ -170,6 +170,23 @@ describe('territoryEntityDemand (C3: demand reaches collection only through the 
     expect(sql).toContain('THEN TRUE');
   });
 
+  it('the fresh TODAY arm judges membership by the §2.5(c) containment law (C3 cut): polygon-first, geometry-null bbox fallback — the lng intersect is only the prefilter', async () => {
+    const h = createHarness();
+    await h.service.territoryEntityDemand({
+      placeIds: [PLACE_A],
+      windowDays: 30,
+      limit: 10,
+      entityTypes: ['restaurant'],
+    });
+    const query = h.queries.find((q) =>
+      q.text.includes('signal_demand_daily'),
+    )!;
+    const sql = flattenFragments(query);
+    expect(sql).toContain('ST_Covers(pg.geometry,'); // place ground ⊇ geo
+    expect(sql).toContain('ST_CoveredBy(pg.geometry,'); // geo ⊇ place ground
+    expect(sql).toContain('place_geometries');
+  });
+
   it('the fresh cross-day dedupe is KIND-aware (wave-5 F1): search and autocomplete_selection share a request-id but are distinct acts', async () => {
     const h = createHarness();
     await h.service.territoryEntityDemand({
@@ -254,6 +271,9 @@ describe('territoryUnmetAsks (kind-filtered ask read)', () => {
     expect(sql).toContain('THEN TRUE');
     // The two ask sites of one search still collapse per (request, term).
     expect(sql).toContain('askSearchRequestId');
+    // §2.5(c) containment membership (C3 cut) — same law as the demand arm.
+    expect(sql).toContain('ST_Covers(pg.geometry,');
+    expect(sql).toContain('ST_CoveredBy(pg.geometry,');
   });
 });
 

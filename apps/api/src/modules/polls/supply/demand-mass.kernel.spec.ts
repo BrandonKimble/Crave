@@ -1,5 +1,8 @@
 import { demandMassFromActorActs, recencyWeight } from './demand-mass.reader';
-import { lngIntervalsIntersect } from '../../signals/lng-intersect';
+import {
+  lngIntervalContains,
+  lngIntervalsIntersect,
+} from '../../signals/lng-intersect';
 import {
   DEMAND_HALF_LIFE_DAYS,
   DEMAND_KERNEL_HORIZON_DAYS,
@@ -107,6 +110,25 @@ describe('demand-mass kernel (§4: the curve kernel carried throughout)', () => 
     it('plain intervals keep plain range semantics', () => {
       expect(lngIntervalsIntersect(-98, -97, -97.5, -96)).toBe(true);
       expect(lngIntervalsIntersect(-98, -97, -96, -95)).toBe(false);
+    });
+  });
+
+  describe('wrap-aware longitude CONTAINMENT (§2.5(c) bbox-fallback half)', () => {
+    it('plain intervals: nesting, not mere overlap', () => {
+      expect(lngIntervalContains(-98, -96, -97.5, -97)).toBe(true);
+      expect(lngIntervalContains(-98, -96, -97, -95)).toBe(false); // overlap only
+    });
+
+    it('a crossing outer contains an inner that fits either arc', () => {
+      expect(lngIntervalContains(176, -178, 177, 179)).toBe(true); // east arc
+      expect(lngIntervalContains(176, -178, -180, -179)).toBe(true); // west arc
+      expect(lngIntervalContains(176, -178, -97.9, -97.6)).toBe(false); // Austin
+    });
+
+    it('crossing-in-crossing nests on the crossed representation; a plain outer never contains a crossing inner', () => {
+      expect(lngIntervalContains(175, -178, 176, -179)).toBe(true);
+      expect(lngIntervalContains(176, -179, 175, -178)).toBe(false);
+      expect(lngIntervalContains(-180, 180, 176, -178)).toBe(false); // plain outer
     });
   });
 });

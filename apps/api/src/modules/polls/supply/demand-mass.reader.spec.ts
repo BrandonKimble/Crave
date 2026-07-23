@@ -166,6 +166,27 @@ describe('the two-arm freshness seam (aggregate closed days + fresh today)', () 
       expect(sql).toContain('THEN TRUE');
     }
   });
+
+  it('the fresh arm attributes by the §2.5(c) CONTAINMENT law (C3 cut): polygon judges where ground exists, bbox only as geometry-null fallback — intersection alone never counts', async () => {
+    const { reader, queries } = createHarness();
+    await reader.placeDemandMass([PLACE], NOW);
+    await reader.subjectDemandMass([PLACE], NOW);
+    for (const query of queries) {
+      const sql = flatten(query);
+      // Down direction (§3 (i)): place ground COVERS the signal envelope.
+      expect(sql).toContain('ST_Covers(pg.geometry,');
+      // Up direction (§3 (ii) / ancestor reach): signal envelope covers the
+      // place's ground.
+      expect(sql).toContain('ST_CoveredBy(pg.geometry,');
+      // Geometry-null fallback: the polygon verdict COALESCEs into a
+      // wrap-aware bbox CONTAINMENT (never the bare intersect, which stays
+      // only as the prefilter join).
+      expect(sql).toContain('place_geometries');
+      expect(sql).toContain('pg.geometry IS NOT NULL');
+      // Crossing signal geos judge against the union of their two arms.
+      expect(sql).toContain('ST_Union(');
+    }
+  });
 });
 
 describe('the mass law + day quantization (documented delta)', () => {
