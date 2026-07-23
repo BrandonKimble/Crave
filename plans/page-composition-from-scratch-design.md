@@ -707,6 +707,22 @@ activation renders land in the post-reveal beat by construction. Gates: jest
 L4 Law 1 is now REAL for the managed set: reveal batch = chrome + visibility;
 content = beats after.
 
+**L3/L4 SLICE 6 EXECUTED 2026-07-23 (the census sweep — every registry child joins
+the managed set).** userProfile (`user:<userId>` — drill chains get per-user
+resident units), followList (`follow:<userId>:<mode>`), dmSession
+(`dm:<conversationId>` — a conversation's thread tree survives re-entry),
+messagesInbox + editProfile (leaves), and the creation flows saveList/postPhotos
+with the identity function's NEW NULL ARM: per-invocation EPHEMERAL — null
+identity means legacy entry-keyed units with NO post-pop retention (a new
+invocation always starts fresh), while still receiving the boundary + deferred
+publication. The legacy entry-keyed spec contract re-fixtured onto the
+still-unmanaged children (pollDetail/restaurant — with pollCreation the full
+unmanaged remainder; search/polls stay bespoke until their own slices). Gates:
+jest 390/390, invariants 29/29, matrix 21/21 cold; sim: profile→userProfile→
+messagesInbox all reveal in the 25-35ms [L4STAMP] band, zero contract errors,
+inbox eye-verified. THE STRANGLER'S REMAINDER: search family, polls,
+pollDetail/pollCreation, restaurant — then the cold-path vocabulary dies.
+
 ## The migration bridge (B#5 — designed, not hand-waved)
 
 The strangler needs an explicit, budgeted-for-deletion bridge:

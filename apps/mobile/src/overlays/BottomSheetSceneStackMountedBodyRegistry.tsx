@@ -52,9 +52,17 @@ export const BottomSheetSceneStackMountedBody = React.memo(
           </ShellVisibilityBoundary>
         );
       case 'saveList':
-        return <SaveListMountedSceneBody entry={entry} />;
+        return (
+          <ShellVisibilityBoundary scene="saveList">
+            <SaveListMountedSceneBody entry={entry} />
+          </ShellVisibilityBoundary>
+        );
       case 'userProfile':
-        return <UserProfileMountedSceneBody entry={entry} />;
+        return (
+          <ShellVisibilityBoundary scene="userProfile">
+            <UserProfileMountedSceneBody entry={entry} />
+          </ShellVisibilityBoundary>
+        );
       case 'listDetail':
         // L3 slice 4 (the pair): the first MULTI-ENTRY managed scene — identity-keyed
         // resident units (listId) mean this body's tree survives pops and re-pushes of
@@ -65,7 +73,11 @@ export const BottomSheetSceneStackMountedBody = React.memo(
           </ShellVisibilityBoundary>
         );
       case 'followList':
-        return <FollowListMountedSceneBody entry={entry} />;
+        return (
+          <ShellVisibilityBoundary scene="followList">
+            <FollowListMountedSceneBody entry={entry} />
+          </ShellVisibilityBoundary>
+        );
       // L3 residency slice 1: the residency-managed leaves render under the liveness
       // boundary — their controllers re-derive on become-visible and their material's
       // clocks freeze when hidden (the retained-body stale-forever bug dies here).
@@ -82,13 +94,29 @@ export const BottomSheetSceneStackMountedBody = React.memo(
           </ShellVisibilityBoundary>
         );
       case 'editProfile':
-        return <EditProfileMountedSceneBody entry={entry} />;
+        return (
+          <ShellVisibilityBoundary scene="editProfile">
+            <EditProfileMountedSceneBody entry={entry} />
+          </ShellVisibilityBoundary>
+        );
       case 'postPhotos':
-        return <PostPhotosPanelBody entry={entry} />;
+        return (
+          <ShellVisibilityBoundary scene="postPhotos">
+            <PostPhotosPanelBody entry={entry} />
+          </ShellVisibilityBoundary>
+        );
       case 'messagesInbox':
-        return <MessagesInboxPanelBody entry={entry} />;
+        return (
+          <ShellVisibilityBoundary scene="messagesInbox">
+            <MessagesInboxPanelBody entry={entry} />
+          </ShellVisibilityBoundary>
+        );
       case 'dmSession':
-        return <DmSessionPanelBody entry={entry} />;
+        return (
+          <ShellVisibilityBoundary scene="dmSession">
+            <DmSessionPanelBody entry={entry} />
+          </ShellVisibilityBoundary>
+        );
       default:
         return null;
     }

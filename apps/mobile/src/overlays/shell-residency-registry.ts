@@ -24,6 +24,18 @@ export const RESIDENCY_MANAGED_SCENES: readonly SheetSceneKey[] = [
   // MULTI-ENTRY managed scene — identity-keyed resident units below).
   'bookmarks',
   'listDetail',
+  // Slice 6 (the census sweep — every registry child joins; search/polls/restaurant
+  // stay bespoke until their own slices): entity scenes get content identity;
+  // creation flows (saveList/postPhotos) are per-invocation EPHEMERAL — identity
+  // null = no post-pop retention (legacy entry-keyed units), but they still get the
+  // boundary + the deferred publication.
+  'userProfile',
+  'followList',
+  'messagesInbox',
+  'dmSession',
+  'editProfile',
+  'saveList',
+  'postPhotos',
 ];
 
 export const isResidencyManagedScene = (scene: OverlayKey): boolean =>
@@ -42,13 +54,42 @@ export const RESIDENT_UNIT_RETENTION_LIMIT = 3;
  *    law). shareSlug is ACCESS MATERIAL, never identity (RT-18) — slug-only entries
  *    fall back to entryId: no cross-entry reuse until the slug resolves to a listId.
  *  - single-identity leaves: one unit per scene. */
-export const residentUnitIdentityOf = (entry: OverlayRouteEntry): string => {
-  if (entry.key === 'listDetail') {
-    const params = (entry.params as { listDetail?: { listId?: string | null; targetUserId?: string | null } } | null | undefined)?.listDetail;
-    if (params?.listId != null && params.listId !== '') {
-      return `list:${params.listId}:${params.targetUserId ?? 'self'}`;
+export const residentUnitIdentityOf = (entry: OverlayRouteEntry): string | null => {
+  const params = entry.params as Record<string, Record<string, unknown> | undefined> | null | undefined;
+  switch (entry.key) {
+    case 'listDetail': {
+      const listId = params?.listDetail?.listId;
+      const targetUserId = params?.listDetail?.targetUserId;
+      if (typeof listId === 'string' && listId !== '') {
+        return `list:${listId}:${typeof targetUserId === 'string' ? targetUserId : 'self'}`;
+      }
+      // shareSlug is ACCESS MATERIAL, never identity (RT-18) — slug-only entries get
+      // per-entry units with retention (the slug resolves in place).
+      return entry.entryId;
     }
-    return entry.entryId;
+    case 'userProfile': {
+      const userId = params?.userProfile?.userId;
+      return typeof userId === 'string' && userId !== '' ? `user:${userId}` : entry.entryId;
+    }
+    case 'followList': {
+      const userId = params?.followList?.userId;
+      const mode = params?.followList?.mode;
+      return typeof userId === 'string' && userId !== ''
+        ? `follow:${userId}:${typeof mode === 'string' ? mode : 'followers'}`
+        : entry.entryId;
+    }
+    case 'dmSession': {
+      const conversationId = params?.dmSession?.conversationId;
+      return typeof conversationId === 'string' && conversationId !== ''
+        ? `dm:${conversationId}`
+        : entry.entryId;
+    }
+    // Creation flows: per-invocation EPHEMERAL — null = no post-pop retention;
+    // units stay legacy entry-keyed (a new invocation always starts fresh).
+    case 'saveList':
+    case 'postPhotos':
+      return null;
+    default:
+      return 'scene';
   }
-  return 'scene';
 };

@@ -36,11 +36,14 @@ import {
 const entry = <K extends OverlayKey>(key: K, params?: unknown): OverlayRouteEntry =>
   createRouteEntry(key, params as never) as OverlayRouteEntry;
 
+// L3 note: the LEGACY entry-keyed contract below now applies to UNMANAGED child
+// scenes (residency-managed ones use identity-keyed resident units — their own
+// tests). Fixtures use the still-unmanaged children: pollDetail + restaurant.
 const drillStack = () => {
   const root = entry('search');
-  const userA = entry('userProfile', { userId: 'u-a' });
-  const follow = entry('followList', { userId: 'u-a', mode: 'followers' });
-  const userB = entry('userProfile', { userId: 'u-b' });
+  const userA = entry('pollDetail', { pollId: 'p-a' });
+  const follow = entry('restaurant', { restaurantId: 'r-a' });
+  const userB = entry('pollDetail', { pollId: 'p-b' });
   return { root, userA, follow, userB, stack: [root, userA, follow, userB] };
 };
 
@@ -90,16 +93,16 @@ describe('entry-keyed mounts (W1 slice 1 contract)', () => {
     expect(unitsAfterPop).toHaveLength(1);
     expect(unitsAfterPop?.[0]).toBe(unitsWhileStacked?.[0]);
     // An UNMANAGED child scene's units still drop after its entry pops (legacy law).
-    const user = entry('userProfile', { userId: 'u-a' });
+    const user = entry('pollDetail', { pollId: 'p-a' });
     const userUnits = resolveMountedSceneEntryUnits({
-      sceneKey: 'userProfile',
+      sceneKey: 'pollDetail',
       overlayRouteStack: [root, user],
       outgoingEntryId: null,
       previousUnits: null,
     });
     expect(
       resolveMountedSceneEntryUnits({
-        sceneKey: 'userProfile',
+        sceneKey: 'pollDetail',
         overlayRouteStack: [root],
         outgoingEntryId: null,
         previousUnits: userUnits,
@@ -174,39 +177,39 @@ describe('entry-keyed mounts (W1 slice 1 contract)', () => {
   test('(a) a child scene mounts per key#entryId', () => {
     const { follow, stack } = drillStack();
     const units = resolveMountedSceneEntryUnits({
-      sceneKey: 'followList',
+      sceneKey: 'restaurant',
       overlayRouteStack: stack,
       outgoingEntryId: null,
       previousUnits: null,
     });
     expect(units).not.toBeNull();
     expect(units).toHaveLength(1);
-    expect(units?.[0]?.unitKey).toBe(`followList#${follow.entryId}`);
-    expect(units?.[0]?.unitKey).toBe(createSceneEntryMountUnitKey('followList', follow.entryId));
+    expect(units?.[0]?.unitKey).toBe(`restaurant#${follow.entryId}`);
+    expect(units?.[0]?.unitKey).toBe(createSceneEntryMountUnitKey('restaurant', follow.entryId));
     expect(units?.[0]?.entry).toBe(follow);
   });
 
   test('(b) two entries of one key = two mounted units, both live, stack order', () => {
     const { userA, userB, stack } = drillStack();
     const units = resolveMountedSceneEntryUnits({
-      sceneKey: 'userProfile',
+      sceneKey: 'pollDetail',
       overlayRouteStack: stack,
       outgoingEntryId: null,
       previousUnits: null,
     });
     expect(units?.map((unit) => unit.entryId)).toEqual([userA.entryId, userB.entryId]);
     expect(units?.map((unit) => unit.unitKey)).toEqual([
-      `userProfile#${userA.entryId}`,
-      `userProfile#${userB.entryId}`,
+      `pollDetail#${userA.entryId}`,
+      `pollDetail#${userB.entryId}`,
     ]);
     // The ACTIVE (visible) unit is the topmost in-stack entry of the key.
-    expect(resolveActiveEntryIdForScene('userProfile', stack)).toBe(userB.entryId);
+    expect(resolveActiveEntryIdForScene('pollDetail', stack)).toBe(userB.entryId);
   });
 
   test('(c) pop: the popped entry stays mounted ONLY while outgoingEntryId names it', () => {
     const { userA, userB, stack } = drillStack();
     const unitsBeforePop = resolveMountedSceneEntryUnits({
-      sceneKey: 'userProfile',
+      sceneKey: 'pollDetail',
       overlayRouteStack: stack,
       outgoingEntryId: null,
       previousUnits: null,
@@ -214,7 +217,7 @@ describe('entry-keyed mounts (W1 slice 1 contract)', () => {
     const poppedStack = stack.slice(0, -1); // userProfile(B) popped
     // In-flight settle window: the frame still holds B as outgoing → B stays mounted.
     const unitsDuringSettle = resolveMountedSceneEntryUnits({
-      sceneKey: 'userProfile',
+      sceneKey: 'pollDetail',
       overlayRouteStack: poppedStack,
       outgoingEntryId: userB.entryId,
       previousUnits: unitsBeforePop,
@@ -224,23 +227,23 @@ describe('entry-keyed mounts (W1 slice 1 contract)', () => {
     expect(unitsDuringSettle?.[1]).toBe(unitsBeforePop?.[1]);
     // Settle: outgoing cleared → the popped entry unmounts.
     const unitsAfterSettle = resolveMountedSceneEntryUnits({
-      sceneKey: 'userProfile',
+      sceneKey: 'pollDetail',
       overlayRouteStack: poppedStack,
       outgoingEntryId: null,
       previousUnits: unitsDuringSettle,
     });
     expect(unitsAfterSettle?.map((unit) => unit.entryId)).toEqual([userA.entryId]);
     // Pop-return reveals A as the active unit again.
-    expect(resolveActiveEntryIdForScene('userProfile', poppedStack)).toBe(userA.entryId);
+    expect(resolveActiveEntryIdForScene('pollDetail', poppedStack)).toBe(userA.entryId);
   });
 
   test('(e) depth-K=3 eviction: deeper entries unmount, keep entry data, remount on pop-return', () => {
     expect(SCENE_ENTRY_MOUNT_DEPTH_LIMIT).toBe(3);
     const root = entry('search');
     const listL1 = entry('listDetail', { listId: 'l-1' });
-    const userU1 = entry('userProfile', { userId: 'u-1' });
-    const followF1 = entry('followList', { userId: 'u-1', mode: 'followers' });
-    const userU2 = entry('userProfile', { userId: 'u-2' });
+    const userU1 = entry('pollDetail', { pollId: 'p-1' });
+    const followF1 = entry('restaurant', { restaurantId: 'r-1' });
+    const userU2 = entry('pollDetail', { pollId: 'p-2' });
     const followF2 = entry('followList', { userId: 'u-2', mode: 'following' });
     const deepStack = [root, listL1, userU1, followF1, userU2, followF2];
     // Depths below top: L1=4 (evicted), U1=3 (kept), F1=2, U2=1, F2=0.
@@ -252,7 +255,7 @@ describe('entry-keyed mounts (W1 slice 1 contract)', () => {
     });
     expect(listUnits).toEqual([]); // evicted — but still an ENTRY-KEYED scene (not null)
     const userUnits = resolveMountedSceneEntryUnits({
-      sceneKey: 'userProfile',
+      sceneKey: 'pollDetail',
       overlayRouteStack: deepStack,
       outgoingEntryId: null,
       previousUnits: null,
@@ -274,13 +277,13 @@ describe('entry-keyed mounts (W1 slice 1 contract)', () => {
   test('unit reference stability: unchanged entries reuse previous unit objects', () => {
     const { stack } = drillStack();
     const first = resolveMountedSceneEntryUnits({
-      sceneKey: 'userProfile',
+      sceneKey: 'pollDetail',
       overlayRouteStack: stack,
       outgoingEntryId: null,
       previousUnits: null,
     });
     const second = resolveMountedSceneEntryUnits({
-      sceneKey: 'userProfile',
+      sceneKey: 'pollDetail',
       overlayRouteStack: stack,
       outgoingEntryId: null,
       previousUnits: first,
@@ -294,7 +297,7 @@ describe('entry-keyed mounts (W1 slice 1 contract)', () => {
       index === 3 ? { ...stackEntry, params: { userId: 'u-b2' } } : stackEntry
     ) as OverlayRouteEntry[];
     const third = resolveMountedSceneEntryUnits({
-      sceneKey: 'userProfile',
+      sceneKey: 'pollDetail',
       overlayRouteStack: updated,
       outgoingEntryId: null,
       previousUnits: second,

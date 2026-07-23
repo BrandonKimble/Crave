@@ -142,11 +142,19 @@ export const resolveMountedSceneEntryUnits = ({
       }
     });
     // Latest live entry per identity wins (stack order — later entries supersede).
+    // NULL identity = per-invocation EPHEMERAL (creation flows): the legacy
+    // entry-keyed unit passes through unchanged — stack-scoped, never retained.
     const liveEntryByIdentity = new Map<string, OverlayRouteEntry>();
+    const ephemeralUnits: SceneEntryMountUnit[] = [];
     units.forEach((unit) => {
-      liveEntryByIdentity.set(residentUnitIdentityOf(unit.entry), unit.entry);
+      const identity = residentUnitIdentityOf(unit.entry);
+      if (identity == null) {
+        ephemeralUnits.push(unit);
+        return;
+      }
+      liveEntryByIdentity.set(identity, unit.entry);
     });
-    const nextUnits: SceneEntryMountUnit[] = [];
+    const nextUnits: SceneEntryMountUnit[] = [...ephemeralUnits];
     liveEntryByIdentity.forEach((liveEntry, identity) => {
       const unitKey = createResidentSceneUnitKey(sceneKey, identity);
       const previous = previousResidentByKey.get(unitKey);
